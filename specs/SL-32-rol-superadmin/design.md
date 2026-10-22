@@ -8,7 +8,7 @@ Grep y Read. Términos buscados: `superadmin`, `maestro`, `rol_value`, `ROLES_SE
 
 | Dónde | Qué apareció | Qué se hace |
 |---|---|---|
-| Board | SL-25 (alta de empresas) y SL-26 (panel) dependen del superadmin. SL-17 (`organizacion`), SL-20 (geografía por país) y SL-28 (línea base de migraciones) se tocan con esta. Ninguna ficha crea el rol. | No hay duplicado. SL-32 da el rol y el predicado, y SL-25/26 los consumen. La migración espera a SL-28 (tasks T0). |
+| Board | SL-25 (alta de empresas) y SL-26 (panel) dependen del superadmin. SL-17 (`organizacion`), SL-20 (geografía por país) y SL-28 (línea base de migraciones) se tocan con esta. Ninguna ficha crea el rol. | No hay duplicado. SL-32 da el rol y el predicado, y SL-25/26 los consumen. La migración espera a SL-17, que va antes que SL-28 (tasks T0). |
 | Specs | SL-11 y SL-15 dejan escrito que el superadmin no es `maestro` y que su arranque es de SL-32. SL-11 R2/R6 prohíben scripts que creen usuarios y migraciones que los inserten. | Se reutiliza. La guardia de SL-11 R2 recibe **una** excepción declarada (R19). |
 | `db/schema.prisma` | Enum `RolValue` con seis valores y modelo `Rol` (catálogo). `Usuario` exige `nombre`, `telefono`, `cedula @unique` y `tipoIdentificacionId`. | Se añade un valor al enum. Los campos obligatorios salen de variables de entorno (P2, decidida). |
 | `lib/types/roles.ts` y `scripts/seed-catalogos.ts` | `ROLES_SEED = Object.values(RolValue)`, y `seedRoles` hace upsert de cada uno. | Se reutiliza tal cual: el rol nuevo se siembra solo (R2). |
@@ -34,17 +34,32 @@ Grep y Read. Términos buscados: `superadmin`, `maestro`, `rol_value`, `ROLES_SE
 - **El usuario superadmin** es una fila normal de `usuario`, con `estado = activo` y su `rol_id`.
   `zona_id`, `vehiculo_id` y `placa` van a `NULL`, y `fulfillment` a `false`.
 
-### Multi-empresa (contrato con SL-17)
+### Multi-empresa (SL-17 va antes)
 
-`usuario` es una tabla heredada y aún no tiene `organizacion_id`: lo migra la fase 2
-(`docs/architecture.md > Multi-empresa`). SL-32 no inventa ningún aislamiento. Deja este contrato
-para SL-17:
+Decisión de Carlos del 2026-10-22: SL-17 entra en `dev` **antes** que la migración de SL-32, y
+añade `usuario.organizacion_id`. SL-32 parte de ahí y no inventa ningún aislamiento:
 
-- el superadmin **no pertenece a ninguna empresa**: su `organizacion_id` será `NULL`;
-- un usuario con `organizacion_id = NULL` solo puede tener un rol de `ROLES_PLATAFORMA`. Es un
-  `CHECK` o una regla del servicio, y lo decide SL-17;
+- el superadmin **no pertenece a ninguna empresa**: su `organizacion_id` es `NULL`, y nunca pasa
+  por el filtro de empresa;
+- **el índice de R27 es global, no por empresa.** `usuario_un_solo_superadmin` filtra solo por
+  `rol_id` y no lleva `organizacion_id`. Ponerle esa columna lo rompería: en un índice único,
+  Postgres trata cada `NULL` como distinto, así que dejaría pasar varios superadmins;
+- **el comando** inserta al superadmin con `organizacion_id = NULL` de forma explícita. No resuelve
+  ninguna empresa, porque no tiene sesión ni la necesita. Las comprobaciones de `conflicto` (email y
+  documento) siguen los únicos que SL-17 deje en `usuario`, sean globales o por empresa. Se leen en
+  T0, no se suponen;
+- **la autorización** no cambia de forma. Las páginas y los servicios de empresa resuelven la
+  empresa desde la sesión. El superadmin no tiene empresa, así que no llega a ningún filtro: lo
+  paran antes las whitelists de rol (R5). `UsuarioService` conserva el `notIn` de plataforma (R10)
+  aunque el filtro por `organizacion_id` ya lo excluya por su `NULL`. Así no depende de que SL-17
+  filtre en todas las consultas;
 - la empresa activa del superadmin no existe. Lo que SL-25/26 hagan «sobre una empresa» recibe la
-  empresa por parámetro validado en el servidor, nunca de su sesión.
+  empresa por parámetro validado en el servidor, nunca de su sesión;
+- **ABIERTO, se cierra en T0:** si SL-17 deja `organizacion_id` nulable, ¿quién impide que un usuario
+  de empresa quede con `NULL`? SL-17 no puede escribir un `CHECK` que nombre el rol `superadmin`,
+  porque cuando corre su migración ese rol aún no existe. Si al leer su migración no hay regla, se
+  propone al humano que la segunda migración de SL-32 añada
+  `CHECK (("organizacion_id" IS NULL) = ("rol_id" = '<UUID_ROL_SUPERADMIN>'))`. No se añade sin su OK.
 
 ### País
 
@@ -54,7 +69,8 @@ del país. Sale del catálogo existente, nunca de un literal del comando, y lo v
 
 ## Migraciones
 
-Van **encima de la línea base de SL-28** (T0), con dos carpetas por el error 55P04 de Postgres:
+Van **encima de la migración de SL-17** (T0), porque las dos tocan `usuario`. Llevan dos carpetas
+por el error 55P04 de Postgres:
 un valor de enum no se puede usar en la misma transacción que lo añade.
 
 1. `<ts>_rol_superadmin/`
@@ -82,8 +98,8 @@ un valor de enum no se puede usar en la misma transacción que lo añade.
 `<UUID_ROL_SUPERADMIN>` se genera una vez al escribir la migración, y `lib/auth/plataforma.ts` no
 lo repite: el código busca el rol por valor.
 
-Los timestamps se fijan cuando SL-28 esté en `dev`: los dos tienen que ser posteriores a su línea
-base. Ninguna de las dos inserta en `usuario`: es la guardia de SL-11 R6.
+Los timestamps se fijan cuando SL-17 esté en `dev`: los dos tienen que ser posteriores a su
+migración. SL-28 consolida después, y su línea base las absorberá. Eso es de SL-28. Ninguna de las dos inserta en `usuario`: es la guardia de SL-11 R6.
 
 ## Fuente única: `lib/auth/plataforma.ts`
 
@@ -230,7 +246,7 @@ falta el catálogo, el mensaje pide correr `pnpm db:seed`, que es un script decl
    según el índice que lo produjo:
    - `usuario_un_solo_superadmin` → `ya_existe`, con código 0 (R17);
    - email o cédula → `conflicto`.
-5. Inserta el usuario con el hash, que el servicio calcula **antes** de abrir la transacción para
+5. Inserta el usuario con `organizacion_id = NULL` y el hash, que el servicio calcula **antes** de abrir la transacción para
    no tener el cerrojo durante el bcrypt.
 
 ### Login
@@ -323,9 +339,13 @@ Ninguna nueva. Se usan `bcryptjs`, `zod`, `tsx` y `@prisma/client`, que ya está
 - **El `id` fijo del rol `superadmin`.** Si alguna base tuviera ya esa fila con otro `id`, la
   migración aborta en vez de dejar un índice que no protege nada. Hoy no puede pasar, porque el
   valor del enum no existe antes de la migración.
-- **SL-28 se retrasa.** Las tandas 1 y 2 avanzan sin ella. Lo que necesita el enum generado (tandas
-  3 y 4) espera, porque el schema y la migración van juntos, o la prueba de drift
+- **La tanda 3 espera a SL-17** (antes esperaba a SL-28, que ahora va después de SL-17). Las tandas 1
+  y 2 avanzan sin ella. Lo que necesita el enum generado (tandas 3 y 4) espera, porque el schema y
+  la migración van juntos, o la prueba de drift
   `tests/integration/db/schema-drift-saneamiento.test.ts` se pone en rojo.
+- **SL-17 cambia `usuario` debajo de SL-32.** Si SL-17 deja `organizacion_id` como `NOT NULL`,
+  contradice la decisión de Carlos (el superadmin va con `NULL`) y SL-32 no puede crearlo. Se
+  comprueba en T0 y, si pasa, se para y se pregunta.
 - **SL-15 y SL-16 siguen `in_progress` en el board** y son dueñas de los archivos de D7. Antes de la
   tanda 1, `scripts/archivos-en-vuelo.mjs` tiene que confirmar que no hay choque, o que ya están
   integradas en `dev`.

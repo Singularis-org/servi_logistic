@@ -163,3 +163,26 @@ leader pidió solo los tres comandos de arriba. Tampoco son míos los cambios en
 `specs/…/tasks.md` ni la sección T1b de este archivo.
 
 **Veredicto:** T2 está hecha. R12–R16 tienen test en verde, y las mutaciones (a) y (b) los ponen en rojo.
+
+## Gate de las tandas 1 (T1b) y 2 — 2026-10-22
+
+`scripts/test-rapido.mjs` selecciona por `git diff dev...HEAD`, así que no ve lo que no está
+commiteado. El primer gate de la tanda 2 (`_trabajo/init-SL-32-t2.log`) corrió antes del commit y no
+incluyó el test nuevo (`Tests 314 passed (314)` en la selección). Se repitió tras los commits
+`7f2eaee` (T1b) y `df9fdbd` (T2), en `_trabajo/init-SL-32-t2b.log`:
+
+- tests relacionados con el diff: `Test Files 24 passed (24)`, `Tests 348 passed (348)`, con los 34 de
+  `arranque-superadmin-service.test.ts`;
+- suite rápida: `Tests 1 failed | 3992 passed | 20 skipped (4013)`, `INIT_EXIT=1`;
+- el único rojo es el ajeno de la tanda 1, `test-citado-desaparecido.guardia.test.ts > ninguna
+  excepción temporal sobrevive a su motivo`, por las dos excepciones de `specs/461-…` que perdieron
+  su historia al aplanar en `86d70bf`. No está en `tests/baseline-rojos.json` y no lo toca SL-32.
+  Lo decide el leader.
+
+## Cambios de alcance aplicados al spec (2026-10-22)
+
+- `e7ad16c`: toda la gestión de geografía pasa al superadmin. `listarArbol` sigue abierto al `maestro`,
+  porque Tarifas lo usa (R25). Se añade T1b, la ayuda en la tanda 1.
+- Commit siguiente: T0 espera a SL-17, no a SL-28. El superadmin va con `organizacion_id = NULL`, el
+  índice de R27 es global, y queda ABIERTO para T0 quién impide `NULL` a un usuario de empresa
+  (`design.md > Multi-empresa`).

@@ -5,13 +5,20 @@ dentro, y se hace un commit por tanda.
 
 ## Precondición
 
-- [ ] **T0. SL-28 integrada en `dev`.** Solo bloquea la **tanda 3** y lo que depende de ella. Antes
-  de crear las migraciones:
+- [ ] **T0. SL-17 integrada en `dev`.** Cambió el 2026-10-22 (Carlos): SL-28 va después de SL-17, y
+  la migración de SL-32 va encima de la de SL-17, porque las dos tocan `usuario`. Solo bloquea la
+  **tanda 3** y lo que depende de ella. Antes de crear las migraciones:
   1. `git fetch` y merge de `origin/dev` en la rama;
-  2. comprobar que `db/migrations/` es la línea base de SL-28;
-  3. `pnpm exec prisma migrate status` en limpio sobre una base local recién migrada.
+  2. comprobar que la última migración de `db/migrations/` es la de SL-17, o posterior;
+  3. leer cómo dejó SL-17 `usuario.organizacion_id` (`design.md > Multi-empresa`):
+     - que admite `NULL`; si no, se para y se pregunta;
+     - qué únicos dejó para el email y el documento, que fijan el `conflicto` del comando;
+     - si hay una regla que impida `NULL` a un usuario de empresa. Si no la hay, se propone el `CHECK`
+       al humano antes de la tanda 3;
+  4. `pnpm exec prisma migrate status` en limpio sobre una base local recién migrada.
 
-  **Hecho cuando:** el SHA de `dev` con SL-28 queda anotado en `progress/impl_SL-32.md`.
+  **Hecho cuando:** el SHA de `dev` con SL-17 y las respuestas del punto 3 quedan anotados en
+  `progress/impl_SL-32.md`.
 
 ## Tanda 1 — D7: gestionar la geografía es de la plataforma (no depende de T0)
 
@@ -65,7 +72,7 @@ dentro, y se hace un commit por tanda.
 
 - [ ] **T3. Enum, migraciones e índice de un solo superadmin** (R1, R2, R21, R27).
   - `db/schema.prisma`: `superadmin` en `RolValue`.
-  - Dos carpetas encima de la línea base, `<ts>_rol_superadmin` y `<ts+1>_seed_rol_superadmin`, con
+  - Dos carpetas encima de la migración de SL-17, `<ts>_rol_superadmin` y `<ts+1>_seed_rol_superadmin`, con
     sus `migration.sql` y `down.sql` (`design.md > Migraciones`). Incluyen:
     - el `id` fijo de la fila de `rol`;
     - la comprobación de que esa fila no exista con otro `id`;
@@ -148,7 +155,7 @@ dentro, y se hace un commit por tanda.
 
   Tests:
   - `tests/integration/db/arranque-superadmin.test.ts`:
-    - la primera ejecución crea el superadmin;
+    - la primera ejecución crea el superadmin, con `organizacion_id` a `NULL`;
     - repetida, da `ya_existe` sin escrituras;
     - con el email o el documento ocupados, da `conflicto` sin cambiar el rol del otro;
     - sin catálogo, da `catalogo_incompleto`;

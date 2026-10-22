@@ -1,6 +1,6 @@
 # SL-32 — Rol superadmin y su usuario de arranque
 
-> Zona: fullstack · Complejidad: medium · depends_on: — (las tandas 3 y 4 esperan a SL-28) ·
+> Zona: fullstack · Complejidad: medium · depends_on: — (las tandas 3 y 4 esperan a SL-17) ·
 > Rama: `feature/SL-32-rol-superadmin` · Assignee: Carlos Restrepo
 >
 > **Alcance.** Un rol nuevo, `superadmin`, que es de la **plataforma** y no de ninguna empresa. No es
@@ -38,9 +38,10 @@
 >   gestiona la geografía desde la interfaz (`design.md > Riesgos`).
 > - El alta de empresas y de los usuarios de cada una desde el superadmin: es SL-25 y SL-26. Esta
 >   ficha solo asegura que ningún rol de empresa crea ni toca al superadmin (R8–R11, R27).
-> - `organizacion_id` en `usuario`: es SL-17. Esta ficha solo deja escrito el contrato (`design.md >
->   Multi-empresa`).
-> - Consolidar las migraciones: es SL-28. La migración de esta ficha va encima de su línea base.
+> - `organizacion_id` en `usuario`: es SL-17, que entra antes. El superadmin queda con `NULL` y nunca
+>   pasa por el filtro de empresa (`design.md > Multi-empresa`).
+> - Consolidar las migraciones: es SL-28, que va después de SL-17. La migración de esta ficha va
+>   encima de la de SL-17.
 > - Cambiar el login, el OTP o la recuperación de contraseña: el superadmin usa los de siempre.
 > - Los demás módulos del `maestro` no cambian: Usuarios, Tarifas, API, Plantillas, Vehículos, Envíos
 >   automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes (Carlos).
@@ -135,8 +136,8 @@
 
 ### La migración
 
-- **R21.** Las migraciones del rol y del índice de R27 DEBEN crearse encima de la línea base de
-  SL-28, y cada una trae su `down.sql`. Los `down.sql` dejan el enum `rol_value`, el catálogo `rol`
+- **R21.** Las migraciones del rol y del índice de R27 DEBEN crearse encima de la migración de
+  SL-17, y cada una trae su `down.sql`. Los `down.sql` dejan el enum `rol_value`, el catálogo `rol`
   y los índices de `usuario` como estaban. SI queda algún usuario `superadmin`, ENTONCES el
   `down.sql` DEBE fallar sin borrarlo.
 
@@ -175,7 +176,8 @@
 | 2026-10-21 | ¿Cómo nace el superadmin? | Es el único usuario que nace con la app. Se crea con un comando de arranque, con email y contraseña por variable de entorno, y sin seeds (`docs/plan-saas.md`, decisión 5). | R12, R19, R20 |
 | 2026-10-21 | ¿El superadmin es de una empresa? | No. Servi Logistic es solo la plataforma (`docs/plan-saas.md`, decisión 4). | R5–R11 |
 | 2026-10-22 | ¿Quién retira una provincia? | La plataforma, no la empresa (Carlos, D7). Se corrige el texto de código, ayuda y guardia. | R22, R23, R26 |
-| 2026-10-22 | ¿Sobre qué base va la migración? | Encima de la línea base de SL-28, la ficha de Christian. Solo esperan las tandas que necesitan el enum (leader). | R21 |
+| 2026-10-22 | ¿Sobre qué base va la migración? | Primero se dijo «encima de la línea base de SL-28». Corregido el mismo día (Carlos): SL-28 se retrasa y va después de SL-17, así que la migración va encima de la de SL-17, porque las dos tocan `usuario`. Solo esperan las tandas que necesitan el enum. | R21 |
+| 2026-10-22 | ¿Qué `organizacion_id` tiene el superadmin? | `NULL`: no tiene empresa y nunca pasa por el filtro de empresa (Carlos). El índice de R27 es global y no lleva `organizacion_id`. El comando inserta `NULL` explícito. | R5, R12, R27 |
 | 2026-10-22 | ¿Dónde puede aparecer la contraseña? | En ningún sitio del repo ni de los logs (leader). | R16, R20 |
 | 2026-10-22 | P1: ¿cambia ya el permiso de geografía? | Sí, y es todo el módulo. Corregido el mismo día: primero fue solo retirar y reactivar, y Carlos lo amplió. Dar de alta, renombrar, retirar, reactivar, leer el árbol y contar en `/configuracion/geografia` pasan al superadmin. El `maestro` pierde el subítem del menú y recibe `forbidden` en el servidor. Es la excepción explícita a «`maestro` conserva sus permisos». El permiso va en la tanda 4, tras T0, y el texto de la ayuda y la API va en la tanda 1. D7 se cierra sin deuda nueva (Carlos). Lectura del spec: `listarArbol` sigue abierto al `maestro`, porque Tarifas lo usa para armar zonas, y es una lectura operativa que no cambia (R25). | R3, R24, R25, R26 |
 | 2026-10-22 | ¿Qué otros módulos del `maestro` cambian? | Ninguno. Usuarios, Tarifas, API, Plantillas, Vehículos, Envíos automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes se quedan igual (Carlos). | R3 |
