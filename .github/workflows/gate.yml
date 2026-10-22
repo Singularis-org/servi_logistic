@@ -190,8 +190,16 @@ jobs:
           # `bash` explicito: no depende del bit de ejecucion (los clones de Windows lo pierden).
           # `pipefail` para que el `tee` no se trague el codigo de salida del gate.
           # Sale en verde aunque haya rojos: un shard NO da veredicto. Lo da `gate-completo`.
+          # El log va FUERA del checkout: dentro, `git ls-files --others` lo ve mientras la suite corre
+          # y las guardias que barren el arbol leen en el los nombres de otros tests (PR #1:
+          # `sin-nombre-heredado` cayo por `init-shard.log:2653`).
           set -o pipefail
-          GATE_SHARD=${{ matrix.shard }}/3 bash ./init.sh --completo 2>&1 | tee init-shard.log
+          GATE_SHARD=${{ matrix.shard }}/3 bash ./init.sh --completo 2>&1 | tee "$RUNNER_TEMP/init-shard.log"
+
+      - name: Log del shard al workspace (solo para subirlo)
+        if: always()
+        shell: bash
+        run: cp "$RUNNER_TEMP/init-shard.log" init-shard.log || echo "sin init-shard.log"
 
       - name: Informe del shard
         if: always()

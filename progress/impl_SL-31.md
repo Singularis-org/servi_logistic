@@ -54,6 +54,18 @@ está commiteado en ella), PR propio a `dev`.
 Logs (gitignored): `_trabajo/sl31-paso.log`, `_trabajo/sl31-inalcanzable.log`,
 `_trabajo/sl31-shard1.log`, `_trabajo/sl31-init-rapido.log`.
 
-### CI del PR
+### CI del PR #1
 
-(se completa al terminar el CI)
+**Corrida 1** (run 39870419854, commit `3fb3928`): `estatico` y los tres shards en verde (el paso
+de migración incluido); `gate-completo` rojo: 2516 archivos, 284 tests en rojo, **6 archivos fuera
+del baseline**. Diagnóstico por archivo (mensajes del informe unido `.vitest-rojos.json`):
+
+| Archivo | Causa medida | Qué se hizo |
+|---|---|---|
+| `tests/unit/guards/test-citado-desaparecido.guardia.test.ts` | Las 2 `EXCEPCIONES_TEMPORALES` de `specs/461…/design.md` exigen ver su borrado en git y la historia se aplanó en `86d70bf`. Rojo también en `dev`. No apunta al spec de SL-31. | Campo opcional `historiaAplanada` (2026-10-22): esas dos ya no exigen el borrado y siguen exigiendo archivo ausente + cita viva, con `retira: "SL-27"`. Caso sintético nuevo. Contraprueba: quitando el campo de una vuelve el rojo. La guardia es del perfil (`tests/unit/guards/`, fuera de `arnes.manifest`). |
+| `tests/unit/guards/sin-nombre-heredado.guardia.test.ts` | Hallazgo `init-shard.log:2653`: el `tee` del shard escribe el log dentro del checkout, `git ls-files --others` lo ve, y la línea es `✓ tests/unit/guards/fuera-datos-ordenex.guardia.test.ts`. No apunta al spec de SL-31 (`specs/` está fuera del universo de la guardia). Depende del orden dentro del shard 3. | `gate.yml`: el log va a `$RUNNER_TEMP` y se copia al workspace en un paso `always()` justo antes de subir el artefacto. |
+| `tests/integration/db/abono-tienda-457-migration.test.ts`, `cobro-tienda-461-migration.test.ts`, `wallet-461-migration.test.ts` | `expected '23503' to be '23001'` al borrar un usuario referenciado por una FK RESTRICT y otra NO ACTION. **No es falta de datos** (la fixture `personas-461` crea sus usuarios) ni se saltaban antes. Es la **versión de Postgres**: en base nueva migrada + catálogos pasan en PG 18.2 (local, 16/16) y fallan en PG 17.11 (Docker `postgres:17`, como CI: 3 fallan, 13 pasan). | Al baseline con ese motivo; los tres leen `db/migrations/`, así que los retira SL-28 (P5). La versión de Postgres de CI sigue ABIERTA en `gate.yml` (no la decido yo). |
+| `tests/unit/services/rastreo-publico-service.test.ts` | `expected '2026-08-15T02:30+00:00' to be '2026-08-15T02:30Z'`. Es la **zona horaria / ICU**, determinista, no un flake: `Intl` con `timeZoneName: "longOffset"` para `UTC` da `"GMT"` en Node 24.13.0 (local, ICU 77.1) y `"GMT+00:00"` en Node 24.21.0 (CI); `lib/services/RastreoPublicoService.ts:89` solo convierte `""` en `Z`. Falla igual en `dev` (ni el test ni el servicio cambian aquí). | **Nada.** El arreglo es código de producción (fuera de SL-31, R24) y no hay ficha que retire una entrada de baseline: hace falta una ficha nueva. Sigue rojo en CI. |
+
+Verificación local tras los arreglos: `TEST_RAPIDO_BASE=dev ./init.sh` → `== init OK ==`,
+`INIT_EXIT=0` (`_trabajo/sl31-init-rapido-2.log`).
