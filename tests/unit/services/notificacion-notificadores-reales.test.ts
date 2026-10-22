@@ -1,0 +1,989 @@
+import { describe, it, expect, vi } from "vitest";
+import fs from "fs";
+import path from "path";
+import type {
+  CrearNotificacionInput,
+  INotificacionRepository,
+} from "@/lib/interfaces/repositories/INotificacionRepository";
+import {
+  notificadorNoOp,
+  notificarCargaMasivaTerminadaCon,
+  notificarCierreDiaPorAprobarCon,
+  notificarDevolucionesRepresadasCon,
+  notificarGeocodificacionCaidaCon,
+  notificarNovedadesSinGestionarCon,
+  notificarPostulacionPendienteCon,
+} from "@/lib/notificaciones/notificadores";
+import { PostulacionMensajeroService } from "@/lib/services/PostulacionMensajeroService";
+import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
+import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IPostulacionRepository } from "@/lib/interfaces/repositories/IPostulacionRepository";
+import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
+import type { PostularMensajeroCommand } from "@/lib/interfaces/services/IPostulacionMensajeroService";
+import { DOCUMENTO_TIPOS } from "@/lib/types/postulacion-mensajero";
+
+// Feature 146 — camino REAL de los notificadores best-effort (R22, R23, R24, R25).
+//
+// ⚠️ 2026-08-23: eran TRES cuando se escribio este archivo; hoy son CINCO (la 253 anadio el de
+// la postulacion de recurso y la 262 el del dia de reparto corregido). Los casos de emision de
+// abajo siguen cubriendo los tres originales; el censo del final —«el camino real esta CABLEADO
+// en el composition root»— cubre los cinco y se contrasta contra el arbol.
+//
+// El default del constructor de cada uno de esos services es el NO-OP, y el notificador real se
+// cablea en el composition root. Esto es lo que permite que este archivo pruebe el camino que corre en
+// produccion: se construye `notificar*Con(repoDoble)` —la MISMA funcion que usa el binding real,
+// solo que con el repositorio inyectado— y se verifica que emite lo esperado, y que un fallo se
+// absorbe y se registra en vez de propagarse.
+
+const ROOT = path.join(__dirname, "..", "..", "..");
+
+/** Repositorio doble: registra lo creado, sin dedupe previa. */
+class RepoDoble implements INotificacionRepository {
+  creadas: CrearNotificacionInput[] = [];
+  // FICHA 410 (design 6.1): `crear` devuelve el ID de la fila creada y `null` cuando la dedupe
+  // la absorbio. `null` significa EXACTAMENTE lo que significaba `false`.
+  async crear(input: CrearNotificacionInput): Promise<string | null> {
+    this.creadas.push(input);
+    return `n-${this.creadas.length}`;
+  }
+  existeNoLeidaPara = vi.fn().mockResolvedValue(false);
+  listarParaUsuario = vi.fn().mockResolvedValue([]);
+  verificarVisible = vi.fn().mockResolvedValue("visible" as const);
+  marcarTodasLeidas = vi.fn().mockResolvedValue(0);
+  descartar = vi.fn().mockResolvedValue(undefined);
+}
+
+/** Repositorio que revienta al crear: modela la base caida en el camino real. */
+class RepoQueFalla extends RepoDoble {
+  override async crear(): Promise<string | null> {
+    throw new Error("base caida");
+  }
+}
+
+describe("R23 — camino real del notificador de postulacion", () => {
+  it("emite las dos filas de maestro y admin contra el repositorio inyectado", async () => {
+    const repo = new RepoDoble();
+
+    await notificarPostulacionPendienteCon(repo)({ postulanteId: "u-9", nombre: "Ana Pérez" });
+
+    expect(repo.creadas).toHaveLength(2);
+    expect(repo.creadas.map((c) => c.destinatario)).toEqual([
+      { tipo: "rol", rol: "maestro" },
+      { tipo: "rol", rol: "admin" },
+    ]);
+    expect(repo.creadas[0].descripcion).toBe(
+      "Una postulación de mensajero está pendiente de aprobación.",
+    );
+  });
+
+  it("R25: absorbe el fallo del repositorio y lo registra, sin propagarlo", async () => {
+    const logError = vi.fn();
+
+    await expect(
+      notificarPostulacionPendienteCon(new RepoQueFalla(), { logError })({
+        postulanteId: "u-9",
+        nombre: "Ana",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logError).toHaveBeenCalledTimes(1);
+    const registrado = logError.mock.calls[0][0] as Error;
+    expect(registrado.message).toContain("postulacion_mensajero_pendiente");
+    expect((registrado.cause as Error).message).toBe("base caida");
+  });
+});
+
+describe("401/R7-R8-R11 — camino real del notificador de «el servicio de mapas esta caido»", () => {
+  it("⭑ R8: el camino real crea las DOS filas por `INotificacionRepository.crear`, sin canal nuevo", async () => {
+    const repo = new RepoDoble();
+
+    await notificarGeocodificacionCaidaCon(repo)({ afectados: 3, diaCR: "2026-09-08" });
+
+    expect(repo.creadas).toHaveLength(2);
+    // A MANO, nunca derivado de `ROLES_ADMINISTRACION`: si se comparase contra su propia fuente,
+    // quitar un rol de la constante dejaria este test EN VERDE y la mitad de los avisos se
+    // perderia en silencio. El contrato es «maestro Y admin», decidido por el humano el
+    // 2026-09-09.
+    expect(repo.creadas.map((c) => c.destinatario)).toEqual([
+      { tipo: "rol", rol: "maestro" },
+      { tipo: "rol", rol: "admin" },
+    ]);
+    // Mismo texto para los dos (R7): una sola descripcion por evento.
+    expect(repo.creadas[0].descripcion).toBe(repo.creadas[1].descripcion);
+    expect(repo.creadas[0].tipo).toBe("alert");
+    expect(repo.creadas[0].entidadTipo).toBe("geocodificacion_caida_dia");
+    expect(repo.creadas[0].entidadId).toBe("2026-09-08");
+  });
+
+  it("⭑ R11: absorbe el fallo del repositorio y lo REGISTRA con contexto, sin propagarlo", async () => {
+    // La cola manda, el aviso es cortesia: esto lo llama el drenador, que sirve a nueve tipos de
+    // job. Un aviso caido no puede tumbar la corrida ni cambiar el desenlace del job fallido.
+    const logError = vi.fn();
+
+    await expect(
+      notificarGeocodificacionCaidaCon(new RepoQueFalla(), { logError })({
+        afectados: 5,
+        diaCR: "2026-09-08",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logError).toHaveBeenCalledTimes(1); // NO es un catch vacio
+    const registrado = logError.mock.calls[0][0] as Error;
+    expect(registrado.message).toContain("geocodificacion_caida");
+    expect((registrado.cause as Error).message).toBe("base caida");
+  });
+});
+
+describe("409/R35-R60 — camino real del notificador de «tienes N novedades sin gestionar»", () => {
+  it("crea UNA fila por `INotificacionRepository.crear`, acotada a la tienda", async () => {
+    const repo = new RepoDoble();
+
+    await notificarNovedadesSinGestionarCon(repo)({
+      tiendaId: "tienda-1",
+      diasMasAntigua: 3,
+      plazo: "cinco_dias",
+      diaCR: "2026-09-11",
+    });
+
+    expect(repo.creadas).toHaveLength(1);
+    expect(repo.creadas[0].destinatario).toEqual({
+      tipo: "rol",
+      rol: "adminTienda",
+      tiendaId: "tienda-1",
+    });
+    // El ALCANCE va ADEMAS dentro de la entidad: sin eso, solo la primera tienda de la corrida
+    // recibiria su aviso (la clave de dedupe no incluye `tienda_id`).
+    expect(repo.creadas[0].entidadId).toBe("tienda-1:2026-09-11");
+    expect(repo.creadas[0].entidadTipo).toBe("novedades_sin_gestionar_dia");
+  });
+
+  it("R60: absorbe el fallo del repositorio y lo REGISTRA con contexto, sin propagarlo", async () => {
+    const logError = vi.fn();
+
+    await expect(
+      notificarNovedadesSinGestionarCon(new RepoQueFalla(), { logError })({
+        tiendaId: "tienda-1",
+        diasMasAntigua: 3,
+        plazo: "mezclado",
+        diaCR: "2026-09-11",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logError).toHaveBeenCalledTimes(1); // NO es un catch vacio
+    const registrado = logError.mock.calls[0][0] as Error;
+    expect(registrado.message).toContain("novedades_sin_gestionar");
+    expect((registrado.cause as Error).message).toBe("base caida");
+  });
+});
+
+describe("409/R47-R60 — camino real del notificador de «N ordenes esperan volver a su tienda»", () => {
+  it("ambito global: DOS filas (maestro y admin); ambito zona: UNA, acotada a la zona", async () => {
+    const global = new RepoDoble();
+    const zona = new RepoDoble();
+
+    await notificarDevolucionesRepresadasCon(global)({
+      ambito: { tipo: "global" },
+      diasMasAntigua: 8,
+      diaCR: "2026-09-11",
+    });
+    await notificarDevolucionesRepresadasCon(zona)({
+      ambito: { tipo: "zona", zonaId: "zona-a" },
+      diasMasAntigua: 4,
+      diaCR: "2026-09-11",
+    });
+
+    // A MANO, nunca derivado de `ROLES_ADMINISTRACION`.
+    expect(global.creadas.map((c) => c.destinatario)).toEqual([
+      { tipo: "rol", rol: "maestro" },
+      { tipo: "rol", rol: "admin" },
+    ]);
+    expect(global.creadas.every((c) => c.entidadId === "global:2026-09-11")).toBe(true);
+
+    expect(zona.creadas).toHaveLength(1);
+    expect(zona.creadas[0].destinatario).toEqual({
+      tipo: "rol",
+      rol: "adminSatelite",
+      zonaId: "zona-a",
+    });
+    expect(zona.creadas[0].entidadId).toBe("zona-a:2026-09-11");
+  });
+
+  it("R60: absorbe el fallo del repositorio y lo REGISTRA con contexto, sin propagarlo", async () => {
+    const logError = vi.fn();
+
+    await expect(
+      notificarDevolucionesRepresadasCon(new RepoQueFalla(), { logError })({
+        ambito: { tipo: "global" },
+        diasMasAntigua: 8,
+        diaCR: "2026-09-11",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logError).toHaveBeenCalledTimes(1);
+    const registrado = logError.mock.calls[0][0] as Error;
+    expect(registrado.message).toContain("devoluciones_represadas");
+    expect((registrado.cause as Error).message).toBe("base caida");
+  });
+});
+
+describe("R24 — camino real del notificador de cierre por aprobar", () => {
+  it("emite las tres filas, la tercera acotada a la zona destino", async () => {
+    const repo = new RepoDoble();
+
+    await notificarCierreDiaPorAprobarCon(repo)({
+      cierreId: "c-1",
+      zonaId: "zona-3",
+      mensajeroNombre: "Luis",
+    });
+
+    expect(repo.creadas.map((c) => c.destinatario)).toEqual([
+      { tipo: "rol", rol: "maestro" },
+      { tipo: "rol", rol: "admin" },
+      { tipo: "rol", rol: "adminSatelite", zonaId: "zona-3" },
+    ]);
+  });
+
+  it("R25: absorbe el fallo del repositorio y lo registra", async () => {
+    const logError = vi.fn();
+
+    await expect(
+      notificarCierreDiaPorAprobarCon(new RepoQueFalla(), { logError })({
+        cierreId: "c-1",
+        zonaId: null,
+        mensajeroNombre: null,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect((logError.mock.calls[0][0] as Error).message).toContain("cierre_dia_por_aprobar");
+  });
+});
+
+describe("R22 — camino real del notificador de carga masiva", () => {
+  it("emite una fila box dirigida al ejecutor con los contadores del lote", async () => {
+    const repo = new RepoDoble();
+
+    await notificarCargaMasivaTerminadaCon(repo)({
+      usuarioId: "api-user-1",
+      creadas: 128,
+      total: 130,
+      loteId: "lote-1",
+    });
+
+    expect(repo.creadas).toHaveLength(1);
+    expect(repo.creadas[0]).toMatchObject({
+      tipo: "box",
+      evento: "carga_masiva_terminada",
+      entidadTipo: "carga",
+      entidadId: "lote-1",
+      destinatario: { tipo: "usuario", usuarioId: "api-user-1" },
+    });
+    expect(repo.creadas[0].descripcion).toBe("Carga masiva terminada: 128 órdenes cargadas.");
+  });
+
+  it("R25: absorbe el fallo del repositorio y lo registra", async () => {
+    const logError = vi.fn();
+
+    await expect(
+      notificarCargaMasivaTerminadaCon(new RepoQueFalla(), { logError })({
+        usuarioId: "u-1",
+        creadas: 1,
+        total: 1,
+        loteId: "lote-1",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect((logError.mock.calls[0][0] as Error).message).toContain("carga_masiva_terminada");
+  });
+});
+
+describe("el notificador real, cableado en un service, emite de punta a punta", () => {
+  function repoPostulacion(): IPostulacionRepository {
+    return {
+      emailExiste: vi.fn().mockResolvedValue(false),
+      cedulaExiste: vi.fn().mockResolvedValue(false),
+      findRolIdByValue: vi.fn().mockResolvedValue("rol-mensajero"),
+      tipoIdentificacionExiste: vi.fn().mockResolvedValue(true),
+      vehiculoExiste: vi.fn().mockResolvedValue(true),
+      crearMensajeroConDocumentos: vi.fn().mockResolvedValue({ id: "usr-nuevo" }),
+    };
+  }
+  function storageFake(): IFileStorage {
+    return {
+      upload: vi.fn().mockImplementation(async ({ path: p }: { path: string }) => p),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+  function comando(): PostularMensajeroCommand {
+    const documentos = Object.fromEntries(
+      DOCUMENTO_TIPOS.map((t) => [t, { contentType: "image/jpeg", bytes: new Uint8Array([1]) }]),
+    ) as PostularMensajeroCommand["documentos"];
+    return {
+      nombre: "Ana",
+      primerApellido: "Perez",
+      segundoApellido: undefined,
+      email: "ana@example.com",
+      telefono: "0991234567",
+      tipoIdentificacionId: "tipo-1",
+      cedula: "1710034065",
+      vehiculoId: "veh-1",
+      placa: "ABC123",
+      password: "Abcdef1!",
+      documentos,
+    };
+  }
+
+  it("postular con el notificador REAL cableado crea las dos filas en el repositorio", async () => {
+    const notificaciones = new RepoDoble();
+    const service = new PostulacionMensajeroService(
+      repoPostulacion(),
+      storageFake(),
+      notificarPostulacionPendienteCon(notificaciones),
+    );
+
+    expect(await service.postular(comando())).toEqual({ status: "ok" });
+    expect(notificaciones.creadas).toHaveLength(2);
+    expect(notificaciones.creadas[0].anexo).toBe("Ana Perez");
+  });
+
+  it("cargarViaApi con el notificador REAL cableado crea la fila del ejecutor", async () => {
+    const notificaciones = new RepoDoble();
+    const repo = {
+      findEstatusIdByValue: vi.fn().mockResolvedValue("est-1"),
+      findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
+      findAllProvincias: vi.fn().mockResolvedValue([]),
+      findCantonesByProvinciaIds: vi.fn().mockResolvedValue([]),
+      findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
+      // Feature 155: `cargarViaApi` resuelve el estado inicial con el flag de la tienda
+      // dueña de la key, asi que el doble del repositorio debe exponerlo.
+      findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+      createManyOrdenesConGuia: vi.fn().mockResolvedValue([]),
+    };
+    const service = new BulkOrdenService(
+      repo as never,
+      { resolveTarifaPorTienda: vi.fn().mockResolvedValue(null) } as never,
+      notificarCargaMasivaTerminadaCon(notificaciones),
+    );
+    const actor: Actor = { usuarioId: "api-user-1", rol: "apiKey", zonaId: null };
+
+    expect((await service.cargarViaApi([{ num_remision: "R1" }], actor)).status).toBe("ok");
+    expect(notificaciones.creadas).toHaveLength(1);
+    expect(notificaciones.creadas[0].destinatario).toEqual({
+      tipo: "usuario",
+      usuarioId: "api-user-1",
+    });
+  });
+});
+
+describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", () => {
+  it("notificadorNoOp no hace nada y no lanza", async () => {
+    await expect(notificadorNoOp({} as never)).resolves.toBeUndefined();
+  });
+
+  it("un service construido sin cablear el notificador no puede emitir nada", async () => {
+    // Se construye tal y como lo hacen los dobles de las suites ajenas: sin tercer argumento.
+    const service = new PostulacionMensajeroService(repoPostulacionSinCablear(), storageSinCablear());
+    // No hay forma de observar una emision porque el default NO tiene repositorio detras.
+    // Lo que se fija aqui es que el camino termina en `ok` sin tocar nada externo.
+    expect(await service.postular(comandoMinimo())).toEqual({ status: "ok" });
+  });
+
+  function repoPostulacionSinCablear(): IPostulacionRepository {
+    return {
+      emailExiste: vi.fn().mockResolvedValue(false),
+      cedulaExiste: vi.fn().mockResolvedValue(false),
+      findRolIdByValue: vi.fn().mockResolvedValue("rol-mensajero"),
+      tipoIdentificacionExiste: vi.fn().mockResolvedValue(true),
+      vehiculoExiste: vi.fn().mockResolvedValue(true),
+      crearMensajeroConDocumentos: vi.fn().mockResolvedValue({ id: "usr-nuevo" }),
+    };
+  }
+  function storageSinCablear(): IFileStorage {
+    return {
+      upload: vi.fn().mockImplementation(async ({ path: p }: { path: string }) => p),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+  function comandoMinimo(): PostularMensajeroCommand {
+    const documentos = Object.fromEntries(
+      DOCUMENTO_TIPOS.map((t) => [t, { contentType: "image/jpeg", bytes: new Uint8Array([1]) }]),
+    ) as PostularMensajeroCommand["documentos"];
+    return {
+      nombre: "Ana",
+      primerApellido: "Perez",
+      segundoApellido: undefined,
+      email: "ana@example.com",
+      telefono: "0991234567",
+      tipoIdentificacionId: "tipo-1",
+      cedula: "1710034065",
+      vehiculoId: "veh-1",
+      placa: "ABC123",
+      password: "Abcdef1!",
+      documentos,
+    };
+  }
+
+  it("CierreDiaService sin cablear tampoco emite", async () => {
+    // FEATURE 271 (R18): la re-solicitud elige por EDAD. `findCierreParaAviso` recibe el id del
+    // cierre que se acaba de tocar (R56, cierra M9).
+    const repo = {
+      findCierreResolicitableMasViejo: vi
+        .fn()
+        .mockResolvedValue({ id: "c-1", estado: "vencido" }),
+      transicionarASolicitado: vi.fn().mockResolvedValue(true),
+      findCierreParaAviso: vi
+        .fn()
+        .mockResolvedValue({ id: "c-1", destinoZonaId: null, mensajeroNombre: null }),
+    };
+    const service = new CierreDiaService(
+      repo as never,
+      { findCentralZonaId: vi.fn() } as never,
+      { findUsuarioZonaId: vi.fn(), findBloqueoDetalle: vi.fn() } as never,
+      { createSignedUrls: vi.fn() } as never,
+      { resolvePagoTarifa: vi.fn() } as never,
+    );
+
+    const r = await service.solicitarCierre({
+      usuarioId: "men-1",
+      rol: "mensajero",
+      zonaId: "z-1",
+    });
+
+    expect(r).toMatchObject({ status: "ok", via: "resolicitado" });
+  });
+});
+
+describe("el camino real esta CABLEADO en el composition root, no en el default", () => {
+  const leer = (...partes: string[]) => fs.readFileSync(path.join(ROOT, ...partes), "utf8");
+
+  it("lib/actions/postulacion-mensajero.ts inyecta el notificador real", () => {
+    expect(leer("lib", "actions", "postulacion-mensajero.ts")).toContain(
+      "notificarPostulacionPendienteReal",
+    );
+  });
+
+  it("lib/actions/cierre-dia.ts inyecta LOS DOS notificadores reales que cablea", () => {
+    // ⚠️ AQUI FALTABA EL SEGUNDO. Este fichero cablea DOS avisos —«cierre por aprobar» (146) y
+    // «quedaste bloqueado por acumular» (271/R40/R41)— y esta guardia solo miraba el primero. Era
+    // el UNICO punto de cableado del arbol sin proteger, y la guardia derivada del final NO lo
+    // cubre: aquella pregunta si el SIMBOLO esta vivo en algun sitio, y
+    // `notificarMensajeroBloqueadoReal` seguiria vivo por `lib/actions/cierres-admin.ts` aunque
+    // esta linea desapareciera. Los SITIOS los fija esta guardia; el SIMBOLO, la derivada.
+    //
+    // Y se afirma sobre el USO EFECTIVO (sin imports ni comentarios), no sobre el fichero entero.
+    // Medido: con un `toContain` a secas, borrar la linea del cableado deja el test EN VERDE,
+    // porque el import de arriba sigue conteniendo el nombre. Es exactamente el fallo del cron,
+    // reproducido dentro de su propia guardia.
+    const uso = fuenteSinImportsNiComentarios(leer("lib", "actions", "cierre-dia.ts"));
+    expect(uso).toContain("notificarCierreDiaPorAprobarReal");
+    expect(uso).toContain("notificarMensajeroBloqueadoReal");
+  });
+
+  it("app/api/ordenes/api-key/carga/route.ts inyecta el notificador real", () => {
+    expect(leer("app", "api", "ordenes", "api-key", "carga", "route.ts")).toContain(
+      "notificarCargaMasivaTerminadaReal",
+    );
+  });
+
+  // ⚠️ 2026-08-23 (feature 262, F6) — ESTE CENSO DECIA «TRES» Y EN EL ARBOL HABIA CINCO.
+  // La 253 anadio `PostulacionRecursoService` y la 262 anadio `CorreccionDiaRepartoService`, los
+  // dos con su notificador best-effort y su default no-op, y NINGUNO entraba aqui: un service
+  // que se cablease con el notificador real en su propio constructor —o que se olvidase de
+  // cablearlo en el composition root— no habria puesto rojo nada. El censo se AMPLIA, no se
+  // relaja: la lista sigue siendo LITERAL por el mismo motivo que la del enum de eventos
+  // (`notificacion-productores-wiring.test.ts`), y debajo hay una comprobacion que la contrasta
+  // contra el arbol para que un SEXTO service no pueda quedarse fuera en silencio.
+  const SERVICES_CON_NOTIFICADOR = [
+    "PostulacionMensajeroService.ts",
+    "CierreDiaService.ts",
+    "BulkOrdenService.ts",
+    "PostulacionRecursoService.ts", // feature 253 / D6
+    "CorreccionDiaRepartoService.ts", // feature 262 / D7
+    // FEATURE 271 (T6.4, R38/R39): el CORTE DIARIO pasa a tener notificador, y hasta hoy NO tenia
+    // ninguno —verificado contra produccion: 0 filas en `notificacion` a las 00:03 del 22/08—.
+    // Es el que mas avisos va a emitir, y ademas corre en un CRON sin nadie mirando: su default
+    // no-op no es comodidad, es lo que impide que una suite escriba en la base compartida.
+    "CorteDiarioService.ts", // feature 271 / §9.4
+    // FEATURE 271 (T6.6, R42): el RECHAZO de un cierre pasa a avisar al mensajero, asi que
+    // `CierresAdminService` entra en el censo. Su default no-op es el que impide que las TRECE
+    // suites que lo instancian escriban avisos contra la base local, que en este repo es
+    // compartida.
+    "CierresAdminService.ts", // feature 271 / R42
+    // FICHA 333 (E5, R34): el CRON DE GASTOS FIJOS pasa a tener notificador —«quedan N cobros
+    // esperando tu aprobacion»—. Es el segundo aviso del arbol que se dispara SOLO, cada noche y
+    // sin nadie mirando, asi que su default no-op no es comodidad: es lo que impide que una suite
+    // escriba avisos contra la base local, que en este repo es COMPARTIDA.
+    "GeneracionGastosFijosService.ts", // ficha 333 / §4.4
+    // FICHA 403 (T12, R9/R10): el DRENADOR DE LA COLA pasa a tener notificador —«un webhook lleva
+    // fallando y sus reintentos se espaciaron»—. Es el TERCER aviso del arbol que se dispara SOLO
+    // y sin nadie mirando, y el unico que se emite desde dentro de un lote de 10 jobs: su default
+    // no-op no es comodidad, es lo que impide que las suites que instancian este service escriban
+    // avisos contra la base local, que en este repo es COMPARTIDA.
+    "WebhookEstadoService.ts", // ficha 403 / §5
+    // FICHA 454 (T1.5): el hermano de `webhook_estado` para los HECHOS de orden (`webhook_evento`)
+    // comparte suscripcion y circuito de pausa, asi que avisa igual; mismo default no-op y por el mismo
+    // motivo (base local COMPARTIDA).
+    "WebhookEventoOrdenService.ts", // ficha 454 / design §12.1
+    // FICHA 401 (T11, R12): la SALUD DEL GEOCODIFICADOR pasa a tener notificador — «el servicio de
+    // mapas esta rechazando nuestras peticiones». Es el CUARTO aviso del arbol que se dispara SOLO
+    // y sin nadie mirando: lo emite el drenador de la cola, que corre CADA MINUTO. Su default
+    // no-op no es comodidad — es lo que impide que una suite escriba avisos contra la base local,
+    // que en este repo es COMPARTIDA entre worktrees.
+    "GeocodeSaludService.ts", // ficha 401 / §5.2
+    // FICHA 409 (T4.5, R62): el CRON DE AVISOS DIARIOS pasa a tener DOS notificadores —«tienes N
+    // novedades sin gestionar» y «N ordenes esperan volver a su tienda»—. Es el QUINTO aviso del
+    // arbol que se dispara SOLO y sin nadie mirando (07:00 CR), y el primero que emite UNO POR
+    // DESTINATARIO: sus defaults no-op son lo que impide que una suite reparta avisos a todas las
+    // tiendas de la base local, que en este repo es COMPARTIDA entre worktrees.
+    "AvisosDiariosService.ts", // ficha 409 / §4.4
+    // FICHA 413 (T5.1, R36): el CRON DEL AVISO DE REPARTO pasa a tener notificador -- «tenes N
+    // ordenes para mañana»-. Es el SEXTO aviso del arbol que se dispara SOLO y sin nadie mirando
+    // (19:00 CR), y el primero AGREGADO dirigido a un USUARIO: su default no-op es lo que impide
+    // que una suite reparta avisos a todos los mensajeros de la base local, que en este repo es
+    // COMPARTIDA entre worktrees.
+    "RepartoMananaAvisoService.ts", // ficha 413 / §6
+    // FICHA 427 (T15/T18): el TRASPASO de ordenes entre mensajeros pasa a tener **DOS**
+    // notificadores —«recibiste N ordenes de otro mensajero» y «N ordenes tuyas pasaron a otro»—,
+    // y es el primero del censo que avisa A DOS PERSONAS DISTINTAS por el MISMO acto. Sus dos
+    // defaults no-op son lo que impide que las suites del servicio escriban avisos contra la base
+    // local, que en este repo es COMPARTIDA entre worktrees.
+    "TraspasoMensajeroService.ts", // ficha 427 / §6.5
+  ] as const;
+
+  it("lib/actions/postulacion-recurso.ts inyecta el notificador real", () => {
+    expect(leer("lib", "actions", "postulacion-recurso.ts")).toContain(
+      "notificarPostulacionRecursoPendienteReal",
+    );
+  });
+
+  it("lib/actions/corregir-dia-reparto.ts inyecta el notificador real", () => {
+    expect(leer("lib", "actions", "corregir-dia-reparto.ts")).toContain(
+      "notificarDiaRepartoCorregidoReal",
+    );
+  });
+
+  it("lib/actions/traspasar-mensajero.ts inyecta LOS DOS notificadores reales que cablea", () => {
+    // FICHA 427 (T18): el traspaso avisa A LOS DOS mensajeros, asi que su composition root tiene
+    // que pasar DOS notificadores al mismo `new TraspasoMensajeroService(...)`. Con uno solo, el
+    // otro cae en su default NO-OP y ese aviso es mudo en produccion con toda la suite en verde —
+    // exactamente el fallo que este bloque de guardias existe para nombrar (2 de 7 muertos el
+    // 2026-08-23).
+    //
+    // ⚠️ Se afirma sobre el USO EFECTIVO (sin imports ni comentarios), no sobre el fichero entero:
+    // con un `toContain` a secas, borrar la linea del cableado deja el test EN VERDE porque el
+    // import de arriba sigue conteniendo el nombre.
+    const uso = fuenteSinImportsNiComentarios(leer("lib", "actions", "traspasar-mensajero.ts"));
+    expect(uso).toContain("notificarTraspasoRecibidoReal");
+    expect(uso).toContain("notificarTraspasoCedidoReal");
+    // Y los DOS DENTRO de la construccion del service, no sueltos en cualquier sitio del fichero.
+    expect(uso).toMatch(
+      /new TraspasoMensajeroService\([\s\S]*notificarTraspasoRecibidoReal[\s\S]*notificarTraspasoCedidoReal[\s\S]*\)/,
+    );
+  });
+
+  it("app/api/cron/corte-diario/route.ts inyecta el notificador real", () => {
+    // ⚠️ ESTA GUARDIA NACE DE UN FALLO REAL, no de la simetria. `buildService()` de esa ruta
+    // pasaba CINCO argumentos y el notificador es el SEPTIMO (detras del logger), asi que el
+    // corte corria con su no-op: el aviso de «tu cierre del dia vencio» —el que mas se emite y el
+    // unico que se dispara solo cada noche— no se habria emitido JAMAS en produccion, y ninguna
+    // de las 18.000 pruebas se habria puesto roja. El censo de abajo no lo veia: comprueba que el
+    // DEFAULT del service sea el no-op, y eso seguia siendo cierto.
+    //
+    // Se afirma la LINEA DEL CABLEADO y no solo el import, porque importar sin pasar es
+    // exactamente el estado que produjo el fallo.
+    const fuente = leer("app", "api", "cron", "corte-diario", "route.ts");
+    expect(fuente).toContain("notificarCierreDiaVencidoReal");
+    expect(fuente).toMatch(/new CorteDiarioService\([\s\S]*notificarCierreDiaVencidoReal,[\s\S]*\)/);
+  });
+
+  it("app/api/cron/generar-gastos-fijos/route.ts inyecta el notificador real", () => {
+    // FICHA 333 (E5, R34) — MISMO MOLDE QUE EL DE ARRIBA, Y POR EL MISMO MOTIVO. Este es el otro
+    // cron money-critical del arbol: corre a las 00:00 CR, sin nadie delante, y su aviso es el
+    // recordatorio diario de que hay dinero esperando autorizacion. Si `buildService()` dejara de
+    // pasar el notificador, el service se quedaria con su default NO-OP y el aviso no se emitiria
+    // JAMAS, con la suite entera en verde — que es exactamente lo que le paso a `corte-diario`.
+    //
+    // Se afirma sobre el USO EFECTIVO (fuente sin imports ni comentarios) y no con un `toContain`
+    // a secas: medido en este mismo archivo, un `toContain` se satisface con el `import` de
+    // arriba, asi que borrar solo el argumento del cableado lo dejaria EN VERDE.
+    const fuente = leer("app", "api", "cron", "generar-gastos-fijos", "route.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("notificarGastoFijoCobroPendienteReal");
+    expect(uso).toMatch(
+      /new GeneracionGastosFijosService\([\s\S]*notificarGastoFijoCobroPendienteReal,?[\s\S]*\)/,
+    );
+    // Y el `import` tiene que seguir ahi: sin el, lo de arriba no compilaria — pero es el USO lo
+    // que se exige, no el import.
+    expect(fuente).toContain(
+      'import { notificarGastoFijoCobroPendienteReal } from "@/lib/notificaciones/notificadores"',
+    );
+  });
+
+  it("lib/services/jobs/webhook-estado-handler.ts inyecta el notificador real", () => {
+    // FICHA 403 (T12) — MISMO MOLDE QUE LOS DOS DE ARRIBA, Y POR EL MISMO MOTIVO MEDIDO. El
+    // notificador es el SEPTIMO argumento de `WebhookEstadoService`, detras del logger; si esta
+    // fabrica dejara de pasarlo, el service se quedaria con su default NO-OP y el aviso no se
+    // emitiria JAMAS en produccion con la suite entera en verde — que es exactamente lo que le
+    // paso a `corte-diario/route.ts` (feature 271), que pasaba CINCO argumentos.
+    //
+    // El composition root de este aviso NO vive bajo `app/` como los otros dos: el productor es el
+    // drenador de la cola, y su fabrica de dependencias reales es este archivo. Por eso la guardia
+    // apunta aqui y no a la ruta del cron.
+    //
+    // Se afirma sobre el USO EFECTIVO (fuente sin imports ni comentarios) y no con un `toContain`
+    // a secas: medido en este mismo archivo, un `toContain` se satisface con el `import` de
+    // arriba, asi que borrar solo el argumento del cableado lo dejaria EN VERDE.
+    const fuente = leer("lib", "services", "jobs", "webhook-estado-handler.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("notificarWebhookSuscripcionPausadaReal");
+    expect(uso).toMatch(
+      /new WebhookEstadoService\([\s\S]*notificarWebhookSuscripcionPausadaReal,?[\s\S]*\)/,
+    );
+    expect(fuente).toContain(
+      'import { notificarWebhookSuscripcionPausadaReal } from "@/lib/notificaciones/notificadores"',
+    );
+  });
+
+  it("lib/services/jobs/webhook-evento-handler.ts inyecta el notificador real", () => {
+    // FICHA 454 (T1.5) — MISMO MOLDE QUE `webhook-estado-handler.ts`: el notificador es el SEPTIMO
+    // argumento, detras del logger; sin el, el aviso de pausa no se emitiria jamas con la suite verde.
+    const fuente = leer("lib", "services", "jobs", "webhook-evento-handler.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toMatch(
+      /new WebhookEventoOrdenService\([\s\S]*notificarWebhookSuscripcionPausadaReal,?[\s\S]*\)/,
+    );
+    expect(fuente).toContain(
+      'import { notificarWebhookSuscripcionPausadaReal } from "@/lib/notificaciones/notificadores"',
+    );
+  });
+
+  it("lib/services/jobs/geocodificacion-handler.ts inyecta el notificador real", () => {
+    // FICHA 401 (T13, R12) — MISMO MOLDE QUE EL DE `generar-gastos-fijos`, Y POR EL MISMO MOTIVO.
+    // `buildGeocodificacionService` es el UNICO punto del arbol donde el service de
+    // geocodificacion se arma para produccion. Si dejara de pasar el notificador,
+    // `GeocodeSaludService` se quedaria con su default NO-OP y el aviso no se emitiria JAMAS — que
+    // es exactamente lo que le paso a `corte-diario` (dos de siete notificadores muertos con la
+    // suite entera en verde).
+    //
+    // Se afirma sobre el USO EFECTIVO (fuente sin imports ni comentarios) y no con un `toContain`
+    // a secas: medido en este mismo archivo, un `toContain` se satisface con el `import` de
+    // arriba, asi que borrar SOLO el argumento del cableado lo dejaria EN VERDE.
+    const fuente = leer("lib", "services", "jobs", "geocodificacion-handler.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("notificarGeocodificacionCaidaReal");
+    expect(uso).toMatch(
+      /new GeocodeSaludService\([\s\S]*notificarGeocodificacionCaidaReal,?[\s\S]*\)/,
+    );
+    // Y el `import` tiene que seguir ahi: sin el, lo de arriba no compilaria — pero es el USO lo
+    // que se exige, no el import.
+    expect(fuente).toContain(
+      'import { notificarGeocodificacionCaidaReal } from "@/lib/notificaciones/notificadores"',
+    );
+    // La SEGUNDA mitad del cableado, y es tan mortal como la primera: si el `salud` no se le pasa
+    // a `GeocodificacionService`, este se queda con `geocodeSaludNoOp` y la ficha entera queda
+    // inerte —ni avisa ni recupera— sin un solo test rojo.
+    expect(uso).toMatch(/new GeocodificacionService\([\s\S]*\bsalud,?[\s\S]*\)/);
+  });
+
+  it("app/api/cron/avisos-diarios/route.ts inyecta LOS DOS notificadores reales", () => {
+    // FICHA 409 (T4.5, R62) — MISMO MOLDE QUE `generar-gastos-fijos`, Y POR EL MISMO MOTIVO
+    // MEDIDO. Los notificadores son el CUARTO y el QUINTO argumento de `AvisosDiariosService`,
+    // detras del umbral; si `buildService()` dejara de pasarlos, el service se quedaria con sus
+    // defaults NO-OP y los DOS avisos de esta ficha no se emitirian JAMAS en produccion con la
+    // suite entera en verde — que es exactamente lo que le paso a `corte-diario`, que pasaba
+    // CINCO argumentos y dejaba el notificador en su septima posicion.
+    //
+    // Se afirma sobre el USO EFECTIVO (fuente sin imports ni comentarios) y no con un `toContain`
+    // a secas: medido en este mismo archivo, un `toContain` se satisface con el `import` de
+    // arriba, asi que borrar SOLO el argumento del cableado lo dejaria EN VERDE.
+    const fuente = leer("app", "api", "cron", "avisos-diarios", "route.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("notificarNovedadesSinGestionarReal");
+    expect(uso).toContain("notificarDevolucionesRepresadasReal");
+    expect(uso).toMatch(
+      /new AvisosDiariosService\([\s\S]*notificarNovedadesSinGestionarReal,?[\s\S]*notificarDevolucionesRepresadasReal,?[\s\S]*\)/,
+    );
+    // Y los `import` tienen que seguir ahi: sin ellos lo de arriba no compilaria — pero es el USO
+    // lo que se exige, no el import.
+    expect(fuente).toContain("notificarDevolucionesRepresadasReal");
+    expect(fuente).toContain("notificarNovedadesSinGestionarReal");
+  });
+
+  it("⭑⭑ 462/R19: app/api/cron/avisos-diarios/route.ts PASA el TERCER notificador real y el conteo de retenidas", () => {
+    // FICHA 462 (T2.7, R19) — MISMO MOLDE, MISMO MOTIVO MEDIDO. El notificador es el SEPTIMO
+    // argumento de `AvisosDiariosService`, detras de los dos de la 409; si `buildService()` dejara
+    // de pasarlo, el aviso de las retenidas no se emitiria JAMAS en produccion con la suite en verde.
+    // MUTACION OBLIGATORIA (design §8.2-8): borrar el argumento DEJANDO EL IMPORT INTACTO ⇒ ROJO.
+    const fuente = leer("app", "api", "cron", "avisos-diarios", "route.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("notificarReprogramadasEsperanCierreReal");
+    expect(uso).toMatch(
+      /new AvisosDiariosService\([\s\S]*notificarDevolucionesRepresadasReal,?[\s\S]*notificarReprogramadasEsperanCierreReal,?[\s\S]*\)/,
+    );
+    // ⭑ Y LA OTRA MITAD DEL CABLEADO: el CONTEO UNICO, con el MISMO ensamblaje que la campana y la
+    // marca (R7). Sin el, el servicio no compila; que sea ESTE ensamblaje y no uno propio es lo
+    // que se afirma aqui.
+    expect(uso).toMatch(/new AvisosDiariosService\([\s\S]*buildReprogramadasRetenidasService\(prisma\)/);
+  });
+
+  it("⭑⭑ 413/R36: app/api/cron/aviso-reparto-manana/route.ts PASA su notificador real", () => {
+    // FICHA 413 (T5.3, R36) — MISMO MOLDE QUE `avisos-diarios`, Y POR EL MISMO MOTIVO MEDIDO. El
+    // notificador es el TERCER argumento de `RepartoMananaAvisoService`, detras de los dos
+    // repositorios; si `buildService()` dejara de pasarlo, el service se quedaria con su default
+    // NO-OP y el aviso de la noche NO SE EMITIRIA JAMAS en produccion, con la suite entera en
+    // verde. Es exactamente lo que le paso a `corte-diario`: dos de siete notificadores muertos.
+    //
+    // MUTACION OBLIGATORIA (design §13.9): borrar el argumento DEJANDO EL IMPORT INTACTO ⇒ este
+    // caso ROJO. Por eso se afirma sobre el USO EFECTIVO (fuente sin imports ni comentarios) y no
+    // con un `toContain` a secas: medido en este mismo archivo, un `toContain` se satisface con el
+    // `import` de arriba.
+    const fuente = leer("app", "api", "cron", "aviso-reparto-manana", "route.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+
+    expect(uso).toContain("notificarRepartoMananaReal");
+    expect(uso).toMatch(
+      /new RepartoMananaAvisoService\([\s\S]*notificarRepartoMananaReal,?[\s\S]*\)/,
+    );
+    // ⭑ Y LA SEGUNDA MITAD DEL CABLEADO, tan mortal como la primera: sin el repositorio de
+    // cierres, R42 no se puede cumplir y el mensajero BLOQUEADO recibiria un aviso que contradice
+    // al suyo. Tambien se afirma sobre el uso.
+    expect(uso).toMatch(/new RepartoMananaAvisoService\([\s\S]*new OrdenRepository\(prisma\)/);
+    expect(uso).toContain("new RepartoMananaRepository(prisma)");
+
+    // Y los `import` tienen que seguir ahi: sin ellos lo de arriba no compilaria — pero es el USO
+    // lo que se exige, no el import.
+    expect(fuente).toContain("notificarRepartoMananaReal");
+  });
+
+  it("lib/actions/notificaciones.ts inyecta el RESOLUTOR DE VIGENCIA de los avisos agregados", () => {
+    // FICHA 409 (T5.4, design §5) — la misma familia, con otro sintoma. `NotificacionService` toma
+    // un resolutor de vigencia; su default LANZA (nunca devuelve un numero), pero un default que
+    // lanza tampoco apaga los avisos: si nadie inyecta el real, los agregados no se apagarian
+    // NUNCA y la campana volveria a ser ruido — con la suite entera en verde.
+    //
+    // Se afirma sobre el USO EFECTIVO: importar `VigenciaAvisoAgregadoService` sin PASARLO es
+    // exactamente el estado que produjo el fallo del cron.
+    const fuente = leer("lib", "actions", "notificaciones.ts");
+    const uso = fuenteSinImportsNiComentarios(fuente);
+    expect(uso).toContain("new VigenciaAvisoAgregadoService(");
+    expect(uso).toMatch(
+      /new NotificacionService\([\s\S]*new VigenciaAvisoAgregadoService\([\s\S]*\)/,
+    );
+    // ⭑⭑ FICHA 413 (T6.1, R13) — Y EL REPOSITORIO DEL REPARTO DE MAÑANA, que es el CUARTO
+    // argumento de ese resolutor. Sin el, `cifra("reparto_manana", ...)` LANZA, `cifrasVivas` lo
+    // registra y el aviso sale SIN numero (R16): no se rompe nada visible, Y POR ESO EL FALLO
+    // SERIA MUDO. Misma familia, mismo remedio: se afirma que alguien lo PASA, no que lo importa.
+    expect(uso).toContain("new RepartoMananaRepository(prisma)");
+    expect(uso).toMatch(
+      /new VigenciaAvisoAgregadoService\([\s\S]*new RepartoMananaRepository\(prisma\)[\s\S]*\)/,
+    );
+    // ⭑⭑ FICHA 462 (T2.8, R14/R19) — Y EL SERVICIO DE RETENIDAS, que es el QUINTO argumento de ese
+    // resolutor. Sin el, `cifra("reprogramadas_esperan_cierre", ...)` LANZA, `cifrasVivas` lo
+    // registra y el aviso sale SIN numero (R14): nada visible se rompe, Y POR ESO EL FALLO SERIA
+    // MUDO. Misma familia, mismo remedio: se afirma que alguien lo PASA, con el MISMO ensamblaje
+    // que el cron (R7).
+    expect(uso).toMatch(
+      /new VigenciaAvisoAgregadoService\([\s\S]*new RepartoMananaRepository\(prisma\),?[\s\S]*buildReprogramadasRetenidasService\(prisma\)[\s\S]*\)/,
+    );
+  });
+
+  it("⭑⭑ 462/R23: lib/services/jobs/push-web-handler.ts PASA el servicio de retenidas a la vigencia del PUSH", () => {
+    // El cuerpo del push es la PRESENTACION del aviso, con la cifra del instante de la emision
+    // (R23). El drenador construye su PROPIA vigencia; si se olvidara el servicio, el push de este
+    // evento saldria sin numero mientras la campana lo enseña con el — dos verdades sobre el mismo
+    // hecho, y ningun test rojo.
+    const uso = fuenteSinImportsNiComentarios(leer("lib", "services", "jobs", "push-web-handler.ts"));
+    expect(uso).toMatch(
+      /new VigenciaAvisoAgregadoService\([\s\S]*buildReprogramadasRetenidasService\(prisma\)[\s\S]*\)/,
+    );
+  });
+
+  it("lib/actions/cierres-admin.ts inyecta LOS DOS notificadores reales que cablea", () => {
+    // FEATURE 271 (T6.6, R42): el aviso de bloqueo que sigue al RECHAZO.
+    // FICHA 412 (T5.4, R6): el aviso de «tu cierre fue rechazado», que es OTRO notificador y otro
+    // argumento del mismo `new CierresAdminService(...)`. Sin esa linea el service se construye
+    // con su default NO-OP y el rechazo vuelve a ser mudo en produccion con toda la suite en
+    // verde — exactamente el fallo que este bloque de guardias existe para nombrar.
+    //
+    // ⚠️ Y SE AFIRMA SOBRE EL **USO EFECTIVO** (sin imports ni comentarios), no sobre el fichero
+    // entero. Medido en este mismo repo: con un `toContain` a secas, borrar la linea del cableado
+    // deja el test EN VERDE, porque el import de arriba sigue conteniendo el nombre. Es el fallo
+    // del cron reproducido dentro de su propia guardia.
+    const uso = fuenteSinImportsNiComentarios(leer("lib", "actions", "cierres-admin.ts"));
+    expect(uso).toContain("notificarMensajeroBloqueadoReal");
+    expect(uso).toContain("notificarCierreDiaRechazadoReal");
+    // Y los DOS dentro de la construccion del service, no sueltos en cualquier sitio del fichero.
+    expect(uso).toMatch(
+      /new CierresAdminService\([\s\S]*notificarMensajeroBloqueadoReal[\s\S]*notificarCierreDiaRechazadoReal[\s\S]*\)/,
+    );
+  });
+
+  it("⭑⭑ 462/R7/R26: lib/actions/cierres-admin.ts PASA el conteo de retenidas con el MISMO ensamblaje que el cron", () => {
+    // La marca «Retiene N reprogramadas de hoy» sale de `contarPorCierre`, que es una dependencia
+    // OBLIGATORIA del servicio (sin ella no compila). Lo que este caso afirma no es que se pase
+    // ALGO —eso lo exige el compilador— sino que se pase EL ensamblaje unico
+    // (`buildReprogramadasRetenidasService`) y no un servicio construido a mano aqui: dos
+    // ensamblajes distintos son dos cifras que pueden divergir entre la campana y la marca (R7).
+    const uso = fuenteSinImportsNiComentarios(leer("lib", "actions", "cierres-admin.ts"));
+    expect(uso).toMatch(
+      /new CierresAdminService\([\s\S]*new PagoMensajeroMovimientoRepository\(prisma\),?[\s\S]*buildReprogramadasRetenidasService\(prisma\)[\s\S]*notificarMensajeroBloqueadoReal/,
+    );
+    expect(uso).not.toContain("new ReprogramadasRetenidasService(");
+  });
+
+  // El titulo NO lleva el numero a proposito: decia «los TRES» cuando eran cinco y «los CINCO»
+  // cuando ya eran seis. La lista de arriba es la fuente, y el test de debajo la contrasta contra
+  // el arbol; un nombre con cuenta atrasada solo hace que el censo parezca mas pequeno de lo que es.
+  it("los defaults de TODOS los services del censo son el no-op, no el notificador real", () => {
+    for (const servicio of SERVICES_CON_NOTIFICADOR) {
+      const fuente = leer("lib", "services", servicio);
+      expect(fuente).toMatch(/Notificador = notificadorNoOp/);
+      expect(fuente).not.toMatch(/Notificador = notificar\w*Real/);
+    }
+  });
+
+  it("el censo esta COMPLETO: no hay ningun otro service con notificador por constructor", () => {
+    // Contra el ARBOL, no contra la propia lista: es lo unico que convierte «son estos» en una
+    // afirmacion que se puede romper. Si manana entra otro service con notificador y nadie lo
+    // apunta arriba, este test lo nombra.
+    const dir = path.join(ROOT, "lib", "services");
+    const conNotificador = fs
+      .readdirSync(dir)
+      .filter((n) => n.endsWith(".ts"))
+      .filter((n) => /Notificador = notificadorNoOp/.test(fs.readFileSync(path.join(dir, n), "utf8")))
+      .sort();
+    expect(conNotificador).toEqual([...SERVICES_CON_NOTIFICADOR].sort());
+  });
+
+  it("ningun modulo de lib/ ni app/ apaga la emision segun el entorno de test", () => {
+    const sospechosos: string[] = [];
+    const recorrer = (dir: string) => {
+      for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+        const completo = path.join(dir, entrada.name);
+        if (entrada.isDirectory()) {
+          recorrer(completo);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entrada.name)) continue;
+        const fuente = fs.readFileSync(completo, "utf8");
+        if (/process\.env\.VITEST|NODE_ENV\s*===\s*["']test["']/.test(fuente)) {
+          sospechosos.push(completo);
+        }
+      }
+    };
+    recorrer(path.join(ROOT, "lib"));
+    recorrer(path.join(ROOT, "app"));
+    expect(sospechosos).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LA GUARDIA DERIVADA DEL ARBOL — la que habria cazado los dos muertos del 2026-08-23
+// ---------------------------------------------------------------------------
+//
+// Las guardias de arriba son UNA POR ARCHIVO Y ESCRITAS A MANO, y ese es su defecto: solo protegen
+// lo que alguien se acordo de apuntar. El 2026-08-23 se midio el tamano real del agujero: de SIETE
+// notificadores reales, DOS no los pasaba nadie —`notificarCierreDiaVencidoReal`, el aviso nocturno
+// del corte y el que mas se emite, y `notificarMensajeroBloqueadoReal`—, y los dos tenian su
+// entrada del censo en verde, porque el censo comprueba que el DEFAULT del service sea el no-op y
+// eso seguia siendo cierto. Un notificador sin composition root esta MUERTO: se despliega, no emite
+// nada, y ninguna prueba se pone roja.
+//
+// Esta guardia no pregunta por una lista: pregunta AL ARBOL. Por cada `notificar*Real` exportado
+// exige al menos un fichero de produccion que lo PASE de verdad.
+//
+// ⚠️ «PASARLO» NO ES «IMPORTARLO», Y ESA DISTINCION ES TODO EL TEST. El fallo del cron se
+// reprodujo con una mutacion que dejaba el import intacto y quitaba solo el argumento: una guardia
+// que se conforme con el import lo da por vivo. Por eso el simbolo se busca en el fuente CON LAS
+// SENTENCIAS DE IMPORT Y LOS COMENTARIOS RETIRADOS — un comentario que lo nombre tampoco cuenta,
+// que es como se acaba cableando un aviso en la prosa y no en el codigo.
+
+/** Quita de un fuente TS lo que NO es uso: las sentencias `import` (incluidas las multilinea) y los comentarios. */
+function fuenteSinImportsNiComentarios(fuente: string): string {
+  const salida: string[] = [];
+  let dentroDeImport = false;
+  let dentroDeBloque = false;
+  for (const linea of fuente.split("\n")) {
+    const t = linea.trim();
+    if (dentroDeBloque) {
+      if (t.includes("*/")) dentroDeBloque = false;
+      continue;
+    }
+    if (t.startsWith("/*")) {
+      if (!t.includes("*/")) dentroDeBloque = true;
+      continue;
+    }
+    if (t.startsWith("//") || t.startsWith("*")) continue;
+    if (dentroDeImport) {
+      // El bloque de import termina en la linea que trae el `from "..."`.
+      if (/from\s+["']/.test(t)) dentroDeImport = false;
+      continue;
+    }
+    if (t.startsWith("import ")) {
+      if (!/from\s+["']/.test(t)) dentroDeImport = true;
+      continue;
+    }
+    salida.push(linea);
+  }
+  return salida.join("\n");
+}
+
+describe("guardia derivada: ningun notificador REAL puede quedarse sin composition root", () => {
+  // Ficheros de PRODUCCION: `lib/` y `app/`, menos el modulo que los define (alli aparecen todos
+  // por su propia declaracion). Los tests quedan fuera a proposito: un notificador cableado solo
+  // en una suite esta igual de muerto en produccion.
+  const ficherosDeProduccion = (): string[] => {
+    const encontrados: string[] = [];
+    const recorrer = (dir: string) => {
+      for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+        const completo = path.join(dir, entrada.name);
+        if (entrada.isDirectory()) {
+          recorrer(completo);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entrada.name)) continue;
+        if (completo.endsWith(path.join("lib", "notificaciones", "notificadores.ts"))) continue;
+        encontrados.push(completo);
+      }
+    };
+    recorrer(path.join(ROOT, "lib"));
+    recorrer(path.join(ROOT, "app"));
+    return encontrados;
+  };
+
+  const relativo = (p: string) => path.relative(ROOT, p).split(path.sep).join("/");
+
+  it("cada `notificar*Real` exportado lo PASA algun fichero de lib/ o app/, no solo lo importa", () => {
+    const definicion = fs.readFileSync(
+      path.join(ROOT, "lib", "notificaciones", "notificadores.ts"),
+      "utf8",
+    );
+    const reales = [...definicion.matchAll(/^export const (notificar\w+Real)\b/gm)].map((m) => m[1]);
+
+    // AUTOCOMPROBACION: si la extraccion se rompe, `reales` queda vacio y el `toEqual([])` de abajo
+    // pasaria en verde sin haber comprobado NADA. Este repo ya midio lo que cuesta un test que
+    // reporta `passed` sin ejercitar nada. El canario es el notificador que ESTUVO muerto.
+    expect(reales.length).toBeGreaterThan(0);
+    expect(reales).toContain("notificarCierreDiaVencidoReal");
+
+    const fuentes = ficherosDeProduccion().map((f) => {
+      const crudo = fs.readFileSync(f, "utf8");
+      return { fichero: relativo(f), crudo, uso: fuenteSinImportsNiComentarios(crudo) };
+    });
+    expect(fuentes.length).toBeGreaterThan(0); // el recorrido tiene que haber encontrado arbol
+
+    // El diagnostico nombra las DOS cosas que hacen falta para arreglarlo: QUE notificador y, si
+    // alguien lo importo sin pasarlo, EN QUE FICHERO quedo a medias.
+    const muertos = reales
+      .map((notificador) => ({
+        notificador,
+        cableadoEn: fuentes.filter((f) => f.uso.includes(notificador)).map((f) => f.fichero),
+        soloImportadoEn: fuentes
+          .filter((f) => f.crudo.includes(notificador) && !f.uso.includes(notificador))
+          .map((f) => f.fichero),
+      }))
+      .filter((d) => d.cableadoEn.length === 0);
+
+    expect(muertos).toEqual([]);
+  });
+});

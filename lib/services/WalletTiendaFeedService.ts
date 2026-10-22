@@ -1,0 +1,182 @@
+import { Prisma } from "@prisma/client";
+import type { CrearMovimientoTiendaInput } from "@/lib/interfaces/repositories/IWalletTiendaMovimientoRepository";
+import type {
+  IWalletTiendaFeedService,
+  WalletTiendaFeedTxClient,
+} from "@/lib/interfaces/services/IWalletTiendaFeedService";
+import { walletTiendaConfig, type WalletTiendaConfig } from "@/lib/config/wallet-tienda";
+import { detalleDe, leerDetallePorOrden, tarifaDe } from "@/lib/utils/cierre-detalle";
+import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
+import { conceptoIngresoADebitoTienda } from "@/lib/utils/mapeo-concepto-tienda";
+import { WALLET_INGRESO_CONCEPTO_SEED, type WalletIngresoConcepto } from "@/lib/types/wallet";
+import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda";
+
+// Las 2 categorias de devolucion de la 42 que el interruptor Q3 puede descartar del ledger
+// de la tienda (R10/R28). NO tocan la 42.
+//
+// FICHA 301 (2026-08-28): estas dos categorias ya SOLO nacen de una gestion `rechazada`. El
+// nombre "devolucion" se conserva porque es el del concepto facturado (el retorno del
+// paquete a la tienda), no el del resultado de gestion: una `devuelta` no emite ninguna.
+const CONCEPTOS_DEVOLUCION: readonly WalletIngresoConcepto[] = [
+  "ingreso_flete_devolucion",
+  "ingreso_iva_flete_devolucion",
+];
+
+function round2(d: Prisma.Decimal): Prisma.Decimal {
+  return d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+}
+
+// Acumulador de un concepto agregado por (tienda, categoria).
+interface Acumulado {
+  tiendaId: string;
+  tipo: "credito" | "debito";
+  categoria: WalletTiendaMovimientoCategoria;
+  total: Prisma.Decimal;
+}
+
+/**
+ * Feature 43 (design §2.2) — construye los movimientos del LEDGER POR TIENDA de un cierre
+ * aprobado. Corre DENTRO de la transaccion de aprobacion (misma `tx` que la 42, R7). NO
+ * define formula nueva: REUTILIZA `derivarIngresoOrden` (42) para los debitos (los 6
+ * conceptos que la empresa se queda) y `montoRecibido` para el credito COD (Q2/R9). Agrega por
+ * (tienda, concepto), OMITE totales 0.00 (R11) y aplica el interruptor Q3 en UN SOLO punto
+ * (R28). Money-safe: Prisma.Decimal, salida STRING. NO persiste (lo hace el repo en la tx).
+ *
+ * Feature 69 (R13/R14) — deriva desde el SNAPSHOT (`cierre_detail`); NO lee `orden`, `zona`
+ * ni `tarifas` VIVAS. Aqui el vector era aun peor que en la 42: se leia `orden.tienda_id`
+ * vivo, o sea A QUIEN se le acredita/debita. Re-apuntar la orden a otra tienda entre
+ * SOLICITAR y APROBAR movia el dinero de ledger. Ahora `tiendaId` viene CONGELADO.
+ *
+ * Dos cosas que a proposito NO se congelan:
+ * - `montoRecibido` sigue saliendo de `gestion_orden`: es el COD realmente recaudado POR ESA
+ *   GESTION (dato de la gestion, inmutable de facto), no un dato de la orden.
+ * - El interruptor Q3 se sigue leyendo al aprobar: es POLITICA DE LA CASA, no un dato de la
+ *   orden. Congelarlo seria congelar una decision de negocio, no un hecho.
+ */
+export class WalletTiendaFeedService implements IWalletTiendaFeedService {
+  constructor(
+    // Interruptor Q3 (R28): unico punto de lectura. Default = singleton de config del modulo;
+    // se inyecta para poder verificar ambos estados del flag en test sin manipular env.
+    //
+    // Feature 170 (T H.1): se depende del interruptor, NO del modulo de config entero. Cuando
+    // `WalletTiendaConfig` gano el tamano de pagina del listado de saldos (R40), pedir el
+    // objeto completo habria obligado a que cada doble de test declarase una paginacion que
+    // el feed del ledger no mira. `Pick` deja escrito de que depende de verdad.
+    private readonly config: Pick<WalletTiendaConfig, "TIENDA_DEBITA_FLETE_DEVOLUCION"> = walletTiendaConfig,
+  ) {}
+
+  async construirMovimientosPorTienda(
+    cierreId: string,
+    tx: WalletTiendaFeedTxClient,
+  ): Promise<CrearMovimientoTiendaInput[]> {
+    // Feature 69/R13: el SNAPSHOT aporta lo de la ORDEN (congelado) y `gestion_orden` lo de
+    // la GESTION: el `resultado` y el COD REALMENTE recaudado (`montoRecibido`). Money-safe:
+    // los Decimal se leen como STRING/Decimal, nunca number.
+    //
+    // ⚠️ FICHA 450 (R3) — LAS DOS LECTURAS VAN EN SERIE, Y NO PUEDEN VOLVER A UN `Promise.all`.
+    //
+    // `tx` es el cliente de la transaccion de aprobacion, y una transaccion tiene UNA sola
+    // conexion (`pg.PoolClient`) durante toda su vida. Escribir `Promise.all` sobre el dice «estas
+    // dos pueden ir a la vez», y sobre una conexion unica eso es falso.
+    //
+    // ⚠️ LO QUE ESTE COMENTARIO **NO** DICE, porque se midio y no es verdad: con
+    // `@prisma/client@7.8.0` estas dos consultas NO llegaban a estar en vuelo a la vez. Prisma
+    // serializa por su cuenta las peticiones de una transaccion interactiva —medido contra
+    // Postgres real en `tests/integration/db/aprobacion-consultas-en-serie.test.ts`: 1 consulta
+    // simultanea, 0 solapes, antes y despues de este cambio—. O sea que el `Promise.all` de aqui
+    // no era el emisor del aviso de `pg`; ese vivia en otro sitio y esta nombrado en
+    // `progress/impl_450.md`.
+    //
+    // ENTONCES, ¿POR QUE SE ARREGLA? Por tres razones que no dependen de la version de turno:
+    //   1. la serializacion es un detalle interno de Prisma, no un contrato — el dia que cambie,
+    //      este codigo vuelve a pedir dos consultas a la vez sobre una conexion unica;
+    //   2. el propio aviso de `pg` dice «will be removed in pg@9.0», o sea que el salto de version
+    //      convierte esto en error en vez de en advertencia;
+    //   3. y lo que el patron afirma —«son independientes»— es lo contrario de lo que la
+    //      transaccion garantiza, asi que quien lo lea manana lo copiara a un sitio donde si haga
+    //      dano: para el `25P02` que la ficha 440 midio como 27 respuestas 500 en una hora bastan
+    //      DOS consultas compartiendo conexion.
+    //
+    // Vigilado por `tests/unit/guards/consultas-concurrentes-en-transaccion.guardia.test.ts`.
+    const byOrden = await leerDetallePorOrden(cierreId, tx);
+    const gestiones = await tx.gestionOrden.findMany({
+      where: { cierreId },
+      select: { ordenId: true, resultado: true, montoRecibido: true },
+    });
+
+    // R28: se lee el interruptor UNA sola vez, aqui.
+    const debitaFleteDevolucion = this.config.TIENDA_DEBITA_FLETE_DEVOLUCION;
+
+    // Agrega por (tiendaId, categoria). El orden de insercion es determinista.
+    const acc = new Map<string, Acumulado>();
+    const bump = (
+      tiendaId: string,
+      tipo: "credito" | "debito",
+      categoria: WalletTiendaMovimientoCategoria,
+      aporte: Prisma.Decimal,
+    ) => {
+      const k = `${tiendaId}|${categoria}`;
+      const prev = acc.get(k);
+      if (prev) prev.total = prev.total.add(aporte);
+      else acc.set(k, { tiendaId, tipo, categoria, total: aporte });
+    };
+
+    for (const g of gestiones) {
+      // R14: sin fallback a datos vivos; si falta la fila congelada, la aprobacion ABORTA.
+      const d = detalleDe(byOrden, cierreId, g.ordenId);
+      // R13: A QUIEN se le acredita/debita sale del SNAPSHOT, no de la orden viva.
+      const tiendaId = d.tiendaId;
+
+      // CREDITO propio de la 43 (Q2/R9): COD REALMENTE recaudado; null -> 0.00. Sale de la
+      // GESTION a proposito (no se congela): es lo que esa gestion recaudo de verdad.
+      const codRecaudado = new Prisma.Decimal(
+        g.montoRecibido === null ? "0" : g.montoRecibido.toFixed(2),
+      );
+      bump(tiendaId, "credito", "cod_recaudado", codRecaudado);
+
+      // DEBITOS: identicos a la 42 (misma funcion), mapeados a categorias de debito. Ahora
+      // desde las entradas CONGELADAS (R13) y la tarifa congelada (R9 preservado: `tarifa_id`
+      // NULL -> null -> debitos 0.00, sin bloquear).
+      const derivado = derivarIngresoOrden(
+        {
+          resultado: g.resultado,
+          esCentral: d.esCentral,
+          esZonaEspecial: d.esZonaEspecial, // congelado como `esCentral`; elige el pacto especial
+          // La comision sigue basada en montoCobrar (decision de la 42, la 43 NO la altera).
+          montoCobrar: d.montoCobrar === null ? null : d.montoCobrar.toFixed(2),
+          cobraComision: d.cobraComision,
+        },
+        tarifaDe(d),
+      );
+
+      for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {
+        // R28/R10: interruptor Q3 — si esta en false, DESCARTA los 2 debitos de devolucion
+        // del ledger de la tienda (sin tocar el credito COD, el resto de debitos ni la 42).
+        // Ficha 301: esos 2 debitos vienen de gestiones `rechazada`; una `devuelta` ya no los
+        // deriva, asi que aqui no hay nada suyo que descartar.
+        if (!debitaFleteDevolucion && CONCEPTOS_DEVOLUCION.includes(concepto)) continue;
+        const aporte = derivado[concepto];
+        if (aporte === undefined) continue; // el concepto no aplica a esta gestion
+        bump(tiendaId, "debito", conceptoIngresoADebitoTienda(concepto), aporte);
+      }
+    }
+
+    // R11: 1 movimiento por (tienda, concepto), OMITIENDO los que quedan en 0.00.
+    const out: CrearMovimientoTiendaInput[] = [];
+    for (const a of acc.values()) {
+      const total = round2(a.total);
+      if (!total.gt(0)) continue;
+      out.push({
+        tiendaId: a.tiendaId,
+        tipo: a.tipo,
+        categoria: a.categoria,
+        monto: total.toFixed(2),
+        origenTipo: "cierre_dia",
+        origenId: cierreId,
+        descripcion: null,
+        registradoPor: null,
+      });
+    }
+    return out;
+  }
+}

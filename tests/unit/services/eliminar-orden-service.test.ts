@@ -1,0 +1,608 @@
+import { describe, it, expect, vi } from "vitest";
+import { EliminarOrdenService } from "@/lib/services/EliminarOrdenService";
+import type { OrdenTransicionRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { ESTADOS_ELIMINABLES } from "@/lib/types/order-status-eliminables";
+import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
+import {
+  ELIMINABLES_ESPERADOS,
+  NO_ELIMINABLES_ESPERADOS,
+  catalogoCubiertoPorLasDosListas,
+} from "@/tests/fixtures/estados-eliminables";
+import {
+  MSG_ORDEN_CON_INTENTOS,
+  MSG_ORDEN_NO_ELIMINABLE,
+  MSG_ORDEN_NO_EXISTE,
+  MSG_ORDEN_YA_BORRADA,
+} from "@/lib/services/mensajes-eliminar-orden";
+
+// Feature «eliminar orden» — logica de negocio del borrado LOGICO, con dobles (sin DB, sin
+// HTTP). Los motivos se asertan contra las CONSTANTES tipadas, no contra literales duplicados.
+//
+// Contratos que este archivo mide:
+//   - QUIEN puede: el `maestro` y el `admin` sobre cualquier orden (ficha 424, 2026-09-14) y la
+//     TIENDA sobre las suyas (ficha 358, 2026-09-02), y NADIE mas;
+//   - y alcanza EXACTAMENTE a los SIETE estados vigentes —los cuatro de la ficha 319 mas los
+//     tres que anadio el pedido humano del 2026-09-04—, ni uno mas, Y SOLO si la orden no tiene
+//     ningun intento de entrega (la segunda mitad del criterio, del mismo pedido).
+//
+// ⚠️ LO QUE ESTE ARCHIVO **NO** PUEDE DEMOSTRAR, y hay que decirlo aqui para que nadie se
+// confie: con dobles NO se prueba que la tienda A no pueda borrar la orden de la tienda B. Aqui
+// el `softDelete` es una funcion de mentira que devuelve `ids.length`; que reciba el `ownerId`
+// correcto no dice nada de que el `where` lo aplique. Medido en este repo cuatro veces: una
+// mutacion del `WHERE` pasa en verde con dobles. La frontera se mide contra Postgres en
+// `tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts`.
+//
+// FICHA 319 — que cambio y por que. Antes se exigian DOS condiciones: cero transiciones
+// posteriores a la creacion Y estado dentro de `ESTADOS_CREACION`. Generar la guia rompia las
+// dos a la vez (anade una fila de historial Y mueve a `en_bodega_central`), asi que una orden
+// numerada no volvia a ser borrable NUNCA: 0 eliminables de 429 vivas en produccion. El conteo
+// de transiciones se RETIRA —el service ya no consulta el historial, y por eso el doble de
+// `idsConGestionPosteriorEnLote` desaparecio de este archivo— y manda la lista de estados.
+
+const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
+const ADMIN_SATELITE: Actor = { usuarioId: "u-sat", rol: "adminSatelite" };
+const MENSAJERO: Actor = { usuarioId: "u-msg", rol: "mensajero" };
+
+// FICHA 358 (2026-09-02) — la tienda dueña de las ordenes que `ordenRow` fabrica por defecto.
+// Su `usuarioId` ES la `tienda_id` de sus ordenes: el mismo hecho sobre el que se apoyan
+// `construirWhere` y todo el canal por API key.
+const TIENDA_DUEÑA: Actor = { usuarioId: "store-1", rol: "adminTienda" };
+/** Otra tienda, la que NO es dueña de nada de lo que se siembra aqui. */
+const TIENDA_AJENA: Actor = { usuarioId: "store-2", rol: "adminTienda" };
+
+/** Estado eliminable por defecto. */
+const ESTADO_ELIMINABLE = "en_preparacion";
+
+function ordenRow(overrides: Partial<OrdenTransicionRow> = {}): OrdenTransicionRow {
+  return {
+    id: "o1",
+    estatusValue: ESTADO_ELIMINABLE,
+    numGuia: 1234,
+    deletedAt: null,
+    zonaId: "z-central",
+    zonaEsGam: true,
+    tiendaId: "store-1",
+    fechaReparto: null,
+    ...overrides,
+  };
+}
+
+/**
+ * PEDIDO HUMANO 2026-09-04 — el doble del conteo de INTENTOS DE ENTREGA. Por defecto NADIE tiene
+ * intentos (Map vacio), que es como el service ve una orden que nunca se intento entregar: las
+ * ordenes sin intentos NO vienen en el Map y el service resuelve `?? 0` (215/R8).
+ *
+ * OJO A LA DIFERENCIA con el doble que la ficha 319 borro de este archivo: aquel era
+ * `idsConGestionPosteriorEnLote` (transiciones del historial, lo rompia imprimir la etiqueta) y
+ * sigue prohibido. Este es `contarIntentosEnLote` (cierres aprobados con gestion vigente).
+ */
+function escenario(
+  ordenes: OrdenTransicionRow[] = [ordenRow()],
+  intentos: Record<string, number> = {},
+) {
+  const findByIdsForTransicion = vi.fn(async (ids: string[]) =>
+    ordenes.filter((o) => ids.includes(o.id)),
+  );
+  const softDelete = vi.fn(
+    async (params: { ids: readonly string[]; ownerId: string | null }) => params.ids.length,
+  );
+  const contarIntentosEnLote = vi.fn(
+    async (ids: string[]) =>
+      new Map(ids.filter((id) => intentos[id] !== undefined).map((id) => [id, intentos[id]])),
+  );
+  const service = new EliminarOrdenService(
+    { findByIdsForTransicion, softDelete },
+    { contarIntentosEnLote },
+  );
+  return { service, findByIdsForTransicion, softDelete, contarIntentosEnLote };
+}
+
+describe("EliminarOrdenService", () => {
+  it("maestro elimina el lote y devuelve cuantas cambio el servidor", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1" }),
+      ordenRow({ id: "o2", estatusValue: "en_bodega_central" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o2"] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 2 });
+    // FICHA 358: `ownerId: null` = SIN frontera de tienda. Es lo que hace que el maestro siga
+    // alcanzando ordenes de cualquier tienda, y se afirma aqui porque es la unica forma de ver
+    // desde arriba que no se le colo un recorte que no le toca.
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["o1", "o2"],
+      ownerId: null,
+      actorUsuarioId: expect.any(String), // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+
+  // ⭑ FICHA 424 (2026-09-14) — EL `admin` SALE DE ESTA TABLA. Hasta hoy la encabezaba, con el
+  // motivo del pedido humano del 2026-08-27 («con dos roles capaces de borrar, el rastro de quien
+  // lo hizo deja de ser una sola persona»); el humano revierte aquella decision con esa
+  // consecuencia sobre la mesa y lo que sostiene la reversion es el rastro de la ficha 362. Sus
+  // casos propios estan en el bloque «el admin borra» de mas abajo.
+  //
+  // La tabla NO se queda vacia ni de adorno: `adminSatelite` y `mensajero` son testigos VIVOS de
+  // R5, y son los que impiden que abrir un rol se haya llevado por delante el corte entero.
+  it.each([
+    ["adminSatelite", ADMIN_SATELITE],
+    ["mensajero", MENSAJERO],
+  ])("%s recibe forbidden y NO se toca la base", async (_nombre, actor) => {
+    const { service, findByIdsForTransicion, softDelete } = escenario();
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, actor);
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect(findByIdsForTransicion).not.toHaveBeenCalled();
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("id inexistente -> conflict con su motivo y SIN borrar nada (todo-o-nada)", async () => {
+    const { service, softDelete } = escenario([ordenRow({ id: "o1" })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "fantasma"] }, MAESTRO);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "fantasma", motivo: MSG_ORDEN_NO_EXISTE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("orden ya borrada -> conflict con su motivo y SIN borrar nada", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1" }),
+      ordenRow({ id: "o2", deletedAt: new Date("2026-08-01T00:00:00Z") }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o2"] }, MAESTRO);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o2", motivo: MSG_ORDEN_YA_BORRADA }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("deduplica los ids antes de consultar y de escribir", async () => {
+    const { service, findByIdsForTransicion, softDelete } = escenario([ordenRow({ id: "o1" })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o1", "o1"] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 1 });
+    expect(findByIdsForTransicion).toHaveBeenCalledWith(["o1"]);
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["o1"],
+      ownerId: null,
+      actorUsuarioId: expect.any(String), // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+
+  it("lote vacio -> ok(0) sin consultar", async () => {
+    const { service, findByIdsForTransicion, softDelete } = escenario();
+
+    const r = await service.eliminar({ ordenIds: [] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 0 });
+    expect(findByIdsForTransicion).not.toHaveBeenCalled();
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("carrera benigna: informa lo que el SERVIDOR borro, no el tamano del lote", async () => {
+    // Otra sesion borro `o2` entre la precarga y el `updateMany`: el `where` con
+    // `deleted_at IS NULL` la deja fuera y el conteo baja. No es un error.
+    const findByIdsForTransicion = vi.fn(async () => [
+      ordenRow({ id: "o1" }),
+      ordenRow({ id: "o2" }),
+    ]);
+    const softDelete = vi.fn(async () => 1);
+    const service = new EliminarOrdenService(
+      { findByIdsForTransicion, softDelete },
+      { contarIntentosEnLote: vi.fn(async () => new Map<string, number>()) },
+    );
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o2"] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// FICHA 319 — EL CRITERIO, estado por estado.
+//
+// Las dos listas de referencia estan ESCRITAS A MANO en `tests/fixtures/estados-eliminables.ts`
+// y NO se derivan de `ESTADOS_ELIMINABLES`: comprobar una lista contra la funcion que la produce
+// deja el test verde ante cualquier cambio, que es justo lo que aqui no puede pasar.
+// ---------------------------------------------------------------------------------------
+describe("EliminarOrdenService / criterio por ESTADO (ficha 319)", () => {
+  it("las dos listas de referencia cubren el catalogo entero y no se solapan", () => {
+    const { cubiertos, catalogo, solapados } = catalogoCubiertoPorLasDosListas();
+    // Si el catalogo gana un `value`, ESTE test cae y obliga a decidir de que lado va. Sin el,
+    // los `it.each` de abajo seguirian verdes ignorando el estado nuevo.
+    expect(cubiertos).toEqual(catalogo);
+    expect(solapados).toEqual([]);
+    expect(catalogo).toHaveLength(ORDER_STATUS_SEED.length);
+  });
+
+  it("la lista de produccion es EXACTAMENTE la que dicto el humano", () => {
+    expect([...ESTADOS_ELIMINABLES]).toEqual([...ELIMINABLES_ESPERADOS]);
+  });
+
+  it.each(ELIMINABLES_ESPERADOS)("%s: SE elimina", async (estatusValue) => {
+    const { service, softDelete } = escenario([ordenRow({ id: "o1", estatusValue })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 1 });
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["o1"],
+      ownerId: null,
+      actorUsuarioId: expect.any(String), // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+
+  it.each(NO_ELIMINABLES_ESPERADOS)("%s: NO se elimina", async (estatusValue) => {
+    const { service, softDelete } = escenario([ordenRow({ id: "o1", estatusValue })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, MAESTRO);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("una orden CON guia ya generada, en la bodega central, SE elimina", async () => {
+    // El caso exacto del defecto: `en_bodega_central` es donde aterriza la orden al numerarla
+    // (arista #5). Con el criterio viejo esto era imposible por partida doble —la guia deja
+    // transicion Y saca del estado de nacimiento— y por eso la ventana estaba VACIA. Se afirma
+    // ademas que tener `numGuia` no descalifica: imprimir la etiqueta no es gestionar.
+    const { service } = escenario([
+      ordenRow({ id: "o1", estatusValue: "en_bodega_central", numGuia: 90210 }),
+    ]);
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "ok",
+      eliminadas: 1,
+    });
+  });
+
+  it("el lote MIXTO no borra nada: basta una fila en un estado no eliminable", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1", estatusValue: "en_bodega_central" }),
+      ordenRow({ id: "o2", estatusValue: "en_reparto" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o2"] }, MAESTRO);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o2", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("un estado que NO existe en el catalogo tampoco se borra (lista de INCLUSION)", async () => {
+    // Direccion segura del error: lo que no esta en la lista, no se borra. Un `value` nuevo (o
+    // corrupto) nace NO eliminable.
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1", estatusValue: "estado_que_no_existe" }),
+    ]);
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// PEDIDO HUMANO 2026-09-04 — LA SEGUNDA MITAD: CERO INTENTOS DE ENTREGA.
+//
+// Lo que hay que poder distinguir al leer estos tests, porque es la confusion cara de esta
+// regla: el criterio que la ficha 319 RETIRO contaba TRANSICIONES del historial (y por eso
+// imprimir la etiqueta descalificaba la orden); el que entra aqui cuenta INTENTOS DE ENTREGA
+// —cierres aprobados con una gestion vigente de `rechazada`/`devuelta`/`reprogramada`
+// (feature 215)—. Los dos primeros tests de este bloque son justamente los que separan una cosa
+// de la otra: una orden numerada y movida entre bodegas sigue teniendo CERO intentos.
+// ---------------------------------------------------------------------------------------
+describe("EliminarOrdenService / criterio por INTENTOS (2026-09-04)", () => {
+  it("un intento de entrega bloquea el borrado, aunque el estado sea eliminable", async () => {
+    const { service, softDelete } = escenario(
+      [ordenRow({ id: "o1", estatusValue: "en_bodega_central" })],
+      { o1: 1 },
+    );
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, MAESTRO);
+
+    // Motivo PROPIO y no el de estado: son dos rechazos con acciones distintas para quien los
+    // lee, y este no se resuelve nunca (el conteo es monotono creciente, 215/R32).
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_CON_INTENTOS }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("cero intentos NO bloquea: es el caso normal de una orden recien cargada", async () => {
+    const { service } = escenario([ordenRow({ id: "o1" })], { o1: 0 });
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "ok",
+      eliminadas: 1,
+    });
+  });
+
+  it("una orden AUSENTE del Map cuenta como CERO intentos, no como dato desconocido", async () => {
+    // 215/R8: las ordenes sin intentos no vienen en el Map y el `0` es un valor CONOCIDO. Si
+    // esto se leyera como «no se», el borrado se cerraria sobre casi todas las ordenes vivas y
+    // volveriamos a la ventana vacia de la ficha 319 por otro camino.
+    const { service } = escenario([ordenRow({ id: "o1" })], {});
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "ok",
+      eliminadas: 1,
+    });
+  });
+
+  it("NO es el criterio retirado: guia generada y paquete movido siguen en cero intentos", async () => {
+    // EL TEST QUE SEPARA LAS DOS REGLAS. Con el criterio de la 319 —transiciones— esta orden
+    // estaba descalificada por partida doble. Con el de hoy se borra: numerarla y llevarla a la
+    // bodega central no son intentos de entrega.
+    const { service, softDelete } = escenario(
+      [ordenRow({ id: "o1", estatusValue: "en_ruta_bodega_central", numGuia: 90210 })],
+      {},
+    );
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "ok",
+      eliminadas: 1,
+    });
+    expect(softDelete).toHaveBeenCalled();
+  });
+
+  it("el conteo se pide UNA vez para todo el lote, no una por orden", async () => {
+    // 215/R7: una consulta por fila es un incumplimiento, no una nota menor. Con dobles no se
+    // mide el SQL, pero si que el service no entra en el bucle a preguntar.
+    const { service, contarIntentosEnLote } = escenario([
+      ordenRow({ id: "o1" }),
+      ordenRow({ id: "o2" }),
+      ordenRow({ id: "o3" }),
+    ]);
+
+    await service.eliminar({ ordenIds: ["o1", "o2", "o3"] }, MAESTRO);
+
+    expect(contarIntentosEnLote).toHaveBeenCalledTimes(1);
+    expect(contarIntentosEnLote).toHaveBeenCalledWith(["o1", "o2", "o3"]);
+  });
+
+  it("todo-o-nada: una sola orden con intentos frena el lote entero", async () => {
+    const { service, softDelete } = escenario(
+      [ordenRow({ id: "o1" }), ordenRow({ id: "o2" })],
+      { o2: 2 },
+    );
+
+    expect(await service.eliminar({ ordenIds: ["o1", "o2"] }, MAESTRO)).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o2", motivo: MSG_ORDEN_CON_INTENTOS }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("el motivo de ESTADO gana al de intentos cuando fallan los dos", async () => {
+    // Precedencia declarada: se responde por lo que se comprueba primero. Da igual para la
+    // decision (las dos rechazan) pero no para el mensaje, y el mensaje es lo que el operador
+    // lee: «en gestion» le dice que espere, «con intentos» le dice que la quite.
+    const { service } = escenario([ordenRow({ id: "o1", estatusValue: "en_reparto" })], { o1: 3 });
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, MAESTRO)).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// FICHA 358 (2026-09-02) — LA TIENDA BORRA, ACOTADA A LO SUYO.
+//
+// El defecto reportado: «¿por que las tiendas no pueden eliminar sus ordenes? Una tienda quiere
+// eliminar NA-495 y no le aparece el checkbox». El recuerdo del humano era correcto A MEDIAS: la
+// ficha 320 se lo abrio por API key, y por pantalla se quedo en `maestro`.
+//
+// LO QUE SE MIDE AQUI (arriba del `where`): que la tienda pasa la puerta, que su `ownerId` baja
+// al repositorio, y que una orden de otra tienda se rechaza CON EL MOTIVO DE «no existe» — el
+// mismo que un id inventado, para no confirmarle a una tienda que la orden ajena existe.
+// ---------------------------------------------------------------------------------------
+describe("EliminarOrdenService / la tienda y lo suyo (ficha 358)", () => {
+  it("la tienda dueña borra su orden, y el `ownerId` viaja al repositorio", async () => {
+    const { service, softDelete } = escenario([ordenRow({ id: "o1", tiendaId: "store-1" })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, TIENDA_DUEÑA);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 1 });
+    // ⭑ La frontera baja al `where`, no se queda en un `if`. Que el repositorio la APLIQUE se
+    // mide contra Postgres; que el service la MANDE se mide aqui.
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["o1"],
+      ownerId: "store-1",
+      actorUsuarioId: expect.any(String), // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+
+  it("una orden de OTRA tienda se rechaza como «no existe», y no se escribe nada", async () => {
+    const { service, softDelete } = escenario([ordenRow({ id: "o1", tiendaId: "store-1" })]);
+
+    const r = await service.eliminar({ ordenIds: ["o1"] }, TIENDA_AJENA);
+
+    // El motivo es el de un id inventado A PROPOSITO: distinguirlos le confirmaria a una tienda
+    // que ese id existe en el sistema (mismo criterio que el 404 uniforme del canal API).
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_EXISTE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("la orden AJENA y YA BORRADA tampoco se distingue: sigue siendo «no existe»", async () => {
+    // El orden de las guardas importa: si la pertenencia se comprobara DESPUES de `deletedAt`,
+    // una tienda podria averiguar que la competencia borro esa orden.
+    const { service } = escenario([
+      ordenRow({ id: "o1", tiendaId: "store-1", deletedAt: new Date("2026-08-01T00:00:00Z") }),
+    ]);
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, TIENDA_AJENA)).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_EXISTE }],
+    });
+  });
+
+  it("lote MIXTO (una suya + una ajena): todo-o-nada, no se borra NINGUNA", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "propia", tiendaId: "store-1" }),
+      ordenRow({ id: "ajena", tiendaId: "store-2" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["propia", "ajena"] }, TIENDA_DUEÑA);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "ajena", motivo: MSG_ORDEN_NO_EXISTE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("a la tienda le aplica el MISMO predicado de estado que al maestro", async () => {
+    // La ficha 358 cambia QUIEN puede, no QUE se puede borrar. Si el recorte por tienda hubiera
+    // traido consigo una lista propia de estados, esto lo delata.
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1", tiendaId: "store-1", estatusValue: "en_reparto" }),
+    ]);
+
+    expect(await service.eliminar({ ordenIds: ["o1"] }, TIENDA_DUEÑA)).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o1", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("el maestro NO queda acotado por el recorte nuevo: borra la de cualquier tienda", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "a", tiendaId: "store-1" }),
+      ordenRow({ id: "b", tiendaId: "store-9" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["a", "b"] }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 2 });
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["a", "b"],
+      ownerId: null,
+      actorUsuarioId: expect.any(String), // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// FICHA 424 (2026-09-14) — EL `admin` BORRA, Y EXACTAMENTE COMO EL `maestro`.
+//
+// Pedido humano (Carlos Restrepo): se revierte el estrechamiento del 2026-08-27, que habia
+// sacado al `admin` de esta capacidad para que «el rastro de quien borro fuera UNA persona». Lo
+// que sostiene la reversion es que hoy ese rastro EXISTE y dice mas que un nombre: por cada
+// orden efectivamente borrada queda una fila con el nombre y el rol CONGELADOS de quien la
+// borro, agrupada por acto (ficha 362). Medido con el rol nuevo contra Postgres en
+// `tests/integration/db/orden-eliminada-actor-admin.test.ts`.
+//
+// LO QUE ESTE BLOQUE MIDE Y POR QUE ASI. No basta con «el admin recibe ok»: lo que hace que su
+// borrado sea el del maestro y no un permiso a medias es el `ownerId: null` que baja al
+// repositorio —si viajara su `usuarioId`, el `where` no encontraria ninguna orden y el borrado
+// seria siempre «cero eliminadas» (alternativa A4 del design)—. Por eso se afirma el ARGUMENTO,
+// no solo el `status`.
+//
+// ⚠️ Y lo que este archivo NO puede demostrar sigue siendo lo mismo que ya dice la cabecera: con
+// dobles, `softDelete` es una funcion de mentira. Que el `where` APLIQUE ese `null` se mide
+// contra Postgres.
+// ---------------------------------------------------------------------------------------
+describe("EliminarOrdenService / el admin borra (ficha 424)", () => {
+  it("⭑ (a) borra una orden eliminable de CUALQUIER tienda, con `ownerId: null`", async () => {
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "a", tiendaId: "store-1" }),
+      ordenRow({ id: "b", tiendaId: "store-9" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["a", "b"] }, ADMIN);
+
+    expect(r).toEqual({ status: "ok", eliminadas: 2 });
+    // ⭑ EL ASERTO DE LA FICHA: `ownerId: null` = SIN frontera de tienda, igual que el maestro. Si
+    // alguien le diera alcance «propias», esto caeria con `ownerId: "u-admin"` — y en produccion
+    // el borrado del admin no alcanzaria jamas ninguna orden.
+    expect(softDelete).toHaveBeenCalledWith({
+      ids: ["a", "b"],
+      ownerId: null,
+      actorUsuarioId: "u-admin", // ficha 362 (R3): QUIEN borra, congelado en la fila
+    });
+  });
+
+  it("(b) un lote con UNA orden no eliminable sale `conflict` y NO borra ninguna", async () => {
+    // El todo-o-nada por lote es el MISMO que el del maestro: la ficha 424 cambia QUIEN puede, no
+    // QUE se puede borrar ni como se resuelve un lote mixto.
+    const { service, softDelete } = escenario([
+      ordenRow({ id: "o1", estatusValue: "en_bodega_central" }),
+      ordenRow({ id: "o2", estatusValue: "en_reparto" }),
+    ]);
+
+    const r = await service.eliminar({ ordenIds: ["o1", "o2"] }, ADMIN);
+
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: "o2", motivo: MSG_ORDEN_NO_ELIMINABLE }],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("(c) el motivo POR ORDEN se distingue igual que para el maestro", async () => {
+    // Las cuatro salidas del detalle, en un solo lote: inexistente, ya borrada, estado que no
+    // admite borrado e intentos de entrega. Si el `admin` hubiera entrado por un camino propio,
+    // aqui se veria —le faltaria alguno de los motivos, o los colapsaria en uno—.
+    const { service, softDelete } = escenario(
+      [
+        ordenRow({ id: "viva" }),
+        ordenRow({ id: "borrada", deletedAt: new Date("2026-08-01T00:00:00Z") }),
+        ordenRow({ id: "en-gestion", estatusValue: "en_reparto" }),
+        ordenRow({ id: "con-intentos", estatusValue: "en_bodega_central" }),
+      ],
+      { "con-intentos": 1 },
+    );
+
+    const ids = ["viva", "fantasma", "borrada", "en-gestion", "con-intentos"];
+    const comoAdmin = await service.eliminar({ ordenIds: ids }, ADMIN);
+
+    expect(comoAdmin).toEqual({
+      status: "conflict",
+      detalle: [
+        { ordenId: "fantasma", motivo: MSG_ORDEN_NO_EXISTE },
+        { ordenId: "borrada", motivo: MSG_ORDEN_YA_BORRADA },
+        { ordenId: "en-gestion", motivo: MSG_ORDEN_NO_ELIMINABLE },
+        { ordenId: "con-intentos", motivo: MSG_ORDEN_CON_INTENTOS },
+      ],
+    });
+    expect(softDelete).not.toHaveBeenCalled();
+
+    // Y «igual que para el maestro» se afirma COMPARANDO las dos respuestas, no repitiendo la
+    // lista a mano: si un dia divergieran, este es el aserto que lo dice.
+    const otro = escenario(
+      [
+        ordenRow({ id: "viva" }),
+        ordenRow({ id: "borrada", deletedAt: new Date("2026-08-01T00:00:00Z") }),
+        ordenRow({ id: "en-gestion", estatusValue: "en_reparto" }),
+        ordenRow({ id: "con-intentos", estatusValue: "en_bodega_central" }),
+      ],
+      { "con-intentos": 1 },
+    );
+    expect(await otro.service.eliminar({ ordenIds: ids }, MAESTRO)).toEqual(comoAdmin);
+  });
+});

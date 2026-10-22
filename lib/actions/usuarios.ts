@@ -1,0 +1,305 @@
+"use server";
+
+import { z } from "zod";
+import {
+  actualizarUsuarioSchema,
+  cambiarEstadoUsuarioSchema,
+  consultarImpactoCambioUsuarioSchema,
+  crearUsuarioSchema,
+  listarUsuariosCompletoSchema,
+  listarUsuariosSchema,
+  type ActionError,
+  type ActualizarUsuarioResult,
+  type CambiarEstadoUsuarioResult,
+  type ConsultarImpactoCambioUsuarioResult,
+  type CrearUsuarioResult,
+  type ListarRolesResult,
+  type ListarTiposIdentificacionResult,
+  type ListarUsuariosCompletoResult,
+  type ListarUsuariosResult,
+  type ObtenerUsuarioResult,
+  type RestablecerContrasenaResult,
+} from "@/lib/types/usuario";
+import type { Actor, IUsuarioService } from "@/lib/interfaces/services/IUsuarioService";
+import { UsuarioService } from "@/lib/services/UsuarioService";
+import { UserRepository } from "@/lib/repositories/UserRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
+import { SessionRepository } from "@/lib/repositories/SessionRepository";
+import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import {
+  withErrorHandler,
+  isAppErrorShape,
+  UnauthenticatedError,
+  ValidationError,
+  MSG,
+  type AppErrorShape,
+} from "@/lib/errors";
+import { toActionError } from "@/lib/actions/_shared/to-action-error";
+
+const idSchema = z.string().min(1);
+
+// R28: adapta el AppErrorShape del manejador global al ActionError propio. El
+// service ya traduce los conflictos de unicidad a resultados de dominio con
+// `campo`; un `conflict` en el borde no deberia ocurrir aqui.
+function toUsuarioActionError(shape: AppErrorShape): ActionError {
+  const err = toActionError(shape);
+  if (err.status === "conflict") {
+    throw new Error(`unexpected conflict status in usuarios action: ${shape.code}`);
+  }
+  return err;
+}
+
+function buildUsuarioService(): IUsuarioService {
+  const prisma = getPrismaClient();
+  // Feature 24/R28: se inyecta el repo de zonas para validar `usuario.zona_id`.
+  // Feature 21: idem el de vehiculos para validar `usuario.vehiculo_id`.
+  // Feature 287/R20: el revocador de sesiones del restablecimiento. NO basta con importarlo:
+  // el cuarto parametro es opcional (tiene que serlo), asi que olvidarlo NO rompe el typecheck
+  // y el servicio saldria a produccion lanzando en cuanto alguien pulsara el boton. Que este
+  // argumento se PASA de verdad lo prueba `tests/unit/actions/usuarios-composition.test.ts`.
+  // FICHA 379 (R10/R18/R20): el repositorio del cierre de bodega, que sabe cuanto dinero tiene
+  // una zona sin consolidar. Mismo argumento que el anterior, y por eso se repite: el quinto
+  // parametro tambien es opcional, olvidarlo NO rompe el typecheck, y `consultarImpactoCambio`
+  // lanzaria en produccion la primera vez que el maestro tocara el rol de alguien. Lo prueba
+  // el mismo `usuarios-composition.test.ts`.
+  return new UsuarioService(
+    new UserRepository(prisma),
+    new ZonaRepository(prisma),
+    new VehiculoRepository(prisma),
+    new SessionRepository(prisma),
+    new CierreBodegaRepository(prisma),
+  );
+}
+
+export interface UsuarioActionDeps {
+  usuarioService?: IUsuarioService;
+  getActor?: () => Promise<Actor | null>;
+}
+
+/** R1/R2/R5/R6/R33: crear usuario (propaga `generatedPassword` en modo generate). */
+export async function crearUsuario(
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<CrearUsuarioResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2: antes de tocar el service
+    const data = crearUsuarioSchema.parse(input); // ZodError -> VALIDATION_ERROR (R5/R6)
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.crear(data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2/R13: listar usuarios paginados. */
+export async function listarUsuarios(
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ListarUsuariosResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const data = listarUsuariosSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.listar(data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * Feature 170 (T B.2, design §4) — dataset COMPLETO del listado de usuarios, sin
+ * paginacion, para la descarga. Calcado de `listarUsuarios` a proposito: mismo borde,
+ * mismo actor, mismo schema (menos `page`/`pageSize`) y el MISMO servicio, que es quien
+ * autoriza y aplica el tope. Ninguna rama devuelve filas junto a un error (R16/R17/R18).
+ */
+export async function listarUsuariosCompleto(
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ListarUsuariosCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
+    const data = listarUsuariosCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.listarCompleto(data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2: obtener usuario por id. */
+export async function obtenerUsuario(
+  id: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ObtenerUsuarioResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.obtener(parsedId.data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2/R16: actualizar campos editables del usuario. */
+export async function actualizarUsuario(
+  id: unknown,
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ActualizarUsuarioResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const data = actualizarUsuarioSchema.parse(input); // ZodError -> VALIDATION_ERROR (R16)
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.actualizar(parsedId.data, data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2/R23: activar/inactivar usuario (baja logica). */
+export async function cambiarEstadoUsuario(
+  id: unknown,
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<CambiarEstadoUsuarioResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const data = cambiarEstadoUsuarioSchema.parse(input); // ZodError -> VALIDATION_ERROR (R23)
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.cambiarEstado(parsedId.data, data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2/R29: catalogo de tipos de identificacion para el formulario. */
+export async function listarTiposIdentificacion(
+  deps: UsuarioActionDeps = {},
+): Promise<ListarTiposIdentificacionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.listarTiposIdentificacion(actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * FEATURE 287 — el maestro RESTABLECE la contrasena de un usuario.
+ *
+ * ⚠️ LA FIRMA SOLO RECIBE EL `id`, y eso es el requisito R6/R10, no una omision: si no hay objeto
+ * de entrada, no hay donde meter una contrasena. La ausencia del parametro ES la garantia de que
+ * el maestro no puede FIJAR una credencial que conozca de antemano; una validacion equivalente
+ * («rechaza el campo `password`») seria mas debil, porque alguien puede relajarla sin que nada se
+ * ponga rojo. El maestro RESTABLECE: el sistema genera la contrasena y se la ensena una vez.
+ *
+ * El resto es el patron identico a las otras siete acciones del archivo: `withErrorHandler` +
+ * `resolveActorFromSession` + `idSchema` + `toUsuarioActionError`.
+ *
+ * Su superficie es la accion «Restablecer contrasena» por fila de `UsuariosModule` (T10), con
+ * su confirmacion (R26) y el panel de «una sola vez» (R28). La marca transitoria de excepcion
+ * de superficie que llevaba mientras esa pantalla no existia se RETIRO al cablearla: era la
+ * propia guardia la que exigia quitarla en cuanto la accion volviera a ser alcanzable.
+ *
+ * Y el nombre de esa marca no se escribe aqui a proposito, ni siquiera para contarlo: la
+ * guardia la busca por texto en el comentario pegado al export, asi que mencionarla en prosa
+ * la reactivaria. Hoy no lo hace solo porque va entre comillas invertidas, que es una red
+ * demasiado fina para dejarla puesta.
+ */
+export async function restablecerContrasenaUsuario(
+  id: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<RestablecerContrasenaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R1: antes de instanciar el service
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      // R6: cualquier entrada que no sea un identificador valido es `validation_error` sin efectos.
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.restablecerContrasena(parsedId.data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * FICHA 379 (R9/R21/R22) — ¿este cambio deja a una zona satelite sin Admin satelite activo?
+ *
+ * ⚠️ ES UNA ACCION DE SOLO LECTURA: no escribe nada y no puede romper nada aunque falle. Por eso
+ * el aviso vive aqui y no dentro de `actualizarUsuario` como un `requiere_confirmacion`: esa
+ * variante convertiria la primera llamada de cualquier consumidor en un no-op silencioso —un
+ * cambio que parece hecho y no lo esta—, que es justo la familia de fallo que la ficha combate.
+ *
+ * ⚠️ Y NO BLOQUEA (R14). Lo que devuelva no impide nada: la pantalla lo dice y el maestro decide.
+ * Si la consulta falla, el borde devuelve un `ActionError` y la pantalla lo trata como «no se
+ * pudo comprobar, puedes continuar» (R20).
+ *
+ * Se pregunta SIEMPRE antes de un cambio de rol/zona/estado, y es el SERVIDOR quien decide si
+ * hay algo que avisar (AS5). La alternativa —que la pantalla filtre por el rol de la fila— mete
+ * literales de rol en un componente y reabre el modo de fallo de esta ficha: quien olvide una
+ * rama produce un cambio silencioso.
+ *
+ * El resto es el patron identico a las otras ocho acciones del archivo.
+ *
+ * ⚠ AQUI VIVIA LA MARCA TRANSITORIA DE EXCEPCION DE SUPERFICIE, y se BORRO con T11 de esta misma
+ * ficha: la accion nacio en la tanda de backend sin pantalla que la disparara, y `UsuariosModule`
+ * ya la llama en los dos puntos de cambio (guardar la edicion y activar/inactivar la fila). La
+ * marca decia que CADUCABA en cuanto eso pasara, y la guardia de superficie de uso exige quitarla:
+ * una excepcion que sobrevive a su motivo deja de significar nada. Es lo mismo que le paso a
+ * `restablecerContrasenaUsuario` entre su backend y su pantalla.
+ *
+ * Y su NOMBRE no se escribe aqui, ni siquiera entre comillas invertidas: la guardia lo busca por
+ * texto en el comentario pegado al export, asi que escribirlo la reactivaria — hoy no lo hacia
+ * solo porque las comillas invertidas se comen el espacio que el patron exige, que es una red
+ * demasiado fina para dejarla puesta. El docstring de `restablecerContrasenaUsuario`, mas arriba
+ * en este mismo archivo, ya lo habia dejado dicho; esta linea lo incumplia hasta la revision.
+ */
+export async function consultarImpactoCambioUsuario(
+  id: unknown,
+  cambio: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ConsultarImpactoCambioUsuarioResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R22: antes de instanciar el service
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const data = consultarImpactoCambioUsuarioSchema.parse(cambio ?? {}); // ZodError -> VALIDATION_ERROR
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.consultarImpactoCambio(parsedId.data, data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/** R1/R2: catalogo de roles para poblar el select del formulario. */
+export async function listarRoles(
+  deps: UsuarioActionDeps = {},
+): Promise<ListarRolesResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R2
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.listarRoles(actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}

@@ -1,0 +1,32 @@
+// Nombres de los buckets de Supabase Storage. Todos son PRIVADOS: nunca se
+// exponen URLs publicas, la lectura siempre pasa por una URL firmada temporal
+// (ver `getFile` en lib/storage/getFile.ts).
+//
+// Los modulos que ya resuelven su bucket por env (lib/config/postulacion.ts,
+// lib/config/gestion.ts, lib/config/etiquetas.ts) siguen siendo la fuente de
+// verdad para ese bucket concreto; esta constante es el catalogo tipado para
+// los flujos que no necesitan override por entorno.
+
+export const BUCKETS = {
+  /** Evidencias de gestion de orden (feature 36). */
+  GESTION_EVIDENCIAS: "gestion-evidencias",
+  /** Documentos de postulacion de mensajero (features 21/22). */
+  MENSAJERO_DOCS: "mensajero-docs",
+  /** PDF consolidado de etiquetas por lote de carga API (feature 112). */
+  ETIQUETAS_GUIA: "etiquetas-guia",
+  /**
+   * Comprobantes de los movimientos de la caja (ficha 459: pago por cuenta de una tienda, saldo
+   * inicial o aporte; la 457 lo reutiliza). El nombre efectivo lo resuelve
+   * `lib/config/wallet-comprobante.ts` (sobreescribible por entorno). Se crea a mano, PRIVADO.
+   */
+  WALLET_COMPROBANTES: "wallet-comprobantes",
+  /**
+   * Objetos temporales de las descargas grandes (ficha 470): `tmp/<uuid>.json.gz`, leidos una vez por
+   * URL firmada de 5 min y purgados por `/api/cron/purga-descargas`. Se crea solo, en el primer uso,
+   * PRIVADO (`SupabaseAlmacenDescargas`). El nombre efectivo lo resuelve `lib/config/descarga.ts`.
+   */
+  DESCARGAS: "descargas",
+} as const;
+
+/** Union de los nombres validos de bucket. */
+export type TBucket = (typeof BUCKETS)[keyof typeof BUCKETS];

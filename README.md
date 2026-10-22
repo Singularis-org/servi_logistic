@@ -1,0 +1,95 @@
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Despliegue
+
+### Variables de entorno
+
+El código lee exactamente estas (`GOOGLE_MAPS_API_KEY` es opcional: sin ella se
+desactiva la geocodificación):
+
+| Variable | Notas |
+| --- | --- |
+| `DATABASE_URL` | Pooler **transaccional** de Supabase (`:6543`) en serverless. Solo runtime. |
+| `DIRECT_URL` | Pooler en modo **sesión** (`:5432`). Solo el CLI de Prisma (`migrate deploy` del build). Sin ella, `prisma.config.ts` cae a `DATABASE_URL`. |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. Nunca exponer. |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Cliente. |
+| `NEXT_PUBLIC_APP_URL` | Origin de los QR de etiqueta. Ver aviso abajo. |
+| `NEXT_PUBLIC_SITE_URL` | Origin para metadatos (`app/layout.tsx`). |
+| `CRON_SECRET` | Autoriza los endpoints de `/api/cron/*`. |
+| `GOOGLE_MAPS_API_KEY` | Geocodificación. |
+| `DB_POOL_MAX` | Opcional. Conexiones `pg` por instancia (default 3). |
+
+> **`NEXT_PUBLIC_*` se inlinea en build time.** Cambiarlas exige un redeploy.
+> `NEXT_PUBLIC_APP_URL` queda impresa en los QR de las etiquetas físicas: si el
+> dominio cambia después, esas etiquetas apuntan a una URL muerta. Definí el
+> dominio definitivo *antes* de imprimir en volumen.
+
+### Base de datos
+
+```bash
+pnpm exec prisma migrate deploy   # esquema (usa DIRECT_URL: pooler en modo sesión, :5432)
+pnpm db:seed                      # catálogos: tipos de id, roles, estados, vehículos
+```
+
+Si tu base local es anterior al 2026-10-21, `pnpm exec prisma migrate reset`: algunas
+migraciones se editaron en sitio (SL-11) y una base vieja da drift.
+
+#### Cuándo migra el build
+
+El paso de migraciones del `build` (`scripts/migrate-deploy.ts`) se ejecuta:
+
+| Entorno | ¿Migra? |
+| --- | --- |
+| `VERCEL_ENV=production` | **Sí**, siempre |
+| `VERCEL_ENV=preview` | Solo con `MIGRATE_ON_PREVIEW=true` |
+| `development` / build local | No — usa `pnpm db:migrate` |
+
+El motivo es que **previews y producción compartían la misma base de Supabase**:
+con el `prisma migrate deploy` que corría en todos los entornos, abrir un PR
+aplicaba sus migraciones a la base de producción antes de mergear.
+
+`MIGRATE_ON_PREVIEW=true` es la declaración de que la base de Preview **es una
+base de pruebas, no la de producción**. Ponlo en el entorno Preview solo cuando
+`DATABASE_URL`/`DIRECT_URL` de Preview apunten a esa base propia; entonces cada
+preview aplica sus migraciones contra la suya, que es el comportamiento
+deseable. Sin el flag, el preview de una rama con una migración nueva corre
+contra una base que no la tiene y fallará en runtime hasta que alguien la
+aplique a mano.
+
+El script aborta además si la URL de migraciones apunta al pooler
+**transaccional** (`:6543` o `pgbouncer=true`) — ahí `migrate deploy` espera un
+advisory lock para siempre — y le pone un tope de 120 s para que un cuelgue se
+vea como un build rojo con mensaje, no como un build eterno.
+
+### Usuarios
+
+La app nace sin ningún usuario; el primero, el superadmin, llega con SL-32.

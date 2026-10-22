@@ -1,0 +1,314 @@
+import type { PlantillaEstado } from "@prisma/client";
+
+// Feature 107 — contrato del repositorio de plantillas de mensaje. Solo Prisma; sin
+// logica de negocio ni permisos. TODAS las lecturas filtran `deletedAt IS NULL` (R28).
+
+/** Forma publica de una plantilla vigente. `variables` es el array persistido (R15). */
+export interface PlantillaPublica {
+  id: string;
+  nombre: string;
+  cuerpo: string;
+  variables: string[];
+  /**
+   * Feature 282 — snapshot `clave -> nombre legible` del catalogo en el ultimo guardado.
+   * REQUERIDO y nunca null: la columna es `NOT NULL DEFAULT '{}'` y `{}` significa "fila
+   * anterior a la feature 282", que la UI resuelve derivando el nombre del catalogo (R21).
+   */
+  variablesNombres: Record<string, string>;
+  estado: PlantillaEstado;
+  /**
+   * `true` en la plantilla marcada como MENSAJE DE BIENVENIDA (el que sale solo cuando el
+   * paquete es recogido). Como mucho una vigente lo tiene; lo garantiza un UNIQUE parcial en
+   * la base, no este tipo (ver `marcarWelcomeMessage`).
+   */
+  welcomeMessage: boolean;
+  /**
+   * `true` en una PLANTILLA DE TIENDA: su texto no se manda a Meta, se envia por el camino
+   * wa.me. No tiene aprobacion que esperar (nace `activo`) y `enviarAprobacion` la rechaza.
+   */
+  plantillaTienda: boolean;
+  templateId: string | null; // enlace a Meta; NULL = no propagada / no sincronizada
+  templateIdioma: string | null; // idioma del template en Meta (necesario para enviar)
+  /**
+   * Ficha 474 (R3): `null` = plantilla de ORDEN (lo de siempre). No nulo = plantilla de INFORME,
+   * asociada a ese informe del catalogo `INFORMES_WHATSAPP`. El repositorio SIEMPRE lo rellena;
+   * es opcional solo para que los dobles anteriores a la 474 sigan compilando (ausente = de orden).
+   */
+  informeClave?: string | null;
+  /** Ficha 474 (R5/R6): la plantilla lleva cabecera DOCUMENT en Meta. Ausente = `false`. */
+  llevaDocumento?: boolean;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** R6: fila del listado (nombre, estado y cuerpo). */
+export interface PlantillaListItem {
+  id: string;
+  nombre: string;
+  cuerpo: string;
+  estado: PlantillaEstado;
+  variables: string[];
+  /** Feature 282 — snapshot `clave -> nombre` (R21: `{}` = derivar del catalogo al pintar). */
+  variablesNombres: Record<string, string>;
+  /** `true` si es la plantilla de bienvenida; el listado la RESALTA (como mucho una fila). */
+  welcomeMessage: boolean;
+  /** `true` en una PLANTILLA DE TIENDA: el listado le OCULTA "Enviar para aprobacion". */
+  plantillaTienda: boolean;
+  templateId: string | null; // el admin ve si la plantilla ya esta enlazada con Meta
+  /** Ficha 474 (R3): `null`/ausente = de orden; si no, la clave del informe. */
+  informeClave?: string | null;
+  /** Ficha 474 (R5): lleva cabecera documento. Ausente = `false`. */
+  llevaDocumento?: boolean;
+  createdAt: Date;
+}
+
+/**
+ * Plantilla ENVIABLE por el mensajero: vigente, `activo` y ENLAZADA con Meta (templateId no
+ * nulo). Lleva lo justo para construir el envio (nombre + idioma del template + variables) y
+ * el `cuerpo` local para RENDERIZAR el texto que se persiste en el historial del chat.
+ *
+ * Feature 282: NO lleva `variablesNombres` — ni esta ni `PlantillaTextoEnviable`. El envio
+ * resuelve POR CLAVE y no tiene nada que hacer con las etiquetas legibles. Mantener el
+ * snapshot fuera de las formas enviables es la garantia ESTRUCTURAL de que esa columna de
+ * presentacion no puede afectar al texto ni al orden de parametros que viaja a Meta
+ * (design.md §4.6). Si alguien lo anade aqui, el motivo tiene que ser otro requisito.
+ */
+/**
+ * La plantilla MARCADA como mensaje de bienvenida, tal como la lee el encolado del envio
+ * automatico al recoger. A DIFERENCIA de `PlantillaEnviable`, describe la fila TAL CUAL esta,
+ * sin exigir que sea enviable: por eso `estado` viaja y `templateId` es nullable.
+ *
+ * ESO NO ES UN DESCUIDO, ES LA DECISION. Hay dos situaciones que parecen la misma y no lo son:
+ * «nadie marco una bienvenida» (el negocio no la configuro: silencio, no se encola nada) y «hay
+ * una marcada que NO se puede enviar» (Meta no la aprobo, o se borro: eso es un fallo de
+ * configuracion que tiene que dejar rastro). Si este lector filtrara por `estado`/`templateId`
+ * las dos devolverian `null` y el segundo caso seria INVISIBLE — que es justo el modo de fallo
+ * que esta feature existe para evitar, porque el boton de la UI ya le prometio al maestro que el
+ * envio es automatico.
+ */
+export interface PlantillaBienvenida {
+  id: string;
+  nombre: string;
+  /** `null` = la plantilla nunca se propago a Meta; no se puede enviar como template. */
+  templateId: string | null;
+  estado: PlantillaEstado;
+}
+
+export interface PlantillaEnviable {
+  id: string;
+  nombre: string;
+  cuerpo: string;
+  variables: string[];
+  templateId: string;
+  templateIdioma: string;
+}
+
+/** Ficha 474 — la plantilla enviable de un informe, con su marca de documento (R33). */
+export interface PlantillaEnviableDeInforme extends PlantillaEnviable {
+  informeClave: string;
+  llevaDocumento: boolean;
+}
+
+/**
+ * Ficha 474 (R12/R34) — el lector del MOTOR de envios. Interfaz aparte (no un metodo mas de
+ * `IPlantillaMensajeRepository`) para no obligar a todos los dobles existentes a implementarlo.
+ */
+export interface ILectorPlantillaDeInforme {
+  /**
+   * Plantilla enviable DE ESE INFORME: vigente, `activo`, con templateId y
+   * `informe_clave = informeClave`. `null` si no cumple alguna de las cuatro.
+   */
+  findEnviableDeInformeById(id: string, informeClave: string): Promise<PlantillaEnviableDeInforme | null>;
+}
+
+/**
+ * Plantilla usable en el flujo wa.me del mensajero: vigente y NO desactivada. Lleva el cuerpo
+ * y las variables para RENDERIZAR el texto en el cliente (no depende de Meta ni de templateId).
+ */
+export interface PlantillaTextoEnviable {
+  id: string;
+  nombre: string;
+  cuerpo: string;
+  variables: string[];
+}
+
+/** Datos que la sincronizacion (create/update contra Meta) persiste tras enlazar el template. */
+export interface SetTemplateData {
+  templateId: string;
+  idioma: string;
+}
+
+/** Datos que el cron 24h vuelca desde Meta a una plantilla local (match por nombre). */
+export interface SincronizarTemplateData {
+  templateId: string;
+  idioma: string;
+  /** Estado mapeado desde el status de revision de Meta (APPROVED/PENDING/REJECTED). */
+  estado: PlantillaEstado;
+}
+
+/**
+ * BORRADO 2026-08-27 (pedido humano): `CrearDesdeMetaData`, los datos con que la
+ * sincronizacion IMPORTABA una plantilla que solo existia en Meta. El sync ya no crea filas
+ * locales; ver `sincronizarTemplatePorNombre` y el encabezado del service.
+ */
+
+/** Desenlace de sincronizar UN template de Meta contra la plantilla local del mismo nombre. */
+export type SincronizarTemplateOutcome =
+  /** Habia fila local y algun dato difiere: se escribio. */
+  | "actualizada"
+  /** Habia fila local y ya coincidia en todo: NO se escribio (ni `updatedAt` se movio). */
+  | "sin_cambios"
+  /** No hay plantilla local vigente con ese nombre: se ignora (el sync ya no importa). */
+  | "inexistente";
+
+/** R10: violacion de unicidad del nombre. Patron `UsuarioDuplicadoError`. */
+export class PlantillaDuplicadaError extends Error {
+  constructor(public readonly campo: "nombre" = "nombre") {
+    super(`El nombre de la plantilla ya esta en uso`);
+    this.name = "PlantillaDuplicadaError";
+  }
+}
+
+export interface CreatePlantillaData {
+  nombre: string;
+  cuerpo: string;
+  variables: string[]; // R15: derivadas por el service
+  createdBy: string | null;
+  /**
+   * Estado inicial. EXPLICITO desde 2026-08-26 y no heredado del default de la columna: el
+   * default sigue siendo `pending` porque Postgres no dejaba moverlo en la misma migracion que
+   * anadio `saved_not_aprobation`, asi que si el service no lo dijera, una plantilla recien
+   * creada se anunciaria como "Meta la esta revisando" sin haberla enviado a nadie.
+   */
+  estado: PlantillaEstado;
+  /**
+   * Feature 282 (R17) — snapshot `clave -> nombre` que sella el SERVICE con el catalogo
+   * vigente. Opcional: si no llega, la columna se queda en su default `{}`. Ningun cliente lo
+   * manda (no hay entrada zod nueva); lo calcula el servidor (design.md §4.5).
+   */
+  variablesNombres?: Record<string, string>;
+  /**
+   * PLANTILLA DE TIENDA. Opcional: si no llega, la columna se queda en su default `false`.
+   * Va junto al `estado` y no en lugar de el porque son datos distintos: el service manda
+   * `activo` + `plantillaTienda: true` para una de tienda, y `saved_not_aprobation` +
+   * `false` para el resto.
+   */
+  plantillaTienda?: boolean;
+  /** Ficha 474 (R3): clave del informe; ausente = `null` (plantilla de orden). */
+  informeClave?: string | null;
+  /** Ficha 474 (R5): ausente = `false`. */
+  llevaDocumento?: boolean;
+}
+
+/** R20/R22: solo nombre y/o cuerpo; `variables` recalculadas por el service si cambia el cuerpo. */
+export interface UpdatePlantillaData {
+  nombre?: string;
+  cuerpo?: string;
+  variables?: string[];
+  /** Feature 282 (R17): se reescribe junto con `variables` cuando cambia el cuerpo. */
+  variablesNombres?: Record<string, string>;
+  /** PLANTILLA DE TIENDA: se puede alternar al editar; ausente = no se toca. */
+  plantillaTienda?: boolean;
+  /** Ficha 474 (R3/R7): solo mientras la plantilla no haya salido hacia Meta (lo decide el service). */
+  informeClave?: string | null;
+  /** Ficha 474 (R5/R7): idem. */
+  llevaDocumento?: boolean;
+}
+
+/**
+ * Alcance de `listarUsablesParaTexto`. El parametro es OBLIGATORIO a proposito: cada superficie
+ * tiene que declarar si le corresponden las PLANTILLAS DE TIENDA, en vez de heredarlas por un
+ * default que nadie mira. Una plantilla de tienda NO se envia desde el mensajero —ni por wa.me
+ * ni por el chat—: es del admin de tienda, desde `/novedades`.
+ */
+export interface ListarUsablesParaTextoParams {
+  /** `true` SOLO en la superficie del admin de tienda (`/novedades`). */
+  incluirDeTienda: boolean;
+}
+
+export interface ListPlantillasParams {
+  skip: number;
+  take: number;
+}
+
+export interface ListPlantillasResult {
+  items: PlantillaListItem[];
+  total: number;
+}
+
+export interface IPlantillaMensajeRepository {
+  /** R8/R12/R15: persiste nombre, cuerpo, variables y el estado inicial que decide el service. */
+  create(data: CreatePlantillaData): Promise<PlantillaPublica>;
+  /** R6/R7/R28: listado paginado de vigentes (deletedAt IS NULL), orden createdAt desc. */
+  list(params: ListPlantillasParams): Promise<ListPlantillasResult>;
+  /** R7/R28: total de vigentes. */
+  count(): Promise<number>;
+  /** R28: plantilla vigente por id; `null` si no existe o esta soft-deleted. */
+  findById(id: string): Promise<PlantillaPublica | null>;
+  /** R10/R28: plantilla vigente por nombre (para unicidad); `null` si no existe. */
+  findByNombre(nombre: string): Promise<PlantillaPublica | null>;
+  /** R20/R22: aplica nombre/cuerpo/variables; `null` si no existe o esta soft-deleted. */
+  update(id: string, data: UpdatePlantillaData): Promise<PlantillaPublica | null>;
+  /** R24: fija el estado; `null` si no existe o esta soft-deleted. */
+  /**
+   * Cambia el estado de una plantilla vigente. Si el estado destino NO es `activo`, DESMARCA
+   * de paso la bienvenida (2026-08-27): solo una plantilla activa puede serlo, asi que la
+   * marca no puede sobrevivir a la salida de `activo`. Reactivar no la vuelve a marcar.
+   */
+  updateEstado(id: string, estado: PlantillaEstado): Promise<PlantillaPublica | null>;
+  /** R27: soft delete (fija deletedAt); `false` si no existe o ya estaba borrada. */
+  /** FICHA 362 (R9): `actorUsuarioId` congela QUIEN elimino; va en la misma transaccion. */
+  softDelete(id: string, actorUsuarioId: string | null): Promise<boolean>;
+  /**
+   * Marca ESTA plantilla como el mensaje de bienvenida y desmarca cualquier otra, en UNA sola
+   * transaccion. Es un `set`, no un `toggle`: pasar dos veces la misma id deja el mismo
+   * estado. `null` si no existe o esta soft-deleted.
+   *
+   * El desmarcado va PRIMERO y no es cosmetica: el UNIQUE parcial de la base solo admite una
+   * fila vigente en `true`, asi que marcar antes de limpiar abortaria la transaccion entera.
+   */
+  marcarWelcomeMessage(id: string): Promise<PlantillaPublica | null>;
+
+  // --- Integracion WhatsApp ---
+
+  /** Enlaza la plantilla con su template de Meta tras crearlo/actualizarlo (propagacion local->Meta). */
+  setTemplate(id: string, data: SetTemplateData): Promise<void>;
+  /**
+   * Cron 24h (Meta->local): actualiza por NOMBRE el templateId, idioma y estado de una
+   * plantilla vigente. NO crea ni borra filas. Preserva un `inactivo` puesto por el usuario
+   * (no lo reactiva).
+   *
+   * ESCRIBE SOLO SI HAY ALGO QUE CAMBIAR (2026-08-27, pedido humano). Antes lanzaba dos
+   * `updateMany` a ciegas en cada corrida, asi que las 24 h movian el `updatedAt` de todas las
+   * plantillas aunque Meta no hubiera cambiado nada: el listado se reordenaba solo y
+   * «modificada» dejaba de significar «alguien la toco». Ahora compara primero y devuelve
+   * `sin_cambios` sin tocar la fila.
+   */
+  sincronizarTemplatePorNombre(
+    nombre: string,
+    data: SincronizarTemplateData,
+  ): Promise<SincronizarTemplateOutcome>;
+  /** Envio del mensajero: plantillas vigentes, `activo` y enlazadas con Meta (templateId no nulo). */
+  listarEnviables(): Promise<PlantillaEnviable[]>;
+  /**
+   * Una plantilla enviable por id (vigente, `activo`, con templateId); `null` si no aplica.
+   * Ficha 474 (R8): EXCLUYE las plantillas de informe (`informe_clave IS NOT NULL`), igual que
+   * `listarEnviables` y `listarUsablesParaTexto`: el chat, el wa.me y la bienvenida no las ven.
+   */
+  findEnviableById(id: string): Promise<PlantillaEnviable | null>;
+
+  /**
+   * La plantilla marcada como mensaje de bienvenida, ENVIABLE O NO. `null` = ninguna vigente
+   * la tiene marcada.
+   *
+   * Filtra `welcomeMessage: true` + vigente, y NADA MAS (ver `PlantillaBienvenida`). El
+   * `UNIQUE` parcial `plantilla_mensaje_welcome_message_key` garantiza que como mucho hay una,
+   * asi que la lectura es determinista sin desempate.
+   */
+  findWelcomeMessage(): Promise<PlantillaBienvenida | null>;
+  /** Flujo wa.me: plantillas vigentes NO desactivadas, con cuerpo, para renderizar en cliente. */
+  listarUsablesParaTexto(
+    opciones: ListarUsablesParaTextoParams,
+  ): Promise<PlantillaTextoEnviable[]>;
+}

@@ -1,0 +1,306 @@
+import { describe, it, expect, vi } from "vitest";
+import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
+import type {
+  IGestionOrdenRepository,
+  MiAsignacionRow,
+} from "@/lib/interfaces/repositories/IGestionOrdenRepository";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type {
+  IRutaOptimizadaRepository,
+  RutaOptimizadaDTO,
+} from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
+import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
+import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+
+// Feature 92 (R28/R29) — el ORDEN de las cards, resuelto en el SERVICE.
+//
+// El repositorio NO cambia su `orderBy` (`createdAt desc` sigue siendo el orden base y el
+// de "Por recoger", R29): el reordenado vive aqui, sobre la particion en dos arrays que el
+// service ya hacia. Regla:
+//
+//   porGestionar = [ ...con posicion, por `secuencia` ASC,
+//                    ...sin posicion, conservando su `createdAt desc` ]
+//
+// Las que no tienen posicion son las que entraron a la ruta DESPUES de la ultima
+// optimizacion; van al final y se marcan como pendientes de optimizar.
+
+const MENSAJERO: Actor = { usuarioId: "m-1", rol: "mensajero" };
+
+/** Las filas llegan del repo en `createdAt desc` (el orden base ya verificado). */
+function row(id: string, estatusValue: string): MiAsignacionRow {
+  return {
+    id,
+    numGuia: 1,
+    numRemision: `R-${id}`,
+    estatusValue,
+    destinatario: "Ana",
+    telefonoDest: "8888",
+    direccion: "calle",
+    producto: "caja",
+    peso: null,
+    montoCobrar: 100,
+    // Feature 97: coords de la parada (number|null); irrelevantes para el reordenado.
+    latitud: 9.9,
+    longitud: -84.1,
+    notas: null,
+    tiendaNombre: "T",
+    zonaNombre: "Z",
+    provinciaNombre: "P",
+    cantonNombre: "C",
+    distritoNombre: null,
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular de Prueba",
+    mensajeroAsignadoId: "m-1",
+  };
+}
+
+function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
+  return {
+    id: "r1",
+    mensajeroId: "m-1",
+    estado: "vigente",
+    calculadaAt: new Date("2026-07-20T12:00:00.000Z"),
+    origenLat: 9.9,
+    origenLng: -84.1,
+    origenAt: new Date("2026-07-20T11:59:00.000Z"),
+    origenFuente: "gps",
+    huellaSet: "h",
+    ultimoError: null,
+    // Feature 265 (R35): esta suite mira el REORDENADO de la lectura, no la procedencia.
+    secuenciaFuente: null,
+    trazado: null,
+    tramoVivoAt: null,
+    tramoPorOrden: new Map(),
+    secuenciaPorOrden: new Map(),
+    ...over,
+  };
+}
+
+function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
+  const repo = {
+    getOrdenEnGestion: vi.fn(async () => null),
+    findMisAsignaciones: vi.fn(async () => rows),
+    findMisAsignacionesByIds: vi.fn(async () => []),
+    contarEntregadas: vi.fn(async () => 7),
+    sumMontoCobrarGestionadas: vi.fn(async () => 500),
+    // FICHA 454 (R6/R22): ni pendientes ni ayudas en estas filas — el reordenado es lo medido.
+    findPendientesYAyudas: vi.fn(async () => ({
+      conGestionPendiente: new Set<string>(),
+      conAyudaAbierta: new Set<string>(),
+    })),
+  } as unknown as IGestionOrdenRepository;
+
+  const rutaRepo = {
+    findByMensajero: vi.fn(async () => rutaPrevia),
+    upsertOrigen: vi.fn(async () => {}),
+  } as unknown as Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">;
+
+  // Feature 115 (R17): sin marcas -> `marcarLuego` false; este test mide el orden por ruta.
+  const metaRepo = {
+    findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
+  };
+
+  return new MisAsignacionesService(
+    repo,
+    {
+      findEstatusIdByValue: vi.fn(async () => "x"),
+      // FICHA 477 (R27): el listado pregunta por el bloqueo para decidir `enCorreccion`. Libre aqui.
+      findBloqueoDetalle: vi.fn(async () => ({ bloqueado: false })),
+      findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()),
+    } as unknown as IOrdenRepository,
+    {} as IFileStorage,
+    {} as ISignedUrlProvider,
+    rutaRepo,
+    metaRepo,
+    fakeIntentosEnLote(), // feature 160: dep requerida, no ejercitada aqui
+  );
+}
+
+async function listar(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
+  const r = await build(rows, rutaPrevia).listarMisAsignaciones(MENSAJERO);
+  if (r.status !== "ok") throw new Error("se esperaba ok");
+  return r;
+}
+
+describe("R28 — todas con posicion", () => {
+  it("ordena por secuencia ASC, ignorando el orden de llegada", async () => {
+    // El repo devuelve C, A, B (createdAt desc); la ruta dice A=1, B=2, C=3.
+    const r = await listar(
+      [row("C", "en_reparto"), row("A", "en_reparto"), row("B", "en_reparto")],
+      ruta({
+        secuenciaPorOrden: new Map([
+          ["A", 1],
+          ["B", 2],
+          ["C", 3],
+        ]),
+      }),
+    );
+
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["A", "B", "C"]);
+    expect(r.porGestionar.map((o) => o.secuenciaRuta)).toEqual([1, 2, 3]);
+    expect(r.ruta.paradasSinOptimizar).toBe(0);
+  });
+});
+
+describe("R28 — mezcla de con y sin posicion", () => {
+  it("las posicionadas van primero por secuencia; las demas AL FINAL en createdAt desc", async () => {
+    // Llegada (createdAt desc): NUEVA2, NUEVA1, B, A.
+    // Ruta: A=1, B=2. NUEVA1 y NUEVA2 entraron despues de la ultima optimizacion.
+    const r = await listar(
+      [
+        row("NUEVA2", "en_reparto"),
+        row("NUEVA1", "en_reparto"),
+        row("B", "en_reparto"),
+        row("A", "en_reparto"),
+      ],
+      ruta({
+        secuenciaPorOrden: new Map([
+          ["A", 1],
+          ["B", 2],
+        ]),
+      }),
+    );
+
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["A", "B", "NUEVA2", "NUEVA1"]);
+    expect(r.porGestionar.map((o) => o.secuenciaRuta)).toEqual([1, 2, null, null]);
+    // Las dos sin posicion CONSERVAN su orden relativo de llegada (sort estable).
+    expect(r.ruta.paradasSinOptimizar).toBe(2);
+  });
+
+  it("una secuencia con huecos (orden ya entregada) sigue ordenando bien", async () => {
+    const r = await listar(
+      [row("C", "en_reparto"), row("A", "en_reparto")],
+      ruta({
+        secuenciaPorOrden: new Map([
+          ["A", 1],
+          ["C", 5], // la 2, 3 y 4 ya se entregaron y salieron de en_reparto
+        ]),
+      }),
+    );
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["A", "C"]);
+  });
+});
+
+describe("R28 — ninguna con posicion: orden IDENTICO al actual", () => {
+  it("sin ruta persistida, `porGestionar` conserva exactamente el orden previo", async () => {
+    const rows = [row("C", "en_reparto"), row("B", "en_reparto"), row("A", "en_reparto")];
+    const r = await listar(rows, null);
+
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["C", "B", "A"]);
+    expect(r.porGestionar.every((o) => o.secuenciaRuta === null)).toBe(true);
+    expect(r.ruta.paradasSinOptimizar).toBe(3);
+    // Y "nunca se calculo" NO es "esta desactualizada": la UI distingue por `calculadaAt`.
+    expect(r.ruta.estado).toBe("vigente");
+    expect(r.ruta.calculadaAt).toBeNull();
+  });
+
+  it("con ruta persistida pero sin paradas, tampoco se altera el orden", async () => {
+    const rows = [row("C", "en_reparto"), row("B", "en_reparto")];
+    const r = await listar(rows, ruta({ secuenciaPorOrden: new Map() }));
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["C", "B"]);
+  });
+});
+
+describe("R29 — 'Por recoger' NO se toca", () => {
+  it("conserva su orden de llegada y su secuenciaRuta es siempre null", async () => {
+    const r = await listar(
+      [
+        row("P2", "mensajero_recogiendo_en_bodega"),
+        row("A", "en_reparto"),
+        row("P1", "mensajero_recogiendo_en_bodega"),
+        row("B", "en_reparto"),
+      ],
+      ruta({
+        secuenciaPorOrden: new Map([
+          ["A", 2],
+          ["B", 1],
+          // Una posicion PARA UNA ORDEN POR RECOGER no debe filtrarse a esa seccion.
+          ["P1", 9],
+        ]),
+      }),
+    );
+
+    expect(r.porRecoger.map((o) => o.id)).toEqual(["P2", "P1"]);
+    expect(r.porRecoger.every((o) => o.secuenciaRuta === null)).toBe(true);
+    // Y el reordenado de "por gestionar" si aplica.
+    expect(r.porGestionar.map((o) => o.id)).toEqual(["B", "A"]);
+  });
+});
+
+describe("bloque `ruta` del resultado y KPIs", () => {
+  it("expone estado, calculadaAt, origenFuente y paradasSinOptimizar", async () => {
+    const calculada = new Date("2026-07-20T12:00:00.000Z");
+    const r = await listar(
+      [row("A", "en_reparto"), row("N", "en_reparto")],
+      ruta({
+        estado: "desactualizada",
+        calculadaAt: calculada,
+        origenFuente: "centroide",
+        secuenciaPorOrden: new Map([["A", 1]]),
+      }),
+    );
+
+    // El `toEqual` LITERAL es el contrato de `RutaResumenDTO` hacia la pantalla: si crece un
+    // campo, este test tiene que crecer con el. Feature 265 anade `secuenciaFuente`, y `null`
+    // es lo correcto aqui — esta fixture no trae marca, y sin marca la pantalla no dice nada
+    // del orden (R45).
+    expect(r.ruta).toEqual({
+      estado: "desactualizada",
+      calculadaAt: calculada,
+      origenFuente: "centroide",
+      secuenciaFuente: null,
+      paradasSinOptimizar: 1,
+      trazado: null,
+      tramoSiguiente: null,
+    });
+  });
+
+  it("`tramoSiguiente` es el de la PRIMERA parada de la ruta, no el de cualquiera", async () => {
+    // El listado ya viene ordenado por secuencia, asi que la primera es la que el mensajero
+    // tiene delante. Devolver el tramo de otra resaltaria un trozo de mapa que no le toca.
+    const tramoA = { encodedPolyline: "aaa", distanciaM: 1000, duracionS: 100 };
+    const tramoB = { encodedPolyline: "bbb", distanciaM: 2000, duracionS: 200 };
+    const r = await listar(
+      [row("B", "en_reparto"), row("A", "en_reparto")],
+      ruta({
+        // A es la parada 1 y B la 2, al reves del orden en que llegan de la consulta.
+        secuenciaPorOrden: new Map([
+          ["A", 1],
+          ["B", 2],
+        ]),
+        tramoPorOrden: new Map([
+          ["A", tramoA],
+          ["B", tramoB],
+        ]),
+      }),
+    );
+
+    expect(r.porGestionar[0].id).toBe("A");
+    expect(r.ruta.tramoSiguiente).toEqual(tramoA);
+  });
+
+  it("sin tramo para la primera parada -> null (ruta sin dibujar, o dibujada en local)", async () => {
+    const r = await listar(
+      [row("A", "en_reparto")],
+      ruta({ secuenciaPorOrden: new Map([["A", 1]]), tramoPorOrden: new Map() }),
+    );
+
+    expect(r.ruta.tramoSiguiente).toBeNull();
+  });
+
+  it("los KPIs de la feature 61 NO se alteran por el reordenado", async () => {
+    const r = await listar(
+      [row("A", "en_reparto"), row("B", "en_reparto"), row("P", "mensajero_recogiendo_en_bodega")],
+      ruta({ secuenciaPorOrden: new Map([["B", 1]]) }),
+    );
+
+    expect(r.kpis).toEqual({
+      pendientes: 2, // las dos en_reparto
+      entregadas: 7,
+      porCobrar: 200, // 100 + 100
+      totalACobrar: 700, // 200 + 500 ya entregado
+    });
+  });
+});

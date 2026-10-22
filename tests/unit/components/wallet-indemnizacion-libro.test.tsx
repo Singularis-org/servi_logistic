@@ -1,0 +1,189 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, cleanup, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SWRConfig } from "swr";
+
+import { ToastProvider } from "@/providers/ToastProvider";
+import type { WalletMovimientoDTO } from "@/lib/types/wallet";
+import {
+  CATEGORIA_LABEL,
+  esEgresoAdministrativo,
+} from "@/app/(app)/wallet/_components/wallet-labels";
+
+// Feature 158 (T2.5 — R31/R32/R30) — la indemnización en la superficie visible de la wallet:
+// el LIBRO (etiqueta legible del concepto), el FILTRO por categoría y la NO-reversabilidad.
+// La action de reversa se mockea: acá no se toca backend.
+
+vi.mock("@/lib/actions/wallet-egresos", () => ({
+  reversarEgresoAdministrativoAction: vi.fn(),
+}));
+// 458-A (TA.3): el filtro de categoría lee del servidor los conceptos CON movimientos.
+const conceptosMock = vi.fn();
+vi.mock("@/lib/actions/wallet-filtros", () => ({
+  conceptosConMovimientosAction: (...a: unknown[]) => conceptosMock(...a),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
+import { WalletLedger } from "@/app/(app)/wallet/_components/WalletLedger";
+// FICHA 463: la barra de una sola banda se retiró; la categoría vive en la zona del libro.
+import { LibroCajaBarraControlada } from "@/tests/fixtures/libro-caja-barra";
+
+const EGRESO_INDEMNIZACION: WalletMovimientoDTO = {
+  id: "11111111-1111-1111-1111-111111111111",
+  tipo: "egreso",
+  categoria: "egreso_indemnizacion",
+  monto: "12500.00",
+  origenTipo: "cierre_dia",
+  origenId: "cierre-1",
+  descripcion: null,
+  registradoPor: "maestro-1",
+  fechaMovimiento: "2026-07-30T10:00:00.000Z",
+  dueno: "propio", // feature 231 (R31)
+  documento: null, // ficha 459 (design §7.3): fila sin documento
+};
+
+const EGRESO_GASTO: WalletMovimientoDTO = {
+  id: "22222222-2222-2222-2222-222222222222",
+  tipo: "egreso",
+  categoria: "egreso_gasto_variable",
+  monto: "125.50",
+  origenTipo: "gasto",
+  origenId: null,
+  descripcion: "Suministros",
+  registradoPor: "maestro-1",
+  fechaMovimiento: "2026-07-30T10:00:00.000Z",
+  dueno: "propio", // feature 231 (R31)
+  documento: null, // ficha 459 (design §7.3): fila sin documento
+};
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("R31 — el concepto tiene etiqueta legible en el libro", () => {
+  it("la fila del movimiento muestra la etiqueta en español, no el slug del enum", () => {
+    render(
+      <ToastProvider>
+        <WalletLedger movimientos={[EGRESO_INDEMNIZACION]} />
+      </ToastProvider>,
+    );
+
+    const tabla = screen.getByRole("table", { name: "Libro de movimientos" });
+    expect(within(tabla).getByText("Indemnización que la empresa paga por un incidente")).toBeInTheDocument();
+    expect(tabla.textContent).not.toMatch(/egreso_indemnizacion/);
+  });
+
+  it("el monto de once dígitos se redondea EXACTO, sin pasar por un `number`", () => {
+    render(
+      <ToastProvider>
+        <WalletLedger
+          movimientos={[{ ...EGRESO_INDEMNIZACION, monto: "12345678901.99" }]}
+        />
+      </ToastProvider>,
+    );
+
+    const tabla = screen.getByRole("table", { name: "Libro de movimientos" });
+    // FICHA 359: el propósito del caso NO cambia. Este monto no cabe exacto en un
+    // `double`, así que llevar los once dígitos enteros a pantalla CON su cola sólo
+    // sale bien si el camino trabaja dígito a dígito: un `parseFloat` intermedio
+    // sigue siendo lo que este caso caza.
+    expect(within(tabla).getByText("₡12.345.678.901,99")).toBeInTheDocument();
+  });
+
+  it("el origen se lee como 'Cierre del día' (de dónde salió la plata)", () => {
+    render(
+      <ToastProvider>
+        <WalletLedger movimientos={[EGRESO_INDEMNIZACION]} />
+      </ToastProvider>,
+    );
+
+    const tabla = screen.getByRole("table", { name: "Libro de movimientos" });
+    expect(within(tabla).getByText("Cierre del día")).toBeInTheDocument();
+  });
+});
+
+/** Caché de SWR propia por render: cada caso ve SUS llamadas a la action. */
+function renderFiltros(ui: React.ReactElement) {
+  conceptosMock.mockResolvedValue({
+    status: "ok",
+    conceptos: [
+      { categoria: "egreso_sueldo", movimientos: 1 },
+      { categoria: "egreso_indemnizacion", movimientos: 2 },
+    ],
+  });
+  return render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>{ui}</SWRConfig>);
+}
+
+describe("R31 — el concepto es una opción del filtro por categoría", () => {
+  it("al abrir el filtro de categoría, la indemnización está entre las opciones", async () => {
+    const user = userEvent.setup();
+    renderFiltros(<LibroCajaBarraControlada activosIniciales={["categoria"]} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Concepto" }));
+
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "Indemnización que la empresa paga por un incidente (2)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("458-A (R13/R14): las opciones son los conceptos CON movimientos, con su número; ninguno sin movimientos", async () => {
+    const user = userEvent.setup();
+    renderFiltros(<LibroCajaBarraControlada activosIniciales={["categoria"]} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Concepto" }));
+    const lista = await screen.findByRole("listbox");
+
+    // Reescrito en la 458-A (antes: «una opción por entrada del SEED»): los dos que el servidor dice
+    // que tienen movimientos, cada uno con su número. «Otro gasto de la empresa» (`egreso_gasto`, sin
+    // productor) NO aparece (R14). FICHA 467: ya sin la opción «Todas las categorías» al frente —en la
+    // casilla «Concepto» la ausencia de elección ES «todos» y lo dice el disparador («Concepto: Todos»).
+    await within(lista).findByRole("option", { name: "Sueldo (1)" });
+    expect(within(lista).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Sueldo (1)",
+      "Indemnización que la empresa paga por un incidente (2)",
+    ]);
+    expect(within(lista).queryByRole("option", { name: /Otro gasto de la empresa/ })).toBeNull();
+    expect(conceptosMock).toHaveBeenCalledWith({ libro: "caja" });
+    expect(CATEGORIA_LABEL.egreso_indemnizacion).toBe("Indemnización que la empresa paga por un incidente");
+  });
+
+  it("elegir la indemnización emite ese filtro tal cual (FICHA 463/467: se aplica al elegirla, tras la espera estándar)", async () => {
+    const user = userEvent.setup();
+    const onAplicar = vi.fn();
+    renderFiltros(<LibroCajaBarraControlada activosIniciales={["categoria"]} onCambiar={onAplicar} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Concepto" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Indemnización que la empresa paga por un incidente (2)" }),
+    );
+    await waitFor(() =>
+      expect(onAplicar).toHaveBeenCalledWith(expect.objectContaining({ categoria: "egreso_indemnizacion" })),
+    );
+  });
+});
+
+describe("R30 — la indemnización NO ofrece reversa en el libro", () => {
+  // FICHA 458-C (TC.5, D11) — REESCRITO: «Reversar» salió del libro; cada fila tiene «Ver» y la
+  // anulación vive en el panel, decidida por el `documento` del SERVIDOR. La indemnización del CIERRE
+  // llega con `documento: null` (nace de un cierre, R65) y no se anula; lo mide
+  // `tests/components/WalletLedgerVer458C.test.tsx`. Aquí queda lo de la 158: ni una «Reversar» y el
+  // criterio de la 45 intacto.
+  it("ninguna fila trae 'Reversar' (D11): las dos se abren con «Ver»; el criterio de la 45 sigue", () => {
+    render(
+      <ToastProvider>
+        <WalletLedger movimientos={[EGRESO_INDEMNIZACION, EGRESO_GASTO]} />
+      </ToastProvider>,
+    );
+
+    const tabla = screen.getByRole("table", { name: "Libro de movimientos" });
+    expect(within(tabla).queryAllByRole("button", { name: "Reversar" })).toHaveLength(0);
+    expect(within(tabla).getAllByRole("button", { name: /^Ver .+ del .+ por / })).toHaveLength(2);
+    // Y el criterio que lo decide es el `origen_tipo`, no la categoría.
+    expect(esEgresoAdministrativo(EGRESO_INDEMNIZACION)).toBe(false);
+    expect(esEgresoAdministrativo(EGRESO_GASTO)).toBe(true);
+  });
+});

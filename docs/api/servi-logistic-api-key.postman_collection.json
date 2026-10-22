@@ -1,0 +1,414 @@
+{
+  "info": {
+    "name": "Servi Logistic — API key (canal integradores)",
+    "_postman_id": "b7d1f0a2-1770-4f2e-9a55-0177ea51ordx",
+    "description": "Los 10 endpoints accesibles con API key (`Authorization: Bearer svl_...`), **una petición por endpoint**.\n\nGenerada desde el contrato publicado del repo (`lib/api/openapi-spec.ts`, espejo en `docs/api/api-key-openapi.yaml`).\n\n## Antes de empezar\n\n1. Edita las variables de la colección: `baseUrl` y `apiKey`.\n2. Corre la colección en orden. **Cargar órdenes** guarda `cargaId`, `numGuia`, `numRemision` y un segundo par desechable en las variables, así que el resto de peticiones funciona sin tocar nada.\n\n## Qué NO es esta colección\n\nNo es una batería de casos. Hay **una petición por endpoint** y cada una es el camino feliz: sirve para comprobar que el canal responde y para tenerlo a mano, no para cubrir los bordes. Los 401/404/409/422 están descritos en el contrato.\n\n## Reglas que aplican a los 10\n\n- El **dueño va forzado a la key**: una orden o un lote de otro integrador responde `404`, idéntico a inexistente. No hay forma de leer ni generar nada ajeno.\n- Los errores tienen forma uniforme: `{ status, code, message }`, con `code` en `VALIDATION_ERROR | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | INTERNAL`.\n- Sin header `Authorization`, o con esquema distinto de `Bearer`, responde `401` sin tocar base de datos ni storage.\n- El orden de la colección importa: las dos últimas (cancelar y eliminar) consumen las órdenes que creó la carga.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{apiKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "description": "Sin barra final. En producción, el dominio de la app."
+    },
+    {
+      "key": "apiKey",
+      "value": "svl_pega_aqui_tu_key",
+      "description": "El secreto se muestra UNA sola vez al crearla en Configuración > API."
+    },
+    {
+      "key": "numGuia",
+      "value": "",
+      "description": "Primera orden creada. La rellena 'Cargar órdenes'. La consume 'Cancelar una orden'."
+    },
+    {
+      "key": "numRemision",
+      "value": "",
+      "description": "Remisión de la primera orden creada. La rellena 'Cargar órdenes'."
+    },
+    {
+      "key": "numRemisionDesechable",
+      "value": "",
+      "description": "Segunda orden creada, reservada para 'Eliminar una orden': ese borrado es definitivo."
+    },
+    {
+      "key": "cargaId",
+      "value": "",
+      "description": "Lote de la última carga. Lo rellena 'Cargar órdenes'."
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Cotizar un lote (no crea nada)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('los contadores cuadran con las dos listas', () => {",
+              "  pm.expect(b.cotizadas).to.eql(b.filas.length);",
+              "  pm.expect(b.conError).to.eql(b.errores.length);",
+              "  pm.expect(b.cotizadas + b.conError).to.eql(b.total);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/cotizacion",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "cotizacion"]
+        },
+        "description": "Precio de un lote ANTES de cargarlo: no persiste nada. Cada fila vuelve con los dos escenarios (entregado y devuelto). Los importes viajan crudos, con dos decimales y punto como separador.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenes\": [\n    {\n      \"num_remision\": \"REM-0001\",\n      \"provincia\": \"San José\",\n      \"canton\": \"San José\",\n      \"distrito\": \"Carmen\",\n      \"direccion\": \"Av. Central, 200m norte del parque\",\n      \"monto_cobrar\": \"25900\"\n    },\n    {\n      \"num_remision\": \"REM-0002\",\n      \"provincia\": \"Alajuela\",\n      \"canton\": \"Alajuela\",\n      \"distrito\": \"Alajuela\",\n      \"direccion\": \"100m sur de la iglesia, casa azul\",\n      \"monto_cobrar\": \"48000\"\n    }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "2 · Cargar órdenes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "if (b.cargaId) pm.collectionVariables.set('cargaId', b.cargaId);",
+              "// `filas` es lo que ENTRO (creada/duplicada); lo que falla vive aparte, en `errores`.",
+              "const creadas = (b.filas || []).filter((f) => f.resultado === 'creada');",
+              "if (creadas[0]) {",
+              "  // Con fulfillment la orden nace SIN guia (`numGuia: null`): la remision es el",
+              "  // identificador que siempre existe, y sirve igual en el detalle, el PDF y el borrado.",
+              "  pm.collectionVariables.set('numGuia', String(creadas[0].numGuia ?? ''));",
+              "  pm.collectionVariables.set('numRemision', creadas[0].numRemision);",
+              "}",
+              "// La segunda queda reservada para el DELETE del final, que es definitivo.",
+              "if (creadas[1]) pm.collectionVariables.set('numRemisionDesechable', creadas[1].numRemision);",
+              "pm.test('los contadores cuadran: creadas + duplicadas + conError === total', () => {",
+              "  pm.expect(b.creadas + b.duplicadas + b.conError).to.eql(b.total);",
+              "});",
+              "console.log('cargaId:', b.cargaId, '| numGuia:', pm.collectionVariables.get('numGuia'), '| numRemision:', pm.collectionVariables.get('numRemision'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/carga",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "carga"]
+        },
+        "description": "Crea las órdenes en firme. Los 10 campos van como texto; `notas` es opcional. Una fila mala NO aborta el lote: sale en `errores` y las demás se crean. Sus tests rellenan `cargaId`, `numGuia`, `numRemision` y `numRemisionDesechable`.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenes\": [\n    {\n      \"num_remision\": \"REM-0001\",\n      \"destinatario\": \"Juan Pérez\",\n      \"telefono\": \"88887777\",\n      \"provincia\": \"San José\",\n      \"canton\": \"San José\",\n      \"distrito\": \"Carmen\",\n      \"direccion\": \"Av. Central, 200m norte del parque\",\n      \"producto\": \"Camiseta talla M\",\n      \"peso\": \"1.5\",\n      \"monto_cobrar\": \"25.90\",\n      \"notas\": \"Entregar en la tarde\"\n    },\n    {\n      \"num_remision\": \"REM-0002\",\n      \"destinatario\": \"María Rodríguez\",\n      \"telefono\": \"71234567\",\n      \"provincia\": \"Alajuela\",\n      \"canton\": \"Alajuela\",\n      \"distrito\": \"Alajuela\",\n      \"direccion\": \"100m sur de la iglesia, casa azul\",\n      \"producto\": \"Zapatos talla 40\",\n      \"peso\": \"2.3\",\n      \"monto_cobrar\": \"48.00\"\n    }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "3 · Listar órdenes (paginación + todos los filtros)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('la página respeta el limit pedido', () => {",
+              "  pm.expect(b.items.length).to.be.at.most(b.limit);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key?limit=25&offset=0&estado=en_reparto&desde=2026-08-01&hasta=2026-08-31&num_guia={{numGuia}}&num_remision={{numRemision}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "25",
+              "description": "1..100, por defecto 50."
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Desde 0. Paginación por desplazamiento."
+            },
+            {
+              "key": "estado",
+              "value": "en_reparto",
+              "description": "Uno de los 20 códigos del enum publicado (un código anterior al cambio de nombres responde 422 con el vigente). Desactivado: actívalo para acotar.",
+              "disabled": true
+            },
+            {
+              "key": "desde",
+              "value": "2026-08-01",
+              "description": "Fecha inclusiva, día en hora de Costa Rica (UTC-6).",
+              "disabled": true
+            },
+            {
+              "key": "hasta",
+              "value": "2026-08-31",
+              "description": "Fecha INCLUSIVA, día en hora de Costa Rica (UTC-6).",
+              "disabled": true
+            },
+            {
+              "key": "num_guia",
+              "value": "{{numGuia}}",
+              "description": "Guía exacta. Una ajena devuelve página vacía, no 404.",
+              "disabled": true
+            },
+            {
+              "key": "num_remision",
+              "value": "{{numRemision}}",
+              "description": "Remisión exacta. Una ajena devuelve página vacía, no 404.",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Los siete parámetros del listado en UNA sola petición: la paginación (`limit`, `offset`) va activa y los cinco filtros van **desactivados**; activa en Postman los que quieras probar. Combinarlos todos a la vez suele devolver una página vacía, que es la respuesta correcta y no un error."
+      }
+    },
+    {
+      "name": "4 · Detalle de una orden (por guía o remisión)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('responde la orden pedida', () => {",
+              "  pm.expect(b.numRemision).to.eql(pm.collectionVariables.get('numRemision'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/orden/{{numRemision}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "orden", "{{numRemision}}"]
+        },
+        "description": "El mismo path acepta el número de guía o la remisión: se resuelve por el identificador que le pases. Una orden de otro integrador responde `404`, igual que una inexistente."
+      }
+    },
+    {
+      "name": "5 · Analítica de tus órdenes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('el sobre trae rango y series', () => {",
+              "  pm.expect(b).to.have.property('rango');",
+              "  pm.expect(b.metricas).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/analitica?metricas=all&desde=2026-08-01&hasta=2026-08-31",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "analitica"],
+          "query": [
+            {
+              "key": "metricas",
+              "value": "all",
+              "description": "Lista separada por comas, o `all`. Omitirlo equivale a `all`."
+            },
+            {
+              "key": "desde",
+              "value": "2026-08-01",
+              "description": "Fecha inclusiva. Omitir ambas = todo el histórico.",
+              "disabled": true
+            },
+            {
+              "key": "hasta",
+              "value": "2026-08-31",
+              "description": "Fecha INCLUSIVA.",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Series diarias de tus métricas sobre tus órdenes. Un día sin dato NO aparece en `data`: no rellenes los huecos con ceros, porque «cero» y «no se sabe» no son el mismo número.\n\nOjo con la unidad de conteo: hay métricas que cuentan **gestiones** y no órdenes, así que no todas las series son sumables entre sí."
+      }
+    },
+    {
+      "name": "6 · PDF de etiqueta de una orden",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
+              "console.log('etiqueta:', b.url);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/orden/{{numRemision}}/generate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "orden", "{{numRemision}}", "generate"]
+        },
+        "description": "Devuelve una URL firmada de corta duración con el PDF. Se firma en cada llamada: la URL no se persiste, así que repetir la petición es la forma normal de volver a abrirlo."
+      }
+    },
+    {
+      "name": "7 · PDF consolidado de un lote",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
+              "console.log('consolidado:', b.url);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/carga/{{cargaId}}/generate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "carga", "{{cargaId}}", "generate"]
+        },
+        "description": "Las etiquetas de todas las órdenes del lote en un solo PDF. `cargaId` es el uuid que devolvió la carga; un lote de otro integrador responde `404`."
+      }
+    },
+    {
+      "name": "8 · Habilitar pedidos con novedad (lote)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('los contadores cuadran con el total', () => {",
+              "  pm.expect(b.habilitadas + b.habilitadasSinCambioDeEstado + b.conError).to.eql(b.total);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/habilitar",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "habilitar"]
+        },
+        "description": "Reactiva órdenes detenidas por una novedad. `nota` es OBLIGATORIA (1..200 caracteres). El lote acepta entre 1 y 100 filas y una fila mala no aborta el resto.\n\nSolo son habilitables una orden con la ayuda a la tienda abierta (sigue `en_reparto`; responde `habilitada` con `ayudaCerrada: true`) y una orden en `novedad`. Una `novedad` se habilita pero **no cambia de estado** (responde `habilitada_sin_cambio_de_estado`), y `reprogramado` NO es habilitable. Cada fila trae `estado` y su nombre visible `estadoNombre`.\n\nSustituye las guías del ejemplo por dos tuyas que estén en esos estados.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenes\": [\n    { \"num_guia\": 100234, \"nota\": \"el cliente pidió reintento mañana\" },\n    { \"num_guia\": 100235, \"nota\": \"dirección corregida por el call center\" }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "9 · Cancelar una orden",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/{{numGuia}}/cancelar",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "{{numGuia}}", "cancelar"]
+        },
+        "description": "Cancela la orden por su número de guía. Consume `{{numGuia}}`, la primera orden que creó la carga.\n\nOjo: este endpoint pide GUÍA, no remisión. Si tu tarifa tiene fulfillment, la orden nace sin guía y hay que esperar a que se emita."
+      }
+    },
+    {
+      "name": "10 · Eliminar una orden",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('devuelve la orden borrada y su estado', () => {",
+              "  pm.expect(b).to.have.all.keys('numGuia', 'numRemision', 'estado', 'estadoNombre');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/ordenes/api-key/orden/{{numRemisionDesechable}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "ordenes", "api-key", "orden", "{{numRemisionDesechable}}"]
+        },
+        "description": "Borrado definitivo. Usa a propósito `{{numRemisionDesechable}}` —la SEGUNDA orden de la carga— para no dejar sin sujeto a las peticiones anteriores.\n\nSolo se puede borrar mientras la orden no se haya gestionado; si ya se movió, responde `409`."
+      }
+    }
+  ]
+}

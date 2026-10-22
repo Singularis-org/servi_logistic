@@ -1,0 +1,1035 @@
+import { randomUUID } from "node:crypto";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { RolValue } from "@prisma/client";
+import { WalletService } from "@/lib/services/WalletService";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  CrearMovimientoInput,
+  IWalletMovimientoRepository,
+  WalletTxClient,
+} from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
+import type { AgregadoCajaRow, WalletMovimientoDTO } from "@/lib/types/wallet";
+import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
+
+// Feature 42 — tests unit del WalletService (R1/R3/R15/R16/R19/R20/R25). Guardia de rol
+// maestro; manual inmutable (no update/delete); DTOs con montos STRING.
+//
+// Feature 173 (T D.2, R8/R64/R65): `verBalance` —una sola cifra rotulada «balance»— pasa a
+// `verResumenCaja`, con las DOS cifras. El cambio de estas aserciones es DELIBERADO y esta
+// declarado en `design.md §11`; ninguna comprobacion se pierde: las tres del guardia de rol y
+// la del conjunto filtrado siguen, y se les suman las de la particion por naturaleza.
+
+const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" }; // feature 94: paridad con maestro
+const OTRO: Actor = { usuarioId: "u-otro", rol: "adminSatelite" };
+
+function mov(overrides: Partial<WalletMovimientoDTO> = {}): WalletMovimientoDTO {
+  const base = {
+    id: "w1",
+    tipo: "ingreso" as const,
+    categoria: "ingreso_flete" as const,
+    monto: "1000.00",
+    origenTipo: "cierre_dia" as const,
+    origenId: "c1",
+    descripcion: null,
+    registradoPor: null,
+    fechaMovimiento: "2026-07-12T10:00:00.000Z",
+    ...overrides,
+  };
+  // Feature 231 (R31): el `dueno` del fixture sale de la MISMA clasificacion que el del
+  // repositorio, no de un literal a mano — si no, cambiar la categoria de un caso dejaria el
+  // doble diciendo una cosa y el codigo real otra.
+  return {
+    ...base,
+    dueno: overrides.dueno ?? NATURALEZA_POR_CATEGORIA[base.categoria],
+    documento: overrides.documento ?? null, // ficha 459 (design §7.3)
+  };
+}
+
+/**
+ * Feature 173 (T D.2) — el agregado que devuelve el doble tiene dinero de las DOS naturalezas
+ * a proposito: contra-entrega recaudado (de TERCEROS) junto a flete y gasto (de la empresa). Con
+ * un conjunto solo-propio las dos cifras coincidirian y el test no distinguiria una derivacion
+ * correcta de una que ignora la naturaleza.
+ *
+ *   entradas = 1000 + 5000 = 6000.00 ; salidas = 300.00  ⇒ enCaja   = 5700.00
+ *   propios  = 1000        − 300     ⇒ ganancia = 700.00 (los ₡5000 son de las tiendas)
+ */
+const AGREGADO: AgregadoCajaRow[] = [
+  { categoria: "ingreso_flete", tipo: "ingreso", total: "1000.00" },
+  { categoria: "ingreso_cod_recaudado", tipo: "ingreso", total: "5000.00" },
+  { categoria: "egreso_gasto", tipo: "egreso", total: "300.00" },
+];
+
+/**
+ * Ficha 334 (T C.1) — el instante que la BASE pone cuando la clave `fechaMovimiento` no viaja.
+ *
+ * El doble tiene que distinguir «lo puso el DEFAULT de la columna» de «lo puso el servicio»:
+ * si las dos ramas produjeran el mismo valor, el caso de R23 pasaria igual con la rama de R22.
+ */
+const INSTANTE_DEL_DEFAULT = "2026-08-29T21:15:33.000Z";
+
+/**
+ * Doble del repositorio que RECUERDA lo que se inserto, para que `obtenerPorId` pueda devolver
+ * la fila recien creada. Sin esta memoria no se puede probar R28 —«devuelve el que creaste, no
+ * el mas reciente de su categoria»—: haria falta que el doble supiera de que fila se habla.
+ */
+function buildRepo(): IWalletMovimientoRepository {
+  const creados = new Map<string, WalletMovimientoDTO>();
+  /** Guarda la fila escrita para que `obtenerPorId` la encuentre despues. */
+  const guardar = (m: CrearMovimientoInput) => {
+    if (m.id === undefined) return; // los escritores automaticos no pasan id
+    creados.set(
+      m.id,
+      mov({
+        id: m.id,
+        tipo: m.tipo,
+        categoria: m.categoria,
+        monto: m.monto,
+        origenTipo: m.origenTipo,
+        origenId: m.origenId,
+        descripcion: m.descripcion ?? null,
+        registradoPor: m.registradoPor ?? null,
+        fechaMovimiento: (m.fechaMovimiento ?? new Date(INSTANTE_DEL_DEFAULT)).toISOString(),
+      }),
+    );
+  };
+  return {
+    crearMovimientos: vi.fn(async (_tx: WalletTxClient, movs: CrearMovimientoInput[]) => {
+      for (const m of movs) guardar(m);
+      return movs.length;
+    }),
+    listar: vi.fn().mockResolvedValue({ movimientos: [mov()], total: 1 }),
+    agregarPorCategoriaYTipo: vi.fn().mockResolvedValue(AGREGADO),
+    obtenerPorId: vi.fn(async (id: string) => creados.get(id) ?? null),
+    agregarPorCategoria: vi
+      .fn()
+      .mockResolvedValue({ gastoFijo: "0.00", gastoVariable: "0.00", sueldo: "0.00" }),
+    obtenerPorOrigen: vi.fn(), // ficha 333: lectura por la clave del libro; este camino no la usa
+    primerDiaDeLaCaja: vi.fn(async () => null), // ficha 459: el dia del primer movimiento
+    obtenerPorClave: vi.fn(async () => null), // ficha 461 (R68): la relectura del segundo envio; se sobrescribe donde se ejercita
+    // FICHA 362: el escritor de los movimientos que nacen de una DECISION humana. Abre su PROPIA
+    // transaccion y escribe ademas la fila de auditoria; los feeds automaticos —los ~34 asientos
+    // que emite aprobar un cierre— siguen entrando por `crearMovimientos` y NO dejan rastro.
+    //
+    // El doble guarda la fila igual que su hermano: el servicio RELEE POR ID lo que acaba de
+    // escribir (R28 de la 334), y un doble que no guardase haria fallar esa relectura por una
+    // razon que no tiene nada que ver con lo que el caso mide.
+    crearMovimientoRegistrado: vi.fn(async (m: CrearMovimientoInput & { id: string }) => {
+      guardar(m);
+      return 1;
+    }),
+  };
+}
+
+const writeClient = {} as WalletTxClient;
+
+describe("WalletService.listarMovimientos (R19/R20)", () => {
+  it("R19: rol no autorizado -> forbidden, sin tocar el repo", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.listarMovimientos({ page: 1, pageSize: 20 }, OTRO);
+    expect(r).toEqual({ status: "forbidden" });
+    expect(repo.listar).not.toHaveBeenCalled();
+  });
+
+  it("feature 94: admin -> ok (paridad con maestro)", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.listarMovimientos({ page: 1, pageSize: 20 }, ADMIN);
+    expect(r.status).toBe("ok");
+    expect(repo.listar).toHaveBeenCalled();
+  });
+
+  it("R20: maestro -> ok; pasa filtros al repo; DTO con monto STRING", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const desde = new Date("2026-07-01T00:00:00.000Z");
+    const r = await svc.listarMovimientos(
+      { page: 2, pageSize: 10, tipo: "ingreso", categoria: "ingreso_flete", desde },
+      MAESTRO,
+    );
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("esperado ok");
+    expect(r.data.page).toBe(2);
+    expect(r.data.pageSize).toBe(10);
+    expect(typeof r.data.movimientos[0].monto).toBe("string");
+    expect(repo.listar).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 10,
+      tipo: "ingreso",
+      categoria: "ingreso_flete",
+      desde,
+      hasta: undefined,
+    });
+  });
+});
+
+describe("WalletService.verResumenCaja (R8/R64/R65)", () => {
+  it("R65: rol no autorizado -> forbidden, y CERO llamadas al repositorio", async () => {
+    // La contraprueba literal que pide la task: el guardia se evalua ANTES de tocar la base.
+    // No es estilo — un `forbidden` decidido despues del `groupBy` ya habria LEIDO las cifras
+    // de la caja para tirarlas a la basura. Se miden los CINCO metodos, no solo el que usa
+    // este camino: ninguno puede haberse rozado.
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, OTRO);
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect(repo.agregarPorCategoriaYTipo).not.toHaveBeenCalled();
+    expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.agregarPorCategoria).not.toHaveBeenCalled();
+    expect(repo.obtenerPorId).not.toHaveBeenCalled();
+    expect(repo.crearMovimientos).not.toHaveBeenCalled();
+    expect(repo.crearMovimientoRegistrado).not.toHaveBeenCalled();
+    // …y `forbidden` viaja SOLO: ni una cifra colgando de la respuesta.
+    expect(Object.keys(r)).toEqual(["status"]);
+    // Ficha 459: tampoco el primer dia de la caja.
+    expect(repo.primerDiaDeLaCaja).not.toHaveBeenCalled();
+  });
+
+  it("459/R14/R15: estado «flujo» y `flujoDesde` = el dia del primer movimiento, leido SIN filtros", async () => {
+    const repo = buildRepo();
+    repo.primerDiaDeLaCaja = vi.fn(async () => "2026-08-25");
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20, tipo: "ingreso" }, MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperado ok");
+    expect(r.resumen.estado).toBe("flujo");
+    expect(r.resumen.flujoDesde).toBe("2026-08-25");
+    // Sin filtros ni la opcion de excluir el capital: es el «desde» del flujo, no del periodo.
+    expect(repo.primerDiaDeLaCaja).toHaveBeenCalledWith();
+  });
+
+  it("459/R15: con el libro vacio, `flujoDesde` es null", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+    expect(r.resumen.flujoDesde).toBeNull();
+  });
+
+  it("feature 94: admin -> ok (paridad con maestro)", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, ADMIN);
+    expect(r.status).toBe("ok");
+    expect(repo.agregarPorCategoriaYTipo).toHaveBeenCalled();
+  });
+
+  it("R1/R4/R5: maestro -> las DOS cifras, distintas, derivadas del conjunto agregado", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("esperado ok");
+    // Ficha 459 (reescrito A PROPOSITO): el ingreso propio de 1 000 es un CARGO a la tienda
+    // (flete/comision), no efectivo: «Entro» es el contra-entrega (5 000) y «De las tiendas» baja
+    // lo que la empresa se queda de el (5 000 − 1 000 = 4 000). La ganancia no cambia (700).
+    expect(r.resumen).toEqual({
+      entradas: "5000.00",
+      salidas: "300.00",
+      enCaja: "4700.00",
+      signoEnCaja: "positivo",
+      ingresosPropios: "1000.00",
+      egresosPropios: "300.00",
+      ganancia: "700.00",
+      signoGanancia: "positivo",
+      deTerceros: "4000.00",
+      periodoFiltrado: false,
+      // 4 000 / 4 700 x 100 = 85.106… -> "85.11".
+      porcentajeTiendas: "85.11",
+      modoComposicion: "dos_bolsillos",
+      capital: "0.00",
+      signoCapital: "cero",
+      deEmpresa: "700.00",
+      signoDeTerceros: "positivo",
+      deTercerosAbsoluto: "4000.00",
+      estado: "flujo",
+      flujoDesde: null,
+    });
+    // Lo que la feature existe para conseguir: los ₡5000 de contra-entrega estan en la caja y
+    // NO estan en la ganancia. Si `verResumenCaja` ignorara la naturaleza, serian iguales.
+    expect(r.resumen.enCaja).not.toBe(r.resumen.ganancia);
+  });
+
+  it("R64: TODOS los importes cruzan como STRING — cero `number` en el DTO", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    const importes = [
+      r.resumen.entradas,
+      r.resumen.salidas,
+      r.resumen.enCaja,
+      r.resumen.ingresosPropios,
+      r.resumen.egresosPropios,
+      r.resumen.ganancia,
+      r.resumen.deTerceros,
+    ];
+    for (const v of importes) {
+      expect(typeof v).toBe("string");
+      expect(v).toMatch(/^-?\d+\.\d{2}$/); // escala 2 SIEMPRE, tambien en el cero
+    }
+    expect(typeof r.resumen.periodoFiltrado).toBe("boolean"); // el unico no-STRING, y no es dinero
+  });
+
+  it("R8: los filtros del resumen son LOS MISMOS del listado, resueltos por el mismo metodo", async () => {
+    // Se compara llamada contra llamada, sobre la misma entrada: si alguien copiara la
+    // construccion de filtros en vez de reusar `construirFiltros`, los dos objetos dejarian de
+    // ser iguales y la cabecera podria dejar de cuadrar con su propio listado.
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const desde = new Date("2026-07-01T00:00:00.000Z");
+    const hasta = new Date("2026-07-31T00:00:00.000Z");
+    const input = {
+      page: 3,
+      pageSize: 10,
+      tipo: "ingreso" as const,
+      categoria: "ingreso_cod_recaudado" as const,
+      desde,
+      hasta,
+    };
+
+    await svc.listarMovimientos(input, MAESTRO);
+    await svc.verResumenCaja(input, MAESTRO);
+
+    const delListado = (repo.listar as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    const delResumen = (repo.agregarPorCategoriaYTipo as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+
+    expect(delResumen).toEqual({ tipo: "ingreso", categoria: "ingreso_cod_recaudado", desde, hasta });
+    // Identicos salvo el RECORTE, que es del listado y no del conjunto: las claves del listado
+    // son las del resumen MAS `page`/`pageSize`, y cada valor comun coincide uno a uno.
+    expect(Object.keys(delListado).sort()).toEqual(
+      [...Object.keys(delResumen), "page", "pageSize"].sort(),
+    );
+    for (const clave of Object.keys(delResumen)) {
+      expect(delListado[clave]).toEqual(delResumen[clave]);
+    }
+  });
+
+  it("[P7]: sin filtros `periodoFiltrado` es false; con CUALQUIERA de los cuatro, true", async () => {
+    const svc = () => new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const bandera = async (extra: Record<string, unknown>) => {
+      const r = await svc().verResumenCaja({ page: 1, pageSize: 20, ...extra }, MAESTRO);
+      if (r.status !== "ok") throw new Error("esperado ok");
+      return r.resumen.periodoFiltrado;
+    };
+
+    // `page`/`pageSize` NO son filtros: recortan la pagina, no el conjunto. Paginar no puede
+    // cambiar el rotulo de la cifra.
+    expect(await bandera({})).toBe(false);
+    expect(await bandera({ page: 7, pageSize: 100 })).toBe(false);
+
+    expect(await bandera({ tipo: "egreso" })).toBe(true);
+    expect(await bandera({ categoria: "egreso_pago_tienda" })).toBe(true);
+    expect(await bandera({ desde: new Date("2026-07-01T00:00:00.000Z") })).toBe(true);
+    expect(await bandera({ hasta: new Date("2026-07-31T00:00:00.000Z") })).toBe(true);
+  });
+
+  it("[P7]: el servidor NO pinta texto — el DTO lleva el HECHO, no el rotulo", async () => {
+    // R60/R58 son de la pantalla (T G.1). Aqui lo unico que se comprueba es que el servidor no
+    // se mete a redactar: ningun campo del DTO es una frase.
+    const svc = new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.verResumenCaja(
+      { page: 1, pageSize: 20, tipo: "ingreso" },
+      MAESTRO,
+    );
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    expect(r.resumen.periodoFiltrado).toBe(true);
+    // Ningun VALOR del DTO es prosa: o es un importe, o es un signo, o es el booleano. Se mide
+    // sobre los valores y no sobre el JSON entero a proposito —las CLAVES si pueden llamarse
+    // `ganancia`, faltaria mas—. Lo que no puede aparecer es una frase que la pantalla deba
+    // limitarse a repetir: eso convertiria al servidor en el que redacta, y el rotulo
+    // condicional de [P7] dejaria de ser una decision de la UI.
+    for (const [clave, valor] of Object.entries(r.resumen)) {
+      if (clave === "periodoFiltrado") continue;
+      if (clave.startsWith("signo")) {
+        expect(["positivo", "negativo", "cero"]).toContain(valor);
+        continue;
+      }
+      // Feature 231: `modoComposicion` es el TERCER enum del DTO y se mide igual que los dos
+      // signos — un valor de una lista cerrada, no una frase. La afirmacion de este caso («el
+      // servidor no redacta») se conserva entera: sigue sin haber ni un texto que la pantalla
+      // deba limitarse a repetir.
+      if (clave === "modoComposicion") {
+        expect(["dos_bolsillos", "solo_tiendas", "solo_empresa", "sin_reparto"]).toContain(valor);
+        continue;
+      }
+      // Ficha 459 (R14/R15): el ESTADO es un cuarto enum cerrado y `flujoDesde` una fecha (o
+      // null). Tampoco son prosa: el rotulo lo redacta la pantalla.
+      if (clave === "estado") {
+        expect(["flujo", "saldo"]).toContain(valor);
+        continue;
+      }
+      if (clave === "flujoDesde") {
+        expect(valor === null || /^\d{4}-\d{2}-\d{2}$/.test(String(valor))).toBe(true);
+        continue;
+      }
+      expect(valor).toMatch(/^-?\d+\.\d{2}$/);
+    }
+  });
+
+  it("libro vacio -> las dos cifras en 0.00 y signo `cero` (nunca `null` ni cadena vacia)", async () => {
+    const repo = buildRepo();
+    (repo.agregarPorCategoriaYTipo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    expect(r.resumen.enCaja).toBe("0.00");
+    expect(r.resumen.ganancia).toBe("0.00");
+    expect(r.resumen.signoEnCaja).toBe("cero");
+    expect(r.resumen.signoGanancia).toBe("cero");
+    expect(r.resumen.deTerceros).toBe("0.00");
+  });
+
+  // ── Feature 231 (T2.4, design §3.2) — la composicion viaja con el resumen ──
+
+  it("R24: una sola lectura: las dos derivaciones salen del mismo array", async () => {
+    // La contraprueba tiene que distinguir «una lectura» de «dos lecturas que dieron lo mismo».
+    // Por eso el doble devuelve un agregado DISTINTO a partir de la segunda llamada: si el
+    // servicio consultara la base dos veces —una por derivacion—, la composicion hablaria del
+    // segundo instante y las aserciones de abajo caerian con el importe a la vista.
+    const repo = buildRepo();
+    (repo.agregarPorCategoriaYTipo as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(AGREGADO)
+      .mockResolvedValue([
+        { categoria: "ingreso_flete", tipo: "ingreso", total: "9999.00" },
+        { categoria: "egreso_sueldo", tipo: "egreso", total: "4444.00" },
+      ] satisfies AgregadoCajaRow[]);
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    // (a) UNA sola lectura de la base por consulta de pantalla.
+    expect(repo.agregarPorCategoriaYTipo).toHaveBeenCalledTimes(1);
+    // (b) la composicion habla del PRIMER agregado, no del segundo.
+    expect(r.composicion.ingresos.ingreso_flete).toBe("1000.00");
+    expect(r.composicion.ingresos.ingreso_flete).not.toBe("9999.00");
+    expect(r.composicion.totalEgresos).toBe("300.00");
+    // (c) y las dos derivaciones cuadran entre si, que es lo que R24 existe para garantizar:
+    //     la tarjeta de la ganancia y la cifra de la caja no pueden discrepar.
+    expect(r.composicion.totalIngresos).toBe(r.resumen.ingresosPropios);
+    expect(r.composicion.totalEgresos).toBe(r.resumen.egresosPropios);
+    // (d) el dinero de las tiendas (5 000) no se coló en la ganancia por ningún lado.
+    expect(r.composicion.totalIngresos).not.toBe(r.resumen.entradas);
+  });
+
+  it("R30: `forbidden` no viaja con composición", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, OTRO);
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect("composicion" in r).toBe(false);
+    expect("resumen" in r).toBe(false);
+    expect(Object.keys(r)).toEqual(["status"]);
+    // Control de no-vacuidad del `not`: con un rol autorizado, el MISMO camino SI trae las dos.
+    const permitido = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    expect("composicion" in permitido).toBe(true);
+    expect("resumen" in permitido).toBe(true);
+  });
+
+  it("R23/R26: la composición cruza la frontera con TODOS sus importes como STRING", async () => {
+    const svc = new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.verResumenCaja({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    const importes = [
+      ...Object.values(r.composicion.ingresos),
+      r.composicion.totalIngresos,
+      r.composicion.otrosEgresos,
+      r.composicion.totalEgresos,
+    ];
+    expect(importes.length).toBe(11); // 8 conceptos (ficha 461: + el cobro a una tienda) + 3 totales: ninguno se pierde
+    for (const v of importes) {
+      expect(typeof v).toBe("string");
+      expect(v).toMatch(/^-?\d+\.\d{2}$/); // escala 2 SIEMPRE, tambien en el cero
+    }
+  });
+});
+
+// == Ficha 339 (T3.3, design 4.3) - el DETALLE de una fila de la tarjeta de la ganancia ==
+//
+// Lo que este archivo puede probar con un doble es el ALCANCE POR ROL y QUE SE LE PIDE A LA
+// BASE (que el conjunto de la fila viaje en los filtros del repositorio, y no salga de un
+// `filter` posterior). Lo que un doble NO puede probar es que el `WHERE` acote de verdad: eso
+// se mide contra Postgres en `tests/integration/db/composicion-detalle-postgres.test.ts`,
+// porque en este repo esta medido cuatro veces que una mutacion del `WHERE` pasa en verde por
+// delante de un doble.
+
+const DETALLE_BASE = { fila: "egreso_pago_mensajero" as const, page: 1, pageSize: 10 };
+
+describe("WalletService.listarMovimientosDeFila (R18/R20/R33/R38/R39/R40)", () => {
+  it("R38/R39: un rol sin acceso total recibe `forbidden`, sin movimientos y SIN tocar el repo", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.listarMovimientosDeFila(DETALLE_BASE, OTRO);
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect(Object.keys(r)).toEqual(["status"]); // ninguna rama de error viaja con filas
+    // R39: el guardia va ANTES de la base. Cero invocaciones, no "una que devolvio nada".
+    expect(repo.listar).not.toHaveBeenCalled();
+    // Control de no-vacuidad del `not`: con un rol autorizado, el MISMO camino SI la llama.
+    await new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459).listarMovimientosDeFila(DETALLE_BASE, MAESTRO);
+    expect(repo.listar).toHaveBeenCalledTimes(1);
+  });
+
+  it("R40: el detalle usa el MISMO predicado de acceso que el listado, rol por rol", async () => {
+    // Se recorre el enum ENTERO y se compara con el listado, que es el alcance vigente: si el
+    // detalle abriera (o cerrara) la puerta a un rol, los dos estados dejarian de coincidir.
+    // Asi la ficha no puede cambiar permisos sin que este caso lo nombre.
+    const roles = Object.values(RolValue);
+    expect(roles.length).toBeGreaterThan(3); // no-vacuidad: el enum trae roles de verdad
+
+    const medidos: Record<string, [string, string]> = {};
+    for (const rol of roles) {
+      const actor: Actor = { usuarioId: `u-${rol}`, rol };
+      const detalle = await new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459).listarMovimientosDeFila(
+        DETALLE_BASE,
+        actor,
+      );
+      const listado = await new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459).listarMovimientos(
+        { page: 1, pageSize: 20 },
+        actor,
+      );
+      medidos[rol] = [detalle.status, listado.status];
+      expect(detalle.status, `rol ${rol}`).toBe(listado.status);
+    }
+
+    // Y el alcance MEDIDO, escrito a mano: si los dos caminos se abrieran a la vez, la
+    // comparacion de arriba seguiria en verde y esto no.
+    expect(medidos.maestro[0]).toBe("ok");
+    expect(medidos.admin[0]).toBe("ok");
+    expect(medidos.mensajero[0]).toBe("forbidden");
+    expect(medidos.adminTienda[0]).toBe("forbidden");
+    expect(medidos.adminSatelite[0]).toBe("forbidden");
+  });
+
+  it("R18: el conjunto de la fila lo resuelve el SERVIDOR y viaja a la CONSULTA", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    await svc.listarMovimientosDeFila(DETALLE_BASE, MAESTRO);
+    await svc.listarMovimientosDeFila({ ...DETALLE_BASE, fila: "otros_egresos" }, MAESTRO);
+    await svc.listarMovimientosDeFila({ ...DETALLE_BASE, fila: "ingreso_flete" }, MAESTRO);
+
+    const llamadas = (repo.listar as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => (c[0] as { categorias?: readonly string[] }).categorias,
+    );
+
+    // Una fila de concepto es su propia categoria; «otros» es el COMPLEMENTO derivado, que hoy
+    // vale exactamente `egreso_gasto`. El cliente mando un TOKEN: no hay forma de que el
+    // navegador declare que categorias componen el cubo.
+    expect(llamadas[0]).toEqual(["egreso_pago_mensajero"]);
+    expect(llamadas[1]).toEqual(["egreso_gasto"]);
+    expect(llamadas[2]).toEqual(["ingreso_flete"]);
+    // El pago al mensajero YA NO esta dentro de «otros»: es la ficha entera, medida aqui.
+    expect(llamadas[1]).not.toContain("egreso_pago_mensajero");
+    expect(llamadas[1]).not.toContain("egreso_ajuste");
+  });
+
+  it("R20: los filtros del detalle son los MISMOS del listado, resueltos por el mismo metodo", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const desde = new Date("2026-08-01T00:00:00.000Z");
+    const hasta = new Date("2026-08-31T00:00:00.000Z");
+
+    await svc.listarMovimientos({ page: 2, pageSize: 25, tipo: "egreso", desde, hasta }, MAESTRO);
+    await svc.listarMovimientosDeFila(
+      { ...DETALLE_BASE, page: 2, pageSize: 25, tipo: "egreso", desde, hasta },
+      MAESTRO,
+    );
+
+    const calls = (repo.listar as ReturnType<typeof vi.fn>).mock.calls;
+    const delListado = calls[0][0] as Record<string, unknown>;
+    const delDetalle = calls[1][0] as Record<string, unknown>;
+
+    // Identicos salvo `categorias`, que es lo UNICO propio del detalle.
+    expect(Object.keys(delDetalle).sort()).toEqual([...Object.keys(delListado), "categorias"].sort());
+    for (const clave of Object.keys(delListado)) {
+      expect(delDetalle[clave], clave).toEqual(delListado[clave]);
+    }
+  });
+
+  it("R33: la interseccion con el filtro de categoria vigente viaja al `WHERE`, tambien vacia", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    // (a) el filtro coincide con la fila: la interseccion es esa categoria.
+    await svc.listarMovimientosDeFila(
+      { ...DETALLE_BASE, categoria: "egreso_pago_mensajero" },
+      MAESTRO,
+    );
+    // (b) el filtro contradice a la fila: la interseccion es VACIA y se pasa tal cual, para que
+    //     el recorte lo haga la base (`IN ()` -> cero filas) y no un `if` en memoria.
+    await svc.listarMovimientosDeFila({ ...DETALLE_BASE, categoria: "egreso_sueldo" }, MAESTRO);
+
+    const calls = (repo.listar as ReturnType<typeof vi.fn>).mock.calls;
+    expect((calls[0][0] as { categorias: readonly string[] }).categorias).toEqual([
+      "egreso_pago_mensajero",
+    ]);
+    expect((calls[1][0] as { categorias: readonly string[] }).categorias).toEqual([]);
+    // Y el filtro del usuario NO se pierde por el camino: los dos conviven en el `where`.
+    expect((calls[1][0] as { categoria?: string }).categoria).toBe("egreso_sueldo");
+  });
+
+  it("R31/R34: el `total` sale del repositorio y los montos cruzan como STRING", async () => {
+    const repo = buildRepo();
+    // Una pagina de UNA fila con un total de 47: si el servicio devolviera `movimientos.length`
+    // -que es la trampa que R31 persigue-, este caso cae con los dos numeros a la vista.
+    (repo.listar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      movimientos: [mov({ categoria: "egreso_pago_mensajero", tipo: "egreso", monto: "227300.00" })],
+      total: 47,
+    });
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.listarMovimientosDeFila(DETALLE_BASE, MAESTRO);
+    if (r.status !== "ok") throw new Error("esperado ok");
+
+    expect(r.data.total).toBe(47);
+    expect(r.data.movimientos).toHaveLength(1);
+    expect(r.data.total).not.toBe(r.data.movimientos.length);
+    expect(r.data.page).toBe(1);
+    expect(r.data.pageSize).toBe(10);
+    expect(typeof r.data.movimientos[0].monto).toBe("string");
+    expect(r.data.movimientos[0].monto).toBe("227300.00");
+  });
+});
+
+describe("WalletService.registrarMovimientoManual (R1/R3/R15/R19)", () => {
+  it("R19: rol no autorizado -> forbidden, sin crear nada", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.registrarMovimientoManual(
+      { claveIdempotencia: randomUUID(), tipo: "ingreso", categoria: "ingreso_ajuste", monto: "50.00", descripcion: "x" },
+      OTRO,
+    );
+    expect(r).toEqual({ status: "forbidden" });
+    expect(repo.crearMovimientos).not.toHaveBeenCalled();
+    expect(repo.crearMovimientoRegistrado).not.toHaveBeenCalled();
+  });
+
+  it("feature 94: admin -> crea manual (paridad con maestro)", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.registrarMovimientoManual(
+      { claveIdempotencia: randomUUID(), tipo: "ingreso", categoria: "ingreso_ajuste", monto: "50.00", descripcion: "x" },
+      ADMIN,
+    );
+    expect(r.status).toBe("ok");
+    // FICHA 362: el manual entra por `crearMovimientoRegistrado`, con UN movimiento.
+    const arg = [(repo.crearMovimientoRegistrado as ReturnType<typeof vi.fn>).mock.calls[0][0]];
+    expect(arg[0]).toMatchObject({ registradoPor: "u-admin", origenTipo: "manual" });
+  });
+
+  it("R15: maestro -> crea manual con origen_tipo manual, origen_id null, registrado_por actor", async () => {
+    const repo = buildRepo();
+    (repo.listar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      movimientos: [mov({ id: "w-manual", tipo: "egreso", categoria: "egreso_ajuste", monto: "50.00", origenTipo: "manual", origenId: null, descripcion: "correccion", registradoPor: "u-maestro" })],
+      total: 1,
+    });
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const r = await svc.registrarMovimientoManual(
+      { claveIdempotencia: randomUUID(), tipo: "egreso", categoria: "egreso_ajuste", monto: "50.00", descripcion: "correccion" },
+      MAESTRO,
+    );
+    expect(r.status).toBe("ok");
+    // FICHA 362: el manual entra por `crearMovimientoRegistrado`, con UN movimiento.
+    const arg = [(repo.crearMovimientoRegistrado as ReturnType<typeof vi.fn>).mock.calls[0][0]];
+    expect(arg[0]).toMatchObject({
+      tipo: "egreso",
+      categoria: "egreso_ajuste",
+      monto: "50.00",
+      origenTipo: "manual",
+      origenId: null,
+      descripcion: "correccion",
+      registradoPor: "u-maestro",
+    });
+  });
+
+  it("R3: el servicio NO expone update ni delete (solo listar/verResumenCaja/registrarManual)", () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    expect((svc as unknown as Record<string, unknown>).actualizar).toBeUndefined();
+    expect((svc as unknown as Record<string, unknown>).eliminar).toBeUndefined();
+    expect((svc as unknown as Record<string, unknown>).update).toBeUndefined();
+    expect((svc as unknown as Record<string, unknown>).delete).toBeUndefined();
+    // R3: el repo tampoco expone update/delete de movimientos.
+    expect((repo as unknown as Record<string, unknown>).actualizar).toBeUndefined();
+    expect((repo as unknown as Record<string, unknown>).eliminar).toBeUndefined();
+  });
+});
+
+
+// ── Ficha 334 (T C.1) — la FECHA elegida y el movimiento que se devuelve ──
+//
+// Dos defectos que la fecha vuelve DETERMINISTAS y que por eso entran aqui:
+//
+//  1. Con la fecha de hoy, el movimiento tiene que seguir fechandose con el instante del
+//     registro (R23). Es el caso normal, y su coste tiene que ser CERO.
+//  2. La relectura «el mas reciente de esta categoria» funcionaba por accidente. Con un
+//     movimiento fechado en el pasado devuelve OTRA fila, y el servicio afirma «este es el que
+//     registraste» sobre dinero ajeno (R28).
+
+describe("WalletService.registrarMovimientoManual — la fecha elegida (R22/R23/R28)", () => {
+  /** 09:00 CR del 29 de agosto: el reloj de pared con el que se teclea. */
+  const AHORA = "2026-08-29T15:00:00.000Z";
+  const HOY_CR = "2026-08-29";
+  const AYER_CR = "2026-08-28";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function conRelojEnAhora(): void {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(AHORA));
+  }
+
+  function ajuste(fecha?: string) {
+    return {
+      claveIdempotencia: randomUUID(),
+      tipo: "egreso" as const,
+      categoria: "egreso_ajuste" as const,
+      monto: "50.00",
+      descripcion: "correccion",
+      ...(fecha !== undefined ? { fecha } : {}),
+    };
+  }
+
+  // FICHA 362: el ajuste manual pasa por `crearMovimientoRegistrado` —que ademas escribe la fila
+  // de auditoria en la misma transaccion—, asi que la fila insertada se lee de ahi. Recibe UN
+  // movimiento (no un array): ese es el punto, un ajuste manual es un acto, no un lote.
+  function filaInsertada(repo: IWalletMovimientoRepository): CrearMovimientoInput {
+    return (repo.crearMovimientoRegistrado as ReturnType<typeof vi.fn>).mock.calls[0][0];
+  }
+
+  it("R23: con la fecha de HOY, la clave fechaMovimiento NO viaja (manda el DEFAULT de la columna)", async () => {
+    conRelojEnAhora();
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.registrarMovimientoManual(ajuste(HOY_CR), MAESTRO);
+
+    expect(r.status).toBe("ok");
+    // La clave AUSENTE, no `undefined`: es lo que deja que la columna caiga en su
+    // `DEFAULT CURRENT_TIMESTAMP` y que el movimiento siga encabezando el libro.
+    expect(Object.keys(filaInsertada(repo))).not.toContain("fechaMovimiento");
+    if (r.status !== "ok") throw new Error("esperado ok");
+    expect(r.movimiento.fechaMovimiento).toBe(INSTANTE_DEL_DEFAULT);
+  });
+
+  it("sin fecha, tampoco viaja — el camino de siempre no cambia ni un byte", async () => {
+    conRelojEnAhora();
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    await svc.registrarMovimientoManual(ajuste(), MAESTRO);
+
+    expect(Object.keys(filaInsertada(repo))).not.toContain("fechaMovimiento");
+  });
+
+  it("R22: con la fecha de AYER, viaja el instante en que ese dia EMPIEZA en Costa Rica (06:00Z)", async () => {
+    conRelojEnAhora();
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.registrarMovimientoManual(ajuste(AYER_CR), MAESTRO);
+
+    expect(r.status).toBe("ok");
+    // `${ayer}T06:00:00.000Z` y NO `T00:00:00.000Z`: con medianoche UTC, el rollup diario
+    // —que agrupa por `(fecha_movimiento − 6h)::date`— contaria el gasto de ayer como de
+    // ANTEAYER. El literal es el contrato de esa frontera.
+    expect(filaInsertada(repo).fechaMovimiento).toEqual(new Date("2026-08-28T06:00:00.000Z"));
+    if (r.status !== "ok") throw new Error("esperado ok");
+    expect(r.movimiento.fechaMovimiento).toBe("2026-08-28T06:00:00.000Z");
+  });
+
+  it("R28: devuelve el movimiento que CREO, aunque exista uno mas reciente de su misma categoria", async () => {
+    conRelojEnAhora();
+    const repo = buildRepo();
+    // El senuelo: otro ajuste de la MISMA categoria y mas reciente. Es exactamente lo que la
+    // relectura vieja (`listar({ page: 1, pageSize: 1, tipo, categoria })`) habria devuelto.
+    (repo.listar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      movimientos: [
+        mov({
+          id: "w-otro-ajuste-mas-reciente",
+          tipo: "egreso",
+          categoria: "egreso_ajuste",
+          monto: "999.99",
+          origenTipo: "manual",
+          origenId: null,
+          fechaMovimiento: "2026-08-29T20:00:00.000Z",
+        }),
+      ],
+      total: 1,
+    });
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    const r = await svc.registrarMovimientoManual(ajuste(AYER_CR), MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("esperado ok");
+    const idInsertado = filaInsertada(repo).id;
+    // CONTROL DE NO-VACUIDAD: el servicio genero un id y lo mando en la insercion.
+    expect(idInsertado).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(r.movimiento.id).toBe(idInsertado);
+    expect(r.movimiento.id).not.toBe("w-otro-ajuste-mas-reciente");
+    expect(r.movimiento.monto).toBe("50.00"); // el suyo, no los 999.99 del senuelo
+    // Y ni siquiera pregunta por el listado: la relectura es por ID.
+    expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.obtenerPorId).toHaveBeenCalledWith(idInsertado);
+  });
+
+  it("un solo INSERT: la fila lleva su id dentro, no se parte el createMany en dos", async () => {
+    conRelojEnAhora();
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+
+    await svc.registrarMovimientoManual(ajuste(AYER_CR), MAESTRO);
+
+    // FICHA 362: UNA llamada a `crearMovimientoRegistrado`, y con UN solo movimiento — la firma
+    // ya no admite un lote, que es una garantia mas fuerte que contar la longitud del array.
+    expect(repo.crearMovimientoRegistrado).toHaveBeenCalledTimes(1);
+    expect(repo.crearMovimientos).not.toHaveBeenCalled();
+  });
+});
+
+// Ficha 459 (R14): el lector del estado de la caja; estos casos no registran saldo inicial.
+const SIN_SALDO_INICIAL_459 = { haySaldoInicialVigente: async () => false };
+// Ficha 459 (design §7.3): ningun documento; el libro sin acciones. Lista vacia -> sin consulta.
+const SIN_DOCUMENTOS_459 = {
+  pagosPorCuenta: { estadoDeDocumentos: async () => [] },
+  aportes: { estadoDeDocumentos: async () => [] },
+  cobros: { estadoDeDocumentos: async () => [] }, ajustes: { estadoDeDocumentos: async () => [] }, // ficha 461
+  abonos: { estadoDeDocumentos: async () => [] }, // ficha 457: lo exige `LectoresDocumentosCaja`; esta suite no lee pagos de una tienda a la empresa
+  egresos: { estadoDeDocumentos: async () => [] }, indemnizaciones: { estadoDeDocumentos: async () => [] }, rechazos: { estadoDeDocumentos: async () => [] }, pagosATienda: { estadoDeDocumentos: async () => [] }, premios: { estadoDeDocumentos: async () => [] }, // ficha 458-B: lo exige `LectoresDocumentosCaja`
+};
+
+// ─── FICHA 459 (T B.16, design §7.3) — el DOCUMENTO de cada fila, resuelto en lote ───
+describe("WalletService.listarMovimientos — el documento de las filas originales (R66/R67)", () => {
+  const PAGO = "0b6c1f7e-7a44-4b43-9c1a-5e0f2d9a1c11";
+  const PAGO_2 = "1b6c1f7e-7a44-4b43-9c1a-5e0f2d9a1c12";
+  const APORTE = "9f2e3d4c-1b2a-4c3d-8e9f-0a1b2c3d4e5f";
+  const COBRO = "ecf6c289-9799-4558-be6d-ce5f8a12f5cd";
+  // Ficha 461: un cobro con su linea PROPIA (vigente), otro COMPLETADO por la migracion (anulado).
+  const COBRO_PROPIO = "4610000a-0000-4000-8000-000000000001";
+  const COBRO_COMPLETADO = "4610000a-0000-4000-8000-000000000002";
+  // Ficha 457 (R41): un pago de una tienda a la empresa (vigente, con comprobante) y su reverso.
+  const ABONO = "4570000a-0000-4000-8000-000000000001";
+
+  const PAGINA: WalletMovimientoDTO[] = [
+    // Ficha 457 (design §8.5): la ENTRADA del pago de una tienda a la empresa es original; su reverso no.
+    // Mutacion 10 de design §13 (sin la rama del abono en `tipoDeDocumentoOriginal`) deja `b1` en `null`.
+    mov({ id: "b1", tipo: "ingreso", categoria: "ingreso_abono_tienda", origenTipo: "abono_tienda", origenId: ABONO }),
+    mov({ id: "b1r", tipo: "egreso", categoria: "egreso_reverso_abono_tienda", origenTipo: "abono_tienda", origenId: ABONO }),
+    // Original del pago por cuenta (vigente, con comprobante).
+    mov({ id: "p1", tipo: "egreso", categoria: "egreso_pago_por_cuenta_tienda", origenTipo: "pago_por_cuenta_tienda", origenId: PAGO }),
+    // Original de otro pago por cuenta (anulado).
+    mov({ id: "p2", tipo: "egreso", categoria: "egreso_pago_por_cuenta_tienda", origenTipo: "pago_por_cuenta_tienda", origenId: PAGO_2 }),
+    // Su contra-asiento: MISMO origen, otra categoria.
+    mov({ id: "r2", tipo: "ingreso", categoria: "ingreso_reverso_pago_por_cuenta_tienda", origenTipo: "pago_por_cuenta_tienda", origenId: PAGO_2 }),
+    // La salida de un cobro reclasificado: MISMA categoria, origen del cobro.
+    mov({ id: "c1", tipo: "egreso", categoria: "egreso_pago_por_cuenta_tienda", origenTipo: "cobro_manual_reclasificado", origenId: COBRO }),
+    // Original del saldo inicial y el contra-asiento de su anulacion.
+    mov({ id: "a1", tipo: "ingreso", categoria: "ingreso_aporte_capital", origenTipo: "aporte_capital", origenId: APORTE }),
+    mov({ id: "a1r", tipo: "egreso", categoria: "egreso_reverso_aporte_capital", origenTipo: "aporte_capital", origenId: APORTE }),
+    // Ficha 461 (design §5.4, R20/R37): la linea de caja de un cobro con su origen PROPIO, la de otro
+    // COMPLETADO por la migracion (los dos son originales), y el reverso del segundo (no lo es).
+    mov({ id: "k1", tipo: "ingreso", categoria: "ingreso_cobro_tienda", origenTipo: "cobro_tienda", origenId: COBRO_PROPIO }),
+    mov({ id: "k2", tipo: "ingreso", categoria: "ingreso_cobro_tienda", origenTipo: "cobro_tienda_completado", origenId: COBRO_COMPLETADO }),
+    mov({ id: "k2r", tipo: "egreso", categoria: "egreso_reverso_cobro_tienda", origenTipo: "cobro_tienda", origenId: COBRO_COMPLETADO }),
+    // Una fila cualquiera.
+    mov({ id: "f1" }),
+  ];
+
+  function lectores() {
+    return {
+      pagosPorCuenta: {
+        estadoDeDocumentos: vi.fn(async (ids: readonly string[]) =>
+          ids.map((id) => ({ id, anulado: id === PAGO_2, tieneComprobante: id === PAGO })),
+        ),
+      },
+      aportes: {
+        estadoDeDocumentos: vi.fn(async (ids: readonly string[]) =>
+          ids.map((id) => ({ id, anulado: true, tieneComprobante: false })),
+        ),
+      },
+      cobros: {
+        estadoDeDocumentos: vi.fn(async (ids: readonly string[]) =>
+          ids.map((id) => ({ id, anulado: id === COBRO_COMPLETADO, tieneComprobante: false })),
+        ),
+      },
+      // Ficha 461 (R71): las correcciones de caja; en esta pagina ninguna esta anulada.
+      ajustes: {
+        estadoDeDocumentos: vi.fn(async (ids: readonly string[]) =>
+          ids.map((id) => ({ id, anulado: false, tieneComprobante: false })),
+        ),
+      },
+      // Ficha 457 (R41): los pagos de una tienda a la empresa; el de esta pagina lleva comprobante.
+      abonos: {
+        estadoDeDocumentos: vi.fn(async (ids: readonly string[]) =>
+          ids.map((id) => ({ id, anulado: false, tieneComprobante: true })),
+        ),
+      },
+      // Ficha 458-B (R71): los tres lectores nuevos; esta pagina no trae ninguna de sus filas.
+      egresos: { estadoDeDocumentos: vi.fn(async () => []) },
+      indemnizaciones: { estadoDeDocumentos: vi.fn(async () => []) },
+      rechazos: { estadoDeDocumentos: vi.fn(async () => []) },
+      // Ficha 458-C (revision B3): el pago a una tienda y el premio; esta pagina no trae ninguno.
+      pagosATienda: { estadoDeDocumentos: vi.fn(async () => []) },
+      premios: { estadoDeDocumentos: vi.fn(async () => []) },
+    };
+  }
+
+  it("solo los ORIGINALES llevan documento; contra-asientos, reclasificados y el resto van en null", async () => {
+    const repo = buildRepo();
+    vi.mocked(repo.listar).mockResolvedValue({ movimientos: PAGINA, total: PAGINA.length });
+    const docs = lectores();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, docs);
+
+    const r = await svc.listarMovimientos({ page: 1, pageSize: 20 }, MAESTRO);
+    if (r.status !== "ok") throw new Error("se esperaba ok");
+    const porId = Object.fromEntries(r.data.movimientos.map((m) => [m.id, m.documento]));
+
+    expect(porId).toEqual({
+      p1: { tipo: "pago_por_cuenta_tienda", anulado: false, tieneComprobante: true },
+      p2: { tipo: "pago_por_cuenta_tienda", anulado: true, tieneComprobante: false },
+      r2: null,
+      c1: null,
+      a1: { tipo: "aporte_capital", anulado: true, tieneComprobante: false },
+      a1r: null,
+      // Ficha 461 (R20/R37): las DOS lineas de cobro son originales —la propia y la completada—; el
+      // reverso no. Mutacion 14 de design §14.2 (sin el origen `cobro_tienda_completado`) deja `k2`
+      // en `null` y este caso en rojo.
+      k1: { tipo: "cobro_tienda", anulado: false, tieneComprobante: false },
+      k2: { tipo: "cobro_tienda", anulado: true, tieneComprobante: false },
+      k2r: null,
+      f1: null,
+      // Ficha 457 (R41): la entrada del pago de una tienda lleva su documento (con comprobante); el reverso no.
+      b1: { tipo: "abono_tienda", anulado: false, tieneComprobante: true },
+      b1r: null,
+    });
+  });
+
+  it("UNA consulta por tipo de documento presente, con solo los ids de los originales", async () => {
+    const repo = buildRepo();
+    vi.mocked(repo.listar).mockResolvedValue({ movimientos: PAGINA, total: PAGINA.length });
+    const docs = lectores();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, docs);
+
+    await svc.listarMovimientos({ page: 1, pageSize: 20 }, MAESTRO);
+
+    expect(docs.pagosPorCuenta.estadoDeDocumentos).toHaveBeenCalledTimes(1);
+    expect(docs.pagosPorCuenta.estadoDeDocumentos).toHaveBeenCalledWith([PAGO, PAGO_2]);
+    expect(docs.aportes.estadoDeDocumentos).toHaveBeenCalledTimes(1);
+    expect(docs.aportes.estadoDeDocumentos).toHaveBeenCalledWith([APORTE]);
+    // Ficha 461: UNA consulta para los dos cobros (propio y completado), sin el reverso.
+    expect(docs.cobros.estadoDeDocumentos).toHaveBeenCalledTimes(1);
+    expect(docs.cobros.estadoDeDocumentos).toHaveBeenCalledWith([COBRO_PROPIO, COBRO_COMPLETADO]);
+    // Ficha 457: UNA consulta para el pago de la tienda, solo con el id de la entrada original.
+    expect(docs.abonos.estadoDeDocumentos).toHaveBeenCalledTimes(1);
+    expect(docs.abonos.estadoDeDocumentos).toHaveBeenCalledWith([ABONO]);
+  });
+
+  it("sin filas de un tipo, ese lector NO se consulta", async () => {
+    const repo = buildRepo(); // una sola fila de flete
+    const docs = lectores();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, docs);
+
+    const r = await svc.listarMovimientos({ page: 1, pageSize: 20 }, MAESTRO);
+
+    expect(docs.pagosPorCuenta.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.aportes.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.cobros.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 461
+    expect(docs.abonos.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 457
+    if (r.status !== "ok") throw new Error("se esperaba ok");
+    expect(r.data.movimientos.every((m) => m.documento === null)).toBe(true);
+  });
+
+  it("forbidden no consulta ningún documento", async () => {
+    const docs = lectores();
+    const svc = new WalletService(buildRepo(), writeClient, SIN_SALDO_INICIAL_459, docs);
+    expect(await svc.listarMovimientos({ page: 1, pageSize: 20 }, OTRO)).toEqual({ status: "forbidden" });
+    expect(docs.pagosPorCuenta.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.aportes.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.cobros.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 461
+    expect(docs.abonos.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 457
+  });
+
+  it("la descarga del libro NO resuelve documentos (R58: la descarga no los lleva)", async () => {
+    const repo = buildRepo();
+    vi.mocked(repo.listar).mockResolvedValue({ movimientos: PAGINA, total: PAGINA.length });
+    const docs = lectores();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, docs);
+
+    await svc.listarMovimientosCompleto({}, MAESTRO);
+    expect(docs.pagosPorCuenta.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.aportes.estadoDeDocumentos).not.toHaveBeenCalled();
+    expect(docs.cobros.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 461
+    expect(docs.abonos.estadoDeDocumentos).not.toHaveBeenCalled(); // ficha 457
+  });
+});
+
+// ─── FICHA 461 (R66/R68, auditoria D2) — la clave de idempotencia de la correccion de caja ───
+
+describe("WalletService.registrarMovimientoManual — la clave de idempotencia (461/R66/R68)", () => {
+  it("la clave del cliente viaja a la fila que se inserta", async () => {
+    const repo = buildRepo();
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const clave = randomUUID();
+    const r = await svc.registrarMovimientoManual(
+      { claveIdempotencia: clave, tipo: "ingreso", categoria: "ingreso_ajuste", monto: "50.00", descripcion: "x" },
+      MAESTRO,
+    );
+    expect(r.status).toBe("ok");
+    const arg = vi.mocked(repo.crearMovimientoRegistrado).mock.calls[0][0];
+    expect(arg.claveIdempotencia).toBe(clave);
+    expect(arg.origenId).toBeNull(); // la idempotencia la da la CLAVE, no el origen
+  });
+
+  it("R68: si el repositorio no inserto (count 0: la clave ya tenia su fila), responde `ya_registrado` con la fila releida POR CLAVE y no relee por id", async () => {
+    const original = mov({ id: "w-original", categoria: "ingreso_ajuste", monto: "50.00", origenTipo: "manual", origenId: null });
+    const repo = buildRepo();
+    repo.crearMovimientoRegistrado = vi.fn(async () => 0);
+    repo.obtenerPorClave = vi.fn(async () => original);
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    const clave = randomUUID();
+    const r = await svc.registrarMovimientoManual(
+      { claveIdempotencia: clave, tipo: "ingreso", categoria: "ingreso_ajuste", monto: "50.00", descripcion: "x" },
+      MAESTRO,
+    );
+    expect(r).toEqual({ status: "ya_registrado", movimiento: original });
+    expect(repo.obtenerPorClave).toHaveBeenCalledWith(clave);
+    expect(repo.obtenerPorId).not.toHaveBeenCalled();
+  });
+
+  it("count 0 sin fila que releer es un error con contexto, no una fila inventada", async () => {
+    const repo = buildRepo();
+    repo.crearMovimientoRegistrado = vi.fn(async () => 0);
+    repo.obtenerPorClave = vi.fn(async () => null);
+    const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+    await expect(
+      svc.registrarMovimientoManual(
+        { claveIdempotencia: randomUUID(), tipo: "ingreso", categoria: "ingreso_ajuste", monto: "50.00", descripcion: "x" },
+        MAESTRO,
+      ),
+    ).rejects.toThrow(/clave de idempotencia repetida/);
+  });
+});

@@ -1,0 +1,1315 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Feature 211 — cuándo dispara el variant `dark:`.
+ *
+ * DOS caminos, no uno, y el segundo no es un lujo:
+ *
+ * 1. `.dark` en un ancestro = elección EXPLÍCITA del usuario («oscuro»). La clase la
+ *    estampa `providers/TemaProvider.tsx` desde la cookie que lee `(app)/layout.tsx`.
+ *
+ * 2. `.tema-sistema` + `prefers-color-scheme: dark` = «respetar el sistema», que es el
+ *    estado POR DEFECTO. Si sólo giraran los tokens y las utilidades `dark:` no
+ *    dispararan, la mitad de la app quedaría en el bug que la feature 208 documentó como
+ *    el más repetido del repo: un token que gira sobre un fondo que no («Badge`
+ *    success/warning/danger, `Button` outline/destructive, `EstatusBadge`…). El variant
+ *    y los tokens tienen que encenderse JUNTOS.
+ *
+ * Las dos vías miran a un ANCESTRO (`*`), nunca al propio elemento: por eso la clase
+ * puede vivir en un envoltorio del portal y no hace falta tocar `<html>`.
+ */
+@custom-variant dark {
+  /*
+   * Feature 221 — AL IMPRIMIR, EL VARIANT `dark:` NO DISPARA.
+   *
+   * El variant se resuelve contra el ANCESTRO (`&:is(.dark *)`), no contra los tokens, así que
+   * hasta aquí las utilidades `dark:` de las primitivas seguían emitiendo también dentro de
+   * `@media print`: quien imprimía desde tema oscuro sacaba insignias y botones con su tinte
+   * oscuro sobre papel blanco. Envolver las DOS ramas apaga eso en toda la app de una vez, en vez
+   * de parche por componente. Comprobado contra el compilador real (tailwindcss 4.3.2): cada
+   * utilidad `dark:*` sale ya envuelta en `@media not print { … }`, las dos ramas dentro.
+   *
+   * ── ESTO APAGA EL VARIANT, NO LOS TOKENS. Era su límite, y LO LEVANTÓ LA FEATURE 224.
+   * `.dark` no estaba acotado a pantalla: hasta la 224, al imprimir desde «oscuro» `--foreground`
+   * seguía siendo `#e6ecf8` en todas partes salvo dentro de `.papel-al-imprimir` —las dos hojas
+   * del comprobante del cierre, feature 217, aquí abajo—. Medido el 2026-08-13 con
+   * `tests/fixtures/contraste.ts`:
+   *
+   *  · Donde la tinta sale de un TOKEN, esta regla NO cambia el papel: `Badge` success medía 1.92
+   *    sobre papel blanco (`#34d399`) antes y después, porque el token no gira al imprimir. Esta
+   *    regla no lo arregla y nunca pretendió hacerlo — lo arregla el bloque `@media print` de la
+   *    FEATURE 224, aquí abajo y pegado encima de `.dark`, que redeclara los tokens claros para
+   *    `.dark` y `.tema-sistema`: 1.92 → 5.48.
+   *  · Donde la rama `dark:` es de PALETA FIJA, el papel mejora de verdad, y eso es lo que esta
+   *    regla compra: `Button` brand-outline 1.47 → 18.88, `EstatusBadge` «en reparto»
+   *    1.47 → 18.88, `Toast` success 2.13 → 6.99. (Recalculado con la marca de SL-8: la rama
+   *    `dark:` de las dos primeras es `brand-light`, el amarillo fijo, que sobre papel blanco no se
+   *    lee. Desde SL-8 la rama base de brand-outline, `text-brand`, ya no es paleta fija sino el
+   *    token `--primary`, que al imprimir vale el `#111111` del tema claro.)
+   *  · Y HAY UNA FILA MIXTA, EN LA QUE ESTA REGLA NO COMPRA: LA BAJA. `RankingPodio` 3.º es
+   *    `text-asfalto-7 dark:text-foreground`: paleta fija por un lado, TOKEN por el otro. Estuvo
+   *    listada arriba como paleta fija y medida con el lector que no ve el papel, y así parecía
+   *    comprar «1.19 → 11.39». Con la 224 dentro y midiendo el papel de verdad: si el variant
+   *    disparara imprimiría `--foreground` ya claro (`#111111` desde SL-8, 18.88) y como no
+   *    dispara imprime `asfalto-7` (`#1f3a63`, 11.39). O sea **18.88 → 11.39**. No es un problema
+   *    de lectura —las
+   *    dos pasan AAA— pero la frase «esta regla mejora el papel» no vale para esta fila, y no se
+   *    revierte la regla por ella: apagar el variant se decidió para toda la app y ésta es la
+   *    única que pierde, sobre un suelo de 11.39.
+   *
+   *    «LA ÚNICA» ESTÁ CENSADA, no prometida: hoy hay UNA sola utilidad `dark:text-<token>` en
+   *    todo el árbol (`dark:text-foreground`, en `RankingPodio`), y ésa es la condición para que
+   *    una fila pueda perder — la rama `dark:` la mueve la 224 y la base, si es paleta fija, no la
+   *    mueve nadie. Si aparece una segunda, la guardia se pone roja y pide medirla antes de que
+   *    esta frase envejezca. Es a propósito una sobreaproximación: no clasifica la rama base
+   *    —eso exige parsear `cn()` y ahí empiezan los falsos positivos—, así que puede pedir una
+   *    revisión que resulte innecesaria. Falla hacia el lado ruidoso.
+   *  · Dentro de `.papel-al-imprimir`, donde los tokens YA son claros, esto COMPLETA la 217: lo
+   *    impreso pasa a ser EXACTAMENTE el tema claro, y deja de depender del tema de pantalla.
+   *    `Button` destructive 5.32 → 5.30, `Button` outline 17.78 → 17.60, `Badge` destructive
+   *    5.32 → 5.30. (El destructivo decía 2.90 → 3.29 hasta la feature 222, con la variante
+   *    colgada de `--destructive`; hoy usa el par de `danger`, el mismo que el `Badge`. El
+   *    outline decía 14.78 → 14.79 hasta SL-8: con el fondo claro de la marca, `#F7F7F5`, la
+   *    rama base queda 0.18 por debajo de la `dark:`; las dos pasan AAA.)
+   *
+   * Y EL PRECIO QUE ESTA REGLA COBRÓ, dicho cuando se cobraba y dicho ahora que YA NO SE COBRA:
+   * si el usuario marcaba «gráficos de fondo» —viene DESMARCADO en los tres navegadores—, los
+   * cuatro `Badge` semánticos imprimían su fondo `-soft` claro bajo una tinta que seguía siendo
+   * la oscura, y caían muy por debajo de AA. Era el patrón que la 208 documentó —un token que
+   * gira sobre un fondo que no— y su arreglo era fijar los tokens claros al imprimir FUERA de la
+   * hoja del cierre, que cambia el papel de las quince rutas del portal y por eso fue decisión
+   * propia. Esa decisión es la FEATURE 224 y YA ENTRÓ: está aquí abajo, con los cuatro pares
+   * medidos y por encima de AA junto a su bloque.
+   *
+   * NO DECLARES TOKENS AQUÍ DENTRO. `quitarBloquesDeImpresion()` borra toda at-rule que nombre
+   * `print` antes de leer los tokens de pantalla, así que un token metido aquí desaparecería del
+   * lector y las medidas de tema oscuro pasarían a medir otra cosa, en verde.
+   *
+   * Guardia: `tests/unit/guards/impresion-sin-dark.guardia.test.ts`.
+   */
+  @media not print {
+    &:is(.dark *) {
+      @slot;
+    }
+    @media (prefers-color-scheme: dark) {
+      &:is(.tema-sistema *) {
+        @slot;
+      }
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-20: var(--chart-20);
+  --color-chart-19: var(--chart-19);
+  --color-chart-18: var(--chart-18);
+  --color-chart-17: var(--chart-17);
+  --color-chart-16: var(--chart-16);
+  --color-chart-15: var(--chart-15);
+  --color-chart-14: var(--chart-14);
+  --color-chart-13: var(--chart-13);
+  --color-chart-12: var(--chart-12);
+  --color-chart-11: var(--chart-11);
+  --color-chart-10: var(--chart-10);
+  --color-chart-9: var(--chart-9);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Paleta de la marca (`docs/marca.md`), como tokens de utilidad Tailwind v4 (bg-, text-,
+     border- generados por color). Complementa a los tokens shadcn de arriba; no los reemplaza.
+     Los nombres (`brand`, `navy`…) se conservan como alias para no editar sus consumidores
+     (SL-8, `design.md > Alternativas descartadas`).
+
+     SL-8 — `brand` y su tinta GIRAN CON EL TEMA: apuntan a `--primary`, que es `#111111` en claro
+     y `#FFD000` en oscuro. Así ningún `text-brand` puede dar amarillo sobre blanco (1.47:1), y el
+     amarillo en claro queda sólo en utilidades de valor fijo (`brand-light`, `sidebar-primary`),
+     que se pintan sobre superficies oscuras fijas. `@theme inline` copia el `var()` en cada
+     utilidad, así que lo resuelve el tema del elemento y no el de `:root`. */
+  --color-brand: var(--primary);
+  --color-brand-foreground: var(--primary-foreground);
+  /* Acento fijo: sólo texto o relleno sobre superficie oscura (12.84 sobre #111111). */
+  --color-brand-light: #FFD000;
+  /* Tinta fija sobre superficie clara (17.70 sobre `brand-soft`). */
+  --color-brand-dark: #111111;
+  /* Tinte suave del acento: componer(#FFD000, #FFFFFF, 0.15). */
+  --color-brand-soft: #FFF8D9;
+  --color-navy: #1C1C1A;
+  --color-navy-deep: #111111;
+  --color-asfalto-0: #f2f5fb;
+  --color-asfalto-1: #e9edf6;
+  --color-asfalto-2: #dde1ee;
+  --color-asfalto-4: #8a94ad;
+  --color-asfalto-5: #4a5368;
+  --color-asfalto-7: #1f3a63;
+  --color-asfalto-9: #0d2444;
+  --color-info: #1a56db;
+  --color-ink-blue: #1d5fd4;
+  /* Hover del azul de acción (`ink-blue`), un tono más oscuro de la misma rampa. */
+  --color-ink-blue-dark: #0b3880;
+  --color-success: #10b981;
+  --color-success-soft: #d1fae5;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fee2e2;
+  --color-info-soft: #eff6ff;
+  /* Variantes -strong: contrast-safe SOLO para TEXTO (>=4.5:1 sobre fondo claro
+     y oscuro). Los tokens base/-soft son claros y NO sirven para body text. Ver
+     DESIGN.md (Color: 3 roles = -soft fondo / base acento-borde-punto / -strong texto).
+     El valor real vive en :root/.dark para tener variante en modo oscuro. */
+  --color-success-strong: var(--success-strong);
+  --color-warning-strong: var(--warning-strong);
+  --color-danger-strong: var(--danger-strong);
+  --color-info-strong: var(--info-strong);
+  /* Feature 292 — LOS CUATRO PARES DE LOS `--chart-*` QUE PINTAN LA BARRA DEL MONITOREO.
+     Cuatro de los ocho contadores del tablero del día se pintan en la barra apilada con un
+     `--chart-*` (`app/(app)/monitoreo/_components/contadores.ts`) y su tarjeta llevaba una
+     variante semántica de otro color: la barra no se podía leer desde las tarjetas. Para que
+     la tarjeta tome el color de SU segmento hace falta lo que un color plano no da: el PAR
+     (`-soft` de fondo + `-strong` de texto) que el `Badge` usa.
+     Mismos tres roles que los semánticos (DESIGN.md): `-soft` fondo claro, `--chart-N` acento
+     —el que ya pinta el segmento, sin tocar—, `-strong` texto. En oscuro no hay `-soft`: el
+     `Badge` compone `--chart-N/15`, y por eso el acento GIRA con el tema y el `-soft` no.
+     Los ocho números medidos están junto a cada `-strong`, y los ata
+     `tests/unit/guards/contraste-tokens.guardia.test.ts`. */
+  --color-chart-6-soft: #ede9fe;
+  --color-chart-11-soft: #ffedd5;
+  --color-chart-12-soft: #f1f5f9;
+  --color-chart-13-soft: #dbeafe;
+  --color-chart-6-strong: var(--chart-6-strong);
+  --color-chart-11-strong: var(--chart-11-strong);
+  --color-chart-12-strong: var(--chart-12-strong);
+  --color-chart-13-strong: var(--chart-13-strong);
+  /* Ficha 458 — EL TOKEN DE TEXTO DE ENLACE. Nació porque el primario anterior no llegaba al 4.5
+     de texto sobre `--background` (2.99) y se apuntó a un tono más oscuro de su rampa. SL-8 lo
+     re-apunta al propio `--primary`, que con la marca ya es tinta de lectura en los dos temas:
+     `#111111` mide 17.60 sobre `--background` claro (#F7F7F5) y `#FFD000` 12.84 sobre el oscuro
+     (#111111). Sigue siendo un ALIAS, no un color nuevo: gira con el tema sin repetir el valor en
+     cada bloque de `:root`/`.dark`. */
+  --color-primary-strong: var(--primary);
+  --color-hivis: #f4c500;
+  --color-kraft-canvas: #F7F7F5;
+  --color-kraft-card: #ffffff;
+  --color-kraft-inset: #f1f4fb;
+}
+
+/*
+ * `.tema-claro` fija los valores CLAROS dentro de su subárbol, gane lo que gane
+ * arriba. Existe para las superficies que son claras POR DISEÑO y no deben girar
+ * con el tema. DOS consumidores hoy:
+ *
+ *  1. La landing pública (`app/page.tsx`), cuyo arte está compuesto sobre fotografías
+ *     y una paleta fija (`kraft-*`, `asfalto-*`, `navy-deep`).
+ *  2. Feature 211: el envoltorio del portal cuando el usuario elige «claro» a mano. Es
+ *     la misma necesidad —fijar los valores claros pase lo que pase— y por eso reusa
+ *     esta clase en vez de inventar otra: al no haber `.dark` ni `.tema-sistema` en el
+ *     árbol, las utilidades `dark:` tampoco disparan.
+ *
+ * HUBO UN TERCERO Y YA NO ESTÁ, que es la clase de dato que conviene no perder: las dos
+ * hojas de la factura del cierre (`cierres-admin/_components/cierre-factura.tsx`) la
+ * llevaron hasta la feature 217 porque se leían como el facsímil de un comprobante en
+ * papel. El pedido humano del 2026-08-13 cambió esa decisión: la hoja GIRA con el tema
+ * en pantalla y sólo vuelve a claro AL IMPRIMIR, con la regla `@media print` de aquí
+ * abajo. Si buscás por qué la factura ya no usa esta clase, es eso, no un olvido.
+ *
+ * Sin esto, la landing NO era inmune "de rebote": usa `text-success-strong`, y los
+ * cuatro `--*-strong` sí tienen variante en `.dark` — es decir, el día que la fase 2
+ * ponga `.dark` en <html>, ese texto verde oscuro se volvería verde claro sobre un
+ * fondo `-soft` que sigue siendo claro (medido: 1.7:1). Declararlo aquí lo resuelve
+ * de raíz y para cualquier token futuro, en vez de parche a parche.
+ *
+ * LÍMITE: fija los TOKENS, no apaga el variant `dark:`, que se define contra el ancestro
+ * (`@custom-variant dark (&:is(.dark *))`) y no contra los tokens. Las utilidades
+ * `dark:` de las primitivas (`Badge` success/warning/danger/destructive, `Button`
+ * outline/ghost/destructive) siguen disparando dentro de un subárbol `tema-claro`, así
+ * que ahí el resultado es «tokens claros + variante oscura». Los pares que eso produce
+ * y los que quedan bajo AA son deuda de PALETA (fichas 210/216), no de esta clase: se
+ * tratan para toda la app y no con un parche por componente. Si algún día pesa, el
+ * arreglo de raíz es el propio variant `dark:`.
+ */
+:root,
+.tema-claro {
+  --radius: 0.625rem;
+  /* SL-8 — tema claro de la marca (`docs/marca.md > Paleta`, `design.md > D3`). Todo valor es
+     un color de la paleta o `componer(color, fondo, α)` de dos de ellos, con el α escrito. */
+  --background: #F7F7F5;
+  --foreground: #111111; /* 17.60 sobre el fondo · 18.88 sobre la tarjeta */
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  --primary: #111111;
+  --primary-foreground: #ffffff; /* 18.88 sobre `--primary` */
+  --secondary: #eef1f8;
+  --secondary-foreground: #111111;
+  --muted: #f1f4fb;
+  --muted-foreground: #4a5368;
+  --accent: #FFF8D9; /* componer(#FFD000, #FFFFFF, 0.15) */
+  --accent-foreground: #111111; /* 17.70 sobre `--accent` */
+  --destructive: #ef4444;
+  --border: #e3e8f2;
+  --input: #e3e8f2;
+  /* Feature 226 — el anillo de foco es un INDICADOR de interfaz: WCAG 1.4.11 le pide 3:1
+     contra el fondo adyacente, no el 4.5 de texto. Nació separado de `--primary` porque el
+     primario anterior no llegaba a 3 en tres de las seis superficies donde el portal monta un
+     botón. Con la marca de SL-8 el primario es `#111111` y el anillo vuelve a ser el mismo
+     color: el peor de los seis es `--secondary`, con 16.70 (`--muted` 17.15, `--background`
+     17.60, `--accent` 17.70, `--card` y `--popover` 18.88).
+     Medido con la aritmetica de `tests/fixtures/contraste.ts`; atado en
+     `tests/unit/guards/contraste-tokens.guardia.test.ts`. */
+  --ring: #111111;
+  --chart-1: #f26419;
+  --chart-2: #0b2545;
+  --chart-3: #1a56db;
+  --chart-4: #10b981;
+  --chart-5: #f59e0b;
+  --chart-6: #8b5cf6;
+  --chart-7: #ec4899;
+  --chart-8: #06b6d4;
+  --chart-9: #84cc16;
+  --chart-10: #ef4444;
+  --chart-11: #9a3412;
+  --chart-12: #64748b;
+  --chart-13: #1e3a8a;
+  --chart-14: #047857;
+  --chart-15: #b45309;
+  --chart-16: #6d28d9;
+  --chart-17: #9d174d;
+  --chart-18: #0e7490;
+  --chart-19: #4d7c0f;
+  --chart-20: #991b1b;
+  /* La barra lateral es la misma superficie oscura en los dos temas (`#1C1C1A`). */
+  --sidebar: #1C1C1A;
+  --sidebar-foreground: #C0C0BE; /* componer(#F7F7F5, #1C1C1A, 0.75) · 9.37 sobre la barra */
+  --sidebar-primary: #FFD000; /* 11.60 sobre la barra */
+  --sidebar-primary-foreground: #111111; /* 12.84 sobre `--sidebar-primary` */
+  --sidebar-accent: #2E2E2C; /* componer(#FFFFFF, #1C1C1A, 0.08) */
+  --sidebar-accent-foreground: #ffffff; /* 13.61 sobre `--sidebar-accent` */
+  --sidebar-border: #373735; /* componer(#FFFFFF, #1C1C1A, 0.12) */
+  --sidebar-ring: #FFD000; /* 11.60 sobre la barra */
+  /* Texto semántico contrast-safe (modo claro). Medido sobre #ffffff/#F7F7F5 y
+     sobre el -soft correspondiente: todos >=4.5:1. */
+  --success-strong: #047857; /* vs card 5.48 · vs bg 5.11 · vs success-soft 4.84 */
+  /* Feature 210: era #b45309, que daba 4.51 sobre `-soft` —AA por una centésima— y 4.09 sobre el
+     `warning/15` del icono de CajaResumenCard. #92400e sube los cuatro pares con margen. El de
+     oscuro (#fbbf24) NO se toca: mide 7.70 sobre la tarjeta de la marca. */
+  --warning-strong: #92400e; /* vs card 7.09 · vs bg 6.61 · vs warning-soft 6.37 · vs warning/15 6.31 */
+  --danger-strong: #b91c1c; /* vs card 6.47 · vs bg 6.03 · vs danger-soft 5.30 */
+  --info-strong: #1d4ed8; /* vs card 6.70 · vs bg 6.25 · vs info-soft 6.16 */
+  /* Feature 292 — la tinta de los cuatro pares de `--chart-*` (modo claro). Es el PROPIO color
+     del segmento donde ya cumple AA sobre su `-soft` —`chart-11` (6.38) y `chart-13` (8.49)—
+     y el tono más oscuro de la MISMA rampa donde el segmento no llegaba: `chart-6` daba 3.57 y
+     `chart-12` 4.34. Ni un tono nuevo: los dos movidos son el mismo violeta y la misma pizarra,
+     dos escalones más abajo. */
+  --chart-6-strong: #6d28d9; /* vs card 7.10 · vs bg 6.62 · vs chart-6-soft 5.98 */
+  --chart-11-strong: #9a3412; /* vs card 7.31 · vs bg 6.81 · vs chart-11-soft 6.38 */
+  --chart-12-strong: #334155; /* vs card 10.35 · vs bg 9.65 · vs chart-12-soft 9.45 */
+  --chart-13-strong: #1e3a8a; /* vs card 10.36 · vs bg 9.66 · vs chart-13-soft 8.49 */
+}
+
+/*
+ * Feature 217 — AL IMPRIMIR, EL PAPEL ES CLARO.
+ *
+ * Las dos hojas del comprobante del cierre (`cierres-admin/_components/cierre-factura.tsx`)
+ * GIRAN con el tema en pantalla: son una superficie más del portal. En papel no: una
+ * factura que se imprime en oscuro gasta tóner y sale ilegible. Esta regla devuelve los
+ * valores claros al subárbol de la hoja SÓLO cuando el medio es impresión.
+ *
+ * POR QUÉ FIJA TOKENS Y NO PINTA UN FONDO. Es la lección medida de la 208, girada de
+ * lado: `bg-white` a secas dejó 116 textos bajo 4.5:1 porque pintó el papel y dejó la
+ * tinta del tema. Una regla de impresión que dijera `background: white` haría lo mismo en
+ * papel. Y hay un motivo más fuerte: los navegadores NO imprimen los fondos salvo que el
+ * usuario marque «gráficos de fondo», que viene DESMARCADO. Sin esta regla, imprimir
+ * desde tema oscuro daría tinta `#F7F7F5` sobre un fondo oscuro que no se imprime:
+ * blanco sobre blanco, la hoja sale en papel EN BLANCO. Fijando los tokens, la tinta
+ * vuelve a `#111111` y el resultado no depende de que se imprima superficie alguna.
+ *
+ * POR ESO NO HAY `print-color-adjust: exact`: forzaría a imprimir el fondo… oscuro, que
+ * es exactamente el gasto de tóner que esta decisión descarta. Esta regla arregla la
+ * TINTA; el papel lo pone la hoja física.
+ *
+ * ACOTADA A LAS HOJAS: no toca `.dark`, ni `.tema-sistema`, ni `@custom-variant dark`. Cuando
+ * se escribió, eso quería decir además que «el resto del portal imprime hoy como imprimía
+ * ayer», y eso YA NO ES CIERTO: la feature 224 añadió aquí abajo un `@media print` que sí
+ * redeclara los tokens claros para `.dark` y `.tema-sistema`, y con él el portal entero sale
+ * en tema claro. De ESTA regla sigue siendo cierto lo primero —su alcance es la hoja—, y por
+ * eso no sobra: es la que garantiza el color de la hoja aunque algún subárbol futuro fije
+ * tokens oscuros por otra vía.
+ *
+ * ── LO QUE ESTA REGLA **NO** APAGA, Y QUIÉN LO APAGÓ DESPUÉS
+ * Esta regla no apaga el variant `dark:`: se resuelve contra el ANCESTRO
+ * (`&:is(.dark *)`), no contra los tokens, así que no lo alcanza. Hasta la feature 221,
+ * eso significaba que al imprimir DESDE tema oscuro las utilidades `dark:` de `Badge` y
+ * `Button` seguían disparando dentro de la hoja. Se aceptaba porque no era una regresión:
+ * «tokens claros + `dark:` disparando» es EXACTAMENTE lo que la hoja mostraba en pantalla
+ * antes de la 217, cuando llevaba `tema-claro`, así que lo impreso salía igual a lo que se
+ * veía entonces, no peor. El «arreglo de raíz» que este comentario mandaba a FICHA PROPIA
+ * —envolver las dos ramas de `@custom-variant dark` en `@media not print`, apagando el
+ * variant al imprimir en toda la app— es la feature 221, y YA ENTRÓ: está arriba, con su
+ * medición y su guardia. Hoy, dentro de esta hoja, lo impreso es exactamente el tema
+ * claro.
+ *
+ * Medido con la aritmética de `tests/fixtures/contraste.ts`: el peor caso era `Button`
+ * variant `destructive`, que daba 2.89 con el variant disparando y 4.43 en pantalla
+ * oscura, con la variante colgada de `--destructive`. La feature 222 la pasó al par de
+ * `danger` y hoy mide 5.32 y 5.20; ya no es el peor caso.
+ *
+ * ── LO QUE ESTA REGLA NO CUBRE, Y QUIÉN LO CUBRIÓ DESPUÉS
+ * Esta regla garantiza el COLOR, no el formato. Cuando se escribió, no había `@page`, ni
+ * márgenes, ni saltos de página, ni ocultamiento del resto de la interfaz, y el detalle
+ * —que vive dentro de un modal con `overflow-y-auto`— salía RECORTADO en papel. Eso quedó
+ * dicho aquí como lo que era: la mitad que faltaba, no un olvido.
+ *
+ * Esa mitad es la FEATURE 223, y está JUSTO DEBAJO: el bloque `@media print` del flujo,
+ * con su `@page`, su ocultamiento por pertenencia y su paginación. Las dos reglas conviven
+ * y hacen cosas distintas — ésta pone el color del papel, aquélla decide qué llega a él —
+ * y por eso no se fusionan: la comparación `toEqual` contra `.tema-claro` que vigila esta
+ * regla se rompería con la primera declaración de formato que entrara aquí dentro.
+ *
+ * Lo que SIGUE siendo cierto, y no lo cambia la 223: no hay botón de imprimir ni llamada a
+ * la API de impresión del navegador. La única vía es Ctrl+P.
+ *
+ * Lo que DEJÓ de ser cierto, y va dicho porque estaba escrito aquí: «el resto del portal —las
+ * quince rutas que no son la hoja del cierre— imprime como imprimía antes de las dos». De
+ * estas dos reglas sigue siéndolo, porque ninguna de esas rutas monta la hoja y ni el color de
+ * aquí ni el flujo de abajo las alcanzan. Del PAPEL ya no: la feature 224 redeclara los tokens
+ * claros para `.dark` y `.tema-sistema` al imprimir, así que esas quince rutas salen hoy en
+ * tema claro. Su bloque está más abajo, pegado encima de `.dark`.
+ *
+ * LOS VALORES SON LOS MISMOS QUE LOS DE `:root, .tema-claro`, literalmente, por la misma
+ * razón que `.tema-sistema` repite a `.dark`: CSS no sabe reutilizar un bloque de
+ * declaraciones bajo otra condición. Y por eso hay una guardia que falla si divergen
+ * aunque sea en un hex, y que exige que esta regla viva DENTRO de `@media print`:
+ * `tests/unit/guards/tema-encendido.guardia.test.ts`. Si añadís un token arriba,
+ * añadidlo aquí; el test te lo dirá antes que una impresora.
+ */
+@media print {
+  .papel-al-imprimir {
+    --radius: 0.625rem;
+    --background: #F7F7F5;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
+    --popover: #ffffff;
+    --popover-foreground: #111111;
+    --primary: #111111;
+    --primary-foreground: #ffffff;
+    --secondary: #eef1f8;
+    --secondary-foreground: #111111;
+    --muted: #f1f4fb;
+    --muted-foreground: #4a5368;
+    --accent: #FFF8D9;
+    --accent-foreground: #111111;
+    --destructive: #ef4444;
+    --border: #e3e8f2;
+    --input: #e3e8f2;
+    --ring: #111111;
+    --chart-1: #f26419;
+    --chart-2: #0b2545;
+    --chart-3: #1a56db;
+    --chart-4: #10b981;
+    --chart-5: #f59e0b;
+    --chart-6: #8b5cf6;
+    --chart-7: #ec4899;
+    --chart-8: #06b6d4;
+    --chart-9: #84cc16;
+    --chart-10: #ef4444;
+    --chart-11: #9a3412;
+    --chart-12: #64748b;
+    --chart-13: #1e3a8a;
+    --chart-14: #047857;
+    --chart-15: #b45309;
+    --chart-16: #6d28d9;
+    --chart-17: #9d174d;
+    --chart-18: #0e7490;
+    --chart-19: #4d7c0f;
+    --chart-20: #991b1b;
+    --sidebar: #1C1C1A;
+    --sidebar-foreground: #C0C0BE;
+    --sidebar-primary: #FFD000;
+    --sidebar-primary-foreground: #111111;
+    --sidebar-accent: #2E2E2C;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #373735;
+    --sidebar-ring: #FFD000;
+    --success-strong: #047857;
+    --warning-strong: #92400e;
+    --danger-strong: #b91c1c;
+    --info-strong: #1d4ed8;
+    --chart-6-strong: #6d28d9;
+    --chart-11-strong: #9a3412;
+    --chart-12-strong: #334155;
+    --chart-13-strong: #1e3a8a;
+  }
+}
+
+/*
+ * Feature 223 — EL FLUJO DE IMPRESIÓN DE LA FACTURA DEL CIERRE.
+ *
+ * La regla de arriba (217) pone el COLOR: la hoja sale blanca en papel. Ésta pone el
+ * FORMATO, que era la otra mitad y estaba declarada como pendiente, no olvidada. Antes de
+ * este bloque la hoja se imprimía RECORTADA: vive dentro de un modal con `max-h` y
+ * `overflow`, y lo que no cabía en la caja no llegaba al papel.
+ *
+ * Sigue sin haber botón y sin `window.print()`: la única vía es Ctrl+P (decisión humana D1,
+ * confirmada dos veces). Esto es CSS puro.
+ *
+ * ── CÓMO SE ELIGE LA HOJA QUE SE IMPRIME. Dos conceptos, y hacen falta los dos.
+ *
+ * 1. CANDIDATA — la marca `.hoja-imprimible`, que estampa
+ *    `cierres-admin/_components/cierre-factura.tsx`. La lleva SIEMPRE la hoja del detalle;
+ *    la hoja compacta la lleva **sólo desplegada**, porque su desglose (métodos, ajustes y
+ *    fechas) se monta con `{open ? … : null}` y plegada le faltan tres bloques: imprimirla
+ *    sería emitir un comprobante incompleto. Desplegar es además el gesto por el que alguien
+ *    dice «ésta me interesa», y ya existía: no hubo que inventar ninguno.
+ *
+ * 2. ELEGIDA — la decide el CONTEXTO, y manda el diálogo:
+ *      · Si hay una candidata dentro de un `[role="dialog"]`, esa es la única que se imprime
+ *        y todo lo demás desaparece, incluidas las N hojas compactas de detrás. Un diálogo
+ *        modal es, por definición, lo único con lo que el usuario está interactuando.
+ *      · Si no hay ninguna en un diálogo, se imprimen TODAS las candidatas, cada una
+ *        empezando en página nueva. Desplegar tres es pedir tres comprobantes.
+ *      · Si no hay NINGUNA candidata, no se oculta ni se altera nada: esa página imprime
+ *        exactamente como imprimía antes de esta feature. Es lo que garantiza la guarda
+ *        `body:has(…)` de cada selector, y no es un detalle: sin ella, CUALQUIER página del
+ *        portal saldría EN BLANCO y ninguna pantalla lo mostraría.
+ *
+ * ── LISTA BLANCA, NO LISTA NEGRA, Y SU PRECIO
+ * Se oculta todo lo que no lleva a la hoja elegida, en vez de enumerar barra lateral,
+ * cabecera, modal y backdrop para esconderlos uno a uno. Una lista negra se queda corta con
+ * cada componente nuevo y falla EN SILENCIO: alguien se entera meses después mirando un
+ * papel. La lista blanca falla al revés —puede tragarse algo que sí debía salir— y eso se ve
+ * la primera vez que alguien imprime. Por eso ningún selector de aquí nombra una pieza del
+ * portal: se decide por PERTENENCIA.
+ *
+ * Y como el modo de fallo de la lista blanca es «falta algo», va enumerado lo que DEJA de
+ * imprimirse, con su ancla, en vez de descubrirse:
+ *   · título, descripción y botonera del diálogo ....... `components/shared/Modal.tsx`
+ *   · fondo oscuro del diálogo (backdrop) ............... `components/shared/Modal.tsx`
+ *   · el contenedor del portal es un `<div data-base-ui-portal>` colgado del `<body>`,
+ *     no el `<body>`: por eso hace falta podar a lo largo de la cadena y no sólo los
+ *     hijos del `<body>` ................................ medido, `progress/impl_223.md`
+ *   · sección de pago al mensajero y botonera Aprobar/Rechazar
+ *     ................. `cierres-admin/_components/CierresAdminModule.tsx`
+ *   · nota «solo lectura» del portal del mensajero (la más discutible: es texto de la
+ *     pantalla, no del comprobante) ... `cierre-dia/_components/CierreDiaModule.tsx`
+ *   · barra lateral y cabecera del portal .............. `app/(app)/layout.tsx`
+ *   · las N hojas compactas de detrás, al imprimir el detalle
+ *     ................. `cierres-admin/_components/CierresAdminModule.tsx`
+ *
+ * ── LOS `!important`, UNO A UNO Y CON SU MOTIVO MEDIDO
+ * Un estilo EN LÍNEA sólo se vence con `!important`, y uno de más es un martillo que rompe
+ * excepciones legítimas futuras. Hay exactamente cinco, y los cinco compiten contra un
+ * estilo en línea que existe y está medido (2026-08-14, `progress/impl_223.md`):
+ *   · `max-width` .. contra `style={{ maxWidth: "75%" }}` del popup (`Modal.tsx`).
+ *   · `overflow`, `position`, `height`, `width` .. contra el BLOQUEO DE SCROLL que
+ *     `@base-ui/react` escribe en línea sobre el `<body>` al abrir el diálogo:
+ *     `position: relative; height: calc(100dvh - …); width: calc(100vw - …);
+ *      overflow: hidden`. Sin `!important` la cadena perdía contra ellos y la hoja volvía a
+ *     salir recortada — con la declaración escrita, es decir, en verde para cualquier censo.
+ * Las otras nueve declaraciones no tienen rival en línea y ganan por la cascada.
+ *
+ * LÍMITE MEDIDO: ese bloqueo también escribe `overflow-y/x: hidden` EN LÍNEA sobre el
+ * `<html>`, y este bloque NO lo alcanza: su cadena arranca en `body:has(…)` porque el
+ * alcance decidido es «todo contenedor situado ENTRE el `<body>` y la hoja». Queda
+ * congelado por un caso; si algún motor recortara por ahí, el arreglo es una línea y una
+ * decisión que no se toma sola.
+ *
+ * ── EL MARGEN: 12 mm, EN UN SOLO SITIO
+ * Suelo: las impresoras de oficina tienen un borde no imprimible de 3-5 mm, y por debajo se
+ * pierde texto sin que lo vea quien lo escribió (su impresora es otra). Techo: con 12 mm por
+ * lado quedan 186 mm útiles en A4 y 191,9 en Carta, así que el mismo número sirve para los
+ * dos papeles y no hay que decidir cuál es. La hoja ya trae su propio `p-5`, así que el aire
+ * no se duplica. Cambiarlo mañana es esta línea, y sólo ésta.
+ *
+ * ── LO QUE `@page` **NO** CONTROLA (no es un olvido, y no hay CSS que lo arregle)
+ *   · El ENCABEZADO Y EL PIE que imprime el navegador —URL, fecha, «1/3»—: los pone su
+ *     diálogo de impresión y no hay forma de quitarlos desde aquí.
+ *   · La ESCALA y la opción «GRÁFICOS DE FONDO»: las elige el usuario. La segunda TUVO un
+ *     precio medido —el fondo `-soft` claro bajo la tinta oscura del tema— y la feature 224 lo
+ *     borró redeclarando también los tokens al imprimir; queda medido en
+ *     `tests/unit/guards/impresion-sin-dark.guardia.test.ts`.
+ *   · El TAMAÑO DE PAPEL REAL. `size` declara la ORIENTACIÓN y nada más: forzar `A4` o
+ *     `Letter` haría que el navegador reescale y encoja el texto cuando el papel cargado sea
+ *     el otro. El papel lo decide quien imprime.
+ *
+ * ── LO QUE ESTE BLOQUE **NO** PROMETE
+ *   · CABECERAS DE COLUMNA REPETIDAS en cada página. La lista de órdenes NO es una tabla:
+ *     su fila de rótulos es una rejilla de `<span>` hermana de las filas, así que
+ *     `table-header-group` no aplica. Conseguirlo exigiría reescribir el marcado y sus
+ *     nombres accesibles, y eso es rediseñar la hoja.
+ *   · IMPRIMIR LO QUE NO ESTÁ MONTADO. Al papel va sólo lo que está en el DOM: en el
+ *     detalle, las filas plegadas y las CUATRO pestañas no visitadas no existen y no salen.
+ *     Traerlas exige cambiar qué se monta —o disparar algo al imprimir— y es decisión de
+ *     producto, no de CSS. Esta feature se queda en CSS.
+ *   · DÓNDE CAE CADA CORTE ni cuántas páginas salen: depende del motor, del papel, de la
+ *     escala y de la fuente.
+ *
+ * ── POR QUÉ VIVE AQUÍ, Y NO DENTRO DE UN `@layer`
+ * Fuera de toda capa a propósito: dentro de un `@layer` este bloque COMPILARÍA, no rompería
+ * nada y dejaría de hacer su trabajo, porque las utilidades de Tailwind viven en
+ * `@layer utilities` y le ganarían. Y antes de `.dark`, como el bloque de la 217, por la
+ * trampa del lector de tokens (`tests/fixtures/contraste.ts`): hoy aquí no se declara ni un
+ * token —y una guardia lo exige—, pero el día que alguien declare uno la defensa ya está
+ * puesta. Su guardia es `tests/unit/guards/impresion-flujo.guardia.test.ts`.
+ */
+@media print {
+  @page {
+    size: portrait;
+    margin: 12mm;
+  }
+
+  /*
+   * (B) LA CADENA que lleva a una candidata deja de recortar, de flotar y de acolchar.
+   *     Va ANTES de (A) a propósito: si un elemento cayera en las dos reglas, tiene que
+   *     mandar el ocultamiento, y así gana por orden además de por especificidad.
+   *     Es genérica —recorre ancestros, no nombra ninguno— y por eso vale igual para la
+   *     ruta del admin y para la del mensajero, que NO tienen los mismos contenedores.
+   */
+  body:has(.hoja-imprimible),
+  body:has(.hoja-imprimible) *:has(.hoja-imprimible) {
+    display: block;
+    position: static !important;
+    inset: auto;
+    transform: none;
+    overflow: visible !important;
+    max-height: none;
+    height: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: none;
+  }
+
+  /*
+   * (A) NADA que no lleve a la ELEGIDA llega al papel.
+   *
+   * Dentro de todos los `:not()` hay SÓLO selectores simples (una pseudo-clase `:has()` o
+   * una clase): hay motores que soportan `:has()` y no soportan `:not()` con compuestos o
+   * complejos, y esto se escribe para el suelo, no para el techo.
+   *
+   * Si un motor no soportara `:has()`, ninguna regla engancha y el resultado es el de
+   * antes de esta feature: se imprime todo, recortado. Feo, pero nunca una página en
+   * blanco. Esa asimetría es la que hace aceptable la apuesta.
+   *
+   * A.1 — NIVEL 1, FUERA del diálogo: se poda todo lo que no lleva al diálogo.
+   *
+   *   ⚠️ El segundo `:not()` de la segunda rama NO es decorativo. `E:has(A B)` significa
+   *   «E tiene un descendiente que casa con `:scope A B`», así que `A` tiene que ser
+   *   descendiente de E: el popup ES el `[role="dialog"]`, no lo CONTIENE, y sin ese
+   *   segundo `:not()` el propio popup casa con `*:not(:has([role="dialog"] …))` y se
+   *   oculta el diálogo entero. Es decir: la página sale EN BLANCO, que es el fallo más
+   *   caro de esta ficha. Medido sobre el DOM real, no razonado
+   *   (`tests/components/CierreFacturaPapel.test.tsx`).
+   *
+   *   Y LO QUE ESE `:not()` DA POR SUPUESTO, dicho aquí porque no se ve leyendo el
+   *   selector: perdona **cualquier** subárbol que contenga una candidata, no sólo el que
+   *   lleva al diálogo. Hoy eso no cambia nada porque **el portal cuelga directamente del
+   *   `<body>`**, así que las N hojas compactas mueren en el PRIMER selector de A.1, a
+   *   nivel de hijo del `<body>`, antes de que esta segunda rama las alcance. Si algún día
+   *   Base UI montara el popup DENTRO del envoltorio de la app —junto a las compactas—,
+   *   esta rama dejaría de podarlas y volveríamos a imprimir las N. **No sería silencioso**:
+   *   ese supuesto es exactamente lo que vigila el caso «el popup se monta en un contenedor
+   *   propio COLGADO del `<body>`, no en el `<body>`» de `CierreFacturaPapel.test.tsx`, que
+   *   se pondría rojo. Si ese caso se pone rojo, hay que releer esta rama antes que nada.
+   */
+  body:has([role="dialog"] .hoja-imprimible) > *:not(:has([role="dialog"] .hoja-imprimible)),
+  body:has([role="dialog"] .hoja-imprimible)
+    *:has([role="dialog"] .hoja-imprimible)
+    > *:not(:has([role="dialog"] .hoja-imprimible)):not(:has(.hoja-imprimible)),
+
+  /* A.2 — NIVEL 1, DENTRO del diálogo: se poda todo lo que no lleva a la hoja. */
+  body:has([role="dialog"] .hoja-imprimible)
+    :is([role="dialog"], [role="dialog"] *):has(.hoja-imprimible)
+    > *:not(:has(.hoja-imprimible)):not(.hoja-imprimible),
+
+  /* A.3 — NIVEL 2: sin candidata en un diálogo, cada candidata es un documento. */
+  body:not(:has([role="dialog"] .hoja-imprimible)):has(.hoja-imprimible)
+    > *:not(:has(.hoja-imprimible)):not(.hoja-imprimible),
+  body:not(:has([role="dialog"] .hoja-imprimible)):has(.hoja-imprimible)
+    *:has(.hoja-imprimible)
+    > *:not(:has(.hoja-imprimible)):not(.hoja-imprimible) {
+    display: none;
+  }
+
+  /*
+   * (C) La hoja deja de recortarse a sí misma: las DOS `<Card>` traen `overflow-hidden`
+   *     (redondea sus esquinas en pantalla), y la especificación de fragmentación trata a
+   *     un contenedor de scroll como una pieza INDIVISIBLE. Eso, y no otra cosa, es lo que
+   *     hoy corta la hoja larga en seco en vez de continuarla en la página siguiente.
+   */
+  .hoja-imprimible {
+    overflow: visible;
+    box-shadow: none;
+  }
+
+  /*
+   * (D) Una hoja por página cuando hay varias elegidas. Las compactas son hermanas en la
+   *     rejilla del admin y sólo llevan la marca las desplegadas, así que `~` cuenta
+   *     exactamente las candidatas: la primera abre el papel y cada siguiente empieza en
+   *     una página nueva.
+   */
+  .hoja-imprimible ~ .hoja-imprimible {
+    break-before: page;
+  }
+}
+
+/*
+ * Feature 224 — AL IMPRIMIR, LOS TOKENS TAMPOCO GIRAN. EL PAPEL ES EL TEMA CLARO.
+ *
+ * La 221 —arriba, en `@custom-variant dark`— apagó el VARIANT en papel. Ésta apaga los TOKENS,
+ * que era la otra mitad y quedó declarada como abierta en `progress/impl_221.md §6`. Hasta aquí,
+ * `.dark` no estaba acotado a pantalla: quien imprimía desde tema oscuro sacaba tinta `#e6ecf8`
+ * sobre papel blanco —1.19:1; con la tinta del tema oscuro de la marca, `#F7F7F5`, serían 1.07—
+ * en las quince rutas del portal. Dentro de `.papel-al-imprimir` no, porque la 217 ya fija ahí
+ * los valores claros; fuera de esa hoja, sí.
+ *
+ * ── EL SELECTOR LLEVA `html` DELANTE, Y NO ES ESTILO: SIN ÉL ESTE BLOQUE NO HACE NADA.
+ *
+ * Un `@media` NO suma especificidad. Un `@media print { .dark { … } }` escrito aquí —pegado
+ * encima de `.dark`, que es donde este bloque TIENE que vivir; ver el párrafo siguiente— empata
+ * con la regla de abajo (las dos, 0-1-0) y PIERDE por orden: gana la última. Con `html` delante
+ * sube a 0-1-1 y gana sin `!important` y sin depender de dónde esté escrito. Lo mismo en la rama
+ * del `<body>`: `body:has(> .dark)` es 0-1-1 y `html body:has(> .dark)` es 0-1-2.
+ *
+ * MEDIDO, no razonado (2026-08-14): se compiló ESTE archivo con tailwindcss 4.3.2, se montó el
+ * DOM del portal (`<body> > div.contents.dark`, que es lo que estampa `providers/TemaProvider.tsx`)
+ * y se leyó `getComputedStyle` en Chromium 149.0.7827.55 con `emulateMedia({ media: "print" })`:
+ *
+ *   selector del bloque de impresión         al imprimir           en pantalla
+ *   `.dark`                       (0-1-0)      #e6ecf8  ← PIERDE     #e6ecf8
+ *   `html .dark`                  (0-1-1)      #12233f  ← GANA       #e6ecf8
+ *   `.dark` con `!important`                   #12233f              #e6ecf8
+ *   `.dark.dark`                  (0-2-0)      #12233f              #e6ecf8
+ *
+ * Las tres últimas ganan, así que la elección entre ellas es de estilo y va dicha: `!important`
+ * en 35 declaraciones rompe cualquier excepción legítima futura, y la clase duplicada no se
+ * puede leer. Ninguna de las cuatro toca la PANTALLA, que es la otra mitad de la medición.
+ *
+ * ── POR QUÉ VIVE AQUÍ ARRIBA SI NO GANA POR ORDEN
+ * Porque el orden lo pide otra cosa: que ningún bloque de impresión caiga DETRÁS de `.dark`. Si
+ * cayera, sus 35 hexes CLAROS serían los últimos de la mitad «oscuro» del archivo y
+ * `token("oscuro", …)` empezaría a devolverlos: toda la verificación de tema oscuro pasaría a
+ * medir el tema claro, EN VERDE (`tests/fixtures/contraste.ts`). Es la segunda de las dos
+ * defensas del lector de tokens, y ganar por ESPECIFICIDAD es lo que permite cumplir las dos
+ * cosas a la vez en vez de elegir una.
+ *
+ * ── QUÉ COMPRA, EN NÚMEROS (aritmética canónica de `tests/fixtures/contraste.ts`)
+ * Papel por defecto —sin «gráficos de fondo», que viene DESMARCADO—, imprimiendo desde `.dark`.
+ * Ahí lo que decide la legibilidad es la TINTA, y ahora es la clara (cifras recalculadas con la
+ * marca de SL-8; con la paleta anterior, el texto daba 1.19 → 15.70 y el secundario 2.26 → 7.70):
+ *   · texto `--foreground` ............ 1.07 → 18.88
+ *   · `Badge` success ................. 1.92 → 5.48
+ *   · `Badge` warning ................. 1.67 → 7.09
+ *   · `Badge` danger .................. 2.77 → 6.47
+ *   · `Badge` info .................... 2.08 → 6.70
+ *   · `--muted-foreground` ............ 2.12 → 7.70
+ *
+ * Y BORRA EL PRECIO QUE COBRABA LA 221: con «gráficos de fondo» marcado, los cuatro `Badge`
+ * imprimían su fondo `-soft` CLARO bajo una tinta que seguía siendo la OSCURA (1.70, 1.50, 2.26
+ * y 1.91). Ahora las dos mitades del par son claras y vuelve a ser el par del tema claro, por
+ * encima de AA: success 1.70 → 4.84, warning 1.50 → 6.37, danger 2.26 → 5.30, info 1.91 → 6.16.
+ *
+ * ── LO QUE **NO** COMPRA, dicho y no escondido
+ * El papel pasa a ser EXACTAMENTE el tema claro, con los límites que ese tema ya tiene en
+ * pantalla: `--destructive` (`#ef4444`) mide 3.76 sobre blanco. Es un acento, no texto de
+ * lectura; mide lo mismo hoy en «claro» y esta ficha ni lo mejora ni lo empeora. Es deuda de
+ * PALETA (fichas 210/216). El otro acento que estaba en esta lista, `--primary`, salió de ella
+ * con la marca de SL-8: pasó a `#111111` y mide 18.88 sobre blanco.
+ *
+ * ── Y LO QUE **EMPEORA**, que es la mitad que cuesta escribir: LA TINTA QUE SE APOYABA EN UN
+ *    FONDO QUE NO SE IMPRIME.
+ * `--primary-foreground` es `#111111` en oscuro (la tinta sobre el amarillo) y pasa a `#ffffff`.
+ * Sobre el `bg-primary` que la sostiene se lee en las dos; en PAPEL, donde ese fondo NO se
+ * imprime, mide **18.88 → 1.00**: blanco sobre blanco, desaparece. Afecta a `Badge` default
+ * (`components/ui/badge.tsx`), `Button` default (`components/ui/button.tsx`), `Pagination` y
+ * `RankingPodio` — 15 usos. En LÍNEA, no en tinta: `--border` 13.79 → 1.23 e `--input`
+ * 12.10 → 1.23, o sea que los bordes casi se van del papel.
+ *
+ * SON TRES, Y ESTÁN CENSADAS EN VEZ DE ELEGIDAS A MANO: la guardia barre los tokens y exige que
+ * lo que baje sea exactamente esta lista. Descarta los que son SUPERFICIE porque ahí el número
+ * no es legibilidad — que `--card` pase de 17.07 a 1.00 es que la tarjeta ya salió blanca, o sea
+ * lo que esta ficha compra. La primera versión de esta lista se escribió a mano y le faltaban
+ * dos. Con la paleta anterior eran seis: con la marca de SL-8, la barra lateral es la misma en
+ * los dos temas y sus tres tokens (`--sidebar-primary-foreground`, `--sidebar-foreground` y
+ * `--sidebar-border`) imprimen lo mismo desde oscuro que desde claro, así que dejaron de bajar.
+ *
+ * NO ES UNA REGRESIÓN CONTRA EL TEMA CLARO, y ahí está la razón de no «arreglarlo» aquí: esos
+ * tres pares miden EXACTAMENTE lo mismo imprimiendo desde «claro», hoy y desde antes de esta
+ * ficha — y no por casualidad, sino POR CONSTRUCCIÓN: este bloque es idéntico hex a hex a
+ * `:root, .tema-claro` en los 35 tokens, y hay guardia que lo compara. Lo legible que era en
+ * oscuro lo era por accidente —una tinta
+ * clara pensada para un fondo de color, sobre un papel que no lo lleva—. Darle un valor propio
+ * aquí rompería el espejo exacto con el tema claro (que es lo que esta ficha compra y lo que su
+ * guardia exige) y dejaría el papel de «oscuro» MEJOR que el de «claro», que es incoherente.
+ * El arreglo de raíz es el patrón de la 208 llevado al papel —tinta que depende de un fondo que
+ * no se imprime— y es ficha propia: toca `Badge`, `Button` y `Pagination`, no este bloque.
+ * Queda medido y con caso ejecutable en `impresion-tokens.guardia.test.ts`.
+ *
+ * ── LOS VALORES, Y POR QUÉ ESTÁN REPETIDOS
+ * Las CLAVES son exactamente las de `.dark` —lo que el tema oscuro pisa es lo que hay que
+ * devolver, ni uno más ni uno menos— y los VALORES son los de `:root, .tema-claro`, hex a hex.
+ * CSS no sabe reutilizar un bloque de declaraciones bajo otra condición, igual que le pasa a
+ * `.tema-sistema` con `.dark` y al bloque de la 217 con `.tema-claro`. Por eso hay una guardia
+ * que se pone roja si divergen aunque sea en un hex, si `.dark` estrena un token que aquí no
+ * está, o si el selector pierde su `html` y el bloque deja de ganar:
+ * `tests/unit/guards/impresion-tokens.guardia.test.ts`.
+ *
+ * ── LÍMITES DE LA MEDICIÓN, por delante
+ * Medido en Chromium; en este entorno no hay Firefox ni WebKit. Lo que se apoya en el motor es el
+ * desempate por especificidad, que es de la especificación de selectores y no del navegador, y la
+ * guardia lo vuelve a comprobar por su cuenta calculando (a-b-c). Y aquí no imprime nadie:
+ * ninguna pieza del gate saca papel.
+ */
+@media print {
+  html .dark,
+  html body:has(> .dark),
+  html .tema-sistema,
+  html body:has(> .tema-sistema) {
+    --background: #F7F7F5;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
+    --popover: #ffffff;
+    --popover-foreground: #111111;
+    --primary: #111111;
+    --primary-foreground: #ffffff;
+    --secondary: #eef1f8;
+    --secondary-foreground: #111111;
+    --muted: #f1f4fb;
+    --muted-foreground: #4a5368;
+    --accent: #FFF8D9;
+    --accent-foreground: #111111;
+    --destructive: #ef4444;
+    --border: #e3e8f2;
+    --input: #e3e8f2;
+    --ring: #111111;
+    --chart-1: #f26419;
+    --chart-2: #0b2545;
+    --chart-3: #1a56db;
+    --chart-4: #10b981;
+    --chart-5: #f59e0b;
+    --chart-6: #8b5cf6;
+    --chart-7: #ec4899;
+    --chart-8: #06b6d4;
+    --chart-9: #84cc16;
+    --chart-10: #ef4444;
+    --chart-11: #9a3412;
+    --chart-12: #64748b;
+    --chart-13: #1e3a8a;
+    --chart-14: #047857;
+    --chart-15: #b45309;
+    --chart-16: #6d28d9;
+    --chart-17: #9d174d;
+    --chart-18: #0e7490;
+    --chart-19: #4d7c0f;
+    --chart-20: #991b1b;
+    --sidebar: #1C1C1A;
+    --sidebar-foreground: #C0C0BE;
+    --sidebar-primary: #FFD000;
+    --sidebar-primary-foreground: #111111;
+    --sidebar-accent: #2E2E2C;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #373735;
+    --sidebar-ring: #FFD000;
+    --success-strong: #047857;
+    --warning-strong: #92400e;
+    --danger-strong: #b91c1c;
+    --info-strong: #1d4ed8;
+    --chart-6-strong: #6d28d9;
+    --chart-11-strong: #9a3412;
+    --chart-12-strong: #334155;
+    --chart-13-strong: #1e3a8a;
+  }
+}
+
+/*
+ * Feature 211 — LA FRANJA CLARA, y por qué `body:has()`.
+ *
+ * La clase del tema se estampa en un envoltorio DENTRO del `<body>`
+ * (`providers/TemaProvider.tsx`), no en `<html>`. Los tokens son propiedades
+ * heredadas, así que giran para todo el subárbol… pero el `<body>` está FUERA de ese
+ * subárbol, y su `bg-background` (ver `@layer base`) seguiría resolviendo el valor
+ * CLARO: quedaría una franja clara alrededor de una app oscura —y el lienzo del
+ * navegador, que hereda el fondo del `<body>`, también—. Se ve peor que no tener tema.
+ *
+ * `:has()` es lo único que deja a un ancestro reaccionar a su descendiente, y es
+ * exactamente el caso. Así el `<body>` toma los MISMOS tokens que el envoltorio y el
+ * lienzo entero queda oscuro. La alternativa era pintar un `<div>` de fondo, que obliga
+ * a que ese div cubra siempre todo el alto — precisamente lo que falla en cuanto una
+ * página crece o encoge.
+ */
+.dark,
+body:has(> .dark) {
+  /* SL-8 — tema oscuro de la marca (`design.md > D4`, `docs/marca.md > Tema oscuro`). Los grises
+     son mezclas de dos colores de la paleta, con su α. */
+  --background: #111111;
+  --foreground: #F7F7F5; /* 17.60 sobre el fondo · 15.91 sobre la tarjeta */
+  --card: #1C1C1A;
+  --card-foreground: #F7F7F5;
+  --popover: #1C1C1A;
+  --popover-foreground: #F7F7F5;
+  --primary: #FFD000; /* 12.84 sobre el fondo · 11.60 sobre la tarjeta */
+  --primary-foreground: #111111; /* 12.84 sobre `--primary` */
+  --secondary: #232323; /* componer(#F7F7F5, #111111, 0.08) */
+  --secondary-foreground: #F7F7F5; /* 14.65 sobre `--secondary` */
+  --muted: #232323;
+  --muted-foreground: #B2B2B1; /* componer(#F7F7F5, #111111, 0.70) · 8.90 / 8.04 / 7.41 */
+  --accent: #352E0E; /* componer(#FFD000, #111111, 0.15) */
+  --accent-foreground: #FFD000; /* 9.22 sobre `--accent` */
+  --destructive: #f87171;
+  --border: #2D2D2C; /* componer(#F7F7F5, #111111, 0.12) · línea, no texto */
+  --input: #363635; /* componer(#F7F7F5, #111111, 0.16) */
+  --ring: #FFD000; /* 12.84 sobre el fondo · 11.60 sobre la tarjeta */
+  --chart-1: #ff7a33;
+  --chart-2: #3b82f6;
+  --chart-3: #1a56db;
+  --chart-4: #10b981;
+  --chart-5: #f59e0b;
+  --chart-6: #a78bfa;
+  --chart-7: #f472b6;
+  --chart-8: #22d3ee;
+  --chart-9: #a3e635;
+  --chart-10: #f87171;
+  --chart-11: #fdba74;
+  --chart-12: #94a3b8;
+  --chart-13: #93c5fd;
+  --chart-14: #6ee7b7;
+  --chart-15: #fcd34d;
+  --chart-16: #c4b5fd;
+  --chart-17: #f9a8d4;
+  --chart-18: #67e8f9;
+  --chart-19: #bef264;
+  --chart-20: #fca5a5;
+  /* La barra lateral es la misma superficie en los dos temas: los mismos valores que en claro. */
+  --sidebar: #1C1C1A;
+  --sidebar-foreground: #C0C0BE;
+  --sidebar-primary: #FFD000;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #2E2E2C;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #373735;
+  --sidebar-ring: #FFD000;
+  /* Texto semántico contrast-safe (modo oscuro). Medido sobre #111111/#1C1C1A y
+     sobre el fondo del badge (base/15 compuesto sobre la tarjeta): todos >=4.5:1. */
+  --success-strong: #34d399; /* vs bg 9.82 · vs card 8.88 · vs success/15 6.97 */
+  --warning-strong: #fbbf24; /* vs bg 11.31 · vs card 10.22 · vs warning/15 7.70 */
+  --danger-strong: #f87171; /* vs bg 6.83 · vs card 6.17 · vs danger/15 5.27 */
+  --info-strong: #93b4f7; /* vs bg 9.09 · vs card 8.22 · vs info/15 7.39 */
+  /* Feature 292 — la otra mitad de los cuatro pares de `--chart-*`. Mismo criterio que en claro:
+     el propio color del segmento donde cumple con margen —`chart-11` (7.21) y `chart-13` (6.89)
+     sobre su fondo compuesto— y un escalón más claro de la misma rampa donde el segmento se
+     quedaba en el filo: `chart-6` daba 4.69 y `chart-12` 4.89 sobre la tarjeta anterior (4.91 y
+     5.17 sobre la de la marca), AA por pocas décimas, y este repo ya aprendió que aprobar por una
+     centésima no es aprobar (feature 210). */
+  --chart-6-strong: #c4b5fd; /* vs bg 10.23 · vs card 9.25 · vs chart-6/15 7.24 */
+  --chart-11-strong: #fdba74; /* vs bg 11.20 · vs card 10.12 · vs chart-11/15 7.21 */
+  --chart-12-strong: #cbd5e1; /* vs bg 12.72 · vs card 11.50 · vs chart-12/15 8.92 */
+  --chart-13-strong: #93c5fd; /* vs bg 10.47 · vs card 9.46 · vs chart-13/15 6.89 */
+}
+
+/*
+ * Feature 211 — «respetar el sistema», el estado POR DEFECTO.
+ *
+ * Cero JS, cero cookie, cero parpadeo: lo resuelve el navegador antes del primer
+ * pintado. El envoltorio del portal lleva `tema-sistema` y es el navegador quien decide.
+ *
+ * ESTÁ ACOTADO AL PORTAL a propósito, no colgado de `:root`. Colgarlo de `:root` haría
+ * que la landing pública y las tres páginas de auth cambiaran solas según el sistema
+ * operativo de quien mira, y esas páginas son claras por diseño (feature 208): la
+ * landing está compuesta sobre fotografía y paleta fija. Con la clase en el envoltorio
+ * de `(app)/layout.tsx`, nada fuera del portal se entera.
+ *
+ * LOS VALORES SON LOS MISMOS QUE LOS DE `.dark`, literalmente. CSS no tiene forma de
+ * reutilizar un bloque de declaraciones bajo otra condición, así que están repetidos —y
+ * por eso hay una guardia que falla si divergen aunque sea en un hex:
+ * `tests/unit/guards/tema-encendido.guardia.test.ts` («sistema toma EXACTAMENTE los
+ * mismos tokens que oscuro»). Si añadís un token a `.dark`, añadilo aquí; el test te lo
+ * dirá antes que un usuario.
+ */
+@media (prefers-color-scheme: dark) {
+  .tema-sistema,
+  body:has(> .tema-sistema) {
+    --background: #111111;
+    --foreground: #F7F7F5;
+    --card: #1C1C1A;
+    --card-foreground: #F7F7F5;
+    --popover: #1C1C1A;
+    --popover-foreground: #F7F7F5;
+    --primary: #FFD000;
+    --primary-foreground: #111111;
+    --secondary: #232323;
+    --secondary-foreground: #F7F7F5;
+    --muted: #232323;
+    --muted-foreground: #B2B2B1;
+    --accent: #352E0E;
+    --accent-foreground: #FFD000;
+    --destructive: #f87171;
+    --border: #2D2D2C;
+    --input: #363635;
+    --ring: #FFD000;
+    --chart-1: #ff7a33;
+    --chart-2: #3b82f6;
+    --chart-3: #1a56db;
+    --chart-4: #10b981;
+    --chart-5: #f59e0b;
+    --chart-6: #a78bfa;
+    --chart-7: #f472b6;
+    --chart-8: #22d3ee;
+    --chart-9: #a3e635;
+    --chart-10: #f87171;
+    --chart-11: #fdba74;
+    --chart-12: #94a3b8;
+    --chart-13: #93c5fd;
+    --chart-14: #6ee7b7;
+    --chart-15: #fcd34d;
+    --chart-16: #c4b5fd;
+    --chart-17: #f9a8d4;
+    --chart-18: #67e8f9;
+    --chart-19: #bef264;
+    --chart-20: #fca5a5;
+    --sidebar: #1C1C1A;
+    --sidebar-foreground: #C0C0BE;
+    --sidebar-primary: #FFD000;
+    --sidebar-primary-foreground: #111111;
+    --sidebar-accent: #2E2E2C;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #373735;
+    --sidebar-ring: #FFD000;
+    --success-strong: #34d399;
+    --warning-strong: #fbbf24;
+    --danger-strong: #f87171;
+    --info-strong: #93b4f7;
+    --chart-6-strong: #c4b5fd;
+    --chart-11-strong: #fdba74;
+    --chart-12-strong: #cbd5e1;
+    --chart-13-strong: #93c5fd;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  /*
+   * Desplazamiento suave para la navegación por anclas (la landing de `/` lleva
+   * a #servicios, #como-funciona y #politicas desde la navbar y el pie). Va en
+   * <html> porque el elemento que scrollea es ese, no el contenedor de la
+   * página. Se respeta `prefers-reduced-motion`: quien pidió menos movimiento
+   * conserva el salto instantáneo.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  /*
+   * Pedido humano (rama ux): todo control accionable se siente pulsable. El navegador
+   * pinta `cursor: default` en <button>, así que se corrige de raíz —aquí y no botón a
+   * botón— para <button>, los <a role="button"> y los inputs de tipo botón. Deshabilitado
+   * = `not-allowed`: la pista de "no se puede" también es información.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  input[type="button"]:disabled,
+  input[type="submit"]:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/*
+ * Scrollbar visible SOLO al hacer hover sobre el contenedor. El track se reserva
+ * siempre (alto fijo) para que no haya salto de layout; el thumb queda transparente
+ * hasta el hover, donde toma el color del borde. Usado en TabsList (scroll horizontal
+ * de estados). Degrada bien en Firefox vía `scrollbar-width`.
+ */
+.scrollbar-on-hover {
+  scrollbar-width: none; /* Firefox: oculto por defecto */
+}
+.scrollbar-on-hover::-webkit-scrollbar {
+  height: 6px;
+}
+.scrollbar-on-hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+}
+.scrollbar-on-hover:hover {
+  scrollbar-width: thin; /* Firefox: aparece en hover */
+}
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+/*
+ * Línea de escaneo del visor de cámara (`QrScanner`): recorre el recuadro de enfoque
+ * de arriba abajo y vuelve. Se define aquí —y no con `tw-animate-css`— porque es una
+ * animación propia del producto. Respeta `prefers-reduced-motion`: quien pidió menos
+ * movimiento ve la línea quieta en el centro, no parpadeando.
+ */
+@keyframes scanline {
+  0% {
+    top: 8%;
+  }
+  50% {
+    top: 92%;
+  }
+  100% {
+    top: 8%;
+  }
+}
+
+.animate-scanline {
+  animation: scanline 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scanline {
+    animation: none;
+    top: 50%;
+  }
+}
+
+/*
+ * Panel desplegable (`Collapsible.Panel` de Base UI): abre y cierra barriendo la
+ * altura. Base UI publica la altura medida en `--collapsible-panel-height` y marca los
+ * dos extremos de la transición con `data-starting-style` / `data-ending-style`; aquí
+ * solo se les da un valor y una duración.
+ *
+ * Va como CSS propio y no como utilidades de Tailwind (`h-[var(…)]` +
+ * `data-starting-style:h-0`) porque esa versión no llegó a animar en el navegador y
+ * aquí la regla no depende de cómo se traduzcan los variantes ni de qué utilidad gane:
+ * las tres declaraciones que importan están a la vista, en un solo sitio.
+ */
+.collapsible-panel {
+  overflow: hidden;
+  height: var(--collapsible-panel-height);
+  opacity: 1;
+  transition:
+    height 300ms ease-out,
+    opacity 300ms ease-out;
+}
+
+.collapsible-panel[data-starting-style],
+.collapsible-panel[data-ending-style] {
+  height: 0;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-panel {
+    transition: none;
+  }
+}
+
+/*
+ * Cambio de vista de la lista de órdenes del mensajero (mosaico ⇄ detalle). Dos tramos
+ * ENCADENADOS, no simultáneos: primero las cards actuales BAJAN mientras se desvanecen
+ * (`salida`) y, sólo cuando termina, las nuevas SUBEN desde abajo apareciendo
+ * (`entrada`). El encadenado lo lleva el módulo (`useTransicionVista`), que sostiene la
+ * lista vieja hasta el final del primer tramo; aquí viven únicamente las dos animaciones.
+ *
+ * Las duraciones se publican como variables para que el hook use EXACTAMENTE las mismas
+ * y ninguna de las dos partes se desincronice de la otra al retocarlas.
+ */
+:root {
+  --vista-cards-salida-ms: 180ms;
+  --vista-cards-entrada-ms: 220ms;
+}
+
+@keyframes vista-cards-salida {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes vista-cards-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vista-cards-saliendo {
+  animation: vista-cards-salida var(--vista-cards-salida-ms) ease-in both;
+}
+
+.vista-cards-entrando {
+  animation: vista-cards-entrada var(--vista-cards-entrada-ms) ease-out both;
+}
+
+/* Quien pidió menos movimiento cambia de vista de golpe, sin desplazamiento ni fundido.
+   El hook detecta lo mismo y salta los dos tramos, así que el cambio es instantáneo. */
+@media (prefers-reduced-motion: reduce) {
+  .vista-cards-saliendo,
+  .vista-cards-entrando {
+    animation: none;
+  }
+}
+
+/*
+ * Feature del 2026-08-18 — LAS BARRAS DE LAS GRÁFICAS CRECEN AL APARECER.
+ *
+ * `GraficaReparto` y `GraficaRanking` no dibujan con recharts —son rectángulos de anchura
+ * porcentual— así que no heredan su animación de entrada. Ésta la repone, y en CSS a propósito:
+ * la de recharts es JavaScript y por eso NO la alcanza `prefers-reduced-motion` (lo documenta
+ * `lienzo/DonutLienzo.tsx`); una animación CSS sí, y el bloque de abajo la apaga sin que ningún
+ * componente tenga que detectar nada.
+ *
+ * Los 600 ms son los mismos de `ANIMACION_MS` en el lienzo del donut: las gráficas de la misma
+ * pantalla entran al mismo ritmo.
+ *
+ * `scaleX` y no `width`: la anchura la fija el dato en un `style` inline, y animarla obligaría a
+ * escribir dos valores del mismo número. Con la escala, el dato manda el ancho final y la
+ * animación solo la recorre.
+ */
+:root {
+  --grafica-barra-ms: 600ms;
+}
+
+@keyframes grafica-barra-crece {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.grafica-barra-crece {
+  animation: grafica-barra-crece var(--grafica-barra-ms) ease-out both;
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grafica-barra-crece {
+    animation: none;
+  }
+}
+
+/*
+ * Etiqueta del destino de la tarifa en el formulario de tienda ("Por defecto" /
+ * "Zona X", junto al título). Dos tramos ENCADENADOS, como el cambio de vista de
+ * las cards: primero la etiqueta vieja se va HACIA LA DERECHA desvaneciéndose
+ * (`salida`) y, sólo cuando termina, la nueva entra DESDE LA IZQUIERDA
+ * (`entrada`). El encadenado lo lleva `useDestinoAnimado`, que sostiene la
+ * etiqueta vieja durante el primer tramo; aquí viven sólo las animaciones.
+ *
+ * Las duraciones se publican como variables para que el hook use EXACTAMENTE las
+ * mismas y ninguna de las dos partes se desincronice de la otra al retocarlas.
+ */
+:root {
+  --destino-etiqueta-salida-ms: 150ms;
+  --destino-etiqueta-entrada-ms: 200ms;
+}
+
+@keyframes destino-etiqueta-salida {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+@keyframes destino-etiqueta-entrada {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.destino-etiqueta-saliendo {
+  animation: destino-etiqueta-salida var(--destino-etiqueta-salida-ms) ease-in both;
+}
+
+.destino-etiqueta-entrando {
+  animation: destino-etiqueta-entrada var(--destino-etiqueta-entrada-ms) ease-out both;
+}
+
+/* Quien pidió menos movimiento ve la etiqueta cambiar de golpe. El hook detecta lo
+   mismo y salta los dos tramos, así que el cambio es instantáneo. */
+@media (prefers-reduced-motion: reduce) {
+  .destino-etiqueta-saliendo,
+  .destino-etiqueta-entrando {
+    animation: none;
+  }
+}

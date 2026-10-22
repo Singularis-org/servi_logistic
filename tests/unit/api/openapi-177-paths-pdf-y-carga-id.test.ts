@@ -1,0 +1,616 @@
+import { describe, it, expect } from "vitest";
+import fs from "fs";
+import path from "path";
+
+import { openApiSpec } from "@/lib/api/openapi-spec";
+import { METRICAS_API_KEY, METRICAS_TODAS } from "@/lib/analytics/publicacion-api-key";
+
+// Feature 177 (R41, R45) — contrato publicado del canal por API key tras la alta de los tres
+// endpoints nuevos (consulta por guía/remisión y PDF de etiqueta por orden y por lote) y la
+// publicación de `cargaId` en `CargaResponse`.
+//
+// El `.yaml` es un archivo de texto: nada más lo mantiene sincronizado con el objeto TS, así que
+// cada afirmación se hace sobre AMBOS artefactos. Los guards hermanos
+// (`openapi-contrato-en-reparto.test.ts`, `openapi-carga-row-paridad.test.ts`) cubren los enums de
+// estado y `CargaRow`; este cubre los paths y `CargaResponse`.
+
+const YAML_PATH = path.join(__dirname, "..", "..", "..", "docs", "api", "api-key-openapi.yaml");
+const yaml = fs.readFileSync(YAML_PATH, "utf8");
+const lineasYaml = yaml.split(/\r?\n/);
+
+/** Sangría (nº de espacios) de una línea; `null` si está en blanco. */
+function indent(linea: string): number | null {
+  if (linea.trim() === "") return null;
+  return linea.length - linea.trimStart().length;
+}
+
+/** Líneas del bloque `    <nombre>:` de `components.schemas`, sin su cabecera. */
+function bloqueDeSchema(nombre: string): string[] {
+  const inicio = lineasYaml.findIndex((l) => l === `    ${nombre}:`);
+  if (inicio === -1) throw new Error(`El yaml no declara el schema ${nombre}`);
+  const out: string[] = [];
+  for (let i = inicio + 1; i < lineasYaml.length; i++) {
+    const ind = indent(lineasYaml[i]);
+    if (ind !== null && ind <= 4) break;
+    out.push(lineasYaml[i]);
+  }
+  return out;
+}
+
+/** Líneas de una clave anidada del bloque (p. ej. `properties:` a sangría 6). */
+function subBloque(bloque: string[], clave: string, sangria: number): string[] {
+  const inicio = bloque.findIndex((l) => l === `${" ".repeat(sangria)}${clave}:`);
+  if (inicio === -1) throw new Error(`El bloque no declara ${clave}`);
+  const out: string[] = [];
+  for (let i = inicio + 1; i < bloque.length; i++) {
+    const ind = indent(bloque[i]);
+    if (ind !== null && ind <= sangria) break;
+    out.push(bloque[i]);
+  }
+  return out;
+}
+
+/** Claves de `paths:` del yaml (líneas `  "/api/...":`), en orden de declaración. */
+function pathsDelYaml(): string[] {
+  const inicio = lineasYaml.findIndex((l) => l === "paths:");
+  if (inicio === -1) throw new Error("El yaml no declara `paths:`");
+  const out: string[] = [];
+  for (let i = inicio + 1; i < lineasYaml.length; i++) {
+    const ind = indent(lineasYaml[i]);
+    if (ind === 0) break;
+    const m = /^ {2}"([^"]+)":\s*$/.exec(lineasYaml[i]);
+    if (m) out.push(m[1]);
+  }
+  return out;
+}
+
+const PATH_DETALLE_POR_ID = "/api/ordenes/api-key/orden/{id}";
+const PATH_PDF_ORDEN = "/api/ordenes/api-key/orden/{id}/generate";
+const PATH_PDF_CARGA = "/api/ordenes/api-key/carga/{cargaId}/generate";
+
+// ALTA de la feature 255 (R47) — el OCTAVO endpoint del canal. Esta lista estaba firmada en
+// SIETE desde la 177 y publicar la cotización la puso ROJA: ESE es su trabajo. Sube a OCHO A
+// PROPÓSITO, en el mismo commit que publica el endpoint, y no de contrabando. Qué se añadió y
+// por qué: `POST /api/ordenes/api-key/cotizacion` es un borde de LECTURA PURA —cotiza el precio
+// y la cobertura de un lote sin crear órdenes, sin consumir guías y sin persistir nada—, y se
+// publica en el canal por API key porque lo consume el mismo integrador, con la misma key y con
+// el mismo cuerpo que manda a `/carga`. Un endpoint que sirve precios y no está en el contrato
+// publicado es un precio sin contrato: por eso el alta va aquí y en el `.yaml` a la vez.
+const PATH_COTIZACION = "/api/ordenes/api-key/cotizacion";
+
+// ALTA de la feature 267 (R39) — el NOVENO endpoint del canal. La lista estaba firmada en OCHO
+// desde la 255 y publicar la analítica la puso ROJA: ESE es su trabajo, y por eso sube aquí, en
+// el mismo commit que publica el endpoint y en los dos artefactos. Qué se añadió:
+// `GET /api/ordenes/api-key/analitica` sirve una serie diaria de UNA métrica sobre las órdenes de
+// la tienda dueña de la key. Es el primer endpoint del canal que no habla de órdenes concretas
+// sino de cifras agregadas, y publicarlo obligó a revertir una decisión firmada (122/R11–D9,
+// «`apiKey` denegado POR DISEÑO») y a estrechar dos guardias de frontera a una allowlist nominal.
+// Un endpoint que sirve cifras y no está en el contrato publicado es una cifra sin contrato.
+const PATH_ANALITICA = "/api/ordenes/api-key/analitica";
+
+// ALTA de la feature 266 (R28) — el DECIMO endpoint del canal, y el alta se hace con la misma
+// regla que la de la 255 y la 267: la lista estaba firmada en NUEVE, publicar la habilitación la
+// puso ROJA, y sube a DIEZ A PROPÓSITO en el MISMO commit que publica el endpoint. Qué se añadió
+// y por qué: `POST /api/ordenes/api-key/habilitar` habilita en lote pedidos con novedad —el
+// integrador manda `{ num_guia, nota }` y recibe, fila por fila, si la orden volvió a
+// `en_reparto` o si solo quedó registrada la habilitación—. Es un borde de ESCRITURA del mismo
+// canal, con la misma key, así que un integrador que no lo encuentre en el contrato publicado no
+// puede usarlo.
+const PATH_HABILITAR = "/api/ordenes/api-key/habilitar";
+
+// ⚠️ FICHA 322 (2026-08-28) — LO QUE ESTA LISTA NO PUEDE VER, Y QUIÉN LO VE AHORA.
+//
+// Esta lista es el contrato PUBLICADO, escrito y firmado a mano, y ése es justo su valor: subir de
+// nueve a diez obliga a un humano a escribir el alta y su porqué en el mismo commit (la 255, la 267
+// y la 266 lo hicieron aquí arriba). Lo que NO puede hacer —porque compara el objeto TS contra sí
+// mismo y contra su copia en `.yaml`, nunca contra el filesystem— es enterarse de que existe un
+// `app/api/ordenes/api-key/**/route.ts` que nadie documentó: eso deja el gate ENTERO en verde. Se
+// midió el 2026-08-28: con una ruta nueva sin documentar en el canal, los 13 archivos y 223 tests
+// de `tests/unit/api/` pasaron los 223.
+//
+// Ese hueco lo cubre ahora `tests/unit/guards/openapi-canal-rutas-reales.guardia.test.ts`, que lee
+// las rutas REALES del filesystem y compara OPERACIONES (verbo + path) en las dos direcciones. Las
+// dos se necesitan y NINGUNA sustituye a la otra: sin esta lista se pierde la firma humana del
+// contrato; sin la guardia vuelve el agujero de la 322. No borres una alegando la otra.
+/**
+ * Los 9 endpoints que el canal por API key publica tras la 177, la 255, la 267 y la 266.
+ *
+ * ⚠️ BAJA (2026-08-31) — AQUÍ ESTABA `"/api/ordenes/api-key/{numGuia}"` (el `GET` de detalle por
+ * guía de la 106) y se RETIRA: `GET /api/ordenes/api-key/orden/{id}` devuelve el MISMO
+ * `OrdenDetalle` y además acepta `num_remision`, así que el detalle por guía era un segundo
+ * camino estrictamente más pobre al mismo recurso. El censo baja de diez a nueve a propósito y
+ * en el mismo commit que retira la ruta.
+ */
+const PATHS_ESPERADOS = [
+  "/api/ordenes/api-key/carga",
+  "/api/ordenes/api-key",
+  "/api/ordenes/api-key/{numGuia}/cancelar",
+  PATH_DETALLE_POR_ID,
+  PATH_PDF_ORDEN,
+  PATH_PDF_CARGA,
+  PATH_COTIZACION,
+  PATH_ANALITICA,
+  PATH_HABILITAR,
+];
+
+describe("177/R41 + 255/R47 + 267/R39 + 266/R28 — el OpenAPI publica los nueve endpoints del canal", () => {
+  const clavesTs = Object.keys(openApiSpec.paths);
+
+  it("el objeto TS declara exactamente nueve paths, uno por endpoint, y ninguno más", () => {
+    expect(clavesTs).toHaveLength(9);
+    expect(clavesTs).toEqual(PATHS_ESPERADOS);
+  });
+
+  it("los tres endpoints nuevos aparecen nombrados uno a uno en el objeto TS", () => {
+    expect(clavesTs).toContain(PATH_DETALLE_POR_ID);
+    expect(clavesTs).toContain(PATH_PDF_ORDEN);
+    expect(clavesTs).toContain(PATH_PDF_CARGA);
+  });
+
+  it("el .yaml publicado declara los mismos nueve paths, en el mismo orden", () => {
+    expect(pathsDelYaml()).toEqual(PATHS_ESPERADOS);
+  });
+
+  // ALTA de la FICHA 320 (2026-08-28) — el path de la orden por identificador gana un SEGUNDO
+  // verbo. El censo de PATHS no sube: el borrado NO estrena ruta, estrena
+  // `DELETE` sobre la que ya existe, porque retira EXACTAMENTE el recurso que esa ruta
+  // identifica. Esta lista estaba firmada en `["parameters", "get"]` y publicar el borrado la
+  // puso ROJA: ESE es su trabajo, y sube a tres A PROPOSITO, en el mismo commit que publica el
+  // endpoint. El contenido del `delete` (schema, codigos, los dos artefactos) se afirma en
+  // `openapi-320-eliminar.test.ts`, igual que la 266 hizo con el suyo.
+  it("la consulta por identificador es GET, comparte path con el DELETE de la 320 y reutiliza OrdenDetalle", () => {
+    const operacion = openApiSpec.paths[PATH_DETALLE_POR_ID];
+    expect(Object.keys(operacion)).toEqual(["parameters", "get", "delete"]);
+    expect(operacion.get.responses["200"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/OrdenDetalle",
+    });
+  });
+
+  it("los dos endpoints de PDF son solo POST y devuelven PdfGenerateResponse", () => {
+    for (const clave of [PATH_PDF_ORDEN, PATH_PDF_CARGA] as const) {
+      const operacion = openApiSpec.paths[clave];
+      expect(Object.keys(operacion)).toEqual(["parameters", "post"]);
+      expect(operacion.post.responses["200"].content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/PdfGenerateResponse",
+      });
+    }
+  });
+
+  // `generado` se RETIRO del contrato el 2026-08-25. La asercion es de igualdad exacta
+  // (`toEqual`, no `toContain`) a proposito: asi el dia que alguien lo reintroduzca "porque es
+  // aditivo" el test se pone rojo, en vez de dejar volver un campo que ya se decidio no publicar.
+  it("el schema PdfGenerateResponse publica SOLO url y expiraEnSegundos como requeridos", () => {
+    const schema = openApiSpec.components.schemas.PdfGenerateResponse;
+    expect(Object.keys(schema.properties)).toEqual(["url", "expiraEnSegundos"]);
+    expect([...schema.required]).toEqual(["url", "expiraEnSegundos"]);
+    expect(schema.properties.url.type).toBe("string");
+    expect(schema.properties.expiraEnSegundos.type).toBe("integer");
+  });
+
+  it("el .yaml declara PdfGenerateResponse con las mismas propiedades requeridas", () => {
+    const bloque = bloqueDeSchema("PdfGenerateResponse");
+    const requeridas = subBloque(bloque, "required", 6)
+      .filter((l) => /^\s*-\s+/.test(l))
+      .map((l) => l.replace(/^\s*-\s+/, "").trim());
+    expect(requeridas).toEqual(["url", "expiraEnSegundos"]);
+    const propiedades = subBloque(bloque, "properties", 6)
+      .filter((l) => indent(l) === 8)
+      .map((l) => l.trim().replace(/:$/, ""));
+    expect(propiedades).toEqual(["url", "expiraEnSegundos"]);
+  });
+
+  it("los tres endpoints nuevos reutilizan las responses de error existentes por $ref", () => {
+    const nombreDeResponse: Record<string, string> = {
+      "401": "Unauthorized",
+      "403": "Forbidden",
+      "404": "NotFound",
+      "409": "Conflict",
+      "422": "ValidationError",
+    };
+    const casos: Array<{ responses: Record<string, unknown>; codigos: string[] }> = [
+      {
+        responses: openApiSpec.paths[PATH_DETALLE_POR_ID].get.responses,
+        codigos: ["401", "403", "404", "422"],
+      },
+      {
+        responses: openApiSpec.paths[PATH_PDF_ORDEN].post.responses,
+        codigos: ["401", "403", "404", "409", "422"],
+      },
+      {
+        responses: openApiSpec.paths[PATH_PDF_CARGA].post.responses,
+        codigos: ["401", "403", "404", "409", "422"],
+      },
+    ];
+    for (const { responses: operacionResponses, codigos } of casos) {
+      const operacion = { responses: operacionResponses };
+      expect(Object.keys(operacion.responses)).toEqual(["200", ...codigos]);
+      for (const codigo of codigos) {
+        expect(operacion.responses[codigo]).toEqual({
+          $ref: `#/components/responses/${nombreDeResponse[codigo]}`,
+        });
+      }
+    }
+  });
+});
+
+describe("177/R45 — CargaResponse publica el cargaId que exige el endpoint de PDF por lote", () => {
+  const cargaResponse = openApiSpec.components.schemas.CargaResponse;
+
+  it("el objeto TS declara cargaId como uuid nullable y NO lo exige en required", () => {
+    const cargaId = cargaResponse.properties.cargaId;
+    expect(cargaId).toBeDefined();
+    expect([...cargaId.type]).toEqual(["string", "null"]);
+    expect(cargaId.format).toBe("uuid");
+    expect([...cargaResponse.required]).not.toContain("cargaId");
+  });
+
+  it("el .yaml declara cargaId igual que el objeto TS (string|null, format uuid, no required)", () => {
+    const bloque = bloqueDeSchema("CargaResponse");
+    const propiedades = subBloque(bloque, "properties", 6);
+    const lineas = subBloque(propiedades, "cargaId", 8).map((l) => l.trim());
+    expect(lineas).toContain("type:");
+    expect(lineas).toContain("- string");
+    expect(lineas).toContain('- "null"');
+    expect(lineas).toContain("format: uuid");
+    const requeridas = subBloque(bloque, "required", 6)
+      .filter((l) => /^\s*-\s+/.test(l))
+      .map((l) => l.replace(/^\s*-\s+/, "").trim());
+    expect(requeridas).not.toContain("cargaId");
+    expect(requeridas).toEqual([...cargaResponse.required]);
+  });
+
+  it("el ejemplo publicado de POST /api/ordenes/api-key/carga muestra el cargaId", () => {
+    const ejemplo =
+      openApiSpec.paths["/api/ordenes/api-key/carga"].post.responses["200"].content[
+        "application/json"
+      ].examples.resumen.value;
+    expect(ejemplo).toHaveProperty("cargaId");
+    expect(typeof ejemplo.cargaId).toBe("string");
+    expect(ejemplo.cargaId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    // El .yaml publica el MISMO valor de ejemplo: si uno cambia, el otro miente.
+    expect(yaml).toContain(`cargaId: "${ejemplo.cargaId}"`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Feature 255 — el borde de cotización, publicado. Dos afirmaciones y solo dos en este archivo:
+// que el canal declara OCHO endpoints en los DOS artefactos (R47) y que la descripción publicada
+// del octavo declara el supuesto de comisión (R29). El resto del contrato de la cotización lo
+// cubren sus propias suites; aquí vive lo que esta guardia ya congelaba: la lista de paths.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+describe("255/R47 — la cotización sigue en su sitio, en el objeto TS y en el .yaml", () => {
+  it("los dos artefactos declaran la cotización en la misma posición (séptima tras la baja del detalle por guía)", () => {
+    const clavesTs = Object.keys(openApiSpec.paths);
+    const clavesYaml = pathsDelYaml();
+    expect(clavesTs[6]).toBe(PATH_COTIZACION);
+    expect(clavesYaml[6]).toBe(PATH_COTIZACION);
+    // Espejo exacto: el .yaml es un archivo de texto y nada más lo mantiene sincronizado.
+    expect(clavesYaml).toEqual(clavesTs);
+  });
+
+  it("el octavo endpoint es POST y devuelve CotizacionResponse", () => {
+    const operacion = openApiSpec.paths[PATH_COTIZACION];
+    expect(Object.keys(operacion)).toEqual(["post"]);
+    expect(operacion.post.responses["200"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/CotizacionResponse",
+    });
+  });
+});
+
+// ⏳ 2026-09-01 — AQUI VIVIA el describe «255/R29 — la descripción del endpoint declara el
+// supuesto»: que la cotizacion se calcula suponiendo `cobra_comision = true`. El supuesto NO viaja
+// como campo del cuerpo (se descarto `supuestos.cobraComision`) y su unico sitio publicado era esa
+// prosa, retirada con todas las descripciones de nivel operacion (peticion explicita). Hoy el
+// precio no declara en ninguna parte el supuesto de comision sobre el que se calculo.
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Feature 255 (R21) — CotizacionRow NO promete un rechazo que el servidor no hace.
+//
+// El borde valida el cuerpo GRUESO (`ordenes: array de records de texto`, 1..tope) y aplica
+// `filaCotizacionSchema` FILA A FILA dentro del service: una fila sin `provincia` NO tumba el
+// lote, sale 200 con esa fila en `resultado: "error"` y las demás se cotizan igual. Declarar la
+// terna en `required` haría que un cliente generado con validación estricta rechazara EN LOCAL
+// un cuerpo que el servidor acepta y responde 200. El que manda es el código: el documento
+// describe lo que el borde hace, no al revés.
+//
+// Ojo con la asimetría: esto vale para el schema de ENTRADA. En los schemas de RESPUESTA
+// (`CotizacionEscenarioEntregado/Devuelto`, `CotizacionCostos`, `CotizacionRowResult`,
+// `CotizacionResponse`) `required` SÍ es una promesa que el servidor cumple siempre
+// (R26/R27/R28) y quitarlo debilitaría el contrato.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+describe("255/R21 — CotizacionRow no declara `required`: una fila incompleta no es un 422", () => {
+  const cotizacionRow: Record<string, unknown> = openApiSpec.components.schemas.CotizacionRow;
+
+  it("el objeto TS no declara `required` en el schema de entrada por fila", () => {
+    expect(Object.keys(cotizacionRow)).not.toContain("required");
+    expect(Object.keys(cotizacionRow.properties as object)).toEqual([
+      "provincia",
+      "canton",
+      "distrito",
+      "direccion",
+      "monto_cobrar",
+      "num_remision",
+    ]);
+  });
+
+  it("el .yaml tampoco lo declara: el espejo dice lo mismo", () => {
+    const bloque = bloqueDeSchema("CotizacionRow");
+    expect(bloque.filter((l) => l === "      required:")).toEqual([]);
+  });
+
+  it("la descripción explica cuándo es 422 del lote y cuándo es 200 con la fila en error", () => {
+    const descripcion = String(cotizacionRow.description);
+    for (const texto of [descripcion, yaml]) {
+      expect(texto).toMatch(/NO es un 422 del lote/);
+      expect(texto).toMatch(/resultado: ("|\\")error("|\\")/);
+      expect(texto).toMatch(/éxito parcial/i);
+    }
+  });
+
+  it("los schemas de RESPUESTA conservan su `required`: ahí sí es una promesa cumplida", () => {
+    const schemas = openApiSpec.components.schemas;
+    // `fulfillment` (2026-08-25) es el sexto concepto del entregado y el quinto del devuelto:
+    // se cobra tambien cuando el paquete vuelve, porque el servicio de bodega ya se presto.
+    expect([...schemas.CotizacionEscenarioEntregado.required]).toEqual([
+      "flete",
+      "iva",
+      "comision",
+      "ivaComision",
+      "fulfillment",
+      "total",
+    ]);
+    expect([...schemas.CotizacionEscenarioDevuelto.required]).toEqual([
+      "flete",
+      "iva",
+      "comision",
+      "fulfillment",
+      "total",
+    ]);
+    expect([...schemas.CotizacionCostos.required]).toEqual(["entregado", "devuelto"]);
+    // 2026-08-31: `CotizacionRowResult` es ya SOLO la fila con precio, así que `costos` deja
+    // de ser opcional —en esta lista no cabe un elemento sin costos— y se le suma
+    // `montoCobrar`, el valor sobre el que se cotizó. Los dos son promesas que el servidor
+    // cumple siempre.
+    expect([...schemas.CotizacionRowResult.required]).toEqual([
+      "fila",
+      "numRemision",
+      "montoCobrar",
+      "resultado",
+      "costos",
+    ]);
+    // 2026-08-31: `CotizacionTotales` ya no existe. El bloque sumaba el lote entero como si
+    // se entregara al 100% y, a la vez, como si se rechazara al 100%; la cotización es POR
+    // ORDEN y el sobre solo lleva los tres contadores y el detalle por fila.
+    expect(JSON.stringify(openApiSpec)).not.toContain("CotizacionTotales");
+    expect(yaml).not.toContain("CotizacionTotales");
+    expect([...schemas.CotizacionResponse.required]).toEqual([
+      "total",
+      "cotizadas",
+      "conError",
+      "filas",
+      "errores",
+    ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Feature 267 (R39) — la analítica por API key, publicada. El canal pasa de OCHO a NUEVE
+// endpoints, y la afirmación se hace sobre los DOS artefactos: el objeto TS y el `.yaml`, en el
+// mismo orden y en la misma posición. El `.yaml` es un archivo de texto y nada más lo mantiene
+// sincronizado; un endpoint que existe y no está publicado es un contrato que solo conoce quien
+// leyó el código.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+/** Forma de un `parameter` de OpenAPI, lo justo para asertar sobre el sin castear en cada línea. */
+interface ParametroOpenApi {
+  readonly name: string;
+  readonly in: string;
+  readonly required: boolean;
+  readonly description: string;
+  readonly schema: Record<string, unknown>;
+}
+
+function parametrosDeAnalitica(): readonly ParametroOpenApi[] {
+  return openApiSpec.paths[PATH_ANALITICA].get.parameters as readonly ParametroOpenApi[];
+}
+
+// ⏳ 2026-09-01 — AQUI VIVIA `descripcionDeAnaliticaEnYaml()`, que extraia del `.yaml` la prosa del
+// endpoint de analitica. Las descripciones de nivel operacion se retiraron del contrato (peticion
+// explicita), asi que ya no hay bloque que extraer.
+
+/** Lanza si el parámetro no existe: un `undefined` silencioso volvería verde este guard. */
+function parametroDeAnalitica(nombre: string): ParametroOpenApi {
+  const p = parametrosDeAnalitica().find((x) => x.name === nombre);
+  if (!p) throw new Error(`el path de analitica no declara el parametro ${nombre}`);
+  return p;
+}
+
+describe("267/R39 — la analítica sigue publicada, en el objeto TS y en el .yaml", () => {
+  it("los dos artefactos declaran la analítica en la misma posición (octava tras la baja del detalle por guía)", () => {
+    const clavesTs = Object.keys(openApiSpec.paths);
+    const clavesYaml = pathsDelYaml();
+    expect(clavesTs[7]).toBe(PATH_ANALITICA);
+    expect(clavesYaml[7]).toBe(PATH_ANALITICA);
+    expect(clavesYaml).toEqual(clavesTs);
+  });
+
+  it("el noveno endpoint es GET y devuelve AnaliticaRespuesta (el SOBRE del lote)", () => {
+    const operacion = openApiSpec.paths[PATH_ANALITICA];
+    expect(Object.keys(operacion)).toEqual(["get"]);
+    // P4-bis: la unidad publicada es el sobre, no la serie suelta. Si esto volviera a apuntar a
+    // `AnaliticaSerie`, el contrato prometeria una forma que el endpoint ya no devuelve.
+    expect(operacion.get.responses["200"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AnaliticaRespuesta",
+    });
+    // 401/403/422 por `$ref` a las responses que el canal ya declara: una shape de error propia
+    // para este endpoint sería una segunda forma de decir «no» en el mismo contrato.
+    expect(Object.keys(operacion.get.responses)).toEqual(["200", "401", "403", "422"]);
+    for (const [codigo, nombre] of [
+      ["401", "Unauthorized"],
+      ["403", "Forbidden"],
+      ["422", "ValidationError"],
+    ] as const) {
+      expect(operacion.get.responses[codigo]).toEqual({
+        $ref: `#/components/responses/${nombre}`,
+      });
+    }
+  });
+
+  it("el enum de `metricas` SE DERIVA de la lista blanca más el centinela `all`", () => {
+    // Si el enum se hubiera copiado a mano, un alta o una baja en `METRICAS_API_KEY` dejaría el
+    // contrato publicado prometiendo métricas que el endpoint no concede (o callando las que
+    // sí). Se compara contra la fuente, no contra una lista repetida en este test. `all` va al
+    // final y desde la MISMA fuente (P4-bis): el centinela y la lista que expande se declaran
+    // juntos o acaban divergiendo.
+    const metricas = parametroDeAnalitica("metricas");
+    // 2026-08-31 — OPCIONAL: omitirlo equivale a `all`. El `enum` NO cambia por eso: `all` sigue
+    // siendo la forma explícita de pedir todas, y es la que el contrato publica.
+    expect(metricas.required).toBe(false);
+    expect(metricas.description).toMatch(/se omite/i);
+    expect([...((metricas.schema as { enum?: readonly string[] }).enum ?? [])]).toEqual([
+      ...METRICAS_API_KEY,
+      METRICAS_TODAS,
+    ]);
+
+    // Y el `.yaml` publica los MISMOS ids, en el MISMO orden: si uno cambia, el otro miente.
+    const inicio = lineasYaml.findIndex((l) => l === "        - name: metricas");
+    expect(inicio).toBeGreaterThan(-1);
+    const idsYaml: string[] = [];
+    for (let i = inicio; i < lineasYaml.length; i++) {
+      const m = /^ {14}- ([a-z_]+)$/.exec(lineasYaml[i]);
+      if (m) idsYaml.push(m[1]);
+      else if (idsYaml.length > 0) break;
+    }
+    expect(idsYaml).toEqual([...METRICAS_API_KEY, METRICAS_TODAS]);
+  });
+
+  it("`desde` y `hasta` son OPCIONALES, INCLUSIVOS los dos, y sin tope de ventana", () => {
+    // Los nombres y el formato siguen siendo los que publicó la 257 en el listado: un canal con
+    // dos convenciones de fecha es una trampa para el integrador. Lo que cambió el 2026-08-31 es
+    // la obligatoriedad — omitirlos significa «todo el histórico» — y el tope de 366 días, que
+    // se retiró de este canal porque un histórico completo no cabe en él.
+    for (const nombre of ["desde", "hasta"] as const) {
+      const p = parametroDeAnalitica(nombre);
+      expect(p.required).toBe(false);
+      expect(p.in).toBe("query");
+      expect(p.schema).toEqual({ type: "string", format: "date" });
+      // Que la ausencia significa algo tiene que estar ESCRITO en el parámetro, no solo en la
+      // prosa: un integrador lee la tabla de parámetros antes que el párrafo.
+      expect(p.description).toMatch(/se omite/i);
+      expect(p.description).toContain("INCLUSIVA");
+    }
+    // El tope de 366 días no se menciona en NINGÚN parámetro: publicarlo sería prometer un 422
+    // que este canal ya no devuelve.
+    for (const p of parametrosDeAnalitica()) expect(p.description).not.toContain("366");
+    // Y no se publican presets: el vocabulario interno de rangos no cruza al contrato público.
+    expect(parametrosDeAnalitica().map((p) => p.name)).toEqual(["metricas", "desde", "hasta"]);
+  });
+
+  it("el schema AnaliticaSerie publica CUATRO campos —metrica, unidad, data, cobertura— en el TS y en el .yaml", () => {
+    // ⏳ 2026-09-04 — AQUI DECIA que la serie publicaba TRES campos y que ni `cobertura` ni
+    // `parcial`/`corteAt` se mencionaban en ninguno de los dos artefactos. `cobertura` VUELVE, y
+    // con ella el punto del día en curso vuelve a `data` marcado `parcial`: el canal por API key
+    // sirve lo mismo que la pantalla. La negativa de 126/R34 —«cero» y «no se sabe» no son el
+    // mismo número— sigue en pie; lo que cambia es que ahora se expresa con la MARCA en vez de
+    // con la ausencia del punto.
+    //
+    // `unidadDeConteo` sigue fuera (hecho del CATÁLOGO) y `puntos` se sigue llamando `data`.
+    const schema = openApiSpec.components.schemas.AnaliticaSerie;
+    const requeridas = [...schema.required];
+    // P4-bis: sin `rango`. Es del sobre, porque las N series de un lote lo comparten por
+    // construcción (mismo `raw`, mismo instante). `cobertura` SÍ es de la serie: dos métricas del
+    // mismo rango pueden no ser legibles en los mismos días.
+    expect(requeridas).toEqual(["metrica", "unidad", "data", "cobertura"]);
+
+    const bloque = bloqueDeSchema("AnaliticaSerie");
+    const requeridasYaml = subBloque(bloque, "required", 6)
+      .filter((l) => /^\s*-\s+/.test(l))
+      .map((l) => l.replace(/^\s*-\s+/, "").trim());
+    expect(requeridasYaml).toEqual(requeridas);
+    const propiedades = subBloque(bloque, "properties", 6)
+      .filter((l) => indent(l) === 8)
+      .map((l) => l.trim().replace(/:$/, ""));
+    expect(propiedades).toEqual(requeridas);
+
+    // El PUNTO: dos campos obligatorios y dos opcionales que SOLO trae el día en curso.
+    const punto = schema.properties.data.items;
+    expect([...punto.required]).toEqual(["fecha", "valor"]);
+    expect(Object.keys(punto.properties)).toEqual(["fecha", "valor", "parcial", "corteAt"]);
+    // `parcial` se publica como el literal `true`, nunca como un booleano libre: un `false` sería
+    // un tercer estado que el contrato interno no tiene.
+    expect(punto.properties.parcial.enum).toEqual([true]);
+
+    // Y `cobertura` declara sus dos campos, los dos obligatorios.
+    const cobertura = schema.properties.cobertura;
+    expect([...cobertura.required]).toEqual(["fechasNoComparables", "penumbra"]);
+    expect(Object.keys(cobertura.properties)).toEqual(["fechasNoComparables", "penumbra"]);
+
+    // Lo que sigue SIN mencionarse en ninguno de los dos artefactos.
+    const serializadoTs = JSON.stringify(openApiSpec.paths[PATH_ANALITICA]) + JSON.stringify(schema);
+    const bloqueYaml = bloque.join("\n");
+    for (const retirado of ["unidadDeConteo", "dimension", "mensajero"]) {
+      expect(serializadoTs).not.toContain(retirado);
+      expect(bloqueYaml).not.toContain(retirado);
+    }
+    // Y lo que SÍ tiene que estar, en los DOS: el .yaml es un espejo, no un documento aparte.
+    for (const presente of ["parcial", "corteAt", "cobertura", "fechasNoComparables", "penumbra"]) {
+      expect(serializadoTs).toContain(presente);
+      expect(bloqueYaml).toContain(presente);
+    }
+  });
+
+  // ⏳ 2026-09-01 — AQUI VIVIA «la descripción del endpoint documenta la UNIDAD DE CONTEO que dejó
+  // de viajar en el payload». Es la baja MAS CARA de las descripciones retiradas y conviene que
+  // quede escrito: `unidadDeConteo` salio de la respuesta el 2026-08-24 con el argumento explicito
+  // de que su informacion viajaba en la prosa del endpoint. Esa prosa ya no existe, asi que el
+  // contrato NO dice en ninguna parte cuales metricas cuentan gestiones y cuales ordenes; un
+  // integrador que las sume obtiene un total que no significa nada, y nada se pondra rojo.
+  // Si alguna vez se quiere recuperar la garantia, hay dos caminos: devolver la descripcion, o
+  // republicar `unidad` como dato del payload.
+
+  it("P4-bis — el sobre `AnaliticaRespuesta` declara rango + metricas[], en el TS y en el .yaml", () => {
+    // El sobre es lo que un integrador parsea de verdad. Si el array de series dejara de
+    // apuntar a `AnaliticaSerie`, el contrato publicaría dos formas para la misma cosa.
+    const schema = openApiSpec.components.schemas.AnaliticaRespuesta;
+    expect([...schema.required]).toEqual(["rango", "metricas"]);
+    expect(schema.properties.metricas.items).toEqual({
+      $ref: "#/components/schemas/AnaliticaSerie",
+    });
+
+    const bloque = bloqueDeSchema("AnaliticaRespuesta");
+    const requeridasYaml = subBloque(bloque, "required", 6)
+      .filter((l) => /^\s*-\s+/.test(l))
+      .map((l) => l.replace(/^\s*-\s+/, "").trim());
+    expect(requeridasYaml).toEqual(["rango", "metricas"]);
+    expect(bloque.some((l) => l.includes('$ref: "#/components/schemas/AnaliticaSerie"'))).toBe(
+      true,
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Feature 266 (R28) — la habilitación por lote, publicada. La afirmación se hace sobre los DOS
+// artefactos: el objeto TS y el `.yaml`, en el mismo orden y en la misma posición. Mismo criterio
+// que la 255 y la 267: un endpoint de ESCRITURA que existe y no está publicado es un contrato que
+// solo conoce quien leyó el código. La habilitación era el DÉCIMO endpoint cuando se publicó; con
+// la baja del `GET /{numGuia}` (2026-08-31) es el NOVENO y sigue siendo el ÚLTIMO de la lista.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+describe("266/R28 — el canal por API key publica NUEVE endpoints, en el objeto TS y en el .yaml", () => {
+  it("los dos artefactos declaran nueve paths, el mismo noveno y en la misma posición", () => {
+    const clavesTs = Object.keys(openApiSpec.paths);
+    const clavesYaml = pathsDelYaml();
+    expect(clavesTs).toHaveLength(9);
+    expect(clavesYaml).toHaveLength(9);
+    expect(clavesTs[8]).toBe(PATH_HABILITAR);
+    expect(clavesYaml[8]).toBe(PATH_HABILITAR);
+    // Espejo exacto: el .yaml es un archivo de texto y nada más lo mantiene sincronizado.
+    expect(clavesYaml).toEqual(clavesTs);
+  });
+
+  it("el último endpoint (habilitar) es POST y devuelve HabilitacionResponse", () => {
+    const operacion = openApiSpec.paths[PATH_HABILITAR];
+    expect(Object.keys(operacion)).toEqual(["post"]);
+    expect(operacion.post.responses["200"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/HabilitacionResponse",
+    });
+  });
+});

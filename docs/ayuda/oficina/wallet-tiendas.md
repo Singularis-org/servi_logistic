@@ -1,0 +1,208 @@
+---
+titulo: Wallet · Tiendas
+modulo: wallet
+pantalla: /wallet/tiendas, /wallet/tiendas/[tiendaId]
+roles: [maestro, admin]
+actualizado: 2026-10-22
+fuentes:
+  - app/(app)/wallet/tiendas/_components/SaldosTiendasTable.tsx
+  - app/(app)/wallet/tiendas/[tiendaId]/page.tsx
+  - app/(app)/wallet/tiendas/_components/EstadoCuentaTienda.tsx
+  - app/(app)/wallet/tiendas/_components/EstadoCuentaAcciones.tsx
+  - app/(app)/wallet/tiendas/_components/estado-cuenta-tienda-labels.ts
+  - app/(app)/wallet/tiendas/_components/PagosTiendaEstadoCuenta.tsx
+  - components/shared/estado-cuenta/EstadoCuenta.tsx
+  - components/shared/estado-cuenta/estado-cuenta-labels.ts
+  - components/shared/wallet/zonas-filtros-labels.ts
+  - components/shared/estado-cuenta/estado-cuenta-descarga-columnas.ts
+  - components/shared/estado-cuenta/SelectorCierreDeCuenta.tsx
+  - components/shared/wallet/cierres-selector.ts
+  - app/(app)/wallet/_components/DetalleMovimientoCierre.tsx
+  - app/(app)/wallet/_components/ordenes-de-fila-cuenta.ts
+  - lib/actions/estado-cuenta.ts
+  - lib/services/OrigenLegibleService.ts
+  - components/shared/wallet/DetalleMovimientoPanel.tsx
+  - components/shared/wallet/RegistrarMovimientoDialog.tsx
+  - lib/services/EstadoCuentaService.ts
+  - lib/utils/estado-cuenta-chips.ts
+  - app/(app)/wallet/tiendas/_components/desglose-tienda-labels.ts
+  - app/(app)/mi-wallet/_components/mi-wallet-labels.ts
+  - lib/utils/descripcion-pago-por-cuenta.ts
+  - lib/utils/descripcion-cobro-tienda.ts
+  - lib/services/PagoPorCuentaTiendaService.ts
+  - lib/services/CobroTiendaService.ts
+  - lib/services/AbonoTiendaService.ts
+  - lib/utils/descripcion-abono.ts
+  - app/(app)/wallet/tiendas/_components/saldo-tienda-signo-label.ts
+---
+
+# Wallet · Tiendas
+
+**Cuánto le debés a cada tienda**, o cuánto te debe ella. Es la pantalla desde la que se liquida con
+los clientes.
+
+Es la misma cuenta que la tienda ve en su **Mi wallet**, mirada desde este lado: acá cada concepto se
+lee **desde la empresa** («La empresa le cobra a la tienda») y allá la tienda lo lee desde el suyo («La empresa
+te cobró»).
+
+## La tabla de saldos
+
+Una fila por tienda, con su saldo y su signo:
+
+| Signo | Significa |
+| --- | --- |
+| **A favor** | Le debés a la tienda. Es lo recaudado de sus clientes que todavía no le pagaste |
+| **En contra** | Ella te debe. Los cargos superaron lo recaudado |
+| **En cero** | Cuadrado |
+
+Cada fila lleva **Ver estado de cuenta**, que abre la cuenta de esa tienda en su propia página. Al
+volver, la fila ya dice el saldo nuevo si registraste o anulaste algo allá.
+
+Encima de la tabla hay un **buscador por el nombre de la tienda**. La descarga trae las tiendas que
+encuentra esa búsqueda.
+
+## El estado de cuenta de una tienda
+
+Es el extracto de la tienda con la empresa, como el de un banco.
+
+Arriba, la cifra grande es el **saldo actual** con una frase que dice **quién le debe a quién**:
+«La empresa le debe ₡12.000 a Tania Tienda» o «Tania Tienda le debe ₡3.000 a la empresa». Debajo, cuatro
+cifras del periodo: **Saldo inicial**, **Abonos del periodo** (lo que suma a favor de la tienda),
+**Cargos del periodo** (lo que resta) y **Saldo al final del periodo**. Siempre se cumple: saldo inicial
+más abonos menos cargos es el saldo final. Los movimientos anulados y su anulación **no cuentan** en
+abonos ni cargos: se cancelan entre ellos.
+
+La tabla es el **extracto**. Se entra en **Más recientes**: el último movimiento arriba.
+
+- La línea del **saldo inicial** del periodo —lo que la tienda tenía al terminar el día anterior— va
+  donde cae en el tiempo: con **Más recientes**, es la **última línea de la última página**; con **Más
+  antiguas**, la primera línea de la primera página.
+- Cada movimiento dice su fecha, su concepto (desde la empresa), el motivo, de dónde viene, si tiene
+  comprobante y **quién lo registró** («Registró: Ana Admin», o «Automático · Aprobación del cierre por
+  Ana Admin»), el **cargo** o el **abono**, y el **saldo** de la tienda justo después de ese movimiento.
+- **De dónde viene** lo dice con nombre —«Cierre del día · 2026-09-12 · Juan Pérez Mora», «Pago de
+  la empresa a una tienda · 2026-09-14 · SINPE»— y, cuando esa cosa tiene su pantalla, con un enlace
+  **Ver** que te lleva a ella (por ejemplo, al cierre).
+- Si el movimiento es un pago, dice **Cómo se pagó**: el método y la referencia («SINPE · referencia
+  12345»).
+- El saldo del movimiento más reciente es el de la tarjeta y el de la fila de la tabla de saldos.
+  Cambiar el orden no cambia el saldo de ninguna fila.
+
+### Las órdenes de un cierre
+
+Las filas que vienen de un **cierre** tienen una flecha al principio: al abrirla ves **las órdenes de esta
+tienda que componen ese importe** —guía (con enlace a la orden), destinatario, resultado y cuánto aportó
+cada una—, con el día del cierre, el mensajero y cuántas de sus órdenes aportan. Se pueden descargar.
+
+### Filtrar el estado de cuenta
+
+Los filtros están en **una sola barra, encima de la tabla**, en la misma fila que **Descargar**:
+
+- **Más recientes / Más antiguas**: los dos botones con flechas del principio; el orden del extracto,
+  por fecha.
+- **El buscador**: busca en la descripción y en quién registró el movimiento, sin distinguir
+  mayúsculas. Escribí **al menos 3 caracteres**.
+- **Filtros**: abre una lista de casillas —**Periodo**, **Tipo de movimiento** y **Cierre**—. Marcar una
+  casilla pone su control en la barra (marcarla sola no filtra nada); desmarcarla quita ese filtro.
+
+Lo que hace cada casilla:
+
+- **Periodo**: se eligen el primer y el último día en el calendario (días de Costa Rica) y se aplica
+  solo, sin botón. Es el único que cambia también las cuatro cifras de arriba, y la línea del saldo
+  inicial dice el saldo con el que la tienda empezó ese periodo.
+- **Tipo de movimiento**: **Cierres · Pagos · Cobros · Correcciones** (sin elegir ninguno, dice
+  **Todo**). Cada movimiento cae en uno solo. El saldo de cada fila **sigue siendo el de la cuenta
+  entera**, aunque filtres: por eso no baja de a poco como si los otros movimientos no existieran.
+- **Cierre**: un selector con búsqueda. Solo ofrece los cierres que tienen movimientos en **esta**
+  tienda, cada uno con su día y el mensajero («Cierre del 2026-09-12 · Juan Pérez Mora · 3
+  movimientos»); se busca por un día (2026-09-12) o por el nombre del mensajero. **Todos los cierres**
+  quita el filtro. Como con el tipo de movimiento, el saldo de cada fila sigue siendo el de la cuenta
+  entera.
+
+El tipo de movimiento, el cierre, el buscador y el orden no cambian ninguna cifra de arriba; cualquier
+cambio vuelve a la primera página. **Limpiar todo** quita el texto buscado, el periodo, el tipo de
+movimiento, el cierre y todas las casillas; no toca el orden. Si una lectura falla, la pantalla te lo
+dice y **se queda con lo que mostraba**: las cifras, el extracto y los filtros que ya estaban puestos.
+
+### Anulados
+
+Un movimiento anulado **no desaparece**: sigue en su lugar, tachado, y dice **quién lo anuló, cuándo y
+por qué** («Anulado el 2026-09-20 por Ana Admin · Se pagó dos veces»). Si se anuló antes de que la
+wallet guardara el motivo, dice **«motivo no registrado»**. Su anulación aparece como otra fila, con la
+marca **Anulación**.
+
+### Ver un movimiento
+
+**Ver**, en cada fila, abre su detalle a un costado: a quién, por qué, de dónde viene, el comprobante (si
+tiene, se abre con **Ver comprobante**), quién lo registró, si está vigente o anulado y **Cómo quedó** la
+caja y la tienda después de ese movimiento. Desde ahí se **anula** con **Anular…** y un motivo, cuando el
+movimiento lo admite (lo que produce la aprobación de un cierre no se anula desde acá).
+
+### Descargar
+
+La descarga trae **el periodo entero** que estás mirando (no solo la página), en el orden elegido y
+con la línea del saldo inicial donde cae en el tiempo (al final con **Más recientes**, al principio con
+**Más antiguas**), y el **saldo** de cada fila, en las mismas columnas que la tabla. No lleva ningún
+identificador. Respeta el periodo, el texto buscado, el tipo de movimiento y el cierre elegidos. Si hay más movimientos de los que entran en una
+descarga, **no se descarga nada** y te lo dice: «El estado de cuenta tiene … movimientos con estos
+filtros y la descarga admite hasta …». Elegí un periodo más corto, un tipo de movimiento o un cierre y
+volvé a descargar.
+
+## Registrar desde el estado de cuenta
+
+Tres acciones, cada una abre el mismo **Registrar un movimiento** de la caja con el concepto y la tienda
+ya elegidos:
+
+- **La tienda le paga a la empresa** — solo cuando la tienda está **en contra**: registra el pago que ella
+  le hizo a la empresa (hasta lo que debe, con fecha, motivo, método y comprobante opcional). Su saldo sube.
+- **La empresa le cobra a la tienda** — siempre: un cobro de la empresa. Su saldo baja y es ganancia de la empresa.
+- **La empresa le paga a la tienda** — lo que se le paga de su saldo a favor, hasta lo que la empresa le debe.
+  Si la tienda no tiene saldo a favor, el botón está apagado y lo dice: «La empresa no le debe nada a…».
+
+Antes de confirmar, **«Así queda»** enseña cómo quedan el saldo de la tienda y la caja. Al registrar,
+las tarjetas y el extracto de esa tienda se actualizan solos, sin recargar.
+
+Debajo del extracto está la lista de **Pagos de la empresa a la tienda**, cada uno con su método, su
+referencia y su comprobante. Un pago registrado por error se **anula** desde ahí (con el motivo) o desde
+**Ver** en su fila del extracto. Si te dice **«Este pago ya estaba anulado»**, es que alguien se te
+adelantó.
+
+## Cómo se llama cada movimiento
+
+| En el estado de cuenta dice | Qué es | ¿Salió dinero de la caja? |
+| --- | --- | --- |
+| **Contra-entrega cobrado a los clientes de la tienda** | Lo que el mensajero cobró a los clientes en nombre de la tienda | No: entró, y es de la tienda |
+| **Flete cobrado a la tienda**, **Comisión de contra-entrega cobrada a la tienda**, **IVA del flete cobrado a la tienda**… | El servicio de la empresa, al aprobarse un cierre | No: se descuenta del saldo y es ganancia de la empresa |
+| **La empresa le cobra a la tienda** | Un cobro de la empresa a la tienda hecho a mano: no se le pagó nada a nadie. Se descuenta de su saldo y **es ganancia de la empresa** | **No**: el dinero pasa del saldo de la tienda a la ganancia |
+| **Cobro de la empresa a la tienda anulado** | La anulación de ese cobro: el saldo vuelve a subir | No |
+| **La empresa paga un gasto de la tienda** | La empresa le pagó a un tercero en nombre de la tienda (su proveedor, su publicidad, su personal). La descripción dice a quién, el motivo, el método y la referencia | **Sí** |
+| **Pago de un gasto de la tienda anulado** | La devolución de un pago de un gasto que se anuló: el saldo vuelve a subir | Vuelve a entrar |
+| **La empresa le paga a la tienda** | Lo que se le pagó a la tienda de su saldo | **Sí** |
+| **La tienda le paga a la empresa** | Lo que la tienda le pagó a la empresa cuando estaba en contra. Su saldo sube | **Sí**: entró dinero de la tienda |
+| **Pago de la tienda a la empresa anulado** | La anulación de ese pago: el saldo vuelve a bajar | Vuelve a salir |
+| **Corrección a favor de la tienda** / **Corrección en contra de la tienda** | Una corrección hecha a mano | — |
+
+**Un pago de un gasto no cuenta como un pago a la tienda**. Y tanto el cobro como el pago de un gasto
+pueden dejar el saldo **en contra**: entonces la tienda le debe ese dinero a la empresa.
+
+Algunos cobros antiguos eran en realidad pagos de un gasto de la tienda. Se corrigieron en la caja,
+pero **acá se siguen viendo como «La empresa le cobra a la tienda»**: el saldo de la tienda ya era correcto.
+
+## Cosas que te pueden pasar
+
+**«No hay tiendas con saldo registrado».** Ninguna tiene movimientos todavía. En una operación nueva
+es lo esperable hasta que se apruebe el primer cierre.
+
+**«No se pudo cargar el estado de cuenta».** Falló una lectura; la pantalla se queda con lo último que
+cargó —cifras, extracto y filtros— y lo dice encima del extracto. Probá de nuevo.
+
+**«Ya estaba anulado; no se registró nada más».** Alguien lo anuló antes que vos. No se hizo nada dos veces.
+
+**Un saldo que no cuadra con lo que la tienda dice.** Casi siempre es tiempo, no error: los movimientos
+entran **al aprobarse el cierre del mensajero**, no al entregarse el paquete. Comparen con la misma
+fecha de corte: el estado de cuenta con un periodo dice el saldo de ese día exacto.
+
+## Lo que esta pantalla NO hace
+
+- **No es la caja de la empresa.** Eso es **Wallet · Caja**.
+- **No se corrige una entrega desde acá.** Un cargo mal calculado nace de la orden; se arregla allá.

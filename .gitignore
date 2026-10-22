@@ -1,0 +1,78 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+/harnessConfig
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Log del servidor de desarrollo. Se redirige a un ARCHIVO a proposito, porque es la
+# unica via para leer el OTP de `adminTienda`/`adminSatelite` al recorrer la app con
+# Playwright (no hay proveedor de email: ver `OtpChallengeIssuer`). OJO: ese archivo
+# lleva OTPs y CONTRASENAS EN CLARO -el log de dev de Next imprime los argumentos de
+# cada server action, `login({...,"password":"..."})` incluido-, asi que no puede
+# acabar en un commit por descuido.
+dev.log
+*.dev.log
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# worktrees de agentes (copias completas del repo)
+/.claude/worktrees/
+
+# Reporte JSON de la corrida de tests, insumo de scripts/comparar-baseline-rojos.mjs
+.vitest/
+# Rutas del arnes v2 (SL-10, D2): el informe que leen init.sh y gate.yml, y el
+# archivo con el codigo de salida de vitest que lee scripts/unir-informes-vitest.mjs.
+.vitest-rojos.json
+.vitest-codigo
+
+# arnes v2 (harness_config): estado local, no se versiona (docs/equipo.md)
+/feature_list.json
+/.arnes.local.json
+/progress/sesion.local.md
+/progress/logs/
+/.worktrees/
+
+# borradores y material de entrada (zips de marca, etc.)
+/_trabajo/

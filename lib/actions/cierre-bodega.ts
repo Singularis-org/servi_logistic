@@ -1,0 +1,422 @@
+"use server";
+
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
+import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
+import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
+import { gestionConfig } from "@/lib/config/gestion";
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { ICierreBodegaService } from "@/lib/interfaces/services/ICierreBodegaService";
+import type { ICierresBodegaAdminService } from "@/lib/interfaces/services/ICierresBodegaAdminService";
+import {
+  cierreBodegaIdSchema,
+  aprobarCierreBodegaSchema,
+  rechazarCierreBodegaSchema,
+  listarCierresBodegaPaginadoSchema,
+  listarCierresBodegaSolicitadosCompletoSchema,
+  listarConsolidablesSchema,
+  listarConsolidablesCompletoSchema,
+  listarPendientesCierresBodegaCompletoSchema,
+  listarHistoricoCierresBodegaCompletoSchema,
+  type ListarConsolidacionResult,
+  type ListarConsolidablesResult,
+  type ListarCierresBodegaSolicitadosCompletoResult,
+  type ListarConsolidablesCompletoResult,
+  type ListarPendientesCierresBodegaCompletoResult,
+  type ListarHistoricoCierresBodegaCompletoResult,
+  type ListarGestionesCierresBodegaCompletoResult,
+  type SolicitarCierreBodegaResult,
+  type ListarCierresBodegaAdminResult,
+  type ListarCierresBodegaSolicitadosResult,
+  type ListarHistoricoCierresBodegaResult,
+  type ListarPendientesCierresBodegaResult,
+  type VerCierreBodegaDetalleResult,
+  type AprobarCierreBodegaResult,
+  type RechazarCierreBodegaResult,
+} from "@/lib/types/cierre-bodega";
+import { filtrosDescargaGestionesSchema } from "@/lib/types/filtros-cierres";
+import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import type { AppErrorShape } from "@/lib/errors";
+
+// Feature 40 — Server Actions del "Cierre de bodega" (mutaciones internas del mismo
+// proyecto; van como Server Action, no como Route API, patron feature 37/38). Resuelve
+// el actor por sesion, valida en el borde con zod (mutaciones/ver-detalle) y delega en
+// el servicio, TODO bajo `withErrorHandler`: un error EXCEPCIONAL (caida de DB, fallo
+// de storage al firmar) se normaliza a AppErrorShape. `unauthenticated` (UNAUTHORIZED)
+// y `validation_error` (ZodError) se resuelven en el borde; el resto
+// (forbidden/no_encontrada/conflict) los devuelve el service como resultado de dominio.
+
+// Traduce el AppErrorShape que puede producir este borde: ZodError (VALIDATION_ERROR,
+// R17) o falta de sesion (UNAUTHORIZED, R1/R2). Espejo de toCierresAdminActionError.
+function toCierreBodegaActionError(
+  shape: AppErrorShape,
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" } {
+  switch (shape.code) {
+    case "VALIDATION_ERROR":
+      return {
+        status: "validation_error",
+        fieldErrors: (shape.details?.fieldErrors as Record<string, string[]> | undefined) ?? {},
+      };
+    case "UNAUTHORIZED":
+      return { status: "unauthenticated" };
+    default:
+      throw new Error(`cierre-bodega: AppErrorCode inesperado ${shape.code}`);
+  }
+}
+
+function buildCierreBodegaService(): ICierreBodegaService {
+  const prisma = getPrismaClient();
+  return new CierreBodegaService(new CierreBodegaRepository(prisma), new OrdenRepository(prisma));
+}
+
+function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
+  const prisma = getPrismaClient();
+  return new CierresBodegaAdminService(
+    new CierresBodegaAdminRepository(prisma),
+    // Evidencias: mismo bucket privado de gestion_orden (feature 36).
+    new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+  );
+}
+
+export interface CierreBodegaDeps {
+  cierreBodegaService?: ICierreBodegaService; // lado adminSatelite (consolidar/solicitar)
+  cierresBodegaAdminService?: ICierresBodegaAdminService; // lado maestro (aprobar/rechazar)
+  getActor?: () => Promise<Actor | null>;
+}
+
+/** R1/R3-R7: consolidacion + totales + gate + historico; solo adminSatelite (via service). */
+export async function listarConsolidacion(
+  deps: CierreBodegaDeps = {},
+): Promise<ListarConsolidacionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el service
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.listarConsolidacion(actor);
+  });
+  // Sin zod en este borde: el unico AppErrorShape posible es UNAUTHORIZED.
+  return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/** R1/R4/R6-R10: crea la solicitud de cierre de bodega; solo adminSatelite (via service). */
+export async function solicitarCierreBodega(
+  deps: CierreBodegaDeps = {},
+): Promise<SolicitarCierreBodegaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.solicitarCierreBodega(actor);
+  });
+  return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/**
+ * R2/R15: cola + historico de cierres de bodega; solo maestro (via service).
+ *
+ * **Feature 184 (T H.2) — CERO consumidores de produccion, y se CONSERVA a proposito.** La T M.1
+ * de la 170 la saco del render de `cierres-admin/page.tsx` y la tanda E se llevo sus dos ultimas
+ * llamadas (las descargas de los listados 4 y 5, que ahora salen de
+ * `listarPendientesCierresBodegaCompleto` y `listarHistoricoCierresBodegaCompleto`).
+ *
+ * Por que NO se borra, con el precio delante: es el TESTIGO de anti-vacuidad de tres casos que
+ * miden lo que la tanda E entrego, y no hay sustituto que no sea sintetico.
+ *
+ *  1. `tests/unit/services/cierres-bodega-admin-completo.test.ts` (R1) la ejecuta y cuenta que lee
+ *     **7 filas** para producir cualquiera de los dos archivos, frente a las 5 y 2 de las lecturas
+ *     dedicadas. Sin ese lado, los `toEqual(["findHistoricoCompleto"])` los pasaria igual un
+ *     servicio que no leyera nada. Es el unico caso que mata la mutacion M8 de esa tanda, que
+ *     dejaba 43 de 44 en verde.
+ *  2. `tests/unit/repositories/historicos-paginados-where.test.ts` (R1/R14) ejecuta
+ *     `findCierresBodega` y afirma que su consulta **no lleva `where` en absoluto**: es la
+ *     evidencia de que los dos metodos nuevos tenian que existir. Para preguntarselo hay que
+ *     conservarla.
+ *  3. `tests/components/descarga/CierresDescarga.test.tsx` (R1, mitad de cliente) la usa como
+ *     doble VIVO: invoca el doble al final y comprueba que devuelve las dos mitades, para que
+ *     `not.toHaveBeenCalled()` signifique «la pantalla decidio no llamarla» y no «el mock estaba
+ *     muerto».
+ *
+ * Ademas la sostienen los casos de la 170 que afirman que el listado paginado y el sin paginar
+ * coinciden (`cierres-bodega-admin-historico-paginado`, `cierres-bodega-pendientes-paginado`).
+ *
+ * Lo que impide que «conservar» sea «olvidar»: `tests/unit/descarga/adaptador-conjunto.guardia.test.ts`
+ * (R32) afirma que NINGUNA pantalla vuelve a cablearse a ella. Vive como testigo, no como camino.
+ *
+ * @sin-superficie decision de las features 170 (T M.1) y 184 (T E.3), no deuda: testigo de tres casos de R1. La superficie viva son `listarPendientesCierresBodegaCompleto` y `listarHistoricoCierresBodegaCompleto`.
+ */
+export async function listarCierresBodegaAdmin(
+  deps: CierreBodegaDeps = {},
+): Promise<ListarCierresBodegaAdminResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarCierresBodegaAdmin(actor);
+  });
+  return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40/R41/R44): UNA pagina de los cierres de bodega SOLICITADOS
+ * por la zona del adminSatelite + el total. La zona NO viaja en el input: la resuelve el
+ * servicio desde el actor de la sesion.
+ */
+export async function listarCierresBodegaSolicitadosPaginado(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<ListarCierresBodegaSolicitadosResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarCierresBodegaPaginadoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.listarCierresBodegaSolicitadosPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40/R41/R44): UNA pagina del HISTORICO de cierres de bodega
+ * (los ya resueltos) + el total. Solo acceso total, y lo decide el servicio.
+ */
+export async function listarHistoricoCierresBodegaPaginado(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<ListarHistoricoCierresBodegaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarCierresBodegaPaginadoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarHistoricoCierresBodegaPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T J.1, R40/R41/R42/R44): UNA pagina de la COLA de cierres de bodega
+ * PENDIENTES + el total de la cabecera. Solo acceso total, y lo decide el servicio.
+ */
+export async function listarPendientesCierresBodegaPaginado(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<ListarPendientesCierresBodegaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarCierresBodegaPaginadoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarPendientesCierresBodegaPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T J.1, R40/R41/R42/R44/R49): UNA pagina de los cierre_dia
+ * CONSOLIDABLES de la zona + el total de la cabecera. La zona la resuelve el servicio desde el
+ * actor.
+ *
+ * NO devuelve los totales de dinero de esa pantalla: siguen llegando por `listarConsolidacion`,
+ * calculados sobre el conjunto COMPLETO (R49).
+ */
+export async function listarConsolidablesPaginado(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<ListarConsolidablesResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarConsolidablesSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.listarConsolidablesPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 184 — Tanda B (R1/R6/R7/R10) — el CONJUNTO de «Cierres de bodega solicitados» de la
+ * zona del actor, sin recorte, para producir el archivo.
+ *
+ * Sustituye a la relectura de `listarConsolidacion()` que hacia la pantalla, que traia ademas
+ * los consolidables, el contador de pendientes y los cinco agregados de dinero con su reparto de
+ * efectivo — de todo eso, el archivo usaba un solo campo.
+ *
+ * La zona NO viaja en el input: la resuelve el servicio desde el actor. Y como este listado no
+ * tiene filtros, la lista blanca derivada de la de su pagina no deja NINGUNA clave: cualquier
+ * cosa que llegue —empezando por `zonaId`— muere aqui con `validation_error` sin tocar el
+ * servicio (R17). El input se parsea aunque no se transporte nada: parsear ES la barrera.
+ */
+export async function listarCierresBodegaSolicitadosCompleto(
+  input: unknown = {},
+  deps: CierreBodegaDeps = {},
+): Promise<ListarCierresBodegaSolicitadosCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
+    // Pedido humano del 2026-08-16: la lista blanca ya no esta vacia — trae `filtros`, y lo
+    // que valida se USA. Antes se parseaba y se tiraba, porque no habia nada que transportar.
+    const data = listarCierresBodegaSolicitadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.listarCierresBodegaSolicitadosCompleto(actor, data.filtros);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 184 — Tanda B (R1/R6/R7/R10) — el CONJUNTO de «Cierres del dia a consolidar» de la
+ * zona del actor, sin recorte, para producir el archivo.
+ *
+ * Espejo del de arriba, y con el mismo motivo: descargar esta tabla no tiene por que costar los
+ * cinco agregados de dinero de su cabecera ni el reparto del efectivo entre todos los pagos de
+ * la zona. Esos numeros los sigue produciendo `listarConsolidacion` para la PANTALLA, sobre el
+ * mismo conjunto y sin cambiar (R49 de la 170).
+ */
+export async function listarConsolidablesCompleto(
+  input: unknown = {},
+  deps: CierreBodegaDeps = {},
+): Promise<ListarConsolidablesCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
+    const data = listarConsolidablesCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierreBodegaService ?? buildCierreBodegaService();
+    return service.listarConsolidablesCompleto(actor, data.filtros);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 184 — Tanda E (R1/R4/R6/R7/R17) — el CONJUNTO de «Cierres de bodega pendientes»
+ * (listado 4), sin recorte, para producir el archivo.
+ *
+ * Sustituye a la relectura de `listarCierresBodegaAdmin()` que hacia la pantalla, que trae los
+ * DOS conjuntos —la cola y el historico entero de la operacion— para que el archivo se quede con
+ * uno. Aqui el corte lo hace la base.
+ *
+ * El alcance no viaja en el input y no puede: es acceso total y lo decide el servicio desde el
+ * actor. Como este listado no tiene filtros, la lista blanca derivada de la de su pagina no deja
+ * NINGUNA clave: cualquier cosa que llegue muere aqui con `validation_error` sin tocar el
+ * servicio (R17). El input se parsea aunque no se transporte nada: parsear ES la barrera.
+ */
+export async function listarPendientesCierresBodegaCompleto(
+  input: unknown = {},
+  deps: CierreBodegaDeps = {},
+): Promise<ListarPendientesCierresBodegaCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
+    const data = listarPendientesCierresBodegaCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarPendientesCierresBodegaCompleto(actor, data.filtros);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 184 — Tanda E (R1/R4/R6/R7/R17) — el CONJUNTO de «Cierres de bodega resueltos»
+ * (listado 5), sin recorte, para producir el archivo.
+ *
+ * Espejo del de arriba, y con el mismo motivo: descargar una de las dos tablas de esta pantalla
+ * no tiene por que costar la otra. Aqui la asimetria pesa al reves — el historico crece sin tope
+ * con los dias— pero la relectura de hoy paga las dos mitades en los dos sentidos.
+ */
+export async function listarHistoricoCierresBodegaCompleto(
+  input: unknown = {},
+  deps: CierreBodegaDeps = {},
+): Promise<ListarHistoricoCierresBodegaCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
+    const data = listarHistoricoCierresBodegaCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarHistoricoCierresBodegaCompleto(actor, data.filtros);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * Feature 230 — Tanda 7 (T7.3, R13/R17/R19/R23/R32/R36) — el UNICO punto de entrada de servidor
+ * de la descarga DETALLADA del listado de cierres de BODEGA.
+ *
+ * Misma forma que su gemela de `cierres-admin` y con la MISMA lista blanca compartida
+ * (`filtrosDescargaGestionesSchema`): el actor ANTES de validar (R17), `.strict()` como unica
+ * defensa contra una clave ajena (R19) y el rango invertido muerto en el borde (R32).
+ *
+ * **`design.md §3.2` la situa en un `lib/actions/cierres-bodega-admin.ts`.** Ese archivo no
+ * existe en esta rama base: las Server Actions del lado maestro de los cierres de bodega viven
+ * aqui, junto a las del lado adminSatelite, con su `buildCierresBodegaAdminService` ya cableado.
+ * Se coloca donde estan sus hermanas —un modulo nuevo obligaria a duplicar el builder y el
+ * traductor de errores— y se deja anotado para el reviewer.
+ */
+export async function listarGestionesCierresBodegaCompleto(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<ListarGestionesCierresBodegaCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R17: antes de parsear y antes del service
+    const data = filtrosDescargaGestionesSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.listarGestionesCierresBodegaCompleto(actor, data);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/** R2/R11-R13/R19: detalle agregado con evidencias firmadas; solo maestro (via service). */
+export async function verCierreBodegaDetalle(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<VerCierreBodegaDetalleResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = cierreBodegaIdSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.verCierreBodegaDetalle(data.cierreBodegaId, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * R2/R16/R18-R20: aprueba un cierre de bodega `solicitado`; solo maestro (via service).
+ *
+ * @sin-superficie FICHA 431 (T17, D2/R16/Q4): la aprobacion de nivel 2 DEJO DE SER UNA PUERTA y se retiro de la pantalla. Lo que la sustituye es la MARCA DE CONCILIACION —«el efectivo llego», con su monto— que escriben `marcarConsolidacionRecibidaAction` y `revertirConciliacionAction`. Esta accion se queda en el arbol A PROPOSITO y no es deuda olvidada: arrancarla exigiria quitar dos valores de un enum cerrado (`cierre_estado`, compartido con `cierre_dia`) y su entrada del censo de historial, que es mucho riesgo por cero beneficio (spec §«Lo que esta ficha NO hace» punto 4). Ademas YA ES IMPOSIBLE DE ESCRIBIR contra la base: el `CHECK` `cierre_bodega_conciliacion_coherente` (R15) rechaza un `aprobado` sin datos de marca, y esta accion no los escribe — medido en `cierre-bodega-conciliacion.int.test.ts` caso (d). Su retirada definitiva es Q4, y se decide despues del despliegue (T29). Esta anotacion CADUCA con ella.
+ */
+export async function aprobarCierreBodega(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<AprobarCierreBodegaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = aprobarCierreBodegaSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.aprobarCierreBodega(data.cierreBodegaId, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}
+
+/**
+ * R2/R17-R20: rechaza un cierre de bodega `solicitado` con motivo obligatorio; solo maestro.
+ *
+ * @sin-superficie FICHA 431 (T17, R16/Q4): «Rechazar» se retiro de la pantalla SIN SUSTITUTO, y es el punto de la ficha. Rechazar una consolidacion era mandar a la satelite a corregir un bulto que ya habia salido; hoy la respuesta a «llego menos de lo declarado» es MARCAR POR LO QUE LLEGO y dejar la diferencia contando en el saldo de esa bodega (R18). Lo reversible es la marca («Desmarcar»), que no es lo mismo: no manda a nadie a corregir nada, solo dice que el efectivo todavia no ha llegado. Las consolidaciones `rechazado` historicas se quedan en la base y siguen siendo legibles —cero en produccion en dos semanas, medido—; lo que se retira es el rotulo, no el dato. El codigo no se arranca aqui por la misma razon que su hermana de arriba (enum cerrado + censo de historial), y su retirada definitiva es Q4/T29. Esta anotacion CADUCA con ella.
+ */
+export async function rechazarCierreBodega(
+  input: unknown,
+  deps: CierreBodegaDeps = {},
+): Promise<RechazarCierreBodegaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = rechazarCierreBodegaSchema.parse(input); // R17: ZodError -> VALIDATION_ERROR
+    const service = deps.cierresBodegaAdminService ?? buildCierresBodegaAdminService();
+    return service.rechazarCierreBodega(data.cierreBodegaId, data.motivo, actor);
+  });
+  return isAppErrorShape(r) ? toCierreBodegaActionError(r) : r;
+}

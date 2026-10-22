@@ -1,0 +1,958 @@
+// Feature 135 (T3.1) — EL catalogo de KPIs de analitica. FUENTE UNICA (R2): ninguna
+// de las 13 features consumidoras (122-134) declara un KPI por su cuenta; todas leen
+// `METRICAS` de aqui.
+//
+// El contenido NO es opinion del implementer: es `design.md §3.3`, aprobado ENTERO por
+// el humano el 2026-07-30 (D1 «todas») = **15 ids operativos + 8 financieros = 23**.
+// Anadir o quitar una metrica exige una decision humana nueva y fechada.
+// ⟨P4⟩ humano, 2026-08-03 (`progress/decision_F2_173.md`): +2 financieras (`dinero_en_caja`
+// y `ganancia_empresa`) = **15 operativos + 10 financieros = 25**.
+//
+// R1 (modulo puro): este archivo no importa `@/lib/db`, ni repositorios, ni servicios,
+// ni `next/headers`, ni `@prisma/client` como valor, ni ejecuta efectos al importarse.
+// Lo unico que importa en runtime son catalogos de dominio ya puros del repo
+// (`ORDER_STATUS_SEED`, `ESTADOS_CREACION`, `ESTADOS_TERMINALES`), a proposito: citar
+// los estados a mano seria una lista paralela que se desincroniza en silencio.
+//
+// Decisiones del humano materializadas aqui:
+// - D5/R30  cubo `sin_asignar`: toda metrica con grano `mensajero` declara
+//           `definicion.sinAsignar: "incluir"` (las ordenes sin mensajero NO se descartan).
+// - D7/R32  el dinero es de DOS roles: `maestro` y `admin` (los de `esAccesoTotal`);
+//           `adminSatelite`, `adminTienda` y `mensajero` -> `prohibido`, nunca `acotado`.
+// - D8/R33  `estadoProduccion`: una metrica `declarada` NO es deuda de la 126/127.
+// - D9/R34  toda metrica con grano `zona` atribuye por `orden.zona_id` CONGELADO,
+//           jamas por la zona del mensajero que la gestiono (que puede diferir).
+// - D10/R35 UNA sola convencion: entregas/devoluciones/rechazos/reprogramaciones/
+//           incidentes cuentan GESTIONES vigentes (`anulada_at IS NULL`), no ordenes; las
+//           tres tasas son sobre gestiones y su denominador NO es el numero de ordenes.
+// - D10/R36 `unidadDeConteo` + `sonSumables()`: dos metricas de unidad distinta no se
+//           suman entre si (una orden reprogramada y luego entregada aporta 2 gestiones).
+//
+// El catalogo vive en TypeScript congelado (`as const`), no en base de datos: ver la
+// alternativa 1 descartada en `design.md §7`.
+
+import { EMPRESA } from "@/lib/config/marca";
+import { ORDER_STATUS_SEED, type OrderStatusValue } from "@/lib/types/order-status";
+import { ESTADOS_CREACION, ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
+import type {
+  AlcanceMetrica,
+  EstadoProduccion,
+  Metrica,
+  MetricaDominio,
+  RolAnalitica,
+} from "@/lib/analytics/types";
+
+/* -------------------------------------------------------------------------- */
+/* Alcance por rol (R7 / R32)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Operativas: `total` para los dos roles de `esAccesoTotal` (`maestro`, `admin`) y
+ * `acotado` para los otros tres — la ven, pero recortada por el WHERE de la 122.
+ */
+const ALCANCE_OPERATIVA = {
+  maestro: "total",
+  admin: "total",
+  adminSatelite: "acotado",
+  adminTienda: "acotado",
+  mensajero: "acotado",
+} as const satisfies Readonly<Record<RolAnalitica, AlcanceMetrica>>;
+
+/**
+ * Financieras (D7/R32): el dinero es de DOS roles. `adminTienda` NO ve su cuenta por
+ * pagar y `mensajero` NO ve su devengado aunque la 127 los calcule; no existe vista
+ * financiera recortada (aviso dirigido a la 132 y a la 133, `design.md §6.1`).
+ */
+const ALCANCE_FINANCIERA = {
+  maestro: "total",
+  admin: "total",
+  adminSatelite: "prohibido",
+  adminTienda: "prohibido",
+  mensajero: "prohibido",
+} as const satisfies Readonly<Record<RolAnalitica, AlcanceMetrica>>;
+
+/**
+ * FICHA 345 (2026-09-01) — EL ANALISIS DE PRODUCTOS. Pedido humano: «esto solo aplicaria para la
+ * analitica del maestro y el admin, y las tiendas solo ven la analitica de sus propios
+ * productos».
+ *
+ * ⚠ POR QUE ESTA TABLA VIVE AQUI Y NO JUNTO A SU VERTICAL, que es donde uno la pondria:
+ * `tests/unit/analytics/alcance-fuente-unica.guardia.test.ts` censa `app/`, `lib/`, `components/`
+ * y `scripts/` buscando el DATO (`maestro: "total"`) y FALLA si aparece fuera de este archivo.
+ * Escribirla en `lib/analytics/productos-consulta.ts` pondria rojo ese censo, y con razon: la
+ * regla por rol se declara UNA sola vez, aqui. No se relaja el guardia ni se evade con un truco
+ * de escritura.
+ *
+ * ⚠ LO QUE NO ES: una 26.ª metrica. `METRICAS` sigue congelado en 25 por decision humana fechada
+ * y esto NO entra en el catalogo — es una constante exportada mas del archivo. No lleva
+ * `dominio:`, asi que tampoco activa el censo de declaraciones de metrica
+ * (`modulo-puro.guardia.test.ts` R2). El motivo es el mismo que el del conteo de entregas
+ * (`entregas-conteo.ts:6-13`): universo `orden` viva, fecha efectiva por `COALESCE` y un grano
+ * «producto» que no existe en `DIMENSIONES` — no es expresable como `Metrica`.
+ *
+ * `adminSatelite` y `mensajero` estan PROHIBIDOS y no `acotado`: no es un cero, es una respuesta
+ * distinta (R4 de la 345). Es el unico punto en que esta tabla diverge de `ALCANCE_OPERATIVA`, y
+ * por eso la vertical tiene tipo opaco propio en vez de reusar `ConsultaConteoEntregas`.
+ *
+ * El `Record` exhaustivo hace que omitir un rol NO COMPILE (R1); que el conjunto `total` sea
+ * exactamente el de `esAccesoTotal` lo comprueba `productos-alcance.test.ts` (R6).
+ */
+export const ALCANCE_PRODUCTOS = {
+  maestro: "total",
+  admin: "total",
+  adminSatelite: "prohibido",
+  adminTienda: "acotado",
+  mensajero: "prohibido",
+} as const satisfies Readonly<Record<RolAnalitica, AlcanceMetrica>>;
+
+/**
+ * FICHA 347 (2026-09-01) — EL DINERO POR PRODUCTO. Tabla PROPIA, distinta de la del volumen.
+ *
+ * ⚠ POR QUE VIVE AQUI: el mismo motivo, palabra por palabra, que su hermana de arriba.
+ * `alcance-fuente-unica.guardia` censa `app/`, `lib/`, `components/` y `scripts/` buscando el
+ * DATO (`maestro: "total"`) y falla si aparece fuera de este archivo. Escribirla junto a su
+ * vertical pondria rojo ese censo, y con razon. No se relaja el guardia y no se evade con un
+ * truco de escritura.
+ *
+ * ⚠ POR QUE ES UNA TABLA PROPIA Y NO UN REUSO DE `ALCANCE_PRODUCTOS` (alternativa A8): serian
+ * una tabla decidiendo DOS permisos distintos, y el dia que se quiera cerrar el dinero a las
+ * tiendas —que es una decision de producto viva— habria que partirla bajo presion. Separadas,
+ * esa decision es UNA linea (`adminTienda: "prohibido"`) y no toca ni el recorte de datos ni
+ * ninguna otra pantalla.
+ *
+ * ⚠ R2 — LA INVARIANTE DE ATADURA, y es lo que cierra el choque con
+ * `tests/unit/analytics/alcance-dinero.guardia.test.ts`. Para CADA rol, el valor de esta tabla
+ * solo puede ser `"prohibido"` o EXACTAMENTE `ALCANCE_PRODUCTOS[rol]`. Ninguna otra
+ * combinacion. La consecuencia es la que cierra el agujero que aquella guardia teme: es
+ * IMPOSIBLE que el dinero se sirva con un recorte que el volumen no tenga ya, asi que nunca
+ * hara falta un `where` de dinero escrito a mano. Quien quisiera uno tendria que ensanchar
+ * primero el alcance del VOLUMEN, que es una decision visible y con su propio guardia. Se
+ * comprueba rol por rol —recorriendo `ROLES_ANALITICA`, no contra una lista escrita— en
+ * `tests/unit/analytics/productos-dinero-alcance.test.ts` y en el bloque nuevo de
+ * `alcance-dinero.guardia.test.ts`.
+ *
+ * ⚠ POR QUE UNA TIENDA VE SU DINERO AQUI (`adminTienda: "acotado"`), decision aprobada: NO es
+ * un permiso nuevo. `DetalleMovimientoService` (`ROL_TIENDA = "adminTienda"`) ya le entrega a
+ * la tienda su propio libro y el detalle por orden de sus movimientos en `/mi-wallet`, con
+ * `tiendaId` en el `WHERE`. Lo que esta ficha anade es de la MISMA naturaleza: la tienda ve SU
+ * dinero, con el MISMO recorte operativo que ya tiene concedido para el volumen.
+ *
+ * LO QUE NO ES: una 26.ª metrica. `METRICAS` sigue congelado en 25 y esto NO entra en el
+ * catalogo — es una constante exportada mas del archivo, sin `dominio:`, igual que su hermana.
+ */
+export const ALCANCE_PRODUCTOS_DINERO = {
+  maestro: "total",
+  admin: "total",
+  adminSatelite: "prohibido",
+  adminTienda: "acotado",
+  mensajero: "prohibido",
+} as const satisfies Readonly<Record<RolAnalitica, AlcanceMetrica>>;
+
+/* -------------------------------------------------------------------------- */
+/* Vocabularios citados (R8 / R9)                                              */
+/* -------------------------------------------------------------------------- */
+
+/** Lo que NUNCA cuenta una metrica por gestion (D10/R35). Cita la columna real. */
+const EXCLUYE_GESTIONES_ANULADAS = ["gestion_orden.anulada_at IS NOT NULL"] as const;
+
+/** Denominador comun de las tres tasas: GESTIONES, no ordenes (D10/R35). */
+const DENOMINADOR_GESTIONES = ["entregas", "devoluciones", "rechazos", "incidentes"] as const;
+
+/** Creacion -> terminal: los extremos del tiempo de ciclo, sin listas paralelas. */
+const ESTADOS_CICLO = [
+  ...ESTADOS_CREACION,
+  ...ESTADOS_TERMINALES,
+] as const satisfies readonly OrderStatusValue[];
+
+/* -------------------------------------------------------------------------- */
+/* EL catalogo (design.md §3.3, D1 «todas»)                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * El catalogo LITERAL. Se declara privado y `as const` para poder derivar de el la
+ * union de ids (`MetricaId`); lo que se exporta es `METRICAS`, con el tipo ancho
+ * `readonly Metrica[]` que declara `design.md §3.2` — asi los consumidores acceden a
+ * los campos opcionales de `definicion` sin estrechar por metrica.
+ */
+const CATALOGO = [
+  /* ---------------------------- 15 OPERATIVAS ---------------------------- */
+  {
+    id: "ordenes_creadas",
+    etiqueta: "Órdenes creadas",
+    descripcion:
+      "Ordenes nacidas en el rango (en_preparacion o por_recolectar_en_tienda); cuenta ORDENES, no gestiones, asi que las gestiones anuladas (anulada_at) no la afectan ni la inflan.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "orden",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: { estados: ESTADOS_CREACION, atribucionZona: "orden" },
+  },
+  {
+    id: "ordenes_por_estado",
+    etiqueta: "Órdenes por estado",
+    descripcion:
+      "Embudo: ORDENES agrupadas por su estatus al corte sobre el universo B2 de la 124 (las vivas al corte mas las que llegaron a un estado terminal ese mismo dia), cada orden en una sola fila; el rollup NO conserva el archivo historico de estados terminales, asi que el historico de terminales se sirve de las medidas de flujo (entregas, devoluciones, rechazos, incidentes) y no de este embudo; no cuenta gestiones, asi que una gestion anulada no mueve esta cifra (solo la mueve el estado real de la orden).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "orden",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero", "estatus"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      // R8/D4: `estados` sigue siendo ORDER_STATUS_SEED ENTERO. B2 acota la ventana
+      // TEMPORAL del stock, no el vocabulario: las ordenes que cerraron ese dia si estan
+      // en la columna, asi que recortar los terminales seria cambiar una mentira por otra.
+      estados: ORDER_STATUS_SEED,
+      universo: "b2_vivas_mas_cierres_del_dia",
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "entregas",
+    etiqueta: "Entregas",
+    descripcion:
+      "Gestiones VIGENTES con resultado entregado; no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      categorias: ["entregado"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "devoluciones",
+    etiqueta: "Devoluciones",
+    descripcion:
+      "Gestiones VIGENTES con resultado novedad; no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      categorias: ["novedad"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "rechazos",
+    etiqueta: "Devoluciones a origen",
+    descripcion:
+      "Gestiones VIGENTES con resultado devolucion_a_origen_por_rechazo; no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      categorias: ["devolucion_a_origen_por_rechazo"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "reprogramaciones",
+    etiqueta: "Reprogramaciones",
+    descripcion:
+      "Gestiones VIGENTES con resultado reprogramado; no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL), y una misma orden puede aportar varias.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      categorias: ["reprogramado"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "incidentes",
+    etiqueta: "Incidentes",
+    descripcion:
+      "Gestiones VIGENTES con resultado incidente (paquete danado, perdido o robado); no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    // `producida` desde ⟨D11⟩ (humano, 2026-08-03 — ver `progress/decision_175.md`). Decia
+    // `declarada` afirmando que el rollup no la compromete, y es falso: `analytics_daily` tiene
+    // su columna real `incidentes` (`db/schema.prisma:1891`, «4.o termino de
+    // DENOMINADOR_GESTIONES (R18)»), asi que la 126 ya divide entre ella en las tres tasas.
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      categorias: ["incidente", "danado", "perdido", "robado"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "novedad_interna",
+    // FICHA 455 (2026-09-24, R5): la métrica cuenta las órdenes en UN estado y se rotula con su
+    // nombre exacto, igual que la leyenda del panel (`catalogo-paneles.ts`; la guardia
+    // `etiquetas-visibles` exige que digan lo mismo). Antes, «Sin gestionar».
+    etiqueta: "Novedad interna",
+    descripcion:
+      "ORDENES en Novedad interna HOY, NO acumuladas: es una proyeccion de la medida ordenes_estado_stock sobre el estatus novedad_interna (no tiene medida ni columna propia en el rollup diario), sobre el universo B2 de la 124 (las vivas en ese estado al corte mas las que llegaron a un estado terminal ese mismo dia); leida como acumulada es un numero muy distinto. Cuenta ordenes, no gestiones, y son justamente las que no tienen gestion vigente del dia (las gestiones anuladas tampoco las rescatan).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "orden",
+    // `producida` desde ⟨D11⟩ (humano, 2026-08-03 — ver `progress/decision_175.md`). Decia
+    // `declarada` porque la ficha de la 126 no la nombra, pero la 126 SI la sirve: la deriva del
+    // embudo, proyectando la medida `ordenes_estado_stock` sobre este estatus
+    // (`lib/services/AnaliticaOperativaService.ts:88,316-318,348-362`).
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      estados: ["novedad_interna"],
+      // D5/R12: `clase: "snapshot"` y `fuente: rollup` se CONSERVAN — si se sirve del rollup,
+      // de la columna `ordenes_estado_stock`; lo que faltaba no era la fuente, era decir que
+      // no tiene medida propia y que su semantica es la del dia.
+      universo: "b2_vivas_mas_cierres_del_dia",
+      derivadaDe: "ordenes_por_estado",
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "tasa_entrega",
+    etiqueta: "Tasa de entrega",
+    descripcion:
+      "Entregas sobre el total de gestiones vigentes de resultado (entregas+devoluciones+rechazos+incidentes); es una tasa SOBRE GESTIONES: el denominador NO es el numero de ordenes (una orden reprogramada y luego entregada aporta dos gestiones) y excluye las gestiones anuladas.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "porcentaje",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      razon: { numerador: "entregas", denominador: DENOMINADOR_GESTIONES },
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "tasa_devolucion",
+    etiqueta: "Tasa de devolución",
+    descripcion:
+      "Devoluciones sobre el total de gestiones vigentes de resultado (entregas+devoluciones+rechazos+incidentes); es una tasa SOBRE GESTIONES: el denominador NO es el numero de ordenes y excluye las gestiones anuladas.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "porcentaje",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      razon: { numerador: "devoluciones", denominador: DENOMINADOR_GESTIONES },
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "tasa_rechazo",
+    etiqueta: "Tasa de devolución a origen",
+    descripcion:
+      "Rechazos sobre el total de gestiones vigentes de resultado (entregas+devoluciones+rechazos+incidentes); es una tasa SOBRE GESTIONES: el denominador NO es el numero de ordenes y excluye las gestiones anuladas.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "porcentaje",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      razon: { numerador: "rechazos", denominador: DENOMINADOR_GESTIONES },
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  // ---------------------------------------------------------------------------------------
+  // DERIVA DECLARADA DE `primer_intento_ok` (feature 215 / R24, R35). Esto es la DEFINICION de
+  // la metrica: quien pregunta «que mide esto» llega aqui, y tiene que enterarse de las tres
+  // cosas sin abrir la spec. El mismo aviso vive, autosuficiente, en los dos servicios que la
+  // calculan (`AnaliticaRollupService.contarPrimerIntento`, que PERSISTE las filas, y
+  // `AnaliticaOperativaService.completarPrimerIntentoEnCubos`, la version VIVA del dia en curso).
+  //
+  // (1) CAMBIO DE CRITERIO, SIN RE-BACKFILL. Con la 215 el «intento previo» ya NO se deriva de
+  //     los destinos de transicion de `orden_historial_estado`: sale de las gestiones que viven
+  //     dentro de un cierre APROBADO. El historico ya escrito en `analytics_daily` NO se
+  //     re-backfillea y la metrica NO se redefine para dejar de depender del contador: el
+  //     escalon de la serie se ASUME, deliberadamente (D15). Por que no se re-backfillea:
+  //     reescribiria meses de KPI ya reportados —el historico dejaria de coincidir con lo que la
+  //     gente vio y decidio en su dia— y ademas seria FALSO, porque aquellos cierres no estaban
+  //     aprobados EN EL MOMENTO de aquel calculo.
+  //
+  // (2) EL CORTE ES POR `updated_at`, NO POR `fecha`. Regla declarada: toda fila de
+  //     `analytics_daily` cuyo `updated_at` sea ANTERIOR al despliegue de la 215 esta calculada
+  //     con el criterio VIEJO; toda fila con `updated_at` posterior, con el NUEVO, SEA CUAL SEA
+  //     SU `fecha`. Consecuencia que hay que decir con estas palabras: una fila de una fecha
+  //     ANTERIOR al corte que se RECALCULA despues del corte pasa a estar calculada con el
+  //     criterio NUEVO. Motivo: el job recalcula dias pasados (backfill) y el upsert refresca
+  //     `updated_at` en cada recalculo (`AnaliticaRollupRepository.ts:434,453`), asi que el corte
+  //     es por CUANDO SE CALCULO, no por QUE DIA MIDE. `updated_at` es una columna que YA existe
+  //     (`db/migrations/20260731120000_analytics_daily/migration.sql:83`): por eso la trazabilidad
+  //     del corte no necesita columna, tabla ni migracion nuevas (R35/R27) ni ninguna constante
+  //     `FECHA_CORTE_*` en codigo, que habria que adivinar antes de tiempo o mantener despues.
+  //
+  // (3) EFECTO INTRADIA: PROPIEDAD NUEVA Y PERMANENTE, NO UN TRANSITORIO. Una entrega cuya orden
+  //     tiene cierres SIN aprobar reporta 0 intentos previos, asi que cuenta como primer intento:
+  //     el KPI SUBE durante el dia y BAJA al aprobarse los cierres. Esto NO es un artefacto de la
+  //     migracion de criterio y NO desaparece con la deriva declarada: es una propiedad nueva y
+  //     permanente de la metrica bajo el criterio nuevo. Corolario: el mismo dia puede dar dos
+  //     valores distintos segun cuando se recalcule.
+  //
+  // LO QUE NO CAMBIA (R23 / R24-e): el KPI sigue REMITIENDO al punto unico de conteo
+  // (`OrdenHistorialService.contarIntentos*`), sin `COUNT` propio, sin umbral propio y sin
+  // columna materializada; y `primer_intento_ok <= entregas` se mantiene (CHECK en base +
+  // validacion previa en `AnaliticaRollupService`).
+  //
+  // El texto de `descripcion` repite las tres cosas a proposito: el comentario no viaja con el
+  // dato, y el catalogo es lo que se exporta. Ahi NO puede nombrarse la tabla por su nombre (el
+  // censo de `analytics-daily-guards.test.ts` exige que ese literal aparezca en este archivo
+  // SOLO dentro de `tablas: [...]`), asi que la nocion se dice como «el rollup diario».
+  // ---------------------------------------------------------------------------------------
+  {
+    id: "primer_intento_ok",
+    etiqueta: "Entrega al primer intento",
+    descripcion:
+      "Entregas logradas sin intento previo, contadas con el criterio UNICO ya existente en el repo (numero de cierres APROBADOS distintos en los que la orden tuvo un resultado de gestion devolucion_a_origen_por_rechazo, novedad o reprogramado), que excluye las gestiones anuladas; esta metrica NO define umbral propio ni columna materializada. DERIVA DECLARADA (feature 215): el criterio de «intento previo» CAMBIO —antes se derivaba de los destinos de transicion del historial, ahora de las gestiones dentro de un cierre APROBADO— y el historico ya escrito en el rollup diario NO se re-backfillea: el escalon de la serie se ASUME a proposito, porque reescribirlo falsearia meses de KPI ya reportados y aquellos cierres no estaban aprobados en el momento de aquel calculo. CORTE POR `updated_at`, NO POR `fecha`: toda fila del rollup diario cuyo `updated_at` sea ANTERIOR al despliegue de la 215 esta calculada con el criterio VIEJO y toda fila con `updated_at` posterior, con el NUEVO, sea cual sea su `fecha`; una fila de una fecha ANTERIOR al corte que se RECALCULA despues del corte pasa a estar calculada con el criterio NUEVO, porque el job recalcula dias pasados y el upsert refresca `updated_at` en cada recalculo, de modo que el corte es por cuando se calculo, no por que dia mide (`updated_at` ya existe por fila: no hace falta columna, tabla ni migracion nuevas, ni una constante de fecha de corte en codigo). EFECTO INTRADIA, propiedad NUEVA y PERMANENTE: una entrega cuya orden tiene cierres sin aprobar reporta 0 intentos previos y cuenta como primer intento, asi que el KPI SUBE durante el dia y BAJA al aprobarse los cierres; no es un artefacto de la migracion de criterio ni desaparece con la deriva declarada, y el mismo dia puede dar dos valores distintos segun cuando se recalcule. El KPI sigue remitiendo al punto unico de conteo del repo, sin COUNT propio, y se mantiene primer_intento_ok <= entregas.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "porcentaje",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "mensajero"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      // R11 (124) / R23 (215): se REMITE al criterio unico del repo
+      // (`OrdenHistorialService.contarIntentos`). No hay `umbral` ni parametro propio: el tipo
+      // `DefinicionMetrica` ni siquiera admite uno, y este comentario existe para que nadie lo
+      // anada "por comodidad".
+      // El id se RENOMBRO en la 215: el anterior (`intentos_vigentes_historial`) mentia — el
+      // conteo ya no sale del historial, sale de `gestion_orden` con el cierre aprobado.
+      criterio: "intentos_por_cierre_aprobado",
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      sinAsignar: "incluir",
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "motivos_devolucion",
+    etiqueta: "Motivos de devolución",
+    descripcion:
+      "Gestiones VIGENTES de resultado novedad agrupadas por su causa tipificada (not_found, wrong_number, wrong_address); no cuenta ordenes ni gestiones anuladas (anulada_at IS NOT NULL).",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "conteo",
+    unidadDeConteo: "gestion",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "causa_devolucion"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: {
+      // OJO: `GestionCausaDevolucion` tiene TRES valores en el esquema vigente
+      // (`db/schema.prisma`), no cinco como dice de memoria `design.md §3.3`.
+      categorias: ["novedad", "not_found", "wrong_number", "wrong_address"],
+      excluye: EXCLUYE_GESTIONES_ANULADAS,
+      atribucionZona: "orden",
+    },
+  },
+  {
+    id: "tiempo_ciclo",
+    etiqueta: "Tiempo de ciclo",
+    descripcion:
+      "Segundos entre la creacion de la orden y su llegada a un estado terminal (entregado, devuelta_a_tienda, incidente); mide tiempo de ORDENES, no volumen de gestiones, y no lo alteran las gestiones anuladas.",
+    dominio: "operativa",
+    clase: "snapshot",
+    unidad: "segundos",
+    unidadDeConteo: "tiempo",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda"],
+    fuente: { tipo: "rollup", tablas: ["analytics_daily"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: { estados: ESTADOS_CICLO, atribucionZona: "orden" },
+  },
+  {
+    id: "aging_por_estado",
+    etiqueta: "Antigüedad por estado",
+    descripcion:
+      "Segundos que las ordenes vivas llevan en su estado actual, leidos INTRADIA de las tablas vivas; mide tiempo de ordenes, no volumen de gestiones, y las gestiones anuladas no cuentan porque no producen transicion vigente.",
+    dominio: "operativa",
+    // Unica metrica `live` del catalogo: se calcula sobre las tablas vivas, no sobre el
+    // rollup. R5 exige la equivalencia `snapshot` <=> fuente `rollup`.
+    clase: "live",
+    unidad: "segundos",
+    unidadDeConteo: "tiempo",
+    estadoProduccion: "producida",
+    granos: ["fecha", "zona", "tienda", "estatus"],
+    fuente: { tipo: "tabla_viva", tablas: ["orden", "orden_historial_estado"] },
+    alcance: ALCANCE_OPERATIVA,
+    definicion: { estados: ORDER_STATUS_SEED, atribucionZona: "orden" },
+  },
+
+  /* --------------------------- 10 FINANCIERAS ---------------------------- */
+  // R6: fuente EXCLUSIVA ledgers append-only + snapshots de cierre. Ninguna cita
+  // `orden`, `gestion_orden`, `orden_historial_estado` ni `analytics_daily`: el dinero
+  // NUNCA se recalcula desde ordenes (consigna de la 127). Por eso ninguna es `snapshot`
+  // (R5: `snapshot` <=> rollup) y ninguna declara los granos `zona`/`mensajero`, cuya
+  // semantica en este catalogo es la de la ORDEN (D9/D5) y no la del ledger.
+  {
+    id: "cod_recaudado",
+    etiqueta: "COD recaudado",
+    descripcion:
+      "Contra-entrega recaudado por metodo de pago (efectivo, SINPE, transferencia) segun los totales SNAPSHOT del cierre y el credito cod_recaudado del ledger de tienda; no se recalcula desde ordenes ni desde gestiones, asi que las gestiones anuladas no la tocan.",
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha", "tienda", "metodo_pago"],
+    fuente: { tipo: "snapshot_cierre", tablas: ["cierre_dia", "wallet_tienda_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: { categorias: ["efectivo", "SINPE", "transferencia", "cod_recaudado"] },
+  },
+  {
+    id: "ingreso_flete",
+    etiqueta: "Ingreso por flete",
+    descripcion:
+      `Ingreso de ${EMPRESA.enFrase} por flete y por flete de devolucion segun el libro append-only de la wallet; DESDE LA FICHA 458-B la ANULACION de un cobro por devolución a origen se DESCUENTA de esta cifra: su reverso (egreso_reverso_flete_devolucion) entra en la definicion, de modo que el bruto cuenta los DOS movimientos y el neto es el flete que ${EMPRESA.enFrase} de verdad cobro. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      categorias: [
+        "ingreso_flete",
+        "ingreso_flete_devolucion",
+        // FICHA 458-B (revision B2, decision del leader 2026-09-26): el reverso del flete que emite
+        // la ANULACION de un cobro por rechazo. Mismo patron que `ingreso_ajuste` en `egresos`
+        // (⟨D12⟩ de la 183): la lista deja de ser homogenea de prefijo y la metrica publica NETO
+        // (`bruto_y_neto`), que es lo que D7 de la 458 protege —flete e IVA por separado, para que
+        // la analitica cuadre con la ganancia—. Sin esta linea, anular dejaba el flete inflado.
+        "egreso_reverso_flete_devolucion",
+      ],
+    },
+  },
+  {
+    id: "ingreso_comision_cod",
+    etiqueta: "Ingreso por comisión COD",
+    descripcion:
+      `Ingreso de ${EMPRESA.enFrase} por comision sobre el contra-entrega segun el libro append-only de la wallet; se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: { categorias: ["ingreso_comision_cod"] },
+  },
+  {
+    id: "ingreso_iva",
+    etiqueta: "Ingreso por IVA",
+    descripcion:
+      "IVA facturado sobre flete, flete de devolucion y comision COD segun el libro append-only de la wallet; DESDE LA FICHA 458-B la ANULACION de un cobro por devolución a origen se DESCUENTA de esta cifra: el reverso de su IVA (egreso_reverso_iva_flete_devolucion) entra en la definicion, de modo que el bruto cuenta los DOS movimientos y el neto es el IVA que de verdad se facturo. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      categorias: [
+        "ingreso_iva_flete",
+        "ingreso_iva_flete_devolucion",
+        "ingreso_iva_comision_cod",
+        // FICHA 458-B (revision B2): el reverso del IVA del flete por rechazo. Mismo motivo que en
+        // `ingreso_flete`: la metrica pasa a publicar NETO (`bruto_y_neto`).
+        "egreso_reverso_iva_flete_devolucion",
+      ],
+    },
+  },
+  {
+    id: "egresos",
+    etiqueta: "Egresos",
+    // ⟨P4⟩ humano, 2026-08-03 (`progress/decision_F2_173.md`): la DESCRIPCION cambia; el `id` y
+    // la `etiqueta`, no. Hasta la 173 `egreso_pago_tienda` estaba declarada aqui pero NINGUNA via
+    // la emitia, asi que esta cifra no la contenia nunca. Desde la 173 si, y su numero crece sin
+    // que nada mas cambie: quien compare mes contra mes veria un salto que no es un salto. Por eso
+    // se declara en el propio catalogo, que es donde lo lee quien mira la cifra.
+    //
+    // ⟨D12⟩ humano, 2026-08-04 (`progress/decision_183.md`), feature 183: `definicion.categorias`
+    // pasa de OCHO a NUEVE ganando `ingreso_ajuste`, y la DESCRIPCION lo declara. Motivo:
+    // `WalletEgresoService` revierte un egreso anulado emitiendo un `ingreso_ajuste` que esta
+    // metrica no declaraba, asi que ANULAR UN EGRESO NO LO DESCONTABA NUNCA de la cifra. El `id`,
+    // la `etiqueta`, el `estadoProduccion`, los `granos`, la `fuente` y el `alcance` no cambian.
+    // Medido por MCP contra produccion ese mismo dia, antes de decidir: CERO filas
+    // `ingreso_ajuste` y cero `egreso_ajuste`, luego el cambio no mueve hoy ningun numero
+    // (`egresos` sigue valiendo 22042.40 de bruto). Es la ventana barata.
+    descripcion:
+      "Salidas de la caja principal (pagos a tienda y mensajero, sueldos, gastos fijos y variables, indemnizaciones y ajustes) segun el libro append-only de la wallet; DESDE LA FEATURE 173 incluye el dinero ENTREGADO A LAS TIENDAS, que antes ninguna via emitia, asi que su cifra crece a partir de esa fecha sin que su id ni su nombre cambien y no es comparable con la de antes; DESDE LA FEATURE 183 la ANULACION de un egreso se DESCUENTA de esta cifra: el reverso que la anulacion emite (ingreso_ajuste) entra en la definicion, de modo que el bruto cuenta los DOS movimientos (el pago y su reverso) y el neto es lo que de verdad salio de caja. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    // `producida` desde ⟨D8⟩ (humano, 2026-08-02 — ver `progress/decision_C2_127.md`). La ficha
+    // original de la 127 comprometia ingresos, cuentas por pagar y conciliacion de cierres, y los
+    // egresos NO aparecian ahi: por eso esto decia `declarada`. El humano amplio el alcance y la
+    // 127 los sirve de verdad (Σ de las nueve categorias que declara abajo, tarea D.5; eran las
+    // ocho `egreso_*` hasta la 183, que anadio el reverso de la anulacion).
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      categorias: [
+        "egreso_pago_tienda",
+        "egreso_pago_mensajero",
+        "egreso_gasto",
+        "egreso_sueldo",
+        "egreso_ajuste",
+        "egreso_gasto_fijo",
+        "egreso_gasto_variable",
+        "egreso_indemnizacion",
+        // La NOVENA, y la unica que no es `egreso_*`: el reverso que la anulacion de un egreso
+        // emite. Va AL FINAL y sin reordenar las ocho para que el diff se lea de un vistazo.
+        // Sin ella la lista es homogenea de prefijo y el neto seria `-bruto` siempre.
+        "ingreso_ajuste",
+        // FICHA 459 (P13): el pago por cuenta de una tienda es dinero que SALE de la caja, como el
+        // pago a tienda. Su reverso NO entra (decision de la 457 para los reversos de terceros).
+        "egreso_pago_por_cuenta_tienda",
+      ],
+    },
+  },
+  // ⟨P4⟩ humano, 2026-08-03 (`progress/decision_F2_173.md`) — LAS DOS METRICAS NUEVAS.
+  //
+  // Nacen juntas porque su valor esta en la DIFERENCIA. Mientras la caja solo contuvo dinero de
+  // la empresa, «entradas − salidas» era la ganancia y una sola cifra bastaba. Desde la 173 la caja
+  // registra tambien el contra-entrega cobrado a nombre de las tiendas, que solo PASA por ella:
+  // el mismo numero paso a significar dos cosas. Servir una sola —cualquiera de las dos— es lo
+  // que la feature existe para impedir.
+  //
+  // Las categorias van ESCRITAS, no derivadas de `NATURALEZA_POR_CATEGORIA`: este modulo es puro
+  // (R1) y no puede importar `lib/utils/caja-tesoreria.ts`, que trae `Prisma` como valor. Que las
+  // dos listas correspondan con el `Record` lo comprueba en RUNTIME
+  // `tests/unit/analytics/metrics-caja-naturaleza.guardia.test.ts`, no la buena memoria de nadie.
+  {
+    id: "dinero_en_caja",
+    etiqueta: "Dinero en caja",
+    descripcion:
+      `TESORERIA: el flujo de dinero registrado de la caja principal — el dinero que entro de verdad menos todo lo que salio, sin distinguir de quien es: incluye el contra-entrega cobrado a nombre de las tiendas, lo que las tiendas le pagan a ${EMPRESA.enFrase} y su anulacion, los reversos y los ajustes. NO suma aparte el flete, la comision ni sus impuestos: son la parte de ${EMPRESA.enFrase} que se descuenta del contra-entrega de la tienda (o una deuda de la tienda), no dinero que entre a la caja; ni el cobro de ${EMPRESA.enFrase} a una tienda ni su anulacion, que tampoco son dinero que entre o salga (se toman del saldo de la tienda y se le devuelven). Es la misma cifra principal de la tarjeta de la caja; solo es el saldo real si hay un saldo inicial registrado. NO es lo que ${EMPRESA.enFrase} gano (eso es ganancia_empresa). Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      // LAS DIECISIETE de `WALLET_MOVIMIENTO_CATEGORIA_SEED`: la caja entera, propio y ajeno.
+      categorias: [
+        "ingreso_flete",
+        "ingreso_flete_devolucion",
+        "ingreso_comision_cod",
+        "ingreso_iva_flete",
+        "ingreso_iva_flete_devolucion",
+        "ingreso_iva_comision_cod",
+        "ingreso_ajuste",
+        "ingreso_cod_recaudado",
+        "ingreso_reverso_pago_tienda",
+        "egreso_pago_tienda",
+        "egreso_pago_mensajero",
+        "egreso_gasto",
+        "egreso_sueldo",
+        "egreso_ajuste",
+        "egreso_gasto_fijo",
+        "egreso_gasto_variable",
+        "egreso_indemnizacion",
+        // FICHA 459: los cuatro conceptos nuevos de la caja (pago por cuenta y capital, con sus
+        // anulaciones). La caja entera, ahora 21.
+        "egreso_pago_por_cuenta_tienda",
+        "ingreso_reverso_pago_por_cuenta_tienda",
+        "ingreso_aporte_capital",
+        "egreso_reverso_aporte_capital",
+        // FICHA 461 (R29): el cobro de la empresa a una tienda y su anulacion. La caja entera, ahora 23.
+        // La cifra NO cambia con ellos (son cargos: no entran ni salen), pero la lista es «la caja
+        // entera» y la guardia la compara con el seed.
+        "ingreso_cobro_tienda",
+        "egreso_reverso_cobro_tienda",
+        // FICHA 457 (R52): lo que las tiendas le pagan a la empresa y su anulacion. La caja entera, ahora
+        // 25. Los dos SI mueven la cifra (efectivo de terceros: entra y sale de verdad).
+        "ingreso_abono_tienda",
+        "egreso_reverso_abono_tienda",
+        // FICHA 458-B (design §2.3): los dos reversos de cargo del cobro por rechazo. La caja entera,
+        // ahora 27. La cifra NO cambia con ellos (son reversos de cargo: no sale dinero).
+        "egreso_reverso_flete_devolucion",
+        "egreso_reverso_iva_flete_devolucion",
+      ],
+    },
+  },
+  {
+    id: "ganancia_empresa",
+    etiqueta: `Ganancia de ${EMPRESA.enFrase}`,
+    descripcion:
+      `RESULTADO: ingresos propios de ${EMPRESA.enFrase} menos sus egresos propios, dejando fuera el dinero de terceros que solo pasa por la caja (el contra-entrega y su devolucion a la tienda). Incluye lo que ${EMPRESA.enFrase} les cobra a las tiendas (el cobro de ${EMPRESA.enFrase} a una tienda es ganancia: se toma del saldo que le guardaba) y descuenta sus anulaciones. Es, numero por numero, lo que \`derivarBalance\` devolvia sobre el libro entero antes de la 173: no cambia de valor, cambia de nombre. Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["wallet_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      // LAS CATORCE de naturaleza «propio»: las diecisiete menos `egreso_pago_tienda`,
+      // `ingreso_cod_recaudado` y `ingreso_reverso_pago_tienda`.
+      categorias: [
+        "ingreso_flete",
+        "ingreso_flete_devolucion",
+        "ingreso_comision_cod",
+        "ingreso_iva_flete",
+        "ingreso_iva_flete_devolucion",
+        "ingreso_iva_comision_cod",
+        "ingreso_ajuste",
+        "egreso_pago_mensajero",
+        "egreso_gasto",
+        "egreso_sueldo",
+        "egreso_ajuste",
+        "egreso_gasto_fijo",
+        "egreso_gasto_variable",
+        "egreso_indemnizacion",
+        // FICHA 461 (R29): DIECISEIS. El cobro de la empresa a una tienda ES ganancia (HD1) y su
+        // anulacion la devuelve; los dos son propios en `NATURALEZA_POR_CATEGORIA`.
+        "ingreso_cobro_tienda",
+        "egreso_reverso_cobro_tienda",
+        // FICHA 458-B (design §2.3): DIECIOCHO. La anulacion de un cobro por rechazo baja la ganancia
+        // (flete e IVA por separado); los dos son propios en `NATURALEZA_POR_CATEGORIA`.
+        "egreso_reverso_flete_devolucion",
+        "egreso_reverso_iva_flete_devolucion",
+      ],
+    },
+  },
+  {
+    id: "cuenta_por_pagar_tienda",
+    etiqueta: "Cuenta por pagar a tiendas",
+    descripcion:
+      `Saldo derivado del ledger por tienda (SUM credito - SUM debito): lo que ${EMPRESA.enFrase} le debe entregar a cada tienda; se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha", "tienda"],
+    fuente: { tipo: "ledger", tablas: ["wallet_tienda_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      categorias: [
+        "cod_recaudado",
+        "flete",
+        "flete_devolucion",
+        "comision_cod",
+        "iva_flete",
+        "iva_flete_devolucion",
+        "iva_comision_cod",
+        "pago_tienda",
+        "ajuste_credito",
+        "ajuste_debito",
+        // FICHA 381: el cobro manual a una tienda. VA A MANO porque este campo esta tipado
+        // `readonly string[]` y el compilador NO lo obliga —a diferencia de los otros cuatro
+        // `Record` totales sobre la categoria—. Sin esta linea el catalogo describiria una metrica
+        // que suma una categoria que no nombra.
+        "cobro_manual",
+        // FICHA 459: el pago por cuenta de la tienda y su anulacion (mismo motivo: `string[]`).
+        "pago_por_cuenta",
+        "pago_por_cuenta_anulado",
+        // FICHA 461 (R29): el credito de la anulacion de un cobro de la empresa (mismo motivo).
+        "cobro_tienda_anulado",
+        // FICHA 457 (R52): el pago de la tienda a la empresa (credito) y su anulacion (debito). Mismo
+        // motivo: `string[]`, el compilador no obliga.
+        "abono_tienda",
+        "abono_tienda_anulado",
+        // FICHA 458-B (design §2.3): los dos creditos espejo de la anulacion de un cobro por rechazo.
+        // Mismo motivo: `string[]`, el compilador no obliga.
+        "flete_devolucion_anulado",
+        "iva_flete_devolucion_anulado",
+      ],
+    },
+  },
+  {
+    id: "cuenta_por_pagar_mensajero",
+    etiqueta: "Cuenta por pagar a mensajeros",
+    descripcion:
+      "Saldo derivado del libro de pago al mensajero (SUM devengo - SUM pago); se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar. No declara el grano mensajero: el cubo sin_asignar (D5) es del mundo de la orden, no del ledger.",
+    dominio: "financiera",
+    clase: "live",
+    unidad: "moneda",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    fuente: { tipo: "ledger", tablas: ["pago_mensajero_movimiento"] },
+    alcance: ALCANCE_FINANCIERA,
+    definicion: {
+      // Feature 293 (T1.7, design §6/17): + `premio_ranking`. El CALCULO no cambia (agrega por
+      // `tipo`, y el premio es un devengo mas); lo que cambia es el CATALOGO, que debe nombrar
+      // todas las categorias del libro o queda incompleto.
+      categorias: [
+        "pago_devengado",
+        "pago_efectivo",
+        "liquidacion",
+        "ajuste_devengo",
+        "ajuste_pago",
+        "premio_ranking",
+      ],
+    },
+  },
+  {
+    id: "conciliacion_cierres",
+    etiqueta: "Conciliación de cierres",
+    descripcion:
+      "Cierres de dia y de bodega por estado (solicitado, aprobado, rechazado, vencido) con sus totales snapshot; se lee de los cierres, no de ordenes, y las gestiones anuladas no alteran un total ya congelado.",
+    dominio: "financiera",
+    clase: "live",
+    unidad: "conteo",
+    unidadDeConteo: "moneda",
+    estadoProduccion: "producida",
+    granos: ["fecha"],
+    // ⟨D10⟩ humano, 2026-08-02 (`progress/decision_C2_127.md`): los TRES ledgers se declaran
+    // aqui ademas de los dos cierres, porque R23 de la 127 concilia el snapshot aprobado
+    // CONTRA el dinero realmente movido (`origen_tipo = cierre_dia`).
+    fuente: {
+      tipo: "snapshot_cierre",
+      tablas: [
+        "cierre_dia",
+        "cierre_bodega",
+        "wallet_movimiento",
+        "wallet_tienda_movimiento",
+        "pago_mensajero_movimiento",
+      ],
+    },
+    alcance: ALCANCE_FINANCIERA,
+    // `definicion` sin `categorias` A PROPOSITO: los cuatro estados de cierre viven en el
+    // enum `CierreEstado`, que NO esta en la lista cerrada de vocabularios que R9 permite
+    // citar (GestionResultado, GestionCausaDevolucion, GestionCausaIncidente,
+    // MetodoPagoValue y las tres categorias de wallet). Meterlos aqui obligaria a aflojar
+    // el guard de R9; van en la `descripcion`, que es texto y no vocabulario citado.
+    definicion: {},
+  },
+] as const satisfies readonly Metrica[];
+
+/* -------------------------------------------------------------------------- */
+/* Tipos derivados y lookup                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Los 23 ids como union literal: autocompletado y error en compilacion (R4). */
+export type MetricaId = (typeof CATALOGO)[number]["id"];
+
+/** Una fila del catalogo, con sus `razon` estrechadas a ids reales. */
+export type MetricaCatalogo = Metrica<MetricaId>;
+
+/**
+ * La anotacion de tipo NO es decorativa: obliga a que todo id citado en un `razon`
+ * (numerador y denominador) sea un `MetricaId` REAL del catalogo. Si alguien escribe
+ * `denominador: ["ordenes"]`, esta linea deja de compilar.
+ */
+export const METRICAS: readonly MetricaCatalogo[] = CATALOGO;
+
+const POR_ID: ReadonlyMap<string, MetricaCatalogo> = new Map(METRICAS.map((m) => [m.id, m]));
+
+/** Busqueda TOTAL por id: devuelve la metrica o `undefined`. No lanza, sin `any` (R4). */
+export function getMetrica(id: string): MetricaCatalogo | undefined {
+  return POR_ID.get(id);
+}
+
+/**
+ * Filtro de PRESENTACION, no de autorizacion (R24): `rol` devuelve las metricas cuyo
+ * alcance para ese rol no es `prohibido` — el recorte de FILAS lo hace la 122 y el
+ * gating de la ruta la 129.
+ */
+export function listarMetricas(filtro?: {
+  dominio?: MetricaDominio;
+  rol?: RolAnalitica;
+  estadoProduccion?: EstadoProduccion;
+}): readonly MetricaCatalogo[] {
+  if (!filtro) return METRICAS;
+  return METRICAS.filter((m) => {
+    if (filtro.dominio && m.dominio !== filtro.dominio) return false;
+    if (filtro.estadoProduccion && m.estadoProduccion !== filtro.estadoProduccion) return false;
+    if (filtro.rol && m.alcance[filtro.rol] === "prohibido") return false;
+    return true;
+  });
+}
+
+/**
+ * D10/R36 — dos metricas se pueden sumar entre si SOLO si cuentan lo mismo.
+ * `sonSumables("entregas", "ordenes_creadas") === false`: gestiones y ordenes no se
+ * suman (una orden reprogramada y luego entregada aporta dos gestiones).
+ */
+export function sonSumables(a: MetricaId, b: MetricaId): boolean {
+  const ma = getMetrica(a);
+  const mb = getMetrica(b);
+  if (!ma || !mb) return false;
+  return ma.unidadDeConteo === mb.unidadDeConteo;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Etiquetas de cache por dominio (R12, consumidas por la 128)                 */
+/* -------------------------------------------------------------------------- */
+
+/** Cadenas ESTABLES: la 128 invalida con estas, nadie las escribe a mano dos veces. */
+export const ANALITICA_TAGS = {
+  operativa: "analitica:operativa",
+  financiera: "analitica:financiera",
+} as const satisfies Readonly<Record<MetricaDominio, string>>;
+
+export function tagDeDominio(dominio: MetricaDominio): string {
+  return ANALITICA_TAGS[dominio];
+}

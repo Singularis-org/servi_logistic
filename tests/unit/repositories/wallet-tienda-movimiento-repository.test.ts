@@ -1,0 +1,692 @@
+import { describe, it, expect, vi } from "vitest";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
+import type { CrearMovimientoTiendaInput } from "@/lib/interfaces/repositories/IWalletTiendaMovimientoRepository";
+
+// Feature 43/T6 — tests unit del WalletTiendaMovimientoRepository (mockea Prisma, sin DB).
+// Cubre R2 (persiste todos los campos), R6 (createMany skipDuplicates), R16 (agrega saldo),
+// R19 (acotado por tienda_id SIEMPRE en el WHERE), R22 (filtros cierre/categoria/fecha en el
+// WHERE), R20 (una fila por tienda con nombre para el maestro).
+
+function movRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "w1",
+    tiendaId: "t1",
+    tipo: "credito",
+    categoria: "cod_recaudado",
+    monto: new Prisma.Decimal("10000.00"),
+    origenTipo: "cierre_dia",
+    origenId: "c1",
+    descripcion: null,
+    registradoPor: null,
+    fechaMovimiento: new Date("2026-07-12T10:00:00.000Z"),
+    createdAt: new Date("2026-07-12T10:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function buildPrisma(overrides: Record<string, unknown> = {}) {
+  return {
+    walletTiendaMovimiento: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      groupBy: vi.fn(),
+    },
+    usuario: { findMany: vi.fn() },
+    ...overrides,
+  };
+}
+
+describe("WalletTiendaMovimientoRepository.crearMovimientos (R2/R6)", () => {
+  it("R6: inserta con createMany skipDuplicates y mapea monto STRING -> Decimal", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.createMany.mockResolvedValue({ count: 2 });
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const movs: CrearMovimientoTiendaInput[] = [
+      { tiendaId: "t1", tipo: "credito", categoria: "cod_recaudado", monto: "10000.00", origenTipo: "cierre_dia", origenId: "c1" },
+      { tiendaId: "t1", tipo: "debito", categoria: "flete", monto: "1000.00", origenTipo: "cierre_dia", origenId: "c1" },
+    ];
+    const n = await repo.crearMovimientos(
+      { walletTiendaMovimiento: prisma.walletTiendaMovimiento } as never,
+      movs,
+    );
+
+    expect(n).toBe(2);
+    const arg = prisma.walletTiendaMovimiento.createMany.mock.calls[0][0];
+    expect(arg.skipDuplicates).toBe(true);
+    // R2: persiste tienda_id/tipo/categoria/monto/origen; monto es Prisma.Decimal.
+    expect(arg.data[0]).toMatchObject({ tiendaId: "t1", tipo: "credito", categoria: "cod_recaudado", origenTipo: "cierre_dia", origenId: "c1" });
+    expect(arg.data[0].monto).toBeInstanceOf(Prisma.Decimal);
+    expect(arg.data[0].monto.toFixed(2)).toBe("10000.00");
+    expect(arg.data[0].descripcion).toBeNull();
+    expect(arg.data[0].registradoPor).toBeNull();
+  });
+
+  it("lista vacia -> no llama createMany, devuelve 0", async () => {
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const n = await repo.crearMovimientos({ walletTiendaMovimiento: prisma.walletTiendaMovimiento } as never, []);
+    expect(n).toBe(0);
+    expect(prisma.walletTiendaMovimiento.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("WalletTiendaMovimientoRepository.listarPorTienda (R19/R22)", () => {
+  it("R19: acota tienda_id SIEMPRE en el WHERE; orderBy TOTAL (fecha, creacion, id) desc [458-B R23]; pagina", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.findMany.mockResolvedValue([movRow()]);
+    prisma.walletTiendaMovimiento.count.mockResolvedValue(1);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.listarPorTienda({ tiendaId: "t1", page: 2, pageSize: 10 });
+
+    const arg = prisma.walletTiendaMovimiento.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ tiendaId: "t1" });
+    expect(arg.orderBy).toEqual([{ fechaMovimiento: "desc" }, { createdAt: "desc" }, { id: "desc" }]);
+    expect(arg.skip).toBe(10); // (page-1)*pageSize
+    expect(arg.take).toBe(10);
+    expect(r.total).toBe(1);
+    expect(r.movimientos[0].monto).toBe("10000.00"); // STRING money-safe
+    expect(typeof r.movimientos[0].monto).toBe("string");
+  });
+
+  it("R22: cierreId -> origen_tipo=cierre_dia + origen_id; categoria y rango de fechas en el WHERE", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.findMany.mockResolvedValue([]);
+    prisma.walletTiendaMovimiento.count.mockResolvedValue(0);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const desde = new Date("2026-07-01T00:00:00.000Z");
+    const hasta = new Date("2026-07-31T00:00:00.000Z");
+    await repo.listarPorTienda({
+      tiendaId: "t1",
+      page: 1,
+      pageSize: 20,
+      cierreId: "c1",
+      categoria: "flete",
+      desde,
+      hasta,
+    });
+
+    const arg = prisma.walletTiendaMovimiento.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({
+      tiendaId: "t1",
+      categoria: "flete",
+      origenTipo: "cierre_dia",
+      origenId: "c1",
+      fechaMovimiento: { gte: desde, lt: hasta }, // ficha 461 (R72): `hasta` EXCLUSIVO
+    });
+  });
+});
+
+describe("WalletTiendaMovimientoRepository.agregarSaldoPorTienda (R16/R19)", () => {
+  it("R16/R19: groupBy tipo acotado a tienda_id -> creditos/debitos STRING", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tipo: "credito", _sum: { monto: new Prisma.Decimal("10000.00") } },
+      { tipo: "debito", _sum: { monto: new Prisma.Decimal("1452.00") } },
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.agregarSaldoPorTienda("t1", { categoria: undefined });
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    expect(arg.by).toEqual(["tipo"]);
+    expect(arg.where).toEqual({ tiendaId: "t1" }); // R19: acotado en el WHERE
+    expect(r).toEqual({ creditos: "10000.00", debitos: "1452.00" });
+    expect(typeof r.creditos).toBe("string");
+  });
+
+  it("sin movimientos -> creditos/debitos 0.00", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const r = await repo.agregarSaldoPorTienda("t1", {});
+    expect(r).toEqual({ creditos: "0.00", debitos: "0.00" });
+  });
+});
+
+describe("WalletTiendaMovimientoRepository.listarSaldosTodasTiendas (R20)", () => {
+  it("una fila por tienda con nombre + totales credito/debito agregados", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tiendaId: "t1", tipo: "credito", _sum: { monto: new Prisma.Decimal("10000.00") } },
+      { tiendaId: "t1", tipo: "debito", _sum: { monto: new Prisma.Decimal("1000.00") } },
+      { tiendaId: "t2", tipo: "debito", _sum: { monto: new Prisma.Decimal("452.00") } },
+    ]);
+    prisma.usuario.findMany.mockResolvedValue([
+      { id: "t1", nombre: "Tienda Uno" },
+      { id: "t2", nombre: "Tienda Dos" },
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const rows = await repo.listarSaldosTodasTiendas();
+
+    const byId = Object.fromEntries(rows.map((r) => [r.tiendaId, r]));
+    expect(byId.t1).toEqual({ tiendaId: "t1", tiendaNombre: "Tienda Uno", creditos: "10000.00", debitos: "1000.00" });
+    // t2 solo debitos -> creditos 0.00 (saldo negativo, lo deriva el service).
+    expect(byId.t2).toEqual({ tiendaId: "t2", tiendaNombre: "Tienda Dos", creditos: "0.00", debitos: "452.00" });
+    // solo consulta nombres de las tiendas con movimientos.
+    expect(prisma.usuario.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["t1", "t2"] } });
+  });
+
+  it("sin movimientos -> [] sin consultar usuarios", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const rows = await repo.listarSaldosTodasTiendas();
+    expect(rows).toEqual([]);
+    expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── Feature 171 / T1.3 — agregarDesglosePorTienda (R22/R24/R34/R43) ──
+
+describe("WalletTiendaMovimientoRepository.agregarDesglosePorTienda (R24/R34)", () => {
+  it("R24: agrupa por (tipo, categoria) con `tiendaId` SIEMPRE en el WHERE", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tipo: "credito", categoria: "cod_recaudado", _sum: { monto: new Prisma.Decimal("10000.00") } },
+      { tipo: "debito", categoria: "flete", _sum: { monto: new Prisma.Decimal("1000.00") } },
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const rows = await repo.agregarDesglosePorTienda("t1", {});
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    expect(arg.by).toEqual(["tipo", "categoria"]);
+    expect(arg.where).toEqual({ tiendaId: "t1" }); // R24: acotado en el WHERE, no en memoria
+    expect(arg._sum).toEqual({ monto: true });
+    expect(rows).toEqual([
+      { tipo: "credito", categoria: "cod_recaudado", total: "10000.00" },
+      { tipo: "debito", categoria: "flete", total: "1000.00" },
+    ]);
+  });
+
+  it("R24: los filtros del desglose van en el MISMO WHERE que el acotado por tienda", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const desde = new Date("2026-07-01T00:00:00.000Z");
+    const hasta = new Date("2026-07-31T00:00:00.000Z");
+    await repo.agregarDesglosePorTienda("t1", {
+      cierreId: "c1",
+      categoria: "iva_flete",
+      desde,
+      hasta,
+    });
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    expect(arg.where).toEqual({
+      tiendaId: "t1",
+      categoria: "iva_flete",
+      origenTipo: "cierre_dia",
+      origenId: "c1",
+      fechaMovimiento: { gte: desde, lt: hasta }, // ficha 461 (R72): `hasta` EXCLUSIVO
+    });
+  });
+
+  it("R34: UNA sola sentencia, sea cual sea el filtro (coste constante por apertura)", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.agregarDesglosePorTienda("t1", { categoria: "flete" });
+
+    expect(prisma.walletTiendaMovimiento.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.walletTiendaMovimiento.findMany).not.toHaveBeenCalled();
+    expect(prisma.walletTiendaMovimiento.count).not.toHaveBeenCalled();
+    // R35: el desglose NO consulta el nombre de la tienda; baja por props desde la fila.
+    expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+  });
+
+  it("money-safe: los totales salen como STRING escala 2, tambien con _sum nulo", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tipo: "credito", categoria: "cod_recaudado", _sum: { monto: new Prisma.Decimal("7") } },
+      { tipo: "debito", categoria: "flete", _sum: { monto: null } },
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const rows = await repo.agregarDesglosePorTienda("t1", {});
+
+    expect(rows[0].total).toBe("7.00");
+    expect(rows[1].total).toBe("0.00");
+    for (const r of rows) expect(typeof r.total).toBe("string");
+  });
+
+  it("R43: una fila `pago_tienda` del ledger llega TAL CUAL, con su categoria real", async () => {
+    // Hoy ningun flujo emite `pago_tienda` (lo hara la 172). El repositorio no lo sabe ni le
+    // importa: lee lo que hay. Este test siembra la fila que la 172 insertara y comprueba que
+    // el repositorio la propaga sin filtrarla ni reclasificarla.
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tipo: "credito", categoria: "cod_recaudado", _sum: { monto: new Prisma.Decimal("10000.00") } },
+      { tipo: "debito", categoria: "flete", _sum: { monto: new Prisma.Decimal("1000.00") } },
+      { tipo: "debito", categoria: "pago_tienda", _sum: { monto: new Prisma.Decimal("4000.00") } },
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const rows = await repo.agregarDesglosePorTienda("t1", {});
+
+    expect(rows).toContainEqual({ tipo: "debito", categoria: "pago_tienda", total: "4000.00" });
+    // Y el WHERE no excluye ninguna categoria: si lo hiciera, el pago no llegaria nunca.
+    expect(prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0].where).toEqual({ tiendaId: "t1" });
+  });
+
+  it("sin movimientos -> [] (la derivacion lo traduce a los cuatro importes en 0.00)", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    expect(await repo.agregarDesglosePorTienda("t1", {})).toEqual([]);
+  });
+});
+
+// ── Feature 184 — Tanda G (R5/R15/R16) — el CONJUNTO del que sale el archivo de «Saldos de
+// tiendas» (listado 12 del Anexo A) ──
+//
+// Aqui no hay metodo de repositorio nuevo, y el que se reusa no es un `findMany`: cada fila es
+// una AGREGACION de todo el ledger de esa tienda. Lo que estos casos cierran es el hueco que el
+// test de servicio no puede ver, porque alli el repositorio es un doble:
+//
+//   - que la agregacion del conjunto sea EXACTAMENTE la misma que la de la pagina (R16), y
+//   - que el ORDEN por el que sale el archivo lo ponga el repositorio y no el planificador (R5).
+//
+// El segundo es el defecto que esta tanda corrige: `listarSaldosTodasTiendas` devuelve las filas
+// como se las da el `groupBy`, y el archivo salia asi. La 170 declaro esa divergencia como
+// desviacion consciente porque ese conjunto no sostenia ningun archivo; desde esta tanda si.
+
+describe("WalletTiendaMovimientoRepository — el conjunto del archivo (feature 184, T G.1)", () => {
+  /** Cinco tiendas con nombres DISTINTOS y en desorden: es lo unico que hace visible el orden. */
+  function prismaConCincoTiendas() {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { tiendaId: "t-3", tipo: "credito", _sum: { monto: new Prisma.Decimal("1000.00") } },
+      { tiendaId: "t-1", tipo: "credito", _sum: { monto: new Prisma.Decimal("500.00") } },
+      { tiendaId: "t-5", tipo: "debito", _sum: { monto: new Prisma.Decimal("80.00") } },
+      { tiendaId: "t-2", tipo: "credito", _sum: { monto: new Prisma.Decimal("300.00") } },
+      { tiendaId: "t-4", tipo: "credito", _sum: { monto: new Prisma.Decimal("10.00") } },
+    ]);
+    prisma.usuario.findMany.mockResolvedValue([
+      { id: "t-1", nombre: "Ana" },
+      { id: "t-2", nombre: "Beto" },
+      { id: "t-3", nombre: "Carlos" },
+      { id: "t-4", nombre: "Dora" },
+      { id: "t-5", nombre: "Elena" },
+    ]);
+    return prisma;
+  }
+
+  it("el conjunto del archivo y la pagina salen de la MISMA agregacion, sin where ni recorte (R15/R16)", async () => {
+    const conjunto = prismaConCincoTiendas();
+    await new WalletTiendaMovimientoRepository(
+      conjunto as unknown as PrismaClient,
+    ).listarSaldosTiendasPaginado({ skip: 0, take: 5001 }); // el conjunto: tope + 1
+
+    const pagina = prismaConCincoTiendas();
+    await new WalletTiendaMovimientoRepository(
+      pagina as unknown as PrismaClient,
+    ).listarSaldosTiendasPaginado({ skip: 2, take: 2 }); // una pagina cualquiera
+
+    const argsConjunto = conjunto.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    const argsPagina = pagina.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+
+    // La agregacion es la MISMA, literalmente: si divergieran, el archivo sumaria un ledger y la
+    // tabla otro, y las dos cifras pasarian por buenas.
+    expect(argsConjunto).toEqual(argsPagina);
+    expect(argsConjunto.by).toEqual(["tiendaId", "tipo"]);
+    expect(argsConjunto._sum).toEqual({ monto: true });
+    // Sin `where`: este listado no acota nada —quien lo ve lo decide el ROL, en el servicio— y
+    // un `where` aqui recortaria el conjunto del archivo sin que ninguna pantalla lo dijera.
+    expect(argsConjunto.where).toBeUndefined();
+    // El recorte NO viaja a la base: no puede, porque el saldo de una tienda no se calcula con
+    // una pagina de movimientos. Lo que se recorta es el resultado ya agregado (R15).
+    expect(argsConjunto.skip).toBeUndefined();
+    expect(argsConjunto.take).toBeUndefined();
+
+    // Y son DOS consultas en los dos caminos: la agregacion y los nombres. Ni una mas.
+    for (const [nombre, p] of [["conjunto", conjunto], ["pagina", pagina]] as const) {
+      expect(p.walletTiendaMovimiento.groupBy, nombre).toHaveBeenCalledTimes(1);
+      expect(p.usuario.findMany, nombre).toHaveBeenCalledTimes(1);
+      expect(p.walletTiendaMovimiento.findMany, nombre).not.toHaveBeenCalled();
+      expect(p.walletTiendaMovimiento.count, nombre).not.toHaveBeenCalled();
+    }
+  });
+
+  it("el conjunto sale ORDENADO por nombre y la pagina es su segmento exacto (R5)", async () => {
+    const repoConjunto = new WalletTiendaMovimientoRepository(
+      prismaConCincoTiendas() as unknown as PrismaClient,
+    );
+    const { items, total } = await repoConjunto.listarSaldosTiendasPaginado({ skip: 0, take: 5001 });
+
+    // El `groupBy` las devolvio en otro orden (Carlos, Ana, Elena, Beto, Dora): si el conjunto
+    // saliera como llega —que es lo que hacia `listarSaldosTodasTiendas`— este caso se pone rojo.
+    expect(items.map((r) => r.tiendaNombre)).toEqual(["Ana", "Beto", "Carlos", "Dora", "Elena"]);
+    expect(total).toBe(5);
+
+    // Y la pagina N es el segmento N de ese mismo conjunto, en el mismo orden.
+    const recorrido: string[] = [];
+    for (let page = 1; page <= 5; page += 1) {
+      const repoPagina = new WalletTiendaMovimientoRepository(
+        prismaConCincoTiendas() as unknown as PrismaClient,
+      );
+      const p = await repoPagina.listarSaldosTiendasPaginado({ skip: (page - 1) * 2, take: 2 });
+      recorrido.push(...p.items.map((r) => r.tiendaNombre));
+      expect(p.total).toBe(5); // R41: el del CONJUNTO, no el de la pagina
+    }
+    expect(recorrido).toEqual(items.map((r) => r.tiendaNombre));
+  });
+
+  it("dos tiendas con el MISMO nombre no se solapan entre paginas: el orden es TOTAL (R5)", async () => {
+    // Sin desempate por id el orden no seria total, y una de las dos podria aparecer en dos
+    // paginas del archivo (o en ninguna).
+    function prismaHomonimas() {
+      const prisma = buildPrisma();
+      prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+        { tiendaId: "t-b", tipo: "credito", _sum: { monto: new Prisma.Decimal("2.00") } },
+        { tiendaId: "t-a", tipo: "credito", _sum: { monto: new Prisma.Decimal("1.00") } },
+        { tiendaId: "t-c", tipo: "credito", _sum: { monto: new Prisma.Decimal("3.00") } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValue([
+        { id: "t-a", nombre: "Repetida" },
+        { id: "t-b", nombre: "Repetida" },
+        { id: "t-c", nombre: "Zeta" },
+      ]);
+      return prisma;
+    }
+
+    const conjunto = await new WalletTiendaMovimientoRepository(
+      prismaHomonimas() as unknown as PrismaClient,
+    ).listarSaldosTiendasPaginado({ skip: 0, take: 5001 });
+    expect(conjunto.items.map((r) => r.tiendaId)).toEqual(["t-a", "t-b", "t-c"]);
+
+    const recorrido: string[] = [];
+    for (let page = 1; page <= 3; page += 1) {
+      const p = await new WalletTiendaMovimientoRepository(
+        prismaHomonimas() as unknown as PrismaClient,
+      ).listarSaldosTiendasPaginado({ skip: page - 1, take: 1 });
+      recorrido.push(...p.items.map((r) => r.tiendaId));
+    }
+    expect(recorrido).toEqual(["t-a", "t-b", "t-c"]);
+    expect(new Set(recorrido).size).toBe(3);
+  });
+});
+
+// ── FICHA 335 — listarCierresDeTienda: el catalogo de cierres del libro de UNA tienda ──
+//
+// POR QUE ESTOS CASOS VIVEN AQUI Y NO EN EL SERVICIO. En el test de servicio el repositorio es
+// un DOBLE: no ve el SQL. En este repo esta medido CUATRO veces que una mutacion del `WHERE`
+// sobrevive en verde por arriba —«probar el WHERE donde vive»—. El alcance por tienda de esta
+// lectura es lo unico que impide que una tienda vea los cierres de otra, asi que se afirma
+// sobre el ARGUMENTO REAL que sale hacia el ORM, igual que los casos vecinos de la 43 y la 171.
+//
+// La contraprueba de que este caso MUERDE se hizo a mano quitando `tiendaId` del `where` del
+// repositorio: el caso de R2 se pone ROJO nombrando la clave que falta («- "tiendaId": "t1"»).
+// Los otros casos de este bloque siguen verdes con la mutacion, y eso es correcto: miden otras
+// propiedades (el orden, el numero de consultas, el mapeo). La salida roja completa esta pegada
+// en `progress/impl_335.md`, junto con la del test contra Postgres real
+// (`tests/integration/db/mi-wallet-cierres-alcance.test.ts`), que es la otra red que la caza.
+
+describe("WalletTiendaMovimientoRepository.listarCierresDeTienda (ficha 335, R1/R2/R6/R7/R10)", () => {
+  /** Dos cierres del libro de `t1`, tal como los devuelve un `groupBy` con `_max` y `_count`. */
+  function gruposDeDosCierres() {
+    return [
+      {
+        origenId: "cierre-nuevo",
+        _max: { fechaMovimiento: new Date("2026-07-12T14:30:00.000Z") },
+        _count: { _all: 4 },
+      },
+      {
+        origenId: "cierre-viejo",
+        _max: { fechaMovimiento: new Date("2026-07-05T09:00:00.000Z") },
+        _count: { _all: 1 },
+      },
+    ];
+  }
+
+  it("R2: el groupBy de cierres lleva tiendaId, origenTipo cierre_dia y origenId no nulo en el WHERE", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue(gruposDeDosCierres());
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.listarCierresDeTienda("t1", 201);
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    // Igualdad, no `toMatchObject`: un `where` con una clave DE MAS tambien es un cambio de
+    // alcance, y `toMatchObject` lo dejaria pasar.
+    expect(arg.where).toEqual({
+      tiendaId: "t1",
+      origenTipo: "cierre_dia",
+      origenId: { not: null },
+    });
+    // Y el acotado por tienda esta ahi como CLAVE: si alguien lo moviera a un filtro en memoria,
+    // la asercion de arriba ya lo cazaria, pero esta lo dice con el nombre del defecto.
+    expect(Object.keys(arg.where)).toContain("tiendaId");
+    expect(arg.by).toEqual(["origenId"]);
+    expect(arg.take).toBe(201); // el `tope + 1` que le pide el servicio
+  });
+
+  it("R9: la consulta NO pide ninguna suma de dinero, solo el maximo de la fecha y el conteo", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.listarCierresDeTienda("t1", 10);
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    expect(arg._sum).toBeUndefined(); // money-safe por construccion (R9)
+    expect(arg._max).toEqual({ fechaMovimiento: true });
+    expect(arg._count).toEqual({ _all: true });
+  });
+
+  it("R7: ordena por el movimiento mas reciente, descendente, con desempate determinista", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue(gruposDeDosCierres());
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.listarCierresDeTienda("t1", 200);
+
+    const arg = prisma.walletTiendaMovimiento.groupBy.mock.calls[0][0];
+    // El orden lo pone la BASE, no una ordenacion en memoria sobre la pagina ya recortada: si
+    // se ordenara despues del `take`, el recorte elegiria filas distintas de las que se pintan.
+    expect(arg.orderBy).toEqual([
+      { _max: { fechaMovimiento: "desc" } },
+      { origenId: "desc" },
+    ]);
+    // El desempate no es adorno: sin el, dos cierres con el mismo instante saldrian en el orden
+    // del planificador y dos lecturas seguidas podrian devolver listas distintas en el borde
+    // del tope.
+    expect(arg.orderBy).toHaveLength(2);
+  });
+
+  it("R10: una sola llamada al ORM, sin consultas por elemento", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue(gruposDeDosCierres());
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const filas = await repo.listarCierresDeTienda("t1", 200);
+
+    expect(filas).toHaveLength(2); // hay mas de un elemento: el conteo de consultas significa algo
+    expect(prisma.walletTiendaMovimiento.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.walletTiendaMovimiento.findMany).not.toHaveBeenCalled();
+    expect(prisma.walletTiendaMovimiento.count).not.toHaveBeenCalled();
+    // Ni una consulta de nombres: la opcion NO nombra al mensajero del cierre (design §2.5).
+    expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+  });
+
+  it("R6: cada fila lleva el cierre, la fecha ISO de su movimiento mas reciente y su conteo", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue(gruposDeDosCierres());
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    expect(await repo.listarCierresDeTienda("t1", 200)).toEqual([
+      { cierreId: "cierre-nuevo", ultimaFecha: "2026-07-12T14:30:00.000Z", movimientos: 4 },
+      { cierreId: "cierre-viejo", ultimaFecha: "2026-07-05T09:00:00.000Z", movimientos: 1 },
+    ]);
+  });
+
+  it("un grupo sin origen NO se cuela como opcion (el WHERE lo excluye, y el mapper tambien)", async () => {
+    // Los ajustes `manual` tienen `origen_id` NULL. El `where` ya los deja fuera; esta es la
+    // segunda barrera, para que un `cierreId` invalido no pueda viajar nunca al filtro.
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([
+      { origenId: null, _max: { fechaMovimiento: new Date("2026-07-20T00:00:00.000Z") }, _count: { _all: 9 } },
+      ...gruposDeDosCierres(),
+    ]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    const filas = await repo.listarCierresDeTienda("t1", 200);
+    expect(filas.map((f) => f.cierreId)).toEqual(["cierre-nuevo", "cierre-viejo"]);
+  });
+
+  it("sin cierres -> [] (la pantalla lo traduce a «todavia no hay cierres»)", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.groupBy.mockResolvedValue([]);
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    expect(await repo.listarCierresDeTienda("t1", 200)).toEqual([]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ FICHA 381 / T A.1 + D.3 — el `id` opcional y el rastro del cobro manual.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+describe("381/A.1 — `crearMovimientos` y el `id` OPCIONAL", () => {
+  it("sin `id`, la clave NO viaja: los escritores de siempre caen en el `@default(uuid())`", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.createMany.mockResolvedValue({ count: 1 });
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.crearMovimientos({ walletTiendaMovimiento: prisma.walletTiendaMovimiento } as never, [
+      { tiendaId: "t1", tipo: "debito", categoria: "flete", monto: "1000.00", origenTipo: "cierre_dia", origenId: "c1" },
+    ]);
+
+    const arg = prisma.walletTiendaMovimiento.createMany.mock.calls[0][0];
+    // `not.toHaveProperty` y no `toBeUndefined`: emitir `id: undefined` es distinto de no emitir la
+    // clave, y solo lo segundo deja actuar al default de la columna.
+    expect(arg.data[0]).not.toHaveProperty("id");
+  });
+
+  it("con `id`, viaja tal cual: es lo que permite nombrar el asiento despues de escribirlo", async () => {
+    const prisma = buildPrisma();
+    prisma.walletTiendaMovimiento.createMany.mockResolvedValue({ count: 1 });
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+
+    await repo.crearMovimientos({ walletTiendaMovimiento: prisma.walletTiendaMovimiento } as never, [
+      { id: "cobro-1", tiendaId: "t1", tipo: "debito", categoria: "cobro_manual", monto: "1500.00", origenTipo: "manual", origenId: null, descripcion: "Cintas", registradoPor: "u-1" },
+    ]);
+
+    const arg = prisma.walletTiendaMovimiento.createMany.mock.calls[0][0];
+    expect(arg.data[0].id).toBe("cobro-1");
+    expect(arg.data[0].categoria).toBe("cobro_manual");
+    expect(arg.data[0].origenTipo).toBe("manual");
+    expect(arg.data[0].origenId).toBeNull();
+    expect(arg.data[0].monto).toBeInstanceOf(Prisma.Decimal);
+    expect(arg.data[0].monto.toFixed(2)).toBe("1500.00");
+  });
+});
+
+describe("381/D.3 — `registrarCobroEnHistorial` (R40/R41/R43)", () => {
+  function txDeHistorial(tienda: { nombre: string } | null = { nombre: "Tienda Uno" }) {
+    return {
+      usuario: {
+        findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === "t1"
+            ? tienda
+            : { nombre: "Ana", primerApellido: "Torres", rol: { value: "maestro" } },
+        ),
+      },
+      historialAccion: { createMany: vi.fn(async () => ({ count: 1 })) },
+    };
+  }
+
+  /** La UNICA fila que el metodo mando escribir. */
+  function filaDeHistorial(tx: ReturnType<typeof txDeHistorial>): Record<string, unknown> {
+    const arg = (tx.historialAccion.createMany.mock.calls as unknown as unknown[][])[0][0] as {
+      data: Record<string, unknown>[];
+    };
+    expect(arg.data).toHaveLength(1);
+    return arg.data[0];
+  }
+
+  const ENTRADA = {
+    cobroId: "cobro-1",
+    tiendaId: "t1",
+    monto: "1500.00",
+    actorUsuarioId: "u-1",
+  };
+
+  it("escribe UNA fila con el tipo, la entidad, el id del asiento y el monto como Decimal", async () => {
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const tx = txDeHistorial();
+
+    await repo.registrarCobroEnHistorial(tx as never, ENTRADA);
+
+    expect(tx.historialAccion.createMany).toHaveBeenCalledTimes(1);
+    const fila = filaDeHistorial(tx);
+    // Literales, y son EL CONTRATO del rastro: el filtro «lo que movio dinero» y el indice
+    // `[entidad_tipo, entidad_id]` dependen exactamente de estos dos valores.
+    expect(fila.accion).toBe("cobro_tienda_registrado");
+    expect(fila.entidadTipo).toBe("wallet_tienda_movimiento");
+    expect(fila.entidadId).toBe("cobro-1");
+    expect(fila.entidadEtiqueta).toBe("Tienda Uno");
+    // R18: STRING -> Decimal, sin pasar por `number`.
+    expect(fila.monto).toBeInstanceOf(Prisma.Decimal);
+    expect((fila.monto as Prisma.Decimal).toFixed(2)).toBe("1500.00");
+  });
+
+  it("congela el actor DENTRO de la transaccion", async () => {
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const tx = txDeHistorial();
+
+    await repo.registrarCobroEnHistorial(tx as never, ENTRADA);
+
+    const fila = filaDeHistorial(tx);
+    expect(fila.actorUsuarioId).toBe("u-1");
+    expect(fila.actorNombre).toBe("Ana Torres");
+    expect(fila.actorRol).toBe("maestro");
+    // Las DOS lecturas van por el `tx` recibido, no por el cliente del repositorio.
+    expect(tx.usuario.findUnique).toHaveBeenCalledTimes(2);
+    expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+  });
+
+  it("R43: la fila NO lleva la descripcion del cobro ni ningun texto libre", async () => {
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const tx = txDeHistorial();
+
+    await repo.registrarCobroEnHistorial(tx as never, ENTRADA);
+
+    const fila = filaDeHistorial(tx);
+    // `valor_anterior`/`valor_nuevo` van NULL: el par «cobro registrado» + su monto ya lo dice todo.
+    expect(fila.valorAnterior).toBeNull();
+    expect(fila.valorNuevo).toBeNull();
+    // Y la etiqueta es SOLO el nombre de la tienda. Nada de la descripcion.
+    expect(fila.entidadEtiqueta).not.toMatch(/Cintas|Reposicion/);
+  });
+
+  it("una tienda sin nombre resoluble no TUMBA el cobro: etiqueta de respaldo", async () => {
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const tx = txDeHistorial(null);
+
+    await repo.registrarCobroEnHistorial(tx as never, ENTRADA);
+
+    expect(filaDeHistorial(tx).entidadEtiqueta).toBe("(sin identificar)");
+  });
+
+  it("el `tx` que recibe NO expone `$transaction`: no puede abrir la suya", async () => {
+    // La atomicidad de R25/R42 es del TIPO, no de la disciplina. Si alguien ensanchara el tipo y
+    // abriera una transaccion aqui dentro, este objeto la haria estallar — que es lo que se quiere.
+    const prisma = buildPrisma();
+    const repo = new WalletTiendaMovimientoRepository(prisma as unknown as PrismaClient);
+    const tx = txDeHistorial();
+    await expect(repo.registrarCobroEnHistorial(tx as never, ENTRADA)).resolves.toBeUndefined();
+    expect(tx).not.toHaveProperty("$transaction");
+  });
+});

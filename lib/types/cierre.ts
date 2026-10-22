@@ -1,0 +1,151 @@
+import { z } from "zod";
+import type { CierreEstado as PrismaCierreEstado, CierreDestinoTipo as PrismaCierreDestinoTipo } from "@prisma/client";
+import { cierreConfig } from "@/lib/config/cierre";
+import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import type {
+  CierrePasadoDTO,
+  DeshacerGestionServiceResult,
+  ListarCierreDiaServiceResult,
+  SolicitarCierreServiceResult,
+  VerCierrePasadoServiceResult,
+} from "@/lib/interfaces/services/ICierreDiaService";
+
+// Feature 37 (R13/R18, decision F1.4-d): fuente unica de verdad de los estados del
+// cierre del dia, respaldada por el enum Postgres nativo `cierre_estado` (patron
+// METODO_PAGO_SEED). La 37 SOLO produce `solicitado`; `aprobado`/`rechazado` se
+// reservan para la feature 38. El `satisfies` rompe el build si el SEED tuviera un
+// valor que el enum Prisma NO tiene.
+// Feature 41 (R2): AÑADE `vencido` como cuarto estado. Lo crea el corte diario para
+// el mensajero que "debia cerrar y no solicito" (fila real con snapshot congelado); es
+// bloqueante como `solicitado` y resoluble por la bodega responsable (feature 38 ext).
+export const CIERRE_ESTADO_SEED = [
+  "solicitado",
+  "aprobado",
+  "rechazado",
+  "vencido", // feature 41
+] as const satisfies readonly PrismaCierreEstado[];
+
+export type CierreEstado = (typeof CIERRE_ESTADO_SEED)[number];
+
+// Exhaustividad frente al enum Prisma: si `CierreEstado` gana un valor que no esta
+// en CIERRE_ESTADO_SEED, `Exclude<...>` deja de ser `never` y el build rompe.
+type _EnsureEstadoExhaustive = Exclude<PrismaCierreEstado, CierreEstado> extends never ? true : never;
+const _estadoExhaustive: _EnsureEstadoExhaustive = true;
+void _estadoExhaustive;
+
+// Feature 37 (R15, decision F1.4-e): fuente unica de verdad del tipo de destino del
+// cierre, respaldada por el enum Postgres nativo `cierre_destino_tipo`.
+export const CIERRE_DESTINO_TIPO_SEED = [
+  "bodega_central",
+  "bodega_satelite",
+] as const satisfies readonly PrismaCierreDestinoTipo[];
+
+export type CierreDestinoTipo = (typeof CIERRE_DESTINO_TIPO_SEED)[number];
+
+type _EnsureDestinoExhaustive = Exclude<PrismaCierreDestinoTipo, CierreDestinoTipo> extends never
+  ? true
+  : never;
+const _destinoExhaustive: _EnsureDestinoExhaustive = true;
+void _destinoExhaustive;
+
+// Resultados de las Server Actions (feature 37): el resultado de dominio del
+// service + `unauthenticated`, que resuelve el borde (sin sesion). Mismo patron que
+// los *Result de recepcion-satelite/mis-asignaciones.
+export type ListarCierreDiaResult = ListarCierreDiaServiceResult | { status: "unauthenticated" };
+export type SolicitarCierreResult = SolicitarCierreServiceResult | { status: "unauthenticated" };
+
+// Feature 67/R10 — validacion de BORDE del deshacer. El input del cliente es el
+// `gestion_orden.id` (uuid, ver `GestionOrden.id @default(uuid())` en schema.prisma); un valor
+// mal formado -> ZodError -> validation_error ANTES de llegar al service, sin tocar datos.
+export const deshacerGestionSchema = z.object({
+  gestionId: z.string().uuid(),
+});
+
+// Feature 67 — resultado de la Server Action: el resultado de dominio del service + los dos
+// estados que resuelve el borde (`validation_error` de zod R10, `unauthenticated` sin sesion R7).
+export type DeshacerGestionResult = DeshacerGestionServiceResult | { status: "unauthenticated" };
+
+// Validacion de BORDE del detalle de un cierre pasado: el input del cliente es el
+// `cierre_dia.id` (uuid); un valor mal formado -> ZodError -> validation_error ANTES de
+// llegar al service. Mismo patron que `deshacerGestionSchema`.
+export const verCierrePasadoSchema = z.object({
+  cierreId: z.string().uuid(),
+});
+
+/**
+ * Resultado de la Server Action del detalle de un cierre pasado: el resultado de dominio del
+ * service + los dos estados que resuelve el borde (`validation_error` de zod, `unauthenticated`
+ * sin sesion).
+ */
+export type VerCierrePasadoResult =
+  | VerCierrePasadoServiceResult
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40) — entrada del listado paginado «Cierres solicitados» del
+ * mensajero. Sin filtros (design §11.3, riesgo BAJO) y sin alcance: el `mensajero_id` sale del
+ * actor de la sesion.
+ *
+ * `.strict()` para que un `mensajeroId` colado muera en el BORDE. Aqui no seria solo higiene:
+ * es el unico listado de los siete cuyo alcance ES el propio usuario, y una clave que el
+ * servicio llegara a leer algun dia abriria el historico de dinero de otro mensajero.
+ * Tamano de pagina desde `cierreConfig` (T H.1), recortado a `MAX_PAGE_SIZE`.
+ */
+export const listarCierresPasadosSchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(cierreConfig.DEFAULT_PAGE_SIZE)
+      .transform((n) => Math.min(n, cierreConfig.MAX_PAGE_SIZE)),
+  })
+  .strict();
+
+export type ListarCierresPasadosInput = z.infer<typeof listarCierresPasadosSchema>;
+
+/**
+ * Feature 184 — Tanda C (R17) — entrada del CONJUNTO de «Cierres solicitados» del mensajero.
+ *
+ * Se DERIVA del schema de su pagina quitando `page`/`pageSize`, igual que los `…CompletoSchema`
+ * de la 170 y los de la tanda B: la tabla y el archivo no pueden entender cosas distintas por
+ * «entrada». Como este listado no tiene filtros, lo que queda es una lista blanca de CERO claves,
+ * que aqui es exactamente lo correcto — y no es higiene: es el UNICO listado del Anexo A cuyo
+ * alcance es el propio usuario, asi que un `mensajeroId` colado que el servicio llegara a leer
+ * algun dia abriria el historico de dinero de otro mensajero. Muere aqui, sin tocar el servicio.
+ *
+ * `.strict()` se reescribe aunque `.omit()` lo herede: la barrera es de ESTE listado y no debe
+ * depender de que el schema base nunca se afloje.
+ */
+export const listarCierresPasadosCompletoSchema = listarCierresPasadosSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarCierresPasadosCompletoInput = z.infer<
+  typeof listarCierresPasadosCompletoSchema
+>;
+
+/** Errores de BORDE del listado (dominio + los dos que resuelve la Server Action). */
+export type CierreDiaListadoError =
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+
+// Feature 170 (T I.1, R41): el contrato comun de listado paginado, aplicado al historico.
+export type ListarCierresPasadosResult = ListarPaginadoResult<
+  CierrePasadoDTO,
+  CierreDiaListadoError
+>;
+
+/**
+ * Feature 184 — Tanda C (R6/R7) — el conjunto tal como lo recibe el cliente.
+ *
+ * Union de error ANCHO (`ActionError`, dentro de `ListarCompletoResult`) y no el estrecho de la
+ * pagina: quien lo consume es `filasDesdeResultado`, el adaptador comun de la descarga, que
+ * redacta el mensaje de CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva SOLO
+ * conteos, jamas filas ni un conjunto truncado (R6).
+ */
+export type ListarCierresPasadosCompletoResult = ListarCompletoResult<CierrePasadoDTO>;

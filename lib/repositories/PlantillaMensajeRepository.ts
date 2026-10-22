@@ -1,0 +1,481 @@
+import type { PlantillaEstado, PrismaClient } from "@prisma/client";
+import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import {
+  PlantillaDuplicadaError,
+  type CreatePlantillaData,
+  type ILectorPlantillaDeInforme,
+  type IPlantillaMensajeRepository,
+  type ListarUsablesParaTextoParams,
+  type ListPlantillasParams,
+  type ListPlantillasResult,
+  type PlantillaBienvenida,
+  type PlantillaEnviable,
+  type PlantillaEnviableDeInforme,
+  type PlantillaListItem,
+  type PlantillaPublica,
+  type PlantillaTextoEnviable,
+  type SetTemplateData,
+  type SincronizarTemplateData,
+  type SincronizarTemplateOutcome,
+  type UpdatePlantillaData,
+} from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
+
+// FICHA 362 (R9): el borrado registra su accion en la MISMA transaccion que el soft-delete.
+type PlantillaPrismaClient = Pick<
+  PrismaClient,
+  "plantillaMensaje" | "$transaction" | "historialAccion" | "usuario"
+>;
+
+const PUBLIC_SELECT = {
+  id: true,
+  nombre: true,
+  cuerpo: true,
+  variables: true,
+  variablesNombres: true, // feature 282: snapshot `clave -> nombre` (presentacion)
+  estado: true,
+  welcomeMessage: true, // mensaje de bienvenida (como mucho una vigente en `true`)
+  plantillaTienda: true, // plantilla de tienda: no pasa por Meta
+  templateId: true,
+  templateIdioma: true,
+  informeClave: true, // ficha 474 (R3)
+  llevaDocumento: true, // ficha 474 (R5)
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const LIST_SELECT = {
+  id: true,
+  nombre: true,
+  cuerpo: true,
+  estado: true,
+  variables: true,
+  variablesNombres: true, // feature 282: el listado tambien pinta etiquetas legibles
+  welcomeMessage: true, // el listado RESALTA la plantilla de bienvenida
+  plantillaTienda: true, // el listado le oculta "Enviar para aprobacion"
+  templateId: true,
+  informeClave: true, // ficha 474: el listado distingue «de orden» / «de informe»
+  llevaDocumento: true,
+  createdAt: true,
+} as const;
+
+// R28: filtro base de vigentes; TODAS las lecturas y mutaciones lo aplican.
+const VIGENTE = { deletedAt: null } as const;
+
+/**
+ * Feature 282 — el `JsonValue` de Prisma normalizado a `clave -> nombre`. Cualquier cosa que no
+ * sea un objeto plano de strings (null, texto, array, valores no-string) cae a `{}`: es
+ * PRESENTACION, y una fila rara no puede reventar el listado. Sin `any` a proposito: la entrada
+ * se declara `unknown` y se estrecha comprobando, que es lo unico que hace el lector defensivo.
+ *
+ * Exportada para poder afirmarlo directamente en test (T13); no forma parte del contrato del
+ * repositorio.
+ */
+export function leerVariablesNombres(valor: unknown): Record<string, string> {
+  if (typeof valor !== "object" || valor === null || Array.isArray(valor)) return {};
+  const salida: Record<string, string> = {};
+  for (const [clave, nombre] of Object.entries(valor as Record<string, unknown>)) {
+    // Un solo valor no-string invalida el snapshot entero: media etiqueta es peor que ninguna,
+    // porque el fallback al catalogo (R21) si sabe pintar algo coherente.
+    if (typeof nombre !== "string") return {};
+    salida[clave] = nombre;
+  }
+  return salida;
+}
+
+/** Fila cruda tal como la devuelve Prisma: el snapshot llega como `JsonValue`, no tipado. */
+type FilaConSnapshot<T> = Omit<T, "variablesNombres"> & { variablesNombres: unknown };
+
+function aPlantillaPublica(row: FilaConSnapshot<PlantillaPublica>): PlantillaPublica {
+  return { ...row, variablesNombres: leerVariablesNombres(row.variablesNombres) };
+}
+
+function aPlantillaListItem(row: FilaConSnapshot<PlantillaListItem>): PlantillaListItem {
+  return { ...row, variablesNombres: leerVariablesNombres(row.variablesNombres) };
+}
+
+export class PlantillaMensajeRepository
+  implements IPlantillaMensajeRepository, ILectorPlantillaDeInforme
+{
+  constructor(private readonly prisma: PlantillaPrismaClient) {}
+
+  async create(data: CreatePlantillaData): Promise<PlantillaPublica> {
+    try {
+      const row = await this.prisma.plantillaMensaje.create({
+        data: {
+          nombre: data.nombre,
+          cuerpo: data.cuerpo,
+          variables: data.variables,
+          // Feature 282 (R17): el snapshot lo sella el service con el catalogo vigente. Si no
+          // llega, la columna se queda en su default `{}` y la UI cae al catalogo (R21).
+          ...(data.variablesNombres !== undefined
+            ? { variablesNombres: data.variablesNombres }
+            : {}),
+          createdBy: data.createdBy,
+          // Plantilla de tienda: solo se escribe si el service lo dice; si no, default `false`.
+          ...(data.plantillaTienda !== undefined
+            ? { plantillaTienda: data.plantillaTienda }
+            : {}),
+          // Ficha 474 (R3/R5): solo si el service lo manda; si no, los defaults (`null`/`false`).
+          ...(data.informeClave !== undefined ? { informeClave: data.informeClave } : {}),
+          ...(data.llevaDocumento !== undefined ? { llevaDocumento: data.llevaDocumento } : {}),
+          // El estado inicial lo DICE el service (hoy `saved_not_aprobation`), no el default
+          // de la columna: ver `CreatePlantillaData.estado`.
+          estado: data.estado,
+        },
+        select: PUBLIC_SELECT,
+      });
+      return aPlantillaPublica(row);
+    } catch (error) {
+      throw mapDuplicadoError(error);
+    }
+  }
+
+  async list(params: ListPlantillasParams): Promise<ListPlantillasResult> {
+    const [rows, total] = await Promise.all([
+      this.prisma.plantillaMensaje.findMany({
+        where: VIGENTE, // R28
+        select: LIST_SELECT,
+        orderBy: { createdAt: "desc" }, // R6: orden determinista
+        skip: params.skip,
+        take: params.take,
+      }),
+      this.prisma.plantillaMensaje.count({ where: VIGENTE }),
+    ]);
+    const items: PlantillaListItem[] = rows.map(aPlantillaListItem);
+    return { items, total };
+  }
+
+  async count(): Promise<number> {
+    return this.prisma.plantillaMensaje.count({ where: VIGENTE }); // R28
+  }
+
+  async findById(id: string): Promise<PlantillaPublica | null> {
+    const row = await this.prisma.plantillaMensaje.findFirst({
+      where: { id, ...VIGENTE }, // R28
+      select: PUBLIC_SELECT,
+    });
+    return row === null ? null : aPlantillaPublica(row);
+  }
+
+  async findByNombre(nombre: string): Promise<PlantillaPublica | null> {
+    const row = await this.prisma.plantillaMensaje.findFirst({
+      where: { nombre, ...VIGENTE }, // R28
+      select: PUBLIC_SELECT,
+    });
+    return row === null ? null : aPlantillaPublica(row);
+  }
+
+  async update(id: string, data: UpdatePlantillaData): Promise<PlantillaPublica | null> {
+    try {
+      const result = await this.prisma.plantillaMensaje.updateMany({
+        where: { id, ...VIGENTE }, // R28: no toca borradas
+        data: {
+          ...(data.nombre !== undefined ? { nombre: data.nombre } : {}),
+          ...(data.cuerpo !== undefined ? { cuerpo: data.cuerpo } : {}),
+          ...(data.variables !== undefined ? { variables: data.variables } : {}),
+          // Feature 282 (R17): solo se reescribe si el service lo manda, que es cuando cambio
+          // el cuerpo. Un update de solo `nombre` deja el snapshot anterior intacto.
+          ...(data.variablesNombres !== undefined
+            ? { variablesNombres: data.variablesNombres }
+            : {}),
+          ...(data.plantillaTienda !== undefined
+            ? { plantillaTienda: data.plantillaTienda }
+            : {}),
+          // Ficha 474 (R7): el service ya decidio que la plantilla no salio hacia Meta.
+          ...(data.informeClave !== undefined ? { informeClave: data.informeClave } : {}),
+          ...(data.llevaDocumento !== undefined ? { llevaDocumento: data.llevaDocumento } : {}),
+        },
+      });
+      if (result.count === 0) return null; // R21
+    } catch (error) {
+      throw mapDuplicadoError(error);
+    }
+    const row = await this.prisma.plantillaMensaje.findFirst({
+      where: { id, ...VIGENTE },
+      select: PUBLIC_SELECT,
+    });
+    return row === null ? null : aPlantillaPublica(row);
+  }
+
+  async updateEstado(id: string, estado: PlantillaEstado): Promise<PlantillaPublica | null> {
+    const result = await this.prisma.plantillaMensaje.updateMany({
+      where: { id, ...VIGENTE }, // R26/R28
+      // Salir de `activo` DESMARCA la bienvenida (2026-08-27, pedido humano). Va aqui y no en
+      // el service porque por este mismo metodo pasan los TRES caminos que mueven el estado
+      // —desactivar, enviar a aprobacion y el reintento de propagacion— y la regla no puede
+      // depender de que cada uno se acuerde. `activo` no se toca: reactivar no re-marca nada.
+      data: estado === "activo" ? { estado } : { estado, welcomeMessage: false },
+    });
+    if (result.count === 0) return null; // R26
+    const row = await this.prisma.plantillaMensaje.findFirst({
+      where: { id, ...VIGENTE },
+      select: PUBLIC_SELECT,
+    });
+    return row === null ? null : aPlantillaPublica(row);
+  }
+
+  /**
+   * Mueve la marca de bienvenida a `id`. Las dos escrituras van en UNA transaccion porque el
+   * estado intermedio —ninguna plantilla marcada— no puede quedar visible ni sobrevivir a un
+   * fallo: si el `set` de la segunda reventara despues de un `clear` ya confirmado, el negocio
+   * se quedaria sin mensaje de bienvenida sin que nadie lo pidiera.
+   *
+   * El orden CLEAR -> SET es obligatorio: el UNIQUE parcial de la base no admite dos filas
+   * vigentes en `true` ni por un instante dentro de la transaccion.
+   */
+  async marcarWelcomeMessage(id: string): Promise<PlantillaPublica | null> {
+    const [, marcada] = await this.prisma.$transaction([
+      this.prisma.plantillaMensaje.updateMany({
+        // Sin `VIGENTE`: si una plantilla BORRADA se quedo con el flag puesto, este es el
+        // momento de limpiarlo. Excluir `id` evita reescribir la fila que se va a marcar.
+        where: { welcomeMessage: true, NOT: { id } },
+        data: { welcomeMessage: false },
+      }),
+      this.prisma.plantillaMensaje.updateMany({
+        where: { id, ...VIGENTE }, // no se marca una borrada
+        data: { welcomeMessage: true },
+      }),
+    ]);
+    if (marcada.count === 0) return null; // no existe o esta soft-deleted
+    const row = await this.prisma.plantillaMensaje.findFirst({
+      where: { id, ...VIGENTE },
+      select: PUBLIC_SELECT,
+    });
+    return row === null ? null : aPlantillaPublica(row);
+  }
+
+  /**
+   * FICHA 362 (R9/R11) — `plantilla_eliminada`. El metodo se envuelve en `$transaction` (forma 2
+   * del design §2.3: era un `updateMany` suelto de UNA fila).
+   *
+   * El registro va DESPUES de comprobar `count > 0`: si la plantilla ya estaba borrada, el
+   * `updateMany` alcanza cero filas y NO se escribe fila de registro (R11). Un segundo clic sobre
+   * «eliminar» no puede producir un segundo apunte de un borrado que no ocurrio.
+   */
+  async softDelete(id: string, actorUsuarioId: string | null): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const previa = await tx.plantillaMensaje.findFirst({
+        where: { id, ...VIGENTE },
+        select: { nombre: true },
+      });
+      const result = await tx.plantillaMensaje.updateMany({
+        where: { id, ...VIGENTE }, // R29: ya borrada -> count 0
+        data: { deletedAt: new Date() }, // R27: soft delete, no borra la fila
+      });
+      if (result.count === 0) return false;
+
+      const actor = await resolverActorCongelado(tx, actorUsuarioId);
+      await appendAccion(tx, [
+        {
+          accion: "plantilla_eliminada",
+          entidadTipo: "plantilla_mensaje",
+          entidadId: id,
+          entidadEtiqueta: etiquetaDeEntidad("plantilla_mensaje", {
+            nombre: previa?.nombre ?? "",
+          }),
+          ...actor,
+        },
+      ]);
+      return true;
+    });
+  }
+
+  // --- Integracion WhatsApp ---
+
+  async setTemplate(id: string, data: SetTemplateData): Promise<void> {
+    await this.prisma.plantillaMensaje.updateMany({
+      where: { id, ...VIGENTE },
+      data: { templateId: data.templateId, templateIdioma: data.idioma },
+    });
+  }
+
+  async sincronizarTemplatePorNombre(
+    nombre: string,
+    data: SincronizarTemplateData,
+  ): Promise<SincronizarTemplateOutcome> {
+    const actual = await this.prisma.plantillaMensaje.findFirst({
+      where: { nombre, ...VIGENTE },
+      select: {
+        id: true,
+        templateId: true,
+        templateIdioma: true,
+        estado: true,
+        welcomeMessage: true,
+      },
+    });
+    // El sync ya NO importa lo que solo vive en Meta (2026-08-27): sin fila local, nada que hacer.
+    if (actual === null) return "inexistente";
+
+    // El estado de Meta manda SALVO un `inactivo` puesto por el usuario: la desactivacion
+    // local (controla si el mensajero puede enviarla) no se revierte desde Meta. Se resuelve
+    // ANTES de comparar, o una `inactivo` contaria como «cambiada» en cada corrida.
+    const estadoDestino = actual.estado === "inactivo" ? actual.estado : data.estado;
+
+    // Salir de `activo` desmarca la bienvenida, tambien cuando quien lo mueve es META y no un
+    // humano: si un template aprobado pasa a `REJECTED`, la bienvenida deja de ser enviable
+    // exactamente igual que si alguien la hubiera desactivado a mano. Entra en la COMPARACION
+    // (no solo en el `data`) porque si no, una fila cuyo unico desajuste fuera la marca se
+    // contaria como `sin_cambios` y la marca sobreviviria a su plantilla.
+    const bienvenidaDestino = estadoDestino === "activo" ? actual.welcomeMessage : false;
+
+    if (
+      actual.templateId === data.templateId &&
+      actual.templateIdioma === data.idioma &&
+      actual.estado === estadoDestino &&
+      actual.welcomeMessage === bienvenidaDestino
+    ) {
+      return "sin_cambios"; // ni un UPDATE: `updatedAt` se queda donde estaba
+    }
+
+    // Una sola escritura por id (no dos `updateMany` por nombre): el `updatedAt` se mueve
+    // UNA vez y por un cambio real.
+    await this.prisma.plantillaMensaje.update({
+      where: { id: actual.id },
+      data: {
+        templateId: data.templateId,
+        templateIdioma: data.idioma,
+        estado: estadoDestino,
+        welcomeMessage: bienvenidaDestino,
+      },
+    });
+    return "actualizada";
+  }
+
+  async listarEnviables(): Promise<PlantillaEnviable[]> {
+    const rows = await this.prisma.plantillaMensaje.findMany({
+      // Ficha 474 (R8): una plantilla de INFORME no se ofrece en el envio del chat.
+      where: { ...VIGENTE, estado: "activo", NOT: { templateId: null }, informeClave: null },
+      select: {
+        id: true,
+        nombre: true,
+        cuerpo: true,
+        variables: true,
+        templateId: true,
+        templateIdioma: true,
+      },
+      orderBy: { nombre: "asc" },
+    });
+    // El WHERE garantiza templateId no nulo; templateIdioma podria faltar si Meta no lo dio
+    // (defensivo): se cae al idioma configurado por defecto en el service de envio.
+    return rows.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      cuerpo: r.cuerpo,
+      variables: r.variables,
+      templateId: r.templateId as string,
+      templateIdioma: r.templateIdioma ?? "",
+    }));
+  }
+
+  /**
+   * BORRADO 2026-08-27 (pedido humano): `crearDesdeMeta`, que IMPORTABA como plantilla local
+   * cualquier template que apareciera en la WABA de Meta. Asi entraron filas que nadie
+   * diseno aqui —`hello_world`, y una con las variables `1`,`2`,`3` numeradas de Meta, que
+   * NO estan en el catalogo y por tanto resuelven a cadena vacia al enviar—. El sync es
+   * ahora un espejo de solo lectura sobre lo que ya existe; dar de alta una plantilla es un
+   * acto del maestro, con su cuerpo y sus variables del catalogo.
+   */
+
+  async listarUsablesParaTexto(
+    opciones: ListarUsablesParaTextoParams,
+  ): Promise<PlantillaTextoEnviable[]> {
+    return this.prisma.plantillaMensaje.findMany({
+      // `saved_not_aprobation` queda FUERA junto a `inactivo` (2026-08-26): una plantilla
+      // guardada sin aprobacion es un borrador, y un borrador no se le ofrece al mensajero ni
+      // por el camino wa.me, que no depende de Meta pero si del texto que el negocio dio por
+      // bueno. `pending` SI sigue apareciendo: esa ya se envio y su texto es definitivo.
+      where: {
+        ...VIGENTE,
+        estado: { notIn: ["inactivo", "saved_not_aprobation"] },
+        // Ficha 474 (R8): una plantilla de INFORME no se ofrece en el flujo wa.me.
+        informeClave: null,
+        // Las PLANTILLAS DE TIENDA solo se ofrecen donde su superficie lo permite. Ver
+        // `ListarUsablesParaTextoParams.incluirDeTienda`.
+        ...(opciones.incluirDeTienda ? {} : { plantillaTienda: false }),
+      },
+      select: { id: true, nombre: true, cuerpo: true, variables: true },
+      orderBy: { nombre: "asc" },
+    });
+  }
+
+  async findWelcomeMessage(): Promise<PlantillaBienvenida | null> {
+    // SOLO `welcomeMessage` + vigente. Sin filtro de `estado` ni de `templateId`: quien llama
+    // necesita DISTINGUIR «no hay bienvenida configurada» de «la hay pero no se puede enviar»,
+    // y con un filtro estricto las dos serian `null`. El detalle esta en `PlantillaBienvenida`.
+    const r = await this.prisma.plantillaMensaje.findFirst({
+      where: { ...VIGENTE, welcomeMessage: true },
+      select: { id: true, nombre: true, templateId: true, estado: true },
+    });
+    return r === null
+      ? null
+      : { id: r.id, nombre: r.nombre, templateId: r.templateId, estado: r.estado };
+  }
+
+  async findEnviableById(id: string): Promise<PlantillaEnviable | null> {
+    const r = await this.prisma.plantillaMensaje.findFirst({
+      // Ficha 474 (R8): el chat y la bienvenida no resuelven una plantilla de INFORME.
+      where: { id, ...VIGENTE, estado: "activo", NOT: { templateId: null }, informeClave: null },
+      select: {
+        id: true,
+        nombre: true,
+        cuerpo: true,
+        variables: true,
+        templateId: true,
+        templateIdioma: true,
+      },
+    });
+    if (r === null) return null;
+    return {
+      id: r.id,
+      nombre: r.nombre,
+      cuerpo: r.cuerpo,
+      variables: r.variables,
+      templateId: r.templateId as string,
+      templateIdioma: r.templateIdioma ?? "",
+    };
+  }
+
+  /** Ficha 474 (R12/R34): la plantilla enviable de ESE informe, o `null`. */
+  async findEnviableDeInformeById(
+    id: string,
+    informeClave: string,
+  ): Promise<PlantillaEnviableDeInforme | null> {
+    const r = await this.prisma.plantillaMensaje.findFirst({
+      where: { id, ...VIGENTE, estado: "activo", NOT: { templateId: null }, informeClave },
+      select: {
+        id: true,
+        nombre: true,
+        cuerpo: true,
+        variables: true,
+        templateId: true,
+        templateIdioma: true,
+        informeClave: true,
+        llevaDocumento: true,
+      },
+    });
+    if (r === null || r.informeClave === null) return null;
+    return {
+      id: r.id,
+      nombre: r.nombre,
+      cuerpo: r.cuerpo,
+      variables: r.variables,
+      templateId: r.templateId as string,
+      templateIdioma: r.templateIdioma ?? "",
+      informeClave: r.informeClave,
+      llevaDocumento: r.llevaDocumento,
+    };
+  }
+}
+
+/**
+ * R10: traduce la violacion de unicidad de Postgres a un error de dominio. La constraint
+ * real `plantilla_mensaje_nombre_key` contiene el substring "nombre".
+ */
+function mapDuplicadoError(error: unknown): unknown {
+  const texto = textoConstraintP2002(error);
+  if (texto && texto.includes("nombre")) return new PlantillaDuplicadaError("nombre");
+  return error;
+}

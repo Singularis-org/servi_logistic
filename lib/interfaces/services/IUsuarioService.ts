@@ -1,0 +1,174 @@
+import type { RolItem, UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  ActualizarUsuarioInput,
+  CambiarEstadoUsuarioInput,
+  CrearUsuarioInput,
+  ListarUsuariosCompletoInput,
+  ListarUsuariosInput,
+  UsuarioListItemDTO,
+} from "@/lib/types/usuario";
+import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
+import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
+
+// Feature 25. Se reutiliza el `Actor` de IOrdenService (`{ usuarioId, rol }`),
+// resuelto desde la sesion (R1). Ningun result expone `passwordHash` (R12/R24).
+export type { Actor };
+
+// R33/R35: `generatedPassword` SOLO presente en modo autogenerado; nunca en modo
+// manual ni en ninguna otra operacion.
+export type CrearUsuarioServiceResult =
+  | { status: "ok"; usuario: UsuarioPublico; generatedPassword?: string }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R9: catalogo
+  | { status: "conflict"; campo: "email" | "cedula" } // R10/R11
+  | { status: "forbidden" }; // R3/R4
+
+// Feature 170 (T H.2): reexpresado sobre el contrato comun de listado paginado
+// (`lib/types/listado-paginado`). Misma forma, una sola definicion.
+export type ListarUsuariosServiceResult = ListarPaginadoServiceResult<UsuarioListItemDTO>;
+
+/**
+ * Feature 170 (T B.1) — lectura SIN paginacion para la descarga del dataset completo.
+ * Mismo servicio que `listar` para heredar su autorizacion (solo `maestro`), de modo que
+ * ni `limite_excedido` ni `forbidden` puedan viajar con filas (R17/R27).
+ */
+export type ListarUsuariosCompletoServiceResult =
+  ListarCompletoServiceResult<UsuarioListItemDTO>;
+
+export type ObtenerUsuarioServiceResult =
+  | { status: "ok"; usuario: UsuarioPublico }
+  | { status: "forbidden" }
+  | { status: "not_found" };
+
+export type ActualizarUsuarioServiceResult =
+  | { status: "ok"; usuario: UsuarioPublico }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R18: catalogo
+  | { status: "forbidden" }
+  | { status: "not_found" }; // R17
+
+export type CambiarEstadoUsuarioServiceResult =
+  | { status: "ok"; usuario: UsuarioPublico }
+  | { status: "forbidden" }
+  | { status: "not_found" }; // R22
+
+export type ListarTiposIdentificacionServiceResult =
+  | { status: "ok"; tipos: { id: string; value: string }[] }
+  | { status: "forbidden" };
+
+export type ListarRolesServiceResult =
+  | { status: "ok"; roles: RolItem[] }
+  | { status: "forbidden" };
+
+/**
+ * Feature 287 — resultado del RESTABLECIMIENTO de la contrasena de un usuario por el maestro.
+ *
+ * ⚠️ `generatedPassword` es OBLIGATORIO en la rama `ok` y **no existe** en ninguna otra rama del
+ * union. Eso no es estilo: es lo que hace R15 imposible de incumplir por descuido. Con un campo
+ * opcional al nivel del union, devolver la contrasena junto a un `forbidden` compilaria. Asi no.
+ *
+ * `self_reset_forbidden` es una rama PROPIA y no un `forbidden` (R5): el maestro no se restablece
+ * a si mismo —revocarle las sesiones a mitad del flujo puede tumbarle la sesion antes de que copie
+ * la contrasena que solo se ve una vez—, y la UI necesita poder decirle por que, no un «no puedes»
+ * indistinguible del de un rol sin permiso.
+ */
+/**
+ * FICHA 379 — el cambio que se esta EVALUANDO, no el estado que quedaria.
+ *
+ * Los tres campos son opcionales y representan la INTENCION: lo que no viene, no cambia. Es la
+ * misma semantica que `ActualizarUsuarioInput`, reducida a los tres campos que pueden dejar una
+ * zona satelite sin Admin satelite (las tres puertas: cambiar la zona, cambiar el rol, desactivar
+ * la cuenta).
+ */
+export interface CambioUsuarioEvaluable {
+  rolId?: string;
+  zonaId?: string | null;
+  estado?: "activo" | "inactivo";
+}
+
+/**
+ * FICHA 379/R10 — lo que el aviso necesita decir, y NADA mas.
+ *
+ * Sin ningun dato personal del usuario evaluado ni de ningun otro (R22): el aviso dice CUANTOS
+ * quedan, no QUIENES. `totalSinConsolidar` viaja como STRING de escala 2 y no se convierte a
+ * coma flotante en ningun punto del camino (R19).
+ *
+ * `adminSatelitesActivosRestantes` es siempre 0 cuando el impacto existe —si fuera >0 no habria
+ * impacto (R15)—: viaja para que la pantalla pueda decirlo sin recalcular nada y para que el
+ * test lo pueda afirmar.
+ */
+export interface ImpactoSalidaAdminSatelite {
+  zonaNombre: string;
+  cierresSinConsolidar: number;
+  totalSinConsolidar: string; // STRING escala 2 (R19)
+  adminSatelitesActivosRestantes: number;
+}
+
+/**
+ * FICHA 379 — resultado de la consulta PREVIA. Es de SOLO LECTURA: no puede romper nada aunque
+ * falle, y por eso el borde puede permitir continuar cuando falla (R20).
+ *
+ * `impacto: null` significa «no hay nada que avisar», y es el caso normal.
+ */
+export type ConsultarImpactoCambioServiceResult =
+  | { status: "ok"; impacto: ImpactoSalidaAdminSatelite | null }
+  | { status: "forbidden" } // R22
+  | { status: "not_found" };
+
+export type RestablecerContrasenaServiceResult =
+  | { status: "ok"; usuarioId: string; generatedPassword: string; sesionesRevocadas: number } // R19/R21
+  | { status: "forbidden" } // R2/R3
+  | { status: "not_found" } // R4
+  | { status: "self_reset_forbidden" }; // R5
+
+export interface IUsuarioService {
+  crear(input: CrearUsuarioInput, actor: Actor): Promise<CrearUsuarioServiceResult>;
+  listar(input: ListarUsuariosInput, actor: Actor): Promise<ListarUsuariosServiceResult>;
+  /**
+   * Feature 170/R9: el MISMO listado sin recorte por pagina, para la descarga. Mismo
+   * guard de rol, misma consulta y mismo criterio de orden que `listar`; solo cambian el
+   * `skip` (0) y el `take` (tope + 1), y se anade el guard del tope (R27/R29).
+   */
+  listarCompleto(
+    input: ListarUsuariosCompletoInput,
+    actor: Actor,
+  ): Promise<ListarUsuariosCompletoServiceResult>;
+  obtener(id: string, actor: Actor): Promise<ObtenerUsuarioServiceResult>;
+  actualizar(
+    id: string,
+    input: ActualizarUsuarioInput,
+    actor: Actor,
+  ): Promise<ActualizarUsuarioServiceResult>;
+  cambiarEstado(
+    id: string,
+    input: CambiarEstadoUsuarioInput,
+    actor: Actor,
+  ): Promise<CambiarEstadoUsuarioServiceResult>;
+  listarTiposIdentificacion(actor: Actor): Promise<ListarTiposIdentificacionServiceResult>;
+  listarRoles(actor: Actor): Promise<ListarRolesServiceResult>;
+  /**
+   * Feature 287 — el maestro RESTABLECE la contrasena del usuario `id`: el sistema la GENERA
+   * (con el mismo generador del alta), revoca TODAS las sesiones del objetivo y despues persiste
+   * el hash. Devuelve la contrasena en claro UNA sola vez, en este mismo resultado (R21).
+   *
+   * ⚠️ LA FIRMA NO ADMITE NINGUN VALOR DE CONTRASENA, y esa ausencia ES la garantia de R10 —no
+   * una validacion que alguien pueda relajar manana—. El maestro RESTABLECE; no FIJA. Ver la
+   * reversion acotada de la Decision 5 de la feature 25 en `IUserRepository.ts`.
+   */
+  restablecerContrasena(id: string, actor: Actor): Promise<RestablecerContrasenaServiceResult>;
+  /**
+   * FICHA 379 (R9-R23) — ¿este cambio deja a una zona satelite SIN Admin satelite activo?
+   *
+   * ⚠️ ES UNA LECTURA, Y NO CAMBIA NADA. No forma parte del camino de escritura: `actualizar` y
+   * `cambiarEstado` siguen sin consultarla y sin ninguna rama de bloqueo nueva. Eso es R14, la
+   * decision del humano del 2026-09-08 —«no, no quiero daños»— escrita en el tipo: el aviso
+   * INFORMA, no impide, y nada de lo que devuelva este metodo puede detener al maestro.
+   *
+   * `impacto: null` = no hay nada que avisar (el caso normal). Cuando hay impacto, el maestro
+   * decide igual; lo unico que cambia es que lo sabe.
+   */
+  consultarImpactoCambio(
+    id: string,
+    cambio: CambioUsuarioEvaluable,
+    actor: Actor,
+  ): Promise<ConsultarImpactoCambioServiceResult>;
+}

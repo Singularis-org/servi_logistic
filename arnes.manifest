@@ -1,0 +1,49 @@
+# arnes.manifest — archivos que son DEL ARNES. `scripts/arnes-sync.sh` los trae desde la plantilla
+# (singularis-co/harness_config) y los sobrescribe. Todo lo que NO esta aqui es del proyecto
+# (perfil, codigo, specs, progress) y el sync no lo toca nunca. Una ruta por linea; `dir/` = la
+# carpeta entera. Cambiar un archivo de esta lista en un proyecto es editar el arnes en caliente
+# (CLAUDE.md regla 8): el siguiente sync lo pisa. `.github/workflows/gate.yml` NO esta: la plantilla
+# trae un ejemplo y cada proyecto lo adapta a su stack (servicios, variables), asi que es del proyecto.
+CLAUDE.md
+AGENTS.md
+CHECKPOINTS.md
+arnes.manifest
+init.sh
+.claude/agents/
+.claude/commands/
+.claude/hooks/
+.claude/settings.json
+docs/specs.md
+docs/jira.md
+docs/worktrees.md
+docs/gate.md
+docs/lectura.md
+docs/guia-de-uso.md
+docs/equipo.md
+docs/grafo-de-codigo.md
+scripts/validate-features.mjs
+scripts/wt.sh
+scripts/test-rapido.mjs
+scripts/tests-de-arbol.mjs
+scripts/comparar-baseline-rojos.mjs
+scripts/unir-informes-vitest.mjs
+scripts/check-perfil.mjs
+scripts/archivos-en-vuelo.mjs
+scripts/arnes-sync.sh
+scripts/arnes-sync.mjs
+progress/README.md
+progress/features/_plantilla.md
+progress/sesion.local.example.md
+tests/guards/guard-modelos-de-agentes.test.ts
+tests/guards/guard-dependencias-aprobadas.test.ts
+tests/guards/guard-validador-ve-worktrees-hermanos.test.ts
+tests/guards/guard-validador-ve-ramas-remotas.test.ts
+tests/guards/guard-test-rapido-rojos-heredados.test.ts
+tests/guards/guard-tests-de-arbol-en-el-gate.test.ts
+tests/guards/guard-validador-equipo.test.ts
+tests/guards/guard-validador-estados.test.ts
+tests/guards/guard-validador-titulo.test.ts
+tests/guards/guard-unir-informes-vitest.test.ts
+tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts
+tests/guards/guard-hooks-anclados.test.ts
+tests/guards/guard-init-node-modules-enlazado.test.ts

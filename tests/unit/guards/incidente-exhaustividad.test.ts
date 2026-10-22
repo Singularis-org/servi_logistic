@@ -1,0 +1,161 @@
+import { describe, it, expect } from "vitest";
+import fs from "fs";
+import path from "path";
+import {
+  WALLET_MOVIMIENTO_CATEGORIA_SEED,
+  type WalletMovimientoCategoria,
+} from "@/lib/types/wallet";
+import { opcionesDeConceptos } from "@/components/shared/wallet/conceptos-filtro";
+import { CATEGORIA_LABEL, CATEGORIA_TODAS_OPTION } from "@/app/(app)/wallet/_components/wallet-labels";
+import type { GestionResultado } from "@prisma/client";
+
+// Feature 158 (R5/R31) — LA RED DE EXHAUSTIVIDAD, verificada en runtime.
+//
+// El mecanismo real de R5 es el COMPILADOR: un `Record<GestionResultado, …>` o un
+// `Record<WalletMovimientoCategoria, …>` al que le falte el valor nuevo rompe el build. Este
+// archivo NO lo sustituye — lo COMPLEMENTA con lo que el compilador no puede ver:
+//
+//   1. que la red no se haya "resuelto" con un `default:`, un `?? ""` o un cast, que es
+//      exactamente como se desactiva sin que nadie lo note (design §8: la exhaustividad ES el
+//      diseño, y relajarla es lo que hay que impedir);
+//   2. que las clasificaciones sean DELIBERADAS y no un relleno vacio.
+//
+// Verificado por mutacion durante la implementacion: quitar un valor de
+// `CAUSA_INCIDENTE_SEED` rompe el BUILD por `_EnsureExhaustive`; quitar la clave `incidente`
+// de `ESTADOS_ESPERADOS` o de un `CierreGrupos` tambien.
+
+const LIB = path.join(__dirname, "..", "..", "..", "lib");
+const APP = path.join(__dirname, "..", "..", "..", "app");
+
+function leer(...partes: string[]): string {
+  return fs.readFileSync(path.join(...partes), "utf8");
+}
+
+describe("R5 — los mapas por RESULTADO clasifican `incidente` explicitamente", () => {
+  it("`ESTADOS_ESPERADOS` (deshacer) lo declara, y NO con un `default`", () => {
+    const src = leer(LIB, "services", "CierreDiaService.ts");
+    const mapa = src.slice(
+      src.indexOf("const ESTADOS_ESPERADOS"),
+      src.indexOf("// Metodos de repo que consume el service"),
+    );
+    expect(mapa).toMatch(/incidente:\s*\["incidente"\]/);
+    expect(mapa).not.toMatch(/default:/);
+  });
+
+  it("`buildGestionData` es un switch EXHAUSTIVO: tiene los 5 casos y NINGUN `default`", () => {
+    const src = leer(LIB, "services", "MisAsignacionesService.ts");
+    const fn = src.slice(src.indexOf("function buildGestionData"));
+    const casos: GestionResultado[] = [
+      "entregado",
+      "reprogramado",
+      "novedad",
+      "devolucion_a_origen_por_rechazo",
+      "incidente",
+    ];
+    for (const caso of casos) expect(fn, `falta el case "${caso}"`).toContain(`case "${caso}":`);
+    // Un `default` haria que un 6.º resultado futuro se colara SIN decidir que persiste: la
+    // ausencia de default es lo que convierte al compilador en la red.
+    expect(fn).not.toMatch(/default:/);
+  });
+
+  it("los TRES `CierreGrupos` de servicio declaran la clave `incidente`", () => {
+    for (const archivo of [
+      "CierreDiaService.ts",
+      "CierresAdminService.ts",
+      "CierresBodegaAdminService.ts",
+    ]) {
+      const src = leer(LIB, "services", archivo);
+      const inicio = src.indexOf("CierreGrupos = {");
+      expect(inicio, `${archivo} no construye un CierreGrupos`).toBeGreaterThan(-1);
+      const bloque = src.slice(inicio, src.indexOf("}", inicio));
+      expect(bloque, `${archivo} no clasifica \`incidente\``).toMatch(/incidente:\s*\[\]/);
+    }
+  });
+});
+
+describe("R5/R31 — la categoria nueva esta clasificada en la wallet", () => {
+  it("R31: `CATEGORIA_LABEL` tiene etiqueta legible EN ESPANOL para la indemnizacion", () => {
+    expect(CATEGORIA_LABEL.egreso_indemnizacion).toBe("Indemnización que la empresa paga por un incidente");
+    // No es el slug crudo: la etiqueta se escribio, no se derivo del enum.
+    expect(CATEGORIA_LABEL.egreso_indemnizacion).not.toBe("egreso_indemnizacion");
+  });
+
+  it("R5: el `Record<WalletMovimientoCategoria, string>` esta COMPLETO (las 15)", () => {
+    for (const categoria of WALLET_MOVIMIENTO_CATEGORIA_SEED) {
+      const etiqueta = CATEGORIA_LABEL[categoria as WalletMovimientoCategoria];
+      expect(etiqueta, `sin etiqueta para ${categoria}`).toBeTruthy();
+    }
+    expect(Object.keys(CATEGORIA_LABEL)).toHaveLength(WALLET_MOVIMIENTO_CATEGORIA_SEED.length);
+  });
+
+  it("R31: la categoria aparece como opcion del filtro cuando tiene movimientos (458-A, R13)", () => {
+    const lista = opcionesDeConceptos(
+      [{ categoria: "egreso_indemnizacion", movimientos: 1 }],
+      CATEGORIA_LABEL,
+      "",
+      CATEGORIA_TODAS_OPTION,
+    );
+    const opciones = lista.map((o) => o.value);
+    expect(opciones).toContain("egreso_indemnizacion");
+    const opcion = lista.find((o) => o.value === "egreso_indemnizacion");
+    expect(opcion?.label).toBe("Indemnización que la empresa paga por un incidente (1)");
+  });
+
+  it("R5: las etiquetas de resultado de los dos detalles clasifican `incidente`", () => {
+    // Feature 170 (tanda E) — SE SIGUIÓ LA ETIQUETA A SU NUEVO SITIO, no se relajó el test.
+    //
+    // `RESULTADO_LABEL` estaba DUPLICADA palabra por palabra en los dos detalles; la 170 la
+    // promovió al módulo PURO `cierre-labels.ts` (los módulos de columnas de export no pueden
+    // importar React) y los dos `.tsx` la leen de ahí. La lista de archivos de este test
+    // apuntaba a las dos copias que ya no existen.
+    //
+    // La comprobación NO se debilita, se refuerza: ahora exige (a) que la ÚNICA declaración
+    // clasifique `incidente` y (b) que los dos detalles la USEN. Antes, un tercer detalle que
+    // olvidara la clave habría pasado inadvertido; ahora no hay dónde olvidarla.
+    const etiquetas = fs.readFileSync(
+      path.join(APP, "(app)", "cierres-admin", "_components", "cierre-labels.ts"),
+      "utf8",
+    );
+    // FICHA 455 (2026-09-24, R4/R5): la etiqueta ya no es un literal escrito a mano («Incidentes»):
+    // sale de la fuente única (`nombreDeResultado`). Lo que se exige sigue siendo lo mismo: que la
+    // ÚNICA declaración clasifique `incidente`, ahora con su nombre derivado y su texto vacío.
+    expect(etiquetas, "cierre-labels.ts sin etiqueta de incidente").toMatch(
+      /incidente:\s*nombreDeResultado\("incidente"\)/,
+    );
+    expect(etiquetas, "cierre-labels.ts sin texto de grupo vacio de incidente").toMatch(
+      /incidente:\s*textoResultadoVacio\("incidente"\)/,
+    );
+
+    // FICHA 482 (2026-10-15): el detalle del ADMIN ya no lo pinta `cierre-detalle-shared.tsx`
+    // (sus tablas, `DetalleSecciones`, se borraron; el archivo solo RE-EXPORTA las etiquetas y
+    // seguir mirándolo dejaría verde este caso sin que nadie pintara nada). Se sigue al detalle
+    // a su sitio: la lista en pestañas de `cierre-factura.tsx`, que sustituyó a la tabla en la 478.
+    for (const archivo of [
+      path.join(APP, "(app)", "cierres-admin", "_components", "cierre-factura.tsx"),
+      path.join(APP, "(app)", "cierre-dia", "_components", "CierreDiaModule.tsx"),
+    ]) {
+      const src = fs.readFileSync(archivo, "utf8");
+      expect(src, `${path.basename(archivo)} no lee RESULTADO_LABEL de cierre-labels`).toMatch(
+        /RESULTADO_LABEL/,
+      );
+      // FICHA 455 (2026-09-24): el texto vacío se declara UNA vez en `cierre-labels` (arriba) y
+      // los dos detalles lo LEEN; antes cada uno tenía su mapa con «No hay incidentes.».
+      expect(src, `${path.basename(archivo)} sin texto de grupo vacio`).toMatch(/RESULTADO_VACIO/);
+    }
+  });
+});
+
+describe("R5 — la red no se relaja con casts ni con coalescencias", () => {
+  it("ningun modulo nuevo de la feature usa `as any` sobre el resultado o la categoria", () => {
+    const nuevos = [
+      path.join(LIB, "types", "causa-incidente.ts"),
+      path.join(LIB, "services", "WalletIndemnizacionFeedService.ts"),
+      path.join(LIB, "interfaces", "services", "IWalletIndemnizacionFeedService.ts"),
+    ];
+    for (const archivo of nuevos) {
+      const src = fs.readFileSync(archivo, "utf8");
+      expect(src, `${path.basename(archivo)} usa any`).not.toMatch(/\bas any\b/);
+      expect(src, `${path.basename(archivo)}: ts-ignore`).not.toMatch(/@ts-(ignore|expect-error)/);
+    }
+  });
+});

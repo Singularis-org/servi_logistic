@@ -1,0 +1,1592 @@
+// Feature 146 (design §4) — EMISOR CENTRAL de notificaciones: una funcion por evento de D1.
+// Ubicacion UNICA de los textos (§4.6) y de la guardia de dedupe (§1.4): ningun componente,
+// service ni route handler compone una descripcion. Si una cadena de notificacion aparece
+// fuera de este archivo, es un bug.
+import type { PrismaClient } from "@prisma/client";
+import type {
+  CrearNotificacionInput,
+  INotificacionRepository,
+  NotificacionDestinatario,
+  NotificacionTxClient,
+} from "@/lib/interfaces/repositories/INotificacionRepository";
+import type { CambioEstadoEntrada } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
+import { NotificacionRepository } from "@/lib/repositories/NotificacionRepository";
+import type { OrderStatusValue } from "@/lib/types/order-status";
+// Feature 262 (B19, R18/R47): la fecha del aviso se pone en palabras con la MISMA funcion que la
+// asignacion y el portal del mensajero. Lo que se importa es la CONVERSION de fecha, no otro
+// literal: las cadenas de notificacion siguen viviendo solo en este archivo (146 §4.6). Y
+// `fechaLegible` es pura — no importa `Date` ni `Intl`.
+import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
+// FICHA 403: el dia calendario de COSTA RICA. `fechaLegible` solo pone en palabras un
+// `YYYY-MM-DD`; quien decide QUE dia es ese a partir de un instante es esta funcion, y por eso no
+// vale `toISOString().slice(0, 10)` (en UTC, un fallo de las 19:00 CR ya cae en el dia siguiente).
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+// Feature 271 (§9.2/§10.1): el aviso de bloqueo al mensajero se COMPONE con el mismo formateador
+// que la pantalla. No es una cadena importada de fuera: es la regla que CUENTA (N, V y cual toca
+// primero) escrita una sola vez, para que campana y pantalla no puedan divergir (R43/R52).
+// FICHA 412 (R14): la segunda frase del aviso de rechazo es la MISMA CONSTANTE que usan el aviso
+// de bloqueo y las tres pantallas del mensajero, IMPORTADA y no copiada. Es la lista de lo que el
+// servidor va a rechazar; una cuarta redaccion de la misma idea seria una que divergiria el dia
+// que la regla cambie, y hay una guardia de arbol que afirma que la frase existe UNA SOLA VEZ.
+import { avisoBloqueo, NO_PUEDES } from "@/lib/constants/bloqueo-mensajero";
+import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+// FICHA 409 (R39): el «5» y el «24» del texto del aviso de novedades salen de la MISMA
+// configuracion de la que `DevolucionSlaService` deriva sus ventanas. Con dos copias del numero,
+// el dia que el humano mueva el plazo el cron escalaria a los 6 dias y el aviso seguiria
+// prometiendo 5 — y la tienda organiza su trabajo con ese numero.
+import { devolucionSlaConfig } from "@/lib/config/devolucion-sla";
+import { NOMBRE_ESTADO } from "@/lib/types/order-status";
+
+/**
+ * Cliente transaccional que el emisor del rechazo necesita: las dos tablas de la feature +
+ * `orden` (para resolver la tienda dueña y la zona DENTRO de la misma tx, F1.4-3).
+ */
+export type NotificacionEmisorTx = NotificacionTxClient & Pick<PrismaClient, "orden">;
+
+/**
+ * Firma del emisor inyectable que `appendCambioEstado` invoca tras el append (design §4.1),
+ * mismo patron que `WebhookEmisor` de la feature 99. Recibe el catalogo YA resuelto por la
+ * guardia de transiciones para no volver a consultarlo.
+ */
+export type NotificacionEmisor = (
+  tx: NotificacionEmisorTx,
+  entradas: CambioEstadoEntrada[],
+  valuePorEstatusId: ReadonlyMap<string, OrderStatusValue>,
+) => Promise<void>;
+
+// ---------------------------------------------------------------------------
+// Textos (design §4.6). NUNCA direccion, telefono ni monto.
+// ---------------------------------------------------------------------------
+
+// FICHA 455 (R36): el texto CONTIENE el nombre visible exacto del estado (antes: «Una orden fue rechazada
+// por el destinatario.»). Las notificaciones ya emitidas no se reescriben.
+export const TEXTO_ORDEN_RECHAZADA = `${NOMBRE_ESTADO.devolucion_a_origen_por_rechazo}: el destinatario rechazó una orden.`;
+export const TEXTO_POSTULACION_PENDIENTE =
+  "Una postulación de mensajero está pendiente de aprobación.";
+export const TEXTO_CIERRE_POR_APROBAR = "Un mensajero envió su cierre del día para aprobación.";
+/**
+ * Feature 253 (D6). El texto NO nombra a la persona, ni su teléfono, ni su correo, ni una palabra
+ * de su mensaje (R19): quién es y qué ofrece se lee en el panel, que es donde la autorización por
+ * rol vive. El aviso solo dice que hay algo que atender.
+ */
+export const TEXTO_POSTULACION_RECURSO_PENDIENTE =
+  "Alguien ofreció un vehículo o una bodega desde la web.";
+export function textoCargaMasivaTerminada(creadas: number): string {
+  return `Carga masiva terminada: ${creadas} ${creadas === 1 ? "orden cargada" : "órdenes cargadas"}.`;
+}
+/**
+ * Feature 262 (D7, R47) — el aviso al mensajero cuando le corrigen el día de una orden suya.
+ *
+ * ⚠️ NOMBRA LA FECHA, NUNCA «hoy» NI «mañana», y es la mitad del requisito. Un aviso que dijera
+ * «pasó a hoy» y se leyera a la mañana siguiente sería FALSO — y la campana guarda 30 días
+ * (`VENTANA_DIAS`). Es el mismo argumento con el que la 261 puso la fecha en
+ * `avisoReservaParaOtroDia`: «si el texto dijera mañana, la app mentiría».
+ *
+ * UN SOLO TEXTO PARA LOS DOS SENTIDOS (R55). «Pasó al reparto del X» es cierto tanto si el día se
+ * adelantó como si se retrasó, y evita que el emisor tenga que decidir cuál es cuál. El mensajero
+ * compara con lo que ya sabe; la app no le explica su propia agenda.
+ *
+ * SIN el motivo escrito por quien corrigió (R48/A24): es texto libre de 10 a 300 caracteres escrito
+ * por un humano y puede contener cualquier cosa, incluido un teléfono o un nombre. El motivo se lee
+ * en el historial de la orden, que sí autoriza por orden.
+ */
+export function textoDiaRepartoCorregido(fechaNuevaISO: string): string {
+  const fecha = fechaLegible(fechaNuevaISO);
+  return fecha
+    ? `Una orden tuya pasó al reparto del ${fecha}.`
+    : "Una orden tuya cambió de día de reparto.";
+}
+
+/**
+ * FICHA 333 (E1, design §4.3, R35) — el aviso de que quedan cobros de gasto fijo por decidir.
+ *
+ * ⚠️ LLEVA EL NÚMERO Y NADA MÁS. Ni monto, ni concepto, ni nombre de persona, ni el período: el
+ * aviso dice que hay algo que atender; QUÉ es se lee en `/wallet`, que es donde vive la
+ * autorización por rol. Mismo criterio, palabra por palabra, que
+ * `TEXTO_POSTULACION_RECURSO_PENDIENTE`, y la regla general de la 146 §4.6 («nunca dirección,
+ * teléfono ni monto»).
+ *
+ * Singular y plural explícitos, como `textoCargaMasivaTerminada`: «Hay 1 cobros» sería el tipo
+ * de texto roto que ninguna suite ve y que un humano lee todos los días.
+ */
+export function textoCobrosGastoFijoPendientes(n: number): string {
+  return n === 1
+    ? "Hay 1 cobro de gasto fijo esperando tu aprobación."
+    : `Hay ${n} cobros de gasto fijo esperando tu aprobación.`;
+}
+
+/** Roles que aprueban postulaciones y cierres (espejo de ROLES_APROBADORES, F1.4-2). */
+const ROLES_ADMINISTRACION: NotificacionDestinatario[] = [
+  { tipo: "rol", rol: "maestro" },
+  { tipo: "rol", rol: "admin" },
+];
+
+/**
+ * Aplica la guardia de dedupe (R27) y crea. "Ya existe una NO LEIDA para el mismo
+ * (evento, entidad, destinatario)" -> no-op. El `crear` del repositorio ademas absorbe la
+ * violacion del indice unico, que es la red ante la carrera que la guardia no puede ver.
+ *
+ * Devuelve cuantas filas se crearon realmente (insumo de los tests de dedupe).
+ */
+async function emitirFilas(
+  repo: INotificacionRepository,
+  filas: CrearNotificacionInput[],
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  let creadas = 0;
+  for (const fila of filas) {
+    if (fila.entidadId !== null) {
+      const yaHay = await repo.existeNoLeidaPara(
+        fila.evento,
+        fila.entidadId,
+        fila.destinatario,
+        tx,
+      );
+      if (yaHay) continue;
+    }
+    // FICHA 410 (design §6.1): `crear` devuelve el ID de la fila creada, o `null` si la dedupe la
+    // absorbio. La condicion es `!== null` y NO la veracidad del valor: un id es siempre truthy,
+    // pero escribirlo asi deja dicho que lo que se mira es «se creo o no», no el id.
+    if ((await repo.crear(fila, tx)) !== null) creadas += 1;
+  }
+  return creadas;
+}
+
+// ---------------------------------------------------------------------------
+// §4.1 — Orden rechazada por el destinatario (R18-R21). TRANSACCIONAL.
+// ---------------------------------------------------------------------------
+
+/** Datos de la orden que el aviso de rechazo necesita para su alcance y su anexo. */
+export interface OrdenRechazadaContexto {
+  ordenId: string;
+  tiendaId: string;
+  zonaId: string | null;
+  numGuia: number | null;
+  numRemision: string;
+}
+
+/**
+ * R18: CUATRO filas por rechazo — `maestro` y `admin` sin alcance, `adminTienda` acotada a la
+ * tienda dueña de la orden y `adminSatelite` acotada a la zona de la orden. Si la zona no se
+ * resuelve, esa cuarta fila NO se emite y las otras tres si: una fila con `zona_id` inventado
+ * seria peor que un aviso menos.
+ *
+ * El anexo es la guia si existe y el numero de remision si no (§4.6): identifica la orden sin
+ * exponer destinatario, direccion ni monto.
+ */
+export async function emitirOrdenRechazada(
+  repo: INotificacionRepository,
+  orden: OrdenRechazadaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const anexo = orden.numGuia !== null ? String(orden.numGuia) : orden.numRemision;
+  const destinatarios: NotificacionDestinatario[] = [
+    { tipo: "rol", rol: "maestro" },
+    { tipo: "rol", rol: "admin" },
+    { tipo: "rol", rol: "adminTienda", tiendaId: orden.tiendaId },
+  ];
+  if (orden.zonaId !== null) {
+    destinatarios.push({ tipo: "rol", rol: "adminSatelite", zonaId: orden.zonaId });
+  }
+  return emitirFilas(
+    repo,
+    destinatarios.map((destinatario) => ({
+      tipo: "alert" as const,
+      evento: "orden_rechazada" as const,
+      descripcion: TEXTO_ORDEN_RECHAZADA,
+      anexo,
+      entidadTipo: "orden" as const,
+      entidadId: orden.ordenId,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ⏳ 2026-09-23 — FICHA 454 (design DD; R35): EL DISPARO SE MUDA DEL CHOKE POINT AL REGISTRO.
+//
+// Hasta la 454 el aviso salia de `emisorNotificacionReal`, enganchado a `appendCambioEstado`, que
+// filtraba el lote por `destino === "rechazada" && origenTipo === "gestion"` (y por eso el escalado
+// por SLA, `escalado_devuelta_sla`, no avisaba: R19 de la 146). Con la 454 la gestion ya NO
+// transiciona al registrarse: la transicion `en_reparto -> rechazada` la escribe la APROBACION del
+// cierre, horas despues. Un emisor en el choke point avisaria TARDE y, con el registro avisando
+// tambien, DOS veces. El aviso sale ahora de `emitirOrdenRechazadaEnTransaccion`, que llama
+// `GestionOrdenRepository.registrarGestionPendiente` dentro de SU transaccion y SOLO para una
+// gestion `rechazada` del MENSAJERO: el mismo instante que antes (cero regresion de tiempo).
+//
+// ⚠️ FEATURE 237 (D4, firmada el 2026-08-20) — la gestion de la TIENDA (`gestion_tienda_ayuda`)
+// QUEDA FUERA A PROPOSITO, y esto se escribe aqui para que la AUSENCIA sea una DECISION y no un
+// olvido. El texto del aviso es «Una orden fue rechazada POR EL DESTINATARIO», y sobre un rechazo
+// de la tienda seria FALSO: rechazo la tienda, sobre un paquete que el destinatario no llego a ver.
+// Desde la 454 la ausencia la sostiene el SITIO del disparo: `crearGestionDesdeAyuda` no llama a
+// este emisor (afirmado en `tests/unit/services/gestion-desde-ayuda-cierre-aprobacion.test.ts`).
+// LO QUE SE PIERDE, DECLARADO: los admins no reciben el aviso anticipado de esa clase de rechazo;
+// si el humano lo quiere, hace falta un TEXTO PROPIO y es otra decision.
+//
+// ⚠️ FEATURE 240 (R45) — `rechazo_tienda` (la tienda rechaza a mano una devolucion ya anclada)
+// QUEDA FUERA POR LA MISMA RAZON: el paquete ni siquiera esta en la calle. Y el escalado por SLA
+// (146/R19), tambien: ninguno de los dos pasa por el registro de una gestion del mensajero.
+
+/**
+ * Emisor por defecto de `appendCambioEstado` (design §4.1 de la 146). FICHA 454: NO-OP — el choke
+ * point ya no avisa de ningun rechazo (ver arriba). Se conserva la exportacion y la firma porque el
+ * choke point la recibe por parametro (y los tests de sus call-sites inyectan la suya).
+ */
+export const emisorNotificacionReal: NotificacionEmisor = async () => {};
+
+/**
+ * FICHA 454 (T1.6, DD; R35) — el aviso N1 DENTRO de la transaccion del registro de la gestion
+ * `rechazada` del mensajero. Construye su repositorio con `tx` para que el aviso y la gestion se
+ * guarden o se pierdan juntos (R20/R21 de la 146). `orden_rechazada` NO es elegible para push, y
+ * dentro de una transaccion el decorador del canal se retira igual (R27 de la 410): por eso este es
+ * el unico `new NotificacionRepository` de este modulo (`push-cableado-unico.guardia`).
+ */
+export async function emitirOrdenRechazadaEnTransaccion(
+  tx: NotificacionTxClient,
+  orden: OrdenRechazadaContexto,
+): Promise<number> {
+  return emitirOrdenRechazada(new NotificacionRepository(tx), orden, tx);
+}
+
+// ---------------------------------------------------------------------------
+// §4.2 — Carga masiva terminada (R22, R39). BEST-EFFORT en los call-sites.
+// ---------------------------------------------------------------------------
+
+export interface CargaMasivaContexto {
+  /** Usuario que EJECUTO la carga: unico destinatario posible (F1.4-2). */
+  usuarioId: string;
+  creadas: number;
+  total: number;
+  /** Clave de idempotencia (R39): `loteId` del cliente o id de lote server-side. */
+  loteId: string;
+}
+
+/** R22/R39: UNA fila `box` dirigida al ejecutor; la dedupe por `loteId` la hace idempotente. */
+export async function emitirCargaMasivaTerminada(
+  repo: INotificacionRepository,
+  ctx: CargaMasivaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "box",
+        evento: "carga_masiva_terminada",
+        descripcion: textoCargaMasivaTerminada(ctx.creadas),
+        anexo: `${ctx.total} ${ctx.total === 1 ? "fila" : "filas"}`,
+        entidadTipo: "carga",
+        entidadId: ctx.loteId,
+        destinatario: { tipo: "usuario", usuarioId: ctx.usuarioId },
+      },
+    ],
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// §4.3 — Postulacion de mensajero pendiente (R23). BEST-EFFORT.
+// ---------------------------------------------------------------------------
+
+export interface PostulacionContexto {
+  postulanteId: string;
+  nombre: string;
+}
+
+/** R23: DOS filas `warning` sin alcance, a `maestro` y `admin` (espejo de ROLES_APROBADORES). */
+export async function emitirPostulacionPendiente(
+  repo: INotificacionRepository,
+  ctx: PostulacionContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    ROLES_ADMINISTRACION.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "postulacion_mensajero_pendiente" as const,
+      descripcion: TEXTO_POSTULACION_PENDIENTE,
+      anexo: ctx.nombre,
+      entidadTipo: "usuario" as const,
+      entidadId: ctx.postulanteId,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 253 (D6) — Postulacion de vehiculo o bodega pendiente. BEST-EFFORT.
+// ---------------------------------------------------------------------------
+
+/** Lo MINIMO que el aviso necesita. Ni `nombre`, ni `correo`, ni `telefono`, ni `mensaje`: R19
+ *  prohibe que esos tres ultimos salgan de la fila, y el nombre no aporta nada aqui. */
+export interface PostulacionRecursoContexto {
+  postulacionId: string;
+  /** `vehiculo` | `bodega`. Solo alimenta el anexo, que es la unica pista del aviso. */
+  tipo: "vehiculo" | "bodega";
+}
+
+/** Etiqueta legible del tipo para el anexo. No es PII y ahorra abrir el panel para saber que es. */
+const ANEXO_POR_TIPO: Record<PostulacionRecursoContexto["tipo"], string> = {
+  vehiculo: "Vehiculo",
+  bodega: "Bodega",
+};
+
+/**
+ * D6: DOS filas `warning` sin alcance, a `maestro` y `admin` (espejo exacto de quien autoriza el
+ * panel, `ROLES_ATENCION` de `PostulacionRecursoService`). Misma forma que el aviso de postulacion
+ * de mensajero, del que este es hermano.
+ *
+ * `entidadTipo` es `postulacion_recurso` y NO `usuario`: esta postulacion no crea ninguna cuenta
+ * (design §14-C), y con `usuario` el `entidad_id` apuntaria a una tabla en la que esa fila no
+ * existe. El valor lo anade la migracion `*_notificacion_evento_postulacion_recurso`.
+ */
+export async function emitirPostulacionRecursoPendiente(
+  repo: INotificacionRepository,
+  ctx: PostulacionRecursoContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    ROLES_ADMINISTRACION.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "postulacion_recurso_pendiente" as const,
+      descripcion: TEXTO_POSTULACION_RECURSO_PENDIENTE,
+      anexo: ANEXO_POR_TIPO[ctx.tipo],
+      entidadTipo: "postulacion_recurso" as const,
+      entidadId: ctx.postulacionId,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature 262 (D7) — Al mensajero le corrigieron el dia de una orden suya. BEST-EFFORT.
+// ---------------------------------------------------------------------------
+
+/** Lo MINIMO que el aviso necesita. Ni direccion, ni telefono, ni destinatario, ni monto (R48). */
+export interface DiaRepartoCorregidoContexto {
+  /**
+   * Id de la fila de `orden_dia_reparto_cambio`: LA ENTIDAD del aviso.
+   *
+   * ⚠️ NO ES EL `ordenId`, Y ES EL HALLAZGO QUE DECIDE ESTE DISENO (design §15.2/§15.3, A20).
+   * `notificacion_dedupe_key` es UNIQUE sobre `(evento, entidad_id, destinatario_rol,
+   * destinatario_usuario_id)` con `NULLS NOT DISTINCT`. Con el id de la ORDEN, esa clave admitiria
+   * UNA sola fila por (evento, orden, mensajero) PARA SIEMPRE —ni siquiera despues de que el primer
+   * aviso se lea— y `NotificacionRepository.crear` ABSORBE el `P2002` devolviendo `false`: la
+   * SEGUNDA correccion de esa orden no avisaria nunca, en silencio absoluto. Y «mañana -> hoy sobre
+   * una orden que el mensajero ya lleva encima» —el caso por el que existe esta feature— es
+   * precisamente el que llega en segundo lugar. Con el id del CAMBIO, cada correccion es una
+   * entidad distinta: la clave nunca colisiona y R50 es una propiedad ESTRUCTURAL.
+   */
+  cambioId: string;
+  /** El destinatario, y el UNICO (R51): el mensajero asignado de esa orden. */
+  mensajeroUsuarioId: string;
+  /** `YYYY-MM-DD` ya resuelto por el servidor. El aviso nombra la FECHA, no «hoy»/«mañana» (R47). */
+  fechaNuevaISO: string;
+  /** La guia si existe; si no, el numero de remision. Copia exacta de `emitirOrdenRechazada`. */
+  anexo: string;
+}
+
+/**
+ * R46/R50/R51 — UNA fila `box` dirigida al mensajero asignado, y a nadie mas.
+ *
+ * `tipo: "box"` (icono de paquete) y no `alert` ni `warning`: esto es un PAQUETE QUE CAMBIO DE DIA,
+ * no una alarma ni algo pendiente de aprobacion. `alert` teñiria de rojo una correccion legitima de
+ * planificacion (`NotificationsBell.tsx:55-63`).
+ *
+ * LOS ADMINS NO SE AVISAN (R51): ellos son quienes corrigen. La tienda tampoco. Es —junto con el de
+ * carga masiva— la unica notificacion de este repo dirigida a UNA persona; el precedente del
+ * destinatario por usuario es `emitirCargaMasivaTerminada`.
+ */
+export async function emitirDiaRepartoCorregido(
+  repo: INotificacionRepository,
+  ctx: DiaRepartoCorregidoContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "box",
+        evento: "dia_reparto_corregido",
+        descripcion: textoDiaRepartoCorregido(ctx.fechaNuevaISO),
+        anexo: ctx.anexo,
+        entidadTipo: "orden_dia_reparto_cambio",
+        entidadId: ctx.cambioId,
+        destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+      },
+    ],
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// §4.4 — Cierre de dia por aprobar (R24). BEST-EFFORT.
+// ---------------------------------------------------------------------------
+
+export interface CierrePorAprobarContexto {
+  cierreId: string;
+  /** Zona DESTINO del cierre (ya resuelta por `resolverDestinoCierre`). */
+  zonaId: string | null;
+  /** Nombre del mensajero, unico dato del anexo (sin telefono ni monto). */
+  mensajeroNombre: string | null;
+}
+
+/**
+ * R24: TRES filas `warning` — `maestro` y `admin` sin alcance y `adminSatelite` acotada a la
+ * zona destino del cierre (espejo del alcance de `CierresAdminService`). Sin zona resuelta,
+ * la tercera no se emite. La dedupe (§1.4) evita el segundo aviso cuando el MISMO cierre se
+ * re-solicita sin que nadie haya leido el primero (R27).
+ */
+export async function emitirCierreDiaPorAprobar(
+  repo: INotificacionRepository,
+  ctx: CierrePorAprobarContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const destinatarios: NotificacionDestinatario[] = [...ROLES_ADMINISTRACION];
+  if (ctx.zonaId !== null) {
+    destinatarios.push({ tipo: "rol", rol: "adminSatelite", zonaId: ctx.zonaId });
+  }
+  return emitirFilas(
+    repo,
+    destinatarios.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "cierre_dia_por_aprobar" as const,
+      descripcion: TEXTO_CIERRE_POR_APROBAR,
+      anexo: ctx.mensajeroNombre,
+      entidadTipo: "cierre_dia" as const,
+      entidadId: ctx.cierreId,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FEATURE 271 §9.2 — los DOS avisos del bloqueo por cierres (R38-R42). BEST-EFFORT.
+//
+// POR QUE DOS EVENTOS Y NO UNO: las dos causas piden acciones OPUESTAS. Con un `vencido` la pelota
+// esta en el tejado del MENSAJERO («reenvíalo»); con `N >= 2` esta en el de la ADMINISTRACION
+// («aprueben el más antiguo»). El tipo de evento es lo que la campana usa para agrupar y para
+// deduplicar, asi que meter la diferencia en la descripcion la vuelve invisible para todo lo que no
+// sea leer la frase.
+//
+// POR QUE DOS Y NO CUATRO (uno por destinatario): el emisor de este repo produce N filas por
+// evento, una por destinatario, con el mismo `evento` y `entidad_id` (patron `emitirOrdenRechazada`).
+//
+// LA ENTIDAD ES SIEMPRE EL CIERRE, y esa eleccion es estructural, no estetica: dos bloqueos
+// distintos son dos cierres distintos -> dos `entidad_id` -> la clave unica `notificacion_dedupe_key`
+// no colisiona y el segundo bloqueo SI avisa aunque el primero siga sin leerse (R44). Elegir el
+// MENSAJERO como entidad convertiria «avisar dos veces» en un silencio estructural — es exactamente
+// la leccion que la 262 aprendio con `orden_dia_reparto_cambio`.
+//
+// SIN ANEXO en los dos (R45): ni nombre, ni guia, ni monto. Lo que el mensajero necesita para
+// identificar su cierre es la FECHA DE SU JORNADA, y esa va dentro del texto.
+// ---------------------------------------------------------------------------
+
+/**
+ * R38/R39 — el aviso de «tu cierre venció». Es EL QUE MAS SE EMITE Y EL QUE PEOR SALIA: nace del
+ * corte, o sea del caso en que `created_at` va desfasado SIEMPRE (el corte corre a las 00:0x de la
+ * madrugada siguiente a la jornada que cierra). Decirle «tu cierre del 22» a quien trabajó el 21
+ * —y que además lee el aviso el día 22— era mandarlo a buscar un cierre que no reconoce.
+ *
+ * `jornadaCR` llega YA DERIVADA por `lib/utils/jornada-cierre.ts` (R61). `null` = no hay jornada
+ * fiable -> el texto dice «tu cierre del día» y NO inventa ninguna fecha (R60).
+ */
+export function textoCierreVencidoMensajero(jornadaCR: string | null): string {
+  const fecha = jornadaCR === null ? null : fechaLegible(jornadaCR);
+  const cual = fecha === null || fecha === jornadaCR ? "Tu cierre del día" : `Tu cierre del ${fecha}`;
+  return `${cual} venció sin enviarse a aprobación. No puedes entregar, cobrar ni recibir trabajo nuevo hasta que lo envíes.`;
+}
+
+/**
+ * R39 — la mitad que ve la bodega. NO nombra al mensajero (R45): quién es se lee en la cola, que es
+ * donde la autorización por rol vive. El aviso solo dice que hay algo que atender.
+ */
+export const TEXTO_CIERRE_VENCIDO_BODEGA =
+  "El cierre de un mensajero venció sin enviarse a aprobación.";
+
+/**
+ * R41 — la mitad que ve la bodega cuando un mensajero se queda bloqueado por ACUMULAR. Es
+ * ACCIONABLE a propósito y por decisión humana registrada: en ese caso el mensajero está bloqueado
+ * por una demora que NO depende de él («aunque esto no depende de él no importa igual queda
+ * bloqueado»), así que el único remedio previsto es que la administración apruebe el más antiguo.
+ */
+export function textoMensajeroBloqueadoBodega(jornadaCR: string | null): string {
+  const fecha = jornadaCR === null ? null : fechaLegible(jornadaCR);
+  const cual =
+    fecha === null || fecha === jornadaCR ? "el más antiguo" : `el más antiguo, el del ${fecha},`;
+  return `Un mensajero quedó bloqueado por acumular cierres sin aprobar. Aprueba ${cual} para que pueda volver a trabajar.`;
+}
+
+export interface CierreVencidoContexto {
+  /** El cierre `vencido` recién creado. Es la ENTIDAD del aviso. */
+  cierreId: string;
+  /** Zona DESTINO del cierre (alcance del `adminSatelite`). */
+  zonaId: string | null;
+  /** El dueño del cierre: es el ÚNICO destinatario `usuario` de este evento (R38). */
+  mensajeroUsuarioId: string;
+  /** La JORNADA del cierre, ya derivada (R57-R60). `null` -> el texto omite la fecha. */
+  jornadaCR: string | null;
+}
+
+/**
+ * R38/R39 — una fila `alert` para el MENSAJERO dueño del cierre y una por cada destinatario de la
+ * bodega responsable (`maestro`, `admin` y el `adminSatelite` de la zona destino).
+ *
+ * ⚠️ ES LA PRIMERA NOTIFICACIÓN DE CIERRE QUE LLEGA AL MENSAJERO. Hasta hoy
+ * `emitirCierreDiaPorAprobar` sólo emitía a roles de administración, y el corte no emitía NADA
+ * —verificado contra producción: 0 filas en `notificacion` a las 00:03 del 22/08—, así que el
+ * mensajero se enteraba de su bloqueo al toparse con el rechazo. El soporte para dirigir a un
+ * usuario ya existía (`destinatarioUsuarioId`, XOR con `destinatarioRol`).
+ */
+export async function emitirCierreDiaVencido(
+  repo: INotificacionRepository,
+  ctx: CierreVencidoContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const bodega: NotificacionDestinatario[] = [...ROLES_ADMINISTRACION];
+  if (ctx.zonaId !== null) {
+    bodega.push({ tipo: "rol", rol: "adminSatelite", zonaId: ctx.zonaId });
+  }
+  const filas: CrearNotificacionInput[] = [
+    {
+      tipo: "alert",
+      evento: "cierre_dia_vencido",
+      descripcion: textoCierreVencidoMensajero(ctx.jornadaCR),
+      anexo: null,
+      entidadTipo: "cierre_dia",
+      entidadId: ctx.cierreId,
+      destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+    },
+    ...bodega.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "cierre_dia_vencido" as const,
+      descripcion: TEXTO_CIERRE_VENCIDO_BODEGA,
+      anexo: null,
+      entidadTipo: "cierre_dia" as const,
+      entidadId: ctx.cierreId,
+      destinatario,
+    })),
+  ];
+  return emitirFilas(repo, filas, tx);
+}
+
+/**
+ * FICHA 412 (T4.4, R17/R18/R19) — a QUIÉN va este aviso, decidido por el PRODUCTOR.
+ *
+ * Campo OBLIGATORIO y sin valor por defecto, a propósito: es el mismo mecanismo del `Record` del
+ * catálogo. Un productor nuevo no puede quedarse sin decidir, porque no compila.
+ *
+ *   · `"mensajero_y_bodega"` — lo que hacía el aviso hasta hoy, y lo que sigue haciendo la
+ *     SOLICITUD de cierre (`CierreDiaService.avisarBloqueoPorAcumular`) y el corte diario. R19: su
+ *     comportamiento no cambia ni a quién llega, ni qué dice, ni cuándo.
+ *   · `"solo_bodega"` — el RECHAZO (`CierresAdminService.avisarDelRechazo`). Ahí el mensajero
+ *     recibe `cierre_dia_rechazado`, que es el único de los dos que dice QUÉ PASÓ; mandarle
+ *     también éste serían DOS «por hacer» en el distintivo de la 409 para UN SOLO trabajo —los dos
+ *     llevan a `/cierre-dia` a pedir la misma acción— y, con la 410 encima, DOS pushes (el cupo
+ *     diario es por `(usuario, evento, jornada)` y son eventos distintos).
+ */
+export type DestinatariosBloqueo = "mensajero_y_bodega" | "solo_bodega";
+
+export interface MensajeroBloqueadoContexto {
+  /** El cierre que lo dejó bloqueado (el recién creado, o el que acaban de rechazarle). */
+  cierreId: string;
+  /** Zona DESTINO del cierre (alcance del `adminSatelite`). */
+  zonaId: string | null;
+  /** El mensajero bloqueado. */
+  mensajeroUsuarioId: string;
+  /** N, V y cuál toca resolver primero: lo que el texto al mensajero necesita CONTAR (R43). */
+  bloqueo: BloqueoDetalle;
+  /** FICHA 412 (R17/R18): quién recibe ESTA emisión. Obligatorio: nadie puede no decidir. */
+  readonly destinatarios: DestinatariosBloqueo;
+}
+
+/**
+ * R40/R41/R42 — el aviso de «quedaste BLOQUEADO». Lo emiten TRES productores y por eso es un solo
+ * evento: la solicitud que deja al mensajero en `N >= 2`, y el RECHAZO de un cierre (Q3 resuelta el
+ * 2026-08-23: sí entra en alcance, y además es la única vía por la que se acumulan dos cierres
+ * re-solicitables).
+ *
+ * EL TEXTO AL MENSAJERO SALE DEL MISMO FORMATEADOR QUE LA PANTALLA (`avisoBloqueo`), y eso no
+ * contradice la regla de la 146 §4.6 —«los textos de notificación viven sólo en este archivo»—: lo
+ * que se comparte es el COMPOSITOR de una regla que cuenta cosas, no una cadena copiada. Dos
+ * versiones del mismo aviso —una en la campana y otra en la pantalla— divergirían en cuanto una de
+ * las dos cambie, y este aviso tiene que decir exactamente lo que el servidor va a rechazar (R43).
+ * Se compone con `conCta: true` porque la campana no es «Cierre del día»: hay que decirle dónde ir.
+ *
+ * ⚠️ FICHA 412 (R17/R18/R19) — A QUIÉN LLEGA LO DECIDE AHORA EL PRODUCTOR (`ctx.destinatarios`),
+ * y el cambio es EXACTAMENTE UNO: en la rama del RECHAZO ya no se crea la fila del MENSAJERO,
+ * porque ahí él recibe `cierre_dia_rechazado` —el único de los dos que dice QUÉ PASÓ—. Las filas
+ * de bodega (maestro, admin y el `adminSatelite` de la zona destino) NO cambian en ningún
+ * productor: mismo texto, misma entidad, misma deduplicación.
+ */
+export async function emitirMensajeroBloqueado(
+  repo: INotificacionRepository,
+  ctx: MensajeroBloqueadoContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const bodega: NotificacionDestinatario[] = [...ROLES_ADMINISTRACION];
+  if (ctx.zonaId !== null) {
+    bodega.push({ tipo: "rol", rol: "adminSatelite", zonaId: ctx.zonaId });
+  }
+  const jornadaCR = ctx.bloqueo.aResolverPrimero?.jornadaCR ?? null;
+  // FICHA 412 (R17/R18): la fila del MENSAJERO sólo sale cuando el productor la pide. La del
+  // RECHAZO no la pide: allí él recibe `cierre_dia_rechazado`, y dos filas para un solo trabajo
+  // serían dos «por hacer» en el distintivo y dos pushes. Las de bodega NO cambian nunca.
+  const alMensajero: CrearNotificacionInput[] =
+    ctx.destinatarios === "solo_bodega"
+      ? []
+      : [
+          {
+            tipo: "alert",
+            evento: "mensajero_bloqueado_por_cierres",
+            descripcion: avisoBloqueo(ctx.bloqueo, { conCta: true }),
+            anexo: null,
+            entidadTipo: "cierre_dia",
+            entidadId: ctx.cierreId,
+            destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+          },
+        ];
+  const filas: CrearNotificacionInput[] = [
+    ...alMensajero,
+    ...bodega.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "mensajero_bloqueado_por_cierres" as const,
+      descripcion: textoMensajeroBloqueadoBodega(jornadaCR),
+      anexo: null,
+      entidadTipo: "cierre_dia" as const,
+      entidadId: ctx.cierreId,
+      destinatario,
+    })),
+  ];
+  return emitirFilas(repo, filas, tx);
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 412 §4 — «TU CIERRE FUE RECHAZADO». BEST-EFFORT, desde el RECHAZO del admin.
+//
+// ⚠️ LA ENTIDAD DE ESTE AVISO ES **EL RECHAZO**, NO EL CIERRE, Y ESA ES LA DECISIÓN QUE EVITA UN
+// SILENCIO TOTAL. `notificacion_dedupe_key` es UNIQUE sobre `(evento, entidad_id,
+// destinatario_rol, destinatario_usuario_id)` con `NULLS NOT DISTINCT` y `WHERE entidad_id IS NOT
+// NULL`, el índice NO MIRA EL ESTADO DE LECTURA, y `NotificacionRepository.crear` ABSORBE el
+// `P2002`. Con el CIERRE como entidad —que es lo que hace el aviso de bloqueo de aquí arriba— esa
+// clave admitiría UNA sola fila por (evento, cierre, mensajero) PARA SIEMPRE. Y como `rechazado`
+// es RE-SOLICITABLE y `transicionarASolicitado` REUTILIZA LA MISMA FILA de `cierre_dia`, el ciclo
+// NORMAL de esta pantalla —rechazo, corrección, rechazo— dejaría el SEGUNDO rechazo mudo: sin
+// error, sin log y sin nada. Y el segundo es justo cuando más falta hace, porque significa que lo
+// que corrigió no bastó. Es el fallo que documentaron la 262 y la 403.
+//
+// Con `${cierreId}:${resueltoAtISO}` las dos propiedades son ESTRUCTURALES, no de disciplina:
+//   · dos rechazos ⇒ dos `resuelto_at` ⇒ dos entidades ⇒ DOS avisos (R7), leído o no el primero;
+//   · el MISMO rechazo emitido dos veces ⇒ misma entidad ⇒ UNO solo (R8/R9) — y lo decide el
+//     índice único, no un `if` previo que una carrera pueda burlar.
+//
+// El instante es el PERSISTIDO (`cierre_dia.resuelto_at`, leído DESPUÉS de la escritura), nunca
+// un `new Date()` del servicio: con un reloj propio, dos emisiones del mismo rechazo —un
+// reintento— inventarían dos entidades y saldrían dos avisos por un solo hecho.
+//
+// Y no es `entidad_id = NULL`: con `null`, `emitirFilas` se salta su guardia previa y el índice
+// único es PARCIAL, así que saldría un aviso por cada ejecución.
+// ---------------------------------------------------------------------------
+
+/**
+ * R11/R12/R14/R15 — el texto, con sus TRES salidas. `jornadaCR` viene YA derivada por el único
+ * derivador (`lib/utils/jornada-cierre.ts`, 271/R61); aquí sólo se pone en palabras.
+ *
+ * LA FECHA ES LA DE LA **JORNADA**, no la del nacimiento del cierre: un cierre creado por el corte
+ * nace fechado un día por delante del día que el mensajero trabajó. Sin jornada fiable, «Tu cierre
+ * del día»: se OMITE, no se inventa (R12). Es el mismo patrón, palabra por palabra, de
+ * `textoCierreVencidoMensajero`.
+ *
+ * LA SEGUNDA FRASE ES `NO_PUEDES`, IMPORTADA (R14): la lista de lo que el servidor va a rechazar
+ * se escribe UNA VEZ. Y sólo aparece si el rechazo lo deja BLOQUEADO (R15): afirmar una
+ * consecuencia que el servidor no aplica es el fallo que la 271 documentó al revés.
+ *
+ * NO LLEVA EL MOTIVO DEL RECHAZO, y no por disciplina sino POR CONSTRUCCIÓN: no entra en el
+ * contexto, así que no hay nada que filtrar. Es texto libre escrito por un humano y puede traer un
+ * teléfono, un nombre o un monto (misma razón que 262/R48). El motivo se lee en `/cierre-dia`, que
+ * es donde la autorización por cierre vive.
+ */
+export function textoCierreRechazadoMensajero(
+  jornadaCR: string | null,
+  quedaBloqueado: boolean,
+): string {
+  const fecha = jornadaCR === null ? null : fechaLegible(jornadaCR);
+  const cual = fecha === null || fecha === jornadaCR ? "Tu cierre del día" : `Tu cierre del ${fecha}`;
+  const base = `${cual} fue rechazado. Revísalo, corrígelo y vuelve a enviarlo a aprobación.`;
+  return quedaBloqueado ? `${base} ${NO_PUEDES}` : base;
+}
+
+/** Lo MÍNIMO que el aviso necesita. SIN un solo campo de más — en particular, SIN el motivo (R16). */
+export interface CierreRechazadoContexto {
+  /** El cierre rechazado. Es la PRIMERA mitad de la entidad. */
+  cierreId: string;
+  /** `cierre_dia.resuelto_at` de ESTE rechazo, en ISO. Es la SEGUNDA mitad de la entidad (§3). */
+  resueltoAtISO: string;
+  /** El dueño del cierre: ÚNICO destinatario (R2). */
+  mensajeroUsuarioId: string;
+  /** Ya derivada por el único derivador. `null` -> el texto omite la fecha (R12). */
+  jornadaCR: string | null;
+  /** Leído DESPUÉS del rechazo. Decide la segunda frase, y nada más (R14/R15). */
+  quedaBloqueado: boolean;
+}
+
+/**
+ * R1/R2/R16 — UNA sola fila `alert` dirigida al MENSAJERO dueño del cierre, y a nadie más.
+ *
+ * `alert` y no `warning`: es el dinero del mensajero y además puede estar bloqueado, igual que
+ * `cierre_dia_vencido` para él.
+ *
+ * SIN FILA DE ROL, y no por olvido: quien rechaza es la bodega, y avisarle de su propio clic sería
+ * ruido puro. Su aviso —`mensajero_bloqueado_por_cierres` con `destinatarios: "solo_bodega"`—
+ * sigue saliendo igual, con el mismo texto y la misma entidad (R18).
+ *
+ * SIN ANEXO (R16): la fecha ya va dentro del texto, igual que en los dos avisos de la 271.
+ */
+export async function emitirCierreDiaRechazado(
+  repo: INotificacionRepository,
+  ctx: CierreRechazadoContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const filas: CrearNotificacionInput[] = [
+    {
+      tipo: "alert",
+      evento: "cierre_dia_rechazado",
+      descripcion: textoCierreRechazadoMensajero(ctx.jornadaCR, ctx.quedaBloqueado),
+      anexo: null,
+      entidadTipo: "cierre_dia_rechazo",
+      // ⚠️ EL INSTANTE VA DENTRO. Ver el bloque de arriba: sin él, el segundo rechazo del mismo
+      // cierre no avisaría nunca, en silencio.
+      entidadId: `${ctx.cierreId}:${ctx.resueltoAtISO}`,
+      destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+    },
+  ];
+  return emitirFilas(repo, filas, tx);
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 333 §4 — Cobros de gasto fijo esperando decisión. BEST-EFFORT, desde el CRON.
+//
+// ⚠️ LA ENTIDAD DE ESTE AVISO ES **EL DÍA CR**, NO EL COBRO, Y ESA ES LA DECISIÓN QUE EVITA UN
+// SILENCIO TOTAL. `notificacion_dedupe_key` es UNIQUE sobre `(evento, entidad_id,
+// destinatario_rol, destinatario_usuario_id)` con `NULLS NOT DISTINCT` y `WHERE entidad_id IS NOT
+// NULL`, y `NotificacionRepository.crear` ABSORBE el `P2002` devolviendo `false`. Con el COBRO
+// como entidad, esa clave admitiría UNA sola fila por (evento, cobro, maestro) PARA SIEMPRE: el
+// recordatorio del día 2 no saldría NUNCA —sin error, sin log, sin nada—, y ni siquiera haría
+// falta que el índice actuara, porque `emitirFilas` consulta antes `existeNoLeidaPara` y mientras
+// el primer aviso siguiera sin leerse se saltaría la creación. Es EXACTAMENTE el fallo que la 262
+// documentó y evitó eligiendo como entidad el CAMBIO y no la orden.
+//
+// Con el DÍA, las dos propiedades que la ficha pide son ESTRUCTURALES y no de disciplina:
+//   · días distintos ⇒ entidades distintas ⇒ el recordatorio diario sale siempre (R30), leído o
+//     no leído el del día anterior;
+//   · misma corrida repetida el mismo día ⇒ misma entidad ⇒ UN solo aviso (R31).
+//
+// Y tampoco es `entidad_id = NULL` (A4): con `null`, `emitirFilas` se salta la guardia y el
+// índice único es PARCIAL, así que saldría un aviso por cada ejecución.
+// ---------------------------------------------------------------------------
+
+/** Lo MÍNIMO que el aviso necesita: un número y un día. Ni monto, ni concepto, ni persona (R35). */
+export interface GastoFijoCobroPendienteContexto {
+  /** Cuántos cobros siguen `pendiente` en el instante de la corrida. TODOS, no los de hoy. */
+  pendientes: number;
+  /** `YYYY-MM-DD`: el día calendario CR de la corrida. **ES LA ENTIDAD** del aviso. */
+  diaCR: string;
+}
+
+/**
+ * R29/R30/R31/R35 — UNA fila `warning` dirigida al rol `maestro`, y a nadie más.
+ *
+ * `warning` y no `alert`: es «algo pendiente de aprobación», igual que `cierre_dia_por_aprobar`.
+ * Un `alert` teñiría de rojo una cola de trabajo normal (`NotificationsBell.tsx`).
+ *
+ * SÓLO AL `maestro` (pregunta abierta 1, valor por defecto de la ficha): el `admin` VE la cola
+ * pero no puede decidirla (R24), y un recordatorio diario que no se puede atender es ruido. Si
+ * el humano quiere que también lo reciba, se añade el destinatario aquí y R29 pasa a nombrar los
+ * dos.
+ *
+ * SIN ANEXO: el número ya está en la descripción y no hay ningún otro dato que se pueda enseñar
+ * sin romper R35.
+ */
+export async function emitirGastoFijoCobroPendiente(
+  repo: INotificacionRepository,
+  ctx: GastoFijoCobroPendienteContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "warning",
+        evento: "gasto_fijo_cobro_pendiente",
+        descripcion: textoCobrosGastoFijoPendientes(ctx.pendientes),
+        anexo: null,
+        entidadTipo: "gasto_fijo_cobro_dia",
+        entidadId: ctx.diaCR,
+        destinatario: { tipo: "rol", rol: "maestro" },
+      },
+    ],
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 403 §5 — Una suscripción de webhook lleva fallando en racha y sus reintentos se
+// espaciaron solos. BEST-EFFORT, desde el DRENADOR DE LA COLA.
+//
+// ⚠️ LA ENTIDAD DE ESTE AVISO ES **LA RACHA DE FALLOS**, NO LA SUSCRIPCIÓN, y es lo que hace que
+// R12 sea estructural en vez de disciplina:
+//
+//     entidadId = `${ownerUsuarioId}:${sinExitoDesde.toISOString()}`
+//
+// `notificacion_dedupe_key` es UNIQUE sobre `(evento, entidad_id, destinatario_rol,
+// destinatario_usuario_id)` con `NULLS NOT DISTINCT` y `WHERE entidad_id IS NOT NULL`, y
+// `NotificacionRepository.crear` ABSORBE el `P2002` devolviendo `false`. Con la SUSCRIPCIÓN (o su
+// owner) como entidad, esa clave admitiría UNA sola fila por (evento, owner, maestro) PARA
+// SIEMPRE: la SEGUNDA racha de ese integrador —meses después, tras haberse recuperado— no
+// avisaría NUNCA, sin error, sin log y sin nada. Es el fallo que la 262 documentó con `orden` y
+// que la 333 evitó eligiendo el día.
+//
+// Con la racha:
+//   · mientras dura, `sinExitoDesde` no se mueve ⇒ misma entidad ⇒ TODOS los intentos fallidos
+//     posteriores chocan con el índice y se descartan en silencio: UN aviso por racha (R12, 1ª);
+//   · tras un 2xx (R2) o un guardado manual de la URL (R7), `sinExitoDesde` cambia ⇒ otra entidad
+//     ⇒ la siguiente racha avisa de nuevo (R12, 2ª).
+//
+// POR ESO NO HACE FALTA CÓDIGO QUE DETECTE LA TRANSICIÓN «no pausada → pausada» (design §4): el
+// service intenta notificar en CADA fallo mientras `estaPausada()` sea cierto, y la deduplicación
+// la hace la clave. Se probó la alternativa —reconstruir el estado previo restando uno al
+// contador— y NO funciona: no distingue el caso en que el conteo ya superaba el umbral desde hacía
+// rato y es el TIEMPO el que acaba de cumplirse (ambos lados se evalúan con el mismo «ahora»).
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo MÍNIMO que el aviso necesita, y ni un dato más (R13): quién es el owner —solo para formar la
+ * clave, nunca para el texto— y desde cuándo dura la racha.
+ *
+ * ⚠️ NO LLEVA NI LA URL NI EL SECRETO, ni cifrado, y no es un descuido: son el dato del integrador
+ * y la credencial de firma. Un aviso viaja a una campana que se lee en pantalla y puede acabar en
+ * una captura o en un log.
+ */
+export interface WebhookSuscripcionPausadaContexto {
+  /** Owner de la suscripción. Solo entra en el `entidadId`, jamás en la descripción. */
+  ownerUsuarioId: string;
+  /** Ancla de la racha: instante desde el que no hay ninguna entrega aceptada. */
+  sinExitoDesde: Date;
+}
+
+/**
+ * FICHA 403 (R9/R13) — el texto del aviso.
+ *
+ * ⚠️ NUNCA DICE «DESACTIVADA», «DADA DE BAJA» NI «CANCELADA» (R9, última frase), Y ESO ES EL
+ * REQUISITO, no una preferencia de estilo. La suscripción SIGUE ACTIVA, sigue encolando y sigue
+ * reintentando: lo único que cambió es el espaciado, y se deshace solo al primer 2xx. Un texto que
+ * dijera «se desactivó» mandaría al maestro a reactivar a mano algo que no está apagado —y la
+ * decisión del humano en esta ficha fue exactamente NO reproducir ese mecanismo—.
+ *
+ * SIN LA URL Y SIN EL SECRETO (R13). Y sin nombrar cuál suscripción: hoy hay una sola en
+ * producción, y nombrarla el día que haya varias es una extensión de una línea, no otro mecanismo.
+ *
+ * La fecha va en palabras con `fechaLegible`, el MISMO formateador que usan la asignación y el
+ * portal del mensajero: lo que se importa es la conversión de fecha, no otro literal (146 §4.6).
+ *
+ * Y el día calendario sale de `fechaCalendarioCR`, NO de `toISOString().slice(0, 10)`: quien lee
+ * este aviso está en Costa Rica, y en UTC un fallo de las 19:00 CR ya cae en el día siguiente. Un
+ * aviso que dice «desde el 10» cuando en pantalla todavía es el 9 se lee como un error del sistema.
+ */
+export function textoWebhookSuscripcionPausada(sinExitoDesde: Date): string {
+  return (
+    `Un webhook lleva fallando desde el ${fechaLegible(fechaCalendarioCR(sinExitoDesde))} ` +
+    "y sus reintentos se espaciaron automáticamente para no saturar la cola de trabajo. " +
+    "Se reanudarán solos en cuanto vuelva a responder. Revisa Configuración > API."
+  );
+}
+
+/**
+ * R9/R10/R12/R13 — UNA fila `warning` dirigida al rol `maestro`, y a nadie más.
+ *
+ * `warning` y NO `alert`: la suscripción sigue viva y se está recuperando sola. Un `alert` teñiría
+ * de rojo (`NotificationsBell.tsx`) algo que no exige intervenir — no es la misma severidad que
+ * «algo se rompió y hay que arreglarlo a mano».
+ *
+ * SÓLO AL `maestro`: es el único rol que opera Configuración > API (`lib/actions/webhooks.ts`
+ * autoriza a `maestro` y a nadie más). El `admin` la vería sin poder actuar, que es el mismo
+ * argumento por el que la 333 lo excluyó.
+ *
+ * SIN ANEXO: no hay ningún dato más que enseñar sin arriesgar R13.
+ *
+ * R10: reutiliza `emitirFilas` → `INotificacionRepository.crear`, el mecanismo de la 146. No se
+ * construye ningún canal de aviso nuevo.
+ */
+export async function emitirWebhookSuscripcionPausada(
+  repo: INotificacionRepository,
+  ctx: WebhookSuscripcionPausadaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "warning",
+        evento: "webhook_suscripcion_pausada",
+        descripcion: textoWebhookSuscripcionPausada(ctx.sinExitoDesde),
+        anexo: null,
+        entidadTipo: "webhook_suscripcion_pausa",
+        // ⚠️ LA RACHA, no la suscripción. Ver el bloque de arriba.
+        entidadId: `${ctx.ownerUsuarioId}:${ctx.sinExitoDesde.toISOString()}`,
+        destinatario: { tipo: "rol", rol: "maestro" },
+      },
+    ],
+    tx,
+  );
+}
+
+// FICHA 401 §7 — El servicio de mapas está rechazando nuestras peticiones. BEST-EFFORT, desde la
+// rama de configuración del job de geocodificación.
+//
+// EL HECHO QUE LO ORIGINA, MEDIDO: el 2026-09-08 el proveedor rechazó TODAS las peticiones durante
+// 19 h 55 min por un problema de configuración de nuestra cuenta, **ninguna alerta se disparó**, y
+// lo detectó un humano porque no podía asignar órdenes. El contrato de la feature 91 ya decía que
+// ese caso «debe ser RUIDOSO, nunca silencioso». No lo fue.
+//
+// ⚠️ LA ENTIDAD DE ESTE AVISO ES **LA JORNADA CR**, NO EL JOB NI LA ORDEN, y es la misma decisión
+// (y el mismo motivo) que la de la 333. `notificacion_dedupe_key` es UNIQUE sobre `(evento,
+// entidad_id, destinatario_rol, destinatario_usuario_id)` con `NULLS NOT DISTINCT` y `WHERE
+// entidad_id IS NOT NULL`, y `crear` ABSORBE el `P2002` devolviendo `false`. Con una entidad que
+// no cambiara entre jornadas, el aviso del día 2 no saldría NUNCA, en silencio. Con la jornada:
+// días distintos ⇒ el aviso sale siempre (R10); misma jornada ⇒ un solo aviso por rol (R9). Y esto
+// último no es cosmético: el drenador corre CADA MINUTO, así que sin la entidad por jornada el
+// corte medido habría producido ~2.280 filas.
+//
+// Y tampoco es `entidad_id = NULL`: con `null`, `emitirFilas` se salta su guardia previa y el
+// índice único es PARCIAL, de modo que saldría un aviso por evaluación.
+// ---------------------------------------------------------------------------
+
+/** Lo MÍNIMO que el aviso necesita: un número y un día. Ni dirección, ni orden, ni guía (R26). */
+export interface GeocodificacionCaidaContexto {
+  /** Cuántos jobs distintos llevan el marcador dentro de la ventana. UN NÚMERO, nada más (R26). */
+  afectados: number;
+  /** `YYYY-MM-DD`: la jornada CR en que se detectó la caída. **ES LA ENTIDAD** del aviso. */
+  diaCR: string;
+}
+
+/**
+ * R26/R27 — el texto del aviso. LITERAL FIJO, y es contrato de test afirmado a mano.
+ *
+ * ⚠️ SIN JERGA Y SIN SIGLAS (R27). Quedan prohibidas «geocodificación», «geocodificador»,
+ * «config_invalida», «REQUEST_DENIED» y «API»: quien lee esto es una persona, y el término que ya
+ * usa el resto de la app de cara al operador es «servicio de mapas» (la 400 lo fijó en
+ * `MSG_UBICACION_NO_VERIFICADA`). Un solo vocabulario, no dos.
+ *
+ * ⚠️ DICE QUE LA CAUSA ES NUESTRA, no la dirección, y es la mitad del valor del aviso: el
+ * 2026-09-09 se mandó al operador a corregir seis direcciones que estaban perfectamente bien.
+ *
+ * SIN PII NI SECRETOS (R26): un número agregado y una instrucción. Nunca la dirección, el id de la
+ * orden, su guía, la URL del proveedor ni la credencial — ni siquiera enmascarada.
+ *
+ * Singular y plural explícitos, como `textoCargaMasivaTerminada`: «1 direcciones» sería el tipo de
+ * texto roto que ninguna suite ve y que un humano lee el día peor.
+ */
+export function textoGeocodificacionCaida(n: number): string {
+  return n === 1
+    ? "El servicio de mapas está rechazando nuestras peticiones por un problema de configuración de la cuenta. 1 dirección quedó sin ubicar. Revisa la credencial y la facturación de la cuenta del proveedor de mapas."
+    : `El servicio de mapas está rechazando nuestras peticiones por un problema de configuración de la cuenta. ${n} direcciones quedaron sin ubicar. Revisa la credencial y la facturación de la cuenta del proveedor de mapas.`;
+}
+
+/**
+ * R7/R8/R9/R10 — DOS filas `alert`, una por cada rol de administración, con el MISMO texto.
+ *
+ * LOS DOS ROLES son decisión del humano del 2026-09-09 (pregunta abierta Q1). La propuesta del
+ * spec era «sólo `maestro`», con el criterio de la 333: la acción que el aviso pide —revisar la
+ * credencial y la facturación de la cuenta del proveedor— es del dueño. Lo que ese argumento no
+ * veía y el incidente sí: el corte duró 19 horas, la mayoría fuera de horario, y quien acabó
+ * notándolo fue **quien estaba operando**, no quien podía arreglarlo. El `admin` no toca la
+ * facturación, pero ESCALA — y para escalar necesita enterarse.
+ *
+ * `ROLES_ADMINISTRACION` se REUTILIZA tal cual (constante privada de este mismo archivo, la misma
+ * que usan ya `emitirPostulacionPendiente`, `emitirPostulacionRecursoPendiente`,
+ * `emitirCierreDiaPorAprobar` y `emitirCierreDiaVencido`). No se exporta ni se toca.
+ *
+ * `alert` y NO `warning`: `warning` es «algo pendiente de aprobación» —una cola de trabajo
+ * normal—. Esto es un servicio caído por configuración nuestra que exige una acción FUERA de la
+ * app.
+ *
+ * EL MISMO TEXTO PARA LOS DOS: es lo que hacen los cuatro emisores multi-rol vigentes. Un texto
+ * distinto por rol duplicaría el literal —y con él el riesgo de que uno de los dos se quede sin
+ * revisar contra R26/R27— para decir lo mismo.
+ *
+ * SIN ANEXO: no hay ningún dato adicional que enseñar sin arriesgar R26.
+ */
+export async function emitirGeocodificacionCaida(
+  repo: INotificacionRepository,
+  ctx: GeocodificacionCaidaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    ROLES_ADMINISTRACION.map((destinatario) => ({
+      tipo: "alert" as const,
+      evento: "geocodificacion_caida" as const,
+      descripcion: textoGeocodificacionCaida(ctx.afectados),
+      anexo: null,
+      entidadTipo: "geocodificacion_caida_dia" as const,
+      entidadId: ctx.diaCR,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 409 §4.3 — LOS DOS AVISOS AGREGADOS. BEST-EFFORT, desde el CRON `avisos-diarios`.
+//
+// ⚠️ SON AGREGADOS: UN aviso con el NUMERO dentro, JAMAS uno por orden (R36). El patron exacto ya
+// existe en `gasto_fijo_cobro_pendiente` (ficha 333) y se REUSA, no se reinventa: fila + entidad
+// por dia, con la cifra viva resuelta AL LEER para que el aviso se apague solo (design §5).
+//
+// ⚠️ Y EL ALCANCE VA DENTRO DEL `entidad_id`. `notificacion_dedupe_key` es UNIQUE sobre
+// `(evento, entidad_id, destinatario_rol, destinatario_usuario_id)` con `NULLS NOT DISTINCT` y
+// `WHERE entidad_id IS NOT NULL`, y **el ALCANCE (`tienda_id`, `zona_id`) NO ENTRA en esa clave**
+// —esta escrito en `NotificacionRepository.columnasDestinatario`—, ademas de que `crear` ABSORBE
+// el `P2002` devolviendo `false`. Con `entidad_id = diaCR` a secas, la clave seria la MISMA para
+// todas las tiendas (y para todas las zonas): la PRIMERA de la corrida se llevaria el aviso y
+// TODAS LAS DEMAS quedarian silenciadas, sin error, sin log y sin nada. Es el fallo que la 262
+// documento con `orden` y que la 403 evito con la racha, y este repo ya lo cometio DOS veces.
+// R42 y R51, con sus mutaciones obligatorias, existen para eso.
+// ---------------------------------------------------------------------------
+
+/**
+ * Que plazo comparte el LOTE de novedades sin gestionar de una tienda. Lo decide
+ * `AvisosDiariosService` mirando las causas y el tope de intentos; el emisor solo lo escribe.
+ *
+ * ⚠️ EL «MEZCLADO» NO ES UN CASO RARO, ES EL REQUISITO (R40, decision Q9 del humano). El plazo del
+ * rechazo automatico DEPENDE DE LA CAUSA —5 dias para `wrong_address`/`wrong_number`, 24 h para
+ * `not_found`— y desde la 276 una novedad `wrong_*` que YA alcanzo el tope de intentos escala en
+ * la corrida SIGUIENTE, sin esperar sus cinco dias. Un texto que dijera «a los 5 dias» sobre un
+ * lote mezclado le prometeria a la tienda MAS TIEMPO DEL QUE TIENE, y la tienda organiza su
+ * trabajo con ese numero. Si el lote mezcla, el texto habla SIN plazo.
+ */
+export type PlazoNovedades = "cinco_dias" | "veinticuatro_horas" | "mezclado";
+
+/**
+ * FICHA 409 (R37/R39/R40) — el DETALLE del aviso de novedades sin gestionar. TRES formas, y elegir
+ * la correcta ES el requisito.
+ *
+ * ⚠️ EL «5» Y EL «24» NO SE ESCRIBEN AQUI: salen de `lib/config/devolucion-sla.ts`, de donde
+ * TAMBIEN derivan sus ventanas `DevolucionSlaService`. Asi, el dia que el humano mueva el plazo, el
+ * aviso no puede quedarse diciendo otro numero que el que aplica el cron. Lo mide
+ * `devolucion-sla-plazo-unica-fuente.test.ts` con un aserto de configuracion Y uno de
+ * COMPORTAMIENTO del cron: mutar la configuracion a 6 pone los dos en rojo.
+ *
+ * SIN PII (R44): un numero, unos dias y una instruccion. Ni guia, ni remision, ni direccion, ni
+ * telefono, ni destinatario, ni monto. Regla de la 146 §4.6.
+ *
+ * Singular y plural EXPLICITOS, y un caso propio para el dia cero: «lleva 0 dias en bodega» seria
+ * el texto roto que ninguna suite ve y que un humano lee el dia peor.
+ */
+export function textoNovedadesSinGestionar(diasMasAntigua: number, plazo: PlazoNovedades): string {
+  return `${fraseAntiguedad(diasMasAntigua)} ${frasePlazo(plazo)}`;
+}
+
+/** «La más antigua …» — la mitad del texto que dice CUANTO lleva esperando (R37). */
+function fraseAntiguedad(dias: number): string {
+  if (dias <= 0) return "La más antigua entró hoy a bodega.";
+  if (dias === 1) return "La más antigua lleva 1 día en bodega.";
+  return `La más antigua lleva ${dias} días en bodega.`;
+}
+
+/**
+ * La mitad del texto que dice QUE PASA SI NO SE GESTIONA — o que no lo dice (R40). FICHA 466 (E12/E13,
+ * R10): el desenlace se nombra con el nombre VIGENTE del estado, no con el verbo «rechaza».
+ */
+function frasePlazo(plazo: PlazoNovedades): string {
+  if (plazo === "cinco_dias") {
+    return `A los ${devolucionSlaConfig.DIAS_RECHAZO_AUTOMATICO} días pasa a ${NOMBRE_ESTADO.devolucion_a_origen_por_rechazo} automáticamente.`;
+  }
+  if (plazo === "veinticuatro_horas") {
+    return `A las ${devolucionSlaConfig.HORAS_REINTENTO} horas de entrar, el sistema la reintenta o la pasa a ${NOMBRE_ESTADO.devolucion_a_origen_por_rechazo} sin esperar tu decisión.`;
+  }
+  // R40: causas con ventanas distintas, o alguna ya en el tope de intentos. NI UNA CIFRA DE PLAZO.
+  return "Los plazos vencen en momentos distintos según la causa: revisalas una por una.";
+}
+
+/** Lo MINIMO que el aviso necesita: una tienda, unos dias, un plazo y un dia CR. Sin PII (R44). */
+export interface NovedadesSinGestionarContexto {
+  /** La tienda dueña de las novedades. Va en el ALCANCE **y** en la ENTIDAD (ver arriba). */
+  tiendaId: string;
+  /**
+   * Dias que lleva en bodega la novedad mas antigua, contados desde el MISMO ANCLA que usa el
+   * proceso del rechazo automatico: la ultima transicion `anclaje_devolucion` de la orden, con
+   * caida a su gestion `devuelta` vigente para la poblacion legada (R38, 239/R12 y 239/R14). Asi
+   * el aviso no puede decir «lleva 3 dias» sobre una orden a la que el cron le cuenta 5.
+   * ⚠️ `orden.updated_at` NO sirve de ancla y no se usa: es una fecha mutable que cualquier
+   * escritura mueve. Leccion ya pagada en este repo.
+   */
+  diasMasAntigua: number;
+  /** Homogeneidad del lote, decidida por el servicio (R39/R40). */
+  plazo: PlazoNovedades;
+  /**
+   * `YYYY-MM-DD` del dia calendario CR de la corrida. Sale de `fechaCalendarioCR`, nunca de
+   * `toISOString().slice(0,10)` (en UTC, las 19:00 CR ya caen en el dia siguiente).
+   */
+  diaCR: string;
+}
+
+/**
+ * R35/R36/R41/R42 — UNA sola fila `alert` dirigida al rol `adminTienda` ACOTADO a su tienda.
+ *
+ * `alert` y no `warning`: hay un reloj corriendo y un desenlace automatico al final. No es una cola
+ * de trabajo normal como «un cierre por aprobar».
+ *
+ * ⚠️ EL TITULO (con el numero) NO SE PERSISTE AQUI y no es un olvido: vive en el CATALOGO
+ * (`catalogo-avisos.ts`) porque se compone con la cifra VIVA en el instante de la consulta (R57).
+ * Si se persistiera, el aviso diria «5 novedades» eternamente aunque ya solo quedaran 2 — y ese es
+ * exactamente el modo en que un aviso pierde la confianza de quien lo lee.
+ *
+ * SIN ANEXO: no hay ningun dato adicional que enseñar sin romper R44.
+ */
+export async function emitirNovedadesSinGestionar(
+  repo: INotificacionRepository,
+  ctx: NovedadesSinGestionarContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "alert",
+        evento: "novedades_sin_gestionar",
+        descripcion: textoNovedadesSinGestionar(ctx.diasMasAntigua, ctx.plazo),
+        anexo: null,
+        entidadTipo: "novedades_sin_gestionar_dia",
+        // ⚠️ LA TIENDA VA DENTRO. Sin ella, solo la primera tienda de la corrida recibiria su
+        // aviso y todas las demas quedarian mudas (ver la cabecera de esta seccion, R42).
+        entidadId: `${ctx.tiendaId}:${ctx.diaCR}`,
+        destinatario: { tipo: "rol", rol: "adminTienda", tiendaId: ctx.tiendaId },
+      },
+    ],
+    tx,
+  );
+}
+
+/**
+ * El AMBITO de un aviso de represadas: o el total del sistema (administracion central) o una zona
+ * concreta (su bodega satelite). Union discriminada para que «zona sin id» no sea representable.
+ */
+export type AmbitoRepresadas =
+  | { readonly tipo: "global" }
+  | { readonly tipo: "zona"; readonly zonaId: string };
+
+/**
+ * FICHA 409 (R50/R54) — el DETALLE del aviso de devoluciones represadas.
+ *
+ * SIN PII (R54): ni guia, ni remision, ni direccion, ni telefono, ni destinatario, ni NOMBRE DE
+ * TIENDA, ni nombre de zona, ni monto. Un numero, unos dias y una instruccion.
+ *
+ * Singular y plural explicitos, con su caso propio para el dia cero.
+ */
+export function textoDevolucionesRepresadas(diasMasAntigua: number): string {
+  return `${fraseAntiguedad(diasMasAntigua)} Coordiná la devolución.`;
+}
+
+/** Lo MINIMO que el aviso necesita: un ambito, unos dias y un dia CR. Sin PII (R54). */
+export interface DevolucionesRepresadasContexto {
+  /** Global (maestro + admin) o una zona (su `adminSatelite`). VA DENTRO DE LA ENTIDAD. */
+  ambito: AmbitoRepresadas;
+  /**
+   * Dias que lleva en bodega la mas antigua DEL AMBITO QUE CUBRE (R50), contados desde la ultima
+   * transicion cuyo destino es `por_devolver`. `orden.updated_at` NO sirve de ancla.
+   */
+  diasMasAntigua: number;
+  /** `YYYY-MM-DD` del dia calendario CR de la corrida (`fechaCalendarioCR`). */
+  diaCR: string;
+}
+
+/**
+ * R47/R48/R49/R51 — UNA fila `warning` por rol destinatario del ambito:
+ *   · ambito GLOBAL -> `maestro` y `admin`, sin acotar por zona (R49);
+ *   · ambito ZONA   -> `adminSatelite` ACOTADO a esa zona, con SU numero y no el total (R48).
+ *
+ * `warning` y no `alert`: es una cola de trabajo que se ha atascado, no un servicio caido.
+ *
+ * ⚠️ EL AMBITO VA DENTRO DEL `entidad_id` (`${ambito}:${diaCR}`), y sin el LAS ZONAS SE PISAN
+ * ENTRE SI: la clave de dedupe no incluye `zona_id`, asi que la primera zona del recorrido se
+ * llevaria el aviso y las demas quedarian mudas (R51, mutacion obligatoria). El literal `"global"`
+ * nunca puede colisionar con un uuid de zona, y la forma uniforme evita que alguien confunda las
+ * dos al leer una fila.
+ *
+ * Que `destinatario_rol` este DENTRO de la clave de dedupe es lo que hace que `maestro` y `admin`
+ * se deduplican de forma INDEPENDIENTE: que uno lea el suyo no suprime el del otro.
+ *
+ * SIN ANEXO: no hay dato adicional que enseñar sin romper R54.
+ */
+export async function emitirDevolucionesRepresadas(
+  repo: INotificacionRepository,
+  ctx: DevolucionesRepresadasContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const destinatarios: NotificacionDestinatario[] =
+    ctx.ambito.tipo === "global"
+      ? [...ROLES_ADMINISTRACION]
+      : [{ tipo: "rol", rol: "adminSatelite", zonaId: ctx.ambito.zonaId }];
+  const ambito = ctx.ambito.tipo === "global" ? "global" : ctx.ambito.zonaId;
+  return emitirFilas(
+    repo,
+    destinatarios.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "devoluciones_represadas" as const,
+      descripcion: textoDevolucionesRepresadas(ctx.diasMasAntigua),
+      anexo: null,
+      entidadTipo: "devoluciones_represadas_dia" as const,
+      entidadId: `${ambito}:${ctx.diaCR}`,
+      destinatario,
+    })),
+    tx,
+  );
+}
+// ---------------------------------------------------------------------------
+// FICHA 462 §3.2 — «REPROGRAMADO PARA HOY: N PAQUETES ESPERAN LA APROBACIÓN DE SU CIERRE». AGREGADO,
+// POR AMBITO, UNA VEZ AL DÍA (07:00 CR).
+// ---------------------------------------------------------------------------
+
+/** El AMBITO de una retenida: la administracion CENTRAL o la zona de un satelite. Nunca «global». */
+export type AmbitoReprogramadasRetenidas =
+  | { readonly tipo: "central" }
+  | { readonly tipo: "zona"; readonly zonaId: string };
+
+/**
+ * FICHA 462 (R17) — el DETALLE persistido del aviso. LLANO, SIN NUMERO Y SIN PII: ni cifra (vive en
+ * el titulo, con la cifra viva), ni identificador interno, ni guia, ni remision, ni destinatario, ni
+ * direccion, ni telefono, ni monto, ni nombre de mensajero, ni estado del cierre —que cambia durante
+ * el dia (rechazado → solicitado) y un texto persistido mentiria (requirements, decision 6)—.
+ * Nombra la MARCA que la persona vera en `/cierres-admin` para que sepa que buscar.
+ * TUTEO («Revisa», «apruébalos»), como los avisos de cierres a bodega.
+ *
+ * FASE 3 (decision del leader, 2026-09-25; prevalece sobre el literal de requirements/R17): se habla
+ * del PAQUETE en masculino («los visitó», «Retiene paquetes reprogramados para hoy»), igual que la
+ * marca y la franja. El plural femenino del estado retirado («reprogramadas», 455 §0.3) NO aparece:
+ * la guardia `nombres-estado-retirados` lo vigila sin excepcion para esta ficha.
+ */
+export const TEXTO_REPROGRAMADAS_ESPERAN_CIERRE =
+  "No se pueden asignar hasta que se apruebe el cierre del mensajero que los visitó. " +
+  "Revisa los cierres marcados «Retiene paquetes reprogramados para hoy» y apruébalos antes de asignar.";
+
+/** Lo MINIMO que el aviso necesita: un ambito y un dia CR. Sin PII (R52). */
+export interface ReprogramadasEsperanCierreContexto {
+  /** Central (maestro + admin) o una zona (su `adminSatelite`). VA DENTRO DE LA ENTIDAD. */
+  ambito: AmbitoReprogramadasRetenidas;
+  /** `YYYY-MM-DD` del dia calendario CR de la corrida (`fechaCalendarioCR`). ES la otra mitad de la entidad. */
+  diaCR: string;
+}
+
+/**
+ * R9/R11/R12 — UNA fila `warning` por rol destinatario del ambito:
+ *   · ambito CENTRAL -> `maestro` y `admin`, sin acotar por zona;
+ *   · ambito ZONA    -> `adminSatelite` ACOTADO a esa zona.
+ * Jamas una fila por orden ni una por cierre (R9).
+ *
+ * `warning` y no `alert`: es una cola de trabajo atascada (como `devoluciones_represadas`), no un
+ * servicio caido.
+ *
+ * ⚠️ EL AMBITO VA DENTRO DEL `entidad_id` (`${ambito}:${diaCR}`), y sin el LAS ZONAS SE PISAN ENTRE
+ * SI: la clave de dedupe no incluye `zona_id`, asi que la primera zona del recorrido se llevaria el
+ * aviso y las demas quedarian mudas (R12, mutacion 7 del design, medida contra Postgres en
+ * `tests/integration/db/462/aviso-reprogramadas-dedupe.test.ts`). El literal es `"central"` y no
+ * `"global"`: maestro y admin cuentan el ambito central, no el total del sistema (R6).
+ *
+ * Que `destinatario_rol` este DENTRO de la clave de dedupe es lo que hace que `maestro` y `admin`
+ * se dedupliquen de forma INDEPENDIENTE: que uno lea el suyo no suprime el del otro.
+ *
+ * SIN NUMERO PERSISTIDO (409/R57): el titulo lo compone el catalogo con la cifra viva. SIN ANEXO:
+ * no hay dato adicional que enseñar sin romper R17.
+ */
+export async function emitirReprogramadasEsperanCierre(
+  repo: INotificacionRepository,
+  ctx: ReprogramadasEsperanCierreContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const destinatarios: NotificacionDestinatario[] =
+    ctx.ambito.tipo === "central"
+      ? [...ROLES_ADMINISTRACION]
+      : [{ tipo: "rol", rol: "adminSatelite", zonaId: ctx.ambito.zonaId }];
+  const ambito = ctx.ambito.tipo === "central" ? "central" : ctx.ambito.zonaId;
+  return emitirFilas(
+    repo,
+    destinatarios.map((destinatario) => ({
+      tipo: "warning" as const,
+      evento: "reprogramadas_esperan_cierre" as const,
+      descripcion: TEXTO_REPROGRAMADAS_ESPERAN_CIERRE,
+      anexo: null,
+      entidadTipo: "reprogramadas_esperan_cierre_dia" as const,
+      entidadId: `${ambito}:${ctx.diaCR}`,
+      destinatario,
+    })),
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 413 §8.2 — «TENÉS N ÓRDENES PARA MAÑANA». AGREGADO, AL MENSAJERO, UNA VEZ POR TARDE.
+//
+// ⚠️ LA ENTIDAD DE ESTE AVISO ES **EL DÍA ANUNCIADO** (`entidad_id = 'YYYY-MM-DD'`), Y ESA ES LA
+// DECISIÓN QUE EVITA UN SILENCIO TOTAL. `notificacion_dedupe_key` es UNIQUE sobre `(evento,
+// entidad_id, destinatario_rol, destinatario_usuario_id)` con `NULLS NOT DISTINCT` y
+// `WHERE entidad_id IS NOT NULL`, el índice NO mira el estado de lectura, y
+// `NotificacionRepository.crear` ABSORBE el `P2002` devolviendo `null`. Con una entidad que no
+// cambiara entre jornadas, la clave sería la misma TODAS LAS NOCHES y el aviso del día 2 no
+// saldría JAMÁS —sin error, sin log, sin nada—: el fallo que documentaron la 262 (con `orden`) y
+// la 403 (con la suscripción).
+//
+// Con el día, las dos propiedades son ESTRUCTURALES y no de disciplina:
+//   · dos noches consecutivas ⇒ dos días anunciados ⇒ dos entidades ⇒ DOS avisos (R23);
+//   · la misma noche emitida dos veces ⇒ misma entidad ⇒ UNO solo (R22), y lo decide el índice
+//     único, no un `if` previo que una carrera pueda burlar (R24).
+//
+// ⚠️ Y **NO LLEVA PREFIJO DE MENSAJERO**, al contrario que los dos avisos de la 409 de aquí
+// arriba. Esto hay que leerlo entero antes de copiarlo: allí el destinatario es un ROL CON ALCANCE
+// (`{rol: adminTienda, tiendaId}`) y el alcance NO entra en la clave única, así que sin el prefijo
+// sólo habría avisado la PRIMERA tienda de la corrida. Aquí el destinatario es un USUARIO y
+// `destinatario_usuario_id` **ES** una columna de esa clave: dos mensajeros ⇒ dos valores
+// distintos ⇒ dos filas. La regla no es «prefija siempre», es «comprueba si el alcance está en la
+// clave». Y no lo sostiene este párrafo: lo sostiene R7, con DOS mensajeros la misma noche contra
+// Postgres real, cuya mutación obligatoria —dirigir el aviso a un rol— reproduce aquel silencio.
+//
+// Y no es `entidad_id = NULL`: con `null`, `emitirFilas` se salta su guardia previa y el índice
+// único es PARCIAL, así que saldría un aviso por cada ejecución del cron.
+// ---------------------------------------------------------------------------
+
+/**
+ * FICHA 413 (R15/R28/R29) — el texto PERSISTIDO del aviso de reparto de mañana.
+ *
+ * ⚠️ **SIN EL NÚMERO, Y NO ES UN OLVIDO (R15).** El número vive SÓLO en el título, que el catálogo
+ * recompone con la cifra VIVA en cada lectura (409/R57). Un número persistido es un número que
+ * queda obsoleto en cuanto entra una orden más y que nadie corrige — y el mensajero aprende que el
+ * aviso miente. Es la misma decisión que tomaron los dos agregados de la 409 y por el mismo
+ * motivo.
+ *
+ * ⚠️ **NOMBRA LA FECHA (R28).** La campana guarda 30 días, así que un texto que dijera «mañana»
+ * sería FALSO leído al día siguiente — es la lección que `textoDiaRepartoCorregido` (262) dejó
+ * escrita: «NOMBRA LA FECHA, NUNCA "hoy" NI "mañana"». La palabra «mañana» sí aparece en el
+ * TÍTULO, y ahí es segura porque el aviso NO PUEDE SOBREVIVIR A SU PROPIO DÍA: al pasar la
+ * medianoche CR la cifra viva cae a 0 y `presentacionDe` lo apaga (R21). Aquí, además, cinturón.
+ *
+ * La fecha en palabras sale de `fechaLegible`, el MISMO formateador que usa el selector del día y
+ * el aviso de la 262: se importa la CONVERSIÓN, no un literal, y las cadenas de notificación
+ * siguen viviendo sólo en este archivo (146 §4.6).
+ *
+ * SIN PII (R29): una fecha y una instrucción. Ni guía, ni remisión, ni dirección, ni teléfono, ni
+ * destinatario, ni tienda, ni monto.
+ *
+ * VOSEO, como el resto del vocabulario al mensajero de la 409 («Coordiná la devolución»).
+ *
+ * @param fechaRepartoISO `YYYY-MM-DD` del día anunciado. Lo que no sea una fecha calendario lo
+ *   devuelve `fechaLegible` TAL CUAL; la frase sigue siendo cierta, sólo pierde precisión.
+ */
+export function textoRepartoManana(fechaRepartoISO: string): string {
+  const fecha = fechaLegible(fechaRepartoISO);
+  return fecha
+    ? `Es tu reparto del ${fecha}. Revisá la lista para organizarte.`
+    : "Es tu reparto del día siguiente. Revisá la lista para organizarte.";
+}
+
+/** Lo MÍNIMO que el aviso necesita: un mensajero y un día. Sin número (R15) y sin PII (R29). */
+export interface RepartoMananaContexto {
+  /** El mensajero asignado: ÚNICO destinatario (R6/R8), como fila dirigida a USUARIO. */
+  mensajeroUsuarioId: string;
+  /**
+   * `YYYY-MM-DD` del DÍA ANUNCIADO —el siguiente al de la emisión—, en calendario de Costa Rica.
+   * Es la ENTIDAD del aviso y la fecha que va dentro del texto. Sale de `fechaCalendarioCR` sobre
+   * `startOfDayCR(now) + 1 día`, nunca de `toISOString().slice(0,10)`: la corrida es a las 19:00
+   * CR, o sea `01:00Z` del día siguiente en UTC, y ese recorte daría el día equivocado.
+   */
+  diaAnunciadoISO: string;
+}
+
+/**
+ * R5/R6/R8 — UNA sola fila `box` dirigida al MENSAJERO, con el número FUERA del texto.
+ *
+ * `box` y no `alert` ni `warning`: no hay nada roto ni vencido. Es su trabajo de mañana, puesto
+ * delante la tarde antes para que pueda organizarse; el tono de urgencia lo llevan los avisos de
+ * su cierre.
+ *
+ * ⚠️ EL TÍTULO (con el número) NO SE PERSISTE AQUÍ y no es un olvido: vive en el CATÁLOGO
+ * (`catalogo-avisos.ts`) porque se compone con la cifra VIVA en el instante de la consulta (R13).
+ * Si se persistiera, el aviso diría «5 órdenes» eternamente aunque ya fueran 8 — y ése es
+ * exactamente el modo en que un aviso pierde la confianza de quien lo lee.
+ *
+ * UNA FILA CUALQUIERA QUE SEA EL NÚMERO (R5): el array tiene un elemento, no uno por orden. Con 40
+ * órdenes, `crear` se llama EXACTAMENTE UNA VEZ.
+ *
+ * SIN FILA DE ROL, y no por olvido: nadie más que el mensajero puede preparar su día, y su reparto
+ * ya lo ve la administración en `/ordenes`. SIN ANEXO: la fecha ya va dentro del texto.
+ */
+export async function emitirRepartoManana(
+  repo: INotificacionRepository,
+  ctx: RepartoMananaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  const filas: CrearNotificacionInput[] = [
+    {
+      tipo: "box",
+      evento: "reparto_manana",
+      descripcion: textoRepartoManana(ctx.diaAnunciadoISO),
+      anexo: null,
+      entidadTipo: "reparto_manana_dia",
+      // ⚠️ EL DÍA VA DENTRO, Y SOLO EL DÍA. Ver el bloque de arriba: sin él, el aviso de la noche
+      // siguiente no saldría nunca; con un prefijo de mensajero, sobraría — `destinatario_usuario_id`
+      // ya está en la clave única.
+      entidadId: ctx.diaAnunciadoISO,
+      destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+    },
+  ];
+  return emitirFilas(repo, filas, tx);
+}
+
+// ---------------------------------------------------------------------------
+// FICHA 427 (T10, design §6.5) — LOS DOS AVISOS DEL TRASPASO. BEST-EFFORT, y FUERA de la
+// transaccion del traspaso.
+//
+// DECISION DEL HUMANO (2026-09-14, D3): se avisa, y A LOS DOS. Con sus palabras: el destino se
+// encuentra 31 ordenes nuevas en el telefono sin que nadie se lo diga.
+//
+// POR QUE DOS EVENTOS Y NO UNO (precedente 271): piden acciones OPUESTAS. Al destino le dicen «sal
+// a repartir esto»; al origen, «esto ya no es tuyo». El tipo de evento es lo que la campana usa para
+// agrupar y para deduplicar, asi que meter la diferencia solo en la descripcion la vuelve invisible
+// para todo lo que no sea leer la frase. Y el perfil de push es distinto: el del destino SI empuja,
+// el del origen NO (R43).
+//
+// UN AVISO AGREGADO POR ACTO, JAMAS UNO POR ORDEN (R38/R39). Aqui este spec se separa A PROPOSITO
+// del precedente de la 262 —que emite uno por correccion para poder nombrar QUE paquete— y sigue el
+// de la 413 (`reparto_manana`): con 31 ordenes, uno por orden son 31 campanadas y, con push, 31
+// interrupciones. Y la accion que el aviso pide NO es sobre un paquete concreto: es «mira tu lista,
+// que cambio entera». El numero va DENTRO del texto.
+//
+// ⚠️ LA ENTIDAD ES EL `lote_id` DEL TRASPASO, Y ES LA DECISION QUE EVITA UN SILENCIO TOTAL.
+// `notificacion_dedupe_key` es UNIQUE sobre `(evento, entidad_id, destinatario_rol,
+// destinatario_usuario_id)` con `NULLS NOT DISTINCT`, NO mira el estado de lectura, y
+// `NotificacionRepository.crear` ABSORBE el `P2002` devolviendo `null`. Con el MENSAJERO —o con una
+// ORDEN— como entidad, la clave admitiria UNA sola fila por (evento, entidad, mensajero) PARA
+// SIEMPRE: el SEGUNDO traspaso del dia a la misma persona —que es el caso normal cuando alguien se
+// enferma y su carga se reparte en dos tandas— no avisaria NUNCA, sin error y sin log. Con el
+// `lote_id`: actos distintos => entidades distintas => DOS avisos (R42); el mismo acto emitido dos
+// veces => misma entidad => UNO solo, y lo decide el INDICE UNICO, no un `if` que una carrera pueda
+// burlar. Es el fallo que ya pagaron la 262, la 403, la 409 y la 412.
+// ---------------------------------------------------------------------------
+
+/**
+ * FICHA 427 (R38/R40) — el texto del aviso AL DESTINO.
+ *
+ * SINGULAR Y PLURAL EXPLICITOS, como `textoCobrosGastoFijoPendientes` y `textoCargaMasivaTerminada`:
+ * «Recibiste 1 ordenes» es el texto roto que ninguna suite ve y que un humano lee todos los dias.
+ *
+ * ⚠️ LO QUE NO LLEVA (R40), y ninguna de las tres ausencias es un olvido:
+ *   · NI EL MOTIVO escrito por quien traspaso — es texto libre de hasta 300 caracteres tecleado por
+ *     una persona y puede contener cualquier cosa, incluido un telefono o un nombre (argumento
+ *     literal de 262/A24). El motivo se lee en el historial de la orden, que SI autoriza por orden.
+ *   · NI NINGUN DATO DEL DESTINATARIO de las ordenes: ni nombre, ni direccion, ni telefono, ni monto.
+ *   · NI LA GUIA de ninguna orden: el aviso habla de la LISTA, no de un paquete.
+ *
+ * El NOMBRE DEL OTRO MENSAJERO si va, pero en el `anexo` y no aqui: es el dato con el que la persona
+ * entiende que paso, y tiene precedente (`emitirCierreDiaPorAprobar` pasa `mensajeroNombre`).
+ */
+export function textoTraspasoRecibido(cuantas: number): string {
+  return cuantas === 1
+    ? "Recibiste 1 orden de otro mensajero."
+    : `Recibiste ${cuantas} órdenes de otro mensajero.`;
+}
+
+/**
+ * FICHA 427 (R39/R40) — el texto del aviso AL ORIGEN. Mismas tres ausencias que el de arriba.
+ *
+ * DICE «pasaron a otro mensajero» Y NO «te las quitaron»: el traspaso lo decide la bodega y el caso
+ * normal es que el mensajero no pueda seguir. El tono lo fija el hecho, no una interpretacion.
+ */
+export function textoTraspasoCedido(cuantas: number): string {
+  return cuantas === 1
+    ? "1 orden tuya pasó a otro mensajero."
+    : `${cuantas} órdenes tuyas pasaron a otro mensajero.`;
+}
+
+/** Lo MINIMO que los dos avisos necesitan. Sin PII y sin el motivo (R40). */
+export interface TraspasoOrdenesContexto {
+  /**
+   * `orden_traspaso_mensajero.lote_id`: LA ENTIDAD del aviso, y el uuid del ACTO.
+   *
+   * ⚠️ NO ES EL `ordenId` NI EL `mensajeroId`, y es el hallazgo que decide este diseño (design
+   * §6.5, A9). Ver el bloque de arriba: con cualquiera de los dos, el segundo traspaso a la misma
+   * persona quedaria mudo PARA SIEMPRE.
+   */
+  loteId: string;
+  /** El destinatario del aviso, y el UNICO: el mensajero, como fila dirigida a USUARIO. */
+  mensajeroUsuarioId: string;
+  /** Cuantas ordenes se movieron en ESTE acto. Va dentro del texto, no en una columna aparte. */
+  cuantas: number;
+  /** Nombre del OTRO mensajero (el de origen aqui, el de destino alla). `null` si no resuelve. */
+  otroMensajeroNombre: string | null;
+}
+
+/**
+ * R38/R43 — UNA fila `box` dirigida al mensajero DESTINO, y a nadie mas.
+ *
+ * `tipo: "box"` y no `alert` ni `warning`: esto son PAQUETES QUE CAMBIAN DE MANO, no una alarma ni
+ * algo pendiente de aprobacion. `alert` teñiria de rojo una operacion legitima de coordinacion.
+ *
+ * SIN FILA DE ROL, y no por olvido: la administracion es quien EJECUTA el traspaso —ya lo sabe— y lo
+ * ve en `/ordenes`. Interrumpir a quien acaba de pulsar el boton es gastar el canal en lo que no lo
+ * necesita.
+ *
+ * UNA FILA CUALQUIERA QUE SEA EL NUMERO (R38): el array tiene UN elemento, no uno por orden. Con 31
+ * ordenes, `crear` se llama EXACTAMENTE UNA VEZ.
+ */
+export async function emitirTraspasoRecibido(
+  repo: INotificacionRepository,
+  ctx: TraspasoOrdenesContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "box",
+        evento: "traspaso_ordenes_recibido",
+        descripcion: textoTraspasoRecibido(ctx.cuantas),
+        anexo: ctx.otroMensajeroNombre,
+        entidadTipo: "orden_traspaso_lote",
+        entidadId: ctx.loteId,
+        destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+      },
+    ],
+    tx,
+  );
+}
+
+/**
+ * R39 — UNA fila `box` dirigida al mensajero de ORIGEN, y a nadie mas.
+ *
+ * Misma forma que su hermano y evento DISTINTO a proposito: es lo unico que permite que el catalogo
+ * de push le diga «no» a este y «si» al otro (R43), y que la campana los agrupe por separado.
+ */
+export async function emitirTraspasoCedido(
+  repo: INotificacionRepository,
+  ctx: TraspasoOrdenesContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "box",
+        evento: "traspaso_ordenes_cedido",
+        descripcion: textoTraspasoCedido(ctx.cuantas),
+        anexo: ctx.otroMensajeroNombre,
+        entidadTipo: "orden_traspaso_lote",
+        entidadId: ctx.loteId,
+        destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+      },
+    ],
+    tx,
+  );
+}

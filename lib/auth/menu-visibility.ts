@@ -1,0 +1,799 @@
+import type { RolValue } from "@prisma/client";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+// Feature 133 (T2.1): `ROLES_ACCESO_ANALITICA` DERIVA de esta constante. Import de
+// VALOR (no `import type`) porque el valor se reexporta. `lib/analytics/types.ts` es
+// un módulo sin runtime —sólo `import type` en su cabecera (R1 de la 135)—, así que
+// esta arista no arrastra Prisma, `next/headers` ni nada de servidor al Sidebar
+// cliente, que importa este módulo.
+import { ROLES_ANALITICA, type RolAnalitica } from "@/lib/analytics/types";
+// ⭑ Ficha 433: quién ve el ítem «Ayuda». La constante vive en el módulo que OWNS el concepto
+// (`lib/ayuda/documento.ts`), donde la lee también el acotamiento por rol de los documentos y
+// el gate de `/ayuda`: una sola lista, tres consumidores, imposible divergir.
+// Import de VALOR, y no arrastra nada al Sidebar cliente: `lib/ayuda/documento.ts` sólo tiene
+// imports de TIPO (`RolValue`, `FrontmatterAyuda`), así que no lleva Prisma ni `node:fs` detrás
+// — el que toca `fs` es `lib/ayuda/catalogo.ts`, que este archivo no importa.
+import { ROLES_AYUDA } from "@/lib/ayuda/documento";
+
+/**
+ * Clave string del icono de un item. El icono real (componente de lucide) NO
+ * viaja en los datos porque cruza el borde RSC (Server Component layout ->
+ * Client Component Sidebar) y las funciones/componentes no son serializables.
+ * El Sidebar resuelve `iconKey -> componente` en el cliente al renderizar.
+ */
+export type IconKey =
+  | "home"
+  | "settings"
+  | "user"
+  | "package"
+  | "clipboardCheck"
+  | "truck"
+  | "megaphone"
+  | "trophy"
+  | "wallet"
+  // Feature 158 (T2.8, Q-I): cola de incidentes. Icono propio y no otro `clipboardCheck`:
+  // un incidente NO es un cierre, y compartir el icono con "Cierres del día" invitaría a
+  // leerlo como una sección suya, que es justo lo que la decisión del humano descartó.
+  | "shieldAlert"
+  // Feature 129: tablero de analítica. Icono propio y no otro existente:
+  // `IconKey` es una unión cerrada y compartir icono con otra sección invitaría a
+  // leer analítica como parte de esa sección — mismo criterio que se escribió al
+  // crear `shieldAlert` para incidentes.
+  | "chartColumn"
+  // Feature 167 (R5): apartado propio de RECOLECCIÓN EN TIENDA del mensajero. Icono
+  // propio y NO el `truck` de "Entregas": recolectar en la tienda y repartir en la calle
+  // son dos trabajos distintos, y compartir icono con Entregas invitaría a leer la
+  // recolección como una sección suya — que es exactamente de donde esta feature la sacó.
+  // Mismo criterio que `shieldAlert` (158) y `chartColumn` (129).
+  | "store"
+  // Feature 192 (R53): tablero del día "Monitoreo" (órdenes por mensajero, en vivo). Icono
+  // propio y NO el `chartColumn` de "Analítica": una cosa es el cierre analítico del negocio
+  // y otra el pulso del día en curso, y compartir icono invitaría a leer el monitoreo como
+  // una sección de analítica. Mismo criterio que `shieldAlert` (158), `chartColumn` (129) y
+  // `store` (167).
+  | "gauge"
+  // Feature 321 (R6): histórico de conversaciones. Icono PROPIO y no reciclado: `IconKey`
+  // es una unión cerrada y compartir icono con otra sección invitaría a leer el histórico
+  // como parte de esa sección. Mismo criterio escrito para `shieldAlert` (158),
+  // `chartColumn` (129), `store` (167) y `gauge` (192).
+  | "history"
+  // ⭑ Ficha 429 (T23): «Mi bodega», la pantalla del SINPE del `adminSatelite`. Icono PROPIO y
+  // no reciclado: `IconKey` es una union cerrada y compartir icono con otra seccion invitaria a
+  // leer «Mi bodega» como parte de esa seccion. Mismo criterio escrito para `shieldAlert` (158),
+  // `chartColumn` (129), `store` (167), `gauge` (192) y `history` (321).
+  | "warehouse"
+  // ⭑ Ficha 433: «Ayuda», el índice del módulo de documentación. Icono PROPIO y no reciclado:
+  // `IconKey` es una unión cerrada y compartir icono con otra sección invitaría a leer la ayuda
+  // como parte de esa sección. Mismo criterio escrito para `shieldAlert` (158), `chartColumn`
+  // (129), `store` (167), `gauge` (192), `history` (321) y `warehouse` (429).
+  | "circleHelp";
+
+/** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
+export interface MenuChild {
+  label: string;
+  href: string;
+  /**
+   * ⭑ FICHA 362 (T5.2) — roles PROPIOS del subítem. **Opcional, y ausente por defecto**: sin
+   * él, el subítem hereda los del padre, que es la regla que fijó la 321/R3 y la que siguen
+   * todos los subítems de este archivo salvo uno.
+   *
+   * POR QUÉ NACE, y por qué no bastaba con lo que había. El apartado «Histórico» es visible a
+   * `["maestro","admin"]` y su primer subítem, «Conversaciones», tiene que seguir siéndolo. El
+   * segundo, «Acciones», lo lee SOLO el `maestro` (Q4, ver `ROLES_HISTORIAL_ACCIONES`): el
+   * registro guarda las decisiones de dinero del `admin` y no puede ser el `admin` quien revise
+   * su propio registro. Sin este campo las dos únicas salidas eran malas — enseñarle el subítem
+   * al `admin` y devolverle un 404 al entrar (un menú que ofrece lo que no se puede abrir es
+   * peor que no ofrecerlo), o sacar el módulo a un ítem de primer nivel, que obliga a decidir
+   * posición en la barra (y la posición NO es decorativa: mueve el aterrizaje post-login, ver
+   * los incidentes de «Analítica» y «Monitoreo») y a ampliar la unión cerrada `IconKey`.
+   *
+   * LO QUE ESTE CAMPO NO ES: una segunda lista de roles suelta. Apunta a una CONSTANTE, igual
+   * que el `roles` del padre, y esa misma constante la leen el `notFound()` de la ruta y el
+   * servicio. Lo vigila `tests/unit/guards/historial-acciones-roles-una-sola-fuente.guardia`.
+   *
+   * ⚠️ QUIEN LO DECLARE NO PUEDE PONERLO EN EL PRIMER SUBÍTEM. `primerDestino` devuelve el
+   * `href` del primer subítem del primer ítem visible, así que un primer subítem restringido
+   * mandaría a un 404 post-login a un rol que sí ve el padre. Es la mitad del agujero que este
+   * campo abre, y por eso está cerrada con su propio caso en
+   * `tests/unit/auth/menu-historial-acciones.test.ts`.
+   */
+  roles?: readonly RolValue[];
+}
+
+/**
+ * Item de navegacion con los roles autorizados a verlo. La visibilidad del menu
+ * se decide aqui, en un unico punto, para poder migrar de "por rol" a "por
+ * permisos granulares" (tablas Permiso/RolPermiso) sin tocar el Sidebar.
+ *
+ * Solo contiene datos 100% serializables (strings/arrays): `iconKey` en vez del
+ * componente de icono, para poder cruzar el borde RSC hacia el Sidebar cliente.
+ */
+export interface MenuItem {
+  label: string;
+  href: string;
+  iconKey: IconKey;
+  roles: readonly RolValue[];
+  children?: readonly MenuChild[];
+  /**
+   * Feature 133 (T5.1, decisión Q2 del 2026-08-04): marca que el ítem NO es
+   * elegible como ATERRIZAJE post-login, aunque sea visible y aunque quede el
+   * primero de la barra. Lo lee `primerDestino`, que se lo salta.
+   *
+   * Existe porque el ítem "Analítica" ocupa la posición 2 del sidebar y esta
+   * feature lo hace visible a `mensajero` y `adminSatelite`: sin esta marca,
+   * esos dos roles habrían pasado a aterrizar en `/analitica` en vez de en su
+   * pantalla de trabajo, **en silencio** (ningún test vigente lo detectaba). Un
+   * tablero de indicadores no es donde empieza el turno de nadie.
+   *
+   * Es un CAMPO DEL ÍTEM y no un literal de ruta dentro de `primerDestino` a
+   * propósito: la ruta es un dato del ítem y `primerDestino` no debe conocer
+   * ninguna pantalla concreta. Mover el ítem de sitio estaba descartado: rompe
+   * R16 de la 129 (posición justo tras "Inicio").
+   *
+   * El tipo es `false` y no `boolean`: sólo hay una razón para escribirlo
+   * (excluirse), y `destinoInicial: true` no significaría nada — todo ítem sin
+   * la marca ya es elegible.
+   */
+  destinoInicial?: false;
+}
+
+/**
+ * Feature 129: único punto de verdad de quién ACCEDE a analítica (quién ve la
+ * entrada y quién no recibe un 404). Lo usan TANTO el `roles` del ítem de menú
+ * de "Analítica" (abajo) COMO el gate `notFound()` de
+ * `app/(app)/analitica/page.tsx`, para que las dos capas no puedan divergir
+ * (R10 de la 129).
+ *
+ * Feature 133 (T2.1, decisión Q1 del 2026-08-04): el acceso se ENSANCHA a los
+ * cinco roles lectores y, con eso, PASA A COINCIDIR con `ROLES_ANALITICA` de
+ * `lib/analytics/types.ts`. Por eso se DERIVA de ella en vez de escribirse una
+ * lista propia con el mismo contenido.
+ *
+ * POR QUÉ DERIVAR Y NO COPIAR (alternativa A5 del design, DESCARTADA): esta
+ * constante se llamaba `ROLES_ANALITICA` y colisionaba con la homónima de
+ * `lib/analytics/types.ts` (feature 135) —los CINCO roles con ALCANCE DENTRO de
+ * la analítica—. Dos tuplas `readonly RolValue[]` con el mismo nombre y
+ * significados distintos: importar la que no era no rompía el typecheck, sólo
+ * abría o cerraba la puerta equivocada. El rename le puso el prefijo `ACCESO`;
+ * la derivación remata el problema. Escribir aquí los cinco nombres a mano
+ * compilaría y pasaría los tests de comportamiento, pero dejaría otra vez DOS
+ * listas con el mismo contenido y significados distintos, libres de divergir en
+ * silencio. Que la derivación siga existiendo lo vigila
+ * `tests/unit/guards/roles-analitica-acceso-vs-dominio.test.ts` (caso (b),
+ * reexpresado por esta feature: mata la mutación «volver a escribir la lista»).
+ *
+ * NO se usa `esAccesoTotal` (`lib/auth/acceso-total.ts`) y ahora se ve por qué:
+ * "acceso total de gestión" y "acceso a la ruta de analítica" eran conceptos
+ * distintos que hasta hoy coincidían por accidente, y esta feature los SEPARA de
+ * hecho — `esAccesoTotal` es quien ve el DINERO (la región financiera de la 132,
+ * `app/(app)/analitica/page.tsx`), no quien entra a la ruta. Tampoco se usa
+ * `ROLES_SEED`: incluye `apiKey` (`lib/types/roles.ts`), una cuenta de máquina
+ * que no navega y que sigue recibiendo `notFound()`.
+ *
+ * Sigue siendo una WHITELIST (R4): un `RolValue` nuevo del esquema no entra por
+ * defecto — sólo entra si se le declara alcance en el catálogo de la analítica.
+ *
+ * 2026-08-12 (decisión del humano): el `mensajero` SALE del tablero — ni ve el ítem
+ * del sidebar ni pasa el `notFound()` de la ruta. Con eso el conjunto de ACCESO
+ * vuelve a ser un subconjunto ESTRICTO del del DOMINIO, como antes de la 133: el
+ * mensajero sigue teniendo ALCANCE definido en el catálogo de la 135 (`metrics.ts`
+ * le declara `acotado`/`prohibido` métrica a métrica, y `oraculo-mensajero.ts` sigue
+ * midiendo ese recorte), simplemente ya no tiene puerta por la que entrar. Las dos
+ * preguntas siempre fueron distintas; hoy vuelven a tener respuestas distintas.
+ *
+ * POR QUÉ UNA RESTA Y NO UNA LISTA PROPIA. Escribir aquí `["maestro","admin",
+ * "adminSatelite","adminTienda"]` compilaría y pasaría todos los tests de
+ * comportamiento, y devolvería el repo a las DOS listas gemelas que el guard de
+ * `tests/unit/guards/roles-analitica-acceso-vs-dominio.test.ts` existe para impedir:
+ * un `RolValue` que mañana entre al dominio de la analítica no aparecería aquí y se
+ * quedaría sin puerta en silencio. La resta mantiene UNA sola enumeración de roles
+ * lectores (la del dominio) y declara APARTE, en una línea que se lee como la
+ * decisión que es, a quién se le cierra la puerta. El guard vigila las dos mitades.
+ */
+
+/**
+ * Roles que TIENEN alcance en la analítica pero NO acceden al tablero. Es la
+ * excepción declarada, no un olvido: cada nombre de esta lista es una decisión
+ * humana con fecha (hoy sólo `mensajero`, 2026-08-12).
+ *
+ * Quitar un nombre de aquí le DEVUELVE el tablero; añadirlo se lo quita. No hay
+ * tercer sitio donde tocar.
+ */
+export const ROLES_SIN_ACCESO_ANALITICA = ["mensajero"] as const satisfies readonly RolAnalitica[];
+
+export const ROLES_ACCESO_ANALITICA: readonly RolAnalitica[] = ROLES_ANALITICA.filter(
+  (rol) => !(ROLES_SIN_ACCESO_ANALITICA as readonly string[]).includes(rol),
+);
+
+/**
+ * Feature 321 (R1) — único punto de verdad de quién ACCEDE al histórico de
+ * conversaciones. Lo leen TANTO el `roles` del ítem de menú «Histórico» (abajo) COMO el
+ * gate `notFound()` de `app/(app)/historico/conversaciones/page.tsx`, para que las dos
+ * capas no puedan divergir (precedente R10 de la 129). Ningún literal de rol se escribe
+ * en la página; lo vigila
+ * `tests/unit/guards/historico-roles-una-sola-fuente.guardia.test.ts`.
+ *
+ * Decisión humana del 2026-08-28 (P4, «solo admin/maestro»): exactamente `maestro` y
+ * `admin`. `adminSatelite`, `adminTienda`, `mensajero` y `apiKey` quedan FUERA.
+ *
+ * POR QUÉ UNA WHITELIST PROPIA Y NO DERIVAR DE `ROLES_ACCESO_TOTAL`
+ * (`lib/auth/acceso-total.ts`, que hoy contiene exactamente estos dos nombres — design
+ * §3.1, alternativa A5 DESCARTADA): la lección de «no escribas dos listas gemelas»
+ * aplica cuando divergir EN SILENCIO es el daño. Aquí la asimetría va al revés: si
+ * mañana alguien añadiera `adminSatelite` a «acceso total de gestión», derivar le
+ * regalaría el histórico de conversaciones de TODOS los inquilinos sin que nadie lo
+ * decidiera. Una whitelist propia obliga a que ampliar el histórico sea una edición de
+ * ESTE nombre, con fecha y autor.
+ *
+ * Es un `as const satisfies` y no una anotación `readonly RolValue[]` a propósito: el
+ * `satisfies` comprueba que cada nombre es un `RolValue` real del esquema sin ensanchar
+ * el tipo, de modo que la tupla conserva su identidad y el ítem de menú puede
+ * REFERENCIARLA (R2 se afirma con `toBe`, no con `toEqual`).
+ */
+export const ROLES_HISTORICO_CONVERSACIONES = [
+  "maestro",
+  "admin",
+] as const satisfies readonly RolValue[];
+
+/**
+ * Ficha 335 (R33) — único punto de verdad de quién ACCEDE a `/mi-wallet`. Lo leen TANTO el
+ * `roles` del ítem de menú «Mi wallet» (abajo) COMO el gate `notFound()` de
+ * `app/(app)/mi-wallet/page.tsx`. Precedentes: R10 de la 129 (analítica) y R1 de la 321
+ * (histórico).
+ *
+ * POR QUÉ IMPORTA QUE SEA UNA SOLA: el ítem de menú solo MUESTRA; la defensa real es el gate
+ * de la ruta. Con dos listas, ampliar una y olvidar la otra produce el peor de los dos fallos
+ * mudos —o una entrada de menú que lleva a un 404, o una ruta abierta a la que nadie ve el
+ * enlace— y ninguno rompe un test que no exista. Con una sola, divergir es imposible.
+ *
+ * `as const satisfies` y no `readonly RolValue[]`: el `satisfies` comprueba que el nombre es un
+ * `RolValue` real del esquema SIN ensanchar el tipo, así la tupla conserva su identidad y el
+ * ítem de menú puede REFERENCIARLA (R33 se afirma con `toBe`, no con `toEqual`).
+ */
+export const ROLES_MI_WALLET = ["adminTienda"] as const satisfies readonly RolValue[];
+
+/**
+ * ⭑ FICHA 362 / Q4, CERRADA POR EL HUMANO EL 2026-09-02 — único punto de verdad de quién LEE el
+ * historial de acciones. Lo leen el `roles` del subítem «Acciones» del apartado «Histórico» y el
+ * gate `notFound()` de `app/(app)/historico/acciones/page.tsx`, más la autorización de
+ * `HistorialAccionService`. Las tres capas leen ESTA constante y no un literal copiado.
+ *
+ * ⚠️ SOLO `maestro`. Y NACE UNA LISTA NUEVA A PROPÓSITO, aunque el encargo pedía reusar la que ya
+ * existe. El motivo, con nombre:
+ *
+ *   ESTE REGISTRO GUARDA LAS DECISIONES DE DINERO QUE TOMA EL **ADMIN** —aprobar cierres,
+ *   rechazarlos, registrar pagos, anularlos, decidir cobros— Y NO PUEDE SER EL ADMIN QUIEN
+ *   REVISE SU PROPIO REGISTRO. No puede alterarlo (R2: la fila es inmutable), así que el riesgo
+ *   no es de integridad; pero un registro de auditoría que su propio auditado consulta a diario
+ *   deja de cumplir la función para la que se pidió.
+ *
+ * POR QUÉ NO SE ESTRECHA `ROLES_HISTORICO_CONVERSACIONES` (la alternativa barata, DESCARTADA):
+ * esa constante gobierna el histórico de CONVERSACIONES, que el `admin` sí debe seguir viendo —es
+ * su herramienta de trabajo diaria—. Quitarle el `admin` allí para no dárselo aquí le arrebataría
+ * una superficie que nadie decidió quitarle, y ese es exactamente el fallo mudo que la 321
+ * documenta al revés. Dos preguntas distintas, dos respuestas distintas, dos listas.
+ *
+ * EL COSTE, DECLARADO: hay una segunda lista de roles en este archivo y podría divergir de la
+ * primera. Se acepta porque divergir aquí NO es el daño —son conceptos distintos y deben poder
+ * divergir—; el daño sería que la lista y el gate de la ruta divergieran, y eso lo impide que
+ * ambos lean ESTA constante, vigilado por su guardia de fuente única.
+ *
+ * `as const satisfies` y no `readonly RolValue[]`: el `satisfies` comprueba que el nombre es un
+ * `RolValue` real del esquema SIN ensanchar el tipo, así la tupla conserva su identidad y el
+ * subítem de menú puede REFERENCIARLA (se afirma con `toBe`, no con `toEqual`).
+ */
+export const ROLES_HISTORIAL_ACCIONES = ["maestro"] as const satisfies readonly RolValue[];
+
+/**
+ * ⭑ FICHA 429 (T23, Q3) — QUIEN VE «Mi bodega», Y POR QUE SOLO EL `adminSatelite`.
+ *
+ * La lee el item de menu Y el gate `notFound()` de `app/(app)/mi-bodega/page.tsx`. Las dos capas
+ * leen ESTA constante y no un literal copiado: el precedente es la ficha 335, y el motivo es que
+ * dos listas de roles escritas a mano divergen sin que nada se ponga rojo — y entonces hay un
+ * menu que ofrece una pantalla que devuelve 404, o peor, al reves.
+ *
+ * SOLO `adminSatelite` porque «MI bodega» es literalmente eso: la suya, una sola ficha. `admin` y
+ * `maestro` no tienen una bodega propia; ven LAS OCHO, y eso es otra pantalla («SINPE por
+ * bodega», dentro de Configuracion). Meterlos aqui les pintaria «Mi bodega» con la central
+ * dentro, que es una media verdad sobre una pantalla de dinero.
+ *
+ * ⚠️ NO ES LA MISMA LISTA QUE `ROLES_QUE_EDITAN_SINPE` (`lib/types/sinpe-bodega.ts`), y la
+ * diferencia es deliberada: aquella dice QUIEN PUEDE EDITAR un SINPE —los tres roles— y la usan
+ * el servicio y el gate de «SINPE por bodega»; esta dice QUIEN VE ESTA RUTA. Son dos preguntas
+ * distintas y deben poder divergir; lo que no puede divergir es la lista y el gate de SU ruta, y
+ * eso lo impide que los dos lean la misma constante.
+ */
+export const ROLES_MI_BODEGA = ["adminSatelite"] as const satisfies readonly RolValue[];
+
+/**
+ * Fuente de verdad del menu. Vive en este modulo server-safe (NO en el
+ * "use client" del Sidebar): un Server Component que importa un export de un
+ * modulo cliente recibe una referencia-proxy, no el valor real, y `.filter`
+ * reventaria. El layout (server) y el Sidebar (client) lo importan desde aqui.
+ *
+ * Los `roles` se derivan de la autorizacion que ya aplican los services:
+ * - Órdenes: KNOWN_ROLES de OrdenService.
+ * - Configuración: ALLOWED_ROLES de UsuarioService (solo maestro).
+ */
+export const SIDEBAR_ITEMS: readonly MenuItem[] = [
+  {
+    // Feature 92: acceso al dashboard (landing post-login movido a /dashboard por
+    // la feature 86). Visible solo para maestro/admin, los roles para los que la
+    // página renderiza contenido real; la defensa real es la resolución de rol
+    // server-side de la propia página.
+    label: "Inicio",
+    href: "/dashboard",
+    iconKey: "home",
+    roles: ["maestro", "admin"],
+  },
+  {
+    // Feature 129: tablero de analítica (ruta/shell). Feature 133 (T2.1) lo amplió a
+    // los CINCO roles lectores y la decisión del 2026-08-12 le quitó el `mensajero`:
+    // hoy son CUATRO. `roles` apunta a la CONSTANTE (nunca a un literal copiado: R10
+    // de la 129 lo castiga), y la constante se deriva RESTANDO de `ROLES_ANALITICA`.
+    // Este ítem solo decide qué se MUESTRA; la defensa real es el `notFound()` de la
+    // página, que lee esa misma constante. Quién ve la región financiera de dentro es
+    // OTRA pregunta y la responde `esAccesoTotal` (D2 de la 133).
+    //
+    // `destinoInicial: false` (T5.1, Q2): visible sí, aterrizaje post-login NO. Va
+    // en posición 2, así que sin esta marca `adminSatelite` habría dejado de aterrizar
+    // en `/recepcion-satelite` para caer aquí, sin que nada se pusiera rojo (R5). La
+    // marca SIGUE HACIENDO FALTA aunque el mensajero ya no vea el ítem: `adminTienda`
+    // y `adminSatelite` lo siguen viendo en primera posición de su barra.
+    label: "Analítica",
+    href: "/analitica",
+    iconKey: "chartColumn",
+    roles: ROLES_ACCESO_ANALITICA,
+    destinoInicial: false,
+  },
+  {
+    // Feature 192 (R53): tablero del día — una tarjeta por mensajero con sus órdenes
+    // asignadas hoy y en qué terminó cada una. Va junto a "Analítica" porque ambos son
+    // tableros de LECTURA, pero es otra cosa: analítica cierra el día, esto lo vigila
+    // mientras pasa. Los `roles` son los de R1 y la defensa real es el `notFound()` de
+    // `/monitoreo` (R11): este ítem sólo decide qué se MUESTRA.
+    //
+    // `destinoInicial: false` NO es decorativo (R35/R54). El aterrizaje post-login se deriva
+    // del PRIMER ítem visible del menú (`primerDestino`, consumido por
+    // `app/(app)/dashboard/page.tsx`), y este ítem va en posición 3: para el `adminSatelite`
+    // —que no ve "Inicio" ni "Órdenes"— sería el primer ítem elegible después de "Analítica"
+    // y pasaría a aterrizar aquí en silencio, en vez de en `/recepcion-satelite`. Es
+    // exactamente el incidente que ya documenta el campo `destinoInicial` con "Analítica".
+    label: "Monitoreo",
+    href: "/monitoreo",
+    iconKey: "gauge",
+    roles: ["admin", "maestro", "adminSatelite"],
+    destinoInicial: false,
+  },
+  {
+    label: "Órdenes",
+    href: "/ordenes",
+    iconKey: "package",
+    roles: ["maestro", "admin", "adminTienda"],
+  },
+  {
+    // Feature 61: portal del mensajero (KPIs + asignaciones por recoger/gestionar).
+    // Exclusivo del rol `mensajero`; la defensa real es el `notFound` de las páginas
+    // `/mis-asignaciones/reparto` y `/mis-asignaciones/recoger` (resuelven el rol
+    // server-side).
+    //
+    // Feature 279 (R45/R46): aquí las dos rutas se escribían con un comodín. La barra y el
+    // asterisco de ese comodín ABREN un bloque de comentario, y el quitador del repo
+    // (`tests/fixtures/sin-comentarios.ts`) lo cerraba en el siguiente cierre de bloque del
+    // archivo —el JSDoc de `puedeVer`—, así que 151 líneas (228→378) desaparecían del texto
+    // que lee CUALQUIER guardia que escanee este fuente: "Entregas", "Recolección", el
+    // portal del `adminSatelite`, "Novedades", "Ranking", "Wallet", "Configuración", los dos
+    // cierres e "Incidentes". Medido con el propio quitador: 76 líneas no vacías visibles
+    // antes, 156 después. Nombrar las dos rutas reales es además más preciso que el patrón.
+    // **No se escriben comodines de ruta en los comentarios de este archivo** (R33/R45).
+    //
+    // 2026-07-31 (decisión del humano): el portal se PARTE en dos pantallas hermanas, cada
+    // una con su ruta y su subítem, porque son dos trabajos distintos del mismo turno:
+    // repartir en la calle (mapa, ruta, panel de gestión) y recoger en el punto de origen
+    // (escáner + listado). Antes convivían apiladas en una sola pantalla y el escáner
+    // quedaba enterrado bajo el panel de reparto. Reparto va PRIMERO: es donde el mensajero
+    // pasa el turno, y `/mis-asignaciones` redirige ahí (los enlaces viejos no se rompen).
+    //
+    // El `href` del padre NO navega —un ítem con `children` se renderiza como disparador
+    // del desplegable, no como enlace (ver `Sidebar.tsx`)—, pero se conserva porque
+    // identifica al ítem (clave de React y posición relativa a "Recolección").
+    //
+    // "Recoger en bodega" y no "Recoger" a secas: el ítem hermano "Recolección" (167) es la
+    // recolección EN TIENDA, otro flujo. La etiqueta larga los mantiene distinguibles.
+    // FICHA 455 (2026-09-24, R6): antes decía "Por recoger", que era el nombre de un estado; el
+    // menú nombra la ACCIÓN. La ruta no cambia (R51).
+    label: "Entregas",
+    href: "/mis-asignaciones",
+    iconKey: "truck",
+    roles: ["mensajero"],
+    children: [
+      { label: "Reparto", href: "/mis-asignaciones/reparto" },
+      { label: "Recoger en bodega", href: "/mis-asignaciones/recoger" },
+    ],
+  },
+  {
+    // Feature 167 (R4): apartado PROPIO de la recolección en tienda. Va justo debajo de
+    // "Entregas" porque son hermanos del mismo portal del mensajero, y es un ítem y no un
+    // subítem de Entregas porque la 167 sacó la recolección de allí: el mensajero no la
+    // encontraba enterrada dentro del módulo de reparto. Exclusivo del rol `mensajero`;
+    // la defensa real es el `notFound` de `/recoleccion` (resuelve el rol server-side).
+    label: "Recolección",
+    href: "/recoleccion",
+    iconKey: "store",
+    roles: ["mensajero"],
+  },
+  {
+    // Portal del adminSatelite (paridad con "Entregas" del mensajero): recepción de
+    // órdenes ruteadas a su bodega (por recibir/recibidas) + asignación a mensajeros
+    // de su zona. Exclusivo de `adminSatelite`; la defensa real es el `notFound` de
+    // cada página del portal (resuelven el rol server-side).
+    //
+    // Feature 279 (R8/R9, decisión del humano del 2026-08-24): el portal se PARTE en dos
+    // pantallas hermanas, exactamente como la 61 partió "Entregas" del mensajero, porque
+    // son dos trabajos distintos del mismo turno: RECIBIR lo que llega (escáner + tarjetas
+    // en camino) y GESTIONAR lo que ya está en bodega (listado, filtros, asignación, envío
+    // a central). Antes convivían apiladas en una sola pantalla, con el escáner enterrado
+    // encima de un listado paginado.
+    //
+    // "Por recibir" va PRIMERO y no es un detalle de orden: `primerDestino` devuelve el
+    // `href` del primer subítem, así que ES el aterrizaje post-login del rol (R12), y la
+    // ruta vieja `/recepcion-satelite` redirige a esa misma pantalla (R13/R14). El rol
+    // tiene UNA sola puerta de entrada.
+    //
+    // La etiqueta del padre se conserva ("Órdenes") y su `href` también: un ítem con
+    // `children` NO navega —se renderiza como disparador del desplegable, ver
+    // `Sidebar.tsx`—, pero el `href` identifica al ítem (clave de React y posición
+    // relativa). Es el patrón literal de "Entregas".
+    label: "Órdenes",
+    href: "/recepcion-satelite",
+    iconKey: "package",
+    roles: ["adminSatelite"],
+    children: [
+      { label: "Por recibir", href: "/recepcion-satelite/por-recibir" },
+      { label: "En bodega", href: "/recepcion-satelite/en-bodega" },
+    ],
+  },
+  {
+    // Feature 87 (R20): lista de ordenes en devolucion de la tienda, con su causa y
+    // el contacto del cliente. Exclusivo del `adminTienda` (el mensajero DEJA de verlo).
+    // La defensa real es el `notFound` de la pagina (resuelve el rol server-side); este
+    // item solo decide que se MUESTRA.
+    label: "Novedades",
+    href: "/novedades",
+    iconKey: "megaphone",
+    roles: ["adminTienda"],
+  },
+  {
+    // Feature 76: ranking diario de mensajeros. Visible para `maestro`/`admin` (ven y
+    // editan los premios — feature 94, paridad adm↔maestro) y `mensajero` (lo ve en
+    // solo-lectura) de forma intencional; la defensa real es el `notFound` de la página
+    // `/ranking`, que resuelve el rol server-side y decide el modo editable.
+    // Feature 196 (T4.5, design §6): el ítem pasa a tener SUBÍTEMS porque el ranking son
+    // ahora dos pantallas —el día en curso (que se recalcula en vivo) y el histórico
+    // congelado (que no se recalcula nunca)—, y son cosas distintas: una cambia mientras se
+    // mira, la otra es inmutable por diseño.
+    //
+    // El `href` del padre NO navega —un ítem con `children` se renderiza como disparador del
+    // desplegable, no como enlace (ver `Sidebar.tsx` y `primerDestino`)—, pero se conserva
+    // porque identifica al ítem. Por eso el primer subítem apunta a `/ranking`: sin él, este
+    // cambio habría dejado la pantalla del ranking en vivo SIN entrada de menú. Mismo patrón
+    // que "Wallet" (cuyo primer subítem es su propio `href`) y que "Entregas".
+    //
+    // Los subítems heredan los roles del padre: no hay una segunda lista que pueda divergir.
+    label: "Ranking",
+    href: "/ranking",
+    iconKey: "trophy",
+    roles: ["maestro", "admin", "mensajero"],
+    children: [
+      { label: "Ranking del día", href: "/ranking" },
+      { label: "Histórico", href: "/ranking/historico" },
+    ],
+  },
+  {
+    // Feature 42: caja principal de la empresa (balance + libro de movimientos).
+    // Visible para `maestro`/`admin` (feature 94, paridad adm↔maestro). La defensa
+    // real es el `notFound` de la página `/wallet`, que resuelve el rol server-side;
+    // este item solo decide que se MUESTRA. Los subitems apuntan a las vistas por
+    // contraparte (43/44) y heredan la visibilidad del padre.
+    label: "Wallet",
+    href: "/wallet",
+    iconKey: "wallet",
+    roles: ["maestro", "admin"],
+    children: [
+      { label: "Caja principal", href: "/wallet" },
+      { label: "Tiendas", href: "/wallet/tiendas" },
+      { label: "Mensajeros", href: "/wallet/mensajeros" },
+      // ⭑ FICHA 431 (T23, R23): CUARTO hijo. Las tres de arriba cuentan lo que la empresa DEBE
+      // —a su caja, a una tienda, a un mensajero—; esta cuenta lo que le DEBEN: el efectivo que
+      // una bodega satelite ya consolido y todavia no ha llegado fisicamente a la central.
+      //
+      // Hereda `roles: ["maestro", "admin"]` del padre y NO declara los suyos, a proposito: la
+      // pantalla resuelve el rol server-side y hace `notFound()` con el MISMO `esAccesoTotal`
+      // que el servicio usa para responder `forbidden` (R27). Este item solo decide que se
+      // MUESTRA; una lista de roles escrita aqui seria una segunda que puede divergir.
+      { label: "Satélites", href: "/wallet/satelites" },
+    ],
+  },
+  {
+    // Ficha 335 (R31/R32/R33): el saldo a favor de la TIENDA. La pantalla existía desde la
+    // feature 43 y no tenía ninguna entrada de menú: se llegaba escribiendo la URL, o sea que
+    // no se llegaba. Este ítem es la puerta.
+    //
+    // `roles` apunta a LA CONSTANTE, no a un literal copiado: es la misma que lee el gate
+    // `notFound()` de la página (R33). Un `["adminTienda"]` escrito aquí a mano sería una
+    // segunda lista capaz de divergir de la primera sin que nada se pusiera rojo.
+    //
+    // ⚠️ LA POSICIÓN NO ES DECORATIVA. `primerDestino(itemsVisibles(...))` devuelve el `href`
+    // del primer ítem visible que no esté marcado `destinoInicial: false`, y `/dashboard`
+    // redirige ahí. Para el `adminTienda` los visibles son, en orden: «Analítica» (marcada
+    // `destinoInicial: false`), «Órdenes», «Novedades» y ahora este. Puesto DESPUÉS, el
+    // aterrizaje post-login sigue siendo `/ordenes` (R35); puesto antes de «Órdenes», habría
+    // cambiado EN SILENCIO — es el incidente que ya documentan «Analítica» (133) y
+    // «Monitoreo» (192).
+    //
+    // Y por eso NO lleva `destinoInicial: false`: la posición ya protege el aterrizaje, y
+    // `tests/unit/auth/destino-post-login.test.ts` afirma con un `toEqual` que los ítems
+    // marcados son EXACTAMENTE `["/analitica", "/monitoreo"]`.
+    label: "Mi wallet",
+    href: "/mi-wallet",
+    iconKey: "wallet",
+    roles: ROLES_MI_WALLET,
+  },
+  {
+    label: "Configuración",
+    href: "/configuracion",
+    iconKey: "settings",
+    roles: ["maestro"],
+    children: [
+      { label: "Usuarios", href: "/configuracion" },
+      { label: "Tarifas", href: "/configuracion/tarifas" },
+      { label: "API", href: "/configuracion/api" },
+      // Feature 107: CRUD de plantillas de mensaje. Hereda la visibilidad
+      // maestro-only del ítem padre (R1/R2).
+      { label: "Plantillas", href: "/configuracion/plantillas" },
+      // Ficha 474 (R2): «Envíos automáticos» JUSTO DESPUÉS de «Plantillas», como la maqueta
+      // aprobada (`design-whatsapp/Main.dc.html`). Design §7 lo permite si no mueve el primer
+      // hijo: `primerDestino` solo mira el PRIMERO («Usuarios»), y este entra el quinto. Hereda la
+      // visibilidad `maestro`-only del padre, igual que la página (R1).
+      { label: "Envíos automáticos", href: "/configuracion/envios-whatsapp" },
+      // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
+      // del ítem padre: quien ve el catálogo es quien lo administra.
+      { label: "Vehículos", href: "/configuracion/vehiculos" },
+      // Ficha 374: administración del catálogo geográfico (alta y retirada de
+      // provincias, cantones y distritos). AL FINAL del array, y verificado:
+      // `primerDestino` devuelve el `href` del PRIMER hijo del PRIMER ítem
+      // visible, así que un hijo añadido al final no puede mover el aterrizaje
+      // post-login de ningún rol (R46).
+      { label: "Geografía", href: "/configuracion/geografia" },
+      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array, por el mismo
+      // motivo que «Geografía» (R46 de la 374): `primerDestino` devuelve el `href` del PRIMER
+      // hijo del PRIMER ítem visible, así que un hijo añadido al final no puede mover el
+      // aterrizaje post-login de ningún rol.
+      //
+      // Hereda la visibilidad `maestro`-only del padre y NO declara `roles` propios: no hay una
+      // segunda lista que pueda divergir (R3 de la 321). El gate de la página es más ancho
+      // —`puedeEditarAlgunSinpe`, o sea también `admin` y `adminSatelite`— y eso es correcto: el
+      // menú decide qué se MUESTRA, la ruta decide quién ENTRA, y aquí el menú es el estrecho.
+      // El `admin` llega por URL o desde el aviso del primer ingreso; abrirle «Configuración»
+      // entera para darle una entrada le regalaría además Usuarios, Tarifas y API.
+      { label: "SINPE por bodega", href: "/configuracion/sinpe" },
+    ],
+  },
+  {
+    label: "Cierre del día",
+    href: "/cierre-dia",
+    iconKey: "clipboardCheck",
+    roles: ["mensajero"],
+  },
+  {
+    // Feature 38: cola de cierres del admin de bodega. Visible para
+    // `maestro`/`admin` (feature 94, paridad adm↔maestro) y `adminSatelite`. Ruta y
+    // roles distintos del ítem del mensajero ("/cierre-dia"); la defensa real es el
+    // notFound de la página.
+    label: "Cierres del día",
+    href: "/cierres-admin",
+    iconKey: "clipboardCheck",
+    roles: ["maestro", "admin", "adminSatelite"],
+  },
+  {
+    // Feature 158 (T2.8, Q-I): cola de aprobación de incidentes (paquetes dañados,
+    // perdidos o robados reportados por un admin). PÁGINA PROPIA, no una sección de
+    // "Cierres": un incidente no es un cierre. Los roles son los que el service autoriza
+    // (`IncidenteAdminService.resolveAlcance`, R48): acceso total (maestro/admin) sin
+    // restricción de zona y `adminSatelite` acotado a la suya. La defensa real es el
+    // `notFound` de `/incidentes`; este ítem sólo decide qué se MUESTRA.
+    label: "Incidentes",
+    href: "/incidentes",
+    iconKey: "shieldAlert",
+    roles: ["maestro", "admin", "adminSatelite"],
+  },
+  {
+    // Feature 321 (R2/R3/R9): histórico de conversaciones de WhatsApp — todos los hilos
+    // de todos los mensajeros, en SOLO LECTURA. `roles` apunta a la CONSTANTE, nunca a un
+    // literal copiado: este ítem sólo decide qué se MUESTRA y la defensa real es el
+    // `notFound()` de la página, que lee esa misma constante.
+    //
+    // POSICIÓN: LA ÚLTIMA del bloque de administración, y no es decorativo. `primerDestino`
+    // devuelve el `href` del primer ítem visible no marcado `destinoInicial: false`; puesto
+    // aquí, ningún rol cambia de aterrizaje post-login y por eso NO hace falta la marca
+    // `destinoInicial: false` (R9). Moverlo arriba sí la exigiría — es el incidente que ya
+    // documentan "Analítica" (133) y "Monitoreo" (192), y el test de R9 lo caza.
+    //
+    // El `href` del padre NO navega: un ítem con `children` se renderiza como disparador
+    // del desplegable (ver `Sidebar.tsx`), igual que "Entregas" y "Wallet". No existe
+    // ninguna página en `/historico`, sólo sus dos subítems.
+    //
+    // «Conversaciones» NO declara `roles` propios: hereda la visibilidad del padre, así que
+    // no hay una segunda lista que pueda divergir (R3). Y tiene que seguir siendo el PRIMER
+    // subítem: es el que `primerDestino` devolvería si algún día este ítem quedara el primero
+    // visible de algún rol, y el único de los dos que todos los roles del padre pueden abrir.
+    //
+    // ⭑ FICHA 362 (T5.2, R19/R20) — «Acciones» SÍ declara `roles` propios, y apunta a
+    // `ROLES_HISTORIAL_ACCIONES` (solo `maestro`). Es el único subítem del archivo que los
+    // declara; el motivo está escrito en esa constante y en `MenuChild.roles`. Va SEGUNDO y
+    // no primero: así el aterrizaje post-login no cambia para nadie (R20) y el `admin`, que
+    // ve el apartado por «Conversaciones», no ve una entrada que le devolvería un 404.
+    label: "Histórico",
+    href: "/historico",
+    iconKey: "history",
+    roles: ROLES_HISTORICO_CONVERSACIONES,
+    children: [
+      { label: "Conversaciones", href: "/historico/conversaciones" },
+      {
+        label: "Acciones",
+        href: "/historico/acciones",
+        roles: ROLES_HISTORIAL_ACCIONES,
+      },
+    ],
+  },
+  {
+    // ⭑ FICHA 429 (T23, Q3) — «Mi bodega»: el SINPE al que cobran los clientes de ESTA bodega.
+    //
+    // ⚠️ LA POSICIÓN NO ES DECORATIVA, Y ES LA ÚLTIMA DEL ARCHIVO A PROPÓSITO.
+    // `primerDestino(itemsVisibles(...))` devuelve el `href` del primer ítem visible no marcado
+    // `destinoInicial: false`, y `/dashboard` redirige ahí. Para el `adminSatelite` los visibles
+    // son, en orden: «Analítica» y «Monitoreo» (las dos marcadas), «Órdenes», «Cierres del día»,
+    // «Incidentes» y ahora éste. Puesto al final, su aterrizaje post-login sigue siendo
+    // `/recepcion-satelite/por-recibir`; puesto antes de «Órdenes», habría cambiado EN SILENCIO
+    // — es el incidente que ya documentan «Analítica» (133) y «Monitoreo» (192).
+    //
+    // ⚠️ Y POR ESO **NO** LLEVA `destinoInicial: false`: la posición ya protege el aterrizaje, y
+    // `tests/unit/auth/destino-post-login.test.ts` afirma con un `toEqual` LITERAL que los ítems
+    // marcados son EXACTAMENTE `["/analitica", "/monitoreo"]`. Marcarlo aquí pondría rojo ese
+    // caso sin que nadie hubiera decidido nada — y la marca es para el aterrizaje, no un sello
+    // de «esto no es importante».
+    //
+    // `roles` apunta a LA CONSTANTE, no a un literal copiado: es la misma que lee el gate
+    // `notFound()` de la página.
+    label: "Mi bodega",
+    href: "/mi-bodega",
+    iconKey: "warehouse",
+    roles: ROLES_MI_BODEGA,
+  },
+  {
+    // ⭑ FICHA 433 — «Ayuda»: el índice del módulo de documentación (la carpeta `docs/ayuda`).
+    //
+    // ⚠️ NO SE ESCRIBE AQUÍ LA RUTA CON COMODÍN. Una barra-asterisco dentro de un comentario de
+    // LÍNEA abre un bloque de comentario, y el quitador único del repo lo cierra en el siguiente
+    // cierre de bloque del archivo: 150 líneas desaparecen del texto que leen TODAS las guardias
+    // que escanean este fuente. Pasó el 2026-08-24 y lo vigila R45 de
+    // `tests/unit/auth/menu-visibility.test.ts`, que es quien cazó esta línea al escribirla.
+    //
+    // ⚠️ VA EL ÚLTIMO DE LA BARRA, Y ESO NO ES DECORATIVO. Es el ÚNICO ítem visible para los
+    // CINCO roles a la vez, así que si estuviera arriba sería el primer ítem visible de todos
+    // ellos y `primerDestino(itemsVisibles(...))` mandaría a TODO EL MUNDO a `/ayuda` después
+    // de entrar — en silencio, y a leer documentación en vez de a trabajar. Puesto al final,
+    // ningún aterrizaje cambia: cada rol conserva el que ya tenía. Es el mismo incidente que
+    // ya documentan «Analítica» (133), «Monitoreo» (192), «Mi wallet» (335) y «Mi bodega» (429).
+    //
+    // ⚠️ Y POR ESO **NO** LLEVA `destinoInicial: false`: la posición ya protege el aterrizaje,
+    // y `tests/unit/auth/destino-post-login.test.ts` afirma con un `toEqual` LITERAL que los
+    // ítems marcados son EXACTAMENTE `["/analitica", "/monitoreo"]`. Marcarlo aquí pondría
+    // rojo ese caso sin que nadie hubiera decidido nada — y la marca es para el aterrizaje, no
+    // un sello de «esto no es importante». Ya mordió en la 429.
+    //
+    // `roles` apunta a LA CONSTANTE `ROLES_AYUDA`, no a un literal copiado: es la misma que
+    // acota el módulo (`documentoVisiblePara`) y la que lee el gate de `/ayuda`. Precedentes:
+    // R10 de la 129, R1 de la 321, R33 de la 335.
+    //
+    // ⚠️ `ROLES_AYUDA` NO INCLUYE `apiKey`, y ahí está la otra mitad del cuidado: una cuenta de
+    // máquina no ve ningún ítem hoy, así que éste habría sido el primero y el único suyo — y el
+    // mismo test afirma que `apiKey` NO tiene destino post-login (`toBeNull`).
+    label: "Ayuda",
+    href: "/ayuda",
+    iconKey: "circleHelp",
+    roles: ROLES_AYUDA,
+  },
+  // "Perfil" SALE del menú para todos los roles (pedido humano) y su página se ELIMINÓ:
+  // era un placeholder sin contenido que solo ocupaba un sitio en la barra.
+] as const;
+
+/**
+ * Regla de visibilidad de un item para el actor autenticado. Hoy compara contra
+ * el rol; el dia que se activen los permisos granulares, la consulta a
+ * RolPermiso vive aqui y nadie mas cambia.
+ */
+export function puedeVer(item: MenuItem, actor: Actor | null): boolean {
+  if (!actor) return false; // sesion ausente o invalida -> sin items
+  if (!item.roles.includes(actor.rol)) return false;
+  // FICHA 362 — un DESPLEGABLE cuyos subítems no son visibles para el actor tampoco se pinta.
+  // Hoy no cambia nada (ningún ítem se queda sin subítems para ningún rol) y por eso entra
+  // como cierre y no como arreglo: desde que `MenuChild` admite `roles` propios, la forma de
+  // equivocarse es dejar en la barra un disparador que despliega el vacío.
+  if (item.children && item.children.length > 0) {
+    return hijosVisibles(item, actor).length > 0;
+  }
+  return true;
+  // TODO(permisos): sustituir/complementar por consulta a los permisos del actor.
+}
+
+/**
+ * FICHA 362 — regla de visibilidad de UN SUBÍTEM, y el ÚNICO sitio donde vive la herencia:
+ * sin `roles` propios manda el padre (321/R3), con ellos mandan los suyos.
+ *
+ * Se exporta para que la prueba pueda afirmar la regla directamente y para que nadie la
+ * reescriba en el `Sidebar`; el `Sidebar` no la llama porque no necesita hacerlo (ver
+ * `itemsVisibles`).
+ */
+export function puedeVerSubitem(
+  child: MenuChild,
+  padre: MenuItem,
+  actor: Actor | null,
+): boolean {
+  if (!actor) return false;
+  return (child.roles ?? padre.roles).includes(actor.rol);
+}
+
+/** Los subítems de `item` que `actor` puede ver. Lista vacía si el ítem no tiene subítems. */
+export function hijosVisibles(item: MenuItem, actor: Actor | null): readonly MenuChild[] {
+  if (!item.children) return [];
+  return item.children.filter((child) => puedeVerSubitem(child, item, actor));
+}
+
+/**
+ * Filtra la lista de items dejando solo los visibles para el actor.
+ *
+ * FICHA 362 — además PODA los subítems que el actor no puede ver. Se hace aquí, y no en el
+ * `Sidebar`, porque aquí pasan TODOS los consumidores: el layout (que pinta la barra) y
+ * `/dashboard` (que calcula el aterrizaje con `primerDestino`). Podarlo en el `Sidebar`
+ * habría dejado a `primerDestino` mirando la lista sin podar —la mitad callada del problema—
+ * y habría obligado a cambiarle la firma para pasarle el actor, que la usan cinco pantallas y
+ * tres suites.
+ *
+ * La IDENTIDAD del ítem se conserva cuando no hay nada que podar (el caso de todos los ítems
+ * menos uno): así este cambio no reescribe los objetos de `SIDEBAR_ITEMS` para nadie que no lo
+ * necesite, y las aserciones por referencia siguen valiendo.
+ */
+export function itemsVisibles<T extends MenuItem>(
+  items: readonly T[],
+  actor: Actor | null,
+): T[] {
+  return items
+    .filter((item) => puedeVer(item, actor))
+    .map((item) => {
+      if (!item.children) return item;
+      const podados = hijosVisibles(item, actor);
+      if (podados.length === item.children.length) return item;
+      // El objeto resultante es el mismo ítem con menos subítems; `T` no se puede construir
+      // genéricamente, de ahí el aserto — es el único punto del módulo que lo necesita.
+      return { ...item, children: podados } as T;
+    });
+}
+
+/**
+ * Primer destino NAVEGABLE del menú de un actor: el `href` del primer item visible o, si ese
+ * item es un desplegable, el de su primer subitem (un padre con `children` no navega, ver
+ * `Sidebar.tsx`). `null` si el actor no ve ningún item elegible.
+ *
+ * Lo consume `/dashboard` para los roles que NO tienen inicio propio: en vez de dejarlos en
+ * un "Bienvenido" vacío, entran directo a donde empieza su trabajo.
+ *
+ * Feature 133 (T5.1): se SALTAN los ítems marcados `destinoInicial: false` — hoy sólo
+ * "Analítica". La decisión de qué ítem no sirve de aterrizaje vive en el ÍTEM; esta función
+ * no conoce ni una ruta concreta (escribir `"/analitica"` aquí estaba explícitamente
+ * prohibido por el design D7).
+ */
+export function primerDestino(items: readonly MenuItem[]): string | null {
+  const primero = items.find((item) => item.destinoInicial !== false);
+  if (!primero) return null;
+  return primero.children?.[0]?.href ?? primero.href;
+}

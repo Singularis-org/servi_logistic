@@ -1,0 +1,270 @@
+"use server";
+
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { GastoFijoPlantillaRepository } from "@/lib/repositories/GastoFijoPlantillaRepository";
+import { GastoFijoCobroRepository } from "@/lib/repositories/GastoFijoCobroRepository";
+import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
+import { GastoFijoPlantillaService } from "@/lib/services/GastoFijoPlantillaService";
+import { GastoFijoCobroService } from "@/lib/services/GastoFijoCobroService";
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  ActualizarPlantillaServiceResult,
+  CrearPlantillaServiceResult,
+  EliminarPlantillaServiceResult,
+  IGastoFijoPlantillaService,
+  ListarPlantillasPaginadoServiceResult,
+  ListarPlantillasServiceResult,
+  SetActivaPlantillaServiceResult,
+} from "@/lib/interfaces/services/IGastoFijoPlantillaService";
+import {
+  actualizarGastoFijoPlantillaSchema,
+  crearGastoFijoPlantillaSchema,
+  eliminarPlantillaSchema,
+  listarPlantillasGastoFijoCompletoSchema,
+  listarPlantillasGastoFijoPaginadoSchema,
+  setActivaPlantillaSchema,
+  type ListarPlantillasCompletoResult,
+} from "@/lib/types/gasto-fijo-plantilla";
+import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import type { AppErrorShape } from "@/lib/errors";
+
+// Feature 45 (T19) — Server Actions del CRUD de PLANTILLAS de gasto fijo (patron
+// lib/actions/wallet.ts). Resuelve el actor por sesion, valida en el borde con zod y delega
+// en el servicio bajo `withErrorHandler`. `unauthenticated` (sin sesion, R18) y
+// `validation_error` (ZodError, R24) se resuelven en el borde; `forbidden`/`ok`/`not_found`
+// los devuelve el service. Money-safe: DTOs con montos STRING (R12).
+//
+// El CRUD incluye BORRADO (`eliminarPlantillaAction`) desde la ficha 332, que **revoca** el «sin
+// borrado» de `45/R25` con decision humana del 2026-08-29: la tabla acumula ruido y el historico
+// del libro no depende de la plantilla. Ver `specs/332-eliminar-plantilla-gasto-fijo`.
+
+export type CrearPlantillaActionResult =
+  | CrearPlantillaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+export type ActualizarPlantillaActionResult =
+  | ActualizarPlantillaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+export type SetActivaPlantillaActionResult =
+  | SetActivaPlantillaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+// Ficha 332 (R5/R6): el borrado. `forbidden`/`not_found` los decide el service; `unauthenticated`
+// y `validation_error`, este borde.
+export type EliminarPlantillaActionResult =
+  | EliminarPlantillaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+export type ListarPlantillasActionResult =
+  | ListarPlantillasServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+// Feature 170 (T I.1, R41): el listado paginado. `forbidden` lo decide el servicio;
+// `unauthenticated` y `validation_error`, este borde.
+export type ListarPlantillasPaginadoActionResult =
+  | ListarPlantillasPaginadoServiceResult
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+function toPlantillaActionError(
+  shape: AppErrorShape,
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" } {
+  switch (shape.code) {
+    case "VALIDATION_ERROR":
+      return {
+        status: "validation_error",
+        fieldErrors: (shape.details?.fieldErrors as Record<string, string[]> | undefined) ?? {},
+      };
+    case "UNAUTHORIZED":
+      return { status: "unauthenticated" };
+    default:
+      throw new Error(`gasto-fijo-plantilla: AppErrorCode inesperado ${shape.code}`);
+  }
+}
+
+/**
+ * Composition root del CRUD de plantillas.
+ *
+ * ⚠️ FICHA 333 (F1b, R45) — DESDE AQUI SE CABLEA LA CASCADA DEL BORRADO. El servicio recibe el
+ * puerto estrecho a los cobros y el ejecutor de transacciones interactivas: sin los dos, borrar
+ * una plantilla con cobros `pendiente` no cancelaria nada y el `DELETE` abortaria contra el CHECK
+ * `gasto_fijo_cobro_pendiente_con_plantilla` (R46) — ruidosamente, que es lo correcto, pero el
+ * usuario no podria borrar. Los dos son REQUERIDOS a proposito: un default silencioso aqui es la
+ * receta del colaborador muerto que este repo ya midio.
+ */
+function buildService(): IGastoFijoPlantillaService {
+  const prisma = getPrismaClient();
+  return new GastoFijoPlantillaService(
+    new GastoFijoPlantillaRepository(prisma),
+    new GastoFijoCobroService(
+      new GastoFijoCobroRepository(prisma),
+      new WalletMovimientoRepository(prisma),
+      prisma,
+      (fn) => prisma.$transaction((tx) => fn(tx)),
+    ),
+    (fn) => prisma.$transaction((tx) => fn(tx)),
+  );
+}
+
+export interface PlantillaDeps {
+  service?: IGastoFijoPlantillaService;
+  getActor?: () => Promise<Actor | null>;
+}
+
+/** R17/R18/R24: crea una plantilla de gasto fijo (solo maestro). */
+export async function crearPlantillaAction(
+  input: unknown,
+  deps: PlantillaDeps = {},
+): Promise<CrearPlantillaActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = crearGastoFijoPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R24)
+    const service = deps.service ?? buildService();
+    return service.crearPlantilla(data, actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/** R17/R18/R25: edita concepto/monto de una plantilla (solo maestro). */
+export async function actualizarPlantillaAction(
+  input: unknown,
+  deps: PlantillaDeps = {},
+): Promise<ActualizarPlantillaActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = actualizarGastoFijoPlantillaSchema.parse(input);
+    const service = deps.service ?? buildService();
+    return service.actualizarPlantilla(data, actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/** R17/R18/R25: activa/desactiva una plantilla (acceso total). Pausa reversible: la fila se queda. */
+export async function setActivaPlantillaAction(
+  input: unknown,
+  deps: PlantillaDeps = {},
+): Promise<SetActivaPlantillaActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = setActivaPlantillaSchema.parse(input);
+    const service = deps.service ?? buildService();
+    return service.setActivaPlantilla(data, actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/**
+ * Ficha 332 (R1/R5/R6) — ELIMINA una plantilla de gasto fijo (acceso total).
+ *
+ * Espejo de `setActivaPlantillaAction`: sesion -> `UnauthenticatedError` (R5), `parse` ->
+ * `VALIDATION_ERROR` (R6, con `.strict()`: una clave desconocida muere aqui), y el resto lo decide
+ * el service (`forbidden`/`ok`/`not_found`). Server Action y no route handler porque es una
+ * mutacion interna disparada por un componente propio (`docs/architecture.md`).
+ *
+ * **Revoca `45/R25`** con decision humana del 2026-08-29 — ver
+ * `specs/332-eliminar-plantilla-gasto-fijo`. El libro (`wallet_movimiento`) no se toca: los
+ * egresos ya emitidos siguen intactos y se explican solos (R8/R9).
+ */
+export async function eliminarPlantillaAction(
+  input: unknown,
+  deps: PlantillaDeps = {},
+): Promise<EliminarPlantillaActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R5: antes de tocar el service
+    const data = eliminarPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R6)
+    const service = deps.service ?? buildService();
+    return service.eliminarPlantilla(data, actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/**
+ * R17/R18/R26: lista todas las plantillas (solo maestro).
+ *
+ * **Feature 184 (T H.2) — CERO consumidores de produccion, y se CONSERVA a proposito.** La tanda G
+ * se llevo su unico lector: la descarga de `GastosFijosPlantillasPanel`, que ahora sale de
+ * `listarPlantillasCompletoAction`, con el tope evaluado en el SERVIDOR.
+ *
+ * Mismo motivo, palabra por palabra, que `listarSaldosTiendasAction` (ver alli): las dos lecturas
+ * devuelven las mismas filas, el xlsx sale identico por los dos caminos y contar llamadas es lo
+ * unico que los separa. `tests/components/descarga/WalletPropsDescarga.test.tsx` (R1) la usa como
+ * doble VIVO —la invoca al final para probar que responde— y sin ella ese caso pierde su
+ * discriminador de conducta.
+ *
+ * Que ninguna pantalla vuelva a llamarla lo afirma
+ * `tests/unit/descarga/adaptador-conjunto.guardia.test.ts` (R32).
+ *
+ * @sin-superficie decision de la feature 184 (T H.2), no deuda: doble VIVO de R1 en el censo de descarga. La superficie viva es `listarPlantillasCompletoAction`.
+ */
+export async function listarPlantillasAction(
+  deps: PlantillaDeps = {},
+): Promise<ListarPlantillasActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const service = deps.service ?? buildService();
+    return service.listarPlantillas(actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40/R41/R44): UNA pagina de las plantillas + el total.
+ *
+ * Espejo exacto de `listarPlantillasAction` con `page`/`pageSize` validados por zod; el rol
+ * lo sigue decidiendo el servicio (R17).
+ */
+export async function listarPlantillasPaginadoAction(
+  input: unknown,
+  deps: PlantillaDeps = {},
+): Promise<ListarPlantillasPaginadoActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarPlantillasGastoFijoPaginadoSchema.parse(input); // -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    return service.listarPlantillasPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}
+
+/**
+ * Feature 184 — Tanda G (R1/R6/R7/R17) — el CONJUNTO de las plantillas, sin recorte, para
+ * producir el archivo (listado 11 del Anexo A).
+ *
+ * Sustituye a la relectura de `listarPlantillasAction()` que hacia el panel. La sustitucion NO
+ * abarata la consulta —es la misma, sobre la misma tabla— y esta bitacora no va a fingir que si:
+ * lo que gana es que el tope de filas lo decide el SERVIDOR (R6) y que el conjunto llega ya en
+ * el contrato comun de descarga, sin que la pantalla tenga que destripar `{ plantillas }`.
+ *
+ * Como este listado no tiene filtros, la lista blanca derivada de la de su pagina no deja
+ * NINGUNA clave: cualquier cosa que llegue —empezando por `page`/`pageSize`— muere aqui con
+ * `validation_error` sin tocar el servicio (R17). El input se parsea aunque no se transporte
+ * nada: parsear ES la barrera.
+ */
+export async function listarPlantillasCompletoAction(
+  input: unknown = {},
+  deps: PlantillaDeps = {},
+): Promise<ListarPlantillasCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
+    listarPlantillasGastoFijoCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    return service.listarPlantillasCompleto(actor);
+  });
+  return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
+}

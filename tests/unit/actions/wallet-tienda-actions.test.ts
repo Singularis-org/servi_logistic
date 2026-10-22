@@ -1,0 +1,203 @@
+import { describe, it, expect, vi } from "vitest";
+import { listarSaldosTiendasAction } from "@/lib/actions/wallet-tienda";
+import { verMiEstadoCuentaAction } from "@/lib/actions/estado-cuenta";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IEstadoCuentaService } from "@/lib/interfaces/services/IEstadoCuentaService";
+import { estado } from "@/tests/fixtures/estado-cuenta";
+import type { IWalletTiendaService } from "@/lib/interfaces/services/IWalletTiendaService";
+import type { DesgloseTiendaDTO, SaldoTiendaDTO } from "@/lib/types/wallet-tienda";
+
+// Feature 43 (T13) — tests unit de las Server Actions del ledger por tienda (R19/R20/R21/R27).
+// Sin sesion -> unauthenticated; rol no autorizado -> forbidden (el service decide); input
+// invalido -> validation_error (zod en el borde); DTOs con montos STRING (nunca number).
+
+const TIENDA: Actor = { usuarioId: "t1", rol: "adminTienda" };
+const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
+
+const SALDO: SaldoTiendaDTO = { creditos: "10000.00", debitos: "1500.00", saldo: "8500.00", signo: "positivo" };
+// Feature 172 (T G.2, R55): `listarMisMovimientos` devuelve tambien los TRES importes de la
+// cabecera de `/mi-wallet`. Aqui solo hace falta que el doble cumpla el contrato; lo que la
+// cabecera hace con ellos lo mide `tests/integration/mi-wallet-page.test.tsx`.
+const DESGLOSE: DesgloseTiendaDTO = {
+  aFavor: "10000.00",
+  cargos: "1500.00",
+  pagado: "0.00",
+  saldo: "8500.00",
+  signo: "positivo",
+};
+
+function fakeService(overrides: Partial<IWalletTiendaService> = {}): IWalletTiendaService {
+  return {
+    verMiSaldo: vi.fn(async () => ({ status: "ok" as const, saldo: SALDO })),
+    listarMisMovimientos: vi.fn(async () => ({
+      status: "ok" as const,
+      data: {
+        movimientos: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        saldo: SALDO,
+        desglose: DESGLOSE,
+      },
+    })),
+    // Feature 170 (T C.1): el doble implementa la interfaz COMPLETA. El modo sin
+    // paginacion lo ejercita `wallet-tienda-descarga-action.test.ts`.
+    listarMisMovimientosCompleto: vi.fn(async () => ({
+      status: "ok" as const,
+      items: [],
+      total: 0,
+    })),
+    listarSaldosTiendas: vi.fn(async () => ({
+      status: "ok" as const,
+      tiendas: [{ tiendaId: "t1", tiendaNombre: "Tienda Uno", saldo: "8500.00", signo: "positivo" as const }],
+    })),
+    // Feature 170 (T I.1): el doble sigue implementando la interfaz COMPLETA.
+    listarSaldosTiendasPaginado: vi.fn(async () => ({
+      status: "ok" as const,
+      items: [
+        { tiendaId: "t1", tiendaNombre: "Tienda Uno", saldo: "8500.00", signo: "positivo" as const },
+      ],
+      page: 1,
+      pageSize: 25,
+      total: 1,
+    })),
+    // Feature 184 (Tanda G): idem. El conjunto del archivo lo ejercita
+    // `wallet-listados-descarga-action.test.ts`.
+    listarSaldosTiendasCompleto: vi.fn(async () => ({
+      status: "ok" as const,
+      items: [
+        { tiendaId: "t1", tiendaNombre: "Tienda Uno", saldo: "8500.00", signo: "positivo" as const },
+      ],
+      total: 1,
+    })),
+    // Feature 171: el doble sigue implementando la interfaz COMPLETA. El desglose de una
+    // tienda elegida lo ejercita `wallet-tienda-desglose-action.test.ts`.
+    listarMovimientosDeTienda: vi.fn(async () => ({
+      status: "ok" as const,
+      data: {
+        tiendaId: "t1",
+        movimientos: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        desglose: {
+          aFavor: "0.00",
+          cargos: "0.00",
+          pagado: "0.00",
+          saldo: "0.00",
+          signo: "cero" as const,
+        },
+      },
+    })),
+    listarMovimientosDeTiendaCompleto: vi.fn(async () => ({
+      status: "ok" as const,
+      items: [],
+      total: 0,
+    })),
+    // Ficha 335: el doble sigue implementando la interfaz COMPLETA. La lectura de cierres la
+    // ejercita `tests/unit/actions/wallet-tienda-cierres-action.test.ts`; aqui solo tiene que
+    // existir para que este archivo compile.
+    listarMisCierres: vi.fn(async () => ({
+      status: "ok" as const,
+      cierres: [],
+      hayMas: false,
+    })),
+    ...overrides,
+  };
+}
+
+// FICHA 458-D (cierre) — `verMiSaldoAction` y `listarMisMovimientosAction` se RETIRARON (sin llamadores
+// fuera de los tests): `/mi-wallet` lee su saldo y su libro por `verMiEstadoCuentaAction`. Sus redes de
+// borde (43 R19/R22/R27) se MUEVEN aqui, sobre la action nueva, con las mismas R.
+
+function estadoCuentaEspia(overrides: Partial<IEstadoCuentaService> = {}) {
+  return {
+    leer: vi.fn(),
+    leerCompleto: vi.fn(),
+    leerMiTienda: vi.fn(async () => ({
+      status: "ok" as const,
+      estado: estado({ saldoActual: "8500.00", signo: "positivo", resumen: DESGLOSE }),
+    })),
+    leerMiTiendaCompleto: vi.fn(),
+    ...overrides,
+  } satisfies IEstadoCuentaService;
+}
+
+describe("verMiEstadoCuentaAction — el saldo de la tienda (antes verMiSaldoAction, 43 R19/R27)", () => {
+  it("sin sesion -> unauthenticated, sin tocar el service", async () => {
+    const service = estadoCuentaEspia();
+    const r = await verMiEstadoCuentaAction({}, { service, getActor: async () => null });
+    expect(r).toEqual({ status: "unauthenticated" });
+    expect(service.leerMiTienda).not.toHaveBeenCalled();
+  });
+
+  it("R19: rol no autorizado -> forbidden (el service decide)", async () => {
+    const service = estadoCuentaEspia({ leerMiTienda: vi.fn(async () => ({ status: "forbidden" as const })) });
+    const r = await verMiEstadoCuentaAction({}, { service, getActor: async () => MAESTRO });
+    expect(r).toEqual({ status: "forbidden" });
+  });
+
+  it("R27: adminTienda -> ok con saldo STRING+signo (y el resumen de tres cifras en STRING)", async () => {
+    const service = estadoCuentaEspia();
+    const r = await verMiEstadoCuentaAction({}, { service, getActor: async () => TIENDA });
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("ok");
+    expect(typeof r.estado.saldoActual).toBe("string");
+    expect(r.estado.signo).toBe("positivo");
+    for (const cifra of [r.estado.resumen?.aFavor, r.estado.resumen?.cargos, r.estado.resumen?.pagado]) {
+      expect(typeof cifra).toBe("string");
+    }
+  });
+});
+
+describe("verMiEstadoCuentaAction — el libro de la tienda (antes listarMisMovimientosAction, 43 R19/R22/R27)", () => {
+  it("sin sesion -> unauthenticated", async () => {
+    const service = estadoCuentaEspia();
+    const r = await verMiEstadoCuentaAction({ page: 1 }, { service, getActor: async () => null });
+    expect(r).toEqual({ status: "unauthenticated" });
+  });
+
+  it("input invalido (pageSize fuera de rango) -> validation_error, sin tocar el service", async () => {
+    const service = estadoCuentaEspia();
+    const r = await verMiEstadoCuentaAction({ page: 1, pageSize: 9999 }, { service, getActor: async () => TIENDA });
+    expect(r.status).toBe("validation_error");
+    expect(service.leerMiTienda).not.toHaveBeenCalled();
+  });
+
+  it("R19: rol no autorizado -> forbidden", async () => {
+    const service = estadoCuentaEspia({ leerMiTienda: vi.fn(async () => ({ status: "forbidden" as const })) });
+    const r = await verMiEstadoCuentaAction({ page: 1, pageSize: 20 }, { service, getActor: async () => MAESTRO });
+    expect(r).toEqual({ status: "forbidden" });
+  });
+
+  it("R22/R27: adminTienda -> ok con las filas, su saldo corrido STRING y la pagina pedida al servicio", async () => {
+    const service = estadoCuentaEspia();
+    const r = await verMiEstadoCuentaAction({ page: 1, pageSize: 20 }, { service, getActor: async () => TIENDA });
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("ok");
+    expect(typeof r.estado.filas[0].saldoCorrido).toBe("string");
+    expect(service.leerMiTienda).toHaveBeenCalledWith({ page: 1, pageSize: 20, sortBy: "fecha", sortDir: "desc" }, TIENDA); // 463/R34
+  });
+});
+
+describe("listarSaldosTiendasAction (R20/R27)", () => {
+  it("sin sesion -> unauthenticated", async () => {
+    const service = fakeService();
+    const r = await listarSaldosTiendasAction({ service, getActor: async () => null });
+    expect(r).toEqual({ status: "unauthenticated" });
+  });
+
+  it("R20: rol no maestro -> forbidden", async () => {
+    const service = fakeService({ listarSaldosTiendas: vi.fn(async () => ({ status: "forbidden" as const })) });
+    const r = await listarSaldosTiendasAction({ service, getActor: async () => TIENDA });
+    expect(r).toEqual({ status: "forbidden" });
+  });
+
+  it("R27: maestro -> ok con saldos STRING por tienda", async () => {
+    const service = fakeService();
+    const r = await listarSaldosTiendasAction({ service, getActor: async () => MAESTRO });
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error("ok");
+    expect(typeof r.tiendas[0].saldo).toBe("string");
+  });
+});

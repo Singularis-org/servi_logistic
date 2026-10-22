@@ -1,0 +1,332 @@
+import { describe, it, expect, vi } from "vitest";
+import { TarifaService } from "@/lib/services/TarifaService";
+import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { ITarifaRepository } from "@/lib/interfaces/repositories/ITarifaRepository";
+import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { Actor as OrdenActor } from "@/lib/interfaces/services/IOrdenService";
+import type { Actor as TarifaActor } from "@/lib/interfaces/services/ITarifaService";
+import type { OrdenDTO, OrdenListItemDTO } from "@/lib/types/orden";
+import type { TarifaDTO } from "@/lib/types/tarifa";
+import type { RawRow } from "@/lib/parsers/spreadsheet";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+
+// Feature 98: la via sesion no tarifa; stub neutro para el 2do parametro del constructor.
+const tarifaRepoStub: ITarifaVigenteRepository = {
+  // Feature 274: la interfaz quedo en DOS metodos (el filtro `status` que justificaba el
+  // resolver "cotizable" murio con la columna). Ninguno se invoca por esta via.
+  resolveTarifa: vi.fn(async () => null),
+  resolveTarifas: vi.fn(async () => new Map()),
+};
+
+// Feature 19 (rol-adminsatelite): R9, R10, R11. `adminSatelite` es un rol SIN
+// permisos nuevos: en toda puerta de autorizacion por rol existente debe caer
+// en el default-forbidden (sin cambios de codigo de servicio, verificado en
+// design.md). Cada puerta lleva su caso de no-regresion con un rol previamente autorizado.
+//
+// 2026-08-07: eran CUATRO puertas; hoy son TRES. La cuarta era `OrdenService.crear`, que se
+// borro con el resto del CRUD de andamiaje (nacio sin pantalla). La regla que protegia —«un
+// adminSatelite no puede crear ordenes»— NO se queda sin testigo: sigue afirmada sobre
+// `BulkOrdenService.cargarMasiva`, que es la via VIVA de creacion, en el tercer bloque de
+// este mismo archivo. Se comprobo antes de borrar; ver progress/impl_borrar-acciones-huerfanas.md.
+
+const ADMIN_SATELITE_ORDEN: OrdenActor = { usuarioId: "sat1", rol: "adminSatelite" };
+const ADMIN_SATELITE_TARIFA: TarifaActor = { usuarioId: "sat1", rol: "adminSatelite" };
+const MAESTRO_TARIFA: TarifaActor = { usuarioId: "m1", rol: "maestro" };
+const TIENDA_ORDEN: OrdenActor = { usuarioId: "store1", rol: "adminTienda" };
+
+function ordenDto(overrides: Partial<OrdenDTO> = {}): OrdenDTO {
+  return {
+    id: "ord-1",
+    numGuia: 1,
+    numRemision: "REM-1",
+    estatusId: "os-bodega",
+    estatusValue: "en_bodega_central",
+    destinatario: "Ana",
+    telefonoDest: "0991234567",
+    tiendaId: "store1",
+    zonaId: "z1",
+    provinciaId: "p1",
+    cantonId: "c1",
+    distritoId: null,
+    producto: "Caja",
+    peso: 1.5,
+    notas: null,
+    createdAt: new Date("2026-01-01"),
+    updatedAt: new Date("2026-01-01"),
+    ...overrides,
+  };
+}
+
+function ordenListItem(overrides: Partial<OrdenListItemDTO> = {}): OrdenListItemDTO {
+  return { ...ordenDto(), tiendaNombre: "Tienda Uno", ...overrides };
+}
+
+function buildOrdenRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository {
+  return {
+    findById: vi.fn().mockResolvedValue(ordenDto()),
+    list: vi.fn().mockResolvedValue({ items: [ordenListItem()], total: 1 }),
+    // Feature 260 (B3): hidratacion por lote de ids. No la ejercita este servicio.
+    findListItemsByIds: vi.fn().mockResolvedValue([]),
+    update: vi.fn().mockResolvedValue(ordenDto()),
+    // Ficha 312: writer de la correccion de los datos del cliente. Mismo motivo que sus dos
+    // vecinos de abajo — ningun servicio de este archivo lo invoca; el doble existe para
+    // satisfacer el contrato completo del repo.
+    corregirDatosCliente: vi.fn().mockResolvedValue("ok" as const),
+    // Ficha 327: las dos lecturas de la correccion de ubicacion. Mismo motivo que el writer de
+    // arriba: ningun servicio de este archivo las invoca, el doble esta para satisfacer el
+    // contrato completo del repo.
+    findParaCorreccion: vi.fn().mockResolvedValue(null),
+    findDistritoParaCorreccion: vi.fn().mockResolvedValue(null),
+    // Ficha 337: la lectura que CONGELA las entradas del cobro por devolución a origen desde novedades.
+    // Mismo motivo que las dos de arriba: ningun servicio de este archivo la invoca, el doble
+    // esta para satisfacer el contrato completo del repo.
+    findBaseCobroDevolucion: vi.fn().mockResolvedValue(null),
+    // Feature «eliminar orden»: writer de `deleted_at`. Ningun servicio de este archivo lo
+    // invoca; el doble existe para satisfacer el contrato completo del repo.
+    softDelete: vi.fn().mockResolvedValue(0),
+    // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
+    restore: vi.fn().mockResolvedValue(0),
+    findEstatusIdByValue: vi.fn().mockResolvedValue("os-bodega"),
+    findUsuarioFulfillment: vi.fn().mockResolvedValue(false), // feature 27
+    findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
+    findAllProvincias: vi.fn().mockResolvedValue([]),
+    findCantonesByProvinciaIds: vi.fn().mockResolvedValue([]),
+    findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
+    // FICHA 374 (R60): el conteo de ordenes sin entregar de un nodo geografico. Ningun servicio
+    // de este archivo lo invoca; el doble existe para satisfacer el contrato completo del repo.
+    contarSinEntregarPorNodoGeografico: vi.fn().mockResolvedValue(0),
+    createManyOrdenes: vi.fn().mockResolvedValue({ inserted: 0, cargaId: null, omitidas: [] }), // feature 141/294
+    createManyOrdenesConGuia: vi.fn().mockResolvedValue({ creadas: [], cargaId: null, omitidas: [] }), // feature 88/141/294
+    // Feature 141 (R47/R48): persistencia de las URLs de descarga de etiquetas.
+    setCargaDownloadUrl: vi.fn(async () => {}),
+    setOrdenesDownloadUrl: vi.fn(async () => {}),
+    // Feature 16: resumen del lote (solo lectura), exigido por IOrdenRepository.
+    findResumenByNumRemisiones: vi.fn().mockResolvedValue([]),
+    // Feature 17: metodos de "Generar guia"/asignacion, no ejercitados aqui
+    // pero exigidos por la interfaz IOrdenRepository.
+    findByIdsForTransicion: vi.fn().mockResolvedValue([]),
+    findByNumGuiaForTransicion: vi.fn().mockResolvedValue(null),
+    findMensajeroIdsValidos: vi.fn().mockResolvedValue(new Set()),
+    findAllMensajeros: vi.fn().mockResolvedValue([]),
+    listOrderStatus: vi.fn().mockResolvedValue([]),
+    generarGuiaLote: vi.fn().mockResolvedValue([]),
+    asignarBodegaLote: vi.fn().mockResolvedValue(0),
+    findMensajerosByZona: vi.fn().mockResolvedValue([]),
+    findMensajeroIdsConVehiculo: vi.fn(async (ids: string[]) => new Set(ids)),
+    findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set<string>()),
+    findMensajeroIdsValidosByZona: vi.fn().mockResolvedValue(new Set()),
+    rutearBodegaSateliteLote: vi.fn().mockResolvedValue(0),
+    // Feature 41: bloqueo derivado (por defecto nadie bloqueado / bodega libre).
+    findMensajerosBloqueadosPorCierres: vi.fn(async (): Promise<Set<string>> => new Set()),
+    // Feature 271: el contador N/V y el detalle del bloqueo son parte del puerto.
+    contarCierresAbiertosPorMensajero: vi.fn(async () => new Map()),
+    findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+    findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()), // ficha 477
+    // FICHA 412 (T5.1): la jornada de un cierre concreto. Doble MUDO: esta suite no la ejercita.
+    findJornadaDeCierre: vi.fn(async () => null),
+    findZonasConMensajeroBloqueado: vi.fn(async (): Promise<Set<string>> => new Set()),
+    existeBodegaSateliteBloqueada: vi.fn(async () => ({
+      bloqueada: false,
+      porMensajeros: false,
+      porCierreBodega: false,
+    })),
+    // Feature 32: etiqueta de guia, exigida por la interfaz IOrdenRepository.
+    findEtiquetasByIds: vi.fn().mockResolvedValue([]),
+    findEtiquetaByNumGuia: vi.fn().mockResolvedValue(null),
+    // Feature 148: stubs del manifiesto (READ derivado, no lo ejercita este test).
+    findManifiestoByIds: vi.fn().mockResolvedValue([]),
+    findManifiestoByRemisiones: vi.fn().mockResolvedValue([]),
+    findUsuarioNombre: vi.fn().mockResolvedValue(null),
+    // Feature 33: recepcion en bodega satelite, no ejercitada aqui pero exigida
+    // por la interfaz IOrdenRepository.
+    findUsuarioZonaId: vi.fn().mockResolvedValue(null),
+    findUsuarioVehiculoId: vi.fn().mockResolvedValue(null), // feature 39: exigido por IOrdenRepository
+    findRecepcionSateliteByZona: vi.fn().mockResolvedValue([]),
+    // Feature 170 (T K.1/T K.2): la pagina del listado satelite y el catalogo de sus filtros.
+    findRecepcionSatelitePaginada: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    // Feature 184 (T A.1/T A.2): el conjunto completo del listado y la vigencia de ids.
+    findRecepcionSateliteCompleta: vi.fn().mockResolvedValue([]),
+    findIdsVigentesEnBodega: vi.fn().mockResolvedValue([]),
+    recibirEnSatelite: vi.fn().mockResolvedValue(false),
+    recibirEnOrigen: vi.fn().mockResolvedValue(false),
+    recibirEnBodegaCentral: vi.fn().mockResolvedValue(false),
+    // feature 157: recoleccion en tienda (asignacion sin transicion + confirmacion por QR)
+    asignarRecoleccionLote: vi.fn().mockResolvedValue(0),
+    desasignarRecoleccionLote: vi.fn().mockResolvedValue(0),
+    // feature 157: regla de dedicacion (reparto y recoleccion no se mezclan)
+    findMensajerosConOrdenesEn: vi.fn().mockResolvedValue(new Set()),
+    recolectarEnTienda: vi.fn().mockResolvedValue(false),
+    asignarSateliteLote: vi.fn().mockResolvedValue(0),
+    // Feature 87: lista de novedades, no ejercitada aqui pero exigida por IOrdenRepository.
+    // Solicitud de ayuda (2026-08-18): exigidos por la interfaz, no ejercitados aqui.
+    // Feature 235: los tres metodos de la bandera (`marcarAyuda`/`desmarcarAyuda`/
+    // `habilitarNovedad`) colapsaron en UN punto de escritura guardado por estado.
+    registrarAyudaSolicitada: vi.fn().mockResolvedValue(true), // ficha 454
+    registrarAyudaResuelta: vi.fn().mockResolvedValue(true), // ficha 454
+    findParaHabilitacionApi: vi.fn().mockResolvedValue(null), // feature 266/T3.1: lectura scoped por owner del canal por API key
+    // Ficha 320: el par lectura/escritura del BORRADO por API key, tambien scoped por owner.
+    findParaEliminacionApi: vi.fn().mockResolvedValue(null),
+    softDeleteViaApi: vi.fn().mockResolvedValue(0),
+    incrementarIntentoContacto: vi.fn().mockResolvedValue(0),
+    // Feature 236: los dos metodos del listado pasan a llevar el GRUPO en la firma.
+    countNovedadesByTienda: vi.fn().mockResolvedValue(0),
+    findNovedadesByTienda: vi.fn().mockResolvedValue([]),
+    findFechaSolicitudAyuda: vi.fn().mockResolvedValue(new Map()),
+    findIdsConGestionPendiente: vi.fn(async () => new Set<string>()), // ficha 454
+    // Feature 92 (R8/R35): metodos nuevos de lectura de `IOrdenRepository`. Estos
+    // tests no ejercitan el gate de coordenadas ni la ruta: devuelven vacio.
+    findParaAsignabilidad: vi.fn(async () => []),
+    findParadasEnReparto: vi.fn(async () => []),
+    findCausasDevueltaVigentes: vi.fn().mockResolvedValue(new Map()),
+    // Feature 106: canal integrador (API por key), no ejercitado aqui.
+    listByOwner: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    cancelarViaApi: vi.fn().mockResolvedValue({ status: "not_found" }),
+    // Feature 177: consulta por identificador libre + PDF de etiquetas, no ejercitada aqui.
+    findByGuiaORemisionForOwner: vi.fn().mockResolvedValue([]),
+    findDetalleByOrdenIdForOwner: vi.fn().mockResolvedValue(null),
+    findDownloadStoragePathByOrdenForOwner: vi.fn().mockResolvedValue(null),
+    setOrdenDownloadStoragePath: vi.fn(async () => {}),
+    findCargaConOrdenesForOwner: vi.fn().mockResolvedValue(null),
+    setCargaDownloadStoragePath: vi.fn(async () => {}),
+    // Feature 102: rechazos por SLA de la tienda, exigidos por IOrdenRepository.
+    countRechazadasSlaByTienda: vi.fn().mockResolvedValue(0),
+    findRechazadasSlaByTienda: vi.fn().mockResolvedValue([]),
+    // Feature 149: writer de la reversion de asignacion, exigido por IOrdenRepository.
+    deshacerAsignacionLote: vi.fn(async () => 0),
+    // Feature 262: writer de la correccion del dia de reparto, exigido por IOrdenRepository.
+    corregirDiaRepartoLote: vi.fn(async () => []),
+    // FICHA 427 (T8): la transaccion del traspaso entre mensajeros. Ningun servicio de este
+    // archivo la invoca; el doble existe para satisfacer el contrato completo del repo.
+    traspasarMensajeroLote: vi.fn(async () => ({ loteId: "lote-1", movidas: 0, conversaciones: 0 })),
+    ...overrides,
+  };
+}
+
+function tarifaDto(overrides: Partial<TarifaDTO> = {}): TarifaDTO {
+  return {
+    id: "cob-1",
+    // El modelo de tarifa cuelga de la tienda (adminTienda) y/o de la zona; ya no
+    // hay nombre, ni `status` (274: columna retirada).
+    tiendaId: "store1",
+    valorFlete: 10,
+    valorFleteDevuelto: 5,
+    valorFleteGam: 8,
+    valorFleteDevueltoGam: 4,
+    fulfillment: 3,
+    comisionCod: 2.5,
+    ivaFlete: 15,
+    ivaComisionCod: 15,
+    tarifaEspecial: null,
+    tarifaEspecialDevuelta: null,
+    zonaId: null,
+    isDefault: false,
+    createdAt: new Date("2026-01-01"),
+    updatedAt: new Date("2026-01-01"),
+    ...overrides,
+  };
+}
+
+function buildTarifaRepo(overrides: Partial<ITarifaRepository> = {}): ITarifaRepository {
+  return {
+    create: vi.fn().mockResolvedValue(tarifaDto()),
+    findById: vi.fn().mockResolvedValue(tarifaDto()),
+    list: vi.fn().mockResolvedValue({ items: [tarifaDto()], total: 1 }),
+    update: vi.fn().mockResolvedValue(tarifaDto()),
+    hardDelete: vi.fn().mockResolvedValue("ok" as const),
+    // La tienda referenciada debe ser adminTienda: por default valida (true), para
+    // que el camino feliz del maestro dependa solo de su rol, no de este invariante.
+    esTiendaAsignable: vi.fn().mockResolvedValue(true),
+    existeZona: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  };
+}
+
+function crearTarifaInput(overrides: Record<string, unknown> = {}) {
+  return {
+    tiendaId: "store1",
+    valorFlete: 10,
+    valorFleteDevuelto: 5,
+    valorFleteGam: 8,
+    valorFleteDevueltoGam: 4,
+    fulfillment: 3,
+    comisionCod: 2.5,
+    ivaFlete: 15,
+    ivaComisionCod: 15,
+    ...overrides,
+  };
+}
+
+function bulkRow(overrides: Partial<RawRow> = {}): RawRow {
+  return {
+    num_remision: "REM-1",
+    destinatario: "Ana",
+    telefono: "0991234567",
+    provincia: "Pichincha",
+    canton: "Quito",
+    distrito: "",
+    direccion: "",
+    producto: "Caja",
+    notas: "",
+    monto_cobrar: "",
+    ...overrides,
+  };
+}
+
+describe("TarifaService — adminSatelite sin permisos nuevos (R9, R11)", () => {
+  it("lectura (listar): adminSatelite -> forbidden, no consulta el repo", async () => {
+    const repo = buildTarifaRepo();
+    const service = new TarifaService(repo);
+
+    const r = await service.listar({ page: 1, pageSize: 20 }, ADMIN_SATELITE_TARIFA);
+
+    expect(r.status).toBe("forbidden");
+    expect(repo.list).not.toHaveBeenCalled();
+  });
+
+  it("escritura (crear): adminSatelite -> forbidden, no persiste", async () => {
+    const repo = buildTarifaRepo();
+    const service = new TarifaService(repo);
+
+    const r = await service.crear(crearTarifaInput(), ADMIN_SATELITE_TARIFA);
+
+    expect(r.status).toBe("forbidden");
+    expect(repo.create).not.toHaveBeenCalled();
+    // La puerta de rol corta ANTES de cualquier acceso al repo: un adminSatelite no
+    // debe poder sondear que tiendas son adminTienda via esta ruta.
+    expect(repo.esTiendaAsignable).not.toHaveBeenCalled();
+  });
+
+  it("no-regresion: maestro conserva su resultado exitoso en lectura y escritura (R11)", async () => {
+    const repo = buildTarifaRepo();
+    const service = new TarifaService(repo);
+
+    const rLectura = await service.listar({ page: 1, pageSize: 20 }, MAESTRO_TARIFA);
+    expect(rLectura.status).toBe("ok");
+
+    const rEscritura = await service.crear(crearTarifaInput(), MAESTRO_TARIFA);
+    expect(rEscritura.status).toBe("ok");
+  });
+});
+
+describe("BulkOrdenService.cargarMasiva — adminSatelite sin permisos nuevos (R9, R11)", () => {
+  it("adminSatelite -> forbidden, no toca datos", async () => {
+    const repo = buildOrdenRepo();
+    const service = new BulkOrdenService(repo, tarifaRepoStub);
+
+    const r = await service.cargarMasiva([bulkRow()], ADMIN_SATELITE_ORDEN);
+
+    expect(r.status).toBe("forbidden");
+    expect(repo.findExistingRemisiones).not.toHaveBeenCalled();
+    expect(repo.createManyOrdenes).not.toHaveBeenCalled();
+  });
+
+  it("no-regresion: adminTienda conserva su resultado exitoso (R11)", async () => {
+    const repo = buildOrdenRepo();
+    const service = new BulkOrdenService(repo, tarifaRepoStub);
+
+    const r = await service.cargarMasiva([bulkRow()], TIENDA_ORDEN);
+
+    expect(r.status).toBe("ok");
+  });
+});

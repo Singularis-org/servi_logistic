@@ -1,0 +1,454 @@
+// FICHA 409 (T1.4, design §2) — EL CATALOGO: DONDE VIVE EL CRITERIO DE «QUE HAY QUE HACER».
+//
+// Hasta hoy la campana era un BUZON: lista plana, contador de NO LEIDAS y una X. Esta ficha la
+// convierte en una COLA DE TRABAJO, y todo el criterio nuevo vive AQUI —declarado y exhaustivo—,
+// no repartido por el componente que lo pinta.
+//
+// MODULO PURO: sin Prisma en runtime (solo el `type` del enum, borrado en compilacion), sin React,
+// sin `next/*`, sin `@/lib/db`. Es un REQUISITO y no una comodidad: lo importan el servicio de
+// listado, la guardia de rutas, el drenador de la cola de push (ficha 410) y —manana— cualquier
+// otra superficie que tenga que decidir si un aviso pide accion.
+//
+// ---------------------------------------------------------------------------------------------
+// DEFINICION NORMATIVA DE **ACCIONABLE** (de `design-notificaciones/PorRol.dc.html`)
+// ---------------------------------------------------------------------------------------------
+// Un aviso es accionable si y solo si (a) pide una accion, (b) tiene consecuencia si no se hace y
+// (c) quien lo recibe puede resolverla. Si falla una de las tres, es INFORMATIVO. La clasificacion
+// es una propiedad DECLARADA del par (evento, rol destinatario), no una intuicion del codigo que
+// lo pinta.
+//
+// ---------------------------------------------------------------------------------------------
+// DEFINICION NORMATIVA DE **ATAJO** (design §2.1bis, decision del humano del 2026-09-10)
+// ---------------------------------------------------------------------------------------------
+// Un aviso lleva atajo si y solo si existe UNA PANTALLA DE ESTA APP QUE ACERQUE A ESA PERSONA A
+// RESOLVERLO — el sitio donde empieza su accion real, ejecute ella la transicion o no. No basta
+// con que la pantalla ENSEÑE el problema: tiene que ser el INSUMO de lo que esa persona va a hacer
+// a continuacion.
+//
+// ⚠️ EL CRITERIO NO ES «¿puede ejecutar la transicion?». Se probo esa version estrecha y se
+// descarto con los dos casos enfrentados:
+//
+//   · `geocodificacion_caida` (maestro, admin) -> lo siguiente que hace esa persona es revisar la
+//     credencial y la facturacion EN LA CONSOLA DEL PROVEEDOR. Ninguna pantalla de la app es el
+//     insumo de eso: mirar la lista de direcciones sin ubicar no acerca nada a arreglar una
+//     credencial de Google. **SIN BOTON** — seria una promesa falsa. Es EL UNICO accionable sin
+//     atajo del catalogo, y esa singularidad es la señal correcta: cuando aparezca el segundo,
+//     habra que defenderlo con esta misma tabla.
+//   · `devoluciones_represadas` (maestro, admin) -> `EnvioDevolucionCentralService` declara
+//     `ROL_AUTORIZADO = "adminSatelite"` (linea 19) y corta con `forbidden` a cualquier otro, asi
+//     que ellos NO mueven las ordenes: LLAMAN A LA BODEGA para coordinar. Para esa llamada
+//     necesitan saber CUALES son y DE QUE BODEGA, y eso es exactamente `/ordenes`. La lista es el
+//     insumo de su accion, no un mirador. **CON BOTON**.
+//
+// Accionable y con-atajo son EJES INDEPENDIENTES: hay accionables sin atajo (uno), y nunca hay
+// informativos con atajo (R19).
+//
+// ---------------------------------------------------------------------------------------------
+// POR QUE `Record` Y NO `Partial<Record>`
+// ---------------------------------------------------------------------------------------------
+// Un valor NUEVO del enum **no compila** hasta que alguien decida su clase (R1). Es el mismo
+// mecanismo con el que la 236 obligo a declarar el estado de cada grupo de `/novedades`, y el
+// motivo por el que el inventario de eventos es cerrado desde la 146.
+//
+// POR QUE `porRol` Y NO UNA ENTRADA POR PAR (evento, rol): 13 eventos x 6 roles son 78 celdas, de
+// las que 73 dirian lo mismo. Con `porDefecto` + excepcion, LA EXCEPCION SE LEE COMO LA DECISION
+// QUE ES. Solo hay tres: `cierre_dia_vencido`, `mensajero_bloqueado_por_cierres` y
+// `devoluciones_represadas`.
+import type { RolValue } from "@prisma/client";
+import type { NotificacionEvento } from "@/lib/types/notificacion";
+// FICHA 462 (R13): el nombre VISIBLE del resultado, el de la 455. Modulo puro (ya lo importa
+// `emitir.ts`); aqui solo se lee `NOMBRE_ESTADO.reprogramado`.
+import { NOMBRE_ESTADO } from "@/lib/types/order-status";
+
+/** A donde lleva el boton de un aviso, y como se llama ese boton. */
+export interface AtajoDeAviso {
+  /** Ruta de la app. Puede llevar `?parametro=valor`; la pagina de destino DEBE leerlo (R6). */
+  readonly href: string;
+  /** Nombre accesible del boton. Propio y descriptivo («Gestionar novedades», nunca «Ver»). */
+  readonly etiqueta: string;
+}
+
+/**
+ * Que pide un aviso a quien lo recibe. Union DISCRIMINADA a proposito: un informativo no puede
+ * tener atajo ni por accidente (R19), porque su rama del tipo ni siquiera tiene el campo.
+ */
+export type AccionDeAviso =
+  | { readonly clase: "informativa" }
+  | {
+      readonly clase: "accionable";
+      /** `null` EXPLICITO cuando no hay pantalla que acerque a resolverlo (R3/R4). */
+      readonly atajo: AtajoDeAviso | null;
+      /**
+       * SOLO los AGREGADOS (`novedades_sin_gestionar`, `devoluciones_represadas`): compone el
+       * titulo con la cifra VIVA en el instante de la consulta (R57), no con la del instante de
+       * la emision. Por eso vive en el catalogo y no en `emitir.ts`: no se persiste nunca, se
+       * recalcula en cada lectura.
+       */
+      readonly titulo?: (n: number) => string;
+    };
+
+/** La decision para un evento: la de por defecto, y las excepciones por rol si las hay. */
+export interface EntradaCatalogo {
+  readonly porDefecto: AccionDeAviso;
+  /** Solo cuando un mismo evento pide cosas distintas a roles distintos. Hoy son TRES. */
+  readonly porRol?: Partial<Record<RolValue, AccionDeAviso>>;
+  /**
+   * Los roles que RECIBEN este aviso hoy, leidos de `lib/notificaciones/emitir.ts`.
+   *
+   * NO es decoracion y no estaba en el boceto del design: es lo que la guardia de R5 RECORRE para
+   * poder afirmar «este destino existe Y ese rol lo ve». Sin el, la guardia tendria que probar los
+   * seis roles contra cada destino y se pondria roja en falso (`/dashboard` no lo ve un
+   * `mensajero`, y no tiene por que: no le llega ese aviso).
+   */
+  readonly destinatarios: readonly RolValue[];
+}
+
+/** Los eventos AGREGADOS: su titulo lleva una cifra VIVA y se apagan solos cuando es 0 (R55). */
+export const EVENTOS_AGREGADOS = [
+  "novedades_sin_gestionar",
+  "devoluciones_represadas",
+  // FICHA 413 — el TERCERO, y el primero dirigido a un USUARIO en vez de a un rol con alcance. Su
+  // cifra viva es «cuantas ordenes tiene reservadas para un dia posterior al de hoy», acotada al
+  // `actor.usuarioId`. Es tambien el unico que se APAGA SOLO POR EL PASO DEL TIEMPO y no porque
+  // alguien resuelva nada: al pasar la medianoche CR esas ordenes dejan de ser «posteriores», la
+  // cifra cae a 0 y el aviso desaparece del panel y del distintivo (R21). Eso es exactamente lo
+  // que permite que su titulo diga «mañana» sin mentir nunca.
+  "reparto_manana",
+  // FICHA 462 — el CUARTO. Su cifra viva es «cuantas reprogramadas de hoy siguen retenidas por un
+  // cierre sin aprobar», acotada al AMBITO del actor (maestro/admin -> central; adminSatelite -> su
+  // zona). Se apaga solo cuando se aprueban los cierres que retienen (R15/R40): no hay nada que
+  // apagar a mano.
+  "reprogramadas_esperan_cierre",
+] as const satisfies readonly NotificacionEvento[];
+
+export type EventoAgregado = (typeof EVENTOS_AGREGADOS)[number];
+
+/** `true` si el aviso lleva una cifra viva que hay que resolver al leer (design §5). */
+export function esEventoAgregado(evento: NotificacionEvento): evento is EventoAgregado {
+  return (EVENTOS_AGREGADOS as readonly NotificacionEvento[]).includes(evento);
+}
+
+const ADMINISTRACION_CENTRAL: readonly RolValue[] = ["maestro", "admin"];
+
+/**
+ * EL CATALOGO, evento por evento. La columna «por que» de cada entrada es la decision, no un
+ * adorno: es lo que hay que releer antes de cambiarla.
+ */
+export const CATALOGO_AVISOS: Record<NotificacionEvento, EntradaCatalogo> = {
+  // 1 — Es UNA NOTIFICACION POR ORDEN. `PorRol.dc.html` la pone en «Nunca» para la tienda («cada
+  // cambio de estado») y para la administracion («una notificacion por orden»). En el momento del
+  // rechazo nadie decide nada; lo que si hay que hacer lo cubren los dos AGREGADOS de abajo.
+  orden_rechazada: {
+    porDefecto: { clase: "informativa" },
+    destinatarios: ["maestro", "admin", "adminTienda", "adminSatelite"],
+  },
+  // 2 — Acuse de recibo. `Main.dc.html` la pinta entre las informativas.
+  carga_masiva_terminada: {
+    porDefecto: { clase: "informativa" },
+    // El destinatario es SIEMPRE el actor que cargo: los tres roles que ven el boton de carga en
+    // `/ordenes`, mas la cuenta dedicada de la API key (`app/api/ordenes/api-key/carga`).
+    destinatarios: ["maestro", "admin", "adminTienda", "apiKey"],
+  },
+  // 3 — `PostulacionesPendientesPanel` se monta en `AdminMaestroDashboard`, que es lo que renderiza
+  // `/dashboard`, visible a maestro y admin.
+  postulacion_mensajero_pendiente: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/dashboard", etiqueta: "Revisar postulaciones" },
+    },
+    destinatarios: ADMINISTRACION_CENTRAL,
+  },
+  // 4 — `PostulacionRecursoPanel`, el mismo tablero.
+  postulacion_recurso_pendiente: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/dashboard", etiqueta: "Revisar postulaciones" },
+    },
+    destinatarios: ADMINISTRACION_CENTRAL,
+  },
+  // 5 — Los tres roles ven ese item del menu y es donde se aprueba.
+  cierre_dia_por_aprobar: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/cierres-admin", etiqueta: "Revisar cierre" },
+    },
+    destinatarios: ["maestro", "admin", "adminSatelite"],
+  },
+  // 6 — ⚠️ Q4, DECISION DEL HUMANO DEL 2026-09-10: el mockup lo pintaba como informativo y ESTABA
+  // MAL. Tiene consecuencia real y personal —si el mensajero no se entera, se presenta el dia
+  // equivocado—, asi que cumple las tres condiciones. `/mis-asignaciones` esta en `SIDEBAR_ITEMS`
+  // para `mensajero` y redirige a `/mis-asignaciones/reparto`.
+  dia_reparto_corregido: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/mis-asignaciones", etiqueta: "Ver mi reparto" },
+    },
+    destinatarios: ["mensajero"],
+  },
+  // 7 — LA PRIMERA EXCEPCION POR ROL, y es la que mejor explica por que existe `porRol`. Con un
+  // cierre `vencido` la pelota esta en el tejado DEL MENSAJERO (su propio texto ya dice «hasta que
+  // lo envies»): para el es accionable. La bodega NO PUEDE APROBAR LO QUE NO SE HA ENVIADO —lo
+  // escribio la 271—, asi que para ella es informativo. Mismo evento, dos tejados.
+  cierre_dia_vencido: {
+    porDefecto: { clase: "informativa" },
+    porRol: {
+      mensajero: {
+        clase: "accionable",
+        atajo: { href: "/cierre-dia", etiqueta: "Ver mi cierre" },
+      },
+    },
+    destinatarios: ["mensajero", "maestro", "admin", "adminSatelite"],
+  },
+  // 8 — LA SEGUNDA EXCEPCION. Aqui los DOS lados son accionables, pero en pantallas distintas: el
+  // mensajero resuelve su cierre (`avisoBloqueo(..., { conCta: true })` ya le dice donde ir) y la
+  // administracion aprueba el mas antiguo para desbloquearlo («Aprueba el mas antiguo para que
+  // pueda volver a trabajar», 271). Accionable para la bodega A PROPOSITO y por decision humana
+  // registrada.
+  mensajero_bloqueado_por_cierres: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/cierres-admin", etiqueta: "Revisar cierres" },
+    },
+    porRol: {
+      mensajero: {
+        clase: "accionable",
+        atajo: { href: "/cierre-dia", etiqueta: "Ver mi cierre" },
+      },
+    },
+    destinatarios: ["mensajero", "maestro", "admin", "adminSatelite"],
+  },
+  // 9 — La 333: el maestro DECIDE la cola de cobros; el `admin` la VE pero no la decide, y por eso
+  // no lo recibe. `/wallet` es maestro+admin en el menu, y el destinatario es solo el maestro.
+  gasto_fijo_cobro_pendiente: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/wallet", etiqueta: "Revisar cobros" },
+    },
+    destinatarios: ["maestro"],
+  },
+  // 10 — El texto ya dice «Revisa Configuracion > API», y `/configuracion` es maestro-only.
+  webhook_suscripcion_pausada: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/configuracion/api", etiqueta: "Ver suscripción" },
+    },
+    destinatarios: ["maestro"],
+  },
+  // 11 — ⚠️ EL UNICO ACCIONABLE SIN ATAJO DE TODO EL CATALOGO, Q5 confirmada por el humano. El
+  // texto pide revisar la credencial y la facturacion de la cuenta del proveedor: eso se hace en
+  // la consola de Google. NO HAY PANTALLA. El boton «Ver el diagnostico» del mockup es un error y
+  // el humano lo corrige: un boton aqui seria una promesa falsa. Ver §2.1bis en la cabecera.
+  geocodificacion_caida: {
+    porDefecto: { clase: "accionable", atajo: null },
+    destinatarios: ADMINISTRACION_CENTRAL,
+  },
+  // 12 — AGREGADO (nuevo). La pestaña se fija por URL: sin `?superficie=devolucion` el boton
+  // abriria «Ayuda» —la primera pestaña de `/novedades` desde la 236— y el aviso hablaria de la
+  // OTRA. El destino es el minimo que R7 exige, no un filtro completo.
+  novedades_sin_gestionar: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/novedades?superficie=devolucion", etiqueta: "Gestionar novedades" },
+      titulo: tituloNovedadesSinGestionar,
+    },
+    destinatarios: ["adminTienda"],
+  },
+  // 13 — AGREGADO (nuevo) Y LA TERCERA EXCEPCION POR ROL, con DOS DESTINOS PROBADOS, no
+  // accidentales: el `adminSatelite` va a donde EJECUTA (`RecepcionSateliteModule` ofrece el envio
+  // a central en `/recepcion-satelite/en-bodega`, y es el unico rol que el servicio autoriza a
+  // hacerlo) y la administracion central a donde EMPIEZA A COORDINAR (`/ordenes`). Un solo destino
+  // para los dos habria mandado a uno de ellos a una pantalla que su rol ni siquiera ve —`/ordenes`
+  // hace `notFound()` al `adminSatelite`— y la guardia de R5 lo habria cazado.
+  devoluciones_represadas: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/ordenes", etiqueta: "Ver devoluciones" },
+      titulo: tituloDevolucionesRepresadas,
+    },
+    porRol: {
+      adminSatelite: {
+        clase: "accionable",
+        atajo: { href: "/recepcion-satelite/en-bodega", etiqueta: "Enviar a central" },
+        titulo: tituloDevolucionesRepresadas,
+      },
+    },
+    destinatarios: ["maestro", "admin", "adminSatelite"],
+  },
+  // 14 — FICHA 412 (R20/R21/R22). ACCIONABLE por las tres condiciones: pide una accion (revisarlo,
+  // corregirlo y volver a enviarlo a aprobacion), tiene consecuencia si no se hace (no se le
+  // liquida el cierre y sigue bloqueado) y EL puede resolverla.
+  //
+  // CON ATAJO, por el criterio aprobado —«¿le acerca esta pantalla a resolverlo?»—: `/cierre-dia`
+  // NO es un mirador, es DONDE EJECUTA la re-solicitud. Mismo destino y misma etiqueta que
+  // `cierre_dia_vencido` y `mensajero_bloqueado_por_cierres` para el mensajero: tres avisos de su
+  // cierre, un solo sitio al que ir.
+  //
+  // SIN `porRol`, y no por olvido: este evento tiene UN SOLO destinatario (R2). La administracion
+  // NO recibe fila de este evento — sigue recibiendo la suya de `mensajero_bloqueado_por_cierres`,
+  // con su texto y su entidad de siempre (R18). Quien rechaza es la bodega: avisarle de su propio
+  // clic seria ruido puro.
+  cierre_dia_rechazado: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/cierre-dia", etiqueta: "Ver mi cierre" },
+    },
+    destinatarios: ["mensajero"],
+  },
+  // 15 — FICHA 413 (R25/R26/R27). AGREGADO (el tercero) y ACCIONABLE, defendido con la tabla de
+  // §2.1bis que decide TODOS los atajos:
+  //   (a) pide una accion: organizarse para mañana. Saber si son 4 paquetes o 40 cambia la moto,
+  //       el combustible y la hora de salida.
+  //   (b) tiene consecuencia si no se hace: llegar a la bodega sin saber que le espera, que es la
+  //       situacion de HOY y el motivo entero de la ficha.
+  //   (c) quien lo recibe puede resolverla: si, y SOLO el. Nadie mas puede preparar su dia.
+  //   atajo: `/mis-asignaciones` **es** la lista de lo que va a llevar — el insumo de su
+  //       preparacion, igual que `/ordenes` lo es de la llamada del admin a la bodega. CON BOTON.
+  //
+  // Mismo destino y misma etiqueta que `dia_reparto_corregido`, el evento hermano sobre el mismo
+  // asunto: dos avisos de su reparto, un solo sitio al que ir. La ruta esta en `SIDEBAR_ITEMS`
+  // para `mensajero` y redirige a `/mis-asignaciones/reparto`.
+  //
+  // COSTE DECLARADO DE SER ACCIONABLE: suma **1** al «N por hacer» de cada mensajero con reparto,
+  // desde las 19:00 CR hasta la medianoche y NI UN MINUTO MAS — se apaga solo (R21) y el
+  // distintivo vuelve a cero sin que nadie toque nada. Esa cota es lo que lo separa del ruido que
+  // la 409 existe para eliminar.
+  //
+  // SIN `porRol`, y no por olvido: este evento tiene UN SOLO destinatario (R8). La administracion
+  // no recibe fila de el — ya ve el reparto entero en `/ordenes`.
+  reparto_manana: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/mis-asignaciones", etiqueta: "Ver mi reparto" },
+      titulo: tituloRepartoManana,
+    },
+    destinatarios: ["mensajero"],
+  },
+
+  // 16 — FICHA 427 (R38) — al mensajero DESTINO le acaban de pasar ordenes de otro. ACCIONABLE por
+  // las tres condiciones a la vez: (a) pide una accion —salir a repartir lo que le acaba de
+  // llegar—, (b) tiene consecuencia si no se hace —el paquete no llega, y son ordenes DE HOY— y
+  // (c) el es exactamente quien puede resolverla.
+  //
+  // ATAJO A `/mis-asignaciones`, que es donde estan esas ordenes y donde empieza su trabajo: la
+  // lista es el INSUMO de lo que va a hacer, no un mirador. Mismo destino que `reparto_manana`, y
+  // por el mismo motivo.
+  //
+  // SIN `titulo`, y NO es un olvido: este aviso NO es de los agregados con cifra VIVA. Su numero es
+  // el de UN ACTO CERRADO —«recibiste 31 ordenes»— y no cambia nunca: recalcularlo al leer diria
+  // «cuantas llevas ahora», que es OTRO dato y ademas falso como titulo de este aviso. Por eso el
+  // numero se persiste en la descripcion (design §6.5) y no se recompone.
+  traspaso_ordenes_recibido: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/mis-asignaciones", etiqueta: "Ver mi reparto" },
+    },
+    destinatarios: ["mensajero"],
+  },
+  // 17 — FICHA 427 (R39) — al mensajero de ORIGEN le quitaron ordenes. INFORMATIVA, y es la MISMA
+  // decision que lo deja fuera del push (R43): no le pide NINGUNA accion y no vence nada — deja de
+  // tener trabajo, no le aparece trabajo. Falla la condicion (a) de la definicion normativa, asi
+  // que es informativo, y un informativo NO PUEDE llevar atajo ni por accidente (R19): su rama del
+  // tipo ni siquiera tiene el campo.
+  //
+  // PERO SI LLEGA A LA CAMPANA, y eso es lo que se decide aqui: su lista encogio y este aviso es la
+  // explicacion. Sin el, el mensajero abre la app y le faltan 31 ordenes sin saber por que.
+  traspaso_ordenes_cedido: {
+    porDefecto: { clase: "informativa" },
+    destinatarios: ["mensajero"],
+  },
+  // 18 — FICHA 462 (R9/R13/R16). AGREGADO (el cuarto) y ACCIONABLE por las tres condiciones
+  // normativas, sin analogia: (a) pide una accion —aprobar el cierre que retiene—; (b) tiene
+  // consecuencia si no se hace —las reprogramadas de HOY no se pueden asignar y el paquete no sale,
+  // el caso real de la ficha espero ~20 h—; (c) quien lo recibe puede resolverla —es exactamente
+  // quien aprueba cierres—.
+  //
+  // CON ATAJO, por el criterio §2.1bis: `/cierres-admin` no es un mirador, es DONDE EJECUTA la
+  // aprobacion. SIN `porRol`: los tres roles van al mismo sitio y los tres lo ven en `SIDEBAR_ITEMS`
+  // (`menu-visibility.ts`). SIN parametro de consulta: la guardia `atajo-aviso-ruta-visible` no
+  // necesita lista blanca nueva. Misma etiqueta que `mensajero_bloqueado_por_cierres` para la bodega:
+  // dos avisos sobre cierres, un solo sitio al que ir.
+  //
+  // El titulo lleva la CIFRA VIVA acotada al ambito del actor (R13/R14) y nombra el resultado por su
+  // nombre visible de la 455 («Reprogramado»), nunca por el codigo.
+  reprogramadas_esperan_cierre: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/cierres-admin", etiqueta: "Revisar cierres" },
+      titulo: tituloReprogramadasEsperanCierre,
+    },
+    destinatarios: ["maestro", "admin", "adminSatelite"],
+  },
+};
+
+/**
+ * R1/R2 — que pide ESTE aviso a ESTE rol. La excepcion por rol manda; si no la hay, la de por
+ * defecto. Es el UNICO punto por el que se consulta el catalogo: nadie lee `CATALOGO_AVISOS[x]` a
+ * mano y se olvida del `porRol`.
+ */
+export function accionDeAviso(evento: NotificacionEvento, rol: RolValue): AccionDeAviso {
+  const entrada = CATALOGO_AVISOS[evento];
+  return entrada.porRol?.[rol] ?? entrada.porDefecto;
+}
+
+/** R8 — atajo corto: `true` si el par (evento, rol) esta declarado ACCIONABLE. */
+export function esAccionable(evento: NotificacionEvento, rol: RolValue): boolean {
+  return accionDeAviso(evento, rol).clase === "accionable";
+}
+
+/**
+ * Titulo del aviso agregado de novedades, con la cifra VIVA. Singular y plural EXPLICITOS, como
+ * `textoCargaMasivaTerminada` y `textoCobrosGastoFijoPendientes`: «1 novedades» es el texto roto
+ * que ninguna suite ve y que un humano lee todos los dias.
+ */
+function tituloNovedadesSinGestionar(n: number): string {
+  return n === 1 ? "1 novedad espera tu decisión" : `${n} novedades esperan tu decisión`;
+}
+
+/** Titulo del aviso agregado de represadas, con la cifra VIVA. Singular y plural explicitos. */
+function tituloDevolucionesRepresadas(n: number): string {
+  return n === 1
+    ? "1 orden espera volver a su tienda"
+    : `${n} órdenes esperan volver a su tienda`;
+}
+
+/**
+ * FICHA 413 (R27) — titulo del aviso de reparto de mañana, con la cifra VIVA.
+ *
+ * Singular y plural EXPLICITOS, como sus dos hermanos de arriba y como `textoCargaMasivaTerminada`:
+ * «Tenés 1 órdenes para mañana» es el texto roto que ninguna suite ve y que un humano lee todos los
+ * dias.
+ *
+ * VOSEO, como el resto del vocabulario al mensajero («Coordiná la devolución», «revisalas una por
+ * una»).
+ *
+ * ⚠️ LA PALABRA «MAÑANA» ES SEGURA AQUI, Y ESO NO ES UN DESCUIDO DE LA REGLA DE LA 262 —«NOMBRA LA
+ * FECHA, NUNCA "hoy" NI "mañana"»—: este titulo NO SE PERSISTE. Se recompone en cada lectura con
+ * la cifra viva, y esa cifra CAE A CERO al pasar la medianoche CR, asi que el aviso no puede
+ * sobrevivir a su propio dia (R21, con reloj fijo a las 00:01 CR). El texto que SI se persiste
+ * —la `descripcion`, en `emitir.ts`— nombra la fecha igualmente, como cinturon.
+ */
+function tituloRepartoManana(n: number): string {
+  return n === 1 ? "Tenés 1 orden para mañana" : `Tenés ${n} órdenes para mañana`;
+}
+
+/**
+ * FICHA 462 (R13) — titulo del aviso de reprogramadas retenidas, con la cifra VIVA acotada al
+ * ambito del actor. Singular y plural EXPLICITOS, como sus tres hermanos.
+ *
+ * Nombra el resultado por su NOMBRE VISIBLE de la 455 (`NOMBRE_ESTADO.reprogramado`, «Reprogramado»)
+ * y no por el codigo `reprogramado` ni por «reprogramadas» a secas: es el mismo vocabulario que la
+ * persona lee en `/ordenes` y en la ficha de la orden. Mutacion obligatoria del design (§8.2-14):
+ * cambiarlo por «reprogramadas» sin el nombre visible pone rojo el test literal.
+ *
+ * FASE 3 (decision del leader, 2026-09-25; prevalece sobre requirements/R13): se cuenta el PAQUETE
+ * («1 paquete espera» / «N paquetes esperan»), en masculino, igual que la marca de `/cierres-admin` y
+ * la franja de `/ordenes`. Las cuatro superficies hablan del mismo sujeto con la misma palabra.
+ *
+ * TUTEO («su cierre»), como el resto de los avisos de cierres a bodega («Aprueba el mas antiguo»).
+ */
+function tituloReprogramadasEsperanCierre(n: number): string {
+  const resultado = NOMBRE_ESTADO.reprogramado;
+  return n === 1
+    ? `${resultado} para hoy: 1 paquete espera la aprobación de su cierre`
+    : `${resultado} para hoy: ${n} paquetes esperan la aprobación de su cierre`;
+}

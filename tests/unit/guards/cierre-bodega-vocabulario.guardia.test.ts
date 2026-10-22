@@ -1,0 +1,696 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { quitarComentarios } from "../../fixtures/sin-comentarios";
+import { LLAMADAS_PROHIBIDAS_EN_DINERO } from "../../fixtures/money-safe";
+import {
+  CASCADA_CENTRAL_TITULO,
+  CASCADA_DUENO_TITULO,
+  CASCADA_FACTURA_TIENDA_TITULO,
+  CASCADA_NETO_EMPRESA_TITULO,
+  COBRADO_SOBRE_RECAUDADO_LABEL,
+  EFECTIVO_NO_CUBRE_NOTA,
+  FACTURADO_EMPRESA_LABEL,
+  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
+  GANA_BODEGA_SATELITE_LABEL,
+  GANA_BODEGA_SATELITE_NOTA,
+  GANA_LA_TIENDA_NEGATIVO_NOTA,
+  GANA_LA_TIENDA_NOTA,
+  INGRESO_TOTAL_COL,
+  NETO_EMPRESA_LABEL,
+  NETO_EMPRESA_NEGATIVO_NOTA,
+  NETO_EMPRESA_NOTA,
+  PARA_LA_CENTRAL_LABEL,
+  PARA_LA_CENTRAL_NEGATIVO_NOTA,
+  PARA_LA_CENTRAL_NOTA,
+  PARA_LA_TIENDA_LABEL,
+  // ⭑ FICHA 431 (T18) — los cinco rótulos del vocabulario de la CONCILIACIÓN. Se importan
+  // para anclar su VALOR a mano más abajo, nunca para compararlos consigo mismos.
+  FALTA_POR_RECIBIR_LABEL,
+  MONTO_RECIBIDO_LABEL,
+  PENDIENTE_CONCILIAR_LABEL,
+  RECIBIDO_INCOMPLETO_LABEL,
+  RECIBIDO_LABEL,
+  SIN_CONCILIAR_LABEL,
+} from "@/app/(app)/cierres-admin/_components/cierre-labels";
+import {
+  INGRESO_BRUTO_NOTA,
+  INGRESO_PANEL_LABEL,
+  INGRESO_TOTAL_LABEL,
+} from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+
+/**
+ * 💰 FICHA 393 (2026-09-08) — GUARDIA PERENNE DEL VOCABULARIO DEL CIERRE DE BODEGA.
+ *
+ * ── QUÉ PROTEGE
+ * En las superficies de un cierre de BODEGA, cada cifra se llama de UNA sola forma y ninguna
+ * aparece dos veces con dos nombres (R23/R24). Esta guardia vigila tres cosas que el compilador
+ * no puede ver, porque son literales y ausencias:
+ *
+ *  1. **«Ajustes» no vuelve** (R35). Era el rótulo de la columna que contenía el pago al
+ *     mensajero y el ingreso de bodega: **ninguno de los dos es un ajuste**, y con ese nombre la
+ *     tarjeta escondía justo el número que la satélite necesita para operar.
+ *  2. **Ninguna cifra que ya es LÍNEA de una cascada vuelve como tarjeta suelta** (R34/R24). El
+ *     detalle tenía cinco —«Ingreso bruto», «Pago a mensajeros», «Ganancia», «Ingreso de bodega
+ *     por rechazos» y «Pago a tienda»—: las mismas cifras, sin cascada y con nombres que no son
+ *     los que usa quien las lee. Ahí empezó la ficha.
+ *  3. **`CENTRAL_DEBE_LABEL` no se reusa** (D6/A8). «Central debe» ya significa algo muy
+ *     concreto y distinto —el pago a mensajeros que el EFECTIVO no alcanzó a cubrir, en la
+ *     pantalla de consolidación, ANTES de solicitar—. Darle un segundo significado en la
+ *     pantalla de al lado es exactamente lo que R24 prohíbe.
+ *
+ * Y una cuarta, de la familia money-safe (R14): en las superficies de las cascadas no hay
+ * `Number(`, `parseFloat(`, `parseInt(` ni `.toFixed(` — el navegador no hace aritmética de
+ * dinero.
+ *
+ * ── EL BARRIDO MONEY-SAFE LEE `cierre-factura.tsx` ENTERO, Y EL DEL VOCABULARIO NO
+ * Corregido el 2026-09-08 tras la revisión de la ficha (BLOQUEANTE 1), con la mutación que lo
+ * demostró: `money(String(Number(monto)))` en el importe de «Para la central» dejaba **197
+ * archivos de guardias y 2914 tests en verde**. El motivo era que los dos trozos de bodega que
+ * se cortan más abajo NO contienen `LineaMonto` ni `conOperador` —viven arriba, fuera de la
+ * `<section>` y fuera del componente— y son justo la función que formatea CADA línea de dinero
+ * de la cascada B en la tarjeta.
+ *
+ * Las dos mitades de esta guardia leen cosas distintas A PROPÓSITO, y la asimetría no es un
+ * descuido:
+ *
+ *  · El **censo del vocabulario** (Ajustes / cifra suelta / Central debe) se queda en los DOS
+ *    TROZOS: el archivo sirve a cuatro superficies y las otras tres siguen diciendo «Ajustes»
+ *    a propósito (R21). Barrer el archivo entero lo pondría rojo por un motivo legítimo.
+ *  · El barrido **money-safe** lee el ARCHIVO ENTERO: «no se hace aritmética de dinero en el
+ *    navegador» vale para las cuatro superficies por igual, no hay ninguna a la que se le
+ *    permita, y los formateadores son COMPARTIDOS. Hoy sale verde sin excepciones: el archivo
+ *    no tiene ni un `Number(` ni un `.toFixed(` en sus 2.000 líneas.
+ *
+ * ── QUÉ ES «UNA SUPERFICIE DEL CIERRE DE BODEGA», Y QUÉ NO
+ * Decisión del frontend_dev, escrita aquí porque de ella depende el veredicto:
+ *
+ *  · SÍ lo son los tres listados de cierres de bodega, el detalle del maestro, el componente de
+ *    la cascada y —dentro del comprobante compartido— **sólo** la rama del cierre de bodega.
+ *  · NO lo es `ConsolidacionBodegaModule.tsx`. Esa pantalla enseña los agregados de los
+ *    `cierre_dia` que TODAVÍA NO están consolidados: ahí no hay cierre de bodega, y sus tarjetas
+ *    de pago al mensajero, ingreso de bodega y «Central debe» hablan de otra cosa. Incluirla
+ *    pondría roja esta guardia por un motivo legítimo, que es la forma más rápida de que una
+ *    guardia se acabe ignorando. El listado que esa pantalla monta —el de los solicitados— SÍ
+ *    está censado, en su propio archivo.
+ *  · `cierre-factura.tsx` es de CUATRO superficies (cierre de mensajero del admin, cierre propio
+ *    del mensajero, `cierre_dia` consolidable y cierre de bodega). Las tres primeras siguen
+ *    diciendo «Ajustes» a propósito (R21), así que del archivo se extraen sólo los dos trozos
+ *    que son de bodega y se censan ESOS.
+ *
+ * ── EL BLOQUE DE AUTOCOMPROBACIÓN, Y POR QUÉ ES OBLIGATORIO
+ * Una guardia estática rota no falla: **calla**. Si el recorrido no encontrara archivos, o el
+ * quitador de comentarios devolviera vacío, o el extractor del trozo de bodega cortara una
+ * cadena de dos caracteres, el censo saldría sin infractores y el verde no significaría nada.
+ * Mismo patrón que `flete-por-rechazo-censo.guardia.test.ts` (ficha 338).
+ */
+
+const RAIZ = path.resolve(__dirname, "../../..");
+const COMPONENTES = path.join(RAIZ, "app", "(app)", "cierres-admin", "_components");
+const HOJA = path.join(COMPONENTES, "cierre-factura.tsx");
+
+/** Los archivos que son ENTEROS una superficie del cierre de bodega. */
+const SUPERFICIES_ENTERAS = [
+  "CierresBodegaAdminModule.tsx",
+  "CierresBodegaSolicitadosLista.tsx",
+  "CierresBodegaResueltosLista.tsx",
+  "CascadaDinero.tsx",
+] as const;
+
+/** Un trozo de código censado, con el nombre por el que se reporta un hallazgo. */
+interface Superficie {
+  nombre: string;
+  codigo: string;
+}
+
+/** Todos los `.ts`/`.tsx` de `app/(app)/cierres-admin/`, recursivo. Sólo para la autocomprobación. */
+function fuentesDeCierresAdmin(dir: string = path.join(RAIZ, "app", "(app)", "cierres-admin")): string[] {
+  const salida: string[] = [];
+  for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+    const completa = path.join(dir, entrada.name);
+    if (entrada.isDirectory()) salida.push(...fuentesDeCierresAdmin(completa));
+    else if (/\.tsx?$/.test(entrada.name)) salida.push(completa);
+  }
+  return salida;
+}
+
+/**
+ * El trozo del comprobante que es del CIERRE DE BODEGA.
+ *
+ * Se cortan dos: la `<section>` de la cascada —la que sustituye a la columna «Ajustes» cuando
+ * hay `cascadaCentral`— y el cuerpo de `CierreBodegaFacturaResumen`. El corte cuenta llaves para
+ * no partirse dentro de una expresión, igual que hace `cierre-detalle-superficies.guardia`.
+ */
+function trozosDeBodegaEnLaHoja(fuente: string): Superficie[] {
+  const trozos: Superficie[] = [];
+
+  const inicioSeccion = fuente.indexOf("<section aria-label={CASCADA_CENTRAL_TITULO}>");
+  if (inicioSeccion !== -1) {
+    const fin = fuente.indexOf("</section>", inicioSeccion);
+    trozos.push({
+      nombre: "cierre-factura.tsx › la columna de la cascada",
+      codigo: fuente.slice(inicioSeccion, fin === -1 ? fuente.length : fin),
+    });
+  }
+
+  const inicioFn = fuente.indexOf("export function CierreBodegaFacturaResumen(");
+  if (inicioFn !== -1) {
+    // El conteo arranca en el `) {` que abre el CUERPO, no en la firma: la lista de props se
+    // desestructura con llaves, y contar desde el nombre cerraría el bloque al acabar la firma
+    // — devolviendo 68 caracteres que pasarían el censo sin haber mirado el componente.
+    const cuerpo = fuente.indexOf(") {", inicioFn);
+    let llaves = 0;
+    let visto = false;
+    let i = cuerpo === -1 ? inicioFn : cuerpo;
+    for (; i < fuente.length; i += 1) {
+      const c = fuente[i];
+      if (c === "{") {
+        llaves += 1;
+        visto = true;
+      } else if (c === "}") {
+        llaves -= 1;
+        if (visto && llaves === 0) break;
+      }
+    }
+    trozos.push({
+      nombre: "cierre-factura.tsx › CierreBodegaFacturaResumen",
+      codigo: fuente.slice(inicioFn, i + 1),
+    });
+  }
+
+  return trozos;
+}
+
+/** El código de un componente de `cierres-admin`, ya sin comentarios. */
+function leer(archivo: string): string {
+  return quitarComentarios(readFileSync(path.join(COMPONENTES, archivo), "utf8"));
+}
+
+/** Los cuatro archivos que son ENTEROS del cierre de bodega, ya leídos. */
+function superficiesEnteras(): Superficie[] {
+  return SUPERFICIES_ENTERAS.map((archivo) => ({ nombre: archivo, codigo: leer(archivo) }));
+}
+
+/** El censo del VOCABULARIO: los cuatro archivos completos + los dos trozos del comprobante. */
+function superficies(): Superficie[] {
+  return [...superficiesEnteras(), ...trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8")))];
+}
+
+/**
+ * El censo MONEY-SAFE: los cuatro archivos completos + `cierre-factura.tsx` **entero**.
+ *
+ * No los dos trozos: `LineaMonto` y `conOperador` —las funciones que pintan CADA importe de la
+ * cascada B en la tarjeta— quedan fuera de ellos, y ahí es donde se pierde un céntimo. La
+ * prohibición de hacer aritmética de dinero en el navegador no tiene excepción por superficie,
+ * así que aquí el recorte no se justifica y no se hace.
+ */
+function superficiesMoneySafe(): Superficie[] {
+  return [
+    ...superficiesEnteras(),
+    {
+      nombre: "cierre-factura.tsx › el archivo ENTERO",
+      codigo: quitarComentarios(readFileSync(HOJA, "utf8")),
+    },
+  ];
+}
+
+const SUPERFICIES = superficies();
+const SUPERFICIES_MONEY_SAFE = superficiesMoneySafe();
+
+/** Las líneas de un código que casan un patrón (los comentarios ya están fuera). */
+function lineasQueCasan(codigo: string, patron: RegExp): number[] {
+  const salida: number[] = [];
+  codigo.split("\n").forEach((linea, i) => {
+    if (patron.test(linea)) salida.push(i + 1);
+  });
+  return salida;
+}
+
+/** Un hallazgo por línea infractora, con la superficie donde vive. */
+function censar(patron: RegExp): string[] {
+  return SUPERFICIES.flatMap((s) =>
+    lineasQueCasan(s.codigo, patron).map((linea) => `${s.nombre}:${linea}`),
+  );
+}
+
+/**
+ * El rótulo retirado y su identificador. Se persiguen los DOS: quitar el literal y dejar la
+ * constante importada deja la puerta abierta a volver a pintarla, y quitar la constante y
+ * escribir el literal a mano es el mismo defecto con otra letra.
+ */
+const AJUSTES = /(?:\bAjustes\b|RESUMEN_AJUSTES_TITULO)/u;
+
+/** Las cinco tarjetas sueltas que la ficha absorbió: rótulos y componentes. */
+const CIFRA_SUELTA =
+  /(?:INGRESO_BRUTO_LABEL|GANANCIA_LABEL|GANANCIA_NOTA|GANANCIA_NOTA_BODEGA|PAGO_TIENDA_LABEL|PAGO_TIENDA_NOTA|INGRESO_BODEGA_RECHAZOS_LABEL|MontoDerivadoCard|PagoMensajeroTotal|IngresoBodegaRechazosTotal|Ingreso bruto|Pago a tienda|Total a pagar a mensajeros)/u;
+
+/** La etiqueta que YA significa otra cosa en la consolidación (D6/A8). */
+const CENTRAL_DEBE = /(?:CENTRAL_DEBE_LABEL|CENTRAL_DEBE_NOTA|CentralDebeTotal|\bCentral debe\b)/u;
+
+/** Los rótulos que la ficha SÍ pone: si el extractor no los ve, no está leyendo nada. */
+const ROTULOS_NUEVOS =
+  /(?:CASCADA_CENTRAL_TITULO|PARA_LA_CENTRAL_LABEL|GANA_BODEGA_SATELITE_LABEL)/u;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ FICHA 431 (T18) — EL CUARTO CENSO: EL VOCABULARIO DE LA APROBACIÓN NO VUELVE.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// ── QUÉ PROTEGE, Y POR QUÉ HACE FALTA UNA GUARDIA Y NO BASTA UN TEST DE PANTALLA
+// La 431 convierte la aprobación de nivel 2 en una MARCA DE CONCILIACIÓN: `solicitado` se lee
+// «Pendiente de conciliar», `aprobado` se lee «Recibido» y `rechazado` SE RETIRA de la pantalla
+// (D2/R16/R28). El camino viejo de aprobar/rechazar NO se arranca del árbol (Q4) —sigue ahí,
+// imposible de escribir contra la base por el `CHECK` de R15—, así que lo único que separa la
+// pantalla de hoy de la de ayer es que NADIE LO MONTE. Eso es una AUSENCIA, y una ausencia no
+// la sostiene ningún test de componente: un botón «Aprobar» que vuelva a una superficie no
+// rompe nada, simplemente vuelve a estar.
+//
+// ── ESTA GUARDIA NO AFLOJA NINGUNA DE LAS TRES AFIRMACIONES ANTERIORES: AÑADE UNA CUARTA.
+// Los censos de «Ajustes», de la cifra suelta y de «Central debe» se quedan exactamente como
+// estaban, sobre las mismas seis superficies. Éste es un detector MÁS, y trae su canario y su
+// contraprueba como el de `AJUSTES`.
+//
+// ── LO QUE EL DETECTOR NO PUEDE VIGILAR, DICHO EN VOZ ALTA
+// `ESTADO_LABEL` (el mapa del enum, con «Aprobado» y «Rechazado» dentro) NO se toca y NO puede
+// entrar aquí: lo comparte el cierre del MENSAJERO, donde esos rótulos siguen siendo los
+// correctos (D3). Lo que esta guardia persigue es que una superficie de BODEGA vuelva a
+// PINTARLOS, y eso se ve porque el literal o el identificador reaparece en su código.
+const APROBACION =
+  /(?:Esperando aprobación|pendiente de aprobación|Aprobar cierre|Rechazar cierre|APROBAR_LABEL|RECHAZAR_LABEL|\bAprobado\b|\bRechazado\b)/u;
+
+/**
+ * ⭑ FICHA 431 (T18) — la AUTOCOMPROBACIÓN del censo de arriba, y es obligatoria.
+ *
+ * Un censo que tiene que salir VACÍO es la forma más fácil de que una guardia mienta: si el
+ * extractor dejara de leer —un archivo renombrado, un recorte que corta a nada, el quitador de
+ * comentarios devolviendo cadena vacía— el censo saldría vacío igual y el verde no significaría
+ * absolutamente nada.
+ *
+ * Por eso se exige lo contrario en el mismo barrido: que el vocabulario que la ficha SÍ pone
+ * aparezca, y en MÁS DE UNA superficie. Son los identificadores por los que la conciliación
+ * llega a cada pantalla: el componente de las acciones en la cola del maestro, y la prop de la
+ * marca en el comprobante que ven las dos partes.
+ */
+const CONCILIACION_PUESTA =
+  /(?:marcaConciliacion|ConciliacionAcciones|ESTADO_CONCILIACION_LABEL|MONTO_RECIBIDO_LABEL|FALTA_POR_RECIBIR_LABEL|PENDIENTE_CONCILIAR_LABEL|RECIBIDO_LABEL)/u;
+
+describe("393 — autocomprobación del censo (una guardia estática rota no falla: calla)", () => {
+  it("los archivos censados existen y el recorrido ve `cierres-admin` entero", () => {
+    for (const archivo of SUPERFICIES_ENTERAS) {
+      expect(
+        existsSync(path.join(COMPONENTES, archivo)),
+        `${archivo} no existe: la guardia se quedó vigilando un archivo muerto`,
+      ).toBe(true);
+    }
+    expect(existsSync(HOJA)).toBe(true);
+    // El 2026-09-08 había 31 fuentes en `cierres-admin`. El umbral es holgado a propósito: mide
+    // que el recorrido FUNCIONA, no cuántos componentes tiene la pantalla.
+    expect(fuentesDeCierresAdmin().length).toBeGreaterThan(15);
+  });
+
+  it("los dos trozos del comprobante se cortaron de verdad, y son de bodega", () => {
+    const trozos = trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8")));
+    expect(
+      trozos.length,
+      "no se pudo aislar la parte de bodega de `cierre-factura.tsx`. O el componente se renombró, " +
+        "o la columna de la cascada dejó de existir. En los dos casos, mirar ESTO antes de creerle " +
+        "al censo de abajo.",
+    ).toBe(2);
+    for (const trozo of trozos) {
+      expect(trozo.codigo.length, `${trozo.nombre} salió cortado a nada`).toBeGreaterThan(200);
+    }
+    // El trozo de la columna es el de la cascada, no el de «Ajustes» de las otras tres.
+    expect(trozos[0].codigo).toMatch(/PARA_LA_CENTRAL_LABEL/);
+    expect(trozos[1].codigo).toMatch(/cascadaCentral/);
+  });
+
+  it("el barrido money-safe SÍ ve `LineaMonto` y `conOperador`, que los dos trozos no alcanzan", () => {
+    // La autocomprobación que faltaba, y que costó un bloqueante: los dos trozos de arriba
+    // dejan fuera precisamente la función que formatea cada importe de la cascada B en la
+    // tarjeta, así que un `Number(monto)` puesto ahí no lo veía nadie. Se afirman las DOS
+    // cosas: que el trozo NO llega y que el barrido money-safe SÍ.
+    const trozos = trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8")));
+    for (const trozo of trozos) {
+      expect(
+        trozo.codigo,
+        `${trozo.nombre} pasó a contener el formateador; si eso es a propósito, este caso hay ` +
+          "que reescribirlo, no borrarlo",
+      ).not.toMatch(/function (?:LineaMonto|conOperador)\(/);
+    }
+
+    const hoja = SUPERFICIES_MONEY_SAFE.find((s) => s.nombre.startsWith("cierre-factura.tsx"));
+    expect(hoja, "el barrido money-safe dejó de leer el comprobante").toBeDefined();
+    expect(hoja?.codigo).toMatch(/function LineaMonto\(/);
+    expect(hoja?.codigo).toMatch(/function conOperador\(/);
+    // Y lee el archivo ENTERO, no un recorte: los dos trozos juntos son una fracción de él.
+    const recortado = trozos.reduce((n, t) => n + t.codigo.length, 0);
+    expect(hoja?.codigo.length ?? 0).toBeGreaterThan(recortado * 2);
+  });
+
+  it("el MISMO extractor encuentra los rótulos NUEVOS: sí lee código, y el cambio está puesto", () => {
+    // Si esto sale vacío, el censo de abajo no prueba nada: o el barrido no lee, o las cascadas
+    // no están montadas. En cualquiera de los dos casos, el verde de abajo es falso.
+    const nuevos = censar(ROTULOS_NUEVOS);
+    expect(nuevos.length, "los rótulos de las cascadas no aparecen en ninguna superficie").toBeGreaterThan(
+      4,
+    );
+    // Y aparecen en el comprobante Y en el detalle: las dos superficies, no una.
+    const donde = new Set(nuevos.map((h) => h.split(":")[0]));
+    expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
+  });
+
+  it("⭑ 431/T18: el MISMO extractor encuentra el vocabulario de la CONCILIACIÓN, en MÁS DE UNA superficie", () => {
+    // ESTE ES EL CASO QUE SOSTIENE EL CENSO DE ABAJO. El de `APROBACION` tiene que salir VACIO,
+    // y un censo vacio es indistinguible de un extractor roto: si el barrido dejara de leer, la
+    // ficha estaria «cumplida» sin haber mirado una linea. Aqui se afirma lo contrario —que el
+    // MISMO barrido, sobre las MISMAS superficies, SI encuentra lo que la 431 puso— y en dos
+    // sitios distintos, que es lo que distingue «lee» de «lee un archivo».
+    const puestos = censar(CONCILIACION_PUESTA);
+    expect(
+      puestos.length,
+      "el vocabulario de la conciliación no aparece en ninguna superficie del cierre de bodega. " +
+        "O la 431 no está montada, o el extractor dejó de leer. En los dos casos, el censo vacío " +
+        "de `APROBACION` no prueba nada.",
+    ).toBeGreaterThan(1);
+
+    const donde = new Set(puestos.map((h) => h.split(":")[0]));
+    expect(
+      donde.size,
+      `el vocabulario de la conciliación sale en UNA sola superficie (${[...donde].join(", ")}). ` +
+        "Son dos como mínimo: la cola donde la central marca y el comprobante que ven las dos " +
+        "partes. Con una sola, este caso pasaría leyendo un archivo y dando los otros cinco por " +
+        "buenos.",
+    ).toBeGreaterThan(1);
+    // Y son EXACTAMENTE esas dos, nombradas: la cola del maestro y el comprobante de bodega.
+    expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
+  });
+
+  it("el detector marca el literal y NO marca el comentario", () => {
+    const conLiteral = 'const X = "Ajustes";';
+    const enComentario = "// La columna se llamaba Ajustes hasta la ficha 393.\nconst y = 1;";
+    const enBloque = "/**\n * Ajustes: el rótulo que se retiró.\n */\nconst z = 2;";
+
+    expect(lineasQueCasan(quitarComentarios(conLiteral), AJUSTES)).toEqual([1]);
+    expect(lineasQueCasan(quitarComentarios(enComentario), AJUSTES)).toEqual([]);
+    expect(lineasQueCasan(quitarComentarios(enBloque), AJUSTES)).toEqual([]);
+    // Y los otros dos detectores, con su canario y su contraprueba.
+    expect(lineasQueCasan('label={GANANCIA_LABEL}', CIFRA_SUELTA)).toEqual([1]);
+    expect(lineasQueCasan('label={NETO_EMPRESA_LABEL}', CIFRA_SUELTA)).toEqual([]);
+    expect(lineasQueCasan('<CentralDebeTotal value={x} />', CENTRAL_DEBE)).toEqual([1]);
+    expect(lineasQueCasan('<CascadaDinero titulo={x} />', CENTRAL_DEBE)).toEqual([]);
+
+    // ⭑ 431/T18 — el canario y la contraprueba del CUARTO detector, en las dos direcciones.
+    // El canario: los seis literales e identificadores que persigue, uno por uno.
+    for (const canario of [
+      'const t = "Esperando aprobación";',
+      'const t = "Tu cierre está pendiente de aprobación";',
+      '<Button>{APROBAR_LABEL}</Button>',
+      '<Button>{RECHAZAR_LABEL}</Button>',
+      'title="Rechazar cierre de bodega"',
+      'const x = "Aprobado";',
+    ]) {
+      expect(lineasQueCasan(canario, APROBACION), canario).toEqual([1]);
+    }
+
+    // La CONTRAPRUEBA, y es la que hace que el detector sea usable: el vocabulario NUEVO no lo
+    // dispara. Sin esto, «Pendiente de conciliar» podría estar casando por la palabra
+    // «pendiente» y el censo sería rojo por lo que la ficha vino a poner.
+    for (const inocente of [
+      'const t = PENDIENTE_CONCILIAR_LABEL;',
+      'const t = RECIBIDO_LABEL;',
+      '<ConciliacionAcciones marca={c} />',
+      'marcaConciliacion={{ conciliado: true }}',
+      'const t = "Recibido incompleto";',
+    ]) {
+      expect(lineasQueCasan(inocente, APROBACION), inocente).toEqual([]);
+    }
+
+    // Y el comentario NO cuenta: el que explica el cambio nombra a propósito lo que retira.
+    const enComentario431 = ["// Aquí decía «Aprobado» hasta la ficha 431.", "const y = 1;"].join(
+      "\n",
+    );
+    expect(lineasQueCasan(quitarComentarios(enComentario431), APROBACION)).toEqual([]);
+  });
+});
+
+describe("393 — censo: el vocabulario del cierre de bodega (R23/R24/R34/R35)", () => {
+  it("ninguna superficie del cierre de bodega dice «Ajustes» (R35)", () => {
+    expect(
+      censar(AJUSTES),
+      "«Ajustes» volvió a una superficie del cierre de bodega. Ese bloque contiene el pago al " +
+        "mensajero y lo que gana la bodega satélite: ninguno de los dos es un ajuste, y con ese " +
+        "nombre la tarjeta esconde el número que la satélite necesita para operar.",
+    ).toEqual([]);
+  });
+
+  it("ninguna cifra que ya es LÍNEA de una cascada vuelve como tarjeta suelta (R24/R34)", () => {
+    expect(
+      censar(CIFRA_SUELTA),
+      "una cifra que ya es línea de una cascada volvió a montarse suelta en una superficie del " +
+        "cierre de bodega. Es el defecto con el que empezó la ficha: la misma cifra dos veces, " +
+        "con dos nombres, en la misma pantalla. Los componentes siguen existiendo para el cierre " +
+        "de MENSAJERO (R30), pero aquí no se montan.",
+    ).toEqual([]);
+  });
+
+  it("⭑ 431/R16/R28: el vocabulario de la APROBACIÓN no vuelve a ninguna superficie de bodega", () => {
+    expect(
+      censar(APROBACION),
+      "una superficie del cierre de bodega volvió a hablar de aprobar o rechazar. Desde la ficha " +
+        "431 la aprobación de nivel 2 NO existe como puerta: lo que hay es una MARCA DE " +
+        "CONCILIACIÓN —«Pendiente de conciliar» / «Recibido» / «Recibido incompleto»— que dice si " +
+        "el efectivo llegó, y «Rechazado» se retiró de la pantalla (R16). El código viejo sigue en " +
+        "el árbol a propósito (Q4) y es imposible de escribir contra la base por el `CHECK` de " +
+        "R15: lo ÚNICO que lo mantiene fuera de la vista es que nadie lo monte, y eso es una " +
+        "AUSENCIA que ningún test de componente sostiene. Por eso existe este censo. " +
+        "⚠️ `ESTADO_LABEL` NO es el problema y no se toca: lo comparte el cierre del MENSAJERO, " +
+        "donde «Aprobado» sigue siendo el rótulo correcto (D3). Lo que aquí está prohibido es que " +
+        "una superficie de BODEGA lo PINTE.",
+    ).toEqual([]);
+  });
+
+  it("«Central debe» NO se reusa para el resultado de la cascada (D6/A8)", () => {
+    expect(
+      censar(CENTRAL_DEBE),
+      "«Central debe» ya significa otra cosa: el pago a mensajeros que el EFECTIVO no alcanzó a " +
+        "cubrir, en la consolidación, antes de solicitar. El resultado de la cascada se llama " +
+        "«Para la central» y no cambia de nombre ni cuando sale negativo.",
+    ).toEqual([]);
+  });
+
+  it("money-safe: el navegador no hace aritmética de dinero en estas superficies (R14)", () => {
+    const infractoras: string[] = [];
+    for (const s of SUPERFICIES_MONEY_SAFE) {
+      for (const prohibida of LLAMADAS_PROHIBIDAS_EN_DINERO) {
+        for (const linea of lineasQueCasan(s.codigo, prohibida)) {
+          infractoras.push(`${s.nombre}:${linea} (${prohibida.source})`);
+        }
+      }
+    }
+    expect(
+      infractoras,
+      "una superficie de las cascadas convierte un importe a número. Los importes viajan como " +
+        "STRING de punta a punta y llegan YA derivados del servidor: aquí sólo se formatean. " +
+        "`cierre-factura.tsx` se lee ENTERO (no los dos trozos de bodega): sus formateadores " +
+        "—`LineaMonto`, `conOperador`— los comparten las cuatro superficies del comprobante.",
+    ).toEqual([]);
+  });
+});
+
+/**
+ * ── EL VALOR DE LOS RÓTULOS, ESCRITO A MANO
+ *
+ * Añadido el 2026-09-08 tras la revisión de la ficha (BLOQUEANTE 2). Todos los tests que tocan
+ * estas líneas importaban la constante y la comparaban CONSIGO MISMA, así que su valor no
+ * estaba anclado en ningún sitio: cambiar `GANA_BODEGA_SATELITE_LABEL` a «Ingreso bodega
+ * rechazos» —el vocabulario de columna que **R25 prohíbe expresamente**— dejaba 68 tests de las
+ * tres superficies y 2914 de las 197 guardias **en verde**.
+ *
+ * Aquí los esperados se escriben A MANO, nunca derivados de la constante: es el mismo patrón
+ * con el que `cierres-bodega-descarga-columnas.test.ts` ancla «Para la central» como encabezado
+ * del archivo, y el único que hace que un renombrado se note. Cambiar uno de estos literales es
+ * legítimo —el vocabulario lo decide el humano—, pero entonces se cambia AQUÍ también, a mano y
+ * a la vista, que es justo lo que se quiere que pase.
+ *
+ * Y no es una hipótesis: **Q4 sigue abierta** (renombrar `INGRESO_BODEGA_RECHAZOS_LABEL` en
+ * toda la app). Si alguien ejecuta ese rename con un buscar-y-reemplazar, esta es la red que
+ * distingue «la línea del cierre de bodega» de «la del cierre de mensajero».
+ */
+describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/R25/R33)", () => {
+  it.each([
+    ["CASCADA_DUENO_TITULO", CASCADA_DUENO_TITULO, "De quién es el dinero"],
+    ["CASCADA_CENTRAL_TITULO", CASCADA_CENTRAL_TITULO, "Lo que va a la central"],
+    ["PARA_LA_TIENDA_LABEL", PARA_LA_TIENDA_LABEL, "Para la tienda"],
+    ["PARA_LA_CENTRAL_LABEL", PARA_LA_CENTRAL_LABEL, "Para la central"],
+    ["NETO_EMPRESA_LABEL", NETO_EMPRESA_LABEL, "Neto de la empresa"],
+    ["COBRADO_SOBRE_RECAUDADO_LABEL", COBRADO_SOBRE_RECAUDADO_LABEL, "Cobrado sobre lo recaudado"],
+    ["FACTURADO_EMPRESA_LABEL", FACTURADO_EMPRESA_LABEL, "Lo que la empresa facturó"],
+    ["GANA_BODEGA_SATELITE_LABEL", GANA_BODEGA_SATELITE_LABEL, "Gana la bodega satélite"],
+  ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
+    expect(constante).toBe(literal);
+  });
+
+  // ⭑ FICHA 431 (T18, Q5) — LOS SEIS RÓTULOS DE LA CONCILIACIÓN, con su literal escrito A MANO.
+  //
+  // Es el vocabulario que el humano decidió el 2026-09-16 al cerrar Q5, y el que la pantalla de
+  // la satélite y la de la central usan a la vez. Anclarlo aquí cuesta un cambio visible y a
+  // propósito el día que se quiera cambiar, que es exactamente lo que se quiere que pase —el
+  // mismo criterio, palabra por palabra, que los ocho de arriba.
+  //
+  // ⚠️ NO se comparan contra sí mismos ni contra `ESTADO_CONCILIACION_LABEL`, que es el mapa que
+  // los reúne: una aserción contra su propia fuente está siempre verde y dejaría pasar cualquier
+  // renombrado. El esperado es el literal, tecleado.
+  it.each([
+    ["PENDIENTE_CONCILIAR_LABEL", PENDIENTE_CONCILIAR_LABEL, "Pendiente de conciliar"],
+    ["RECIBIDO_LABEL", RECIBIDO_LABEL, "Recibido"],
+    ["RECIBIDO_INCOMPLETO_LABEL", RECIBIDO_INCOMPLETO_LABEL, "Recibido incompleto"],
+    ["MONTO_RECIBIDO_LABEL", MONTO_RECIBIDO_LABEL, "Monto recibido"],
+    ["FALTA_POR_RECIBIR_LABEL", FALTA_POR_RECIBIR_LABEL, "Falta por recibir"],
+    ["SIN_CONCILIAR_LABEL", SIN_CONCILIAR_LABEL, "Sin conciliar"],
+  ])("⭑ 431/Q5 — %s dice exactamente lo aprobado", (_nombre, constante, literal) => {
+    expect(constante).toBe(literal);
+  });
+
+  it("⭑ 431/R28: ningún rótulo de la conciliación reusa el vocabulario de la APROBACIÓN", () => {
+    // El caso de arriba fija los textos de HOY; éste fija la REGLA, así que el siguiente rótulo
+    // que se proponga tiene que cumplirla también. Es el mismo par —texto y regla— con el que la
+    // 393 protegió «Gana la bodega satélite».
+    //
+    // Por qué importa: el fallo natural al renombrar esto es volver a la palabra de la que se
+    // viene. Un «Aprobado (recibido)» pasaría el `toBe` de arriba si alguien lo cambiara en los
+    // dos sitios, y esta regla no.
+    const prohibidos = ["aprobado", "aprobación", "rechazado", "rechazo", "aprobar", "rechazar"];
+    const rotulos: [string, string][] = [
+      ["PENDIENTE_CONCILIAR_LABEL", PENDIENTE_CONCILIAR_LABEL],
+      ["RECIBIDO_LABEL", RECIBIDO_LABEL],
+      ["RECIBIDO_INCOMPLETO_LABEL", RECIBIDO_INCOMPLETO_LABEL],
+      ["MONTO_RECIBIDO_LABEL", MONTO_RECIBIDO_LABEL],
+      ["FALTA_POR_RECIBIR_LABEL", FALTA_POR_RECIBIR_LABEL],
+      ["SIN_CONCILIAR_LABEL", SIN_CONCILIAR_LABEL],
+    ];
+    for (const [nombre, valor] of rotulos) {
+      for (const prohibido of prohibidos) {
+        expect(
+          valor.toLowerCase(),
+          `${nombre} volvió al vocabulario de la aprobación («${prohibido}»). La 431 existe ` +
+            "justamente para que esa consolidación deje de leerse como algo que alguien autoriza " +
+            "y pase a leerse como algo que llegó o no llegó.",
+        ).not.toContain(prohibido);
+      }
+    }
+    // Y los tres estados son DISTINTOS entre sí: «Recibido incompleto» no puede colapsar en
+    // «Recibido», que es justo la confusión que hace desaparecer una diferencia de ₡15.000.
+    expect(new Set([PENDIENTE_CONCILIAR_LABEL, RECIBIDO_LABEL, RECIBIDO_INCOMPLETO_LABEL]).size).toBe(3);
+  });
+
+  it.each([
+    [
+      "PARA_LA_CENTRAL_NOTA",
+      PARA_LA_CENTRAL_NOTA,
+      "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.",
+    ],
+    [
+      "PARA_LA_CENTRAL_NEGATIVO_NOTA",
+      PARA_LA_CENTRAL_NEGATIVO_NOTA,
+      "Los descuentos superan lo recaudado en este cierre: la satélite no entrega nada y la central pone la diferencia.",
+    ],
+    [
+      "EFECTIVO_NO_CUBRE_NOTA",
+      EFECTIVO_NO_CUBRE_NOTA,
+      "El efectivo recaudado no cubre los descuentos: parte de lo recaudado entró por SINPE o transferencia.",
+    ],
+    [
+      "GANA_BODEGA_SATELITE_NOTA",
+      GANA_BODEGA_SATELITE_NOTA,
+      "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.",
+    ],
+    [
+      "FLETE_RECHAZO_NO_DEDUCIBLE_NOTA",
+      FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
+      "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.",
+    ],
+  ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
+    // Las notas son la mitad del requisito, no adorno: R26 pide que se diga de qué resta sale
+    // el número, R36 qué significa el negativo y R37 por qué el efectivo puede no alcanzar.
+    // Una nota vaciada o cambiada por otra deja el número igual de solo que antes de la ficha.
+    expect(constante).toBe(literal);
+  });
+
+  it("«Gana la bodega satélite» NO repite el vocabulario de la columna (R25)", () => {
+    // R25 no pide UN texto concreto: pide que la línea se nombre desde el punto de vista de
+    // quien mira y NO repitiendo el nombre de la columna `total_ingreso_bodega_rechazos`. El
+    // caso de arriba fija el texto de hoy; éste fija la REGLA, así que el siguiente rótulo que
+    // se proponga tiene que cumplirla también.
+    const prohibidos = [
+      "Ingreso de bodega por devoluciones a origen", // el rótulo del cierre de MENSAJERO, que sigue vivo allí
+      "Ingreso bodega rechazos",
+      "total_ingreso_bodega_rechazos",
+      "ingreso_bodega_rechazos",
+    ];
+    for (const prohibido of prohibidos) {
+      expect(
+        GANA_BODEGA_SATELITE_LABEL.toLowerCase(),
+        `la línea del cierre de bodega volvió a llamarse «${prohibido}»: es el nombre de la ` +
+          "COLUMNA, no el de lo que la satélite lee. Y colisiona con el rótulo del cierre de " +
+          "mensajero, donde la bodega puede ser la central y por eso allí sí se llama así.",
+      ).not.toContain(prohibido.toLowerCase());
+    }
+    // Y sigue diciendo QUIÉN gana: sin sujeto, el número vuelve a no tener dueño.
+    expect(GANA_BODEGA_SATELITE_LABEL.toLowerCase()).toContain("satélite");
+  });
+
+  it("los dos resultados RIMAN, y ninguno reusa «Central debe» (D2′/D6)", () => {
+    // «Para la tienda» y «Para la central» son la misma pregunta contestada dos veces; que
+    // tengan la misma forma es lo que hace que las dos cascadas se lean como una sola historia.
+    expect(PARA_LA_TIENDA_LABEL.startsWith("Para la")).toBe(true);
+    expect(PARA_LA_CENTRAL_LABEL.startsWith("Para la")).toBe(true);
+    expect(PARA_LA_CENTRAL_LABEL).not.toBe("Central debe");
+    expect(PARA_LA_CENTRAL_LABEL).not.toBe(PARA_LA_TIENDA_LABEL);
+  });
+});
+
+/**
+ * SL-15 R3 — los rótulos y las notas del cierre que nombran a la empresa, con el literal escrito
+ * A MANO (R19). Salen de `EMPRESA` (`lib/config/marca.ts`); aquí se afirma lo que se LEE hoy, nunca
+ * contra `EMPRESA` ni contra la constante. Que de verdad salgan del módulo lo prueba el caso
+ * «SL-15 R4» de `tests/components/CierreBodegaDetalleCascadas.test.tsx`.
+ */
+describe("SL-15 R3 — el cierre nombra a «la empresa», escrito a mano", () => {
+  it.each([
+    ["INGRESO_TOTAL_LABEL", INGRESO_TOTAL_LABEL, "Total de la empresa"],
+    ["INGRESO_TOTAL_COL", INGRESO_TOTAL_COL, "Total de la empresa"],
+    ["INGRESO_PANEL_LABEL", INGRESO_PANEL_LABEL, "Ingreso de la empresa"],
+    [
+      "INGRESO_BRUTO_NOTA",
+      INGRESO_BRUTO_NOTA,
+      "Todo lo que facturó la empresa en el cierre (flete + IVA + comisión + IVA), sin descontar nada.",
+    ],
+    [
+      "GANA_LA_TIENDA_NOTA",
+      GANA_LA_TIENDA_NOTA,
+      "Lo recaudado menos todo lo que la empresa le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.",
+    ],
+    [
+      "GANA_LA_TIENDA_NEGATIVO_NOTA",
+      GANA_LA_TIENDA_NEGATIVO_NOTA,
+      "La empresa le factura más de lo que se recaudó en este cierre: a la tienda no le queda nada y pasa a deber la diferencia.",
+    ],
+    [
+      "NETO_EMPRESA_NOTA",
+      NETO_EMPRESA_NOTA,
+      "Lo que la empresa facturó menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.",
+    ],
+    [
+      "NETO_EMPRESA_NEGATIVO_NOTA",
+      NETO_EMPRESA_NEGATIVO_NOTA,
+      "La empresa pagó más de lo que facturó en este cierre: ese neto es una pérdida, no una ganancia.",
+    ],
+    ["CASCADA_FACTURA_TIENDA_TITULO", CASCADA_FACTURA_TIENDA_TITULO, "Lo que la empresa le factura a la tienda"],
+    ["CASCADA_NETO_EMPRESA_TITULO", CASCADA_NETO_EMPRESA_TITULO, "Lo que le queda a la empresa"],
+  ])("%s dice exactamente lo que se lee", (_nombre, constante, literal) => {
+    expect(constante).toBe(literal);
+  });
+});

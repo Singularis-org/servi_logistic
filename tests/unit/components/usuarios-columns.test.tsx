@@ -1,0 +1,151 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, cleanup, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import type { Column } from "@/components/shared/DataTable";
+import { DataTable } from "@/components/shared/DataTable";
+import type { UsuarioListItemDTO } from "@/lib/types/usuario";
+import { buildUsuariosColumns } from "@/app/(app)/configuracion/_components/usuarios-columns";
+
+afterEach(() => {
+  cleanup();
+});
+
+const ROW: UsuarioListItemDTO = {
+  id: "u1",
+  nombre: "Ana Pérez",
+  email: "ana@example.com",
+  rolValue: "mensajero",
+  estado: "activo",
+  zonaNombre: "GAM",
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+};
+
+function build(overrides: Partial<Parameters<typeof buildUsuariosColumns>[0]> = {}) {
+  const onEditar = vi.fn();
+  const onCambiarEstado = vi.fn();
+  const onRestablecerContrasena = vi.fn();
+  const columns = buildUsuariosColumns({
+    onEditar,
+    onCambiarEstado,
+    onRestablecerContrasena,
+    ...overrides,
+  });
+  return { columns, onEditar, onCambiarEstado, onRestablecerContrasena };
+}
+
+describe("usuarios-columns — define columnas del listado (R14/R26)", () => {
+  it("define columnas nombre/email/rol/estado sin exponer campos sensibles (R14)", () => {
+    const { columns } = build();
+    const ids = columns.map((c) => c.id);
+
+    expect(ids).toEqual(["nombre", "email", "rol", "estado", "zona", "acciones"]);
+    // Ninguna columna referencia el hash u otros campos sensibles (R14/R24).
+    expect(ids).not.toContain("passwordHash");
+    const serialized = JSON.stringify(columns.map((c) => c.id));
+    expect(serialized.toLowerCase()).not.toContain("password");
+  });
+
+  it("renderiza rol con su etiqueta legible y estado como chip (R14)", () => {
+    const { columns } = build();
+    render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+
+    expect(screen.getByText("Mensajero")).toBeInTheDocument();
+    expect(screen.getByText("Activo")).toBeInTheDocument();
+    // El DTO de fila no incluye el hash: no aparece en el DOM.
+    expect(screen.queryByText(/passwordHash/i)).not.toBeInTheDocument();
+  });
+
+  // Pedido humano (2026-08-26): la zona en el listado. El guion NO es cosmetico: la mayoria de
+  // los usuarios no tiene zona (solo `mensajero` y `adminSatelite` la conservan), y una celda
+  // vacia se leeria como «este dato no se cargo».
+  it("2026-08-26: pinta el nombre de la zona, y «-» cuando el usuario no tiene", () => {
+    const { columns } = build();
+    const sinZona: UsuarioListItemDTO = { ...ROW, id: "u2", nombre: "Beto Solís", zonaNombre: null };
+    render(
+      <DataTable columns={columns} data={[ROW, sinZona]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+
+    expect(within(screen.getByRole("row", { name: /Ana Pérez/ })).getByText("GAM")).toBeInTheDocument();
+    expect(within(screen.getByRole("row", { name: /Beto Solís/ })).getByText("-")).toBeInTheDocument();
+  });
+
+  it("la acción de estado muestra Inactivar para un usuario activo y dispara el callback (R20)", async () => {
+    const user = userEvent.setup();
+    const { columns, onCambiarEstado } = build();
+    render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+
+    const fila = screen.getByRole("row", { name: /Ana Pérez/ });
+    await user.click(within(fila).getByRole("button", { name: "Inactivar" }));
+    expect(onCambiarEstado).toHaveBeenCalledWith(ROW);
+  });
+
+  it("la acción de estado muestra Activar para un usuario inactivo (R21)", () => {
+    const { columns } = build();
+    const inactivo: UsuarioListItemDTO = { ...ROW, estado: "inactivo" };
+    render(
+      <DataTable
+        columns={columns}
+        data={[inactivo]}
+        rowKey="id"
+        ariaLabel="Usuarios"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Activar" })).toBeInTheDocument();
+  });
+
+  // Feature 287/R25 — la accion del maestro vive en la fila, y PIDE, no ejecuta.
+  it("la fila ofrece «Restablecer contraseña» y avisa al anfitrión con la fila (287/R25)", async () => {
+    const user = userEvent.setup();
+    const { columns, onRestablecerContrasena } = build();
+    render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+
+    const fila = screen.getByRole("row", { name: /Ana Pérez/ });
+    await user.click(
+      within(fila).getByRole("button", { name: "Restablecer contraseña" }),
+    );
+    expect(onRestablecerContrasena).toHaveBeenCalledTimes(1);
+    expect(onRestablecerContrasena).toHaveBeenCalledWith(ROW);
+  });
+
+  it("no hay ningún campo donde escribir una contraseña en la fila (287/R25)", () => {
+    const { columns } = build();
+    const { container } = render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+    expect(container.querySelectorAll("input")).toHaveLength(0);
+  });
+
+  it("deshabilita el botón de restablecer de la fila en curso (287)", () => {
+    const { columns } = build({ restablecerPendienteId: "u1" });
+    render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Restablecer contraseña" }),
+    ).toBeDisabled();
+  });
+
+  it("deshabilita el botón de estado de la fila en curso", () => {
+    const { columns } = build({ estadoPendienteId: "u1" });
+    render(
+      <DataTable columns={columns} data={[ROW]} rowKey="id" ariaLabel="Usuarios" />,
+    );
+    expect(screen.getByRole("button", { name: "Inactivar" })).toBeDisabled();
+  });
+});
+
+// Tipado defensivo: las columnas son Column<UsuarioListItemDTO>[].
+const _typed: Column<UsuarioListItemDTO>[] = buildUsuariosColumns({
+  onEditar: () => {},
+  onCambiarEstado: () => {},
+  onRestablecerContrasena: () => {},
+});
+void _typed;

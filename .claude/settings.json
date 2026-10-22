@@ -1,0 +1,39 @@
+{
+  "$comment": "Hooks del arnes v2. SessionStart inyecta la sesion personal y mis features en vuelo (docs/lectura.md); Stop corre el validador de features y solo avisa si falla; PostToolUse recuerda el gate tras editar. Los scripts viven en .claude/hooks/. Todo command que llame a .claude/hooks/ va anclado con \"$CLAUDE_PROJECT_DIR\" y cada script resuelve sus rutas contra la raiz, no contra el cwd (guardia: tests/guards/guard-hooks-anclados.test.ts).",
+  "env": {
+    "IMPECCABLE_NO_UPDATE_CHECK": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/arranque.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[arnes] Editaste un archivo. Antes de dar una task por hecha: pnpm typecheck, pnpm lint y pnpm exec vitest related --run <archivos>; al cerrar la tanda, ./init.sh'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/fin-de-turno.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

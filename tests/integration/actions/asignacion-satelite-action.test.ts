@@ -1,0 +1,234 @@
+import { describe, it, expect, vi } from "vitest";
+import {
+  asignarDesdeSatelite,
+  listarMensajerosSatelite,
+} from "@/lib/actions/recepcion-satelite";
+import type { IAsignacionSateliteService } from "@/lib/interfaces/services/IAsignacionSateliteService";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+
+// Feature 34 — Server Actions de la asignacion satelite (borde). Cubre R1/R15/R19
+// (asignarDesdeSatelite) y R2/R5/R6 (listarMensajerosSatelite). Dobles inyectados
+// por `deps`, patron recepcion-satelite-action.test.ts.
+
+const ADMIN: Actor = { usuarioId: "as1", rol: "adminSatelite" };
+const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+
+// uuids validos para pasar el schema zod (ordenIds/mensajeroId).
+const ORDEN = "11111111-1111-4111-8111-111111111111";
+const MENSAJERO = "22222222-2222-4222-8222-222222222222";
+
+const noActor = async () => null;
+const actorAdmin = async () => ADMIN;
+const actorMaestro = async () => MAESTRO;
+
+function buildService(
+  overrides: Partial<IAsignacionSateliteService> = {},
+): IAsignacionSateliteService {
+  return {
+    asignar: vi.fn(async () => ({
+      status: "ok" as const,
+      resultados: [{ ordenId: ORDEN, estado: "mensajero_recogiendo_en_bodega" as const }],
+    })),
+    ...overrides,
+  };
+}
+
+// --- asignarDesdeSatelite ---
+
+describe("asignarDesdeSatelite — borde (R1/R15/R19)", () => {
+  it("R1/R15: sin sesion -> unauthenticated, sin tocar el service", async () => {
+    const service = buildService();
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO },
+      { service, getActor: noActor },
+    );
+    expect(r.status).toBe("unauthenticated");
+    expect(service.asignar).not.toHaveBeenCalled();
+  });
+
+  it("R19: ordenIds vacio -> validation_error, sin tocar el service", async () => {
+    const service = buildService();
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [], mensajeroId: MENSAJERO },
+      { service, getActor: actorAdmin },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.asignar).not.toHaveBeenCalled();
+  });
+
+  it("R19: mensajeroId no-uuid -> validation_error, sin tocar el service", async () => {
+    const service = buildService();
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: "no-uuid" },
+      { service, getActor: actorAdmin },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.asignar).not.toHaveBeenCalled();
+  });
+
+  it("R7: happy path delega y devuelve el resultado del service", async () => {
+    const service = buildService();
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO },
+      { service, getActor: actorAdmin },
+    );
+    expect(r).toEqual({
+      status: "ok",
+      resultados: [{ ordenId: ORDEN, estado: "mensajero_recogiendo_en_bodega" }],
+    });
+    // Feature 246 (T3.1, R2/R4): el borde pasa el `dia` TAL CUAL al servicio, sin coercion. La
+    // peticion no lo traia, asi que zod le puso el default `"hoy"` — el comportamiento anterior a
+    // esta ficha (R4). Si el borde lo transformara, o si el default se perdiera, este caso lo dice.
+    // FICHA 407 (2026-09-10, R5): la foto gana `autorizarSinUbicacionIds: []`, igual que gano
+    // `dia: "hoy"` en la 246 — es lo que zod produce con `.default([])` cuando la peticion no
+    // trae el campo. Lista vacia = «ninguna autorizada» = el comportamiento previo a la ficha.
+    expect(service.asignar).toHaveBeenCalledWith(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO, dia: "hoy", autorizarSinUbicacionIds: [] },
+      ADMIN,
+    );
+  });
+
+  // Feature 368 (R15/R16) — `"partial"` es un resultado de DOMINIO mas, igual que `ok`/`conflict`:
+  // la action no lo traduce ni lo envuelve, lo devuelve tal cual (design.md §2.1).
+  it("368/R15-R16: resultado de dominio `partial` pasa tal cual, sin envolverlo ni alterarlo", async () => {
+    const partial = {
+      status: "partial" as const,
+      resultados: [{ ordenId: ORDEN, estado: "mensajero_recogiendo_en_bodega" as const }],
+      bloqueadas: [{ ordenId: "o-bloqueada", motivo: "direccion_no_geocodificable" }],
+    };
+    const service = buildService({
+      asignar: vi.fn(async () => partial),
+    });
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO },
+      { service, getActor: actorAdmin },
+    );
+    expect(r).toEqual(partial);
+  });
+
+  it("resultado de dominio del service pasa tal cual (conflict)", async () => {
+    const service = buildService({
+      asignar: vi.fn(async () => ({
+        status: "conflict" as const,
+        detalle: [{ ordenId: ORDEN, motivo: "zona_ajena" }],
+      })),
+    });
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO },
+      { service, getActor: actorAdmin },
+    );
+    expect(r).toEqual({
+      status: "conflict",
+      detalle: [{ ordenId: ORDEN, motivo: "zona_ajena" }],
+    });
+  });
+});
+
+// --- listarMensajerosSatelite (R2/R5/R6) ---
+
+type MensajerosRepo = Pick<
+  IOrdenRepository,
+  | "findUsuarioZonaId"
+  | "findMensajerosByZona"
+  | "findMensajerosBloqueadosPorCierres" // feature 271/R32
+  | "findMensajerosNoAsignablesPorEstado" // 2026-08-26: inactivo/bloqueado
+>;
+
+function buildRepo(overrides: Partial<MensajerosRepo> = {}): MensajerosRepo {
+  return {
+    findUsuarioZonaId: vi.fn(async () => "z-satelite"),
+    findMensajerosByZona: vi.fn(async () => [{ id: MENSAJERO, nombre: "Ana" }]),
+    // Feature 271 (R32): el selector marca a los que el servidor va a rechazar al asignar.
+    findMensajerosBloqueadosPorCierres: vi.fn(async () => new Set<string>()),
+    // 2026-08-26: y a los que no pueden recibir trabajo por su estado de usuario.
+    findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set<string>()),
+    ...overrides,
+  };
+}
+
+describe("listarMensajerosSatelite — scoped a la zona del actor (R2/R5/R6)", () => {
+  it("R1: sin sesion -> unauthenticated", async () => {
+    const ordenRepo = buildRepo();
+    const r = await listarMensajerosSatelite({ ordenRepo, getActor: noActor });
+    expect(r.status).toBe("unauthenticated");
+    expect(ordenRepo.findUsuarioZonaId).not.toHaveBeenCalled();
+  });
+
+  it("rol != adminSatelite -> forbidden, sin resolver zona", async () => {
+    const ordenRepo = buildRepo();
+    const r = await listarMensajerosSatelite({ ordenRepo, getActor: actorMaestro });
+    expect(r.status).toBe("forbidden");
+    expect(ordenRepo.findUsuarioZonaId).not.toHaveBeenCalled();
+  });
+
+  it("R2/R5: solo mensajeros de la zona del actor (findMensajerosByZona con esa zona)", async () => {
+    const ordenRepo = buildRepo();
+    const r = await listarMensajerosSatelite({ ordenRepo, getActor: actorAdmin });
+    expect(r).toEqual({
+      status: "ok",
+      mensajeros: [{ id: MENSAJERO, nombre: "Ana" }],
+      bloqueadosIds: [], // feature 271/R32
+      noAsignablesIds: [], // 2026-08-26: los dados de baja, por su propio motivo
+    });
+    // R2: la zona se resuelve server-side por el usuarioId del actor.
+    expect(ordenRepo.findUsuarioZonaId).toHaveBeenCalledWith("as1");
+    expect(ordenRepo.findMensajerosByZona).toHaveBeenCalledWith("z-satelite");
+  });
+
+  it("R6: adminSatelite sin zona (null) -> lista vacia, sin listar mensajeros", async () => {
+    const ordenRepo = buildRepo({ findUsuarioZonaId: vi.fn(async () => null) });
+    const r = await listarMensajerosSatelite({ ordenRepo, getActor: actorAdmin });
+    expect(r).toEqual({ status: "ok", mensajeros: [] });
+    expect(ordenRepo.findMensajerosByZona).not.toHaveBeenCalled();
+  });
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// FICHA 407 (T6, nota del spec) — ESPEJO: `lib/actions/recepcion-satelite.ts` NO SE TOCA
+// ════════════════════════════════════════════════════════════════════════════════════════
+describe("407/R1 — la marca cruza el borde de `asignarDesdeSatelite` sin tocar la action", () => {
+  it("los ids autorizados llegan al service TAL CUAL", async () => {
+    const service = buildService();
+
+    await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO, autorizarSinUbicacionIds: [ORDEN] },
+      { service, getActor: actorAdmin },
+    );
+
+    expect(service.asignar).toHaveBeenCalledWith(
+      {
+        ordenIds: [ORDEN],
+        mensajeroId: MENSAJERO,
+        dia: "hoy",
+        autorizarSinUbicacionIds: [ORDEN],
+      },
+      ADMIN,
+    );
+  });
+
+  it("R5: sin el campo, el service recibe la lista VACIA — nunca `undefined` ni «todas»", async () => {
+    const service = buildService();
+
+    await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO },
+      { service, getActor: actorAdmin },
+    );
+
+    const [entrada] = vi.mocked(service.asignar).mock.calls[0]!;
+    expect(entrada.autorizarSinUbicacionIds).toEqual([]);
+  });
+
+  it("un id que no es uuid en la marca -> validation_error, sin tocar el service", async () => {
+    const service = buildService();
+
+    const r = await asignarDesdeSatelite(
+      { ordenIds: [ORDEN], mensajeroId: MENSAJERO, autorizarSinUbicacionIds: ["no-soy-uuid"] },
+      { service, getActor: actorAdmin },
+    );
+
+    expect(r.status).toBe("validation_error");
+    expect(service.asignar).not.toHaveBeenCalled();
+  });
+});

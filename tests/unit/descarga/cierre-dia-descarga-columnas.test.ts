@@ -1,0 +1,522 @@
+import { describe, it, expect } from "vitest";
+
+import {
+  COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
+  COLUMNAS_DESCARGA_DIA_ENTREGADAS,
+  COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
+  COLUMNAS_DESCARGA_DIA_DEVUELTAS,
+  COLUMNAS_DESCARGA_DIA_RECHAZADAS,
+  COLUMNAS_DESCARGA_DIA_INCIDENTES,
+  filaDescargaDiaEntregada,
+  // FICHA 408 — las dos proyecciones que pueden traer el motivo del cron de plazos vencidos.
+  filaDescargaDiaRechazada,
+  filaDescargaDiaDevuelta,
+  // FICHA 486 (R18) — la otra proyección con columna «Tiene evidencia».
+  filaDescargaDiaIncidente,
+} from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
+import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+
+// Feature 189 — ORDEN y CENSO de las columnas de los archivos descargables del «Cierre del
+// día» del MENSAJERO (feature 170, T E.4 / R5).
+//
+// Alcance: la 189 fijó SOLO `COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS` y dejó censadas las cinco
+// secciones por resultado. Esa deuda se cierra aquí: las seis declaraciones del módulo tienen
+// ya su caso, y cada uno se vio fallar bajo su propia mutación antes de darlo por bueno.
+//
+// ⚠️ OJO AL HOMÓNIMO. Las cinco secciones por resultado tienen una gemela de nombre casi
+// idéntico en `tests/unit/descarga/cierre-gestiones-descarga-columnas.test.ts`:
+//
+//     _DIA_ENTREGADAS  (mensajero, aquí)  ≠  _GESTIONES_ENTREGADAS  (admin, allí)
+//
+// …y lo mismo con reprogramadas, devueltas, rechazadas e incidentes. Esta pantalla enseña
+// MENOS a propósito: el mensajero no ve el ingreso de la empresa (flete, comisión, IVA, «Total de
+// la empresa») ni la indemnización de un incidente, porque ese dinero no es suyo (R24). Copiar
+// un esperado del archivo del admin da un listado plausible y falso.
+// (FICHA 482, 2026-10-15: la gemela del admin se borró con `DetalleSecciones`; el aviso queda
+// para quien la busque en el historial o copie de la hoja fundida, que tampoco es esta.)
+//
+// «Total» y no «Total general», y «Ganancia» y no «Pago mensajero»: esta pantalla es la del
+// MENSAJERO y usa sus palabras. El esperado se escribe a mano con el texto que de verdad
+// llega al archivo, no leyendo la constante.
+
+describe("orden de las columnas de descarga del cierre del día (mensajero)", () => {
+  it("el histórico de CIERRES PASADOS declara sus columnas en el orden de la pantalla (R5)", () => {
+    expect(COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS.map((c) => c.clave)).toEqual([
+      "estado",
+      "destino",
+      "efectivo",
+      "simpe",
+      "transferencia",
+      "general",
+      "ganancia",
+      "fecha",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS.map((c) => c.encabezado)).toEqual([
+      "Estado",
+      "Destino",
+      "Efectivo",
+      "SINPE",
+      "Transferencia",
+      "Total",
+      "Ganancia",
+      "Fecha",
+    ]);
+  });
+
+  it("la sección ENTREGADAS declara sus columnas en el orden de la pantalla (R5)", () => {
+    // «Monto» (no «Recibido», que es la palabra del admin) y «Ganancia» cerrando: las tres
+    // columnas de ingreso de la empresa que el admin sí ve no existen en esta pantalla.
+    expect(COLUMNAS_DESCARGA_DIA_ENTREGADAS.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "numRemision",
+      "destinatario",
+      "direccion",
+      "ubicacion",
+      "producto",
+      "tienda",
+      "fechaGestion",
+      "monto",
+      "metodo",
+      "ganancia",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_ENTREGADAS.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Fecha de gestión",
+      "Monto",
+      "Método",
+      "Ganancia",
+    ]);
+  });
+
+  it("la sección REPROGRAMADAS declara sus columnas en el orden de la pantalla (R5)", () => {
+    expect(COLUMNAS_DESCARGA_DIA_REPROGRAMADAS.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "numRemision",
+      "destinatario",
+      "direccion",
+      "ubicacion",
+      "producto",
+      "tienda",
+      "fechaGestion",
+      "nuevaFecha",
+      "motivo",
+      "ganancia",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_REPROGRAMADAS.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Fecha de gestión",
+      "Nueva fecha",
+      "Motivo",
+      "Ganancia",
+    ]);
+  });
+
+  it("la sección DEVUELTAS declara sus columnas en el orden de la pantalla (R5)", () => {
+    // La más corta de las cinco: nueve columnas, sin flete de devolución ni su IVA —eso es
+    // ingreso de la empresa y esta pantalla no lo enseña (R24)—.
+    expect(COLUMNAS_DESCARGA_DIA_DEVUELTAS.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "numRemision",
+      "destinatario",
+      "direccion",
+      "ubicacion",
+      "producto",
+      "tienda",
+      "fechaGestion",
+      "motivo",
+      "ganancia",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_DEVUELTAS.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Fecha de gestión",
+      "Motivo",
+      "Ganancia",
+    ]);
+  });
+
+  it("la sección RECHAZADAS declara sus columnas en el orden de la pantalla (R5)", () => {
+    // Sin la columna «Origen» del admin, y con «Tiene evidencia» —Sí/No— en vez de la URL
+    // firmada (R22). Se diferencia de DEVUELTAS solo en esa columna, así que un esperado
+    // copiado de la hermana de al lado se detecta aquí y en ningún otro sitio.
+    expect(COLUMNAS_DESCARGA_DIA_RECHAZADAS.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "numRemision",
+      "destinatario",
+      "direccion",
+      "ubicacion",
+      "producto",
+      "tienda",
+      "fechaGestion",
+      "motivo",
+      "tieneEvidencia",
+      "ganancia",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_RECHAZADAS.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Fecha de gestión",
+      "Motivo",
+      "Tiene evidencia",
+      "Ganancia",
+    ]);
+  });
+
+  it("la sección INCIDENTES declara sus columnas en el orden de la pantalla (R5)", () => {
+    // La ÚNICA de las cinco sin columna de dinero: un incidente no se le paga al mensajero y
+    // la indemnización se le paga a la tienda (158/R17/R18). Que aquí no aparezca «Ganancia»
+    // ni «Indemnización» es la afirmación que este caso sujeta.
+    expect(COLUMNAS_DESCARGA_DIA_INCIDENTES.map((c) => c.clave)).toEqual([
+      "numGuia",
+      "numRemision",
+      "destinatario",
+      "direccion",
+      "ubicacion",
+      "producto",
+      "tienda",
+      "fechaGestion",
+      "causa",
+      "motivo",
+      "tieneEvidencia",
+    ]);
+    expect(COLUMNAS_DESCARGA_DIA_INCIDENTES.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Nº Remisión",
+      "Destinatario",
+      "Dirección",
+      "Ubicación",
+      "Producto",
+      "Tienda",
+      "Fecha de gestión",
+      "Causa",
+      "Motivo",
+      "Tiene evidencia",
+    ]);
+  });
+
+  it("las cinco secciones llevan «Fecha de gestión» y el histórico NO (2026-09-05)", () => {
+    // La columna va en el bloque COMÚN de las cinco secciones por resultado, cuyo grano es la
+    // GESTIÓN. El histórico de cierres pasados tiene otro grano —el CIERRE— y ya lleva su
+    // «Fecha»: meterle una segunda columna de fecha sería un dato que esa fila no tiene.
+    const secciones = {
+      entregadas: COLUMNAS_DESCARGA_DIA_ENTREGADAS,
+      reprogramadas: COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
+      devueltas: COLUMNAS_DESCARGA_DIA_DEVUELTAS,
+      rechazadas: COLUMNAS_DESCARGA_DIA_RECHAZADAS,
+      incidentes: COLUMNAS_DESCARGA_DIA_INCIDENTES,
+    };
+    for (const [nombre, columnas] of Object.entries(secciones)) {
+      const claves = columnas.map((c) => c.clave);
+      expect(claves, nombre).toContain("fechaGestion");
+      expect(claves.indexOf("fechaGestion"), nombre).toBe(claves.indexOf("tienda") + 1);
+    }
+    expect(COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS.map((c) => c.clave)).not.toContain(
+      "fechaGestion",
+    );
+  });
+
+  it("el archivo del mensajero SÍ lleva la fecha de su propia gestión (R24)", () => {
+    // R24 manda que el archivo no publique lo que la pantalla oculta, y lo que aquí se oculta
+    // es el dinero de la EMPRESA (flete, comisión, IVA, indemnización). `created_at` de la
+    // gestión es un dato SUYO —cuándo la hizo él—, así que sale, igual que la causa del
+    // incidente. Este caso fija esa lectura para que nadie la revierta «por prudencia».
+    const fila = filaDescargaDiaEntregada({
+      ...gestionEntregada([{ metodo: "efectivo", monto: "8000.00" }]),
+      fechaGestion: "2026-03-09",
+    });
+    expect(fila.fechaGestion).toBe("2026-03-09");
+    expect(String(fila.fechaGestion)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Y sigue sin llevar nada de la empresa por esta puerta.
+    expect(Object.keys(fila)).not.toContain("ingresoTotal");
+    expect(Object.keys(fila)).not.toContain("indemnizacion");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feature 213 [D4] — el DESGLOSE del recaudo en la celda escalar «Método»
+// ---------------------------------------------------------------------------
+//
+// Los seis casos de arriba (censo y ORDEN de columnas) NO se tocan: son justamente lo que
+// hace cumplir R26 —ni una columna nueva, ni un cambio de orden— y siguen verdes tal cual.
+// Lo que se amplía aquí es la PROYECCIÓN de la sección entregadas: qué acaba dentro de esa
+// única celda cuando la entrega se cobró con dos métodos.
+
+/**
+ * Gestión `entregada` mínima. Los campos que no intervienen en la celda «Método» se dejan
+ * en su valor neutro; lo que cada caso mueve es SOLO `pagos` (y `metodoPago`, para que se
+ * vea que la celda ya no depende de él).
+ */
+function gestionEntregada(
+  pagos: CierreDetalleGestion["pagos"],
+  metodoPago: CierreDetalleGestion["metodoPago"] = null,
+): CierreDetalleGestion {
+  return {
+    gestionId: "g-1",
+    ordenId: "o-1",
+    fechaGestion: "2026-07-11",
+    numGuia: 1234,
+    numRemision: "REM-1234",
+    destinatario: "Ana Rojas",
+    direccion: "100 m sur",
+    zonaNombre: "GAM",
+    provinciaNombre: "San José",
+    cantonNombre: "Central",
+    distritoNombre: "Carmen",
+    producto: "Caja",
+    tiendaNombre: "Tienda Uno",
+    resultado: "entregado",
+    montoRecibido: "8000.00",
+    metodoPago,
+    pagos,
+    motivo: null,
+    fechaReprogramacion: null,
+    evidenciaUrl: null, evidenciaUrls: [],
+    pagoMensajero: "1500.00",
+    ingresoBodegaRechazo: null,
+    tarifaFaltante: false,
+    esRechazoSla: false,
+    desdeAyudaTienda: false, // feature 237 (D6/R41): la registro el mensajero, no la tienda
+    causaIncidente: null,
+    indemnizacion: null,
+  };
+}
+
+describe("celda «Método» de la sección ENTREGADAS del cierre del día (mensajero)", () => {
+  it("una gestión con pago MIXTO produce UNA sola fila, no un array (R27)", () => {
+    const fila = filaDescargaDiaEntregada(
+      gestionEntregada([
+        { metodo: "efectivo", monto: "5000.00" },
+        { metodo: "transferencia", monto: "3000.00" },
+      ]),
+    );
+
+    // El archivo no se multiplica: dos líneas de pago siguen siendo una fila con las mismas
+    // claves de siempre. Multiplicarla duplicaría «Monto» y «Ganancia», y quien sumara la
+    // columna de ganancia pagaría dos veces al mensajero.
+    expect(Array.isArray(fila)).toBe(false);
+    expect(Object.keys(fila)).toEqual(
+      COLUMNAS_DESCARGA_DIA_ENTREGADAS.map((c) => c.clave),
+    );
+    expect(fila.monto).toBe("8000.00");
+    expect(fila.ganancia).toBe("1500.00");
+  });
+
+  it("dos líneas se concatenan en la celda `metodo` con un ÚNICO separador (R28)", () => {
+    const fila = filaDescargaDiaEntregada(
+      gestionEntregada([
+        { metodo: "efectivo", monto: "5000.00" },
+        { metodo: "transferencia", monto: "3000.00" },
+      ]),
+    );
+
+    // Cadena EXACTA: etiqueta legible + monto crudo, un solo « + » entre las dos ([Q1]).
+    expect(fila.metodo).toBe("Efectivo 5000.00 + Transferencia 3000.00");
+    expect(String(fila.metodo).split(" + ")).toHaveLength(2);
+  });
+
+  it("respeta el ORDEN del DTO aunque difiera del alfabético (R28)", () => {
+    // El DTO llega en orden de declaración del enum (`efectivo`, `SINPE`, `transferencia`).
+    // Aquí se le da un orden cuyo alfabético sería el contrario —«Efectivo» < «SINPE»—: si
+    // la proyección ordenara por su cuenta, esta cadena saldría al revés.
+    const fila = filaDescargaDiaEntregada(
+      gestionEntregada([
+        { metodo: "SINPE", monto: "2000.00" },
+        { metodo: "efectivo", monto: "6000.00" },
+      ]),
+    );
+
+    expect(fila.metodo).toBe("SINPE 2000.00 + Efectivo 6000.00");
+  });
+
+  it("una sola línea da SOLO la etiqueta, exactamente igual que hoy (R29)", () => {
+    // El importe ya viaja en la columna contigua «Monto», así que el archivo del 99 % de
+    // las filas no cambia con esta feature ([Q2]).
+    const fila = filaDescargaDiaEntregada(
+      gestionEntregada([{ metodo: "efectivo", monto: "8000.00" }]),
+    );
+
+    expect(fila.metodo).toBe("Efectivo");
+  });
+
+  it("sin líneas de pago la celda `metodo` queda VACÍA: `null`, ni «—» ni «» (R30)", () => {
+    // `null` es celda vacía en el archivo; el «—» es un marcador de PANTALLA y no debe
+    // filtrarse a una hoja de cálculo. Se pasa `metodoPago: "efectivo"` a propósito: la
+    // celda ya no lo lee (R23), así que sigue vacía aunque el escalar exista.
+    const fila = filaDescargaDiaEntregada(gestionEntregada([], "efectivo"));
+
+    expect(fila.metodo).toBeNull();
+  });
+
+  it("los montos son el STRING money-safe del servidor TAL CUAL (R31)", () => {
+    // Ni `toFixed`, ni separador de miles, ni símbolo de colón: el archivo lo consume una
+    // hoja de cálculo. Un monto de siete cifras es donde un formateo colado se vería.
+    const fila = filaDescargaDiaEntregada(
+      gestionEntregada([
+        { metodo: "efectivo", monto: "1234567.89" },
+        { metodo: "SINPE", monto: "0.10" },
+      ]),
+    );
+
+    expect(fila.metodo).toBe("Efectivo 1234567.89 + SINPE 0.10");
+    expect(fila.metodo).not.toMatch(/[₡$]/);
+    expect(fila.metodo).not.toMatch(/1[.,]234[.,]567/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FICHA 408 — el motivo del cron en el archivo DEL MENSAJERO (R6 con la variante LARGA)
+// ---------------------------------------------------------------------------
+//
+// Ésta es la hoja donde menos contexto hay: no lleva columna «Origen» —la pantalla de la que
+// sale tampoco la tiene, porque `CierreDiaRepository` fija `esRechazoSla: false` para esta
+// vista— y en un archivo no existe ningún tooltip. Así que la celda tiene que llevar el texto
+// AUTOSUFICIENTE, entero.
+//
+// ⚠️ Si alguien pasara `true` fijo en los llamadores de este módulo, la celda diría «Dirección
+// errada» a secas y nada más se rompería. Esa es la única aserción que lo caza aquí, y el
+// literal va tecleado a mano.
+
+/** El texto autosuficiente completo, escrito a mano (R11). */
+const MOTIVO_LARGO_DIRECCION =
+  "Dirección errada · el sistema la pasó a devolución a origen al vencerse el plazo de la novedad";
+
+/** Gestión mínima del cierre del día con el resultado y el motivo que cada caso necesita. */
+function gestionDiaConMotivo(
+  resultado: CierreDetalleGestion["resultado"],
+  motivo: string | null,
+): CierreDetalleGestion {
+  return {
+    ...gestionEntregada([]),
+    gestionId: "g-motivo",
+    resultado,
+    motivo,
+    montoRecibido: null,
+    // Lo que ESTA vista recibe SIEMPRE del servidor (feature 102).
+    esRechazoSla: false,
+  };
+}
+
+describe("FICHA 408 — el motivo del cron en el archivo del cierre del día", () => {
+  it("un rechazo automático emite el texto LARGO, no la etiqueta a secas (R6/R11)", () => {
+    const fila = filaDescargaDiaRechazada(
+      gestionDiaConMotivo("devolucion_a_origen_por_rechazo", "escalado SLA wrong_address"),
+    );
+
+    expect(fila.motivo).toBe(MOTIVO_LARGO_DIRECCION);
+    expect(fila.motivo).not.toBe("Dirección errada");
+  });
+
+  it("y en esa celda no queda ni la sigla ni el value del enum (R4)", () => {
+    const fila = filaDescargaDiaRechazada(
+      gestionDiaConMotivo("devolucion_a_origen_por_rechazo", "escalado SLA not_found"),
+    );
+
+    expect(fila.motivo).toBe(
+      "Cliente no localizado · el sistema la pasó a devolución a origen al vencerse el plazo de la novedad",
+    );
+    expect(String(fila.motivo)).not.toContain("SLA");
+    expect(String(fila.motivo)).not.toContain("not_found");
+  });
+
+  it("una DEVUELTA con la plantilla también se traduce, y con el mismo texto largo (R6)", () => {
+    const fila = filaDescargaDiaDevuelta(
+      gestionDiaConMotivo("novedad", "escalado SLA wrong_address"),
+    );
+
+    expect(fila.motivo).toBe(MOTIVO_LARGO_DIRECCION);
+  });
+
+  it("el motivo que él escribió sale intacto (R2)", () => {
+    const fila = filaDescargaDiaRechazada(
+      gestionDiaConMotivo("devolucion_a_origen_por_rechazo", "El cliente no contesta el timbre"),
+    );
+
+    expect(fila.motivo).toBe("El cliente no contesta el timbre");
+  });
+
+  it("un motivo AUSENTE deja la celda VACÍA, nunca el guion de pantalla (R3)", () => {
+    const fila = filaDescargaDiaRechazada(gestionDiaConMotivo("devolucion_a_origen_por_rechazo", null));
+
+    expect(fila.motivo).toBeNull();
+    expect(fila.motivo).not.toBe("—");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FICHA 486 (R18) — «Tiene evidencia» con varias fotos
+// ---------------------------------------------------------------------------
+//
+// Desde la 486 una gestión trae TODAS sus fotos firmadas (`evidenciaUrls`, hasta 3). El archivo
+// del mensajero sigue diciendo solo «Sí»/«No» (R22 de la 230): «Sí» si y solo si hay al menos
+// una, y ninguna de las N URLs puede acabar en una celda. Aserciones contra LITERALES.
+describe("FICHA 486 — «Tiene evidencia» del archivo del cierre del día con varias fotos (R18)", () => {
+  const TRES_URLS = [
+    "https://storage.example/firmada/foto-0.jpg?token=uno",
+    "https://storage.example/firmada/foto-1.jpg?token=dos",
+    "https://storage.example/firmada/foto-2.jpg?token=tres",
+  ];
+
+  function gestionConEvidencias(
+    resultado: CierreDetalleGestion["resultado"],
+    urls: string[],
+  ): CierreDetalleGestion {
+    return {
+      ...gestionEntregada([]),
+      resultado,
+      montoRecibido: null,
+      motivo: "Cliente ausente",
+      causaIncidente: resultado === "incidente" ? "robado" : null,
+      evidenciaUrl: urls[0] ?? null,
+      evidenciaUrls: urls,
+    };
+  }
+
+  const PROYECCIONES = [
+    ["devolución por rechazo", "devolucion_a_origen_por_rechazo", filaDescargaDiaRechazada],
+    ["incidente", "incidente", filaDescargaDiaIncidente],
+  ] as const;
+
+  for (const [nombre, resultado, proyectar] of PROYECCIONES) {
+    it(`${nombre}: con 3 evidencias la celda dice «Sí» y ninguna de las 3 URLs sale (R18)`, () => {
+      const fila = proyectar(gestionConEvidencias(resultado, TRES_URLS));
+      expect(fila.tieneEvidencia).toBe("Sí");
+      const celdas = Object.values(fila).map((c) => String(c ?? ""));
+      for (const url of TRES_URLS) {
+        expect(celdas.some((c) => c.includes(url))).toBe(false);
+      }
+      expect(celdas.some((c) => /https?:\/\//i.test(c) || c.includes("token="))).toBe(false);
+    });
+
+    it(`${nombre}: con UNA sola evidencia la celda también dice «Sí» (R18: al menos una)`, () => {
+      const fila = proyectar(gestionConEvidencias(resultado, [TRES_URLS[0]]));
+      expect(fila.tieneEvidencia).toBe("Sí");
+    });
+
+    it(`${nombre}: sin ninguna evidencia la celda dice «No» (R18)`, () => {
+      const fila = proyectar(gestionConEvidencias(resultado, []));
+      expect(fila.tieneEvidencia).toBe("No");
+    });
+  }
+});

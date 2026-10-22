@@ -1,0 +1,2683 @@
+import { describe, it, expect, vi } from "vitest";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import { CierresAdminService } from "@/lib/services/CierresAdminService";
+import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
+import { reintentosConfig } from "@/lib/config/reintentos";
+import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
+import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
+import { WalletFeedService } from "@/lib/services/WalletFeedService";
+import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
+import { WalletTiendaFeedService } from "@/lib/services/WalletTiendaFeedService";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
+import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedService";
+import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  Alcance,
+  CierreAdminResumenRow,
+  ICierresAdminRepository,
+} from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
+import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
+import { conPagos } from "@/tests/fixtures/cierre-pagos";
+
+// Feature 38 — tests unit del CierresAdminService (dobles de repo/zona/orden/
+// signedUrls, sin DB/red). Cubre R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R16.
+
+const MAESTRO: Actor = { usuarioId: "adm-maestro", rol: "maestro" };
+const ADMIN: Actor = { usuarioId: "adm-admin", rol: "admin" }; // feature 94: paridad con maestro
+const ADMIN_SATELITE: Actor = { usuarioId: "adm-sat", rol: "adminSatelite" };
+const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
+
+const ZONA_SAT = "z-cartago";
+
+function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
+  return {
+    cierreId: "c1",
+    mensajeroId: "m1",
+    mensajeroNombre: "Ana Mensajera",
+    estado: "solicitado",
+    destinoTipo: "bodega_central",
+    destinoZonaId: "z-central",
+    destinoZonaNombre: "Central",
+    totales: { efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" },
+    totalPagoMensajero: "5.00", // feature 39/R17: snapshot del pago al mensajero
+    totalIngresoBodegaRechazos: "0.00", // feature 56/R16: snapshot del ingreso de bodega por devoluciones a origen
+    solicitadoAt: "2026-07-12T10:00:00.000Z",
+    resueltoAt: null,
+    motivoRechazo: null,
+    ...overrides,
+  };
+}
+
+function gestionRow(overrides: Partial<CierreGestionPendienteRow> = {}): CierreGestionPendienteRow {
+  // Feature 212/T9: el desglose es OBLIGATORIO en la fila. Por defecto se deriva del par
+  // escalar (UNA linea, igual que el backfill), asi que los casos previos no cambian; un
+  // caso que quiera un cobro MIXTO pasa sus propias lineas en `overrides.pagos`.
+  const { pagos, ...resto } = overrides;
+  const fila: Omit<CierreGestionPendienteRow, "pagos"> = {
+    gestionId: "g1",
+    ordenId: "o1",
+    fechaGestion: "2026-07-11",
+    numGuia: 10,
+    numRemision: "REM-1",
+    destinatario: "Ana",
+    direccion: "Av 1",
+    zonaNombre: "Cartago",
+    provinciaNombre: "Cartago",
+    cantonNombre: "Central",
+    distritoNombre: "Oriental",
+    producto: "Caja",
+    // Ficha 396: la clave por la que el cierre se parte por tienda (el nombre es solo para mostrar).
+    tiendaId: "tienda-1",
+    tiendaNombre: "Tienda X",
+    resultado: "entregado",
+    montoRecibido: "12.50",
+    metodoPago: "efectivo",
+    motivo: null,
+    fechaReprogramacion: null,
+    evidenciaStoragePath: null, evidenciaStoragePaths: [],
+    pagoMensajero: null, // feature 39: snapshot (override para R16)
+    ingresoBodegaRechazo: null, // feature 56: snapshot (override para R15)
+    esRechazoSla: false, // feature 102: clasificacion SLA/manual (override para R8/R9)
+    desdeAyudaTienda: false, // feature 237 (D6/R41): la registro el mensajero, no la tienda
+    // Feature 158/R9/R19: campos POR RAMA del incidente. `null` por defecto en el resto
+    // de resultados; los casos del incidente los sobreescriben.
+    causaIncidente: null,
+    indemnizacion: null,
+    ...resto,
+  };
+  return conPagos(fila, pagos);
+}
+
+type Repo = ICierresAdminRepository;
+
+function fakeRepo(overrides: Partial<Repo> = {}): Repo {
+  return {
+    findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
+    // Feature 170 (T I.1): el historico paginado vive en su propia suite (*-paginado).
+    findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
+    findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
+    // Feature 184 (T D.1): los dos CONJUNTOS de la descarga viven en su propia suite
+    // (`cierres-admin-completo.test.ts`); aqui solo hace falta que existan.
+    findHistoricoCompleto: vi.fn(async () => [] as CierreAdminResumenRow[]),
+    findColaCompleta: vi.fn(async () => [] as CierreAdminResumenRow[]),
+    findCierreByIdEnAlcance: vi.fn(async () => null),
+    resolverCierre: vi.fn(async () => "updated" as const),
+    // Feature 111/R16: válvula de escape (default = updated).
+    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
+    // Feature 158/R19: por defecto el cierre NO tiene incidentes -> cobertura vacia, camino
+    // de la 38 intacto (R36). Los casos de la 158 lo sobreescriben.
+    findGestionesIncidenteDelCierre: vi.fn(async () => []),
+    // Feature 238 (T1.3): el conjunto esperado de la confirmacion fisica. Doble VACIO por
+    // defecto: sin nada que devolver, la guardia de la 238 deja el camino de esta suite intacto.
+    findGestionesRetornablesDelCierre: vi.fn(async () => []),
+    // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
+    // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
+    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
+    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
+    // Pedido humano (2026-08-19): la correccion del desglose. Dobles no-op: esta suite no la
+    // ejercita (vive en `cierres-admin-corregir-pagos.test.ts`).
+    findGestionEditableEnCierre: vi.fn(async () => null),
+    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
+    // FICHA 398: la correccion en sitio del resultado. Doble MUDO: este archivo no la ejercita,
+    // y devolver `conflict` deja constancia de que nadie la esta midiendo aqui.
+    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
+    ...overrides,
+  };
+}
+
+function fakeSignedUrls(overrides: Partial<ISignedUrlProvider> = {}): ISignedUrlProvider {
+  return {
+    createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),
+    createSignedUrls: vi.fn(async (paths: string[]) =>
+      Object.fromEntries(paths.map((p) => [p, `https://signed/${p}`])),
+    ),
+    ...overrides,
+  };
+}
+
+// Feature 109 (T3.1): ids del catalogo que `aprobarCierre` resuelve para la config de liberacion.
+const ESTATUS_IDS: Record<string, string | null> = {
+  novedad_interna: "s-sin-gestionar",
+  en_bodega_central: "s-en-bodega",
+  en_bodega_satelite: "s-en-bodega-sat",
+  // Feature 239 (T2.1): los DOS del ANCLAJE. A diferencia de los de arriba NO son opcionales: si
+  // el catalogo no los tiene, la aprobacion NO ocurre (R9, fallo cerrado).
+  devolucion_por_confirmar: "s-devolucion-por-confirmar",
+  novedad: "s-devuelta",
+  // FEATURE 276 (T9, R21): el DESTINO del rechazo por agotamiento de intentos. Entra en la MISMA
+  // condicion que los tres de la 109, asi que sin el la config de liberacion no se cablea.
+  devolucion_a_origen_por_rechazo: "s-rechazada",
+  // FICHA 454 (T1.7): los de la APLICACION DE GESTIONES al aprobar — el origen `en_reparto` y el
+  // destino de cada resultado. Fallo cerrado como el de la 239: sin cualquiera, no se aprueba.
+  en_reparto: "s-en-reparto",
+  entregado: "s-entregada",
+  reprogramado: "s-reprogramada",
+  incidente: "s-incidente",
+};
+
+function newService(
+  opts: {
+    repo?: Repo;
+    zonaSatelite?: string | null;
+    signedUrls?: ISignedUrlProvider;
+    estatusIds?: Record<string, string | null>; // feature 109: override para el defensivo (seed pendiente)
+  } = {},
+) {
+  const repo = opts.repo ?? fakeRepo();
+  const zonaRepo = {
+    findCentralZonaId: vi.fn(async () => "z-central"),
+  } as unknown as Pick<IZonaRepository, "findCentralZonaId">;
+  const estatusIds = opts.estatusIds ?? ESTATUS_IDS;
+  const ordenRepo = {
+    // Feature 271 (T7.1, R48): el estado de bloqueo del mensajero viaja en la fila del cierre.
+    contarCierresAbiertosPorMensajero: vi.fn(async () => new Map()),
+    findUsuarioZonaId: vi.fn(async () =>
+      opts.zonaSatelite === undefined ? ZONA_SAT : opts.zonaSatelite,
+    ),
+    // Feature 109/T3.1: resuelve sin_gestionar/en_bodega_central/en_bodega_satelite para la liberacion.
+    findEstatusIdByValue: vi.fn(async (v: string) => estatusIds[v] ?? null),
+  } as unknown as Pick<IOrdenRepository, "findUsuarioZonaId" | "findEstatusIdByValue">;
+  const signedUrls = opts.signedUrls ?? fakeSignedUrls();
+  // Feature 172 (T C.2): lectura de los pagos ya registrados para derivar el pendiente de los
+  // cierres APROBADOS. Este doble no tiene ninguno; la derivacion con dinero de verdad se mide
+  // en `tests/unit/services/cierres-admin-pendiente.test.ts`.
+  const liquidacionRepo = {
+    sumarVigentesPorCierre: vi.fn(async (ids: string[]) =>
+      Object.fromEntries(ids.map((id) => [id, "0.00"])),
+    ),
+    obtenerCierreParaPago: vi.fn(async () => null),
+  };
+  const service = new CierresAdminService(
+    repo,
+    zonaRepo as IZonaRepository,
+    ordenRepo as IOrdenRepository,
+    signedUrls,
+    liquidacionRepo,
+    // Feature 293 (T2.3): lectura de premios; "0.00" por id -> lo pagable no cambia.
+    {
+      sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
+        Object.fromEntries(ids.map((id) => [id, "0.00"])),
+      ),
+    },
+    sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  );
+  return { service, repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo };
+}
+
+// --- resolveAlcance / autorizacion (R1/R2/R3) ---
+
+describe("CierresAdminService — autorizacion y alcance (R1/R2/R3)", () => {
+  it("R1: rol invalido (mensajero) -> forbidden, sin consultar el repo", async () => {
+    const { service, repo } = newService();
+    const r = await service.listarCierresAdmin(MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(repo.findCierresByAlcance).not.toHaveBeenCalled();
+  });
+
+  it("R2: maestro -> alcance bodega_central sin zona pasado al repo", async () => {
+    const { service, repo } = newService();
+    await service.listarCierresAdmin(MAESTRO);
+    const alcance = (repo.findCierresByAlcance as ReturnType<typeof vi.fn>).mock.calls[0][0] as Alcance;
+    expect(alcance).toEqual({ destinoTipo: "bodega_central", destinoZonaId: null });
+  });
+
+  it("feature 94: admin -> MISMO alcance bodega_central que maestro (sin zona)", async () => {
+    const { service, repo } = newService();
+    await service.listarCierresAdmin(ADMIN);
+    const alcance = (repo.findCierresByAlcance as ReturnType<typeof vi.fn>).mock.calls[0][0] as Alcance;
+    expect(alcance).toEqual({ destinoTipo: "bodega_central", destinoZonaId: null });
+  });
+
+  it("feature 94: admin puede aprobar/rechazar como maestro (alcance bodega_central)", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+    const rAprobar = await service.aprobarCierre("c1", ADMIN);
+    expect(rAprobar).toEqual({
+      status: "ok",
+      cierreId: "c1",
+      estado: "aprobado",
+      pendientePagoMensajero: "0.00", // feature 172/T C.2
+    });
+    const rRechazar = await service.rechazarCierre("c1", "motivo", ADMIN);
+    expect(rRechazar).toEqual({ status: "ok", cierreId: "c1", estado: "rechazado" });
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.alcance).toEqual({ destinoTipo: "bodega_central", destinoZonaId: null });
+  });
+
+  it("R2: adminSatelite -> alcance bodega_satelite acotado a SU zona (ajeno excluido via el WHERE)", async () => {
+    const { service, repo, ordenRepo } = newService();
+    await service.listarCierresAdmin(ADMIN_SATELITE);
+    expect(ordenRepo.findUsuarioZonaId).toHaveBeenCalledWith("adm-sat");
+    const alcance = (repo.findCierresByAlcance as ReturnType<typeof vi.fn>).mock.calls[0][0] as Alcance;
+    expect(alcance).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: ZONA_SAT });
+  });
+
+  it("R3: adminSatelite sin zona -> sinZona true, listas vacias, sin tocar el repo", async () => {
+    const { service, repo } = newService({ zonaSatelite: null });
+    const r = await service.listarCierresAdmin(ADMIN_SATELITE);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.sinZona).toBe(true);
+    expect(r.pendientes).toEqual([]);
+    expect(r.historico).toEqual([]);
+    expect(repo.findCierresByAlcance).not.toHaveBeenCalled();
+  });
+});
+
+// --- listarCierresAdmin — particion + totales (R4/R5/R8/R9) ---
+
+describe("CierresAdminService.listarCierresAdmin — particion y totales (R4/R5/R8/R9)", () => {
+  it("R4/R5: parte pendientes (solicitado) del historico (aprobado/rechazado)", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [
+        resumenRow({ cierreId: "a", estado: "solicitado" }),
+        resumenRow({ cierreId: "b", estado: "aprobado", resueltoAt: "2026-07-12T12:00:00.000Z" }),
+        resumenRow({ cierreId: "c", estado: "rechazado", motivoRechazo: "cuadre erroneo" }),
+        resumenRow({ cierreId: "d", estado: "solicitado" }),
+      ]),
+    });
+    const { service } = newService({ repo });
+    const r = await service.listarCierresAdmin(MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.pendientes.map((c) => c.cierreId)).toEqual(["a", "d"]);
+    expect(r.historico.map((c) => c.cierreId)).toEqual(["b", "c"]);
+    expect(r.sinZona).toBe(false);
+  });
+
+  it("feature 41/R20: el vencido va a la cola de pendientes, diferenciado por su estado", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [
+        resumenRow({ cierreId: "s", estado: "solicitado" }),
+        resumenRow({ cierreId: "v", estado: "vencido" }), // creado por el corte
+        resumenRow({ cierreId: "ap", estado: "aprobado", resueltoAt: "2026-07-12T12:00:00.000Z" }),
+      ]),
+    });
+    const { service } = newService({ repo });
+    const r = await service.listarCierresAdmin(MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    // R20: solicitado y vencido en la cola (resolubles); aprobado al historico.
+    expect(r.pendientes.map((c) => c.cierreId).sort()).toEqual(["s", "v"]);
+    expect(r.historico.map((c) => c.cierreId)).toEqual(["ap"]);
+    // el estado viaja en el resumen para que el frontend etiquete el vencido (R20).
+    const vencido = r.pendientes.find((c) => c.cierreId === "v");
+    expect(vencido?.estado).toBe("vencido");
+  });
+
+  it("R8/R9: los totales del resumen son el snapshot en STRING escala 2 (no recomputa)", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [
+        resumenRow({
+          cierreId: "a",
+          totales: { efectivo: "100.50", simpe: "0.00", transferencia: "9.99", general: "110.49" },
+        }),
+      ]),
+    });
+    const { service } = newService({ repo });
+    const r = await service.listarCierresAdmin(MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const c = r.pendientes[0];
+    expect(c.totales).toEqual({
+      efectivo: "100.50",
+      simpe: "0.00",
+      transferencia: "9.99",
+      general: "110.49",
+    });
+    expect(typeof c.totales.general).toBe("string");
+  });
+
+  it("R17: el resumen expone totalPagoMensajero snapshot (string), separado de los totales", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [resumenRow({ totalPagoMensajero: "42.50" })]),
+    });
+    const { service } = newService({ repo });
+    const r = await service.listarCierresAdmin(MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const c = r.pendientes[0];
+    expect(c.totalPagoMensajero).toBe("42.50"); // snapshot, sin recomputar
+    expect(typeof c.totalPagoMensajero).toBe("string"); // R23
+    // R21: no altera los totales de dinero recibido.
+    expect(c.totales).toEqual({ efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" });
+  });
+
+  it("R16: el resumen expone totalIngresoBodegaRechazos snapshot (string), separado de totales y pago mensajero", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [
+        resumenRow({ totalPagoMensajero: "42.50", totalIngresoBodegaRechazos: "7.00" }),
+      ]),
+    });
+    const { service } = newService({ repo });
+    const r = await service.listarCierresAdmin(MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const c = r.pendientes[0];
+    expect(c.totalIngresoBodegaRechazos).toBe("7.00"); // snapshot, sin recomputar
+    expect(typeof c.totalIngresoBodegaRechazos).toBe("string"); // R22
+    // R20: no altera ni los totales de dinero recibido ni el pago al mensajero.
+    expect(c.totalPagoMensajero).toBe("42.50");
+    expect(c.totales).toEqual({ efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" });
+  });
+
+  it("R16: listar NO muta (nunca invoca resolverCierre)", async () => {
+    const repo = fakeRepo({
+      findCierresByAlcance: vi.fn(async () => [resumenRow()]),
+    });
+    const { service } = newService({ repo });
+    await service.listarCierresAdmin(MAESTRO);
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// --- verCierreDetalle — detalle + evidencia firmada (R6/R7/R9/R13/R16) ---
+
+describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
+  /** Desglose por orden como lo emite el repo (ya derivado del snapshot). */
+  function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
+    return {
+      montoCobrar: null,
+      cobraComision: false,
+      esCentral: false,
+      esZonaEspecial: false,
+      fleteOrigen: "normal",
+      fleteDevolucionOrigen: "normal",
+      flete: null,
+      ivaFlete: null,
+      fleteDevolucion: null,
+      ivaFleteDevolucion: null,
+      comisionCod: null,
+      ivaComisionCod: null,
+      fleteConIva: null,
+      fleteDevolucionConIva: null,
+      comisionConIva: null,
+      total: "0.00",
+      tarifa: null,
+      ...over,
+    };
+  }
+
+  it("suma el ingreso por concepto y deriva la ganancia = bruto - pago al mensajero", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalPagoMensajero: "1500.00" }),
+        gestiones: [
+          gestionRow({
+            gestionId: "a",
+            resultado: "entregado",
+            ingresoEmpresa: conIngreso({
+              flete: "2500.00",
+              ivaFlete: "325.00",
+              comisionCod: "750.00",
+              ivaComisionCod: "97.50",
+              fleteConIva: "2825.00",
+              comisionConIva: "847.50",
+              total: "3672.50",
+            }),
+          }),
+          gestionRow({
+            gestionId: "b",
+            resultado: "devolucion_a_origen_por_rechazo",
+            ingresoEmpresa: conIngreso({
+              fleteDevolucion: "1000.00",
+              ivaFleteDevolucion: "130.00",
+              fleteDevolucionConIva: "1130.00",
+              total: "1130.00",
+            }),
+          }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.totalesIngreso).toMatchObject({
+      // Agrupados: lo que se pinta en el panel.
+      fleteConIva: "2825.00",
+      comisionConIva: "847.50",
+      fleteDevolucionConIva: "1130.00",
+      total: "4802.50", // 3672.50 + 1130.00
+      // Detalle separado: sigue disponible para auditar cuánto de cada agrupado es IVA.
+      flete: "2500.00",
+      ivaFlete: "325.00",
+      comisionCod: "750.00",
+      ivaComisionCod: "97.50",
+      fleteDevolucion: "1000.00",
+      ivaFleteDevolucion: "130.00",
+    });
+    // La devolución también factura, así que entra en la ganancia.
+    expect(r.ganancia).toBe("3302.50"); // 4802.50 - 1500.00
+    expect(typeof r.ganancia).toBe("string"); // money-safe
+  });
+
+  it("la ganancia es negativa si el cierre no factura pero igual paga al mensajero", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalPagoMensajero: "1500.00" }),
+        // Una reprogramación no aporta a ningún concepto.
+        gestiones: [gestionRow({ gestionId: "a", resultado: "reprogramado" })],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.totalesIngreso.total).toBe("0.00");
+    expect(r.ganancia).toBe("-1500.00");
+  });
+});
+
+/**
+ * 💰 FICHA 395 — LAS DOS LINEAS QUE LE FALTABAN AL DETALLE DEL CIERRE DE MENSAJERO.
+ *
+ * La ficha 393 monto las dos cascadas del dinero SOLO en los cierres de BODEGA. Este detalle
+ * —el que se mira todos los dias— se quedo con las tarjetas sueltas y sin las dos restas que
+ * las unen. Aqui se sujeta el SERVIDOR: que las emite, con que valor y con que signo.
+ *
+ * TODOS los casos llevan CENTIMOS a proposito, por el mismo motivo que
+ * `tests/unit/utils/cascadas-cierre-bodega.test.ts`: con cifras redondas estas restas cierran
+ * igual con `Number` que con `Decimal` y el caso no probaria nada.
+ */
+describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el neto", () => {
+  /** Desglose por orden como lo emite el repo. `total` = suma de los conceptos presentes. */
+  function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
+    return {
+      montoCobrar: null,
+      cobraComision: false,
+      esCentral: false,
+      esZonaEspecial: false,
+      fleteOrigen: "normal",
+      fleteDevolucionOrigen: "normal",
+      flete: null,
+      ivaFlete: null,
+      fleteDevolucion: null,
+      ivaFleteDevolucion: null,
+      comisionCod: null,
+      ivaComisionCod: null,
+      fleteConIva: null,
+      fleteDevolucionConIva: null,
+      comisionConIva: null,
+      total: "0.00",
+      tarifa: null,
+      ...over,
+    };
+  }
+
+  /** La entregada de todos los casos: flete 2500.55 + IVA, comision 700.02 + IVA. */
+  const ENTREGADA = conIngreso({
+    flete: "2500.55",
+    ivaFlete: "325.07",
+    comisionCod: "700.02",
+    ivaComisionCod: "91.00",
+    fleteConIva: "2825.62",
+    comisionConIva: "791.02",
+    total: "3616.64", // 2825.62 + 791.02
+  });
+
+  /** La rechazada: factura flete de devolucion + IVA, y NO recauda un colon. */
+  const RECHAZADA = conIngreso({
+    fleteDevolucion: "1200.45",
+    ivaFleteDevolucion: "156.06",
+    fleteDevolucionConIva: "1356.51",
+    total: "1356.51",
+  });
+
+  function repoCon(
+    cierre: Partial<CierreAdminResumenRow>,
+    gestiones: Array<{ gestionId: string; resultado: "entregado" | "devolucion_a_origen_por_rechazo" | "reprogramado"; ingresoEmpresa?: IngresoEmpresaDTO }>,
+  ): Repo {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(cierre),
+        gestiones: gestiones.map((g) => gestionRow(g)),
+      })),
+    });
+  }
+
+  it("CON un rechazo: la puente NO es el total facturado, y es la que hace cuadrar el pago a la tienda", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: {
+            efectivo: "20000.55",
+            simpe: "0.00",
+            transferencia: "0.00",
+            general: "20000.55",
+          },
+          totalPagoMensajero: "3600.35",
+          totalIngresoBodegaRechazos: "450.25",
+        },
+        [
+          { gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA },
+          { gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA },
+        ],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    // Lo FACTURADO incluye el flete por devolución a origen; lo DEDUCIBLE de lo recaudado, no.
+    expect(r.totalesIngreso.total).toBe("4973.15"); // 3616.64 + 1356.51
+    expect(r.cobradoSobreRecaudado).toBe("3616.64"); // 2825.62 + 791.02
+    expect(r.cobradoSobreRecaudado).not.toBe(r.totalesIngreso.total);
+
+    // Y ESTE es el motivo de que la linea exista: `recaudado − puente = para la tienda`. Con
+    // `total` en su lugar la resta daria 15027.40, que no es lo que se le paga a la tienda.
+    expect(r.pagoTienda).toBe("16383.91"); // 20000.55 − 3616.64
+    expect(
+      new Prisma.Decimal(r.cierre.totales.general).minus(r.cobradoSobreRecaudado).toFixed(2),
+    ).toBe(r.pagoTienda);
+  });
+
+  it("CON un rechazo: el neto resta TAMBIEN el ingreso de bodega, y por eso no es la ganancia", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: {
+            efectivo: "20000.55",
+            simpe: "0.00",
+            transferencia: "0.00",
+            general: "20000.55",
+          },
+          totalPagoMensajero: "3600.35",
+          totalIngresoBodegaRechazos: "450.25",
+        },
+        [
+          { gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA },
+          { gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA },
+        ],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    // `ganancia` resta SOLO el pago al mensajero y sigue viajando intacta (no la absorbe nadie).
+    expect(r.ganancia).toBe("1372.80"); // 4973.15 − 3600.35
+    // El neto resta ademas la bodega. Implementarlo encadenando `ganancia` daria 1372.80.
+    expect(r.netoEmpresa).toBe("922.55"); // 4973.15 − 3600.35 − 450.25
+    expect(r.netoEmpresa).not.toBe(r.ganancia);
+    expect(typeof r.netoEmpresa).toBe("string"); // money-safe
+  });
+
+  it("SIN rechazos: la linea puente se emite IGUAL, no desaparece cuando el flete por devolución a origen es 0.00", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: {
+            efectivo: "20000.55",
+            simpe: "0.00",
+            transferencia: "0.00",
+            general: "20000.55",
+          },
+          totalPagoMensajero: "3600.35",
+          totalIngresoBodegaRechazos: "0.00",
+        },
+        [{ gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA }],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.totalesIngreso.fleteDevolucionConIva).toBe("0.00"); // no hubo ni un rechazo
+    // La linea NO es condicional: sin ella la cascada perderia su eslabon justo en el cierre
+    // mas comun, y la pantalla tendria que decidir si pintarla o no.
+    expect(r).toHaveProperty("cobradoSobreRecaudado");
+    expect(r.cobradoSobreRecaudado).toBe("3616.64");
+    expect(typeof r.cobradoSobreRecaudado).toBe("string"); // money-safe
+
+    // Y con la bodega en 0.00 el neto SI coincide con la ganancia: si divergieran aqui, alguien
+    // estaria restando dos veces.
+    expect(r.netoEmpresa).toBe("16.29"); // 3616.64 − 3600.35 − 0.00
+    expect(r.netoEmpresa).toBe(r.ganancia);
+  });
+
+  it("el neto NEGATIVO sale con su signo, nunca recortado a 0.00", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+          totalPagoMensajero: "1500.35",
+          totalIngresoBodegaRechazos: "450.25",
+        },
+        // Una reprogramacion no aporta a ningun concepto: no factura, y aun asi se paga.
+        [{ gestionId: "a", resultado: "reprogramado" }],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.totalesIngreso.total).toBe("0.00");
+    // Un "0.00" aqui diria «la empresa no perdio nada en este cierre», que es falso.
+    expect(r.netoEmpresa).toBe("-1950.60"); // 0 − 1500.35 − 450.25
+    expect(r.ganancia).toBe("-1500.35"); // la ganancia tampoco se recorta, y no es el neto
+    // La puente de un cierre sin entregas es cero DE VERDAD (no hay nada facturado sobre lo
+    // recaudado), y aun asi se emite.
+    expect(r.cobradoSobreRecaudado).toBe("0.00");
+  });
+
+  // ── LA PARTICION DE LO RECAUDADO (la cuarta linea) ──────────────────────────────────────
+  //
+  // El humano se confundio con esta pantalla y dijo: «si yo me confundo, no quiero imaginar
+  // los operarios». Lo que intentaba calcular a mano cada vez era este numero, que no existia
+  // en ninguna pantalla.
+
+  it("CON un rechazo: lo que la tienda GANA no es lo que se le PAGA, y difieren en el flete por devolución a origen", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: {
+            efectivo: "20000.55",
+            simpe: "0.00",
+            transferencia: "0.00",
+            general: "20000.55",
+          },
+          totalPagoMensajero: "3600.35",
+          totalIngresoBodegaRechazos: "450.25",
+        },
+        [
+          { gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA },
+          { gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA },
+        ],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.ganaLaTienda).toBe("15027.40"); // 20000.55 − 4973.15
+    // Los dos numeros conviven en la misma pantalla y NO son el mismo: se le pagan 16383.91
+    // hoy, pero gana 15027.40, porque el flete por devolución a origen se le cobra aparte.
+    expect(r.pagoTienda).toBe("16383.91");
+    expect(r.ganaLaTienda).not.toBe(r.pagoTienda);
+    expect(
+      new Prisma.Decimal(r.pagoTienda)
+        .minus(r.totalesIngreso.fleteDevolucionConIva)
+        .toFixed(2),
+    ).toBe(r.ganaLaTienda);
+
+    // LA IDENTIDAD que hace evidente la pantalla: lo que gana la tienda + lo que factura
+    // la empresa = lo recaudado. Es la particion, y va ANTES del desglose en la cascada.
+    expect(
+      new Prisma.Decimal(r.ganaLaTienda).plus(r.totalesIngreso.total).toFixed(2),
+    ).toBe(r.cierre.totales.general);
+    expect(typeof r.ganaLaTienda).toBe("string"); // money-safe
+  });
+
+  it("SIN rechazos: lo que gana y lo que se le paga coinciden EXACTAMENTE", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: {
+            efectivo: "20000.55",
+            simpe: "0.00",
+            transferencia: "0.00",
+            general: "20000.55",
+          },
+          totalPagoMensajero: "3600.35",
+          totalIngresoBodegaRechazos: "0.00",
+        },
+        [{ gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA }],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    // Sin flete por devolución a origen no hay nada que cobrar aparte, asi que las dos preguntas tienen la
+    // misma respuesta. Si divergieran AQUI, una de las dos estaria restando de mas.
+    expect(r.ganaLaTienda).toBe("16383.91"); // 20000.55 − 3616.64
+    expect(r.ganaLaTienda).toBe(r.pagoTienda);
+  });
+
+  it("puros rechazos: lo que gana la tienda sale NEGATIVO, con su signo", async () => {
+    const { service } = newService({
+      repo: repoCon(
+        {
+          totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+          totalPagoMensajero: "0.00",
+          totalIngresoBodegaRechazos: "450.25",
+        },
+        [{ gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA }],
+      ),
+    });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    // Un rechazo factura y no recauda: la tienda no gana, DEBE. Un "0.00" aqui diria «no gana
+    // ni pierde», que es justo la lectura que esta ficha viene a impedir.
+    expect(r.ganaLaTienda).toBe("-1356.51"); // 0.00 − 1356.51
+  });
+
+  // ── EL TIEMPO VERBAL DEL CARGO A LA WALLET ──────────────────────────────────────────────
+  //
+  // El cargo lo emite `WalletTiendaFeedService` DENTRO de la transaccion de aprobacion. En un
+  // cierre que aun no se aprueba, «se le cargo a su wallet» es FALSO. El cierre que el humano
+  // miro estaba VENCIDO.
+
+  it("aprobado y CON flete por devolución a origen: el cargo YA ocurrio", async () => {
+    const { service } = newService({
+      repo: repoCon({ estado: "aprobado" }, [
+        { gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA },
+      ]),
+    });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.fleteRechazoYaCobradoATienda).toBe(true);
+  });
+
+  it.each(["solicitado", "vencido", "rechazado"] as const)(
+    "%s y CON flete por devolución a origen: el cargo NO ha ocurrido todavia",
+    async (estado) => {
+      const { service } = newService({
+        repo: repoCon({ estado }, [
+          { gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", ingresoEmpresa: RECHAZADA },
+        ]),
+      });
+      const r = await service.verCierreDetalle("c1", MAESTRO);
+      if (r.status !== "ok") throw new Error("esperaba ok");
+      expect(r.fleteRechazoYaCobradoATienda).toBe(false);
+    },
+  );
+
+  it("aprobado pero SIN un solo rechazo: no hay cargo del que hablar", async () => {
+    const { service } = newService({
+      repo: repoCon({ estado: "aprobado" }, [
+        { gestionId: "a", resultado: "entregado", ingresoEmpresa: ENTREGADA },
+      ]),
+    });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.totalesIngreso.fleteDevolucionConIva).toBe("0.00");
+    // `estado === "aprobado"` a secas daria `true` y la pantalla escribiria «se le cargo el
+    // flete por devolución a origen» sobre un cierre donde no hubo ninguno.
+    expect(r.fleteRechazoYaCobradoATienda).toBe(false);
+  });
+});
+
+describe("CierresAdminService.verCierreDetalle — detalle y evidencia (R6/R7/R9/R13/R16)", () => {
+  it("R6/R9: agrupa las gestiones por resultado con montos string escala 2", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({ gestionId: "a", resultado: "entregado", montoRecibido: "30.00", metodoPago: "SINPE" }),
+          gestionRow({
+            gestionId: "b",
+            resultado: "reprogramado",
+            montoRecibido: null,
+            metodoPago: null,
+            motivo: "ausente",
+            fechaReprogramacion: "2026-07-20",
+          }),
+          gestionRow({ gestionId: "c", resultado: "novedad", montoRecibido: null, metodoPago: null }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.grupos.entregado.map((g) => g.gestionId)).toEqual(["a"]);
+    expect(r.grupos.reprogramado.map((g) => g.gestionId)).toEqual(["b"]);
+    expect(r.grupos.novedad.map((g) => g.gestionId)).toEqual(["c"]);
+    expect(r.grupos.devolucion_a_origen_por_rechazo).toEqual([]);
+    expect(r.grupos.entregado[0].montoRecibido).toBe("30.00"); // string escala 2
+    expect(typeof r.grupos.entregado[0].montoRecibido).toBe("string");
+    expect(r.grupos.reprogramado[0].fechaReprogramacion).toBe("2026-07-20");
+  });
+
+  it("R7: firma la evidencia en lote y expone SOLO la URL firmada, nunca el storage_path", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({
+            gestionId: "a",
+            resultado: "devolucion_a_origen_por_rechazo",
+            montoRecibido: null,
+            metodoPago: null,
+            evidenciaStoragePath: "o1/rechazo.jpg", evidenciaStoragePaths: ["o1/rechazo.jpg"],
+          }),
+        ],
+      })),
+    });
+    const signedUrls = fakeSignedUrls();
+    const { service } = newService({ repo, signedUrls });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(signedUrls.createSignedUrls).toHaveBeenCalledWith(["o1/rechazo.jpg"], expect.any(Number));
+    const rechazada = r.grupos.devolucion_a_origen_por_rechazo[0];
+    expect(rechazada.evidenciaUrl).toBe("https://signed/o1/rechazo.jpg");
+    expect(rechazada).not.toHaveProperty("evidenciaStoragePath");
+  });
+
+  it("R8: la cabecera del detalle mantiene los totales snapshot del cierre", async () => {
+    const cierre = resumenRow({
+      totales: { efectivo: "1.00", simpe: "2.00", transferencia: "3.00", general: "6.00" },
+    });
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({ sinGestion: [], sinGestionRegistrado: true, rechazosDeTienda: [], cierre, gestiones: [] })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.cierre.totales).toEqual({ efectivo: "1.00", simpe: "2.00", transferencia: "3.00", general: "6.00" });
+  });
+
+  it("R16: cada gestion del detalle expone el pago al mensajero SNAPSHOTEADO (no recomputado)", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalPagoMensajero: "5.00" }),
+        gestiones: [
+          gestionRow({ gestionId: "a", resultado: "entregado", pagoMensajero: "5.00" }),
+          gestionRow({ gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", montoRecibido: null, metodoPago: null, pagoMensajero: "0.00" }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.grupos.entregado[0].pagoMensajero).toBe("5.00"); // snapshot leido de la columna
+    expect(r.grupos.devolucion_a_origen_por_rechazo[0].pagoMensajero).toBe("0.00");
+    expect(typeof r.grupos.entregado[0].pagoMensajero).toBe("string"); // R23
+    // R17: la cabecera del detalle trae el total snapshot.
+    expect(r.cierre.totalPagoMensajero).toBe("5.00");
+  });
+
+  it("R15: cada gestion rechazada del detalle expone el ingreso de bodega SNAPSHOTEADO (no recomputado)", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalIngresoBodegaRechazos: "3.00" }),
+        gestiones: [
+          gestionRow({ gestionId: "a", resultado: "entregado", ingresoBodegaRechazo: "0.00" }),
+          gestionRow({ gestionId: "b", resultado: "devolucion_a_origen_por_rechazo", montoRecibido: null, metodoPago: null, ingresoBodegaRechazo: "3.00" }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.grupos.devolucion_a_origen_por_rechazo[0].ingresoBodegaRechazo).toBe("3.00"); // snapshot leido de la columna
+    expect(r.grupos.entregado[0].ingresoBodegaRechazo).toBe("0.00");
+    expect(typeof r.grupos.devolucion_a_origen_por_rechazo[0].ingresoBodegaRechazo).toBe("string"); // R22
+    // R16: la cabecera del detalle trae el total snapshot del ingreso de bodega.
+    expect(r.cierre.totalIngresoBodegaRechazos).toBe("3.00");
+  });
+
+  it("R13: cierre fuera de alcance (repo devuelve null) -> no_encontrada", async () => {
+    const repo = fakeRepo({ findCierreByIdEnAlcance: vi.fn(async () => null) });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c-ajeno", MAESTRO);
+    expect(r.status).toBe("no_encontrada");
+  });
+
+  it("R1: rol invalido -> forbidden, sin consultar el repo", async () => {
+    const { service, repo } = newService();
+    const r = await service.verCierreDetalle("c1", MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(repo.findCierreByIdEnAlcance).not.toHaveBeenCalled();
+  });
+
+  it("R13: adminSatelite sin zona -> no_encontrada, sin leakear (no consulta el repo)", async () => {
+    const { service, repo } = newService({ zonaSatelite: null });
+    const r = await service.verCierreDetalle("c1", ADMIN_SATELITE);
+    expect(r.status).toBe("no_encontrada");
+    expect(repo.findCierreByIdEnAlcance).not.toHaveBeenCalled();
+  });
+
+  it("R16: ver detalle NO muta (nunca invoca resolverCierre)", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({ sinGestion: [], sinGestionRegistrado: true, rechazosDeTienda: [], cierre: resumenRow(), gestiones: [gestionRow()] })),
+    });
+    const { service } = newService({ repo });
+    await service.verCierreDetalle("c1", MAESTRO);
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// --- feature 102: desglose SLA/manual del ingreso de bodega por devoluciones a origen (R5/R6/R7/R8/R10/R16) ---
+
+describe("CierresAdminService.verCierreDetalle — desglose SLA/manual (feature 102)", () => {
+  // Cierre con un rechazo SLA (cron 99) y un rechazo manual (mensajero), con el snapshot del
+  // total del cierre YA congelado a la suma de ambos.
+  function repoConMezcla() {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalIngresoBodegaRechazos: "5.00" }),
+        gestiones: [
+          gestionRow({
+            gestionId: "sla",
+            resultado: "devolucion_a_origen_por_rechazo",
+            montoRecibido: null,
+            metodoPago: null,
+            ingresoBodegaRechazo: "3.00",
+            esRechazoSla: true, // escalado por el cron SLA (99)
+            desdeAyudaTienda: false, // feature 237 (D6/R41): la registro el mensajero, no la tienda
+          }),
+          gestionRow({
+            gestionId: "man",
+            resultado: "devolucion_a_origen_por_rechazo",
+            montoRecibido: null,
+            metodoPago: null,
+            ingresoBodegaRechazo: "2.00",
+            esRechazoSla: false, // rechazo manual del mensajero
+            desdeAyudaTienda: false, // feature 237 (D6/R41): la registro el mensajero, no la tienda
+          }),
+        ],
+      })),
+    });
+  }
+
+  it("R8: expone el subtotal SLA separado del manual junto al total del cierre", async () => {
+    const { service } = newService({ repo: repoConMezcla() });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.desgloseIngresoBodegaRechazos).toEqual({ sla: "3.00", manual: "2.00", total: "5.00" });
+    expect(typeof r.desgloseIngresoBodegaRechazos.sla).toBe("string"); // R18
+    expect(typeof r.desgloseIngresoBodegaRechazos.manual).toBe("string");
+  });
+
+  it("R9: cada gestion rechazada del detalle viaja marcada SLA/manual (esRechazoSla)", async () => {
+    const { service } = newService({ repo: repoConMezcla() });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const byId = Object.fromEntries(r.grupos.devolucion_a_origen_por_rechazo.map((g) => [g.gestionId, g.esRechazoSla]));
+    expect(byId.sla).toBe(true);
+    expect(byId.man).toBe(false);
+  });
+
+  it("R5: subtotal SLA + subtotal manual === total del cierre (money-safe, sin perder centavos)", async () => {
+    const { service } = newService({ repo: repoConMezcla() });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const d = r.desgloseIngresoBodegaRechazos;
+    expect(new Prisma.Decimal(d.sla).plus(d.manual).toFixed(2)).toBe(d.total);
+  });
+
+  it("R6: el total del desglose es el SNAPSHOT del cierre, LEIDO (no recomputado)", async () => {
+    // El snapshot (7.00) NO coincide con la suma de las gestiones (5.00): el service lo LEE tal
+    // cual, no lo re-suma. Asi se prueba que R6 (no altera el total_ingreso_bodega_rechazos) se
+    // cumple aunque las gestiones no cuadren (cierre pre-migracion / dato historico).
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({
+          totales: { efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" },
+          totalPagoMensajero: "5.00",
+          totalIngresoBodegaRechazos: "7.00",
+        }),
+        gestiones: [
+          gestionRow({ gestionId: "sla", resultado: "devolucion_a_origen_por_rechazo", montoRecibido: null, metodoPago: null, ingresoBodegaRechazo: "3.00", esRechazoSla: true }),
+          gestionRow({ gestionId: "man", resultado: "devolucion_a_origen_por_rechazo", montoRecibido: null, metodoPago: null, ingresoBodegaRechazo: "2.00", esRechazoSla: false }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.desgloseIngresoBodegaRechazos.total).toBe("7.00"); // snapshot leido
+    // R6: no altera los totales de dinero recibido, ni el pago al mensajero, ni el total 56.
+    expect(r.cierre.totales).toEqual({ efectivo: "10.00", simpe: "5.00", transferencia: "0.00", general: "15.00" });
+    expect(r.cierre.totalPagoMensajero).toBe("5.00");
+    expect(r.cierre.totalIngresoBodegaRechazos).toBe("7.00");
+  });
+
+  it("R16: el flujo de detalle NO muta (nunca invoca resolverCierre -> sin movimiento de wallet/caja)", async () => {
+    const repo = repoConMezcla();
+    const { service } = newService({ repo });
+    await service.verCierreDetalle("c1", MAESTRO);
+    // resolverCierre es el UNICO camino que alimenta wallet/caja (al aprobar); leer el detalle
+    // jamas lo toca.
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R7: el desglose es estable (misma entrada inmutable -> misma salida), sin resolver tarifa", async () => {
+    // El detalle admin no recibe tarifa (el servicio no la resuelve): el desglose sale del
+    // snapshot congelado + la clasificacion inmutable, asi que dos lecturas coinciden.
+    const { service } = newService({ repo: repoConMezcla() });
+    const r1 = await service.verCierreDetalle("c1", MAESTRO);
+    const r2 = await service.verCierreDetalle("c1", MAESTRO);
+    if (r1.status !== "ok" || r2.status !== "ok") throw new Error("esperaba ok");
+    expect(r1.desgloseIngresoBodegaRechazos).toEqual(r2.desgloseIngresoBodegaRechazos);
+  });
+
+  it("R10: el adminSatelite recibe el MISMO desglose por el mismo camino (sin pantalla nueva)", async () => {
+    const { service, repo } = newService({ repo: repoConMezcla() });
+    const r = await service.verCierreDetalle("c1", ADMIN_SATELITE);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.desgloseIngresoBodegaRechazos).toEqual({ sla: "3.00", manual: "2.00", total: "5.00" });
+    // El alcance satelite viajo al repo por el MISMO metodo `findCierreByIdEnAlcance`.
+    const alcance = (repo.findCierreByIdEnAlcance as ReturnType<typeof vi.fn>).mock.calls[0][1] as Alcance;
+    expect(alcance).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: ZONA_SAT });
+  });
+});
+
+// --- aprobar / rechazar (R10/R11/R12/R13/R14) ---
+
+describe("CierresAdminService.aprobarCierre (R10/R12/R13)", () => {
+  it("R10: aprobar cierre solicitado del alcance -> ok/aprobado; pasa alcance + resueltoPor", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+    const r = await service.aprobarCierre("c1", MAESTRO);
+    expect(r).toEqual({
+      status: "ok",
+      cierreId: "c1",
+      estado: "aprobado",
+      pendientePagoMensajero: "0.00", // feature 172/T C.2
+    });
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg).toMatchObject({
+      cierreId: "c1",
+      nuevoEstado: "aprobado",
+      resueltoPor: "adm-maestro", // R14
+      motivoRechazo: null,
+      alcance: { destinoTipo: "bodega_central", destinoZonaId: null },
+    });
+  });
+
+  it("R12: repo devuelve conflict -> conflict", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "conflict" as const) });
+    const { service } = newService({ repo });
+    const r = await service.aprobarCierre("c1", MAESTRO);
+    expect(r.status).toBe("conflict");
+  });
+
+  it("R13: repo devuelve fuera_de_alcance -> no_encontrada", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "fuera_de_alcance" as const) });
+    const { service } = newService({ repo });
+    const r = await service.aprobarCierre("c1", MAESTRO);
+    expect(r.status).toBe("no_encontrada");
+  });
+
+  it("R1: rol invalido -> forbidden, sin resolver", async () => {
+    const { service, repo } = newService();
+    const r = await service.aprobarCierre("c1", MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// Feature 109 — la APROBACION pasa la config de LIBERACION de `sin_gestionar` (R16/R20); el RECHAZO no.
+describe("Feature 109 · aprobarCierre — config de liberación de `novedad_interna` (R16/R20)", () => {
+  it("R16: resuelve los estatus destino (novedad_interna/en_bodega_central/satelite) + zona central y los pasa", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service, ordenRepo } = newService({ repo });
+
+    await service.aprobarCierre("c1", MAESTRO);
+
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.liberacionSinGestionar).toEqual({
+      sinGestionarEstatusId: "s-sin-gestionar",
+      enBodegaEstatusId: "s-en-bodega",
+      enBodegaSateliteEstatusId: "s-en-bodega-sat",
+      centralZonaId: "z-central",
+      // FEATURE 276 (T9, R7/R21): la config gana el destino del rechazo por tope y el UMBRAL,
+      // resuelto AQUI, en el servicio. El repositorio no lee configuracion.
+      rechazadaEstatusId: "s-rechazada",
+      umbralIntentos: reintentosConfig.MIN_INTENTOS_ENTREGA,
+    });
+    expect(ordenRepo.findEstatusIdByValue).toHaveBeenCalledWith("novedad_interna");
+  });
+
+  it("R16 defensivo: catálogo sin `novedad_interna` (seed pendiente) -> liberacionSinGestionar undefined", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({
+      repo,
+      estatusIds: {
+        novedad_interna: null,
+        en_bodega_central: "s-b",
+        en_bodega_satelite: "s-bs",
+        // Feature 239 -> FICHA 454: los de la aplicacion SI estan; lo que este caso mide es el
+        // defensivo de la 109.
+        en_reparto: "s-en-reparto",
+        entregado: "s-entregada",
+        reprogramado: "s-reprogramada",
+        devolucion_a_origen_por_rechazo: "s-rechazada",
+        novedad: "s-devuelta",
+        incidente: "s-incidente",
+      },
+    });
+
+    await service.aprobarCierre("c1", MAESTRO);
+
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.liberacionSinGestionar).toBeUndefined();
+  });
+});
+
+// Feature 239 (T2.1, R4/R9) — la APROBACION resuelve los dos ids del ANCLAJE y los pasa
+// OBLIGATORIAMENTE. Aqui esta la diferencia deliberada con la config de la 109 de arriba: aquella
+// cae a `undefined` y la aprobacion sigue (degradacion silenciosa aceptada); esta, si no se puede
+// resolver, ABORTA la aprobacion entera. Aprobar sin poder anclar dejaria la devolucion congelada
+// para siempre —invisible, sin reloj y sin que nadie se entere—, que es el estado del que esta
+// feature viene a sacarnos.
+describe("Feature 239 · aprobarCierre — config del ANCLAJE de la devolucion (R4/R9)", () => {
+  // ⏳ 2026-09-23 (FICHA 454, T1.7/T1.1): el anclaje de la 239 (pre-estado
+  // `devolucion_por_confirmar` -> `devuelta`) se sustituye por la APLICACION DE GESTIONES: al
+  // aprobar, cada gestion de calle del cierre lleva la orden de `en_reparto` a su destino, y la
+  // `devuelta` va DIRECTA a `devuelta`. El fallo cerrado (R9 de la 239) se conserva, ampliado a los
+  // seis ids.
+  it("454/T1.7: resuelve `en_reparto` y el destino de cada resultado y los pasa al repo", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service, ordenRepo } = newService({ repo });
+
+    await service.aprobarCierre("c1", MAESTRO);
+
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.aplicacionGestiones).toEqual({
+      enRepartoId: "s-en-reparto",
+      destinoPorResultado: {
+        entregado: "s-entregada",
+        reprogramado: "s-reprogramada",
+        devolucion_a_origen_por_rechazo: "s-rechazada",
+        novedad: "s-devuelta",
+        incidente: "s-incidente",
+      },
+    });
+    expect(arg).not.toHaveProperty("anclajeDevolucion");
+    expect(ordenRepo.findEstatusIdByValue).toHaveBeenCalledWith("en_reparto");
+    expect(ordenRepo.findEstatusIdByValue).toHaveBeenCalledWith("novedad");
+    expect(ordenRepo.findEstatusIdByValue).not.toHaveBeenCalledWith("devolucion_por_confirmar");
+  });
+
+  it("R9: catalogo SIN `en_reparto` -> la aprobacion NO ocurre y no hay efectos parciales", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({
+      repo,
+      estatusIds: { ...ESTATUS_IDS, en_reparto: null },
+    });
+
+    const r = await service.aprobarCierre("c1", MAESTRO);
+
+    expect(r.status).toBe("validation_error");
+    // El TEXTO, no solo el estado: este mensaje lo lee el admin y hasta hoy no lo miraba nadie,
+    // asi que se podia escribir mal (o borrar) sin que la suite se enterara. Tildes incluidas
+    // (2026-08-19, decision del leader sobre los once mensajes de este modulo).
+    if (r.status !== "validation_error") throw new Error("esperaba validation_error");
+    expect(r.fieldErrors.estatus).toEqual([
+      "No se puede aprobar: el catálogo de estados está incompleto (seed pendiente).",
+    ]);
+    // SIN EFECTOS PARCIALES: ni transicion del cierre, ni movimientos de dinero, ni anclaje. El
+    // repo ni se llama, asi que la transaccion no llega a abrirse.
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R9: catalogo SIN `devuelta` -> mismo fallo cerrado (no se aprueba a medias)", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo, estatusIds: { ...ESTATUS_IDS, novedad: null } });
+
+    const r = await service.aprobarCierre("c1", MAESTRO);
+
+    expect(r.status).toBe("validation_error");
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R6: el RECHAZO no pasa config de anclaje (un rechazo no mueve ninguna orden)", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+
+    await service.rechazarCierre("c1", "cuadre", MAESTRO);
+
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.nuevoEstado).toBe("rechazado");
+    expect(arg.anclajeDevolucion).toBeUndefined();
+    // FICHA 454: tampoco aplica gestiones (el rechazo las deja pendientes, R13).
+    expect(arg.aplicacionGestiones).toBeUndefined();
+  });
+});
+
+// Feature 238 (T2.5, R38/R6) — EL ALCANCE de la confirmacion fisica. La exigencia es la MISMA
+// para cualquier actor que pueda aprobar, incluido el adminSatelite: el satelite confirma los
+// paquetes que llegan a SU bodega, que es exactamente donde llegan.
+describe("Feature 238 · aprobarCierre — alcance de la confirmacion fisica (R38/R6)", () => {
+  it("R38: el adminSatelite recibe la MISMA exigencia, con SU alcance en la lectura", async () => {
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => [
+        { gestionId: "g-dev", numGuia: 9001, resultado: "novedad" as const },
+      ]),
+    });
+    const { service } = newService({ repo });
+
+    // Mismo envio incompleto que bloquearia al maestro: al satelite le bloquea igual.
+    const r = await service.aprobarCierre("c1", ADMIN_SATELITE, [], []);
+
+    expect(r.status).toBe("validation_error");
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+    // Y la lectura del conjunto va acotada a SU zona, en el WHERE del repositorio.
+    expect(repo.findGestionesRetornablesDelCierre).toHaveBeenCalledWith("c1", {
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: ZONA_SAT,
+    });
+  });
+
+  it("R6/R13: un adminSatelite SIN zona -> no_encontrada, sin leer el conjunto del cierre", async () => {
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => [
+        { gestionId: "g-dev", numGuia: 9001, resultado: "novedad" as const },
+      ]),
+    });
+    const { service } = newService({ repo, zonaSatelite: null });
+
+    const r = await service.aprobarCierre("c1", ADMIN_SATELITE, [], []);
+
+    // No se distingue de «el cierre no existe»: no se revela NADA del cierre, ni siquiera cuantos
+    // paquetes tendria que confirmar.
+    expect(r).toEqual({ status: "no_encontrada" });
+    expect(repo.findGestionesRetornablesDelCierre).not.toHaveBeenCalled();
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R6: un cierre FUERA del alcance da conjunto vacio -> se aprueba y decide el repo", async () => {
+    // El repositorio devuelve `[]` para un cierre fuera de alcance (no lo distingue de uno
+    // inexistente), asi que la guardia no tiene nada que exigir y quien resuelve el desenlace es
+    // la guarda de alcance del propio `resolverCierre`: `no_encontrada`. Es DELIBERADO — si la
+    // guardia contestara «te faltan 3 paquetes» estaria revelando el contenido de un cierre ajeno.
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => []),
+      resolverCierre: vi.fn(async () => "fuera_de_alcance" as const),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c-ajeno", ADMIN_SATELITE, [], []);
+
+    expect(r).toEqual({ status: "no_encontrada" });
+  });
+});
+
+// --- feature 43/T11: aprobar CierreDia genera movimientos por tienda (end-to-end con el repo real) ---
+
+describe("CierresAdminService.aprobarCierre — alimenta el ledger por tienda (feature 43: R5/R13)", () => {
+  const TARIFA: TarifaVigente = {
+    valorFlete: "1000.00",
+    valorFleteGam: "1500.00",
+    valorFleteDevuelto: "400.00",
+    valorFleteDevueltoGam: "600.00",
+    comisionCod: "5.00",
+    ivaFlete: "13.00",
+    ivaComisionCod: "13.00",
+    // Sin pacto especial por distrito: estos casos cubren la tarifa NORMAL.
+    tarifaEspecial: null,
+    tarifaEspecialDevuelta: null,
+  };
+
+  // Prisma doble: cierreDia.updateMany/count/findUnique + gestionOrden.findMany + createMany de
+  // los 3 libros (42/43/44) + $transaction (tx === prisma). Stores para inspeccionar lo insertado
+  // en el ledger por tienda, en el libro del pago por mensajero y en la caja 42.
+  // `cierre`: snapshots 39/37 que consume el feed del pago al mensajero (feature 44).
+  function buildStack(
+    gestiones: unknown[],
+    cierre: { mensajeroId: string; totalPagoMensajero: string; totalEfectivo: string } = {
+      mensajeroId: "m1",
+      totalPagoMensajero: "1000.00",
+      totalEfectivo: "300.00",
+    },
+  ) {
+    const tiendaRows: Array<Record<string, unknown>> = [];
+    const mensajeroRows: Array<Record<string, unknown>> = [];
+    const caja42Rows: Array<Record<string, unknown>> = [];
+    const prisma = {
+      cierreDia: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        count: vi.fn().mockResolvedValue(1),
+        findUnique: vi.fn(async () => ({
+          mensajeroId: cierre.mensajeroId,
+          totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
+          totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
+          // FICHA 362: el total y el mensajero que la fila del registro congela.
+          totalGeneral: new Prisma.Decimal("0.00"),
+          solicitadoAt: new Date("2026-09-02T12:00:00Z"),
+          mensajero: { nombre: "Mensa", primerApellido: "Uno" },
+        })),
+      },
+      // FICHA 362: el registro de la decision, en la MISMA tx.
+      historialAccion: { createMany: vi.fn(async () => ({ count: 1 })) },
+      usuario: {
+        findUnique: vi.fn(async () => ({
+          nombre: "Admin",
+          primerApellido: "Uno",
+          rol: { value: "admin" },
+        })),
+      },
+      // Feature 109/R20: cierre NORMAL (sin ordenes `sin_gestionar`) -> la liberacion afecta 0 filas.
+      orden: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      gestionOrden: {
+        // Feature 69/R12/R13: de la gestion, los feeds solo toman lo que ES de la gestion.
+        // Feature 158: el doble HONRA `where.resultado` porque ahora hay DOS consumidores con
+        // predicados distintos — los feeds 42/43/44 (sin filtro) y la guardia de cobertura de
+        // indemnizaciones + su feed (`resultado: "incidente"`). Sin honrarlo, la guardia veria
+        // gestiones `entregada` como si fueran incidentes.
+        findMany: vi.fn(async (args?: { where?: { resultado?: string; eventos?: unknown } }) =>
+          (gestiones as GestionFixture[])
+            .map((g, i) => ({
+              id: `g${i}`,
+              ordenId: `o${i}`,
+              resultado: g.resultado,
+              montoRecibido: g.montoRecibido,
+              indemnizacion: null,
+            }))
+            .filter((g) =>
+              args?.where?.resultado === undefined ? true : g.resultado === args.where.resultado,
+            )
+            // FICHA 454 (T1.7): el doble HONRA tambien el filtro de «gestion de calle con evento de
+            // registro» de la aplicacion al aprobar. Estas gestiones son LEGADAS (sin evento), asi que
+            // la aplicacion no encuentra nada y la suite sigue midiendo solo el dinero.
+            .filter(() => args?.where?.eventos === undefined),
+        ),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      // Feature 69: el SNAPSHOT congelado de la orden, que es de donde derivan ahora los dos
+      // feeds. Se construye del MISMO fixture: los importes de la 42/43 no cambian.
+      cierreDetail: {
+        findMany: vi.fn().mockResolvedValue(
+          (gestiones as GestionFixture[]).map((g, i) => ({
+            ordenId: `o${i}`,
+            tiendaId: g.orden.tiendaId,
+            montoCobrar: g.orden.montoCobrar,
+            cobraComision: g.orden.cobraComision,
+            esCentral: g.orden.zona.esCentral,
+            tarifaId: "ta1",
+            tarifaValorFlete: new Prisma.Decimal(TARIFA.valorFlete),
+            tarifaValorFleteGam: new Prisma.Decimal(TARIFA.valorFleteGam),
+            tarifaValorFleteDevuelto: new Prisma.Decimal(TARIFA.valorFleteDevuelto),
+            tarifaValorFleteDevueltoGam: new Prisma.Decimal(TARIFA.valorFleteDevueltoGam),
+            tarifaComisionCod: new Prisma.Decimal(TARIFA.comisionCod),
+            tarifaIvaFlete: new Prisma.Decimal(TARIFA.ivaFlete),
+            tarifaIvaComisionCod: new Prisma.Decimal(TARIFA.ivaComisionCod),
+          })),
+        ),
+      },
+      walletMovimiento: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          caja42Rows.push(...data);
+          return { count: data.length };
+        }),
+      },
+      walletTiendaMovimiento: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          tiendaRows.push(...data);
+          return { count: data.length };
+        }),
+        // Feature 173/T B.2: el feed del contra-entrega LEE del ledger lo que el feed de la 43
+        // acaba de escribir. El doble filtra por el `where` recibido, como Postgres.
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          tiendaRows
+            .filter((m) => Object.entries(where).every(([k, v]) => m[k] === v))
+            .map((m) => ({ monto: m.monto })),
+        ),
+      },
+      pagoMensajeroMovimiento: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          mensajeroRows.push(...data);
+          return { count: data.length };
+        }),
+      },
+    };
+    const withTx = { ...prisma, $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
+    const repo = new CierresAdminRepository(
+      withTx as unknown as PrismaClient,
+      new WalletMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletFeedService(),
+      new WalletTiendaMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletTiendaFeedService({ TIENDA_DEBITA_FLETE_DEVOLUCION: true }),
+      new PagoMensajeroMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletMensajeroFeedService(),
+      // Feature 158: feed del egreso de indemnizacion (real: sin incidentes devuelve []).
+      new WalletIndemnizacionFeedService(),
+    );
+    return { repo, prisma, tiendaRows, mensajeroRows, caja42Rows };
+  }
+
+  // Feature 69: forma del fixture que `buildStack` reparte entre gestion y snapshot.
+  type GestionFixture = {
+    resultado: string;
+    montoRecibido: Prisma.Decimal | null;
+    orden: {
+      tiendaId: string;
+      zonaId: string;
+      montoCobrar: Prisma.Decimal;
+      cobraComision: boolean;
+      zona: { esCentral: boolean };
+    };
+  };
+
+  function gestion(resultado: string, tiendaId: string, montoRecibido: string | null) {
+    return {
+      resultado,
+      montoRecibido: montoRecibido === null ? null : new Prisma.Decimal(montoRecibido),
+      orden: {
+        tiendaId,
+        zonaId: "z1",
+        montoCobrar: new Prisma.Decimal("10000.00"),
+        cobraComision: true,
+        zona: { esCentral: false },
+      },
+    };
+  }
+
+  it("R5: aprobar un CierreDia inserta el credito COD + debitos por tienda (via el repo real)", async () => {
+    // Ficha 301 (2026-08-28): la segunda gestion era `devuelta`. Pasa a `rechazada`, que es el
+    // resultado que sigue debitando el retorno a la tienda; una devuelta ya no debita nada y
+    // dejaria a `t2` sin ninguna fila que comprobar.
+    const { repo, tiendaRows } = buildStack([
+      gestion("entregado", "t1", "10000.00"),
+      gestion("devolucion_a_origen_por_rechazo", "t2", null),
+    ]);
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c1", MAESTRO);
+
+    expect(r).toEqual({
+      status: "ok",
+      cierreId: "c1",
+      estado: "aprobado",
+      pendientePagoMensajero: "0.00", // feature 172/T C.2
+    });
+    // t1 (entregada): credito cod_recaudado + debitos flete/iva_flete/comision/iva_comision.
+    const t1 = tiendaRows.filter((m) => m.tiendaId === "t1");
+    const t1cats = t1.map((m) => m.categoria);
+    expect(t1cats).toEqual(expect.arrayContaining(["cod_recaudado", "flete", "iva_flete", "comision_cod", "iva_comision_cod"]));
+    // t2 (rechazada, flag on): debitos de devolucion SIN credito (saldo negativo).
+    const t2 = tiendaRows.filter((m) => m.tiendaId === "t2");
+    const t2cats = t2.map((m) => m.categoria);
+    expect(t2cats).toEqual(expect.arrayContaining(["flete_devolucion", "iva_flete_devolucion"]));
+    expect(t2cats).not.toContain("cod_recaudado");
+    // origen cierre_dia con el id del cierre; montos Prisma.Decimal en la fila.
+    for (const m of tiendaRows) {
+      expect(m.origenTipo).toBe("cierre_dia");
+      expect(m.origenId).toBe("c1");
+      expect(m.monto).toBeInstanceOf(Prisma.Decimal);
+    }
+  });
+
+  it("R13: vencido->aprobado alimenta el ledger por tienda una sola vez", async () => {
+    const { repo, prisma, tiendaRows } = buildStack([gestion("entregado", "t1", "5000.00")]);
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c-vencido", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    expect(prisma.walletTiendaMovimiento.createMany).toHaveBeenCalledTimes(1); // una sola alimentacion
+    expect(tiendaRows.some((m) => m.categoria === "cod_recaudado" && m.tiendaId === "t1")).toBe(true);
+  });
+});
+
+// --- feature 44/T11: aprobar CierreDia genera el pago al mensajero + el egreso en la caja 42 ---
+
+describe("CierresAdminService.aprobarCierre — alimenta el pago al mensajero (feature 44: R5/R12/R17)", () => {
+  // Feature 69: este bloque ya no necesita una tarifa. El libro del pago al mensajero (44)
+  // sale de los snapshots del `cierre_dia` y su cierre no lleva gestiones.
+  function buildStack(cierre: { mensajeroId: string; totalPagoMensajero: string; totalEfectivo: string }) {
+    const mensajeroRows: Array<Record<string, unknown>> = [];
+    const caja42Rows: Array<Record<string, unknown>> = [];
+    const prisma = {
+      cierreDia: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        count: vi.fn().mockResolvedValue(1),
+        findUnique: vi.fn(async () => ({
+          mensajeroId: cierre.mensajeroId,
+          totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
+          totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
+          // FICHA 362: el total y el mensajero que la fila del registro congela.
+          totalGeneral: new Prisma.Decimal("0.00"),
+          solicitadoAt: new Date("2026-09-02T12:00:00Z"),
+          mensajero: { nombre: "Mensa", primerApellido: "Uno" },
+        })),
+      },
+      // FICHA 362: el registro de la decision, en la MISMA tx.
+      historialAccion: { createMany: vi.fn(async () => ({ count: 1 })) },
+      usuario: {
+        findUnique: vi.fn(async () => ({
+          nombre: "Admin",
+          primerApellido: "Uno",
+          rol: { value: "admin" },
+        })),
+      },
+      gestionOrden: { findMany: vi.fn().mockResolvedValue([]) }, // el pago no depende de gestiones (snapshot)
+      // Feature 109/R20: cierre NORMAL -> la liberacion de `sin_gestionar` no encuentra ordenes.
+      orden: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      // Feature 69: cierre sin gestiones -> snapshot vacio. El libro del pago al mensajero
+      // (44) sale de los snapshots del `cierre_dia`, no de `cierre_detail`: la 69 no lo toca.
+      cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
+      walletMovimiento: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          caja42Rows.push(...data);
+          return { count: data.length };
+        }),
+      },
+      walletTiendaMovimiento: { createMany: vi.fn(async () => ({ count: 0 })) },
+      pagoMensajeroMovimiento: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          mensajeroRows.push(...data);
+          return { count: data.length };
+        }),
+      },
+    };
+    const withTx = { ...prisma, $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
+    const repo = new CierresAdminRepository(
+      withTx as unknown as PrismaClient,
+      new WalletMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletFeedService(),
+      new WalletTiendaMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletTiendaFeedService({ TIENDA_DEBITA_FLETE_DEVOLUCION: true }),
+      new PagoMensajeroMovimientoRepository(withTx as unknown as PrismaClient),
+      new WalletMensajeroFeedService(),
+      // Feature 158: feed del egreso de indemnizacion (real: sin incidentes devuelve []).
+      new WalletIndemnizacionFeedService(),
+    );
+    return { repo, prisma, mensajeroRows, caja42Rows };
+  }
+
+  it("R5/R17: E<P -> devengo=P + pago=E en el libro; egreso egreso_pago_mensajero=P en la caja 42", async () => {
+    const { repo, mensajeroRows, caja42Rows } = buildStack({ mensajeroId: "m1", totalPagoMensajero: "1000.00", totalEfectivo: "300.00" });
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c1", MAESTRO);
+
+    expect(r).toEqual({
+      status: "ok",
+      cierreId: "c1",
+      estado: "aprobado",
+      pendientePagoMensajero: "0.00", // feature 172/T C.2
+    });
+    // Libro del pago por mensajero (via el repo real): devengo=1000, pago=300.
+    const byCat = Object.fromEntries(mensajeroRows.map((m) => [m.categoria, m]));
+    expect((byCat.pago_devengado.monto as Prisma.Decimal).toFixed(2)).toBe("1000.00");
+    expect((byCat.pago_efectivo.monto as Prisma.Decimal).toFixed(2)).toBe("300.00");
+    for (const m of mensajeroRows) {
+      expect(m.mensajeroId).toBe("m1");
+      expect(m.origenTipo).toBe("cierre_dia");
+      expect(m.origenId).toBe("c1");
+      expect(m.monto).toBeInstanceOf(Prisma.Decimal);
+    }
+    // R17 (Qa): egreso egreso_pago_mensajero=P (1000) en la caja 42.
+    const egreso = caja42Rows.find((m) => m.categoria === "egreso_pago_mensajero");
+    expect(egreso).toBeDefined();
+    expect((egreso!.monto as Prisma.Decimal).toFixed(2)).toBe("1000.00");
+    expect(egreso!.tipo).toBe("egreso");
+    expect(egreso!.origenTipo).toBe("cierre_dia");
+    expect(egreso!.origenId).toBe("c1");
+  });
+
+  it("R10: P=0 (cierre sin entregas que paguen) -> NI libro NI egreso en la caja 42", async () => {
+    const { repo, mensajeroRows, caja42Rows } = buildStack({ mensajeroId: "m1", totalPagoMensajero: "0.00", totalEfectivo: "5000.00" });
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    expect(mensajeroRows).toEqual([]);
+    expect(caja42Rows.some((m) => m.categoria === "egreso_pago_mensajero")).toBe(false);
+  });
+
+  it("R12: vencido->aprobado alimenta el pago al mensajero una sola vez", async () => {
+    const { repo, prisma, mensajeroRows } = buildStack({ mensajeroId: "m1", totalPagoMensajero: "800.00", totalEfectivo: "800.00" });
+    const { service } = newService({ repo });
+
+    const r = await service.aprobarCierre("c-vencido", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    expect(prisma.pagoMensajeroMovimiento.createMany).toHaveBeenCalledTimes(1); // una sola alimentacion
+    // E=P -> pagado=P, pendiente=0 (solo devengo + pago, sin cuenta por pagar).
+    expect(mensajeroRows.map((m) => m.categoria).sort()).toEqual(["pago_devengado", "pago_efectivo"]);
+  });
+});
+
+describe("CierresAdminService.rechazarCierre (R11/R12/R13/R14)", () => {
+  it("R11: rechazo sin motivo (vacio/espacios) -> validation_error, sin resolver", async () => {
+    const repo = fakeRepo();
+    const { service } = newService({ repo });
+    const r = await service.rechazarCierre("c1", "   ", MAESTRO);
+    expect(r.status).toBe("validation_error");
+    if (r.status !== "validation_error") throw new Error("esperaba validation_error");
+    expect(r.fieldErrors.motivo).toBeDefined();
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R11/R14: rechazo con motivo -> ok/rechazado; persiste motivo trim + resueltoPor", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+    const r = await service.rechazarCierre("c1", "  cuadre no coincide  ", MAESTRO);
+    expect(r).toEqual({ status: "ok", cierreId: "c1", estado: "rechazado" });
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg).toMatchObject({
+      nuevoEstado: "rechazado",
+      resueltoPor: "adm-maestro", // R14
+      motivoRechazo: "cuadre no coincide", // trim aplicado
+    });
+    // Feature 109/R27: rechazar conserva `estado:'rechazado'` (escritura SIN cambio) y NO libera
+    // `sin_gestionar` -> NO pasa la config de liberacion (solo la aprobacion lo hace, R16).
+    expect(arg.liberacionSinGestionar).toBeUndefined();
+  });
+
+  it("R12: repo devuelve conflict -> conflict", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "conflict" as const) });
+    const { service } = newService({ repo });
+    const r = await service.rechazarCierre("c1", "motivo", MAESTRO);
+    expect(r.status).toBe("conflict");
+  });
+
+  it("R13: repo devuelve fuera_de_alcance -> no_encontrada", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "fuera_de_alcance" as const) });
+    const { service } = newService({ repo });
+    const r = await service.rechazarCierre("c1", "motivo", MAESTRO);
+    expect(r.status).toBe("no_encontrada");
+  });
+
+  it("R1: rol invalido -> forbidden, sin resolver", async () => {
+    const { service, repo } = newService();
+    const r = await service.rechazarCierre("c1", "motivo", MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// --- feature 111: VÁLVULA DE ESCAPE (R16/R17/R18) ---
+
+describe("CierresAdminService.forzarSolicitudVencido (feature 111/R16/R17/R18)", () => {
+  it("R16: maestro destraba un vencido de su alcance -> ok/solicitado; pasa el alcance al repo", async () => {
+    const repo = fakeRepo({ forzarSolicitudVencido: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+
+    const r = await service.forzarSolicitudVencido("c-venc", MAESTRO);
+
+    expect(r).toEqual({ status: "ok", cierreId: "c-venc", estado: "solicitado" });
+    const [cierreId, alcance] = (repo.forzarSolicitudVencido as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(cierreId).toBe("c-venc");
+    expect(alcance).toEqual({ destinoTipo: "bodega_central", destinoZonaId: null });
+  });
+
+  it("R16: adminSatelite -> la válvula queda acotada a SU zona (alcance bodega_satelite)", async () => {
+    const repo = fakeRepo({ forzarSolicitudVencido: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+
+    await service.forzarSolicitudVencido("c-venc", ADMIN_SATELITE);
+
+    const alcance = (repo.forzarSolicitudVencido as ReturnType<typeof vi.fn>).mock.calls[0][1] as Alcance;
+    expect(alcance).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: ZONA_SAT });
+  });
+
+  it("R16: repo conflict (ya no es vencido / carrera) -> conflict", async () => {
+    const repo = fakeRepo({ forzarSolicitudVencido: vi.fn(async () => "conflict" as const) });
+    const { service } = newService({ repo });
+    const r = await service.forzarSolicitudVencido("c-venc", MAESTRO);
+    expect(r.status).toBe("conflict");
+  });
+
+  it("R16: repo fuera_de_alcance (otra bodega/zona) -> no_encontrada", async () => {
+    const repo = fakeRepo({ forzarSolicitudVencido: vi.fn(async () => "fuera_de_alcance" as const) });
+    const { service } = newService({ repo });
+    const r = await service.forzarSolicitudVencido("c-ajeno", MAESTRO);
+    expect(r.status).toBe("no_encontrada");
+  });
+
+  it("R1: rol no admin (mensajero) -> forbidden, sin tocar el repo", async () => {
+    const { service, repo } = newService();
+    const r = await service.forzarSolicitudVencido("c-venc", MENSAJERO);
+    expect(r.status).toBe("forbidden");
+    expect(repo.forzarSolicitudVencido).not.toHaveBeenCalled();
+  });
+
+  it("R13: adminSatelite sin zona -> no_encontrada, sin tocar el repo", async () => {
+    const { service, repo } = newService({ zonaSatelite: null });
+    const r = await service.forzarSolicitudVencido("c-venc", ADMIN_SATELITE);
+    expect(r.status).toBe("no_encontrada");
+    expect(repo.forzarSolicitudVencido).not.toHaveBeenCalled();
+  });
+
+  it("R18: la válvula deja el cierre en `solicitado`; NO lo aprueba directo", async () => {
+    // ⚠️ FEATURE 241 (2026-08-20) — LO QUE ESTE COMENTARIO DECÍA YA NO ES CIERTO, y es una
+    // consecuencia real de la regla firmada, no una errata. Decía: «`vencido -> solicitado` NO
+    // desbloquea: el estado resultante SIGUE siendo bloqueante». Desde la 241 `solicitado` NO
+    // bloquea, así que esta válvula SÍ desbloquea al mensajero para gestionar, en el acto.
+    //
+    // Va en la dirección de por qué existe (111/R16): es la salida para el mensajero AUSENTE con
+    // un `vencido` que nadie envía, y su motivo declarado es «evitar el bloqueo permanente del
+    // mensajero y su bodega». Antes lo dejaba igual de bloqueado hasta que alguien aprobara; ahora
+    // lo devuelve a trabajar y el dinero sigue esperando aprobación, que es de quien depende.
+    //
+    // Lo que el test AFIRMA no cambia y sigue siendo el punto: la válvula transiciona, no aprueba,
+    // y no mueve dinero (R21).
+    const repo = fakeRepo({ forzarSolicitudVencido: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+    const r = await service.forzarSolicitudVencido("c-venc", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.estado).toBe("solicitado"); // no `aprobado`
+    // La válvula NO resuelve: no invoca resolverCierre (no mueve dinero, R21).
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Feature 158 (T1.10, R18) — el detalle del ADMIN agrupa el `incidente` aparte.
+// ============================================================================
+
+describe("Feature 158 · verCierreDetalle — el incidente es un grupo PROPIO (R18)", () => {
+  it("R18: la gestion `incidente` cae en `grupos.incidente` y no se mezcla con las otras", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({ gestionId: "g1", resultado: "entregado" }),
+          gestionRow({
+            gestionId: "g-inc",
+            ordenId: "o2",
+            resultado: "incidente",
+            montoRecibido: null,
+            metodoPago: null,
+            motivo: "caja aplastada",
+          }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    // Las CINCO claves siempre presentes (el grupo vacio no desaparece del contrato).
+    expect(Object.keys(r.grupos).sort()).toEqual(
+      ["novedad", "entregado", "incidente", "devolucion_a_origen_por_rechazo", "reprogramado"].sort(),
+    );
+    expect(r.grupos.incidente.map((g) => g.gestionId)).toEqual(["g-inc"]);
+    expect(r.grupos.entregado.map((g) => g.gestionId)).toEqual(["g1"]);
+  });
+
+  it("R17: un incidente NO aporta ingreso de la empresa a los totales del cierre", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ totalPagoMensajero: "0.00" }),
+        gestiones: [
+          gestionRow({
+            gestionId: "g-inc",
+            resultado: "incidente",
+            montoRecibido: null,
+            metodoPago: null,
+            // El repo deriva el desglose con `derivarIngresoOrden`, que para `incidente`
+            // devuelve {} -> todos los conceptos en null y el total en 0.00.
+            ingresoEmpresa: {
+              montoCobrar: "50000.00",
+              cobraComision: true,
+              esCentral: true,
+              esZonaEspecial: false,
+              fleteOrigen: "normal",
+              fleteDevolucionOrigen: "normal",
+              flete: null,
+              ivaFlete: null,
+              fleteDevolucion: null,
+              ivaFleteDevolucion: null,
+              comisionCod: null,
+              ivaComisionCod: null,
+              fleteConIva: null,
+              fleteDevolucionConIva: null,
+              comisionConIva: null,
+              total: "0.00",
+              tarifa: null,
+            },
+          }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.totalesIngreso.total).toBe("0.00");
+    expect(r.totalesIngreso.fleteConIva).toBe("0.00");
+    expect(r.totalesIngreso.comisionConIva).toBe("0.00");
+  });
+});
+
+describe("Feature 158 · verCierreDetalle — la causa y el monto llegan al DTO (R34)", () => {
+  it("R34: el detalle del admin expone `causaIncidente` e `indemnizacion` por gestión", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({ estado: "aprobado" }),
+        gestiones: [
+          gestionRow({
+            gestionId: "g-inc",
+            resultado: "incidente",
+            montoRecibido: null,
+            metodoPago: null,
+            motivo: "caja aplastada",
+            causaIncidente: "danado",
+            indemnizacion: "12500.75",
+          }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const inc = r.grupos.incidente[0];
+    // Sin la causa, el admin decide el monto de una indemnización sin saber si el paquete se
+    // rompió o se lo robaron: es justo lo que R34 exige mostrar.
+    expect(inc.causaIncidente).toBe("danado");
+    // Money-safe: STRING de extremo a extremo.
+    expect(inc.indemnizacion).toBe("12500.75");
+    expect(typeof inc.indemnizacion).toBe("string");
+  });
+
+  it("R19: mientras el cierre sigue `solicitado` el monto es `null` (no 0.00)", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(), // `solicitado`
+        gestiones: [
+          gestionRow({
+            gestionId: "g-inc",
+            resultado: "incidente",
+            montoRecibido: null,
+            metodoPago: null,
+            causaIncidente: "robado",
+            indemnizacion: null,
+          }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    // `null` = «todavía no hay monto». "0.00" diría «se indemnizó con cero», que es otra cosa.
+    expect(r.grupos.incidente[0].indemnizacion).toBeNull();
+    // La causa SÍ existe desde el reporte: es lo que el admin necesita para decidir el monto.
+    expect(r.grupos.incidente[0].causaIncidente).toBe("robado");
+  });
+
+  it("R35: las gestiones de los otros cuatro resultados llegan con los dos campos en `null`", async () => {
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({ gestionId: "g1", resultado: "entregado" }),
+          gestionRow({ gestionId: "g2", resultado: "devolucion_a_origen_por_rechazo", motivo: "cliente rechazó" }),
+        ],
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    for (const g of [...r.grupos.entregado, ...r.grupos.devolucion_a_origen_por_rechazo]) {
+      expect(g.causaIncidente).toBeNull();
+      expect(g.indemnizacion).toBeNull();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// El comprobante se sirve AUNQUE el storage falle. Incidente de produccion (2026-07-29): una
+// evidencia referenciada ya no estaba en el bucket, la firma lanzo y el detalle entero dejo de
+// abrirse. Sin detalle no hay boton de aprobar/rechazar; sin aprobar, el mensajero sigue
+// bloqueado; y con el bloqueado, la regla de zona impide asignar en TODA su zona. Una foto que
+// falta no puede costar eso: las evidencias ilustran la decision, no son la decision.
+// ---------------------------------------------------------------------------------------
+describe("CierresAdminService.verCierreDetalle — el storage no puede bloquear la decision", () => {
+  function repoConEvidencias() {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({
+            gestionId: "a",
+            resultado: "entregado",
+            evidenciaStoragePath: "o1/entregada.jpg", evidenciaStoragePaths: ["o1/entregada.jpg"],
+          }),
+        ],
+      })),
+    });
+  }
+
+  it("storage caido (la firma lanza) -> el detalle SIGUE abriendose, sin URL de evidencia", async () => {
+    const signedUrls = fakeSignedUrls({
+      createSignedUrls: vi.fn(async () => {
+        throw new Error("fallo al firmar URLs de documentos: supabaseUrl is required");
+      }),
+    });
+    const { service } = newService({ repo: repoConEvidencias(), signedUrls });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.grupos.entregado[0]!.evidenciaUrl).toBeNull();
+    // Y lo que decide el dinero sigue intacto: el comprobante no depende de las fotos.
+    expect(r.grupos.entregado[0]!.gestionId).toBe("a");
+  });
+
+  it("evidencia que el storage no pudo firmar -> esa gestion queda sin URL, el resto igual", async () => {
+    // El provider real ya omite lo que no puede firmar: aqui se simula ese mapa PARCIAL.
+    const signedUrls = fakeSignedUrls({ createSignedUrls: vi.fn(async () => ({})) });
+    const { service } = newService({ repo: repoConEvidencias(), signedUrls });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.grupos.entregado[0]!.evidenciaUrl).toBeNull();
+  });
+});
+
+// ==============================================================================================
+// FEATURE 264 (B5, R7/R8/R9/R10/R27) — EL DTO DEL DETALLE LLEVA LA LISTA, Y NO LLEVA DINERO.
+//
+// El servicio no deriva nada de esta lista: la pasa tal cual. Eso es deliberado y es la mitad de
+// la garantia de R19/R20 —la otra mitad es que la tabla no tiene ni una columna `DECIMAL`—. Aqui
+// se afirma lo que el servicio EMITE; que las filas sean las del cierre correcto se prueba contra
+// Postgres (`cierre-sin-gestion-sql-real.test.ts`), porque este doble no ve el SQL.
+// ==============================================================================================
+
+describe("264/B5 — verCierreDetalle emite las ordenes sin gestionar", () => {
+  function sinGestionDTO(overrides: Record<string, unknown> = {}) {
+    return {
+      ordenId: "o-barrida",
+      numGuia: 42,
+      numRemision: "REM-42",
+      destinatario: "Carla",
+      producto: "Caja",
+      tiendaNombre: "Tienda Z",
+      zonaNombre: "Alajuela",
+      estatusOrigen: "en_reparto" as const,
+      ...overrides,
+    };
+  }
+
+  function repoConSinGestion(
+    sinGestion: ReturnType<typeof sinGestionDTO>[],
+    sinGestionRegistrado = true,
+  ) {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        cierre: resumenRow(),
+        gestiones: [],
+        sinGestion,
+        sinGestionRegistrado,
+        rechazosDeTienda: [],
+      })),
+    });
+  }
+
+  it("R9: los OCHO campos llegan al DTO, sin uno de mas y sin uno de menos", async () => {
+    const repo = repoConSinGestion([sinGestionDTO()]);
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    // Igualdad EXACTA y no `toMatchObject`: lo que SOBRA importa tanto como lo que falta. Un
+    // campo de dinero colandose aqui es justo lo que R10 prohibe, y `toMatchObject` lo dejaria
+    // pasar en verde.
+    expect(r.ordenesSinGestion).toEqual([
+      {
+        ordenId: "o-barrida",
+        numGuia: 42,
+        numRemision: "REM-42",
+        destinatario: "Carla",
+        producto: "Caja",
+        tiendaNombre: "Tienda Z",
+        zonaNombre: "Alajuela",
+        estatusOrigen: "en_reparto",
+      },
+    ]);
+  });
+
+  it("R9/R32: `numGuia: null` y `estatusOrigen: null` son casos VIVOS, no filas descartadas", async () => {
+    const repo = repoConSinGestion([
+      sinGestionDTO({ ordenId: "sin-guia", numGuia: null, estatusOrigen: null }),
+      sinGestionDTO(),
+    ]);
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.ordenesSinGestion).toHaveLength(2);
+    expect(r.ordenesSinGestion[0].numGuia).toBeNull();
+    expect(r.ordenesSinGestion[0].estatusOrigen).toBeNull();
+  });
+
+  it("R19/R20: la lista NO se cuela en ningun grupo ni mueve un solo importe del DTO", async () => {
+    // El caso EMPAREJADO: el mismo cierre, con y sin lista. Los cinco grupos y los siete importes
+    // tienen que salir IDENTICOS. Si alguien concatenara estas ordenes a `grupos.entregada` —o
+    // las sumara a un total— este caso se pone rojo.
+    const gestion = gestionRow({ gestionId: "g1", resultado: "entregado", montoRecibido: "30.00" });
+    const conLista = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        cierre: resumenRow(),
+        gestiones: [gestion],
+        sinGestion: [sinGestionDTO(), sinGestionDTO({ ordenId: "b" }), sinGestionDTO({ ordenId: "c" })],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+      })),
+    });
+    const sinLista = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        cierre: resumenRow(),
+        gestiones: [gestion],
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+      })),
+    });
+
+    const a = await newService({ repo: conLista }).service.verCierreDetalle("c1", MAESTRO);
+    const b = await newService({ repo: sinLista }).service.verCierreDetalle("c1", MAESTRO);
+    if (a.status !== "ok" || b.status !== "ok") throw new Error("los dos deben ser ok");
+
+    expect(a.grupos).toEqual(b.grupos);
+    expect(a.totalesIngreso).toEqual(b.totalesIngreso);
+    expect(a.desgloseIngresoBodegaRechazos).toEqual(b.desgloseIngresoBodegaRechazos);
+    expect(a.ganancia).toBe(b.ganancia);
+    expect(a.pagoTienda).toBe(b.pagoTienda);
+    expect(a.cierre.totales).toEqual(b.cierre.totales);
+    // Y el contrapunto que impide que esto sea verde por vacio: la lista SI llego.
+    expect(a.ordenesSinGestion).toHaveLength(3);
+    expect(b.ordenesSinGestion).toHaveLength(0);
+  });
+
+  it("R27: un cierre marcado como NO registrado emite `false` con la lista vacia", async () => {
+    const repo = repoConSinGestion([], false);
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.ordenesSinGestion).toEqual([]);
+    // ⭑ El campo que separa «no hubo ninguna» de «no lo sabemos». Traducir el `false` a lista
+    // vacia a secas seria volver a confundirlas, que es toda la razon de ser de esta columna.
+    expect(r.sinGestionRegistrado).toBe(false);
+  });
+
+  it("R27: el mismo `[]` con la marca en `true` significa «no hubo ninguna»", async () => {
+    const { service } = newService({ repo: repoConSinGestion([], true) });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.ordenesSinGestion).toEqual([]);
+    expect(r.sinGestionRegistrado).toBe(true);
+  });
+
+  it("R8: fuera de alcance -> `no_encontrada`, sin lista y sin distinguirse de inexistente", async () => {
+    // El repo devuelve `null` (su WHERE ya cruzo el alcance). El servicio no puede emitir ni una
+    // fila, ni un conteo, ni una marca: el resultado es el MISMO que para un id que no existe.
+    const repo = fakeRepo({ findCierreByIdEnAlcance: vi.fn(async () => null) });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c-ajeno", MAESTRO);
+
+    expect(r).toEqual({ status: "no_encontrada" });
+    expect(Object.keys(r)).toEqual(["status"]); // ni `ordenesSinGestion` ni `sinGestionRegistrado`
+  });
+});
+
+/**
+ * 💰 FICHA 396 (C1) — EL DETALLE DEL CIERRE DEL MENSAJERO DICE DE QUIÉN ES CADA PARTE.
+ *
+ * ⚠️ **NO ES UN DEFECTO DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos separados
+ * por tienda desde siempre, con sus propias cifras: a nadie se le paga mal, y esta ficha no
+ * toca ni una fila del ledger. Lo que faltaba era DECIRLO en la pantalla.
+ *
+ * El cierre es del MENSAJERO, no de la tienda: puede llevar órdenes de varias (medido en
+ * producción el 2026-09-08: de 56 cierres, 17 tienen DOS), y `pagoTienda` era la suma de todas
+ * sin que nada lo indicara.
+ *
+ * **Todos los importes de aquí abajo están escritos a mano.** Ninguno sale de llamar a
+ * `partesPorTienda`, que es la función bajo prueba; comparar un total contra la función que lo
+ * genera deja el test siempre verde.
+ */
+describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
+  /** Desglose por orden como lo emite el repositorio (ya derivado del snapshot congelado). */
+  function ingreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
+    return {
+      montoCobrar: null,
+      cobraComision: false,
+      esCentral: false,
+      esZonaEspecial: false,
+      fleteOrigen: "normal",
+      fleteDevolucionOrigen: "normal",
+      flete: null,
+      ivaFlete: null,
+      fleteDevolucion: null,
+      ivaFleteDevolucion: null,
+      comisionCod: null,
+      ivaComisionCod: null,
+      fleteConIva: null,
+      fleteDevolucionConIva: null,
+      comisionConIva: null,
+      total: "0.00",
+      tarifa: null,
+      ...over,
+    };
+  }
+
+  /**
+   * UN cierre de UN mensajero con órdenes de DOS tiendas, y a propósito **una con rechazo y la
+   * otra sin él**: si las dos tuvieran flete por devolución a origen cero, la identidad que ata `pagoTienda`
+   * con `ganaLaTienda` por tienda daría `0.00 === 0.00` en las dos y no comprobaría nada.
+   *
+   * Los totales del `resumen` son los del snapshot del cierre y **cuadran con las gestiones**,
+   * igual que en producción (el snapshot ES ese total congelado). Esa coherencia no es un
+   * detalle del fixture: es lo que hace que las identidades R10-R12 signifiquen algo aquí.
+   */
+  const GESTIONES_DOS_TIENDAS = () => [
+    gestionRow({
+      gestionId: "g-norte-entrega",
+      ordenId: "o-1",
+      tiendaId: "t-norte",
+      tiendaNombre: "Tienda Norte",
+      resultado: "entregado",
+      montoRecibido: "100000.00",
+      metodoPago: "efectivo",
+      ingresoEmpresa: ingreso({
+        flete: "2500.00",
+        ivaFlete: "325.00",
+        fleteConIva: "2825.00",
+        comisionCod: "3000.00",
+        ivaComisionCod: "390.00",
+        comisionConIva: "3390.00",
+        total: "6215.00",
+      }),
+    }),
+    gestionRow({
+      gestionId: "g-norte-rechazo",
+      ordenId: "o-2",
+      tiendaId: "t-norte",
+      tiendaNombre: "Tienda Norte",
+      resultado: "devolucion_a_origen_por_rechazo",
+      montoRecibido: null,
+      metodoPago: null,
+      ingresoEmpresa: ingreso({
+        fleteDevolucion: "1500.00",
+        ivaFleteDevolucion: "195.00",
+        fleteDevolucionConIva: "1695.00",
+        total: "1695.00",
+      }),
+    }),
+    gestionRow({
+      gestionId: "g-sur-entrega",
+      ordenId: "o-3",
+      tiendaId: "t-sur",
+      tiendaNombre: "Tienda Sur",
+      resultado: "entregado",
+      montoRecibido: "40000.00",
+      metodoPago: "SINPE",
+      ingresoEmpresa: ingreso({
+        flete: "2000.00",
+        ivaFlete: "260.00",
+        fleteConIva: "2260.00",
+        comisionCod: "1200.00",
+        ivaComisionCod: "156.00",
+        comisionConIva: "1356.00",
+        total: "3616.00",
+      }),
+    }),
+  ];
+
+  const RESUMEN_DOS_TIENDAS = () =>
+    resumenRow({
+      totales: {
+        efectivo: "100000.00",
+        simpe: "40000.00",
+        transferencia: "0.00",
+        general: "140000.00",
+      },
+      totalPagoMensajero: "3000.00",
+      totalIngresoBodegaRechazos: "500.00",
+    });
+
+  function repoDeDosTiendas() {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: RESUMEN_DOS_TIENDAS(),
+        gestiones: GESTIONES_DOS_TIENDAS(),
+      })),
+    });
+  }
+
+  it("R4/R7/R8: una fila por tienda, con sus TRES cifras y ordenadas por lo que se les paga", async () => {
+    const { service } = newService({ repo: repoDeDosTiendas() });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.partesPorTienda).toEqual([
+      {
+        tiendaId: "t-norte",
+        tiendaNombre: "Tienda Norte",
+        recaudado: "100000.00",
+        // 100.000,00 − 2.825,00 − 3.390,00
+        pagoTienda: "93785.00",
+        // 100.000,00 − (6.215,00 + 1.695,00)
+        ganaLaTienda: "92090.00",
+      },
+      {
+        tiendaId: "t-sur",
+        tiendaNombre: "Tienda Sur",
+        recaudado: "40000.00",
+        // 40.000,00 − 2.260,00 − 1.356,00
+        pagoTienda: "36384.00",
+        // 40.000,00 − 3.616,00 — sin rechazos, coincide con lo que se le paga
+        ganaLaTienda: "36384.00",
+      },
+    ]);
+  });
+
+  it("R10/R11/R12: la suma de las partes ES cada agregado del MISMO detalle, al céntimo", async () => {
+    const { service } = newService({ repo: repoDeDosTiendas() });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    const suma = (montos: string[]) =>
+      montos.reduce((a, m) => a.plus(new Prisma.Decimal(m)), new Prisma.Decimal(0)).toFixed(2);
+
+    // Los DOS lados anclados a literales escritos a mano: la suma de las partes y el agregado
+    // que el propio DTO emite. Si cualquiera de los dos se moviera, esto se entera.
+    expect(suma(r.partesPorTienda.map((p) => p.pagoTienda))).toBe("130169.00");
+    expect(r.pagoTienda).toBe("130169.00"); // R10
+
+    expect(suma(r.partesPorTienda.map((p) => p.ganaLaTienda))).toBe("128474.00");
+    expect(r.ganaLaTienda).toBe("128474.00"); // R11
+
+    expect(suma(r.partesPorTienda.map((p) => p.recaudado))).toBe("140000.00");
+    expect(r.cierre.totales.general).toBe("140000.00"); // R12
+  });
+
+  it("la CUARTA identidad, por tienda: lo que se le paga − lo que gana = SU flete por devolución a origen", async () => {
+    // Es la que hace imposible derivar una de las dos con el subconjunto equivocado sin que se
+    // note. Norte tuvo un rechazo (1.695,00) y Sur no (0,00): si las dos dieran cero, este test
+    // pasaría sin comprobar nada.
+    const { service } = newService({ repo: repoDeDosTiendas() });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    const dif = (p: { pagoTienda: string; ganaLaTienda: string }) =>
+      new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
+
+    const norte = r.partesPorTienda.find((p) => p.tiendaId === "t-norte")!;
+    const sur = r.partesPorTienda.find((p) => p.tiendaId === "t-sur")!;
+    expect(dif(norte)).toBe("1695.00");
+    expect(dif(sur)).toBe("0.00");
+  });
+
+  it("R18: ni un importe ya visible cambia de valor por añadir el desglose", async () => {
+    const { service } = newService({ repo: repoDeDosTiendas() });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.cierre.totales.general).toBe("140000.00");
+    expect(r.totalesIngreso.total).toBe("11526.00"); // 6.215,00 + 1.695,00 + 3.616,00
+    expect(r.totalesIngreso.fleteConIva).toBe("5085.00"); // 2.825,00 + 2.260,00
+    expect(r.totalesIngreso.comisionConIva).toBe("4746.00"); // 3.390,00 + 1.356,00
+    expect(r.totalesIngreso.fleteDevolucionConIva).toBe("1695.00");
+    expect(r.ganancia).toBe("8526.00"); // 11.526,00 − 3.000,00
+    expect(r.pagoTienda).toBe("130169.00");
+    // Los CUATRO campos que dejó la ficha 395, intactos.
+    expect(r.cobradoSobreRecaudado).toBe("9831.00"); // 5.085,00 + 4.746,00
+    expect(r.netoEmpresa).toBe("8026.00"); // 11.526,00 − 3.000,00 − 500,00
+    expect(r.ganaLaTienda).toBe("128474.00");
+    expect(r.fleteRechazoYaCobradoATienda).toBe(false); // el cierre está `solicitado`
+  });
+
+  it("con UNA sola tienda el campo se emite igual, con un elemento (el umbral es de pantalla)", async () => {
+    // Un contrato que a veces trae la lista y a veces no obliga a cada consumidor a distinguir
+    // dos formas del mismo dato: el error que la 264 ya documentó.
+    const repo = fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow({
+          totales: {
+            efectivo: "0.00",
+            simpe: "40000.00",
+            transferencia: "0.00",
+            general: "40000.00",
+          },
+          totalPagoMensajero: "0.00",
+        }),
+        gestiones: [GESTIONES_DOS_TIENDAS()[2]], // sólo la de Tienda Sur
+      })),
+    });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    expect(r.partesPorTienda).toEqual([
+      {
+        tiendaId: "t-sur",
+        tiendaNombre: "Tienda Sur",
+        recaudado: "40000.00",
+        pagoTienda: "36384.00",
+        ganaLaTienda: "36384.00",
+      },
+    ]);
+    // Y sus tres cifras son EXACTAMENTE las agregadas del mismo detalle.
+    expect(r.partesPorTienda[0].pagoTienda).toBe(r.pagoTienda);
+    expect(r.partesPorTienda[0].ganaLaTienda).toBe(r.ganaLaTienda);
+    expect(r.partesPorTienda[0].recaudado).toBe(r.cierre.totales.general);
+  });
+
+  it("R16: no reparte el pago al mensajero ni el ingreso de bodega — no viajan por tienda", async () => {
+    const { service } = newService({ repo: repoDeDosTiendas() });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+
+    for (const parte of r.partesPorTienda) {
+      expect(Object.keys(parte).sort()).toEqual([
+        "ganaLaTienda",
+        "pagoTienda",
+        "recaudado",
+        "tiendaId",
+        "tiendaNombre",
+      ]);
+    }
+    // Siguen siendo del cierre entero, agregados y sin repartir.
+    expect(r.cierre.totalPagoMensajero).toBe("3000.00");
+    expect(r.desgloseIngresoBodegaRechazos.total).toBe("500.00");
+  });
+
+  it("R24: el desglose no se cuela por las puertas de alcance — un rol sin acceso no lo ve", async () => {
+    const repo = repoDeDosTiendas();
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MENSAJERO);
+
+    expect(r).toEqual({ status: "forbidden" });
+    expect(Object.keys(r)).toEqual(["status"]); // ni `partesPorTienda`, ni nada más
+    expect(repo.findCierreByIdEnAlcance).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * FICHA 425 (B11) — EL DETALLE DEL ADMIN EMITE LOS RECHAZOS DE TIENDA DEL CIERRE.
+ *
+ * Passthrough: la lista la congela y la ordena el repositorio (medido contra Postgres). Aqui se
+ * afirma que llega, que `[]` viaja como `[]`, que fuera de alcance no se emite, y —R16— que no se
+ * cuela en ningun grupo ni mueve ningun importe del DTO.
+ */
+describe("425/B11 — verCierreDetalle emite `rechazosDeTienda`", () => {
+  function rechazoDTO(overrides: Record<string, unknown> = {}) {
+    return {
+      gestionId: "g-981",
+      ordenId: "o-981",
+      numGuia: 58980454 as number | null,
+      numRemision: "NA-981",
+      destinatario: "Dest 981",
+      producto: "Caja",
+      tiendaNombre: "Mercadito",
+      zonaNombre: "Central",
+      rechazadoAt: "2026-09-10T15:30:00.000Z",
+      motivo: "No la recibe" as string | null,
+      ...overrides,
+    };
+  }
+
+  function repoConRechazos(
+    rechazosDeTienda: ReturnType<typeof rechazoDTO>[],
+    gestiones: ReturnType<typeof gestionRow>[] = [],
+  ) {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        cierre: resumenRow(),
+        gestiones,
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda,
+      })),
+    });
+  }
+
+  it("R14/R15: un cierre con 3 rechazos los emite los 3, campo por campo", async () => {
+    const repo = repoConRechazos([
+      rechazoDTO({ gestionId: "g-947", ordenId: "o-947", numGuia: 19301246, numRemision: "NA-947" }),
+      rechazoDTO(),
+      rechazoDTO({
+        gestionId: "g-1103",
+        ordenId: "o-1103",
+        numGuia: null,
+        numRemision: "NA-1103",
+        motivo: null,
+      }),
+    ]);
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.rechazosDeTienda.map((x) => x.numRemision)).toEqual(["NA-947", "NA-981", "NA-1103"]);
+    // Igualdad EXACTA de una fila: lo que SOBRA importa tanto como lo que falta (un importe colado).
+    expect(r.rechazosDeTienda[2]).toEqual({
+      gestionId: "g-1103",
+      ordenId: "o-1103",
+      numGuia: null,
+      numRemision: "NA-1103",
+      destinatario: "Dest 981",
+      producto: "Caja",
+      tiendaNombre: "Mercadito",
+      zonaNombre: "Central",
+      rechazadoAt: "2026-09-10T15:30:00.000Z",
+      motivo: null,
+    });
+  });
+
+  it("un cierre sin ninguno emite `[]`", async () => {
+    const { service } = newService({ repo: repoConRechazos([]) });
+
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.rechazosDeTienda).toEqual([]);
+  });
+
+  it("un cierre fuera de alcance no emite el campo", async () => {
+    const repo = fakeRepo({ findCierreByIdEnAlcance: vi.fn(async () => null) });
+    const { service } = newService({ repo });
+
+    const r = await service.verCierreDetalle("c-ajeno", MAESTRO);
+
+    expect(r).toEqual({ status: "no_encontrada" });
+    expect(Object.keys(r)).toEqual(["status"]);
+  });
+
+  it("R16: la lista NO se cuela en ningun grupo ni mueve un solo importe del DTO", async () => {
+    const gestion = gestionRow({ gestionId: "g1", resultado: "entregado", montoRecibido: "30.00" });
+    const a = await newService({
+      repo: repoConRechazos(
+        [rechazoDTO(), rechazoDTO({ gestionId: "g-2" }), rechazoDTO({ gestionId: "g-3" })],
+        [gestion],
+      ),
+    }).service.verCierreDetalle("c1", MAESTRO);
+    const b = await newService({ repo: repoConRechazos([], [gestion]) }).service.verCierreDetalle(
+      "c1",
+      MAESTRO,
+    );
+    if (a.status !== "ok" || b.status !== "ok") throw new Error("los dos deben ser ok");
+
+    expect(a.grupos).toEqual(b.grupos);
+    expect(a.totalesIngreso).toEqual(b.totalesIngreso);
+    expect(a.desgloseIngresoBodegaRechazos).toEqual(b.desgloseIngresoBodegaRechazos);
+    expect(a.ganancia).toBe(b.ganancia);
+    expect(a.pagoTienda).toBe(b.pagoTienda);
+    expect(a.partesPorTienda).toEqual(b.partesPorTienda);
+    expect(a.cierre.totales).toEqual(b.cierre.totales);
+    // Contrapunto: la lista SI llego.
+    expect(a.rechazosDeTienda).toHaveLength(3);
+    expect(b.rechazosDeTienda).toHaveLength(0);
+  });
+});
+
+// ==============================================================================================
+// FEATURE 486 — una gestion con VARIAS fotos entrega TODAS en el detalle de cierre (S1).
+// ==============================================================================================
+describe("486 · CierresAdminService.verCierreDetalle — todas las evidencias de cada gestion", () => {
+  const RUTAS_A = ["o1/foto-0.jpg", "o1/foto-1.jpg", "o1/foto-2.jpg"];
+  function repoConVariasFotos() {
+    return fakeRepo({
+      findCierreByIdEnAlcance: vi.fn(async () => ({
+        sinGestion: [],
+        sinGestionRegistrado: true,
+        rechazosDeTienda: [],
+        cierre: resumenRow(),
+        gestiones: [
+          gestionRow({ gestionId: "a", resultado: "entregado", evidenciaStoragePath: RUTAS_A[0], evidenciaStoragePaths: RUTAS_A }),
+          gestionRow({ gestionId: "b", resultado: "entregado", evidenciaStoragePath: "o2/unica.jpg", evidenciaStoragePaths: ["o2/unica.jpg"] }),
+          gestionRow({ gestionId: "c", resultado: "entregado", evidenciaStoragePath: null, evidenciaStoragePaths: [] }),
+        ],
+      })),
+    });
+  }
+
+  it("R1/R4: entrega las 3 URLs firmadas de una gestion con 3 evidencias, en orden de indice", async () => {
+    const { service } = newService({ repo: repoConVariasFotos() });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const [a, b, c] = r.grupos.entregado;
+    expect(a!.evidenciaUrls).toEqual([
+      "https://signed/o1/foto-0.jpg",
+      "https://signed/o1/foto-1.jpg",
+      "https://signed/o1/foto-2.jpg",
+    ]);
+    expect(a!.evidenciaUrl).toBe("https://signed/o1/foto-0.jpg"); // portada derivada de la lista
+    expect(b!.evidenciaUrls).toEqual(["https://signed/o2/unica.jpg"]);
+    expect(c!.evidenciaUrls).toEqual([]); // R6
+    expect(c!.evidenciaUrl).toBeNull();
+  });
+
+  it("R8: UNA sola llamada a createSignedUrls con las rutas de TODAS las gestiones", async () => {
+    const signedUrls = fakeSignedUrls();
+    const { service } = newService({ repo: repoConVariasFotos(), signedUrls });
+    await service.verCierreDetalle("c1", ADMIN);
+    expect(signedUrls.createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(signedUrls.createSignedUrls).toHaveBeenCalledWith(
+      ["o1/foto-0.jpg", "o1/foto-1.jpg", "o1/foto-2.jpg", "o2/unica.jpg"],
+      expect.any(Number),
+    );
+  });
+
+  it("R7: el DTO no contiene ninguna ruta cruda", async () => {
+    const { service } = newService({ repo: repoConVariasFotos() });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    const json = JSON.stringify(r.grupos);
+    for (const ruta of [...RUTAS_A, "o2/unica.jpg"]) {
+      expect(json).not.toContain(`"${ruta}"`);
+    }
+    expect(r.grupos.entregado[0]).not.toHaveProperty("evidenciaStoragePaths");
+  });
+
+  it("R9: si el firmador omite la foto 2, la gestion trae la 1 y la 3", async () => {
+    const signedUrls = fakeSignedUrls({
+      createSignedUrls: vi.fn(async (paths: string[]) =>
+        Object.fromEntries(paths.filter((p) => p !== "o1/foto-1.jpg").map((p) => [p, `https://signed/${p}`])),
+      ),
+    });
+    const { service } = newService({ repo: repoConVariasFotos(), signedUrls });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.grupos.entregado[0]!.evidenciaUrls).toEqual([
+      "https://signed/o1/foto-0.jpg",
+      "https://signed/o1/foto-2.jpg",
+    ]);
+  });
+
+  it("R10: firmador que lanza -> detalle ok con listas vacias", async () => {
+    const signedUrls = fakeSignedUrls({
+      createSignedUrls: vi.fn(async () => {
+        throw new Error("storage caido");
+      }),
+    });
+    const { service } = newService({ repo: repoConVariasFotos(), signedUrls });
+    const r = await service.verCierreDetalle("c1", MAESTRO);
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.grupos.entregado.map((g) => g.evidenciaUrls)).toEqual([[], [], []]);
+  });
+
+  it("R11: fuera de alcance / rol invalido / satelite sin zona -> no firma nada", async () => {
+    const fuera = fakeSignedUrls();
+    const repoNull = fakeRepo({ findCierreByIdEnAlcance: vi.fn(async () => null) });
+    const s1 = newService({ repo: repoNull, signedUrls: fuera });
+    expect((await s1.service.verCierreDetalle("c-ajeno", MAESTRO)).status).toBe("no_encontrada");
+
+    const s2 = newService({ repo: repoConVariasFotos(), signedUrls: fuera });
+    expect((await s2.service.verCierreDetalle("c1", MENSAJERO)).status).toBe("forbidden");
+
+    const s3 = newService({ repo: repoConVariasFotos(), signedUrls: fuera, zonaSatelite: null });
+    expect((await s3.service.verCierreDetalle("c1", ADMIN_SATELITE)).status).toBe("no_encontrada");
+
+    expect(fuera.createSignedUrls).not.toHaveBeenCalled();
+  });
+});

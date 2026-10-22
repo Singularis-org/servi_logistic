@@ -1,0 +1,121 @@
+import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
+
+// Feature 236 (T4.2, design §5 — R13/R14/R16) — LOS TEXTOS DE CADA PESTAÑA DE `/novedades`, en un
+// solo sitio y parametrizados por GRUPO.
+//
+// POR QUE UNA TABLA Y NO DUPLICAR EL MODULO. `NovedadesModule` sabe hacer exactamente lo mismo para
+// los dos grupos —conmutador de vista, paginacion por Server Action, cards POS, modales—; lo unico
+// que cambia son los ROTULOS. Duplicar el componente para cambiar cinco cadenas habria dejado dos
+// pantallas que se parecen, que es justo lo que la 236 vino a deshacer en la card (design §6.1).
+//
+// POR QUE INDEXADO POR `GrupoNovedad` Y CON `satisfies`. Un grupo nuevo en `ESTATUS_POR_GRUPO` deja
+// de compilar aqui hasta que alguien escriba sus textos. Sin eso, la pestaña nueva saldria con el
+// estado vacio de la otra —diciendo «cuando una de tus ordenes vuelva a la tienda» sobre una
+// poblacion que nunca se devolvio—, que es la misma clase de afirmacion falsa que R14 prohibe.
+//
+// MODULO PURO: sin React, sin DOM, sin Server Actions. Lo consumen `NovedadesTabs` (los rotulos de
+// las pestañas, en el orden de `GRUPOS_NOVEDAD`) y `NovedadesModule` (todo lo demas), asi que no
+// puede arrastrar ninguna de las dos capas a la otra.
+
+export interface TextosGrupoNovedad {
+  /** Rotulo de la pestaña. Español con tildes, sin siglas ni jerga interna (R13). */
+  pestana: string;
+  /** Nombre accesible de la `<ul>` de la lista. Propio de cada grupo: son dos listas distintas. */
+  listaAriaLabel: string;
+  /** Nombre accesible de la `Pagination` del pie. Idem. */
+  paginacionAriaLabel: string;
+  /**
+   * FICHA 325 — nombre accesible del campo de busqueda de la barra. Propio de cada grupo por el
+   * mismo motivo que los dos de arriba: las dos pestañas viven MONTADAS A LA VEZ (`keepMounted`),
+   * asi que hay dos campos de busqueda en el arbol y un nombre repetido dejaria a un lector de
+   * pantalla —y a quien escriba un test— sin forma de decir cual de los dos es cual.
+   */
+  buscadorAriaLabel: string;
+  /**
+   * FICHA 325 — nombre accesible de la REGION que agrupa buscador y filtros. Mismo motivo que el
+   * de arriba: con las dos pestañas montadas a la vez hay dos barras en el arbol, y un lector de
+   * pantalla que salta entre regiones tiene que poder decir en cual esta.
+   */
+  filtrosAriaLabel: string;
+  /** Titulo del estado vacio (R16). Dice QUE aparecera ahi, no «no hay nada». */
+  vacioTitulo: string;
+  /** Detalle del estado vacio (R16). Dice CUANDO aparecera. */
+  vacioDetalle: string;
+  /**
+   * NOTA de la card cuando el grupo la fija. `null` = la nota la decide el dato de la fila (para
+   * la novedad, la CAUSA: es su unica señal). FICHA 455 (2026-09-24, R7): antes era el CHIP de la
+   * card y sustituia al estado; ahora el chip dice el estado de la orden y esto va a su lado.
+   */
+  notaFija: string | null;
+}
+
+/**
+ * **D6, firmada por el humano el 2026-08-19.** Los cinco textos de cada grupo, tal cual se firmaron.
+ *
+ * ⚠️ «Ayuda solicitada» y NO «Ayuda a gestionar» (que era lo que decia §F2 del diseño de la pila).
+ * La razon, firmada: **«gestionar» es en este repo el verbo del MENSAJERO** —«por gestionar»,
+ * «Gestionar mas tarde», «Gestionar esta orden»—, asi que usarlo en la pantalla de la TIENDA le
+ * atribuye un gesto que no es suyo. Y menos aun ahora, que gestionar desde ayuda es la ficha 237 y
+ * todavia no existe. En cambio «ayuda solicitada» es la palabra que la tienda YA ve en tres sitios:
+ * el chip de la card de hoy, el encabezado del portal del mensajero («Con ayuda solicitada») y la
+ * etiqueta del estatus («Ayuda solicitada a la tienda»).
+ *
+ * ⚠️ EL CHIP DE LA CARD DE AYUDA CAMBIA A «Esperando tu respuesta», y por dos motivos: dentro de una
+ * pestaña que ya se llama «Ayuda solicitada», repetirlo en cada card no informa; y el texto que
+ * tenia —«Ayuda · \<causa\>»— es un ARRASTRE, porque esa causa viene de una devolucion anterior ya
+ * deshecha y no describe esta orden (R26 prohibe atribuirle una causa, mostrarla **o anunciar su
+ * ausencia**).
+ *
+ * ⚠️ EL ESTADO VACIO NO ES UN CASO MARGINAL. Medido el 2026-08-19 en produccion sobre 141 ordenes
+ * vivas en 11 estatus (`progress/medicion_236.md`): `ayuda_tienda` = 0 y `devuelta` = 0. Es el
+ * PRIMER estado que la tienda va a conocer de esta pestaña, y durante un tiempo el unico. Un vacio
+ * mudo se lee como una pantalla rota, asi que dice que aparecera ahi y cuando (R16).
+ */
+export const TEXTOS_POR_GRUPO = {
+  ayuda: {
+    pestana: "Ayuda solicitada",
+    listaAriaLabel: "Órdenes con ayuda solicitada",
+    paginacionAriaLabel: "Paginación de las órdenes con ayuda solicitada",
+    buscadorAriaLabel: "Buscar entre las órdenes con ayuda solicitada",
+    filtrosAriaLabel: "Filtros de las órdenes con ayuda solicitada",
+    vacioTitulo: "Ningún mensajero te pidió ayuda",
+    vacioDetalle:
+      "Cuando un mensajero necesite que resuelvas algo de una orden que lleva encima, aparecerá acá con su mensaje.",
+    notaFija: "Esperando tu respuesta",
+  },
+  // FICHA 455 (2026-09-24, design §2.1; R5/R6): la pestaña lista UN solo estado (`novedad`), asi
+  // que se rotula con su nombre exacto, «Novedad». Antes decia «En devolución», que no es el nombre
+  // de ningun estado (y la orden no esta devolviendose: espera la decision de la tienda). Los
+  // nombres accesibles y los vacios hablan de «novedad» por lo mismo. La clave `devolucion` es
+  // codigo (URL `?superficie=devolucion`, R51) y no cambia.
+  devolucion: {
+    pestana: "Novedad",
+    listaAriaLabel: "Órdenes en novedad",
+    // Se conserva TAL CUAL el de hoy: esta ficha no tiene ningun motivo para mover el nombre
+    // accesible de un control que ya estaba bien, y cambiarlo de paso seria copy sin firma.
+    paginacionAriaLabel: "Paginación de novedades",
+    buscadorAriaLabel: "Buscar entre las órdenes en novedad",
+    filtrosAriaLabel: "Filtros de las órdenes en novedad",
+    vacioTitulo: "No tenés órdenes en novedad",
+    vacioDetalle:
+      "Cuando el mensajero no pueda entregar una de tus órdenes, aparecerá acá con su causa y los botones de contacto.",
+    // La novedad NO tiene nota fija: su señal es la CAUSA, que es lo unico que distingue una
+    // novedad de otra en la lista (R7/R11 de la 87).
+    notaFija: null,
+  },
+} as const satisfies Record<GrupoNovedad, TextosGrupoNovedad>;
+
+/**
+ * Subtitulo de la pagina (R14, D6). Nombra **las TRES** superficies que contiene.
+ *
+ * Lo que decia hasta el 2026-08-19: «Tus órdenes en devolución y las que llegaron a rechazo por
+ * vencerse el plazo». Era falso de una parte de lo que listaba —una orden sobre la que el mensajero
+ * pidio ayuda ni esta en devolucion ni llego a rechazo por plazo vencido: sigue en la calle, con el
+ * paquete encima—, y R14 prohibe describir la pantalla con un texto que afirme de las ordenes que
+ * lista algo que no es cierto.
+ */
+//
+// FICHA 455 (2026-09-24, R2/R5): cada estado por su nombre exacto — «Novedad» (antes «en devolución»)
+// y «Devolución a origen por rechazo» (antes «rechazo»).
+export const SUBTITULO_NOVEDADES =
+  "Las órdenes en las que tus mensajeros piden ayuda, tus órdenes en Novedad y las que pasaron a Devolución a origen por rechazo por vencerse el plazo";

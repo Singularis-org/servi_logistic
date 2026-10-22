@@ -1,0 +1,225 @@
+// Feature 17 — Tipos y schemas del backend de "Generar guia" / asignacion de
+// mensajero. DTOs propios (no amplian OrdenDTO) para no alterar el contrato del
+// CRUD de ordenes (feature 6/7), patron lib/types/carga-masiva-resumen.ts.
+import { z } from "zod";
+import { diaRepartoSchema } from "@/lib/types/dia-reparto";
+
+// Feature 156 (R14): la entrada de "Generar guia" es un LOTE DE IDS y NADA MAS. El
+// contrato previo (`decisiones: [{ ordenId, mensajeroId }]`) se retiro: generar guia
+// ya no decide mensajero, asi que cualquier dato de mensajero en la entrada es un
+// error de contrato y se resuelve como `validation_error` en el borde, sin llamar al
+// service (zod descarta las claves no declaradas).
+//
+// COTA INFERIOR DEL LOTE (2026-08-05) — vale para las TRES acciones de este archivo que
+// reciben `ordenIds` sueltos (`generarGuia`, `asignarDesdeBodega`, `rutearABodegaSatelite`).
+// Un lote vacio NO es una peticion valida: sin `.min(1)` en el array, `{ ordenIds: [] }`
+// cruzaba el borde y el service lo resolvia como `{ status: "ok", resultados: [] }`, asi que
+// la UI cantaba un exito ("Mensajero asignado a 0 orden(es)") por una accion que no hizo
+// nada. Se cierra en la raiz —el schema—, no en cada modal. Es la misma cota que ya tenian
+// el resto de acciones de lote del repo (`recogerSchema`, `etiquetaGuiaSchema`,
+// `asignarRecoleccionSchema`...), y se declara igual que ellas: SIN
+// mensaje propio, porque la UI traduce `validation_error` a un literal fijo
+// (`guiaDecisionErrorMessage`) y el texto de zod no llega nunca al usuario.
+export const generarGuiaSchema = z.object({
+  ordenIds: z.array(z.string().min(1)).min(1),
+});
+export type GenerarGuiaActionInput = z.infer<typeof generarGuiaSchema>;
+
+// R26: un solo mensajero para el lote completo (asignacion desde bodega).
+export const asignarBodegaSchema = z.object({
+  ordenIds: z.array(z.string().min(1)).min(1), // cota del lote: ver el bloque de arriba
+  mensajeroId: z.string().min(1),
+  // Feature 246 (T3.1, R3/R4/R6): para que dia es el lote. UN token para TODO el lote (R3): una
+  // asignacion, un dia de reparto.
+  //
+  // `.default("hoy")` y NO obligatorio (R4): una peticion sin el campo se comporta EXACTAMENTE
+  // como antes de esta feature. Falla SEGURO. El precio se declara: un frontend que se olvide de
+  // mandarlo no rompe nada y nadie se entera, y por eso T4 exige un test de componente que afirme
+  // que el modal MANDA la opcion elegida.
+  //
+  // NO se acepta una fecha (R6): el cliente manda un token, la fecha la pone el servidor.
+  dia: diaRepartoSchema.default("hoy"),
+  /**
+   * FICHA 407 (2026-09-10, R1/R5/R9) — LA MARCA. Ids del MISMO lote que la persona autoriza a
+   * asignar SIN ubicacion en el mapa, sabiendo que su direccion es irresoluble. No es un acto
+   * aparte: es un parametro de la propia asignacion, y esa misma llamada asigna.
+   *
+   * `.default([])` y NO obligatorio, por el MISMO motivo que `dia` lo tiene (R5): una peticion
+   * sin el campo se comporta EXACTAMENTE como antes de esta ficha. Ausente = «ninguna», jamas
+   * «todas».
+   *
+   * NO SE PERSISTE en ningun sitio (R9): decision del humano del 2026-09-10. Si la orden se
+   * libera y se reasigna, hay que volver a autorizarla.
+   */
+  autorizarSinUbicacionIds: z.array(z.string().uuid()).default([]),
+});
+export type AsignarBodegaActionInput = z.infer<typeof asignarBodegaSchema>;
+
+export interface GenerarGuiaResultadoItem {
+  ordenId: string;
+  numGuia: number;
+  estado: string; // feature 156/R3: SIEMPRE "en_bodega_central"
+}
+
+export interface AsignarBodegaResultadoItem {
+  ordenId: string;
+  estado: string;
+}
+
+// Feature 30/R13 — ruteo dedicado de ordenes no-GAM a la bodega satelite. Zod en
+// el borde (mismo patron que asignarBodegaSchema).
+export const rutearSateliteSchema = z.object({
+  ordenIds: z.array(z.string().min(1)).min(1), // cota del lote: ver el bloque de arriba
+});
+export type RutearSateliteActionInput = z.infer<typeof rutearSateliteSchema>;
+
+export interface RutearSateliteResultadoItem {
+  ordenId: string;
+  estado: string; // "en_ruta_bodega_satelite"
+}
+
+export interface DetalleConflicto {
+  ordenId: string;
+  motivo: string;
+}
+
+// R42-like: resultado discriminado y tipado; sin filtrar internals ni PII. NO
+// reutiliza `ActionError` de lib/types/orden.ts porque `conflict` aqui SIEMPRE
+// trae `detalle` por orden (R29), forma distinta del `conflict` generico del CRUD.
+export type GenerarGuiaResult =
+  | { status: "ok"; resultados: GenerarGuiaResultadoItem[] }
+  | { status: "unauthenticated" } // R14
+  | { status: "forbidden" } // R12/R13
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R28
+  | { status: "conflict"; detalle: DetalleConflicto[] }; // R27/R29
+
+export type AsignarBodegaResult =
+  // Feature 400 (2026-09-09, R31-R33): `sinUbicacion` = cuantas ordenes del lote quedaron
+  // asignadas SIN ubicacion por un fallo de configuracion del geocodificador. Cifra
+  // agregada (nunca una lista de ordenes, R32) y ausente cuando vale cero (R33). Espejo del
+  // contrato del service; el razonamiento vive en `IGuiaAsignacionService.ts`.
+  // FICHA 407 (2026-09-10, R10/R11/R12): `sinUbicacionAutorizada` = cuantas se asignaron sin
+  // ubicacion porque una PERSONA lo autorizo. Cifra hermana de `sinUbicacion` y DISJUNTA de
+  // ella —dos estados excluyentes del gate—, y con texto propio: el de la 400 dice «un
+  // problema del sistema, no de la direccion» y aqui la direccion SI es el problema (R12).
+  | {
+      status: "ok";
+      resultados: AsignarBodegaResultadoItem[];
+      sinUbicacion?: number;
+      sinUbicacionAutorizada?: number;
+    }
+  // Feature 368 (R15) — espejo EXACTO de `AsignarBodegaServiceResult` (el server action hace
+  // passthrough directo del resultado del service, sin traducirlo: ver `lib/actions/ordenes-guia.ts`).
+  | {
+      status: "partial";
+      resultados: AsignarBodegaResultadoItem[];
+      bloqueadas: DetalleConflicto[];
+      sinUbicacion?: number;
+      sinUbicacionAutorizada?: number;
+    }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict"; detalle: DetalleConflicto[] };
+
+// Feature 157 — asignacion del mensajero que RECOLECTA en la tienda. Mismo shape que
+// `AsignarBodegaResult` (a proposito: el modal reusa `guiaDecisionErrorMessage` sin
+// cambios), salvo que el item no lleva `estado`: la orden no transiciona (R4).
+export const asignarRecoleccionSchema = z.object({
+  ordenIds: z.array(z.string().uuid()).min(1),
+  mensajeroId: z.string().uuid(),
+});
+export type AsignarRecoleccionActionInput = z.infer<typeof asignarRecoleccionSchema>;
+
+// Feature 157 (ampliacion): la reversion no elige mensajero, solo el lote.
+export const desasignarRecoleccionSchema = z.object({
+  ordenIds: z.array(z.string().uuid()).min(1),
+});
+export type DesasignarRecoleccionActionInput = z.infer<typeof desasignarRecoleccionSchema>;
+
+export type AsignarRecoleccionResult =
+  | { status: "ok"; resultados: { ordenId: string }[] }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict"; detalle: DetalleConflicto[] };
+
+// Feature 30/R13/R16 — resultado discriminado del ruteo a satelite. `conflict`
+// trae `detalle` por orden (origen invalido / borrada / orden GAM).
+export type RutearSateliteResult =
+  | { status: "ok"; resultados: RutearSateliteResultadoItem[] }
+  | { status: "unauthenticated" } // R16
+  | { status: "forbidden" } // R16
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R4/catalogo
+  | { status: "conflict"; detalle: DetalleConflicto[] }; // R17
+
+// T15 — loader de mensajeros para el modal (R28): TODOS los usuarios rol
+// mensajero, SIN filtro de zona. La feature 30 restringira el CUERPO del loader
+// sin cambiar esta firma (contrato estable, ver design.md).
+export interface MensajeroLiteDTO {
+  id: string;
+  nombre: string;
+}
+
+export type ListarMensajerosParaAsignacionResult =
+  | {
+      status: "ok";
+      mensajeros: MensajeroLiteDTO[];
+      /**
+       * FEATURE 271 (R32, 2026-08-23) — VUELVE A EMITIRSE, y se aplica a los DOS modales.
+       *
+       * Son los ids de mensajeros que el servidor va a RECHAZAR al asignar, por la regla N/V
+       * (`N >= 2` o `V >= 1`). Entre el 2026-08-18 y el 2026-08-23 no viajaba: la regla 2 de la 241
+       * decía que asignar no se bloquea por cierres. El humano revirtió esa mitad, y el conjunto
+       * que viaja aquí tiene que ser EXACTAMENTE el que rechazan `asignarDesdeBodega` y
+       * `asignarRecoleccion` — ni uno más, ni uno menos.
+       *
+       * SE LLAMA `bloqueadosIds` Y NO `bloqueadosParaRepartoIds` a propósito: ya no hay dos
+       * respuestas, y un nombre que califica el alcance invita a preguntar cuál es el otro.
+       *
+       * ⚠️ EL **FILTRO** DEL LISTADO (`FiltrosEntregas.tsx`) NO DEBE LEERLO (R33): filtrar no es
+       * asignar, y esconder a un bloqueado del filtro volvería inalcanzables las órdenes que ya
+       * tiene en la mano.
+       *
+       * Opcional (aditivo) para no romper a los consumidores actuales; la acción lo emite SIEMPRE.
+       */
+      bloqueadosIds?: string[];
+      /**
+       * Pedido humano (2026-08-26) — ids de mensajeros que NO pueden recibir trabajo por su
+       * ESTADO de usuario (`inactivo` / `bloqueado`). El servidor los rechaza en las tres
+       * escrituras, asi que el selector los deshabilita con su motivo en vez de dejar elegir y
+       * toparse con un rechazo al confirmar (la leccion del incidente del 18/08).
+       *
+       * Viaja APARTE de `bloqueadosIds` porque el MOTIVO es otro y se arregla en otra pantalla:
+       * uno se resuelve cerrando cierres, este reactivando al usuario en Configuracion.
+       *
+       * ⚠️ EL **FILTRO** DEL LISTADO (`FiltrosEntregas.tsx`) TAMPOCO DEBE LEERLO: un mensajero
+       * dado de baja sigue siendo el asignado de ordenes historicas que alguien busca.
+       *
+       * Opcional (aditivo); la accion lo emite SIEMPRE.
+       */
+      noAsignablesIds?: string[];
+      /**
+       * Feature 157 (regla de dedicación): ids con órdenes de REPARTO pendientes. No
+       * pueden recibir una recolección en tienda —ese viaje se hace sin carga—, así que
+       * el selector de ESE modal los deshabilita. Opcional (aditivo).
+       */
+      conRepartoIds?: string[];
+      /**
+       * Feature 157: ids con una RECOLECCIÓN en tienda sin confirmar. Tienen un viaje
+       * comprometido, así que el selector de la asignación desde bodega los deshabilita.
+       * Opcional (aditivo).
+       */
+      conRecoleccionIds?: string[];
+    }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" };
+
+// BORRADO 2026-08-18 (pedido humano): aqui vivia `ListarZonasBloqueadasResult`, el resultado del
+// gate de seleccion por zona con cierre abierto. Se fue con su action y con la regla: un cierre
+// abierto ya no impide asignar, asi que la UI no tiene nada que deshabilitar.
+// BORRADO 2026-08-07 (tanda 2): aqui vivian `EstatusLiteDTO` y `ListarCatalogoEstatusResult`,
+// el soporte R15/R16 de `listarCatalogoEstatus` — borrada en la tanda 1 por ser la segunda
+// victima de `54757be4`. La lectura viva del catalogo `order_status` es `listarOrderStatus`
+// (`lib/actions/order-status.ts`), que tiene sus PROPIOS tipos en `lib/types/order-status.ts`
+// (`OrderStatusLiteRow` / `ListarOrderStatusResult`) y no pasaba por estos.

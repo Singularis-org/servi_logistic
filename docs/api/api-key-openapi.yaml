@@ -1,0 +1,2394 @@
+# Feature 106 — OpenAPI 3.1 del canal integrador por API key (Servi Logistic).
+# GENERADO desde lib/api/openapi-spec.ts (fuente de verdad). No editar a mano:
+# regenerar con `pnpm tsx <script>` si cambia el objeto TS.
+openapi: 3.1.0
+info:
+  title: Servi Logistic — API de integración por API key
+  version: 1.0.0
+  description: |-
+    Canal de integración por **API key** para crear, listar, consultar, cancelar y eliminar órdenes.
+
+    Autenticación: todos los endpoints exigen el header `Authorization: Bearer svl_...`
+    La key identifica a un usuario dedicado que es el **dueño**
+    de las órdenes: cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna
+    otra. El dueño de la key **solo ve y opera sus propias órdenes**; nunca se puede ampliar el
+    alcance (un `tiendaId`/`owner` en la query se ignora).
+
+    Aislamiento: una orden inexistente y una orden de otro dueño devuelven el **mismo 404**;
+    la API no revela la existencia de recursos ajenos.
+
+    Errores: shape uniforme del manejador global — ver el schema `Error`.
+security:
+  - bearerAuth: []
+tags:
+  - name: Órdenes
+    description: "Carga, listado, detalle y cancelación de órdenes propias."
+paths:
+  "/api/ordenes/api-key/carga":
+    post:
+      tags:
+        - Órdenes
+      summary: Carga de órdenes
+      operationId: cargarOrdenes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CargaRequest"
+            examples:
+              dosFilas:
+                summary: "Dos filas (una válida, una con teléfono faltante)"
+                value:
+                  ordenes:
+                    - num_remision: "REM-0001"
+                      destinatario: Juan Pérez
+                      telefono: "88887777"
+                      provincia: San José
+                      canton: San José
+                      distrito: Carmen
+                      direccion: "Av. Central, 200m norte del parque"
+                      producto: Camiseta talla M
+                      peso: "1.5"
+                      monto_cobrar: "25.90"
+                      notas: Entregar en la tarde
+                    - num_remision: "REM-0002"
+                      destinatario: María Solís
+                      telefono: ""
+                      provincia: San José
+                      canton: Escazú
+                      distrito: San Rafael
+                      direccion: "Multiplaza, local 12"
+                      producto: Zapatos talla 38
+                      peso: "0.8"
+                      monto_cobrar: "40.00"
+                      notas: ""
+      responses:
+        "200":
+          description: Lote procesado (puede incluir filas con error).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CargaResponse"
+              examples:
+                resumen:
+                  summary: "Una creada, una con error"
+                  value:
+                    cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3"
+                    total: 2
+                    creadas: 1
+                    duplicadas: 0
+                    conError: 1
+                    filas:
+                      - fila: 1
+                        numRemision: "REM-0001"
+                        resultado: creada
+                        estado: por_recolectar_en_tienda
+                        estadoNombre: "Por recolectar en tienda"
+                        numGuia: 100234
+                    errores:
+                      - fila: 2
+                        numRemision: "REM-0002"
+                        resultado: error
+                        errores:
+                          telefono:
+                            - requerido
+                    ordenes:
+                      - id: "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f"
+                        numRemision: "REM-0001"
+                        numGuia: 100234
+                        estado: por_recolectar_en_tienda
+                        estadoNombre: "Por recolectar en tienda"
+                        costoEnvio: "3.39"
+                        fulfillment: "0.00"
+                filaSinTarifa:
+                  summary: "Una creada y una degradada por falta de tarifa"
+                  value:
+                    cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3"
+                    total: 2
+                    creadas: 1
+                    duplicadas: 0
+                    conError: 1
+                    filas:
+                      - fila: 1
+                        numRemision: "REM-0001"
+                        resultado: creada
+                        estado: por_recolectar_en_tienda
+                        estadoNombre: "Por recolectar en tienda"
+                        numGuia: 100234
+                    errores:
+                      - fila: 2
+                        numRemision: "REM-0002"
+                        resultado: error
+                        errores:
+                          tarifa:
+                            - "no hay tarifa vigente para la zona de esta fila"
+                    ordenes:
+                      - id: "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f"
+                        numRemision: "REM-0001"
+                        numGuia: 100234
+                        estado: por_recolectar_en_tienda
+                        estadoNombre: "Por recolectar en tienda"
+                        costoEnvio: "3.39"
+                        fulfillment: "0.00"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        # Feature 274 (R29/R31) — el 409 NUEVO de la carga. No es `$ref: Conflict` a secas
+        # porque el ejemplo publicado tiene que ser la MISMA cadena que el service emite
+        # (`lib/services/mensajes-tarifa.ts`, `MSG_CARGA_SIN_TARIFA`).
+        "409":
+          description: "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se creó ninguna orden ni fila de carga."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                status: error
+                code: CONFLICT
+                message: "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  "/api/ordenes/api-key":
+    get:
+      tags:
+        - Órdenes
+      summary: Listado paginado de órdenes propias
+      operationId: listarOrdenes
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Cantidad de items por página (1..100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: "Cantidad de items a saltar (>= 0)."
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: estado
+          in: query
+          required: false
+          description: "Filtra por estado exacto del catálogo (uno de los 20 códigos vigentes). Un código anterior al cambio de nombres de estados (ver CHANGELOG) responde `422` con un mensaje que nombra el código que lo sustituye."
+          schema:
+            type: string
+            enum:
+              - entregado
+              - novedad
+              - devolviendo_a_tienda
+              - reprogramado
+              - en_ruta_bodega_central
+              - en_bodega_central
+              - en_preparacion
+              - mensajero_recogiendo_en_bodega
+              - en_ruta_bodega_satelite
+              - en_reparto
+              - devolucion_a_origen_por_rechazo
+              - en_bodega_satelite
+              - devuelta_a_tienda
+              - novedad_interna
+              - por_devolver_a_bodega_central
+              - devolviendo_a_bodega_central
+              - por_devolver_a_tienda
+              - por_recolectar_en_tienda
+              - incidente
+              - recolectando
+        - name: desde
+          in: query
+          required: false
+          description: "Fecha calendario mínima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6)."
+          schema:
+            type: string
+            format: date
+            example: "2026-08-01"
+        - name: hasta
+          in: query
+          required: false
+          description: "Fecha calendario máxima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6), así que cubre las 24 horas completas de ese día."
+          schema:
+            type: string
+            format: date
+            example: "2026-08-21"
+        - name: num_guia
+          in: query
+          required: false
+          description: Filtra por número de guía exacto. Excluye las órdenes que aún no tienen guía asignada.
+          schema:
+            type: integer
+            minimum: 1
+            example: 100234
+        - name: num_remision
+          in: query
+          required: false
+          description: "Filtra por número de remisión exacto (sin prefijo, sin subcadena, distingue mayúsculas)."
+          schema:
+            type: string
+            minLength: 1
+            example: "REM-0001"
+      responses:
+        "200":
+          description: Página de órdenes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Listado"
+              examples:
+                pagina:
+                  summary: Primera página con un item
+                  value:
+                    items:
+                      - numGuia: 100234
+                        numRemision: "REM-0001"
+                        estado: en_ruta_bodega_central
+                        estadoNombre: "En ruta a bodega central"
+                        destinatario: Juan Pérez
+                        telefonoDest: "88887777"
+                        producto: Camiseta talla M
+                        direccion: "Av. Central, 200m norte del parque"
+                        montoCobrar: 25.9
+                        createdAt: "2026-07-22T14:03:11.000Z"
+                    pagination:
+                      limit: 50
+                      offset: 0
+                      total: 1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  "/api/ordenes/api-key/{numGuia}/cancelar":
+    parameters:
+      - name: numGuia
+        in: path
+        required: true
+        description: Número de guía de la orden a cancelar (entero positivo).
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags:
+        - Órdenes
+      summary: Cancelar una orden propia
+      operationId: cancelarOrden
+      responses:
+        "200":
+          description: Orden cancelada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelacionResponse"
+              examples:
+                cancelada:
+                  summary: Cancelación desde en_ruta_bodega_central
+                  value:
+                    numGuia: 100234
+                    estadoAnterior: en_ruta_bodega_central
+                    estadoAnteriorNombre: "En ruta a bodega central"
+                    estado: devolviendo_a_tienda
+                    estadoNombre: "Devolviendo a tienda"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  "/api/ordenes/api-key/orden/{id}":
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: "Identificador de la orden: su `num_guia` o su `num_remision`. Si el valor casa con la guía de una orden y con la remisión de otra, gana la de la guía."
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+    get:
+      tags:
+        - Órdenes
+      summary: Detalle de una orden propia por guía o remisión
+      operationId: detalleOrdenPorIdentificador
+      responses:
+        "200":
+          description: Detalle de la orden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrdenDetalle"
+              examples:
+                detalle:
+                  summary: Orden resuelta por su número de remisión
+                  value:
+                    numGuia: 100234
+                    numRemision: "REM-0001"
+                    estado: entregado
+                    estadoNombre: "Entregado"
+                    destinatario: Juan Pérez
+                    telefonoDest: "88887777"
+                    producto: Camiseta talla M
+                    direccion: "Av. Central, 200m norte del parque"
+                    montoCobrar: 25.9
+                    createdAt: "2026-07-22T14:03:11.000Z"
+                    evidencias:
+                      - resultado: entregado
+                        resultadoNombre: "Entregado"
+                        contentType: image/jpeg
+                        url: "https://<proyecto>.supabase.co/storage/v1/object/sign/gestion-evidencias/..."
+                        expiraEnSegundos: 300
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags:
+        - Órdenes
+      summary: Eliminar una orden propia
+      operationId: eliminarOrden
+      responses:
+        "200":
+          description: Orden eliminada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EliminacionResponse"
+              examples:
+                conGuia:
+                  summary: Orden ya numerada, eliminada desde en_bodega_central
+                  value:
+                    numGuia: 100234
+                    numRemision: "REM-0001"
+                    estado: en_bodega_central
+                    estadoNombre: "En bodega central"
+                sinGuia:
+                  summary: Orden recién cargada, todavía sin guía
+                  value:
+                    numGuia: null
+                    numRemision: "REM-0002"
+                    estado: en_preparacion
+                    estadoNombre: "En preparación"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  "/api/ordenes/api-key/orden/{id}/generate":
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: "Identificador de la orden: su `num_guia` o su `num_remision` (misma resolución que el endpoint de detalle)."
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+    post:
+      tags:
+        - Órdenes
+      summary: PDF de etiqueta de una orden propia
+      operationId: generarPdfOrden
+      responses:
+        "200":
+          description: URL firmada del PDF de la etiqueta.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfGenerateResponse"
+              examples:
+                primeraLlamada:
+                  summary: "Primera llamada: el PDF se construye"
+                  value:
+                    url: "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/..."
+                    expiraEnSegundos: 300
+                reuso:
+                  summary: "Llamada posterior: solo se vuelve a firmar (misma forma)"
+                  value:
+                    url: "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/..."
+                    expiraEnSegundos: 300
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  "/api/ordenes/api-key/carga/{cargaId}/generate":
+    parameters:
+      - name: cargaId
+        in: path
+        required: true
+        description: "Id del lote, tal como lo devuelve `cargaId` en la respuesta de `POST /api/ordenes/api-key/carga`."
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags:
+        - Órdenes
+      summary: PDF consolidado de etiquetas de un lote propio
+      operationId: generarPdfCarga
+      responses:
+        "200":
+          description: URL firmada del PDF consolidado del lote.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfGenerateResponse"
+              examples:
+                consolidado:
+                  summary: Consolidado del lote recién construido
+                  value:
+                    url: "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/..."
+                    expiraEnSegundos: 300
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  # Feature 255 (R47) — OCTAVO endpoint del canal: cotización previa, lectura pura.
+  "/api/ordenes/api-key/cotizacion":
+    post:
+      tags:
+        - Órdenes
+      summary: "Cotización de un lote (no crea nada)"
+      operationId: cotizarOrdenes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CotizacionRequest"
+            examples:
+              dosFilas:
+                summary: "Tres filas (una con cobertura, una con distrito inexistente, una con distrito retirado)"
+                value:
+                  ordenes:
+                    - provincia: San José
+                      canton: Escazú
+                      distrito: San Rafael
+                      direccion: "Multiplaza, local 12"
+                      monto_cobrar: "25900"
+                      num_remision: "REM-0001"
+                    - provincia: San José
+                      canton: Escazú
+                      distrito: Distrito que no existe
+                      direccion: Sin referencia
+                      monto_cobrar: "18000"
+                    - provincia: Puntarenas
+                      canton: Buenos Aires
+                      distrito: Cabagra
+                      direccion: Sin referencia
+                      monto_cobrar: "12000"
+      responses:
+        "200":
+          description: Lote cotizado (puede incluir filas con error).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CotizacionResponse"
+              examples:
+                resumen:
+                  summary: "Una cotizada (con sus dos escenarios) y dos con error"
+                  value:
+                    total: 3
+                    cotizadas: 1
+                    conError: 2
+                    filas:
+                      - fila: 1
+                        numRemision: "REM-0001"
+                        montoCobrar: "25900.00"
+                        resultado: cotizada
+                        costos:
+                          entregado:
+                            flete: "2500.00"
+                            iva: "325.00"
+                            comision: "906.50"
+                            ivaComision: "117.85"
+                            fulfillment: "0.00"
+                            total: "22050.65"
+                          devuelto:
+                            flete: "1396.46"
+                            iva: "181.54"
+                            comision: "0.00"
+                            fulfillment: "0.00"
+                            total: "-1578.00"
+                    errores:
+                      - fila: 2
+                        numRemision: null
+                        resultado: error
+                        errores:
+                          distrito:
+                            - distrito no encontrado en el canton
+                      - fila: 3
+                        numRemision: null
+                        resultado: error
+                        errores:
+                          distrito:
+                            - el distrito 'Cabagra' esta retirado del catalogo
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se cotiza ninguna fila."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                status: error
+                code: CONFLICT
+                message: "la tienda no tiene una tarifa vigente asociada: no se puede cotizar"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  # Feature 267 (R39) — NOVENO endpoint del canal: la analítica de las propias órdenes.
+  # Espejo textual de `openApiSpec.paths["/api/ordenes/api-key/analitica"]`, misma posición
+  # (novena) y mismo contenido: el `.yaml` es un archivo de texto y nada más lo mantiene
+  # sincronizado con el objeto TS.
+  "/api/ordenes/api-key/analitica":
+    get:
+      tags:
+        - Órdenes
+      summary: Series diarias de tus métricas sobre tus órdenes
+      operationId: consultarAnalitica
+      parameters:
+        - name: metricas
+          in: query
+          required: false
+          description: "Ids separados por comas, o `all` para todas las publicables. Si se omite (o se manda vacío) equivale a `all`. Solo los valores del enum se publican por este canal; `all` no se combina con ids."
+          schema:
+            type: string
+            enum:
+              - ordenes_creadas
+              - ordenes_por_estado
+              - entregas
+              - devoluciones
+              - rechazos
+              - reprogramaciones
+              - tasa_entrega
+              - tasa_devolucion
+              - tasa_rechazo
+              - tiempo_ciclo
+              - all
+          example: entregas,devoluciones
+        - name: desde
+          in: query
+          required: false
+          description: "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`>=`). Formato `YYYY-MM-DD`. Si se omite, la serie arranca en el primer día del que hay datos."
+          schema:
+            type: string
+            format: date
+          example: "2026-08-01"
+        - name: hasta
+          in: query
+          required: false
+          description: "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`<=`). Formato `YYYY-MM-DD`. Si se omite, la serie llega hasta hoy. No hay tope de tamaño de ventana."
+          schema:
+            type: string
+            format: date
+          example: "2026-08-21"
+      responses:
+        "200":
+          description: "Series diarias de las métricas pedidas, sobre tus órdenes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnaliticaRespuesta"
+              examples:
+                serie:
+                  summary: "Dos métricas; se pidieron tres días y el tercero (hoy) no viene: no está cerrado"
+                  value:
+                    rango:
+                      desde: "2026-08-19"
+                      hasta: "2026-08-21"
+                    metricas:
+                      - metrica: entregas
+                        unidad: conteo
+                        data:
+                          - fecha: "2026-08-19"
+                            valor: 41
+                          - fecha: "2026-08-20"
+                            valor: 37
+                      - metrica: tasa_entrega
+                        unidad: porcentaje
+                        data:
+                          - fecha: "2026-08-19"
+                            valor: 0.93
+                          - fecha: "2026-08-20"
+                            valor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  # Feature 266 (T7.1, R28) — HABILITACIÓN POR LOTE de pedidos con novedad. Espejo textual de
+  # `openApiSpec.paths["/api/ordenes/api-key/habilitar"]`.
+  "/api/ordenes/api-key/habilitar":
+    post:
+      tags:
+        - Órdenes
+      summary: "Habilitar pedidos con novedad (lote)"
+      operationId: habilitarOrdenes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HabilitacionRequest"
+            examples:
+              dosFilas:
+                summary: "Dos filas: una en ayuda con mensajero y una en novedad"
+                value:
+                  ordenes:
+                    - num_guia: 100234
+                      nota: "el cliente pidió reintento mañana"
+                    - num_guia: 100235
+                      nota: "dirección corregida por el call center"
+      responses:
+        "200":
+          description: "Lote procesado (puede incluir filas con error)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabilitacionResponse"
+              examples:
+                resumen:
+                  summary: "Una habilitada, una sin cambio de estado y una con error"
+                  value:
+                    resumen:
+                      total: 3
+                      habilitadas: 1
+                      habilitadasSinCambioDeEstado: 1
+                      conError: 1
+                    resultados:
+                      - numGuia: 100234
+                        resultado: habilitada
+                        estado: en_reparto
+                        estadoNombre: "En reparto"
+                        ayudaCerrada: true
+                        error: null
+                      - numGuia: 100235
+                        resultado: habilitada_sin_cambio_de_estado
+                        estado: novedad
+                        estadoNombre: "Novedad"
+                        ayudaCerrada: false
+                        error: null
+                      - numGuia: 999999
+                        resultado: error
+                        estado: null
+                        estadoNombre: null
+                        ayudaCerrada: false
+                        error:
+                          codigo: no_encontrada
+                          mensaje: "no existe una orden viva con esa guia"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+# Feature 256/R24 — WEBHOOKS SALIENTES. Sección de NIVEL SUPERIOR de OpenAPI 3.1 (fuera de
+# `paths:`): lo que la plataforma ENVÍA al callback del integrador, no lo que el integrador pide.
+# Espejo textual de `openApiSpec.webhooks` (lib/api/openapi-spec.ts).
+#
+# ⏳ 2026-08-22 (FEATURE 268/R28/R29/R30) — AQUÍ DECÍA, y ya no es cierto:
+# «El campo `data.estado` va como `type: string` con prosa y SIN `enum` de estados a propósito
+# (design 256 §5.2)».
+# Ahora SÍ lleva `enum`, DERIVADO de `EVENTOS_PUBLICOS` (`lib/types/webhook-eventos.ts`) y con
+# orden alfabético determinista: son los 12 values que este webhook puede emitir de verdad, un
+# SUBCONJUNTO del catálogo de `OrdenListItem.estado`. El miedo de la 256 —«sería un 5.º catálogo
+# de estados y pondría roja `openapi-contrato-en-reparto.test.ts`»— era infundado: esa guardia
+# cuenta enums con el predicado `esEnumDeEstado`, que exige `entregado` **Y** el estado interno de
+# recogida; este enum no lleva el segundo, así que no entra en el recuento y los bloques siguen
+# siendo CUATRO. Lo verifica `tests/unit/api/openapi-webhook-contrato.test.ts`, no la fe.
+# El bloque `data` gana además la clave OPCIONAL `evidenciasUrl` (R24) y `motivo` amplía su enum
+# con las tres causas de incidente, en español (R20).
+#
+# La prosa evita la subcadena «intentos» a proposito: `tests/unit/types/intentos-no-alcance.test.ts`
+# (160/R31) la prohibe en todo el contrato.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "API key en el header `Authorization: Bearer <tu-api-key>`."
+  schemas:
+    # Feature 99/256/268 — PAYLOAD del evento saliente `orden.estado_actualizado`. Vive aqui y no
+    # como entrada de `webhooks`: esa seccion se pinta como un endpoint mas y este evento no es
+    # algo que el integrador llame. Se publica la FORMA, no una operacion.
+    WebhookOrdenEstadoActualizado:
+      type: object
+      required:
+        - evento
+        - eventoId
+        - ocurridoAt
+        - data
+      properties:
+        evento:
+          type: string
+          const: orden.estado_actualizado
+          description: Nombre del evento. Estable.
+        eventoId:
+          type: string
+          description: "Identificador determinista del evento (`webhook_estado:<ordenId>:<estatusDestinoId>:<ocurridoAt>`). Dos entregas del MISMO cambio de estado lo repiten: deduplicá por este valor."
+        ocurridoAt:
+          type: string
+          format: date-time
+          description: "Instante del cambio de estado (ISO 8601, UTC)."
+        data:
+          type: object
+          # ⏳ 2026-08-22 (feature 268/R28) — la frase de la 256 decia «las cuatro claves
+          # están SIEMPRE presentes» a secas. Sigue siendo verdad para esas cuatro, pero ya
+          # no describe el objeto entero: hay una QUINTA clave, `evidenciasUrl`, que es
+          # OPCIONAL y se OMITE salvo en `incidente`. Se dice cual es cual.
+          # ⏳ 2026-09-09 (feature 404/R24) — la frase decía «las CUATRO claves… están SIEMPRE
+          # presentes». Pasan a ser CINCO: `mensajero` se suma al bloque presente-con-`null`, por
+          # la misma razón que `motivo` y no por la de `evidenciasUrl` (ver su description).
+          # `evidenciasUrl` sigue siendo la ÚNICA opcional.
+          description: "Las seis claves `numGuia`, `numRemision`, `estado`, `estadoNombre`, `motivo` y `mensajero` están SIEMPRE presentes, sea cual sea el estado: el consumidor no ramifica por estado para saber si existen (`motivo` y `mensajero` viajan como `null` cuando no aplica, nunca omitidos). A ellas se suma UNA clave OPCIONAL, `evidenciasUrl`, que SÍ se omite salvo en los eventos con `estado: \"incidente\"`."
+          required:
+            - numGuia
+            - numRemision
+            - estado
+            - estadoNombre
+            - motivo
+            - mensajero
+          properties:
+            numGuia:
+              type:
+                - integer
+                - "null"
+              description: Número de guía de la orden (null si aún no está asignado).
+            numRemision:
+              type: string
+              description: Remisión de la orden (la que envió el integrador).
+            estado:
+              type: string
+              # feature 268/R29: DERIVADO de `EVENTOS_PUBLICOS`, nunca copiado a mano.
+              # Contiene `entregado` pero NO el estado interno de recogida, asi que
+              # `esEnumDeEstado` de `openapi-contrato-en-reparto.test.ts` NO lo cuenta:
+              # los bloques de catalogo siguen siendo CUATRO.
+              enum:
+                - devolucion_a_origen_por_rechazo
+                - devolviendo_a_tienda
+                - devuelta_a_tienda
+                - en_bodega_central
+                - en_preparacion
+                - en_reparto
+                - en_ruta_bodega_central
+                - entregado
+                - incidente
+                - novedad
+                - por_recolectar_en_tienda
+                - reprogramado
+              description: "Estado destino de la orden, con el MISMO value crudo del catálogo que publica `OrdenListItem.estado` (y, por herencia, `OrdenDetalle`). El `enum` de arriba es la POLÍTICA de eventos públicos: la lista EXACTA y COMPLETA de values que este webhook puede entregar, y un SUBCONJUNTO del catálogo de `OrdenListItem.estado`. Los estados internos de ruteo satélite que ese catálogo documenta (`mensajero_recogiendo_en_bodega`, `en_bodega_satelite`, `en_ruta_bodega_satelite`) NO viajan nunca en un evento. `en_preparacion` SÍ viaja, y solo como evento de NACIMIENTO: es el estado inicial de las órdenes creadas con `fulfillment` (el paquete ya está en bodega), llega una única vez por orden y con `numGuia: null`, porque en esa rama la guía se emite más tarde. La lista puede CRECER de forma aditiva en el futuro, siempre con aviso previo: tratá un value desconocido como «ignorar», no como error."
+            estadoNombre:
+              type: string
+              description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+            motivo:
+              type:
+                - string
+                - "null"
+              enum:
+                - not_found
+                - wrong_number
+                - wrong_address
+                - danado
+                - perdido
+                - robado
+                - null
+              description: |-
+                Causa TIPIFICADA del cambio de estado, con el value crudo del enum y sin traducir. El
+                campo transporta DOS enums distintos y cuál aplica lo decide `estado`:
+
+                - **`estado: "novedad"`** → causa de la devolución: `not_found` (destinatario no
+                  encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección
+                  equivocada). Estos tres NO aparecen nunca con otro estado.
+                - **`estado: "incidente"`** → causa del incidente: `danado`, `perdido`, `robado`. Estos
+                  tres NO aparecen nunca con otro estado.
+                - **cualquier otro `estado`** → siempre `null`.
+
+                ⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de
+                devolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,
+                `robado`) porque cada enum se publicó con el value crudo de su catálogo interno y
+                renombrar cualquiera de los dos rompería a los integradores que ya lo consumen.
+                Decisión consciente y firmada (73/F1.4-g y 158/Q-B): no se «armoniza» en el futuro.
+
+                Es `null` en todo evento cuyo `estado` NO sea `novedad` ni `incidente`, y es `null`
+                **también** en una `novedad` (o un `incidente`) sin causa registrada — órdenes cerradas
+                antes de que la causa se pidiera; ese histórico no se rellenó. El contrato no distingue
+                «no hubo causa» de «no se registró»:
+                en los dos casos viaja `null`, el campo NUNCA se omite y la entrega es normal.
+
+                **Es el motivo VIGENTE EN EL MOMENTO DE LA ENTREGA**, no una foto del instante del
+                cambio de estado: el webhook dice exactamente lo mismo que dice la aplicación en ese
+                instante. Si la devolución se re-gestiona entre dos entregas del mismo `eventoId`, la
+                segunda lleva la causa vigente entonces; deduplicá por `eventoId` y quedate con la
+                última entrega.
+
+                ⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. NO es el texto libre que el mensajero
+                escribe al gestionar la orden —que comparte el nombre `motivo` en la base de datos y NO
+                se emite NUNCA en este webhook—, ni ningún otro dato del destinatario.
+            # ⏳ 2026-09-09 (feature 404/R24) — la QUINTA clave SIEMPRE PRESENTE. Va aqui, tras
+            # `motivo` y antes de `evidenciasUrl`, porque el orden de las propiedades del contrato
+            # refleja el orden REAL de las claves del cuerpo (la firma se calcula sobre el string
+            # serializado).
+            mensajero:
+              type:
+                - object
+                - "null"
+              required:
+                - id
+                - nombre
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  description: "Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` en el webhook, en el listado y en el detalle, y ese `id` no se reasigna nunca a otra persona: es tu clave de agrupación para métricas por mensajero."
+                nombre:
+                  type: string
+                  description: "Nombre completo de la persona (nombre + apellidos). Es un texto para mostrar y PUEDE CAMBIAR (una corrección de datos lo reescribe): no agrupes por él, agrupá por `id`."
+              description: |-
+                Mensajero ASIGNADO a la orden, o `null` si en ese momento no la lleva nadie.
+
+                **La clave viaja SIEMPRE**, igual que `motivo`: `null` es un valor con significado
+                —«todavía nadie la lleva»—, no una omisión. No ramifiques por «la clave existe».
+
+                ⚠️ **Es QUIÉN LA LLEVA, no quién la gestionó.** Sale de la asignación vigente de la
+                orden, así que es el mensajero VIGENTE EN EL MOMENTO DE LA ENTREGA del evento —la
+                misma regla que rige a `motivo`—: si la orden se reasigna entre dos entregas del
+                mismo `eventoId`, la segunda lleva el mensajero de entonces. Y varios flujos
+                LIMPIAN la asignación (generación de guía, quitar mensajero, devolución o
+                recuperación a bodega, liberación de una orden en `reprogramado`, el barrido del cierre
+                diario), de modo que una orden que alguien llevó puede quedar con `mensajero:
+                null` más tarde. Para «quién gestionó cada intento» hace falta el historial de
+                gestiones, que este evento NO transporta.
+
+                Lleva EXCLUSIVAMENTE `id` y `nombre`. Ningún otro dato personal del mensajero
+                (teléfono, email, cédula, foto, zona, vehículo) se publica por este canal.
+            # feature 268/R24/R30 — la clave OPCIONAL del objeto, y la unica:
+            # deliberadamente FUERA de `required`.
+            evidenciasUrl:
+              type: string
+              format: uri
+              description: |-
+                Enlace al detalle de esta orden en el canal por API key
+                (`GET /api/ordenes/api-key/orden/{id}`), cuyo array `evidencias[]` incluye las
+                evidencias del incidente con `resultado: "incidente"`.
+
+                **El último segmento es un identificador que ya venís leyendo en este mismo
+                `data`:** el `numGuia` cuando la orden tiene guía, y el `numRemision` cuando
+                todavía no la tiene. Es el mismo `{id}` que acepta el endpoint, así que el enlace
+                se puede invocar tal cual. Ningún id interno viaja en la URL. El segmento va
+                codificado como componente de ruta: una remisión con `/`, `?`, `#`, `%` o espacios
+                viaja entera, y decodificándola recuperás el `numRemision` carácter a carácter.
+
+                **Es el único campo OPCIONAL de `data`.** Viaja SOLO en los eventos con
+                `estado: "incidente"`, y se OMITE —no viaja como `null`— tanto en cualquier otro
+                estado como en un `incidente` para el que no se pueda resolver el enlace. Ramificá
+                por «la clave existe», no por su valor.
+
+                ⚠️ **NO es una URL firmada y NO lleva credencial.** Es un enlace ESTABLE y
+                determinista: sin token, sin query string y sin expiración; no caduca. Lo único
+                que puede cambiar entre dos entregas del mismo `eventoId` es ese identificador, y
+                solo si la orden GENERA su guía entre un intento y otro: las dos URLs apuntan a la
+                MISMA orden, y el `eventoId` —por donde deduplicás— no cambia nunca. Es la misma
+                ventana que ya tiene `data.numGuia`, que se lee en cada entrega. Por eso
+                **no podés abrirlo sin autenticarte**: invocalo con tu propio
+                `Authorization: Bearer svl_...`, igual que cualquier otra llamada al canal, y el
+                detalle te devolverá las URLs firmadas frescas de las fotos, con su TTL corto. La
+                credencial la ponés vos; el cuerpo del webhook nunca la transporta.
+      # feature 268/R30 — el ejemplo de la 256 (`novedad`/`not_found`) NO se pierde: es el
+      # primero de la lista, y se le suma el caso de `incidente`, que es el unico que muestra la
+      # clave opcional `evidenciasUrl` y la causa en español.
+      examples:
+        - evento: orden.estado_actualizado
+          eventoId: "webhook_estado:018f2c31-0000-4000-8000-000000000001:7:2026-08-21T10:00:00.000Z"
+          ocurridoAt: "2026-08-21T10:00:00.000Z"
+          data:
+            numGuia: 100234
+            numRemision: "REM-0001"
+            estado: novedad
+            estadoNombre: "Novedad"
+            motivo: not_found
+            # ⏳ 2026-09-09 (feature 404/R2): el ejemplo del caso SIN mensajero asignado.
+            mensajero: null
+        - evento: orden.estado_actualizado
+          eventoId: "webhook_estado:018f2c31-0000-4000-8000-000000000002:21:2026-08-22T14:30:00.000Z"
+          ocurridoAt: "2026-08-22T14:30:00.000Z"
+          data:
+            numGuia: 100235
+            numRemision: "REM-0002"
+            estado: incidente
+            estadoNombre: "Incidente"
+            motivo: robado
+            # ⏳ 2026-09-09 (feature 404/R2/R24): el ejemplo del caso CON mensajero asignado, y en
+            # su posicion real dentro del cuerpo (tras `motivo`, antes de `evidenciasUrl`).
+            mensajero:
+              id: "018f2c31-0000-4000-8000-0000000000aa"
+              nombre: "Carlos Jiménez Mora"
+            # ⏳ 2026-09-10 (feature 406/R14): AQUI IBA el `orden.id` (un uuid), y ese enlace
+            # respondia 404 SIEMPRE — el `{id}` de esa ruta nunca significo `orden.id`. El ultimo
+            # segmento es ahora el `numGuia` que ESTE MISMO ejemplo declara arriba.
+            evidenciasUrl: "https://app.example.com/api/ordenes/api-key/orden/100235"
+    # FICHA 454 (T1.20, R33/R36) — PAYLOAD de los eventos de ORDEN que NO son un cambio de estado.
+    # Mismo callback y misma firma que `orden.estado_actualizado`. Se publica la FORMA, no una
+    # operacion. Espejo de `openApiSpec.components.schemas.WebhookOrdenEvento`.
+    WebhookOrdenEvento:
+      type: object
+      description: "Cuerpo de los eventos de orden que NO son un cambio de estado. Llegan al MISMO callback y con la MISMA firma que `orden.estado_actualizado`. Ramificá por `evento`."
+      required:
+        - evento
+        - eventoId
+        - ocurridoAt
+        - data
+      properties:
+        evento:
+          type: string
+          # FICHA 454: DERIVADO de `EVENTO_PUBLICO_POR_TIPO` (lib/types/orden-evento.ts).
+          enum:
+            - orden.ayuda_resuelta
+            - orden.ayuda_solicitada
+            - orden.gestion_anulada
+            - orden.gestion_corregida
+            - orden.gestion_registrada
+          description: |-
+            Nombre del evento. Estables:
+
+            - `orden.gestion_registrada` — el mensajero (o la tienda, desde una ayuda) registró una
+              gestión. Queda **pendiente de confirmar**: el estado de la orden NO cambia todavía; el
+              real llega como `orden.estado_actualizado` cuando se aprueba el cierre del mensajero.
+            - `orden.gestion_anulada` — esa gestión pendiente se deshizo antes de entrar en un cierre.
+            - `orden.gestion_corregida` — se corrigió el resultado de una gestión pendiente dentro de
+              un cierre abierto (`resultadoAnterior` → `resultado`).
+            - `orden.ayuda_solicitada` — el mensajero pidió ayuda a la tienda. La orden sigue `en_reparto`.
+            - `orden.ayuda_resuelta` — la ayuda se cerró (`data.via` dice por dónde).
+
+            La lista puede CRECER de forma aditiva, siempre con aviso previo: tratá un evento desconocido como «ignorar».
+        eventoId:
+          type: string
+          description: "Identificador ÚNICO del hecho (`webhook_evento:<id>`). Dos entregas del mismo hecho lo repiten: deduplicá por este valor."
+        ocurridoAt:
+          type: string
+          format: date-time
+          description: "Instante del hecho (ISO 8601, UTC)."
+        data:
+          type: object
+          description: "`numGuia`, `numRemision`, `motivo` y `mensajero` están SIEMPRE presentes (`null` cuando no aplica, nunca omitidos). El resto de claves se OMITE cuando el evento no las lleva: `gestionId` y `resultado` (con `resultadoNombre`) en los tres eventos de gestión, `resultadoAnterior` (con `resultadoAnteriorNombre`) solo en `orden.gestion_corregida`, `pendienteConfirmacion` en `orden.gestion_registrada` y `orden.gestion_corregida`, y `via` solo en `orden.ayuda_resuelta`."
+          required:
+            - numGuia
+            - numRemision
+            - motivo
+            - mensajero
+          properties:
+            numGuia:
+              type:
+                - integer
+                - "null"
+              description: Número de guía de la orden (null si aún no está asignado).
+            numRemision:
+              type: string
+              description: Remisión de la orden (la que envió el integrador).
+            gestionId:
+              type: string
+              description: Identificador de la gestión. Solo en los tres eventos de gestión.
+            resultado:
+              type: string
+              enum:
+                - devolucion_a_origen_por_rechazo
+                - entregado
+                - incidente
+                - novedad
+                - reprogramado
+              description: "Resultado de la gestión, con el MISMO value crudo que publica `OrdenGestion.resultado`. En `orden.gestion_corregida`, el resultado NUEVO."
+            resultadoNombre:
+              type: string
+              description: "Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+            resultadoAnterior:
+              type: string
+              enum:
+                - devolucion_a_origen_por_rechazo
+                - entregado
+                - incidente
+                - novedad
+                - reprogramado
+              description: "Solo en `orden.gestion_corregida`: el resultado que tenía antes de la corrección."
+            resultadoAnteriorNombre:
+              type: string
+              description: "Nombre visible de `resultadoAnterior`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+            motivo:
+              type:
+                - string
+                - "null"
+              enum:
+                - not_found
+                - wrong_number
+                - wrong_address
+                - danado
+                - perdido
+                - robado
+                - null
+              description: "Causa TIPIFICADA de la gestión, con los MISMOS values que `OrdenGestion.motivo`. `null` en los eventos de ayuda y cuando la gestión no tiene causa. NUNCA es el texto libre del mensajero."
+            mensajero:
+              type:
+                - object
+                - "null"
+              required:
+                - id
+                - nombre
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  description: Identificador ESTABLE del mensajero (UUID en texto).
+                nombre:
+                  type: string
+                  description: "Nombre completo, para mostrar. Puede cambiar: agrupá por `id`."
+              description: "Mensajero atribuido al hecho (la MISMA forma que en `orden.estado_actualizado`), o `null`."
+            pendienteConfirmacion:
+              type: boolean
+              description: "`true`: el estado de la orden todavía NO refleja esta gestión; se aplicará al aprobar el cierre del mensajero, y entonces llegará `orden.estado_actualizado`."
+            via:
+              type: string
+              enum:
+                - mensajero
+                - tienda
+                - api
+              description: "Solo en `orden.ayuda_resuelta`: quién cerró la ayuda — el mensajero («Recuperar»), la tienda («Habilitar») o el canal por API key (`POST /api/ordenes/api-key/habilitar`)."
+      examples:
+        - evento: orden.gestion_registrada
+          eventoId: "webhook_evento:018f2c31-0000-4000-8000-000000000101"
+          ocurridoAt: "2026-09-23T15:10:00.000Z"
+          data:
+            numGuia: 100234
+            numRemision: "REM-0001"
+            gestionId: "018f2c31-0000-4000-8000-000000000201"
+            resultado: novedad
+            resultadoNombre: "Novedad"
+            motivo: not_found
+            mensajero:
+              id: "018f2c31-0000-4000-8000-0000000000aa"
+              nombre: "Carlos Jiménez Mora"
+            pendienteConfirmacion: true
+        - evento: orden.ayuda_resuelta
+          eventoId: "webhook_evento:018f2c31-0000-4000-8000-000000000102"
+          ocurridoAt: "2026-09-23T16:00:00.000Z"
+          data:
+            numGuia: 100235
+            numRemision: "REM-0002"
+            motivo: null
+            mensajero:
+              id: "018f2c31-0000-4000-8000-0000000000aa"
+              nombre: "Carlos Jiménez Mora"
+            via: api
+    Error:
+      type: object
+      description: "Shape uniforme de error del manejador global. `status` siempre `\"error\"`."
+      required:
+        - status
+        - code
+        - message
+      properties:
+        status:
+          type: string
+          const: error
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - CONFLICT
+            - INTERNAL
+          description: Código estable (independiente del status HTTP).
+        message:
+          type: string
+          description: Mensaje fijo en español.
+        details:
+          type: object
+          description: "Detalle opcional. En 422 lleva `fieldErrors` (campo -> lista de errores)."
+          additionalProperties: true
+    OrdenListItem:
+      type: object
+      # ⏳ 2026-09-09 (feature 404/R25) — la description decía «sin ids internos ni PII de
+      # terceros» a secas, y eso ya no describe el item: publica el NOMBRE del mensajero asignado.
+      # La exclusión queda ACOTADA, no derogada, y se dice con su alcance.
+      description: "Item público de una orden propia: sin ids internos de la orden ni de la tienda. La única excepción a «sin datos personales de terceros» es el campo `mensajero`, que lleva el `id` y el NOMBRE del mensajero ASIGNADO —y nada más— hacia el dueño de la orden, que ya ve ese mismo nombre en la aplicación. El resto de los datos personales del mensajero (teléfono, email, cédula, foto, zona, vehículo) sigue excluido, y también el mensajero que GESTIONÓ la orden y el texto libre que escribe al gestionarla. Desde el 2026-09-10 el ítem publica además la ZONA DE LA ORDEN (a dónde va el paquete) y lo que ese paquete le cuesta a tu tienda, en dos campos: `costoEstimado` y `costoReal`."
+      required:
+        - numGuia
+        - numRemision
+        - estado
+        - estadoNombre
+        - destinatario
+        - telefonoDest
+        - producto
+        - direccion
+        - montoCobrar
+        - createdAt
+        # ⏳ 2026-09-09 (feature 404/R2/R24): SIEMPRE presente; `null` cuando no hay asignado.
+        - mensajero
+        # ⏳ 2026-09-10 (feature 415/R9/R37): las TRES SIEMPRE presentes. `zona` nunca es `null`;
+        # los dos costos pueden serlo, y su `null` significa algo concreto (ver sus descriptions).
+        - zona
+        - costoEstimado
+        - costoReal
+      properties:
+        numGuia:
+          type:
+            - integer
+            - "null"
+          description: Número de guía (null si aún no asignado).
+        numRemision:
+          type: string
+        estado:
+          type: string
+          enum:
+            - entregado
+            - novedad
+            - devolviendo_a_tienda
+            - reprogramado
+            - en_ruta_bodega_central
+            - en_bodega_central
+            - en_preparacion
+            - mensajero_recogiendo_en_bodega
+            - en_ruta_bodega_satelite
+            - en_reparto
+            - devolucion_a_origen_por_rechazo
+            - en_bodega_satelite
+            - devuelta_a_tienda
+            - novedad_interna
+            - por_devolver_a_bodega_central
+            - devolviendo_a_bodega_central
+            - por_devolver_a_tienda
+            - por_recolectar_en_tienda
+            - incidente
+            - recolectando
+        estadoNombre:
+          type: string
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        destinatario:
+          type: string
+        telefonoDest:
+          type: string
+        producto:
+          type: string
+        direccion:
+          type:
+            - string
+            - "null"
+        montoCobrar:
+          type:
+            - number
+            - "null"
+          description: Monto a cobrar (COD).
+        createdAt:
+          type: string
+          format: "date-time"
+        mensajero:
+          type:
+            - object
+            - "null"
+          required:
+            - id
+            - nombre
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              description: "Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor."
+            nombre:
+              type: string
+              description: "Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave."
+          description: |-
+            Mensajero ASIGNADO a la orden, o `null` si no la lleva nadie.
+
+            **La clave está SIEMPRE presente**: `null` significa «todavía nadie la lleva», no «no
+            se sabe» y no una omisión.
+
+            ⚠️ **Es QUIÉN LA LLEVA en el momento de la lectura, no quién la gestionó.** Varios
+            flujos limpian la asignación (generación de guía, quitar mensajero, devolución o
+            recuperación a bodega, liberación de una orden en `reprogramado`, el barrido del cierre diario),
+            así que una orden que alguien llevó puede devolver `null` más tarde. Para «quién
+            gestionó cada intento» hace falta el historial de gestiones, que este recurso NO
+            expone.
+
+            No se puede filtrar ni ordenar el listado por este campo: un parámetro de query que lo
+            intente se ignora, como cualquier otra clave desconocida.
+
+            ⏳ **2026-09-10 — la palabra «zona» de la lista de exclusiones de arriba se refiere a
+            la zona DEL MENSAJERO** (en qué zona trabaja esa persona), que es un dato personal
+            suyo y sigue SIN publicarse. **No la confundas con el campo `zona` de la orden**, que
+            sí se publica desde esa fecha y es otra cosa: el DESTINO del paquete.
+        # ⏳ 2026-09-10 (feature 415/R1/R2/R37): la zona DE LA ORDEN. `$ref` y NO nullable:
+        # `orden.zona_id` es NOT NULL, y esa es la única diferencia con `mensajero`.
+        zona:
+          $ref: "#/components/schemas/Zona"
+        costoEstimado:
+          oneOf:
+            - $ref: "#/components/schemas/OrdenCosto"
+            - type: "null"
+          description: |-
+            Lo que costaría este paquete con la tarifa VIGENTE HOY para tu tienda en la zona de
+            la orden, en el escenario de ENTREGA.
+
+            ⚠️ **Mientras `costoReal` sea `null`, este importe PUEDE CAMBIAR entre dos lecturas de
+            la misma orden: se calcula con la tarifa de hoy**, y las tarifas se editan en sitio
+            (no guardamos su histórico). Si lo archivás sin leer esto, construirás una serie que
+            cambia sola. Cuando llega `costoReal`, ése ya no se mueve: es lo que se congeló al
+            cerrar.
+
+            `null` significa **«no hay ninguna tarifa configurada para tu tienda en esa zona»**, y
+            **NO significa que el envío sea gratis**. Deliberadamente NO devolvemos cinco ceros:
+            un `0.00` sería una cifra falsa servida como precio.
+
+            No se puede filtrar ni ordenar el listado por este campo ni por ninguno de sus cinco
+            conceptos: un parámetro de query que lo intente se ignora.
+        costoReal:
+          oneOf:
+            - $ref: "#/components/schemas/OrdenCosto"
+            - type: "null"
+          description: |-
+            Lo que se CONGELÓ al cerrar: la tarifa y los datos de la orden tal y como estaban
+            cuando entró en un cierre aprobado. Ya no se mueve con los cambios de tarifa.
+
+            ⚠️ **Es lo que se congeló al cerrar, NO «la línea que entró en tu wallet».** Como
+            `costoEstimado`, es el escenario de **ENTREGA**. Si la orden terminó en Devolución a origen
+            por rechazo (`devolucion_a_origen_por_rechazo`), lo que se te factura es el flete por
+            devolución a origen y su IVA, que son conceptos distintos y que
+            podés consultar en el escenario `devuelto` de la cotización.
+
+            `null` significa **«esta orden todavía no ha entrado en ningún cierre aprobado»**.
+
+            Puede moverse UNA vez más en un caso concreto: si la orden vuelve a entrar en un
+            segundo cierre aprobado (una orden en `novedad` sigue viva y puede recorrerse otra vez),
+            publicamos la fila del cierre MÁS RECIENTE.
+    # ⏳ 2026-09-10 (feature 415/R1/R4/R38) — LA ZONA DE LA ORDEN. MISMA FORMA que `Mensajero` y
+    # MISMA REGLA de agrupación, a propósito: son las dos entidades con nombre del mismo payload.
+    Zona:
+      type: object
+      required:
+        - id
+        - nombre
+      additionalProperties: false
+      description: "La ZONA DE LA ORDEN: a dónde va el paquete. ⚠️ NO es la zona del mensajero (en qué zona trabaja esa persona), que es un dato personal suyo y no se publica por ningún endpoint. Este campo NUNCA es `null`: toda orden tiene zona."
+      properties:
+        id:
+          type: string
+          description: "Identificador ESTABLE de la zona: un UUID en TEXTO. La misma zona produce el mismo `id` en el listado, en el detalle y en todas las lecturas, y nunca se reasigna a otra zona: **agrupá por este valor, nunca por `nombre`**."
+        nombre:
+          type: string
+          description: "Nombre de la zona tal y como está en el catálogo (p. ej. `GAM`, `FGAM Zona Sur`). Texto para MOSTRAR; PUEDE cambiar si se corrige o se renombra, así que no lo uses como clave de agrupación: el día que «FGAM El Coco» pase a «FGAM Coco», una serie agrupada por el nombre se parte en dos sin avisar."
+    # ⏳ 2026-09-10 (feature 415/R10/R11/R12/R15) — LOS CINCO CONCEPTOS DEL COSTO DE UNA ORDEN.
+    # Los mismos cinco que `CotizacionEscenarioEntregado`, MENOS su `total`. Y no hay campo sumado
+    # con ningún otro nombre: el único `total` del canal significa lo CONTRARIO.
+    OrdenCosto:
+      type: object
+      required:
+        - flete
+        - iva
+        - comision
+        - ivaComision
+        - fulfillment
+      additionalProperties: false
+      description: "Los CINCO conceptos que la empresa factura por una orden, en el escenario de ENTREGA («cuánto cuesta este paquete si se entrega»). Importes en texto crudo con dos decimales y punto decimal, sin símbolo de moneda y sin separador de miles (`\"2500.00\"`) — el mismo dialecto que la cotización y el `costoEnvio` de la carga. Un `\"0.00\"` es un CERO AFIRMADO (por ejemplo, una orden que no cobra comisión), nunca un dato faltante: dentro de este objeto ningún concepto es `null` y ninguno se omite. **NO hay ningún campo que sume los cinco, ni `total` ni equivalente**: sumalos vos, que sabés qué estás sumando."
+      properties:
+        flete:
+          type: string
+          description: Flete del envío.
+        iva:
+          type: string
+          description: IVA del flete.
+        comision:
+          type: string
+          description: Comisión por el recaudo contra entrega (COD).
+        ivaComision:
+          type: string
+          description: IVA de la comisión COD.
+        fulfillment:
+          type: string
+          description: "Monto fijo de fulfillment por orden cuando el paquete sale de nuestra bodega. `\"0.00\"` si tu tienda no hace fulfillment."
+    Pagination:
+      type: object
+      required:
+        - limit
+        - offset
+        - total
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+          description: Total de órdenes que cumplen el filtro.
+    Listado:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrdenListItem"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    Evidencia:
+      type: object
+      # feature 268/R31: espejo del objeto TS — las evidencias del INCIDENTE (mensajero y admin)
+      # se exponen con la MISMA forma, y por eso `resultado` gana un tercer value.
+      description: "Evidencia de entrega, rechazo o incidente, con URL firmada de corta duración. Las de incidente llegan con `resultado: \"incidente\"` y son las que enlaza el campo `evidenciasUrl` del webhook."
+      required:
+        - resultado
+        - resultadoNombre
+        - contentType
+        - url
+        - expiraEnSegundos
+      properties:
+        resultado:
+          type: string
+          enum:
+            - entregado
+            - devolucion_a_origen_por_rechazo
+            - incidente
+        resultadoNombre:
+          type: string
+          description: "Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        contentType:
+          type:
+            - string
+            - "null"
+          description: MIME del archivo (p. ej. image/jpeg).
+        url:
+          type: string
+          format: uri
+          description: URL firmada (vence a los 5 min).
+        expiraEnSegundos:
+          type: integer
+          description: TTL de la URL firmada en segundos (300).
+    # ⏳ 2026-09-10 (feature 405/R9) — el mensajero, como schema con nombre. Espejo del objeto TS.
+    # Las dos declaraciones INLINE de la 404 (`data.mensajero` del webhook y
+    # `OrdenListItem.mensajero`) NO se tocan: alli el campo es nullable y su prosa es la de su
+    # superficie. Este existe para que `OrdenGestion` lo referencie en vez de ser una TERCERA copia.
+    # Aqui NO es nullable: `gestion_orden.mensajero_id` es NOT NULL.
+    Mensajero:
+      type: object
+      required:
+        - id
+        - nombre
+      additionalProperties: false
+      description: "Una persona mensajera, con lo minimo para identificarla y mostrarla. Es la MISMA forma que publica el campo `mensajero` de `OrdenListItem` y del evento `orden.estado_actualizado`."
+      properties:
+        id:
+          type: string
+          description: "Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el listado, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor."
+        nombre:
+          type: string
+          description: "Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave."
+    # ⏳ 2026-09-10 (feature 405) — UNA gestion del historial de la orden. Espejo del objeto TS.
+    #
+    # ⚠️ VA DESPUES DE `Evidencia` Y ANTES DE `OrdenDetalle`, y el orden NO es cosmetico:
+    # `openapi-contrato-en-reparto.test.ts` localiza el enum de `Evidencia.resultado` con una regex
+    # posicional que toma la PRIMERA coincidencia de `resultado:` + `type: string` + `enum:` con
+    # esta sangria. Mover este bloque por delante haria que aquel test midiera el enum equivocado.
+    # `openapi-405-gestiones.test.ts` afirma que `Evidencia` sigue apareciendo antes.
+    OrdenGestion:
+      type: object
+      description: "Un desenlace registrado sobre la orden: quién lo registró, cuándo y en qué dejó la orden. El array completo permite medir cuántas veces se visitó la orden y cuánto pasó entre una vez y la siguiente."
+      required:
+        - createdAt
+        - resultado
+        - resultadoNombre
+        - estadoResultante
+        - estadoResultanteNombre
+        - motivo
+        - mensajero
+        - pendienteConfirmacion
+      additionalProperties: false
+      properties:
+        createdAt:
+          type: string
+          format: "date-time"
+          description: "Instante en que la gestión quedó REGISTRADA (ISO 8601, UTC). Mismo tipo y misma serialización que el `createdAt` de la orden. NO es la fecha de reprogramación ni la de aprobación de un cierre."
+        resultado:
+          type: string
+          # feature 405/R5: DERIVADO de `ESTATUS_POR_RESULTADO`, nunca copiado a mano. Contiene
+          # `entregado` pero NO el estado interno de recogida, asi que `esEnumDeEstado` de
+          # `openapi-contrato-en-reparto.test.ts` NO lo cuenta: los bloques de catalogo siguen
+          # siendo CUATRO.
+          enum:
+            - devolucion_a_origen_por_rechazo
+            - entregado
+            - incidente
+            - novedad
+            - reprogramado
+          description: "Desenlace de la gestión, con el value CRUDO del catálogo interno y sin traducir. La lista de arriba es EXACTA y COMPLETA. Ojo: `resultado` NO es el estado en que quedó la orden — para eso está `estadoResultante`, y los dos NO siempre coinciden."
+        resultadoNombre:
+          type: string
+          description: "Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        estadoResultante:
+          type:
+            - string
+            - "null"
+          description: |-
+            El `value` del estado al que ESTA gestión llevó la orden: el destino de la primera
+            transición que originó. Es un value del mismo catálogo que publica
+            `OrdenListItem.estado`; **se publica sin lista cerrada a propósito**: en gestiones
+            antiguas puede traer un estado RETIRADO del catálogo (ver abajo). Tratá un value
+            desconocido como texto, no como error.
+
+            ⚠️ **No lo deduzcas del `resultado`**: una gestión se REGISTRA sin mover la orden; el
+            estado se aplica cuando se APRUEBA el cierre del mensajero. Mientras tanto la gestión
+            está `pendienteConfirmacion: true` y este campo es `null`. En gestiones anteriores al
+            2026-09-23, una `novedad` puede mostrar `devolucion_por_confirmar` (estado retirado).
+
+            Es `null` en gestiones ANTIGUAS, anteriores a que existiera la línea de tiempo de
+            estados: no hay ninguna transición registrada que las respalde. No es un fallo del
+            canal, y la clave NUNCA se omite.
+        estadoResultanteNombre:
+          type:
+            - string
+            - "null"
+          description: "Nombre visible de `estadoResultante`: la MISMA cadena que muestra la aplicación. `null` cuando `estadoResultante` es `null`."
+        motivo:
+          type:
+            - string
+            - "null"
+          # feature 405/R21: DERIVADO de CAUSA_DEVOLUCION_SEED + CAUSA_INCIDENTE_SEED + null, las
+          # MISMAS fuentes de las que sale la lista de `data.motivo` del webhook. Los valores
+          # coinciden uno a uno con aquella, y un test lo compara.
+          enum:
+            - not_found
+            - wrong_number
+            - wrong_address
+            - danado
+            - perdido
+            - robado
+            - null
+          description: |-
+            Causa TIPIFICADA del desenlace, con el value crudo del enum y sin traducir. Son los
+            MISMOS valores que ya recibís en `data.motivo` del webhook `orden.estado_actualizado`.
+            El campo transporta DOS enums distintos y cuál aplica lo decide `resultado`:
+
+            - **`resultado: "novedad"`** → causa de la devolución: `not_found` (destinatario no
+              encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección
+              equivocada).
+            - **`resultado: "incidente"`** → causa del incidente: `danado`, `perdido`, `robado`.
+            - **cualquier otro `resultado`** → siempre `null`.
+
+            ⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de
+            devolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,
+            `robado`) porque cada enum se publicó con el value crudo de su catálogo interno y
+            renombrar cualquiera de los dos rompería a los integradores que ya lo consumen.
+            Decisión consciente y firmada (73/F1.4-g y 158/Q-B): no se «armoniza» en el futuro.
+
+            Es `null` **también** en una `novedad` (o un `incidente`) sin causa registrada —
+            gestiones anteriores a que la causa se pidiera; ese histórico no se rellenó—. El
+            contrato no distingue «no hubo causa» de «no se registró»: en los dos casos viaja
+            `null` y el campo NUNCA se omite.
+
+            ⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. **NO es el comentario en texto libre
+            que el mensajero escribe al gestionar la orden** —que comparte el nombre `motivo` en
+            nuestra base de datos y NO sale del sistema por decisión de privacidad—, ni ningún
+            otro dato del destinatario.
+        mensajero:
+          $ref: "#/components/schemas/Mensajero"
+          description: |-
+            Mensajero ATRIBUIDO a esta gestión. **Nunca es `null`**: a diferencia del
+            `mensajero` de la orden —que es quien la lleva AHORA y puede no ser nadie—, una
+            gestión siempre tiene una persona detrás.
+
+            ⚠️ **Atribuido no siempre significa «quien la registró».** Algunas gestiones las crea
+            el sistema o la propia tienda (una reprogramación desde el escritorio, el escalado
+            automático por vencimiento de plazo, un rechazo manual de la tienda, el desenlace de
+            una solicitud de ayuda, o el corte por llegar al tope de reintento) y quedan
+            atribuidas al mensajero de la última devolución. En este array se ven idénticas a una
+            visita de calle.
+        # FICHA 454 (R32) — la clave NUEVA, al final.
+        pendienteConfirmacion:
+          type: boolean
+          description: "`true` mientras la gestión está PENDIENTE de confirmar: se registró, pero el estado que produce todavía no se aplicó (se aplica al aprobar el cierre del mensajero; hasta entonces `estadoResultante` es `null`). `false` en las gestiones ya aplicadas y en las anteriores al 2026-09-23."
+    OrdenDetalle:
+      allOf:
+        - $ref: "#/components/schemas/OrdenListItem"
+        - type: object
+          required:
+            - evidencias
+            # feature 405/R1: REQUERIDA, como `evidencias`. Un array vacio es un hecho, no una
+            # ausencia.
+            - gestiones
+          properties:
+            evidencias:
+              type: array
+              description: "Evidencias de la orden ([] si no hay)."
+              items:
+                $ref: "#/components/schemas/Evidencia"
+            gestiones:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrdenGestion"
+              description: |-
+                Historial de gestiones VIGENTES de la orden, de la más antigua a la más
+                reciente. `[]` cuando la orden todavía no se ha gestionado: la clave viaja
+                SIEMPRE y nunca es `null`.
+
+                Llega **completo y sin paginar**. No incluye las gestiones anuladas (una
+                anulación deshace el registro, y contarla inflaría tus métricas) ni los
+                incidentes que reporta nuestro personal de bodega, que no son gestiones y no
+                tienen mensajero atribuido —sus fotos sí siguen en `evidencias[]`—.
+
+                ⚠️ **`gestiones.length` no es nuestro contador interno de reintento.** Ese cuenta
+                cierres aprobados distintos con visita real, así que varias gestiones del mismo
+                cierre valen 1. Este array es la lista cruda, sin agrupar.
+      # feature 405/R20: ejemplo con DOS gestiones —una `reprogramado` con `motivo: null` y una
+      # `novedad` con causa—, para que el consumidor vea la convencion de ausencia y la forma del
+      # mensajero sin tener que deducirlas.
+      examples:
+        - numGuia: 100234
+          numRemision: "REM-0001"
+          estado: devolviendo_a_tienda
+          estadoNombre: "Devolviendo a tienda"
+          destinatario: Jimena Porras
+          telefonoDest: "88887777"
+          producto: Audífonos inalámbricos
+          direccion: "Cartago, de la iglesia 200m sur"
+          montoCobrar: 48750
+          createdAt: "2026-09-01T14:20:00.000Z"
+          mensajero: null
+          evidencias: []
+          gestiones:
+            - createdAt: "2026-09-02T15:41:07.000Z"
+              resultado: reprogramado
+              resultadoNombre: "Reprogramado"
+              estadoResultante: reprogramado
+              estadoResultanteNombre: "Reprogramado"
+              motivo: null
+              mensajero:
+                id: "018f2c31-0000-4000-8000-0000000000aa"
+                nombre: Carlos Jiménez Mora
+            - createdAt: "2026-09-04T18:02:55.000Z"
+              resultado: novedad
+              resultadoNombre: "Novedad"
+              estadoResultante: novedad
+              estadoResultanteNombre: "Novedad"
+              motivo: wrong_address
+              mensajero:
+                id: "018f2c31-0000-4000-8000-0000000000bb"
+                nombre: Ana Solís Vargas
+    CargaRequest:
+      type: object
+      required:
+        - ordenes
+      properties:
+        ordenes:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          description: Filas a cargar (1..5000). Todos los valores son texto.
+          items:
+            $ref: "#/components/schemas/CargaRow"
+    CargaRow:
+      type: object
+      description: "Una fila de carga. Todas las claves son strings. Las requeridas se validan en el servidor; una fila inválida no aborta el lote (se reporta como `error`)."
+      required:
+        - num_remision
+        - destinatario
+        - telefono
+        - provincia
+        - canton
+        - distrito
+        - direccion
+        - producto
+        - peso
+        - monto_cobrar
+      properties:
+        num_remision:
+          type: string
+          description: Identificador de remisión (dedup por este valor).
+        destinatario:
+          type: string
+        telefono:
+          type: string
+        provincia:
+          type: string
+          description: "Si no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+        canton:
+          type: string
+          description: "Si no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+        distrito:
+          type: string
+          description: "Su zona decide la tarifa. Si no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+        direccion:
+          type: string
+        producto:
+          type: string
+        peso:
+          type: string
+          description: "Peso en kg como texto (p. ej. \"1.5\")."
+        monto_cobrar:
+          type: string
+          description: "Monto COD como texto (p. ej. \"25.90\")."
+        notas:
+          type: string
+      additionalProperties:
+        type: string
+    CargaRowResult:
+      type: object
+      description: "Resultado de una fila que SÍ entró al sistema. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CargaFilaError`)."
+      required:
+        - fila
+        - numRemision
+        - resultado
+      properties:
+        fila:
+          type: integer
+          description: "Índice 1-based dentro de `ordenes`."
+        numRemision:
+          type: string
+        resultado:
+          type: string
+          enum:
+            - creada
+            - duplicada
+        # FICHA 455 (R27): aqui estaba `estatus`; ahora `estado` + `estadoNombre`.
+        estado:
+          type: string
+          description: "Estado de la orden, con un código del catálogo de `OrdenListItem.estado` (en creada/duplicada; en `duplicada`, el de la orden que ya ocupa esa remisión). Hasta el cambio de la ficha 455 se llamaba `estatus`."
+        estadoNombre:
+          type: string
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        numGuia:
+          type: integer
+          description: "Número de guía asignado (solo en `creada`)."
+    # 2026-08-31 — la fila que NO entró, publicada aparte. Es el MISMO objeto que antes viajaba
+    # dentro de `filas`; lo único que cambió es dónde se lee. Schema propio (y no `CargaRowResult`)
+    # porque aquí `errores` es REQUIRED: en esta lista no existe el elemento sin detalle.
+    CargaFilaError:
+      type: object
+      description: Una fila que no se creó, con el detalle de por qué.
+      required:
+        - fila
+        - numRemision
+        - resultado
+        - errores
+      properties:
+        fila:
+          type: integer
+          description: "Índice 1-based dentro de `ordenes`."
+        numRemision:
+          type: string
+          description: Tu número de remisión tal como llegó (vacío si la fila no lo traía).
+        resultado:
+          type: string
+          const: error
+        errores:
+          type: object
+          description: "Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso la orden no se creó."
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    CargaOrden:
+      type: object
+      description: Una orden efectivamente creada (bloque plano listo para consumir).
+      required:
+        - id
+        - numRemision
+        - numGuia
+        - estado
+        - estadoNombre
+        - costoEnvio
+        - fulfillment
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id interno de la orden creada.
+        numRemision:
+          type: string
+        numGuia:
+          type:
+            - integer
+            - "null"
+          description: "Número de guía asignado en el acto. Es `null` —y solo entonces— cuando la orden nació en `en_preparacion` por fulfillment: la guía se emite más tarde y nunca se fabrica un número."
+        estado:
+          type: string
+          enum:
+            - entregado
+            - novedad
+            - devolviendo_a_tienda
+            - reprogramado
+            - en_ruta_bodega_central
+            - en_bodega_central
+            - en_preparacion
+            - mensajero_recogiendo_en_bodega
+            - en_ruta_bodega_satelite
+            - en_reparto
+            - devolucion_a_origen_por_rechazo
+            - en_bodega_satelite
+            - devuelta_a_tienda
+            - novedad_interna
+            - por_devolver_a_bodega_central
+            - devolviendo_a_bodega_central
+            - por_devolver_a_tienda
+            - por_recolectar_en_tienda
+            - incidente
+            - recolectando
+        estadoNombre:
+          type: string
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        costoEnvio:
+          type: string
+          description: "Costo total del envío (flete + IVA de la tarifa vigente del par (tienda, zona), MÁS el fulfillment si lo hay), string escala 2. Toda orden creada lo trae con un importe real: una fila sin tarifa no llega a crearse. Distinto de `monto_cobrar`/COD."
+        fulfillment:
+          type: string
+          description: "Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\"0.00\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`."
+    CargaResponse:
+      type: object
+      required:
+        - total
+        - creadas
+        - duplicadas
+        - conError
+        - filas
+        - errores
+        - ordenes
+      properties:
+        cargaId:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: "Id del lote creado, para pedir después el PDF consolidado. `null` si el lote no creó ninguna orden."
+        total:
+          type: integer
+          description: Filas recibidas.
+        creadas:
+          type: integer
+        duplicadas:
+          type: integer
+        conError:
+          type: integer
+        filas:
+          type: array
+          description: "Las filas que entraron: `creada` y `duplicada`. Nunca contiene una fila en `error`."
+          items:
+            $ref: "#/components/schemas/CargaRowResult"
+        errores:
+          type: array
+          description: "Las filas que NO se crearon, con su detalle por campo. Lista vacía cuando el lote entero entró; su longitud es siempre `conError`."
+          items:
+            $ref: "#/components/schemas/CargaFilaError"
+        ordenes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CargaOrden"
+    CancelacionResponse:
+      type: object
+      required:
+        - numGuia
+        - estadoAnterior
+        - estadoAnteriorNombre
+        - estado
+        - estadoNombre
+      properties:
+        numGuia:
+          type: integer
+        estadoAnterior:
+          type: string
+          enum:
+            - entregado
+            - novedad
+            - devolviendo_a_tienda
+            - reprogramado
+            - en_ruta_bodega_central
+            - en_bodega_central
+            - en_preparacion
+            - mensajero_recogiendo_en_bodega
+            - en_ruta_bodega_satelite
+            - en_reparto
+            - devolucion_a_origen_por_rechazo
+            - en_bodega_satelite
+            - devuelta_a_tienda
+            - novedad_interna
+            - por_devolver_a_bodega_central
+            - devolviendo_a_bodega_central
+            - por_devolver_a_tienda
+            - por_recolectar_en_tienda
+            - incidente
+            - recolectando
+        estadoAnteriorNombre:
+          type: string
+          description: "Nombre visible de `estadoAnterior`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+        estado:
+          type: string
+          const: devolviendo_a_tienda
+        estadoNombre:
+          type: string
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+    EliminacionResponse:
+      type: object
+      required:
+        - numGuia
+        - numRemision
+        - estado
+        - estadoNombre
+      properties:
+        numGuia:
+          type:
+            - integer
+            - "null"
+          description: "Guía de la orden eliminada; `null` si aún no tenía."
+        numRemision:
+          type: string
+          description: "Tu número de remisión. Vuelve a quedar libre para reutilizarlo."
+        estado:
+          type: string
+          description: "Estado que la orden tenía al eliminarla (eliminar no cambia el estado)."
+          enum:
+            - en_preparacion
+            - por_recolectar_en_tienda
+            - recolectando
+            - en_bodega_central
+            - en_ruta_bodega_central
+            - en_ruta_bodega_satelite
+            - mensajero_recogiendo_en_bodega
+        estadoNombre:
+          type: string
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+    PdfGenerateResponse:
+      type: object
+      description: "URL firmada de corta duración con el PDF de etiqueta (de una orden o de un lote). La URL se firma en cada llamada: nunca es una URL persistida."
+      required:
+        - url
+        - expiraEnSegundos
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL firmada del PDF.
+        expiraEnSegundos:
+          type: integer
+          description: "TTL de la URL firmada en segundos (300 por defecto)."
+    # Feature 255 — cotización previa (lectura pura). Todos los importes son STRINGS
+    # money-safe CRUDOS (sin símbolo ni miles, punto decimal, exactamente 2 decimales):
+    # NO existe un campo formateado en paralelo. Enmendado por la ficha 319 (2026-08-28),
+    # que invirtió cuál de las dos formas se sirve.
+    CotizacionRequest:
+      type: object
+      required:
+        - ordenes
+      properties:
+        ordenes:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          description: "Filas a cotizar (1..5000, el mismo tope que la carga). Todos los valores son texto."
+          items:
+            $ref: "#/components/schemas/CotizacionRow"
+    CotizacionRow:
+      type: object
+      description: |-
+        Una fila a cotizar. Es la MISMA fila cruda que acepta `POST /api/ordenes/api-key/carga`:
+        podés mandar el cuerpo de la carga sin recortarlo y las claves que la cotización no usa
+        se ignoran. `num_remision` es opcional y solo correlaciona.
+
+        NINGUNA clave de la fila está en `required`, y es deliberado: el servidor NO rechaza el
+        lote por una fila incompleta. La terna geográfica (`provincia`, `canton`, `distrito`) es
+        NECESARIA para poder cotizar la fila, pero su ausencia NO es un 422 del lote: esa fila
+        vuelve en la lista `errores` con `resultado: "error"` y el detalle bajo la clave del
+        campo que falta, y las
+        demás filas se cotizan igual (éxito parcial). Declararla `required` haría que un cliente
+        generado con validación estricta rechazara EN LOCAL un cuerpo que el servidor acepta y
+        responde 200.
+
+        Cuándo recibís 422: solo por el lote entero — `ordenes` vacío o por encima del tope
+        (o un valor que no sea texto). Cuándo recibís 200 con entradas en `errores`: por cualquier
+        problema de una fila concreta — terna ausente o vacía, distrito no encontrado, distrito
+        ambiguo, distrito sin zona asignada, algún nivel de la terna RETIRADO del catálogo, o
+        `monto_cobrar` con formato inválido.
+
+        RETIRADO DEL CATÁLOGO (desde 2026-09-06). La empresa puede retirar una provincia, un cantón
+        o un distrito sin borrarlo: deja de admitirse en cargas y cotizaciones nuevas, y las
+        órdenes que ya lo referencian no se tocan. La fila sale con `resultado: "error"` y un
+        mensaje PROPIO, distinto de «no encontrado» y de «ambiguo», para que no lo confundas con
+        una errata en la dirección. Los tres mensajes son:
+
+        - `la provincia esta retirada del catalogo`
+        - `el canton esta retirado del catalogo`
+        - `el distrito '<nombre>' esta retirado del catalogo`
+
+        Si hay más de un nivel retirado se informa del más alto, con esta PRECEDENCIA fija:
+        primero provincia, luego cantón, luego distrito. Sigue siendo 200 con éxito parcial:
+        ninguna otra fila del lote se ve afectada.
+      properties:
+        provincia:
+          type: string
+          description: "Necesaria para cotizar la fila. Si falta, no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+        canton:
+          type: string
+          description: "Necesario para cotizar la fila. Si falta, no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+        distrito:
+          type: string
+          description: "Su zona decide la columna de flete. Necesario para cotizar la fila: si falta, no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+        direccion:
+          type: string
+          description: Se acepta; no participa del precio.
+        monto_cobrar:
+          type: string
+          description: "Monto COD como texto (p. ej. \"25900\"). Base de la comisión; vacío o ausente se trata como cero."
+        num_remision:
+          type: string
+          description: "OPCIONAL: solo correlación. No se deduplica ni contra el lote ni contra las órdenes existentes."
+      additionalProperties:
+        type: string
+    CotizacionEscenarioEntregado:
+      type: object
+      description: "Costo si la orden se ENTREGA: seis conceptos. `total` es lo que RECIBE la tienda = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment), y es negativo si no hay COD que cubra lo facturado."
+      required:
+        - flete
+        - iva
+        - comision
+        - ivaComision
+        - fulfillment
+        - total
+      properties:
+        flete:
+          type: string
+          description: "Flete de la zona del distrito. String money-safe de escala 2, crudo."
+        iva:
+          type: string
+          description: "IVA del flete. String money-safe de escala 2, crudo."
+        comision:
+          type: string
+          description: "Comisión COD. String money-safe de escala 2, crudo."
+        ivaComision:
+          type: string
+          description: "IVA de la comisión. String money-safe de escala 2, crudo."
+        fulfillment:
+          type: string
+          description: "Monto fijo del servicio de bodega por orden, crudo. Cero si tu tarifa no tiene fulfillment; nunca ausente."
+        total:
+          type: string
+          description: "Lo que recibe la tienda. String money-safe de escala 2, crudo; negativo si el COD no cubre lo facturado."
+    CotizacionEscenarioDevuelto:
+      type: object
+      description: "Costo si la orden se DEVUELVE, es decir si el paquete vuelve a tu tienda: cinco conceptos, SIN `ivaComision` (no hay comisión que gravar). `comision` es un cero EXPLÍCITO — la afirmación de que una devolución no cobra comisión COD, no un dato ausente. `fulfillment` en cambio SÍ se cobra: el servicio de bodega ya se prestó. `total` es la DEUDA de la tienda = −(flete + iva + fulfillment), y por eso es negativo. **Cuándo se cobra este escenario:** al cerrarse la orden en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), que es el resultado con el que el paquete regresa. Un intento de entrega fallido que aún se puede reprogramar o recuperar NO cobra nada por sí solo; los importes de aquí aparecen cuando el retorno se consuma."
+      required:
+        - flete
+        - iva
+        - comision
+        - fulfillment
+        - total
+      properties:
+        flete:
+          type: string
+          description: "Flete por devolución a origen. String money-safe de escala 2, crudo. En pantalla, en la wallet y en las descargas este concepto se llama exactamente así desde el 2026-10-01: sólo lo cobra una gestión con resultado `devolucion_a_origen_por_rechazo` (ver `CotizacionEscenarioDevuelto`), nunca una devolución que siga viva. Sus nombres anteriores están en el CHANGELOG."
+        iva:
+          type: string
+          description: "IVA del flete por devolución a origen. String money-safe de escala 2, crudo. Sus nombres anteriores están en el CHANGELOG."
+        comision:
+          type: string
+          description: 'Siempre "0.00": una devolución no cobra comisión COD.'
+        fulfillment:
+          type: string
+          description: "El MISMO monto que en el escenario entregado: preparar y despachar el paquete ya costó, lo reciba el destinatario o no. Cero si tu tarifa no tiene fulfillment."
+        total:
+          type: string
+          description: "Deuda de la tienda. String money-safe de escala 2, crudo y negativo."
+    CotizacionCostos:
+      type: object
+      description: "Los DOS escenarios de una fila con cobertura. Siempre presente en `filas`; las filas sin precio no lo traen porque no están en esa lista, están en `errores`."
+      required:
+        - entregado
+        - devuelto
+      properties:
+        entregado:
+          $ref: "#/components/schemas/CotizacionEscenarioEntregado"
+        devuelto:
+          $ref: "#/components/schemas/CotizacionEscenarioDevuelto"
+    CotizacionRowResult:
+      type: object
+      description: "Una fila CON precio. No existe `duplicada`: sin persistencia no significa nada. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CotizacionFilaError`), y por eso `costos` dejó de ser opcional aquí."
+      required:
+        - fila
+        - numRemision
+        - montoCobrar
+        - resultado
+        - costos
+      properties:
+        fila:
+          type: integer
+          description: "Índice 1-based dentro de `ordenes`."
+        numRemision:
+          type:
+            - string
+            - "null"
+          description: "El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo."
+        montoCobrar:
+          type: string
+          description: "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes."
+        resultado:
+          type: string
+          const: cotizada
+        costos:
+          $ref: "#/components/schemas/CotizacionCostos"
+    # 2026-08-31 — la fila que NO se cotizó, publicada aparte. Mismo objeto que antes viajaba
+    # dentro de `filas`; lo único que cambió es dónde se lee. Schema propio (y no reusando
+    # `CotizacionRowResult`) porque aquí `errores` es REQUIRED: en esta lista no existe el
+    # elemento sin detalle, que es justo lo que la hace fácil de consumir.
+    CotizacionFilaError:
+      type: object
+      description: "Una fila que no se pudo cotizar, con el detalle de por qué."
+      required:
+        - fila
+        - numRemision
+        - resultado
+        - errores
+      properties:
+        fila:
+          type: integer
+          description: "Índice 1-based dentro de `ordenes`."
+        numRemision:
+          type:
+            - string
+            - "null"
+          description: "El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo."
+        resultado:
+          type: string
+          const: error
+        errores:
+          type: object
+          description: "Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso no se cotizó."
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    # Sin bloque `totales` (retirado el 2026-08-31): la cotización es POR ORDEN.
+    CotizacionResponse:
+      type: object
+      required:
+        - total
+        - cotizadas
+        - conError
+        - filas
+        - errores
+      properties:
+        total:
+          type: integer
+          description: Filas recibidas.
+        cotizadas:
+          type: integer
+        conError:
+          type: integer
+        filas:
+          type: array
+          description: "Las filas con precio. Nunca contiene una fila en `error`; su longitud es siempre `cotizadas`."
+          items:
+            $ref: "#/components/schemas/CotizacionRowResult"
+        errores:
+          type: array
+          description: "Las filas que NO se cotizaron, con su detalle por campo. Lista vacía cuando el lote entero se cotizó; su longitud es siempre `conError`."
+          items:
+            $ref: "#/components/schemas/CotizacionFilaError"
+    # Feature 267 (R39) — contrato de `GET /api/ordenes/api-key/analitica`. Espejo publicado de
+    # `analitica-api-key-dto.ts`: si el DTO gana o pierde un campo, este schema y el objeto TS
+    # cambian con él, en el mismo commit.
+    #
+    # P4-bis (2026-08-23) — EL SOBRE. El endpoint sirve un LOTE, así que la unidad publicada es
+    # `AnaliticaRespuesta` y no la serie suelta: el `rango` UNA vez —lo comparten todas por
+    # construcción— y las series en `metricas[]`, en el orden pedido. La forma no cambia con el
+    # número de métricas pedidas: un contrato que cambiara de forma obligaría a escribir dos
+    # parsers para el mismo endpoint.
+    AnaliticaRespuesta:
+      type: object
+      required:
+        - rango
+        - metricas
+      properties:
+        rango:
+          type: object
+          description: "Eco del rango efectivo, común a todas las series y en el mismo formato que la petición."
+          required:
+            - desde
+            - hasta
+          properties:
+            desde:
+              type: string
+              format: date
+              example: "2026-08-19"
+            hasta:
+              type: string
+              format: date
+              description: "Inclusivo, hora de Costa Rica."
+              example: "2026-08-21"
+        metricas:
+          type: array
+          description: "Una entrada por métrica pedida, en el orden pedido. Nunca vacío."
+          items:
+            $ref: "#/components/schemas/AnaliticaSerie"
+    # 2026-08-24 — la serie publica TRES campos. `unidadDeConteo` salió del payload (es un hecho
+    # del catálogo, y va en la descripción del endpoint) y `cobertura` salió entera: su
+    # información la lleva ahora la OMISIÓN de puntos en `data`.
+    AnaliticaSerie:
+      type: object
+      required:
+        - metrica
+        - unidad
+        - data
+        - cobertura
+      properties:
+        metrica:
+          type: string
+          description: Id de la métrica pedida.
+          example: entregas
+        unidad:
+          type: string
+          description: "Unidad de la cifra (p. ej. `conteo`, `porcentaje`, `dias`)."
+        data:
+          type: array
+          description: "Los días del rango con dato, en orden, INCLUIDO el día en curso. Antes del 2026-09-04 el día en curso se omitía; ahora viene marcado `parcial: true`. ⚠️ Si sumas `data` para obtener un total del periodo, DESCARTA primero los puntos con `parcial: true` y los días listados en `cobertura.fechasNoComparables`: no son comparables con un día cerrado. Puede venir vacío, y eso es un 200 correcto. No rellenes los huecos con ceros."
+          items:
+            type: object
+            required:
+              - fecha
+              - valor
+            properties:
+              fecha:
+                type: string
+                format: date
+                example: "2026-08-20"
+              valor:
+                type:
+                  - number
+                  - "null"
+                description: "`null` significa «no se sabe» (por ejemplo, denominador cero). NUNCA se sustituye por 0. Un día con `valor: null` SÍ está en `data`: está cerrado, pero su resultado es indefinido."
+              parcial:
+                type: boolean
+                enum:
+                  - true
+                description: "Presente y `true` SOLO en el día en curso, que aún no está cerrado: su cifra se lee más baja que la de un día completo y NO es comparable. Ausente en cualquier otro día (nunca llega como `false`)."
+              corteAt:
+                type: string
+                format: date-time
+                description: "Instante ISO-8601 usado como cota superior del día parcial. Solo acompaña a `parcial: true`."
+                example: "2026-08-21T18:40:00.000Z"
+        cobertura:
+          type: object
+          description: "Qué días de esta serie no son comparables, y por qué. Siempre presente."
+          required:
+            - fechasNoComparables
+            - penumbra
+          properties:
+            fechasNoComparables:
+              type: array
+              description: "Días del rango por debajo del horizonte del histórico: ahí un cero es falta de DATOS, no falta de operación. Normalmente vacío."
+              items:
+                type: string
+                format: date
+            penumbra:
+              type: string
+              enum:
+                - ordenes_vivas_al_horizonte_sin_transicion_posterior
+              description: "Limitación permanente del histórico, nunca estimada: las órdenes que ya estaban vivas cuando nació el historial y nunca volvieron a cambiar de estado no entran en ningún día."
+    # Feature 266 (T7.1) — cuerpo y respuesta de la habilitación por lote.
+    HabilitacionRequest:
+      type: object
+      required:
+        - ordenes
+      properties:
+        ordenes:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: "Entre 1 y 100 filas. Fuera de ese rango: 422 y ninguna fila procesada."
+          items:
+            $ref: "#/components/schemas/HabilitacionRow"
+    HabilitacionRow:
+      type: object
+      description: "Una fila del lote. Si `num_guia` o `nota` no cumplen, la fila responde `error`/`fila_invalida` y el resto del lote se procesa igual: NO es un 422 del lote."
+      required:
+        - num_guia
+        - nota
+      properties:
+        num_guia:
+          type: integer
+          minimum: 1
+          description: "Número de guía de una orden propia. No se acepta como texto."
+        nota:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: "Motivo de la habilitación, OBLIGATORIO. Se recorta y se guarda en la bitácora de la orden; no viaja en el historial de estados."
+    HabilitacionResponse:
+      type: object
+      required:
+        - resumen
+        - resultados
+      properties:
+        resumen:
+          $ref: "#/components/schemas/HabilitacionResumen"
+        resultados:
+          type: array
+          description: "MISMO orden y MISMA cantidad que las filas enviadas: se puede casar por índice."
+          items:
+            $ref: "#/components/schemas/HabilitacionRowResult"
+    HabilitacionResumen:
+      type: object
+      description: "`total` = `habilitadas` + `habilitadasSinCambioDeEstado` + `conError`."
+      required:
+        - total
+        - habilitadas
+        - habilitadasSinCambioDeEstado
+        - conError
+      properties:
+        total:
+          type: integer
+          description: Filas recibidas.
+        habilitadas:
+          type: integer
+          description: "Órdenes con la ayuda abierta cuya ayuda quedó cerrada (`ayudaCerrada: true`)."
+        habilitadasSinCambioDeEstado:
+          type: integer
+          description: "Se registró la habilitación y el estado NO cambió."
+        conError:
+          type: integer
+    HabilitacionRowResult:
+      type: object
+      required:
+        - numGuia
+        - resultado
+        - estado
+        - estadoNombre
+        - ayudaCerrada
+        - error
+      properties:
+        numGuia:
+          description: "La guía tal como se envió (si la fila era inválida, puede no ser entero)."
+        resultado:
+          type: string
+          enum:
+            - habilitada
+            - habilitada_sin_cambio_de_estado
+            - error
+          description: "`habilitada`: la orden tenía la ayuda abierta y la ayuda quedó CERRADA; la orden sigue `en_reparto` con su mensajero y vuelve a ser gestionable (desde el 2026-09-23 no hay cambio de estado: mirá `ayudaCerrada`). `habilitada_sin_cambio_de_estado`: se registró y el estado NO cambió (SIEMPRE el caso de una `novedad`). `error`: la fila no se procesó."
+        estado:
+          type:
+            - string
+            - "null"
+          description: "Estado en el que la orden quedó; `null` cuando la fila falló."
+        estadoNombre:
+          type:
+            - string
+            - "null"
+          description: "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación. `null` cuando `estado` es `null`."
+        # FICHA 454 (R24/R36) — la clave NUEVA.
+        ayudaCerrada:
+          type: boolean
+          description: "`true` si esta fila CERRÓ una ayuda abierta (el mensajero puede volver a gestionar la orden). `false` en cualquier otro caso, incluidas las filas con error."
+        error:
+          type:
+            - object
+            - "null"
+          required:
+            - codigo
+            - mensaje
+          properties:
+            codigo:
+              type: string
+              enum:
+                - fila_invalida
+                - duplicada_en_lote
+                - no_encontrada
+                - estado_no_habilitable
+              description: "`fila_invalida`: `num_guia`/`nota` no cumplen. `duplicada_en_lote`: la guía ya apareció antes en el mismo lote. `no_encontrada`: no hay orden viva con esa guía para esta key (no distingue «no existe» de «es de otro dueño»). `estado_no_habilitable`: la orden no tiene una ayuda abierta ni está en `novedad` —incluye `reprogramado` y la segunda habilitación de una orden cuya ayuda ya se cerró—."
+            mensaje:
+              type: string
+  responses:
+    Unauthorized:
+      description: "API key ausente, mal formada o desconocida."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            status: error
+            code: UNAUTHORIZED
+            message: No hay una sesion valida.
+    Forbidden:
+      description: El usuario dueño de la key no está activo.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            status: error
+            code: FORBIDDEN
+            message: No tienes permiso para realizar esta accion.
+    NotFound:
+      description: La orden no existe o pertenece a otro dueño (mismo 404).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            status: error
+            code: NOT_FOUND
+            message: El recurso solicitado no existe.
+    Conflict:
+      description: El estado actual de la orden no permite la operación.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            status: error
+            code: CONFLICT
+            message: La operacion entra en conflicto con el estado actual.
+    ValidationError:
+      description: "Entrada inválida (query, path o cuerpo)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            status: error
+            code: VALIDATION_ERROR
+            message: Los datos enviados no son validos.
+            details:
+              fieldErrors:
+                limit:
+                  - Number must be less than or equal to 100

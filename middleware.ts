@@ -1,0 +1,146 @@
+import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE_NAME } from "@/lib/constants/auth";
+import { isSessionActive } from "@/lib/auth/session-guard";
+import { UnauthenticatedError } from "@/lib/errors/app-error";
+import { appErrorToResponse } from "@/lib/errors/http";
+
+// Rutas alcanzables SIN cookie `session`. Son las paginas publicas fuera de
+// `(app)`: login, recuperacion de contrasena (feature 20) y postulacion de
+// mensajero (feature 21, unica via de auto-registro, su R22 exige acceso sin
+// sesion).
+const PUBLIC_ROUTES = [
+  "/login",
+  "/api/health",
+  "/recuperar-contrasena",
+  "/postulacion",
+  // Feature 106: documentacion publica de la API por API key (Swagger UI). Ambas rutas deben ser
+  // publicas: `/api-docs` (la pagina que renderiza Swagger UI) y `/api/docs/openapi` (el spec JSON
+  // que la pagina consume). El middleware NO deja pasar `/api/*` por defecto, asi que hay que
+  // listar el prefijo `/api/docs` explicitamente o el spec redirige a /login y la UI no renderiza.
+  "/api-docs",
+  "/api/docs",
+];
+
+// Endpoints que NO usan cookie de sesion porque traen su PROPIA autenticacion
+// por `Authorization: Bearer ...` o firma, validada dentro del route handler:
+//  - `/api/cron/*`  -> CRON_SECRET (features 41 y siguientes)
+//  - `/api/ordenes/api-key/*` -> API key `svl_...` (feature 88)
+//  - `/api/webhooks/*` -> firma HMAC del proveedor externo (feature 120: WhatsApp valida
+//    `X-Hub-Signature-256` sobre el cuerpo crudo; el handshake GET valida `hub.verify_token`).
+//    Meta llama SIN cookie; el guard de sesion lo mandaba a /login, que Meta nunca alcanza.
+// El guard de sesion los dejaba en 307 a /login, es decir: se autenticaban
+// contra una puerta que nunca alcanzaban. Se excluyen aqui; su auth real vive
+// en el handler y sigue siendo obligatoria.
+const SELF_AUTH_ROUTES = ["/api/cron", "/api/ordenes/api-key", "/api/webhooks"];
+
+// Rutas privadas cuyo rechazo va a `/` en vez de a `/login`: el rastreo de un
+// paquete es cara al publico, mandar a un formulario de login a quien solo
+// pego una guia es un callejon. Decide la mitad "no publica" de la feature 79.
+const REDIRECT_TO_ROOT = ["/paquete"];
+
+function matches(pathname: string, routes: string[]): boolean {
+  return routes.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+}
+
+// Feature 426 (R7) — que cuenta como ruta de API: el path `/api` y todo lo que cuelga de `/api/`.
+// Es la regla del PRIMER SEGMENTO, y no una lista nueva, a proposito: `/api-docs` es una PAGINA
+// (la que renderiza Swagger UI) y `/apitos` una pagina privada cualquiera; con `startsWith("/api")`
+// a secas las dos se tratarian como rutas de API y dejarian de redirigir a /login.
+function esRutaApi(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (matches(pathname, PUBLIC_ROUTES)) return NextResponse.next();
+  if (matches(pathname, SELF_AUTH_ROUTES)) return NextResponse.next();
+
+  const sessionId = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+
+  // Feature 86: `/` es la landing publica. Se resuelve por coincidencia EXACTA (no entra en
+  // PUBLIC_ROUTES, cuyo `startsWith` volveria publica la app entera, R8). Con cookie de sesion
+  // la home autenticada vive en /dashboard (R7) —cuyo propio guard revalida la sesion contra la
+  // DB, asi que basta la presencia de la cookie para el redirect—; sin cookie se sirve la
+  // landing publica (R1). Sin este caso la landing quedaba detras del login (regresion del merge).
+  if (pathname === "/") {
+    if (sessionId) return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.next();
+  }
+
+  // Validacion REAL contra la DB: existencia de la cookie no es autenticacion.
+  if (sessionId && (await isSessionActive(sessionId))) {
+    return NextResponse.next();
+  }
+
+  const response = rechazoSinSesion(request, pathname);
+
+  // La cookie que acaba de fallar la validacion se borra: si no, el navegador
+  // la sigue mandando y cada request repite el roundtrip a la DB para nada.
+  if (sessionId) response.cookies.delete(SESSION_COOKIE_NAME);
+
+  return response;
+}
+
+// FEATURE 426 — LA FORMA DEL RECHAZO POR FALTA DE SESION. El veredicto no cambia (quien no trae
+// sesion activa no pasa, ni una ruta mas ni una menos); lo que cambia es que una ruta de API ya
+// NO se rechaza redirigiendo.
+//
+// MEDIDO CONTRA PRODUCCION el 2026-09-14: `POST /api/ordenes/carga-masiva/chunk` con la sesion
+// vencida respondia 307 a `/login`. El 307 CONSERVA EL METODO, asi que el cliente repetia el POST
+// de su carga contra la pagina de login y recibia el HTML de esa pagina con **200**: desde fuera
+// es indistinguible de "el servidor se cayo", y eso fue lo que reporto el integrador.
+//
+// Las dos unicas rutas que llegan hasta aqui —`/api/ordenes/carga-masiva/chunk` y
+// `/api/chat/media/[mensajeId]`— YA tenian su 401 escrito en el handler, y no se habia ejecutado
+// jamas sin sesion porque este guard respondia el 307 antes. Esto NO escribe un 401 nuevo: deja de
+// tapar el que ya existia, emitiendo en el borde el mismo desenlace que habria dado el handler.
+//
+// El cuerpo es el `AppErrorShape` de la feature 10 y no un literal propio, para que "no hay sesion"
+// tenga UN SOLO contrato, caiga el rechazo en el borde o dentro del handler. Sin
+// `WWW-Authenticate`: el esquema aqui es una cookie, y anunciar Basic/Bearer haria que algunos
+// navegadores abrieran un dialogo de credenciales que no sirve de nada.
+function rechazoSinSesion(request: NextRequest, pathname: string): NextResponse {
+  if (esRutaApi(pathname)) return appErrorToResponse(new UnauthenticatedError().toShape());
+  if (matches(pathname, REDIRECT_TO_ROOT)) return NextResponse.redirect(new URL("/", request.url));
+  return redirectALogin(request, pathname);
+}
+
+function redirectALogin(request: NextRequest, pathname: string): NextResponse {
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("redirect", pathname);
+  return NextResponse.redirect(loginUrl);
+}
+
+export const config = {
+  // Prisma necesita el runtime de Node: el default (edge) no puede abrir la
+  // conexion TCP a Postgres que exige `isSessionActive`.
+  runtime: "nodejs",
+  // Los ESTATICOS DE IMAGEN de `public/` quedan fuera del guard. Antes solo se
+  // excluia `.svg`, asi que una peticion de `/landing/hero-bodega.jpg` entraba
+  // aqui, no casaba con ninguna ruta publica, se trataba como privada y salia en
+  // 307 a /login: el navegador recibia HTML donde esperaba una imagen y la
+  // landing publica se veia SIN NINGUNA FOTO (solo sobrevivian los `.svg`, que ya
+  // estaban excluidos). Feature 86: la landing es publica y sus fotos tambien.
+  //
+  // No afloja nada: lo que vive en `public/` ya se sirve tal cual a cualquiera que
+  // sepa la URL —el middleware nunca fue su control de acceso— y la exclusion se
+  // acota a extensiones de imagen, asi que el resto de `public/` (los `.xlsx` de
+  // geografia, por ejemplo) sigue pasando por el guard exactamente igual que antes.
+  //
+  // FEATURE 284 — LOS TRES ARCHIVOS DE LA PWA SALEN DEL GUARD, y no es cosmetica: MEDIDO CONTRA
+  // PRODUCCION el 2026-08-25, `/manifest.json`, `/sw.js` y `/offline.html` respondian **307 a
+  // /login**. El navegador pide el manifiesto SIN CREDENCIALES, recibia el redirect, y por eso
+  // **la PWA nunca se ha podido instalar**; el service worker tampoco se descargaba, asi que ni
+  // la cache ni la pantalla offline llegaban nunca al dispositivo. Los iconos si pasaban (200)
+  // porque la exclusion de arriba es solo de EXTENSIONES DE IMAGEN.
+  //
+  // No afloja nada, por el mismo argumento que ya valia para las fotos de la landing: son tres
+  // archivos ESTATICOS de `public/` sin un dato de nadie dentro -el manifiesto describe la app,
+  // el SW es codigo publico y `offline.html` es una pagina de cortesia-, y `public/` nunca
+  // estuvo detras de este guard como control de acceso. Van nombrados UNO A UNO y no por
+  // extension: excluir `.json`, `.js` o `.html` a secas si aflojaria de verdad.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest\\.json|sw\\.js|offline\\.html|.*\\.(?:svg|jpg|jpeg|png|gif|webp|avif|ico)).*)",
+  ],
+};

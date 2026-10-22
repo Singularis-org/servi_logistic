@@ -1,0 +1,1027 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createRef, act } from "react";
+import {
+  render,
+  screen,
+  cleanup,
+  within,
+  waitFor,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SWRConfig } from "swr";
+import type { ReactElement } from "react";
+
+import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
+
+// Actions mockeadas (no se toca el backend real).
+const crearUsuarioMock = vi.fn();
+const actualizarUsuarioMock = vi.fn();
+const listarTiposIdentificacionMock = vi.fn();
+const listarRolesMock = vi.fn();
+vi.mock("@/lib/actions/usuarios", () => ({
+  crearUsuario: (...args: unknown[]) => crearUsuarioMock(...args),
+  actualizarUsuario: (...args: unknown[]) => actualizarUsuarioMock(...args),
+  listarTiposIdentificacion: (...args: unknown[]) =>
+    listarTiposIdentificacionMock(...args),
+  listarRoles: (...args: unknown[]) => listarRolesMock(...args),
+}));
+
+// Feature 24/R27: el select de zona lee la acción `listarZonas` (módulo aparte).
+const listarZonasMock = vi.fn();
+vi.mock("@/lib/actions/zonas", () => ({
+  listarZonas: (...args: unknown[]) => listarZonasMock(...args),
+}));
+
+// Feature 21: el select de vehículo lee la acción `listarVehiculos` (módulo aparte).
+const listarVehiculosMock = vi.fn();
+vi.mock("@/lib/actions/vehiculos", () => ({
+  listarVehiculos: (...args: unknown[]) => listarVehiculosMock(...args),
+}));
+
+import {
+  UsuarioForm,
+  type UsuarioFormHandle,
+} from "@/app/(app)/configuracion/_components/UsuarioForm";
+
+const TIPOS = [
+  { id: "t1", value: "cedula" },
+  { id: "t2", value: "ruc" },
+];
+
+// El `id` es el UUID del catálogo `rol` (lo que el backend espera en `rolId`);
+// el `value` es el nombre legible del rol.
+const ROLES = [
+  { id: "rol-maestro", value: "maestro" },
+  { id: "rol-mensajero", value: "mensajero" },
+] as const;
+
+// Feature 24/R27: item de `listarZonas` (ZonaDTO); el form solo lee id + nombre.
+const ZONAS = [
+  { id: "z1", nombre: "Central" },
+  { id: "z2", nombre: "Norte" },
+] as const;
+
+// Feature 21: item de `listarVehiculos` (VehiculoDTO); el form lee id + name.
+const VEHICULOS = [
+  { id: "v1", name: "moto" },
+  { id: "v2", name: "carro" },
+] as const;
+
+const USUARIO: UsuarioPublico = {
+  id: "u1",
+  nombre: "Ana Pérez",
+  email: "ana@example.com",
+  telefono: "0999999999",
+  estado: "activo",
+  cedula: "1712345678",
+  tipoIdentificacionId: "t1",
+  rolId: "rol-mensajero",
+  fulfillment: false,
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+  updatedAt: new Date("2026-01-01T00:00:00Z"),
+};
+
+/** Envuelve en un SWRConfig con cache aislada por test. */
+function renderIsolated(ui: ReactElement) {
+  return render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      {ui}
+    </SWRConfig>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listarTiposIdentificacionMock.mockResolvedValue({ status: "ok", tipos: TIPOS });
+  listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES] });
+  listarZonasMock.mockResolvedValue({
+    status: "ok",
+    items: [...ZONAS],
+    page: 1,
+    pageSize: 100,
+    total: ZONAS.length,
+  });
+  listarVehiculosMock.mockResolvedValue({ status: "ok", items: [...VEHICULOS] });
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("UsuarioForm — edición (R16)", () => {
+  it("modo editar bloquea email y cedula (R16)", () => {
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO} />);
+
+    const email = screen.getByLabelText("Email");
+    const cedula = screen.getByLabelText("Número de documento");
+    expect(email).toBeDisabled();
+    expect(cedula).toBeDisabled();
+
+    // Los campos editables siguen habilitados.
+    expect(screen.getByLabelText("Nombre")).not.toBeDisabled();
+    expect(screen.getByLabelText("Teléfono")).not.toBeDisabled();
+    // No hay bloque de contraseña en edición (reset fuera de alcance).
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+  });
+
+  it("preselecciona el rol cuya id coincide con usuario.rolId (prefill por UUID)", async () => {
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO} />);
+
+    // USUARIO.rolId es el UUID "rol-mensajero"; el trigger muestra su etiqueta.
+    const rolTrigger = screen.getByRole("combobox", { name: "Rol" });
+    await waitFor(() => expect(rolTrigger).toHaveTextContent("mensajero"));
+  });
+});
+
+describe("UsuarioForm — selects (R29)", () => {
+  it("puebla el select de rol desde listarRoles con id como value (R29)", async () => {
+    const user = userEvent.setup();
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    // Rol desde la acción listarRoles: opciones etiquetadas con el nombre legible.
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    const rolList = await screen.findByRole("listbox");
+    expect(within(rolList).getByRole("option", { name: "maestro" })).toBeInTheDocument();
+    await user.click(within(rolList).getByRole("option", { name: "mensajero" }));
+
+    // Feature 24/R27: mensajero requiere zona; se selecciona antes de enviar.
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "Central" }),
+    );
+
+    // Feature 21: el mensajero tambien requiere vehiculo.
+    await user.click(screen.getByRole("combobox", { name: "Vehiculo" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "moto" }),
+    );
+
+    // Tipo de documento desde la acción listarTiposIdentificacion.
+    await waitFor(() => expect(listarTiposIdentificacionMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    // Completa el resto del set base y envía.
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Usuario");
+    await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    // El payload envía el UUID del catálogo como rolId, no el RolValue "mensajero".
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as { rolId: string };
+    expect(enviado.rolId).toBe("rol-mensajero");
+  }, 15000);
+});
+
+describe("UsuarioForm — modo de contraseña (R36)", () => {
+  it("toggle generar oculta el input y muestra la password una vez tras crear (R36/R33)", async () => {
+    const user = userEvent.setup();
+    crearUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...USUARIO },
+      generatedPassword: "Abcd1234$",
+    });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    // En modo manual (default) el input de contraseña es visible.
+    expect(screen.getByLabelText("Contraseña")).toBeInTheDocument();
+
+    // Al elegir "Generar automáticamente" el input se oculta.
+    await user.click(screen.getByRole("radio", { name: /Generar/ }));
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+
+    // Completa el set base requerido por el schema.
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Usuario");
+    await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+
+    // Feature 24/R27: mensajero requiere zona; se selecciona antes de enviar.
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "Central" }),
+    );
+
+    // Feature 21: el mensajero tambien requiere vehiculo.
+    await user.click(screen.getByRole("combobox", { name: "Vehiculo" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "moto" }),
+    );
+
+    let result: unknown;
+    await act(async () => {
+      result = await ref.current!.submit();
+    });
+
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as { passwordMode: string };
+    expect(enviado.passwordMode).toBe("generate");
+    expect(result).toMatchObject({ status: "ok" });
+
+    // La contraseña generada se muestra una sola vez, con botón copiar y aviso.
+    expect(screen.getByDisplayValue("Abcd1234$")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copiar contraseña" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/no se volverá a mostrar/i)).toBeInTheDocument();
+  }, 20000);
+
+  it("modo manual con contraseña débil devuelve validation_error sin llamar a la acción (R5/R6)", async () => {
+    const ref = createRef<UsuarioFormHandle>();
+    const user = userEvent.setup();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo");
+    await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "weak");
+
+    let result: { status?: string } = {};
+    await act(async () => {
+      result = (await ref.current!.submit()) as { status?: string };
+    });
+
+    expect(result.status).toBe("validation_error");
+    expect(crearUsuarioMock).not.toHaveBeenCalled();
+  });
+});
+
+// Feature 27: el switch "esta tienda tiene fulfillment" aparece solo para el rol
+// `adminTienda` (decisión P3). Catálogo de roles que incluye ese rol.
+const ROLES_FF = [
+  { id: "rol-maestro", value: "maestro" },
+  { id: "rol-mensajero", value: "mensajero" },
+  { id: "rol-admin-tienda", value: "adminTienda" },
+] as const;
+
+const USUARIO_FF: UsuarioPublico = {
+  ...USUARIO,
+  rolId: "rol-admin-tienda",
+  fulfillment: true,
+};
+
+describe("UsuarioForm — fulfillment (feature 27)", () => {
+  it("muestra el switch de fulfillment al seleccionar rol adminTienda en crear (R5)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    // Sin rol seleccionado (o rol distinto), el switch no está presente.
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminTienda",
+      }),
+    );
+
+    expect(
+      screen.getByRole("switch", { name: "Esta tienda tiene fulfillment" }),
+    ).toBeInTheDocument();
+  }, 15000);
+
+  it("el switch inicia en false al elegir adminTienda en crear (R7)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminTienda",
+      }),
+    );
+
+    expect(
+      screen.getByRole("switch", { name: "Esta tienda tiene fulfillment" }),
+    ).toHaveAttribute("aria-checked", "false");
+  }, 15000);
+
+  it("oculta el switch y no envía fulfillment con rol != adminTienda (R6)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Usuario");
+    await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+
+    // Rol no-adminTienda: el switch permanece oculto (R6).
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+
+    // Feature 24/R27: mensajero requiere zona; se selecciona antes de enviar.
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "Central" }),
+    );
+
+    // Feature 21: el mensajero tambien requiere vehiculo.
+    await user.click(screen.getByRole("combobox", { name: "Vehiculo" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "moto" }),
+    );
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty("fulfillment");
+  }, 15000);
+
+  it("prefilla el switch con el valor actual al editar adminTienda (R11)", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_FF} />);
+
+    const sw = await screen.findByRole("switch", {
+      name: "Esta tienda tiene fulfillment",
+    });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+  }, 15000);
+
+  it("propaga el nuevo valor del switch al submit en editar (R12)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...USUARIO_FF },
+    });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="editar" usuario={USUARIO_FF} />);
+
+    const sw = await screen.findByRole("switch", {
+      name: "Esta tienda tiene fulfillment",
+    });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+
+    // Alterna el switch a "no".
+    await user.click(sw);
+    expect(sw).toHaveAttribute("aria-checked", "false");
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as {
+      fulfillment?: boolean;
+    };
+    expect(enviado.fulfillment).toBe(false);
+  }, 15000);
+});
+
+// Feature 24/R27: el select "Zona" aparece solo para `mensajero`/`adminSatelite`
+// (mismo patrón que el switch de fulfillment para `adminTienda`). Sin zona el
+// mensajero queda inasignable, por eso el campo se ofrece en creación/edición.
+const ROLES_ZONA = [
+  { id: "rol-maestro", value: "maestro" },
+  { id: "rol-mensajero", value: "mensajero" },
+  { id: "rol-admin-satelite", value: "adminSatelite" },
+  { id: "rol-admin-tienda", value: "adminTienda" },
+] as const;
+
+const USUARIO_ZONA: UsuarioPublico = {
+  ...USUARIO,
+  rolId: "rol-mensajero",
+  zonaId: "z2",
+};
+
+describe("UsuarioForm — zona (feature 24/R27)", () => {
+  it("muestra el select Zona para mensajero/adminSatelite y lo oculta para maestro/adminTienda (R27)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    // Sin rol seleccionado, el select de zona no está presente.
+    expect(
+      screen.queryByRole("combobox", { name: "Zona" }),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+
+    // maestro: rol sin zona -> oculto.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "maestro",
+      }),
+    );
+    expect(
+      screen.queryByRole("combobox", { name: "Zona" }),
+    ).not.toBeInTheDocument();
+
+    // mensajero: aparece.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+    expect(screen.getByRole("combobox", { name: "Zona" })).toBeInTheDocument();
+
+    // adminSatelite: aparece.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminSatelite",
+      }),
+    );
+    expect(screen.getByRole("combobox", { name: "Zona" })).toBeInTheDocument();
+
+    // adminTienda: rol sin zona -> oculto (aunque muestre el switch fulfillment).
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminTienda",
+      }),
+    );
+    expect(
+      screen.queryByRole("combobox", { name: "Zona" }),
+    ).not.toBeInTheDocument();
+  }, 20000);
+
+  it("envía zonaId con el id elegido al crear un mensajero (R27)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Mensajero");
+    await user.type(screen.getByLabelText("Email"), "mensajero@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+
+    // Elige una zona del catálogo (Norte -> z2).
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "Norte",
+      }),
+    );
+
+    // Feature 21: el mensajero tambien requiere vehiculo.
+    await user.click(screen.getByRole("combobox", { name: "Vehiculo" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "moto",
+      }),
+    );
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as {
+      zonaId?: string | null;
+    };
+    expect(enviado.zonaId).toBe("z2");
+  }, 20000);
+
+  it("no incluye zonaId cuando el rol no lleva zona (maestro) (R27)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Maestro");
+    await user.type(screen.getByLabelText("Email"), "maestro@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "maestro",
+      }),
+    );
+
+    // maestro no ofrece el select de zona.
+    expect(
+      screen.queryByRole("combobox", { name: "Zona" }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty("zonaId");
+  }, 20000);
+
+  it("prefilla el select de zona con usuario.zonaId al editar un mensajero (R27)", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_ZONA} />);
+
+    // El trigger muestra el nombre de la zona cuyo id coincide con usuario.zonaId.
+    const zonaTrigger = await screen.findByRole("combobox", { name: "Zona" });
+    await waitFor(() => expect(zonaTrigger).toHaveTextContent("Norte"));
+  }, 15000);
+});
+
+
+// Feature 21: el select "Vehiculo" aparece solo para `mensajero` —es quien conduce—
+// y es OBLIGATORIO para ese rol: sin vehiculo no se le puede asignar una orden, asi
+// que el formulario no deja crearlo ni dejarlo sin uno.
+const USUARIO_VEHICULO: UsuarioPublico = {
+  ...USUARIO,
+  rolId: "rol-mensajero",
+  zonaId: "z2",
+  vehiculoId: "v2",
+};
+
+describe("UsuarioForm — vehiculo (feature 21)", () => {
+  it("muestra el select Vehiculo solo para mensajero", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    // Sin rol seleccionado no está presente.
+    expect(
+      screen.queryByRole("combobox", { name: "Vehiculo" }),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+
+    // mensajero: aparece.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Vehiculo" }),
+    ).toBeInTheDocument();
+
+    // adminSatelite lleva zona pero NO vehículo: el campo desaparece.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminSatelite",
+      }),
+    );
+    expect(screen.getByRole("combobox", { name: "Zona" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Vehiculo" }),
+    ).not.toBeInTheDocument();
+  }, 20000);
+
+  it("envía vehiculoId con el id elegido al crear un mensajero", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Mensajero");
+    await user.type(screen.getByLabelText("Email"), "mensajero@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "Norte",
+      }),
+    );
+
+    // Elige un vehículo del catálogo (carro -> v2).
+    await user.click(screen.getByRole("combobox", { name: "Vehiculo" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "carro",
+      }),
+    );
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as {
+      vehiculoId?: string | null;
+    };
+    expect(enviado.vehiculoId).toBe("v2");
+  }, 20000);
+
+  it("bloquea el submit si el mensajero no tiene vehiculo (obligatorio)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Sin Vehiculo");
+    await user.type(screen.getByLabelText("Email"), "sinveh@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "mensajero",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "Norte",
+      }),
+    );
+
+    let resultado;
+    await act(async () => {
+      resultado = await ref.current!.submit();
+    });
+
+    // No se llama al backend: el error se resuelve en cliente y se pinta.
+    expect(crearUsuarioMock).not.toHaveBeenCalled();
+    expect(resultado).toMatchObject({ status: "validation_error" });
+    expect(
+      await screen.findByText("El vehiculo es obligatorio para el rol mensajero"),
+    ).toBeInTheDocument();
+  }, 20000);
+
+  it("no incluye vehiculoId cuando el rol no lo lleva (maestro)", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Nuevo Maestro");
+    await user.type(screen.getByLabelText("Email"), "maestro@example.com");
+    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+
+    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "cedula",
+      }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "maestro",
+      }),
+    );
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    const enviado = crearUsuarioMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty("vehiculoId");
+  }, 20000);
+
+  it("prefilla el select de vehiculo con usuario.vehiculoId al editar", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_VEHICULO} />);
+
+    const trigger = await screen.findByRole("combobox", { name: "Vehiculo" });
+    await waitFor(() => expect(trigger).toHaveTextContent("carro"));
+  }, 15000);
+});
+
+// Pedido humano: `apiKey` no es un rol de persona (es la cuenta de máquina de una
+// integración, que nace en Configuración > API). Ni se ofrece en la lista ni se le
+// puede cambiar el rol a quien ya lo tiene.
+describe("UsuarioForm — el rol apiKey no se asigna a mano", () => {
+  const ROLES_CON_API = [
+    { id: "rol-maestro", value: "maestro" },
+    { id: "rol-mensajero", value: "mensajero" },
+    { id: "rol-apikey", value: "apiKey" },
+  ] as const;
+
+  const USUARIO_API: UsuarioPublico = { ...USUARIO, rolId: "rol-apikey" };
+
+  it("no ofrece apiKey entre las opciones al crear", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_CON_API] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    const lista = await screen.findByRole("listbox");
+    expect(within(lista).getByRole("option", { name: "maestro" })).toBeInTheDocument();
+    expect(within(lista).queryByRole("option", { name: "apiKey" })).toBeNull();
+  }, 15000);
+
+  it("deshabilita el select de rol al editar un usuario que YA es apiKey", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_CON_API] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_API} />);
+
+    const rolTrigger = screen.getByRole("combobox", { name: "Rol" });
+    // Sigue mostrando cuál es su rol (si se hubiera filtrado, el trigger iría vacío)...
+    await waitFor(() => expect(rolTrigger).toHaveTextContent("apiKey"));
+    // ...pero no se puede cambiar.
+    expect(rolTrigger).toBeDisabled();
+  }, 15000);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// Feature 286 — el ojito del alta manual de contraseña
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+describe("UsuarioForm — el ojito de la contraseña (286: R1, R4, R14)", () => {
+  it("R1: en modo «Escribir» hay ojito y alterna el `type` del campo", async () => {
+    const user = userEvent.setup();
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    const password = screen.getByLabelText("Contraseña");
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Contraseña: oculta. Mostrar." }));
+    expect(screen.getByLabelText("Contraseña")).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: "Contraseña: visible. Ocultar." }));
+    expect(screen.getByLabelText("Contraseña")).toHaveAttribute("type", "password");
+  });
+
+  it("R1: al pasar a «Generar automáticamente» el ojito se va CON su campo", async () => {
+    const user = userEvent.setup();
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    expect(
+      screen.getByRole("button", { name: "Contraseña: oculta. Mostrar." }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /Generar/ }));
+
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Contraseña: oculta. Mostrar." }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("R4: el nombre accesible del ojito no se cuela como «Contraseña» y rompe las busquedas de al lado", () => {
+    // `queryByLabelText("Contraseña")` en modo generar tiene que seguir dando null, y en
+    // modo manual tiene que seguir dando EL INPUT y no el boton. Es lo que afirman dos
+    // casos vivos de esta misma suite desde la feature 24.
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    const encontrado = screen.getByLabelText("Contraseña");
+    expect(encontrado.tagName).toBe("INPUT");
+    expect(encontrado).toHaveAttribute("id", "password");
+  });
+
+  it("R10: pulsar el ojito no envia el alta", async () => {
+    const user = userEvent.setup();
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$");
+    await user.click(screen.getByRole("button", { name: "Contraseña: oculta. Mostrar." }));
+
+    expect(crearUsuarioMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Contraseña")).toHaveValue("Abcd1234$");
+  });
+});
+
+/* ==========================================================================
+ * FICHA 379 (T9) — `cambioPendiente()`: el cambio de rol/zona que este
+ * formulario está a punto de enviar, expuesto para que el anfitrión lo pueda
+ * EVALUAR antes de aplicarlo (R21).
+ *
+ * Lo que estos casos vigilan, y ningún test de backend puede vigilar: que lo
+ * EVALUADO y lo ENVIADO sean el mismo cambio. Si se separaran, el aviso
+ * hablaría de una cosa y el guardado escribiría otra — que es exactamente la
+ * forma del defecto que esta ficha vino a cerrar (la zona y el vehículo,
+ * campos hermanos con dos reglas distintas).
+ *
+ * Por eso cada caso afirma DOS cosas: el valor literal (el contrato) y la
+ * coincidencia campo a campo con el payload real que salió hacia
+ * `actualizarUsuario` (la cruz). Cualquiera de las dos por separado se podría
+ * satisfacer derivando la expectativa de su propia fuente; las dos juntas, no.
+ * ========================================================================== */
+
+const USUARIO_ADMIN_SATELITE: UsuarioPublico = {
+  ...USUARIO,
+  rolId: "rol-admin-satelite",
+  zonaId: "z2",
+};
+
+describe("UsuarioForm — cambio pendiente de rol/zona (ficha 379/T9)", () => {
+  it("T9: en edición devuelve rolId y zonaId, y son EXACTAMENTE los que se envían a actualizarUsuario", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...USUARIO_ADMIN_SATELITE },
+    });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(
+      <UsuarioForm ref={ref} mode="editar" usuario={USUARIO_ADMIN_SATELITE} />,
+    );
+    // Sin el catálogo de roles cargado, `esRolConZona` todavía es falso: se espera al
+    // select de zona, que es la señal de que el rol ya se resolvió.
+    await screen.findByRole("combobox", { name: "Zona" });
+
+    let cambio: unknown;
+    await act(async () => {
+      cambio = ref.current!.cambioPendiente();
+    });
+
+    // El contrato, escrito a mano.
+    expect(cambio).toEqual({ rolId: "rol-admin-satelite", zonaId: "z2" });
+
+    // Y la cruz: lo mismo que el formulario manda de verdad.
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect({ rolId: enviado.rolId, zonaId: enviado.zonaId }).toEqual(cambio);
+  }, 20000);
+
+  it("T9: con un rol que no lleva zona, ni lo evaluado ni lo enviado incluyen zonaId", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...USUARIO_ADMIN_SATELITE },
+    });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(
+      <UsuarioForm ref={ref} mode="editar" usuario={USUARIO_ADMIN_SATELITE} />,
+    );
+    await screen.findByRole("combobox", { name: "Zona" });
+
+    // El cambio de rol que abre el agujero de la ficha: de Admin satélite a un rol que
+    // no puede consolidar nada.
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "maestro",
+      }),
+    );
+
+    let cambio: unknown;
+    await act(async () => {
+      cambio = ref.current!.cambioPendiente();
+    });
+
+    expect(cambio).toEqual({ rolId: "rol-maestro" });
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty("zonaId");
+    expect({ rolId: enviado.rolId }).toEqual(cambio);
+  }, 20000);
+
+  it("T9: en modo crear no hay nada que evaluar (el usuario todavía no existe)", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+
+    let cambio: unknown;
+    await act(async () => {
+      cambio = ref.current!.cambioPendiente();
+    });
+    expect(cambio).toBeNull();
+  }, 15000);
+
+  it("T9: si la validación de cliente falla, no hay cambio que evaluar y el error de campo se pinta", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(
+      <UsuarioForm
+        ref={ref}
+        mode="editar"
+        usuario={{ ...USUARIO_ADMIN_SATELITE, zonaId: null }}
+      />,
+    );
+    await screen.findByRole("combobox", { name: "Zona" });
+
+    let cambio: unknown;
+    await act(async () => {
+      cambio = ref.current!.cambioPendiente();
+    });
+
+    expect(cambio).toBeNull();
+    expect(
+      await screen.findByText("La zona es obligatoria para este rol"),
+    ).toBeInTheDocument();
+    // Y no ha salido ninguna escritura por el camino: evaluar no escribe.
+    expect(actualizarUsuarioMock).not.toHaveBeenCalled();
+  }, 15000);
+});

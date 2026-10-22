@@ -1,0 +1,458 @@
+// @vitest-environment jsdom
+// FEATURE 236 (T4.1/T4.2/T4.3/T4.5 — R1/R2/R8/R12/R13/R15/R16) — LAS TRES PESTAÑAS DE `/novedades`.
+//
+// **El defecto que cierran.** Hasta el 2026-08-19 esta pantalla listaba DOS POBLACIONES bajo UNA
+// sola pestaña, porque el predicado del servidor era un `OR` de dos igualdades de estado. Una orden
+// sobre la que un mensajero pedía ayuda aparecía bajo «En devolución», bajo un subtítulo que no era
+// cierto de ella y con un juego de botones que presuponía una devolución que nunca ocurrió.
+//
+// **Lo que este archivo mide y ningún test de servidor puede medir:** que la pantalla ofrece las
+// tres superficies, que cada panel es el SUYO (rótulos, nombres accesibles y estado vacío propios,
+// no los del vecino) y que cambiar de pestaña no reinicia la paginación de la otra.
+//
+// ⚠️ LOS TEXTOS SE AFIRMAN COMO LITERAL, no contra la constante que los genera. Comparar un texto
+// con su propia fuente está siempre verde: seguiría pasando con el rótulo mal escrito, que es
+// exactamente lo que este repo ya pagó una vez (siete etiquetas rotas que doce mil tests daban por
+// buenas). Si un literal de aquí y `TEXTOS_POR_GRUPO` divergen, esto se pone rojo y hay que venir a
+// decidir cuál manda.
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, within, waitFor, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { NovedadesTabs } from "@/app/(app)/novedades/_components/NovedadesTabs";
+import { listarNovedadesAction } from "@/lib/actions/novedades";
+import type { NovedadDTO } from "@/lib/types/novedad";
+import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
+
+vi.mock("@/lib/actions/novedades", () => ({
+  listarNovedadesAction: vi.fn(),
+  listarNovedadesCompletoAction: vi.fn(),
+  listarAyudaTiendaAction: vi.fn(),
+  listarAyudaTiendaCompletoAction: vi.fn(),
+}));
+vi.mock("@/lib/actions/resolver-novedad", () => ({ reprogramarNovedad: vi.fn() }));
+vi.mock("@/lib/actions/habilitar-novedad", () => ({ habilitarNovedad: vi.fn() }));
+vi.mock("@/lib/actions/orden-ayuda", () => ({
+  solicitarAyudaOrden: vi.fn(),
+  recuperarOrdenAyuda: vi.fn(),
+  registrarIntentoContactoOrden: vi.fn(),
+}));
+vi.mock("@/lib/actions/rechazos-sla-tienda", () => ({
+  listarRechazosSlaTiendaAction: vi.fn(),
+}));
+// Feature 237 (T7.3): la card de ayuda monta la ventana «Resolver la orden por tu cuenta», que
+// llama a esta Server Action. Se mockea como las otras: importarla de verdad arrastraria Prisma y
+// Supabase Storage a jsdom.
+vi.mock("@/lib/actions/gestion-desde-ayuda", () => ({
+  gestionarDesdeAyuda: vi.fn(),
+}));
+
+vi.mock("@/hooks/useToast", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+    show: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
+
+const listarNovedadesMock = vi.mocked(listarNovedadesAction);
+
+function novedad(over: Partial<NovedadDTO> & { id: string }): NovedadDTO {
+  return {
+    numGuia: 12345,
+    numRemision: "REM-001",
+    estatusValue: "novedad",
+    intentosContacto: 0,
+    mensajeroNombre: "Marta Mensajera",
+    destinatario: "Ana Cliente",
+    telefonoDest: "88887777",
+    direccion: "Av. Central 120",
+    producto: "Zapatos",
+    peso: 1.5,
+    montoCobrar: 24500,
+    latitud: 9.9281,
+    longitud: -84.0907,
+    notas: null,
+    tiendaNombre: "Tienda Demo",
+    zonaNombre: "GAM Oeste",
+    provinciaNombre: "San José",
+    cantonNombre: "Escazú",
+    distritoNombre: "San Rafael",
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular de Prueba",
+    secuenciaRuta: null,
+    causa: "not_found",
+    intentosEntrega: 2,
+    ...over,
+  };
+}
+
+const VACIO = { items: [], total: 0, page: 1, pageSize: 10 };
+
+function renderTabs(
+  over: {
+    ayuda?: { items: NovedadDTO[]; total: number; page: number; pageSize: number };
+    devolucion?: { items: NovedadDTO[]; total: number; page: number; pageSize: number };
+    /** FICHA 409 (T6.5, R7): la superficie que pide la URL. Opcional, como en la pantalla. */
+    superficieInicial?: GrupoNovedad;
+  } = {},
+) {
+  return render(
+    <NovedadesTabs
+      novedades={{
+        ayuda: over.ayuda ?? VACIO,
+        devolucion: over.devolucion ?? VACIO,
+      }}
+      rechazosSla={VACIO}
+      superficieInicial={over.superficieInicial}
+    />,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+// ⏳ 2026-09-23 (FICHA 454, T2.5): las filas del grupo AYUDA llevan `estatusValue: "en_reparto"` —la ayuda dejo
+// de ser el estado `ayuda_tienda`— y su grupo lo pone la lista que las trajo (`grupoDeFila`).
+describe("NovedadesTabs — las tres superficies (236/R1/R13)", () => {
+  it("R1/R13: hay TRES pestañas, con sus rótulos en español y sin jerga", () => {
+    renderTabs();
+
+    const lista = screen.getByRole("tablist", { name: "Vistas de novedades" });
+    expect(
+      within(lista)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual([
+      "Ayuda solicitada",
+      "Novedad",
+      "Devolución a origen por plazo vencido",
+    ]);
+  });
+
+  it("D6: la de AYUDA va PRIMERA, y es la que está seleccionada al entrar", () => {
+    renderTabs();
+
+    // El orden lo fija `GRUPOS_NOVEDAD`, no este componente: alguien está esperando respuesta
+    // AHORA y una devolución no espera a nadie con esa urgencia.
+    const tabs = within(
+      screen.getByRole("tablist", { name: "Vistas de novedades" }),
+    ).getAllByRole("tab");
+    expect(tabs[0]).toHaveTextContent("Ayuda solicitada");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    // Y el rótulo NO usa el verbo del mensajero: «gestionar» significa otra cosa en esta app, y
+    // desde ayuda es la ficha 237. Es el apartamiento deliberado del §F2 del diseño de la pila.
+    expect(screen.queryByRole("tab", { name: "Ayuda a gestionar" })).toBeNull();
+  });
+
+  it("R16: la pestaña de ayuda vacía HABLA — dice qué aparecerá ahí y cuándo", async () => {
+    const user = userEvent.setup();
+    // Es el PRIMER estado que la tienda va a conocer y durante un tiempo el único: medido el
+    // 2026-08-19 en producción, `ayuda_tienda` = 0 sobre 141 órdenes vivas en 11 estatus. Un vacío
+    // mudo se lee como una pantalla rota.
+    renderTabs({ devolucion: { items: [novedad({ id: "o1" })], total: 1, page: 1, pageSize: 10 } });
+
+    const panel = screen.getByRole("tabpanel");
+    expect(
+      within(panel).getByText("Ningún mensajero te pidió ayuda"),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByText(
+        "Cuando un mensajero necesite que resuelvas algo de una orden que lleva encima, aparecerá acá con su mensaje.",
+      ),
+    ).toBeInTheDocument();
+    // Y NO se renderiza una lista sin filas: el vacío es un `role="status"`, no una `<ul>` pelada.
+    expect(
+      within(panel).queryByRole("list", { name: "Órdenes con ayuda solicitada" }),
+    ).toBeNull();
+    // Tampoco hereda el vacío del vecino, que afirma algo que no es cierto de esta población
+    // («cuando una de tus órdenes vuelva a la tienda»: estas nunca volvieron, siguen en la calle).
+    expect(within(panel).queryByText("No tenés órdenes en novedad")).toBeNull();
+
+    // CONTROL POSITIVO de las dos ausencias: con órdenes, ese mismo panel SÍ monta su lista y el
+    // texto del vacío desaparece. Sin este par, las negativas pasarían con el panel sin montar.
+    cleanup();
+    renderTabs({
+      ayuda: {
+        items: [novedad({ id: "a1", estatusValue: "en_reparto" })],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+      },
+    });
+    const conFilas = screen.getByRole("tabpanel");
+    expect(
+      within(conFilas).getByRole("list", { name: "Órdenes con ayuda solicitada" }),
+    ).toBeInTheDocument();
+    expect(within(conFilas).queryByText("Ningún mensajero te pidió ayuda")).toBeNull();
+    await user.tab(); // deja el foco en un sitio estable; no afirma nada
+  });
+
+  it("T4.2: cada panel tiene SUS nombres accesibles, no los del otro", async () => {
+    const user = userEvent.setup();
+    renderTabs({
+      ayuda: {
+        items: [novedad({ id: "a1", estatusValue: "en_reparto" })],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+      },
+      devolucion: { items: [novedad({ id: "o1" })], total: 1, page: 1, pageSize: 10 },
+    });
+
+    // Pestaña de AYUDA (la de entrada).
+    const ayuda = screen.getByRole("tabpanel");
+    expect(
+      within(ayuda).getByRole("list", { name: "Órdenes con ayuda solicitada" }),
+    ).toBeInTheDocument();
+    expect(
+      within(ayuda).getByRole("navigation", {
+        name: "Paginación de las órdenes con ayuda solicitada",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(ayuda).getByRole("button", { name: "Descargar Ayuda solicitada" }),
+    ).toBeInTheDocument();
+    // Y NINGUNO de los del vecino.
+    expect(within(ayuda).queryByRole("list", { name: "Órdenes en novedad" })).toBeNull();
+    expect(
+      within(ayuda).queryByRole("navigation", { name: "Paginación de novedades" }),
+    ).toBeNull();
+    expect(within(ayuda).queryByRole("button", { name: "Descargar Novedades" })).toBeNull();
+
+    // Pestaña de DEVOLUCIÓN: el espejo exacto, que es lo que convierte las cuatro ausencias de
+    // arriba en una afirmación y no en «no había nada montado».
+    await user.click(screen.getByRole("tab", { name: "Novedad" }));
+    const devolucion = await waitFor(() => {
+      const p = screen
+        .getAllByRole("tabpanel")
+        .find((n) => within(n).queryByRole("list", { name: "Órdenes en novedad" }));
+      if (!p) throw new Error("el panel de devoluciones no está visible");
+      return p;
+    });
+    expect(
+      within(devolucion).getByRole("navigation", { name: "Paginación de novedades" }),
+    ).toBeInTheDocument();
+    expect(
+      within(devolucion).getByRole("button", { name: "Descargar Novedades" }),
+    ).toBeInTheDocument();
+    expect(
+      within(devolucion).queryByRole("list", { name: "Órdenes con ayuda solicitada" }),
+    ).toBeNull();
+  });
+});
+
+describe("NovedadesTabs — R12: la paginación sobrevive al cambio de pestaña", () => {
+  it("cambiar de pestaña y volver NO reinicia la página de la otra", async () => {
+    const user = userEvent.setup();
+    // `keepMounted`: cada panel tiene su propia paginación por Server Action y su propio estado.
+    // Si el panel se desmontara al cambiar de pestaña, volver lo devolvería a la página 1 — y la
+    // tienda perdería su sitio cada vez que mira la otra superficie.
+    listarNovedadesMock.mockResolvedValue({
+      status: "ok",
+      items: [novedad({ id: "o2", numRemision: "REM-002" })],
+      total: 25,
+      page: 2,
+      pageSize: 10,
+    });
+    renderTabs({
+      devolucion: { items: [novedad({ id: "o1" })], total: 25, page: 1, pageSize: 10 },
+    });
+
+    await user.click(screen.getByRole("tab", { name: "Novedad" }));
+    const paginacion = await screen.findByRole("navigation", {
+      name: "Paginación de novedades",
+    });
+    expect(within(paginacion).getByText("1-10 de 25")).toBeInTheDocument();
+
+    await user.click(within(paginacion).getByRole("button", { name: "Página siguiente" }));
+    await waitFor(() =>
+      expect(within(paginacion).getByText("11-20 de 25")).toBeInTheDocument(),
+    );
+
+    // Ida y vuelta por la pestaña de ayuda.
+    await user.click(screen.getByRole("tab", { name: "Ayuda solicitada" }));
+    await user.click(screen.getByRole("tab", { name: "Novedad" }));
+
+    // Sigue en la 2. Con el panel desmontado esto diría «1-10 de 25».
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Paginación de novedades" }),
+      ).getByText("11-20 de 25"),
+    ).toBeInTheDocument();
+    // Y el re-fetch se hizo UNA sola vez: cambiar de pestaña no vuelve a pedir la página.
+    expect(listarNovedadesMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NovedadesTabs — R2/R8: la partición es del SERVIDOR, no de la pantalla", () => {
+  it("el panel pinta LO QUE RECIBE: no filtra una orden de otro grupo", () => {
+    // La 235 aprendió a la mala que un corte de cliente deja la orden alcanzable por otras vías: el
+    // apartado de ayuda del portal del mensajero era un `useMemo` y la orden seguía siendo parada
+    // del optimizador, del mapa y del panel de gestión. Aquí el corte nace en el servidor o no
+    // nace, y este caso lo prueba desde el lado del cliente: si al panel de ayuda le llega una
+    // orden `devuelta`, la PINTA. Un módulo que la filtrara pasaría por correcto tapando que el
+    // predicado del servidor está mal.
+    renderTabs({
+      ayuda: {
+        items: [
+          novedad({ id: "a1", estatusValue: "en_reparto", destinatario: "Ana Cliente" }),
+          novedad({ id: "o9", estatusValue: "novedad", destinatario: "Beto Cliente" }),
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 10,
+      },
+    });
+
+    const lista = screen.getByRole("list", { name: "Órdenes con ayuda solicitada" });
+    expect(within(lista).getAllByRole("listitem")).toHaveLength(2);
+    // Y cada fila lleva SU juego de botones, decidido por el estado de LA FILA y no por la pestaña.
+    //
+    // ⚠️ FEATURE 237 (T7.1, 2026-08-20) — EL CONTROL NEGATIVO CAMBIA DE PAREJA, y hay que decir por
+    // qué. Hasta hoy era «la de ayuda NO gana Reprogramar por estar al lado de una devolución», y
+    // servía porque en la ayuda no había ningún botón con ese rótulo. Ahora sí lo hay: la 237 le dio
+    // a la ayuda sus dos desenlaces, con claves propias y otro servicio detrás, pero con el MISMO
+    // nombre accesible («Reprogramar la orden de X») porque para quien mira es la misma palabra
+    // sobre otra orden. El nombre accesible no se retorció para que el test siguiera valiendo: se
+    // cambió el discriminador por los dos que siguen siendo exclusivos de la ayuda —la conversación
+    // y el contador de intentos de contacto—, y el caso de abajo afirma, ya sin ambigüedad posible,
+    // que cada «Reprogramar» abre una VENTANA distinta.
+    expect(
+      within(lista).getByRole("button", {
+        name: "Abrir la conversación de la orden de Ana Cliente",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(lista).getByRole("button", { name: "Reprogramar la orden de Beto Cliente" }),
+    ).toBeInTheDocument();
+    // La intrusa NO gana la conversación ni el contador por estar en la pestaña de ayuda.
+    expect(
+      within(lista).queryByRole("button", {
+        name: "Abrir la conversación de la orden de Beto Cliente",
+      }),
+    ).toBeNull();
+    expect(
+      within(lista).queryByRole("button", {
+        name: /^Registrar un intento de contacto con la orden de Beto Cliente/,
+      }),
+    ).toBeNull();
+    // Y la de ayuda SÍ los tiene: el par positivo de las dos ausencias de arriba.
+    expect(
+      within(lista).getByRole("button", {
+        name: /^Registrar un intento de contacto con la orden de Ana Cliente/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("237: el «Reprogramar» de cada fila abre la ventana de SU grupo, no la del vecino", async () => {
+    // Éste es el heredero del control negativo que la 237 dejó sin discriminador. Los dos botones
+    // se llaman igual y hacen cosas distintas: el de la fila en ayuda crea una gestión atribuida al
+    // mensajero —que entra en SU cierre del día y suma un intento— y el de la devuelta llama al
+    // servicio de la feature 100. Confundirlos no daría un error visible: daría un `conflict` en un
+    // caso y una gestión en el cierre de otra persona en el otro.
+    const user = userEvent.setup();
+    renderTabs({
+      ayuda: {
+        items: [
+          novedad({ id: "a1", estatusValue: "en_reparto", destinatario: "Ana Cliente" }),
+          novedad({ id: "o9", estatusValue: "novedad", destinatario: "Beto Cliente" }),
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 10,
+      },
+    });
+
+    // La fila en AYUDA -> la ventana de la 237, que se reconoce por su aviso de consecuencias.
+    //
+    // ⚠️ FICHA 309 (2026-08-28): el discriminador ERA «mueve el dinero igual», y era el peor
+    // posible justo en esta rama — al REPROGRAMAR no se mueve ni un colón, así que la frase se
+    // retiró de ese modo por falsa. Se usa el CIERRE AJENO, que sí es cierto en los dos modos y
+    // sigue siendo imposible en el modal de la 100.
+    await user.click(
+      screen.getByRole("button", { name: "Reprogramar la orden de Ana Cliente" }),
+    );
+    const ventana237 = await screen.findByRole("dialog");
+    expect(ventana237).toHaveTextContent("Resolver la orden por tu cuenta");
+    expect(ventana237).toHaveTextContent("entra en su cierre del día");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // La fila DEVUELTA -> el modal de la feature 100, que no dice nada de cierres ajenos.
+    await user.click(
+      screen.getByRole("button", { name: "Reprogramar la orden de Beto Cliente" }),
+    );
+    const modal100 = await screen.findByRole("dialog");
+    expect(modal100).not.toHaveTextContent("Resolver la orden por tu cuenta");
+    expect(modal100).not.toHaveTextContent("entra en su cierre del día");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ FICHA 409 (T6.5 — R7): LA SUPERFICIE QUE PIDE LA URL
+// ---------------------------------------------------------------------------
+describe("NovedadesTabs — la superficie inicial (409/R7)", () => {
+  it("R7: con `superficieInicial=\"devolucion\"` la pestaña activa es «Novedad»", () => {
+    // El atajo del aviso «N novedades esperan tu decisión» apunta a la SEGUNDA pestaña. Que la
+    // prop llegue no basta: lo que se afirma es que la pestaña QUEDA seleccionada, porque
+    // `TabsGroup` podría ignorarla y la prop seguiría estando ahí.
+    renderTabs({ superficieInicial: "devolucion" });
+
+    const tabs = within(
+      screen.getByRole("tablist", { name: "Vistas de novedades" }),
+    ).getAllByRole("tab");
+    const activa = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+    expect(activa).toHaveTextContent("Novedad");
+    // Y la de entrada DEJA de estarlo: sin esta mitad, dos pestañas seleccionadas pasarían.
+    expect(tabs[0]).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("R7/R66: sin la prop, la pestaña de entrada sigue siendo «Ayuda solicitada»", () => {
+    // El comportamiento por defecto de la pantalla NO cambia (D6 de la 236 sigue mandando): es la
+    // mitad de R66 que se puede medir sin la URL.
+    renderTabs();
+
+    const tabs = within(
+      screen.getByRole("tablist", { name: "Vistas de novedades" }),
+    ).getAllByRole("tab");
+    expect(tabs[0]).toHaveTextContent("Ayuda solicitada");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("R7: el panel que se monta es el de SU superficie, no sólo el rótulo", async () => {
+    // Un `aria-selected` correcto con el panel del vecino montado sería el peor de los dos
+    // mundos: la tienda vería la pestaña bien marcada y la lista equivocada debajo.
+    renderTabs({
+      superficieInicial: "devolucion",
+      devolucion: { items: [novedad({ id: "o1" })], total: 1, page: 1, pageSize: 10 },
+    });
+
+    expect(
+      await screen.findByRole("list", { name: "Órdenes en novedad" }),
+    ).toBeInTheDocument();
+  });
+});
+
+// FICHA 456 (T3.15, design §5.2; R16) — las pestañas de `/novedades` («Novedad», «Ayuda solicitada»)
+// son rótulos de recuento y controles: no llevan botón de información (cada tarjeta de dentro, sí).
+describe("456 — las pestañas de novedades no llevan botón de información", () => {
+  it("0 botones «Qué significa» en la barra de pestañas", () => {
+    renderTabs();
+    const pestanas = screen.getAllByRole("tab");
+    expect(pestanas.length).toBeGreaterThan(0);
+    for (const t of pestanas) {
+      expect(within(t).queryAllByRole("button", { name: /^Qué significa «/ })).toHaveLength(0);
+    }
+    const lista = screen.getByRole("tablist");
+    expect(within(lista).queryAllByRole("button", { name: /^Qué significa «/ })).toHaveLength(0);
+  });
+});

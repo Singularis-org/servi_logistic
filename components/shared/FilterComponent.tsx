@@ -1,0 +1,926 @@
+"use client";
+
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { useFiltrosUrl } from "@/hooks/useFiltrosUrl";
+import { cn } from "@/lib/utils";
+import {
+  opcionesVisibles,
+  podarSeleccion,
+} from "@/lib/utils/filter-dependencies";
+import { seleccionDesdeUrl } from "@/lib/utils/filtros-url";
+
+import { DateRangeFilter } from "./DateRangeFilter";
+import { MultiSelectFilter } from "./MultiSelectFilter";
+
+/**
+ * Tipos de control soportados (decision (k) del spec). `boolean` es un INTERRUPTOR:
+ * o el filtro esta puesto o no esta, sin opciones que elegir.
+ *
+ * Feature 169 (design §8.1): `text` es un campo de TEXTO LIBRE. Sigue siendo generico
+ * —el componente no sabe que se busca ni contra que— y su unica particularidad es
+ * `minChars`: por debajo de ese minimo la clave NO viaja.
+ */
+export type FilterKind = "multi" | "single" | "dateRange" | "boolean" | "text";
+
+export interface FilterOption {
+  /** Valor emitido TAL CUAL (R5): id de catalogo, o valor de atajo en `dateRange`. */
+  value: string;
+  /** Texto visible y texto sobre el que busca el buscador interno. */
+  label: string;
+  /**
+   * Valor del filtro PADRE al que pertenece esta opcion. Solo lo leen los filtros
+   * que declaran `dependsOn` (R23/R24). El componente NO sabe que significa.
+   */
+  parentValue?: string;
+  /** Grupo al que pertenece la opcion (R28). Puro contrato de opciones. */
+  group?: string;
+  /**
+   * FICHA 456 (R13): codigo de ESTADO de la opcion, si lo es. `MultiSelectFilter` pinta con el el boton
+   * de informacion junto a la opcion; el componente no sabe que es un estado.
+   */
+  codigoEstado?: string;
+  /**
+   * Solo en `dateRange`: el RANGO de fechas calendario (`YYYY-MM-DD`) que este atajo
+   * representa. El control no lo calcula ni lo interpreta: pinta ese rango en el
+   * calendario y emite sus dos extremos. Sin el, el atajo no se ofrece.
+   */
+  defaultRange?: { desde: string; hasta: string };
+}
+
+export interface FilterDef {
+  /** Clave con la que este filtro aparece en la salida (R2). */
+  key: string;
+  /** Etiqueta visible y nombre accesible del control (R2, R29). */
+  label: string;
+  kind: FilterKind;
+  /**
+   * `multi`/`single`: las opciones seleccionables.
+   * `dateRange`: los ATAJOS ofrecidos dentro del control (R9). Vacio/ausente = solo
+   * desde/hasta.
+   * `boolean`: no lleva opciones; su unico valor es el de `BOOLEAN_MARCADO`.
+   */
+  options?: FilterOption[];
+  /** Clave del UNICO filtro padre del que depende (R23). No aplica a `dateRange`. */
+  dependsOn?: string;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyMessage?: string;
+  disabled?: boolean;
+  /**
+   * Solo en `text` (feature 169, design §8.1): minimo de caracteres —ya recortados los
+   * extremos— con el que el termino EMPIEZA a viajar. Por debajo, la clave desaparece
+   * de la salida y el control avisa de cuantos hacen falta; no es un error de
+   * validacion, es "todavia no hay busqueda". Default `0` (sin minimo): un filtro de
+   * texto que no lo declara emite en cuanto haya algo escrito.
+   */
+  minChars?: number;
+}
+
+/** Salida agnostica y uniforme (R16/R18/R19/R20). */
+export type FilterSelection = Record<string, string[]>;
+
+export interface FilterComponentProps {
+  /** Filtros a montar, EN EL ORDEN en que deben renderizarse (R3). */
+  filters: FilterDef[];
+  /** Recibe la seleccion COMPLETA y agregada en cada cambio de valor (R16). */
+  onChange: (selection: FilterSelection) => void;
+  /** Ofrece la accion "Limpiar todo" (R22). Default: `false`. */
+  showClearAll?: boolean;
+  /** Deshabilita TODOS los controles; ninguno emite (R15). */
+  disabled?: boolean;
+  /**
+   * Espera (ms) entre el último cambio y la emisión de `onChange`. Los controles
+   * responden al instante; lo que se aplaza es AVISAR al consumidor, para que marcar
+   * cuatro casillas seguidas no dispare cuatro consultas. `0` emite en el acto (útil
+   * en tests y en consumidores que no consultan nada).
+   */
+  debounceMs?: number;
+  /**
+   * Feature 339 (R3, R23): siembra la seleccion inicial con lo que traiga la URL, leyendo
+   * cada param por la clave EXACTA de su filtro. `false` deja el orquestador como estaba
+   * antes de la ficha: arranca en `{}` y no mira la query. Default `true`.
+   *
+   * Solo se LEE, y solo al entrar (R7): esta prop no escribe la URL nunca. Quien la borra
+   * al «Limpiar todo» es `BuscadorFiltros`, que es la duena de esa accion.
+   */
+  leerDeUrl?: boolean;
+  /**
+   * FICHA 453 (design §7) — IMPONER LA SELECCIÓN DESDE FUERA. El gemelo de la `siembra` de
+   * `BuscadorFiltros`, y hace falta por lo mismo: este orquestador es DUEÑO de su
+   * selección (la inicializa desde la URL y solo la cambian `fijar` y `limpiarTodo`), así
+   * que hasta hoy la única vía desde fuera era remontarlo entero con `key` — el truco que
+   * `FiltrosCierresBarra` y `OrdenesListado` tienen escrito como bloqueo.
+   *
+   * **Semántica:** cuando `senal` CAMBIA, la selección se REEMPLAZA por la recibida y
+   * **no se emite** (quien la impuso ya la conoce). Además CIERRA la siembra de la URL
+   * (R23): sin eso, un catálogo que llegara tarde repondría sobre lo recién impuesto un
+   * valor de la query, medio segundo después y sin que nadie lo hubiera pedido.
+   *
+   * **Ausente, el orquestador se comporta exactamente como antes** (R31).
+   */
+  siembra?: { senal: number; seleccion: FilterSelection };
+  className?: string;
+}
+
+// FICHA 467 (design §4.4) — el modo «Aplicar» de la 463 (su prop, su borrador, su botón, el aviso de
+// rango invertido y la comparación de selecciones) se RETIRÓ: sus dos consumidores (la tarjeta de filtros de
+// la caja y la sección de periodo del estado de cuenta) pasaron a la barra única, sin «Aplicar». Si
+// vuelve a hacer falta, está en el historial (commit de la 463).
+
+const KINDS_SOPORTADOS = new Set<string>([
+  "multi",
+  "single",
+  "dateRange",
+  "boolean",
+  "text",
+]);
+
+/**
+ * Valor UNICO que emite un filtro `boolean` marcado (R19: la salida siempre es una
+ * lista de cadenas por clave). Desmarcado no emite `["false"]`: la clave DESAPARECE,
+ * como cualquier otro filtro sin seleccion (R18).
+ */
+export const BOOLEAN_MARCADO = "true";
+
+/** Espera por defecto entre el último cambio y la emisión (ms). */
+export const DEBOUNCE_MS_DEFAULT = 500;
+/** Los tipos basados en opciones: sin opciones ofrecidas, su control va deshabilitado (R14). */
+const KINDS_CON_OPCIONES = new Set<string>(["multi", "single"]);
+
+/**
+ * Separador con el que el juego de claves montadas se aplana a un string comparable.
+ * Es el byte NUL: una clave de filtro no puede contenerlo, asi que dos juegos distintos
+ * nunca se aplanan al mismo texto. Va ESCAPADO (`\u0000`) y no crudo en el fuente —lo
+ * estuvo hasta hoy—, porque un byte de control dentro de una cadena hace que git
+ * clasifique el archivo como binario y deje de mostrar sus diffs.
+ */
+const SEPARADOR_CLAVES = "\u0000";
+
+/**
+ * Feature 339 (R10) — el rango con el que arranca un `dateRange` sembrado desde la URL.
+ *
+ * La terna tiene dos formas y solo una es un rango: por ATAJO (`30d,,`) el rango son las
+ * fechas que ese atajo representa, declaradas en su opcion; por RANGO (`,desde,hasta`)
+ * son los dos extremos tal cual. Sin esto el control se pintaria vacio con el filtro ya
+ * aplicado.
+ */
+function rangoInicial(
+  filtro: FilterDef,
+  terna: string[],
+): { desde: string; hasta: string } | undefined {
+  const [atajo = "", desde = "", hasta = ""] = terna;
+  if (atajo !== "") {
+    return (filtro.options ?? []).find((o) => o.value === atajo)?.defaultRange;
+  }
+  if (desde === "" && hasta === "") return undefined;
+  return { desde, hasta };
+}
+
+/**
+ * Aviso del filtro de texto MIENTRAS lo escrito no alcanza su minimo (feature 169, R35).
+ * No es un error: es "sigue escribiendo". Se expone como funcion para que quien lo
+ * afirme en un test no reescriba la cadena a mano.
+ */
+export function avisoMinimoCaracteres(minChars: number): string {
+  return `Escribe al menos ${minChars} caracteres para buscar`;
+}
+
+/**
+ * Filtro de TEXTO LIBRE (feature 169, design §8.1). Vive aqui, junto al orquestador,
+ * porque no tiene nada que no sea el orquestador: un `Input`, su limpieza y la regla
+ * del minimo.
+ *
+ * Reglas (R33-R37, R41):
+ * - **el campo responde al instante** (estado interno); lo que se aplaza es la EMISION,
+ *   que ya hace `FilterComponent` con su debounce. No hay un segundo temporizador aqui:
+ *   sumaria dos esperas y una rafaga de pulsaciones dispararia mas de una consulta;
+ * - emite `[termino]` —recortado— solo con `>= minChars`; por debajo, la clave DESAPARECE
+ *   (patron `boolean`/`dateRange`), de modo que 1-2 caracteres no viajan y el borde nunca
+ *   responde `validation_error` por algo que el usuario esta todavia escribiendo;
+ * - **no emite si lo que emitiria es lo ya aplicado**: teclear por debajo del minimo, o
+ *   añadir un espacio al final de un termino ya aplicado, no avisa al consumidor. Sin esta
+ *   guarda, cada pulsacion inerte reprogramaria el debounce y la cache del consumidor;
+ * - se vacia con su propia X y con "Limpiar todo" (via `resetSignal`);
+ * - `aria-label` propio + aviso del minimo en una region `status`, que el campo referencia
+ *   con `aria-describedby`.
+ */
+function TextFilter({
+  label,
+  placeholder,
+  minChars,
+  aplicado,
+  valorInicial,
+  onChange,
+  resetSignal,
+  disabled,
+}: {
+  label: string;
+  placeholder?: string;
+  minChars: number;
+  /** Valor de esta clave en la seleccion agregada (`[]` = sin busqueda aplicada). */
+  aplicado: string[];
+  /**
+   * Feature 339 (R3, R13): texto con el que ARRANCA el campo, para el caso en que la
+   * clave venga sembrada desde la URL. Sin esto la seleccion llevaria el termino y el
+   * campo se veria VACIO: la pantalla mintiendo sobre lo que esta aplicado.
+   *
+   * Solo lo lee el inicializador perezoso (control no controlado, igual que el
+   * `defaultRange` de `DateRangeFilter`): cambiarlo despues no pisa lo que el usuario
+   * este escribiendo.
+   */
+  valorInicial: string;
+  onChange: (valores: string[]) => void;
+  resetSignal: number;
+  disabled: boolean;
+}) {
+  const idBase = useId();
+  const idAviso = `${idBase}-minimo`;
+  const [texto, setTexto] = useState(valorInicial);
+
+  // Limpieza externa ("Limpiar todo"): mismo patron que `DateRangeFilter` — se ajusta el
+  // estado DURANTE el render, sin efecto y sin emitir (el orquestador ya emite `{}`).
+  const [signalPrevio, setSignalPrevio] = useState(resetSignal);
+  if (resetSignal !== signalPrevio) {
+    setSignalPrevio(resetSignal);
+    setTexto("");
+  }
+
+  const termino = texto.trim();
+  const faltanCaracteres = termino.length > 0 && termino.length < minChars;
+
+  function escribir(valor: string) {
+    setTexto(valor);
+    const recortado = valor.trim();
+    // `!== ""` aparte del minimo: con `minChars` 0 (default) un campo vacio seguiria
+    // cumpliendo `length >= 0`, y "sin texto" no es un filtro puesto.
+    const emitido =
+      recortado !== "" && recortado.length >= minChars ? [recortado] : [];
+    const sinCambio =
+      emitido.length === aplicado.length && emitido[0] === aplicado[0];
+    if (sinCambio) return;
+    onChange(emitido);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="relative flex items-center">
+        <Input
+          type="search"
+          value={texto}
+          // R41: nombre accesible propio, el mismo que la etiqueta declarada.
+          aria-label={label}
+          aria-describedby={faltanCaracteres ? idAviso : undefined}
+          placeholder={placeholder}
+          disabled={disabled}
+          // `text-ellipsis`: el placeholder de un filtro de texto ENUMERA lo que se puede
+          // teclear ahi, asi que es largo por necesidad y no cabe en el ancho real del campo.
+          // Sin esto el navegador lo recorta a hueso, en seco y a mitad de palabra. El corte
+          // lo decide el ancho de cada viewport, NO una cadena acortada a mano: el texto
+          // completo sigue en el DOM, asi que quien tenga sitio —o use un lector de
+          // pantalla— lo recibe entero. Acortar la constante lo habria perdido para todos.
+          className="min-w-56 pr-8 text-ellipsis"
+          onChange={(e) => escribir(e.target.value)}
+        />
+        {/* R37: limpieza individual, sin tocar el resto de la barra. */}
+        {texto !== "" ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            disabled={disabled}
+            aria-label={`Limpiar ${label}`}
+            className="absolute right-1 hover:bg-transparent hover:text-foreground"
+            onClick={() => escribir("")}
+          >
+            <X className="h-4 w-4 opacity-60" aria-hidden />
+          </Button>
+        ) : null}
+      </div>
+      {/* R35/R41: la region vive SIEMPRE en el arbol —un `aria-live` que aparece con su
+          texto ya dentro no se anuncia— y solo cambia su contenido. Vacia no ocupa alto,
+          asi que la barra no se mueve al aparecer el aviso. */}
+      <p id={idAviso} role="status" className="text-xs text-muted-foreground">
+        {faltanCaracteres ? avisoMinimoCaracteres(minChars) : ""}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * # `FilterComponent` — barra de filtros GENERICA y parametrizable
+ *
+ * Monta y coordina **N filtros declarados por props** (R1) y es dueño del estado
+ * agregado (no controlado): el consumidor solo declara QUE filtros hay y recibe por
+ * `onChange` la seleccion completa. Es el hermano un nivel arriba de
+ * `MultiSelectFilter`: aquel es UN control, este ORQUESTA N.
+ *
+ * **Vive en `components/shared/` por decision (n) del gate F1.4**, como excepcion
+ * explicita a la regla de "dos superficies antes de promover" de
+ * `docs/architecture.md`: nace generico por peticion del humano y la feature 145
+ * (`depends_on: 144`) es su segundo consumidor declarado. **No es un hallazgo.**
+ *
+ * ## Lo que NO hace
+ * - **No hace fetch** (R4): todas las opciones llegan por props, sea cual sea el
+ *   transporte con que el consumidor las consiguio.
+ * - **No interpreta ni transforma los valores** (R5): emite exactamente los valores
+ *   declarados en las opciones, o las fechas que introdujo el usuario.
+ * - **No construye el objeto de consulta de ningun endpoint ni Server Action** (R20):
+ *   **la traduccion al transporte es responsabilidad del consumidor**.
+ * - No sabe nada de dominio: ni ordenes, ni geografia, ni fechas con huso.
+ *
+ * ## Contrato de props
+ * `filters: FilterDef[]` (clave, etiqueta, `kind` y —si es de opciones— su lista),
+ * `onChange`, `showClearAll`, `disabled`, `debounceMs`.
+ *
+ * ## Emision con debounce
+ * Los controles responden al instante; `onChange` se emite `debounceMs` despues del
+ * ultimo cambio (500 ms por defecto), de modo que una racha de clics produce UNA sola
+ * emision —la del estado final— y no una consulta por clic. `debounceMs={0}` emite
+ * en el acto.
+ *
+ * ## `dependsOn` / `parentValue` (R23-R27)
+ * Un filtro declara `dependsOn: "<key de otro filtro>"` y cada opcion suya trae
+ * `parentValue` = el valor del padre al que pertenece. Las opciones ofrecidas se
+ * acotan a la **seleccion efectiva** del padre (su seleccion, o todas sus opciones
+ * visibles si esta vacia), de forma **transitiva**; al cambiar un padre, los valores
+ * que dejan de estar ofrecidos se **podan** antes de emitir, de modo que nunca se
+ * emite una combinacion incoherente. `dependsOn` a una clave no declarada (o un
+ * ciclo) se trata como filtro independiente.
+ *
+ * ## Filtros que dejan de declararse
+ * Si un filtro desaparece de `filters` (p. ej. porque el consumidor deja al usuario
+ * elegir QUE filtros monta), su seleccion se descarta y se emite la seleccion ya sin
+ * el. Un filtro sin control en pantalla no puede seguir filtrando.
+ *
+ * ## `group` (R28)
+ * Una opcion puede declarar `group`; las opciones se presentan bajo la cabecera
+ * accesible de su grupo. Sin grupos, la lista es plana.
+ *
+ * ## Salida: `Record<string, string[]>` para los tres tipos
+ * Las claves sin seleccion **se omiten** (R18), de modo que "sin filtros" es `{}`.
+ *
+ * | `kind` | Emite |
+ * | --- | --- |
+ * | `multi` | N valores |
+ * | `single` | exactamente 1 valor |
+ * | `dateRange` | exactamente 3 posiciones `[atajo, desde, hasta]`, **sin compactar** |
+ * | `boolean` | `["true"]` marcado; **clave ausente** desmarcado (nunca `["false"]`) |
+ * | `text` | exactamente 1 valor, el termino recortado; **clave ausente** por debajo de `minChars` |
+ *
+ * ### Que emite el filtro de tiempo en cada caso (R19)
+ *
+ * | Estado del control | Emite |
+ * | --- | --- |
+ * | nada elegido | **clave ausente** |
+ * | atajo `30d` | `["30d","",""]` |
+ * | rango completo | `["","2026-07-01","2026-07-28"]` |
+ * | solo desde | `["","2026-07-01",""]` |
+ * | solo hasta | `["","","2026-07-28"]` |
+ * | rango invertido | **no emite** (control invalido, R12) |
+ * | atajo + rango | **imposible**: son mutuamente excluyentes (R10) |
+ *
+ * La posicion ES el significado: `["30d"]` seria ambiguo con `["2026-07-01"]`.
+ */
+export function FilterComponent({
+  filters,
+  onChange,
+  showClearAll = false,
+  disabled = false,
+  debounceMs = DEBOUNCE_MS_DEFAULT,
+  leerDeUrl = true,
+  siembra,
+  className,
+}: FilterComponentProps) {
+  // R13: un `kind` no soportado no se renderiza ni entra en la salida, y el resto de
+  // filtros sigue funcionando.
+  const montados = useMemo(
+    () => filters.filter((f) => KINDS_SOPORTADOS.has(f.kind)),
+    [filters],
+  );
+
+  const { params } = useFiltrosUrl(leerDeUrl);
+
+  /**
+   * R7 — LA FOTO DE LOS PARAMS AL ENTRAR. Se captura UNA sola vez, en el inicializador
+   * perezoso de un `useState`, y NO se reasigna nunca: es una copia propia, no una vista
+   * de la URL viva.
+   *
+   * Aqui vivia antes una `paramsRef` reescrita en cada render, y eso hacia FALSO a R7: la
+   * siembra por crecimiento leia la URL DE AHORA, asi que entrar sin params, ver cambiar
+   * la query a `?color=azul` y declarar despues el filtro sembraba «azul». Con la foto
+   * congelada el fallo desaparece POR CONSTRUCCION: no queda ninguna referencia viva por
+   * la que la URL posterior pueda entrar.
+   *
+   * ⚠️ LA DISTINCION QUE HAY QUE NO DESHACER, porque es sutil y se ve al reves: **R7
+   * prohibe RELEER la URL, no prohibe TERMINAR DE APLICAR lo que ya se leyo.** Por eso
+   * abajo se re-siembra contra ESTA foto cuando aparecen opciones nuevas para una clave
+   * todavia pendiente. Lo que se aplica tarde no es informacion nueva: es exactamente la
+   * que traia la direccion por la que el usuario entro. Volver a leer `params` en esos
+   * puntos —que es lo que parece «mas correcto»— reintroduce el fallo B2 entero.
+   */
+  const [paramsIniciales] = useState(
+    () => new URLSearchParams([...params.entries()]),
+  );
+
+  /**
+   * Claves ya SEMBRADAS desde la URL: aquellas cuya siembra produjo valores de verdad.
+   * Cada una se siembra como mucho una vez en toda la vida del componente: `filters` crece
+   * y mengua (la barra activa una clave, el usuario retira un control), y sin esta memoria
+   * cada vaiven volveria a sembrar y resucitaria valores que el usuario ya descarto.
+   *
+   * ⚠️ SE APUNTA POR SEMBRAR, NO POR DECLARAR, y esa es la diferencia entre cumplir R3 y no
+   * cumplirlo. Antes bastaba con que una clave se DECLARARA para darla por sembrada, y eso
+   * mataba el caso real de `/novedades`: alli el catalogo se pide de forma perezosa, asi
+   * que el control se declara con `options: []`, el valor de la URL se descarta por R14 y
+   * la clave quedaba marcada para siempre — cuando llegaba el catalogo ya no se reintentaba
+   * y el enlace compartido no acotaba nada. Las claves que no produjeron nada quedan
+   * PENDIENTES y se reintentan cuando cambia el catalogo.
+   *
+   * Una clave con un valor genuinamente invalido (R16), o sin param, queda pendiente para
+   * siempre y se reintenta: es inofensivo, porque `seleccionDesdeUrl` devuelve `[]`, no hay
+   * nada que aplicar y el efecto sale por su `return` temprano sin tocar el estado.
+   */
+  const sembradas = useRef<Set<string>>(new Set());
+
+  /**
+   * R3, R7, R25 — la seleccion que traia la URL AL ENTRAR, resuelta en el inicializador
+   * PEREZOSO y no en un efecto.
+   *
+   * No es estilo: congelarla aqui convierte «la URL solo se lee al entrar» en una
+   * propiedad ESTRUCTURAL —un cambio posterior de los params no tiene por donde entrar—
+   * en vez de en una promesa vigilada por una guarda que alguien puede quitar. Y de paso
+   * esquiva la regla de lint del repo que prohibe `setState` en un efecto para leer una
+   * fuente externa (R25).
+   *
+   * Se poda con las mismas reglas de dependencia que cualquier otra emision: una URL
+   * puede pedir «talla azul» bajo «color rojo», y el orquestador nunca emite una
+   * combinacion incoherente.
+   *
+   * Las claves que se sembraron aqui se apuntan en `sembradas` desde el efecto de montaje
+   * y no desde este inicializador: la regla `react-hooks/refs` del repo prohibe tocar una
+   * ref durante el render, y ese efecto corre ANTES que el de poda y siembra, que es el
+   * unico que consulta el conjunto.
+   */
+  /**
+   * FICHA 453 — ¿LA SIEMBRA YA TRAE ALGO EN EL PRIMER RENDER? `null` si no.
+   *
+   * El caso es real y es el normal, no un borde: en `/ordenes` este orquestador **solo se
+   * monta cuando hay algún filtro pedido**, así que aplicar una vista con controles desde
+   * una barra vacía lo MONTA por primera vez con la siembra ya puesta. Ahí no hay ningún
+   * cambio de señal que detectar —es el render inicial—, y sin esto el componente
+   * arrancaría leyendo la URL: los controles se pintarían vacíos con el filtro ya aplicado,
+   * o sea la pantalla mintiendo sobre lo que está puesto.
+   *
+   * Se exige que la siembra traiga ALGO: montar con `{}` (lo normal al entrar a la página)
+   * deja intacta la precarga de la URL de la ficha 339.
+   */
+  const siembraInicial =
+    siembra !== undefined && Object.keys(siembra.seleccion).length > 0
+      ? siembra.seleccion
+      : null;
+
+  const [seleccion, setSeleccion] = useState<FilterSelection>(() => {
+    if (siembraInicial !== null) return podarSeleccion(montados, siembraInicial);
+    return leerDeUrl
+      ? podarSeleccion(montados, seleccionDesdeUrl(paramsIniciales, montados))
+      : {};
+  });
+
+  /**
+   * La siembra se CIERRA con el primer cambio originado por el usuario (R7). Sin ese
+   * cierre, quitar un control y volver a ponerlo resucitaria el valor de la URL que el
+   * usuario acababa de descartar.
+   *
+   * Va en estado Y en ref a proposito: el estado lo necesita el RENDER (los controles no
+   * controlados deciden ahi con que valor arrancan) y la ref la necesita el efecto de
+   * abajo, que no vuelve a correr por un cambio de estado y debe leer el valor de AHORA.
+   * Los dos se escriben en el mismo sitio, asi que no pueden divergir.
+   *
+   * FICHA 453 — y nace CERRADA si se monta ya sembrado (R23): ese montaje viene de aplicar
+   * una vista, así que lo que traiga la dirección no tiene ningún derecho a reponerse
+   * encima.
+   */
+  const [siembraCerrada, setSiembraCerrada] = useState(siembraInicial !== null);
+  const siembraCerradaRef = useRef(siembraInicial !== null);
+
+  // Contador de "Limpiar todo": los controles con estado interno (fechas) lo miran
+  // para vaciarse sin que el orquestador tenga que controlarlos.
+  const [resetSignal, setResetSignal] = useState(0);
+
+  /**
+   * FICHA 453 (design §7) — LA SIEMBRA, ajustando el estado DURANTE EL RENDER, igual que
+   * el `resetSignal` de `TextFilter` un poco más arriba: sin efecto y sin parpadeo.
+   *
+   * REEMPLAZA, no mezcla (R19): lo que no venga en la siembra deja de estar puesto. Se
+   * pasa por `podarSeleccion` por la misma razón que la precarga de la URL —el orquestador
+   * nunca sostiene una combinación incoherente con `dependsOn`—, y contra los filtros
+   * MONTADOS AHORA, que en la misma pasada ya son los que el consumidor acaba de declarar.
+   *
+   * `setSiembraCerrada(true)` es R23 y no es opcional: cierra la siembra de la URL para que
+   * un catálogo tardío no reponga encima lo que traía la query.
+   */
+  const [senalSembrada, setSenalSembrada] = useState(siembra?.senal ?? 0);
+  if (siembra !== undefined && siembra.senal !== senalSembrada) {
+    setSenalSembrada(siembra.senal);
+    const sembrada = podarSeleccion(montados, siembra.seleccion);
+    setSeleccion(sembrada);
+    setSiembraCerrada(true);
+  }
+
+  /**
+   * Lo que la URL traia AL ENTRAR para las claves declaradas ahora mismo. Solo lo leen los
+   * controles NO controlados (`text`, `dateRange`) para saber con que valor montarse: cuando
+   * una clave se siembra al crecer `filters`, el control se monta en el render ANTERIOR al
+   * efecto que siembra, asi que sin esto arrancaria vacio y mentiria.
+   *
+   * Lee la FOTO, no `params`: si mirara la URL viva, un cambio posterior de la query se
+   * colaria por aqui hasta el valor inicial del control y R7 volveria a ser falso por otra
+   * puerta.
+   */
+  const precargaUrl = useMemo(
+    () =>
+      leerDeUrl && !siembraCerrada
+        ? seleccionDesdeUrl(paramsIniciales, montados)
+        : {},
+    [leerDeUrl, siembraCerrada, paramsIniciales, montados],
+  );
+
+  // `onChange` cambia de identidad en cada render del consumidor; se lee por ref para
+  // que el temporizador pendiente use SIEMPRE la version fresca sin reprogramarse.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Al desmontar se cancela lo pendiente: emitir sobre un consumidor que ya no esta
+  // seria un setState en un arbol muerto.
+  useEffect(
+    () => () => {
+      if (temporizador.current) clearTimeout(temporizador.current);
+    },
+    [],
+  );
+
+  /**
+   * Emite la seleccion agregada con el retardo configurado. Cada cambio CANCELA el
+   * anterior: una racha de clics se resuelve en UNA sola emision, la del estado final.
+   */
+  function emitir(seleccionFinal: FilterSelection) {
+    if (temporizador.current) {
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    }
+    if (debounceMs <= 0) {
+      onChange(seleccionFinal);
+      return;
+    }
+    temporizador.current = setTimeout(() => {
+      temporizador.current = null;
+      onChangeRef.current(seleccionFinal);
+    }, debounceMs);
+  }
+
+  /** Aplica la poda (R26) y emite la seleccion agregada ya coherente (R16/R18). */
+  function aplicar(siguiente: FilterSelection) {
+    const podada = podarSeleccion(montados, siguiente);
+    setSeleccion(podada);
+    emitir(podada);
+  }
+
+  // Un filtro que deja de estar DECLARADO deja de filtrar. Sin esto su seleccion
+  // seguiria viva en el estado interno —y viajando en cada emision— con su control
+  // fuera de pantalla: un filtro invisible pero aplicado, que el usuario no puede ni
+  // ver ni quitar. Se compara por CLAVES (no por identidad del array) para no
+  // dispararse en cada render del consumidor.
+  const clavesMontadas = montados.map((f) => f.key).join(SEPARADOR_CLAVES);
+
+  /**
+   * Firma del CATALOGO de los filtros montados: `clave:nº de opciones`, con el mismo
+   * separador. Es el segundo disparador del efecto de abajo, y sin ella el reintento de la
+   * siembra pendiente no existe: cuando el catalogo de un filtro pasa de vacio a lleno, el
+   * juego de CLAVES no cambia —siguen siendo las mismas— asi que un efecto que solo dependa
+   * de `clavesMontadas` no vuelve a correr nunca. Ese era el fallo de `/novedades`.
+   *
+   * Se calcula sobre TODOS los montados y no solo sobre los pendientes a proposito: saber
+   * cuales estan pendientes exige leer `sembradas.current`, y la regla `react-hooks/refs`
+   * del repo prohibe leer una ref durante el render. Un disparador de mas cuesta una pasada
+   * que sale por el `return` temprano; uno de menos cuesta un requisito.
+   */
+  const firmaCatalogo = montados
+    .map((f) => `${f.key}:${(f.options ?? []).length}`)
+    .join(SEPARADOR_CLAVES);
+
+  const seleccionRef = useRef(seleccion);
+  const montadosRef = useRef(montados);
+  useEffect(() => {
+    seleccionRef.current = seleccion;
+    montadosRef.current = montados;
+  });
+
+  /**
+   * FICHA 453 — LAS DOS CUENTAS DE LA SIEMBRA QUE NO SON ESTADO. Van en un efecto porque
+   * son `ref`s y el render no puede tocarlas (regla `react-hooks/refs`), y va declarado
+   * AQUÍ —antes del efecto de poda y siembra de abajo— porque ese lee
+   * `siembraCerradaRef.current` y los efectos corren en orden de declaración: al revés, la
+   * pasada siguiente a una siembra todavía vería la siembra de la URL abierta y
+   * reintentaría reponer lo que traía la query encima de lo recién impuesto (R23).
+   *
+   * Y se cancela el debounce en vuelo: una emisión anterior aterrizando después de la
+   * siembra le devolvería al consumidor la selección VIEJA, medio segundo tarde y sin que
+   * nada lo delatara.
+   */
+  const senalAnotada = useRef(siembra?.senal ?? 0);
+  useEffect(() => {
+    if (siembra === undefined || siembra.senal === senalAnotada.current) return;
+    senalAnotada.current = siembra.senal;
+    siembraCerradaRef.current = true;
+    if (temporizador.current) {
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    }
+  });
+
+  /**
+   * R5 — la seleccion precargada se emite UNA vez al montar, por el camino de siempre
+   * (`emitir`, con su debounce), para que el listado llegue ya acotado y no solo la barra
+   * pintada. Quien la recibe no tiene que distinguir «esto vino de la URL».
+   *
+   * R6 — si no habia nada precargado no se emite NADA. No es elegancia: hoy este
+   * componente no avisa al montar y decenas de tests del repo dependen de ese silencio;
+   * emitir `{}` al entrar ademas dispararia una consulta extra por pantalla.
+   */
+  // FICHA 453 — una seleccion que llego POR SIEMBRA no se emite, ni siquiera en el montaje:
+  // quien la impuso es el consumidor y ya la tiene. Emitirla le devolveria su propio estado
+  // por otro camino y, en `/ordenes`, borraria la marca de «vista puesta» en el acto (R22).
+  const precargaInicial = useRef<FilterSelection>(siembraInicial === null ? seleccion : {});
+  useEffect(() => {
+    // Se apuntan como sembradas SOLO las claves que la foto de entrada llego a llenar, no
+    // todas las declaradas: una clave declarada sin catalogo —o sin param— no ha tenido su
+    // turno todavia y debe poder reintentarlo. Se mira la seleccion SIN podar, para que una
+    // clave que la poda de dependencias retiro no se reintente en bucle (su valor si se
+    // leyo; simplemente era incoherente con su padre).
+    //
+    // Se apunta aqui —y no en el inicializador de arriba— porque el render no puede tocar
+    // refs, y este efecto corre antes que el de poda y siembra.
+    if (leerDeUrl) {
+      const leidasAlEntrar = seleccionDesdeUrl(paramsIniciales, montadosRef.current);
+      for (const clave of Object.keys(leidasAlEntrar)) sembradas.current.add(clave);
+    }
+    if (Object.keys(precargaInicial.current).length === 0) return;
+    emitir(precargaInicial.current);
+    // Corre UNA sola vez, al montar: `emitir` se recrea en cada render y depender de el
+    // reemitiria la precarga en todos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const vivas = new Set(clavesMontadas.split(SEPARADOR_CLAVES));
+    const actual = seleccionRef.current;
+    const sobran = Object.keys(actual).filter((clave) => !vivas.has(clave));
+
+    // R2/R3 — siembra por CRECIMIENTO de `filters`, en ESTE mismo efecto y no en uno
+    // aparte: los dos reaccionan al mismo disparador (el juego de claves) y escriben el
+    // mismo estado, asi que separarlos dejaria el resultado a merced del orden en que
+    // corran. Se calcula todo en una pasada, se aplica una vez y se emite una vez.
+    //
+    // Hace falta porque el orden de montaje REAL no es el ideal: en `/ordenes`,
+    // `/cierres-admin` y `/configuracion` este componente se monta con `filters=[]` y solo
+    // DESPUES la barra activa las claves que traia la URL. Sembrar unicamente en el
+    // inicializador dejaria esas pantallas sin precarga.
+    //
+    // Tambien es el reintento de las claves PENDIENTES: las que se declararon sin catalogo
+    // y cuyo valor se descarto por R14. Cuando el catalogo llega, la firma cambia, este
+    // efecto vuelve a correr y la clave se termina de sembrar. Se siembra contra la FOTO DE
+    // ENTRADA, nunca contra `params`: R7 prohibe RELEER la URL, no prohibe terminar de
+    // aplicar lo que ya se leyo al entrar (ver el comentario de `paramsIniciales`).
+    //
+    // R7 — si el usuario ya toco algo, la siembra esta cerrada y el catalogo que llega tarde
+    // no le pisa la seleccion.
+    //
+    // R17 — la poda no se lleva por delante lo sembrado: se siembran claves ya DECLARADAS
+    // (`montadosRef`), asi que nunca estan entre las que sobran.
+    const pendientes = siembraCerradaRef.current
+      ? []
+      : montadosRef.current.filter((f) => !sembradas.current.has(f.key));
+    const sembrado =
+      leerDeUrl && pendientes.length > 0
+        ? seleccionDesdeUrl(paramsIniciales, pendientes)
+        : {};
+    // Solo cuenta como sembrada la clave que PRODUJO valores. El resto sigue pendiente.
+    for (const clave of Object.keys(sembrado)) sembradas.current.add(clave);
+
+    // Sin nada que podar ni que sembrar no se toca el estado: este efecto corre en TODOS
+    // los montajes y emitir aqui romperia el silencio de R6.
+    if (sobran.length === 0 && Object.keys(sembrado).length === 0) return;
+    const siguiente = { ...actual, ...sembrado };
+    for (const clave of sobran) delete siguiente[clave];
+    aplicar(siguiente);
+    // `aplicar` se recrea en cada render; depender de el volveria a correr el efecto
+    // sin que haya cambiado nada. Lo unico que debe dispararlo es el juego de claves y el
+    // tamaño del catalogo de cada una (la clave que llega sin opciones y las recibe despues).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clavesMontadas, firmaCatalogo]);
+
+  /**
+   * R7 — el primer gesto del usuario cierra la siembra PARA SIEMPRE. Sin esto, quitar un
+   * control y volver a ponerlo resucitaria el valor de la URL que el usuario descarto.
+   */
+  function cerrarSiembra() {
+    siembraCerradaRef.current = true;
+    setSiembraCerrada(true);
+  }
+
+  function fijar(key: string, valores: string[]) {
+    cerrarSiembra();
+    const siguiente: FilterSelection = { ...seleccion };
+    if (valores.length === 0) delete siguiente[key];
+    else siguiente[key] = valores;
+    aplicar(siguiente);
+  }
+
+  function limpiarTodo() {
+    cerrarSiembra();
+    setSeleccion({});
+    setResetSignal((n) => n + 1);
+    emitir({}); // R22: una sola emision, vacia
+  }
+
+  /**
+   * FICHA 453 (design §7, detalle 2) — LA `key` DE LOS CONTROLES NO CONTROLADOS.
+   *
+   * `TextFilter` (inicializador perezoso) y `DateRangeFilter` (`defaultRange`) son dueños
+   * de lo que muestran: un `setSeleccion` no los mueve, así que una vista con un rango de
+   * fechas se aplicaria al listado y el disparador seguiria diciendo «Cualquier fecha» —el
+   * fallo mudo de que la pantalla mienta sobre lo que esta aplicado—. Cambiarles la `key`
+   * los remonta SOLO A ELLOS: leen su valor inicial de la nueva seleccion y el resto de la
+   * barra —incluido el campo de busqueda, que vive en `BuscadorFiltros`— no se mueve.
+   *
+   * Sin la prop la clave es la de siempre, literalmente la misma cadena: los quince
+   * consumidores que no siembran no remontan nada, ni una vez.
+   */
+  const claveDeControl = (key: string) =>
+    siembra === undefined ? key : `${key}:${siembra.senal}`;
+
+  return (
+    <div className={cn("flex flex-wrap items-end gap-3", className)}>
+      {montados.map((filtro) => {
+        const visibles =
+          filtro.kind === "dateRange"
+            ? (filtro.options ?? [])
+            : opcionesVisibles(montados, seleccion, filtro.key);
+        const sinOpciones =
+          KINDS_CON_OPCIONES.has(filtro.kind) && visibles.length === 0;
+        // R14 + R15: sin opciones ofrecidas, o con el consumidor deshabilitando.
+        const inhabilitado = disabled || filtro.disabled === true || sinOpciones;
+        const valores = seleccion[filtro.key] ?? [];
+        /**
+         * R3 — con que valor arranca un control NO controlado (`text`, `dateRange`), que
+         * es el unico momento en que puede mostrarlo. Lo ya aplicado manda; si todavia no
+         * lo esta —el control se monta en el render ANTERIOR al efecto que siembra— vale
+         * lo que trae la URL para esa clave.
+         */
+        const inicial = valores.length > 0 ? valores : (precargaUrl[filtro.key] ?? []);
+
+        if (filtro.kind === "text") {
+          return (
+            <TextFilter
+              key={claveDeControl(filtro.key)}
+              label={filtro.label}
+              placeholder={filtro.placeholder}
+              // Sin minimo declarado, cualquier texto viaja: el minimo es una decision
+              // del consumidor (aqui, del coste de su consulta), no del control.
+              minChars={filtro.minChars ?? 0}
+              aplicado={valores}
+              valorInicial={inicial[0] ?? ""}
+              onChange={(v) => fijar(filtro.key, v)}
+              resetSignal={resetSignal}
+              disabled={inhabilitado}
+            />
+          );
+        }
+
+        if (filtro.kind === "multi") {
+          return (
+            <MultiSelectFilter
+              key={filtro.key}
+              label={filtro.label}
+              options={visibles}
+              value={valores}
+              onChange={(v) => fijar(filtro.key, v)}
+              placeholder={filtro.placeholder}
+              searchPlaceholder={filtro.searchPlaceholder}
+              emptyMessage={filtro.emptyMessage}
+              disabled={inhabilitado}
+            />
+          );
+        }
+
+        if (filtro.kind === "boolean") {
+          const marcado = valores[0] === BOOLEAN_MARCADO;
+          return (
+            <label
+              key={filtro.key}
+              className={cn(
+                "flex h-8 items-center gap-2 rounded-lg border border-border px-2.5 text-sm select-none",
+                inhabilitado
+                  ? "cursor-not-allowed opacity-50"
+                  : "cursor-pointer hover:bg-muted",
+              )}
+            >
+              <Checkbox
+                checked={marcado}
+                disabled={inhabilitado}
+                // R18: desmarcado NO emite `["false"]`, deja la clave fuera.
+                onCheckedChange={(v) =>
+                  fijar(filtro.key, v ? [BOOLEAN_MARCADO] : [])
+                }
+              />
+              {filtro.label}
+            </label>
+          );
+        }
+
+        if (filtro.kind === "single") {
+          return (
+            /**
+             * FICHA 372 — este control se pintaba SIN rotulo visible y a lo ancho de la
+             * fila. Los dos defectos llegaron a produccion juntos:
+             *
+             * 1. `aria-label` es el nombre accesible, pero NO se ve. En una barra de
+             *    filtros no hay rotulo encima ni al lado, asi que el disparador se leia
+             *    solo «Todas»: un control sin nombre para quien mira la pantalla.
+             *    `labelPrefix` mete la etiqueta DENTRO del disparador, en gris y delante
+             *    del valor —«Salida a reparto: Todas»—, que es lo que `MultiSelectFilter`
+             *    ya hacia. El `aria-label` se queda: la etiqueta visible se SUMA.
+             * 2. El trigger de `Select` trae `w-full` de fabrica (pensado para un campo de
+             *    formulario). Dentro de este contenedor —`flex flex-wrap`— un hijo al 100 %
+             *    se lleva una linea entera para el, y por eso el booleano de al lado
+             *    quedaba apilado. `w-auto` lo devuelve al ancho de su contenido y
+             *    `min-w-56` le da el MISMO minimo que el disparador del `multi`.
+             *
+             * La altura ya casaba (`h-8` en el trigger y en el `Button` del multi); lo que
+             * rompia la fila era el ancho.
+             */
+            <Select
+              key={filtro.key}
+              aria-label={filtro.label}
+              labelPrefix={filtro.label}
+              className="w-auto min-w-56"
+              value={valores[0] ?? ""}
+              // R7: elegir un valor SUSTITUYE al anterior (nunca coexisten dos).
+              onValueChange={(v) => fijar(filtro.key, v ? [v] : [])}
+              options={visibles}
+              placeholder={filtro.placeholder}
+              disabled={inhabilitado}
+            />
+          );
+        }
+
+        return (
+          <DateRangeFilter
+            key={claveDeControl(filtro.key)}
+            label={filtro.label}
+            // Solo son atajos ofrecibles los que declaran QUE rango representan.
+            shortcuts={visibles.flatMap((o) =>
+              o.defaultRange
+                ? [{ value: o.value, label: o.label, ...o.defaultRange }]
+                : [],
+            )}
+            resetSignal={resetSignal}
+            disabled={inhabilitado}
+            placeholder={filtro.placeholder}
+            // R3/R10: sembrado desde la URL, el control debe MOSTRAR ese rango; sin esto
+            // el filtro estaria aplicado y el disparador diria "Cualquier fecha".
+            defaultRange={rangoInicial(filtro, inicial)}
+            // R18: un rango sin atajo y sin extremos es "sin seleccion" -> clave ausente.
+            onChange={(terna) =>
+              fijar(filtro.key, terna.some((p) => p !== "") ? [...terna] : [])
+            }
+          />
+        );
+      })}
+
+      {/* R22: "Limpiar todo" solo existe cuando hay algo que limpiar. Sin ningun
+          filtro activo no ocupa sitio ni ofrece una accion que no haria nada. */}
+      {showClearAll && Object.keys(seleccion).length > 0 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={limpiarTodo}
+        >
+          Limpiar todo
+        </Button>
+      ) : null}
+
+    </div>
+  );
+}

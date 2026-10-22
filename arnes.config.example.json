@@ -1,0 +1,46 @@
+{
+  "$comment": "Plantilla. /arnes-init la copia a arnes.config.json y la rellena con el humano. docs/equipo.md explica cada campo.",
+  "arnes_version": "2.7.0",
+  "plantilla": {
+    "url": "https://github.com/singularis-co/harness_config.git",
+    "ref": "main"
+  },
+  "jira": {
+    "site": "TU-SITIO.atlassian.net",
+    "project": "TU-PROYECTO",
+    "estados": {
+      "Por hacer": "pending",
+      "Spec en revisión": "spec_ready",
+      "En curso": "in_progress",
+      "Hecho": "done",
+      "Cancelado": "cancelled"
+    }
+  },
+  "ramas": {
+    "integracion": "dev",
+    "produccion": "main"
+  },
+  "cupos_por_persona": {
+    "frontend": 2,
+    "backend": 3,
+    "fullstack": 3
+  },
+  "perfil": {
+    "max_dias_sin_revisar": 60,
+    "docs": [
+      "docs/architecture.md",
+      "docs/conventions.md",
+      "docs/verification.md",
+      "docs/dependencias.md",
+      "docs/perfil-agentes.md",
+      "docs/checkpoints-proyecto.md"
+    ]
+  },
+  "gate": {
+    "$comment": "Proyectos de vitest que el gate completo exige ver en el informe (por ruta: *.test.tsx o tests/ui/ = ui; tests/integration/ = integration; resto = node). [] desactiva la comprobacion.",
+    "proyectos_vitest": [],
+    "siempre": [
+      "guard"
+    ]
+  }
+}

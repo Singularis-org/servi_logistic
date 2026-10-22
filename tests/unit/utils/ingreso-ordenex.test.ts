@@ -1,0 +1,628 @@
+import { describe, it, expect } from "vitest";
+import { Prisma } from "@prisma/client";
+import {
+  derivarIngresoOrden,
+  agregarIngresosPorConcepto,
+  costosListadoOrden,
+  pagoTiendaEmpresa,
+  costoEnvioDeTarifa,
+  desgloseCargaApi,
+  montoFulfillmentDeTarifa,
+  tieneFulfillment,
+  type OrdenIngresoInput,
+} from "@/lib/utils/ingreso-empresa";
+import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+
+// Feature 42 — tests del util PURO de ingreso de la empresa (R8/R9/R26). Money-safe: la
+// salida agregada es STRING escala 2; cero number/parseFloat.
+
+const TARIFA: TarifaVigente = {
+  valorFlete: "1000.00",
+  valorFleteGam: "1500.00",
+  valorFleteDevuelto: "400.00",
+  valorFleteDevueltoGam: "600.00",
+  comisionCod: "5.00", // 5%
+  ivaFlete: "13.00", // 13%
+  ivaComisionCod: "13.00", // 13%
+  // Sin pacto especial: estos tests cubren la tarifa NORMAL. El pacto por distrito especial
+  // tiene los suyos en `tarifa-especial-por-distrito.test.ts`.
+  tarifaEspecial: null,
+  tarifaEspecialDevuelta: null,
+};
+
+function input(overrides: Partial<OrdenIngresoInput> = {}): OrdenIngresoInput {
+  return {
+    resultado: "entregado",
+    esCentral: false,
+    esZonaEspecial: false,
+    montoCobrar: "10000.00",
+    cobraComision: true,
+    ...overrides,
+  };
+}
+
+describe("derivarIngresoOrden — entregada (R8)", () => {
+  it("no-central: flete = valorFlete + IVA flete (13% del flete)", () => {
+    const d = derivarIngresoOrden(input({ esCentral: false }), TARIFA);
+    expect(d.ingreso_flete?.toFixed(2)).toBe("1000.00");
+    expect(d.ingreso_iva_flete?.toFixed(2)).toBe("130.00"); // 1000 * 13%
+  });
+
+  it("central (esCentral): flete = valorFleteGam + IVA flete sobre el flete GAM", () => {
+    const d = derivarIngresoOrden(input({ esCentral: true }), TARIFA);
+    expect(d.ingreso_flete?.toFixed(2)).toBe("1500.00");
+    expect(d.ingreso_iva_flete?.toFixed(2)).toBe("195.00"); // 1500 * 13%
+  });
+
+  it("cobraComision=true: comision = % de montoCobrar + IVA de la comision", () => {
+    const d = derivarIngresoOrden(input({ cobraComision: true, montoCobrar: "10000.00" }), TARIFA);
+    expect(d.ingreso_comision_cod?.toFixed(2)).toBe("500.00"); // 10000 * 5%
+    expect(d.ingreso_iva_comision_cod?.toFixed(2)).toBe("65.00"); // 500 * 13%
+  });
+
+  it("cobraComision=false: comision y su IVA AUSENTES (no 0.00 forzado)", () => {
+    const d = derivarIngresoOrden(input({ cobraComision: false }), TARIFA);
+    expect(d.ingreso_comision_cod).toBeUndefined();
+    expect(d.ingreso_iva_comision_cod).toBeUndefined();
+    // el flete y su IVA siguen presentes.
+    expect(d.ingreso_flete?.toFixed(2)).toBe("1000.00");
+  });
+
+  it("montoCobrar null se trata como 0 -> comision 0.00 aunque cobraComision", () => {
+    const d = derivarIngresoOrden(input({ cobraComision: true, montoCobrar: null }), TARIFA);
+    expect(d.ingreso_comision_cod?.toFixed(2)).toBe("0.00");
+    expect(d.ingreso_iva_comision_cod?.toFixed(2)).toBe("0.00");
+  });
+});
+
+describe("derivarIngresoOrden — rechazada (R8; ficha 301)", () => {
+  it("rechazada no-central: flete devolucion + su IVA (mismo % ivaFlete), SIN comision", () => {
+    const d = derivarIngresoOrden(input({ resultado: "devolucion_a_origen_por_rechazo", esCentral: false }), TARIFA);
+    expect(d.ingreso_flete_devolucion?.toFixed(2)).toBe("400.00");
+    expect(d.ingreso_iva_flete_devolucion?.toFixed(2)).toBe("52.00"); // 400 * 13%
+    expect(d.ingreso_comision_cod).toBeUndefined();
+    expect(d.ingreso_iva_comision_cod).toBeUndefined();
+    expect(d.ingreso_flete).toBeUndefined();
+  });
+
+  it("rechazada central: flete devolucion GAM + su IVA", () => {
+    const d = derivarIngresoOrden(input({ resultado: "devolucion_a_origen_por_rechazo", esCentral: true }), TARIFA);
+    expect(d.ingreso_flete_devolucion?.toFixed(2)).toBe("600.00");
+    expect(d.ingreso_iva_flete_devolucion?.toFixed(2)).toBe("78.00"); // 600 * 13%
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// FICHA 301 (2026-08-28) — UNA DEVUELTA NO GENERA NADA.
+//
+// Es un cambio de REGLA DE NEGOCIO, no la correccion de un fallo: hasta esa fecha `devuelta`
+// cobraba el flete de devolucion + IVA igual que `rechazada`, por diseño de la F1.4. El
+// humano lo cambio con dos cierres solicitados encima: 9 ordenes devueltas a ₡2.400 de flete
+// devuelto GAM + 13 % = ₡24.408,00 que se habrian cobrado a las tiendas al aprobarlos.
+//
+// El bloque de abajo fija los CUATRO resultados de golpe, y esa totalidad es el punto: un
+// test que solo dijera "devuelta no cobra" tambien pasaria si se dejara de cobrar SIEMPRE,
+// que es la forma mas cara de romper esto. Mutaciones comprobadas contra estos casos:
+//   (a) devolver `devuelta` a la condicion  -> rojo en los casos `devuelta` y `reprogramada`;
+//   (b) sacar `rechazada` de la condicion   -> rojo en el caso `rechazada`.
+// ---------------------------------------------------------------------------------------
+describe("derivarIngresoOrden — los CUATRO resultados (ficha 301)", () => {
+  const CONCEPTOS_DEVOLUCION = ["ingreso_flete_devolucion", "ingreso_iva_flete_devolucion"] as const;
+
+  it("entregada: cobra el flete NORMAL + su IVA, y NADA de devolucion", () => {
+    const d = derivarIngresoOrden(input({ resultado: "entregado", esCentral: true }), TARIFA);
+    expect(d.ingreso_flete?.toFixed(2)).toBe("1500.00"); // columna GAM
+    expect(d.ingreso_iva_flete?.toFixed(2)).toBe("195.00");
+    for (const c of CONCEPTOS_DEVOLUCION) expect(d[c]).toBeUndefined();
+  });
+
+  it("rechazada: SIGUE cobrando el flete de devolucion + su IVA, con los mismos montos", () => {
+    // La mitad que NO cambia. Si esto se pusiera en cero, la empresa dejaria de facturar los
+    // retornos que si ocurren.
+    const d = derivarIngresoOrden(input({ resultado: "devolucion_a_origen_por_rechazo", esCentral: true }), TARIFA);
+    expect(d.ingreso_flete_devolucion?.toFixed(2)).toBe("600.00"); // valorFleteDevueltoGam
+    expect(d.ingreso_iva_flete_devolucion?.toFixed(2)).toBe("78.00"); // 600 * 13%
+    expect(d.ingreso_flete).toBeUndefined();
+  });
+
+  it("devuelta: NO APORTA A NINGUN CONCEPTO (objeto vacio, no ceros)", () => {
+    // `toEqual({})` y no "los seis en cero": un concepto AUSENTE no entra en el agregado; un
+    // 0.00 explicito si participa de la suma (ver `agregarIngresosPorConcepto`).
+    for (const esCentral of [false, true]) {
+      for (const esZonaEspecial of [false, true]) {
+        expect(
+          derivarIngresoOrden(input({ resultado: "novedad", esCentral, esZonaEspecial }), TARIFA),
+        ).toEqual({});
+      }
+    }
+  });
+
+  it("reprogramada: sigue sin aportar nada (no se movio de sitio)", () => {
+    expect(derivarIngresoOrden(input({ resultado: "reprogramado" }), TARIFA)).toEqual({});
+  });
+
+  it("devuelta y reprogramada dan lo MISMO; rechazada da algo DISTINTO de las dos", () => {
+    // La distincion explicita: la devuelta paso a comportarse como la reprogramada, y ni una
+    // ni otra se parecen a la rechazada. Una mutacion que dejara de cobrar SIEMPRE igualaria
+    // las tres y este caso se pondria rojo.
+    const devuelta = derivarIngresoOrden(input({ resultado: "novedad" }), TARIFA);
+    const reprogramada = derivarIngresoOrden(input({ resultado: "reprogramado" }), TARIFA);
+    const rechazada = derivarIngresoOrden(input({ resultado: "devolucion_a_origen_por_rechazo" }), TARIFA);
+    expect(devuelta).toEqual(reprogramada);
+    expect(rechazada).not.toEqual(devuelta);
+    expect(Object.keys(rechazada)).toHaveLength(2);
+  });
+
+  it("el cierre de los DOS cierres pendientes: 9 devueltas GAM ya no facturan ₡24.408,00", () => {
+    // Los numeros de la ficha 301, medidos en produccion el 2026-08-28 sobre los dos cierres
+    // solicitados y sin aprobar: 9 ordenes devueltas a ₡2.400,00 de flete devuelto GAM al
+    // 13 % de IVA. 9 * 2400 = 21.600 + 2.808 de IVA = 24.408,00.
+    const tarifaProd: TarifaVigente = {
+      ...TARIFA,
+      valorFleteDevueltoGam: "2400.00",
+      ivaFlete: "13.00",
+    };
+    const nueveDevueltas = Array.from({ length: 9 }, () => ({
+      input: input({ resultado: "novedad" as const, esCentral: true }),
+      tarifa: tarifaProd,
+    }));
+
+    // ANTES de la 301 esto emitia 21.600,00 + 2.808,00. Ahora no emite NINGUN concepto.
+    expect(agregarIngresosPorConcepto(nueveDevueltas)).toEqual([]);
+
+    // Y la contraprueba de que la tarifa y el escenario son los correctos: las MISMAS nueve
+    // ordenes, si acabaran rechazadas, si facturarian esos ₡24.408,00.
+    const nueveRechazadas = nueveDevueltas.map((g) => ({
+      ...g,
+      input: { ...g.input, resultado: "devolucion_a_origen_por_rechazo" as const },
+    }));
+    const agg = Object.fromEntries(
+      agregarIngresosPorConcepto(nueveRechazadas).map((a) => [a.categoria, a.monto]),
+    );
+    expect(agg.ingreso_flete_devolucion).toBe("21600.00");
+    expect(agg.ingreso_iva_flete_devolucion).toBe("2808.00");
+    expect(
+      new Prisma.Decimal(agg.ingreso_flete_devolucion)
+        .plus(agg.ingreso_iva_flete_devolucion)
+        .toFixed(2),
+    ).toBe("24408.00");
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// FICHA 247 — EL DOBLE COBRO, MEDIDO EN PRODUCCION (orden 63050 de una tienda: ₡2.200 + 13 % el
+// 2026-07-22 como `devuelta` y otra vez el 2026-07-28 como `rechazada`, sobrecoste ₡2.486).
+//
+// La 301 lo cierra por construccion: el primer cobro deja de existir. Este test lo AFIRMA
+// recorriendo el camino completo de aquella orden, para que quede rojo si alguien devuelve
+// `devuelta` a la condicion "por simetria".
+// ---------------------------------------------------------------------------------------
+describe("una devuelta que acaba rechazada cobra UNA sola vez (fichas 247/301)", () => {
+  const TARIFA_63050: TarifaVigente = { ...TARIFA, valorFleteDevueltoGam: "2200.00" };
+  const enGam = { esCentral: true as const };
+
+  it("los dos cierres de la orden 63050 juntos facturan el retorno UNA vez, al rechazarse", () => {
+    // Cierre del 2026-07-22: la gestion fue `devuelta`. Cierre del 28: `rechazada`.
+    const cierre22 = agregarIngresosPorConcepto([
+      { input: input({ resultado: "novedad", ...enGam }), tarifa: TARIFA_63050 },
+    ]);
+    const cierre28 = agregarIngresosPorConcepto([
+      { input: input({ resultado: "devolucion_a_origen_por_rechazo", ...enGam }), tarifa: TARIFA_63050 },
+    ]);
+
+    // El primer cierre no factura NADA por esa orden: ahi estaba el sobrecoste.
+    expect(cierre22).toEqual([]);
+
+    // El segundo factura el retorno una vez: 2200 + 13% = 2486.00, que es exactamente el
+    // sobrecoste que la 247 midio como cobrado DE MAS.
+    const c28 = Object.fromEntries(cierre28.map((a) => [a.categoria, a.monto]));
+    expect(c28.ingreso_flete_devolucion).toBe("2200.00");
+    expect(c28.ingreso_iva_flete_devolucion).toBe("286.00");
+
+    // Suma de los DOS cierres = un solo cobro de retorno, no dos.
+    const total = [...cierre22, ...cierre28]
+      .filter((a) => a.categoria.includes("devolucion"))
+      .reduce((acc, a) => acc.plus(a.monto), new Prisma.Decimal(0));
+    expect(total.toFixed(2)).toBe("2486.00");
+  });
+
+  it("y da igual cuantas devueltas haya antes del rechazo: el retorno se cobra una vez", () => {
+    // Tres intentos fallidos (cron de SLA liberando y reprogramando) y un rechazo final.
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "novedad", ...enGam }), tarifa: TARIFA_63050 },
+      { input: input({ resultado: "novedad", ...enGam }), tarifa: TARIFA_63050 },
+      { input: input({ resultado: "novedad", ...enGam }), tarifa: TARIFA_63050 },
+      { input: input({ resultado: "devolucion_a_origen_por_rechazo", ...enGam }), tarifa: TARIFA_63050 },
+    ]);
+    const map = Object.fromEntries(agg.map((a) => [a.categoria, a.monto]));
+    expect(map.ingreso_flete_devolucion).toBe("2200.00"); // x1, no x4
+    expect(map.ingreso_iva_flete_devolucion).toBe("286.00");
+  });
+});
+
+describe("derivarIngresoOrden — reprogramada y gap de tarifa (R8/R9)", () => {
+  it("reprogramado -> ningun concepto", () => {
+    const d = derivarIngresoOrden(input({ resultado: "reprogramado" }), TARIFA);
+    expect(d).toEqual({});
+  });
+
+  it("R9: tarifa null -> objeto vacio, sin lanzar (todos los conceptos 0.00 en el agregado)", () => {
+    expect(() => derivarIngresoOrden(input(), null)).not.toThrow();
+    expect(derivarIngresoOrden(input(), null)).toEqual({});
+  });
+});
+
+describe("agregarIngresosPorConcepto (R10)", () => {
+  it("cierre solo-entregada con comision: emite flete, iva flete, comision, iva comision; NO devolucion", () => {
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "entregado" }), tarifa: TARIFA },
+      { input: input({ resultado: "entregado" }), tarifa: TARIFA },
+    ]);
+    const map = Object.fromEntries(agg.map((a) => [a.categoria, a.monto]));
+    expect(map.ingreso_flete).toBe("2000.00");
+    expect(map.ingreso_iva_flete).toBe("260.00");
+    expect(map.ingreso_comision_cod).toBe("1000.00");
+    expect(map.ingreso_iva_comision_cod).toBe("130.00");
+    // R10: sin devoluciones, NO se emiten esos conceptos.
+    expect(map.ingreso_flete_devolucion).toBeUndefined();
+    expect(map.ingreso_iva_flete_devolucion).toBeUndefined();
+  });
+
+  it("cierre sin comision (cobraComision=false): NO emite comision ni su IVA", () => {
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "entregado", cobraComision: false }), tarifa: TARIFA },
+    ]);
+    const cats = agg.map((a) => a.categoria);
+    expect(cats).toContain("ingreso_flete");
+    expect(cats).not.toContain("ingreso_comision_cod");
+    expect(cats).not.toContain("ingreso_iva_comision_cod");
+  });
+
+  it("cierre mixto (entregada + rechazada): emite conceptos de ambos caminos", () => {
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "entregado", cobraComision: true }), tarifa: TARIFA },
+      { input: input({ resultado: "devolucion_a_origen_por_rechazo" }), tarifa: TARIFA },
+    ]);
+    const cats = agg.map((a) => a.categoria);
+    expect(cats).toEqual(
+      expect.arrayContaining([
+        "ingreso_flete",
+        "ingreso_iva_flete",
+        "ingreso_comision_cod",
+        "ingreso_iva_comision_cod",
+        "ingreso_flete_devolucion",
+        "ingreso_iva_flete_devolucion",
+      ]),
+    );
+  });
+
+  it("ficha 301: una devuelta dentro de un cierre mixto NO añade ningun concepto", () => {
+    // El mismo cierre, con y sin la devuelta: byte a byte lo mismo. Si la devuelta volviera a
+    // facturar, el segundo agregado traeria dos conceptos mas y montos distintos.
+    const entregada = { input: input({ resultado: "entregado" as const }), tarifa: TARIFA };
+    const sinDevuelta = agregarIngresosPorConcepto([entregada]);
+    const conDevuelta = agregarIngresosPorConcepto([
+      entregada,
+      { input: input({ resultado: "novedad" }), tarifa: TARIFA },
+      { input: input({ resultado: "novedad", esCentral: true }), tarifa: TARIFA },
+    ]);
+    expect(conDevuelta).toEqual(sinDevuelta);
+    expect(conDevuelta.map((a) => a.categoria)).not.toContain("ingreso_flete_devolucion");
+  });
+
+  it("R9/R10: todas sin tarifa -> ningun concepto (todo 0.00, omitidos)", () => {
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "entregado" }), tarifa: null },
+      { input: input({ resultado: "novedad" }), tarifa: null },
+    ]);
+    expect(agg).toEqual([]);
+  });
+
+  it("salida STRING escala 2 (money-safe)", () => {
+    const agg = agregarIngresosPorConcepto([{ input: input(), tarifa: TARIFA }]);
+    for (const a of agg) {
+      expect(typeof a.monto).toBe("string");
+      expect(a.monto).toMatch(/^\d+\.\d{2}$/);
+    }
+  });
+
+  it("suma Decimal exacta (sin drift de float): 0.10 + 0.20 en montos derivados", () => {
+    // tarifa con flete que produce centavos que un float acumularia mal.
+    const t: TarifaVigente = { ...TARIFA, valorFlete: "0.10", ivaFlete: "0" };
+    const agg = agregarIngresosPorConcepto([
+      { input: input({ resultado: "entregado", cobraComision: false }), tarifa: t },
+      { input: input({ resultado: "entregado", cobraComision: false }), tarifa: { ...t, valorFlete: "0.20" } },
+    ]);
+    const map = Object.fromEntries(agg.map((a) => [a.categoria, a.monto]));
+    expect(new Prisma.Decimal(map.ingreso_flete).toFixed(2)).toBe("0.30");
+  });
+});
+
+// Pago a la tienda: lo RECIBIDO en el cierre menos lo que la empresa le factura sobre esa plata.
+describe("pagoTiendaEmpresa", () => {
+  it("resta al total general el flete + IVA y la comision + IVA", () => {
+    expect(pagoTiendaEmpresa("25000.00", "2825.00", "847.50")).toBe("21327.50");
+  });
+
+  it("es NEGATIVO si lo facturado supera lo recibido", () => {
+    expect(pagoTiendaEmpresa("100.00", "2825.00", "847.50")).toBe("-3572.50");
+  });
+
+  it("resta Decimal exacta (sin drift de float) y sale STRING escala 2", () => {
+    // 0.30 - 0.10 - 0.20 en float da 5.55e-17; con Decimal es 0.00 exacto.
+    expect(pagoTiendaEmpresa("0.30", "0.10", "0.20")).toBe("0.00");
+  });
+});
+
+// Feature 98 (T2) — costoEnvioDeTarifa: FLETE + IVA del flete (D2), money-safe STRING escala 2
+// (R7), gap -> "0.00" (R8/D1). Mapea R2, R7, R8.
+describe("costoEnvioDeTarifa (feature 98)", () => {
+  it("R2/R7: no-central -> valorFlete + IVA del flete (1000 + 13% = 1130.00)", () => {
+    expect(costoEnvioDeTarifa(TARIFA, false, false)).toBe("1130.00");
+  });
+
+  it("R2/R7: central (esCentral) -> valorFleteGam + IVA del flete (1500 + 13% = 1695.00)", () => {
+    expect(costoEnvioDeTarifa(TARIFA, true, false)).toBe("1695.00");
+  });
+
+  it("R8/D1: tarifa null (tienda sin tarifa vigente) -> '0.00', no lanza", () => {
+    expect(costoEnvioDeTarifa(null, false, false)).toBe("0.00");
+    expect(costoEnvioDeTarifa(null, true, false)).toBe("0.00");
+  });
+
+  it("R7: ivaFlete = 0 -> costoEnvio == flete base (sin IVA)", () => {
+    const sinIva: TarifaVigente = { ...TARIFA, ivaFlete: "0.00" };
+    expect(costoEnvioDeTarifa(sinIva, false, false)).toBe("1000.00");
+    expect(costoEnvioDeTarifa(sinIva, true, false)).toBe("1500.00");
+  });
+
+  it("R7: IVA no trivial (15%) con redondeo ROUND_HALF_UP money-safe", () => {
+    // flete 3.50 * 15% = 0.525 -> HALF_UP 0.53 -> total 4.03 (no 4.02 de truncar).
+    const t: TarifaVigente = { ...TARIFA, valorFlete: "3.50", ivaFlete: "15.00" };
+    expect(costoEnvioDeTarifa(t, false, false)).toBe("4.03");
+  });
+
+  it("R7: salida SIEMPRE STRING escala 2 (nunca number)", () => {
+    const c = costoEnvioDeTarifa(TARIFA, false, false);
+    expect(typeof c).toBe("string");
+    expect(c).toMatch(/^\d+\.\d{2}$/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Feature 204 — `costosListadoOrden`: los dos importes derivados de las columnas
+// "Flete + IVA" y "Comisión + IVA" de `/ordenes`, que hasta ahora calculaba el NAVEGADOR.
+//
+// Los importes esperados de este bloque NO están elegidos por su estética: son los que
+// midieron la ficha. Se comparó, orden a orden, lo que la tabla pintaba contra lo que
+// factura el cierre, sobre las 66 órdenes con tarifa activa de la base. 14 no coincidían.
+// Cada caso de abajo lleva ANOTADO lo que daba el navegador, y el último test lo COMPRUEBA
+// ejecutando la fórmula vieja: si un día alguien "arregla" el servidor para que coincida con
+// el navegador, este bloque se pone rojo en vez de dejar pasar el céntimo.
+// ---------------------------------------------------------------------------------------
+
+// La tarifa REAL de la base (la única fila `activo`), no una inventada.
+const TARIFA_REAL: TarifaVigente = {
+  valorFlete: "3000.00",
+  valorFleteGam: "2000.00",
+  valorFleteDevuelto: "1500.00",
+  valorFleteDevueltoGam: "1000.00",
+  comisionCod: "3.50",
+  ivaFlete: "13.00",
+  ivaComisionCod: "13.00",
+  tarifaEspecial: null,
+  tarifaEspecialDevuelta: null,
+};
+
+function orden(montoCobrar: string | null, extra: { esCentral?: boolean; cobraComision?: boolean } = {}) {
+  return { esCentral: false, esZonaEspecial: false, montoCobrar, cobraComision: true, ...extra };
+}
+
+describe("costosListadoOrden (feature 204) — comisión + IVA, con los montos reales", () => {
+  // Medio exacto en el tercer decimal: la comisión es 521.50 clavada y su IVA, 67.795.
+  // Decimal HALF_UP sube a 67.80; el navegador hacía 521.5 * 1.13, que en binario vale
+  // 589.29499999999995907, y `toFixed(2)` BAJABA a 589.29.
+  it("14900.00 al 3.50% + IVA 13% -> 589.30 (el navegador pintaba 589.29)", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("14900.00")).comisionConIva).toBe("589.30");
+  });
+
+  // Doble redondeo: la comisión exacta es 581.644 y el servidor la REDONDEA a 581.64 antes
+  // de aplicarle el IVA. El navegador se lo aplicaba sin redondear (581.644 * 1.13) y subía.
+  // Este caso no es de binario: es otra fórmula.
+  it("16618.40 al 3.50% + IVA 13% -> 657.25 (el navegador pintaba 657.26)", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("16618.40")).comisionConIva).toBe("657.25");
+  });
+
+  it("6500.00 -> 257.08 (el navegador pintaba 257.07)", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("6500.00")).comisionConIva).toBe("257.08");
+  });
+
+  it("12900.00 -> 510.20 (el navegador pintaba 510.19)", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("12900.00")).comisionConIva).toBe("510.20");
+  });
+
+  it("14618.40 -> 578.15 (el navegador pintaba 578.16)", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("14618.40")).comisionConIva).toBe("578.15");
+  });
+
+  it("17700.00 -> 700.04, donde los dos caminos YA coincidían", () => {
+    // Contrapeso: la mayoría de las órdenes no cambian de valor. Si este caso se moviera,
+    // el arreglo habría desplazado importes que estaban bien.
+    expect(costosListadoOrden(TARIFA_REAL, orden("17700.00")).comisionConIva).toBe("700.04");
+  });
+
+  it("es EXACTAMENTE lo que factura el cierre: comisión + su IVA de derivarIngresoOrden", () => {
+    // La garantía estructural, no por valor: el listado no puede divergir del cierre porque
+    // sale de la misma función.
+    for (const monto of ["14900.00", "16618.40", "6500.00", "0.00", "33.33"]) {
+      const d = derivarIngresoOrden(
+        { resultado: "entregado", esCentral: false, esZonaEspecial: false, montoCobrar: monto, cobraComision: true },
+        TARIFA_REAL,
+      );
+      const esperado = d.ingreso_comision_cod!.plus(d.ingreso_iva_comision_cod!).toFixed(2);
+      expect(costosListadoOrden(TARIFA_REAL, orden(monto)).comisionConIva).toBe(esperado);
+    }
+  });
+});
+
+describe("costosListadoOrden (feature 204) — flete + IVA", () => {
+  it("con la tarifa REAL (flete redondo) los dos caminos coincidían: 3000 + 13% = 3390.00", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("0.00")).fleteConIva).toBe("3390.00");
+  });
+
+  it("esCentral elige la columna GAM: 2000 + 13% = 2260.00", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden("0.00", { esCentral: true })).fleteConIva).toBe(
+      "2260.00",
+    );
+  });
+
+  // El fallo del flete estaba LATENTE: no aparece con 3000.00, aparece con cualquier flete
+  // acabado en .50 al 13% (2500.50 * 13% = 325.065, medio exacto que HALF_UP sube).
+  it("2500.50 al 13% -> 2825.57 (el navegador habría pintado 2825.56)", () => {
+    const t: TarifaVigente = { ...TARIFA_REAL, valorFlete: "2500.50" };
+    expect(costosListadoOrden(t, orden("0.00")).fleteConIva).toBe("2825.57");
+  });
+
+  it("coincide con costoEnvioDeTarifa, que ya derivaba esta misma cifra en el servidor", () => {
+    for (const flete of ["3000.00", "2500.50", "0.10", "1.00"]) {
+      const t: TarifaVigente = { ...TARIFA_REAL, valorFlete: flete };
+      expect(costosListadoOrden(t, orden("0.00")).fleteConIva).toBe(costoEnvioDeTarifa(t, false, false));
+    }
+  });
+});
+
+describe("costosListadoOrden (feature 204) — degradación y contrato de salida", () => {
+  it("sin tarifa vigente los dos importes son '0.00' (R9), no null ni error", () => {
+    expect(costosListadoOrden(null, orden("14900.00"))).toEqual({
+      fleteConIva: "0.00",
+      comisionConIva: "0.00",
+      // Sin tarifa NINGUNA no hay pacto que faltar: el origen es `normal`, no un aviso.
+      fleteOrigen: "normal",
+    });
+  });
+
+  it("orden que NO cobra comisión: comisión 0.00 y el flete intacto", () => {
+    const c = costosListadoOrden(TARIFA_REAL, orden("14900.00", { cobraComision: false }));
+    expect(c.comisionConIva).toBe("0.00");
+    expect(c.fleteConIva).toBe("3390.00");
+  });
+
+  it("montoCobrar null (orden sin COD) -> comisión 0.00", () => {
+    expect(costosListadoOrden(TARIFA_REAL, orden(null)).comisionConIva).toBe("0.00");
+  });
+
+  it("los dos campos son SIEMPRE STRING de escala 2", () => {
+    for (const t of [TARIFA_REAL, null]) {
+      const c = costosListadoOrden(t, orden("14900.00"));
+      expect(c.fleteConIva).toMatch(/^\d+\.\d{2}$/);
+      expect(c.comisionConIva).toMatch(/^\d+\.\d{2}$/);
+    }
+  });
+});
+
+describe("costosListadoOrden (feature 204) — CONTRAPRUEBA: la fórmula del navegador difería", () => {
+  // Sin esto, los valores de arriba podrían ser los mismos que ya daba el navegador y todo
+  // el arreglo sería decorativo. Aquí se EJECUTA la aritmética que vivía en
+  // `ordenes-columns.tsx` y se afirma, monto a monto, que da otra cosa.
+  const comisionEnElNavegador = (monto: number, pct: number, iva: number): string =>
+    (monto * (pct / 100) * (1 + iva / 100)).toFixed(2);
+  const fleteEnElNavegador = (flete: number, iva: number): string =>
+    (flete * (1 + iva / 100)).toFixed(2);
+
+  it.each([
+    { caso: "14900.00 -> 589.30, no 589.29", monto: "14900.00", montoNum: 14900, servidorEsperado: "589.30", navegadorEsperado: "589.29" },
+    { caso: "16618.40 -> 657.25, no 657.26", monto: "16618.40", montoNum: 16618.4, servidorEsperado: "657.25", navegadorEsperado: "657.26" },
+    { caso: "6500.00 -> 257.08, no 257.07", monto: "6500.00", montoNum: 6500, servidorEsperado: "257.08", navegadorEsperado: "257.07" },
+    { caso: "12900.00 -> 510.20, no 510.19", monto: "12900.00", montoNum: 12900, servidorEsperado: "510.20", navegadorEsperado: "510.19" },
+    { caso: "14618.40 -> 578.15, no 578.16", monto: "14618.40", montoNum: 14618.4, servidorEsperado: "578.15", navegadorEsperado: "578.16" },
+  ])("comisión de $caso — y NO son el mismo número", ({
+    monto,
+    montoNum,
+    servidorEsperado: esperadoServidor,
+    navegadorEsperado: esperadoNavegador,
+  }) => {
+    const servidor = costosListadoOrden(TARIFA_REAL, orden(monto)).comisionConIva;
+    const navegador = comisionEnElNavegador(montoNum, 3.5, 13);
+    expect(servidor).toBe(esperadoServidor);
+    expect(navegador).toBe(esperadoNavegador);
+    expect(servidor).not.toBe(navegador);
+    // Y la desviación es de un céntimo, en los dos sentidos.
+    expect(new Prisma.Decimal(navegador).minus(servidor).abs().toFixed(2)).toBe("0.01");
+  });
+
+  it("flete 2500.50 al 13%: servidor 2825.57, navegador 2825.56", () => {
+    const t: TarifaVigente = { ...TARIFA_REAL, valorFlete: "2500.50" };
+    expect(costosListadoOrden(t, orden("0.00")).fleteConIva).toBe("2825.57");
+    expect(fleteEnElNavegador(2500.5, 13)).toBe("2825.56");
+  });
+
+  it("y donde el navegador ya acertaba, el servidor da lo MISMO (no se movió nada más)", () => {
+    for (const [monto, montoNum] of [
+      ["17700.00", 17700],
+      ["10900.00", 10900],
+      ["21000.00", 21000],
+    ] as const) {
+      expect(costosListadoOrden(TARIFA_REAL, orden(monto)).comisionConIva).toBe(
+        comisionEnElNavegador(montoNum, 3.5, 13),
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FULFILLMENT (2026-08-25) — el monto fijo de bodega: predicado y desglose.
+//
+// Vive FUERA de `derivarIngresoOrden` a proposito: la liquidacion (cierre y wallets) no lo
+// factura, y estos tests fijan esa frontera tanto como la aritmetica.
+// ---------------------------------------------------------------------------
+describe("fulfillment (2026-08-25)", () => {
+  const conMonto = (fulfillment: string) => ({ ...TARIFA, fulfillment });
+
+  it("tieneFulfillment: el predicado es `> 0`, no la presencia del campo", () => {
+    expect(tieneFulfillment(conMonto("2.00"))).toBe(true);
+    expect(tieneFulfillment(conMonto("0.01"))).toBe(true);
+    expect(tieneFulfillment(conMonto("0.00"))).toBe(false);
+    // Sin tarifa no hay servicio de bodega que cobrar (mismo gap seguro que R9).
+    expect(tieneFulfillment(null)).toBe(false);
+  });
+
+  it("montoFulfillmentDeTarifa: el monto exacto, y cero sin tarifa", () => {
+    expect(montoFulfillmentDeTarifa(conMonto("2.50")).toFixed(2)).toBe("2.50");
+    expect(montoFulfillmentDeTarifa(null).toFixed(2)).toBe("0.00");
+  });
+
+  it("desgloseCargaApi: `costoEnvio` suma el fulfillment y el desglose lo aisla", () => {
+    // 1000 + 13% = 1130.00, mas 250.00 de bodega.
+    expect(desgloseCargaApi(conMonto("250.00"), false, false)).toEqual({
+      costoEnvio: "1380.00",
+      fulfillment: "250.00",
+    });
+    // La variante GAM elige la otra columna del flete y el monto de bodega no cambia.
+    expect(desgloseCargaApi(conMonto("250.00"), true, false)).toEqual({
+      costoEnvio: "1945.00",
+      fulfillment: "250.00",
+    });
+  });
+
+  it("sin fulfillment, `costoEnvio` es EXACTAMENTE el de antes de la fecha", () => {
+    const sin = desgloseCargaApi(conMonto("0.00"), false, false);
+    expect(sin.costoEnvio).toBe(costoEnvioDeTarifa(TARIFA, false, false));
+    expect(sin.fulfillment).toBe("0.00");
+  });
+
+  it("sin tarifa el desglose degrada a cero por los dos lados, sin lanzar", () => {
+    expect(desgloseCargaApi(null, false, false)).toEqual({
+      costoEnvio: "0.00",
+      fulfillment: "0.00",
+    });
+  });
+
+  it("NO entra en la liquidacion: `derivarIngresoOrden` ignora el monto por completo", () => {
+    const sin = derivarIngresoOrden(input(), conMonto("0.00"));
+    const con = derivarIngresoOrden(input(), conMonto("999.00"));
+    // Los seis conceptos que alimentan cierre y wallets son identicos. Si un dia el
+    // fulfillment tiene que liquidarse, se decide ahi dentro y con su propia migracion de
+    // `cierre_detail` — no colandose por el objeto tarifa.
+    expect(JSON.stringify(con)).toBe(JSON.stringify(sin));
+  });
+});

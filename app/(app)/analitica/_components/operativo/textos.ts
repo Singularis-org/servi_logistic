@@ -1,0 +1,285 @@
+// Feature 131 (T1.4) — TEXTOS de UI del tablero operativo.
+//
+// Modulo PURO: sin React, sin DOM, sin imports de runtime salvo `lib/utils/fecha-cr`
+// (calendario de Costa Rica) y `lib/utils/hora-cr` (hora, con `Intl`). Se prueba invocandolo.
+//
+// R7 — LA FECHA DEL HORIZONTE DEL HISTORIAL NO SE ESCRIBE AQUI. Ni como literal, ni
+// como constante propia, ni "para el texto del aviso". El aviso de cobertura se DERIVA
+// de `cobertura.fechasNoComparables`, que ya viene en el payload. El censo
+// `tests/unit/analytics/operativa-cobertura.test.ts` ("el horizonte se importa de la 125
+// y no se reescribe") recorre `app/`, `lib/`, `components/`, `hooks/`, `providers/` y
+// `scripts/` y exige que esa fecha aparezca en UN solo archivo del arbol: escribirla aqui
+// lo pone rojo, este donde este.
+//
+// R4/R2 — «prohibido», «sesion no valida» y «vacio» son TRES textos distintos a
+// proposito: si se reusan, tres problemas distintos se leen como el mismo pixel.
+
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { horaCostaRica } from "@/lib/utils/hora-cr";
+
+import type { PuntoSerie } from "@/lib/types/analitica-operativa";
+
+/* -------------------------------------------------------------------------- */
+/* Hora de Costa Rica (R8)                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Hora de pared de Costa Rica de un instante ISO. Vive en `lib/utils/hora-cr.ts` desde la
+ * 458-A (la lee tambien un servicio); se re-exporta para sus consumidores de siempre.
+ */
+export { horaCostaRica };
+
+/* -------------------------------------------------------------------------- */
+/* R8 / D2 — el dia en curso, marcado POR TEXTO                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R8/D2 — la categoria de un punto. El dia en curso viaja `parcial: true` con su
+ * `corteAt` y se distingue **por texto**, no solo por color: un color no lo lee un
+ * lector de pantalla, y en `SerieTextual` (el equivalente accesible de la grafica)
+ * no hay color que leer.
+ *
+ * Es el punto de mutacion de R8: devolver aqui solo `punto.fecha` deja el dia en curso
+ * indistinguible de un dia cerrado.
+ */
+export function categoriaDePunto(punto: PuntoSerie): string {
+  if (punto.parcial !== true) return punto.fecha;
+  const hora = punto.corteAt ? horaCostaRica(punto.corteAt) : "";
+  return hora === ""
+    ? `${punto.fecha} (dia en curso, parcial)`
+    : `${punto.fecha} (dia en curso, parcial al corte de las ${hora} de Costa Rica)`;
+}
+
+/** R9 — un agregado que incluye el dia en curso NO se presenta como cerrado. */
+export function textoTotalParcial(corteAt?: string): string {
+  const hora = corteAt ? horaCostaRica(corteAt) : "";
+  return hora === ""
+    ? "Total parcial: incluye el dia en curso, que aun no ha cerrado."
+    : `Total parcial: incluye el dia en curso, con datos hasta las ${hora} de Costa Rica.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* R5 / R6 / D1 — la ventana ciega, en UN solo aviso                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R5/D1 — recuento y extremos, derivados de la lista que llega en el payload. Las
+ * fechas vienen en orden ascendente (el servicio las deriva de `fechasDelRango`), asi
+ * que los extremos son `[0]` y `[n-1]`.
+ *
+ * Se declara CUANTAS son y CUALES son sus extremos porque un cero que en realidad es
+ * «no hay dato» pintado como un cero normal es una mentira en pantalla: el rollup no
+ * cubre esas fechas y las medidas salen a cero LEGITIMAMENTE.
+ */
+export function textoCobertura(fechasNoComparables: readonly string[]): string {
+  const n = fechasNoComparables.length;
+  const primera = fechasNoComparables[0] ?? "";
+  const ultima = fechasNoComparables[n - 1] ?? "";
+  const extremos = n === 1 ? `(${primera})` : `(de ${primera} a ${ultima})`;
+  const cuantas = n === 1 ? "1 fecha del rango no es comparable" : `${n} fechas del rango no son comparables`;
+  return (
+    `${cuantas} ${extremos}: el historial de estados no las cubre, ` +
+    "asi que sus medidas salen a cero porque no hay dato, no porque no hubiera actividad."
+  );
+}
+
+/**
+ * R6 — la limitacion PERMANENTE (`cobertura.penumbra`), declarada en el mismo aviso.
+ * NO se estima, NO se rellena y NO se convierte en un numero: `PENUMBRA` es una cadena
+ * cerrada justamente para que no haya nada que calcular.
+ */
+export const TEXTO_PENUMBRA =
+  "Ademas, y de forma permanente: las ordenes que ya estaban vivas cuando empezo el " +
+  "historial y nunca volvieron a cambiar de estado no entran en ningun dia. Esa " +
+  "cantidad no se estima ni se rellena.";
+
+export const TITULO_COBERTURA = "Cobertura incompleta del rango";
+
+/* -------------------------------------------------------------------------- */
+/* R2 / R3 / R4 / R24 — los cuatro estados que NO son «sin datos»              */
+/* -------------------------------------------------------------------------- */
+
+export const TEXTO_PROHIBIDO =
+  "No tienes acceso a esta metrica. No se muestra ninguna cifra para este panel.";
+
+export const TEXTO_SESION_NO_VALIDA =
+  "Tu sesion no es valida o ha caducado. Vuelve a iniciar sesion para consultar este panel.";
+
+/**
+ * R24 — mensaje SANEADO. Fijo y sin interpolar nada del error ni del filtro: el
+ * mensaje de una excepcion puede arrastrar ids de orden, guias o telefonos, y el filtro
+ * crudo puede arrastrar ids de mensajero.
+ */
+export const TEXTO_ERROR_PANEL =
+  "No se pudo consultar esta metrica. Vuelve a intentarlo con el boton de actualizar.";
+
+/** R3 — nombre humano de cada campo del filtro, para colgar de el su error. */
+const ETIQUETA_CAMPO: Readonly<Record<string, string>> = {
+  rango: "Rango",
+  desde: "Desde",
+  hasta: "Hasta",
+  zona_id: "Zona",
+  tienda_id: "Tienda",
+  mensajero_id: "Mensajero",
+  _: "Filtro",
+};
+
+export function etiquetaDeCampo(clave: string): string {
+  return ETIQUETA_CAMPO[clave] ?? clave;
+}
+
+/** R3 — «Zona: la lista no puede estar vacia». Nunca «sin datos». */
+export function lineasDeValidacion(
+  fieldErrors: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  return Object.entries(fieldErrors).flatMap(([clave, mensajes]) =>
+    mensajes.map((mensaje) => `${etiquetaDeCampo(clave)}: ${mensaje}`),
+  );
+}
+
+export const TITULO_FILTRO_INVALIDO = "El filtro no es valido";
+
+/* -------------------------------------------------------------------------- */
+/* R15 / R16 / R17 / R27 — lo que se hizo con los numeros, dicho en voz alta    */
+/* -------------------------------------------------------------------------- */
+
+/** R15 — cuantas categorias se metieron en «otros». */
+export function textoOtros(agrupadas: number): string {
+  return (
+    `Se agruparon ${agrupadas} categorias en «otros» para no repetir color entre segmentos. ` +
+    "El bloque «otros» no es una categoria del negocio: es la suma de la cola."
+  );
+}
+
+/** R16 — el grano usado, anunciado. Es la semana que el CLIENTE sumo, y solo de conteos. */
+export function textoGrano(grano: "dia" | "semana"): string {
+  return grano === "semana"
+    ? "El rango supera lo que cabe en un eje diario: los conteos se muestran sumados por semana."
+    : "Los datos se muestran por dia.";
+}
+
+/* -------------------------------------------------------------------------- */
+/* Feature 182 — la cifra del periodo y la semana DEL SERVIDOR                 */
+/* -------------------------------------------------------------------------- */
+
+// El aviso de «rango demasiado largo» de la 131 (`TEXTO_RANGO_EXCEDIDO` /
+// `TITULO_RANGO_EXCEDIDO`) SE RETIRA aqui (R16): declaraba un hueco —«no hay forma honesta
+// de calcular esta cifra»— que dejo de existir cuando la 176 puso a sumar antes de dividir
+// en el servidor. Dejarlo exportado y sin uso seria codigo muerto con texto de UI propio,
+// que es justo lo que un guardia futuro puede acabar censando creyendo que vigila algo
+// vivo. Su ausencia esta afirmada en `tests/unit/analytics/tablero-agregado-frontera.guardia.test.ts`.
+
+/** R4 — etiqueta de la cifra total. El «de que» y el «de cuando», en el mismo renglon. */
+export function etiquetaTotalPeriodo(titulo: string): string {
+  return `${titulo} · total del periodo`;
+}
+
+/**
+ * R14 — el grano SERVIDO, anunciado. Texto distinto al de la semana del cliente a
+ * proposito: no es la misma afirmacion. Aqui el servidor sumo los componentes de cada
+ * semana y dividio una sola vez; alli el cliente sumo conteos diarios.
+ */
+export const TEXTO_GRANO_SERVIDOR =
+  "El rango supera lo que cabe en un eje diario: se muestra una semana por punto, " +
+  "calculada por el servidor sumando antes de dividir.";
+
+/**
+ * R7 — «no hubo gestiones» NO es «no hay dato» y NO es un cero.
+ *
+ * Es el valor que el modo agregado anadio al contrato (D2 de la 176): con el denominador
+ * a la vista, el cero legitimo y el dato ausente dejan de ser el mismo pixel. Texto propio
+ * y distinto de `VACIO_PANEL`: aquel habla de una metrica sin movimiento en el rango, este
+ * de un periodo en el que no hubo nada que dividir.
+ */
+export const TEXTO_SIN_GESTIONES =
+  "No hubo ninguna gestion en el periodo, asi que esta cifra no se puede calcular. " +
+  "No es un cero: es la ausencia del denominador.";
+
+/** Aviso de recorte que consume el paquete de la 130 (`avisoRecorte`). */
+export function avisoRecorte(mostradas: number, recibidas: number): string {
+  return `Se muestran ${mostradas} de ${recibidas}; el resto no cabe en este panel.`;
+}
+
+/** R35 de la 126 — `sin_gestionar` es DEL DIA (universo B2), no acumulada. */
+export const TEXTO_NOTA_SIN_GESTIONAR =
+  "Cuenta las órdenes en Novedad interna de cada día, no un acumulado que arrastre días anteriores.";
+
+/* -------------------------------------------------------------------------- */
+/* Vacio y control de actualizacion                                            */
+/* -------------------------------------------------------------------------- */
+
+/** El vacio habla de LA METRICA SIN DATOS EN EL RANGO (R25 de la 130). */
+export const VACIO_PANEL = {
+  titulo: "Sin datos en el rango",
+  descripcion: "Esta metrica no registro ningun movimiento con el filtro seleccionado.",
+} as const;
+
+/**
+ * R22 — el filtro apagado DICE por que lo esta. Un selector deshabilitado y mudo se lee
+ * como un control roto de la pantalla, no como un catalogo que no contesto.
+ */
+export const TEXTO_FILTROS_DEGRADADOS =
+  "Algun filtro no esta disponible ahora mismo porque su catalogo no respondio. " +
+  "El tablero sigue funcionando con los filtros restantes.";
+
+/* -------------------------------------------------------------------------- */
+/* Feature 133 (T4.4) — R24 / R25: el ROTULO DE ALCANCE                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R24 — sobre que universo estan calculadas las cifras, dicho UNA vez para todo el
+ * tablero. Sin esta frase, un `adminTienda` lee «Ordenes creadas: 812» como el total del
+ * negocio.
+ *
+ * R25 — es una frase sobre el ALCANCE, no un dato: ni uuid, ni nombre de tienda, ni de
+ * zona, ni de persona. Nada de lo que hay aqui se interpola.
+ *
+ * Q5 (cerrada) — un texto por TIPO DE ALCANCE, no por rol. Si fuese por rol, esto seria
+ * la segunda tabla `rol -> …` que R8/R37 de la 122 prohiben por escrito, y ademas habria
+ * que tocarlo cada vez que un rol cambie de alcance. El tipo lo resuelve la 122.
+ */
+export type AlcanceTablero = "global" | "zona" | "tienda" | "mensajero" | "denegado";
+
+/**
+ * `global` no lleva rotulo: ahi las cifras SI son las del negocio entero y una frase que
+ * lo dijera solo seria ruido permanente (R24 pide la indicacion MIENTRAS el alcance no sea
+ * global).
+ *
+ * `denegado` SI lleva rotulo, y es una decision tomada aqui —la spec no la cubre— con su
+ * motivo: cuando `resolverAlcance` deniega (p. ej. un `adminSatelite` sin zona asignada,
+ * R13 de la 122) el actor entra a la pagina pero el borde le respondera `forbidden` en
+ * los seis paneles. Callar el rotulo dejaria seis errores sin causa visible; y elegir
+ * `global` por defecto seria peor: prometeria un universo total que no se esta viendo.
+ * El texto no promete cifras ni las excusa: dice que no se pudo determinar el alcance.
+ */
+const TEXTO_ALCANCE: Readonly<Record<AlcanceTablero, string | null>> = {
+  global: null,
+  zona: "Estas viendo unicamente las ordenes de tu zona: los totales no son los del negocio completo.",
+  tienda:
+    "Estas viendo unicamente las ordenes de tu tienda: los totales no son los del negocio completo.",
+  mensajero:
+    "Estas viendo unicamente tus propias ordenes: los totales no son los del negocio completo.",
+  denegado:
+    "No se pudo determinar sobre que ordenes calcular estas cifras, asi que no se muestra ninguna.",
+};
+
+/** El texto del rotulo, o `null` cuando el alcance es global y no hay nada que advertir. */
+export function textoAlcance(alcance: AlcanceTablero): string | null {
+  return TEXTO_ALCANCE[alcance] ?? null;
+}
+
+/** Nombre accesible del rotulo unico de alcance (R24: uno para todo el tablero). */
+export const ETIQUETA_ALCANCE = "Alcance de las cifras";
+
+export const ETIQUETA_ACTUALIZAR = "Actualizar";
+
+export const DESCRIPCION_ACTUALIZAR =
+  "Vuelve a consultar todos los paneles con el filtro que ya esta puesto.";
+
+/** Nombre accesible de la region que agrupa los paneles. */
+export const ETIQUETA_REJILLA = "Paneles del tablero operativo";
+
+/** Fecha de hoy en calendario de Costa Rica; util para textos de ayuda. */
+export function hoyCostaRica(now: Date = new Date()): string {
+  return fechaCalendarioCR(now);
+}

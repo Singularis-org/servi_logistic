@@ -1,0 +1,764 @@
+import { z } from "zod";
+
+import type {
+  HistorialAccionEntidad as PrismaHistorialAccionEntidad,
+  HistorialAccionTipo as PrismaHistorialAccionTipo,
+  RolValue,
+} from "@prisma/client";
+
+// El fragmento de ordenamiento y el minimo de caracteres del buscador se IMPORTAN de donde ya
+// viven. Reescribirlos aqui es lo que R32 (y la leccion de la 352) prohiben: dos declaraciones del
+// mismo umbral son dos umbrales que un dia divergen, y la pantalla acabaria consultando con dos
+// letras mientras el borde exige tres.
+import { EMPRESA } from "@/lib/config/marca";
+import { BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
+import { esquemaOrdenamiento } from "@/lib/types/ordenamiento-listado";
+import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+
+// FICHA 362 (design §1.1, R14/R15/R17) — EL CATALOGO CERRADO del historial de acciones.
+//
+// Modulo PURO: no importa Prisma en runtime (solo los TIPOS del enum, borrados en compilacion),
+// ni React, ni `lib/services`. Lo consumen el borde (zod), el servicio, el repositorio, los 47
+// puntos de escritura y la pantalla.
+//
+// LAS DOS DIRECCIONES DEL CIERRE, y por eso hay `satisfies` Y `_AsegurarExhaustivo`:
+//   - `satisfies readonly PrismaHistorialAccionTipo[]` rompe el build si esta lista nombra un
+//     valor que el enum Postgres NO tiene;
+//   - `_AsegurarExhaustivo` rompe el build si el enum gana un valor que esta lista NO nombra.
+// Un tipo declarado en la base y ausente del catalogo seria un filtro que no se puede pedir; uno
+// en el catalogo y ausente de la base seria un `validation_error` que nadie entiende.
+//
+// LOS CINCUENTA, y no los cuarenta del Anexo A: el humano cerro Q1 y Q2 el 2026-09-02 y
+// cada una añade UN tipo (`orden_ubicacion_corregida`, `usuario_fulfillment_cambiado`); la ficha 366
+// (2026-09-03) añade el tercero (`orden_zona_reconciliada`) y los tres entran en «mueve dinero»; la
+// ficha 371 añade el cuarto (`gestion_fecha_reprogramacion_corregida`), que entra en «hace
+// desaparecer algo»; la ficha 373 añade el quinto (`api_key_eliminada`), que entra en «cambia quien
+// puede hacer que»; la ficha 374 añade el sexto y el septimo
+// (`nodo_geografico_desactivado`/`nodo_geografico_activado`), que entran los DOS en «hace
+// desaparecer algo»; la ficha 375 añade el octavo (`nodo_geografico_renombrado`), que entra en la
+// MISMA categoria que sus dos hermanos; la ficha 376 añade el noveno (`zona_central_cambiada`),
+// que vuelve a «mueve dinero»; la ficha 380 añade el decimo
+// (`zona_pago_mensajero_cambiado`), que tambien es dinero; la ficha 381 añade el UNDECIMO
+// (`cobro_tienda_registrado`), que es dinero en el sentido mas directo: baja el disponible de una
+// tienda por una decision humana; y la ficha 398 añade el DUODECIMO (`cierre_dia_gestion_corregida`),
+// que tambien es dinero: saca de un cierre abierto un cobro que nadie recaudo y deja en cero el pago
+// de esa gestion al mensajero; y la ficha 429 añade el DECIMOTERCERO (`zona_sinpe_cambiado`), que
+// es dinero en el sentido MAS directo de todos: decide a que cuenta transfiere el cliente; y la
+// ficha 431 añade el DECIMOCUARTO y el DECIMOQUINTO (`cierre_bodega_conciliado` y
+// `cierre_bodega_conciliacion_revertida`), que son dinero aunque no hagan asiento: declaran que el
+// bulto de efectivo de una satelite llego a la central —o que dejo de haber llegado— y mueven el
+// saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
+
+/**
+ * Los 55 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) y es el que consume el selector de filtros: no se reordena por gusto.
+ */
+export const HISTORIAL_ACCION_TIPOS = [
+  // --- A.1 · mueve dinero (31) ---
+  "cierre_dia_aprobado", // cierres-admin.aprobarCierre
+  "cierre_dia_rechazado", // cierres-admin.rechazarCierre
+  "cierre_dia_pagos_editados", // cierres-admin.actualizarPagosGestion
+  "cierre_bodega_aprobado", // cierre-bodega.aprobarCierreBodega
+  "cierre_bodega_rechazado", // cierre-bodega.rechazarCierreBodega
+  "pago_mensajero_registrado", // liquidacion.registrarPagoMensajeroAction
+  "pago_tienda_registrado", // liquidacion.registrarPagoTiendaAction
+  "pago_anulado", // liquidacion.anularPagoAction
+  "reparto_mensajero_registrado", // liquidacion.registrarRepartoMensajeroAction
+  "reparto_anulado", // liquidacion.anularRepartoAction
+  "wallet_movimiento_manual_registrado", // wallet.registrarMovimientoManualAction
+  "egreso_administrativo_registrado", // wallet-egresos.registrarEgresoAdministrativoAction
+  "egreso_administrativo_reversado", // WalletEgresoService.reversarEgreso (su Server Action se retiro en la 458-E, M4; quedan las filas historicas)
+  "tarifa_creada", // tarifas.crearTarifa
+  "tarifa_actualizada", // tarifas.actualizarTarifa
+  "incidente_aprobado", // incidentes.aprobarIncidente
+  "incidente_rechazado", // incidentes.rechazarIncidente
+  "cobro_gasto_fijo_aprobado", // gasto-fijo-cobro.aprobarCobroGastoFijoAction
+  "cobro_gasto_fijo_rechazado", // gasto-fijo-cobro.rechazarCobroGastoFijoAction
+  "cobro_rechazo_tienda_aprobado", // rechazo-tienda-cobro.aprobarCobroRechazoTiendaAction
+  "cobro_rechazo_tienda_rechazado", // rechazo-tienda-cobro.rechazarCobroRechazoTiendaAction
+  "premio_ranking_registrado", // premio-ranking-devengo.registrarPremioAction
+  "premio_ranking_anulado", // premio-ranking-devengo.anularPremioAction
+  // ⭑ Q1, CERRADA POR EL HUMANO EL 2026-09-02 — la correccion de la ubicacion de una orden.
+  // Entra en DINERO y no en «desaparicion» ni en «permisos»: el distrito re-deriva la zona y la
+  // zona decide la tarifa que se factura, asi que corregirla cambia lo que la orden va a cobrar.
+  // La fila registra SOLO EL HECHO (quien, que orden, cuando). NUNCA la direccion vieja ni la
+  // nueva, ni el distrito, ni ningun dato del destinatario: eso reabriria D4 de la 312 de verdad,
+  // y lo que el humano aprobo fue el rastro, no el volcado.
+  "orden_ubicacion_corregida", // corregir-datos-cliente.corregirDatosCliente (solo si cambia la ubicacion)
+  // ⭑ Q2, CERRADA POR EL HUMANO EL 2026-09-02 — el `fulfillment` de una tienda.
+  // Entra en DINERO porque activa un cobro periodico de bodega. NO entra en «permisos» aunque se
+  // edite desde el mismo formulario que el rol: no cambia lo que la persona PUEDE HACER.
+  "usuario_fulfillment_cambiado", // usuarios.actualizarUsuario (solo si cambia `fulfillment`)
+  // ⭑ FICHA 366 — la zona estampada en una orden, re-derivada al guardar la configuracion de una
+  // zona. Entra en DINERO por el MISMO motivo textual que `orden_ubicacion_corregida`: el distrito
+  // re-deriva la zona y la zona decide la tarifa que se factura. La fila registra SOLO EL HECHO
+  // (quien guardo, que orden, cuando): ni la direccion, ni el distrito, ni la zona anterior ni la
+  // nueva (R10). Todas las filas de un mismo guardado comparten `lote_id` (R11).
+  "orden_zona_reconciliada", // zonas.actualizarZona -> ZonaRepository.update
+  // ⭑ FICHA 376 — la MARCA DE ZONA CENTRAL cambio de sitio. Entra en DINERO, y no es una eleccion
+  // de gusto: `esCentral` elige la columna de flete en `resolverFlete`
+  // (`valorFleteGam`/`valorFleteDevueltoGam` frente a `valorFlete`/`valorFleteDevuelto`), esa
+  // columna se factura, y se lee VIVA hasta que `cierre_detail.es_central` la fotografia. Mismo
+  // motivo textual con el que la 366 clasifico `orden_zona_reconciliada`.
+  //
+  // ⚠️ UNA FILA POR CADA ZONA CUYA MARCA CAMBIO, no una por acto: un traslado escribe DOS con el
+  // MISMO `lote_id` —la que la pierde y la que la gana—. La primera es la que hoy no existe: el
+  // repositorio apaga la central anterior con un `updateMany` que no la nombra en ninguna
+  // respuesta, y esa zona no aparece en ningun payload.
+  //
+  // `valor_anterior`/`valor_nuevo` llevan `"true"`/`"false"`, calcado de
+  // `usuario_fulfillment_cambiado`: son valores de un booleano, no texto libre. `monto` va NULL.
+  "zona_central_cambiada", // zonas.crearZona/actualizarZona -> ZonaRepository.create/update
+  // ⭑ FICHA 380 — EL PAGO AL MENSAJERO DE UNA ZONA CAMBIO. Entra en DINERO, y es el sentido mas
+  // literal de la categoria: `tarifa_zona_mensajero` es lo que se le paga a una persona por cada
+  // entrega y por cada rechazo (`TarifaZonaMensajeroRepository.resolvePagoTarifa`, feature 39).
+  // Hasta esta ficha, `ZonaRepository.update` borraba y recreaba esas filas en CADA guardado sin
+  // dejar una sola linea de historial.
+  //
+  // ⚠️ TIPO PROPIO Y NO UNO DE LOS `tarifa_*` (Q1, firmada por el humano el 2026-09-08 A FAVOR de
+  // la recomendacion del leader): aquellos apuntan a la tabla `tarifas` —el flete que se le cobra
+  // a la TIENDA— y reutilizarlos meteria ids de dos tablas distintas bajo
+  // `entidad_tipo = 'tarifa'`, rompiendo `@@index([entidadTipo, entidadId])`.
+  //
+  // ⚠️ LAS DOS FIRMAS QUE DEFINEN SU ALCANCE, las dos EN CONTRA de la recomendacion del leader:
+  //   · Q2 — SOLO EL HECHO: `monto`, `valor_anterior` y `valor_nuevo` van NULL. Como el guardado
+  //     DESTRUYE las filas viejas (`deleteMany` + `createMany`), el registro dira QUE el pago de
+  //     una zona cambio, en cual, quien y cuando, y NUNCA de cuanto a cuanto. Limite conocido y
+  //     ACEPTADO, con el precedente de `tarifa_actualizada` delante.
+  //   · Q3 — SOLO LA EDICION: CREAR una zona con pagos NO deja fila, y borrarla tampoco (ya lo
+  //     dice `zona_borrada`). Coherente con el catalogo que ya existe —hay `zona_borrada` y no
+  //     `zona_creada`, igual que `vehiculo_borrado` sin `vehiculo_creado`— por el motivo escrito
+  //     mas abajo: lo que decide no es el nombre de la operacion sino su PAPEL.
+  "zona_pago_mensajero_cambiado", // zonas.actualizarZona -> ZonaRepository.update (SOLO update)
+  // ⭑ FICHA 429 — EL SINPE DE UNA BODEGA QUEDO DISTINTO. Entra en DINERO y es el sentido MAS
+  // DIRECTO de la categoria, mas todavia que `zona_pago_mensajero_cambiado`: estos dos campos
+  // deciden A QUE CUENTA VA A PARAR EL DINERO DEL CLIENTE. Hasta esta ficha el SINPE era UNO para
+  // toda la operacion y vivia en una variable de entorno, asi que cambiarlo no dejaba rastro en
+  // ninguna parte — ni siquiera un despliegue con nombre.
+  //
+  // ⚠️ `valor_anterior`/`valor_nuevo` LLEVAN EL NUMERO Y EL TITULAR NO (R23). La columna admite
+  // «vocabulario CERRADO … nunca texto libre tecleado por una persona» (TSDoc de
+  // `HistorialAccion`). El numero NO es texto libre: son ocho digitos con un `CHECK` detras, es el
+  // dato PUBLICO que se le manda a cada cliente en cada mensaje, y es lo unico que contesta la
+  // pregunta del dia del reclamo —«¿a que numero transfirio el cliente el martes?»—. El titular SI
+  // es un nombre tecleado por una persona: fuera, por la misma regla que dejo fuera el motivo de un
+  // rechazo. `monto` va NULL: no hay un importe unico.
+  //
+  // ⚠️ LIMITE DECLARADO, con el precedente de la Q2 de la 380 delante: si un guardado cambia SOLO
+  // el titular, la fila existe y sus dos valores son el MISMO numero. El historial dira que el
+  // SINPE de esa bodega cambio, cual, quien y cuando — y no de que titular a que titular.
+  //
+  // ⚠️ CONFIRMAR SIN CAMBIAR NADA NO DEJA FILA (R25). D6 dice «quien lo CAMBIO»; una confirmacion
+  // no cambia nada y no mueve dinero. Meter un tipo «alguien lo miro» en la categoria del dinero la
+  // convertiria en un registro de visitas. La fecha queda en `zona.sinpe_revisado_at`; el «quien»
+  // de una confirmacion sin cambio, no.
+  "zona_sinpe_cambiado", // sinpe-bodega.guardarSinpeBodega -> ZonaRepository.guardarSinpe
+  // ⭑ FICHA 381 — ALGUIEN LE COBRO UN COSTO A UNA TIENDA a mano, desde «Registrar movimiento».
+  // Entra en DINERO y no admite discusion: la fila documenta que el disponible de esa tienda BAJO
+  // por una decision humana, y que puede haber quedado NEGATIVO (el humano lo firmo asi el
+  // 2026-09-07: «si no hay, entonces el disponible debe verse en negativo»).
+  //
+  // ⚠️ TIPO PROPIO Y NO `wallet_movimiento_manual_registrado`: la etiqueta de aquel dice
+  // «Registró un movimiento manual de CAJA» y su productor censado es
+  // `WalletMovimientoRepository.crearMovimientoRegistrado`. Reusarlo pondria en el historial una
+  // frase FALSA —un cobro NO toca la caja de la empresa (D1)— y romperia la guardia del censo, que
+  // exige que el tipo lo escriba el metodo declarado.
+  //
+  // ⚠️ POR QUE DEJA RASTRO SI EL LEDGER YA TIENE `registrado_por`: el criterio lo fijo la 362 y esta
+  // ficha no lo inventa —«se registra la DECISION, no sus asientos»—. `registrado_por` vive en un
+  // libro que la pantalla del historial no lee, no se puede filtrar por «lo que movio dinero» y no
+  // aparece junto a las otras acciones auditadas.
+  //
+  // La fila lleva `monto` (el importe cobrado) y se etiqueta por el NOMBRE DE LA TIENDA. La
+  // `descripcion` del cobro NO entra (R43): es texto libre tecleado por una persona.
+  "cobro_tienda_registrado", // wallet-tienda.registrarCobroTiendaAction -> WalletTiendaMovimientoRepository.registrarCobroEnHistorial
+  // ⭑ FICHA 459 (R53/R78) — el PAGO POR CUENTA de una tienda y el SALDO INICIAL o APORTE DE
+  // CAPITAL, registrados y anulados. Los cuatro «mueve dinero»: el pago por cuenta saca dinero de
+  // la caja y baja el saldo de la tienda; el aporte mete dinero de la empresa en la caja. UN TIPO POR
+  // METODO (la guardia del censo mide por metodo). La fila lleva el importe y, en el pago por
+  // cuenta, el NOMBRE de la tienda; NUNCA el motivo, la referencia ni el beneficiario (texto libre).
+  "pago_por_cuenta_tienda_registrado", // PagoPorCuentaTiendaRepository.crear
+  "pago_por_cuenta_tienda_anulado", // PagoPorCuentaTiendaRepository.anular
+  "aporte_capital_registrado", // AporteCapitalRepository.crear
+  "aporte_capital_anulado", // AporteCapitalRepository.anular
+  // ⭑ FICHA 461 (R55) — alguien ANULO un cobro de la empresa a una tienda. «Mueve dinero» en el sentido
+  // mas directo: le devuelve a la tienda el monto del cobro (credito) y baja la ganancia (reverso del
+  // cargo en la caja). TIPO PROPIO y metodo propio (la guardia del censo mide POR METODO). La fila
+  // lleva el importe y el NOMBRE de la tienda; NUNCA el motivo de la anulacion (texto libre, R5 de la
+  // 362). Entidad: `wallet_tienda_movimiento` (el debito del cobro), sin entidad nueva.
+  "cobro_tienda_anulado", // CobroTiendaAnulacionRepository.anular
+  // ⭑ FICHA 461 (R69, auditoria de la wallet D3) — alguien ANULO una CORRECCION de caja
+  // (`ingreso_ajuste`/`egreso_ajuste`). Mueve dinero: el contra-asiento deshace su efecto en la
+  // ganancia. TIPO PROPIO y metodo propio (la guardia del censo mide POR METODO). La fila lleva el
+  // importe y la CATEGORIA de la correccion; NUNCA el motivo (texto libre, R5 de la 362). Entidad:
+  // `wallet_movimiento` (la correccion original).
+  "wallet_movimiento_manual_anulado", // AjusteCajaAnulacionRepository.anular
+  // ⭑ FICHA 457 (R61/R62) — alguien REGISTRO un pago de una tienda a la empresa, o lo ANULO. Los dos
+  // «mueven dinero» en el sentido mas directo: entra (o vuelve a salir) dinero de la tienda y su saldo
+  // sube (o baja). UN TIPO POR METODO (la guardia del censo mide por metodo). La fila lleva el importe
+  // y el NOMBRE de la tienda; NUNCA el motivo, la referencia ni la ruta del comprobante (R63).
+  // Reabre a proposito la D3 de la 381 (2026-09-24, ficha 457): este credito SI tiene dinero real y
+  // su contrapartida en la caja en la misma transaccion; lo protege la guardia de alcance de la 457.
+  "abono_tienda_registrado", // AbonoTiendaRepository.crear
+  "abono_tienda_anulado", // AbonoTiendaRepository.anular
+  // ⭑ FICHA 458-B (R63/R64, D7) — alguien ANULO un cobro por rechazo aprobado (337). Mueve dinero:
+  // le devuelve a la tienda el flete y el IVA y baja la ganancia. TIPO PROPIO y metodo propio (la
+  // guardia del censo mide POR METODO). La fila lleva el importe (flete + IVA) y el NOMBRE de la
+  // tienda; NUNCA el motivo (texto libre, R5 de la 362). Entidad: `rechazo_tienda_cobro`.
+  "cobro_rechazo_tienda_anulado", // RechazoTiendaCobroAnulacionRepository.anular
+  // ⭑ FICHA 458-B (R63/R64, D13) — alguien ANULO con motivo un sueldo, un gasto de la empresa, un gasto
+  // fijo cobrado o una indemnizacion. Mueve dinero: el contra-asiento devuelve el importe a la caja
+  // y a la ganancia. TIPO PROPIO: el de la 461 (`wallet_movimiento_manual_anulado`) dice «corrección
+  // de caja». La fila lleva el importe y la CATEGORIA del egreso; NUNCA el motivo. Entidad:
+  // `wallet_movimiento` (el egreso original).
+  "egreso_caja_anulado", // AjusteCajaAnulacionRepository.anularEgreso
+  // ⭑ FICHA 398 — UN MAESTRO/ADMIN CORRIGIO EL RESULTADO de una gestion que ya estaba dentro de un
+  // cierre ABIERTO: `entregada -> rechazada`. Entra en DINERO y no admite discusion — la fila
+  // documenta que del cierre SALIO un cobro que nadie recaudo (baja `total_general` y el balde de
+  // su metodo), que el `pago_mensajero` de esa gestion quedo en 0.00 y que la bodega gano su
+  // ingreso por rechazo. Es la clase de acto que el 2026-09-08 hubo que hacer a mano en produccion.
+  //
+  // ⚠️ TIPO PROPIO Y NO `cierre_dia_pagos_editados`, y las tres razones son concretas:
+  //   1. la etiqueta de aquel es «Editó los pagos de una gestión», y aqui no se corrigio un
+  //      desglose: se corrigio SI HUBO ENTREGA. Una frase falsa en el historial es el defecto que
+  //      la 362 persigue;
+  //   2. su productor censado es `actualizarPagosGestion` —que YA llama a `appendAccion`—, asi que
+  //      reusar el tipo dejaria la escritura nueva SIN VIGILAR: la guardia del censo mide POR
+  //      METODO, no por escritura;
+  //   3. filtrar «quien cambio un resultado» quedaria mezclado con correcciones de reparto que no
+  //      mueven ni un colon del total.
+  //
+  // `monto` = el `total_general` NUEVO del cierre (precedente literal: `cierre_dia_pagos_editados`).
+  // `valor_anterior`/`valor_nuevo` = `"entregada"`/`"rechazada"`, valores de un enum del dominio,
+  // que es el vocabulario cerrado que esa columna admite (precedente: `usuario_fulfillment_cambiado`).
+  // El MOTIVO NO ENTRA (R5): es texto libre tecleado por una persona y vive en `gestion_orden.motivo`.
+  "cierre_dia_gestion_corregida", // CierresAdminRepository.corregirResultadoGestionEnCierre
+  // ⭑ FICHA 431 — LA CENTRAL DIJO QUE EL BULTO DE EFECTIVO DE UNA SATELITE LLEGO, Y POR CUANTO; y
+  // su gemelo, alguien deshizo esa afirmacion. Entran en DINERO, y el matiz importa: la ficha 431
+  // NO escribe en ningun libro (R14) — ni `wallet_movimiento`, ni `wallet_tienda_movimiento`, ni
+  // `pago_mensajero_movimiento`—, asi que estas dos acciones no hacen un asiento. Lo que hacen es
+  // DECLARAR que ₡X llego o dejo de haber llegado, y con eso mueven el saldo sin conciliar con el
+  // que la central persigue el efectivo que anda fuera. Las otras dos categorias no lo describen en
+  // ningun sentido: no hace desaparecer nada y no cambia quien puede hacer que.
+  //
+  // ⚠️ DOS TIPOS Y NO UNO CON UN VALOR, y el motivo esta MEDIDO en este repo (fichas 376 y 380): la
+  // guardia del censo de historial mide POR METODO, no por escritura. Con las dos acciones dentro
+  // del mismo metodo, borrar UNO de los dos `appendAccion` la dejaria VERDE. Dos tipos obligan a
+  // dos entradas de censo y por tanto a dos metodos.
+  //
+  // `monto` = el monto recibido. En la REVERSION es el monto que se esta BORRANDO: al revertir,
+  // `cierre_bodega.monto_recibido` vuelve a NULL, asi que esta fila es el UNICO sitio donde
+  // sobrevive cuanto se habia dado por recibido. La NOTA no entra (R5 de la 362: texto libre).
+  "cierre_bodega_conciliado", // CierresBodegaAdminRepository.marcarConciliado
+  "cierre_bodega_conciliacion_revertida", // CierresBodegaAdminRepository.revertirConciliacion
+
+  // --- A.2 · hace desaparecer algo (10) ---
+  // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
+  // ENTRA AQUI, EN «hace desaparecer algo», PORQUE LA ORDEN PUEDE DEJAR DE ESTAR DONDE ESTABA:
+  // corregir la fecha a HOY dispara la liberacion en el mismo acto (desenlace `liberada`), asi que
+  // la orden sale de `reprogramada` y ya no esta donde el coordinador la tenia. Misma familia que
+  // `orden_eliminada`, y por eso la fila importa: es lo que explica por que esa orden ya no aparece
+  // donde alguien la dejo. (R17: exactamente una categoria por tipo.)
+  //
+  // NO en «mueve dinero», y esta medido: una gestion `reprogramada` no lleva importe (0 de 160 con
+  // pago al mensajero o ingreso por rechazo) y ni la analitica ni el ranking leen esa columna.
+  //
+  // ⚠️ Y NO PORQUE LA FECHA ANTERIOR SE PIERDA — no se pierde: queda en
+  // `gestion_fecha_reprogramacion_cambio.fecha_anterior`, fotografiada bajo `FOR UPDATE` antes de
+  // pisarla. Se dice en voz alta para que nadie concluya lo contrario y deje de usar esa tabla.
+  // Las DOS fechas viajan ademas en `valor_anterior`/`valor_nuevo`. El MOTIVO no: R5 lo deja fuera
+  // de esta tabla y vive en la propia, que no se descarga.
+  "gestion_fecha_reprogramacion_corregida", // CorreccionFechaReprogramacionRepository.corregirFecha
+  "orden_eliminada", // eliminar-orden.eliminarOrdenes Y app/api/ordenes/api-key/orden/[id]
+  "orden_recuperada", // recuperar-orden.recuperarOrdenes
+  // `tarifa_borrada` esta AQUI y no en «dinero» aunque mueva precio: R17 exige EXACTAMENTE una
+  // categoria por tipo, y lo que la fila documenta es la desaparicion irreversible (`tarifas`
+  // borra en FISICO, `db/schema.prisma`).
+  "tarifa_borrada", // tarifas.borrarTarifa
+  "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
+  "vehiculo_borrado", // vehiculos.borrarVehiculo
+  "plantilla_eliminada", // plantillas.eliminarPlantilla
+  // ⭑ FICHA 374 — retirar (y devolver) un nodo del catalogo geografico: provincia, canton o
+  // distrito. ENTRAN LOS DOS AQUI, en «hace desaparecer algo», y no es una excepcion: es el
+  // precedente LITERAL de `orden_eliminada` y `orden_recuperada`, que estan las dos en esta
+  // categoria. R17 de la 362 exige EXACTAMENTE una categoria por tipo, y lo que las dos filas
+  // documentan es el mismo eje: que territorio esta disponible.
+  //
+  // POR QUE SE AUDITA ESTO Y NO EL ALTA (R53). El precedente de vehiculos audita
+  // `vehiculo_borrado` y no `vehiculo_creado`; lo que decide no es el nombre de la operacion sino
+  // su PAPEL: aqui desactivar ES la operacion que quita. El alta es aditiva, inocua y visible en
+  // la propia pantalla.
+  //
+  // ⚠️ `valor_anterior` y `valor_nuevo` van en NULL a proposito: el PAR de tipos ya dice la
+  // transicion, asi que el comentario de `db/schema.prisma` sobre «se usan en exactamente cuatro
+  // tipos» sigue siendo cierto sin tocarlo. Y la etiqueta es la cadena de nombres del catalogo
+  // publico (`Cabagra · Buenos Aires · Puntarenas`): ni un dato de destinatario, ni texto libre.
+  "nodo_geografico_desactivado", // GeoRepository.cambiarActivacion (activo: false)
+  "nodo_geografico_activado", // GeoRepository.cambiarActivacion (activo: true)
+  // ⭑ FICHA 375 — renombrar un nodo del catalogo geografico. ENTRA AQUI, con sus dos hermanos, y
+  // no en otra categoria: R17 exige EXACTAMENTE una por tipo y las otras dos no encajan —renombrar
+  // no mueve dinero (el nombre no participa de ninguna tarifa) ni cambia quien puede hacer que—.
+  // Lo que SI hace es HACER DESAPARECER EL NOMBRE VIEJO: desde ese instante toda carga masiva y
+  // toda cotizacion que lo mencione muere con «distrito no encontrado en el canton». Y mantiene el
+  // eje geografico entero en UNA categoria: partirlo romperia el filtro justo donde se usa, «que
+  // le paso a este distrito».
+  //
+  // ⚠️ AQUI SI SE USAN `valor_anterior`/`valor_nuevo`, al reves que en sus dos hermanos: llevan el
+  // nombre ANTERIOR y el NUEVO, que es lo unico que hace util la fila —«renombro un distrito» sin
+  // decir de que a que no sirve para nada—. Son etiquetas de la DTA del IGN, un catalogo PUBLICO
+  // del mismo genero que el nombre de una zona: ni un dato de destinatario, ni texto libre.
+  "nodo_geografico_renombrado", // GeoRepository.renombrar
+
+  // --- A.3 · cambia quien puede hacer que (12) ---
+  "usuario_creado", // usuarios.crearUsuario
+  "usuario_rol_cambiado", // usuarios.actualizarUsuario (solo si cambia `rolId`)
+  "usuario_zona_cambiada", // usuarios.actualizarUsuario (solo si cambia `zonaId`)
+  "usuario_estado_cambiado", // usuarios.cambiarEstadoUsuario
+  "usuario_contrasena_restablecida", // usuarios.restablecerContrasenaUsuario
+  "postulacion_aprobada", // aprobacion-postulaciones.aprobarPostulacion
+  "postulacion_rechazada", // aprobacion-postulaciones.rechazarPostulacion
+  "api_key_generada", // api-keys.generarApiKey
+  "api_key_rotada", // api-keys.rotarApiKey
+  "api_key_activada", // api-keys.activarApiKey
+  "api_key_desactivada", // api-keys.desactivarApiKey
+  // ⭑ FICHA 373 — el borrado FISICO de una API key ya desactivada, con su cuenta dedicada y su
+  // suscripcion de webhook. ENTRA AQUI, con sus cuatro hermanas, y NO en «hace desaparecer algo»:
+  // R17 de la 362 exige EXACTAMENTE una categoria por tipo, y lo que esta fila documenta es un
+  // cambio de QUIEN PUEDE ENTRAR POR LA API — el mismo eje que generar, rotar, activar y
+  // desactivar. Partir el ciclo de vida de una credencial en dos familias romperia el filtro por
+  // categoria justo donde mas se usa.
+  //
+  // ⚠️ NI EL SECRETO, NI EL `key_hash`, NI EL `key_prefix` entran en la fila (R23): la key se
+  // nombra por su IDENTIFICADOR VISIBLE. `valor_anterior` lleva el estado previo —siempre
+  // `inactiva`, porque una key `activa` no es eliminable (R11)— y `valor_nuevo` va en NULL.
+  //
+  // Y la fila SOBREVIVE a la key: `entidad_id` es opaco y sin FK, y `entidad_etiqueta` va
+  // denormalizada (R26).
+  "api_key_eliminada", // api-keys.eliminarApiKey -> ApiKeyRepository.eliminar
+] as const satisfies readonly PrismaHistorialAccionTipo[];
+
+export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
+
+/**
+ * Los 21 tipos de entidad que una accion del catalogo puede afectar.
+ *
+ * ⭑ FICHA 374 — `provincia`, `canton` y `distrito` son la PRIMERA ampliacion de este enum: nacio
+ * con 17 valores en `20260902120000_historial_accion` y ninguna migracion posterior lo habia
+ * tocado. Entran TRES y no una entidad sintetica `nodo_geografico`: los 17 valores previos mapean
+ * 1:1 con tablas y este seria el primero que no; ademas, con tres, «que le paso a este distrito»
+ * se resuelve por el `@@index([entidadTipo, entidadId])` que ya existe.
+ *
+ * ⭑ FICHA 381 — `wallet_tienda_movimiento` es la SEGUNDA ampliacion, y respeta la misma regla: es
+ * una TABLA. Apuntar el rastro del cobro al `usuario` de la tienda dejaria la fila sin poder señalar
+ * QUE asiento se escribio, que es justo para lo que sirve ese indice.
+ */
+export const HISTORIAL_ACCION_ENTIDADES = [
+  "orden",
+  "usuario",
+  "tarifa",
+  "zona",
+  "vehiculo",
+  "plantilla_mensaje",
+  "cierre_dia",
+  "cierre_bodega",
+  "gestion_orden",
+  "liquidacion_pago",
+  "liquidacion_reparto",
+  "wallet_movimiento",
+  "orden_incidente",
+  "gasto_fijo_cobro",
+  "rechazo_tienda_cobro",
+  "ranking_snapshot_fila",
+  "api_key",
+  "provincia",
+  "canton",
+  "distrito",
+  "wallet_tienda_movimiento",
+  // ⭑ FICHA 459 — los dos documentos nuevos, 1:1 con sus tablas (criterio de la 381/457).
+  "pago_por_cuenta_tienda",
+  "aporte_capital",
+  // ⭑ FICHA 457 — el documento del pago de una tienda a la empresa, 1:1 con su tabla.
+  "abono_tienda",
+] as const satisfies readonly PrismaHistorialAccionEntidad[];
+
+export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
+
+/**
+ * Las TRES categorias del criterio que fijo el humano: entra lo que mueve dinero, lo que hace
+ * desaparecer algo y lo que cambia quien puede hacer que.
+ *
+ * NO es una columna de la tabla (R17): se DERIVA con `CATEGORIA_POR_ACCION`. Guardarla seria una
+ * segunda fuente de verdad capaz de divergir de la lista de tipos que la define.
+ */
+export const CATEGORIAS_ACCION = ["mueve_dinero", "hace_desaparecer", "cambia_permisos"] as const;
+
+export type CategoriaAccion = (typeof CATEGORIAS_ACCION)[number];
+
+/**
+ * Tipo -> categoria. `Record<HistorialAccionTipo, CategoriaAccion>` EXHAUSTIVO: quitar una clave
+ * no compila, y un valor nuevo del enum sin entrada aqui tampoco. Es la unica fuente de la
+ * clasificacion (R17).
+ */
+export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> = {
+  cierre_dia_aprobado: "mueve_dinero",
+  cierre_dia_rechazado: "mueve_dinero",
+  cierre_dia_pagos_editados: "mueve_dinero",
+  cierre_bodega_aprobado: "mueve_dinero",
+  cierre_bodega_rechazado: "mueve_dinero",
+  pago_mensajero_registrado: "mueve_dinero",
+  pago_tienda_registrado: "mueve_dinero",
+  pago_anulado: "mueve_dinero",
+  reparto_mensajero_registrado: "mueve_dinero",
+  reparto_anulado: "mueve_dinero",
+  wallet_movimiento_manual_registrado: "mueve_dinero",
+  egreso_administrativo_registrado: "mueve_dinero",
+  egreso_administrativo_reversado: "mueve_dinero",
+  tarifa_creada: "mueve_dinero",
+  tarifa_actualizada: "mueve_dinero",
+  incidente_aprobado: "mueve_dinero",
+  incidente_rechazado: "mueve_dinero",
+  cobro_gasto_fijo_aprobado: "mueve_dinero",
+  cobro_gasto_fijo_rechazado: "mueve_dinero",
+  cobro_rechazo_tienda_aprobado: "mueve_dinero",
+  cobro_rechazo_tienda_rechazado: "mueve_dinero",
+  premio_ranking_registrado: "mueve_dinero",
+  premio_ranking_anulado: "mueve_dinero",
+  orden_ubicacion_corregida: "mueve_dinero",
+  usuario_fulfillment_cambiado: "mueve_dinero",
+  orden_zona_reconciliada: "mueve_dinero",
+  // FICHA 376: la marca de zona central decide la columna de flete que se factura.
+  zona_central_cambiada: "mueve_dinero",
+  // FICHA 380: `tarifa_zona_mensajero` ES lo que cobra un mensajero por entregar y por recibir un
+  // rechazo. No hay lectura mas literal de «mueve dinero».
+  zona_pago_mensajero_cambiado: "mueve_dinero",
+  // FICHA 429: los dos campos deciden A QUE CUENTA va el dinero del cliente. No hay lectura mas
+  // directa de «mueve dinero», y R17 exige exactamente una categoria por tipo.
+  zona_sinpe_cambiado: "mueve_dinero",
+  // FICHA 381 (R41): un cobro manual BAJA el disponible de una tienda. No hay lectura mas directa
+  // de «mueve dinero», y R17 exige exactamente una categoria por tipo.
+  cobro_tienda_registrado: "mueve_dinero",
+  // FICHA 459 (R53/R78): pago por cuenta y saldo inicial o aporte — dinero que sale o entra.
+  pago_por_cuenta_tienda_registrado: "mueve_dinero",
+  pago_por_cuenta_tienda_anulado: "mueve_dinero",
+  aporte_capital_registrado: "mueve_dinero",
+  aporte_capital_anulado: "mueve_dinero",
+  // FICHA 461 (R55): anular un cobro le devuelve dinero a la tienda y baja la ganancia.
+  cobro_tienda_anulado: "mueve_dinero",
+  // FICHA 461 (R69): anular una correccion de caja deshace su efecto en la ganancia.
+  wallet_movimiento_manual_anulado: "mueve_dinero",
+  // FICHA 457 (R61/R62): entra dinero de una tienda y su saldo sube; la anulacion lo deshace.
+  abono_tienda_registrado: "mueve_dinero",
+  abono_tienda_anulado: "mueve_dinero",
+  // FICHA 458-B (R63/R64): anular un cobro por rechazo le devuelve dinero a la tienda y baja la
+  // ganancia; anular un egreso devuelve el importe a la caja y a la ganancia.
+  cobro_rechazo_tienda_anulado: "mueve_dinero",
+  egreso_caja_anulado: "mueve_dinero",
+  // FICHA 398: la correccion saca del cierre un cobro que nadie recaudo y pone en cero el pago
+  // de esa gestion al mensajero. No hay lectura mas directa de «mueve dinero», y R17 exige
+  // exactamente una categoria por tipo.
+  cierre_dia_gestion_corregida: "mueve_dinero",
+  // FICHA 431: no hacen asiento (R14), pero declaran que ₡X de efectivo llego —o dejo de haber
+  // llegado— a la central, y mueven el saldo sin conciliar de esa bodega. R17 exige exactamente
+  // una categoria, y ninguna de las otras dos describe esto.
+  cierre_bodega_conciliado: "mueve_dinero",
+  cierre_bodega_conciliacion_revertida: "mueve_dinero",
+  gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
+  orden_eliminada: "hace_desaparecer",
+  orden_recuperada: "hace_desaparecer",
+  tarifa_borrada: "hace_desaparecer",
+  zona_borrada: "hace_desaparecer",
+  vehiculo_borrado: "hace_desaparecer",
+  plantilla_eliminada: "hace_desaparecer",
+  // FICHA 374: los DOS en la misma categoria, igual que `orden_eliminada`/`orden_recuperada`.
+  nodo_geografico_desactivado: "hace_desaparecer",
+  nodo_geografico_activado: "hace_desaparecer",
+  // FICHA 375: el tercero del eje geografico, en la misma categoria que sus dos hermanos.
+  nodo_geografico_renombrado: "hace_desaparecer",
+  usuario_creado: "cambia_permisos",
+  usuario_rol_cambiado: "cambia_permisos",
+  usuario_zona_cambiada: "cambia_permisos",
+  usuario_estado_cambiado: "cambia_permisos",
+  usuario_contrasena_restablecida: "cambia_permisos",
+  postulacion_aprobada: "cambia_permisos",
+  postulacion_rechazada: "cambia_permisos",
+  api_key_generada: "cambia_permisos",
+  api_key_rotada: "cambia_permisos",
+  api_key_activada: "cambia_permisos",
+  api_key_desactivada: "cambia_permisos",
+  api_key_eliminada: "cambia_permisos",
+};
+
+/** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
+export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
+  cierre_dia_aprobado: "Aprobó un cierre del día",
+  cierre_dia_rechazado: "Rechazó un cierre del día",
+  cierre_dia_pagos_editados: "Editó los pagos de una gestión",
+  cierre_bodega_aprobado: "Aprobó un cierre de bodega",
+  cierre_bodega_rechazado: "Rechazó un cierre de bodega",
+  pago_mensajero_registrado: "Registró un pago a mensajero",
+  pago_tienda_registrado: "Registró un pago a tienda",
+  pago_anulado: "Anuló un pago",
+  reparto_mensajero_registrado: "Registró un reparto a mensajero",
+  reparto_anulado: "Anuló un reparto",
+  wallet_movimiento_manual_registrado: "Registró un movimiento manual de caja",
+  egreso_administrativo_registrado: "Registró un egreso administrativo",
+  egreso_administrativo_reversado: "Reversó un egreso administrativo",
+  tarifa_creada: "Creó una tarifa",
+  tarifa_actualizada: "Actualizó una tarifa",
+  incidente_aprobado: "Aprobó un incidente",
+  incidente_rechazado: "Rechazó un incidente",
+  cobro_gasto_fijo_aprobado: "Aprobó un cobro de gasto fijo",
+  cobro_gasto_fijo_rechazado: "Rechazó un cobro de gasto fijo",
+  cobro_rechazo_tienda_aprobado: "Aprobó un cobro por devolución a origen de tienda",
+  cobro_rechazo_tienda_rechazado: "Rechazó un cobro por devolución a origen de tienda",
+  premio_ranking_registrado: "Registró un premio del ranking",
+  premio_ranking_anulado: "Anuló un premio del ranking",
+  orden_ubicacion_corregida: "Corrigió la ubicación de una orden",
+  usuario_fulfillment_cambiado: "Cambió el fulfillment de una tienda",
+  orden_zona_reconciliada: "Actualizó la zona de una orden",
+  zona_central_cambiada: "Cambió la marca de zona central",
+  zona_pago_mensajero_cambiado: "Cambió el pago al mensajero de una zona",
+  zona_sinpe_cambiado: "Cambió el SINPE de una bodega",
+  // Ficha 461 (design §7.7, HD3/P15): los seis textos que esta ficha toca, desde la empresa y diciendo
+  // quien le paga a quien; verbo en pasado con la persona como sujeto, como el resto del catalogo.
+  cobro_tienda_registrado: "Le cobró a una tienda",
+  cobro_tienda_anulado: "Anuló un cobro a una tienda",
+  // Ficha 461 (R69, design §7: «correccion», no «ajuste»).
+  wallet_movimiento_manual_anulado: "Anuló una corrección de caja",
+  pago_por_cuenta_tienda_registrado: "Pagó un gasto de una tienda",
+  pago_por_cuenta_tienda_anulado: "Anuló el pago de un gasto de una tienda",
+  aporte_capital_registrado: "Registró un aporte de dinero a la caja",
+  aporte_capital_anulado: "Anuló un aporte de dinero a la caja",
+  // Ficha 457 (design §2/§9): desde la empresa, diciendo quien le paga a quien (HD3 de la 461).
+  abono_tienda_registrado: `Registró un pago de una tienda a ${EMPRESA.enFrase}`,
+  abono_tienda_anulado: `Anuló un pago de una tienda a ${EMPRESA.enFrase}`,
+  // Ficha 458-B (R63/R64): verbo en pasado con la persona como sujeto, como el resto del catálogo.
+  cobro_rechazo_tienda_anulado: "Anuló un cobro por devolución a origen a una tienda",
+  egreso_caja_anulado: "Anuló un gasto de la caja",
+  cierre_dia_gestion_corregida: "Corrigió el resultado de una gestión",
+  cierre_bodega_conciliado: "Marcó recibida una consolidación de bodega",
+  cierre_bodega_conciliacion_revertida: "Revirtió la conciliación de una consolidación de bodega",
+  gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
+  orden_eliminada: "Eliminó una orden",
+  orden_recuperada: "Recuperó una orden",
+  tarifa_borrada: "Borró una tarifa",
+  zona_borrada: "Borró una zona",
+  vehiculo_borrado: "Borró un vehículo",
+  plantilla_eliminada: "Eliminó una plantilla",
+  nodo_geografico_desactivado: "Retiró un nodo del catálogo geográfico",
+  nodo_geografico_activado: "Devolvió un nodo al catálogo geográfico",
+  nodo_geografico_renombrado: "Renombró un nodo del catálogo geográfico",
+  usuario_creado: "Creó un usuario",
+  usuario_rol_cambiado: "Cambió el rol de un usuario",
+  usuario_zona_cambiada: "Cambió la zona de un usuario",
+  usuario_estado_cambiado: "Cambió el estado de un usuario",
+  usuario_contrasena_restablecida: "Restableció la contraseña de un usuario",
+  postulacion_aprobada: "Aprobó una postulación",
+  postulacion_rechazada: "Rechazó una postulación",
+  api_key_generada: "Generó una API key",
+  api_key_rotada: "Rotó una API key",
+  api_key_activada: "Activó una API key",
+  api_key_desactivada: "Desactivó una API key",
+  api_key_eliminada: "Eliminó una API key",
+};
+
+/** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */
+export const CATEGORIA_LABELS: Record<CategoriaAccion, string> = {
+  mueve_dinero: "Mueve dinero",
+  hace_desaparecer: "Hace desaparecer algo",
+  cambia_permisos: "Cambia permisos",
+};
+
+/** Etiqueta legible de cada tipo de entidad. */
+export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
+  orden: "Orden",
+  usuario: "Usuario",
+  tarifa: "Tarifa",
+  zona: "Zona",
+  vehiculo: "Vehículo",
+  plantilla_mensaje: "Plantilla",
+  cierre_dia: "Cierre del día",
+  cierre_bodega: "Cierre de bodega",
+  gestion_orden: "Gestión",
+  liquidacion_pago: "Pago",
+  liquidacion_reparto: "Reparto",
+  wallet_movimiento: "Movimiento de caja",
+  orden_incidente: "Incidente",
+  gasto_fijo_cobro: "Cobro de gasto fijo",
+  rechazo_tienda_cobro: "Cobro por devolución a origen",
+  ranking_snapshot_fila: "Fila del ranking",
+  api_key: "API key",
+  provincia: "Provincia",
+  canton: "Cantón",
+  distrito: "Distrito",
+  wallet_tienda_movimiento: "Movimiento de tienda",
+  // Ficha 461 (design §7.7): las dos etiquetas de entidad con el nombre nuevo.
+  pago_por_cuenta_tienda: "Pago de un gasto de una tienda",
+  aporte_capital: "Aporte de dinero a la caja",
+  // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
+  abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+};
+
+/** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */
+export function accionesDeCategoria(categoria: CategoriaAccion): HistorialAccionTipo[] {
+  return HISTORIAL_ACCION_TIPOS.filter((tipo) => CATEGORIA_POR_ACCION[tipo] === categoria);
+}
+
+/**
+ * El cierre en la direccion que el `satisfies` no cubre: si el enum de Prisma gana un valor que
+ * `HISTORIAL_ACCION_TIPOS` no lista, `never` deja de ser asignable y el build se cae. Igual para
+ * las entidades.
+ */
+type _AsegurarExhaustivoTipos = Exclude<PrismaHistorialAccionTipo, HistorialAccionTipo> extends never
+  ? true
+  : ["falta un tipo en HISTORIAL_ACCION_TIPOS", Exclude<PrismaHistorialAccionTipo, HistorialAccionTipo>];
+type _AsegurarExhaustivoEntidades = Exclude<
+  PrismaHistorialAccionEntidad,
+  HistorialAccionEntidad
+> extends never
+  ? true
+  : [
+      "falta una entidad en HISTORIAL_ACCION_ENTIDADES",
+      Exclude<PrismaHistorialAccionEntidad, HistorialAccionEntidad>,
+    ];
+
+const _tiposExhaustivos: _AsegurarExhaustivoTipos = true;
+const _entidadesExhaustivas: _AsegurarExhaustivoEntidades = true;
+void _tiposExhaustivos;
+void _entidadesExhaustivas;
+
+// =================================================================================================
+// FICHA 362 — EL BORDE DE LECTURA (design §4.2/§4.3)
+// =================================================================================================
+
+/**
+ * Los campos por los que el listado se puede ordenar. UNO, y la lista es cerrada a proposito: el
+ * unico orden que este modulo tiene sentido ofrecer es el temporal, y `esquemaOrdenamiento`
+ * rechaza cualquier otro valor con `validation_error` sin ejecutar consulta (R26).
+ */
+export const HISTORIAL_SORT_FIELDS = ["created_at"] as const;
+export type HistorialSortField = (typeof HISTORIAL_SORT_FIELDS)[number];
+
+/** Tamaño de pagina por defecto y su tope. 25 es el de las demas tablas del repo. */
+export const HISTORIAL_PAGE_SIZE_DEFECTO = 25;
+export const HISTORIAL_PAGE_SIZE_MAX = 100;
+
+/** Longitud maxima del termino de busqueda libre. */
+export const HISTORIAL_BUSQUEDA_MAX_CHARS = 120;
+
+/**
+ * El filtro del listado, tal como llega del cliente.
+ *
+ * `.strict()` NO ES DECORATIVO (leccion de la 352): una clave desconocida es `validation_error`,
+ * no un descarte mudo. Un filtro que se ignora en silencio le enseña al usuario un conjunto que no
+ * es el que pidio, y eso en un registro de auditoria es peor que un error.
+ *
+ * `esquemaOrdenamiento` se IMPORTA de `lib/types/ordenamiento-listado.ts` y no se reescribe: dos
+ * declaraciones de la direccion son la forma silenciosa de que una superficie acepte lo que la
+ * otra rechaza.
+ */
+export const filtroHistorialAccionSchema = z
+  .object({
+    /**
+     * El termino libre. `min(BUSQUEDA_MIN_CHARS)` sale de la MISMA constante que valida el borde
+     * de `/ordenes` (`lib/types/orden.ts`): escribir un `3` a mano aqui —o en el control de la
+     * pantalla— es la mutacion que R32 prohibe.
+     */
+    q: z.string().trim().min(BUSQUEDA_MIN_CHARS).max(HISTORIAL_BUSQUEDA_MAX_CHARS).optional(),
+    actorId: z.array(z.string().min(1)).nonempty().optional(),
+    /** Union CERRADA sobre los 42 tipos (R15): un valor inventado no llega a la consulta. */
+    accion: z.array(z.enum(HISTORIAL_ACCION_TIPOS)).nonempty().optional(),
+    /** Se traduce a `accion IN (…)` en el servicio con `CATEGORIA_POR_ACCION` (R17). */
+    categoria: z.array(z.enum(CATEGORIAS_ACCION)).nonempty().optional(),
+    entidadTipo: z.array(z.enum(HISTORIAL_ACCION_ENTIDADES)).nonempty().optional(),
+    /** Fechas de CALENDARIO de Costa Rica (`YYYY-MM-DD`), no instantes. */
+    desde: z.string().refine(esFechaCalendarioValida, "Fecha invalida").optional(),
+    hasta: z.string().refine(esFechaCalendarioValida, "Fecha invalida").optional(),
+    page: z.number().int().positive().default(1),
+    pageSize: z
+      .number()
+      .int()
+      .positive()
+      .default(HISTORIAL_PAGE_SIZE_DEFECTO)
+      .transform((n) => Math.min(n, HISTORIAL_PAGE_SIZE_MAX)),
+    // R26: el defecto es EL MAS RECIENTE PRIMERO, y se puede invertir. Un campo o una direccion
+    // fuera de la lista blanca es `validation_error` SIN consulta.
+    ...esquemaOrdenamiento(HISTORIAL_SORT_FIELDS, "created_at", "desc"),
+  })
+  .strict();
+
+export type FiltroHistorialAccionInput = z.input<typeof filtroHistorialAccionSchema>;
+export type FiltroHistorialAccion = z.output<typeof filtroHistorialAccionSchema>;
+
+/**
+ * UNA fila del registro tal como cruza al cliente.
+ *
+ * ⚠️ `monto` ES UN STRING Y NUNCA UN `number` (R6). La conversion `Decimal -> string` ocurre en el
+ * servicio con `.toFixed(2)`, que es del propio `Decimal` y no pasa por coma flotante. Un
+ * `Number()` en cualquier punto de este camino es la mutacion que la guardia money-safe caza.
+ *
+ * ⚠️ `entidadId` NO CRUZA (design §4.3): no aporta nada en pantalla y `columnas-sensibles.guardia`
+ * prohibe la forma uuid en una celda de la descarga. Correlacionar con la entidad es trabajo de
+ * base, no de pantalla.
+ *
+ * ⚠️ NO HAY `motivo`, y no es un olvido: R5.
+ */
+export interface HistorialAccionDTO {
+  id: string;
+  /** ISO. La pantalla lo pinta en la zona horaria de Costa Rica (R35). */
+  fecha: string;
+  accion: HistorialAccionTipo;
+  accionLabel: string;
+  categoria: CategoriaAccion;
+  entidadTipo: HistorialAccionEntidad;
+  entidadEtiqueta: string;
+  /** `null` = el sistema (R36). La pantalla NO lo pinta en blanco ni como un identificador. */
+  actorNombre: string | null;
+  actorRol: RolValue | null;
+  /** ⚠ STRING de escala 2, o `null`. NUNCA un `number` (R6). */
+  monto: string | null;
+  valorAnterior: string | null;
+  valorNuevo: string | null;
+  loteId: string;
+}
+
+/** Un actor que aparece en el registro, para el selector de filtros. */
+export interface ActorHistorialDTO {
+  id: string;
+  nombre: string;
+}
+
+/**
+ * El desenlace del listado paginado. Los cuatro estados son EXPLICITOS y ninguno es un error
+ * generico: `forbidden` es «tu rol no lee este modulo», `unauthenticated` es «no hay sesion» y
+ * `validation_error` trae el motivo del primer problema del borde SIN ecoar el valor recibido.
+ */
+export type ListarHistorialAccionesResult =
+  | {
+      status: "ok";
+      items: HistorialAccionDTO[];
+      page: number;
+      pageSize: number;
+      total: number;
+    }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" }
+  | { status: "validation_error"; motivo: string };
+
+/**
+ * El desenlace de la DESCARGA. Mismo conjunto filtrado que la pantalla (R30) y el MISMO gate por
+ * rol (R33). `limite_excedido` es un error ACCIONABLE y no un truncado silencioso: el usuario
+ * tiene que poder saber que el archivo no traeria todo.
+ */
+export type ListarHistorialAccionesCompletoResult =
+  | { status: "ok"; items: HistorialAccionDTO[] }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" }
+  | { status: "validation_error"; motivo: string }
+  | { status: "limite_excedido"; maximo: number };
+
+/** El desenlace del catalogo de actores del selector. */
+export type CatalogoActoresHistorialResult =
+  | { status: "ok"; actores: ActorHistorialDTO[] }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" };

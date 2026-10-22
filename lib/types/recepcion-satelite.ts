@@ -1,0 +1,320 @@
+import { z } from "zod";
+import { diaRepartoSchema } from "@/lib/types/dia-reparto";
+import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import type { MensajeroLiteRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { recepcionSateliteConfig } from "@/lib/config/recepcion-satelite";
+import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import { paginaInputSchema } from "@/lib/types/pagina-input";
+import { conRefinesDeCreacion, ordenFilterBase } from "@/lib/types/orden";
+import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
+
+// Feature 33 — validacion de borde (zod) de la recepcion por QR y tipos de
+// resultado expuestos por las Server Actions. El schema se usa en la action; los
+// resultados de dominio (forbidden/sin_zona/zona_ajena/…) los devuelve el service
+// sin excepcion, la action solo agrega `unauthenticated`.
+
+// R16: el QR codifica la URL `/paquete/<numGuia>`; el escaner extrae el `num_guia`
+// (Int UNIQUE de `orden`, secuencia `orden_num_guia_seq`) y lo manda aqui. Se exige
+// entero positivo; un valor ilegible/no numerico (el escaner ya lo resuelve a null)
+// -> ZodError -> validation_error "codigo invalido" ANTES del service, sin tocar datos.
+export const recibirSchema = z.object({
+  numGuia: z.number().int().positive(),
+});
+export type RecibirActionInput = z.infer<typeof recibirSchema>;
+
+/**
+ * Feature 170 — FASE 2 (T K.1, R40/R44/R45) — borde del listado «Órdenes de la bodega»
+ * paginado: `page`/`pageSize` (de `paginaInputSchema`, con el tamaño del dominio) mas los
+ * TRES filtros que hasta ahora vivian en el navegador.
+ *
+ * **La lista blanca es la defensa de R44, y por eso esta escrita en tres capas:**
+ *  - `.strict()` — un `zonaId`/`usuarioId` colado muere aqui con `validation_error` en vez de
+ *    viajar hasta un servicio que hoy lo ignora y mañana podria no ignorarlo. El alcance sale
+ *    SIEMPRE del actor de la sesion, nunca de la peticion. MEDIDO: `.extend()` HEREDA el
+ *    `.strict()` de `paginaInputSchema`, asi que esta llamada es redundante hoy; se deja
+ *    escrita porque la barrera es de este listado y no debe depender de que el schema base
+ *    nunca se afloje.
+ *  - `z.enum(ESTADOS_BODEGA_SATELITE)` — el filtro de estado solo admite los cinco estados de
+ *    ESTA pantalla. Sin el, un `estados: ["entregada"]` seria una entrada valida cuyo unico
+ *    freno estaria en el servicio.
+ *  - provincia, canton y distrito son IDs (pedido humano 2026-08-19): las mismas claves y los
+ *    mismos valores que la barra de `/ordenes`, tomados de `ordenFilterBase`. Antes eran
+ *    NOMBRES, derivados de las ordenes cargadas; ahora las opciones salen de la geografia de
+ *    la ZONA del actor, que es lo que el catalogo de `/ordenes` ya sabe entregarle acotado.
+ */
+/**
+ * Pedido humano (2026-08-19) — los filtros que esta barra COMPARTE con la de `/ordenes`:
+ * geografia (por ID), tiempo de creacion y buscador de texto libre. Se toman del schema de
+ * alla (`ordenFilterBase.pick`), no se reescriben: las claves, sus limites (`BUSQUEDA_MIN_CHARS`,
+ * `YYYY-MM-DD`, listas no vacias) y su forma son EXACTAMENTE los mismos, asi que las dos
+ * superficies no pueden aceptar cosas distintas por «el mismo filtro».
+ *
+ * `zona_id` y `tienda_id` NO se toman: la zona sale del actor —declararla como filtro seria
+ * ofrecer el alcance como entrada— y el adminSatelite no ve el directorio de cuentas tienda.
+ *
+ * Pedido humano (2026-08-25): `mensajero_id` SI se toma. El adminSatelite reparte por
+ * mensajeros y necesita el mismo filtro que el maestro; su catalogo le entrega SOLO los de su
+ * zona, y el acotamiento por zona del listado (que no es un parametro publico: sale del actor)
+ * hace que pedir uno de otra zona devuelva cero filas en vez de ampliar nada.
+ */
+const FILTROS_COMPARTIDOS = ordenFilterBase.pick({
+  mensajero_id: true,
+  provincia_id: true,
+  canton_id: true,
+  distrito_id: true,
+  created_preset: true,
+  created_desde: true,
+  created_hasta: true,
+  q: true,
+  // FICHA 370: «salida a reparto» tambien se toma de alla, y no se reescribe. Es el mismo
+  // criterio (un `EXISTS` con destino `en_reparto` sobre el historial), los mismos dos valores
+  // y la misma semantica de ausencia; declararlo aparte seria abrir la puerta a que un dia una
+  // superficie admitiera un valor que la otra rechaza. La zona sigue saliendo del actor: esta
+  // clave PARTE lo que el adminSatelite ya puede ver, no ensancha su alcance.
+  salio_a_reparto: true,
+}).shape;
+
+/**
+ * Base SIN los `refine` del tiempo: `.omit()`/`.extend()` solo existen sobre un `ZodObject`,
+ * y de esta base cuelgan el schema del conjunto y el de la vigencia. Los dos `refine` se
+ * aplican al final, uno por schema (`conRefinesDeCreacion`).
+ */
+const listarOrdenesBodegaPaginadoBase = paginaInputSchema(recepcionSateliteConfig)
+  .extend({
+    estados: z.array(z.enum(ESTADOS_BODEGA_SATELITE)).optional(),
+    ...FILTROS_COMPARTIDOS,
+  })
+  .strict();
+
+export const listarOrdenesBodegaPaginadoSchema = conRefinesDeCreacion(
+  listarOrdenesBodegaPaginadoBase,
+);
+
+export type ListarOrdenesBodegaPaginadoActionInput = z.infer<
+  typeof listarOrdenesBodegaPaginadoSchema
+>;
+
+/**
+ * Feature 184 — Tanda A (T A.3, R3/R17) — el MISMO listado sin recorte por pagina, para la
+ * descarga. Se DERIVA del schema de la pagina quitandole `page`/`pageSize`, no se reescribe: si
+ * mañana el listado gana un filtro, el conjunto lo gana en la misma linea y los dos caminos no
+ * pueden entender cosas distintas por «filtro» (R16).
+ *
+ * `.strict()` se reescribe aunque `.omit()` lo herede, por el mismo motivo que en el schema de
+ * la pagina: la barrera de ALCANCE es de este listado y no debe depender de que el schema base
+ * nunca se afloje. Un `zonaId` colado muere aqui, sin llegar al servicio (R4/R17).
+ */
+const listarOrdenesBodegaCompletoBase = listarOrdenesBodegaPaginadoBase
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export const listarOrdenesBodegaCompletoSchema = conRefinesDeCreacion(
+  listarOrdenesBodegaCompletoBase,
+);
+
+export type ListarOrdenesBodegaCompletoActionInput = z.infer<
+  typeof listarOrdenesBodegaCompletoSchema
+>;
+
+/**
+ * Feature 184 — Tanda A (T A.3, R21/Q2) — la comprobacion de VIGENCIA con la que se poda la
+ * seleccion: los mismos filtros del listado mas los identificadores que el cliente tiene
+ * marcados fuera de la pagina visible.
+ *
+ * `ids` es la unica clave nueva y va acotada por los dos lados: `uuid` porque `orden.id` lo es,
+ * `.min(1)` porque preguntar por nada no es una pregunta (R23) y `.max(MAX_IDS_VIGENCIA)`
+ * porque esta lista acaba en un `IN` de SQL y la propone el cliente (Q2, default 500).
+ * Pasarse devuelve `validation_error` y la seleccion NO se toca (R22).
+ */
+export const listarIdsVigentesBodegaSchema = conRefinesDeCreacion(
+  listarOrdenesBodegaCompletoBase
+    .extend({
+      ids: z
+        .array(z.string().uuid())
+        .min(1)
+        .max(recepcionSateliteConfig.MAX_IDS_VIGENCIA),
+    })
+    .strict(),
+);
+
+export type ListarIdsVigentesBodegaActionInput = z.infer<typeof listarIdsVigentesBodegaSchema>;
+
+// --- Resultados expuestos por las Server Actions (agregan `unauthenticated`) ---
+
+/**
+ * Feature 170 — FASE 2 (T K.1): la pagina tal como la recibe el cliente. Union de error
+ * ESTRECHO a proposito (el contrato de T H.2 lo admite como parametro): este listado no
+ * produce `not_found` ni `conflict`, y declararlos obligaria a la pantalla a manejar ramas
+ * que nunca llegan.
+ */
+export type ListarOrdenesBodegaPaginadoResult = ListarPaginadoResult<
+  RecepcionSateliteDTO,
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" }
+>;
+
+/**
+ * Feature 184 — Tanda A (T A.3, R1/R6/R7): el conjunto filtrado ENTERO tal como lo recibe el
+ * cliente. Union de error ANCHO (`ActionError`) y no el estrecho de la pagina: quien lo consume
+ * es `filasDesdeResultado`, el adaptador comun de la descarga, que redacta el mensaje de
+ * CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva solo conteos, nunca filas.
+ */
+export type ListarOrdenesBodegaCompletoResult = ListarCompletoResult<RecepcionSateliteDTO>;
+
+/**
+ * Feature 184 — Tanda A (T A.3, R18/R21/R22): los identificadores que SIGUEN en el conjunto
+ * filtrado, de entre los preguntados.
+ *
+ * Devuelve los VIGENTES y no los caducados a proposito: el cliente interseca, asi que un fallo
+ * —o una respuesta que no llega— no puede leerse nunca como «desmarca todo». Ninguna rama de
+ * error lleva datos del identificador ajeno (R21).
+ */
+export type ListarIdsVigentesBodegaResult =
+  | { status: "ok"; ids: string[] }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+
+export type ListarRecepcionSateliteResult =
+  | {
+      status: "ok";
+      porRecibir: RecepcionSateliteDTO[];
+      recibidas: RecepcionSateliteDTO[];
+      // Feature 139/T2.5/R21: ordenes `por_devolver` de la zona del adminSatelite,
+      // elegibles para "Enviar a central" (por lote). REEMPLAZA el viejo scope `rechazada`
+      // (feature 48). El campo viaja tal cual desde el service result (la action solo
+      // reenvia); acotado server-side por zona.
+      porDevolver: RecepcionSateliteDTO[];
+      // Feature 139/T2.5/R21: ordenes `devolviendo_a_bodega_central` de la zona (en transito
+      // a la central), INFORMATIVAS. Alineado con `ListarRecepcionSateliteServiceResult.ok`:
+      // el service ya lo devuelve y la action lo reenvia verbatim (sin remapear).
+      enTransitoACentral: RecepcionSateliteDTO[];
+      // Feature 100/T4.1/R12: ordenes `devuelta` de la zona del adminSatelite,
+      // elegibles para "Recuperar a bodega". Viaja tal cual desde el service result
+      // (la action solo reenvia); acotado server-side por zona.
+      devueltas: RecepcionSateliteDTO[];
+      // Feature 149/T6.3/R35: ordenes `por_recoger` de la zona del adminSatelite (asignadas a un
+      // mensajero que aun no las recogio), elegibles para "Deshacer asignacion" (por lote). Viaja
+      // tal cual desde el service result (la action solo reenvia); acotado server-side por zona.
+      // R36: las `en_ruta_bodega_satelite` NO entran aqui (siguen en `porRecibir`, sin accion).
+      asignadas: RecepcionSateliteDTO[];
+      zonaNombre: string | null;
+      sinZona: boolean;
+    }
+  | { status: "forbidden" } // R3
+  | { status: "unauthenticated" }; // R3
+
+export type RecibirResult =
+  | { status: "ok"; ordenId: string; estado: "en_bodega_satelite" }
+  | { status: "forbidden" }
+  | { status: "sin_zona" }
+  | { status: "zona_ajena" }
+  | { status: "estado_invalido"; estado: string }
+  | { status: "ya_recibida" }
+  | { status: "no_encontrada" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict" }
+  | { status: "unauthenticated" }; // R16 / R3 (borde)
+
+// --- Feature 34: asignacion satelite a mensajeros de la zona ---
+
+// R15/R19: borde de la asignacion. `ordenIds` no vacio de uuids, `mensajeroId`
+// uuid; un input invalido -> ZodError -> validation_error ANTES del service, sin
+// tocar datos. El `orden.id` es un uuid (ver Orden.id en schema.prisma).
+export const asignarSateliteSchema = z.object({
+  ordenIds: z.array(z.string().uuid()).min(1),
+  mensajeroId: z.string().uuid(),
+  // Feature 246 (T3.1, R2/R3/R4/R6, decision D4) — EL MISMO campo que en bodega central, con el
+  // MISMO enum y el MISMO default. D4 se firmo asi por una razon operativa: dejar el satelite
+  // fuera haria que la regla del sistema dependiera de DESDE QUE BODEGA te asignaron, y eso no se
+  // le puede explicar a quien opera. Que las dos superficies importen `diaRepartoSchema` de un
+  // unico archivo es lo que impide que un dia acepten vocabularios distintos.
+  dia: diaRepartoSchema.default("hoy"),
+  /**
+   * FICHA 407 (2026-09-10, R1/R5/R9) — LA MARCA. Ids del MISMO lote que la persona autoriza a
+   * asignar SIN ubicacion en el mapa, sabiendo que su direccion es irresoluble. No es un acto
+   * aparte: es un parametro de la propia asignacion, y esa misma llamada asigna.
+   *
+   * `.default([])` y NO obligatorio, por el MISMO motivo que `dia` lo tiene (R5): una peticion
+   * sin el campo se comporta EXACTAMENTE como antes de esta ficha. Ausente = «ninguna», jamas
+   * «todas».
+   *
+   * NO SE PERSISTE en ningun sitio (R9): decision del humano del 2026-09-10. Si la orden se
+   * libera y se reasigna, hay que volver a autorizarla.
+   */
+  autorizarSinUbicacionIds: z.array(z.string().uuid()).default([]),
+});
+export type AsignarSateliteActionInput = z.infer<typeof asignarSateliteSchema>;
+
+// R7/R19: resultado expuesto por `asignarDesdeSatelite` (agrega `unauthenticated`
+// del borde; el resto son resultados de dominio del service). Espejo de
+// `AsignarSateliteServiceResult`.
+export type AsignarSateliteResult =
+  // Feature 400 (2026-09-09, R31-R33): `sinUbicacion` = cuantas ordenes del lote quedaron
+  // asignadas SIN ubicacion por un fallo de configuracion del geocodificador. Cifra
+  // agregada (nunca una lista, R32) y ausente cuando vale cero (R33). Espejo del contrato
+  // del service; el razonamiento vive en `IGuiaAsignacionService.ts`.
+  // FICHA 407 (2026-09-10, R10/R11/R12): `sinUbicacionAutorizada` = cuantas se asignaron sin
+  // ubicacion porque una PERSONA lo autorizo. Cifra hermana de `sinUbicacion` y DISJUNTA de
+  // ella —dos estados excluyentes del gate—, y con texto propio: el de la 400 dice «un
+  // problema del sistema, no de la direccion» y aqui la direccion SI es el problema (R12).
+  | {
+      status: "ok";
+      resultados: { ordenId: string; estado: "mensajero_recogiendo_en_bodega" }[];
+      sinUbicacion?: number;
+      sinUbicacionAutorizada?: number;
+    }
+  // Feature 368 (R15) — espejo EXACTO de `AsignarSateliteServiceResult` (el server action hace
+  // passthrough directo del resultado del service, sin traducirlo: ver
+  // `lib/actions/recepcion-satelite.ts`).
+  | {
+      status: "partial";
+      resultados: { ordenId: string; estado: "mensajero_recogiendo_en_bodega" }[];
+      bloqueadas: { ordenId: string; motivo: string }[];
+      sinUbicacion?: number;
+      sinUbicacionAutorizada?: number;
+    }
+  | { status: "forbidden" }
+  | { status: "sin_zona" }
+  // Feature 41/R18: bodega bloqueada (regla estricta R17). La causa (porMensajeros /
+  // porCierreBodega) permite al frontend mostrar el mensaje accionable diferenciado (R22).
+  | { status: "bodega_bloqueada"; causa: { porMensajeros: boolean; porCierreBodega: boolean } }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict"; detalle: { ordenId: string; motivo: string }[] }
+  | { status: "unauthenticated" };
+
+// R2/R5/R6: resultado del loader de mensajeros de la zona del actor para el modal.
+// `forbidden` si el rol no es adminSatelite; sin zona -> lista vacia (R6).
+export type ListarMensajerosSateliteResult =
+  | {
+      status: "ok";
+      mensajeros: MensajeroLiteRow[];
+      /**
+       * FEATURE 271 (R32) — ids de los mensajeros de la zona que el servidor va a RECHAZAR al
+       * asignar (regla N/V: `N >= 2` o `V >= 1`). El selector los deshabilita con su motivo, en vez
+       * de dejar elegir y toparse con un rechazo al confirmar.
+       *
+       * ⚠️ ES LA MITAD QUE FALTABA, y esta es la superficie del incidente del 18/08. Opcional
+       * (aditivo) para no romper a los consumidores actuales, pero la accion lo emite SIEMPRE.
+       */
+      bloqueadosIds?: string[];
+      /**
+       * Pedido humano (2026-08-26) — ids de mensajeros que NO pueden recibir trabajo por su
+       * ESTADO de usuario (`inactivo` / `bloqueado`). El servidor los rechaza en las tres
+       * escrituras, asi que el selector los deshabilita con su motivo en vez de dejar elegir y
+       * toparse con un rechazo al confirmar (la leccion del incidente del 18/08).
+       *
+       * Viaja APARTE de `bloqueadosIds` porque el MOTIVO es otro y se arregla en otra pantalla:
+       * uno se resuelve cerrando cierres, este reactivando al usuario en Configuracion.
+       *
+       * ⚠️ EL **FILTRO** DEL LISTADO (`FiltrosEntregas.tsx`) TAMPOCO DEBE LEERLO: un mensajero
+       * dado de baja sigue siendo el asignado de ordenes historicas que alguien busca.
+       *
+       * Opcional (aditivo); la accion lo emite SIEMPRE.
+       */
+      noAsignablesIds?: string[];
+    }
+  | { status: "forbidden" }
+  | { status: "unauthenticated" };

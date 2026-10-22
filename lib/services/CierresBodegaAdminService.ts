@@ -1,0 +1,525 @@
+import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
+import { cierreConfig } from "@/lib/config/cierre";
+import { descargaConfig } from "@/lib/config/descarga";
+import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
+import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { CierreGrupos } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreBodegaDetalleCierre,
+  CierreBodegaResumen,
+} from "@/lib/interfaces/services/ICierreBodegaService";
+import type {
+  AprobarCierreBodegaServiceResult,
+  CierreBodegaDetalleServiceResult,
+  ICierresBodegaAdminService,
+  ListarCierresBodegaAdminServiceResult,
+  ListarHistoricoCierresBodegaCompletoServiceResult,
+  ListarHistoricoCierresBodegaServiceResult,
+  ListarPendientesCierresBodegaCompletoServiceResult,
+  ListarPendientesCierresBodegaServiceResult,
+  RechazarCierreBodegaServiceResult,
+} from "@/lib/interfaces/services/ICierresBodegaAdminService";
+// Feature 230 (T7.2, R26): el union de la hoja fundida es UNO para los dos bordes.
+import type { ListarGestionesDescargaServiceResult } from "@/lib/interfaces/services/ICierresAdminService";
+import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import { esColaSolicitado } from "@/lib/utils/colas-cierre";
+import { rangoDePagina } from "@/lib/utils/rango-pagina";
+import { rutasAFirmar } from "@/lib/utils/evidencias-gestion";
+import { toDetalleDTO } from "@/lib/services/CierreDiaService";
+import {
+  cobradoSobreRecaudado,
+  efectivoCubreDescuentos,
+  ganaLaTienda,
+  gananciaEmpresa,
+  netoEmpresa,
+  pagoTiendaEmpresa,
+  paraLaCentral,
+  partesPorTienda,
+  totalesIngresoEmpresa,
+} from "@/lib/utils/ingreso-empresa";
+
+// Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
+// "todos los cierres de bodega" (van a la central), sin filtro de zona.
+
+// Mensaje accionable cuando falta el motivo de rechazo (R17).
+const MSG_MOTIVO_REQUERIDO = "El motivo de rechazo es obligatorio.";
+
+/**
+ * Feature 40 — logica de negocio de "Cierres de bodega" del maestro (aprobar /
+ * rechazar). Espejo de CierresAdminService (38), aplicado a CierreBodega. Lista la cola
+ * + historico, muestra el detalle agregado con evidencias firmadas (R12) y transiciona
+ * `solicitado` -> aprobado/rechazado con guardia de estado (R18). No conoce HTTP ni
+ * Prisma; testeable con dobles. Totales = snapshot, nunca recomputa (R13).
+ */
+export class CierresBodegaAdminService implements ICierresBodegaAdminService {
+  constructor(
+    private readonly repo: ICierresBodegaAdminRepository,
+    private readonly signedUrls: ISignedUrlProvider,
+  ) {}
+
+  async listarCierresBodegaAdmin(
+    actor: Actor,
+  ): Promise<ListarCierresBodegaAdminServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    // R23: SOLO lectura. R15: partir por estado (solicitado vs resuelto).
+    const rows = await this.repo.findCierresBodega();
+    const pendientes: CierreBodegaResumen[] = [];
+    const historico: CierreBodegaResumen[] = [];
+    for (const row of rows) {
+      const resumen = toResumen(row); // R13: totales snapshot (string) sin recomputar
+      // Feature 170 (T I.1): el corte sale de `ESTADOS_COLA_SOLICITADO`, el MISMO que el
+      // repositorio escribe como WHERE al paginar el historico (R44).
+      if (esColaSolicitado(row.estado)) pendientes.push(resumen);
+      else historico.push(resumen);
+    }
+    return { status: "ok", pendientes, historico };
+  }
+
+  /**
+   * Feature 170 — FASE 2 (T I.1, R40/R41/R44/R51/R54) — el HISTORICO, paginado en servidor.
+   *
+   * El guard de rol va PRIMERO, antes de tocar el repositorio: con el guard despues, las
+   * cabeceras de todos los cierres de bodega —dinero agregado de toda la operacion— ya
+   * habrian salido de la base aunque la respuesta fuera un error.
+   *
+   * UNA sola llamada al repositorio, igual que el listado sin paginar (R54): el conteo que
+   * R41 exige viaja dentro de ella.
+   */
+  async listarHistoricoCierresBodegaPaginado(
+    input: { page: number; pageSize: number; filtros?: FiltrosCierresBodega },
+    actor: Actor,
+  ): Promise<ListarHistoricoCierresBodegaServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    // Pedido humano del 2026-08-16: el filtro RECORTA dentro del alcance del rol, no lo
+    // sustituye — se compone con `AND` en el repositorio.
+    const { items, total } = await this.repo.findHistoricoPaginado(
+      rangoDePagina(input),
+      input.filtros,
+    );
+
+    return {
+      status: "ok",
+      items: items.map(toResumen), // R13: mismo mapper que el listado sin paginar
+      page: input.page,
+      pageSize: input.pageSize,
+      total, // R41: el total del CONJUNTO, nunca `items.length`
+    };
+  }
+
+  /**
+   * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R49/R51/R54) — la COLA de cierres de bodega
+   * PENDIENTES, paginada en servidor.
+   *
+   * El guard de rol va PRIMERO, antes de tocar el repositorio, por el mismo motivo que en el
+   * historico: la cabecera de un cierre de bodega ES dinero agregado de una zona entera, y con
+   * el guard despues ya habria salido de la base aunque la respuesta fuera un error.
+   *
+   * R49: no se agrega nada aqui. Los montos de esta pantalla son el SNAPSHOT de cada cierre de
+   * bodega (`toResumen` no recomputa) y la pantalla no deriva totales del array; el `total` que
+   * viaja es el CONTADOR de cabecera (R42), un conteo de filas.
+   */
+  async listarPendientesCierresBodegaPaginado(
+    input: { page: number; pageSize: number; filtros?: FiltrosCierresBodega },
+    actor: Actor,
+  ): Promise<ListarPendientesCierresBodegaServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), input.filtros);
+
+    return {
+      status: "ok",
+      items: items.map(toResumen), // R13: mismo mapper que el listado sin paginar
+      page: input.page,
+      pageSize: input.pageSize,
+      total, // R41/R42: el total del CONJUNTO de la cola, nunca `items.length`
+    };
+  }
+
+  /**
+   * Feature 184 — Tanda E (T E.2, R1/R4/R6) — el HISTORICO ENTERO de cierres de bodega, sin
+   * recorte, que es del que sale el archivo de «Cierres de bodega resueltos» (listado 5).
+   *
+   * **Lo que cierra.** Hasta hoy ese archivo se producia releyendo `listarCierresBodegaAdmin()`,
+   * que trae TODOS los cierres de bodega —cola e historico— y los parte en memoria para que la
+   * pantalla se quede con una de las dos mitades. Aqui se lee SOLO el historico, cortado en la
+   * base por el mismo criterio que su pagina (R16). Las filas salen identicas; lo que cambia es
+   * cuantas se leen para producirlas, y de eso hablan los dos `*-where.test.ts` y el contador de
+   * filas leidas del test de servicio.
+   *
+   * **El guard va PRIMERO, antes de tocar el repositorio**, por el mismo motivo que en la
+   * pagina: la cabecera de un cierre de bodega ES dinero agregado de una zona entera, y con el
+   * guard despues ya habria salido de la base aunque la respuesta fuera un error.
+   *
+   * **No lleva `input`, y es deliberado.** Este listado no admite filtros: su schema de pagina
+   * solo tenia `page`/`pageSize`, y quitarlos deja una lista blanca de CERO claves. El borde la
+   * sigue aplicando entera —parsear ES la barrera (R17)— pero no hay nada que transportar hasta
+   * aqui. Y tampoco hay zona que resolver: este listado es de acceso total y ve la operacion
+   * completa; el alcance es el ROL, y sale del actor.
+   *
+   * **Mismo mapper que la pagina** (`toResumen`, R13): los totales son SNAPSHOT y ni el conjunto
+   * ni la pagina recomputan nada. A diferencia de la tanda D, aqui no hay ningun enriquecido que
+   * conservar o saltarse: el camino del archivo no firma URL, no agrega dinero y no consulta
+   * ninguna otra tabla.
+   *
+   * **Excepcion declarada a R29 de la 170.** De R29 —feature `done`, requisito vivo— se cumple
+   * la mitad del transporte: por encima del tope no sale ni una fila, solo los dos conteos del
+   * aviso. NO se cumple la de materializar: `findHistoricoCompleto` es un `findMany` sin `take`
+   * y el historico llega entero antes de que el tope lo mire. Y aqui el alcance es la operacion
+   * COMPLETA —este listado no acota por zona, ve todas—, asi que el conjunto suma los cierres de
+   * bodega resueltos de todas las zonas desde el primer dia: crece despacio, pero crece siempre
+   * y nada lo corta.
+   *
+   * Se acepta porque cerrarlo exige pedir `limite + 1` y un `count` aparte para no perder el
+   * total exacto del aviso (R6) —la segunda consulta que R15 de esta feature mide y prohibe—, y
+   * eso duplicaria las consultas que esta misma migracion vino a reducir. Decision humana del
+   * 2026-08-05, en el design §3.1. No es una forma de cumplir R29: es una excepcion con motivo.
+   */
+  async listarHistoricoCierresBodegaCompleto(
+    actor: Actor,
+    filtros?: FiltrosCierresBodega,
+  ): Promise<ListarHistoricoCierresBodegaCompletoServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
+
+    // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
+    const conjunto = await this.repo.findHistoricoCompleto(filtros);
+
+    const limite = descargaConfig.MAX_FILAS;
+    // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
+    if (conjunto.length > limite) {
+      return { status: "limite_excedido", total: conjunto.length, limite };
+    }
+
+    return { status: "ok", items: conjunto.map(toResumen), total: conjunto.length };
+  }
+
+  /**
+   * Feature 184 — Tanda E (T E.2, R1/R4/R6) — la COLA ENTERA de cierres de bodega pendientes,
+   * sin recorte, para el archivo de «Cierres de bodega pendientes» (listado 4).
+   *
+   * Comparte con el de arriba la relectura que evita, y aqui se nota mas: la cola es la mitad
+   * PEQUEÑA de la tabla (los cierres sin resolver), asi que producir su archivo arrastraba todo
+   * el historico de la operacion —que crece sin tope con los dias— para descartarlo en memoria.
+   *
+   * Sin `input` y sin zona por el mismo motivo que su hermano: cero filtros, cero claves en la
+   * lista blanca, alcance por ROL desde el actor.
+   *
+   * **Excepcion declarada a R29 de la 170, la mas benigna de las dos de este archivo.** Igual
+   * que arriba: transporte cumplido, materializacion no —`findColaCompleta` tampoco lleva cota,
+   * y la cola entra entera antes de medirse—. La diferencia es el conjunto: estos son los
+   * cierres de bodega SIN resolver, y su tamaño lo marca el retraso del maestro en decidir, no
+   * los dias operados; el historico de arriba se queda con todo lo que esta cola va soltando.
+   * Misma decision del 2026-08-05 y mismo motivo de coste: acotar en base pide el `count` extra
+   * que R15 de esta feature prohibe (design §3.1).
+   */
+  async listarPendientesCierresBodegaCompleto(
+    actor: Actor,
+    filtros?: FiltrosCierresBodega,
+  ): Promise<ListarPendientesCierresBodegaCompletoServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
+
+    const conjunto = await this.repo.findColaCompleta(filtros); // idem
+
+    const limite = descargaConfig.MAX_FILAS;
+    if (conjunto.length > limite) {
+      return { status: "limite_excedido", total: conjunto.length, limite }; // R6
+    }
+
+    return { status: "ok", items: conjunto.map(toResumen), total: conjunto.length };
+  }
+
+  /**
+   * Feature 230 — Tanda 7 (T7.2, R13/R21/R22/R24/R25/R26) — las GESTIONES de los cierres del dia
+   * ya consolidados en un cierre de bodega, de las que sale la HOJA FUNDIDA de esta pantalla.
+   *
+   * Espejo exacto de `listarGestionesCierresAdminCompleto` con el acotamiento que corresponde a
+   * ESTE listado: aqui no hay zona que resolver —es de acceso total—, asi que todo el
+   * acotamiento por rol es `esAccesoTotal`, evaluado ANTES de tocar el repositorio (R25). No se
+   * reimplementa ningun criterio: se reusa el guard que ya gobierna los cuatro listados de esta
+   * pantalla (R16).
+   *
+   * `filtros` son RECORTES, nunca alcance (R15). Y **ni una llamada a `this.signedUrls`** (R22):
+   * la hoja fundida no lleva columna de evidencia en absoluto.
+   *
+   * Los cierres que este camino devuelve son, por construccion, los de las bodegas SATELITE: un
+   * cierre con destino `bodega_central` nunca se consolida en un cierre de bodega. La GAM sale
+   * por el OTRO boton, sin un solo `if` que la nombre (R27).
+   */
+  async listarGestionesCierresBodegaCompleto(
+    actor: Actor,
+    filtros: FiltrosDescargaGestiones,
+  ): Promise<ListarGestionesDescargaServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R25: antes del repo
+
+    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(filtros);
+
+    const limite = descargaConfig.MAX_FILAS;
+    // R21: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
+    if (conjunto.length > limite) {
+      return { status: "limite_excedido", total: conjunto.length, limite };
+    }
+
+    return { status: "ok", items: conjunto, total: conjunto.length };
+  }
+
+  async verCierreBodegaDetalle(
+    cierreBodegaId: string,
+    actor: Actor,
+  ): Promise<CierreBodegaDetalleServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    const found = await this.repo.findCierreBodegaConDetalle(cierreBodegaId);
+    if (found === null) return { status: "no_encontrada" }; // R19
+
+    // R12: firma en LOTE las evidencias de TODAS las gestiones de todos los cierre_dia
+    // (path crudo -> URL firmada de TTL acotado). Nunca se expone el storage_path.
+    // Feature 486 (R2/R8): TODAS las fotos de todas las gestiones de todos los cierres_dia.
+    const paths = found.cierresDia.flatMap((cd) => rutasAFirmar(cd.gestiones));
+    const urlByPath =
+      paths.length > 0
+        ? await this.signedUrls.createSignedUrls(paths, cierreConfig.SIGNED_URL_TTL_SECONDS)
+        : {};
+
+    // R11: por cada cierre_dia, agrupa sus gestiones por resultado (5 claves siempre desde la
+    // feature 158) con el mapper reuso 37. Totales = snapshot del cierre_dia (R13).
+    const cierres: CierreBodegaDetalleCierre[] = found.cierresDia.map((cd) => {
+      const grupos: CierreGrupos = {
+        entregado: [],
+        reprogramado: [],
+        novedad: [],
+        devolucion_a_origen_por_rechazo: [],
+        incidente: [], // feature 158/R18
+      };
+      for (const g of cd.gestiones) {
+        grupos[g.resultado].push(toDetalleDTO(g, urlByPath));
+      }
+      const totalesIngreso = totalesIngresoEmpresa(cd.gestiones);
+      return {
+        cierreDiaId: cd.resumen.cierreDiaId,
+        mensajeroId: cd.resumen.mensajeroId,
+        mensajeroNombre: cd.resumen.mensajeroNombre,
+        totales: cd.resumen.totales,
+        totalPagoMensajero: cd.resumen.totalPagoMensajero, // R20: snapshot por cierre_dia, sin recomputar
+        totalIngresoBodegaRechazos: cd.resumen.totalIngresoBodegaRechazos, // feature 56/R19: snapshot por cierre_dia, sin recomputar
+        grupos,
+        // Totales por concepto de ESTE cierre_dia, sumados desde el desglose por orden.
+        totalesIngreso,
+        // Ganancia del dia de ESE mensajero: su ingreso menos SU pago (snapshot, sin recomputar).
+        ganancia: gananciaEmpresa(totalesIngreso.total, cd.resumen.totalPagoMensajero),
+        // Pago a la tienda de ESTE cierre_dia: lo que recibio menos lo que se le facturo.
+        pagoTienda: pagoTiendaEmpresa(
+          cd.resumen.totales.general,
+          totalesIngreso.fleteConIva,
+          totalesIngreso.comisionConIva,
+        ),
+        // Feature 393 (R15): los cuatro derivados de ESTE cierre_dia salen de SUS PROPIOS
+        // snapshots y de SU propio desglose. Ninguno se deriva de un agregado ni de otro
+        // nivel: si el dia usara el pago AGREGADO, el neto del dia mentiria y la suma de los
+        // dias dejaria de dar el agregado (R16).
+        cobradoSobreRecaudado: cobradoSobreRecaudado(
+          totalesIngreso.fleteConIva,
+          totalesIngreso.comisionConIva,
+        ),
+        netoEmpresa: netoEmpresa(
+          totalesIngreso.total,
+          cd.resumen.totalPagoMensajero,
+          cd.resumen.totalIngresoBodegaRechazos,
+        ),
+        // 💰 FICHA 396 (D1) — LO QUE LA TIENDA GANA EN TOTAL con el dia de ESTE mensajero. Es la
+        // ASIMETRIA que la 395 dejo abierta: puso `ganaLaTienda` solo en el detalle del cierre del
+        // mensajero, asi que aqui el desglose de abajo sumaria hacia un total que no estaba en
+        // ninguna pantalla. MISMA funcion que alli, sobre los datos de ESTE cierre_dia.
+        //
+        // NO es `pagoTienda` —dos lineas mas arriba—: aquel no resta el flete por rechazo, porque
+        // ese flete nunca entro en lo recaudado y se le cobra aparte contra la wallet de la
+        // tienda. La diferencia entre los dos es exactamente `fleteDevolucionConIva` de este dia.
+        ganaLaTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
+        // 💰 FICHA 396 (R19) — DE QUIEN ES CADA PARTE, en el nivel del MENSAJERO.
+        //
+        // MISMO argumento y MISMO sitio que `totalesIngresoEmpresa(cd.gestiones)` de arriba: las
+        // gestiones de ESTE cierre_dia y ninguna otra (R21). De ahi sale, sin `if` que lo diga,
+        // que el umbral de presentacion de este nivel se evalue sobre las tiendas DE ESTE
+        // MENSAJERO: la lista que llega aqui solo contiene las suyas. Derivarlo del agregado de la
+        // bodega —o repartir el agregado entre los dias— ensenaria desglose en un mensajero que
+        // solo llevo UNA tienda.
+        //
+        // Ni una formula de dinero nueva: `partesPorTienda` particiona por `tiendaId` congelado y
+        // llama, sobre cada subconjunto, a las MISMAS funciones que produjeron los agregados de
+        // esta misma vuelta del bucle.
+        partesPorTienda: partesPorTienda(cd.gestiones),
+        paraLaCentral: paraLaCentral(
+          cd.resumen.totales.general,
+          cd.resumen.totalPagoMensajero,
+          cd.resumen.totalIngresoBodegaRechazos,
+        ),
+        efectivoCubreDescuentos: efectivoCubreDescuentos(
+          cd.resumen.totales.efectivo,
+          cd.resumen.totalPagoMensajero,
+          cd.resumen.totalIngresoBodegaRechazos,
+        ),
+      };
+    });
+
+    // Agregado de toda la bodega: se suma desde las MISMAS gestiones que alimentan el
+    // desglose por cierre_dia, no por una consulta aparte que podria no cuadrar con ellas.
+    const resumen = toResumen(found.cierre);
+    // Ficha 396: el `flatMap` se nombra UNA vez y lo comparten lo facturado agregado y el
+    // desglose por tienda. Dos expresiones iguales escritas dos veces son dos sitios donde
+    // divergir; asi es literal que las dos cifras salen del MISMO conjunto de gestiones.
+    const gestionesDeTodaLaBodega = found.cierresDia.flatMap((cd) => cd.gestiones);
+    const totalesIngreso = totalesIngresoEmpresa(gestionesDeTodaLaBodega);
+    // El pago agregado sale del snapshot del cierre de bodega (R13), no de sumar los cierre_dia.
+    const ganancia = gananciaEmpresa(totalesIngreso.total, resumen.totalPagoMensajero);
+    // Pago a tiendas agregado: parte del total general recibido, no del bruto facturado.
+    const pagoTienda = pagoTiendaEmpresa(
+      resumen.totales.general,
+      totalesIngreso.fleteConIva,
+      totalesIngreso.comisionConIva,
+    );
+
+    // Feature 393 (R15/R17) — los tres derivados AGREGADOS salen de los snapshots AGREGADOS
+    // del propio cierre de bodega, NO de sumar los de sus `cierre_dia`. Que las dos vias den
+    // lo mismo se midio contra produccion el 2026-09-08 (14 cierres, 14 cuadran, 0
+    // descuadran), pero eso es una MEDICION, no una regla: si un dia un snapshot agregado
+    // dejara de ser la suma de sus dias, esta pantalla ensena el descuadre en vez de
+    // maquillarlo. `paraLaCentral` y `efectivoCubreDescuentos` ya vienen del mapper (R38).
+    const cobradoSobreRecaudadoAgregado = cobradoSobreRecaudado(
+      totalesIngreso.fleteConIva,
+      totalesIngreso.comisionConIva,
+    );
+    const netoEmpresaAgregado = netoEmpresa(
+      totalesIngreso.total,
+      resumen.totalPagoMensajero,
+      resumen.totalIngresoBodegaRechazos,
+    );
+
+    // 💰 FICHA 396 (D1) — LO QUE LAS TIENDAS GANAN EN TOTAL con toda la bodega. Este contrato NO
+    // lo tenia: la 395 lo puso solo en el detalle del cierre del mensajero, y sin el el desglose
+    // de abajo sumaria hacia un total que no esta en ninguna pantalla (`design.md §5.2`).
+    //
+    // MISMO minuendo que `pagoTienda` —el snapshot AGREGADO `resumen.totales.general`, no la suma
+    // de los `cierre_dia`—, por la misma decision de la 393 que se explica justo arriba: cada
+    // nivel se lee de su propio snapshot. Y misma funcion que en el nivel del mensajero.
+    const ganaLaTiendaAgregado = ganaLaTienda(resumen.totales.general, totalesIngreso.total);
+
+    // 💰 FICHA 396 (R20/Q8) — DE QUIEN ES CADA PARTE, en el nivel AGREGADO. Una fila POR TIENDA a
+    // traves de todos los mensajeros: agrupar por `tiendaId` sobre el `flatMap` ES una fila por
+    // tienda, asi que Q8 —«no hay matriz tienda × mensajero»— se cumple por construccion y sin un
+    // `if` que lo diga. El cruce ya existe un nivel mas abajo, en `cierres[].partesPorTienda`.
+    //
+    // MISMO argumento que `totalesIngresoEmpresa` de arriba (R21): sale de las gestiones, nunca
+    // de SUMAR el desglose de los mensajeros ni de repartir nada.
+    //
+    // ⚠️ Y AQUI ESTA LA ASIMETRIA HONESTA, que se deja escrita en vez de taparla: los agregados
+    // (`pagoTienda`, `ganaLaTiendaAgregado`) parten del snapshot AGREGADO, y el desglose solo
+    // puede partir de las gestiones. Las dos vias coinciden mientras el snapshot agregado sea la
+    // suma de sus dias — medido contra produccion el 2026-09-08, 14 de 14, igual que midio la
+    // 393—, pero eso es una MEDICION, NO UNA REGLA. Si un dia dejaran de coincidir, la suma de las
+    // partes no dara el agregado y **eso es un descuadre real que la pantalla debe ensenar (R21)**:
+    // no se corrige el agregado para que cuadre con las gestiones —violaria R18 y contradiria la
+    // decision explicita de la 393, escrita seis lineas mas arriba— ni el desglose para que cuadre
+    // con el agregado.
+    const partesDeLasTiendas = partesPorTienda(gestionesDeTodaLaBodega);
+
+    // R11/R13: cabecera con totales agregados snapshot.
+    return {
+      status: "ok",
+      cierre: resumen,
+      cierres,
+      totalesIngreso,
+      ganancia,
+      pagoTienda,
+      cobradoSobreRecaudado: cobradoSobreRecaudadoAgregado,
+      netoEmpresa: netoEmpresaAgregado,
+      // Ficha 396: el agregado que le faltaba a este contrato y la particion de las dos cifras de
+      // pago por tienda, ya ORDENADA por el servidor (por lo que se le paga, de mayor a menor).
+      ganaLaTienda: ganaLaTiendaAgregado,
+      partesPorTienda: partesDeLasTiendas,
+      paraLaCentral: resumen.paraLaCentral,
+      efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,
+    };
+  }
+
+  async aprobarCierreBodega(
+    cierreBodegaId: string,
+    actor: Actor,
+  ): Promise<AprobarCierreBodegaServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    // R16/R18-R20: transicion guardada. Aprobar limpia motivoRechazo (null).
+    const res = await this.repo.resolverCierreBodega({
+      id: cierreBodegaId,
+      nuevoEstado: "aprobado",
+      resueltoPor: actor.usuarioId, // R20
+      motivoRechazo: null,
+    });
+    if (res === "updated") return { status: "ok", cierreBodegaId, estado: "aprobado" }; // R16
+    if (res === "conflict") return { status: "conflict" }; // R18
+    return { status: "no_encontrada" }; // fuera_de_alcance (R19)
+  }
+
+  async rechazarCierreBodega(
+    cierreBodegaId: string,
+    motivo: string,
+    actor: Actor,
+  ): Promise<RechazarCierreBodegaServiceResult> {
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
+
+    // R17 (defensa): el borde ya valido con zod, pero el service re-exige motivo no
+    // vacio antes de tocar el repo.
+    const motivoLimpio = motivo.trim();
+    if (motivoLimpio.length === 0) {
+      return { status: "validation_error", fieldErrors: { motivo: [MSG_MOTIVO_REQUERIDO] } };
+    }
+
+    // R17-R20: transicion guardada; persiste el motivo con el cierre.
+    const res = await this.repo.resolverCierreBodega({
+      id: cierreBodegaId,
+      nuevoEstado: "rechazado",
+      resueltoPor: actor.usuarioId, // R20
+      motivoRechazo: motivoLimpio,
+    });
+    if (res === "updated") return { status: "ok", cierreBodegaId, estado: "rechazado" }; // R17
+    if (res === "conflict") return { status: "conflict" }; // R18
+    return { status: "no_encontrada" }; // fuera_de_alcance (R19)
+  }
+}
+
+// Row cruda -> resumen de dominio. La fila ya trae los totales como STRING (R13) y las
+// marcas de tiempo en ISO; el service no recomputa nada (snapshot money-critical).
+function toResumen(row: CierreBodegaResumenRow): CierreBodegaResumen {
+  return {
+    cierreBodegaId: row.cierreBodegaId,
+    zonaId: row.zonaId,
+    zonaNombre: row.zonaNombre,
+    solicitadoPorId: row.solicitadoPorId,
+    solicitadoPorNombre: row.solicitadoPorNombre,
+    estado: row.estado,
+    totales: row.totales,
+    totalPagoMensajero: row.totalPagoMensajero, // R20: snapshot agregado, sin recomputar
+    totalIngresoBodegaRechazos: row.totalIngresoBodegaRechazos, // feature 56/R19: snapshot agregado, sin recomputar
+    cantidadCierres: row.cantidadCierres,
+    solicitadoAt: row.solicitadoAt,
+    resueltoAt: row.resueltoAt,
+    motivoRechazo: row.motivoRechazo,
+    // Feature 393 (R20/R38): los dos derivados llegan YA HECHOS del mapper del repositorio,
+    // que es el mismo para las cuatro lecturas. Aqui NO se recalculan: si este mapper hiciera
+    // su propia resta habria dos formulas para el mismo numero y la del adminSatelite —que
+    // pasa por otro servicio— podria quedarse atras.
+    paraLaCentral: row.paraLaCentral,
+    efectivoCubreDescuentos: row.efectivoCubreDescuentos,
+    // ⭑ FICHA 431 (R26/R28): la marca viaja TAL CUAL, por el mismo motivo que los dos de
+    // arriba. `faltaPorRecibir` llega ya restado del mapper del repositorio; recomputarlo aqui
+    // seria la segunda formula que un dia dice otra cosa que la de `/wallet/satelites`.
+    conciliado: row.conciliado,
+    montoRecibido: row.montoRecibido,
+    faltaPorRecibir: row.faltaPorRecibir,
+    conciliadoAt: row.conciliadoAt,
+    conciliadoPorNombre: row.conciliadoPorNombre,
+    conciliadoNota: row.conciliadoNota,
+  };
+}

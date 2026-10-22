@@ -1,0 +1,377 @@
+"use server";
+
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { OrdenMensajeroMetaRepository } from "@/lib/repositories/OrdenMensajeroMetaRepository";
+import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
+import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
+import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
+import { RutaOptimizadaRepository } from "@/lib/repositories/RutaOptimizadaRepository";
+import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
+import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
+import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
+import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
+import { gestionConfig, type GestionMimeType } from "@/lib/config/gestion";
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  EvidenciaArchivo,
+  GestionarInput,
+  IMisAsignacionesService,
+  RecogerInput,
+} from "@/lib/interfaces/services/IMisAsignacionesService";
+import {
+  escogerSchema,
+  gestionarSchema,
+  liberarSchema,
+  recogerSchema,
+  type EscogerResult,
+  type GestionarActionInput,
+  type GestionarResult,
+  type LiberarResult,
+  type ListarMisAsignacionesResult,
+  type RecogerResult,
+} from "@/lib/types/gestion-orden";
+import { normalizarPagos } from "@/lib/utils/pagos-recaudo";
+import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import type { AppErrorShape } from "@/lib/errors";
+
+// Feature 36 — Server Actions del flujo del mensajero (mutaciones internas del
+// mismo proyecto; van como Server Action, no como Route API, patron feature 21).
+// Resuelve el actor por sesion, valida en el borde con zod y delega en el
+// servicio, TODO bajo `withErrorHandler` (patron ordenes-guia.ts): un error
+// EXCEPCIONAL (caida de DB en la tx, fallo de storage) se loguea/normaliza a
+// AppErrorShape en vez de propagarse crudo. `unauthenticated` se resuelve en el
+// borde (UNAUTHORIZED); `forbidden`/`conflict`/`validation_error` los devuelve el
+// service como resultado de dominio (nunca como excepcion).
+
+// Traduce el AppErrorShape que puede producir este borde: ZodError (VALIDATION_ERROR),
+// falta de sesion (UNAUTHORIZED) o un tropiezo de infraestructura (INTERNAL).
+// `forbidden`/`conflict` los devuelve el service directamente como resultado de dominio,
+// por eso NO aparecen aqui.
+//
+// ── FICHA 440: POR QUE `INTERNAL` YA NO CAE EN EL `default`
+// Hasta el 2026-09-17 este switch solo contemplaba los dos primeros y INTERNAL caia en el
+// `default`, que RELANZA. Medido en produccion ese mismo dia: 27 respuestas 500 en
+// `/mis-asignaciones/reparto`, un solo mensajero, entre las 03:26 y las 04:34 UTC. El
+// origen era 25P02 («current transaction is aborted, commands ignored until end of
+// transaction block») en una LECTURA que no abre ninguna transaccion: la conexion volvia
+// del pool ya abortada. Esa causa raiz sigue viva y se ataca en la otra mitad de la ficha;
+// lo que se arregla aqui es el SINTOMA, que era el caro.
+//
+// Relanzar desde una Server Action no produce una pantalla de error: NO hay frontera que
+// recoja el fallo de una accion (un `error.tsx` cubre el RENDER, no el `await` de un
+// manejador de evento). La promesa se rechaza en el cliente, el `finally` del panel apaga
+// el spinner y nadie pinta nada: el mensajero ve un boton que no hace nada. Por eso
+// INTERNAL pasa a ser un desenlace (`error`) que la pantalla SI puede contar.
+//
+// El `default` se queda tal cual, y no es decorativo: FORBIDDEN/NOT_FOUND/CONFLICT siguen
+// siendo imposibles por este camino —el service los devuelve, no los lanza— y si algun dia
+// aparecen es que alguien cambio esa regla. Eso tiene que romper, no degradarse en silencio.
+function toMisAsignacionesActionError(
+  shape: AppErrorShape,
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" }
+  | { status: "error" } {
+  switch (shape.code) {
+    case "VALIDATION_ERROR":
+      return {
+        status: "validation_error",
+        fieldErrors: (shape.details?.fieldErrors as Record<string, string[]> | undefined) ?? {},
+      };
+    case "UNAUTHORIZED":
+      return { status: "unauthenticated" };
+    case "INTERNAL":
+      // El error REAL ya quedo registrado por `withErrorHandler` (canal servidor, con su
+      // stack). Hacia la pantalla no viaja ni el mensaje ni el codigo de Postgres: solo
+      // «no se pudo».
+      return { status: "error" };
+    default:
+      // FORBIDDEN/NOT_FOUND/CONFLICT: este borde nunca los lanza como AppError; si algo
+      // desconocido llega aqui, se propaga como fallo real.
+      throw new Error(`mis-asignaciones: AppErrorCode inesperado ${shape.code}`);
+  }
+}
+
+// Camino de LECTURA (`listarMisAsignaciones`): no pasa por zod, asi que los unicos codigos
+// alcanzables son UNAUTHORIZED —lanzado dos lineas mas arriba cuando no hay sesion— e
+// INTERNAL. Se separan a proposito: hasta la ficha 440 los DOS se aplanaban a
+// `unauthenticated`, y la pagina traducia eso a `notFound()`. Un tropiezo de base acababa
+// asi en un 404 que MIENTE —«esta pantalla no existe»— y que ademas no ofrece reintentar,
+// que es justo lo unico que podia resolverlo.
+function toListarMisAsignacionesError(
+  shape: AppErrorShape,
+): { status: "unauthenticated" } | { status: "error" } {
+  return shape.code === "UNAUTHORIZED"
+    ? { status: "unauthenticated" }
+    : { status: "error" };
+}
+
+function buildService(): IMisAsignacionesService {
+  const prisma = getPrismaClient();
+  const ordenRepo = new OrdenRepository(prisma);
+  // Reusa la infraestructura de Storage de la feature 21/22 apuntando al bucket
+  // NUEVO de evidencias (constructor acepta el bucket, R8/T7).
+  return new MisAsignacionesService(
+    new GestionOrdenRepository(prisma),
+    ordenRepo,
+    new SupabaseFileStorage(undefined, gestionConfig.EVIDENCIA_BUCKET),
+    new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+    // Feature 92 (R23/R28): secuencia optimizada al listar + persistencia del origen `gps`.
+    // Feature 99 (R29): la decision de reintento/escalado de una devolucion ya NO vive aqui
+    // (se relocalizo al cron SLA), por eso el service ya no recibe el derivador de intentos ni
+    // la zona central.
+    new RutaOptimizadaRepository(prisma),
+    // Feature 115 (R17/R20): meta-repo para reflejar la marca "gestionar mas tarde" del actor.
+    new OrdenMensajeroMetaRepository(prisma),
+    // Feature 160 (R11/R24): derivador de intentos EN LOTE de las dos listas del mensajero.
+    // Mismo servicio (y por tanto mismo criterio) que el cron SLA y el drawer de historial.
+    new OrdenHistorialService(
+      ordenRepo,
+      new OrdenHistorialRepository(prisma),
+      new OrdenDiaRepartoCambioRepository(prisma),
+      new OrdenTraspasoRepository(prisma),
+    ),
+  );
+}
+
+export interface MisAsignacionesDeps {
+  service?: IMisAsignacionesService;
+  getActor?: () => Promise<Actor | null>;
+}
+
+/** File-like: lo que necesitamos para leer el binario de la evidencia. */
+interface FileLike {
+  type: string;
+  size: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+/** R9-R13: dos grupos + puntero de bloqueo; solo `mensajero`. */
+export async function listarMisAsignaciones(
+  deps: MisAsignacionesDeps = {},
+): Promise<ListarMisAsignacionesResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R12: antes de tocar el service
+    const service = deps.service ?? buildService();
+    return service.listarMisAsignaciones(actor!);
+  });
+  // Ficha 440: `unauthenticated` (sin sesion) y `error` (la base tropezo) dejan de ser lo
+  // mismo. La pagina los trata distinto: el primero es un 404 legitimo, el segundo tiene
+  // que poder reintentarse.
+  return isAppErrorShape(r) ? toListarMisAsignacionesError(r) : r;
+}
+
+/** R14-R17: recoger (lote o de a una) por_recoger -> en_reparto. */
+export async function recogerAsignaciones(
+  input: unknown,
+  deps: MisAsignacionesDeps = {},
+): Promise<RecogerResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = recogerSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    // Feature 92/R22: `ubicacion` ya validada por `recogerSchema` (rangos [-90,90] /
+    // [-180,180]). Ausente = el navegador no la dio o el permiso esta denegado: R25 exige
+    // que eso NO bloquee la recogida.
+    const recogerInput: RecogerInput = { ordenIds: data.ordenIds, ubicacion: data.ubicacion };
+    return service.recogerAsignaciones(recogerInput, actor);
+  });
+  return isAppErrorShape(r) ? toMisAsignacionesActionError(r) : r;
+}
+
+/** R19-R21: escoger una orden para gestionar (fija el bloqueo 1-a-1). */
+export async function escogerParaGestion(
+  input: unknown,
+  deps: MisAsignacionesDeps = {},
+): Promise<EscogerResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = escogerSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    return service.escogerParaGestion(data.ordenId, actor);
+  });
+  return isAppErrorShape(r) ? toMisAsignacionesActionError(r) : r;
+}
+
+/**
+ * R18/R22-R32: registra la gestion. Recibe FormData (campos + File de evidencia en
+ * entrega/rechazo): las Server Actions soportan archivos nativamente y evita crear
+ * una Route API (patron feature 21). Revalida MIME/tamano de la foto en servidor
+ * via el schema discriminado (R24).
+ */
+export async function gestionar(
+  formData: FormData,
+  deps: MisAsignacionesDeps = {},
+): Promise<GestionarResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const raw = rawFromFormData(formData);
+    const data = gestionarSchema.parse(raw); // ZodError -> VALIDATION_ERROR
+    const input = await toGestionarInput(data);
+    const service = deps.service ?? buildService();
+    return service.gestionar(input, actor);
+  });
+  return isAppErrorShape(r) ? toMisAsignacionesActionError(r) : r;
+}
+
+/**
+ * R35: libera el puntero de bloqueo (`usuario.orden_en_gestion_id`) del PROPIO
+ * actor cuando cancela/cierra la gestion sin registrar un resultado. Delega en el
+ * service, que solo limpia si el puntero apunta a esa orden (concurrencia-seguro,
+ * idempotente).
+ */
+export async function liberarGestion(
+  input: unknown,
+  deps: MisAsignacionesDeps = {},
+): Promise<LiberarResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = liberarSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    return service.liberarGestion(data.ordenId, actor);
+  });
+  return isAppErrorShape(r) ? toMisAsignacionesActionError(r) : r;
+}
+
+/** Extrae los campos de gestion del FormData (montoRecibido a number). */
+function rawFromFormData(formData: FormData): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  for (const campo of [
+    "ordenId",
+    "resultado",
+    "metodoPago",
+    "fechaReprogramacion",
+    "motivo",
+    "causaDevolucion", // feature 73: campo de texto -> entra por el bucle, sin coercion
+    "causaIncidente", // feature 158/R9: idem, campo de texto sin coercion
+  ]) {
+    const value = formData.get(campo);
+    if (value !== null) raw[campo] = value;
+  }
+  const monto = formData.get("montoRecibido");
+  if (monto !== null && monto !== "") raw.montoRecibido = Number(monto);
+  // Feature 119 (R5): la evidencia pasa de UNA a 1..N fotos. Se leen TODAS las entradas de la
+  // misma clave `evidencia` (`getAll`) —el panel hace `append("evidencia", file)` por foto— y
+  // se filtran las strings (un File-like tiene `arrayBuffer`). Se expone como `raw.evidencias`.
+  // El panel sin migrar (T11) aun manda UN solo `evidencia`: `getAll` lo lee como lista de 1.
+  // Feature 212 (R11/R12): el DESGLOSE viaja como campos REPETIDOS `pagoMetodo`/`pagoMonto`
+  // (mismo patron `getAll` que las evidencias de la 119) y se emparejan por INDICE. Si no viene
+  // ninguno, la clave `pagos` NO se crea: un FormData VIEJO (solo `metodoPago`) sigue parseando
+  // exactamente igual, que es lo que sostiene la ventana entre la 212 y la 213.
+  //
+  // Longitudes desparejas -> se arma la lista con el maximo de las dos y los huecos quedan
+  // `undefined`: zod los rechaza con un error de campo en vez de emparejar mal el dinero.
+  const pagoMetodos = formData.getAll("pagoMetodo");
+  const pagoMontos = formData.getAll("pagoMonto");
+  if (pagoMetodos.length > 0 || pagoMontos.length > 0) {
+    const n = Math.max(pagoMetodos.length, pagoMontos.length);
+    raw.pagos = Array.from({ length: n }, (_, i) => {
+      const monto = pagoMontos[i];
+      return {
+        metodo: pagoMetodos[i],
+        monto: monto === undefined || monto === "" ? undefined : Number(monto),
+      };
+    });
+  }
+  const evidencias = formData
+    .getAll("evidencia")
+    .filter((v): v is Exclude<FormDataEntryValue, string> => typeof v !== "string");
+  if (evidencias.length > 0) raw.evidencias = evidencias;
+  // Feature 92/R22: la geolocalizacion viaja como DOS campos escalares del FormData
+  // (`ubicacionLat`/`ubicacionLng`) y se recompone aqui. Solo se arma el objeto si vienen
+  // LOS DOS: media coordenada no es una ubicacion, y dejarla a medias haria que zod la
+  // rechazara y tumbara toda la gestion por un dato auxiliar (R25 lo prohibe).
+  const lat = formData.get("ubicacionLat");
+  const lng = formData.get("ubicacionLng");
+  if (lat !== null && lat !== "" && lng !== null && lng !== "") {
+    raw.ubicacion = { lat: Number(lat), lng: Number(lng) };
+  }
+  // Feature 193 (R9/R18): POR QUE no viene la ubicacion, cuando la captura fallo por una
+  // causa TECNICA. Se pasa crudo: si el valor no es uno de los cuatro del enum —y la
+  // denegacion del permiso NO lo es (R12)— zod lo rechaza y la gestion no entra. Esa es
+  // exactamente la via por la que se bloquea el permiso denegado.
+  const ausencia = formData.get("ubicacionAusencia");
+  if (ausencia !== null && ausencia !== "") raw.ubicacionAusencia = ausencia;
+  return raw;
+}
+
+/** Lee el binario de la evidencia (si aplica) y arma el input del servicio. */
+async function toGestionarInput(data: GestionarActionInput): Promise<GestionarInput> {
+  // Feature 92/R22 + 193/R14: la ubicacion es transversal a las CINCO ramas (interseccion en
+  // el tipo del service), asi que se adjunta una sola vez en vez de repetirla cinco veces.
+  // Van juntas a proposito: son las dos caras de la misma respuesta —donde estaba, o por que
+  // no se pudo saber— y separarlas invita a que una rama nueva adjunte solo una.
+  const geo = {
+    ubicacion: data.ubicacion,
+    ubicacionAusencia: data.ubicacionAusencia,
+  };
+  switch (data.resultado) {
+    case "entregado":
+      return {
+        ...geo,
+        ordenId: data.ordenId,
+        resultado: "entregado",
+        montoRecibido: data.montoRecibido,
+        // Feature 212 (R12/R19): se CONSERVA el escalar para la columna deprecada `metodo_pago`
+        // (`null` cuando el cliente ya manda desglose), y el desglose normalizado —una linea por
+        // metodo, o CERO si no hubo cobro (R14)— viaja aparte hacia el service.
+        metodoPago: data.metodoPago ?? null,
+        pagos: normalizarPagos(data),
+        evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]),
+      };
+    case "reprogramado":
+      return {
+        ...geo,
+        ordenId: data.ordenId,
+        resultado: "reprogramado",
+        fechaReprogramacion: data.fechaReprogramacion,
+        motivo: data.motivo,
+      };
+    case "novedad":
+      return {
+        ...geo,
+        ordenId: data.ordenId,
+        resultado: "novedad",
+        causaDevolucion: data.causaDevolucion, // feature 73/R6
+        motivo: data.motivo,
+        evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]), // feature 75/119
+      };
+    case "devolucion_a_origen_por_rechazo":
+      return {
+        ...geo,
+        ordenId: data.ordenId,
+        resultado: "devolucion_a_origen_por_rechazo",
+        motivo: data.motivo,
+        evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]),
+      };
+    // Feature 158 (R9/R10/R11): el INCIDENTE. Sin monto ni metodo de pago (no hay recaudo);
+    // causa tipificada + motivo libre + las 1..N fotos, obligatorias en las TRES causas.
+    case "incidente":
+      return {
+        ...geo,
+        ordenId: data.ordenId,
+        resultado: "incidente",
+        causaIncidente: data.causaIncidente,
+        motivo: data.motivo,
+        evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]),
+      };
+  }
+}
+
+async function leerEvidencia(file: FileLike): Promise<EvidenciaArchivo> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return { contentType: file.type as GestionMimeType, bytes };
+}
+
+// Feature 119 (R5): lee el binario de las N fotos (en el ORDEN en que llegaron -> indice 0..N-1).
+async function leerEvidencias(files: FileLike[]): Promise<EvidenciaArchivo[]> {
+  return Promise.all(files.map(leerEvidencia));
+}

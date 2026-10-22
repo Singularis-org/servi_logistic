@@ -1,0 +1,725 @@
+import {
+  CatalogoInvalidoError,
+  UsuarioDuplicadoError,
+  type IUserRepository,
+  type ListUsuariosParams,
+  type UpdateUsuarioData,
+  type UsuarioPublico,
+} from "@/lib/interfaces/repositories/IUserRepository";
+import type {
+  Actor,
+  ActualizarUsuarioServiceResult,
+  CambiarEstadoUsuarioServiceResult,
+  CambioUsuarioEvaluable,
+  ConsultarImpactoCambioServiceResult,
+  CrearUsuarioServiceResult,
+  IUsuarioService,
+  ListarRolesServiceResult,
+  ListarTiposIdentificacionServiceResult,
+  ListarUsuariosCompletoServiceResult,
+  ListarUsuariosServiceResult,
+  ObtenerUsuarioServiceResult,
+  RestablecerContrasenaServiceResult,
+} from "@/lib/interfaces/services/IUsuarioService";
+import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
+import type { ISessionRepository } from "@/lib/interfaces/repositories/ISessionRepository";
+import type {
+  ActualizarUsuarioInput,
+  CambiarEstadoUsuarioInput,
+  CrearUsuarioInput,
+  ListarUsuariosCompletoInput,
+  ListarUsuariosInput,
+} from "@/lib/types/usuario";
+import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
+import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
+import { descargaConfig } from "@/lib/config/descarga";
+import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
+import { hashPassword } from "@/lib/utils/password";
+import { generateStrongPassword } from "@/lib/utils/password-generator";
+
+// Decision 1: SOLO `maestro` tiene lectura Y escritura del modulo. Cualquier otro
+// rol (incluido uno no reconocido) -> forbidden (R3/R4).
+const ALLOWED_ROLES = new Set<string>(["maestro"]);
+
+// Feature 24/R27: roles que pueden (y DEBEN) llevar una zona asignada. Para el
+// resto el `zonaId` se fuerza a null (misma politica que el `fulfillment` de adminTienda).
+const ZONA_ROLES = new Set<string>(["mensajero", "adminSatelite"]);
+
+// FICHA 379: el rol que ADMINISTRA una bodega satelite. Es el unico que puede consolidar los
+// cierres de SU zona (`CierreBodegaService.ROL_AUTORIZADO`), y por eso dejar una zona sin
+// ninguno activo deja su dinero sin nadie que pueda cerrarlo. Se escribe una vez aqui para que
+// el aviso y la invariante de zona hablen del mismo rol.
+const ROL_ADMIN_SATELITE = "adminSatelite";
+
+// Feature 21: roles que pueden llevar un vehiculo asociado. Solo `mensajero`: es el
+// unico que conduce. Para el resto el `vehiculoId` se fuerza a null, igual que la zona.
+// El vehiculo es OBLIGATORIO para el rol (pedido humano 2026-08-26): un mensajero sin
+// vehiculo no puede recibir ordenes, asi que no se le deja nacer ni quedarse sin uno.
+const VEHICULO_ROLES = new Set<string>(["mensajero"]);
+
+// Mensaje de error de vehiculo segun el motivo (obligatorio para el rol vs inexistente).
+function vehiculoErrorMessage(reason: "required" | "not_found"): string {
+  return reason === "required"
+    ? "El vehiculo es obligatorio para el rol mensajero"
+    : "El vehiculo indicado no existe";
+}
+
+// Mensaje de error de zona segun el motivo (obligatoria para el rol vs inexistente).
+function zonaErrorMessage(reason: "required" | "not_found"): string {
+  return reason === "required"
+    ? "La zona es obligatoria para este rol"
+    : "La zona indicada no existe";
+}
+
+export class UsuarioService implements IUsuarioService {
+  // Feature 24/R28: `zonaRepo` opcional para validar la existencia de la zona. Se
+  // inyecta en produccion; los tests que no ejercitan zona pueden omitirlo.
+  constructor(
+    private readonly repo: IUserRepository,
+    private readonly zonaRepo?: IZonaRepository,
+    // Feature 21: repo del catalogo de vehiculos para validar `usuario.vehiculo_id`.
+    // Opcional por el mismo motivo que `zonaRepo`: los tests que no lo ejercitan lo omiten.
+    private readonly vehiculoRepo?: IVehiculoRepository,
+    // Feature 287/R16/R20: el revocador de sesiones del restablecimiento.
+    //
+    // ⚠️ OPCIONAL EN EL CONSTRUCTOR, OBLIGATORIO EN EL USO. Opcional porque hay decenas de
+    // `new UsuarioService(repo)` en los tests existentes y romperlos todos no compra nada. Pero
+    // `restablecerContrasena` LANZA si no esta (R20) en vez de seguir adelante: un colaborador
+    // opcional que se ignora en silencio es exactamente el modo de fallo que en este repo dejo
+    // dos notificadores muertos con la suite entera en verde. Quien lo pasa de verdad esta
+    // probado en `tests/unit/actions/usuarios-composition.test.ts`.
+    private readonly sessionRepo?: Pick<ISessionRepository, "deleteAllByUserId">,
+    // FICHA 379 (R10/R18): el repositorio del cierre de bodega, que es quien sabe cuanto dinero
+    // tiene una zona sin consolidar — con el MISMO criterio con el que la consolidacion elige lo
+    // que puede cerrar.
+    //
+    // ⚠️ OPCIONAL EN EL CONSTRUCTOR, OBLIGATORIO EN EL USO, por el mismo motivo que `sessionRepo`
+    // y con la misma disciplina: hay decenas de `new UsuarioService(repo)` en los tests, asi que
+    // el parametro TIENE que ser opcional, y por eso olvidarlo en el composition root NO rompe
+    // el typecheck. `consultarImpactoCambio` LANZA si no esta. Devolver «no hay dinero» cuando
+    // lo que pasa es que no se puede leer es exactamente el fallo mudo que esta ficha combate —y
+    // en este repo un colaborador opcional ignorado en silencio ya dejo dos notificadores
+    // muertos con la suite entera en verde—. Que se PASA de verdad lo prueba
+    // `tests/unit/actions/usuarios-composition.test.ts`.
+    private readonly cierresRepo?: Pick<
+      ICierreBodegaRepository,
+      "resumirConsolidablesPendientes"
+    >,
+  ) {}
+
+  async crear(input: CrearUsuarioInput, actor: Actor): Promise<CrearUsuarioServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // ⭑ FICHA 392 — EL NOMBRE DE LA TIENDA SE IMPRIME EN LA ETIQUETA
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // `usuario.nombre` de la tienda es uno de los diez datos que la etiqueta pone en el papel
+    // (`datosDeEtiqueta`, dato `tiendaNombre`), y `exigirCobertura` aborta el LOTE ENTERO si la
+    // fuente no lo cubre. La ficha 383 cerro los campos de la ORDEN y dejo este fuera (su Q3).
+    //
+    // ⚠️ POR QUE SE COMPRUEBA PARA TODOS LOS ROLES Y NO SOLO PARA `adminTienda`, que es el unico
+    // cuyo nombre se imprime: porque el rol NO es una propiedad fija de la fila. `actualizar`
+    // acepta `rolId`, asi que un mensajero llamado «𝕄ario» ascendido a tienda meses despues
+    // llevaria su nombre no imprimible al papel SIN volver a pasar por aqui —nadie toco el
+    // nombre—. Acotar la comprobacion al rol dejaria justo esa rendija abierta, y a cambio de
+    // nada: ningun nombre de persona legitimo necesita un caracter fuera de la fuente.
+    //
+    // ⚠️ LO QUE ESTO NO CIERRA, declarado en vez de escondido: un nombre escrito por OTRA puerta
+    // —`PostulacionRepository.crearMensajeroConDocumentos` (postulacion publica de mensajero) o
+    // `ApiKeyRepository` (cuenta tecnica de integracion)— y promovido despues a `adminTienda` sin
+    // que nadie edite el nombre. Cerrarlo pedia rechazar el cambio de ROL por un dato viejo, que
+    // es una decision sobre los nombres YA GUARDADOS y esta ficha no la toma (ni hace backfill).
+    //
+    // Va ANTES del hash de la contrasena a proposito: no se paga un bcrypt por un alta que se va
+    // a rechazar.
+    const rechazoNombre = rechazoDeNombreDeEtiqueta(input.nombre);
+    if (rechazoNombre) return { status: "validation_error", fieldErrors: rechazoNombre };
+
+    // R30: resuelve la contrasena segun el modo. Nunca se loguea (R25/R34).
+    const generated = input.passwordMode === "generate";
+    const plain = generated ? generateStrongPassword() : input.password; // R32/R31
+    const passwordHash = await hashPassword(plain); // R7/R34: solo se persiste el hash
+
+    // Feature 27/R4a (Decision P1): la invariante de rol se calcula aqui, NO se
+    // confia en la UI. Solo `adminTienda` puede quedar con `fulfillment = true`.
+    const fulfillment = await this.resolverFulfillment(input.rolId, input.fulfillment ?? false);
+
+    // Feature 24/R27/R28: resuelve la zona segun el rol (obligatoria para
+    // mensajero/adminSatelite) y valida su existencia.
+    const zona = await this.resolverZona(input.rolId, input.zonaId);
+    if (!zona.ok) {
+      return { status: "validation_error", fieldErrors: { zonaId: [zonaErrorMessage(zona.reason)] } };
+    }
+
+    // Feature 21: resuelve el vehiculo segun el rol (solo mensajero) y valida su
+    // existencia en el catalogo.
+    const vehiculo = await this.resolverVehiculo(input.rolId, input.vehiculoId);
+    if (!vehiculo.ok) {
+      return {
+        status: "validation_error",
+        fieldErrors: { vehiculoId: [vehiculoErrorMessage(vehiculo.reason)] },
+      };
+    }
+
+    try {
+      const usuario = await this.repo.create(
+        {
+          nombre: input.nombre,
+          email: input.email,
+          telefono: input.telefono,
+          cedula: input.cedula,
+          tipoIdentificacionId: input.tipoIdentificacionId,
+          rolId: input.rolId,
+          passwordHash,
+          estado: "activo", // R8: nace activo (a diferencia de la postulacion publica)
+          fulfillment, // R8/R9: valor efectivo ya restringido por rol
+          zonaId: zona.zonaId, // R27: null salvo mensajero/adminSatelite
+          vehiculoId: vehiculo.vehiculoId, // feature 21: null salvo mensajero
+        },
+        // FICHA 362 (R3/R9): QUIEN dio de alta la cuenta, congelado en la misma transaccion.
+        actor.usuarioId,
+      );
+      // R33: contrasena en claro UNA vez solo en modo autogenerado; R35: nunca en manual.
+      return generated
+        ? { status: "ok", usuario, generatedPassword: plain }
+        : { status: "ok", usuario };
+    } catch (error) {
+      return this.mapCrearError(error);
+    }
+  }
+
+  /**
+   * Feature 285 (design §3.2) — traduce las claves PUBLICAS del borde (`q`, `rol`) a los
+   * nombres de dominio que entiende el repositorio (`busqueda`, `roles`).
+   *
+   * ES UNO SOLO Y LO LLAMAN LOS DOS CAMINOS (`listar` y `listarCompleto`), por la misma razon
+   * por la que `OrdenService.construirWhere` es compartido: si cada uno armara el suyo, la
+   * pantalla y la descarga podrian discrepar sin que nada lo delatara — y lo que se descubriria
+   * no es un test rojo, sino un archivo que no es lo que la tabla muestra (R22).
+   *
+   * Las claves ausentes se OMITEN (no viajan como `undefined` explicito) para que el
+   * repositorio distinga "sin filtro" de "filtro vacio". `rol` nunca llega como `[]`: el borde
+   * lo rechaza con `.nonempty()`.
+   */
+  private construirFiltro(
+    input: Pick<ListarUsuariosInput, "q" | "rol">,
+  ): Pick<ListUsuariosParams, "busqueda" | "roles"> {
+    return {
+      ...(input.q !== undefined ? { busqueda: input.q } : {}), // R2/R6
+      ...(input.rol !== undefined ? { roles: input.rol } : {}), // R13/R14
+    };
+  }
+
+  async listar(input: ListarUsuariosInput, actor: Actor): Promise<ListarUsuariosServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4 (285/R26)
+
+    const skip = (input.page - 1) * input.pageSize;
+    const { items, total } = await this.repo.list({
+      skip,
+      take: input.pageSize, // ya acotado a MAX_PAGE_SIZE por el schema (R13)
+      sortBy: input.sortBy,
+      sortDir: input.sortDir,
+      ...this.construirFiltro(input), // feature 285/R2/R13/R16
+    });
+
+    return { status: "ok", items, page: input.page, pageSize: input.pageSize, total };
+  }
+
+  /**
+   * Feature 170 (T B.1, design §2.1) — el MISMO listado sin recorte por pagina, para la
+   * descarga del dataset completo.
+   *
+   * ⚠️ AQUI DECIA, HASTA LA FEATURE 285, que «NO hay `construirWhere` que extraer aqui, y eso es
+   * un HALLAZGO»: era cierto mientras el listado no tenia filtro alguno. La 285 lo DESMIENTE, y
+   * por eso el parrafo se reescribe en vez de dejarse: un comentario que afirma algo falso con
+   * aire de hallazgo verificado es peor que ninguno — la proxima sesion lo usaria de argumento.
+   *
+   * LO QUE HAY AHORA. El listado si construye filtro (`q` -> `busqueda`, `rol` -> `roles`), y
+   * este metodo llama al MISMO `construirFiltro` que `listar`, no a una copia. Eso es lo que
+   * hace que la descarga entregue EXACTAMENTE las filas que la pantalla muestra (R22): no es una
+   * coincidencia que haya que mantener, es el mismo codigo.
+   *
+   * LO QUE NO CAMBIA, y sigue siendo verdad: el alcance POR ACTOR de este listado ES el guard
+   * `ALLOWED_ROLES` —el modulo entero es exclusivo de `maestro`, que no esta acotado a un
+   * subconjunto de filas—, y por eso este metodo usa literalmente el mismo guard, escrito ANTES
+   * de tocar la base (R17 de la 170 / R26 de la 285): un rol no autorizado recibe `forbidden`
+   * sin que se ejecute una sola consulta, tambien cuando manda filtros.
+   *
+   * La paridad con el listado (R9/R11/R19) se sostiene sobre llamar al MISMO `repo.list` con los
+   * MISMOS `sortBy`/`sortDir` y el MISMO filtro: cualquier criterio que el repositorio aplique
+   * —hoy y manana— lo aplica identico en los dos caminos, porque es el mismo metodo. Solo
+   * cambian `skip` (0) y `take` (tope + 1).
+   */
+  async listarCompleto(
+    input: ListarUsuariosCompletoInput,
+    actor: Actor,
+  ): Promise<ListarUsuariosCompletoServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R17 (285/R26)
+
+    const limite = descargaConfig.MAX_FILAS;
+
+    // R29: `take: limite + 1` acota la MEMORIA por construccion — aunque hubiera 50 000
+    // usuarios, nunca se materializan mas de N+1. El `total` sigue siendo exacto porque
+    // el repositorio lo obtiene con un `count` independiente del `take`.
+    const { items, total } = await this.repo.list({
+      skip: 0,
+      take: limite + 1,
+      sortBy: input.sortBy, // R11: mismos defaults del schema (createdAt/desc)
+      sortDir: input.sortDir,
+      ...this.construirFiltro(input), // feature 285/R22: el MISMO filtro que la pantalla
+    });
+
+    // R27/R28: por encima del tope no se entrega NADA. Nunca un dataset truncado en
+    // silencio: o van todas las filas, o va el error accionable con los conteos.
+    //
+    // Feature 285/R25: `total` es ahora el total FILTRADO (el repositorio cuenta con el mismo
+    // `where` con el que pagina), asi que el tope se mide sobre lo que de verdad se va a
+    // descargar. Es la consecuencia directa —y deseada— de que el `count` lleve el `where`: sin
+    // eso, un `limite_excedido` calculado sobre el conjunto SIN filtrar rechazaria la descarga de
+    // 8 mensajeros porque la tabla entera es grande. La direccion del cambio solo puede ser a
+    // mejor: filtrar nunca sube el total.
+    if (total > limite) return { status: "limite_excedido", total, limite };
+
+    return { status: "ok", items, total };
+  }
+
+  async obtener(id: string, actor: Actor): Promise<ObtenerUsuarioServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    const usuario = await this.repo.findById(id);
+    if (!usuario) return { status: "not_found" };
+    return { status: "ok", usuario };
+  }
+
+  async actualizar(
+    id: string,
+    input: ActualizarUsuarioInput,
+    actor: Actor,
+  ): Promise<ActualizarUsuarioServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    // ⭑ FICHA 392 — la otra mitad de la puerta de `crear`, con el mismo motivo escrito alli. Solo
+    // cuando el nombre EFECTIVAMENTE cambia (`.partial()`: ausente = no se toca), misma disciplina
+    // que la correccion de datos del cliente (383): un nombre viejo con un caracter raro —escrito
+    // antes de esta ficha— no puede bloquear la edicion del telefono de esa misma cuenta.
+    if (input.nombre !== undefined) {
+      const rechazoNombre = rechazoDeNombreDeEtiqueta(input.nombre);
+      if (rechazoNombre) return { status: "validation_error", fieldErrors: rechazoNombre };
+    }
+
+    // Feature 27/R12/R4a: se recalcula `fulfillment` con el rol resultante, por lo
+    // que se necesita el usuario actual (rol e/o valor previo). `null` -> not_found.
+    const actual = await this.repo.findById(id);
+    if (!actual) return { status: "not_found" }; // R17
+
+    const data = await this.buildUpdateData(input, actual); // R16: solo campos editables
+
+    // Feature 24/R27/R28: si se edita la zona, se valida y se aplica la invariante por rol
+    // (con el rol resultante).
+    //
+    // FICHA 379/R1 — LA ZONA TAMBIEN SE RECALCULA CUANDO CAMBIA EL ROL, no solo cuando se
+    // envia el campo. Hasta hoy la condicion era `input.zonaId !== undefined` a secas, y por
+    // ahi se colaba el defecto: el formulario OMITE `zonaId` cuando el rol nuevo no lleva zona
+    // (`UsuarioForm`, spread condicional), asi que un adminSatelite degradado a admin CONSERVABA
+    // su `zona_id` con un rol que ya no puede consolidar nada de esa bodega.
+    //
+    // La zona y el vehiculo son campos HERMANOS: los dos tienen la misma invariante por rol y
+    // `crear` (:98) ya la aplicaba a la zona. Tener dos reglas para dos campos iguales —una que
+    // mira el rol y otra que no— ERA el defecto; esta rama adopta la forma exacta de la del
+    // vehiculo, doce lineas mas abajo en este mismo metodo.
+    //
+    // ⚠️ Esto NO bloquea nada (R14): limpia dato sucio. Ademas CREA rastro donde hoy no habia
+    // ninguno — `UserRepository.update` escribe `usuario_zona_cambiada` en cuanto `data.zonaId`
+    // difiere del previo, y hasta hoy llegaba `undefined` y no se escribia nada (R5).
+    if (input.zonaId !== undefined || input.rolId !== undefined) {
+      const zona = await this.resolverZonaDeEdicion(input, actual);
+      if (!zona.ok) {
+        return { status: "validation_error", fieldErrors: { zonaId: [zonaErrorMessage(zona.reason)] } };
+      }
+      data.zonaId = zona.zonaId;
+    }
+
+    // Feature 21: el vehiculo se recalcula si se envia O si cambia el rol (un rol
+    // distinto de `mensajero` no puede conservarlo). Si no se envia ninguno de los
+    // dos, no se toca.
+    if (input.vehiculoId !== undefined || input.rolId !== undefined) {
+      const rolIdResultante = input.rolId ?? actual.rolId;
+      const deseado = input.vehiculoId !== undefined ? input.vehiculoId : actual.vehiculoId;
+      const vehiculo = await this.resolverVehiculo(rolIdResultante, deseado);
+      if (!vehiculo.ok) {
+        return {
+          status: "validation_error",
+          fieldErrors: { vehiculoId: [vehiculoErrorMessage(vehiculo.reason)] },
+        };
+      }
+      data.vehiculoId = vehiculo.vehiculoId;
+    }
+
+    try {
+      // FICHA 362 (R7/R9): QUIEN edito. El repositorio decide QUE registrar comparando contra
+      // el estado previo, dentro de la misma transaccion.
+      const usuario = await this.repo.update(id, data, actor.usuarioId);
+      if (!usuario) return { status: "not_found" }; // R17
+      return { status: "ok", usuario }; // R19
+    } catch (error) {
+      if (error instanceof CatalogoInvalidoError) {
+        return { status: "validation_error", fieldErrors: { [error.campo]: [error.message] } }; // R18
+      }
+      throw error;
+    }
+  }
+
+  async cambiarEstado(
+    id: string,
+    input: CambiarEstadoUsuarioInput,
+    actor: Actor,
+  ): Promise<CambiarEstadoUsuarioServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    // FICHA 362 (R9): QUIEN cambio el estado; el registro lleva el estado anterior y el nuevo.
+    const usuario = await this.repo.setEstado(id, input.estado, actor.usuarioId); // R20/R21
+    if (!usuario) return { status: "not_found" }; // R22
+    return { status: "ok", usuario };
+  }
+
+  async listarTiposIdentificacion(
+    actor: Actor,
+  ): Promise<ListarTiposIdentificacionServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    const tipos = await this.repo.listTiposIdentificacion(); // R29
+    return { status: "ok", tipos };
+  }
+
+  async listarRoles(actor: Actor): Promise<ListarRolesServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
+
+    const roles = await this.repo.listRoles();
+    return { status: "ok", roles };
+  }
+
+  /**
+   * Feature 287 — EL MAESTRO RESTABLECE LA CONTRASENA DE UN USUARIO.
+   *
+   * El sistema GENERA la contrasena (R8), revoca TODAS las sesiones del objetivo (R16) y SOLO
+   * DESPUES persiste el hash (R11/R12). La contrasena en claro se devuelve UNA vez, aqui (R21).
+   *
+   * ⚠️ EL ORDEN DE LOS DOS ESCRITOS NO ES ARBITRARIO (R11). No son atomicos —dos tablas, dos
+   * llamadas— y el orden decide que queda si el proceso muere en medio:
+   *
+   *   hash → revocar : contrasena rotada Y SESIONES VIVAS. Quien tuviera una sesion sigue
+   *                    dentro, y el legitimo ya no puede entrar. Estado MAS PERMISIVO.
+   *   revocar → hash : sesiones cerradas y contrasena sin rotar. Nadie gana acceso; el maestro
+   *                    reintenta. Estado MAS RESTRICTIVO — es el elegido.
+   *
+   * ⚠️ NO SE TOCAN LOS DISPOSITIVOS DE CONFIANZA (R18), y la respuesta intuitiva («si revocas,
+   * revoca todo») es la equivocada: quien perdio su contrasena llega con +40 de fallos recientes
+   * en el `RiskEngine`; con su dispositivo intacto suma 40 < 50 y entra, pero borrandolo suma 80,
+   * se dispara el OTP por correo y el correo esta caido. Borrarlo dejaria fuera justo a quien esta
+   * feature existe para dejar entrar. Se revoca lo que PORTA acceso, no lo que solo puntua riesgo.
+   *
+   * ⚠️ NO ENVIA NADA (R37/R38): ni correo al usuario ni ninguna otra notificacion. No es un olvido
+   * —es decision firmada del humano el 2026-08-26— y ademas el camino no toca el proveedor de
+   * correo ni para fallar, que es la condicion operativa que hace esta ficha necesaria (el SMTP
+   * de produccion rechaza la credencial con 535). El riesgo aceptado esta escrito como RS1 en
+   * `specs/287-maestro-restablece-contrasena/design.md` §12.
+   */
+  async restablecerContrasena(
+    id: string,
+    actor: Actor,
+  ): Promise<RestablecerContrasenaServiceResult> {
+    // R2/R3: el MISMO `ALLOWED_ROLES` del resto del modulo, no una copia. Dos listas de permisos
+    // para el mismo modulo divergen en cuanto alguien toque una.
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+
+    const usuario = await this.repo.findById(id);
+    if (!usuario) return { status: "not_found" }; // R4
+
+    // R5: el maestro no se restablece a si mismo. Revocarle las sesiones a mitad del flujo puede
+    // tumbarle la sesion antes de que copie la contrasena que solo se ve una vez, y si es el
+    // unico maestro se queda fuera con el correo caido.
+    if (usuario.id === actor.usuarioId) return { status: "self_reset_forbidden" };
+
+    // R20: sin revocador NO se completa un restablecimiento. Falla visible, antes de generar
+    // nada: un restablecimiento que no revoca no restablece, solo lo aparenta.
+    const sessionRepo = this.sessionRepo;
+    if (!sessionRepo) {
+      throw new Error(
+        "UsuarioService.restablecerContrasena requiere el repositorio de sesiones: sin el no se " +
+          "pueden revocar las sesiones del usuario y el restablecimiento seria una mentira (287/R20)",
+      );
+    }
+
+    // R8/R9/R10: la genera el sistema con el MISMO generador del alta, que valida su propia
+    // salida contra `strongPasswordSchema`. Del actor no entra ningun valor: no hay parametro.
+    const plain = generateStrongPassword();
+    const passwordHash = await hashPassword(plain); // R12: solo se persiste el hash
+
+    // R11/R16: PRIMERO revocar TODAS las sesiones del objetivo...
+    const sesionesRevocadas = await sessionRepo.deleteAllByUserId(usuario.id);
+    // ...y solo DESPUES el hash (R12). Ver el porque del orden en la cabecera.
+    // FICHA 362 (R5/R9): el restablecimiento POR UN ADMINISTRADOR deja rastro (quien y a quien),
+    // y ni el hash ni la clave entran en la fila. El auto-servicio sigue por `updatePasswordHash`.
+    await this.repo.restablecerContrasena(usuario.id, passwordHash, actor.usuarioId);
+
+    // R21: la contrasena en claro viaja EXACTAMENTE una vez, aqui. No se guarda en ningun sitio,
+    // no se loguea (R23/R24) y no hay forma de volver a pedirla.
+    return { status: "ok", usuarioId: usuario.id, generatedPassword: plain, sesionesRevocadas };
+  }
+
+  /**
+   * FICHA 379 (R9-R23) — ¿ESTE CAMBIO DEJA A UNA ZONA SATELITE SIN ADMIN SATELITE ACTIVO?
+   *
+   * ⚠️ NO BLOQUEA NADA, Y ESO ES EL REQUISITO R14, no un detalle de implementacion. Este metodo
+   * es una LECTURA que nadie del camino de escritura llama: `actualizar` y `cambiarEstado` no
+   * lo consultan y no ganan ninguna rama nueva. El humano lo cerro el 2026-09-08 —«no, no quiero
+   * daños»—: el aviso INFORMA, el maestro decide, y lo unico que cambia es que lo sabe. Si algun
+   * dia alguien conecta esto a una escritura para impedir un cambio, hay una guardia estatica
+   * que se pone roja (`tests/unit/guards/379-maestro-sin-bloqueo.guardia.test.ts`).
+   *
+   * POR QUE VIVE AQUI Y NO EN UN SERVICIO NUEVO: el modulo de usuarios tiene UNA lista de
+   * permisos (`ALLOWED_ROLES`) y este mismo archivo ya dejo escrito el motivo al anadir
+   * `restablecerContrasena` — dos listas de permisos para el mismo modulo divergen en cuanto
+   * alguien toque una. Un servicio aparte tendria que declarar la suya.
+   *
+   * EL PREDICADO, UNA SOLA VEZ, y cubre las TRES puertas del agujero:
+   *
+   *   avisa ⇔ el usuario ES HOY `adminSatelite` activo con zona Z
+   *           ∧ el cambio pedido hace que deje de serlo para Z
+   *           ∧ en Z no queda NINGUN otro `adminSatelite` activo
+   *
+   *   D1 cambiar la zona · D2 cambiar el rol · D3 desactivar la cuenta — las tres «dejan de
+   *   serlo», asi que no hay tres ramas ni una lista de casos que alguien pueda dejar incompleta.
+   *   Lo que NO avisa sale solo del mismo predicado: un mensajero (sus cierres ya congelaron
+   *   `destino_zona_id` y los consolida la zona de origen), un usuario sin zona, una activacion,
+   *   o una zona donde quede alguien.
+   *
+   * EL ORDEN DE LOS PASOS NO ES DECORATIVO: el permiso va ANTES de leer nada (R22), y las salidas
+   * baratas van antes de tocar la base — una pantalla de administracion no tiene que pagar dos
+   * consultas por editar un telefono.
+   */
+  async consultarImpactoCambio(
+    id: string,
+    cambio: CambioUsuarioEvaluable,
+    actor: Actor,
+  ): Promise<ConsultarImpactoCambioServiceResult> {
+    // (1) R22: el MISMO `ALLOWED_ROLES` del resto del modulo. Antes de leer una sola fila.
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+
+    // (2) R20: sin el repositorio del dinero NO se responde. Va aqui arriba y no junto a la
+    // lectura del paso 7 a proposito: un cableado olvidado tiene que reventar en TODAS las
+    // llamadas, no solo en la de cada N que llega hasta el final. Si solo fallara en el caso
+    // raro, el fallo se descubriria el dia que importa —con el maestro delante— en vez de en la
+    // primera prueba de humo.
+    const cierresRepo = this.cierresRepo;
+    const zonaRepo = this.zonaRepo;
+    if (!cierresRepo || !zonaRepo) {
+      throw new Error(
+        "UsuarioService.consultarImpactoCambio requiere el repositorio de cierres de bodega y el " +
+          "de zonas: sin ellos no se puede saber cuanto dinero queda sin consolidar ni como se " +
+          "llama la zona, y responder «no hay nada que avisar» seria una mentira (379/R20)",
+      );
+    }
+
+    const actual = await this.repo.findById(id);
+    if (!actual) return { status: "not_found" };
+
+    // (3) Sin zona no hay ninguna zona que se pueda quedar sola.
+    const zonaId = actual.zonaId;
+    if (zonaId === null || zonaId === undefined) return { status: "ok", impacto: null };
+
+    // (4) R16: solo un `adminSatelite` ACTIVO sostiene hoy la consolidacion de su zona. Un
+    // mensajero que cambia de zona no atrapa dinero, y una cuenta ya inactiva no lo sostenia.
+    const roles = await this.repo.listRoles();
+    const valorDelRol = (rolId: string) => roles.find((r) => r.id === rolId)?.value;
+    if (valorDelRol(actual.rolId) !== ROL_ADMIN_SATELITE) return { status: "ok", impacto: null };
+    if (actual.estado !== "activo") return { status: "ok", impacto: null };
+
+    // (5) El estado RESULTANTE, con la MISMA regla que aplica la escritura (bloque A): misma
+    // funcion, no una copia. Si siguiera siendo adminSatelite activo de Z, no pasa nada.
+    const zonaResultante = await this.resolverZonaDeEdicion(cambio, actual);
+    const rolResultante = valorDelRol(cambio.rolId ?? actual.rolId);
+    const estadoResultante = cambio.estado ?? actual.estado;
+    const sigueSiendoAdminDeLaZona =
+      zonaResultante.ok &&
+      zonaResultante.zonaId === zonaId &&
+      rolResultante === ROL_ADMIN_SATELITE &&
+      estadoResultante === "activo";
+    // `!zonaResultante.ok` = la escritura RECHAZARIA este cambio (R3): no va a ocurrir, asi que
+    // avisar de sus consecuencias seria avisar de algo que no pasa.
+    if (sigueSiendoAdminDeLaZona || !zonaResultante.ok) return { status: "ok", impacto: null };
+
+    // (6) R15/R17/AS2: si queda alguien, ese dinero es alcanzable. Avisar ahi seria ruido, y el
+    // ruido mata avisos. El recuento EXCLUYE al usuario evaluado: contarlo seria contar a quien
+    // esta a punto de irse.
+    const restantes = await this.repo.contarAdminSatelitesActivos(zonaId, id);
+    if (restantes > 0) return { status: "ok", impacto: null };
+
+    // (7) Y solo aqui se pregunta por el dinero. El importe es el TOTAL GENERAL de los
+    // consolidables (AS3): es lo que la consolidacion arrastra y lo que el maestro reconoce como
+    // «el dinero de esa bodega». Viaja como STRING de escala 2 y no pasa por `Number` (R19).
+    const [zona, resumen] = await Promise.all([
+      zonaRepo.findById(zonaId, false),
+      cierresRepo.resumirConsolidablesPendientes(zonaId),
+    ]);
+    if (!zona) {
+      // La FK lo hace practicamente imposible; si pasa, es un dato roto y se dice, no se disfraza
+      // de «no hay nada que avisar» (R20: ni silencio ni bloqueo).
+      throw new Error(
+        `379: el usuario ${id} apunta a la zona ${zonaId}, que no existe: no se puede nombrar la ` +
+          "zona del aviso",
+      );
+    }
+
+    return {
+      status: "ok",
+      impacto: {
+        zonaNombre: zona.nombre,
+        cierresSinConsolidar: resumen.cantidad,
+        totalSinConsolidar: resumen.totalGeneral,
+        // AS1: el aviso aparece TAMBIEN con cero pendiente. Con el umbral en el dinero hoy no
+        // aparecia nunca (0 en las 7 zonas, medido en produccion el 2026-09-08) y la ficha
+        // entregaria una funcion invisible; ademas el dano real no es el dinero de hoy, es que
+        // lo que entre despues queda retenido.
+        adminSatelitesActivosRestantes: restantes,
+      },
+    };
+  }
+
+  // R9/R10/R11: traduce los errores de dominio del repositorio a resultados
+  // discriminados. Nunca expone la contrasena ni el hash.
+  private mapCrearError(error: unknown): CrearUsuarioServiceResult {
+    if (error instanceof CatalogoInvalidoError) {
+      return { status: "validation_error", fieldErrors: { [error.campo]: [error.message] } }; // R9
+    }
+    if (error instanceof UsuarioDuplicadoError) {
+      return { status: "conflict", campo: error.campo }; // R10/R11
+    }
+    throw error;
+  }
+
+  private async buildUpdateData(
+    input: ActualizarUsuarioInput,
+    actual: UsuarioPublico,
+  ): Promise<UpdateUsuarioData> {
+    const data: UpdateUsuarioData = {};
+    if (input.nombre !== undefined) data.nombre = input.nombre;
+    if (input.telefono !== undefined) data.telefono = input.telefono;
+    if (input.rolId !== undefined) data.rolId = input.rolId;
+    if (input.tipoIdentificacionId !== undefined) {
+      data.tipoIdentificacionId = input.tipoIdentificacionId;
+    }
+
+    // Feature 27/R12/R4a: se recalcula solo si cambia `fulfillment` o el rol. Con
+    // el rol resultante (el nuevo si se edita, o el actual) se aplica la invariante:
+    // solo `adminTienda` puede quedar en `true`; un cambio a otro rol fuerza `false`.
+    // Si el rol se mantiene `adminTienda` y no se envia `fulfillment`, se conserva
+    // el valor actual (no se pisa por defecto).
+    if (input.fulfillment !== undefined || input.rolId !== undefined) {
+      const rolIdResultante = input.rolId ?? actual.rolId;
+      const deseado = input.fulfillment ?? actual.fulfillment;
+      data.fulfillment = await this.resolverFulfillment(rolIdResultante, deseado);
+    }
+    return data;
+  }
+
+  // Feature 27/R4a (Decision P1): resuelve el flag efectivo. Solo `adminTienda`
+  // puede quedar en `true`; para cualquier otro rol se fuerza `false`, ignorando
+  // un `true` recibido. El `value` del rol se resuelve desde su `id` via el repo.
+  private async resolverFulfillment(rolId: string, deseado: boolean): Promise<boolean> {
+    if (!deseado) return false;
+    const roles = await this.repo.listRoles();
+    const rolValue = roles.find((r) => r.id === rolId)?.value;
+    return rolValue === "adminTienda";
+  }
+
+  /**
+   * FICHA 379 — LA ZONA QUE LE QUEDA A UN USUARIO TRAS UNA EDICION, calculada en UN solo sitio.
+   *
+   * Dos caminos preguntan exactamente esto y tienen que responder lo mismo:
+   *   - `actualizar`, para decidir que `zonaId` escribe (R1/R2/R3);
+   *   - `consultarImpactoCambio`, para decidir si el cambio deja a una zona sin Admin satelite
+   *     (R9/R10) — y ahi la pregunta es literalmente «¿sigue siendo adminSatelite de Z?».
+   *
+   * ⚠️ NO SE DUPLICA, Y EL MOTIVO ES ESTA MISMA FICHA. El defecto que la abre es exactamente
+   * dos copias de una regla que se separaron: la zona miraba solo `input.zonaId` y el vehiculo
+   * miraba ademas `input.rolId`. Una segunda copia de esto se separaria igual, y entonces el
+   * aviso hablaria de una zona distinta de la que la escritura acaba dejando.
+   *
+   * La regla, en dos lineas: el rol resultante es el enviado o el actual; la zona DESEADA es la
+   * enviada si viene el campo, y si no la que el usuario ya tiene (conservarla, R2). Con ese par
+   * decide `resolverZona`, que es la MISMA funcion que usa el alta (R4).
+   */
+  private async resolverZonaDeEdicion(
+    input: { rolId?: string; zonaId?: string | null },
+    actual: Pick<UsuarioPublico, "rolId" | "zonaId">,
+  ): Promise<
+    | { ok: true; zonaId: string | null }
+    | { ok: false; reason: "required" | "not_found" }
+  > {
+    const rolIdResultante = input.rolId ?? actual.rolId;
+    const deseado = input.zonaId !== undefined ? input.zonaId : actual.zonaId;
+    return this.resolverZona(rolIdResultante, deseado);
+  }
+
+  // Feature 24/R27/R28: resuelve el `zonaId` efectivo. Solo mensajero/adminSatelite
+  // lo conservan (y para ellos la zona es OBLIGATORIA); para otros roles se fuerza
+  // null (ignora el valor recibido, R27). Cuando aplica y se provee una zona, valida
+  // su existencia (R28). Distingue el fallo por zona ausente (`required`) del de zona
+  // inexistente (`not_found`) para reportar el mensaje correcto.
+  private async resolverZona(
+    rolId: string,
+    deseado: string | null | undefined,
+  ): Promise<
+    | { ok: true; zonaId: string | null }
+    | { ok: false; reason: "required" | "not_found" }
+  > {
+    const roles = await this.repo.listRoles();
+    const rolValue = roles.find((r) => r.id === rolId)?.value;
+    const esRolConZona = rolValue !== undefined && ZONA_ROLES.has(rolValue);
+
+    // R27: rol no aplicable -> null (ignora el valor recibido).
+    if (!esRolConZona) return { ok: true, zonaId: null };
+
+    // Feature 24/R27: mensajero/adminSatelite REQUIEREN una zona asignada.
+    if (deseado === undefined || deseado === null) {
+      return { ok: false, reason: "required" };
+    }
+
+    // R28: valida existencia si hay repo de zonas inyectado.
+    if (this.zonaRepo) {
+      const zona = await this.zonaRepo.findById(deseado, false);
+      if (!zona) return { ok: false, reason: "not_found" };
+    }
+    return { ok: true, zonaId: deseado };
+  }
+
+  // Feature 21: resuelve el `vehiculoId` efectivo. Solo `mensajero` lo conserva; para
+  // cualquier otro rol se fuerza null (ignora el valor recibido, misma politica que la
+  // zona). Para `mensajero` es OBLIGATORIO, por el mismo motivo que la zona: la
+  // asignacion exige un mensajero con vehiculo, asi que dejarlo vacio crea un usuario
+  // que no puede trabajar. Cuando se provee, se valida contra el catalogo.
+  private async resolverVehiculo(
+    rolId: string,
+    deseado: string | null | undefined,
+  ): Promise<
+    | { ok: true; vehiculoId: string | null }
+    | { ok: false; reason: "required" | "not_found" }
+  > {
+    const roles = await this.repo.listRoles();
+    const rolValue = roles.find((r) => r.id === rolId)?.value;
+    const esRolConVehiculo = rolValue !== undefined && VEHICULO_ROLES.has(rolValue);
+
+    if (!esRolConVehiculo) return { ok: true, vehiculoId: null };
+    if (deseado === undefined || deseado === null) {
+      return { ok: false, reason: "required" };
+    }
+
+    if (this.vehiculoRepo) {
+      const vehiculo = await this.vehiculoRepo.findById(deseado);
+      if (!vehiculo) return { ok: false, reason: "not_found" };
+    }
+    return { ok: true, vehiculoId: deseado };
+  }
+}

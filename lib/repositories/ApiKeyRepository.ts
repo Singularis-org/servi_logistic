@@ -1,0 +1,549 @@
+import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { Prisma, type EstadoApiKey, type PrismaClient } from "@prisma/client";
+import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
+import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import {
+  CatalogoInvalidoError,
+  UsuarioDuplicadoError,
+} from "@/lib/interfaces/repositories/IUserRepository";
+import type {
+  ApiKeyAutenticada,
+  ApiKeyListItem,
+  CreateApiKeyConUsuarioData,
+  EliminarApiKeyRepoResult,
+  IApiKeyRepository,
+  ListApiKeysParams,
+  ListApiKeysResult,
+  TiendaDestinoCandidata,
+} from "@/lib/interfaces/repositories/IApiKeyRepository";
+import type { ApiKeyPublico, DependenciasCuentaDedicada } from "@/lib/types/api-key";
+import { resolverOwnerApiKey } from "@/lib/utils/api-key-owner";
+
+type ApiKeyPrismaClient = Pick<
+  PrismaClient,
+  // Ficha 362 (R9): las tres escrituras instrumentadas registran su accion en su misma tx.
+  // Ficha 373: `webhookSuscripcion` (la suscripcion de la cuenta dedicada, que se borra con ella)
+  // y `$queryRaw` (los `EXISTS` del guard de eliminabilidad).
+  | "apiKey"
+  | "usuario"
+  | "rol"
+  | "tipoIdentificacion"
+  | "$transaction"
+  | "historialAccion"
+  | "webhookSuscripcion"
+  | "$queryRaw"
+>;
+
+/** Lo minimo que necesita el guard de la 373: lanzar el `EXISTS`. Lo cumplen el cliente y la `tx`. */
+type ClienteConQueryRaw = Pick<PrismaClient, "$queryRaw">;
+
+/** Fila cruda del `EXISTS` de eliminabilidad (design §4.2). */
+interface FilaDependencias {
+  usuarioId: string;
+  ordenes: boolean;
+  dinero: boolean;
+  tarifas: boolean;
+}
+
+/** Una cuenta sin ningun rastro. Tambien es lo que se asume de un id que no resuelve. */
+const SIN_DEPENDENCIAS: DependenciasCuentaDedicada = {
+  ordenes: false,
+  dinero: false,
+  tarifas: false,
+};
+
+/**
+ * FICHA 373 (design §4.1/§4.2) — LAS DEPENDENCIAS DE DATOS DE N CUENTAS DEDICADAS, EN UNA CONSULTA.
+ *
+ * ⚠️ EL `EXISTS` DE ORDENES NO FILTRA `deleted_at`, Y ES LA SUTILEZA QUE MAS IMPORTA. Las ordenes
+ * usan soft delete: la fila sigue existiendo y su FK a la tienda sigue apuntando. Contar solo las
+ * vivas dejaria eliminable una key con 40 ordenes borradas, y el `DELETE` reventaria al pulsar el
+ * boton — exactamente el «boton que falla al pulsarlo» que la ficha prohibe.
+ *
+ * POR QUE ESTAS CUATRO Y NO LAS CATORCE FK hacia `usuario` (design §4.1): las otras diez solo
+ * pueden existir si existio una orden de esa cuenta, y una orden nunca desaparece de la tabla.
+ * Comprobarlas otra vez seria coste sin informacion — y `cierre_detail` NO declara indice por
+ * `tienda_id`, asi que un `EXISTS` sin coincidencias recorreria entera una tabla que crece con
+ * cada cierre, en CADA pintado del listado. Que esa implicacion sea un RAZONAMIENTO y no una
+ * medicion es justo el motivo por el que existe la red de las FK `Restrict` (R16).
+ *
+ * `EXISTS` corta en la primera fila que casa: es un acceso por indice, no un conteo. Un `_count`
+ * recorreria las 40.000 ordenes de una cuenta para responder «si».
+ *
+ * `text[]` y no `uuid[]`: `usuario.id` es TEXT en la base (`20260716150000_api_key`).
+ *
+ * ⚠️ LA TABLA DE TARIFAS SE LLAMA `tarifas`, EN PLURAL (`@@map("tarifas")`, `db/schema.prisma`), y
+ * es la unica de las cuatro que no coincide con su modelo. El design de la ficha la nombraba en
+ * singular; Postgres respondio `42P01 no existe la relacion «tarifa»` en el primer test de
+ * integracion. Se deja escrito para que nadie lo «corrija» al reves leyendo el spec.
+ */
+async function dependenciasPorCuenta(
+  cliente: ClienteConQueryRaw,
+  usuarioIds: readonly string[],
+): Promise<Map<string, DependenciasCuentaDedicada>> {
+  // Lista vacia -> `Map` vacio SIN consultar: `unnest('{}')` seria un viaje a la base para nada.
+  if (usuarioIds.length === 0) return new Map();
+
+  const filas = await cliente.$queryRaw<FilaDependencias[]>`
+    SELECT u.id AS "usuarioId",
+           EXISTS (SELECT 1 FROM "orden" o WHERE o."tienda_id" = u.id)                     AS ordenes,
+           (EXISTS (SELECT 1 FROM "wallet_tienda_movimiento" w WHERE w."tienda_id" = u.id)
+            OR EXISTS (SELECT 1 FROM "liquidacion_pago" p WHERE p."tienda_id" = u.id))     AS dinero,
+           EXISTS (SELECT 1 FROM "tarifas" t WHERE t."tienda_id" = u.id)                   AS tarifas
+    FROM unnest(${[...usuarioIds]}::text[]) AS u(id)`;
+
+  return new Map(
+    filas.map((f) => [
+      f.usuarioId,
+      { ordenes: f.ordenes, dinero: f.dinero, tarifas: f.tarifas },
+    ]),
+  );
+}
+
+/**
+ * Forma publica de la key (R19): NUNCA proyecta `key_hash`. Patron `PUBLIC_SELECT` de
+ * `UserRepository`, que tampoco proyecta nunca el hash de contrasena.
+ */
+const PUBLIC_SELECT = {
+  id: true,
+  identificador: true,
+  keyPrefix: true,
+  estado: true,
+  usuarioId: true,
+  tiendaDestinoId: true, // feature 302
+  createdAt: true,
+} as const;
+
+/** Fila cruda de `PUBLIC_SELECT`; el `ownerUsuarioId` publico se deriva de ella. */
+type FilaPublica = {
+  id: string;
+  identificador: string;
+  keyPrefix: string;
+  estado: EstadoApiKey;
+  usuarioId: string;
+  tiendaDestinoId: string | null;
+  createdAt: Date;
+};
+
+/**
+ * Feature 302: proyeccion publica. Lo unico que anade sobre la fila es `ownerUsuarioId`, y lo
+ * anade por la MISMA funcion que usa la autenticacion (`resolverOwnerApiKey`), no por un `??`
+ * escrito aqui: si las dos respuestas discrepasen, el webhook quedaria colgado de una cuenta que
+ * no recibe ordenes y nada fallaria. Sigue sin proyectar `keyHash` (R19).
+ */
+function toPublico(fila: FilaPublica): ApiKeyPublico {
+  return {
+    ...fila,
+    ownerUsuarioId: resolverOwnerApiKey(fila.usuarioId, fila.tiendaDestinoId),
+  };
+}
+
+/**
+ * Feature 82/R6: seleccion del listado. Hermano de `PUBLIC_SELECT` y con la misma
+ * garantia, mas fuerte que una disciplina: `keyHash` NO figura aqui, asi que Prisma ni
+ * siquiera lo pide a Postgres. El secreto no se filtra de la respuesta porque nunca
+ * llega a salir de la base. `usuario.email` entra por include [D1].
+ */
+const LIST_SELECT = {
+  id: true,
+  identificador: true,
+  keyPrefix: true,
+  estado: true,
+  usuarioId: true,
+  tiendaDestinoId: true, // feature 302
+  createdAt: true,
+  usuario: { select: { email: true } },
+  // Feature 302: el nombre de la tienda destino, por include (mismo patron que `usuario.email`,
+  // [D1]). Sin el, la pantalla solo veria un uuid y no podria decir a nombre de QUIEN carga la key.
+  tiendaDestino: { select: { nombre: true } },
+} as const;
+
+/** [D1] Rol de la cuenta dedicada. Se resuelve por lookup, nunca por id hardcodeado. */
+const ROL_API_KEY = "apiKey" as const;
+
+/** [D4] Tipo de identificacion del catalogo existente; sin valor nuevo. */
+const TIPO_IDENTIFICACION_CEDULA = "cedula";
+
+export class ApiKeyRepository implements IApiKeyRepository {
+  constructor(private readonly prisma: ApiKeyPrismaClient) {}
+
+  /**
+   * R13: usuario dedicado + api_key en UNA sola transaccion. Sin logica de negocio ni
+   * validacion de permisos (eso vive en `ApiKeyService`): aqui solo queries.
+   */
+  async createConUsuario(data: CreateApiKeyConUsuarioData): Promise<ApiKeyPublico> {
+    // Lookup de los catalogos (docs/architecture.md: sin hardcode de contexto). Fuera
+    // de la transaccion: son lecturas de catalogo inmutable y asi la tx es mas corta.
+    const [rol, tipoIdentificacion] = await Promise.all([
+      this.prisma.rol.findUnique({ where: { value: ROL_API_KEY }, select: { id: true } }),
+      this.prisma.tipoIdentificacion.findUnique({
+        where: { value: TIPO_IDENTIFICACION_CEDULA },
+        select: { id: true },
+      }),
+    ]);
+    // Mismo error de dominio que `UserRepository.create` cuando falta el catalogo: si
+    // la migracion del rol no corrio, el fallo es explicito y no un P2003 opaco.
+    if (!rol) throw new CatalogoInvalidoError("rolId", ROL_API_KEY);
+    if (!tipoIdentificacion) {
+      throw new CatalogoInvalidoError("tipoIdentificacionId", TIPO_IDENTIFICACION_CEDULA);
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const usuario = await tx.usuario.create({
+          data: {
+            nombre: data.identificador, // R7: nombre derivado del identificador recibido
+            email: data.email, // R10: namespace reservado
+            telefono: "", // [D4]: NOT NULL sin default; la cuenta no tiene telefono real
+            passwordHash: data.passwordHash, // R8: solo el hash bcrypt, nunca el claro
+            cedula: data.cedula, // R10
+            tipoIdentificacionId: tipoIdentificacion.id, // [D4]
+            rolId: rol.id, // R12/[D1]
+            estado: "activo", // R12/[D5]
+            fulfillment: false,
+            zonaId: null,
+          },
+          select: { id: true },
+        });
+
+        const fila = await tx.apiKey.create({
+          data: {
+            identificador: data.identificador,
+            slug: data.slug,
+            keyPrefix: data.keyPrefix, // R17
+            keyHash: data.keyHash, // R16: solo el hash
+            usuarioId: usuario.id, // R21/[D6]
+            // Feature 302: la tienda REAL a cuyo nombre cargara la key (o null). Ya validada por
+            // el service; aqui solo se persiste.
+            tiendaDestinoId: data.tiendaDestinoId,
+            createdById: data.createdById, // R21
+          },
+          select: PUBLIC_SELECT, // R19: sin keyHash
+        });
+
+        // FICHA 362 (R5/R9) — `api_key_generada`, DENTRO de la transaccion que ya existia.
+        //
+        // ⚠️ NI EL SECRETO, NI EL `key_hash`, NI EL `key_prefix` ENTRAN EN LA FILA. La etiqueta
+        // es el IDENTIFICADOR VISIBLE de la key, que es como se la nombra en pantalla. Un prefijo
+        // es media credencial y no tiene por que acabar en un archivo descargable.
+        const actor = await resolverActorCongelado(tx, data.createdById);
+        await appendAccion(tx, [
+          {
+            accion: "api_key_generada",
+            entidadTipo: "api_key",
+            entidadId: fila.id,
+            entidadEtiqueta: etiquetaDeEntidad("api_key", { identificador: data.identificador }),
+            ...actor,
+          },
+        ]);
+
+        return toPublico(fila);
+      });
+    } catch (error) {
+      throw mapDuplicadoError(error);
+    }
+  }
+
+  /**
+   * Feature 88/R3/R4: resuelve la key presentada por su `key_hash` (UNIQUE -> lookup por
+   * indice). Solo query, sin logica de negocio (la decision `activo`/rechazo vive en
+   * `ApiKeyAuthService`). El `select` NUNCA incluye `keyHash` ni el secreto (R6/R19): solo
+   * lo minimo para autorizar (id, usuario dedicado, su estado y el `value` de su rol).
+   */
+  async findByKeyHash(keyHash: string): Promise<ApiKeyAutenticada | null> {
+    const row = await this.prisma.apiKey.findUnique({
+      where: { keyHash },
+      select: {
+        id: true,
+        estado: true, // estado PROPIO de la key (palanca de revocacion, feature 88/R7)
+        usuarioId: true,
+        usuario: { select: { estado: true, rol: { select: { value: true } } } },
+        // Feature 302: la tienda destino viaja con su ESTADO y su ROL, no solo con su id. El
+        // service los exige (`adminTienda` + `activo`) en la MISMA peticion que autentica: si
+        // vinieran despues, habria una ventana en la que la key carga a nombre de una tienda dada
+        // de baja. Un `include` de mas por request, contra el indice de la FK.
+        tiendaDestinoId: true,
+        tiendaDestino: { select: { estado: true, rol: { select: { value: true } } } },
+      },
+    });
+    if (!row) return null;
+    return {
+      apiKeyId: row.id,
+      usuarioId: row.usuarioId,
+      tiendaDestinoId: row.tiendaDestinoId,
+      tiendaDestinoEstado: row.tiendaDestino?.estado ?? null,
+      tiendaDestinoRol: row.tiendaDestino?.rol.value ?? null,
+      estado: row.usuario.estado,
+      apiKeyEstado: row.estado,
+      rol: row.usuario.rol.value,
+    };
+  }
+
+  /**
+   * Feature 82/R4/R7/R9/R10: listado paginado, `createdAt desc` fijo [D4]. Solo queries:
+   * ni permisos ni reglas de negocio. [D2] sin scoping por `createdById`: el total es el
+   * de todas las keys, asi una pagina fuera de rango devuelve `items: []` con el `total`
+   * real (R9). Molde: `UserRepository.list`.
+   */
+  async list(params: ListApiKeysParams): Promise<ListApiKeysResult> {
+    const [rows, total] = await Promise.all([
+      this.prisma.apiKey.findMany({
+        select: LIST_SELECT, // R6: sin keyHash
+        orderBy: { createdAt: "desc" }, // R7
+        skip: params.skip,
+        take: params.take,
+      }),
+      this.prisma.apiKey.count(),
+    ]);
+
+    const items: ApiKeyListItem[] = rows.map((row) => ({
+      id: row.id,
+      identificador: row.identificador,
+      tiendaDestinoId: row.tiendaDestinoId, // feature 302
+      tiendaDestinoNombre: row.tiendaDestino?.nombre ?? null, // feature 302: se aplana el include
+      keyPrefix: row.keyPrefix,
+      estado: row.estado,
+      usuarioId: row.usuarioId,
+      usuarioEmail: row.usuario.email, // [D1]: se aplana el include
+      createdAt: row.createdAt,
+    }));
+    return { items, total };
+  }
+
+  /** Feature 82: total de API keys existentes. */
+  async count(): Promise<number> {
+    return this.prisma.apiKey.count();
+  }
+
+  /**
+   * Ciclo de vida/R2: reemplaza `key_prefix`+`key_hash` de la fila `id` en un solo UPDATE
+   * (atomico a nivel de fila). El hash viejo deja de resolver de inmediato. Solo query:
+   * el secreto ya lo genero el service; aqui no se toca el usuario ni el `estado`. `P2025`
+   * (fila inexistente) -> `null` para que el service lo traduzca a `not_found` (R3).
+   */
+  async rotar(
+    id: string,
+    data: { keyPrefix: string; keyHash: string },
+    actorUsuarioId: string | null,
+  ): Promise<ApiKeyPublico | null> {
+    try {
+      // FICHA 362 (R5/R9) — `api_key_rotada`. El metodo pasa a `$transaction` (forma 2 del design
+      // §2.3: era un `update` suelto). Ni el secreto nuevo, ni el hash, ni el prefijo viajan a la
+      // fila del registro: solo el identificador visible.
+      return await this.prisma.$transaction(async (tx) => {
+        const fila = await tx.apiKey.update({
+          where: { id },
+          data: { keyPrefix: data.keyPrefix, keyHash: data.keyHash },
+          select: PUBLIC_SELECT, // R6/R19: sin keyHash
+        });
+
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        await appendAccion(tx, [
+          {
+            accion: "api_key_rotada",
+            entidadTipo: "api_key",
+            entidadId: fila.id,
+            entidadEtiqueta: etiquetaDeEntidad("api_key", { identificador: fila.identificador }),
+            ...actor,
+          },
+        ]);
+        return toPublico(fila);
+      });
+    } catch (error) {
+      if (esRegistroNoEncontrado(error)) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Ciclo de vida/R4: fija el `estado` propio de la key en un solo UPDATE. Idempotente a
+   * nivel de fila (fijar el estado actual es un no-op valido en Postgres). `P2025` (fila
+   * inexistente) -> `null` -> `not_found` (R3).
+   */
+  async setEstado(
+    id: string,
+    estado: EstadoApiKey,
+    actorUsuarioId: string | null,
+  ): Promise<ApiKeyPublico | null> {
+    try {
+      // FICHA 362 (R9) — `api_key_activada` / `api_key_desactivada`, con el estado ANTERIOR y el
+      // NUEVO en vocabulario cerrado (`EstadoApiKey`, design §1.3-e). El metodo pasa a
+      // `$transaction` por el mismo motivo que su hermano `rotar`.
+      //
+      // El registro se escribe TAMBIEN cuando el estado no cambia (fijar el estado actual es un
+      // no-op valido a nivel de fila, y el `update` no distingue): aqui la accion es la DECISION
+      // de un humano de pulsar «activar», y eso ocurrio. Es la asimetria deliberada con
+      // `setEstado` de usuario, donde el estado previo si se compara — alli hay un formulario que
+      // reenvia el objeto entero, y aqui un boton que solo se pulsa a proposito.
+      return await this.prisma.$transaction(async (tx) => {
+        const previa = await tx.apiKey.findUnique({ where: { id }, select: { estado: true } });
+        const fila = await tx.apiKey.update({
+          where: { id },
+          data: { estado },
+          select: PUBLIC_SELECT, // R6/R19: sin keyHash
+        });
+
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        await appendAccion(tx, [
+          {
+            accion: estado === "activa" ? "api_key_activada" : "api_key_desactivada",
+            entidadTipo: "api_key",
+            entidadId: fila.id,
+            entidadEtiqueta: etiquetaDeEntidad("api_key", { identificador: fila.identificador }),
+            ...actor,
+            valorAnterior: previa?.estado ?? null,
+            valorNuevo: estado,
+          },
+        ]);
+        return toPublico(fila);
+      });
+    } catch (error) {
+      if (esRegistroNoEncontrado(error)) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Feature 302: la cuenta candidata a TIENDA DESTINO, con su rol y su estado. Solo query: quien
+   * decide si sirve es `ApiKeyService.generar`. La proyeccion es minima y SIN PII (nada de email,
+   * telefono, cedula ni hash de contrasena): esta lectura solo existe para autorizar una eleccion.
+   */
+  async findTiendaDestino(usuarioId: string): Promise<TiendaDestinoCandidata | null> {
+    const row = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { id: true, nombre: true, estado: true, rol: { select: { value: true } } },
+    });
+    if (!row) return null;
+    return { id: row.id, nombre: row.nombre, rol: row.rol.value, estado: row.estado };
+  }
+
+  /**
+   * FICHA 373/R8/R9/R10/R38 — las dependencias de datos de TODA una pagina, en UNA consulta.
+   * El repositorio no clasifica: devuelve los tres booleanos crudos y el motivo lo decide el
+   * service con `motivoNoEliminable` (fuente unica, R13).
+   */
+  async dependenciasDeCuentasDedicadas(
+    usuarioIds: readonly string[],
+  ): Promise<Map<string, DependenciasCuentaDedicada>> {
+    return dependenciasPorCuenta(this.prisma, usuarioIds);
+  }
+
+  /**
+   * FICHA 373 (design §6) — EL BORRADO FISICO, EN UNA SOLA TRANSACCION Y EN ESTE ORDEN.
+   *
+   *  1. lee la key (`null` -> `not_found`, R21) y CONGELA su `identificador` y su `estado` antes
+   *     de que dejen de existir (R24);
+   *  2. RE-EVALUA EL GUARD AQUI DENTRO (R15), antes de la primera escritura: primero el `estado`
+   *     —una key `activa` sale `bloqueada` SIN consultar nada mas (R11)— y despues los `EXISTS`;
+   *  3. congela el nombre y el rol del actor, como sus cuatro hermanas;
+   *  4. borra la suscripcion de webhook de LA CUENTA DEDICADA. `deleteMany` = idempotente: cero
+   *     filas es un caso normal, no un error. Acotado a `ownerUsuarioId`: si la key tiene tienda
+   *     destino, la suscripcion de LA TIENDA no casa y sobrevive (R5);
+   *  5. borra la key ANTES que el usuario: `api_key.usuario_id` es `Restrict`;
+   *  6. borra la cuenta dedicada, que es lo que LIBERA el email y la cedula sinteticos y devuelve
+   *     el identificador al uso (R6);
+   *  7. registra la accion por el punto unico, DESPUES de la mutacion (como `createConUsuario` y
+   *     `rotar`).
+   *
+   * POR QUE ESTO CUMPLE R4 SIN NINGUN `try` DE RESCATE: dentro de una transaccion de Postgres un
+   * error de sentencia aborta la transaccion ENTERA. No hay orden de sentencias que deje la key
+   * borrada y el registro sin escribir, ni al reves. Y si `appendAccion` falla —por ejemplo porque
+   * la migracion del enum no corrio—, el borrado se deshace: no hay desaparicion sin rastro.
+   *
+   * ⚠️ LA FILA DE AUDITORIA NO LLEVA NI EL SECRETO, NI EL `key_hash`, NI EL `key_prefix`, NI EL
+   * EMAIL SINTETICO (R23). Solo el identificador visible, que es como se nombra la key en pantalla.
+   * Es la misma frase que ya esta escrita en `createConUsuario`.
+   */
+  async eliminar(id: string, actorUsuarioId: string | null): Promise<EliminarApiKeyRepoResult> {
+    try {
+      return await this.prisma.$transaction(async (tx): Promise<EliminarApiKeyRepoResult> => {
+        // 1 — la fila, con lo justo. `estado` es a la vez dato de auditoria (R24) y guard (R11).
+        const fila = await tx.apiKey.findUnique({
+          where: { id },
+          select: { id: true, identificador: true, estado: true, usuarioId: true },
+        });
+        if (fila === null) return { status: "not_found" }; // R21
+
+        // 2a — R11/R15. CORTA AQUI Y NO CONSULTA NADA MAS: una key `activa` no es eliminable
+        // tenga los datos que tenga, asi que medir sus dependencias seria trabajo sin decision.
+        // Los tres booleanos van en `false` porque NO SE MIDIERON, y con ellos
+        // `motivoNoEliminable("activa", …)` devuelve exactamente `activa`.
+        if (fila.estado === "activa") {
+          return { status: "bloqueada", estado: fila.estado, dependencias: SIN_DEPENDENCIAS };
+        }
+
+        // 2b — el guard por datos, DENTRO de la tx y ANTES de la primera escritura (R15). No se
+        // fia de la evaluacion con la que se pinto el listado.
+        const dependencias =
+          (await dependenciasPorCuenta(tx, [fila.usuarioId])).get(fila.usuarioId) ??
+          SIN_DEPENDENCIAS;
+        if (dependencias.ordenes || dependencias.dinero || dependencias.tarifas) {
+          return { status: "bloqueada", estado: fila.estado, dependencias }; // R12: cero escrituras
+        }
+
+        // 3 — actor congelado (R24), dentro de la tx, como sus hermanas.
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+
+        // 4/5/6 — los tres borrados de R2, en el unico orden que las FK admiten.
+        await tx.webhookSuscripcion.deleteMany({ where: { ownerUsuarioId: fila.usuarioId } });
+        await tx.apiKey.delete({ where: { id: fila.id } });
+        await tx.usuario.delete({ where: { id: fila.usuarioId } });
+
+        // 7 — FICHA 362 (R5/R9) + 373 (R22/R23/R24): UNA fila, en ESTA transaccion.
+        await appendAccion(tx, [
+          {
+            accion: "api_key_eliminada",
+            entidadTipo: "api_key",
+            entidadId: fila.id,
+            entidadEtiqueta: etiquetaDeEntidad("api_key", { identificador: fila.identificador }),
+            ...actor,
+            valorAnterior: fila.estado, // R24: el estado que tenia justo antes (siempre `inactiva`)
+            valorNuevo: null, // ya no hay estado al que apuntar: la fila no existe
+          },
+        ]);
+
+        return { status: "ok", identificador: fila.identificador };
+      });
+    } catch (error) {
+      // La fila desaparecio entre la lectura y el borrado (carrera): `not_found`, no un 500.
+      if (esRegistroNoEncontrado(error)) return { status: "not_found" };
+      // RED 2 (design §4.4): algo que el guard NO mira apunta a la cuenta dedicada. Postgres lo
+      // para con una FK `Restrict`, la transaccion revierte ENTERA y esto responde `bloqueada`
+      // sin diagnostico (R16). Nunca un borrado parcial, nunca un error no controlado.
+      //
+      // ⚠️ EL DETECTOR NO ES `code === "P2003"`, y no por gusto: MEDIDO el 2026-09-04, bajo
+      // `@prisma/adapter-pg` ese error llega como `DriverAdapterError` con `cause.code = "23001"`
+      // y SIN codigo de Prisma. Con la comprobacion ingenua, este `catch` no lo veria y R16 se
+      // convertiria en un 500. El detalle esta en `_shared/prisma-fk.ts`.
+      if (esViolacionDeClaveForanea(error)) {
+        return { status: "bloqueada", estado: null, dependencias: null };
+      }
+      throw error;
+    }
+  }
+}
+
+/**
+ * `true` si el error es el P2025 de Prisma ("record to update not found"): la fila que se
+ * intento actualizar no existe. Mismo patron que `SessionRepository`. Robusto bajo el
+ * driver adapter (el codigo P2025 se preserva). Cualquier otro error se re-lanza.
+ */
+function esRegistroNoEncontrado(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
+}
+
+/**
+ * R11: traduce la violacion de unicidad de Postgres a un error de dominio. Reusa
+ * `textoConstraintP2002` (robusto en motor nativo y bajo el driver adapter), igual que
+ * `UserRepository.mapDuplicadoError`. Las constraints reales `usuario_email_key` /
+ * `usuario_cedula_key` contienen los substrings buscados.
+ */
+function mapDuplicadoError(error: unknown): unknown {
+  const texto = textoConstraintP2002(error);
+  if (texto) {
+    if (texto.includes("email")) return new UsuarioDuplicadoError("email");
+    if (texto.includes("cedula")) return new UsuarioDuplicadoError("cedula");
+  }
+  return error;
+}

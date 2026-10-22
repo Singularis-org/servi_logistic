@@ -1,0 +1,334 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it, vi } from "vitest";
+
+import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import type { ICierreDiaRepository } from "@/lib/interfaces/repositories/ICierreDiaRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { RESULTADOS_DESDE_AYUDA } from "@/lib/types/gestion-desde-ayuda";
+import { RESULTADOS_QUE_VUELVEN, vuelveABodega } from "@/lib/types/gestion-retorno";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+
+// 💰 Feature 237 (T6.3-T6.8, R32/R33/R34/R35/R37/R44) — LO QUE PASA ALREDEDOR DEL CIERRE.
+//
+// Esta suite no trae codigo de produccion nuevo: DEMUESTRA lo que §7 y §8 del diseño afirman, y en
+// particular EJERCE la invariante que la ficha daba por sentada (D1/R32) en vez de suponerla.
+
+const MENSAJERO: Actor = { usuarioId: "mensajero-1", rol: "mensajero" };
+const RAIZ = path.resolve(__dirname, "../../..");
+
+function fuente(rel: string): string {
+  return fs.readFileSync(path.join(RAIZ, rel), "utf8");
+}
+
+/* -------------------------------------------------------------------------- */
+/* T6.3 / R32 (D1) — LA INVARIANTE: las DOS rutas de re-solicitud                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Doble del repositorio del cierre acotado a lo que `solicitarCierre` toca. Los contadores dicen
+ * QUE camino se recorrio, que es justo lo que hay que demostrar.
+ */
+function repoParaSolicitar(over: {
+  vencido?: boolean;
+  rechazado?: boolean;
+}): ICierreDiaRepository {
+  // FEATURE 271 (R18): la re-solicitud ya no elige por ESTADO sino por EDAD, asi que el doble
+  // devuelve EL cierre re-solicitable mas viejo en vez de dos booleanos.
+  const resolicitable = over.vencido
+    ? { id: "c-viejo", estado: "vencido" as const, destinoZonaId: "z1" }
+    : over.rechazado
+      ? { id: "c-viejo", estado: "rechazado" as const, destinoZonaId: "z1" }
+      : null;
+  return {
+    findCierreResolicitableMasViejo: vi.fn(async () => resolicitable),
+    transicionarASolicitado: vi.fn(async () => true),
+    // FICHA 477 (D5): el `rechazado` se re-solicita por su propia transaccion.
+    resolicitarCierreRechazado: vi.fn(async () => true),
+    contarOrdenesPendientesGestion: vi.fn(async () => 0),
+    findGestionesPendientes: vi.fn(async () => []),
+    crearCierre: vi.fn(async () => "c-nuevo"),
+  } as unknown as ICierreDiaRepository;
+}
+
+function servicioSolicitar(repo: ICierreDiaRepository) {
+  const ordenRepo = {
+    findUsuarioZonaId: vi.fn(async () => "z1"),
+    findEstatusIdByValue: vi.fn(async () => "os-x"),
+    findCentralZonaId: vi.fn(async () => "z1"),
+    findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+  };
+  const service = new CierreDiaService(
+    repo,
+    ordenRepo as never,
+    // FICHA 477 (R17): la re-solicitud de un `rechazado` resuelve la tarifa de pago (vehiculo del
+    // mensajero + zona destino del cierre) ANTES de escribir. Sin vehiculo ni tarifa: pago 0.00.
+    {
+      createSignedUrls: vi.fn(async () => ({})),
+      createSignedUrl: vi.fn(async () => ""),
+      findUsuarioVehiculoId: vi.fn(async () => null),
+    } as never,
+    { resolveTarifaPorTienda: vi.fn(async () => null) } as never,
+    {
+      emitirCierrePorAprobar: vi.fn(async () => {}),
+      resolvePagoTarifa: vi.fn(async () => null),
+    } as never,
+  );
+  return { service, repo, ordenRepo };
+}
+
+describe("💰 R32/D1 — la gestion de la tienda posterior a una RE-SOLICITUD cae en el cierre siguiente", () => {
+  it.each([
+    {
+      ruta: "vencido -> solicitado",
+      repo: () => repoParaSolicitar({ vencido: true }),
+      via: "resolicitado",
+      metodo: "transicionarASolicitado" as const,
+    },
+    {
+      ruta: "rechazado -> solicitado",
+      repo: () => repoParaSolicitar({ rechazado: true }),
+      via: "resolicitado",
+      // FICHA 477 (D5): el rechazado ya no es «solo estado»: vincula las gestiones de SUS ordenes en
+      // correccion (R15), y NINGUNA otra (R16) — la gestion de la tienda sobre otra orden sigue
+      // cayendo en el cierre siguiente, que es lo que este caso vigila.
+      metodo: "resolicitarCierreRechazado" as const,
+    },
+  ])(
+    "la ruta EXENTA `$ruta` NO consulta pendientes, asi que una orden en ayuda no la bloquea",
+    async ({ repo: hacerRepo, via, metodo }) => {
+      // ESTE es el hecho que rompe la invariante «una orden en ayuda bloquea el cierre»: es cierta
+      // al CREAR un cierre y FALSA en las dos rutas de re-solicitud, exentas por anti-deadlock
+      // (111/R9 y 109/R28). Se ejerce, no se supone.
+      const repo = hacerRepo();
+      const { service } = servicioSolicitar(repo);
+
+      const r = await service.solicitarCierre(MENSAJERO);
+
+      expect(r).toEqual({ status: "ok", via });
+      expect(repo[metodo]).toHaveBeenCalledTimes(1);
+      // (i) la precondicion de pendientes NI SE CONSULTA: por eso una orden en `ayuda_tienda` no
+      //     impide re-solicitar, aunque `ayuda_tienda` este en `ESTADOS_PENDIENTES`.
+      expect(repo.contarOrdenesPendientesGestion).not.toHaveBeenCalled();
+      // (ii) y NO se crea un cierre nuevo ni se re-vinculan gestiones: la escritura solo cambia
+      //      `estado` (money-safe, 111/R8 y 109/R28). El cierre queda `solicitado` con las
+      //      gestiones que ya tenia dentro y su snapshot congelado.
+      expect(repo.crearCierre).not.toHaveBeenCalled();
+      expect(repo.findGestionesPendientes).not.toHaveBeenCalled();
+    },
+  );
+
+  it("y la consecuencia se lee en el CODIGO: la re-solicitud solo cambia `estado`", () => {
+    // La otra mitad de R32 (que la gestion posterior cae en el siguiente cierre y en uno solo) se
+    // ejerce sobre el almacen real en `gestion-desde-ayuda-cierre.test.ts`. Aqui se cierra el
+    // argumento por su causa: si estas dos escrituras re-vincularan gestiones o re-snapshotearan
+    // totales, la gestion de la tienda entraria en un cierre ya congelado — que es exactamente lo
+    // que 111/R8 y 109/R28 declaran money-safe con esas palabras.
+    // FEATURE 271 (R18): los DOS metodos gemelos se unificaron en `transicionarASolicitado`, que
+    // ademas lleva el `id` en el `where` (cierra M2). La propiedad money-safe que este caso vigila
+    // NO cambia y por eso el caso sobrevive: la escritura sigue tocando UNICAMENTE `estado`.
+    const repoSrc = quitarComentarios(fuente("lib/repositories/CierreDiaRepository.ts"));
+    const i = repoSrc.indexOf("async transicionarASolicitado(");
+    expect(i, "no se encontro transicionarASolicitado").toBeGreaterThan(-1);
+    const cuerpo = repoSrc.slice(i, i + 700);
+    expect(cuerpo).toMatch(/data:\s*\{\s*estado:/);
+    // Ni una sola escritura sobre gestiones ni sobre totales dentro de esa ruta.
+    expect(cuerpo).not.toContain("gestionOrden");
+    expect(cuerpo).not.toContain("cierreDetail");
+    expect(cuerpo).not.toContain("totalGeneral");
+  });
+
+  it("R32: la ruta de CREACION si consulta pendientes — la exencion es de la RE-SOLICITUD", () => {
+    // El contraste obligatorio. Si esta afirmacion cayera, la exencion dejaria de ser una
+    // excepcion y pasaria a ser la regla, y D1 se habria firmado sobre un hecho falso.
+    //
+    // FEATURE 271 (R16/R18): las dos rutas exentas son ahora UNA —elige por edad—, asi que el orden
+    // que se afirma es «la re-solicitud RETORNA antes de llegar a la precondicion».
+    const servicioSrc = quitarComentarios(fuente("lib/services/CierreDiaService.ts"));
+    const i = servicioSrc.indexOf("async solicitarCierre(");
+    const cuerpo = servicioSrc.slice(i, servicioSrc.indexOf("async deshacerGestion(", i));
+    const iResolicitud = cuerpo.indexOf("transicionarASolicitado");
+    const iPendientes = cuerpo.indexOf("contarOrdenesPendientesGestion");
+    expect(iResolicitud).toBeGreaterThan(-1);
+    expect(iPendientes).toBeGreaterThan(iResolicitud);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T6.4 / R33-R34 — el bloqueo y sus dos exenciones siguen como estaban          */
+/* -------------------------------------------------------------------------- */
+
+describe("R33/R34 — esta ficha no cambia el bloqueo del cierre ni sus exenciones", () => {
+  // ⏳ 2026-09-23 (FICHA 454, T1.15): la ayuda deja de ser estatus. Una orden con ayuda abierta
+  // sigue `en_reparto`, que SIGUE en `ESTADOS_PENDIENTES`: bloquea la creacion igual que antes
+  // (ahora como orden «en mano», no por un estatus propio). Antes la regex exigia la lista
+  // `["por_recoger", "en_reparto", "ayuda_tienda"]`.
+  it("R33: una orden con ayuda ABIERTA sigue bloqueando la CREACION (esta `en_reparto`)", async () => {
+    const servicioSrc = quitarComentarios(fuente("lib/services/CierreDiaService.ts"));
+    expect(servicioSrc).toMatch(/const ESTADOS_PENDIENTES = \["mensajero_recogiendo_en_bodega", "en_reparto"\]/);
+
+    // Y se ejerce: con una orden pendiente, la creacion se rechaza.
+    const repo = repoParaSolicitar({});
+    (repo.contarOrdenesPendientesGestion as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    const { service } = servicioSolicitar(repo);
+
+    const r = await service.solicitarCierre(MENSAJERO);
+
+    expect(r.status).toBe("conflict");
+    expect(repo.crearCierre).not.toHaveBeenCalled();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T6.5 / R35 — el paquete entra en la confirmacion fisica (238)                 */
+/* -------------------------------------------------------------------------- */
+
+describe("💰 R35 — el paquete que resolvio la tienda tambien hay que escanearlo (238)", () => {
+  it.each(["reprogramado", "devolucion_a_origen_por_rechazo"] as const)(
+    "`%s` esta en `RESULTADOS_QUE_VUELVEN`, asi que su paquete entra en la ventana de confirmacion",
+    (resultado) => {
+      // El punto unico de «que paquete vuelve» (238) filtra por RESULTADO, no por origen ni por
+      // actor: los dos desenlaces de la tienda estan dentro sin que esta ficha toque una linea.
+      expect(vuelveABodega(resultado)).toBe(true);
+      expect(RESULTADOS_QUE_VUELVEN).toContain(resultado);
+    },
+  );
+
+  it("y el WHERE del conjunto esperado filtra por `cierreId` + `resultado`, sin mirar el origen", () => {
+    // Se lee donde vive: el `where` esta en el repositorio y ningun test de servicio lo ve. Si
+    // alguien le añadiera `origenTipo` o `actorUsuarioId`, las gestiones de la tienda saldrian de
+    // la ventana de confirmacion y un paquete real dejaria de escanearse.
+    const src = quitarComentarios(fuente("lib/repositories/CierresAdminRepository.ts"));
+    const i = src.indexOf("findGestionesRetornablesDelCierre");
+    expect(i).toBeGreaterThan(-1);
+    const cuerpo = src.slice(i, i + 900);
+    expect(cuerpo).toContain("RESULTADOS_QUE_VUELVEN");
+    expect(cuerpo).toContain("cierreId");
+    expect(cuerpo).not.toContain("origenTipo");
+    expect(cuerpo).not.toContain("actorUsuarioId");
+  });
+
+  it("declarado: una gestion de la tienda PUEDE bloquear la aprobacion si el paquete no aparece", () => {
+    // Consecuencia buscada de la regla D2 de la 238 («un solo paquete perdido devuelve el cierre
+    // entero», sin escapatoria) combinada con esta ficha. Es correcto —el paquete existe y esta en
+    // la moto— y se deja escrito antes de que ocurra, en vez de descubrirlo en operacion.
+    expect(RESULTADOS_QUE_VUELVEN).toEqual(
+      expect.arrayContaining(["reprogramado", "devolucion_a_origen_por_rechazo"]),
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T6.7 / R37 — nada nuevo dentro de la transaccion de aprobacion                */
+/* -------------------------------------------------------------------------- */
+
+describe("R37 — esta ficha NO escribe dentro de la transaccion de aprobacion", () => {
+  // ⏳ 2026-09-23 (FICHA 454, R8): la 454 SI trae la familia al aprobar, y a proposito: la gestion
+  // de la tienda ya no transiciona al registrarse, y la APLICACION al aprobar escribe su transicion
+  // con familia `gestion_tienda_ayuda` y actor la persona de la tienda (R8). El censo se acota: la
+  // UNICA mencion en el repositorio vive dentro del bloque «APLICACION DE GESTIONES», que va
+  // DESPUES de los cinco feeds (`cierres-admin-caja-cod` sigue midiendo su orden); el servicio
+  // sigue sin nombrarla. Antes: ninguno de los dos archivos la nombraba.
+  it("la familia de la tienda solo aparece en el bloque de APLICACION del repositorio (454/R8)", () => {
+    const repoSrc = quitarComentarios(fuente("lib/repositories/CierresAdminRepository.ts"));
+    const i = repoSrc.indexOf("if (aplicacionGestiones)");
+    const f = repoSrc.indexOf("if (devolucionRechazadas)", i);
+    expect(i).toBeGreaterThan(-1);
+    expect(f).toBeGreaterThan(i);
+    const fuera = repoSrc.slice(0, i) + repoSrc.slice(f);
+    expect(fuera).not.toContain("gestion_tienda_ayuda");
+    expect(repoSrc.slice(i, f)).toContain("gestion_tienda_ayuda");
+    expect(quitarComentarios(fuente("lib/services/CierresAdminService.ts"))).not.toContain(
+      "gestion_tienda_ayuda",
+    );
+  });
+
+  it("(historico 237) el SERVICIO de aprobacion no nombra la familia nueva", () => {
+    // La gestion se escribe en SU PROPIA transaccion, en el instante en que la tienda actua, igual
+    // que `reprogramarDesdeDevuelta`. Lo que ocurre al aprobar son consecuencias de una fila que YA
+    // existe: los cinco feeds la leen por `cierreId`, como a cualquier otra.
+    //
+    // Si este censo se pone rojo, alguien metio trabajo de esta ficha dentro de la transaccion mas
+    // cara del sistema, y con ello movio el orden de las llamadas que `cierres-admin-caja-cod`
+    // mide porque los feeds se leen unos a otros.
+    for (const rel of ["lib/services/CierresAdminService.ts"]) {
+      expect(quitarComentarios(fuente(rel))).not.toContain("gestion_tienda_ayuda");
+    }
+  });
+
+  // ⏳ 2026-09-23 (FICHA 454, T1.7): el bloque `if (anclajeDevolucion)` de la 239 se generaliza a
+  // `if (aplicacionGestiones)`. La rama `anclaje_devolucion` (actor = el aprobador) se elige por
+  // `resultado === "devuelta"`, y desde ayuda `devuelta` no es un desenlace: la interseccion de los
+  // dos conjuntos cerrados sigue vacia.
+  it("💰 la rama `anclaje_devolucion` NUNCA alcanza una gestion de esta familia: solo mira `devuelta`", () => {
+    const src = quitarComentarios(fuente("lib/repositories/CierresAdminRepository.ts"));
+    const i = src.indexOf("if (aplicacionGestiones)");
+    expect(i).toBeGreaterThan(-1);
+    const bloque = src.slice(i, src.indexOf("if (devolucionRechazadas)", i));
+    expect(bloque).toMatch(/g\.resultado === "novedad"[\s\S]*?"anclaje_devolucion"/);
+
+    // La otra mitad: `devuelta` no es un desenlace posible desde ayuda. Se lee del CENSO REAL del
+    // borde, no de una copia local — una copia local haria este caso verde para siempre.
+    expect([...RESULTADOS_DESDE_AYUDA] as string[]).not.toContain("novedad");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T6.8 / R44 (D4) — el aviso de rechazo NO se emite, y es DECISION              */
+/* -------------------------------------------------------------------------- */
+
+describe("R44/D4 — el rechazo de la tienda NO emite «orden rechazada por el destinatario»", () => {
+  // ⏳ 2026-09-23 (FICHA 454, design DD): el aviso ya no sale del choke point filtrando por
+  // `origen_tipo === 'gestion'`: sale del REGISTRO de la gestion del mensajero. La ausencia para la
+  // tienda la sostiene ahora el SITIO del disparo, y eso es lo que se afirma: el registro del
+  // mensajero lo llama, el de la tienda no. Antes se afirmaba la igualdad del filtro de `emitir.ts`.
+  it("el aviso sale SOLO del registro del mensajero: la via de la tienda no lo dispara", () => {
+    const src = quitarComentarios(fuente("lib/repositories/GestionOrdenRepository.ts"));
+    const cuerpoDe = (metodo: string) => {
+      const i = src.indexOf(`async ${metodo}(`);
+      expect(i, `no se encontro ${metodo}`).toBeGreaterThan(-1);
+      const siguiente = src.indexOf("\n  async ", i + 1);
+      return src.slice(i, siguiente === -1 ? undefined : siguiente);
+    };
+    expect(cuerpoDe("registrarGestionPendiente")).toContain("emitirOrdenRechazadaEnTransaccion");
+    expect(cuerpoDe("crearGestionDesdeAyuda")).not.toContain("emitirOrdenRechazada");
+    // Y el choke point ya no avisa de nada (su emisor por defecto es un no-op).
+    const emitir = quitarComentarios(fuente("lib/notificaciones/emitir.ts"));
+    expect(emitir).toMatch(/export const emisorNotificacionReal: NotificacionEmisor = async \(\) => \{\};/);
+  });
+
+  it("la AUSENCIA esta escrita como decision en el propio archivo, con su porque", () => {
+    // Este repo tiene escrito lo que cuesta un dato que miente con formato de dato: el texto dice
+    // «rechazada POR EL DESTINATARIO» y aqui rechazo la TIENDA, sobre un paquete que el
+    // destinatario no llego a ver. Sin la nota, el proximo que lea el filtro lo ensancha creyendo
+    // que arregla un olvido.
+    const crudo = fuente("lib/notificaciones/emitir.ts");
+    expect(crudo).toContain("gestion_tienda_ayuda");
+    expect(crudo).toMatch(/D4/);
+    expect(crudo).toMatch(/A PROPOSITO/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* R43/R46 — a los integradores les llega EL MISMO evento                        */
+/* -------------------------------------------------------------------------- */
+
+describe("R43/R46 — el evento publico es el mismo, y la familia nueva no se exceptua", () => {
+  it("`gestion_tienda_ayuda` NO esta en `ORIGENES_SIN_EVENTO_PUBLICO`", async () => {
+    // El rescate de la 235 SI esta exceptuado (para que ningun integrador reciba `en_reparto` dos
+    // veces). Esta familia NO: el integrador tiene que enterarse de que la orden quedo rechazada o
+    // reprogramada, exactamente igual que si la hubiera resuelto el mensajero.
+    const { ORIGENES_SIN_EVENTO_PUBLICO } = await import("@/lib/types/webhook-eventos");
+    expect([...ORIGENES_SIN_EVENTO_PUBLICO]).not.toContain("gestion_tienda_ayuda");
+  });
+
+  it("R43: y el vocabulario publico NO gana ningun valor por causa de esta ficha", async () => {
+    // `rechazada` y `reprogramada` ya estaban. Esta ficha no añade ningun estado, asi que ninguna
+    // superficie exhaustiva de estados cambia.
+    const { EVENTOS_PUBLICOS } = await import("@/lib/types/webhook-eventos");
+    expect([...EVENTOS_PUBLICOS] as string[]).toContain("devolucion_a_origen_por_rechazo");
+    expect([...EVENTOS_PUBLICOS] as string[]).toContain("reprogramado");
+  });
+});

@@ -1,0 +1,1032 @@
+{
+  "_comentario": "Rojos heredados que el gate tolera mientras viva su ficha. Cada entrada lleva motivo (causa + ficha SL-<n> que la retira) y desde. Reglas y poda: docs/gate.md > Rojos heredados: la pregunta es «¿rompí algo YO?». La forma la vigila tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts.",
+  "_lee_esto": [
+    "Rojos CONOCIDOS de `dev`. El gate no falla por ellos; falla cuando aparece un archivo que NO",
+    "esta en esta lista. La comparacion es POR ARCHIVO, no por numero de casos: la suite tira 2-5",
+    "flakes de saturacion que cambian de sitio entre corridas, y comparar conteos exactos daria",
+    "falsas alarmas constantes -- un gate que grita en falso se acaba ignorando, que es justo el",
+    "problema que esto viene a resolver.",
+    "",
+    "EL COSTE DE ESTA ELECCION, dicho aqui para que nadie se lleve una sorpresa: si un archivo YA",
+    "listado gana un rojo NUEVO de verdad, esto no lo ve. Se acepto a sabiendas. La contrapartida",
+    "es que la lista es corta, se lee de un vistazo y cada entrada incomoda hasta que alguien la",
+    "borra.",
+    "",
+    "COMO SE MANTIENE:",
+    "  - Un archivo que vuelve a verde -> el gate lo AVISA. Borralo de aqui en ese mismo PR, o la",
+    "    lista se fosiliza y deja de proteger.",
+    "  - Nunca anadas un archivo aqui para 'pasar el gate'. Se anade cuando la deuda es de otro y",
+    "    esta medida, con su motivo y su fecha escritos. Sin motivo, no entra.",
+    "",
+    "MEDIDO el 2026-08-28 sobre la rama fix/init-valida-feature-list, que es `origin/dev` MAS DOS",
+    "archivos (init.sh y un script) que no tocan una sola linea de producto: 31 rojos en estos 7",
+    "archivos. Por eso se sabe que son de `dev` y no de una feature en vuelo.",
+    "",
+    "PODA DEL 2026-08-28, hecha en el mismo PR que introduce esto y siguiendo su propio aviso:",
+    "salieron de la lista `premio-ranking-idempotencia`, `premio-ranking-devengo-migration`,",
+    "`orden-remision-borrada-libera-numero` y `analitica-financiera-action` -- 28 de los 31 rojos.",
+    "Habian estado rojos tres corridas seguidas y aparecieron VERDES en cuanto el arbol y la base",
+    "local se pusieron al dia. Eso confirma lo que se sospechaba: NO eran deuda de `dev`, eran",
+    "DRIFT del entorno local (rama por detras y migraciones ajenas ya aplicadas en la Postgres de",
+    "la maquina). Si vuelven, volveran como ROJOS NUEVOS y con evidencia, que es exactamente el",
+    "comportamiento que se quiere: no se readmiten por costumbre.",
+    "",
+    "PODA DEL 2026-08-28 (ficha 317), siguiendo la misma regla de arriba: salen",
+    "`usuario-descarga` y `usuarios-filtro-busqueda`. NO eran deuda irreparable ni drift: eran",
+    "el MISMO defecto en dos capas -- `zonaNombre` entro en `LIST_SELECT` el 2026-08-26 con la",
+    "columna «Zona» (tabla + Excel) en un commit de respaldo que no paso el gate, y las dos",
+    "listas literales de R27 se quedaron en seis claves. Se actualizaron a siete, A MANO, y las",
+    "dos vuelven a verde comprobando de verdad (se midio con una mutacion: anadir un campo al",
+    "DTO las pone rojas).",
+    "",
+    "PODA DEL 2026-09-03 (ficha 369): sale `superficie-de-uso.guardia.test.ts`. `obtenerTarifa`",
+    "(lib/actions/tarifas.ts) no tenia NINGUN llamador -- ni la UI de tarifas (feature 273, que",
+    "edita sobre la fila ya traida por `listarTarifas`) ni ningun otro canal (script, cron, ruta) --",
+    "y sus hermanas `obtenerZona`/`obtenerUsuario` SI estan enganchadas en sus modulos, asi que no",
+    "era un patron de CRUD sin UI: era la unica huerfana real. Se retiro la Server Action junto con",
+    "`TarifaService.obtener`, `ITarifaService.obtener` y sus tests dedicados; `findById` del",
+    "repositorio se queda porque lo siguen usando `actualizar`/`borrar`."
+  ],
+  "archivos": {
+    "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
+      "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
+      "desde": "2026-10-21"
+    },
+    "tests/integration/actions/analitica-financiera-action.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/chat-media-autorizada.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/chat-media-historico.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/conteo-productos.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/dinero-productos.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/financiera-cubo-temporal.integration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/historico-conversaciones.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/repositories/orden-nota.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/477-aprobacion-tras-correccion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/477-deshacer-cierre-rechazado-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/477-ordenes-en-correccion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/477-regestionar-sin-cierre-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/477-resolicitud-rechazado-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/484-puntero-aprobacion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/484-puntero-corte-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/484-puntero-incidente-blst765.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/484-puntero-traspaso-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/484-puntero-vigente-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/486-evidencias-cierres-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/ajuste-caja-anulacion-461.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/analytics-daily-job.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/api-key-eliminabilidad.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/api-key-eliminar-fk-inesperada.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/api-key-eliminar-tienda-destino.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/api-key-eliminar.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/aporte-capital.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/asistente-uso-diario.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/aviso-agregado-repository.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/busqueda-comportamiento.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/busqueda-normalizacion-paridad.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/busqueda-por-guia-469.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/busqueda-sincronizacion-columna.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/busqueda-usa-indice.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/caja-caracterizacion-459.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/caja-invariante-tiendas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/chat-entrante-telefono-cr.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-aprobacion-libera-solo-lo-suyo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-aprobar-el-mas-viejo-desbloquea.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-bloqueo-nv-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-bodega-conciliacion.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-bodega-desglose-por-tienda-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-bodega-resumen-pendientes.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-descarga-fechas-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-desglose-por-tienda-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-excluye-gestiones-de-escritorio.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-rechazado-aviso-dedupe.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-rechazado-jornada-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-rechazo-tienda-aprobacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-rechazo-tienda-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-rechazo-tienda-totales.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-sin-gestion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierres-admin-retornables-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cierres-filtro-estado-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cobertura-repository.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cohorte-carga-indices.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/como-quedo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/confirmacion-fisica-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/consolidacion-concurrente.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/correccion-dia-reparto-efectos.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/correccion-dia-reparto-historial.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/correccion-dia-reparto.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/correccion-fecha-reprogramacion.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/correccion-resultado-gestion.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/corregir-conciliacion.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/corregir-datos-cliente.chat.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/corregir-datos-cliente.repo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/corregir-ubicacion-geocode.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/costo-y-zona-api-415.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/deshacer-asignacion-zona-satelite.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/deshacer-gestion-conserva-reserva.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/detalle-en-lote-464.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/detalle-movimiento-cierre-postgres.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/efecto-movimiento-predice.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/eliminar-orden-api-frontera-tienda.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/emisor-relaciones-anidadas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/estado-cuenta-busqueda-orden-463.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/estado-cuenta-cierre-pagos-172r52.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/estado-cuenta-pago-tienda-172r53.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/estado-cuenta-saldo-corrido.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/estado-cuenta-servidor-458d.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/gasto-fijo-cobro-aprobacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/gasto-fijo-cobro-idempotencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/gasto-fijo-cobro-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/geografia-cascada-reversible.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/geografia-historico-intacto.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/geografia-ordenes-sin-entregar.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/geografia-registro-accion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/geografia-renombrado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/gestion-desde-ayuda-dia-reserva.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/gestiones-detalle-api-405.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/habilitacion-api-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/historial-accion-atomicidad.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/historial-accion-lectura.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/historial-accion-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/historial-accion-q1-ubicacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/informe-transito-catalogo-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/informe-transito-hitos.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/informe-transito-parados.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/informe-transito-seleccion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/informe-transito-zonas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/kardex-cuentas-468.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/liberacion-al-aprobar-cierre-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/liberacion-reprogramada-cierre-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-caja-a-quien.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-caja-busqueda-orden-463.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-caja-filtro-a-quien.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-caja-revision-458c.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-caja-revision-458e.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/libro-kardex-468.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/liquidacion-fechas-cr-461.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/marca-conciliacion.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/mi-wallet-cierres-alcance.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/mi-wallet-resumen-458d.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-bloqueo-otro-cierre-avisa.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-evento-geocodificacion-caida-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-evento-reparto-manana-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-evento-traspaso-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/notificacion-evento-webhook-suscripcion-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/novedades-sin-gestionar-aviso-dedupe.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/orden-eliminada-actor-admin.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/orden-nota-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/orden-remision-borrada-libera-numero.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/orden-traspaso-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/picking-ordenes-en-preparacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/picking-resumen-tiendas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/postulacion-recurso-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/premio-ranking-devengo-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/premio-ranking-idempotencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/push-canal-restricciones.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/push-destinatarios-equivalencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/ranking-snapshot-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/rechazo-tienda-cobro.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/recoger-lote-dia-reserva.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/reparto-manana-repository.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/saldo-satelites.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/saldos-tiendas-busqueda-463.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/tarifa-zona-borrado-fk-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/traspaso-mensajero.int.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/usuario-preferencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/vista-filtro-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/vista-filtro.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-458-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-461-idempotencia-clave.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-anulacion-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-anulacion-concurrencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-caracterizacion-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-cierres-selector.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-comprobante-alcance.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-documento-comprobante-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-etiqueta-historial-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-fecha-elegida.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-origen-legible.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-registro-comprobante-458.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-tienda-cobro.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/webhook-evidencias-url-resuelve-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-defaults.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-ejecucion-admintienda.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-entrega-estado-webhook.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-entrega-reclamo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-historial.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-prueba-limite.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/whatsapp-envio-resolver-destinatarios.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/aplicacion-al-aprobar-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/ayuda-abierta-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/ayuda-evento-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/carga-mensajero-pendiente-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/cierre-bodega-sf001-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/correccion-ayuda-abierta-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/correccion-ramas-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/corte-excluye-pendientes-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/deshacer-ramas-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/devolucion-rechazadas-seleccion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/gestion-pendiente-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/intentos-segunda-via-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/novedades-predicado-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/orden-evento-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/rastreo-pendiente-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/registro-gestion-concurrencia-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/registro-gestion-sin-transicion-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/retiro-estados-migration.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/senales-gestion-lectores-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/webhook-evento-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/419/confirmar-entrega-lote-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/419/confirmar-entrega-sin-dinero-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/419/confirmar-entrega-webhook-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/462/reprogramadas-retenidas-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/interruptor-codigos.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/migracion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/rastreo-retirado-y-pendiente-sql-real.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/snapshot-lectura.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/alcance-satelite-y-sf001.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/ayuda-ciclo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/cambio-dia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/cierre-rechazado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/confirmacion-fisica-238.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/correccion-69.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/corte-no-barre-gestionadas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/deshacer.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/devolucion-rechazadas-139.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/dinero-aprobacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/dos-gestiones-vivas.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/intentos-conteo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/kpi-portal.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/liberacion-por-cierre.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/multi-dia-271.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/no-doble-gestion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/notificacion-n1.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/portal-listas-mapa-ruta.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/rastreo-y-historial-legado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/rechazos-tienda-425.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/reprogramadas-liberacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/sla-devolucion-reloj.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/solicitar-cierre.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/tablero-dia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/tope-276.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/traspaso.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/caracterizacion/webhook-estado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/api-lectura.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/filtro-ordenes-por-estado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/filtro-satelite-por-codigo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/intentos-y-tope.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/novedades-y-ayuda.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/plantilla-estatus.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/rastreo.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/snapshot-correccion.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/sql-crudo-avisos-y-corte.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/sql-crudo-cron-devoluciones.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/sql-crudo-tablero-dia.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/455/caracterizacion/webhook-estado.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/usuario-contar-adminsatelites.test.ts": {
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "desde": "2026-10-22"
+    }
+  }
+}

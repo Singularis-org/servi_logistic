@@ -1,0 +1,388 @@
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  AsignarSateliteInput,
+  AsignarSateliteServiceResult,
+  IAsignacionSateliteService,
+} from "@/lib/interfaces/services/IAsignacionSateliteService";
+import {
+  MSG_MENSAJERO_BLOQUEADO_POR_CIERRES,
+  // Feature 21: mismo simbolo que emite la bodega central (misma regla, un solo texto).
+  MSG_MENSAJERO_SIN_VEHICULO,
+  // Pedido humano 2026-08-26: el mensajero dado de baja no recibe trabajo.
+  MSG_MENSAJERO_NO_ASIGNABLE,
+  MSG_ORDEN_REPROGRAMADA_BLOQUEADA,
+  // FEATURE 276 (T8, R20): EL MISMO SIMBOLO que emite la bodega central. No un literal gemelo:
+  // `asignacion-satelite-tope-intentos.test.ts` compara los dos contra esta constante.
+  MSG_TOPE_INTENTOS_ASIGNACION,
+} from "@/lib/services/mensajes-bloqueo";
+import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
+// FEATURE 276 (T8, R7): el umbral sale de la configuracion, nunca de un `3` escrito a mano.
+import { reintentosConfig } from "@/lib/config/reintentos";
+import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
+import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
+import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
+
+// Estado de ORIGEN de la asignacion satelite (feature 33) y destino tras asignar
+// (feature 17). Esta feature NO agrega estados ni `num_guia` (R8): usa exclusivamente
+// estos dos valores de catalogo, ya sembrados.
+const ORIGEN_ASIGNACION = "en_bodega_satelite";
+const ESTADO_ASIGNADA = "mensajero_recogiendo_en_bodega";
+
+// Feature 46/R3: estatus bloqueado por reprogramacion (guardia explicito y tipado).
+const ESTATUS_REPROGRAMADA = "reprogramado";
+
+// Solo el rol autorizado en el modulo (R1/R13): el adminSatelite, SIEMPRE acotado
+// a su propia zona (R2), resuelta server-side por `findUsuarioZonaId`.
+const ROL_AUTORIZADO = "adminSatelite";
+
+// FEATURE 271 (2026-08-23): el motivo del rechazo por mensajero bloqueado VUELVE a tener camino, y
+// vive COMPARTIDO en `lib/services/mensajes-bloqueo.ts` — el mismo texto que emiten las otras dos
+// escrituras de asignacion, porque son la misma regla. Entre el 2026-08-18 y hoy no habia ninguno:
+// la guarda se habia retirado y el motivo con ella.
+
+// Metodos de repo que consume el service (inyeccion por constructor). Se declara
+// como Pick para dobles de test sin DB/HTTP (patron RecepcionSateliteService).
+type AsignacionSateliteRepo = Pick<
+  IOrdenRepository,
+  | "findUsuarioZonaId"
+  | "findMensajeroIdsValidosByZona"
+  | "findMensajeroIdsConVehiculo" // feature 21: sin vehiculo no se recibe trabajo
+  | "findMensajerosNoAsignablesPorEstado" // 2026-08-26: inactivo/bloqueado tampoco
+  | "findByIdsForTransicion"
+  | "findEstatusIdByValue"
+  | "asignarSateliteLote"
+  | "existeBodegaSateliteBloqueada" // feature 41/R18 (hoy: solo la causa (ii), el cierre de la bodega)
+  // ⚠️ FEATURE 271 (2026-08-23): EL PREDICADO **VUELVE** A ESTE `Pick`, Y ESO ES EL CAMBIO DE REGLA.
+  //
+  // La 241 protegia su asimetria con la AUSENCIA: mientras el metodo no estuviera aqui, este service
+  // no podia consultarlo aunque el doble de test lo ofreciera, y la regla dejaba de depender de que
+  // nadie escribiera la llamada. Resuelta Q1 —el bloqueo alcanza TODO, reparto y recoleccion—, esa
+  // ausencia deja de proteger nada y pasa a ser el agujero.
+  //
+  // El nombre cambio con el alcance: el viejo (`…ParaGestion`) decia PARA QUE bloqueaba; el nuevo
+  // dice POR QUE. Si alguien quiere volver a exceptuar esta
+  // superficie, tendra que SACARLO de este `Pick` **y** escribir por que — que es exactamente la
+  // friccion que se busca.
+  | "findMensajerosBloqueadosPorCierres" // feature 271/R29: recibir trabajo nuevo SI se bloquea
+  | "findParaAsignabilidad" // feature 92/R8: gate de coordenadas
+>;
+
+/**
+ * Feature 34 — logica de negocio de la asignacion de la bodega satelite. Servicio
+ * PARALELO al `GuiaAsignacionService` del maestro (decision F1.4-a): mismo destino
+ * (`por_recoger`) pero cableado al adminSatelite (origen
+ * `en_bodega_satelite`, zona propia por `findUsuarioZonaId`, escritura guardada por
+ * estado+zona). No conoce HTTP ni Prisma; testeable con dobles sin red/DB.
+ */
+export class AsignacionSateliteService implements IAsignacionSateliteService {
+  constructor(
+    private readonly repo: AsignacionSateliteRepo,
+    // Feature 92 (R8): gate de asignabilidad por coordenadas. REQUERIDA a proposito (mismo
+    // motivo que en `GuiaAsignacionService`): opcional se desactivaria en silencio.
+    private readonly asignabilidad: IAsignabilidadCoordenadasService,
+    /**
+     * 💰 FEATURE 276 (T8, R18): el derivador de intentos EN LOTE. ESPEJO EXACTO de la dep que gana
+     * `GuiaAsignacionService`, y REQUERIDA por el mismo motivo: opcional, olvidarla en una fabrica
+     * nueva desactivaria la puerta en silencio sobre la OTRA bodega, y la regla dejaria de valer
+     * segun desde donde te asignen — que es la clase de asimetria que la 246/D4 ya corrigio una vez
+     * en este mismo par de servicios.
+     */
+    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+  ) {}
+
+  /**
+   * Feature 246 (T3.2, R2/R3/R5/R7): `now` es el reloj INYECTABLE desde el que se resuelve el dia
+   * de reparto, espejo exacto de `GuiaAsignacionService.asignarDesdeBodega` (D4).
+   */
+  async asignar(
+    input: AsignarSateliteInput,
+    actor: Actor,
+    now: Date = new Date(),
+  ): Promise<AsignarSateliteServiceResult> {
+    // 1. R13: revalida el rol antes de tocar datos (defensa en profundidad sobre R1).
+    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" };
+
+    // 2. R3: alcance por la zona del adminSatelite (server-side). Sin zona -> sin_zona.
+    const zonaId = await this.repo.findUsuarioZonaId(actor.usuarioId);
+    if (zonaId === null) return { status: "sin_zona" };
+
+    // 2b. Feature 41/R18 (regla estricta R17): ANTES de cualquier escritura, si la bodega
+    // esta bloqueada por CUALQUIERA de las dos causas (cierres de sus mensajeros O su
+    // propio CierreBodega pendiente), aborta el lote completo (todo-o-nada). La causa
+    // viaja al borde para el mensaje accionable de R22.
+    const bloqueo = await this.repo.existeBodegaSateliteBloqueada(zonaId);
+    if (bloqueo.bloqueada) {
+      return {
+        status: "bodega_bloqueada",
+        causa: {
+          porMensajeros: bloqueo.porMensajeros,
+          porCierreBodega: bloqueo.porCierreBodega,
+        },
+      };
+    }
+
+    // 3. R9: el mensajeroId debe ser un usuario rol mensajero de la zona del actor
+    // (defensa en profundidad sobre R5), sin efectos si no.
+    const mensajerosValidos = await this.repo.findMensajeroIdsValidosByZona(
+      [input.mensajeroId],
+      zonaId,
+    );
+    if (!mensajerosValidos.has(input.mensajeroId)) {
+      return {
+        status: "validation_error",
+        fieldErrors: { mensajeroId: ["mensajero_invalido"] },
+      };
+    }
+
+    // 3a. Feature 21: el mensajero destino DEBE tener un vehiculo asociado. Motivo propio,
+    // el MISMO texto que emite la asignacion desde bodega central: es la misma regla.
+    const conVehiculo = await this.repo.findMensajeroIdsConVehiculo([input.mensajeroId]);
+    if (!conVehiculo.has(input.mensajeroId)) {
+      return {
+        status: "validation_error",
+        fieldErrors: { mensajeroId: [MSG_MENSAJERO_SIN_VEHICULO] },
+      };
+    }
+
+    // 3a-bis. Pedido humano (2026-08-26): el mensajero destino DEBE estar en un estado que admita
+    // trabajo (`inactivo`/`bloqueado` no). Misma regla, mismo texto y mismo lugar que en la
+    // asignacion desde bodega central: un solo predicado, todas las superficies.
+    const noAsignables = await this.repo.findMensajerosNoAsignablesPorEstado([input.mensajeroId]);
+    if (noAsignables.has(input.mensajeroId)) {
+      return {
+        status: "validation_error",
+        fieldErrors: { mensajeroId: [MSG_MENSAJERO_NO_ASIGNABLE] },
+      };
+    }
+
+    // 3b. FEATURE 271 (T4.2, R29/R30) — LA GUARDA DE «MENSAJERO BLOQUEADO POR CIERRES» VUELVE, Y
+    //     ESTA ES LA SUPERFICIE DONDE OCURRIO EL INCIDENTE DEL 18/08. Merece releerse entero:
+    //
+    //     Aqui se rechazaba al mensajero con un cierre abierto. El 2026-08-18 la guarda se retiro...
+    //     y el `NOT EXISTS` que `asignarSateliteLote` llevaba dentro del UPDATE crudo NO, con el
+    //     criterio de antes. Resultado en produccion: esta pantalla dejaba elegir al mensajero, el
+    //     UPDATE tocaba 0 filas y el adminSatelite recibia «Actualiza la lista y vuelve a
+    //     intentarlo» — falso, porque las ordenes estaban bien y reintentar no lo arreglaba nunca.
+    //     Lectura y escritura afirmando lo contrario sobre la MISMA accion.
+    //
+    //     La 241 lo cerro quitando el `NOT EXISTS` del repositorio y dejando la regla en «asignar no
+    //     mira cierres». El 2026-08-23 el humano revirtio esa regla: acumular dos cierres —o
+    //     arrastrar uno re-solicitable— TAMBIEN bloquea recibir trabajo nuevo (Q1). Lo que SOBREVIVE
+    //     de la 241 es que un `solicitado` a secas (N=1, V=0) NO bloquea.
+    //
+    //     ⚠️ EL `NOT EXISTS` **NO** SE REPONE (design §12/A5). La guarda vive AQUI, en el service,
+    //     UNA sola vez, y el repositorio sigue sin mirar cierres. Dos escrituras del mismo criterio
+    //     en dos capas es LITERALMENTE lo que produjo el incidente: si alguien quiere defensa en
+    //     profundidad en el SQL, tendra que reponer el MISMO criterio —que ahora es un CONTEO, no
+    //     una lista de estados— y probarlo contra Postgres. Este spec dice que no lo haga.
+    //
+    //     Todo-o-nada con `detalle` por orden, igual que las demas guardas de este metodo: ninguna
+    //     orden cambia de estado (R30).
+    const bloqueados = await this.repo.findMensajerosBloqueadosPorCierres([input.mensajeroId]);
+    if (bloqueados.has(input.mensajeroId)) {
+      return {
+        status: "conflict",
+        detalle: input.ordenIds.map((ordenId) => ({
+          ordenId,
+          motivo: MSG_MENSAJERO_BLOQUEADO_POR_CIERRES,
+        })),
+      };
+    }
+
+    const ordenIds = input.ordenIds;
+
+    // 4. R10-R12: precarga (incluye borradas) y valida cada orden. Cualquier motivo
+    // -> conflict con detalle por orden, SIN escribir (todo-o-nada).
+    const ordenes = await this.repo.findByIdsForTransicion(ordenIds);
+    const ordenMap = new Map(ordenes.map((o) => [o.id, o]));
+    const detalle: { ordenId: string; motivo: string }[] = [];
+    for (const id of ordenIds) {
+      const orden = ordenMap.get(id);
+      if (!orden || orden.deletedAt !== null) {
+        detalle.push({ ordenId: id, motivo: "no_encontrada" }); // R10
+        continue;
+      }
+      if (orden.zonaId !== zonaId) {
+        detalle.push({ ordenId: id, motivo: "zona_ajena" }); // R11
+        continue;
+      }
+      // Feature 46/R3: orden reprogramada -> bloqueada; motivo tipado (antes del origen).
+      if (orden.estatusValue === ESTATUS_REPROGRAMADA) {
+        detalle.push({ ordenId: id, motivo: MSG_ORDEN_REPROGRAMADA_BLOQUEADA });
+        continue;
+      }
+      if (orden.estatusValue !== ORIGEN_ASIGNACION) {
+        detalle.push({ ordenId: id, motivo: `estado_invalido: ${orden.estatusValue}` }); // R12
+      }
+    }
+    if (detalle.length > 0) return { status: "conflict", detalle }; // R10
+
+    // --- 💰 FEATURE 276 (T7/T8, R18/R19/R20) — LA ULTIMA PUERTA: NO SE ASIGNA UNA ORDEN AGOTADA ---
+    //
+    // MIENTRAS los intentos vigentes de una orden sean `>= umbral`, no se le puede dar a un
+    // mensajero. Es la quinta via hacia la circulacion del design §1 y hasta esta ficha NO estaba
+    // cerrada: este servicio no consultaba el contador en ningun punto.
+    //
+    // ⚠️ Y NO BASTA POR SI SOLA, que es lo que la hace facil de mal-entender. Cerrar SOLO esta
+    // puerta seria poner un guardia que mira un reloj parado: la orden llega a bodega ANTES de que
+    // su intento se cuente —el cierre todavia no se aprobo— y en ese instante el contador dice el
+    // valor viejo y la deja pasar. Por eso la ficha 276 cierra ADEMAS la liberacion diferida
+    // (`LiberacionReprogramadaService`), que es la raiz.
+    //
+    // UNA SOLA CONSULTA para todo el lote (`contarIntentosEnLote`, el metodo que la 215 creo
+    // exactamente para esto): nada de N+1. R7: el umbral sale de `reintentosConfig`.
+    //
+    // TODO-O-NADA (R19): una sola orden en el umbral aborta el lote ENTERO, y el `detalle` lleva
+    // UNA entrada POR ORDEN —tambien por las que si podian asignarse—, igual que las guardas
+    // vecinas. Ninguna orden cambia de estado.
+    const intentosPorOrden = await this.historial.contarIntentosEnLote(ordenIds);
+    const umbralIntentos = reintentosConfig.MIN_INTENTOS_ENTREGA;
+    if (ordenIds.some((id) => (intentosPorOrden.get(id) ?? 0) >= umbralIntentos)) {
+      return {
+        status: "conflict",
+        detalle: ordenIds.map((ordenId) => ({
+          ordenId,
+          // R20: el MISMO simbolo que emite la bodega satelite. Dos literales gemelos es como se
+          // desincronizan dos pantallas que cuentan la misma regla.
+          motivo: MSG_TOPE_INTENTOS_ASIGNACION,
+        })),
+      };
+    }
+
+    // 4b. Feature 92/R8: gate de asignabilidad por coordenadas, ANTES de cualquier
+    // escritura. Este writer SI asigna mensajero a todo el lote, asi que se evalua entero.
+    //
+    // FEATURE 368 (2026-09-03, R2/R3/R4/R6/R18) — REGLA VIGENTE: asignacion PARCIAL, solo para
+    // el motivo de coordenadas — espejo EXACTO de `GuiaAsignacionService.asignarDesdeBodega`
+    // (R5). Antes de esta ficha, `detalleCoords.length > 0` abortaba el lote COMPLETO
+    // (`conflict`); ahora se filtra: las bloqueadas por coordenadas (`bloqueadasIds`) se separan
+    // del resto (`asignables`), y solo se escribe/reporta como asignado ese subconjunto.
+    //   - `asignables.length === 0` -> `conflict` con el `detalle` completo (R3, sin cambios);
+    //   - `detalleCoords.length === 0` -> `ok` con el lote completo (R4, sin cambios);
+    //   - mezcla -> `partial`, con `resultados` (lo asignado) y `bloqueadas` (el `detalle` de
+    //     coordenadas).
+    // El resto de guardas de este metodo (zona/estado por orden, mensajero, tope de intentos,
+    // TODAS evaluadas ANTES de este gate) siguen abortando el lote completo sin cambios (R7/R8).
+    //
+    // FEATURE 400 (2026-09-09, R31) — ESPEJO EXACTO de `GuiaAsignacionService`: sobre el
+    // MISMO `Map` que ya se recorre para armar `detalleCoords` se cuenta ademas cuantas
+    // ordenes pasaron el gate por `asignable_sin_ubicacion`. Cero consultas nuevas. La
+    // cifra se expone en `ok`/`partial` solo si es mayor que cero (R33), y JAMAS dentro de
+    // `bloqueadas` (R35): esa orden SI recibio mensajero.
+    //
+    // FICHA 407 (2026-09-10, R1/R6/R7) — ESPEJO EXACTO de la bodega central: la peticion puede
+    // traer la marca (los ids que una persona autoriza a asignar SIN ubicacion) y se reenvia
+    // al gate, que solo la honra DENTRO de su rama R3. Llega aqui y no antes a proposito:
+    // rol, zona, bodega bloqueada, mensajero y tope de intentos ya se evaluaron arriba y
+    // siguen abortando el lote igual. Efimera: no se persiste (R9).
+    const autorizadas = new Set(input.autorizarSinUbicacionIds ?? []);
+    const filas = await this.repo.findParaAsignabilidad(ordenIds);
+    const estados = await this.asignabilidad.evaluar(filas, autorizadas);
+    const detalleCoords: { ordenId: string; motivo: string }[] = [];
+    let sinUbicacion = 0;
+    // FICHA 407 (R10/R11): segunda cifra, sobre el MISMO `Map`. Cero consultas nuevas.
+    let sinUbicacionAutorizada = 0;
+    for (const id of ordenIds) {
+      const estado = estados.get(id);
+      // 400/R31: se cuenta ANTES del `continue` — `asignable_sin_ubicacion` SI pasa el gate.
+      if (estado === "asignable_sin_ubicacion") sinUbicacion += 1;
+      // 407/R10/R11: idem, en un `if` SEPARADO — estados excluyentes, cifras disjuntas.
+      if (estado === "asignable_sin_ubicacion_autorizada") sinUbicacionAutorizada += 1;
+      if (esAsignable(estado)) continue;
+      detalleCoords.push({
+        ordenId: id,
+        // `undefined` = el gate no vio la orden. Nunca se deja pasar por omision.
+        motivo: estado === undefined ? "no_encontrada" : motivoAsignabilidad(estado),
+      });
+    }
+    const bloqueadasIds = new Set(detalleCoords.map((d) => d.ordenId));
+    const asignables = ordenIds.filter((id) => !bloqueadasIds.has(id));
+    if (asignables.length === 0) return { status: "conflict", detalle: detalleCoords }; // R3
+
+    // 5. Resuelve estatus origen (guardia) y destino; si falta el seed -> validation_error.
+    const [origenId, destinoId] = await Promise.all([
+      this.repo.findEstatusIdByValue(ORIGEN_ASIGNACION),
+      this.repo.findEstatusIdByValue(ESTADO_ASIGNADA),
+    ]);
+    if (origenId === null || destinoId === null) {
+      return {
+        status: "validation_error",
+        fieldErrors: { estatus: ["catalogo de estados incompleto (seed pendiente)"] },
+      };
+    }
+
+    // 6. R7/R14: escritura guardada por estado de origen + zona. NO toca num_guia (R8).
+    // Feature 49/#7 (R15): actor = el adminSatelite; el append cubre solo las ordenes que
+    // ganaron la guarda anti-TOCTOU (RETURNING id en la misma tx).
+    // Feature 246 (T3.2, R2/R3/R5/R7): la eleccion se resuelve AQUI, una vez, para el lote entero
+    // —y con el MISMO helper que la bodega central, que es lo que hace que la regla no dependa de
+    // desde que bodega te asignaron (D4)—. `?? "hoy"` = el comportamiento anterior (R4).
+    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", now);
+
+    // Feature 368 (R1): escribe SOLO `asignables`, no `ordenIds` — el subconjunto que paso el
+    // gate de coordenadas. `asignarSateliteLote` no cambia de firma: sigue siendo un unico
+    // `UPDATE ... WHERE id IN (...) AND estatus_id = origen AND zona_id = zona` dentro de su
+    // propia `$transaction`, ahora sobre un array mas corto.
+    const count = await this.repo.asignarSateliteLote(
+      asignables,
+      input.mensajeroId,
+      zonaId,
+      destinoId,
+      origenId,
+      { actorUsuarioId: actor.usuarioId, origenTipo: "asignacion_satelite" },
+      fechaReparto, // R7: en el MISMO `SET` que `asignado_at`
+    );
+
+    // R14/R17 — FEATURE 368 (2026-09-03): la comparacion es contra `asignables.length`, NO
+    // `ordenIds.length`. Si comparara contra el lote completo, el chequeo dispararia SIEMPRE
+    // que hay bloqueadas por coordenadas en el lote (aunque no exista ninguna carrera real),
+    // porque `count` nunca cubre las que el gate ya descarto antes de escribir.
+    //
+    // Esto sigue siendo la deteccion de carrera PREEXISTENTE (alguna orden de `asignables`
+    // cambio de estado/zona entre la lectura y la escritura guardada) y NO se endurece aqui
+    // (design.md §5): `asignarSateliteLote` corre dentro de su propia `$transaction` que
+    // CONFIRMA al retornar, asi que las ordenes que ganaron la guarda ya quedaron escritas en
+    // el instante en que se compara. Esta imprecision es preexistente (feature 34/241/271), no
+    // introducida por esta ficha.
+    //
+    // R17: en el caso compuesto (bloqueadas por coordenadas Y carrera a la vez, extremadamente
+    // raro), el `detalle` COMBINA las que perdieron la carrera con las que ya venian bloqueadas
+    // por coordenadas, para no perder esa informacion. El desenlace sigue siendo `conflict`,
+    // NUNCA `partial` ni `ok`, para no reportar mas exito del que hay garantizado en ese camino.
+    if (count !== asignables.length) {
+      const actuales = await this.repo.findByIdsForTransicion(asignables);
+      const actualMap = new Map(actuales.map((o) => [o.id, o]));
+      const detalleCarrera: { ordenId: string; motivo: string }[] = [];
+      for (const id of asignables) {
+        const orden = actualMap.get(id);
+        if (!orden || orden.deletedAt !== null) {
+          detalleCarrera.push({ ordenId: id, motivo: "no_encontrada" });
+          continue;
+        }
+        if (orden.zonaId !== zonaId) {
+          detalleCarrera.push({ ordenId: id, motivo: "zona_ajena" });
+          continue;
+        }
+        if (orden.estatusValue !== ORIGEN_ASIGNACION) {
+          detalleCarrera.push({ ordenId: id, motivo: "conflict" });
+        }
+      }
+      return { status: "conflict", detalle: [...detalleCarrera, ...detalleCoords] }; // R17
+    }
+
+    // 7. R2/R4: `partial` si quedo alguna bloqueada por coordenadas, `ok` si el lote paso completo.
+    // Feature 400 (R31/R33): `sinUbicacion` se anade SOLO si es mayor que cero; con cero, la
+    // clave no existe en el objeto y los `toEqual` vigentes siguen verdes.
+    const resultados = asignables.map((ordenId) => ({
+      ordenId,
+      estado: ESTADO_ASIGNADA as "mensajero_recogiendo_en_bodega",
+    }));
+    const aviso400 = sinUbicacion > 0 ? { sinUbicacion } : {};
+    // Ficha 407 (R10): misma regla, cifra propia. Con cero, la clave NO existe en el objeto.
+    const aviso407 = sinUbicacionAutorizada > 0 ? { sinUbicacionAutorizada } : {};
+    return detalleCoords.length > 0
+      ? { status: "partial", resultados, bloqueadas: detalleCoords, ...aviso400, ...aviso407 }
+      : { status: "ok", resultados, ...aviso400, ...aviso407 };
+  }
+}

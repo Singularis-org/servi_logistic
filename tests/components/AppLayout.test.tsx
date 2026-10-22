@@ -1,0 +1,590 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ComponentProps, ReactNode } from "react";
+import AppLayout from "@/app/(app)/layout";
+
+// El layout monta el <Sidebar /> (Client Component) que usa usePathname; se
+// mockea next/navigation y next/link igual que en Sidebar.test.tsx.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/",
+}));
+
+vi.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    href,
+    ...rest
+  }: { children: ReactNode; href: string } & ComponentProps<"a">) => (
+    <a href={typeof href === "string" ? href : "#"} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+// El layout es un Server Component async que resuelve el actor desde la sesión
+// (cookies + Prisma). Se mockea `resolveActorFromSession` para devolver un actor
+// con rol conocido y evitar tocar next/headers ni la base de datos.
+const resolveActorMock = vi.fn();
+vi.mock("@/lib/auth/resolve-actor", () => ({
+  resolveActorFromSession: () => resolveActorMock(),
+}));
+
+// Feature 211: el layout lee la cookie del tema con `cookies()` de next/headers para
+// estampar la clase del tema en el servidor. Fuera de una petición real esa API lanza
+// («`cookies` was called outside a request scope»), así que se mockea con un almacén
+// controlable. Por defecto: sin cookie -> tema «sistema».
+const cookieTemaMock = vi.fn<() => string | undefined>(() => undefined);
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (nombre: string) =>
+      nombre === "servi_logistic_tema" && cookieTemaMock() !== undefined
+        ? { name: nombre, value: cookieTemaMock() }
+        : undefined,
+  }),
+}));
+
+// El layout también resuelve el NOMBRE del usuario (para el footer del sidebar) vía
+// UserRepository.findById; se mockea el repo y el cliente Prisma para no tocar la BD.
+vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
+vi.mock("@/lib/repositories/UserRepository", () => ({
+  UserRepository: class {
+    findById = vi.fn().mockResolvedValue({ id: "u1", nombre: "Ada Lovelace" });
+  },
+}));
+
+// FICHA 422 (T5.2) — el layout lee además la PREFERENCIA DE AVISOS de la persona, en el servidor,
+// para bajarla por props. Se dobla el repositorio (no la base) y se recuerda CON QUÉ id se llamó:
+// leerla por otro id sería aplicarle a alguien la decisión de un tercero.
+const { avisosPushDeMock } = vi.hoisted(() => ({ avisosPushDeMock: vi.fn() }));
+vi.mock("@/lib/repositories/UsuarioPreferenciaRepository", () => ({
+  UsuarioPreferenciaRepository: class {
+    avisosPushDe = avisosPushDeMock;
+  },
+}));
+
+// El componente de la reactivación se dobla para poder AFIRMAR QUE ALGUIEN LE PASA EL DATO. Es la
+// lección de los dos notificadores muertos: se comprueba que se INYECTA, no que se importa. El
+// componente real devuelve `null`, así que un montaje sin su prop —o sin montaje— no se vería en
+// ninguna pantalla y la reactivación estaría muerta con toda la suite en verde.
+const { propsDeLaReactivacion } = vi.hoisted(() => ({
+  propsDeLaReactivacion: [] as { avisosRecordados: boolean }[],
+}));
+vi.mock("@/components/shared/PushReactivacion", () => ({
+  PushReactivacion: (props: { avisosRecordados: boolean }) => {
+    propsDeLaReactivacion.push(props);
+    return null;
+  },
+}));
+
+// ⭑ FICHA 429 (T19) — la TERCERA lectura del layout: ¿hay un SINPE que poner delante de esta
+// persona? Se doblan las DOS piezas, y cada una mide algo distinto:
+//
+//   · `ZonaRepository` — para saber si SE CONSTRUYE. R31 exige que `mensajero` y `adminTienda` no
+//     paguen ni una consulta, y este layout se pinta en TODAS las paginas del portal: una lectura
+//     de mas para quien no puede hacer nada con ella se paga en todas.
+//   · `resolverRevisionSinpePendiente` — para saber si SE LLAMA, y con que actor.
+const { zonaRepoConstruido, resolverRevisionMock } = vi.hoisted(() => ({
+  zonaRepoConstruido: { veces: 0 },
+  resolverRevisionMock: vi.fn(),
+}));
+vi.mock("@/lib/repositories/ZonaRepository", () => ({
+  ZonaRepository: class {
+    constructor() {
+      zonaRepoConstruido.veces += 1;
+    }
+  },
+}));
+vi.mock("@/lib/auth/revision-sinpe-pendiente", () => ({
+  resolverRevisionSinpePendiente: (...a: unknown[]) => resolverRevisionMock(...a),
+}));
+
+// El aviso se dobla para poder AFIRMAR QUE ALGUIEN LE PASA LA BODEGA, igual que con
+// `PushReactivacion`: es la leccion de los dos notificadores muertos —se comprueba que se
+// INYECTA, no que se importa—.
+const { propsDelAvisoSinpe } = vi.hoisted(() => ({
+  propsDelAvisoSinpe: [] as { bodega: { zonaId: string } }[],
+}));
+vi.mock("@/components/shared/RevisionSinpeBodega", () => ({
+  RevisionSinpeBodega: (props: { bodega: { zonaId: string } }) => {
+    propsDelAvisoSinpe.push(props);
+    return null;
+  },
+}));
+
+// ⭑ FICHA 433 (R20) — el mapa ruta→documento del «?» y la lectura que lo alimenta.
+//
+//   · `AyudaProvider` se dobla para AFIRMAR QUE ALGUIEN LE PASA EL MAPA, no que se importa: el
+//     proveedor real no pinta ninguna caja, así que montarlo sin mapa —o no montarlo— dejaría el
+//     «?» muerto en las 29 pantallas con toda la suite en verde. Misma lección que los dos
+//     notificadores muertos.
+//   · `leerResumenesAyuda` se dobla para poder HACERLA FALLAR. Es la única lectura de este layout
+//     que depende del sistema de archivos de la función, y este layout se pinta en TODAS las
+//     páginas del portal: lo que se rompa aquí no rompe la ayuda, rompe la aplicación.
+const { propsDelProveedorAyuda, catalogo } = vi.hoisted(() => ({
+  propsDelProveedorAyuda: [] as { mapa: Record<string, string> }[],
+  catalogo: { falla: false },
+}));
+vi.mock("@/providers/AyudaProvider", () => ({
+  AyudaProvider: ({
+    mapa,
+    children,
+  }: {
+    mapa: Record<string, string>;
+    children: ReactNode;
+  }) => {
+    propsDelProveedorAyuda.push({ mapa });
+    return <>{children}</>;
+  },
+}));
+vi.mock("@/lib/ayuda/catalogo", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/ayuda/catalogo")>();
+  return {
+    ...real,
+    // Los documentos son los REALES mientras no se pida lo contrario: el mapa que se afirma
+    // abajo sale de `docs/ayuda/**`, no de un fixture que pueda declarar otras rutas.
+    leerResumenesAyuda: async () => {
+      if (catalogo.falla) throw new Error("EACCES: docs/ayuda ilegible");
+      return real.leerResumenesAyuda();
+    },
+  };
+});
+
+// Por defecto, alguien que no ha decidido nada: la preferencia «no puesta» (422/R2).
+avisosPushDeMock.mockResolvedValue(false);
+// Por defecto, nada que pedir: es la respuesta NORMAL del resolvedor.
+resolverRevisionMock.mockResolvedValue(null);
+
+// Como el layout es async, se invoca y se espera su árbol antes de renderizar.
+async function renderLayout(children: ReactNode) {
+  const ui = await AppLayout({ children });
+  return render(ui);
+}
+
+describe("Layout de la zona autenticada app/(app)/layout.tsx", () => {
+  it("monta el sidebar con los ítems visibles del actor y los children (R14)", async () => {
+    // Actor maestro: ve sus ítems (Configuración, Órdenes, Ranking…).
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    await renderLayout(
+      <div data-testid="page-children">Contenido de la página</div>,
+    );
+
+    // El landmark de navegación del Sidebar (shadcn) está presente...
+    expect(
+      screen.getByRole("navigation", { name: /navegación principal/i }),
+    ).toBeInTheDocument();
+    // ...con los ítems visibles para maestro...
+    expect(
+      screen.getByRole("button", { name: /configuración/i }),
+    ).toBeInTheDocument();
+    // Feature 196 (T4.5): "Ranking" pasó a tener subítems ("Ranking del día" / "Histórico"),
+    // así que el Sidebar lo renderiza como disparador colapsable y ya no como enlace. La
+    // intención del caso —que el ítem del maestro esté montado— se conserva intacta.
+    expect(screen.getByRole("button", { name: /ranking/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Órdenes" })).toBeInTheDocument();
+    // ...junto con los children del layout.
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+    expect(screen.getByText("Contenido de la página")).toBeInTheDocument();
+    // Footer del sidebar: nombre, rol legible e iniciales (máx 2) del avatar.
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Maestro")).toBeInTheDocument();
+    expect(screen.getByText("AL")).toBeInTheDocument();
+  });
+
+  it("filtra el sidebar según el rol del actor (adminSatelite: su portal, no la Configuración ni el listado maestro)", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u2", rol: "adminSatelite" });
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(
+      screen.queryByRole("button", { name: /configuración/i }),
+    ).toBeNull();
+
+    // Feature 279 (R9), 2026-08-24: el portal del `adminSatelite` DEJÓ de ser un enlace.
+    // Al ganar dos subítems, el Sidebar lo renderiza como disparador de desplegable —el
+    // mismo patrón que "Entregas" del mensajero—, así que este caso pasa de buscar un
+    // `link` con `href="/recepcion-satelite"` a buscar el `button` y sus dos subenlaces.
+    // El caso se puso ROJO con el `children` nuevo y se reexpresó a mano; su intención
+    // (este rol ve SU portal y no el listado maestro) no cambia.
+    const user = userEvent.setup();
+    const disparador = screen.getByRole("button", { name: /órdenes/i });
+    expect(disparador).toBeInTheDocument();
+    await user.click(disparador);
+
+    const subenlaces = screen
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(subenlaces).toContain("/recepcion-satelite/por-recibir");
+    expect(subenlaces).toContain("/recepcion-satelite/en-bodega");
+
+    // La mitad NEGATIVA, intacta: no ve el listado maestro, ni como enlace del padre
+    // (que ya no navega) ni por ninguna otra vía.
+    expect(subenlaces).not.toContain("/ordenes");
+    expect(subenlaces).not.toContain("/recepcion-satelite");
+    expect(screen.queryByRole("link", { name: "Órdenes" })).toBeNull();
+  });
+
+  it("expone el control de alternado del sidebar para móvil (off-canvas)", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    await renderLayout(<div>Contenido</div>);
+
+    // El SidebarTrigger de shadcn dispara el Sheet off-canvas en móvil.
+    expect(
+      screen.getByRole("button", { name: /toggle sidebar/i }),
+    ).toBeInTheDocument();
+  });
+
+  // Feature 211 — el tema lo resuelve EL SERVIDOR. Es lo que hace que el HTML llegue ya
+  // con la clase puesta y no haya que corregir nada después del primer pintado: si esto
+  // se rompiera, el tema seguiría cambiando al pulsar y volvería a parpadear al recargar.
+  it("estampa la clase del tema que dice la COOKIE, sin esperar a que el cliente hidrate", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    for (const [cookie, clase] of [
+      ["oscuro", "dark"],
+      ["claro", "tema-claro"],
+    ] as const) {
+      cookieTemaMock.mockReturnValue(cookie);
+      const { unmount } = await renderLayout(<div>Contenido</div>);
+
+      const envoltorio = document.querySelector(`[data-tema="${cookie}"]`);
+      expect(envoltorio, `sin envoltorio para la cookie ${cookie}`).not.toBeNull();
+      expect(envoltorio!.className.split(" ")).toContain(clase);
+      // `contents`: estampar el tema no puede alterar el layout de la aplicación.
+      expect(envoltorio!.className.split(" ")).toContain("contents");
+      unmount();
+    }
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  // «sistema» dejó de ser una opción ELEGIBLE (2026-08-14), pero sigue siendo lo que se
+  // sirve a quien nunca eligió: la clase `tema-sistema` deja que `prefers-color-scheme`
+  // decida en CSS. Es la única forma de acertar sin parpadeo, porque el servidor no puede
+  // conocer la preferencia del SO. La cookie `"sistema"` que escribían las versiones
+  // anteriores entra aquí también: ya no es válida y se lee como «sin elegir».
+  it("sin cookie —o con una manipulada, o con la «sistema» vieja— delega en la preferencia del SO", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    // El SO dice OSCURO. Ninguno de estos valores es una eleccion, asi que los cuatro
+    // tienen que acabar en oscuro — no en el «claro» que saldria de fijar un default.
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      // `addEventListener`/`removeEventListener` no son decoracion: el sidebar se suscribe
+      // a su propia media query y sin ellos React revienta al montar el efecto.
+      value: (query: string) => ({
+        matches: query.includes("dark"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    });
+
+    for (const cookie of [undefined, "azul", "", "sistema"]) {
+      cookieTemaMock.mockReturnValue(cookie);
+      const { unmount } = await renderLayout(<div>Contenido</div>);
+
+      const envoltorio = document.querySelector("[data-tema]");
+      // El HTML del SERVIDOR sale con `tema-sistema` —no puede saber la preferencia del
+      // SO— y el CSS lo resuelve sin parpadeo. Ya hidratado, el cliente lo concreta para
+      // que el control sepa hacia donde ir. Lo que se mide aqui es el DESENLACE: oscuro.
+      expect(envoltorio!.getAttribute("data-tema"), `cookie=${String(cookie)}`).toBe("oscuro");
+      expect(envoltorio!.className.split(" ")).toContain("dark");
+      unmount();
+    }
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  it("el HTML del SERVIDOR sale con `tema-sistema`: es lo que evita el parpadeo", async () => {
+    // Se comprueba sobre el arbol de React SIN montar en el DOM (`renderToStaticMarkup` no
+    // corre efectos), que es exactamente lo que el navegador recibe antes de hidratar.
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+    cookieTemaMock.mockReturnValue(undefined);
+
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const html = renderToStaticMarkup(await AppLayout({ children: <div>Contenido</div> }));
+
+    expect(html).toContain('data-tema="sistema"');
+    expect(html).toContain("tema-sistema");
+  });
+
+  it("/login no incluye el sidebar (R15)", () => {
+    // /login vive fuera del grupo (app): ni el layout raíz ni la página de login
+    // montan el Sidebar. Se verifica de forma estructural sobre el código fuente.
+    const rootLayout = readFileSync(
+      resolve(process.cwd(), "app/layout.tsx"),
+      "utf8",
+    );
+    const loginPage = readFileSync(
+      resolve(process.cwd(), "app/login/page.tsx"),
+      "utf8",
+    );
+
+    expect(rootLayout).not.toMatch(/Sidebar/);
+    expect(loginPage).not.toMatch(/Sidebar/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// FICHA 422 · T5.2 — LA REACTIVACIÓN SE MONTA AQUÍ, Y ALGUIEN LE PASA LA PREFERENCIA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Por qué este layout y no el hook: `PushOptIn` —el único consumidor de `usePushSuscripcion`— vive
+// dentro del panel de la campana, que es un portal SIN `keepMounted`. Ese panel no existe mientras
+// la campana está cerrada, así que la reactivación ocurriría la primera vez que alguien ABRE la
+// campana: justo el gesto que esta ficha existe para no tener que pedir. Aquí ocurre al cargar
+// cualquier página del portal.
+
+describe("422/T5.2 — el layout lee la preferencia en el SERVIDOR y la baja por props", () => {
+  beforeEach(() => {
+    propsDeLaReactivacion.length = 0;
+    avisosPushDeMock.mockClear();
+    avisosPushDeMock.mockResolvedValue(false);
+  });
+
+  it("⭑ con actor, monta la reactivación pasándole la preferencia leída (y solo UNA vez)", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+    avisosPushDeMock.mockResolvedValue(true);
+
+    await renderLayout(<div>Contenido</div>);
+
+    // La lee por el id DE LA SESIÓN, no por uno que venga de fuera (410/R50).
+    expect(avisosPushDeMock).toHaveBeenCalledTimes(1);
+    expect(avisosPushDeMock).toHaveBeenCalledWith("u1");
+    // Y ALGUIEN LE PASA EL DATO. Esto es lo que no se puede dar por supuesto: importarlo y montarlo
+    // sin la prop dejaría la reactivación muerta sin romper ninguna pantalla.
+    expect(propsDeLaReactivacion).toEqual([{ avisosRecordados: true }]);
+  });
+
+  it("⭑ con actor SIN preferencia guardada, baja `false` (R2: no hay estado «desconocido»)", async () => {
+    // El control negativo del caso de arriba: si el layout pasara una constante —o `true` siempre—
+    // la reactivación se dispararía para quien nunca dijo que sí (R18).
+    resolveActorMock.mockResolvedValue({ usuarioId: "u2", rol: "mensajero" });
+    avisosPushDeMock.mockResolvedValue(false);
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(avisosPushDeMock).toHaveBeenCalledWith("u2");
+    expect(propsDeLaReactivacion).toEqual([{ avisosRecordados: false }]);
+  });
+
+  it("⭑ R24: SIN sesión válida no se monta nada que pueda reactivar, ni se lee ninguna preferencia", async () => {
+    // Es la mitad que sostiene 410/R19 intacto: mientras no haya sesión en este dispositivo, no
+    // existe en el árbol nada capaz de volver a suscribirlo.
+    resolveActorMock.mockResolvedValue(null);
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(propsDeLaReactivacion).toEqual([]);
+    expect(avisosPushDeMock).not.toHaveBeenCalled();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ FICHA 429 · T19 — EL AVISO DE LA REVISIÓN SE MONTA AQUÍ, Y NO LO PAGA QUIEN NO LO VE
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Tres propiedades, y las tres son estructurales:
+//
+//   · **R26** — con una bodega sin revisar, el aviso se MONTA y alguien le pasa la bodega. Sin la
+//     segunda mitad, `resolverRevisionSinpePendiente` seguiría funcionando y no saldría ningún
+//     aviso: backend vivo, pantalla muerta, suite verde.
+//   · **R31** — `mensajero` y `adminTienda` no emiten ninguna consulta: ni se llama al resolvedor
+//     ni se construye el repositorio. Se afirma CONTANDO, no leyendo el código.
+//   · **R28** — el contenido se pinta SIEMPRE, haya aviso o no. Es la mitad ejecutable de lo que
+//     la guardia estática vigila sobre la forma del árbol.
+
+describe("429/T19 — la revisión pendiente se resuelve en el servidor y se monta como hermana", () => {
+  const BODEGA = {
+    zonaId: "z-guanacaste",
+    zonaNombre: "Guanacaste",
+    esCentral: false,
+    numero: "80000000",
+    nombre: "Titular de Prueba",
+    revisadoAt: null,
+    editable: true,
+  };
+
+  beforeEach(() => {
+    propsDelAvisoSinpe.length = 0;
+    zonaRepoConstruido.veces = 0;
+    resolverRevisionMock.mockClear();
+    resolverRevisionMock.mockResolvedValue(null);
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  it("⭑ con una bodega SIN revisar, monta el aviso y ALGUIEN LE PASA la bodega", async () => {
+    const actor = { usuarioId: "u2", rol: "adminSatelite" };
+    resolveActorMock.mockResolvedValue(actor);
+    resolverRevisionMock.mockResolvedValue(BODEGA);
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(resolverRevisionMock).toHaveBeenCalledTimes(1);
+    // Con el actor DE LA SESIÓN: la zona la decide la base dentro del resolvedor, nunca un dato
+    // que venga en la petición (R20).
+    expect(resolverRevisionMock.mock.calls[0][0]).toEqual(actor);
+    expect(propsDelAvisoSinpe).toEqual([{ bodega: BODEGA }]);
+    // R28: el contenido se pinta igual. El aviso es HERMANO, no envoltorio.
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+  });
+
+  it("⭑ sin nada que pedir (`null`), NO se monta ningún aviso — y la página se pinta igual", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+    resolverRevisionMock.mockResolvedValue(null);
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(resolverRevisionMock).toHaveBeenCalledTimes(1);
+    expect(propsDelAvisoSinpe).toEqual([]);
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+  });
+
+  it("⭑ R31 — `mensajero` y `adminTienda` NO pagan ni una consulta", async () => {
+    // Ni se llama al resolvedor ni se construye el repositorio: la tercera posición del
+    // `Promise.all` es `null` LITERAL para ellos. Este layout se pinta en todas las páginas del
+    // portal, así que una consulta de más aquí se paga en todas.
+    for (const rol of ["mensajero", "adminTienda"] as const) {
+      resolverRevisionMock.mockClear();
+      zonaRepoConstruido.veces = 0;
+      resolveActorMock.mockResolvedValue({ usuarioId: "u3", rol });
+
+      const { unmount } = await renderLayout(<div>Contenido</div>);
+
+      expect(resolverRevisionMock, rol).not.toHaveBeenCalled();
+      expect(zonaRepoConstruido.veces, rol).toBe(0);
+      expect(propsDelAvisoSinpe, rol).toEqual([]);
+      unmount();
+    }
+  });
+
+  it("los tres roles que SÍ pueden editar un SINPE lo consultan una vez", async () => {
+    // La otra mitad del caso de arriba: si el layout dejara de preguntar por los tres, el aviso
+    // no saldría nunca y R26 quedaría muerto sin romper nada.
+    for (const rol of ["maestro", "admin", "adminSatelite"] as const) {
+      resolverRevisionMock.mockClear();
+      zonaRepoConstruido.veces = 0;
+      resolveActorMock.mockResolvedValue({ usuarioId: "u4", rol });
+
+      const { unmount } = await renderLayout(<div>Contenido</div>);
+
+      expect(resolverRevisionMock, rol).toHaveBeenCalledTimes(1);
+      expect(zonaRepoConstruido.veces, rol).toBe(1);
+      unmount();
+    }
+  });
+
+  it("⭑ SIN sesión no se consulta nada ni se monta nada", async () => {
+    resolveActorMock.mockResolvedValue(null);
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(resolverRevisionMock).not.toHaveBeenCalled();
+    expect(zonaRepoConstruido.veces).toBe(0);
+    expect(propsDelAvisoSinpe).toEqual([]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ FICHA 433 · R20 — EL MAPA DEL «?» SE BAJA DESDE AQUÍ, Y LA AYUDA NO PUEDE TUMBAR EL PORTAL
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Dos propiedades, y la segunda es la que la revisión pidió cerrar antes de desplegar:
+//
+//   · **el mapa llega RECORTADO POR ROL al proveedor**. Si dejara de bajar, el «?» no se pintaría
+//     en ninguna pantalla; si bajara sin recortar, el HTML de un mensajero llevaría los slugs de
+//     la ayuda de Wallet. Se afirma sobre el objeto que RECIBE el proveedor, no sobre el código.
+//   · **si el catálogo no se puede leer, el portal sigue en pie**. Esta es la única lectura del
+//     layout que depende de que 31 archivos estén en el disco de la función (un trazado mal
+//     declarado, un archivo ilegible), y el layout se pinta en TODAS las páginas: sin el `catch`
+//     un tropiezo de lectura sería un 500 en `/ordenes`, en `/monitoreo` y en todo lo demás.
+//     Con él se pierde el «?» y nada más. Es la condición del humano para SF-001: no dañar lo
+//     que ya funciona.
+
+describe("433/R20 — el mapa del «?» baja acotado, y la ayuda se degrada sin arrastrar al portal", () => {
+  beforeEach(() => {
+    propsDelProveedorAyuda.length = 0;
+    catalogo.falla = false;
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  it("⭑ ALGUIEN le pasa el mapa al proveedor, y viene recortado por el rol de la sesión", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(propsDelProveedorAyuda.length).toBe(1);
+    const mapa = propsDelProveedorAyuda[0].mapa;
+    // Rutas reales de `docs/ayuda/**`: el maestro tiene la ayuda de la caja de la empresa...
+    expect(mapa["/wallet"]).toBe("oficina/wallet-caja");
+    // ...y NO la del reparto del mensajero, que no le declara el rol.
+    expect(mapa["/mis-asignaciones/reparto"]).toBeUndefined();
+  });
+
+  it("⭑ y al mensajero no le cruza ni el slug de la ayuda de Wallet", async () => {
+    // La mitad que sostiene el acotamiento en el SERVIDOR: si se hiciera en el botón, el mapa
+    // entero viajaría en el HTML de cualquiera.
+    resolveActorMock.mockResolvedValue({ usuarioId: "u2", rol: "mensajero" });
+
+    await renderLayout(<div>Contenido</div>);
+
+    const mapa = propsDelProveedorAyuda[0].mapa;
+    expect(mapa["/mis-asignaciones/reparto"]).toBe("mensajero/reparto");
+    expect(mapa["/wallet"]).toBeUndefined();
+    expect(Object.values(mapa).some((slug) => slug.startsWith("oficina/"))).toBe(false);
+  });
+
+  it("sin sesión el mapa va VACÍO (no hay a quién acotarlo)", async () => {
+    resolveActorMock.mockResolvedValue(null);
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(propsDelProveedorAyuda[0].mapa).toEqual({});
+  });
+
+  it("⭑ con el catálogo ILEGIBLE, el portal se pinta igual: sidebar, contenido y mapa vacío", async () => {
+    const enLosLogs = vi.spyOn(console, "error").mockImplementation(() => {});
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+    catalogo.falla = true;
+
+    // Lo primero que se afirma es que NO LANZA: sin el `catch`, esta línea sola pone el caso
+    // rojo, y en producción sería un 500 en cada página del portal.
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: /navegación principal/i }),
+    ).toBeInTheDocument();
+    // Lo único que se pierde es el «?»: el mapa vacío hace que el botón no se monte.
+    expect(propsDelProveedorAyuda[0].mapa).toEqual({});
+    // Y no se traga en silencio: queda dicho en los logs, que es donde se diagnostica prod.
+    expect(enLosLogs).toHaveBeenCalled();
+    enLosLogs.mockRestore();
+  });
+
+  it("y el fallo es de esa carga, no del layout: la siguiente vuelve a tener «?»", async () => {
+    // El control de que el `catch` no se queda con el mapa vacío para siempre: cada carga
+    // vuelve a pedir el catálogo. Que el CATÁLOGO no se envenene por dentro (la promesa
+    // rechazada memorizada) se mide donde sí se puede hacer fallar al sistema de archivos:
+    // `tests/unit/ayuda/catalogo-memoria.test.ts`.
+    const enLosLogs = vi.spyOn(console, "error").mockImplementation(() => {});
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro" });
+
+    catalogo.falla = true;
+    const { unmount } = await renderLayout(<div>Contenido</div>);
+    expect(propsDelProveedorAyuda[0].mapa).toEqual({});
+    unmount();
+
+    catalogo.falla = false;
+    await renderLayout(<div>Contenido</div>);
+    expect(propsDelProveedorAyuda[1].mapa["/wallet"]).toBe("oficina/wallet-caja");
+    enLosLogs.mockRestore();
+  });
+});

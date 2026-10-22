@@ -1,0 +1,1504 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import useSWR, { useSWRConfig } from "swr";
+
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { EstadoConInfo, InfoEstado } from "@/components/shared/EstadoInfo";
+import { Modal } from "@/components/shared/Modal";
+import {
+  DataTable,
+  type Column,
+  type DataTableDescarga,
+} from "@/components/shared/DataTable";
+import { Pagination } from "@/components/shared/Pagination";
+import { useToast } from "@/hooks/useToast";
+import { cierreConfig } from "@/lib/config/cierre";
+import { money } from "@/lib/config/moneda";
+import type { DescargaFila } from "@/lib/types/descarga";
+import {
+  deshacerGestion,
+  listarCierresPasadosPaginado,
+  solicitarCierre,
+  verCierrePasado,
+} from "@/lib/actions/cierre-dia";
+import type {
+  CierreDetalleGestion,
+  CierreGrupos,
+  CierreOrdenSinGestion,
+  CierreRechazoDeTienda,
+  CierreTotales,
+  CierrePasadoDTO,
+  CierreResultado,
+  CorreccionCierreDTO,
+} from "@/lib/interfaces/services/ICierreDiaService";
+import type { CierreDestinoTipo } from "@/lib/types/cierre";
+// FEATURE 271 (T9.1): la copia local del aviso desapareció. El texto sale del formateador
+// COMPARTIDO con los otros tres portales, con `conCta: false` porque el mensajero YA está en
+// «Cierre del día» y remitirlo a la pantalla en la que está sería ruido (R52).
+import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
+import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+// Feature 158 (T2.3): la columna de la causa es la MISMA que la del detalle del admin — se
+// reusa en vez de reescribirla, para que las dos pantallas no puedan divergir en la etiqueta.
+import { COLUMNA_CAUSA_INCIDENTE } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+// Pedido humano: el detalle de un cierre pasado se lee con el MISMO comprobante del admin
+// (feature 38/40), en su variante `mensajero`. Una sola hoja para las dos pantallas.
+import {
+  CierreFacturaDetalle,
+  CierreFacturaResumenPropio,
+} from "@/app/(app)/cierres-admin/_components/cierre-factura";
+// Pedido humano del 2026-08-16: el histórico del mensajero deja de ser una tabla y pasa a ser
+// la tira de comprobantes que usan las demás pantallas de cierres. Mismo envoltorio, mismos
+// cuatro estados de listado.
+import { ListaComprobantes } from "@/app/(app)/cierres-admin/_components/ListaComprobantes";
+import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
+import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
+// Feature 170 (T E.4): las etiquetas compartidas salen del módulo PURO (sin React) para que
+// el archivo de la descarga y esta pantalla no puedan decir cosas distintas (R8).
+import {
+  DESTINO_TIPO_LABEL,
+  ESTADO_LABEL,
+  RESULTADO_LABEL,
+  RESULTADO_VACIO,
+  // FICHA 408 — el traductor del motivo de un rechazo automático. Se AÑADE al import que ya
+  // estaba escrito: esta pantalla lee del módulo puro desde la 170, no se estrena dependencia.
+  motivoGestionLegible,
+  // FICHA 414 — los dos textos de la marca «La tienda» (237/R41) se DECLARABAN abajo, en este
+  // mismo archivo, y se mudaron al módulo puro para que el COMPROBANTE pueda leer los MISMOS (R9).
+  // Mismo import ya existente: no se estrena dependencia ninguna.
+  GESTION_TIENDA_BADGE_LABEL,
+  GESTION_TIENDA_BADGE_NOTA,
+} from "@/app/(app)/cierres-admin/_components/cierre-labels";
+// Feature 213 (T7): el desglose de pago se formatea en UN solo sitio para los cinco
+// consumidores que lo pintan; esta pantalla ya no compone la etiqueta por su cuenta.
+import { desglosePantalla } from "@/app/(app)/cierres-admin/_components/desglose-pago";
+import {
+  filasLocales,
+  filasDesdeResultado,
+} from "@/components/shared/descarga-resultado";
+import {
+  AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
+  AMBITO_DESCARGA_DIA_DEVUELTAS,
+  AMBITO_DESCARGA_DIA_ENTREGADAS,
+  AMBITO_DESCARGA_DIA_INCIDENTES,
+  AMBITO_DESCARGA_DIA_RECHAZADAS,
+  AMBITO_DESCARGA_DIA_REPROGRAMADAS,
+  COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
+  COLUMNAS_DESCARGA_DIA_DEVUELTAS,
+  COLUMNAS_DESCARGA_DIA_ENTREGADAS,
+  COLUMNAS_DESCARGA_DIA_INCIDENTES,
+  COLUMNAS_DESCARGA_DIA_RECHAZADAS,
+  COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
+  filaDescargaDiaCierrePasado,
+  filaDescargaDiaDevuelta,
+  filaDescargaDiaEntregada,
+  filaDescargaDiaIncidente,
+  filaDescargaDiaRechazada,
+  filaDescargaDiaReprogramada,
+} from "./cierre-dia-descarga-columnas";
+import { descargarDatos } from "@/components/shared/descarga-datos";
+
+// Feature 37 (T15, R3-R7/R10/R11/R18): módulo cliente del "Cierre del día". Recibe
+// del Server Component padre los grupos ya resueltos (por resultado), los totales
+// snapshot-able, el gate `puedesSolicitar` + su `motivoBloqueo` y el histórico de
+// cierres. Las mutaciones (Solicitar cierre; feature 67/R35-R38: Devolver a gestión)
+// van por Server Action y refrescan la ruta para releer el estado del servidor. Los
+// montos llegan como STRING (money-safe): se renderizan tal cual, sin `parseFloat`/`Number`.
+
+/**
+ * Feature 264 (Q1/R30) — lo que el visor de un cierre PASADO tiene cargado del servidor. Es una
+ * sola lectura (`verCierrePasado`) y por eso es un solo estado: los grupos por resultado y, en
+ * pie de igualdad, las órdenes que el corte cerró sin gestión con su marca de registro.
+ *
+ * `sinGestionRegistrado` no se deriva de que la lista esté vacía: `[]` con `true` es «no hubo
+ * ninguna» y `[]` con `false` es «no lo sabemos» (R28). Son dos pantallas distintas.
+ */
+interface DetalleCierrePasado {
+  grupos: CierreGrupos;
+  ordenesSinGestion: CierreOrdenSinGestion[];
+  sinGestionRegistrado: boolean;
+  /** FICHA 425 (R14): los rechazos de tienda de ESTE cierre, de la misma lectura que `grupos`. */
+  rechazosDeTienda: CierreRechazoDeTienda[];
+}
+
+/** Feature 170 — FASE 2 (T I.2): la página de «Cierres solicitados» tal como la da el servidor. */
+export interface CierresPasadosPagina {
+  items: CierrePasadoDTO[];
+  total: number;
+  pageSize: number;
+}
+
+export interface CierreDiaModuleProps {
+  grupos: CierreGrupos;
+  totales: CierreTotales;
+  /** Feature 39/R11: total DERIVADO a pagar al mensajero (STRING), separado de `totales`. */
+  totalPagoMensajero: string;
+  puedesSolicitar: boolean;
+  motivoBloqueo: string | null;
+  /**
+   * Feature 170 — FASE 2 (T I.2, R40/R41): PÁGINA 1 de «Cierres solicitados» (R18), ya
+   * resuelta server-side, más el `total` del conjunto. Deja de ser el array entero.
+   *
+   * OJO: es la ÚNICA tabla de esta pantalla que pagina. Las secciones por resultado son del
+   * Anexo IV (vista agrupada de UNA jornada) y siguen recibiendo su grupo completo (R53); su
+   * contador por grupo, derivado de `filas.length`, sigue siendo correcto y está declarado
+   * como tal en la guardia de T H.3.
+   */
+  cierresPasados: CierresPasadosPagina;
+  /**
+   * Feature 41/R21 + 111/R13 + 109/R31 -> FEATURE 271 (T9.3): el DETALLE del bloqueo, que
+   * SUSTITUYE a tres props (`bloqueado`, `tieneVencido`, `tieneRechazado`). Las tres respondían a
+   * la misma pregunta por caminos distintos —el predicado del servidor una, el histórico de
+   * cierres las otras dos— y dos fuentes para la misma pregunta es cómo se desincronizan.
+   *
+   * Trae el veredicto de la regla N/V (libre si arrastra un cierre a lo sumo y ninguno espera a
+   * que él lo reenvíe), cuántos cierres arrastra, cuántos espera que él reenvíe y DOS cierres, no
+   * uno: `aResolverPrimero` (el abierto más viejo, el orden de la cola, R11) y `aReenviarPrimero`
+   * (el RE-SOLICITABLE más viejo, lo que él puede tocar, R18). Los dos con la fecha de su JORNADA,
+   * no la de su creación, que en un cierre vencido va un día por delante. Todo derivado
+   * server-side por el MISMO predicado que aplica el servidor al rechazar (R10): la pantalla no
+   * re-deriva nada, y en particular no intenta adivinar el segundo a partir del primero —en el
+   * caso 6 de la tabla de verdad son cierres DISTINTOS—.
+   */
+  bloqueo: BloqueoDetalle;
+  /**
+   * FICHA 477 (R25/R26): por cada cierre `rechazado` propio, su motivo, sus gestiones vigentes y
+   * sus órdenes en corrección (`listarCierreDia.correcciones`). Opcional: `[]` = no hay nada que
+   * corregir y no se pinta ningún panel.
+   */
+  correcciones?: CorreccionCierreDTO[];
+}
+
+// =================================================================================================
+// FEATURE 271 (T9.1, R52) — LA SEGUNDA COPIA DEL AVISO DE BLOQUEO SE BORRÓ DE AQUÍ.
+// =================================================================================================
+//
+// Vivía en este archivo una constante `BLOQUEO_AVISO` propia, hermana de la de
+// `lib/constants/bloqueo-mensajero.ts`, y las dos afirmaban «Sí puedes seguir recibiendo
+// asignaciones». Desde el 2026-08-23 eso es FALSO —un mensajero bloqueado tampoco recibe trabajo
+// nuevo, ni reparto ni recolección— y un aviso que permite más de lo que el servidor acepta manda
+// al mensajero a intentar algo que le van a negar.
+//
+// POR QUÉ NO SE ARREGLÓ LA COPIA Y SE BORRÓ ENTERA. Su única razón de existir era el remate: la
+// otra decía «Ve a «Cierre del día» para resolverlo» y aquí el mensajero YA está en esa pantalla.
+// Eso ahora es un parámetro (`conCta`). Y además el aviso pasó a CONTAR —cuántos cierres arrastra
+// y cuál toca resolver primero (R43)—: mantener dos fuentes de un texto que cuenta es garantizar
+// que divergirán, que es exactamente lo que pasó cuando el backend corrigió su copia y ésta se
+// quedó mintiendo sin que nada avisara.
+
+// =================================================================================================
+// Feature 111/R13 + 109/R31 -> FEATURE 271 — LOS CTA DE RE-ENVÍO (textos separados, i18n-ready).
+// =================================================================================================
+//
+// ⚠️ LOS DOS AVISOS PERDIERON HOY SU PROMESA, Y NO ES UN RECORTE DE ESTILO. Decían «Envíalo a
+// aprobación PARA DESTRABAR tu operación» y «con eso SE LEVANTA EL BLOQUEO y sigues gestionando y
+// cobrando». Eso era cierto mientras un mensajero no podía tener más de un cierre abierto: enviar
+// el único que arrastraba lo dejaba libre en esa misma escritura. Desde la 271 puede arrastrar
+// DOS, y entonces enviar el que falta NO lo desbloquea —sigue bloqueado hasta que la bodega
+// apruebe el más antiguo (R8)—. Prometerlo lo manda a intentar gestionar y a que el servidor le
+// diga que no, que es el fallo que R43 prohíbe.
+//
+// QUIÉN DICE AHORA QUÉ PASA DESPUÉS: el aviso de bloqueo de arriba, que se pinta SIEMPRE que hay
+// algo que reenviar —tener un cierre re-solicitable implica estar bloqueado, por la propia regla—
+// y que sí distingue los dos casos («se desbloquea cuando la bodega apruebe el más antiguo» vs
+// «envíalo a aprobación con el botón de abajo»). Aquí abajo queda lo que es cierto siempre: qué
+// pasó con ese cierre y dónde está el botón.
+
+const VENCIDO_AVISO =
+  "Tu cierre venció sin enviarse a aprobación. Envíalo con el botón de abajo.";
+const VENCIDO_CTA_LABEL = "Solicitar aprobación del cierre vencido";
+const VENCIDO_CONFIRM_TITULO = "Solicitar aprobación del cierre vencido";
+const VENCIDO_CONFIRM_DETALLE =
+  "Se enviará tu cierre vencido a tu bodega para aprobación. No se recalculan los montos ya registrados.";
+const VENCIDO_OK = "Cierre vencido enviado a aprobación.";
+
+// Un cierre `rechazado` NO es terminal: bloquea, y es RE-SOLICITABLE (espejo del `vencido`). El
+// copy lo deja explícito para que no se lea como «resuelto/cerrado» — eso no cambió y sigue siendo
+// lo que este aviso aporta y el badge de estado no.
+const RECHAZADO_AVISO =
+  "Tu cierre fue rechazado, pero no queda cerrado. Vuelve a enviarlo a aprobación con el botón de abajo.";
+const RECHAZADO_CTA_LABEL = "Solicitar aprobación del cierre rechazado";
+const RECHAZADO_CONFIRM_TITULO = "Solicitar aprobación del cierre rechazado";
+// FICHA 477 (R28): la confirmación ya NO dice «No se recalculan los montos ya registrados». Desde
+// la 477 es falso para un `rechazado`: al reenviarlo, el servidor vincula las gestiones rehechas,
+// poda las órdenes que se quedaron sin gestión y recalcula los seis totales (design D5). El
+// `vencido` conserva su frase: su re-solicitud sigue cambiando solo el estado (R21).
+export const RECHAZADO_CONFIRM_DETALLE =
+  "Se enviará de nuevo tu cierre rechazado a tu bodega para aprobación, con los totales de las gestiones que tenga al enviarlo.";
+/**
+ * FICHA 477 (R28): cuántas órdenes en corrección de ESE cierre siguen sin volver a gestionarse.
+ * Salen del cierre al reenviarlo (R18, Pregunta abierta 3 por defecto): se dice ANTES de confirmar.
+ */
+export function rechazadoConfirmSinRehacer(n: number): string {
+  return n === 1
+    ? "Hay 1 orden que deshiciste y no volviste a gestionar: saldrá del cierre al enviarlo."
+    : `Hay ${n} órdenes que deshiciste y no volviste a gestionar: saldrán del cierre al enviarlo.`;
+}
+const RECHAZADO_OK = "Cierre rechazado enviado a aprobación.";
+
+// =================================================================================================
+// FICHA 477 (R25/R26, design D8) — PANEL «CORREGIR EL CIERRE RECHAZADO».
+// =================================================================================================
+//
+// Un panel por cada cierre `rechazado` propio, debajo del CTA de re-envío: el motivo del rechazo,
+// sus gestiones VIGENTES con el MISMO «Devolver a gestión» (mismo modal, misma action
+// `deshacerGestion`; la exención por objeto la decide el servidor, D4) y las órdenes que ya se
+// deshicieron, con su estado y el camino a Entregas para volver a gestionarlas.
+//
+// Las gestiones van en una LISTA y no en otra `<DataTable>`: son las pocas de UN cierre, no un
+// listado a descargar, y una tabla nueva entraría en el censo de descargas (170) sin aportar nada.
+export const CORRECCION_TITULO = "Corregir el cierre rechazado";
+export const CORRECCION_MOTIVO_LABEL = "Motivo del rechazo:";
+export const CORRECCION_SIN_MOTIVO = "La bodega no indicó un motivo.";
+export const CORRECCION_EXPLICACION =
+  "Si una gestión quedó mal, devuélvela a gestión: sale de este cierre, sus totales se recalculan y la orden vuelve a Entregas para que la gestiones de nuevo. Cuando termines, vuelve a enviar el cierre a aprobación.";
+// Pregunta abierta 1 (por defecto: se acepta y se avisa en pantalla).
+export const CORRECCION_AVISO_CORTE =
+  "Envíalo hoy: si el corte de la noche llega antes, lo que corregiste pasa a un cierre nuevo.";
+export const CORRECCION_GESTIONES_TITULO = "Gestiones del cierre";
+export const CORRECCION_GESTIONES_VACIO = "Este cierre ya no tiene gestiones.";
+export const CORRECCION_ORDENES_TITULO = "Órdenes por volver a gestionar";
+export const CORRECCION_REGESTIONADA = "Ya la volviste a gestionar";
+export const CORRECCION_PENDIENTE = "Falta volver a gestionarla";
+export const CORRECCION_IR_ENTREGAS = "Ir a Entregas";
+const RUTA_ENTREGAS = "/mis-asignaciones/reparto";
+
+/** Nombre de la región de un panel de corrección: numerado solo si hay más de un rechazado. */
+function correccionRegion(i: number, total: number): string {
+  return total > 1 ? `${CORRECCION_TITULO} (${i + 1} de ${total})` : CORRECCION_TITULO;
+}
+
+// ⚠️ FEATURE 271 — AQUÍ VIVIÓ UN TERCER CTA «NEUTRO», Y HOY SE BORRA POR LA RAZÓN POR LA QUE NACIÓ.
+//
+// Existió media jornada, para el caso 6 de la tabla de verdad: el mensajero solicitó el cierre del
+// día 1 y dejó vencer el del día 2. El abierto más viejo era el `solicitado` —que resuelve la
+// bodega—, y el detalle sólo llevaba ESE, así que la pantalla sabía que había algo que reenviar
+// pero no de qué clase. Un botón que no puede nombrar lo que envía es mejor que ninguno, y por eso
+// se puso; era deuda declarada, no diseño.
+//
+// El backend ya manda `aReenviarPrimero` —el re-solicitable más viejo, con su estado y la jornada
+// que ese cierre cierra—, así que el caso 6 enciende el CTA del `vencido` o el del `rechazado`, con
+// nombre propio. Mantener además el neutro sería ofrecer DOS botones para el mismo envío, o dejar
+// vivo uno inalcanzable: las dos ramas de arriba ya cubren todo re-solicitable.
+//
+// `REENVIAR_OK` SOBREVIVE y no es residuo: es el toast de «Solicitar cierre» cuando el servidor
+// responde `resolicitado` en vez de `creado` (el botón genérico no sabe qué acaba de mover, R18).
+const REENVIAR_OK = "Cierre enviado a aprobación.";
+
+// Pedido humano: "ver" el detalle de un cierre YA solicitado (textos separados, i18n-ready).
+const VER_DETALLE_LABEL = "Ver";
+const DETALLE_TITULO = "Detalle del cierre";
+const DETALLE_CARGANDO = "Cargando el detalle…";
+const DETALLE_ERROR = "No se pudo cargar el detalle de este cierre.";
+const DETALLE_NO_ENCONTRADA = "Este cierre ya no está disponible.";
+const DETALLE_NOTA =
+  "Los montos son los que quedaron congelados al solicitar el cierre.";
+
+/** Feature 39: etiquetas del pago al mensajero (texto separado, i18n-ready). */
+const PAGO_MENSAJERO_LABEL = "Ganancia";
+const PAGO_MENSAJERO_COL = "Ganancia";
+
+// Feature 67 (R35-R38): textos del deshacer (separados de la lógica, i18n-ready).
+const DESHACER_COL = "Acciones";
+const DESHACER_LABEL = "Devolver a gestión";
+const DESHACER_TITULO = "Devolver la orden a gestión";
+const DESHACER_DETALLE =
+  "La gestión quedará anulada (queda el registro de quién la hizo y cuándo) y la orden volverá a tu lista para gestionar.";
+const DESHACER_OK = "Gestión deshecha; la orden volvió a tu lista para gestionar.";
+const DESHACER_FORBIDDEN = "No podés deshacer esta gestión.";
+const DESHACER_ERROR = "No se pudo deshacer la gestión. Intentá de nuevo.";
+
+// =================================================================================================
+// FEATURE 237 (D3 firmada por el humano, R38) — «DEVOLVER A GESTION» NO SE OFRECE SOBRE LO QUE
+// REGISTRO LA TIENDA.
+// =================================================================================================
+//
+// **El defecto que cierra, encontrado VIENDO LA APP y no por la suite** (2026-08-20, recorrido T9.1):
+// el boton salia HABILITADO en la fila de una gestion de la tienda, abria su modal —que promete «la
+// orden volvera a tu lista para gestionar»— y el servidor lo rechazaba, correctamente, por la
+// guardia 3-bis de `CierreDiaService.deshacerGestion`. O sea: un boton que SIEMPRE falla, detras de
+// un modal que afirma lo que no va a pasar. Es la misma clase de defecto que la 235 quito de esta
+// pila («dejarlo seria un boton que siempre falla»), aqui del reves: no es un permiso sin
+// superficie, es una superficie sin permiso.
+//
+// **Por que DESHABILITADO CON SU MOTIVO y no oculto.** Ocultarlo deja la fila mas limpia, pero un
+// control que desaparece sin explicacion hace que el mensajero se pregunte por que en unas filas si
+// y en otras no — y esa pregunta es exactamente la que la marca «La tienda» de la fila acaba de
+// empezar a responder: la fila ya dice QUIEN la registro; decir aqui POR QUE no puede tocarla cierra
+// el razonamiento en el mismo sitio. Ademas es el tratamiento que ESTA MISMA PANTALLA ya usa para
+// «no podes, y este es el motivo»: el boton «Solicitar cierre» va `disabled` con `motivoBloqueo` en
+// su `title`. Y mantiene la columna «Acciones» alineada: todas las filas tienen su control en el
+// mismo sitio, una de ellas apagada — un «—» suelto entre botones se lee peor.
+//
+// **El motivo viaja tambien en el NOMBRE ACCESIBLE, no solo en `title`.** Un boton `disabled` sale
+// del orden de tabulacion, asi que su tooltip es inalcanzable con el teclado; poniendolo tambien en
+// el nombre, quien navega con lector de pantalla lo lee al recorrer la tabla. Misma tecnica que la
+// marca de la fila (`GESTION_TIENDA_BADGE_NOTA`).
+//
+// ⚠️ EL TEXTO ES EL MISMO que devuelve el servidor si alguien llega a la accion por otra via
+// (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`). Esta duplicado a proposito y hay
+// que decirlo: esa constante NO se exporta y traerla aqui arrastraria Prisma al navegador. Con el
+// boton apagado el mensaje del servidor es practicamente inalcanzable desde esta pantalla, asi que
+// el riesgo de que divergan es bajo — pero si alguien cambia uno, tiene que cambiar el otro: son
+// las dos mitades de la MISMA regla, dicha antes y despues.
+const DESHACER_BLOQUEO_TIENDA =
+  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+
+/** Nombre accesible del botón de la fila (R35): identifica SU orden, no el botón genérico. */
+function deshacerAriaLabel(g: CierreDetalleGestion): string {
+  return `${DESHACER_LABEL} la orden ${g.numRemision} · ${g.destinatario}`;
+}
+
+// --- Etiquetas i18n-ready (texto separado de la lógica) ---
+//
+// Feature 170 (T E.4): `RESULTADO_LABEL`, las etiquetas de método, `ESTADO_LABEL` y
+// `DESTINO_LABEL` estaban DUPLICADAS palabra por palabra aquí y en `cierre-detalle-shared`.
+// (Feature 213: las de método ya solo se leen desde `desglose-pago`.) Ahora las dos
+// pantallas —y el archivo de la descarga, que no puede importar React— leen del módulo PURO
+// `cierre-labels`. Ni un texto cambió; lo que cambia es que ya no pueden divergir (R8).
+
+// FICHA 455 (2026-09-24, R5): el texto vacío de cada sección sale de `cierre-labels` con el nombre
+// exacto del resultado (antes, un mapa propio: «No hay devoluciones.» para `novedad`).
+
+const DESTINO_LABEL: Record<CierreDestinoTipo, string> = DESTINO_TIPO_LABEL;
+
+/**
+ * Orden fijo de las secciones (R3). Feature 158/R18: los `incidente` son un grupo PROPIO y
+ * van AL FINAL, después de los cuatro desenlaces normales — el mismo criterio que en el paso
+ * de resultados del panel del mensajero: no es una forma más de terminar la entrega.
+ */
+const ORDEN_RESULTADOS: CierreResultado[] = [
+  "entregado",
+  "reprogramado",
+  "novedad",
+  "devolucion_a_origen_por_rechazo",
+  "incidente",
+];
+
+/**
+ * Feature 170 (T E.4) — columnas y proyección de export POR RESULTADO, en el mismo orden de
+ * las secciones. UNA DESCARGA POR SECCIÓN (decisión del humano, P2 ratificada): cada
+ * resultado enseña columnas distintas, así que un archivo único sería media hoja vacía.
+ *
+ * El mapa vive aquí y no en el módulo de columnas porque un `Record` exportado desde un
+ * `*-descarga-columnas.ts` se le escaparía a la guardia de datos sensibles, que solo
+ * reconoce arrays de columnas y funciones de proyección.
+ */
+const DESCARGA_POR_RESULTADO: Record<
+  CierreResultado,
+  /**
+   * Ficha 314 — las dos propiedades se toman del CONTRATO de la descarga en vez de reescribir
+   * sus tipos: `Required` las deja obligatorias, así que un resultado nuevo no puede nacer sin
+   * ámbito. Y de paso evita escribir la anotación `ambitoColumnas: string`, que
+   * `ambito-columnas.guardia` —que lee el árbol como TEXTO— confundiría con la declaración de
+   * un ámbito que no sabe resolver.
+   */
+  Required<Pick<DataTableDescarga, "columnas" | "ambitoColumnas">> & {
+    fila: (g: CierreDetalleGestion) => DescargaFila;
+  }
+> = {
+  entregado: {
+    columnas: COLUMNAS_DESCARGA_DIA_ENTREGADAS,
+    fila: filaDescargaDiaEntregada,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_ENTREGADAS,
+  },
+  reprogramado: {
+    columnas: COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
+    fila: filaDescargaDiaReprogramada,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_REPROGRAMADAS,
+  },
+  novedad: {
+    columnas: COLUMNAS_DESCARGA_DIA_DEVUELTAS,
+    fila: filaDescargaDiaDevuelta,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_DEVUELTAS,
+  },
+  devolucion_a_origen_por_rechazo: {
+    columnas: COLUMNAS_DESCARGA_DIA_RECHAZADAS,
+    fila: filaDescargaDiaRechazada,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_RECHAZADAS,
+  },
+  incidente: {
+    columnas: COLUMNAS_DESCARGA_DIA_INCIDENTES,
+    fila: filaDescargaDiaIncidente,
+    ambitoColumnas: AMBITO_DESCARGA_DIA_INCIDENTES,
+  },
+};
+
+/** Nombre visible del histórico: hoja, base del archivo y nombre del control (R12/R13). */
+const TITULO_DESCARGA_PASADOS = "Cierres solicitados";
+/** Nombre accesible del control de paginación (R43). */
+export const PAGINACION_PASADOS_LABEL = "Paginación de los cierres solicitados";
+const ERROR_PASADOS = "No se pudieron cargar tus cierres solicitados.";
+
+/**
+ * La configuración de descarga del HISTÓRICO de cierres solicitados del mensajero.
+ *
+ * Pasa a ser un objeto con nombre —antes eran cuatro props sueltas en el JSX— por una razón
+ * concreta: el ámbito de la ficha 314 tiene que viajar como una PROPIEDAD `ambitoColumnas:`
+ * para que `ambito-columnas.guardia` lo vea y compruebe que no se repite. Como atributo JSX
+ * (`ambitoColumnas={…}`) sería un ámbito real e invisible para la guardia, que es justo el
+ * fallo mudo que ella existe para cerrar. El comportamiento no cambia: son las mismas props.
+ */
+const DESCARGA_CIERRES_PASADOS: DataTableDescarga = {
+  titulo: TITULO_DESCARGA_PASADOS,
+  columnas: COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
+  ambitoColumnas: AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
+  obtenerFilas: () =>
+    filasDesdeResultado(
+      descargarDatos("listarCierresPasadosCompleto", undefined),
+      filaDescargaDiaCierrePasado,
+    ),
+};
+
+// R40: el tamaño sale de la config del dominio (T H.1), nunca de un literal de pantalla.
+const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_SIZE);
+
+/**
+ * Feature 170 — FASE 2 (T I.2, R40/R41/R44): una página de los cierres solicitados POR ESTE
+ * mensajero. El `mensajero_id` no viaja en el input: lo pone el servidor desde la sesión, así
+ * que no hay parámetro por el que pedir el histórico de otro.
+ */
+async function leerCierresPasados(
+  page: number,
+  pageSize: number,
+): Promise<CierresPasadosPagina> {
+  const res = await listarCierresPasadosPaginado({ page, pageSize });
+  if (res.status !== "ok") throw new Error(res.status);
+  return { items: res.items, total: res.total, pageSize: res.pageSize };
+}
+
+// Feature 201 (tanda C) — aquí vivía una copia LOCAL (no exportada) del mismo `money` que las
+// otras siete pantallas de dinero: money-safe, sí, pero también la razón de que el cierre del
+// mensajero enseñara `₡13331832.72`. Ahora sale de `lib/config/moneda.ts`, igual que en el
+// detalle del admin, que es la MISMA hoja vista desde el otro lado (R6/R7 intactos: el monto
+// llega como STRING y NUNCA se parsea a número).
+
+/** Une la jerarquía geográfica en una línea legible (omite los vacíos, R4). */
+function ubicacion(g: CierreDetalleGestion): string {
+  return [g.zonaNombre, g.provinciaNombre, g.cantonNombre, g.distritoNombre]
+    .filter((parte): parte is string => Boolean(parte))
+    .join(" · ");
+}
+
+export function CierreDiaModule({
+  grupos,
+  totales,
+  totalPagoMensajero,
+  puedesSolicitar,
+  motivoBloqueo,
+  cierresPasados,
+  bloqueo,
+  correcciones = [],
+}: CierreDiaModuleProps) {
+  const router = useRouter();
+  const toast = useToast();
+  const { mutate } = useSWRConfig();
+
+  // ---------------------------------------------------------------------------------------------
+  // FEATURE 271 (T9.3) — TODO LO QUE ESTA PANTALLA DECIDE SOBRE EL BLOQUEO SALE DE UN SOLO OBJETO.
+  // ---------------------------------------------------------------------------------------------
+  //
+  // Antes llegaban tres props que respondían a la misma pregunta por caminos distintos
+  // (`bloqueado` del predicado, `tieneVencido`/`tieneRechazado` del histórico de cierres). Aquí se
+  // DERIVAN las tres del `BloqueoDetalle`, sin volver a consultar nada: una sola fuente no puede
+  // desincronizarse consigo misma.
+  const bloqueado = bloqueo.bloqueado;
+
+  // EL CIERRE QUE EL MENSAJERO PUEDE REENVIAR POR SU CUENTA — y es un campo propio, no una lectura
+  // más lista de `aResolverPrimero`. Son DOS preguntas distintas y en el caso 6 de la tabla de
+  // verdad («solicitó el primero y dejó vencer el segundo», N=2 V=1) tienen respuestas distintas:
+  // el abierto más viejo es el `solicitado` —lo resuelve LA BODEGA— y el que él puede reenviar es
+  // el otro. Derivar el botón de `aResolverPrimero` le decía «espera a la administración» y le
+  // ESCONDÍA el reenvío que `solicitarCierre` sí le permite (R16/R18).
+  //
+  // Por eso aquí no se ramifica por caso: `aReenviarPrimero` ya es `null` cuando no hay nada que
+  // reenviar (V=0) y apunta al MISMO cierre que `aResolverPrimero` cuando el más viejo ya es
+  // re-solicitable (casos 5 y 7). Su `estado` es siempre `vencido` o `rechazado`, así que las dos
+  // ramas de abajo son excluyentes y EXHAUSTIVAS: no queda un reenviable sin botón.
+  const reenviable = bloqueo.aReenviarPrimero;
+  const tieneVencido = reenviable?.estado === "vencido";
+  const tieneRechazado = reenviable?.estado === "rechazado";
+
+  // FICHA 477 (R28): las órdenes en corrección del cierre que ESTE botón reenvía (el mismo
+  // `aReenviarPrimero` que transiciona el servidor) que aún no se volvieron a gestionar.
+  const sinRehacerDelReenviable = tieneRechazado
+    ? (correcciones
+        .find((c) => c.cierreId === reenviable?.cierreId)
+        ?.ordenesEnCorreccion.filter((o) => !o.regestionada).length ?? 0)
+    : 0;
+  const rechazadoConfirmDetalle =
+    sinRehacerDelReenviable > 0
+      ? `${RECHAZADO_CONFIRM_DETALLE} ${rechazadoConfirmSinRehacer(sinRehacerDelReenviable)}`
+      : RECHAZADO_CONFIRM_DETALLE;
+
+  // Confirmación de "Solicitar cierre"; true = modal abierto.
+  const [confirmar, setConfirmar] = useState(false);
+  // Feature 111/R13: confirmación del CTA del cierre `vencido`; true = modal abierto.
+  const [confirmarVencido, setConfirmarVencido] = useState(false);
+  // Feature 109/R31: confirmación del CTA del cierre `rechazado`; true = modal abierto.
+  const [confirmarRechazado, setConfirmarRechazado] = useState(false);
+  // Evidencia (URL firmada, R5) en el visor; null = cerrado.
+  const [evidencia, setEvidencia] = useState<string | null>(null);
+  // Feature 67/R36: fila pendiente de confirmar el deshacer; null = modal cerrado.
+  const [deshacerFila, setDeshacerFila] = useState<CierreDetalleGestion | null>(
+    null,
+  );
+  // Feature 67: gestionId del deshacer EN VUELO; deshabilita el botón de ESA fila
+  // (anti-doble-submit en la UI; el WHERE guardado del repo lo cubre igual).
+  const [deshaciendo, setDeshaciendo] = useState<string | null>(null);
+  // Pedido humano: cierre pasado ABIERTO en el visor de detalle; null = modal cerrado. El
+  // detalle se pide bajo demanda (no viaja en las props de la página: son N cierres).
+  const [cierreAbierto, setCierreAbierto] = useState<CierrePasadoDTO | null>(null);
+  // Feature 264 (Q1/R30): el estado guardaba SOLO `grupos` y ahora guarda también las órdenes
+  // sin gestionar y su marca. Van juntos en un objeto y no en tres `useState` sueltos porque
+  // los tres llegan de la MISMA lectura: separarlos permitiría un render con la lista de un
+  // cierre y los grupos de otro.
+  const [detallePasado, setDetallePasado] = useState<DetalleCierrePasado | null>(
+    null,
+  );
+  const [detalleError, setDetalleError] = useState<string | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+
+  /**
+   * Pedido humano del 2026-08-19 — solicitar el cierre tiene que verse en «Cierres
+   * solicitados» sin recargar. `router.refresh()` a secas no alcanzaba: re-resuelve el Server
+   * Component, pero su página entra en el `useSWR` de abajo como `fallbackData`, que SWR usa
+   * una vez y no vuelve a consultar; con datos ya en caché, el cierre recién solicitado no
+   * aparecía. Se revalidan todas las páginas de la lista, no sólo la visible.
+   */
+  function refrescarListas() {
+    void mutate((clave) => Array.isArray(clave) && clave[0] === "cierre-dia:pasados");
+    router.refresh();
+  }
+
+  /** Abre el visor de un cierre pasado y carga su detalle (solo lectura). */
+  async function abrirDetalle(cierre: CierrePasadoDTO) {
+    setCierreAbierto(cierre);
+    setDetallePasado(null);
+    setDetalleError(null);
+    setCargandoDetalle(true);
+    try {
+      const result = await verCierrePasado({ cierreId: cierre.cierreId });
+      if (result.status === "ok") {
+        setDetallePasado({
+          grupos: result.grupos,
+          // Feature 264 (R30): el mismo par de campos que el detalle del admin, por el mismo
+          // camino. No es plata de la empresa —la lista no tiene ni un importe—, así que la
+          // regla de audiencia de la 38/40 no aplica: son SUS órdenes.
+          ordenesSinGestion: result.ordenesSinGestion,
+          sinGestionRegistrado: result.sinGestionRegistrado,
+          // FICHA 425 (R14): la misma lista que ve el admin, por el mismo camino. No lleva ni un
+          // importe, así que la regla de audiencia de la 38/40 tampoco aplica aquí.
+          rechazosDeTienda: result.rechazosDeTienda,
+        });
+        return;
+      }
+      // `no_encontrada` = el cierre ya no existe o no es suyo (no se distinguen, igual que
+      // en el servidor); el resto son fallos de borde y comparten mensaje accionable.
+      setDetalleError(
+        result.status === "no_encontrada" ? DETALLE_NO_ENCONTRADA : DETALLE_ERROR,
+      );
+    } finally {
+      setCargandoDetalle(false);
+    }
+  }
+
+  // Feature 170 — FASE 2 (T I.2, R40/R43): página visible de «Cierres solicitados».
+  // `fallbackData` es la página que ya resolvió el Server Component: al entrar no hay segunda
+  // lectura y las filas son EXACTAMENTE las de antes (R44).
+  const [pasadosPage, setPasadosPage] = useState(1);
+  const [pasadosPageSize, setPasadosPageSize] = useState(cierresPasados.pageSize);
+  const { data: pasadosData, error: pasadosError } = useSWR(
+    ["cierre-dia:pasados", pasadosPage, pasadosPageSize],
+    () => leerCierresPasados(pasadosPage, pasadosPageSize),
+    {
+      fallbackData:
+        pasadosPage === 1 && pasadosPageSize === cierresPasados.pageSize
+          ? cierresPasados
+          : undefined,
+    },
+  );
+
+  // R44: el esqueleto de carga se muestra sólo cuando NO hay nada que pintar. `isLoading` de
+  // SWR sigue siendo `true` mientras revalida aunque haya `fallbackData`, y usarlo tal cual
+  // haría que la página 1 —la que el Server Component ya resolvió— apareciera como esqueleto
+  // antes de enseñar las filas que el usuario veía antes de paginar.
+  const pasadosCargando = pasadosData === undefined;
+
+  /**
+   * Feature 37 + 111/R13 + 109/R31: envía el cierre. Un mismo camino sirve para
+   * "Solicitar cierre" (crea) y los CTA de re-solicitud del `vencido`/`rechazado`
+   * (transiciones vencido→solicitado / rechazado→solicitado): el backend enruta según
+   * el estado abierto del mensajero. El toast distingue por `via` (P2). Cierra los tres
+   * modales pase lo que pase.
+   */
+  async function confirmarSolicitud(okReenvio: string) {
+    const result = await solicitarCierre();
+    if (result.status === "ok") {
+      // FEATURE 271: el servidor ya no distingue `vencido_solicitado` de `rechazado_solicitado`
+      // —la re-solicitud se decide por EDAD, no por estado (R18)—, así que quien sabe qué acaba de
+      // pasar es el BOTÓN que se pulsó, y su mensaje llega por parámetro. `creado` sigue teniendo
+      // el suyo: es un cierre nuevo, no un reenvío.
+      toast.success(
+        result.via === "resolicitado" ? okReenvio : "Cierre solicitado correctamente.",
+      );
+      cerrarConfirmaciones();
+      refrescarListas();
+      return;
+    }
+    const mensaje =
+      result.status === "conflict" || result.status === "validation_error"
+        ? mensajeError(result, "No se pudo solicitar el cierre.")
+        : result.status === "forbidden"
+          ? "No tenés permiso para solicitar el cierre."
+          : "No se pudo solicitar el cierre. Intentá de nuevo.";
+    toast.error(mensaje);
+    cerrarConfirmaciones();
+  }
+
+  /** Cierra los tres modales de solicitud/reenvío pase lo que pase. */
+  function cerrarConfirmaciones() {
+    setConfirmar(false);
+    setConfirmarVencido(false);
+    setConfirmarRechazado(false);
+  }
+
+  /**
+   * Feature 67/R36-R38: ejecuta el deshacer ya confirmado. `ok` → toast + `router.refresh()`
+   * (R37: la vista releé el estado del SERVIDOR; la fila desaparece y los totales se
+   * recalculan allá, nunca se mutan acá). Error → toast accionable y NI la tabla NI los
+   * totales se tocan (R38): no hay refresh y las filas siguen siendo las props del padre.
+   */
+  async function confirmarDeshacer() {
+    const fila = deshacerFila;
+    if (!fila) return;
+    setDeshaciendo(fila.gestionId);
+    const result = await deshacerGestion({ gestionId: fila.gestionId });
+    if (result.status === "ok") {
+      toast.success(DESHACER_OK);
+      setDeshacerFila(null);
+      // `deshaciendo` NO se limpia: la fila se va con el refresh y su botón se
+      // desmonta; re-habilitarlo solo abriría la ventana a un segundo envío que el
+      // server rechazaría con "esta gestión ya fue deshecha" (R3).
+      refrescarListas();
+      return;
+    }
+    const mensaje =
+      result.status === "conflict" || result.status === "validation_error"
+        ? // R38: el `motivo` del conflict YA viene accionable del server (no se reescribe acá).
+          mensajeError(result, DESHACER_ERROR)
+        : result.status === "forbidden"
+          ? DESHACER_FORBIDDEN
+          : DESHACER_ERROR;
+    toast.error(mensaje);
+    setDeshaciendo(null);
+    setDeshacerFila(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      {/* ---------- Aviso de bloqueo (feature 41/R21 + 111/R12 -> FEATURE 271, R43/R52) ----------
+          El veredicto y el texto salen del MISMO detalle que aplica el servidor: se pinta cuando
+          la regla dice BLOQUEADO —dos cierres sin aprobar, o uno esperando a que él lo reenvíe— y
+          nunca con un solo cierre ya enviado, que no bloquea nada.
+
+          Es el ÚNICO sitio de esta pantalla que dice CUÁNTOS cierres arrastra y CUÁL toca resolver
+          primero, y va antes que los CTA porque enuncia el ALCANCE; el «qué hacer» y su botón
+          vienen justo debajo. `conCta: false`: el mensajero YA está aquí, y mandarlo a la pantalla
+          en la que está sería ruido. */}
+      {bloqueado ? (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {avisoBloqueo(bloqueo, { conCta: false })}
+        </p>
+      ) : null}
+
+      {/* ---------- CTA del cierre vencido (feature 111/R13 -> FEATURE 271) ----------
+          Se ofrece SIEMPRE que el RE-SOLICITABLE más viejo sea un `vencido` —no que lo sea el
+          abierto más viejo—, con INDEPENDENCIA del gate de creación (`puedesSolicitar`): enviarlo
+          es lo único que depende de él. Llama a la MISMA action `solicitarCierre()`; el backend
+          transiciona el re-solicitable más viejo (R18), que es EXACTAMENTE el que nombra este
+          botón: los dos salen del mismo `ORDER BY`, así que no pueden apuntar a cierres distintos.
+
+          Desde la 271 esta rama cubre también el CASO 6 (el `solicitado` del día 1 sigue esperando
+          a la bodega y el del día 2 venció): antes ahí no salía este botón. */}
+      {tieneVencido ? (
+        <section
+          aria-label="Cierre vencido"
+          className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3"
+        >
+          <p className="text-sm text-destructive">{VENCIDO_AVISO}</p>
+          <Button
+            type="button"
+            variant="destructive"
+            className="w-fit"
+            onClick={() => setConfirmarVencido(true)}
+          >
+            {VENCIDO_CTA_LABEL}
+          </Button>
+        </section>
+      ) : null}
+
+      {/* ---------- CTA del cierre rechazado (feature 109/R31 -> FEATURE 271) ----------
+          Mismo patrón que el `vencido`, la misma action y el mismo origen (`aReenviarPrimero`). El
+          copy comunica que un `rechazado` NO es terminal, que es lo que el badge de estado no dice.
+          Es EXCLUYENTE con el de arriba: un cierre no es `vencido` y `rechazado` a la vez. */}
+      {tieneRechazado ? (
+        <section
+          aria-label="Cierre rechazado"
+          className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3"
+        >
+          <p className="text-sm text-destructive">{RECHAZADO_AVISO}</p>
+          <Button
+            type="button"
+            variant="destructive"
+            className="w-fit"
+            onClick={() => setConfirmarRechazado(true)}
+          >
+            {RECHAZADO_CTA_LABEL}
+          </Button>
+        </section>
+      ) : null}
+
+      {/* ---------- FICHA 477 (R25/R26): corregir las gestiones de cada cierre rechazado ---------- */}
+      {correcciones.map((c, i) => (
+        <PanelCorreccion
+          key={c.cierreId}
+          correccion={c}
+          region={correccionRegion(i, correcciones.length)}
+          pedirDeshacer={setDeshacerFila}
+          deshaciendo={deshaciendo}
+        />
+      ))}
+
+      {/* ---------- Panel de totales por método de pago (R7) ---------- */}
+      <section aria-label="Totales del día" className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Totales del día</h2>
+        <Card>
+          <CardContent className="grid grid-cols-2 gap-4 pt-6 sm:grid-cols-4">
+            <TotalItem label="Efectivo" value={money(totales.efectivo)} />
+            <TotalItem label="SINPE" value={money(totales.simpe)} />
+            <TotalItem
+              label="Transferencia"
+              value={money(totales.transferencia)}
+            />
+            <TotalItem label="Total general" value={money(totales.general)} emphasis />
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ---------- Ganancia (R11): total SEPARADO del dinero recibido ---------- */}
+      <section aria-label={PAGO_MENSAJERO_LABEL} className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">{PAGO_MENSAJERO_LABEL}</h2>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+            <span className="text-sm font-medium text-muted-foreground">
+              Total de ganancia
+            </span>
+            <span className="text-lg font-semibold">
+              {money(totalPagoMensajero)}
+            </span>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ---------- Secciones por resultado (R3/R4/R5/R6) ---------- */}
+      {ORDEN_RESULTADOS.map((resultado) => {
+        const filas = grupos[resultado] ?? [];
+        // Pedido: no mostrar las secciones sin registros (p. ej. reprogramadas con 0).
+        if (filas.length === 0) return null;
+        const { columnas, fila, ambitoColumnas } =
+          DESCARGA_POR_RESULTADO[resultado];
+        // FICHA 456 (T3.4, R10): el título de la sección es un recuento («<nombre> (N)») y las filas
+        // no repiten el resultado: su botón de información va junto al título, FUERA del `<h2>`.
+        const nombreSeccion = RESULTADO_LABEL[resultado];
+        return (
+          <section
+            key={resultado}
+            aria-label={RESULTADO_LABEL[resultado]}
+            className="flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-1">
+              <h2 className="text-lg font-semibold">
+                {nombreSeccion}{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({filas.length})
+                </span>
+              </h2>
+              <InfoEstado codigo={resultado} />
+            </div>
+            <div className="overflow-x-auto">
+              <DataTable
+                columns={columnasPara(
+                  resultado,
+                  setEvidencia,
+                  setDeshacerFila,
+                  deshaciendo,
+                )}
+                data={filas}
+                rowKey="gestionId"
+                ariaLabel={RESULTADO_LABEL[resultado]}
+                emptyMessage={RESULTADO_VACIO[resultado]}
+                /**
+                 * Feature 170 (T E.4, R1/R8/R11/R22/R26/R30/R37) — una descarga POR SECCIÓN.
+                 * Familia B: `filas` es el grupo completo que ya llegó por props, así que el
+                 * archivo sale de lo que la tabla pinta, en su mismo orden y sin releer.
+                 * La URL firmada de la evidencia no viaja: la columna es un «Sí/No» (R22).
+                 */
+                descarga={{
+                  titulo: RESULTADO_LABEL[resultado],
+                  columnas,
+                  obtenerFilas: () => filasLocales(filas, fila),
+                  /**
+                   * Ficha 314 — el selector de columnas de esta sección, con ámbito POR
+                   * RESULTADO: lo que decide qué columnas hay es el resultado. Se pasa con la
+                   * forma ABREVIADA porque la declaración vive en el mapa de arriba; escrito
+                   * aquí como `MAPA[resultado].ambitoColumnas` sería un ámbito que
+                   * `ambito-columnas.guardia` no sabría resolver, y un ámbito irresoluble es
+                   * un ámbito cuya unicidad nadie comprueba.
+                   */
+                  ambitoColumnas,
+                }}
+              />
+            </div>
+          </section>
+        );
+      })}
+
+      {/* ---------- Solicitar cierre (R10/R11) ---------- */}
+      <section aria-label="Solicitar cierre" className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            onClick={() => setConfirmar(true)}
+            disabled={!puedesSolicitar}
+            title={!puedesSolicitar ? motivoBloqueo ?? undefined : undefined}
+            aria-describedby={
+              !puedesSolicitar && motivoBloqueo ? "motivo-bloqueo" : undefined
+            }
+          >
+            Solicitar cierre
+          </Button>
+        </div>
+        {!puedesSolicitar && motivoBloqueo ? (
+          <p
+            id="motivo-bloqueo"
+            role="note"
+            className="text-sm text-muted-foreground"
+          >
+            {motivoBloqueo}
+          </p>
+        ) : null}
+      </section>
+
+      {/* ---------- Cierres solicitados (histórico, solo lectura, R18) ---------- */}
+      <section aria-label="Cierres solicitados" className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Cierres solicitados</h2>
+        {/* Pedido humano del 2026-08-16: la descarga dejó de vivir dentro de la lista y la
+            monta la pantalla. Aquí no hay pestañas con las que alinearla, así que se queda
+            donde estaba —encima del listado, a la derecha—, con el mismo nombre accesible.
+
+            Feature 170 (T I.2, R52) — el listado pinta UNA página; el archivo sigue siendo el
+            CONJUNTO COMPLETO de ESTE mensajero, y ese acotamiento lo resuelve el servidor desde
+            la sesión: descargar no puede traer los cierres de otro (R44). Feature 184 — Tanda C
+            (T C.2, R1/R2/R6/R9): ese conjunto lo entrega una lectura DEDICADA, que cuesta una
+            consulta, cero firmas de evidencia y con el tope de filas evaluado en el servidor. */}
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <DescargarDatasetButton {...DESCARGA_CIERRES_PASADOS} />
+        </div>
+        {/* Cada cierre solicitado se lee como su COMPROBANTE, la misma hoja que el mensajero
+            ya veía al abrir el detalle —y la que el admin mira para decidirlo—. El botón
+            conserva el nombre accesible que tenía en la columna «Ver detalle»: es el mismo
+            gesto y lo localizan igual los tests y el E2E. */}
+        <ListaComprobantes
+          ariaLabel={TITULO_DESCARGA_PASADOS}
+          items={pasadosData?.items ?? []}
+          clave={(c) => c.cierreId}
+          isLoading={pasadosCargando}
+          error={pasadosError ? ERROR_PASADOS : null}
+          emptyMessage="Aún no has solicitado ningún cierre."
+          render={(c) => (
+            <CierreFacturaResumenPropio
+              cierre={c}
+              acciones={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`${VER_DETALLE_LABEL} del cierre del ${c.solicitadoAt.slice(0, 10)}`}
+                  onClick={() => abrirDetalle(c)}
+                >
+                  {VER_DETALLE_LABEL}
+                </Button>
+              }
+            />
+          )}
+        />
+
+        <Pagination
+          page={pasadosPage}
+          pageSize={pasadosPageSize}
+          total={pasadosData?.total ?? 0}
+          disabled={pasadosCargando}
+          showFirstLast
+          siblingCount={1}
+          ariaLabel={PAGINACION_PASADOS_LABEL}
+          onPageChange={setPasadosPage}
+          onPageSizeChange={(s) => {
+            setPasadosPageSize(s);
+            setPasadosPage(1);
+          }}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+        />
+      </section>
+
+      {/* Confirmación de "Solicitar cierre". */}
+      <Modal
+        open={confirmar}
+        onOpenChange={setConfirmar}
+        title="Solicitar cierre del día"
+        description="Se agruparán todas tus gestiones pendientes en una solicitud de cierre. Esta acción no se puede deshacer."
+        confirmLabel="Solicitar cierre"
+        onConfirm={() => confirmarSolicitud(REENVIAR_OK)}
+        closeOnConfirm={false}
+      />
+
+      {/* Feature 111/R13: confirmación del CTA del cierre vencido (differente del
+          "Solicitar cierre" del día). Misma action; el backend transiciona el vencido. */}
+      <Modal
+        open={confirmarVencido}
+        onOpenChange={setConfirmarVencido}
+        title={VENCIDO_CONFIRM_TITULO}
+        description={VENCIDO_CONFIRM_DETALLE}
+        confirmLabel="Solicitar aprobación"
+        onConfirm={() => confirmarSolicitud(VENCIDO_OK)}
+        closeOnConfirm={false}
+      />
+
+      {/* Feature 109/R31: confirmación del CTA del cierre rechazado (espejo del vencido).
+          Misma action; el backend transiciona rechazado→solicitado. */}
+      <Modal
+        open={confirmarRechazado}
+        onOpenChange={setConfirmarRechazado}
+        title={RECHAZADO_CONFIRM_TITULO}
+        description={rechazadoConfirmDetalle}
+        confirmLabel="Solicitar aprobación"
+        onConfirm={() => confirmarSolicitud(RECHAZADO_OK)}
+        closeOnConfirm={false}
+      />
+
+      {/* Feature 67/R36: confirmación explícita del deshacer (una sola por módulo,
+          parametrizada con la fila elegida: el Modal ya es un focus-trap accesible). */}
+      <Modal
+        open={deshacerFila !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeshacerFila(null);
+        }}
+        title={DESHACER_TITULO}
+        description={
+          deshacerFila
+            ? `Orden ${deshacerFila.numRemision} · ${deshacerFila.destinatario}. ${DESHACER_DETALLE}`
+            : undefined
+        }
+        confirmLabel={DESHACER_LABEL}
+        onConfirm={confirmarDeshacer}
+        closeOnConfirm={false}
+      />
+
+      {/* Pedido humano: visor SOLO LECTURA del detalle de un cierre pasado. Mismas secciones
+          por resultado que la vista del día, sin la columna de acciones: un cierre ya
+          solicitado no se deshace desde aquí. */}
+      <Modal
+        open={cierreAbierto !== null}
+        onOpenChange={(next) => {
+          if (!next) setCierreAbierto(null);
+        }}
+        title={DETALLE_TITULO}
+        description={
+          cierreAbierto
+            ? `${ESTADO_LABEL[cierreAbierto.estado]} · ${cierreAbierto.solicitadoAt.slice(0, 10)} · ${DESTINO_LABEL[cierreAbierto.destinoTipo]}`
+            : undefined
+        }
+        confirmLabel="Cerrar"
+        hideCancel
+        onConfirm={() => setCierreAbierto(null)}
+      >
+        {cierreAbierto ? (
+          <div className="flex flex-col gap-4">
+            {cargandoDetalle ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                {DETALLE_CARGANDO}
+              </p>
+            ) : null}
+            {detalleError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {detalleError}
+              </p>
+            ) : null}
+            {detallePasado ? (
+              <>
+                {/* MISMO comprobante que usa el admin (`CierreFacturaDetalle`), en su
+                    variante `mensajero`: sin el ingreso de la empresa ni la liquidación (no es
+                    plata suya, design §7.2) y con lo recibido + su pago en los renglones. */}
+                <CierreFacturaDetalle
+                  audiencia="mensajero"
+                  cierre={{
+                    cierreId: cierreAbierto.cierreId,
+                    estado: cierreAbierto.estado,
+                    destinoTipo: cierreAbierto.destinoTipo,
+                    totales: cierreAbierto.totales,
+                    totalPagoMensajero: cierreAbierto.totalPagoMensajero,
+                    totalIngresoBodegaRechazos:
+                      cierreAbierto.totalIngresoBodegaRechazos,
+                    solicitadoAt: cierreAbierto.solicitadoAt,
+                    resueltoAt: cierreAbierto.resueltoAt ?? null,
+                    motivoRechazo: cierreAbierto.motivoRechazo ?? null,
+                  }}
+                  grupos={detallePasado.grupos}
+                  // Feature 264 (R30): las MISMAS dos props que pasa el módulo del admin. El
+                  // componente es UNO: pintarla en una pantalla y callarla en la otra es el
+                  // arreglo a medias que se corrigió en la 263, y lo vigila
+                  // `cierre-detalle-superficies.guardia.test.ts`.
+                  ordenesSinGestion={detallePasado.ordenesSinGestion}
+                  sinGestionRegistrado={detallePasado.sinGestionRegistrado}
+                  // FICHA 425 (R14): la MISMA prop que pasa el módulo del admin. La sección vive
+                  // en el comprobante; aquí sólo se le entrega el dato del servidor.
+                  rechazosDeTienda={detallePasado.rechazosDeTienda}
+                  onVerEvidencia={setEvidencia}
+                />
+                <p role="note" className="text-xs text-muted-foreground">
+                  {DETALLE_NOTA}
+                </p>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* Visor de evidencia (URL firmada, R5). */}
+      <Modal
+        open={evidencia !== null}
+        onOpenChange={(next) => {
+          if (!next) setEvidencia(null);
+        }}
+        title="Evidencia de la gestión"
+        confirmLabel="Cerrar"
+        hideCancel
+        onConfirm={() => setEvidencia(null)}
+      >
+        {evidencia ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={evidencia}
+            alt="Evidencia fotográfica de la gestión"
+            className="max-h-[60vh] w-full rounded-md object-contain"
+          />
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * Devuelve el mensaje accionable de un resultado de dominio de error. El `motivo` de un
+ * `conflict` lo redacta el SERVER (ya es accionable): acá no se reescribe. `fallback` es
+ * el texto de la operación que llama, para el caso degenerado de `fieldErrors` vacío.
+ */
+function mensajeError(
+  result:
+    | { status: "conflict"; motivo: string }
+    | { status: "validation_error"; fieldErrors: Record<string, string[]> },
+  fallback: string,
+): string {
+  if (result.status === "conflict") return result.motivo;
+  const primero = Object.values(result.fieldErrors)[0]?.[0];
+  return primero ?? fallback;
+}
+
+/** Ítem del panel de totales. */
+function TotalItem({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span
+        className={
+          emphasis ? "text-lg font-semibold" : "text-base font-medium"
+        }
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// =================================================================================================
+// FEATURE 237 (T7.5 — R41, D6 firmada por el humano) — LA FILA DICE QUIEN LA REGISTRO.
+// =================================================================================================
+//
+// **El problema, dicho con lo que le pasa a una persona.** Desde la 237 la TIENDA puede resolver
+// una orden que sigue en la moto del mensajero, y esa gestion se atribuye a el: entra en ESTE
+// cierre, suma un intento y mueve el mismo dinero. Sin la marca, el mensajero firma su cierre del
+// dia con una gestion que no hizo y una evidencia que no subio, y no puede explicarla si le
+// preguntan. La orden, ademas, ya desaparecio de su portal (R40), asi que esta pantalla es el UNICO
+// sitio donde la vuelve a ver.
+//
+// **Por que un `Badge` inline y no una columna propia.** Es el tratamiento que esta MISMA fila
+// (`CierreDetalleGestion`) ya usa para marcar la excepcion sin pagar una columna en cada registro:
+// `renderPagoMensajero` (56/R23) cuelga un badge del monto solo cuando falta la tarifa, con su nota
+// en `title`/`aria-label`. No se inventa nada. La alternativa —una columna al estilo de
+// `renderRechazoOrigen` (102/R9), que pinta badge en TODAS las filas— cuesta ancho en una tabla que
+// ya tiene diez columnas y `overflow-x-auto`, y obligaria a rotular «Vos» veinte veces para marcar
+// una. Aqui la marca viaja pegada al numero de guia, que es la celda mas corta y la primera que se
+// lee.
+//
+// **Que significa que NO este el badge:** que la gestion la registro el mensajero. NO es «no lo
+// se»: `desdeAyudaTienda` es obligatorio en el DTO y se deriva del historial, que nace en la MISMA
+// transaccion que la gestion (ver `lib/utils/gestion-de-la-tienda-flag.ts`). La ausencia es una
+// afirmacion, y por eso su test va emparejado con el de la presencia.
+
+// FICHA 414 — el rotulo y la nota se DECLARABAN aqui y ahora viven en el modulo PURO
+// `cierres-admin/_components/cierre-labels.ts`, sin cambiar un caracter (ver el import de arriba).
+// Se mudaron porque el COMPROBANTE de esta misma pantalla (`cierre-factura.tsx`) tambien tiene que
+// decirlo, y no puede pedirselos a este archivo: `CierreDiaModule` ya importa
+// `CierreFacturaDetalle`, asi que la vuelta seria un ciclo. Copiar los literales alla esta
+// descartado (414/R9): las dos superficies dicen lo mismo porque LEEN DEL MISMO SITIO.
+
+// --- Columnas comunes a TODAS las secciones (R4; feature 158: tambien al grupo `incidente`) ---
+const COLUMNAS_COMUNES: Column<CierreDetalleGestion>[] = [
+  {
+    id: "numGuia",
+    value: "Nº Guía",
+    render: (g) => (
+      <span className="inline-flex items-center gap-2">
+        <span className="font-semibold">{g.numGuia ?? "—"}</span>
+        {g.desdeAyudaTienda ? (
+          <Badge
+            variant="secondary"
+            title={GESTION_TIENDA_BADGE_NOTA}
+            aria-label={GESTION_TIENDA_BADGE_NOTA}
+          >
+            {GESTION_TIENDA_BADGE_LABEL}
+          </Badge>
+        ) : null}
+      </span>
+    ),
+  },
+  { id: "numRemision", value: "Nº Remisión", minWidth: "120px" },
+  { id: "destinatario", value: "Destinatario" },
+  {
+    id: "direccion",
+    value: "Dirección",
+    render: (g) => g.direccion ?? "—",
+    minWidth: "200px",
+  },
+  { id: "ubicacion", value: "Ubicación", render: (g) => ubicacion(g) || "—" },
+  { id: "producto", value: "Producto", minWidth: "300px" },
+  { id: "tiendaNombre", value: "Tienda" },
+];
+
+/**
+ * Construye las columnas de una sección: las comunes (R4) + las específicas del
+ * resultado (monto+método si entregada R6; fecha+motivo si reprogramada; motivo
+ * si devuelta; motivo+evidencia si rechazada, R5) + la de acciones (67/R35). El
+ * setter del visor de evidencia se inyecta para la columna de la sección
+ * "Rechazadas"; el del deshacer, para la columna de acciones de las 4.
+ */
+function columnasPara(
+  resultado: CierreResultado,
+  verEvidencia: (url: string) => void,
+  pedirDeshacer: (g: CierreDetalleGestion) => void,
+  deshaciendo: string | null,
+): Column<CierreDetalleGestion>[] {
+  // Feature 39/R10: pago al mensajero DERIVADO por orden (money-safe STRING, tal cual).
+  const columnaPago: Column<CierreDetalleGestion> = {
+    id: "pagoMensajero",
+    value: PAGO_MENSAJERO_COL,
+    render: (g) => money(g.pagoMensajero),
+  };
+  // Feature 67/R35: "Devolver a gestión" por fila, en todas las tablas — feature 158/Q-D:
+  // tambien en la del `incidente`, que SI se puede deshacer. NO hay estado
+  // "no deshacible" que pintar: la vista solo lista gestiones dentro de la ventana
+  // (`findGestionesPendientes` filtra `cierre_id IS NULL` + `anulada_at IS NULL`) y
+  // son todas del actor (`/cierre-dia` es exclusivo del mensajero dueño, `page.tsx`
+  // hace `notFound()` para el resto). Una gestión que sale de la ventana desaparece
+  // de la tabla; una carrera la corta el server con `conflict` + motivo (R38).
+  const columnaAcciones: Column<CierreDetalleGestion> = {
+    id: "acciones",
+    value: DESHACER_COL,
+    render: (g) => botonDeshacer(g, pedirDeshacer, deshaciendo),
+  };
+  if (resultado === "entregado") {
+    return [
+      ...COLUMNAS_COMUNES,
+      { id: "monto", value: "Monto", render: (g) => money(g.montoRecibido) },
+      {
+        id: "metodo",
+        value: "Método",
+        // Feature 213/R23: lo que se pinta sale del DESGLOSE, no del campo escalar.
+        // Sin líneas, el mismo marcador de ausencia de siempre (R22).
+        render: (g) => desglosePantalla(g.pagos) ?? "—",
+      },
+      columnaPago,
+      columnaAcciones,
+    ];
+  }
+  if (resultado === "reprogramado") {
+    return [
+      ...COLUMNAS_COMUNES,
+      {
+        id: "fechaReprogramacion",
+        value: "Nueva fecha",
+        render: (g) => g.fechaReprogramacion ?? "—",
+      },
+      {
+        id: "motivo",
+        value: "Motivo",
+        // FICHA 408: se pasa `g.esRechazoSla`, el MISMO booleano que en las pantallas de admin.
+        // En ESTA vista llega siempre `false` (`CierreDiaRepository`, decisión de la 102), así
+        // que resuelve a la variante LARGA — y tiene que ser así: aquí no hay columna «Origen»
+        // ni puede haberla, y sin la cola el mensajero leería un motivo que parecería suyo
+        // sobre un rechazo que no hizo. ⚠️ Pasar `true` fijo aquí no rompe nada visible, sólo
+        // acorta el texto: es el fallo mudo que `CierreDiaMotivoRechazoAutomatico.test.tsx` caza.
+        render: (g) => motivoGestionLegible(g.motivo, g.esRechazoSla) ?? "—",
+      },
+      columnaPago,
+      columnaAcciones,
+    ];
+  }
+  if (resultado === "novedad") {
+    return [
+      ...COLUMNAS_COMUNES,
+      {
+        id: "motivo",
+        value: "Motivo",
+        // FICHA 408: se pasa `g.esRechazoSla`, el MISMO booleano que en las pantallas de admin.
+        // En ESTA vista llega siempre `false` (`CierreDiaRepository`, decisión de la 102), así
+        // que resuelve a la variante LARGA — y tiene que ser así: aquí no hay columna «Origen»
+        // ni puede haberla, y sin la cola el mensajero leería un motivo que parecería suyo
+        // sobre un rechazo que no hizo. ⚠️ Pasar `true` fijo aquí no rompe nada visible, sólo
+        // acorta el texto: es el fallo mudo que `CierreDiaMotivoRechazoAutomatico.test.tsx` caza.
+        render: (g) => motivoGestionLegible(g.motivo, g.esRechazoSla) ?? "—",
+      },
+      columnaPago,
+      columnaAcciones,
+    ];
+  }
+  // Feature 158/R17/R18: el `incidente` es un grupo PROPIO y NO lleva NINGUNA columna de
+  // dinero — ni pago al mensajero (un incidente no se paga) ni el monto de la indemnización
+  // (es plata que se le paga a la tienda, no al mensajero: no es suya y no la ve, design §7.2).
+  // El backend lo garantiza en la CONSULTA: `WITH_DETALLE` ni siquiera selecciona la columna,
+  // así que aquí `indemnizacion` es SIEMPRE `null` y no hay monto que pintar.
+  //
+  // La CAUSA sí llega y sí se muestra: es el hecho que el propio mensajero reportó, no dinero.
+  // Sin esta columna, el `select` que el backend puso a propósito no lo vería nadie.
+  //
+  // Sí conserva la columna de acciones: un `incidente` SE PUEDE deshacer mientras no esté
+  // vinculado a un cierre (Q-D/R14), por la misma vía que el resto de resultados.
+  if (resultado === "incidente") {
+    return [
+      ...COLUMNAS_COMUNES,
+      COLUMNA_CAUSA_INCIDENTE,
+      {
+        id: "motivo",
+        value: "Motivo",
+        // FICHA 408: se pasa `g.esRechazoSla`, el MISMO booleano que en las pantallas de admin.
+        // En ESTA vista llega siempre `false` (`CierreDiaRepository`, decisión de la 102), así
+        // que resuelve a la variante LARGA — y tiene que ser así: aquí no hay columna «Origen»
+        // ni puede haberla, y sin la cola el mensajero leería un motivo que parecería suyo
+        // sobre un rechazo que no hizo. ⚠️ Pasar `true` fijo aquí no rompe nada visible, sólo
+        // acorta el texto: es el fallo mudo que `CierreDiaMotivoRechazoAutomatico.test.tsx` caza.
+        render: (g) => motivoGestionLegible(g.motivo, g.esRechazoSla) ?? "—",
+      },
+      columnaEvidencia(verEvidencia),
+      columnaAcciones,
+    ];
+  }
+  // rechazada: motivo + evidencia firmada (R5)
+  return [
+    ...COLUMNAS_COMUNES,
+    {
+      id: "motivo",
+      value: "Motivo",
+      // FICHA 408: LA sección que abrió esta ficha. El mensajero lee aquí el rechazo que NO
+      // hizo, y este texto es el único que se lo puede decir: mismo booleano que arriba.
+      render: (g) => motivoGestionLegible(g.motivo, g.esRechazoSla) ?? "—",
+    },
+    columnaEvidencia(verEvidencia),
+    columnaPago,
+    columnaAcciones,
+  ];
+}
+
+/**
+ * El «Devolver a gestión» de UNA gestión. Lo comparten la columna de acciones de las tablas del día
+ * (67/R35) y el panel de corrección del cierre rechazado (477/R25): misma regla, mismo texto.
+ *
+ * Feature 237 (D3/R38): la gestion que registro LA TIENDA no la puede deshacer el mensajero. El
+ * servidor lo rechaza igual (guardia 3-bis; en la 477, R7) — esto no es la defensa, es no ofrecer
+ * una accion que solo puede acabar en error, y decir por que.
+ */
+function botonDeshacer(
+  g: CierreDetalleGestion,
+  pedirDeshacer: (g: CierreDetalleGestion) => void,
+  deshaciendo: string | null,
+) {
+  const bloqueadaPorTienda = g.desdeAyudaTienda;
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      aria-label={
+        bloqueadaPorTienda
+          ? `${deshacerAriaLabel(g)} — no disponible: ${DESHACER_BLOQUEO_TIENDA}`
+          : deshacerAriaLabel(g)
+      }
+      title={bloqueadaPorTienda ? DESHACER_BLOQUEO_TIENDA : undefined}
+      disabled={bloqueadaPorTienda || deshaciendo === g.gestionId}
+      onClick={() => pedirDeshacer(g)}
+    >
+      {DESHACER_LABEL}
+    </Button>
+  );
+}
+
+/**
+ * FICHA 477 (R25/R26) — el panel de UN cierre rechazado propio. Solo pinta: el deshacer lo abre el
+ * modal compartido del módulo (`pedirDeshacer`) y la decisión de si se puede la toma el servidor.
+ */
+function PanelCorreccion({
+  correccion,
+  region,
+  pedirDeshacer,
+  deshaciendo,
+}: {
+  correccion: CorreccionCierreDTO;
+  region: string;
+  pedirDeshacer: (g: CierreDetalleGestion) => void;
+  deshaciendo: string | null;
+}) {
+  const { gestiones, ordenesEnCorreccion, motivoRechazo } = correccion;
+  return (
+    <section aria-label={region} className="flex flex-col gap-3">
+      <h2 className="text-lg font-semibold">{CORRECCION_TITULO}</h2>
+      <Card>
+        <CardContent className="flex flex-col gap-4 pt-6">
+          <p className="text-sm">
+            <span className="font-medium">{CORRECCION_MOTIVO_LABEL}</span>{" "}
+            {motivoRechazo?.trim() ? motivoRechazo : CORRECCION_SIN_MOTIVO}
+          </p>
+          <p className="text-sm text-muted-foreground">{CORRECCION_EXPLICACION}</p>
+          <p role="note" className="text-sm text-muted-foreground">
+            {CORRECCION_AVISO_CORTE}
+          </p>
+
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold">{CORRECCION_GESTIONES_TITULO}</h3>
+            {gestiones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{CORRECCION_GESTIONES_VACIO}</p>
+            ) : (
+              <ul aria-label={CORRECCION_GESTIONES_TITULO} className="flex flex-col divide-y rounded-md border">
+                {gestiones.map((g) => (
+                  <li
+                    key={g.gestionId}
+                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{g.numGuia ?? "—"}</span>
+                        <span>{g.numRemision}</span>
+                        <span className="text-muted-foreground">· {g.destinatario}</span>
+                        {g.desdeAyudaTienda ? (
+                          <Badge
+                            variant="secondary"
+                            title={GESTION_TIENDA_BADGE_NOTA}
+                            aria-label={GESTION_TIENDA_BADGE_NOTA}
+                          >
+                            {GESTION_TIENDA_BADGE_LABEL}
+                          </Badge>
+                        ) : null}
+                      </span>
+                      <span className="inline-flex flex-wrap items-center gap-1 text-muted-foreground">
+                        {/* FICHA 456 (R18): el nombre del resultado se pinta con su botón de información. */}
+                        <EstadoConInfo codigo={g.resultado} />
+                        {g.montoRecibido !== null ? ` · ${money(g.montoRecibido)}` : ""}
+                        {g.pagoMensajero !== null
+                          ? ` · ${PAGO_MENSAJERO_COL}: ${money(g.pagoMensajero)}`
+                          : ""}
+                      </span>
+                    </div>
+                    {botonDeshacer(g, pedirDeshacer, deshaciendo)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {ordenesEnCorreccion.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">{CORRECCION_ORDENES_TITULO}</h3>
+              <ul aria-label={CORRECCION_ORDENES_TITULO} className="flex flex-col divide-y rounded-md border">
+                {ordenesEnCorreccion.map((o) => (
+                  <li
+                    key={o.ordenId}
+                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm"
+                  >
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{o.numGuia ?? "—"}</span>
+                      <span>{o.numRemision}</span>
+                      <span className="text-muted-foreground">· {o.destinatario}</span>
+                    </span>
+                    <Badge variant={o.regestionada ? "success" : "warning"}>
+                      {o.regestionada ? CORRECCION_REGESTIONADA : CORRECCION_PENDIENTE}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={RUTA_ENTREGAS}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}
+              >
+                {CORRECCION_IR_ENTREGAS}
+              </Link>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Columna de la evidencia FIRMADA (R5), compartida por `rechazada` y `incidente` (158/R18):
+ * abre el visor con la URL que ya viene firmada del servidor, nunca el storage_path crudo.
+ */
+function columnaEvidencia(
+  verEvidencia: (url: string) => void,
+): Column<CierreDetalleGestion> {
+  return {
+    id: "evidencia",
+    value: "Evidencia",
+    // FICHA 486 (R12-R16): un botón por foto; sin ninguna, «—» como siempre.
+    render: (g) =>
+      g.evidenciaUrls.length > 0 ? (
+        <BotonesEvidencia urls={g.evidenciaUrls} onVer={verEvidencia} />
+      ) : (
+        "—"
+      ),
+  };
+}

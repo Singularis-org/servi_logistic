@@ -1,0 +1,408 @@
+# Gate de CI del arnes (diseno v2, seccion 6).
+#
+#   PR hacia `dev`            -> gate-completo                (check informativo: ver abajo)
+#   PR hacia `main`           -> gate-completo + e2e          (los dos, informativos)
+#   workflow_dispatch         -> los dos, a mano, sobre la rama elegida
+#
+# `gate-completo` es el check que manda, pero ya no corre la suite el solo: la reparten los jobs
+# `estatico` y `vitest` (3 shards) y el une los informes y da el veredicto (ver `jobs:`).
+#
+# Postgres es un contenedor de servicio, efimero: nace y muere con el job. La version es la
+# OBJETIVO del proyecto, 17 (docs/verification.md, decision humana del 2026-09-18), no la que
+# tenga cada maquina local.
+#
+# NINGUN secreto real vive aqui. Las credenciales del seed y el secreto de sesion se GENERAN
+# en cada corrida (paso "Credenciales efimeras"): solo sirven para la base de servicio, que
+# se tira al acabar el job. No hay `.env` en CI; `init.sh` (6.b) ve `DATABASE_URL` en el
+# entorno y no busca el archivo.
+name: gate
+
+# Plan GRATUITO de GitHub (2000 min/mes en repos privados; agotados, no corre nada): cada
+# minuto cuenta. Por eso: nada en borradores, nada si el PR solo toca estado (`progress/`) o
+# specs, cancelacion de corridas viejas y timeouts ajustados. Y sin branch protection en
+# este plan: el check es INFORMATIVO; la convencion es mergear solo con el check en verde.
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Solo se salta lo que ningun test lee: el estado (`progress/`) y los specs. Los `.md` del arnes
+    # y del perfil NO: varias guardias leen docs y agentes, y un PR solo de texto puede romperlas
+    # (paso con el #155, que se mergeo sin CI).
+    paths-ignore:
+      - 'progress/**'
+      - 'specs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un push nuevo al mismo PR cancela la corrida anterior: su veredicto ya no describe la punta.
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Base de "desarrollo" del job. Los tests de integracion NO escriben en ella: la usan para
+  # saber donde esta el servidor, y crean su base efimera desde una plantilla (QC-77).
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quimicloude
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/quimicloude
+  NO_COLOR: '1'
+  # `tsc --noEmit` ya pide ~2.1 GB sobre `dev` (medido el 2026-10-07) y ~2.5 GB con un PR
+  # mediano encima; en el runner de 2 vCPU el heap por defecto de Node se queda corto y el
+  # typecheck muere con "JavaScript heap out of memory" (PRs #160 y #162). 4 GB cabe en los
+  # 7 GB del runner y es solo un techo: no reserva memoria.
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  # LA SUITE VA EN SHARDS (docs/gate.md > En CI la suite va en shards). Tres jobs para un solo
+  # check: `estatico` (typecheck, lint, validadores), `vitest` (la suite partida en 3 shards en
+  # paralelo, SIN veredicto) y `gate-completo`, que une los informes y da el veredicto UNA vez.
+  # El check que manda sigue llamandose `gate-completo`, y exige que los otros dos hayan corrido.
+  #
+  # El 3 vive en DOS sitios y tienen que coincidir: la matriz de `vitest` (`shard: [1, 2, 3]` y el
+  # `/3` de GATE_SHARD) y el `--unir informes 3` de `gate-completo`. Si no coinciden, `--unir` da
+  # rojo (exige exactamente N informes), asi que un desajuste no puede pasar en verde.
+  estatico:
+    name: estatico
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Sin Postgres: typecheck, lint y validadores no tocan la base. El `db:test status` de
+    # `scripts/gate-proyecto.sh` avisa de que no puede consultarla y SIGUE (avisa, no falla).
+
+    steps:
+      - name: Checkout (historia completa)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Asegurar dev y origin/dev
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
+          git branch --force dev origin/dev
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+        # Sin `version`: la toma de `packageManager` en package.json (pnpm@10.10.0).
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: GATE_PARTE=estatico ./init.sh --completo
+        shell: bash
+        run: |
+          # `bash` explicito: no depende del bit de ejecucion (los clones de Windows lo pierden).
+          # `pipefail` para que el `tee` no se trague el codigo de salida del gate.
+          set -o pipefail
+          GATE_PARTE=estatico bash ./init.sh --completo 2>&1 | tee init-estatico.log
+
+  vitest:
+    name: vitest (shard ${{ matrix.shard }}/3)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Sin fail-fast: un shard que cae no cancela a los otros. `gate-completo` necesita TODOS los
+      # informes para dar veredicto, y un shard cancelado a medias es un rojo sin explicacion.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # Superusuario a proposito: la integracion hace CREATE/DROP DATABASE y
+          # pg_advisory_lock contra la base `postgres` (tests/helpers/test-database.ts).
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: quimicloude
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout (historia completa)
+        uses: actions/checkout@v4
+        with:
+          # Historia entera y todas las ramas remotas: varias guardias calculan el merge-base
+          # con `dev`/`origin/dev` (tests/guards/guard-qc102-*, guard-pantalla-pedidos-*).
+          fetch-depth: 0
+
+      - name: Asegurar dev y origin/dev
+        shell: bash
+        # Algunas guardias de alcance comparan contra `dev` LOCAL (`git diff dev...HEAD`), no solo
+        # contra `origin/dev`: en CI no existe esa rama hasta que se crea aqui.
+        run: |
+          git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
+          git branch --force dev origin/dev
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+        # Sin `version`: la toma de `packageManager` en package.json (pnpm@10.10.0).
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Credenciales efimeras (solo para la base de servicio de este job)
+        shell: bash
+        run: |
+          # Cada valor se enmascara (por stdout, que es donde el runner lee los comandos) ANTES de
+          # escribirlo en $GITHUB_ENV: asi no aparece en el log del job.
+          gen() { node -e "process.stdout.write(require('node:crypto').randomBytes(18).toString('base64url'))"; }
+          S1=$(gen)$(gen); P1="Ci-9$(gen)z!"; P2="Cm-7$(gen)q!"
+          echo "::add-mask::$S1"; echo "::add-mask::$P1"; echo "::add-mask::$P2"
+          # Mayuscula, minuscula, digito y simbolo garantizados (credential-policy.ts).
+          {
+            echo "SESSION_SECRET=$S1"
+            echo "SEED_ADMIN_USERNAME=ciadmin"
+            echo "SEED_ADMIN_EMAIL=ci-admin@example.com"
+            echo "SEED_ADMIN_PASSWORD=$P1"
+            echo "SEED_MAESTRO_USERNAME=cimaestro"
+            echo "SEED_MAESTRO_EMAIL=ci-maestro@example.com"
+            echo "SEED_MAESTRO_PASSWORD=$P2"
+          } >> "$GITHUB_ENV"
+
+      - name: GATE_SHARD=${{ matrix.shard }}/3 ./init.sh --completo
+        shell: bash
+        run: |
+          # `bash` explicito: no depende del bit de ejecucion (los clones de Windows lo pierden).
+          # `pipefail` para que el `tee` no se trague el codigo de salida del gate.
+          # Sale en verde aunque haya rojos: un shard NO da veredicto. Lo da `gate-completo`.
+          set -o pipefail
+          GATE_SHARD=${{ matrix.shard }}/3 bash ./init.sh --completo 2>&1 | tee init-shard.log
+
+      - name: Informe del shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-shard-${{ matrix.shard }}
+          # `include-hidden-files`: desde upload-artifact v4.4 los archivos que empiezan por `.`
+          # se excluyen POR DEFECTO, y `.vitest-rojos.json` y `.vitest-codigo` lo son. Sin esto el
+          # artefacto saldria sin informe y `gate-completo` daria rojo siempre.
+          include-hidden-files: true
+          path: |
+            .vitest-rojos.json
+            .vitest-codigo
+            init-shard.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  gate-completo:
+    name: gate-completo
+    needs: [estatico, vitest]
+    # `always()`: tiene que correr AUNQUE un shard haya fallado, para decir por que. Sin el, un
+    # job de shard caido dejaria `gate-completo` en «skipped», y un check saltado no es un rojo.
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Clon superficial: `--unir` solo lee los informes, el baseline y los dos scripts del
+      # veredicto; no mira la historia.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Solo Node, sin pnpm ni `pnpm install`: `./init.sh --unir` es Node puro sobre JSON y corre
+      # antes de cualquier paso que pida pnpm o node_modules. Una instalacion menos por corrida.
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: El job estatico y los shards corrieron
+        shell: bash
+        env:
+          ESTATICO: ${{ needs.estatico.result }}
+          VITEST: ${{ needs.vitest.result }}
+        # `vitest` en `failure` NO corta aqui: un shard puede haber dejado su informe igual, y lo
+        # decide `--unir` (sin informe, rojo). Cancelado o saltado, en cambio, no dejo nada.
+        run: |
+          [ "$ESTATICO" = "success" ] || { echo "el job estatico (typecheck, lint, validadores) salio '$ESTATICO'"; exit 1; }
+          case "$VITEST" in
+            cancelled|skipped) echo "los shards de vitest salieron '$VITEST': no hay suite que juzgar"; exit 1 ;;
+          esac
+
+      - name: Informes de los shards
+        uses: actions/download-artifact@v4
+        with:
+          # Cada artefacto en su carpeta, informes/informe-shard-<i>/ (sin `merge-multiple`).
+          pattern: informe-shard-*
+          path: informes/
+
+      - name: ./init.sh --unir informes 3
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./init.sh --unir informes 3 2>&1 | tee init-completo.log
+
+      - name: Resumen (poda del baseline de rojos)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## gate-completo"
+            echo
+            echo '```'
+            grep -E "baseline|rojos|init OK|✗" init-completo.log || echo "(sin lineas de baseline en el log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Informe de vitest (unido)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-completo-informe
+          # Mismo motivo que en los shards: sin esto `.vitest-rojos.json` no se sube.
+          include-hidden-files: true
+          path: |
+            init-completo.log
+            .vitest-rojos.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: e2e
+    # Solo en el PR de despliegue (base `main`), fuera de borrador, y a mano.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.base_ref == 'main' && github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: quimicloude
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Cliente de Prisma y tipos de ruta
+        shell: bash
+        run: |
+          pnpm exec prisma generate
+          pnpm exec next typegen
+
+      - name: Credenciales efimeras (solo para la base de servicio de este job)
+        shell: bash
+        run: |
+          # Cada valor se enmascara (por stdout, que es donde el runner lee los comandos) ANTES de
+          # escribirlo en $GITHUB_ENV: asi no aparece en el log del job.
+          gen() { node -e "process.stdout.write(require('node:crypto').randomBytes(18).toString('base64url'))"; }
+          S1=$(gen)$(gen); P1="Ci-9$(gen)z!"; P2="Cm-7$(gen)q!"
+          echo "::add-mask::$S1"; echo "::add-mask::$P1"; echo "::add-mask::$P2"
+          {
+            echo "SESSION_SECRET=$S1"
+            echo "SEED_ADMIN_USERNAME=ciadmin"
+            echo "SEED_ADMIN_EMAIL=ci-admin@example.com"
+            echo "SEED_ADMIN_PASSWORD=$P1"
+            echo "SEED_MAESTRO_USERNAME=cimaestro"
+            echo "SEED_MAESTRO_EMAIL=ci-maestro@example.com"
+            echo "SEED_MAESTRO_PASSWORD=$P2"
+            echo "APP_BASE_URL=http://localhost:3117"
+          } >> "$GITHUB_ENV"
+
+      # `prisma migrate deploy` NO termina sobre una base vacia (la migracion de QC-49 exige la
+      # empresa inicial). La receta de cuatro pasos ya vive en `db:test template`; aqui no se
+      # copia: se construye la plantilla y la base del E2E nace como copia suya.
+      - name: Base del E2E (plantilla migrada y sembrada -> copia)
+        shell: bash
+        run: |
+          pnpm run db:test template 2>&1 | tee plantilla.log
+          PLANTILLA=$(grep -oE 'qct_tpl_[A-Za-z0-9_]+' plantilla.log | tail -n 1)
+          [ -n "$PLANTILLA" ] || { echo "no se pudo leer el nombre de la plantilla"; exit 1; }
+          node -e "
+            const { Client } = require('pg');
+            const [plantilla] = process.argv.slice(1);
+            const c = new Client({ connectionString: 'postgresql://postgres:postgres@localhost:5432/postgres' });
+            (async () => {
+              await c.connect();
+              await c.query('DROP DATABASE IF EXISTS quimicloude_e2e WITH (FORCE)');
+              await c.query('CREATE DATABASE quimicloude_e2e TEMPLATE \"' + plantilla + '\"');
+              await c.end();
+            })().catch((e) => { console.error(e); process.exit(1); });
+          " "$PLANTILLA"
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/quimicloude_e2e" >> "$GITHUB_ENV"
+          echo "DIRECT_URL=postgresql://postgres:postgres@localhost:5432/quimicloude_e2e" >> "$GITHUB_ENV"
+
+      # Los DOS navegadores de playwright.config.ts, y no solo chromium: WebKit es el motor de
+      # iOS y docs/architecture.md exige ejercitarlo de verdad. Para ahorrar minutos se cachean
+      # los binarios por version de Playwright; las dependencias del sistema se instalan siempre.
+      - name: Version de Playwright
+        id: pw
+        shell: bash
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache de navegadores
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+
+      - name: Navegadores de Playwright
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Dependencias de sistema de los navegadores
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: pnpm exec playwright install-deps chromium webkit
+
+      - name: Playwright
+        shell: bash
+        run: pnpm run e2e
+
+      - name: Trazas de Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

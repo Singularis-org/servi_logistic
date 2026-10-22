@@ -1,0 +1,879 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { RecoleccionModule } from "@/app/(app)/recoleccion/_components/RecoleccionModule";
+import { recolectarEnTiendaPorQr } from "@/lib/actions/recoleccion-tienda";
+import { TOPE_RECOLECTADAS_HOY } from "@/lib/constants/recoleccion-tienda";
+import type {
+  RecolectadaHoyDTO,
+  RecoleccionOrdenDTO,
+} from "@/lib/types/recoleccion-tienda";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import {
+  bloqueoConVencido,
+  bloqueoDe,
+  bloqueoMixtoElMasViejoEsSuyo,
+  bloqueoPorAcumular,
+  bloqueoTodosPorEnviar,
+} from "@/tests/fixtures/bloqueo-cierre";
+
+// Feature 157 (R13-R24) + 167 — apartado propio del mensajero para lo que recoge EN LA
+// TIENDA. Este archivo viene de `RecoleccionTiendaPanel.test.tsx` (renombrado con el
+// componente) y protege tanto lo que el apartado MUESTRA —agrupado por tienda, con su
+// contacto, más lo ya recolectado hoy— como lo que NO ofrece: aquí no hay gestión, ni cobro,
+// ni evidencia, ni resultado que elegir. Un apartado que empiece a parecerse al de gestión es
+// un apartado equivocado.
+//
+// DOS casos de la 157 quedaron INVALIDADOS por la 167 y están sustituidos (design §9):
+//   · "sin nada que recolectar el apartado no se muestra"  ->  contradecía R7. Ahora:
+//     "R7/R8: con la lista VACÍA el escáner sigue montado y el vacío se explica".
+//   · "R21: una guía que NO es suya se rechaza en cliente" ->  contradecía R12. Ahora:
+//     "R12: una guía que NO está en la lista cargada SÍ llega al servidor".
+// Ningún otro assert de la 157 se perdió.
+
+vi.mock("@/lib/actions/recoleccion-tienda", () => ({
+  recolectarEnTiendaPorQr: vi.fn(),
+}));
+
+// El módulo ya no recibe `onRecolectada` por props: es el componente de cliente que la página
+// (Server Component) monta, así que revalida por su cuenta con `router.refresh()`.
+const refreshMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: refreshMock, push: vi.fn() }),
+}));
+
+const toastError = vi.fn();
+const toastSuccess = vi.fn();
+const toastInfo = vi.fn();
+vi.mock("@/hooks/useToast", () => ({
+  useToast: () => ({
+    error: toastError,
+    success: toastSuccess,
+    info: toastInfo,
+    warning: vi.fn(),
+  }),
+}));
+
+// El escáner monta la cámara vía html5-qrcode, que jsdom no puede abrir. Se sustituye por un
+// disparador manual del MISMO callback (`onDecoded`) para poder ejercer la vía cámara (R10):
+// lo que se prueba es el camino del componente, no la librería (que tiene su propio test).
+const TEXTO_QR = (numGuia: number) => `https://ejemplo.test/paquete/${numGuia}`;
+let textoEscaneado = TEXTO_QR(1001);
+vi.mock("@/components/shared/QrScanner", () => ({
+  QrScanner: ({
+    onDecoded,
+    disabled,
+  }: {
+    onDecoded: (texto: string) => void;
+    disabled?: boolean;
+  }) => (
+    <button type="button" disabled={disabled} onClick={() => onDecoded(textoEscaneado)}>
+      Simular escaneo
+    </button>
+  ),
+}));
+
+const recolectarMock = vi.mocked(recolectarEnTiendaPorQr);
+
+function makeOrden(over: Partial<RecoleccionOrdenDTO> = {}): RecoleccionOrdenDTO {
+  return {
+    id: "o1",
+    numGuia: 1001,
+    numRemision: "REM-1",
+    producto: "Caja",
+    destinatario: "Ana",
+    tiendaNombre: "Tienda Norte",
+    tiendaTelefono: "88880000",
+    // 2026-08-11: el DTO dejó de ser pobre — extiende `MiAsignacionDTO` para alimentar la
+    // MISMA card que «Por recoger», entera. El fixture trae valores REALES en los campos que
+    // antes iban recortados, que es lo que permite verificar que la card los pinta.
+    estatusValue: "recolectando",
+    telefonoDest: "70001111",
+    direccion: "200m sur de la iglesia",
+    peso: 1.2,
+    montoCobrar: 25000,
+    latitud: 9.93,
+    longitud: -84.08,
+    notas: null,
+    zonaNombre: "GAM",
+    provinciaNombre: "San José",
+    cantonNombre: "Escazú",
+    distritoNombre: "San Rafael",
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular de Prueba",
+    secuenciaRuta: null,
+    marcarLuego: false,
+    intentosEntrega: 0,
+    ...over,
+  };
+}
+
+// 2026-08-11: «Recolectadas hoy» pinta la MISMA card, así que su DTO es el de la orden más el
+// instante de la recolección. `ordenId` pasó a ser el `id` de la orden.
+function makeRecolectada(over: Partial<RecolectadaHoyDTO> = {}): RecolectadaHoyDTO {
+  return {
+    ...makeOrden({ id: "h1", numGuia: 5001, numRemision: "REM-H1" }),
+    recolectadaAt: new Date("2026-07-31T15:30:00.000Z"), // 09:30 hora CR
+    ...over,
+  };
+}
+
+/** Monta el módulo con lo mínimo: las dos listas vacías salvo lo que el caso declare. */
+function renderModule(props: Partial<Parameters<typeof RecoleccionModule>[0]> = {}) {
+  return render(
+    <RecoleccionModule
+      porRecolectar={props.porRecolectar ?? []}
+      recolectadasHoy={props.recolectadasHoy ?? []}
+      recolectadasHoyRecortada={props.recolectadasHoyRecortada ?? false}
+      bloqueo={props.bloqueo ?? SIN_BLOQUEO}
+    />,
+  );
+}
+
+const escaner = () =>
+  screen.queryByRole("region", { name: "Recolectar por número de guía o escaneo" });
+
+/** El disparador del desplegable: el acceso al escaneo, esté la tarjeta abierta o no. */
+const disparador = () =>
+  screen.queryByRole("button", { name: "Recolectar en tienda" });
+
+/**
+ * Despliega la tarjeta de escaneo. El escáner arranca PLEGADO en toda la app (decisión del
+ * humano del 2026-07-31): dejarlo desplegado significaba la cámara encendida detrás de la
+ * pantalla, en un teléfono y en la calle. Todo caso que ejerza el escaneo abre primero, que
+ * es lo que hace el mensajero.
+ */
+async function abrirEscaner(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Recolectar en tienda" }));
+}
+
+/**
+ * R31 — el aviso de recorte NOMBRA el tope, y el tope tiene UNA sola fuente
+ * (`lib/constants/recoleccion-tienda.ts`, la misma que el service usa para recortar). El patrón
+ * se DERIVA de esa constante: si el humano cambia el tope y la UI se queda con el número
+ * escrito a mano, el caso falla aquí en vez de dejar un aviso que miente en la calle.
+ */
+const avisoRecorte = new RegExp(
+  `se muestran las ${TOPE_RECOLECTADAS_HOY} más recientes de hoy`,
+  "i",
+);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  textoEscaneado = TEXTO_QR(1001);
+  recolectarMock.mockResolvedValue({
+    status: "ok",
+    ordenId: "o1",
+    estado: "en_ruta_bodega_central",
+  });
+});
+
+afterEach(() => cleanup());
+
+describe("RecoleccionModule — qué muestra (R17/R18/R19/R20/R22)", () => {
+  // 2026-08-11 (decisión del humano): «las cards van fuera, ese envoltorio no va». La caja
+  // por tienda (R17) se retira, y con ella su cabecera y los botones de contacto de la tienda
+  // (R19/R20): las cards quedan sueltas, exactamente como en «Por recoger». Los tres casos que
+  // vigilaban la agrupación y el contacto se sustituyen por este, que fija lo contrario.
+  it("las cards van SUELTAS: sin caja por tienda ni contacto de tienda", () => {
+    renderModule({
+      porRecolectar: [
+        makeOrden({ id: "a", numGuia: 1, numRemision: "REM-A", tiendaNombre: "Tienda Norte" }),
+        makeOrden({ id: "b", numGuia: 2, numRemision: "REM-B", tiendaNombre: "Tienda Norte" }),
+        makeOrden({ id: "c", numGuia: 3, numRemision: "REM-C", tiendaNombre: "Tienda Sur" }),
+      ],
+    });
+
+    // Ninguna cabecera de grupo: la tienda ya no organiza la pantalla.
+    expect(screen.queryByRole("heading", { name: "Tienda Norte" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Tienda Sur" })).toBeNull();
+    // Ni botones de contacto de la tienda, que vivían en esa cabecera.
+    expect(screen.queryByRole("button", { name: /^Llamar a/ })).toBeNull();
+    // Las órdenes siguen ahí, en un solo listado.
+    expect(screen.getAllByText("REM-A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("REM-C").length).toBeGreaterThan(0);
+  });
+
+  it("R22: NO ofrece ningún control de gestión (ni cobro, ni evidencia, ni resultados)", () => {
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    // Los 4 resultados de la gestión, el método de pago y la evidencia son de OTRO flujo.
+    for (const nombre of [/entregada/i, /reprogramar/i, /devolver/i, /rechazar/i]) {
+      expect(screen.queryByRole("button", { name: nombre })).toBeNull();
+    }
+    expect(screen.queryByText(/método de pago/i)).toBeNull();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    // «Valor a cobrar» SÍ aparece desde el 2026-08-11: es el `<dt>` del detalle plegable de la
+    // card compartida —un DATO de la orden, el mismo que ve «Por recoger»—, no un control de
+    // gestión. Lo que este caso protege es que no haya con qué GESTIONAR, y sigue en pie.
+  });
+
+  // 2026-08-11 (decisión del humano): «la recolección debe usar la MISMA card que Por recoger».
+  // Este caso era el opuesto —afirmaba que el monto NO se veía y que el DTO no lo transportaba
+  // (R18/R38)— y se da vuelta: el recorte era la única razón por la que las dos pantallas
+  // hermanas del portal mostraban distinto de la misma orden.
+  it("muestra la orden con sus datos, monto incluido, igual que «Por recoger»", () => {
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    // Feature 196: producto y destinatario ya NO comparten un `<p>` con «·». Los pinta la
+    // card compartida en elementos separados, así que se afirman por separado.
+    // `getAllByText`: el detalle plegable de la card (`keepMounted`) repite producto y
+    // destinatario en el DOM aunque esté cerrado, igual que en «Por recoger».
+    expect(screen.getAllByText("REM-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Caja").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ana").length).toBeGreaterThan(0);
+    // El importe SÍ se pinta: el DTO lo transporta y la card lo lee.
+    expect(screen.getAllByText(/₡/).length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Feature 196 + decisión del humano del 2026-08-11 — la recolección pinta la MISMA card que
+// «Por recoger» (`PosOrderCardMosaico` / `PosOrderCardDetalle`), ENTERA: sin compuertas.
+//
+// Estos casos eran los que vigilaban las cuatro secciones APAGADAS (196). Se dan vuelta: lo
+// que hay que impedir ahora es que el recorte vuelva por la puerta de atrás y las dos
+// pantallas hermanas del portal vuelvan a mostrar distinto de la misma orden.
+//
+// Por qué se prueba en las DOS vistas y no solo en la que arranca: las dos cards son
+// implementaciones PARALELAS —solo comparten `PosOrderCardProps`—, así que un cambio puede
+// quedarse sin replicar en una de ellas y el apartado seguiría verde.
+// ---------------------------------------------------------------------------------------
+describe("RecoleccionModule — las dos vistas pintan la card completa", () => {
+  /** Lo que las dos vistas comparten con «Por recoger». */
+  function esperarSeccionesEncendidas() {
+    // Cobro: etiqueta e importe, con el monto real del DTO.
+    expect(screen.getAllByText(/cobrar/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/₡/).length).toBeGreaterThan(0);
+    // Navegación: el control de ubicación de la card (`UbicacionTrigger`), que con coordenadas
+    // abre el minimapa y sin ellas cae al enlace a Maps. Se busca por su nombre accesible para
+    // no atarse a cuál de las dos formas toca en este fixture.
+    expect(
+      screen.getAllByRole("button", { name: /ver en el mapa/i }).length,
+    ).toBeGreaterThan(0);
+    // Intentos de entrega: dato de la orden, `0` incluido.
+    expect(screen.getAllByText(/intentos/i).length).toBeGreaterThan(0);
+  }
+
+  /**
+   * Lo que sí sale, en las dos vistas: los datos que identifican la orden. Producto NO entra
+   * aquí porque la vista de FILA no lo pinta en la línea principal —igual que en «Por
+   * recoger»—, y esa es justamente la paridad que estos casos vigilan.
+   */
+  function esperarDatosDeLaOrden() {
+    expect(screen.getAllByText("REM-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ana").length).toBeGreaterThan(0);
+  }
+
+  it("vista MOSAICO (la de entrada): cobro, navegación, intentos y detalle completo", () => {
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    esperarDatosDeLaOrden();
+    esperarSeccionesEncendidas();
+    // El desplegable del detalle es propio del mosaico (la vista de fila nunca lo llevó).
+    expect(screen.getByText(/ver detalle completo/i)).toBeInTheDocument();
+  });
+
+  it("vista DETALLE: las mismas secciones siguen encendidas tras conmutar", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    await user.click(screen.getByRole("button", { name: "Detalle" }));
+    // El conmutador anima: sostiene la vista vieja durante el tramo de salida
+    // (`useTransicionVista`), así que se espera a que la nueva esté montada.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Detalle" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    await waitFor(() => esperarDatosDeLaOrden());
+
+    esperarSeccionesEncendidas();
+  });
+
+  it("el conmutador es UNO para todo el apartado, no uno por tienda", () => {
+    renderModule({
+      porRecolectar: [
+        makeOrden({ id: "a", numGuia: 1, numRemision: "REM-A", tiendaNombre: "Tienda Norte" }),
+        makeOrden({ id: "c", numGuia: 3, numRemision: "REM-C", tiendaNombre: "Tienda Sur" }),
+      ],
+    });
+
+    // Dos tiendas, un solo control: la vista es una preferencia de quien mira, no una
+    // propiedad de cada grupo.
+    expect(screen.getAllByRole("group", { name: "Vista de las órdenes" })).toHaveLength(1);
+  });
+
+  it("sin nada por recolectar no hay conmutador: no hay cards que conmutar", () => {
+    renderModule({ porRecolectar: [] });
+
+    expect(screen.queryByRole("group", { name: "Vista de las órdenes" })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Feature 167 (R7/R8) — LA CAUSA RAÍZ. El panel de la 157 hacía `if (porRecolectar.length
+// === 0) return null`, así que el bloque de escaneo desaparecía justo cuando el mensajero
+// lo buscaba ("no veo la forma de recolectar"). Estos casos son la razón de existir de la
+// feature entera y NO se borran.
+//
+// 2026-07-31 — R7 cambia de FORMA, no de fondo (decisión del humano). El escáner pasa de
+// "SIEMPRE MONTADO" a "SIEMPRE ACCESIBLE": vive tras el disparador de `EscanerModal` —en
+// modal desde el 2026-08-10—, cerrado de entrada como en el resto de la app, porque montado
+// significaba la cámara
+// encendida todo el rato que el mensajero tuviera la pantalla abierta. Lo que la 167 vino a
+// impedir sigue impedido y se sigue verificando aquí:
+//   · con la lista vacía el ACCESO al escaneo no desaparece (el disparador está ahí);
+//   · abrirlo da un escáner que funciona de verdad, no un adorno;
+//   · el vacío se sigue explicando (R8).
+// ---------------------------------------------------------------------------------------
+describe("RecoleccionModule — el escáner está SIEMPRE accesible (R7/R8)", () => {
+  it("R7/R8: con la lista VACÍA el acceso al escáner sigue ahí y el vacío se explica", () => {
+    renderModule({ porRecolectar: [] });
+
+    // SUSTITUYE al caso de la 157 "sin nada que recolectar el apartado no se muestra".
+    expect(disparador()).toBeInTheDocument();
+    // El vacío se DICE (R8): una pantalla muda es lo que hacía que el mensajero se perdiera.
+    expect(
+      screen.getByText(/no tienes órdenes por recolectar en tienda ahora mismo/i),
+    ).toBeInTheDocument();
+  });
+
+  it("R7/R8: con la lista VACÍA, al abrirlo aparece el escáner completo", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [] });
+
+    await abrirEscaner(user);
+
+    expect(escaner()).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Confirmar recolección" }),
+    ).toBeInTheDocument();
+  });
+
+  it("R7: con lista vacía el escaneo SÍ se puede confirmar (el escáner no es decorativo)", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
+  });
+
+  it("R7: con órdenes asignadas el acceso al escáner es EXACTAMENTE el mismo", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    expect(disparador()).toBeInTheDocument();
+    expect(screen.queryByText(/no tienes órdenes por recolectar/i)).toBeNull();
+
+    await abrirEscaner(user);
+    expect(escaner()).toBeInTheDocument();
+  });
+
+  it("cerrado, la CÁMARA no está montada; al cerrar se vuelve a desmontar", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden()] });
+
+    // Lo que apaga la cámara es el DESMONTAJE del contenido, no un `hidden`: el doble de
+    // `QrScanner` solo existe en el DOM mientras el modal está abierto.
+    expect(screen.queryByRole("button", { name: "Simular escaneo" })).toBeNull();
+
+    await abrirEscaner(user);
+    expect(screen.getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Simular escaneo" })).toBeNull(),
+    );
+    expect(escaner()).toBeNull();
+    // Y el acceso sigue ahí para volver a abrirlo: cerrar no es perder el escáner.
+    expect(disparador()).toBeInTheDocument();
+  });
+});
+
+describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R15)", () => {
+  it("R10: la vía manual confirma la guía y revalida el apartado", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
+    // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy"; las dos listas las
+    // resuelve el servidor, así que la verdad se relee de allí.
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("R10: la vía CÁMARA confirma exactamente igual (mismo action, mismo resultado)", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = TEXTO_QR(1001);
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
+    expect(toastSuccess).toHaveBeenCalled();
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("R11: un código que no son dígitos no llega a la action (vía manual)", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "abc");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    expect(recolectarMock).not.toHaveBeenCalled();
+  });
+
+  it("R11: un QR que no es la URL del paquete tampoco llega a la action (vía cámara)", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = "esto-no-es-una-url";
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+
+    expect(recolectarMock).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+  });
+
+  it("R12: una guía que NO está en la lista cargada SÍ llega al servidor", async () => {
+    const user = userEvent.setup();
+    // SUSTITUYE al caso de la 157 "una guía que NO es suya se rechaza en cliente". El
+    // servidor es la autoridad: con la lista vacía o desactualizada, el corte local
+    // convertía el escáner en un botón que no funciona nunca.
+    recolectarMock.mockResolvedValue({ status: "no_encontrada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "9999");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 9999 }));
+    // R13: el mensaje sale del resultado del SERVIDOR, y dice lo mismo que decía el corte
+    // local — el mensajero no pierde información por el cambio.
+    expect(toastError).toHaveBeenCalledWith(
+      "La guía 9999 no está entre tus órdenes por recolectar.",
+    );
+    // No hubo transición: no hay nada que revalidar.
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R13: escanear dos veces la misma etiqueta informa, no dice que sea un error", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalled());
+    expect(toastError).not.toHaveBeenCalled();
+    // R14: idempotente, la lista se revalida igual porque esa orden ya no va aquí.
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("R13: un estado inválido dice EN QUÉ estado está, no un error genérico", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({
+      status: "estado_invalido",
+      estado: "en_bodega_central",
+    });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    // ⏳ 2026-09-24 (FICHA 455, R3): el estado se nombra con su nombre visible, no con el código.
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "La guía 1001 ya no está por recolectar (está en «En bodega central»).",
+      ),
+    );
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R13: un conflicto (bloqueo o carrera) traslada el MOTIVO que da el servidor", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({
+      status: "conflict",
+      motivo: "Tienes un cierre pendiente.",
+    });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Tienes un cierre pendiente."),
+    );
+  });
+
+  // Los TRES resultados que faltaban (hallazgo m1 del review). Son inalcanzables desde la
+  // pantalla en la práctica —la página hace `notFound` antes de montar nada para un rol ajeno o
+  // sin sesión (R3), y el código mal formado se corta en cliente (R11)—, pero R13 exige un
+  // mensaje propio para CADA resultado, y lo que el mensajero lee no lo prueba el test de la
+  // action: aquel verifica el `status` que devuelve el servidor, no el texto del toast.
+  it("R13: `forbidden` dice que no tiene permiso, no un error genérico", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "forbidden" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("No tienes permiso para recolectar órdenes."),
+    );
+    // No hubo transición: nada que revalidar y nada que confirmar en pantalla.
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+  });
+
+  it("R13: `unauthenticated` manda a iniciar sesión de nuevo (no dice que la guía esté mal)", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "unauthenticated" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Tu sesión expiró. Inicia sesión de nuevo."),
+    );
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R13: `validation_error` del SERVIDOR también dice que el código es inválido", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { numGuia: ["Número de guía inválido"] },
+    });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    // A diferencia del corte de R11, aquí el viaje al servidor SÍ ocurrió: el rechazo lo dio el
+    // borde (zod) y el mensajero lee el mismo texto, sin jerga de validación.
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
+    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R15: la confirmación de la última guía PERMANECE tras el toast", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    // En una tanda de decenas de paquetes el toast se va solo y el mensajero necesita ver
+    // que la anterior sí entró.
+    const exito = await screen.findByText(/recolectada correctamente/i);
+    expect(exito).toHaveTextContent("1001");
+  });
+
+  it("R15: la confirmación sobrevive a cerrar y volver a abrir la tarjeta", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "1001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await screen.findByText(/recolectada correctamente/i);
+
+    // La guía confirmada la recuerda el MÓDULO, que vive por encima del modal: cerrar
+    // apaga la cámara, no el rastro de lo que el mensajero acaba de recolectar.
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(escaner()).toBeNull());
+    await abrirEscaner(user);
+
+    expect(await screen.findByText(/recolectada correctamente/i)).toHaveTextContent(
+      "1001",
+    );
+  });
+});
+
+// =================================================================================================
+// R9/R23 -> FEATURE 271 (T9.2, R31/R43/R51/R52) — EL AVISO, PALABRA POR PALABRA.
+// =================================================================================================
+//
+// ⚠️ Y ESTE PORTAL ES EL QUE SE DIO LA VUELTA. Hasta el 2026-08-22 el aviso de aquí prometía «Sí
+// puedes seguir recogiendo en tiendas», porque la recolección estaba EXENTA del bloqueo. El humano
+// lo revirtió el 23 con sus palabras: «un mensajero no puede hacer las dos gestiones, solo una a
+// la vez». Recolectar en tienda es COBRAR, y el dinero que cobre no tendría cierre al que ir.
+//
+// ⚠️ LOS LITERALES VAN A MANO Y COMPLETOS: comparar contra `avisoBloqueo(...)` estaría siempre
+// verde, pase lo que pase dentro de la función.
+describe("RecoleccionModule — bloqueado por cierres sin resolver (R9/R23 -> 271)", () => {
+  it("271/§10.2 caso 2 · sin bloque de captura y CON el aviso completo (N=1, V=1)", () => {
+    renderModule({ porRecolectar: [makeOrden()], bloqueo: bloqueoConVencido() });
+
+    // Bloqueado no queda ni el ACCESO: sin disparador no hay forma de abrir la tarjeta.
+    expect(disparador()).toBeNull();
+    expect(escaner()).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirmar recolección" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Simular escaneo" })).toBeNull();
+
+    // El apartado dice por sí mismo por qué no hay escáner: cuando vivía dentro de Entregas
+    // el aviso lo ponía el módulo de al lado y aquí no quedaría ninguno.
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tienes un cierre sin enviar a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Ve a «Cierre del día» para enviarlo a aprobación.",
+    );
+  });
+
+  it("271/§10.2 caso 1 · bloqueado por ACUMULAR (N=2, V=0), con la fecha de la JORNADA", () => {
+    renderModule({
+      porRecolectar: [makeOrden()],
+      bloqueo: bloqueoPorAcumular("2026-08-21"),
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tienes 2 cierres esperando aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Se desbloquea cuando la bodega apruebe el más antiguo, el del 21 de agosto.",
+    );
+  });
+
+  it("271/§10.2 caso 3 · las DOS cosas a la vez (N=2, V=1)", () => {
+    // ⚠️ EL PUNTERO VA SIN OBJETO desde el 2026-08-23 (corrección aprobada por el humano tras
+    // mirar la app): «...para enviarLO» colgaba de «el más antiguo», el cierre que resuelve la
+    // BODEGA. La frase anterior ya dice qué enviar; el caso 2 conserva su «para enviarlo».
+    renderModule({
+      porRecolectar: [makeOrden()],
+      bloqueo: bloqueoDe({ n: 2, v: 1, jornadaCR: "2026-08-21" }),
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tienes 2 cierres sin resolver y 1 de ellos no se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envía el que falta y espera a que la bodega apruebe el más antiguo, el del 21 de agosto. Ve a «Cierre del día».",
+    );
+  });
+
+  it("271/§10.2 caso 3 con el MÁS VIEJO SUYO · la fecha es la del que él envía", () => {
+    // ⚠️ LA CUARTA RAMA (aprobada el 2026-08-23, y el estado se midió en el navegador): el admin
+    // rechazó el PRIMERO de sus dos `solicitado`, así que el cierre más viejo es SUYO. Antes decía
+    // «espera a que la bodega apruebe el más antiguo» fechando su propio cierre — le mandaba a
+    // esperar por el mismo que el botón le ofrece reenviar. Ahora la fecha nombra el que ÉL envía y
+    // la espera se corre al RESTO.
+    renderModule({
+      porRecolectar: [makeOrden()],
+      bloqueo: bloqueoMixtoElMasViejoEsSuyo({ jornadaCR: "2026-08-20" }),
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tienes 2 cierres sin resolver y 1 de ellos no se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envía el que falta, el del 20 de agosto, y después espera a que la bodega apruebe el resto. Ve a «Cierre del día».",
+    );
+  });
+
+  it("271/§10.2 caso 3 con V = N · TODO en su tejado: ni singular ni esperar a la bodega", () => {
+    // Dos `rechazado`: no queda ningún `solicitado` que la bodega pueda aprobar, y los dos por
+    // enviar son suyos. Hasta el 2026-08-23 este estado leía el texto de arriba, en singular y
+    // mandándole a esperar por un cierre que ya era suyo.
+    renderModule({
+      porRecolectar: [makeOrden()],
+      bloqueo: bloqueoTodosPorEnviar(2, "2026-08-21"),
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Tienes 2 cierres sin resolver y ninguno se ha enviado a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Envíalos a aprobación, empezando por el más antiguo, el del 21 de agosto. Ve a «Cierre del día».",
+    );
+  });
+
+  it("271/R51 · NINGUNA variante promete ya recoger en tiendas ni recibir asignaciones", () => {
+    // La aserción NEGATIVA sobre las TRES, que es lo que impide reponer la promesa retirada: era
+    // cierta hasta el 2026-08-22 y es falsa desde el 23.
+    for (const bloqueo of [
+      bloqueoConVencido("2026-08-21"),
+      bloqueoPorAcumular("2026-08-21"),
+      bloqueoDe({ n: 2, v: 1, jornadaCR: "2026-08-21" }),
+    ]) {
+      cleanup();
+      renderModule({ porRecolectar: [makeOrden()], bloqueo });
+      const aviso = screen.getByRole("alert");
+      expect(aviso).not.toHaveTextContent(/seguir recogiendo en tiendas/i);
+      expect(aviso).not.toHaveTextContent(/seguir recibiendo asignaciones/i);
+      expect(aviso).not.toHaveTextContent(/sí puedes/i);
+    }
+  });
+
+  it("271/R5 · un solo cierre YA enviado (N=1, V=0) NO bloquea: el escáner sigue montado", () => {
+    renderModule({ porRecolectar: [makeOrden()], bloqueo: bloqueoDe({ n: 1, v: 0 }) });
+
+    expect(disparador()).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("R23: bloqueado, las dos listas se siguen viendo en solo-lectura", () => {
+    renderModule({
+      porRecolectar: [makeOrden({ numRemision: "REM-A" })],
+      recolectadasHoy: [makeRecolectada({ numRemision: "REM-H1" })],
+      bloqueo: bloqueoConVencido(),
+    });
+
+    expect(screen.getAllByText("REM-A").length).toBeGreaterThan(0);
+    // El historial del día es historial, no una acción: sigue visible.
+    expect(screen.getAllByText("REM-H1").length).toBeGreaterThan(0);
+  });
+
+  it("R8/R9: bloqueado y sin nada asignado, el vacío se explica igual (sin escáner)", () => {
+    renderModule({ porRecolectar: [], bloqueo: bloqueoConVencido() });
+
+    expect(disparador()).toBeNull();
+    expect(escaner()).toBeNull();
+    expect(
+      screen.getByText(/no tienes órdenes por recolectar en tienda ahora mismo/i),
+    ).toBeInTheDocument();
+  });
+
+  it("271: bloqueado, el vacío YA NO promete que escanear sirva — no hay escáner ni permiso", () => {
+    // ⚠️ LA CONTRADICCIÓN QUE ENCONTRÓ EL NAVEGADOR el 2026-08-23 (corrección aprobada por el
+    // humano): el texto del vacío se pintaba entero, sin mirar `bloqueado`, así que debajo del
+    // aviso «no puedes ... recibir trabajo nuevo» venía «Puedes escanear igual: si el maestro
+    // acaba de asignarte una, se confirmará aquí». Falso por partida doble: no hay disparador de
+    // escaneo en pantalla, y el servidor rechaza la recolección de un mensajero bloqueado
+    // (R25/R31). Era previa a la 271; la 271 la volvió falsa.
+    renderModule({ porRecolectar: [], bloqueo: bloqueoConVencido() });
+
+    expect(screen.queryByText(/puedes escanear igual/i)).toBeNull();
+    expect(screen.queryByText(/se confirmará aquí/i)).toBeNull();
+  });
+
+  it("271: LIBRE y sin nada asignado, la promesa SIGUE — ahí sí es cierta (R7/R8)", () => {
+    // La otra mitad, que es la que impide «arreglarlo» quitando la frase para todos: sin bloqueo
+    // el escáner está en pantalla y escanear funciona. Es la causa raíz que la 167 vino a cerrar.
+    renderModule({ porRecolectar: [] });
+
+    expect(disparador()).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No tienes órdenes por recolectar en tienda ahora mismo. Puedes escanear igual: si el maestro acaba de asignarte una, se confirmará aquí.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Feature 167 (R24/R28/R30/R31) — «Recolectadas hoy». Sale del HISTORIAL, así que sobrevive
+// a que la bodega central ya haya recibido el paquete (R26, probado en el service).
+// ---------------------------------------------------------------------------------------
+describe("RecoleccionModule — «Recolectadas hoy» (R24/R28/R30/R31)", () => {
+  const lista = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+
+  it("R24/R28: pinta la MISMA card de la orden, con la hora de la recolección", () => {
+    renderModule({
+      recolectadasHoy: [
+        makeRecolectada({
+          id: "h1",
+          numGuia: 5001,
+          numRemision: "REM-H1",
+          tiendaNombre: "Tienda Sur",
+          recolectadaAt: new Date("2026-07-31T15:30:00.000Z"), // 09:30 CR
+        }),
+      ],
+    });
+
+    const region = lista();
+    // La card compartida: remisión y destinatario, igual que en las otras dos listas.
+    expect(within(region).getAllByText("REM-H1").length).toBeGreaterThan(0);
+    expect(within(region).getAllByText("Ana").length).toBeGreaterThan(0);
+    // Lo ÚNICO propio de esta lista: cuándo se recolectó. Hora FIJA en zona de Costa Rica —no
+    // depende de la del dispositivo—, la misma convención con la que el servidor decidió qué
+    // es "hoy" (R27).
+    expect(within(region).getByText(/9:30/)).toBeInTheDocument();
+  });
+
+  it("R28: respeta el orden recibido (más reciente primero) sin reordenar", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      recolectadasHoy: [
+        makeRecolectada({ id: "h1", numRemision: "REM-NUEVA", numGuia: 5003 }),
+        makeRecolectada({ id: "h2", numRemision: "REM-MEDIA", numGuia: 5002 }),
+        makeRecolectada({ id: "h3", numRemision: "REM-VIEJA", numGuia: 5001 }),
+      ],
+    });
+
+    // 2026-08-11: en MOSAICO las cards van en carrusel (ventana de 3), así que el orden
+    // completo se afirma en la vista de DETALLE, que las lista todas. El conmutador de esta
+    // sección es el único montado aquí: no hay nada por recolectar.
+    await user.click(screen.getByRole("button", { name: "Detalle" }));
+    // El ancla NO puede ser solo el conteo: a media carga la lista tambien puede tener 3
+    // hijos (esqueleto + `role="status"`) y la espera se daria por cumplida antes de tiempo.
+    // Se ancla ADEMAS al contenido de la ultima fila, que solo existe ya montada la vista.
+    await waitFor(() => {
+      const enCurso = within(lista()).getAllByRole("listitem");
+      expect(enCurso).toHaveLength(3);
+      expect(enCurso[2]).toHaveTextContent("REM-VIEJA");
+    });
+
+    const filas = within(lista()).getAllByRole("listitem");
+    expect(filas).toHaveLength(3);
+    expect(filas[0]).toHaveTextContent("REM-NUEVA");
+    expect(filas[1]).toHaveTextContent("REM-MEDIA");
+    expect(filas[2]).toHaveTextContent("REM-VIEJA");
+  });
+
+  it("R30: sin recolecciones hoy lo DICE, en lugar de omitir la lista", () => {
+    renderModule({ recolectadasHoy: [] });
+
+    expect(lista()).toBeInTheDocument();
+    expect(
+      within(lista()).getByText(/todavía no has recolectado ninguna orden hoy/i),
+    ).toBeInTheDocument();
+  });
+
+  it("R31: con la lista recortada avisa de que no está todo, con el TOPE REAL", () => {
+    renderModule({
+      recolectadasHoy: [makeRecolectada()],
+      recolectadasHoyRecortada: true,
+    });
+
+    // El número del aviso se DERIVA de la misma constante con la que el servidor recorta: si
+    // alguien cambia el tope y la UI se queda con el 100 escrito a mano, este caso falla en vez
+    // de dejar al mensajero leyendo un aviso que miente (hallazgo m5 del review).
+    expect(within(lista()).getByText(avisoRecorte)).toBeInTheDocument();
+    expect(avisoRecorte.source).toContain(String(TOPE_RECOLECTADAS_HOY));
+  });
+
+  it("R31: sin recorte NO aparece el aviso (no se alarma de gratis)", () => {
+    renderModule({
+      recolectadasHoy: [makeRecolectada()],
+      recolectadasHoyRecortada: false,
+    });
+
+    expect(within(lista()).queryByText(avisoRecorte)).toBeNull();
+    // Ni el aviso derivado ni ningún otro recuento de "más recientes" se cuela sin recorte.
+    expect(within(lista()).queryByText(/más recientes de hoy/i)).toBeNull();
+  });
+
+  it("R24: una orden sin número de guía se pinta igual, sin romper la card", () => {
+    // La card se identifica por la REMISIÓN, no por la guía, así que una orden a la que
+    // todavía no se le asignó número no deja un hueco: sale entera como cualquier otra.
+    renderModule({ recolectadasHoy: [makeRecolectada({ numGuia: null })] });
+
+    expect(within(lista()).getAllByText("REM-H1").length).toBeGreaterThan(0);
+    expect(within(lista()).getByText(/9:30/)).toBeInTheDocument();
+  });
+});

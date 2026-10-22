@@ -1,0 +1,742 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { RolValue } from "@prisma/client";
+import { OrdenService } from "@/lib/services/OrdenService";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { OrdenDTO, OrdenListItemDTO } from "@/lib/types/orden";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import {
+  fakeIntentosEnLote,
+  llamadasIntentos,
+  type IntentosSvcDoble,
+} from "@/tests/fixtures/intentos-entrega";
+
+const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
+const TIENDA: Actor = { usuarioId: "store1", rol: "adminTienda" };
+const OTRA_TIENDA_ID = "store2";
+const DESCONOCIDO: Actor = { usuarioId: "x", rol: "invitado" as RolValue };
+
+function dto(overrides: Partial<OrdenDTO> = {}): OrdenDTO {
+  return {
+    id: "ord-1",
+    numGuia: 1,
+    numRemision: "REM-1",
+    estatusId: "os-bodega",
+    estatusValue: "en_bodega_central",
+    destinatario: "Ana",
+    telefonoDest: "0991234567",
+    tiendaId: "store1",
+    zonaId: "z1",
+    provinciaId: "p1",
+    cantonId: "c1",
+    distritoId: null,
+    producto: "Caja",
+    peso: 1.5,
+    notas: null,
+    createdAt: new Date("2026-01-01"),
+    updatedAt: new Date("2026-01-01"),
+    ...overrides,
+  };
+}
+
+// R25/R26: elemento del listado = OrdenDTO + tiendaNombre (nombre legible tienda).
+function listItem(overrides: Partial<OrdenListItemDTO> = {}): OrdenListItemDTO {
+  return { ...dto(), tiendaNombre: "Tienda Uno", ...overrides };
+}
+
+// Fixtures de geografia (R14b): por defecto zona->provincia->canton existen, para
+// poder ejercitar la creacion (FKs NOT NULL contra tablas creadas vacias).
+function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository {
+  return {
+    findById: vi.fn().mockResolvedValue(dto()),
+    list: vi.fn().mockResolvedValue({ items: [listItem()], total: 1 }),
+    // Feature 260 (B3): hidratacion por lote de ids. No la ejercita este servicio.
+    findListItemsByIds: vi.fn().mockResolvedValue([]),
+    update: vi.fn().mockResolvedValue(dto()),
+    // Ficha 312: writer de la correccion de los datos del cliente. Mismo motivo que sus dos
+    // vecinos de abajo — ningun servicio de este archivo lo invoca; el doble existe para
+    // satisfacer el contrato completo del repo.
+    corregirDatosCliente: vi.fn().mockResolvedValue("ok" as const),
+    // Ficha 327: las dos lecturas de la correccion de ubicacion. Mismo motivo que el writer de
+    // arriba: ningun servicio de este archivo las invoca, el doble esta para satisfacer el
+    // contrato completo del repo.
+    findParaCorreccion: vi.fn().mockResolvedValue(null),
+    findDistritoParaCorreccion: vi.fn().mockResolvedValue(null),
+    // Ficha 337: la lectura que CONGELA las entradas del cobro por devolución a origen desde novedades.
+    // Mismo motivo que las dos de arriba: ningun servicio de este archivo la invoca, el doble
+    // esta para satisfacer el contrato completo del repo.
+    findBaseCobroDevolucion: vi.fn().mockResolvedValue(null),
+    // Feature «eliminar orden»: writer de `deleted_at`. Ningun servicio de este archivo lo
+    // invoca; el doble existe para satisfacer el contrato completo del repo.
+    softDelete: vi.fn().mockResolvedValue(0),
+    // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
+    restore: vi.fn().mockResolvedValue(0),
+    findEstatusIdByValue: vi.fn().mockResolvedValue("os-bodega"),
+    findUsuarioFulfillment: vi.fn().mockResolvedValue(false), // feature 27
+    // Feature 15: metodos batch de carga masiva, no ejercitados por el CRUD
+    // (feature 6) pero exigidos por la interfaz IOrdenRepository.
+    findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
+    findAllProvincias: vi.fn().mockResolvedValue([]),
+    findCantonesByProvinciaIds: vi.fn().mockResolvedValue([]),
+    findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
+    // FICHA 374 (R60): el conteo de ordenes sin entregar de un nodo geografico. Ningun servicio
+    // de este archivo lo invoca; el doble existe para satisfacer el contrato completo del repo.
+    contarSinEntregarPorNodoGeografico: vi.fn().mockResolvedValue(0),
+    createManyOrdenes: vi.fn().mockResolvedValue({ inserted: 0, cargaId: null, omitidas: [] }), // feature 141/294
+    createManyOrdenesConGuia: vi.fn().mockResolvedValue({ creadas: [], cargaId: null, omitidas: [] }), // feature 88/141/294
+    // Feature 141 (R47/R48): persistencia de las URLs de descarga de etiquetas.
+    setCargaDownloadUrl: vi.fn(async () => {}),
+    setOrdenesDownloadUrl: vi.fn(async () => {}),
+    // Feature 16: resumen del lote (solo lectura), no ejercitado por el CRUD
+    // (feature 6) pero exigido por la interfaz IOrdenRepository.
+    findResumenByNumRemisiones: vi.fn().mockResolvedValue([]),
+    // Feature 17: metodos de "Generar guia"/asignacion, no ejercitados por el
+    // CRUD (feature 6) pero exigidos por la interfaz IOrdenRepository.
+    findByIdsForTransicion: vi.fn().mockResolvedValue([]),
+    findByNumGuiaForTransicion: vi.fn().mockResolvedValue(null),
+    findMensajeroIdsValidos: vi.fn().mockResolvedValue(new Set()),
+    findAllMensajeros: vi.fn().mockResolvedValue([]),
+    listOrderStatus: vi.fn().mockResolvedValue([]),
+    generarGuiaLote: vi.fn().mockResolvedValue([]),
+    asignarBodegaLote: vi.fn().mockResolvedValue(0),
+    findMensajerosByZona: vi.fn().mockResolvedValue([]),
+    findMensajeroIdsConVehiculo: vi.fn(async (ids: string[]) => new Set(ids)),
+    findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set<string>()),
+    findMensajeroIdsValidosByZona: vi.fn().mockResolvedValue(new Set()),
+    rutearBodegaSateliteLote: vi.fn().mockResolvedValue(0),
+    // Feature 41: bloqueo derivado (por defecto nadie bloqueado / bodega libre).
+    findMensajerosBloqueadosPorCierres: vi.fn(async (): Promise<Set<string>> => new Set()),
+    // Feature 271: el contador N/V y el detalle del bloqueo son parte del puerto.
+    contarCierresAbiertosPorMensajero: vi.fn(async () => new Map()),
+    findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+    findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()), // ficha 477
+    // FICHA 412 (T5.1): la jornada de un cierre concreto. Doble MUDO: esta suite no la ejercita.
+    findJornadaDeCierre: vi.fn(async () => null),
+    findZonasConMensajeroBloqueado: vi.fn(async (): Promise<Set<string>> => new Set()),
+    existeBodegaSateliteBloqueada: vi.fn(async () => ({
+      bloqueada: false,
+      porMensajeros: false,
+      porCierreBodega: false,
+    })),
+    // Feature 32: etiqueta de guia, no ejercitada por el CRUD (feature 6) pero
+    // exigida por la interfaz IOrdenRepository.
+    findEtiquetasByIds: vi.fn().mockResolvedValue([]),
+    findEtiquetaByNumGuia: vi.fn().mockResolvedValue(null),
+    // Feature 148: stubs del manifiesto (READ derivado, no lo ejercita este test).
+    findManifiestoByIds: vi.fn().mockResolvedValue([]),
+    findManifiestoByRemisiones: vi.fn().mockResolvedValue([]),
+    findUsuarioNombre: vi.fn().mockResolvedValue(null),
+    // Feature 33: recepcion en bodega satelite, no ejercitada aqui pero exigida
+    // por la interfaz IOrdenRepository.
+    findUsuarioZonaId: vi.fn().mockResolvedValue(null),
+    findUsuarioVehiculoId: vi.fn().mockResolvedValue(null), // feature 39: exigido por IOrdenRepository
+    findRecepcionSateliteByZona: vi.fn().mockResolvedValue([]),
+    // Feature 170 (T K.1/T K.2): la pagina del listado satelite y el catalogo de sus filtros.
+    findRecepcionSatelitePaginada: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    // Feature 184 (T A.1/T A.2): el conjunto completo del listado y la vigencia de ids.
+    findRecepcionSateliteCompleta: vi.fn().mockResolvedValue([]),
+    findIdsVigentesEnBodega: vi.fn().mockResolvedValue([]),
+    recibirEnSatelite: vi.fn().mockResolvedValue(false),
+    recibirEnOrigen: vi.fn().mockResolvedValue(false),
+    recibirEnBodegaCentral: vi.fn().mockResolvedValue(false),
+    // feature 157: recoleccion en tienda (asignacion sin transicion + confirmacion por QR)
+    asignarRecoleccionLote: vi.fn().mockResolvedValue(0),
+    desasignarRecoleccionLote: vi.fn().mockResolvedValue(0),
+    // feature 157: regla de dedicacion (reparto y recoleccion no se mezclan)
+    findMensajerosConOrdenesEn: vi.fn().mockResolvedValue(new Set()),
+    recolectarEnTienda: vi.fn().mockResolvedValue(false),
+    asignarSateliteLote: vi.fn().mockResolvedValue(0),
+    // Feature 87: lista de novedades, no ejercitada aqui pero exigida por IOrdenRepository.
+    // Solicitud de ayuda (2026-08-18): exigidos por la interfaz, no ejercitados aqui.
+    // Feature 235: los tres metodos de la bandera (`marcarAyuda`/`desmarcarAyuda`/
+    // `habilitarNovedad`) colapsaron en UN punto de escritura guardado por estado.
+    registrarAyudaSolicitada: vi.fn().mockResolvedValue(true), // ficha 454
+    registrarAyudaResuelta: vi.fn().mockResolvedValue(true), // ficha 454
+    findParaHabilitacionApi: vi.fn().mockResolvedValue(null), // feature 266/T3.1: lectura scoped por owner del canal por API key
+    // Ficha 320: el par lectura/escritura del BORRADO por API key, tambien scoped por owner.
+    findParaEliminacionApi: vi.fn().mockResolvedValue(null),
+    softDeleteViaApi: vi.fn().mockResolvedValue(0),
+    incrementarIntentoContacto: vi.fn().mockResolvedValue(0),
+    // Feature 236: los dos metodos del listado pasan a llevar el GRUPO en la firma.
+    countNovedadesByTienda: vi.fn().mockResolvedValue(0),
+    findNovedadesByTienda: vi.fn().mockResolvedValue([]),
+    findFechaSolicitudAyuda: vi.fn().mockResolvedValue(new Map()),
+    findIdsConGestionPendiente: vi.fn(async () => new Set<string>()), // ficha 454
+    // Feature 92 (R8/R35): metodos nuevos de lectura de `IOrdenRepository`. Estos
+    // tests no ejercitan el gate de coordenadas ni la ruta: devuelven vacio.
+    findParaAsignabilidad: vi.fn(async () => []),
+    findParadasEnReparto: vi.fn(async () => []),
+    findCausasDevueltaVigentes: vi.fn().mockResolvedValue(new Map()),
+    // Feature 106: canal integrador (API por key), no ejercitado por el CRUD.
+    listByOwner: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    cancelarViaApi: vi.fn().mockResolvedValue({ status: "not_found" }),
+    // Feature 177: consulta por identificador libre + PDF de etiquetas, no ejercitada aqui.
+    findByGuiaORemisionForOwner: vi.fn().mockResolvedValue([]),
+    findDetalleByOrdenIdForOwner: vi.fn().mockResolvedValue(null),
+    findDownloadStoragePathByOrdenForOwner: vi.fn().mockResolvedValue(null),
+    setOrdenDownloadStoragePath: vi.fn(async () => {}),
+    findCargaConOrdenesForOwner: vi.fn().mockResolvedValue(null),
+    setCargaDownloadStoragePath: vi.fn(async () => {}),
+    // Feature 102: rechazos por SLA de la tienda, exigidos por IOrdenRepository.
+    countRechazadasSlaByTienda: vi.fn().mockResolvedValue(0),
+    findRechazadasSlaByTienda: vi.fn().mockResolvedValue([]),
+    // Feature 149: writer de la reversion de asignacion, exigido por IOrdenRepository.
+    deshacerAsignacionLote: vi.fn(async () => 0),
+    // Feature 262: writer de la correccion del dia de reparto, exigido por IOrdenRepository.
+    corregirDiaRepartoLote: vi.fn(async () => []),
+    // FICHA 427 (T8): la transaccion del traspaso entre mensajeros. Ningun servicio de este
+    // archivo la invoca; el doble existe para satisfacer el contrato completo del repo.
+    traspasarMensajeroLote: vi.fn(async () => ({ loteId: "lote-1", movidas: 0, conversaciones: 0 })),
+    ...overrides,
+  };
+}
+
+let repo: IOrdenRepository;
+let service: OrdenService;
+// Feature 160: derivador de intentos EN LOTE, dependencia REQUERIDA del constructor. Por
+// defecto devuelve el Map vacio, que ejerce el `?? 0` del servicio (R14).
+let intentos: IntentosSvcDoble;
+
+beforeEach(() => {
+  repo = buildRepo();
+  intentos = fakeIntentosEnLote();
+  service = new OrdenService(repo, intentos);
+});
+
+// BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivian los bloques de
+// `crear` (matriz de autorizacion R20-R24, alta manual de la feature 155, validacion de FKs) y
+// de `obtener`. Los metodos se retiraron de `OrdenService` al quedarse sin llamador. NO se
+// pierde ninguna regla viva, y se comprobo una a una antes de borrar:
+//
+//   - la bifurcacion por bodega de la 155 (donde NACE la orden) tiene TRES testigos vivos:
+//     `bulk-orden-service.test.ts` (R16, las dos ramas), `bulk-orden-service.carga-api.test.ts`
+//     (la via API key) y `destino-creacion.test.ts` (la funcion de decision, aislada);
+//   - «adminSatelite no puede crear» sigue afirmada sobre `BulkOrdenService.cargarMasiva` en
+//     `rol-admin-satelite-authz.test.ts`, que es la via VIVA de creacion;
+//   - R24 (rol desconocido -> forbidden) conserva su testigo en el bloque de `listar`, abajo.
+
+describe("listar", () => {
+  it("R30: devuelve items/page/pageSize/total", async () => {
+    const r = await service.listar(
+      { page: 2, pageSize: 10, sortBy: "created_at", sortDir: "desc" },
+      MAESTRO,
+    );
+    expect(r.status).toBe("ok");
+    if (r.status === "ok") {
+      expect(r.page).toBe(2);
+      expect(r.pageSize).toBe(10);
+      expect(r.total).toBe(1);
+    }
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.skip).toBe(10); // (page-1)*pageSize
+    expect(arg.take).toBe(10);
+  });
+
+  it("R21: adminTienda inyecta su tiendaId en el where", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.tiendaId).toBe("store1");
+  });
+
+  it("seguridad: mensajero se acota a SUS asignadas (where.mensajeroAsignadoId)", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      { usuarioId: "msg1", rol: "mensajero" },
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.mensajeroAsignadoId).toBe("msg1");
+    // No se filtra por tienda (eso es de adminTienda).
+    expect(arg.where.tiendaId).toBeUndefined();
+  });
+
+  it("R25/R26: propaga tiendaNombre de los items sin re-filtrar (R22 intacto)", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [listItem({ tiendaNombre: "Tienda Uno" })],
+        total: 1,
+      }),
+    });
+    service = new OrdenService(repo, intentos);
+
+    const r = await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+
+    expect(r.status).toBe("ok");
+    if (r.status === "ok") {
+      expect(r.items[0].tiendaNombre).toBe("Tienda Uno");
+    }
+    // R22: la autorizacion por rol NO cambia; adminTienda sigue forzando su tiendaId.
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.tiendaId).toBe("store1");
+  });
+
+  it("R31: propaga filtro estatusId y orden al repo", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, estatusId: "os-entregada", sortBy: "num_guia", sortDir: "asc" },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-entregada");
+    expect(arg.sortBy).toBe("num_guia");
+    expect(arg.sortDir).toBe("asc");
+  });
+
+  it("R24: rol desconocido -> forbidden", async () => {
+    const r = await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      DESCONOCIDO,
+    );
+    expect(r.status).toBe("forbidden");
+  });
+});
+
+// Feature 160 (T8) — el conteo de intentos viaja en el DTO del listado, resuelto EN LOTE.
+// Este listado alimenta 5 superficies de UI: si el merge se rompe, el dato desaparece de todas.
+describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () => {
+  const PAGINA = { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" } as const;
+
+  it("R11/R14: cada item sale con `intentosEntrega` numerico, el `0` INCLUIDO", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [listItem({ id: "o1" }), listItem({ id: "o2" }), listItem({ id: "o3" })],
+        total: 3,
+      }),
+    });
+    // `o3` no aparece en el mapa: no tiene intentos.
+    intentos = fakeIntentosEnLote({ o1: 2, o2: 0 });
+    service = new OrdenService(repo, intentos);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items.map((i) => i.intentosEntrega)).toEqual([2, 0, 0]);
+    // R14: `0` es un valor CONOCIDO, no ausencia de dato. Nada de `undefined` ni `null`.
+    for (const item of r.items) expect(typeof item.intentosEntrega).toBe("number");
+  });
+
+  it("R12: UNA sola llamada al derivador por listado, con TODOS los ids de la pagina", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [listItem({ id: "o1" }), listItem({ id: "o2" })],
+        total: 2,
+      }),
+    });
+    intentos = fakeIntentosEnLote();
+    service = new OrdenService(repo, intentos);
+
+    await service.listar(PAGINA, MAESTRO);
+
+    expect(intentos.contarIntentosEnLote).toHaveBeenCalledTimes(1);
+    expect(llamadasIntentos(intentos)).toEqual([["o1", "o2"]]);
+  });
+
+  it("R13: pagina vacia -> el derivador recibe un lote vacio (y no consulta)", async () => {
+    repo = buildRepo({ list: vi.fn().mockResolvedValue({ items: [], total: 0 }) });
+    intentos = fakeIntentosEnLote();
+    service = new OrdenService(repo, intentos);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status === "ok") expect(r.items).toEqual([]);
+    expect(llamadasIntentos(intentos)).toEqual([[]]);
+  });
+
+  // R15: sin regla de permisos nueva. Los ids del lote son EXACTAMENTE los que el `where` por
+  // rol ya devolvio: nunca se pide el conteo de una orden que el actor no puede leer.
+  it("R15: los ids del lote son los del listado YA acotado por el rol (adminTienda)", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [listItem({ id: "propia-1", tiendaId: "store1" })],
+        total: 1,
+      }),
+    });
+    intentos = fakeIntentosEnLote();
+    service = new OrdenService(repo, intentos);
+
+    await service.listar(PAGINA, TIENDA);
+
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.tiendaId).toBe("store1"); // alcance impuesto server-side
+    expect(llamadasIntentos(intentos)).toEqual([["propia-1"]]);
+  });
+
+  it("R32: el resto del item (paginacion, total y campos previos) no cambia", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [listItem({ id: "o1", tiendaNombre: "Tienda Uno" })],
+        total: 57,
+      }),
+    });
+    intentos = fakeIntentosEnLote({ o1: 1 });
+    service = new OrdenService(repo, intentos);
+
+    const r = await service.listar({ ...PAGINA, page: 3 }, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.total).toBe(57);
+    expect(r.page).toBe(3);
+    expect(r.pageSize).toBe(20);
+    expect(r.items[0].tiendaNombre).toBe("Tienda Uno");
+    expect(r.items[0].id).toBe("o1");
+  });
+});
+
+// Feature 63/B2 (R8/R9/R10): filtro generico `filter.status_id` -> where.estatusId.
+describe("listar — filtro generico filter.status_id (feature 63, R8/R9/R10)", () => {
+  it("R8: filter.status_id se traduce a where.estatusId", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, filter: { status_id: "os-entregada" }, sortBy: "created_at", sortDir: "desc" },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-entregada");
+  });
+
+  it("R9: filter.status_id compone con el alcance por rol de adminTienda", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, filter: { status_id: "os-entregada" }, sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-entregada");
+    expect(arg.where.tiendaId).toBe("store1"); // acotamiento por tienda intacto
+    expect(arg.where.tiendaId).not.toBe(OTRA_TIENDA_ID);
+  });
+
+  it("R8: filter.status_id tiene precedencia sobre el estatusId escalar", async () => {
+    await service.listar(
+      {
+        page: 1,
+        pageSize: 20,
+        estatusId: "os-escalar",
+        filter: { status_id: "os-filter" },
+        sortBy: "created_at",
+        sortDir: "desc",
+      },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-filter");
+  });
+
+  // Filtro MULTI-ESTADO (listado unico de /ordenes con selector de seleccion multiple):
+  // `status_id` admite una LISTA de ids; el service la pasa tal cual y el repositorio la
+  // traduce a `IN (...)`. El acotamiento por rol sigue componiendo con ella.
+  it("filter.status_id como LISTA se traduce a where.estatusId con todos los ids", async () => {
+    await service.listar(
+      {
+        page: 1,
+        pageSize: 20,
+        filter: { status_id: ["os-entregada", "os-devuelta"] },
+        sortBy: "created_at",
+        sortDir: "desc",
+      },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toEqual(["os-entregada", "os-devuelta"]);
+  });
+
+  it("filter.status_id como LISTA compone con el alcance por rol de adminTienda", async () => {
+    await service.listar(
+      {
+        page: 1,
+        pageSize: 20,
+        filter: { status_id: ["os-entregada", "os-devuelta"] },
+        sortBy: "created_at",
+        sortDir: "desc",
+      },
+      TIENDA,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toEqual(["os-entregada", "os-devuelta"]);
+    expect(arg.where.tiendaId).toBe("store1"); // acotamiento por tienda intacto
+  });
+
+  it("R10: sin filter, el estatusId escalar sigue funcionando (sin regresion)", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, estatusId: "os-entregada", sortBy: "created_at", sortDir: "desc" },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-entregada");
+  });
+
+  it("R10: sin filter ni estatusId, where no fija estatusId (comportamiento previo)", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      MAESTRO,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBeUndefined();
+  });
+});
+
+// Feature 48/T10.1 (R12/R14): la tienda de origen ve sus ordenes `rechazada`/`devolviendo_a_tienda`
+// reutilizando el scope server-side ya existente (where.tiendaId = actor.usuarioId). NO cambia
+// la autz de las features 6/26; solo verifica que las ordenes retornadas viajan por ese filtro.
+describe("listar — visibilidad de la tienda de origen (feature 48, R12/R14)", () => {
+  it("adminTienda ve sus ordenes rechazada/devolviendo_a_tienda acotadas por where.tiendaId", async () => {
+    repo = buildRepo({
+      list: vi.fn().mockResolvedValue({
+        items: [
+          listItem({ id: "o-rech", estatusValue: "devolucion_a_origen_por_rechazo", tiendaId: "store1" }),
+          listItem({ id: "o-dev", estatusValue: "devolviendo_a_tienda", tiendaId: "store1" }),
+        ],
+        total: 2,
+      }),
+    });
+    service = new OrdenService(repo, intentos);
+
+    const r = await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+
+    expect(r.status).toBe("ok");
+    if (r.status === "ok") {
+      expect(r.items.map((i) => i.estatusValue)).toEqual(["devolucion_a_origen_por_rechazo", "devolviendo_a_tienda"]);
+    }
+    // R12: el alcance server-side es la propia tienda (no un parametro del cliente).
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.tiendaId).toBe("store1");
+  });
+
+  it("orden de otra tienda no aparece: el where fuerza la tienda del actor (R12)", async () => {
+    // La query se acota SIEMPRE a la tienda del actor; una orden de OTRA tienda queda fuera
+    // del where y por tanto no puede aparecer, sin importar su estado.
+    await service.listar(
+      { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.tiendaId).toBe("store1");
+    expect(arg.where.tiendaId).not.toBe(OTRA_TIENDA_ID);
+  });
+
+  it("filtro por estado devolviendo_a_tienda se pasa al where junto con el scope de la tienda", async () => {
+    await service.listar(
+      { page: 1, pageSize: 20, estatusId: "os-devuelta-origen", sortBy: "created_at", sortDir: "desc" },
+      TIENDA,
+    );
+    const arg = (repo.list as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.where.estatusId).toBe("os-devuelta-origen");
+    expect(arg.where.tiendaId).toBe("store1");
+  });
+});
+
+// BORRADO 2026-08-07 (tanda 2): aqui vivian los bloques de `actualizar` y `borrar`, retirados
+// de `OrdenService` con sus Server Actions. Las ediciones reales de una orden pasan por los
+// servicios de dominio —guia, asignacion, recepcion, devoluciones, incidencias—, cada uno con
+// su propia suite y su propia matriz de autorizacion. R21 (adminTienda solo las suyas) y R24
+// conservan testigo en el bloque de `listar`.
+
+// ---------------------------------------------------------------------------------------
+// `eliminable`: ¿se puede ofrecer «Eliminar» sobre esta fila? Lo resuelve el SERVIDOR con el
+// mismo predicado que autoriza el borrado, para que la pantalla no pueda ofrecer lo que el
+// servidor va a rechazar.
+//
+// FICHA 319 (2026-08-28): el campo se llamaba `sinGestion` y el criterio pedia ademas cero
+// transiciones en el historial. Ese conteo se retiro —dejaba la ventana VACIA: 0 eliminables de
+// 429 vivas en produccion— y hoy manda el ESTADO. La coincidencia estado-por-estado entre esta
+// respuesta y la del service del borrado se mide en `eliminar-criterio-unico.test.ts`; aqui se
+// mide lo propio del listado (a quien se le anota y a quien no).
+// ---------------------------------------------------------------------------------------
+describe("listar / eliminable (eliminar orden)", () => {
+  const PAGINA = { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" } as const;
+
+  function conPagina(items: OrdenListItemDTO[]) {
+    const r = buildRepo({ list: vi.fn().mockResolvedValue({ items, total: items.length }) });
+    const h = fakeIntentosEnLote();
+    return { service: new OrdenService(r, h), historial: h };
+  }
+
+  it("orden en un estado eliminable -> eliminable true", async () => {
+    const { service } = conPagina([listItem({ id: "o1", estatusValue: "en_preparacion" })]);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(true);
+  });
+
+  it("orden YA numerada, en la bodega central -> eliminable true (el caso de la ficha 319)", async () => {
+    // Con el criterio anterior esto era `false` SIEMPRE: generar la guia dejaba transicion y
+    // sacaba del estado de nacimiento. Es la fila que el maestro no podia borrar en produccion.
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_bodega_central", numGuia: 4321 }),
+    ]);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(true);
+  });
+
+  it("orden en un estado que ya no admite borrado -> eliminable false", async () => {
+    const { service } = conPagina([listItem({ id: "o1", estatusValue: "entregado" })]);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(false);
+  });
+
+  it("`en_reparto` -> eliminable false: «eso esta en gestion»", async () => {
+    // El estado que mas cerca queda de la frontera y el que el humano nombro primero. Aunque no
+    // tenga ni un intento de entrega, el paquete va con el mensajero.
+    const { service } = conPagina([listItem({ id: "o1", estatusValue: "en_reparto" })]);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(false);
+  });
+
+  it.each([
+    ["mensajero", { usuarioId: "msg1", rol: "mensajero" } as Actor],
+    // `adminSatelite` no entra: `listar` ni siquiera le responde `ok` (no esta en KNOWN_ROLES),
+    // asi que preguntarle por este campo seria medir otra cosa.
+    //
+    // ⭑ FICHA 424 (2026-09-14): el `admin` SALE de esta tabla y tiene sus dos casos propios
+    // justo debajo. Hasta hoy la encabezaba, con el motivo del estrechamiento del 2026-08-27; el
+    // humano lo revierte y desde entonces el campo SI le viaja. El `mensajero` se queda como
+    // testigo VIVO: sin el, esta afirmacion se quedaria sin nadie a quien negarle el campo.
+  ])("%s: un rol que NO puede eliminar no recibe el campo", async (_nombre, actor) => {
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_preparacion", tiendaId: "store1" }),
+    ]);
+
+    const r = await service.listar(PAGINA, actor);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------------------
+  // FICHA 424 (2026-09-14) — EL CAMPO VIAJA TAMBIEN AL `admin`, Y SIN RECORTE DE DUEÑO.
+  //
+  // La otra mitad de la reversion, y la que evita el fallo mudo: si se abriera la AUTORIZACION y
+  // el listado siguiera sin anotarle `eliminable`, el `admin` podria borrar en teoria y la
+  // pantalla no le ofreceria nunca la accion —la barra exige `row.eliminable === true`—. Es el
+  // defecto exacto que reporto la 358 («no le aparece el checkbox»), con otro rol.
+  // ---------------------------------------------------------------------------------------
+  it("⭑ admin: sobre una orden de OTRA tienda -> eliminable true (no hay recorte de dueño)", async () => {
+    // El caso que separa «todas» de «propias». El `usuarioId` del `admin` no es la `tienda_id` de
+    // ninguna orden: si alguien le diera alcance «propias», `marcarEliminable` compararia
+    // `o.tiendaId === "a1"` y el campo saldria `false` SIEMPRE — un permiso que no permite nada
+    // (alternativa A4 del design), y encima invisible porque el servidor si autorizaria.
+    const ADMIN: Actor = { usuarioId: "a1", rol: "admin" };
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_bodega_central", tiendaId: "una-tienda-cualquiera" }),
+    ]);
+
+    const r = await service.listar(PAGINA, ADMIN);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(true);
+  });
+
+  it("admin: el predicado de ESTADO le aplica igual (`en_reparto` -> eliminable false)", async () => {
+    // Cambia QUIEN puede, no QUE se puede borrar. Sin este caso, el de arriba no distinguiria
+    // «se le anota el campo con el criterio de siempre» de «se le anota `true` a todo».
+    const ADMIN: Actor = { usuarioId: "a1", rol: "admin" };
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_reparto", tiendaId: "una-tienda-cualquiera" }),
+    ]);
+
+    const r = await service.listar(PAGINA, ADMIN);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------------------------
+  // FICHA 358 (2026-09-02) — EL CAMPO VIAJA TAMBIEN A LA TIENDA, Y SOLO EN LO SUYO.
+  //
+  // El defecto reportado era literalmente este campo: «no le aparece el checkbox para
+  // seleccionar y eliminar». La pantalla exige `=== true`, asi que un campo ausente no habilita
+  // nada — y a la tienda le llegaba ausente.
+  // ---------------------------------------------------------------------------------------
+  it("adminTienda: sobre una orden SUYA y en estado eliminable -> eliminable true", async () => {
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_bodega_central", tiendaId: "store1" }),
+    ]);
+
+    const r = await service.listar(PAGINA, TIENDA);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(true);
+  });
+
+  it("⭑ adminTienda: sobre una orden de OTRA tienda -> eliminable false", async () => {
+    // `construirWhere` ya acota el listado del adminTienda a sus ordenes, asi que en la practica
+    // esta fila no deberia llegar nunca. Se afirma igual: `marcarEliminable` no puede saber con
+    // que `where` se trajeron las filas, y el dia que un filtro nuevo o un bug de acotamiento le
+    // cuele una ajena, el campo diria «se puede borrar» sobre una orden que el servidor rechaza.
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_bodega_central", tiendaId: "otra-tienda" }),
+    ]);
+
+    const r = await service.listar(PAGINA, TIENDA);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(false);
+  });
+
+  it("adminTienda: su orden en un estado NO eliminable -> eliminable false", async () => {
+    // Cambia QUIEN puede, no QUE se puede borrar: el predicado de estado es el mismo.
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_reparto", tiendaId: "store1" }),
+    ]);
+
+    const r = await service.listar(PAGINA, TIENDA);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(false);
+  });
+
+  it("maestro: el recorte por tienda NO le aplica (orden de cualquier tienda -> true)", async () => {
+    const { service } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_preparacion", tiendaId: "una-tienda-cualquiera" }),
+    ]);
+
+    const r = await service.listar(PAGINA, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.items[0].eliminable).toBe(true);
+  });
+
+  it("anotarlo NO cuesta ninguna consulta extra al historial", async () => {
+    // La unica llamada del listado sigue siendo la de los intentos (feature 160). Antes habia
+    // una segunda, por pagina, solo para este campo.
+    const { service, historial } = conPagina([
+      listItem({ id: "o1", estatusValue: "en_preparacion" }),
+      listItem({ id: "o2", estatusValue: "en_bodega_central" }),
+    ]);
+
+    await service.listar(PAGINA, MAESTRO);
+
+    expect(historial.contarIntentosEnLote).toHaveBeenCalledTimes(1);
+    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos"]);
+  });
+});

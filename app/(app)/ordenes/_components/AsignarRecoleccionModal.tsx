@@ -1,0 +1,148 @@
+"use client";
+
+import { useState } from "react";
+
+import { Modal } from "@/components/shared/Modal";
+import { Select } from "@/components/ui/select";
+import { useToast } from "@/hooks/useToast";
+import { asignarRecoleccion } from "@/lib/actions/ordenes-guia";
+import type { AsignarRecoleccionResult } from "@/lib/types/orden-guia";
+import type { OrdenListItemDTO } from "@/lib/types/orden";
+import type { MensajeroLiteDTO } from "@/lib/types/orden-guia";
+
+import { MOTIVO_BLOQUEADO_POR_CIERRE, toMensajeroOptions } from "./mensajero-options";
+import { MOTIVO_USUARIO_NO_ASIGNABLE } from "@/lib/constants/estado-usuario-asignable";
+import { guiaDecisionErrorMessage } from "./guia-decision-error-messages";
+
+export interface AsignarRecoleccionModalProps {
+  open: boolean;
+  /** Órdenes de `por_recolectar_en_tienda` seleccionadas al abrir (snapshot, R3). */
+  ordenes: OrdenListItemDTO[];
+  /** Mensajeros elegibles: CUALQUIERA activo (decisión del humano 2026-07-30, R6). */
+  mensajeros: MensajeroLiteDTO[];
+  /**
+   * Ids con órdenes de REPARTO pendientes (regla de dedicación, 2026-07-31): quien va a
+   * una tienda a recoger un lote sale sin carga, así que no se les puede asignar. Se
+   * deshabilitan con el motivo a la vista; el service lo revalida igual.
+   */
+  mensajerosConRepartoIds?: string[];
+  /**
+   * FEATURE 271 (T9.4, R32): ids que el servidor va a RECHAZAR por su cierre. Se deshabilitan con
+   * el motivo a la vista, y el conjunto es EXACTAMENTE el que rechaza `asignarRecoleccion`.
+   *
+   * ⚠️ ESTA MITAD ES LA QUE SE DIO LA VUELTA EL 2026-08-23. La recolección estuvo EXENTA del
+   * bloqueo —«una cosa es repartir y otra recoger»— hasta que el humano lo revirtió con sus
+   * palabras: «un mensajero no puede hacer las dos gestiones, solo una a la vez». Recolectar en
+   * tienda es cobrar, y el dinero que cobre no tendría cierre al que ir.
+   */
+  mensajerosBloqueadosIds?: string[];
+  /**
+   * Pedido humano (2026-08-26): ids de mensajeros que NO pueden recibir trabajo por su ESTADO de
+   * usuario (`inactivo` / `bloqueado`). Llega de la MISMA acción que la lista, resuelto con el
+   * MISMO predicado que aplica la escritura: aquí no se re-deriva nada.
+   */
+  mensajerosNoAsignablesIds?: string[];
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}
+
+/**
+ * Feature 157 (R3) — "Asignar mensajero para recolección": quién va a la tienda a recoger un
+ * lote que sigue físicamente allí. Copia REDUCIDA de `AsignarBodegaModal`, con dos ausencias
+ * deliberadas:
+ *
+ * - **Sin fase "resultado" con manifiesto.** El manifiesto de estas órdenes ya se emitió al
+ *   crearlas (feature 155, rama sin fulfillment): repetirlo aquí sería un segundo documento
+ *   del mismo lote. Al éxito se cierra y se revalida, como el resto de acciones por lote.
+ * - **Sin `IntentosDato`.** Los intentos de entrega son del tramo de reparto; una orden que
+ *   todavía está en la tienda no ha intentado entregarse nunca.
+ *
+ * La orden NO cambia de estado: sigue en `por_recolectar_en_tienda` hasta que el mensajero
+ * confirme la recolección escaneando su etiqueta.
+ */
+export function AsignarRecoleccionModal({
+  open,
+  ordenes,
+  mensajeros,
+  mensajerosConRepartoIds = [],
+  mensajerosBloqueadosIds = [],
+  mensajerosNoAsignablesIds = [],
+  onOpenChange,
+  onSuccess,
+}: AsignarRecoleccionModalProps) {
+  const toast = useToast();
+  const [mensajeroId, setMensajeroId] = useState("");
+  // Reinicia la selección solo al transicionar a `open` (ajuste de estado durante el render,
+  // no en un `useEffect`, para evitar el render en cascada). Mismo patrón que el modal hermano.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setMensajeroId("");
+  }
+
+  // Los tres motivos, en un solo mapa. El del CIERRE va DESPUÉS del reparto: si concurren, gana el
+  // que el mensajero puede resolver por su cuenta. El del ESTADO (2026-08-26) va el último y gana a
+  // los dos: estar dado de baja no se arregla trabajando ni cerrando.
+  const mensajeroOptions = toMensajeroOptions(
+    mensajeros,
+    new Map([
+      ...mensajerosConRepartoIds.map((id) => [id, "tiene reparto pendiente"] as const),
+      ...mensajerosBloqueadosIds.map((id) => [id, MOTIVO_BLOQUEADO_POR_CIERRE] as const),
+      ...mensajerosNoAsignablesIds.map((id) => [id, MOTIVO_USUARIO_NO_ASIGNABLE] as const),
+    ]),
+  );
+
+  async function handleConfirm() {
+    if (!mensajeroId) {
+      // Validación en el borde de UI: sin mensajero no hay nada que asignar. Reusa el canal
+      // de error del Modal con la misma forma de resultado que devuelve la action.
+      const validationError: AsignarRecoleccionResult = {
+        status: "validation_error",
+        fieldErrors: { mensajeroId: ["Selecciona un mensajero"] },
+      };
+      throw validationError;
+    }
+
+    const result = await asignarRecoleccion({
+      ordenIds: ordenes.map((orden) => orden.id),
+      mensajeroId,
+    });
+    if (result.status !== "ok") throw result;
+
+    toast.success(
+      `Mensajero asignado para recolectar ${result.resultados.length} orden(es).`,
+    );
+    onSuccess();
+  }
+
+  function handleError(error: unknown) {
+    toast.error(guiaDecisionErrorMessage(error));
+  }
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Asignar mensajero para recolección"
+      description={`Elige quién va a la tienda a recoger ${ordenes.length} orden(es).`}
+      confirmLabel="Asignar"
+      onConfirm={handleConfirm}
+      onError={handleError}
+    >
+      <div className="flex flex-col gap-2">
+        <ul className="max-h-40 list-disc overflow-auto pl-5 text-sm text-muted-foreground">
+          {ordenes.map((orden) => (
+            <li key={orden.id}>{orden.numRemision}</li>
+          ))}
+        </ul>
+        <Select
+          value={mensajeroId}
+          onValueChange={setMensajeroId}
+          options={mensajeroOptions}
+          placeholder="Selecciona un mensajero"
+          aria-label="Mensajero para la recolección"
+        />
+      </div>
+    </Modal>
+  );
+}

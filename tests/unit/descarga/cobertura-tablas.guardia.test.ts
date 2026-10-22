@@ -1,0 +1,590 @@
+// Feature 170 (T0.5) — GUARDIA de cobertura del censo de tablas. Cubre R4 y R2.
+//
+// El riesgo que cierra: dentro de un año alguien añade una pantalla con tabla y nadie se
+// entera de que nació sin descarga (o de que la montó en una tabla declarada fuera de
+// alcance). Esta guardia lee el árbol, enumera CADA instancia de `<DataTable>` y la
+// contrasta contra el registro declarado en `censo-tablas.ts`:
+//
+//   - una tabla que no figure en el registro          -> falla (R4)
+//   - una tabla registrada `fuera` que monte descarga -> falla (R2)
+//   - una tabla registrada `con_descarga` que la haya perdido -> falla (no-regresión)
+//   - una entrada del registro que ya no exista en el árbol   -> falla (registro caduco)
+//
+// La lectura es ESTÁTICA (lo que el archivo dice), como `datatable-descarga-contrato`.
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import path from "node:path";
+import { describe, it, expect } from "vitest";
+
+import {
+  CENSO_DATATABLE,
+  CENSO_TABLAS_CRUDAS,
+  type ArchivoCensado,
+} from "./censo-tablas";
+// Feature 207 — el lector vive ahora en su propio módulo, con su propio test (antes no tenía
+// ninguno). Lo que cambió al mudarse: quita los comentarios ANTES de escanear, para que una
+// mención de la etiqueta en prosa deje de contar como una tabla del archivo. Los totales de
+// abajo NO se movieron por ello — se midieron contra el árbol antes y después.
+import { etiquetasDataTable } from "./etiquetas-datatable";
+// Feature 207 — mismo tratamiento para el detector de montajes: se extrae el predicado (el
+// recorrido del árbol se queda aquí, que es quien sabe qué árboles se miran) y deja de leer
+// prosa. Los montajes de las dos tablas compartidas NO se movieron: 2 y 2, antes y después.
+import { montaComponente } from "./montajes-componente";
+
+const RAIZ = path.resolve(__dirname, "../../..");
+
+/**
+ * Feature 172 (T H.1) — los DOS árboles de UI, no solo `app/`.
+ *
+ * Hasta hoy la guardia recorría únicamente `app/`, y eso NO era una elección: era el punto
+ * ciego de que ninguna tabla hubiera nacido todavía fuera de ahí. La 172 monta la lista de
+ * comprobantes en DOS pantallas y por eso su `<DataTable>` vive en `components/shared/`:
+ * con el recorrido viejo, esa tabla no existía para el censo y R57 se habría dado por
+ * cumplido sin que nada lo vigilara. Al abrir el recorrido apareció además una tabla
+ * PREEXISTENTE que el censo nunca había visto (`components/private/analytics/TablaResumen`),
+ * declarada abajo con su estado real.
+ */
+const ARBOLES_UI = ["app", "components"] as const;
+
+/**
+ * Totales del censo VIGENTE: 31 tablas = 30 instancias de `<DataTable>` (en 25 archivos)
+ * + 1 `<table>` cruda. Se afirman a propósito: si el árbol crece, este número cambia y
+ * obliga a pasar por el registro en vez de sumar una tabla en silencio.
+ *
+ * Cómo se llegó hasta aquí, porque los números del spec 170 ya no valen como referencia:
+ *  - el spec (design §1.4) censó 31 = 30 + 1 en 25 archivos;
+ *  - el borrado de `OrdenesApartado.tsx` con la vista legacy `OrdenesRevisionMaestro`
+ *    (chore del 2026-07-31) lo bajó a 30 = 29 + 1 en 24 archivos — una tabla menos, y era
+ *    `con_descarga`;
+ *  - la feature 171 suma el desglose por tienda (`DesgloseMovimientosTienda.tsx`, también
+ *    `con_descarga`) y lo devuelve a 31 = 30 + 1 en 25 archivos.
+ *
+ * Que coincida con el total del spec es CASUALIDAD aritmética: el reparto no es el mismo
+ * (allí estaba el apartado de órdenes, aquí el desglose por tienda). Ver la cabecera de
+ * `censo-tablas.ts`.
+ */
+// Feature 170 — FASE 2 (T I.2): 25 → 29 archivos, MISMAS 30 instancias. Cuatro históricos se
+// llevaron su `<DataTable>` a un componente propio al pasar a paginación server-side (ver la
+// cabecera de `censo-tablas.ts`). Que las instancias no se muevan es justo lo que dice que fue
+// una mudanza y no una tabla nueva ni una perdida por el camino.
+//
+// Feature 172 (T H.1): 29 → 31 archivos y 30 → 32 instancias, y NINGUNA de las dos de más es
+// una tabla que naciera hoy: son las dos que el recorrido viejo no veía por pararse en `app/`
+// (`components/shared/liquidacion/PagosRegistradosTabla` de esta feature y
+// `components/private/analytics/TablaResumen`, de la 130). Los números se leyeron del ÁRBOL
+// —la guardia se vio fallar con `31 recibido / 29 esperado` antes de tocarlos—, no de ningún
+// documento. Censo total: 33 tablas = 32 `<DataTable>` + 1 `<table>` cruda.
+//
+// chore «borrar código muerto de UI» (2026-08-07): 31 → 30 archivos y 32 → 31 instancias. La
+// que falta NO es una tabla que se haya dejado de vigilar: es `ZonasModule.tsx`, borrada por
+// decisión humana junto con `ZonaForm` y `zonas-columns` porque NINGUNA ruta la montaba (no
+// existe `configuracion/zonas/page.tsx`). Estaba censada `fuera` por ese mismo motivo, así
+// que baja también el nº de exclusiones con `<DataTable>` (6 → 5) y el censo total (33 → 32).
+// El caso es idéntico al de `OrdenesApartado.tsx` del 2026-07-31, con una diferencia que
+// importa: aquélla descargaba y ésta no, así que aquí NO se pierde ninguna descarga.
+//
+// Feature 196 (T5.2): 30 → 31 archivos y 31 → 32 instancias. La de más es el ranking
+// CONGELADO (`ranking/historico/_components/RankingHistoricoModule.tsx`), una pantalla nueva
+// que nace `con_descarga`. Censo total: 33 tablas = 32 `<DataTable>` + 1 `<table>` cruda.
+// Pedido humano del 2026-08-16: 31 → 25 archivos y 32 → 25 instancias. Las SIETE de menos son
+// los listados de CIERRES, que pasaron de tabla a tira de comprobantes; tres de sus archivos
+// desaparecieron con ellas y los otros cuatro siguen vivos (uno, `CierreDiaModule`, conserva su
+// otra tabla, la de gestiones del día — por eso caen siete instancias pero sólo seis archivos).
+// Ninguna descarga se pierde —se mudó al nuevo envoltorio— y por eso esto NO es una baja de
+// alcance: el detalle, con los siete nombres, está en `censo-tablas.ts`.
+// FEATURE 258 (F3.1): 25 → 26 archivos y 25 → 26 instancias. La de más es el detalle de un
+// mensajero del tablero del día (`monitoreo/_components/DetalleMensajeroPanel.tsx`), que pasó
+// de una `<Table>` cruda a `<DataTable>`. **No es una tabla nueva para el usuario**: es la
+// misma que la feature 192 ya pintaba, ahora sobre la primitiva. Nace `fuera` con su motivo
+// escrito en `censo-tablas.ts` (es una vista de lectura dentro de un modal, y R34 de esa
+// ficha le prohíbe ofrecer acciones).
+// FEATURE 304: 26 → 27 archivos y 26 → 27 instancias. La de más es la tabla que dice qué
+// filas de la carga masiva entraron con el monto REDONDEADO y de cuánto a cuánto (el aviso de
+// la 299, que hasta ahora moría en el cliente). Nace `fuera`, con su motivo en
+// `censo-tablas.ts`: son filas del archivo que la propia tienda acaba de subir, y los dos
+// pasos que la montan ya ofrecen sus descargas. Censo total: 28 = 27 `<DataTable>` + 1 cruda.
+// FICHA 333 (H1): 27 → 28 archivos y 27 → 28 instancias. La de más es la COLA de cobros de gasto
+// fijo por aprobar (`wallet/_components/CobrosGastoFijoPendientesPanel.tsx`), la sección nueva de
+// `/wallet`. Nace `fuera` con su motivo en `censo-tablas.ts`: es una cola de decisión efímera y lo
+// que se aprueba aterriza en el libro de la caja, que sí descarga. Los números son los MEDIDOS
+// contra el árbol —la guardia los cotejó y dijo 28—, no una suma de escritorio. Censo total:
+// 29 = 28 `<DataTable>` + 1 cruda.
+// FICHA 337 (segunda mitad): 28 → 29 archivos y 28 → 29 instancias. La de más es la COLA DE
+// COBROS POR RECHAZO DE TIENDA de `/wallet`, espejo de la que trajo la 333. Nace `fuera` con su
+// motivo escrito en el censo. Los números se leyeron del ÁRBOL —esta guardia se vio fallar con
+// «29 recibido / 28 esperado» antes de tocarlos—, no de una suma de escritorio. Censo total:
+// 30 = 29 `<DataTable>` + 1 cruda.
+// FICHA 336 «borrar /mis-pagos y /qr» (2026-08-30): 29 → 28 archivos y 29 → 28 instancias, y es
+// la SEGUNDA vez que estos números BAJAN (la primera fue `ZonasModule`, el 2026-08-07). La que
+// falta es «Desglose de pagos del mensajero» (`mis-pagos/_components/DesglosePagos.tsx`), que
+// desaparece con la pantalla `/mis-pagos`, borrada por decisión humana. A diferencia de
+// `ZonasModule`, ésta SÍ descargaba: es la primera descarga que este repo pierde, y se pierde a
+// propósito. Los números son los MEDIDOS —esta guardia se vio fallar con «28 recibido /
+// 29 esperado» antes de tocarlos—, no una resta de escritorio. Censo total: 29 = 28
+// `<DataTable>` + 1 cruda.
+// FICHA 343 (B6.1): 28 → 29 archivos y 28 → 29 instancias. La de más es el DESPLEGABLE de una
+// fila de la tarjeta «Cómo se compone la ganancia de la empresa»
+// (`wallet/_components/DetalleFilaComposicion.tsx`), que enseña los movimientos que componen el
+// importe de esa fila. Nace `fuera` con su motivo escrito en `censo-tablas.ts`: es un recorte
+// del mismo libro que «Libro de movimientos de la caja principal», que sí descarga el conjunto
+// completo con sus filtros. Esta guardia se vio fallar primero con «hay tablas sin registrar:
+// app/(app)/wallet/_components/DetalleFilaComposicion.tsx #1» antes de tocar estos números, que
+// es la convención escrita en este propio archivo. Censo total: 30 = 29 `<DataTable>` + 1 cruda.
+// FICHA 344 (B8.3): 29 → 31 archivos y 29 → 31 instancias. Las dos de más son los desplegables de
+// una fila del LIBRO de la caja (`wallet/_components/DetalleMovimientoCierre.tsx`) y del libro de
+// la TIENDA (`mi-wallet/_components/DetalleMiMovimientoCierre.tsx`), que enseñan las órdenes que
+// componen el importe de ese movimiento. Nacen las DOS `con_descarga`, a diferencia del panel de
+// la 343: aquél era un recorte de un libro que ya se descarga entero, y éstos enseñan algo que
+// ninguna otra descarga produce —el reparto de un importe entre las órdenes que lo componen—.
+// Esta guardia se vio fallar primero con «hay tablas sin registrar: …DetalleMiMovimientoCierre.tsx
+// #1, …DetalleMovimientoCierre.tsx #1» antes de tocar estos números, que es la convención escrita
+// en este propio archivo. Censo total: 32 = 31 `<DataTable>` + 1 cruda.
+// FICHA 345 (T8.3): 31 → 32 archivos y 31 → 32 instancias. La de más es la tabla de PRODUCTOS de
+// `/analitica` (`analitica/_components/entregas/ProductosTabla.tsx`), y es la PRIMERA `<DataTable>`
+// que monta esa pantalla —hasta hoy sus paneles eran todos gráficas—. Nace `con_descarga`: lo que
+// enseña (unidades, órdenes y efectividad por producto) no lo produce ninguna otra descarga del
+// repo, así que no es un segundo archivo del mismo hecho. Esta guardia se vio fallar primero con
+// «hay tablas sin registrar: app/(app)/analitica/_components/entregas/ProductosTabla.tsx #1» antes
+// de tocar estos números, que es la convención escrita en este propio archivo. Censo total:
+// 33 = 32 `<DataTable>` + 1 `<table>` cruda.
+// FICHA 347 (F5/G5): 32 → 33 archivos y 32 → 33 instancias. La de mas es el DETALLE ORDEN POR
+// ORDEN del dinero de un producto (`analitica/_components/entregas/DineroProductoDetalle.tsx`),
+// que se despliega desde una fila de la tabla que trajo la 345. Nace `fuera`, y no por el motivo
+// de la 343 —no es un recorte de otro archivo: ninguna descarga del repo enseña que ORDENES
+// componen el dinero de un producto— sino porque el borde de la ficha solo sirve el detalle
+// PAGINADO y no hay modo completo; el motivo entero esta en su entrada de `censo-tablas.ts` y la
+// consecuencia (R72 sin cubrir) esta dicha alli y en `progress/impl_347.md`. Esta guardia se vio
+// fallar primero con «hay tablas sin registrar:
+// app/(app)/analitica/_components/entregas/DineroProductoDetalle.tsx #1» antes de tocar estos
+// numeros, que es la convencion escrita en este propio archivo. Censo total: 34 = 33
+// `<DataTable>` + 1 `<table>` cruda.
+//
+// FICHA 362 (T6.3): 33 -> 34 archivos y 33 -> 34 instancias, por el REGISTRO DE ACCIONES
+// (`app/(app)/historico/acciones/_components/HistorialAccionesModule.tsx`). Nace
+// `con_descarga` —Familia A: pagina en el servidor y tiene su propia accion de dataset
+// completo— y por eso la que sube es la cuenta de dentro de alcance, no la de exclusiones.
+// Esta guardia se vio fallar PRIMERO con «hay tablas sin registrar:
+// app/(app)/historico/acciones/_components/HistorialAccionesModule.tsx #1» antes de tocar
+// estos numeros, que es la convencion escrita en este propio archivo. Censo total: 35 = 34
+// `<DataTable>` + 1 `<table>` cruda.
+//
+// FICHA 411 (B7/T7.2): 34 -> 35 archivos y 34 -> 35 instancias, por la COHORTE DE CARGA
+// (`app/(app)/analitica/_components/entregas/CohorteCargaTabla.tsx`), tercera `<DataTable>` de
+// `/analitica`. Nace `fuera` —y por eso la que sube es la cuenta de EXCLUSIONES, no la de dentro
+// de alcance— con un motivo que no es ninguno de los dos ya registrados: no le falta la puerta
+// (el borde sirve el DTO entero en una consulta) ni es un recorte de otra descarga; es que ⟨P5⟩
+// del spec de la ficha decidio que la descarga no entra. El motivo entero esta en su entrada de
+// `censo-tablas.ts`. Esta guardia se vio fallar PRIMERO con «hay tablas sin registrar:
+// app/(app)/analitica/_components/entregas/CohorteCargaTabla.tsx #1» antes de tocar estos
+// numeros, que es la convencion escrita en este propio archivo. Censo total: 36 = 35
+// `<DataTable>` + 1 `<table>` cruda.
+//
+// ⭑ FICHA 429 (T21-B): 35 -> 36 archivos y 35 -> 36 instancias, por el SINPE POR BODEGA
+// (`app/(app)/configuracion/sinpe/_components/SinpeBodegasModule.tsx`). Nace `fuera` --y por eso
+// la que sube es la cuenta de EXCLUSIONES, no la de dentro de alcance-- con un motivo distinto de
+// los ya registrados: no le falta la puerta ni es un recorte de otra descarga ni lo veto un spec;
+// es que NO ES UN LIBRO. Son las ocho bodegas de la operacion, un catalogo de configuracion que
+// cabe entero en la pantalla, sin paginacion ni accion de dataset completo. El motivo entero esta
+// en su entrada de `censo-tablas.ts`. Esta guardia se vio fallar PRIMERO con «hay tablas sin
+// registrar: app/(app)/configuracion/sinpe/_components/SinpeBodegasModule.tsx #1» antes de tocar
+// estos numeros, que es la convencion escrita en este propio archivo. Censo total: 37 = 36
+// `<DataTable>` + 1 `<table>` cruda.
+//
+// ⭑ FICHA 431 (T23, R29): 36 -> 38 archivos y 36 -> 38 instancias, por las DOS tablas de
+// `/wallet/satelites` --`SaldosSatelitesTable` (los saldos por bodega) y
+// `DesgloseConsolidacionesSatelite` (las consolidaciones de UNA bodega)--. Es la segunda vez que
+// este censo sube de dos en dos, y por el mismo motivo que la 344: son dos pantallas con dos
+// alcances distintos, no un recorte de la otra.
+//
+// LAS DOS NACEN `con_descarga`, asi que aqui sube la cuenta de DENTRO de alcance (23 -> 25) y las
+// exclusiones NO se mueven (siguen en 13/14). Precedente literal de las dos: sus gemelas de
+// tiendas (`SaldosTiendasTable` y `DesgloseMovimientosTienda`), que son libros de dinero
+// paginados en el servidor con su propia accion de conjunto completo. Declararlas `fuera` habria
+// exigido un motivo que no existe.
+//
+// Esta guardia se vio fallar PRIMERO --«expected 38 to be 36» en los archivos y «expected 39 to
+// be 37» en el censo total-- antes de tocar estos numeros, que es la convencion escrita arriba.
+// Censo total: 39 = 38 `<DataTable>` + 1 `<table>` cruda.
+//
+// ⭑ FICHA 458-D (T D.8, D14): 38 -> 37 archivos y 38 -> 37 instancias. Se RETIRAN los dos
+// desplegables de la wallet —`DesgloseMovimientosTienda` y `DesglosePagosMensajero`— y ENTRA UNA
+// tabla compartida, el extracto del ESTADO DE CUENTA (`components/shared/estado-cuenta/
+// EstadoCuenta.tsx`), que montan tres pantallas (tienda, mensajero, bodega). La de las consolidaciones
+// de una bodega NO nace ni muere: cambia de archivo (`DesgloseConsolidacionesSatelite` ->
+// `ConciliacionSatelite`). Dentro de alcance 25 -> 24 (las tres son `con_descarga`); exclusiones
+// intactas. Esta guardia se vio fallar PRIMERO con «expected 37 to be 38» y «expected 38 to be 39»
+// antes de tocar estos numeros. Censo total: 38 = 37 `<DataTable>` + 1 `<table>` cruda.
+//
+// ⭑ FICHA 458-D (T D.5, cierre de pantalla): 37 -> 36 archivos y 37 -> 36 instancias. Se RETIRA
+// `mi-wallet/_components/DesgloseTiendaLedger.tsx` («Desglose de movimientos de la tienda»): `/mi-wallet`
+// es ahora el estado de cuenta compartido, que gana su cuarto montaje (`MiEstadoCuenta`). Dentro de
+// alcance 24 -> 23; exclusiones intactas. Esta guardia se vio fallar PRIMERO con «expected 36 to be 37»
+// y «expected 37 to be 38» antes de tocar estos numeros. Censo total: 37 = 36 `<DataTable>` + 1 cruda.
+//
+// ⭑ FICHA 482 (2026-10-15): 36 -> 35 archivos y 36 -> 35 instancias. Sale `cierre-detalle-shared.tsx`
+// («Gestiones de un cierre por resultado (detalle)», `con_descarga`): sus tablas (`DetalleSecciones`)
+// las sustituyó la 478 por la lista en pestañas de `cierre-factura`, que no es `<DataTable>`, y la
+// 482 las borró. Dentro de alcance 23 -> 22; exclusiones intactas. Esta guardia se vio fallar
+// PRIMERO con «expected 35 to be 36», «expected 36 to be 37» y «length of 23 but got 22» antes de
+// tocar estos numeros. Censo total: 36 = 35 `<DataTable>` + 1 cruda.
+const TOTAL_ARCHIVOS_CON_DATATABLE = 35;
+const TOTAL_INSTANCIAS_DATATABLE = 35;
+
+function listarTsx(dir: string, acc: string[] = []): string[] {
+  for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+    const completo = path.join(dir, entrada.name);
+    if (entrada.isDirectory()) listarTsx(completo, acc);
+    else if (entrada.name.endsWith(".tsx")) acc.push(completo);
+  }
+  return acc;
+}
+
+function rutaRelativa(archivo: string): string {
+  return path.relative(RAIZ, archivo).split(path.sep).join("/");
+}
+
+interface InstanciaEnArbol {
+  ruta: string;
+  indice: number;
+  declaraDescarga: boolean;
+}
+
+function instanciasDelArbol(): InstanciaEnArbol[] {
+  return ARBOLES_UI.flatMap((arbol) => listarTsx(path.join(RAIZ, arbol)))
+    .sort()
+    .flatMap((archivo) =>
+      etiquetasDataTable(readFileSync(archivo, "utf8")).map((etiqueta, indice) => ({
+        ruta: rutaRelativa(archivo),
+        indice,
+        declaraDescarga: /\bdescarga=/.test(etiqueta),
+      })),
+    );
+}
+
+function registroPorRuta(censo: ArchivoCensado[]): Map<string, ArchivoCensado> {
+  return new Map(censo.map((entrada) => [entrada.ruta, entrada]));
+}
+
+/**
+ * Feature 172 (T H.1) — pantallas que MONTAN un componente de tabla compartido.
+ *
+ * Una tabla que vive en `components/` es UNA instancia de `<DataTable>` en el código y
+ * tantas tablas como pantallas la monten para quien las usa. Se exige lo mismo que para
+ * importar y para renderizar, porque solo con lo primero un re-export contaría como montaje, y
+ * solo con lo segundo lo haría cualquier archivo que nombre el componente de pasada
+ * (`AnularPagoDialog` lo cita en su cabecera).
+ *
+ * Feature 207 — el predicado se mudó a `montajes-componente.ts` y ahora quita los comentarios
+ * antes de mirar: exigir import Y JSX mitigaba la prosa pero no la cerraba (un archivo que
+ * importe el componente de verdad y lo cite entre ángulos en un comentario colaba). Aquí queda
+ * solo el recorrido del árbol.
+ */
+function montajesEnElArbol(rutaComponente: string): string[] {
+  return ARBOLES_UI.flatMap((arbol) => listarTsx(path.join(RAIZ, arbol)))
+    .map(rutaRelativa)
+    .filter((ruta) => ruta !== rutaComponente)
+    .filter((ruta) => montaComponente(readFileSync(path.join(RAIZ, ruta), "utf8"), rutaComponente))
+    .sort();
+}
+
+describe("guardia de cobertura del censo de tablas", () => {
+  it("toda tabla del árbol o declara descarga o figura como exclusión justificada", () => {
+    // R4. Es el test que hace fallar a una tabla NUEVA sin registrar.
+    const instancias = instanciasDelArbol();
+    const registro = registroPorRuta(CENSO_DATATABLE);
+
+    const sinRegistrar = instancias.filter((inst) => {
+      const entrada = registro.get(inst.ruta);
+      return entrada === undefined || entrada.tablas[inst.indice] === undefined;
+    });
+    expect(
+      sinRegistrar.map((i) => `${i.ruta} #${i.indice + 1}`),
+      "hay tablas sin registrar en tests/unit/descarga/censo-tablas.ts",
+    ).toEqual([]);
+
+    // El registro tampoco puede sobrar: una entrada de un archivo borrado o de una
+    // instancia que ya no existe deja de vigilar nada.
+    const archivosEnArbol = new Set(instancias.map((i) => i.ruta));
+    const instanciasPorRuta = new Map<string, number>();
+    for (const inst of instancias) {
+      instanciasPorRuta.set(inst.ruta, (instanciasPorRuta.get(inst.ruta) ?? 0) + 1);
+    }
+    for (const entrada of CENSO_DATATABLE) {
+      expect(archivosEnArbol.has(entrada.ruta), `${entrada.ruta} ya no monta DataTable`).toBe(true);
+      expect(entrada.tablas.length, `${entrada.ruta}: nº de tablas registradas`).toBe(
+        instanciasPorRuta.get(entrada.ruta),
+      );
+    }
+
+    // Cada tabla registrada dice qué es: o está cableada, o declara la tanda que la
+    // cablea, o declara por qué queda fuera. Ninguna sin decisión escrita.
+    for (const entrada of CENSO_DATATABLE) {
+      for (const tabla of entrada.tablas) {
+        const donde = `${entrada.ruta} :: ${tabla.nombre}`;
+        expect(tabla.nombre.length, donde).toBeGreaterThan(0);
+        if (tabla.estado !== "con_descarga") {
+          expect(tabla.nota ?? "", `${donde}: sin motivo/tanda declarados`).not.toBe("");
+        }
+      }
+    }
+
+    // Estado declarado == estado real del código, tabla a tabla.
+    for (const inst of instancias) {
+      const tabla = registro.get(inst.ruta)!.tablas[inst.indice];
+      const donde = `${inst.ruta} #${inst.indice + 1} (${tabla.nombre})`;
+      expect(inst.declaraDescarga, `${donde}: estado declarado "${tabla.estado}"`).toBe(
+        tabla.estado === "con_descarga",
+      );
+    }
+
+    // El censo del spec, verificado contra el árbol (design §1.4).
+    expect(instanciasPorRuta.size).toBe(TOTAL_ARCHIVOS_CON_DATATABLE);
+    expect(instancias.length).toBe(TOTAL_INSTANCIAS_DATATABLE);
+  });
+
+  it("las tablas declaradas fuera de alcance no montan control de descarga", () => {
+    // R2. Las seis exclusiones vigentes: cinco `<DataTable>` y la `<table>` cruda del podio.
+    // Ninguna puede acabar ofreciendo la descarga "de paso".
+    //
+    // Feature 172 (T H.1): entre las excluidas entró `TablaResumen` (analítica), que el
+    // recorrido viejo no veía. No es una decisión de alcance nueva de la 172: es una
+    // tabla preexistente que pasa a estar vigilada.
+    //
+    // chore «borrar código muerto de UI» (2026-08-07): 6 → 5 `<DataTable>` excluidas. Sale la
+    // de `ZonasModule`, borrada con su módulo. Ninguna decisión de alcance cambia: se retira
+    // el archivo que la contenía, no la razón por la que estaba fuera.
+    const instancias = instanciasDelArbol();
+    const registro = registroPorRuta(CENSO_DATATABLE);
+
+    const excluidas = instancias.filter(
+      (inst) => registro.get(inst.ruta)?.tablas[inst.indice]?.estado === "fuera",
+    );
+    // FEATURE 258 (F3.1): 5 -> 6 exclusiones. La de mas es el detalle del tablero del dia,
+    // que pasa de `<Table>` cruda a `<DataTable>` sin cambiar de alcance.
+    // FEATURE 304: 6 -> 7. La de mas es el aviso de los montos redondeados de la carga masiva,
+    // que nace `fuera` y sin control de descarga (motivo en `censo-tablas.ts`).
+    // FICHA 333 (H1): 7 -> 8. La de mas es la cola de cobros de gasto fijo por aprobar, que nace
+    // `fuera` y sin control: lo que se aprueba se descarga desde el LIBRO de la caja.
+    // FICHA 337 (segunda mitad): 8 -> 9. La de mas es la cola de cobros por rechazo de tienda,
+    // `fuera` y sin control por el mismo motivo, palabra por palabra, que su hermana de la 333: lo
+    // que se aprueba se descarga desde los libros donde aterriza, no desde la cola.
+    // FICHA 343 (B6.1): 9 -> 10. La de mas es el desplegable de una fila de la tarjeta de la
+    // ganancia: `fuera` y sin control, porque es un recorte del MISMO libro de la caja, que ya
+    // descarga el conjunto completo con sus filtros.
+    // FICHA 347 (F5/G5): 10 -> 11. La de mas es el detalle orden por orden del dinero de un
+    // producto: `fuera` y sin control, porque el borde solo lo sirve paginado y un archivo
+    // saldria truncado a una pagina o reconstruido con N llamadas desde el navegador.
+    // FICHA 411 (B7/T7.2): 11 -> 12. La de mas es la cohorte de carga por dia: `fuera` y sin
+    // control porque ⟨P5⟩ del spec decidio que la descarga no entra en la ficha, no porque falte
+    // la puerta ni por ser un recorte de otra descarga.
+    // ⭑ FICHA 429 (T21-B): 12 -> 13. La de mas es el SINPE por bodega: `fuera` y sin control
+    // porque no es un libro --ocho filas de configuracion, sin paginacion ni dataset completo--
+    // y porque exportar las ocho cuentas de cobro a un archivo no le da a quien administra nada
+    // que no vea en pantalla.
+    expect(excluidas.length).toBe(13);
+    for (const inst of excluidas) {
+      const tabla = registro.get(inst.ruta)!.tablas[inst.indice];
+      expect(inst.declaraDescarga, `${inst.ruta} :: ${tabla.nombre}`).toBe(false);
+    }
+
+    // La tabla cruda no pasa por `DataTable`, así que se comprueba distinto: el archivo
+    // existe y su `<table>` sigue sin ningún control de descarga alrededor.
+    for (const entrada of CENSO_TABLAS_CRUDAS) {
+      const archivo = path.join(RAIZ, entrada.ruta);
+      expect(existsSync(archivo), `${entrada.ruta} no existe`).toBe(true);
+      const fuente = readFileSync(archivo, "utf8");
+      expect(fuente).toMatch(/<table[\s>]/);
+      expect(fuente).not.toMatch(/DescargarDatasetButton/);
+      for (const tabla of entrada.tablas) {
+        expect(tabla.estado).toBe("fuera");
+        expect(tabla.nota ?? "", `${entrada.ruta} :: ${tabla.nombre}`).not.toBe("");
+      }
+    }
+
+    // El censo total vigente: 32 instancias + 1 tabla cruda = 33 tablas (feature 172, T H.1,
+    // menos `ZonasModule` —borrada el 2026-08-07 con el árbol de zonas sin montar—, más el
+    // ranking congelado que suma la feature 196).
+    const totalCensado =
+      CENSO_DATATABLE.reduce((n, e) => n + e.tablas.length, 0) +
+      CENSO_TABLAS_CRUDAS.reduce((n, e) => n + e.tablas.length, 0);
+    // FEATURE 304: 27 → 28, por la tabla del aviso de montos redondeados de la carga masiva.
+    // FICHA 333 (H1): 28 → 29, por la cola de cobros de gasto fijo por aprobar.
+    // FICHA 337 (segunda mitad): 29 → 30, por la cola de cobros por devolución a origen de tienda.
+    // FICHA 336: 30 → 29, por el desglose de pagos del mensajero, que se va con `/mis-pagos`.
+    // FICHA 343 (B6.1): 29 → 30, por el desplegable de una fila de la tarjeta de la ganancia.
+    // FICHA 344 (B8.3): 30 → 32, por los DOS desplegables de una fila del libro de movimientos
+    // —el de la caja y el de la tienda—, que reparten el importe entre las órdenes que lo
+    // componen. Es la primera vez que este censo sube de dos en dos, y es porque los dos libros
+    // son dos pantallas distintas con dos alcances distintos (design §5.2/§11-A5).
+    // FICHA 345 (T8.3): 32 → 33, por la tabla de productos de `/analitica`, la primera
+    // `<DataTable>` de esa pantalla. Las 11 exclusiones NO se mueven.
+    // FICHA 347 (F5/G5): 33 → 34, por el detalle orden por orden del dinero de un producto.
+    // Las 22 con descarga NO se mueven: la que entra nace `fuera`.
+    // FICHA 362 (T6.3): 34 → 35, por el registro de acciones. Las 12 exclusiones NO se mueven:
+    // la que entra nace `con_descarga`.
+    // FICHA 411 (B7/T7.2): 35 → 36, por la cohorte de carga por día de `/analitica`. Las 23 con
+    // descarga NO se mueven: la que entra nace `fuera`, con ⟨P5⟩ del spec como motivo.
+    // ⭑ FICHA 429 (T21-B): 36 → 37, por el SINPE de cada bodega. Las 23 con descarga NO se
+    // mueven: la que entra nace `fuera`.
+    // ⭑ FICHA 431 (T23): 37 → 39, por las DOS tablas de `/wallet/satelites`. Aquí las que suben
+    // son las de DENTRO de alcance (23 → 25): las dos nacen `con_descarga`, con el precedente
+    // literal de sus gemelas de tiendas. Las 14 exclusiones NO se mueven.
+    // ⭑ FICHA 458-D (T D.8): 39 → 38. Salen los dos desplegables de tiendas y mensajeros y entra el
+    // extracto compartido del estado de cuenta. Las 14 exclusiones NO se mueven.
+    // ⭑ FICHA 458-D (T D.5, cierre de pantalla): 38 → 37. Sale el libro de `/mi-wallet`
+    // (`DesgloseTiendaLedger`): la tienda ve el extracto compartido. Las 14 exclusiones NO se mueven.
+    // ⭑ FICHA 482: 37 → 36. Salen las tablas del detalle de un cierre (`DetalleSecciones`), que la
+    // 478 sustituyó por la lista en pestañas. Las 14 exclusiones NO se mueven.
+    expect(totalCensado).toBe(36);
+  });
+
+  it("la FASE 1 del export queda cerrada: ninguna tabla del censo sigue pendiente", () => {
+    // T G.1 — el estado `pendiente` fue el andamio del rollout por tandas: permitía que la
+    // suite siguiera verde con 3 tablas cableadas y 22 por cablear. Cerrada la fase, ese
+    // andamio se retira, y hace falta un test que lo exija: sin él, «FASE 1 terminada»
+    // sería una afirmación de una bitácora, no una propiedad del repo, y una tabla a
+    // medias podría convivir con el cierre sin que nada lo dijera.
+    //
+    // Vigila en los dos sentidos:
+    //  (a) ningún `pendiente` en el registro  -> la fase no se cierra con tablas a medias;
+    //  (b) los totales del Anexo I y del II   -> ni se cablea una exclusión ni se saca de
+    //      alcance una tabla que sí debe descargar, «de paso».
+    const censadas = [...CENSO_DATATABLE, ...CENSO_TABLAS_CRUDAS].flatMap((entrada) =>
+      entrada.tablas.map((tabla) => ({ ...tabla, ruta: entrada.ruta })),
+    );
+
+    const pendientes = censadas
+      .filter((tabla) => tabla.estado === "pendiente")
+      .map((tabla) => `${tabla.ruta} :: ${tabla.nombre} (${tabla.nota ?? "sin tanda"})`);
+    expect(
+      pendientes,
+      "la FASE 1 del export no puede cerrarse con tablas pendientes de cablear",
+    ).toEqual([]);
+
+    // Anexo I: las tablas dentro de alcance, todas descargando. Anexo II: las 6
+    // exclusiones, ninguna con control. El reparto se verifica contra el registro, que a
+    // su vez se contrasta contra el árbol en el test de arriba.
+    //
+    // 25: las 24 que quedaron tras borrarse el «Apartado de órdenes por estado» con su
+    // vista legacy (2026-07-31) + el desglose por tienda que suma la feature 171. Las
+    // exclusiones siguen siendo 6: ni el borrado ni la 171 cambiaron una sola decisión de
+    // alcance — el borrado se llevó una tabla que descargaba y la 171 añade otra que
+    // descarga.
+    //
+    // Feature 172 (T H.1): 25 → 26 y 6 → 7 al abrir el recorrido a `components/`. La de más
+    // dentro de alcance es la lista de comprobantes de la liquidación (nace `con_descarga`);
+    // la de más fuera es `TablaResumen`, preexistente y sin consumidor montado.
+    //
+    // chore «borrar código muerto de UI» (2026-08-07): 7 → 6 fuera de alcance, y las 26
+    // dentro de alcance NO se mueven. Esa asimetría es el dato: lo borrado (`ZonasModule`)
+    // era una exclusión declarada, no una tabla que descargara — ninguna descarga se pierde.
+    //
+    // Feature 196 (T5.2): 26 → 27 dentro de alcance y las 6 exclusiones NO se mueven. La de
+    // más es el ranking congelado del histórico, que nace descargando: ninguna decisión de
+    // alcance previa cambia.
+    //
+    // FEATURE 258 (F3.1): 6 -> 7 fuera de alcance, y las 20 dentro de alcance NO se mueven.
+    // La de mas es el detalle del tablero del dia, que pasa de `<Table>` cruda a
+    // `<DataTable>`: cambia la primitiva con la que se pinta, no lo que el usuario puede
+    // hacer con ella. Ninguna descarga se gana ni se pierde.
+    //
+    // FEATURE 304: 7 -> 8 fuera de alcance, y las 20 dentro de alcance NO se mueven. La de más
+    // es el aviso de los montos redondeados de la carga masiva: una tabla que EXPLICA un dato
+    // del archivo que la tienda acaba de subir, no un conjunto que nadie pueda llevarse.
+    //
+    // FICHA 333 (H1): 8 -> 9 fuera de alcance, y las 20 dentro de alcance NO se mueven. La de más
+    // es la cola de cobros de gasto fijo por aprobar. Esa asimetría es el dato: la ficha añade una
+    // pantalla de DECISIÓN, no un listado que alguien quiera llevarse — y ninguna descarga
+    // existente se gana ni se pierde con ella.
+    //
+    // FICHA 337 (segunda mitad): 9 -> 10 fuera de alcance, y las 20 dentro de alcance NO se
+    // mueven. La de mas es la cola de cobros por RECHAZO DE TIENDA, espejo de la anterior. La
+    // asimetria vuelve a ser el dato: esta ficha anade otra pantalla de DECISION, no un listado
+    // que alguien quiera llevarse, y ninguna descarga existente se gana ni se pierde.
+    //
+    // FICHA 336 (borrar `/mis-pagos` y `/qr`): 20 -> 19 dentro de alcance, y las 10 exclusiones
+    // NO se mueven. La asimetria es, otra vez, el dato — pero invertida respecto a todas las
+    // anteriores: lo que se fue era una tabla que DESCARGABA, no una exclusion. Es la primera
+    // descarga que este censo pierde, y desaparece porque desaparecio su pantalla («Desglose de
+    // pagos del mensajero», `/mis-pagos`), no porque alguien le quitara el control.
+    //
+    // FICHA 343 (B6.1): 10 -> 11 fuera de alcance, y las 19 dentro de alcance NO se mueven. La
+    // de mas es el desplegable de una fila de la tarjeta de la ganancia. La asimetria vuelve a
+    // ser el dato, y aqui con un motivo que ninguna de las anteriores tenia: lo que este panel
+    // enseña YA SE DESCARGA por otra puerta —el libro de la caja, con sus filtros—, asi que una
+    // descarga propia seria un segundo archivo del mismo hecho.
+    // FICHA 344 (B8.3): 19 -> 21 dentro de alcance, y las 11 exclusiones NO se mueven. Es la
+    // primera vez que la asimetria cae del lado CONTRARIO desde la 171: lo que entra son dos
+    // tablas que SI descargan. El motivo esta escrito en sus entradas del censo y es el que las
+    // separa del panel de la 343 —lo que enseñan no lo produce ninguna otra descarga—.
+    // FICHA 345 (T8.3): 21 -> 22 dentro de alcance, y las 11 exclusiones NO se mueven. La de más
+    // es la tabla de productos de `/analitica`, que nace descargando por el mismo motivo que las
+    // dos de la 344: lo que enseña no lo produce ninguna otra descarga del repo. `/analitica` ya
+    // exportaba —el CSV operativo de la 134 y el financiero— pero eso son series de métricas por
+    // fecha; el grano «producto» no existe en el catálogo de dimensiones.
+    // FICHA 347 (F5/G5): 22 dentro de alcance NO se mueven y las exclusiones pasan de 11 a 12.
+    // La que entra es el detalle del dinero de un producto, y su motivo NO es el de la 343 (un
+    // recorte de algo que ya se descarga): es que no existe la puerta para servirlo entero. La
+    // diferencia importa, porque la de la 343 no se va a cablear nunca y esta si, en cuanto el
+    // borde gane su modo completo.
+    // FICHA 362 (T6.3): 22 -> 23 dentro de alcance, y las 12 exclusiones NO se mueven. La de
+    // mas es el registro de acciones: un registro de auditoria que no se puede sacar de la
+    // pantalla no sirve para auditar, asi que `fuera` no era una opcion con motivo.
+    // FICHA 411 (B7/T7.2): las 23 dentro de alcance NO se mueven y las exclusiones pasan de 12 a
+    // 13. La que entra es la cohorte de carga por dia, y su motivo es el TERCERO distinto de
+    // este censo: no es un recorte de algo que ya se descarga (343) ni le falta la puerta para
+    // servirlo entero (347) — es que la descarga se pregunto y se decidio que no entra (⟨P5⟩).
+    // ⭑ FICHA 429 (T21-B): las 23 dentro de alcance NO se mueven y las exclusiones pasan de 13 a
+    // 14. La que entra es el SINPE por bodega, y su motivo es el CUARTO distinto de este censo:
+    // no es un recorte de algo que ya se descarga (343), ni le falta la puerta (347), ni se
+    // preguntó y se dijo que no (411) — es que NO ES UN LIBRO. Son ocho filas de configuración
+    // que caben enteras en la pantalla, sin paginación ni acción de dataset completo, y lo único
+    // exportable de ellas es la lista de las ocho cuentas a las que cobran los clientes.
+    // ⭑ FICHA 431 (T23, R29): 23 → 25 dentro de alcance y las 14 exclusiones INTACTAS. Las dos
+    // que entran son las de `/wallet/satelites`, y nacen `con_descarga` porque son libros de
+    // dinero paginados en el servidor con su propia acción de conjunto completo — el mismo caso,
+    // archivo por archivo, que sus gemelas de tiendas.
+    // ⭑ FICHA 458-D (T D.8): 25 → 24 dentro de alcance —salen dos desplegables `con_descarga` y entra
+    // uno, el extracto del estado de cuenta, también `con_descarga`—; las 14 exclusiones INTACTAS.
+    // ⭑ FICHA 458-D (T D.5, cierre de pantalla): 24 → 23 —sale el libro de `/mi-wallet`, `con_descarga`—.
+    // ⭑ FICHA 482: 23 → 22 —salen las tablas del detalle de un cierre (`DetalleSecciones`),
+    // `con_descarga`; la 478 retiró su descarga por sección (P3) y la 482 las borró—.
+    expect(censadas.filter((t) => t.estado === "con_descarga")).toHaveLength(22);
+    expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(14);
+  });
+
+  it("una tabla compartida declara TODAS las pantallas que la montan", () => {
+    // Feature 172 (T H.1, R57). El censo cuenta `<DataTable>` del código; una tabla que vive
+    // en `components/` la ven los usuarios tantas veces como pantallas la monten. Sin esta
+    // comprobación, montar la misma tabla en una tercera pantalla no dejaría rastro en
+    // ningún sitio: los totales no se moverían y el registro seguiría verde.
+    const compartidas = CENSO_DATATABLE.flatMap((entrada) =>
+      entrada.tablas
+        .filter((tabla) => tabla.montajes !== undefined)
+        .map((tabla) => ({ ruta: entrada.ruta, tabla })),
+    );
+    expect(compartidas.length, "ninguna tabla declara montajes").toBeGreaterThan(0);
+
+    for (const { ruta, tabla } of compartidas) {
+      const donde = `${ruta} :: ${tabla.nombre}`;
+      // Compartida quiere decir compartida: con un solo montaje, la tabla debería vivir en
+      // la pantalla que la usa y no en el árbol común.
+      expect(tabla.montajes!.length, `${donde}: un solo montaje`).toBeGreaterThan(1);
+      expect([...tabla.montajes!].sort(), `${donde}: montajes declarados`).toEqual(
+        montajesEnElArbol(ruta),
+      );
+    }
+
+    // Y al revés: una tabla de `components/` que gane un consumidor obliga a volver aquí.
+    // Es lo que hace que `TablaResumen` no pueda montarse en una pantalla en silencio.
+    const montadaSinDeclarar = CENSO_DATATABLE.filter((entrada) =>
+      entrada.ruta.startsWith("components/"),
+    ).flatMap((entrada) =>
+      entrada.tablas
+        .filter(
+          (tabla) => tabla.montajes === undefined && montajesEnElArbol(entrada.ruta).length > 0,
+        )
+        .map((tabla) => `${entrada.ruta} :: ${tabla.nombre}`),
+    );
+    expect(montadaSinDeclarar, "tabla compartida montada sin declarar sus pantallas").toEqual([]);
+  });
+});

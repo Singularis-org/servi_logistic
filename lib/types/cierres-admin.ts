@@ -1,0 +1,390 @@
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { montoPositivoSchema } from "@/lib/types/wallet";
+import { METODO_PAGO_SEED } from "@/lib/types/metodo-pago";
+// FICHA 398: el MISMO `motivo` que exige una gestion `rechazada` real (feature 36). Se IMPORTA y
+// no se reescribe: dos declaraciones del mismo requisito divergen a la primera correccion.
+import { motivoSchema } from "@/lib/types/gestion-orden";
+import { cierreConfig } from "@/lib/config/cierre";
+import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import { paginaInputSchema } from "@/lib/types/pagina-input";
+import { filtrosCierresSchema } from "@/lib/types/filtros-cierres";
+import type {
+  ListarCierresAdminServiceResult,
+  CierreAdminResumen,
+  CierreGestionDescargaDTO,
+  CierreDetalleAdminServiceResult,
+  AprobarCierreServiceResult,
+  RechazarCierreServiceResult,
+  ForzarSolicitudVencidoServiceResult,
+  ActualizarPagosGestionServiceResult,
+  CorregirResultadoGestionServiceResult,
+} from "@/lib/interfaces/services/ICierresAdminService";
+
+// Feature 38 — schemas zod del borde de las Server Actions "Cierres del dia" del
+// admin + los *Result de action (resultado de dominio del service + `unauthenticated`
+// que resuelve el borde, patron lib/types/cierre.ts / recepcion-satelite.ts).
+
+// R6/R10/R13: identifica el cierre a ver/aprobar. `uuid` casa el @default(uuid()) de
+// cierre_dia (feature 37); un id mal formado -> VALIDATION_ERROR en el borde.
+export const cierreIdSchema = z.object({
+  cierreId: z.string().uuid(),
+});
+
+/**
+ * Feature 158 (m5 del review) — TOPE del monto de indemnizacion, DERIVADO DE LA COLUMNA y no
+ * elegido a ojo. `gestion_orden.indemnizacion` es `DECIMAL(12,2)`
+ * (`db/migrations/20260730120000_incidente_indemnizacion/migration.sql`, y el
+ * `@db.Decimal(12, 2)` del modelo): precision 12, escala 2 -> 12 - 2 = **10 digitos enteros**
+ * -> el mayor valor representable es `9999999999.99`. Un centimo mas y Postgres responde
+ * `numeric field overflow`.
+ *
+ * Si algun dia la columna cambia de precision, este numero se recalcula de la MISMA cuenta;
+ * no es un limite de negocio.
+ */
+const INDEMNIZACION_DIGITOS_ENTEROS = 10; // = precision(12) - escala(2)
+export const INDEMNIZACION_MONTO_MAX = `${"9".repeat(INDEMNIZACION_DIGITOS_ENTEROS)}.99`;
+
+/**
+ * Feature 158 (R19/R20/R24) — un monto de indemnizacion por gestion `incidente` del cierre.
+ * El monto viaja como STRING de extremo a extremo (`montoPositivoSchema` de la wallet: hasta 2
+ * decimales, > 0, comparado con `Prisma.Decimal`) y solo se convierte a Decimal AL ESCRIBIR:
+ * nunca `number`, nunca `parseFloat`. Un monto vacio, 0, negativo, con 3 decimales o con coma
+ * cae aqui -> ZodError -> `validation_error` por campo.
+ *
+ * m5 del review: ademas se acota POR ARRIBA. Sin el tope, un monto de 11+ digitos pasaba el
+ * borde y la guardia de cobertura, y reventaba DENTRO de la transaccion de aprobacion con un
+ * `numeric field overflow` de Postgres: la tx revertia (sin corrupcion) pero el admin veia un
+ * error generico y perdia todo lo tecleado. Con el tope, el rechazo ocurre ANTES de abrir la
+ * transaccion del dinero y llega como `validation_error`, igual que el resto de errores de
+ * este mismo borde.
+ *
+ * EL TOPE VIVE AQUI, en el borde de la 158, y NO en `montoPositivoSchema`: ese schema lo
+ * comparten la wallet (42/45) y sus formularios, que tienen la misma carencia pero cuya
+ * columna y cuyo flujo no han pasado por esta puerta. Endurecerlo desde aqui cambiaria el
+ * comportamiento de otras features sin decision suya. La correccion global es una feature
+ * propia, no un efecto colateral de esta.
+ */
+export const indemnizacionSchema = z.object({
+  gestionId: z.string().uuid(),
+  monto: montoPositivoSchema.refine((v) => {
+    try {
+      return new Prisma.Decimal(v).lte(INDEMNIZACION_MONTO_MAX);
+    } catch {
+      // Zod v4 corre este refine AUNQUE el regex de `montoPositivoSchema` ya haya fallado
+      // (mismo motivo documentado alli). Un valor no numerico no es un problema DE TOPE: se
+      // devuelve `true` para no anadir un mensaje enganoso, y el regex + el `> 0` lo rechazan
+      // igual con el suyo.
+      return true;
+    }
+  }, `El monto no puede superar ${INDEMNIZACION_MONTO_MAX}.`),
+});
+
+/**
+ * Feature 238 (T2.1, design §3.1, R7/R12) — UNA gestion confirmada FISICAMENTE por bodega.
+ *
+ * `numGuia` es lo que bodega LEYO (camara o teclado); el servicio comprueba que casa con la guia
+ * de la orden de esa gestion (R12), de modo que un fallo de mapeo del cliente sea un
+ * `validation_error` por entrada y NO una confirmacion falsa de un paquete que nadie tuvo
+ * delante.
+ *
+ * Es un OBJETO y no un `string[]` de ids por dos motivos: lleva el dato que R12 verifica, y puede
+ * crecer sin romper el contrato si algun dia se decide registrar el medio (D7, hoy descartado).
+ *
+ * Lo que vive en el borde es la FORMA (uuid, entero positivo). La COBERTURA —que lo confirmado
+ * sea exactamente el conjunto que vuelve— la valida el SERVICE contra las gestiones reales del
+ * cierre: el borde no sabe que gestiones tiene ese cierre (design §10-F, misma razon que la 158).
+ */
+export const confirmacionFisicaSchema = z.object({
+  gestionId: z.string().uuid(),
+  numGuia: z.number().int().positive(),
+});
+
+// Feature 158 (R19/R36): `aprobarCierre` gana la lista de indemnizaciones. `.default([])` la
+// hace RETROCOMPATIBLE con el contrato de la 38: un cierre sin incidentes se aprueba
+// exactamente como hoy, sin campos nuevos obligatorios. La cobertura EXACTA (que no falte ni
+// sobre ninguna) la valida el SERVICE contra las gestiones reales del cierre, no el borde: el
+// borde no sabe que gestiones tiene ese cierre.
+export const aprobarCierreSchema = z.object({
+  cierreId: z.string().uuid(),
+  indemnizaciones: z.array(indemnizacionSchema).default([]),
+  // Feature 238 (T2.1, R15/R16): el `.default([])` NO abre ningun agujero. Un cierre CON
+  // retornables y lista vacia cae en la guardia de cobertura del servicio (R15: «sin campo» se
+  // trata como confirmacion vacia y se le aplica R8 sin excepcion). Lo que el default preserva es
+  // R16: un cierre sin nada que devolver —3 de cada 12 medidos en produccion, no un caso raro— se
+  // aprueba con el MISMO payload de siempre.
+  confirmacionFisica: z.array(confirmacionFisicaSchema).default([]),
+});
+
+export type IndemnizacionInput = z.infer<typeof indemnizacionSchema>;
+export type ConfirmacionFisicaBordeInput = z.infer<typeof confirmacionFisicaSchema>;
+export type AprobarCierreInput = z.infer<typeof aprobarCierreSchema>;
+
+// Feature 111/R16: la valvula de escape identifica el cierre `vencido` a destrabar por su id
+// (mismo shape que aprobar). Un id mal formado -> VALIDATION_ERROR en el borde.
+export const forzarSolicitudVencidoSchema = cierreIdSchema;
+
+// R11: el motivo de rechazo es OBLIGATORIO y no vacio. `.trim().min(1)` rechaza el
+// string en blanco (defensa de borde; el service lo re-valida).
+export const rechazarCierreSchema = z.object({
+  cierreId: z.string().uuid(),
+  motivo: z.string().trim().min(1),
+});
+
+/**
+ * Pedido humano (2026-08-19) — CORRECCIÓN del desglose de pago de una gestión de un cierre
+ * ABIERTO por un admin/maestro. Las líneas NUEVAS sustituyen enteras a las anteriores.
+ *
+ * **El total NO viaja.** Lo que se corrige es CÓMO se cobró, no CUÁNTO: el total es
+ * `gestion_orden.monto_recibido`, que el servicio lee de la base y contra el que cuadra la
+ * suma. Aceptarlo del cliente sería dejar que la pantalla decida cuánto dinero declaró el
+ * mensajero, que es exactamente lo que esta corrección no debe poder hacer.
+ *
+ * **Los montos son STRING**, como los de la indemnización de arriba y por lo mismo: viajan de
+ * extremo a extremo sin pasar por `number`, y solo se convierten a `Prisma.Decimal` al
+ * comparar y al escribir. `montoPositivoSchema` ya rechaza el vacío, el 0, el negativo, los
+ * tres decimales y la coma.
+ *
+ * **Al menos una línea** (`.min(1)`): una entrega que cobró no puede quedarse sin decir cómo.
+ * Y el desglose vacío no es un caso de esta pantalla — una entrega SIN cobro no tiene nada que
+ * repartir, y el servicio la rechaza por su `monto_recibido` en cero.
+ */
+export const actualizarPagosGestionSchema = z
+  .object({
+    gestionId: z.string().uuid(),
+    lineas: z
+      .array(
+        z.object({
+          metodo: z.enum(METODO_PAGO_SEED),
+          monto: montoPositivoSchema,
+        }),
+      )
+      .min(1, "el desglose necesita al menos un método"),
+  })
+  .strict()
+  // Espejo EXACTO del `@@unique(gestion_id, metodo)`: dos transferencias se registran como UNA
+  // línea con el monto ya sumado. Misma regla que el borde del mensajero (feature 212/R11).
+  .refine((v) => new Set(v.lineas.map((l) => l.metodo)).size === v.lineas.length, {
+    path: ["lineas"],
+    message: "cada metodo de pago puede aparecer una sola vez",
+  });
+
+export type ActualizarPagosGestionInput = z.infer<typeof actualizarPagosGestionSchema>;
+
+/**
+ * FICHA 398 — CORRECCION EN SITIO del RESULTADO de una gestion de un cierre ABIERTO
+ * (`entregada -> rechazada`), por un maestro o un admin.
+ *
+ * **`nuevoResultado` NO viaja, y es la mitad del contrato.** Esta ficha corrige UNA y solo una
+ * pareja. Aceptar el destino desde el cliente abriria las otras por accidente —`entregada ->
+ * devuelta`, `rechazada -> entregada`— y cada una mueve dinero en una direccion distinta. El
+ * `.strict()` convierte en `validation_error` cualquier intento de colarlo, en vez de descartarlo
+ * en silencio (leccion de la 352).
+ *
+ * **El `motivo` es el MISMO `motivoSchema` que exige una gestion `rechazada` real** (feature 36,
+ * `lib/types/gestion-orden.ts`), importado y no reescrito: dos declaraciones del mismo requisito
+ * son dos requisitos que un dia divergen, y este texto es lo unico que explica por que una entrega
+ * cobrada dejo de serlo. `.trim().min(1)` rechaza el string en blanco; el servicio lo re-valida.
+ *
+ * **La EVIDENCIA no se pide** (H3, decision del LEADER y no firma humana): una correccion hecha
+ * desde la central no puede tener una foto del rechazo, y ya hay un rechazo en produccion sin
+ * ninguna. La gestion CONSERVA la foto de la entrega, que es la prueba del error.
+ */
+export const corregirResultadoGestionSchema = z
+  .object({
+    gestionId: z.string().uuid(),
+    motivo: motivoSchema,
+  })
+  .strict();
+
+export type CorregirResultadoGestionInput = z.infer<typeof corregirResultadoGestionSchema>;
+
+export type CierreIdInput = z.infer<typeof cierreIdSchema>;
+export type RechazarCierreInput = z.infer<typeof rechazarCierreSchema>;
+
+/**
+ * Pedido humano del 2026-08-16 — anade el bloque de FILTROS a la entrada de un listado de
+ * cierres, sin tocar su paginacion ni su `.strict()`.
+ *
+ * `filtros` es UNA clave opcional y anidada, no cuatro claves sueltas al lado de `page`. Es
+ * deliberado y es lo que mantiene viva la barrera que ya existia: la lista blanca del bloque de
+ * filtros esta declarada en UN sitio (`filtrosCierresSchema`, con su propio `.strict()`), asi
+ * que una clave nueva —de filtro o, lo que importa, de ALCANCE— no puede entrar por el lado del
+ * listado sin pasar por alli. Anidar tambien deja legible en el codigo de pantalla la
+ * diferencia entre «que pagina pido» y «que recorto».
+ *
+ * `.strict()` se reescribe aunque el schema base ya lo traiga: la barrera es de ESTOS listados
+ * y no debe depender de que `paginaInputSchema` nunca se afloje.
+ */
+function conFiltrosDeCierres<T extends z.ZodRawShape>(base: z.ZodObject<T>) {
+  return base.extend({ filtros: filtrosCierresSchema.optional() }).strict();
+}
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40) — entrada del HISTORICO paginado de cierres del dia.
+ *
+ * `.strict()`: este listado NO tiene filtros (design §11.3, riesgo BAJO) y su alcance sale
+ * del ACTOR, nunca de la peticion. Con `.strict()`, un cliente que intente colar
+ * `destinoZonaId` recibe `validation_error` en el BORDE en vez de que la clave viaje hasta
+ * un servicio que —hoy— la ignoraria en silencio.
+ *
+ * El tamano de pagina sale de `cierreConfig` (T H.1) y se recorta a `MAX_PAGE_SIZE`: un
+ * `pageSize: 100000` no se rechaza, se acota (R40).
+ *
+ * Feature 170 (T J.1): el bloque zod —que estaba escrito aqui a mano— pasa a
+ * `paginaInputSchema`, donde se declara UNA vez para los siete listados sin filtros de estos
+ * tres modulos. El `.strict()` de arriba es exactamente lo que no puede olvidarse en una copia.
+ */
+export const listarHistoricoCierresAdminSchema = conFiltrosDeCierres(
+  paginaInputSchema(cierreConfig),
+);
+
+export type ListarHistoricoCierresAdminInput = z.infer<typeof listarHistoricoCierresAdminSchema>;
+
+/**
+ * Feature 170 — FASE 2 (T J.1, R40) — entrada de la COLA paginada de pendientes de decision.
+ *
+ * Se declara APARTE del historico aunque su forma sea identica: son dos listados distintos y
+ * la pantalla los pagina por separado (cada uno con su `page`). Compartir el schema obligaria
+ * a que compartieran tambien el nombre, y el nombre es lo unico que dice cual de las dos
+ * mitades se esta pidiendo.
+ */
+export const listarPendientesCierresAdminSchema = conFiltrosDeCierres(
+  paginaInputSchema(cierreConfig),
+);
+
+export type ListarPendientesCierresAdminInput = z.infer<typeof listarPendientesCierresAdminSchema>;
+
+/**
+ * Feature 184 — Tanda D (R17) — entrada de los CONJUNTOS de los dos listados de esta pantalla.
+ *
+ * Se DERIVAN del schema de su pagina quitando `page`/`pageSize`, igual que los de las tandas B
+ * y C: la tabla y el archivo no pueden entender cosas distintas por «entrada». Como estos dos
+ * listados no tienen filtros, lo que queda es una lista blanca de CERO claves — y aqui la clave
+ * que importa tiene nombre propio: `destinoZonaId`. El alcance de esta pantalla es rol + zona
+ * DESTINO, asi que una clave de alcance que el servicio llegara a leer algun dia abriria el
+ * dinero de la bodega vecina. Muere en el borde, sin tocar el servicio.
+ *
+ * Son DOS constantes y no una, aunque hoy su forma coincida, por el mismo motivo que sus dos
+ * schemas de pagina: el nombre es lo unico que dice cual de las dos mitades se esta pidiendo.
+ *
+ * `.strict()` se reescribe aunque `.omit()` lo herede: la barrera es de ESTOS listados y no
+ * debe depender de que el schema base nunca se afloje.
+ *
+ * PEDIDO HUMANO DEL 2026-08-16 — la lista blanca deja de ser de CERO claves: `.omit()` quita
+ * `page`/`pageSize` y **conserva `filtros`**, a proposito. El archivo tiene que salir del MISMO
+ * conjunto que el listado ensena, filtros incluidos; si no, «descargar» dejaria de significar
+ * «esto que estoy viendo, entero» y pasaria a significar «todo lo del alcance», que es
+ * justamente lo que un usuario con un filtro puesto no espera. Lo que NO entra sigue sin
+ * entrar: `destinoZonaId` en singular —la clave de alcance que este comentario nombraba— no
+ * existe en `filtrosCierresSchema`, y el plural que si existe es un recorte que solo puede
+ * quitar filas dentro del alcance que el servicio ya resolvio.
+ */
+export const listarHistoricoCierresAdminCompletoSchema = listarHistoricoCierresAdminSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarHistoricoCierresAdminCompletoInput = z.infer<
+  typeof listarHistoricoCierresAdminCompletoSchema
+>;
+
+export const listarPendientesCierresAdminCompletoSchema = listarPendientesCierresAdminSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarPendientesCierresAdminCompletoInput = z.infer<
+  typeof listarPendientesCierresAdminCompletoSchema
+>;
+
+/**
+ * Errores de BORDE de los listados de este modulo: los de dominio que decide el servicio
+ * (`forbidden`) mas los dos que decide la Server Action antes de llamarlo. Se declara aparte
+ * para poder pasarlo como parametro al contrato comun (T H.2): unificar la forma del EXITO no
+ * puede ensanchar los errores que esta pantalla tiene que manejar.
+ */
+export type CierresAdminListadoError =
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+
+// Feature 170 (T I.1, R41): el contrato comun de listado paginado, aplicado al historico.
+export type ListarHistoricoCierresAdminResult = ListarPaginadoResult<
+  CierreAdminResumen,
+  CierresAdminListadoError
+>;
+
+// Feature 170 (T J.1, R41/R42): el mismo contrato, aplicado a la COLA de pendientes. Su `total`
+// es el que sustituye al `({pendientes.length})` de la cabecera.
+export type ListarPendientesCierresAdminResult = ListarPaginadoResult<
+  CierreAdminResumen,
+  CierresAdminListadoError
+>;
+
+/**
+ * Feature 184 — Tanda D (R6/R7) — los dos conjuntos tal como los recibe el cliente.
+ *
+ * Union de error ANCHO (`ActionError`, dentro de `ListarCompletoResult`) y no el estrecho de la
+ * pagina: quien los consume es `filasDesdeResultado`, el adaptador comun de la descarga, que
+ * redacta el mensaje de CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva SOLO
+ * conteos, jamas filas ni un conjunto truncado (R6).
+ */
+export type ListarHistoricoCierresAdminCompletoResult = ListarCompletoResult<CierreAdminResumen>;
+export type ListarPendientesCierresAdminCompletoResult = ListarCompletoResult<CierreAdminResumen>;
+
+/**
+ * Feature 230 — Tanda 2 (T2.3, R13/R21/R38) — el conjunto de la HOJA FUNDIDA de «cierres del
+ * dia» tal como lo recibe el cliente.
+ *
+ * Mismo union ANCHO que sus hermanos, y por el mismo motivo: quien lo consume es
+ * `filasDesdeResultado`, el adaptador comun de la descarga, que redacta el mensaje de CUALQUIER
+ * error de borde en un solo sitio. De ahi sale D12 gratis: «el mensajero no tiene cierres» y «el
+ * mensajero esta fuera de tu alcance» llegan los DOS como `{ ok, items: [] }` y el boton muestra
+ * el mismo mensaje de «sin datos». No hay rama que los distinga, que es justo lo que R38 pide.
+ *
+ * El schema de su ENTRADA no vive aqui sino en `lib/types/filtros-cierres.ts`
+ * (`filtrosDescargaGestionesSchema`): lo comparten los DOS bordes de la feature, y una lista
+ * blanca duplicada es una lista blanca que se afloja por un lado sin que el otro se entere.
+ */
+export type ListarGestionesCierresAdminCompletoResult =
+  ListarCompletoResult<CierreGestionDescargaDTO>;
+
+// Resultados de las Server Actions: resultado de dominio del service +
+// `unauthenticated` (sin sesion, lo resuelve el borde).
+export type ListarCierresAdminResult =
+  | ListarCierresAdminServiceResult
+  | { status: "unauthenticated" };
+export type VerCierreDetalleResult =
+  | CierreDetalleAdminServiceResult
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+export type AprobarCierreResult =
+  | AprobarCierreServiceResult
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };
+export type RechazarCierreResult =
+  | RechazarCierreServiceResult
+  | { status: "unauthenticated" };
+/**
+ * Pedido humano (2026-08-19): resultado de la Server Action que corrige el desglose de pago de
+ * una gestion (dominio del service + `validation_error` de zod / `unauthenticated` sin sesion).
+ */
+export type ActualizarPagosGestionResult =
+  | ActualizarPagosGestionServiceResult
+  | { status: "unauthenticated" };
+
+/**
+ * FICHA 398: resultado de la Server Action que corrige EN SITIO el resultado de una gestion
+ * (dominio del service + `validation_error` de zod / `unauthenticated` sin sesion). El
+ * `validation_error` de zod cabe en el del dominio: los dos son `Record<string, string[]>`.
+ */
+export type CorregirResultadoGestionResult =
+  | CorregirResultadoGestionServiceResult
+  | { status: "unauthenticated" };
+
+// Feature 111/R16: resultado de la Server Action de la valvula de escape (dominio del service
+// + `validation_error` de zod / `unauthenticated` sin sesion, resueltos en el borde).
+export type ForzarSolicitudVencidoResult =
+  | ForzarSolicitudVencidoServiceResult
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };

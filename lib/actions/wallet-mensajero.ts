@@ -1,0 +1,204 @@
+"use server";
+
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
+import { WalletMensajeroService } from "@/lib/services/WalletMensajeroService";
+import { OrigenLegibleRepository } from "@/lib/repositories/OrigenLegibleRepository";
+import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
+import {
+  origenEnItems,
+  origenEnPagina,
+  type ConOrigenEnPagina,
+} from "@/lib/services/origen-en-resultado";
+import type { IOrigenLegibleService } from "@/lib/interfaces/services/IOrigenLegibleService";
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  IWalletMensajeroService,
+  ListarCuentasPorPagarServiceResult,
+  ListarPagosDeMensajeroServiceResult,
+} from "@/lib/interfaces/services/IWalletMensajeroService";
+import {
+  listarCuentasPorPagarCompletoSchema,
+  listarCuentasPorPagarPaginadoSchema,
+  listarPagosDeMensajeroCompletoSchema,
+  listarPagosDeMensajeroSchema,
+  type ListarCuentasPorPagarCompletoResult,
+  type ListarCuentasPorPagarPaginadoResult,
+  type ListarPagosDeMensajeroCompletoResult,
+} from "@/lib/types/wallet-mensajero";
+import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import type { AppErrorShape } from "@/lib/errors";
+
+// Feature 44 (T13) — Server Actions del LIBRO del pago por mensajero (lecturas internas del
+// mismo proyecto -> Server Action, no Route API, patron wallet-tienda.ts). Resuelve el actor por
+// sesion, valida en el borde con zod y delega en el servicio bajo `withErrorHandler`.
+// `unauthenticated` (sin sesion) y `validation_error` (ZodError) se resuelven en el borde;
+// `forbidden`/`ok` los devuelve el service como resultado de dominio. Money-safe: los DTOs
+// exponen montos como STRING (R21/R27); el cliente nunca recibe Prisma.Decimal.
+//
+// Ficha 336 (2026-08-30): se RETIRARON `verMiCuentaPorPagarAction`, `listarMisPagosAction` y
+// `listarMisPagosCompletoAction`. Su unica superficie era `/mis-pagos`, borrada por decision
+// humana; se eligio retirarlas y NO anotarlas con la excusa `sin-superficie` (escrita aqui
+// SIN la arroba a proposito: `rutas-336-retiradas.guardia` cuenta las anotaciones reales de este
+// archivo y exige que sea EXACTAMENTE una), porque esa anotacion afirma
+// un motivo real para quedarse y aqui no lo hay: la capacidad desaparece. Lo que queda son las
+// CUATRO lecturas de administracion, cuya superficie viva es `/wallet/mensajeros`.
+
+export type ListarCuentasPorPagarActionResult =
+  | ListarCuentasPorPagarServiceResult
+  | { status: "unauthenticated" };
+
+export type ListarPagosDeMensajeroActionResult =
+  // Ficha 458-A (TA.2, R5–R8): cada fila baja con su origen legible (`origen`).
+  | ConOrigenEnPagina<ListarPagosDeMensajeroServiceResult>
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+// Traduce el AppErrorShape del borde: ZodError (VALIDATION_ERROR) o falta de sesion
+// (UNAUTHORIZED). Espejo de `toWalletTiendaActionError`.
+function toWalletMensajeroActionError(
+  shape: AppErrorShape,
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" } {
+  switch (shape.code) {
+    case "VALIDATION_ERROR":
+      return {
+        status: "validation_error",
+        fieldErrors: (shape.details?.fieldErrors as Record<string, string[]> | undefined) ?? {},
+      };
+    case "UNAUTHORIZED":
+      return { status: "unauthenticated" };
+    default:
+      throw new Error(`wallet-mensajero: AppErrorCode inesperado ${shape.code}`);
+  }
+}
+
+function buildService(): IWalletMensajeroService {
+  const prisma = getPrismaClient();
+  return new WalletMensajeroService(new PagoMensajeroMovimientoRepository(prisma));
+}
+
+export interface WalletMensajeroDeps {
+  service?: IWalletMensajeroService;
+  getActor?: () => Promise<Actor | null>;
+  /** Ficha 458-A (TA.2): el origen legible de las filas; en produccion, el real sobre Prisma. */
+  origenes?: IOrigenLegibleService;
+}
+
+/** Ficha 458-A (TA.2) — composition root del origen legible (una consulta por tipo presente). */
+function buildOrigenes(): IOrigenLegibleService {
+  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()));
+}
+
+/**
+ * R18/R19/R27: cuentas por pagar de TODOS los mensajeros (solo maestro). Forbidden/unauthenticated
+ * sin exponer datos.
+ *
+ * @sin-superficie sustituida por `listarCuentasPorPagarPaginadoAction` en a0ae14e7/adce25ce (2026-08-01), que es la que llama `wallet/mensajeros/page.tsx`. Se conserva como lectura sin recorte para los tests de paridad del listado paginado; no es deuda.
+ */
+export async function listarCuentasPorPagarAction(
+  deps: WalletMensajeroDeps = {},
+): Promise<ListarCuentasPorPagarActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const service = deps.service ?? buildService();
+    return service.listarCuentasPorPagar(actor);
+  });
+  return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T L.1, R40/R41/R45): las MISMAS cuentas por pagar, en paginas y con la
+ * busqueda por nombre resuelta en el servidor.
+ *
+ * `input ?? {}` para que la pagina 1 con los defaults del dominio sea una llamada sin
+ * argumentos: es lo que el Server Component necesita pre-cargar. El schema es `.strict()`, asi
+ * que una clave de ALCANCE colada muere aqui con `validation_error` sin llegar al service.
+ */
+export async function listarCuentasPorPagarPaginadoAction(
+  input: unknown,
+  deps: WalletMensajeroDeps = {},
+): Promise<ListarCuentasPorPagarPaginadoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
+    const data = listarCuentasPorPagarPaginadoSchema.parse(input ?? {});
+    const service = deps.service ?? buildService();
+    return service.listarCuentasPorPagarPaginado(data, actor);
+  });
+  return isAppErrorShape(r) ? toWalletMensajeroActionError(r) : r;
+}
+
+/**
+ * Feature 170 — FASE 2 (T M.1, cierre de Q-L2) — las MISMAS cuentas por pagar SIN recorte por
+ * pagina, para la descarga (R52).
+ *
+ * Calcado del borde de su pagina: mismo actor, mismo servicio y el mismo schema menos
+ * `page`/`pageSize`. La busqueda vigente viaja tal cual y el conjunto vuelve YA filtrado: la
+ * pantalla deja de releer el listado entero para volver a filtrarlo en el navegador, que es lo
+ * que Q-L2 dejo escrito.
+ */
+export async function listarCuentasPorPagarCompletoAction(
+  input: unknown,
+  deps: WalletMensajeroDeps = {},
+): Promise<ListarCuentasPorPagarCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
+    const data = listarCuentasPorPagarCompletoSchema.parse(input ?? {}); // R18
+    const service = deps.service ?? buildService();
+    return service.listarCuentasPorPagarCompleto(data, actor);
+  });
+  return isAppErrorShape(r) ? toWalletMensajeroActionError(r) : r;
+}
+
+/**
+ * R18/R22/R27: DESGLOSE por cierre de UN mensajero (solo maestro), paginado (mas reciente primero)
+ * + filtros server-side por fecha/cierre; el saldo refleja el conjunto filtrado. NO acota a
+ * `actor.usuarioId` (era el espejo de `listarMisPagosAction`, retirada por la ficha 336): el
+ * `mensajeroId` (REQUERIDO por
+ * `listarPagosDeMensajeroSchema`) viaja en el input y el service gatea a maestro. `mensajeroId`
+ * faltante/vacio -> validation_error. Montos STRING.
+ *
+ * @sin-superficie FICHA 458-D (T D.8, D14): el desglose por cierre de un mensajero. Su superficie era `DesglosePagosMensajero`, el desplegable de `/wallet/mensajeros`, retirado; lo sustituye el estado de cuenta (`verEstadoCuentaAction`). NO se retira (458-D servidor, 2026-09-26): sin llamadores en API publica, asistente, scripts ni crons, pero la usan `e2e/wallet-mensajeros.spec.ts`, `rutas-336-retiradas.guardia`, `tests/integration/db/pago-mensajero-liquidacion.test.ts` y `wallet-cierres-selector.test.ts` (contra Postgres), `wallet-mensajeros-page.test.tsx`, `CuentasPorPagarTable.test.tsx`, `paginacion-transversal.test.tsx`, `WalletMensajerosTabs.test.tsx` y sus tests de borde; retirarla exige mover antes esas redes al estado de cuenta.
+ */
+export async function listarPagosDeMensajeroAction(
+  input: unknown,
+  deps: WalletMensajeroDeps = {},
+): Promise<ListarPagosDeMensajeroActionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = listarPagosDeMensajeroSchema.parse(input); // mensajeroId REQUERIDO -> ZodError si falta
+    const service = deps.service ?? buildService();
+    const r = await service.listarPagosDeMensajero(data, actor);
+    return origenEnPagina(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);
+  });
+  return isAppErrorShape(r) ? toWalletMensajeroActionError(r) : r;
+}
+
+/**
+ * Feature 170 (T C.2, design §4) — DESGLOSE COMPLETO de UN mensajero, sin paginacion, para
+ * la descarga. Calcado de `listarPagosDeMensajeroAction`: `mensajeroId` sigue siendo
+ * REQUERIDO (ausente -> `validation_error` sin tocar la base) y el guard de acceso total lo
+ * pone el service (R17). Ninguna rama devuelve filas junto a un error (R16/R17/R18).
+ *
+ * @sin-superficie FICHA 458-D (T D.8, D14): la descarga del desglose por cierre de un mensajero. Su superficie era la descarga de `DesglosePagosMensajero`, retirado; lo sustituye el estado de cuenta (`verEstadoCuentaAction`). NO se retira (458-D servidor, 2026-09-26): sin llamadores en API publica, asistente, scripts ni crons, pero la usan `e2e/wallet-mensajeros.spec.ts`, `rutas-336-retiradas.guardia`, `tests/integration/db/pago-mensajero-liquidacion.test.ts` y `wallet-cierres-selector.test.ts` (contra Postgres), `wallet-mensajeros-page.test.tsx`, `CuentasPorPagarTable.test.tsx`, `paginacion-transversal.test.tsx`, `WalletMensajerosTabs.test.tsx` y sus tests de borde; retirarla exige mover antes esas redes al estado de cuenta.
+ */
+export async function listarPagosDeMensajeroCompletoAction(
+  input: unknown,
+  deps: WalletMensajeroDeps = {},
+): Promise<ListarPagosDeMensajeroCompletoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
+    const data = listarPagosDeMensajeroCompletoSchema.parse(input); // R18: mensajeroId REQUERIDO
+    const service = deps.service ?? buildService();
+    const r = await service.listarPagosDeMensajeroCompleto(data, actor);
+    return origenEnItems(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);
+  });
+  return isAppErrorShape(r) ? toWalletMensajeroActionError(r) : r;
+}

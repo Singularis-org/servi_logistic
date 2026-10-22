@@ -1,0 +1,528 @@
+import { Prisma } from "@prisma/client";
+import { derivarBalance } from "@/lib/utils/wallet-balance";
+import { montoEscala2 } from "@/lib/utils/monto-escala-2";
+import {
+  COMPOSICION_FILA_OTROS,
+  WALLET_EGRESO_CON_FILA_SEED,
+  WALLET_EGRESO_NOMBRADO_SEED,
+  WALLET_INGRESO_PROPIO_SEED,
+  WALLET_MOVIMIENTO_CATEGORIA_SEED,
+  type AgregadoCajaRow,
+  type CajaResumenDTO,
+  type ComposicionFilaId,
+  type ComposicionGananciaDTO,
+  type ModoComposicionCaja,
+  type NaturalezaMovimiento,
+  type WalletEgresoNombrado,
+  type WalletIngresoPropio,
+  type WalletMovimientoCategoria,
+} from "@/lib/types/wallet";
+
+/**
+ * Feature 173 (design §1.1/§1.2) — la caja principal, partida en DOS cifras.
+ *
+ * El problema en una frase: mientras la caja solo contuviera dinero DE LA EMPRESA, «ingresos −
+ * egresos» era la ganancia y podia llamarse «balance» sin mentir. En cuanto entra el
+ * contra-entrega —dinero DE LAS TIENDAS que solo pasa por la caja— ese numero deja de
+ * significar una sola cosa. Esta feature no consiste en meter dos categorias: consiste en
+ * partir un numero en dos y nombrarlos.
+ *
+ * Funcion PURA (R10), money-safe de punta a punta: `Prisma.Decimal` dentro, STRING fuera,
+ * `number` en ninguna parte (R7). Se anade AL LADO de `derivarBalance`, que NO se toca (R9):
+ * su consumidor vivo es la analitica financiera, que la llama con SUBCONJUNTOS de categorias
+ * donde «ingresos − egresos» sigue siendo lo correcto. Es el mismo movimiento que hizo la 171
+ * con `derivarDesgloseTienda` al lado de `derivarSaldoTienda`.
+ */
+
+/**
+ * De quien es el dinero: de la empresa, o de un tercero que lo tiene aparcado en la caja.
+ *
+ * Feature 231: la DECLARACION se muda a `lib/types/wallet.ts` —desde esta feature es tambien
+ * el tipo de un campo de `WalletMovimientoDTO` (R31), y `lib/types/` no puede depender de
+ * `lib/utils/`—. Se re-exporta aqui para que ningun importador de la 173 cambie: la mudanza es
+ * una mudanza, no un cambio de significado. La CLASIFICACION sigue viviendo abajo.
+ */
+export type { NaturalezaMovimiento };
+
+/**
+ * R2/R3 — clasificacion EXHAUSTIVA de las categorias de la caja en las dos naturalezas.
+ *
+ * La naturaleza es de la CATEGORIA, no de la fila: no se anade ninguna columna al libro
+ * (design §10-B descarta esa via —seria una segunda fuente de verdad sobre una tabla
+ * append-only con filas ya en produccion—).
+ *
+ * Es un `Record` sobre el union COMPLETO a proposito: el dia que el enum de Postgres gane un
+ * valor, `_EnsureCategoriaExhaustive` (lib/types/wallet.ts) lo obliga a entrar en el union y
+ * ESTE objeto deja de compilar hasta que alguien decida —y escriba— de quien es ese dinero
+ * (R3). Un `Partial<Record<…>>` o un `switch` con `default` lo dejarian caer en silencio
+ * dentro de «propio», que es justo el error que esta feature existe para impedir.
+ * `tests/unit/utils/caja-tesoreria.test.ts` recorre ademas el SEED en RUNTIME, para que la
+ * garantia no dependa de que alguien ejecute `tsc`.
+ */
+export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, NaturalezaMovimiento> = {
+  // PROPIO: lo que la empresa gana y lo que la empresa gasta.
+  ingreso_flete: "propio",
+  ingreso_flete_devolucion: "propio",
+  ingreso_comision_cod: "propio",
+  ingreso_iva_flete: "propio",
+  ingreso_iva_flete_devolucion: "propio",
+  ingreso_iva_comision_cod: "propio",
+  ingreso_ajuste: "propio",
+  egreso_pago_mensajero: "propio", // [P2]: sigue siendo devengo (design §3.4), no tesoreria
+  egreso_gasto: "propio",
+  egreso_sueldo: "propio",
+  egreso_ajuste: "propio",
+  egreso_gasto_fijo: "propio",
+  egreso_gasto_variable: "propio",
+  egreso_indemnizacion: "propio",
+  // DE TERCEROS: dinero que solo PASA por la caja. `ingreso_ajuste` NO puede hacer este
+  // trabajo (design §10-C): es propio, y anular un pago a una tienda subiria la ganancia.
+  ingreso_cod_recaudado: "terceros",
+  egreso_pago_tienda: "terceros",
+  ingreso_reverso_pago_tienda: "terceros",
+  // Ficha 459 (design §5): el pago por cuenta de una tienda es dinero DE LA TIENDA que sale de la
+  // caja hacia un tercero (baja «De las tiendas», no la ganancia); su anulacion lo devuelve.
+  egreso_pago_por_cuenta_tienda: "terceros",
+  ingreso_reverso_pago_por_cuenta_tienda: "terceros",
+  // CAPITAL (P1): el saldo inicial o aporte, y su anulacion. Dinero de la empresa que NO es ganancia.
+  ingreso_aporte_capital: "capital",
+  egreso_reverso_aporte_capital: "capital",
+  // Ficha 461 (design §2.1, HD1): el cobro de la empresa a una tienda ES ganancia de la empresa (se toma
+  // del saldo que le guardaba a la tienda), y su anulacion la devuelve. Los dos PROPIOS.
+  ingreso_cobro_tienda: "propio",
+  egreso_reverso_cobro_tienda: "propio",
+  // Ficha 457 (design §4, DH1): el PAGO DE UNA TIENDA A LA EMPRESA es dinero DE LA TIENDA que entra a la
+  // caja —los fletes que debia ya se contaron como ganancia al aprobar cada cierre; contarlos otra
+  // vez al cobrarlos la duplicaria—. Sube «De las tiendas» (la deuda de la tienda baja); su anulacion
+  // la devuelve. Los dos DE TERCEROS. La guardia `caja-clasificacion-459` pone rojo `propio` aqui.
+  ingreso_abono_tienda: "terceros",
+  egreso_reverso_abono_tienda: "terceros",
+  // Ficha 458-B (design §2.3, D7): la anulacion de un cobro por rechazo aprobado. Los dos reversos
+  // son PROPIOS —el flete y su IVA eran ganancia de la empresa; anularlos la baja—, igual que el
+  // reverso del cobro de la 461.
+  egreso_reverso_flete_devolucion: "propio",
+  egreso_reverso_iva_flete_devolucion: "propio",
+};
+
+/**
+ * Ficha 459 (design §2.2, R1/R9) — si un concepto de la caja es dinero que entro o salio DE
+ * VERDAD (`efectivo`) o un CARGO A UNA TIENDA: la parte de la empresa (flete, flete por rechazo,
+ * comision de contra-entrega y el impuesto de cada uno) que se DESCUENTA del saldo de la tienda.
+ *
+ * Un cargo no es una entrada de efectivo: es un traspaso de dinero que ya esta en la caja (el
+ * contra-entrega, que es de la tienda) al bolsillo de la empresa; o, si la orden no tuvo
+ * contra-entrega, una deuda de la tienda que se cobra reduciendo su saldo. En los dos casos la
+ * ganancia sube, «De las tiendas» baja lo mismo y el efectivo no cambia — exactamente lo que el
+ * libro de las tiendas ya registra con su debito espejo (`MAPEO_CONCEPTO_TIENDA`).
+ *
+ * `Record` TOTAL por el mismo motivo que `NATURALEZA_POR_CATEGORIA`: un concepto nuevo de la caja
+ * no compila hasta que alguien decide si es efectivo o un cargo. La guardia
+ * `tests/unit/guards/caja-clasificacion-459.guardia.test.ts` afirma que el conjunto
+ * `cargo_a_tienda` son los seis del feed MAS el cobro de la empresa a una tienda y su reverso, todos
+ * propios, y que el signo de su efecto en «De las tiendas» lo da el prefijo.
+ *
+ * Ficha 461 (design §2.2, P1): la liquidez «cargo» vale TAMBIEN para egresos. Un egreso «cargo» es
+ * el REVERSO de un cargo (la anulacion de un cobro de la empresa a una tienda): no saca dinero de la
+ * caja —no suma a «Salio»—, baja la ganancia y SUBE «De las tiendas» (le devuelve el saldo).
+ */
+export type LiquidezMovimiento = "efectivo" | "cargo_a_tienda";
+
+export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezMovimiento> = {
+  // CARGOS A UNA TIENDA: los seis conceptos del feed del cierre (y del cobro por rechazo).
+  ingreso_flete: "cargo_a_tienda",
+  ingreso_flete_devolucion: "cargo_a_tienda",
+  ingreso_comision_cod: "cargo_a_tienda",
+  ingreso_iva_flete: "cargo_a_tienda",
+  ingreso_iva_flete_devolucion: "cargo_a_tienda",
+  ingreso_iva_comision_cod: "cargo_a_tienda",
+  // Ficha 461 (HD1): el cobro de la empresa a una tienda es el SEPTIMO cargo —igual que un flete, se
+  // toma del saldo de la tienda y no entra dinero nuevo— y su anulacion es el REVERSO de un cargo.
+  ingreso_cobro_tienda: "cargo_a_tienda",
+  egreso_reverso_cobro_tienda: "cargo_a_tienda",
+  // Ficha 458-B (design §2.3, D7): los reversos del flete por rechazo y de su IVA son REVERSOS DE
+  // CARGO: no sale dinero (no suman a «Salio»), baja la ganancia y SUBE «De las tiendas». Como
+  // `efectivo` subirian «Salio» sin que saliera dinero (mutacion 4 de design §8.2).
+  egreso_reverso_flete_devolucion: "cargo_a_tienda",
+  egreso_reverso_iva_flete_devolucion: "cargo_a_tienda",
+  // EFECTIVO: todo lo demas entra o sale de verdad.
+  ingreso_ajuste: "efectivo",
+  ingreso_cod_recaudado: "efectivo",
+  ingreso_reverso_pago_tienda: "efectivo",
+  egreso_pago_tienda: "efectivo",
+  egreso_pago_mensajero: "efectivo",
+  egreso_gasto: "efectivo",
+  egreso_sueldo: "efectivo",
+  egreso_ajuste: "efectivo",
+  egreso_gasto_fijo: "efectivo",
+  egreso_gasto_variable: "efectivo",
+  egreso_indemnizacion: "efectivo",
+  egreso_pago_por_cuenta_tienda: "efectivo",
+  ingreso_reverso_pago_por_cuenta_tienda: "efectivo",
+  ingreso_aporte_capital: "efectivo",
+  egreso_reverso_aporte_capital: "efectivo",
+  // Ficha 457 (design §4, R19/R24): el pago de una tienda a la empresa entra DE VERDAD (suma a «Entro»)
+  // y su anulacion sale de verdad (suma a «Salio»). Como `cargo_a_tienda` no subiria «Entro» aunque
+  // el dinero entro: rompe R7/R8 en cuanto la tienda paga (A6 descartada).
+  ingreso_abono_tienda: "efectivo",
+  egreso_reverso_abono_tienda: "efectivo",
+};
+
+/**
+ * Las sumas que hacen falta, por cubeta. Ficha 459 (design §2.2): SOLO se suma; ninguna resta.
+ *
+ *  - `entradasEfectivo`: los ingresos que son dinero que entro de verdad (no los cargos).
+ *  - `cargosATiendas`: los conceptos de la parte de la empresa que se DESCUENTA del saldo de la
+ *    tienda (los seis del feed y, desde la 461, el cobro de la empresa a una tienda). Tambien suman a
+ *    `ingresosPropios`: para la ganancia son ingresos (R4).
+ *  - `reversosDeCargos` (ficha 461, design §2.2): los egresos con liquidez «cargo» —la anulacion de
+ *    un cobro—. NO suman a `salidas` (no sale dinero, R22): le devuelven saldo a la tienda, asi que
+ *    entran en «De las tiendas» como un ingreso (R23). Tambien suman a `egresosPropios`.
+ *  - propio / terceros / capital: por dueño y tipo.
+ */
+type Acumulado = {
+  entradasEfectivo: Prisma.Decimal;
+  salidas: Prisma.Decimal;
+  cargosATiendas: Prisma.Decimal;
+  reversosDeCargos: Prisma.Decimal;
+  ingresosPropios: Prisma.Decimal;
+  egresosPropios: Prisma.Decimal;
+  ingresosTerceros: Prisma.Decimal;
+  egresosTerceros: Prisma.Decimal;
+  ingresosCapital: Prisma.Decimal;
+  egresosCapital: Prisma.Decimal;
+};
+
+function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
+  const acc: Acumulado = {
+    entradasEfectivo: new Prisma.Decimal(0),
+    salidas: new Prisma.Decimal(0),
+    cargosATiendas: new Prisma.Decimal(0),
+    reversosDeCargos: new Prisma.Decimal(0),
+    ingresosPropios: new Prisma.Decimal(0),
+    egresosPropios: new Prisma.Decimal(0),
+    ingresosTerceros: new Prisma.Decimal(0),
+    egresosTerceros: new Prisma.Decimal(0),
+    ingresosCapital: new Prisma.Decimal(0),
+    egresosCapital: new Prisma.Decimal(0),
+  };
+
+  for (const fila of filas) {
+    const monto = new Prisma.Decimal(fila.total);
+    // El signo lo da el TIPO; la cubeta, la CATEGORIA. Que las dos cosas casen es lo que
+    // garantiza el CHECK categoria↔tipo de la base (design §2.2).
+    const esIngreso = fila.tipo === "ingreso";
+    const dueno = NATURALEZA_POR_CATEGORIA[fila.categoria];
+    const esCargo = LIQUIDEZ_POR_CATEGORIA[fila.categoria] === "cargo_a_tienda";
+
+    if (esIngreso) {
+      if (esCargo) acc.cargosATiendas = acc.cargosATiendas.add(monto);
+      else acc.entradasEfectivo = acc.entradasEfectivo.add(monto);
+      if (dueno === "propio") acc.ingresosPropios = acc.ingresosPropios.add(monto);
+      else if (dueno === "terceros") acc.ingresosTerceros = acc.ingresosTerceros.add(monto);
+      else acc.ingresosCapital = acc.ingresosCapital.add(monto);
+    } else {
+      // Ficha 461 (R22): un egreso «cargo» es el reverso de un cargo: no es dinero que salga.
+      if (esCargo) acc.reversosDeCargos = acc.reversosDeCargos.add(monto);
+      else acc.salidas = acc.salidas.add(monto);
+      if (dueno === "propio") acc.egresosPropios = acc.egresosPropios.add(monto);
+      else if (dueno === "terceros") acc.egresosTerceros = acc.egresosTerceros.add(monto);
+      else acc.egresosCapital = acc.egresosCapital.add(monto);
+    }
+  }
+
+  return acc;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════
+// Feature 231 (design §3.1) — la caja partida en DOS BOLSILLOS.
+//
+// Todo lo que sigue son SUMAS POR CUBETA y UNA DIVISION sobre importes que `derivarBalance`
+// ya derivo. Ninguna resta con signo nueva: la guardia `caja-derivaciones.guardia.test.ts`
+// exige que este modulo llame a `derivarBalance` exactamente CUATRO veces (ficha 459) y que no
+// declare por su cuenta ni el signo ni la resta.
+// ═════════════════════════════════════════════════════════════════════════════════════════
+
+/** Las dos porciones extremas de la barra, como STRING con la misma escala que el resto. */
+const TODO_DE_LAS_TIENDAS = "100.00";
+const NADA_DE_LAS_TIENDAS = "0.00";
+
+/**
+ * R10/R14-R19 — que forma admite la barra y, si admite dos segmentos, con que proporcion.
+ *
+ * La tabla se evalua EN ESTE ORDEN y es TOTAL: los nueve pares de signos posibles de (G, T)
+ * caen en exactamente una rama.
+ *
+ *  1. `G < 0` y `T > 0`  -> `solo_tiendas`   (100.00): la empresa pierde y el dinero de las
+ *                                            tiendas esta cubriendo ese saldo.
+ *  2. `T < 0` y `G > 0`  -> `solo_empresa`   (  0.00): el espejo (D4).
+ *  3. `T <= 0` y `G <= 0`-> `sin_reparto`    (  0.00): no hay nada que repartir.
+ *  4. resto              -> `dos_bolsillos`  (T / enCaja x 100).
+ *
+ * La division ocurre SOLO en la rama 4, donde `enCaja = G + T` es estrictamente positivo
+ * (llegar ahi exige `T >= 0`, `G >= 0` y que al menos uno sea > 0): no hay division por cero
+ * que atrapar. El signo se compara sobre `Prisma.Decimal` (`.lt(0)` / `.gt(0)`) y NUNCA
+ * leyendo el campo `signo` del balance — que es la otra forma de acabar con dos definiciones
+ * de «cuando una cifra es negativa».
+ */
+function derivarReparto(
+  enCaja: Prisma.Decimal,
+  // Ficha 459 (R11, P2): «De la empresa» (ganancia + capital), no solo la ganancia. Las cuatro
+  // ramas no cambian; en la 4 sigue valiendo `enCaja = O + T > 0` (identidad R7).
+  ganancia: Prisma.Decimal,
+  deTerceros: Prisma.Decimal,
+): { porcentajeTiendas: string; modoComposicion: ModoComposicionCaja } {
+  if (ganancia.lt(0) && deTerceros.gt(0)) {
+    return { porcentajeTiendas: TODO_DE_LAS_TIENDAS, modoComposicion: "solo_tiendas" };
+  }
+  if (deTerceros.lt(0) && ganancia.gt(0)) {
+    return { porcentajeTiendas: NADA_DE_LAS_TIENDAS, modoComposicion: "solo_empresa" };
+  }
+  if (!deTerceros.gt(0) && !ganancia.gt(0)) {
+    return { porcentajeTiendas: NADA_DE_LAS_TIENDAS, modoComposicion: "sin_reparto" };
+  }
+  return {
+    porcentajeTiendas: montoEscala2(
+      deTerceros.div(enCaja).mul(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+    ),
+    modoComposicion: "dos_bolsillos",
+  };
+}
+
+/**
+ * R1/R4/R5/R6/R7 — deriva las DOS cifras del libro de la caja a partir de los totales ya
+ * agregados por (categoria, tipo).
+ *
+ *  - `enCaja`   = entradas − salidas, sin distinguir de quien es el dinero (R4).
+ *  - `ganancia` = ingresos propios − egresos propios (R5). Sobre el libro entero es, numero
+ *                 por numero, lo que hoy devuelve `derivarBalance`: la cifra que el maestro
+ *                 lleva viendo desde la 42 NO cambia de valor, cambia de nombre.
+ *  - `deTerceros` = ingresos de terceros − egresos de terceros (la tercera linea, [P6]).
+ *
+ * Las TRES restas —con su signo— las hace `derivarBalance`, que ya existe y ya esta probada.
+ * Aqui NO se reimplementa ninguna: duplicar la resta con signo seria abrir dos definiciones
+ * del mismo dinero, que es exactamente lo que el repo prohibe por escrito. Lo unico propio de
+ * esta funcion es la PARTICION por naturaleza.
+ *
+ * `periodoFiltrado` [P7] no se deriva de las filas —no es una propiedad del dinero sino de la
+ * CONSULTA—, asi que entra como opcion explicita y vale `false` por defecto. La pantalla la
+ * usa para cambiar el ROTULO cuando hay filtros puestos; el numero no cambia nunca.
+ *
+ * Feature 231 (R9/R10/R14): la salida gana `porcentajeTiendas` y `modoComposicion`. Ni la
+ * firma ni el valor de los diez campos anteriores cambian (R38): lo nuevo se DERIVA de los
+ * tres balances que esta funcion ya calculaba.
+ */
+export function derivarCaja(
+  filas: readonly AgregadoCajaRow[],
+  opciones: {
+    periodoFiltrado?: boolean;
+    /** Ficha 459 (R14): dato de la CONSULTA (hay un saldo inicial vigente), no del dinero. */
+    haySaldoInicialVigente?: boolean;
+    /** Ficha 459 (R15): YYYY-MM-DD CR del primer movimiento de la caja; null con el libro vacio. */
+    primerDia?: string | null;
+  } = {},
+): CajaResumenDTO {
+  const acc = acumular(filas);
+
+  // Ficha 459 (design §2.2) — CUATRO restas con signo, todas de `derivarBalance`:
+  //  · la cifra principal: Entro (sin los cargos, que no son efectivo: F2) − Salio (sin los
+  //    reversos de cargos, que tampoco lo son: ficha 461, R22);
+  //  · la ganancia, IDENTICA a la de antes: los cargos siguen siendo ingresos propios (R4);
+  //  · «De las tiendas»: los cargos entran como SALIDA del bolsillo de las tiendas — es el
+  //    traspaso de su contra-entrega (o de su deuda) al de la empresa (R5)— y los REVERSOS de cargos
+  //    como ENTRADA en ese bolsillo: la anulacion de un cobro le devuelve el saldo (461, R23);
+  //  · el capital de la empresa (R6).
+  // Identidad R7, por construccion (461, design §2.2): G + T + C
+  //   = (ingP − egP) + (ingT + rev − egT − cargos) + (ingC − egC)
+  //   = (ingP + ingT + ingC − cargos) − (egP + egT + egC − rev) = Entro − Salio.
+  const caja = derivarBalance(acc.entradasEfectivo, acc.salidas);
+  const propio = derivarBalance(acc.ingresosPropios, acc.egresosPropios);
+  const terceros = derivarBalance(
+    acc.ingresosTerceros.add(acc.reversosDeCargos),
+    acc.egresosTerceros.add(acc.cargosATiendas),
+  );
+  const capital = derivarBalance(acc.ingresosCapital, acc.egresosCapital);
+
+  // «De la empresa» (R11, P2) = ganancia + capital. Una SUMA, no una resta.
+  const deEmpresa = new Prisma.Decimal(propio.balance).add(new Prisma.Decimal(capital.balance));
+  const deTerceros = new Prisma.Decimal(terceros.balance);
+
+  const reparto = derivarReparto(new Prisma.Decimal(caja.balance), deEmpresa, deTerceros);
+
+  return {
+    entradas: caja.ingresos,
+    salidas: caja.egresos,
+    enCaja: caja.balance,
+    signoEnCaja: caja.signo,
+    ingresosPropios: propio.ingresos,
+    egresosPropios: propio.egresos,
+    ganancia: propio.balance,
+    signoGanancia: propio.signo,
+    deTerceros: terceros.balance,
+    periodoFiltrado: opciones.periodoFiltrado ?? false,
+    porcentajeTiendas: reparto.porcentajeTiendas,
+    modoComposicion: reparto.modoComposicion,
+    capital: capital.balance,
+    signoCapital: capital.signo,
+    deEmpresa: montoEscala2(deEmpresa),
+    signoDeTerceros: terceros.signo,
+    deTercerosAbsoluto: montoEscala2(deTerceros.abs()),
+    estado: opciones.haySaldoInicialVigente === true ? "saldo" : "flujo",
+    flujoDesde: opciones.primerDia ?? null,
+  };
+}
+
+/** Las siete cubetas del desglose de ingresos, todas a cero: un `Record` sin huecos (R23). */
+function cubetasDeIngreso(): Record<WalletIngresoPropio, Prisma.Decimal> {
+  // El `Object.fromEntries` pierde el tipo de las claves (devuelve `Record<string, …>`), asi
+  // que la afirmacion va aqui, en UNA linea y sobre el seed que la produce. No es un `any`:
+  // el union de claves sale del propio seed, y una categoria de mas o de menos la caza la
+  // guardia de exhaustividad en runtime.
+  return Object.fromEntries(
+    WALLET_INGRESO_PROPIO_SEED.map((categoria) => [categoria, new Prisma.Decimal(0)]),
+  ) as Record<WalletIngresoPropio, Prisma.Decimal>;
+}
+
+/** Las cubetas de los egresos con nombre propio, todas a cero: un `Record` sin huecos (R4). */
+function cubetasDeEgresoNombrado(): Record<WalletEgresoNombrado, Prisma.Decimal> {
+  // Mismo motivo que en `cubetasDeIngreso`: `Object.fromEntries` pierde el tipo de las claves.
+  return Object.fromEntries(
+    WALLET_EGRESO_NOMBRADO_SEED.map((categoria) => [categoria, new Prisma.Decimal(0)]),
+  ) as Record<WalletEgresoNombrado, Prisma.Decimal>;
+}
+
+const CATEGORIAS_DE_INGRESO_PROPIO: ReadonlySet<string> = new Set(WALLET_INGRESO_PROPIO_SEED);
+const CATEGORIAS_DE_EGRESO_NOMBRADO: ReadonlySet<string> = new Set(WALLET_EGRESO_NOMBRADO_SEED);
+
+/**
+ * Ficha 339 — el conjunto de egresos propios CON FILA. Es LA definicion: la usan la derivacion
+ * del importe (`derivarComposicionGanancia`) y la del detalle (`categoriasDeFilaComposicion`).
+ * Escribirlo dos veces es como el importe de una fila y su lista de movimientos acabarian
+ * diciendo cosas distintas sin que nada fallara.
+ */
+const CATEGORIAS_DE_EGRESO_CON_FILA: ReadonlySet<string> = new Set(WALLET_EGRESO_CON_FILA_SEED);
+
+function esIngresoPropio(categoria: WalletMovimientoCategoria): categoria is WalletIngresoPropio {
+  return CATEGORIAS_DE_INGRESO_PROPIO.has(categoria);
+}
+
+function esEgresoNombrado(categoria: WalletMovimientoCategoria): categoria is WalletEgresoNombrado {
+  return CATEGORIAS_DE_EGRESO_NOMBRADO.has(categoria);
+}
+
+/**
+ * El tipo de una categoria se lee de su PREFIJO, y no es una heuristica: el CHECK
+ * `wallet_movimiento_tipo_categoria_check` (migracion `20260803120000_caja_tesoreria`) enumera
+ * las 17 combinaciones legitimas y son exactamente esas — toda `ingreso_*` con tipo `ingreso` y
+ * toda `egreso_*` con tipo `egreso`. La base no admite ninguna otra.
+ */
+function esCategoriaDeEgreso(categoria: WalletMovimientoCategoria): boolean {
+  return categoria.startsWith("egreso_");
+}
+
+/** El COMPLEMENTO, derivado del catalogo: egresos propios que no tienen fila propia. */
+const EGRESOS_PROPIOS_SIN_FILA: readonly WalletMovimientoCategoria[] =
+  WALLET_MOVIMIENTO_CATEGORIA_SEED.filter(
+    (categoria) =>
+      NATURALEZA_POR_CATEGORIA[categoria] === "propio" &&
+      esCategoriaDeEgreso(categoria) &&
+      !CATEGORIAS_DE_EGRESO_CON_FILA.has(categoria),
+  );
+
+/**
+ * Ficha 339 (T2.1, design §3, R18) — que categorias componen el importe de UNA fila de la
+ * tarjeta de la ganancia.
+ *
+ * Para el token del complemento devuelve todo egreso PROPIO que no tenga fila propia —derivado
+ * del catalogo y de `NATURALEZA_POR_CATEGORIA`, nunca una lista escrita a mano—; para cualquier
+ * otra fila, esa sola categoria.
+ *
+ * **Esta funcion es la mitad del diseno de la ficha.** El importe de una fila y la lista de
+ * movimientos de esa fila salen de la MISMA definicion (`CATEGORIAS_DE_EGRESO_CON_FILA`). Si la
+ * lista se dedujera aparte, podrian divergir sin que nada fallara: la fila diria 227.300,00 y el
+ * detalle ensenaria otra cosa. Es el mismo error, un piso mas abajo, que esta ficha arregla.
+ *
+ * Hoy devuelve `["egreso_gasto"]` para «Otros»: la unica categoria de egreso propio que queda
+ * sin fila, y no tiene ni un escritor en el arbol.
+ */
+export function categoriasDeFilaComposicion(
+  fila: ComposicionFilaId,
+): readonly WalletMovimientoCategoria[] {
+  if (fila === COMPOSICION_FILA_OTROS) return EGRESOS_PROPIOS_SIN_FILA;
+  return [fila];
+}
+
+/**
+ * Feature 231 (R23/R26, design §2.2) — la ganancia de la empresa, concepto por concepto.
+ *
+ * Funcion PURA y con la MISMA entrada que `derivarCaja`: el servicio la llama sobre el MISMO
+ * array de filas (design §3.2), y eso es lo que garantiza R24 —la tarjeta de la ganancia y la
+ * cifra de la caja hablan del mismo instante y del mismo conjunto, y no pueden discrepar
+ * aunque alguien registre un movimiento entre dos peticiones—.
+ *
+ * Dos invariantes, y las dos son ESTRUCTURALES, no aspiracionales:
+ *
+ *  - `totalIngresos` es la Σ de las siete cubetas, asi que la columna de ingresos de la
+ *    tarjeta SIEMPRE suma su propio total. Que ademas coincida con `ingresosPropios` depende
+ *    de que el seed cubra todas las categorias propias de ingreso, y eso lo mide en runtime
+ *    `tests/unit/guards/caja-composicion-exhaustiva.guardia.test.ts`.
+ *  - `otrosEgresos` es el COMPLEMENTO: todo egreso propio que no tenga FILA PROPIA en la
+ *    columna. Por eso «los cuatro conceptos del desglose + los nombrados + otros» suman
+ *    `totalEgresos` = `egresosPropios` aunque el catalogo gane manana un egreso propio (R26 de
+ *    la 231, R11/R13 de la 343). Escribir aqui la lista de las categorias que hoy faltan
+ *    dejaria esa suma a merced de que alguien se acordara de ampliarla.
+ *
+ * Ficha 339 (T2.2): el conjunto contra el que se complementa pasa de
+ * `WALLET_EGRESO_DESGLOSADO_SEED` a `WALLET_EGRESO_CON_FILA_SEED`, y los dos egresos que salen
+ * del cubo ganan su propia cubeta en `egresos`. **Ninguna cifra agregada se mueve** (R12/R14):
+ * el dinero no sale de la suma, cambia de cubeta.
+ *
+ * El desglose se teclea POR CATEGORIA (`ingreso_comision_cod`), nunca con las claves camelCase
+ * de las formulas de ingreso: `caja-173-alcance.guardia.test.ts` prohibe que este modulo
+ * nombre un insumo de formula, y con razon — no es quien las calcula.
+ */
+export function derivarComposicionGanancia(
+  filas: readonly AgregadoCajaRow[],
+): ComposicionGananciaDTO {
+  const ingresos = cubetasDeIngreso();
+  const egresos = cubetasDeEgresoNombrado();
+  let totalIngresos = new Prisma.Decimal(0);
+  let totalEgresos = new Prisma.Decimal(0);
+  let otrosEgresos = new Prisma.Decimal(0);
+
+  for (const fila of filas) {
+    if (NATURALEZA_POR_CATEGORIA[fila.categoria] !== "propio") continue;
+    const monto = new Prisma.Decimal(fila.total);
+
+    if (fila.tipo === "ingreso") {
+      if (!esIngresoPropio(fila.categoria)) continue;
+      ingresos[fila.categoria] = ingresos[fila.categoria].add(monto);
+      totalIngresos = totalIngresos.add(monto);
+      continue;
+    }
+
+    totalEgresos = totalEgresos.add(monto);
+    // Ficha 339 (T2.2, R13): cada categoria aporta a EXACTAMENTE una cubeta. La que tiene fila
+    // con nombre va a la suya; la que tiene fila en `DesgloseEgresosDTO` no se acumula aqui (la
+    // sirve la 45/158 por su propio camino); y solo lo que no tiene fila NINGUNA cae en «otros».
+    if (esEgresoNombrado(fila.categoria)) {
+      egresos[fila.categoria] = egresos[fila.categoria].add(monto);
+    } else if (!CATEGORIAS_DE_EGRESO_CON_FILA.has(fila.categoria)) {
+      otrosEgresos = otrosEgresos.add(monto);
+    }
+  }
+
+  return {
+    ingresos: Object.fromEntries(
+      WALLET_INGRESO_PROPIO_SEED.map((categoria) => [categoria, montoEscala2(ingresos[categoria])]),
+    ) as Record<WalletIngresoPropio, string>,
+    totalIngresos: montoEscala2(totalIngresos),
+    egresos: Object.fromEntries(
+      WALLET_EGRESO_NOMBRADO_SEED.map((categoria) => [categoria, montoEscala2(egresos[categoria])]),
+    ) as Record<WalletEgresoNombrado, string>,
+    otrosEgresos: montoEscala2(otrosEgresos),
+    totalEgresos: montoEscala2(totalEgresos),
+    // R9: la decision de pintar «Otros» la toma el SERVIDOR. `isZero()` y no `.gt(0)`: un
+    // importe negativo es justo lo que mas falta haria ver, y `.gt(0)` lo esconderia.
+    hayOtrosEgresos: !otrosEgresos.isZero(),
+  };
+}

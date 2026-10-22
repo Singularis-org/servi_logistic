@@ -1,0 +1,393 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  SIDEBAR_ITEMS,
+  itemsVisibles,
+  puedeVerSubitem,
+  type MenuItem,
+} from "@/lib/auth/menu-visibility";
+import type { RolValue } from "@prisma/client";
+
+// Feature 284 — GUARDIA DEL MANIFIESTO, DE LOS ATAJOS Y DE LOS ICONOS.
+//
+// Nada de lo que vigila este archivo rompe ruidosamente: un manifiesto con un `id` distinto
+// deja DOS copias de la app instaladas en el mismo telefono, un atajo a una ruta por rol lleva a un
+// `notFound()` desde el menu del icono, y un icono `maskable` con las esquinas ya redondeadas
+// se ve con doble redondeo. Todo eso compila, despliega y no pone rojo nada.
+//
+// Vive en `tests/unit/guards/` porque un cambio en `public/**` no lo selecciona ningun grafo
+// de imports (R24).
+
+const RAIZ = path.resolve(__dirname, "..", "..", "..");
+const MANIFIESTO = JSON.parse(
+  fs.readFileSync(path.join(RAIZ, "public/manifest.json"), "utf8"),
+) as Manifiesto;
+const LAYOUT = fs.readFileSync(path.join(RAIZ, "app/layout.tsx"), "utf8");
+
+interface Recurso {
+  src: string;
+  sizes: string;
+  type?: string;
+  purpose?: string;
+}
+
+interface Atajo {
+  name?: string;
+  url?: string;
+}
+
+interface Manifiesto {
+  id?: string;
+  name: string;
+  short_name?: string;
+  description?: string;
+  start_url: string;
+  scope?: string;
+  display: string;
+  orientation?: string;
+  theme_color?: string;
+  background_color?: string;
+  categories?: string[];
+  icons: Recurso[];
+  screenshots?: Recurso[];
+  shortcuts?: Atajo[];
+}
+
+/** Dimensiones reales del PNG, leidas de su cabecera IHDR (bytes 16-24). */
+function dimensionesPng(rutaPublica: string): { ancho: number; alto: number } {
+  const buffer = fs.readFileSync(path.join(RAIZ, "public", rutaPublica));
+  expect(buffer.subarray(1, 4).toString()).toBe("PNG");
+  return { ancho: buffer.readUInt32BE(16), alto: buffer.readUInt32BE(20) };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1 · La identidad y las claves del manifiesto (R14, R15)                     */
+/* -------------------------------------------------------------------------- */
+
+describe("pwa · el manifiesto", () => {
+  it("el id preserva la identidad instalada", () => {
+    // Exactamente "/" y no otra cosa: el `id` por defecto de una app instalada es su
+    // `start_url`, asi que "/" preserva la identidad de quien YA la tenga instalada.
+    // Cualquier otro valor ("servi-logistic", "/?source=pwa") la CAMBIA, y el telefono acaba con dos
+    // copias de la app en el lanzador: la vieja, huerfana, y la nueva.
+    expect(MANIFIESTO.id).toBe("/");
+    expect(MANIFIESTO.id).toBe(MANIFIESTO.start_url);
+  });
+
+  it("conserva sus diez claves con su valor", () => {
+    // R15 es un requisito de NO REGRESION: `orientation` y `categories` ya estaban (la ficha
+    // decia que faltaban y era falso), y lo unico que habia que hacer con ellas era no
+    // perderlas al añadir el `id`.
+    // Los valores de marca son los de Servi Logistic desde SL-10 (D7): literales y no leidos del
+    // propio manifiesto, porque compararlo contra su fuente lo dejaria siempre verde.
+    expect(MANIFIESTO.name).toBe("Servi Logistic");
+    expect(MANIFIESTO.short_name).toBe("Servi Logistic");
+    expect(MANIFIESTO.description).toBe("Plataforma de logística y entregas Servi Logistic");
+    expect(MANIFIESTO.start_url).toBe("/");
+    expect(MANIFIESTO.scope).toBe("/");
+    expect(MANIFIESTO.display).toBe("standalone");
+    expect(MANIFIESTO.orientation).toBe("portrait-primary");
+    expect(MANIFIESTO.theme_color).toBe("#111111");
+    expect(MANIFIESTO.background_color).toBe("#F7F7F5");
+    expect(MANIFIESTO.categories).toEqual(["business", "productivity"]);
+    expect(MANIFIESTO.screenshots?.length).toBe(3);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 2 · Los atajos (R16, R17) — y por que hay CERO                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Rutas que resuelven el destino POR ROL en vez de negarlo. Hoy solo `/dashboard`: despacha
+ * segun el rol del actor (`app/(app)/dashboard/page.tsx`) en lugar de devolver `notFound()`.
+ * Es la unica excepcion legitima a la regla de abajo, y por eso va escrita con su motivo.
+ */
+const DESPACHADORAS = ["/dashboard"];
+
+/** Destinos NAVEGABLES de un item: sus subitems si los tiene, si no su propio href. */
+function destinosDe(item: MenuItem): string[] {
+  return item.children ? item.children.map((c) => c.href) : [item.href];
+}
+
+/** Union de todos los roles que aparecen en algun item del menu. Nada de listas copiadas. */
+const rolesConMenu = new Set<string>(SIDEBAR_ITEMS.flatMap((item) => [...item.roles]));
+
+/**
+ * Los destinos que ESE rol alcanza por el menu.
+ *
+ * ⚠️ FICHA 362 — pasa por `itemsVisibles`, y no por un `filter` propio sobre `item.roles`,
+ * porque desde esta ficha un SUBITEM puede declarar `roles` propios («Acciones», maestro-only).
+ * El filtro propio que habia aqui contaba `/historico/acciones` como alcanzable por el `admin`,
+ * que es exactamente el fallo que esta guardia existe para impedir: un atajo del manifiesto a
+ * una ruta que devuelve `notFound()` al pulsarlo. La regla de visibilidad vive en UN sitio
+ * (`lib/auth/menu-visibility`) y aqui se consume, no se reimplementa.
+ */
+function destinosDeRol(rol: string): string[] {
+  return itemsVisibles(SIDEBAR_ITEMS, {
+    usuarioId: "guardia",
+    rol: rol as RolValue,
+  }).flatMap(destinosDe);
+}
+
+/**
+ * Roles que LLEGAN a una url. Un subitem SIN `roles` propios hereda los del padre (321/R3);
+ * uno CON ellos manda los suyos, y `puedeVerSubitem` es quien lo decide — aqui no se copia esa
+ * regla.
+ */
+function rolesQueLlegan(url: string): Set<string> {
+  const roles = new Set<string>();
+  for (const item of SIDEBAR_ITEMS) {
+    if (item.children && item.children.length > 0) {
+      for (const child of item.children) {
+        if (child.href !== url) continue;
+        for (const rol of item.roles) {
+          if (puedeVerSubitem(child, item, { usuarioId: "guardia", rol })) roles.add(rol);
+        }
+      }
+      continue;
+    }
+    if (item.href === url) {
+      for (const rol of item.roles) roles.add(rol);
+    }
+  }
+  return roles;
+}
+
+/**
+ * La regla, expresada una sola vez y usada tanto sobre el manifiesto real como sobre uno de
+ * mentira: un atajo vale si TODOS los roles con menu llegan a su destino, o si el destino
+ * despacha por rol. Devuelve los motivos de rechazo (vacio = pasa).
+ */
+function motivosDeRechazo(atajos: Atajo[]): string[] {
+  const motivos: string[] = [];
+  for (const atajo of atajos) {
+    if (!atajo.name || !atajo.url) {
+      motivos.push(`un atajo sin name o sin url: ${JSON.stringify(atajo)}`);
+      continue;
+    }
+    if (DESPACHADORAS.includes(atajo.url)) continue;
+    const llegan = rolesQueLlegan(atajo.url);
+    const fuera = [...rolesConMenu].filter((rol) => !llegan.has(rol));
+    if (fuera.length > 0) {
+      motivos.push(`${atajo.url} es inalcanzable para: ${fuera.sort().join(", ")}`);
+    }
+  }
+  return motivos;
+}
+
+describe("pwa · los atajos del manifiesto", () => {
+  it("ningun atajo deja fuera a un rol con menu", () => {
+    expect(motivosDeRechazo(MANIFIESTO.shortcuts ?? [])).toEqual([]);
+  });
+
+  it("un atajo a una ruta por rol se rechaza", () => {
+    // ANTI-VACUIDAD. Sin este caso la regla estaria verde por no haber atajos, no por
+    // funcionar. Se le da un manifiesto DE MENTIRA y se exige que lo rechace.
+    const motivos = motivosDeRechazo([{ name: "Órdenes", url: "/ordenes" }]);
+    expect(motivos.length).toBe(1);
+    expect(motivos[0]).toContain("/ordenes");
+    expect(motivos[0]).toContain("mensajero");
+
+    // Y lo contrario: la excepcion declarada SI pasa, y un atajo a medias tambien se rechaza.
+    expect(motivosDeRechazo([{ name: "Inicio", url: "/dashboard" }])).toEqual([]);
+    expect(motivosDeRechazo([{ url: "/dashboard" }]).length).toBe(1);
+  });
+
+  it("⭑ 362 — un atajo a una ruta de SUBITEM restringido se rechaza para el admin", () => {
+    // El caso que hace que el arreglo de arriba signifique algo. `/historico/acciones` la ve
+    // SOLO el maestro (subitem con `roles` propios): un atajo del manifiesto es global a la
+    // app, así que llevaría a un `notFound()` a todo el que no sea maestro. Con el cálculo
+    // viejo —que leía `item.roles` y se saltaba los del subitem— este atajo habría pasado
+    // para el admin, y el manifiesto habría publicado un enlace roto.
+    const motivos = motivosDeRechazo([{ name: "Acciones", url: "/historico/acciones" }]);
+    expect(motivos.length).toBe(1);
+    expect(motivos[0]).toContain("/historico/acciones");
+    // Se afirma sobre la LISTA de roles, no sobre el texto del motivo: «admin» es prefijo de
+    // «adminTienda» y de «adminSatelite», así que un `toContain("admin")` sobre la frase
+    // pasaría sin que el admin estuviera fuera.
+    expect([...rolesQueLlegan("/historico/acciones")].sort()).toEqual(["maestro"]);
+
+    // Y el hermano SIN `roles` propios sigue heredando del padre: a él llegan los DOS. Sin
+    // este contraste, la aserción de arriba pasaría igual con un cálculo que le negara el
+    // apartado entero al admin.
+    expect([...rolesQueLlegan("/historico/conversaciones")].sort()).toEqual([
+      "admin",
+      "maestro",
+    ]);
+  });
+
+  it("⭑ 433 — YA HAY un destino universal (`/ayuda`), y aun así siguen siendo cero atajos", () => {
+    // LA MEDICION QUE SOSTIENE LA DECISION (humano, 2026-08-25), re-derivada aqui en vez de
+    // copiada: si mañana entra una ruta universal, estos numeros cambian y la ficha del atajo
+    // se puede abrir con datos. Si alguien mete un atajo antes, el caso de arriba lo caza.
+    const porRol = new Map<string, Set<string>>();
+    for (const rol of rolesConMenu) {
+      porRol.set(rol, new Set(destinosDeRol(rol)));
+    }
+
+    // Feature 321 — `maestro` 16 -> 17 y `admin` 11 -> 12, por UN destino nuevo y solo uno:
+    // el subitem «Conversaciones» (`/historico/conversaciones`) del item «Histórico», visible
+    // exclusivamente para esos dos roles (`ROLES_HISTORICO_CONVERSACIONES`, decision humana del
+    // 2026-08-28). Por eso `adminSatelite`, `mensajero` y `adminTienda` NO se mueven — y que
+    // sigan clavados es parte de lo que se afirma aqui. El item padre no suma: tiene `children`,
+    // asi que `destinosDe` devuelve los subitems y no su `href`, que no navega.
+    // La CONCLUSION no cambia: el destino nuevo lo ven dos roles de cinco, la interseccion
+    // sigue vacia y por tanto siguen siendo CERO atajos.
+    // Ficha 335 — `adminTienda` 3 -> 4, por UN destino nuevo y solo uno: el ítem «Mi wallet»
+    // (`/mi-wallet`), visible exclusivamente para ese rol (`ROLES_MI_WALLET`). Los otros cuatro
+    // roles NO se mueven, y que sigan clavados es parte de lo que se afirma aquí: si el ítem se
+    // hubiera abierto de más, este mismo `toEqual` lo diría.
+    // La CONCLUSIÓN no cambia: el destino nuevo lo ve UN rol de cinco, así que la intersección
+    // sigue vacía y por tanto siguen siendo CERO atajos. Un atajo del manifiesto es global a la
+    // app —lo ve quien instale la PWA, sea cual sea su rol—, y por eso solo puede salir de la
+    // intersección.
+    // ⭑ FICHA 362 — `maestro` 17 -> 18, por UN destino nuevo y solo uno: el subitem «Acciones»
+    // (`/historico/acciones`) del item «Histórico». `admin` NO se mueve, y que se quede clavado
+    // en 12 es la mitad de lo que se afirma aquí: ese subitem declara `roles` PROPIOS
+    // (`ROLES_HISTORIAL_ACCIONES`, solo maestro) porque el registro guarda las decisiones de
+    // dinero del admin. Antes de enchufar este cálculo a `itemsVisibles`, este mismo `toEqual`
+    // decía `admin: 13` — o sea, la guardia creía que el admin llegaba a una ruta que le
+    // devuelve 404, que es justo el atajo roto que este archivo existe para impedir.
+    // ⭑ FICHA 374 — `maestro` 18 -> 19, por UN destino nuevo y solo uno: el subítem «Geografía»
+    // (`/configuracion/geografia`), añadido AL FINAL de los `children` de «Configuración», que es
+    // un ítem `maestro`-only entero. Los otros cuatro roles NO se mueven, y que sigan clavados es
+    // parte de lo que se afirma aquí. La CONCLUSIÓN no cambia: el destino nuevo lo ve UN rol de
+    // cinco, la intersección sigue vacía y por tanto siguen siendo CERO atajos.
+    // ⭑ FICHA 429 — `maestro` 19 -> 20 y `adminSatelite` 6 -> 7, por DOS destinos nuevos y
+    // exactamente dos: el subítem «SINPE por bodega» (`/configuracion/sinpe`), añadido al final
+    // de los `children` de «Configuración», que es `maestro`-only entero; y el ítem «Mi bodega»
+    // (`/mi-bodega`), al final de la barra y visible SOLO para `adminSatelite` (`ROLES_MI_BODEGA`).
+    // `admin`, `mensajero` y `adminTienda` NO se mueven, y que sigan clavados es parte de lo que
+    // se afirma aquí: si «Mi bodega» se hubiera abierto de más —por ejemplo a los tres roles que
+    // pueden EDITAR un SINPE— este mismo `toEqual` lo diría.
+    // La CONCLUSIÓN no cambia: cada destino nuevo lo ve UN rol de cinco, la intersección sigue
+    // vacía y por tanto siguen siendo CERO atajos.
+    // ⭑ FICHA 431 — `maestro` 20 -> 21 y `admin` 12 -> 13, por UN destino nuevo y solo uno: el
+    // subítem «Satélites» (`/wallet/satelites`), CUARTO hijo de «Wallet». Suben los DOS a la vez
+    // —y es lo que hay que mirar— porque el ítem NO declara roles propios: hereda los del padre
+    // (`maestro` y `admin`), que es exactamente quien `esAccesoTotal` deja entrar en la página
+    // (R27). Si hubiera subido uno solo, o si se hubiera movido `adminSatelite`, este `toEqual`
+    // diría que el menú y el `notFound()` de la página discrepan sobre quién llega.
+    // `adminSatelite`, `mensajero` y `adminTienda` NO se mueven, y que sigan clavados es parte de
+    // lo que se afirma aquí: la vista enseña el dinero de TODAS las bodegas y R27 se la niega
+    // justamente a la satélite.
+    // La CONCLUSIÓN no cambia: el destino nuevo lo ven DOS roles de cinco, la intersección sigue
+    // vacía y por tanto siguen siendo CERO atajos.
+    // ⭑ FICHA 433 — SUBEN LOS CINCO A LA VEZ, +1 cada uno, y eso es EL HALLAZGO, no un ajuste
+    // de numeros. El item «Ayuda» (`/ayuda`) es el PRIMER destino de la historia de esta app
+    // que ven los cinco roles: por eso es el unico cambio de esta lista que mueve a TODOS en
+    // vez de a uno o a dos. Que suban los cinco es justamente lo que hay que mirar — si
+    // hubiera subido uno solo, el item se habria declarado con menos roles de los que dice su
+    // etiqueta («visible para todos los roles»), y si hubieran subido seis contando `apiKey`,
+    // una cuenta de maquina habria ganado menu (y con el un aterrizaje post-login, ver
+    // `ROLES_AYUDA`).
+    // ⭑ FICHA 474 — `maestro` 22 -> 23 y NADIE más: el subítem «Envíos automáticos»
+    // (`/configuracion/envios-whatsapp`) hereda el `maestro`-only de «Configuración», que es
+    // exactamente quien deja entrar la página (R1). Si se hubiera movido otro rol, el menú y la
+    // página discreparían. La CONCLUSIÓN no cambia: lo ve UN rol de cinco, CERO atajos.
+    expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
+      maestro: 23,
+      admin: 14,
+      adminSatelite: 8,
+      mensajero: 7,
+      adminTienda: 5,
+    });
+
+    const interseccion = [...porRol.values()].reduce((acc, destinos) =>
+      new Set([...acc].filter((url) => destinos.has(url))),
+    );
+
+    // ⚠️ LA CONCLUSION DE ESTE ARCHIVO CAMBIA POR PRIMERA VEZ DESDE 2026-08-25. Hasta hoy la
+    // interseccion estaba VACIA y ese era el dato que sostenia la decision del humano de no
+    // publicar ningun atajo: un atajo del manifiesto es global a la app —lo ve quien instale
+    // la PWA, sea cual sea su rol—, asi que solo puede salir de la interseccion. Ahora hay UN
+    // candidato legitimo.
+    expect([...interseccion]).toEqual(["/ayuda"]);
+
+    // ⚠️ Y AUN ASI NO SE PUBLICA NINGUNO. Que un atajo sea POSIBLE no lo hace DECIDIDO: cuales
+    // son los atajos de la aplicacion instalada es una decision de producto del humano, y la
+    // ficha 433 no la tomo — solo creo el candidato. Esta linea se queda como estaba a
+    // proposito, para que anadir el atajo sea una edicion consciente y no un efecto colateral
+    // de haber puesto un item de menu. El caso «ningun atajo deja fuera a un rol con menu»
+    // (arriba) es el que vigilaria el atajo el dia que se añada.
+    expect(MANIFIESTO.shortcuts).toBeUndefined();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 3 · Los iconos y el `<head>` (R18, R19, R20)                                */
+/* -------------------------------------------------------------------------- */
+
+const APPLE_TOUCH_ICON = /rel="apple-touch-icon"[^>]*href="([^"]+)"/.exec(LAYOUT)?.[1];
+
+describe("pwa · los iconos y las metas de iOS", () => {
+  it("el head declara las dos metas de capacidad", () => {
+    // La moderna Y la de Apple: `apple-mobile-web-app-capable` esta deprecada pero la siguen
+    // leyendo iPhones vivos, asi que se conserva; sin la moderna, el navegador avisa.
+    expect(LAYOUT).toContain('<meta name="mobile-web-app-capable" content="yes" />');
+    expect(LAYOUT).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />');
+  });
+
+  it("el apple-touch-icon mide 180", () => {
+    expect(APPLE_TOUCH_ICON).toBe("/icons/icon-180.png");
+    const { ancho, alto } = dimensionesPng(APPLE_TOUCH_ICON!);
+    expect(`${ancho}x${alto}`).toBe("180x180");
+  });
+
+  it("cada png referenciado existe y mide lo declarado", () => {
+    for (const recurso of [...MANIFIESTO.icons, ...(MANIFIESTO.screenshots ?? [])]) {
+      expect(
+        fs.existsSync(path.join(RAIZ, "public", recurso.src)),
+        `falta ${recurso.src}`,
+      ).toBe(true);
+      const { ancho, alto } = dimensionesPng(recurso.src);
+      expect(`${ancho}x${alto}`, `${recurso.src} no mide lo que declara`).toBe(recurso.sizes);
+    }
+  });
+
+  it("hay dos variantes del icono y ninguna hace de las dos", () => {
+    // `purpose: "any maskable"` -es lo que habia- significa "usame para las dos cosas", y con
+    // UN solo archivo eso es imposible: el que se ve bien suelto (esquinas redondeadas) da
+    // doble redondeo dentro de la mascara del lanzador, y el que sirve para la mascara (a
+    // sangre) se ve cuadrado cuando nadie lo enmascara.
+    const any = MANIFIESTO.icons.filter((i) => i.purpose === "any");
+    const maskable = MANIFIESTO.icons.filter((i) => i.purpose === "maskable");
+    expect(any.map((i) => i.sizes).sort()).toEqual(["192x192", "512x512"]);
+    expect(maskable.map((i) => i.sizes).sort()).toEqual(["192x192", "512x512"]);
+    for (const icono of MANIFIESTO.icons) {
+      expect(icono.purpose, `${icono.src} declara dos propositos a la vez`).not.toContain(" ");
+    }
+  });
+
+  it("y la diferencia se ve en el pixel de la esquina, no solo en el texto del purpose", async () => {
+    // La comprobacion que de verdad distingue las dos variantes: el `any` tiene la esquina
+    // TRANSPARENTE (esta redondeado) y el `maskable` la tiene OPACA (va a sangre). Declarar
+    // `purpose: "maskable"` sobre un PNG con las esquinas recortadas seria mentir en el
+    // manifiesto sin que nada se pusiera rojo.
+    const sharp = (await import("sharp")).default;
+
+    async function esquina(src: string) {
+      const { data, info } = await sharp(path.join(RAIZ, "public", src))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return { alfa: data[3], canales: info.channels };
+    }
+
+    for (const icono of MANIFIESTO.icons) {
+      const { alfa } = await esquina(icono.src);
+      if (icono.purpose === "maskable") {
+        expect(alfa, `${icono.src} es maskable y su esquina no es opaca`).toBe(255);
+      } else {
+        expect(alfa, `${icono.src} es "any" y su esquina no es transparente`).toBe(0);
+      }
+    }
+
+    // El de iOS va a sangre por el mismo motivo: iOS redondea el solo.
+    expect((await esquina(APPLE_TOUCH_ICON!)).alfa).toBe(255);
+  });
+});

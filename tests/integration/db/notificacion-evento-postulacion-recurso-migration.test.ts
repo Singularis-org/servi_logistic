@@ -1,0 +1,473 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import fs from "fs";
+import path from "path";
+import { randomUUID } from "node:crypto";
+import type { PrismaClient } from "@prisma/client";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
+
+// Feature 253 (D6) — la migracion que anade el aviso de la campana a los DOS enums de la feature
+// 146 (`notificacion_evento` y `notificacion_entidad_tipo`).
+//
+// POR QUE ESTE ARCHIVO EXISTE, y no es celo: en este repo anadir un valor a un enum de Postgres
+// tiene trampa medida.
+//
+//  1. `ALTER TYPE ... DROP VALUE` NO EXISTE. El unico down posible es RECREAR el tipo con la lista
+//     previa, y eso obliga a un `ALTER COLUMN ... TYPE` sobre `notificacion.evento` y
+//     `notificacion.entidad_tipo`, que DESTRUYE Y REHACE los indices de esas columnas. Uno de
+//     ellos, `notificacion_dedupe_key`, es UNICO, PARCIAL y con `NULLS NOT DISTINCT` — y ese
+//     `NULLS NOT DISTINCT` es imprescindible: sin el, las dos columnas de destinatario (una es
+//     SIEMPRE NULL por el CHECK XOR) nunca colisionarian y el indice no deduplicaria nada. Que
+//     sobreviva a la reconstruccion NO SE SUPONE: se mide abajo, contra Postgres.
+//  2. Hay que mirar si el `down.sql` de la migracion que CREO el enum recrea-con-lista o solo
+//     dropea, porque si recreara con lista, el valor nuevo cambiaria lo que ese down debe hacer.
+//     Aqui SOLO dropea (feature 146 se lleva tambien las tablas), asi que ese archivo NO se toca
+//     — es una foto historica. Se afirma abajo, para que la comprobacion quede hecha y no haya
+//     que repetirla a mano.
+
+const ROOT = path.join(__dirname, "..", "..", "..");
+const MIGRATIONS_DIR = path.join(ROOT, "db", "migrations");
+
+function carpetaQueTerminaEn(sufijo: string): string {
+  const dir = fs
+    .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+    .find((n) => n.endsWith(sufijo));
+  if (!dir) throw new Error(`No se encontro la carpeta de migracion ${sufijo}`);
+  return path.join(MIGRATIONS_DIR, dir);
+}
+
+const dirNueva = carpetaQueTerminaEn("_notificacion_evento_postulacion_recurso");
+const dir146 = carpetaQueTerminaEn("_notificacion");
+
+const upSql = fs.readFileSync(path.join(dirNueva, "migration.sql"), "utf8");
+const downSql = fs.readFileSync(path.join(dirNueva, "down.sql"), "utf8");
+const down146 = fs.readFileSync(path.join(dir146, "down.sql"), "utf8");
+const schemaPrisma = fs.readFileSync(path.join(ROOT, "db", "schema.prisma"), "utf8");
+const tiposNotificacion = fs.readFileSync(
+  path.join(ROOT, "lib", "types", "notificacion.ts"),
+  "utf8",
+);
+
+function sinComentarios(sql: string): string {
+  return sql
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim().length > 0 && !l.trimStart().startsWith("--"))
+    .join("\n");
+}
+
+const upDdl = sinComentarios(upSql);
+const downDdl = sinComentarios(downSql);
+
+/** Los cuatro valores de cada enum ANTES de esta migracion (feature 146). */
+const EVENTOS_146 = [
+  "orden_rechazada",
+  "carga_masiva_terminada",
+  "postulacion_mensajero_pendiente",
+  "cierre_dia_por_aprobar",
+];
+const ENTIDADES_146 = ["orden", "usuario", "cierre_dia", "carga"];
+
+describe("253 / D6 — el UP solo ANADE, y nada mas", () => {
+  it("es posterior a la migracion de la tabla y trae sus dos archivos", () => {
+    expect(path.basename(dirNueva) > path.basename(carpetaQueTerminaEn("_postulacion_recurso"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(dirNueva, "down.sql"))).toBe(true);
+  });
+
+  it("anade el valor a `notificacion_evento` de forma idempotente", () => {
+    expect(upDdl).toMatch(
+      /ALTER TYPE "notificacion_evento" ADD VALUE IF NOT EXISTS 'postulacion_recurso_pendiente'/,
+    );
+  });
+
+  it("anade tambien `postulacion_recurso` a `notificacion_entidad_tipo`", () => {
+    // Sin este segundo valor la fila no cabe: `entidad_tipo` es NOT NULL y ninguno de los cuatro
+    // valores vigentes describe una postulacion de recurso. Reusar `usuario` seria un dato falso.
+    expect(upDdl).toMatch(
+      /ALTER TYPE "notificacion_entidad_tipo" ADD VALUE IF NOT EXISTS 'postulacion_recurso'/,
+    );
+  });
+
+  it("NO usa los valores nuevos en la misma transaccion (Postgres lo prohibe: 55P04)", () => {
+    // Solo dos sentencias, las dos `ALTER TYPE`. Ni un INSERT, ni un UPDATE, ni un CREATE.
+    const sentencias = upDdl
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    expect(sentencias).toHaveLength(2);
+    for (const s of sentencias) expect(s).toMatch(/^ALTER TYPE /);
+  });
+
+  it("es ADITIVA: no toca ninguna tabla ni crea nada", () => {
+    expect(upDdl).not.toMatch(/CREATE TABLE/);
+    expect(upDdl).not.toMatch(/ALTER TABLE/);
+    expect(upDdl).not.toMatch(/\bDROP\b/);
+    expect(upDdl).not.toMatch(/^\s*(INSERT|UPDATE|DELETE)\s/im);
+  });
+});
+
+describe("253 / D6 — el DOWN recrea los dos enums SIN el valor nuevo", () => {
+  it("`notificacion_evento` se recrea con EXACTAMENTE los cuatro de la 146", () => {
+    const m = /CREATE TYPE "notificacion_evento" AS ENUM \(([\s\S]*?)\)/.exec(downDdl);
+    expect(m).not.toBeNull();
+    expect([...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1])).toEqual(EVENTOS_146);
+  });
+
+  it("`notificacion_entidad_tipo` tambien", () => {
+    const m = /CREATE TYPE "notificacion_entidad_tipo" AS ENUM \(([^)]*)\)/.exec(downDdl);
+    expect(m).not.toBeNull();
+    expect([...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1])).toEqual(ENTIDADES_146);
+  });
+
+  it("cada recreacion lleva su RENAME, su ALTER COLUMN con USING y su DROP del `_old`", () => {
+    for (const tipo of ["notificacion_evento", "notificacion_entidad_tipo"]) {
+      expect(downDdl).toMatch(new RegExp(`ALTER TYPE "${tipo}" RENAME TO "${tipo}_old"`));
+      expect(downDdl).toMatch(new RegExp(`DROP TYPE "${tipo}_old"`));
+    }
+    expect(downDdl).toMatch(
+      /ALTER COLUMN "evento" TYPE "notificacion_evento"\s*\n?\s*USING \("evento"::text::"notificacion_evento"\)/,
+    );
+    expect(downDdl).toMatch(
+      /ALTER COLUMN "entidad_tipo" TYPE "notificacion_entidad_tipo"\s*\n?\s*USING \("entidad_tipo"::text::"notificacion_entidad_tipo"\)/,
+    );
+  });
+
+  it("el down NO borra ninguna fila de `notificacion` para «hacer sitio»", () => {
+    // Si quedaran filas con el valor nuevo, el USING debe fallar RUIDOSAMENTE. Borrarlas en
+    // silencio apagaria avisos que un administrador puede no haber leido.
+    expect(downDdl).not.toMatch(/^\s*DELETE\s/im);
+    expect(downDdl).not.toMatch(/^\s*UPDATE\s/im);
+    expect(downDdl).not.toMatch(/DROP TABLE/);
+  });
+});
+
+describe("253 / D6 — el down de la 146 NO se toca, y esto es la comprobacion de que no hacia falta", () => {
+  it("aquel down SOLO dropea los enums; no los recrea con lista", () => {
+    // Es la pregunta que este repo obliga a hacerse al anadir un valor a un enum. Respuesta
+    // medida: solo dropea. Si algun dia alguien lo convirtiera en un recrea-con-lista, este test
+    // se pone rojo y avisa de que hay que revisar tambien AQUEL archivo.
+    expect(down146).toMatch(/DROP TYPE IF EXISTS "notificacion_evento"/);
+    expect(down146).toMatch(/DROP TYPE IF EXISTS "notificacion_entidad_tipo"/);
+    expect(down146).not.toMatch(/CREATE TYPE "notificacion_evento"/);
+    expect(down146).not.toMatch(/CREATE TYPE "notificacion_entidad_tipo"/);
+    // Y no menciona el valor nuevo: es una foto historica y se queda como esta.
+    expect(down146).not.toContain("postulacion_recurso");
+  });
+});
+
+// ⚠️ ACTUALIZADO EL 2026-08-22 POR LA FEATURE 262 (D7), EL 2026-08-23 POR LA 271 Y EL 2026-08-29
+// POR LA FICHA 333, Y SOLO ESTAS DOS ASERCIONES.
+//
+// Las dos de abajo son sobre el ESQUEMA VIVO —«que tiene `db/schema.prisma` HOY»—, asi que crecen
+// con cada valor que se anada. La 262 anade `dia_reparto_corregido` y `orden_dia_reparto_cambio`
+// con su propia migracion (`*_notificacion_evento_dia_reparto_corregido`) y su propio `down.sql` de
+// recreacion, y tiene su propio archivo de test para ellas. La 271 anade `cierre_dia_vencido` y
+// `mensajero_bloqueado_por_cierres`, y la ficha 333 anade `gasto_fijo_cobro_pendiente` y
+// `gasto_fijo_cobro_dia` (`20260829130000_notificacion_evento_gasto_fijo_cobro`): las dos, con su
+// migracion, su `down.sql` de recreacion y su propio archivo de test.
+//
+// Siguen siendo LITERALES a proposito: derivar la lista del propio `schema.prisma` que vigilan las
+// dejaria verdes por construccion y ampliar un enum volveria a ser un descuido en vez de un acto
+// deliberado.
+//
+// ⛔ TODO LO DEMAS DE ESTE ARCHIVO NO SE TOCA, y esto se escribe para que quede dicho: el UP de la
+// 253, su DOWN con los CUATRO valores de la 146 y la afirmacion de que «el down de la 146 solo
+// dropea» son FOTOS HISTORICAS y siguen siendo ciertas palabra por palabra. Editarlas para
+// «ponerlas al dia» seria borrar la evidencia de lo que aquella migracion hizo.
+describe("253 / D6 — el enum Prisma y el tipo de TypeScript no quedan a la deriva", () => {
+  it("`NotificacionEvento` del schema gana el valor, y sigue siendo un inventario CERRADO", () => {
+    const bloque = /enum NotificacionEvento \{([\s\S]*?)\n\}/.exec(schemaPrisma)![1];
+    const valores = bloque
+      .split("\n")
+      .map((l) => l.trim().split(/\s+\/\//)[0].trim())
+      .filter((l) => l.length > 0 && !l.startsWith("//") && !l.startsWith("@@"));
+    expect(valores).toEqual([
+      ...EVENTOS_146,
+      "postulacion_recurso_pendiente", // feature 253 / D6
+      "dia_reparto_corregido", // feature 262 / D7 (2026-08-22)
+      // FEATURE 271 (§9.2, Q4 resuelta el 2026-08-23) - los DOS avisos del bloqueo por cierres.
+      "cierre_dia_vencido",
+      "mensajero_bloqueado_por_cierres",
+      // FICHA 333 (design 4.1/4.2, R29/R30/R36, 2026-08-29) - «quedan cobros de gasto fijo
+      // esperando decision»: lo emite la corrida del cron al terminar y se repite cada dia CR
+      // mientras quede alguno. Migracion `20260829130000_notificacion_evento_gasto_fijo_cobro`.
+      "gasto_fijo_cobro_pendiente",
+      // FICHA 403 (design §1.2/§5, R9, 2026-09-09) - «un webhook lleva fallando y sus reintentos se
+      // espaciaron». Lo emite el DRENADOR de la cola; un solo aviso por RACHA. Migracion
+      // `20260909130000_notificacion_evento_webhook_suscripcion`.
+      "webhook_suscripcion_pausada",
+      // FICHA 401 (design 3.3, 2026-09-09) - «el servicio de mapas esta rechazando nuestras
+      // peticiones por un problema de configuracion de la cuenta». Lo emite `GeocodeSaludService`
+      // desde la rama de configuracion del job de geocodificacion, y va al `maestro` Y al `admin`.
+      // Migracion `20260910120000_notificacion_evento_geocodificacion_caida`.
+      "geocodificacion_caida",
+      // FICHA 409 (design §4.2): los DOS avisos AGREGADOS del panel accionable. Migracion
+      // `20260911120000_notificacion_evento_avisos_agregados`, POSTERIOR a la de la 401.
+      "novedades_sin_gestionar",
+      "devoluciones_represadas",
+      // FICHA 412 (design §2): «tu cierre del dia fue RECHAZADO», al mensajero dueno y a
+      // nadie mas. Lo emite el RECHAZO (`CierresAdminService`), SIEMPRE que la escritura
+      // confirme. Migracion `20260913120000_notificacion_evento_cierre_rechazado`, POSTERIOR
+      // a la de la 409 y tambien a las DOS de la 410 (de ahi que su `down.sql` sea el primero
+      // que tiene que retipar `push_envio_dia.evento`).
+      "cierre_dia_rechazado",
+      // FICHA 413 (design §7): «tenés N órdenes para mañana», al MENSAJERO asignado y a nadie
+      // más. Lo emite el cron `aviso-reparto-manana` a las 19:00 CR (= `0 1 * * *` UTC), una vez
+      // por DÍA ANUNCIADO. Migracion `20260914120000_notificacion_evento_reparto_manana`,
+      // POSTERIOR a la de la 412 y tambien a las DOS de la 410.
+      "reparto_manana",
+      // FICHA 427 (design §6.5): los DOS avisos del TRASPASO de ordenes entre mensajeros -«recibiste
+      // N ordenes de otro mensajero» al que las recibe, y «N ordenes tuyas pasaron a otro mensajero»
+      // al que las cede-. Los emite `TraspasoMensajeroService` FUERA de la transaccion del traspaso
+      // y best-effort: un aviso caido no puede revertir un traspaso legitimo. Son DOS eventos y no
+      // uno porque piden acciones OPUESTAS y porque sus perfiles de push tambien lo son (el que
+      // RECIBE si, el que CEDE no). Migracion `20260917120100_notificacion_evento_traspaso`,
+      // POSTERIOR a la de la 413 y tambien a las DOS de la 410.
+      "traspaso_ordenes_recibido",
+      "traspaso_ordenes_cedido",
+      "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+    ]);
+  });
+
+  it("`NotificacionEntidadTipo` del schema, igual", () => {
+    const bloque = /enum NotificacionEntidadTipo \{([\s\S]*?)\n\}/.exec(schemaPrisma)![1];
+    const valores = bloque
+      .split("\n")
+      .map((l) => l.trim().split(/\s+\/\//)[0].trim())
+      .filter((l) => l.length > 0 && !l.startsWith("//") && !l.startsWith("@@"));
+    expect(valores).toEqual([
+      ...ENTIDADES_146,
+      "postulacion_recurso", // feature 253 / D6
+      "orden_dia_reparto_cambio", // feature 262 / D7 (2026-08-22)
+      // FICHA 333 (design 4.2, 2026-08-29) - el PRIMER `entidad_tipo` que NO apunta a una fila de
+      // tabla: la entidad es EL DIA CR de la corrida (`entidad_id = 'YYYY-MM-DD'`). Se le da valor
+      // propio en vez de reusar uno existente por la MISMA razon por la que esta ficha 253 no
+      // reuso `usuario`: prometer una fila que no existe seria un dato falso con formato de dato.
+      "gasto_fijo_cobro_dia",
+      // FICHA 403 (design §1.2, 2026-09-09) - LA RACHA DE FALLOS
+      // (`'<owner>:<sinExitoDesde ISO>'`), no la suscripcion. Valor propio por la MISMA razon por
+      // la que esta ficha 253 no reuso `usuario`: prometer una fila que no existe seria un dato
+      // falso con formato de dato.
+      "webhook_suscripcion_pausa",
+      // FICHA 401 (design 3.3, 2026-09-09) - SEGUNDO `entidad_tipo` que no apunta a una fila, por
+      // el mismo motivo: la entidad del aviso es LA JORNADA CR. Sin valor propio, la dedupe de la
+      // 146 apagaria el aviso del dia siguiente, en silencio.
+      "geocodificacion_caida_dia",
+      // FICHA 409 (design §4.2): las entidades de los dos avisos AGREGADOS. Llevan EL ALCANCE
+      // DENTRO (`${tiendaId}:${diaCR}` y `${ambito}:${diaCR}`) porque `notificacion_dedupe_key`
+      // no incluye `tienda_id` ni `zona_id`: sin el, la primera tienda de la corrida se llevaria
+      // el aviso y todas las demas quedarian mudas.
+      "novedades_sin_gestionar_dia",
+      "devoluciones_represadas_dia",
+      // FICHA 412 (design §3): la entidad es EL RECHAZO —`<cierreId>:<resuelto_at ISO>`—, no
+      // el cierre. Con el cierre, el SEGUNDO rechazo del mismo cierre no avisaria nunca: la
+      // clave no mira el estado de lectura y la re-solicitud REUTILIZA la misma fila.
+      "cierre_dia_rechazo",
+      // FICHA 413 (design §7): la entidad de ese aviso es EL DIA ANUNCIADO (`'YYYY-MM-DD'`), no
+      // ninguna orden: con una entidad fija, el aviso de la segunda noche no saldria NUNCA.
+      "reparto_manana_dia",
+      // FICHA 427 (design §6.5): la entidad de los dos avisos del traspaso es EL ACTO
+      // (`orden_traspaso_mensajero.lote_id`), no la orden ni el mensajero: con el mensajero, la
+      // clave de dedupe -que NO mira el estado de lectura- admitiria UNA sola fila para siempre y
+      // el SEGUNDO traspaso del dia a la misma persona no avisaria NUNCA, en silencio.
+      "orden_traspaso_lote",
+      "reprogramadas_esperan_cierre_dia", // ficha 462 (2026-09-25): `${ambito}:${diaCR}`, ambito central|zona
+    ]);
+  });
+
+  it("`lib/types/notificacion.ts` refleja los dos, sin drift con Prisma", () => {
+    expect(tiposNotificacion).toContain('"postulacion_recurso_pendiente"');
+    expect(tiposNotificacion).toContain('"postulacion_recurso"');
+  });
+});
+
+// ===========================================================================================
+// CONTRA POSTGRES DE VERDAD — lo que ninguna regex puede afirmar
+// ===========================================================================================
+
+const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await prisma?.$disconnect();
+  });
+
+  // FICHA 421 — la lectura del enum vive en `_postgres-real.ts` y ACOTA `nspname = 'public'`.
+  // Filtrando solo por `typname` esta consulta sumaba tambien el enum CLONADO en el esquema
+  // temporal de otro archivo que corriera a la vez: el rojo del gate de release del 2026-09-11.
+  async function valoresDe(tipo: string): Promise<string[]> {
+    return etiquetasDeEnum(prisma, tipo);
+  }
+
+  // ⚠️ ACTUALIZADAS EL 2026-08-22 POR LA 262, EL 2026-08-23 POR LA 271, EL 2026-08-29 POR LA 333 Y
+  // EL 2026-09-09 POR LA 403, y por la misma razon que las dos del schema: estas dos leen la BASE
+  // APLICADA, o sea el estado de HOY, no una foto historica. Hoy la base tiene DIEZ eventos (4 de
+  // la 146 + 1 de la 253 + 1 de la 262 + 2 de la 271 + 1 de la 333 + 1 de la 403) y OCHO tipos de
+  // entidad (4 de la 146 + 1 de la 253 + 1 de la 262 + 1 de la 333 + 1 de la 403). Lo que se
+  // conserva intacto es el orden —`enumsortorder`—, que es lo que demuestra que el valor se ANADIO
+  // al final y no se recreo el tipo. Los titulos ya no llevan la cuenta: caducaba en cada ficha.
+  it("la base tiene los eventos posteriores al final y en orden de adicion", async () => {
+    expect(await valoresDe("notificacion_evento")).toEqual([
+      ...EVENTOS_146,
+      "postulacion_recurso_pendiente", // feature 253 / D6
+      "dia_reparto_corregido", // feature 262 / D7
+      // FEATURE 271 (§9.2, Q4 resuelta el 2026-08-23) - los DOS avisos del bloqueo por cierres.
+      "cierre_dia_vencido",
+      "mensajero_bloqueado_por_cierres",
+      // FICHA 333 (design 4.1/4.2, R29/R30/R36, 2026-08-29) - «quedan cobros de gasto fijo
+      // esperando decision». Migracion `20260829130000_notificacion_evento_gasto_fijo_cobro`.
+      "gasto_fijo_cobro_pendiente",
+      // FICHA 403 (design §1.2/§5, R9, 2026-09-09) - «un webhook lleva fallando y sus reintentos se
+      // espaciaron». Lo emite el DRENADOR de la cola; un solo aviso por RACHA. Migracion
+      // `20260909130000_notificacion_evento_webhook_suscripcion`.
+      "webhook_suscripcion_pausada",
+      // FICHA 401 (design 3.3, 2026-09-09) - «el servicio de mapas esta rechazando nuestras
+      // peticiones». Migracion `20260910120000_notificacion_evento_geocodificacion_caida`.
+      "geocodificacion_caida",
+      // FICHA 409 (design §4.2): los DOS avisos AGREGADOS del panel accionable. Migracion
+      // `20260911120000_notificacion_evento_avisos_agregados`, POSTERIOR a la de la 401.
+      "novedades_sin_gestionar",
+      "devoluciones_represadas",
+      // FICHA 412 (design §2): «tu cierre del dia fue RECHAZADO», al mensajero dueno y a
+      // nadie mas. Lo emite el RECHAZO (`CierresAdminService`), SIEMPRE que la escritura
+      // confirme. Migracion `20260913120000_notificacion_evento_cierre_rechazado`, POSTERIOR
+      // a la de la 409 y tambien a las DOS de la 410 (de ahi que su `down.sql` sea el primero
+      // que tiene que retipar `push_envio_dia.evento`).
+      "cierre_dia_rechazado",
+      // FICHA 413 (design §7): «tenés N órdenes para mañana», al MENSAJERO asignado y a nadie
+      // más. Lo emite el cron `aviso-reparto-manana` a las 19:00 CR (= `0 1 * * *` UTC), una vez
+      // por DÍA ANUNCIADO. Migracion `20260914120000_notificacion_evento_reparto_manana`,
+      // POSTERIOR a la de la 412 y tambien a las DOS de la 410.
+      "reparto_manana",
+      // FICHA 427 (design §6.5): los DOS avisos del TRASPASO de ordenes entre mensajeros -«recibiste
+      // N ordenes de otro mensajero» al que las recibe, y «N ordenes tuyas pasaron a otro mensajero»
+      // al que las cede-. Los emite `TraspasoMensajeroService` FUERA de la transaccion del traspaso
+      // y best-effort: un aviso caido no puede revertir un traspaso legitimo. Son DOS eventos y no
+      // uno porque piden acciones OPUESTAS y porque sus perfiles de push tambien lo son (el que
+      // RECIBE si, el que CEDE no). Migracion `20260917120100_notificacion_evento_traspaso`,
+      // POSTERIOR a la de la 413 y tambien a las DOS de la 410.
+      "traspaso_ordenes_recibido",
+      "traspaso_ordenes_cedido",
+      "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+    ]);
+  });
+
+  it("y los tipos de entidad, con los posteriores al final", async () => {
+    expect(await valoresDe("notificacion_entidad_tipo")).toEqual([
+      ...ENTIDADES_146,
+      "postulacion_recurso", // feature 253 / D6
+      "orden_dia_reparto_cambio", // feature 262 / D7
+      // FICHA 333 (design 4.2, 2026-08-29) - la entidad del aviso es EL DIA CR de la corrida, no
+      // el cobro; sin valor propio la dedupe de la 146 apagaria el recordatorio diario (R30).
+      "gasto_fijo_cobro_dia",
+      // FICHA 403 (design §1.2, 2026-09-09) - LA RACHA DE FALLOS
+      // (`'<owner>:<sinExitoDesde ISO>'`), no la suscripcion. Valor propio por la MISMA razon por
+      // la que esta ficha 253 no reuso `usuario`: prometer una fila que no existe seria un dato
+      // falso con formato de dato.
+      "webhook_suscripcion_pausa",
+      // FICHA 401 (design 3.3, 2026-09-09) - la entidad del aviso es LA JORNADA CR.
+      "geocodificacion_caida_dia",
+      // FICHA 409 (design §4.2): las entidades de los dos avisos AGREGADOS. Llevan EL ALCANCE
+      // DENTRO (`${tiendaId}:${diaCR}` y `${ambito}:${diaCR}`) porque `notificacion_dedupe_key`
+      // no incluye `tienda_id` ni `zona_id`: sin el, la primera tienda de la corrida se llevaria
+      // el aviso y todas las demas quedarian mudas.
+      "novedades_sin_gestionar_dia",
+      "devoluciones_represadas_dia",
+      // FICHA 412 (design §3): la entidad es EL RECHAZO —`<cierreId>:<resuelto_at ISO>`—, no
+      // el cierre. Con el cierre, el SEGUNDO rechazo del mismo cierre no avisaria nunca: la
+      // clave no mira el estado de lectura y la re-solicitud REUTILIZA la misma fila.
+      "cierre_dia_rechazo",
+      // FICHA 413 (design §7): la entidad de ese aviso es EL DIA ANUNCIADO (`'YYYY-MM-DD'`), no
+      // ninguna orden: con una entidad fija, el aviso de la segunda noche no saldria NUNCA.
+      "reparto_manana_dia",
+      // FICHA 427 (design §6.5): la entidad de los dos avisos del traspaso es EL ACTO
+      // (`orden_traspaso_mensajero.lote_id`), no la orden ni el mensajero: con el mensajero, la
+      // clave de dedupe -que NO mira el estado de lectura- admitiria UNA sola fila para siempre y
+      // el SEGUNDO traspaso del dia a la misma persona no avisaria NUNCA, en silencio.
+      "orden_traspaso_lote",
+      "reprogramadas_esperan_cierre_dia", // ficha 462 (2026-09-25): `${ambito}:${diaCR}`, ambito central|zona
+    ]);
+  });
+
+  it("una notificacion con el evento y la entidad nuevos se puede ESCRIBIR de verdad", async () => {
+    // Es lo que ningun test de arriba puede demostrar: que el valor no solo esta en el cliente
+    // generado, sino que la base lo acepta en la columna. Se escribe y se borra en el acto; la
+    // fila lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (parcial).
+    const id = randomUUID();
+    try {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "notificacion"
+           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
+         VALUES ($1, 'warning'::"notificacion_tipo",
+                 'postulacion_recurso_pendiente'::"notificacion_evento",
+                 'prueba 253', 'postulacion_recurso'::"notificacion_entidad_tipo",
+                 NULL, 'maestro'::"rol_value")`,
+        id,
+      );
+      const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+        `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
+        id,
+      );
+      expect(Number(filas[0].n)).toBe(1);
+    } finally {
+      await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE id = $1`, id);
+    }
+  }, 60_000);
+
+  it("⚠️ el `notificacion_dedupe_key` conserva `NULLS NOT DISTINCT` y su `WHERE` parcial", async () => {
+    // Esta es LA razon de que este bloque exista. El `down.sql` de esta migracion hace
+    // `ALTER COLUMN "evento" TYPE ...`, que destruye y rehace todos los indices que tocan esa
+    // columna. Si Postgres no reconstruyera el `NULLS NOT DISTINCT`, la dedupe de la feature 146
+    // dejaria de deduplicar EN SILENCIO —las dos columnas de destinatario nunca colisionarian— y
+    // ningun test de la 146 se enteraria, porque la 146 no vuelve a mirar su propio indice.
+    //
+    // El down se ejecuto en local el 2026-08-20 (up -> down -> up) y esta asercion se corre sobre
+    // el resultado: el indice tiene que seguir teniendo las dos propiedades.
+    const filas = await prisma.$queryRawUnsafe<{ indexdef: string }[]>(
+      `SELECT indexdef FROM pg_indexes
+        WHERE schemaname = 'public' AND indexname = 'notificacion_dedupe_key'`,
+    );
+    expect(filas, "falta `notificacion_dedupe_key`: el down se llevo el indice de la 146").toHaveLength(
+      1,
+    );
+    expect(filas[0].indexdef).toContain("NULLS NOT DISTINCT");
+    expect(filas[0].indexdef).toContain("WHERE (entidad_id IS NOT NULL)");
+    expect(filas[0].indexdef).toContain("UNIQUE");
+  });
+
+  it("los otros cinco indices de `notificacion` tampoco se perdieron", async () => {
+    const filas = await prisma.$queryRawUnsafe<{ indexname: string }[]>(
+      `SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'notificacion' ORDER BY indexname`,
+    );
+    expect(filas.map((f) => f.indexname)).toEqual([
+      "notificacion_dedupe_key",
+      "notificacion_entidad_idx",
+      "notificacion_pkey",
+      "notificacion_rol_created_at_idx",
+      "notificacion_tienda_id_created_at_idx",
+      "notificacion_usuario_created_at_idx",
+      "notificacion_zona_id_created_at_idx",
+    ]);
+  });
+
+  it("y el CHECK XOR de destinatario sigue en pie tras el ALTER COLUMN", async () => {
+    const filas = await prisma.$queryRawUnsafe<{ conname: string }[]>(
+      `SELECT con.conname FROM pg_constraint con
+         JOIN pg_class c ON c.oid = con.conrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'notificacion' AND n.nspname = 'public' AND con.contype = 'c'`,
+    );
+    expect(filas.map((f) => f.conname)).toContain("notificacion_destinatario_xor");
+  });
+});

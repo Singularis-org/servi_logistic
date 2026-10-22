@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=${SUPABASE_PROJECT_REF}"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    },
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "Basic ${ATLASSIAN_MCP_AUTH}"
+      }
+    },
+    "codebase-memory-mcp": {
+      "command": "${CODEBASE_MEMORY_MCP_BIN:-codebase-memory-mcp}"
+    }
+  }
+}

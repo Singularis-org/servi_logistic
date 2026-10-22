@@ -1,0 +1,881 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { describe, it, expect } from "vitest";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
+import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedService";
+import type { WalletMensajeroFeedTxClient } from "@/lib/interfaces/services/IWalletMensajeroFeedService";
+import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
+import { pagoPorResultado } from "@/lib/utils/pago-mensajero";
+import { calcularSplitPago, derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
+import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
+import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { codigoSinComentarios } from "../../fixtures/money-safe";
+
+/**
+ * Feature 173 / T C.5 (R31, R33) — GUARDIA DE ALCANCE: **los otros dos libros no ganan filas, y
+ * las dos cifras de la caja no pueden leerlos.**
+ *
+ * El riesgo que este archivo persigue es el doble conteo, y tiene dos caras:
+ *
+ *  - **Escribir de mas** (R31). El dinero que la 173 mueve ya esta contado en el ledger por
+ *    tienda (el debito `pago_tienda` de la 172) y en el libro del mensajero. Si la feature
+ *    añadiera una fila mas alli, el saldo a favor de la tienda bajaria DOS veces por el mismo
+ *    pago y nadie lo notaria hasta que una tienda reclamara.
+ *  - **Leer de mas** (R33). Si el repositorio que sirve «dinero en caja» y «ganancia» pudiera
+ *    consultar los otros dos libros, existiria una segunda fuente para un numero de dinero, que
+ *    es exactamente lo que `AnaliticaFinancieraService` prohibe por escrito: «no da un error, da
+ *    una discusion».
+ *
+ * Las dos se miden sobre el ARBOL, no sobre una llamada concreta: un test de comportamiento solo
+ * dice que ESE camino no escribio de mas; un censo dice que no hay ningun otro camino.
+ *
+ * `T H.2` amplia este archivo con el resto de la revision de alcance (R66-R68).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * Feature 173 / T H.2 (R66, R67, R68) — LA REVISION DE ALCANCE.
+ *
+ * Las tres son afirmaciones de AUSENCIA, y una ausencia solo prueba algo si lo ausente
+ * EXISTE. Es la leccion de `T G.4` («47 archivos protegidos vivos en el arbol, cero en el
+ * diff»): sin ese control, un `grep` mal escrito da la misma salida vacia que un alcance
+ * respetado. Por eso cada bloque de aqui abajo lleva su CONTROL DE NO-VACUIDAD explicito.
+ *
+ * Y por que el censo va sobre el ARBOL y no sobre `git diff`: un test que preguntara a git
+ * por `origin/dev...HEAD` daria VACIO —y por tanto verde— el dia despues del merge, para
+ * siempre. Seria una guardia que se apaga sola justo cuando empieza a hacer falta. La
+ * medicion del diff, que es punto-en-el-tiempo, va en `progress/impl_173-caja-tesoreria.md`
+ * (§H2.4) con su control contra `git ls-files`; lo que vive aqui es la propiedad DURADERA.
+ *
+ * Y donde se puede, la ausencia se sustituye por una MEDICION: R66 y R68 no dicen «ese
+ * archivo no se toco», dicen «este importe sigue siendo este», ejecutando la formula. Un
+ * hash del archivo se rompe con un comentario y sobrevive a un cambio de constante; un
+ * importe pinchado hace exactamente lo contrario.
+ */
+
+const RAIZ = path.resolve(__dirname, "../../..");
+
+/** Las escrituras de Prisma. `create` incluido: el censo persigue TODA forma de insertar. */
+const ESCRITURAS = ["create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany"];
+
+/**
+ * Los DOS libros que esta feature NO toca. Se nombran por su delegado de Prisma, que es como
+ * aparecen en el codigo; el nombre de la tabla va al lado para que el fallo se lea sin traducir.
+ */
+const LIBROS_AJENOS: { delegado: string; tabla: string; escritor: string }[] = [
+  {
+    delegado: "walletTiendaMovimiento",
+    tabla: "wallet_tienda_movimiento",
+    escritor: "lib/repositories/WalletTiendaMovimientoRepository.ts",
+  },
+  {
+    delegado: "pagoMensajeroMovimiento",
+    tabla: "pago_mensajero_movimiento",
+    escritor: "lib/repositories/PagoMensajeroMovimientoRepository.ts",
+  },
+];
+
+/** Todos los `.ts` de una carpeta del repo, recursivamente. */
+function fuentesDe(carpeta: string): string[] {
+  const abs = path.join(RAIZ, carpeta);
+  const salida: string[] = [];
+  for (const entrada of readdirSync(abs)) {
+    const rel = `${carpeta}/${entrada}`;
+    if (statSync(path.join(RAIZ, rel)).isDirectory()) salida.push(...fuentesDe(rel));
+    else if (entrada.endsWith(".ts") || entrada.endsWith(".tsx")) salida.push(rel);
+  }
+  return salida;
+}
+
+const FUENTES = [...fuentesDe("lib"), ...fuentesDe("scripts")];
+
+// ── Revision M1 (458-E): las reglas del SQL del repositorio de la caja, como funciones PURAS ──────
+// Se aplican al fuente real (abajo) y a fragmentos que las violan (bloque «M1 — contrapruebas»): una
+// regla que no se ha visto fallar no dice nada.
+
+const REPO_CAJA = "lib/repositories/WalletMovimientoRepository.ts";
+const CRUCE_A_QUIEN = "lib/repositories/libro-caja-a-quien-sql.ts";
+/** Los modulos de `lib/repositories/` que el repositorio de la caja importa, y por que. */
+const MODULOS_IMPORTADOS_DECLARADOS = [
+  "lib/repositories/registrar-accion.ts", // auditoria (362): escribe por delegado, lo cuenta R31
+  CRUCE_A_QUIEN, // el cruce «A quién» (458-E): SQL de solo lectura, sin montos
+];
+
+/** El codigo sin las lineas de `import … from "…"` (su `from` no es SQL). */
+function sinImports(codigo: string): string {
+  return codigo.replace(/\bimport\s[^;]*?\bfrom\s+"[^"]+";/g, "");
+}
+
+/** Lo que va dentro de cada `sum(…)` del codigo, SIN distinguir mayusculas y con o sin espacio. */
+function sumasSql(codigo: string): string[] {
+  return [...sinImports(codigo).matchAll(/\bsum\s*\(\s*([^)]*?)\s*\)/gi)].map((m) => m[1]);
+}
+
+function sumasAjenas(codigo: string): string[] {
+  return sumasSql(codigo).filter((s) => s !== 'w."monto"');
+}
+
+/** Cada `FROM` / `JOIN` del SQL: la tabla, su alias y si le sigue una coma (otra tabla). */
+function tablasSql(codigo: string): { tabla: string; alias: string | null; coma: boolean; texto: string }[] {
+  return [...sinImports(codigo).matchAll(/\b(?:from|join)\s+([^\s,()]+)(?:\s+(?:as\s+)?([A-Za-z_]\w*))?(\s*,)?/gi)].map(
+    (m) => ({ tabla: m[1], alias: m[2] ?? null, coma: m[3] !== undefined, texto: m[0].trim() }),
+  );
+}
+
+/** Todo lo que el SQL lee y NO es `"wallet_movimiento"` con alias `w` (ni una segunda tabla tras coma). */
+function tablasAjenas(codigo: string): string[] {
+  return tablasSql(codigo)
+    .filter((t) => t.tabla !== '"wallet_movimiento"' || t.alias !== "w" || t.coma)
+    .map((t) => t.texto);
+}
+
+/** Sumas de importes en JavaScript: `.reduce`, `.add`, `.plus` (la aritmetica de `Decimal`). */
+function sumasEnJs(codigo: string): string[] {
+  return [...sinImports(codigo).matchAll(/\.(?:reduce|reduceRight|add|plus)\s*\(/g)].map((m) => m[0]);
+}
+
+/**
+ * Escrituras por SQL crudo: los metodos crudos que escriben o que no parametrizan, y las palabras de
+ * escritura del SQL sin distinguir mayusculas (las de un delegado —`.update(`— las cuenta R31).
+ */
+function escriturasCrudas(codigo: string): string[] {
+  const c = sinImports(codigo);
+  return [
+    ...[...c.matchAll(/\$executeRaw(?:Unsafe)?\b|\$queryRawUnsafe\b|\bPrisma\.raw\b/g)].map((m) => m[0]),
+    ...[...c.matchAll(/(?<![.\w$])\b(?:insert|update|delete|merge|truncate|returning)\b/gi)].map((m) => m[0]),
+  ];
+}
+
+/** Los modulos de `lib/repositories/` que importa un fuente (por alias `@/`). */
+function modulosDeRepositorioImportados(fuente: string): string[] {
+  return [...new Set([...fuente.matchAll(/from\s+"@\/(lib\/repositories\/[^"]+)"/g)].map((m) => `${m[1]}.ts`))];
+}
+
+describe("R31 — ninguna escritura NUEVA en el ledger por tienda ni en el libro del mensajero", () => {
+  for (const libro of LIBROS_AJENOS) {
+    it(`el unico modulo del arbol que escribe en \`${libro.tabla}\` sigue siendo su repositorio`, () => {
+      const escritores = FUENTES.filter((ruta) => {
+        const codigo = codigoSinComentarios(ruta);
+        return ESCRITURAS.some((m) =>
+          new RegExp(`${libro.delegado}\\.${m}\\s*\\(`).test(codigo),
+        );
+      });
+
+      // Uno, y exactamente uno. Si la 173 —o cualquier feature futura— abriera un segundo camino
+      // de escritura, este censo lo nombra en el mensaje del fallo.
+      expect(escritores).toEqual([libro.escritor]);
+    });
+  }
+
+  it("los tres modulos NUEVOS de la 173 no escriben en ningun libro que no sea la caja", () => {
+    const nuevos = [
+      "lib/services/CajaCodFeedService.ts",
+      "lib/services/CajaPagoTiendaFeedService.ts",
+      "lib/utils/caja-tesoreria.ts",
+    ];
+
+    for (const ruta of nuevos) {
+      const codigo = codigoSinComentarios(ruta);
+      for (const libro of LIBROS_AJENOS) {
+        for (const metodo of ESCRITURAS) {
+          expect(codigo, `${ruta} escribe en ${libro.tabla}`).not.toMatch(
+            new RegExp(`${libro.delegado}\\.${metodo}\\s*\\(`),
+          );
+        }
+      }
+    }
+  });
+
+  it("el feed del contra-entrega solo LEE el ledger por tienda (`findMany`), nunca escribe", () => {
+    const codigo = codigoSinComentarios("lib/services/CajaCodFeedService.ts");
+
+    // Es el unico modulo de la 173 que toca el ledger, y lo toca de una sola forma.
+    const usos = [...codigo.matchAll(/walletTiendaMovimiento\.(\w+)/g)].map((m) => m[1]);
+    expect(usos).toEqual(["findMany"]);
+  });
+});
+
+describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otros libros", () => {
+  it("su cliente Prisma es MINIMO: `walletMovimiento` y nada mas (comprobado compilando)", () => {
+    // Este objeto tiene UNA sola tabla DE DINERO. Que la linea de abajo compile es la prueba: si
+    // el repositorio necesitara `walletTiendaMovimiento` o `pagoMensajeroMovimiento`, `tsc` la
+    // rechazaria y el gate caeria antes que este test.
+    //
+    // ⚠️ FICHA 362: el cliente gana TRES claves —`$transaction`, `historialAccion` y `usuario`—
+    // porque los tres movimientos que nacen de una DECISION humana registran su accion en la
+    // misma transaccion que el asiento. Ninguna de las tres es un LIBRO: `historial_accion` es
+    // auditoria (no lleva saldo de nadie) y `usuario` es de donde sale el actor congelado. R33
+    // sigue en pie y lo sigue afirmando el bucle del caso de abajo, que es el que importa.
+    const clienteDeUnaSolaTabla = {
+      walletMovimiento: {} as PrismaClient["walletMovimiento"],
+      $transaction: {} as PrismaClient["$transaction"],
+      historialAccion: {} as PrismaClient["historialAccion"],
+      usuario: {} as PrismaClient["usuario"],
+      // ⚠️ FICHA 458-E (R59): `$queryRaw`, para el filtro «A quién». El cruce por origen (a que
+      // tienda o mensajero pertenece el documento de una fila) es un `EXISTS` que el `where` de
+      // Prisma no expresa. Con el, el repositorio SI puede nombrar otras tablas en SQL —la de los
+      // debitos de la tienda entre ellas, para saber DE QUE TIENDA es un cobro—, pero solo como
+      // CRITERIO de pertenencia: lo que se suma sigue siendo `wallet_movimiento.monto` y nada mas.
+      // Eso lo afirma el caso «el filtro «A quién» solo SUMA la caja» de abajo.
+      $queryRaw: {} as PrismaClient["$queryRaw"],
+    };
+    const repo = new WalletMovimientoRepository(clienteDeUnaSolaTabla);
+
+    expect(repo).toBeInstanceOf(WalletMovimientoRepository);
+  });
+
+  it("y su fuente lo declara asi, sin nombrar ninguna otra tabla de dinero", () => {
+    const codigo = codigoSinComentarios("lib/repositories/WalletMovimientoRepository.ts");
+
+    // ⚠️ FICHA 362 — EL `Pick` GANA TRES CLAVES, Y NINGUNA ES UN LIBRO.
+    //
+    // Decia `Pick<PrismaClient, "walletMovimiento">` a secas. Hoy incluye ademas `$transaction`,
+    // `historialAccion` y `usuario`, porque los TRES movimientos que nacen de una DECISION humana
+    // —el ajuste manual de caja y los dos del egreso administrativo— escriben su fila de
+    // auditoria en la MISMA transaccion que el asiento (362/R9).
+    //
+    // R33 NO SE RELAJA: lo que exige es que este repositorio no pueda LEER LOS OTROS LIBROS, y eso
+    // lo mide el bucle de abajo —que no se toca—. `historial_accion` no lleva el saldo de nadie y
+    // `usuario` es de donde sale el actor congelado.
+    expect(codigo).toMatch(/Pick<\s*PrismaClient,\s*\n?\s*"walletMovimiento"/);
+    for (const ajena of ["walletTiendaMovimiento", "pagoMensajeroMovimiento", "gestionOrden", "cierreDia"]) {
+      expect(codigo, `WalletMovimientoRepository nombra ${ajena}`).not.toContain(ajena);
+    }
+  });
+
+  it("el filtro «A quién» (458-E) solo SUMA la caja: otras tablas, solo como criterio de pertenencia", () => {
+    // Revision M1 (458-E): endurecida. El repositorio suma UNA columna en SQL —el monto de la fila de
+    // la caja (`w`)— y lee UNA tabla —`wallet_movimiento` con alias `w`—; no suma importes en
+    // JavaScript ni escribe por SQL crudo. Las otras tablas solo aparecen dentro del modulo del cruce,
+    // que no nombra un monto. Cada regla tiene su contraprueba en el bloque «M1 — contrapruebas».
+    const repo = codigoSinComentarios(REPO_CAJA);
+    // CONTROL DE NO-VACUIDAD: las reglas miran algo que existe.
+    expect(sumasSql(repo).length, "el repositorio ya no suma en SQL: la regla mira el vacio").toBeGreaterThan(0);
+    expect(tablasSql(repo).length, "el repositorio ya no lee en SQL: la regla mira el vacio").toBeGreaterThan(0);
+
+    expect(sumasAjenas(repo), 'SUM de algo que no es w."monto"').toEqual([]);
+    expect(tablasAjenas(repo), 'SQL que lee algo que no es "wallet_movimiento" w').toEqual([]);
+    expect(sumasEnJs(repo), "suma de importes en JavaScript").toEqual([]);
+    expect(escriturasCrudas(repo), "escritura por SQL crudo").toEqual([]);
+
+    // Y el modulo del cruce no suma nada ni lee un monto: solo dice QUE filas son de quien.
+    const cruce = codigoSinComentarios(CRUCE_A_QUIEN);
+    expect(cruce).not.toMatch(/monto/i);
+    expect(escriturasCrudas(cruce), "escritura por SQL crudo en el cruce").toEqual([]);
+  });
+
+  it("M1 (458-E): todo modulo de `lib/repositories/` que el repositorio importa esta declarado y no escribe por SQL crudo", () => {
+    // El SQL puede vivir en otro modulo importado (como el cruce): el censo cubre TODOS. Uno nuevo no
+    // pasa hasta declararse aqui (y someterse a las reglas de arriba que le toquen).
+    const importados = modulosDeRepositorioImportados(readFileSync(path.join(RAIZ, REPO_CAJA), "utf8"));
+    expect(importados.length, "CONTROL DE NO-VACUIDAD: el censo de imports no encuentra nada").toBeGreaterThan(0);
+    expect([...importados].sort()).toEqual([...MODULOS_IMPORTADOS_DECLARADOS].sort());
+    for (const modulo of importados) {
+      expect(escriturasCrudas(codigoSinComentarios(modulo)), `${modulo} escribe por SQL crudo`).toEqual([]);
+    }
+  });
+
+  it("la derivacion de las dos cifras es PURA: no conoce ningun cliente ni ningun repositorio", () => {
+    const codigo = codigoSinComentarios("lib/utils/caja-tesoreria.ts");
+
+    for (const prohibido of ["PrismaClient", "Repository", "findMany", "groupBy", "await"]) {
+      expect(codigo, `caja-tesoreria.ts nombra ${prohibido}`).not.toContain(prohibido);
+    }
+  });
+
+  it("el puerto de la liquidacion tambien esta acotado a la caja", () => {
+    const contrato = codigoSinComentarios("lib/interfaces/services/ICajaPagoTiendaFeedService.ts");
+
+    expect(contrato).toMatch(/Pick<PrismaClient,\s*"walletMovimiento">/);
+    for (const libro of LIBROS_AJENOS) {
+      expect(contrato, `el puerto alcanza ${libro.tabla}`).not.toContain(libro.delegado);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// T H.2 (R66, R67, R68) — LA REVISION DE ALCANCE
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Los CUATRO modulos de la 173 que escriben o derivan dinero, mas sus tres contratos (su
+ * ejecutable lo retiro SL-12). Es la lista contra la que se barren las formulas ajenas (R68).
+ *
+ * La lista es declarada, asi que puede quedarse corta: el ultimo `it` del bloque R68 la CIERRA
+ * contra el arbol —toda fuente de `lib/` o `scripts/` que nombre una de las dos categorias
+ * nuevas tiene que estar aqui o en `CATALOGOS_PREEXISTENTES`—. Una feature futura que abra un
+ * quinto modulo de la caja no puede olvidarse de anadirlo: el censo la nombra.
+ */
+const MODULOS_DE_LA_173 = [
+  "lib/utils/caja-tesoreria.ts",
+  "lib/services/CajaCodFeedService.ts",
+  "lib/services/CajaPagoTiendaFeedService.ts",
+  "lib/services/CajaBackfillTesoreriaService.ts",
+  "lib/interfaces/services/ICajaCodFeedService.ts",
+  "lib/interfaces/services/ICajaPagoTiendaFeedService.ts",
+  "lib/interfaces/services/ICajaBackfillTesoreriaService.ts",
+];
+
+/**
+ * Modulos que nombran las categorias nuevas por ser CATALOGOS —no formulas—: los dos anteriores
+ * a la 173 y el de la ficha 344.
+ *
+ * `lib/utils/aporte-por-orden.ts` (344) declara, para CADA categoria de los dos libros, si su
+ * importe admite reparto por orden y de que fuente sale. Nombra `ingreso_cod_recaudado` para
+ * decir justamente que NO se reparte —su importe es la suma de los creditos del libro por
+ * tienda, no una acumulacion por orden— y `ingreso_reverso_pago_tienda` para decir que no nace
+ * de un cierre. Es un `Record` TOTAL sobre el union de categorias: no puede dejar ninguna fuera.
+ * No calcula dinero: la unica aritmetica que hace es acumular lo que `derivarIngresoOrden`
+ * devuelve, y el `it` de arriba comprueba que no nombra ningun insumo de las formulas.
+ */
+const CATALOGOS_PREEXISTENTES = [
+  "lib/types/wallet.ts",
+  "lib/analytics/metrics.ts",
+  "lib/utils/aporte-por-orden.ts",
+  // FICHA 459 (T A.5): la tabla de la invariante R8. Nombra `ingreso_cod_recaudado` e
+  // `ingreso_reverso_pago_tienda` para declarar que son la CONTRAPARTIDA en la caja del credito
+  // `cod_recaudado` y del `ajuste_credito` de la tienda. Es un `Record` TOTAL de dos columnas
+  // (tipo y pareja), sin aritmetica: no calcula dinero, lo clasifica.
+  "lib/utils/invariante-tiendas.ts",
+  // Revision 458-A (m2): `CATEGORIA_LABEL` (el nombre en pantalla de cada categoria de la caja) se
+  // mudo de `app/(app)/wallet/_components/wallet-labels.ts` a `lib/` porque lo lee un servicio. Es
+  // un `Record` TOTAL de textos, sin aritmetica: rotula, no calcula dinero.
+  "lib/constants/wallet-rotulos.ts",
+];
+
+/**
+ * Verificadores de SOLO LECTURA que nombran las categorias nuevas sin ser formula ni catalogo.
+ *
+ * `scripts/contraste-454.ts` (ficha 454, T3.1/T3.3): corredor local del contraste historico. Nombra
+ * `ingreso_cod_recaudado` solo en las filas FICTICIAS de `--autocomprobacion`, que se inyectan en el
+ * TEXTO de la consulta —nunca en la base— para provocar una diferencia por bloque. Ejecuta todo
+ * dentro de una transaccion `SET TRANSACTION READ ONLY` y no escribe en ningun libro.
+ *
+ * Declararlo aqui no lo exime de nada: el `it` «los verificadores de solo lectura no escriben» de
+ * abajo exige, sobre el codigo real, la transaccion de solo lectura y cero escrituras.
+ */
+const VERIFICADORES_SOLO_LECTURA = ["scripts/contraste-454.ts"];
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// R66 — el pago al mensajero entra en la caja EXACTAMENTE como antes. `[P2]` = (a).
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** Los dos archivos que la respuesta `[P2] = (a)` protege, literalmente, de ser editados. */
+const ARCHIVOS_DEL_FEED_DEL_MENSAJERO = [
+  "lib/services/WalletMensajeroFeedService.ts",
+  "tests/unit/services/wallet-mensajero-feed-service.test.ts",
+];
+
+describe("M1 (revision 458-E) — contrapruebas: cada regla del repositorio de la caja SI caza su violacion", () => {
+  it("`sum(` sin distinguir mayusculas y con espacio: una suma de otra columna se ve", () => {
+    expect(sumasAjenas('SELECT sum(d."monto") FROM "wallet_movimiento" w')).toEqual(['d."monto"']);
+    expect(sumasAjenas('SELECT SUM (d."monto") FROM "wallet_movimiento" w')).toEqual(['d."monto"']);
+    expect(sumasAjenas('SELECT Sum(w."monto") FROM "wallet_movimiento" w')).toEqual([]);
+  });
+
+  it('solo `"wallet_movimiento" w`: otra tabla con alias `w`, una coma o un JOIN se ven', () => {
+    expect(tablasAjenas('SELECT SUM(w."monto") FROM "wallet_tienda_movimiento" w')).toEqual([
+      'FROM "wallet_tienda_movimiento" w',
+    ]);
+    expect(tablasAjenas('SELECT 1 from "wallet_movimiento" w, "cierre_dia" d WHERE TRUE')).toHaveLength(1);
+    expect(tablasAjenas('SELECT 1 FROM "wallet_movimiento" w JOIN "cierre_dia" d ON TRUE')).toEqual([
+      'JOIN "cierre_dia" d',
+    ]);
+    expect(tablasAjenas('SELECT 1 FROM "wallet_movimiento" WHERE TRUE')).toHaveLength(1); // sin alias `w`
+    expect(tablasAjenas("SELECT 1 FROM ${otra} w")).toHaveLength(1); // tabla interpolada
+    expect(tablasAjenas('SELECT 1 FROM "wallet_movimiento" w WHERE TRUE')).toEqual([]);
+    // El `from` de un import no es SQL.
+    expect(tablasAjenas('import { x } from "@/lib/y";\nSELECT 1 FROM "wallet_movimiento" w')).toEqual([]);
+  });
+
+  it("ninguna suma de importes en JavaScript: `.reduce`, `.add` y `.plus` se ven", () => {
+    expect(sumasEnJs("grupos.reduce((acc, g) => acc.add(g.total), new Prisma.Decimal(0))")).toEqual([".reduce(", ".add("]);
+    expect(sumasEnJs("a.plus(b)")).toEqual([".plus("]);
+    expect(sumasEnJs("grupos.find((g) => g.categoria === c)")).toEqual([]);
+  });
+
+  it("ninguna escritura por SQL crudo: `$executeRaw`, `insert … returning` en minusculas y `Prisma.raw` se ven", () => {
+    expect(escriturasCrudas('prisma.$executeRaw`INSERT INTO "wallet_tienda_movimiento" VALUES (1)`')).toEqual([
+      "$executeRaw",
+      "INSERT",
+    ]);
+    expect(escriturasCrudas('prisma.$queryRaw`insert into "x" (a) values (1) returning id`')).toEqual(["insert", "returning"]);
+    expect(escriturasCrudas('prisma.$queryRaw`UPDATE "wallet_movimiento" SET x = 0`')).toEqual(["UPDATE"]);
+    expect(escriturasCrudas('prisma.$queryRaw`DELETE FROM "x"`')).toEqual(["DELETE"]);
+    expect(escriturasCrudas("Prisma.raw(texto)")).toEqual(["Prisma.raw"]);
+    // Un delegado (`.update(`) no es SQL crudo: lo mide R31.
+    expect(escriturasCrudas("tx.walletMovimiento.update({})")).toEqual([]);
+  });
+
+  it("el censo de imports ve un modulo de SQL nuevo", () => {
+    const fuente = 'import { a } from "@/lib/repositories/libro-caja-a-quien-sql";\nimport { b } from "@/lib/repositories/otro-sql";';
+    expect(modulosDeRepositorioImportados(fuente)).toEqual([CRUCE_A_QUIEN, "lib/repositories/otro-sql.ts"]);
+  });
+});
+
+describe("R66 [P2]=(a) — el pago al mensajero se carga en la caja como siempre", () => {
+  it("CONTROL DE NO-VACUIDAD: los dos archivos del feed del mensajero existen vivos y con contenido", () => {
+    // Sin esto, todo lo de abajo podria estar afirmando cosas sobre archivos borrados.
+    for (const ruta of ARCHIVOS_DEL_FEED_DEL_MENSAJERO) {
+      const fuente = readFileSync(path.join(RAIZ, ruta), "utf8");
+      expect(fuente.length, `${ruta} esta vacio`).toBeGreaterThan(500);
+    }
+    // Y la suite protegida sigue siendo la suite de ESTO: nombra al servicio y a su egreso.
+    const suite = readFileSync(path.join(RAIZ, ARCHIVOS_DEL_FEED_DEL_MENSAJERO[1]), "utf8");
+    expect(suite).toContain("WalletMensajeroFeedService");
+    expect(suite).toContain("egreso_pago_mensajero");
+  });
+
+  it("MEDIDO: el egreso de la caja sigue siendo el COSTO TOTAL `P`, no `min(P, E)`", async () => {
+    // `P` y `E` distintos A PROPOSITO (15 000 debidos, 9 000 de efectivo en mano): si fueran
+    // iguales, la asercion pasaria igual con las dos reglas y no distinguiria nada. Es la
+    // MISMA razon por la que `T C.4` sembro un libro con las dos cifras separadas.
+    const P = "15000.00";
+    const E = "9000.00";
+    const tx = {
+      cierreDia: {
+        findUnique: async () => ({
+          mensajeroId: "m-1",
+          totalPagoMensajero: new Prisma.Decimal(P),
+          totalEfectivo: new Prisma.Decimal(E),
+        }),
+      },
+    } as unknown as WalletMensajeroFeedTxClient;
+
+    const { libro, egresoCaja } = await new WalletMensajeroFeedService().construirMovimientosDePago(
+      "c-1",
+      tx,
+    );
+
+    // La caja: UN egreso, por P entero. Mover esto a `min(P, E)` —la opcion (b) de `[P2]`, la
+    // que el humano descarto— pone rojo aqui con el delta de 6 000 a la vista.
+    expect(egresoCaja).toHaveLength(1);
+    expect(egresoCaja[0].categoria).toBe("egreso_pago_mensajero");
+    expect(egresoCaja[0].monto).toBe(P);
+    expect(egresoCaja[0].monto).not.toBe(E);
+    expect(egresoCaja[0].origenTipo).toBe("cierre_dia"); // el «cuando»: al aprobar el cierre
+    expect(egresoCaja[0].origenId).toBe("c-1");
+    // Y el libro por mensajero tampoco se movio: devengo = P, pago = min(P, E).
+    expect(libro.map((f) => [f.categoria, f.monto])).toEqual([
+      ["pago_devengado", P],
+      ["pago_efectivo", E],
+    ]);
+  });
+
+  it("la fuente del feed del mensajero no sabe nada de la 173", () => {
+    const codigo = codigoSinComentarios(ARCHIVOS_DEL_FEED_DEL_MENSAJERO[0]);
+
+    // Ni las categorias nuevas, ni la derivacion de las dos cifras, ni el puerto de la tienda.
+    for (const ajeno of [
+      "ingreso_cod_recaudado",
+      "ingreso_reverso_pago_tienda",
+      "egreso_pago_tienda",
+      "caja-tesoreria",
+      "derivarCaja",
+      "CajaPagoTiendaFeedService",
+    ]) {
+      expect(codigo, `WalletMensajeroFeedService nombra ${ajeno}`).not.toContain(ajeno);
+    }
+    // Y sigue tomando `min(P, E)` de su fuente unica, no de una copia propia.
+    expect(codigo).toContain("calcularSplitPago");
+  });
+
+  it("el egreso del mensajero se emite en el CIERRE y no en la liquidacion (el «cuando» de R66)", () => {
+    // La 173 le dio al servicio de liquidacion una puerta a la caja (T C.2/T C.3). R66 exige
+    // que esa puerta NO se haya usado tambien para adelantar o repetir el pago al mensajero.
+    const liquidacion = codigoSinComentarios("lib/services/LiquidacionService.ts");
+    expect(liquidacion).not.toContain("egreso_pago_mensajero");
+
+    // Control de no-vacuidad del `not`: ese mismo archivo SI nombra el camino de la tienda,
+    // que es lo que la 173 le anadio. Si el barrido leyera un archivo equivocado, caeria aqui.
+    expect(liquidacion).toContain("registrarPagoTienda");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// R67 — ni arqueo, ni corte de caja, ni conciliacion de caja nueva.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las formas de nombrar un ciclo de arqueo/corte de caja. `corte` a secas NO entra: el repo
+ * tiene el CORTE DIARIO de la feature 41 (`CorteDiarioService`, `corte_sin_gestionar`), que es
+ * el cierre de la jornada del mensajero y no tiene nada que ver con contar el dinero de la
+ * caja. Perseguir la palabra suelta seria un falso positivo garantizado.
+ */
+const CICLOS_PROHIBIDOS = [
+  /\barqueo/i,
+  /corte[_\s-]*de[_\s-]*caja/i,
+  /caja[_\s-]*chica/i,
+  /cierre[_\s-]*de[_\s-]*caja/i,
+  /conciliaci[oó]n[_\s-]*de[_\s-]*caja/i,
+];
+
+/**
+ * El codigo de PRODUCTO. `tests/` queda fuera a proposito y por la misma razon por la que el
+ * barrido money-safe quita los comentarios: este archivo nombra «arqueo» en cada `it` para
+ * perseguirlo, y un censo que se leyera a si mismo fallaria por CITAR lo que prohibe. Ademas,
+ * R67 habla de tablas, estados y pantallas: ninguna de las tres vive en `tests/`.
+ */
+const CODIGO_DE_PRODUCTO = [
+  ...fuentesDe("lib"),
+  ...fuentesDe("app"),
+  ...fuentesDe("components"),
+  ...fuentesDe("scripts"),
+];
+
+describe("R67 — no nace ningun ciclo de corte, arqueo ni conciliacion de caja", () => {
+  it("ni una sola fuente del producto nombra un arqueo o un corte de caja", () => {
+    const culpables: string[] = [];
+    for (const ruta of CODIGO_DE_PRODUCTO) {
+      const texto = readFileSync(path.join(RAIZ, ruta), "utf8");
+      if (CICLOS_PROHIBIDOS.some((re) => re.test(texto))) culpables.push(ruta);
+    }
+    expect(culpables).toEqual([]);
+  });
+
+  it("tampoco el esquema: ni tabla, ni columna, ni valor de enum de arqueo", () => {
+    const schema = readFileSync(path.join(RAIZ, "db/schema.prisma"), "utf8");
+    for (const re of CICLOS_PROHIBIDOS) {
+      expect(schema, `db/schema.prisma casa ${re}`).not.toMatch(re);
+    }
+  });
+
+  it("tampoco una PANTALLA: ningun segmento de ruta de arqueo o corte de caja", () => {
+    const rutas = fuentesDe("app").filter((r) => /\/(page|layout|route)\.tsx?$/.test(r));
+    // Control de no-vacuidad: el arbol TIENE paginas; si el filtro estuviera roto, cero rutas
+    // pasarian la comprobacion de abajo por vacio.
+    expect(rutas.length).toBeGreaterThan(20);
+    for (const ruta of rutas) {
+      for (const re of CICLOS_PROHIBIDOS) {
+        expect(ruta, `la ruta ${ruta} casa ${re}`).not.toMatch(re);
+      }
+    }
+  });
+
+  it("la migracion de la 173 no crea NINGUNA tabla ni NINGUN tipo: solo anade valores y el CHECK", () => {
+    const up = readFileSync(
+      path.join(RAIZ, "db/migrations/20260803120000_caja_tesoreria/migration.sql"),
+      "utf8",
+    ).toUpperCase();
+
+    expect(up).not.toMatch(/CREATE\s+TABLE/);
+    expect(up).not.toMatch(/CREATE\s+TYPE/);
+    // Control de no-vacuidad: el archivo SI trae lo que la feature declara — dos valores de
+    // enum y la restriccion. Si se leyera un archivo vacio, los dos `not` de arriba pasarian.
+    expect((up.match(/ADD VALUE IF NOT EXISTS/g) ?? []).length).toBe(2);
+    expect(up).toMatch(/ADD CONSTRAINT/);
+  });
+
+  it("CONTROL DE NO-VACUIDAD: el mismo censo SI encuentra lo que si existe", () => {
+    // Las cuatro afirmaciones de arriba son negaciones sobre el mismo lector de archivos. Si
+    // `fuentesDe` devolviera basura o `readFileSync` leyera vacio, todas pasarian por vacio.
+    // Este caso obliga al censo a ENCONTRAR: el corte DIARIO de la 41 —que si existe y que a
+    // proposito NO esta en la lista de prohibidos— y el libro de la caja en el esquema.
+    const conCorteDiario = CODIGO_DE_PRODUCTO.filter((ruta) =>
+      /CorteDiario/.test(readFileSync(path.join(RAIZ, ruta), "utf8")),
+    );
+    expect(conCorteDiario.length).toBeGreaterThan(0);
+
+    const schema = readFileSync(path.join(RAIZ, "db/schema.prisma"), "utf8");
+    expect(schema).toContain("wallet_movimiento");
+    expect(schema).toContain("ingreso_cod_recaudado");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// R68 — los importes y las formulas de flete, comision, IVA y pago al mensajero no se mueven.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** Donde vive cada formula que R68 protege. Se comprueba que las NUEVE existen (no-vacuidad). */
+const MODULOS_DE_FORMULA = [
+  "lib/utils/ingreso-empresa.ts", // flete, flete de devolucion, comision COD y sus IVA
+  "lib/utils/pago-mensajero.ts", // pago al mensajero por gestion
+  "lib/utils/cuenta-por-pagar.ts", // `min(P, E)` y la cuenta por pagar
+  "lib/utils/ingreso-bodega.ts", // ingreso de bodega por resultado
+  "lib/utils/cierre-totales.ts", // los snapshots del cierre
+  "lib/utils/mapeo-concepto-tienda.ts", // el 1:1 concepto de ingreso -> debito de tienda
+  "lib/utils/saldo-tienda.ts", // el saldo a favor de la tienda
+  "lib/services/WalletMensajeroFeedService.ts",
+  "lib/services/WalletTiendaFeedService.ts",
+];
+
+/** Los insumos y los nombres de esas formulas: lo que un modulo de la 173 no puede nombrar. */
+const INSUMOS_DE_FORMULA = [
+  "valorFlete",
+  "valorFleteGam",
+  "valorFleteDevuelto",
+  "comisionCod",
+  "ivaFlete",
+  "ivaComisionCod",
+  "cobroEntregado",
+  "cobroRechazado",
+  "montoCobrar",
+  "derivarIngresoOrden",
+  "pagoPorResultado",
+  "calcularSplitPago",
+  "totalPagoMensajero",
+  "totalEfectivo",
+];
+
+/** Tarifa de prueba con los campos distintos entre si: ningun par puede confundirse. */
+const TARIFA = {
+  valorFlete: "2500.00",
+  valorFleteGam: "2000.00",
+  valorFleteDevuelto: "1500.00",
+  valorFleteDevueltoGam: "1200.00",
+  comisionCod: "5.00",
+  ivaFlete: "13.00",
+  ivaComisionCod: "10.00",
+  // Sin pacto por distrito especial: esta guardia mide que la 173 no toque las formulas
+  // NORMALES, y el pacto tiene su propio archivo.
+  tarifaEspecial: null,
+  tarifaEspecialDevuelta: null,
+};
+
+describe("R68 — las formulas de flete, comision, IVA y pago al mensajero no se alteran", () => {
+  it("CONTROL DE NO-VACUIDAD: los nueve modulos de formula existen vivos en el arbol", () => {
+    for (const ruta of MODULOS_DE_FORMULA) {
+      const fuente = readFileSync(path.join(RAIZ, ruta), "utf8");
+      expect(fuente.length, `${ruta} esta vacio`).toBeGreaterThan(200);
+    }
+  });
+
+  it("MEDIDO: flete, IVA del flete, comision COD e IVA de la comision, importe a importe", () => {
+    // Entregada, zona CENTRAL, 20 000 de contra-entrega, con comision.
+    const r = derivarIngresoOrden(
+      { resultado: "entregado", esCentral: true, esZonaEspecial: false, montoCobrar: "20000.00", cobraComision: true },
+      TARIFA,
+    );
+
+    // esCentral -> `valorFleteGam` (2 000) y NO `valorFlete` (2 500): la eleccion de columna
+    // tambien es formula.
+    expect(r.ingreso_flete?.toFixed(2)).toBe("2000.00");
+    expect(r.ingreso_iva_flete?.toFixed(2)).toBe("260.00"); // 13 % de 2 000
+    expect(r.ingreso_comision_cod?.toFixed(2)).toBe("1000.00"); // 5 % de 20 000
+    expect(r.ingreso_iva_comision_cod?.toFixed(2)).toBe("100.00"); // 10 % de la comision
+    // La devolucion no aporta en una entrega.
+    expect(r.ingreso_flete_devolucion).toBeUndefined();
+  });
+
+  it("MEDIDO: el flete de DEVOLUCION y su IVA, y que un rechazo NO cobra comision", () => {
+    // FICHA 301 (2026-08-28): este caso medía `devuelta`. El flete de devolucion y su IVA no
+    // cambiaron de formula ni de importe — cambio QUIEN los paga: solo `rechazada`.
+    const r = derivarIngresoOrden(
+      { resultado: "devolucion_a_origen_por_rechazo", esCentral: false, esZonaEspecial: false, montoCobrar: "20000.00", cobraComision: true },
+      TARIFA,
+    );
+
+    expect(r.ingreso_flete_devolucion?.toFixed(2)).toBe("1500.00"); // no central
+    expect(r.ingreso_iva_flete_devolucion?.toFixed(2)).toBe("195.00"); // 13 % de 1 500
+    expect(r.ingreso_comision_cod).toBeUndefined(); // no hubo recaudo
+    expect(r.ingreso_flete).toBeUndefined();
+  });
+
+  it("MEDIDO (ficha 301): una DEVUELTA no aporta a ningun concepto de ingreso", () => {
+    // La guardia de la 173 mide que las formulas de dinero no se alteren de pasada. Esta
+    // linea es la excepcion declarada: el 2026-08-28 el humano cambio la REGLA (no la
+    // formula) y una devuelta dejo de facturar. Queda medido aqui para que el proximo cambio
+    // "de pasada" en ingreso-empresa.ts tenga que pasar tambien por este archivo.
+    const r = derivarIngresoOrden(
+      { resultado: "novedad", esCentral: false, esZonaEspecial: false, montoCobrar: "20000.00", cobraComision: true },
+      TARIFA,
+    );
+    expect(r).toEqual({});
+  });
+
+  it("MEDIDO: el pago al mensajero por gestion — solo `entregada` paga, y paga `cobroEntregado`", () => {
+    const tarifa = { cobroEntregado: "1200.00", cobroRechazado: "600.00" };
+    expect(pagoPorResultado("entregado", tarifa)).toBe("1200.00");
+    // El `cobroRechazado` NUNCA se paga al mensajero, y es distinto a proposito.
+    expect(pagoPorResultado("devolucion_a_origen_por_rechazo", tarifa)).toBe("0.00");
+    expect(pagoPorResultado("novedad", tarifa)).toBe("0.00");
+    expect(pagoPorResultado("reprogramado", tarifa)).toBe("0.00");
+    expect(pagoPorResultado("entregado", null)).toBe("0.00");
+  });
+
+  it("MEDIDO: `min(P, E)` sigue neteando por cierre, con los tres importes", () => {
+    // P > E: el caso que discrimina. Con P = E los tres numeros saldrian iguales y la
+    // asercion no distinguiria `min(P, E)` de `P`.
+    expect(calcularSplitPago("15000.00", "9000.00")).toEqual({
+      devengado: "15000.00",
+      pagado: "9000.00",
+      pendiente: "6000.00",
+    });
+    // E > P: el efectivo no paga de mas.
+    expect(calcularSplitPago("15000.00", "40000.00")).toEqual({
+      devengado: "15000.00",
+      pagado: "15000.00",
+      pendiente: "0.00",
+    });
+  });
+
+  it("ningun modulo de la 173 nombra un insumo de esas formulas", () => {
+    for (const ruta of MODULOS_DE_LA_173) {
+      const codigo = codigoSinComentarios(ruta);
+      for (const insumo of INSUMOS_DE_FORMULA) {
+        expect(codigo, `${ruta} nombra ${insumo}`).not.toContain(insumo);
+      }
+    }
+  });
+
+  it("CIERRE de la lista: toda fuente que nombre las categorias nuevas esta declarada", () => {
+    const nuevas = ["ingreso_cod_recaudado", "ingreso_reverso_pago_tienda"];
+    const conCategoriasNuevas = FUENTES.filter((ruta) => {
+      const codigo = codigoSinComentarios(ruta);
+      return nuevas.some((c) => codigo.includes(c));
+    });
+
+    // Control de no-vacuidad: el censo encuentra algo. Si `FUENTES` viniera vacio, el
+    // `toEqual([])` de abajo pasaria sin haber mirado nada.
+    expect(conCategoriasNuevas.length).toBeGreaterThan(0);
+
+    const declarados = new Set([
+      ...MODULOS_DE_LA_173,
+      ...CATALOGOS_PREEXISTENTES,
+      ...VERIFICADORES_SOLO_LECTURA,
+    ]);
+    const sinDeclarar = conCategoriasNuevas.filter((ruta) => !declarados.has(ruta));
+    expect(sinDeclarar).toEqual([]);
+  });
+
+  it("los verificadores de solo lectura no escriben: transaccion READ ONLY y cero escrituras", () => {
+    // Control de no-vacuidad: la lista no esta vacia y sus archivos existen.
+    expect(VERIFICADORES_SOLO_LECTURA.length).toBeGreaterThan(0);
+    for (const ruta of VERIFICADORES_SOLO_LECTURA) {
+      const codigo = codigoSinComentarios(ruta);
+      expect(codigo, `${ruta} no abre una transaccion de solo lectura`).toContain(
+        "SET TRANSACTION READ ONLY",
+      );
+      // Ninguna escritura por delegado de Prisma, del libro que sea.
+      const escrituraDelegado = new RegExp(`\\.\\w+\\.(${ESCRITURAS.join("|")})\\s*\\(`);
+      expect(codigo, `${ruta} escribe por un delegado de Prisma`).not.toMatch(escrituraDelegado);
+      // Toda sentencia cruda de escritura es, exactamente, la que fija la transaccion READ ONLY.
+      // El acento grave va como `\x60` y no literal: el quitacomentarios no reconoce regex
+      // y un acento grave suelto abriria una plantilla que se come los comentarios que siguen.
+      const crudas = codigo.match(/\$executeRaw(?:Unsafe)?\s*\(?\x60?[^;]*/g) ?? [];
+      for (const cruda of crudas) {
+        expect(cruda, `${ruta} ejecuta SQL de escritura`).toContain("SET TRANSACTION READ ONLY");
+      }
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// R32, R35 y R63 — el dinero de las TIENDAS y de los MENSAJEROS no se entera de la 173.
+//
+// AMPLIACION DECLARADA de `T H.2`. La trazabilidad mandaba estos tres a «suites de la 171/172
+// SIN EDITAR», y `T G.4` lo verifico midiendo el diff: 47 archivos protegidos vivos en el
+// arbol, cero en el diff. Esa medicion es correcta y es punto-en-el-tiempo: **no corre en el
+// gate**. Eran los tres unicos `R` de los 68 sin un caso ejecutable propio.
+//
+// Aqui pasan a medirse igual que R68: no «ese archivo no se toco», sino «este importe sigue
+// siendo este», ejecutando las funciones puras que producen los tres numeros.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las pantallas que R63 congela, por su carpeta de componentes.
+ *
+ * Eran TRES. La ficha 336 (2026-08-30) borró `/mis-pagos` por decisión humana y su carpeta salió
+ * de aquí: `fuentesDe` hace `readdirSync` sin comprobar existencia, así que una entrada muerta no
+ * falla con un diagnóstico —lanza ENOENT y tumba el archivo entero—.
+ *
+ * Los DOS umbrales de no-vacuidad de más abajo se RE-MIDIERON tras el borrado y NO se tocan:
+ * quedan 14 componentes (7 + 7) sobre un suelo de `> 12`, y 7 por carpeta sobre `> 3`.
+ */
+const PANTALLAS_CONGELADAS = [
+  "app/(app)/wallet/tiendas/_components",
+  "app/(app)/mi-wallet/_components",
+];
+
+describe("R32/R35/R63 — el saldo de la tienda y el pendiente del mensajero no se mueven", () => {
+  it("MEDIDO (R32): el saldo a favor de una tienda, con su desglose y su signo", () => {
+    // Creditos 20 000 (contra-entrega) contra debitos 3 390 (flete + IVA): saldo 16 610.
+    expect(derivarSaldoTienda("20000.00", "3390.00")).toEqual({
+      creditos: "20000.00",
+      debitos: "3390.00",
+      saldo: "16610.00",
+      signo: "positivo",
+    });
+    // Y el caso que la 173 podria haber roto sin que nadie mirara: una tienda que DEBE. El
+    // saldo negativo se conserva tal cual, no se recorta a cero.
+    expect(derivarSaldoTienda("0.00", "1200.00")).toEqual({
+      creditos: "0.00",
+      debitos: "1200.00",
+      saldo: "-1200.00",
+      signo: "negativo",
+    });
+  });
+
+  it("MEDIDO (R32): la cuenta por pagar de un mensajero y el pendiente de UN cierre", () => {
+    expect(derivarCuentaPorPagar("15000.00", "9000.00")).toEqual({
+      devengado: "15000.00",
+      pagado: "9000.00",
+      cuentaPorPagar: "6000.00",
+      signo: "positivo",
+    });
+    // El pendiente de un cierre: `min(P,E)` menos lo ya entregado por liquidacion (172).
+    // P=15 000, E=9 000 -> el cierre genero 6 000; con 2 500 ya pagados quedan 3 500.
+    expect(
+      derivarPendienteCierre({
+        pagoDebido: "15000.00",
+        efectivo: "9000.00",
+        premiosVivos: "0.00", // 293/T2.3 — sin premio, la cifra de la 173 no se mueve
+        pagadoVigente: "2500.00",
+      }),
+    ).toBe("3500.00");
+    // Anular ese pago (pagadoVigente vuelve a 0) devuelve el pendiente entero.
+    expect(
+      derivarPendienteCierre({
+        pagoDebido: "15000.00",
+        efectivo: "9000.00",
+        premiosVivos: "0.00",
+        pagadoVigente: "0.00",
+      }),
+    ).toBe("6000.00");
+  });
+
+  it("R35: el saldo de la tienda se deriva del ledger por tienda y de ninguna otra fuente", () => {
+    const saldo = codigoSinComentarios("lib/utils/saldo-tienda.ts");
+    // La firma solo admite los dos totales del ledger de la tienda: no hay por donde colarle
+    // una cifra de la caja. Si alguien intentara «mejorar» el saldo con `deTerceros`, tendria
+    // que cambiar la firma, y eso cae aqui.
+    expect(derivarSaldoTienda.length).toBe(2);
+    for (const ajeno of [
+      "walletMovimiento",
+      "derivarCaja",
+      "caja-tesoreria",
+      "deTerceros",
+      "ingreso_cod_recaudado",
+    ]) {
+      expect(saldo, `saldo-tienda.ts nombra ${ajeno}`).not.toContain(ajeno);
+    }
+    // Control de no-vacuidad del `not`: el archivo SI es el que deriva el saldo.
+    expect(saldo).toContain("derivarSaldoTienda");
+  });
+
+  it("R63: ninguna de las pantallas congeladas sabe nada de la caja en tesoreria", () => {
+    const componentes = PANTALLAS_CONGELADAS.flatMap((carpeta) => fuentesDe(carpeta));
+
+    // CONTROL DE NO-VACUIDAD, el de `T G.4`: una ausencia solo prueba algo si lo ausente
+    // existe. Las carpetas tienen componentes vivos; si una ruta estuviera mal escrita,
+    // `fuentesDe` reventaria y si el filtro fallara, el bucle de abajo no miraria nada.
+    expect(componentes.length).toBeGreaterThan(12);
+    for (const carpeta of PANTALLAS_CONGELADAS) {
+      expect(fuentesDe(carpeta).length, `${carpeta} no tiene componentes`).toBeGreaterThan(3);
+    }
+
+    for (const ruta of componentes) {
+      const codigo = codigoSinComentarios(ruta);
+      for (const ajeno of [
+        "verResumenCajaAction",
+        "CajaResumenDTO",
+        "CajaResumenCard",
+        "derivarCaja",
+        "ingreso_cod_recaudado",
+        "ingreso_reverso_pago_tienda",
+        "Ganancia de ${EMPRESA",
+      ]) {
+        expect(codigo, `${ruta} nombra ${ajeno}`).not.toContain(ajeno);
+      }
+    }
+  });
+});

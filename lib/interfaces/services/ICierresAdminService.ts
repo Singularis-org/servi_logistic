@@ -1,0 +1,797 @@
+import type { MetodoPagoValue } from "@prisma/client";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type {
+  CatalogoFiltrosCierresDTO,
+  FiltrosCierres,
+  FiltrosDescargaGestiones,
+} from "@/lib/types/filtros-cierres";
+import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
+import type {
+  ActualizarPagosGestionInput,
+  CorregirResultadoGestionInput,
+} from "@/lib/types/cierres-admin";
+import type { CausaIncidente } from "@/lib/types/causa-incidente";
+import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
+import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
+import type {
+  CierreGrupos,
+  CierreOrdenSinGestion,
+  CierreRechazoDeTienda,
+  CierreResultado,
+  CierreTotales,
+  IngresoEmpresaDTO,
+  TotalesIngresoEmpresa,
+} from "@/lib/interfaces/services/ICierreDiaService";
+// Ficha 396 — la parte de UNA tienda se DECLARA junto a la funcion que la produce
+// (`partesPorTienda`), donde viven las identidades que particiona, y se importa aqui como TIPO.
+// Mismo camino que `OrigenFlete`, que ya viaja asi desde ese mismo modulo: un `import type` se
+// borra al compilar, asi que esto no arrastra ni un byte de `lib/utils/` al bundle.
+import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
+
+// Feature 38 — contrato del servicio "Cierres del dia" del admin (maestro /
+// adminSatelite). Logica de negocio pura (sin HTTP ni Prisma); el borde (Server
+// Action) la traduce a resultado tipado y resuelve `unauthenticated`. Solo lectura +
+// la transicion aprobar/rechazar. Money-safe: los Decimal cruzan como STRING (R9).
+// REUSA CierreTotales / CierreGrupos (grupos por resultado) de la feature 37.
+
+// Cabecera de un cierre dentro del alcance del admin (cola + historico, R2-R5/R8).
+// Nombres ya resueltos (no IDs crudos). `totales` = snapshot money-safe (R8/R9).
+/**
+ * FEATURE 271 (T7.1, R48) — LO QUE LA ADMINISTRACION VE EN LA FILA DE UN CIERRE: que ese mensajero
+ * esta BLOQUEADO y POR QUE (cuantos cierres arrastra y cual toca resolver primero).
+ *
+ * ⚠️ Y POR QUE ESTO Y NO METER `rechazado` EN LA COLA, que era la via barata. Q2, resuelta por el
+ * humano el 2026-08-23: **NO**. Sobre un `rechazado` LA BODEGA YA DECIDIO, y la cola significa
+ * «pendiente de MI decision»; meterlo ahi cambia lo que la cola significa, y de paso tocaria un
+ * modulo que leen TRES pantallas para arreglar un problema de UNA. `ESTADOS_COLA_CIERRE_DIA` NO SE
+ * TOCA.
+ *
+ * ⚠️ Y QUE NADIE SAQUE LA CONCLUSION CONTRARIA: que un `rechazado` no este en la cola NO deja al
+ * mensajero sin rescate. `forzarSolicitudVencido` acepta `vencido` **y** `rechazado`
+ * (`ESTADOS_REABRIBLES`), asi que la administracion conserva la salida (R49).
+ */
+export interface BloqueoMensajeroEnFila {
+  /** El veredicto de la regla N/V sobre el DUEÑO de este cierre. */
+  bloqueado: boolean;
+  /** N — cuantos cierres sin aprobar arrastra ese mensajero (este incluido). */
+  cierresAbiertos: number;
+  /** V — cuantos de esos esperan a que el MENSAJERO los reenvie. */
+  cierresPorReenviar: number;
+}
+
+export interface CierreAdminResumen {
+  cierreId: string;
+  mensajeroId: string;
+  mensajeroNombre: string;
+  /**
+   * FEATURE 271 (R48): el estado de bloqueo del mensajero DUEÑO de este cierre. Viaja CON la fila
+   * —no en una cola nueva ni en una pantalla nueva— porque es un dato DE la fila. Opcional
+   * (aditivo): los consumidores que no lo pinten siguen compilando.
+   */
+  bloqueoMensajero?: BloqueoMensajeroEnFila;
+  estado: CierreEstado; // solicitado | aprobado | rechazado
+  destinoTipo: CierreDestinoTipo;
+  destinoZonaId: string;
+  destinoZonaNombre: string;
+  totales: CierreTotales; // snapshot (money-safe string, R8/R9)
+  totalPagoMensajero: string; // feature 39/R17: snapshot total del pago al mensajero (STRING), separado de `totales`
+  totalIngresoBodegaRechazos: string; // feature 56/R16: snapshot total del ingreso de bodega por rechazos (STRING), separado de `totales` y del pago al mensajero
+  /**
+   * Feature 172 (T C.2, §5/R22/R26/R28) — lo que de ESTE cierre sigue sin entregarse al
+   * mensajero, DERIVADO en el servidor: `min(P, E)` menos los pagos VIGENTES registrados contra
+   * el (`derivarPendienteCierre`). STRING de escala 2, money-safe: la pantalla no hace
+   * aritmetica con dinero (R14), solo lo pinta.
+   *
+   * **`null` = el cierre NO esta aprobado** (R28). No es «cero» ni «no se sabe»: en un cierre
+   * `solicitado`, `vencido` o `rechazado` no hay nada que pagar todavia y la pantalla no debe
+   * mostrar ni ofrecer nada relativo al pago. Los dos valores se distinguen a proposito, porque
+   * `"0.00"` SI significa algo: aprobado y ya liquidado del todo (R27).
+   *
+   * Lo rellena el SERVICIO, no el repositorio ni `toResumen`: sale de una unica agregacion por
+   * pagina (`sumarVigentesPorCierre`), no de una consulta por fila.
+   */
+  pendientePagoMensajero: string | null;
+  /**
+   * FICHA 462 (S3, R26/R27/R28) — cuantas reprogramadas DE HOY retiene ESTE cierre: ordenes con
+   * resultado `reprogramado` para hoy (o antes) que no pueden volver a bodega hasta que este cierre
+   * se apruebe (regla 276; y la forma `en_reparto` con gestion pendiente de la 454).
+   *
+   * Lo rellena el SERVICIO con UNA sola lectura por pagina (`contarPorCierre`, patron
+   * `pendientePagoMensajero`), nunca una por fila. `0` = no retiene nada y la pantalla no muestra
+   * nada de esta ficha; un cierre `aprobado` es SIEMPRE `0` por construccion (ambas formas exigen
+   * cierre no aprobado). Opcional en el tipo (aditivo): los consumidores que no lo pinten siguen
+   * compilando; el servicio lo puebla en los tres caminos (cola, historico y detalle).
+   *
+   * NO entra en las descargas (R31): `cierres-admin-descarga-columnas.ts` no lo nombra.
+   */
+  reprogramadasRetenidasHoy?: number;
+  solicitadoAt: string; // ISO
+  resueltoAt: string | null; // ISO; null si solicitado (F1.4-e)
+  motivoRechazo: string | null; // solo rechazado (F1.4-e)
+}
+
+// R2-R5/R8/R9: cola de `solicitado` (pendientes) + historico (aprobado/rechazado)
+// del alcance del actor. `sinZona` = adminSatelite sin zona (R3). `forbidden` = rol
+// != maestro/adminSatelite (R1). `unauthenticated` lo resuelve el borde.
+export type ListarCierresAdminServiceResult =
+  | {
+      status: "ok";
+      pendientes: CierreAdminResumen[]; // estado=solicitado (R4)
+      historico: CierreAdminResumen[]; // aprobado/rechazado (R5)
+      sinZona: boolean; // adminSatelite sin zona (R3)
+    }
+  | { status: "forbidden" }; // rol != maestro/adminSatelite (R1)
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40/R41): UNA PAGINA del historico del alcance + el total del
+ * conjunto. Es el contrato comun de T H.2 aplicado a `CierreAdminResumen`, sin campos extra.
+ *
+ * `sinZona` NO viaja aqui, y es deliberado: el contrato paginado son cuatro campos y el aviso
+ * de «no tenes zona asignada» es de la PANTALLA, que lo sigue recibiendo por
+ * `listarCierresAdmin`. Un `adminSatelite` sin zona recibe una pagina vacia con `total: 0`,
+ * que es exactamente lo que veia antes (R44).
+ */
+export type ListarHistoricoCierresAdminServiceResult =
+  ListarPaginadoServiceResult<CierreAdminResumen>;
+
+/**
+ * Feature 170 — FASE 2 (T J.1, R40/R41/R42): UNA PAGINA de la COLA de pendientes de decision
+ * del alcance + el total del conjunto. Misma forma que el historico y por el mismo motivo: el
+ * contrato de T H.2 son cuatro campos y ni uno mas.
+ *
+ * De su `total` sale el CONTADOR DE CABECERA que hoy dice `({pendientes.length})`
+ * (`CierresAdminModule.tsx:442`). Es un conteo de filas, no dinero: los montos de esta pantalla
+ * viajan por FILA como snapshot y no se derivan de este array (R49).
+ */
+export type ListarPendientesCierresAdminServiceResult =
+  ListarPaginadoServiceResult<CierreAdminResumen>;
+
+/**
+ * Feature 184 — Tanda D (T D.2, R1/R6) — el HISTORICO ENTERO del alcance, sin recorte: el
+ * conjunto del que sale el ARCHIVO de ese listado.
+ *
+ * Mismo elemento que la pagina (`CierreAdminResumen`), porque el archivo proyecta exactamente
+ * las columnas que la tabla enseña (R12) y las proyecta con la misma funcion. `limite_excedido`
+ * lleva SOLO conteos: ni una fila, ni un conjunto truncado (R6).
+ */
+export type ListarHistoricoCierresAdminCompletoServiceResult =
+  ListarCompletoServiceResult<CierreAdminResumen>;
+
+/**
+ * Feature 184 — Tanda D (T D.2, R1/R6) — la COLA ENTERA de pendientes de decision del alcance.
+ *
+ * Se declara aparte del historico aunque su forma coincida, por el mismo motivo que sus dos
+ * schemas de pagina: son dos listados distintos y el nombre es lo unico que dice cual de las
+ * dos mitades se esta pidiendo.
+ */
+export type ListarPendientesCierresAdminCompletoServiceResult =
+  ListarCompletoServiceResult<CierreAdminResumen>;
+
+/**
+ * Feature 230 (T1.1, design §2.4) — UNA GESTION de un cierre, lista para proyectar a una fila
+ * de la HOJA FUNDIDA (la descarga detallada que cruza los cierres de varios mensajeros).
+ *
+ * Es el DTO COMPARTIDO por los DOS bordes de lectura de la feature —el de «cierres del dia»
+ * (`ICierresAdminService`) y el de «cierres de bodega» (`ICierresBodegaAdminService`, que lo
+ * importa de aqui)— para que las dos salidas emitan las MISMAS columnas desde la MISMA
+ * proyeccion (R26). Los dos listados son particiones DISJUNTAS del negocio (design §2.6), no
+ * dos vistas del mismo conjunto: por eso hay dos bordes y un solo DTO.
+ *
+ * **NO es `CierreDetalleGestion`** (design §2.5), y las diferencias son requisitos, no estilo:
+ *
+ *  - **Sin `evidenciaUrl` y sin NINGUN campo derivado de la evidencia** (R22/R40/R41). Aquel
+ *    lleva la URL FIRMADA, y una hoja reenviada por correo con ella dentro es acceso a la foto
+ *    sin sesion. La forma mas fuerte de cumplirlo es que el servidor no emita NADA relativo a
+ *    la evidencia por este camino —ni siquiera un booleano `tieneEvidencia`—: asi no hay campo
+ *    que manana pueda convertirse en columna por descuido. Lo cubre su test (T3.4c).
+ *  - **Sin `gestionId` ni `ordenId`** (R42): identificadores internos con forma de uuid. El
+ *    identificador de negocio de la fila es `numRemision`.
+ *  - **CON `mensajeroNombre` y `cierreSolicitadoAt`** (R8/R11): la descarga de hoy es de UN
+ *    cierre y el mensajero va en el NOMBRE del archivo; al cruzar cierres, sin esas dos celdas
+ *    las filas no se distinguen entre si.
+ *
+ * Money-safe (R43/R44): todo monto viaja como el STRING del snapshot TAL CUAL. Ni conversion
+ * numerica, ni simbolo de moneda, ni separador de miles, ni aritmetica.
+ *
+ * OJO, R3: nada de esto toca `TIENE_EVIDENCIA_COL/_SI/_NO` ni el helper `tieneEvidencia` de
+ * `cierre-gestiones-descarga-columnas.ts`, que siguen sirviendo a las CINCO descargas por
+ * seccion del detalle de un cierre. Solo la hoja fundida no los usa.
+ */
+export interface CierreGestionDescargaDTO {
+  // --- identidad del cierre al que pertenece la gestion (R8/R11) ---
+  mensajeroNombre: string;
+  /** ISO del `solicitado_at` del cierre; la fila lo emite como dia calendario. */
+  cierreSolicitadoAt: string;
+  // --- CUANDO paso lo que la fila cuenta (pedido humano del 2026-09-05) ---
+  /**
+   * Dia calendario de COSTA RICA (`YYYY-MM-DD`) de `gestion_orden.created_at`: CUANDO el
+   * mensajero registro la gestion. NO es la fecha del cierre — medido contra produccion el
+   * 2026-09-05, difieren en 312 de 1.063 gestiones (29 %).
+   *
+   * Llega YA SERIALIZADO a dia calendario CR desde el repositorio, no como instante ISO: la
+   * columna es un `timestamp`, y `toISOString().slice(0, 10)` sobre un `timestamp` devuelve el
+   * dia SIGUIENTE despues de las 18:00 CR. Serializar en el borde de datos —donde esta el
+   * `Date`— es lo unico que deja a la proyeccion sin ninguna decision de zona horaria que tomar.
+   */
+  fechaGestion: string;
+  /**
+   * Dia calendario `YYYY-MM-DD` de `orden.fecha_reparto`: el «para hoy o para mañana» de la
+   * asignacion. `@db.Date`, asi que no tiene hora que desplazar.
+   *
+   * `null` ES UN RESULTADO LEGITIMO, no un fallo: la columna se ANULA al deshacer una
+   * asignacion, al liberar la orden a una bodega satelite y al aprobar el cierre de una orden
+   * sin gestionar. Una gestion vieja puede haber perdido su dia de reparto. NO se rellena con
+   * la fecha del cierre ni con ninguna otra: la celda queda VACIA.
+   */
+  diaReparto: string | null;
+  /**
+   * FICHA 385 (2026-09-07) — dia calendario de COSTA RICA (`YYYY-MM-DD`) de `orden.created_at`:
+   * CUANDO NACIO LA ORDEN en la plataforma. Es la CUARTA fecha de la fila y la mas antigua de las
+   * cuatro: creacion -> reparto -> gestion -> cierre.
+   *
+   * Mismo tratamiento que `fechaGestion` y por el mismo motivo: `orden.created_at` es un
+   * `timestamp` (no `@db.Date`), asi que se serializa con `fechaCalendarioCR` en el borde de
+   * datos. `toISOString().slice(0, 10)` le adelantaria el dia a TODA orden creada despues de
+   * las 18:00 CR. El que SI puede recortarse por ISO es `diaReparto`, que es `@db.Date`.
+   *
+   * NUNCA `null`: `orden.created_at` es NOT NULL con default `now()`, y la orden de una gestion
+   * de cierre existe siempre (la relacion es obligatoria en el modelo).
+   */
+  fechaCreacionOrden: string;
+  // --- identidad de negocio de la gestion (SIN uuid, R42) ---
+  numGuia: number | null;
+  numRemision: string;
+  destinatario: string;
+  direccion: string | null;
+  zonaNombre: string;
+  provinciaNombre: string;
+  cantonNombre: string;
+  distritoNombre: string | null;
+  producto: string;
+  tiendaNombre: string;
+  /**
+   * FICHA 385 (2026-09-07) — `orden.intentos_contacto`: cuantas veces LA TIENDA registro un
+   * intento de contacto sobre esta orden desde /novedades, con el boton «+1 intento de
+   * contacto». Contador CUMULATIVO que sobrevive a que la solicitud de ayuda se retire.
+   *
+   * ⚠️ NO SON LOS INTENTOS DEL MENSAJERO. En este arbol conviven DOS contadores con nombres
+   * parecidos y duenos distintos, y el archivo de «Ayuda solicitada» los lleva como DOS
+   * columnas separadas justamente para que no se confundan
+   * (`app/(app)/novedades/_components/ayuda-descarga-columnas.ts`):
+   *
+   *   - `intentos_contacto`  -> «Intentos de contacto»: los de la TIENDA. Es ESTE campo.
+   *   - `intentosEntrega`    -> «Intentos de entrega»: los del MENSAJERO. NO es una columna:
+   *     no existe como columna en `orden`, se DERIVA contando `orden_historial`
+   *     (`OrdenHistorialRepository.contarIntentosVigentesEnLote` / `whereIntentosVigentes`).
+   *
+   * Por eso la hoja llevo del 2026-09-07 al 2026-09-08 un encabezado que decia de QUIEN eran
+   * («Intentos de contacto de la tienda», constante `INTENTOS_CONTACTO_TIENDA_COL`): un
+   * «Intentos» a secas en una hoja de cierres —donde cada fila es una gestion del mensajero— se
+   * lee como los del mensajero, que es el dato equivocado. Esa constante ya NO existe; la ficha
+   * 394 sustituyo la columna, y el aviso de aqui abajo dice por que.
+   *
+   * NUNCA `null` y el `0` es un valor CONOCIDO («la tienda no lo intento nunca»), no un hueco:
+   * la columna es `NOT NULL DEFAULT 0`.
+   *
+   * ⚠️ FICHA 394 (2026-09-08) — ESTE CAMPO YA NO ES EL DE LA COLUMNA. El humano midio que lo
+   * que se pidio en la 385 eran los intentos de ENTREGA, y firmo SUSTITUIR la columna (no tener
+   * las dos: en una hoja ya ancha, la de mas no se lee, se confunde con la buena). El dato de la
+   * hoja pasa a ser `intentosEntrega`, aqui debajo.
+   *
+   * SE CONSERVA EN EL DTO A PROPOSITO. Sale de la MISMA consulta que `fechaCreacionOrden`
+   * —`GESTION_DESCARGA_SELECT.orden`, tres campos en un solo `select`—, asi que no cuesta ni un
+   * round-trip, y su contrato esta atornillado por tests que valen: quitarlo se llevaria por
+   * delante cobertura ajena a esta ficha. Si algun dia se decide retirarlo, se retira con su
+   * columna del `select`, sus tests y una medida de quien lo consume, no de paso.
+   */
+  intentosContactoTienda: number;
+  /**
+   * FICHA 394 (2026-09-08) — los INTENTOS DE ENTREGA VIGENTES de la orden: cuantos CIERRES
+   * APROBADOS distintos registran una gestion contable y vigente sobre ella. Es el numero del
+   * MENSAJERO, y el que la hoja detallada de cierres pide en su columna.
+   *
+   * NO SE CUENTA AQUI. Sale del derivador unico de las features 160/215
+   * (`contarIntentosVigentesEnLote` / `whereIntentosVigentes`), el mismo que alimentan la
+   * analitica operativa, el rollup, el tope de intentos de la 276 y la pantalla de liberacion de
+   * reprogramadas —donde el campo se llama igual—. Que sea el mismo derivador es el requisito:
+   * es el numero con el que el sistema decide el tope y con el que cobra, asi que la hoja y la
+   * analitica tienen que decir lo mismo o una de las dos miente.
+   *
+   * **VIGENTES, no todos los que hubo.** Una gestion ANULADA no cuenta, un cierre `solicitado`,
+   * `vencido` o `rechazado` no cuenta, y dos gestiones contables de la misma orden en el MISMO
+   * cierre aprobado suman UNA (el grano es la orden dentro del cierre). El criterio completo,
+   * con su porque, esta en `IOrdenHistorialRepository.contarIntentosVigentes`.
+   *
+   * **Es de la ORDEN, no de la fila.** Dos gestiones de la misma orden en cierres distintos
+   * llevan el MISMO numero, y ese numero incluye intentos de otros mensajeros y de dias fuera
+   * del rango descargado: es el historial de la orden, no un contador de esta hoja.
+   *
+   * NUNCA `null`: las ordenes sin intentos contables no vienen en el Map del derivador y el
+   * borde de datos resuelve `?? 0`. El `0` es un valor CONOCIDO («nadie la ha intentado
+   * todavia»), no un hueco.
+   */
+  intentosEntrega: number;
+  resultado: CierreResultado;
+  // --- datos POR RAMA; money-safe STRING del snapshot, tal cual (R43/R44) ---
+  montoRecibido: string | null;
+  /** Desglose del recaudo (feature 212). `[]` cuando la gestion no tiene lineas de pago. */
+  pagos: { metodo: MetodoPagoValue; monto: string }[];
+  motivo: string | null;
+  /** Dia calendario `YYYY-MM-DD`; `null` fuera de `reprogramada`. */
+  fechaReprogramacion: string | null;
+  esRechazoSla: boolean;
+  causaIncidente: CausaIncidente | null;
+  /** `null` = todavia NO capturada (R47). No es cero: cero diria «no se indemniza». */
+  indemnizacion: string | null;
+  pagoMensajero: string | null;
+  ingresoBodegaRechazo: string | null;
+  /** `null` = la orden no tenia tarifa vigente al solicitar (gap conocido de la feature 69). */
+  ingresoEmpresa: IngresoEmpresaDTO | null;
+}
+
+/**
+ * Feature 230 (T1.1) — el conjunto de gestiones del que sale la hoja fundida, tal como lo
+ * devuelve cualquiera de los DOS servicios.
+ *
+ * Reusa el union comun de la 170 (`lib/types/descarga-listado.ts`), con su garantia escrita: ni
+ * `limite_excedido` ni `forbidden` llevan nunca `items`. El tope lo evalua el SERVICIO —el
+ * mismo `descargaConfig.MAX_FILAS` que sus dos hermanos, sin constante nueva (D13/R21)— y
+ * superarlo es un ERROR ACCIONABLE con los conteos, jamas un archivo truncado en silencio.
+ */
+export type ListarGestionesDescargaServiceResult =
+  ListarCompletoServiceResult<CierreGestionDescargaDTO>;
+
+// R6-R9/R13: detalle completo de UN cierre. Reusa CierreGrupos (grupos por
+// resultado) de la 37. `no_encontrada` = id inexistente o fuera de alcance (R13, no
+// se distingue). `forbidden` = rol invalido (R1).
+// Feature 264 — el DTO de una orden sin gestionar se DECLARA en `ICierreDiaService` y se
+// re-exporta aqui. El sentido de la dependencia no es un capricho: al reves, este archivo
+// arrastraba `lib/types/cierres-admin.ts` y `lib/types/wallet.ts` —que importan `Prisma` como
+// VALOR— al grafo del panel del mensajero, y con ellos el cliente de Prisma al bundle del
+// navegador. Lo cazo `tests/unit/guards/pagos-captura.guardia.test.ts`.
+export type { CierreOrdenSinGestion } from "@/lib/interfaces/services/ICierreDiaService";
+// FICHA 425: mismo camino y mismo motivo que la linea de arriba — se declara en el contrato del
+// mensajero (el que recorre su panel) y aqui solo se RE-EXPORTA.
+export type { CierreRechazoDeTienda } from "@/lib/interfaces/services/ICierreDiaService";
+
+export type CierreDetalleAdminServiceResult =
+  | {
+      status: "ok";
+      cierre: CierreAdminResumen;
+      grupos: CierreGrupos; // por resultado (reuso 37)
+      // Totales por concepto del ingreso de la empresa del cierre, derivados del snapshot.
+      totalesIngreso: TotalesIngresoEmpresa;
+      // Feature 102/R4-R8/R10: desglose money-safe (STRING escala 2) del ingreso de bodega por
+      // rechazos, particionado por origen. `sla` = escalados del cron SLA (99); `manual` =
+      // rechazos del mensajero; `total` = el SNAPSHOT `cierre.totalIngresoBodegaRechazos` (leido,
+      // NO recomputado, R6). Por construccion `sla + manual === total` (R5). Solo en el DETALLE
+      // (Q4); llega igual al alcance satelite por el mismo camino (R10).
+      desgloseIngresoBodegaRechazos: { sla: string; manual: string; total: string };
+      // DERIVADO: `totalesIngreso.total` - `cierre.totalPagoMensajero` (STRING money-safe).
+      // Lo que le queda a la empresa del cierre. Puede ser NEGATIVO.
+      ganancia: string;
+      // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
+      // money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
+      pagoTienda: string;
+      /**
+       * Feature 395 — LA LINEA PUENTE de la cascada «de quien es el dinero recaudado»:
+       * `totalesIngreso.fleteConIva` + `totalesIngreso.comisionConIva`, o sea el subconjunto
+       * DEDUCIBLE de lo facturado. Se emite SIEMPRE, tambien cuando el flete por rechazo vale
+       * "0.00": sin ella la pantalla ensena «recaudado − facturado = para la tienda», que NO da
+       * en cuanto hay un rechazo —ese flete se factura pero nunca salio de lo recaudado—.
+       *
+       * Es la MISMA linea que ya emite el cierre de BODEGA (`ICierresBodegaAdminService`), por la
+       * misma funcion (`cobradoSobreRecaudado`) y con los mismos dos sumandos: la ficha 393 la
+       * monto solo alli, y este detalle —el que se mira todos los dias— se quedo sin ella.
+       */
+      cobradoSobreRecaudado: string;
+      /**
+       * Feature 395 — DERIVADO: `totalesIngreso.total` − `cierre.totalPagoMensajero` −
+       * `cierre.totalIngresoBodegaRechazos`.
+       *
+       * **NO es `ganancia`**, que sigue viva y sigue viajando en este mismo DTO: aquella resta
+       * SOLO el pago al mensajero. Las dos coinciden exactamente cuando el ingreso de bodega por
+       * rechazos vale "0.00" y divergen en cuanto hay un rechazo. Puede ser NEGATIVO y se emite
+       * CON SU SIGNO, nunca recortado a "0.00".
+       */
+      netoEmpresa: string;
+      /**
+       * Feature 395 — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LA
+       * TIENDA GANA EN TOTAL con este cierre.
+       *
+       * **NO es `pagoTienda`**, que viaja aqui al lado y sigue significando lo mismo: aquel es
+       * lo que se le paga DE ESTE DINERO (no resta el flete por rechazo, que nunca entro en lo
+       * recaudado); este es lo que le queda DESPUES de que tambien le cobren aquel flete. La
+       * diferencia entre los dos es exactamente `totalesIngreso.fleteDevolucionConIva`.
+       *
+       * Cierra la identidad que la pantalla tiene que hacer evidente:
+       * `ganaLaTienda + totalesIngreso.total === cierre.totales.general`.
+       *
+       * Puede ser NEGATIVO y se emite CON SU SIGNO, nunca recortado a "0.00".
+       */
+      ganaLaTienda: string;
+      /**
+       * Feature 395 — ¿el flete por rechazo YA esta cobrado en la wallet de la tienda?
+       *
+       * MEDIDO en el codigo y contra produccion (2026-09-08): el cargo lo emite
+       * `WalletTiendaFeedService` DENTRO de la transaccion de aprobacion
+       * (`CierresAdminRepository.resolverCierre`, tras `res.count === 1 && nuevoEstado ===
+       * "aprobado"`). De los 37 cierres aprobados con rechazos, los 37 tienen su cargo; los 5
+       * `solicitado` y el 1 `vencido`, ninguno.
+       *
+       * Viaja como BOOLEANO y no se deja inferir al navegador a proposito. `cierre.estado` ya
+       * va en el DTO, pero «aprobado» y «el cargo ya ocurrio» NO son la misma frase: en un
+       * cierre sin ningun rechazo no hay nada que cobrar y decir «se le cargo» seria falso
+       * igualmente. Por eso `true` exige LAS DOS cosas —cierre `aprobado` Y flete por rechazo
+       * mayor que cero— y `false` cubre los dos casos en que la frase no se puede escribir en
+       * pasado: todavia no se aprueba, o no hay nada que cobrar.
+       */
+      fleteRechazoYaCobradoATienda: boolean;
+      /**
+       * 💰 Ficha 396 — DE QUIEN ES CADA PARTE de `pagoTienda` y de `ganaLaTienda`.
+       *
+       * **El cierre es del MENSAJERO, no de la tienda.** Un mensajero reparte para quien le
+       * toque ese dia, asi que un cierre puede llevar ordenes de varias tiendas — medido en
+       * produccion el 2026-09-08: de 56 cierres, 39 tienen UNA y 17 tienen DOS. Hasta esta ficha
+       * `pagoTienda` era la SUMA de todas ellas y la pantalla no lo decia en ninguna parte.
+       *
+       * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
+       * separados por tienda desde siempre, con sus propias cifras: a nadie se le paga mal, y
+       * esta ficha no emite, borra ni corrige ni una fila del ledger. `pagoTienda` y
+       * `ganaLaTienda` —aqui al lado— siguen valiendo EXACTAMENTE lo mismo que antes (R18).
+       *
+       * TRES cifras por tienda, y ni una mas: la tercera (`ganaLaTienda`) entro el 2026-09-08 por
+       * firma explicita del humano (Q7 del spec); la cuarta necesitara otra firma.
+       *
+       * SE EMITE SIEMPRE, tambien con UNA sola tienda —un elemento, cuyas cifras son iguales a
+       * las agregadas—. El UMBRAL de «ensenarlo solo con dos o mas» es de PRESENTACION y vive en
+       * la pantalla: un contrato que a veces trae la lista y a veces no obliga a CADA consumidor
+       * a distinguir dos formas del mismo dato, que es el error que la 264 ya documento con
+       * `ordenesSinGestion` / `sinGestionRegistrado`.
+       *
+       * ORDENADO POR EL SERVIDOR (R8): por `pagoTienda` descendente, con el desempate declarado
+       * en `partesPorTienda`. La pantalla pinta en el orden que recibe.
+       *
+       * INVARIANTES, ciertas por construccion y con test propio:
+       *   Σ `.pagoTienda`   === `pagoTienda`               (R10)
+       *   Σ `.ganaLaTienda` === `ganaLaTienda`             (R11)
+       *   Σ `.recaudado`    === `cierre.totales.general`   (R12)
+       * y, POR TIENDA, `.pagoTienda − .ganaLaTienda` === el flete por rechazo + IVA de ESA
+       * tienda — la que hace imposible derivar una de las dos con el subconjunto equivocado sin
+       * que se note.
+       *
+       * LO QUE NO SE REPARTE (R16): el pago al mensajero y el ingreso de bodega por rechazos son
+       * del cierre ENTERO y se quedan agregados. Repartirlos exigiria inventar un criterio que
+       * nadie ha firmado, y un numero repartido con un criterio inventado miente con precision.
+       */
+      partesPorTienda: ParteDeTienda[];
+      /**
+       * Feature 264 (R7) — las ordenes que el corte barrio al crear ESTE cierre y ningun otro.
+       * `[]` significa «no hubo ninguna» SOLO si `sinGestionRegistrado` es `true`.
+       */
+      ordenesSinGestion: CierreOrdenSinGestion[];
+      /**
+       * Feature 264 (R27/R28) — `false` = este cierre es ANTERIOR al registro y su lista es
+       * IRRECUPERABLE (la aprobacion ya borro el unico rastro que habia). `[]` con `false` NO es
+       * «no hubo ninguna»: es «no lo sabemos», y la pantalla tiene que DECIRLO. Una seccion
+       * ausente o vacia en ese caso comunica «no hubo ninguna», que es tranquilizador y falso.
+       *
+       * Los dos campos viajan JUNTOS SIEMPRE, y por eso esto no se modela como
+       * `ordenesSinGestion: CierreOrdenSinGestion[] | null`: un `null` obliga a CADA consumidor a
+       * acordarse de distinguir los dos casos, y ya sabemos como acaba eso.
+       */
+      sinGestionRegistrado: boolean;
+      /**
+       * FICHA 425 (R14/R15/R16) — los RECHAZOS DE TIENDA que este cierre puso delante de quien lo
+       * aprueba, del mas viejo al mas reciente. Son decisiones de la TIENDA: no son gestiones del
+       * mensajero, no entran en `grupos` y no suman a ningun total ni a `pagoTienda`. Estan aqui
+       * para que quien aprueba separe el paquete; al aprobar, la orden sale de `rechazada` hacia
+       * `por_devolver_a_tienda` (central) o `por_devolver` (satelite).
+       *
+       * LISTA VACIA, NUNCA `null`: aqui «ninguno» y «no consta» son lo mismo (design §4.2), asi que
+       * no hace falta la marca `…Registrado` que la 264 si necesito.
+       */
+      rechazosDeTienda: CierreRechazoDeTienda[];
+    }
+  | { status: "forbidden" } // rol invalido (R1)
+  | { status: "no_encontrada" }; // id inexistente o de otra bodega/zona (R13)
+
+// Feature 158 (R19/R24): un monto de indemnizacion por gestion `incidente` del cierre, ya
+// validado en el borde. Money-safe: STRING de extremo a extremo.
+export interface IndemnizacionCapturadaInput {
+  gestionId: string;
+  monto: string;
+}
+
+/**
+ * Feature 238 (T2.2, R7/R12) — UNA gestion que bodega declara tener DELANTE, ya validada en el
+ * borde (uuid + entero positivo).
+ *
+ * `numGuia` es lo que se LEYO —camara o teclado, el medio no se registra (D7)— y el servicio lo
+ * contrasta con la guia REAL de la orden de esa gestion. Sin ese contraste, un fallo de mapeo del
+ * cliente confirmaria el paquete equivocado y nadie se enteraria: el conteo cuadraria igual.
+ */
+export interface ConfirmacionFisicaInput {
+  gestionId: string;
+  numGuia: number;
+}
+
+// R10/R12-R14: aprobar un cierre `solicitado` del alcance.
+// Feature 158 (R19/R20/R21): + `validation_error` cuando los montos de indemnizacion no cubren
+// EXACTAMENTE las gestiones `incidente` del cierre (falta alguna, sobra alguna, o alguna no es
+// un incidente de ese cierre). El cierre queda en `solicitado` y no se emite ningun movimiento.
+export type AprobarCierreServiceResult =
+  | {
+      status: "ok";
+      cierreId: string;
+      estado: "aprobado";
+      /**
+       * Feature 172 (T C.2, §8/R16/R22) — el pendiente del cierre RECIEN aprobado, derivado en
+       * el servidor. Es lo que decide si tras aprobar se ofrece registrar el pago (R16) y con
+       * que monto se prefija el formulario (R23); la UI no lo calcula (R14).
+       *
+       * Aqui es `string` y no `string | null`: el cierre acaba de quedar `aprobado`, asi que la
+       * rama «no aprobado» de R28 no existe en este camino. `"0.00"` = no hay nada que ofrecer.
+       *
+       * **Aprobar y pagar siguen siendo dos escrituras distintas** (§8): este campo no
+       * compromete a nada. Si el pago no se registra, el cierre queda aprobado y la deuda,
+       * abierta y visible (R17/R18).
+       */
+      pendientePagoMensajero: string;
+    }
+  | { status: "forbidden" } // rol invalido (R1)
+  | { status: "no_encontrada" } // id inexistente / otra bodega-zona (R13)
+  | { status: "conflict" } // ya no esta `solicitado` (R12)
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }; // 158/R19-R21
+
+// R11-R14: rechazar un cierre `solicitado` del alcance; motivo obligatorio (R11).
+export type RechazarCierreServiceResult =
+  | { status: "ok"; cierreId: string; estado: "rechazado" }
+  | { status: "forbidden" } // rol invalido (R1)
+  | { status: "no_encontrada" } // id inexistente / otra bodega-zona (R13)
+  | { status: "conflict" } // ya no esta `solicitado` (R12)
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }; // motivo vacio (R11)
+
+// Feature 111/R16 — VALVULA DE ESCAPE: destrabar un `vencido` abandonado (transicion
+// `vencido -> solicitado` en nombre del mensajero). `ok` deja el cierre en `solicitado` (se
+// aprueba/rechaza luego por la via normal). `conflict` = ya no es `vencido`; `no_encontrada` =
+// id inexistente o fuera de alcance (R13); `forbidden` = rol no admin (R1).
+export type ForzarSolicitudVencidoServiceResult =
+  | { status: "ok"; cierreId: string; estado: "solicitado" }
+  | { status: "forbidden" }
+  | { status: "no_encontrada" }
+  | { status: "conflict" };
+
+/**
+ * Pedido humano (2026-08-19) — desenlaces de la CORRECCIÓN del desglose de pago de una gestión
+ * desde el detalle de un cierre abierto.
+ *
+ *  - `forbidden`: el rol no corrige desgloses. Son maestro y admin, y NADIE más — ni siquiera
+ *    el `adminSatelite`, que sí tiene alcance para VER los cierres de su bodega: reescribir lo
+ *    que un mensajero declaró haber cobrado no es lectura de su bodega, es tocar la caja.
+ *  - `no_encontrada`: la gestión no existe, no está en un cierre, o su cierre no es del alcance.
+ *    Los tres van juntos a propósito: distinguirlos revelaría cierres ajenos.
+ *  - `conflict`: el cierre dejó de estar ABIERTO (lo aprobaron o rechazaron mientras el diálogo
+ *    estaba abierto). La corrección NO se aplica; la pantalla recarga y enseña el estado nuevo.
+ *  - `validation_error`: la suma no cuadra con lo que el mensajero declaró, o la gestión no es
+ *    una entrega con cobro. Por campo, como el resto de este borde.
+ */
+export type ActualizarPagosGestionServiceResult =
+  | { status: "ok"; gestionId: string; totales: CierreTotales }
+  | { status: "forbidden" }
+  | { status: "no_encontrada" }
+  | { status: "conflict" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+/**
+ * FICHA 398 — desenlaces de la CORRECCION EN SITIO del RESULTADO de una gestion
+ * (`entregada -> rechazada`) desde el detalle de un cierre abierto.
+ *
+ * ESPEJO EXACTO de `ActualizarPagosGestionServiceResult`, a proposito: la pantalla trata los
+ * cinco desenlaces con el mismo codigo que ya tiene para la correccion del desglose.
+ *
+ *  - `forbidden` (R1): el rol no corrige resultados. Son maestro y admin, y NADIE mas — ni
+ *    siquiera el `adminSatelite`, que si tiene alcance para VER los cierres de su bodega. Y NUNCA
+ *    el mensajero: mueve dinero y quien se equivoco fue el.
+ *  - `no_encontrada` (R2): la gestion no existe, esta anulada, no esta en un cierre, o su cierre
+ *    no es del alcance. Los cuatro van juntos: distinguirlos revelaria cierres ajenos.
+ *  - `conflict` (R3/R12): el cierre no esta ABIERTO, o dejo de estarlo entre la lectura y la
+ *    escritura. La correccion NO se aplica.
+ *  - `validation_error` (R4/R5): la gestion no es una `entregada`, o el motivo llega vacio.
+ */
+export type CorregirResultadoGestionServiceResult =
+  | { status: "ok"; gestionId: string; totales: CierreTotales }
+  | { status: "forbidden" }
+  | { status: "no_encontrada" }
+  | { status: "conflict" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+export interface ICierresAdminService {
+  /**
+   * R2-R5/R8/R9: lista los cierres del alcance del actor (rol+zona), partidos en
+   * pendientes (`solicitado`) e historico (`aprobado`/`rechazado`), con totales
+   * snapshot. Solo lectura (R16). Rol invalido -> forbidden; adminSatelite sin zona
+   * -> sinZona.
+   */
+  listarCierresAdmin(actor: Actor): Promise<ListarCierresAdminServiceResult>;
+  /**
+   * Feature 170 — FASE 2 (T I.1, R40/R41/R44/R51/R54): el HISTORICO del alcance, paginado en
+   * el servidor.
+   *
+   * MISMO alcance que `listarCierresAdmin` (el `resolveAlcance` de rol+zona se reusa tal
+   * cual, no se reimplementa) y MISMO corte cola/historico (`ESTADOS_COLA_CIERRE_DIA`), de
+   * modo que paginar no pueda ensanchar lo que un actor ve: R44 se cumple por construccion.
+   * Rol invalido -> forbidden, sin filas y sin total. `adminSatelite` sin zona -> pagina
+   * vacia (no hay alcance que consultar), igual que hoy.
+   */
+  listarHistoricoCierresAdminPaginado(
+    input: { page: number; pageSize: number; filtros?: FiltrosCierres },
+    actor: Actor,
+  ): Promise<ListarHistoricoCierresAdminServiceResult>;
+  /**
+   * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R49/R51/R54): la COLA de pendientes de decision
+   * del alcance (`solicitado` + `vencido`), paginada en el servidor.
+   *
+   * MISMO `resolveAlcance` y MISMA constante de estados que la mitad del historico, con el
+   * corte invertido: R44 se cumple por construccion, y la union de las dos paginas sigue
+   * siendo exactamente lo que devuelve `listarCierresAdmin`. Rol invalido -> forbidden;
+   * `adminSatelite` sin zona -> pagina vacia sin tocar la base.
+   */
+  listarPendientesCierresAdminPaginado(
+    input: { page: number; pageSize: number; filtros?: FiltrosCierres },
+    actor: Actor,
+  ): Promise<ListarPendientesCierresAdminServiceResult>;
+  /**
+   * Feature 184 — Tanda D (T D.2, R1/R4/R6): el HISTORICO ENTERO del alcance, del que sale el
+   * ARCHIVO de ese listado.
+   *
+   * MISMO `resolveAlcance` que la pagina —el rol y la zona salen del actor, nunca de la
+   * entrada— y MISMO corte cola/historico. Recibe los MISMOS `filtros` que su pagina (pedido
+   * humano del 2026-08-16): el archivo es «esto que estoy viendo, entero», no «todo lo del
+   * alcance». Lo que no recibe es paginacion ni alcance.
+   * Rol invalido -> `forbidden` ANTES de tocar el repositorio; `adminSatelite` sin zona ->
+   * conjunto vacio sin consultar. Supera el tope -> `limite_excedido` con conteos y sin filas.
+   */
+  listarHistoricoCierresAdminCompleto(
+    actor: Actor,
+    filtros?: FiltrosCierres,
+  ): Promise<ListarHistoricoCierresAdminCompletoServiceResult>;
+  /**
+   * Feature 184 — Tanda D (T D.2, R1/R4/R6): la COLA ENTERA de pendientes de decision del
+   * alcance, del que sale el ARCHIVO de ese listado. Espejo exacto del anterior.
+   */
+  listarPendientesCierresAdminCompleto(
+    actor: Actor,
+    filtros?: FiltrosCierres,
+  ): Promise<ListarPendientesCierresAdminCompletoServiceResult>;
+  /**
+   * Feature 230 — Tanda 2 (T2.2, R13/R14/R15/R16/R18/R20/R21/R22) — las GESTIONES de los
+   * cierres del dia del alcance del actor, a grano de GESTION, de las que sale la HOJA FUNDIDA.
+   *
+   * MISMO `resolveAlcance` que los cuatro listados de esta pantalla: el rol y la zona salen del
+   * ACTOR y jamas de la entrada (R15), y se componen con los recortes por CONJUNCION, de modo
+   * que `filtros` solo puede QUITAR filas dentro del alcance ya resuelto y nunca ensancharlo
+   * (R37: un `mensajeroIds` de otra zona cruza con el alcance y da vacio, no error).
+   *
+   * Mismo orden de desenlaces que sus hermanos: rol invalido -> `forbidden` ANTES de tocar el
+   * repositorio (R18); `adminSatelite` sin zona -> conjunto VACIO sin consultar la base y NO
+   * `forbidden` (R20); superar `descargaConfig.MAX_FILAS` -> `limite_excedido` con conteos y
+   * sin filas (R21).
+   *
+   * **NO firma ninguna URL de evidencia** (R22): el bloque `signedUrls.createSignedUrls` de
+   * `verCierreDetalle` no se copia aqui. Seria trabajo pagado en red para tirarlo despues, y
+   * ademas un agujero: la hoja no lleva columna de evidencia en absoluto.
+   *
+   * `filtros` es OBLIGATORIO y su `mensajeroIds` no admite lista vacia: el conjunto de esta
+   * descarga lo redacta el usuario en el dialogo (D5/D11), y «sin mensajeros elegidos» no es
+   * «todos», es «no descargues nada» (R39).
+   */
+  listarGestionesCierresAdminCompleto(
+    actor: Actor,
+    filtros: FiltrosDescargaGestiones,
+  ): Promise<ListarGestionesDescargaServiceResult>;
+  /**
+   * Pedido humano del 2026-08-16 — las OPCIONES de los filtros de la pantalla (bodegas destino
+   * y mensajeros), ya acotadas al alcance del actor.
+   *
+   * Misma puerta y mismo orden que los listados: rol invalido -> `forbidden` antes de tocar el
+   * repositorio; `adminSatelite` sin zona -> catalogo VACIO, no `forbidden`.
+   */
+  obtenerCatalogoFiltros(
+    actor: Actor,
+  ): Promise<
+    { status: "ok"; catalogo: CatalogoFiltrosCierresDTO } | { status: "forbidden" }
+  >;
+  /**
+   * R6-R9/R13/R16: detalle completo de un cierre del alcance (gestiones agrupadas
+   * por resultado, evidencias firmadas). Solo lectura. Fuera de alcance ->
+   * no_encontrada.
+   */
+  verCierreDetalle(cierreId: string, actor: Actor): Promise<CierreDetalleAdminServiceResult>;
+  /**
+   * R10/R12-R15: aprueba un cierre `solicitado` del alcance (transicion guardada).
+   * Ya resuelto -> conflict; fuera de alcance -> no_encontrada.
+   *
+   * Feature 158 (R19-R22): `indemnizaciones` trae UN monto por gestion `incidente` del cierre.
+   * El service exige COBERTURA EXACTA contra las gestiones reales (ni falta ni sobra) ANTES de
+   * tocar el repo; con la cobertura correcta, la escritura de los montos y la emision del
+   * egreso ocurren en la MISMA transaccion que la aprobacion. Por defecto `[]`, que es el
+   * camino RETROCOMPATIBLE de un cierre sin incidentes (R36).
+   *
+   * Feature 238 (R7-R16): `confirmacionFisica` trae UNA entrada por gestion del cierre cuyo
+   * PAQUETE vuelve a bodega (`devuelta`, `rechazada`, `reprogramada`). El service exige
+   * COBERTURA EXACTA contra las gestiones reales —ni falta ni sobra— ANTES de las
+   * indemnizaciones y ANTES de tocar el repo (R14): si falta un paquete no tiene sentido validar
+   * montos que se van a descartar. Con la cobertura correcta, la marca por gestion se escribe
+   * DENTRO de la misma transaccion que aprueba (R17). Por defecto `[]`, que es el camino
+   * INTACTO de un cierre sin nada que devolver (R16) — 3 de cada 12 cierres medidos.
+   */
+  /**
+   * Pedido humano (2026-08-19) — corrige el reparto por método de UNA gestión de un cierre
+   * ABIERTO. Solo maestro/admin.
+   *
+   * Lo que NO puede hacer, y es la mitad del contrato: mover el total. La suma de las líneas
+   * tiene que ser EXACTAMENTE `gestion_orden.monto_recibido`, comparada en `Prisma.Decimal`
+   * contra el valor de la base —nunca contra un total que venga del cliente—. El dinero que el
+   * mensajero declaró sigue siendo el suyo; lo que cambia es en qué balde cae.
+   */
+  actualizarPagosGestion(
+    input: ActualizarPagosGestionInput,
+    actor: Actor,
+  ): Promise<ActualizarPagosGestionServiceResult>;
+  /**
+   * FICHA 398 — corrige EN SITIO el RESULTADO de UNA gestion de un cierre ABIERTO,
+   * `entregada -> rechazada`. Solo maestro/admin (H4, decision del leader).
+   *
+   * Lo que hace, y por que existe: hasta esta ficha no habia NINGUNA via de sacar de un cierre ya
+   * solicitado un cobro que nadie recaudo. Anular exige `cierre_id IS NULL`, la correccion del
+   * desglose solo reparte por metodo y reabrir el cierre no vuelve a fotografiar los totales.
+   *
+   * `nuevoResultado` NO viaja en la peticion: esta ficha concede UNA pareja y aceptar el destino
+   * desde el cliente abriria las demas por accidente.
+   *
+   * ⚠️ CONSECUENCIA DECLARADA (R15): la gestion pasa a contar como INTENTO DE ENTREGA de esa orden
+   * en cuanto el cierre se apruebe (`RESULTADOS_QUE_CUENTAN_COMO_INTENTO` incluye `rechazada` y
+   * excluye `entregada`). No es un efecto lateral: es la correccion funcionando.
+   *
+   * ⚠️ HUECO CONOCIDO Y DECLARADO (H5, decision del LEADER, no firma humana): al mensajero NO se
+   * le avisa, aunque esta correccion le baje el pago de esa gestion a 0.00. Emitir el aviso pide
+   * otro tipo de notificacion y otra migracion, y es ficha aparte.
+   */
+  corregirResultadoGestion(
+    input: CorregirResultadoGestionInput,
+    actor: Actor,
+  ): Promise<CorregirResultadoGestionServiceResult>;
+  aprobarCierre(
+    cierreId: string,
+    actor: Actor,
+    indemnizaciones?: ReadonlyArray<IndemnizacionCapturadaInput>,
+    confirmacionFisica?: ReadonlyArray<ConfirmacionFisicaInput>,
+  ): Promise<AprobarCierreServiceResult>;
+  /**
+   * R11-R15: rechaza un cierre `solicitado` del alcance con motivo obligatorio
+   * (transicion guardada). Motivo vacio -> validation_error; ya resuelto ->
+   * conflict; fuera de alcance -> no_encontrada.
+   */
+  rechazarCierre(
+    cierreId: string,
+    motivo: string,
+    actor: Actor,
+  ): Promise<RechazarCierreServiceResult>;
+  /**
+   * Feature 111/R16/R17/R18 — VALVULA DE ESCAPE (emergencia): destraba un `vencido`
+   * ABANDONADO de su alcance transicionandolo `vencido -> solicitado` en nombre del mensajero.
+   * Acotada por rol+zona destino (mismo `resolveAlcance` que aprobar/rechazar) y guardada por
+   * estado en el repo (0 filas -> conflict). NO recalcula el snapshot (R21).
+   * Fuera de alcance -> no_encontrada.
+   *
+   * ⚠️ FEATURE 241 (2026-08-20): decia «y NO desbloquea (R18: el desbloqueo ocurre al aprobar el
+   * `solicitado` resultante…)». SI DESBLOQUEA, en el acto, porque `solicitado` dejo de bloquear la
+   * gestion. Lo que el `aprobar` posterior sigue haciendo —y que esta valvula no hace— es RESOLVER:
+   * registrar `resuelto_por`/`resuelto_at` (R17) y mover el dinero.
+   */
+  forzarSolicitudVencido(
+    cierreId: string,
+    actor: Actor,
+  ): Promise<ForzarSolicitudVencidoServiceResult>;
+}

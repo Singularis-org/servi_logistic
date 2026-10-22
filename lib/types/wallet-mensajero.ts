@@ -1,0 +1,271 @@
+import type { WalletOrigenTipo } from "@/lib/types/wallet";
+import type { ConOrigen } from "@/lib/types/wallet-origen";
+import { z } from "zod";
+import type {
+  PagoMensajeroMovimientoTipo as PrismaPagoMensajeroMovimientoTipo,
+  PagoMensajeroMovimientoCategoria as PrismaPagoMensajeroMovimientoCategoria,
+} from "@prisma/client";
+import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import { paginaInputSchema } from "@/lib/types/pagina-input";
+import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+import { walletMensajeroConfig } from "@/lib/config/wallet-mensajero";
+
+// Feature 44 (design §1.1/§3) — fuente unica de verdad de tipos/categorias del LIBRO del pago
+// POR MENSAJERO, respaldada por los enums Postgres nativos (patron lib/types/wallet-tienda.ts).
+// El `satisfies` rompe el build si un SEED tuviera un valor que el enum NO tiene; el chequeo
+// `_Ensure*` rompe el build si el enum gana un valor que el SEED NO lista. Money-safe: todos los
+// montos cruzan la frontera como STRING (R4/R27), nunca como number.
+
+export const PAGO_MENSAJERO_MOVIMIENTO_TIPO_SEED = [
+  "devengo",
+  "pago",
+] as const satisfies readonly PrismaPagoMensajeroMovimientoTipo[];
+
+export type PagoMensajeroMovimientoTipo =
+  (typeof PAGO_MENSAJERO_MOVIMIENTO_TIPO_SEED)[number];
+
+type _EnsureTipoExhaustive = Exclude<
+  PrismaPagoMensajeroMovimientoTipo,
+  PagoMensajeroMovimientoTipo
+> extends never
+  ? true
+  : never;
+const _tipoExhaustive: _EnsureTipoExhaustive = true;
+void _tipoExhaustive;
+
+export const PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED = [
+  // devengo (la empresa le debe al mensajero)
+  "pago_devengado",
+  // pago (lo ya entregado, tomado del efectivo recaudado)
+  "pago_efectivo",
+  // liquidacion posterior de la cuenta por pagar (F1.4-Qf; RESERVADO)
+  "liquidacion",
+  // ajustes manuales (inmutables, correccion compensatoria R3)
+  "ajuste_devengo",
+  "ajuste_pago",
+  // Feature 293 (T1.5, design §3.1, R14): el PREMIO DEL PODIO del ranking, imputado al cierre
+  // del dia del podio. Categoria PROPIA —no `ajuste_devengo`— porque el humano pidio ver QUE
+  // PARTE de la cuenta por pagar es premio (decision (d)), y eso no se responde mezclandolo con
+  // los contraasientos de la anulacion de liquidaciones.
+  "premio_ranking",
+] as const satisfies readonly PrismaPagoMensajeroMovimientoCategoria[];
+
+export type PagoMensajeroMovimientoCategoria =
+  (typeof PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED)[number];
+
+type _EnsureCategoriaExhaustive = Exclude<
+  PrismaPagoMensajeroMovimientoCategoria,
+  PagoMensajeroMovimientoCategoria
+> extends never
+  ? true
+  : never;
+const _categoriaExhaustive: _EnsureCategoriaExhaustive = true;
+void _categoriaExhaustive;
+
+// Las 2 categorias que EMITE el feed del cierre aprobado (R10): el devengo `pago_devengado`
+// (= total_pago_mensajero) y el pago `pago_efectivo` (= min(P,E)). El resto (liquidacion,
+// ajuste_*) NO viene del feed automatico.
+export const PAGO_MENSAJERO_FEED_CATEGORIA_SEED = [
+  "pago_devengado",
+  "pago_efectivo",
+] as const satisfies readonly PagoMensajeroMovimientoCategoria[];
+
+export type PagoMensajeroFeedCategoria =
+  (typeof PAGO_MENSAJERO_FEED_CATEGORIA_SEED)[number];
+
+// ── Contratos I/O (frontera Server Action -> cliente). Montos SIEMPRE STRING (R4/R27) ──
+
+export type PagoMensajeroMovimientoDTO = {
+  id: string;
+  mensajeroId: string;
+  tipo: PagoMensajeroMovimientoTipo;
+  categoria: PagoMensajeroMovimientoCategoria;
+  monto: string; // Decimal -> STRING 2 dec (R4/R27)
+  // Ficha 458-A (TA.2, R9): el catalogo, no `string`: un diccionario parcial ya no compila.
+  origenTipo: WalletOrigenTipo;
+  origenId: string | null;
+  descripcion: string | null;
+  fechaMovimiento: string; // ISO
+  /**
+   * Feature 205 (T2.4, R43, design §7.3) — el CIERRE al que pertenece esta fila, o `null` si no
+   * pertenece a ninguno. Es lo que hace direccionable su detalle: la fila con cierre lleva enlace
+   * y la que no, no lo lleva (ni roto ni deshabilitado).
+   *
+   * **DERIVADO, no almacenado.** `pago_mensajero_movimiento` NO gana columna `cierre_id`: esa
+   * alternativa ya la descarto la 172 (§11.G) porque exigiria backfillear una tabla declarada
+   * inmutable y crearia una segunda forma de decir de donde viene un movimiento. Aqui el cierre
+   * se resuelve en la lectura: `origen_tipo = cierre_dia` -> el `origen_id` ES el cierre;
+   * `origen_tipo = pago_mensajero` -> el cierre del PAGO, resuelto con UNA consulta por pagina;
+   * el resto (`manual`) -> `null`.
+   *
+   * NO entra en las columnas de descarga: ese archivo sigue sin emitir identificadores.
+   */
+  cierreId: string | null;
+};
+
+// La cuenta por pagar nunca es negativa en el flujo normal (R16): positivo (la empresa debe) o cero.
+export type CuentaPorPagarSigno = "positivo" | "cero";
+
+// Cuenta por pagar de UN mensajero (R14/R16). `cuentaPorPagar` = devengado - pagado (>= 0).
+export type CuentaPorPagarDTO = {
+  devengado: string; // STRING 2 dec (Σ devengo)
+  pagado: string; // STRING 2 dec (Σ pago) — "lo ya pagado"
+  cuentaPorPagar: string; // STRING 2 dec (devengado - pagado) — "lo pendiente"
+  signo: CuentaPorPagarSigno;
+};
+
+// Vista del maestro (R18): una fila por mensajero con su nombre + cuenta por pagar.
+export type CuentaPorPagarResumenDTO = {
+  mensajeroId: string;
+  mensajeroNombre: string;
+  devengado: string; // STRING 2 dec
+  pagado: string; // STRING 2 dec
+  cuentaPorPagar: string; // STRING 2 dec
+  signo: CuentaPorPagarSigno;
+};
+
+export type ListarPagosMensajeroResult = {
+  movimientos: PagoMensajeroMovimientoDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  cuenta: CuentaPorPagarDTO; // cuenta por pagar del conjunto filtrado (R22)
+};
+
+// Vista del MAESTRO (R18/R22): desglose por cierre de UN mensajero ARBITRARIO (paginado, mas
+// reciente primero) + su nombre + la cuenta por pagar del CONJUNTO FILTRADO. A diferencia de
+// `ListarPagosMensajeroResult` (vista propia del mensajero) lleva `mensajeroId`/`mensajeroNombre`
+// porque el maestro NO esta acotado a si mismo. Montos STRING (R4/R27).
+export type ListarPagosDeMensajeroResult = {
+  mensajeroId: string;
+  mensajeroNombre: string;
+  movimientos: PagoMensajeroMovimientoDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  cuenta: CuentaPorPagarDTO; // cuenta por pagar del conjunto filtrado (R22)
+};
+
+// ── Schema zod de borde (R22) ──
+
+// Listado del libro del mensajero: paginado + filtros opcionales por cierre y rango de fechas.
+//
+// NO SE BORRA, aunque su nombre lo sugiera: es la BASE de la que `listarPagosDeMensajeroSchema`
+// (la vista del maestro, R22) deriva con `.extend(...)`. La ficha 336 retiro la vista PROPIA del
+// mensajero (`/mis-pagos`) y con ella su `ListarPagosMensajeroInput`, que se quedo sin ningun
+// consumidor; el schema en si sigue sosteniendo el desglose del maestro.
+export const listarPagosMensajeroSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
+  // valor que no tenga forma de identificador (antes `min(1)`: «Pegá el identificador»).
+  cierreId: z.string().uuid().optional(),
+  mensajeroId: z.string().min(1).optional(),
+  // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
+  desde: desdeDiaCRSchema.optional(),
+  hasta: hastaDiaCRSchema.optional(),
+});
+
+// Vista del MAESTRO (R18/R22): el maestro DEBE elegir un mensajero, asi que `mensajeroId` pasa a
+// ser REQUERIDO (a diferencia de la vista propia, donde lo pone el actor y aqui era opcional). Un
+// `mensajeroId` faltante o vacio -> ZodError -> validation_error en el borde. Deriva del schema
+// base para heredar page/pageSize/cierreId/desde/hasta.
+export const listarPagosDeMensajeroSchema = listarPagosMensajeroSchema.extend({
+  mensajeroId: z.string().min(1),
+});
+
+export type ListarPagosDeMensajeroInput = z.infer<typeof listarPagosDeMensajeroSchema>;
+
+// ── Feature 170 (T C.1) — modo SIN paginacion (descarga del dataset completo) ──
+
+// Ficha 336 (2026-08-30): aqui vivian `listarMisPagosCompletoSchema` y
+// `ListarMisPagosCompletoInput`, el modo sin paginacion de la vista PROPIA del mensajero. Se
+// retiraron con `/mis-pagos`; no quedaba ninguna referencia en el arbol.
+
+/**
+ * Vista del ACCESO TOTAL: desglose de UN mensajero elegido. `mensajeroId` sigue siendo
+ * REQUERIDO (igual que en el listado): sin el no hay desglose que pedir, y un `mensajeroId`
+ * ausente es `validation_error` antes de tocar la base.
+ */
+export const listarPagosDeMensajeroCompletoSchema = listarPagosDeMensajeroSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarPagosDeMensajeroCompletoInput = z.infer<
+  typeof listarPagosDeMensajeroCompletoSchema
+>;
+
+// ── Feature 170 — FASE 2 (T L.1) — «Cuentas por pagar a mensajeros» paginado ──
+
+/**
+ * Borde del listado del maestro: `page`/`pageSize` (de `paginaInputSchema`, con el tamano del
+ * dominio `wallet-mensajero`) mas la busqueda por nombre que hasta hoy vivia en el navegador.
+ *
+ * `.strict()` es la barrera de R44 en el borde y aqui pesa mas que en otros listados: el
+ * alcance de esta pantalla es «TODOS los mensajeros» y lo decide el ROL del actor. Un
+ * `mensajeroId` colado en el input muere aqui con `validation_error` en vez de llegar a un
+ * servicio que hoy lo ignora y manana podria no ignorarlo. (Medido: `.extend()` HEREDA el
+ * `.strict()` del schema base; se deja escrito porque la barrera es de este listado y no debe
+ * depender de que el schema base nunca se afloje.)
+ *
+ * `busqueda` es texto LIBRE y va sin `.trim()` ni `.min()`: quien lo normaliza es
+ * `lib/utils/cuentas-por-pagar-listado.ts`, que es tambien quien lo usa para filtrar. Recortar
+ * o rechazar aqui abriria la puerta a que el borde y el filtro no entendieran lo mismo por
+ * «texto vacio», que es lo unico que decide si el listado sale entero o filtrado.
+ */
+export const listarCuentasPorPagarPaginadoSchema = paginaInputSchema(walletMensajeroConfig)
+  .extend({
+    busqueda: z.string().optional(),
+  })
+  .strict();
+
+export type ListarCuentasPorPagarPaginadoInput = z.infer<
+  typeof listarCuentasPorPagarPaginadoSchema
+>;
+
+/**
+ * La pagina tal como la recibe el cliente. Union de error ESTRECHO a proposito (el contrato de
+ * T H.2 lo admite como parametro): este listado no produce `not_found` ni `conflict`.
+ */
+export type ListarCuentasPorPagarPaginadoResult = ListarPaginadoResult<
+  CuentaPorPagarResumenDTO,
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" }
+>;
+
+/**
+ * Feature 170 — FASE 2 (T M.1, cierre de Q-L2) — el mismo listado SIN recorte por pagina, para
+ * la descarga. Se DERIVA del schema de la pagina quitando `page`/`pageSize`, igual que hicieron
+ * los seis `…CompletoSchema` de la FASE 1: asi los dos caminos no pueden entender cosas
+ * distintas por «busqueda», que es lo unico que decide si el archivo sale entero o filtrado
+ * (R10/R45).
+ *
+ * `.strict()` se reescribe aunque `.omit()` lo herede, por el mismo motivo que en el schema de
+ * la pagina: la barrera de alcance es de ESTE listado y no debe depender de que el schema base
+ * nunca se afloje (R18).
+ */
+export const listarCuentasPorPagarCompletoSchema = listarCuentasPorPagarPaginadoSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarCuentasPorPagarCompletoInput = z.infer<
+  typeof listarCuentasPorPagarCompletoSchema
+>;
+
+/**
+ * El dataset completo tal como lo recibe el cliente. Union de error ANCHO (`ActionError`, el
+ * del contrato de T0.1) y no el estrecho de la pagina: quien lo consume es
+ * `filasDesdeResultado`, el adaptador comun de la descarga, que redacta el mensaje de CUALQUIER
+ * error de borde en un solo sitio (R36). `limite_excedido` lleva solo conteos (R27).
+ */
+export type ListarCuentasPorPagarCompletoResult =
+  ListarCompletoResult<CuentaPorPagarResumenDTO>;
+
+// Resultado del modo completo en el BORDE (T C.2). `limite_excedido` lleva SOLO conteos
+// (R27) y ninguna rama de error viaja con filas (R16/R17/R18). Eran DOS, uno por superficie;
+// la ficha 336 retiro `ListarMisPagosCompletoResult` con la vista propia del mensajero.
+// Ficha 458-A (TA.2): cada fila de la descarga lleva su origen legible (R5, R94).
+export type ListarPagosDeMensajeroCompletoResult =
+  ListarCompletoResult<ConOrigen<PagoMensajeroMovimientoDTO>>;

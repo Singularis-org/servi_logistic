@@ -1,0 +1,175 @@
+// @vitest-environment jsdom
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+
+import { EtiquetaGuia } from "@/app/(app)/ordenes/_components/EtiquetaGuia";
+import { formatMonto } from "@/lib/config/moneda";
+import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
+
+import { PATRON_NOMBRE_HEREDADO } from "../fixtures/nombre-heredado";
+
+// Feature 32 (T2.1) — Etiqueta presentacional. Se doblan qrcode.react y
+// react-barcode con stubs que exponen el `value` recibido: así el test asserta
+// que la etiqueta les pasa `qrValue`/`barcodeValue` (R7/R8) sin depender de
+// canvas real (jsdom no lo soporta).
+vi.mock("qrcode.react", () => ({
+  QRCodeCanvas: ({ value }: { value: string }) => (
+    <div data-testid="qr-stub" data-value={value} />
+  ),
+}));
+
+vi.mock("react-barcode", () => ({
+  default: ({ value, format }: { value: string; format?: string }) => (
+    <div data-testid="barcode-stub" data-value={value} data-format={format} />
+  ),
+}));
+
+function makeEtiqueta(
+  overrides: Partial<EtiquetaGuiaDTO> = {},
+): EtiquetaGuiaDTO {
+  return {
+    ordenId: "orden-uuid-1",
+    numGuia: 4021,
+    numRemision: "REM-777",
+    destinatario: "María Solís",
+    telefonoDest: "0999888777",
+    direccion: "100m sur de la iglesia",
+    producto: "Caja de zapatos",
+    montoCobrar: 12345.5,
+    tiendaNombre: "Tienda Central",
+    zonaNombre: "Zona A",
+    provinciaNombre: "San José",
+    cantonNombre: "Escazú",
+    distritoNombre: "San Rafael",
+    fechaCreacion: "2026-08-27", // feature 295: dia en que la tienda cargo el envio
+    qrValue: "4021", // = String(numGuia): el QR codifica /paquete/<numGuia>
+    barcodeValue: "4021",
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("EtiquetaGuia", () => {
+  it("R9: renderiza todos los campos legibles de la orden", () => {
+    const etiqueta = makeEtiqueta();
+    render(<EtiquetaGuia etiqueta={etiqueta} />);
+
+    expect(screen.getByText("4021")).toBeInTheDocument(); // num guía
+    expect(screen.getByText("REM-777")).toBeInTheDocument();
+    // Feature 295: la fecha de creación, tal cual la resuelve el servidor.
+    expect(screen.getByText("2026-08-27")).toBeInTheDocument();
+    expect(screen.getByText("María Solís")).toBeInTheDocument();
+    expect(screen.getByText("0999888777")).toBeInTheDocument();
+    expect(screen.getByText("100m sur de la iglesia")).toBeInTheDocument();
+    expect(
+      screen.getByText("Zona A / San José / Escazú / San Rafael"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Caja de zapatos")).toBeInTheDocument();
+    expect(screen.getByText("Tienda Central")).toBeInTheDocument();
+  });
+
+  it("R7: el QR codifica la URL del paquete (`/paquete/<numGuia>`), no el código pelado", () => {
+    render(<EtiquetaGuia etiqueta={makeEtiqueta({ numGuia: 4021 })} />);
+    const qr = screen.getByTestId("qr-stub");
+    // La URL es absoluta (origin de jsdom) y termina en el num_guia de la orden.
+    expect(qr.getAttribute("data-value")).toMatch(/\/paquete\/4021$/);
+  });
+
+  // CORTE LIMPIO: el QR dejó de codificar `orden.id` (UUID). El ordenId sigue en el
+  // DTO para otros usos, pero NO debe aparecer en el valor del QR.
+  it("R7: el QR NO codifica el ordenId (UUID) de la orden", () => {
+    render(
+      <EtiquetaGuia
+        etiqueta={makeEtiqueta({ ordenId: "orden-uuid-1", numGuia: 4021 })}
+      />,
+    );
+    expect(screen.getByTestId("qr-stub").getAttribute("data-value")).not.toMatch(
+      /orden-uuid-1/,
+    );
+  });
+
+  it("R8: pasa `barcodeValue` (num_guia) al código de barras", () => {
+    render(<EtiquetaGuia etiqueta={makeEtiqueta({ barcodeValue: "4021" })} />);
+    const barcode = screen.getByTestId("barcode-stub");
+    expect(barcode).toHaveAttribute("data-value", "4021");
+    expect(barcode).toHaveAttribute("data-format", "CODE128");
+  });
+
+  it("R5: formatea el monto a cobrar con la config de moneda", () => {
+    render(<EtiquetaGuia etiqueta={makeEtiqueta({ montoCobrar: 12345.5 })} />);
+    // El formato de es-CR usa espacio no-rompible como separador de miles; se
+    // comparan ignorando espacios para no acoplar a ese detalle de Intl.
+    const esperado = formatMonto(12345.5).replace(/\s/g, "");
+    expect(
+      screen.getByText(
+        (content) => content.replace(/\s/g, "") === esperado,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("R5: monto null se muestra como '-'", () => {
+    render(<EtiquetaGuia etiqueta={makeEtiqueta({ montoCobrar: null })} />);
+    expect(screen.getByText("-")).toBeInTheDocument();
+  });
+
+  it("R4: omite el distrito en la ubicación cuando es null", () => {
+    render(
+      <EtiquetaGuia etiqueta={makeEtiqueta({ distritoNombre: null })} />,
+    );
+    expect(
+      screen.getByText("Zona A / San José / Escazú"),
+    ).toBeInTheDocument();
+  });
+});
+
+// Feature 160 (T23, R30) — la etiqueta imprimible es un documento FÍSICO del paquete,
+// no una vista de gestión: NO lleva el conteo de intentos. QA4 se decidió "no" y esta
+// ausencia es la decisión, no un olvido.
+describe("EtiquetaGuia — R30: no expone el conteo de intentos", () => {
+  it("no muestra la etiqueta 'Intentos' ni un valor de conteo", () => {
+    const { container } = render(<EtiquetaGuia etiqueta={makeEtiqueta()} />);
+    expect(screen.queryByText(/Intentos/i)).toBeNull();
+    expect(container.textContent ?? "").not.toContain("Intentos");
+  });
+});
+
+// SL-15 (R7) — la vista previa pinta el MISMO rótulo que el papel (`ROTULO_GUIA` de
+// `lib/pdf/etiquetas-dibujo.ts`): en transición, solo «GUÍA»; con membrete, «<MEMBRETE> · GUÍA».
+// Antes llevaba el nombre heredado escrito a mano. Los literales van escritos aquí (R19).
+function rotuloDe(container: HTMLElement): string {
+  const rotulo = container.querySelector("header span");
+  if (!rotulo) throw new Error("la cabecera no tiene rótulo");
+  return rotulo.textContent ?? "";
+}
+
+describe("EtiquetaGuia — SL-15 R7: el rótulo de la cabecera", () => {
+  it("en transición (sin membrete) dice solo «GUÍA», sin ningún nombre", () => {
+    const { container } = render(<EtiquetaGuia etiqueta={makeEtiqueta()} />);
+    expect(rotuloDe(container)).toBe("GUÍA");
+    const texto = container.textContent ?? "";
+    expect(texto).not.toMatch(PATRON_NOMBRE_HEREDADO);
+    expect(texto).not.toContain("Servi Logistic");
+    expect(texto.toLowerCase()).not.toContain("la empresa");
+  });
+
+  describe("con membrete (vi.doMock de la marca)", () => {
+    afterEach(() => {
+      vi.doUnmock("@/lib/config/marca");
+      vi.resetModules();
+    });
+
+    it("dice «ACME ENVÍOS · GUÍA»", async () => {
+      vi.resetModules();
+      vi.doMock("@/lib/config/marca", () => ({
+        MARCA: { nombre: "Servi Logistic" },
+        EMPRESA: { enFrase: "Acme Envíos", alInicio: "Acme Envíos", membrete: "Acme Envíos" },
+      }));
+      const { EtiquetaGuia: ConMembrete } = await import("@/app/(app)/ordenes/_components/EtiquetaGuia");
+      const { container } = render(<ConMembrete etiqueta={makeEtiqueta()} />);
+      expect(rotuloDe(container)).toBe("ACME ENVÍOS · GUÍA");
+    });
+  });
+});

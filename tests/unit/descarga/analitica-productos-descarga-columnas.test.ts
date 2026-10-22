@@ -1,0 +1,588 @@
+// FICHA 345 (T8.2) — el CONTRATO del archivo de productos: qué columnas salen y en qué orden.
+//
+// Cubre R48 (exactamente las columnas declaradas y en el orden declarado) y R51 (`null` es celda
+// vacía, jamás `0`).
+//
+// FICHA 347 (G1) — las columnas base pasan de DIEZ a ONCE (entra `otros_resultados_detalle`,
+// la composicion de R58 como UNA celda de texto) y, para el actor con el dinero concedido, la
+// lista es OTRA constante con NUEVE columnas mas (R66/R68). Las dos se afirman a mano, que es
+// lo que `columnas-asercion-de-orden.guardia` exige y lo que hace que una permuta duela.
+//
+// FICHA 346 — las columnas pasan de NUEVE a DIEZ: entra `otros_resultados`, el cubo de los
+// desenlaces que no son entrega ni rechazo. Sin él el archivo repetía el defecto de la pantalla
+// (`entregadas + rechazadas + en_proceso` se quedaba corto frente a `ordenes`), y en una hoja de
+// cálculo es peor: la fila INVITA a sumarse. Las tres listas de abajo se han reescrito a mano,
+// que es el precio de que sean contrato.
+//
+// ⚠ LOS DOS `toEqual` DE ABAJO LLEVAN EL ESPERADO ESCRITO A MANO, y eso NO es un descuido de
+// estilo: comparar `COLUMNAS.map((c) => c.clave)` contra otro `COLUMNAS.map(...)` es comparar la
+// constante consigo misma y está SIEMPRE verde —una permutación pasaría—. La lección está medida
+// en este repo («Aserción contra su propia fuente») y `columnas-asercion-de-orden.guardia` exige
+// que la aserción NOMBRE la constante.
+import { describe, it, expect } from "vitest";
+
+import {
+  AMBITO_DESCARGA_ANALITICA_PRODUCTOS,
+  AMBITO_DESCARGA_ANALITICA_PRODUCTOS_DINERO,
+  COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS,
+  COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO,
+  descargaAnaliticaProductos,
+  filaDescargaAnaliticaProductos,
+  MARCA_NO_SUMABLE_ARCHIVO,
+} from "@/app/(app)/analitica/_components/entregas/analitica-productos-descarga-columnas";
+// FICHA 449 — LA OTRA FUENTE del nombre de la cifra de bodega: los rótulos del cierre. Se
+// importa a propósito, para que el encabezado del archivo no pueda bautizarla de nuevo.
+import { FULFILLMENT_COL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
+import type { DineroProductoDTO } from "@/lib/types/conteo-productos";
+import type { FilaProductoDTO } from "@/lib/types/conteo-productos";
+
+/** Un status que NO es ninguno de los cinco desenlaces: la orden sigue su curso. */
+const EN_CURSO = "en_reparto";
+
+/**
+ * La fila MEDIDA en producción: `Spray Protector`, 16 órdenes y 37,5 % de devolución a origen. El uuid de la
+ * tienda va a propósito con forma de uuid real: es lo que R49 prohíbe que llegue al archivo, y
+ * un `"t1"` no lo probaría.
+ */
+const FILA: FilaProductoDTO = {
+  tiendaId: "3f2a1c88-9b40-4d21-8e77-1c0b5a6d2e91",
+  tienda: "Tienda Uno",
+  producto: "Spray Protector",
+  unidades: 19,
+  ordenes: 16,
+  porStatus: [
+    { status: "entregado", conteo: 8 },
+    { status: "devolucion_a_origen_por_rechazo", conteo: 6 },
+    { status: EN_CURSO, conteo: 2 },
+  ],
+  ordenesAcompanadas: 0,
+  dinero: null,
+};
+
+describe("FICHA 345 · columnas del archivo de productos (R48)", () => {
+  it("las ONCE claves salen en este orden y no en otro", () => {
+    expect(COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS.map((c) => c.clave)).toEqual([
+      "tienda",
+      "producto",
+      "unidades",
+      "ordenes",
+      "entregadas",
+      "rechazadas",
+      // FICHA 346 — entre «rechazadas» y «en proceso»: las tres primeras son órdenes ya
+      // resueltas y la cuarta es trabajo vivo.
+      "otros_resultados",
+      // FICHA 347 (R58) — DE QUÉ se compone la anterior, PEGADA a ella y como UNA sola celda
+      // de texto. No hay una columna por desenlace a propósito: con ellas, el día que el
+      // catálogo gane uno el archivo cambiaría de número y de orden de columnas, y toda hoja
+      // que lo consuma se rompería en silencio.
+      "otros_resultados_detalle",
+      "en_proceso",
+      "efectividad",
+      "rechazo",
+    ]);
+  });
+
+  it("los ONCE encabezados salen en este orden y con la unidad dicha donde hace falta", () => {
+    // ⏳ 2026-09-24 (FICHA 455, R5/R6): las columnas de UN desenlace llevan su nombre exacto
+    // («Entregado», «Devolución a origen por rechazo») y la del grupo sin desenlace, su rótulo propio.
+    expect(COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS.map((c) => c.encabezado)).toEqual([
+      "Tienda",
+      "Producto",
+      "Unidades",
+      "Órdenes",
+      "Entregado",
+      "Devolución a origen por rechazo",
+      // FICHA 346 — el MISMO rótulo que la pantalla: el archivo se abre al lado de la tabla y
+      // dos nombres para la misma cifra se leen como dos cifras distintas.
+      "Otros resultados",
+      "Otros resultados (detalle)",
+      "Sin desenlace todavía",
+      // La unidad va en el encabezado porque la celda lleva PUNTOS, no la fracción.
+      "Efectividad de entrega (%)",
+      "Devolución a origen (%)",
+    ]);
+  });
+
+  it("R49 — ninguna columna es un identificador interno, un correo ni un teléfono", () => {
+    const claves = COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS.map((c) => c.clave);
+    expect(claves).not.toContain("tienda_id");
+    expect(claves).not.toContain("tiendaId");
+    expect(claves).not.toContain("id");
+  });
+});
+
+describe("FICHA 345 · la proyección de una fila", () => {
+  it("escribe las once celdas con las cifras de `calcularEfectividad`", () => {
+    expect(filaDescargaAnaliticaProductos(FILA)).toEqual({
+      tienda: "Tienda Uno",
+      producto: "Spray Protector",
+      unidades: 19,
+      ordenes: 16,
+      entregadas: 8,
+      rechazadas: 6,
+      // `Spray Protector` no tiene ningún otro desenlace: un CERO legítimo, no una ausencia.
+      otros_resultados: 0,
+      // …y por eso su composición es una celda VACÍA (R54): no hay nada que componer. Es
+      // `null` y no `""`, que es como el generador común escribe «celda vacía».
+      otros_resultados_detalle: null,
+      en_proceso: 2,
+      // 8/16 = 0,5 => 50 puntos. 6/16 = 0,375 => 37,5 puntos.
+      efectividad: 50,
+      rechazo: 37.5,
+    });
+  });
+
+  it("R49 — el uuid de la tienda NO llega al archivo por ninguna celda", () => {
+    const fila = filaDescargaAnaliticaProductos(FILA);
+    expect(Object.values(fila).join(" ")).not.toContain(FILA.tiendaId);
+    expect(Object.keys(fila)).toEqual(
+      COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS.map((c) => c.clave),
+    );
+  });
+
+  it("R51 — sin órdenes los dos porcentajes son CELDA VACÍA, nunca 0", () => {
+    // Este caso no puede darse hoy (el servicio no emite filas con cero órdenes, R31), y por eso
+    // mismo se prueba: es la rama que nadie vería fallar en producción.
+    const fila = filaDescargaAnaliticaProductos({ ...FILA, unidades: 0, ordenes: 0, porStatus: [] });
+
+    expect(fila.efectividad).toBeNull();
+    expect(fila.rechazo).toBeNull();
+    expect(fila.efectividad).not.toBe(0);
+    expect(fila.rechazo).not.toBe(0);
+  });
+
+  it("un CERO legítimo se escribe 0 y no se confunde con la celda vacía", () => {
+    // 29 órdenes y ni un rechazo (`Bálsamo Tensor`, medido). El archivo tiene que decir «0».
+    const fila = filaDescargaAnaliticaProductos({
+      ...FILA,
+      ordenes: 29,
+      porStatus: [
+        { status: "entregado", conteo: 20 },
+        { status: "novedad", conteo: 5 },
+        { status: EN_CURSO, conteo: 4 },
+      ],
+    });
+
+    expect(fila.rechazo).toBe(0);
+    expect(fila.rechazo).not.toBeNull();
+  });
+
+  it("el redondeo es a un decimal y determinista", () => {
+    // 1 de 3 = 0,3333… => 33.3 (hacia abajo). 2 de 3 = 0,6666… => 66.7 (hacia arriba).
+    const unTercio = filaDescargaAnaliticaProductos({
+      ...FILA,
+      porStatus: [
+        { status: "entregado", conteo: 1 },
+        { status: "devolucion_a_origen_por_rechazo", conteo: 2 },
+      ],
+    });
+    expect(unTercio.efectividad).toBe(33.3);
+    expect(unTercio.rechazo).toBe(66.7);
+
+    // Y son NÚMEROS, no cadenas: una hoja de cálculo con la columna en texto no suma ni ordena.
+    expect(typeof unTercio.efectividad).toBe("number");
+  });
+});
+
+describe("FICHA 346 · la fila del archivo SUMA", () => {
+  /**
+   * La captura del humano (2026-08-29, `Crema Especial MLX`): 24 órdenes y un desglose que se
+   * quedaba en 18. En una hoja de cálculo el defecto es peor que en la pantalla, porque la fila
+   * invita a sumarse: quien lo hiciera concluiría que el archivo está mal.
+   *
+   * El reparto de las seis entre `devuelta` y `reprogramada` NO es dato medido —la captura solo
+   * dice que faltan seis— y ninguna aserción depende de él.
+   */
+  const CREMA: FilaProductoDTO = {
+    ...FILA,
+    producto: "Crema Especial MLX",
+    unidades: 29,
+    ordenes: 24,
+    porStatus: [
+      { status: "entregado", conteo: 3 },
+      { status: "devolucion_a_origen_por_rechazo", conteo: 2 },
+      { status: "novedad", conteo: 4 },
+      { status: "reprogramado", conteo: 2 },
+      { status: EN_CURSO, conteo: 13 },
+    ],
+  };
+
+  it("los cuatro cubos de la fila dan EXACTAMENTE la celda «ordenes»", () => {
+    const fila = filaDescargaAnaliticaProductos(CREMA);
+
+    // 3 + 2 + 6 + 13 = 24. Antes de la ficha 346 esta suma daba 18.
+    expect(
+      Number(fila.entregadas) +
+        Number(fila.rechazadas) +
+        Number(fila.otros_resultados) +
+        Number(fila.en_proceso),
+    ).toBe(fila.ordenes);
+    expect(fila.otros_resultados).toBe(6);
+  });
+
+  it("y los dos porcentajes de la captura no se mueven", () => {
+    const fila = filaDescargaAnaliticaProductos(CREMA);
+
+    // 3/24 = 12,5 puntos. 2/24 = 8,3 puntos (redondeo determinista a un decimal).
+    expect(fila.efectividad).toBe(12.5);
+    expect(fila.rechazo).toBe(8.3);
+  });
+});
+
+/* ========================================================================== */
+/* FICHA 347 (G1) — el archivo con DINERO                                     */
+/* ========================================================================== */
+
+/**
+ * Las cifras de dinero de una fila. STRING escala 2, tal y como cruzan la frontera.
+ *
+ * Los números son los del caso de `design.md §4.1`: `empresa + tienda === liquidado.recaudado`
+ * (R20) y `liquidado.recaudado + pendiente.recaudado === recaudado` (R21). Se escriben aquí ya
+ * cuadrados a mano para que el archivo se pruebe con un dato que es posible de verdad.
+ */
+const DINERO: DineroProductoDTO = {
+  recaudado: "45000.00",
+  liquidado: {
+    recaudado: "35000.00",
+    empresa: "6215.00",
+    tienda: "28785.00",
+    ordenes: 4,
+  },
+  pendiente: { recaudado: "10000.00", ordenes: 1 },
+  retorno: "2260.00",
+  // FICHA 449 — el servicio de bodega de sus 4 ordenes liquidadas (4 x 696). Cifra PROPIA: NO
+  // entra en `liquidado.empresa`, asi que los dos cuadres de arriba no la incluyen.
+  fulfillment: "2784.00",
+};
+
+const FILA_CON_DINERO: FilaProductoDTO = {
+  ...FILA,
+  ordenesAcompanadas: 3,
+  dinero: DINERO,
+};
+
+describe("FICHA 347 · columnas del archivo con dinero concedido (R66/R68)", () => {
+  it("las VEINTIUNA claves salen en este orden y no en otro", () => {
+    // Las once primeras son EXACTAMENTE las de arriba, y en el mismo orden: el archivo de un
+    // maestro y el de un rol sin dinero tienen que poder abrirse uno al lado del otro. Las
+    // diez de dinero van al final, en el orden en que se leen: lo recaudado, con cuántas de
+    // sus órdenes llevan otro producto; lo liquidado y su reparto; lo pendiente; y las dos que
+    // están FUERA del reparto (R19 y la ficha 449), que van las últimas.
+    //
+    // ⚠ FICHA 449 — `fulfillment` SE AÑADE AL FINAL Y ESO ES EL CONTRATO. Meterla en medio
+    // correría de sitio a todas las que van detrás, y una hoja o una macro que lea el fichero
+    // por POSICIÓN se rompería en silencio — el mismo motivo por el que la 347 descartó una
+    // columna por desenlace. Este `toEqual` es lo que pone en rojo una inserción intermedia.
+    expect(COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.map((c) => c.clave)).toEqual([
+      "tienda",
+      "producto",
+      "unidades",
+      "ordenes",
+      "entregadas",
+      "rechazadas",
+      "otros_resultados",
+      "otros_resultados_detalle",
+      "en_proceso",
+      "efectividad",
+      "rechazo",
+      "recaudado",
+      "ordenes_con_otro_producto",
+      "liquidado_recaudado",
+      "liquidado_ordenes",
+      "empresa",
+      "para_la_tienda",
+      "pendiente_recaudado",
+      "pendiente_ordenes",
+      "retorno",
+      "fulfillment",
+    ]);
+  });
+
+  it("los VEINTIUN encabezados salen en este orden, con la marca de no-sumable donde toca", () => {
+    expect(COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.map((c) => c.encabezado)).toEqual([
+      "Tienda",
+      "Producto",
+      "Unidades",
+      "Órdenes",
+      "Entregado",
+      "Devolución a origen por rechazo",
+      "Otros resultados",
+      "Otros resultados (detalle)",
+      "Sin desenlace todavía",
+      "Efectividad de entrega (%)",
+      "Devolución a origen (%)",
+      // R49 — LA MARCA VA EN EL ENCABEZADO porque el párrafo de la pantalla NO viaja con el
+      // `.xlsx`: quien abre el archivo tres semanas después no tiene delante ninguna
+      // advertencia, y una hoja de cálculo invita a arrastrar la columna hasta el pie.
+      "Recaudado (no sumar: importe de la orden completa)",
+      "Órdenes con otro producto",
+      "Recaudado liquidado (no sumar: importe de la orden completa)",
+      "Órdenes liquidadas",
+      "Cobró la empresa (no sumar: importe de la orden completa)",
+      "Para la tienda (no sumar: importe de la orden completa)",
+      "Pendiente de cierre (no sumar: importe de la orden completa)",
+      "Órdenes pendientes de cierre",
+      "Flete por devolución a origen (no sumar: importe de la orden completa)",
+      // FICHA 449 — el MISMO rótulo que en el detalle del cierre y en las cinco descargas de
+      // gestiones (`FULFILLMENT_COL`). Un segundo nombre para la misma cifra se lee como una
+      // segunda cifra, y de eso va precisamente esta ficha.
+      "Fulfillment (no sumar: importe de la orden completa)",
+    ]);
+  });
+
+  it("R49 — las SIETE columnas de importe llevan la marca; las de conteo, no", () => {
+    // El barrido, para que añadir una columna de dinero sin marca duela aunque el `toEqual` de
+    // arriba se hubiera reescrito a la ligera. Las de conteo NO la llevan a propósito: ésas
+    // SÍ son aditivas, y marcarlas diría lo contrario de lo que se quiere decir.
+    const conMarca = COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.filter((c) =>
+      c.encabezado.includes(MARCA_NO_SUMABLE_ARCHIVO),
+    ).map((c) => c.clave);
+
+    expect(conMarca).toEqual([
+      "recaudado",
+      "liquidado_recaudado",
+      "empresa",
+      "para_la_tienda",
+      "pendiente_recaudado",
+      // El retorno tambien: es un importe, y ademas uno que esta FUERA del reparto (R19), asi
+      // que sumarlo con los otros seria peor todavia.
+      "retorno",
+      // FICHA 449 — y el fulfillment, por el mismo motivo doble: es un importe, y uno que
+      // tampoco sale de la plata recogida. Ademas NO SUMABLE en el otro sentido que esta tabla
+      // tiene (R12): una orden de tres productos aporta su bodega entera a las tres filas.
+      "fulfillment",
+    ]);
+    expect(conMarca).not.toContain("ordenes_con_otro_producto");
+    expect(conMarca).not.toContain("liquidado_ordenes");
+    expect(conMarca).not.toContain("pendiente_ordenes");
+  });
+
+  it("R66/R67 — el selector devuelve la lista que corresponde a la concesión", () => {
+    expect(descargaAnaliticaProductos(true).columnas).toBe(
+      COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO,
+    );
+    expect(descargaAnaliticaProductos(false).columnas).toBe(
+      COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS,
+    );
+  });
+
+  it("R69 — ninguna columna de dinero es un identificador interno", () => {
+    const claves = COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.map((c) => c.clave);
+    expect(claves).not.toContain("tienda_id");
+    expect(claves).not.toContain("tiendaId");
+    expect(claves).not.toContain("orden_id");
+    expect(claves).not.toContain("id");
+  });
+});
+
+describe("FICHA 388 · los ámbitos de preferencia de columnas", () => {
+  it("cada juego de columnas viaja con SU ámbito, y no con el del otro", () => {
+    // Caza el CRUCE: si alguien intercambia los ámbitos dentro de los objetos, la preferencia
+    // del archivo sin dinero acabaría aplicándose al de dinero y al revés. Medido: cruzar uno
+    // de los dos pone este caso rojo.
+    //
+    // ⚠ LO QUE ESTE CASO **NO** CAZA, dicho para que nadie lo lea como una red que no es: el
+    // COLAPSO de los dos ámbitos en un mismo identificador. El esperado se construye con las
+    // MISMAS constantes que devuelve la función, así que si alguien iguala los dos literales
+    // los dos lados colapsan a la vez y esto sigue VERDE — medido, no razonado: con los
+    // ámbitos colapsados caen los DOS casos siguientes y éste no. La red contra el colapso son
+    // ellos («los dos ámbitos son DISTINTOS» y «los identificadores son los literales»), más
+    // «EL CASO DE LA CONCESIÓN» de `ProductosDescargaColumnas.test.tsx`, que es el que lo mide
+    // por comportamiento.
+    //
+    // No se refuerza aquí a propósito: añadirle la desigualdad haría que un colapso pusiera
+    // rojos dos casos con el mismo nombre a medias, y el nombre del caso rojo es lo que dice
+    // qué propiedad se rompió.
+    expect(descargaAnaliticaProductos(true)).toEqual({
+      columnas: COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO,
+      ambitoColumnas: AMBITO_DESCARGA_ANALITICA_PRODUCTOS_DINERO,
+    });
+    expect(descargaAnaliticaProductos(false)).toEqual({
+      columnas: COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS,
+      ambitoColumnas: AMBITO_DESCARGA_ANALITICA_PRODUCTOS,
+    });
+  });
+
+  it("los dos ámbitos son DISTINTOS: el juego con dinero no comparte clave con el de sin", () => {
+    // El fallo que esto caza es MUDO y vive en el `localStorage` del usuario: con un solo
+    // ámbito, el primer clic del selector estando sin dinero reescribe la preferencia ya
+    // saneada contra las once columnas base y borra en silencio lo que se hubiera ocultado de
+    // las nueve de dinero. Al volver la concesión —o al pasar el `limite_excedido`— esas
+    // columnas REAPARECEN sin que nadie las haya vuelto a marcar.
+    expect(AMBITO_DESCARGA_ANALITICA_PRODUCTOS_DINERO).not.toBe(
+      AMBITO_DESCARGA_ANALITICA_PRODUCTOS,
+    );
+    expect(descargaAnaliticaProductos(true).ambitoColumnas).not.toBe(
+      descargaAnaliticaProductos(false).ambitoColumnas,
+    );
+  });
+
+  it("los identificadores son los literales que ya viven en el navegador", () => {
+    // Escritos A MANO, igual que las listas de columnas de arriba y por el mismo motivo: un
+    // ámbito es la mitad de una clave de `localStorage`, así que renombrarlo no rompe nada
+    // —huérfana en silencio la preferencia que el usuario ya había guardado—. Compararlo
+    // contra su propia constante estaría siempre verde.
+    expect(AMBITO_DESCARGA_ANALITICA_PRODUCTOS).toBe("analitica-productos");
+    expect(AMBITO_DESCARGA_ANALITICA_PRODUCTOS_DINERO).toBe("analitica-productos-dinero");
+  });
+
+  it("devuelve la MISMA instancia para la misma concesión", () => {
+    // La identidad es dependencia de los `useMemo` de `usePreferenciaColumnas`: un objeto nuevo
+    // en cada render lo haría recalcular el orden efectivo en cada pasada.
+    expect(descargaAnaliticaProductos(true)).toBe(descargaAnaliticaProductos(true));
+    expect(descargaAnaliticaProductos(false)).toBe(descargaAnaliticaProductos(false));
+  });
+});
+
+describe("FICHA 347 · la proyección con dinero", () => {
+  it("escribe las DIEZ celdas de dinero con los STRING del servidor, TAL CUAL", () => {
+    const fila = filaDescargaAnaliticaProductos(FILA_CON_DINERO, true);
+
+    // Money-safe (R22): el archivo lleva el mismo STRING que cruzó la frontera. Sin `Number`,
+    // sin `toFixed` y sin reformatear: la contabilidad necesita la cola de céntimos, y este
+    // repo ya perdió un céntimo por una conversión.
+    expect(fila.recaudado).toBe("45000.00");
+    expect(fila.liquidado_recaudado).toBe("35000.00");
+    expect(fila.empresa).toBe("6215.00");
+    expect(fila.para_la_tienda).toBe("28785.00");
+    expect(fila.pendiente_recaudado).toBe("10000.00");
+    expect(fila.retorno).toBe("2260.00");
+    // FICHA 449 — la cifra de bodega, tambien TAL CUAL y desde la RAIZ del DTO (no de
+    // `liquidado`): el sitio del que se lee es la afirmacion de que no es parte del reparto.
+    expect(fila.fulfillment).toBe("2784.00");
+    // Y los conteos son NÚMEROS: una hoja con la columna en texto no suma ni ordena, y éstos
+    // sí se pueden sumar.
+    expect(fila.ordenes_con_otro_producto).toBe(3);
+    expect(fila.liquidado_ordenes).toBe(4);
+    expect(fila.pendiente_ordenes).toBe(1);
+  });
+
+  it("R68 — las claves de la fila son EXACTAMENTE las columnas declaradas, en su orden", () => {
+    expect(Object.keys(filaDescargaAnaliticaProductos(FILA_CON_DINERO, true))).toEqual(
+      COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.map((c) => c.clave),
+    );
+  });
+
+  it("R67 — SIN concesión, la fila no lleva NI UNA clave de dinero", () => {
+    // No basta con no declarar la columna: el generador común emite exactamente las columnas
+    // declaradas, pero una clave sobrante en la fila sería dinero viajando en una estructura
+    // que alguien puede volcar. Y la fila del DTO trae dinero: lo que se prueba es que la
+    // proyección lo TIRA, no que no lo tuviera.
+    const fila = filaDescargaAnaliticaProductos(FILA_CON_DINERO, false);
+
+    expect(Object.keys(fila)).toEqual(COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS.map((c) => c.clave));
+    for (const clave of ["recaudado", "empresa", "para_la_tienda", "retorno", "fulfillment"]) {
+      expect(Object.keys(fila)).not.toContain(clave);
+    }
+    // Ni siquiera en cero: R5 prohíbe emitir la cifra «ni recortada, ni agregada, ni en cero».
+    expect(Object.values(fila)).not.toContain("45000.00");
+  });
+
+  it("R70 — un importe ausente es celda VACÍA, nunca `0`", () => {
+    // La fila tiene dinero pero NADA liquidado: `empresa`, `tienda` y `retorno` llegan `null`
+    // del servidor (R30). El archivo tiene que decir «no se sabe», no «fue cero». Es la
+    // mutación M6 vista desde el archivo.
+    const sinLiquidar = filaDescargaAnaliticaProductos(
+      {
+        ...FILA_CON_DINERO,
+        dinero: {
+          recaudado: "10000.00",
+          liquidado: { recaudado: "0.00", empresa: null, tienda: null, ordenes: 0 },
+          pendiente: { recaudado: "10000.00", ordenes: 1 },
+          retorno: null,
+          // FICHA 449 — `null` por el mismo motivo: nada liquidado, nada que afirmar.
+          fulfillment: null,
+        },
+      },
+      true,
+    );
+
+    expect(sinLiquidar.empresa).toBeNull();
+    expect(sinLiquidar.para_la_tienda).toBeNull();
+    expect(sinLiquidar.retorno).toBeNull();
+    // FICHA 449 — el `null` del fulfillment es el de «no hay snapshot que leer», y sale VACIO
+    // por el mismo motivo que los tres de arriba.
+    expect(sinLiquidar.fulfillment).toBeNull();
+    expect(sinLiquidar.empresa).not.toBe(0);
+    expect(sinLiquidar.empresa).not.toBe("0.00");
+    // Lo que SÍ es un hecho se escribe: lo recaudado existe desde que se registró la gestión.
+    expect(sinLiquidar.recaudado).toBe("10000.00");
+  });
+
+  it("FICHA 449 — un `0.00` que SÍ llegó se ESCRIBE: el archivo no se lo calla", () => {
+    // ⚠ LA ASIMETRÍA CON LA PANTALLA, Y ES DELIBERADA. En pantalla el fulfillment aparece sólo
+    // cuando hay monto: una celda de ceros entre cinco importes con dato no informa y sugiere
+    // un concepto que a esa tienda no le aplica. Aquí la columna existe igual para TODAS las
+    // filas —no se puede «quitar» en una—, y la celda vacía ya significa otra cosa (R70): «no
+    // se sabe». Escribir el `"0.00"` es lo único que mantiene distinguibles «hubo órdenes
+    // liquidadas y ninguna cobró bodega» y «no hay snapshot que leer» seis meses después, que
+    // es cuando se abre el `.xlsx`.
+    //
+    // Sin este caso, copiar el `hayMonto` de la pantalla a la proyección pasaría inadvertido: el
+    // archivo saldría con una celda vacía donde hay un hecho, y nada se vería roto.
+    const sinBodega = filaDescargaAnaliticaProductos(
+      { ...FILA_CON_DINERO, dinero: { ...DINERO, fulfillment: "0.00" } },
+      true,
+    );
+
+    expect(sinBodega.fulfillment).toBe("0.00");
+    expect(sinBodega.fulfillment).not.toBeNull();
+    // Y el resto de la fila no se entera: es una celda, no un modo.
+    expect(sinBodega.empresa).toBe("6215.00");
+  });
+
+  it("FICHA 449 — el encabezado lleva el nombre que la cifra YA tiene en el resto de la app", () => {
+    // Contra OTRA fuente (`FULFILLMENT_COL`, los rótulos del cierre) y no contra sí misma: la
+    // ficha nace de que la misma orden enseñaba esta cifra allí y la escondía aquí, así que un
+    // nombre propio para el archivo dejaría el defecto en pie con otra cara.
+    const columna = COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.find(
+      (c) => c.clave === "fulfillment",
+    );
+    expect(columna, "no existe la columna `fulfillment`").toBeDefined();
+    expect(columna!.encabezado).toBe(`${FULFILLMENT_COL} ${MARCA_NO_SUMABLE_ARCHIVO}`);
+  });
+
+  it("R70 — una fila SIN ninguna orden que aporte deja las ocho celdas de dinero vacías", () => {
+    // `fila.dinero === null` es el tercer camino a la ausencia (esa fila no tiene ni una orden
+    // que aporte). Se escribe igual que los otros dos, y por el mismo motivo.
+    const sinDinero = filaDescargaAnaliticaProductos({ ...FILA_CON_DINERO, dinero: null }, true);
+
+    for (const clave of [
+      "recaudado",
+      "liquidado_recaudado",
+      "liquidado_ordenes",
+      "empresa",
+      "para_la_tienda",
+      "pendiente_recaudado",
+      "pendiente_ordenes",
+      "retorno",
+      "fulfillment",
+    ]) {
+      expect(sinDinero[clave], clave).toBeNull();
+    }
+    // `ordenes_con_otro_producto` NO es dinero: sale del lado del volumen y siempre existe.
+    expect(sinDinero.ordenes_con_otro_producto).toBe(3);
+  });
+
+  it("R58 — la composición de «Otros resultados» sale en UNA celda de texto", () => {
+    const fila = filaDescargaAnaliticaProductos(
+      {
+        ...FILA_CON_DINERO,
+        porStatus: [
+          { status: "entregado", conteo: 3 },
+          { status: "novedad", conteo: 4 },
+          { status: "reprogramado", conteo: 2 },
+        ],
+      },
+      true,
+    );
+
+    expect(fila.otros_resultados).toBe(6);
+    expect(fila.otros_resultados_detalle).toBe("Novedad: 4 · Reprogramado: 2");
+    // Y NO hay una columna por desenlace: ni `devuelta`, ni `reprogramada`, ni `incidente`.
+    const claves = COLUMNAS_DESCARGA_ANALITICA_PRODUCTOS_DINERO.map((c) => c.clave);
+    expect(claves).not.toContain("novedad");
+    expect(claves).not.toContain("reprogramado");
+    expect(claves).not.toContain("incidente");
+  });
+});

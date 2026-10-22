@@ -1,0 +1,267 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+/**
+ * Tests de `middleware.ts` (feature 78, endurecido despues). Importa el
+ * middleware REAL: reimplementar la logica aqui no verificaria nada.
+ *
+ * Se mockea SOLO `isSessionActive` — la frontera con la DB. Asi el test cubre lo
+ * que es del middleware (que rutas pasan, a donde redirige, si limpia la cookie)
+ * sin levantar Postgres. La validez de una sesion en si es responsabilidad de
+ * `session-guard` / `SessionRepository` y se prueba en su propio nivel.
+ *
+ * Contrato que se fija:
+ * - ruta publica sin cookie -> `next()` (200), sin `location`.
+ * - ruta con auth propia (cron / api-key) -> `next()` SIEMPRE, incluso sin cookie.
+ * - ruta privada sin cookie -> 307 a `/login?redirect=<pathname>`.
+ * - ruta de API sin sesion -> 401 con cuerpo JSON y SIN `location` (feature 426).
+ * - ruta privada con cookie INVALIDA -> 307 a login + `Set-Cookie` que la borra.
+ * - ruta privada con cookie VALIDA -> `next()` (200).
+ * - `/paquete/*` sin sesion -> 307 a `/` (no a `/login`).
+ */
+
+const isSessionActive = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth/session-guard", () => ({ isSessionActive }));
+
+const { middleware } = await import("@/middleware");
+
+const BASE_URL = "https://app.test";
+
+function buildRequest(pathname: string, session?: string): NextRequest {
+  const request = new NextRequest(new URL(pathname, BASE_URL));
+  if (session) request.cookies.set("session", session);
+  return request;
+}
+
+beforeEach(() => {
+  isSessionActive.mockReset();
+  isSessionActive.mockResolvedValue(false);
+});
+
+describe("middleware — rutas publicas", () => {
+  it.each([
+    "/login",
+    "/api/health",
+    "/recuperar-contrasena",
+    "/postulacion",
+  ])("deja pasar %s sin cookie de sesion", async (ruta) => {
+    const res = await middleware(buildRequest(ruta));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    // No se consulta la DB para una ruta publica.
+    expect(isSessionActive).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware — endpoints con autenticacion propia", () => {
+  // REGRESION: estas rutas se autentican por `Authorization: Bearer ...` dentro
+  // del handler. Cuando el middleware las trataba como privadas, respondia 307 a
+  // /login y el handler NUNCA corria: los crons de Vercel y el canal de carga
+  // por API key quedaban silenciosamente muertos.
+  it.each([
+    "/api/cron/corte-diario",
+    "/api/cron/procesar-jobs",
+    "/api/ordenes/api-key/carga",
+  ])("deja pasar %s sin cookie (su auth vive en el handler)", async (ruta) => {
+    const res = await middleware(buildRequest(ruta));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(isSessionActive).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware — guard de sesion en rutas privadas", () => {
+  it("redirige a /login con ?redirect= cuando no hay cookie", async () => {
+    const res = await middleware(buildRequest("/ordenes"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.test/login?redirect=%2Fordenes",
+    );
+    // Sin cookie no hay nada que validar contra la DB.
+    expect(isSessionActive).not.toHaveBeenCalled();
+  });
+
+  it("deja pasar cuando la sesion es valida", async () => {
+    isSessionActive.mockResolvedValue(true);
+
+    const res = await middleware(buildRequest("/ordenes", "sesion-valida"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(isSessionActive).toHaveBeenCalledWith("sesion-valida");
+  });
+
+  // El corazon del endurecimiento: antes bastaba con que la cookie EXISTIERA.
+  it("rechaza una cookie que no corresponde a una sesion activa", async () => {
+    isSessionActive.mockResolvedValue(false);
+
+    const res = await middleware(buildRequest("/ordenes", "cookie-inventada"));
+
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location") as string).pathname).toBe("/login");
+    expect(isSessionActive).toHaveBeenCalledWith("cookie-inventada");
+  });
+
+  it("borra la cookie invalida al rechazarla", async () => {
+    isSessionActive.mockResolvedValue(false);
+
+    const res = await middleware(buildRequest("/ordenes", "cookie-inventada"));
+
+    expect(res.cookies.get("session")?.value).toBe("");
+  });
+});
+
+describe("middleware — /paquete/[numGuia]", () => {
+  it("redirige a / (no a /login) cuando no hay sesion activa", async () => {
+    const res = await middleware(buildRequest("/paquete/ABC123"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://app.test/");
+  });
+
+  it("deja pasar cuando la sesion es valida", async () => {
+    isSessionActive.mockResolvedValue(true);
+
+    const res = await middleware(buildRequest("/paquete/ABC123", "sesion-valida"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // REGRESION: las rutas de API autorizan por si mismas (Bearer con CRON_SECRET
+  // o con una api key `svl_`, o sesion resuelta dentro del handler). El guard de
+  // cookie las redirigia (307) a /login, dejando los cuatro crons y la ingesta
+  // por API key INALCANZABLES en produccion: Vercel Cron manda el header
+  // Authorization pero NUNCA una cookie `session`.
+  it.each([
+    "/api/cron/procesar-jobs",
+    "/api/cron/corte-diario",
+    "/api/cron/generar-gastos-fijos",
+    "/api/cron/liberar-reprogramadas",
+    "/api/ordenes/api-key/carga",
+  ])("deja pasar %s sin cookie de sesion (autoriza el handler)", async (ruta) => {
+    const res = await middleware(buildRequest(ruta));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // --- Feature 86: landing publica en `/` + dashboard en /dashboard ---
+
+  it("/ sin sesion deja pasar (landing publica, 200) (R1)", async () => {
+    const res = await middleware(buildRequest("/"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // Modelo endurecido (feature 78 + integracion whatsapp): la rama /api ya NO pasa en bloque.
+  // Solo los prefijos de SELF_AUTH_ROUTES (cron / api-key / webhooks) se autentican por su cuenta;
+  // una ruta /api que no sea self-auth queda guardada por sesion como cualquier otra (secure by
+  // default). El navegador la alcanza con su cookie de sesion valida.
+  //
+  // FEATURE 426 — CASO INVERTIDO, y lo que SE CONSERVA es el veredicto: esta ruta SIGUE guardada
+  // por sesion, sin sesion NO pasa, y ninguna lista de excepcion la cubre. Lo unico que cambia es
+  // la FORMA del rechazo: antes era un 307 a /login, y como el 307 conserva el metodo, el cliente
+  // reposteaba contra la pagina de login y recibia su HTML con 200 (medido contra produccion el
+  // 2026-09-14, reportado por el integrador). Ahora el borde emite el mismo 401 JSON que habria
+  // emitido el handler.
+  it("una ruta de API no self-auth sin sesion se guarda (401 JSON, ya no 307 a /login)", async () => {
+    const res = await middleware(buildRequest("/api/lo-que-sea/futuro"));
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // El guard de cookie SIGUE aplicando a las paginas: la exclusion es solo /api.
+  it("sigue redirigiendo una pagina privada que empieza con 'api' en el nombre", async () => {
+    const res = await middleware(buildRequest("/apitos"));
+
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location") as string).pathname).toBe("/login");
+  });
+
+  it("/ con sesion redirige (307) a /dashboard (R7)", async () => {
+    const res = await middleware(buildRequest("/", "cookie-de-sesion"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://app.test/dashboard");
+  });
+
+  it("/dashboard sin sesion redirige (307) a /login?redirect=%2Fdashboard (R10)", async () => {
+    const res = await middleware(buildRequest("/dashboard"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.test/login?redirect=%2Fdashboard",
+    );
+  });
+
+  it("R8: una ruta con prefijo `/` arbitraria sin sesion NO se vuelve publica (sigue redirigiendo a /login)", async () => {
+    const res = await middleware(buildRequest("/xyz"));
+
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location") as string).pathname).toBe(
+      "/login",
+    );
+  });
+
+  it("R16 (regresion): /ordenes sin cookie -> 307 a /login; con sesion valida -> 200", async () => {
+    const sin = await middleware(buildRequest("/ordenes"));
+    expect(sin.status).toBe(307);
+    expect(sin.headers.get("location")).toBe(
+      "https://app.test/login?redirect=%2Fordenes",
+    );
+
+    // Modelo endurecido: no basta la existencia de la cookie, la sesion debe estar activa.
+    isSessionActive.mockResolvedValue(true);
+    const con = await middleware(buildRequest("/ordenes", "cookie-de-sesion"));
+    expect(con.status).toBe(200);
+    expect(con.headers.get("location")).toBeNull();
+  });
+});
+
+// --- Feature 177 (R40): los 3 endpoints nuevos cuelgan de `/api/ordenes/api-key` ---
+//
+// El valor de este bloque NO es probar de nuevo `matches()`, sino fijar que la FORMA
+// concreta de las tres rutas nuevas (segmento estatico `orden/`, sufijo `/generate`,
+// `cargaId` uuid) cae bajo el prefijo `/api/ordenes/api-key` de `SELF_AUTH_ROUTES`.
+// Es decir: la 177 NO necesita tocar `middleware.ts`. Si alguien reubicara los
+// handlers fuera del prefijo (o recortara la lista), estos casos se ponen rojos.
+describe("middleware — rutas de la feature 177 bajo SELF_AUTH_ROUTE (R40)", () => {
+  it.each([
+    "/api/ordenes/api-key/orden/ABC-123",
+    "/api/ordenes/api-key/orden/ABC-123/generate",
+    "/api/ordenes/api-key/carga/3f1c2a4e-0000-4000-8000-000000000000/generate",
+  ])(
+    "R40: %s sin cookie de sesion NO recibe 307 a /login (su Bearer lo valida el handler)",
+    async (ruta) => {
+      const res = await middleware(buildRequest(ruta));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+      // Ni siquiera se consulta la DB de sesiones: el guard de cookie no aplica aqui.
+      expect(isSessionActive).not.toHaveBeenCalled();
+    },
+  );
+
+  // CONTROL NEGATIVO: sin este caso el bloque anterior pasaria incluso si el
+  // middleware dejara pasar cualquier cosa. Un pathname vecino que NO cuelga del
+  // prefijo debe seguir guardado por sesion.
+  //
+  // FEATURE 426 — EL CONTROL SE CONSERVA ENTERO: lo que este caso vigila es que
+  // `/api/ordenes/orden/ABC-123` NO se cuele por el prefijo `/api/ordenes/api-key`, y eso se
+  // sigue exigiendo igual: la ruta NO pasa (401), a diferencia de las tres del bloque de arriba,
+  // que pasan con 200. Solo cambia el desenlace del rechazo, de 307 a /login a 401 con JSON.
+  it("R40 (control): /api/ordenes/orden/ABC-123 (fuera del prefijo api-key) sigue siendo privada y se rechaza con 401 JSON", async () => {
+    const res = await middleware(buildRequest("/api/ordenes/orden/ABC-123"));
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+    expect(res.headers.get("location")).toBeNull();
+  });
+});

@@ -1,0 +1,410 @@
+import { z } from "zod";
+import type {
+  WalletTiendaMovimientoTipo as PrismaWalletTiendaMovimientoTipo,
+  WalletTiendaMovimientoCategoria as PrismaWalletTiendaMovimientoCategoria,
+} from "@prisma/client";
+import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import { walletTiendaConfig } from "@/lib/config/wallet-tienda";
+// FICHA 381: las dos piezas del borde del dinero manual, reutilizadas TAL CUAL desde el libro de la
+// caja. Ver `registrarCobroTiendaSchema` al final del archivo.
+import { claveIdempotenciaSchema, fechaMovimientoSchema, montoPositivoSchema } from "@/lib/types/wallet";
+import type { WalletOrigenTipo } from "@/lib/types/wallet";
+import type { ConOrigen } from "@/lib/types/wallet-origen";
+import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+
+// Feature 43 (design §1.1/§3) — fuente unica de verdad de tipos/categorias del ledger POR
+// TIENDA, respaldada por los enums Postgres nativos (patron lib/types/wallet.ts). El
+// `satisfies` rompe el build si un SEED tuviera un valor que el enum NO tiene; el chequeo
+// `_Ensure*` rompe el build si el enum gana un valor que el SEED NO lista. Money-safe: todos
+// los montos cruzan la frontera como STRING (R4/R27), nunca como number.
+
+export const WALLET_TIENDA_MOVIMIENTO_TIPO_SEED = [
+  "credito",
+  "debito",
+] as const satisfies readonly PrismaWalletTiendaMovimientoTipo[];
+
+export type WalletTiendaMovimientoTipo = (typeof WALLET_TIENDA_MOVIMIENTO_TIPO_SEED)[number];
+
+type _EnsureTipoExhaustive = Exclude<
+  PrismaWalletTiendaMovimientoTipo,
+  WalletTiendaMovimientoTipo
+> extends never
+  ? true
+  : never;
+const _tipoExhaustive: _EnsureTipoExhaustive = true;
+void _tipoExhaustive;
+
+export const WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED = [
+  // credito (a favor de la tienda)
+  "cod_recaudado",
+  // debitos (espejo 1:1 de los 6 conceptos de ingreso de la 42, R8)
+  "flete",
+  "flete_devolucion",
+  "comision_cod",
+  "iva_flete",
+  "iva_flete_devolucion",
+  "iva_comision_cod",
+  // pago/liquidacion (F1.4-Q4; RESERVADO)
+  "pago_tienda",
+  // ajustes manuales (inmutables, R3/R29)
+  "ajuste_credito",
+  "ajuste_debito",
+  // FICHA 381 (D2, firmada por el humano el 2026-09-07) — el COBRO MANUAL a una tienda. Es un
+  // DEBITO que decide una persona y que baja el disponible de esa tienda; el saldo puede quedar
+  // negativo y eso es correcto (R27). Categoria PROPIA y no `ajuste_debito`: el humano pidio poder
+  // DISTINGUIR un cobro de una correccion compensatoria, y esa distincion no puede apoyarse en la
+  // `descripcion`, que es texto libre tecleado por una persona.
+  "cobro_manual",
+  // FICHA 459 (design §4.1/§5): el pago que la empresa hace POR CUENTA de la tienda (debito) y su
+  // anulacion (credito). Contrapartida en la caja: `egreso_pago_por_cuenta_tienda` / su reverso.
+  "pago_por_cuenta",
+  "pago_por_cuenta_anulado",
+  // FICHA 461 (design §2.1, HD1): la ANULACION de un cobro de la empresa a la tienda (credito). Le
+  // devuelve el monto del cobro; su contrapartida en la caja es `egreso_reverso_cobro_tienda`.
+  "cobro_tienda_anulado",
+  // FICHA 457 (design §0/§4, DH1): el PAGO DE UNA TIENDA A LA EMPRESA (credito: la tienda con saldo en
+  // contra le entrega dinero a la empresa y su saldo sube) y su ANULACION (debito). Contrapartida en la
+  // caja: `ingreso_abono_tienda` / `egreso_reverso_abono_tienda` (terceros, efectivo).
+  "abono_tienda",
+  "abono_tienda_anulado",
+  // FICHA 458-B (design §2.1/§2.3, D7): los CREDITOS ESPEJO de la anulacion de un cobro por rechazo
+  // aprobado: le devuelven a la tienda el flete y el IVA. Contrapartida en la caja:
+  // `egreso_reverso_flete_devolucion` / `egreso_reverso_iva_flete_devolucion`.
+  "flete_devolucion_anulado",
+  "iva_flete_devolucion_anulado",
+] as const satisfies readonly PrismaWalletTiendaMovimientoCategoria[];
+
+export type WalletTiendaMovimientoCategoria =
+  (typeof WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED)[number];
+
+type _EnsureCategoriaExhaustive = Exclude<
+  PrismaWalletTiendaMovimientoCategoria,
+  WalletTiendaMovimientoCategoria
+> extends never
+  ? true
+  : never;
+const _categoriaExhaustive: _EnsureCategoriaExhaustive = true;
+void _categoriaExhaustive;
+
+// Las 6 categorias de DEBITO de la tienda, espejo 1:1 de los 6 conceptos de ingreso de la
+// 42 (WALLET_INGRESO_CONCEPTO_SEED, R8). El feed las emite con tipo `debito`; el credito
+// (`cod_recaudado`) va aparte. El resto (pago_tienda, ajuste_*) NO viene del feed del cierre.
+export const WALLET_TIENDA_DEBITO_CATEGORIA_SEED = [
+  "flete",
+  "flete_devolucion",
+  "comision_cod",
+  "iva_flete",
+  "iva_flete_devolucion",
+  "iva_comision_cod",
+] as const satisfies readonly WalletTiendaMovimientoCategoria[];
+
+export type WalletTiendaDebitoCategoria =
+  (typeof WALLET_TIENDA_DEBITO_CATEGORIA_SEED)[number];
+
+// ── Contratos I/O (frontera Server Action -> cliente). Montos SIEMPRE STRING (R4/R27) ──
+
+export type WalletTiendaMovimientoDTO = {
+  id: string;
+  tiendaId: string;
+  tipo: WalletTiendaMovimientoTipo;
+  categoria: WalletTiendaMovimientoCategoria;
+  monto: string; // Decimal -> STRING 2 dec (R4/R27)
+  // Ficha 458-A (TA.2, R9): el catalogo, no `string`: un diccionario parcial ya no compila.
+  origenTipo: WalletOrigenTipo;
+  origenId: string | null;
+  descripcion: string | null;
+  fechaMovimiento: string; // ISO
+};
+
+export type SaldoTiendaSigno = "positivo" | "negativo" | "cero";
+
+// Saldo a favor de UNA tienda (R16/R17). `saldo` = creditos - debitos, puede ser negativo.
+export type SaldoTiendaDTO = {
+  creditos: string; // STRING 2 dec
+  debitos: string; // STRING 2 dec
+  saldo: string; // STRING 2 dec (puede venir "-123.45")
+  signo: SaldoTiendaSigno;
+};
+
+// Vista del maestro (R20): una fila por tienda con su nombre + saldo.
+export type SaldoTiendaResumenDTO = {
+  tiendaId: string;
+  tiendaNombre: string;
+  saldo: string; // STRING 2 dec + signo
+  signo: SaldoTiendaSigno;
+};
+
+export type ListarMovimientosTiendaResult = {
+  movimientos: WalletTiendaMovimientoDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+/**
+ * Feature 170 — FASE 2 (T I.1, R40) — entrada del listado paginado de SALDOS DE TIENDAS.
+ *
+ * Sin alcance (design §11.3, riesgo BAJO): quien lo ve son los roles de acceso
+ * total y lo decide el servicio. `.strict()` para que un `tiendaId` colado —la clave que
+ * convertiria un listado global en uno dirigido— muera en el BORDE. Tamano de pagina desde
+ * `walletTiendaConfig` (T H.1), recortado a `MAX_PAGE_SIZE`.
+ */
+export const listarSaldosTiendasPaginadoSchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(walletTiendaConfig.DEFAULT_PAGE_SIZE)
+      .transform((n) => Math.min(n, walletTiendaConfig.MAX_PAGE_SIZE)),
+    // FICHA 463 (design §2.3/§3.3, R45) — la busqueda por NOMBRE de tienda, resuelta en el servidor.
+    // Molde exacto de `listarCuentasPorPagarPaginadoSchema` (`/wallet/mensajeros`): texto libre que el
+    // repositorio normaliza (recorte, minusculas, sin acentos) y casa como subcadena, SIN comodines.
+    // El completo la hereda por `omit`, asi que la descarga trae el mismo conjunto que la tabla.
+    busqueda: z.string().optional(),
+  })
+  .strict();
+
+export type ListarSaldosTiendasPaginadoInput = z.infer<typeof listarSaldosTiendasPaginadoSchema>;
+
+/**
+ * Feature 184 — Tanda G (R17) — entrada del modo SIN paginacion (el conjunto del archivo).
+ *
+ * DERIVADA de la de su pagina quitando `page`/`pageSize`, no reescrita. La lista blanca
+ * resultante tiene UNA clave (`busqueda`, ficha 463/R45), y la que importa sigue siendo `tiendaId`: la unica que
+ * convertiria un listado global —el saldo de TODAS las tiendas— en uno dirigido. Muere aqui,
+ * antes del servicio, con `validation_error`.
+ */
+export const listarSaldosTiendasCompletoSchema = listarSaldosTiendasPaginadoSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarSaldosTiendasCompletoInput = z.infer<typeof listarSaldosTiendasCompletoSchema>;
+
+/**
+ * Resultado del modo completo en el BORDE. `limite_excedido` lleva SOLO conteos y ninguna rama
+ * de error viaja con filas (R6/R7).
+ */
+export type ListarSaldosTiendasCompletoResult = ListarCompletoResult<SaldoTiendaResumenDTO>;
+
+// ── Schema zod de borde (R22) ──
+
+// Listado del ledger de la tienda: paginado + filtros opcionales por cierre, concepto y
+// rango de fechas. El acotado por tienda NO viaja aqui (lo pone el service desde el actor,
+// R19); estos filtros son solo del desglose.
+// Ficha 458-A (TA.6, R36, m1 de la auditoria): `.strict()`. El paginado de `/mi-wallet` NO era
+// estricto: una clave que nombrara una tienda (`tiendaId`) se descartaba en silencio en vez de
+// rechazarse. El servicio acota igual por el actor, pero una peticion con una clave ajena es un
+// intento de ampliar el alcance y se responde `validation_error` sin leer nada. Las derivadas
+// (`.extend` del desglose, `.omit` del completo) heredan la misma politica.
+export const listarMovimientosTiendaSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
+  // valor que no tenga forma de identificador (antes `min(1)`: cualquier texto pegado).
+  cierreId: z.string().uuid().optional(),
+  categoria: z.enum(WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED).optional(),
+  // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
+  desde: desdeDiaCRSchema.optional(),
+  hasta: hastaDiaCRSchema.optional(),
+}).strict();
+
+export type ListarMovimientosTiendaInput = z.infer<typeof listarMovimientosTiendaSchema>;
+
+// Feature 170 (T C.1) — entrada del modo SIN paginacion del ledger de la tienda (descarga
+// del dataset completo). Derivada del schema del listado quitando `page`/`pageSize`, de modo
+// que ambos caminos resuelvan los MISMOS filtros.
+//
+// `.strict()` importa MAS aqui que en los listados de configuracion: este es el ledger de UNA
+// tienda, y el acotado por `tienda_id` lo pone el service desde el actor (R19). Con `.strict()`
+// un cliente que intente colar `tiendaId` en la peticion recibe `validation_error` en el
+// BORDE, sin llegar al service (R18) — y si llegara, el service lo ignoraria igual (R15),
+// porque nunca lee esa clave. Dos cierres independientes para la misma fuga.
+export const listarMovimientosTiendaCompletoSchema = listarMovimientosTiendaSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarMovimientosTiendaCompletoInput = z.infer<
+  typeof listarMovimientosTiendaCompletoSchema
+>;
+
+// Feature 170 (T C.2): resultado del modo completo en el BORDE. `limite_excedido` lleva SOLO
+// conteos (R27) y ninguna rama de error viaja con filas (R16/R17/R18).
+// Ficha 458-A (TA.2): cada fila de la descarga lleva su origen legible (R5, R94).
+export type ListarMovimientosTiendaCompletoResult =
+  ListarCompletoResult<ConOrigen<WalletTiendaMovimientoDTO>>;
+
+// ── Feature 171 — DESGLOSE del dinero de UNA tienda elegida (vista de ACCESO TOTAL) ──
+//
+// Superficie NUEVA y distinta de `/mi-wallet`: alli la tienda ve LO SUYO y el acotado lo pone
+// el actor (R19 de la 43); aqui el maestro elige la tienda y el acotado lo pone el INPUT
+// (`tiendaId`), con el alcance fijado por el ROL (`esAccesoTotal`, R26/R27/R28 de la 171).
+
+/**
+ * Feature 171 (design §2.1, R7/R8/R10) — cabecera del desglose: TRES cubetas exhaustivas
+ * sobre el ledger + el saldo que se deriva de ellas.
+ *
+ * `pagado` esta separado de `cargos` a proposito: es lo que la empresa le pago a la tienda o pago
+ * por ella (`pago_tienda` de la 172, `pago_por_cuenta` de la 459), leido de las categorias REALES
+ * del ledger. Si «pagado» se plegara dentro de «cargos», nadie podria distinguir *lo que te
+ * cobre* de *lo que ya te pague* mirando la pantalla. (Ficha 458-A, T2: el comentario de la 171
+ * decia que valia siempre 0,00 hasta la 172; la 172 ya emite pagos.) La cubeta de CADA categoria
+ * la fija `CUBETA_POR_CATEGORIA` (`lib/utils/desglose-tienda.ts`), un `Record` total: esa tabla es
+ * la fuente; los comentarios de abajo, un resumen (458-B, T2).
+ *
+ * Money-safe (R23): los cuatro importes cruzan la frontera como STRING escala 2.
+ */
+export type DesgloseTiendaDTO = {
+  aFavor: string; // Σ creditos en cubeta `aFavor` (CUBETA_POR_CATEGORIA: cod_recaudado, ajuste_credito, abono_tienda y los creditos espejo de las anulaciones)
+  cargos: string; // Σ debitos en cubeta `cargos` (CUBETA_POR_CATEGORIA: fletes, comision, los tres IVA, ajuste_debito, cobro_manual, abono_tienda_anulado)
+  pagado: string; // Σ debitos en cubeta `pagado` (CUBETA_POR_CATEGORIA: pago_tienda de la 172, pago_por_cuenta de la 459)
+  saldo: string; // aFavor - cargos - pagado (puede venir "-123.45")
+  signo: SaldoTiendaSigno;
+};
+
+/**
+ * R22: TODO lo que la pantalla necesita para pintar un desglose, en UNA sola respuesta —
+ * pagina, total del conjunto filtrado, paginacion y los cuatro importes de la cabecera.
+ *
+ * NO lleva `tiendaNombre` (R35): el nombre ya esta en la fila desde la que se despliega
+ * (`SaldoTiendaResumenDTO.tiendaNombre`) y baja por props. Devolverlo costaria una consulta
+ * mas por apertura — la que el desglose del mensajero paga hoy de mas para un dato que su
+ * componente ni siquiera usa.
+ */
+export type ListarMovimientosDeTiendaResult = {
+  tiendaId: string;
+  movimientos: WalletTiendaMovimientoDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  desglose: DesgloseTiendaDTO; // del CONJUNTO FILTRADO (R12), no del agregado total
+};
+
+/**
+ * R22/R25 — entrada del desglose de UNA tienda. Deriva del schema del listado propio, asi que
+ * hereda EXACTAMENTE los mismos filtros (cierre, concepto, rango de fechas) y paginacion; lo
+ * unico que anade es `tiendaId`, y lo anade REQUERIDO: sin tienda no hay desglose que pedir, y
+ * el borde responde `validation_error` sin consultar la base.
+ *
+ * Espejo exacto de `listarPagosDeMensajeroSchema`.
+ */
+export const listarMovimientosDeTiendaSchema = listarMovimientosTiendaSchema.extend({
+  tiendaId: z.string().min(1),
+});
+
+export type ListarMovimientosDeTiendaInput = z.infer<typeof listarMovimientosDeTiendaSchema>;
+
+/**
+ * R37 — el MISMO desglose sin recorte por pagina, para la descarga: los mismos filtros y el
+ * mismo `tiendaId` requerido, sin `page`/`pageSize`. `.strict()` cierra el resto de claves,
+ * de modo que ninguna clave extra de la peticion pueda ampliar el alcance a otra tienda o a
+ * todas (R24, primera de las tres barreras; las otras dos viven en el servicio).
+ */
+export const listarMovimientosDeTiendaCompletoSchema = listarMovimientosDeTiendaSchema
+  .omit({ page: true, pageSize: true })
+  .strict();
+
+export type ListarMovimientosDeTiendaCompletoInput = z.infer<
+  typeof listarMovimientosDeTiendaCompletoSchema
+>;
+
+// Resultado del modo completo en el BORDE. `limite_excedido` lleva SOLO conteos y ninguna
+// rama de error viaja con filas (R39/R40).
+export type ListarMovimientosDeTiendaCompletoResult =
+  ListarCompletoResult<ConOrigen<WalletTiendaMovimientoDTO>>;
+
+// ── FICHA 335 — las opciones del selector de cierre de `/mi-wallet` ──
+
+/**
+ * Ficha 335 (design §2.5, R6/R9) — UNA opcion del selector de cierre, tal como cruza la
+ * frontera servidor → cliente.
+ *
+ * TRES datos y ni uno mas, y cada exclusion tiene motivo:
+ *  - NO lleva NINGUN importe (R9). Se pide `_count`, nunca `_sum`: money-safe por
+ *    construccion, no por disciplina de quien escriba el mapper manana.
+ *  - NO lleva el mensajero del cierre. Costaria dos consultas mas (leer `cierre_dia` y
+ *    `usuario`) y sobre todo le revelaria a la tienda QUE mensajero movio su dinero, cosa que
+ *    esta pantalla hoy no dice. Dos cierres del mismo dia se desambiguan con `movimientos` y
+ *    con la hora de `fecha`, que ya vienen en la MISMA consulta.
+ *
+ * `movimientos` es un CARDINAL, no dinero: es cuantas filas de ESE cierre hay en el libro de
+ * ESTA tienda. Por eso es `number` y no `string`.
+ */
+export type CierreTiendaOpcionDTO = {
+  /** `= wallet_tienda_movimiento.origen_id`, o sea un `cierre_dia.id`. Es el valor que viaja
+   *  como `cierreId` al filtro que ya existe (`listarMovimientosTiendaSchema`). */
+  cierreId: string;
+  /** ISO del movimiento MAS RECIENTE de ese cierre en ESTE libro. Sin transformar. */
+  fecha: string;
+  /** Cuantos movimientos de ESTA tienda trajo ese cierre. Cardinal, NO es un monto. */
+  movimientos: number;
+};
+
+// ── FICHA 381 — COBRARLE UN COSTO A UNA TIENDA desde «Registrar movimiento» ──
+
+/**
+ * FICHA 381 (R14/R15/R16/R17/R18) — el BORDE del cobro manual a una tienda.
+ *
+ * REUTILIZA, no reescribe, las dos piezas que ya existen en `lib/types/wallet.ts`:
+ *
+ *  - `montoPositivoSchema` valida el monto COMO STRING (regex de hasta dos decimales) y lo compara
+ *    con `Prisma.Decimal`, NUNCA con `Number`/`parseFloat`. Es la misma pieza que usan los cuatro
+ *    conceptos de caja: reescribirla aqui seria tener dos definiciones de «cuanto dinero es
+ *    valido», que un dia divergen (R18).
+ *  - `fechaMovimientoSchema` delega en `problemaDeFechaMovimiento`, y por eso este concepto emite
+ *    EXACTAMENTE el mismo texto de rechazo que los otros cuatro ante una fecha inexistente, futura
+ *    o fuera de la ventana admisible (R16). Un quinto mensaje distinto para el mismo problema seria
+ *    una diferencia sin causa.
+ *
+ * `.strict()`: una clave colada —`tipo`, `categoria`, un `registradoPor` de regalo— muere AQUI, en
+ * el borde, y no llega al servicio. La categoria y el tipo del asiento NO viajan en la peticion: los
+ * fija el servidor (R19), que es lo unico que impide que el cliente elija en que cubeta cae su
+ * propio cobro.
+ */
+export const registrarCobroTiendaSchema = z
+  .object({
+    tiendaId: z.string().uuid(),
+    monto: montoPositivoSchema, // STRING, > 0, <= 2 decimales (R14/R18)
+    descripcion: z.string().trim().min(1, "La descripcion es obligatoria."), // R15
+    fecha: fechaMovimientoSchema.optional(), // R16/R21
+    claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66): un doble envio es UN cobro
+  })
+  .strict();
+
+export type RegistrarCobroTiendaInput = z.infer<typeof registrarCobroTiendaSchema>;
+
+// ── FICHA 461 — ANULAR UN COBRO de la empresa a una tienda (R10–R19) ──
+
+/**
+ * FICHA 461 (R13/R14) — el BORDE de la anulacion: el cobro y un motivo. SIN monto, y `.strict()`
+ * lo hace cumplir (R13): el monto de los dos contra-asientos se lee DEL COBRO en el servidor, y una
+ * peticion que traiga `monto` —o cualquier otra clave no prevista— muere aqui con `validation_error`
+ * sin escribir nada. El motivo se recorta y no puede quedar vacio (R14). Molde:
+ * `anularPagoPorCuentaTiendaSchema`.
+ */
+export const anularCobroTiendaSchema = z
+  .object({
+    cobroId: z.string().uuid(),
+    motivo: z.string().trim().min(1, "El motivo de la anulacion es obligatorio."),
+  })
+  .strict();
+
+export type AnularCobroTiendaInput = z.infer<typeof anularCobroTiendaSchema>;
+
+/** R17 — por que un cobro no se puede anular por esta via. */
+export type MotivoNoAnulable = "reclasificado" | "sin_linea_de_caja";
+
+/**
+ * FICHA 461 (design §6) — el contrato COMPLETO que ve la pantalla. `unauthenticated` y
+ * `validation_error` los decide el borde; el resto, el dominio. `ok` devuelve el saldo de la tienda
+ * DESPUES de la anulacion, con su signo (STRING, R52). Ninguna rama de error viaja con importes.
+ */
+export type AnularCobroTiendaResult =
+  | { status: "ok"; saldo: SaldoTiendaDTO }
+  | { status: "ya_anulado" }
+  | { status: "no_encontrado" }
+  | { status: "no_anulable"; motivo: MotivoNoAnulable }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" };

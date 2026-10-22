@@ -1,0 +1,508 @@
+import { whereTieneRegistroDeCalle } from "@/lib/repositories/gestion-pendiente";
+import { senalesGestionDe, SIN_SENALES_GESTION } from "@/lib/repositories/ayuda-abierta";
+import type { SenalesGestionDTO } from "@/lib/types/orden";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import type {
+  CambioEstadoEntrada,
+  IOrdenHistorialRepository,
+  OrigenReversionItem,
+  RecoleccionHistorialRow,
+} from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
+import {
+  appendCambioEstado,
+  type ChokePointTx,
+} from "@/lib/repositories/registrar-cambio-estado";
+import {
+  ORIGEN_TIPOS_VISITA_REAL,
+  RESULTADOS_QUE_CUENTAN_COMO_INTENTO,
+  type OrdenHistorialEventoDTO,
+  type OrdenHistorialTransicionDTO,
+} from "@/lib/types/orden-historial";
+import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+
+// Cliente Prisma acotado a lo que este repo necesita para las LECTURAS (patron
+// CierresAdminRepository/WalletMovimientoRepository). Las escrituras van por el `tx`.
+// Feature 149: `findOrigenesReversion` necesita `$queryRaw` (DISTINCT ON no se expresa con el
+// query builder de Prisma). Se ensancha el Pick, no la semantica: el cliente real ya lo tiene.
+// Feature 215 (design §3.1): el conteo de intentos deja de derivarse del historial y pasa a
+// derivarse de `gestion_orden`. Se ensancha el Pick, no la semantica del repo: el cliente real
+// ya lo tiene, y los metodos de conteo se quedan AQUI a proposito (opcion (a) del design §3.1:
+// cero churn en los 11 call-sites; moverlos a un modulo propio es deuda NOMBRADA para otro PR,
+// porque mezclar el cambio de significado con un refactor de superficie deja al reviewer sin
+// diff legible).
+// FICHA 454 (T1.21): + `ordenEvento`, la cuarta fuente de la linea de tiempo (solo lectura).
+type OrdenHistorialPrismaClient = Pick<
+  PrismaClient,
+  "ordenHistorialEstado" | "gestionOrden" | "ordenEvento" | "$queryRaw"
+>;
+
+// Fila cruda de `findOrigenesReversion`. `value` NULL = la fila de historial mas reciente con
+// ese destino tiene `estatus_origen_id` NULL (creacion) -> el service rechaza (R13).
+interface OrigenReversionRow {
+  orden_id: string;
+  value: string | null;
+}
+
+// Fila del historial con los `value` de estado origen/destino y el `nombre` del actor
+// incluidos (para el DTO legible). NO expone UUIDs internos fuera de lo mostrado (R28).
+const WITH_LABELS = {
+  include: {
+    estatusOrigen: { select: { value: true } },
+    estatusDestino: { select: { value: true } },
+    actor: { select: NOMBRE_USUARIO_SELECT },
+  },
+} as const;
+
+type HistorialRow = Prisma.OrdenHistorialEstadoGetPayload<typeof WITH_LABELS>;
+
+// Feature 167 (design §5.3) — familia de historial que deja la confirmacion de la recoleccion
+// en tienda (`RecoleccionTiendaService` la escribe en su append, arista #43). Es la UNICA
+// fuente estable de "lo que YO recolecte hoy": el estado actual de la orden ya cambio en cuanto
+// la bodega central la recibio (138).
+const ORIGEN_TIPO_RECOLECCION_TIENDA = "recoleccion_tienda" as const;
+
+// Feature 167 — proyeccion MINIMA de una recoleccion ya hecha: la fila de historial aporta el
+// instante y la orden aporta como nombrarla. Ni monto, ni coordenadas, ni el estado actual: la
+// lista es un acuse de trabajo hecho, no una superficie operativa (R38).
+const WITH_RECOLECCION = {
+  select: {
+    ordenId: true,
+    createdAt: true,
+    orden: {
+      select: {
+        numGuia: true,
+        numRemision: true,
+        tienda: { select: { nombre: true } },
+      },
+    },
+  },
+} as const;
+
+type RecoleccionRow = Prisma.OrdenHistorialEstadoGetPayload<typeof WITH_RECOLECCION>;
+
+// R26/R28: serializa una fila a DTO legible. `estatusOrigenValue` NULL = creacion (R1/R20);
+// `actorNombre` NULL = sistema/cron (R21); `motivo` NULL cuando no viene de una gestion (R22).
+//
+// Feature 262 (B24): el DTO gana `clase: "transicion"`. Este repo lee `orden_historial_estado` y
+// SOLO esa tabla, asi que todo lo que sale de aqui es una transicion — el tipo ESTRECHO
+// (`OrdenHistorialTransicionDTO`, no la union) lo deja dicho y evita que alguien crea que esta
+// funcion ya fusiona las dos fuentes. Fusionar es del servicio (design §14.3).
+function toEntradaDTO(row: HistorialRow): OrdenHistorialTransicionDTO {
+  return {
+    clase: "transicion",
+    estatusOrigenValue: row.estatusOrigen?.value ?? null,
+    estatusDestinoValue: row.estatusDestino.value,
+    origenTipo: row.origenTipo,
+    actorNombre: row.actor ? nombreCompletoUsuario(row.actor) : null,
+    motivo: row.motivo,
+    createdAt: row.createdAt,
+  };
+}
+
+/**
+ * Feature 215 (T20) — el filtro de orden del predicado de intentos: un id suelto (lectura
+ * individual) o un lote (`{ in: [...] }`). Es la interseccion EXACTA de lo que aceptan
+ * `Prisma.GestionOrdenWhereInput["ordenId"]` y `Prisma.OrdenHistorialEstadoWhereInput["ordenId"]`
+ * entre las formas que este repo usa, y existe porque el MISMO valor viaja a los DOS modelos: al
+ * `where` de `gestion_orden` y, repetido, al `some` de `orden_historial_estado`.
+ */
+export type FiltroOrdenIntentos = string | { in: string[] };
+
+/**
+ * Feature 215 (design §3.1, R1/R3/R5/R29-R32) — PREDICADO UNICO de "intento de entrega", en UNA
+ * sola funcion pura que consumen los DOS metodos de conteo (individual y en lote). Que este
+ * extraido es lo que impide que el numero de la UI y el que dispara `rechazada` ->
+ * `cobroRechazado` (56, dinero real) diverjan por copia-pega.
+ *
+ * `ordenId` acepta un id suelto (`string`) o un lote (`{ in: [...] }`): es el MISMO where. El
+ * tipo es `FiltroOrdenIntentos` y no `Prisma.GestionOrdenWhereInput["ordenId"]` porque el MISMO
+ * filtro se reusa dentro del `some` de `historialEstados`, donde el modelo es otro
+ * (`OrdenHistorialEstadoWhereInput`): declarar la union exacta que los dos call-sites usan
+ * satisface a los dos sin `any` ni doble aserto.
+ *
+ * El intento ya NO se deriva de destinos de transicion del historial. Se deriva de la GESTION,
+ * de su cierre y de su ORIGEN:
+ *
+ *     conteo(orden) = nº de `cierre_id` DISTINTOS entre las `gestion_orden` tales que
+ *         orden_id  = <orden>
+ *   AND resultado IN {rechazada, devuelta, reprogramada}   (lista de INCLUSION, R1/R2)
+ *   AND anulada_at IS NULL                                 (vigencia, filtro de LECTURA, R5)
+ *   AND cierre_id IS NOT NULL
+ *   AND cierre.estado = 'aprobado'                         (el instante que suma, D8/R3)
+ *   AND EXISTS fila de historial de familia de VISITA REAL (D13/R12/R18-b/R34)
+ *
+ * Cuatro propiedades de esa expresion, y las cuatro son REQUISITOS, no detalles de query:
+ *
+ *  - **`DISTINCT cierre_id` ES el grano por ORDEN (R29).** El conteo NO es de gestiones: es de
+ *    cierres. Dos gestiones vigentes contables de la misma orden dentro del MISMO cierre
+ *    aprobado colapsan a 1. Un `count()` a secas contaria gestiones y violaria R29 — por eso
+ *    los dos metodos de abajo usan `groupBy`, no `count`.
+ *  - **La suma sobre cierres DISTINTOS ES la acumulacion (R30).** Una orden con resultado
+ *    contable en N cierres aprobados distintos cuenta N: acumula sobre todos, no solo sobre el
+ *    ultimo. Sin acumulacion ninguna orden alcanzaria el umbral y el escalado quedaria muerto.
+ *  - **No se mira `orden.estatus_id` en NINGUN sitio (R31).** El conteo mide el hecho ya
+ *    ocurrido, no donde esta la orden ahora: si entre la gestion y la aprobacion del cierre la
+ *    orden se reprogramo por la tienda (#22), se libero por SLA (#19/#20) o se recupero a mano
+ *    (#23/#24), el resultado sigue contando igual.
+ *  - **`estado='aprobado'` + `anulada_at IS NULL` ⇒ MONOTONIA (R32).** El numero nunca baja: un
+ *    cierre aprobado no puede salir de `aprobado` (`ESTADOS_RESOLUBLES = ["solicitado"]`,
+ *    `CierresAdminRepository.ts:39`; `ESTADOS_REABRIBLES = ["vencido","rechazado"]`, `:44`), y
+ *    una gestion con `cierre_id` poblado ya no se puede anular (guarda `cierreId: null` en
+ *    `CierreDiaRepository.ts:728`). Ninguna de las dos condiciones puede volverse falsa una vez
+ *    verdadera, asi que lo que la anulacion impide es que el conteo LLEGUE A SUBIR, no que baje.
+ *
+ * SEXTA CONDICION — solo cuentan las gestiones de una VISITA REAL (D13/R34-a). El sistema crea
+ * gestiones SINTETICAS que no son visitas de nadie (el escalado del cron SLA y la reprogramacion
+ * de escritorio de la tienda) y que entran al cierre del mensajero por la puerta de atras: nacen
+ * con `cierre_id: null` y con el `mensajero_id` de la ultima `devuelta` vigente, asi que
+ * `CierreDiaRepository.crearCierre` las vincula al siguiente cierre de ese mensajero.
+ *
+ * ⏳ FICHA 337 (2026-08-31) — ESA PUERTA DE ATRAS SE CERRO PARA LA REPROGRAMACION DE ESCRITORIO
+ * (`reprogramacion_tienda`), que ya NO entra en ningun cierre. **Esta condicion NO se retira**, y la
+ * razon importa: (a) el escalado del cron (`escalado_devuelta_sla`) SIGUE entrando y sigue
+ * necesitandola; (b) esta condicion se defiende sola —una lista de INCLUSION no depende de que la
+ * pertenencia al cierre siga siendo universal—; y (c) dos guardias sobre el mismo hecho no son
+ * redundancia cuando cada uno protege un requisito distinto (aqui el CONTEO de intentos, alli la
+ * ATRIBUCION del trabajo). Lo que cambia es la premisa de UNO de los dos ejemplos, no la
+ * conclusion. Sin esta
+ * condicion, al aprobarse ese cierre sumaban +1 cada una: la del escalado incumplia R18-b y la de
+ * la tienda incumplia R12 (y, sumada a la `devuelta` real de la misma orden, reproducia el DOBLE
+ * CONTEO que `160/R2` evitaba). El discriminador es ESTRUCTURAL, no heuristico —nada de
+ * `motivo LIKE 'escalado SLA%'`—: toda gestion se crea en la MISMA transaccion que su fila de
+ * `orden_historial_estado`, y esa fila lleva el `origen_tipo` de la familia que la produjo
+ * (`gestion` la visita real; `escalado_devuelta_sla` y `reprogramacion_tienda` las sinteticas).
+ * La lista es de INCLUSION (`ORIGEN_TIPOS_VISITA_REAL`, R34-c): una familia sintetica futura NO
+ * empieza a contar sola.
+ *
+ * EL `ordenId` REPETIDO DENTRO DEL `some` NO ES DECORATIVO — es RENDIMIENTO, y sin el la ruta
+ * caliente del conteo degrada a seq scan. `orden_historial_estado` NO tiene indice por
+ * `gestion_orden_id`: los tres que existen son `[ordenId, createdAt]`, `[ordenId,
+ * estatusDestinoId]` y `[actorUsuarioId, origenTipo, createdAt]` (`db/schema.prisma:1546-1557`),
+ * y la FK **no** crea indice en Postgres. Repitiendo el filtro por `orden_id` dentro del `EXISTS`
+ * el planner entra por `@@index([ordenId, createdAt])` y `gestion_orden_id` queda como filtro
+ * residual sobre el punado de filas de esa orden. Sin ese truco el `EXISTS` recorre entera una
+ * tabla append-only que crece con CADA transicion del sistema. (D7/R27 prohiben la migracion, asi
+ * que un indice nuevo sobre `gestion_orden_id` no es una salida disponible aqui: si algun dia el
+ * plan lo pidiera, se para y se lleva al humano.)
+ *
+ * Direccion del error, declarada: con el ancla en `aprobado` el conteo de casi toda orden BAJA
+ * respecto del criterio anterior ⇒ el escalado se RETRASA. El riesgo de esta feature no es
+ * cobrar de mas, es NO COBRAR (⛔ Q5, abierta, sin mitigacion implementada). La sexta condicion
+ * empuja en la MISMA direccion segura, y eso decide el caso limite de R34-d: una gestion LEGADA
+ * anterior al historial (feature 49) no tiene fila que la respalde y, por tanto, NO cuenta. Es
+ * deliberado: contar de menos retrasa el escalado (inofensivo para la tienda), contar de mas
+ * cobra un `cobroRechazado` (56, dinero real) antes de tiempo. Ante ausencia de dato, no se
+ * cuenta.
+ */
+export function whereIntentosVigentes(
+  ordenId: FiltroOrdenIntentos,
+): Prisma.GestionOrdenWhereInput {
+  return {
+    ordenId,
+    // Lista de INCLUSION (`in`, jamas `notIn`): un `resultado` futuro del enum NO empieza a
+    // contar solo. Ver `RESULTADOS_QUE_CUENTAN_COMO_INTENTO` para el porque completo.
+    resultado: { in: [...RESULTADOS_QUE_CUENTAN_COMO_INTENTO] },
+    // R5: la gestion ANULADA (deshecha) no cuenta. Es un filtro de LECTURA: no se modifica
+    // ningun registro para excluirla, y el historial sigue siendo append-only e inmutable.
+    anuladaAt: null,
+    // La gestion tiene que pertenecer a un cierre... (`cierre_id` se puebla en `crearCierre`,
+    // que es a la vez el corte del cron y la solicitud del mensajero)
+    cierreId: { not: null },
+    // ...y ese cierre tiene que estar APROBADO (D8/R3). `solicitado`, `vencido` y `rechazado`
+    // NO cuentan: el corte automatico deja de ser un instante que suma, y lo que suma es la
+    // aprobacion posterior del cierre que el corte creo.
+    cierre: { estado: "aprobado" },
+    // D13/R12/R18-b/R34: la gestion tiene que nacer de una VISITA REAL. El `ordenId` de dentro
+    // es el MISMO filtro de fuera, repetido a proposito para que el `EXISTS` entre por
+    // `@@index([ordenId, createdAt])` (ver el bloque de rendimiento del JSDoc). `in`, jamas
+    // `none`/`notIn`: lista de INCLUSION (R34-c).
+    //
+    // ⏳ 2026-09-23 (FICHA 454, design §10, DA) — LA 6.ª CONDICION GANA UNA SEGUNDA VIA DE INCLUSION.
+    // Con la 454 la gestion de calle NO escribe historial al registrarse; la transicion se escribe al
+    // APROBAR y la de una `devuelta` lleva la familia `anclaje_devolucion`, que NO puede entrar en
+    // `ORIGEN_TIPOS_VISITA_REAL` (la guardia 239/R16 lo prohibe con razon). Sin esta segunda via, las
+    // `devuelta` nuevas dejarian de contar: el conteo caeria, nadie llegaria al tope y no se cobraria.
+    // La segunda via es el evento `gestion_registrada`, que SOLO escriben las dos vias de CALLE (el
+    // mensajero y la tienda desde una ayuda): sigue siendo LISTA DE INCLUSION y ninguna sintetica lo
+    // tiene (`sinteticas-sin-evento-registro.guardia.test.ts`). Las otras cinco condiciones no se tocan:
+    // antes de aprobarse su cierre una gestion no cuenta — el mismo numero que hoy en todo instante.
+    OR: [
+      { historialEstados: { some: { ordenId, origenTipo: { in: [...ORIGEN_TIPOS_VISITA_REAL] } } } },
+      whereTieneRegistroDeCalle(),
+    ],
+  };
+}
+
+/**
+ * El delegado de `gestion_orden` acotado a lo UNICO que el derivador en lote necesita. Se pide el
+ * delegado y no el cliente entero para que cualquier repositorio cuyo `Pick` ya incluya
+ * `gestionOrden` pueda reusarlo sin ensanchar su cliente ni inyectar este repositorio.
+ */
+type GestionOrdenGroupBy = Pick<PrismaClient["gestionOrden"], "groupBy">;
+
+/**
+ * FICHA 394 (2026-09-08) — el DERIVADOR EN LOTE de los intentos de entrega, extraido a funcion
+ * para que quien no pueda inyectar este repositorio lo REUSE en vez de reescribirlo.
+ *
+ * ES EL CUERPO DE `OrdenHistorialRepository.contarIntentosVigentesEnLote`, no una segunda
+ * version: el metodo delega aqui, asi que el `groupBy` que corre para la analitica, para el
+ * panel del mensajero y para la hoja de cierres es literalmente el mismo. Mismo motivo y mismo
+ * patron que `appendCambioEstado` (`registrar-cambio-estado.ts`): un choke point que tres repos
+ * usan SIN instanciar la clase.
+ *
+ * Por que hizo falta: la hoja fundida de cierres (230) la componen DOS repositorios
+ * —`CierresAdminRepository` y `CierresBodegaAdminRepository`— cuyos `Pick` del cliente NO
+ * incluyen `ordenHistorialEstado` ni `$queryRaw`, de modo que no pueden construir
+ * `OrdenHistorialRepository`; y anadirles una dependencia de constructor obligaria a tocar los
+ * ~30 sitios que los instancian. Lo que NO se hizo, a proposito: copiar el `groupBy` alli. Dos
+ * agregaciones «iguales» divergen a la primera correccion, y este numero es el que gobierna el
+ * tope de intentos (276) y con el que se cobra.
+ *
+ * El contrato es el del metodo, palabra por palabra (215/R7/R8/R29/R30):
+ *   - `groupBy` por el par `(ordenId, cierreId)`: cada grupo es un CIERRE APROBADO distinto de
+ *     esa orden, asi que contar grupos por `ordenId` es contar cierres, no gestiones (R29);
+ *   - las ordenes sin filas que cumplan el criterio NO aparecen en el Map (Postgres no emite
+ *     grupos vacios): el llamador aplica `?? 0` (R8);
+ *   - `ordenIds` vacio -> Map vacio SIN emitir consulta (R7).
+ */
+export async function contarIntentosVigentesEnLoteCon(
+  gestionOrden: GestionOrdenGroupBy,
+  ordenIds: string[],
+): Promise<Map<string, number>> {
+  if (ordenIds.length === 0) return new Map(); // R7: ni una consulta
+  const rows = await gestionOrden.groupBy({
+    by: ["ordenId", "cierreId"],
+    where: whereIntentosVigentes({ in: ordenIds }),
+  });
+  const porOrden = new Map<string, number>();
+  for (const r of rows) porOrden.set(r.ordenId, (porOrden.get(r.ordenId) ?? 0) + 1);
+  return porOrden;
+}
+
+/**
+ * Feature 49 — repositorio del HISTORIAL de estados. SOLO queries Prisma; sin logica de
+ * negocio (la autorizacion por rol vive en `OrdenHistorialService`, R27).
+ *
+ * CONVENCION DEL CHOKE POINT (design §3.3, R6): toda escritura de `orden.estatus_id` DEBE
+ * llamar a `registrarCambioEstado` en la MISMA transaccion que hace el cambio de estado.
+ * TypeScript no puede forzarlo (11 call-sites en 3 mecanismos, incl. SQL crudo); el
+ * inventario cerrado de design §2 + un test por familia + el test de cobertura son la
+ * mitigacion. NO agregar un nuevo call-site de escritura de estado sin su append aqui.
+ */
+export class OrdenHistorialRepository implements IOrdenHistorialRepository {
+  constructor(private readonly prisma: OrdenHistorialPrismaClient) {}
+
+  /**
+   * R6/R7: append del LOTE de transiciones en la transaccion `tx` (atomico con el cambio de
+   * estado). Delega en la funcion pura `appendCambioEstado` (UN solo choke point de append,
+   * reutilizado por los 3 repos de escritura de estado sin instanciar esta clase).
+   */
+  async registrarCambioEstado(
+    tx: ChokePointTx,
+    entradas: CambioEstadoEntrada[],
+  ): Promise<void> {
+    await appendCambioEstado(tx, entradas);
+  }
+
+  /**
+   * FICHA 454 (T1.21, R30): los hechos sin transicion de la orden, para la linea de tiempo. Usa el
+   * indice `(orden_id, created_at)` de `orden_evento`. No expone `motivo` ni el mensajero.
+   */
+  async findEventosByOrden(ordenId: string): Promise<OrdenHistorialEventoDTO[]> {
+    const filas = await this.prisma.ordenEvento.findMany({
+      where: { ordenId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        tipo: true,
+        resultado: true,
+        resultadoAnterior: true,
+        actorRol: true,
+        createdAt: true,
+        actor: { select: NOMBRE_USUARIO_SELECT },
+      },
+    });
+    return filas.map((fila) => ({
+      clase: "evento_orden" as const,
+      tipo: fila.tipo,
+      resultado: fila.resultado,
+      resultadoAnterior: fila.resultadoAnterior,
+      actorNombre: nombreCompletoUsuario(fila.actor),
+      actorRol: fila.actorRol, // 427/R26: el CONGELADO de la fila
+      createdAt: fila.createdAt,
+    }));
+  }
+
+  /**
+   * FICHA 454 (R29): las señales del detalle, con la MISMA consulta que anota los listados
+   * (`senalesGestionDe`), aqui con un solo id. `registradaAt` sale ya en ISO, como en el listado.
+   */
+  async findSenalesGestion(ordenId: string): Promise<SenalesGestionDTO> {
+    const s = (await senalesGestionDe(this.prisma, [ordenId])).get(ordenId) ?? SIN_SENALES_GESTION;
+    return {
+      gestionPendiente:
+        s.gestionPendiente === null
+          ? null
+          : {
+              resultado: s.gestionPendiente.resultado,
+              registradaAt: s.gestionPendiente.registradaAt.toISOString(),
+            },
+      ayudaAbierta: s.ayudaAbierta,
+    };
+  }
+
+  /** R26/R5: linea de tiempo de la orden, orden cronologico (created_at asc), con labels. */
+  async findHistorialByOrden(ordenId: string): Promise<OrdenHistorialTransicionDTO[]> {
+    const rows = await this.prisma.ordenHistorialEstado.findMany({
+      where: { ordenId },
+      orderBy: { createdAt: "asc" },
+      ...WITH_LABELS,
+    });
+    return rows.map(toEntradaDTO);
+  }
+
+  /**
+   * Feature 215 (R1/R3/R8/R29/R30) — conteo de INTENTOS DE ENTREGA de UNA orden: el numero de
+   * CIERRES APROBADOS distintos en los que la orden tuvo un resultado de gestion contable y
+   * vigente, segun `whereIntentosVigentes`.
+   *
+   * `groupBy(["cierreId"])` y NO `count()`: el grano es la ORDEN dentro del cierre (R29), asi
+   * que dos gestiones vigentes contables de la misma orden en el MISMO cierre aprobado tienen
+   * que sumar 1. Un `count()` devolveria 2, escalaria antes de tiempo a `rechazada` y cobraria
+   * `cobroRechazado` (56) mal. `.length` sobre los grupos ES el `COUNT(DISTINCT cierre_id)`.
+   *
+   * Resuelve sobre `@@index([ordenId])` de `gestion_orden` (`db/schema.prisma:791`); el join a
+   * `cierre_dia` es por PK sobre un punado de filas.
+   *
+   * Orden sin gestiones contables -> 0 explicito, no ausencia ni error (R8). Una orden cortada
+   * por el cron (`sin_gestionar`) no tiene fila de `gestion_orden` y por tanto cuenta 0 (R33).
+   */
+  async contarIntentosVigentes(ordenId: string): Promise<number> {
+    const rows = await this.prisma.gestionOrden.groupBy({
+      by: ["cierreId"],
+      where: whereIntentosVigentes(ordenId),
+    });
+    return rows.length;
+  }
+
+  /**
+   * Feature 215 (R7/R8/R29/R30) — el MISMO conteo para un LOTE de ordenes, en UNA sola consulta
+   * sea cual sea N (`groupBy` por el par `(orden_id, cierre_id)` con el MISMO
+   * `whereIntentosVigentes`). El listado de ordenes es paginado en servidor: una consulta por
+   * fila seria un N+1 gratuito.
+   *
+   * El `by` incluye `cierreId` por la MISMA razon que el individual: cada grupo es un cierre
+   * aprobado distinto de esa orden, asi que contar GRUPOS por `ordenId` es contar cierres, no
+   * gestiones (R29). Agrupar solo por `ordenId` daria el conteo de gestiones y divergiria del
+   * numero individual — el bug que R4 (una sola definicion) existe para impedir.
+   *
+   * Las ordenes sin filas que cumplan el criterio NO aparecen en el Map (Postgres no emite
+   * grupos vacios); el llamador aplica `?? 0` (R8). Guarda temprana con `ids` vacio: Map vacio
+   * SIN query (R7), patron `OrdenRepository.findMensajerosBloqueadosPorCierres`.
+   *
+   * FICHA 394 (2026-09-08): el cuerpo vive en `contarIntentosVigentesEnLoteCon`, arriba en este
+   * mismo archivo. No es una capa de mas — es lo que permite que la hoja fundida de cierres,
+   * cuyos repositorios no pueden construir esta clase, ejecute EXACTAMENTE esta consulta en vez
+   * de una copia suya. El metodo publico no cambia de contrato ni de comportamiento.
+   */
+  async contarIntentosVigentesEnLote(ordenIds: string[]): Promise<Map<string, number>> {
+    return contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds);
+  }
+
+  /**
+   * Pedido humano (2026-08-27) — los ids del lote que YA registran una transicion posterior a
+   * su creacion. Ver el contrato en la interfaz: el criterio es `estatus_origen_id IS NOT NULL`
+   * (la fila de nacimiento es la unica con origen nulo), no una lista de familias.
+   *
+   * `groupBy` por `ordenId` y no `findMany` + dedup en memoria: la respuesta es a lo sumo una
+   * fila por orden del lote, aunque la orden acumule cincuenta transiciones.
+   */
+  async findIdsConTransicionPosteriorACreacion(ordenIds: string[]): Promise<Set<string>> {
+    if (ordenIds.length === 0) return new Set(); // ni una consulta
+    const rows = await this.prisma.ordenHistorialEstado.groupBy({
+      by: ["ordenId"],
+      where: { ordenId: { in: ordenIds }, estatusOrigenId: { not: null } },
+    });
+    return new Set(rows.map((r) => r.ordenId));
+  }
+
+  /** R27: `true` si la orden tuvo al menos una transicion actuada por `usuarioId`. */
+  async existeActuacionDe(ordenId: string, usuarioId: string): Promise<boolean> {
+    const found = await this.prisma.ordenHistorialEstado.findFirst({
+      where: { ordenId, actorUsuarioId: usuarioId },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  /**
+   * Feature 149 (design §3.3, R11) — origen de la transicion que se esta deshaciendo, para todo
+   * el lote en UNA consulta (sin N+1). `DISTINCT ON (h.orden_id)` + `ORDER BY h.orden_id,
+   * h.created_at DESC, h.id DESC` se queda con la fila MAS RECIENTE por orden entre las que
+   * tienen como destino el estado ACTUAL de esa orden; el `LEFT JOIN` a `order_status` resuelve
+   * el `value` del origen (NULL si la fila es de creacion, R13).
+   *
+   * El par `(orden_id, estatus_destino_id)` entra como `VALUES` parametrizado: usa el indice
+   * existente `@@index([ordenId, estatusDestinoId])` y no concatena SQL a mano.
+   *
+   * Lectura PURA: la normalizacion (D3') y las guardas de coherencia zona/destino (R14/R15)
+   * viven en el service, no aqui.
+   */
+  async findOrigenesReversion(
+    items: readonly OrigenReversionItem[],
+  ): Promise<Map<string, string | null>> {
+    if (items.length === 0) return new Map();
+    const pares = Prisma.join(
+      items.map((i) => Prisma.sql`(${i.ordenId}, ${i.estatusActualId})`),
+    );
+    const rows = await this.prisma.$queryRaw<OrigenReversionRow[]>`
+      SELECT DISTINCT ON (h."orden_id")
+             h."orden_id" AS orden_id,
+             os."value"   AS value
+      FROM "orden_historial_estado" h
+      JOIN (VALUES ${pares}) AS f(orden_id, estatus_destino_id)
+        ON f.orden_id = h."orden_id"
+       AND f.estatus_destino_id = h."estatus_destino_id"
+      LEFT JOIN "order_status" os ON os."id" = h."estatus_origen_id"
+      ORDER BY h."orden_id", h."created_at" DESC, h."id" DESC`;
+    return new Map(rows.map((r) => [r.orden_id, r.value ?? null]));
+  }
+
+  /**
+   * Feature 167 (design §5.3, R24/R25/R26/R28/R29/R32) — «Recolectadas hoy» del mensajero.
+   * Query PURA: la ventana `[desde, hasta)` viene YA calculada por el service (R27).
+   *
+   * El aislamiento REAL de esta lectura es el WHERE: `actorUsuarioId` sale del actor de sesion,
+   * nunca de un parametro externo, asi que un mensajero no puede pedir las recolecciones de
+   * otro. `orden: { deletedAt: null }` excluye las borradas (R29).
+   *
+   * NO filtra por `estatus_destino_id` a proposito (R26): la familia `recoleccion_tienda` tiene
+   * una sola arista y el estado actual de la orden es irrelevante — una orden ya recibida en la
+   * central debe seguir figurando.
+   */
+  async findRecoleccionesDeActor(
+    actorUsuarioId: string,
+    desde: Date,
+    hasta: Date,
+    limite: number,
+  ): Promise<RecoleccionHistorialRow[]> {
+    if (limite <= 0) return []; // ni una consulta: `take: 0` en Prisma es una consulta inutil
+    const rows: RecoleccionRow[] = await this.prisma.ordenHistorialEstado.findMany({
+      where: {
+        actorUsuarioId,
+        origenTipo: ORIGEN_TIPO_RECOLECCION_TIENDA,
+        createdAt: { gte: desde, lt: hasta },
+        orden: { deletedAt: null }, // R29
+      },
+      orderBy: { createdAt: "desc" }, // R28: de la mas reciente a la mas antigua
+      take: limite,
+      ...WITH_RECOLECCION,
+    });
+    return rows.map((r) => ({
+      ordenId: r.ordenId,
+      numGuia: r.orden.numGuia,
+      numRemision: r.orden.numRemision,
+      tiendaNombre: r.orden.tienda.nombre,
+      recolectadaAt: r.createdAt,
+    }));
+  }
+}
