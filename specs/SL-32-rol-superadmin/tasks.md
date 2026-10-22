@@ -29,7 +29,7 @@ dentro, y se hace un commit por tanda.
   - `pnpm exec vitest related --run lib/api/openapi-spec.ts tests/unit/guards/docs-marca-heredada.guardia.test.ts`
     sale en verde;
   - una mutación que devuelve «La empresa» al YAML la pone en rojo (se prueba y se revierte).
-- [ ] **T1b. Texto de la ayuda** (R26, la parte de la ayuda). Entra con el cambio de alcance del
+- [x] **T1b. Texto de la ayuda** (R26, la parte de la ayuda). Entra con el cambio de alcance del
   2026-10-22.
   - `docs/ayuda/oficina/configuracion-geografia.md` dice que la geografía la gestiona la plataforma,
     Servi Logistic: alta, cambio de nombre, retiro y reactivación. La oficina se la pide (`design.md >
@@ -42,7 +42,7 @@ dentro, y se hace un commit por tanda.
 
 ## Tanda 2 — La regla del comando, sin Prisma (no depende de T0)
 
-- [ ] **T2. [P] Tipos, contratos y servicio** (R12–R16).
+- [x] **T2. [P] Tipos, contratos y servicio** (R12–R16).
   - `lib/types/arranque-superadmin.ts`: schema zod de las seis variables de R12 y el tipo
     `ArranqueSuperadminResultado`.
   - `lib/interfaces/services/IArranqueSuperadminService.ts` y
@@ -172,7 +172,8 @@ dentro, y se hace un commit por tanda.
     `design.md > GeografiaService, la acción y la pantalla`.
   - La página de Geografía cambia su puerta a `esPlataforma(actor.rol)`: `notFound()` al `maestro`.
   - En `lib/auth/menu-visibility.ts`, sale el subítem «Geografía».
-  - Se revisa que las guardias de ayuda acepten una ayuda de oficina sobre una pantalla que el
+  - Se decide el `roles: [maestro, admin]` del frontmatter de la ayuda (T1b lo dejó igual), y se
+    revisa que las guardias de ayuda acepten una ayuda de oficina sobre una pantalla que el
     `maestro` ya no abre. Si alguna lo rechaza, se para y se pregunta: no se borra la ayuda por
     cuenta propia.
   - Se ajustan los tests de geografía que lista el design. Se revisan los demás que nombran sus
