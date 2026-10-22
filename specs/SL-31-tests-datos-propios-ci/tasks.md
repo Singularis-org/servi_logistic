@@ -19,7 +19,8 @@ un archivo que no está en `design.md > Choque de archivos`, PARA y avisa al lea
 
 ### Tanda 1 — CI: base migrada en los shards (PR propio, primero)
 
-- [ ] **T5 — `gate.yml`** (D5; R16–R18). No depende de ninguna otra tarea.
+- [x] **T5 — `gate.yml`** (D5; R16–R18). No depende de ninguna otra tarea. *(2026-10-22:
+  implementada; la evidencia de CI y el merge, en `progress/impl_SL-31.md > Tanda 1`.)*
   - Rama propia desde `origin/dev` (p. ej. `feature/SL-31-ci-base-migrada`), con su worktree. Solo
     toca `.github/workflows/gate.yml` y, si el CI del PR lo pide, `tests/baseline-rojos.json`.
   - Paso «Base del shard (migrada + catálogos)» en `vitest`. `db:seed` en `e2e`.

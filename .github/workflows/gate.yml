@@ -11,10 +11,9 @@
 # de la plantilla del arnes, 17 (ABIERTO: confirmar la de Supabase de servi_logistic), no la que
 # tenga cada maquina local.
 #
-# NINGUN secreto real vive aqui. Las credenciales del seed y el secreto de sesion se GENERAN
-# en cada corrida (paso "Credenciales efimeras"): solo sirven para la base de servicio, que
-# se tira al acabar el job. No hay `.env` en CI; `init.sh` (6.b) ve `DATABASE_URL` en el
-# entorno y no busca el archivo.
+# NINGUN secreto real vive aqui. El secreto de sesion se GENERA en cada corrida (paso
+# "Credenciales efimeras"): solo sirve para la base de servicio, que se tira al acabar el job.
+# No hay `.env` en CI; `init.sh` (6.b) ve `DATABASE_URL` en el entorno y no busca el archivo.
 name: gate
 
 # Plan GRATUITO de GitHub (2000 min/mes en repos privados; agotados, no corre nada): cada
@@ -42,8 +41,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Base de "desarrollo" del job. Los tests de integracion NO escriben en ella: la usan para
-  # saber donde esta el servidor, y crean su base efimera desde una plantilla (tests/integration/db/_postgres-real.ts).
+  # La base de servicio del job (efimera: nace y muere con el). Los shards de vitest y el E2E la
+  # migran (`prisma migrate deploy`) y le siembran los catalogos del sistema (`pnpm run db:seed`)
+  # antes de correr; usuarios, zonas y ordenes los crea cada test (SL-31, R16/R17).
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/servi_logistic
   DIRECT_URL: postgresql://postgres:postgres@localhost:5432/servi_logistic
   NO_COLOR: '1'
@@ -120,8 +120,7 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          # Superusuario a proposito: la integracion hace CREATE/DROP DATABASE y
-          # pg_advisory_lock contra la base `postgres` (tests/helpers/test-database.ts).
+          # Superusuario: `prisma migrate deploy` crea extensiones y esquemas en la base de servicio.
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: servi_logistic
@@ -169,18 +168,21 @@ jobs:
           # Cada valor se enmascara (por stdout, que es donde el runner lee los comandos) ANTES de
           # escribirlo en $GITHUB_ENV: asi no aparece en el log del job.
           gen() { node -e "process.stdout.write(require('node:crypto').randomBytes(18).toString('base64url'))"; }
-          S1=$(gen)$(gen); P1="Ci-9$(gen)z!"; P2="Cm-7$(gen)q!"
-          echo "::add-mask::$S1"; echo "::add-mask::$P1"; echo "::add-mask::$P2"
-          # Mayuscula, minuscula, digito y simbolo garantizados (credential-policy.ts).
-          {
-            echo "SESSION_SECRET=$S1"
-            echo "SEED_ADMIN_USERNAME=ciadmin"
-            echo "SEED_ADMIN_EMAIL=ci-admin@example.com"
-            echo "SEED_ADMIN_PASSWORD=$P1"
-            echo "SEED_MAESTRO_USERNAME=cimaestro"
-            echo "SEED_MAESTRO_EMAIL=ci-maestro@example.com"
-            echo "SEED_MAESTRO_PASSWORD=$P2"
-          } >> "$GITHUB_ENV"
+          S1=$(gen)$(gen)
+          echo "::add-mask::$S1"
+          echo "SESSION_SECRET=$S1" >> "$GITHUB_ENV"
+
+      # SL-31 (R16): sin esto la base de servicio esta vacia, sin tablas, y todo test de base cae.
+      # `set -e`: si migrar o sembrar falla, el shard sale en rojo ANTES de correr la suite.
+      # `db:seed` solo siembra catalogos del sistema (scripts/seed-catalogos.ts), nunca usuarios,
+      # zonas ni ordenes; usa `@prisma/client`, por eso va despues de `generate`.
+      - name: Base del shard (migrada + catalogos)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prisma generate
+          pnpm exec prisma migrate deploy
+          pnpm run db:seed
 
       - name: GATE_SHARD=${{ matrix.shard }}/3 ./init.sh --completo
         shell: bash
@@ -333,25 +335,21 @@ jobs:
           # Cada valor se enmascara (por stdout, que es donde el runner lee los comandos) ANTES de
           # escribirlo en $GITHUB_ENV: asi no aparece en el log del job.
           gen() { node -e "process.stdout.write(require('node:crypto').randomBytes(18).toString('base64url'))"; }
-          S1=$(gen)$(gen); P1="Ci-9$(gen)z!"; P2="Cm-7$(gen)q!"
-          echo "::add-mask::$S1"; echo "::add-mask::$P1"; echo "::add-mask::$P2"
+          S1=$(gen)$(gen)
+          echo "::add-mask::$S1"
           {
             echo "SESSION_SECRET=$S1"
-            echo "SEED_ADMIN_USERNAME=ciadmin"
-            echo "SEED_ADMIN_EMAIL=ci-admin@example.com"
-            echo "SEED_ADMIN_PASSWORD=$P1"
-            echo "SEED_MAESTRO_USERNAME=cimaestro"
-            echo "SEED_MAESTRO_EMAIL=ci-maestro@example.com"
-            echo "SEED_MAESTRO_PASSWORD=$P2"
             echo "APP_BASE_URL=http://localhost:3000"
           } >> "$GITHUB_ENV"
 
-      # ABIERTO (perfil 2026-10-21): la receta de siembra del E2E. Los seeds heredados de la app de origen
-      # (usuarios QA, maestro, zonas) salen en la fase 1 de docs/plan-saas.md; hasta que exista el
-      # seed propio de servi_logistic, aqui solo se migra la base de servicio.
-      - name: Base del E2E (migrada)
+      # SL-31 (R17): la base se migra y se siembra SOLO con los catalogos del sistema. La app nace
+      # vacia: cada spec crea su usuario y sus datos dentro de la prueba.
+      - name: Base del E2E (migrada + catalogos)
         shell: bash
-        run: pnpm exec prisma migrate deploy
+        run: |
+          set -euo pipefail
+          pnpm exec prisma migrate deploy
+          pnpm run db:seed
 
       # playwright.config.ts declara solo el proyecto por defecto (chromium). Para ahorrar minutos
       # se cachean los binarios por version de Playwright; las dependencias del sistema se
