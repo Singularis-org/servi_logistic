@@ -69,3 +69,12 @@ del baseline**. Diagnóstico por archivo (mensajes del informe unido `.vitest-ro
 
 Verificación local tras los arreglos: `TEST_RAPIDO_BASE=dev ./init.sh` → `== init OK ==`,
 `INIT_EXIT=0` (`_trabajo/sl31-init-rapido-2.log`).
+
+**Corrida 2** (run 39873408233, commit `6c49fa8`): `estatico` pass, `vitest (shard 1/3)` pass,
+`vitest (shard 2/3)` pass, `vitest (shard 3/3)` pass, `e2e` skipping (solo PR a `prod` o a mano),
+`gate-completo` **fail**: 2516 archivos, 281 tests en rojo, **1 archivo fuera del baseline**:
+`tests/unit/services/rastreo-publico-service.test.ts` (ICU, ver tabla). Para cerrarlo hace falta una
+decisión del leader: una ficha nueva que arregle `RastreoPublicoService` (que `+00:00` también dé
+`Z`) y que la cite como motivo de su entrada en el baseline mientras tanto. PR sin mergear.
+
+Las bases desechables (`servi_logistic_sl31`) y el contenedor `postgres:17` de la medición, borrados.
