@@ -15,7 +15,7 @@ dentro, y se hace un commit por tanda.
 
 ## Tanda 1 — D7: retirar geografía es de la plataforma (no depende de T0)
 
-- [ ] **T1. Texto y guardia** (R22, R23). Antes, confirmar con `scripts/archivos-en-vuelo.mjs` que
+- [x] **T1. Texto y guardia** (R22, R23). Antes, confirmar con `scripts/archivos-en-vuelo.mjs` que
   SL-15 y SL-16 no tienen esos archivos en vuelo.
   - `lib/api/openapi-spec.ts:2006` pasa a `${MARCA.nombre}`; si `EMPRESA` deja de usarse, se quita
     el import.
