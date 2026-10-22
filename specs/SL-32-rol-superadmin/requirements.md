@@ -4,8 +4,8 @@
 > Rama: `feature/SL-32-rol-superadmin` · Assignee: Carlos Restrepo
 >
 > **Alcance.** Un rol nuevo, `superadmin`, que es de la **plataforma** y no de ninguna empresa. No es
-> `maestro`: `maestro` conserva sus permisos actuales, con **una** excepción declarada, retirar
-> geografía (R24). El superadmin es el único usuario que nace con la app, y hay **uno solo**: es un
+> `maestro`: `maestro` conserva sus permisos actuales, con **una** excepción declarada, el módulo de
+> gestión de geografía (R24). El superadmin es el único usuario que nace con la app, y hay **uno solo**: es un
 > invariante del sistema que respalda la base (R27). Lo crea un **comando de arranque** que lee sus
 > datos de variables de entorno; no hay seeds. Desde él se darán de alta las empresas (SL-25) y se
 > gestionarán en el panel (SL-26).
@@ -16,14 +16,18 @@
 > - la frontera de autorización: el superadmin no entra en ningún módulo de empresa, y ningún rol de
 >   empresa puede crear, ver ni tocar al superadmin;
 > - la fuente única de «quién es plataforma» (`lib/auth/plataforma.ts`), que leerán SL-25 y SL-26;
-> - el permiso de retirar y reactivar geografía, que pasa del `maestro` al superadmin.
+> - el módulo de gestión de geografía (`/configuracion/geografia`), que pasa entero del `maestro` al
+>   superadmin.
 >
-> **Alcance añadido por Carlos (2026-10-22, deuda D7 de `progress/deudas.md`).** Retirar una
-> provincia, un cantón o un distrito es una acción de la **plataforma**, no de la empresa. Se
-> corrigen:
+> **Alcance añadido por Carlos (2026-10-22, deuda D7 de `progress/deudas.md`; ampliado el mismo día).**
+> Gestionar la geografía es de la **plataforma**, no de la empresa. Eso incluye dar de alta,
+> renombrar, retirar y reactivar provincias, cantones y distritos, y leer su árbol y su conteo en
+> `/configuracion/geografia`. Las lecturas de geografía que necesitan los flujos operativos de la
+> empresa no cambian (R25). Se corrigen:
 > - el texto del contrato de la API (código de SL-15) y su documentación (SL-16);
 > - la guardia de SL-16 que vigila ese texto;
 > - la ayuda de la pantalla de Geografía;
+> - el menú del `maestro`, que pierde el subítem Geografía;
 > - la autorización en el servidor.
 >
 > D7 se cierra sin deuda nueva.
@@ -31,12 +35,15 @@
 > **Lo que NO entra.**
 > - El alta de empresas: es SL-25. El panel del superadmin y cualquier pantalla suya: es SL-26. Hasta
 >   SL-26, el superadmin entra y ve la portada vacía, sin menú (R6). Por eso, mientras tanto, nadie
->   puede retirar geografía desde la interfaz (`design.md > Riesgos`).
+>   gestiona la geografía desde la interfaz (`design.md > Riesgos`).
+> - El alta de empresas y de los usuarios de cada una desde el superadmin: es SL-25 y SL-26. Esta
+>   ficha solo asegura que ningún rol de empresa crea ni toca al superadmin (R8–R11, R27).
 > - `organizacion_id` en `usuario`: es SL-17. Esta ficha solo deja escrito el contrato (`design.md >
 >   Multi-empresa`).
 > - Consolidar las migraciones: es SL-28. La migración de esta ficha va encima de su línea base.
 > - Cambiar el login, el OTP o la recuperación de contraseña: el superadmin usa los de siempre.
-> - Dar de alta, renombrar o consultar geografía: siguen siendo del `maestro`, como hoy.
+> - Los demás módulos del `maestro` no cambian: Usuarios, Tarifas, API, Plantillas, Vehículos, Envíos
+>   automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes (Carlos).
 
 ## Requisitos (EARS)
 
@@ -49,7 +56,8 @@
   conservar esa fila y su `id`.
 - **R3.** El sistema DEBE conceder a `maestro` y a los otros cinco roles exactamente los mismos
   accesos que tenían antes de SL-32, salvo dos cambios:
-  - la **única** excepción es la de R24: el `maestro` pierde retirar y reactivar geografía;
+  - la **única** excepción es la de R24 y R26: el `maestro` pierde el módulo de gestión de
+    geografía;
   - las listas de denegación de R7 añaden `superadmin`.
 - **R4.** El sistema DEBE declarar en una sola constante qué roles son de la plataforma, y un solo
   predicado para preguntarlo. Ninguna otra lista de roles DEBE escribir `superadmin` a mano, salvo
@@ -132,10 +140,10 @@
   y los índices de `usuario` como estaban. SI queda algún usuario `superadmin`, ENTONCES el
   `down.sql` DEBE fallar sin borrarlo.
 
-### Retirar geografía es de la plataforma (D7)
+### Gestionar la geografía es de la plataforma (D7)
 
 - **R22.** El contrato de la API DEBE atribuir a la plataforma, y no a la empresa, el retiro de una
-  provincia, un cantón o un distrito. Eso incluye:
+  provincia, un cantón o un distrito, que es la gestión de geografía que nombra. Eso incluye:
   - la descripción de `openApiSpec`, en `lib/api/openapi-spec.ts`;
   - el YAML `docs/api/api-key-openapi.yaml`;
   - la entrada del 2026-09-06 de `docs/api/CHANGELOG.md`.
@@ -144,18 +152,20 @@
 - **R23.** La guardia `tests/unit/guards/docs-marca-heredada.guardia.test.ts` DEBE vigilar esas
   frases como frases de plataforma (`FRASES_PLATAFORMA`) y no como frases de la empresa
   (`FRASES_OPERADOR`). La paridad TS↔YAML (`DESCRIPCIONES_QUE_CAMBIAN`) DEBE vigilar la forma nueva.
-- **R24.** CUANDO un actor pide retirar o reactivar una provincia, un cantón o un distrito, el
-  sistema DEBE:
+- **R24.** CUANDO un actor pide dar de alta, renombrar, retirar o reactivar una provincia, un cantón
+  o un distrito, o contar las órdenes sin entregar de un nodo, el sistema DEBE:
   - SI el actor no es de la plataforma (`maestro` incluido), responder `forbidden` en el servidor
     antes de tocar la base, sin escribir el nodo ni el registro de acciones;
-  - SI es `superadmin`, aplicar el cambio con las reglas de hoy: sin borrado físico, cascada
+  - SI es `superadmin`, aplicar la operación con las reglas de hoy: sin borrado físico, cascada
     reversible y registro de acciones.
-- **R25.** El sistema DEBE dejar que el `superadmin` lea el árbol geográfico y el conteo de órdenes
-  sin entregar de un nodo, que son las lecturas que necesita para decidir un retiro. El `maestro`
-  DEBE conservar leer el árbol, leer el conteo, dar de alta y renombrar.
-- **R26.** MIENTRAS el actor sea `maestro`, la pantalla `/configuracion/geografia` NO DEBE ofrecer
-  retirar ni reactivar nodos. La ayuda `docs/ayuda/oficina/configuracion-geografia.md` NO DEBE
-  decir que la oficina puede hacerlo: DEBE decir que lo hace la plataforma.
+- **R25.** El sistema DEBE dejar que el `superadmin` lea el árbol geográfico. Las lecturas de
+  geografía de los flujos operativos de la empresa NO DEBEN cambiar: en particular, el `maestro`
+  DEBE seguir leyendo el árbol desde `/configuracion/tarifas` para armar zonas, y los selectores de
+  provincia o cantón de las órdenes siguen como hoy.
+- **R26.** MIENTRAS el actor sea `maestro`, el menú NO DEBE mostrarle el subítem Geografía, y
+  `/configuracion/geografia` DEBE responderle `notFound()`. La ayuda
+  `docs/ayuda/oficina/configuracion-geografia.md` NO DEBE decir que la oficina gestiona la
+  geografía: DEBE decir que la gestiona la plataforma.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -167,7 +177,10 @@
 | 2026-10-22 | ¿Quién retira una provincia? | La plataforma, no la empresa (Carlos, D7). Se corrige el texto de código, ayuda y guardia. | R22, R23, R26 |
 | 2026-10-22 | ¿Sobre qué base va la migración? | Encima de la línea base de SL-28, la ficha de Christian. Solo esperan las tandas que necesitan el enum (leader). | R21 |
 | 2026-10-22 | ¿Dónde puede aparecer la contraseña? | En ningún sitio del repo ni de los logs (leader). | R16, R20 |
-| 2026-10-22 | P1: ¿cambia ya el permiso de retirar geografía? | Sí. Retirar geografía pasa al superadmin y, en el servidor, el `maestro` lo pierde. Es la excepción explícita a «`maestro` conserva sus permisos». Va en la tanda 4, tras T0; el texto va en la tanda 1. D7 se cierra sin deuda nueva (Carlos). Lectura del spec: reactivar va con retirar, porque es la misma operación (`cambiarActivacion`) en los tres niveles. Dar de alta y renombrar siguen en el `maestro`. | R3, R24, R25, R26 |
+| 2026-10-22 | P1: ¿cambia ya el permiso de geografía? | Sí, y es todo el módulo. Corregido el mismo día: primero fue solo retirar y reactivar, y Carlos lo amplió. Dar de alta, renombrar, retirar, reactivar, leer el árbol y contar en `/configuracion/geografia` pasan al superadmin. El `maestro` pierde el subítem del menú y recibe `forbidden` en el servidor. Es la excepción explícita a «`maestro` conserva sus permisos». El permiso va en la tanda 4, tras T0, y el texto de la ayuda y la API va en la tanda 1. D7 se cierra sin deuda nueva (Carlos). Lectura del spec: `listarArbol` sigue abierto al `maestro`, porque Tarifas lo usa para armar zonas, y es una lectura operativa que no cambia (R25). | R3, R24, R25, R26 |
+| 2026-10-22 | ¿Qué otros módulos del `maestro` cambian? | Ninguno. Usuarios, Tarifas, API, Plantillas, Vehículos, Envíos automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes se quedan igual (Carlos). | R3 |
+| 2026-10-22 | ¿El `maestro` crea superadmins? | No (R8–R11, R27). El alta de empresas y de sus usuarios desde el superadmin es de SL-25 y SL-26, no de esta ficha (Carlos). | R8–R11, R27 |
+| 2026-10-22 | ¿Quién gestiona la geografía hasta SL-26? | Nadie desde la interfaz. Carlos lo acepta (`design.md > Riesgos`). | R24, R26 |
 | 2026-10-22 | P2: ¿de dónde salen los campos obligatorios de `usuario`? | De cuatro variables obligatorias más, sin valores por defecto, con el tipo de documento validado contra el catálogo (Carlos). | R12, R13 |
 | 2026-10-22 | P3: ¿uno o varios superadmins? | Uno solo, como invariante del sistema y no solo del comando. Lo respalda la base con un índice único parcial. El comando solo crea el primero; si ya hay uno, termina en 0 sin tocar nada. Ningún flujo crea un segundo superadmin ni asciende a alguien a superadmin, tampoco SL-26. La contraseña se cambia con «Recuperar contraseña» (Carlos). | R9, R14, R17, R27 |
 | 2026-10-22 | P4: ¿dónde se ejecuta el comando? | A mano, una vez por entorno, fuera del build de Vercel y de CI, salvo el E2E con credenciales de prueba (Carlos). | R20 |

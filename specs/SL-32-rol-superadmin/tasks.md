@@ -13,7 +13,7 @@ dentro, y se hace un commit por tanda.
 
   **Hecho cuando:** el SHA de `dev` con SL-28 queda anotado en `progress/impl_SL-32.md`.
 
-## Tanda 1 — D7: retirar geografía es de la plataforma (no depende de T0)
+## Tanda 1 — D7: gestionar la geografía es de la plataforma (no depende de T0)
 
 - [x] **T1. Texto y guardia** (R22, R23). Antes, confirmar con `scripts/archivos-en-vuelo.mjs` que
   SL-15 y SL-16 no tienen esos archivos en vuelo.
@@ -29,6 +29,16 @@ dentro, y se hace un commit por tanda.
   - `pnpm exec vitest related --run lib/api/openapi-spec.ts tests/unit/guards/docs-marca-heredada.guardia.test.ts`
     sale en verde;
   - una mutación que devuelve «La empresa» al YAML la pone en rojo (se prueba y se revierte).
+- [ ] **T1b. Texto de la ayuda** (R26, la parte de la ayuda). Entra con el cambio de alcance del
+  2026-10-22.
+  - `docs/ayuda/oficina/configuracion-geografia.md` dice que la geografía la gestiona la plataforma,
+    Servi Logistic: alta, cambio de nombre, retiro y reactivación. La oficina se la pide (`design.md >
+    GeografiaService, la acción y la pantalla`).
+  - Deja de describir controles que la oficina ya no tendrá, y se actualiza `actualizado:`.
+  - El permiso y el menú no cambian aquí: van en T11.
+
+  **Hecho cuando:** las guardias de ayuda (`vitest related` sobre el archivo) están en verde, y el
+  texto no dice que la oficina da de alta, renombra, retira ni reactiva.
 
 ## Tanda 2 — La regla del comando, sin Prisma (no depende de T0)
 
@@ -157,30 +167,35 @@ dentro, y se hace un commit por tanda.
   **Hecho cuando:** `pnpm exec playwright test e2e/superadmin-arranque.spec.ts` sale en verde en
   local.
 
-- [ ] **T11. Retirar geografía pasa al superadmin** (R24, R25, R26; depende de T4).
-  - En `GeografiaService`, `READ_ROLES`, `WRITE_ROLES` y `ACTIVACION_ROLES` según
+- [ ] **T11. El módulo de geografía pasa al superadmin** (R24, R25, R26; depende de T4).
+  - En `GeografiaService`, `READ_ROLES` y `GESTION_ROLES` según
     `design.md > GeografiaService, la acción y la pantalla`.
-  - La página de Geografía pasa `puedeCambiarActivacion`, y `GeografiaAdminModule` no pinta
-    retirar ni reactivar para el `maestro`.
-  - En la ayuda `docs/ayuda/oficina/configuracion-geografia.md`, «Qué podés hacer» cambia según el
-    design y se actualiza `actualizado:`.
-  - Se ajustan los tests de geografía que listan el design. Se revisan los demás que nombran
-    `cambiarActivacion`: `geografia-nodo.test.ts`, `geografia-sin-borrado-fisico.guardia.test.ts`,
+  - La página de Geografía cambia su puerta a `esPlataforma(actor.rol)`: `notFound()` al `maestro`.
+  - En `lib/auth/menu-visibility.ts`, sale el subítem «Geografía».
+  - Se revisa que las guardias de ayuda acepten una ayuda de oficina sobre una pantalla que el
+    `maestro` ya no abre. Si alguna lo rechaza, se para y se pregunta: no se borra la ayuda por
+    cuenta propia.
+  - Se ajustan los tests de geografía que lista el design. Se revisan los demás que nombran sus
+    operaciones: `geografia-nodo.test.ts`, `geografia-sin-borrado-fisico.guardia.test.ts`,
     `geografia.composition-root.test.ts`, `geografia-admin-page.test.tsx` y
-    `geografia-ordenes-sin-entregar.test.ts`.
+    `geografia-ordenes-sin-entregar.test.ts`. Los tests de Tarifas que leen el árbol siguen en
+    verde sin cambios.
 
   Casos nuevos:
-  - en el servicio, el `maestro` retira y reactiva → `forbidden`, con el repositorio sin llamar;
-  - en el servicio, el `superadmin` retira, reactiva, lista y cuenta → `ok`, y da de alta y
-    renombra → `forbidden`;
+  - en el servicio, el `maestro` da de alta, renombra, retira, reactiva y cuenta → `forbidden`, con
+    el repositorio sin llamar;
+  - en el servicio, el `maestro` lista el árbol → `ok` (R25, Tarifas);
+  - en el servicio, el `superadmin` da de alta, renombra, retira, reactiva, cuenta y lista → `ok`;
   - en la integración, el `maestro` no deja fila en el historial de acciones;
-  - en la interfaz, el `maestro` no ve los controles.
+  - en la página, el `maestro` recibe `notFound()`;
+  - en el menú, el `maestro` no ve «Geografía» y su `primerDestino` no cambia.
 
   **Hecho cuando:**
-  - `vitest related` sobre `lib/services/GeografiaService.ts` y
-    `app/(app)/configuracion/geografia/_components/GeografiaAdminModule.tsx` sale en verde;
-  - devolver `"maestro"` a `ACTIVACION_ROLES` pone en rojo el caso del servicio y la guardia de T6
-    (se prueba y se revierte).
+  - `vitest related` sobre `lib/services/GeografiaService.ts`, `lib/auth/menu-visibility.ts` y
+    `app/(app)/configuracion/geografia/page.tsx` sale en verde;
+  - devolver `"maestro"` a `GESTION_ROLES` pone en rojo el caso del servicio y la guardia de T6
+    (se prueba y se revierte);
+  - quitar `"maestro"` de `READ_ROLES` pone en rojo el caso de Tarifas (se prueba y se revierte).
 
 ## Tanda 5 — Cierre
 
@@ -209,7 +224,7 @@ dentro, y se hace un commit por tanda.
 | R21 | verificación de T3 (deploy, rollback y rollback que falla con el superadmin presente), anotada en `progress/impl_SL-32.md` |
 | R22, R23 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` |
 | R24, R25 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/actions/geografia-action.test.ts`, `tests/integration/db/geografia-registro-accion.test.ts`, `tests/integration/db/geografia-cascada-reversible.test.ts` y `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` |
-| R26 | `tests/unit/components/geografia-admin.ui.test.tsx`, y revisión del diff de la ayuda |
+| R26 | `tests/unit/components/geografia-admin-page.test.tsx` (`notFound()` al `maestro`), `tests/unit/auth/menu-visibility.test.ts` y la revisión del diff de la ayuda (T1b) |
 | R27 | `tests/integration/db/un-solo-superadmin.test.ts`, `tests/integration/db/arranque-superadmin.test.ts` (ejecuciones en paralelo) y `tests/unit/services/usuario-service-superadmin.test.ts` (R9) |
 
 ## Archivos esperados
@@ -220,6 +235,7 @@ dentro, y se hace un commit por tanda.
 - `db/migrations/<ts>_seed_rol_superadmin/migration.sql`
 - `db/migrations/<ts>_seed_rol_superadmin/down.sql`
 - `lib/auth/plataforma.ts`
+- `lib/auth/menu-visibility.ts` (y su test)
 - `lib/auth/rol-label.ts`
 - `lib/asistente/instrucciones.ts`
 - `lib/analytics/alcance.ts`

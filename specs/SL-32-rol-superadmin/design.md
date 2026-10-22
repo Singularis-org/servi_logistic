@@ -17,7 +17,7 @@ Grep y Read. Términos buscados: `superadmin`, `maestro`, `rol_value`, `ROLES_SE
 | `lib/analytics/alcance.ts` | `ROLES_SIN_ANALITICA`, declarada y vacía. | El superadmin entra ahí (R7). |
 | `lib/services/AsistenteService.ts` | Rechaza todo rol fuera de `ROLES_AYUDA`. | Ya cubre R7. Solo hace falta la frase exhaustiva de `QUIEN_PREGUNTA`. |
 | `lib/services/UsuarioService.ts` y `UserRepository` | `listRoles` devuelve **todos** los roles, y `crear`/`actualizar` aceptan cualquier `rolId`. | Hay que cerrarlo, o el `maestro` podría crear un superadmin o ascender a alguien (R8–R11). |
-| `lib/services/GeografiaService.ts` (fichas 374/375) | `READ_ROLES` y `WRITE_ROLES` son `["maestro"]`. `cambiarActivacion` retira o reactiva un nodo de cualquier nivel, con cascada reversible y registro de acciones. Lo prueban 12 archivos de test. | `cambiarActivacion` pasa a `ROLES_PLATAFORMA`. Lectura, alta y renombrado se quedan en el `maestro` (R24, R25). |
+| `lib/services/GeografiaService.ts` (fichas 374/375) | `READ_ROLES` y `WRITE_ROLES` son `["maestro"]`. `cambiarActivacion` retira o reactiva un nodo de cualquier nivel, con cascada reversible y registro de acciones. Lo prueban 12 archivos de test. | `crear`, `renombrar`, `cambiarActivacion` y `contarOrdenesSinEntregar` pasan a `ROLES_PLATAFORMA`. `listarArbol` sigue abierto al `maestro`, porque `/configuracion/tarifas` lo usa para armar zonas (R24, R25). |
 | `lib/utils/password.ts` y `lib/types/password-policy.ts` | `hashPassword` (bcrypt) y `strongPasswordSchema`. | Se reutilizan en el comando (R13, R16). |
 | `lib/api/openapi-spec.ts:2006`, el YAML (l. 1944) y el CHANGELOG (l. 572) | «La empresa puede retirar una provincia…» y «La empresa pasa a poder **retirar**». La guardia de SL-16 las lista en `FRASES_OPERADOR`. | Pasan a la plataforma (R22, R23). |
 | Tests que usan `"superadmin"` como **rol inventado** | `productos-alcance.test.ts:132`, `conteo-productos-action.test.ts:130,240,260`, `usuario-schema.test.ts:253` y `usuarios.test.ts:333`. | Los de analítica cambian de significado: se les da otro nombre inventado y se añade un caso real (T7). Los de usuarios siguen valiendo por R10. |
@@ -109,49 +109,57 @@ export function esPlataforma(rol: RolValue): boolean;
 
 | Capa | Qué hace con el superadmin | Requisito |
 |---|---|---|
-| Menú (`menu-visibility.ts`) | Nada cambia. Ningún ítem lo lista, así que `itemsVisibles` devuelve `[]`, `primerDestino` devuelve `null` y `/dashboard` pinta «Bienvenido». | R6 |
+| Menú (`menu-visibility.ts`) | Para el superadmin nada cambia: ningún ítem lo lista, así que `itemsVisibles` devuelve `[]`, `primerDestino` devuelve `null` y `/dashboard` pinta «Bienvenido». Para el `maestro` sale el subítem «Geografía». Es el último hijo, así que no mueve `primerDestino` (R46 de la 374). | R6, R26 |
 | Páginas y servicios de empresa | Nada cambia. Todas las whitelists lo excluyen y devuelven `notFound()` o `forbidden`. | R5 |
 | Analítica | `resolverAlcance` lo deniega con `rol_sin_analitica`. | R7 |
 | Asistente | `AsistenteService` lo rechaza por estar fuera de `ROLES_AYUDA`. | R7 |
 | `UsuarioService` | Ver abajo. | R8–R11 |
-| `GeografiaService` | Puede leer, retirar y reactivar; no puede dar de alta ni renombrar. Ver abajo. | R24, R25 |
+| `GeografiaService` | El superadmin hace todo el módulo. El `maestro` solo conserva `listarArbol`, que es la lectura operativa de Tarifas. Ver abajo. | R24, R25 |
 
 No hay módulo que tenga que estar encendido: el de módulos es SL-23.
 
 ### `GeografiaService`, la acción y la pantalla
 
-En el servicio, tres conjuntos de roles en vez de dos:
+En el servicio, dos conjuntos de roles con otro reparto:
 
 ```ts
-const READ_ROLES = new Set<string>(["maestro", ...ROLES_PLATAFORMA]);  // listarArbol, contarOrdenesSinEntregar (R25)
-const WRITE_ROLES = new Set<string>(["maestro"]);                      // crear, renombrar (sin cambio)
-const ACTIVACION_ROLES = new Set<string>(ROLES_PLATAFORMA);            // cambiarActivacion (R24)
+const READ_ROLES = new Set<string>(["maestro", ...ROLES_PLATAFORMA]); // listarArbol: lectura operativa de Tarifas (R25)
+const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);              // crear, renombrar, cambiarActivacion, contarOrdenesSinEntregar (R24)
 ```
 
-- `cambiarActivacion` comprueba `ACTIVACION_ROLES` **antes** de llamar al repositorio, así que un
+- Cada operación de gestión comprueba `GESTION_ROLES` **antes** de llamar al repositorio, así que un
   `forbidden` no escribe ni el nodo ni la fila del historial de acciones. Las reglas de hoy (sin
   borrado físico, cascada reversible, historial) no cambian.
-- `ACTIVACION_ROLES` lee `ROLES_PLATAFORMA` por import, nunca un literal (R4).
-- La página `app/(app)/configuracion/geografia/page.tsx` sigue con su puerta `maestro`. Le pasa a
-  `GeografiaAdminModule` un `puedeCambiarActivacion` que sale de `esPlataforma(actor.rol)`. Para el
-  `maestro` es `false`, y no se pintan los controles de retirar ni de reactivar (R26). Ni la página
-  ni el menú se abren al superadmin: su pantalla es de SL-26, y entonces la consumirá con esta misma
-  acción.
+- `GESTION_ROLES` y `READ_ROLES` leen `ROLES_PLATAFORMA` por import, nunca un literal (R4).
+- `contarOrdenesSinEntregar` va con la gestión: solo la pide la pantalla de Geografía, para avisar
+  antes de un retiro. `listarArbol` se queda abierto al `maestro`: lo usan
+  `app/(app)/configuracion/tarifas/page.tsx` y `ZonasTarifasModule` por `listarArbolGeografico`, y
+  Tarifas sigue siendo del `maestro` (R25). Los selectores de geografía de las órdenes no pasan por
+  `GeografiaService` y no cambian.
+- La página `app/(app)/configuracion/geografia/page.tsx` cambia su puerta a `esPlataforma(actor.rol)`.
+  Al `maestro` le responde `notFound()` (R26). Al superadmin tampoco se le abre todavía: no tiene
+  menú (R6), y su pantalla es de SL-26, que la consumirá con estas mismas acciones. Por eso la
+  página no recibe `puedeCambiarActivacion`, y `GeografiaAdminModule` no cambia.
+- `lib/auth/menu-visibility.ts` quita el subítem «Geografía» de Configuración.
 - `lib/actions/geografia.ts` no cambia de forma: la autorización vive en el servicio.
-- La ayuda `docs/ayuda/oficina/configuracion-geografia.md`, en «Qué podés hacer», deja de ofrecer
-  «Activar y desactivar» y dice que retirar o reactivar un nodo lo hace la plataforma, y que la
-  oficina se lo pide. Las fuentes del frontmatter no cambian.
+- La ayuda `docs/ayuda/oficina/configuracion-geografia.md` dice que la geografía (alta, cambio de
+  nombre, retiro y reactivación) la gestiona la plataforma, Servi Logistic, y que la oficina se la
+  pide. Deja de describir controles que la oficina ya no tiene. Las fuentes del frontmatter no
+  cambian, y se actualiza `actualizado:`. Este texto entra en la tanda 1, con el de la API.
 
-**Tests de geografía que cambian.** Los que afirman hoy que el `maestro` retira o reactiva con
-éxito pasan a usar un actor `superadmin`, y ganan un caso nuevo en el que el `maestro` recibe
-`forbidden` sin escrituras. Son:
+**Tests de geografía que cambian.** Los que afirman hoy que el `maestro` da de alta, renombra,
+retira, reactiva o cuenta con éxito pasan a usar un actor `superadmin`. Ganan un caso nuevo en el
+que el `maestro` recibe `forbidden` sin escrituras, y otro en el que `listarArbol` le sigue dando
+`ok`. Son:
 - `tests/unit/services/geografia-service.test.ts`;
 - `tests/unit/actions/geografia-action.test.ts`;
 - `tests/unit/components/geografia-admin.ui.test.tsx`;
 - `tests/integration/db/geografia-registro-accion.test.ts`;
-- `tests/integration/db/geografia-cascada-reversible.test.ts`.
+- `tests/integration/db/geografia-cascada-reversible.test.ts`;
+- `tests/unit/components/geografia-admin-page.test.tsx` (la puerta de la página);
+- `tests/unit/auth/menu-visibility.test.ts`, que lista los subítems del `maestro`.
 
-Los demás tests de geografía que nombran `cambiarActivacion` se revisan en T11.
+Los demás tests de geografía que nombran estas operaciones se revisan en T11.
 
 ### `UsuarioService` y `UserRepository`
 
@@ -231,7 +239,7 @@ No cambia. El superadmin entra por `/login`. En su primer dispositivo, `AuthServ
 por correo: con SMTP se envía, y sin SMTP (dev o CI) sale por `ConsoleEmailSender`. El E2E usa ese
 camino (R18).
 
-## Retirar geografía es de la plataforma (D7)
+## Gestionar la geografía es de la plataforma (D7)
 
 | Archivo | Antes | Después |
 |---|---|---|
@@ -248,7 +256,9 @@ camino (R18).
 - **No cambia** `docs/api/guia-integracion/guia-integracion.html:537` («…pida a la empresa
   reactivarlo»). Quien integra es cliente de la empresa, y su interlocutor es la empresa, aunque
   quien ejecute sea la plataforma. Si el humano lo quiere distinto, es un cambio de una línea.
-- La ayuda de la pantalla y la autorización también cambian: ver `> Autorización > GeografiaService`.
+- La ayuda de la pantalla, el menú y la autorización también cambian: ver `> Autorización >
+  GeografiaService`. La ayuda entra en la tanda 1, con este texto; el menú y la autorización, en la
+  tanda 4.
 - Al cerrar: D7 pasa a resuelta en `progress/deudas.md`, sin deuda nueva.
 
 ## Guardias que cambian
@@ -258,7 +268,7 @@ camino (R18).
 | `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` (SL-11 R2) | `faltasDeScripts` admite **exactamente** `arranque:superadmin` → `tsx scripts/arranque-superadmin.ts`, como excepción declarada con su ficha. Una contraprueba sintética comprueba que un segundo script con `superadmin`, o el mismo nombre con otro comando, sigue en rojo. R6 (ninguna migración inserta en `usuario`) no cambia. |
 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` (SL-16 R6/R16) | Lo de D7, arriba. |
 | `tests/unit/analytics/alcance-fuente-unica.guardia.test.ts` | Pasa de seis `RolValue` a siete. La partición ternaria sigue cubriéndolos, con `superadmin` en `ROLES_SIN_ANALITICA`. |
-| **Nueva:** `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` | (a) Ningún ítem ni subítem de `SIDEBAR_ITEMS`, ni `ROLES_ACCESO_TOTAL`, `ROLES_AYUDA`, `ROLES_ANALITICA`, `ROLES_HISTORICO_CONVERSACIONES`, `ROLES_HISTORIAL_ACCIONES`, `ROLES_MI_WALLET`, `ROLES_MI_BODEGA` ni `ALLOWED_ROLES`/`READ_ROLES`/`WRITE_ROLES` de los servicios contiene un rol de plataforma. Hay dos excepciones declaradas: `ACTIVACION_ROLES` y `READ_ROLES` de `GeografiaService` (R24, R25), y tienen que leer `ROLES_PLATAFORMA` por import. Cualquier otra lista que lo incluya es rojo. (b) El literal `superadmin` solo aparece en `lib/` y `app/` en `plataforma.ts` y en la lista declarada de tablas exhaustivas (R4). Lleva contraprueba sintética. |
+| **Nueva:** `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` | (a) Ningún ítem ni subítem de `SIDEBAR_ITEMS`, ni `ROLES_ACCESO_TOTAL`, `ROLES_AYUDA`, `ROLES_ANALITICA`, `ROLES_HISTORICO_CONVERSACIONES`, `ROLES_HISTORIAL_ACCIONES`, `ROLES_MI_WALLET`, `ROLES_MI_BODEGA` ni `ALLOWED_ROLES`/`READ_ROLES`/`WRITE_ROLES` de los servicios contiene un rol de plataforma. Hay dos excepciones declaradas: `GESTION_ROLES` y `READ_ROLES` de `GeografiaService` (R24, R25), y tienen que leer `ROLES_PLATAFORMA` por import. Cualquier otra lista que lo incluya es rojo. (b) El literal `superadmin` solo aparece en `lib/` y `app/` en `plataforma.ts` y en la lista declarada de tablas exhaustivas (R4). Lleva contraprueba sintética. |
 
 ## Dependencias
 
@@ -289,18 +299,27 @@ Ninguna nueva. Se usan `bcryptjs`, `zod`, `tsx` y `@prisma/client`, que ya está
   pasarían las dos, salvo que añada su propio cerrojo. El índice parcial es atómico y declarativo,
   y cubre tanto el `INSERT` como el `UPDATE` de `rol_id`. A cambio fija el `id` de la fila de `rol`
   en la migración.
-- **I. Mover a la plataforma toda la administración de geografía**, alta y renombrado incluidos.
-  Carlos decidió que pasa retirar, no lo demás. Llevarse el resto sería quitarle al `maestro`
-  permisos que nadie decidió quitarle.
+- **I. Mover solo retirar y reactivar a la plataforma**, y dejar alta y renombrado en el `maestro`.
+  Era la primera lectura de D7. Carlos la amplió el 2026-10-22: el módulo entero es de la
+  plataforma. Un paso más allá, cerrar al `maestro` también `listarArbol`, rompería Tarifas, que
+  nadie decidió quitarle.
 - **J. Dejar la autorización de geografía para SL-20.** Era la recomendación inicial. Carlos la
   descartó el 2026-10-22: el permiso cambia ya.
 
 ## Riesgos
 
-- **Nadie puede retirar geografía desde la interfaz hasta SL-26.** El `maestro` pierde los controles
-  (R26) y el superadmin todavía no tiene pantalla. La acción del servidor sí funciona para el
-  superadmin. Es la consecuencia aceptada de mover el permiso ya, y SL-26 tiene que incluir la
-  pantalla de geografía de plataforma.
+- **Nadie gestiona la geografía desde la interfaz hasta SL-26.** El `maestro` pierde el módulo
+  (R26) y el superadmin todavía no tiene pantalla. Las acciones del servidor sí funcionan para el
+  superadmin. Es la consecuencia aceptada de mover el permiso ya (Carlos), y SL-26 tiene que
+  incluir la pantalla de geografía de plataforma.
+
+## Límite del alcance
+
+- El `maestro` no crea superadmins ni asciende a nadie a superadmin: lo cubren R8–R11 y R27.
+- El superadmin tendrá su propio alta de empresas y de los usuarios de cada una. Eso es de SL-25 y
+  SL-26, no de esta ficha: SL-32 solo deja el rol, su arranque y `lib/auth/plataforma.ts`.
+- Fuera de Geografía, los módulos del `maestro` no cambian (Carlos): Usuarios, Tarifas, API,
+  Plantillas, Vehículos, Envíos automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes.
 - **El `id` fijo del rol `superadmin`.** Si alguna base tuviera ya esa fila con otro `id`, la
   migración aborta en vez de dejar un índice que no protege nada. Hoy no puede pasar, porque el
   valor del enum no existe antes de la migración.
