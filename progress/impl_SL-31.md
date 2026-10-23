@@ -129,3 +129,34 @@ Cayó dos veces en CI, en casos distintos: run 39888970739 («con MÁS de una fi
   En 1 de 4 corridas de M1 cayó además «un borrado que FALLA…», a los 10 s, justo detrás del caso
   que agotó su espera. Sin mutante no ha pasado en 40 corridas.
 - `TEST_RAPIDO_BASE=dev ./init.sh`: `== init OK ==`, `INIT_EXIT=0`.
+
+#### Corrección del diagnóstico (2026-10-23): era una carrera, no CPU
+
+El primer arreglo (`ca7a3a5`) no bastó. Run 39899861209, shard 1/3: «un borrado que FALLA…» cae a
+los 10 s con `expected … called with { page: 2 }` y **una sola llamada, `{ page: 1 }`**. El clic
+en «Página siguiente» no surtió efecto: no era lentitud.
+
+- **Causa raíz:**
+  - Con `fallbackData`, SWR 2.4.2 revalida la página 1 al montar, diferida a un
+    `requestAnimationFrame`.
+  - Durante esa revalidación `isLoading` es `true` («bypasses fallback data», `swr/dist/index`).
+  - `Pagination` recibe `disabled={isLoading}`: «Página siguiente» está deshabilitado en esa
+    ventana, y un clic de `user-event` que cae dentro se pierde sin error.
+  - En CI el runner cargado retrasa los pasos del clic hasta esa ventana.
+- **Arreglo, en el test:** `irAPagina2` espera a que la revalidación del montaje haya empezado (se
+  pidió la página 1) y terminado (el botón vuelve a estar habilitado) antes de hacer clic. Después
+  espera que se pida la página 2 y que se pinte. Se mantiene `asyncUtilTimeout: 10000`, ya solo
+  como margen de render.
+- **Componente:** deshabilitar la paginación mientras se revalida en segundo plano, con datos ya
+  pintados, es un defecto menor de UX (un clic rápido justo al cargar se pierde). Es código de
+  producción, fuera de SL-31 (R24): no se toca y queda reportado al leader.
+- **Reproducción determinista de la carrera** (copias temporales, borradas): la página 1 tarda
+  2000 ms y `userEvent.setup({ delay: 50 })`. La versión `ca7a3a5` cae 3/4 con la firma exacta de
+  CI (una llamada, página 1). La nueva pasa 4/4.
+- **Orden y mocks:** `--sequence.shuffle`, semillas 1–10: 10/10 verdes.
+  `vitest run tests/unit/components`: 117/117 archivos. `isolate: true`, así que no hay mocks
+  compartidos entre archivos.
+- **Bajo carga:** 20/20 verdes.
+- **Mutaciones:** M1–M4, cada una roja solo en su caso. El rojo extra de M1 en la corrida anterior
+  era esta misma carrera.
+- `TEST_RAPIDO_BASE=dev ./init.sh`: `== init OK ==`, `INIT_EXIT=0`.

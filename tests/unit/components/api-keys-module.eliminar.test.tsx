@@ -41,14 +41,12 @@ vi.mock("@/lib/actions/usuarios-por-rol", () => ({
 
 import { ApiKeysModule } from "@/app/(app)/configuracion/api/_components/ApiKeysModule";
 
-// Las esperas de este archivo miden CPU, no tiempo de reloj. Los `findBy*`/`waitFor` de
-// testing-library no usan el `testTimeout: 20000` de vitest, sino `asyncUtilTimeout`, que por
-// defecto es 1000 ms. En el CI del PR #1 cayó dos veces en `irAPagina2`, casos distintos, a
-// los ~1075 ms: el clic, la petición de la página 2 al mock (que resuelve al instante) y el
-// render con jsdom de la tabla nueva no cupieron en 1 s en un runner de 2 vCPU con la suite
-// entera encima. En el componente no hay carrera: el cambio de página es `setPage` + una
-// clave SWR nueva. Mismo margen y mismo razonamiento que `tests/components/OrdenesPageFiltros.test.tsx`.
-// No cambia lo que se afirma: una página que no llega sigue dando rojo, a los 10 s.
+// Los `findBy*`/`waitFor` de testing-library no usan el `testTimeout: 20000` de vitest, sino
+// `asyncUtilTimeout`, 1000 ms por defecto. La causa de los rojos de CI era una carrera (ver
+// `irAPagina2`), no la lentitud; este margen solo evita que, ya sin carrera, un runner de
+// 2 vCPU con la suite entera encima convierta un render lento en un rojo. Es el mismo criterio
+// que `tests/components/OrdenesPageFiltros.test.tsx`. No cambia lo que se afirma: una página que
+// no llega sigue dando rojo, a los 10 s.
 configure({ asyncUtilTimeout: 10000 });
 
 /** Fila ELIMINABLE (desactivada y sin rastro): es el único estado desde el que se borra. */
@@ -86,12 +84,26 @@ function renderModule(ui: ReactElement) {
 }
 
 /**
- * Va a la página 2 y espera a que su única fila esté pintada. Espera las dos condiciones reales,
- * en orden: que el módulo PIDIÓ la página 2 (el clic surtió efecto) y que la pintó. Si cae, el
- * mensaje dice cuál de las dos faltó.
+ * Va a la página 2 y espera a que su única fila esté pintada.
+ *
+ * LA CARRERA (CI del PR #1, run 39899861209: el mock recibió UNA llamada, la de la página 1, y el
+ * clic no hizo nada). Con `fallbackData`, SWR 2.4 revalida la página 1 al montar, diferida a un
+ * `requestAnimationFrame`, y durante esa revalidación `isLoading` es `true`: «bypasses fallback
+ * data» (swr/dist/index). `Pagination` recibe `disabled={isLoading}`, así que «Página siguiente»
+ * está deshabilitado en esa ventana y un clic que cae en ella se pierde sin error. Por eso, antes
+ * de hacer clic, se espera a que esa revalidación haya EMPEZADO (se pidió la página 1) y
+ * TERMINADO (el botón vuelve a estar habilitado). Después ya nada lo deshabilita.
+ *
+ * Luego se esperan las dos condiciones del cambio de página, en orden: que el módulo pidió la
+ * página 2 (el clic surtió efecto) y que la pintó. Si cae, el mensaje dice cuál faltó.
  */
 async function irAPagina2(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Página siguiente" }));
+  const siguiente = screen.getByRole("button", { name: "Página siguiente" });
+  await waitFor(() =>
+    expect(listarApiKeysMock).toHaveBeenCalledWith({ page: 1, pageSize: PAGE_SIZE }),
+  );
+  await waitFor(() => expect(siguiente).toBeEnabled());
+  await user.click(siguiente);
   await waitFor(() =>
     expect(listarApiKeysMock).toHaveBeenCalledWith({ page: 2, pageSize: PAGE_SIZE }),
   );
