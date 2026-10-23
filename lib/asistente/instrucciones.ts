@@ -64,6 +64,9 @@ export const QUIEN_PREGUNTA: Record<RolValue, string> = {
   adminTienda: `administra una tienda que le manda envíos a ${EMPRESA.enFrase}`,
   adminSatelite: "administra una bodega satélite",
   apiKey: "es una cuenta de máquina",
+  // SL-32 (R7): el tipo obliga a la frase, pero no llega nunca al modelo: `AsistenteService` rechaza
+  // al superadmin antes de componer, porque no está en `ROLES_AYUDA`.
+  superadmin: "administra la plataforma; no pertenece a ninguna empresa",
 };
 
 /**

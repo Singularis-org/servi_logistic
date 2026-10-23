@@ -26,6 +26,7 @@
 //     con `describirDenegado` (`auditoria.ts`, R40).
 
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import { getMetrica } from "@/lib/analytics/metrics";
 import { esMetricaPublicableApiKey } from "@/lib/analytics/publicacion-api-key";
 import { ROLES_ANALITICA } from "@/lib/analytics/types";
@@ -134,7 +135,7 @@ export type ResolucionAlcance =
  * `tipo: "tienda"`. Dos formas de decir lo mismo en una frontera multi-tenant es una de
  * mas.
  *
- * PARTICION TERNARIA de los seis `RolValue`, y ninguno en dos listas (267/R4):
+ * PARTICION TERNARIA de los siete `RolValue`, y ninguno en dos listas (267/R4):
  *   `ROLES_ANALITICA` (5, en `types.ts`) + `ROLES_ANALITICA_INTEGRACION` + `ROLES_SIN_ANALITICA`.
  */
 type SinRolesLectores<T extends readonly string[]> = {
@@ -156,17 +157,18 @@ export const ROLES_ANALITICA_INTEGRACION = declararRolesNoLectores(["apiKey"] as
 
 /**
  * Los `RolValue` del esquema a los que se les niega la analitica por ROL, en cualquier
- * canal. Hoy esta VACIA, y eso es deliberado (267/R5): la constante, su restriccion de
- * tipo y su consulta dentro de `resolverAlcance` se CONSERVAN para que el proximo rol
- * denegado tenga donde declararse sin volver a inventar el mecanismo. Mismo patron que
- * la 268 aplico a `ORIGENES_SIN_EVENTO_PUBLICO`.
+ * canal. La 267 la dejo VACIA a proposito (267/R5), conservando la constante, su restriccion
+ * de tipo y su consulta dentro de `resolverAlcance` para que el proximo rol denegado tuviera
+ * donde declararse. SL-32 (R7) es ese rol: el superadmin no pertenece a ninguna empresa, asi
+ * que no hay datos de empresa que pueda ver. Se lee de `ROLES_PLATAFORMA` por import (R4)
+ * para que un segundo rol de plataforma quede denegado sin tocar este archivo.
  *
  * NO es una segunda tabla de alcance (R8 de la 122): no dice QUE ve nadie, solo quien no
  * entra. El guardia (`alcance-fuente-unica.guardia.test.ts`) exige que la union de las
- * TRES listas sea EXACTAMENTE los seis `RolValue` y que sean disjuntas dos a dos, de modo
+ * TRES listas sea EXACTAMENTE los siete `RolValue` y que sean disjuntas dos a dos, de modo
  * que un rol nuevo en el esquema deje el guardia rojo en vez de caer en un limbo.
  */
-export const ROLES_SIN_ANALITICA = declararRolesNoLectores([] as const);
+export const ROLES_SIN_ANALITICA = declararRolesNoLectores(ROLES_PLATAFORMA);
 
 /**
  * 267/R6 — POR QUE EXISTE EL PARAMETRO `canal`, y por que no bastaba conceder por rol.
@@ -245,8 +247,8 @@ export function resolverAlcance(
   // R12 (forma) — un rol que ni siquiera es una cadena no puede compararse con nada.
   if (typeof rol !== "string") return denegado("rol_desconocido");
 
-  // R11 de la 122 — el mecanismo de denegacion POR ROL se conserva aunque la lista este
-  // hoy vacia (267/R5): el proximo rol denegado se declara ahi y no en una rama nueva.
+  // R11 de la 122 — la denegacion POR ROL va antes que todo lo demas: desde SL-32 (R7) la
+  // lista trae los roles de plataforma, que no tienen empresa sobre la que medir.
   if ((ROLES_SIN_ANALITICA as readonly string[]).includes(rol)) {
     return denegado("rol_sin_analitica");
   }

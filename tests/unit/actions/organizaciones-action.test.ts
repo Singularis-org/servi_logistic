@@ -7,9 +7,9 @@ import { altaEmpresaAction } from "@/lib/actions/organizaciones";
 import type { IOrganizacionService } from "@/lib/interfaces/services/IOrganizacionService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
-// SL-17 / T2.8 (design §7.7) — R48: la action de alta solo la ejecuta el superadmin de SL-32, y
-// mientras `lib/auth/plataforma.ts` no exista no la ejecuta NADIE. El servicio es un doble que
-// cuenta llamadas: si se llama una sola vez para un actor no autorizado, el test lo ve.
+// SL-17 / T2.8 (design §7.7) — R48: la action de alta solo la ejecuta el superadmin de SL-32. El
+// servicio es un doble que cuenta llamadas: si se llama una sola vez para un actor no autorizado,
+// el test lo ve. SL-32 (T4, adelantando T15) engancha `exigirSuperadmin` a `esPlataforma`.
 
 const ENTRADA = {
   nombre: "Envíos del Sur",
@@ -23,19 +23,26 @@ function servicioDoble() {
   return { service, altaEmpresa };
 }
 
-// Todos los valores reales de `RolValue` (db/schema.prisma). `satisfies` hace que añadir un rol
-// al enum sin listarlo aquí no compile.
-const ROLES = {
-  maestro: true,
-  admin: true,
-  mensajero: true,
-  adminTienda: true,
-  adminSatelite: true,
-  apiKey: true,
-} satisfies Record<RolValue, true>;
+// Todos los valores reales de `RolValue` (db/schema.prisma), con si dan de alta empresas. El
+// literal es el contrato: `satisfies` hace que añadir un rol al enum sin decidirlo aquí no compile.
+const DA_DE_ALTA = {
+  maestro: false,
+  admin: false,
+  mensajero: false,
+  adminTienda: false,
+  adminSatelite: false,
+  apiKey: false,
+  superadmin: true,
+} satisfies Record<RolValue, boolean>;
+
+const ROLES_DE_EMPRESA = (Object.keys(DA_DE_ALTA) as RolValue[]).filter((r) => !DA_DE_ALTA[r]);
 
 describe("R48 — todo actor que no es superadmin recibe «no autorizado» sin llamar al servicio", () => {
-  it.each(Object.keys(ROLES) as RolValue[])("rol %s", async (rol) => {
+  it("la tabla cubre los siete roles y solo uno da de alta", () => {
+    expect(ROLES_DE_EMPRESA).toHaveLength(6);
+  });
+
+  it.each(ROLES_DE_EMPRESA)("rol %s", async (rol) => {
     const { service, altaEmpresa } = servicioDoble();
     const actor: Actor = { usuarioId: `u-${rol}`, rol };
     const r = await altaEmpresaAction(ENTRADA, { getActor: async () => actor, service });
@@ -50,14 +57,12 @@ describe("R48 — todo actor que no es superadmin recibe «no autorizado» sin l
     expect(altaEmpresa).not.toHaveBeenCalled();
   });
 
-  it("sin lib/auth/plataforma.ts, también un supuesto superadmin", async () => {
-    // Si SL-32 ya está en el árbol, este caso no aplica: lo cubre la guardia de abajo.
-    if (existsSync(RUTA_PLATAFORMA)) return expect(importaPlataforma(leer(RUTA_EXIGIR))).toBe(true);
+  it("el superadmin sí llega al servicio, una sola vez", async () => {
     const { service, altaEmpresa } = servicioDoble();
-    const superadmin = { usuarioId: "u-super", rol: "superadmin" as RolValue };
+    const superadmin: Actor = { usuarioId: "u-super", rol: "superadmin" };
     const r = await altaEmpresaAction(ENTRADA, { getActor: async () => superadmin, service });
-    expect(r).toEqual({ estado: "no_autorizado" });
-    expect(altaEmpresa).not.toHaveBeenCalled();
+    expect(r).toEqual({ estado: "creada", organizacionId: "o", maestroId: "u" });
+    expect(altaEmpresa).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -90,9 +95,8 @@ describe("R48 — guardia: el enganche no se queda en `false` por olvido", () =>
     expect(enganchePendiente(existsSync(RUTA_PLATAFORMA), leer(RUTA_EXIGIR))).toBe(false);
   });
 
-  it("hoy, sin plataforma.ts, el enganche lleva su marca de pendiente", () => {
-    if (existsSync(RUTA_PLATAFORMA)) return;
-    expect(leer(RUTA_EXIGIR)).toContain("// SL-32: sustituir por esPlataforma de lib/auth/plataforma.ts");
+  it("plataforma.ts existe: la guardia de arriba mira el caso que importa", () => {
+    expect(existsSync(RUTA_PLATAFORMA)).toBe(true);
   });
 
   it("autocomprobación: detecta el olvido con el texto de hoy si plataforma.ts existiera", () => {

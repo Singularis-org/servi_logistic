@@ -187,8 +187,8 @@ describe("R2/R5 · la forma del modulo no cambia con la reversion", () => {
     if (concedido.estado === "ok") expect(tipos).toContain(concedido.alcance.tipo);
   });
 
-  it("ROLES_SIN_ANALITICA sigue exportada y vacia; el rol de integracion vive en su propia lista", () => {
-    expect(ROLES_SIN_ANALITICA).toEqual([]);
+  it("ROLES_SIN_ANALITICA sigue exportada (desde SL-32, con el superadmin); el rol de integracion vive en su propia lista", () => {
+    expect(ROLES_SIN_ANALITICA).toEqual(["superadmin"]);
     expect([...ROLES_ANALITICA_INTEGRACION]).toEqual(["apiKey"]);
   });
 });

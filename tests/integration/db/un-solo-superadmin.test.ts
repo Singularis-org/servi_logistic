@@ -15,6 +15,7 @@ import {
   insertarUsuario,
   intentar,
   liberarHuecoDeSuperadmin,
+  tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
 // SL-32 / T3 (R27) — un solo superadmin en toda la base, por el indice unico parcial
@@ -30,6 +31,8 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let prisma: PrismaClient;
+// Tarea A de SL-32: los archivos que crean un superadmin se turnan; ver `tomarLockDeSuperadmin`.
+let soltarSuperadmin: () => Promise<void> = async () => {};
 
 /** Transaccion revertida, serializada y sin superadmin previo. */
 function enCaso<T>(fn: (tx: TxDeTest, rolSuperadmin: string) => Promise<T>): Promise<T> {
@@ -42,11 +45,13 @@ function enCaso<T>(fn: (tx: TxDeTest, rolSuperadmin: string) => Promise<T>): Pro
 }
 
 describeSiHayBase("SL-32 — un solo superadmin en la base (R27)", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     prisma = crearPrismaDeTest();
+    soltarSuperadmin = await tomarLockDeSuperadmin();
   });
 
   afterAll(async () => {
+    await soltarSuperadmin();
     await prisma?.$disconnect();
   });
 

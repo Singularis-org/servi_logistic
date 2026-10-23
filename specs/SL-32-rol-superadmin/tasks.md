@@ -190,7 +190,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 4 — El rol en el código y el comando entero (depende de la tanda 3)
 
-- [ ] **T4. Fuente única y tablas exhaustivas** (R4, R6, R7).
+- [x] **T4. Fuente única y tablas exhaustivas** (R4, R6, R7).
   - Nace `lib/auth/plataforma.ts` (`ROLES_PLATAFORMA` y `esPlataforma`).
   - `ROL_LABELS` añade «Superadmin», `QUIEN_PREGUNTA` añade su frase y `ROLES_SIN_ANALITICA` pasa a
     `["superadmin"]`.
@@ -205,7 +205,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   (El menú del superadmin lo prueba T16, cuando exista el ítem.)
 
   **Hecho cuando:** `pnpm run typecheck` está en verde y los tests nuevos también.
-- [ ] **T5. [P] Tests que usaban `superadmin` como rol inventado** (R7).
+- [x] **T5. [P] Tests que usaban `superadmin` como rol inventado** (R7).
   - En `tests/unit/analytics/productos-alcance.test.ts:132` y
     `tests/unit/analytics/conteo-productos-action.test.ts:130,240,260`, el inventado pasa a otro
     nombre que no exista (por ejemplo `rolInventado`), y se añade un caso real: `superadmin`
@@ -216,7 +216,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
   **Hecho cuando:** `vitest related` sobre `lib/analytics/alcance.ts`, `lib/auth/rol-label.ts` y
   `lib/asistente/instrucciones.ts` sale en verde.
-- [ ] **T6. [P] Guardia «superadmin fuera de empresa»** (R3, R4, R5).
+- [x] **T6. [P] Guardia «superadmin fuera de empresa»** (R3, R4, R5).
   `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`, según
   `design.md > Guardias que cambian`. Lleva sus tres excepciones declaradas: `GESTION_ROLES` y
   `READ_ROLES` de `GeografiaService`, y el ítem «Empresas», que llega en T16. Las tres leen
@@ -226,7 +226,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   - la guardia está en verde y lleva su contraprueba sintética;
   - añadir `superadmin` a `ROLES_ACCESO_TOTAL` la pone en rojo (se prueba y se revierte);
   - escribir `"superadmin"` literal en el `roles` de un ítem la pone en rojo.
-- [ ] **T7. `UsuarioService` y `UserRepository`** (R8–R11).
+- [x] **T7. `UsuarioService` y `UserRepository`** (R8–R11).
   Lo de `design.md > UsuarioService y UserRepository`, incluido `ROLES_FILTRO` menos plataforma.
   Tests:
   - `tests/unit/services/usuario-service-superadmin.test.ts`: R8, R9 y R11, uno por operación,

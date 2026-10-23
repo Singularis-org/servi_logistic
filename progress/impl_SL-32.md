@@ -435,3 +435,153 @@ fixtures, corridos contra `sl32_base`: `81 failed | 529 passed | 925 skipped`.
 **Veredicto:** T3 está hecha. Su «Hecho cuando» se cumple, y R27 y R28 tienen tests que caen con su mutación.
 Quedan abiertos el typecheck rojo, que es de T4, y dos suites de SL-17 que hay que pasar al superadmin real,
 con decisión del leader.
+
+## T4, T5, T6, T7 y tarea A — fuente única, guardia, usuarios y el superadmin compartido en los tests (R3–R11, R27, R28), backend_dev — 2026-10-23
+
+**Archivos nuevos**
+- `lib/auth/plataforma.ts`: `ROLES_PLATAFORMA = ["superadmin"]`, `RolPlataforma` y `esPlataforma`.
+- `tests/unit/auth/plataforma.test.ts`, `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`,
+  `tests/unit/services/usuario-service-superadmin.test.ts`, `tests/integration/db/usuarios-sin-superadmin.test.ts`,
+  `tests/unit/types/envios-whatsapp-rol-seleccion.test.ts`.
+
+**Código modificado**
+- T4:
+  - `lib/auth/rol-label.ts`: «Superadmin».
+  - `lib/asistente/instrucciones.ts`: la frase de `QUIEN_PREGUNTA`.
+  - `lib/analytics/alcance.ts`: `ROLES_SIN_ANALITICA = declararRolesNoLectores(ROLES_PLATAFORMA)`. Lee la constante
+    por import, sin el literal que proponía el design. Un literal menos en la lista de tablas exhaustivas.
+  - `lib/types/envios-whatsapp.ts`: `esRolDeSeleccion` y `RolDeSeleccion`, derivados de `rolSchema`.
+  - `lib/services/WhatsappEnvioService.ts` (`aInput`) y `EnvioForm.tsx:149`: filtran con `esRolDeSeleccion`. Un
+    envío es de una empresa, así que el superadmin ni recibe ni se ofrece. En `EnvioForm`, el cambio es una línea y
+    un import.
+- **Adelantado de T15:** `lib/auth/exigir-superadmin.ts` pasa a `actor !== null && esPlataforma(actor.rol)`. La
+  guardia de `organizaciones-action.test.ts` se ponía en rojo en cuanto existiera `plataforma.ts`.
+- T5 (R7), fuera de los archivos esperados: `lib/analytics/productos-consulta.ts` y `lib/analytics/entregas-conteo.ts`
+  consultan `ROLES_SIN_ANALITICA` antes de `esRolAnalitica`. Sin eso, el superadmin salía con `rol_desconocido`, y
+  R7 pide `rol_sin_analitica` en toda la analítica.
+- T7:
+  - `lib/services/UsuarioService.ts`:
+    - `listarRoles` filtra los roles de plataforma (R8).
+    - `crear` y `actualizar` rechazan un `rolId` de plataforma con `validation_error` en `rolId`, antes del hash (R9).
+    - `obtener`, `actualizar`, `cambiarEstado`, `restablecerContrasena` y `consultarImpactoCambio` responden
+      `not_found` si el objetivo es de plataforma, antes de escribir (R11). `cambiarEstado` ahora lee el objetivo.
+    - El rol se resuelve por valor con `listRoles`, en `esRolDePlataforma`.
+  - `lib/repositories/UserRepository.ts` (`list`): `rol.value.notIn ROLES_PLATAFORMA`, sumado al `in` del filtro
+    (R10). La página y el conteo usan el mismo `where`.
+  - `lib/types/usuario.ts`: `ROLES_FILTRO` es `ROL_LABELS` menos plataforma.
+
+**Tests modificados**
+- `tests/unit/analytics/alcance-fuente-unica.guardia.test.ts`: de 6 a 7, `ROLES_SIN_ANALITICA` = `["superadmin"]`, y
+  ahora se comprueba que se lee de `ROLES_PLATAFORMA`.
+- T4:
+  - `tests/integration/db/push-destinatarios-equivalencia.test.ts` y `_whatsapp-envios-474.ts`: el séptimo rol en el `Record`.
+  - `tests/unit/actions/organizaciones-action.test.ts`:
+    - la tabla `satisfies Record<RolValue, boolean>` dice qué rol da de alta;
+    - los seis de empresa reciben `no_autorizado`;
+    - caso nuevo: el superadmin llama al servicio una vez;
+    - salen los dos casos que solo valían sin `plataforma.ts`.
+- T5:
+  - `productos-alcance.test.ts` y `conteo-productos-action.test.ts`: el rol inventado pasa a `rolInventado`. Casos
+    reales nuevos: el superadmin da `rol_sin_analitica` en `resolverAlcanceProductos` y en `resolverAlcance`, para
+    las 25 métricas y los dos canales. En la action da `forbidden` con ese motivo en el log.
+  - `conteo-entregas-contrato.test.ts`: el superadmin da `rol_sin_analitica`.
+  - `tope-diario.test.ts` (AsistenteService): el superadmin da `rol_no_admitido`, sin proveedor y sin contador.
+  - `alcance.test.ts` y `alcance-api-key.test.ts`: de 6 a 7.
+  - `analytics/types.test.ts`: quedan fuera `apiKey` y `superadmin`.
+  - `alcance-borrado-orden.test.ts`: el superadmin entra en `denegado`. La tabla literal se actualiza, sin relajarla.
+- T7:
+  - `usuario-restablecer-contrasena.test.ts`: el doble devuelve `listRoles` con `[]`.
+  - `usuario-schema.test.ts:240`: «acepta todas las claves» pasa a recorrer `ROL_LABELS` menos plataforma. Era
+    inevitable con `ROLES_FILTRO`. Las líneas 253 y `usuarios.test.ts:333` no cambian y siguen en verde.
+- Tarea A:
+  - `tests/integration/db/_fixtures/superadmin-32.ts`: `CLAVE_LOCK_SUPERADMIN = 32_1023_01`, `tomarLockDeSuperadmin()`
+    (lock de sesión en una conexión propia) y `exigirSinSuperadmin()`. Están documentados el uso y el orden de locks:
+    primero este y por dentro el de la 227. T8 lo usará.
+  - `aislamiento-fk-misma-empresa.test.ts`: el usuario sin empresa es `superadmin`; toma el lock y exige una base sin
+    superadmin.
+  - `aislamiento-usuarios.test.ts`:
+    - el superadmin lleva rol `superadmin`, con `organizacionId: null` explícito;
+    - lock y `exigirSinSuperadmin`;
+    - el caso R35 «con `null` explícito» borra antes el superadmin del `beforeAll`, bajo el lock de la 227, y crea
+      el suyo por el mismo camino, que pasa a ser el del archivo. Ninguna aserción se debilita.
+  - `un-solo-superadmin.test.ts` y `usuario-empresa-o-superadmin.test.ts`: toman el lock en `beforeAll`.
+  - `usuarios-filtro-busqueda.test.ts`: `base.total` cuenta solo usuarios de empresa. El listado ya no cuenta al
+    superadmin, y otro archivo puede tenerlo commiteado mientras este corre.
+  - Grep de `organizacionId: null` y `fijarEmpresa(tx, "")`: no hay más usuarios sin empresa en tests de integración.
+
+**R → test**
+- R3, R5:
+  - `superadmin-fuera-de-empresa.guardia.test.ts` (a), sobre las listas de empresa y el menú;
+  - `plataforma.test.ts` (`esAccesoTotal(superadmin)` es `false`);
+  - `envios-whatsapp-rol-seleccion.test.ts`;
+  - `alcance-borrado-orden.test.ts`.
+- R4: `plataforma.test.ts` y la guardia: (b) son las constantes `*ROLES*` y sus excepciones, y (c) es el literal.
+- R7:
+  - `productos-alcance.test.ts`, `conteo-productos-action.test.ts` y `conteo-entregas-contrato.test.ts`;
+  - `alcance-fuente-unica.guardia.test.ts`, `alcance.test.ts` y `tope-diario.test.ts`.
+- R8, R9, R11: `usuario-service-superadmin.test.ts`, con un caso por operación, cero escrituras y su control.
+- R10:
+  - `usuarios-sin-superadmin.test.ts`, contra Postgres:
+    - con el sufijo, sin filtros, con el filtro por rol (también pidiendo `superadmin` al repositorio);
+    - `listar` y `listarCompleto`;
+  - `usuario-schema.test.ts:253` y `usuarios.test.ts:333`.
+- R27, R28: los tests de T3, ahora serializados entre archivos.
+
+**Guardia de T6: excepciones declaradas.**
+- `ROLES_PLATAFORMA` es la fuente.
+- `ROLES_SIN_ANALITICA` es una lista de denegación.
+- `GESTION_ROLES` y `READ_ROLES` de `GeografiaService` quedan preparados para T11. Hoy no nombran la plataforma, y
+  la guardia pasa. Cuando T11 los escriba:
+  - tienen que importar `ROLES_PLATAFORMA`, sin el literal;
+  - `GESTION_ROLES` no puede llevar ningún otro rol, y devolverle el `maestro` la pone en rojo. Lo prueba la
+    contraprueba sintética.
+- El ítem `/plataforma/empresas` (T16) tiene que tener `roles === ROLES_PLATAFORMA`, por identidad. No toqué
+  `SIDEBAR_ITEMS` ni `Sidebar.tsx`.
+
+**Mutaciones.** Cada una se aplicó, se corrió y se restauró. `cmp` contra la copia: idéntico.
+- T7 (contra `sl32_base`): quitar `notIn` del `where` → `usuarios-sin-superadmin`: `4 failed | 1 passed`. Sigue en
+  verde «los datos están».
+- T6:
+  - `RolValue.superadmin` en `ROLES_ACCESO_TOTAL` → guardia más `plataforma.test`: `4 failed | 13 passed`;
+  - `"superadmin"` en el `roles` del ítem de mensajero → guardia: `2 failed | 11 passed`;
+  - `"superadmin"` en `ROLES_AYUDA` → `tope-diario` más la guardia: `5 failed | 23 passed`.
+- T4: `esPlataforma` que acepta `maestro` → `plataforma.test`: `1 failed | 3 passed`.
+- T5:
+  - `ROLES_SIN_ANALITICA` vacía → los cuatro tests de analítica: `7 failed | 112 passed`;
+  - sin la rama nueva en `productos-consulta.ts` → `2 failed | 41 passed`;
+  - en `entregas-conteo.ts` → `1 failed | 62 passed`.
+- Adelantado de T15: `exigirSuperadmin` que vuelve a `false` → `organizaciones-action`: `1 failed | 12 passed`.
+- T7, en el servicio (`usuario-service-superadmin`). Se quitó cada comprobación por separado, y en todas da
+  `1 failed | 9 passed`:
+  - R9: en `crear`, y en `actualizar` (del `rolId`);
+  - R11: en `obtener`, `actualizar`, `cambiarEstado`, `restablecerContrasena` y `consultarImpactoCambio`;
+  - R8: el filtro de `listarRoles`.
+- `ROLES_FILTRO` sin el filtro → `usuario-schema` más `usuarios`: `2 failed | 61 passed`.
+- `esRolDeSeleccion` que acepta todo → `envios-whatsapp-rol-seleccion`: `2 failed`.
+- Tarea A: `tomarLockDeSuperadmin` sin `pg_advisory_lock` → los cinco archivos de superadmin juntos, tres veces.
+  Las tres veces: `24 passed | 13 skipped`, con `aislamiento-usuarios` en FAIL. Con el lock: 4 de 4 en verde.
+
+**Salida real**
+- `pnpm run typecheck` → exit 0, con 0 errores. Eran 7.
+- `pnpm exec eslint` sobre los 38 `.ts`/`.tsx` tocados → exit 0. Queda un warning de antes:
+  `conteo-productos-action.test.ts:35 _consulta`.
+- Los seis archivos de superadmin y usuarios, en un solo `vitest run` sobre `sl32_base`, con workers en paralelo →
+  `Test Files 6 passed (6)`, `Tests 48 passed (48)`, cuatro veces seguidas. Después, la base queda con 0 usuarios y
+  0 organizaciones.
+- Los 18 archivos de unit que iteran `RolValue` o tienen un `Record<RolValue>` → `Tests 333 passed`.
+- Unit de servicios, analítica, tipos, usuarios y asistente → `Test Files 491 passed`, `Tests 8388 passed`.
+- `vitest related` de `alcance.ts`, `rol-label.ts` e `instrucciones.ts`, el «Hecho cuando» de T5, sobre `sl32_base`
+  → `9 failed | 5070 passed`. Los 7 archivos rojos son de integración y fallan por la base vacía: «tabla `orden`
+  vacía», «faltan la zona central», «sin `zona` sembrada»… Todo el unit está en verde.
+- `vitest related` de todos los archivos tocados → `47 failed | 6363 passed`. Revisados uno a uno, todos los rojos
+  son de base vacía, salvo dos:
+  - `whatsapp-envio-idempotencia-programado`: inserta `plantilla_mensaje` sin empresa y da 23502;
+  - `cohorte-carga-indices`: un plan de índices.
+
+  Ninguno de los dos toca código de esta tanda.
+- `pnpm run test:guardias` → `1 failed | 300 passed`. Cae `dependencias-declaradas-presentes.guardia.test.ts`, que
+  busca en `init.sh` los marcadores de la ficha 420. `init.sh` no está en este diff: el rojo es de antes.
+- MCP del grafo: no lo usé; trabajé con Grep y Read.
+
+**Veredicto:** T4, T5, T6 y T7 están hechas y marcadas. La tarea A también: el lock de superadmin serializa los
+cinco archivos que lo crean, y la mutación del lock lo demuestra.

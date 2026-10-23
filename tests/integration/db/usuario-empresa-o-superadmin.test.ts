@@ -15,6 +15,7 @@ import {
   insertarUsuario,
   intentar,
   liberarHuecoDeSuperadmin,
+  tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
 // SL-32 / T3 (R28) — un usuario tiene empresa si y solo si no es el superadmin: el CHECK
@@ -32,6 +33,8 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const RECHAZO_DEL_CHECK = { ok: false, sqlstate: "23514", restriccion: CHECK_EMPRESA_O_SUPERADMIN };
 
 let prisma: PrismaClient;
+// Tarea A de SL-32: los archivos que crean un superadmin se turnan; ver `tomarLockDeSuperadmin`.
+let soltarSuperadmin: () => Promise<void> = async () => {};
 
 type Contexto = { tx: TxDeTest; rolSuperadmin: string; rolMaestro: string; empresa: string };
 
@@ -47,11 +50,13 @@ function enCaso<T>(fn: (c: Contexto) => Promise<T>): Promise<T> {
 }
 
 describeSiHayBase("SL-32 — empresa o superadmin en usuario (R28)", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     prisma = crearPrismaDeTest();
+    soltarSuperadmin = await tomarLockDeSuperadmin();
   });
 
   afterAll(async () => {
+    await soltarSuperadmin();
     await prisma?.$disconnect();
   });
 
