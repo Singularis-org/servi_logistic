@@ -507,8 +507,55 @@ política abierta, por `true` fijo en el predicado y por no sembrar la marca de 
 
 ### Pendiente
 
-- T9: la comprobación en el navegador con dos maestros (ver tasks.md).
+- ~~T9: la comprobación en el navegador con dos maestros~~ hecha (sección «T9 — comprobación en el navegador»).
 - Los tests de integración que piden datos sembrados ajenos (orden, adminTienda) y están en la
   baseline: compilan con la marca nueva, pero no se ejecutaron (`cobertura-repository`,
   `emisor-relaciones-anidadas`, `corregir-datos-cliente.repo`, `costo-y-zona-api-415`,
   `gestiones-detalle-api-405`).
+
+## T9 — comprobación en el navegador (Playwright)
+
+`frontend_dev`, 2026-10-23. Sin cambio de código de la app: solo el spec y su fixture.
+
+- **Archivos:** `e2e/zona-especial-dos-empresas.spec.ts` (nuevo), `e2e/_zona-especial-fixture.ts`
+  (nuevo; reutiliza `altaDeEmpresa`, `prepararAcceso` y `clienteDueno` de `_dos-empresas-fixture.ts`
+  sin modificarlo).
+- **Siembra:** base desechable `sl38_ui` (`prisma migrate deploy` + `pnpm run db:seed`). A y B por
+  `OrganizacionService.altaEmpresa` dentro de `comoPlataforma`; maestro `sl38-maestro-<x>-<uuid>@example.test`
+  por corrida; contraseña con `hashPassword` en la base y dispositivo confiado (sin OTP). Ningún
+  correo: SMTP sin variables. Cada empresa, con `fijarEmpresa`, una zona central con un distrito
+  (`sinpeRevisadoAt` puesto). Los distritos marcados (X para A, Y para B) se eligen de la geografía:
+  nombre único, que no aparece dentro de otro nombre, cantones distintos. Aborta si la base no es
+  local; sin base, el `beforeAll` lanza y los 4 tests FALLAN (`1 failed, 3 did not run`).
+- **Qué comprueba** (rol/texto/`aria-pressed`, y la base leída como dueño): (1) A marca X y guarda,
+  «Zona actualizada» y ningún «No se pudo guardar la marca de zona especial.»; (2) al reabrir
+  Tarifas, A ve X con `aria-pressed=true` y «Zonas especiales: 1» en su cantón; (3) B no ve X marcado
+  ni ningún «Zonas especiales»; (4) B marca Y, lo ve al reabrir, A no ve Y y conserva X. En la base:
+  A=[X], B=[Y].
+- **Salida real (verde, dos corridas):**
+  ```
+  Running 4 tests using 1 worker
+    ok 1 … (1) el maestro de A marca un distrito como zona especial y guarda sin toast de error (1.8s)
+    ok 2 … (2) al reabrir, el maestro de A ve el distrito marcado (1.1s)
+    ok 3 … (3) el maestro de B no ve marcado el distrito que marcó A (1.3s)
+    ok 4 … (4) B marca otro distrito: B lo ve al reabrir y A no, y A conserva el suyo (3.4s)
+    4 passed (12.1s)
+  EXIT=0
+  ```
+- **Mutaciones:**
+  - `esZonaEspecialDeLaEmpresa` → `true` fijo (server reiniciado con `.next` limpio; con HMR el
+    login caía en `EmpresaNoResuelta`, artefacto del recargado): ROJO en el paso (1), línea 127,
+    `Expected "false" / Received "true"`: con la mutación A ya ve X marcado antes de tocarlo, así que
+    cae la precondición antes de llegar a (3). `1 failed, 3 did not run`.
+  - RLS de lectura sin aislar (la política de M1 sustituida por `FOR SELECT USING (true)` más la de
+    escritura igual que la buena): ROJO en el paso (3), línea 158, `Expected "false" / Received
+    "true"` (B ve la marca de A). `2 passed, 1 failed, 1 did not run`.
+  - `DROP POLICY distrito_zona_especial_por_empresa` sin sustituta: falla cerrado en el paso (1)
+    (no llega «Zona actualizada»). `1 failed, 3 did not run`.
+  - Restaurado: `git diff` vacío en `lib/repositories/_shared/zona-especial.ts`; la política
+    recreada con el SQL de M1 (`pg_policies`: ALL, `{servi_app}`, USING y WITH CHECK iguales) y la
+    corrida verde de arriba es posterior a la restauración.
+- **typecheck/lint:** `pnpm run typecheck` → `TC_EXIT=0`; `eslint` de los dos archivos → `LINT_EXIT=0`.
+- **Limpieza:** dev server de `:3000` apagado (árbol matado, puerto libre, ningún `node` del
+  worktree); `sl38_ui` borrada (`count = 0`); lock de `node_modules` liberado; cliente Prisma con
+  `distritoZonaEspecial: SI | Distrito.zonaEspecial: ausente` al principio y al final.

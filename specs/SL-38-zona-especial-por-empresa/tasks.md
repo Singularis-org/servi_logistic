@@ -116,7 +116,7 @@ Un commit por task (`docs/conventions.md > Commits`).
   - _Hecho:_ verde. **Se mata** con tres mutaciones, una cada vez: quitar la política (rojo en los
     casos de B), devolver `true` fijo en `esZonaEspecialDeLaEmpresa` (rojo en B) y no sembrar la marca
     de A (rojo en A, no saltado). La evidencia va a `progress/impl_SL-38.md`.
-- [ ] **T9. [P] La pantalla de Tarifas** (R14; `frontend_dev`; depende de T5 y T6).
+- [x] **T9. [P] La pantalla de Tarifas** (R14; `frontend_dev`; depende de T5 y T6).
   - Sin cambio de código esperado: `CrearZonaForm` y `GeografiaSelector` siguen leyendo
     `DistritoArbolDTO.zonaEspecial` y llamando a la misma acción. Se corrigen sus comentarios que
     citan `distrito.zona_especial`.
@@ -128,6 +128,9 @@ Un commit por task (`docs/conventions.md > Commits`).
     (16/16). **Pendiente la comprobación en el navegador:** pide un dev server propio (el
     `node_modules` y `.next` los comparte otro agente) y dos empresas con un maestro cada una
     sembradas a mano. R14 queda cubierto por `zona-especial-dos-empresas.test.ts` (`listArbol`).
+  - _Estado (frontend_dev, 2026-10-23):_ comprobado con Playwright,
+    `e2e/zona-especial-dos-empresas.spec.ts` 4/4 en verde contra una base desechable; la RLS de
+    lectura sin aislar lo pone rojo en el paso de B. Detalle en `progress/impl_SL-38.md > T9`.
 - [x] **T10. [P] Script de despliegue y docs** (R23, R24; depende de T1).
   - `scripts/verificar-rls-despliegue.ts`: `POLITICAS_POR_EMPRESA` y `TRIGGERS_SIN_CAMBIO` salen de
     `MODELOS_DE_NEGOCIO.length`, y se exporta la función que arma el contrato esperado.
