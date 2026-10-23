@@ -20,6 +20,13 @@ Grep y Read. Términos buscados: `superadmin`, `maestro`, `rol_value`, `ROLES_SE
 | `lib/services/GeografiaService.ts` (fichas 374/375) | `READ_ROLES` y `WRITE_ROLES` son `["maestro"]`. `cambiarActivacion` retira o reactiva un nodo de cualquier nivel, con cascada reversible y registro de acciones. Lo prueban 12 archivos de test. | `crear`, `renombrar`, `cambiarActivacion` y `contarOrdenesSinEntregar` pasan a `ROLES_PLATAFORMA`. `listarArbol` sigue abierto al `maestro`, porque `/configuracion/tarifas` lo usa para armar zonas (R24, R25). |
 | `lib/utils/password.ts` y `lib/types/password-policy.ts` | `hashPassword` (bcrypt) y `strongPasswordSchema`. | Se reutilizan en el comando (R13, R16). |
 | `lib/api/openapi-spec.ts:2006`, el YAML (l. 1944) y el CHANGELOG (l. 572) | «La empresa puede retirar una provincia…» y «La empresa pasa a poder **retirar**». La guardia de SL-16 las lista en `FRASES_OPERADOR`. | Pasan a la plataforma (R22, R23). |
+| Spec de SL-17 (sin commitear, worktree `SL-17-organizacion-y-aislamiento`) | D18: `OrganizacionService.altaEmpresa({nombre, slug, maestro})` y una Server Action que exige superadmin con `lib/auth/plataforma.ts`; sin él, falla cerrado. D12: `vehiculos` es de plataforma. R35 y §10: el `CHECK` NULL ⇔ superadmin lo pone SL-32. Última migración: `20261022130300_misma_empresa_en_fk`. `EXCEPCIONES_DE_PLATAFORMA` en `lib/db/excepciones-aislamiento.ts`. | Se consume el contrato; no se reescribe nada de SL-17. Las incoherencias del spec de SL-17 van a `requirements.md > P10`. |
+| `lib/services/PasswordResetService.ts`, `lib/actions/password-reset.ts` y `app/recuperar-contrasena/` | El flujo «recuperar contraseña» por OTP de correo existe y tiene tests, pero la página monta `RecuperacionDesactivadaAviso` desde el 2026-09-04, porque el SMTP fallaba. El aviso dice cómo volver a montarlo (dos cambios) y qué tests revertir. | Es el primer acceso del maestro (R37). Se vuelve a montar solo con correo verificado (R38, P8, P9). |
+| `lib/services/EmailProvider.ts`, `ConsoleEmailSender.ts` y `lib/config/email.ts` | Sin `SMTP_USER`/`SMTP_PASSWORD` se degrada a consola. El código del OTP solo sale con `AUTH_OTP_DEBUG_LOG=1`, que `.env.example` pide dejar vacío en producción. | Dependencia operativa (`> Dependencias operativas`). |
+| `lib/utils/password-generator.ts` y `ContrasenaGeneradaPanel.tsx` (fichas 25 y 287) | Contraseña generada que se muestra una sola vez. | **No** se usa: el contrato de SL-17 crea al maestro sin contraseña (alternativa K). |
+| `app/(app)/dashboard/page.tsx` | Redirige a `primerDestino(itemsVisibles(...))` si no es `null`. | Con el ítem «Empresas», el superadmin aterriza en él solo, sin tocar la página (R6). |
+| `app/(app)/layout.tsx` | En toda página del portal lee `UserRepository.findById` y `UsuarioPreferenciaRepository.avisosPushDe` del actor. Con SL-17, `usuario` y `usuario_preferencia` son de negocio y el superadmin no tiene empresa. | Se adapta para el superadmin (`> Pantalla «Empresas» > El marco del portal`). |
+| `app/(app)/configuracion/vehiculos/` y `configuracion/page.tsx` (`UsuariosModule`) | Las pantallas de configuración: cabecera, tabla y formulario. | La referencia visual de «Empresas», que se mantiene mínima (T12). |
 | Tests que usan `"superadmin"` como **rol inventado** | `productos-alcance.test.ts:132`, `conteo-productos-action.test.ts:130,240,260`, `usuario-schema.test.ts:253` y `usuarios.test.ts:333`. | Los de analítica cambian de significado: se les da otro nombre inventado y se añade un caso real (T7). Los de usuarios siguen valiendo por R10. |
 
 ## Modelo de datos
@@ -55,11 +62,17 @@ añade `usuario.organizacion_id`. SL-32 parte de ahí y no inventa ningún aisla
   filtre en todas las consultas;
 - la empresa activa del superadmin no existe. Lo que SL-25/26 hagan «sobre una empresa» recibe la
   empresa por parámetro validado en el servidor, nunca de su sesión;
-- **ABIERTO, se cierra en T0:** si SL-17 deja `organizacion_id` nulable, ¿quién impide que un usuario
-  de empresa quede con `NULL`? SL-17 no puede escribir un `CHECK` que nombre el rol `superadmin`,
-  porque cuando corre su migración ese rol aún no existe. Si al leer su migración no hay regla, se
-  propone al humano que la segunda migración de SL-32 añada
-  `CHECK (("organizacion_id" IS NULL) = ("rol_id" = '<UUID_ROL_SUPERADMIN>'))`. No se añade sin su OK.
+- **Cerrado el 2026-10-22 (R28).** SL-17 deja `organizacion_id` nulable y sin regla (R3 y R35 de
+  SL-17), porque cuando corre su migración el rol `superadmin` aún no existe. La regla la pone
+  SL-32, como contrato de SL-17 (§10), en su **tercera** migración:
+  `CHECK (("organizacion_id" IS NULL) = ("rol_id" = '<UUID_ROL_SUPERADMIN>'))`. Va como literal
+  porque un `CHECK` no admite subconsultas, y por eso el `id` del rol es fijo (`> Migraciones`).
+  Las dos caras de la igualdad nunca son `NULL`: `IS NULL` siempre da verdadero o falso, y `rol_id`
+  es `NOT NULL`.
+- **El contexto de plataforma** (`comoPlataforma` de SL-17) lo abren tres sitios de SL-32: el
+  repositorio del comando de arranque, el del listado de empresas y la lectura del marco del portal
+  para el superadmin. Cada uno entra en `EXCEPCIONES_DE_PLATAFORMA` con `ficha: "SL-32"` y su
+  motivo, o la guardia `plataforma-solo-en-lista` de SL-17 lo pone en rojo.
 
 ### País
 
@@ -69,9 +82,9 @@ del país. Sale del catálogo existente, nunca de un literal del comando, y lo v
 
 ## Migraciones
 
-Van **encima de la migración de SL-17** (T0), porque las dos tocan `usuario`. Llevan dos carpetas
-por el error 55P04 de Postgres:
-un valor de enum no se puede usar en la misma transacción que lo añade.
+Van **encima de las migraciones de SL-17** (T0), porque las dos tocan `usuario`. Son tres
+carpetas. Las dos primeras van separadas por el error 55P04 de Postgres: un valor de enum no se
+puede usar en la misma transacción que lo añade. La tercera es la regla de R28.
 
 1. `<ts>_rol_superadmin/`
    - `migration.sql`: `ALTER TYPE "rol_value" ADD VALUE IF NOT EXISTS 'superadmin';`
@@ -94,12 +107,30 @@ un valor de enum no se puede usar en la misma transacción que lo añade.
 
      Así falla ruidosamente sin borrar al superadmin (R21).
 
+3. `<ts+2>_usuario_empresa_o_superadmin/` (R28)
+   - `migration.sql`: `ALTER TABLE "usuario" ADD CONSTRAINT "usuario_empresa_o_superadmin" CHECK (("organizacion_id" IS NULL) = ("rol_id" = '<UUID_ROL_SUPERADMIN>'));`.
+     Postgres la valida contra las filas que ya hay. En las bases nuevas de producción y QA no hay
+     filas. En una base local con usuarios de antes de SL-17, que tienen `NULL`, la migración
+     falla: esa base se rehace con `pnpm run db:reset`, como dice D9 de SL-17.
+   - `down.sql`: `ALTER TABLE "usuario" DROP CONSTRAINT "usuario_empresa_o_superadmin";`.
+   - Va en carpeta propia, y no dentro de la segunda, para que se pueda revertir sin tocar el
+     índice de R27.
+
+**Timestamps.** Los tres son posteriores a `20261022130300_misma_empresa_en_fk`, la última de
+SL-17 según su spec: por ejemplo `20261022140000`, `20261022140100` y `20261022140200`. Se fijan en
+T0, con SL-17 ya en `dev`. Si SL-17 añade otra migración, van detrás de esa.
+
 `seedRoles` hace upsert por `value`, así que conserva el `id` fijo de la migración. El
 `<UUID_ROL_SUPERADMIN>` se genera una vez al escribir la migración, y `lib/auth/plataforma.ts` no
 lo repite: el código busca el rol por valor.
 
-Los timestamps se fijan cuando SL-17 esté en `dev`: los dos tienen que ser posteriores a su
-migración. SL-28 consolida después, y su línea base las absorberá. Eso es de SL-28. Ninguna de las dos inserta en `usuario`: es la guardia de SL-11 R6.
+SL-28 consolida después, y su línea base las absorberá. Eso es de SL-28. Ninguna de las tres
+inserta en `usuario`: es la guardia de SL-11 R6.
+
+**Consecuencia en los tests.** Con la regla de R28, todo `INSERT` de un usuario que no sea
+superadmin necesita empresa. Lo cubren el `DEFAULT` de SL-17 y `enTransaccionRevertida` con empresa
+por defecto (§9.1 de SL-17). Un test que inserte usuarios fuera de ese helper se pone en rojo con
+`23514` (`check_violation`). T3 corre la suite de integración de `usuario` para encontrarlos.
 
 ## Fuente única: `lib/auth/plataforma.ts`
 
@@ -125,7 +156,8 @@ export function esPlataforma(rol: RolValue): boolean;
 
 | Capa | Qué hace con el superadmin | Requisito |
 |---|---|---|
-| Menú (`menu-visibility.ts`) | Para el superadmin nada cambia: ningún ítem lo lista, así que `itemsVisibles` devuelve `[]`, `primerDestino` devuelve `null` y `/dashboard` pinta «Bienvenido». Para el `maestro` sale el subítem «Geografía». Es el último hijo, así que no mueve `primerDestino` (R46 de la 374). | R6, R26 |
+| Menú (`menu-visibility.ts`) | Para el superadmin, un solo ítem, «Empresas», con `roles: ROLES_PLATAFORMA` por import. `itemsVisibles` devuelve ese ítem, `primerDestino` devuelve su `href` y `/dashboard` le redirige ahí. Para el `maestro` sale el subítem «Geografía». Es el último hijo, así que no mueve `primerDestino` (R46 de la 374). | R6, R26, R36 |
+| Pantalla «Empresas» | La página hace `notFound()` si `!esPlataforma(actor.rol)`. El servicio del listado y la action de SL-17 responden `forbidden` con la misma pregunta. | R35 |
 | Páginas y servicios de empresa | Nada cambia. Todas las whitelists lo excluyen y devuelven `notFound()` o `forbidden`. | R5 |
 | Analítica | `resolverAlcance` lo deniega con `rol_sin_analitica`. | R7 |
 | Asistente | `AsistenteService` lo rechaza por estar fuera de `ROLES_AYUDA`. | R7 |
@@ -154,8 +186,15 @@ const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);              // crear, 
   `GeografiaService` y no cambian.
 - La página `app/(app)/configuracion/geografia/page.tsx` cambia su puerta a `esPlataforma(actor.rol)`.
   Al `maestro` le responde `notFound()` (R26). Al superadmin tampoco se le abre todavía: no tiene
-  menú (R6), y su pantalla es de SL-26, que la consumirá con estas mismas acciones. Por eso la
+  ítem de geografía en el menú (R6), y su pantalla es de SL-26, que la consumirá con estas mismas
+  acciones. Por eso la
   página no recibe `puedeCambiarActivacion`, y `GeografiaAdminModule` no cambia.
+- **Con SL-17 en `dev` (P7, abierta).** `cambiarActivacion` y `renombrar` escriben
+  `historial_accion` con `appendAccion` en la misma transacción (`GeoRepository`), y
+  `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene
+  empresa: con su sesión, esas operaciones lanzan `EmpresaNoResuelta`. Hasta que Carlos decida,
+  T11 prueba la rama del `superadmin` con dobles y la del `maestro` (`forbidden` sin escrituras)
+  entera. No se inventa una empresa para el registro.
 - `lib/auth/menu-visibility.ts` quita el subítem «Geografía» de Configuración.
 - `lib/actions/geografia.ts` no cambia de forma: la autorización vive en el servicio.
 - La ayuda `docs/ayuda/oficina/configuracion-geografia.md` dice que la geografía (alta, cambio de
@@ -253,7 +292,111 @@ falta el catálogo, el mensaje pide correr `pnpm db:seed`, que es un script decl
 
 No cambia. El superadmin entra por `/login`. En su primer dispositivo, `AuthService` le pide el OTP
 por correo: con SMTP se envía, y sin SMTP (dev o CI) sale por `ConsoleEmailSender`. El E2E usa ese
-camino (R18).
+camino (R18). En Production y Preview depende del correo (`> Dependencias operativas`).
+
+## Pantalla «Empresas» del superadmin (R29–R36)
+
+Es un trozo de SL-26 que se adelanta. Consume la pieza de dominio de SL-17 y no la reescribe.
+
+### Ruta y piezas
+
+| Archivo | Papel |
+|---|---|
+| `app/(app)/plataforma/empresas/page.tsx` | Server Component. Resuelve el actor y hace `notFound()` si `!esPlataforma(actor.rol)` (R35). Llama al servicio del listado y lee el catálogo `tipo_identificacion`, y los pasa por props. |
+| `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx` | Cliente. La tabla del listado, con su estado vacío, y el formulario «Crear empresa». Llama a la action de SL-17 y pinta los errores por campo. No fetchea: recibe los datos por props y, tras un alta, refresca con `router.refresh()`. |
+| `lib/services/EmpresasPlataformaService.ts` | `listarEmpresas(actor)`: `forbidden` si `!esPlataforma(actor.rol)`. Si no, delega en el repositorio. |
+| `lib/repositories/EmpresasPlataformaRepository.ts` | Dentro de `comoPlataforma("SL-32", "listado de empresas del superadmin")`: `organizacion` ordenada por `created_at` descendente, con sus usuarios de rol `maestro` (`nombre`, `email`), por `created_at`. Solo esas columnas: nada de `password_hash`, documento ni teléfono. |
+| `lib/interfaces/services/IEmpresasPlataformaService.ts`, `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts` y `lib/types/empresas-plataforma.ts` | Contratos y el tipo `EmpresaListada = { id, nombre, slug, creadaEn, maestros: { nombre, email }[] }`. |
+| `lib/auth/menu-visibility.ts` | El ítem `{ label: "Empresas", href: "/plataforma/empresas", iconKey: "building", roles: ROLES_PLATAFORMA }`, al **final** del array. Ningún otro rol lo ve, así que su posición no mueve el aterrizaje de nadie más (R36). |
+| `app/(app)/_components/Sidebar.tsx` | `IconKey` gana `"building"` (`Building2` de `lucide-react`, que ya está en el repo), con el mismo comentario de «icono propio» que las demás. |
+
+- **La ruta va fuera de `/configuracion`.** `/configuracion` es del `maestro` y le da 404 al
+  superadmin (R5, T9). `plataforma/` es el prefijo de lo que SL-26 añada después.
+- **Por qué el listado es de SL-32 y no un método nuevo de `OrganizacionService`.** El archivo es de
+  SL-17, que se implementa en paralelo; añadirle un método sería otro choque. Si SL-17 ya expone un
+  listado con estos campos, se usa el suyo y estas cuatro piezas no nacen (P10).
+- **El catálogo de tipos de documento** es de plataforma (§2.2 de SL-17) y se lee sin contexto de
+  empresa. Lo lee la página y lo pasa por props, igual que el formulario de Usuarios.
+
+### Contrato con la action de SL-17
+
+Entrada, tal como la transmite el leader:
+`{ nombre, slug, maestro: { nombre, email, telefono, documento, tipoDocumento } }`.
+
+| Respuesta de la action | Lo que hace la pantalla | R |
+|---|---|---|
+| éxito | Limpia el formulario, `router.refresh()` y aviso «Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.» | R30, R37 |
+| slug ya existe (conflicto, o «ya existe» si SL-17 lo hace idempotente) | Error junto a «Slug». No se presenta como creada | R31 |
+| email ya existe | Error junto a «Email del maestro» | R32 |
+| documento ya existe | Error junto a «Documento» | R33 |
+| `validation_error` con `fieldErrors` | Un error por campo | R34 |
+| `forbidden` u otro error | Mensaje genérico, sin detalle | R34, R35 |
+
+- **Validación en el cliente.** El mismo schema zod de la entrada de SL-17, importado de su
+  `lib/types/`, si lo exporta. Si no lo exporta, la pantalla no copia reglas: deja validar a la action
+  y pinta sus `fieldErrors`. Dos schemas escritos a mano divergen.
+- **La comprobación de rol de la action.** SL-17 la deja enganchada a `lib/auth/plataforma.ts`, y
+  hasta entonces falla cerrado. Si SL-17 entra en `dev` antes con un stub, T15 cambia ese stub por
+  `esPlataforma` y nada más. El test de R35 vive en SL-32: con un `maestro`, la action responde
+  `forbidden` y no escribe.
+- La ruta y el nombre de la action, la forma exacta de cada error y cómo se guarda «sin
+  contraseña» se leen en T0 (P10).
+
+### El marco del portal para el superadmin (R6)
+
+`app/(app)/layout.tsx` lee en cada página `UserRepository.findById(actor.usuarioId)` (el nombre del
+pie) y `avisosPushDe` (`usuario_preferencia`). Con SL-17, las dos son tablas de negocio, y el
+superadmin no tiene empresa: las dos lecturas lanzarían `EmpresaNoResuelta` y tumbarían todas sus
+páginas. El cambio es mínimo:
+
+- si `esPlataforma(actor.rol)`, el nombre se lee con un `findById` dentro de
+  `comoPlataforma("SL-32", "nombre del superadmin en el pie")`;
+- `avisosPushDe` no se llama, y se pasa `false`: el superadmin no recibe avisos de empresa;
+- la tercera lectura (`revisionSinpe`) ya es `null` para él, porque `puedeEditarAlgunSinpe` no lo
+  incluye.
+
+Lo prueba `tests/integration/app-layout-superadmin.test.tsx`: con un actor superadmin, ni
+`UsuarioPreferenciaRepository` ni el cliente de empresa reciben llamadas, y el pie lleva su nombre.
+
+### Diseño visual
+
+Es una pantalla nueva, así que **pasa por `/design` antes de implementarse** (T12;
+`docs/perfil-agentes.md > frontend_dev`). Se mantiene mínima y coherente con las pantallas de
+configuración que ya hay (`configuracion/vehiculos`, `UsuariosModule`): el mismo `PageHeader`, una
+tabla y un formulario con los componentes de `components/ui/`. No hay marca nueva: la marca es de la
+fase 7 (`docs/perfil-agentes.md`).
+
+## Primer acceso del maestro creado (R37, R38)
+
+**Lo que ya existe, mirado en el código:**
+
+1. **Contraseña generada que se muestra una vez** (`generateStrongPassword`, fichas 25 y 287). Es el
+   camino del `maestro` cuando da de alta a alguien. **No se usa aquí**: el contrato de SL-17 crea al
+   maestro sin contraseña (alternativa K).
+2. **«Recuperar contraseña»** (`PasswordResetService`): `solicitar` emite un OTP por correo,
+   `verificarCodigo` lo comprueba y `restablecer` guarda el hash nuevo. Es el que elige el contrato
+   de SL-17. **Pero está desactivado**: `app/recuperar-contrasena/page.tsx` monta
+   `RecuperacionDesactivadaAviso` desde el 2026-09-04, y el login no enlaza a la página.
+3. **Restablecer desde Usuarios** (ficha 287): solo el `maestro`, sobre usuarios de su empresa. No
+   sirve para el primer maestro.
+
+**Lo que hace SL-32.** La pantalla no maneja contraseñas (R37). Cuando el correo esté verificado en
+el entorno, T19 vuelve a montar `RecuperarContrasenaForm` y el enlace del login con los dos cambios
+que describe el propio aviso, y revierte los dos tests que señala:
+`tests/integration/login-form-reset-link.test.tsx` y
+`tests/integration/recuperar-contrasena-page.test.tsx` (R38). Requiere el OK de Carlos (P9).
+
+## Dependencias operativas (no son código)
+
+Sin ellas, las pantallas funcionan pero **nadie entra**: ni el superadmin en un dispositivo nuevo
+(R18) ni el maestro creado (R37).
+
+| Dependencia | Dónde | Estado | Quién decide |
+|---|---|---|---|
+| Correo que envía de verdad: `SMTP_USER` y `SMTP_PASSWORD` (contraseña de aplicación de Google), por entorno | Vercel, Production y Preview por separado | **No configurado.** El último SMTP fallaba con `535` (aviso del 2026-09-04) | Carlos (P8) |
+| Alternativa sin SMTP: `AUTH_OTP_DEBUG_LOG=1`, y leer el código en los logs de Vercel | Vercel, por entorno | Existe en el código. `.env.example` dice «DEJALO VACIO EN PRODUCCION: es un secreto en los logs» | Carlos (P8). Si se usa, es temporal y queda como deuda |
+| Verificación: un correo de OTP que llega, antes de dar de alta la primera empresa real | cada entorno | Pendiente. Se anota en `progress/impl_SL-32.md` | quien despliega |
+| `pnpm arranque:superadmin`, a mano, una vez por entorno, después de `migrate deploy` y de T4.1 de SL-17 | producción y QA | Pendiente | Carlos (P4) |
 
 ## Gestionar la geografía es de la plataforma (D7)
 
@@ -281,10 +424,10 @@ camino (R18).
 
 | Guardia | Cambio |
 |---|---|
-| `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` (SL-11 R2) | `faltasDeScripts` admite **exactamente** `arranque:superadmin` → `tsx scripts/arranque-superadmin.ts`, como excepción declarada con su ficha. Una contraprueba sintética comprueba que un segundo script con `superadmin`, o el mismo nombre con otro comando, sigue en rojo. R6 (ninguna migración inserta en `usuario`) no cambia. |
+| `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` (SL-11 R2) | `faltasDeScripts` pasa a leer una **lista** de excepciones `{ nombre, comando, ficha }`, y SL-32 añade una sola fila: `arranque:superadmin` → `tsx scripts/arranque-superadmin.ts`, ficha SL-32 (R19). Si SL-17 conserva `alta:empresa`, es otra fila con ficha SL-17. Quien mergea segundo rebasa y deja **las dos** filas. Una contraprueba sintética comprueba que un script con `superadmin` fuera de la lista, o el mismo nombre con otro comando, sigue en rojo. Ninguna aserción supone que la lista tiene un solo elemento. R6 (ninguna migración inserta en `usuario`) no cambia. |
 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` (SL-16 R6/R16) | Lo de D7, arriba. |
 | `tests/unit/analytics/alcance-fuente-unica.guardia.test.ts` | Pasa de seis `RolValue` a siete. La partición ternaria sigue cubriéndolos, con `superadmin` en `ROLES_SIN_ANALITICA`. |
-| **Nueva:** `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` | (a) Ningún ítem ni subítem de `SIDEBAR_ITEMS`, ni `ROLES_ACCESO_TOTAL`, `ROLES_AYUDA`, `ROLES_ANALITICA`, `ROLES_HISTORICO_CONVERSACIONES`, `ROLES_HISTORIAL_ACCIONES`, `ROLES_MI_WALLET`, `ROLES_MI_BODEGA` ni `ALLOWED_ROLES`/`READ_ROLES`/`WRITE_ROLES` de los servicios contiene un rol de plataforma. Hay dos excepciones declaradas: `GESTION_ROLES` y `READ_ROLES` de `GeografiaService` (R24, R25), y tienen que leer `ROLES_PLATAFORMA` por import. Cualquier otra lista que lo incluya es rojo. (b) El literal `superadmin` solo aparece en `lib/` y `app/` en `plataforma.ts` y en la lista declarada de tablas exhaustivas (R4). Lleva contraprueba sintética. |
+| **Nueva:** `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` | (a) Ningún ítem ni subítem de `SIDEBAR_ITEMS`, ni `ROLES_ACCESO_TOTAL`, `ROLES_AYUDA`, `ROLES_ANALITICA`, `ROLES_HISTORICO_CONVERSACIONES`, `ROLES_HISTORIAL_ACCIONES`, `ROLES_MI_WALLET`, `ROLES_MI_BODEGA` ni `ALLOWED_ROLES`/`READ_ROLES`/`WRITE_ROLES` de los servicios contiene un rol de plataforma. Hay tres excepciones declaradas: `GESTION_ROLES` y `READ_ROLES` de `GeografiaService` (R24, R25), y el ítem «Empresas» de `SIDEBAR_ITEMS` (R36). Las tres tienen que leer `ROLES_PLATAFORMA` por import. Cualquier otra lista que lo incluya es rojo. (b) El literal `superadmin` solo aparece en `lib/` y `app/` en `plataforma.ts` y en la lista declarada de tablas exhaustivas (R4). Lleva contraprueba sintética. |
 
 ## Dependencias
 
@@ -319,6 +462,18 @@ Ninguna nueva. Se usan `bcryptjs`, `zod`, `tsx` y `@prisma/client`, que ya está
   Era la primera lectura de D7. Carlos la amplió el 2026-10-22: el módulo entero es de la
   plataforma. Un paso más allá, cerrar al `maestro` también `listarArbol`, rompería Tarifas, que
   nadie decidió quitarle.
+- **K. Que la pantalla genere una contraseña del maestro y la muestre una vez**, como hace hoy el
+  alta de Usuarios (`generateStrongPassword` y `ContrasenaGeneradaPanel`). Es el mecanismo que no
+  depende del correo, y por eso era el candidato natural sin SMTP. Se descarta porque el contrato
+  de SL-17 crea al maestro sin contraseña y elige «recuperar contraseña» (leader, 2026-10-22). Si P8
+  no se resuelve a tiempo, es la vuelta atrás más barata, pero cambia el contrato de SL-17 y
+  necesita el OK de Carlos.
+- **L. Poner «Empresas» como subítem de Configuración.** Configuración es del `maestro`, y
+  `/configuracion` le da 404 al superadmin (R5). Abrírsela le regalaría Usuarios, Tarifas y API.
+- **M. Añadir `listar` a `OrganizacionService`.** Es el archivo de SL-17, en vuelo en paralelo, y
+  sería otro choque más. Se usa si SL-17 ya lo trae (P10).
+- **N. Dejar la portada «Bienvenido» y llegar a «Empresas» por URL.** Un menú que no ofrece la
+  única pantalla del rol obliga a saber la ruta. Con el ítem, `primerDestino` lo lleva solo.
 - **J. Dejar la autorización de geografía para SL-20.** Era la recomendación inicial. Carlos la
   descartó el 2026-10-22: el permiso cambia ya.
 
@@ -327,15 +482,39 @@ Ninguna nueva. Se usan `bcryptjs`, `zod`, `tsx` y `@prisma/client`, que ya está
 - **Nadie gestiona la geografía desde la interfaz hasta SL-26.** El `maestro` pierde el módulo
   (R26) y el superadmin todavía no tiene pantalla. Las acciones del servidor sí funcionan para el
   superadmin. Es la consecuencia aceptada de mover el permiso ya (Carlos), y SL-26 tiene que
-  incluir la pantalla de geografía de plataforma.
+  incluir la pantalla de geografía de plataforma. Lo mismo pasa con Vehículos desde SL-17 (D12):
+  el `maestro` ya no escribe el catálogo, y la interfaz del superadmin llega con SL-26.
+- **El primer acceso depende del correo** (P8, P9). Sin SMTP verificado, o sin el atajo de
+  `AUTH_OTP_DEBUG_LOG`, la empresa se crea pero su maestro no puede poner contraseña ni pasar el OTP.
+  Es el riesgo más alto para mañana, y no se arregla con código de esta ficha.
+- **El marco del portal y SL-17.** Si SL-17 llega a `dev` y el layout no se adapta (T15), todas las
+  páginas del superadmin caen con `EmpresaNoResuelta`, «Empresas» incluida.
 
 ## Límite del alcance
 
 - El `maestro` no crea superadmins ni asciende a nadie a superadmin: lo cubren R8–R11 y R27.
-- El superadmin tendrá su propio alta de empresas y de los usuarios de cada una. Eso es de SL-25 y
-  SL-26, no de esta ficha: SL-32 solo deja el rol, su arranque y `lib/auth/plataforma.ts`.
-- Fuera de Geografía, los módulos del `maestro` no cambian (Carlos): Usuarios, Tarifas, API,
-  Plantillas, Vehículos, Envíos automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes.
+- El alta de empresas desde el superadmin entra aquí solo como pantalla «Empresas»: listado y
+  «Crear empresa» con su primer maestro. Editar o retirar empresas y gestionar sus demás usuarios es
+  de SL-26. La pieza de dominio del alta es de SL-17.
+- Fuera de Geografía, SL-32 no cambia los módulos del `maestro` (Carlos): Usuarios, Tarifas, API,
+  Plantillas, Envíos automáticos, SINPE, Histórico › Acciones, Monitoreo e Incidentes.
+  **Vehículos cambia por SL-17**, no por SL-32 (D12 de SL-17): el catálogo es de plataforma y el
+  `maestro` ya no lo escribe. SL-32 no toca `VehiculoService` ni el subítem «Vehículos» del
+  menú del `maestro`, que SL-17 deja de solo lectura. La edición del superadmin llega con SL-26.
+
+## Choques con SL-17 (quien mergea segundo rebasa; §10 de SL-17)
+
+| Punto | Qué comparten | Cómo se resuelve |
+|---|---|---|
+| Migraciones | `usuario`, el enum y el orden | Las tres de SL-32 van con timestamp posterior a `20261022130300_misma_empresa_en_fk` (R21). Se fijan en T0 |
+| `db/schema.prisma` | `Usuario` (`organizacionId String?` de SL-17) y `RolValue` | SL-32 solo añade el valor del enum. La regla de R28 no va en el schema: Prisma no modela `CHECK`, así que no hay drift |
+| `CHECK` de R28 | La columna `usuario.organizacion_id` de SL-17 | Migración propia de SL-32 (§10 de SL-17). Necesita la columna: solo después de SL-17 en `dev` |
+| `package.json > scripts` | `arranque:superadmin` (SL-32) y, si sigue en su spec, `alta:empresa` (SL-17) | Las dos líneas conviven |
+| `fuera-datos-ordenex.guardia.test.ts` (`faltasDeScripts`) | La lista de excepciones | Una lista con una fila por ficha (`> Guardias que cambian`) |
+| `lib/db/excepciones-aislamiento.ts` | `EXCEPCIONES_DE_PLATAFORMA` | SL-32 añade sus tres filas con `ficha: "SL-32"` |
+| La action de alta de SL-17 | La comprobación de rol | SL-17 la engancha a `esPlataforma`; si queda un stub, T15 lo cambia |
+| `e2e/dos-empresas-humo.spec.ts` de SL-17 | Recorre las rutas del menú del `maestro` y abre «geografía» y «vehículos» (§9.3, punto 5) | Con T11, «Geografía» sale del menú del `maestro` y su página le da 404. El humo deriva las rutas del menú, así que deja de visitarla, pero su punto 5 dice que la abre. SL-17 lo ajusta al rebasar |
+| `app/(app)/layout.tsx` | Lecturas de `usuario` y `usuario_preferencia` | T15 lo adapta para el superadmin (`> El marco del portal`) |
 - **El `id` fijo del rol `superadmin`.** Si alguna base tuviera ya esa fila con otro `id`, la
   migración aborta en vez de dejar un índice que no protege nada. Hoy no puede pasar, porque el
   valor del enum no existe antes de la migración.
