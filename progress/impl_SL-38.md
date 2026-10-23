@@ -443,3 +443,11 @@ distintas; verde, y rojo con cada una de las tres mutaciones pedidas.
 
 Veredicto T10: el contrato del script sale de `MODELOS_DE_NEGOCIO`, con su test muerto por la mutación
 del literal; docs al día con cambios mínimos.
+
+## T11 — aislamiento del caso R13
+
+- `distrito-zona-especial-por-empresa.test.ts`: el `count` de R13 y los helpers `marcasDe`/`marcasDeBase` y la siembra se acotan a `organizacion_id IN (A, B)`; antes contaban la tabla entera y una marca de `zona-especial-dos-empresas.test.ts` en paralelo podía teñirlo de rojo.
+- Los dos archivos juntos, tres corridas: `Test Files 2 passed (2)`, `Tests 21 passed (21)` las tres; `tsc --noEmit` y `eslint` del archivo en 0; cliente `distritoZonaEspecial: SI | Distrito.zonaEspecial: ausente`.
+- Mutación (restaurada; blob `e15ce21` idéntico): `deleteMany` en su propia `$transaction`, fuera de la del `createMany` → R13 cae con `expected 1 to be 2` (`Tests 1 failed | 8 passed`).
+
+Veredicto T11: R13 mide solo sus empresas y sigue matando el lote no atómico.

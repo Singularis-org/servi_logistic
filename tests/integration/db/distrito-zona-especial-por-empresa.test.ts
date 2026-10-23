@@ -108,19 +108,24 @@ async function comoDueno(tx: TxDeTest): Promise<void> {
   await tx.$executeRawUnsafe(`SET LOCAL ROLE NONE`);
 }
 
-/** Las marcas de `distrito`, medidas como dueno: `[organizacion_id]` ordenadas. */
+// Toda medida se acota a las dos empresas del archivo: otro archivo en paralelo
+// (`zona-especial-dos-empresas.test.ts`) escribe marcas de sus empresas en la misma tabla.
+
+/** Las marcas de A y B en `distrito`, medidas como dueno: `[organizacion_id]` ordenadas. */
 async function marcasDe(tx: TxDeTest, distrito: string): Promise<string[]> {
   const filas = await tx.$queryRawUnsafe<{ organizacion_id: string }[]>(
-    `SELECT organizacion_id FROM distrito_zona_especial WHERE distrito_id = $1 ORDER BY organizacion_id`,
+    `SELECT organizacion_id FROM distrito_zona_especial
+      WHERE distrito_id = $1 AND organizacion_id = ANY($2::text[]) ORDER BY organizacion_id`,
     distrito,
+    [s.A, s.B],
   );
   return filas.map((f) => f.organizacion_id);
 }
 
-/** Las marcas de `distrito` leidas por la conexion del dueno, fuera de cualquier transaccion. */
+/** Las marcas de A y B en `distrito`, leidas por la conexion del dueno, fuera de cualquier transaccion. */
 async function marcasDeBase(distrito: string): Promise<string[]> {
   const filas = await base.distritoZonaEspecial.findMany({
-    where: { distritoId: distrito },
+    where: { distritoId: distrito, organizacionId: { in: [s.A, s.B] } },
     select: { organizacionId: true },
     orderBy: { organizacionId: "asc" },
   });
@@ -182,7 +187,7 @@ describeSiHayBase("SL-38 T2/T6 — la marca de zona especial es de la empresa (R
 
     // La siembra, medida como dueno. Sin la marca de A en D, nada de lo de abajo mediria nada.
     const marcas = await base.distritoZonaEspecial.findMany({
-      where: { distritoId: { in: [s.D, s.D2] } },
+      where: { distritoId: { in: [s.D, s.D2] }, organizacionId: { in: [s.A, s.B] } },
       select: { id: true, distritoId: true, organizacionId: true },
     });
     expect(marcas).toEqual([{ id: s.marcaA, distritoId: s.D, organizacionId: s.A }]);
@@ -418,7 +423,9 @@ describeSiHayBase("SL-38 T2/T6 — la marca de zona especial es de la empresa (R
         creadas: 1,
         borradas: 0,
       });
-      const antes = await base.distritoZonaEspecial.count();
+      // Solo las marcas de A y B: el lote es de B, y una marca de otro archivo no es de este caso.
+      const deEstasEmpresas = { where: { organizacionId: { in: [s.A, s.B] } } };
+      const antes = await base.distritoZonaEspecial.count(deEstasEmpresas);
       const inexistente = `no-existe-${randomUUID()}`;
 
       const porRepo = await conEmpresa(s.B, () => repo.aplicarCambios({ marcar: [s.D, inexistente], desmarcar: [s.D2] }));
@@ -431,7 +438,7 @@ describeSiHayBase("SL-38 T2/T6 — la marca de zona especial es de la empresa (R
 
       expect(porRepo).toEqual({ estado: "distrito_inexistente" });
       expect(porAccion).toEqual({ status: "validation_error" });
-      expect(await base.distritoZonaEspecial.count()).toBe(antes);
+      expect(await base.distritoZonaEspecial.count(deEstasEmpresas)).toBe(antes);
       expect(await marcasDeBase(s.D2)).toEqual([s.B]);
       expect(await marcasDeBase(s.D)).toEqual([s.A]);
     } finally {
