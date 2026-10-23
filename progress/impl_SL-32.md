@@ -1564,3 +1564,24 @@ Log del server: 0 respuestas 5xx, 0 `EmpresaNoResuelta` y `GET /configuracion/ge
 - `gate.lock` soltado por mi script. A las 13:58:44 lo volvió a tomar otro proceso, que no es mío, y lo dejé.
 
 Veredicto: el humo queda verde en esta rama (6/6, dos veces). El punto 6 vigila el 404 de geografía para el maestro, y la mutación lo tumba.
+
+## Review vuelta 1 — cierre: gate final — backend_dev — 2026-10-23
+
+El humo (dos corridas en 6/6 y la mutación de la puerta en rojo) ya está en la subsección anterior. No se repitió.
+
+**Primer gate (en `f0d8ce4`): `INIT_EXIT=1`.** Typecheck y lint pasaron. Hubo un rojo nuevo, fuera del baseline: `tests/unit/guards/catalogo-postgres-acota-esquema.guardia.test.ts`, con este hallazgo:
+```
+tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts:183 -> SELECT 1 FROM pg_type WHERE typname = 'rol_value_old'
+```
+El fallo era del test de B1 de esta misma rama: consultaba `pg_type` sin acotar el esquema. Además, ese `prisma generate` falló por falta de `DATABASE_URL`, porque el worktree no tiene `.env`. El cliente seguía vigente, porque el `init.sh` dio «cliente de Prisma al día», pero en la segunda corrida se generó con `sl32-env.sh` cargado.
+
+**Arreglo.** `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts`: la consulta pasa a `pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'rol_value_old' AND n.nspname = 'public'`. La aserción es la misma.
+
+**Segunda corrida, toda dentro de `gate.lock` (15:16–15:32):**
+- `prisma generate` (`sl32_base`): `✔ Generated Prisma Client (v7.8.0)`
+- `vitest run tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` (`sl32_base`): `Tests  5 passed (5)`, `INT_EXIT=0`
+- `vitest run tests/unit/guards/catalogo-postgres-acota-esquema.guardia.test.ts`: `Tests  7 passed (7)`, `GUARD_EXIT=0`
+- `eslint` del test: `ESLINT_EXIT=0`
+- `TEST_RAPIDO_BASE=dev ./init.sh`: `✓ typecheck paso`, `✓ lint paso`, `Tests  15749 passed | 1000 skipped`, `Tests  4081 passed | 20 skipped (4101)`, **`INIT_EXIT=0`**. Árbol: `f0d8ce4` más este arreglo, que va en el commit siguiente.
+
+Veredicto: la vuelta 1 queda cerrada en local (B1 y B2) y el gate está en verde.

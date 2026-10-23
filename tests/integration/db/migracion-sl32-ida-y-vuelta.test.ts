@@ -180,7 +180,10 @@ describeSiHayBase("SL-32 R21 — rol_superadmin, seed y CHECK de ida y vuelta", 
       `SELECT e.enumlabel AS v FROM pg_enum e WHERE e.enumtypid = '"rol_value"'::regtype ORDER BY e.enumsortorder`,
     );
     expect(valores.map((r) => r.v)).toEqual(ENUM_ANTES);
-    const { rows: viejo } = await db.query(`SELECT 1 FROM pg_type WHERE typname = 'rol_value_old'`);
+    const { rows: viejo } = await db.query(
+      `SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname = 'rol_value_old' AND n.nspname = 'public'`,
+    );
     expect(viejo).toEqual([]);
     expect(await existeIndice()).toBeNull();
     expect(await existeCheck()).toBeNull();
