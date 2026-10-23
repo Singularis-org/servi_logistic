@@ -78,3 +78,7 @@ decisión del leader: una ficha nueva que arregle `RastreoPublicoService` (que `
 `Z`) y que la cite como motivo de su entrada en el baseline mientras tanto. PR sin mergear.
 
 Las bases desechables (`servi_logistic_sl31`) y el contenedor `postgres:17` de la medición, borrados.
+
+**Corrida 3:** por decisión del leader, `tests/unit/services/rastreo-publico-service.test.ts` entra
+al baseline con motivo «Node 24.21 en CI da GMT+00:00 en UTC; lo arregla SL-37 (PR #2)», desde
+2026-10-22. El PR #2 (`feature/SL-37-rastreo-fecha-utc`) quita la entrada al mergearse.
