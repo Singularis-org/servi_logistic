@@ -92,4 +92,51 @@ vea como un build rojo con mensaje, no como un build eterno.
 
 ### Usuarios
 
-La app nace sin ningún usuario; el primero, el superadmin, llega con SL-32.
+La app nace sin ningún usuario. El primero es el **superadmin** de la plataforma, que no
+pertenece a ninguna empresa. Lo crea un comando, y desde su pantalla «Empresas» se da de alta
+cada empresa con su primer maestro.
+
+```bash
+pnpm arranque:superadmin
+```
+
+- **Cuándo:** a mano, **una vez por entorno**, después de `prisma migrate deploy` y de
+  `pnpm db:seed`. No forma parte del `build` ni de CI. La única excepción es el E2E, que lo corre
+  con credenciales de prueba.
+- **Qué lee:** seis variables de entorno obligatorias, sin valor por defecto, declaradas vacías en
+  `.env.example`: `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, `SUPERADMIN_NOMBRE`,
+  `SUPERADMIN_TELEFONO`, `SUPERADMIN_DOCUMENTO` y `SUPERADMIN_TIPO_DOCUMENTO`. La contraseña
+  cumple la política de contraseñas nuevas y solo se guarda su hash. El tipo de documento es un
+  valor del catálogo `tipo_identificacion`. Los valores no se commitean ni se pegan en ningún
+  sitio, y después de correrlo no hace falta dejarlas en el entorno.
+- **Qué responde:**
+
+  | Salida | Código |
+  | --- | --- |
+  | Superadmin creado | 0 |
+  | Ya existe un superadmin: no cambia nada, tampoco la contraseña | 0 |
+  | Una variable falta o no es válida: nombra la variable y la regla | 1 |
+  | El email o el documento ya son de otro usuario | 1 |
+  | Falta el rol o el tipo de documento en el catálogo: pide `pnpm db:seed` | 1 |
+
+  Ningún mensaje lleva la contraseña, el email ni el documento. Dos ejecuciones a la vez dejan un
+  solo superadmin, y las dos terminan en 0: la base solo admite uno.
+- **La contraseña** se cambia con «¿Olvidaste tu contraseña?», no volviendo a correr el comando.
+
+#### El correo, sin el cual nadie entra
+
+El superadmin entra por `/login`. En un dispositivo nuevo, el login pide un código por correo, y el
+maestro de cada empresa nueva entra con «¿Olvidaste tu contraseña?», que también lo manda por
+correo. Así que, antes de dar de alta la primera empresa real, cada entorno necesita el correo
+configurado (variables de `lib/config/email.ts`, por entorno en Vercel: Production y Preview por
+separado):
+
+- **Con SMTP:** el relay de Brevo. `SMTP_HOST=smtp-relay.brevo.com` y `SMTP_PORT=587`, con
+  `SMTP_USER` y `SMTP_PASSWORD`, que son el usuario y la clave SMTP de la cuenta de Brevo. Si
+  `SMTP_FROM` se rellena, tiene que ser un remitente verificado en Brevo. Con `SMTP_USER` y
+  `SMTP_PASSWORD` puestas, el correo sale de verdad.
+- **Sin SMTP** (desarrollo y CI): si falta `SMTP_USER` o `SMTP_PASSWORD`, el correo cae a
+  `ConsoleEmailSender` y no sale ninguno. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`,
+  que en producción se deja vacío porque deja un secreto en los logs.
+
+Comprueba que llega un código real en cada entorno antes de dar de alta la primera empresa.

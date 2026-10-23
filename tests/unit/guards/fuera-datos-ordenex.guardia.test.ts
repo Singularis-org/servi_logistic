@@ -14,7 +14,8 @@ import { NOMBRE_HEREDADO } from "../../fixtures/nombre-heredado";
 // cualquiera de esas piezas:
 //
 //  - R1:  alguno de los 8 archivos retirados (geografia en xlsx, seeds, el SQL de zonas);
-//  - R2:  un script `db:seed*` distinto de `db:seed`, o uno que cree usuarios;
+//  - R2:  un script `db:seed*` distinto de `db:seed`, o uno que cree usuarios y no este, con su
+//         comando exacto, en `SCRIPTS_QUE_CREAN_USUARIOS` (SL-32 R19);
 //  - R3:  un texto que pide correr un `db:seed...` que `package.json` no declara;
 //  - R6:  una migracion que inserta usuarios o zonas, o que nombra el nombre heredado en las editadas;
 //  - R9:  el paso de `build` vuelve a desatascar migraciones o a sembrar SINPE;
@@ -50,11 +51,25 @@ const RETIRADOS = [
 
 const NOMBRES_QUE_CREAN_USUARIOS = ["seed-maestro", "seed-usuarios", "superadmin", "crear-usuario"];
 
+/**
+ * SL-32 R19 — los UNICOS scripts que pueden crear usuarios, con su nombre y su comando EXACTOS y la
+ * ficha que los justifica. El mismo nombre con otro comando, u otro script que nombre lo prohibido,
+ * sigue en rojo.
+ */
+export const SCRIPTS_QUE_CREAN_USUARIOS: readonly { nombre: string; comando: string; ficha: string }[] = [
+  { nombre: "arranque:superadmin", comando: "tsx scripts/arranque-superadmin.ts", ficha: "SL-32" },
+];
+
+function esExcepcionDeclarada(nombre: string, comando: string): boolean {
+  return SCRIPTS_QUE_CREAN_USUARIOS.some((e) => e.nombre === nombre && e.comando === comando);
+}
+
 /** Las faltas de R2 en un `package.json`: scripts de siembra de mas, o que crean usuarios. */
 export function faltasDeScripts(scripts: Record<string, string>): string[] {
   const faltas: string[] = [];
   for (const [nombre, comando] of Object.entries(scripts)) {
     if (nombre.startsWith(SEED) && nombre !== SEED) faltas.push(`script de siembra de mas: ${nombre}`);
+    if (esExcepcionDeclarada(nombre, comando)) continue;
     for (const prohibido of NOMBRES_QUE_CREAN_USUARIOS) {
       if (nombre.includes(prohibido) || comando.includes(prohibido)) {
         faltas.push(`${nombre} nombra ${prohibido}`);
@@ -193,6 +208,32 @@ describe("SL-11 R2 — el unico script de siembra es db:seed, y ninguno crea usu
     const sintetico = { ...scripts, [SEED + ":zonas"]: "tsx scripts/x.ts" };
     expect(faltasDeScripts(sintetico)).toEqual([`script de siembra de mas: ${SEED}:zonas`]);
     expect(faltasDeScripts({ [SEED]: "tsx scripts/seed-maestro.ts" })).not.toEqual([]);
+  });
+
+  it("SL-32 R19: cada excepcion esta en package.json con su comando exacto y apunta a un archivo que existe", () => {
+    expect(SCRIPTS_QUE_CREAN_USUARIOS.length).toBeGreaterThan(0);
+    for (const e of SCRIPTS_QUE_CREAN_USUARIOS) {
+      expect(e.ficha).toMatch(/^SL-\d+$/);
+      expect(scripts[e.nombre], e.nombre).toBe(e.comando);
+      const destino = /scripts\/[\w./-]+\.(?:ts|mts|js|mjs|cjs)/.exec(e.comando);
+      expect(destino, `${e.nombre} no apunta a un archivo de scripts/`).not.toBeNull();
+      expect(existsSync(path.join(RAIZ, (destino as RegExpExecArray)[0]))).toBe(true);
+    }
+  });
+
+  it("contraprueba SL-32 R19: otro script con superadmin, o el declarado con otro comando, da rojo", () => {
+    const base = { [SEED]: "tsx scripts/seed-catalogos.ts" };
+    const declarado = { ...base, "arranque:superadmin": "tsx scripts/arranque-superadmin.ts" };
+    expect(faltasDeScripts(declarado)).toEqual([]);
+    expect(faltasDeScripts({ ...base, "arranque:superadmin": "tsx scripts/otro.ts" })).toEqual([
+      "arranque:superadmin nombra superadmin",
+    ]);
+    expect(faltasDeScripts({ ...declarado, "otro:superadmin": "tsx scripts/arranque-superadmin.ts" })).toEqual([
+      "otro:superadmin nombra superadmin",
+    ]);
+    expect(faltasDeScripts({ ...base, "otro:arranque": "tsx scripts/superadmin-2.ts" })).toEqual([
+      "otro:arranque nombra superadmin",
+    ]);
   });
 });
 

@@ -585,3 +585,338 @@ con decisión del leader.
 
 **Veredicto:** T4, T5, T6 y T7 están hechas y marcadas. La tarea A también: el lock de superadmin serializa los
 cinco archivos que lo crean, y la mutación del lock lo demuestra.
+
+## T8 y T14b — el comando de arranque entero y el repositorio del listado (R12–R20, R27, R29, R35), backend_dev — 2026-10-23
+
+**Archivos nuevos** (LF)
+- `lib/repositories/ArranqueSuperadminRepository.ts`:
+  - `crearSiNoExiste` corre en `comoPlataforma("SL-32", …)` y abre una transacción. La primera sentencia es
+    `pg_advisory_xact_lock(CLAVE_LOCK_ARRANQUE_SUPERADMIN = 32_1023_00)`. Es distinta de la clave de los tests
+    (`32_1023_01`): con la misma, el comando esperaría al test que lo espera a él.
+  - Después, en este orden: ¿hay superadmin? → `ya_existe`; rol y tipo de documento → `catalogo_incompleto`;
+    email o cédula ocupados → `conflicto`; `INSERT` con `organizacionId: null` explícito y `estado: "activo"`.
+  - El rol sale de `ROLES_PLATAFORMA`, sin el literal (guardia de T6).
+  - `desenlaceDeP2002` (exportada) traduce un P2002 por el nombre del índice, con `textoConstraintP2002`:
+    `usuario_un_solo_superadmin` → `ya_existe`, `usuario_email_key` → `conflicto email` y
+    `usuario_cedula_key` → `conflicto documento`. Cualquier otro se relanza.
+- `lib/repositories/EmpresasPlataformaRepository.ts`: dentro de `comoPlataforma("SL-32", "listado de empresas
+  del superadmin")`. Hace `organizacion.findMany` por `createdAt desc` (desempata el `slug`), con `usuarios`
+  de rol `maestro` por `createdAt asc` (desempata el `email`). Del maestro solo se seleccionan `nombre` y `email`.
+- `lib/actions/_shared/empresas-plataforma.ts`: el composition root del listado. No es Server Action (sin
+  `"use server"`), así que no expone un endpoint, y la guardia de superficie no lo cuenta. **Firma para T15:**
+
+  ```ts
+  listarEmpresasPlataforma(
+    actor: ActorEmpresasPlataforma | null,   // { rol: string }; el Actor de la sesión encaja
+    servicio?: IEmpresasPlataformaService,   // por defecto, construirEmpresasPlataformaService()
+  ): Promise<ListarEmpresasResultado>        // { status: "ok"; empresas: EmpresaListada[] } | { status: "forbidden" }
+
+  construirEmpresasPlataformaService(prisma = getPrismaClient()): IEmpresasPlataformaService
+  ```
+
+  La página hace `const actor = await resolveActorFromSession(); if (!actor || !esPlataforma(actor.rol)) notFound();`
+  y luego `const r = await listarEmpresasPlataforma(actor);`. `forbidden` no debería llegar, pero si llega se pinta
+  como error. El predicado es `esPlataforma`, con un cast `rol as RolValue`: el servicio de T14a tipa el rol como
+  `string`.
+- `scripts/arranque-superadmin.ts`: entrypoint igual que `seed-catalogos.ts` (`loadEnvFile`, `getPrismaClient`,
+  `isEntrypoint`). Exporta `ejecutarArranque(servicio, entorno, salida = console)`:
+  - `creado` y `ya_existe` van a stdout; el resto, a stderr; siempre con el mensaje fijo de `mensajeArranqueSuperadmin`.
+  - Ante una excepción imprime solo `error.name` y un `code` corto, nunca el mensaje.
+  - Sale con `process.exitCode`, no con `exit()`.
+- Tests:
+  - `tests/integration/db/arranque-superadmin.test.ts` (10 casos);
+  - `tests/integration/db/empresas-plataforma.test.ts` (4);
+  - `tests/unit/scripts/arranque-superadmin.test.ts` (17);
+  - `tests/unit/actions/empresas-plataforma.composition-root.test.ts` (8).
+
+**Modificados**
+- `lib/db/excepciones-aislamiento.ts`: dos filas de `EXCEPCIONES_DE_PLATAFORMA` con `ficha: "SL-32"`, una para
+  cada repositorio.
+- `lib/services/EmpresasPlataformaService.ts`: solo el comentario, que ya dice dónde está cableado `esPlataforma`.
+- `package.json`: `"arranque:superadmin": "tsx scripts/arranque-superadmin.ts"`, detrás de `db:seed`. SL-17 no
+  dejó scripts.
+- `.env.example`: las seis `SUPERADMIN_*` vacías, con su bloque de comentario.
+- `README.md > Usuarios`:
+  - la frase «llega con SL-32» se cambia en un solo paso por la sección entera: cuándo se corre (a mano, una vez
+    por entorno, después de `migrate deploy` y `db:seed`, fuera del build y de CI salvo el E2E), qué lee, la
+    tabla de desenlaces y códigos, y cómo se cambia la contraseña;
+  - «El correo, sin el cual nadie entra»: el relay de Brevo con `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/
+    `SMTP_PASSWORD`/`SMTP_FROM`, o `ConsoleEmailSender` sin SMTP, y `AUTH_OTP_DEBUG_LOG`.
+  - No lleva ningún valor de `SUPERADMIN_*`. El host y el puerto de Brevo son los públicos que ya fija el spec (P8).
+- `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` (R19):
+  - `SCRIPTS_QUE_CREAN_USUARIOS`, con nombre, comando exacto y ficha. `faltasDeScripts` solo deja pasar el par
+    exacto.
+  - Un caso exige que cada excepción esté en `package.json` con ese comando y apunte a un archivo que existe.
+  - Contraprueba: el mismo nombre con otro comando, otro script con `superadmin` en el nombre y otro con
+    `superadmin` en el comando dan rojo.
+- `specs/SL-32-rol-superadmin/tasks.md`: T8 y T14b `[x]`, y las dos rutas nuevas en `## Archivos esperados`.
+
+**R → test**
+- R12:
+  - `arranque-superadmin.test.ts > la primera ejecucion crea…`: activo, `organizacion_id` NULL, tipo `cedula`,
+    hash bcrypt verificable, `zona`/`vehiculo`/`placa` NULL, `fulfillment` false;
+  - el caso de R19 del guard: el script declarado existe.
+- R13: `tests/unit/scripts/arranque-superadmin.test.ts`: código 1 y stderr para `entrada_invalida`; nombra
+  `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD` sin sus valores. Además, los tests de T2.
+- R14: `… > repetida, da ya_existe y no escribe nada`. Compara la fila entera (`to_jsonb`) antes y después, con
+  otra contraseña, otro nombre y otro teléfono, y cuenta los usuarios.
+- R15: `… > con el email / documento ocupado…` (x2). Transacción revertida: `conflicto` con su campo, el otro
+  sigue `maestro`, 0 superadmins y 0 usuarios nuevos.
+- `catalogo_incompleto`: `… > sin el tipo de documento…` (cliente de la app) y `… > sin el rol superadmin…`
+  (transacción revertida que aparta la fila de `rol`).
+- R16: `tests/unit/scripts/arranque-superadmin.test.ts`:
+  - los seis desenlaces del repositorio con el servicio real;
+  - la entrada inválida;
+  - un error con email, documento y contraseña en el mensaje: ninguno sale por stdout ni por stderr.
+  - Además, el caso de R17 mira la salida real de los dos procesos.
+- R17:
+  - `… > dos ejecuciones del comando a la vez…`: **dos procesos reales** del script (`tsx`, con `DATABASE_URL`
+    explícita), los dos con código 0, uno «creado» y otro «ya existe», un solo superadmin, y en la salida no
+    está ni la contraseña, ni el email, ni el documento;
+  - `… > el comando toma el cerrojo antes de comprobar nada…`: se sostiene la clave en otra transacción, se ve
+    en `pg_locks` al comando esperándola, y al soltarla da `ya_existe`;
+  - `… > si otro escritor confirma un superadmin entre las comprobaciones y el INSERT, el P2002 del indice es
+    ya_existe`: un `INSERT` sin confirmar de otra sesión, el comando bloqueado en su `INSERT`
+    (`pg_stat_activity`) y, al confirmar el otro, `ya_existe`. Es el P2002 **real** del driver adapter.
+- R19: `fuera-datos-ordenex.guardia.test.ts`, el caso y la contraprueba de arriba.
+- R20: el diff de `.env.example` (seis `NOMBRE=` vacíos, `env-example-sin-valores` en verde) y el README sin valores.
+- R27: el caso del P2002 del índice y el de los dos procesos.
+- R29:
+  - `empresas-plataforma.test.ts`, con dos organizaciones de la fábrica de SL-17, dos maestros en A, uno en B
+    y un `admin` en A:
+    - las dos salen, B primero, cada una con sus maestros por alta y sin el `admin`;
+    - todo el listado va por fecha descendente;
+    - solo salen las claves `creadaEn,id,maestros,nombre,slug` y `email,nombre`, y ni el documento, ni el
+      teléfono, ni el hash de los cuatro usuarios;
+    - sin organizaciones, `[]`.
+  - `empresas-plataforma.composition-root.test.ts`: el composition root lee en plataforma con la ficha SL-32.
+- R35: `empresas-plataforma.composition-root.test.ts`: los seis roles de empresa y el actor nulo dan
+  `forbidden` sin leer, y el superadmin recibe el listado. Es el predicado real, no uno de test.
+
+**Cómo se resolvió «sin organizaciones devuelve []» sin depender del resto de la base.**
+- El repositorio corre sobre un esquema desechable (`sl32_empresas_<aleatorio>`) con copias vacías de `rol`,
+  `organizacion` y `usuario` (`LIKE … INCLUDING ALL`), por `crearPrismaDeTestEnEsquema`.
+- Prisma califica el cast del enum con el esquema del cliente, así que se crea ahí `rol_value` con las etiquetas
+  de `public` y se retipa `rol.value`.
+- Control positivo: tras crear una organización en ese esquema, el mismo repositorio la devuelve. Así se ve que
+  el cliente lee de verdad el esquema vacío.
+- El DDL va bajo `bajoLockDeEscrituraReal`, y el esquema se borra en el `finally`.
+- Los casos con datos filtran por sus dos organizaciones, que tienen fechas de alta en 2999.
+
+**Locks en los tests.** `arranque-superadmin.test.ts` toma `tomarLockDeSuperadmin` en `beforeAll` y exige la
+base sin superadmin con `exigirSinSuperadmin`. Todo lo que commitea en `usuario` va por dentro de
+`bajoLockDeEscrituraReal`, en el orden documentado: primero el de superadmin y por dentro el de la 227. Los casos
+revertidos llaman antes a `serializarEscriturasReales`. Un `afterEach` borra el superadmin del caso.
+`empresas-plataforma.test.ts` no crea superadmin: solo usa el lock de la 227.
+
+**Mutaciones**, todas contra `sl32_base` con `scratchpad/mutar.py`. Cada archivo se restauró de su copia y su
+sha256 resultó idéntico al de antes en las 16.
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T14b | sin `where: { rol: { value: "maestro" } }` (pedida) | `empresas-plataforma`: `1 failed \| 3 passed` |
+| E1 | `createdAt: "asc"` | `2 failed \| 2 passed` |
+| E2 | `telefono: true` en el select del maestro | `2 failed \| 2 passed` |
+| E3 | `esPlataforma(...) \|\| true` en el composition root | `composition-root`: `6 failed \| 2 passed` |
+| A1 | sin `organizacionId: null` | `arranque-superadmin`: `4 failed \| 6 passed` (`UsuarioSinEmpresa` de la extensión) |
+| A2 | sin la traducción del índice a `ya_existe` | `1 failed \| 9 passed` (el del otro escritor) |
+| A3 | sin `pg_advisory_xact_lock` | `1 failed \| 9 passed` (el del cerrojo) |
+| A4 | campo del conflicto cambiado | `2 failed \| 8 passed` |
+| A5 | `estado: "pendiente"` | `1 failed \| 9 passed` |
+| A6 | sin la comprobación de `ya_existe` | `1 failed \| 9 passed`: los dos procesos chocan en `usuario_email_key` antes que en el índice de R27 |
+| A7 | sin la comprobación de conflicto | `2 failed \| 8 passed` |
+| A8 | `falta: "rol"` cuando falta el tipo | `1 failed \| 9 passed` |
+| S1 | el mensaje de la excepción impreso | `scripts/arranque-superadmin`: `1 failed \| 16 passed` |
+| S2 | el éxito por stderr | `2 failed \| 15 passed` |
+| S3 | código 0 siempre | `6 failed \| 11 passed` |
+| G1 | la excepción de R19 solo por nombre | `fuera-datos-ordenex`: `1 failed \| 32 passed` |
+
+**Salida real** (el cliente se regeneró dentro de `gate.lock`, porque otro worktree lo había dejado sin
+`superadmin`; el lock ya está liberado)
+- `pnpm run typecheck`: `TC_EXIT=0`, tras los últimos cambios.
+- `pnpm exec eslint` sobre los 11 archivos tocados de `.ts`: `No issues found`, exit 0.
+- `vitest run` de los 8 unit (script, composition root, `fuera-datos-ordenex`, `plataforma-solo-en-lista`,
+  `sql-a-mano-por-empresa`, `superadmin-fuera-de-empresa`, `env-example-sin-valores` y el servicio de T14a) →
+  `Test Files 8 passed (8)`, `Tests 113 passed (113)`.
+- `vitest run` de `arranque-superadmin`, `empresas-plataforma`, `un-solo-superadmin`, `usuario-empresa-o-superadmin` y
+  `usuarios-sin-superadmin` sobre `sl32_base`, juntos → `Test Files 5 passed (5)`, `Tests 28 passed (28)`.
+- Después, en `sl32_base`: 0 superadmins, 0 organizaciones, 0 usuarios y 0 esquemas `sl32_empresas_*`.
+- `vitest related --run` sobre los 11 archivos → `Test Files 6 passed | 2 skipped`, `Tests 96 passed | 14 skipped`.
+  Los dos que saltó son los de integración: esa corrida salió sin `DATABASE_URL`. Ya estaban en verde en la
+  corrida de arriba.
+- `pnpm run test:guardias` → `Test Files 1 failed | 300 passed (301)`, `Tests 4 failed | 4111 passed`. El único
+  rojo es `dependencias-declaradas-presentes.guardia.test.ts`, que es el mismo de antes de esta tanda (marcadores
+  de la ficha 420 en `init.sh`, que no está en el diff). `plataforma-solo-en-lista`, `sql-a-mano-por-empresa` y
+  `fuera-datos-ordenex` están en verde.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Queda abierto, sin tocar** (no es de T8): el bloque SMTP de `.env.example`, los comentarios de
+`lib/config/email.ts` y `design.md > Dependencias operativas` siguen describiendo Gmail. El README ya dice
+Brevo, como fija P8.
+
+**Veredicto:** T8 y T14b están hechas y marcadas. Cada R de T8 y de T14b tiene un test contra la base o contra
+el proceso real, y las 16 mutaciones caen.
+
+
+## T11 — la geografía pasa al superadmin, parte de `lib/` (R24, R25, R26), backend_dev — 2026-10-23
+
+**Código modificado**
+- `lib/services/GeografiaService.ts`:
+  - `READ_ROLES = ["maestro", ...ROLES_PLATAFORMA]` y `GESTION_ROLES = new Set(ROLES_PLATAFORMA)`, los dos por import;
+  - sale `WRITE_ROLES`. `crear`, `renombrar` y `cambiarActivacion` comprueban `GESTION_ROLES` antes de la primera
+    llamada al repositorio;
+  - `contarOrdenesSinEntregar` pasa de `READ_ROLES` a `GESTION_ROLES`, como dice el design.
+- `lib/auth/menu-visibility.ts`: sale el subítem «Geografía» de Configuración. «Empresas» no está: es de T16.
+- `lib/actions/geografia.ts`: solo los comentarios que decían «solo `maestro`». La forma no cambia. No toqué
+  `actualizarDistritosEspeciales` (ver abajo).
+
+**Tests modificados**
+- `tests/unit/services/geografia-service.test.ts`:
+  - las reglas del módulo (R14, R17, R21, R22, R60 y 375) se piden con un actor `superadmin`;
+  - `listarArbol` (R26 de la 374) sigue con el `maestro`;
+  - el bloque R24 usa `SIN_GESTION = [maestro, ...4 roles]` para crear, retirar, reactivar, renombrar y contar, con
+    el repositorio sin llamar. `listarArbol` deniega solo a los 4 roles;
+  - caso nuevo: R25, el `maestro` lista el árbol y recibe `ok`;
+  - la contraprueba pasa a ser del `superadmin`: lista, da de alta, renombra, retira, reactiva y cuenta → `ok`, con
+    dobles (P7).
+- `tests/unit/actions/geografia-action.test.ts`:
+  - el caso feliz del borde lo pide el `superadmin`;
+  - bloque nuevo, con el `GeografiaService` REAL y un repositorio que lanza en todos sus métodos: el `maestro`
+    recibe `forbidden` en crear, renombrar, retirar, reactivar y contar. No llega al repositorio. No sale el
+    `conflict` del `catch` ni un rechazo (el 500);
+  - `listarArbolGeografico` le sigue dando `ok`.
+- `tests/unit/actions/geografia.composition-root.test.ts`: los dos casos del conteo, con el `superadmin`. El del
+  árbol sigue con el `maestro`.
+- `tests/integration/db/geografia-alta.test.ts`: el actor pasa a ser `superadmin`. `crear` solo escribe geografía y
+  no choca con P7.
+- `tests/integration/db/geografia-registro-accion.test.ts`: bloque nuevo, FUERA del de la 374 (aquel exige un
+  usuario sembrado y en `sl32_base` cae por base vacía). Siembra sus propios datos: un `maestro` real con la empresa
+  del test y un corpus con la provincia retirada.
+  - El `maestro` retira, reactiva, renombra y da de alta → `forbidden`, con 0 filas en `historial_accion` y los nodos
+    intactos.
+  - Contraprueba: el mismo usuario, por el repositorio, deja 1 fila.
+- `tests/unit/services/nombres-que-imprime-la-etiqueta.test.ts`: las escrituras de geografía, con el `superadmin`.
+  «El rol manda antes que el nombre» se prueba con `adminTienda` y con `maestro`.
+- `tests/unit/auth/menu-visibility.test.ts`:
+  - sale `/configuracion/geografia` de la lista de hijos;
+  - caso nuevo: el `maestro` no ve «Geografía» en ningún ítem (se busca por `href` y por etiqueta) y
+    `primerDestino` sigue siendo `/dashboard`.
+- `tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts`: el `maestro` pasa de 23 a 22 destinos, con su motivo.
+  Nadie más se mueve.
+- `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`: solo el comentario de T11 (ya no dice «hoy»).
+
+**Revisados sin cambio**
+- `geografia-cascada-reversible`, `geografia-renombrado`, `geografia-ordenes-sin-entregar` y el resto de
+  `tests/integration/db/geografia-*`: llaman al repositorio, no al servicio. No hay puerta de rol que cambiar.
+- `geografia-sin-borrado-fisico`, `geografia-renombrado-punto-unico`, `etiqueta-fuente-diferida`, `geografia-nodo` y
+  `geografia-admin.ui.test.tsx`: en verde. El componente mockea las actions.
+- Tarifas (`TarifasPage.cobertura`, `ZonaDistritoEspecial`…): entran en `vitest related` y siguen en verde.
+
+**Ayuda (`roles:` del frontmatter).** Se queda `roles: [maestro, admin]`.
+- `roles:` dice de quién es la pantalla que el documento explica (`lib/ayuda/documento.ts`). Alimenta el índice y el
+  «?». No decide quién abre la ruta.
+- El texto de T1b explica a la oficina que la geografía la gestiona la plataforma. Ese lector es de oficina.
+- `superadmin` no está en `ROLES_AYUDA`. Con `roles: [superadmin]`, el documento no sería de nadie que pueda leerlo.
+- Las guardias de ayuda (`ayuda-*`, `asistente-sin-frontmatter`, `docs-marca-heredada`) más `acotamiento-por-rol` y
+  `contexto-documental`: `116 passed`. Ninguna rechaza la ayuda de oficina sobre una pantalla que el `maestro` ya no
+  abre. No hubo que parar.
+
+**D12, `crear/renombrarNodoGeografico` y su `catch {}`.** Con el `maestro`, el `forbidden` sale del servicio antes
+de la primera llamada al repositorio. El `catch` ya no se alcanza, y no hay `conflict` falso ni 500. Lo prueba el
+bloque nuevo de la action. No estrecho el `catch` a P2002. Con el `superadmin`, el `catch` disfraza de `conflict` el
+`EmpresaNoResuelta` de `renombrar` (ver la prueba real). Es P7 (D15), diferida a SL-26, y no hay pantalla de
+superadmin que lo muestre. Estrecharlo cambia los dos casos de R18 del borde, que lanzan un `Error` genérico. Lo dejo
+anotado para SL-26.
+
+**`actualizarDistritosEspeciales`: PARADO, sin cambio.**
+- No pasa por `GeografiaService`. Va contra Prisma directo y comprueba `actor.rol !== "maestro"`. Lo llama
+  `CrearZonaForm.tsx:288`, en Tarifas.
+- Escribe `distrito.zona_especial`, una tabla de plataforma. Con SL-17, una empresa no puede escribirla: de ahí el
+  500 del `maestro`.
+- El design no la cubre. R24 enumera alta, renombrado, retiro, reactivación y conteo, y R25 dice que Tarifas sigue
+  siendo del `maestro`. D12 deja a Carlos decidir dónde vive la marca (¿`zona_distrito` de la empresa?).
+- Hay tres arreglos posibles, y ninguno es mecánico:
+  - (a) `forbidden` para todos: la action queda muerta, y Tarifas pierde la marca con un mensaje;
+  - (b) abrirla al `superadmin`: es un permiso nuevo, fuera de R24;
+  - (c) mover la marca a la empresa: es un rediseño (D12).
+- (a) es el único que quita el 500 sin decidir producto, pero quita al `maestro` una función de Tarifas, aunque ya
+  esté rota desde SL-17. Hace falta decisión.
+
+**Prueba real del superadmin.** Por las actions reales, con el composition root de verdad y el cliente de la app con
+la extensión de SL-17. Solo se stubbea `getActor`. El superadmin es real (rol `superadmin`, `organizacion_id NULL`) y
+el corpus es una provincia, un cantón y un distrito.
+- Base: `sl32_t11` (creada, migrada y borrada), y no `sl32_base`. Las actions commitean, y un superadmin que se quede
+  en `sl32_base` rompe el `exigirSinSuperadmin` de los tests del otro backend_dev, que usa esa base ahora. Las
+  migraciones son las mismas.
+- Resultados:
+  - `listarArbolGeografico` → `ok`, con el árbol;
+  - `crearNodoGeografico` (distrito) → `ok`. El nodo queda escrito;
+  - `renombrarNodoGeografico` → **`{"status":"conflict"}`**. Es falso: el `catch {}` se traga el `EmpresaNoResuelta`
+    del registro, y el nombre no cambia;
+  - `cambiarActivacionGeografica` → **lanza `EmpresaNoResuelta: Sin empresa en contexto para Usuario.findUnique`**.
+    Es el 500: el registro lee el actor en `usuario`, que es tabla de negocio;
+  - `contarOrdenesSinEntregarDeNodo` → **lanza `EmpresaNoResuelta: … Orden.count`**;
+  - después: el distrito sigue «Distrito T11» y activo, y hay 0 filas en `historial_accion`.
+
+  Es P7 tal cual la describe D15, con un matiz: lo primero que falla en `cambiarActivacion` es la lectura de
+  `usuario`, antes de escribir en `historial_accion`. No lo arreglé.
+
+**Lo que tiene que cambiar en la página (frontend_dev, tanda 5).**
+- `app/(app)/configuracion/geografia/page.tsx:19`. Hoy hace `if (actor?.rol !== "maestro")` y pinta un
+  `role="alert"`. Pasa a `if (!actor || !esPlataforma(actor.rol)) notFound()`, con `esPlataforma` de
+  `lib/auth/plataforma.ts`, antes de `listarArbolGeografico()`.
+- La página no recibe `puedeCambiarActivacion`, y `GeografiaAdminModule` no cambia.
+- `tests/unit/components/geografia-admin-page.test.tsx`:
+  - el `maestro` y los demás roles reciben `notFound()` sin llamar a `listarArbolGeografico`;
+  - el caso «el maestro sí ve el árbol» (líneas 115 y 129) pasa al `superadmin`.
+- Con eso, `vitest related` de `page.tsx` cierra el «Hecho cuando».
+
+**R → test**
+- R24 (`maestro` → `forbidden` antes de tocar la base, sin nodo ni registro):
+  - `geografia-service.test.ts` (bloque R24 con `SIN_GESTION`);
+  - `geografia-action.test.ts` (bloque SL-32, con el servicio real);
+  - `geografia-registro-accion.test.ts` (bloque SL-32, contra Postgres);
+  - `nombres-que-imprime-la-etiqueta.test.ts` (el `maestro` con nombre malo).
+- R24 (el `superadmin` aplica las reglas): la contraprueba de `geografia-service.test.ts` y las reglas del archivo
+  con `SUPERADMIN`, más `geografia-alta.test.ts` (solo `crear`, contra Postgres). Lo demás va con dobles, por P7.
+- R25:
+  - «el `maestro` sigue leyendo el árbol (Tarifas)», en el servicio y en la action;
+  - `geografia.composition-root.test.ts` (árbol);
+  - los tests de Tarifas, en verde.
+- R26 (menú): el caso nuevo de `menu-visibility.test.ts` y `pwa-manifiesto-atajos` (23 → 22). R26 (página): pendiente
+  de frontend. R26 (ayuda): T1b, y las guardias de ayuda en verde.
+
+**Mutaciones.** Cada una se aplicó, se corrió y se restauró. El md5 de los dos archivos es idéntico antes y después.
+- `"maestro"` vuelve a `GESTION_ROLES`:
+  - servicio más guardia de T6 → `6 failed | 66 passed`. La guardia sola da `1 failed | 12 passed` («en el árbol
+    real no hay ninguna falta»);
+  - action → `5 failed | 30 passed`;
+  - integración (`-t SL-32`, `sl32_base`) → `1 failed | 1 passed`;
+  - etiqueta → `1 failed | 17 passed`.
+- `"maestro"` sale de `READ_ROLES` → servicio más action: `3 failed | 91 passed`. Caen los casos de Tarifas.
+- El conteo vuelve a `READ_ROLES` → `2 failed | 92 passed`.
+- `GESTION_ROLES` vacío, sin el superadmin → servicio: `28 failed | 31 passed`.
+- «Geografía» vuelve al menú → menú más pwa: `3 failed | 59 passed`.
+- La misma ruta con otra etiqueta → el caso SL-32 del menú: `1 failed`.
+
+**Salida real**
+- `prisma generate`, dentro del lock: el cliente de `node_modules` estaba regenerado sin `superadmin` por otro
+  worktree, y `alcance-fuente-unica` daba 6 en vez de 7. Después de regenerar:
+  - `pnpm run typecheck` → exit 0, con 0 errores;
+  - los 10 archivos de T11 más `alcance-fuente-unica`, sobre `sl32_base` → `214 passed | 10 skipped`. El único FAIL
+    es el `beforeAll` del bloque de la 374 de `geografia-registro-accion` («`usuario` esta vacia»), que es de antes y
+    viene de la base vacía.
+- `pnpm exec eslint` sobre los 12 archivos tocados → exit 0, con 0 errores. Quedan 2 warnings de antes:
+  `geografia-alta.test.ts:97 s` y `composition-root:25 _args`.
+- `vitest related --run` de `GeografiaService.ts`, `menu-visibility.ts` y `actions/geografia.ts` sobre `sl32_base` →
+  `16 failed | 3259 passed | 34 skipped`, con 4 archivos rojos. Todos fallan por la base vacía:
+  - `historial-accion-lectura`: «hacen falta al menos 2 usuarios» y «`orden` esta vacia»;
+  - `455/snapshot-lectura` y `455/caracterizacion/snapshot-correccion`: sin datos sembrados;
+  - el `beforeAll` de la 374 de `geografia-registro-accion`.
+- `pnpm run test:guardias` → `6 failed | 4090 passed`:
+  - 4 son de `dependencias-declaradas-presentes` (marcadores de `init.sh`, de antes);
+  - 2 eran de `alcance-fuente-unica`, por el cliente regenerado sin `superadmin`. Con el cliente bueno pasa.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Veredicto:** la parte de `lib/` de T11 está hecha, y las mutaciones del «Hecho cuando» caen. T11 queda `[ ]`:
+falta la página (frontend, tanda 5) y la decisión sobre `actualizarDistritosEspeciales` (D12).

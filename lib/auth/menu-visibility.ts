@@ -558,14 +558,11 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
       // del ítem padre: quien ve el catálogo es quien lo administra.
       { label: "Vehículos", href: "/configuracion/vehiculos" },
-      // Ficha 374: administración del catálogo geográfico (alta y retirada de
-      // provincias, cantones y distritos). AL FINAL del array, y verificado:
-      // `primerDestino` devuelve el `href` del PRIMER hijo del PRIMER ítem
-      // visible, así que un hijo añadido al final no puede mover el aterrizaje
-      // post-login de ningún rol (R46).
-      { label: "Geografía", href: "/configuracion/geografia" },
-      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array, por el mismo
-      // motivo que «Geografía» (R46 de la 374): `primerDestino` devuelve el `href` del PRIMER
+      // SL-32 (R26): aquí iba «Geografía» (ficha 374). Gestionar la geografía es de la plataforma,
+      // y la página responde `notFound()` al `maestro`. Era un hijo del final, así que quitarlo no
+      // mueve `primerDestino`.
+      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array (R46 de la
+      // 374): `primerDestino` devuelve el `href` del PRIMER
       // hijo del PRIMER ítem visible, así que un hijo añadido al final no puede mover el
       // aterrizaje post-login de ningún rol.
       //

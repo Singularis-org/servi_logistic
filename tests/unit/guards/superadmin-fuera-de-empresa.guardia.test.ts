@@ -56,9 +56,8 @@ const EXCEPCIONES_DE_LISTA: readonly {
     soloPlataforma: true,
     motivo: "lista de DENEGACIÓN de la analítica (R7)",
   },
-  // T11 (R24, R25): hoy `GeografiaService` tiene `READ_ROLES`/`WRITE_ROLES` del maestro y no nombra
-  // la plataforma. Cuando T11 los reparta, `GESTION_ROLES` tiene que ser solo plataforma (devolverle
-  // el `maestro` pone esto en rojo) y `READ_ROLES` la suma al `maestro` por import.
+  // T11 (R24, R25): `GESTION_ROLES` es solo plataforma (devolverle el `maestro` pone esto en rojo) y
+  // `READ_ROLES` la suma al `maestro` por import, para la lectura de Tarifas.
   {
     archivo: "lib/services/GeografiaService.ts",
     constante: "GESTION_ROLES",

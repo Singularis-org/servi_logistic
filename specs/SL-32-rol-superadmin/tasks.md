@@ -238,7 +238,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
   **Hecho cuando:** quitar el `notIn` del `where` pone en rojo el test de integración. Se prueba
   contra la base, no con un doble.
-- [ ] **T8. Repositorio, script y documentación del comando** (R12–R20).
+- [x] **T8. Repositorio, script y documentación del comando** (R12–R20).
   - `lib/repositories/ArranqueSuperadminRepository.ts`: transacción, `pg_advisory_xact_lock` y
     traducción de `P2002`. Inserta dentro de `comoPlataforma("SL-32", …)` con `organizacionId: null`
     explícito (R35 de SL-17).
@@ -267,6 +267,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   **Hecho cuando:** los tests están en verde, la guardia de SL-11 sigue en verde con la lista, y la
   guardia `plataforma-solo-en-lista` de SL-17 también.
 - [ ] **T11. El módulo de geografía pasa al superadmin** (R24, R25, R26; depende de T4).
+  *Parte de `lib/` hecha el 2026-10-23 (`progress/impl_SL-32.md > T11`). **Falta la página (frontend, tanda 5)**, y queda abierta la decisión sobre `actualizarDistritosEspeciales` (D12).*
   - En `GeografiaService`, `READ_ROLES` y `GESTION_ROLES` según
     `design.md > GeografiaService, la acción y la pantalla`.
   - La página de Geografía cambia su puerta a `esPlataforma(actor.rol)`: `notFound()` al `maestro`.
@@ -300,7 +301,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   - devolver `"maestro"` a `GESTION_ROLES` pone en rojo el caso del servicio y la guardia de T6
     (se prueba y se revierte);
   - quitar `"maestro"` de `READ_ROLES` pone en rojo el caso de Tarifas (se prueba y se revierte).
-- [ ] **T14b. Repositorio del listado** (R29, R35; depende de T0 y T4).
+- [x] **T14b. Repositorio del listado** (R29, R35; depende de T0 y T4).
   - `lib/repositories/EmpresasPlataformaRepository.ts`, dentro de
     `comoPlataforma("SL-32", "listado de empresas del superadmin")`. Selecciona solo nombre, slug,
     fecha y el nombre y el email de los maestros.
@@ -464,6 +465,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 - `lib/services/EmpresasPlataformaService.ts`
 - `lib/repositories/ArranqueSuperadminRepository.ts`
 - `lib/repositories/EmpresasPlataformaRepository.ts`
+- `lib/actions/_shared/empresas-plataforma.ts` (composition root del listado, T14b)
 - `lib/services/UsuarioService.ts`
 - `lib/repositories/UserRepository.ts`
 - `lib/api/openapi-spec.ts`
@@ -497,6 +499,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 - `tests/integration/recuperar-contrasena-page.test.tsx`
 - `tests/components/empresas-module.test.tsx`
 - `tests/unit/services/empresas-plataforma-service.test.ts`
+- `tests/unit/actions/empresas-plataforma.composition-root.test.ts`
 - `tests/unit/actions/alta-empresa-rol.test.ts`
 - `tests/unit/auth/destino-post-login.test.ts`
 - `scripts/arranque-superadmin.ts`

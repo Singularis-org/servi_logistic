@@ -95,7 +95,7 @@ export type ArbolGeograficoResult =
 
 /**
  * Devuelve el arbol geografico COMPLETO —activos e inactivos— ordenado alfabeticamente en cada
- * nivel. Autoriza solo al rol `maestro` (misma puerta que /configuracion).
+ * nivel. Lo leen la plataforma y el `maestro`, que lo usa en Tarifas (R25 de SL-32).
  *
  * CONSERVA SU FIRMA: lo llaman `app/(app)/configuracion/tarifas/page.tsx` y
  * `ZonasTarifasModule.tsx` sin argumentos, y siguen compilando. `deps` es opcional y solo sirve
@@ -118,7 +118,7 @@ export type CrearNodoGeograficoResult =
   | { status: "unauthenticated" };
 
 /**
- * Alta de una provincia, un canton o un distrito (solo `maestro`).
+ * Alta de una provincia, un canton o un distrito (solo la plataforma, R24 de SL-32).
  *
  * UNA accion para los tres niveles, no tres: el nivel viaja como dato de un vocabulario cerrado y
  * la `discriminatedUnion` mantiene el borde igual de estricto. Tres cuerpos identicos serian dos
@@ -153,7 +153,7 @@ export type CambiarActivacionGeograficaResult =
   | { status: "unauthenticated" };
 
 /**
- * Desactiva o reactiva un nodo del catalogo (solo `maestro`).
+ * Desactiva o reactiva un nodo del catalogo (solo la plataforma, R24 de SL-32).
  *
  * `activo` es el estado DESEADO, no un toggle: pedir el estado en el que el nodo ya esta devuelve
  * `ok` sin escribir nada (R21). Esta escritura NO toca a ningun descendiente (R8) ni a
@@ -181,7 +181,7 @@ export type RenombrarNodoGeograficoResult =
   | { status: "unauthenticated" };
 
 /**
- * FICHA 375 — cambia el NOMBRE de un nodo del catalogo (solo `maestro`).
+ * FICHA 375 — cambia el NOMBRE de un nodo del catalogo (solo la plataforma, R24 de SL-32).
  *
  * POR QUE ESTA ACCION NO EXISTIA HASTA HOY, y no era una omision: la ficha 374 la dejo fuera porque
  * `scripts/seed-zonas.ts` resolvia la geografia por NOMBRE y creaba lo que no encontraba, asi que

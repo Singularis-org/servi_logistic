@@ -289,8 +289,12 @@ describe("pwa · los atajos del manifiesto", () => {
     // (`/configuracion/envios-whatsapp`) hereda el `maestro`-only de «Configuración», que es
     // exactamente quien deja entrar la página (R1). Si se hubiera movido otro rol, el menú y la
     // página discreparían. La CONCLUSIÓN no cambia: lo ve UN rol de cinco, CERO atajos.
+    // ⭑ SL-32 (R26) — `maestro` 23 -> 22 y NADIE más: sale el subítem «Geografía»
+    // (`/configuracion/geografia`) que trajo la 374. Gestionar la geografía es de la plataforma,
+    // y la página responde `notFound()` al `maestro`. Si se moviera otro rol, el subítem no era
+    // `maestro`-only. La CONCLUSIÓN no cambia: CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
-      maestro: 23,
+      maestro: 22,
       admin: 14,
       adminSatelite: 8,
       mensajero: 7,
