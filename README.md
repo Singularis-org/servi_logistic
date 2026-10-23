@@ -136,7 +136,8 @@ separado):
   `SMTP_FROM` se rellena, tiene que ser un remitente verificado en Brevo. Con `SMTP_USER` y
   `SMTP_PASSWORD` puestas, el correo sale de verdad.
 - **Sin SMTP** (desarrollo y CI): si falta `SMTP_USER` o `SMTP_PASSWORD`, el correo cae a
-  `ConsoleEmailSender` y no sale ninguno. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`,
+  `ConsoleEmailSender` y no sale ninguno. El log recoge el destinatario y el asunto, que no lleva
+  el código. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`,
   que en producción se deja vacío porque deja un secreto en los logs.
 
 Comprueba que llega un código real en cada entorno antes de dar de alta la primera empresa.

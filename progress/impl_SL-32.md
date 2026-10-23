@@ -1317,8 +1317,8 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 | R16 | `tests/unit/services/arranque-superadmin-service.test.ts`, `tests/unit/scripts/arranque-superadmin.test.ts` |
 | R18 | `e2e/superadmin-arranque.spec.ts` |
 | R19 | `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` |
-| R20 | `tests/unit/guards/recursos-origen-fuera.guardia.test.ts` y revisión del diff de `.env.example` y README |
-| R21 | verificación de T3 (deploy, 3 rollbacks, redeploy; rollback que falla con superadmin), sección T3 |
+| R20 | `tests/unit/guards/env-example-sin-valores.guardia.test.ts` y `tests/unit/guards/recursos-origen-fuera.guardia.test.ts`; README por revisión del diff (corregido tras review m3) |
+| R21 | `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` (review B1), además de la verificación de T3 |
 | R22, R23 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` |
 | R24, R25 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/actions/geografia-action.test.ts`, `tests/integration/db/geografia-registro-accion.test.ts`, `tests/integration/db/geografia-cascada-reversible.test.ts`, guardia de T6 (rama del superadmin con dobles, P7/D15) |
 | R26 | `tests/unit/components/geografia-admin-page.test.tsx`, `tests/unit/auth/menu-visibility.test.ts`, revisión del diff de la ayuda (T1b) |
@@ -1349,3 +1349,63 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 - tanda 5 (`ef449d5`): `INIT_EXIT=0`.
 - final (`f8210c6`): la 1.ª corrida dio `INIT_EXIT=1` por la guardia SL-34, que veía los correos de prueba en esta bitácora; se reescribieron. La 2.ª dio `INIT_EXIT=0` (`Tests 15734 passed`; guardias `4081 passed`).
 - CI sobre `f8210c6` (`workflow_dispatch`, porque el PR está en draft): `gate-completo`, `estatico` y los 3 shards de vitest, success. El job `e2e` sale failure con 49 failed, 28 did not run y 3 passed, en 24 specs heredados. Los dos de SL-32 y `dos-empresas-humo` de SL-17 caen porque CI no define `SL17_HUMO_LOG_SERVIDOR`, el log del dev server del que se lee el OTP. En local pasan (sección «T9 y T17 — segunda vuelta»).
+
+## Review vuelta 1 — B1 y m4 — backend_dev — 2026-10-23 — HECHO
+
+Base: rama en `ff306a5`. Las tres migraciones `20261023100000/100100/100200` NO se han tocado (aplicadas en QA): `git diff --quiet -- db/migrations` limpio al acabar. `sl32_base` recreada y migrada (`migrate deploy`: «All migrations have been successfully applied»).
+
+### Archivos
+- Nuevo `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` (B1, R21).
+- Nuevo `tests/integration/db/_fixtures/ida-y-vuelta-32.ts`: base propia, SQL sentencia a sentencia, foto de catálogos. Copia del método de `migracion-sl17-ida-y-vuelta.test.ts`, porque importar un archivo de test registra sus `describe`. Unificar los dos queda como cambio aparte: no toca SL-17.
+- `lib/services/email/plantillas/otp-codigo.ts`: el asunto pasa a `Tu codigo de verificacion de ${MARCA.nombre}`, sin el código (m4). Es la única plantilla de `plantillas/`.
+- `lib/services/email/ConsoleEmailSender.ts`: la línea de debug pasa a ser una sola y lleva el destinatario (formato abajo). La de metadata (asunto) sigue igual y ya no fuga.
+- `tests/unit/services/email-notificacion.test.ts`: tres casos nuevos, con el correo REAL de la plantilla. Los de antes usaban un mensaje sintético con `subject: "asunto"`, y por eso no veían la fuga.
+- `README.md`: «El log recoge el destinatario y el asunto, que no lleva el código. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`…». Ahora es cierto.
+
+### R → test
+| R | Test |
+|---|---|
+| R21 (down.sql y orden) | `migracion-sl32-ida-y-vuelta.test.ts` > «cada una trae su down.sql y van en orden detras de 20261023090000_unicos_por_empresa» (estático, sin base) |
+| R21 (down 3.ª con superadmin) | ídem > «con el superadmin dentro, el down de la 3.ª va bien…» |
+| R21 (down 2.ª aborta) | ídem > «…el down de la 2.ª aborta con P0001 y no borra nada»: el SQLSTATE es `P0001`, el usuario, el índice y la fila `rol` siguen, y la foto no cambia |
+| R21 (downs 2.ª y 1.ª) | ídem > «sin el superadmin, los downs…»: el enum es exactamente `maestro,admin,mensajero,Admin Tienda,adminSatelite,apiKey`, sin `rol_value_old`, sin índice ni CHECK, y la foto es igual a la de antes de SL-32 |
+| R21 (reaplicar) | ídem > «reaplicadas las tres…»: el índice (`UNIQUE`, `(true)`, id literal) y el CHECK vuelven igual que la 1.ª vez, y la foto es igual a la de «con las tres» |
+| m4 | `email-notificacion.test.ts` > «SL-32 m4 — el asunto … no lleva el codigo; el cuerpo, en texto y html, si», «… sin AUTH_OTP_DEBUG_LOG … no escribe el codigo … por ningun canal», «… con AUTH_OTP_DEBUG_LOG=1, una sola linea con destinatario y codigo…» |
+
+Base propia `sl32_iv_<12 hex>`: se crea en el `beforeAll` aplicando las migraciones anteriores, y se borra en el `afterAll` con `DROP … WITH (FORCE)`. No usa la base compartida ni el lock de `superadmin-32.ts`, así que no choca con otras suites. Al acabar, `sl32-db.mjs list` → solo `sl32_base`.
+
+### La línea de debug (para el frontend_dev que adapte `e2e/_superadmin-fixture.ts`)
+Sin `AUTH_OTP_DEBUG_LOG=1`, la consola NO imprime el código por ningún canal. Con `=1`, el `ConsoleEmailSender` escribe dos líneas:
+- por **stdout** (`console.info`), siempre, y sin el código:
+  `[email] sin SMTP configurado; no se envia. to=<destinatario> asunto="Tu codigo de verificacion de Servi Logistic"`
+- por **stderr** (`console.warn`), solo con el flag. Es UNA línea, y el cuerpo va como literal JSON, con los `\n` escapados:
+  `[email][debug] to=<destinatario> cuerpo=<JSON.stringify(text)>`
+
+  Ejemplo con un código ficticio:
+  `[email][debug] to=ana@example.com cuerpo="Tu codigo de verificacion de Servi Logistic es:\n\n123456\n\nVence en 10 minutos y solo sirve una vez.\nSi no solicitaste este codigo, ignora este mensaje y no lo compartas con nadie."`
+
+  Regex sugerida (con el email escapado): `` `\[email\]\[debug\] to=${email} cuerpo="[^"]*?\\n(\d{6})\\n` ``. Es decir, el código son los seis dígitos entre el primer `\n\n` y el siguiente `\n`, ambos literales.
+- La línea de debug lleva el destinatario porque stdout y stderr no garantizan el orden en un log mezclado. El formato lo fija `email-notificacion.test.ts` (último caso), y es contrato.
+- **Rotura conocida, NO arreglada aquí:** `e2e/_superadmin-fixture.ts:87` busca el código en `asunto="…(\d{6})"`, y ya no lo encuentra. Afecta a `superadmin-arranque.spec.ts` y `superadmin-empresas.spec.ts`. El servidor del E2E necesitará `AUTH_OTP_DEBUG_LOG=1`, y el log, capturar stderr.
+- `_dos-empresas-fixture.ts` NO lee el log: usa su propio emisor en proceso (líneas 202-206) y no depende del asunto.
+
+### Mutaciones (todas revertidas; `git diff --quiet` y `cmp` idénticos)
+| Mutación | Cómo | Resultado |
+|---|---|---|
+| Quitar el bloque `DO $$…END $$;` del down de la 2.ª | Script node sobre el archivo del árbol, test, y luego `git checkout -- db/migrations/20261023100100_seed_rol_superadmin/down.sql` y `git diff --quiet -- db/migrations` → RESTAURADO | **1 failed** | 4 passed: `expected '23001' to be 'P0001'` (el DELETE de `rol` choca con la FK) |
+| Enum del down de la 1.ª en otro orden (`'admin','maestro',…`) | `sed -i` en el árbol, test, `git checkout --` y `git diff --quiet` → RESTAURADO | **2 failed** | 3 passed |
+| Volver a meter `${code}` en el asunto de `otp-codigo.ts` | `sed -i`, test, y restaurar desde copia (`cmp` idéntico) | **3 failed** | 11 passed |
+| Línea de debug de vuelta a `cuerpo:\n${text}` (multilínea, sin `to=`) | ídem | **1 failed** | 13 passed |
+| Borrar el `down.sql` de la 3.ª (para el caso estático) | **No se hizo**: el clasificador de permisos denegó el `rm` de un archivo de migración. El caso estático no tiene mutación medida | — |
+
+### Salida real
+- `pnpm exec vitest run tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` (sobre `sl32_base`) → `Tests  5 passed (5)`, EXIT=0
+- `pnpm exec vitest run tests/unit/services/email-notificacion.test.ts tests/unit/actions/password-reset-degrada-a-consola.test.ts` → `Tests  18 passed (18)`
+- `pnpm run typecheck` (con el lock y `prisma generate`) → `tsc --noEmit`, TC_EXIT=0
+- `pnpm exec eslint` de los 5 archivos tocados → ESLINT_EXIT=0
+- `pnpm exec vitest related --run` (los dos de `lib/services/email/` y el fixture) → `Test Files  60 passed (60)`, `Tests  647 passed | 26 skipped (673)`, EXIT=0
+- `pnpm run test:guardias` → 4 failed, todos en `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`: «init.sh ya no tiene el marcador >>> FIN PASO 2…». Está en `tests/baseline-rojos.json` y esta tanda no toca `init.sh`, `scripts/` ni `package.json`. El resto: 4092 passed.
+
+Veredicto: B1 cubierto (R21 con test de integración y estático, y la mutación del `DO` en rojo); m4 cerrado en la app. Queda pendiente el parseo del E2E por el frontend_dev.
+
+**Mutación del caso estático de B1** (implementer, 2026-10-23): se apartó a mano `db/migrations/20261023100200_usuario_empresa_o_superadmin/down.sql` fuera del árbol → `× cada una trae su down.sql…`, `Tests 1 failed | 4 skipped (5)` (sin base). Devuelto a su sitio: `git status --porcelain db/migrations` vacío, `Tests 1 passed | 4 skipped (5)`.

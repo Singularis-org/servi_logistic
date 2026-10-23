@@ -94,9 +94,10 @@
 
 ### Plataforma no es empresa
 
-- **R5.** MIENTRAS el actor de la sesión tenga el rol `superadmin`, el sistema DEBE rechazar en el
-  servidor toda operación de un módulo de empresa: `forbidden` en Server Actions y servicios, y
-  `notFound()` en páginas. Ocultarlo en el menú no basta. Las únicas operaciones que el superadmin
+- **R5.** *(Alineado el 2026-10-23 con lo implementado, review de SL-32 m1.)* MIENTRAS el actor de
+  la sesión tenga el rol `superadmin`, el sistema DEBE rechazar en el servidor toda operación de un
+  módulo de empresa: `forbidden` en Server Actions y servicios, y en páginas `notFound()` o el aviso
+  «sin permiso» que la página ya dé (como `/configuracion`), sin leer datos de empresa. Ocultarlo en el menú no basta. Las únicas operaciones que el superadmin
   puede ejecutar son las de plataforma de R24, R25 y R29–R35.
 - **R6.** *(Revisado el 2026-10-22 por la pantalla «Empresas».)* MIENTRAS el actor tenga el rol
   `superadmin`, el menú DEBE mostrarle exactamente un ítem, «Empresas», y ningún ítem ni subítem de
@@ -171,8 +172,8 @@
 ### La migración
 
 - **R21.** Las migraciones del rol, del índice de R27 y de la regla de R28 DEBEN tener un timestamp
-  posterior al de la última migración de SL-17 (hoy `20261022130300_misma_empresa_en_fk`, según su
-  spec; se confirma en T0), y cada una trae su `down.sql`. Los `down.sql` dejan el enum
+  posterior al de la última migración de SL-17 (`20261023090000_unicos_por_empresa`, confirmado en T0
+  el 2026-10-23; son `20261023100000`, `…100100` y `…100200`), y cada una trae su `down.sql`. Los `down.sql` dejan el enum
   `rol_value`, el catálogo `rol` y los índices y restricciones de `usuario` como estaban. SI queda
   algún usuario `superadmin`, ENTONCES el `down.sql` del rol DEBE fallar sin borrarlo.
 - **R28.** SI una escritura en `usuario` dejaría un usuario con rol `superadmin` y `organizacion_id`
@@ -237,8 +238,9 @@
   técnico ni datos personales.
 - **R35.** SI el actor no es de la plataforma (`maestro` incluido), ENTONCES el servidor DEBE:
   - responder `notFound()` en la página «Empresas»;
-  - responder `forbidden` en la lectura del listado y en la action de alta, sin leer ni escribir
-    empresas ni usuarios.
+  - responder `forbidden` en la lectura del listado y, en la action de alta, el rechazo de su
+    contrato (`{ estado: "no_autorizado" }`, SL-17), sin leer ni escribir empresas ni usuarios.
+    *(Alineado el 2026-10-23 con lo implementado, review de SL-32 m2.)*
 
   Ocultar el ítem del menú no basta. La comprobación de rol de la action de SL-17 DEBE leer
   `esPlataforma` de `lib/auth/plataforma.ts`.

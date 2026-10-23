@@ -431,8 +431,8 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 | R16 | `tests/unit/services/arranque-superadmin-service.test.ts` y `tests/unit/scripts/arranque-superadmin.test.ts` |
 | R18 | `e2e/superadmin-arranque.spec.ts` |
 | R19 | `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` |
-| R20 | `tests/unit/guards/recursos-origen-fuera.guardia.test.ts` (formas de secreto) y revisión del diff de `.env.example` y el README |
-| R21 | verificación de T3 (deploy, rollback y rollback que falla con el superadmin presente), anotada en `progress/impl_SL-32.md` |
+| R20 | `tests/unit/guards/env-example-sin-valores.guardia.test.ts` (`.env.example` sin valores) y `tests/unit/guards/recursos-origen-fuera.guardia.test.ts` (formas de secreto); el README, revisión del diff *(corregido el 2026-10-23, review m3)* |
+| R21 | `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` y su parte estática (añadido el 2026-10-23, review B1), además de la verificación manual de T3 |
 | R22, R23 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` |
 | R24, R25 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/actions/geografia-action.test.ts`, `tests/integration/db/geografia-registro-accion.test.ts`, `tests/integration/db/geografia-cascada-reversible.test.ts` y `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`. La rama del `superadmin`, solo con dobles hasta P7 |
 | R26 | `tests/unit/components/geografia-admin-page.test.tsx` (`notFound()` al `maestro`), `tests/unit/auth/menu-visibility.test.ts` y la revisión del diff de la ayuda (T1b) |

@@ -81,5 +81,15 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D15 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
 - **Origen:** SL-32 (2026-10-22), P7. Con SL-17, `renombrar` y `cambiarActivacion` de `GeografiaService` escriben `historial_accion`, y `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene empresa: esas operaciones fallan con `EmpresaNoResuelta`.
-- **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles.
+- **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles. Efectos medidos el 2026-10-23 (review de SL-32, m5): con el superadmin, `renombrar` responde un «ya existe» falso (el `catch` genérico de D12 se traga el `EmpresaNoResuelta`), y el superadmin llega por URL a `/configuracion/geografia` (la puerta es `esPlataforma`, sin ítem de menú), donde retirar, reactivar y el conteo dan 500.
 - **Dueño:** quien tome SL-26 (decide Carlos Restrepo).
+
+### D16 — El humo de dos empresas da de alta por fixture, no por la pantalla (D19 de SL-17)
+- **Origen:** SL-17 D19 y SL-32 (2026-10-23), review B2. `e2e/dos-empresas-humo.spec.ts` crea las dos empresas por el servicio de SL-17. SL-32 trae la pantalla «Empresas», y D19 pedía que quien mergeara segundo cambiara el alta a la pantalla.
+- **Qué falta:** que el humo cree A y B desde `/plataforma/empresas` con el superadmin (como `e2e/superadmin-empresas.spec.ts`) y conserve sus aserciones de aislamiento (menú del maestro, datos de A invisibles en B). No es un cambio contenido: el humo comprueba también la repetición `ya_existe` del servicio, que la pantalla no muestra.
+- **Dueño:** Carlos Restrepo (ficha propia).
+
+### D17 — Los E2E que leen el OTP del log del servidor no corren en CI
+- **Origen:** SL-32 (2026-10-23), review m6. `e2e/superadmin-arranque.spec.ts`, `e2e/superadmin-empresas.spec.ts` y `e2e/dos-empresas-humo.spec.ts` leen el código del log del dev server (`SL17_HUMO_LOG_SERVIDOR`, con `AUTH_OTP_DEBUG_LOG=1`). `.github/workflows/gate.yml` no define ese log, así que en el job `e2e` (PR a `prod`, o `workflow_dispatch`) caen; ese job ya sale en rojo por specs heredados que esperan datos sembrados (D8).
+- **Qué falta:** que el job `e2e` arranque el servidor con su salida a un archivo y exporte la variable, o un canal de prueba del OTP que no dependa del log. Y decidir el estado de los specs heredados.
+- **Dueño:** quien tome la ficha de CI del E2E (decide Carlos Restrepo).

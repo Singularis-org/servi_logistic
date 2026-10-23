@@ -40,9 +40,11 @@ export function plantillaOtpCodigo(params: OtpPlantillaParams): EmailMessage {
     "</div>",
   ].join("");
 
+  // El asunto NO lleva el codigo: `ConsoleEmailSender` registra siempre el asunto, y lo muestran
+  // tambien las notificaciones del movil con la pantalla bloqueada. El codigo va solo en el cuerpo.
   return {
     to: params.to,
-    subject: `Tu codigo de verificacion: ${code}`,
+    subject: `Tu codigo de verificacion de ${MARCA.nombre}`,
     text: texto,
     html,
   };

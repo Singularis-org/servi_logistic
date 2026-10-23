@@ -358,6 +358,18 @@ páginas. El cambio es mínimo:
 Lo prueba `tests/integration/app-layout-superadmin.test.tsx`: con un actor superadmin, ni
 `UsuarioPreferenciaRepository` ni el cliente de empresa reciben llamadas, y el pie lleva su nombre.
 
+**Añadido el 2026-10-23 (implementación; review de SL-32, punto 6).** Las actions que el marco dispara en cada página
+(`lib/actions/notificaciones.ts` y `lib/actions/push.ts`) devuelven su desenlace vacío o neutro a un
+actor de plataforma sin construir servicio ni repositorio, y sin `comoPlataforma`, que le abriría todas
+las empresas. Lo prueba `tests/unit/actions/marco-superadmin-sin-empresa.test.ts`.
+
+**El contexto de datos, compartido por proceso (2026-10-23).** El `AsyncLocalStorage` de
+`lib/db/contexto-empresa.ts` (SL-17) vivía como constante de módulo. En `next dev`, el middleware y la
+app cargan copias distintas de ese módulo y comparten el cliente de Prisma de `globalThis`, así que
+el `comoPlataforma` de una copia no lo veía la extensión atada a la otra: tras un login real,
+`/dashboard` daba 404. El almacén pasa a `globalThis` con `Symbol.for`, el mismo patrón que el cliente.
+Lo prueba `tests/unit/db/contexto-empresa-una-instancia.test.ts`. Hay que llevarlo a `dev`.
+
 ### Diseño visual
 
 Es una pantalla nueva, así que **pasa por `/design` antes de implementarse** (T12;
