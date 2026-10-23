@@ -333,3 +333,24 @@ Nueve subagentes en paralelo, con archivos disjuntos. Ninguno hizo commit ni dej
   `prisma.organizacion`. Se regeneró desde SL-17. Mientras haya features en paralelo que cambian el
   esquema, el gate de cada worktree puede dejar a los demás con un cliente ajeno: hay que avisar al
   leader.
+
+### Cierre de la tanda 2 — gate
+Logs fuera del repo; la base `sl17_gate` se recreó en cada corrida.
+- **Corrida 1, sobre `532f9c0`:** `INIT_EXIT=1`, con 1 rojo: `analytics-daily-guards`, un timeout de
+  20 s en un barrido de archivos durante una corrida de 20 min. Solo da 26/26.
+- **Corrida 2:** `INIT_EXIT=1`, con 84 rojos. **No vale:** a las 00:01:59 se regeneró el cliente
+  compartido desde un esquema sin `Organizacion` (410 `Cannot read properties of undefined
+  (reading 'create')`).
+- **Corrida 3:** `INIT_EXIT=1`, con 10 rojos. **No vale:** el cliente volvió a regenerarse desde un
+  esquema ajeno a las 00:22. Con el cliente regenerado, esos 10 dan 9 en verde y 1 en rojo de verdad:
+  `organizacion-alta` contaba filas de forma global y lo rompían otros archivos que commitean
+  organizaciones en paralelo. Se arregló acotando el conteo a su ejecución (`6d6bc71`). La mutación
+  sin transacción en el repositorio da 2 rojos.
+- **Merge de `origin/dev`** (PR #1 de SL-31: el CI migra y siembra catálogos, y trae baseline nuevo)
+  con `--no-ff` en `79e5dce`. Sin conflictos de texto. `db:seed` sobre el esquema de SL-17 en una base
+  nueva termina en 0 y deja 0 organizaciones (R32).
+- **Corrida 4, sobre `79e5dce`** (base migrada y sembrada con `db:seed`): **`INIT_EXIT=0`**.
+  - Relacionados: `Test Files  943 passed (943)`, `Tests  13098 passed | 26 skipped (13124)`.
+  - Guardias: `Test Files  299 passed (299)`, `Tests  4085 passed | 1 skipped (4086)`.
+  - 249 rojos heredados del baseline, que no cuentan.
+  - Cliente al final: `CLIENTE_FIN mtime=2026-10-23 00:33:12 organizacion=1`, intacto.
