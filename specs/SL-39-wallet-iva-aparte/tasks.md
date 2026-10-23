@@ -9,7 +9,7 @@ que debe estar en rojo.
 
 ## Tanda 0 — El rojo primero
 
-- [ ] **T0. Test de integración que hoy falla** (R1, R2, R4, R5, R16).
+- [x] **T0. Test de integración que hoy falla** (R1, R2, R4, R5, R16).
   - Escribe `tests/integration/db/caja-iva-aparte-sl39.test.ts` según `design.md > 9`, sobre el molde
     de `tests/integration/db/_fixtures/caja-459.ts`, con `WalletService` y
     `WalletMovimientoRepository` reales.
@@ -25,7 +25,7 @@ que debe estar en rojo.
 
 ## Tanda 1 — La clasificación y la cifra (depende de T0)
 
-- [ ] **T1. Seeds y derivación** (R1–R5, R8, R18, R20).
+- [x] **T1. Seeds y derivación** (R1–R5, R8, R18, R20).
   - `lib/types/wallet.ts`:
     - nuevos `WALLET_IVA_SEED`, `WALLET_INGRESO_IVA_SEED`, `WALLET_EGRESO_IVA_SEED` y
       `WALLET_INGRESO_GANANCIA_SEED`, con sus tipos;
@@ -58,14 +58,14 @@ que debe estar en rojo.
 
 ## Tanda 2 — Las cifras que repiten la ganancia (dependen de T1)
 
-- [ ] **T2. [P] Serie diaria** (R12).
+- [x] **T2. [P] Serie diaria** (R12).
   - En `lib/utils/finanzas-diarias.ts`, `esPropio` pasa a «propio y no IVA», usando `esCategoriaIva`.
   - Se actualiza `tests/unit/analytics/finanzas-diario.test.ts` con un caso con IVA y la suma de los
     días igual a la ganancia de `derivarCaja`.
 
   **Hecho cuando:** el test sale en verde y la mutación «volver a `=== "propio"`» lo pone en rojo.
 
-- [ ] **T3. [P] Métrica `ganancia_empresa`** (R11, R13).
+- [x] **T3. [P] Métrica `ganancia_empresa`** (R11, R13).
   - En `lib/analytics/metrics.ts`, la lista pierde las cuatro de IVA y la descripción lo dice.
   - `tests/unit/analytics/metrics-caja-naturaleza.guardia.test.ts` compara la lista con «propio menos
     `WALLET_IVA_SEED`».
@@ -77,7 +77,7 @@ que debe estar en rojo.
   **Hecho cuando:** todos salen en verde y devolver una categoría de IVA a la lista pone la guardia en
   rojo.
 
-- [ ] **T4. [P] Textos** (R10).
+- [x] **T4. [P] Textos** (R10).
   - En `app/(app)/wallet/_components/wallet-labels.ts`:
     - `IMPUESTO_ROTULO` y los rótulos y la pista de «IVA cobrado»;
     - la pista de la ganancia, la nota de la diferencia, el nombre accesible de la barra y el mensaje
@@ -90,7 +90,7 @@ que debe estar en rojo.
 
 ## Tanda 3 — La pantalla (depende de T1 y T4)
 
-- [ ] **T5. Resumen y composición** (R6–R9, R20).
+- [x] **T5. Resumen y composición** (R6–R9, R20).
   - `CajaResumenCard.tsx`: las regiones secundarias del bolsillo de la empresa se pintan desde
     `REGIONES_BOLSILLO_EMPRESA`, con «IVA cobrado» antes de «Saldo inicial y aportes».
   - `ComposicionGananciaCard.tsx`:
@@ -113,7 +113,7 @@ que debe estar en rojo.
 
 ## Tanda C — El detalle de cierres de `cierres-admin` (P1 = sí)
 
-- [ ] **C0. [P] Test de integración del cierre que hoy falla** (R21–R23, R25).
+- [x] **C0. [P] Test de integración del cierre que hoy falla** (R21–R23, R25).
   - Escribe `tests/integration/db/cierre-iva-aparte-sl39.test.ts` según `design.md > 12.7`: los cierres
     A y B, el detalle de bodega en sus dos niveles, la huella de `cierre_detail` y el control de no
     vacuidad.
@@ -122,7 +122,7 @@ que debe estar en rojo.
   - sale **en rojo** contra Postgres, con `ganancia` `"2116.00"` en A y `"160.00"` en B;
   - la salida queda pegada en `progress/impl_SL-39.md`.
 
-- [ ] **C1. [P] El minuendo sin IVA** (R21–R23, R25, R26). Depende de C0.
+- [x] **C1. [P] El minuendo sin IVA** (R21–R23, R25, R26). Depende de C0.
   - Nuevo `lib/utils/iva-cierre.ts` con `ivaFacturado` y `facturadoSinIva`.
   - `CierresAdminService.verCierreDetalle` y `CierresBodegaAdminService.verCierreBodegaDetalle`, este
     en los dos niveles: `gananciaEmpresa` y `netoEmpresa` reciben `facturadoSinIva(totalesIngreso)`, y
@@ -139,7 +139,7 @@ que debe estar en rojo.
   - la mutación «volver a `totalesIngreso.total`» pone C0 en rojo (se prueba y se revierte);
   - `git diff dev -- lib/utils/ingreso-empresa.ts` sale vacío.
 
-- [ ] **C2. Las cascadas y las notas** (R24, R26, R27). Depende de C1.
+- [x] **C2. Las cascadas y las notas** (R24, R26, R27). Depende de C1.
   - `CascadasCierreMensajero.tsx` (`lineasNetoEmpresa`) y `CierresBodegaAdminModule.tsx`
     (`lineasCascadaDueno`) ganan la línea «IVA facturado», con signo resta, después de «Lo que la
     empresa facturó».
@@ -161,7 +161,7 @@ que debe estar en rojo.
 
 ## Tanda 4 — Ayuda, no regresión y gate (depende de T5 y C2)
 
-- [ ] **T6. Ayuda** (apoya R6, R7 y R10).
+- [x] **T6. Ayuda** (apoya R6, R7 y R10).
   - `docs/ayuda/oficina/wallet-caja.md`: la ganancia no incluye el IVA, la región y el bloque «IVA
     cobrado», y la línea 365, que ahora dice «la ganancia baja en el flete y el IVA cobrado en su IVA».
   - `docs/ayuda/oficina/wallet-tiendas.md:175`: el IVA cobrado a la tienda no es ganancia, va en «IVA
