@@ -508,3 +508,60 @@ Incidencia común: de 00:51 a 01:12 el cliente Prisma compartido estuvo regenera
 - Mutaciones: 01:51:20 revertir fuga 1 → 2 rojos en ordenes («expected [2] to deeply equal [1]»; «el distrito … no tiene zona asignada»), 2 en rls (R40: «expected { create: null, update: null, …}»), 1 en entradas y 9 unitarios; 01:52:02 revertir fuga 2 → «EmpresaCruzada: Datos de otra empresa en desconocido» en vez de «tienda no encontrada». Restaurado con cmp.
 - Efectos revisados: login/OTP/trusted_device (plataforma), logout y borrado de sesiones (dueño visible), `geocode_cache` y `jobs` (política true) siguen funcionando.
 - **Para el leader/spec:** (1) `configuracion/vehiculos` y `crear/renombrarNodoGeografico` fallan cerrado pero con un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); (2) `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar (ya ocurría antes de T3.10: van por una `$transaction` de empresa); (3) `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, marca del flujo de Tarifas en una tabla de plataforma: con R40 el maestro ya no puede marcar zonas especiales; el design §3 solo deja editables `zona` y `zona_distrito`. Decisión pendiente.
+
+## T4.1 Verificar la RLS en el Supabase real de QA — 2026-10-23, backend_dev
+
+Solo la base de **QA**; la de producción queda pendiente (mismo script). No se tocó la base `postgres` de QA ni Vercel. Ninguna dependencia nueva.
+
+- **Archivo:** `scripts/verificar-rls-despliegue.ts` (nuevo). Lee `DATABASE_URL` (puntos 2–5, transaccionales) y `DIRECT_URL` (puntos 1 y 6, catálogo); nunca imprime URL, host, usuario con ref ni contraseña (saneador propio). Única escritura: una transacción revertida con 2 `organizacion` y 1 `zona` de cada una. Sale 0 / 1 nombrando los puntos que fallan.
+- **Cómo se probó:** base desechable `sl17_t41` creada en el clúster de QA (`CREATE DATABASE` desde la base de mantenimiento; Supabase lo permite: el rol de la URL tiene `createdb`), `prisma migrate deploy` por la sesión (233 migraciones, exit 0). El pooler (6543) sí enruta a otra base: `current_database()` = `sl17_t41` por las dos URLs; la base `postgres` siguió con 0 tablas en `public`.
+- **Antes:** `servi_app` NO existía en el clúster de QA. El rol de la URL: no superusuario, `createrole`, `createdb` y **`bypassrls = true`** (por eso la defensa es la bajada de rol; el punto 5 lo confirma).
+
+Salida por el **pooler** (`DATABASE_URL` 6543, `DIRECT_URL` 5432), exit 0:
+```
+verificar-rls-despliegue: DATABASE_URL puerto 6543, DIRECT_URL puerto 5432
+Punto 1: OK - rolbypassrls=false rolcanlogin=false usuario_de_la_url_es_miembro=true
+Punto 2: OK - base=sl17_t41; current_user antes=postgres despues de set_config('role')=servi_app
+Punto 3: OK - con empresa A: 1 fila(s), todas de A=true; con empresa B: 1 fila(s), todas de B=true; sin empresa: 0 fila(s)
+Punto 4: OK - transaccion siguiente: current_user=postgres (dueno=postgres); app.organizacion_id=''; filas de prueba que quedan: zona=0 organizacion=0
+Punto 5: OK - como dueno (postgres) sin bajar de rol ve A=true y B=true (2 fila(s)); como servi_app con empresa A ve B=false
+Punto 6: OK - politicas *_por_empresa=73/73 (para servi_app=73, tabla con RLS activa=73); triggers sme_*=150/150 activos, *_sin_cambio_de_empresa=73/73 activos
+RESULTADO: los 6 puntos cuadran.
+```
+Por la **sesión** (las dos URLs a 5432): idéntica salida punto a punto, salvo la cabecera `DATABASE_URL puerto 5432`; exit 0.
+
+Mutación (local, `sl17_t41l`): `ALTER TABLE zona DISABLE ROW LEVEL SECURITY` → `Punto 3: FALLA … sin empresa: 2 fila(s)`, `Punto 5: FALLA … como servi_app con empresa A ve B=true`, `Punto 6: FALLA … tabla con RLS activa=72`, exit 1. Restaurado → exit 0.
+
+**Mediciones** (desde este equipo; RTT ≈ 147 ms, así que en cliente domina la red; Vercel en la región de la base tendrá RTT de ~1–2 ms):
+
+| | pooler 6543 | sesión 5432 |
+|---|---|---|
+| (a) `zona.findFirst()` solo, 100 rep. | media 147,05 / mediana 146,41 ms | 148,63 / 148,87 ms |
+| (a) `$transaction([set_config ×2, findFirst])`, 100 rep. | 584,78 / 584,39 ms | 594,36 / 591,58 ms |
+| (b) INSERT `orden` (4 FK de negocio) con `sme_*`, 200 rep. | media 148,78 / mediana 148,79 / p95 157,74 ms | 149,39 / 149,51 / 159,20 ms |
+| (b) mismo INSERT con los 4 `sme_*` desactivados | 149,28 / 149,00 / 155,34 ms | 149,19 / 148,80 / 158,34 ms |
+| (b) solo servidor, DO de 2000 INSERT | con 1,178 / sin 0,663 ms/insert | con 1,163 / sin 0,634 ms/insert |
+
+Lectura: la envoltura cuesta **4 idas y vueltas** (BEGIN, set_config, query, COMMIT) frente a 1: ≈ 3×RTT extra por operación de empresa. Los triggers de misma empresa cuestan ≈ **0,5 ms de servidor por INSERT con 4 FK**, invisibles frente a la red. En local: (a) 0,73 → 2,20 ms; (b) 1,34 → 0,75 ms con/sin.
+
+- **Estado final:** `DROP DATABASE sl17_t41` hecho (quedan `template1,template0,postgres`); `servi_app` no tenía dependencias (`pg_shdepend` = 0; miembro: `postgres`), `DROP ROLE servi_app` hecho → `servi_app_existe=false`, igual que al empezar. Base local `sl17_t41l` borrada.
+- **Ojo para el despliegue real:** M1 crea `servi_app` en el clúster; en producción el rol se queda (es lo que se quiere).
+- `eslint scripts/verificar-rls-despliegue.ts`: «No issues found», exit 0. `tsc --noEmit -p tsconfig.json`: exit 0, sin salida.
+- `pnpm run test:guardias`: 5 rojos en 2 archivos, ninguno de este cambio: `catalogo-postgres-acota-esquema` señala `tests/integration/db/unicos-por-empresa.test.ts:100` (de T3.9/T3.10) y `dependencias-declaradas-presentes` (4) por el marcador de paso 2 de `init.sh`.
+- **Veredicto:** QA pasa los 6 puntos por el pooler y por la sesión; no hace falta plan B en QA. Falta correr el script contra producción antes de dar de alta empresas allí.
+
+## T4.2 Humo de aceptación de dos empresas (D19, R47, R45, R40) — 2026-10-23, backend_dev
+- **Archivos:** `e2e/dos-empresas-humo.spec.ts` y `e2e/_dos-empresas-fixture.ts` (nuevos). Nada más tocado.
+- **Montaje:** base desechable `sl17_t42` (migrate deploy + `db:seed`), dev server propio en `:3000` con el `.env` principal (solo `SMTP_*`) y `DATABASE_URL` sobrescrita; stdout/stderr del server a un archivo que el spec lee (`SL17_HUMO_LOG_SERVIDOR`). Los correos de los maestros llegan por `SL17_HUMO_MAESTRO_A`/`_B`: la guardia `recursos-origen-fuera` no deja emails reales en el árbol.
+- **Alta:** `OrganizacionService.altaEmpresa` dentro de `comoPlataforma` para A y B → `creada`; repetir cada una → `ya_existe` con el mismo `organizacionId` (R45).
+- **Correo real:** «recuperar contraseña» por `PasswordResetService.solicitar` con el emisor real de la app (Nodemailer, host Brevo). El spec exige `NodemailerEmailSender`, ningún error del proveedor y `messageId`: aceptado para A y para B en cada corrida.
+- **Rutas (del menú real del maestro, `itemsVisibles(SIDEBAR_ITEMS, maestro)` con hijos, 23):** `/dashboard`, `/analitica`, `/monitoreo`, `/ordenes`, `/ranking`, `/ranking/historico`, `/wallet`, `/wallet/tiendas`, `/wallet/mensajeros`, `/wallet/satelites`, `/configuracion`, `/configuracion/tarifas`, `/configuracion/api`, `/configuracion/plantillas`, `/configuracion/envios-whatsapp`, `/configuracion/vehiculos`, `/configuracion/geografia`, `/configuracion/sinpe`, `/cierres-admin`, `/incidentes`, `/historico/conversaciones`, `/historico/acciones`, `/ayuda`. Las 23 × 2 empresas: HTTP 200, sin `error.tsx`, sin «no encontrado», sin 5xx, sin `EmpresaNoResuelta` en el log y sin marcadores de la otra empresa (ni en el texto ni en el HTML con el payload RSC).
+- **Control de falsabilidad:** cada empresa ve sus propios marcadores (zona, tienda, mensajero, orden, API key, plantilla) en alguna ruta; la URL del webhook se comprueba abriendo su modal en `/configuracion/api`.
+- **Detalle de A abierto por B:** la app no tiene URL de detalle de orden (se abre dentro de `/ordenes`); se usan `/wallet/tiendas/<tiendaA>` y `/wallet/mensajeros/<mensajeroA>`: B ve «No encontramos esta página», A ve su marcador.
+- **R40 desde la UI:** crear un vehículo y crear una provincia → la Server Action responde 200, la pantalla avisa «Ya existe un vehículo con ese nombre.» / «Ya existe un nodo con ese nombre bajo el mismo padre.», sin `error.tsx` ni 5xx, y `vehiculos`/`provincia` no cambian (cuenta igual, sin la fila).
+- **Corrida verde final** (base recién creada): `6 passed (2.3m)`, 46/46 visitas limpias.
+- **Mutación** (02:38:46 y 02:40:44; filtro apagado `const filtrados = args;` + sin `set_config('role','servi_app')` en las dos envolturas; server reiniciado con el archivo mutado, porque el singleton `globalThis.__prisma__` sobrevive al HMR): rojo en las 23 rutas de B, p. ej. `Error: /dashboard: marcadores de A en una pantalla de B … + "A-ce2fc91f-…"` (y en A con `B-…`, p. ej. `/analitica` con 20). Restaurado a las 02:39:43 y 02:41:42 con `cmp` contra `git show HEAD:lib/db/extension-empresa.ts`. Una primera mutación solo por HMR no es válida (dio `EmpresaNoResuelta` en el login: dos instancias de `AsyncLocalStorage`) y se descartó.
+- **typecheck:** `pnpm run typecheck` sin errores. **eslint** de los dos archivos: «No issues found». **Guardias:** 1 archivo rojo, `dependencias-declaradas-presentes` (4 tests: falta el marcador de fin del paso 2 en `init.sh`, que no cambia frente a HEAD); ajeno a este cambio.
+- **Hallazgos:** (1) `pnpm dev` registra los argumentos de cada Server Action, incluida la contraseña de `login` en claro (solo dev; el log se borró). (2) Los avisos de R40 son engañosos («ya existe»), como ya anotó T3.10. (3) Sin `sinpeRevisadoAt`, cada pantalla del maestro abre el modal «Confirmá el SINPE», que tapa los clics. (4) Con una tienda destino, el dueño del webhook es la tienda (`resolverOwnerApiKey`), no la cuenta de máquina. (5) El spec exige el log del server: en el E2E de CI fallaría si se incluye sin ese montaje.
+- **R → test:** R47 → `el maestro de A/B recorre todas las rutas de su menú…` y `B abriendo los detalles de A…`; R45 → `alta de A y B por el servicio, repetición idempotente…`; R40 (UI) → `vehículos y geografía cargan… falla cerrado (R40)`.
+- **Veredicto:** humo verde con dos empresas reales y la mutación doble lo pone rojo; T4.2 hecha.

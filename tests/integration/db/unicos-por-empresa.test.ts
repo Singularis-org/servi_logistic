@@ -101,7 +101,7 @@ async function insertar(
             t.typname AS typname
        FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-      WHERE a.attrelid = to_regclass($1) AND a.attnum > 0 AND NOT a.attisdropped
+      WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped
         AND ((a.attnotnull AND d.adbin IS NULL) OR a.attname = ANY($2::text[]))`,
     [`"${esquema}"."${tabla}"`, Object.keys(valores)],
   );

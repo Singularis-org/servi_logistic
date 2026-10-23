@@ -208,7 +208,7 @@ comando con su salida queda en `progress/impl_SL-17.md`.
 
 ## Tanda 4 — Despliegue y aceptación (secuencial)
 
-- [ ] **T4.1 Verificar la RLS en las DOS bases reales, ANTES de dar de alta empresas** (D21,
+- [x] **T4.1 Verificar la RLS en las DOS bases reales, ANTES de dar de alta empresas** (D21,
   design §4).
   - `scripts/verificar-rls-despliegue.ts`, con los 6 puntos de §4, contra las dos bases Supabase
     de Carlos, nuevas y vacías: **producción** (Production) y **QA** (Preview). En cada una se usan
@@ -222,7 +222,7 @@ comando con su salida queda en `progress/impl_SL-17.md`.
     Preview. Después se repite.
   - Si falla el punto 3, 4 o 5, **no se sigue**: se avisa a Carlos con la salida.
   - Ninguna empresa se da de alta en una base sin este «Hecho».
-- [ ] **T4.2 Humo de aceptación de dos empresas** (D19, R47, design §9.3).
+- [x] **T4.2 Humo de aceptación de dos empresas** (D19, R47, design §9.3).
   - `e2e/dos-empresas-humo.spec.ts`, en local.
   - Crea A y B con `OrganizacionService.altaEmpresa` **desde la fixture**. Se cambiará por la
     pantalla «Empresas» de SL-32 cuando exista.
@@ -238,7 +238,7 @@ comando con su salida queda en `progress/impl_SL-17.md`.
   - Nada entra al baseline sin el OK de Carlos.
 
   **Hecho:** sin rojos nuevos sin explicar.
-- [ ] **T4.4 Docs.**
+- [x] **T4.4 Docs.**
   - `docs/architecture.md > Multi-empresa`: que las tablas heredadas ya tienen la columna; el rol
     `servi_app`; `conEmpresa`/`comoPlataforma`; los triggers de misma empresa y el script que los
     genera para una FK nueva; las listas de excepciones; y el alta de empresa (`OrganizacionService` y su action, con el
