@@ -448,6 +448,40 @@ describe("AuthService.verifyChallenge", () => {
       expect.objectContaining({ exitoso: true }),
     );
   });
+
+  it("SLT-32: OTP valido cuyo usuario ya no existe no concede sesion y registra usuario_no_encontrado", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-borrado",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const result = await mocks.authService.verifyChallenge({
+      challengeId: "challenge-1",
+      code,
+      ...REQUEST_CONTEXT,
+    });
+
+    expect(result).toEqual({ status: "invalid_or_expired" });
+    expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+    expect(mocks.trustedDeviceRepo.upsert).not.toHaveBeenCalled();
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-borrado", exitoso: false, riskReason: "usuario_no_encontrado" }),
+    );
+    expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+      expect.objectContaining({ exitoso: true }),
+    );
+  });
 });
 
 describe("AuthService.logout", () => {

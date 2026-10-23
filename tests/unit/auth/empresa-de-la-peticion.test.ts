@@ -255,6 +255,26 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     expect(lecturas.length).toBeGreaterThan(0);
     for (const l of lecturas) expect(l.ctx).toEqual(VALIDAR);
   });
+
+  // SLT-32 (decision humana 2026-10-23, m1 de la review): una sesion abierta de un usuario sin
+  // empresa se trata como caducada. Mismo comentario que el caso de resolveActorFromSession: cuando
+  // SL-32 amplie el predicado con `esPlataforma(rol)`, el superadmin vuelve a pasar.
+  it("SLT-32: isSessionActive rechaza la sesion de un usuario activo sin empresa (null o vacia)", async () => {
+    const sinEmpresa = sesionDe(usuarioDe(null));
+    const empresaVacia = sesionDe({ ...usuarioDe(EMPRESA_A), organizacionId: "" });
+    const conEmpresa = sesionDe(usuarioDe(EMPRESA_A));
+
+    expect(await isSessionActive(sinEmpresa)).toBe(false);
+    expect(await isSessionActive(empresaVacia)).toBe(false);
+    expect(await isSessionActive(conEmpresa)).toBe(true);
+
+    // La empresa sale de la MISMA lectura que el estado: una consulta de usuario por validacion.
+    expect(usuarioFindUnique).toHaveBeenCalledTimes(3);
+    for (const [args] of usuarioFindUnique.mock.calls) {
+      expect(args).toMatchObject({ select: { estado: true, organizacionId: true } });
+    }
+    expect(lecturas.map((l) => l.modelo)).toEqual(["Session", "Usuario", "Session", "Usuario", "Session", "Usuario"]);
+  });
 });
 
 describe("login, OTP y recuperacion en plataforma (R15, R36)", () => {
