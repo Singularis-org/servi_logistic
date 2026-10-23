@@ -11,6 +11,7 @@ import {
   CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
   type TxDeTest,
+  bajoLockDeEscrituraReal,
   crearPrismaDeTest,
   urlDeBaseDeDatos,
 } from "./_postgres-real";
@@ -187,40 +188,46 @@ describeSiHayBase("SL-17 T3.5 — RLS por empresa, SQL a mano y catalogos", () =
     const [{ usuario }] = await base.$queryRaw<{ usuario: string }[]>`SELECT current_user::text AS usuario`;
     dueno = usuario;
 
-    orgA = await crearOrganizacion(base);
-    orgB = await crearOrganizacion(base);
-    const datos = (org: string, etiqueta: string) => ({
-      nombre: `rls-commit-${etiqueta}-${RUN}`,
-      sinpeNumero: "60000000",
-      sinpeNombre: "Titular",
-      organizacionId: org,
+    // Commitea hijas de `organizacion` fuera de una transaccion revertida: bajo el lock de la 227,
+    // para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
+    await bajoLockDeEscrituraReal(async () => {
+      orgA = await crearOrganizacion(base);
+      orgB = await crearOrganizacion(base);
+      const datos = (org: string, etiqueta: string) => ({
+        nombre: `rls-commit-${etiqueta}-${RUN}`,
+        sinpeNumero: "60000000",
+        sinpeNombre: "Titular",
+        organizacionId: org,
+      });
+      zonaA = (await base.zona.create({ data: datos(orgA.id, "a"), select: { id: true } })).id;
+      zonaB = (await base.zona.create({ data: datos(orgB.id, "b"), select: { id: true } })).id;
+      // Un distrito del catalogo que cubren las DOS zonas (T3.10): dos empresas que reparten en la
+      // misma ciudad.
+      const distrito = await base.distrito.findFirst({ orderBy: { id: "asc" }, select: { id: true } });
+      if (distrito === null) throw new Error("no hay distritos: aplica las migraciones");
+      distritoComun = distrito.id;
+      await base.zonaDistrito.createMany({
+        data: [
+          { zonaId: zonaA, distritoId: distritoComun, organizacionId: orgA.id },
+          { zonaId: zonaB, distritoId: distritoComun, organizacionId: orgB.id },
+        ],
+      });
     });
-    zonaA = (await base.zona.create({ data: datos(orgA.id, "a"), select: { id: true } })).id;
-    zonaB = (await base.zona.create({ data: datos(orgB.id, "b"), select: { id: true } })).id;
-    // Un distrito del catalogo que cubren las DOS zonas (T3.10): dos empresas que reparten en la
-    // misma ciudad.
-    const distrito = await base.distrito.findFirst({ orderBy: { id: "asc" }, select: { id: true } });
-    if (distrito === null) throw new Error("no hay distritos: aplica las migraciones");
-    distritoComun = distrito.id;
-    await base.zonaDistrito.createMany({
-      data: [
-        { zonaId: zonaA, distritoId: distritoComun, organizacionId: orgA.id },
-        { zonaId: zonaB, distritoId: distritoComun, organizacionId: orgB.id },
-      ],
-    });
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     const orgs = [orgA?.id, orgB?.id].filter((x): x is string => x !== undefined);
     try {
-      await base.zonaDistrito.deleteMany({ where: { organizacionId: { in: orgs } } });
-      await base.zona.deleteMany({ where: { organizacionId: { in: orgs } } });
-      await base.organizacion.deleteMany({ where: { id: { in: orgs } } });
+      await bajoLockDeEscrituraReal(async () => {
+        await base.zonaDistrito.deleteMany({ where: { organizacionId: { in: orgs } } });
+        await base.zona.deleteMany({ where: { organizacionId: { in: orgs } } });
+        await base.organizacion.deleteMany({ where: { id: { in: orgs } } });
+      });
     } finally {
       await unaConexion.$disconnect();
       await base.$disconnect();
     }
-  });
+  }, 120_000);
 
   /* ------------------------------------------------------------------------ */
   /* SQL a mano con el rol de la app                                           */

@@ -24,12 +24,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 import { datosDeOrganizacionDePrueba, fijarEmpresa } from "../../fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import {
-  CLAVE_LOCK_ESCRITURA_REAL,
-  HAY_BASE_DE_DATOS,
-  crearPrismaDeTest,
-  type TxDeTest,
-} from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal, type TxDeTest } from "./_postgres-real";
 
 // SL-17 / T3.8 (design §7.9, D20; R16, R42, R13) — las entradas SIN sesión TRABAJAN con dos
 // empresas con datos, cada una en la suya. «B no ve A» no basta: un cron que solo corriera en la
@@ -94,8 +89,8 @@ function soloAyB(): ClienteDeOrganizaciones {
 async function enEmpresa<T>(organizacionId: string, fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
   return base.$transaction(
     async (tx) => {
-      // Primera sentencia: serializa con los tests que escriben en `usuario`/`orden` (feature 227).
-      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+      // Sin lock aqui: el de la 227 lo sostiene el archivo entero (ver el `beforeAll`), y pedirlo por
+      // otra conexion lo colgaria.
       await fijarEmpresa(tx, organizacionId);
       return fn(tx);
     },
@@ -266,19 +261,31 @@ async function limpiar(ids: string[]): Promise<void> {
 }
 
 describeSiHayBase("SL-17 — entradas sin sesion con dos empresas con datos (Postgres real)", () => {
+  let soltarLock: (() => Promise<void>) | undefined;
+
   beforeAll(async () => {
+    // SL-17 T4.3b — el lock de la 227 se sostiene de la siembra a la limpieza, no por escritura: los
+    // crons y las entradas de abajo commitean en `usuario`, `organizacion` y `notificacion` filas que
+    // viven hasta el `afterAll`. Un `down.sql` historico de la familia `notificacion` muere con 22P02
+    // si ve un aviso de un valor posterior, y el borrado de `usuario`/`organizacion` chocaba con esos
+    // down (40P01). Ver `tomarLockDeEscrituraReal`.
+    soltarLock = await tomarLockDeEscrituraReal();
     base = crearPrismaDeTest();
     app = conAislamientoPorEmpresa(base, async () => null);
     // Distritos distintos, para que cada caso mida una sola cosa. Que las dos puedan cubrir el
     // MISMO distrito lo prueba el ultimo caso de R13.
     A = await sembrarEmpresa("A", "Carmen");
     B = await sembrarEmpresa("B", "Occidental");
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
-    await limpiar([A?.id, B?.id].filter((x): x is string => typeof x === "string"));
-    await base?.$disconnect();
-  }, 60_000);
+    try {
+      await limpiar([A?.id, B?.id].filter((x): x is string => typeof x === "string"));
+      await base?.$disconnect();
+    } finally {
+      await soltarLock?.();
+    }
+  }, 120_000);
 
   /* ------------------------------------------------------------------------------------------ */
   /* R16 — crons                                                                                 */

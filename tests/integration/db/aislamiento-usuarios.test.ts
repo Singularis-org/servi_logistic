@@ -23,7 +23,7 @@ import {
   listarUsuariosSchema,
 } from "@/lib/types/usuario";
 import { datosDeOrganizacionDePrueba } from "../../fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
 // SL-17 / T3.4 (design §9.2, §6.2) — R31, R3, R35, R36 y R14 sobre `usuario`, contra Postgres real.
 //
@@ -98,24 +98,28 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
     repo = new UserRepository(app);
     servicio = new UsuarioService(repo);
 
-    [orgA, orgB] = await Promise.all(
-      [datosDeOrganizacionDePrueba(`A ${RUN}`), datosDeOrganizacionDePrueba(`B ${RUN}`)].map(async (d) =>
-        (await base.organizacion.create({ data: d, select: { id: true } })).id,
-      ),
-    );
-    rolMaestro = (await base.rol.findFirstOrThrow({ where: { value: "maestro" } })).id;
-    tipoCedula = (await base.tipoIdentificacion.findFirstOrThrow({ where: { value: "cedula" } })).id;
+    // Commitea `organizacion` y `usuario` fuera de toda transaccion revertida: bajo el lock de la 227
+    // para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
+    await bajoLockDeEscrituraReal(async () => {
+      [orgA, orgB] = await Promise.all(
+        [datosDeOrganizacionDePrueba(`A ${RUN}`), datosDeOrganizacionDePrueba(`B ${RUN}`)].map(async (d) =>
+          (await base.organizacion.create({ data: d, select: { id: true } })).id,
+        ),
+      );
+      rolMaestro = (await base.rol.findFirstOrThrow({ where: { value: "maestro" } })).id;
+      tipoCedula = (await base.tipoIdentificacion.findFirstOrThrow({ where: { value: "cedula" } })).id;
 
-    ids.a1 = await sembrar(orgA, "a1");
-    ids.a2 = await sembrar(orgA, "a2");
-    ids.maestroA = await sembrar(orgA, "maestroa");
-    ids.b1 = await sembrar(orgB, "b1");
-    ids.b2 = await sembrar(orgB, "b2");
-    ids.maestroB = await sembrar(orgB, "maestrob");
-    // El superadmin nace como lo hará el arranque de SL-32: en plataforma y con el `null` escrito.
-    ids.superadmin = await comoPlataforma(SUPERADMIN.ficha, SUPERADMIN.motivo, async () =>
-      (await app.usuario.create({ data: { ...datosDeUsuario("superadmin"), organizacionId: null } })).id,
-    );
+      ids.a1 = await sembrar(orgA, "a1");
+      ids.a2 = await sembrar(orgA, "a2");
+      ids.maestroA = await sembrar(orgA, "maestroa");
+      ids.b1 = await sembrar(orgB, "b1");
+      ids.b2 = await sembrar(orgB, "b2");
+      ids.maestroB = await sembrar(orgB, "maestrob");
+      // El superadmin nace como lo hará el arranque de SL-32: en plataforma y con el `null` escrito.
+      ids.superadmin = await comoPlataforma(SUPERADMIN.ficha, SUPERADMIN.motivo, async () =>
+        (await app.usuario.create({ data: { ...datosDeUsuario("superadmin"), organizacionId: null } })).id,
+      );
+    });
 
     // Sin estas filas el test no prueba nada: si la siembra no dejó lo esperado, falla aquí.
     const sembrados = await base.usuario.findMany({
@@ -124,19 +128,21 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
     });
     const porEmpresa = (org: string | null) => sembrados.filter((u) => u.organizacionId === org).length;
     expect([porEmpresa(orgA), porEmpresa(orgB), porEmpresa(null)]).toEqual([3, 3, 1]);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     if (!base) return;
     const usuarios = await base.usuario.findMany({ where: { email: { contains: RUN } }, select: { id: true } });
     const uids = usuarios.map((u) => u.id);
-    await base.historialAccion.deleteMany({
-      where: { OR: [{ entidadId: { in: uids } }, { actorUsuarioId: { in: uids } }] },
+    await bajoLockDeEscrituraReal(async () => {
+      await base.historialAccion.deleteMany({
+        where: { OR: [{ entidadId: { in: uids } }, { actorUsuarioId: { in: uids } }] },
+      });
+      await base.usuario.deleteMany({ where: { id: { in: uids } } });
+      await base.organizacion.deleteMany({ where: { id: { in: [orgA, orgB].filter(Boolean) } } });
     });
-    await base.usuario.deleteMany({ where: { id: { in: uids } } });
-    await base.organizacion.deleteMany({ where: { id: { in: [orgA, orgB].filter(Boolean) } } });
     await base.$disconnect();
-  });
+  }, 120_000);
 
   /* ------------------------------------------------------------------------ */
   /* R31 — listar y buscar                                                     */

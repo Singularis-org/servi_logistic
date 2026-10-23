@@ -6,6 +6,7 @@ import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 import { crearOrganizacion } from "../../../fabricas/organizaciones";
+import { bajoLockDeEscrituraReal } from "../_postgres-real";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 459 — piezas de los tests que pasan POR LAS SERVER ACTIONS y COMMITEAN.
@@ -27,6 +28,11 @@ import { crearOrganizacion } from "../../../fabricas/organizaciones";
 // la pasan explicita: sin empresa fijada, el `DEFAULT` de `organizacion_id` da NULL y salta el NOT
 // NULL. Las actions, en cambio, resuelven la empresa por la extension; fuera de una peticion no hay
 // cookie de la que sacarla, asi que el cuerpo del test corre dentro de `conEmpresa` (`conEmpresa459`).
+//
+// SL-17 T4.3b — la siembra y la limpieza de `organizacion`/`usuario` corren bajo el lock de la 227
+// (`bajoLockDeEscrituraReal`): commitean fuera de una transaccion revertida y, sin el, se cruzaban con
+// los `down.sql` serializados de la familia `notificacion` (40P01). Orden de locks: el candado 459 se
+// toma ANTES que el de la 227 (siembra y limpieza van dentro del cuerpo), nunca al reves.
 
 export const CLAVE_CANDADO_459 = 459_0001;
 
@@ -70,7 +76,11 @@ export interface Personas459 {
 }
 
 /** Siembra COMMITEADA de las personas de un test. Todas con sufijo aleatorio. */
-export async function sembrarPersonas459(prisma: PrismaClient): Promise<Personas459> {
+export function sembrarPersonas459(prisma: PrismaClient): Promise<Personas459> {
+  return bajoLockDeEscrituraReal(() => sembrarPersonasSinLock(prisma));
+}
+
+async function sembrarPersonasSinLock(prisma: PrismaClient): Promise<Personas459> {
   const roles = await prisma.rol.findMany({ select: { id: true, value: true } });
   const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
   const rolDe = (v: string) => {
@@ -172,6 +182,10 @@ export async function acreditar459(prisma: PrismaClient, tiendaId: string, monto
  */
 export async function limpiar459(prisma: PrismaClient, p: Personas459 | null): Promise<void> {
   if (p === null) return;
+  await bajoLockDeEscrituraReal(() => limpiarSinLock(prisma, p));
+}
+
+async function limpiarSinLock(prisma: PrismaClient, p: Personas459): Promise<void> {
   const usuarios = p.usuarios;
   const pagos = await prisma.pagoPorCuentaTienda.findMany({
     where: { OR: [{ tiendaId: { in: usuarios } }, { registradoPor: { in: usuarios } }] },

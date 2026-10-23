@@ -10,6 +10,7 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
 import {
   CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
   crearPrismaDeTest,
   type FksDeOrden,
   type TxDeTest,
@@ -185,13 +186,17 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
     if (s !== undefined) {
       // Solo hay ordenes commiteadas si el caso por la app dejo pasar la cruzada (regresion o la
       // mutacion): sin borrarlas, las semillas quedarian sin poder borrarse.
-      await base.orden.deleteMany({ where: { tiendaId: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId] } } });
-      await base.usuario.deleteMany({ where: { id: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId, s.superadminId] } } });
-      await base.zona.deleteMany({ where: { id: { in: [s.a.fks.zonaId, s.b.fks.zonaId] } } });
-      await base.organizacion.deleteMany({ where: { id: { in: [s.a.organizacionId, s.b.organizacionId] } } });
+      // Bajo el lock de la 227, como la siembra: el borrado en cascada de `usuario`/`organizacion`
+      // recorre sus hijas en un orden distinto al de un `down.sql` serializado (40P01).
+      await bajoLockDeEscrituraReal(async () => {
+        await base.orden.deleteMany({ where: { tiendaId: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId] } } });
+        await base.usuario.deleteMany({ where: { id: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId, s.superadminId] } } });
+        await base.zona.deleteMany({ where: { id: { in: [s.a.fks.zonaId, s.b.fks.zonaId] } } });
+        await base.organizacion.deleteMany({ where: { id: { in: [s.a.organizacionId, s.b.organizacionId] } } });
+      });
     }
     await base?.$disconnect();
-  });
+  }, 120_000);
 
   it("el trigger de orden.tienda_id existe con el nombre de nombreTrigger (si no, la mutacion no mataria nada)", async () => {
     const filas = await base.$queryRawUnsafe<{ n: bigint }[]>(

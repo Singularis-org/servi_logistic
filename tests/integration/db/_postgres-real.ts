@@ -352,6 +352,82 @@ async function soloSeEscribioLaEmpresa(tx: object): Promise<boolean> {
 }
 
 /**
+ * SL-17 T4.3b — corre `fn` con el lock de la 227 tomado EN SESION, en una conexion propia que solo
+ * lo sostiene. Es para lo que commitea FUERA de una transaccion revertida: la siembra y la limpieza
+ * de `usuario`/`organizacion` de los tests de dos empresas, y el DDL de esquemas desechables.
+ *
+ * POR QUE HACE FALTA. Los `down.sql` reales que corren serializados (familia `notificacion`)
+ * toman AccessExclusiveLock sobre tablas hijas de `usuario` y `organizacion`, y en su caso sobre
+ * las padres. Un `DELETE FROM organizacion` o `usuario` commiteado recorre sus hijas por las
+ * FK (cascada y comprobaciones RI) en un orden que no es el del down: medido en la suite completa,
+ * 40P01. Un `INSERT INTO usuario` es lo mismo en pequeño (usuario primero, luego `KEY SHARE` en
+ * `organizacion`/`rol`). Y un `DROP SCHEMA` a mitad de un down que recorre `pg_indexes` con
+ * `pg_get_indexdef` le borra el OID bajo los pies (XX000). Serializar con el mismo lock lo elimina.
+ *
+ * POR QUE EN SESION Y EN OTRA CONEXION, y no un `pg_advisory_xact_lock` dentro de `$transaction`:
+ * asi vale tambien para lo que va por el cliente EXTENDIDO (cada operacion abre su propia
+ * transaccion en el pool, donde no se puede meter el lock) y para la conexion fija de un test con
+ * `search_path` propio. Un lock de sesion y uno de transaccion con la misma clave se excluyen.
+ * Si el proceso muere, la conexion se cierra y el lock se va con ella.
+ *
+ * ⚠️ `fn` NO puede pedir este mismo lock por otra conexion: esperaria a esta, que espera a `fn`,
+ * y Postgres no lo ve como deadlock (la espera de en medio es de Node). Se colgaria.
+ */
+export async function bajoLockDeEscrituraReal<T>(fn: () => Promise<T>): Promise<T> {
+  const soltar = await tomarLockDeEscrituraReal();
+  try {
+    return await fn();
+  } finally {
+    await soltar();
+  }
+}
+
+/**
+ * La misma pieza que `bajoLockDeEscrituraReal`, pero abierta: toma el lock y devuelve con que
+ * soltarlo. Es para los archivos que COMMITEAN filas en `notificacion` (avisos de sus acciones y
+ * crons) y las dejan vivas hasta su `afterAll`: un `down.sql` historico de la familia `notificacion`
+ * reconstruye el enum sin los valores posteriores y su `ALTER COLUMN ... TYPE` muere con 22P02 si ve
+ * una de esas filas (medido: `cierre_dia_rechazado` de `aislamiento-cierres`). Serializar cada
+ * escritura no basta, porque la fila sigue ahi despues; lo que hay que serializar es su VIDA: se toma
+ * en el `beforeAll`, antes de sembrar, y se suelta en el `afterAll`, despues de limpiar.
+ *
+ * Mismo aviso que arriba: mientras se sostiene, nada del archivo puede pedir este lock por otra
+ * conexion (`serializarEscriturasReales`, `bajoLockDeEscrituraReal`, un `pg_advisory_xact_lock`).
+ */
+export async function tomarLockDeEscrituraReal(): Promise<() => Promise<void>> {
+  const adaptador = await new PrismaPg({ connectionString: urlDeBaseDeDatos() as string, max: 1 }).connect();
+  const pool = adaptador.underlyingDriver() as unknown as PoolDelDriver;
+  const conexion = await pool.connect();
+  const cerrar = async () => {
+    conexion.release();
+    await pool.end();
+  };
+  try {
+    await conexion.query(`SELECT pg_advisory_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+  } catch (error) {
+    await cerrar();
+    throw error;
+  }
+  let suelto = false;
+  return async () => {
+    if (suelto) return;
+    suelto = true;
+    try {
+      await conexion.query(`SELECT pg_advisory_unlock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+    } finally {
+      // Cerrar la conexion tambien lo suelta: si el `unlock` fallara, el lock no se queda tomado.
+      await cerrar();
+    }
+  };
+}
+
+/** Lo minimo del `pg.Pool` que hay debajo del driver adapter (sin dependencia nueva). */
+interface PoolDelDriver {
+  connect(): Promise<{ query(texto: string): Promise<unknown>; release(): void }>;
+  end(): Promise<void>;
+}
+
+/**
  * FICHA 410 — deja la base como estaria en el MOMENTO REAL de revertir un `down.sql` HISTORICO del
  * enum `notificacion_evento`.
  *
@@ -374,11 +450,30 @@ async function soloSeEscribioLaEmpresa(tx: object): Promise<boolean> {
  * es el modo de fallo correcto. Queda dicho tambien en `db/schema.prisma`, junto al modelo.
  *
  * Todo esto corre DENTRO de la transaccion revertida del test: la tabla vuelve al hacer rollback.
+ *
+ * SL-17 T4.3 — se suelta la COLUMNA y no la tabla, y antes se toma `notificacion`. Desde M2
+ * (`20261022130100_organizacion_id_en_negocio`) `push_envio_dia` tiene FK a `organizacion` ademas
+ * de a `usuario`, y `DROP TABLE` pide AccessExclusiveLock sobre las DOS tablas padre: la primera la
+ * tienen en RowExclusive casi todas las transacciones de test abiertas (su empresa por defecto), y
+ * la segunda los `deleteMany` de limpieza que commitean fuera del lock de la 227. Medido en la suite
+ * completa (log del servidor): `DROP TABLE "push_envio_dia"` esperaba a `usuario` mientras un
+ * `DELETE FROM usuario` esperaba a `push_envio_dia` por su ON DELETE CASCADE: 40P01. Para el enum da
+ * igual tabla que columna (solo `evento` depende de el); `DROP COLUMN` solo bloquea `push_envio_dia`,
+ * que es lo que bloquean los down posteriores a la 410 al retiparla.
+ *
+ * El orden importa: ese `DELETE` en cascada llega a `notificacion` antes que a `push_envio_dia` (sus
+ * triggers RI se disparan por nombre, y el de `notificacion` es mas antiguo). Tomando `notificacion`
+ * primero —el down la va a reescribir igual con AccessExclusiveLock, y es el orden de los down
+ * posteriores a la 410— esta transaccion espera a ese `DELETE` en vez de cerrarle el paso a mitad.
+ * Un `DELETE FROM organizacion` commiteado recorre sus hijas en el orden CONTRARIO (M2 creo antes la
+ * FK de `push_envio_dia`): contra ese no hay orden que valga; el remedio es que no corra fuera del
+ * lock de la 227.
  */
 export async function soltarDependientesPosterioresDelEnumDeEventos(tx: {
   $executeRawUnsafe: (sql: string, ...args: unknown[]) => Promise<number>;
 }): Promise<void> {
-  await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS "push_envio_dia"`);
+  await tx.$executeRawUnsafe(`LOCK TABLE "notificacion" IN ACCESS EXCLUSIVE MODE`);
+  await tx.$executeRawUnsafe(`ALTER TABLE "push_envio_dia" DROP COLUMN IF EXISTS "evento"`);
 }
 
 /** FKs obligatorias de `orden`, tomadas de una fila existente. `null` si la tabla esta vacia. */

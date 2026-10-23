@@ -3,8 +3,13 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { crearOrganizacion } from "../../fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  crearPrismaDeTest,
+  enTransaccionRevertida,
+  etiquetasDeEnum,
+  serializarEscriturasReales,
+} from "./_postgres-real";
 
 // Feature 253 (D6) — la migracion que anade el aviso de la campana a los DOS enums de la feature
 // 146 (`notificacion_evento` y `notificacion_entidad_tipo`).
@@ -404,31 +409,28 @@ describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad
     // Es lo que ningun test de arriba puede demostrar: que el valor no solo esta en el cliente
     // generado, sino que la base lo acepta en la columna. Se escribe y se borra en el acto; la
     // fila lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (parcial).
-    const id = randomUUID();
-    // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la fila necesita empresa, y este caso
-    // escribe fuera de transaccion; la suya se crea aqui y se borra despues de la notificacion.
-    const empresa = await crearOrganizacion(prisma);
-    try {
-      await prisma.$executeRawUnsafe(
+    // SL-17 T4.3: en una transaccion revertida y tras el lock de la 227, con la empresa del DEFAULT.
+    // Commitear una empresa y borrarla despues chocaba con el down de los archivos hermanos (40P01):
+    // ver `notificacion-evento-bloqueo-cierre-migration.test.ts`.
+    const n = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const id = randomUUID();
+      await tx.$executeRawUnsafe(
         `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol",
-            "organizacion_id")
+           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
          VALUES ($1, 'warning'::"notificacion_tipo",
                  'postulacion_recurso_pendiente'::"notificacion_evento",
                  'prueba 253', 'postulacion_recurso'::"notificacion_entidad_tipo",
-                 NULL, 'maestro'::"rol_value", $2)`,
+                 NULL, 'maestro'::"rol_value")`,
         id,
-        empresa.id,
       );
-      const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      const filas = await tx.$queryRawUnsafe<{ n: bigint }[]>(
         `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
         id,
       );
-      expect(Number(filas[0].n)).toBe(1);
-    } finally {
-      await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE id = $1`, id);
-      await prisma.organizacion.delete({ where: { id: empresa.id } });
-    }
+      return Number(filas[0].n);
+    });
+    expect(n).toBe(1);
   }, 60_000);
 
   it("⚠️ el `notificacion_dedupe_key` conserva `NULLS NOT DISTINCT` y su `WHERE` parcial", async () => {

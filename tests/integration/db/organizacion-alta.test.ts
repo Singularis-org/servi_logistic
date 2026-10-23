@@ -14,7 +14,7 @@ import { PasswordResetService } from "@/lib/services/PasswordResetService";
 import { verifyPassword } from "@/lib/utils/password";
 import type { IEmailProvider, SendOtpCodeParams } from "@/lib/interfaces/external/IEmailProvider";
 import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
 // SL-17 / T2.8 (design §7.7) — R44, R45, R46 contra Postgres real, por el cliente EXTENDIDO
 // (el de la app) y en el contexto de plataforma que pone `altaEmpresaAction`. Las cuentas de
@@ -42,9 +42,13 @@ function entrada(slug: string, email: string, documento: string) {
   };
 }
 
+// El alta commitea `organizacion`, `usuario` y su podio fuera de una transaccion revertida: bajo el
+// lock de la 227, para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
 function alta(input: unknown): Promise<AltaEmpresaResultado> {
   const servicio = new OrganizacionService(new OrganizacionRepository(app));
-  return comoPlataforma("SL-17", "test de alta de empresa", () => servicio.altaEmpresa(input));
+  return bajoLockDeEscrituraReal(() =>
+    comoPlataforma("SL-17", "test de alta de empresa", () => servicio.altaEmpresa(input)),
+  );
 }
 
 // Acotado a lo que esta ejecución puede escribir (todo slug pasa por `entrada`, y todo email o
@@ -84,12 +88,14 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     const ids = orgs.map((o) => o.id);
     const usuarios = await base.usuario.findMany({ where: { organizacionId: { in: ids } }, select: { id: true } });
     const uids = usuarios.map((u) => u.id);
-    await base.emailOtpChallenge.deleteMany({ where: { usuarioId: { in: uids } } });
-    await base.premioRanking.deleteMany({ where: { organizacionId: { in: ids } } });
-    await base.usuario.deleteMany({ where: { id: { in: uids } } });
-    await base.organizacion.deleteMany({ where: { id: { in: ids } } });
+    await bajoLockDeEscrituraReal(async () => {
+      await base.emailOtpChallenge.deleteMany({ where: { usuarioId: { in: uids } } });
+      await base.premioRanking.deleteMany({ where: { organizacionId: { in: ids } } });
+      await base.usuario.deleteMany({ where: { id: { in: uids } } });
+      await base.organizacion.deleteMany({ where: { id: { in: ids } } });
+    });
     await base.$disconnect();
-  });
+  }, 120_000);
 
   it("R44: crea la organización y un maestro activo de esa empresa, sin contraseña utilizable", async () => {
     const slug = conSufijo("alta");

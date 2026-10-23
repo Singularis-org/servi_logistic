@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { notificarGeocodificacionCaidaReal } from "@/lib/notificaciones/notificadores";
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, serializarEscriturasReales } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 import { crearEnvio, crearPlantilla } from "./_whatsapp-envios-474";
 
 // Ficha 474 (T8.4, R26) — EL PUENTE, MEDIDO POR EL BINDING REAL DE PRODUCCION.
@@ -37,12 +37,17 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
   // empresa. La suya se confirma aqui, se fija en la transaccion del `beforeAll` y envuelve cada
   // emision (el binding real lee el contexto); se borra la ultima en el `afterAll`.
   let empresaId = "";
+  // SL-17 T4.3b — el lock de la 227 se sostiene de la siembra a la limpieza (antes, solo la siembra):
+  // los avisos que emiten los casos quedan commiteados en `notificacion` hasta el `afterAll`, y un
+  // `down.sql` historico de esa familia muere con 22P02 si ve un valor posterior al suyo; el borrado
+  // de `organizacion`, ademas, chocaba con esos down (40P01). Ver `tomarLockDeEscrituraReal`.
+  let soltarLock: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
+    soltarLock = await tomarLockDeEscrituraReal();
     prisma = crearPrismaDeTest();
     empresaId = (await crearOrganizacion(prisma)).id;
     await prisma.$transaction(async (tx) => {
-      await serializarEscriturasReales(tx);
       await fijarEmpresa(tx, empresaId);
       const p = await crearPlantilla(tx, { informeClave: "aviso_interno" });
       plantillaId = p.id;
@@ -55,28 +60,32 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
         roles: ["maestro"],
       });
     });
-  });
+  }, 120_000);
 
   afterAll(async () => {
-    const dias = [DIA_ENCENDIDO, DIA_APAGADO];
-    const notis = await prisma.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM "notificacion" WHERE "evento" = 'geocodificacion_caida' AND "entidad_id" = ANY($1::text[])`,
-      dias,
-    );
-    const ids = notis.map((n) => n.id);
-    await prisma.$executeRawUnsafe(`DELETE FROM "jobs" WHERE "dedupe_key" = ANY($1::text[])`, [
-      ...dias.map((d) => `wa_envio_evento:geocodificacion_caida:${d}`),
-      ...ids.map((i) => `push:${i}`),
-    ]);
-    await prisma.$executeRawUnsafe(`DELETE FROM "push_envio_dia" WHERE "notificacion_id" = ANY($1::text[])`, ids);
-    await prisma.$executeRawUnsafe(`DELETE FROM "notificacion_lectura" WHERE "notificacion_id" = ANY($1::text[])`, ids);
-    await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE "id" = ANY($1::text[])`, ids);
-    await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio_destinatario" WHERE "envio_id" = $1`, envioId);
-    await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio" WHERE "id" = $1`, envioId);
-    await prisma.$executeRawUnsafe(`DELETE FROM "plantilla_mensaje" WHERE "id" = $1`, plantillaId);
-    if (empresaId !== "") await prisma.organizacion.delete({ where: { id: empresaId } });
-    await prisma.$disconnect();
-  });
+    try {
+      const dias = [DIA_ENCENDIDO, DIA_APAGADO];
+      const notis = await prisma.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT "id" FROM "notificacion" WHERE "evento" = 'geocodificacion_caida' AND "entidad_id" = ANY($1::text[])`,
+        dias,
+      );
+      const ids = notis.map((n) => n.id);
+      await prisma.$executeRawUnsafe(`DELETE FROM "jobs" WHERE "dedupe_key" = ANY($1::text[])`, [
+        ...dias.map((d) => `wa_envio_evento:geocodificacion_caida:${d}`),
+        ...ids.map((i) => `push:${i}`),
+      ]);
+      await prisma.$executeRawUnsafe(`DELETE FROM "push_envio_dia" WHERE "notificacion_id" = ANY($1::text[])`, ids);
+      await prisma.$executeRawUnsafe(`DELETE FROM "notificacion_lectura" WHERE "notificacion_id" = ANY($1::text[])`, ids);
+      await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE "id" = ANY($1::text[])`, ids);
+      await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio_destinatario" WHERE "envio_id" = $1`, envioId);
+      await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio" WHERE "id" = $1`, envioId);
+      await prisma.$executeRawUnsafe(`DELETE FROM "plantilla_mensaje" WHERE "id" = $1`, plantillaId);
+      if (empresaId !== "") await prisma.organizacion.delete({ where: { id: empresaId } });
+      await prisma.$disconnect();
+    } finally {
+      await soltarLock?.();
+    }
+  }, 120_000);
 
   async function jobsDe(dia: string): Promise<number> {
     const f = await prisma.$queryRawUnsafe<{ n: number }[]>(

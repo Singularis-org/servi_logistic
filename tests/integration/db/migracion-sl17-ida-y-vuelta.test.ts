@@ -287,6 +287,18 @@ describeSiHayBase("SL-17 — M1, M2, M4 y M3 de ida y vuelta (R6, R32)", () => {
       if (carpeta >= M1) break;
       await ejecutar(sqlDe(carpeta, "migration.sql"), carpeta);
     }
+    // La base es nueva y las migraciones previas la llenan de filas, asi que el autovacuum la visita.
+    // Medido en la suite completa (log del servidor): `autovacuum: VACUUM ANALYZE public.distrito`
+    // esperaba a la transaccion de M1 (su GRANT ya habia tocado la fila de `distrito` en pg_class,
+    // que el ANALYZE reescribe) mientras M1 pedia el AccessExclusiveLock de su CREATE POLICY: 40P01.
+    // La base solo la usa este test, y las reloptions no entran en la foto.
+    const { rows: tablas } = await db.query(
+      `SELECT format('%I', c.relname) AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'`,
+    );
+    for (const { t } of tablas) {
+      await db.query(`ALTER TABLE ${String(t)} SET (autovacuum_enabled = false)`);
+    }
   }, 300_000);
 
   afterAll(async () => {

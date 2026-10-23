@@ -19,7 +19,7 @@ import { listarOrdenesSchema } from "@/lib/types/orden";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 
 import { crearOrganizacion } from "../../fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
 // SL-17 / T3.1 (design §9.2) — R28, R7, R8 y R9 con DOS empresas con datos, contra Postgres.
 //
@@ -248,32 +248,39 @@ describeSiHayBase("SL-17 — aislamiento de órdenes entre dos empresas (Postgre
     );
     geo = { comun, soloA, soloB };
 
-    A = await sembrarEmpresa("A");
-    B = await sembrarEmpresa("B");
-  });
+    // Commitea `organizacion`, `usuario` y `orden` fuera de una transaccion revertida: bajo el lock de
+    // la 227, para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
+    await bajoLockDeEscrituraReal(async () => {
+      A = await sembrarEmpresa("A");
+      B = await sembrarEmpresa("B");
+    });
+  }, 120_000);
 
   afterAll(async () => {
     if (base === undefined) return;
     const orgs = [A?.id, B?.id].filter((x): x is string => typeof x === "string");
     if (orgs.length > 0) {
-      // En el orden que piden las FK. Todo lo de estas dos empresas es de esta ejecucion.
-      for (const tabla of [
-        "historial_accion",
-        "orden_historial_estado",
-        "jobs",
-        "orden",
-        "carga",
-        "zona_distrito",
-        "zona",
-        "usuario",
-        "organizacion",
-      ]) {
-        const columna = tabla === "organizacion" ? "id" : "organizacion_id";
-        await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "${columna}" = ANY($1::text[])`, orgs);
-      }
+      // En el orden que piden las FK. Todo lo de estas dos empresas es de esta ejecucion. Bajo el lock
+      // de la 227, como la siembra.
+      await bajoLockDeEscrituraReal(async () => {
+        for (const tabla of [
+          "historial_accion",
+          "orden_historial_estado",
+          "jobs",
+          "orden",
+          "carga",
+          "zona_distrito",
+          "zona",
+          "usuario",
+          "organizacion",
+        ]) {
+          const columna = tabla === "organizacion" ? "id" : "organizacion_id";
+          await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "${columna}" = ANY($1::text[])`, orgs);
+        }
+      });
     }
     await base.$disconnect();
-  });
+  }, 120_000);
 
   it("la siembra deja datos en las dos empresas (sin ellos, el resto no mediria nada)", async () => {
     expect(await base.orden.count({ where: { organizacionId: A.id } })).toBe(2);

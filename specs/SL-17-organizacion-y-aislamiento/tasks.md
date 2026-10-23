@@ -253,7 +253,7 @@ comando con su salida queda en `progress/impl_SL-17.md`.
 
   **Hecho:** los docs citan archivos reales y `./init.sh` está verde, validador del perfil
   incluido.
-- [ ] **T4.5 Mapa `R<n> → test`** en `progress/impl_SL-17.md`, de R1 a R47. Cada uno cita un test
+- [x] **T4.5 Mapa `R<n> → test`** en `progress/impl_SL-17.md`, de R1 a R47. Cada uno cita un test
   concreto; los que cubre una guardia citan la guardia.
 
   **Hecho:** no falta ningún R.

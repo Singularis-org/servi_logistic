@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { HAY_BASE_DE_DATOS, urlDeBaseDeDatos } from "./_postgres-real";
+import { CLAVE_LOCK_ESCRITURA_REAL, HAY_BASE_DE_DATOS, urlDeBaseDeDatos } from "./_postgres-real";
 
 /**
  * SL-17 T3.9 — los unicos de negocio que pasan a ser POR EMPRESA, y los que siguen GLOBALES a
@@ -57,6 +57,16 @@ async function conectar(): Promise<Conexion> {
     },
   };
 }
+
+/**
+ * SL-17 T4.3b — el DDL de los esquemas desechables (`CREATE`/`DROP SCHEMA`, los clones y la ida y
+ * vuelta) va bajo el lock de la 227, de SESION y en la propia conexion. Sin el, un `down.sql` real
+ * serializado que recorre `pg_indexes`/`pg_constraint` con `pg_get_indexdef` (el de la 462) leia un
+ * indice de estos esquemas justo cuando otro archivo lo soltaba: `XX000 could not open relation with
+ * OID`. El lock es reentrante por sesion: cada `tomarLock` lleva su `soltarLock`.
+ */
+const tomarLock = (c: Conexion) => c.query(`SELECT pg_advisory_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+const soltarLock = (c: Conexion) => c.query(`SELECT pg_advisory_unlock(${CLAVE_LOCK_ESCRITURA_REAL})`);
 
 const nuevoEsquema = (etiqueta: string) => `sl17_t39_${etiqueta}_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
@@ -262,16 +272,27 @@ describeSiHayBase("SL-17 T3.9 — unicos por empresa y globales a proposito", ()
   beforeAll(async () => {
     c = await conectar();
     const casos = [...POR_EMPRESA, ...GLOBALES];
-    await clonar(c, esquema, [...new Set(casos.map((x) => x.tabla))], casos.map((x) => x.indice));
+    await tomarLock(c);
+    try {
+      await clonar(c, esquema, [...new Set(casos.map((x) => x.tabla))], casos.map((x) => x.indice));
+    } finally {
+      await soltarLock(c);
+    }
+    // Lo que sigue solo inserta en los clones, dentro de una transaccion que no se confirma.
     await c.query("BEGIN");
-  });
+  }, 120_000);
 
   afterAll(async () => {
     if (!c) return;
     await c.query("ROLLBACK");
-    await c.query(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
-    await c.end();
-  });
+    await tomarLock(c);
+    try {
+      await c.query(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
+    } finally {
+      await soltarLock(c);
+      await c.end();
+    }
+  }, 120_000);
 
   it("control: el clon tiene EXACTAMENTE los indices de la lista, copiados de public", async () => {
     const enPublic = await c.query(
@@ -319,6 +340,9 @@ describeSiHayBase("SL-17 T3.9 — la tabla real: `zona` con dos empresas de verd
     const nombre = `Centro ${randomUUID()}`;
     await c.query("BEGIN");
     try {
+      // `organizacion` real en RowExclusive hasta el ROLLBACK: el lock de la 227 primero, como en
+      // `enTransaccionRevertida`, para no cruzarse con el DDL serializado de las FK hacia ella.
+      await c.query(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
       const orgs: string[] = [];
       for (const etiqueta of ["a", "b"]) {
         const id = `t39-${etiqueta}-${randomUUID()}`;
@@ -349,21 +373,29 @@ describeSiHayBase("SL-17 T3.9 — ida y vuelta de `20261023090000_unicos_por_emp
 
   beforeAll(async () => {
     c = await conectar();
+    // Todo este bloque hace DDL en su esquema (clon, down y migration): el lock se sostiene de aqui
+    // al `afterAll`. Ninguno de sus casos usa otra conexion que lo pida.
+    await tomarLock(c);
     await clonar(c, esquema, [...TABLAS_DE_LA_MIGRACION, "organizacion"], POR_EMPRESA.map((x) => x.indice));
     fotoConLaMigracion = await fotoDeIndices(c, esquema);
     await c.query(`SET search_path TO "${esquema}"`);
     // Si el `SET` no hubiera surtido efecto, el down de abajo actuaria sobre `public`.
     const { rows } = await c.query("SELECT current_schemas(false)::text AS s");
     expect(rows[0].s).toBe(`{${esquema}}`);
-  });
+  }, 120_000);
 
   afterAll(async () => {
     if (!c) return;
-    await c.query("ROLLBACK").catch(() => undefined);
-    await c.query("RESET search_path");
-    await c.query(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
-    await c.end();
-  });
+    try {
+      await c.query("ROLLBACK").catch(() => undefined);
+      await c.query("RESET search_path");
+      await c.query(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
+      await soltarLock(c);
+    } finally {
+      // Cerrar la conexion suelta el lock aunque algo de arriba haya fallado.
+      await c.end();
+    }
+  }, 120_000);
 
   it("down.sql vuelve a los 18 globales de antes; migration.sql deja los indices como estaban", async () => {
     expect(fotoConLaMigracion).toHaveLength(18);

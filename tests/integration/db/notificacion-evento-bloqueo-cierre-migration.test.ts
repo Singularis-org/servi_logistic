@@ -11,7 +11,6 @@ import {
   serializarEscriturasReales,
   soltarDependientesPosterioresDelEnumDeEventos,
 } from "./_postgres-real";
-import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 // FEATURE 271 (T10.4, §3.2 — Q4 resuelta por el humano el 2026-08-23) — la migracion que anade los
 // DOS avisos del bloqueo por cierres a `notificacion_evento`.
@@ -247,37 +246,34 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
     // lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (que es parcial), y
     // lleva `destinatario_rol` porque el CHECK `notificacion_destinatario_xor` exige exactamente
     // uno de los dos destinatarios (146 §1.2).
-    // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la fila necesita empresa, y este caso
-    // escribe fuera de transaccion; la suya se crea aqui y se borra despues de las notificaciones.
-    const empresa = await crearOrganizacion(prisma);
-    try {
+    // SL-17 T4.3: en una transaccion revertida y tras el lock de la 227, con la empresa del DEFAULT.
+    // Commitear la empresa y borrarla despues (lo de R3) chocaba con el down de los archivos hermanos:
+    // el `DELETE FROM organizacion` toma RowShareLock en cada tabla hija por su RESTRICT, y con
+    // `push_envio_dia` ya tomada esperaba a la `notificacion` que el down tenia en exclusiva: 40P01.
+    const leidos = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const salida: (string | undefined)[] = [];
       for (const evento of NUEVOS) {
         const id = randomUUID();
-        try {
-          await prisma.$executeRawUnsafe(
-            `INSERT INTO "notificacion"
-               ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol",
-                "organizacion_id")
-             VALUES ($1, 'alert'::"notificacion_tipo",
-                     $2::"notificacion_evento",
-                     'prueba 271', 'cierre_dia'::"notificacion_entidad_tipo",
-                     NULL, 'maestro'::"rol_value", $3)`,
-            id,
-            evento,
-            empresa.id,
-          );
-          const filas = await prisma.$queryRawUnsafe<{ evento: string }[]>(
-            `SELECT "evento"::text AS evento FROM "notificacion" WHERE "id" = $1`,
-            id,
-          );
-          expect(filas[0]?.evento).toBe(evento);
-        } finally {
-          await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE "id" = $1`, id);
-        }
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "notificacion"
+             ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
+           VALUES ($1, 'alert'::"notificacion_tipo",
+                   $2::"notificacion_evento",
+                   'prueba 271', 'cierre_dia'::"notificacion_entidad_tipo",
+                   NULL, 'maestro'::"rol_value")`,
+          id,
+          evento,
+        );
+        const filas = await tx.$queryRawUnsafe<{ evento: string }[]>(
+          `SELECT "evento"::text AS evento FROM "notificacion" WHERE "id" = $1`,
+          id,
+        );
+        salida.push(filas[0]?.evento);
       }
-    } finally {
-      await prisma.organizacion.delete({ where: { id: empresa.id } });
-    }
+      return salida;
+    });
+    expect(leidos).toEqual([...NUEVOS]);
   });
 
   it("⭑ T10.4: el DOWN con una fila del evento nuevo ABORTA RUIDOSAMENTE (no borra nada)", async () => {

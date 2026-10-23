@@ -4,7 +4,7 @@ import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import { prepararConsultaAnalitica, type ConsultaAnalitica } from "@/lib/analytics/consulta";
 import { trocear, type CuboTemporal } from "@/lib/analytics/cubo-temporal";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../db/_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "../db/_postgres-real";
 import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 // Feature 187 / T6.1 y T6.2 — LA MITAD QUE SOLO POSTGRES PUEDE DEMOSTRAR.
@@ -94,14 +94,18 @@ describeSiHayBase("la lectura consistente de la analitica financiera, contra Pos
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     escritor = crearPrismaDeTest();
-    empresaId = (await crearOrganizacion(prisma)).id;
-  });
+    empresaId = (await bajoLockDeEscrituraReal(() => crearOrganizacion(prisma))).id;
+  }, 120_000);
 
   afterAll(async () => {
-    await prisma.walletMovimiento.deleteMany({ where: { id: { in: TODOS_LOS_IDS } } });
-    await prisma.organizacion.delete({ where: { id: empresaId } });
+    // Bajo el lock de la 227: el `DELETE` commiteado de `organizacion` recorre sus hijas por las FK
+    // en otro orden que los `down.sql` serializados, y sin el chocaba con ellos (40P01).
+    await bajoLockDeEscrituraReal(async () => {
+      await prisma.walletMovimiento.deleteMany({ where: { id: { in: TODOS_LOS_IDS } } });
+      await prisma.organizacion.delete({ where: { id: empresaId } });
+    });
     await Promise.all([prisma.$disconnect(), escritor.$disconnect()]);
-  });
+  }, 120_000);
 
   /* ------------------------------------------------------------------------ */
   /* I1 — el nivel de aislamiento aterriza de verdad (R2)                       */

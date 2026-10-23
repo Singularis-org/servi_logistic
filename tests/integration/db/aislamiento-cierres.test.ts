@@ -12,7 +12,7 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // SL-17 (T3.3, design §9.2, R30) — los cierres del dia de una empresa no se ven ni se resuelven
@@ -164,8 +164,14 @@ describeSiHayBase("SL-17 R30 — cierres del dia de dos empresas", () => {
   let tablas: string[];
   let A: Empresa;
   let B: Empresa;
+  let soltarLock: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
+    // SL-17 T4.3b — el lock de la 227 se sostiene de la siembra a la limpieza: las aprobaciones y
+    // rechazos de B commitean avisos en `notificacion` (`cierre_dia_rechazado`, ...) que viven hasta
+    // el `afterAll`, y un `down.sql` historico de esa familia muere con 22P02 si los ve (medido en la
+    // suite completa). Ver `tomarLockDeEscrituraReal`; por eso la siembra y la limpieza no lo piden.
+    soltarLock = await tomarLockDeEscrituraReal();
     base = crearPrismaDeTest();
     tablas = await tablasDeNegocio(base);
     if (!tablas.includes("cierre_dia")) {
@@ -173,7 +179,7 @@ describeSiHayBase("SL-17 R30 — cierres del dia de dos empresas", () => {
     }
     A = await sembrarEmpresa(base, "A");
     B = await sembrarEmpresa(base, "B");
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     try {
@@ -184,8 +190,9 @@ describeSiHayBase("SL-17 R30 — cierres del dia de dos empresas", () => {
       );
     } finally {
       await base.$disconnect();
+      await soltarLock?.();
     }
-  }, 60_000);
+  }, 120_000);
 
   const comoB = <T>(fn: (deps: { getActor: () => Promise<Actor> }) => Promise<T>): Promise<T> =>
     conEmpresa(B.organizacionId, () => fn({ getActor: async () => B.maestro }));
