@@ -1039,10 +1039,6 @@
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
       "desde": "2026-10-22"
-    },
-    "tests/unit/services/rastreo-publico-service.test.ts": {
-      "motivo": "Node 24.21 en CI da GMT+00:00 en UTC; lo arregla SL-37 (PR #2)",
-      "desde": "2026-10-22"
     }
   }
 }

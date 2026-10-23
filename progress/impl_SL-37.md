@@ -33,4 +33,6 @@ Se cambió la normalización a `desfase === "" ? "Z" : desfase` (el código ante
 Restaurada: `Tests 29 passed (29)`.
 
 El test no depende de la versión de Node: prueba la función con las cadenas literales de `Intl`.
-Baseline: `tests/baseline-rojos.json` (rama y dev) no cita `rastreo-publico-service`; no se toca.
+Baseline: al integrar `origin/dev` (que trae SL-31), `tests/baseline-rojos.json` traía la entrada
+de `rastreo-publico-service` marcada «lo arregla SL-37». SL-37 la quita en el merge: el archivo ya
+está verde.
