@@ -111,7 +111,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   **Hecho cuando:** Carlos aprueba la maqueta y su referencia queda en `progress/impl_SL-32.md`.
 
   *Estado (2026-10-22):* la propuesta está en `design.md > Diseño visual > Propuesta de T12`, y el
-  leader la dio por buena para codificar. **Falta el OK de Carlos** sobre la pantalla.
+  leader la dio por buena para codificar. **Carlos la aprobó el 2026-10-22.**
 - [x] **T13. [P] `EmpresasModule`** (R29–R34, R37; depende de T12).
   `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`, cliente. Recibe por props el
   listado, el catálogo de tipos y la action, que se inyecta para poder probarla. No importa Prisma
