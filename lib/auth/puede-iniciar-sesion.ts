@@ -1,5 +1,5 @@
-// SLT-32 — quien puede tener sesion. Es la UNICA definicion: el login, el OTP y la resolucion del
-// actor la consultan, para que la regla no se desvie entre caminos de entrada.
+// SLT-32 — quien puede tener sesion. Es la UNICA definicion: el login, el OTP, la resolucion del
+// actor y el guard del middleware (`isSessionActive`) la consultan, para que la regla no se desvie.
 //
 // Un usuario sin empresa no puede operar: toda consulta de negocio filtra por `organizacion_id` y
 // sin ella falla cerrado. `organizacion_id` NULL esta reservado al superadmin, pero ese rol aun no
