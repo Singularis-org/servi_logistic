@@ -45,7 +45,13 @@ const FUENTES = [...fuentesDe("lib"), ...fuentesDe("app"), ...fuentesDe("scripts
 
 describe("R1/R3 — el UNICO modulo que escribe `premio_ranking` es su servicio", () => {
   /** Archivos cuyo codigo NOMBRA la categoria del premio (no los que solo la rotulan). */
-  const queLaNombran = FUENTES.filter((ruta) => /"premio_ranking"/.test(codigoSinComentarios(ruta)));
+  // SL-17: `lib/db/modelos-de-negocio.ts` escribe "premio_ranking" como nombre de TABLA en la
+  // clasificacion de modelos (lista pura, sin Prisma); no nombra la categoria del libro.
+  const queLaNombran = FUENTES.filter(
+    (ruta) =>
+      ruta !== "lib/db/modelos-de-negocio.ts" &&
+      /"premio_ranking"/.test(codigoSinComentarios(ruta)),
+  );
 
   it("control de NO-VACUIDAD: el arbol es grande y la categoria existe de verdad", () => {
     expect(FUENTES.length).toBeGreaterThan(500);

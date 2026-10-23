@@ -20,7 +20,7 @@ Tanda 4  ── T4.1 (Supabase real) → T4.2 (humo dos empresas) → T4.3 → T
 
 ## Tanda 1 — Base (bloquea todo lo demás)
 
-- [ ] **T1.1 Spike de medición** (design §6.5).
+- [x] **T1.1 Spike de medición** (design §6.5).
   - Un test de integración con una tabla de prueba en un esquema desechable.
   - Mide los 5 puntos de §6.5.
   - Mide el coste de la envoltura: ms por operación con y sin ella, sobre 100 repeticiones.
@@ -28,7 +28,7 @@ Tanda 4  ── T4.1 (Supabase real) → T4.2 (humo dos empresas) → T4.3 → T
   **Hecho:** `tests/integration/db/aislamiento-mecanismo.test.ts` en verde, con un caso por punto,
   y el resultado anotado en `progress/impl_SL-17.md`. Si un punto falla, se para y se corrige el
   §6 de `design.md` antes de seguir.
-- [ ] **T1.2 Clasificación y M1** (pista A; depende de T1.1).
+- [x] **T1.2 Clasificación y M1** (pista A; depende de T1.1).
   - `lib/db/modelos-de-negocio.ts` con los 73 + 14 + 1 modelos de design §2 (modelo y tabla).
   - Migración `20261022130000_organizacion_y_rol_app`, con `migration.sql` y `down.sql`:
     - `organizacion` con `slug` único `NOT NULL`;
@@ -42,7 +42,7 @@ Tanda 4  ── T4.1 (Supabase real) → T4.2 (humo dos empresas) → T4.3 → T
   - Aplicar M1 y luego su `down.sql` sobre una base migrada deja `pg_policies`, `pg_roles` e
     `information_schema` como estaban.
   - `organizacion` tiene 0 filas.
-- [ ] **T1.3 M2** (pista A; depende de T1.2).
+- [x] **T1.3 M2** (pista A; depende de T1.2).
   - Migración `20261022130100_organizacion_id_en_negocio`, generada con un script de un solo uso
     que no se commitea (design §3): columna, FK, `DEFAULT`, índice y política en las 73 tablas.
   - `schema.prisma`: `organizacionId` en los 73 modelos (`String?` en `Usuario`).
@@ -51,7 +51,7 @@ Tanda 4  ── T4.1 (Supabase real) → T4.2 (humo dos empresas) → T4.3 → T
   **Hecho:**
   - `pnpm run db:reset` y `pnpm run db:generate` limpios, y `pnpm run typecheck` en verde.
   - Un `INSERT` en `orden` sin empresa fijada falla por `NOT NULL`.
-- [ ] **T1.4 [P] Contexto y extensión** (pista B; depende de T1.1 y de `modelos-de-negocio.ts`,
+- [x] **T1.4 [P] Contexto y extensión** (pista B; depende de T1.1 y de `modelos-de-negocio.ts`,
   que se escribe primero y se comparte con la pista A).
   - `lib/db/contexto-empresa.ts`, con la traducción del SQLSTATE `SL017` a `EmpresaCruzada`.
   - `lib/db/extension-empresa.ts` (design §5–§6, incluidos el `Proxy` de `$transaction` y R35).
@@ -61,7 +61,7 @@ Tanda 4  ── T4.1 (Supabase real) → T4.2 (humo dos empresas) → T4.3 → T
   **Hecho:**
   - `tests/unit/db/extension-empresa.test.ts` en verde (R7–R11, R14, R35, con un cliente doble).
   - Las guardias `prisma-client-sin-adaptador` y `prisma-omit` siguen verdes.
-- [ ] **T1.5 [P] `paraCadaEmpresa`** (pista B; depende de T1.4).
+- [x] **T1.5 [P] `paraCadaEmpresa`** (pista B; depende de T1.4).
   - `lib/db/para-cada-empresa.ts`.
   - El fallo de una empresa no frena las demás; sin empresas, no hace nada.
 
