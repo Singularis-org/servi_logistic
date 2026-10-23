@@ -1023,6 +1023,18 @@
     "tests/integration/db/usuario-contar-adminsatelites.test.ts": {
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"
+    },
+    "tests/integration/db/abono-tienda-457-migration.test.ts": {
+      "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/cobro-tienda-461-migration.test.ts": {
+      "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/wallet-461-migration.test.ts": {
+      "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
+      "desde": "2026-10-22"
     }
   }
 }
