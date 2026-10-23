@@ -1,5 +1,20 @@
 # SL-41 — Tareas
 
+> **Aprobado por Carlos Restrepo el 2026-10-23** (spec `7be57e8`, R1–R37). Sus respuestas a las
+> preguntas abiertas, que añaden R38–R40 (`requirements.md > Decisiones de la aprobación`) y
+> `design.md > 16`:
+>
+> - **P1.** Se queda el diseño: enlace de un solo uso con un secreto de 256 bits, sobre
+>   `email_otp_challenge` y el consumo de `PasswordResetService`.
+> - **P2.** `SMTP_FROM` ya está en Preview. `NEXT_PUBLIC_APP_URL` la añade Carlos en Vercel. Si
+>   falta, la app no se rompe: el alta sale igual, la pantalla avisa de que el correo no salió y
+>   el servidor registra un aviso que nombra la variable (R40).
+> - **P3.** «Reenviar bienvenida» se oculta cuando el maestro ya creó su contraseña. El dato se
+>   guarda con una migración **nueva** (T14, R38). Deja de valer el «sin migración» de
+>   `design.md > 5.1` solo para esa columna; el enlace sigue sin tabla nueva.
+> - **P4.** El pie lleva un correo de contacto configurable por entorno. Si está vacío, no aparece
+>   (T15, R39).
+
 > Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T4) → T5 → T6 → T7 → T8 → (T9 ∥ T10) → T11 → T12 → T13.
 > `[P]` = paralelizable con las demás `[P]` de su tanda. **T1 bloquea** la parte visual de T5 (la
 > maqueta HTML) y cualquier ajuste visual de T10.
@@ -157,6 +172,30 @@
   - Anotar para T19 de SL-32 que el correo real de bienvenida se comprueba en cada entorno, con
     Brevo, `SMTP_FROM` y `NEXT_PUBLIC_APP_URL` puestos (P2).
   - **Hecho:** gate local verde, con `INIT_EXIT=0` dentro del log, y cada `R<n>` con su test.
+
+- [ ] **T14. P3: «ya creó su contraseña» (R38).** Depende de T0. La parte de pantalla, de T10.
+  - Migración nueva `db/migrations/20261023140000_usuario_contrasena_definida_at/` con
+    `migration.sql` y `down.sql` (`design.md > 16.1`).
+  - `UserRepository.updatePasswordHash` pone `contrasena_definida_at = now()` en el mismo `UPDATE`.
+  - `BienvenidaMaestroRepository.organizacionesConBienvenidaPendiente()` y
+    `bienvenidasPendientesAction()` (`design.md > 16.2`).
+  - `page.tsx` pasa `bienvenidaPendiente`; `EmpresasModule` muestra el botón solo en esas filas.
+  - Tests:
+    - integración: la empresa cuyo primer maestro ya tiene `contrasena_definida_at` no sale; la que
+      no, sí; el maestro más nuevo no cuenta; otra empresa no se mezcla. Mutación del filtro
+      `IS NULL`, anotada;
+    - integración de `updatePasswordHash`: tras llamarlo la columna deja de ser `NULL`;
+    - action: `no_autorizado` sin leer nada;
+    - componente: la fila pendiente muestra el botón, la otra no, y con `null` vale R29.
+  - Migración aplicada y revertida (`down.sql`) en `sl41_*`.
+  - **Hecho:** tests verdes y mutación anotada.
+
+- [ ] **T15. P4: contacto en el pie (R39).** Depende de T5.
+  - `EMAIL_CONTACTO` en `lib/config/email.ts` (`emailConfig().contacto`, `null` si vacía o no es un
+    email) y en `.env.example`.
+  - `componerCorreo` la recibe y la pinta en el pie de texto y de HTML (`mailto:` escapado).
+  - Tests en `plantilla-marca.test.ts` y `email-config.test.ts`: con contacto aparece, vacía no.
+  - **Hecho:** tests verdes.
 
 ## Archivos esperados
 

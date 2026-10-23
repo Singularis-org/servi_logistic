@@ -572,3 +572,62 @@ Ninguna nueva. `nodemailer` y `bcryptjs` ya están aprobados en `docs/dependenci
 | R34 | `tests/unit/services/bienvenida-maestro-service.test.ts` y `tests/unit/password-reset-enlace.test.ts`: espían `console.*` y exigen que no aparezcan el secreto, la URL ni el email en el registro de error |
 | R36, R37 | `tests/unit/config/email-config.test.ts`: el host por defecto, más una lectura de `lib/config/email.ts` y de `.env.example` sin «Gmail», «Google Workspace» ni «contraseña de aplicación» |
 | E2E | `e2e/superadmin-empresas.spec.ts`: alta, enlace leído de la línea de depuración, «Crea tu contraseña», login con la contraseña nueva; segundo uso del enlace, rechazado |
+
+## 16. Adenda de la aprobación (Carlos, 2026-10-23)
+
+### 16.1 P3: la columna `usuario.contrasena_definida_at` (R38)
+
+Migración nueva `20261023140000_usuario_contrasena_definida_at`, posterior a las de SL-40
+(`20261023130000…`):
+
+```sql
+-- migration.sql
+ALTER TABLE "usuario" ADD COLUMN "contrasena_definida_at" TIMESTAMP(3);
+-- down.sql
+ALTER TABLE "usuario" DROP COLUMN "contrasena_definida_at";
+```
+
+- Nullable y sin relleno: las filas que ya existen quedan en `NULL`, y para ellas el botón se ve
+  como hasta ahora (R29). No hay forma fiable de saber, en las filas viejas, si la contraseña es la
+  aleatoria del alta.
+- Prisma: `contrasenaDefinidaAt DateTime? @map("contrasena_definida_at")` en `Usuario`.
+- Organización y RLS no cambian: es una columna más de `usuario`, que ya tiene las suyas.
+- La pone `UserRepository.updatePasswordHash`, en el mismo `UPDATE` que el hash. Hoy solo la llama
+  `PasswordResetService`: el `restablecer()` del código y el `crearContrasenaConEnlace` del enlace.
+  El restablecimiento que hace el maestro sobre otro usuario (spec 287) va por otro método y no
+  la toca: esa contraseña la eligió otra persona.
+
+### 16.2 P3: qué filas muestran el botón
+
+- `IBienvenidaMaestroRepository.organizacionesConBienvenidaPendiente(): Promise<string[]>`: los
+  `organizacion_id` cuyo **primer** maestro (el mismo criterio que `maestroParaBienvenida`: el más
+  antiguo por `created_at`, `id`) tiene `contrasena_definida_at IS NULL`. Es una lectura de
+  plataforma, dentro del `comoPlataforma` de la action.
+- `bienvenidasPendientesAction()` en `lib/actions/organizaciones.ts`: `exigirSuperadmin` primero
+  (`no_autorizado` sin leer nada); después `{ estado: "ok", organizacionIds }`. Si la lectura
+  falla, `{ estado: "error" }`, sin el mensaje.
+- `page.tsx` la llama junto al listado y pasa `bienvenidaPendiente: string[] | null`. Con `null`
+  (error), el módulo vuelve a R29: botón en toda fila con maestros.
+- Se evita `EmpresasPlataformaRepository` y `lib/types/empresas-plataforma.ts`, que toca SL-40.
+
+### 16.3 P4: contacto en el pie (R39)
+
+- `EMAIL_CONTACTO` en `lib/config/email.ts`: `emailConfig().contacto`, `null` si falta, está vacía
+  o no pasa `z.email()`.
+- `CorreoDeMarca` gana `contacto: string | null`. El pie añade «¿Dudas? Escríbenos a {contacto}.»,
+  con un `mailto:` escapado en el HTML. Cada plantilla lo recibe de quien la llama, igual que
+  `baseUrl`; `componerCorreo` sigue siendo pura.
+
+### 16.4 P2: sin `NEXT_PUBLIC_APP_URL` (R40)
+
+`BienvenidaMaestroService`, con `baseUrl === null`, registra
+`[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL organizacion=<id>` con `console.warn` y
+devuelve `no_enviada`. La pantalla muestra el aviso de R26.
+
+### 16.5 Mapa de los requisitos nuevos
+
+| R | Test |
+|---|---|
+| R38 | `tests/integration/db/bienvenida-maestro-repository.test.ts` (pendientes y el `IS NULL`), `tests/integration/db/user-repository-contrasena-definida.test.ts`, `tests/unit/actions/reenviar-bienvenida-action.test.ts` (`bienvenidasPendientesAction`) y `tests/components/empresas-module.test.tsx` |
+| R39 | `tests/unit/services/email/plantilla-marca.test.ts` y `tests/unit/config/email-config.test.ts` |
+| R40 | `tests/unit/services/bienvenida-maestro-service.test.ts` |

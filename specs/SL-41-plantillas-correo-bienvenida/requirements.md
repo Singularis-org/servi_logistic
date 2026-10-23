@@ -182,3 +182,20 @@
   tiene contraseña solo le da un enlace para cambiarla, que equivale a «recuperar contraseña».
 - **P4 (Carlos). ¿El pie del correo lleva una dirección de contacto o de soporte?** No está en
   `docs/`. Hasta que la haya, el pie dice que es un correo automático, sin dirección.
+
+## Decisiones de la aprobación (Carlos, 2026-10-23)
+
+Carlos aprobó el spec y respondió P1–P4 (`tasks.md`, cabecera). P1 confirma el diseño. P2, P3 y P4
+añaden estos requisitos. P3 deja sin efecto la línea «Guardar en la base si el maestro ya creó su
+contraseña» de `## Lo que NO entra`.
+
+- **R38 (P3).** CUANDO un usuario guarda su contraseña por el enlace de bienvenida o por «recuperar
+  contraseña», el sistema DEBE registrar en la base el momento en que lo hizo. DONDE el primer
+  maestro de una empresa (R30) ya tenga ese registro, la fila de «Empresas» NO DEBE mostrar
+  «Reenviar bienvenida». SI la pantalla no puede leer ese dato, ENTONCES DEBE aplicar R29.
+- **R39 (P4).** DONDE el entorno defina `EMAIL_CONTACTO` con un email válido, el pie de todo correo
+  DEBE mostrarlo, en el texto plano y en el HTML. SI está vacía, no existe o no es un email,
+  ENTONCES el pie NO DEBE mostrar ninguna dirección.
+- **R40 (P2).** SI no hay URL base de la app, ENTONCES la bienvenida DEBE terminar en `no_enviada`
+  (R23) y el servidor DEBE registrar un aviso que nombre `NEXT_PUBLIC_APP_URL`, sin ningún valor
+  de entorno. El OTP DEBE seguir saliendo con la cabecera de texto (R4).
