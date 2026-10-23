@@ -431,8 +431,8 @@ describe("R22 — el DTO es la lista blanca cerrada, construida campo a campo", 
 
 // SL-37 — el desfase no depende de la version de Node: se prueban las salidas literales de
 // `Intl` (`timeZoneName: "longOffset"`), no lo que da el Node de esta maquina.
-describe("SL-37 R1 — las tres formas de UTC que da Intl salen como Z", () => {
-  it.each(["", "GMT", "GMT+00:00"])("«%s» -> Z", (nombreZona) => {
+describe("SL-37 R1 — las formas de UTC que da Intl salen como Z", () => {
+  it.each(["", "GMT", "GMT+00:00", "GMT-00:00"])("«%s» -> Z", (nombreZona) => {
     expect(normalizarDesfase(nombreZona)).toBe("Z");
   });
 });

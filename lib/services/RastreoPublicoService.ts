@@ -91,7 +91,8 @@ function formatearEnZona(instante: Date, zonaHoraria: string): string {
 
 /**
  * SL-37 (R1/R2) — convierte el `timeZoneName` de `longOffset` en el sufijo ISO-8601. Para el
- * desfase cero `Intl` da «», «GMT» o «GMT+00:00» segun la version de Node: las tres son `Z`.
+ * desfase cero `Intl` da «», «GMT» o «GMT+00:00» segun la version de Node, y «GMT-00:00» se
+ * trata igual por si un ICU lo emite: todas son `Z`.
  * Cualquier otro desfase sale tal cual, sin el prefijo («GMT-06:00» -> «-06:00»).
  */
 export function normalizarDesfase(nombreZona: string): string {

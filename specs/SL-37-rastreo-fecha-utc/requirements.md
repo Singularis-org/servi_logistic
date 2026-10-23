@@ -13,8 +13,9 @@
 
 ## Requisitos (EARS)
 
-- **R1.** CUANDO `Intl` devuelva para el desfase cualquiera de las tres formas de UTC —«» (vacío),
-  «GMT» o «GMT+00:00»— el sistema DEBERÁ escribir el desfase como `Z`.
+- **R1.** CUANDO `Intl` devuelva para el desfase cualquiera de las formas de UTC —«» (vacío),
+  «GMT», «GMT+00:00» o «GMT-00:00» (es decir, «+00:00» o «-00:00» tras quitar «GMT»)— el sistema
+  DEBERÁ escribir el desfase como `Z`.
 - **R2.** CUANDO `Intl` devuelva un desfase distinto de cero («GMT±HH:MM»), el sistema DEBERÁ
   escribirlo como `±HH:MM`, igual que antes.
 
