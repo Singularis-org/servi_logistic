@@ -7,7 +7,7 @@
 //
 // Se ejercita el módulo REAL con SWR real; lo mockeado es el borde (Server Actions) y el toast.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 import type { ReactElement } from "react";
@@ -40,6 +40,16 @@ vi.mock("@/lib/actions/usuarios-por-rol", () => ({
 }));
 
 import { ApiKeysModule } from "@/app/(app)/configuracion/api/_components/ApiKeysModule";
+
+// Las esperas de este archivo miden CPU, no tiempo de reloj. Los `findBy*`/`waitFor` de
+// testing-library no usan el `testTimeout: 20000` de vitest, sino `asyncUtilTimeout`, que por
+// defecto es 1000 ms. En el CI del PR #1 cayó dos veces en `irAPagina2`, casos distintos, a
+// los ~1075 ms: el clic, la petición de la página 2 al mock (que resuelve al instante) y el
+// render con jsdom de la tabla nueva no cupieron en 1 s en un runner de 2 vCPU con la suite
+// entera encima. En el componente no hay carrera: el cambio de página es `setPage` + una
+// clave SWR nueva. Mismo margen y mismo razonamiento que `tests/components/OrdenesPageFiltros.test.tsx`.
+// No cambia lo que se afirma: una página que no llega sigue dando rojo, a los 10 s.
+configure({ asyncUtilTimeout: 10000 });
 
 /** Fila ELIMINABLE (desactivada y sin rastro): es el único estado desde el que se borra. */
 function fila(n: number): ApiKeyListItemDTO {
@@ -75,9 +85,16 @@ function renderModule(ui: ReactElement) {
   );
 }
 
-/** Va a la página 2 y espera a que su única fila esté pintada. */
+/**
+ * Va a la página 2 y espera a que su única fila esté pintada. Espera las dos condiciones reales,
+ * en orden: que el módulo PIDIÓ la página 2 (el clic surtió efecto) y que la pintó. Si cae, el
+ * mensaje dice cuál de las dos faltó.
+ */
 async function irAPagina2(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Página siguiente" }));
+  await waitFor(() =>
+    expect(listarApiKeysMock).toHaveBeenCalledWith({ page: 2, pageSize: PAGE_SIZE }),
+  );
   await screen.findByText("integracion-11");
 }
 

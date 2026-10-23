@@ -93,3 +93,39 @@ Segundo intento: **`gate-completo` pass**. `estatico` pass, los tres shards pass
 «sin rojos nuevos (248 rojos, todos en el baseline de 249); 1 por limpiar». El que ya pasa es
 `tests/integration/db/notificacion-evento-webhook-suscripcion-migration.test.ts`, de la exclusión de
 SL-28: se deja para SL-28.
+
+### `api-keys-module.eliminar.test.tsx`: no determinista bajo carga (arreglado)
+
+Cayó dos veces en CI, en casos distintos: run 39888970739 («con MÁS de una fila…») y run
+39891004914 («un borrado que FALLA…»). Las dos en `irAPagina2` (línea 81), a ~1075 ms, con
+`Unable to find an element with the text: integracion-11`.
+
+- **Causa:** el `findByText` usa `asyncUtilTimeout`, 1000 ms por defecto, no el `testTimeout`
+  de 20 s. El clic, la petición de la página 2 al mock (resuelve al instante) y el render con
+  jsdom no cupieron en 1 s en el runner de 2 vCPU. En el componente no hay carrera: el cambio de
+  página es `setPage` + una clave SWR nueva. No se toca el componente.
+- **Arreglo:** solo en el test.
+  - `irAPagina2` espera las dos condiciones reales, en orden: que se pidió la página 2 y que se
+    pintó.
+  - `configure({ asyncUtilTimeout: 10000 })` en el archivo, con el razonamiento escrito, como
+    `tests/components/OrdenesPageFiltros.test.tsx`.
+- **Reproducción determinista** (copias temporales, ya borradas, con la página 2 retrasada):
+  - 1500 ms: la versión de `HEAD` da 3/4 rojos con el error exacto de CI; la arreglada, 4/4 verdes.
+  - Página que no llega nunca: la arreglada sigue roja (a los ~10 s, «expected … called with
+    { page: 2 }»), así que no tapa un fallo real.
+- **Bajo carga** (`vitest run tests/unit/components --pool threads` en bucle, en paralelo):
+  - con el arreglo, **20/20** verdes;
+  - sin el arreglo, también 20/20, y 20/20 con cuatro bucles de carga: esta máquina no reproduce
+    el rojo por carga, de ahí la reproducción por latencia.
+- **Mutaciones de R35** (cada una restaurada con `git checkout`):
+
+  | Mutante | Resultado |
+  |---|---|
+  | M1, `retrocederSiPaginaVacia` no hace nada | rojo «⭑ borrada la ÚNICA fila…» |
+  | M2, `<= 1` → `<= 99` | rojo «con MÁS de una fila…» |
+  | M3, `page > 1` → `page >= 1` | rojo «en la página 1 NO retrocede» |
+  | M4, la celda llama a `onEliminada` tras un borrado `bloqueada` | rojo «un borrado que FALLA…» |
+
+  En 1 de 4 corridas de M1 cayó además «un borrado que FALLA…», a los 10 s, justo detrás del caso
+  que agotó su espera. Sin mutante no ha pasado en 40 corridas.
+- `TEST_RAPIDO_BASE=dev ./init.sh`: `== init OK ==`, `INIT_EXIT=0`.
