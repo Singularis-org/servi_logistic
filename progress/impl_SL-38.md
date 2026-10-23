@@ -451,3 +451,64 @@ del literal; docs al día con cambios mínimos.
 - Mutación (restaurada; blob `e15ce21` idéntico): `deleteMany` en su propia `$transaction`, fuera de la del `createMany` → R13 cae con `expected 1 to be 2` (`Tests 1 failed | 8 passed`).
 
 Veredicto T11: R13 mide solo sus empresas y sigue matando el lote no atómico.
+
+## Cierre (implementer) — mapa R → test, verificación y estado
+
+### Mapa consolidado R → test
+
+| R | Test |
+|---|---|
+| R1, R3, R4, R10, R13 | `tests/integration/db/distrito-zona-especial-por-empresa.test.ts` |
+| R2 | guardias `organizacion-en-modelos`, `rls-por-empresa` (`toBe(74)`), `fk-misma-empresa` |
+| R5, R7, R8 | `tests/integration/db/migracion-sl38-ida-y-vuelta.test.ts` |
+| R6 | `tests/integration/db/distrito-zona-especial-migration.test.ts` + typecheck sin la columna + guardia de R22 |
+| R9, R11, R12 | `tests/unit/services/distrito-zona-especial-service.test.ts`, `tests/unit/actions/distritos-especiales-action.test.ts` |
+| R9 (sin 500), R14–R21 | `tests/integration/db/zona-especial-dos-empresas.test.ts` (A marca D, B marca D2; nueve lecturas, congelado de R20) |
+| R15 | `tests/unit/descarga/cobertura-descarga-columnas.test.ts`, `tests/unit/utils/cobertura-distrito.test.ts` |
+| R16 | además, los tests de `resolverFlete`, carga y cotización sin cambiar su aserción |
+| R22 | `tests/unit/guards/zona-especial-punto-unico.guardia.test.ts` |
+| R23 | `tests/unit/scripts/verificar-rls-despliegue.test.ts` |
+| R24 | revisión del diff de `docs/architecture.md` y `progress/deudas.md` |
+
+El test obligatorio del encargo (dos empresas marcan distritos distintos y la tarifa o el cobro de
+cada una solo ve su marca) es `zona-especial-dos-empresas.test.ts`, muerto por DROP POLICY, por la
+política abierta, por `true` fijo en el predicado y por no sembrar la marca de A (sección T8).
+
+### Verificación de cierre (HEAD `91c56c8`, bajo `gate.lock`, base `sl38_base`)
+
+- `TEST_RAPIDO_BASE=dev ./init.sh` → **`INIT_EXIT=1`**, y solo por el validador de features:
+  `specs/SL-38-zona-especial-por-empresa/ no tiene ficha en <raiz>/feature_list.json: falta SL-38`.
+  La copia local del board (F0, del leader) no trae SL-38. El bloque 6 de
+  `scripts/validate-features.mjs` dice mirar «solo `specs/` de la raíz, no los worktrees», pero lee
+  `specs` relativo al cwd, así que en un worktree mira el del worktree. Ese `fail` corta el gate
+  antes del typecheck y de los tests. Para seguir hacen falta F0 con SL-38 o un arreglo del arnés
+  por `/afinar-regla`.
+- Los pasos del perfil, por separado y en la misma sesión con lock:
+  - `prisma generate` exit 0; cliente `distritoZonaEspecial: SI | Distrito.zonaEspecial: ausente`,
+    antes y después;
+  - `pnpm run typecheck` → exit 0; `pnpm run lint` → 0 errores (232 warnings, preexistentes);
+  - `pnpm run test:guardias` → `Test Files 1 failed | 300 passed (301)`,
+    `Tests 4 failed | 4105 passed | 1 skipped (4110)`; los 4 son `dependencias-declaradas-presentes`
+    (baseline);
+  - `vitest related --run` (archivos .ts/.tsx del diff contra `origin/dev`) → `Test Files 242 failed
+    | 968 passed (1210)`. De los 242, 241 están en `tests/baseline-rojos.json`; el que no,
+    `caja-173-alcance.guardia`, cayó por timeout de 20 s bajo carga y sale verde en la corrida de
+    guardias.
+
+### Integración con `dev` y despliegue
+
+- Merge de `origin/dev` (`c665e71`, hotfix de la siembra de jobs recurrentes) en `1fead58`, sin
+  conflictos. No trae migraciones. SL-32 todavía no está en `dev`.
+- Vercel: `bb5c597` y `ba61367` fallaron por la siembra (`EmpresaNoResuelta` en
+  `siembra-jobs-recurrentes.ts`, lo que arregla el hotfix), y M1 y M2 sí se aplicaron en QA.
+  `1fead58` → `Vercel=success`.
+- M1 y M2 empujadas: se consideran aplicadas y no se editan (`git diff fe551db HEAD` de M1 vacío).
+- `gate-completo` solo corre en un PR a `dev`; el PR lo abre el leader tras el review.
+
+### Pendiente
+
+- T9: la comprobación en el navegador con dos maestros (ver tasks.md).
+- Los tests de integración que piden datos sembrados ajenos (orden, adminTienda) y están en la
+  baseline: compilan con la marca nueva, pero no se ejecutaron (`cobertura-repository`,
+  `emisor-relaciones-anidadas`, `corregir-datos-cliente.repo`, `costo-y-zona-api-415`,
+  `gestiones-detalle-api-405`).
