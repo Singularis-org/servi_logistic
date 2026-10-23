@@ -93,7 +93,7 @@ Un commit por task (`docs/conventions.md > Commits`).
     nuevas y `validation_error`.
   - _Hecho:_ los tres archivos en verde. Los 6 tests de componentes que mockean `@/lib/actions/geografia`
     siguen en verde sin tocarlos.
-- [ ] **T7. [P] M2: retirar `distrito.zona_especial`** (R6, R7, R8; depende de T4 y T5).
+- [x] **T7. [P] M2: retirar `distrito.zona_especial`** (R6, R7, R8; depende de T4 y T5).
   - `db/migrations/20261023120100_retirar_distrito_zona_especial/{migration,down}.sql`
     (`design.md §2.2`).
   - `db/schema.prisma`: sale `Distrito.zonaEspecial`, y se reescriben los comentarios que lo citan

@@ -618,9 +618,8 @@ model Provincia {
   nombre String
   // feature 55 (F1.4-C): `provincia.zona_id` fue ELIMINADO en la DB (la zona ya no
   // cuelga de la provincia; la asignacion vive en distrito.zona_id + N:M ZonaDistrito).
-  /// FICHA 374 — retirar sin borrar. `NOT NULL` con default `true`, a diferencia de
-  /// `Distrito.zonaEspecial`, que es `Boolean?` porque alli `null` SIGNIFICA algo («nadie lo
-  /// decidio»). Aqui no significa nada y la columna es de dos valores: NO homogeneizar las dos.
+  /// FICHA 374 — retirar sin borrar. `NOT NULL` con default `true`: todo nodo esta operativo o
+  /// retirado, `null` no significaria nada y la columna es de dos valores.
   ///
   /// LA CASCADA NO SE MATERIALIZA: la disponibilidad efectiva es la conjuncion con los
   /// ascendientes y se EVALUA al leer, en `lib/repositories/_shared/geografia-activa.ts`. Un
@@ -642,8 +641,7 @@ model Provincia {
   /// lectura a escribir `activo IS NOT FALSE`. Aqui SI significa algo: «este nodo no tiene codigo
   /// oficial todavia». Un nodo dado de alta a mano desde /configuracion/geografia no lo tiene hasta
   /// que el IGN se lo asigne, y un `NOT NULL` obligaria a INVENTARLO — que es peor que no tenerlo,
-  /// porque un codigo inventado colisiona con el real el dia que llegue. Es el mismo razonamiento
-  /// que sostiene `Distrito.zonaEspecial`.
+  /// porque un codigo inventado colisiona con el real el dia que llegue.
   ///
   /// EL NOMBRE PASA A SER UNA ETIQUETA MUTABLE: el cruce del seed (`scripts/seed-zonas.ts`) va por
   /// este codigo, y por eso renombrar dejo de crear duplicados.
@@ -682,14 +680,9 @@ model Distrito {
   id           String   @id @default(uuid())
   nombre       String
   cantonId     String   @map("canton_id")
-  // Distrito que no se cobra/despacha como el resto de su zona. OPCIONAL a proposito: `false` =
-  // se decidio que no es especial (lo que recibe toda fila que no diga nada, por el default);
-  // `null` = nadie lo decidio todavia. Al leerla NO vale `NOT zonaEspecial`: con null eso no es
-  // false. Ver la migracion 20260824180000_distrito_zona_especial.
-  zonaEspecial Boolean? @default(false) @map("zona_especial")
-  /// FICHA 374 — ver `Provincia.activo`. ⚠️ NO se homogeneiza con `zonaEspecial`, que esta justo
-  /// encima: aquella es `Boolean?` PORQUE `null` significa «nadie lo decidio»; esta es de dos
-  /// valores y `null` no significaria nada.
+  /// FICHA 374 — ver `Provincia.activo`: de dos valores, `null` no significaria nada.
+  /// SL-38: la marca de zona especial ya no es una columna de aqui (era `zona_especial`); es de la
+  /// empresa, en `zonasEspeciales` (`distrito_zona_especial`).
   activo       Boolean  @default(true)
   /// FICHA 375 — ver `Provincia.codigoDta`. Cinco digitos: el de su canton + dos.
   codigoDta    String?  @unique @map("codigo_dta")
@@ -2965,9 +2958,10 @@ model CierreDetail {
   zonaId         String   @map("zona_id") // `orden.zona_id`
   tiendaId       String   @map("tienda_id") // `orden.tienda_id`: a quien se acredita (43), CONGELADO
   esCentral      Boolean  @map("es_central") // `zona.es_central` EN ESE INSTANTE (elige columna GAM, R21)
-  // `distrito.zona_especial IS TRUE` EN ESE INSTANTE: es lo que decide si el flete sale del
-  // pacto especial o de la columna normal. NOT NULL a proposito (a diferencia del origen, que
-  // es tri-valuado): al congelar, "¿se cobro como especial?" ya no admite "nadie lo decidio".
+  // La marca de zona especial de la EMPRESA de la orden EN ESE INSTANTE (SL-38:
+  // `distrito_zona_especial`): es lo que decide si el flete sale del pacto especial o de la columna
+  // normal. Marcar o desmarcar despues no la mueve: es el congelado. NOT NULL: «¿se cobro como
+  // especial?» solo admite si o no.
   esZonaEspecial Boolean  @default(false) @map("es_zona_especial")
 
   // --- tarifa congelada (R8): todas o ninguna. NULL = la tienda no tenia tarifa vigente al

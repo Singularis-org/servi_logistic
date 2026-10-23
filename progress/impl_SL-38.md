@@ -250,3 +250,98 @@ Archivos: servicio, accion y test de integracion (`3 files, 27 tests`).
 | 4 | composition root con `new DistritoZonaEspecialService(undefined as never)` | `1 failed`: «composition root: … el repositorio real escribe» |
 | 5 | servicio sin rechazar el id en las dos listas | `1 failed`: R12 del servicio |
 | 6 | servicio que devuelve solo `creadas` | `2 failed`: R9 del servicio y el composition root (3 → 2) |
+
+### T7 — Archivos
+
+- Nuevos: `db/migrations/20261023120100_retirar_distrito_zona_especial/{migration,down}.sql`
+  (design §2.2: `DO $$` de aborto + `DROP COLUMN`; down `ADD COLUMN "zona_especial" BOOLEAN DEFAULT
+  false`), `tests/integration/db/migracion-sl38-ida-y-vuelta.test.ts` (base propia `sl38_iv_<rand>`,
+  creada y borrada por el test; comprobado despues: solo queda `sl38_base`).
+- `db/schema.prisma`: sale `Distrito.zonaEspecial`; reescritos los comentarios de `Provincia.activo`,
+  `Provincia.codigoDta`, `Distrito.activo` y `CierreDetail.esZonaEspecial` («la marca de la empresa
+  de la orden en ese instante»).
+- Tests ajustados: `distrito-zona-especial-migration` (R6: el bloque `model Distrito`, sin
+  comentarios, ya no declara `zonaEspecial` y si `zonasEspeciales`), `corregir-datos-cliente.repo`
+  (el distrito especial siembra la marca con `distritoZonaEspecial.create`, empresa de
+  `enTransaccionRevertida`), `emisor-relaciones-anidadas` (el `select` «de antes» lee la marca por
+  `SELECT_MARCA_ZONA_ESPECIAL` / `esZonaEspecialDeLaEmpresa`), `costo-y-zona-api-415` y
+  `gestiones-detalle-api-405` (contratos de coste, ver abajo).
+- Revisados y SIN cambio (no leen ni siembran la columna; solo `esZonaEspecial` de salida, pactos
+  `tarifaEspecial` o el fixture de `DistritoArbolDTO`): `resolver-novedad-reprograma-dinero`,
+  `ordenes-api-key-orden-consulta.route`, `ordenes-api-key-listado.route`, `cierre-detail-congelado`,
+  `zona-guardado-conserva-inactivos`, `asimetria-sin-tarifa`, `cobertura-repository` (ya sembraba la
+  marca en T5). Los `geografia-*-migration` crean su propia tabla `distrito` historica en un esquema
+  desechable: no dependen del esquema actual.
+
+### T7 — Desviacion: el contrato de coste de la API (consecuencia de T4)
+
+`costo-y-zona-api-415` y `gestiones-detalle-api-405` congelan, por tabla y en orden, las consultas
+del detalle y del listado. Con la marca como relacion anidada (T4) Prisma emite una consulta mas
+a `distrito_zona_especial`. Medido con `crearPrismaDeTestConEspia` en `sl38_base` (scratch de un
+solo uso, borrado; misma cadena `findDetalleByOrdenIdForOwner` y `ApiOrdenLecturaService.listar`):
+
+```
+DETALLE ["orden","order_status","usuario","zona","distrito","cierre_detail","gestion_orden","orden_historial_estado","orden_incidente","distrito_zona_especial","usuario","orden_evento","order_status","orden_incidente_evidencia"]
+LISTADO ["orden","order_status","usuario","zona","distrito","cierre_detail","distrito_zona_especial","orden","tarifas"]
+```
+
+El detalle pasa de 13 a 14 y el listado de 8 a 9 (sigue sin depender del numero de items). Los dos
+literales se actualizan con esa medida. `gestiones-detalle-api-405` no estaba en «Archivos
+esperados»; lleva el mismo literal del detalle.
+
+### T7 — Base `sl38_base`
+
+- `pnpm exec prisma migrate deploy` (sin reset): `Applying migration
+  20261023120100_retirar_distrito_zona_especial` → `All migrations have been successfully applied`.
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` →
+  `-- This is an empty migration.`
+
+### T7 — Hecho
+
+- `pnpm run typecheck` (cliente regenerado bajo el lock, SIN la columna) → `TC=0`.
+- `grep -rn "zonaEspecial: true" lib/ app/` → sin resultados (exit 1).
+- `pnpm exec eslint` de los 6 tests tocados → 0 problemas.
+
+### T7 — R → test
+
+| R | Test |
+|---|---|
+| R5 | `migracion-sl38-ida-y-vuelta`: «R5 — M1: la tabla de marcas con su politica y su trigger, de ida y vuelta» (information_schema, constraints, indices, `pg_policies`, `pg_trigger`, rls) |
+| R6 | `distrito-zona-especial-migration`: «SL-38 (R6): el modelo Distrito de Prisma ya no declara el campo»; `migracion-sl38-ida-y-vuelta`: «R6, R8 — M2 …» (la columna sale de `information_schema`); typecheck sin la columna; guardia R22 |
+| R7 | `migracion-sl38-ida-y-vuelta`: «R7 — con un distrito en zona_especial = true, M2 aborta nombrando la causa y la columna sigue» (foto identica tras el aborto, la fila sigue en `true`; sin filas en true, M2 aplica) |
+| R8 | `migracion-sl38-ida-y-vuelta`: «R6, R8 — M2: … el down la devuelve BOOLEAN, nulable y DEFAULT false» (linea literal de `information_schema.columns`: `boolean | bool | YES | false | NO | NEVER`; lo unico distinto tras el down es la `ordinal_position` de esa columna, que Postgres no deja elegir) |
+
+### T7 — Tests (bajo el lock, cliente regenerado, `sl38_base`)
+
+- 17 archivos (los de T6 + los de T7 + los revisados): `Test Files 6 failed | 11 passed (17)`,
+  `Tests 4 failed | 132 passed | 49 skipped`. Los rojos:
+  - `migracion-sl38-ida-y-vuelta` (2): la posicion de la columna y `is_generated = NEVER`; corregido
+    el test. Despues, solo: `Tests 4 passed (4)`.
+  - `emisor-relaciones-anidadas`, `corregir-datos-cliente.repo`, `costo-y-zona-api-415`,
+    `gestiones-detalle-api-405`: revientan en el `beforeAll` («la tabla `orden` esta vacia … corre
+    `pnpm run db:seed`»). Estan en `tests/baseline-rojos.json` (app vacia, SL-31). Sus cambios
+    compilan (typecheck) pero NO se han ejecutado aqui. No se sembro la base: el seed de la app vacia
+    no crea ordenes.
+  - `cobertura-repository` (2): FK `tarifas_tienda_id_fkey` en su siembra, por carrera con
+    `distrito-zona-especial-por-empresa` (que crea y borra un `adminTienda` en paralelo). Solo:
+    revienta en el `beforeAll` («no hay ningun usuario adminTienda»), como en T5 (baseline).
+- `pnpm run test:guardias` (bajo el lock): `Test Files 1 failed | 300 passed (301)`, `Tests 4 failed |
+  4105 passed | 1 skipped`; los 4 son `dependencias-declaradas-presentes` (baseline). Una corrida
+  previa SIN el lock dio ademas 2 rojos en `alcance-fuente-unica` («seis RolValue»): el cliente
+  compartido lo habia regenerado SL-32 con su `superadmin`. No es de SL-38.
+
+### T7 — Mutaciones (en el arbol, restauradas desde copia; md5 identico despues)
+
+Archivos: `migracion-sl38-ida-y-vuelta` + `distrito-zona-especial-migration` (`11 tests`).
+
+| # | Mutacion | Resultado |
+|---|---|---|
+| a | M2 sin el bloque `DO $$ … END $$;` | `1 failed`: R7 («promise resolved "undefined" instead of rejecting») |
+| b | down de M2 sin `DEFAULT false` | `2 failed`: «R6, R8 — M2» (y R7, que parte del estado que deja) |
+| c | down de M2 con `NOT NULL DEFAULT false` | `2 failed`: «R6, R8 — M2» y R7 |
+| d | down de M1 sin `DROP TABLE` | `1 failed`: «R5 — M1» |
+| e | `Distrito.zonaEspecial` de vuelta en el schema | `1 failed`: «SL-38 (R6): el modelo Distrito … ya no declara el campo» |
+
+Veredicto T6-T7: la marca se escribe por servicio y repositorio con la RLS real, la columna global
+sale sin drift y con su down medido, typecheck verde sin ella; cada test nuevo o cambiado cae con su
+mutacion. Quedan sin ejecutar aqui los cuatro tests de baseline que piden ordenes sembradas.
