@@ -1285,8 +1285,8 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 **Correo real** (base `sl32_mail`: migrada y sembrada; superadmin ficticio con `pnpm arranque:superadmin` → «Superadmin creado.»; `SMTP_*` de la `.env` principal exportados por `smtp-env.mjs` sin imprimirse; salida filtrada por `scratchpad/sl32mail/tapar.mjs`)
 - `correo-real.ts` daba `TransformError`: tsx lo compila como CJS y no admite el `await` de primer nivel. Renombrado a `.mts`.
 - El script da de alta las empresas A y B por el servicio de SL-17, no por la pantalla. Después pide «recuperar contraseña» por `PasswordResetService` con el emisor real.
-- Alta A `creada`. Envío a `prueba001.sl@yopmail.com`: aceptado, `messageId` presente (48 car.).
-- Alta B `creada`. Envío a `prueba002.sl@yopmail.com`: aceptado, `messageId` presente (48 car.).
+- Alta A `creada`. Envío a el primer correo de prueba local (buzón desechable, el que fijó el leader): aceptado, `messageId` presente (48 car.).
+- Alta B `creada`. Envío a el segundo correo de prueba local: aceptado, `messageId` presente (48 car.).
 - No se leyó la bandeja.
 
 **Comandos**
