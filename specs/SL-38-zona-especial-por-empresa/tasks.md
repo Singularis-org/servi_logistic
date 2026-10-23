@@ -1,5 +1,8 @@
 # SL-38 «Distritos de zona especial por empresa» — tasks
 
+> **Aprobado por Carlos el 2026-10-23**, P1 incluida: el Excel de cobertura queda solo con «Sí» y
+> «No» (R15); «Sin definir» desaparece.
+
 Rama `feature/SL-38-zona-especial-por-empresa`, que sale de `dev` con SL-17 integrado. Reparto:
 `backend_dev` para `lib/`, `db/`, `scripts/` y `tests/` de servidor; `frontend_dev` solo para T9.
 Un commit por task (`docs/conventions.md > Commits`).
@@ -17,7 +20,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 0
 
-- [ ] **T0. Timestamps y base.**
+- [x] **T0. Timestamps y base.**
   - `git fetch` y `git ls-tree --name-only origin/feature/SL-32-rol-superadmin db/migrations/` y
     `origin/dev`. Confirma que `20261023120000` y `20261023120100` son posteriores a la última de las
     dos ramas. Si no lo son, elige los siguientes libres y corrige `design.md §2` en el mismo commit.
