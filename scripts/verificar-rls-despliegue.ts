@@ -21,9 +21,10 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const ROL_APP = "servi_app";
 // Contrato de M2 y M3 (design §2.1, §3): 73 tablas de negocio, 150 FK de negocio a negocio.
-const POLITICAS_POR_EMPRESA = 73;
-const TRIGGERS_MISMA_EMPRESA = 150;
-const TRIGGERS_SIN_CAMBIO = 73;
+// SL-40 (20261023130100) suma `cobro_plataforma_movimiento`: una tabla y su FK a `orden`.
+const POLITICAS_POR_EMPRESA = 74;
+const TRIGGERS_MISMA_EMPRESA = 151;
+const TRIGGERS_SIN_CAMBIO = 74;
 
 type Tx = Prisma.TransactionClient;
 

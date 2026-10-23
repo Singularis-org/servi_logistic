@@ -1,8 +1,9 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (73): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (14): catalogos, geografia, autenticacion previa a la empresa y cache tecnica.
+//   · negocio    (74): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · plataforma (15): catalogos, geografia, autenticacion previa a la empresa, cache tecnica y el
+//                      valor global del cobro por orden (SL-40).
 //   · diferidos   (1): tienen ficha propia que decide su aislamiento.
 //
 // Modulo puro: sin Prisma ni next, para que lo importen la extension, los scripts y los tests.
@@ -85,6 +86,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "AporteCapital", tabla: "aporte_capital" },
   { modelo: "AporteCapitalAnulacion", tabla: "aporte_capital_anulacion" },
   { modelo: "GastoFijoCobro", tabla: "gasto_fijo_cobro" },
+  // Cobro de la plataforma a la empresa por orden (SL-40): lo escribe solo el trigger de `orden`
+  { modelo: "CobroPlataformaMovimiento", tabla: "cobro_plataforma_movimiento" },
   // Devoluciones
   { modelo: "DevolucionTiendaComprobante", tabla: "devolucion_tienda_comprobante" },
   { modelo: "DevolucionTiendaEvidencia", tabla: "devolucion_tienda_evidencia" },
@@ -127,6 +130,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "LoginAttempt", tabla: "login_attempt" },
   // Cache tecnica sin dato de empresa
   { modelo: "GeocodeCache", tabla: "geocode_cache" },
+  // Valor global del cobro por orden (SL-40): sin acceso para `servi_app`; lo edita el superadmin
+  { modelo: "CobroPlataformaTarifa", tabla: "cobro_plataforma_tarifa" },
 ];
 
 // §2.3.

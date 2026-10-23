@@ -70,3 +70,49 @@ base**: la base existe, la suite sale FAIL con exit 1 y el error nombra la tabla
 - typecheck: 48 errores, **todos** de `superadmin` en tests de SL-32. El cliente Prisma compartido de
   `node_modules` lo había generado otro worktree con un esquema sin `superadmin`. Ninguno sale de los
   archivos de SL-40. Se regenera en T2, dentro del lock.
+
+### T2 — migraciones 1 y 2, y el esquema
+
+**Archivos**
+- `db/migrations/20261023130000_cobro_plataforma_tarifa/{migration,down}.sql`:
+  - tabla `cobro_plataforma_tarifa`: PK booleana con `CHECK ("id")`, `CHECK (monto >= 0)`, RLS sin
+    políticas y `REVOKE ALL … FROM servi_app`;
+  - columna `organizacion.cobro_plataforma_por_orden` con su `CHECK`.
+- `db/migrations/20261023130100_cobro_plataforma_movimiento/{migration,down}.sql`:
+  - los dos enums, la tabla, sus `CHECK`, el único `(organizacion_id, orden_id, secuencia)` y los
+    índices;
+  - FK `orden` CASCADE y FK `organizacion` RESTRICT;
+  - RLS, política `cobro_plataforma_movimiento_por_empresa` y `REVOKE INSERT, UPDATE, DELETE`;
+  - los dos triggers de SL-17, salida literal de `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes`:
+    `sme_cobro_plataforma_movimiento_orden_id_a07cad67` y `cobro_plataforma_movimiento_sin_cambio_de_empresa`.
+- `db/schema.prisma`:
+  - `CobroPlataformaTarifa`, `CobroPlataformaMovimiento`, `CobroPlataformaTipo` y `CobroPlataformaFuente`;
+  - `Organizacion.cobroPlataformaPorOrden`;
+  - las relaciones `Orden.cobrosPlataforma` y `Organizacion.cobrosPlataforma`;
+  - el comentario de lo que vive solo en el SQL.
+  - Único con `map: "cobro_plataforma_movimiento_orden_secuencia_key"`, porque el nombre por defecto
+    pasa de 63 caracteres.
+- `lib/db/modelos-de-negocio.ts`: `CobroPlataformaMovimiento` es de negocio (74) y `CobroPlataformaTarifa`
+  de plataforma (15).
+- Conteos: `tests/unit/guards/rls-por-empresa.guardia.test.ts` pasa de 73 a 74, y
+  `scripts/verificar-rls-despliegue.ts` de 73/150/73 a 74/151/74, con su motivo.
+- `tests/integration/db/schema-drift-saneamiento.test.ts`: el censo escrito a mano de las tablas con
+  DEFAULT en `updated_at` suma `cobro_plataforma_tarifa` (de 13 a 14), con su motivo. Es el único test
+  existente que se tocó, y lo hace a propósito: la lista la escribe una persona.
+
+**Evidencia** (base `sl40_tandaa`, lock `gate.lock` tomado para `prisma generate` y las comprobaciones)
+- `prisma migrate deploy`: `Applying migration 20261023130000_cobro_plataforma_tarifa` y `…130100…`; `migrate status` → «Database schema is up to date!» (238 migraciones).
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → `-- This is an empty migration.`
+- Permisos de `servi_app`, medidos en la base:
+  - `cobro_plataforma_movimiento`: INSERT false, SELECT true;
+  - `cobro_plataforma_tarifa`: SELECT false;
+  - `organizacion.cobro_plataforma_por_orden`: UPDATE false, SELECT true.
+- `pnpm run typecheck` → 0 errores (tras `prisma generate`).
+- `pnpm exec eslint` sobre los archivos tocados: 0.
+- `vitest run tests/integration/db/schema-drift-saneamiento.test.ts` → `Tests 16 passed (16)`.
+- `vitest run tests/unit/db` → `Test Files 12 passed (12)`, `Tests 176 passed (176)`.
+- `pnpm run test:guardias` → `Test Files 1 failed | 300 passed (301)`, `Tests 4 failed | 4111 passed | 1 skipped (4116)`.
+  El único rojo es `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`: «init.sh ya
+  no tiene el marcador», un rojo heredado que ya está en `tests/baseline-rojos.json`.
+- Nota: `vitest related` sobre `lib/db/modelos-de-negocio.ts` arrastra casi toda la suite unitaria,
+  porque la extensión lo importa. Se cortó y se corrió en su lugar `tests/unit/db`.

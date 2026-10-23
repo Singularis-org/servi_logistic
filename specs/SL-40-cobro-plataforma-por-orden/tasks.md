@@ -31,7 +31,7 @@
     control de no vacuidad.
   - _Hecho:_ corre contra Postgres y sale **en rojo** porque la tabla no existe. La salida queda
     pegada en `progress/impl_SL-40.md`. Un `skip` por falta de base no cuenta como rojo.
-- [ ] **T2. Migraciones 1 y 2, y el esquema** (R1, R2, R8, R20, R28; depende de T0).
+- [x] **T2. Migraciones 1 y 2, y el esquema** (R1, R2, R8, R20, R28; depende de T0).
   - `db/migrations/20261023130000_cobro_plataforma_tarifa/{migration,down}.sql` y
     `db/migrations/20261023130100_cobro_plataforma_movimiento/{migration,down}.sql` (`design.md > 3, 4`).
   - Los triggers de SL-17 de la tabla de cargos se generan con
