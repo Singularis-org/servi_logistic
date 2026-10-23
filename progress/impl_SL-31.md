@@ -82,3 +82,14 @@ Las bases desechables (`servi_logistic_sl31`) y el contenedor `postgres:17` de l
 **Corrida 3:** por decisión del leader, `tests/unit/services/rastreo-publico-service.test.ts` entra
 al baseline con motivo «Node 24.21 en CI da GMT+00:00 en UTC; lo arregla SL-37 (PR #2)», desde
 2026-10-22. El PR #2 (`feature/SL-37-rastreo-fecha-utc`) quita la entrada al mergearse.
+
+Corrida 3 (run 39888970739, commit `54a9a0f`), primer intento: `gate-completo` fail por
+`tests/unit/components/api-keys-module.eliminar.test.tsx` (`Unable to find an element with the
+text: integracion-11`, un `findByText` con el runner saturado). Es un flake: pasó en las corridas 1
+y 2 y pasa 3/3 en local, y el commit solo tocaba el baseline. No entra al baseline. Se relanzó la
+corrida entera (`gh run rerun`).
+
+Segundo intento: **`gate-completo` pass**. `estatico` pass, los tres shards pass, `e2e` skipping.
+«sin rojos nuevos (248 rojos, todos en el baseline de 249); 1 por limpiar». El que ya pasa es
+`tests/integration/db/notificacion-evento-webhook-suscripcion-migration.test.ts`, de la exclusión de
+SL-28: se deja para SL-28.
