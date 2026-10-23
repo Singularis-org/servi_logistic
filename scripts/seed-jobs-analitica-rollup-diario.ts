@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { proximaCorridaRollupCR } from "@/lib/services/jobs/analitica-rollup-diario-handler";
 import { dedupeKeyRollup } from "@/lib/services/jobs/analitica-rollup-diario-encolado";
 import { fechaObjetivo } from "@/lib/analytics/rollup-dia";
@@ -36,7 +37,11 @@ async function main(): Promise<void> {
 
   const prisma = getPrismaClient();
   try {
-    const fila = await seedJobAnaliticaRollupDiario(new JobRepository(prisma));
+    // SL-17: script de consola, sin sesion: la siembra va en plataforma y la fila nace sin
+    // empresa, como la del build (`scripts/siembra-jobs-recurrentes.ts`).
+    const fila = await comoPlataforma("SL-17", "siembra manual de un job recurrente", () =>
+      seedJobAnaliticaRollupDiario(new JobRepository(prisma)),
+    );
     console.log(
       fila === null
         ? "Seed analitica_rollup_diario: la fila ya existia (idempotente, sin cambios)."
