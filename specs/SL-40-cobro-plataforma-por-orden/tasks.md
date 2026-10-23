@@ -46,7 +46,7 @@
     - `pnpm run db:migrate` aplica limpio;
     - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde;
     - `pnpm run test:guardias` en verde.
-- [ ] **T3. Migración 3: los triggers sobre `orden`** (R12–R19; depende de T2).
+- [x] **T3. Migración 3: los triggers sobre `orden`** (R12–R19; depende de T2).
   - `db/migrations/20261023130200_cobro_plataforma_triggers_orden/{migration,down}.sql` con las dos
     funciones `SECURITY DEFINER` de `design.md > 2.2`.
   - _Hecho:_

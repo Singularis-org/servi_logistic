@@ -116,3 +116,97 @@ base**: la base existe, la suite sale FAIL con exit 1 y el error nombra la tabla
   no tiene el marcador», un rojo heredado que ya está en `tests/baseline-rojos.json`.
 - Nota: `vitest related` sobre `lib/db/modelos-de-negocio.ts` arrastra casi toda la suite unitaria,
   porque la extensión lo importa. Se cortó y se corrió en su lugar `tests/unit/db`.
+
+### T3 — migración 3: los triggers sobre `orden`
+
+**Archivos:** `db/migrations/20261023130200_cobro_plataforma_triggers_orden/{migration,down}.sql`.
+- `cobro_plataforma_al_crear_orden()`: `AFTER INSERT … WHEN (NEW.deleted_at IS NULL)`.
+- `cobro_plataforma_al_cambiar_borrado()`: `AFTER UPDATE OF deleted_at … WHEN (OLD IS DISTINCT FROM NEW)`.
+- Las dos son `SECURITY DEFINER`, con `SET search_path = public, pg_temp` y `REVOKE EXECUTE … FROM PUBLIC`.
+
+**Decisión de implementación (dentro de design §2.2).** La dirección del movimiento la decide el
+**último movimiento** junto con `NEW.deleted_at`, no `OLD.deleted_at`:
+- borrada y el último es un cargo → reverso;
+- viva y el último es un reverso → cargo.
+
+Así, reescribir la fecha de una orden ya borrada (t1 → t2) dispara el trigger y no registra nada
+(R17). Es el caso que hace medible la mutación 3 («doble reverso»).
+
+**Verde** (`pnpm exec vitest run tests/integration/db/cobro-plataforma-cargos.test.ts --reporter=verbose`, base `sl40_tandaa`):
+
+```
+✓ control: los dos triggers están instalados en «orden» y las empresas existen
+✓ R3/D11: sin valor global ni excepción, la orden se carga con 0.00 y fuente «sin_configurar»
+✓ R12/R19: A crea o1 y o2 por pantalla y o3 por carga masiva con el global en 500.00 → tres cargos de 500.00
+✓ R3/R20: B crea p1 con su excepción de 300.00 → cargo de 300.00 con fuente «empresa», sin tocar a A
+✓ R14: el superadmin sube el global a 600.00 → los cargos ya registrados no cambian
+✓ R12/R14: A crea o4 por la API → cargo de 600.00 (la tarifa de ese instante)
+✓ R15: A elimina o1 por pantalla → reverso de 500.00 con el instante del borrado, y el cargo queda igual
+✓ R17: eliminar o1 otra vez (servicio, repositorio y una fecha de borrado reescrita) no registra nada
+✓ R16: el maestro recupera o1 → cargo nuevo de 500.00 (no la tarifa de hoy, 600.00)
+✓ R17: recuperar o1 otra vez no registra nada
+✓ R15: A elimina o2 por la API → reverso de 500.00
+✓ P3/D6: la cancelación por API no es una anulación → o4 conserva su cargo, sin reverso
+✓ R3/R5: quitada la excepción de B, su orden siguiente usa el global (600.00)
+✓ R13: una transacción que crea una orden y no se confirma no deja cargo (dentro sí lo había)
+✓ R18: una orden sin cargo (anterior a la ficha) se elimina y se recupera sin registrar nada
+✓ R8: la empresa (servi_app) no puede escribir cargos, ni el valor global, ni su excepción → 42501
+✓ R20: cada movimiento lleva la empresa de su orden, y un cargo de A con una orden de B → SL017
+✓ R24: B (servi_app, por la RLS y por la extensión) ve sus cargos y ninguno de A
+Test Files  1 passed (1)
+Tests  18 passed (18)
+VITEST_EXIT=0
+```
+
+Tras la corrida, la base queda sin residuo: 0 filas en `cobro_plataforma_tarifa` (como antes),
+0 organizaciones de prueba y 0 movimientos.
+
+**Mutaciones.** Las cuatro de design §11.1 (M1–M4) y una por cada test obligatorio que esas cuatro
+no cubren.
+- Cada una se aplica sobre `sl40_tandaa` como SQL y se corre el archivo entero.
+- Cuando la mutación toca la función o el trigger, es la migración 3 mutada (su down y el up con un
+  cambio); el resto es la pieza quitada (GRANT o DROP). Después se restaura.
+- Antes y después hay una foto de control: md5 de funciones, triggers, privilegios de `servi_app`,
+  RLS y políticas. La foto se comparó tras cada restauración y coincidió siempre con la del deploy:
+  `9f0f9ba5…`, 11 piezas.
+- Ningún caso salió como skip.
+
+| # | Mutación | Resultado | Test que cae primero (el resto cae en cascada por el estado compartido) |
+|---|---|---|---|
+| M1 | el trigger ignora la excepción | 4 failed / 14 passed | R3/R20 «B crea p1 con su excepción de 300.00» |
+| M2 | el reverso usa la tarifa de hoy | 5 failed / 13 passed | R15 «A elimina o1 por pantalla → reverso de 500.00» |
+| M3 | no se comprueba el último movimiento | 5 failed / 13 passed | R17 «eliminar o1 otra vez … fecha de borrado reescrita» (doble reverso) |
+| M4 | sin el `REVOKE` de la tabla de cargos (`GRANT INSERT, UPDATE, DELETE`) | 1 failed / 17 passed | R8 |
+| M5 | el trigger no cubre la carga masiva con fulfillment (salta `en_preparacion`) | 10 failed / 8 passed | R12/R19 (o3); R3/D11 (o0, pantalla) sigue verde |
+| M5b | el trigger no cubre las vías con guía (pantalla y API, salta `por_recolectar_en_tienda`) | 14 failed / 4 passed | R3/D11 (o0), R12/R19 (o1, o2), R12/R14 (o4, API) |
+| M6 | sin trigger de creación | 17 failed / 1 passed | control (`pg_trigger`) y todas las creaciones |
+| M7 | sin trigger de borrado | 7 failed / 11 passed | control, R15 por pantalla y R15 por API |
+| M8 | recuperar no vuelve a cargar | 4 failed / 14 passed | R16 |
+| M9 | recuperar carga la tarifa de hoy (600.00) | 4 failed / 14 passed | R16 |
+| M10 | cambiar el global reescribe los cargos `global` (importe no congelado) | 8 failed / 10 passed | R14 |
+| M11 | sin el `REVOKE` de la tarifa global (más una política abierta) | 1 failed / 17 passed | R8 |
+| M12 | la empresa puede escribir su excepción (`GRANT UPDATE (cobro_plataforma_por_orden)`) | 1 failed / 17 passed | R8 |
+| M13 | sin RLS en la tabla de cargos | 1 failed / 17 passed | R24 |
+| M14 | sin el trigger de misma empresa | 1 failed / 17 passed | R20 (SL017) |
+| M15 | sin configurar no registra cargo | 1 failed / 17 passed | R3/D11 |
+| M16 | una orden sin movimientos recibe un reverso al anularse | 1 failed / 17 passed | R18 |
+
+- La primera versión de M5 (`WHEN … AND num_guia IS NOT NULL`) no aislaba la vía: todas las vías
+  insertan con `num_guia` nulo y numeran después, así que cayó todo (16/2). Se cambió por la de la tabla.
+- Pantalla y API no se pueden separar con una mutación en la base. Las dos son el mismo INSERT con
+  guía en `por_recolectar_en_tienda`, que es justo por lo que el diseño pone un trigger y no cuatro
+  enganches en el código. Cada vía tiene su propio caso, que afirma el cargo de SU orden: o0, o1 y o2
+  por pantalla, o3 por carga masiva y o4 por la API.
+- R13 no tiene mutación propia: un trigger no puede escribir fuera de su transacción sin `dblink`.
+  Su control de no vacuidad es que **dentro** de la transacción el cargo existía (`dentro = 1`) y fuera hay 0.
+
+**Guardias** (con `DATABASE_URL` y el cliente regenerado dentro del lock): `Test Files 1 failed | 300 passed (301)`,
+`Tests 4 failed | 4111 passed | 1 skipped (4116)`. El único rojo es `dependencias-declaradas-presentes`
+(baseline).
+
+**Cliente Prisma compartido.** Dos veces lo regeneró otro worktree después de que yo soltara el lock:
+- a las 17:31, con un esquema sin mis modelos;
+- a las 18:04, con `Distrito.zonaEspecial` de SL-38. Con ese cliente, `distrito.findMany` rompía en
+  este worktree (`Unknown field zonaEspecial`).
+
+Desde ahí, todo lo que usa el cliente corre con `gate.lock` tomado y `prisma generate` dentro.
