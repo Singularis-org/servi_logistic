@@ -67,7 +67,7 @@ Un commit por task (`docs/conventions.md > Commits`).
     «Archivos esperados»).
   - _Hecho:_ `vitest related` sobre `lib/repositories/OrdenRepository.ts` en verde, y typecheck en
     verde.
-- [ ] **T5. [P] Árbol, cobertura y cierre** (R14, R15, R20; depende de T3).
+- [x] **T5. [P] Árbol, cobertura y cierre** (R14, R15, R20; depende de T3).
   - `GeoRepository.listArbol` usa el fragmento. `DistritoArbolDTO` no cambia, y solo cambia su
     comentario en `lib/types/geografia-nodo.ts`.
   - `CoberturaRepository.listDistritos`, `ICoberturaRepository`, `lib/types/cobertura.ts`,

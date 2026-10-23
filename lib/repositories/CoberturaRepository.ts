@@ -8,6 +8,10 @@ import {
   SELECT_FLAG_PROPIO,
   disponibleDesdeCadena,
 } from "@/lib/repositories/_shared/geografia-activa";
+import {
+  esZonaEspecialDeLaEmpresa,
+  SELECT_MARCA_ZONA_ESPECIAL,
+} from "@/lib/repositories/_shared/zona-especial";
 
 // Ficha 465 (design §3.2) — las dos lecturas del Excel de cobertura. Solo queries Prisma; la
 // regla (cobertura, motivo, colapso de zonas) vive en `lib/utils/cobertura-distrito.ts`.
@@ -28,7 +32,8 @@ export class CoberturaRepository implements ICoberturaRepository {
       select: {
         nombre: true,
         ...SELECT_FLAG_PROPIO,
-        zonaEspecial: true,
+        // SL-38: la marca de la EMPRESA del actor (R15), por el punto unico.
+        ...SELECT_MARCA_ZONA_ESPECIAL,
         canton: {
           select: {
             nombre: true,
@@ -44,7 +49,11 @@ export class CoberturaRepository implements ICoberturaRepository {
       (d): DistritoCoberturaRow => ({
         provincia: { nombre: d.canton.provincia.nombre, activo: d.canton.provincia.activo },
         canton: { nombre: d.canton.nombre, activo: d.canton.activo },
-        distrito: { nombre: d.nombre, activo: d.activo, zonaEspecial: d.zonaEspecial },
+        distrito: {
+          nombre: d.nombre,
+          activo: d.activo,
+          zonaEspecial: esZonaEspecialDeLaEmpresa(d),
+        },
         disponible: disponibleDesdeCadena(d),
         zonas: d.zonas.map((zd) => zd.zona),
       }),

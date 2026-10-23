@@ -116,3 +116,82 @@ R10 con la 1 y la 2.
 
 Veredicto T1-T2: tabla por empresa con RLS, unico y trigger en su sitio, sin drift; 7/7 en verde y
 cada caso muerto por una mutacion.
+
+## T3-T5 — Las lecturas pasan a la marca de la empresa
+
+Commits: T3 `92c07cc`, T4 `1623a09`, T5 (este).
+
+### Archivos
+
+- T3, nuevos: `lib/repositories/_shared/zona-especial.ts` (`SELECT_MARCA_ZONA_ESPECIAL`,
+  `esZonaEspecialDeLaEmpresa` y el tipo `MarcaZonaEspecialProyectada`, para tipar `ApiOrdenSelectRow`
+  sin nombrar la relacion), `tests/unit/guards/zona-especial-punto-unico.guardia.test.ts`.
+- T4: `lib/repositories/OrdenRepository.ts` (las seis lecturas). Solo comentarios en
+  `IOrdenRepository.ts`, `ITarifaVigenteRepository.ts`, `ICorregirDatosClienteService.ts`,
+  `BulkOrdenService.ts`, `CorregirDatosClienteService.ts`, `geo-resolucion.ts`,
+  `correccion-datos-cliente.ts`, `api-orden-costo.ts`, `ingreso-empresa.ts`. Dobles:
+  `orden-repository.{api-lectura,bulk,no-regresion-106,recepcion-satelite}.test.ts`,
+  `orden-repository.test.ts`, `satelite-paginado-where.test.ts`, `costo-orden-forma-unica.guardia`,
+  `ordenes-api-key-composicion-415`, `corregir-datos-cliente.composition-root`,
+  `api-pdf-etiqueta-columna-intacta`, `tarifa-especial-por-distrito`.
+- T5: `GeoRepository.ts`, `CoberturaRepository.ts`, `ICoberturaRepository.ts`, `lib/types/cobertura.ts`,
+  `lib/types/geografia-nodo.ts` (comentario), `cobertura-descarga-columnas.ts` (sin «Sin definir»),
+  `CierreDiaRepository.ts` (`leerDescriptivosDeOrdenes` y la linea del congelado). Tests:
+  `cobertura-descarga-columnas`, `cobertura-distrito`, `_cobertura-fixtures`, `cobertura-vs-resolve-geo`,
+  `cobertura.composition-root`, `DescargarCoberturaButton`, `cobertura-repository` (integracion: siembra
+  la marca con la empresa que fija `enTransaccionRevertida`), y los dobles de catalogo de
+  `cierre-dia-repository`, `convergencia-tarifa-listado-cierre`, `gestion-desde-ayuda-cierre`,
+  `asimetria-sin-tarifa`, `cierre-detail-congelado`.
+- `lib/utils/cobertura-distrito.ts` no cambia: copia `row.distrito.zonaEspecial`, que ya llega `boolean`.
+
+### Desviaciones de la lista de «Archivos esperados»
+
+- Fuera de la lista y tocados (dobles que reventaban con `TypeError` al no traer `zonasEspeciales`):
+  `orden-repository.test.ts`, `api-pdf-etiqueta-columna-intacta.test.ts`,
+  `tarifa-especial-por-distrito.test.ts`. En este ultimo el caso «`zona_especial` NULL no es especial»
+  pasa a «una orden sin distrito no es especial»: el tercer estado ya no existe y lo que queda sin
+  decidir es la orden sin distrito (misma asercion: flete normal).
+- En la lista y NO tocados en esta tanda:
+  - `consultas-concurrentes-en-transaccion.guardia.test.ts`: el `zonaEspecial: true` esta dentro de
+    una cadena que reproduce «tal cual» el `SNAPSHOT_SELECT` de antes de la 450 para el detector; no
+    compila ni se ejecuta, y cambiarlo falsearia «copiada tal cual».
+  - `zona-guardado-conserva-inactivos.test.ts`: es un fixture de `DistritoArbolDTO`, que no cambia.
+  - `emisor-relaciones-anidadas.test.ts`, `corregir-datos-cliente.repo.test.ts`,
+    `costo-y-zona-api-415.test.ts`, `resolver-novedad-reprograma-dinero.test.ts` y las dos
+    `ordenes-api-key-*.route.test.ts`: siembran o leen la columna `distrito.zona_especial`. Son de T7
+    (retiro de la columna, «siembran la marca con `fijarEmpresa`»). Todos estan en
+    `tests/baseline-rojos.json` (la app nace vacia, SL-31) y no corren en `sl38_base`.
+
+### Comprobaciones
+
+- `grep zonaEspecial lib/ app/` (sin `esZonaEspecial`): solo quedan los DTO de salida
+  (`DistritoArbolDTO`, `CoberturaDistritoDTO`, `DistritoCoberturaRow`, `DescriptivosDeOrden`) y la
+  escritura de `lib/actions/geografia.ts` (T6). Ninguna lectura de la columna.
+- `pnpm run typecheck` (cliente regenerado bajo el lock): `TC=0` tras T4 y tras T5.
+- `pnpm exec eslint` de lo tocado: 0 errores (2 warnings `_args` previos en dobles que no son mios).
+- `vitest related` sin `DATABASE_URL` (con ella arrastra ~140 suites de integracion que piden la base
+  sembrada, ajenas): tras T4 `Test Files 426 passed | 176 skipped (602)`, `Tests 5988 passed`; tras T5
+  `Test Files 447 passed | 187 skipped (634)`, `Tests 6421 passed | 1387 skipped`.
+- Integracion contra `sl38_base` (bajo el lock, cliente regenerado): `cierre-detail-congelado`,
+  `geografia-catalogo-activo` (lee `listArbol` y `findDistritosByCantonIds` contra Postgres real),
+  `asimetria-sin-tarifa`, `zona-guardado-conserva-inactivos` y `distrito-zona-especial-por-empresa`:
+  `5 passed`, `Tests 41 passed`. `cobertura-repository` revienta en el `beforeAll` («no hay ningun
+  usuario adminTienda»): esta en la baseline (app vacia, SL-31) y su cambio queda sin correr aqui.
+- `pnpm run test:guardias`: `2 failed | 297 passed`. `dependencias-declaradas-presentes` (4) esta en
+  la baseline; `dominio-ordenex-fuera` (1) fue un timeout de 20 s con la maquina cargada: solo, verde
+  (`3 passed`, junto con `zona-especial-punto-unico` y `geografia-predicado-unico`).
+
+### Mutaciones (todas restauradas; `git diff` limpio despues de cada una)
+
+| # | Mutacion | Resultado |
+|---|---|---|
+| 1 | Fuente inventada `lib/repositories/_mutante-sl38.ts` con `zonasEspeciales: { select: … }` | guardia R22: `1 failed | 8 passed`, el hallazgo nombra el archivo |
+| 2 | `esZonaEspecialDeLaEmpresa` devuelve `true` fijo | `api-lectura` + `bulk` + `tarifa-especial-por-distrito`: `8 failed | 56 passed` |
+| 3 | `esZonaEspecialDeLaEmpresa` devuelve `false` fijo | `api-lectura` (REM-3) + `tarifa-especial` (pacto y sin pacto): `3 failed | 55 passed` |
+| 4 | `SELECT_MARCA_ZONA_ESPECIAL` sin `take: 1` | `api-lectura` (select literal) + `no-regresion-106`: `2 failed | 56 passed` |
+| 5 | Excel: `zona_especial: dto.zonaEspecial ? SI : "Sin definir"` | `cobertura-descarga-columnas`: `3 failed | 31 passed` (incluye «ningun distrito sale como Sin definir») |
+
+Los casos de dos empresas de punta a punta (una lectura por camino, A `true` y B `false`) son de T8.
+
+Veredicto T3-T5: las ocho lecturas pasan por el punto unico, la guardia R22 lo vigila y cae con una
+fuente inventada; typecheck y `vitest related` en verde, cada asercion cambiada muerta por una mutacion.

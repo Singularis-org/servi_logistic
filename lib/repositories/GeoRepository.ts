@@ -20,6 +20,10 @@ import {
   disponibleDesdeCadenaCanton,
 } from "@/lib/repositories/_shared/geografia-activa";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
+import {
+  esZonaEspecialDeLaEmpresa,
+  SELECT_MARCA_ZONA_ESPECIAL,
+} from "@/lib/repositories/_shared/zona-especial";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad, valorDeCatalogo } from "@/lib/types/historial-accion-etiquetas";
 
@@ -207,7 +211,8 @@ export class GeoRepository implements IGeoRepository {
               select: {
                 id: true,
                 nombre: true,
-                zonaEspecial: true,
+                // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
+                ...SELECT_MARCA_ZONA_ESPECIAL,
                 ...SELECT_FLAG_PROPIO,
                 zonas: { select: { zona: { select: { id: true, nombre: true } } } },
               },
@@ -235,9 +240,8 @@ export class GeoRepository implements IGeoRepository {
                 nombre: d.nombre,
                 zonaId: zona?.id ?? null,
                 zonaNombre: zona?.nombre ?? null,
-                // `=== true` y no `!!`: con `null` los dos dan false, pero esto deja
-                // dicho que la columna es tri-valuada y que null NO es "no especial".
-                zonaEspecial: d.zonaEspecial === true,
+                // SL-38: especial PARA LA EMPRESA del maestro que abre Tarifas (R14).
+                zonaEspecial: esZonaEspecialDeLaEmpresa(d),
                 activo: d.activo,
               };
             }),

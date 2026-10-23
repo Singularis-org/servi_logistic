@@ -152,8 +152,9 @@ export interface DistritoArbolDTO {
   zonaId: string | null;
   zonaNombre: string | null;
   /**
-   * Marca de zona especial. La columna es `BOOLEAN NULL` (null = nadie lo decidio todavia), pero
-   * hacia la UI se normaliza a dos valores con la unica lectura correcta: `zona_especial IS TRUE`.
+   * Marca de zona especial de la EMPRESA de la transaccion (SL-38, `distrito_zona_especial`): el
+   * distrito es especial para esta empresa si tiene su marca. Se resuelve en el repositorio con
+   * `esZonaEspecialDeLaEmpresa` (`_shared/zona-especial.ts`).
    */
   zonaEspecial: boolean;
   /** FICHA 374: el flag PROPIO de esta fila. La disponibilidad efectiva la deriva quien lee, con
