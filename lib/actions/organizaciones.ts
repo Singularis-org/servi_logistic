@@ -28,9 +28,7 @@ function construirServicio(): IOrganizacionService {
 /**
  * R48: solo el superadmin. Cualquier otro actor, o ninguno, recibe «no autorizado» ANTES de
  * construir o llamar al servicio. Si pasa, el alta corre en plataforma porque la empresa todavía
- * no existe: no hay ninguna que fijar.
- *
- * @sin-superficie SL-17 entrega solo el servidor del alta (R44, R48): la pantalla Empresas del superadmin es de SL-32, que la montará sobre esta acción.
+ * no existe: no hay ninguna que fijar. La monta la pantalla «Empresas» de SL-32.
  */
 export async function altaEmpresaAction(
   input: unknown,

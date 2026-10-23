@@ -300,12 +300,8 @@ const FRASES_OPERADOR: readonly FraseOperador[] = [
   ...enArchivo("design-whatsapp/PdfTransito2.dc.html", [
     "<span>La empresa · Informe de tránsito",
   ]),
-  ...enArchivo("docs/api/CHANGELOG.md", [
-    "La empresa pasa a poder **retirar**",
-  ]),
   ...enArchivo("docs/api/api-key-openapi.yaml", [
     "Los CINCO conceptos que la empresa factura por una orden, en el escenario de",
-    "La empresa puede retirar una",
   ]),
   ...enArchivo("docs/api/guia-integracion/guia-integracion.html", [
     "dato de referencia de la empresa",
@@ -533,10 +529,13 @@ const FRASES_PLATAFORMA: readonly FrasePlataforma[] = [
     "número tenía que ser único en TODO Servi Logistic, no solo en tu cuenta",
     "**`num_guia` sigue siendo único en todo Servi Logistic.**",
     "La firma de las entregas: `X-Servi-Logistic-Timestamp` y `X-Servi-Logistic-Signature`",
+    // Retirar geografía es de la plataforma (SL-32, D7); antes estaba en FRASES_OPERADOR.
+    "Servi Logistic pasa a poder **retirar**",
   ]),
   ...enArchivoPlataforma("docs/api/api-key-openapi.yaml", [
     "OpenAPI 3.1 del canal integrador por API key (Servi Logistic).",
     "lo que la plataforma ENVÍA al callback del integrador",
+    "Servi Logistic puede retirar una",
   ]),
   ...enArchivoPlataforma("docs/api/guia-integracion/README.md", [
     "# Guía de integración — API de Servi Logistic (fuente editable)",
@@ -620,7 +619,7 @@ export function frasesPlataformaQueFaltan(
  */
 const DESCRIPCIONES_QUE_CAMBIAN = [
   "Los CINCO conceptos que la empresa factura por una orden, en el escenario de ENTREGA",
-  "La empresa puede retirar una",
+  "Servi Logistic puede retirar una",
   "invocalo con tu propio `Authorization: Bearer svl_...`, igual que cualquier otra llamada al canal",
 ] as const;
 
@@ -851,7 +850,8 @@ describe("SL-16 — docs, contrato de la API y diseños sin el nombre heredado",
           !(frase.includes(TERMINO_EMPRESA) || frase.includes(TERMINO_EMPRESA_INICIO)) || frase.includes(PLATAFORMA),
       );
       expect(malas).toEqual([]);
-      expect(FRASES_OPERADOR.length).toBeGreaterThanOrEqual(156);
+      // 154 y no 156: SL-32 (D7) pasó a FRASES_PLATAFORMA las dos frases de retirar geografía.
+      expect(FRASES_OPERADOR.length).toBeGreaterThanOrEqual(154);
     });
 
     it("cada archivo contiene su forma final de cada frase de operador", () => {

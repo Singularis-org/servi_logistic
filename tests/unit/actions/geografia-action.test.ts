@@ -7,8 +7,10 @@ import {
   listarArbolGeografico,
   renombrarNodoGeografico,
 } from "@/lib/actions/geografia";
+import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
 import type { IGeografiaService } from "@/lib/interfaces/services/IGeografiaService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { GeografiaService } from "@/lib/services/GeografiaService";
 
 // FICHA 374 (R18/R23/R25) — EL BORDE: sesion, validacion y traduccion del UNIQUE.
 //
@@ -16,6 +18,9 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 // INSTANCIA EL SERVICIO —o sea, que no se toca la base— y que una entrada invalida muere ANTES de
 // llegar al servicio. Las dos son propiedades del ORDEN de las sentencias, y se miden con espias.
 
+// SL-32 (R24): la gestion es de la plataforma, asi que el caso feliz del borde lo pide el
+// `superadmin`. El `maestro` tiene su bloque propio al final.
+const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 
 function serviceDoble(overrides: Partial<IGeografiaService> = {}) {
@@ -47,7 +52,7 @@ function serviceDoble(overrides: Partial<IGeografiaService> = {}) {
 }
 
 const sinSesion = async () => null;
-const conSesion = async () => MAESTRO;
+const conSesion = async () => SUPERADMIN;
 
 // =================================================================================================
 // R23 — sin sesion, las CUATRO acciones responden `unauthenticated` sin tocar el servicio
@@ -200,7 +205,7 @@ describe("374 — el borde delega en el service con la entrada ya normalizada", 
     expect(r).toEqual({ status: "ok", id: "n1", nivel: "provincia" });
     expect(service.crear).toHaveBeenCalledWith(
       { nivel: "distrito", nombre: "Cabagra", cantonId: "c1" },
-      MAESTRO,
+      SUPERADMIN,
     );
   });
 
@@ -212,7 +217,7 @@ describe("374 — el borde delega en el service con la entrada ya normalizada", 
     );
     expect(service.cambiarActivacion).toHaveBeenCalledWith(
       { nivel: "canton", id: "c1", activo: true },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     const r = await contarOrdenesSinEntregarDeNodo(
@@ -301,7 +306,7 @@ describe("375 — el borde del renombrado: validacion y traduccion del UNIQUE", 
     );
     expect(service.renombrar).toHaveBeenCalledWith(
       { nivel: "distrito", id: "d1", nombre: "San José" },
-      MAESTRO,
+      SUPERADMIN,
     );
   });
 
@@ -325,5 +330,94 @@ describe("375 — el borde del renombrado: validacion y traduccion del UNIQUE", 
       { getActor: conSesion, geografiaService: service },
     );
     expect(r).toEqual({ status: "ok", nivel: "distrito", id: "d1", nombre: "Cabagrita" });
+  });
+});
+
+// =================================================================================================
+// SL-32 (R24, R25) — el `maestro` por el borde, con el servicio REAL
+// =================================================================================================
+//
+// POR QUE EL SERVICIO REAL Y UN REPOSITORIO QUE LANZA: con SL-17 la geografia es de solo lectura
+// para una empresa, y una escritura del `maestro` falla en la base. Antes de SL-32 eso llegaba al
+// borde como un 500 (`cambiarActivacionGeografica`) o como un `conflict` falso (el `catch` de
+// `crear` y `renombrar`). El repositorio doble lanza en TODOS sus metodos para que cualquier
+// llamada se vea: si la puerta de rol se saltara, estos casos darian `conflict` o un rechazo, no
+// `forbidden`.
+
+function repoQueLanza(): IGeoRepository & Record<string, ReturnType<typeof vi.fn>> {
+  const lanza = () =>
+    vi.fn(async () => {
+      throw new Error("la geografia es de solo lectura para una empresa");
+    });
+  return {
+    listProvinciasLite: lanza(),
+    listCantonesLite: lanza(),
+    listDistritosLite: lanza(),
+    listGeografiaLitePorZona: lanza(),
+    listArbol: vi.fn(async () => []),
+    findHermanos: lanza(),
+    crear: lanza(),
+    cambiarActivacion: lanza(),
+    findHermanosDeNodo: lanza(),
+    renombrar: lanza(),
+  } as unknown as IGeoRepository & Record<string, ReturnType<typeof vi.fn>>;
+}
+
+function conServicioReal() {
+  const repo = repoQueLanza();
+  const ordenes = {
+    contarSinEntregarPorNodoGeografico: vi.fn(async () => {
+      throw new Error("orden sin empresa");
+    }),
+  };
+  const deps = {
+    getActor: async () => MAESTRO,
+    geografiaService: new GeografiaService(repo, ordenes),
+  };
+  return { repo, ordenes, deps };
+}
+
+describe("SL-32 (R24) — el `maestro` recibe `forbidden` en el borde, sin tocar el repositorio", () => {
+  it("crearNodoGeografico: `forbidden`, no el `conflict` del `catch`", async () => {
+    const { repo, deps } = conServicioReal();
+    expect(await crearNodoGeografico({ nivel: "provincia", nombre: "Nueva" }, deps)).toEqual({
+      status: "forbidden",
+    });
+    expect(repo.findHermanos).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it("renombrarNodoGeografico: `forbidden`, no el `conflict` del `catch`", async () => {
+    const { repo, deps } = conServicioReal();
+    expect(
+      await renombrarNodoGeografico({ nivel: "distrito", id: "d1", nombre: "Otro" }, deps),
+    ).toEqual({ status: "forbidden" });
+    expect(repo.findHermanosDeNodo).not.toHaveBeenCalled();
+    expect(repo.renombrar).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "cambiarActivacionGeografica (activo=%s): `forbidden`, no un rechazo (el 500)",
+    async (activo) => {
+      const { repo, deps } = conServicioReal();
+      await expect(
+        cambiarActivacionGeografica({ nivel: "distrito", id: "d1", activo }, deps),
+      ).resolves.toEqual({ status: "forbidden" });
+      expect(repo.cambiarActivacion).not.toHaveBeenCalled();
+    },
+  );
+
+  it("contarOrdenesSinEntregarDeNodo: `forbidden`, sin leer `orden`", async () => {
+    const { ordenes, deps } = conServicioReal();
+    await expect(
+      contarOrdenesSinEntregarDeNodo({ nivel: "distrito", id: "d1" }, deps),
+    ).resolves.toEqual({ status: "forbidden" });
+    expect(ordenes.contarSinEntregarPorNodoGeografico).not.toHaveBeenCalled();
+  });
+
+  it("R25: listarArbolGeografico sigue dando `ok` al `maestro` (Tarifas)", async () => {
+    const { repo, deps } = conServicioReal();
+    expect(await listarArbolGeografico(deps)).toEqual({ status: "ok", provincias: [] });
+    expect(repo.listArbol).toHaveBeenCalledTimes(1);
   });
 });

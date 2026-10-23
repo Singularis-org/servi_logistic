@@ -1,3 +1,4 @@
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
@@ -21,12 +22,16 @@ import { normalizeName } from "@/lib/utils/normalize";
 
 // FICHA 374 (design §5.2) — la administracion del catalogo geografico.
 //
-// Autz: SOLO `maestro`, la misma puerta que el resto de /configuracion. Lectura y escritura
-// comparten conjunto: quien ve el catalogo es quien lo administra, y abrir la lectura a mas roles
-// seria una decision de producto aparte. La ausencia de sesion (`unauthenticated`) se resuelve
-// antes, en la Server Action (R23).
-const READ_ROLES = new Set<string>(["maestro"]);
-const WRITE_ROLES = new Set<string>(["maestro"]);
+// Autz (SL-32, R24/R25): el catalogo es de la plataforma, y lo gestiona ella. El `maestro` solo
+// conserva `listarArbol`, porque Tarifas lo lee para armar zonas, y quitarselo le romperia esa
+// pantalla. El conteo de ordenes va con la gestion: solo lo pide la confirmacion de un retiro.
+// Desde SL-17 la geografia es de solo lectura para una empresa, asi que dejar al `maestro` en la
+// gestion no le daria nada: su escritura fallaria en la base con un error crudo, en vez de con
+// este `forbidden`. Los dos conjuntos leen `ROLES_PLATAFORMA` por import: la guardia
+// `superadmin-fuera-de-empresa` rechaza el literal. La ausencia de sesion (`unauthenticated`) se
+// resuelve antes, en la Server Action.
+const READ_ROLES = new Set<string>(["maestro", ...ROLES_PLATAFORMA]);
+const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 
 /**
  * El SEGUNDO repositorio, por `Pick` de la interfaz de ordenes — patron de
@@ -77,7 +82,7 @@ export class GeografiaService implements IGeografiaService {
     input: CrearNodoGeograficoInput,
     actor: Actor,
   ): Promise<CrearNodoGeograficoServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     // ⭑ FICHA 392 — el nombre de este nodo SE IMPRIME en la etiqueta (`geografiaLegible` lo une
     // en el dato `ubicacion`), asi que uno que la fuente no cubra tumba el LOTE ENTERO de un
@@ -111,7 +116,7 @@ export class GeografiaService implements IGeografiaService {
     input: CambiarActivacionGeograficaInput,
     actor: Actor,
   ): Promise<CambiarActivacionGeograficaServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     const desenlace = await this.repo.cambiarActivacion(
       input.nivel,
@@ -148,7 +153,7 @@ export class GeografiaService implements IGeografiaService {
     input: RenombrarNodoGeograficoInput,
     actor: Actor,
   ): Promise<RenombrarNodoGeograficoServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     // ⭑ FICHA 392 — el renombrado es LA puerta que abrio la 375, y por aqui entra el mismo
     // caracter que la 383 cerro por el lado de la orden. Se comprueba ANTES de leer los hermanos:
@@ -186,7 +191,7 @@ export class GeografiaService implements IGeografiaService {
     input: NodoGeograficoInput,
     actor: Actor,
   ): Promise<ContarOrdenesSinEntregarServiceResult> {
-    if (!READ_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
     const ordenes = await this.ordenes.contarSinEntregarPorNodoGeografico(input.nivel, input.id);
     return { status: "ok", ordenes };
   }

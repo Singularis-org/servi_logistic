@@ -13,19 +13,26 @@ import { ROLES_SEED } from "@/lib/types/roles";
 // Feature 81 [D1]: 6.o rol `apiKey` (sin @map), cuenta dedicada a una API key. Se
 // siembra en el catalogo `rol` pero SIN filas en `rol_permiso` (fallo seguro: la key
 // no puede hacer nada hasta que el humano le conceda permisos explicitos).
+// SL-32 (R1, R2): 7.o rol `superadmin` (sin @map), el de la plataforma. Tampoco tiene filas en
+// `rol_permiso`: no es un rol de empresa.
 
 describe("ROLES_SEED (fuente unica de verdad) (R7, R11, R1, R2, R6)", () => {
-  it("tiene exactamente los seis valores del enum, sin duplicados (R7, R2)", () => {
-    expect(ROLES_SEED).toHaveLength(6);
-    expect(new Set(ROLES_SEED).size).toBe(6);
+  it("tiene exactamente los siete valores del enum, sin duplicados (R7, R2; SL-32 R1)", () => {
+    expect(ROLES_SEED).toHaveLength(7);
+    expect(new Set(ROLES_SEED).size).toBe(7);
   });
 
   it("se deriva del enum RolValue de Prisma (R7, R6)", () => {
     // Sin una segunda lista literal: ROLES_SEED === Object.values(RolValue).
     expect([...ROLES_SEED].sort()).toEqual([...Object.values(RolValue)].sort());
     expect([...ROLES_SEED].sort()).toEqual(
-      ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite", "apiKey"].sort()
+      ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"].sort()
     );
+  });
+
+  it("incluye el 7.o rol superadmin, cuyo nombre de miembro es igual al label DB (SL-32 R1, R2)", () => {
+    expect(ROLES_SEED).toContain(RolValue.superadmin);
+    expect(RolValue.superadmin).toBe("superadmin");
   });
 
   it("el miembro adminTienda mapea al label de la DB 'Admin Tienda' via schema (R7)", () => {
@@ -63,7 +70,7 @@ describe("db/schema.prisma declara el enum RolValue (R2, R3, R1)", () => {
     expect(schema).toMatch(/adminTienda\s+@map\("Admin Tienda"\)/);
   });
 
-  it("declara el enum RolValue con exactamente 6 miembros (R2)", () => {
+  it("declara el enum RolValue con exactamente 7 miembros (R2; SL-32 R1)", () => {
     const match = schema.match(/enum\s+RolValue\s*\{([\s\S]*?)\}/);
     expect(match).not.toBeNull();
     const body = match ? match[1] : "";
@@ -72,7 +79,7 @@ describe("db/schema.prisma declara el enum RolValue (R2, R3, R1)", () => {
       .map((l) => l.trim())
       .filter((l) => l.length > 0 && !l.startsWith("//") && !l.startsWith("@@"))
       .map((l) => l.split(/\s|\/\//)[0]);
-    expect(miembros).toHaveLength(6);
+    expect(miembros).toHaveLength(7);
     expect(miembros).toEqual(
       expect.arrayContaining([
         "maestro",
@@ -81,8 +88,15 @@ describe("db/schema.prisma declara el enum RolValue (R2, R3, R1)", () => {
         "adminTienda",
         "adminSatelite",
         "apiKey",
+        "superadmin",
       ])
     );
+  });
+
+  // SL-32: las migraciones siembran y comparan 'superadmin' como label DB; un @map lo romperia.
+  it("declara superadmin SIN @map (label DB = nombre del miembro) (SL-32 R2)", () => {
+    expect(schema).toMatch(/^\s*superadmin\b/m);
+    expect(schema).not.toMatch(/superadmin\s+@map/);
   });
 
   // Feature 81 [D1]: el label DB del 6.o rol es el slug camelCase, igual que

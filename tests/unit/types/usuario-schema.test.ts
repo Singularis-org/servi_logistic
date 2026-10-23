@@ -10,6 +10,8 @@ import {
   usuarioRolFiltroSchema,
 } from "@/lib/types/usuario";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { esPlataforma } from "@/lib/auth/plataforma";
+import type { RolValue } from "@prisma/client";
 import { usuariosConfig } from "@/lib/config/usuarios";
 
 const baseCrear = {
@@ -237,8 +239,9 @@ describe("285/T-U3 — listarUsuariosSchema.rol: dominio cerrado y no vacio (R15
 });
 
 describe("285/T-U4 — la lista blanca de roles es EXHAUSTIVA sobre ROL_LABELS (R12)", () => {
-  it("acepta TODAS las claves de ROL_LABELS, una por una", () => {
-    const roles = Object.keys(ROL_LABELS);
+  it("acepta TODAS las claves de ROL_LABELS que no son de plataforma, una por una", () => {
+    // SL-32 (R10): el superadmin sale del filtro; el caso de abajo lo rechaza como impostor.
+    const roles = Object.keys(ROL_LABELS).filter((r) => !esPlataforma(r as RolValue));
     // Anti-vacuidad: si `ROL_LABELS` se vaciara, el bucle de abajo no afirmaria nada.
     expect(roles.length).toBeGreaterThanOrEqual(6);
 

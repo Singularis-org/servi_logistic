@@ -1,5 +1,8 @@
+import { notFound } from "next/navigation";
+
 import { AppPage } from "@/components/shared/AppPage";
 import { listarArbolGeografico } from "@/lib/actions/geografia";
+import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 
 import { GeografiaAdminModule } from "./_components/GeografiaAdminModule";
@@ -7,24 +10,18 @@ import { GeografiaAdminModule } from "./_components/GeografiaAdminModule";
 /**
  * FICHA 374 (design §7.1 · R38) — administracion del catalogo geografico (Server Component).
  *
- * Calcada de `configuracion/vehiculos/page.tsx`: autoriza server-side —SOLO `maestro`, la misma
- * puerta que el resto de `/configuracion`—, pre-carga el arbol y se lo pasa por props al modulo
- * cliente, que hace el alta y la activacion.
+ * Pre-carga el arbol y se lo pasa por props al modulo cliente, que hace el alta y la activacion.
  *
- * El rol se niega ANTES de leer nada: sin permiso no se pinta el arbol ni se consulta la base.
+ * SL-32 (R24, R26): gestionar la geografia es de la plataforma, no de una empresa. La puerta es
+ * `esPlataforma` y al `maestro` le responde `notFound()`: si viera la pantalla, cada boton le daria
+ * `forbidden`. Tarifas sigue leyendo el arbol por su lado (R25).
+ *
+ * El rol se niega ANTES de leer nada: sin permiso no se consulta la base.
  */
 export default async function GeografiaPage() {
   const actor = await resolveActorFromSession();
 
-  if (actor?.rol !== "maestro") {
-    return (
-      <AppPage title="Geografía">
-        <p role="alert" className="text-sm text-muted-foreground">
-          No tienes permiso para acceder a esta sección.
-        </p>
-      </AppPage>
-    );
-  }
+  if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const res = await listarArbolGeografico();
   const provincias = res.status === "ok" ? res.provincias : [];

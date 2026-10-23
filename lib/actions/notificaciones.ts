@@ -31,9 +31,11 @@ import { buildReprogramadasRetenidasService } from "@/lib/services/reprogramadas
 import { avisosDiariosConfig } from "@/lib/config/avisos-diarios";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { esPlataforma } from "@/lib/auth/plataforma";
 import {
   withErrorHandler,
   isAppErrorShape,
+  ForbiddenError,
   UnauthenticatedError,
   ValidationError,
   MSG,
@@ -88,6 +90,17 @@ async function actorRequerido(deps: NotificacionActionDeps): Promise<Actor> {
   return actor;
 }
 
+/**
+ * SL-32 (R6) — EL SUPERADMIN NO TIENE NOTIFICACIONES DE EMPRESA. La campana vive en el encabezado de
+ * todas las páginas del portal, también las suyas, y `notificacion` es una tabla de negocio: sin
+ * empresa en contexto, la extensión de SL-17 lanza `EmpresaNoResuelta` y cada sondeo de la campana
+ * era un 500. Se responde el desenlace vacío SIN construir el servicio, y no con `comoPlataforma`:
+ * abrirle el contexto de plataforma le dejaría leer las notificaciones de todas las empresas.
+ */
+function sinNotificacionesDeEmpresa(actor: Actor): boolean {
+  return esPlataforma(actor.rol);
+}
+
 /** R36: id mal formado -> validation_error ANTES de instanciar el service. */
 function idValidado(id: unknown): string {
   const parsed = notificacionIdSchema.safeParse(id);
@@ -103,6 +116,9 @@ export async function listarNotificaciones(
 ): Promise<ListarNotificacionesResult> {
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
+    if (sinNotificacionesDeEmpresa(actor)) {
+      return { status: "ok" as const, items: [], noLeidas: 0, porHacer: 0 };
+    }
     return (deps.service ?? buildService()).listar(actor);
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
@@ -114,6 +130,7 @@ export async function marcarTodasLeidas(
 ): Promise<MarcarTodasLeidasResult> {
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
+    if (sinNotificacionesDeEmpresa(actor)) return { status: "ok" as const, marcadas: 0 };
     return (deps.service ?? buildService()).marcarTodasLeidas(actor);
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
@@ -127,6 +144,9 @@ export async function descartarNotificacion(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const notificacionId = idValidado(id);
+    // Su lista siempre está vacía, así que no hay ninguna que sea suya: es el `forbidden` que el
+    // servicio ya da a quien descarta una notificación que no ve.
+    if (sinNotificacionesDeEmpresa(actor)) throw new ForbiddenError();
     return (deps.service ?? buildService()).descartar(notificacionId, actor);
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
