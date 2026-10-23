@@ -46,8 +46,14 @@ function alta(input: unknown): Promise<AltaEmpresaResultado> {
   return comoPlataforma("SL-17", "test de alta de empresa", () => servicio.altaEmpresa(input));
 }
 
+// Acotado a lo que esta ejecución puede escribir (todo slug pasa por `entrada`, y todo email o
+// documento lleva `RUN`): un conteo global se rompía cuando otros archivos de la suite commitean
+// organizaciones en paralelo. Una escritura de más de ESTE test sigue apareciendo aquí.
 async function filas(): Promise<{ organizaciones: number; usuarios: number }> {
-  const [organizaciones, usuarios] = await Promise.all([base.organizacion.count(), base.usuario.count()]);
+  const [organizaciones, usuarios] = await Promise.all([
+    base.organizacion.count({ where: { slug: { in: [...slugsCreados] } } }),
+    base.usuario.count({ where: { OR: [{ email: { contains: RUN } }, { cedula: { contains: RUN } }] } }),
+  ]);
   return { organizaciones, usuarios };
 }
 
