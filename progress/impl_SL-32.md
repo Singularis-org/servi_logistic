@@ -1259,3 +1259,42 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 - MCP del grafo: no lo usé; Grep y Read.
 
 **Veredicto:** el marco del portal ya no da 500 para el superadmin: la campana y el canal de avisos devuelven su desenlace vacío sin tocar tablas de empresa, probado 95 s en real.
+
+## T9 y T17 — segunda vuelta, frontend_dev — 2026-10-23 — HECHO
+
+**Preparación.** Nada en el 3000 ni ningún `next dev` vivo (solo el servidor de context-mode y un `vitest` de otro worktree). `gate.lock` tomado durante toda la corrida. Base `sl32_e2e`: `create` + `migrate deploy` + `db:seed`, y `prisma generate` dentro del lock. `rm -rf .next`. `pnpm dev` sin `SMTP_*` (el worktree no tiene `.env`), con el log al scratchpad y `SL17_HUMO_LOG_SERVIDOR` apuntando a él. Specs con `--reporter=list`.
+
+**Archivos** (sin commitear, LF)
+- `e2e/_superadmin-fixture.ts`: `olvidarDispositivos` borra también los `loginAttempt` del usuario.
+- `e2e/superadmin-arranque.spec.ts`: el paso 4 cambia según la decisión del implementer. Ahora `/configuracion` debe dar 200, mostrar el `alert` «No tienes permiso para acceder a esta sección.», no tener ningún enlace de configuración (ni por nombre ni `a[href^="/configuracion"]`) y no mostrar el 404.
+- `e2e/superadmin-empresas.spec.ts`: el `afterAll` borra antes `loginAttempt`, `trustedDevice` y `emailOtpChallenge` de los maestros. Sus FK a `usuario` no son en cascada, y sin esto la corrida siguiente no vería el estado vacío.
+- `specs/SL-32-rol-superadmin/tasks.md`: desviación del paso 4 anotada junto a T9; `[x]` en T9 y T17.
+
+**Fallo de la corrida 1 (del spec, no de la app).** Resultado: `1 failed | 5 did not run | 3 passed`. T9 pasó entero. El `beforeAll` de T17 esperaba el campo «Código de verificación», pero el superadmin entró sin OTP. Causa: `RiskEngine` pide OTP solo si el riesgo llega a 50. El dispositivo no reconocido suma 40 y la IP no reconocida 30. T9 acababa de entrar con éxito desde 127.0.0.1, y la IP ya quedaba reconocida (`loginAttempt.exitoso`). Borrar solo `trustedDevice` no bastaba. Arreglo en el fixture (arriba).
+
+**Salida real de Playwright**
+- T17 solo, tras el arreglo: `6 passed (16.8s)`.
+- Corrida 1 de los dos specs: `9 passed (19.0s)`, `PW_EXIT=0`.
+- Corrida 2 de los dos specs, seguida: `9 passed (21.1s)`, `PW_EXIT=0`.
+- T17 solo, tras revertir la mutación: `6 passed (19.2s)`.
+- Log del dev server en todas las corridas: 0 respuestas 500 y 0 `EmpresaNoResuelta`. Hubo dos `⨯ Error: aborted` (`ECONNRESET`): son peticiones que el navegador cortó al cerrar su contexto. `GET /plataforma/empresas`: 47 respuestas 200 y 6 respuestas 404, las de los maestros.
+- T17 cubre los pasos 1-6. Los maestros A y B entran los dos por «¿Olvidaste tu contraseña?» y luego por `/login` con OTP. Se comprueban los textos literales de T12: aviso, vacío, errores de slug, email y documento, y «Revisa este campo.».
+
+**Mutación** (`app/(app)/plataforma/empresas/page.tsx:28`, `!esPlataforma(actor.rol)` → `!(() => true)()`): T17 da `1 failed | 1 did not run | 4 passed`. Cae el paso 5 del maestro A en `superadmin-empresas.spec.ts:290`, donde no ve el 404. El de B no corre, por el modo serial. Revertida con `cmp`: IDÉNTICO.
+
+**Correo real** (base `sl32_mail`: migrada y sembrada; superadmin ficticio con `pnpm arranque:superadmin` → «Superadmin creado.»; `SMTP_*` de la `.env` principal exportados por `smtp-env.mjs` sin imprimirse; salida filtrada por `scratchpad/sl32mail/tapar.mjs`)
+- `correo-real.ts` daba `TransformError`: tsx lo compila como CJS y no admite el `await` de primer nivel. Renombrado a `.mts`.
+- El script da de alta las empresas A y B por el servicio de SL-17, no por la pantalla. Después pide «recuperar contraseña» por `PasswordResetService` con el emisor real.
+- Alta A `creada`. Envío a `prueba001.sl@yopmail.com`: aceptado, `messageId` presente (48 car.).
+- Alta B `creada`. Envío a `prueba002.sl@yopmail.com`: aceptado, `messageId` presente (48 car.).
+- No se leyó la bandeja.
+
+**Comandos**
+- `pnpm run typecheck` (con el cliente regenerado y el lock tomado): `TC_EXIT=0`, 0 `error TS`.
+- `pnpm exec eslint` de los 3 archivos de `e2e/`: exit 0.
+
+**Limpieza.** Dev server matado (`matar-dev.ps1`): «nada en 3000». Logs borrados (`dev.log` guarda los argumentos de las actions, contraseñas incluidas), y también los de Playwright y typecheck. Borrados `.next` y `test-results`. `sl32_e2e` y `sl32_mail` borradas: queda `sl32_base`. `gate.lock` soltado.
+
+**Grafo:** no usé el MCP; trabajé con Grep y Read.
+
+**Veredicto:** T9 y T17 en verde dos veces seguidas y juntos. La mutación de `esPlataforma` tumba el paso 5. El correo real de recuperación lo aceptó el SMTP para los dos maestros.

@@ -356,15 +356,21 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 6 — E2E (depende de la tanda 5)
 
-- [ ] **T9. E2E del arranque** (R18, R6). `e2e/superadmin-arranque.spec.ts`:
+- [x] **T9. E2E del arranque** (R18, R6). `e2e/superadmin-arranque.spec.ts`:
   1. el setup corre el comando con credenciales de prueba;
   2. el superadmin entra por `/login` y pasa el OTP por el emisor de consola;
   3. aterriza en `/plataforma/empresas`, y el menú tiene exactamente el ítem «Empresas»;
   4. `/configuracion` le devuelve 404.
 
+  **Desviación del paso 4 (decisión del implementer, 2026-10-23):** `/configuracion` no da 404 al
+  superadmin. Responde 200 con «No tienes permiso para acceder a esta sección.»
+  (`app/(app)/configuracion/page.tsx`), igual que a todo rol que no sea `maestro`, y eso cumple R5
+  («notFound() o forbidden»). La página no se cambia; el paso 4 comprueba que el superadmin ve ese
+  aviso y ningún enlace de configuración.
+
   **Hecho cuando:** `pnpm exec playwright test e2e/superadmin-arranque.spec.ts` sale en verde en
   local.
-- [ ] **T17. E2E: dos empresas desde la pantalla** (R29–R35, R37). `e2e/superadmin-empresas.spec.ts`,
+- [x] **T17. E2E: dos empresas desde la pantalla** (R29–R35, R37). `e2e/superadmin-empresas.spec.ts`,
   local, con la base local (lo aborta una base remota, como `e2e/marca.spec.ts`):
   1. con el superadmin de T9, abre «Empresas» y ve el estado vacío;
   2. crea la empresa A y la empresa B desde el formulario, con slugs, emails y documentos
