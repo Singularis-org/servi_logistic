@@ -1683,7 +1683,7 @@ function buildSnapshotTx(
     usuario: catalogoDoble(() => ({ nombre: "Tienda X" })),
     provincia: catalogoDoble(() => ({ nombre: "Cartago" })),
     canton: catalogoDoble(() => ({ nombre: "Central" })),
-    distrito: catalogoDoble(() => ({ nombre: "Oriental", zonaEspecial: null })),
+    distrito: catalogoDoble(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
     ...overrides,
   };
 }

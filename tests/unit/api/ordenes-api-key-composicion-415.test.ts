@@ -40,7 +40,7 @@ function filaOrden(over: Record<string, unknown> = {}) {
     zonaId: ZONA_ID,
     cobraComision: true,
     zona: { id: ZONA_ID, nombre: "GAM", esCentral: true },
-    distrito: { zonaEspecial: false },
+    distrito: { zonasEspeciales: [] },
     cierreDetalles: [],
     gestiones: [],
     historialEstados: [],

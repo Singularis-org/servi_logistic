@@ -258,7 +258,7 @@ function buildStore(filas: FilaGestion[]) {
     zona: catalogoDoble450(() => ({ nombre: "Zona", esCentral: true })),
     provincia: catalogoDoble450(() => ({ nombre: "Provincia" })),
     canton: catalogoDoble450(() => ({ nombre: "Canton" })),
-    distrito: catalogoDoble450(() => ({ nombre: "Distrito", zonaEspecial: null })),
+    distrito: catalogoDoble450(() => ({ nombre: "Distrito", zonasEspeciales: [] })),
     cierreDetail: {
       createMany: vi.fn(async (args: { data: Record<string, unknown>[] }) => {
         detalles.push(...args.data);

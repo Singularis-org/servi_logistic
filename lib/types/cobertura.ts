@@ -39,6 +39,6 @@ export interface CoberturaDistritoDTO {
   zonas: string[];
   /** `null` con 0 o con mas de una zona (R11, R12, R14). */
   zonaUnica: ZonaUnicaCobertura | null;
-  /** Tri-valuado: `null` = nadie lo ha decidido (R13). */
-  zonaEspecial: boolean | null;
+  /** La marca de zona especial de la EMPRESA del actor (SL-38 R15): «Sí» o «No», sin tercer valor. */
+  zonaEspecial: boolean;
 }

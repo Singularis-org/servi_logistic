@@ -222,7 +222,7 @@ function makeDb() {
     })),
     provincia: catalogoVivo(() => ({ nombre: "Cartago" })),
     canton: catalogoVivo(() => ({ nombre: "Central" })),
-    distrito: catalogoVivo(() => ({ nombre: "Oriental", zonaEspecial: null })),
+    distrito: catalogoVivo(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
     gestionOrden: {
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         let count = 0;

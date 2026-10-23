@@ -99,7 +99,7 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
       zona: { id: "z-limon", nombre: "Limon", esCentral: false },
       provincia: { id: "p-1", nombre: "Prov" },
       canton: { id: "c-1", nombre: "Canton" },
-      distrito: { id: "d-1", nombre: "Distrito", zonaEspecial: false },
+      distrito: { id: "d-1", nombre: "Distrito", zonasEspeciales: [] },
       mensajeroAsignado: null,
       gestiones: [],
       ...overrides,

@@ -267,7 +267,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   **Hecho cuando:** los tests están en verde, la guardia de SL-11 sigue en verde con la lista, y la
   guardia `plataforma-solo-en-lista` de SL-17 también.
 - [x] **T11. El módulo de geografía pasa al superadmin** (R24, R25, R26; depende de T4).
-  *Parte de `lib/` hecha el 2026-10-23, y la página en la tanda 5 (`progress/impl_SL-32.md > T11` y `> T15, T16 (UI) y la página de T11`). **Sigue abierta la decisión sobre `actualizarDistritosEspeciales` (D12)**: está parada a la espera de producto y no bloquea el resto de T11.*
+  *Parte de `lib/` hecha el 2026-10-23, y la página en la tanda 5 (`progress/impl_SL-32.md > T11` y `> T15, T16 (UI) y la página de T11`). La decisión sobre `actualizarDistritosEspeciales` (D12) la resuelve SL-38 (2026-10-23): la marca de zona especial es de la empresa (`distrito_zona_especial`) y la acción vuelve al maestro por servicio y repositorio. No bloqueaba el resto de T11.*
   - En `GeografiaService`, `READ_ROLES` y `GESTION_ROLES` según
     `design.md > GeografiaService, la acción y la pantalla`.
   - La página de Geografía cambia su puerta a `esPlataforma(actor.rol)`: `notFound()` al `maestro`.

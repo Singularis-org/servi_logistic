@@ -18,16 +18,64 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { MODELOS_DE_NEGOCIO } from "../lib/db/modelos-de-negocio";
 
 const ROL_APP = "servi_app";
-// Contrato de M2 y M3 (design §2.1, §3): 73 tablas de negocio, 150 FK de negocio a negocio.
-const POLITICAS_POR_EMPRESA = 73;
+// Contrato de M3 (SL-17 design §3): 150 FK de negocio a negocio, un trigger `sme_*` por FK. SL-38
+// no lo mueve: las dos FK de `distrito_zona_especial` apuntan a plataforma y a `organizacion`.
 const TRIGGERS_MISMA_EMPRESA = 150;
-const TRIGGERS_SIN_CAMBIO = 73;
+
+/** Lo que el punto 6 espera encontrar en el catalogo de la base. */
+export interface ContratoRls {
+  politicasPorEmpresa: number;
+  triggersMismaEmpresa: number;
+  triggersSinCambio: number;
+}
+
+/**
+ * SL-38 (R23) — el contrato del punto 6, derivado de `MODELOS_DE_NEGOCIO`: una politica
+ * `*_por_empresa` y un trigger `*_sin_cambio_de_empresa` por tabla de negocio. Con la cuenta escrita
+ * a mano, cada tabla nueva dejaba el script en rojo en un despliegue correcto: tras SL-38 esperaba 73
+ * y la base tiene 74.
+ */
+export function contratoEsperado(modelos: readonly unknown[] = MODELOS_DE_NEGOCIO): ContratoRls {
+  return {
+    politicasPorEmpresa: modelos.length,
+    triggersMismaEmpresa: TRIGGERS_MISMA_EMPRESA,
+    triggersSinCambio: modelos.length,
+  };
+}
+
+/** Lo que el punto 6 mide en `pg_policies` y `pg_trigger`. */
+export interface CatalogoMedido {
+  politicas: number;
+  para_app: number;
+  con_rls: number;
+  sme: number;
+  sin_cambio: number;
+}
+
+/** El veredicto del punto 6, puro: lo medido contra el contrato. */
+export function evaluarCatalogo(m: CatalogoMedido, c: ContratoRls): ResultadoPunto {
+  const ok =
+    m.politicas === c.politicasPorEmpresa &&
+    m.para_app === c.politicasPorEmpresa &&
+    m.con_rls === c.politicasPorEmpresa &&
+    m.sme === c.triggersMismaEmpresa &&
+    m.sin_cambio === c.triggersSinCambio;
+  return {
+    punto: 6,
+    ok,
+    detalle:
+      `politicas *_por_empresa=${m.politicas}/${c.politicasPorEmpresa} (para ${ROL_APP}=${m.para_app}, ` +
+      `tabla con RLS activa=${m.con_rls}); triggers sme_*=${m.sme}/${c.triggersMismaEmpresa} activos, ` +
+      `*_sin_cambio_de_empresa=${m.sin_cambio}/${c.triggersSinCambio} activos`,
+  };
+}
 
 type Tx = Prisma.TransactionClient;
 
-interface ResultadoPunto {
+export interface ResultadoPunto {
   punto: number;
   ok: boolean;
   detalle: string;
@@ -114,20 +162,7 @@ async function punto6(directo: PrismaClient): Promise<ResultadoPunto> {
         JOIN pg_proc f ON f.oid = t.tgfoid
        WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgenabled <> 'D'`
   );
-  const ok =
-    p.politicas === POLITICAS_POR_EMPRESA &&
-    p.para_app === POLITICAS_POR_EMPRESA &&
-    p.con_rls === POLITICAS_POR_EMPRESA &&
-    t.sme === TRIGGERS_MISMA_EMPRESA &&
-    t.sin_cambio === TRIGGERS_SIN_CAMBIO;
-  return {
-    punto: 6,
-    ok,
-    detalle:
-      `politicas *_por_empresa=${p.politicas}/${POLITICAS_POR_EMPRESA} (para ${ROL_APP}=${p.para_app}, ` +
-      `tabla con RLS activa=${p.con_rls}); triggers sme_*=${t.sme}/${TRIGGERS_MISMA_EMPRESA} activos, ` +
-      `*_sin_cambio_de_empresa=${t.sin_cambio}/${TRIGGERS_SIN_CAMBIO} activos`,
-  };
+  return evaluarCatalogo({ ...p, ...t }, contratoEsperado());
 }
 
 async function fijarEmpresa(tx: Tx, organizacionId: string): Promise<void> {
