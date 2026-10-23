@@ -1298,3 +1298,44 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 **Grafo:** no usé el MCP; trabajé con Grep y Read.
 
 **Veredicto:** T9 y T17 en verde dos veces seguidas y juntos. La mutación de `esPlataforma` tumba el paso 5. El correo real de recuperación lo aceptó el SMTP para los dos maestros.
+
+## T10 — cierre: deudas y mapa R → test (implementer) — 2026-10-23
+
+**Deudas.** D7 queda RESUELTA en `progress/deudas.md` con la decisión del 2026-10-22, sin deuda nueva. P8 se resolvió con SMTP (Brevo), no con `AUTH_OTP_DEBUG_LOG`: no entra deuda. Siguen abiertas, sin cambio: D12 (`actualizarDistritosEspeciales` escribe `distrito.zona_especial` desde Tarifas; la decisión es de producto) y D15 (P7: rama del superadmin en geografía).
+
+**Mapa R → test** (todos los archivos existen en la rama; comprobado con un barrido de las rutas del mapa de `tasks.md`):
+
+| R | Test |
+|---|---|
+| R1, R2 | `tests/unit/types/roles.test.ts`, `tests/unit/scripts/seed-catalogos.test.ts`; migraciones verificadas en T3 |
+| R3, R4, R5 | `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`, `tests/unit/auth/plataforma.test.ts` |
+| R6 | `tests/unit/auth/menu-visibility.test.ts`, `tests/unit/auth/destino-post-login.test.ts`, `tests/integration/app-layout-superadmin.test.tsx`, `tests/unit/actions/marco-superadmin-sin-empresa.test.ts`, `e2e/superadmin-arranque.spec.ts` |
+| R7 | `tests/unit/analytics/productos-alcance.test.ts`, `tests/unit/analytics/conteo-productos-action.test.ts`, `tests/unit/analytics/alcance-fuente-unica.guardia.test.ts`, `tests/unit/asistente/tope-diario.test.ts` (AsistenteService) |
+| R8, R9, R11 | `tests/unit/services/usuario-service-superadmin.test.ts` |
+| R10 | `tests/integration/db/usuarios-sin-superadmin.test.ts`, `tests/unit/types/usuario-schema.test.ts`, `tests/unit/actions/usuarios.test.ts` |
+| R12–R15, R17 | `tests/integration/db/arranque-superadmin.test.ts`, `tests/unit/services/arranque-superadmin-service.test.ts` |
+| R16 | `tests/unit/services/arranque-superadmin-service.test.ts`, `tests/unit/scripts/arranque-superadmin.test.ts` |
+| R18 | `e2e/superadmin-arranque.spec.ts` |
+| R19 | `tests/unit/guards/fuera-datos-ordenex.guardia.test.ts` |
+| R20 | `tests/unit/guards/recursos-origen-fuera.guardia.test.ts` y revisión del diff de `.env.example` y README |
+| R21 | verificación de T3 (deploy, 3 rollbacks, redeploy; rollback que falla con superadmin), sección T3 |
+| R22, R23 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` |
+| R24, R25 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/actions/geografia-action.test.ts`, `tests/integration/db/geografia-registro-accion.test.ts`, `tests/integration/db/geografia-cascada-reversible.test.ts`, guardia de T6 (rama del superadmin con dobles, P7/D15) |
+| R26 | `tests/unit/components/geografia-admin-page.test.tsx`, `tests/unit/auth/menu-visibility.test.ts`, revisión del diff de la ayuda (T1b) |
+| R27 | `tests/integration/db/un-solo-superadmin.test.ts`, `tests/integration/db/arranque-superadmin.test.ts`, `tests/unit/services/usuario-service-superadmin.test.ts` |
+| R28 | `tests/integration/db/usuario-empresa-o-superadmin.test.ts` |
+| R29 | `tests/components/empresas-module.test.tsx`, `tests/integration/db/empresas-plataforma.test.ts`, `e2e/superadmin-empresas.spec.ts` |
+| R30–R34 | `tests/components/empresas-module.test.tsx`, `e2e/superadmin-empresas.spec.ts` |
+| R35 | `tests/integration/empresas-page.test.tsx`, `tests/unit/actions/alta-empresa-rol.test.ts`, `tests/unit/services/empresas-plataforma-service.test.ts`, `e2e/superadmin-empresas.spec.ts` |
+| R36 | `tests/unit/auth/menu-visibility.test.ts`, `tests/unit/auth/destino-post-login.test.ts`, guardia de T6 |
+| R37 | `tests/components/empresas-module.test.tsx`, `e2e/superadmin-empresas.spec.ts` (los dos maestros entran) |
+| R38 | `tests/integration/login-form-reset-link.test.tsx`, `tests/integration/recuperar-contrasena-page.test.tsx`, `tests/unit/actions/password-reset-degrada-a-consola.test.ts` |
+
+**Desviaciones del spec, consolidadas**
+- Base adelantada sobre la rama de SL-17 (T0); SL-17 entró luego en `dev` y se hizo merge de `origin/dev`.
+- Migraciones con timestamps `20261023100000/100100/100200` (detrás de `20261023090000_unicos_por_empresa`, no de `…130300`).
+- La action de SL-17 responde `no_autorizado`, no `forbidden`.
+- «Empresas» va justo antes de «Mi bodega» y «Ayuda», no al final (contratos de `menu-ayuda` y `menu-mi-bodega`).
+- `/configuracion` al superadmin: 200 con «No tienes permiso…», no 404 (R5 lo admite).
+- Arreglos fuera del spec, evidenciados con el dev server real: el `AsyncLocalStorage` de `lib/db/contexto-empresa.ts` pasa a `globalThis` (bug de SL-17, `c04da42`, **hay que llevarlo a `dev`**), y las actions de notificaciones y push del marco no leen tablas de empresa para el superadmin (`fe72cba`).
+- D19 de SL-17 (humo de dos empresas por la pantalla) queda pendiente: ver sección «T9 y T17».

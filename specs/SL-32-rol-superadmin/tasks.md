@@ -409,7 +409,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 8 — Cierre
 
-- [ ] **T10. Deudas y trazabilidad.**
+- [x] **T10. Deudas y trazabilidad.**
   - En `progress/deudas.md`, D7 queda resuelta con la decisión del 2026-10-22, sin deuda nueva.
     Si P8 se resuelve con `AUTH_OTP_DEBUG_LOG`, entra como deuda nueva con su fecha.
   - `progress/impl_SL-32.md` lleva el mapa `R<n> → test`.

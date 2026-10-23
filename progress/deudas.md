@@ -33,10 +33,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** llevar ese párrafo al YAML con las mismas palabras, y que un test de paridad lo cubra.
 - **Dueño:** Carlos Restrepo (ficha propia o la próxima que toque el contrato).
 
-### D7 — ¿Quién retira una provincia: la empresa o la plataforma?
-- **Origen:** SL-16 (2026-10-22), review H4. La ayuda dice que lo hace la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apunta a la plataforma.
-- **Qué falta:** decisión de Carlos. Mientras tanto queda «la empresa», como en el código.
-- **Dueño:** Carlos Restrepo.
+### D7 — ¿Quién retira una provincia: la empresa o la plataforma? — RESUELTA (2026-10-22)
+- **Origen:** SL-16 (2026-10-22), review H4. La ayuda decía que lo hacía la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apuntaba a la plataforma.
+- **Resolución:** decisión de Carlos del 2026-10-22, aplicada en SL-32 (R22–R26): gestionar la geografía (alta, cambio de nombre, retiro, reactivación y conteo) es de la plataforma (`GESTION_ROLES = ROLES_PLATAFORMA`); el `maestro` solo conserva `listarArbol` para Tarifas. Texto de la API, CHANGELOG y ayuda actualizados. Sin deuda nueva; lo que queda de la rama del superadmin es D15 y la escritura de `distrito.zona_especial` es D12.
+- **Dueño:** cerrada.
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
