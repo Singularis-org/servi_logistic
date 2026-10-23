@@ -86,8 +86,18 @@ function formatearEnZona(instante: Date, zonaHoraria: string): string {
   const valor = (tipo: Intl.DateTimeFormatPartTypes): string =>
     partes.find((parte) => parte.type === tipo)?.value ?? "";
 
-  const desfase = valor("timeZoneName").replace("GMT", "");
-  return `${valor("year")}-${valor("month")}-${valor("day")}T${valor("hour")}:${valor("minute")}${desfase === "" ? "Z" : desfase}`;
+  return `${valor("year")}-${valor("month")}-${valor("day")}T${valor("hour")}:${valor("minute")}${normalizarDesfase(valor("timeZoneName"))}`;
+}
+
+/**
+ * SL-37 (R1/R2) — convierte el `timeZoneName` de `longOffset` en el sufijo ISO-8601. Para el
+ * desfase cero `Intl` da «», «GMT» o «GMT+00:00» segun la version de Node, y «GMT-00:00» se
+ * trata igual por si un ICU lo emite: todas son `Z`.
+ * Cualquier otro desfase sale tal cual, sin el prefijo («GMT-06:00» -> «-06:00»).
+ */
+export function normalizarDesfase(nombreZona: string): string {
+  const desfase = nombreZona.replace("GMT", "");
+  return desfase === "" || desfase === "+00:00" || desfase === "-00:00" ? "Z" : desfase;
 }
 
 /**
