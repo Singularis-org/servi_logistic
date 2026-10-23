@@ -20,6 +20,7 @@ import { verifyPassword } from "@/lib/utils/password";
 import { computeDeviceHash } from "@/lib/utils/device";
 import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import { authConfig } from "@/lib/config/auth";
+import { puedeIniciarSesion } from "@/lib/auth/puede-iniciar-sesion";
 
 export class AuthService implements IAuthService {
   private readonly otpIssuer: OtpChallengeIssuer;
@@ -100,6 +101,18 @@ export class AuthService implements IAuthService {
       return { status: "account_unavailable" }; // R13
     }
 
+    // SLT-32: sin empresa no hay con que operar. Va antes del riesgo para no confiar el
+    // dispositivo ni emitir un OTP a una cuenta que igual no podra entrar.
+    if (!puedeIniciarSesion(usuario)) {
+      await this.registrarIntento(contexto, {
+        usuarioId: usuario.id,
+        exitoso: false,
+        riskScore: 0,
+        riskReason: "sin_empresa",
+      });
+      return { status: "account_unavailable" };
+    }
+
     // R14: credenciales validas y cuenta activa -> evaluacion de riesgo (RBA).
     const risk = await this.riskEngine.evaluate({
       usuarioId: usuario.id,
@@ -159,6 +172,26 @@ export class AuthService implements IAuthService {
 
     await this.otpRepo.markConsumed(challenge.id);
 
+    const usuario = await this.userRepo.findById(challenge.usuarioId);
+    const contexto = {
+      emailUsado: usuario?.email ?? "",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    };
+
+    // SLT-32: el desafio pudo emitirse antes de que la cuenta perdiera su empresa; se revalida
+    // aqui con el mismo predicado que el login. Se responde con el fallo generico del OTP: el
+    // contrato de este paso no tiene otro, y la UI ya lo maneja.
+    if (!usuario || !puedeIniciarSesion(usuario)) {
+      await this.registrarIntento(contexto, {
+        usuarioId: challenge.usuarioId,
+        exitoso: false,
+        riskScore: 0,
+        riskReason: usuario ? "sin_empresa" : "usuario_no_encontrado",
+      });
+      return { status: "invalid_or_expired" };
+    }
+
     // R19: OTP superado -> concede sesion y confia el dispositivo/IP.
     await this.trustedDeviceRepo.upsert({
       usuarioId: challenge.usuarioId,
@@ -166,13 +199,8 @@ export class AuthService implements IAuthService {
       ipAddress: challenge.ipAddress,
     });
 
-    const usuario = await this.userRepo.findById(challenge.usuarioId);
     await this.registrarIntento(
-      {
-        emailUsado: usuario?.email ?? "",
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent,
-      },
+      contexto,
       {
         usuarioId: challenge.usuarioId,
         exitoso: true,

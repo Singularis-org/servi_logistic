@@ -3,6 +3,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 import { SESSION_COOKIE_NAME } from "@/lib/constants/auth";
+import { puedeIniciarSesion } from "@/lib/auth/puede-iniciar-sesion";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 /**
@@ -29,7 +30,9 @@ export async function resolveActorFromSession(): Promise<Actor | null> {
       where: { id: session.userId },
       include: { rol: true },
     });
-    if (!usuario) return null;
+    // SLT-32: una sesion abierta antes de que la cuenta quedara sin empresa deja de valer aqui,
+    // con la misma regla que el login (`puedeIniciarSesion`).
+    if (!usuario || !puedeIniciarSesion(usuario)) return null;
 
     // Feature 146 (A3): `zonaId` viaja en el actor porque el alcance por zona de las
     // notificaciones (R16) se resuelve contra `usuario.zona_id`. SL-17: `organizacionId` viaja

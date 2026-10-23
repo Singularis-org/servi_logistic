@@ -44,6 +44,7 @@ const PUBLIC_SELECT = {
   fulfillment: true, // feature 27/R14: expuesto en la forma publica (nunca el hash)
   zonaId: true, // feature 24/R27: zona asignada (mensajero/adminSatelite)
   vehiculoId: true, // feature 21: vehiculo asociado (mensajero)
+  organizacionId: true, // SLT-32: el OTP (`findById`) decide con ella si concede sesion
   createdAt: true,
   updatedAt: true,
 } as const;

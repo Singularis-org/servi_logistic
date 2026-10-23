@@ -27,6 +27,9 @@ export interface UsuarioPublico {
   // Feature 21: vehiculo asociado (solo mensajero; null en el resto). Se expone en
   // la forma publica para el prefill del formulario.
   vehiculoId?: string | null;
+  // SLT-32: la empresa decide si la cuenta puede tener sesion (`puedeIniciarSesion`). Opcional
+  // como zona/vehiculo; ausente cuenta como "sin empresa" y bloquea el login (falla cerrado).
+  organizacionId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
