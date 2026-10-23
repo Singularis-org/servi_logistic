@@ -1339,3 +1339,13 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 - `/configuracion` al superadmin: 200 con «No tienes permiso…», no 404 (R5 lo admite).
 - Arreglos fuera del spec, evidenciados con el dev server real: el `AsyncLocalStorage` de `lib/db/contexto-empresa.ts` pasa a `globalThis` (bug de SL-17, `c04da42`, **hay que llevarlo a `dev`**), y las actions de notificaciones y push del marco no leen tablas de empresa para el superadmin (`fe72cba`).
 - D19 de SL-17 (humo de dos empresas por la pantalla) queda pendiente: ver sección «T9 y T17».
+
+## Gates de las tandas 3–8 (implementer) — 2026-10-23
+
+`TEST_RAPIDO_BASE=dev ./init.sh` dentro de `gate.lock`, tras `prisma generate`, con `INIT_EXIT` escrito en el log:
+- tanda 3 (T3, `5833762`): sin gate propio. El typecheck salía rojo por las tablas `Record<RolValue>` de T4, así que se cerró con la 4a.
+- tanda 4a + merge de `dev` con SL-17 (`2c361ce`): `INIT_EXIT=0`. En CI del PR #4, `gate-completo` pass.
+- tanda 4b (`4b94332`): la 1.ª corrida dio `INIT_EXIT=1`, con un timeout de 20 s en `fuera-datos-ordenex` > no-vacuidad bajo carga (solo pasa en 3,5 s). La 2.ª dio `INIT_EXIT=0`.
+- tanda 5 (`ef449d5`): `INIT_EXIT=0`.
+- final (`f8210c6`): la 1.ª corrida dio `INIT_EXIT=1` por la guardia SL-34, que veía los correos de prueba en esta bitácora; se reescribieron. La 2.ª dio `INIT_EXIT=0` (`Tests 15734 passed`; guardias `4081 passed`).
+- CI sobre `f8210c6` (`workflow_dispatch`, porque el PR está en draft): `gate-completo`, `estatico` y los 3 shards de vitest, success. El job `e2e` sale failure con 49 failed, 28 did not run y 3 passed, en 24 specs heredados. Los dos de SL-32 y `dos-empresas-humo` de SL-17 caen porque CI no define `SL17_HUMO_LOG_SERVIDOR`, el log del dev server del que se lee el OTP. En local pasan (sección «T9 y T17 — segunda vuelta»).
