@@ -60,7 +60,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D12 — Escritura de vehículos y de geografía del maestro
 - **Origen:** SL-17, D12 y R40. `vehiculos`, provincia, cantón y distrito son de plataforma: escribir desde una empresa falla cerrado. Las actions de `lib/actions/vehiculos.ts` y `crear/renombrarNodoGeografico` devuelven un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar. `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, una marca del flujo de Tarifas, que el maestro ya no puede cambiar.
-- **Qué falta:** pasar la edición al superadmin (SL-26), dejar las pantallas del maestro en solo lectura con su mensaje, y decidir dónde vive la marca de zona especial (¿`zona_distrito` de la empresa?).
+- **Qué falta:** pasar la edición al superadmin (SL-26) y dejar las pantallas del maestro en solo lectura con su mensaje.
+- **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
 - **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26.
 
 ### D13 — Coste medido de la envoltura y de los triggers
@@ -93,3 +94,22 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-32 (2026-10-23), review m6. `e2e/superadmin-arranque.spec.ts`, `e2e/superadmin-empresas.spec.ts` y `e2e/dos-empresas-humo.spec.ts` leen el código del log del dev server (`SL17_HUMO_LOG_SERVIDOR`, con `AUTH_OTP_DEBUG_LOG=1`). `.github/workflows/gate.yml` no define ese log, así que en el job `e2e` (PR a `prod`, o `workflow_dispatch`) caen; ese job ya sale en rojo por specs heredados que esperan datos sembrados (D8).
 - **Qué falta:** que el job `e2e` arranque el servidor con su salida a un archivo y exporte la variable, o un canal de prueba del OTP que no dependa del log. Y decidir el estado de los specs heredados.
 - **Dueño:** quien tome la ficha de CI del E2E (decide Carlos Restrepo).
+
+### D18 — Deadlock 40P01 entre el R34 de `cobro-tienda-461-completar-migration` y los tests de concurrencia de la caja
+- **Origen:** SL-38, review vuelta 1 (B1), 2026-10-23. Es de `dev`, no de SL-38.
+- **Causa (DETAIL de Postgres):**
+  - El R34 corre `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT "wallet_tienda_movimiento_tienda_id_fkey"` dentro de `enTransaccionRevertida459`, que toma el lock de la 227 (`CLAVE_LOCK_ESCRITURA_REAL`).
+  - Del otro lado hay una transacción del servicio real que lee o escribe `wallet_tienda_movimiento`: el `SUM(monto) … GROUP BY tipo` del saldo, o el `INSERT … ON CONFLICT DO NOTHING` de `WalletTiendaMovimientoRepository`.
+  - Esa transacción la abren `abono-tienda-457-concurrencia` y `pago-por-cuenta-tienda-concurrencia`, que commitean solo bajo `conCandado459` (`4590001`) o `hashtext(...)`, no bajo el de la 227. Los dos locks no se excluyen.
+  - El DDL ya tiene el libro de tiendas y espera `AccessExclusiveLock` sobre una segunda relación, que el servicio ya tiene tomada. Por la FK que suelta, esa relación es `usuario`, aunque es una inferencia: el OID no se resolvió porque la base se borró.
+  - El servicio espera el libro de tiendas. Toman las dos tablas en orden inverso, y por eso hay ciclo.
+- **Contraprueba sobre `origin/dev` (`fa67b57`, sin SL-38):**
+  - Base `sl38_devref` migrada con las de dev, cliente generado desde dev y los tres archivos juntos, 10 corridas.
+  - Resultado: **2/10 con 40P01**. La corrida 1 mató al `abono-tienda-457-concurrencia` (R16) y la 3 al R34. Las dos con el mismo par de sentencias en el log del servidor (14:32:54 y 14:33:27).
+  - En la selección de `test:rapido` solo sale cuando el planificador de vitest los cruza en el tiempo: el reviewer lo vio y la corrida instrumentada r1 no.
+- **Mismo origen, otro síntoma:** `gasto-fijo-plantilla-borrado.test.ts:143` cuenta `wallet_movimiento` entera dos veces en una transacción READ COMMITTED y vio `4 → 2` en el gate de SL-38 (corrida 1, 2026-10-23). Una cuenta global no aguanta escrituras commiteadas en paralelo. Debería contar solo sus filas.
+- **Qué falta:**
+  - Serializar las dos familias con un único orden de locks. Una opción: que los tests de concurrencia 457/458/461 sostengan el lock de la 227 en sesión (`tomarLockDeEscrituraReal`) durante su escritura commiteada, ANTES del de la 459.
+  - Otra opción: que el R34 no haga DDL sobre una tabla real y pruebe el control con un esquema desechable.
+  - Un reintento no vale.
+- **Dueño:** quien tome la siguiente ficha de la caja (461/459), o Carlos Restrepo si se abre una propia.

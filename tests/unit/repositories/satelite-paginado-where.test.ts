@@ -82,7 +82,7 @@ function filaPrisma(id: string) {
     zona: { id: "z-1", nombre: "Zona A", esCentral: false },
     provincia: { id: "p-1", nombre: "San José" },
     canton: { id: "c-1", nombre: "Escazú" },
-    distrito: { id: "d-1", nombre: "San Rafael", zonaEspecial: false },
+    distrito: { id: "d-1", nombre: "San Rafael", zonasEspeciales: [] },
     mensajeroAsignado: null,
     gestiones: [],
   };

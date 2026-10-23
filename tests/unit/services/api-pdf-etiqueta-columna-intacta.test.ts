@@ -188,9 +188,9 @@ function ordenHeredada(overrides: Fila = {}): Fila {
     cierreDetalles: [],
     provincia: { nombre: "Pichincha" },
     canton: { nombre: "Quito" },
-    // La etiqueta pide `distrito.nombre` y el `select` del canal pide `distrito.zonaEspecial`:
-    // la MISMA fila alimenta a los dos, asi que lleva las dos columnas.
-    distrito: { nombre: "Centro", zonaEspecial: false },
+    // La etiqueta pide `distrito.nombre` y el `select` del canal pide la marca de la empresa
+    // (`distrito.zonasEspeciales`, SL-38): la MISMA fila alimenta a los dos, asi que lleva las dos.
+    distrito: { nombre: "Centro", zonasEspeciales: [] },
     ...overrides,
   };
 }

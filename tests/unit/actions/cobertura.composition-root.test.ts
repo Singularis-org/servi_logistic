@@ -16,7 +16,7 @@ const distritoFindMany = vi.fn(async (..._args: unknown[]) => [
   {
     nombre: "San Rafael",
     activo: true,
-    zonaEspecial: null,
+    zonasEspeciales: [],
     canton: { nombre: "Escazú", activo: true, provincia: { nombre: "San José", activo: true } },
     zonas: [{ zona: { id: "z1", nombre: "GAM", esCentral: true } }],
   },
@@ -50,7 +50,7 @@ describe("465 — el composition root PASA un CoberturaRepository real", () => {
           motivo: null,
           zonas: ["GAM"],
           zonaUnica: { nombre: "GAM", esCentral: true, tieneTarifaGeneral: true },
-          zonaEspecial: null,
+          zonaEspecial: false,
         },
       ],
     });

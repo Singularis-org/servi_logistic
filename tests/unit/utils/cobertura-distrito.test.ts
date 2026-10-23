@@ -109,8 +109,8 @@ describe("465/R11, R12, R14 — zonas, GAM y tarifa general", () => {
   });
 });
 
-describe("465/R13 — zona especial tri-valuada", () => {
-  it.each([true, false, null])("zonaEspecial %s se conserva tal cual", (valor) => {
+describe("SL-38/R15 — zona especial de la empresa, dos valores", () => {
+  it.each([true, false])("zonaEspecial %s se conserva tal cual", (valor) => {
     expect(clasificarCobertura(fila({ zonaEspecial: valor }), SIN_TARIFAS).zonaEspecial).toBe(valor);
   });
 });

@@ -48,12 +48,6 @@ function textoZona(zonas: readonly string[]): string {
   return `Varias zonas: ${zonas.join(", ")}`;
 }
 
-/** R13 — tri-valuada: «Sí», «No» o «Sin definir». */
-function textoZonaEspecial(valor: boolean | null): string {
-  if (valor === null) return "Sin definir";
-  return siNo(valor);
-}
-
 /** Proyecta un distrito a una fila del archivo con los textos de R7-R14. */
 export function filaCobertura(dto: CoberturaDistritoDTO): DescargaFila {
   return {
@@ -65,7 +59,8 @@ export function filaCobertura(dto: CoberturaDistritoDTO): DescargaFila {
     motivo: dto.motivo === null ? null : MOTIVO_SIN_COBERTURA_LABEL[dto.motivo],
     zona: textoZona(dto.zonas),
     gam: dto.zonaUnica === null ? null : siNo(dto.zonaUnica.esCentral),
-    zona_especial: textoZonaEspecial(dto.zonaEspecial),
+    // SL-38 (R15): la marca es de la empresa; hay fila o no la hay. «Sin definir» ya no existe.
+    zona_especial: siNo(dto.zonaEspecial),
     tarifa_general:
       dto.zonaUnica === null ? null : siNo(dto.zonaUnica.tieneTarifaGeneral),
   };

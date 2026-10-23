@@ -169,7 +169,7 @@ function filaOrden() {
     zonaId: ZONA_ID,
     cobraComision: true,
     zona: { id: ZONA_ID, nombre: "GAM", esCentral: true },
-    distrito: { zonaEspecial: false },
+    distrito: { zonasEspeciales: [] },
     cierreDetalles: [CONGELADO],
     gestiones: [],
     historialEstados: [],

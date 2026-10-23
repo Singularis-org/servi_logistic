@@ -94,7 +94,7 @@ const distritos: DistritoRow[] = CASOS.map(({ row, ids }) => {
     disponible: row.disponible,
     zonaId: zona?.id ?? null,
     esCentral: zona?.esCentral ?? false,
-    esZonaEspecial: row.distrito.zonaEspecial === true,
+    esZonaEspecial: row.distrito.zonaEspecial,
   };
 });
 const provinciaIndex = indexBy(provincias, (p) => normalize(p.nombre));

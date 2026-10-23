@@ -72,11 +72,16 @@ const CONSULTAS_DEL_DETALLE = [
   "order_status", //   2. `estatus` de la orden
   "usuario", //   3. `mensajeroAsignado` (feature 404)
   "zona", // ⭑ 4. 415: `zona` (id, nombre, esCentral)
-  "distrito", // ⭑ 5. 415: `distrito.zonaEspecial`
+  "distrito", // ⭑ 5. 415: el distrito (desde SL-38 la marca es la relacion de 9b)
   "cierre_detail", // ⭑ 6. 415: la fila congelada, con su `where`, su `orderBy` y su `take: 1`
   "gestion_orden", //   7. la relacion `gestiones` (superconjunto, 405)
   "orden_historial_estado", //   8. 405: el historial de la ORDEN
   "orden_incidente", //   9. `incidentesAdmin` (feature 268)
+  // ⭑ 9b. SL-38 (2026-10-23): `distrito.zonasEspeciales` — la marca de zona especial de la EMPRESA,
+  //   que sustituye a la columna `distrito.zona_especial`. Es una relacion anidada mas, y Prisma la
+  //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
+  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
+  "distrito_zona_especial",
   "usuario", //  10. 405: `gestiones.mensajero`
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -94,6 +99,8 @@ const CONSULTAS_DEL_LISTADO = [
   "zona", // ⭑ 4. 415
   "distrito", // ⭑ 5. 415
   "cierre_detail", // ⭑ 6. 415
+  // ⭑ 6b. SL-38: `distrito.zonasEspeciales`, UNA consulta para la pagina entera (medido, T7).
+  "distrito_zona_especial",
   "orden", //   7. el `count` del total
   "tarifas", // ⭑ 8. 415: UNA consulta de tarifas para la pagina entera (R24)
 ];
@@ -595,16 +602,16 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     expect(m.detalles.zonaMovida!.costoReal).toEqual(COSTO_REAL_ESPERADO);
   });
 
-  it("R8/R31 (+454): el DETALLE emite EXACTAMENTE 13 consultas, y son estas trece", async () => {
+  it("R8/R31 (+454): el DETALLE emite EXACTAMENTE 14 consultas, y son estas catorce", async () => {
     const m = await escenario();
 
     // El espia esta midiendo de verdad: una lista vacia significaria que el `log: query` no llego.
     expect(m.tablasDetalle.length).toBeGreaterThan(0);
     expect(m.tablasDetalle).toEqual(CONSULTAS_DEL_DETALLE);
-    expect(m.tablasDetalle).toHaveLength(13); // ficha 454: +`orden_evento` (R32)
+    expect(m.tablasDetalle).toHaveLength(14); // ficha 454: +`orden_evento` (R32); SL-38: +la marca
   });
 
-  it("R8/R24/R31: el LISTADO emite 8 consultas, y NO cambia entre `limit=1` y `limit=50`", async () => {
+  it("R8/R24/R31: el LISTADO emite 9 consultas, y NO cambia entre `limit=1` y `limit=50`", async () => {
     const m = await escenario();
 
     expect(m.tablasListado1.length).toBeGreaterThan(0);
@@ -613,6 +620,6 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     //   de la pagina. Con `limit=50` entran las nueve ordenes sembradas, en DOS zonas distintas y
     //   con hasta dos cierres cada una, y sigue siendo el MISMO conjunto de consultas.
     expect(m.tablasListado50).toEqual(m.tablasListado1);
-    expect(m.tablasListado50).toHaveLength(8);
+    expect(m.tablasListado50).toHaveLength(9); // SL-38: +`distrito_zona_especial`
   });
 });

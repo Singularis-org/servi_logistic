@@ -421,7 +421,8 @@ export class BulkOrdenService implements IBulkOrdenService {
     // `numGuia`) para tarifar SIN N+1. Solo las creadas se tarifan (R4).
     const esCentralPorRemision = new Map<string, boolean>();
     // Hermana de la anterior, por el mismo camino y el mismo cruce (2026-08-25): la marca
-    // `zona_especial` del distrito de cada fila, que es la que elige el monto pactado.
+    // de zona especial del distrito de cada fila PARA LA EMPRESA (SL-38), que es la que elige el
+    // monto pactado.
     const esZonaEspecialPorRemision = new Map<string, boolean>();
     // Feature 274/R25 (design §4.3): la ZONA de cada fila candidata, por el mismo camino y con
     // el mismo cruce que `esCentralPorRemision`. Es lo que convierte "una tarifa por lote" en
