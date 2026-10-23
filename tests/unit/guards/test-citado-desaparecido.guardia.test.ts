@@ -347,6 +347,12 @@ interface ExcepcionTemporal {
   ficha: string;
   retira: string;
   motivo: string;
+  /**
+   * Fecha en que se aplanó la historia de git y el borrado dejó de verse en ella. Con este campo la
+   * excepción no exige la prueba del borrado; sigue exigiendo que el archivo NO exista en el árbol y
+   * que el documento lo cite.
+   */
+  historiaAplanada?: string;
 }
 
 const MOTIVO_459 =
@@ -358,8 +364,9 @@ const MOTIVO_459 =
  * 459. Son dos, las de `specs/461/design.md:827` (`| R61 |`). Las de `specs/459/design.md:1100-1101`
  * no entran: sus filas empiezan por `| R80, R88 |` y `| R81–R86 |`, que `FILA_DE_REQUISITO` no lee
  * como requisito, y una excepción para ellas caducaría en rojo desde el primer día («ya no lo cita»).
- * Se quitan cuando SL-27 retire esos specs; si antes se aplana la historia, el caso de caducidad lo
- * pide en rojo.
+ * Se quitan cuando SL-27 retire esos specs. La historia se aplanó el 2026-10-22 (`86d70bf`): su
+ * borrado ya no está en git, así que llevan `historiaAplanada` y la guardia comprueba lo que sí puede,
+ * que el archivo no existe en el árbol y que el spec lo sigue citando.
  */
 const EXCEPCIONES_TEMPORALES: readonly ExcepcionTemporal[] = [
   {
@@ -368,6 +375,7 @@ const EXCEPCIONES_TEMPORALES: readonly ExcepcionTemporal[] = [
     ficha: "SL-13",
     retira: "SL-27",
     motivo: MOTIVO_459,
+    historiaAplanada: "2026-10-22",
   },
   {
     doc: "specs/461-cobro-a-tienda-y-nombres-claros/design.md",
@@ -375,6 +383,7 @@ const EXCEPCIONES_TEMPORALES: readonly ExcepcionTemporal[] = [
     ficha: "SL-13",
     retira: "SL-27",
     motivo: MOTIVO_459,
+    historiaAplanada: "2026-10-22",
   },
 ];
 
@@ -398,7 +407,7 @@ export function excepcionesCaducadas(
     if (existe(e.archivo)) quejas.push(`${quien}: el archivo vuelve a existir; quita la excepción`);
     if (!citas.some((c) => c.doc === e.doc && nombreDe(c.archivo) === nombreDe(e.archivo)))
       quejas.push(`${quien}: ese documento ya no lo cita; quita la excepción (la retira ${e.retira})`);
-    if (!borrados.has(nombreDe(e.archivo)))
+    if (!e.historiaAplanada && !borrados.has(nombreDe(e.archivo)))
       quejas.push(`${quien}: su borrado ya no está en la historia de git; quita la excepción`);
     return quejas;
   });
@@ -699,6 +708,14 @@ describe("R-1 — un test citado por una ficha no desaparece sin dejar constanci
     expect(
       excepcionesCaducadas([{ doc: "specs/x/design.md", archivo: muerto, ...base }], citas, new Map(), existeHoy).join("\n"),
     ).toMatch(/ya no está en la historia/);
+    // ...salvo que la excepción declare la historia aplanada: entonces no se exige el borrado,
+    expect(
+      excepcionesCaducadas([{ doc: "specs/x/design.md", archivo: muerto, ...base, historiaAplanada: "2026-10-22" }], citas, new Map(), existeHoy),
+    ).toEqual([]);
+    // pero el archivo sigue sin poder volver al árbol.
+    expect(
+      excepcionesCaducadas([{ doc: "specs/x/design.md", archivo: vivo, ...base, historiaAplanada: "2026-10-22" }], citas, new Map(), existeHoy).join("\n"),
+    ).toMatch(/vuelve a existir/);
     // Y sin la ficha que la retira, tampoco vale.
     expect(
       excepcionesCaducadas([{ doc: "specs/x/design.md", archivo: muerto, ...base, retira: "" }], citas, borrados, existeHoy).join("\n"),
