@@ -9,7 +9,7 @@ import type {
   OrdenRastreoFila,
   TransicionRastreoFila,
 } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
-import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { RastreoPublicoService, normalizarDesfase } from "@/lib/services/RastreoPublicoService";
 
 // Feature 229 — T2.4: la proyeccion publica del envio.
 //
@@ -426,5 +426,23 @@ describe("R22 — el DTO es la lista blanca cerrada, construida campo a campo", 
     const serializado = JSON.stringify(resultado);
     expect(serializado).not.toContain("orden-1"); // el id interno se queda en el service
     expect(serializado).not.toContain("8888"); // ni un digito del telefono del destinatario
+  });
+});
+
+// SL-37 — el desfase no depende de la version de Node: se prueban las salidas literales de
+// `Intl` (`timeZoneName: "longOffset"`), no lo que da el Node de esta maquina.
+describe("SL-37 R1 — las tres formas de UTC que da Intl salen como Z", () => {
+  it.each(["", "GMT", "GMT+00:00"])("«%s» -> Z", (nombreZona) => {
+    expect(normalizarDesfase(nombreZona)).toBe("Z");
+  });
+});
+
+describe("SL-37 R2 — un desfase distinto de cero sale como ±HH:MM", () => {
+  it.each([
+    ["GMT-06:00", "-06:00"],
+    ["GMT+05:30", "+05:30"],
+    ["GMT-03:00", "-03:00"],
+  ])("«%s» -> %s", (nombreZona, esperado) => {
+    expect(normalizarDesfase(nombreZona)).toBe(esperado);
   });
 });
