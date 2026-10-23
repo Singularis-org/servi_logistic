@@ -303,17 +303,21 @@ describeSiHayBase("⭑ 458-B/TB.9 — la anulacion uniforme por las actions (Pos
     expect(m().historialRechazo).toBe(1);
   });
 
-  it("R68: ganancia −1 130,00 y «De las tiendas» +1 130,00; «Entro», «Salio», la cifra principal y el capital NO cambian; la tienda A sube 1 130,00", () => {
+  // SL-39 (R1/R2): de los 1 130,00, el flete (1 000,00) baja la ganancia y su IVA (130,00) baja el IVA,
+  // que ya no es ganancia. Antes de la ficha la ganancia bajaba los 1 130,00 enteros.
+  it("R68 (SL-39): ganancia −1 000,00, IVA −130,00 y «De las tiendas» +1 130,00; «Entro», «Salio», la cifra principal y el capital NO cambian; la tienda A sube 1 130,00", () => {
     const { antes, trasRechazo } = m();
     expect({
       ganancia: d(antes, trasRechazo, (l) => l.resumen.ganancia),
+      iva: d(antes, trasRechazo, (l) => l.resumen.iva),
       deTerceros: d(antes, trasRechazo, (l) => l.resumen.deTerceros),
       enCaja: d(antes, trasRechazo, (l) => l.resumen.enCaja),
       entradas: d(antes, trasRechazo, (l) => l.resumen.entradas),
       salidas: d(antes, trasRechazo, (l) => l.resumen.salidas),
       capital: d(antes, trasRechazo, (l) => l.resumen.capital),
     }).toEqual({
-      ganancia: `-${COBRO_RECHAZO}`,
+      ganancia: "-1000.00",
+      iva: "-130.00",
       deTerceros: COBRO_RECHAZO,
       enCaja: "0.00",
       entradas: "0.00",
@@ -327,7 +331,8 @@ describeSiHayBase("⭑ 458-B/TB.9 — la anulacion uniforme por las actions (Pos
   it("R68/R91: R7 y R8 siguen en 0,00 tras la anulacion (sobre el libro entero y sobre la diferencia)", () => {
     const r = m().trasRechazo.resumen;
     const mas = (a: string, b: string) => menos(a, menos("0.00", b));
-    expect(menos(r.enCaja, mas(mas(r.ganancia, r.deTerceros), r.capital))).toBe("0.00");
+    // SL-39 (R4): el IVA, aparte de la ganancia, es el cuarto sumando.
+    expect(menos(r.enCaja, mas(mas(mas(r.ganancia, r.iva), r.deTerceros), r.capital))).toBe("0.00");
     // R8 por diferencia: lo que subio «De las tiendas» es lo que subieron los saldos de A y B.
     const deltaTerceros = d(m().antes, m().trasRechazo, (l) => l.resumen.deTerceros);
     const deltaSaldos = mas(menos(m().saldoATras, m().saldoAAntes), menos(m().saldoBTras, m().saldoBAntes));

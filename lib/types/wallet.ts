@@ -176,6 +176,58 @@ export const WALLET_INGRESO_PROPIO_SEED = [
 
 export type WalletIngresoPropio = (typeof WALLET_INGRESO_PROPIO_SEED)[number];
 
+// SL-39 (design §2.1, R1/R2) — las categorias de IVA. El IVA es dinero de la empresa que esta en la
+// caja (su naturaleza sigue siendo `propio`, y por eso «Es dinero de» y el filtro «A quién» no
+// cambian), pero NO es ganancia: se le cobro a la tienda por cuenta del fisco. Es una segunda
+// clasificacion, ortogonal a la naturaleza, y vive en un seed para que la ganancia, la composicion,
+// la serie diaria y la guardia R18 lean el mismo conjunto.
+export const WALLET_INGRESO_IVA_SEED = [
+  "ingreso_iva_flete",
+  "ingreso_iva_flete_devolucion",
+  "ingreso_iva_comision_cod",
+] as const satisfies readonly WalletIngresoPropio[];
+
+export type WalletIngresoIva = (typeof WALLET_INGRESO_IVA_SEED)[number];
+
+// La anulacion de un cobro por devolucion a origen devuelve su IVA (ficha 458-B).
+export const WALLET_EGRESO_IVA_SEED = [
+  "egreso_reverso_iva_flete_devolucion",
+] as const satisfies readonly WalletMovimientoCategoria[];
+
+export type WalletEgresoIva = (typeof WALLET_EGRESO_IVA_SEED)[number];
+
+export const WALLET_IVA_SEED = [
+  ...WALLET_INGRESO_IVA_SEED,
+  ...WALLET_EGRESO_IVA_SEED,
+] as const satisfies readonly WalletMovimientoCategoria[];
+
+export type WalletCategoriaIva = (typeof WALLET_IVA_SEED)[number];
+
+// SL-39 (design §2.1, R8) — los ingresos propios que SI son ganancia: la columna «Ingresos» de la
+// tarjeta de la composicion. `WALLET_INGRESO_PROPIO_SEED` no cambia (sigue siendo «todos los ingresos
+// propios», y la guardia de composicion lo exige). Se escribe como lista y no como filtro para que
+// sea un union de literales; `_EnsureIngresoGanancia` rompe el build si deja de ser exactamente
+// «propios menos IVA».
+export const WALLET_INGRESO_GANANCIA_SEED = [
+  "ingreso_flete",
+  "ingreso_flete_devolucion",
+  "ingreso_comision_cod",
+  "ingreso_ajuste",
+  "ingreso_cobro_tienda",
+] as const satisfies readonly WalletIngresoPropio[];
+
+export type WalletIngresoGanancia = (typeof WALLET_INGRESO_GANANCIA_SEED)[number];
+
+type _EnsureIngresoGanancia = [Exclude<WalletIngresoPropio, WalletIngresoIva>] extends [
+  WalletIngresoGanancia,
+]
+  ? [WalletIngresoGanancia] extends [Exclude<WalletIngresoPropio, WalletIngresoIva>]
+    ? true
+    : never
+  : never;
+const _ingresoGananciaExacto: _EnsureIngresoGanancia = true;
+void _ingresoGananciaExacto;
+
 // Feature 231 (design §2.2) — las CUATRO categorias de egreso propio que `DesgloseEgresosDTO`
 // (features 45/158) ya abre concepto por concepto. Existe para poder derivar su COMPLEMENTO
 // (`ComposicionGananciaDTO.otrosEgresos`, R26) sin copiar a mano la lista de las que faltan:
@@ -206,12 +258,15 @@ export type WalletEgresoDesglosado = (typeof WALLET_EGRESO_DESGLOSADO_SEED)[numb
 //
 // Ficha 458-B (design §2.3): + los dos reversos del cobro por rechazo (flete e IVA). Bajan la
 // ganancia igual que el reverso del cobro de la 461 y, por el mismo motivo, se ven con su nombre.
+//
+// SL-39 (design §2.1): el reverso del IVA sale de aqui. Ya no baja la ganancia, baja el IVA, y su
+// fila va al bloque del IVA. Sigue teniendo fila: entra en `WALLET_EGRESO_CON_FILA_SEED` por
+// `WALLET_EGRESO_IVA_SEED`, y por eso no cae en «Otros».
 export const WALLET_EGRESO_NOMBRADO_SEED = [
   "egreso_pago_mensajero",
   "egreso_ajuste",
   "egreso_reverso_cobro_tienda",
   "egreso_reverso_flete_devolucion",
-  "egreso_reverso_iva_flete_devolucion",
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletEgresoNombrado = (typeof WALLET_EGRESO_NOMBRADO_SEED)[number];
@@ -229,6 +284,7 @@ export type WalletEgresoNombrado = (typeof WALLET_EGRESO_NOMBRADO_SEED)[number];
 export const WALLET_EGRESO_CON_FILA_SEED = [
   ...WALLET_EGRESO_DESGLOSADO_SEED,
   ...WALLET_EGRESO_NOMBRADO_SEED,
+  ...WALLET_EGRESO_IVA_SEED, // SL-39: el reverso del IVA tiene su fila en el bloque del IVA
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletEgresoConFila = (typeof WALLET_EGRESO_CON_FILA_SEED)[number];
@@ -426,6 +482,12 @@ export type CajaResumenDTO = {
   estado: EstadoCaja;
   /** R15 — YYYY-MM-DD (Costa Rica) del primer movimiento de la caja; null con el libro vacio. */
   flujoDesde: string | null;
+  // ── SL-39 (design §6) — el IVA, fuera de la ganancia ──
+  // Desde esta ficha `ganancia`, `ingresosPropios` y `egresosPropios` NO llevan el IVA; `deEmpresa`
+  // si (ganancia + IVA + capital), y por eso no cambia de valor.
+  /** R2 — IVA de la caja: ingresos de IVA menos su reverso, con signo. */
+  iva: string;
+  signoIva: WalletBalanceSigno;
 };
 
 /** Ficha 459 (R14) — el estado de la caja lo decide el servidor. */
@@ -451,8 +513,11 @@ export type ModoComposicionCaja = (typeof MODO_COMPOSICION_CAJA_SEED)[number];
  * Money-safe: todos los importes son STRING escala 2.
  */
 export type ComposicionGananciaDTO = {
-  /** Un importe por categoria de ingreso propio. `Record` TOTAL: no admite huecos (R23). */
-  ingresos: Record<WalletIngresoPropio, string>;
+  /**
+   * Un importe por categoria de ingreso que es ganancia. `Record` TOTAL: no admite huecos (R23).
+   * SL-39 (R8): sin las tres de IVA, que van en `iva`.
+   */
+  ingresos: Record<WalletIngresoGanancia, string>;
   /** Σ de `ingresos`. Identico, importe a importe, a `CajaResumenDTO.ingresosPropios` (R23). */
   totalIngresos: string;
   /**
@@ -485,6 +550,13 @@ export type ComposicionGananciaDTO = {
    * que mas falta haria ver, y `.gt(0)` lo esconderia.
    */
   hayOtrosEgresos: boolean;
+  /**
+   * SL-39 (design §6, R7) — una fila por categoria de IVA, fuera de las dos columnas de la
+   * ganancia. El reverso va en positivo, como toda fila de egreso. `Record` TOTAL, sin huecos.
+   */
+  iva: Record<WalletCategoriaIva, string>;
+  /** SL-39 (R8) — ingresos de IVA menos su reverso. Identico a `CajaResumenDTO.iva`. */
+  totalIva: string;
 };
 
 // Feature 45 (R11) — desglose de egresos administrativos por tipo para el conjunto

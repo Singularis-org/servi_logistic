@@ -129,15 +129,14 @@ const RESUMEN_OK = {
     deTercerosAbsoluto: "0.00",
     estado: "flujo" as const,
     flujoDesde: "2026-08-25",
+    iva: "0.00", // SL-39
+    signoIva: "cero" as const,
   },
   composicion: {
     ingresos: {
       ingreso_flete: "0.00",
       ingreso_flete_devolucion: "0.00",
       ingreso_comision_cod: "0.00",
-      ingreso_iva_flete: "0.00",
-      ingreso_iva_flete_devolucion: "0.00",
-      ingreso_iva_comision_cod: "0.00",
       ingreso_ajuste: "0.00",
       ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     },
@@ -148,10 +147,17 @@ const RESUMEN_OK = {
       egreso_ajuste: "0.00",
       egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
       egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-      egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
     },
     otrosEgresos: "0.00",
     hayOtrosEgresos: false,
+    // SL-39: el IVA va en su bloque, fuera de las dos columnas de la ganancia.
+    iva: {
+      ingreso_iva_flete: "0.00",
+      ingreso_iva_flete_devolucion: "0.00",
+      ingreso_iva_comision_cod: "0.00",
+      egreso_reverso_iva_flete_devolucion: "0.00",
+    },
+    totalIva: "0.00",
     totalEgresos: "0.00",
   },
 };

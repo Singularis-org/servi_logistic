@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
 import fs from "fs";
 import path from "path";
-import { listarMetricas } from "@/lib/analytics/metrics";
+import { getMetrica, listarMetricas } from "@/lib/analytics/metrics";
 import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import { monedaConfig } from "@/lib/config/moneda";
 import {
@@ -403,7 +403,8 @@ describe("R28 · misma entrada, misma salida, con mas de una fila", () => {
  *
  *   bruto    = 1000 + 130 + 400 + 5000 + 3000 + 200 = 9730.00  (volumen movido, sin signo)
  *   enCaja   = (1000 + 130 + 5000 + 200) − (400 + 3000)        = 2930.00
- *   ganancia = (1000 + 130) − 400                              =  730.00
+ *   ganancia = 1000 − 400                                      =  600.00
+ *              (SL-39, R1/R11: el IVA del flete, 130, no es ganancia; antes 730.00)
  *
  * OJO CON EL DOBLE: `armarServicio` devuelve estas filas para CUALQUIER metrica, porque no
  * filtra por categoria — eso lo hace el repositorio de verdad con lo que el catalogo declara
@@ -475,10 +476,10 @@ describe("R54 · dinero_en_caja y ganancia_empresa son DOS cifras, no la misma d
     expect(tarjeta.enCaja).toBe("1800.00");
   });
 
-  it("`ganancia_empresa` deja fuera el dinero de terceros: 730, no 2930", async () => {
+  it("`ganancia_empresa` deja fuera el dinero de terceros y el IVA: 600, no 2930", async () => {
     const vista = await totalDe("ganancia_empresa", LIBRO_MIXTO);
 
-    expect(vista.total.neto).toBe("730.00");
+    expect(vista.total.neto).toBe("600.00"); // SL-39: 1000 − 400, sin el IVA (antes 730.00)
     // El bruto es el de lo agregado, igual que en las demas metricas de caja ⟨D1(c)⟩.
     expect(vista.total.bruto).toBe("9730.00");
     expect(vista.id).toBe("ganancia_empresa");
@@ -489,12 +490,13 @@ describe("R54 · dinero_en_caja y ganancia_empresa son DOS cifras, no la misma d
     const ganancia = await totalDe("ganancia_empresa", LIBRO_MIXTO);
 
     expect(enCaja.total.neto).not.toBe(ganancia.total.neto);
-    // Ficha 459 (reescrito): 1800 − 730 = 1070 = lo que se les debe a las tiendas
-    // (5000 − 3000 + 200 − 1130 de flete e IVA que la empresa se queda del contra-entrega).
+    // SL-39 (reescrito): 1800 − 600 = 1200 = lo que se les debe a las tiendas (5000 − 3000 + 200 −
+    // 1130 de flete e IVA que la empresa se queda del contra-entrega = 1070) MAS el IVA (130), que
+    // ya no esta dentro de la ganancia.
     expect(
       Number(enCaja.total.neto) - Number(ganancia.total.neto),
       "solo para leer el descuadre: la aritmetica de dinero vive en Prisma.Decimal",
-    ).toBeCloseTo(1070, 2);
+    ).toBeCloseTo(1200, 2);
   });
 
   it("R51 en el servicio: anadir contra-entrega NO mueve la ganancia y SI mueve la caja", async () => {
@@ -504,7 +506,7 @@ describe("R54 · dinero_en_caja y ganancia_empresa son DOS cifras, no la misma d
     const cajaConTerceros = await totalDe("dinero_en_caja", LIBRO_MIXTO);
 
     expect(gananciaConTerceros.total.neto).toBe(gananciaSinTerceros.total.neto);
-    expect(gananciaConTerceros.total.neto).toBe("730.00");
+    expect(gananciaConTerceros.total.neto).toBe("600.00"); // SL-39: sin IVA (antes 730.00)
     // Y la otra no es insensible: si las dos se movieran igual, serian la misma cifra.
     expect(cajaConTerceros.total.neto).not.toBe(cajaSinTerceros.total.neto);
     // Ficha 459 (reescrito): sin contra-entrega, el flete y su IVA no entran a la caja (son una
@@ -514,12 +516,13 @@ describe("R54 · dinero_en_caja y ganancia_empresa son DOS cifras, no la misma d
 
   it("459/R12: sin dinero de terceros las dos cifras difieren EXACTAMENTE en los cargos a tiendas", async () => {
     // Sustituye a «un libro sin dinero de terceros hace coincidir las dos (R6)», que medía el doble
-    // conteo F2: el flete (1 000) y su IVA (130) no son efectivo. Ganancia 730; caja −400.
+    // conteo F2: el flete (1 000) y su IVA (130) no son efectivo. Ganancia 600 (SL-39: sin el IVA;
+    // antes 730); caja −400.
     const enCaja = await totalDe("dinero_en_caja", LIBRO_SOLO_PROPIO);
     const ganancia = await totalDe("ganancia_empresa", LIBRO_SOLO_PROPIO);
 
     expect(enCaja.total.neto).toBe("-400.00");
-    expect(ganancia.total.neto).toBe("730.00");
+    expect(ganancia.total.neto).toBe("600.00");
   });
 
   it("las dos consultan el libro de la caja y NINGUN otro repositorio", async () => {
@@ -552,6 +555,74 @@ describe("R54 · dinero_en_caja y ganancia_empresa son DOS cifras, no la misma d
     expect(cuerpo).not.toMatch(/\.\s*(sub|minus)\s*\(/);
     expect(cuerpo).not.toMatch(/new Prisma\.Decimal/);
     expect(cuerpo).not.toContain("derivarBalance(");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SL-39 / T3 — R11 y R13: la metrica de la ganancia y la del IVA cuadran con la caja */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Un libro con IVA de los tres conceptos, su reverso, ganancia y dinero de terceros.
+ *
+ *   ganancia de la caja = (1000 + 200) − 400            =  800.00  (sin IVA)
+ *   IVA de la caja      = 130 + 20 − 30                 =  120.00
+ *   bruto de la ganancia = 1000 + 200 + 400             = 1600.00  (con el IVA dentro daria 1780.00)
+ *   bruto del IVA        = 130 + 20 + 30                =  180.00
+ */
+const LIBRO_SL39 = [
+  { categoria: "ingreso_flete", tipo: "ingreso", suma: "1000.00" },
+  { categoria: "ingreso_iva_flete", tipo: "ingreso", suma: "130.00" },
+  { categoria: "ingreso_comision_cod", tipo: "ingreso", suma: "200.00" },
+  { categoria: "ingreso_iva_comision_cod", tipo: "ingreso", suma: "20.00" },
+  { categoria: "egreso_reverso_iva_flete_devolucion", tipo: "egreso", suma: "30.00" },
+  { categoria: "egreso_sueldo", tipo: "egreso", suma: "400.00" },
+  { categoria: "ingreso_cod_recaudado", tipo: "ingreso", suma: "5000.00" },
+] as const;
+
+/**
+ * La metrica leida como la lee produccion: el repositorio de verdad acota el `WHERE` a las
+ * categorias que el catalogo declara (`financiera-ingresos-repo.test.ts` lo mide contra Postgres).
+ * El doble no filtra, asi que el filtro se aplica aqui con la MISMA lista del catalogo: es la lista
+ * lo que esta ficha cambia, y es lo que se prueba.
+ */
+async function totalComoProduccion(metricaId: string) {
+  const declaradas = new Set<string>(getMetrica(metricaId)?.definicion.categorias ?? []);
+  expect(declaradas.size, `${metricaId} no declara categorias`).toBeGreaterThan(0);
+  const filas = LIBRO_SL39.filter((f) => declaradas.has(f.categoria));
+  const { servicio } = armarServicio({
+    caja: [...filas],
+    cajaPorCubo: filas.map((f) => ({ ...f, indiceCubo: 0 })),
+  });
+  const r = await servicio.consultar(consultaDe(metricaId));
+  if (r.status !== "ok" || r.datos.tipo !== "vistas") throw new Error(`${metricaId} no dio vistas`);
+  const vista = r.datos.vistas[0];
+  return { ...vista, total: conNeto(vista.total, metricaId) };
+}
+
+describe("SL-39 · R11/R13 — la analitica repite la ganancia y el IVA de la caja, sin mezclarlos", () => {
+  const caja = derivarCaja(
+    LIBRO_SL39.map((f) => ({ categoria: f.categoria, tipo: f.tipo, total: f.suma })),
+  );
+
+  it("control: la caja sobre este libro da ganancia 800,00 e IVA 120,00", () => {
+    expect(caja.ganancia).toBe("800.00");
+    expect(caja.iva).toBe("120.00");
+  });
+
+  it("R11: el neto de `ganancia_empresa` es la ganancia de la caja, y el bruto no cuenta el IVA", async () => {
+    const vista = await totalComoProduccion("ganancia_empresa");
+    expect(vista.total.neto).toBe("800.00");
+    expect(vista.total.neto).toBe(caja.ganancia);
+    expect(vista.total.bruto).toBe("1600.00"); // con el IVA dentro seria 1780.00
+    expect(vista.filas[0].importe).toEqual(vista.total);
+  });
+
+  it("R13: el neto de `ingreso_iva` es el IVA de la caja", async () => {
+    const vista = await totalComoProduccion("ingreso_iva");
+    expect(vista.total.neto).toBe("120.00");
+    expect(vista.total.neto).toBe(caja.iva);
+    expect(vista.total.bruto).toBe("180.00");
   });
 });
 

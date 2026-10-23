@@ -48,11 +48,15 @@ describe("459/A.2 — la caja de produccion (M6) con la formula nueva, sin recla
     expect(r.signoEnCaja).toBe("positivo");
   });
 
-  it("R4: la ganancia vale EXACTAMENTE lo mismo que antes: −4 405 636,53", () => {
-    // 8 070 773,47 de cargos (ingresos propios) − 12 476 410,00 de egresos propios.
-    expect(r.ingresosPropios).toBe("8070773.47");
+  it("R4 (SL-39 R1/R2): la ganancia sin IVA, −5 334 135,96, y el IVA aparte, 928 499,43", () => {
+    // SL-39: antes de la ficha la ganancia era −4 405 636,53 (los 8 070 773,47 de cargos con su IVA).
+    // IVA = 568 360,00 + 132 223,43 + 227 916,00 = 928 499,43.
+    // Ingresos propios sin IVA = 4 372 000,00 + 1 017 074,04 + 1 753 200,00 = 7 142 274,04.
+    // Ganancia = 7 142 274,04 − 12 476 410,00 = −5 334 135,96.
+    expect(r.ingresosPropios).toBe("7142274.04");
     expect(r.egresosPropios).toBe("12476410.00");
-    expect(r.ganancia).toBe("-4405636.53");
+    expect(r.ganancia).toBe("-5334135.96");
+    expect(r.iva).toBe("928499.43");
   });
 
   it("R5: «De las tiendas» = 29 059 224,00 − 8 070 773,47 = 20 988 450,53", () => {
@@ -61,15 +65,15 @@ describe("459/A.2 — la caja de produccion (M6) con la formula nueva, sin recla
     expect(r.deTercerosAbsoluto).toBe("20988450.53");
   });
 
-  it("R6/R11: capital 0,00 y «De la empresa» = la ganancia", () => {
+  it("R6/R11: capital 0,00 y «De la empresa» = ganancia + IVA (SL-39: el mismo valor que antes)", () => {
     expect(r.capital).toBe("0.00");
     expect(r.signoCapital).toBe("cero");
     expect(r.deEmpresa).toBe("-4405636.53");
   });
 
-  it("R7: −4 405 636,53 + 20 988 450,53 + 0 = 16 582 814,00", () => {
+  it("R7 (SL-39 R4): −5 334 135,96 + 928 499,43 + 20 988 450,53 + 0 = 16 582 814,00", () => {
     expect(
-      new Prisma.Decimal(r.ganancia).add(r.deTerceros).add(r.capital).toFixed(2),
+      new Prisma.Decimal(r.ganancia).add(r.iva).add(r.deTerceros).add(r.capital).toFixed(2),
     ).toBe(r.enCaja);
   });
 
@@ -78,10 +82,11 @@ describe("459/A.2 — la caja de produccion (M6) con la formula nueva, sin recla
     expect(r.porcentajeTiendas).toBe("100.00");
   });
 
-  it("R4/R93: la composicion de la ganancia no cambia (misma entrada, misma funcion)", () => {
+  it("R4/R93 (SL-39 R8): la composicion — Ingresos sin IVA y el IVA en su bloque", () => {
     const c = derivarComposicionGanancia(M6);
-    expect(c.totalIngresos).toBe("8070773.47");
+    expect(c.totalIngresos).toBe("7142274.04"); // SL-39: antes 8 070 773,47, con el IVA dentro
     expect(c.totalEgresos).toBe("12476410.00");
+    expect(c.totalIva).toBe("928499.43");
   });
 });
 
@@ -96,8 +101,8 @@ describe("459/B.14 — columna 3 de design §2.4: + los 203 cobros reclasificado
     expect(r.signoEnCaja).toBe("negativo");
   });
 
-  it("R4: la ganancia sigue en −4 405 636,53 (un pago por cuenta NO es un gasto de la empresa)", () => {
-    expect(r.ganancia).toBe("-4405636.53");
+  it("R4: la ganancia sigue en −5 334 135,96 (un pago por cuenta NO es un gasto de la empresa)", () => {
+    expect(r.ganancia).toBe("-5334135.96"); // SL-39: sin IVA (antes −4 405 636,53)
     expect(r.egresosPropios).toBe("12476410.00");
   });
 
@@ -107,8 +112,10 @@ describe("459/B.14 — columna 3 de design §2.4: + los 203 cobros reclasificado
     expect(r.deTercerosAbsoluto).toBe("4780583.97");
   });
 
-  it("R7: −4 405 636,53 − 4 780 583,97 + 0 = −9 186 220,50; y la barra, sin reparto", () => {
-    expect(new Prisma.Decimal(r.ganancia).add(r.deTerceros).add(r.capital).toFixed(2)).toBe(r.enCaja);
+  it("R7: −5 334 135,96 + 928 499,43 − 4 780 583,97 + 0 = −9 186 220,50; y la barra, sin reparto", () => {
+    expect(
+      new Prisma.Decimal(r.ganancia).add(r.iva).add(r.deTerceros).add(r.capital).toFixed(2),
+    ).toBe(r.enCaja);
     expect(r.modoComposicion).toBe("sin_reparto");
   });
 });
@@ -123,7 +130,7 @@ describe("459/B.14 — columna 4 de design §2.4: + un saldo inicial S (simbolic
     });
     expect(r.capital).toBe("1000000.00");
     expect(r.enCaja).toBe("-8186220.50");
-    expect(r.ganancia).toBe("-4405636.53");
+    expect(r.ganancia).toBe("-5334135.96"); // SL-39: sin IVA
     expect(r.deTerceros).toBe("-4780583.97");
     expect(r.deEmpresa).toBe("-3405636.53");
     expect(r.estado).toBe("saldo");
@@ -138,7 +145,7 @@ describe("459/B.14 — columna 4 de design §2.4: + un saldo inicial S (simbolic
     expect([r.capital, r.enCaja, r.ganancia, r.deTerceros, r.estado]).toEqual([
       "0.00",
       "-9186220.50",
-      "-4405636.53",
+      "-5334135.96", // SL-39: sin IVA
       "-4780583.97",
       "flujo",
     ]);
@@ -158,7 +165,7 @@ describe("459/A.2 — R7 sobre subconjuntos al azar (semilla fija)", () => {
     };
   }
 
-  it("R7: cifra principal = ganancia + «De las tiendas» + capital, al centimo, en 500 conjuntos", () => {
+  it("R7 (SL-39 R4): cifra principal = ganancia + IVA + «De las tiendas» + capital, al centimo, en 500 conjuntos", () => {
     const azar = prng(459);
     let comprobados = 0;
     for (let n = 0; n < 500; n += 1) {
@@ -170,7 +177,7 @@ describe("459/A.2 — R7 sobre subconjuntos al azar (semilla fija)", () => {
         filas.push(fila(categoria, new Prisma.Decimal(centimos).div(100).toFixed(2)));
       }
       const r = derivarCaja(filas, { periodoFiltrado: azar() < 0.5 });
-      const suma = new Prisma.Decimal(r.ganancia).add(r.deTerceros).add(r.capital);
+      const suma = new Prisma.Decimal(r.ganancia).add(r.iva).add(r.deTerceros).add(r.capital);
       expect(suma.toFixed(2), `conjunto ${n}`).toBe(r.enCaja);
       expect(
         new Prisma.Decimal(r.deEmpresa).add(r.deTerceros).toFixed(2),
