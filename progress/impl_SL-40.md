@@ -210,3 +210,105 @@ no cubren.
   este worktree (`Unknown field zonaEspecial`).
 
 Desde ahí, todo lo que usa el cliente corre con `gate.lock` tomado y `prisma generate` dentro.
+
+### T4 — ida y vuelta, y no regresión de la carga
+
+**Archivo:** `tests/integration/db/migracion-sl40-ida-y-vuelta.test.ts`.
+- Base propia `sl40_iv_<rand>`, construida aplicando las migraciones anteriores, y borrada en el `afterAll`.
+- Reutiliza `_fixtures/ida-y-vuelta-32.ts` y le suma funciones, triggers, políticas, RLS y privilegios
+  de `servi_app` (la foto de SL-32 no los mira). Se quitan las filas, porque las órdenes del test las mueven.
+
+```
+✓ SL-40 R29 — las tres migraciones en disco > cada una trae su down.sql y van en orden detrás de la última de dev
+✓ SL-40 R29 — cobro_plataforma de ida y vuelta > con las tres, crear y anular una orden deja su cargo (sin configurar) y su reverso
+✓ … > los tres down.sql, en orden inverso, dejan el esquema como antes de SL-40, y crear y anular sigue funcionando
+✓ … > reaplicadas las tres, todo vuelve igual que la primera vez y el trigger vuelve a cobrar
+Test Files  1 passed (1)
+Tests  4 passed (4)
+VITEST_EXIT=0
+```
+
+**Mutaciones del test:** se edita el `down.sql`, se corre y se restaura con `git checkout`.
+
+| Mutación | Resultado |
+|---|---|
+| IV-a: el down de 130200 sin `DROP FUNCTION cobro_plataforma_al_crear_orden()` | 2 failed / 2 passed: «tras los tres downs» (1 diferencia) y la reaplicación (`ya existe una función`) |
+| IV-b: el down de 130000 sin `DROP COLUMN cobro_plataforma_por_orden` | 2 failed / 2 passed: «tras los tres downs» (1 diferencia) y la reaplicación (`ya existe la columna`) |
+
+**Carga masiva de 500 órdenes.** `BulkOrdenService.cargarMasiva` real, una empresa, 500 filas por
+llamada. Rama con guía (`createManyOrdenesConGuia`) y rama fulfillment (`createManyOrdenes`), 3
+cargas de cada una por ronda, en ms. Se midió con un test temporal, no commiteado.
+- La ronda 1 de «antes» corrió en frío, justo después de regenerar el cliente, y no se compara.
+- Las rondas 2 y 3 se intercalan: los triggers se quitan con el down de 130200 y se reponen
+  (la foto se comprobó después).
+
+| Ronda | Con guía | Fulfillment | Movimientos |
+|---|---|---|---|
+| antes 1 (en frío) | 3166, 2740, 2991 | 1185, 1101, 1177 | 0 |
+| después 1 | 1501, 1209, 1390 | 707, 667, 717 | 3000 |
+| antes 2 | 1256, 1062, 1039 | 503, 460, 507 | 0 |
+| después 2 | 1391, 1194, 1301 | 602, 525, 581 | 3000 |
+| antes 3 | 1321, 1226, 1434 | 520, 466, 515 | 0 |
+| después 3 | 1429, 1312, 1499 | 620, 558, 564 | 3000 |
+
+Medianas de las rondas 2 y 3 (en caliente):
+- con guía: 1241 → 1352 ms (+9 %, unos 0,22 ms por orden);
+- fulfillment: 505 → 573 ms (+13 %, unos 0,14 ms por orden).
+
+Son 3000 movimientos por ronda: 6 cargas × 500, un cargo por orden.
+
+**Archivos con `DELETE FROM orden`, sin tocarlos** (`git diff origin/dev` vacío sobre los 13). Se
+corrieron contra `sl40_tandaa` con las tres migraciones:
+- `aislamiento-ordenes`;
+- siete `notificacion-evento-*-migration`;
+- `orden-traspaso-migration`;
+- `orden-historial-origen-recoleccion-tienda-incidente-migration`;
+- `order-status-retiro-en-fulfillment-migration`;
+- `tests/unit/analytics/rollup-guards` y `tests/unit/db/extension-empresa`.
+
+Resultado: `Test Files 5 failed | 8 passed (13)`, `Tests 6 failed | 329 passed | 10 skipped (345)`.
+
+Los 5 rojos son rojos heredados que ya están en `tests/baseline-rojos.json` («La app nace vacía (SL-11) …
+la retira SL-31»):
+- `orden-traspaso-migration`;
+- `notificacion-evento-{reparto-manana,cierre-rechazado,traspaso,geocodificacion-caida}-migration`.
+
+El baseline compara por archivo, así que se comprobó **caso a caso** que no son de SL-40. Los mismos
+5 archivos se corrieron también en el estado de `dev`: los tres downs aplicados en `sl40_tandaa` y las
+tres carpetas fuera del árbol.
+- Con SL-40 y sin SL-40 salen los **mismos 6 casos rojos** (`diff` vacío).
+- Uno de ellos es el censo exacto de migraciones posteriores de `orden-traspaso`. Ya era rojo en
+  `dev`: tiene 41 posteriores contra 33 declarados, y con SL-40 son 44.
+- Después se reaplicaron las tres:
+  - la foto de control coincide (`9f0f9ba5…`);
+  - `migrate status` → «up to date»;
+  - `migrate diff` → vacío.
+
+Typecheck (con el cliente regenerado dentro del lock) → 0 errores. Lint de los tres archivos de test → 0.
+
+## Mapa R<n> → test (tanda A)
+
+| R | Test |
+|---|---|
+| R1, R2 (la parte de base: tabla de fila única, columna nulable, `CHECK >= 0`) | `cobro-plataforma-cargos` (R3/D11, R12/R19, R3/R5) y `migracion-sl40-ida-y-vuelta`. La validación del servidor y el repositorio son de T5 |
+| R3 | `cobro-plataforma-cargos`: «R3/D11 sin valor global…», «R3/R20 B crea p1 con su excepción», «R3/R5 quitada la excepción de B» |
+| R8 | `cobro-plataforma-cargos`: «R8: la empresa (servi_app) no puede escribir… → 42501» |
+| R12 | `cobro-plataforma-cargos`: «R12/R19 A crea o1 y o2 por pantalla y o3 por carga masiva», «R12/R14 A crea o4 por la API» |
+| R13 | `cobro-plataforma-cargos`: «R13: una transacción que crea una orden y no se confirma…» |
+| R14 | `cobro-plataforma-cargos`: «R14: el superadmin sube el global a 600.00…», «R12/R14 … o4 a 600.00», «R16 … 500.00, no 600.00» |
+| R15 | `cobro-plataforma-cargos`: «R15: A elimina o1 por pantalla…», «R15: A elimina o2 por la API…» |
+| R16 | `cobro-plataforma-cargos`: «R16: el maestro recupera o1…» |
+| R17 | `cobro-plataforma-cargos`: «R17: eliminar o1 otra vez…», «R17: recuperar o1 otra vez…» |
+| R18 | `cobro-plataforma-cargos`: «R18: una orden sin cargo (anterior a la ficha)…» |
+| R19 | `cobro-plataforma-cargos`: importes exactos `500.00`, `300.00`, `600.00` en cada paso |
+| R20 | `cobro-plataforma-cargos`: «R20: cada movimiento lleva la empresa de su orden… → SL017» |
+| R24 (la parte de base) | `cobro-plataforma-cargos`: «R24: B (servi_app, por la RLS y por la extensión)…». La deuda de la wallet es de T6 |
+| R28 | `tests/unit/guards/organizacion-en-modelos.guardia.test.ts`, `rls-por-empresa.guardia.test.ts` (74), `fk-misma-empresa.guardia.test.ts` |
+| R29 | `migracion-sl40-ida-y-vuelta` |
+| P3/D6 | `cobro-plataforma-cargos`: «P3/D6: la cancelación por API no es una anulación…» |
+| R4–R7, R9–R11, R21–R23, R25–R27 | Pendientes: tandas B y C (T5–T9) |
+
+## Veredicto (tanda 0 + tanda A)
+
+T0–T4 hechas: las tres migraciones con su down, los triggers registran cargo y reverso por las tres
+vías de creación y las dos de anulación, 17 + 2 mutaciones medidas en rojo y ninguna regresión fuera del baseline.

@@ -54,7 +54,7 @@
     - **cada una** de las cuatro mutaciones de `design.md > 11.1` lo pone en rojo (se prueba y se
       revierte);
     - la evidencia, con los números, en `progress/impl_SL-40.md`.
-- [ ] **T4. Ida y vuelta, y no regresión de la carga** (R29; depende de T3).
+- [x] **T4. Ida y vuelta, y no regresión de la carga** (R29; depende de T3).
   - `tests/integration/db/migracion-sl40-ida-y-vuelta.test.ts`.
   - Se mide una carga masiva de 500 órdenes antes y después de T3 (`design.md > 15`).
   - _Hecho:_
