@@ -664,3 +664,5 @@ Postgres real (`tests/integration/db/`) salvo los marcados «unit».
 | R48 | unit `tests/unit/actions/organizaciones-action.test.ts` (+ `organizaciones-action.composition-root.test.ts`) |
 
 No falta ningún R. D21 (no es R) → T4.1, `scripts/verificar-rls-despliegue.ts` (QA verde; producción pendiente).
+
+**Corrida final de T4.3, sobre `db9a4c8`** (`./init.sh --completo`, base `sl17_gate` nueva, migrada y sembrada, con `gate.lock` toda la corrida): **`INIT_EXIT=0`**. typecheck y lint verdes; `Test Files  244 failed | 2299 passed (2543)`, `Tests  299 failed | 33104 passed | 1307 skipped (34710)`; `✓ tests: sin rojos nuevos (244 rojos, todos en el baseline de 244)`; `✓ todas las migraciones tienen down.sql`. Cliente al final: `organizacion=1`.

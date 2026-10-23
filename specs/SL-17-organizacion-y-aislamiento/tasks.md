@@ -233,7 +233,7 @@ comando con su salida queda en `progress/impl_SL-17.md`.
   - El spec en verde.
   - Mutación: con el filtro de la extensión apagado, el humo encuentra un marcador `A-…` en B.
   - La salida en `progress/impl_SL-17.md`.
-- [ ] **T4.3 Suite completa local** (`./init.sh --completo`).
+- [x] **T4.3 Suite completa local** (`./init.sh --completo`).
   - Cada rojo nuevo frente a `tests/baseline-rojos.json` se arregla o se explica.
   - Nada entra al baseline sin el OK de Carlos.
 
