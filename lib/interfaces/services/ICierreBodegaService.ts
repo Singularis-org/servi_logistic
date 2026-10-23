@@ -108,8 +108,11 @@ export interface CierreBodegaDetalleCierre {
   grupos: CierreGrupos; // por resultado (reuso CierreDetalleGestion de la 37, R11)
   // Totales por concepto del ingreso de la empresa de ESTE cierre_dia (derivados del snapshot).
   totalesIngreso: TotalesIngresoEmpresa;
-  // DERIVADO: `totalesIngreso.total` - `totalPagoMensajero` de ESTE cierre_dia (STRING).
-  // Lo que le queda a la empresa del dia de ese mensajero. Puede ser NEGATIVO.
+  // SL-39 (R21): IVA facturado de ESTE cierre_dia = `ivaFlete` + `ivaFleteDevolucion` +
+  // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
+  ivaFacturado: string;
+  // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `totalPagoMensajero` de ESTE
+  // cierre_dia (STRING). Lo que le queda a la empresa del dia de ese mensajero. Puede ser NEGATIVO.
   ganancia: string;
   // DERIVADO: `totales.general` - `fleteConIva` - `comisionConIva` de ESTE cierre_dia
   // (STRING money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
@@ -122,8 +125,8 @@ export interface CierreBodegaDetalleCierre {
    */
   cobradoSobreRecaudado: string;
   /**
-   * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `totalPagoMensajero` −
-   * `totalIngresoBodegaRechazos` de ESTE cierre_dia. NO es `ganancia`: aquella no resta la
+   * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
+   * `totalPagoMensajero` − `totalIngresoBodegaRechazos` de ESTE cierre_dia. NO es `ganancia`: aquella no resta la
    * bodega, y por eso los dos numeros solo coinciden cuando la bodega es 0. Puede ser NEGATIVO.
    */
   netoEmpresa: string;

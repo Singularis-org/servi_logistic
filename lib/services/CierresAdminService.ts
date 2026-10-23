@@ -70,6 +70,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 import { desglosarIngresoBodegaPorOrigen } from "@/lib/utils/desglose-rechazos-sla";
 // FICHA 398: el destino de la orden corregida sale del PUNTO UNICO de la regla `resultado ->
 // estado` (239/R3), no de un literal escrito en el servicio.
@@ -826,13 +827,16 @@ export class CierresAdminService implements ICierresAdminService {
     // Totales por concepto del cierre: se suman desde el MISMO desglose por orden que ve el
     // admin en las tablas, no por una consulta aparte que podria no cuadrar con ellas.
     const totalesIngreso = totalesIngresoEmpresa(found.gestiones);
+    // SL-39 (R21–R23): el IVA de lo facturado no es de la empresa. La ganancia y el neto restan
+    // desde lo facturado SIN IVA; lo facturado (`totalesIngreso.total`) sigue llevandolo (R26).
+    const sinIva = facturadoSinIva(totalesIngreso);
 
-    // Ganancia DERIVADA: el ingreso bruto MENOS lo que se le debe al mensajero. El pago sale
+    // Ganancia DERIVADA: lo facturado sin IVA MENOS lo que se le debe al mensajero. El pago sale
     // del snapshot del cierre (no se recomputa, R4); el ingreso, del desglose por orden.
     // Feature 172 (T C.2/R26): el detalle tambien trae el pendiente —R26 lo pide «en el listado
     // de cierres Y en el detalle de ese cierre»—, por el mismo camino y con una sola agregacion.
     const [resumen] = await this.conPendiente([found.cierre]);
-    const ganancia = gananciaEmpresa(totalesIngreso.total, resumen.totalPagoMensajero);
+    const ganancia = gananciaEmpresa(sinIva, resumen.totalPagoMensajero);
 
     // Pago a la tienda DERIVADO: lo RECIBIDO (total general) menos lo que la empresa le factura
     // sobre esa plata. Sale de otra resta que la ganancia: parte de lo cobrado, no del bruto.
@@ -858,14 +862,14 @@ export class CierresAdminService implements ICierresAdminService {
       totalesIngreso.comisionConIva,
     );
 
-    // EL NETO: lo facturado menos los DOS pagos de la empresa. NO es `ganancia` y NO se encadena
+    // EL NETO: lo facturado sin IVA (SL-39) menos los DOS pagos de la empresa. NO es `ganancia` y NO se encadena
     // con ella —`gananciaEmpresa` resta solo el pago al mensajero—: coinciden cuando el ingreso
     // de bodega por rechazos vale "0.00" y divergen en cuanto hay un rechazo. `ganancia` sigue
     // saliendo intacta en este mismo DTO; esta es OTRA resta, no su sustituta.
     //
     // Los dos snapshots salen del `resumen` del propio cierre (R4: leidos, no recomputados).
     const neto = netoEmpresa(
-      totalesIngreso.total,
+      sinIva,
       resumen.totalPagoMensajero,
       resumen.totalIngresoBodegaRechazos,
     );
@@ -924,6 +928,8 @@ export class CierresAdminService implements ICierresAdminService {
       grupos,
       totalesIngreso,
       desgloseIngresoBodegaRechazos,
+      // SL-39 (R21): la linea propia del IVA, derivada aqui y emitida como STRING.
+      ivaFacturado: ivaFacturado(totalesIngreso),
       ganancia,
       pagoTienda,
       // Feature 395: las tres lineas derivadas arriba (STRING con su signo) y el booleano que

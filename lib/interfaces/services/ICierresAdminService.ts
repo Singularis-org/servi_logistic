@@ -367,8 +367,11 @@ export type CierreDetalleAdminServiceResult =
       // NO recomputado, R6). Por construccion `sla + manual === total` (R5). Solo en el DETALLE
       // (Q4); llega igual al alcance satelite por el mismo camino (R10).
       desgloseIngresoBodegaRechazos: { sla: string; manual: string; total: string };
-      // DERIVADO: `totalesIngreso.total` - `cierre.totalPagoMensajero` (STRING money-safe).
-      // Lo que le queda a la empresa del cierre. Puede ser NEGATIVO.
+      // SL-39 (R21): IVA facturado del cierre = `ivaFlete` + `ivaFleteDevolucion` +
+      // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
+      ivaFacturado: string;
+      // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
+      // (STRING money-safe). Lo que le queda a la empresa del cierre. Puede ser NEGATIVO.
       ganancia: string;
       // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
       // money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
@@ -386,8 +389,8 @@ export type CierreDetalleAdminServiceResult =
        */
       cobradoSobreRecaudado: string;
       /**
-       * Feature 395 — DERIVADO: `totalesIngreso.total` − `cierre.totalPagoMensajero` −
-       * `cierre.totalIngresoBodegaRechazos`.
+       * Feature 395 — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
+       * `cierre.totalPagoMensajero` − `cierre.totalIngresoBodegaRechazos`.
        *
        * **NO es `ganancia`**, que sigue viva y sigue viajando en este mismo DTO: aquella resta
        * SOLO el pago al mensajero. Las dos coinciden exactamente cuando el ingreso de bodega por
