@@ -1158,3 +1158,104 @@ D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
 - «Empresas» pasa del final a justo antes de «Mi bodega»: la barra sigue cerrando con «Mi bodega» y «Ayuda» (contratos 429/433). Ponerlo solo antes de «Ayuda» rompía `menu-mi-bodega` (penúltimo = `/mi-bodega`). Cambiados `lib/auth/menu-visibility.ts` (bloque y comentario), `tests/unit/auth/menu-visibility.test.ts` (R36: `slice(-3)` = `["Empresas","Mi bodega","Ayuda"]`), `specs/SL-32-rol-superadmin/design.md > Ruta y piezas`. `destino-post-login` y `plataforma.test.ts` no decían «al final»: sin cambios.
 - Guardia pwa: el literal cuenta destinos por rol → añadido `superadmin: 1`. Consecuencia real: la intersección pasa de `["/ayuda"]` a `[]` (el superadmin no está en `ROLES_AYUDA`); literal actualizado con su porqué. Sigue sin atajos.
 - Salida: 7 archivos (los 6 + `superadmin-fuera-de-empresa`) 123 passed; `pnpm run typecheck` exit 0 (con `prisma generate` dentro del lock); eslint exit 0. Mutación (Empresas otra vez al final): 3 failed (`menu-ayuda`, `menu-mi-bodega`, R36 de `menu-visibility`); revertido, `cmp` idéntico.
+
+## T9 y T17 — E2E del superadmin, frontend_dev — 2026-10-23 — BLOQUEADO (bug de SL-17 en `lib/db`)
+
+**Archivos** (nuevos, LF, sin commitear)
+- `e2e/_superadmin-fixture.ts`: credenciales ficticias fijas (`superadmin-e2e@example.test`), `correrArranque` (corre `pnpm arranque:superadmin` de verdad), `asegurarSuperadmin` (crea o confirma que el único superadmin es el de prueba; si hay otro, falla), `olvidarDispositivos` (fuerza el OTP de dispositivo nuevo), `codigoEnviadoA` (lee el código del log del dev server), `entrarConOtp`, `conCandadoDelSuperadmin` (mutex entre workers en `os.tmpdir()`), `enlacesDelMenu`, `NO_ENCONTRADO`.
+- `e2e/superadmin-arranque.spec.ts` (T9): arranque + no imprime valores + fila `organizacionId null`/`activo`/`superadmin`; login con OTP → `/plataforma/empresas`, menú = `["Empresas"]`, nombre en el pie; `/configuracion` → 404.
+- `e2e/superadmin-empresas.spec.ts` (T17): pasos 1-6 de tasks.md con datos aleatorios, textos literales de la propuesta de T12 (aviso, vacío, errores de slug/email/documento, «Revisa este campo.»), y el paso 5-6 para **A y para B** (recuperar contraseña por la UI → login con OTP → menú sin «Empresas» → `/plataforma/empresas` da 404). `afterAll` borra lo que creó para que la corrida siguiente vuelva a ver el vacío.
+
+**Decisiones**
+- OTP: ningún E2E existente lo leía (todos confían el dispositivo en la base). Vía elegida, la más simple: el `ConsoleEmailSender` escribe siempre `to=<email> asunto="Tu codigo de verificacion: NNNNNN"` (el asunto de `plantillaOtpCodigo` lleva el código), así que no hace falta `AUTH_OTP_DEBUG_LOG`. El log se lee con `LogDelServidor` de `_dos-empresas-fixture.ts` (variable `SL17_HUMO_LOG_SERVIDOR`): el dev server se levanta aparte con su salida a un archivo y Playwright lo reutiliza (`reuseExistingServer`), igual que el humo de SL-17.
+- Un solo superadmin: T17 usa el mismo setup que T9 (`asegurarSuperadmin`, idempotente: `creado` o `ya_existe` del mismo email). Como Playwright corre los dos archivos en workers paralelos, arranque y login del superadmin van bajo `conCandadoDelSuperadmin` (sin él chocan en el índice y se cruzan los códigos del mismo email).
+- La base remota aborta: los dos specs abren la base con `clienteDueno()` → `urlDeBase()` (mismo guard que `marca.spec.ts`).
+- Se corre con `--reporter=list` (el `html` por defecto se queda sirviendo el informe al fallar).
+- El error genérico «No se pudo crear la empresa…» no se puede provocar desde el navegador sin romper la base; queda en `empresas-module.test.tsx`.
+
+**Bloqueo 1 (impide T9 y T17): `EmpresaNoResuelta` con el dev server real, para cualquier rol.** Base `sl32_e2e` (migrada + `db:seed`), dev server propio en el 3000 (nada escuchaba antes; `.next` borrado), sin SMTP.
+- Corrida 1: el comando crea el superadmin (`1 passed`); login + OTP OK (el código sale del log); pero `GET /dashboard 404`: el middleware (`isSessionActive`, dentro de `comoPlataforma`) lanza `EmpresaNoResuelta: Sin empresa en contexto para Usuario.findUnique` (`session-guard.ts:32` ← `middleware.ts:72`). Resultado: `1 failed | 1 passed | 1 did not run`.
+- Experimento que lo confirma: dev server nuevo y primera petición `GET /dashboard` con cookie falsa (así el cliente lo crea el middleware). Ahora el que falla es el `POST /login`: `EmpresaNoResuelta` en `AuthService.login` ← `lib/actions/auth.ts:101`, también dentro de `comoPlataforma`.
+- Causa: `getPrismaClient()` guarda el cliente extendido en `globalThis.__prisma__`, pero el `AsyncLocalStorage` de `lib/db/contexto-empresa.ts` es una constante de módulo. En `next dev` el middleware (proxy) y la app son grafos de módulos distintos en el mismo proceso: el cliente lo crea el primero que llega, su extensión lee SU `almacen`, y el `comoPlataforma` del otro grafo queda invisible. No es del superadmin: le pasa a cualquier login. La prueba real de T16 (vitest, un solo grafo) no podía verlo.
+- Arreglo probable (backend, `lib/db`, no lo toco): que el `AsyncLocalStorage` también viva en `globalThis` (`globalThis.__contextoDatos__ ??= new AsyncLocalStorage()`), igual que el cliente. Afecta también a `next start` en local; en Vercel el middleware corre aparte y habría que comprobarlo.
+
+**Bloqueo 2 (spec vs código, paso 4 de T9): `/configuracion` no da 404 al superadmin.** `app/(app)/configuracion/page.tsx` responde a todo rol que no sea `maestro` con un 200 y «No tienes permiso para acceder a esta sección.», no con `notFound()`. `design.md` (R5, «Páginas y servicios de empresa: nada cambia… devuelven notFound()») y T9 dicen 404. No lo he corrido (el login cae antes), y no improviso: o se cambia la página (`notFound()` para el superadmin, o para todo no-maestro) o se cambia el paso 4. Decide el leader.
+
+**D19 (humo de SL-17 con alta desde la pantalla): pendiente.** No es contenido: el humo pide SMTP real, buzones reales (`SL17_HUMO_MAESTRO_*`) y el log del servidor, y su paso 1 afirma la repetición idempotente `ya_existe` del servicio (R45 de SL-17), que la pantalla no muestra (la pinta como error de slug). Además, el bloqueo 1 lo tumba igual. Se retoma cuando T17 esté en verde.
+
+**Correo real (yopmail): no hecho.** La orden era hacerlo después de los E2E en verde. Dejé preparado fuera del repo `scratchpad/sl32mail/smtp-env.mjs` (exporta `SMTP_*` sin imprimirlos) y `scratchpad/sl32mail/correo-real.ts` (alta por el servicio + `solicitarRecuperacion` con el emisor real; imprime solo aceptado/error). No dependen del dev server, así que no les afecta el bloqueo 1.
+
+**Mutación** (`esPlataforma` → `() => true` en la página): no corrida; el paso 5 no llega a ejecutarse.
+
+**Salida real**
+- `pnpm run typecheck` → `TC_EXIT=0`, 0 `error TS` (con `prisma generate` dentro de `gate.lock`; entre medias otro worktree regeneró el cliente sin `superadmin` y dio 47 errores, que desaparecen al regenerar).
+- `pnpm exec eslint` de los 3 archivos → «No issues found», exit 0.
+- `pnpm exec playwright test e2e/superadmin-arranque.spec.ts --reporter=list` → `1 failed | 1 passed | 1 did not run` (el fallo es el bloqueo 1). T17 no se corrió: su `beforeAll` hace el mismo login.
+- Limpieza: dev server matado, nada en el 3000, `.next`, `test-results` y los logs (Next registra los argumentos de las Server Actions, contraseña y código incluidos) borrados; `sl32_e2e` borrada (queda `sl32_base`); `gate.lock` soltado.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Veredicto:** T9 y T17 escritos y sin marcar: el login real cae por `EmpresaNoResuelta` (contexto de SL-17 partido entre middleware y app), y el paso 4 de T9 choca con `/configuracion`, que hoy no da 404.
+
+## Arreglo del ALS de SL-17 — backend_dev — 2026-10-23 — HECHO (llevar también a `dev`)
+
+**Causa (confirmada en el código).** `getPrismaClient()` guarda el cliente ya envuelto por `conAislamientoPorEmpresa` en `globalThis.__prisma__`, pero el `AsyncLocalStorage` de `lib/db/contexto-empresa.ts` era `const almacen = new AsyncLocalStorage()` de módulo. En `next dev` el middleware (proxy) y la app cargan copias distintas del módulo en el mismo proceso; la extensión (`extension-empresa.ts`, `contextoActual()` en las líneas de `aplicar` y `contextoDeTransaccion`) lee el almacén de la copia que creó el cliente, y el `comoPlataforma`/`conEmpresa`/`dentroDeTransaccionDeEmpresa` de la otra copia escribía en otro. Es el único estado de módulo de ese tipo: `dentroDeTransaccionDeEmpresa` usa el mismo `almacen` (marca `enTransaccion` en el propio contexto), y en `extension-empresa.ts` solo hay `Set` y constantes de solo lectura. No hay más `AsyncLocalStorage` en `lib/`, `app/` ni `middleware.ts`.
+
+**Arreglo** (`lib/db/contexto-empresa.ts`, LF, sin dependencias): el almacén vive en `globalThis` bajo `Symbol.for("servi-logistic.contexto-datos")` (`??=`), el mismo patrón que `__prisma__`, con un comentario que explica el porqué. Ninguna guardia de SL-17 hubo que tocarla.
+
+**Test** `tests/unit/db/contexto-empresa-una-instancia.test.ts` (5 casos): con `vi.resetModules()` importa dos copias del módulo (comprueba que son distintas), abre `comoPlataforma`, `conEmpresa` y `dentroDeTransaccionDeEmpresa` en una y lee `contextoActual()` en la otra; fuera de contexto, ninguna ve nada.
+- Mutación (volver a `const almacen = new AsyncLocalStorage<ContextoDatos>()`): `3 failed | 2 passed`. Revertida con `cmp`: IDÉNTICO.
+
+**Salida real**
+- `pnpm exec vitest related --run lib/db/contexto-empresa.ts` (sin `DATABASE_URL`): `Test Files 3 failed | 768 passed | 324 skipped (1095)`, `Tests 3 failed | 10720 passed | 2781 skipped (13504)`. Los 3 rojos son de base, no tienen que ver con este cambio: `vista-filtro-migration`, `orden-traspaso-migration` y `habilitacion-api-migration`, todos en «ningún `down.sql` ANTERIOR fue tocado», porque el `down.sql` de `20261022130100_organizacion_id_en_negocio` (SL-17) contiene `vista_filtro`.
+- `vitest run` de `plataforma-solo-en-lista`, `sql-a-mano-por-empresa`, `extension-empresa` y el test nuevo: `4 passed`, `106 passed`.
+- `pnpm run typecheck` con `gate.lock`: `TC_EXIT=0`, 0 `error TS`. `prisma generate` no corrió por falta de `DATABASE_URL` en el entorno; el cliente generado ya era el bueno.
+- `pnpm exec eslint` de los 2 archivos: exit 0.
+
+**Prueba real** (base `sl32_als`, migrada con `migrate deploy` y sembrada con `db:seed`; antes no escuchaba nada en el 3000 ni había ningún `next` vivo; `gate.lock` tomado; `rm -rf .next`; `pnpm dev` sin SMTP; superadmin ficticio con `pnpm arranque:superadmin` → «Superadmin creado.», exit 0; login con Playwright desde un script del scratchpad)
+- Dev server 1, primera petición `/login` (el cliente lo crea la app): login, OTP leído del asunto del `ConsoleEmailSender` y `GET /dashboard` → **200, URL final `/plataforma/empresas`**. 0 `EmpresaNoResuelta` en el log. Antes del arreglo aquí salía 404.
+- Dev server 2, nuevo (con `rm -rf .next`), y su primera petición `GET /dashboard` con una cookie `session` falsa, que pasa por el middleware y redirige a `/login`: después, `POST /login` 200, `GET /dashboard` 200 y `GET /plataforma/empresas` 200. Antes del arreglo, en este caso fallaba el `POST /login`. No pidió OTP: el dispositivo ya estaba confiado desde la corrida 1, y por eso el script dio timeout esperando el campo del código, pero la sesión entró.
+- **Hallazgo nuevo, no arreglado (fuera de este encargo):** con el superadmin dentro, la shell llama cada cierto tiempo a la action `listarNotificaciones` (`lib/actions/notificaciones.ts:108`). Cae con `EmpresaNoResuelta: Sin empresa en contexto para Notificacion.findMany` y responde `POST /plataforma/empresas 500`; lo vi 4 veces en unos 2 minutos. No es el ALS: el superadmin no tiene empresa y esa lectura no es de plataforma. Decide el leader: o la shell del superadmin no pide notificaciones, o la action devuelve vacío para él.
+- No repetí la prueba real con la mutación: el rojo previo ya lo evidenció el frontend_dev en las mismas dos variantes.
+- Limpieza: dev server matado, nada escuchando en el 3000, logs borrados (Next registra los argumentos de las actions, contraseña incluida), script borrado, `.next` borrado, `sl32_als` borrada (queda `sl32_base`), `gate.lock` soltado.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Llevar a `dev`:** el bug es de SL-17, que ya está en `dev`. Hay que llevar este cambio (`lib/db/contexto-empresa.ts` y el test) también a `dev` o a un hotfix, no solo con SL-32.
+
+**Veredicto:** el contexto de SL-17 ya es único por proceso; el login real llega a `/plataforma/empresas` con 200 en las dos variantes. Queda abierto el 500 de `listarNotificaciones` para el superadmin.
+
+## T15 — el marco del superadmin sin 500 — backend_dev — 2026-10-23 — HECHO
+
+**Causa.** La campana (`components/shared/NotificationsBell.tsx`, en el `PageHeader` de todas las páginas) sondea `listarNotificaciones` cada ~30 s; `notificacion` es tabla de negocio y el superadmin no tiene empresa → `EmpresaNoResuelta` → `POST /plataforma/empresas 500`. Mismo problema que el layout de T15 (design `> El marco del portal para el superadmin`).
+
+**Censo del marco** (lo que se dispara en cualquier página del superadmin):
+- Campana: `listarNotificaciones`, `marcarTodasLeidas`, `descartarNotificacion` (`lib/actions/notificaciones.ts`) → tablas `notificacion`/`notificacion_lectura`.
+- Interruptor de avisos dentro de la campana, `PushReactivacion` del layout y `LogoutButton` (vía `lib/pwa/baja-push.ts`): `obtenerClavePublicaPush`, `registrarSuscripcionPush`, `olvidarPreferenciaDeAvisos`, `eliminarSuscripcionPush` (`lib/actions/push.ts`) → `push_suscripcion`/`usuario_preferencia`.
+- Sin cambio: `/api/asistente` ya rechaza al superadmin (no está en `ROLES_AYUDA`) antes de tocar `asistente_uso_diario`, y el «?» no se pinta para él; `TemaProvider` escribe una cookie, sin servidor; `Sidebar`, `AyudaProvider` y `AvisoVersionNueva` no llaman a actions. No hay búsqueda global en el marco. `notificarCargaMasivaTerminada` no es del marco (solo `/ordenes`): no se tocó.
+
+**Arreglo** (en la action, que es donde estos archivos autorizan; sin `comoPlataforma`; LF conservado). Para `esPlataforma(actor.rol)`, sin construir servicio ni repositorio:
+- `listarNotificaciones` → `{ ok, items: [], noLeidas: 0, porHacer: 0 }`; `marcarTodasLeidas` → `{ ok, marcadas: 0 }`; `descartarNotificacion` → valida el id primero (R36 intacto) y luego `forbidden`, el mismo desenlace que el servicio da a quien descarta una que no ve.
+- `obtenerClavePublicaPush` → `clavePublica: null` («sin canal»: el interruptor no se ofrece); `registrarSuscripcionPush` → `forbidden` (un `ok` haría creer al navegador que quedó registrado; con el rechazo `alta-push` deshace la suscripción); `olvidarPreferenciaDeAvisos` y `eliminarSuscripcionPush` → `ok` sin escribir (el cierre de sesión sigue saliendo).
+
+**Archivos:** `lib/actions/notificaciones.ts`, `lib/actions/push.ts`; test nuevo `tests/unit/actions/marco-superadmin-sin-empresa.test.ts` (9 casos: 7 de plataforma con dobles que lanzan y apuntan si alguien los llama, y 2 contrapruebas con `maestro` que sí llegan al servicio/clave).
+
+**R → test:** R6 → `marco-superadmin-sin-empresa.test.ts` (los 7 casos del superadmin).
+
+**Mutaciones** (aplicada, corrida, restaurada, `cmp` IDÉNTICO):
+- `sinNotificacionesDeEmpresa` → `return false`: `3 failed | 6 passed` (listar, marcar todas, descartar).
+- `sinCanalDeEmpresa` → `return false`: `4 failed | 5 passed` (clave, registrar, olvidar, eliminar).
+
+**Salida real**
+- `pnpm run typecheck` con `gate.lock`: primer intento `TC_EXIT=2`, 48 `error TS`, todos de `superadmin` fuera de `RolValue` (otro worktree había regenerado el cliente); `prisma generate` dentro del lock y de nuevo: `TC_EXIT=0`, 0 `error TS`.
+- `pnpm exec eslint` de los 3 archivos: «No issues found», exit 0.
+- `pnpm exec vitest related --run` de los 3 archivos: `Test Files 88 passed (88)`, `Tests 1089 passed | 26 skipped (1115)`.
+- Guardias `superadmin-fuera-de-empresa`, `plataforma-solo-en-lista`, `superficie-de-uso`: `3 passed`, `38 passed`.
+
+**Prueba real** (base `sl32_notif`: `migrate deploy` + `db:seed`; nada escuchando en el 3000; `gate.lock` tomado; `rm -rf .next`; `pnpm dev` sin SMTP, log al scratchpad; superadmin ficticio con `pnpm arranque:superadmin` → «Superadmin creado.» tras regenerar el cliente, porque el primer intento dio `PrismaClientValidationError` por el mismo cliente sin `superadmin`; login por `/login` con Playwright y el OTP del asunto del `ConsoleEmailSender`):
+- `/plataforma/empresas` → 200, y 95 s quieto ahí: `POST /plataforma/empresas 200` ×3 (los sondeos de la campana, antes 500).
+- `/dashboard` → 200, URL final `/plataforma/empresas` (h1 «Empresas»). `/configuracion` → 200, h1 «Configuración», con su `POST /configuracion 200` de la campana.
+- En el log: 0 respuestas 500, 0 `EmpresaNoResuelta`, 0 `⨯`/`Error:`. El navegador vio 0 respuestas ≥ 500.
+- Limpieza: server matado (`taskkill /T`), 3000 libre (solo `TIME_WAIT`), log y script borrados (el log guarda argumentos de actions con contraseña), `.next` borrado, `sl32_notif` borrada (queda `sl32_base`), `gate.lock` soltado.
+- Nota: `sl32-db.mjs create` falló (`SASL: client password must be a string`) porque lo llamé antes de cargar `sl32-env.sh`; `migrate deploy` creó la base él mismo. El `drop` posterior, con el env cargado, sí funcionó.
+- MCP del grafo: no lo usé; Grep y Read.
+
+**Veredicto:** el marco del portal ya no da 500 para el superadmin: la campana y el canal de avisos devuelven su desenlace vacío sin tocar tablas de empresa, probado 95 s en real.
