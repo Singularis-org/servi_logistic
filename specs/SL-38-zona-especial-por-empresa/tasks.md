@@ -124,6 +124,10 @@ Un commit por task (`docs/conventions.md > Commits`).
     ve resaltado al reabrir la zona, B no lo ve, y el guardado no muestra el toast de error.
   - _Hecho:_ capturas o notas de lo visto en `progress/impl_SL-38.md`. `ZonaDistritoEspecial.test.tsx`
     y `CrearZonaFormReconciliacion.test.tsx` en verde.
+  - _Estado (implementer, 2026-10-23):_ comentarios corregidos (`3596ffa`) y los dos tests en verde
+    (16/16). **Pendiente la comprobación en el navegador:** pide un dev server propio (el
+    `node_modules` y `.next` los comparte otro agente) y dos empresas con un maestro cada una
+    sembradas a mano. R14 queda cubierto por `zona-especial-dos-empresas.test.ts` (`listArbol`).
 - [x] **T10. [P] Script de despliegue y docs** (R23, R24; depende de T1).
   - `scripts/verificar-rls-despliegue.ts`: `POLITICAS_POR_EMPRESA` y `TRIGGERS_SIN_CAMBIO` salen de
     `MODELOS_DE_NEGOCIO.length`, y se exporta la función que arma el contrato esperado.
