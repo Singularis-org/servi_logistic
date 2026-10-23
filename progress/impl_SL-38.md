@@ -345,3 +345,67 @@ Archivos: `migracion-sl38-ida-y-vuelta` + `distrito-zona-especial-migration` (`1
 Veredicto T6-T7: la marca se escribe por servicio y repositorio con la RLS real, la columna global
 sale sin drift y con su down medido, typecheck verde sin ella; cada test nuevo o cambiado cae con su
 mutacion. Quedan sin ejecutar aqui los cuatro tests de baseline que piden ordenes sembradas.
+
+## T8 — Dos empresas de punta a punta
+
+### Archivo
+
+- Nuevo: `tests/integration/db/zona-especial-dos-empresas.test.ts`. Repositorio REAL sobre el
+  cliente de la app (`conAislamientoPorEmpresa` + `conEmpresa`). Siembra propia y commiteada en
+  `beforeAll` (organizaciones A y B con `tests/fabricas/organizaciones.ts`, tienda, zona, tarifa con
+  pacto especial, mensajero, maestro, cuatro ordenes y dos gestiones), borrada por empresa en
+  `afterAll`. Tras cada corrida: 0 organizaciones, 0 marcas y 0 ordenes en `sl38_base`.
+- Marcas DISTINTAS: A marca D y B marca D2 (los tres ultimos distritos por id de Cartago/Cartago;
+  `distrito-zona-especial-por-empresa` usa los dos primeros). Cada lectura se mide en las dos
+  empresas sobre D y D2: se espera `{ A: { D: true, D2: false }, B: { D: false, D2: true } }`.
+- La marca de A NO se comprueba en el `beforeAll`, a proposito: sin ella caen los casos de A, en
+  vez de saltarse el archivo.
+
+### R → test
+
+| R | Caso |
+|---|---|
+| R14 | «R14: GeoRepository.listArbol marca D solo para A y D2 solo para B» |
+| R15 | «R15: CoberturaRepository.listDistritos …» |
+| R16 | «R16: OrdenRepository.findDistritosByCantonIds …» (tarifa de carga, API y cotizacion) |
+| R17 | «R17: OrdenRepository.findParaCorreccion …», «R17: OrdenRepository.findDistritoParaCorreccion …» |
+| R18 | «R18: OrdenRepository.findBaseCobroDevolucion …» (cobro del rechazo) |
+| R19 | «R19/R21: el listado (list -> toListItem) …» (`fleteOrigen` y `fleteConIva`: 5650.00 especial, 2260.00 normal), «R19: el costeo de la API (apiOrdenSelect -> toApiOrdenRow, listByOwner) …» |
+| R20 | «R20: leerDescriptivosDeOrdenes …», «R20/R21: el cierre congela la marca de su empresa (A true, B false), y desmarcar despues no la mueve» (`crearCierre` real; A desmarca D por la accion, la lectura viva pasa a `false` y `cierre_detail.es_zona_especial` sigue `true`) |
+| R21 | todos los anteriores (A y B en el mismo distrito, resultado distinto) |
+| R9 (sin 500) | «R9: la accion con el servicio real y un maestro de la empresa marca y desmarca con ok (no 500)» (`{ status: "ok", actualizados: 1 }` dos veces; las marcas de D y D2 no se mueven) |
+
+### Verde (`sl38_base`, cliente regenerado bajo el lock)
+
+```
+ ✓ la siembra: A marca D y B marca D2, cada una con su empresa
+ ✓ R14 … ✓ R15 … ✓ R16 … ✓ R17 (x2) … ✓ R18 … ✓ R19/R21 … ✓ R19 … ✓ R20 … ✓ R9 … ✓ R20/R21
+ Test Files  1 passed (1)      Tests  12 passed (12)      EXIT=0
+```
+
+Junto con `distrito-zona-especial-por-empresa` (en paralelo, tres corridas): `Tests 21 passed (21)`
+las tres. La primera version usaba los mismos distritos que ese archivo y se pisaban (9 rojos al
+correrlos juntos, medidos como dueno); de ahi los distritos distintos y `marcasDe` acotado a A y B.
+
+### Mutaciones (una cada vez, restauradas; md5 del predicado y del test identicos despues)
+
+| # | Mutacion | Resultado |
+|---|---|---|
+| 1 | `DROP POLICY "distrito_zona_especial_por_empresa"` en `sl38_base` (RLS sin politica: `servi_app` no ve nada) | `11 failed | 1 passed`: caen los nueve caminos (B deja de ver su D2 y A su D) y R9 (`el nuevo registro viola la politica de seguridad de registros`) |
+| 1b | (extra) politica abierta `USING (true) WITH CHECK (true)`: B ve la marca de A | `10 failed | 2 passed`: los nueve caminos y el cierre; recibido `{ A: { D: true, D2: true }, … }` |
+| 2 | `esZonaEspecialDeLaEmpresa` devuelve `true` fijo | `10 failed | 2 passed`: los nueve caminos y el cierre (B ve D especial) |
+| 3 | sin sembrar la marca de A (el `create` del `beforeAll` comentado) | `12 failed (12)`, `Test Files 1 failed`: ningun caso saltado; `expected { A: { D: false, … } } to deeply equal { A: { D: true, … } }` |
+
+Politica restaurada con el SQL de M1 (`pg_get_expr(polqual)` = el original). M1 y M2 no se tocan.
+
+### Verificacion
+
+- `pnpm run typecheck` → `TC=0`; `pnpm exec eslint` del test → 0 problemas.
+- `pnpm run test:guardias` → `Test Files 1 failed | 300 passed (301)`, `Tests 4 failed | 4105 passed |
+  1 skipped`; los 4 son `dependencias-declaradas-presentes` (baseline).
+- Riesgo anotado para T11: `distrito-zona-especial-por-empresa` (R13) compara
+  `distritoZonaEspecial.count()` GLOBAL antes y despues; si R9 o R20 de este archivo escriben en ese
+  mismo instante, podria salir rojo en la suite completa. No se ha visto en las tres corridas juntas.
+
+Veredicto T8: las nueve lecturas, el congelado y la escritura, medidos en dos empresas con marcas
+distintas; verde, y rojo con cada una de las tres mutaciones pedidas.

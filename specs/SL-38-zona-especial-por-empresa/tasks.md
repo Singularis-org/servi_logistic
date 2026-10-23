@@ -109,7 +109,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 4 — Dos empresas, cobertura y docs
 
-- [ ] **T8. Dos empresas de punta a punta** (R9 sin 500, R14–R21; depende de T4–T7).
+- [x] **T8. Dos empresas de punta a punta** (R9 sin 500, R14–R21; depende de T4–T7).
   - `tests/integration/db/zona-especial-dos-empresas.test.ts` (`design.md §6`): las nueve lecturas
     con el repositorio real y el cliente extendido. Dan `true` en A y `false` en B. El congelado de
     R20 sobrevive a desmarcar, y `actualizarDistritosEspeciales` con el servicio real da `ok`.
