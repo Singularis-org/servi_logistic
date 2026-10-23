@@ -30,7 +30,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 1 — El modelo de la empresa
 
-- [ ] **T1. M1 y el esquema** (R1, R2, R4, R5; depende de T0).
+- [x] **T1. M1 y el esquema** (R1, R2, R4, R5; depende de T0).
   - `db/migrations/20261023120000_distrito_zona_especial_por_empresa/{migration,down}.sql`, con el SQL
     de `design.md §2.1`.
   - `db/schema.prisma`: el modelo `DistritoZonaEspecial`, `Distrito.zonasEspeciales` y

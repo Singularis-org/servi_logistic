@@ -51,7 +51,7 @@ export function nombreTrigger(tabla: string, columna: string): string {
 }
 
 /**
- * `<tabla>_sin_cambio_de_empresa`. Hoy los 73 caben; si una tabla futura lo pasa de 63, Postgres lo
+ * `<tabla>_sin_cambio_de_empresa`. Hoy los 74 caben; si una tabla futura lo pasa de 63, Postgres lo
  * truncaria en silencio y la guardia buscaria un nombre que no existe: se recorta aqui, igual para
  * generador y guardia.
  */

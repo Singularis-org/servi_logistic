@@ -697,6 +697,9 @@ model Distrito {
   canton  Canton         @relation(fields: [cantonId], references: [id])
   ordenes Orden[]
   zonas   ZonaDistrito[] // feature 24: relacion N:M con zona (unica fuente de verdad; la columna escalar zona_id se elimino en 20260713000000)
+  /// SL-38 — la marca de zona especial de cada empresa. La RLS deja solo la de la empresa de la
+  /// transaccion. Se lee SOLO por `lib/repositories/_shared/zona-especial.ts`.
+  zonasEspeciales DistritoZonaEspecial[]
 
   /// FICHA 374: por PADRE. "Buenos Aires" es canton de Puntarenas Y distrito de Palmares.
   @@unique([cantonId, nombre])
@@ -722,6 +725,22 @@ model ZonaDistrito {
   @@index([distritoId])
   @@index([organizacionId])
   @@map("zona_distrito")
+}
+
+/// SL-38 — La marca de zona especial ES DE LA EMPRESA, no del distrito. Una fila = «este distrito es
+/// especial para esta empresa». Sin fila = no lo es. Se lee SOLO por `_shared/zona-especial.ts`.
+model DistritoZonaEspecial {
+  id         String   @id @default(uuid())
+  distritoId String   @map("distrito_id")
+  distrito   Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizacionId, distritoId], map: "distrito_zona_especial_organizacion_id_distrito_id_key")
+  @@index([organizacionId])
+  @@index([distritoId])
+  @@map("distrito_zona_especial")
 }
 
 // Orden de negocio (R7-R14a). Borrado logico via deleted_at (soft delete).
@@ -5159,6 +5178,7 @@ model Organizacion {
   postulacionRecursos PostulacionRecurso[]
   zonas Zona[]
   zonaDistritos ZonaDistrito[]
+  distritoZonasEspeciales DistritoZonaEspecial[] // SL-38
   tarifas Tarifa[]
   tarifaZonaMensajeros TarifaZonaMensajero[]
   premioRankinges PremioRanking[]
