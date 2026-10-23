@@ -564,7 +564,7 @@ política abierta, por `true` fijo en el predicado y por no sembrar la marca de 
 
 `backend_dev`, 2026-10-23, bajo `gate.lock` («SL-38 backend_dev vuelta2»).
 
-### B1 — el 40P01 de `cobro-tienda-461-completar-migration` es deuda de `dev` (D15)
+### B1 — el 40P01 de `cobro-tienda-461-completar-migration` es deuda de `dev` (D18)
 
 - **DETAIL del servidor** (log de Postgres, corrida del reviewer, 13:33:05): de un lado el R34, `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT "wallet_tienda_movimiento_tienda_id_fkey"`; del otro, `INSERT INTO "public"."wallet_tienda_movimiento" (…) ON CONFLICT DO NOTHING`, que es el `createMany({ skipDuplicates })` de `WalletTiendaMovimientoRepository`, llamado por un servicio real.
 - **Quién está del otro lado.** La sonda del otro backend_dev (conexiones etiquetadas por archivo con `PGAPPNAME`, corrida `related` entera, verde) solo ve escribiendo en la caja, fuera del lock de la 227, a `abono-tienda-457-concurrencia` y `pago-por-cuenta-tienda-concurrencia`. Los dos commitean por el servicio bajo `conCandado459` o `hashtext(...)`. El R34 sí toma el de la 227 (`enTransaccionRevertida459` → `serializarEscriturasReales`). Los dos locks no se excluyen, y el DDL y el servicio toman las dos tablas en orden inverso.
@@ -578,7 +578,7 @@ política abierta, por `true` fijo en el predicado y por no sembrar la marca de 
   ```
   **2/10.** En las dos, el log del servidor da el mismo par (14:32:54 y 14:33:27): `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT …` contra `SELECT SUM("monto") … FROM "wallet_tienda_movimiento" WHERE "tienda_id" = $1 AND "organizacion_id" = $2 GROUP BY "tipo"`, que es el saldo que lee el servicio en la misma transacción.
 - **Por qué sale o no en `test:rapido`.** Solo cuando vitest cruza esos archivos en el tiempo. En la corrida r1 del otro backend_dev el 461 corrió a los 705 s y los de concurrencia entre 31 y 119 s: verde.
-- **Arreglo:** ninguno en SL-38, porque no es suyo. Queda anotado en `progress/deudas.md > D15`, con dos remedios posibles y sin reintento.
+- **Arreglo:** ninguno en SL-38, porque no es suyo. Queda anotado en `progress/deudas.md > D18`, con dos remedios posibles y sin reintento.
 - **Limpieza:** borrados `b1-appname.setup.ts` y `vitest.b1.config.ts`. Del `wt-dev` se quitó primero solo el junction de `node_modules` (`rmdir`; el `node_modules` principal sigue intacto) y después `git worktree remove`. Borradas `sl38_b1` y `sl38_devref`.
 
 ### B2 — E2E de los flujos críticos (un solo dev server, base desechable `sl38_e2e`)
@@ -619,7 +619,7 @@ Bajo `gate.lock`, en una base desechable `sl38_gate` (`migrate deploy` + `db:see
 - **Corrida 1: `INIT_EXIT=1`.** `Test Files 1 failed | 1039 passed (1040)`, y el rojo nuevo es `gasto-fijo-plantilla-borrado.test.ts:143` (`expected 2 to be 4`).
   - Ese test cuenta `wallet_movimiento` ENTERA dos veces en la misma transacción READ COMMITTED, y la cuenta bajó entre las dos.
   - Solo puede bajar si otra sesión commitea borrados en medio, como la limpieza de los tests de concurrencia de la caja (inferencia, no medida).
-  - No cambia frente a `origin/dev` y SL-38 no toca la caja. Misma familia que D15. Log: `sl38-gate-v2-corrida1.log`.
+  - No cambia frente a `origin/dev` y SL-38 no toca la caja. Misma familia que D18. Log: `sl38-gate-v2-corrida1.log`.
 - **Corrida 2, mismo HEAD y base nueva: `INIT_EXIT=0`.**
   - Cliente de Prisma al día; `✓ typecheck paso`; `✓ lint paso`.
   - `test:rapido`: `Test Files 1040 passed (1040)`, `Tests 14923 passed | 26 skipped (14949)`, más los 247 heredados del baseline, que no cuentan.
@@ -627,4 +627,4 @@ Bajo `gate.lock`, en una base desechable `sl38_gate` (`migrate deploy` + `db:see
   - Validador de features y perfil en verde. La última línea del log es `INIT_EXIT=0`.
 - Lock liberado a las 15:15. No queda ninguna base `sl38_*` ni ningún server en `:3000`.
 
-Veredicto vuelta 2: B1 es deuda de `dev` y está demostrado (2/10 sin SL-38, D15). B2: el humo de dos empresas está verde y `cierre-dia.spec.ts` no puede correr en la app vacía (lo decide el leader). Gate `INIT_EXIT=0` sobre `5014387`.
+Veredicto vuelta 2: B1 es deuda de `dev` y está demostrado (2/10 sin SL-38, D18). B2: el humo de dos empresas está verde y `cierre-dia.spec.ts` no puede correr en la app vacía (lo decide el leader). Gate `INIT_EXIT=0` sobre `5014387`.

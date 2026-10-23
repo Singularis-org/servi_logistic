@@ -21,9 +21,8 @@ function repoDoble(r: AplicarCambiosZonaEspecialResult = { estado: "ok", creadas
 }
 
 describe("SL-38 — DistritoZonaEspecialService.actualizar", () => {
-  // `superadmin` llega con SL-32 (otra rama): aqui todavia no es un `RolValue`, y se fuerza el tipo
-  // para que el caso exista ya y no dependa del orden de los merges.
-  it.each<RolValue>(["admin", "adminTienda", "adminSatelite", "mensajero", "apiKey", "superadmin" as RolValue])(
+  // `superadmin` (SL-32) es de la plataforma y no tiene empresa: tampoco marca la zona especial.
+  it.each<RolValue>(["admin", "adminTienda", "adminSatelite", "mensajero", "apiKey", "superadmin"])(
     "R11: el rol %s recibe forbidden sin llamar al repositorio",
     async (rol) => {
       const { repo, aplicarCambios } = repoDoble({ estado: "ok", creadas: 1, borradas: 0 });

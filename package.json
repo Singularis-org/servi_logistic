@@ -21,7 +21,8 @@
     "db:rollback": "tsx scripts/db-rollback.ts",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
-    "db:seed": "tsx scripts/seed-catalogos.ts"
+    "db:seed": "tsx scripts/seed-catalogos.ts",
+    "arranque:superadmin": "tsx scripts/arranque-superadmin.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

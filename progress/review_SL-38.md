@@ -123,7 +123,7 @@ Ninguna repite las de la bitácora.
 
 ## Revisión 2 (acotada a ddd7152..27622cb)
 
-El diff solo toca `progress/impl_SL-38.md > Review vuelta 2`, `progress/deudas.md > D15` y la casilla
+El diff solo toca `progress/impl_SL-38.md > Review vuelta 2`, `progress/deudas.md > D18` y la casilla
 de T11 en `tasks.md`. No toca código, tests ni migraciones, así que la verificación de la vuelta 1
 sigue valiendo. No usé el lock: no hacía falta ejecutar nada, y lo tenía `backend_dev-C`.
 
@@ -131,8 +131,8 @@ sigue valiendo. No usé el lock: no hacía falta ejecutar nada, y lo tenía `bac
   - Contraprueba sobre `fa67b57` (`origin/dev`, sin SL-38): el 40P01 sale en **2 de 10 corridas**, con el mismo par de sentencias que vi yo (el `ALTER TABLE wallet_tienda_movimiento DROP CONSTRAINT` del R34 contra el saldo o el `INSERT … ON CONFLICT` del servicio de la caja).
   - La causa está explicada: dos locks consultivos que no se excluyen, y las dos transacciones toman las tablas en orden inverso.
   - SL-38 no toca la caja ni esos tests.
-  - La deuda queda en `D15`, con dueño, dos remedios y «un reintento no vale».
-  - El rojo de la corrida 1 del gate (`gasto-fijo-plantilla-borrado:143`, una cuenta global en READ COMMITTED) es de la misma familia y también va en D15.
+  - La deuda queda en `D18`, con dueño, dos remedios y «un reintento no vale».
+  - El rojo de la corrida 1 del gate (`gasto-fijo-plantilla-borrado:143`, una cuenta global en READ COMMITTED) es de la misma familia y también va en D18.
 - **B2 — RESUELTO, con la decisión del leader.**
   - `e2e/dos-empresas-humo.spec.ts`: 6/6, con la salida literal en la bitácora y 46 visitas sin fugas.
   - `e2e/cierre-dia.spec.ts` no puede correr en la app vacía: es una plantilla con `correct-password` y datos sembrados fijos. El leader acepta R20/R21 de integración como evidencia del congelado.
@@ -140,12 +140,12 @@ sigue valiendo. No usé el lock: no hacía falta ejecutar nada, y lo tenía `bac
     - `zona-especial-dos-empresas.test.ts > R20/R21` corre `crearCierre` real en A y en B, y afirma `cierre_detail.es_zona_especial` = `[true]` para A y `[false]` para B.
     - Después A desmarca D por la acción, la lectura viva pasa a `false` y el congelado sigue en `[true]`.
     - Mi mutación 2 de la vuelta 1 (`zonaEspecial: false` en `leerDescriptivosDeOrdenes`) puso en rojo `R20` y `R20/R21`.
-  - **La deuda de la fixture ya está anotada**, aunque no en D15: es `specs/SL-31-tests-datos-propios-ci/tasks.md > T11b`, que lista `cierre-dia` (D6) con «Hecho» = el spec pasa sin usuarios sembrados ni `correct-password`. La bitácora de SL-38 no lo cita (menor m5).
+  - **La deuda de la fixture ya está anotada**, aunque no en D18: es `specs/SL-31-tests-datos-propios-ci/tasks.md > T11b`, que lista `cierre-dia` (D6) con «Hecho» = el spec pasa sin usuarios sembrados ni `correct-password`. La bitácora de SL-38 no lo cita (menor m5).
 - **T11 — OK.** Marcada `[x]`. El gate está citado en la bitácora: HEAD `5014387`, corrida 2, `INIT_EXIT=0` como última línea de `sl38-gate-v2.log` (lo comprobé), con `Test Files 1040 passed (1040)` y guardias `300 passed (300)`. `27622cb` solo cambia la casilla de `tasks.md` respecto de `5014387`.
 
 ### Hallazgos nuevos
 - **m5 — menor.** Citar `SL-31 T11b` en `progress/impl_SL-38.md > B2` (o en el `Cierre` de `progress/features/SL-38.md` y en el PR) como el dueño de la fixture de `cierre-dia`. Así la decisión del leader queda enlazada a su deuda.
-- **m6 — menor.** El gate de cierre salió verde en la segunda corrida. Vale porque los dos rojos están demostrados como de `dev` (D15). Hasta que D15 se arregle, otros gates de dev verán el mismo rojo intermitente; el PR debe citar D15 si `gate-completo` lo da.
+- **m6 — menor.** El gate de cierre salió verde en la segunda corrida. Vale porque los dos rojos están demostrados como de `dev` (D18). Hasta que D18 se arregle, otros gates de dev verán el mismo rojo intermitente; el PR debe citar D18 si `gate-completo` lo da.
 
 Siguen abiertos de la vuelta 1, todos menores: m1 (verificar la RLS en el despliegue a prod), m3 (cinco tests de integración de la baseline sin ejecutar) y m4 (limpieza tras el merge con SL-32).
 

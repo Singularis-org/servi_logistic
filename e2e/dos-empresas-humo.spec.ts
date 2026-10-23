@@ -39,8 +39,10 @@ import {
  * 5. B abriendo los detalles de A (estado de cuenta de su tienda y de su mensajero) ve «no
  *    encontrado»; A abriendo los mismos ve su marcador (el control que hace falsable el anterior).
  *    La app no tiene una URL de detalle de orden: el detalle de la orden se abre dentro de `/ordenes`.
- * 6. Vehículos y geografía (R40): cargan, y crear un vehículo o una provincia desde la pantalla
- *    falla cerrado: sin pantalla de error ni 5xx, y la base no cambia.
+ * 6. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
+ *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
+ *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
+ *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
  *
  * CÓMO SE CORRE (solo en local; una base remota lo aborta antes de escribir):
  * - `DATABASE_URL` a una base local migrada y con catálogos (`pnpm run db:seed`), las `SMTP_*` y
@@ -267,7 +269,7 @@ async function guardarYLeer(page: Page, boton: Locator, que: string): Promise<st
   return despues;
 }
 
-test("vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40)", async ({ page }) => {
+test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)", async ({ page }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");
@@ -287,16 +289,12 @@ test("vehículos y geografía cargan para la empresa y escribir desde la pantall
   expect.soft(await db.vehiculo.count({ where: { name: nombre } }), "vehículos: quedó la fila").toBe(0);
 
   const provinciasAntes = await db.provincia.count();
+  // SL-32 R26: la página no tiene formulario para el maestro, así que no hay provincia que intentar crear.
   const g = await visitar(page, "/configuracion/geografia");
-  expect(g.texto.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al cargar").toBe(false);
-  expect(g.texto, "geografía: no carga el catálogo").toContain("Catálogo geográfico");
-  await page.getByRole("button", { name: "Crear provincia" }).click();
-  await page.getByPlaceholder("Cabagra, Buenos Aires, Puntarenas…").first().fill(nombre);
-  const trasProvincia = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }).first(), "provincia");
-  expect.soft(trasProvincia.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al guardar").toBe(false);
-  expect.soft(trasProvincia.includes("dado de alta"), "geografía: la pantalla dice que creó").toBe(false);
+  expect.soft(g.estado, "geografía: el maestro no recibe 404").toBe(404);
+  expect.soft(g.texto.includes(NO_ENCONTRADO), "geografía: el maestro no ve «no encontrado»").toBe(true);
+  expect.soft(g.texto.includes("Catálogo geográfico"), "geografía: el maestro ve el catálogo").toBe(false);
   expect.soft(await db.provincia.count(), "geografía: cambió el catálogo").toBe(provinciasAntes);
-  expect.soft(await db.provincia.count({ where: { nombre } }), "geografía: quedó la fila").toBe(0);
 
   expect(errores5xx, "vehículos/geografía: respuestas 5xx").toEqual([]);
 });

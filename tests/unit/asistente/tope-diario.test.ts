@@ -165,6 +165,26 @@ describe("R13 — `apiKey` y los roles fuera de ROLES_AYUDA se rechazan sin llam
     expect(conteos).toBe(0);
   });
 
+  it("SL-32 (R7): el superadmin se rechaza igual, sin proveedor ni contador", async () => {
+    // No pertenece a ninguna empresa y no tiene ayuda asignada: `QUIEN_PREGUNTA` lleva su frase
+    // solo porque el tipo es exhaustivo, y no debe llegar nunca al modelo.
+    const proveedor = new DobleProveedor();
+    let conteos = 0;
+    const uso: IAsistenteUsoRepository = {
+      consumirUnaConsulta: async () => {
+        conteos += 1;
+        return 1;
+      },
+      contarNoLoSe: async () => undefined,
+    };
+
+    const resultado = await servicioCon(proveedor, uso).responder(consultaDe("superadmin"));
+
+    expect(resultado).toEqual({ status: "rol_no_admitido" });
+    expect(proveedor.llamadas).toEqual([]);
+    expect(conteos).toBe(0);
+  });
+
   it("CONTROL: un rol de persona SÍ pasa esta puerta (si no, el caso de arriba sería vacuo)", async () => {
     const proveedor = new DobleProveedor();
     const resultado = await servicioCon(proveedor, usoQueDevuelve(1)).responder(

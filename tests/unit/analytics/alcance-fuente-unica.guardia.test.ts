@@ -33,6 +33,9 @@ import {
 // Lo que NO cambia: `ROLES_ANALITICA` sigue sin contener `apiKey` (267/R3) y ninguna metrica
 // declara alcance para `apiKey` (267/R21): la lista blanca de la 267 son IDS, no una tabla
 // de alcance por rol.
+//
+// SL-32 (R7) — el septimo `RolValue`, `superadmin`, entra en `ROLES_SIN_ANALITICA`: la lista que
+// la 267 dejo vacia para el proximo rol denegado. La particion sigue siendo ternaria y disjunta.
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const METRICS_PATH = path.join(REPO_ROOT, "lib", "analytics", "metrics.ts");
@@ -144,13 +147,13 @@ describe("R8 · la regla por rol se declara una sola vez, en metrics.ts", () => 
 });
 
 describe("R11 (122) / R3-R5 (267) · la particion de roles de analitica es ternaria y disjunta", () => {
-  it("ROLES_ANALITICA no contiene apiKey y son cinco de los seis RolValue", () => {
+  it("ROLES_ANALITICA no contiene apiKey y son cinco de los siete RolValue", () => {
     expect(ROLES_ANALITICA).not.toContain("apiKey");
     expect(ROLES_ANALITICA.length).toBe(5);
-    expect(Object.values(RolValue).length).toBe(6);
+    expect(Object.values(RolValue).length).toBe(7);
   });
 
-  it("las TRES listas cubren exactamente los seis RolValue y son disjuntas dos a dos (267/R4)", () => {
+  it("las TRES listas cubren exactamente los siete RolValue y son disjuntas dos a dos (267/R4)", () => {
     const listas: Record<string, readonly string[]> = {
       ROLES_ANALITICA,
       ROLES_ANALITICA_INTEGRACION,
@@ -159,7 +162,7 @@ describe("R11 (122) / R3-R5 (267) · la particion de roles de analitica es terna
 
     const cubiertos = Object.values(listas).flatMap((l) => [...l]);
     expect(cubiertos.slice().sort()).toEqual(Object.values(RolValue).sort());
-    // Union == los seis Y ninguno repetido: cada rol pertenece a EXACTAMENTE una lista.
+    // Union == los siete Y ninguno repetido: cada rol pertenece a EXACTAMENTE una lista.
     expect(new Set(cubiertos).size).toBe(cubiertos.length);
 
     for (const [a, b] of paresDeListas(listas)) {
@@ -177,8 +180,8 @@ describe("R11 (122) / R3-R5 (267) · la particion de roles de analitica es terna
     };
 
     const cubiertos = Object.values(contaminadas).flatMap((l) => [...l]);
-    // La union SIGUE siendo los seis roles: sin la disyuncion, el guardia viejo no lo veia.
-    expect(new Set(cubiertos).size).toBe(6);
+    // La union SIGUE siendo los siete roles: sin la disyuncion, el guardia viejo no lo veia.
+    expect(new Set(cubiertos).size).toBe(7);
     // Con la disyuncion, salta:
     expect(new Set(cubiertos).size).not.toBe(cubiertos.length);
     const pares = paresDeListas(contaminadas).map(
@@ -187,16 +190,17 @@ describe("R11 (122) / R3-R5 (267) · la particion de roles de analitica es terna
     expect(pares.some((n) => n > 0)).toBe(true);
   });
 
-  it("ROLES_SIN_ANALITICA sigue exportada, tipada y consultada aunque este VACIA (267/R5)", () => {
-    // El mecanismo de denegacion por rol se conserva: un `RolValue` futuro tiene donde
-    // declararse denegado sin volver a inventarlo.
+  it("ROLES_SIN_ANALITICA es exactamente el superadmin, y la lee de ROLES_PLATAFORMA (SL-32 R4, R7)", () => {
+    // El mecanismo de denegacion por rol que conservo la 267 recibe su primer rol. El literal
+    // es el contrato: un rol de empresa colado aqui le quitaria la analitica sin decirlo.
     expect(Array.isArray(ROLES_SIN_ANALITICA)).toBe(true);
-    expect(ROLES_SIN_ANALITICA).toEqual([]);
+    expect(ROLES_SIN_ANALITICA).toEqual(["superadmin"]);
     // ...y `resolverAlcance` la sigue consultando: el literal esta en el codigo, no solo
     // en la exportacion.
     const codigo = soloCodigo(fs.readFileSync(ALCANCE_PATH, "utf8"));
     expect(codigo).toContain("export const ROLES_SIN_ANALITICA");
     expect(codigo.split("ROLES_SIN_ANALITICA").length - 1).toBeGreaterThan(1);
+    expect(codigo).toMatch(/ROLES_SIN_ANALITICA\s*=\s*declararRolesNoLectores\(ROLES_PLATAFORMA\)/);
   });
 
   it("ninguna metrica del catalogo declara alcance para apiKey", () => {

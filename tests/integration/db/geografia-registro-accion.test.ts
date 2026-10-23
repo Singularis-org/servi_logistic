@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { GeografiaService } from "@/lib/services/GeografiaService";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -11,6 +13,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 
 /**
  * FICHA 374 (R51–R55) — **EL RASTRO DE RETIRAR Y DEVOLVER UN NODO DEL CATALOGO GEOGRAFICO.**
@@ -301,6 +304,123 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
         expect(final?.activo).toBe(false);
         expect(await registro(s.distrito)).toHaveLength(1);
       });
+    });
+  });
+});
+
+// =================================================================================================
+// SL-32 (R24) — el `maestro` ya no gestiona: `forbidden` y CERO filas en el registro
+// =================================================================================================
+//
+// Va FUERA del bloque de la 374 porque aquel exige un usuario ya sembrado en la base y este trae
+// los suyos: un `maestro` real de la empresa del test (el DEFAULT de SL-17 la pone) y su corpus,
+// todo en la transaccion revertida. El actor es un usuario que EXISTE a proposito: si la puerta de
+// rol del servicio se saltara, el repositorio escribiria de verdad el nodo y la fila del registro
+// con el, y este caso se pondria rojo. La contraprueba lo demuestra por el repositorio, que no mira
+// el rol: con el mismo usuario, la fila aparece.
+//
+// La rama del `superadmin` no se prueba aqui: con SL-17 su registro de acciones no tiene empresa
+// (P7, D15 de `progress/deudas.md`). Va con dobles en `geografia-service.test.ts`.
+
+describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (Postgres real)", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+
+  async function conMaestro<T>(
+    fn: (ctx: {
+      s: Sembrado;
+      maestroId: string;
+      service: GeografiaService;
+      geo: GeoRepository;
+      tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
+      filas: (ids: string[]) => Promise<number>;
+    }) => Promise<T>,
+  ): Promise<T> {
+    return enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const maestro = await insertarUsuario(tx, await idDeRol(tx, "maestro"), "por_defecto");
+      if (!maestro.desenlace.ok) {
+        throw new Error(`no se sembro el maestro: ${JSON.stringify(maestro.desenlace)}`);
+      }
+
+      const provincia = (
+        // Retirada de entrada, para que el `maestro` pida reactivarla.
+        await tx.provincia.create({
+          data: { nombre: `${PROVINCIA} m${SUFIJO}`, activo: false },
+          select: { id: true },
+        })
+      ).id;
+      const canton = (
+        await tx.canton.create({
+          data: { nombre: `${CANTON} m${SUFIJO}`, provinciaId: provincia },
+          select: { id: true },
+        })
+      ).id;
+      const distrito = (
+        await tx.distrito.create({
+          data: { nombre: `${DISTRITO} m${SUFIJO}`, cantonId: canton },
+          select: { id: true },
+        })
+      ).id;
+
+      const cliente = clienteConSavepoint(tx);
+      const geo = new GeoRepository(cliente);
+      const filas = async (ids: string[]): Promise<number> => {
+        const [{ n }] = await tx.$queryRawUnsafe<{ n: number }[]>(
+          `SELECT count(*)::int AS n FROM "historial_accion" WHERE "entidad_id" = ANY($1::text[])`,
+          ids,
+        );
+        return n;
+      };
+      return fn({
+        s: { provincia, canton, distrito },
+        maestroId: maestro.id,
+        service: new GeografiaService(geo, new OrdenRepository(cliente)),
+        geo,
+        tx,
+        filas,
+      });
+    });
+  }
+
+  it("retirar, reactivar, renombrar y dar de alta: `forbidden`, los nodos intactos y ninguna fila del registro", async () => {
+    await conMaestro(async ({ s, maestroId, service, tx, filas }) => {
+      const actor = { usuarioId: maestroId, rol: "maestro" as const };
+
+      expect(
+        await service.cambiarActivacion({ nivel: "distrito", id: s.distrito, activo: false }, actor),
+      ).toEqual({ status: "forbidden" });
+      expect(
+        await service.cambiarActivacion({ nivel: "provincia", id: s.provincia, activo: true }, actor),
+      ).toEqual({ status: "forbidden" });
+      expect(
+        await service.renombrar({ nivel: "canton", id: s.canton, nombre: `Otro m${SUFIJO}` }, actor),
+      ).toEqual({ status: "forbidden" });
+      expect(
+        await service.crear({ nivel: "distrito", nombre: `Nuevo m${SUFIJO}`, cantonId: s.canton }, actor),
+      ).toEqual({ status: "forbidden" });
+
+      expect(await filas([s.provincia, s.canton, s.distrito])).toBe(0);
+      const distrito = await tx.distrito.findUnique({ where: { id: s.distrito }, select: { activo: true } });
+      const provincia = await tx.provincia.findUnique({ where: { id: s.provincia }, select: { activo: true } });
+      const canton = await tx.canton.findUnique({ where: { id: s.canton }, select: { nombre: true } });
+      expect(distrito?.activo).toBe(true);
+      expect(provincia?.activo).toBe(false);
+      expect(canton?.nombre).toBe(`${CANTON} m${SUFIJO}`);
+      expect(
+        await tx.distrito.count({ where: { cantonId: s.canton, nombre: `Nuevo m${SUFIJO}` } }),
+      ).toBe(0);
+    });
+  });
+
+  it("CONTRAPRUEBA: el mismo usuario, por el repositorio (que no mira el rol), SI deja la fila", async () => {
+    // Sin esto, el `0` de arriba podria salir de una consulta que nunca ve filas.
+    await conMaestro(async ({ s, maestroId, geo, filas }) => {
+      expect(await geo.cambiarActivacion("distrito", s.distrito, false, maestroId)).toBe("cambiado");
+      expect(await filas([s.distrito])).toBe(1);
     });
   });
 });

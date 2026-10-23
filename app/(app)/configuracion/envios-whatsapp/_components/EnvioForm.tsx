@@ -38,6 +38,7 @@ import type {
   PreviewDestinatariosDTO,
   ProbarEnvioResult,
 } from "@/lib/types/envios-whatsapp";
+import { esRolDeSeleccion } from "@/lib/types/envios-whatsapp";
 
 import { DestinatariosField } from "./DestinatariosField";
 import { ParametrosInforme } from "./ParametrosInforme";
@@ -146,7 +147,8 @@ export function EnvioForm({ envio, informes, eventos, plantillas, personas }: En
       diasSemana: disparo === "hora_fija" ? [...dias].sort((a, b) => a - b) : [],
       hora: disparo === "hora_fija" && hora !== "" ? hora : null,
       eventoClave: disparo === "evento" && eventoClave !== "" ? eventoClave : null,
-      destinatarios: { roles, usuarioIds },
+      // SL-32: estrecha `RolValue` a lo que acepta el borde; un rol de plataforma nunca es destinatario.
+      destinatarios: { roles: roles.filter(esRolDeSeleccion), usuarioIds },
     }),
     [nombre, informeClave, plantillaId, parametros, disparo, dias, hora, eventoClave, roles, usuarioIds],
   );

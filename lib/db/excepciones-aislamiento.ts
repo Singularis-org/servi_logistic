@@ -156,4 +156,19 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-17",
     motivo: "alta de empresa por el superadmin: crea la organizacion fuera de toda empresa (R44)",
   },
+  {
+    archivo: "lib/repositories/ArranqueSuperadminRepository.ts",
+    ficha: "SL-32",
+    motivo: "comando de arranque: crea el superadmin, que no tiene empresa, y comprueba email y documento en toda la base (R12, R15)",
+  },
+  {
+    archivo: "lib/repositories/EmpresasPlataformaRepository.ts",
+    ficha: "SL-32",
+    motivo: "pantalla «Empresas» del superadmin: lista todas las organizaciones y sus maestros (R29)",
+  },
+  {
+    archivo: "app/(app)/layout.tsx",
+    ficha: "SL-32",
+    motivo: "marco del portal: leer el nombre del superadmin, que no tiene empresa, para el pie (R6)",
+  },
 ];
