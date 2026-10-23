@@ -190,6 +190,7 @@ function dia(
     totalIngresoBodegaRechazos: "0.00",
     grupos,
     totalesIngreso: totalesIngreso(),
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
@@ -219,6 +220,7 @@ function detalle(gruposAna: CierreGrupos = GRUPOS_ANA) {
       dia("m2", "Beto Mensajero", grupos478({ entregado: [BETO_E1, BETO_E2] })),
     ],
     totalesIngreso: totalesIngreso(),
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",

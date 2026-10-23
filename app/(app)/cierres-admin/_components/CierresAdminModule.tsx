@@ -347,7 +347,12 @@ interface DetalleAbierto {
    * (server-side). Llega igual al alcance satélite por el mismo camino (`verCierreDetalle`).
    */
   desgloseIngresoBodegaRechazos: { sla: string; manual: string; total: string };
-  /** Ingreso bruto menos el pago al mensajero, derivado server-side (puede ser negativo). */
+  /**
+   * SL-39 (R21) — el IVA facturado del cierre, derivado server-side. Va a la cascada «Lo que le
+   * queda a la empresa» como línea propia (R24).
+   */
+  ivaFacturado: string;
+  /** Ingreso sin IVA menos el pago al mensajero, derivado server-side (SL-39, R22; puede ser negativo). */
   ganancia: string;
   /** Total general menos flete + IVA y comisión + IVA, derivado server-side (puede ser negativo). */
   pagoTienda: string;
@@ -662,6 +667,7 @@ export function CierresAdminModule({
         grupos: result.grupos,
         totalesIngreso: result.totalesIngreso,
         desgloseIngresoBodegaRechazos: result.desgloseIngresoBodegaRechazos,
+        ivaFacturado: result.ivaFacturado,
         ganancia: result.ganancia,
         pagoTienda: result.pagoTienda,
         // FICHA 395: los cuatro llegan DERIVADOS del servidor y se guardan tal cual. Ni una
@@ -1250,6 +1256,7 @@ export function CierresAdminModule({
               totalIngresoBodegaRechazos={detalle.cierre.totalIngresoBodegaRechazos}
               pagoTienda={detalle.pagoTienda}
               cobradoSobreRecaudado={detalle.cobradoSobreRecaudado}
+              ivaFacturado={detalle.ivaFacturado}
               netoEmpresa={detalle.netoEmpresa}
               ganaLaTienda={detalle.ganaLaTienda}
               fleteRechazoYaCobradoATienda={detalle.fleteRechazoYaCobradoATienda}

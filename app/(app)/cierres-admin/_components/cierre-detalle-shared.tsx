@@ -71,6 +71,9 @@ import {
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
   CASCADA_FACTURA_TIENDA_TITULO,
   CASCADA_NETO_EMPRESA_TITULO,
+  // SL-39 (R24) — la línea «IVA facturado» de las cascadas «Lo que le queda a la empresa».
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   // FICHA 408 — el traductor del motivo de un rechazo automatico. Vive en el modulo PURO
   // porque lo leen tambien las tres descargas, que no pueden arrastrar `Card`/`Badge`.
   MOTIVO_RECHAZO_AUTOMATICO_COLA,
@@ -149,6 +152,9 @@ export {
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
   CASCADA_FACTURA_TIENDA_TITULO,
   CASCADA_NETO_EMPRESA_TITULO,
+  // SL-39 (R24) — por el mismo camino: las dos cascadas que lo pintan lo piden por esta puerta.
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   // FICHA 408 — por el mismo camino y por el mismo motivo: el traductor del motivo vive en el
   // modulo PURO (lo necesitan las tres descargas) y las pantallas lo piden por esta puerta,
   // que es donde ya piden el resto. `cierre-factura` es quien lo lee de aqui.
@@ -353,8 +359,9 @@ export const PAGO_TIENDA_LABEL = "Pago a tienda";
  */
 export const PAGO_TIENDA_NOTA =
   "Total general menos flete + IVA y comisión + IVA. No descuenta el flete por devolución a origen: una devolución a origen no recauda contra entrega, así que ese dinero nunca entró en el total general.";
-export const GANANCIA_NOTA = "Ingreso bruto menos el pago al mensajero.";
-export const GANANCIA_NOTA_BODEGA = "Ingreso bruto menos el pago a los mensajeros.";
+// SL-39 (R27) — la ganancia del cierre sale sin IVA (R22): la nota lo dice.
+export const GANANCIA_NOTA = "Ingreso sin IVA menos el pago al mensajero.";
+export const GANANCIA_NOTA_BODEGA = "Ingreso sin IVA menos el pago a los mensajeros.";
 export const DESGLOSE_TITULO = "Desglose de ingreso";
 /**
  * ⏳ FICHA 338 (2026-08-31) — EL PANEL DE LA DERECHA DEJA DE SER UNA LISTA DE PRECIOS.

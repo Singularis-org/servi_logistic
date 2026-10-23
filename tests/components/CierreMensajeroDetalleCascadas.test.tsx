@@ -29,14 +29,19 @@ import {
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   GANA_LA_TIENDA_NOTA,
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   NETO_EMPRESA_LABEL,
   NETO_EMPRESA_NEGATIVO_NOTA,
+  NETO_EMPRESA_NOTA,
   PAGO_TIENDA_HOY_NOTA,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 // Los cuatro rótulos que ESTA ficha reusa sin tocarlos siguen viviendo donde nacieron, en el
 // módulo del detalle. Se piden de ahí a propósito: si un día se movieran al módulo puro, el
 // import de arriba seguiría verde y éste se pondría rojo, que es el aviso que se quiere.
 import {
+  GANANCIA_NOTA,
+  GANANCIA_NOTA_BODEGA,
   INGRESO_BODEGA_RECHAZOS_LABEL,
   PAGO_MENSAJERO_LABEL,
   PAGO_TIENDA_LABEL,
@@ -250,6 +255,9 @@ const CON_RECHAZO: DetalleOk = {
     total: "70946.67",
   }),
   desgloseIngresoBodegaRechazos: { sla: "1200.25", manual: "0.00", total: "1200.25" },
+  // SL-39: sin IVA en los conceptos de esta fixtura (`ivaFlete` & co. a "0.00"), así que el IVA
+  // facturado es cero y el neto no cambia.
+  ivaFacturado: "0.00",
   ganancia: "25946.12",
   pagoTienda: "225176.33",
   cobradoSobreRecaudado: "60098.67",
@@ -290,6 +298,7 @@ const SIN_RECHAZO: DetalleOk = {
     total: "24000.40",
   }),
   desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+  ivaFacturado: "0.00", // SL-39
   ganancia: "15000.30",
   pagoTienda: "136000.00",
   cobradoSobreRecaudado: "24000.40",
@@ -325,6 +334,7 @@ const NEGATIVOS: DetalleOk = {
     total: "3400.75",
   }),
   desgloseIngresoBodegaRechazos: { sla: "900.30", manual: "0.00", total: "900.30" },
+  ivaFacturado: "0.00", // SL-39
   ganancia: "-1599.45",
   pagoTienda: "0.00",
   cobradoSobreRecaudado: "0.00",
@@ -336,6 +346,103 @@ const NEGATIVOS: DetalleOk = {
   sinGestionRegistrado: true,
   rechazosDeTienda: [],
 };
+
+/**
+ * SL-39 — EL CIERRE A de `design.md > 12.4`: una entrega con flete 3.200,00 + IVA 13 % = 3.616,00
+ * facturados, 1.500,00 de pago al mensajero y nada de bodega. Antes la pantalla decía que a la
+ * empresa le quedaban 2.116,00; sin el IVA, que no es suyo, le quedan 1.700,00. El recaudado
+ * (20.000,00) es de la fixtura: el diseño no lo fija y no entra en la cascada del neto.
+ */
+const CIERRE_A: DetalleOk = {
+  status: "ok",
+  cierre: resumen({
+    estado: "solicitado",
+    totales: { efectivo: "20000.00", simpe: "0.00", transferencia: "0.00", general: "20000.00" },
+    totalPagoMensajero: "1500.00",
+    totalIngresoBodegaRechazos: "0.00",
+  }),
+  grupos: GRUPOS_VACIOS,
+  totalesIngreso: {
+    montoCobrar: "20000.00",
+    flete: "3200.00",
+    ivaFlete: "416.00",
+    fleteDevolucion: "0.00",
+    ivaFleteDevolucion: "0.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "3616.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "0.00",
+    total: "3616.00",
+  },
+  desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+  ivaFacturado: "416.00",
+  ganancia: "1700.00",
+  pagoTienda: "16384.00",
+  cobradoSobreRecaudado: "3616.00",
+  netoEmpresa: "1700.00",
+  ganaLaTienda: "16384.00",
+  fleteRechazoYaCobradoATienda: false,
+  partesPorTienda: [],
+  ordenesSinGestion: [],
+  sinGestionRegistrado: true,
+  rechazosDeTienda: [],
+};
+
+/**
+ * SL-39 — EL CIERRE B de `design.md > 12.4`: un solo rechazo, flete por devolución 2.000,00 + IVA
+ * 260,00, y 2.100,00 de pago al mensajero. Con el IVA dentro la ganancia daba 160,00 y la tarjeta
+ * «Debe» no salía; sin él da −100,00 y sale «Debe».
+ */
+const CIERRE_B: DetalleOk = {
+  status: "ok",
+  cierre: resumen({
+    estado: "solicitado",
+    totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+    totalPagoMensajero: "2100.00",
+    totalIngresoBodegaRechazos: "0.00",
+  }),
+  grupos: GRUPOS_VACIOS,
+  totalesIngreso: {
+    montoCobrar: "0.00",
+    flete: "0.00",
+    ivaFlete: "0.00",
+    fleteDevolucion: "2000.00",
+    ivaFleteDevolucion: "260.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "0.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "2260.00",
+    total: "2260.00",
+  },
+  desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+  ivaFacturado: "260.00",
+  ganancia: "-100.00",
+  pagoTienda: "0.00",
+  cobradoSobreRecaudado: "0.00",
+  netoEmpresa: "-100.00",
+  ganaLaTienda: "-2260.00",
+  fleteRechazoYaCobradoATienda: false,
+  partesPorTienda: [],
+  ordenesSinGestion: [],
+  sinGestionRegistrado: true,
+  rechazosDeTienda: [],
+};
+
+/**
+ * La LÍNEA de cascada de un rótulo dentro de una región. Se llega por la estructura, igual que
+ * `importesTras`: la hoja del rótulo, su envoltorio (rótulo + notas) y la línea que los contiene.
+ */
+function filaDe(region: HTMLElement, rotulo: string): HTMLElement {
+  const hojas = within(region)
+    .getAllByText(rotulo)
+    .filter((el) => el.children.length === 0);
+  expect(hojas.length, `«${rotulo}» aparece ${hojas.length} veces en esta región`).toBe(1);
+  const fila = hojas[0].parentElement?.parentElement ?? null;
+  expect(fila, `«${rotulo}» no está dentro de una línea de cascada`).not.toBeNull();
+  return fila!;
+}
 
 const DE = "cierre de Ana Mensajera";
 const particion = () =>
@@ -528,20 +635,136 @@ describe("395 — el desglose de lo que la empresa factura, y por qué hoy se pa
 });
 
 describe("395 — lo que le queda a la empresa", () => {
-  it("facturado − pago al mensajero − ingreso de bodega da el neto, y cierra", async () => {
+  it("facturado − IVA − pago al mensajero − ingreso de bodega da el neto, y cierra", async () => {
     await abrirDetalle();
     const region = neto();
 
     const facturado = importeTras(region, FACTURADO_EMPRESA_LABEL);
+    // SL-39: esta fixtura no lleva IVA, así que su línea resta cero y el neto no cambia.
+    const iva = importeTras(region, IVA_FACTURADO_LABEL);
     const mensajero = importeTras(region, PAGO_MENSAJERO_LABEL);
     const bodega = importeTras(region, INGRESO_BODEGA_RECHAZOS_LABEL);
     const resultado = importeTras(region, NETO_EMPRESA_LABEL);
 
     expect(facturado).toBe("₡70.946,67");
+    expect(iva).toBe("-₡0");
     expect(mensajero).toBe("-₡45.000,55");
     expect(bodega).toBe("-₡1.200,25");
     expect(resultado).toBe("₡24.745,87");
-    laCuentaCierra([facturado, mensajero, bodega], resultado, "el neto de la empresa");
+    laCuentaCierra([facturado, iva, mensajero, bodega], resultado, "el neto de la empresa");
+  });
+});
+
+describe("SL-39 — el IVA facturado tiene su línea en «Lo que le queda a la empresa» (R24)", () => {
+  it("la línea va JUSTO después de «Lo que la empresa facturó», resta y lleva su nota", async () => {
+    await abrirDetalle(CIERRE_A);
+    const region = neto();
+
+    const filaIva = filaDe(region, IVA_FACTURADO_LABEL);
+    // Justo después: la línea anterior a la del IVA es la de lo facturado, sin nada en medio.
+    expect(
+      filaIva.previousElementSibling,
+      "«IVA facturado» no va justo después de «Lo que la empresa facturó»",
+    ).toBe(filaDe(region, FACTURADO_EMPRESA_LABEL));
+    // Y antes del pago al mensajero, también sin nada en medio.
+    expect(filaIva.nextElementSibling).toBe(filaDe(region, PAGO_MENSAJERO_LABEL));
+
+    expect(importeTras(region, IVA_FACTURADO_LABEL)).toBe("-₡416");
+    // Las notas, A MANO (R24): compararlas con su constante estaría siempre verde.
+    expect(
+      within(filaIva).getByText(
+        "El IVA que se le cobró a la tienda en este cierre. No es de la empresa.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(region).getByText(
+        "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("el cierre A cuadra con lo que se lee: 3.616 − 416 − 1.500 − 0 = 1.700 (design §12.4)", async () => {
+    await abrirDetalle(CIERRE_A);
+    const region = neto();
+
+    const facturado = importeTras(region, FACTURADO_EMPRESA_LABEL);
+    const iva = importeTras(region, IVA_FACTURADO_LABEL);
+    const mensajero = importeTras(region, PAGO_MENSAJERO_LABEL);
+    const bodega = importeTras(region, INGRESO_BODEGA_RECHAZOS_LABEL);
+    const resultado = importeTras(region, NETO_EMPRESA_LABEL);
+
+    expect([facturado, iva, mensajero, bodega, resultado]).toEqual([
+      "₡3.616",
+      "-₡416",
+      "-₡1.500",
+      "-₡0",
+      "₡1.700",
+    ]);
+    laCuentaCierra([facturado, iva, mensajero, bodega], resultado, "el neto del cierre A");
+  });
+
+  it("R26: lo facturado, el pago a tienda y lo que gana la tienda no cambian, y el IVA no entra en esas cascadas", async () => {
+    await abrirDetalle(CIERRE_A);
+
+    // Lo que se le factura a la tienda SÍ lleva IVA: sigue siendo 3.616 en las dos cascadas.
+    expect(importeTras(particion(), FACTURADO_EMPRESA_LABEL)).toBe("-₡3.616");
+    expect(importeTras(factura(), FACTURADO_EMPRESA_LABEL)).toBe("₡3.616");
+    expect(importeTras(particion(), GANA_LA_TIENDA_LABEL)).toBe("₡16.384");
+    expect(importeTras(factura(), PAGO_TIENDA_LABEL)).toBe("₡16.384");
+    expect(importesTras(factura(), COBRADO_SOBRE_RECAUDADO_LABEL)).toEqual([
+      "₡3.616",
+      "-₡3.616",
+    ]);
+    expect(within(particion()).queryByText(IVA_FACTURADO_LABEL)).toBeNull();
+    expect(within(factura()).queryByText(IVA_FACTURADO_LABEL)).toBeNull();
+  });
+
+  it("R27: el cierre B sale en «Debe» −100 y su nota dice que el ingreso es sin IVA", async () => {
+    await abrirDetalle(CIERRE_B);
+    const dialog = screen.getByRole("dialog", { name: "Detalle del cierre" });
+    const liquidacion = within(dialog).getByRole("region", { name: "Liquidación" });
+
+    expect(within(liquidacion).getByText("Debe")).toBeInTheDocument();
+    expect(within(liquidacion).getByText("-₡100")).toBeInTheDocument();
+    expect(
+      within(liquidacion).getByText("Ingreso sin IVA menos el pago al mensajero."),
+    ).toBeInTheDocument();
+
+    // Y la cascada del neto cuadra con el IVA del rechazo: 2.260 − 260 − 2.100 − 0 = −100.
+    const region = neto();
+    expect(importeTras(region, IVA_FACTURADO_LABEL)).toBe("-₡260");
+    laCuentaCierra(
+      [
+        importeTras(region, FACTURADO_EMPRESA_LABEL),
+        importeTras(region, IVA_FACTURADO_LABEL),
+        importeTras(region, PAGO_MENSAJERO_LABEL),
+        importeTras(region, INGRESO_BODEGA_RECHAZOS_LABEL),
+      ],
+      importeTras(region, NETO_EMPRESA_LABEL),
+      "el neto del cierre B",
+    );
+  });
+
+  it.each([
+    ["IVA_FACTURADO_LABEL", IVA_FACTURADO_LABEL, "IVA facturado"],
+    [
+      "IVA_FACTURADO_NOTA",
+      IVA_FACTURADO_NOTA,
+      "El IVA que se le cobró a la tienda en este cierre. No es de la empresa.",
+    ],
+    [
+      "NETO_EMPRESA_NOTA",
+      NETO_EMPRESA_NOTA,
+      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.",
+    ],
+    ["GANANCIA_NOTA", GANANCIA_NOTA, "Ingreso sin IVA menos el pago al mensajero."],
+    [
+      "GANANCIA_NOTA_BODEGA",
+      GANANCIA_NOTA_BODEGA,
+      "Ingreso sin IVA menos el pago a los mensajeros.",
+    ],
+  ])("%s dice exactamente lo aprobado (R24, R27)", (_nombre, constante, literal) => {
+    expect(constante).toBe(literal);
   });
 });
 
@@ -575,6 +798,7 @@ describe("395 — los negativos salen CON SU SIGNO, nunca recortados", () => {
     laCuentaCierra(
       [
         importeTras(region, FACTURADO_EMPRESA_LABEL),
+        importeTras(region, IVA_FACTURADO_LABEL),
         importeTras(region, PAGO_MENSAJERO_LABEL),
         importeTras(region, INGRESO_BODEGA_RECHAZOS_LABEL),
       ],

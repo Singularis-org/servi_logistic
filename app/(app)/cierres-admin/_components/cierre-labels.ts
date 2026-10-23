@@ -331,9 +331,23 @@ export const GANA_LA_TIENDA_NEGATIVO_NOTA =
 export const COBRADO_SOBRE_RECAUDADO_NOTA =
   "Flete + IVA y comisión + IVA de lo que sí se entregó: sale del dinero que el mensajero recaudó.";
 
-/** FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace. */
+/**
+ * FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace.
+ * SL-39 (R23/R24) — dice «sin el IVA»: el IVA facturado tiene su propia línea en la cascada y no es
+ * de la empresa.
+ */
 export const NETO_EMPRESA_NOTA =
-  `Lo que ${EMPRESA.enFrase} facturó menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+
+/**
+ * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
+ * de «Lo que la empresa facturó». El importe llega derivado del servidor (`ivaFacturado`, R21).
+ */
+export const IVA_FACTURADO_LABEL = "IVA facturado";
+
+/** SL-39 (R24) — de quién es ese IVA. */
+export const IVA_FACTURADO_NOTA =
+  `El IVA que se le cobró a la tienda en este cierre. No es de ${EMPRESA.enFrase}.`;
 
 /** FICHA 395 — qué significa un neto NEGATIVO: no es un fallo, es una pérdida del cierre. */
 export const NETO_EMPRESA_NEGATIVO_NOTA =

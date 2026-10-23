@@ -146,6 +146,7 @@ function detalleOk(cierreId: string, mensajeroNombre = "Zoe del Histórico") {
     cierre: makeResumen({ cierreId, mensajeroNombre, estado: "aprobado" }),
     grupos: emptyGrupos(),
     totalesIngreso: zeroIngreso(),
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
