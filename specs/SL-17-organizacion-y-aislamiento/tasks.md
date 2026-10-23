@@ -178,23 +178,30 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
 Cada test se mata con una mutación antes de creerlo: quitar el filtro, la política o el trigger
 tiene que ponerlo en rojo. Sin filas de A sembradas, el test falla, no se salta.
 
-- [ ] **T3.1 [P] Órdenes:** `tests/integration/db/aislamiento-ordenes.test.ts` (R28, R7–R9).
+- [x] **T3.1 [P] Órdenes:** `tests/integration/db/aislamiento-ordenes.test.ts` (R28, R7–R9).
   Además, el servicio de crear orden, con una `tiendaId` de A desde B, da «no encontrado» por la
   lectura previa.
-- [ ] **T3.2 [P] Wallet:** `tests/integration/db/aislamiento-wallet.test.ts` (R29).
-- [ ] **T3.3 [P] Cierres:** `tests/integration/db/aislamiento-cierres.test.ts` (R30).
-- [ ] **T3.4 [P] Usuarios:** `tests/integration/db/aislamiento-usuarios.test.ts` (R31, R3, R35,
+- [x] **T3.2 [P] Wallet:** `tests/integration/db/aislamiento-wallet.test.ts` (R29).
+- [x] **T3.3 [P] Cierres:** `tests/integration/db/aislamiento-cierres.test.ts` (R30).
+- [x] **T3.4 [P] Usuarios:** `tests/integration/db/aislamiento-usuarios.test.ts` (R31, R3, R35,
   R36).
-- [ ] **T3.5 [P] RLS, SQL a mano y catálogos:** `tests/integration/db/aislamiento-rls.test.ts`
+- [x] **T3.5 [P] RLS, SQL a mano y catálogos:** `tests/integration/db/aislamiento-rls.test.ts`
   (R17–R22, R40, R10).
-- [ ] **T3.6 [P] Migraciones de ida y vuelta:** `tests/integration/db/migracion-sl17-ida-y-vuelta.test.ts`
+- [x] **T3.6 [P] Migraciones de ida y vuelta:** `tests/integration/db/migracion-sl17-ida-y-vuelta.test.ts`
   (R6, R32; M1–M4).
-- [ ] **T3.7 [P] Misma empresa en la base:** `tests/integration/db/aislamiento-fk-misma-empresa.test.ts`
+- [x] **T3.7 [P] Misma empresa en la base:** `tests/integration/db/aislamiento-fk-misma-empresa.test.ts`
   (R37, R38; depende de T2.7). La orden de B con la tienda de A la rechaza la base con `SL017`,
   por SQL a mano y como dueño.
-- [ ] **T3.8 [P] Entradas con dos empresas con datos:** `tests/integration/db/dos-empresas-entradas.test.ts`
+- [x] **T3.8 [P] Entradas con dos empresas con datos:** `tests/integration/db/dos-empresas-entradas.test.ts`
   (R16, R42, R13; design §7.9; depende de T2.2, T2.3 y T2.3b). Los crons, el drenador y la API key
   **trabajan** en las dos empresas, cada una en la suya.
+- [x] **T3.9 Únicos por empresa y podio** (decisión del leader, 2026-10-23): migración
+  `20261023090000_unicos_por_empresa` con `down.sql`, `premio_ranking` con `UNIQUE(organizacion_id, posicion)`,
+  podio sembrado por `altaEmpresa`, auditoría de los únicos de las 73 tablas (tabla en la bitácora) y
+  `tests/integration/db/unicos-por-empresa.test.ts`.
+- [x] **T3.10 Fugas destapadas en T3.1/T3.8:** los modelos de plataforma en contexto de empresa van con
+  envoltura (RLS en los `include` anidados y R40 por la app), y la carga masiva lee la tienda antes de
+  escribir («tienda no encontrada»).
 
 **Hecho, para cada una:** el test está en verde, hay una mutación que lo pone en rojo y el
 comando con su salida queda en `progress/impl_SL-17.md`.

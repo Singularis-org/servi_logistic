@@ -164,7 +164,11 @@ describe("205 / R29 — el acto de repartir es una fila propia, con su barrera d
     expect(upDdl).toMatch(
       /CREATE UNIQUE INDEX "liquidacion_reparto_clave_idempotencia_key" ON "liquidacion_reparto"\("clave_idempotencia"\);/,
     );
-    expect(MODELO_REPARTO).toMatch(/claveIdempotencia\s+String\s+@unique @map\("clave_idempotencia"\)/);
+    // SL-17 T3.9: la clave sigue UNICA, ahora por empresa (`@@unique` compuesto, mismo nombre).
+    expect(MODELO_REPARTO).toMatch(/claveIdempotencia\s+String\s+@map\("clave_idempotencia"\)/);
+    expect(MODELO_REPARTO).toContain(
+      '@@unique([organizacionId, claveIdempotencia], map: "liquidacion_reparto_clave_idempotencia_key")',
+    );
   });
 
   it("el CHECK exige un importe positivo, y se anade VALIDANDO (sin NOT VALID)", () => {
@@ -234,10 +238,11 @@ describe("205 / R28 — `liquidacion_pago` gana la columna que agrupa, y NADA MA
     expect(upDdl).not.toMatch(/ADD CONSTRAINT\s+"[a-z_0-9]+"\s+UNIQUE/i);
     // Y el datamodel tampoco: en `LiquidacionPago` el unico `@unique` sigue siendo el de la
     // clave de idempotencia del pago, y no hay ningun `@@unique` compuesto.
-    expect([...MODELO_PAGO.matchAll(/^\s*(\w+)\s+\S+\s+@unique/gm)].map((m) => m[1])).toEqual([
-      "claveIdempotencia",
+    // SL-17 T3.9: esa clave es ahora el `@@unique` compuesto con la empresa; sigue siendo el unico.
+    expect([...MODELO_PAGO.matchAll(/^\s*(\w+)\s+\S+\s+@unique/gm)].map((m) => m[1])).toEqual([]);
+    expect([...MODELO_PAGO.matchAll(/^\s*@@unique\((.*?)\)/gm)].map((m) => m[1])).toEqual([
+      '[organizacionId, claveIdempotencia], map: "liquidacion_pago_clave_idempotencia_key"',
     ]);
-    expect(MODELO_PAGO).not.toMatch(/@@unique/);
   });
 
   it("R49: la migracion es ADITIVA — no destruye, no renombra, no reescribe, no crea enums", () => {
@@ -800,8 +805,8 @@ describeSiHayBase("205 / bloque B — las restricciones RECHAZAN de verdad (Post
     expect(medicion.unicosDelPagoDespues).toEqual(medicion.unicosDelPagoAntes);
     // Y lo que ese conjunto ES: la PK y la clave de idempotencia. Ni uno mas.
     expect(medicion.unicosDelPagoDespues.map((u) => u.columnas).sort()).toEqual([
-      "clave_idempotencia",
       "id",
+      "organizacion_id,clave_idempotencia", // SL-17 T3.9: la clave, por empresa
     ]);
     // La contracara por COMPORTAMIENTO: dos pagos del mismo reparto conviven. Si `reparto_id`
     // fuera unico, este INSERT chocaria — y el servicio interpretaria ese P2002 como clave de

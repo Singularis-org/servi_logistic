@@ -33,6 +33,8 @@ const tx = {
       return { id: "u-maestro" };
     }),
   },
+  // SL-17 T3.9: el alta siembra el podio de la empresa en la misma transacción.
+  premioRanking: { createMany: vi.fn(async () => ({ count: 3 })) },
 };
 const $transaction = vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx));
 
@@ -65,5 +67,8 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
     expect(tx.usuario.create.mock.calls[0][0]).toMatchObject({
       data: { organizacionId: "org-nueva", rolId: "rol-maestro", estado: "activo", email: "lucia@ejemplo.test" },
     });
+    expect(tx.premioRanking.createMany.mock.calls).toEqual([
+      [{ data: [1, 2, 3].map((posicion) => ({ posicion, organizacionId: "org-nueva" })) }],
+    ]);
   });
 });

@@ -14,13 +14,21 @@ import { MODELO_NEGOCIO_NULABLE, esModeloDeNegocio } from "./modelos-de-negocio"
 //
 // | Contexto                   | Modelo de negocio          | Modelo de plataforma | SQL a mano            |
 // |----------------------------|----------------------------|----------------------|-----------------------|
-// | empresa, fuera de tx       | filtro + envoltura         | tal cual             | envoltura (RLS)       |
-// | empresa, dentro de tx      | filtro                     | tal cual             | tal cual (RLS)        |
+// | empresa, fuera de tx       | filtro + envoltura         | envoltura (RLS)      | envoltura (RLS)       |
+// | empresa, dentro de tx      | filtro                     | tal cual (RLS)       | tal cual (RLS)        |
 // | plataforma                 | tal cual (salvo R35)       | tal cual             | tal cual              |
 // | ninguno                    | EmpresaNoResuelta          | tal cual             | EmpresaNoResuelta     |
 //
 // El filtro es la primera barrera; la RLS (que exige la envoltura con `set_config`) cubre lo que
 // el filtro no ve: `include`/escrituras anidadas y el SQL a mano.
+//
+// «Modelo de plataforma» es aqui todo lo que no es de negocio (catalogos, geografia, auth, cache,
+// `jobs`, `organizacion`). En contexto de empresa tambien va envuelto (SL-17 T3.10): sin la
+// envoltura corre como dueno, sin RLS, y un `select`/`include` anidado hacia negocio
+// (`distrito.zonas` → `zona_distrito`) traia filas de otras empresas; y una escritura en
+// `vehiculos` o en la geografia pasaba, cuando R40 dice que falla. Con `servi_app` mandan las
+// politicas de M1: catalogos y geografia solo lectura, auth con «dueno visible», cache y `jobs`
+// abiertas. Sin empresa (login, superadmin, scripts) siguen tal cual: no la exigen.
 
 type Args = Record<string, unknown>;
 
@@ -190,10 +198,13 @@ export function conAislamientoPorEmpresa(
     const { model, operation, args, query } = p;
     const esSqlAMano = model === undefined;
     const esNegocio = !esSqlAMano && esModeloDeNegocio(model);
-    if (!esSqlAMano && !esNegocio) return query(args);
 
-    // El SQL a mano sin contexto correria como dueno, sin RLS: veria todas las empresas.
-    if (!ctx) return Promise.reject(new EmpresaNoResuelta(model ?? "$sql", operation));
+    if (!ctx) {
+      // Plataforma sin empresa: no la exige. El SQL a mano o el negocio sin contexto correrian
+      // como dueno, sin RLS: verian todas las empresas.
+      if (!esSqlAMano && !esNegocio) return query(args);
+      return Promise.reject(new EmpresaNoResuelta(model ?? "$sql", operation));
+    }
 
     if (ctx.tipo === "plataforma") {
       if (model === MODELO_NEGOCIO_NULABLE) exigirEmpresaDeclaradaEnUsuario(operation, args);
@@ -201,7 +212,9 @@ export function conAislamientoPorEmpresa(
     }
 
     const id = ctx.organizacionId;
-    const filtrados = esSqlAMano ? args : argsFiltrados(model, operation, args, id);
+    // Solo el negocio lleva filtro: un modelo de plataforma no tiene `organizacion_id`. Lo que
+    // cuelga de el lo filtra la RLS de la envoltura.
+    const filtrados = esNegocio ? argsFiltrados(model, operation, args, id) : args;
     // Dentro de una transaccion el `set_config` ya se puso al abrirla (§6.4). Aqui `query` se
     // devuelve sin encadenar nada: en un lote, Prisma espera las promesas tal cual las da.
     if (ctx.enTransaccion) return query(filtrados);
@@ -221,8 +234,9 @@ export function conAislamientoPorEmpresa(
         const r = aplicar(explicito, p);
         return explicito.tipo === "empresa" && explicito.enTransaccion ? r : r.catch(traducir);
       }
-      const necesitaEmpresa = p.model === undefined || esModeloDeNegocio(p.model);
-      if (!necesitaEmpresa) return p.query(p.args);
+      // Tambien para los modelos de plataforma: en una peticion con sesion la empresa sale de
+      // aqui, y sin ella su lectura correria como dueno (ver la cabecera). Si no resuelve, van
+      // tal cual. El resolutor memoriza por sesion; lo que se paga es la envoltura (~1 ms).
       return resolver()
         .then((orgId) => aplicar(orgId ? { tipo: "empresa", organizacionId: orgId } : undefined, p))
         .catch(traducir);

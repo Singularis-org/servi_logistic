@@ -55,6 +55,7 @@ function buildPrisma() {
     liquidacionReparto: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(), // SL-17 T3.9: la relectura por clave (unica por empresa)
       findMany: vi.fn(),
       // Las ESCRITURAS que este repositorio NO debe tener, espiadas: es lo que hace observable
       // que un reparto es una fila INMUTABLE (R52) y no solo una promesa del docstring.
@@ -207,10 +208,11 @@ describe("LiquidacionRepartoRepository.crear (R29)", () => {
       /model LiquidacionReparto \{[\s\S]*?\n\}/.exec(schema)![0],
     );
 
-    expect([...modelo.matchAll(/^\s*(\w+)\s+\S+\s+@unique/gm)].map((m) => m[1])).toEqual([
-      "claveIdempotencia",
+    // SL-17 T3.9: la clave pasa a ser unica POR EMPRESA; sigue siendo la unica restriccion de negocio.
+    expect([...modelo.matchAll(/^\s*(\w+)\s+\S+\s+@unique/gm)].map((m) => m[1])).toEqual([]);
+    expect([...modelo.matchAll(/^\s*@@unique\((.*)\)/gm)].map((m) => m[1])).toEqual([
+      '[organizacionId, claveIdempotencia], map: "liquidacion_reparto_clave_idempotencia_key"',
     ]);
-    expect(modelo).not.toMatch(/@@unique/);
     // Y el `@id` sigue siendo un uuid generado, no una clave de negocio que pudiera repetirse.
     expect(modelo).toMatch(/id\s+String\s+@id @default\(uuid\(\)\)/);
   });
@@ -251,6 +253,7 @@ describe("LiquidacionRepartoRepository.crear (R29)", () => {
 
     expect(prisma.liquidacionReparto.create).toHaveBeenCalledTimes(1);
     expect(prisma.liquidacionReparto.findUnique).not.toHaveBeenCalled();
+    expect(prisma.liquidacionReparto.findFirst).not.toHaveBeenCalled();
     expect(prisma.liquidacionReparto.findMany).not.toHaveBeenCalled();
   });
 
@@ -272,16 +275,16 @@ describe("LiquidacionRepartoRepository.crear (R29)", () => {
 });
 
 describe("LiquidacionRepartoRepository.obtenerPorClave (R28)", () => {
-  it("relee por el UNIQUE de la clave — y con el CLIENTE PROPIO, no con la transaccion", async () => {
+  it("relee por la clave (unica por empresa, SL-17 T3.9) — y con el CLIENTE PROPIO, no con la transaccion", async () => {
     // La relectura ocurre necesariamente FUERA: en Postgres el choque de la clave deja la
     // transaccion ABORTADA y ninguna sentencia posterior sobreviviria dentro de ella.
     const prisma = buildPrisma();
-    prisma.liquidacionReparto.findUnique.mockResolvedValue(repartoRow());
+    prisma.liquidacionReparto.findFirst.mockResolvedValue(repartoRow());
     const repo = buildRepo(prisma);
 
     const reparto = await repo.obtenerPorClave(CLAVE);
 
-    expect(prisma.liquidacionReparto.findUnique.mock.calls[0][0].where).toEqual({
+    expect(prisma.liquidacionReparto.findFirst.mock.calls[0][0].where).toEqual({
       claveIdempotencia: CLAVE,
     });
     expect(reparto?.id).toBe("rep-1");
@@ -292,7 +295,7 @@ describe("LiquidacionRepartoRepository.obtenerPorClave (R28)", () => {
 
   it("una clave nunca usada devuelve null (y no un objeto vacio)", async () => {
     const prisma = buildPrisma();
-    prisma.liquidacionReparto.findUnique.mockResolvedValue(null);
+    prisma.liquidacionReparto.findFirst.mockResolvedValue(null);
     const repo = buildRepo(prisma);
     expect(await repo.obtenerPorClave("no-existe")).toBeNull();
   });
@@ -302,12 +305,12 @@ describe("LiquidacionRepartoRepository.obtenerPorClave (R28)", () => {
     // metodo y fecha. Si la relectura mirara cualquiera de esos campos, el segundo reparto
     // legitimo se responderia como «ya registrado» y el mensajero cobraria una sola vez.
     const prisma = buildPrisma();
-    prisma.liquidacionReparto.findUnique.mockResolvedValue(repartoRow());
+    prisma.liquidacionReparto.findFirst.mockResolvedValue(repartoRow());
     const repo = buildRepo(prisma);
 
     await repo.obtenerPorClave(CLAVE);
 
-    const arg = prisma.liquidacionReparto.findUnique.mock.calls[0][0];
+    const arg = prisma.liquidacionReparto.findFirst.mock.calls[0][0];
     expect(Object.keys(arg.where)).toEqual(["claveIdempotencia"]);
     expect(JSON.stringify(arg)).not.toContain("mensajeroId");
     expect(JSON.stringify(arg)).not.toContain("montoTotal");
@@ -318,7 +321,7 @@ describe("LiquidacionRepartoRepository — el acto es INMUTABLE (R52)", () => {
   it("ningun camino de la clase escribe mas alla del INSERT", async () => {
     const prisma = buildPrisma();
     prisma.liquidacionReparto.create.mockResolvedValue(repartoRow());
-    prisma.liquidacionReparto.findUnique.mockResolvedValue(repartoRow());
+    prisma.liquidacionReparto.findFirst.mockResolvedValue(repartoRow());
     const repo = buildRepo(prisma);
 
     await repo.crear(txConRegistro({ liquidacionReparto: prisma.liquidacionReparto }), INPUT);

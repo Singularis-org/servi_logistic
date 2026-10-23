@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { PremioRankingRepository } from "@/lib/repositories/PremioRankingRepository";
+import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 
 // Feature 76 (R8/R9/R10) — repo de PREMIOS con Prisma mockeado (sin DB). Money-safe: Decimal
 // -> STRING escala 2; null se preserva (sin premio). descripcion (cambio de alcance) es texto
@@ -35,13 +36,14 @@ describe("PremioRankingRepository.upsertPremio (R10)", () => {
     }));
     const repo = new PremioRankingRepository({ premioRanking: { update } } as unknown as PrismaClient);
 
-    const dto = await repo.upsertPremio(1, { monto: "15000", descripcion: "Bono oro" });
+    const dto = await conEmpresa("org-a", () => repo.upsertPremio(1, { monto: "15000", descripcion: "Bono oro" }));
 
     const arg = (update.mock.calls[0] as unknown[])[0] as {
       where: unknown;
       data: Record<string, unknown>;
     };
-    expect(arg.where).toEqual({ posicion: 1 });
+    // SL-17 T3.9: el unico es (organizacion_id, posicion); la empresa sale del contexto.
+    expect(arg.where).toEqual({ organizacionId_posicion: { organizacionId: "org-a", posicion: 1 } });
     expect(arg.data.monto).toBeInstanceOf(Prisma.Decimal);
     expect((arg.data.monto as Prisma.Decimal).toString()).toBe("15000");
     expect(arg.data.descripcion).toBe("Bono oro");
@@ -52,11 +54,22 @@ describe("PremioRankingRepository.upsertPremio (R10)", () => {
     const update = vi.fn(async () => ({ posicion: 2, monto: null, descripcion: null }));
     const repo = new PremioRankingRepository({ premioRanking: { update } } as unknown as PrismaClient);
 
-    const dto = await repo.upsertPremio(2, { monto: null, descripcion: null });
+    const dto = await conEmpresa("org-a", () => repo.upsertPremio(2, { monto: null, descripcion: null }));
 
     const arg = (update.mock.calls[0] as unknown[])[0] as { data: Record<string, unknown> };
     expect(arg.data.monto).toBeNull();
     expect(arg.data.descripcion).toBeNull();
     expect(dto).toEqual({ posicion: 2, monto: null, descripcion: null });
+  });
+
+  it("SL-17 T3.9: sin empresa en contexto no toca ningun podio (EmpresaNoResuelta)", async () => {
+    const update = vi.fn();
+    const repo = new PremioRankingRepository({ premioRanking: { update } } as unknown as PrismaClient);
+
+    await expect(repo.upsertPremio(1, { monto: "1", descripcion: null })).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    await expect(
+      comoPlataforma("SL-17", "test", () => repo.upsertPremio(1, { monto: "1", descripcion: null })),
+    ).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    expect(update).not.toHaveBeenCalled();
   });
 });

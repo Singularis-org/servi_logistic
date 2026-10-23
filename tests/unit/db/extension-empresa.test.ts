@@ -290,11 +290,13 @@ describe("R11 — sin empresa en contexto: EmpresaNoResuelta sin ejecutar", () =
     expect($transaction).not.toHaveBeenCalled();
   });
 
-  it("los modelos de plataforma no necesitan empresa ni consultan al resolutor", async () => {
-    const { cliente, ejecutadas, resolverSpy } = montar();
+  it("los modelos de plataforma no necesitan empresa: sin ella pasan tal cual, sin envoltura", async () => {
+    const { cliente, ejecutadas, $transaction, resolverSpy } = montar();
     await cliente.provincia.findMany({ where: { activo: true } });
     expect(ejecutadas).toEqual([{ model: "Provincia", operation: "findMany", args: { where: { activo: true } } }]);
-    expect(resolverSpy).not.toHaveBeenCalled();
+    expect($transaction).not.toHaveBeenCalled();
+    // Se pregunta (en una peticion con sesion la empresa sale de ahi, T3.10), y null = tal cual.
+    expect(resolverSpy).toHaveBeenCalled();
   });
 });
 
@@ -333,10 +335,51 @@ describe("contexto explicito, plataforma y modelos de plataforma", () => {
     expect(resolverSpy).not.toHaveBeenCalled();
   });
 
-  it("empresa: un modelo de plataforma no se filtra ni se envuelve", async () => {
+  // T3.10: sin la envoltura, un modelo de plataforma corria como dueno (sin RLS) y su `select`
+  // anidado hacia negocio traia filas de otras empresas; y sus escrituras saltaban R40.
+  it.each([
+    ["distrito", "findUnique", { where: { id: "d1" }, select: { zonas: true } }],
+    ["vehiculo", "create", { data: { name: "Moto" } }],
+    ["vehiculo", "updateMany", { where: { id: "v1" }, data: { name: "X" } }],
+    ["session", "delete", { where: { id: "s1" } }],
+    ["geocodeCache", "upsert", { where: { huella: "h" }, create: {}, update: {} }],
+    ["job", "create", { data: { tipo: "x" } }],
+    ["organizacion", "findMany", {}],
+  ])("empresa: %s.%s (no es de negocio) va envuelto con set_config y sin filtro", async (modelo, op, args) => {
+    const { cliente, ejecutadas, lotes } = montar();
+    await conEmpresa(A, () => cliente[modelo][op](args));
+    expect(ejecutadas).toHaveLength(1);
+    expect(ejecutadas[0].args).toEqual(args);
+    expect(lotes).toHaveLength(1);
+    expect(lotes[0]).toHaveLength(2);
+    expect(esSetConfigDe(lotes[0][0], A)).toBe(true);
+  });
+
+  it("empresa resuelta por la sesion: un modelo de plataforma tambien va envuelto", async () => {
+    const { cliente, ejecutadas, lotes } = montar(async () => A);
+    await cliente.distrito.findMany({ where: { cantonId: "c1" }, include: { zonas: true } });
+    expect(ejecutadas[0].args).toEqual({ where: { cantonId: "c1" }, include: { zonas: true } });
+    expect(lotes).toHaveLength(1);
+    expect(esSetConfigDe(lotes[0][0], A)).toBe(true);
+  });
+
+  it("plataforma: un modelo de plataforma pasa tal cual, sin envoltura ni resolutor", async () => {
+    const { cliente, ejecutadas, $transaction, resolverSpy } = montar(async () => A);
+    await comoPlataforma("SL-17", "test", () => cliente.vehiculo.create({ data: { name: "Moto" } }));
+    expect(ejecutadas[0].args).toEqual({ data: { name: "Moto" } });
+    expect($transaction).not.toHaveBeenCalled();
+    expect(resolverSpy).not.toHaveBeenCalled();
+  });
+
+  it("empresa dentro de una $transaction: el modelo de plataforma no se re-envuelve", async () => {
     const { cliente, ejecutadas, $transaction } = montar();
-    await conEmpresa(A, () => cliente.provincia.findMany({ where: { id: 1 } }));
-    expect(ejecutadas[0].args).toEqual({ where: { id: 1 } });
+    await conEmpresa(A, () =>
+      cliente.$transaction(async (tx: unknown) => {
+        await (tx as ClienteLibre).distrito.findMany({ select: { zonas: true } });
+      }),
+    );
+    expect(ejecutadas.map((e) => e.operation)).toEqual(["$executeRaw", "findMany"]);
+    expect(ejecutadas[1].args).toEqual({ select: { zonas: true } });
     expect($transaction).not.toHaveBeenCalled();
   });
 

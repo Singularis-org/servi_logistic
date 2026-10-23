@@ -313,6 +313,10 @@ function makeStore(saldoInicial: string, cierresIniciales: FilaCierre[] = [cierr
         await tic();
         return fila ?? null;
       },
+      // SL-17 T3.9: la clave es unica por empresa y la relectura por clave va por `findFirst`.
+      findFirst(args: { where: { claveIdempotencia?: string; id?: string } }) {
+        return this.findUnique(args);
+      },
       /**
        * §5/R80 — `sumarVigentesPorCierre`. «Vigente» = SIN fila de anulacion, y aqui se aplica
        * de verdad (el store guarda `anulacion`), no se da por bueno.

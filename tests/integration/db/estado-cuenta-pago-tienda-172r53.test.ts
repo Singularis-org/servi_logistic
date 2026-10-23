@@ -68,7 +68,8 @@ describeSiHayBase("458-D m2 — 172 R53: el pago vigente a una tienda sube «Ya 
           esc.maestro,
         );
         if (pago.status !== "ok") throw new Error(`pago a la tienda: ${JSON.stringify(pago)}`);
-        const doc = await tx.liquidacionPago.findUniqueOrThrow({ where: { claveIdempotencia: clave }, select: { id: true } });
+        // SL-17 T3.9: la clave es unica por empresa (organizacion_id, clave_idempotencia).
+        const doc = await tx.liquidacionPago.findFirstOrThrow({ where: { claveIdempotencia: clave }, select: { id: true } });
         const movimientoDelPago = (
           await tx.walletTiendaMovimiento.findFirstOrThrow({
             where: { origenTipo: "pago_tienda", origenId: doc.id, categoria: "pago_tienda" },

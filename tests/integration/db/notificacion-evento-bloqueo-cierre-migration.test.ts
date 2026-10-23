@@ -365,6 +365,7 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
     expect(def).toMatch(/NULLS NOT DISTINCT/i);
     expect(def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
     // Y las cuatro columnas de la clave, en orden.
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
   });
 });

@@ -354,3 +354,157 @@ Logs fuera del repo; la base `sl17_gate` se recreó en cada corrida.
   - Guardias: `Test Files  299 passed (299)`, `Tests  4085 passed | 1 skipped (4086)`.
   - 249 rojos heredados del baseline, que no cuentan.
   - Cliente al final: `CLIENTE_FIN mtime=2026-10-23 00:33:12 organizacion=1`, intacto.
+
+## Tanda 3 — dos empresas (consolidado de los informes; cada test se mató con una mutación)
+
+Incidencia común: de 00:51 a 01:12 el cliente Prisma compartido estuvo regenerado desde otra rama (sin `Organizacion`) con `gate.lock` tomado por otro; los agentes esperaron sin regenerar y el implementer lo regeneró desde SL-17 con el lock a las 01:12:30. Varias mutaciones de `lib/db/extension-empresa.ts` se solaparon en el tiempo (01:13–01:18); cada agente restauró desde `HEAD` y verificó con `cmp`.
+
+**Lección de capas (medida en T3.1, T3.2, T3.3, T3.4):** quitar solo el filtro de la extensión deja los tests en verde porque la RLS de la envoltura filtra sola; quitar solo la bajada a `servi_app` también, porque el filtro basta para las operaciones de modelo. Hay que quitar las dos para ver la fuga. El SQL a mano y los `include` desde un modelo de negocio solo los cubre la RLS; la creación cruzada solo la para el trigger de M3.
+
+### T3.6
+- tests/integration/db/migracion-sl17-ida-y-vuelta.test.ts 7/7 (6,5 s). Base propia sl17_iv_<rand> creada/borrada por el test (desviación de §9.2: M1 actúa sobre public y el clúster; esquema desechable no vale; TEMPLATE exige origen sin conexiones).
+- Aplica migraciones previas sentencia a sentencia (en un script, 20260803120000_caja_tesoreria cae con 55P04).
+- Compara tablas, columnas, constraints, índices, pg_policies, triggers, pg_proc, RLS, ACL (acldefault), default acl, enums, filas.
+- Mutaciones 01:03:57 (sin DROP POLICY whatsapp_envio_por_empresa → el down falla: "no se puede eliminar columna organizacion_id … política … depende") y 01:04:17 (sin INSERT premio_ranking → "falta en filas: premio_ranking = 3"); restaurado 01:04:34. Mutación permanente: down incompleto de ranking_snapshot_fila nombra política, índice, FK y columna.
+- R6 → casos «R6 — M1/M2/M4/M3», R32 → «ni las migraciones ni db:seed crean filas de organizacion» (corre scripts/seed-catalogos.ts real).
+- Aviso: a las ~01:04 el cliente compartido tenía 0 Organizacion con gate.lock tomado (¿T3.9 regenerando?).
+### T3.3
+- tests/integration/db/aislamiento-cierres.test.ts 3/3 (7,2 s). Server actions reales de lib/actions/cierres-admin.ts (listar paginado/completo, verCierreDetalle, aprobar, rechazar) con getPrismaClient() en conEmpresa(B). Siembra commiteada con fijarEmpresa; foto de A con TODAS las tablas con organizacion_id (information_schema); 3 cierres por empresa (solicitado, solicitado, vencido).
+- R30: «B lista los cierres pendientes y ve solo los suyos (y SI los suyos)»; «el detalle de un cierre de A, pedido desde B, es no encontrado»; «B aprueba y rechaza por id cierres de A → no encontrado, y en A no cambia ni se crea nada» (control: los de B sí; vencido de B → conflict).
+- Mutación M1 01:14:15 solo filtro: sigue verde (la RLS sola bloquea). M2 01:14:36 filtro + sin bajar a servi_app: 3/3 rojo ("expected [6] to deeply equal [3]"; detalle de A abierto; INTERNAL por EmpresaCruzada: el trigger rechaza resuelto_por de B sobre cierre de A = tercera barrera). Restaurado con cmp.
+- Incidencia: rojo espurio 01:13:30 por ventana de mutación de otro agente sobre extension-empresa.ts.
+### T3.5
+- tests/integration/db/aislamiento-rls.test.ts 9/9 (2,3 s). SQL a mano en transacción revertida con comoApp; cliente de la app con orgs commiteadas.
+- R17/R20 «con la empresa B, SELECT/UPDATE/DELETE sin WHERE…»; R17 WITH CHECK/R10 base (INSERT con A → 42501); R19 (0 filas, INSERT 42501 — no 23502: la política rechaza antes del NOT NULL); R21 (pool 1, mismo pid, current_user dueño, setting ''); R22 (catálogos legibles; Session, trusted_device, usuario solo de B; email_otp_challenge y login_attempt no cubiertos aquí); R40 (6 × 42501, fila intacta); R18 ($queryRaw sin filtro → solo B, current_user servi_app, también en $transaction); R10 (4 escrituras → EmpresaCruzada); R11 ($queryRaw/$executeRaw sin contexto → EmpresaNoResuelta, 0 filas).
+- Mutaciones (base propia): 01:14:16 DROP POLICY zona_por_empresa → rojo (falla cerrado: B no ve las suyas); 01:14:42 DISABLE RLS en zona → 5 rojos (B ve 6 en vez de 2, INSERT con A pasa…); 01:14:59 como dueño (fijarEmpresa en vez de comoApp) → rojo [6] vs [2]; 01:15:16 GRANT escritura en vehiculos → R40 rojo. Todo restaurado.
+### T3.7
+- tests/integration/db/aislamiento-fk-misma-empresa.test.ts 10/10 (1,6 s). Semillas commiteadas; casos SQL en tx revertida con lock y SAVEPOINT por sentencia.
+- R37: «INSERT por SQL a mano, como dueno, de una orden de B con la tienda de A → SL017 que nombra orden.tienda_id»; «el mismo INSERT como servi_app»; «UPDATE que mueve orden.zona_id → SL017»; «R37 por el cliente de la app: create… → EmpresaCruzada» (create con escalares, sin lectura previa). Excepciones: historial_accion con superadmin pasa; FK nula pasa; inexistente 23503. Control: orden de B con FK de B pasa. R38: «cambiar el organizacion_id de una orden existente → SL017».
+- Mutación 01:12:57 DROP TRIGGER sme_orden_tienda_id_c85426db → 4 rojos («expected { ok: true } to deeply equal { ok: false, sqlstate: 'SL017' …}», «expected null to be an instance of EmpresaCruzada»); 01:13:27 DROP orden_sin_cambio_de_empresa → R38 rojo. Restaurado (pg_get_triggerdef idéntico).
+- Nota: el SL017 por Prisma llega como DriverAdapterError; el test comprueba el mensaje de la causa.
+### T3.4
+- tests/integration/db/aislamiento-usuarios.test.ts 13/13. Servicio y repositorio reales de configuracion/usuarios; datos commiteados con sufijo RUN.
+- R31 (listar, buscar nombre exacto, descarga completa, obtener/editar/estado por id → not_found; control B edita lo suyo; superadmin no sale), R3 (solo usuario nulable, recorre MODELOS_DE_NEGOCIO; INSERT NULL en zona → 23502), R35 (conEmpresa(B) pone B; plataforma sin clave → UsuarioSinEmpresa; null explícito → superadmin), R36 (email y cédula P2002 entre empresas; UsuarioDuplicadoError por repo), R14 (resolutor null → EmpresaNoResuelta).
+- Mutaciones 01:13:19 filtro+envoltura+rol quitados → 4 rojos («Set{7} vs Set{3}», B editó a A); 01:13:50 sin exigirEmpresaDeclaradaEnUsuario → R35 rojo. Restaurado (cmp).
+- Defensa en profundidad: quitar solo el filtro no basta; la RLS protege update/setEstado.
+- tsc pendiente: estado-cuenta-cierre-pagos-172r52.test.ts:179 y estado-cuenta-pago-tienda-172r53.test.ts:71 (LiquidacionPagoWhereUniqueInput, por T3.9), dos-empresas-entradas.test.ts:343-344, aislamiento-ordenes.test.ts (4).
+### T3.2
+- tests/integration/db/aislamiento-wallet.test.ts 5/5 (10,2 s). Server actions reales (molde 459), datos commiteados con conCandado459; huella por organizacion_id y por persona medida con cliente base; importes A grandes, B pequeños.
+- R29 caja («el resumen de B no se mueve al sembrar el dinero de A…»), tiendas (saldos 2750.00/-1400.00 vs A 71000.00; estado de cuenta de A no_encontrado), mensajeros (1000.00 vs 38000.00), escrituras de B con recursos de A (cobro/abono validation_error, pago sin_saldo, pago contra cierre de A no_encontrado; R37 crearMovimientos sin lectura previa → EmpresaCruzada), anular por id → no_encontrado (control: B anula lo suyo).
+- Mutaciones: 01:15:54 filtro+rol → 5/5 rojo; solo filtro / solo rol → verde (cada barrera aguanta sola); 01:17:27 DROP trigger sme_wallet_tienda_movimiento_tienda_id_c8fc54ba → R37 rojo ("promise resolved 1 instead of rejecting"). Restaurado.
+- Dato: listarCuentasPorPagarTodos es groupBy sin WHERE y queda aislado por extensión + RLS.
+### T3.8
+- tests/integration/db/dos-empresas-entradas.test.ts 12/12 (~17 s). Rutas reales handle*; empresas = organizacion.findMany filtrado a A y B; drenador con run_after/now de 2001 para no reclamar jobs ajenos; limpieza con session_replication_role=replica.
+- R16: corte-diario (procesadas 2), generar-gastos-fijos (y fallo en A por CHECK monto>0 → fallidas [A], B termina), liberar-reprogramadas, procesar-devueltas-sla, snapshot-ranking (depende de T3.9: único (organizacion_id, fecha)).
+- R42: job en A guarda A, en B guarda B, cada uno libera lo suyo (handler liberar_reprogramadas); recurrente sin empresa itera las dos.
+- R13: key de A crea orden en A (carga/route.ts POST); key de B no la ve; B no cancela la guía de A (404; con A 409).
+- Mutaciones: 01:17:24 drenador sin conEmpresa → «expected 'reprogramado' to match /^en_bodega_/»; 01:17:54 paraCadaEmpresa sin conEmpresa → 7/7 rojo. Restaurado.
+- HALLAZGO (fuga real): lectura de modelo de plataforma con relación de negocio anidada (distrito.findUnique({select:{zonas}})) en conEmpresa(X) devuelve zonas de X y de OTRA: la extensión no envuelve modelos de plataforma → corre como dueño sin RLS. Afecta OrdenRepository.findDistritosByCantonIds (carga por API: distrito cubierto por A y B → ambiguo, y A ve zonas de B). Lo mismo implica que escribir vehiculos/geografía en contexto de empresa pasaría como dueño (R40 por la app). Arreglo: envolver también modelos de plataforma en contexto de empresa.
+### T3.1
+- tests/integration/db/aislamiento-ordenes.test.ts 15/15. OrdenRepository, OrdenService.listar, EliminarOrdenService, BulkOrdenService.cargarMasiva sobre conAislamientoPorEmpresa en conEmpresa(B); siembra commiteada.
+- Casos: listado; búsqueda texto; búsqueda guía; findById; findUnique/findFirstOrThrow/findUniqueOrThrow (null/P2025); count/aggregate/groupBy; update desde repositorio (null, fila igual); update/delete/updateMany/deleteMany (P2025/0); borrado por servicio (conflict «orden no existe»); softDelete SQL a mano (0 para A); R9 carga masiva de B → organizacion_id B; crear con tienda de A → EmpresaCruzada, 0 filas.
+- Mutaciones: 01:18:05 M1 solo filtro → 15 verde (RLS cubre); 01:18:11 M2 sin rol → 1 rojo (softDelete SQL a mano); 01:18:17 M1+M2 → 10 rojos («expected [4] to deeply equal [2]»); 01:20:02 M4 triggers sme_* deshabilitados → 1 rojo (crear con tienda de A pasa).
+- Capas: modelo → filtro o RLS; SQL a mano e include desde negocio → RLS; creación cruzada → trigger.
+- FUGA 1 (misma que T3.8): extension-empresa.ts:194 `if (!esSqlAMano && !esNegocio) return query(args)` — plataforma sin envoltura en contexto de empresa.
+- FUGA 2: BulkOrdenService.cargarMasiva sin lectura previa de la tienda (findUsuarioFulfillment l.2564 convierte tienda invisible en fulfillment=false); solo la para SL017 → EmpresaCruzada modelo "desconocido". tasks.md pide «no encontrado».
+- Casos «HALLAZGO R7…» y «HALLAZGO R7/R9…» afirman la fuga hoy → cambiar al arreglar.
+
+### T3.9 Únicos por empresa y podio (decisión del leader del 2026-10-23)
+- Migración nueva `20261023090000_unicos_por_empresa` (+ `down.sql` que aborta nombrando el índice si hay duplicados entre empresas). M2 no se tocó: borrar las 3 filas de podio sin empresa es inevitable con `organizacion_id NOT NULL`; el podio de cada empresa lo crea `altaEmpresa` en su transacción y el de empresas previas lo siembra la migración nueva.
+- 77 únicos en las 73 tablas: **18 por empresa** (compuestos con `organizacion_id` primero, conservando el nombre del índice para que la traducción de P2002 siga), **7 globales a propósito**, **52 sin cambio** (anclados por una FK de negocio NOT NULL; M3 impide mezclar empresas). Secuencias sin tocar (SL-18).
+- Siete lecturas por clave de idempotencia y tres por `fecha` pasan de `findUnique` a `findFirst` (la extensión pone la empresa). `PremioRankingRepository.upsertPremio` usa `organizacionId_posicion` con `contextoActual()` (sin empresa → `EmpresaNoResuelta`).
+- Tests: `tests/integration/db/unicos-por-empresa.test.ts` 30/30 (los 18: dos empresas conviven y la misma empresa repetida da 23505; los 7 globales siguen globales; tabla real `zona`; ida y vuelta). `organizacion-alta.test.ts` 9/9 (podio de 3 filas por empresa, rollback sin podio). Drift vacío. `tsc` 0.
+- Mutaciones: 01:29:54 `zona_nombre_key` global → 5 rojos (`expected 23505 to be null`); 01:30:12 alta sin `createMany` → 2 rojos; 01:31:09 alta sin `$transaction` → 2 rojos.
+- Hallazgo (deuda SL-18/SL-19): `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global; un dispositivo que pasa de A a B choca (P2002) y A sigue enviándole push.
+- Tests existentes ajustados por el cambio (literal explícito con comentario SL-17 T3.9): lecturas de `estado-cuenta-*-172r5x`, dobles de repositorios de liquidación/ranking, 9 tests de migración de `notificacion` y los de `liquidacion-reparto`, `ranking-snapshot`, `wallet-461`, `whatsapp-envios`, `zonas`, la guardia `ranking-ventana-dia`.
+
+#### Tabla de únicos de las tablas de negocio
+
+| Tabla | Indice | Columnas | Decision | Motivo |
+|---|---|---|---|---|
+| abono_tienda | abono_tienda_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| abono_tienda_anulacion | abono_tienda_anulacion_abono_id_key | (abono_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ajuste_caja_anulacion | ajuste_caja_anulacion_movimiento_id_key | (movimiento_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| analytics_daily | analytics_daily_grano_key | (fecha, zona_id, tienda_id, mensajero_id, estatus_id, causa_devolucion) NULLS NOT DISTINCT | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| api_key | api_key_key_hash_key | (key_hash) | global a proposito | la key identifica a la empresa |
+| api_key | api_key_usuario_id_key | (usuario_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| aporte_capital | aporte_capital_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| aporte_capital_anulacion | aporte_capital_anulacion_aporte_id_key | (aporte_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| asistente_uso_diario | asistente_uso_diario_usuario_id_fecha_key | (usuario_id, fecha) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| carga | carga_usuario_carga_name_key | (usuario_carga, name) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| chat_conversacion | chat_conversacion_orden_id_telefono_e164_key | (orden_id, telefono_e164) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| chat_mensaje | chat_mensaje_wa_message_id_key | (wa_message_id) WHERE (wa_message_id IS NOT NULL) | global a proposito | id externo de Meta |
+| cierre_detail | cierre_detail_cierre_id_orden_id_key | (cierre_id, orden_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| cierre_rechazo_tienda | cierre_rechazo_tienda_gestion_id_key | (gestion_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| cierre_sin_gestion | cierre_sin_gestion_cierre_id_orden_id_key | (cierre_id, orden_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| cobro_tienda_anulacion | cobro_tienda_anulacion_cobro_id_key | (cobro_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| devolucion_tienda_evidencia | devolucion_tienda_evidencia_comprobante_id_indice_key | (comprobante_id, indice) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| gasto_fijo_cobro | gasto_fijo_cobro_movimiento_uq | (movimiento_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| gasto_fijo_cobro | gasto_fijo_cobro_origen_uq | (origen_id) | por empresa | dedupe «<plantillaId>:<periodo>», texto sin FK |
+| gestion_orden_evidencia | gestion_orden_evidencia_gestion_id_indice_key | (gestion_id, indice) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| gestion_orden_pago | gestion_orden_pago_gestion_id_metodo_key | (gestion_id, metodo) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| liquidacion_anulacion | liquidacion_anulacion_pago_id_key | (pago_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| liquidacion_pago | liquidacion_pago_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| liquidacion_reparto | liquidacion_reparto_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| mensajero_documento | mensajero_documento_usuario_id_tipo_key | (usuario_id, tipo) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| notificacion | notificacion_dedupe_key | (evento, entidad_id, destinatario_rol, destinatario_usuario_id) NULLS NOT DISTINCT WHERE (entidad_id IS NOT NULL) | por empresa | dedupe de avisos; `entidad_id` polimorfico y destinatario solo-rol (NULL) |
+| notificacion_lectura | notificacion_lectura_notificacion_id_usuario_id_key | (notificacion_id, usuario_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| orden | orden_num_guia_key | (num_guia) | global a proposito | rastreo publico por guia sin empresa (design §7); la secuencia es SL-18 |
+| orden | orden_tienda_id_num_remision_key | (tienda_id, num_remision) WHERE (deleted_at IS NULL) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| orden_evento | orden_evento_gestion_registrada_uq | (gestion_orden_id) WHERE (tipo = 'gestion_registrada'::orden_evento_tipo) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| orden_incidente | orden_incidente_orden_vivo_uq | (orden_id) WHERE (estado <> 'rechazado'::cierre_estado) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| orden_incidente_evidencia | orden_incidente_evidencia_incidente_id_indice_key | (incidente_id, indice) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| orden_mensajero_meta | orden_mensajero_meta_usuario_id_orden_id_key | (usuario_id, orden_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| pago_mensajero_movimiento | pago_mensajero_movimiento_origen_uq | (origen_tipo, origen_id, mensajero_id, categoria) WHERE ((origen_id IS NOT NULL) AND (categoria <> ALL (ARRAY['premio_ranking'::pago_mensajero_movimiento_categoria, 'ajuste_pago'::pago_mensajero_movimiento_categoria]))) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| pago_mensajero_movimiento | pago_mensajero_movimiento_premio_dia_uq | (mensajero_id, premio_dia) WHERE (categoria = 'premio_ranking'::pago_mensajero_movimiento_categoria) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| pago_mensajero_movimiento | pago_mensajero_movimiento_premio_reverso_uq | (mensajero_id, premio_dia) WHERE ((categoria = 'ajuste_pago'::pago_mensajero_movimiento_categoria) AND (premio_dia IS NOT NULL)) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| pago_por_cuenta_tienda | pago_por_cuenta_tienda_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| pago_por_cuenta_tienda_anulacion | pago_por_cuenta_tienda_anulacion_pago_id_key | (pago_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| plantilla_mensaje | plantilla_mensaje_nombre_key | (nombre) | por empresa | catalogo propio de la empresa |
+| plantilla_mensaje | plantilla_mensaje_welcome_message_key | (welcome_message) WHERE ((welcome_message = true) AND (deleted_at IS NULL)) | por empresa | una bienvenida vigente por empresa |
+| premio_ranking | premio_ranking_posicion_key | (posicion) | por empresa | cada empresa tiene su podio |
+| push_envio_dia | push_envio_dia_cupo | (usuario_id, evento, dia_cr) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| push_suscripcion | push_suscripcion_endpoint_key | (endpoint) | global a proposito | id externo del servicio de push: un dispositivo, un dueno (ver hallazgo) |
+| ranking_snapshot_dia | ranking_snapshot_dia_fecha_key | (fecha) | por empresa | cada empresa congela su dia |
+| ranking_snapshot_fila | ranking_snapshot_fila_snapshot_id_mensajero_id_key | (snapshot_id, mensajero_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ranking_snapshot_fila | ranking_snapshot_fila_snapshot_id_posicion_uq | (snapshot_id, posicion) WHERE (posicion IS NOT NULL) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ranking_snapshot_fila | ranking_snapshot_fila_snapshot_id_puesto_key | (snapshot_id, puesto) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| rechazo_tienda_cobro | rechazo_tienda_cobro_gestion_uq | (gestion_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| rechazo_tienda_cobro_anulacion | rechazo_tienda_cobro_anulacion_cobro_id_key | (cobro_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ruta_optimizada | ruta_optimizada_mensajero_id_key | (mensajero_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ruta_optimizada_parada | ruta_optimizada_parada_ruta_id_orden_id_key | (ruta_id, orden_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| ruta_optimizada_parada | ruta_optimizada_parada_ruta_id_secuencia_key | (ruta_id, secuencia) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| tarifa_zona_mensajero | tarifa_zona_mensajero_zona_id_vehiculo_id_key | (zona_id, vehiculo_id) NULLS NOT DISTINCT | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| tarifas | tarifas_zona_id_tienda_id_key | (zona_id, tienda_id) NULLS NOT DISTINCT | por empresa | la tarifa por defecto (NULL, NULL) chocaba entre empresas |
+| usuario | usuario_cedula_key | (cedula) | global a proposito | R36 |
+| usuario | usuario_email_key | (email) | global a proposito | R36: una persona, una cuenta en la plataforma |
+| usuario_preferencia | usuario_preferencia_usuario_id_key | (usuario_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| vista_filtro | vista_filtro_dueno_superficie_nombre_key | (usuario_id, superficie, nombre) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| wallet_anotacion | wallet_anotacion_movimiento_id_key | (movimiento_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| wallet_comprobante | wallet_comprobante_caja_movimiento_id_key | (caja_movimiento_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| wallet_comprobante | wallet_comprobante_liquidacion_pago_id_key | (liquidacion_pago_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| wallet_comprobante | wallet_comprobante_tienda_movimiento_id_key | (tienda_movimiento_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| wallet_movimiento | wallet_movimiento_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| wallet_movimiento | wallet_movimiento_origen_categoria_uq | (origen_tipo, origen_id, categoria) WHERE (origen_id IS NOT NULL) | por empresa | dedupe de la caja; `origen_id` polimorfico, sin FK |
+| wallet_tienda_movimiento | wallet_tienda_movimiento_clave_idempotencia_key | (clave_idempotencia) | por empresa | clave de idempotencia del cliente, sin FK |
+| wallet_tienda_movimiento | wallet_tienda_movimiento_origen_uq | (origen_tipo, origen_id, tienda_id, categoria) WHERE (origen_id IS NOT NULL) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| webhook_suscripcion | webhook_suscripcion_owner_usuario_id_key | (owner_usuario_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio | whatsapp_envio_nombre_vigente_key | (nombre) WHERE (deleted_at IS NULL) | por empresa | catalogo propio de la empresa |
+| whatsapp_envio_destinatario | whatsapp_envio_destinatario_rol_key | (envio_id, rol) WHERE (rol IS NOT NULL) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio_destinatario | whatsapp_envio_destinatario_usuario_key | (envio_id, usuario_id) WHERE (usuario_id IS NOT NULL) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio_ejecucion | whatsapp_envio_ejecucion_evento_key | (envio_id, evento_clave, evento_referencia) WHERE (origen = 'evento'::whatsapp_envio_origen) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio_ejecucion | whatsapp_envio_ejecucion_programado_key | (envio_id, fecha_cr) WHERE (origen = 'programado'::whatsapp_envio_origen) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio_entrega | whatsapp_envio_entrega_ejecucion_usuario_key | (ejecucion_id, usuario_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+| whatsapp_envio_entrega | whatsapp_envio_entrega_wa_message_id_key | (wa_message_id) WHERE (wa_message_id IS NOT NULL) | global a proposito | id externo de Meta |
+| zona | zona_es_central_unico | (es_central) WHERE (es_central = true) | por empresa | una zona central por empresa |
+| zona | zona_nombre_key | (nombre) | por empresa | catalogo propio de la empresa |
+| zona_distrito | zona_distrito_zona_id_distrito_id_key | (zona_id, distrito_id) | sin cambio (anclado) | lleva una FK NOT NULL (o exigida por el predicado) a una fila de negocio: ya es de una empresa (M3) |
+
+### T3.10 Fugas destapadas por T3.1 y T3.8 (arregladas)
+- **Fuga 1:** `lib/db/extension-empresa.ts` dejaba pasar los modelos de plataforma en contexto de empresa sin envoltura (como dueño, sin RLS): `distrito.findUnique({ select: { zonas } })` en `conEmpresa(B)` traía zonas de A, la carga por API de un distrito cubierto por A y B lo daba por ambiguo, y escribir `vehiculos` desde una empresa pasaba. **Arreglo:** en contexto de empresa (explícito o resuelto por la sesión), todo lo que no es de negocio va con la envoltura y sin filtro; dentro de una `$transaction` de empresa, tal cual; sin empresa o en plataforma, tal cual. **Desviación del design §6.1** (fila «modelo de plataforma»): queda para que el spec la recoja.
+- **Fuga 2:** `BulkOrdenService.cargarMasiva` no leía la tienda antes de escribir (solo la paraba el trigger `SL017`). Ahora una tienda que no existe para la empresa da `errores: { tienda: ["tienda no encontrada"] }`, `creadas: 0` y nada persistido. `findUsuarioFulfillment` devuelve `null` si no resuelve (firma de `IOrdenRepository` ampliada).
+- Los casos que afirmaban la fuga pasan a exigir lo correcto: «R7: B, leyendo un distrito que cubren las dos empresas con sus zonas, solo ve la suya», «R7/R9: la carga masiva de B en un distrito que también cubre A crea la orden en la zona de B», «R13: A y B cubren el MISMO distrito y la carga por API de A crea la orden en la zona de A», «R40: el cliente de la app con la empresa B no puede crear, renombrar ni borrar un vehiculo», «crear desde B con la tienda de A: tienda no encontrada» y «sin la lectura previa, la red es la base». `schema-drift-saneamiento` incluye `organizacion`.
+- Tests (base `sl17_t310`, por archivo): ordenes 16/16, rls 11/11, cierres 3/3, fk 10/10, mecanismo 8/8, usuarios 13/13, wallet 5/5, entradas 12/12, alta 9/9, únicos 30/30, ida y vuelta 7/7, schema-drift 16/16, `tests/unit/db/` 171/171, bulk 169/169, orden-repository 47/47, carga masiva y API, vehículos y geografía en verde. `tsc` 0.
+- Mutaciones: 01:51:20 revertir fuga 1 → 2 rojos en ordenes («expected [2] to deeply equal [1]»; «el distrito … no tiene zona asignada»), 2 en rls (R40: «expected { create: null, update: null, …}»), 1 en entradas y 9 unitarios; 01:52:02 revertir fuga 2 → «EmpresaCruzada: Datos de otra empresa en desconocido» en vez de «tienda no encontrada». Restaurado con cmp.
+- Efectos revisados: login/OTP/trusted_device (plataforma), logout y borrado de sesiones (dueño visible), `geocode_cache` y `jobs` (política true) siguen funcionando.
+- **Para el leader/spec:** (1) `configuracion/vehiculos` y `crear/renombrarNodoGeografico` fallan cerrado pero con un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); (2) `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar (ya ocurría antes de T3.10: van por una `$transaction` de empresa); (3) `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, marca del flujo de Tarifas en una tabla de plataforma: con R40 el maestro ya no puede marcar zonas especiales; el design §3 solo deja editables `zona` y `zona_distrito`. Decisión pendiente.

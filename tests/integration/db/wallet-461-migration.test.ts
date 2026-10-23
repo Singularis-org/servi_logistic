@@ -75,7 +75,8 @@ describeSiHayBase("461 — migraciones 4, 5 y 6 (auditoria D2/D3/T2) contra Post
       { table_name: "wallet_tienda_movimiento", is_nullable: "YES", data_type: "text" },
     ]);
     const indices = await prisma.$queryRawUnsafe<{ tablename: string; indexname: string; indexdef: string }[]>(
-      `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexdef LIKE '%(clave_idempotencia)%'
+      // SL-17 T3.9: la clave es unica por empresa: `(organizacion_id, clave_idempotencia)`.
+      `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexdef LIKE '%(organizacion_id, clave_idempotencia)%'
           AND tablename IN ('wallet_movimiento','wallet_tienda_movimiento') ORDER BY 1`,
     );
     expect(indices.map((i) => [i.tablename, i.indexname, /UNIQUE/.test(i.indexdef)])).toEqual([

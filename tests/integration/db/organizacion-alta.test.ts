@@ -2,9 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
-import { comoPlataforma } from "@/lib/db/contexto-empresa";
+import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PremioRankingRepository } from "@/lib/repositories/PremioRankingRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
@@ -49,13 +50,27 @@ function alta(input: unknown): Promise<AltaEmpresaResultado> {
 // Acotado a lo que esta ejecución puede escribir (todo slug pasa por `entrada`, y todo email o
 // documento lleva `RUN`): un conteo global se rompía cuando otros archivos de la suite commitean
 // organizaciones en paralelo. Una escritura de más de ESTE test sigue apareciendo aquí.
-async function filas(): Promise<{ organizaciones: number; usuarios: number }> {
-  const [organizaciones, usuarios] = await Promise.all([
+async function filas(): Promise<{ organizaciones: number; usuarios: number; podio: number }> {
+  const [organizaciones, usuarios, podio] = await Promise.all([
     base.organizacion.count({ where: { slug: { in: [...slugsCreados] } } }),
     base.usuario.count({ where: { OR: [{ email: { contains: RUN } }, { cedula: { contains: RUN } }] } }),
+    // SL-17 T3.9: el podio que siembra el alta, de las empresas de esta ejecución.
+    base.premioRanking.count({ where: { organizacion: { slug: { in: [...slugsCreados] } } } }),
   ]);
-  return { organizaciones, usuarios };
+  return { organizaciones, usuarios, podio };
 }
+
+/** El podio de una empresa tal como quedó en la base, sin pasar por la extensión. */
+async function podioDe(organizacionId: string) {
+  return base.premioRanking.findMany({
+    where: { organizacionId },
+    select: { organizacionId: true, posicion: true, monto: true, descripcion: true },
+    orderBy: { posicion: "asc" },
+  });
+}
+
+const podioVacio = (organizacionId: string) =>
+  [1, 2, 3].map((posicion) => ({ organizacionId, posicion, monto: null, descripcion: null }));
 
 describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
   beforeAll(() => {
@@ -70,6 +85,7 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     const usuarios = await base.usuario.findMany({ where: { organizacionId: { in: ids } }, select: { id: true } });
     const uids = usuarios.map((u) => u.id);
     await base.emailOtpChallenge.deleteMany({ where: { usuarioId: { in: uids } } });
+    await base.premioRanking.deleteMany({ where: { organizacionId: { in: ids } } });
     await base.usuario.deleteMany({ where: { id: { in: uids } } });
     await base.organizacion.deleteMany({ where: { id: { in: ids } } });
     await base.$disconnect();
@@ -84,7 +100,13 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
 
     expect(r.estado).toBe("creada");
     if (r.estado !== "creada") return;
-    expect(await filas()).toEqual({ organizaciones: antes.organizaciones + 1, usuarios: antes.usuarios + 1 });
+    expect(await filas()).toEqual({
+      organizaciones: antes.organizaciones + 1,
+      usuarios: antes.usuarios + 1,
+      podio: antes.podio + 3,
+    });
+    // SL-17 T3.9: el podio de la empresa nueva, con su empresa y sin premio asignado.
+    expect(await podioDe(r.organizacionId)).toEqual(podioVacio(r.organizacionId));
 
     const org = await base.organizacion.findUniqueOrThrow({ where: { id: r.organizacionId } });
     expect(org).toMatchObject({ slug, nombre: `Empresa ${slug}` });
@@ -97,6 +119,30 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     for (const intento of ["", " ", "password", "12345678", email, maestro.cedula, maestro.telefono, maestro.passwordHash]) {
       expect(await verifyPassword(intento, maestro.passwordHash)).toBe(false);
     }
+  });
+
+  it("SL-17 T3.9: dos empresas tienen cada una su podio, y el premio de una no toca el de la otra", async () => {
+    const a = await alta(entrada(conSufijo("podio-a"), `podio-a-${RUN}@ejemplo.test`, `doc-podio-a-${RUN}`));
+    const b = await alta(entrada(conSufijo("podio-b"), `podio-b-${RUN}@ejemplo.test`, `doc-podio-b-${RUN}`));
+    expect([a.estado, b.estado]).toEqual(["creada", "creada"]);
+    if (a.estado !== "creada" || b.estado !== "creada") return;
+
+    // Con el único global de antes, la segunda alta chocaba con la posición 1 de la primera.
+    expect(await podioDe(a.organizacionId)).toEqual(podioVacio(a.organizacionId));
+    expect(await podioDe(b.organizacionId)).toEqual(podioVacio(b.organizacionId));
+
+    // El repositorio real del podio, con la empresa A fijada, solo ve y toca el de A.
+    const repo = new PremioRankingRepository(app);
+    const enA = await conEmpresa(a.organizacionId, async () => {
+      await repo.upsertPremio(1, { monto: "15000.00", descripcion: "Oro A" });
+      return repo.listar();
+    });
+    expect(enA).toEqual([
+      { posicion: 1, monto: "15000.00", descripcion: "Oro A" },
+      { posicion: 2, monto: null, descripcion: null },
+      { posicion: 3, monto: null, descripcion: null },
+    ]);
+    expect(await podioDe(b.organizacionId)).toEqual(podioVacio(b.organizacionId));
   });
 
   it("R45: el mismo slug con el mismo email es idempotente y no escribe", async () => {
@@ -147,7 +193,10 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     const r = await alta(entrada(slugB, email, `doc-dup-b-${RUN}`));
 
     expect(r).toEqual({ estado: "conflicto", campo: "email" });
+    // SL-17 T3.9: `filas()` cuenta también el podio, que el alta escribe ANTES del maestro: el
+    // choque del email se lo lleva con el rollback.
     expect(await filas()).toEqual(antes);
+    expect(antes.podio).toBeGreaterThan(0);
     expect(await base.organizacion.findUnique({ where: { slug: slugB } })).toBeNull();
   });
 

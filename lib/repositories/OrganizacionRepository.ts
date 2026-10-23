@@ -27,6 +27,9 @@ export class OrganizacionRepository implements IOrganizacionRepository {
   }
 }
 
+/** Las posiciones que admite el CHECK de `premio_ranking` (R8 de la feature 76). */
+const POSICIONES_DEL_PODIO = [1, 2, 3] as const;
+
 async function altaEnTransaccion(
   tx: Prisma.TransactionClient,
   datos: AltaEmpresaDatos,
@@ -55,6 +58,14 @@ async function altaEnTransaccion(
     select: { id: true },
   });
   await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${organizacion.id}, true)`;
+
+  // SL-17 T3.9: el podio del ranking es configuracion de cada empresa (una fila por posicion, monto
+  // NULL = sin premio) y su repositorio solo actualiza: sin estas filas, el maestro no podria fijar
+  // ningun premio. Va antes del maestro y en la misma transaccion: si el email o el documento
+  // chocan, el rollback se lleva tambien el podio.
+  await tx.premioRanking.createMany({
+    data: POSICIONES_DEL_PODIO.map((posicion) => ({ posicion, organizacionId: organizacion.id })),
+  });
 
   const maestro = await tx.usuario.create({
     data: {

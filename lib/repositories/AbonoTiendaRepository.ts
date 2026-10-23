@@ -151,7 +151,8 @@ export class AbonoTiendaRepository implements IAbonoTiendaRepository {
   }
 
   async obtenerPorClave(claveIdempotencia: string): Promise<AbonoTiendaRegistro | null> {
-    const row = await this.prisma.abonoTienda.findUnique({
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.abonoTienda.findFirst({
       where: { claveIdempotencia },
       include: INCLUDE_REGISTRO,
     });

@@ -1596,10 +1596,10 @@ export interface IOrdenRepository {
   findEstatusIdByValue(value: string): Promise<string | null>;
   /**
    * Feature 27/R15/R16/R17: lee `usuario.fulfillment` de la tienda que realiza la
-   * carga masiva (el `adminTienda` autenticado). `false` por defecto si el usuario
-   * no resuelve, coherente con el default de la columna (R3).
+   * carga masiva (el `adminTienda` autenticado). `null` si el usuario no resuelve: SL-17
+   * (D15) la usa de lectura previa, y una tienda de otra empresa es «no encontrada».
    */
-  findUsuarioFulfillment(usuarioId: string): Promise<boolean>;
+  findUsuarioFulfillment(usuarioId: string): Promise<boolean | null>;
   // BORRADO 2026-08-07 (tanda 2): `existsGeo`. Ver la lapida de `GeoExistence` arriba.
 
   // --- Feature 15: carga masiva (metodos batch, R19/R21/R22/R25/R27) ---

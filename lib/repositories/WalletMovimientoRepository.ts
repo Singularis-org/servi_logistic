@@ -397,7 +397,8 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
 
   /** Ficha 461 (R68): la fila que lleva ESA clave de idempotencia (columna UNIQUE), o null. */
   async obtenerPorClave(claveIdempotencia: string): Promise<WalletMovimientoDTO | null> {
-    const row = await this.prisma.walletMovimiento.findUnique({ where: { claveIdempotencia } });
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.walletMovimiento.findFirst({ where: { claveIdempotencia } });
     return row === null ? null : toDTO(row);
   }
 

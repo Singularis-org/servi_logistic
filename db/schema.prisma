@@ -230,7 +230,7 @@ enum PlantillaEstado {
 // por el cuerpo se persiste como ARRAY de claves (Decision humana 4; R15), text[] nativo.
 model PlantillaMensaje {
   id               String          @id @default(uuid())
-  nombre           String          @unique // R10: identificador unico
+  nombre           String          // R10: identificador unico
   cuerpo           String // texto con placeholders {{clave}}
   // `@default([])` NO es cosmetico: la migracion `20260722130000_plantilla_mensaje` creo la
   // columna `text[] NOT NULL DEFAULT '{}'` como REQUISITO escrito (R12/R15/R27: "nunca null").
@@ -292,6 +292,7 @@ model PlantillaMensaje {
   @@index([createdAt]) // R6: orden determinista del listado
   @@index([estado]) // filtro por estado
   @@index([deletedAt]) // R28: filtro de vigentes (deletedAt IS NULL)
+  @@unique([organizacionId, nombre], map: "plantilla_mensaje_nombre_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("plantilla_mensaje")
 }
@@ -551,7 +552,7 @@ model OrderStatus {
 // 15) deriva `orden.zona_id` del DISTRITO de la orden (`distrito.zona_id`).
 model Zona {
   id            String  @id @default(uuid())
-  nombre        String  @unique // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
+  nombre        String  // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
   cobroVehiculo Boolean @default(false) @map("cobro_vehiculo") // feature 24: cobro extra por vehiculo en esta zona
   esCentral     Boolean @default(false) @map("es_central") // feature 54: flag de zona central (renombrado del viejo es_gam); a lo sumo una via indice unico parcial
 
@@ -607,6 +608,7 @@ model Zona {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
+  @@unique([organizacionId, nombre], map: "zona_nombre_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("zona")
 }
@@ -1684,10 +1686,10 @@ model Tarifa {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@unique([zonaId, tiendaId])
   @@index([createdAt])
   @@index([tiendaId])
   @@index([zonaId])
+  @@unique([organizacionId, zonaId, tiendaId], map: "tarifas_zona_id_tienda_id_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("tarifas")
 }
@@ -1878,7 +1880,7 @@ model WalletMovimiento {
   // cierre, contra-asientos, migraciones de datos), que sigue deduplicando por `(origen_tipo,
   // origen_id, categoria)`. Molde: `pago_por_cuenta_tienda.clave_idempotencia`, aqui en la propia
   // fila porque estos movimientos no tienen documento aparte.
-  claveIdempotencia String?                   @unique @map("clave_idempotencia")
+  claveIdempotencia String?                   @map("clave_idempotencia")
   // SIN updatedAt / deletedAt: la fila es INMUTABLE (R3). No hay soft-delete.
 
   registrador     Usuario?             @relation("WalletMovimientoRegistrador", fields: [registradoPor], references: [id])
@@ -1903,6 +1905,7 @@ model WalletMovimiento {
   @@index([fechaMovimiento]) // R24: listado del libro por fecha (desc)
   @@index([tipo, categoria]) // R24: filtros por tipo/categoria
   @@index([origenTipo, origenId]) // R24: buscar movimientos de un origen
+  @@unique([organizacionId, claveIdempotencia], map: "wallet_movimiento_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("wallet_movimiento")
 }
@@ -1995,7 +1998,7 @@ model WalletTiendaMovimiento {
   createdAt         DateTime                        @default(now()) @map("created_at")
   // Ficha 461 (R66/R67, auditoria D2): la clave de idempotencia del CLIENTE del cobro de la empresa a la
   // tienda (`cobro_manual`). UNIQUE: dos envios con la misma clave son UN cobro. NULL en el resto.
-  claveIdempotencia String?                         @unique @map("clave_idempotencia")
+  claveIdempotencia String?                         @map("clave_idempotencia")
   // SIN updatedAt / deletedAt: la fila es INMUTABLE (R3). No hay soft-delete.
 
   tienda         Usuario               @relation("WalletTiendaMovimientoTienda", fields: [tiendaId], references: [id])
@@ -2013,6 +2016,7 @@ model WalletTiendaMovimiento {
   @@index([tiendaId, fechaMovimiento]) // R26: saldo/listado por tienda por fecha (desc)
   @@index([tiendaId, categoria]) // R26: filtro por concepto por tienda
   @@index([origenTipo, origenId]) // R26: movimientos de un origen (cierre)
+  @@unique([organizacionId, claveIdempotencia], map: "wallet_tienda_movimiento_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("wallet_tienda_movimiento")
 }
@@ -2142,7 +2146,7 @@ model PagoMensajeroMovimiento {
 // ────────────────────────────────────────────────────────────────────────────────────────
 model LiquidacionPago {
   id                String          @id @default(uuid())
-  claveIdempotencia String          @unique @map("clave_idempotencia") // §4.1: uuid del cliente; el UNIQUE es la barrera contra el doble pago (R44)
+  claveIdempotencia String          @map("clave_idempotencia") // §4.1: uuid del cliente; el UNIQUE es la barrera contra el doble pago (R44)
   mensajeroId       String?         @map("mensajero_id") // FK -> usuario (rol mensajero); XOR con tienda_id
   tiendaId          String?         @map("tienda_id") // FK -> usuario (rol adminTienda); XOR con mensajero_id
   cierreId          String?         @map("cierre_id") // FK -> cierre_dia; NOT NULL sii el beneficiario es un mensajero (R21)
@@ -2173,6 +2177,7 @@ model LiquidacionPago {
   @@index([tiendaId, fechaPago])
   @@index([cierreId]) // pendiente por cierre (§5) y lista de comprobantes del cierre
   @@index([repartoId]) // feature 205/R28: reconstruir el resultado de UN reparto (`WHERE reparto_id = ...`)
+  @@unique([organizacionId, claveIdempotencia], map: "liquidacion_pago_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("liquidacion_pago")
 }
@@ -2227,7 +2232,7 @@ model LiquidacionAnulacion {
 // usuario. RLS habilitada SIN policies (solo service role), R49.
 model LiquidacionReparto {
   id                String   @id @default(uuid())
-  claveIdempotencia String   @unique @map("clave_idempotencia") // R29: la barrera contra el doble reparto; misma semantica que la del pago
+  claveIdempotencia String   @map("clave_idempotencia") // R29: la barrera contra el doble reparto; misma semantica que la del pago
   mensajeroId       String   @map("mensajero_id") // FK -> usuario (rol mensajero): el BENEFICIARIO del acto
   montoTotal        Decimal  @map("monto_total") @db.Decimal(12, 2) // > 0 (CHECK en la migracion); lo comprometido en UNA captura
   registradoPor     String   @map("registrado_por") // FK -> usuario (actor); NOT NULL: un pago siempre lo registra alguien
@@ -2242,6 +2247,7 @@ model LiquidacionReparto {
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@index([mensajeroId, createdAt(sort: Desc)]) // auditar los repartos de un mensajero, del mas reciente al mas viejo
+  @@unique([organizacionId, claveIdempotencia], map: "liquidacion_reparto_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("liquidacion_reparto")
 }
@@ -2264,7 +2270,7 @@ model LiquidacionReparto {
 /// tienda, no la ganancia.
 model PagoPorCuentaTienda {
   id                     String          @id @default(uuid())
-  claveIdempotencia      String          @unique @map("clave_idempotencia") // la genera el dialogo al abrirse (R41)
+  claveIdempotencia      String          @map("clave_idempotencia") // la genera el dialogo al abrirse (R41)
   tiendaId               String          @map("tienda_id") // FK -> usuario (rol adminTienda)
   beneficiario           String // nombre libre (H2); CHECK no vacio y <= 120
   monto                  Decimal         @db.Decimal(12, 2) // > 0 (CHECK)
@@ -2285,6 +2291,7 @@ model PagoPorCuentaTienda {
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@index([tiendaId, fechaPago])
+  @@unique([organizacionId, claveIdempotencia], map: "pago_por_cuenta_tienda_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("pago_por_cuenta_tienda")
 }
@@ -2444,7 +2451,7 @@ model WalletComprobante {
 /// (`ingreso_abono_tienda`); no toca la ganancia. Nunca por encima de lo que la tienda debe (R15).
 model AbonoTienda {
   id                     String          @id @default(uuid())
-  claveIdempotencia      String          @unique @map("clave_idempotencia") // la genera el dialogo al abrirse (R13/R25)
+  claveIdempotencia      String          @map("clave_idempotencia") // la genera el dialogo al abrirse (R13/R25)
   tiendaId               String          @map("tienda_id") // FK -> usuario (rol adminTienda); quien paga
   monto                  Decimal         @db.Decimal(12, 2) // > 0 (CHECK)
   metodo                 MetodoPagoValue // enum EXISTENTE de la feature 36
@@ -2464,6 +2471,7 @@ model AbonoTienda {
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@index([tiendaId, fechaPago])
+  @@unique([organizacionId, claveIdempotencia], map: "abono_tienda_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("abono_tienda")
 }
@@ -2493,7 +2501,7 @@ model AbonoTiendaAnulacion {
 /// indice (la anulacion vive en otra tabla): lo garantiza el servicio con un advisory lock.
 model AporteCapital {
   id                     String   @id @default(uuid())
-  claveIdempotencia      String   @unique @map("clave_idempotencia")
+  claveIdempotencia      String   @map("clave_idempotencia")
   clase                  String // CHECK clase IN ('saldo_inicial','aporte')
   monto                  Decimal  @db.Decimal(12, 2) // > 0 (CHECK)
   motivo                 String // CHECK no vacio
@@ -2509,6 +2517,7 @@ model AporteCapital {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
+  @@unique([organizacionId, claveIdempotencia], map: "aporte_capital_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("aporte_capital")
 }
@@ -2676,10 +2685,10 @@ model GastoFijoCobro {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@unique([origenId], map: "gasto_fijo_cobro_origen_uq")
   @@index([estado, generadoEl]) // la COLA de pendientes, del mas antiguo al mas reciente (R39)
   @@index([plantillaId]) // cancelacion en cascada del borrado de plantilla (R45) y su conteo (R55)
   @@index([decididoPor]) // el RESTRICT se ejerce al borrar usuarios (patron orden_dia_reparto_cambio)
+  @@unique([organizacionId, origenId], map: "gasto_fijo_cobro_origen_uq") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("gasto_fijo_cobro")
 }
@@ -2776,7 +2785,7 @@ model RechazoTiendaCobro {
 // (R14/R15) cruzando el ranking con estas filas por posicion. Migracion aditiva con RLS.
 model PremioRanking {
   id          String   @id @default(cuid())
-  posicion    Int      @unique // 1, 2 o 3 (CHECK en la migracion); UNIQUE garantiza R8
+  posicion    Int      // 1, 2 o 3 (CHECK en la migracion); UNIQUE garantiza R8
   monto       Decimal? @db.Decimal(12, 2) // NULLABLE = sin premio asignado (R9)
   descripcion String?  @map("descripcion") // feature 76 (cambio de alcance 2026-07-16): rotulo libre opcional por posicion, INDEPENDIENTE del monto (NULLABLE = sin descripcion)
   createdAt   DateTime @default(now()) @map("created_at")
@@ -2788,6 +2797,7 @@ model PremioRanking {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
+  @@unique([organizacionId, posicion], map: "premio_ranking_posicion_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("premio_ranking")
 }
@@ -3819,7 +3829,7 @@ model AnalyticsDaily {
 // son datos de rendimiento de personas identificadas, nunca accesibles desde el cliente (R38).
 model RankingSnapshotDia {
   id                String   @id @default(cuid())
-  fecha             DateTime @unique @db.Date // fecha calendario de COSTA RICA congelada, nunca un instante (R2)
+  fecha             DateTime @db.Date // fecha calendario de COSTA RICA congelada, nunca un instante (R2)
   generadoAt        DateTime @default(now()) @map("generado_at") // R24: evidencia de que el cron corrio y CUANDO (deja auditable el desfase del premio, Q2)
   minAsignadasPodio Int      @map("min_asignadas_podio") // R1: umbral APLICADO en esta corrida (CHECK >= 1 en la migracion)
   filas             Int // R1/R11: conteo congelado; 0 = dia sin actividad (CHECK >= 0 en la migracion)
@@ -3829,6 +3839,7 @@ model RankingSnapshotDia {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
+  @@unique([organizacionId, fecha], map: "ranking_snapshot_dia_fecha_key") // SL-17 T3.9: unico por empresa
   @@index([organizacionId])
   @@map("ranking_snapshot_dia")
 }
