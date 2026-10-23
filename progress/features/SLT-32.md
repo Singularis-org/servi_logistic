@@ -39,6 +39,9 @@ empresa.
   ahora, mientras nace el rol, debe verificar que tenga una empresa asociada; si no, bloquea el
   ingreso».
 - 2026-10-23 — El humano: ficha nueva, sin SDD.
+- 2026-10-23 — El humano: incluir m1 de la review. `isSessionActive` (middleware) aplica también
+  `puedeIniciarSesion`: una sesión abierta de un usuario sin empresa se trata como caducada (se
+  borra la cookie y se manda a `/login`).
 
 ## Preguntas abiertas
 - Coordinación con SL-32: cuando SL-32 mergee `lib/auth/plataforma.ts`, el predicado debe
