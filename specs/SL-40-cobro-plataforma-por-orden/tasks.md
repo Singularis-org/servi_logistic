@@ -1,5 +1,11 @@
 # SL-40 «Cobro de la plataforma por orden» — tasks
 
+> **Aprobado por Carlos Restrepo el 2026-10-23** (spec en `c882260`). Decisiones de las preguntas
+> abiertas, las tres en línea con la recomendación del spec, así que T2–T4 no se rehacen:
+> - **P1:** el importe se congela al crear la orden (R14).
+> - **P2:** sin IVA por ahora: el cargo es exactamente la tarifa (R19).
+> - **P3:** la cancelación por API **sí se cobra**: no es una anulación y no genera reverso (D6).
+
 > Las tasks parten de la recomendación de P1 (importe congelado) y de P3 (la cancelación por API no
 > anula). Si Carlos decide otra cosa, se rehacen T2–T4 antes de empezar.
 > `[P]` = paralelizable con las otras `[P]` de su tanda. Cada task cierra con
@@ -8,7 +14,7 @@
 
 ## Tanda 0 — Punto de partida
 
-- [ ] **T0. Leer el estado de `dev`.**
+- [x] **T0. Leer el estado de `dev`.**
   - Anota la última migración de `dev`. Si SL-38 ya está en `dev`, anota también sus migraciones.
     Fija los tres timestamps de §4, posteriores a todas.
   - Comprueba si `scripts/verificar-rls-despliegue.ts` ya deriva sus conteos de
@@ -20,7 +26,7 @@
 
 ## Tanda A — La base
 
-- [ ] **T1. El test que hoy falla** (R3, R8, R12–R20; depende de T0).
+- [x] **T1. El test que hoy falla** (R3, R8, R12–R20; depende de T0).
   - Escribe `tests/integration/db/cobro-plataforma-cargos.test.ts` según `design.md > 11.1`, con el
     control de no vacuidad.
   - _Hecho:_ corre contra Postgres y sale **en rojo** porque la tabla no existe. La salida queda
