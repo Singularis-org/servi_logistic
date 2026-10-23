@@ -666,3 +666,8 @@ Postgres real (`tests/integration/db/`) salvo los marcados «unit».
 No falta ningún R. D21 (no es R) → T4.1, `scripts/verificar-rls-despliegue.ts` (QA verde; producción pendiente).
 
 **Corrida final de T4.3, sobre `db9a4c8`** (`./init.sh --completo`, base `sl17_gate` nueva, migrada y sembrada, con `gate.lock` toda la corrida): **`INIT_EXIT=0`**. typecheck y lint verdes; `Test Files  244 failed | 2299 passed (2543)`, `Tests  299 failed | 33104 passed | 1307 skipped (34710)`; `✓ tests: sin rojos nuevos (244 rojos, todos en el baseline de 244)`; `✓ todas las migraciones tienen down.sql`. Cliente al final: `organizacion=1`.
+
+## Integración con dev (SL-37) y cierre
+- **CI del PR #3 sobre `d9df97f`:** `gate-completo` en rojo, con 4 archivos fuera del baseline en PG 17: `abono-tienda-457-migration`, `cobro-tienda-461-migration` y `wallet-461-migration` (los retiré del baseline porque pasan en PG 18 local, y en PG 17.11 dan 23503) y `rastreo-publico-service` (lo arregla SL-37). Lección: un archivo que pasa en local no sale del baseline sin la evidencia del CI.
+- **Merge `--no-ff` de `origin/dev`** (PR #2, SL-37) en `7637055`. El conflicto de `tests/baseline-rojos.json` se resuelve con el lado de dev, que devuelve los tres con el motivo PG 17 frente a 18. `notificacion-evento-webhook-suscripcion-migration` sigue fuera: salió verde en el CI.
+- **Gate rápido sobre `7637055`**, con `gate.lock`, base nueva migrada y sembrada: **`INIT_EXIT=0`**. Relacionados: `Test Files  987 passed (987)` y `Tests  14060 passed | 26 skipped (14086)`. Guardias: `Test Files  299 passed (299)`. Cliente al final: `organizacion=1`.
