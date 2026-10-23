@@ -80,7 +80,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 3 — Escritura y retiro de la columna
 
-- [ ] **T6. La escritura por capas** (R9, R11, R12, R13; depende de T1).
+- [x] **T6. La escritura por capas** (R9, R11, R12, R13; depende de T1).
   - `lib/types/distrito-zona-especial.ts`, las dos interfaces, `DistritoZonaEspecialRepository` y
     `DistritoZonaEspecialService` (`design.md §3`).
   - `lib/actions/geografia.ts`: `actualizarDistritosEspeciales` delega en el servicio, gana `deps`

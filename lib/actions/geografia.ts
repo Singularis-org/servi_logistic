@@ -4,10 +4,17 @@ import { z } from "zod";
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecialService";
 import { GeografiaService } from "@/lib/services/GeografiaService";
+import type {
+  ActualizarDistritosEspecialesServiceResult,
+  IDistritoZonaEspecialService,
+} from "@/lib/interfaces/services/IDistritoZonaEspecialService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import type {
   CambiarActivacionGeograficaServiceResult,
   ContarOrdenesSinEntregarServiceResult,
@@ -31,10 +38,9 @@ import {
 // la lectura del arbol tambien pasa por la cadena de siempre —Server Action -> `GeografiaService`
 // -> `GeoRepository`— y este archivo deja de tocar Prisma para eso.
 //
-// ⚠️ LA UNICA EXCEPCION QUE QUEDA, Y SE DECLARA EN VEZ DE ESCONDERSE:
-// `actualizarDistritosEspeciales`, al final del archivo, sigue yendo contra Prisma directo. Es una
-// escritura VIVA del flujo de Tarifas, ya probada, que no pertenece a esta ficha; moverla no le da
-// nada a la 374 y si pone en riesgo algo que funciona. Queda fuera de alcance a proposito.
+// SL-38 — ya no queda ninguna excepcion: `actualizarDistritosEspeciales`, al final del archivo, era
+// la ultima escritura con Prisma directo, y pasa por `DistritoZonaEspecialService` ->
+// `DistritoZonaEspecialRepository` desde que la marca es de la empresa.
 //
 // ⚠️ NO HAY NINGUNA ACCION DE BORRADO (R5): quitar un nodo es DESACTIVARLO. Ver el porque en
 // `lib/interfaces/repositories/IGeoRepository.ts`.
@@ -243,66 +249,49 @@ export async function contarOrdenesSinEntregarDeNodo(
   return service.contarOrdenesSinEntregar(parsed.data, actor);
 }
 
-// ── Marca de zona especial ─────────────────────────────────────────────────
+// ── Marca de zona especial (SL-38) ───────────────────────────────────────────────────────────
 //
-// ⚠️ FICHA 374: ESTA ACCION NO SE TOCA, y queda declarado por que. Va contra Prisma directo desde
-// la ficha que la creo; es una escritura VIVA del flujo de Tarifas, ya probada, y no pertenece al
-// alcance de la 374. Moverla a la cadena de capas no le da nada a esta ficha y si arriesga algo
-// que funciona. Cuando le toque su ficha, se mueve entera.
+// La marca es de la EMPRESA (`distrito_zona_especial`), no del distrito: escribirla no toca la
+// geografia, que es de plataforma (SL-17 R40). Conserva nombre, entrada y resultado porque la llaman
+// `CrearZonaForm` y la mockean seis tests de componentes.
 
-const distritosEspecialesSchema = z.object({
-  /** Distritos que pasan a `zona_especial = true`. */
-  marcar: z.array(z.string().min(1)).default([]),
-  /** Distritos que pasan a `zona_especial = false`. */
-  desmarcar: z.array(z.string().min(1)).default([]),
-});
-
-export type ActualizarDistritosEspecialesResult =
-  | { status: "ok"; actualizados: number }
-  | { status: "validation_error" }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" };
+/** Dependencias inyectables de `actualizarDistritosEspeciales`, con el patron de `GeografiaActionDeps`. */
+export interface DistritosEspecialesActionDeps {
+  distritoZonaEspecialService?: IDistritoZonaEspecialService;
+  getActor?: () => Promise<Actor | null>;
+}
 
 /**
- * Escribe la marca `distrito.zona_especial` de un lote de distritos. Recibe el
- * DELTA (lo que cambio en el formulario), no el estado completo: asi dos zonas
- * abiertas a la vez no se pisan la marca de los distritos que ninguna toco.
+ * El composition root de la marca. El repositorio que recibe es el que escribe: un servicio
+ * construido sin el compilaria igual si el parametro se volviera opcional, y lo mide
+ * `tests/unit/actions/distritos-especiales-action.test.ts` llamando a la accion sin servicio.
+ */
+function buildDistritoZonaEspecialService(): IDistritoZonaEspecialService {
+  return new DistritoZonaEspecialService(new DistritoZonaEspecialRepository(getPrismaClient()));
+}
+
+export type ActualizarDistritosEspecialesResult =
+  | ActualizarDistritosEspecialesServiceResult
+  | { status: "unauthenticated" };
+
+/**
+ * Guarda la marca de zona especial de la empresa del actor para un lote de distritos. Recibe el
+ * DELTA (lo que cambio en el formulario), no el estado completo: asi dos zonas abiertas a la vez no
+ * se pisan la marca de los distritos que ninguna toco.
  *
- * La marca es del distrito, de modo que al guardarla queda visible desde
- * CUALQUIER zona que lo contenga; el llamador refresca el arbol para verlo.
- * Misma puerta que el resto de /configuracion: solo `maestro`.
+ * La marca es del distrito PARA LA EMPRESA: queda visible desde cualquier zona de la empresa que lo
+ * contenga, y el llamador refresca el arbol para verlo. Solo `maestro` (lo decide el servicio).
  */
 export async function actualizarDistritosEspeciales(
   input: unknown,
+  deps: DistritosEspecialesActionDeps = {},
 ): Promise<ActualizarDistritosEspecialesResult> {
-  const actor = await resolveActorFromSession();
-  if (!actor) return { status: "unauthenticated" };
-  if (actor.rol !== "maestro") return { status: "forbidden" };
+  const actor = await (deps.getActor ?? resolveActorFromSession)();
+  if (!actor) return { status: "unauthenticated" }; // R11
 
   const parsed = distritosEspecialesSchema.safeParse(input);
-  if (!parsed.success) return { status: "validation_error" };
+  if (!parsed.success) return { status: "validation_error" }; // R12
 
-  const { marcar, desmarcar } = parsed.data;
-  // Un id en las dos listas seria una orden contradictoria: se rechaza en vez
-  // de dejar que gane la ultima escritura.
-  const enAmbas = marcar.filter((id) => desmarcar.includes(id));
-  if (enAmbas.length > 0) return { status: "validation_error" };
-  if (marcar.length === 0 && desmarcar.length === 0) {
-    return { status: "ok", actualizados: 0 };
-  }
-
-  const prisma = getPrismaClient();
-  // Una sola transaccion: o quedan las dos mitades del cambio, o ninguna.
-  const [on, off] = await prisma.$transaction([
-    prisma.distrito.updateMany({
-      where: { id: { in: marcar } },
-      data: { zonaEspecial: true },
-    }),
-    prisma.distrito.updateMany({
-      where: { id: { in: desmarcar } },
-      data: { zonaEspecial: false },
-    }),
-  ]);
-
-  return { status: "ok", actualizados: on.count + off.count };
+  const service = deps.distritoZonaEspecialService ?? buildDistritoZonaEspecialService();
+  return service.actualizar(parsed.data, actor);
 }

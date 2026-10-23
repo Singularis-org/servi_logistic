@@ -195,3 +195,58 @@ Los casos de dos empresas de punta a punta (una lectura por camino, A `true` y B
 
 Veredicto T3-T5: las ocho lecturas pasan por el punto unico, la guardia R22 lo vigila y cae con una
 fuente inventada; typecheck y `vitest related` en verde, cada asercion cambiada muerta por una mutacion.
+
+## T6-T7 — Escritura por capas y retiro de la columna
+
+### T6 — Archivos
+
+- Nuevos: `lib/types/distrito-zona-especial.ts` (`distritosEspecialesSchema`, sale de la accion, y
+  `CambiosZonaEspecial`), `lib/interfaces/repositories/IDistritoZonaEspecialRepository.ts`,
+  `lib/interfaces/services/IDistritoZonaEspecialService.ts`,
+  `lib/repositories/DistritoZonaEspecialRepository.ts` (una `$transaction` interactiva: `deleteMany` +
+  `createMany({ skipDuplicates })`; la FK de `distrito_id` se traduce con `esViolacionDeClaveForanea`
+  a `distrito_inexistente`), `lib/services/DistritoZonaEspecialService.ts`,
+  `tests/unit/services/distrito-zona-especial-service.test.ts`.
+- Modificados: `lib/actions/geografia.ts` (`actualizarDistritosEspeciales(input, deps?)`,
+  `DistritosEspecialesActionDeps`, `buildDistritoZonaEspecialService()`, cabecera sin la «unica
+  excepcion»), `tests/unit/actions/distritos-especiales-action.test.ts` (reescrito sobre `deps`),
+  `tests/integration/db/distrito-zona-especial-por-empresa.test.ts` (R10 y R13 por el repositorio
+  real con el cliente extendido).
+- Orden del borde (design §3): sesion → `safeParse` → servicio (rol). Antes el rol iba antes que la
+  validacion; ahora un no-`maestro` con entrada invalida recibe `validation_error`. Ninguno de los dos
+  lee ni escribe marcas (R11, R12).
+- El caso `superadmin` del test de servicio fuerza el tipo (`as RolValue`): el valor llega con SL-32.
+
+### T6 — R → test
+
+| R | Test |
+|---|---|
+| R9 | servicio: «delega el lote sin duplicados y responde creadas + borradas», «marcar lo ya marcado no cuenta»; accion: «composition root: … el repositorio real escribe … en UNA transaccion»; integracion: «R10: por el repositorio real …» (marcar dos veces: `creadas` 1 y luego 0) |
+| R10 | integracion: «R10: por el repositorio real, B marca y desmarca D y la marca de A sigue; la fila de distrito no cambia» (ademas del caso SQL de T2) |
+| R11 | servicio: «R11: el rol %s recibe forbidden sin llamar al repositorio» (admin, adminTienda, adminSatelite, mensajero, apiKey, superadmin); accion: «R11: sin sesion responde unauthenticated …», «composition root: el rol se decide en el servicio construido, sin abrir transaccion» |
+| R12 | servicio: «R12: un id en marcar y en desmarcar …», «R12: las dos listas vacias dan ok con 0 …»; accion: «R12: %s responde validation_error sin llamar al servicio» (id vacio, lista que no es lista, entrada que no es objeto) |
+| R13 | integracion: «R13: un id inexistente en marcar da validation_error y no deja nada del lote, ni el desmarcado» (repositorio real y accion con el servicio real, dentro de `conEmpresa(B)`); servicio: «R13: un distrito inexistente … validation_error» |
+
+### T6 — Verificacion (bajo el lock, cliente regenerado)
+
+- `pnpm run typecheck` → `TC=0`.
+- `pnpm exec eslint` de los 9 archivos → `No issues found` (dos warnings `_a` corregidos).
+- `vitest run` de los 3 archivos de T6 + `zona-especial-punto-unico` + `geografia.composition-root` +
+  los 6 de componentes que mockean `@/lib/actions/geografia` (sin tocarlos), contra `sl38_base`:
+  `Test Files 11 passed (11)`, `Tests 101 passed (101)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 298 passed | 2 skipped (301)`, `Tests 4 failed |
+  4086 passed | 20 skipped`. Los 4 rojos son `dependencias-declaradas-presentes` (baseline).
+  `zona-especial-punto-unico` en verde sin ajustarla.
+
+### T6 — Mutaciones (en el arbol, restauradas desde copia; md5 identico despues)
+
+Archivos: servicio, accion y test de integracion (`3 files, 27 tests`).
+
+| # | Mutacion | Resultado |
+|---|---|---|
+| 1 | servicio sin `if (actor.rol !== "maestro")` | `7 failed`: los 6 R11 del servicio y «el rol se decide en el servicio construido» |
+| 2 | repositorio sin `$transaction` (las dos escrituras sueltas sobre el cliente) | `2 failed`: R13 de integracion (el desmarcado de D2 se queda) y el composition root (`$transaction` no llamado) |
+| 3 | repositorio que traga la FK (`ok, 0, 0` en vez de `distrito_inexistente`) | `1 failed`: R13 de integracion |
+| 4 | composition root con `new DistritoZonaEspecialService(undefined as never)` | `1 failed`: «composition root: … el repositorio real escribe» |
+| 5 | servicio sin rechazar el id en las dos listas | `1 failed`: R12 del servicio |
+| 6 | servicio que devuelve solo `creadas` | `2 failed`: R9 del servicio y el composition root (3 → 2) |
