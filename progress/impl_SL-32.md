@@ -323,3 +323,115 @@ El único rojo es `tests/unit/guards/test-citado-desaparecido.guardia.test.ts > 
 En la primera corrida hubo además dos rojos de `catalogo-postgres-acota-esquema` con `ENOENT` sobre el aviso borrado: el borrado no estaba en el índice. Con `git add` desaparecieron.
 
 **Pendiente fuera del código:** el OK de Carlos a la pantalla (T12) y un correo de OTP real en cada entorno tras configurar Brevo (T19).
+
+## T3 — enum, migraciones, índice de un solo superadmin y regla de empresa (R1, R2, R21, R27, R28), backend_dev — 2026-10-23
+
+**`<UUID_ROL_SUPERADMIN>` = `e070603f-a477-466f-8bc1-92fcfaceb6f4`**. Se generó una sola vez. Va en las dos
+migraciones que lo necesitan, y como literal de contrato en `seed-catalogos.test.ts`.
+
+**Archivos**
+- `db/schema.prisma`: `superadmin` entra en `RolValue`, sin `@map`.
+- `db/migrations/20261023100000_rol_superadmin/{migration,down}.sql`: `ADD VALUE IF NOT EXISTS`. El `down.sql`
+  recrea el tipo con los seis valores de antes y **busca en `pg_attribute` todas las columnas de `rol_value`**.
+  Desde `rol_api_key`, el tipo lo usan otras columnas además de `rol.value`: `actor_rol`, `rol_autor`,
+  `destinatario_rol`, `whatsapp_envio.rol`… El `down.sql` de `20260716140000_rol_api_key` solo altera
+  `rol.value`, así que copiado tal cual fallaría en el `DROP TYPE`.
+- `db/migrations/20261023100100_seed_rol_superadmin/{migration,down}.sql`. La subida hace tres cosas: el
+  `INSERT ... ON CONFLICT ("value") DO NOTHING` con el id fijo, un `DO $$` que aborta si la fila existe con otro
+  id, y el índice `usuario_un_solo_superadmin ON usuario ((true)) WHERE rol_id = '<uuid>'`. El `down.sql` aborta
+  si hay un usuario superadmin; si no lo hay, quita el índice y la fila.
+- `db/migrations/20261023100200_usuario_empresa_o_superadmin/{migration,down}.sql`: el `CHECK` de R28 y su `DROP`.
+- `tests/integration/db/_fixtures/superadmin-32.ts` (nuevo):
+  - `intentar` corre la sentencia en un SAVEPOINT y devuelve el SQLSTATE **y el nombre de la restricción**;
+  - `insertarUsuario` inserta por SQL a mano;
+  - `liberarHuecoDeSuperadmin` borra, dentro de la transacción revertida, el superadmin que ya hubiera. Hace
+    falta en una base de desarrollo donde ya corrió el comando.
+- `tests/integration/db/un-solo-superadmin.test.ts` y `tests/integration/db/usuario-empresa-o-superadmin.test.ts` (nuevos).
+- `tests/unit/types/roles.test.ts`: pasa de 6 a 7 roles y suma el caso «superadmin sin `@map`».
+- `tests/unit/scripts/seed-catalogos.test.ts`: pasa de 6 a 7 y suma el caso «conserva el id fijo».
+- `seedRoles` no cambia: ya hace upsert por `value` con `update: {}`, así que conserva el id de la migración.
+
+**Dos desvíos del spec, por cómo quedó SL-17**
+1. El caso «el `UPDATE` que pone a NULL la empresa de un `maestro` falla» ya lo para el trigger
+   `usuario_sin_cambio_de_empresa` de SL-17 (SL017), antes de llegar al `CHECK`. El caso apaga el trigger
+   dentro de la transacción revertida para ver el `CHECK` solo. Con el trigger puesto, pasaría aunque el
+   `CHECK` no existiera.
+2. El caso «un `UPDATE` del `rol_id` de otro usuario al de superadmin falla por el índice» no puede ver el
+   índice con R28 puesto: un no superadmin siempre tiene empresa, así que el `CHECK` lo para antes. El caso de
+   R27 suelta el `CHECK` dentro de su transacción revertida para ver el índice solo. El de R28 tiene su caso
+   propio: pasar a superadmin a un maestro con empresa da 23514.
+
+**R → test**
+- R1, R2 → `roles.test.ts` (7 miembros y `superadmin` sin `@map`) y `seed-catalogos.test.ts` (7 filas y el id fijo conservado).
+- R21 → la verificación de abajo, sobre `sl32_mig`.
+- R27 → `un-solo-superadmin.test.ts`. El primero se inserta bien. El segundo `INSERT` da 23505 por el índice,
+  y el `UPDATE`, también.
+- R28 → `usuario-empresa-o-superadmin.test.ts`. Dan 23514 por `usuario_empresa_o_superadmin`:
+  - un superadmin con empresa, explícita o por DEFAULT;
+  - un maestro con NULL;
+  - el `UPDATE` que pone la empresa a NULL, con el trigger apagado;
+  - el `UPDATE` que pasa un maestro a superadmin.
+
+  Pasan un superadmin con NULL y un maestro con su empresa.
+
+**Verificación de R21** (base desechable `sl32_mig`, creada y borrada al terminar)
+- `migrate deploy` → 236 migraciones y «All migrations have been successfully applied».
+- Drift: `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → `-- This is an empty migration.`
+- Con un superadmin insertado a mano:
+  - el rollback de la 3.ª va bien;
+  - el de la 2.ª sale con **exit 1** y el mensaje `ERROR: hay un usuario superadmin; retiralo antes de revertir 20261023100100_seed_rol_superadmin`;
+  - el usuario, el índice y la fila de `_prisma_migrations` siguen en su sitio.
+- Sin el superadmin:
+  - el rollback de la 2.ª va bien y deja 0 índices y 0 filas `superadmin`;
+  - el de la 1.ª va bien: el enum queda en `maestro,admin,mensajero,Admin Tienda,adminSatelite,apiKey` y no queda `rol_value_old`;
+  - `migrate deploy` vuelve a ir bien, con el drift vacío.
+- Pasada limpia: tres `db:rollback`, todos con exit 0, y luego `migrate deploy` → «Database schema is up to date!».
+- Comprobado aparte: si la fila `superadmin` existe con otro id, el bloque `DO` aborta con
+  `P0001 rol superadmin existe con otro id`.
+- **Hallazgo:** `scripts/db-rollback.ts` revierte la **última carpeta en disco**, no la última aplicada. Si se
+  llama dos veces seguidas, vuelve a correr el mismo `down.sql`. Para revertir las tres, cada carpeta ya
+  revertida se apartó al scratchpad y al final se devolvió a su sitio. El script no se tocó: queda fuera de T3.
+- `sl32_base` queda migrada con las tres. `migrate status` dice «up to date», y la fila del rol tiene el id fijo.
+
+**Mutaciones.** Cada una se aplicó sobre `sl32_mig` recreada, y el archivo se restauró y se comprobó con `cmp` o `git diff`.
+- Sin el `CREATE UNIQUE INDEX` en `20261023100100.../migration.sql`, `un-solo-superadmin` da `2 failed | 1 passed`:
+  caen el segundo INSERT y el UPDATE.
+- Sin el `ADD CONSTRAINT` en `20261023100200.../migration.sql`, `usuario-empresa-o-superadmin` da `5 failed | 1 passed`.
+- Con `seedRoles` en `update: { value }`, `seed-catalogos` da `1 failed | 6 passed`.
+- Con `superadmin` fuera del enum, `roles` da `2 failed | 11 passed`.
+
+**Salida**
+- `vitest run` de `un-solo-superadmin` y `usuario-empresa-o-superadmin`, sobre `sl32_base` → `Tests 9 passed (9)`.
+- `vitest run` de `roles.test.ts` y `seed-catalogos.test.ts` → `Tests 20 passed (20)`.
+- 47 archivos sobre `sl32_base` → `Test Files 47 passed`, `Tests 619 passed`. Son las guardias y los tests que
+  leen `db/migrations` o `schema.prisma`, más `schema-drift-saneamiento`, `provincia-schema-drift` y
+  `migracion-sl17-ida-y-vuelta`.
+- `pnpm exec eslint` sobre los 5 archivos de test → exit 0.
+- `pnpm run typecheck`, con el cliente regenerado dentro del lock → **exit 2, con 7 errores**. Todos son de
+  exhaustividad de `Record<RolValue, …>` y son trabajo de T4:
+  - `lib/auth/rol-label.ts`;
+  - `lib/asistente/instrucciones.ts`;
+  - `tests/integration/db/_whatsapp-envios-474.ts`;
+  - `tests/integration/db/push-destinatarios-equivalencia.test.ts`;
+  - `tests/unit/actions/organizaciones-action.test.ts` (`satisfies Record<RolValue, true>`);
+  - la cadena `lib/services/WhatsappEnvioService.ts:316` → `EnvioForm.tsx:139`.
+
+**Suite de integración que inserta en `usuario`.** Son 221 archivos, buscados por grep de inserts y de sus
+fixtures, corridos contra `sl32_base`: `81 failed | 529 passed | 925 skipped`.
+- Casi todos los rojos vienen de la base vacía («tabla `orden` vacía», «falta la zona»…), no de este cambio.
+  Esos archivos no llegan a insertar usuarios, así que el barrido no los cubre.
+- `orden-traspaso-migration` y `vista-filtro-migration` también salen en rojo, pero ya están en `tests/baseline-rojos.json`.
+- Los rojos por `usuario_empresa_o_superadmin` son **dos suites de SL-17**. **No las arreglo: el arreglo es ambiguo.**
+  - `tests/integration/db/aislamiento-fk-misma-empresa.test.ts:157-158`: el `beforeAll` crea y **commitea**
+    un «superadmin» con rol `maestro` y empresa NULL. Cae el archivo entero (10 skipped).
+  - `tests/integration/db/aislamiento-usuarios.test.ts:119-120` (`beforeAll`) y `:292-299` (R35): crean **dos**
+    usuarios sin empresa con rol `maestro`, commiteados mientras dura el archivo. Cae el archivo entero (13 skipped).
+- Poner el rol real no basta, porque el índice de R27 es global. Chocarían con 23505 dos superadmins
+  commiteados: los dos de `aislamiento-usuarios`, uno de cada archivo si corren en paralelo, o uno real que el
+  comando ya creó en una base de desarrollo. Antes hay que decidir cómo comparten los tests el único
+  superadmin: reutilizar el que exista, o crearlo solo en transacciones revertidas y serializadas.
+  `arranque-superadmin.test.ts` (T5) necesitará lo mismo. Decide el leader.
+
+**Veredicto:** T3 está hecha. Su «Hecho cuando» se cumple, y R27 y R28 tienen tests que caen con su mutación.
+Quedan abiertos el typecheck rojo, que es de T4, y dos suites de SL-17 que hay que pasar al superadmin real,
+con decisión del leader.

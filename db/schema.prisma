@@ -39,6 +39,7 @@ enum RolValue {
   adminTienda   @map("Admin Tienda")
   adminSatelite // feature 19: label literal en la DB 'adminSatelite' (slug camelCase, SIN @map)
   apiKey // feature 81 [D1]: cuenta dedicada a una API key. SIN filas en `rol_permiso` (fallo seguro: la key no puede nada hasta que el humano conceda permisos explicitos)
+  superadmin // SL-32: rol de la plataforma, sin empresa y sin filas en `rol_permiso`. Uno solo en toda la base (indice `usuario_un_solo_superadmin`); su `rol.id` es fijo y lo usa el CHECK `usuario_empresa_o_superadmin`
 
   @@map("rol_value")
 }

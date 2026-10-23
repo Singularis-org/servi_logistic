@@ -148,7 +148,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 3 — El rol en la base (depende de T0)
 
-- [ ] **T3. Enum, migraciones, índice de un solo superadmin y regla de empresa** (R1, R2, R21,
+- [x] **T3. Enum, migraciones, índice de un solo superadmin y regla de empresa** (R1, R2, R21,
   R27, R28).
   - `db/schema.prisma`: `superadmin` en `RolValue`.
   - Tres carpetas detrás de la última migración de SL-17 (`design.md > Migraciones`):
