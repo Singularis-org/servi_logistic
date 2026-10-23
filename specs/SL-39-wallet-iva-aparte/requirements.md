@@ -19,15 +19,21 @@ así, el iva debe mostrarse a parte de las ganancias ya que si no mostraría un 
 - Las cifras que repiten esa ganancia: la métrica `ganancia_empresa` de la analítica (KPI, serie y
   bruto) y la ganancia diaria de la serie «Finanzas por día».
 - Los textos que hoy dicen que la ganancia incluye impuestos, y la ayuda de la wallet.
+- **El detalle de cierres de `cierres-admin`** (P1 = sí, Carlos, 2026-10-23), en el cierre de mensajero
+  y en el de bodega:
+  - «Ganancia» (la que se pinta como «Debe» cuando sale negativa) y «Lo que le queda a la empresa»
+    (`netoEmpresa`) salen sin IVA;
+  - el IVA va en una línea propia de la cascada.
 
 **Lo que NO entra**
 
 - Hacer la tasa de IVA configurable o renombrar el impuesto por país: es SL-21.
 - El cobro de la plataforma por orden: es SL-40. Esta ficha deja el sitio preparado
   (`design.md > Preparado para SL-40`), pero no añade esa línea.
-- El detalle de cierres de `cierres-admin`: su «Ganancia»/«Debe» y «Lo que le queda a la empresa»
-  (`netoEmpresa`) se calculan sobre el facturado con IVA. Es otra pantalla y otra cifra (por cierre,
-  no de la caja). Queda como P1 en `## Preguntas abiertas`.
+- En `cierres-admin`, lo que es de la tienda o es la factura sigue igual: «Lo que la empresa
+  facturó» (lleva IVA porque es lo que se le factura a la tienda), «Pago a tienda», «Gana la
+  tienda», «Cobrado sobre lo recaudado», «Para la central» y el desglose por tienda.
+- `lib/utils/ingreso-empresa.ts`, que SL-38 tiene en vuelo: no se toca (`design.md > 12`).
 - La columna «Ganancia» del cierre del día del mensajero (`cierre-dia`): es el pago del mensajero,
   no la ganancia de la empresa.
 - «Así queda» / «Cómo quedó» (`components/shared/wallet/AsiQueda.tsx`): siguen enseñando la
@@ -47,6 +53,8 @@ así, el iva debe mostrarse a parte de las ganancias ya que si no mostraría un 
 | D7 | La wallet sigue siendo por empresa, con la extensión y la RLS de SL-17. | Leader, 2026-10-23 | R16, R17 |
 | D8 | Los movimientos históricos no se recalculan ni se migran: la ganancia sin IVA se deriva al leer, también sobre los movimientos anteriores a esta ficha. | `spec_author`, decisión técnica: el libro ya guarda el IVA en filas propias (`design.md > Datos históricos`) | R14 |
 | D9 | La pantalla queda preparada para que la línea de SL-40 entre sin rehacerla. | Leader, 2026-10-23 | R9 |
+| D10 | P1 = sí. En el detalle de cierres de `cierres-admin`, «Ganancia/Debe» y «Lo que le queda a la empresa» salen sin IVA, con el IVA en una línea propia. Va en esta misma ficha. | Carlos, 2026-10-23 | R21–R27 |
+| D11 | En el cierre, el IVA se separa al leer. `cierre_detail` congela las entradas de la fórmula, no la ganancia, así que no hay cifra congelada que corregir ni migración. | `spec_author`, decisión técnica (`design.md > 12.2`) | R25 |
 
 ## Glosario
 
@@ -139,14 +147,33 @@ así, el iva debe mostrarse a parte de las ganancias ya que si no mostraría un 
 - **R20.** El sistema DEBE entregar el IVA y su signo derivados en el servidor, como texto con dos
   decimales, y la pantalla DEBE pintarlos sin sumar, restar ni convertir importes a número.
 
+### El detalle de cierres (`cierres-admin`)
+
+- **R21.** El sistema DEBE calcular el IVA facturado de un cierre como la suma, sobre las gestiones
+  de ese cierre, del IVA del flete, del IVA del flete por devolución a origen y del IVA de la comisión
+  COD. Lo DEBE entregar derivado en el servidor, como texto con dos decimales, en el detalle del
+  cierre de mensajero, en el agregado del cierre de bodega y en cada uno de sus cierres del día.
+- **R22.** El sistema DEBE calcular la «Ganancia» de un cierre como lo facturado sin IVA menos el
+  pago al mensajero, en los mismos tres niveles que R21.
+- **R23.** El sistema DEBE calcular «Lo que le queda a la empresa» de un cierre como lo facturado sin
+  IVA menos el pago al mensajero menos el ingreso de bodega por rechazos, en los mismos tres niveles
+  que R21.
+- **R24.** CUANDO un usuario abre el detalle de un cierre de mensajero o de bodega en
+  `cierres-admin`, la cascada «Lo que le queda a la empresa» DEBE mostrar, justo después de «Lo que
+  la empresa facturó», una línea propia «IVA facturado» que resta, con la nota «El IVA que se le
+  cobró a la tienda en este cierre. No es de la empresa.». Los importes que la cascada muestra DEBEN
+  cuadrar: facturado − IVA − pago al mensajero − ingreso de bodega = lo que le queda a la empresa.
+- **R25.** SI el cierre es anterior a esta ficha, ENTONCES el sistema DEBE separar su IVA al leerlo, a
+  partir de las entradas congeladas en `cierre_detail`, sin modificar `cierre_detail`, `cierre_dia`
+  ni ningún snapshot del cierre, y sin migración.
+- **R26.** El sistema DEBE mantener en el detalle del cierre, con el mismo valor que antes de esta
+  ficha, estas cifras: «Lo que la empresa facturó», «Pago a tienda», «Gana la tienda», «Cobrado sobre
+  lo recaudado», «Para la central», el aviso de efectivo y el desglose por tienda.
+- **R27.** CUANDO la ganancia del cierre sale negativa y la pantalla muestra la tarjeta «Debe», su
+  nota DEBE decir «Ingreso sin IVA menos el pago al mensajero.» (o «…a los mensajeros.» en el cierre
+  de bodega).
+
 ## Preguntas abiertas
 
-- **P1 (ABIERTA, para Carlos; no bloquea esta ficha).** El detalle de un cierre en `cierres-admin`
-  también mezcla el IVA:
-  - «Ganancia» (solo visible cuando sale negativa, como «Debe») y «Lo que le queda a la empresa»
-    (`netoEmpresa`) restan sobre el facturado con IVA (`lib/utils/ingreso-empresa.ts:339` y `:649`,
-    con el `total` de `lib/repositories/CierresAdminRepository.ts:381-384`).
-  - ¿Quieres que esas dos cifras del cierre también salgan sin IVA?
-
-  Si es que sí, va en una ficha aparte: toca `lib/utils/ingreso-empresa.ts`, que SL-38 tiene en
-  vuelo, y las identidades de las cascadas de la ficha 393.
+- **P1 (CERRADA el 2026-10-23).** Carlos decide que sí: el detalle de cierres de `cierres-admin` sale
+  sin IVA en esta misma ficha (D10, R21–R27).

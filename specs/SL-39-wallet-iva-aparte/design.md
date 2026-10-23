@@ -10,6 +10,8 @@ Búsqueda hecha el 2026-10-23 con los términos `IVA`, `ganancia`, `impuesto`, `
     no toca la tasa, ni el rótulo «IVA», ni `tarifas`.
   - Sale **SL-40** «Cobro de la plataforma por orden» (pending): añadirá una línea a la wallet. Va a
     «Lo que NO entra»; el sitio queda preparado (§8).
+  - Sale **SL-38** (in_progress), que tiene en vuelo `lib/utils/ingreso-empresa.ts`. Esta ficha no lo
+    toca, tampoco en la parte del cierre (§12).
 - **Specs**: ninguno separa el IVA de la ganancia. Los que la definen y que esta ficha corrige son
   `specs/173-caja-tesoreria` (la caja en dos cifras), `specs/231-wallet-caja-dos-bolsillos` (la
   composición), `specs/459-la-caja-muestra-el-dinero-real` (capital y cargos) y
@@ -323,3 +325,141 @@ vista en dos sitios y la lista de regiones.
 ## 11. Dependencias
 
 Ninguna librería nueva.
+
+## 12. El detalle de cierres de `cierres-admin` (P1 = sí, Carlos, 2026-10-23)
+
+### 12.1 Evidencia: cómo se calcula hoy
+
+| Dónde | Qué hace |
+|---|---|
+| `lib/repositories/CierresAdminRepository.ts:358-384` | `toIngresoEmpresa` re-deriva cada gestión con `derivarIngresoOrden` a partir de lo congelado en `cierre_detail`. Su `total` suma **todos** los conceptos, IVA incluido (`:381-384`). |
+| `lib/utils/ingreso-empresa.ts:287-325` | `totalesIngresoEmpresa` suma esos `total`, y por separado `ivaFlete`, `ivaFleteDevolucion` e `ivaComisionCod`. Los tres IVA **ya llegan aparte** en `TotalesIngresoEmpresa`. |
+| `lib/utils/ingreso-empresa.ts:339-341` | `gananciaEmpresa(ingresoTotal, pagoMensajero)` = total − pago. |
+| `lib/utils/ingreso-empresa.ts:649-658` | `netoEmpresa(ingresoTotal, pago, bodega)` = total − pago − bodega. |
+| `lib/services/CierresAdminService.ts:828`, `:835` y `:867-871` | El detalle del cierre de mensajero les pasa `totalesIngreso.total`, **con IVA**. **Causa en el cierre.** |
+| `lib/services/CierresBodegaAdminService.ts:312`, `:327-331`, `:376` y `:394-398` | Lo mismo en cada cierre del día y en el agregado de bodega. |
+| `app/(app)/cierres-admin/_components/CascadasCierreMensajero.tsx:302-316` | Cascada «Lo que le queda a la empresa»: facturado − pago − bodega = neto. Sin línea de IVA. |
+| `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx:343-351` | Las mismas tres líneas en la cascada de bodega. |
+| `app/(app)/cierres-admin/_components/cierre-factura.tsx:2676-2686` y `cierre-detalle-shared.tsx:356-357` | La tarjeta «Debe», solo cuando la ganancia sale negativa, con la nota «Ingreso bruto menos el pago al mensajero». |
+
+Las descargas de `cierres-admin` no llevan ni `ganancia` ni `netoEmpresa`: no hay exporte que corregir.
+
+### 12.2 Lo congelado en `cierre_detail` (D11)
+
+- `cierre_detail` congela las **entradas** de la fórmula: tarifa, tasas de IVA (`db/schema.prisma:2963-2964`),
+  zona y monto (`db/schema.prisma:2922-2964`). No congela una ganancia ni un neto.
+- `cierre_dia` y `cierre_bodega` congelan el pago al mensajero y el ingreso de bodega, que no llevan IVA.
+- La ganancia y el neto se derivan **al leer**.
+
+Por eso el IVA se separa al leer, también en los cierres anteriores a esta ficha, sin migración ni
+recálculo (R25). No hace falta nada más.
+
+### 12.3 El cambio, sin tocar `lib/utils/ingreso-empresa.ts`
+
+`lib/utils/ingreso-empresa.ts` **no es imprescindible**. Sus dos funciones ya restan lo que se les da;
+lo que cambia es el minuendo que les pasan los servicios.
+
+1. **Archivo nuevo `lib/utils/iva-cierre.ts`**, puro y *money-safe* (`Prisma.Decimal` dentro, texto
+   con dos decimales fuera). Solo importa el **tipo** `TotalesIngresoEmpresa`.
+   - `ivaFacturado(totales)` = `ivaFlete + ivaFleteDevolucion + ivaComisionCod` (R21).
+   - `facturadoSinIva(totales)` = `total − ivaFacturado(totales)`.
+2. **Servicios**: `CierresAdminService.verCierreDetalle` y `CierresBodegaAdminService.verCierreBodegaDetalle`,
+   este último en los dos niveles. Pasan a:
+   - `gananciaEmpresa(facturadoSinIva(totalesIngreso), pago)` (R22);
+   - `netoEmpresa(facturadoSinIva(totalesIngreso), pago, bodega)` (R23);
+   - y emiten `ivaFacturado: ivaFacturado(totalesIngreso)` en el DTO.
+
+   `pagoTienda`, `cobradoSobreRecaudado`, `ganaLaTienda`, `paraLaCentral`, `efectivoCubreDescuentos` y
+   `partesPorTienda` no se tocan (R26).
+3. **Contratos** (`lib/interfaces/services/ICierresAdminService.ts`, `ICierresBodegaAdminService.ts`):
+   `ivaFacturado: string` en el detalle del mensajero, en el agregado de bodega y en cada
+   `cierres[]` de bodega.
+4. **Los docstrings de `gananciaEmpresa` y `netoEmpresa`** dirán «ingreso bruto»: quedan desfasados. Se
+   corrigen **después** de que SL-38 mergee, como seguimiento anotado en `progress/impl_SL-39.md`. No
+   cambian ni una línea de código.
+
+### 12.4 Ejemplo numérico
+
+**Cierre A.** Una entrega, con la misma tarifa que en §1:
+
+| Línea de la cascada «Lo que le queda a la empresa» | Hoy | Con SL-39 |
+|---|---|---|
+| Lo que la empresa facturó | 3.616,00 | 3.616,00 (no cambia) |
+| − IVA facturado | — | 416,00 |
+| − Pago al mensajero | 1.500,00 | 1.500,00 |
+| − Ingreso de bodega por rechazos | 0,00 | 0,00 |
+| = Lo que le queda a la empresa | **2.116,00** | **1.700,00** |
+
+La ganancia (facturado sin IVA − pago) pasa de 2.116,00 a 1.700,00.
+
+**Cierre B.** Un solo rechazo: flete por devolución 2.000,00 + IVA 13 % = 260,00, y pago al mensajero
+2.100,00.
+
+- **Hoy:** ganancia = 2.260 − 2.100 = 160,00. La tarjeta «Debe» no aparece.
+- **Con SL-39:** ganancia = 2.000 − 2.100 = **−100,00**, y aparece «Debe 100,00». La empresa
+  perdió en ese cierre, y hoy la pantalla lo tapaba con el IVA.
+
+### 12.5 Pantalla (existente: sin `/design`)
+
+- **Cascada «Lo que le queda a la empresa»** del mensajero (`lineasNetoEmpresa`) y de bodega
+  (`lineasCascadaDueno`, a partir de «Lo que la empresa facturó»):
+  - nueva línea `{ label: IVA_FACTURADO_LABEL, monto: ivaFacturado, signo: "resta", notas: [IVA_FACTURADO_NOTA] }`,
+    entre «Lo que la empresa facturó» y «Pago al mensajero»;
+  - rótulo «IVA facturado»;
+  - nota «El IVA que se le cobró a la tienda en este cierre. No es de la empresa.» (R24).
+  - Va con el mismo componente `CascadaDinero`: no hay estilos nuevos.
+- **`NETO_EMPRESA_NOTA`** (`cierre-labels.ts`) añade «sin el IVA».
+- **`GANANCIA_NOTA` / `GANANCIA_NOTA_BODEGA`** (`cierre-detalle-shared.tsx:356-357`) pasan a «Ingreso sin
+  IVA menos el pago al mensajero.» / «…a los mensajeros.» (R27).
+- **La cascada de facturación** («Cobrado sobre lo recaudado + Flete por rechazo = Lo que la empresa
+  facturó») y la de la partición no cambian: hablan de lo que se le factura a la tienda, que sí lleva
+  IVA.
+
+### 12.6 Coherencia con la caja
+
+- El IVA del cierre (R21) suma por gestión importes ya redondeados a dos decimales (`toIngresoEmpresa`).
+- El IVA que la aprobación escribe en la caja redondea una vez por concepto
+  (`agregarIngresosPorConcepto`, `ingreso-empresa.ts:757-761`).
+- Los dos pueden diferir en algún céntimo en un mismo cierre. Esa diferencia ya existe hoy entre el
+  `total` del cierre y la caja, y esta ficha no la crea ni la arregla.
+
+No se exige igualdad entre el IVA del cierre y el de la caja.
+
+### 12.7 Tests del cierre
+
+**El test que hoy falla**, `tests/integration/db/cierre-iva-aparte-sl39.test.ts`, contra Postgres:
+
+- **Montaje**: el molde de `tests/integration/db/aislamiento-cierres.test.ts` (SL-17), con
+  `CierresAdminService` + `CierresAdminRepository` y `CierresBodegaAdminService` + su repositorio
+  **reales**.
+- **Siembra**: el cierre A y el cierre B de §12.4, con su `cierre_detail` congelado (tasas 13,00).
+- **Qué afirma**:
+  - en A: `ganancia === "1700.00"`, `netoEmpresa === "1700.00"`, `ivaFacturado === "416.00"` y
+    `totalesIngreso.total === "3616.00"`. Hoy da `"2116.00"`;
+  - en B: `ganancia === "-100.00"`. Hoy da `"160.00"`;
+  - en el detalle de bodega que agrupa los dos, en los dos niveles: el agregado y cada cierre del día;
+  - R25: la huella de `cierre_detail` antes y después de leer es idéntica.
+- **Control de no vacuidad**: las gestiones y los `cierre_detail` existen, leídos con el cliente base.
+- **Mutación que lo debe matar**: pasar `totalesIngreso.total` en lugar de `facturadoSinIva`.
+
+**El resto:**
+
+- `tests/unit/utils/iva-cierre.test.ts`: R21 con conceptos `null`/ausentes, que no aportan.
+- `tests/components/CierreMensajeroDetalleCascadas.test.tsx` y `CierreBodegaDetalleCascadas.test.tsx`: la
+  línea, su posición y su nota (R24).
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx`: la identidad de la cascada con la línea de
+  IVA (R24) y lo que no cambia (R26).
+- `tests/unit/services/cierres-admin-service.test.ts` y `cierres-bodega-admin-service.test.ts`: R21–R23
+  y R26.
+
+### 12.8 Alternativa descartada para el cierre
+
+**Cambiar `gananciaEmpresa` y `netoEmpresa` en `lib/utils/ingreso-empresa.ts`** para que resten el IVA
+dentro.
+
+- Es el sitio «natural», pero el archivo está en vuelo en SL-38 y chocaría.
+- Además, `netoEmpresa` la usa también `cascadas-cierre-bodega.test.ts` con su contrato actual
+  («resta lo que le den»).
+
+Pasarles el minuendo correcto desde una función nueva consigue lo mismo sin tocar el archivo, y la
+regla «qué parte de lo facturado es IVA» queda en un solo sitio (`iva-cierre.ts`).
