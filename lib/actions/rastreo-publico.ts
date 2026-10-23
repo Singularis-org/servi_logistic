@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 
 import { loadRastreoPublicoConfig } from "@/lib/config/rastreo-publico";
+import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IRastreoPublicoService } from "@/lib/interfaces/services/IRastreoPublicoService";
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
@@ -16,13 +17,13 @@ import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
 // Feature 229 — Server Action PUBLICA del rastreo del envio (design §2.3).
 //
 // ⛔ NO RESUELVE ACTOR NI COMPRUEBA ROL, Y ES DELIBERADO (R13, decision humana del
-// 2026-08-15): es publica, igual que `lib/actions/conteos-publicos.ts:12-15`. La ausencia
+// 2026-08-15): es publica. La ausencia
 // de `resolveActorFromSession` NO es un olvido. Se postea a `/`, que el middleware deja
 // pasar sin cookie por coincidencia EXACTA (`middleware.ts:62-65`) — por eso esta feature
 // no toca el middleware ni crea ruta.
 //
-// La diferencia con la 198 justifica el resto: aquella NO acepta parametros para no ser un
-// oraculo; esta acepta DOS (guia + segundo factor), luego necesita:
+// Acepta DOS parametros (guia + segundo factor), y cada parametro de un borde sin sesion es una
+// palanca para convertirlo en un oraculo del negocio; por eso necesita:
 //
 //   1. un segundo factor (los 4 ultimos digitos del telefono del destinatario, G1), y
 //   2. un limite de intentos por IP, que es la defensa REAL contra el barrido: `num_guia`
@@ -59,8 +60,31 @@ async function requestContextFromHeaders(): Promise<RequestContext> {
   return { ipAddress };
 }
 
+/**
+ * SL-17 (design §7) — quien rastrea no tiene sesion, asi que la empresa sale de la propia guia.
+ *
+ * En plataforma se lee SOLO `organizacion_id`, por `num_guia`, que es unico global hasta SL-18:
+ * esa ficha tiene que conservar un camino de rastreo cuando deje de serlo. Todo lo demas —la fila,
+ * el segundo factor y el historial— corre en `conEmpresa`, con el filtro y la RLS de siempre.
+ *
+ * Una guia inexistente responde `no_encontrado` sin pasar por el service: es el mismo resultado de
+ * hoy y no hay empresa en la que leer. Cuesta una consulta menos que una guia existente con el
+ * factor errado; el limite por IP sigue siendo la defensa contra el barrido (G4).
+ */
 function buildService(): IRastreoPublicoService {
-  return new RastreoPublicoService(new RastreoPublicoRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  const real = new RastreoPublicoService(new RastreoPublicoRepository(prisma));
+  return {
+    async consultar(numGuia, factor) {
+      const orden = await comoPlataforma(
+        "SL-17",
+        "rastreo público: empresa por número de guía",
+        () => prisma.orden.findUnique({ where: { numGuia }, select: { organizacionId: true } }),
+      );
+      if (orden === null) return { estado: "no_encontrado" };
+      return conEmpresa(orden.organizacionId, () => real.consultar(numGuia, factor));
+    },
+  };
 }
 
 export interface RastreoPublicoDeps {

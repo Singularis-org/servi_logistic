@@ -88,7 +88,8 @@ export class RankingSnapshotRepository implements IRankingSnapshotRepository {
       // R12 — la fecha ya estaba congelada: no se crea, altera ni borra nada. Se lee el
       // conteo YA congelado para que el reporte del cron diga cuantas filas tiene esa fecha
       // de verdad, y no cuantas se habrian escrito.
-      const existente = await this.prisma.rankingSnapshotDia.findUnique({
+      // SL-17 T3.9: el unico es (organizacion_id, fecha); findFirst deja que la extension ponga la empresa.
+      const existente = await this.prisma.rankingSnapshotDia.findFirst({
         where: { fecha: input.fecha },
         select: { filas: true },
       });
@@ -104,7 +105,8 @@ export class RankingSnapshotRepository implements IRankingSnapshotRepository {
    * `PremioRankingRepository.toDTO`: ningun `Prisma.Decimal` sale de esta capa.
    */
   async obtenerPorFecha(fecha: Date): Promise<SnapshotDiaRow | null> {
-    const row = await this.prisma.rankingSnapshotDia.findUnique({
+    // SL-17 T3.9: el unico es (organizacion_id, fecha); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.rankingSnapshotDia.findFirst({
       where: { fecha },
       include: { filasSnapshot: { orderBy: { puesto: "asc" } } },
     });
@@ -142,7 +144,8 @@ export class RankingSnapshotRepository implements IRankingSnapshotRepository {
    * en `obtenerPorFecha`. Ningun `Prisma.Decimal` cruza esta capa.
    */
   async listarPodioDeFecha(fecha: Date): Promise<PodioFilaRow[] | null> {
-    const cabecera = await this.prisma.rankingSnapshotDia.findUnique({
+    // SL-17 T3.9: el unico es (organizacion_id, fecha); findFirst deja que la extension ponga la empresa.
+    const cabecera = await this.prisma.rankingSnapshotDia.findFirst({
       where: { fecha },
       select: { id: true },
     });

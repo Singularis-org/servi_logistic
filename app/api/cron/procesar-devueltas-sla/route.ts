@@ -15,6 +15,7 @@ import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoReposit
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 
 export interface ProcesarDevueltasSlaDeps {
@@ -24,6 +25,10 @@ export interface ProcesarDevueltasSlaDeps {
   // Reloj inyectable (tests): por defecto `new Date()`. Se pasa CRUDO al service (ventana
   // rolling en milisegundos, R13), no por `startOfDayCR` (esto no es un corte diario).
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 function buildService(): IDevolucionSlaService {
@@ -38,6 +43,36 @@ function buildService(): IDevolucionSlaService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+  );
+}
+
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenDevueltas = {
+  evaluadas: number;
+  liberadas: number;
+  escaladas: number;
+  omitidas: number;
+  legadas: number;
+};
+
+type Total = {
+  evaluadas: number;
+  liberadas: number;
+  escaladas: number;
+  omitidas: number;
+  legadas: number;
+};
+
+function sumar(corridas: ResumenDevueltas[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      evaluadas: t.evaluadas + r.evaluadas,
+      liberadas: t.liberadas + r.liberadas,
+      escaladas: t.escaladas + r.escaladas,
+      omitidas: t.omitidas + r.omitidas,
+      legadas: t.legadas + r.legadas,
+    }),
+    { evaluadas: 0, liberadas: 0, escaladas: 0, omitidas: 0, legadas: 0 },
   );
 }
 
@@ -70,18 +105,37 @@ export async function handleProcesarDevueltasSla(
     const service = deps.service ?? buildService();
     // R13: reloj inyectable (por defecto now()); ventana rolling en milisegundos.
     const now = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(now);
-    // R12/R11: resumen SIN PII (solo conteos).
+    const corrida = async (): Promise<ResumenDevueltas> => {
+      const resumen = await service.ejecutar(now);
+      // R12/R11: resumen SIN PII (solo conteos).
+      return {
+        evaluadas: resumen.evaluadas,
+        liberadas: resumen.liberadas,
+        escaladas: resumen.escaladas,
+        omitidas: resumen.omitidas,
+        // Feature 239 (T3.3, R14/R35): cuantas se anclaron por la rama LEGADA (sin fila de
+        // `anclaje_devolucion`). Es el UNICO cambio del contrato HTTP de este endpoint, y es
+        // aditivo. Sirve para ver extinguirse la poblacion que quedo en vuelo el dia del
+        // despliegue: deberia bajar a cero y quedarse ahi.
+        legadas: resumen.legadas,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): las devueltas son ordenes de cada empresa: una corrida por empresa, cada una en
+    // su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenDevueltas[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      evaluadas: resumen.evaluadas,
-      liberadas: resumen.liberadas,
-      escaladas: resumen.escaladas,
-      omitidas: resumen.omitidas,
-      // Feature 239 (T3.3, R14/R35): cuantas se anclaron por la rama LEGADA (sin fila de
-      // `anclaje_devolucion`). Es el UNICO cambio del contrato HTTP de este endpoint, y es
-      // aditivo. Sirve para ver extinguirse la poblacion que quedo en vuelo el dia del
-      // despliegue: deberia bajar a cero y quedarse ahi.
-      legadas: resumen.legadas,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

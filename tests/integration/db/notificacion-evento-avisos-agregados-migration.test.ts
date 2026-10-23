@@ -311,7 +311,8 @@ describeSiHayBase("409/T2.4 — la base aplicada, y el índice de dedupe que la 
     expect(def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
     // ⚠️ Y AQUÍ SE VE EL HALLAZGO QUE DECIDE TODA LA FICHA: el ALCANCE (`tienda_id`, `zona_id`)
     // NO ESTÁ en la clave. Por eso el ámbito tiene que ir DENTRO del `entidad_id`.
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
     expect(def).not.toMatch(/tienda_id/);
     expect(def).not.toMatch(/zona_id/);
   });
@@ -414,6 +415,7 @@ describeSiHayBase("409/T2.4 — el DOWN ejercitado de verdad, con su precondici�
     expect(r.def).toMatch(/CREATE UNIQUE INDEX/i);
     expect(r.def).toMatch(/NULLS NOT DISTINCT/i);
     expect(r.def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
-    expect(r.def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(r.def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
   });
 });

@@ -66,6 +66,8 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 
 import { clienteConSavepoint, serializarEscriturasReales, type TxDeTest } from "../_postgres-real";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizaciones";
 import { busquedaPorGuiaDe } from "./busqueda-469";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -202,7 +204,11 @@ export async function enTransaccionRevertida459<T>(
     await prisma.$transaction(
       async (tx) => {
         await serializarEscriturasReales(tx);
-        throw new Revertir459(await fn(tx));
+        // SL-17 (design §9.1): la empresa del escenario, igual que en `enTransaccionRevertida`, pero
+        // DESPUES del lock: el lock tiene que seguir siendo la primera sentencia.
+        const { id } = await crearOrganizacion(tx);
+        await fijarEmpresa(tx, id);
+        throw new Revertir459(await conEmpresa(id, () => fn(tx)));
       },
       {
         timeout: 180_000,

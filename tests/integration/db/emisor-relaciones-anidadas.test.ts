@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-import { ConteosPublicosRepository } from "@/lib/repositories/ConteosPublicosRepository";
 import {
   SNAPSHOT_SELECT,
   leerDescriptivosDeOrdenes,
@@ -156,39 +155,8 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
     return gestion.id;
   }
 
-  describe("paso 2 del itinerario · `$transaction([…])` en forma de ARRAY", () => {
-    it("`ConteosPublicosRepository.contar()` (3 consultas) no solapa: 1 en vuelo", async () => {
-      contado.sonda.bloque = "paso2-conteos";
-      contado.sonda.limpiar();
-
-      const conteos = await new ConteosPublicosRepository(contado.prisma).contar();
-
-      console.log(resumenDeLaSonda("paso 2 · conteos publicos (3 en array)", contado.sonda));
-
-      // ANTI-VACIO: las tres cuentas salieron de verdad, en una sola conexion (BEGIN + 3 + COMMIT).
-      expect(contado.sonda.cuantasConteniendo("COUNT(*)")).toBe(3);
-      expect(contado.sonda.conexionesUsadas()).toBe(1);
-      expect(typeof conteos.distritosConCobertura).toBe("number");
-
-      // El sospechoso principal del design (§3.5, paso 2) NO reproduce: Prisma espera cada
-      // consulta del array antes de mandar la siguiente.
-      expect(contado.sonda.maximoEnVuelo()).toBe(1);
-      expect(contado.sonda.solapes).toEqual([]);
-    });
-
-    it("dos renders de la landing a la vez reparten en dos conexiones, sin solape", async () => {
-      contado.sonda.bloque = "paso2-dos-renders";
-      contado.sonda.limpiar();
-
-      const repo = new ConteosPublicosRepository(contado.prisma);
-      await Promise.all([repo.contar(), repo.contar()]);
-
-      console.log(resumenDeLaSonda("paso 2 · dos `contar()` concurrentes", contado.sonda));
-      expect(contado.sonda.conexionesUsadas()).toBe(2);
-      expect(contado.sonda.maximoEnVuelo()).toBe(1);
-      expect(contado.sonda.solapes).toEqual([]);
-    });
-  });
+  // El paso 2 del itinerario (`$transaction([…])` en array, los conteos publicos de la landing)
+  // se midio aqui hasta que SL-17 (R43) retiro ese repositorio: no reproducia el aviso (1 en vuelo).
 
   describe("EL ANTES · pasos 4 y 5: la expansion de relaciones, que SI reproduce", () => {
     it("el mismo `select` sobre el cliente AGRUPADO reparte entre conexiones y no solapa", async () => {

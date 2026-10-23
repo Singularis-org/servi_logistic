@@ -29,6 +29,8 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, urlDeBaseDeDatos } from "./_postgres-real";
 import {
   conCandado459,
+  clienteConEmpresa459,
+  conEmpresa459,
   endeudar457,
   formData459,
   limpiar459,
@@ -90,8 +92,8 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
 
   beforeAll(() => {
     prisma = crearPrismaDeTest();
-    clienteA = crearPrismaDeTest();
-    clienteB = crearPrismaDeTest();
+    clienteA = clienteConEmpresa459(crearPrismaDeTest());
+    clienteB = clienteConEmpresa459(crearPrismaDeTest());
   });
 
   afterAll(async () => {
@@ -103,7 +105,8 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }
@@ -364,10 +367,10 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
     // (una con el candado, dos esperandolo) dejarian a la primera sin conexion: cuelgue y rollback. Con
     // un pool de UNA conexion ese escenario es el de cada pago: la transaccion ocupa la unica conexion y
     // una lectura fuera de ella no llega nunca (la transaccion caduca a los 10 s). Por el `tx`, entra.
-    const clienteUno = new PrismaClient({
+    const clienteUno = clienteConEmpresa459(new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 1 }),
       omit: PRISMA_OMIT,
-    }) as unknown as PrismaClient;
+    }) as unknown as PrismaClient);
     try {
       await conPersonas(async (p) => {
         await endeudar457(prisma, p.tiendaId, "10000.00");

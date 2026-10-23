@@ -1002,6 +1002,24 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
     expectSinPersistir(repo);
   });
 
+  it("SL-17 D15/R7: la tienda no existe para la empresa en curso -> «tienda no encontrada» en cada fila y nada se persiste", async () => {
+    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(null) });
+    const service = new BulkOrdenService(repo, tarifaRepoStub);
+
+    const r = await service.cargarMasiva([row({ num_remision: "A" }), row({ num_remision: "B" })], TIENDA);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.summary).toMatchObject({ creadas: 0, conError: 2, cargaId: null });
+    expect(r.summary.filas.map((f) => f.errores)).toEqual([
+      { tienda: ["tienda no encontrada"] },
+      { tienda: ["tienda no encontrada"] },
+    ]);
+    // Ni se precarga la geografia: la lectura previa corta antes.
+    expect(repo.findAllProvincias).not.toHaveBeenCalled();
+    expectSinPersistir(repo);
+  });
+
   it("R17: el dryRun de la rama (b) NO consume ninguna guia (no toca el repositorio)", async () => {
     const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(false) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);

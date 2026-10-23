@@ -21,6 +21,7 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { avisosDiariosConfig } from "@/lib/config/avisos-diarios";
 import {
@@ -38,6 +39,10 @@ export interface AvisosDiariosDeps {
   service?: IAvisosDiariosService;
   /** Reloj inyectable (tests): por defecto `new Date()`. Determina el dia CR de la corrida. */
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 function buildService(): IAvisosDiariosService {
@@ -85,6 +90,64 @@ function buildService(): IAvisosDiariosService {
   );
 }
 
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenAvisosDiarios = {
+  fecha: string;
+  tiendasConNovedades: number;
+  avisosNovedadesEmitidos: number;
+  ordenesRepresadas: number;
+  zonasConRepresadas: number;
+  avisosRepresadasEmitidos: number;
+  reprogramadasRetenidas: number;
+  ambitosConRetenidas: number;
+  avisosRetenidasEmitidos: number;
+  fallos: number;
+};
+
+// Las fechas salen del mismo instante y son iguales en todas las corridas; sin empresas no hay
+// corrida de la que tomarlas y van `null`.
+type Total = {
+  fecha: string | null;
+  tiendasConNovedades: number;
+  avisosNovedadesEmitidos: number;
+  ordenesRepresadas: number;
+  zonasConRepresadas: number;
+  avisosRepresadasEmitidos: number;
+  reprogramadasRetenidas: number;
+  ambitosConRetenidas: number;
+  avisosRetenidasEmitidos: number;
+  fallos: number;
+};
+
+function sumar(corridas: ResumenAvisosDiarios[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      fecha: t.fecha ?? r.fecha,
+      tiendasConNovedades: t.tiendasConNovedades + r.tiendasConNovedades,
+      avisosNovedadesEmitidos: t.avisosNovedadesEmitidos + r.avisosNovedadesEmitidos,
+      ordenesRepresadas: t.ordenesRepresadas + r.ordenesRepresadas,
+      zonasConRepresadas: t.zonasConRepresadas + r.zonasConRepresadas,
+      avisosRepresadasEmitidos: t.avisosRepresadasEmitidos + r.avisosRepresadasEmitidos,
+      reprogramadasRetenidas: t.reprogramadasRetenidas + r.reprogramadasRetenidas,
+      ambitosConRetenidas: t.ambitosConRetenidas + r.ambitosConRetenidas,
+      avisosRetenidasEmitidos: t.avisosRetenidasEmitidos + r.avisosRetenidasEmitidos,
+      fallos: t.fallos + r.fallos,
+    }),
+    {
+      fecha: null,
+      tiendasConNovedades: 0,
+      avisosNovedadesEmitidos: 0,
+      ordenesRepresadas: 0,
+      zonasConRepresadas: 0,
+      avisosRepresadasEmitidos: 0,
+      reprogramadasRetenidas: 0,
+      ambitosConRetenidas: 0,
+      avisosRetenidasEmitidos: 0,
+      fallos: 0,
+    },
+  );
+}
+
 /** Extrae el token `Bearer <token>` del header Authorization; `null` si ausente o mal formado. */
 function bearerToken(req: Request): string | null {
   const header = req.headers.get("authorization");
@@ -114,23 +177,42 @@ export async function handleAvisosDiarios(
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const ahora = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(ahora);
-    // R61: SOLO conteos + la fecha CR. Se enumera CAMPO A CAMPO a proposito, en vez de devolver
-    // `resumen` entero: asi, el dia que el servicio gane un campo con un identificador de tienda,
-    // de zona o de persona, no cruza a la respuesta solo.
+    const corrida = async (): Promise<ResumenAvisosDiarios> => {
+      const resumen = await service.ejecutar(ahora);
+      // R61: SOLO conteos + la fecha CR. Se enumera CAMPO A CAMPO a proposito, en vez de devolver
+      // `resumen` entero: asi, el dia que el servicio gane un campo con un identificador de tienda,
+      // de zona o de persona, no cruza a la respuesta solo.
+      return {
+        fecha: resumen.fecha,
+        tiendasConNovedades: resumen.tiendasConNovedades,
+        avisosNovedadesEmitidos: resumen.avisosNovedadesEmitidos,
+        ordenesRepresadas: resumen.ordenesRepresadas,
+        zonasConRepresadas: resumen.zonasConRepresadas,
+        avisosRepresadasEmitidos: resumen.avisosRepresadasEmitidos,
+        // FICHA 462 (R52): los tres conteos del tercer agregado, campo a campo. Ni ids ni fechas de
+        // orden: cuantas retenidas, cuantos ambitos y cuantos avisos.
+        reprogramadasRetenidas: resumen.reprogramadasRetenidas,
+        ambitosConRetenidas: resumen.ambitosConRetenidas,
+        avisosRetenidasEmitidos: resumen.avisosRetenidasEmitidos,
+        fallos: resumen.fallos,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): ordenes, tiendas y avisos son de cada empresa: una corrida por empresa, cada una
+    // en su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenAvisosDiarios[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      fecha: resumen.fecha,
-      tiendasConNovedades: resumen.tiendasConNovedades,
-      avisosNovedadesEmitidos: resumen.avisosNovedadesEmitidos,
-      ordenesRepresadas: resumen.ordenesRepresadas,
-      zonasConRepresadas: resumen.zonasConRepresadas,
-      avisosRepresadasEmitidos: resumen.avisosRepresadasEmitidos,
-      // FICHA 462 (R52): los tres conteos del tercer agregado, campo a campo. Ni ids ni fechas de
-      // orden: cuantas retenidas, cuantos ambitos y cuantos avisos.
-      reprogramadasRetenidas: resumen.reprogramadasRetenidas,
-      ambitosConRetenidas: resumen.ambitosConRetenidas,
-      avisosRetenidasEmitidos: resumen.avisosRetenidasEmitidos,
-      fallos: resumen.fallos,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

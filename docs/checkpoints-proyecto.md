@@ -19,9 +19,9 @@ Una feature que toque uno de estos flujos deja un E2E en `e2e/` que lo recorre:
 - [ ] Devoluciones, reintentos y reprogramación (`devolucion-origen`, `reintentos-escalado`,
       `reprogramacion-liberacion`).
 - [ ] Rastreo público (`rastreo-publico`).
-
-> ABIERTO: el alta de empresa y el aislamiento entre empresas se añaden a esta lista cuando se
-> especifique la fase 2 de `docs/plan-saas.md`.
+- [ ] Aislamiento entre empresas: dos empresas creadas con el alta recorren el menú del maestro sin
+      verse (`e2e/dos-empresas-humo.spec.ts`). Una feature que toque datos de negocio, la sesión,
+      `lib/db/` o una entrada sin sesión (API key, cron, job) lo corre.
 
 ## Datos y seguridad
 - [ ] Toda tabla nueva tiene RLS y `organizacion_id` (`docs/architecture.md > Multi-empresa`).

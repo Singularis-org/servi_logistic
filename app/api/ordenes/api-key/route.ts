@@ -13,7 +13,6 @@ import {
   ValidationError,
   MSG,
 } from "@/lib/errors";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiOrdenLecturaService } from "@/lib/interfaces/services/IApiOrdenLecturaService";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -23,11 +22,16 @@ import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvid
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { gestionConfig } from "@/lib/config/gestion";
 import { ORDER_STATUS_SEED, esCodigoAnterior, mensajeCodigoAnterior } from "@/lib/types/order-status";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 
 export interface ListadoApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   lecturaService?: IApiOrdenLecturaService;
 }
 
@@ -106,36 +110,39 @@ export async function handleListadoApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1/R2 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R3 -> 403
 
-    // 2. R8/R9: valida SOLO las claves conocidas; cualquier otra (p. ej. tiendaId) se ignora.
-    const sp = new URL(req.url).searchParams;
-    const raw: Record<string, string> = {};
-    if (sp.has("limit")) raw.limit = sp.get("limit") ?? "";
-    if (sp.has("offset")) raw.offset = sp.get("offset") ?? "";
-    if (sp.has("estado")) raw.estado = sp.get("estado") ?? "";
-    // Feature 257 (R2): se mantiene la lectura CLAVE POR CLAVE. Volcar la query entera de golpe
-    // convertiria cualquier clave futura en entrada del schema, que es justo lo que 106/R8 impide.
-    if (sp.has("desde")) raw.desde = sp.get("desde") ?? "";
-    if (sp.has("hasta")) raw.hasta = sp.get("hasta") ?? "";
-    if (sp.has("num_guia")) raw.num_guia = sp.get("num_guia") ?? "";
-    if (sp.has("num_remision")) raw.num_remision = sp.get("num_remision") ?? "";
-    const parsed = listadoQuerySchema.safeParse(raw);
-    if (!parsed.success) {
-      const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
-      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors }); // R9 -> 422
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. R8/R9: valida SOLO las claves conocidas; cualquier otra (p. ej. tiendaId) se ignora.
+      const sp = new URL(req.url).searchParams;
+      const raw: Record<string, string> = {};
+      if (sp.has("limit")) raw.limit = sp.get("limit") ?? "";
+      if (sp.has("offset")) raw.offset = sp.get("offset") ?? "";
+      if (sp.has("estado")) raw.estado = sp.get("estado") ?? "";
+      // Feature 257 (R2): se mantiene la lectura CLAVE POR CLAVE. Volcar la query entera de golpe
+      // convertiria cualquier clave futura en entrada del schema, que es justo lo que 106/R8 impide.
+      if (sp.has("desde")) raw.desde = sp.get("desde") ?? "";
+      if (sp.has("hasta")) raw.hasta = sp.get("hasta") ?? "";
+      if (sp.has("num_guia")) raw.num_guia = sp.get("num_guia") ?? "";
+      if (sp.has("num_remision")) raw.num_remision = sp.get("num_remision") ?? "";
+      const parsed = listadoQuerySchema.safeParse(raw);
+      if (!parsed.success) {
+        const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
+        throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors }); // R9 -> 422
+      }
 
-    // 3. R6/R7/R10: el service fuerza owner = actor.usuarioId y pagina con total.
-    const service = deps.lecturaService ?? buildLecturaService();
-    return service.listar(auth.actor, {
-      limit: parsed.data.limit,
-      offset: parsed.data.offset,
-      estado: parsed.data.estado,
-      // R18: los filtros de 257 se combinan en AND; el `snake_case` publico se traduce aqui al
-      // `camelCase` del contrato interno. El service convierte las fechas a instantes UTC.
-      desde: parsed.data.desde,
-      hasta: parsed.data.hasta,
-      numGuia: parsed.data.num_guia,
-      numRemision: parsed.data.num_remision,
+      // 3. R6/R7/R10: el service fuerza owner = actor.usuarioId y pagina con total.
+      const service = deps.lecturaService ?? buildLecturaService();
+      return service.listar(auth.actor, {
+        limit: parsed.data.limit,
+        offset: parsed.data.offset,
+        estado: parsed.data.estado,
+        // R18: los filtros de 257 se combinan en AND; el `snake_case` publico se traduce aqui al
+        // `camelCase` del contrato interno. El service convierte las fechas a instantes UTC.
+        desde: parsed.data.desde,
+        hasta: parsed.data.hasta,
+        numGuia: parsed.data.num_guia,
+        numRemision: parsed.data.num_remision,
+      });
     });
   });
 

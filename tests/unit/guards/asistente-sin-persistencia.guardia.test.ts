@@ -148,9 +148,10 @@ describe("436/R30 — y la tabla del contador no puede ganar una columna de text
       const campo = /^(\w+)\s+(String|Json|Bytes)\??\s/.exec(t);
       if (campo) deTexto.push(campo[1]);
     }
-    // `id` y `usuarioId` son IDENTIFICADORES, no contenido. Cualquier otro `String` —`pregunta`,
-    // `respuesta`, `slug`, `nota`— es exactamente lo que R30 prohíbe.
-    expect(deTexto).toEqual(["id", "usuarioId"]);
+    // `id`, `usuarioId` y `organizacionId` (la empresa de la fila, SL-17) son IDENTIFICADORES, no
+    // contenido. Cualquier otro `String` —`pregunta`, `respuesta`, `slug`, `nota`— es exactamente
+    // lo que R30 prohíbe.
+    expect(deTexto).toEqual(["id", "usuarioId", "organizacionId"]);
   });
 
   it("⭑ y la MIGRACIÓN que la crea tampoco declara ninguna otra columna de texto", () => {

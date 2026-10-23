@@ -2,8 +2,7 @@
 //
 // Repositorio PROPIO y no un metodo mas en `IOrdenHistorialRepository`: aquel resuelve
 // `actorNombre` y `motivo` (`IOrdenHistorialRepository.ts:89`), y R25 exige poder afirmar
-// que el `select` de ESTE modulo no nombra ningun campo prohibido. Precedente exacto:
-// `ConteosPublicosRepository` (feature 198).
+// que el `select` de ESTE modulo no nombra ningun campo prohibido.
 //
 // Las dos filas de abajo son la lista blanca de lo que sale de la base: nada de
 // `direccion`, `montoCobrar`, `producto`, `notas`, `destinatario`, `mensajeroAsignadoId`,

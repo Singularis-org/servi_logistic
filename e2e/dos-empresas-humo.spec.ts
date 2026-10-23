@@ -1,0 +1,302 @@
+import { randomUUID } from "node:crypto";
+
+import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import type { PrismaClient } from "@prisma/client";
+
+import {
+  altaDeEmpresa,
+  clienteDueno,
+  correoDelMaestro,
+  liberarCorreos,
+  LogDelServidor,
+  patronDeMarcador,
+  prepararAcceso,
+  rutasDelMenuDelMaestro,
+  sembrarDatos,
+  solicitarRecuperacion,
+  type AltaDeEmpresa,
+  type DatosSembrados,
+  type Empresa,
+  type EnvioRegistrado,
+  type Letra,
+} from "./_dos-empresas-fixture";
+
+/**
+ * SL-17 T4.2 — humo de aceptación de dos empresas (D19, R47; design §9.3).
+ *
+ * 1. Alta: A y B nacen por `OrganizacionService.altaEmpresa` dentro de `comoPlataforma`; repetir la
+ *    de A da `ya_existe` (R45). Cuando exista la pantalla «Empresas» de SL-32, este paso se hace
+ *    desde ella como superadmin.
+ * 2. Primer acceso: «recuperar contraseña» por `PasswordResetService.solicitar` con el SMTP REAL
+ *    (se exige que el proveedor acepte el envío). El humo no lee el buzón: la contraseña la fija la
+ *    fixture con el hasher del login, y el dispositivo del navegador queda confiado (sin OTP).
+ * 3. Datos: en cada empresa, con `fijarEmpresa`, lo mínimo de cada pantalla, con marcadores
+ *    `A-<uuid>` / `B-<uuid>` en sus textos visibles.
+ * 4. Recorrido: cada maestro visita TODAS las rutas del menú del maestro según
+ *    `lib/auth/menu-visibility.ts`. En cada una: ni la pantalla de error de `app/(app)/error.tsx`, ni
+ *    «no encontrado», ni un 5xx, ni `EmpresaNoResuelta` en el log del servidor; y ningún marcador de
+ *    la otra empresa, ni en el texto ni en el HTML (que lleva el payload de RSC).
+ * 5. B abriendo los detalles de A (estado de cuenta de su tienda y de su mensajero) ve «no
+ *    encontrado»; A abriendo los mismos ve su marcador (el control que hace falsable el anterior).
+ *    La app no tiene una URL de detalle de orden: el detalle de la orden se abre dentro de `/ordenes`.
+ * 6. Vehículos y geografía (R40): cargan, y crear un vehículo o una provincia desde la pantalla
+ *    falla cerrado: sin pantalla de error ni 5xx, y la base no cambia.
+ *
+ * CÓMO SE CORRE (solo en local; una base remota lo aborta antes de escribir):
+ * - `DATABASE_URL` a una base local migrada y con catálogos (`pnpm run db:seed`), las `SMTP_*` y
+ *   `SL17_HUMO_MAESTRO_A`/`_B` con los buzones reales de prueba de los dos maestros (fuera del árbol).
+ * - El dev server en `localhost:3000`, levantado aparte con su stdout/stderr en un archivo, y
+ *   `SL17_HUMO_LOG_SERVIDOR` apuntando a ese archivo. Sin él, FALLA: no se salta.
+ */
+
+test.describe.configure({ mode: "serial" });
+
+const PANTALLA_DE_ERROR = "No pudimos cargar esta pantalla";
+const NO_ENCONTRADO = "No encontramos esta página";
+
+let dueno: PrismaClient | null = null;
+let log: LogDelServidor | null = null;
+const altas: Partial<Record<Letra, AltaDeEmpresa>> = {};
+const envios: Partial<Record<Letra, EnvioRegistrado[]>> = {};
+const datos: Partial<Record<Letra, DatosSembrados>> = {};
+const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
+const rutas = rutasDelMenuDelMaestro();
+
+function otra(letra: Letra): Letra {
+  return letra === "A" ? "B" : "A";
+}
+
+function empresa(letra: Letra): Empresa {
+  const alta = altas[letra];
+  if (!alta) throw new Error(`no hay alta de ${letra}: falló el beforeAll`);
+  return alta.empresa;
+}
+
+function datosDe(letra: Letra): DatosSembrados {
+  const d = datos[letra];
+  if (!d) throw new Error(`no hay datos de ${letra}: falló el beforeAll`);
+  return d;
+}
+
+test.beforeAll(async ({ browser }) => {
+  test.setTimeout(240_000);
+  log = LogDelServidor.desdeEntorno();
+  dueno = clienteDueno();
+  await liberarCorreos(dueno);
+
+  const contexto = await browser.newContext();
+  const page = await contexto.newPage();
+  const userAgent = await page.evaluate(() => navigator.userAgent);
+
+  for (const letra of ["A", "B"] as const) {
+    const email = correoDelMaestro(letra);
+    altas[letra] = await altaDeEmpresa(letra, email);
+    envios[letra] = await solicitarRecuperacion(email, userAgent);
+    await prepararAcceso(dueno, empresa(letra), userAgent);
+    datos[letra] = await sembrarDatos(dueno, empresa(letra));
+  }
+  await contexto.close();
+
+  for (const letra of ["A", "B"] as const) {
+    const ctx = await browser.newContext({ userAgent });
+    const p = await ctx.newPage();
+    await p.goto("/login");
+    await p.fill('input[type="email"]', empresa(letra).email);
+    await p.fill('input[type="password"]', empresa(letra).password);
+    await p.click('button[type="submit"]');
+    await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 90_000 });
+    cookies[letra] = await ctx.cookies();
+    await ctx.close();
+  }
+});
+
+test.afterAll(async () => {
+  // La base es desechable; solo se liberan los correos fijos para la corrida siguiente.
+  if (dueno) await liberarCorreos(dueno);
+  await dueno?.$disconnect();
+});
+
+async function abrirComo(letra: Letra, page: Page): Promise<number[]> {
+  const sesion = cookies[letra];
+  expect(sesion?.length ?? 0, `no hay sesión de ${letra}: el login del beforeAll no dejó cookies`).toBeGreaterThan(0);
+  await page.context().addCookies(sesion ?? []);
+  const errores5xx: number[] = [];
+  page.on("response", (r) => {
+    if (r.status() >= 500) errores5xx.push(r.status());
+  });
+  return errores5xx;
+}
+
+/** Visita una ruta y devuelve lo que el humo mira en ella. */
+async function visitar(page: Page, ruta: string): Promise<{ texto: string; html: string; estado: number | null }> {
+  const respuesta = await page.goto(ruta, { waitUntil: "load", timeout: 180_000 });
+  await page.waitForLoadState("networkidle", { timeout: 60_000 }).catch(() => undefined);
+  const texto = await page.locator("body").innerText();
+  const html = await page.content();
+  return { texto, html, estado: respuesta?.status() ?? null };
+}
+
+test("alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP", () => {
+  for (const letra of ["A", "B"] as const) {
+    const alta = altas[letra];
+    expect(alta?.resultado.estado, `alta de ${letra}`).toBe("creada");
+    expect(alta?.repeticion, `repetir el alta de ${letra} (R45)`).toEqual({
+      estado: "ya_existe",
+      organizacionId: alta?.empresa.organizacionId,
+    });
+    const e = envios[letra] ?? [];
+    expect(e, `envíos del correo de recuperación de ${letra}`).toHaveLength(1);
+    expect(e[0]?.error, `el SMTP rechazó el correo de ${letra}`).toBeNull();
+    expect(e[0]?.messageId, `el SMTP no devolvió id de mensaje para ${letra}`).toBeTruthy();
+    console.log(`[humo] correo de recuperación de ${letra}: aceptado, messageId=${e[0]?.messageId}`);
+  }
+  expect(empresa("A").organizacionId).not.toBe(empresa("B").organizacionId);
+});
+
+for (const letra of ["A", "B"] as const) {
+  test(`el maestro de ${letra} recorre todas las rutas de su menú sin error ni datos de ${otra(letra)}`, async ({ page }) => {
+    test.setTimeout(30 * 60_000);
+    expect(rutas.length, "el menú del maestro no dio rutas").toBeGreaterThan(0);
+    const errores5xx = await abrirComo(letra, page);
+    const ajenos = patronDeMarcador(otra(letra));
+    const propios = datosDe(letra).marcadores;
+    const vistos = new Set<string>();
+    log?.nuevo();
+
+    for (const ruta of rutas) {
+      const antes = errores5xx.length;
+      const { texto, html, estado } = await visitar(page, ruta);
+      const delServidor = log?.nuevo() ?? "";
+      const fugas = Array.from(new Set([...(texto.match(ajenos) ?? []), ...(html.match(ajenos) ?? [])]));
+      for (const [clave, marcador] of Object.entries(propios)) {
+        if (html.includes(marcador)) vistos.add(clave);
+      }
+      const resumen = {
+        ruta,
+        estado,
+        error: texto.includes(PANTALLA_DE_ERROR),
+        noEncontrado: texto.includes(NO_ENCONTRADO),
+        cincoXX: errores5xx.slice(antes),
+        empresaNoResuelta: delServidor.includes("EmpresaNoResuelta"),
+        fugas,
+      };
+      console.log(`[humo ${letra}] ${JSON.stringify(resumen)}`);
+      expect.soft(resumen.estado, `${ruta}: estado HTTP`).toBeLessThan(400);
+      expect.soft(resumen.error, `${ruta}: pantalla de error`).toBe(false);
+      expect.soft(resumen.noEncontrado, `${ruta}: «no encontrado» en una ruta del menú`).toBe(false);
+      expect.soft(resumen.cincoXX, `${ruta}: respuestas 5xx`).toEqual([]);
+      expect.soft(resumen.empresaNoResuelta, `${ruta}: EmpresaNoResuelta en el log del servidor`).toBe(false);
+      expect.soft(fugas, `${ruta}: marcadores de ${otra(letra)} en una pantalla de ${letra}`).toEqual([]);
+    }
+
+    // Control: si los datos propios no se ven en ninguna pantalla, «no hay marcadores ajenos» no
+    // prueba nada. Cada dato marcado tiene que aparecer en al menos una ruta del menú; la URL del
+    // webhook no está en ninguna (se lee al abrir su modal) y la comprueba el test del webhook.
+    console.log(`[humo ${letra}] marcadores propios vistos: ${[...vistos].sort().join(", ")}`);
+    expect([...vistos].sort(), `${letra}: datos propios que no se ven en ninguna ruta`).toEqual(
+      Object.keys(propios).filter((k) => k !== "webhook").sort(),
+    );
+  });
+}
+
+test("cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa", async ({ browser }) => {
+  test.setTimeout(10 * 60_000);
+  for (const letra of ["A", "B"] as const) {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const errores5xx = await abrirComo(letra, page);
+    const { apiKey, webhook } = datosDe(letra).marcadores;
+    await visitar(page, "/configuracion/api");
+    const fila = page.locator("tr", { hasText: apiKey });
+    await fila.locator("button", { hasText: "Editar" }).click({ timeout: 60_000 });
+    const valores = (): Promise<string> =>
+      page.evaluate(() => Array.from(document.querySelectorAll("input")).map((i) => i.value).join(" "));
+    await expect.poll(valores, { message: `${letra}: el modal no trae la URL de su webhook`, timeout: 30_000 }).toContain(webhook);
+    const ajenos = (await valores()).match(patronDeMarcador(otra(letra))) ?? [];
+    console.log(`[humo webhook ${letra}] URL propia en el modal; marcadores ajenos: ${ajenos.length}`);
+    expect.soft(ajenos, `${letra}: el modal del webhook trae datos de ${otra(letra)}`).toEqual([]);
+    expect.soft(errores5xx, `${letra}: respuestas 5xx en el webhook`).toEqual([]);
+    await ctx.close();
+  }
+});
+
+test("B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador", async ({ browser }) => {
+  test.setTimeout(10 * 60_000);
+  const a = datosDe("A");
+  const detalles = [
+    { ruta: `/wallet/tiendas/${a.tiendaId}`, marcador: a.marcadores.tienda },
+    { ruta: `/wallet/mensajeros/${a.mensajeroId}`, marcador: a.marcadores.mensajero },
+  ];
+  for (const letra of ["A", "B"] as const) {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const errores5xx = await abrirComo(letra, page);
+    for (const { ruta, marcador } of detalles) {
+      const { texto, html } = await visitar(page, ruta);
+      console.log(`[humo detalle ${letra}] ${ruta}: noEncontrado=${texto.includes(NO_ENCONTRADO)} marcador=${html.includes(marcador)}`);
+      if (letra === "A") {
+        expect.soft(texto.includes(NO_ENCONTRADO), `A en su propio ${ruta}`).toBe(false);
+        expect.soft(texto.includes(marcador), `A no ve su marcador en ${ruta}`).toBe(true);
+      } else {
+        expect.soft(texto.includes(NO_ENCONTRADO), `B en ${ruta} de A`).toBe(true);
+        expect.soft(html.includes(marcador), `B ve el marcador de A en ${ruta}`).toBe(false);
+      }
+      expect.soft(texto.includes(PANTALLA_DE_ERROR), `${letra} en ${ruta}: pantalla de error`).toBe(false);
+    }
+    expect.soft(errores5xx, `${letra}: respuestas 5xx en los detalles`).toEqual([]);
+    await ctx.close();
+  }
+});
+
+/**
+ * Pulsa «Guardar» y espera la Server Action (un POST a la página): sin ella, «la base no cambió»
+ * pasaría aunque el clic no hubiera enviado nada. Devuelve el texto de la página después y anota
+ * las líneas nuevas (el aviso que ve el maestro).
+ */
+async function guardarYLeer(page: Page, boton: Locator, que: string): Promise<string> {
+  const antes = new Set((await page.locator("body").innerText()).split("\n"));
+  const [accion] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.startsWith("/configuracion"), { timeout: 60_000 }),
+    boton.click(),
+  ]);
+  await page.waitForTimeout(1500);
+  const despues = await page.locator("body").innerText();
+  const nuevas = despues.split("\n").filter((l) => l.trim() !== "" && !antes.has(l)).slice(0, 3);
+  console.log(`[humo R40] ${que}: Server Action ${accion.status()}; aviso en pantalla: ${JSON.stringify(nuevas)}`);
+  expect.soft(accion.status(), `${que}: la Server Action respondió 5xx`).toBeLessThan(500);
+  return despues;
+}
+
+test("vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40)", async ({ page }) => {
+  test.setTimeout(10 * 60_000);
+  const db = dueno;
+  if (!db) throw new Error("sin cliente de base: falló el beforeAll");
+  const errores5xx = await abrirComo("A", page);
+  const nombre = `A-${randomUUID()}`;
+
+  const vehiculosAntes = await db.vehiculo.count();
+  const v = await visitar(page, "/configuracion/vehiculos");
+  expect(v.texto.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al cargar").toBe(false);
+  expect(v.texto, "vehículos: no carga el listado").toContain("Tipos de vehículo");
+  await page.getByRole("button", { name: "Crear vehículo" }).click();
+  await page.getByPlaceholder("Moto, carro, camión…").fill(nombre);
+  const trasVehiculo = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }), "vehículo");
+  expect.soft(trasVehiculo.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al guardar").toBe(false);
+  expect.soft(trasVehiculo.includes("Vehículo creado"), "vehículos: la pantalla dice que creó").toBe(false);
+  expect.soft(await db.vehiculo.count(), "vehículos: cambió el catálogo").toBe(vehiculosAntes);
+  expect.soft(await db.vehiculo.count({ where: { name: nombre } }), "vehículos: quedó la fila").toBe(0);
+
+  const provinciasAntes = await db.provincia.count();
+  const g = await visitar(page, "/configuracion/geografia");
+  expect(g.texto.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al cargar").toBe(false);
+  expect(g.texto, "geografía: no carga el catálogo").toContain("Catálogo geográfico");
+  await page.getByRole("button", { name: "Crear provincia" }).click();
+  await page.getByPlaceholder("Cabagra, Buenos Aires, Puntarenas…").first().fill(nombre);
+  const trasProvincia = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }).first(), "provincia");
+  expect.soft(trasProvincia.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al guardar").toBe(false);
+  expect.soft(trasProvincia.includes("dado de alta"), "geografía: la pantalla dice que creó").toBe(false);
+  expect.soft(await db.provincia.count(), "geografía: cambió el catálogo").toBe(provinciasAntes);
+  expect.soft(await db.provincia.count({ where: { nombre } }), "geografía: quedó la fila").toBe(0);
+
+  expect(errores5xx, "vehículos/geografía: respuestas 5xx").toEqual([]);
+});

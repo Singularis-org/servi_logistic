@@ -187,7 +187,7 @@ interface FilaCenso {
 const CENSO_AMARILLO: readonly FilaCenso[] = [
   { archivo: "app/_landing/LandingBanda.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
   { archivo: "app/_landing/LandingFooter.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
-  { archivo: "app/_landing/LandingHero.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 2 },
+  { archivo: "app/_landing/LandingHero.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
   { archivo: "app/_landing/LandingPoliticas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 10.55, apariciones: 1 },
   { archivo: "app/_landing/primitivas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 10.55, apariciones: 2 },
 ];

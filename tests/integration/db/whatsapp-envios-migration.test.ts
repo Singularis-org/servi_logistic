@@ -80,7 +80,8 @@ describeSiHayBase("474/T1.5 — la base", () => {
     );
     const def = new Map(filas.map((f) => [f.indexname, f.indexdef]));
     const esperado: Record<string, RegExp> = {
-      whatsapp_envio_nombre_vigente_key: /UNIQUE INDEX .*\(nombre\) WHERE \(deleted_at IS NULL\)/,
+      // SL-17 T3.9: el nombre vigente es unico por empresa.
+      whatsapp_envio_nombre_vigente_key: /UNIQUE INDEX .*\(organizacion_id, nombre\) WHERE \(deleted_at IS NULL\)/,
       whatsapp_envio_evento_encendido_idx: /\(evento_clave\) WHERE \(activo AND \(deleted_at IS NULL\) AND \(disparo = 'evento'/,
       whatsapp_envio_destinatario_rol_key: /UNIQUE INDEX .*\(envio_id, rol\) WHERE \(rol IS NOT NULL\)/,
       whatsapp_envio_destinatario_usuario_key: /UNIQUE INDEX .*\(envio_id, usuario_id\) WHERE \(usuario_id IS NOT NULL\)/,

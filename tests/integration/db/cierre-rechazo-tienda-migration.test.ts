@@ -110,7 +110,7 @@ describeSiHayBase("425/B2 — la tabla aplicada, leida del catalogo de Postgres"
     expect(filas[0].n).toBe(1);
   });
 
-  it("R3: sus indices son EXACTAMENTE pkey(id), UNIQUE(gestion_id), (cierre_id) y (orden_id)", async () => {
+  it("R3: sus indices son EXACTAMENTE pkey(id), UNIQUE(gestion_id), (cierre_id), (orden_id) y el de empresa de SL-17", async () => {
     const filas = await prisma.$queryRawUnsafe<{ indexname: string; indexdef: string }[]>(
       `SELECT indexname::text, indexdef::text FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = $1 ORDER BY indexname`,
@@ -123,6 +123,8 @@ describeSiHayBase("425/B2 — la tabla aplicada, leida del catalogo de Postgres"
       cierre_rechazo_tienda_cierre_id_idx: "(cierre_id)",
       cierre_rechazo_tienda_gestion_id_key: "(gestion_id)",
       cierre_rechazo_tienda_orden_id_idx: "(orden_id)",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el indice de la empresa.
+      cierre_rechazo_tienda_organizacion_id_idx: "(organizacion_id)",
       cierre_rechazo_tienda_pkey: "(id)",
     });
     const unicos = filas
@@ -152,21 +154,25 @@ describeSiHayBase("425/B2 — la tabla aplicada, leida del catalogo de Postgres"
       { columna: "cierre_id", referida: "cierre_dia", al_borrar: "r", al_actualizar: "c" },
       { columna: "gestion_id", referida: "gestion_orden", al_borrar: "r", al_actualizar: "c" },
       { columna: "orden_id", referida: "orden", al_borrar: "r", al_actualizar: "c" },
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la FK a la empresa.
+      { columna: "organizacion_id", referida: "organizacion", al_borrar: "r", al_actualizar: "c" },
     ]);
   });
 
-  it("R21: RLS habilitada y CERO policies", async () => {
+  it("R21: RLS habilitada y ninguna policy propia (solo la de empresa de SL-17 M2)", async () => {
     const rls = await prisma.$queryRawUnsafe<{ relrowsecurity: boolean }[]>(
       `SELECT c.relrowsecurity FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
         WHERE c.relname = $1 AND ns.nspname = 'public'`,
       TABLA,
     );
     expect(rls).toEqual([{ relrowsecurity: true }]);
-    const policies = await prisma.$queryRawUnsafe<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public' AND tablename = $1`,
+    // Que ESTA migracion no crea policies lo mide el test del SQL; en la base, la unica es la que
+    // SL-17 M2 (20261022130100_organizacion_id_en_negocio) anade a todas las tablas de negocio.
+    const policies = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
+      `SELECT policyname::text FROM pg_policies WHERE schemaname = 'public' AND tablename = $1`,
       TABLA,
     );
-    expect(policies[0].n).toBe(0);
+    expect(policies).toEqual([{ policyname: "cierre_rechazo_tienda_por_empresa" }]);
   });
 
   it("R21: ninguna columna guarda un importe — tipos y nombres leidos de information_schema", async () => {

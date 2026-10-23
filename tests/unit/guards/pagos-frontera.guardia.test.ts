@@ -64,7 +64,10 @@ function fuentesDe(carpeta: string): string[] {
   return salida;
 }
 
-const FUENTES_DE_LIB = fuentesDe("lib");
+// SL-17: la clasificacion de modelos (`modelos-de-negocio.ts`) nombra los 88 modelos del esquema,
+// pero es una lista pura: no importa Prisma ni lee ninguna tabla, asi que no es un camino de datos.
+const CLASIFICACION_DE_MODELOS = "lib/db/modelos-de-negocio.ts";
+const FUENTES_DE_LIB = fuentesDe("lib").filter((ruta) => ruta !== CLASIFICACION_DE_MODELOS);
 
 /**
  * Los caminos de `LiquidacionPago` [D1]. NO se escriben a mano: se descubren del árbol, así que

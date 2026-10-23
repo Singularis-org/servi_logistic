@@ -207,16 +207,16 @@ describe("293/T3.3 — `listarPremiosPorDias` (R9/R32)", () => {
 
 describe("293/T3.1 — `listarPodioDeFecha` y `obtenerFilaDelPodio` (R4/R6/R16)", () => {
   function prismaSnapshot(cabecera: unknown, filas: unknown[]) {
-    const findUnique = vi.fn(async (_args: Record<string, unknown>) => cabecera);
+    const findCabecera = vi.fn(async (_args: Record<string, unknown>) => cabecera);
     const findMany = vi.fn(async (_args: Record<string, unknown>) => filas);
     const findFirst = vi.fn(async (_args: Record<string, unknown>) => filas[0] ?? null);
     return {
       prisma: {
-        rankingSnapshotDia: { findUnique, create: vi.fn() },
+        rankingSnapshotDia: { findFirst: findCabecera, create: vi.fn() }, // SL-17 T3.9: la fecha es unica por empresa
         rankingSnapshotFila: { findMany, findFirst, createMany: vi.fn() },
         $transaction: vi.fn(),
       },
-      findUnique,
+      findCabecera,
       findMany,
       findFirst,
     };

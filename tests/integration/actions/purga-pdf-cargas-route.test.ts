@@ -19,7 +19,12 @@ const infra = vi.hoisted(() => ({
   storageCtor: vi.fn<(...args: unknown[]) => void>(),
   repoCtor: vi.fn<(...args: unknown[]) => void>(),
   serviceCtor: vi.fn<(...args: unknown[]) => void>(),
-  prismaCtor: vi.fn<() => unknown>(() => ({ marca: "prisma-doble" })),
+  // SL-17 (R16): el GET real recorre las empresas con `paraCadaEmpresa`, que las lista con este
+  // mismo cliente. Una sola empresa: el composition root se sigue construyendo una vez.
+  prismaCtor: vi.fn<() => unknown>(() => ({
+    marca: "prisma-doble",
+    organizacion: { findMany: async () => [{ id: "org-doble" }] },
+  })),
   ejecutar: vi.fn<(now: Date) => Promise<PurgaResultado>>(async () => ({
     cargasPurgadas: 0,
     ordenesAfectadas: 0,

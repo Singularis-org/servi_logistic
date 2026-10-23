@@ -6,6 +6,7 @@ import { CajaCodFeedService } from "@/lib/services/CajaCodFeedService";
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * Feature 173 / T B.4 (R14, R48 — parte cierre) — la idempotencia del contra-entrega, contra
@@ -44,18 +45,20 @@ describeSiHayBase("173/T B.4 — idempotencia del contra-entrega contra Postgres
    * categoria)` — dos creditos de contra-entrega del MISMO cierre solo pueden ser de tiendas
    * distintas, que es exactamente como los emite el feed de la 43 (agrega por tienda).
    */
+  // SL-17: las tiendas se crean aquí, en la empresa de la transacción revertida. Tomar «dos
+  // usuarios cualesquiera» pasaba sin comprobar nada con la base vacía, y con usuarios de otra
+  // empresa commiteados por otro archivo lo tumbaba el trigger de misma empresa (SL017).
   async function dosUsuarios(
     tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
-  ): Promise<[string, string] | null> {
-    const us = await tx.usuario.findMany({ take: 2, select: { id: true } });
-    return us.length === 2 ? [us[0].id, us[1].id] : null;
+  ): Promise<[string, string]> {
+    const t1 = await crearUsuarioDePrueba(tx, "adminTienda");
+    const t2 = await crearUsuarioDePrueba(tx, "adminTienda");
+    return [t1.id, t2.id];
   }
 
   it("R14/R48: aprobar DOS veces el mismo cierre inserta UNA fila de contra-entrega", async () => {
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
-      const tiendas = await dosUsuarios(tx);
-      if (tiendas === null) return null; // base sin usuarios: nada que probar
-      const [t1, t2] = tiendas;
+      const [t1, t2] = await dosUsuarios(tx);
       const cierreId = randomUUID();
       const repo = new WalletMovimientoRepository(tx as unknown as PrismaClient);
 
@@ -87,7 +90,6 @@ describeSiHayBase("173/T B.4 — idempotencia del contra-entrega contra Postgres
       return { movs, insertadasPrimera, insertadasSegunda, filas };
     });
 
-    if (resultado === null) return; // sin usuarios en la base
     const { movs, insertadasPrimera, insertadasSegunda, filas } = resultado;
 
     // El feed emitio UN movimiento con la suma exacta de los CREDITOS (el debito no cuenta).

@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 import { PostulacionRepository } from "@/lib/repositories/PostulacionRepository";
 import { PostulacionMensajeroService } from "@/lib/services/PostulacionMensajeroService";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
@@ -105,6 +106,16 @@ export async function postularMensajero(
       status: "validation_error",
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
+  }
+
+  // SL-17 (R41, D13): la postulacion crea un usuario, sus documentos en storage y la fila de
+  // postulacion, y todo eso es de UNA empresa. La landing es de la plataforma y aun no dice de
+  // cual (la ruta por empresa es SL-35), asi que sin empresa en contexto se rechaza AQUI, antes
+  // de subir un solo archivo: esperar a que falle la primera escritura dejaria los documentos ya
+  // subidos. La sesion de quien navega no cuenta: una postulacion publica no hereda la empresa
+  // de un empleado con la sesion abierta. Un service inyectado (dobles de test) no escribe nada.
+  if (deps.service === undefined && contextoActual()?.tipo !== "empresa") {
+    return { status: "error" };
   }
 
   const limiter = deps.limiter ?? postulacionLimiter;

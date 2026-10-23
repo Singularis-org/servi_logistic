@@ -30,6 +30,7 @@ import { RepartoMananaAvisoService } from "@/lib/services/RepartoMananaAvisoServ
 import { RepartoMananaRepository } from "@/lib/repositories/RepartoMananaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { notificarRepartoMananaReal } from "@/lib/notificaciones/notificadores";
 
@@ -39,6 +40,10 @@ export interface AvisoRepartoMananaDeps {
   service?: IRepartoMananaAvisoService;
   /** Reloj inyectable (tests): por defecto `new Date()`. Determina el dia CR de la corrida. */
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 function buildService(): IRepartoMananaAvisoService {
@@ -60,6 +65,48 @@ function buildService(): IRepartoMananaAvisoService {
     // `tests/unit/services/notificacion-notificadores-reales.test.ts` afirma sobre el USO EFECTIVO
     // (fuente sin imports ni comentarios) y no sobre el fichero entero.
     notificarRepartoMananaReal,
+  );
+}
+
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenAvisoReparto = {
+  fecha: string;
+  diaAnunciado: string;
+  mensajerosConReparto: number;
+  mensajerosBloqueados: number;
+  avisosEmitidos: number;
+  fallos: number;
+};
+
+// Las fechas salen del mismo instante y son iguales en todas las corridas; sin empresas no hay
+// corrida de la que tomarlas y van `null`.
+type Total = {
+  fecha: string | null;
+  diaAnunciado: string | null;
+  mensajerosConReparto: number;
+  mensajerosBloqueados: number;
+  avisosEmitidos: number;
+  fallos: number;
+};
+
+function sumar(corridas: ResumenAvisoReparto[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      fecha: t.fecha ?? r.fecha,
+      diaAnunciado: t.diaAnunciado ?? r.diaAnunciado,
+      mensajerosConReparto: t.mensajerosConReparto + r.mensajerosConReparto,
+      mensajerosBloqueados: t.mensajerosBloqueados + r.mensajerosBloqueados,
+      avisosEmitidos: t.avisosEmitidos + r.avisosEmitidos,
+      fallos: t.fallos + r.fallos,
+    }),
+    {
+      fecha: null,
+      diaAnunciado: null,
+      mensajerosConReparto: 0,
+      mensajerosBloqueados: 0,
+      avisosEmitidos: 0,
+      fallos: 0,
+    },
   );
 }
 
@@ -92,17 +139,36 @@ export async function handleAvisoRepartoManana(
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const ahora = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(ahora);
-    // R35: SOLO conteos + las dos fechas. Se enumera CAMPO A CAMPO a proposito, en vez de devolver
-    // `resumen` entero: asi, el dia que el servicio gane un campo con un identificador de persona,
-    // de orden o de zona, NO CRUZA A LA RESPUESTA SOLO — y esta respuesta puede quedar en un log.
+    const corrida = async (): Promise<ResumenAvisoReparto> => {
+      const resumen = await service.ejecutar(ahora);
+      // R35: SOLO conteos + las dos fechas. Se enumera CAMPO A CAMPO a proposito, en vez de devolver
+      // `resumen` entero: asi, el dia que el servicio gane un campo con un identificador de persona,
+      // de orden o de zona, NO CRUZA A LA RESPUESTA SOLO — y esta respuesta puede quedar en un log.
+      return {
+        fecha: resumen.fecha,
+        diaAnunciado: resumen.diaAnunciado,
+        mensajerosConReparto: resumen.mensajerosConReparto,
+        mensajerosBloqueados: resumen.mensajerosBloqueados,
+        avisosEmitidos: resumen.avisosEmitidos,
+        fallos: resumen.fallos,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): ordenes, mensajeros y avisos son de cada empresa: una corrida por empresa, cada
+    // una en su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenAvisoReparto[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      fecha: resumen.fecha,
-      diaAnunciado: resumen.diaAnunciado,
-      mensajerosConReparto: resumen.mensajerosConReparto,
-      mensajerosBloqueados: resumen.mensajerosBloqueados,
-      avisosEmitidos: resumen.avisosEmitidos,
-      fallos: resumen.fallos,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

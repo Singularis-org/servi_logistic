@@ -192,11 +192,15 @@ model Usuario {
   devolucionesTiendaComoTienda        DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteTienda")
   devolucionesTiendaSubidas           DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteSubidoPor")
 
+  organizacionId String? @default(dbgenerated()) @map("organizacion_id") // SL-17/R2/R3: NULL = superadmin
+  organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tipoIdentificacionId])
   @@index([rolId])
   @@index([vehiculoId]) // feature 21
   @@index([zonaId]) // feature 24/R6
   @@index([ordenEnGestionId]) // feature 36
+  @@index([organizacionId])
   @@map("usuario")
 }
 
@@ -226,7 +230,7 @@ enum PlantillaEstado {
 // por el cuerpo se persiste como ARRAY de claves (Decision humana 4; R15), text[] nativo.
 model PlantillaMensaje {
   id               String          @id @default(uuid())
-  nombre           String          @unique // R10: identificador unico
+  nombre           String          // R10: identificador unico
   cuerpo           String // texto con placeholders {{clave}}
   // `@default([])` NO es cosmetico: la migracion `20260722130000_plantilla_mensaje` creo la
   // columna `text[] NOT NULL DEFAULT '{}'` como REQUISITO escrito (R12/R15/R27: "nunca null").
@@ -282,9 +286,14 @@ model PlantillaMensaje {
   chatMensajes ChatMensaje[] @relation("ChatMensajePlantilla") // feature 109: salientes de tipo plantilla que referencian esta plantilla
   whatsappEnvios WhatsappEnvio[] @relation("WhatsappEnvioPlantilla") // ficha 474: envios automaticos que usan esta plantilla (ON DELETE RESTRICT)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([createdAt]) // R6: orden determinista del listado
   @@index([estado]) // filtro por estado
   @@index([deletedAt]) // R28: filtro de vigentes (deletedAt IS NULL)
+  @@unique([organizacionId, nombre], map: "plantilla_mensaje_nombre_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("plantilla_mensaje")
 }
 
@@ -355,9 +364,13 @@ model ChatConversacion {
   mensajero Usuario       @relation("ChatConversacionMensajero", fields: [mensajeroId], references: [id], onDelete: Restrict)
   mensajes  ChatMensaje[]
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([ordenId, telefonoE164]) // D4: un hilo por orden+numero
   @@index([mensajeroId]) // R16: scope por mensajero
   @@index([telefonoE164]) // R25: resolucion del entrante desde el numero
+  @@index([organizacionId])
   @@map("chat_conversacion")
 }
 
@@ -401,6 +414,9 @@ model ChatMensaje {
   conversacion ChatConversacion  @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
   plantilla    PlantillaMensaje? @relation("ChatMensajePlantilla", fields: [plantillaId], references: [id], onDelete: SetNull)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([conversacionId, ocurridoAt]) // R22: historial ordenado
   // El indice REAL es PARCIAL (`WHERE error_codigo IS NOT NULL`) y va a mano en
   // `20260728230000_chat_mensaje_error_meta`; Prisma no expresa el predicado, asi que aqui se
@@ -415,6 +431,7 @@ model ChatMensaje {
   // misma razon que en el indice de arriba: sin el, el rename por defecto de Prisma dejaria mudo
   // al `DROP INDEX IF EXISTS "chat_mensaje_reaccion_idx"` del `down.sql`.
   @@index([conversacionId, reaccionAWaMessageId], map: "chat_mensaje_reaccion_idx")
+  @@index([organizacionId])
   @@map("chat_mensaje")
 }
 
@@ -430,8 +447,12 @@ model MensajeroDocumento {
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioId, tipo]) // R16: un documento por tipo por usuario
   @@index([usuarioId])
+  @@index([organizacionId])
   @@map("mensajero_documento")
 }
 
@@ -531,7 +552,7 @@ model OrderStatus {
 // 15) deriva `orden.zona_id` del DISTRITO de la orden (`distrito.zona_id`).
 model Zona {
   id            String  @id @default(uuid())
-  nombre        String  @unique // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
+  nombre        String  // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
   cobroVehiculo Boolean @default(false) @map("cobro_vehiculo") // feature 24: cobro extra por vehiculo en esta zona
   esCentral     Boolean @default(false) @map("es_central") // feature 54: flag de zona central (renombrado del viejo es_gam); a lo sumo una via indice unico parcial
 
@@ -584,6 +605,11 @@ model Zona {
   notificaciones       Notificacion[] // feature 146/F1.4-1: notificaciones ACOTADAS a esta zona (alcance del adminSatelite)
   analyticsDaily       AnalyticsDaily[] // feature 123/R31: filas del rollup diario cuya zona (DE LA ORDEN) es esta
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, nombre], map: "zona_nombre_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("zona")
 }
 
@@ -688,9 +714,13 @@ model ZonaDistrito {
   zona     Zona     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
   distrito Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([zonaId, distritoId])
   @@index([zonaId])
   @@index([distritoId])
+  @@index([organizacionId])
   @@map("zona_distrito")
 }
 
@@ -892,6 +922,10 @@ model Orden {
   //
   // `@@index([tiendaId])` se mantiene: el parcial ya no sirve de prefijo a las consultas que
   // filtran por tienda SIN mirar `deleted_at`.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tiendaId])
   @@index([estatusId])
   @@index([createdAt])
@@ -942,6 +976,7 @@ model Orden {
   // `work_mem` de 4 MB). El gemelo DESC se añade si `orden` supera las ~200.000 filas vivas; el
   // SQL exacto esta en la cabecera de la migracion.
   @@index([prioridad(sort: Desc), claveRemision, id], map: "orden_prioridad_clave_remision_idx")
+  @@index([organizacionId])
   @@map("orden")
 }
 
@@ -967,9 +1002,13 @@ model Carga {
   usuario Usuario @relation("CargaUsuario", fields: [usuarioCarga], references: [id], onDelete: Restrict)
   ordenes Orden[] @relation("OrdenCarga")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioCarga, name]) // R9/R10: unicidad del nombre POR USUARIO (los NULL conviven)
   @@index([usuarioCarga])
   @@index([fechaCarga])
+  @@index([organizacionId])
   @@map("carga")
 }
 
@@ -996,9 +1035,13 @@ model OrdenMensajeroMeta {
   usuario Usuario @relation("OrdenMensajeroMetaMensajero", fields: [usuarioId], references: [id], onDelete: Cascade)
   orden   Orden   @relation("OrdenMensajeroMetaOrden", fields: [ordenId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioId, ordenId]) // R1/R7: una fila por (mensajero, orden)
   @@index([usuarioId]) // R17: leer todas las metas del mensajero al listar
   @@index([ordenId])
+  @@index([organizacionId])
   @@map("orden_mensajero_meta")
 }
 
@@ -1034,8 +1077,12 @@ model OrdenNota {
   orden Orden   @relation("OrdenNotaOrden", fields: [ordenId], references: [id], onDelete: Cascade)
   autor Usuario @relation("OrdenNotaAutor", fields: [autorId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // R3/R28: hilo ordenado en UNA sola consulta (forma del indice de ChatMensaje)
   @@index([autorId]) // segunda FK indexada (patron orden_mensajero_meta)
+  @@index([organizacionId])
   @@map("orden_nota")
 }
 
@@ -1066,8 +1113,12 @@ model OrdenHabilitacionApi {
   orden Orden   @relation("OrdenHabilitacionApiOrden", fields: [ordenId], references: [id], onDelete: Cascade)
   actor Usuario @relation("OrdenHabilitacionApiActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // todas las habilitaciones de una orden, ordenadas, en UNA consulta
   @@index([actorUsuarioId]) // segunda FK indexada (patron orden_nota)
+  @@index([organizacionId])
   @@map("orden_habilitacion_api")
 }
 
@@ -1271,6 +1322,9 @@ model GestionOrden {
   // es el que la hace «gestion de calle con el modelo nuevo» (pendiente hasta aprobar su cierre).
   eventos                    OrdenEvento[]                      @relation("OrdenEventoGestion")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId]) // R7
   @@index([mensajeroId]) // R7
   @@index([cierreId]) // feature 37/R3: listar gestiones sin cierre (cierre_id IS NULL)
@@ -1288,6 +1342,7 @@ model GestionOrden {
   // `(mensajero_id) WHERE cierre_id IS NULL AND anulada_at IS NULL` (/cierre-dia + corte
   // diario) NO se expresa aqui: Prisma no soporta indices parciales -> vive en el SQL de la
   // migracion `*_gestion_orden_anulacion` (patron orden_liberada_reprogramada_at_idx).
+  @@index([organizacionId])
   @@map("gestion_orden")
 }
 
@@ -1306,8 +1361,12 @@ model GestionOrdenEvidencia {
 
   gestion GestionOrden @relation(fields: [gestionId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([gestionId, indice]) // R2: no dos filas con el mismo indice por gestion
   @@index([gestionId]) // lectura de las evidencias de una gestion
+  @@index([organizacionId])
   @@map("gestion_orden_evidencia")
 }
 
@@ -1325,8 +1384,12 @@ model GestionOrdenPago {
 
   gestion GestionOrden @relation(fields: [gestionId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([gestionId, metodo]) // D2/R2: un metodo, como mucho una vez, con su monto ya sumado
   @@index([gestionId]) // R1: lectura de las lineas de una gestion
+  @@index([organizacionId])
   @@map("gestion_orden_pago")
 }
 
@@ -1368,10 +1431,14 @@ model OrdenIncidente {
   resueltoPorUsuario  Usuario?                  @relation("IncidenteResueltoPor", fields: [resueltoPor], references: [id], onDelete: SetNull)
   evidencias          OrdenIncidenteEvidencia[]
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId])
   @@index([estado]) // R49: la cola de pendientes (patron cierre_dia/cierre_bodega)
   @@index([reportadoPor])
   @@index([resueltoPor])
+  @@index([organizacionId])
   @@map("orden_incidente")
 }
 
@@ -1391,8 +1458,12 @@ model OrdenIncidenteEvidencia {
 
   incidente OrdenIncidente @relation(fields: [incidenteId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([incidenteId, indice]) // no dos filas con el mismo indice por incidente
   @@index([incidenteId])
+  @@index([organizacionId])
   @@map("orden_incidente_evidencia")
 }
 
@@ -1466,12 +1537,16 @@ model CierreDia {
   rechazosTienda     CierreRechazoTienda[] // ficha 425/R1-R2: los rechazos de TIENDA que este cierre puso delante de quien lo aprueba. Vinculo de REVISION, no de dinero: esas gestiones conservan `cierre_id` NULL
   liquidacionPagos   LiquidacionPago[] // feature 172/R21/R22: pagos al mensajero registrados CONTRA este cierre
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([mensajeroId])
   @@index([destinoTipo, destinoZonaId]) // feature 38: filtra por rol+zona destino
   @@index([estado])
   @@index([resueltoPor]) // feature 38/R14: auditoria de quien resolvio
   @@index([cierreBodegaId]) // feature 40: listar consolidables (cierre_bodega_id IS NULL)
   @@index([mensajeroId, estado]) // feature 41 (R12/R23): bloqueo derivado del mensajero (ruta caliente de asignacion)
+  @@index([organizacionId])
   @@map("cierre_dia")
 }
 
@@ -1513,6 +1588,9 @@ model CierreBodega {
   conciliadoPorUsuario Usuario?    @relation("CierreBodegaConciliadoPor", fields: [conciliadoPor], references: [id], onDelete: Restrict) // ficha 431: quien afirmo que el dinero llego no se borra dejando la afirmacion huerfana
   cierresDia           CierreDia[] // los cierre_dia incluidos (cierre_bodega_id)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([zonaId])
   @@index([estado])
   @@index([solicitadoPor])
@@ -1527,6 +1605,7 @@ model CierreBodega {
   // `CierreBodegaRepository.crearCierreBodega`. Este, NO unico, sirve a las dos lecturas del saldo.
   @@index([zonaId, estado], map: "cierre_bodega_zona_estado_idx")
   @@index([conciliadoAt]) // la cola de lo que sigue sin conciliar (R21)
+  @@index([organizacionId])
   @@map("cierre_bodega")
 }
 
@@ -1603,10 +1682,15 @@ model Tarifa {
   //
   // El unico es TOTAL, y puede serlo porque esta tabla BORRA EN FISICO (esa misma migracion
   // retiro `deleted_at`): una tarifa borrada no ocupa su par.
-  @@unique([zonaId, tiendaId])
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([createdAt])
   @@index([tiendaId])
   @@index([zonaId])
+  @@unique([organizacionId, zonaId, tiendaId], map: "tarifas_zona_id_tienda_id_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("tarifas")
 }
 
@@ -1628,9 +1712,14 @@ model TarifaZonaMensajero {
   // defecto (vehiculo_id NULL) por zona, haciendo determinista la resolucion
   // "sin vehiculo -> tarifa por defecto de la zona". Prisma no expresa
   // NULLS NOT DISTINCT: ver la migracion tarifa_zona_mensajero_zona_vehiculo_unique.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([zonaId, vehiculoId])
   @@index([vehiculoId])
   @@index([zonaId])
+  @@index([organizacionId])
   @@map("tarifa_zona_mensajero")
 }
 
@@ -1791,7 +1880,7 @@ model WalletMovimiento {
   // cierre, contra-asientos, migraciones de datos), que sigue deduplicando por `(origen_tipo,
   // origen_id, categoria)`. Molde: `pago_por_cuenta_tienda.clave_idempotencia`, aqui en la propia
   // fila porque estos movimientos no tienen documento aparte.
-  claveIdempotencia String?                   @unique @map("clave_idempotencia")
+  claveIdempotencia String?                   @map("clave_idempotencia")
   // SIN updatedAt / deletedAt: la fila es INMUTABLE (R3). No hay soft-delete.
 
   registrador     Usuario?             @relation("WalletMovimientoRegistrador", fields: [registradoPor], references: [id])
@@ -1810,9 +1899,14 @@ model WalletMovimiento {
   // vive en `gasto_fijo_cobro.movimiento_id` y es RESTRICT: el libro no se borra nunca.
   cobroGastoFijo  GastoFijoCobro?
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([fechaMovimiento]) // R24: listado del libro por fecha (desc)
   @@index([tipo, categoria]) // R24: filtros por tipo/categoria
   @@index([origenTipo, origenId]) // R24: buscar movimientos de un origen
+  @@unique([organizacionId, claveIdempotencia], map: "wallet_movimiento_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("wallet_movimiento")
 }
 
@@ -1904,7 +1998,7 @@ model WalletTiendaMovimiento {
   createdAt         DateTime                        @default(now()) @map("created_at")
   // Ficha 461 (R66/R67, auditoria D2): la clave de idempotencia del CLIENTE del cobro de la empresa a la
   // tienda (`cobro_manual`). UNIQUE: dos envios con la misma clave son UN cobro. NULL en el resto.
-  claveIdempotencia String?                         @unique @map("clave_idempotencia")
+  claveIdempotencia String?                         @map("clave_idempotencia")
   // SIN updatedAt / deletedAt: la fila es INMUTABLE (R3). No hay soft-delete.
 
   tienda         Usuario               @relation("WalletTiendaMovimientoTienda", fields: [tiendaId], references: [id])
@@ -1916,9 +2010,14 @@ model WalletTiendaMovimiento {
   // Ficha 458-B (D12, R74–R80): el comprobante de un cobro de la empresa a la tienda (`cobro_manual`). 0 o 1.
   comprobante    WalletComprobante?    @relation("WalletComprobanteTienda")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tiendaId, fechaMovimiento]) // R26: saldo/listado por tienda por fecha (desc)
   @@index([tiendaId, categoria]) // R26: filtro por concepto por tienda
   @@index([origenTipo, origenId]) // R26: movimientos de un origen (cierre)
+  @@unique([organizacionId, claveIdempotencia], map: "wallet_tienda_movimiento_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("wallet_tienda_movimiento")
 }
 
@@ -1998,8 +2097,12 @@ model PagoMensajeroMovimiento {
   mensajero   Usuario  @relation("PagoMensajeroMovimientoMensajero", fields: [mensajeroId], references: [id])
   registrador Usuario? @relation("PagoMensajeroMovimientoRegistrador", fields: [registradoPor], references: [id])
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([mensajeroId, fechaMovimiento]) // R26: saldo/listado por mensajero por fecha (desc)
   @@index([origenTipo, origenId]) // R26: movimientos de un origen (cierre)
+  @@index([organizacionId])
   @@map("pago_mensajero_movimiento")
 }
 
@@ -2043,7 +2146,7 @@ model PagoMensajeroMovimiento {
 // ────────────────────────────────────────────────────────────────────────────────────────
 model LiquidacionPago {
   id                String          @id @default(uuid())
-  claveIdempotencia String          @unique @map("clave_idempotencia") // §4.1: uuid del cliente; el UNIQUE es la barrera contra el doble pago (R44)
+  claveIdempotencia String          @map("clave_idempotencia") // §4.1: uuid del cliente; el UNIQUE es la barrera contra el doble pago (R44)
   mensajeroId       String?         @map("mensajero_id") // FK -> usuario (rol mensajero); XOR con tienda_id
   tiendaId          String?         @map("tienda_id") // FK -> usuario (rol adminTienda); XOR con mensajero_id
   cierreId          String?         @map("cierre_id") // FK -> cierre_dia; NOT NULL sii el beneficiario es un mensajero (R21)
@@ -2067,10 +2170,15 @@ model LiquidacionPago {
   registrador Usuario               @relation("LiquidacionPagoRegistrador", fields: [registradoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
   reparto     LiquidacionReparto?   @relation(fields: [repartoId], references: [id], onDelete: Restrict, onUpdate: Cascade) // feature 205
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([mensajeroId, fechaPago])
   @@index([tiendaId, fechaPago])
   @@index([cierreId]) // pendiente por cierre (§5) y lista de comprobantes del cierre
   @@index([repartoId]) // feature 205/R28: reconstruir el resultado de UN reparto (`WHERE reparto_id = ...`)
+  @@unique([organizacionId, claveIdempotencia], map: "liquidacion_pago_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("liquidacion_pago")
 }
 
@@ -2094,6 +2202,10 @@ model LiquidacionAnulacion {
   pago     LiquidacionPago @relation(fields: [pagoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario         @relation("LiquidacionAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("liquidacion_anulacion")
 }
 
@@ -2120,7 +2232,7 @@ model LiquidacionAnulacion {
 // usuario. RLS habilitada SIN policies (solo service role), R49.
 model LiquidacionReparto {
   id                String   @id @default(uuid())
-  claveIdempotencia String   @unique @map("clave_idempotencia") // R29: la barrera contra el doble reparto; misma semantica que la del pago
+  claveIdempotencia String   @map("clave_idempotencia") // R29: la barrera contra el doble reparto; misma semantica que la del pago
   mensajeroId       String   @map("mensajero_id") // FK -> usuario (rol mensajero): el BENEFICIARIO del acto
   montoTotal        Decimal  @map("monto_total") @db.Decimal(12, 2) // > 0 (CHECK en la migracion); lo comprometido en UNA captura
   registradoPor     String   @map("registrado_por") // FK -> usuario (actor); NOT NULL: un pago siempre lo registra alguien
@@ -2131,7 +2243,12 @@ model LiquidacionReparto {
   registrador Usuario           @relation("LiquidacionRepartoRegistrador", fields: [registradoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
   pagos       LiquidacionPago[] // las N imputaciones de este reparto (R28: `WHERE reparto_id = ...`)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([mensajeroId, createdAt(sort: Desc)]) // auditar los repartos de un mensajero, del mas reciente al mas viejo
+  @@unique([organizacionId, claveIdempotencia], map: "liquidacion_reparto_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("liquidacion_reparto")
 }
 
@@ -2153,7 +2270,7 @@ model LiquidacionReparto {
 /// tienda, no la ganancia.
 model PagoPorCuentaTienda {
   id                     String          @id @default(uuid())
-  claveIdempotencia      String          @unique @map("clave_idempotencia") // la genera el dialogo al abrirse (R41)
+  claveIdempotencia      String          @map("clave_idempotencia") // la genera el dialogo al abrirse (R41)
   tiendaId               String          @map("tienda_id") // FK -> usuario (rol adminTienda)
   beneficiario           String // nombre libre (H2); CHECK no vacio y <= 120
   monto                  Decimal         @db.Decimal(12, 2) // > 0 (CHECK)
@@ -2170,7 +2287,12 @@ model PagoPorCuentaTienda {
   tienda      Usuario                       @relation("PagoPorCuentaTiendaTienda", fields: [tiendaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   registrador Usuario                       @relation("PagoPorCuentaTiendaRegistrador", fields: [registradoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tiendaId, fechaPago])
+  @@unique([organizacionId, claveIdempotencia], map: "pago_por_cuenta_tienda_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("pago_por_cuenta_tienda")
 }
 
@@ -2185,6 +2307,10 @@ model PagoPorCuentaTiendaAnulacion {
   pago     PagoPorCuentaTienda @relation(fields: [pagoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario             @relation("PagoPorCuentaTiendaAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("pago_por_cuenta_tienda_anulacion")
 }
 
@@ -2203,6 +2329,10 @@ model CobroTiendaAnulacion {
   cobro    WalletTiendaMovimiento @relation(fields: [cobroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario                @relation("CobroTiendaAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("cobro_tienda_anulacion")
 }
 
@@ -2221,6 +2351,10 @@ model AjusteCajaAnulacion {
   movimiento WalletMovimiento @relation(fields: [movimientoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador   Usuario          @relation("AjusteCajaAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("ajuste_caja_anulacion")
 }
 
@@ -2246,6 +2380,10 @@ model WalletAnotacion {
 
   movimiento WalletMovimiento @relation(fields: [movimientoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("wallet_anotacion")
 }
 
@@ -2261,7 +2399,11 @@ model RechazoTiendaCobroAnulacion {
   cobro    RechazoTiendaCobro @relation(fields: [cobroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario            @relation("RechazoTiendaCobroAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([anuladoPor])
+  @@index([organizacionId])
   @@map("rechazo_tienda_cobro_anulacion")
 }
 
@@ -2283,7 +2425,11 @@ model WalletComprobante {
   liquidacionPago  LiquidacionPago?        @relation("WalletComprobantePago", fields: [liquidacionPagoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   subidor          Usuario                 @relation("WalletComprobanteSubidoPor", fields: [subidoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([subidoPor])
+  @@index([organizacionId])
   @@map("wallet_comprobante")
 }
 
@@ -2305,7 +2451,7 @@ model WalletComprobante {
 /// (`ingreso_abono_tienda`); no toca la ganancia. Nunca por encima de lo que la tienda debe (R15).
 model AbonoTienda {
   id                     String          @id @default(uuid())
-  claveIdempotencia      String          @unique @map("clave_idempotencia") // la genera el dialogo al abrirse (R13/R25)
+  claveIdempotencia      String          @map("clave_idempotencia") // la genera el dialogo al abrirse (R13/R25)
   tiendaId               String          @map("tienda_id") // FK -> usuario (rol adminTienda); quien paga
   monto                  Decimal         @db.Decimal(12, 2) // > 0 (CHECK)
   metodo                 MetodoPagoValue // enum EXISTENTE de la feature 36
@@ -2321,7 +2467,12 @@ model AbonoTienda {
   tienda      Usuario               @relation("AbonoTiendaTienda", fields: [tiendaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   registrador Usuario               @relation("AbonoTiendaRegistrador", fields: [registradoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tiendaId, fechaPago])
+  @@unique([organizacionId, claveIdempotencia], map: "abono_tienda_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("abono_tienda")
 }
 
@@ -2337,6 +2488,10 @@ model AbonoTiendaAnulacion {
   abono    AbonoTienda @relation(fields: [abonoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario     @relation("AbonoTiendaAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("abono_tienda_anulacion")
 }
 
@@ -2346,7 +2501,7 @@ model AbonoTiendaAnulacion {
 /// indice (la anulacion vive en otra tabla): lo garantiza el servicio con un advisory lock.
 model AporteCapital {
   id                     String   @id @default(uuid())
-  claveIdempotencia      String   @unique @map("clave_idempotencia")
+  claveIdempotencia      String   @map("clave_idempotencia")
   clase                  String // CHECK clase IN ('saldo_inicial','aporte')
   monto                  Decimal  @db.Decimal(12, 2) // > 0 (CHECK)
   motivo                 String // CHECK no vacio
@@ -2359,6 +2514,11 @@ model AporteCapital {
   anulacion   AporteCapitalAnulacion?
   registrador Usuario                 @relation("AporteCapitalRegistrador", fields: [registradoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, claveIdempotencia], map: "aporte_capital_clave_idempotencia_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("aporte_capital")
 }
 
@@ -2373,6 +2533,10 @@ model AporteCapitalAnulacion {
   aporte   AporteCapital @relation(fields: [aporteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   anulador Usuario       @relation("AporteCapitalAnulacionActor", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("aporte_capital_anulacion")
 }
 
@@ -2440,7 +2604,11 @@ model GastoFijoPlantilla {
   // `pendiente` vivos (CHECK `gasto_fijo_cobro_pendiente_con_plantilla`, R46).
   cobros GastoFijoCobro[]
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([activa]) // cron: WHERE activa = true (R27)
+  @@index([organizacionId])
   @@map("gasto_fijo_plantilla")
 }
 
@@ -2513,10 +2681,15 @@ model GastoFijoCobro {
   // por eso vive solo en la migracion-: es un UNIQUE pleno, Prisma lo expresa entero y asi el
   // cliente generado conoce la unicidad y `migrate diff` no propone soltarlo. El `map:` reproduce
   // el nombre que la migracion le pone a mano.
-  @@unique([origenId], map: "gasto_fijo_cobro_origen_uq")
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([estado, generadoEl]) // la COLA de pendientes, del mas antiguo al mas reciente (R39)
   @@index([plantillaId]) // cancelacion en cascada del borrado de plantilla (R45) y su conteo (R55)
   @@index([decididoPor]) // el RESTRICT se ejerce al borrar usuarios (patron orden_dia_reparto_cambio)
+  @@unique([organizacionId, origenId], map: "gasto_fijo_cobro_origen_uq") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("gasto_fijo_cobro")
 }
 
@@ -2593,10 +2766,15 @@ model RechazoTiendaCobro {
   // Se declara AQUI, y no solo en el `.sql`, porque es un UNIQUE pleno: Prisma lo expresa
   // entero, el cliente generado conoce la unicidad y `migrate diff` no propone soltarlo. El
   // `map:` reproduce el nombre que la migracion le pone a mano.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([gestionId], map: "rechazo_tienda_cobro_gestion_uq")
   @@index([estado, generadoEl]) // la COLA de pendientes, del mas antiguo al mas reciente
   @@index([tiendaId]) // "que le he cobrado a esta tienda" + el RESTRICT al borrar usuarios
   @@index([decididoPor]) // el RESTRICT se ejerce al borrar usuarios (patron gasto_fijo_cobro)
+  @@index([organizacionId])
   @@map("rechazo_tienda_cobro")
 }
 
@@ -2607,7 +2785,7 @@ model RechazoTiendaCobro {
 // (R14/R15) cruzando el ranking con estas filas por posicion. Migracion aditiva con RLS.
 model PremioRanking {
   id          String   @id @default(cuid())
-  posicion    Int      @unique // 1, 2 o 3 (CHECK en la migracion); UNIQUE garantiza R8
+  posicion    Int      // 1, 2 o 3 (CHECK en la migracion); UNIQUE garantiza R8
   monto       Decimal? @db.Decimal(12, 2) // NULLABLE = sin premio asignado (R9)
   descripcion String?  @map("descripcion") // feature 76 (cambio de alcance 2026-07-16): rotulo libre opcional por posicion, INDEPENDIENTE del monto (NULLABLE = sin descripcion)
   createdAt   DateTime @default(now()) @map("created_at")
@@ -2616,6 +2794,11 @@ model PremioRanking {
   // posiciones SIN nombrar `updated_at`, asi que el default es lo que hace valido ese INSERT.
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, posicion], map: "premio_ranking_posicion_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("premio_ranking")
 }
 
@@ -2711,6 +2894,9 @@ model OrdenHistorialEstado {
   // migracion 20260714123909 vino a eliminar. Las gestiones NO se borran: se ANULAN (67/R11).
   gestion        GestionOrden? @relation(fields: [gestionOrdenId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // R5: linea de tiempo de UNA orden
   @@index([ordenId, estatusDestinoId]) // R24: conteo de intentos (destinos `devuelta`)
   // Feature 167 (R32) — «Recolectadas hoy» del mensajero: `actor_usuario_id` = actor,
@@ -2723,6 +2909,7 @@ model OrdenHistorialEstado {
   // (`orden_historial_estado_actor_usuario_id_origen_tipo_created_at_idx`, 66 caracteres) excede
   // el limite de 63 de Postgres y quedaria truncado de forma no evidente.
   @@index([actorUsuarioId, origenTipo, createdAt], map: "orden_historial_actor_origen_created_idx")
+  @@index([organizacionId])
   @@map("orden_historial_estado")
 }
 
@@ -2811,8 +2998,12 @@ model CierreDetail {
   // al borrar una tarifa. Sin esta linea, todo `migrate dev` proponia drop+add de la FK.
   tarifa Tarifa?   @relation(fields: [tarifaId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([cierreId, ordenId]) // R2: el grano. Es tambien el indice de la ruta caliente (los feeds filtran por cierre_id)
   @@index([ordenId]) // trazar en que cierres aparecio una orden
+  @@index([organizacionId])
   @@map("cierre_detail")
 }
 
@@ -2867,8 +3058,12 @@ model CierreSinGestion {
   // Sin esta linea, todo `migrate dev` propondria drop+add de la FK.
   estatusOrigen OrderStatus? @relation(fields: [estatusOrigenId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([cierreId, ordenId]) // el grano, y el indice de la ruta caliente (se filtra por cierre_id)
   @@index([ordenId]) // trazar en que cierres se barrio una orden
+  @@index([organizacionId])
   @@map("cierre_sin_gestion")
 }
 
@@ -2919,9 +3114,13 @@ model CierreRechazoTienda {
   gestion GestionOrden @relation(fields: [gestionId], references: [id])
   orden   Orden        @relation(fields: [ordenId], references: [id])
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([gestionId]) // R3: una gestion pertenece a UN cierre y a ninguno mas
   @@index([cierreId]) // ruta caliente: el detalle filtra por cierre
   @@index([ordenId]) // trazar en que cierre se reviso una orden
+  @@index([organizacionId])
   @@map("cierre_rechazo_tienda")
 }
 
@@ -2967,8 +3166,12 @@ model ApiKey {
   createdBy     Usuario  @relation("ApiKeyCreadaPor", fields: [createdById], references: [id])
   tiendaDestino Usuario? @relation("ApiKeyTiendaDestino", fields: [tiendaDestinoId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([createdById])
   @@index([tiendaDestinoId]) // feature 302: soporta el lookup inverso (que keys cargan en esta tienda)
+  @@index([organizacionId])
   @@map("api_key")
 }
 
@@ -3007,6 +3210,10 @@ model WebhookSuscripcion {
 
   owner Usuario @relation("WebhookSuscripcionOwner", fields: [ownerUsuarioId], references: [id], onDelete: Restrict)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("webhook_suscripcion")
 }
 
@@ -3068,6 +3275,14 @@ model Job {
   // Default declarado para que coincida con `20260717120000_jobs_cola`.
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  // SL-17 M4 (D16, R42): la empresa de la transaccion que encolo; NULL = job sin empresa
+  // (recurrente o sembrado). El DEFAULT real vive en `20261022130200_jobs_organizacion_id`; aqui va
+  // `dbgenerated()` VACIO por lo mismo que en `Organizacion`: Prisma 7 no introspecta esa expresion
+  // y escrita daria un `SET DEFAULT` fantasma en `migrate diff`.
+  organizacionId String?       @default(dbgenerated()) @map("organizacion_id")
+  organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId, estado, runAfter])
   @@map("jobs")
 }
 
@@ -3142,6 +3357,10 @@ model RutaOptimizada {
   mensajero Usuario                @relation("RutaOptimizadaMensajero", fields: [mensajeroId], references: [id], onDelete: Cascade)
   paradas   RutaOptimizadaParada[]
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("ruta_optimizada")
 }
 
@@ -3165,9 +3384,13 @@ model RutaOptimizadaParada {
   ruta  RutaOptimizada @relation(fields: [rutaId], references: [id], onDelete: Cascade)
   orden Orden          @relation(fields: [ordenId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([rutaId, ordenId])
   @@unique([rutaId, secuencia])
   @@index([ordenId])
+  @@index([organizacionId])
   @@map("ruta_optimizada_parada")
 }
 
@@ -3451,7 +3674,12 @@ model Notificacion {
   // equivalentes para que el cliente generado conozca la forma de la tabla. El `map:` reproduce
   // el nombre que la migracion `20260727120000_notificacion` le puso a mano: sin el, Prisma
   // propone un `ALTER INDEX ... RENAME` en toda migracion futura.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([entidadTipo, entidadId], map: "notificacion_entidad_idx")
+  @@index([organizacionId])
   @@map("notificacion")
 }
 
@@ -3471,8 +3699,12 @@ model NotificacionLectura {
   notificacion Notificacion @relation(fields: [notificacionId], references: [id], onDelete: Cascade)
   usuario      Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([notificacionId, usuarioId])
   @@index([usuarioId])
+  @@index([organizacionId])
   @@map("notificacion_lectura")
 }
 
@@ -3566,10 +3798,15 @@ model AnalyticsDaily {
   // lleva `NULLS NOT DISTINCT` (invisible para Prisma, pero irrelevante para que lo
   // reconozca). El orden de campos coincide exactamente con el del CREATE UNIQUE INDEX.
   // Sin esta linea, `prisma migrate dev` propondria borrarlo. Ver el bloque de arriba.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([fecha, zonaId, tiendaId, mensajeroId, estatusId, causaDevolucion], map: "analytics_daily_grano_key")
   @@index([tiendaId, fecha], map: "analytics_daily_tienda_fecha_idx") // recorte de adminTienda (122)
   @@index([mensajeroId, fecha], map: "analytics_daily_mensajero_fecha_idx") // recorte de mensajero; cubre el cubo sin_asignar
   @@index([zonaId, fecha], map: "analytics_daily_zona_fecha_idx") // recorte de adminSatelite, por zona DE LA ORDEN
+  @@index([organizacionId])
   @@map("analytics_daily")
 }
 
@@ -3592,13 +3829,18 @@ model AnalyticsDaily {
 // son datos de rendimiento de personas identificadas, nunca accesibles desde el cliente (R38).
 model RankingSnapshotDia {
   id                String   @id @default(cuid())
-  fecha             DateTime @unique @db.Date // fecha calendario de COSTA RICA congelada, nunca un instante (R2)
+  fecha             DateTime @db.Date // fecha calendario de COSTA RICA congelada, nunca un instante (R2)
   generadoAt        DateTime @default(now()) @map("generado_at") // R24: evidencia de que el cron corrio y CUANDO (deja auditable el desfase del premio, Q2)
   minAsignadasPodio Int      @map("min_asignadas_podio") // R1: umbral APLICADO en esta corrida (CHECK >= 1 en la migracion)
   filas             Int // R1/R11: conteo congelado; 0 = dia sin actividad (CHECK >= 0 en la migracion)
 
   filasSnapshot RankingSnapshotFila[]
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, fecha], map: "ranking_snapshot_dia_fecha_key") // SL-17 T3.9: unico por empresa
+  @@index([organizacionId])
   @@map("ranking_snapshot_dia")
 }
 
@@ -3647,8 +3889,12 @@ model RankingSnapshotFila {
   snapshot  RankingSnapshotDia @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   mensajero Usuario            @relation("RankingSnapshotFilaMensajero", fields: [mensajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([snapshotId, mensajeroId]) // R13: un mensajero no puede aparecer dos veces en el mismo dia
   @@unique([snapshotId, puesto]) // R13: dos filas no pueden ocupar el mismo puesto
+  @@index([organizacionId])
   @@map("ranking_snapshot_fila")
 }
 
@@ -3692,8 +3938,12 @@ model PostulacionRecurso {
 
   atendidaPor Usuario? @relation("PostulacionRecursoAtendidaPor", fields: [atendidaPorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([atendidaAt, createdAt]) // R26: el listado del panel (`atendida_at IS NULL ORDER BY created_at DESC`) y el barrido del cron de purga
   @@index([atendidaPorId]) // segunda FK indexada (patron `orden_nota`): sin el, el RESTRICT recorre la tabla al borrar un usuario
+  @@index([organizacionId])
   @@map("postulacion_recurso")
 }
 
@@ -3744,8 +3994,13 @@ model OrdenDiaRepartoCambio {
   /// EL CHECK `orden_dia_reparto_cambio_dia_distinto` (`fecha_nueva <> fecha_anterior`) VIVE SOLO
   /// EN LA MIGRACION: Prisma no expresa CHECK (mismo caso que `notificacion_destinatario_xor`).
   /// Es R7 puesto en la base: una «correccion» que no corrige nada no es escribible ni por error.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // la UNICA consulta prevista: «el rastro de esta orden», en orden. Cubre ademas la FK a `orden` por prefijo
   @@index([actorUsuarioId]) // la FK RESTRICT, indexada (patron `orden_nota`): sin el, borrar un usuario recorre la tabla
+  @@index([organizacionId])
   @@map("orden_dia_reparto_cambio")
 }
 
@@ -3806,9 +4061,14 @@ model GestionFechaReprogramacionCambio {
   /// VIVE SOLO EN LA MIGRACION: Prisma no expresa CHECK (mismo caso que
   /// `orden_dia_reparto_cambio_dia_distinto` y `notificacion_destinatario_xor`). Es la regla puesta
   /// en la base: una «correccion» que no corrige nada no es escribible ni por error.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // la lectura prevista: «el rastro de esta orden», en orden. Cubre ademas la FK a `orden` por prefijo
   @@index([gestionId, createdAt]) // la FK RESTRICT a la gestion, indexada; y «el rastro de esta gestion»
   @@index([actorUsuarioId]) // la FK RESTRICT del actor, indexada (patron `orden_dia_reparto_cambio`)
+  @@index([organizacionId])
   @@map("gestion_fecha_reprogramacion_cambio")
 }
 
@@ -3872,11 +4132,16 @@ model OrdenTraspasoMensajero {
   /// mensajero_anterior_id`) VIVE SOLO EN LA MIGRACION: Prisma no expresa CHECK (mismo caso que
   /// `orden_dia_reparto_cambio_dia_distinto`). Es R7 puesto en la base: un «traspaso» a la misma
   /// persona no es escribible ni por error.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // la lectura prevista: «el rastro de esta orden», en orden. Cubre ademas la FK a `orden` por prefijo
   @@index([mensajeroAnteriorId, createdAt]) // «que se le quito a este mensajero»; indexa ademas la FK RESTRICT
   @@index([mensajeroNuevoId, createdAt]) // «que recibio este mensajero»; idem
   @@index([actorUsuarioId]) // la FK RESTRICT del actor, indexada (patron `orden_dia_reparto_cambio`)
   @@index([loteId]) // reconstruir un acto completo (R27)
+  @@index([organizacionId])
   @@map("orden_traspaso_mensajero")
 }
 
@@ -3929,10 +4194,14 @@ model OrdenEvento {
   mensajero Usuario?      @relation("OrdenEventoMensajero", fields: [mensajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   actor     Usuario       @relation("OrdenEventoActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([ordenId, createdAt]) // linea de tiempo, seguimiento publico, «ultimo evento de ayuda»
   @@index([gestionOrdenId]) // anulada/corregida por gestion; indexa la FK RESTRICT
   @@index([mensajeroId]) // indexa la FK RESTRICT
   @@index([actorUsuarioId]) // indexa la FK RESTRICT
+  @@index([organizacionId])
   @@map("orden_evento")
 }
 
@@ -4306,11 +4575,16 @@ model HistorialAccion {
   /// el `orderBy` real es `created_at <dir>, id asc` (R23): sin el desempate, dos filas del mismo
   /// lote —que comparten `created_at` al milisegundo por nacer del mismo `CURRENT_TIMESTAMP`—
   /// quedan a merced del plan y paginar duplica una y pierde otra (defecto medido en la 352).
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([createdAt(sort: Desc), id])
   /// «Que hizo Fulano»: igualdad -> rango, el unico orden que un btree recorre sin filtro residual.
   @@index([actorUsuarioId, createdAt(sort: Desc)])
   /// «Que le paso a esta entidad».
   @@index([entidadTipo, entidadId])
+  @@index([organizacionId])
   @@map("historial_accion")
 }
 
@@ -4359,7 +4633,12 @@ model PushSuscripcion {
   usuario Usuario @relation("PushSuscripcionUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
   /// El envio lee POR USUARIO (`WHERE usuario_id IN (...)`), que es la unica consulta caliente.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([usuarioId])
+  @@index([organizacionId])
   @@map("push_suscripcion")
 }
 
@@ -4416,7 +4695,11 @@ model PushEnvioDia {
 
   usuario Usuario @relation("PushEnvioDiaUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioId, evento, diaCr], map: "push_envio_dia_cupo")
+  @@index([organizacionId])
   @@map("push_envio_dia")
 }
 
@@ -4477,7 +4760,12 @@ model VistaFiltro {
   /// `name` es como se llama en el cliente de Prisma y `map` es el nombre REAL en Postgres: los
   /// dos iguales y escritos a mano, para que el `migration.sql` pueda crear el indice con ese
   /// nombre y el datamodel y la base no difieran nunca en un `migrate diff`.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioId, superficie, nombre], name: "vista_filtro_dueno_superficie_nombre_key", map: "vista_filtro_dueno_superficie_nombre_key")
+  @@index([organizacionId])
   @@map("vista_filtro")
 }
 
@@ -4517,6 +4805,10 @@ model UsuarioPreferencia {
   /// `push_suscripcion`, no el de `historial_accion`.
   usuario Usuario @relation("UsuarioPreferenciaUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([organizacionId])
   @@map("usuario_preferencia")
 }
 
@@ -4574,7 +4866,12 @@ model AsistenteUsoDiario {
   /// con un `SELECT` previo— las dos leerian el mismo valor y las dos escribirian el mismo +1: el
   /// tope se saltaria sin que ningun test lo notara. Mismo argumento que `push_envio_dia_cupo` y
   /// `ranking_snapshot_dia_fecha_key`.
+
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([usuarioId, fecha])
+  @@index([organizacionId])
   @@map("asistente_uso_diario")
 }
 
@@ -4667,7 +4964,11 @@ model WhatsappEnvio {
   destinatarios WhatsappEnvioDestinatario[] @relation("WhatsappEnvioDestinatarios")
   ejecuciones   WhatsappEnvioEjecucion[]    @relation("WhatsappEnvioEjecuciones")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([plantillaId])
+  @@index([organizacionId])
   @@map("whatsapp_envio")
 }
 
@@ -4682,8 +4983,12 @@ model WhatsappEnvioDestinatario {
   envio   WhatsappEnvio @relation("WhatsappEnvioDestinatarios", fields: [envioId], references: [id], onDelete: Cascade)
   usuario Usuario?      @relation("WhatsappEnvioDestinatarioUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([envioId])
   @@index([usuarioId])
+  @@index([organizacionId])
   @@map("whatsapp_envio_destinatario")
 }
 
@@ -4723,8 +5028,12 @@ model WhatsappEnvioEjecucion {
   solicitante Usuario?               @relation("WhatsappEnvioEjecucionSolicitante", fields: [solicitadaPor], references: [id], onDelete: SetNull)
   entregas    WhatsappEnvioEntrega[] @relation("WhatsappEnvioEjecucionEntregas")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([createdAt(sort: Desc)])
   @@index([envioId, createdAt(sort: Desc)])
+  @@index([organizacionId])
   @@map("whatsapp_envio_ejecucion")
 }
 
@@ -4750,8 +5059,12 @@ model WhatsappEnvioEntrega {
   ejecucion WhatsappEnvioEjecucion @relation("WhatsappEnvioEjecucionEntregas", fields: [ejecucionId], references: [id], onDelete: Cascade)
   usuario   Usuario?               @relation("WhatsappEnvioEntregaUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([ejecucionId, usuarioId], map: "whatsapp_envio_entrega_ejecucion_usuario_key")
   @@index([usuarioId])
+  @@index([organizacionId])
   @@map("whatsapp_envio_entrega")
 }
 
@@ -4773,8 +5086,12 @@ model DevolucionTiendaComprobante {
   evidencias DevolucionTiendaEvidencia[] @relation("DevolucionTiendaEvidenciaComprobante")
   ordenes    DevolucionTiendaOrden[]     @relation("DevolucionTiendaOrdenComprobante")
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([tiendaId])
   @@index([subidoPor])
+  @@index([organizacionId])
   @@map("devolucion_tienda_comprobante")
 }
 
@@ -4788,7 +5105,11 @@ model DevolucionTiendaEvidencia {
 
   comprobante DevolucionTiendaComprobante @relation("DevolucionTiendaEvidenciaComprobante", fields: [comprobanteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@unique([comprobanteId, indice])
+  @@index([organizacionId])
   @@map("devolucion_tienda_evidencia")
 }
 
@@ -4801,6 +5122,105 @@ model DevolucionTiendaOrden {
   orden       Orden                       @relation("DevolucionTiendaOrdenOrden", fields: [ordenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   comprobante DevolucionTiendaComprobante @relation("DevolucionTiendaOrdenComprobante", fields: [comprobanteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
   @@index([comprobanteId])
+  @@index([organizacionId])
   @@map("devolucion_tienda_orden")
+}
+
+// SL-17/R1: la empresa usuaria de la plataforma. `slug` = ruta publica (D13; formato lo valida
+// OrganizacionService). Ni migraciones ni seeds crean filas (R32). Las 73 tablas de negocio
+// (`lib/db/modelos-de-negocio.ts`) apuntan aqui con `organizacion_id`.
+//
+// Su `organizacionId` lleva `@default(dbgenerated())` VACIO, y se llego a el MIDIENDO (T1.3): el
+// DEFAULT real (`NULLIF(current_setting('app.organizacion_id', true), '')`, la empresa de la
+// transaccion) vive en `20261022130100_organizacion_id_en_negocio/migration.sql`. Prisma 7 no
+// introspecta ese DEFAULT: con la expresion escrita aqui, `migrate diff --from-config-datasource`
+// propone 73 `ALTER COLUMN ... SET DEFAULT` fantasma; vacio, el diff sale limpio. Mismo patron que
+// `busquedaTexto` y `claveRemision` en `Orden`. Para el cliente, el campo es opcional en `create`.
+model Organizacion {
+  id        String   @id @default(uuid())
+  nombre    String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  usuarios Usuario[]
+  mensajeroDocumentos MensajeroDocumento[]
+  usuarioPreferencias UsuarioPreferencia[]
+  pushSuscripciones PushSuscripcion[]
+  pushEnvioDias PushEnvioDia[]
+  asistenteUsoDiarios AsistenteUsoDiario[]
+  vistaFiltros VistaFiltro[]
+  apiKeys ApiKey[]
+  webhookSuscripciones WebhookSuscripcion[]
+  postulacionRecursos PostulacionRecurso[]
+  zonas Zona[]
+  zonaDistritos ZonaDistrito[]
+  tarifas Tarifa[]
+  tarifaZonaMensajeros TarifaZonaMensajero[]
+  premioRankinges PremioRanking[]
+  gastoFijoPlantillas GastoFijoPlantilla[]
+  ordenes Orden[]
+  cargas Carga[]
+  ordenMensajeroMetas OrdenMensajeroMeta[]
+  ordenNotas OrdenNota[]
+  ordenHabilitacionApis OrdenHabilitacionApi[]
+  ordenHistorialEstados OrdenHistorialEstado[]
+  ordenDiaRepartoCambios OrdenDiaRepartoCambio[]
+  ordenTraspasoMensajeros OrdenTraspasoMensajero[]
+  ordenEventos OrdenEvento[]
+  ordenIncidentes OrdenIncidente[]
+  ordenIncidenteEvidencias OrdenIncidenteEvidencia[]
+  gestionOrdenes GestionOrden[]
+  gestionOrdenEvidencias GestionOrdenEvidencia[]
+  gestionOrdenPagos GestionOrdenPago[]
+  gestionFechaReprogramacionCambios GestionFechaReprogramacionCambio[]
+  rutaOptimizadas RutaOptimizada[]
+  rutaOptimizadaParadas RutaOptimizadaParada[]
+  cierreDias CierreDia[]
+  cierreBodegas CierreBodega[]
+  cierreDetailes CierreDetail[]
+  cierreSinGestiones CierreSinGestion[]
+  cierreRechazoTiendas CierreRechazoTienda[]
+  walletMovimientos WalletMovimiento[]
+  walletTiendaMovimientos WalletTiendaMovimiento[]
+  pagoMensajeroMovimientos PagoMensajeroMovimiento[]
+  liquidacionPagos LiquidacionPago[]
+  liquidacionAnulaciones LiquidacionAnulacion[]
+  liquidacionRepartos LiquidacionReparto[]
+  pagoPorCuentaTiendas PagoPorCuentaTienda[]
+  pagoPorCuentaTiendaAnulaciones PagoPorCuentaTiendaAnulacion[]
+  cobroTiendaAnulaciones CobroTiendaAnulacion[]
+  ajusteCajaAnulaciones AjusteCajaAnulacion[]
+  walletAnotaciones WalletAnotacion[]
+  rechazoTiendaCobros RechazoTiendaCobro[]
+  rechazoTiendaCobroAnulaciones RechazoTiendaCobroAnulacion[]
+  walletComprobantes WalletComprobante[]
+  abonoTiendas AbonoTienda[]
+  abonoTiendaAnulaciones AbonoTiendaAnulacion[]
+  aporteCapitales AporteCapital[]
+  aporteCapitalAnulaciones AporteCapitalAnulacion[]
+  gastoFijoCobros GastoFijoCobro[]
+  devolucionTiendaComprobantes DevolucionTiendaComprobante[]
+  devolucionTiendaEvidencias DevolucionTiendaEvidencia[]
+  devolucionTiendaOrdenes DevolucionTiendaOrden[]
+  plantillaMensajes PlantillaMensaje[]
+  chatConversaciones ChatConversacion[]
+  chatMensajes ChatMensaje[]
+  notificaciones Notificacion[]
+  notificacionLecturas NotificacionLectura[]
+  whatsappEnvios WhatsappEnvio[]
+  whatsappEnvioDestinatarios WhatsappEnvioDestinatario[]
+  whatsappEnvioEjecuciones WhatsappEnvioEjecucion[]
+  whatsappEnvioEntregas WhatsappEnvioEntrega[]
+  historialAcciones HistorialAccion[]
+  analyticsDailys AnalyticsDaily[]
+  rankingSnapshotDias RankingSnapshotDia[]
+  rankingSnapshotFilas RankingSnapshotFila[]
+  jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
+
+  @@map("organizacion")
 }

@@ -136,11 +136,21 @@ describe("422 · el `down.sql` revierte EXACTAMENTE lo que el `up` crea", () => 
   });
 
   it("⭑ ningun `down.sql` ANTERIOR fue tocado: son fotos de su rama", () => {
+    // SL-17 M2 y M3 son POSTERIORES y revierten lo que ellas anaden a esta tabla (la columna de
+    // empresa y sus triggers): nombrarla es su trabajo, no un `down` anterior retocado. Por nombre
+    // exacto, para que una tercera migracion que la nombre se siga poniendo roja aqui.
+    const POSTERIORES_QUE_LA_NOMBRAN = new Set([
+      "20261022130100_organizacion_id_en_negocio",
+      "20261022130300_misma_empresa_en_fk",
+    ]);
+    for (const carpeta of POSTERIORES_QUE_LA_NOMBRAN) {
+      expect(fs.existsSync(path.join(MIGRACIONES, carpeta, "down.sql")), carpeta).toBe(true);
+    }
     // La regla del repo. Y aqui es ademas trivialmente cierto porque esta migracion no crea ningun
     // tipo, que es lo unico que obliga a los `down` a llevar listas.
     const anteriores = fs
       .readdirSync(MIGRACIONES, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && e.name !== CARPETA)
+      .filter((e) => e.isDirectory() && e.name !== CARPETA && !POSTERIORES_QUE_LA_NOMBRAN.has(e.name))
       .map((e) => e.name);
     // AUTOCOMPROBACION: si el recorrido no encontrara carpetas, el barrido seria verde por vacio.
     expect(anteriores.length).toBeGreaterThan(150);
@@ -179,6 +189,8 @@ describeSiHayBase("422 · y lo que SOLO sabe el motor: la base tiene lo que la m
       "avisos_push",
       "created_at",
       "updated_at",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la empresa, al final por `ADD COLUMN`.
+      "organizacion_id",
     ]);
     const avisos = columnas.find((c) => c.column_name === "avisos_push")!;
     // COLUMNA TIPADA, no clave/valor: un `text` aqui seria el EAV que el diseno descarto.
@@ -193,13 +205,15 @@ describeSiHayBase("422 · y lo que SOLO sabe el motor: la base tiene lo que la m
     }
   });
 
-  it("⭑ el indice de `usuario_id` es UNICO, y es el unico indice ademas de la PK", async () => {
+  it("⭑ el indice de `usuario_id` es UNICO, y es el unico ademas de la PK y el de empresa de SL-17", async () => {
     const indices = await prisma.$queryRawUnsafe<{ indexname: string; indexdef: string }[]>(
       `SELECT indexname, indexdef FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'usuario_preferencia'
         ORDER BY indexname`,
     );
     expect(indices.map((i) => i.indexname).sort()).toEqual([
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el indice de la empresa.
+      "usuario_preferencia_organizacion_id_idx",
       "usuario_preferencia_pkey",
       "usuario_preferencia_usuario_id_key",
     ]);
@@ -211,21 +225,25 @@ describeSiHayBase("422 · y lo que SOLO sabe el motor: la base tiene lo que la m
   });
 
   it("⭑ R4: la FK a `usuario` es CASCADE en la base, no solo en el `.sql`", async () => {
-    const filas = await prisma.$queryRawUnsafe<{ delete_rule: string }[]>(
-      `SELECT rc.delete_rule
+    const filas = await prisma.$queryRawUnsafe<{ constraint_name: string; delete_rule: string }[]>(
+      `SELECT tc.constraint_name::text, rc.delete_rule::text
          FROM information_schema.table_constraints tc
          JOIN information_schema.referential_constraints rc
            ON rc.constraint_name = tc.constraint_name
           AND rc.constraint_schema = tc.constraint_schema
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema = 'public'
-          AND tc.table_name = 'usuario_preferencia'`,
+          AND tc.table_name = 'usuario_preferencia'
+        ORDER BY tc.constraint_name`,
     );
-    expect(filas).toHaveLength(1);
-    expect(filas[0].delete_rule).toBe("CASCADE");
+    expect(filas).toEqual([
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la FK a la empresa es RESTRICT.
+      { constraint_name: "usuario_preferencia_organizacion_id_fkey", delete_rule: "RESTRICT" },
+      { constraint_name: "usuario_preferencia_usuario_id_fkey", delete_rule: "CASCADE" },
+    ]);
   });
 
-  it("⭑ la RLS esta habilitada, y sin policies (patron `push_suscripcion` / `jobs`)", async () => {
+  it("⭑ la RLS esta habilitada, y sin policies propias (solo la de empresa de SL-17 M2)", async () => {
     // La RLS es una propiedad del CATALOGO: ninguna regex sobre el `.sql` demuestra que este
     // aplicada. Sin policies porque este repo no usa Supabase Auth y una policy no tendria a quien
     // preguntar; lo que garantiza es que a estas filas no se llega salvo por el servidor.
@@ -238,11 +256,14 @@ describeSiHayBase("422 · y lo que SOLO sabe el motor: la base tiene lo que la m
     expect(filas.map((f) => f.relname)).toEqual(["usuario_preferencia"]);
     expect(filas[0].relrowsecurity).toBe(true);
 
-    const policies = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*)::bigint AS n FROM pg_policies
+    // Esta migracion no crea policies; la unica en la base es la de empresa que SL-17 M2
+    // (20261022130100_organizacion_id_en_negocio) anade a todas las tablas de negocio.
+    expect(sinComentarios(UP)).not.toMatch(/CREATE POLICY/i);
+    const policies = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
+      `SELECT policyname::text FROM pg_policies
         WHERE schemaname = 'public' AND tablename = 'usuario_preferencia'`,
     );
-    expect(Number(policies[0].n)).toBe(0);
+    expect(policies).toEqual([{ policyname: "usuario_preferencia_por_empresa" }]);
   });
 });
 

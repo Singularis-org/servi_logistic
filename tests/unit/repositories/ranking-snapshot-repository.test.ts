@@ -65,7 +65,8 @@ function buildPrisma(opts: FakeOpts = {}) {
   const prisma = {
     rankingSnapshotDia: {
       create: vi.fn(explota("rankingSnapshotDia.create")),
-      findUnique: vi.fn(async (_args: unknown) => opts.findUniqueCabecera ?? null),
+      // SL-17 T3.9: la fecha es unica por empresa; la relectura va por `findFirst`.
+      findFirst: vi.fn(async (_args: unknown) => opts.findUniqueCabecera ?? null),
     },
     rankingSnapshotFila: {
       createMany: vi.fn(explota("rankingSnapshotFila.createMany")),
@@ -129,7 +130,7 @@ describe("crearSnapshot — atomicidad (R14)", () => {
     expect(tx.rankingSnapshotDia.create).toHaveBeenCalledTimes(1);
     expect(prisma.rankingSnapshotDia.create).not.toHaveBeenCalled();
     // Un fallo cualquiera NO se confunde con la reejecucion: no hay consulta de rescate.
-    expect(prisma.rankingSnapshotDia.findUnique).not.toHaveBeenCalled();
+    expect(prisma.rankingSnapshotDia.findFirst).not.toHaveBeenCalled();
   });
 
   it("dia sin actividad: escribe la cabecera con filas = 0 y no llama a createMany (R11)", async () => {
@@ -181,7 +182,7 @@ describe("crearSnapshot — reejecucion sobre una fecha ya congelada (R12)", () 
     expect(res).toEqual({ creado: false, filas: 7 });
     // Y no se escribio NADA: ni filas nuevas, ni upsert de la cabecera.
     expect(tx.rankingSnapshotFila.createMany).not.toHaveBeenCalled();
-    expect(prisma.rankingSnapshotDia.findUnique.mock.calls[0][0]).toMatchObject({
+    expect(prisma.rankingSnapshotDia.findFirst.mock.calls[0][0]).toMatchObject({
       where: { fecha: FECHA },
     });
   });
@@ -221,7 +222,7 @@ describe("crearSnapshot — reejecucion sobre una fecha ya congelada (R12)", () 
 describe("obtenerPorFecha — orden congelado y serializacion (R25/R26/R31)", () => {
   function prismaConSnapshot(row: unknown) {
     return {
-      rankingSnapshotDia: { findUnique: vi.fn(async (_args: unknown) => row) },
+      rankingSnapshotDia: { findFirst: vi.fn(async (_args: unknown) => row) },
       rankingSnapshotFila: {},
       $transaction: vi.fn(),
     };
@@ -231,7 +232,7 @@ describe("obtenerPorFecha — orden congelado y serializacion (R25/R26/R31)", ()
     const prisma = prismaConSnapshot(null);
     await repoWith(prisma).obtenerPorFecha(FECHA);
 
-    const arg = prisma.rankingSnapshotDia.findUnique.mock.calls[0][0] as {
+    const arg = prisma.rankingSnapshotDia.findFirst.mock.calls[0][0] as {
       where: unknown;
       include: { filasSnapshot: { orderBy: unknown } };
     };

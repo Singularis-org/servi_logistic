@@ -389,7 +389,8 @@ describeSiHayBase("427/T5 — la base aplicada, y los DOS indices que la ficha n
     // ⚠️ Y AQUI SE VE EL HECHO QUE DECIDE TODA LA FICHA: el indice NO MIRA EL ESTADO DE LECTURA. Por
     // eso la entidad tiene que ser el `lote_id` del ACTO (R42); y por eso NO necesita prefijo de
     // mensajero, porque `destinatario_usuario_id` YA esta en la clave.
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
     expect(def).not.toMatch(/leida/);
   });
 });
@@ -538,7 +539,8 @@ describeSiHayBase("427/T5 — el DOWN ejercitado de verdad, con su precondicion"
     expect(dedupe).toMatch(/CREATE UNIQUE INDEX/i);
     expect(dedupe).toMatch(/NULLS NOT DISTINCT/i);
     expect(dedupe).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
-    expect(dedupe).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(dedupe).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
 
     // ⭑ Y el de la 410, que ES la regla «un push al dia por tipo» (R43): si el down hubiera dejado
     // la columna sin retipar, no habriamos llegado hasta aqui.
