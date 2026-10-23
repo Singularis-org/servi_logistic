@@ -48,6 +48,9 @@ esta bien hecha, no solo si "funciona".
   `<t>_por_empresa`. La clasificación de los 88 modelos heredados (73 de negocio, 14 de
   plataforma, 1 diferido) vive en `lib/db/modelos-de-negocio.ts`, y un modelo nuevo sin clasificar
   pone el gate en rojo (`tests/unit/guards/organizacion-en-modelos.guardia.test.ts`).
+- **SL-38 (2026-10-23):** son 74. La marca de zona especial es de la empresa, no del distrito: una
+  fila de `distrito_zona_especial(organizacion_id, distrito_id)` por distrito marcado, sobre la
+  geografía de la plataforma. Se lee solo por `lib/repositories/_shared/zona-especial.ts`.
 - **Cómo se aplica, en capas** (cada una frena el fallo de la anterior):
   - **Contexto** (`lib/db/contexto-empresa.ts`): `conEmpresa(id, fn)` y `comoPlataforma(ficha, motivo, fn)`.
     Sin contexto explícito, la empresa sale de la cookie de sesión

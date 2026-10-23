@@ -409,3 +409,37 @@ Politica restaurada con el SQL de M1 (`pg_get_expr(polqual)` = el original). M1 
 
 Veredicto T8: las nueve lecturas, el congelado y la escritura, medidos en dos empresas con marcas
 distintas; verde, y rojo con cada una de las tres mutaciones pedidas.
+
+## T10 — Script de despliegue y docs
+
+### Archivos
+
+- `scripts/verificar-rls-despliegue.ts`: fuera `POLITICAS_POR_EMPRESA = 73` y `TRIGGERS_SIN_CAMBIO = 73`.
+  `contratoEsperado(modelos = MODELOS_DE_NEGOCIO)` arma el contrato del punto 6 desde `.length`, y
+  `evaluarCatalogo(medido, contrato)` da el veredicto en puro (el punto 6 solo mide y lo llama).
+  `TRIGGERS_MISMA_EMPRESA = 150` se queda en literal: son FK de negocio a negocio, no tablas, y
+  SL-38 no lo mueve (fuera del alcance de R23).
+- Nuevo: `tests/unit/scripts/verificar-rls-despliegue.test.ts`.
+- `docs/architecture.md > Multi-empresa`: una viñeta SL-38 (74 tablas; la marca es de la empresa en
+  `distrito_zona_especial`, leída solo por `_shared/zona-especial.ts`).
+- `progress/deudas.md > D12`: sale «decidir dónde vive la marca» del «Qué falta» y se añade
+  «Resuelto en SL-38»; lo demás sigue con SL-26.
+
+### R → test
+
+| R | Test |
+|---|---|
+| R23 | `verificar-rls-despliegue.test.ts`: «con una lista inventada de 2 modelos espera 2 …», «sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 74 tablas», «el punto 6 da OK con lo que pide el contrato y FALLA con una tabla de mas o de menos» |
+| R24 | revisión del diff de `docs/architecture.md` y `progress/deudas.md` |
+
+### Verificación
+
+- `Tests 3 passed (3)`; `pnpm run typecheck` → `TC=0` (cliente regenerado bajo el lock);
+  `pnpm exec eslint` de los dos archivos → 0 problemas.
+- `pnpm run test:guardias` → `Test Files 1 failed | 300 passed (301)`, `Tests 4 failed | 4105 passed |
+  1 skipped`; los 4 son `dependencias-declaradas-presentes` (baseline).
+- Mutación (restaurada; md5 idéntico): `politicasPorEmpresa: 73` y `triggersSinCambio: 73` en
+  literal → `Tests 3 failed (3)` (`expected { politicasPorEmpresa: 73 } to deeply equal { … 2 }`).
+
+Veredicto T10: el contrato del script sale de `MODELOS_DE_NEGOCIO`, con su test muerto por la mutación
+del literal; docs al día con cambios mínimos.
