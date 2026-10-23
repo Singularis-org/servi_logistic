@@ -49,7 +49,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 2 — Las lecturas pasan a la marca de la empresa
 
-- [ ] **T3. El punto único** (R22; depende de T1).
+- [x] **T3. El punto único** (R22; depende de T1).
   - `lib/repositories/_shared/zona-especial.ts`, con `SELECT_MARCA_ZONA_ESPECIAL` y
     `esZonaEspecialDeLaEmpresa` (`design.md §4`).
   - `tests/unit/guards/zona-especial-punto-unico.guardia.test.ts`, con su caso negativo.
