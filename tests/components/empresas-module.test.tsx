@@ -276,6 +276,8 @@ describe("EmpresasModule — errores de la action (R31–R34)", () => {
   it.each([
     ["invalida con un campo desconocido", { estado: "invalida", campo: "pais" }],
     ["una respuesta fuera del contrato", { status: "forbidden" }],
+    // SL-32 (T15): la forma real del rechazo de rol de `altaEmpresaAction` (R35).
+    ["«no autorizado» de la action", { estado: "no_autorizado" }],
     ["sin respuesta", undefined],
   ])("R34: %s muestra el error genérico", async (_nombre, respuesta) => {
     await enviarCon(respuesta);
@@ -289,5 +291,45 @@ describe("EmpresasModule — errores de la action (R31–R34)", () => {
     expect(screen.getByText(GENERICO)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("ECONNREFUSED");
     sinCrear();
+  });
+});
+
+describe("EmpresasModule — validación con el schema de la action (R34, T15)", () => {
+  it("con un dato que el schema de SL-17 rechaza, marca ese campo y NO llama a la action", async () => {
+    const user = userEvent.setup();
+    const { altaEmpresa } = montar(vi.fn());
+    await rellenar(user);
+    const c = campos();
+    await user.clear(c.slug);
+    await user.type(c.slug, "Con Espacios");
+    await user.clear(c.email);
+    await user.type(c.email, "no-es-un-email");
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+
+    expect(altaEmpresa).not.toHaveBeenCalled();
+    for (const el of [campos().slug, campos().email]) {
+      expect(el).toHaveAccessibleDescription(expect.stringContaining("Revisa este campo."));
+      expect(el).toHaveAttribute("aria-invalid", "true");
+    }
+    expect(campos().nombre).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByText(GENERICO)).not.toBeInTheDocument();
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(campos().slug).toHaveValue("Con Espacios");
+  });
+
+  it("sin tipo de documento, lo marca y no llama a la action", async () => {
+    const user = userEvent.setup();
+    const { altaEmpresa } = montar(vi.fn());
+    const c = campos();
+    await user.type(c.nombre, "Envíos Este");
+    await user.type(c.slug, "envios-este");
+    await user.type(c.maestroNombre, "Marta Ruiz");
+    await user.type(c.email, "marta@este.test");
+    await user.type(c.telefono, "0991234567");
+    await user.type(c.documento, "1790012345001");
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+
+    expect(altaEmpresa).not.toHaveBeenCalled();
+    soloEn("tipo", "Revisa este campo.");
   });
 });

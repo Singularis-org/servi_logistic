@@ -5,13 +5,11 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * @sin-superficie la unica tabla de listas de la app es `components/shared/DataTable`
- * (DESIGN.md, «las tablas crudas se migran a esta»). El ULTIMO consumidor de esta primitiva
- * cruda era el detalle de un mensajero del tablero del dia, y la feature 258 (F3.1, R23/R35)
- * lo migro a `DataTable` + `Pagination` dentro de un `Modal`. Queda en disco a proposito: R20
- * de esa ficha prohibe anadir, renombrar o eliminar archivos de `components/ui/`, asi que
- * retirar la primitiva —o hacer que `DataTable` se apoye en ella, que es la otra salida— es
- * un chore aparte y una decision del humano, no un dano colateral de un rediseno de pantalla.
+ * La tabla de listas de la app es `components/shared/DataTable` (DESIGN.md, «las tablas crudas
+ * se migran a esta»). Esta primitiva cruda se quedo sin consumidores con la feature 258 (F3.1,
+ * R23/R35), y la vuelve a montar SL-32 en `EmpresasModule`, porque asi lo fija su diseño aprobado
+ * (`specs/SL-32-rol-superadmin/design.md > Propuesta de T12`). Retirarla, o que `DataTable` se
+ * apoye en ella, sigue siendo un chore aparte y una decision del humano.
  */
 export function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (

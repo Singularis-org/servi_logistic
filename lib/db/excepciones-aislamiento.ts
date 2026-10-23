@@ -146,4 +146,9 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-32",
     motivo: "pantalla «Empresas» del superadmin: lista todas las organizaciones y sus maestros (R29)",
   },
+  {
+    archivo: "app/(app)/layout.tsx",
+    ficha: "SL-32",
+    motivo: "marco del portal: leer el nombre del superadmin, que no tiene empresa, para el pie (R6)",
+  },
 ];

@@ -307,7 +307,7 @@ Es un trozo de SL-26 que se adelanta. Consume la pieza de dominio de SL-17 y no 
 | `lib/services/EmpresasPlataformaService.ts` | `listarEmpresas(actor)`: `forbidden` si `!esPlataforma(actor.rol)`. Si no, delega en el repositorio. |
 | `lib/repositories/EmpresasPlataformaRepository.ts` | Dentro de `comoPlataforma("SL-32", "listado de empresas del superadmin")`: `organizacion` ordenada por `created_at` descendente, con sus usuarios de rol `maestro` (`nombre`, `email`), por `created_at`. Solo esas columnas: nada de `password_hash`, documento ni teléfono. |
 | `lib/interfaces/services/IEmpresasPlataformaService.ts`, `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts` y `lib/types/empresas-plataforma.ts` | Contratos y el tipo `EmpresaListada = { id, nombre, slug, creadaEn, maestros: { nombre, email }[] }`. |
-| `lib/auth/menu-visibility.ts` | El ítem `{ label: "Empresas", href: "/plataforma/empresas", iconKey: "building", roles: ROLES_PLATAFORMA }`, al **final** del array. Ningún otro rol lo ve, así que su posición no mueve el aterrizaje de nadie más (R36). |
+| `lib/auth/menu-visibility.ts` | El ítem `{ label: "Empresas", href: "/plataforma/empresas", iconKey: "building", roles: ROLES_PLATAFORMA }`, justo antes de «Mi bodega», de modo que «Ayuda» sigue siendo el último y «Mi bodega» el penúltimo (contratos previos de la 433 y la 429, que afirman `menu-ayuda` y `menu-mi-bodega`). Ningún otro rol lo ve, así que su posición no mueve el aterrizaje de nadie más (R36). |
 | `app/(app)/_components/Sidebar.tsx` | `IconKey` gana `"building"` (`Building2` de `lucide-react`, que ya está en el repo), con el mismo comentario de «icono propio» que las demás. |
 
 - **La ruta va fuera de `/configuracion`.** `/configuracion` es del `maestro` y le da 404 al

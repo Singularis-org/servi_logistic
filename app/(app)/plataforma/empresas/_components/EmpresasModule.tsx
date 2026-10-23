@@ -18,37 +18,19 @@ import {
 import { FormField } from "@/components/shared/FormField";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
-
-/*
- * Contrato de la action de alta de SL-17 (§7.7). Es PROVISIONAL: SL-17 aún no está en la rama.
- * T15 cambia estos dos tipos por el import de `lib/types/organizacion.ts`.
- */
-export interface AltaEmpresaEntrada {
-  nombre: string;
-  slug: string;
-  maestro: {
-    nombre: string;
-    email: string;
-    telefono: string;
-    documento: string;
-    /** El `value` del catálogo `tipo_identificacion` (`cedula`, `ruc`, `pasaporte`). */
-    tipoDocumento: string;
-  };
-}
-
-export type AltaEmpresaRespuesta =
-  | { estado: "creada"; organizacionId: string; maestroId: string }
-  | { estado: "ya_existe"; organizacionId: string }
-  | { estado: "conflicto"; campo: "slug" | "email" | "documento" }
-  | { estado: "invalida"; campo: string };
+import { altaEmpresaInputSchema, type AltaEmpresaInput } from "@/lib/types/organizacion";
+import type { AltaEmpresaActionResultado } from "@/lib/actions/organizaciones";
 
 export interface EmpresasModuleProps {
   /** Las empresas, ya ordenadas por el servidor: la pantalla no reordena. */
   empresas: EmpresaListada[];
   /** El catálogo de tipos de documento (`ListarTiposIdentificacionResult`). */
   tiposDocumento: { id: string; value: string }[];
-  /** La action de alta de SL-17, inyectada para poder probarla. */
-  altaEmpresa: (input: AltaEmpresaEntrada) => Promise<AltaEmpresaRespuesta>;
+  /**
+   * La action de alta de SL-17 (`altaEmpresaAction`), inyectada para poder probarla. Su
+   * `no_autorizado` cae en el genérico, como cualquier respuesta que no sea de un campo.
+   */
+  altaEmpresa: (input: AltaEmpresaInput) => Promise<AltaEmpresaActionResultado>;
 }
 
 type Campo =
@@ -122,9 +104,8 @@ type Desenlace =
   | { tipo: "generico" };
 
 /**
- * Traduce lo que devuelve la action a lo que pinta la pantalla. Lee `unknown` a propósito:
- * una respuesta fuera del contrato (p. ej. «no autorizado», cuya forma aún no se conoce) cae
- * en el genérico en vez de romper.
+ * Traduce lo que devuelve la action a lo que pinta la pantalla. Lee `unknown` a propósito: la
+ * respuesta cruza la red, y una fuera del contrato cae en el genérico en vez de romper.
  */
 function desenlaceDe(respuesta: unknown): Desenlace {
   if (typeof respuesta !== "object" || respuesta === null) return { tipo: "generico" };
@@ -150,15 +131,31 @@ function desenlaceDe(respuesta: unknown): Desenlace {
   return { tipo: "generico" };
 }
 
+/**
+ * Valida con el MISMO schema que la action (`lib/types/organizacion.ts`), importado y no copiado
+ * (`design.md > Contrato con la action de SL-17`): así el error se ve sin ida y vuelta, y las
+ * dos validaciones no pueden divergir. Marca todos los campos rechazados, no solo el primero.
+ */
+function erroresDeCliente(entrada: AltaEmpresaInput): Errores | null {
+  const r = altaEmpresaInputSchema.safeParse(entrada);
+  if (r.success) return null;
+  const errores: Errores = {};
+  for (const issue of r.error.issues) {
+    const ruta = issue.path.join(".");
+    const campo = Object.hasOwn(CAMPO_DE_LA_ACTION, ruta) ? CAMPO_DE_LA_ACTION[ruta] : undefined;
+    if (campo) errores[campo] = TEXTOS.errorCampo;
+  }
+  // Un rechazo que no se puede señalar en ningún campo lo decide la action, que es la autoridad.
+  return Object.keys(errores).length > 0 ? errores : null;
+}
+
 const FECHA_CORTA = new Intl.DateTimeFormat("es", { dateStyle: "short" });
 
 /**
  * Pantalla «Empresas» del superadmin (SL-32, R29–R34, R37): el formulario «Crear empresa»,
- * siempre visible, y el listado. No valida en el cliente: valida la action, y la pantalla pinta
+ * siempre visible, y el listado. Valida con el schema de la action antes de llamarla, y pinta
  * cada error junto a su campo. Nunca maneja contraseñas: el maestro pone la suya con
  * «¿Olvidaste tu contraseña?».
- *
- * @sin-superficie pantalla «Empresas» de SL-32 (T13) escrita antes que su página: la monta `app/(app)/plataforma/empresas/page.tsx` en T15, cuando SL-17 (esPlataforma, rol superadmin, altaEmpresaAction) esté en `dev`; entonces esta anotación sobra y la guardia exige quitarla.
  */
 export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: EmpresasModuleProps) {
   const router = useRouter();
@@ -189,21 +186,28 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
     setErrorGenerico(false);
     setCreada(false);
 
+    const entrada: AltaEmpresaInput = {
+      nombre: form.nombre,
+      slug: form.slug,
+      maestro: {
+        nombre: form.maestroNombre,
+        email: form.email,
+        telefono: form.telefono,
+        documento: form.documento,
+        tipoDocumento: form.tipoDocumento,
+      },
+    };
+
+    const deCliente = erroresDeCliente(entrada);
+    if (deCliente) {
+      setErrores(deCliente);
+      setEnviando(false);
+      return;
+    }
+
     let desenlace: Desenlace;
     try {
-      desenlace = desenlaceDe(
-        await altaEmpresa({
-          nombre: form.nombre,
-          slug: form.slug,
-          maestro: {
-            nombre: form.maestroNombre,
-            email: form.email,
-            telefono: form.telefono,
-            documento: form.documento,
-            tipoDocumento: form.tipoDocumento,
-          },
-        }),
-      );
+      desenlace = desenlaceDe(await altaEmpresa(entrada));
     } catch {
       desenlace = { tipo: "generico" };
     }

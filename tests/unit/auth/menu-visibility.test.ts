@@ -932,3 +932,42 @@ describe("SIDEBAR_ITEMS — «Mi wallet», la puerta del adminTienda a su saldo 
     expect(primerDestino(conElItemArriba)).toBe("/mi-wallet");
   });
 });
+
+// SL-32 (R6, R36): el superadmin no pertenece a ninguna empresa, así que su barra es un solo
+// ítem, «Empresas». El esperado va escrito a mano y el barrido cubre los siete `RolValue`: dar
+// el ítem a un rol de empresa, o un ítem de empresa al superadmin, lo pone en rojo.
+describe("SL-32 — ítem «Empresas» del superadmin", () => {
+  const SIETE: RolValue[] = [
+    "maestro",
+    "admin",
+    "adminTienda",
+    "adminSatelite",
+    "mensajero",
+    "apiKey",
+    "superadmin",
+  ];
+
+  it("R36: el superadmin ve exactamente [Empresas], que navega a /plataforma/empresas", () => {
+    const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
+    expect(labels(visibles)).toEqual(["Empresas"]);
+    expect(visibles[0].href).toBe("/plataforma/empresas");
+    expect(visibles[0].iconKey).toBe("building");
+    expect(visibles[0].children).toBeUndefined();
+  });
+
+  it("R6: ningún otro rol ve «Empresas», y sin sesión tampoco", () => {
+    const item = SIDEBAR_ITEMS.find((i) => i.href === "/plataforma/empresas")!;
+    expect(SIETE.filter((rol) => puedeVer(item, actor(rol)))).toEqual(["superadmin"]);
+    for (const rol of SIETE.filter((r) => r !== "superadmin")) {
+      expect(labels(itemsVisibles(SIDEBAR_ITEMS, actor(rol)))).not.toContain("Empresas");
+    }
+    expect(puedeVer(item, null)).toBe(false);
+  });
+
+  // La barra cierra con «Mi bodega» y «Ayuda» (contratos de la 429 y la 433); «Empresas» va
+  // justo delante. Literal a mano.
+  it("R36: va justo antes de «Mi bodega» y «Ayuda», y es el único con /plataforma/empresas", () => {
+    expect(SIDEBAR_ITEMS.filter((i) => i.href === "/plataforma/empresas")).toHaveLength(1);
+    expect(SIDEBAR_ITEMS.slice(-3).map((i) => i.label)).toEqual(["Empresas", "Mi bodega", "Ayuda"]);
+  });
+});

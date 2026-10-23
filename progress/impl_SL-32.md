@@ -920,3 +920,241 @@ el corpus es una provincia, un cantón y un distrito.
 
 **Veredicto:** la parte de `lib/` de T11 está hecha, y las mutaciones del «Hecho cuando» caen. T11 queda `[ ]`:
 falta la página (frontend, tanda 5) y la decisión sobre `actualizarDistritosEspeciales` (D12).
+
+## T16 (lib) y T15 (test de la action), y prueba real del login sin empresa (R6, R35, R36), backend_dev — 2026-10-23
+
+**Archivos**
+- `lib/auth/menu-visibility.ts`:
+  - el ítem `{ label: "Empresas", href: "/plataforma/empresas", iconKey: "building", roles: ROLES_PLATAFORMA }`,
+    al final de `SIDEBAR_ITEMS`, sin `destinoInicial`;
+  - **`IconKey` vive aquí, no en `Sidebar.tsx`**: gana `"building"`. El `ICON_BY_KEY` del Sidebar y la lista
+    exhaustiva de `tests/components/Sidebar.test.tsx` los puso el frontend_dev.
+- Tests modificados: `tests/unit/auth/menu-visibility.test.ts` (bloque «SL-32 — ítem Empresas»),
+  `tests/unit/auth/destino-post-login.test.ts` (el superadmin aterriza en `/plataforma/empresas`; la lista literal de
+  `destinoInicial: false` no cambia) y `tests/unit/auth/plataforma.test.ts` (el ítem lee `ROLES_PLATAFORMA` por
+  identidad; para cada `RolValue`, ve «Empresas» si y solo si `esPlataforma`).
+- Test nuevo: `tests/unit/actions/alta-empresa-rol.test.ts`: con un `maestro`, `{ estado: "no_autorizado" }` y el
+  servicio sin llamar; con un `superadmin`, una llamada con la entrada tal cual, el resultado del servicio y el
+  contexto `plataforma` de SL-17.
+
+**Revisado sin cambios**
+- `/dashboard` (`app/(app)/dashboard/page.tsx`): con el superadmin no entra en la rama `maestro`/`admin` y redirige a
+  `primerDestino(...)`, que ahora es `/plataforma/empresas`.
+- `middleware.ts`: solo exige sesión activa (`isSessionActive`, ya en `comoPlataforma("SL-17")`). No hay guardia
+  por rol que mande al superadmin fuera de `/plataforma/*`. El login redirige a `/dashboard` (`LoginForm`).
+- Login, OTP, sesión y recuperación de contraseña: las actions de `lib/actions/auth.ts` y `password-reset.ts`
+  ya corren en `comoPlataforma("SL-17", "login")`, y `resolveActorFromSession` y `empresaDeLaPeticion` también.
+  No hizo falta ningún cambio ni fila nueva en `EXCEPCIONES_DE_PLATAFORMA`.
+
+**Prueba real** (base desechable `sl32_login`: migraciones, `db:seed` y `pnpm arranque:superadmin` con variables
+ficticias → «Superadmin creado.»). Un test temporal de vitest (borrado), con `next/headers` doblado y el OTP leído del
+`ConsoleEmailSender` con `AUTH_OTP_DEBUG_LOG=1`, llamó a las actions reales en orden:
+1. superadmin: `login` → `challenge_required` → `verifyChallenge` `ok` → `isSessionActive` true →
+   `resolveActorFromSession` = `{ rol: superadmin, organizacionId: null }` → `empresaDeLaPeticion()` null;
+2. `altaEmpresaAction` con el actor real de la sesión → `creada`;
+3. maestro nuevo: `solicitarRecuperacion` `ok` → `verificarCodigoRecuperacion` `ok` → `restablecerContrasena` `ok` →
+   `login` + OTP `ok` → actor `maestro` con la `organizacionId` del alta, y `empresaDeLaPeticion()` igual;
+4. dentro de su empresa, sin contexto explícito: `usuario.findMany` devuelve solo al maestro (no al superadmin), y
+   `orden.count()` = 0 sin `EmpresaNoResuelta`.
+- `Tests 1 passed (1)`. En la base: superadmin 1 OTP y 1 sesión; maestro 2 OTP (recuperación y login) y 1 sesión.
+  `sl32_login` borrada después; queda solo `sl32_base`.
+- Hallazgo: el primer `arranque:superadmin` falló con `PrismaClientValidationError` porque el cliente compartido
+  estaba generado sin `superadmin` (`Invalid value for argument in. Expected RolValue`). Con el cliente regenerado,
+  creó el superadmin. El mensaje del comando no imprime el detalle (correcto), así que se ve como «revisa
+  DATABASE_URL».
+
+**R → test**
+- R6: `menu-visibility.test.ts` («ningún otro rol ve Empresas»), `plataforma.test.ts` y `destino-post-login.test.ts`.
+- R36: `menu-visibility.test.ts` (exactamente `[Empresas]`, último ítem) y la guardia `superadmin-fuera-de-empresa`.
+- R35: `alta-empresa-rol.test.ts`, y `organizaciones-action.test.ts` para los siete roles.
+
+**Mutaciones** (aplicada, corrida, restaurada, `cmp` idéntico):
+- ítem con `roles: [...ROLES_PLATAFORMA, "maestro"]` → menú, plataforma, destino y la guardia de T6:
+  `5 failed | 79 passed`. Caen `menu-visibility` (el mapeo del maestro y «ningún otro rol»), los dos de
+  `plataforma.test` y la guardia («Empresas lee ROLES_PLATAFORMA»);
+- ítem con `destinoInicial: false` → `destino-post-login`: `2 failed | 9 passed`;
+- `exigirSuperadmin` que devuelve `true` siempre → `alta-empresa-rol`: `1 failed | 1 passed`.
+
+**Salida real**
+- `pnpm run typecheck` → 0 errores. Hubo un rojo intermedio en `tests/components/Sidebar.test.tsx:409`
+  (exhaustividad de `IconKey`), que desapareció cuando el frontend_dev añadió `"building"` a su lista.
+- `pnpm exec eslint` de los 5 archivos → sin problemas.
+- `vitest run` de `menu-visibility`, `destino-post-login`, `plataforma`, la guardia `superadmin-fuera-de-empresa`,
+  `alta-empresa-rol` y `organizaciones-action` → `Test Files 6 passed (6)`, `Tests 99 passed (99)`.
+- **Lock:** en el segundo `prisma generate`, el bucle de espera agotó sus 100 intentos sin tomar `gate.lock`, que
+  tenía otro agente desde las 08:39, y el `generate` corrió igual, sin lock, con el esquema de este worktree. No borré
+  ese lock, que no es mío.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Veredicto:** T16 está hecha y marcada `[x]`; el ícono ya lo trae el `Sidebar` del frontend. Al test de T15 no le
+falta nada. El login, el OTP, la sesión y la recuperación funcionan de verdad para el superadmin sin empresa y para
+el maestro nuevo dentro de la suya, sin cambios.
+
+## T15, T16 (UI) y la página de T11 — frontend_dev — 2026-10-23
+
+**Archivos** (todos en LF, como estaban)
+- Nuevos:
+  - `app/(app)/plataforma/empresas/page.tsx`;
+  - `tests/integration/empresas-page.test.tsx`;
+  - `tests/integration/app-layout-superadmin.test.tsx`.
+- Modificados:
+  - `app/(app)/_components/Sidebar.tsx`: `building: Building2` en `ICON_BY_KEY`, con su comentario de icono
+    propio. La unión `IconKey` vive en `lib/auth/menu-visibility.ts`, y la puso el backend_dev.
+  - `tests/components/Sidebar.test.tsx`: `"building"` entra en `TODAS_LAS_CLAVES`. Sin él, la exhaustividad
+    tipada rompe el typecheck.
+  - `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`:
+    - los tipos salen de `lib/types/organizacion.ts` y de `AltaEmpresaActionResultado`;
+    - valida con `altaEmpresaInputSchema` antes de llamar a la action;
+    - sale el `@sin-superficie`.
+  - `app/(app)/layout.tsx`: la rama `esPlataforma` lee el nombre dentro de
+    `comoPlataforma("SL-32", "nombre del superadmin en el pie")`.
+    - Pasa `false` y `null`.
+    - No construye `UsuarioPreferenciaRepository`.
+  - `lib/db/excepciones-aislamiento.ts`: la fila de `app/(app)/layout.tsx` (SL-32, R6).
+  - `app/(app)/configuracion/geografia/page.tsx`: `if (!actor || !esPlataforma(actor.rol)) notFound()`. Sale el
+    `role="alert"` de permiso.
+  - `tests/unit/components/geografia-admin-page.test.tsx`:
+    - los 6 roles de empresa (el `maestro` incluido) y la falta de sesión → `notFound()`, sin llamar a
+      `listarArbolGeografico`;
+    - el caso feliz y el de error pasan al `superadmin`.
+  - `tests/components/empresas-module.test.tsx`: `{ estado: "no_autorizado" }` → el genérico, y dos casos de
+    validación con el schema.
+  - Fuera de la UI, solo comentarios, porque lo pide la guardia `superficie-de-uso`:
+    - `lib/actions/organizaciones.ts`: sale el `@sin-superficie` de `altaEmpresaAction`. Es R-A: ya la monta la
+      página.
+    - `components/ui/table.tsx`: sale el `@sin-superficie`. Es R-B: ya la monta `EmpresasModule`. Ver «Para el
+      leader».
+  - `specs/SL-32-rol-superadmin/tasks.md`: `[x]` en T15 y en T11, con la nota de D12.
+
+**Decisiones**
+- **El catálogo de tipos.** La página no usa `listarTiposIdentificacion`, la de Usuarios: su servicio solo deja
+  pasar al `maestro` (`ALLOWED_ROLES`), y al superadmin le daría `forbidden`.
+  - Lee `new UserRepository(getPrismaClient()).listTiposIdentificacion()`.
+  - `TipoIdentificacion` está en `MODELOS_DE_PLATAFORMA`. Sin contexto, la extensión lo deja pasar tal cual, así
+    que no hace falta `comoPlataforma`.
+  - El layout ya importa los repositorios de esta misma forma.
+- **El schema en el cliente: sí.**
+  - `> Contrato con la action de SL-17` dice «si lo exporta», y lo exporta. Se importa y no se copia, así que no
+    contradice el «no copia reglas» de T12.
+  - Cada issue pasa por `CAMPO_DE_LA_ACTION` y da «Revisa este campo.». Se marcan todos los campos rechazados y no
+    se llama a la action.
+  - Si un rechazo no cae en ningún campo, decide la action.
+  - Los 21 tests de T13 rellenan datos válidos y siguen en verde.
+- **`exigirSuperadmin` ya usaba `esPlataforma`.** En T15 no hubo stub que cambiar.
+
+**Diseño, punto por punto contra `design.md > Propuesta de T12`.** Las líneas son de `EmpresasModule.tsx`, salvo
+que se diga otra cosa.
+
+| Punto de la propuesta | Resultado |
+|---|---|
+| `AppPage title="Empresas"` | coincide (`page.tsx:36`) |
+| Tres props: `empresas`, `tiposDocumento: {id,value}[]` y `altaEmpresa` | coincide (`EmpresasModuleProps`, l. 24-34; `page.tsx:43-47`) |
+| Orden vertical, 1: el aviso, solo tras un éxito | coincide (l. 242-246, el primer hijo) |
+| `Alert` con `role="status"` | coincide (l. 243) |
+| Texto «Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.» | coincide, literal (l. 60-61) |
+| Se cierra al empezar a escribir | coincide (`cambiar` → `setCreada(false)`, l. 179) |
+| 2: el formulario «Crear empresa», siempre visible y sin modal | coincide (`<form aria-label>`, l. 248) |
+| Dos grupos, «Empresa» y «Primer maestro», con `h2` `text-sm font-medium` | coincide (l. 255 y 265) |
+| Empresa: «Nombre» y «Slug», con la ayuda «minúsculas, números y guiones» | coincide (l. 259-260, `hint`; el texto, l. 67) |
+| Maestro: «Nombre», «Email», «Teléfono», «Tipo de documento» y «Documento», en ese orden | coincide (l. 269-289) |
+| El tipo es un `Select` con los valores del catálogo, como en `UsuarioForm` | coincide (l. 278). Lleva `label: t.value`, igual que `UsuarioForm.tsx:160`, y viaja el `value` |
+| `FormField` con `error`, y el control es un `Input` | coincide (`campoTexto`) |
+| `grid md:grid-cols-2`, una columna en móvil | coincide (`grid gap-4 md:grid-cols-2`, l. 258 y 268) |
+| `Button` con `loading`, al final | coincide (l. 300) |
+| Sin campo de contraseña | coincide: no hay `password` en el archivo, y lo prueba T13 |
+| 3: el genérico encima del botón, como `Alert variant="destructive"` | coincide (l. 294, antes del botón de la l. 300) |
+| Texto «No se pudo crear la empresa. Inténtalo de nuevo.» | coincide, literal (l. 73) |
+| 4: `Table` con cuatro columnas: Nombre, Slug, Alta y Maestros | coincide (l. 322-328) |
+| Alta: fecha corta, en `es` | coincide (`Intl.DateTimeFormat("es", { dateStyle: "short" })`, l. 152) |
+| Cada maestro en su línea, como «nombre · email» | coincide (`<ul>`/`<li>`, l. 341-345) |
+| La pantalla no reordena | coincide (`empresas.map` tal cual) |
+| Vacío: `EmptyState` «Aún no hay empresas. Crea la primera con el formulario.» | coincide (l. 316; el texto, l. 83) |
+| Errores: los textos de slug, email, documento e `invalida` | coincide (l. 74-77; `desenlaceDe`) |
+| Tras un éxito: vacía el formulario, avisa y llama a `router.refresh()` | coincide (l. 216-218) |
+| «No hay validación de cliente que copie reglas» | **difiere a propósito:** valida con el schema importado de SL-17 (`erroresDeCliente`). La propuesta se escribió cuando el schema no estaba en la rama, y `> Contrato…` pide usarlo si existe |
+| Fuera de la propuesta | Si el listado devuelve `forbidden`, la página pinta «No se pudo cargar el listado de empresas.» con `role="alert"`. Tras la puerta no debería pasar. Es el patrón de `vehiculos/page.tsx`, y debajo queda el `EmptyState` |
+
+En el componente no hubo diferencias que corregir, salvo los tipos y la validación. No levanté un dev server.
+
+**R → test**
+- R35, la página. Está en `tests/integration/empresas-page.test.tsx`.
+  - «%s → notFound(), sin leer el listado ni el catálogo»: los 6 roles de empresa, y «sin sesión».
+  - «pide el listado con su actor y pinta una fila por empresa…»: el superadmin, con el `EmpresasModule` real.
+- R29, la página: el mismo caso feliz, más «el catálogo de tipos de documento baja al selector» y «si el listado no
+  llega, lo dice».
+- R6, el marco. Está en `tests/integration/app-layout-superadmin.test.tsx`.
+  - «el pie lleva su nombre y su rol, leído en contexto de plataforma…»: el contexto se captura dentro de
+    `findById`.
+  - «no construye ni llama a `UsuarioPreferenciaRepository`…».
+  - La contraprueba del `maestro`.
+- R34 y R35, el módulo. Están en `empresas-module.test.tsx`.
+  - «R34: «no autorizado» de la action muestra el error genérico».
+  - El bloque «validación con el schema de la action», con 2 casos.
+- R26, la página: `geografia-admin-page.test.tsx`. Son «el rol %s recibe notFound()…», con 6 roles, y «sin
+  sesión».
+- R36, el icono: `Sidebar.test.tsx`, «toda clave de IconKey resuelve a un ícono», con `building`.
+
+**Mutaciones.** Cada una se aplicó, se corrió y se revirtió. El md5 del archivo es el mismo antes y después.
+- La página de Empresas, con `esPlataforma` → `(_r) => true`: `empresas-page.test.tsx` da `6 failed | 4 passed
+  (10)`. md5: `b49cce46…`.
+- La página de Geografía, con la puerta de vuelta a `actor.rol !== "maestro"`: `geografia-admin-page.test.tsx` da
+  `3 failed | 6 passed (9)`. md5: `6d23e50b…`.
+- El layout. md5: `43087a09…`.
+  - El nombre del superadmin sin `comoPlataforma`: `1 failed | 2 passed (3)`.
+  - `deLaPlataforma = false`: `2 failed | 1 passed (3)`.
+- El módulo, sin `erroresDeCliente`: `2 failed | 22 passed (24)`. md5: `0e34049b…`.
+- El Sidebar, sin `building: Building2`: `Sidebar.test.tsx` en rojo, con 5 `×` o más. md5: `3ea70a91…`.
+
+**Salida real**
+- `prisma generate` va dentro del lock, sobre `sl32_base`.
+- `pnpm run typecheck` → `TC_EXIT=0`, con 0 `error TS`. Antes de añadir `building` a `Sidebar.test.tsx` daba 1
+  error: la exhaustividad de la línea 409.
+- `pnpm exec eslint` sobre los 13 archivos tocados → «No issues found», exit 0.
+- `vitest run` sobre 8 archivos → `Test Files 8 passed (8)` y `Tests 121 passed (121)`:
+  - `superficie-de-uso` y `plataforma-solo-en-lista`;
+  - `Sidebar`, `empresas-module`, `AppLayout` y `organizaciones-action`;
+  - `empresas-page` y `app-layout-superadmin`.
+
+  Antes de quitar las dos anotaciones, `superficie-de-uso` daba `2 failed`.
+- Las otras guardias que leen el layout siguen en verde:
+  - `push-alta-punto-unico` y `revision-sinpe-no-bloquea`;
+  - `asistente-panel-hermano` y `vistas-superficies-declaradas`;
+  - `superadmin-fuera-de-empresa`.
+- `vitest related --run` sobre `GeografiaService.ts`, `menu-visibility.ts` y `configuracion/geografia/page.tsx`,
+  con `sl32_base` → `19 failed | 3270 passed | 34 skipped`, en 7 archivos rojos. Ninguno sale de la página.
+  - 16 son los mismos de base vacía que anotó T11:
+    - `historial-accion-lectura`;
+    - `455/snapshot-lectura` y `455/caracterizacion/snapshot-correccion`;
+    - el `beforeAll` de la 374 de `geografia-registro-accion`.
+  - 3 venían del ítem «Empresas» que el backend_dev estaba poniendo en `menu-visibility.ts` en ese momento:
+    - `menu-ayuda`, «es EL ÚLTIMO de SIDEBAR_ITEMS»;
+    - `menu-mi-bodega`, «va AL FINAL»;
+    - `pwa-manifiesto-atajos`, «433».
+
+    Ver abajo la segunda corrida.
+- MCP del grafo: no lo usé. Trabajé con Grep y Read.
+
+**Para el leader**
+- **La tabla del listado.** `components/ui/table.tsx` decía que la única tabla de listas es `DataTable`, igual que
+  `DESIGN.md:66`: «las tablas crudas se migran a esta».
+  - La propuesta aprobada de T12 fija `Table` de `components/ui/table`, y la seguí.
+  - La guardia R-B obligó a quitar la anotación. El comentario dice ahora quién la monta y por qué.
+  - Si Carlos prefiere `DataTable`, el cambio es del listado y de nada más.
+- **El cierre de T15.** Su «Hecho cuando» incluye `alta-empresa-rol.test.ts`, que es del backend_dev. Marqué `[x]`
+  con lo mío en verde.
+- **T11.** Va `[x]`. `actualizarDistritosEspeciales` sigue parada (D12) y sin cambio.
+- **Siguen rojos tras el cierre del backend_dev.** Segunda corrida, después de su sección: `vitest run` de
+  `menu-ayuda`, `menu-mi-bodega`, `pwa-manifiesto-atajos`, `Sidebar`, `AppLayout` y `app-layout-superadmin` →
+  `3 failed | 85 passed (88)`.
+  - Son los tres de «Empresas» al final de `SIDEBAR_ITEMS`. El design lo pone al final, y estos tests exigen que
+    lo último sea «Ayuda» y «Mi bodega».
+  - No son de la UI y no los toqué (`menu-visibility.ts` y sus tests no son míos).
+
+**Veredicto:** T15 hecha (página, marco y tests) y la parte de UI de T16 también. La página de T11 está hecha, con
+D12 abierta. Quedan 3 rojos de menú del backend_dev. Sin commitear.
+
+## T16, orden del ítem — backend_dev — 2026-10-23
+
+- «Empresas» pasa del final a justo antes de «Mi bodega»: la barra sigue cerrando con «Mi bodega» y «Ayuda» (contratos 429/433). Ponerlo solo antes de «Ayuda» rompía `menu-mi-bodega` (penúltimo = `/mi-bodega`). Cambiados `lib/auth/menu-visibility.ts` (bloque y comentario), `tests/unit/auth/menu-visibility.test.ts` (R36: `slice(-3)` = `["Empresas","Mi bodega","Ayuda"]`), `specs/SL-32-rol-superadmin/design.md > Ruta y piezas`. `destino-post-login` y `plataforma.test.ts` no decían «al final»: sin cambios.
+- Guardia pwa: el literal cuenta destinos por rol → añadido `superadmin: 1`. Consecuencia real: la intersección pasa de `["/ayuda"]` a `[]` (el superadmin no está en `ROLES_AYUDA`); literal actualizado con su porqué. Sigue sin atajos.
+- Salida: 7 archivos (los 6 + `superadmin-fuera-de-empresa`) 123 passed; `pnpm run typecheck` exit 0 (con `prisma generate` dentro del lock); eslint exit 0. Mutación (Empresas otra vez al final): 3 failed (`menu-ayuda`, `menu-mi-bodega`, R36 de `menu-visibility`); revertido, `cmp` idéntico.

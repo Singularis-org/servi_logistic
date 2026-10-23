@@ -266,8 +266,8 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
   **Hecho cuando:** los tests están en verde, la guardia de SL-11 sigue en verde con la lista, y la
   guardia `plataforma-solo-en-lista` de SL-17 también.
-- [ ] **T11. El módulo de geografía pasa al superadmin** (R24, R25, R26; depende de T4).
-  *Parte de `lib/` hecha el 2026-10-23 (`progress/impl_SL-32.md > T11`). **Falta la página (frontend, tanda 5)**, y queda abierta la decisión sobre `actualizarDistritosEspeciales` (D12).*
+- [x] **T11. El módulo de geografía pasa al superadmin** (R24, R25, R26; depende de T4).
+  *Parte de `lib/` hecha el 2026-10-23, y la página en la tanda 5 (`progress/impl_SL-32.md > T11` y `> T15, T16 (UI) y la página de T11`). **Sigue abierta la decisión sobre `actualizarDistritosEspeciales` (D12)**: está parada a la espera de producto y no bloquea el resto de T11.*
   - En `GeografiaService`, `READ_ROLES` y `GESTION_ROLES` según
     `design.md > GeografiaService, la acción y la pantalla`.
   - La página de Geografía cambia su puerta a `esPlataforma(actor.rol)`: `notFound()` al `maestro`.
@@ -319,7 +319,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 5 — La pantalla «Empresas» entera (depende de T4, T13 y T14b)
 
-- [ ] **T15. Página, marco del portal y comprobación de rol** (R6, R30, R35).
+- [x] **T15. Página, marco del portal y comprobación de rol** (R6, R30, R35).
   - `app/(app)/plataforma/empresas/page.tsx`: `notFound()` si `!esPlataforma(actor.rol)`. Lee el
     listado y el catálogo `tipo_identificacion`, y monta `EmpresasModule` con la action de SL-17.
   - `app/(app)/layout.tsx`, según `design.md > El marco del portal para el superadmin`: el nombre
@@ -338,7 +338,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
   **Hecho cuando:** los tests están en verde, y cambiar `esPlataforma` por `() => true` en la página
   pone en rojo `empresas-page.test.tsx` (se prueba y se revierte).
-- [ ] **T16. [P] Ítem de menú «Empresas»** (R6, R36).
+- [x] **T16. [P] Ítem de menú «Empresas»** (R6, R36).
   - En `lib/auth/menu-visibility.ts`, el ítem al final de `SIDEBAR_ITEMS`, con
     `roles: ROLES_PLATAFORMA`.
   - En `Sidebar.tsx`, `IconKey` gana `"building"`.
