@@ -41,23 +41,53 @@ describe("resolveActorFromSession", () => {
     findUniqueMock.mockResolvedValue({
       id: "u-1",
       zonaId: "zona-9",
+      organizacionId: "org-1",
       rol: { value: "adminSatelite" },
     });
 
     const actor = await resolveActorFromSession();
 
-    expect(actor).toEqual({ usuarioId: "u-1", rol: "adminSatelite", zonaId: "zona-9" });
+    expect(actor).toEqual({
+      usuarioId: "u-1",
+      rol: "adminSatelite",
+      zonaId: "zona-9",
+      organizacionId: "org-1",
+    });
   });
 
   it("devuelve zonaId null cuando el usuario no tiene zona asignada", async () => {
     conCookieDeSesion("sess-1");
     findValidByIdMock.mockResolvedValue({ userId: "u-2" });
-    findUniqueMock.mockResolvedValue({ id: "u-2", zonaId: null, rol: { value: "admin" } });
+    findUniqueMock.mockResolvedValue({
+      id: "u-2",
+      zonaId: null,
+      organizacionId: "org-1",
+      rol: { value: "admin" },
+    });
 
     const actor = await resolveActorFromSession();
 
-    expect(actor).toEqual({ usuarioId: "u-2", rol: "admin", zonaId: null });
+    expect(actor).toEqual({ usuarioId: "u-2", rol: "admin", zonaId: null, organizacionId: "org-1" });
   });
+
+  it.each([
+    ["null", null],
+    ["vacia", ""],
+  ])(
+    "SLT-32: devuelve null cuando la sesion es valida pero la empresa del usuario es %s",
+    async (_caso, organizacionId) => {
+      conCookieDeSesion("sess-1");
+      findValidByIdMock.mockResolvedValue({ userId: "u-3" });
+      findUniqueMock.mockResolvedValue({
+        id: "u-3",
+        zonaId: null,
+        organizacionId,
+        rol: { value: "admin" },
+      });
+
+      expect(await resolveActorFromSession()).toBeNull();
+    },
+  );
 
   it("devuelve null cuando no hay cookie de sesion", async () => {
     conCookieDeSesion(undefined);

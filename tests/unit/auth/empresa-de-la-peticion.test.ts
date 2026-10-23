@@ -236,10 +236,13 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     for (const l of lecturas) expect(l.ctx).toEqual(VALIDAR);
   });
 
-  it("R14: el actor superadmin lleva organizacionId null", async () => {
+  // SLT-32 (decision humana 2026-10-23): mientras el rol superadmin no exista en `dev`, un usuario
+  // sin empresa no tiene actor (`puedeIniciarSesion`). Cuando SL-32 amplie el predicado con
+  // `esPlataforma(rol)`, este caso vuelve a esperar el actor con `organizacionId: null` (R14).
+  it("SLT-32: un usuario sin empresa no obtiene actor mientras el superadmin no exista", async () => {
     conCookies({ session: sesionDe(usuarioDe(null)) });
 
-    expect(await resolveActorFromSession()).toMatchObject({ rol: "superadmin", organizacionId: null });
+    expect(await resolveActorFromSession()).toBeNull();
   });
 
   it("isSessionActive valida en plataforma y sigue exigiendo usuario activo", async () => {
