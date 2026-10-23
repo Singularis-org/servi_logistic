@@ -1,5 +1,29 @@
 # impl SL-32 — Rol superadmin y su usuario de arranque
 
+## T0 — base adelantada sobre la rama de SL-17 — 2026-10-23
+
+- Merge de `origin/dev` (`f7fb97c`) y luego de `origin/feature/SL-17-organizacion-y-aislamiento`
+  (`d9df97f`), con merge y no rebase, en `43bedad`. SL-17 aún no está en `dev` (PR #3): hasta que
+  entre, la base es su rama. Conflictos: `progress/deudas.md` (SL-17 trae D10–D14; la D10 de SL-32
+  pasa a **D15**, y se actualizan sus dos referencias) y `tests/baseline-rojos.json` (se conservan
+  las tres filas de PG 17 que trae `dev`).
+- **Última migración:** `20261023090000_unicos_por_empresa` (no la `…130300` que decía el spec). Las de
+  SL-32 van detrás.
+- **`usuario.organizacion_id`:** `String?`, nulable, `@default(dbgenerated())`, comentario «NULL =
+  superadmin». Sin `CHECK` sobre la columna: R28 lo pone SL-32.
+- **Únicos:** `email` y `cedula` siguen `@unique` globales (la migración `unicos_por_empresa` los deja
+  globales a propósito). El `conflicto` del comando es global.
+- **Contrato de la action (P10):** `altaEmpresaAction(input: unknown, deps?)` en
+  `lib/actions/organizaciones.ts`. Devuelve `AltaEmpresaResultado | { estado: "no_autorizado" }`
+  (no `forbidden`). `AltaEmpresaResultado` (`lib/types/organizacion.ts`): `creada{organizacionId,
+  maestroId} | ya_existe{organizacionId} | conflicto{campo: slug|email|documento} | invalida{campo}`.
+  Exporta `altaEmpresaInputSchema`, `SLUG_ORGANIZACION`, `SLUG_MIN`, `SLUG_MAX`. La comprobación de
+  rol es `exigirSuperadmin` (`lib/auth/exigir-superadmin.ts`), un stub que falla cerrado
+  (`return false`): T15 la cambia por `esPlataforma`. «Sin contraseña»: `OrganizacionService` guarda
+  el hash de 32 bytes aleatorios descartados. **SL-17 no trae listado:** T14a/T14b se quedan.
+- **`migrate status`** sobre `sl32_base` (local, desechable) recién migrada: «Database schema is up to
+  date!».
+
 ## Tanda 1 — T1. Texto y guardia (R22, R23) — 2026-10-22
 
 **Archivos en vuelo.** `node scripts/archivos-en-vuelo.mjs` lista SL-15, SL-16 y SL-34 «rama NO

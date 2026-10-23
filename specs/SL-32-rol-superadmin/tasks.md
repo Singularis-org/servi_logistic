@@ -26,7 +26,11 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Precondición
 
-- [ ] **T0. SL-17 integrada en `dev`.** Cambió el 2026-10-22 (Carlos): SL-28 va después de SL-17, y
+- [x] **T0. SL-17 integrada en `dev`.** *Adelantado el 2026-10-23 (leader): **la base es la rama
+  `origin/feature/SL-17-organizacion-y-aislamiento` (PR #3) hasta que entre en `dev`**. Se integró
+  con merge (no rebase): primero `origin/dev`, luego la rama de SL-17 (`d9df97f`). Cuando SL-17 esté
+  en `dev`, se hace merge de `origin/dev` y se abre el PR. Respuestas en `progress/impl_SL-32.md > T0`.*
+  Cambió el 2026-10-22 (Carlos): SL-28 va después de SL-17, y
   las migraciones de SL-32 van encima de las de SL-17, porque las dos tocan `usuario`. Bloquea las
   tandas 3 a 6. Antes de crear las migraciones:
   1. `git fetch` y merge de `origin/dev` en la rama;
@@ -464,7 +468,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 - `lib/repositories/UserRepository.ts`
 - `lib/api/openapi-spec.ts`
 - `lib/services/GeografiaService.ts`
-- la Server Action de alta de SL-17: ruta pendiente de T0 (su spec aún no la nombra)
+- `lib/actions/organizaciones.ts` y `lib/auth/exigir-superadmin.ts` (la Server Action de alta de SL-17 y su comprobación de rol; ruta fijada en T0)
 - `app/(app)/layout.tsx`
 - `app/(app)/_components/Sidebar.tsx`
 - `app/(app)/plataforma/empresas/page.tsx`
