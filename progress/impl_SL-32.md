@@ -1409,3 +1409,158 @@ Sin `AUTH_OTP_DEBUG_LOG=1`, la consola NO imprime el código por ningún canal. 
 Veredicto: B1 cubierto (R21 con test de integración y estático, y la mutación del `DO` en rojo); m4 cerrado en la app. Queda pendiente el parseo del E2E por el frontend_dev.
 
 **Mutación del caso estático de B1** (implementer, 2026-10-23): se apartó a mano `db/migrations/20261023100200_usuario_empresa_o_superadmin/down.sql` fuera del árbol → `× cada una trae su down.sql…`, `Tests 1 failed | 4 skipped (5)` (sin base). Devuelto a su sitio: `git status --porcelain db/migrations` vacío, `Tests 1 passed | 4 skipped (5)`.
+
+## Review vuelta 1 — B2 (humo) y E2E con el OTP fuera del asunto — frontend_dev — 2026-10-23
+
+**Preparación.** Árbol en `e07387a`. Antes de levantar nada: 0 conexiones en escucha en el 3000 y ningún `next dev` vivo. `gate.lock` estaba tomado por otro worktree (`test:rapido`), y lo esperé con reintentos unos 15 min. Lo retuve desde `prisma generate` hasta acabar el typecheck, con todas las corridas E2E dentro. El dev server (`pnpm dev`, sin `SMTP_*` porque el worktree no tiene `.env`) se levantó con `AUTH_OTP_DEBUG_LOG=1`, con stdout y stderr al mismo log del scratchpad y `SL17_HUMO_LOG_SERVIDOR` apuntando a él. `rm -rf .next` antes de cada arranque. Specs con `--reporter=list`.
+
+### Archivos
+- `e2e/_superadmin-fixture.ts` (LF): `codigoEnviadoA` lee el código de la línea de stderr `[email][debug] to=<email> cuerpo=<JSON>`, filtrada por destinatario. Regex: `` `\[email\]\[debug\] to=${email escapado} cuerpo="[^"]*?\\n(\d{6})\\n` ``, es decir, los seis dígitos entre `\n` literales del JSON. El error del timeout dice ahora que hace falta `AUTH_OTP_DEBUG_LOG=1` y el stderr en el log. Antes de tocar el archivo comprobé la regex con un log sintético: dos destinatarios, con la línea de stdout entre medias, y solo se queda el código del suyo.
+- `e2e/_dos-empresas-fixture.ts`: sin cambios. No lee el código del log, porque usa su emisor en proceso.
+
+### B2 — `e2e/dos-empresas-humo.spec.ts` en esta rama
+Montaje según la cabecera del spec:
+- base desechable `sl32_humo` (`migrate deploy` + `db:seed`);
+- `SMTP_*` de la `.env` principal, exportadas sin imprimirse y solo en el proceso de Playwright, porque el envío real lo hace la fixture en proceso;
+- `SL17_HUMO_MAESTRO_A`/`_B` con los dos buzones de prueba locales del leader, porque el spec exige buzones reales. No se escriben aquí;
+- `SL17_HUMO_LOG_SERVIDOR` apuntando al log del server.
+
+Salida literal de Playwright:
+```
+  ok 1 e2e\dos-empresas-humo.spec.ts:139:5 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (8ms)
+  ok 2 e2e\dos-empresas-humo.spec.ts:157:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.1m)
+  ok 3 e2e\dos-empresas-humo.spec.ts:157:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (24.4s)
+  ok 4 e2e\dos-empresas-humo.spec.ts:202:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.4s)
+  ok 5 e2e\dos-empresas-humo.spec.ts:223:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (14.4s)
+  x  6 e2e\dos-empresas-humo.spec.ts:270:5 › vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40) (4.7s)
+
+  1 failed
+    e2e\dos-empresas-humo.spec.ts:270:5 › vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40)
+  5 passed (2.2m)
+PW_EXIT=1
+```
+- **El aislamiento (puntos 1 a 5) pasa entero.** A y B recorren todas las rutas de su menú, sin marcadores de la otra empresa y sin error. Los detalles de A le dan «no encontrado» a B, y A los ve con su marcador. Log del server: 0 respuestas 5xx y 0 `EmpresaNoResuelta`.
+- **El 6 cae por SL-32, no por un error.** La parte de vehículos pasa: la action da 200 y el aviso «Ya existe un vehículo con ese nombre.» sale en pantalla. Después, `GET /configuracion/geografia` da **404** al maestro, y el spec espera «Catálogo geográfico» (`dos-empresas-humo.spec.ts:292`). Es la conducta de R24 y R26, por la que el maestro pierde la gestión de geografía. `design.md:584` ya lo recoge como ajuste del humo que hace SL-17 al rebasar. **No toqué el spec de SL-17.** Para que el humo quede verde en esta rama, hay que decidir si el punto 6 deja de abrir geografía con el maestro o pasa a esperar el 404.
+- D19 (alta desde la pantalla en el humo) sigue fuera de esta rama. El humo da de alta por el servicio, como permite B2.
+
+### E2E del superadmin con el OTP fuera del asunto (base `sl32_e2e` limpia, server reiniciado)
+Corrida 1:
+```
+  ok 1 e2e\superadmin-arranque.spec.ts:52:5 › el comando de arranque deja un superadmin sin empresa y no imprime sus datos (R18) (16ms)
+  ok 2 e2e\superadmin-empresas.spec.ts:180:5 › 1. «Empresas» abre en el estado vacío (R29) (939ms)
+  ok 3 e2e\superadmin-arranque.spec.ts:69:5 › entra con OTP y aterriza en «Empresas», con ese único ítem en el menú (R18, R6) (7.5s)
+  ok 4 e2e\superadmin-empresas.spec.ts:189:5 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (1.6s)
+  ok 5 e2e\superadmin-arranque.spec.ts:84:5 › /configuracion no le deja entrar (R6, R5) (4.5s)
+  ok 6 e2e\superadmin-empresas.spec.ts:219:5 › 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (4.5s)
+  ok 7 e2e\superadmin-empresas.spec.ts:242:5 › 4. un slug inválido marca el campo sin crear nada (R34) (877ms)
+  ok 8 e2e\superadmin-empresas.spec.ts:260:7 › 5-6. el maestro de A entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (3.2s)
+  ok 9 e2e\superadmin-empresas.spec.ts:260:7 › 5-6. el maestro de B entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (2.8s)
+  9 passed (25.0s)
+PW_EXIT=0
+```
+Corrida 2, seguida:
+```
+  ok 1 e2e\superadmin-arranque.spec.ts:52:5 › el comando de arranque deja un superadmin sin empresa y no imprime sus datos (R18) (22ms)
+  ok 3 e2e\superadmin-arranque.spec.ts:69:5 › entra con OTP y aterriza en «Empresas», con ese único ítem en el menú (R18, R6) (1.6s)
+  ok 4 e2e\superadmin-arranque.spec.ts:84:5 › /configuracion no le deja entrar (R6, R5) (460ms)
+  ok 2 e2e\superadmin-empresas.spec.ts:180:5 › 1. «Empresas» abre en el estado vacío (R29) (356ms)
+  ok 5 e2e\superadmin-empresas.spec.ts:189:5 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (1.3s)
+  ok 6 e2e\superadmin-empresas.spec.ts:219:5 › 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (3.5s)
+  ok 7 e2e\superadmin-empresas.spec.ts:242:5 › 4. un slug inválido marca el campo sin crear nada (R34) (969ms)
+  ok 8 e2e\superadmin-empresas.spec.ts:260:7 › 5-6. el maestro de A entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (2.6s)
+  ok 9 e2e\superadmin-empresas.spec.ts:260:7 › 5-6. el maestro de B entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (3.5s)
+  9 passed (20.9s)
+PW_EXIT=0
+```
+Log del server de estas corridas:
+- 12 líneas `[email][debug] to=`, y 0 asuntos con seis dígitos, así que m4 se cumple también de punta a punta;
+- 0 respuestas 5xx y 0 `EmpresaNoResuelta`.
+
+### Mutación
+| Mutación | Resultado |
+|---|---|
+| En `codigoEnviadoA`, `to=${escaparRegex(email)}` pasa a `to=x${escaparRegex(email)}`, es decir, otro destinatario | `superadmin-arranque.spec.ts`: **1 failed**, 1 did not run, 1 passed. Error: «el log del servidor no recibió ningún código para superadmin-e2e@example.test en 60000 ms». Revertida desde copia, `cmp` IDÉNTICO |
+
+### Comandos
+- `pnpm run typecheck`, con el cliente generado dentro del lock: `TC_EXIT=0`, 0 `error TS`.
+- `pnpm exec eslint e2e/_superadmin-fixture.ts`: `ESLINT_EXIT=0`.
+
+### Limpieza
+- Dev servers matados: 0 conexiones en escucha en el 3000.
+- Borrados los logs del server, de Playwright y del typecheck, porque guardan argumentos con contraseñas, y también el script temporal de exportar `SMTP_*`.
+- Borrados `.next` y `test-results`.
+- `sl32_humo` y `sl32_e2e` borradas. Solo queda `sl32_base`.
+- `gate.lock` soltado.
+
+**Grafo:** no usé el MCP; trabajé con Grep y Read.
+
+**Veredicto:** el E2E del superadmin lee el OTP de la línea de debug y da 9/9 dos veces seguidas. El humo de B2 aísla bien (puntos 1 a 5 en verde), pero su punto 6 cae porque espera geografía para el maestro, y R24 y R26 se la quitan. Hay que ajustar el spec de SL-17. La app no tiene el error.
+
+### Review vuelta 1 — punto 6 del humo con geografía en 404 — frontend_dev — 2026-10-23
+
+Esto lo decidió el implementer. SL-32 (R24, R26, T11) le quita al `maestro` la página de geografía. El punto 6 de `e2e/dos-empresas-humo.spec.ts` seguía abriéndola y esperaba «Catálogo geográfico». SL-17 mergeó sin ajustarlo, así que lo ajusta SL-32, que mergea segundo.
+
+**Archivos**
+- `e2e/dos-empresas-humo.spec.ts` (LF): en la cabecera, el punto 6 cuenta el motivo (SL-32 R24/R26) y la fecha. El título del test pasa a «vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)». En el bloque de geografía:
+  - se quita el intento de crear una provincia, porque no hay formulario;
+  - comprueba que la respuesta es `404`, que sale «No encontramos esta página», que no aparece «Catálogo geográfico» y que `provincia.count()` no cambia.
+  - El bloque de vehículos y la aserción final de 5xx no se tocan.
+- `specs/SL-32-rol-superadmin/design.md` (tabla «Choques con SL-17», fila de `dos-empresas-humo`): «SL-17 no lo ajustó al mergear: lo ajustó SL-32 el 2026-10-23 al mergear segundo…».
+- Se conservan sin tocar `e2e/_superadmin-fixture.ts` y la sección anterior.
+
+**Montaje**
+- Antes de levantar nada: 0 escuchas en el 3000, ningún `next dev` y `gate.lock` libre.
+- Retuve el lock desde `prisma generate` hasta el eslint.
+- Base desechable `sl32_humo`, con `migrate deploy` y `db:seed`.
+- El dev server se levantó con `AUTH_OTP_DEBUG_LOG=1`, con stdout y stderr en el log de `SL17_HUMO_LOG_SERVIDOR`, y `rm -rf .next` antes de cada arranque.
+- Las `SMTP_*` se exportaron solo en Playwright y sin imprimirse.
+- `SL17_HUMO_MAESTRO_A`/`_B` usaron correos `@example.test`, no buzones reales. El SMTP aceptó los dos envíos: el punto 1 pasa.
+- Specs corridos con `--reporter=list`.
+
+Corrida 1:
+```
+  ok 1 e2e\dos-empresas-humo.spec.ts:141:5 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (9ms)
+  ok 2 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.2m)
+  ok 3 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (24.9s)
+  ok 4 e2e\dos-empresas-humo.spec.ts:204:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.2s)
+  ok 5 e2e\dos-empresas-humo.spec.ts:225:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (13.6s)
+  ok 6 e2e\dos-empresas-humo.spec.ts:272:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (4.9s)
+  6 passed (2.3m)
+PW_EXIT=0
+```
+Log del server: 0 respuestas 5xx, 0 `EmpresaNoResuelta` y `GET /configuracion/geografia 404`.
+
+Corrida 2, seguida y sobre la misma base:
+```
+  ok 1 e2e\dos-empresas-humo.spec.ts:141:5 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (9ms)
+  ok 2 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.1m)
+  ok 3 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (24.9s)
+  ok 4 e2e\dos-empresas-humo.spec.ts:204:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.2s)
+  ok 5 e2e\dos-empresas-humo.spec.ts:225:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (14.2s)
+  ok 6 e2e\dos-empresas-humo.spec.ts:272:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (4.9s)
+  6 passed (2.3m)
+PW_EXIT=0
+```
+Log del server: 0 respuestas 5xx, 0 `EmpresaNoResuelta` y `GET /configuracion/geografia 404`.
+
+**Mutación**
+- Qué se cambió: la puerta de `app/(app)/configuracion/geografia/page.tsx` se devolvió al `maestro`. La línea `if (!actor || !esPlataforma(actor.rol)) notFound();` pasó a `if (!actor) notFound();`, con el server reiniciado.
+- Resultado: `x 6 … (4.8s)`, `1 failed`, `5 passed (2.2m)`, `PW_EXIT=1`. Los fallos:
+  - «geografía: el maestro no recibe 404»: Expected 404, Received 200;
+  - «… no ve «no encontrado»»;
+  - «… ve el catálogo».
+- En el log: `GET /configuracion/geografia 200`.
+- Se revirtió desde una copia, y `cmp` contra `HEAD` dio IDÉNTICO.
+
+**Comandos**
+- `pnpm run typecheck` con el cliente generado dentro del lock: `TC_EXIT=0`, 0 `error TS`.
+- `pnpm exec eslint e2e/dos-empresas-humo.spec.ts`: `ESLINT_EXIT=0`.
+
+**Limpieza**
+- 0 escuchas en el 3000 y ningún `next dev`.
+- Borrados los logs del server, de Playwright, del typecheck y de eslint, y los scripts temporales.
+- Borrados `.next` y `test-results`.
+- `sl32_humo` borrada. Solo queda `sl32_base`.
+- `gate.lock` soltado por mi script. A las 13:58:44 lo volvió a tomar otro proceso, que no es mío, y lo dejé.
+
+Veredicto: el humo queda verde en esta rama (6/6, dos veces). El punto 6 vigila el 404 de geografía para el maestro, y la mutación lo tumba.

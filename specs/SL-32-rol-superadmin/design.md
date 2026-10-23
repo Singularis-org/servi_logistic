@@ -581,7 +581,7 @@ Ninguna nueva. Se usan `bcryptjs`, `zod`, `tsx` y `@prisma/client`, que ya está
 | `fuera-datos-ordenex.guardia.test.ts` (`faltasDeScripts`) | La lista de excepciones | Una lista con una fila por ficha (`> Guardias que cambian`) |
 | `lib/db/excepciones-aislamiento.ts` | `EXCEPCIONES_DE_PLATAFORMA` | SL-32 añade sus tres filas con `ficha: "SL-32"` |
 | La action de alta de SL-17 | La comprobación de rol | SL-17 la engancha a `esPlataforma`; si queda un stub, T15 lo cambia |
-| `e2e/dos-empresas-humo.spec.ts` de SL-17 | Recorre las rutas del menú del `maestro` y abre «geografía» y «vehículos» (§9.3, punto 5) | Con T11, «Geografía» sale del menú del `maestro` y su página le da 404. El humo deriva las rutas del menú, así que deja de visitarla, pero su punto 5 dice que la abre. SL-17 lo ajusta al rebasar |
+| `e2e/dos-empresas-humo.spec.ts` de SL-17 | Recorre las rutas del menú del `maestro` y abre «geografía» y «vehículos» (§9.3, punto 5) | Con T11, «Geografía» sale del menú del `maestro` y su página le da 404. El humo deriva las rutas del menú, así que deja de visitarla, pero su punto 5 dice que la abre. SL-17 no lo ajustó al mergear: lo ajustó SL-32 el 2026-10-23 al mergear segundo (el punto 6 espera el 404 y que no quede ninguna provincia nueva) |
 | `app/(app)/layout.tsx` | Lecturas de `usuario` y `usuario_preferencia` | T15 lo adapta para el superadmin (`> El marco del portal`) |
 - **El `id` fijo del rol `superadmin`.** Si alguna base tuviera ya esa fila con otro `id`, la
   migración aborta en vez de dejar un índice que no protege nada. Hoy no puede pasar, porque el

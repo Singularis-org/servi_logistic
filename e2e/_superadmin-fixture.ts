@@ -78,13 +78,15 @@ function escaparRegex(texto: string): string {
 }
 
 /**
- * Espera el código que el `ConsoleEmailSender` acaba de «enviar» a `email`. Sin SMTP, el emisor
- * escribe en el log una línea con el destinatario y el asunto, y el asunto de la plantilla lleva el
- * código (`plantillaOtpCodigo`). Solo mira lo escrito después de `log` se creó o leyó por última vez,
- * así que un código de una corrida anterior no cuenta.
+ * Espera el código que el `ConsoleEmailSender` acaba de «enviar» a `email`. El asunto ya no lleva
+ * el código (SL-32 m4): sin SMTP y con `AUTH_OTP_DEBUG_LOG=1`, el emisor escribe por stderr
+ * `[email][debug] to=<email> cuerpo=<JSON del texto>`, y el código son los seis dígitos entre el
+ * primer `\n\n` y el siguiente `\n`, literales en el JSON. Se filtra por destinatario porque stdout
+ * y stderr no guardan el orden en el log mezclado. Solo mira lo escrito después de que `log` se
+ * creó o leyó por última vez, así que un código de una corrida anterior no cuenta.
  */
 export async function codigoEnviadoA(log: LogDelServidor, email: string, timeoutMs = 60_000): Promise<string> {
-  const patron = new RegExp(`to=${escaparRegex(email)} asunto="[^"]*?(\\d{6})"`, "g");
+  const patron = new RegExp(`\\[email\\]\\[debug\\] to=${escaparRegex(email)} cuerpo="[^"]*?\\\\n(\\d{6})\\\\n`, "g");
   let acumulado = "";
   const limite = Date.now() + timeoutMs;
   while (Date.now() < limite) {
@@ -93,7 +95,10 @@ export async function codigoEnviadoA(log: LogDelServidor, email: string, timeout
     if (coincidencias.length > 0) return coincidencias[coincidencias.length - 1][1];
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`SL-32 E2E: el log del servidor no recibió ningún código para ${email} en ${timeoutMs} ms.`);
+  throw new Error(
+    `SL-32 E2E: el log del servidor no recibió ningún código para ${email} en ${timeoutMs} ms. ` +
+      "¿El dev server corre con AUTH_OTP_DEBUG_LOG=1 y su stderr va al log?",
+  );
 }
 
 /**
