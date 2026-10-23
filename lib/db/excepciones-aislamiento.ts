@@ -132,6 +132,26 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "drenador por consola: reclama jobs de todas las empresas (R42)",
   },
   {
+    archivo: "scripts/siembra-jobs-recurrentes.ts",
+    ficha: "SL-17",
+    motivo: "siembra de jobs recurrentes en el build: sin sesion; la fila nace sin empresa (R16)",
+  },
+  {
+    archivo: "scripts/seed-jobs-analitica-rollup-diario.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
+    archivo: "scripts/seed-jobs-liberar-reprogramadas.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
+    archivo: "scripts/seed-jobs-whatsapp-envio-mantenimiento.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
     archivo: "lib/actions/organizaciones.ts",
     ficha: "SL-17",
     motivo: "alta de empresa por el superadmin: crea la organizacion fuera de toda empresa (R44)",

@@ -671,3 +671,35 @@ No falta ningún R. D21 (no es R) → T4.1, `scripts/verificar-rls-despliegue.ts
 - **CI del PR #3 sobre `d9df97f`:** `gate-completo` en rojo, con 4 archivos fuera del baseline en PG 17: `abono-tienda-457-migration`, `cobro-tienda-461-migration` y `wallet-461-migration` (los retiré del baseline porque pasan en PG 18 local, y en PG 17.11 dan 23503) y `rastreo-publico-service` (lo arregla SL-37). Lección: un archivo que pasa en local no sale del baseline sin la evidencia del CI.
 - **Merge `--no-ff` de `origin/dev`** (PR #2, SL-37) en `7637055`. El conflicto de `tests/baseline-rojos.json` se resuelve con el lado de dev, que devuelve los tres con el motivo PG 17 frente a 18. `notificacion-evento-webhook-suscripcion-migration` sigue fuera: salió verde en el CI.
 - **Gate rápido sobre `7637055`**, con `gate.lock`, base nueva migrada y sembrada: **`INIT_EXIT=0`**. Relacionados: `Test Files  987 passed (987)` y `Tests  14060 passed | 26 skipped (14086)`. Guardias: `Test Files  299 passed (299)`. Cliente al final: `organizacion=1`.
+
+## Hotfix: siembra de jobs recurrentes como plataforma (build de Vercel), 2026-10-23
+**Fallo.** El build de Vercel caía en `scripts/migrate-deploy.ts` → `sembrarJobsRecurrentesEnBase`: el `$queryRaw` de `JobRepository.enqueue` corría sin contexto y la extensión lo rechazaba con `EmpresaNoResuelta`.
+
+**Arreglo** (design §6.2, fila del drenador): `sembrarJobsRecurrentesEnBase` corre en `comoPlataforma("SL-17", "siembra de jobs recurrentes en el build")`. La fila nace con `organizacion_id` NULL y el drenador la itera con `paraCadaEmpresa`. Se comprobó leyendo `conSuEmpresa` en `app/api/cron/procesar-jobs/route.ts` y ejecutándolo: la traza de `paraCadaEmpresa` sale con el id de la empresa. Mismo patrón en los tres `scripts/seed-jobs-*.ts`, que se corren a mano y fallaban igual. Los cuatro archivos se añaden a `EXCEPCIONES_DE_PLATAFORMA`.
+
+**Archivos:** `scripts/siembra-jobs-recurrentes.ts`, `scripts/seed-jobs-{liberar-reprogramadas,analitica-rollup-diario,whatsapp-envio-mantenimiento}.ts`, `lib/db/excepciones-aislamiento.ts`, `tests/integration/db/siembra-recurrentes-como-plataforma.test.ts` (nuevo).
+
+**R16/R42 → test:** `tests/integration/db/siembra-recurrentes-como-plataforma.test.ts`. Llama a la función de entrada real, con `getPrismaClient()` y la extensión, contra una base desechable migrada.
+- Antes del arreglo: `Tests 1 failed (1)`, con `EmpresaNoResuelta: Sin empresa en contexto para $sql.$queryRaw`.
+- Después: `Tests 1 passed (1)`. Las 3 filas quedan con `organizacion_id` NULL y la segunda siembra no crea nada.
+
+**Auditoría** (base desechable migrada desde cero; las corridas fueron sin empresa y con una):
+| archivo | corre en | resultado |
+|---|---|---|
+| scripts/migrate-deploy.ts (siembra) | build de Vercel | EmpresaNoResuelta → arreglado; exit 0 |
+| scripts/seed-catalogos.ts (`db:seed`) | consola / CI | OK (los catálogos no son de negocio) |
+| scripts/seed-jobs-*.ts (×3) | consola, a mano | EmpresaNoResuelta → arreglado; OK |
+| scripts/drenar-jobs.ts | consola | OK: los recurrentes corren por empresa |
+| scripts/db-rollback.ts (`db:rollback`) | consola | OK: va por el CLI de Prisma, no por la extensión |
+| 11 crons de vercel.json + liberar-reprogramadas | cron | 200 en todos, salvo purga-descargas (500 por falta de Supabase en local; no toca la base) |
+| arranque del superadmin | — | no existe en dev (lo trae SL-32) |
+
+Observación, fuera del alcance: fuera del runtime de Next (`drenar-jobs` por consola), `analitica_rollup_diario` falla por empresa con «static generation store missing in revalidateTag». No es `EmpresaNoResuelta`.
+
+**Como en Vercel:** `VERCEL_ENV=preview MIGRATE_ON_PREVIEW=true`, base `slfix_*` vacía, `tsx scripts/migrate-deploy.ts` → **exit 0**. Siembra 2 filas y 1 que ya estaba (la sembró la migración), las 3 sin empresa. Base borrada.
+
+**Gate** (`gate.lock`, base `slfix_gate` nueva, migrada y sembrada, `prisma generate`):
+- Primera corrida: `INIT_EXIT=1`, por un rojo ajeno, `gasto-fijo-plantilla-borrado`. Hace un `walletMovimiento.count()` global, lo descuadra una escritura en paralelo, y aislado pasa 3/3.
+- Segunda, con la base recreada: typecheck OK; lint solo con warnings heredados. Relacionados: `Test Files 988 passed (988)` y `Tests 14061 passed | 26 skipped`. Guardias: `299 passed (299)`. `== init OK ==`, **`INIT_EXIT=0`**.
+
+**Veredicto:** la siembra del build corre como plataforma, los jobs nacen sin empresa y migrate-deploy sale con 0.
