@@ -229,3 +229,31 @@ R21, que no tiene test (B1), y en R20 (m3).
 mutación, el ALS compartido es correcto, no hay drift y los downs se comportan como dice el spec.
 Lo que falta es evidencia, no un cambio de la app. Los menores no bloquean, pero m1, m2 y m4 deben
 quedar resueltos en el spec y el README antes del cierre.
+
+## Revisión 2 (acotada a ff306a5..f7bad81)
+
+Revisé el diff contra los hallazgos de la vuelta 1. Solo corrí una mutación, la de m4, y no hizo
+falta el lock, porque no usa el cliente Prisma. El resto lo verifiqué leyendo el diff, la bitácora
+y el run de CI 40020120423.
+
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| **B1** R21 sin test | **Resuelto** | `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` tiene 5 casos: el estático (`down.sql` y orden detrás de `20261023090000`), el down de la 3.ª con superadmin, el aborto `P0001` de la 2.ª sin borrar nada, los downs de la 2.ª y la 1.ª dejando el enum y el esquema como antes, y la reaplicación sin drift. Usa una base propia `sl32_iv_*` y se salta sin `DATABASE_URL`. Sus mutaciones están en la bitácora. El mapa de `tasks.md` ya apunta a él |
+| **B2** humo sin correr | **Resuelto** | La bitácora («punto 6 del humo con geografía en 404») trae `dos-empresas-humo` en 6/6 dos veces seguidas (`PW_EXIT=0`), con 0 respuestas 5xx y 0 `EmpresaNoResuelta` en el log. La mutación de la puerta (`!esPlataforma` → solo `!actor`) tumba el punto 6 (`1 failed`). El cambio del punto 6 no debilita el aislamiento: R24 y R26 le quitan la geografía al maestro, y el humo ahora afirma el 404 y que el catálogo no cambia. Los puntos 1–5 no se tocaron |
+| m1 R5 | Resuelto | R5 admite el aviso «sin permiso» sin leer datos |
+| m2 R35 | Resuelto | R35 nombra `{ estado: "no_autorizado" }` |
+| m3 mapa de R20 | Resuelto | Cita `env-example-sin-valores` |
+| m4 OTP en el asunto | **Resuelto** | El asunto pasa a «Tu codigo de verificacion de Servi Logistic». Hay 3 tests en `email-notificacion.test.ts` y el README está corregido. **Mutación del reviewer:** con el asunto de antes (código dentro), `3 failed / 11 passed`; restaurado (`git diff --quiet`), `14 passed`. Nada más en `lib/`, `e2e/` ni `scripts/` leía el código del asunto. Los E2E leen ahora la línea `[email][debug]`, que solo sale con `AUTH_OTP_DEBUG_LOG=1` |
+| m5 D15 | Resuelto | D15 recoge el falso «ya existe» y el acceso por URL |
+| m6 E2E en CI | Registrado | **D17** |
+| D19 de SL-17 | Registrado | **D16**: el alta del humo por la pantalla |
+| Desviaciones (punto 6) | Recogidas | R21 con los timestamps reales. `design.md` añade la campana y el push del marco, y el ALS en `globalThis` |
+| m9 `gate-completo` | Verde por `workflow_dispatch` | Run 40020120423 sobre `f7bad81`: `estatico`, los 3 shards y `gate-completo` en success. `e2e` sale failure, que es D17 más los heredados de D8. Hay que sacar el PR de draft para que el check salga en el PR antes del merge |
+
+Siguen abiertos, sin cambio: m7 (`geografia-registro-accion` en el baseline) y m8 (hipótesis de los
+`deps` en Server Actions, que pide ficha propia). Ninguno bloquea.
+
+**Regresiones:** no veo ninguna. El cambio de `ConsoleEmailSender` solo afecta a la línea de debug,
+y el asunto nuevo no lleva datos personales.
+
+### Veredicto de la revisión 2: **OK**
