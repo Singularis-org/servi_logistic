@@ -72,7 +72,7 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
 
 ## Tanda 2 — Entradas, garantía estructural, alta y guardias (todo `[P]`; depende de la tanda 1)
 
-- [ ] **T2.1 [P] Sesión y login** (design §5 y §7).
+- [x] **T2.1 [P] Sesión y login** (design §5 y §7).
   - `lib/auth/empresa-de-la-peticion.ts`, con un memo de 60 s.
   - `resolveActorFromSession` e `isSessionActive` en `comoPlataforma`.
   - `Actor.organizacionId`.
@@ -81,7 +81,7 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
   **Hecho:**
   - `tests/unit/auth/empresa-de-la-peticion.test.ts` (R12, R14) en verde.
   - Los tests que ya existen de `resolve-actor` y de `auth` siguen verdes.
-- [ ] **T2.2 [P] API key, rutas públicas y WhatsApp.**
+- [x] **T2.2 [P] API key, rutas públicas y WhatsApp.**
   - `buildAutenticar` devuelve `organizacionId`.
   - Las 9 rutas de `app/api/ordenes/api-key/**` y `analitica-integrador` corren en `conEmpresa`.
   - Rastreo público: busca la empresa por `num_guia` en plataforma y hace el resto en
@@ -94,14 +94,14 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
   - `tests/unit/api/api-key-empresa.test.ts` (R13) y
     `tests/unit/actions/postulacion-sin-empresa.test.ts` (R41) en verde.
   - Los tests de rastreo y de la API key que ya existen siguen verdes.
-- [ ] **T2.3 [P] Crons y drenador.**
+- [x] **T2.3 [P] Crons y drenador.**
   - Las 11 rutas de cron que tocan negocio pasan por `paraCadaEmpresa`, incluida la
     sincronización de plantillas.
   - Los jobs recurrentes que tocan negocio iteran por empresa.
 
   **Hecho:** los tests de cron que ya existen siguen verdes, y hay un caso por cron con 0
   empresas que termina sin error (R16).
-  - [ ] **T2.3b M4 y drenador por empresa** (D16, R42).
+  - [x] **T2.3b M4 y drenador por empresa** (D16, R42).
     - Migración `20261022130200_jobs_organizacion_id`, con `migration.sql` y `down.sql`.
     - `Job.organizacionId?` en `schema.prisma`.
     - El drenador y `scripts/drenar-jobs.ts` ejecutan cada job dentro de
@@ -109,13 +109,13 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
 
     **Hecho:** un job encolado dentro de `conEmpresa(A)` guarda A y se ejecuta con A en contexto.
     Lo prueba T3.8.
-- [ ] **T2.4 [P] Cachés por empresa** (design §7.6, R34).
+- [x] **T2.4 [P] Cachés por empresa** (design §7.6, R34).
 
   **Hecho:**
   - `tests/unit/cache/cache-por-empresa.test.ts` en verde: dos empresas con la misma consulta dan
     dos claves.
   - Las guardias de caché que ya existen siguen verdes.
-- [ ] **T2.5 [P] Guardias de modelos, RLS, SQL a mano y plataforma** (design §8, R23–R27).
+- [x] **T2.5 [P] Guardias de modelos, RLS, SQL a mano y plataforma** (design §8, R23–R27).
   - `EXCEPCIONES_SQL_A_MANO` lleva los archivos actuales que no filtran, cada uno con su ficha y su
     motivo.
   - `EXCEPCIONES_DE_PLATAFORMA` lleva los puntos de T2.1, T2.2, T2.3 y T2.8, cada uno con su
@@ -124,13 +124,13 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
   **Hecho:**
   - `pnpm run test:guardias` en verde.
   - Cada guardia tiene un caso inventado que la hace fallar (autocomprobación).
-- [ ] **T2.6 [P] Fábricas y helper de transacción** (design §9.1, R33).
+- [x] **T2.6 [P] Fábricas y helper de transacción** (design §9.1, R33).
   - `tests/fabricas/organizaciones.ts`.
   - `enTransaccionRevertida` con una empresa por defecto.
 
   **Hecho:** los tests de integración que se pusieron rojos en el cierre de la tanda 1 vuelven a
   verde sin tocar cada archivo. Si alguno no vuelve, se lista con el porqué.
-- [ ] **T2.7 [P] M3: misma empresa en cada FK** (D15, design §3 M3; depende de T1.3).
+- [x] **T2.7 [P] M3: misma empresa en cada FK** (D15, design §3 M3; depende de T1.3).
   - `lib/db/fk-de-negocio.ts`: desde el DMMF, las FK de negocio a negocio y el nombre
     determinista de cada trigger.
   - `scripts/generar-misma-empresa.ts`, que se commitea.
@@ -144,7 +144,7 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
   - La guardia en verde, y en rojo si se borra un trigger del SQL.
   - El número real de FK cubiertas y el coste en ms por insert anotados en
     `progress/impl_SL-17.md`.
-- [ ] **T2.8 [P] Alta de empresa: servicio, repositorio y action protegida** (D18 revisada,
+- [x] **T2.8 [P] Alta de empresa: servicio, repositorio y action protegida** (D18 revisada,
   design §7.7, R44–R46, R48; depende de T1.3 y T1.4).
   - `OrganizacionService.altaEmpresa`, `OrganizacionRepository`, tipos, interfaces y
     `lib/actions/organizaciones.ts`.
@@ -162,7 +162,7 @@ insertan en tablas de negocio: los arregla T2.6. Si caen, se anotan; no se silen
   - `tests/unit/actions/organizaciones-action.test.ts` en verde: todo actor que no es superadmin,
     **incluido el maestro**, recibe «no autorizado» y el servicio no se llama. Sin SL-32, también
     el superadmin.
-- [ ] **T2.9 [P] Retiro de los conteos públicos** (D17, design §7.8, R43).
+- [x] **T2.9 [P] Retiro de los conteos públicos** (D17, design §7.8, R43).
   - Borrar y editar los archivos de §7.8.
   - `tests/unit/guards/conteos-publicos-retirados.guardia.test.ts`.
 

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
 
 // Feature 253 (D6) — la migracion que anade el aviso de la campana a los DOS enums de la feature
@@ -404,15 +405,20 @@ describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad
     // generado, sino que la base lo acepta en la columna. Se escribe y se borra en el acto; la
     // fila lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (parcial).
     const id = randomUUID();
+    // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la fila necesita empresa, y este caso
+    // escribe fuera de transaccion; la suya se crea aqui y se borra despues de la notificacion.
+    const empresa = await crearOrganizacion(prisma);
     try {
       await prisma.$executeRawUnsafe(
         `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
+           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol",
+            "organizacion_id")
          VALUES ($1, 'warning'::"notificacion_tipo",
                  'postulacion_recurso_pendiente'::"notificacion_evento",
                  'prueba 253', 'postulacion_recurso'::"notificacion_entidad_tipo",
-                 NULL, 'maestro'::"rol_value")`,
+                 NULL, 'maestro'::"rol_value", $2)`,
         id,
+        empresa.id,
       );
       const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
         `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
@@ -421,6 +427,7 @@ describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad
       expect(Number(filas[0].n)).toBe(1);
     } finally {
       await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE id = $1`, id);
+      await prisma.organizacion.delete({ where: { id: empresa.id } });
     }
   }, 60_000);
 
@@ -445,7 +452,7 @@ describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad
     expect(filas[0].indexdef).toContain("UNIQUE");
   });
 
-  it("los otros cinco indices de `notificacion` tampoco se perdieron", async () => {
+  it("los otros indices de `notificacion` (y el de empresa de SL-17 M2) tampoco se perdieron", async () => {
     const filas = await prisma.$queryRawUnsafe<{ indexname: string }[]>(
       `SELECT indexname FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'notificacion' ORDER BY indexname`,
@@ -453,6 +460,8 @@ describeSiHayBase("253 / D6 — la base aplicada, y el down ejercitado de verdad
     expect(filas.map((f) => f.indexname)).toEqual([
       "notificacion_dedupe_key",
       "notificacion_entidad_idx",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el indice de la empresa.
+      "notificacion_organizacion_id_idx",
       "notificacion_pkey",
       "notificacion_rol_created_at_idx",
       "notificacion_tienda_id_created_at_idx",

@@ -5,7 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { anularCobroTiendaAction, registrarCobroTiendaAction } from "@/lib/actions/wallet-tienda";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
-import { acreditar459, conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { acreditar459, conCandado459, conEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 461 / T B.8 — CONCURRENCIA del cobro (R15, R68), contra Postgres, con filas COMMITEADAS.
@@ -36,7 +36,8 @@ describeSiHayBase("461/T B.8 — concurrencia del cobro a una tienda (Postgres r
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }

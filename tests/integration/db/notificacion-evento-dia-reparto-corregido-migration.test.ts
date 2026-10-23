@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
 
 // FEATURE 262 (B22, D7) — la migracion que anade el aviso «te corrigieron el dia de reparto» a los
@@ -448,15 +449,20 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
     // generado, sino que la BASE lo acepta en la columna. Se escribe y se borra en el acto; la fila
     // lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (que es parcial).
     const id = randomUUID();
+    // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la fila necesita empresa, y este caso
+    // escribe fuera de transaccion; la suya se crea aqui y se borra despues de la notificacion.
+    const empresa = await crearOrganizacion(prisma);
     try {
       await prisma.$executeRawUnsafe(
         `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id")
+           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id",
+            "organizacion_id")
          VALUES ($1, 'box'::"notificacion_tipo",
                  'dia_reparto_corregido'::"notificacion_evento",
                  'prueba 262', 'orden_dia_reparto_cambio'::"notificacion_entidad_tipo",
-                 NULL, NULL)`,
+                 NULL, NULL, $2)`,
         id,
+        empresa.id,
       );
       // Ojo: el CHECK XOR exige rol O usuario. Con los dos NULL la insercion de arriba falla, asi
       // que si llegamos aqui es que el CHECK no existe — y eso tambien hay que saberlo.
@@ -470,12 +476,14 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
       expect((error as Error).message).toContain("notificacion_destinatario_xor");
       await prisma.$executeRawUnsafe(
         `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
+           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol",
+            "organizacion_id")
          VALUES ($1, 'box'::"notificacion_tipo",
                  'dia_reparto_corregido'::"notificacion_evento",
                  'prueba 262', 'orden_dia_reparto_cambio'::"notificacion_entidad_tipo",
-                 NULL, 'mensajero'::"rol_value")`,
+                 NULL, 'mensajero'::"rol_value", $2)`,
         id,
+        empresa.id,
       );
       const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
         `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
@@ -484,6 +492,7 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
       expect(Number(filas[0].n)).toBe(1);
     } finally {
       await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE id = $1`, id);
+      await prisma.organizacion.delete({ where: { id: empresa.id } });
     }
   }, 60_000);
 
@@ -517,6 +526,8 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
     expect(filas.map((f) => f.indexname)).toEqual([
       "notificacion_dedupe_key",
       "notificacion_entidad_idx",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el indice de la empresa.
+      "notificacion_organizacion_id_idx",
       "notificacion_pkey",
       "notificacion_rol_created_at_idx",
       "notificacion_tienda_id_created_at_idx",

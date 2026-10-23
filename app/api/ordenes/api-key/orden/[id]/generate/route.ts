@@ -20,7 +20,6 @@ import {
   ConflictError,
   MSG,
 } from "@/lib/errors";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiOrdenResolucionService } from "@/lib/interfaces/services/IApiOrdenResolucionService";
 import type { IApiPdfEtiquetaService } from "@/lib/interfaces/services/IApiPdfEtiquetaService";
 import { ApiOrdenResolucionService } from "@/lib/services/ApiOrdenResolucionService";
@@ -32,11 +31,16 @@ import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { etiquetasConfig } from "@/lib/config/etiquetas";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import { idOrdenApiSchema } from "@/lib/api/api-orden-identificador";
 
 export interface GenerarPdfOrdenApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   resolucionService?: IApiOrdenResolucionService;
   pdfService?: IApiPdfEtiquetaService;
 }
@@ -79,37 +83,40 @@ export async function handleGenerarPdfOrdenApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1/R2 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R3 -> 403
 
-    // 2. R13/R19: mismo zod que la consulta, sin consultar la base.
-    const parsed = idOrdenApiSchema.safeParse(rawId);
-    if (!parsed.success) {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: {
-          id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
-        },
-      });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. R13/R19: mismo zod que la consulta, sin consultar la base.
+      const parsed = idOrdenApiSchema.safeParse(rawId);
+      if (!parsed.success) {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: {
+            id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
+          },
+        });
+      }
 
-    // 3. R19: misma resolucion y misma precedencia que la consulta; nunca 409 por ambiguedad.
-    const resolucion = deps.resolucionService ?? buildResolucionService();
-    const resuelta = await resolucion.resolver(auth.actor, parsed.data);
-    if (resuelta.status === "not_found") throw new NotFoundError(); // R11/R12 -> 404 uniforme
+      // 3. R19: misma resolucion y misma precedencia que la consulta; nunca 409 por ambiguedad.
+      const resolucion = deps.resolucionService ?? buildResolucionService();
+      const resuelta = await resolucion.resolver(auth.actor, parsed.data);
+      if (resuelta.status === "not_found") throw new NotFoundError(); // R11/R12 -> 404 uniforme
 
-    // 4. R20/R21/R22: reuso-o-genera sobre la orden YA verificada como propia.
-    const pdf = deps.pdfService ?? buildPdfService();
-    const salida = await pdf.porOrden(auth.actor, resuelta.orden.id);
-    switch (salida.status) {
-      case "ok":
-        return {
-          url: salida.url,
-          expiraEnSegundos: salida.expiraEnSegundos,
-        };
-      case "not_found":
-        throw new NotFoundError(); // carrera: borrada entre la resolucion y la generacion
-      case "sin_etiqueta":
-        throw new ConflictError(); // R25: orden sin etiqueta imprimible (sin `num_guia`)
-      case "excede_tope":
-        throw new ConflictError(); // R34 (defensivo: una sola orden no deberia superarlo)
-    }
+      // 4. R20/R21/R22: reuso-o-genera sobre la orden YA verificada como propia.
+      const pdf = deps.pdfService ?? buildPdfService();
+      const salida = await pdf.porOrden(auth.actor, resuelta.orden.id);
+      switch (salida.status) {
+        case "ok":
+          return {
+            url: salida.url,
+            expiraEnSegundos: salida.expiraEnSegundos,
+          };
+        case "not_found":
+          throw new NotFoundError(); // carrera: borrada entre la resolucion y la generacion
+        case "sin_etiqueta":
+          throw new ConflictError(); // R25: orden sin etiqueta imprimible (sin `num_guia`)
+        case "excede_tope":
+          throw new ConflictError(); // R34 (defensivo: una sola orden no deberia superarlo)
+      }
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

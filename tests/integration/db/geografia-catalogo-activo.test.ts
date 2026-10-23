@@ -3,7 +3,6 @@ import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { ConteosPublicosRepository } from "@/lib/repositories/ConteosPublicosRepository";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -26,7 +25,8 @@ import {
  *      nodos retirados, con su disponibilidad al lado (R26/R28/R31). Ocultarlos dejaria
  *      INFILTRABLES las ordenes historicas de un distrito retirado: en geografia nadie teclea un
  *      uuid, asi que el desplegable es la UNICA via;
- *   2. los conteos publicos de la landing SI recortan (R34), porque son una promesa comercial.
+ *   2. (retirada) los conteos publicos de la landing recortaban (R34); SL-17 (R43) retiro esos
+ *      conteos y sus casos con ellos.
  *
  * Y dos hechos mas del motor: un distrito ACTIVO bajo un canton INACTIVO existe, sale y se marca
  * como no disponible (R10); y la zona del arbol es la UTILIZABLE, con el colapso 1/0/>1 (R27).
@@ -70,7 +70,6 @@ interface Contexto {
   s: Sembrado;
   geo: GeoRepository;
   ordenes: OrdenRepository;
-  conteos: ConteosPublicosRepository;
   tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 }
 
@@ -165,13 +164,6 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         },
         geo: new GeoRepository(tx as unknown as PrismaClient),
         ordenes: new OrdenRepository(tx as unknown as PrismaClient),
-        conteos: new ConteosPublicosRepository({
-          distrito: tx.distrito,
-          orden: tx.orden,
-          // `contar()` agrupa sus tres cuentas en una transaccion de solo lectura. Dentro de la tx
-          // del test no se puede abrir otra, y no hace falta: el snapshot ya es el de esta tx.
-          $transaction: (async (ops: Promise<number>[]) => Promise.all(ops)) as never,
-        } as unknown as ConstructorParameters<typeof ConteosPublicosRepository>[0]),
         tx,
       });
     });
@@ -424,45 +416,6 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         expect(cantones.get(s.cantonOff)?.disponible).toBe(false);
         expect(cantones.get(s.cantonBajoProvinciaOff)?.disponible).toBe(false);
         expect(cantones.get(s.cantonOk)?.disponible).toBe(true);
-      });
-    });
-  });
-
-  // ===============================================================================================
-  // R34 — los conteos publicos SI recortan
-  // ===============================================================================================
-
-  describe("374/R34 — la landing solo cuenta distritos DISPONIBLES", () => {
-    it("un distrito con zona deja de contar en cuanto se retira (con contraprueba ANTES)", async () => {
-      await conCorpus(async ({ s, conteos, tx }) => {
-        // CONTRAPRUEBA PRIMERO: con el distrito activo y con zona, cuenta.
-        const antes = (await conteos.contar()).distritosConCobertura;
-        expect(antes).toBeGreaterThan(0);
-
-        await tx.distrito.update({ where: { id: s.distritoOk }, data: { activo: false } });
-        const despues = (await conteos.contar()).distritosConCobertura;
-
-        expect(despues).toBe(antes - 1);
-      });
-    });
-
-    it("un distrito activo bajo un CANTON retirado tampoco cuenta", async () => {
-      await conCorpus(async ({ s, conteos, tx }) => {
-        // `distritoHeredado` tiene zona y flag propio `true`, pero su canton esta retirado: no
-        // deberia estar contando desde el principio. Se comprueba reactivando el canton.
-        const conCantonRetirado = (await conteos.contar()).distritosConCobertura;
-        await tx.canton.update({ where: { id: s.cantonOff }, data: { activo: true } });
-        const conCantonVivo = (await conteos.contar()).distritosConCobertura;
-        expect(conCantonVivo).toBe(conCantonRetirado + 1);
-      });
-    });
-
-    it("un distrito SIN zona no cuenta aunque este disponible: el `some` sigue ahi", async () => {
-      // La condicion vieja no se perdio al añadir la nueva.
-      await conCorpus(async ({ s, conteos, tx }) => {
-        const antes = (await conteos.contar()).distritosConCobertura;
-        await tx.distrito.update({ where: { id: s.distritoSinZona }, data: { activo: false } });
-        expect((await conteos.contar()).distritosConCobertura).toBe(antes);
       });
     });
   });

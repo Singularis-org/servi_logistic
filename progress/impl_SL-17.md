@@ -153,3 +153,183 @@ La base `servi-logistic` no se tocó.
 - `node_modules` es un enlace compartido: `db:generate` regenera el cliente de los demás worktrees
   (SL-31, SL-32). Es el procedimiento normal del gate, pero un gate ajeno en paralelo puede ver
   nuestro cliente durante unos segundos.
+
+**Gate 2 de la tanda 1, sobre `09b56e3`** (log fuera del repo, base `sl17_gate`): `INIT_EXIT=1`.
+`Test Files  85 failed | 741 passed (826)`, `Tests  404 failed | 10790 passed | 56 skipped (11250)`.
+Los 85 son todos de integración e insertan en tablas de negocio sin empresa: es el rojo previsto.
+Los arreglan T2.6 y la ronda de reconciliación. Unitarios y guardias, verdes.
+
+## Tanda 2 — implementer (consolidado de los informes de los subagentes)
+
+Nueve subagentes en paralelo, con archivos disjuntos. Ninguno hizo commit ni dejó bases `sl17_*`.
+
+### T2.1 Sesión y login (R12, R14, R15)
+- `lib/auth/empresa-de-la-peticion.ts`: cookie → sesión → `usuario.organizacion_id`, en
+  `comoPlataforma("SL-17", "resolver la empresa de la sesión")`, con un memo de 60 s por sesión. No
+  lee cabeceras ni acepta argumentos. `resolve-actor.ts` y `session-guard.ts` van en «validar sesión»;
+  `lib/actions/auth.ts` y `password-reset.ts`, en «login».
+- **Desviación:** `Actor.organizacionId?: string | null` es **opcional** (el design dice `string | null`),
+  igual que `zonaId`, para no tocar ~380 literales `Actor` de los tests. `resolveActorFromSession`
+  lo puebla siempre.
+- `app/login/page.tsx` y `app/recuperar-contrasena/page.tsx` no se tocaron: solo leen `Session`
+  (plataforma), no `usuario`. Salen de `EXCEPCIONES_DE_PLATAFORMA`.
+- `restablecer` (recuperar contraseña) escribe `usuario.password_hash` de la propia fila en contexto de
+  plataforma.
+- Tests: `tests/unit/auth/empresa-de-la-peticion.test.ts` 15/15, y 12 archivos existentes (156 tests)
+  en verde. Seis mutaciones, todas con rojo.
+
+### T2.2 API key, rastreo, postulaciones y WhatsApp (R13, R41)
+- `buildAutenticar` corre en plataforma y devuelve `organizacionId`; una key sin empresa da 401. Las 9
+  rutas de `app/api/ordenes/api-key/` corren su cuerpo en `conEmpresaDeLaKey(auth, …)`, explícito.
+  `carga` y `cotizacion` tenían un `buildAutenticar` duplicado que se saltaba la empresa; ahora usan el común.
+- Rastreo: una lectura en plataforma de `orden.organizacion_id` por `num_guia`; el resto, en `conEmpresa`.
+- Postulaciones: sin contexto de empresa explícito devuelven el mensaje neutro que ya existía, antes de
+  cualquier efecto (limitador, storage o escrituras).
+- Webhook de WhatsApp: `repartirPorEmpresa` corre en `comoPlataforma("SL-36", …)` y cada lote escribe
+  en su `conEmpresa`. Lo que no tiene empresa no escribe, y la respuesta sigue siendo 200.
+- **Desviación:** `app/paquete/[numGuia]/page.tsx` queda sin cambios. Exige sesión y su empresa sale
+  de la cookie; envolverla con la empresa de la guía sería una fuga, porque gana el contexto explícito.
+- Tests: `tests/unit/api/api-key-empresa.test.ts` (19) y `tests/unit/actions/postulacion-sin-empresa.test.ts`
+  (7), 26/26; 80 archivos existentes (1152 tests) en verde. Cuatro mutaciones, todas con rojo.
+- Deuda:
+  - lecturas de `organizacion_id` directas a Prisma en `api-key-request`, rastreo y el webhook, que
+    deberían ir a sus repositorios;
+  - los dobles de ~20 suites no traen `organizacionId`, y pasan por una rama sin contexto que falla
+    cerrado por R11.
+
+### T2.3 + T2.3b Crons, drenador y M4 (R16, R42)
+- M4 `20261022130200_jobs_organizacion_id`, con `down.sql`, y `Job.organizacionId String?`. Drift vacío.
+- Diez crons pasan por `paraCadaEmpresa`: `corte-diario`, `generar-gastos-fijos`, `liberar-reprogramadas`,
+  `procesar-devueltas-sla`, `snapshot-ranking`, `purga-pdf-cargas`, `purga-postulaciones-recurso`,
+  `aviso-reparto-manana`, `avisos-diarios` y `sync-plantillas-whatsapp`. La respuesta añade
+  `empresas: { procesadas, fallidas }`. `purga-descargas` queda sin tocar: solo usa storage (SL-19).
+- Drenador:
+  - el reclamo y el cierre corren en `comoPlataforma("SL-17", "drenador: reclamo y cierre de jobs")`;
+  - un job con empresa corre en `conEmpresa`, y uno sin empresa en «job sin empresa»;
+  - los recurrentes sin empresa (`liberar_reprogramadas`, `analitica_rollup_diario`,
+    `whatsapp_envio_mantenimiento`) pasan por `paraCadaEmpresa`.
+- Tests: `tests/unit/cron/crons-sin-empresas.test.ts` (37); 26 archivos y 295 tests en verde. Cinco
+  mutaciones con rojo.
+- Desviación: si un test inyecta `service` y no `empresas`, el cron corre una sola vez, para no romper
+  los tests de controller previos. En producción el GET siempre itera.
+
+### T2.4 Cachés por empresa (R34)
+- `next-analitica-cache.ts` y `next-tablero-dia-cache.ts`: clave `["org:"+id, …]`, etiquetas
+  `org:<id>:<tag>` y producción dentro de `conEmpresa`. Sin empresa lanzan `EmpresaNoResuelta` y no
+  cachean.
+- El handler de `analitica-invalidacion-cache` invalida la etiqueta de la empresa del job. Sin empresa,
+  lo avisa en el log y no invalida nada.
+- Tests: `tests/unit/cache/cache-por-empresa.test.ts` 14/14. Cuatro mutaciones con rojo.
+
+### T2.5 Guardias (R5, R23–R27)
+- Cuatro guardias: `organizacion-en-modelos`, `rls-por-empresa`, `sql-a-mano-por-empresa` y
+  `plataforma-solo-en-lista`. Comparten los detectores de `tests/unit/guards/_aislamiento-por-empresa.ts`
+  y cada una tiene su autocomprobación.
+- `EXCEPCIONES_SQL_A_MANO` tiene **47** archivos, no los ~66 del design: 12 solo lo nombran en
+  comentarios, 10 no nombran tablas de negocio y 1 ya filtra.
+- El esquema tiene 89 modelos: los 88 clasificados más `Organizacion`.
+- Mutación en `excepciones-aislamiento.ts`: 5 rojos.
+
+### T2.6 Fábricas y helper (R33)
+- `tests/fabricas/organizaciones.ts`. `enTransaccionRevertida` crea y fija una empresa por defecto, y
+  corre `fn` dentro de `conEmpresa`.
+- **Desviación:** crear la organización antes del lock de la feature 227 reabría deadlocks (`40P01`
+  en 6–8 archivos). Si lo único escrito es esa organización, `serializarEscriturasReales` hace
+  `ROLLBACK TO SAVEPOINT`, toma el lock y la vuelve a crear con el mismo id.
+- De los 85 rojos, **65 vuelven a verde** sin tocarlos (antes 218 tests pasados y 384 fallidos;
+  después 564 y 66). Los 20 que quedan van a la ronda de reconciliación: R2 lleva los 9 que commitean
+  fuera de la transacción; R3, los 3 con conexión propia y los 7 tests de migración; R1, el del
+  retiro de los conteos.
+- Mutaciones: sin `fijarEmpresa` vuelve el NOT NULL (14 de 20 en rojo); sin el rollback al savepoint
+  vuelve el `40P01` (6 archivos).
+
+### T2.7 M3: misma empresa en cada FK (R37–R39), con medición
+- Archivos:
+  - `lib/db/fk-de-negocio.ts`: parsea `db/schema.prisma`. Es la desviación decidida, porque el DMMF
+    en ejecución no trae `relationFromFields`;
+  - `scripts/generar-misma-empresa.ts`;
+  - M3 `20261022130300_misma_empresa_en_fk`, con `down.sql`;
+  - la guardia `tests/unit/guards/fk-misma-empresa.guardia.test.ts` y `tests/unit/db/fk-de-negocio.test.ts`
+    (18/18).
+- **FK de negocio a negocio cubiertas: 150**, el mismo conjunto que `pg_constraint`, con 0 compuestas.
+  **Triggers: 223** (150 `sme_*` y 73 `_sin_cambio_de_empresa`), más 2 funciones. `orden` tiene 4 FK de
+  negocio (`carga_id`, `mensajero_asignado_id`, `tienda_id` y `zona_id`), no las ~8 que estimaba el design.
+- **Medición:** `INSERT` de una `orden` con sus 4 FK, 3 rondas de 1000 por modo, cronometrado con
+  `clock_timestamp()`.
+
+  | | media | mediana | p95 |
+  |---|---|---|---|
+  | con triggers | 2,66 ms | 1,51 ms | 6,44 ms |
+  | sin triggers | 0,99 ms | 0,42 ms | 2,46 ms |
+  | sobrecoste | +1,67 ms | +1,09 ms (≈0,27 ms por FK) | |
+
+- Ida y vuelta: la diferencia son exactamente 225 objetos; sin M3 quedan 0 triggers de usuario. Drift vacío.
+- Prueba a mano:
+  - orden de B con la `tienda_id` de A → `SL017`, como dueño y como `servi_app`;
+  - cambiar `organizacion_id` → `SL017`;
+  - superadmin referenciado → pasa;
+  - id inexistente → `23503`.
+- Mutación en disco (borrar el trigger de `orden.zona_id`): la guardia en rojo nombrando `Orden.zona`.
+  Restaurado.
+- Desviación menor: la función busca con `%I.%I` y `TG_TABLE_SCHEMA`, para el esquema desechable de T3.6.
+
+### T2.8 Alta de empresa (R44–R46, R48)
+- `lib/types/organizacion.ts`, las interfaces, `OrganizacionService`, `OrganizacionRepository`,
+  `lib/actions/organizaciones.ts` y `lib/auth/exigir-superadmin.ts`, que devuelve siempre `false`
+  porque `lib/auth/plataforma.ts` no existe en esta rama.
+- Firma ampliada (pregunta abierta 1, decisión del leader): `maestro: { nombre, email, telefono,
+  documento, tipoDocumento }`.
+- El hash no utilizable es `hashPassword(randomBytes(32))` con el hasher del login, `lib/utils/password.ts`.
+  **`lib/auth/password.ts` no existe**: es una desviación del encargo.
+- Tests: servicio 28, action 12 más 1 de composition root, e integración 8/8 contra Postgres. Cubren
+  la creación, `ya_existe`, el conflicto por slug, el de email o documento con rollback total, la
+  entrada inválida sin escrituras, que el login falle con cualquier contraseña y el primer acceso por
+  «recuperar contraseña». Cuatro mutaciones con rojo.
+
+### T2.9 Retiro de los conteos públicos (R43)
+- 11 archivos borrados. `LandingHero` y `LandingBanda` quedan sin cifras; se conserva el rango fijo
+  «1–3 Días de entrega», que no es un agregado.
+- Guardia nueva `tests/unit/guards/conteos-publicos-retirados.guardia.test.ts` (18) y un caso R43 en
+  `tests/components/LandingPage.test.tsx`. 109/109; dos mutaciones con rojo.
+- Deuda: `WHERE_*_DISPONIBLE` (`geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts` se quedan sin
+  uso en producción.
+
+### Ronda de reconciliación de la tanda 2 (R1, R2, R3 y cierre)
+- **R1:** `EXCEPCIONES_DE_PLATAFORMA` queda con 12 entradas, sin `app/login`, `app/recuperar-contrasena`
+  ni `app/paquete`; `comoPlataforma(` aparece exactamente en esos 12 archivos. Además:
+  - `@sin-superficie` en `altaEmpresaAction` (la pantalla es de SL-32);
+  - `cache-por-empresa.test.ts` usa `ANALITICA_TAGS`, y así `cache-tags` vuelve a verde;
+  - `marca-texto-amarillo`: `apariciones: 1` en LandingHero;
+  - `tests/unit/api/webhook-whatsapp-por-empresa.test.ts`, escrito por T2.2, entra en el árbol;
+  - `emisor-relaciones-anidadas` y `geografia-catalogo-activo` pierden solo los casos de conteos
+    públicos. `geografia-catalogo-activo` da 17/17. `emisor-relaciones-anidadas` sigue saltado: su
+    `beforeAll` exige órdenes sembradas, ya está en `tests/baseline-rojos.json` y es deuda de SL-31.
+  - Mutaciones: sin `org:` en la etiqueta, 3 rojos; webhook sin `conEmpresa`, 1 rojo.
+- **R2:**
+  - `_fixtures/escrituras-459.ts` siembra una organización commiteada, con sus usuarios y actores, y
+    la borra al final.
+  - Hay dos helpers nuevos: `conEmpresa459` y `clienteConEmpresa459`, que envuelve los clientes propios
+    de los tests de concurrencia igual que `getPrismaClient()`, de modo que ahora corren como
+    `servi_app` con RLS.
+  - Los 9 archivos dan 9/9 y 43/43.
+  - Mutación (sin `conEmpresa` en `conEmpresa459`): 17/17 en rojo en `cobro-tienda-461` y
+    `abono-tienda-457` con
+    `[AppError:INTERNAL] EmpresaNoResuelta: Sin empresa en contexto para Usuario.findUnique: la operacion no se ejecuto`.
+- **R3:** 10 archivos y 121/121.
+  - Tests de migración: lo que añade M2 entra como literal explícito, con una línea que cita SL-17 M2.
+  - «Cero policies»: se sigue comprobando que la migración original no crea políticas, y la única
+    política en la base es `<t>_por_empresa`, por nombre.
+  - Mutaciones: sin `organizacion_id` en la lista esperada → rojo; sin `fijarEmpresa` vuelve `23502`;
+    sin `SET DEFAULT` en el clon vuelve el NOT NULL.
+  - Desviación: la guardia de `down.sql` de `usuario-preferencia` admite M2 y M3 por nombre exacto.
+- **Cierre:**
+  - `soloSeEscribioLaEmpresa` (`_postgres-real.ts`) acota `organizacion` a `public` con
+    `pg_namespace`, y así vuelve a verde `catalogo-postgres-acota-esquema`. Los 6 tests del savepoint
+    dan 57/57.
+  - Ocho tests de wallet se arreglaron con `const sembradas = p`: era un TS2345 por el estrechamiento
+    de tipo dentro de la closure.
+- **Incidente: el cliente Prisma compartido.** Hacia las 23:17 otra sesión regeneró el cliente desde
+  un esquema sin SL-17 (`node_modules` es un enlace compartido entre worktrees), y desapareció
+  `prisma.organizacion`. Se regeneró desde SL-17. Mientras haya features en paralelo que cambian el
+  esquema, el gate de cada worktree puede dejar a los demás con un cliente ajeno: hay que avisar al
+  leader.

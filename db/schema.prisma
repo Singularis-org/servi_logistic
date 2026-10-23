@@ -3265,6 +3265,14 @@ model Job {
   // Default declarado para que coincida con `20260717120000_jobs_cola`.
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  // SL-17 M4 (D16, R42): la empresa de la transaccion que encolo; NULL = job sin empresa
+  // (recurrente o sembrado). El DEFAULT real vive en `20261022130200_jobs_organizacion_id`; aqui va
+  // `dbgenerated()` VACIO por lo mismo que en `Organizacion`: Prisma 7 no introspecta esa expresion
+  // y escrita daria un `SET DEFAULT` fantasma en `migrate diff`.
+  organizacionId String?       @default(dbgenerated()) @map("organizacion_id")
+  organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId, estado, runAfter])
   @@map("jobs")
 }
 
@@ -5201,6 +5209,7 @@ model Organizacion {
   analyticsDailys AnalyticsDaily[]
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
+  jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
 
   @@map("organizacion")
 }

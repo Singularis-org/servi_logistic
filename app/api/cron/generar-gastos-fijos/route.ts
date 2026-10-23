@@ -13,6 +13,7 @@ import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoR
 import { GastoFijoPlantillaRepository } from "@/lib/repositories/GastoFijoPlantillaRepository";
 import { GastoFijoCobroRepository } from "@/lib/repositories/GastoFijoCobroRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { notificarGastoFijoCobroPendienteReal } from "@/lib/notificaciones/notificadores";
 
@@ -23,6 +24,42 @@ export interface GenerarGastosFijosDeps {
   // Reloj inyectable (tests): por defecto `new Date()`. Determina el dia CR de la corrida, y con
   // el que plantillas aplican hoy (feature 84; la regla vive en el service, no aca).
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
+}
+
+type ResumenGastos = {
+  fecha: string;
+  plantillasActivas: number;
+  plantillasQueAplicanHoy: number;
+  egresosGenerados: number;
+  cobrosPendientesCreados: number;
+  cobrosPendientesTotales: number;
+};
+
+// La fecha es la misma en todas las corridas (sale del mismo `hoy`); sin empresas no hay corrida
+// de la que tomarla y va `null`.
+function sumar(corridas: ResumenGastos[]): Omit<ResumenGastos, "fecha"> & { fecha: string | null } {
+  return corridas.reduce<Omit<ResumenGastos, "fecha"> & { fecha: string | null }>(
+    (t, r) => ({
+      fecha: t.fecha ?? r.fecha,
+      plantillasActivas: t.plantillasActivas + r.plantillasActivas,
+      plantillasQueAplicanHoy: t.plantillasQueAplicanHoy + r.plantillasQueAplicanHoy,
+      egresosGenerados: t.egresosGenerados + r.egresosGenerados,
+      cobrosPendientesCreados: t.cobrosPendientesCreados + r.cobrosPendientesCreados,
+      cobrosPendientesTotales: t.cobrosPendientesTotales + r.cobrosPendientesTotales,
+    }),
+    {
+      fecha: null,
+      plantillasActivas: 0,
+      plantillasQueAplicanHoy: 0,
+      egresosGenerados: 0,
+      cobrosPendientesCreados: 0,
+      cobrosPendientesTotales: 0,
+    },
+  );
 }
 
 function buildService(): IGeneracionGastosFijosService {
@@ -79,19 +116,38 @@ export async function handleGenerarGastosFijos(
     // Feature 84: TODA la decision (que plantillas aplican hoy, que periodo/clave usa cada una)
     // vive en el service; el controller solo le pasa `now`.
     const hoy = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutarGeneracion(hoy);
-    // R29 (45) / R13 (333): resumen SIN PII — solo conteos + la fecha CR de la corrida. Se
-    // enumera campo a campo A PROPOSITO, en vez de devolver `resumen` entero: asi, el dia que el
-    // servicio gane un campo con un monto o un identificador, no cruza a la respuesta sola.
+    const corrida = async (): Promise<ResumenGastos> => {
+      const resumen = await service.ejecutarGeneracion(hoy);
+      // R29 (45) / R13 (333): resumen SIN PII — solo conteos + la fecha CR de la corrida. Se
+      // enumera campo a campo A PROPOSITO, en vez de devolver `resumen` entero: asi, el dia que el
+      // servicio gane un campo con un monto o un identificador, no cruza a la respuesta sola.
+      return {
+        fecha: resumen.fecha,
+        plantillasActivas: resumen.plantillasActivas,
+        plantillasQueAplicanHoy: resumen.plantillasQueAplicanHoy,
+        egresosGenerados: resumen.egresosGenerados,
+        // Ficha 333 (R13): los cobros pendientes creados y los que quedan. Dos numeros, sin monto,
+        // sin concepto y sin identificador de persona.
+        cobrosPendientesCreados: resumen.cobrosPendientesCreados,
+        cobrosPendientesTotales: resumen.cobrosPendientesTotales,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): plantillas, movimientos y cobros son de cada empresa: una corrida por empresa,
+    // cada una en su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenGastos[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      fecha: resumen.fecha,
-      plantillasActivas: resumen.plantillasActivas,
-      plantillasQueAplicanHoy: resumen.plantillasQueAplicanHoy,
-      egresosGenerados: resumen.egresosGenerados,
-      // Ficha 333 (R13): los cobros pendientes creados y los que quedan. Dos numeros, sin monto,
-      // sin concepto y sin identificador de persona.
-      cobrosPendientesCreados: resumen.cobrosPendientesCreados,
-      cobrosPendientesTotales: resumen.cobrosPendientesTotales,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

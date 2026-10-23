@@ -38,15 +38,14 @@ import {
   ValidationError,
   MSG,
 } from "@/lib/errors";
-import type {
-  ApiKeyAuthResult,
-  IApiKeyAuthService,
-} from "@/lib/interfaces/services/IApiKeyAuthService";
+import {
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import type { ICotizacionOrdenService } from "@/lib/interfaces/services/ICotizacionOrdenService";
-import { ApiKeyAuthService } from "@/lib/services/ApiKeyAuthService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
 import { MSG_COTIZACION_SIN_TARIFA } from "@/lib/services/mensajes-cotizacion";
-import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -61,14 +60,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export interface CotizacionApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   cotizacionService?: ICotizacionOrdenService;
-}
-
-function buildAutenticar(): (rawKey: string | null) => Promise<ApiKeyAuthResult> {
-  const prisma = getPrismaClient();
-  const auth: IApiKeyAuthService = new ApiKeyAuthService(new ApiKeyRepository(prisma));
-  return (rawKey) => auth.autenticar(rawKey);
 }
 
 // Composition root del service. Los dos parametros son `Pick<...>` de las interfaces de
@@ -116,41 +109,44 @@ export async function handleCotizacionApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1/R2 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R3 -> 403
 
-    // 2. R6: cuerpo valido (JSON + schema). El schema es GRUESO a proposito —lote no vacio y
-    // por debajo del tope (R8)—; la validacion FINA de cada fila la hace el service, porque
-    // una fila mala se marca como error en su propio resultado y no tumba el lote (R21).
-    let json: unknown;
-    try {
-      json = await req.json();
-    } catch {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
-      });
-    }
-    const parsed = cotizacionBodySchema.safeParse(json);
-    if (!parsed.success) {
-      const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
-      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. R6: cuerpo valido (JSON + schema). El schema es GRUESO a proposito —lote no vacio y
+      // por debajo del tope (R8)—; la validacion FINA de cada fila la hace el service, porque
+      // una fila mala se marca como error en su propio resultado y no tumba el lote (R21).
+      let json: unknown;
+      try {
+        json = await req.json();
+      } catch {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
+        });
+      }
+      const parsed = cotizacionBodySchema.safeParse(json);
+      if (!parsed.success) {
+        const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
+        throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
+      }
 
-    // 3. R4: el dueño de la cotizacion sale SIEMPRE del actor de la key. Ningun identificador
-    // de tienda, dueño o tarifa del cuerpo llega al service: solo viajan las filas.
-    const service = deps.cotizacionService ?? buildCotizacionService();
-    const cotizacion = await service.cotizar(parsed.data.ordenes as RawRow[], auth.actor);
+      // 3. R4: el dueño de la cotizacion sale SIEMPRE del actor de la key. Ningun identificador
+      // de tienda, dueño o tarifa del cuerpo llega al service: solo viajan las filas.
+      const service = deps.cotizacionService ?? buildCotizacionService();
+      const cotizacion = await service.cotizar(parsed.data.ordenes as RawRow[], auth.actor);
 
-    // R13/R15: sin tarifa cotizable NO se emite ningun importe — ni siquiera un cero. Es la
-    // inversion deliberada del gap D1/R8 de la feature 98: en una carga el `0.00` es tolerable
-    // porque el paquete se mueve igual; en una cotizacion el precio ES la respuesta, y un cero
-    // seria una mentira sobre dinero servida como precio.
-    if (cotizacion.status === "sin_tarifa") throw new ConflictError(MSG_COTIZACION_SIN_TARIFA);
-    // Defensa en profundidad: el rol ya se comprobo al autenticar.
-    if (cotizacion.status === "forbidden") throw new ForbiddenError();
+      // R13/R15: sin tarifa cotizable NO se emite ningun importe — ni siquiera un cero. Es la
+      // inversion deliberada del gap D1/R8 de la feature 98: en una carga el `0.00` es tolerable
+      // porque el paquete se mueve igual; en una cotizacion el precio ES la respuesta, y un cero
+      // seria una mentira sobre dinero servida como precio.
+      if (cotizacion.status === "sin_tarifa") throw new ConflictError(MSG_COTIZACION_SIN_TARIFA);
+      // Defensa en profundidad: el rol ya se comprobo al autenticar.
+      if (cotizacion.status === "forbidden") throw new ForbiddenError();
 
-    // R34/R46: el resumen viaja TAL CUAL. Ya trae `total`, `cotizadas`, `conError` y las DOS
-    // listas por fila con su indice 1-based —`filas` con lo cotizado (incluido el
-    // `montoCobrar` sobre el que se cotizo) y `errores` con lo que no se pudo cotizar—, con
-    // cada importe UNA sola vez y SOLO crudo. Este borde no reescribe ni un campo.
-    return cotizacion.resumen;
+      // R34/R46: el resumen viaja TAL CUAL. Ya trae `total`, `cotizadas`, `conError` y las DOS
+      // listas por fila con su indice 1-based —`filas` con lo cotizado (incluido el
+      // `montoCobrar` sobre el que se cotizo) y `errores` con lo que no se pudo cotizar—, con
+      // cada importe UNA sola vez y SOLO crudo. Este borde no reescribe ni un campo.
+      return cotizacion.resumen;
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

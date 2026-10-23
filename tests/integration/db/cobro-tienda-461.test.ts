@@ -6,7 +6,7 @@ import { listarMovimientosAction } from "@/lib/actions/wallet";
 import { anularCobroTiendaAction, registrarCobroTiendaAction } from "@/lib/actions/wallet-tienda";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
-import { acreditar459, conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { acreditar459, conCandado459, conEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 461 / T B.8 — EL COBRO Y SU ANULACION POR LAS SERVER ACTIONS, contra Postgres (COMMITEADO).
@@ -39,7 +39,8 @@ describeSiHayBase("461/T B.8 — cobrar y anular por las actions (Postgres real)
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }
@@ -189,11 +190,11 @@ describeSiHayBase("461/T B.8 — cobrar y anular por las actions (Postgres real)
   it("R16/R17/R18: un cobro legado SIN linea de caja es `no_anulable` (sin_linea_de_caja); un id que no es cobro, `no_encontrado`; adminTienda, `forbidden`; sin sesion, `unauthenticated` — y nada se escribe", async () => {
     await conPersonas(async (p) => {
       const legado = await prisma.walletTiendaMovimiento.create({
-        data: { tiendaId: p.tiendaId, tipo: "debito", categoria: "cobro_manual", monto: new Prisma.Decimal("700.00"), origenTipo: "manual", origenId: null, descripcion: "Legado 381", registradoPor: p.maestro.usuarioId },
+        data: { organizacionId: p.organizacionId, tiendaId: p.tiendaId, tipo: "debito", categoria: "cobro_manual", monto: new Prisma.Decimal("700.00"), origenTipo: "manual", origenId: null, descripcion: "Legado 381", registradoPor: p.maestro.usuarioId },
         select: { id: true },
       });
       const credito = await prisma.walletTiendaMovimiento.create({
-        data: { tiendaId: p.tiendaId, tipo: "credito", categoria: "cod_recaudado", monto: new Prisma.Decimal("1.00"), origenTipo: "manual", origenId: null },
+        data: { organizacionId: p.organizacionId, tiendaId: p.tiendaId, tipo: "credito", categoria: "cod_recaudado", monto: new Prisma.Decimal("1.00"), origenTipo: "manual", origenId: null },
         select: { id: true },
       });
       expect(await anularCobroTiendaAction({ cobroId: legado.id, motivo: "x" }, deps(p.maestro))).toEqual({ status: "no_anulable", motivo: "sin_linea_de_caja" });

@@ -148,8 +148,8 @@ describe("R13 — el schema de la acción pública tiene exactamente dos campos 
   });
 
   it("no acepta ningun filtro del negocio: zona, tienda, mensajero, fecha ni paginacion", () => {
-    // R13 dicho por su motivo: un borde sin sesion CON filtros es un oraculo del negocio
-    // (precedente documentado en `lib/actions/conteos-publicos.ts:19-24`). Cualquier campo
+    // R13 dicho por su motivo: un borde sin sesion CON filtros es un oraculo del negocio.
+    // Cualquier campo
     // nuevo cae en la asercion de arriba; estos se nombran por ser los que de verdad tentarian.
     const shape: Record<string, unknown> = consultaRastreoSchema.shape;
     for (const filtro of [

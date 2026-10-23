@@ -21,6 +21,7 @@ import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import {
   conCandado459,
+  conEmpresa459,
   endeudar457,
   formData459,
   limpiar459,
@@ -61,7 +62,8 @@ describeSiHayBase("457/T5.1 — pago de una tienda a la empresa por la action (P
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }
@@ -226,7 +228,7 @@ describeSiHayBase("457/T5.1 — pago de una tienda a la empresa por la action (P
       const cero = await registrarAbonoTiendaAction(entrada(p), deps(p.maestro));
       expect(cero).toEqual({ status: "sin_deuda", saldo: { creditos: "0.00", debitos: "0.00", saldo: "0.00", signo: "cero" } });
       await prisma.walletTiendaMovimiento.create({
-        data: { tiendaId: p.tiendaId, tipo: "credito", categoria: "cod_recaudado", monto: new Prisma.Decimal("500.00"), origenTipo: "manual", origenId: null },
+        data: { organizacionId: p.organizacionId, tiendaId: p.tiendaId, tipo: "credito", categoria: "cod_recaudado", monto: new Prisma.Decimal("500.00"), origenTipo: "manual", origenId: null },
       });
       const aFavor = await registrarAbonoTiendaAction(entrada(p), deps(p.maestro));
       expect(aFavor.status).toBe("sin_deuda");

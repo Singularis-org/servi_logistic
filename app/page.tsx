@@ -12,10 +12,9 @@ import { LandingServicios } from "./_landing/LandingServicios";
  * Landing pública en `/`: el home público de la marca.
  *
  * Server Component fuera del grupo `(app)` → no hereda el Sidebar ni
- * `resolveActorFromSession`. El unico dato que lee son los conteos publicos (feature 198), y
- * NO se leen aqui: cada seccion que los muestra —hero y banda— los pide dentro de su propio
- * `<Suspense>` (ver `_landing/cifras-publicas.tsx`). Si se subieran a este nivel con un
- * `await`, la pagina entera esperaria a la base antes de pintar una sola linea.
+ * `resolveActorFromSession`. No lee ningun dato de la base: es la landing de la plataforma, y
+ * los conteos publicos que pintaba en hero y banda se retiraron (SL-17, R43) porque sin una
+ * empresa detras sumarian el negocio de todas y lo publicarian sin sesion.
  *
  * El sitio define su maquetado en clases `lp-*`; aquí se traduce a utilidades
  * Tailwind sobre los tokens de marca que `globals.css` ya expone (`brand`,
@@ -53,8 +52,7 @@ export default async function LandingPage({
 }) {
   // `/?guia=4321` abre el rastreo con la guía ya puesta. Leer `searchParams` vuelve la página
   // dinámica —deja de prerenderizarse—, y es el precio conocido de admitir el enlace; NO añade
-  // espera: no se consulta nada, solo se normaliza una cadena. Las cifras siguen resolviéndose
-  // dentro de sus propios `<Suspense>`, así que esto no retrasa el hero.
+  // espera: no se consulta nada, solo se normaliza una cadena.
   const query = (await searchParams) ?? {};
   const guiaInicial = numGuiaDeQuery(query[PARAM_GUIA]);
 

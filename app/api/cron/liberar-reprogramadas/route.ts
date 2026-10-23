@@ -11,6 +11,7 @@ import { LiberacionReprogramadaRepository } from "@/lib/repositories/LiberacionR
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { startOfDayCR } from "@/lib/utils/fecha-cr";
 
@@ -20,6 +21,10 @@ export interface LiberarReprogramadasDeps {
   service?: ILiberacionReprogramadaService;
   // Reloj inyectable (tests): por defecto `new Date()`. Se pasa por `startOfDayCR` (R9).
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 function buildService(): ILiberacionReprogramadaService {
@@ -28,6 +33,28 @@ function buildService(): ILiberacionReprogramadaService {
     new LiberacionReprogramadaRepository(prisma),
     new ZonaRepository(prisma),
     new OrdenRepository(prisma),
+  );
+}
+
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenLiberacion = {
+  evaluadas: number;
+  liberadas: number;
+  omitidas: number;
+  esperandoCierre: number;
+};
+
+type Total = { evaluadas: number; liberadas: number; omitidas: number; esperandoCierre: number };
+
+function sumar(corridas: ResumenLiberacion[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      evaluadas: t.evaluadas + r.evaluadas,
+      liberadas: t.liberadas + r.liberadas,
+      omitidas: t.omitidas + r.omitidas,
+      esperandoCierre: t.esperandoCierre + r.esperandoCierre,
+    }),
+    { evaluadas: 0, liberadas: 0, omitidas: 0, esperandoCierre: 0 },
   );
 }
 
@@ -60,16 +87,35 @@ export async function handleLiberarReprogramadas(
     const service = deps.service ?? buildService();
     // R9: "hoy" en zona America/Costa_Rica (UTC-6) para comparar fecha_reprogramacion.
     const hoyCR = startOfDayCR((deps.now ?? (() => new Date()))());
-    const resumen = await service.ejecutarLiberacion(hoyCR);
-    // R7/R19: resumen SIN PII (solo conteos).
+    const corrida = async (): Promise<ResumenLiberacion> => {
+      const resumen = await service.ejecutarLiberacion(hoyCR);
+      // R7/R19: resumen SIN PII (solo conteos).
+      return {
+        evaluadas: resumen.evaluadas,
+        liberadas: resumen.liberadas,
+        omitidas: resumen.omitidas,
+        // FEATURE 276 (T6.2, R12/R13): el contador de las congeladas. Es un AGREGADO sin PII y es lo
+        // unico que hace observable, desde fuera, la poblacion que espera una aprobacion de cierre.
+        // `?? 0` por el patron aditivo del `LiberacionResult`.
+        esperandoCierre: resumen.esperandoCierre ?? 0,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): las reprogramadas son ordenes de cada empresa: una corrida por empresa, cada una
+    // en su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenLiberacion[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      evaluadas: resumen.evaluadas,
-      liberadas: resumen.liberadas,
-      omitidas: resumen.omitidas,
-      // FEATURE 276 (T6.2, R12/R13): el contador de las congeladas. Es un AGREGADO sin PII y es lo
-      // unico que hace observable, desde fuera, la poblacion que espera una aprobacion de cierre.
-      // `?? 0` por el patron aditivo del `LiberacionResult`.
-      esperandoCierre: resumen.esperandoCierre ?? 0,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

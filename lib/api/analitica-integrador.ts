@@ -53,7 +53,11 @@ import type { SerieOperativa } from "@/lib/types/analitica-operativa";
 //     cablear: es una superficie que no existe;
 //   - no autentica. La key, su hash y el header `Authorization` no entran aqui y por tanto no
 //     pueden salir en ningun log (267/R33): lo unico que este modulo recibe del integrador es
-//     un actor ya resuelto y un filtro.
+//     un actor ya resuelto y un filtro;
+//   - no fija la empresa (SL-17, R13). Corre dentro del `conEmpresa` que abre el cascaron con la
+//     empresa de la key, y de ese contexto la toman el servicio, los repositorios y la clave de
+//     la cache. Por eso tampoco la recibe como parametro: un segundo camino para elegirla seria
+//     uno por el que podria llegar otra.
 
 /**
  * P4-bis/R45 — el resultado de dominio del canal integrador. Es el hermano de

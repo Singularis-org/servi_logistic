@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { PRISMA_OMIT } from "@/lib/db/prisma-client";
+import {
+  crearOrganizacion,
+  datosDeOrganizacionDePrueba,
+  fijarEmpresa,
+} from "../../fabricas/organizaciones";
 
 /**
  * Feature 169 — utilidades para los pocos tests que NECESITAN un Postgres de verdad.
@@ -217,15 +223,39 @@ class Revertir extends Error {
  * desarrollo: si el test pasa, si falla o si el proceso muere a mitad, no queda ni una
  * fila. Un `afterAll` que borre lo insertado no da esa garantia (no corre si el runner se
  * cae, y borra por un criterio que hay que mantener a mano).
+ *
+ * SL-17 (design §9.1, R33): toda fila de negocio lleva `organizacion_id NOT NULL`, y su `DEFAULT`
+ * sale de `app.organizacion_id`. Por eso la transaccion nace con una empresa fijada: la de
+ * `opciones.organizacionId` o, si no la pasan, una creada aqui dentro (el rollback se la lleva,
+ * como al resto). Los tests que ya existian insertan sin saber nada de empresas.
+ *
+ * `fn` corre ademas dentro de `conEmpresa` con esa misma empresa, para que el codigo bajo test que
+ * lea el contexto (`contextoActual`) vea la del test y no «sin empresa». No se usa
+ * `comoPlataforma`: un test de negocio no es un camino de plataforma, y lo taparia todo.
+ *
+ * Lo que esto NO cambia: el `tx` sigue siendo el del cliente BASE, con el rol de la conexion (dueno
+ * de las tablas), asi que la RLS no actua. Para probarla, `comoApp` de `tests/fabricas/organizaciones`.
+ *
+ * La empresa por defecto nace tras un SAVEPOINT: ver `serializarEscriturasReales`, que la deshace y
+ * la rehace despues del lock para no reabrir el deadlock de la feature 227.
  */
 export async function enTransaccionRevertida<T>(
   prisma: PrismaClient,
   fn: (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]) => Promise<T>,
+  opciones?: { organizacionId?: string },
 ): Promise<T> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        throw new Revertir(await fn(tx));
+        let organizacionId = opciones?.organizacionId;
+        if (organizacionId === undefined) {
+          await tx.$executeRawUnsafe(`SAVEPOINT ${SAVEPOINT_EMPRESA_POR_DEFECTO}`);
+          organizacionId = (await crearOrganizacion(tx)).id;
+          empresaPorDefectoAntesDelLock.set(tx, organizacionId);
+        }
+        await fijarEmpresa(tx, organizacionId);
+        const id = organizacionId;
+        throw new Revertir(await conEmpresa(id, () => fn(tx)));
       },
       { timeout: 30_000, maxWait: 15_000 },
     );
@@ -266,11 +296,59 @@ export const CLAVE_LOCK_ESCRITURA_REAL = 227_0815_00;
  * Toma el lock de aviso. DEBE ser la PRIMERA sentencia de la transaccion: si se toma despues de
  * haber tocado ya una tabla, la transaccion habra adquirido locks antes de serializarse y el
  * ciclo vuelve a ser posible.
+ *
+ * SL-17: `enTransaccionRevertida` ya inserto la empresa por defecto antes de que el test llegue
+ * aqui, y ese `INSERT` deja un `ROW EXCLUSIVE` sobre `organizacion` que choca con el
+ * `SHARE ROW EXCLUSIVE` que el DDL de otro test serializado toma al crear o soltar una FK hacia
+ * ella (todas las tablas de negocio la tienen). Medido: con el `INSERT` antes del lock, de 6 a 8
+ * archivos morian con `40P01` en cada corrida de los 85 de integracion. Por eso, si lo unico
+ * escrito es esa empresa, se vuelve al SAVEPOINT (que suelta sus locks), se toma el lock y se
+ * rehace con el mismo id.
  */
 export async function serializarEscriturasReales(tx: {
   $executeRawUnsafe: (sql: string, ...args: unknown[]) => Promise<number>;
 }): Promise<void> {
+  const pendiente = empresaPorDefectoAntesDelLock.get(tx);
+  empresaPorDefectoAntesDelLock.delete(tx);
+  const deshacer = pendiente !== undefined && (await soloSeEscribioLaEmpresa(tx));
+  if (deshacer) await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${SAVEPOINT_EMPRESA_POR_DEFECTO}`);
   await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+  if (deshacer) {
+    const { nombre, slug } = datosDeOrganizacionDePrueba();
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "organizacion" ("id", "nombre", "slug") VALUES ($1, $2, $3)`,
+      pendiente,
+      nombre,
+      slug,
+    );
+    await fijarEmpresa(tx, pendiente);
+  }
+}
+
+const SAVEPOINT_EMPRESA_POR_DEFECTO = "sl17_empresa_por_defecto";
+
+/** La empresa que `enTransaccionRevertida` creo en ese `tx`, mientras no se haya serializado. */
+const empresaPorDefectoAntesDelLock = new WeakMap<object, string>();
+
+// Volver al SAVEPOINT deshace TODO lo de despues, no solo la empresa. Si el test ya escribio algo
+// (incumpliendo «primera sentencia»), deshacerlo le quitaria datos en silencio: se deja como esta y
+// solo se toma el lock. La señal son los locks de escritura de esta sesion fuera de `organizacion`.
+// Solo se descuenta la de `public`: un esquema temporal de otro test con una tabla de igual nombre
+// es una escritura del test, no la empresa por defecto.
+async function soloSeEscribioLaEmpresa(tx: object): Promise<boolean> {
+  if (typeof (tx as Partial<ClienteDeSqlCrudo>).$queryRawUnsafe !== "function") return false;
+  const filas = await (tx as ClienteDeSqlCrudo).$queryRawUnsafe<{ n: number }[]>(
+    `SELECT count(*)::int AS n
+       FROM pg_locks l
+       JOIN pg_class c ON c.oid = l.relation
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE l.pid = pg_backend_pid()
+        AND l.locktype = 'relation'
+        AND l.mode NOT IN ('AccessShareLock', 'RowShareLock')
+        AND NOT (n.nspname = 'public'
+                 AND c.relname IN ('organizacion', 'organizacion_pkey', 'organizacion_slug_key'))`,
+  );
+  return filas[0]?.n === 0;
 }
 
 /**

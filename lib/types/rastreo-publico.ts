@@ -29,8 +29,8 @@ const MENSAJE_FACTOR = "Dato requerido.";
 
 /**
  * R13 — EXACTAMENTE DOS CAMPOS. Ni uno mas: ni zona, ni tienda, ni mensajero, ni fecha, ni
- * paginacion. Un borde sin sesion con filtros es un oraculo del negocio (precedente
- * documentado en `lib/actions/conteos-publicos.ts:19-24`). Una guardia lee estas claves.
+ * paginacion. Un borde sin sesion con filtros es un oraculo del negocio. Una guardia lee
+ * estas claves.
  */
 export const consultaRastreoSchema = z.object({
   // La guia llega TECLEADA (cadena) o ya numerica, y por eso se coerce. Pero la union

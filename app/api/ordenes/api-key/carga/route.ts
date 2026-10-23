@@ -29,10 +29,11 @@ import {
 } from "@/lib/errors";
 import type { IBulkOrdenService } from "@/lib/interfaces/services/IBulkOrdenService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import type {
-  ApiKeyAuthResult,
-  IApiKeyAuthService,
-} from "@/lib/interfaces/services/IApiKeyAuthService";
+import {
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import type {
   DownloadType,
   IEtiquetasDescargaService,
@@ -42,7 +43,6 @@ import type { ManifiestoFilaDTO, ManifiestoOmitidaDTO } from "@/lib/types/manifi
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { ManifiestoService } from "@/lib/services/ManifiestoService";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
-import { ApiKeyAuthService } from "@/lib/services/ApiKeyAuthService";
 import { EtiquetaGuiaService } from "@/lib/services/EtiquetaGuiaService";
 import {
   EtiquetasLotePdfService,
@@ -55,7 +55,6 @@ import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepos
 import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
-import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
@@ -78,7 +77,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export interface CargaApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   bulkService?: IBulkOrdenService;
   // Feature 141: orquestador de la descarga de etiquetas segun `download_type` (genera los
   // PDFs y persiste las URLs). Sustituye a la inyeccion directa del servicio de PDF de la 136.
@@ -163,12 +162,6 @@ function msgEtiquetaNoCabe(err: ErrorEtiquetaNoCabe): string {
     `asi que el PDF de etiquetas del lote no se genero: las ordenes SI se crearon ` +
     `y conservan su num_guia (revisa la direccion o el producto de esa orden)`
   );
-}
-
-function buildAutenticar(): (rawKey: string | null) => Promise<ApiKeyAuthResult> {
-  const prisma = getPrismaClient();
-  const auth: IApiKeyAuthService = new ApiKeyAuthService(new ApiKeyRepository(prisma));
-  return (rawKey) => auth.autenticar(rawKey);
 }
 
 function buildBulkService(): IBulkOrdenService {
@@ -276,140 +269,143 @@ export async function handleCargaApi(req: Request, deps: CargaApiDeps = {}): Pro
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R2/R4 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R5 -> 403
 
-    // 3. R7: cuerpo válido (JSON + schema).
-    let json: unknown;
-    try {
-      json = await req.json();
-    } catch {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
-      });
-    }
-    const parsed = cargaApiBodySchema.safeParse(json);
-    if (!parsed.success) {
-      const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
-      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
-    }
-
-    // 4. R7-R11: carga vía API (reusa BulkOrdenService). El actor es el usuario dedicado.
-    // Feature 141 (R20/R21): `name` opcional del lote; un nombre repetido del mismo usuario
-    // aborta la carga con 409 (R24) — la transacción del repositorio ya revirtió.
-    const service = deps.bulkService ?? buildBulkService();
-    const cargaResult = await ejecutarCargaApi(service, parsed.data, auth.actor);
-    if (cargaResult.status === "forbidden") throw new ForbiddenError(); // R15 (defensa en profundidad)
-
-    // Feature 136 (R1/R10/R12-R17): tras la carga OK (ya commiteada), genera el PDF
-    // consolidado de etiquetas del lote y devuelve su URL firmada. Best-effort: la
-    // carga NUNCA se revierte por un fallo aqui; el fallo se hace VISIBLE en la
-    // respuesta con `{ error }` (R12). Sin ordenes creadas -> `null`, sin tocar
-    // Storage (R13). Solo se alcanza con auth OK y carga OK (R16).
-    //
-    // INVARIANTE (BLOQ-1 del review): la carga por API NUNCA puede romperse por la
-    // generacion del PDF. El try/catch de abajo solo cubre EXCEPCIONES JS; un OOM o
-    // un timeout de plataforma no lo son, matan el proceso y devuelven 500/504 con
-    // los `num_guia` ya commiteados PERDIDOS para el integrador (que al reintentar
-    // los ve como `duplicada`). Por eso la proteccion real es el TOPE de abajo, que
-    // decide ANTES de empezar: el trabajo que no se arranca no puede desbordar.
-    // `summary.ordenes.length` es cota superior de las etiquetas del lote (las
-    // imprimibles son un subconjunto), asi que basta con mirarlo aqui, sin tocar la
-    // DB ni Storage.
-    const summary = cargaResult.summary;
-    const downloadType = parsed.data.download_type; // R43: `consolidate` por defecto
-    const topeEtiquetas = etiquetasConfig.MAX_ETIQUETAS_POR_PDF;
-    let etiquetasPdf: EtiquetasPdf = null;
-    // Feature 141 (R48/R54): URL del PDF individual por orden; vacío en modo `consolidate`.
-    let urlPorOrden = new Map<string, string>();
-    if (summary.ordenes.length > topeEtiquetas) {
-      // Degradacion explicita (R12/R52): 200 con el summary intacto y el motivo visible, en
-      // AMBOS modos y sin tocar Storage.
-      etiquetasPdf = { error: msgLoteExcedeTope(topeEtiquetas) };
-    } else if (summary.ordenes.length > 0) {
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 3. R7: cuerpo válido (JSON + schema).
+      let json: unknown;
       try {
-        // Feature 141 (R47/R48): el servicio de descarga genera según el modo y PERSISTE la
-        // URL donde corresponde (`carga.download_url` o `orden.download_url`). El borde no
-        // habla con el repositorio (regla de capas).
-        const descargaSvc = deps.descargaService ?? buildDescargaService();
-        const out = await descargaSvc.generarYPersistir({
-          modo: downloadType,
-          cargaId: summary.cargaId,
-          ordenIds: summary.ordenes.map((o) => o.id),
-          actor: auth.actor,
+        json = await req.json();
+      } catch {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
         });
-        urlPorOrden = out.porOrden;
-        // R53: en `consolidate` el bloque `etiquetasPdf` conserva la forma de la 136
-        // (`null` si no había etiqueta imprimible, R14/R49). En `individual` vale `null`
-        // salvo fallo global: cada URL viaja en su orden (R54).
-        etiquetasPdf = out.consolidado
-          ? { url: out.consolidado.url, expiraEnSegundos: out.consolidado.expiraEnSegundos }
-          : null;
-      } catch (err) {
-        // Best-effort (R12/R51): la carga ya esta commiteada; NO se revierte, y los
-        // `download_url` afectados quedan NULL. Se registra el TIPO del error (nunca su
-        // mensaje crudo: puede venir del render y traer datos de la orden) y se expone al
-        // cliente un mensaje generico.
-        console.error("etiquetas-pdf-lote: fallo best-effort en carga por API", {
-          error: describirErrorSeguro(err),
-          ordenes: summary.ordenes.length,
-          modo: downloadType,
-        });
-        etiquetasPdf = {
-          error:
-            err instanceof ErrorEtiquetaNoCabe
-              ? msgEtiquetaNoCabe(err)
-              : MSG_ETIQUETAS_FALLO,
-        };
-        urlPorOrden = new Map();
       }
-    }
-
-    // Feature 155/R24/R25/R26 — manifiesto del lote de la rama (b). Va DESPUÉS de la carga
-    // (ya commiteada) y absorbe su propio fallo: un manifiesto que no se arma no revierte ni
-    // altera el estado, la guía o el historial de ninguna orden (R25). No se emite cuando el
-    // lote nació por la rama (a) —no hubo movimiento físico— ni cuando no se creó nada (R26).
-    //
-    // La selección va por `ordenIds`: este canal SÍ tiene los ids en la mano, y es la
-    // selección más precisa. El service acota por sí mismo lo que una API key puede ver
-    // (`esVisiblePara`: solo su propia tienda).
-    //
-    // FULFILLMENT (2026-08-25): los ids ya no son «todas las creadas» sino los que el service
-    // seleccionó (`manifiestoOrdenIds`). En un lote mixto las órdenes que nacieron en nuestra
-    // bodega no documentan ningún movimiento físico y quedan fuera del papel que se firma.
-    let manifiesto: ManifiestoBloque = null;
-    if (cargaResult.manifiestoOrdenIds.length > 0) {
-      try {
-        const manifiestoSvc = deps.manifiestoService ?? buildManifiestoService();
-        const out = await manifiestoSvc.armar(
-          { flujo: "recoleccion_tienda", ordenIds: cargaResult.manifiestoOrdenIds },
-          auth.actor,
-        );
-        // `forbidden` es un resultado de dominio, no una excepción: se degrada a `{ error }`
-        // igual que un fallo, sin filtrar por qué.
-        manifiesto =
-          out.status === "ok"
-            ? { filas: out.filas, omitidas: out.omitidas }
-            : { error: MSG_MANIFIESTO_FALLO };
-      } catch (err) {
-        // Best-effort (R25). Se registra el TIPO del error, nunca su mensaje crudo: la
-        // consulta del manifiesto toca datos de la orden y podrían acabar en los logs.
-        console.error("manifiesto-lote: fallo best-effort en carga por API", {
-          error: describirErrorSeguro(err),
-          ordenes: cargaResult.manifiestoOrdenIds.length,
-        });
-        manifiesto = { error: MSG_MANIFIESTO_FALLO };
+      const parsed = cargaApiBodySchema.safeParse(json);
+      if (!parsed.success) {
+        const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
+        throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
       }
-    }
 
-    // R17 + 155/R23 + feature 141 (R39/R54/R55): preserva TODOS los campos del summary
-    // (`total`/`creadas`/`duplicadas`/`conError`/`filas`/`ordenes` con su `costoEnvio`, mas el
-    // `cargaId` del lote) y añade `etiquetasPdf`, `manifiesto`, el modo de descarga aplicado y
-    // la URL del PDF individual de cada orden.
-    return {
-      ...summary,
-      ordenes: summary.ordenes.map((o) => ({ ...o, downloadUrl: urlPorOrden.get(o.id) ?? null })),
-      downloadType,
-      etiquetasPdf,
-      manifiesto,
-    };
+      // 4. R7-R11: carga vía API (reusa BulkOrdenService). El actor es el usuario dedicado.
+      // Feature 141 (R20/R21): `name` opcional del lote; un nombre repetido del mismo usuario
+      // aborta la carga con 409 (R24) — la transacción del repositorio ya revirtió.
+      const service = deps.bulkService ?? buildBulkService();
+      const cargaResult = await ejecutarCargaApi(service, parsed.data, auth.actor);
+      if (cargaResult.status === "forbidden") throw new ForbiddenError(); // R15 (defensa en profundidad)
+
+      // Feature 136 (R1/R10/R12-R17): tras la carga OK (ya commiteada), genera el PDF
+      // consolidado de etiquetas del lote y devuelve su URL firmada. Best-effort: la
+      // carga NUNCA se revierte por un fallo aqui; el fallo se hace VISIBLE en la
+      // respuesta con `{ error }` (R12). Sin ordenes creadas -> `null`, sin tocar
+      // Storage (R13). Solo se alcanza con auth OK y carga OK (R16).
+      //
+      // INVARIANTE (BLOQ-1 del review): la carga por API NUNCA puede romperse por la
+      // generacion del PDF. El try/catch de abajo solo cubre EXCEPCIONES JS; un OOM o
+      // un timeout de plataforma no lo son, matan el proceso y devuelven 500/504 con
+      // los `num_guia` ya commiteados PERDIDOS para el integrador (que al reintentar
+      // los ve como `duplicada`). Por eso la proteccion real es el TOPE de abajo, que
+      // decide ANTES de empezar: el trabajo que no se arranca no puede desbordar.
+      // `summary.ordenes.length` es cota superior de las etiquetas del lote (las
+      // imprimibles son un subconjunto), asi que basta con mirarlo aqui, sin tocar la
+      // DB ni Storage.
+      const summary = cargaResult.summary;
+      const downloadType = parsed.data.download_type; // R43: `consolidate` por defecto
+      const topeEtiquetas = etiquetasConfig.MAX_ETIQUETAS_POR_PDF;
+      let etiquetasPdf: EtiquetasPdf = null;
+      // Feature 141 (R48/R54): URL del PDF individual por orden; vacío en modo `consolidate`.
+      let urlPorOrden = new Map<string, string>();
+      if (summary.ordenes.length > topeEtiquetas) {
+        // Degradacion explicita (R12/R52): 200 con el summary intacto y el motivo visible, en
+        // AMBOS modos y sin tocar Storage.
+        etiquetasPdf = { error: msgLoteExcedeTope(topeEtiquetas) };
+      } else if (summary.ordenes.length > 0) {
+        try {
+          // Feature 141 (R47/R48): el servicio de descarga genera según el modo y PERSISTE la
+          // URL donde corresponde (`carga.download_url` o `orden.download_url`). El borde no
+          // habla con el repositorio (regla de capas).
+          const descargaSvc = deps.descargaService ?? buildDescargaService();
+          const out = await descargaSvc.generarYPersistir({
+            modo: downloadType,
+            cargaId: summary.cargaId,
+            ordenIds: summary.ordenes.map((o) => o.id),
+            actor: auth.actor,
+          });
+          urlPorOrden = out.porOrden;
+          // R53: en `consolidate` el bloque `etiquetasPdf` conserva la forma de la 136
+          // (`null` si no había etiqueta imprimible, R14/R49). En `individual` vale `null`
+          // salvo fallo global: cada URL viaja en su orden (R54).
+          etiquetasPdf = out.consolidado
+            ? { url: out.consolidado.url, expiraEnSegundos: out.consolidado.expiraEnSegundos }
+            : null;
+        } catch (err) {
+          // Best-effort (R12/R51): la carga ya esta commiteada; NO se revierte, y los
+          // `download_url` afectados quedan NULL. Se registra el TIPO del error (nunca su
+          // mensaje crudo: puede venir del render y traer datos de la orden) y se expone al
+          // cliente un mensaje generico.
+          console.error("etiquetas-pdf-lote: fallo best-effort en carga por API", {
+            error: describirErrorSeguro(err),
+            ordenes: summary.ordenes.length,
+            modo: downloadType,
+          });
+          etiquetasPdf = {
+            error:
+              err instanceof ErrorEtiquetaNoCabe
+                ? msgEtiquetaNoCabe(err)
+                : MSG_ETIQUETAS_FALLO,
+          };
+          urlPorOrden = new Map();
+        }
+      }
+
+      // Feature 155/R24/R25/R26 — manifiesto del lote de la rama (b). Va DESPUÉS de la carga
+      // (ya commiteada) y absorbe su propio fallo: un manifiesto que no se arma no revierte ni
+      // altera el estado, la guía o el historial de ninguna orden (R25). No se emite cuando el
+      // lote nació por la rama (a) —no hubo movimiento físico— ni cuando no se creó nada (R26).
+      //
+      // La selección va por `ordenIds`: este canal SÍ tiene los ids en la mano, y es la
+      // selección más precisa. El service acota por sí mismo lo que una API key puede ver
+      // (`esVisiblePara`: solo su propia tienda).
+      //
+      // FULFILLMENT (2026-08-25): los ids ya no son «todas las creadas» sino los que el service
+      // seleccionó (`manifiestoOrdenIds`). En un lote mixto las órdenes que nacieron en nuestra
+      // bodega no documentan ningún movimiento físico y quedan fuera del papel que se firma.
+      let manifiesto: ManifiestoBloque = null;
+      if (cargaResult.manifiestoOrdenIds.length > 0) {
+        try {
+          const manifiestoSvc = deps.manifiestoService ?? buildManifiestoService();
+          const out = await manifiestoSvc.armar(
+            { flujo: "recoleccion_tienda", ordenIds: cargaResult.manifiestoOrdenIds },
+            auth.actor,
+          );
+          // `forbidden` es un resultado de dominio, no una excepción: se degrada a `{ error }`
+          // igual que un fallo, sin filtrar por qué.
+          manifiesto =
+            out.status === "ok"
+              ? { filas: out.filas, omitidas: out.omitidas }
+              : { error: MSG_MANIFIESTO_FALLO };
+        } catch (err) {
+          // Best-effort (R25). Se registra el TIPO del error, nunca su mensaje crudo: la
+          // consulta del manifiesto toca datos de la orden y podrían acabar en los logs.
+          console.error("manifiesto-lote: fallo best-effort en carga por API", {
+            error: describirErrorSeguro(err),
+            ordenes: cargaResult.manifiestoOrdenIds.length,
+          });
+          manifiesto = { error: MSG_MANIFIESTO_FALLO };
+        }
+      }
+
+      // R17 + 155/R23 + feature 141 (R39/R54/R55): preserva TODOS los campos del summary
+      // (`total`/`creadas`/`duplicadas`/`conError`/`filas`/`ordenes` con su `costoEnvio`, mas el
+      // `cargaId` del lote) y añade `etiquetasPdf`, `manifiesto`, el modo de descarga aplicado y
+      // la URL del PDF individual de cada orden.
+      return {
+        ...summary,
+        ordenes: summary.ordenes.map((o) => ({ ...o, downloadUrl: urlPorOrden.get(o.id) ?? null })),
+        downloadType,
+        etiquetasPdf,
+        manifiesto,
+      };
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

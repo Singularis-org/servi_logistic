@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { notificarGeocodificacionCaidaReal } from "@/lib/notificaciones/notificadores";
+import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, serializarEscriturasReales } from "./_postgres-real";
 import { crearEnvio, crearPlantilla } from "./_whatsapp-envios-474";
 
@@ -31,11 +33,17 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
   let prisma: PrismaClient;
   let envioId = "";
   let plantillaId = "";
+  // SL-17 M2 (20261022130100_organizacion_id_en_negocio): todo lo que este archivo commitea lleva
+  // empresa. La suya se confirma aqui, se fija en la transaccion del `beforeAll` y envuelve cada
+  // emision (el binding real lee el contexto); se borra la ultima en el `afterAll`.
+  let empresaId = "";
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
+    empresaId = (await crearOrganizacion(prisma)).id;
     await prisma.$transaction(async (tx) => {
       await serializarEscriturasReales(tx);
+      await fijarEmpresa(tx, empresaId);
       const p = await crearPlantilla(tx, { informeClave: "aviso_interno" });
       plantillaId = p.id;
       envioId = await crearEnvio(tx, {
@@ -66,6 +74,7 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
     await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio_destinatario" WHERE "envio_id" = $1`, envioId);
     await prisma.$executeRawUnsafe(`DELETE FROM "whatsapp_envio" WHERE "id" = $1`, envioId);
     await prisma.$executeRawUnsafe(`DELETE FROM "plantilla_mensaje" WHERE "id" = $1`, plantillaId);
+    if (empresaId !== "") await prisma.organizacion.delete({ where: { id: empresaId } });
     await prisma.$disconnect();
   });
 
@@ -86,13 +95,17 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
   }
 
   it("⭑ envio ENCENDIDO: las dos filas del aviso dejan exactamente UN job; re-emitir no anade", async () => {
-    await notificarGeocodificacionCaidaReal({ afectados: 2, diaCR: DIA_ENCENDIDO });
+    await conEmpresa(empresaId, () =>
+      notificarGeocodificacionCaidaReal({ afectados: 2, diaCR: DIA_ENCENDIDO }),
+    );
     // Autocomprobacion: el aviso SI se creo (dos filas: maestro y admin). Sin esto, un aviso que no
     // llegara a crearse daria «cero jobs» por la razon equivocada.
     expect(await notificacionesDe(DIA_ENCENDIDO)).toBe(2);
     expect(await jobsDe(DIA_ENCENDIDO)).toBe(1);
 
-    await notificarGeocodificacionCaidaReal({ afectados: 3, diaCR: DIA_ENCENDIDO });
+    await conEmpresa(empresaId, () =>
+      notificarGeocodificacionCaidaReal({ afectados: 3, diaCR: DIA_ENCENDIDO }),
+    );
     expect(await jobsDe(DIA_ENCENDIDO)).toBe(1);
 
     const payload = await prisma.$queryRawUnsafe<{ payload: Record<string, unknown> }[]>(
@@ -106,7 +119,9 @@ describeSiHayBase("474/R26 — el puente por el binding real", () => {
 
   it("⭑ envio APAGADO: el aviso se crea y NO hay job", async () => {
     await prisma.$executeRawUnsafe(`UPDATE "whatsapp_envio" SET "activo" = false WHERE "id" = $1`, envioId);
-    await notificarGeocodificacionCaidaReal({ afectados: 1, diaCR: DIA_APAGADO });
+    await conEmpresa(empresaId, () =>
+      notificarGeocodificacionCaidaReal({ afectados: 1, diaCR: DIA_APAGADO }),
+    );
     expect(await notificacionesDe(DIA_APAGADO)).toBe(2);
     expect(await jobsDe(DIA_APAGADO)).toBe(0);
   });

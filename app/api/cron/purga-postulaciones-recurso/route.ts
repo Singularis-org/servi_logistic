@@ -16,6 +16,7 @@ import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/err
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadPostulacionRecursoConfig } from "@/lib/config/postulacion-recurso";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import type { IPurgaPostulacionRecursoService } from "@/lib/interfaces/services/IPurgaPostulacionRecursoService";
 import { PostulacionRecursoRepository } from "@/lib/repositories/PostulacionRecursoRepository";
 import { PurgaPostulacionRecursoService } from "@/lib/services/PurgaPostulacionRecursoService";
@@ -29,6 +30,10 @@ export interface PurgaPostulacionesRecursoDeps {
   service?: IPurgaPostulacionRecursoService;
   /** Reloj inyectable (tests): por defecto `new Date()`. El corte es `now - N meses`. */
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 /**
@@ -40,6 +45,24 @@ function buildService(): IPurgaPostulacionRecursoService {
   return new PurgaPostulacionRecursoService(
     new PostulacionRecursoRepository(getPrismaClient()),
     loadPostulacionRecursoConfig,
+  );
+}
+
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenPurgaPostulaciones = { corte: string; quedaPendiente: boolean; borradas: number };
+
+// Las fechas salen del mismo instante y son iguales en todas las corridas; sin empresas no hay
+// corrida de la que tomarlas y van `null`.
+type Total = { corte: string | null; quedaPendiente: boolean; borradas: number };
+
+function sumar(corridas: ResumenPurgaPostulaciones[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      corte: t.corte ?? r.corte,
+      quedaPendiente: t.quedaPendiente || r.quedaPendiente,
+      borradas: t.borradas + r.borradas,
+    }),
+    { corte: null, quedaPendiente: false, borradas: 0 },
   );
 }
 
@@ -75,11 +98,30 @@ export async function handlePurgaPostulacionesRecurso(
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const now = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(now);
+    const corrida = async (): Promise<ResumenPurgaPostulaciones> => {
+      const resumen = await service.ejecutar(now);
+      return {
+        borradas: resumen.borradas,
+        corte: resumen.corte,
+        quedaPendiente: resumen.quedaPendiente,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): `postulacion_recurso` es de cada empresa: una corrida por empresa, cada una en
+    // su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenPurgaPostulaciones[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      borradas: resumen.borradas,
-      corte: resumen.corte,
-      quedaPendiente: resumen.quedaPendiente,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

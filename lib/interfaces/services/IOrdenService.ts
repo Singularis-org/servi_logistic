@@ -19,6 +19,15 @@ export interface Actor {
    * puebla siempre; los consumidores que lo necesitan normalizan con `?? null`.
    */
   zonaId?: string | null;
+  /**
+   * SL-17 (design §5) — empresa del actor (`usuario.organizacion_id`; NULL = superadmin, R14),
+   * para que los servicios que la necesitan (claves de cache por empresa) no vuelvan a la base.
+   * OPCIONAL a proposito, por la misma razon que `zonaId`: el design pide `string | null`, pero
+   * hacerlo obligatorio obligaria a tocar los ~380 literales `Actor` de los tests sin que cambie
+   * nada en ejecucion. `resolveActorFromSession` SI lo puebla siempre; quien lo lea normaliza
+   * con `?? null`, y la ausencia nunca se interpreta como «una empresa».
+   */
+  organizacionId?: string | null;
 }
 
 // Resultados de dominio del servicio (sin acoplarse a HTTP). El borde (Server

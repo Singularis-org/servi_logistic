@@ -27,8 +27,7 @@ const CLASE_ENLACE =
  *
  * «Rastrear envío» YA NO es inerte (feature 229): es el disparador del diálogo de
  * consulta pública por guía, y su botón lo emite `RastreoDialog` —isla cliente
- * montada aquí dentro, igual que la landing hace con sus cifras
- * (`cifras-publicas.tsx`)— con el aspecto y el texto que esta nav le pasa. La nav
+ * montada aquí dentro— con el aspecto y el texto que esta nav le pasa. La nav
  * sigue siendo Server Component.
  *
  * El seguimiento del DESTINATARIO vive en ese diálogo, no en `/paquete/[numGuia]`:
