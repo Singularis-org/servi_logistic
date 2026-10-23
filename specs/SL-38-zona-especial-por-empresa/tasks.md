@@ -40,7 +40,7 @@ Un commit por task (`docs/conventions.md > Commits`).
   - _Hecho:_ `pnpm run db:migrate` aplica M1, y `prisma migrate diff` no da drift. Las guardias
     `organizacion-en-modelos`, `rls-por-empresa` y `fk-misma-empresa` salen en verde.
     `pnpm run typecheck` en verde.
-- [ ] **T2. La marca aislada, contra Postgres** (R1, R3, R4, R10; depende de T1).
+- [x] **T2. La marca aislada, contra Postgres** (R1, R3, R4, R10; depende de T1).
   - `tests/integration/db/distrito-zona-especial-por-empresa.test.ts`, con los casos de
     `design.md §6`, menos el de id inexistente, que entra en T6.
   - _Hecho:_ verde en local. **Se mata** con dos mutaciones: comentar la política (rojo en los casos de
