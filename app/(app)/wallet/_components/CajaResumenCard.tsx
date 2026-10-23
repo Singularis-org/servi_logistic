@@ -23,6 +23,7 @@ import {
   CAJA_RESUMEN_NOTA_DIFERENCIA,
   CAJA_RESUMEN_TIENDAS_DEBEN,
   CAJA_TIENDAS_HREF,
+  REGIONES_BOLSILLO_EMPRESA,
   avisoCifraNegativa,
   money,
   pistaCifraPrincipal,
@@ -70,6 +71,13 @@ import {
 //  - El bolsillo de la empresa gana una region propia, «Saldo inicial y aportes» (R25). La ganancia
 //    no cambia ni de rotulo ni de valor.
 //  - La tarjeta NUNCA propone ni calcula un saldo inicial (R27): no hay control para eso aqui.
+//
+// ── SL-39 (T5, design §7.1) — EL IVA COBRADO, APARTE DE LA GANANCIA ──
+//
+//  - La ganancia ya llega sin IVA (R1). El IVA cobrado es una region propia del bolsillo de la
+//    empresa, hermana de la ganancia y de «Saldo inicial y aportes» (R6).
+//  - Las regiones secundarias se pintan recorriendo `REGIONES_BOLSILLO_EMPRESA` (R9): una region
+//    nueva es una entrada en esa lista, no un bloque copiado aqui. Importe y signo, del servidor (R20).
 
 /**
  * Feature 200 (tanda 2) — las insignias de signo usan las variantes SEMANTICAS de la
@@ -177,7 +185,6 @@ export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) 
 
   const badgePrincipal = SIGNO_BADGE[resumen.signoEnCaja];
   const badgeGanancia = SIGNO_BADGE[resumen.signoGanancia];
-  const badgeCapital = SIGNO_BADGE[resumen.signoCapital];
   const empresa = conBarra ? BOLSILLO_EMPRESA[resumen.modoComposicion] : EMPRESA_NEUTRO;
   // R16/R17/R18 de la 231: lo que hay que decir cuando la barra no se puede partir. Solo con barra.
   const mensajeModo = conBarra ? CAJA_COMPOSICION_MENSAJE[resumen.modoComposicion] : null;
@@ -283,8 +290,8 @@ export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) 
             </Link>
           </section>
 
-          {/* El bolsillo de la empresa: la ganancia (sin cambios) y, HERMANA suya dentro del mismo
-              padre acotado, la region del capital (R25). */}
+          {/* El bolsillo de la empresa: la ganancia y, HERMANAS suyas dentro del mismo padre
+              acotado, las regiones secundarias (R25 de la 459, R6/R9 de SL-39). */}
           <div
             data-bolsillo="empresa"
             data-superficie={empresa.superficie}
@@ -321,24 +328,29 @@ export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) 
               />
             </div>
 
-            {/* R25 (ficha 459): el capital de la empresa, cifra PROPIA junto a la ganancia. */}
-            <section
-              aria-label={CAJA_RESUMEN_LABEL.capital}
-              className="flex flex-col gap-1 border-t pt-3"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-foreground">
-                  {CAJA_RESUMEN_LABEL.capital}
-                </span>
-                <Badge variant={badgeCapital.variant}>{badgeCapital.label}</Badge>
-              </div>
-              <span className={cn("text-lg font-medium tabular-nums", SIGNO_COLOR[resumen.signoCapital])}>
-                {money(resumen.capital)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {CAJA_RESUMEN_LABEL.capitalPista}
-              </span>
-            </section>
+            {/* R25 (ficha 459) y SL-39 (R6/R9): las regiones secundarias —«IVA cobrado» y «Saldo
+                inicial y aportes», en ese orden—, cada una con su importe, su insignia y su pista. */}
+            {REGIONES_BOLSILLO_EMPRESA.map((region) => {
+              const signo = region.signo(resumen);
+              const badge = SIGNO_BADGE[signo];
+              return (
+                <section
+                  key={region.id}
+                  aria-label={region.rotulo}
+                  data-region={region.id}
+                  className="flex flex-col gap-1 border-t pt-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{region.rotulo}</span>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </div>
+                  <span className={cn("text-lg font-medium tabular-nums", SIGNO_COLOR[signo])}>
+                    {money(region.valor(resumen))}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{region.pista}</span>
+                </section>
+              );
+            })}
 
             {mensajeModo === null ? null : (
               <p role="note" className={cn("text-xs", empresa.tonoMensaje)}>

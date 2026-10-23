@@ -53,23 +53,28 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete: "150.00",
     ingreso_flete_devolucion: "4000.00",
     ingreso_comision_cod: "900.00",
-    ingreso_iva_flete: "19.50",
-    ingreso_iva_flete_devolucion: "520.00",
-    ingreso_iva_comision_cod: "30.25",
     ingreso_ajuste: "90.00",
     ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
   },
-  totalIngresos: "5709.75",
+  // SL-39 (R8): sin las tres de IVA. 150 + 4 000 + 900 + 90 + 0 = 5 140,00.
+  totalIngresos: "5140.00",
   egresos: {
     egreso_pago_mensajero: "700.00",
     egreso_ajuste: "45.75",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
   },
   otrosEgresos: "194.25",
   hayOtrosEgresos: true,
   totalEgresos: "2190.75",
+  // SL-39 (R7): el bloque del IVA. 19,50 + 520,00 + 30,25 − 0,00 = 569,75.
+  iva: {
+    ingreso_iva_flete: "19.50",
+    ingreso_iva_flete_devolucion: "520.00",
+    ingreso_iva_comision_cod: "30.25",
+    egreso_reverso_iva_flete_devolucion: "0.00",
+  },
+  totalIva: "569.75",
 };
 
 const RESUMEN: CajaResumenDTO = {
@@ -77,9 +82,9 @@ const RESUMEN: CajaResumenDTO = {
   salidas: "2190.75",
   enCaja: "15809.25",
   signoEnCaja: "positivo",
-  ingresosPropios: "5709.75",
+  ingresosPropios: "5140.00",
   egresosPropios: "2190.75",
-  ganancia: "3519.00",
+  ganancia: "2949.25", // SL-39: 5 140,00 − 2 190,75
   signoGanancia: "positivo",
   deTerceros: "12290.25",
   periodoFiltrado: false,
@@ -93,6 +98,8 @@ const RESUMEN: CajaResumenDTO = {
   deTercerosAbsoluto: "12290.25",
   estado: "flujo",
   flujoDesde: "2026-08-25",
+  iva: "569.75", // SL-39
+  signoIva: "positivo",
 };
 
 /** Nombres accesibles de los controles que abren cada fila (R24). */
@@ -353,6 +360,7 @@ describe("Ficha 339 — el nombre de cada control y sus estados (R24/R25/R26)", 
     // Las dieciséis filas del catálogo: 8 de ingreso + 7 de egreso + «Otros», que aquí se pinta.
     // (Ficha 461, R27: + «La empresa le cobra a una tienda» y + «Cobros a una tienda anulados».)
     // (Ficha 458-B: + las dos filas de la anulacion de un cobro por devolución a origen: 18.)
+    // (SL-39: las cuatro de IVA pasan a su bloque —5 de ingreso + 9 de egreso + 4 de IVA—: 18.)
     expect(controles).toHaveLength(18);
 
     const nombres = controles.map((b) => b.getAttribute("aria-label") ?? "");

@@ -6,6 +6,7 @@ import type {
   ModoComposicionCaja,
   NaturalezaMovimiento,
   TipoEgresoManual,
+  WalletBalanceSigno,
   WalletMovimientoDTO,
   WalletMovimientoTipo,
 } from "@/lib/types/wallet";
@@ -45,6 +46,13 @@ export const TIPO_LABEL: Record<WalletMovimientoTipo, string> = {
 };
 
 export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
+
+// ── SL-39 (design §5) — el nombre del impuesto, en UN solo sitio ──
+//
+// SL-21 decidira como se llama el impuesto en cada pais. Hasta entonces, todo rotulo nuevo de esta
+// ficha compone la palabra desde aqui y no la escribe suelta en el JSX: cambiarla es cambiar esta
+// linea. Los rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
+export const IMPUESTO_ROTULO = "IVA";
 
 // ── Feature 173 (T G.1/T G.2, design §8) — las DOS cifras de la caja ──
 
@@ -89,7 +97,8 @@ export const CAJA_RESUMEN_LABEL = {
   entradas: "Entró",
   salidas: "Salió",
   ganancia: `Ganancia de ${EMPRESA.enFrase}`,
-  gananciaPista: `Lo que ${EMPRESA.enFrase} gana menos lo que gasta`,
+  // SL-39 (R10, design §7.3): la ganancia ya no cuenta el IVA, y la pista lo dice.
+  gananciaPista: `Lo que ${EMPRESA.enFrase} gana menos lo que gasta, sin el ${IMPUESTO_ROTULO}`,
   ingresosPropios: `Ingresos de ${EMPRESA.enFrase}`,
   egresosPropios: `Gastos de ${EMPRESA.enFrase}`,
   /** R23 — desde esta ficha «De las tiendas» ES lo que la empresa les debe. */
@@ -98,6 +107,9 @@ export const CAJA_RESUMEN_LABEL = {
   /** R25 — el capital de la empresa, cifra propia junto a la ganancia. */
   capital: "Saldo inicial y aportes",
   capitalPista: `Dinero de ${EMPRESA.enFrase} que no es ganancia.`,
+  /** SL-39 (R6, design §7.1) — el IVA cobrado, region propia del bolsillo de la empresa. */
+  iva: `${IMPUESTO_ROTULO} cobrado`,
+  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.`,
   // Feature 200 (tanda 1) — el TERCER tile de la cabecera. No es dinero: es cuántos registros
   // hay en el conjunto que se está mirando, y por eso se pinta en color neutro y sin insignia
   // de signo. La pista no nombra el control que recorta el conjunto: dice lo que la persona
@@ -190,7 +202,7 @@ export function CAJA_RESUMEN_NOTA_DIFERENCIA(rotulo: string): string {
   return (
     `«${rotulo}» cuenta todo el dinero, también el que es de las tiendas. ` +
     `«${CAJA_RESUMEN_LABEL.ganancia}» es solo lo que ${EMPRESA.enFrase} gana menos lo que gasta: no incluye ` +
-    `el dinero de las tiendas ni el saldo inicial o los aportes.`
+    `el dinero de las tiendas, el ${CAJA_RESUMEN_LABEL.iva} ni el saldo inicial o los aportes.`
   );
 }
 
@@ -231,7 +243,7 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
   dos_bolsillos: null,
   // R16 de la 231: con todas sus letras. Es el aviso mas importante de la pantalla.
   solo_tiendas:
-    `Lo de ${EMPRESA.enFrase} (ganancia más aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.`,
+    `Lo de ${EMPRESA.enFrase} (ganancia, ${CAJA_RESUMEN_LABEL.iva} y aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.`,
   // R17 de la 231 (D4): el espejo — «De las tiendas» negativo.
   solo_empresa:
     `Las tiendas le deben a ${EMPRESA.enFrase}, así que todo lo que hay en la caja es de ${EMPRESA.enFrase} y además hay dinero por cobrarles.`,
@@ -243,7 +255,7 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
 /**
  * R13 de la 231 — el nombre accesible de la barra: las DOS porciones, cada una con su rotulo y
  * su importe. Ficha 459 (design §3.4): el bolsillo de la empresa es «De la empresa» (ganancia y
- * aportes), no la ganancia a secas. La barra solo se monta en estado «saldo», asi que «dinero en
+ * aportes), no la ganancia a secas. SL-39 (R10): y tambien el IVA cobrado, que no es ganancia. La barra solo se monta en estado «saldo», asi que «dinero en
  * caja» es cierto donde aparece (R16).
  *
  * NO enuncia el porcentaje a proposito (R20): fuera de `dos_bolsillos` no existe reparto que
@@ -253,9 +265,54 @@ export function composicionCajaNombreAccesible(resumen: CajaResumenDTO): string 
   return (
     `${CAJA_COMPOSICION_LABEL.barra}. ` +
     `${CAJA_COMPOSICION_LABEL.tiendas}: ${money(resumen.deTerceros)}. ` +
-    `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresa)} (ganancia y aportes).`
+    `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresa)} (ganancia, ${CAJA_RESUMEN_LABEL.iva} y aportes).`
   );
 }
+
+// ── SL-39 (design §7.1/§8, R9) — las regiones SECUNDARIAS del bolsillo de la empresa ──
+//
+// Debajo de la ganancia, el bolsillo de la empresa pinta una region por entrada de esta lista, EN
+// ESTE ORDEN: añadir una region (la de SL-40, por ejemplo) es añadir una entrada aqui y un campo en
+// `CajaResumenDTO`, sin tocar la tarjeta. El importe y el signo los lee cada entrada del resumen que
+// manda el servidor; la tarjeta no suma, no resta ni convierte nada (R20).
+
+/** Una region secundaria del bolsillo de la empresa. */
+export interface RegionBolsilloEmpresa {
+  id: "iva" | "capital";
+  rotulo: string;
+  pista: string;
+  /** El importe, STRING del servidor, tal cual. */
+  valor: (resumen: CajaResumenDTO) => string;
+  /** El signo que derivo el servidor. */
+  signo: (resumen: CajaResumenDTO) => WalletBalanceSigno;
+}
+
+export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
+  {
+    id: "iva",
+    rotulo: CAJA_RESUMEN_LABEL.iva,
+    pista: CAJA_RESUMEN_LABEL.ivaPista,
+    valor: (resumen) => resumen.iva,
+    signo: (resumen) => resumen.signoIva,
+  },
+  {
+    id: "capital",
+    rotulo: CAJA_RESUMEN_LABEL.capital,
+    pista: CAJA_RESUMEN_LABEL.capitalPista,
+    valor: (resumen) => resumen.capital,
+    signo: (resumen) => resumen.signoCapital,
+  },
+];
+
+/**
+ * SL-39 (R7, design §7.2) — el bloque del IVA en la tarjeta «Cómo se compone la ganancia de la
+ * empresa»: aparte de las dos columnas, porque no es ganancia.
+ */
+export const COMPOSICION_IVA_LABEL = {
+  titulo: `${CAJA_RESUMEN_LABEL.iva} (aparte de la ganancia)`,
+  grupo: `Desglose del ${IMPUESTO_ROTULO}`,
+  total: `Total del ${IMPUESTO_ROTULO}`,
+} as const;
 
 /**
  * R33/R34 — de quien es el dinero de un movimiento, en palabras. El servidor manda el campo
