@@ -170,7 +170,7 @@ que debe estar en rojo.
 
   **Hecho cuando:** las guardias de ayuda salen en verde con `vitest related` sobre los dos archivos.
 
-- [ ] **T7. No regresión y gate** (R14, R15, R17, R19).
+- [x] **T7. No regresión y gate** (R14, R15, R17, R19).
   - Sin tocarlos, siguen en verde:
     - `tests/integration/db/libro-kardex-468.test.ts` y
       `tests/components/descarga/WalletDescarga.test.tsx` (R19);

@@ -198,6 +198,47 @@ Todas se aplicaron, se corrieron y se revirtieron, con md5 o `git diff` comproba
   INIT_EXIT=0
   ```
 
+## Recorrido en el navegador (T5, C2, T7)
+
+**Montaje**
+- Base desechable `sl39_ui`: `migrate deploy` + `db:seed`.
+- Dos empresas, A y B, dadas de alta con `altaDeEmpresa`, cada una con su maestro. El login usa
+  `prepararAcceso` de SL-17: contraseña fijada y dispositivo de confianza.
+- Un solo dev server, en :3039, con `.next` limpio y dentro de `gate.lock`.
+- Spec: `e2e/wallet-iva-aparte-sl39.spec.ts`, con la siembra en `e2e/_wallet-iva-sl39-siembra.ts`. Hace
+  `test.skip` salvo con `SL39_UI=1`, porque el E2E de CI no tiene esta siembra.
+
+**Resultado:** `4 passed (22.9s)`. Números leídos del DOM:
+
+| Pantalla | Cifra | Medido |
+|---|---|---|
+| `/wallet` A | IVA cobrado (región del bolsillo) | 416.00 («₡416»), insignia «Positivo» |
+| `/wallet` A | Ganancia de la empresa | 1700.00 («₡1.700») |
+| `/wallet` A | bloque «IVA cobrado (aparte de la ganancia)» | Total del IVA 416.00; pie 1700.00 |
+| `/wallet` B | IVA cobrado / ganancia | 6.50 / 40.00, nada de A (mezclado daría 422,50 o 1.740) |
+| `cierres-admin`, cierre A | cascada en orden | facturó 3616.00 · IVA facturado −416.00 · pago −1500.00 · bodega −0.00 · neto 1700.00 |
+| `cierres-admin`, cierre B | «Debe» | −100.00, nota «Ingreso sin IVA menos el pago al mensajero.» (con IVA daría +160) |
+
+**Mutación:** sin la entrada «iva» de `REGIONES_BOLSILLO_EMPRESA` y con el server reiniciado, el spec da
+1 failed (los otros 3 no corren, porque van en serie):
+`expect(regionIva, "la region «IVA cobrado» del bolsillo de la empresa").toHaveCount(1)`, con
+`Expected: 1 Received: 0`. Revertida: `git diff --stat` vacío.
+
+**Observaciones de pantalla, ajenas al alcance:**
+- `money()` no pinta los decimales cuando son cero («₡1.700»).
+- Una resta de cero se pinta «−₡0»; viene de antes de SL-39.
+- En la «Liquidación» del cierre B, «Ingreso bruto» 2.260 (con IVA, y la nota lo dice) va seguido de
+  «Debe» −100 (sin IVA). La línea del IVA está en la cascada de arriba, no en ese bloque, así que ahí la
+  resta no se ve a simple vista. El spec no lo pide; queda para el leader.
+
+## No regresión (T7)
+
+- R14 y R15: `git diff --stat origin/dev...HEAD -- db/ lib/utils/ingreso-empresa.ts` vacío (el `dev` local estaba desfasado; se compara con origin).
+- R16, R17 y R19 (`aislamiento-wallet`, `wallet-service` forbidden, `libro-kardex-468`, `WalletDescarga`):
+  en verde en el gate, que da `INIT_EXIT=0`.
+- E2E: solo el spec nuevo, que es el único E2E que toca esta ficha (`AGENTS.md > Quién corre qué`).
+  `wallet.spec.ts` y `cierres-admin*.spec.ts` corren en el CI del PR a producción.
+
 ## Desviaciones
 
 - C1 tocó un archivo más que los que lista el spec: `lib/interfaces/services/ICierreBodegaService.ts`.
