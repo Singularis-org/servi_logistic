@@ -611,3 +611,20 @@ política abierta, por `true` fijo en el predicado y por no sembrar la marca de 
   - Hoy el congelado de la marca en el cierre lo prueba contra Postgres real `zona-especial-dos-empresas.test.ts > R20/R21`, muerto por la mutación 2 del reviewer.
   - **Decide el leader:** ficha de e2e (fixture del cierre, junto a SL-31) o aceptar R20/R21 de integración como evidencia.
 - **Cierre:** server apagado (árbol matado, puerto 3000 libre), `sl38_e2e` borrada y el log del server borrado (el dev registra la contraseña del login en claro, hallazgo 1 de SL-17 T4.2).
+
+### Gate de cierre (T11) — HEAD `5014387`
+
+Bajo `gate.lock`, en una base desechable `sl38_gate` (`migrate deploy` + `db:seed`, borrada después) y con `prisma generate` justo antes (cliente de SL-38). Comando: `TEST_RAPIDO_BASE=dev ./init.sh > …/scratchpad/sl38-gate-v2.log 2>&1; echo "INIT_EXIT=$?" >> ese log`.
+
+- **Corrida 1: `INIT_EXIT=1`.** `Test Files 1 failed | 1039 passed (1040)`, y el rojo nuevo es `gasto-fijo-plantilla-borrado.test.ts:143` (`expected 2 to be 4`).
+  - Ese test cuenta `wallet_movimiento` ENTERA dos veces en la misma transacción READ COMMITTED, y la cuenta bajó entre las dos.
+  - Solo puede bajar si otra sesión commitea borrados en medio, como la limpieza de los tests de concurrencia de la caja (inferencia, no medida).
+  - No cambia frente a `origin/dev` y SL-38 no toca la caja. Misma familia que D15. Log: `sl38-gate-v2-corrida1.log`.
+- **Corrida 2, mismo HEAD y base nueva: `INIT_EXIT=0`.**
+  - Cliente de Prisma al día; `✓ typecheck paso`; `✓ lint paso`.
+  - `test:rapido`: `Test Files 1040 passed (1040)`, `Tests 14923 passed | 26 skipped (14949)`, más los 247 heredados del baseline, que no cuentan.
+  - Guardias: `Test Files 300 passed (300)`, `Tests 4094 passed | 1 skipped (4095)`.
+  - Validador de features y perfil en verde. La última línea del log es `INIT_EXIT=0`.
+- Lock liberado a las 15:15. No queda ninguna base `sl38_*` ni ningún server en `:3000`.
+
+Veredicto vuelta 2: B1 es deuda de `dev` y está demostrado (2/10 sin SL-38, D15). B2: el humo de dos empresas está verde y `cierre-dia.spec.ts` no puede correr en la app vacía (lo decide el leader). Gate `INIT_EXIT=0` sobre `5014387`.

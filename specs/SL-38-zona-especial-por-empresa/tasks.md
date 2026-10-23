@@ -143,7 +143,7 @@ Un commit por task (`docs/conventions.md > Commits`).
 
 ## Tanda 5 — Cierre
 
-- [ ] **T11. Gate y trazabilidad** (todas).
+- [x] **T11. Gate y trazabilidad** (todas).
   - `./init.sh` en verde. Las mutaciones de T2 y T8 ya están registradas, y no se corren a la vez que
     el gate.
   - `progress/impl_SL-38.md` con el mapa `R<n> → test` (`design.md §6`) y los choques con SL-32 al día
