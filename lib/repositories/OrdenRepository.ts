@@ -74,6 +74,12 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
+// SL-38 (R22): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
+import {
+  esZonaEspecialDeLaEmpresa,
+  SELECT_MARCA_ZONA_ESPECIAL,
+  type MarcaZonaEspecialProyectada,
+} from "@/lib/repositories/_shared/zona-especial";
 import { resolverSinpeBodega, type SinpeBodega } from "@/lib/utils/sinpe-bodega";
 
 /**
@@ -337,11 +343,12 @@ function apiOrdenSelect(ownerId: string) {
      * donde responder «¿es GAM?».
      */
     zona: { select: { id: true, nombre: true, esCentral: true } },
-    // R20/R21: la marca del DISTRITO, la otra entrada viva. `zona_especial` es tri-valuada
-    // (`null` = nadie lo decidio) y se resuelve con `=== true` en `toApiOrdenRow`; `distrito` es
-    // el unico FK nullable de `orden`, asi que la relacion puede venir `null`. No se publica ni
-    // esta columna ni ninguna otra del distrito (ni provincia, ni canton, ni el nombre).
-    distrito: { select: { zonaEspecial: true } },
+    // R20/R21: la marca de zona especial, la otra entrada viva. Desde SL-38 es de la EMPRESA de
+    // la orden (`distrito_zona_especial`, acotada por la RLS) y se resuelve en `toApiOrdenRow` con
+    // el punto unico; `distrito` es el unico FK nullable de `orden`, asi que la relacion puede
+    // venir `null`. No se publica ni la marca ni nada del distrito (ni provincia, ni canton, ni
+    // el nombre).
+    distrito: { select: { ...SELECT_MARCA_ZONA_ESPECIAL } },
     /**
      * R25/R26/R27/R31/R33 — LA FILA CONGELADA de `cierre_detail` con la que se deriva `costoReal`.
      *
@@ -582,8 +589,8 @@ type ApiOrdenSelectRow = {
   zonaId: string;
   cobraComision: boolean;
   zona: { id: string; nombre: string; esCentral: boolean };
-  // El unico FK nullable de `orden`; y la columna es ademas tri-valuada.
-  distrito: { zonaEspecial: boolean | null } | null;
+  // El unico FK nullable de `orden`. La marca es de la empresa (SL-38): `[]` = no especial.
+  distrito: MarcaZonaEspecialProyectada | null;
   // La fila congelada elegible mas reciente. `take: 1` -> `[]` o exactamente un elemento.
   cierreDetalles: Array<
     TarifaCongeladaRow & {
@@ -658,10 +665,9 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
     costeo: {
       zonaId: r.zonaId,
       esCentral: r.zona.esCentral,
-      // R21: `=== true` y NUNCA `!zonaEspecial`. La columna es tri-valuada y con `null` —«nadie lo
-      // decidio»— eso NO es `false`; lo dice el propio esquema. Una orden SIN distrito entra
-      // tambien como `false`: sin distrito no hay marca que aplicar.
-      esZonaEspecial: r.distrito?.zonaEspecial === true,
+      // R21 / SL-38: la marca de la EMPRESA de la orden. Una orden SIN distrito entra como
+      // `false`: sin distrito no hay marca que aplicar.
+      esZonaEspecial: esZonaEspecialDeLaEmpresa(r.distrito),
       // R17 / design §D9: CADENA de escala 2, no el `number` publicado de arriba. Las dos salen de
       // la misma columna, pero la que alimenta el calculo no pasa por coma flotante.
       montoCobrar: r.montoCobrar !== null ? r.montoCobrar.toFixed(2) : null,
@@ -1092,9 +1098,10 @@ const WITH_ESTATUS_Y_TIENDA = {
     zona: { select: { id: true, nombre: true, esCentral: true } },
     provincia: { select: { id: true, nombre: true } },
     canton: { select: { id: true, nombre: true } },
-    // `zonaEspecial` (2026-08-25) viaja con el distrito porque decide el MONTO del flete que
-    // muestran las dos columnas de dinero de la fila, no solo su etiqueta.
-    distrito: { select: { id: true, nombre: true, zonaEspecial: true } },
+    // La marca de zona especial (2026-08-25; de la EMPRESA desde SL-38) viaja con el distrito
+    // porque decide el MONTO del flete que muestran las dos columnas de dinero de la fila, no solo
+    // su etiqueta.
+    distrito: { select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } },
     mensajeroAsignado: { select: { id: true, ...NOMBRE_USUARIO_SELECT } },
     // Gestion de reprogramacion VIGENTE (a lo sumo una, `take: 1`): alimenta la
     // columna "Liberada el" de la tab `reprogramada`. `orden -> gestiones` es 1:N
@@ -1261,9 +1268,9 @@ function toListItemDTO(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLi
   // dos bordes de API por key, que devuelven 409 — la asimetria es deliberada).
   const costos = costosListadoOrden(tarifa === null ? null : toTarifaVigente(tarifa), {
     esCentral: row.zona.esCentral,
-    // `=== true`: la columna es tri-valuada y `null` ("nadie lo decidio") no es especial. Una
-    // orden sin distrito entra como `false`: sin distrito no hay marca que aplicar.
-    esZonaEspecial: row.distrito?.zonaEspecial === true,
+    // SL-38: la marca de la EMPRESA de la orden. Una orden sin distrito entra como `false`: sin
+    // distrito no hay marca que aplicar.
+    esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
     montoCobrar: row.montoCobrar ? row.montoCobrar.toFixed(2) : null,
     cobraComision: row.cobraComision,
   });
@@ -2664,7 +2671,8 @@ export class OrdenRepository implements IOrdenRepository {
         id: true,
         nombre: true,
         cantonId: true,
-        zonaEspecial: true,
+        // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
+        ...SELECT_MARCA_ZONA_ESPECIAL,
         // FICHA 374 (R31): la cadena se PROYECTA. El `WHERE` sigue siendo el de siempre.
         ...SELECT_CADENA_DISTRITO,
         zonas: { select: { zonaId: true, zona: { select: { esCentral: true } } } },
@@ -2687,8 +2695,8 @@ export class OrdenRepository implements IOrdenRepository {
         // zona (0 o >1 -> `zonaId` null -> la fila no llega a tarifarse).
         esCentral: zona?.zona.esCentral ?? false,
         // A diferencia de `esCentral`, esta NO depende de que el distrito resuelva UNA zona: la
-        // marca es del distrito, no de su zona. `=== true` porque la columna es tri-valuada.
-        esZonaEspecial: d.zonaEspecial === true,
+        // marca es del distrito para la empresa, no de su zona (SL-38).
+        esZonaEspecial: esZonaEspecialDeLaEmpresa(d),
         // FICHA 374: la disponibilidad EFECTIVA, ya compuesta con canton y provincia.
         disponible: disponibleDesdeCadena(d),
       };
@@ -2738,7 +2746,7 @@ export class OrdenRepository implements IOrdenRepository {
         montoCobrar: true,
         cobraComision: true,
         zona: { select: { esCentral: true } },
-        distrito: { select: { zonaEspecial: true } },
+        distrito: { select: { ...SELECT_MARCA_ZONA_ESPECIAL } },
       },
     });
     if (row === null) return null;
@@ -2747,11 +2755,10 @@ export class OrdenRepository implements IOrdenRepository {
       tiendaId: row.tiendaId,
       zonaId: row.zonaId,
       esCentral: row.zona.esCentral,
-      // La marca es del DISTRITO, no de la zona, y la columna es tri-valuada: `null` ("nadie lo
-      // decidio") NO es especial. Una orden sin distrito -- el unico FK nullable de `orden`--
-      // entra como `false`: sin distrito no hay marca que aplicar. Mismo `=== true` que usan
-      // `findParaCorreccion` y el listado.
-      esZonaEspecial: row.distrito?.zonaEspecial === true,
+      // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
+      // sin distrito -- el unico FK nullable de `orden`-- entra como `false`: sin distrito no hay
+      // marca que aplicar. Mismo punto unico que usan `findParaCorreccion` y el listado.
+      esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
       montoCobrar: row.montoCobrar ? row.montoCobrar.toFixed(2) : null,
       cobraComision: row.cobraComision,
     };
@@ -2777,7 +2784,7 @@ export class OrdenRepository implements IOrdenRepository {
         distritoId: true,
         estatus: { select: { value: true } },
         zona: { select: { id: true, nombre: true, esCentral: true } },
-        distrito: { select: { nombre: true, zonaEspecial: true } },
+        distrito: { select: { nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } },
         cierreDetalles: { select: { id: true }, take: 1 },
       },
     });
@@ -2802,9 +2809,9 @@ export class OrdenRepository implements IOrdenRepository {
       zonaId: row.zona.id,
       zonaNombre: row.zona.nombre,
       esCentral: row.zona.esCentral,
-      // La marca es del DISTRITO, no de la zona, y la columna es tri-valuada: `null` no es
-      // especial. Una orden sin distrito (el unico FK nullable) entra como `false`.
-      esZonaEspecial: row.distrito?.zonaEspecial === true,
+      // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
+      // sin distrito (el unico FK nullable) entra como `false`.
+      esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
       yaEnUnCierre: row.cierreDetalles.length > 0,
       // FICHA 454 (R64): la ayuda deja de ser estado; se deriva (punto unico, `ayuda-abierta.ts`).
       ayudaAbierta: (await conAyudaAbiertaDe(this.prisma, [row.id])).has(row.id),
@@ -2829,7 +2836,8 @@ export class OrdenRepository implements IOrdenRepository {
         id: true,
         nombre: true,
         cantonId: true,
-        zonaEspecial: true,
+        // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
+        ...SELECT_MARCA_ZONA_ESPECIAL,
         // FICHA 374 (R31): se proyecta la cadena entera. `provinciaId` sigue viniendo por la misma
         // relacion; el `activo` de canton y provincia viaja al lado, sin una segunda consulta.
         ...SELECT_CADENA_DISTRITO,
@@ -2850,7 +2858,7 @@ export class OrdenRepository implements IOrdenRepository {
       zonaId: zona?.zonaId ?? null,
       zonaNombre: zona?.zona.nombre ?? null,
       esCentral: zona?.zona.esCentral ?? false,
-      esZonaEspecial: row.zonaEspecial === true,
+      esZonaEspecial: esZonaEspecialDeLaEmpresa(row),
       // FICHA 374 (R30): la disponibilidad EFECTIVA. El servicio la usa para rechazar la
       // correccion con un motivo PROPIO —«el distrito fue retirado»— distinto del de «no existe».
       disponible: disponibleDesdeCadena(row),

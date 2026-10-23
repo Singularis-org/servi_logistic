@@ -70,7 +70,8 @@ export interface ResolvedGeo {
   // Feature 98/R2: flag de la zona resuelta del distrito, para elegir la columna del flete al
   // tarifar la carga por API. La via sesion lo ignora (R9).
   esCentral: boolean;
-  // Marca `zona_especial` del distrito resuelto: elige el pacto especial al tarifar (2026-08-25).
+  // Marca de zona especial del distrito resuelto PARA LA EMPRESA (2026-08-25; por empresa desde
+  // SL-38): elige el pacto especial al tarifar.
   esZonaEspecial: boolean;
 }
 

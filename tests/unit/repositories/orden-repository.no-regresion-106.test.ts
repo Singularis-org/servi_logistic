@@ -70,8 +70,8 @@ const ORDEN_ID = "orden-1";
  *     toca (415/R6);
  *   - `zonaId` y `cobraComision` -> entradas de la resolucion de tarifa y de la formula. No se
  *     publican;
- *   - `distrito: { zonaEspecial }` -> la marca tri-valuada que elige el pacto especial del flete.
- *     Ni el nombre del distrito, ni la provincia, ni el canton (415/R5);
+ *   - `distrito: { zonasEspeciales }` -> la marca de la EMPRESA (SL-38) que elige el pacto
+ *     especial del flete. Ni el nombre del distrito, ni la provincia, ni el canton (415/R5);
  *   - `cierreDetalles` -> la fila CONGELADA de `cierre_detail` con la que se deriva `costoReal`,
  *     acotada por `tiendaId` (el CONGELADO, 415/R33) **y** por `cierre.estado = "aprobado"`
  *     (415/R26), con `orderBy` de dos claves y `take: 1` (415/R27). El `select` pide las quince
@@ -115,8 +115,8 @@ const SELECT_DETALLE_106 = {
   cobraComision: true,
   // `esCentral` se lee pero NO se publica: elige la columna de flete (GAM vs estandar).
   zona: { select: { id: true, nombre: true, esCentral: true } },
-  // Del distrito, SOLO la marca tri-valuada. Ni nombre, ni provincia, ni canton (415/R5).
-  distrito: { select: { zonaEspecial: true } },
+  // Del distrito, SOLO la marca de la empresa (SL-38). Ni nombre, ni provincia, ni canton (415/R5).
+  distrito: { select: { zonasEspeciales: { select: { id: true }, take: 1 } } },
   // La fila congelada elegible MAS RECIENTE. El `where` lleva las DOS mitades y las dos son
   // load-bearing: `tiendaId` es el tienda_id CONGELADO (415/R33) y `cierre.estado` impide que
   // `costoReal` cambie hacia atras cuando haya un cierre solicitado o rechazado (415/R26).

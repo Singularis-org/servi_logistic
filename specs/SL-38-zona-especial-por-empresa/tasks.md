@@ -55,7 +55,7 @@ Un commit por task (`docs/conventions.md > Commits`).
   - `tests/unit/guards/zona-especial-punto-unico.guardia.test.ts`, con su caso negativo.
   - _Hecho:_ la guardia en verde, y en rojo con una fuente inventada que lee `zonasEspeciales` fuera
     del punto único.
-- [ ] **T4. [P] Las lecturas de `OrdenRepository`** (R16–R19; depende de T3).
+- [x] **T4. [P] Las lecturas de `OrdenRepository`** (R16–R19; depende de T3).
   - `findDistritosByCantonIds`, `findParaCorreccion`, `findDistritoParaCorreccion`,
     `findBaseCobroDevolucion`, `WITH_ESTATUS_Y_TIENDA` y su `toListItem`, y `apiOrdenSelect` y su
     `toApiOrdenRow`. Todas pasan al fragmento y al predicado de T3.

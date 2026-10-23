@@ -39,7 +39,7 @@ const filaOrden = {
   distritoId: "d-1",
   estatus: { value: "en_reparto" },
   zona: { id: "z-1", nombre: "Zona Uno", esCentral: false },
-  distrito: { nombre: "Distrito Uno", zonaEspecial: false },
+  distrito: { nombre: "Distrito Uno", zonasEspeciales: [] as { id: string }[] },
   cierreDetalles: [] as { id: string }[],
 };
 
@@ -47,7 +47,7 @@ const filaDistrito = {
   id: "d-2",
   nombre: "Distrito Dos",
   cantonId: "c-1",
-  zonaEspecial: false,
+  zonasEspeciales: [] as { id: string }[],
   // FICHA 374: la lectura proyecta la CADENA de flags (`SELECT_CADENA_DISTRITO`). Los tres van en
   // `true` porque este caso mide el composition root, no la retirada de un nodo; con alguno en
   // `false` el servicio rechazaria por «distrito retirado» y este test mediria otra cosa.
