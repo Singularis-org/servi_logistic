@@ -366,6 +366,62 @@ configuración que ya hay (`configuracion/vehiculos`, `UsuariosModule`): el mism
 tabla y un formulario con los componentes de `components/ui/`. No hay marca nueva: la marca es de la
 fase 7 (`docs/perfil-agentes.md`).
 
+#### Propuesta de T12 (2026-10-22, implementer)
+
+Pantalla mínima: un listado y un formulario. No hay piezas nuevas. Todo sale de lo que ya usan
+`configuracion/vehiculos` y `UsuariosModule`.
+
+**Marco.** `AppPage title="Empresas"`, como `configuracion/vehiculos/page.tsx`. La página (T15) es
+un Server Component y le pasa a `EmpresasModule` tres props: `empresas: EmpresaListada[]`,
+`tiposDocumento: { id, value }[]` (la forma de `ListarTiposIdentificacionResult`) y
+`altaEmpresa`, la action inyectada.
+
+**Orden vertical**, de teléfono a escritorio con una sola columna:
+
+1. **El aviso tras un alta**, solo después de un éxito. Es un `Alert` (`components/ui/alert`) con
+   `role="status"` y este texto: «Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?»
+   y su email.» Se cierra al empezar a escribir otra empresa (R37).
+2. **El formulario «Crear empresa»**, siempre visible. No va en un modal: es la acción principal
+   de la pantalla, y un modal esconde los errores al cerrarse. Son dos grupos con su subtítulo
+   (`h2` de `text-sm font-medium`):
+   - **Empresa:** «Nombre» y «Slug». El slug lleva la ayuda corta «minúsculas, números y guiones».
+   - **Primer maestro:** «Nombre», «Email», «Teléfono», «Tipo de documento» y «Documento». El tipo
+     es un `Select` (`components/ui/select`) con los valores del catálogo, como en `UsuarioForm`.
+
+   Cada campo es `FormField` (`components/shared/FormField`) con su `error`, y el control es un
+   `Input`. Se usan dos columnas desde `md` (`grid md:grid-cols-2`) y una en móvil. El botón
+   «Crear empresa» (`Button` con `loading`) va al final. No hay campo de contraseña (R37).
+3. **El error genérico**, si lo hay. Va encima del botón, como `Alert variant="destructive"`, con
+   el texto «No se pudo crear la empresa. Inténtalo de nuevo.», sin detalle (R34, R35).
+4. **El listado**, `Table` (`components/ui/table`), con cuatro columnas: Nombre, Slug, Alta (fecha
+   corta, `es`) y Maestros. Cada maestro va en su línea, como «nombre · email». Las filas llegan
+   ordenadas del servidor y la pantalla no reordena. Sin empresas, la tabla deja su sitio a
+   `EmptyState` (`components/shared/EmptyState`): «Aún no hay empresas. Crea la primera con el
+   formulario.» (R29).
+
+**Errores de la action.** Siguen la tabla `> Contrato con la action de SL-17`, con los desenlaces
+de §7.7 de SL-17. En todos los casos de error se conserva lo escrito:
+
+| Respuesta | Dónde se pinta |
+|---|---|
+| `conflicto` con `campo: "slug"`, o `ya_existe` | bajo «Slug»: «Ya hay una empresa con ese slug.» |
+| `conflicto` con `campo: "email"` | bajo «Email»: «Ese email ya pertenece a otro usuario.» |
+| `conflicto` con `campo: "documento"` | bajo «Documento»: «Ese documento ya pertenece a otro usuario.» |
+| `invalida` con `campo` | bajo ese campo: «Revisa este campo.». Si el `campo` no corresponde a ninguno, el genérico |
+| cualquier otra cosa, o una excepción | el genérico |
+
+Tras un éxito (`creada`), el formulario se vacía, se muestra el aviso y se llama a
+`router.refresh()` (R30).
+
+**Lo que no se hace.** No hay validación de cliente que copie reglas. El schema zod de SL-17 aún no
+está en la rama, así que valida la action (`> Contrato con la action de SL-17`). Tampoco hay
+búsqueda, paginación ni edición: eso es SL-26.
+
+Mientras no llegue T0, el tipo de la action es local al componente y copia §7.7 de SL-17. T15 lo
+cambia por el import de `lib/types/organizacion.ts`. `tipoDocumento` viaja como el `value` del
+catálogo (`cedula`, `ruc` o `pasaporte`), igual que `SUPERADMIN_TIPO_DOCUMENTO`. Si SL-17 espera el
+`id`, se cambia en T0.
+
 ## Primer acceso del maestro creado (R37, R38)
 
 **Lo que ya existe, mirado en el código:**

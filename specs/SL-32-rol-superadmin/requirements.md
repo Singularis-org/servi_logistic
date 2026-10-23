@@ -288,6 +288,13 @@
 Abiertas el 2026-10-22, al añadir la pantalla «Empresas». Ninguna bloquea el spec. P8 y P9 bloquean
 que el maestro entre mañana.
 
+**Estado al implementar (2026-10-22, leader):**
+- **P8 y P9, resueltas.** El correo sale por SMTP de Brevo (`SMTP_HOST=smtp-relay.brevo.com`,
+  puerto 587, con las variables de `lib/config/email.ts`), y Carlos las pone en Vercel. T19 vuelve a
+  montar el formulario. Sin SMTP, el flujo degrada a `ConsoleEmailSender`.
+- **P7, diferida a SL-26** (`progress/deudas.md > D10`). No se resuelve en SL-32.
+- **P10.** Se lee en el spec de SL-17 (§7.7) y se confirma en T0.
+
 - **P7 (Carlos). La geografía del superadmin, con SL-17 en `dev`.** `cambiarActivacion` y
   `renombrar` escriben `historial_accion` en la misma transacción, y `contarOrdenesSinEntregar` lee
   `orden`. Las dos son tablas de negocio de SL-17, con `organizacion_id NOT NULL`. El superadmin no

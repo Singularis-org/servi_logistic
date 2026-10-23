@@ -4,24 +4,14 @@ import { SESSION_COOKIE_NAME } from "@/lib/constants/auth";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { Logo } from "@/components/shared/Logo";
-import { RecuperacionDesactivadaAviso } from "./_components/RecuperacionDesactivadaAviso";
+import { RecuperarContrasenaForm } from "./_components/RecuperarContrasenaForm";
 
 // Pagina publica del flujo de recuperacion de contrasena (R12). Si ya hay una
 // sesion valida se redirige a la home, replicando el patron de app/login/page.tsx.
 //
-// ⚠️ DESACTIVADO EL 2026-09-04: la ruta sigue viva y publica, pero en vez del formulario de
-// 3 pasos monta `RecuperacionDesactivadaAviso`. La causa esta escrita entera en la cabecera de
-// ese componente y se resume aqui: el paso 1 manda un OTP por correo y el SMTP de Gmail rechaza
-// la credencial con `535-5.7.8 Username and Password not accepted` (EAUTH), asi que el envio
-// FALLA SIEMPRE; como ese paso responde un `ok` generico anti-enumeracion, el fallo es MUDO
-// (12 intentos de 2 personas reales medidos en produccion el 2026-09-04, ninguna aviso alguno).
-//
-// La pagina NO se borra ni se saca del middleware A PROPOSITO: quien tenga el enlace guardado o
-// llegue por un correo viejo debe encontrar una salida, no un redirect a /login sin explicacion.
-//
-// PARA VOLVER A ENCENDERLO cuando el correo funcione: importar de nuevo
-// `./_components/RecuperarContrasenaForm` (sigue en el repo, intacto y probado), montarlo abajo
-// en lugar del aviso, devolver el subtitulo del panel de marca y reponer el enlace del login.
+// Desactivada el 2026-09-04 (el SMTP de entonces rechazaba la credencial y el OTP no llegaba
+// nunca) y reactivada el 2026-10-22 por SL-32 (R38): el correo sale ahora por el SMTP de Brevo.
+// Un entorno sin SMTP configurado no rompe la pantalla: el envio degrada a la consola.
 export default async function RecuperarContrasenaPage() {
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
@@ -48,11 +38,8 @@ export default async function RecuperarContrasenaPage() {
           <Logo fondo="oscuro" ancho={200} />
           <div className="mt-3 h-1 w-10 rounded-full bg-brand-light" />
         </div>
-        {/* El subtitulo dice lo que la pantalla PUEDE cumplir hoy. El anterior —«Recupera el
-          acceso a tu cuenta de forma segura»— prometia un flujo que ya no esta montado; se
-          repone tal cual cuando vuelva el formulario. */}
         <p className="relative max-w-sm text-sm leading-relaxed text-white/70">
-          Te ayudamos a volver a entrar a tu cuenta.
+          Recupera el acceso a tu cuenta de forma segura
         </p>
       </div>
 
@@ -65,7 +52,7 @@ export default async function RecuperarContrasenaPage() {
             el panel de escritorio es `bg-navy` fijo y lleva la de fondo oscuro. */}
           <Logo fondo="claro" ancho={160} />
         </div>
-        <RecuperacionDesactivadaAviso />
+        <RecuperarContrasenaForm />
       </div>
     </div>
   );

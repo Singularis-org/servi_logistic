@@ -97,7 +97,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 2b — La pantalla «Empresas» sin base (no depende de T0)
 
-- [ ] **T12. `/design` de la pantalla «Empresas»** (R29–R34, R37). Es una pantalla nueva: su diseño
+- [x] **T12. `/design` de la pantalla «Empresas»** (R29–R34, R37). Es una pantalla nueva: su diseño
   **pasa por `/design` antes de implementarse** (`docs/perfil-agentes.md > frontend_dev`). Se
   mantiene **mínimo y coherente con las pantallas de configuración que ya hay**
   (`app/(app)/configuracion/vehiculos/`, `UsuariosModule`): el mismo `PageHeader`, una tabla con su
@@ -109,7 +109,10 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   - el aviso tras el alta: el maestro entra con «¿Olvidaste tu contraseña?».
 
   **Hecho cuando:** Carlos aprueba la maqueta y su referencia queda en `progress/impl_SL-32.md`.
-- [ ] **T13. [P] `EmpresasModule`** (R29–R34, R37; depende de T12).
+
+  *Estado (2026-10-22):* la propuesta está en `design.md > Diseño visual > Propuesta de T12`, y el
+  leader la dio por buena para codificar. **Falta el OK de Carlos** sobre la pantalla.
+- [x] **T13. [P] `EmpresasModule`** (R29–R34, R37; depende de T12).
   `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`, cliente. Recibe por props el
   listado, el catálogo de tipos y la action, que se inyecta para poder probarla. No importa Prisma
   ni `RolValue`.
@@ -126,7 +129,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
   **Hecho cuando:** los tests están en verde, y una mutación que pinta el error de slug en el campo
   email pone en rojo R31 (se prueba y se revierte).
-- [ ] **T14a. [P] Servicio del listado, sin Prisma** (R29, R35).
+- [x] **T14a. [P] Servicio del listado, sin Prisma** (R29, R35).
   `lib/types/empresas-plataforma.ts`, `lib/interfaces/services/IEmpresasPlataformaService.ts`,
   `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts` y
   `lib/services/EmpresasPlataformaService.ts`. Mientras no exista T4, el servicio recibe por
@@ -377,7 +380,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 
 ## Tanda 7 — Primer acceso con correo (espera a P8 y P9)
 
-- [ ] **T19. Volver a montar «recuperar contraseña»** (R38). Solo con el OK de Carlos (P9) y con el
+- [x] **T19. Volver a montar «recuperar contraseña»** (R38). Solo con el OK de Carlos (P9) y con el
   correo verificado en el entorno (P8):
   - `app/recuperar-contrasena/page.tsx` monta `RecuperarContrasenaForm` en vez de
     `RecuperacionDesactivadaAviso`, y devuelve el subtítulo del panel de marca;
@@ -388,6 +391,10 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   **Hecho cuando:** los dos tests están en verde con el formulario montado, y un correo de OTP real
   llega en el entorno. El envío queda anotado en `progress/impl_SL-32.md`, sin el código ni el
   email.
+
+  *Estado (2026-10-22):* P8 y P9 resueltas por el leader: SMTP de Brevo, que Carlos pone en Vercel.
+  El código y los tests están hechos, y la degradación a `ConsoleEmailSender` tiene test. **Falta
+  verificar un correo de OTP real** en cada entorno, después de que Carlos configure el SMTP.
 
 ## Tanda 8 — Cierre
 

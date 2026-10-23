@@ -186,3 +186,116 @@ incluyó el test nuevo (`Tests 314 passed (314)` en la selección). Se repitió 
 - Commit siguiente: T0 espera a SL-17, no a SL-28. El superadmin va con `organizacion_id = NULL`, el
   índice de R27 es global, y queda ABIERTO para T0 quién impide `NULL` a un usuario de empresa
   (`design.md > Multi-empresa`).
+
+## T19 — recuperar contraseña reactivada (R38), frontend_dev — 2026-10-22
+
+**Archivos:** modificados `app/recuperar-contrasena/page.tsx` (monta `RecuperarContrasenaForm`, subtítulo «Recupera el acceso a tu cuenta de forma segura»), `app/login/_components/LoginForm.tsx` (enlace `/recuperar-contrasena` repuesto; párrafo «Pídele a un administrador…» y comentarios de desactivación borrados), `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx` (fuera la cabecera de desactivación y su `@sin-superficie`, que la guardia R-B exige quitar al recuperar superficie), `tests/integration/login-form-reset-link.test.tsx`, `tests/integration/recuperar-contrasena-page.test.tsx`, `tests/components/LoginForm.test.tsx` (borrado el bloque de la feature 373, que exigía el párrafo). Borrados: `app/recuperar-contrasena/_components/RecuperacionDesactivadaAviso.tsx` y `tests/components/RecuperacionDesactivadaAviso.test.tsx` (nadie más lo montaba).
+
+**R38 → test:** `tests/integration/recuperar-contrasena-page.test.tsx > sin cookie de sesion monta el formulario de recuperacion (R38)` y `tests/integration/login-form-reset-link.test.tsx > muestra un enlace hacia la ruta de reset en la fase de credenciales`.
+
+**Salida:** `vitest related` sobre page, LoginForm y los dos tests: `Test Files  5 passed (5)`, `Tests  46 passed (46)`. Lint sin errores. Typecheck: 1 error ajeno en `tests/unit/services/empresas-plataforma-service.test.ts` (otro agente). Mutación (formulario sustituido por texto en la página y `href` del enlace cambiado a `/login`): `Tests  3 failed | 3 passed (6)`; revertida, `Tests  6 passed (6)`.
+
+**Pendiente fuera de mi alcance:** `lib/actions/password-reset.ts:63` conserva `@sin-superficie` en `solicitarRecuperacion`, y por eso `superficie-de-uso.guardia > R-A > ninguna anotación @sin-superficie de acción sobrevive a su motivo` queda en ROJO hasta que se borre.
+
+**Veredicto:** T19 hecha en UI; falta quitar la anotación en `lib/`.
+
+## T14a — servicio del listado de empresas, sin Prisma (R29, R35), backend_dev — 2026-10-22
+
+**Archivos creados:** `lib/types/empresas-plataforma.ts`, `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts`, `lib/interfaces/services/IEmpresasPlataformaService.ts`, `lib/services/EmpresasPlataformaService.ts`, `tests/unit/services/empresas-plataforma-service.test.ts`.
+
+- El actor se tipa `{ rol: string } | null`: `RolValue` aun no tiene `superadmin` (T3). El predicado llega por constructor; T14b lo cablea a `esPlataforma`.
+- Los roles de empresa del test salen de `Object.values(RolValue)` (sin `superadmin`), y un caso fija que son los seis conocidos.
+
+| Requisito | Test |
+|---|---|
+| R35 | `empresas-plataforma-service.test.ts > acceso (R35)`: cada rol de empresa y actor nulo dan `forbidden` sin llamar al repositorio; dos casos prueban que manda el predicado inyectado |
+| R29 | `empresas-plataforma-service.test.ts > listado (R29)`: el actor de plataforma recibe exactamente lo del doble, y `[]` sin empresas. El SQL lo prueba T14b contra la base |
+
+**Mutaciones** (revertidas, sin diff):
+1. `if (!actor && false)`: `Tests  8 failed | 4 passed (12)`.
+2. Literal `actor.rol !== "superadmin"` en vez del predicado: `Tests  2 failed | 10 passed (12)`.
+Tras revertir: `Tests  12 passed (12)`.
+
+## T19 — parte de servidor: la degradacion del correo tiene test (R38), backend_dev — 2026-10-22
+
+**Archivo creado:** `tests/unit/actions/password-reset-degrada-a-consola.test.ts`. No hay codigo nuevo.
+
+- La action real `solicitarRecuperacion`, construida por su composition root (sin `deps.service`), termina en `ConsoleEmailSender.enviar` sin SMTP y devuelve `ok`. Prisma, `UserRepository`, `EmailOtpChallengeRepository` y `nodemailer` son dobles.
+- Con `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587` y credenciales falsas: `crearEmailSender()` da `NodemailerEmailSender` sin llamar a `createTransport`, y `loadEmailConfig()` da host de Brevo, 587 y `secure: false`.
+- **Mutacion:** `return true || emailSmtpConfigurado()` en `crearEmailSender`: `Tests  2 failed | 2 passed (4)`. Revertida: `Tests  4 passed (4)`.
+- **Abierto (sin tocar codigo):** los comentarios de `lib/config/email.ts` dicen que el canal es Gmail (`DEFAULT_SMTP_HOST = "smtp.gmail.com"`, "contrasena de aplicacion de Google", que Google reescribe el From). Contradicen Brevo. Tambien `design.md > Dependencias operativas` habla de la contrasena de aplicacion de Google, y los `@sin-superficie` de `lib/actions/password-reset.ts` hablan del 535 de Gmail.
+
+**Cierre:** `pnpm run typecheck` TC_EXIT=0. `eslint` de los 6 archivos: `No issues found`. `vitest related --run` de los 6: `Test Files  2 passed (2)` / `Tests  16 passed (16)`.
+
+**Veredicto:** T14a y la parte de servidor de T19 en verde, con mutaciones que las ponen en rojo. Sin commitear.
+
+## T13 — `EmpresasModule` (R29–R34, R37), frontend_dev — 2026-10-22
+
+- Creados: `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx` (cliente; tipos
+  provisionales `AltaEmpresaEntrada`/`AltaEmpresaRespuesta` de §7.7 de SL-17, T15 los cambia por
+  el import de `lib/types/organizacion.ts`) y `tests/components/empresas-module.test.tsx`.
+- R29 → «pinta una fila por empresa…», «sin empresas pinta el estado vacío…».
+  R30 → «llama a la action una vez con la forma del contrato…». R31 → «conflicto de slug…»,
+  «"ya existe" se trata como slug repetido…». R32 → «conflicto de email…». R33 → «conflicto de
+  documento…». R34 → `it.each` «invalida con campo…» (9), «…muestra el error genérico» (3), «una
+  excepción muestra el genérico sin su detalle». R37 → «tras el éxito avisa del primer acceso…».
+- `vitest run tests/components/empresas-module.test.tsx`: `Test Files 1 passed (1)`,
+  `Tests 21 passed (21)`. `pnpm run typecheck` verde. `eslint` de los dos archivos: sin issues.
+- Mutación: `conflicto` slug → `campo: "email"` en `desenlaceDe`: `× R31: conflicto de slug pinta
+  el error junto a «Slug» y conserva lo escrito`, `Tests 1 failed | 20 passed (21)`. Revertido
+  (`cmp` idéntico) y de nuevo `21 passed`.
+- Veredicto: T13 hecha, sin commitear.
+
+## Tanda 2b (T12, T13, T14a) y T19 — consolidado del implementer — 2026-10-22
+
+**Decisiones del leader aplicadas**
+- P8 y P9: el correo sale por SMTP de Brevo (`smtp-relay.brevo.com`, 587, con las variables de `lib/config/email.ts`), y Carlos lo pone en Vercel. No hay código nuevo de proveedor.
+- P7: diferida a SL-26, en `progress/deudas.md > D10`. No se resuelve aquí.
+- P10: leído en el spec de SL-17 (`11f7007`, §7.7). `altaEmpresaAction(input)` está en `lib/actions/organizaciones.ts`, y sus desenlaces son `creada | ya_existe | conflicto{campo: slug|email|documento} | invalida{campo}`. Al maestro se le guarda un hash de 32 bytes aleatorios que se descartan. SL-17 no trae listado, así que T14a se queda. Se confirma en T0.
+
+**T12.** La propuesta está en `specs/SL-32-rol-superadmin/design.md > Diseño visual > Propuesta de T12`. Falta el OK de Carlos.
+
+**Archivos de la tanda**
+- Creados:
+  - `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`, con `@sin-superficie` hasta que T15 monte la página;
+  - `lib/types/empresas-plataforma.ts`;
+  - `lib/interfaces/services/IEmpresasPlataformaService.ts`;
+  - `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts`;
+  - `lib/services/EmpresasPlataformaService.ts`;
+  - `tests/components/empresas-module.test.tsx`;
+  - `tests/unit/services/empresas-plataforma-service.test.ts`;
+  - `tests/unit/actions/password-reset-degrada-a-consola.test.ts`.
+- Modificados:
+  - `app/recuperar-contrasena/page.tsx`;
+  - `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx`;
+  - `app/login/_components/LoginForm.tsx`;
+  - `lib/actions/password-reset.ts`: salen los tres `@sin-superficie`, y la guardia `superficie-de-uso > R-A` lo exigía;
+  - `tests/components/LoginForm.test.tsx`;
+  - `tests/integration/login-form-reset-link.test.tsx`;
+  - `tests/integration/recuperar-contrasena-page.test.tsx`;
+  - `progress/deudas.md` (D10);
+  - `specs/SL-32-rol-superadmin/{requirements,design,tasks}.md`.
+- Borrados: `app/recuperar-contrasena/_components/RecuperacionDesactivadaAviso.tsx` y `tests/components/RecuperacionDesactivadaAviso.test.tsx`.
+
+**R → test (esta tanda)**
+| R | Test |
+|---|---|
+| R29–R34, R37 | `tests/components/empresas-module.test.tsx` (21 tests) |
+| R29, R35 (servicio) | `tests/unit/services/empresas-plataforma-service.test.ts` (12 tests) |
+| R38 | `tests/integration/login-form-reset-link.test.tsx`, `tests/integration/recuperar-contrasena-page.test.tsx` y `tests/unit/actions/password-reset-degrada-a-consola.test.ts` (degradación a consola y configuración de Brevo) |
+
+**Mutaciones**, todas revertidas:
+- R31: el error de slug pintado en el campo email da `1 failed | 20 passed`.
+- T14a: sin la comprobación de rol, `8 failed | 4 passed`. Con un literal en vez del predicado inyectado, `2 failed`.
+- T19: la página monta el aviso y el `href` va a `/login`: `3 failed | 3 passed`.
+- Degradación: `crearEmailSender` devuelve siempre nodemailer: `2 failed | 2 passed`.
+
+**Gate** (`TEST_RAPIDO_BASE=dev ./init.sh`, log en el scratchpad de la sesión, `init-SL-32-t2b-t19-b.log`):
+- typecheck y lint pasan, y los tests relacionados dan `Test Files 24 passed (24)` y `Tests 348 passed (348)`;
+- las guardias dan `Tests 1 failed | 3992 passed | 20 skipped (4013)` e `INIT_EXIT=1`.
+
+El único rojo es `tests/unit/guards/test-citado-desaparecido.guardia.test.ts > ninguna excepción temporal sobrevive a su motivo (D4 de SL-13)`. Ya estaba en rojo en la tanda 1, con el mismo mensaje (historia aplanada en `86d70bf`). No es del diff, y tampoco está en `tests/baseline-rojos.json`.
+
+En la primera corrida hubo además dos rojos de `catalogo-postgres-acota-esquema` con `ENOENT` sobre el aviso borrado: el borrado no estaba en el índice. Con `git add` desaparecieron.
+
+**Pendiente fuera del código:** el OK de Carlos a la pantalla (T12) y un correo de OTP real en cada entorno tras configurar Brevo (T19).
