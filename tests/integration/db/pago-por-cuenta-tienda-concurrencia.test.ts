@@ -29,6 +29,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import {
   acreditar459,
   conCandado459,
+  clienteConEmpresa459,
+  conEmpresa459,
   formData459,
   limpiar459,
   sembrarPersonas459,
@@ -91,8 +93,8 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
 
   beforeAll(() => {
     prisma = crearPrismaDeTest();
-    clienteA = crearPrismaDeTest();
-    clienteB = crearPrismaDeTest();
+    clienteA = clienteConEmpresa459(crearPrismaDeTest());
+    clienteB = clienteConEmpresa459(crearPrismaDeTest());
   });
 
   afterAll(async () => {
@@ -104,7 +106,8 @@ describeSiHayBase("459/T B.13 — concurrencia del pago por cuenta y del saldo i
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }

@@ -17,12 +17,15 @@
 // ⚠ LIMITE DECLARADO, SIN MAQUILLAJE (`design.md §11`): este archivo **no es testeable en
 // unitario**. Es la pulgada no cubierta de la feature, y por eso se disena para que sea lo mas
 // fina posible: dos delegaciones, sin ramas y sin logica. Todo lo demas —clave, codec,
-// decorador, handlers, script— corre sin Next.
+// decorador, handlers, script— corre sin Next. (SL-17 le anade la resolucion de la empresa;
+// esa parte se prueba en `tests/unit/cache/cache-por-empresa.test.ts` con `next/cache` simulado.)
 
 import { revalidateTag, unstable_cache } from "next/cache";
 import { ANALITICA_CACHE_TTL_SEGUNDOS, analiticaCacheHabilitada } from "@/lib/config/analitica-cache";
 import { CONTEO_ENTREGAS_CACHE_TTL_SEGUNDOS } from "@/lib/config/conteo-entregas-cache";
 import { cacheNula } from "@/lib/cache/cache-nula";
+import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
+import { conEmpresa, contextoActual, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import { conRegistroDeInvalidacion } from "@/lib/cache/registro-invalidacion";
 import type { IAnaliticaCache, OrigenInvalidacion } from "@/lib/interfaces/external/IAnaliticaCache";
 
@@ -42,6 +45,24 @@ import type { IAnaliticaCache, OrigenInvalidacion } from "@/lib/interfaces/exter
  */
 const PERFIL_INVALIDACION = "max";
 
+/**
+ * SL-17 (design §7.6, R34) — la empresa de la entrada, resuelta FUERA de `unstable_cache`:
+ * dentro de su callback no se puede llamar a `cookies()`. Un contexto de plataforma no es una
+ * empresa: devolver `null` ahi hace que una entrada de negocio nunca se comparta entre
+ * empresas ni se escriba sin dueno.
+ */
+async function empresaDeLaEntrada(): Promise<string | null> {
+  const contexto = contextoActual();
+  if (contexto?.tipo === "empresa") return contexto.organizacionId;
+  if (contexto === undefined) return empresaDeLaPeticion();
+  return null;
+}
+
+/** La etiqueta lleva la empresa: invalidar en una empresa no vacia la cache de las demas. */
+function etiquetaDeEmpresa(organizacionId: string, tag: string): string {
+  return `org:${organizacionId}:${tag}`;
+}
+
 export class NextAnaliticaCache implements IAnaliticaCache {
   /**
    * El TTL entra por CONSTRUCTOR, con el de la analitica por defecto.
@@ -58,21 +79,35 @@ export class NextAnaliticaCache implements IAnaliticaCache {
   /**
    * `revalidate` va SIEMPRE con un TTL y NUNCA `false` (R17): sin TTL, un invalidador que no
    * llegue congela la cifra para siempre.
+   *
+   * SL-17 (R34): sin empresa se LANZA en vez de producir sin cache. Producir fuera de una
+   * empresa leeria sin filtro o fallaria mas abajo con otro nombre; y una entrada sin empresa
+   * en la clave la serviria a cualquiera que hiciera la misma consulta. `producir` corre en
+   * `conEmpresa` porque `unstable_cache` la ejecuta fuera del contexto del llamador.
    */
   async envolver<T>(
     clave: string,
     tags: readonly string[],
     producir: () => Promise<T>,
   ): Promise<T> {
-    return unstable_cache(producir, [clave], {
-      tags: [...tags],
+    const organizacionId = await empresaDeLaEntrada();
+    if (!organizacionId) throw new EmpresaNoResuelta("cache_analitica", "envolver");
+    return unstable_cache(() => conEmpresa(organizacionId, producir), [`org:${organizacionId}`, clave], {
+      tags: tags.map((tag) => etiquetaDeEmpresa(organizacionId, tag)),
       revalidate: this.ttlSegundos,
     })();
   }
 
-  /** R11 — sin `try/catch`: lo que lance `revalidateTag` sube al llamador. */
+  /**
+   * R11 — sin `try/catch`: lo que lance `revalidateTag` sube al llamador.
+   *
+   * SL-17 (R42): invalida la etiqueta de la empresa en contexto. Sin empresa LANZA: no hay
+   * etiqueta global que vaciar, y un exito sin invalidar nada es el fallo mudo que R11 evita.
+   */
   async invalidar(_origen: OrigenInvalidacion, tags: readonly string[]): Promise<void> {
-    for (const tag of tags) revalidateTag(tag, PERFIL_INVALIDACION);
+    const organizacionId = await empresaDeLaEntrada();
+    if (!organizacionId) throw new EmpresaNoResuelta("cache_analitica", "invalidar");
+    for (const tag of tags) revalidateTag(etiquetaDeEmpresa(organizacionId, tag), PERFIL_INVALIDACION);
   }
 }
 

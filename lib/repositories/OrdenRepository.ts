@@ -2560,13 +2560,17 @@ export class OrdenRepository implements IOrdenRepository {
     return found?.id ?? null;
   }
 
-  /** Feature 27/R15/R16/R17: `usuario.fulfillment` de la tienda; `false` si no resuelve. */
-  async findUsuarioFulfillment(usuarioId: string): Promise<boolean> {
+  /**
+   * Feature 27/R15/R16/R17: `usuario.fulfillment` de la tienda. `null` si no resuelve (SL-17 D15:
+   * con el filtro por empresa, una tienda de otra empresa no resuelve, y convertirla en `false`
+   * dejaba seguir la carga hasta el trigger de la base).
+   */
+  async findUsuarioFulfillment(usuarioId: string): Promise<boolean | null> {
     const row = await this.prisma.usuario.findUnique({
       where: { id: usuarioId },
       select: { fulfillment: true },
     });
-    return row?.fulfillment ?? false;
+    return row?.fulfillment ?? null;
   }
 
   // BORRADO 2026-08-07 (tanda 2): aqui vivia `existsGeo`, la comprobacion fila-a-fila de que
@@ -2867,8 +2871,8 @@ export class OrdenRepository implements IOrdenRepository {
    *   - `ESTADOS_PENDIENTES` (`CierreDiaService`) es una lista LOCAL de tres estados del cierre del
    *     dia: deja fuera ordenes vivas que no estan en ninguno de los tres, y contarlas de menos es
    *     peor que no contarlas;
-   *   - «sin gestionar» (`ConteosPublicosRepository`) daria por resuelta una orden REPROGRAMADA,
-   *     que tiene gestion y sigue sin entregarse.
+   *   - «sin gestionar» (el criterio de los conteos publicos de la landing, ya retirados) daria
+   *     por resuelta una orden REPROGRAMADA, que tiene gestion y sigue sin entregarse.
    *
    * `ESTADOS_TERMINALES` se IMPORTA de su fuente unica y NO se declara aqui (lo vigila
    * `tests/unit/guards/geografia-terminales-una-sola-fuente.guardia.test.ts`): dos listas de

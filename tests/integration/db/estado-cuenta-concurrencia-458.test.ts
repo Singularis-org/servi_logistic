@@ -53,6 +53,7 @@ describeSiHayBase("458-B/M2 — un cierre aprobado en medio de la lectura del es
     await escritor.walletTiendaMovimiento.createMany({
       data: [
         {
+          organizacionId: p.organizacionId,
           tiendaId: p.tiendaId,
           tipo: "credito",
           categoria: "cod_recaudado",
@@ -62,6 +63,7 @@ describeSiHayBase("458-B/M2 — un cierre aprobado en medio de la lectura del es
           descripcion: null,
         },
         {
+          organizacionId: p.organizacionId,
           tiendaId: p.tiendaId,
           tipo: "debito",
           categoria: "flete",

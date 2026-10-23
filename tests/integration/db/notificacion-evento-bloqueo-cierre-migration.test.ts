@@ -246,10 +246,16 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
     // lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (que es parcial), y
     // lleva `destinatario_rol` porque el CHECK `notificacion_destinatario_xor` exige exactamente
     // uno de los dos destinatarios (146 §1.2).
-    for (const evento of NUEVOS) {
-      const id = randomUUID();
-      try {
-        await prisma.$executeRawUnsafe(
+    // SL-17 T4.3: en una transaccion revertida y tras el lock de la 227, con la empresa del DEFAULT.
+    // Commitear la empresa y borrarla despues (lo de R3) chocaba con el down de los archivos hermanos:
+    // el `DELETE FROM organizacion` toma RowShareLock en cada tabla hija por su RESTRICT, y con
+    // `push_envio_dia` ya tomada esperaba a la `notificacion` que el down tenia en exclusiva: 40P01.
+    const leidos = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const salida: (string | undefined)[] = [];
+      for (const evento of NUEVOS) {
+        const id = randomUUID();
+        await tx.$executeRawUnsafe(
           `INSERT INTO "notificacion"
              ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
            VALUES ($1, 'alert'::"notificacion_tipo",
@@ -259,15 +265,15 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
           id,
           evento,
         );
-        const filas = await prisma.$queryRawUnsafe<{ evento: string }[]>(
+        const filas = await tx.$queryRawUnsafe<{ evento: string }[]>(
           `SELECT "evento"::text AS evento FROM "notificacion" WHERE "id" = $1`,
           id,
         );
-        expect(filas[0]?.evento).toBe(evento);
-      } finally {
-        await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE "id" = $1`, id);
+        salida.push(filas[0]?.evento);
       }
-    }
+      return salida;
+    });
+    expect(leidos).toEqual([...NUEVOS]);
   });
 
   it("⭑ T10.4: el DOWN con una fila del evento nuevo ABORTA RUIDOSAMENTE (no borra nada)", async () => {
@@ -355,6 +361,7 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
     expect(def).toMatch(/NULLS NOT DISTINCT/i);
     expect(def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
     // Y las cuatro columnas de la clave, en orden.
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
   });
 });

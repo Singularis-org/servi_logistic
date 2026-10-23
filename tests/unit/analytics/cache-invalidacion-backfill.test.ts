@@ -18,6 +18,7 @@ import type {
 import type { DimensionAnalitica } from "@/lib/analytics/types";
 import { cacheFalsa, cacheQueFallaAlInvalidar } from "./_cache-falsa";
 import { consultaDe, cubo, MAESTRO } from "./_fake-operativa";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 
 // Feature 128 / T6.5 — R14. EL CAMINO COMPLETO: backfill → job encolado → drenado → consulta.
 //
@@ -30,6 +31,12 @@ import { consultaDe, cubo, MAESTRO } from "./_fake-operativa";
 
 const SIN_GRANO: readonly DimensionAnalitica[] = [];
 const AHORA = new Date("2026-08-03T15:00:00.000Z");
+
+// SL-17 (R42): el handler solo invalida con una empresa en contexto, la del job. El job lleva
+// `organizacionId` (lo que el drenador por empresa de T2.3b pone en `conEmpresa`) y el drenado
+// corre ademas dentro de esa empresa, para que el test no dependa de en que punto este el
+// drenador: con o sin T2.3b, el handler ve la misma empresa.
+const EMPRESA = "org-backfill";
 
 /** Cola en memoria: encola, reclama y completa. Lo justo para drenar de verdad. */
 function colaEnMemoria(): IJobRepository & { filas: JobDTO[] } {
@@ -55,6 +62,7 @@ function colaEnMemoria(): IJobRepository & { filas: JobDTO[] } {
         lockedAt: null,
         lastError: null,
         dedupeKey: opts?.dedupeKey ?? null,
+        organizacionId: EMPRESA,
         createdAt: AHORA,
         updatedAt: AHORA,
       } as unknown as JobDTO;
@@ -144,7 +152,7 @@ describe("R14 · tras drenar el job encolado por el backfill, la consulta devuel
       CONFIG_JOBS,
       () => AHORA,
     );
-    const resultado = await servicio.drenar(10);
+    const resultado = await conEmpresa(EMPRESA, () => servicio.drenar(10));
     expect(resultado).toMatchObject({ ok: 1 });
 
     // (5)
@@ -172,7 +180,7 @@ describe("R14 · tras drenar el job encolado por el backfill, la consulta devuel
       () => AHORA,
     );
 
-    const resultado = await servicio.drenar(10);
+    const resultado = await conEmpresa(EMPRESA, () => servicio.drenar(10));
     expect(resultado).toMatchObject({ ok: 0 });
     expect(cola.filas[0].estado).not.toBe("done");
   });

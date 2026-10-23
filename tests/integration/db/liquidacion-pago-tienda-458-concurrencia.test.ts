@@ -18,6 +18,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, urlDeBaseDeDatos } from "./_postg
 import {
   acreditar459,
   conCandado459,
+  clienteConEmpresa459,
+  conEmpresa459,
   limpiar459,
   sembrarPersonas459,
   type Personas459,
@@ -58,7 +60,8 @@ describeSiHayBase("458-B — el pago de la empresa a una tienda lee el saldo por
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }
@@ -66,10 +69,10 @@ describeSiHayBase("458-B — el pago de la empresa a una tienda lee el saldo por
   }
 
   it("con UNA sola conexion en el pool, el pago a la tienda se registra y el restante es el del saldo leido bajo el candado", async () => {
-    const clienteUno = new PrismaClient({
+    const clienteUno = clienteConEmpresa459(new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 1 }),
       omit: PRISMA_OMIT,
-    }) as unknown as PrismaClient;
+    }) as unknown as PrismaClient);
     try {
       await conPersonas(async (p) => {
         await acreditar459(prisma, p.tiendaId, "10000.00");
@@ -108,10 +111,10 @@ describeSiHayBase("458-B — el pago de la empresa a una tienda lee el saldo por
   }, 120_000);
 
   it("el tope sigue decidiendose bajo el candado: por encima del saldo responde `excede` con lo disponible, sin escribir", async () => {
-    const clienteUno = new PrismaClient({
+    const clienteUno = clienteConEmpresa459(new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 1 }),
       omit: PRISMA_OMIT,
-    }) as unknown as PrismaClient;
+    }) as unknown as PrismaClient);
     try {
       await conPersonas(async (p) => {
         await acreditar459(prisma, p.tiendaId, "2500.00");

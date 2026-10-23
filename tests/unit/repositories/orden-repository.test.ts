@@ -742,12 +742,12 @@ describe("OrdenRepository.findUsuarioFulfillment (feature 27/R15/R16/R17)", () =
     expect(await repo.findUsuarioFulfillment("store-1")).toBe(false);
   });
 
-  it("default false cuando el usuario no resuelve", async () => {
+  it("null cuando el usuario no resuelve (SL-17 D15: lectura previa de la tienda)", async () => {
     const prisma = buildPrisma();
     prisma.usuario.findUnique.mockResolvedValue(null);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findUsuarioFulfillment("desconocido")).toBe(false);
+    expect(await repo.findUsuarioFulfillment("desconocido")).toBeNull();
   });
 });
 

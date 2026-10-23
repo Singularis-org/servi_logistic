@@ -16,6 +16,7 @@ import { UserRepository } from "@/lib/repositories/UserRepository";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
 import { crearEmailProvider } from "@/lib/services/EmailProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { computeDeviceHash } from "@/lib/utils/device";
 import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
 
@@ -79,11 +80,15 @@ export async function solicitarRecuperacion(
   const service = deps.service ?? buildPasswordResetService();
   const context = await getContext();
 
-  await service.solicitar({
-    email: parsed.data.email,
-    deviceHash: computeDeviceHash(context.userAgent),
-    ipAddress: context.ipAddress,
-  });
+  // SL-17 (design §7): quien pide recuperar su clave no tiene sesion ni empresa; el usuario se
+  // busca por email, unico global (R36).
+  await comoPlataforma("SL-17", "login", () =>
+    service.solicitar({
+      email: parsed.data.email,
+      deviceHash: computeDeviceHash(context.userAgent),
+      ipAddress: context.ipAddress,
+    }),
+  );
   return { status: "ok" };
 }
 
@@ -107,11 +112,13 @@ export async function verificarCodigoRecuperacion(
   const service = deps.service ?? buildPasswordResetService();
   const context = await getContext();
 
-  return service.verificarCodigo({
-    email: parsed.data.email,
-    code: parsed.data.code,
-    ipAddress: context.ipAddress,
-  });
+  return comoPlataforma("SL-17", "login", () =>
+    service.verificarCodigo({
+      email: parsed.data.email,
+      code: parsed.data.code,
+      ipAddress: context.ipAddress,
+    }),
+  );
 }
 
 /**
@@ -135,10 +142,15 @@ export async function restablecerContrasena(
   const service = deps.service ?? buildPasswordResetService();
   const context = await getContext();
 
-  return service.restablecer({
-    email: parsed.data.email,
-    code: parsed.data.code,
-    newPassword: parsed.data.password,
-    ipAddress: context.ipAddress,
-  });
+  // SL-17: este paso SI escribe una fila de negocio, `usuario.password_hash`, en plataforma. Es
+  // la del propio usuario hallado por email (unico global, R36) y validado por su codigo: no
+  // cruza empresas, y la escritura no cambia `organizacion_id`.
+  return comoPlataforma("SL-17", "login", () =>
+    service.restablecer({
+      email: parsed.data.email,
+      code: parsed.data.code,
+      newPassword: parsed.data.password,
+      ipAddress: context.ipAddress,
+    }),
+  );
 }

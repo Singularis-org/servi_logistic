@@ -19,14 +19,21 @@ import { WalletService } from "@/lib/services/WalletService";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { enTransaccionRevertida459 } from "./_fixtures/caja-459";
-import { DOWN_COMPLETAR_461_EN_TX, UP_COMPLETAR_461 } from "./_fixtures/completar-caja-461-sql";
+import {
+  CONFLICTO_461,
+  CONFLICTO_POR_EMPRESA,
+  DOWN_COMPLETAR_461_EN_TX,
+  UP_461_SOBRE_ESQUEMA_ACTUAL,
+  UP_COMPLETAR_461,
+} from "./_fixtures/completar-caja-461-sql";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / T B.11 — la migracion de datos que COMPLETA la linea de caja de los cobros previos,
 // ejecutada de verdad contra Postgres (R31–R36; design §3.3/§14.4).
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// Se ejecuta el `migration.sql` REAL, sin sustituir nada (su criterio es por datos), sobre cobros
+// Se ejecuta el `migration.sql` REAL, sin sustituir nada (su criterio es por datos) salvo el objetivo
+// del `ON CONFLICT` (SL-17 T3.9, ver `UP_461_SOBRE_ESQUEMA_ACTUAL`), sobre cobros
 // sembrados con INSERT DIRECTO —como los que dejo el servicio de la 381, sin linea de caja—, mas uno
 // RECLASIFICADO (con la salida que le escribia la migracion de datos de la 459, retirada en SL-13,
 // sembrada aqui con Prisma) y otro con su cargo PROPIO (como los escribe el servicio de la 461). Cada caso corre en una transaccion REPEATABLE READ que SIEMPRE se revierte; los que esperan
@@ -218,6 +225,12 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
     expect(UP_COMPLETAR_461).not.toMatch(/LISTA-INICIO/); // sin lista: el criterio es por datos
     expect(DOWN_COMPLETAR_461_EN_TX).toMatch(/DELETE FROM wallet_movimiento/);
     expect(DOWN_COMPLETAR_461_EN_TX).toMatch(/egreso_reverso_cobro_tienda/);
+    // Lo que se ejecuta abajo difiere del archivo real en el objetivo del `ON CONFLICT` y en nada mas.
+    // El objetivo nuevo, LITERAL: es el unico compuesto que deja `20261023090000_unicos_por_empresa`.
+    expect(UP_461_SOBRE_ESQUEMA_ACTUAL).toMatch(
+      /ON CONFLICT \("organizacion_id", "origen_tipo", "origen_id", "categoria"\) WHERE "origen_id" IS NOT NULL DO NOTHING/,
+    );
+    expect(UP_461_SOBRE_ESQUEMA_ACTUAL.replace(CONFLICTO_POR_EMPRESA, CONFLICTO_461)).toBe(UP_COMPLETAR_461);
   });
 
   it("R31/R32/R33: una linea por cobro legado —mismo monto, MISMO instante, misma persona, con la tienda—; ni para el reclasificado ni para el que ya tiene cargo; y dos pasadas dejan una", async () => {
@@ -226,9 +239,9 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
       const idsLegados = s.legados.map((c) => c.id);
       const cajaAntes = await tx.walletMovimiento.count();
       const tiendaAntes = await tx.walletTiendaMovimiento.findMany({ where: { tiendaId: { in: [s.tiendaId, s.otraTiendaId] } }, orderBy: { id: "asc" } });
-      const e1 = await intentar(tx, UP_COMPLETAR_461);
+      const e1 = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       const trasUna = await tx.walletMovimiento.count();
-      const e2 = await intentar(tx, UP_COMPLETAR_461);
+      const e2 = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       return {
         s,
         e1,
@@ -290,7 +303,7 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
       // efecto de la MIGRACION por diferencia: antes y despues de correrla.
       const antes = await leer();
       const saldosAntes = await saldos();
-      const error = await intentar(tx, UP_COMPLETAR_461);
+      const error = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       const despues = await leer();
       return { error, antes, despues, saldosAntes, saldosDespues: await saldos() };
     });
@@ -312,10 +325,10 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
   it("R35: sin ningun candidato, termina sin escribir nada y lo dice (NOTICE, no error)", async () => {
     const r = await enTransaccionRevertida459(prisma, async (tx) => {
       // Primera pasada: completa lo que haya (los candidatos propios de la base, si los hay).
-      const e1 = await intentar(tx, UP_COMPLETAR_461);
+      const e1 = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       const cajaAntes = await tx.walletMovimiento.count();
       // Segunda pasada: ya no queda ningun candidato.
-      const e2 = await intentar(tx, UP_COMPLETAR_461);
+      const e2 = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       return { e1, e2, nuevas: (await tx.walletMovimiento.count()) - cajaAntes };
     });
     expect(r.e1).toBeNull();
@@ -353,7 +366,7 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
         },
       });
       const cajaAntes = await tx.walletMovimiento.count();
-      const error = await intentar(tx, UP_COMPLETAR_461);
+      const error = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       return { error, nuevas: (await tx.walletMovimiento.count()) - cajaAntes, legadas: (await completadas(tx, s.legados.map((c) => c.id))).length };
     });
     expect(r.error).toMatch(/completar caja 461: escritas \d+ por [\d.]+, candidatos \d+ por [\d.]+/);
@@ -366,7 +379,7 @@ describeSiHayBase("461/B.11 — la migracion que completa la caja de los cobros 
     const r = await enTransaccionRevertida459(prisma, async (tx) => {
       const s = await sembrar(tx);
       const ids = s.legados.map((c) => c.id);
-      const e1 = await intentar(tx, UP_COMPLETAR_461);
+      const e1 = await intentar(tx, UP_461_SOBRE_ESQUEMA_ACTUAL);
       const totalAntesDown = await tx.walletMovimiento.count();
       const completadasAntes = await tx.walletMovimiento.count({ where: { origenTipo: "cobro_tienda_completado" } });
       // Un reverso de anulacion de UNA completada (como lo escribe `CobroTiendaService.anular`).

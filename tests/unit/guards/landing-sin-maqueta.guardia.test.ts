@@ -538,15 +538,10 @@ describe("253/R40 — y el censo declara TODO lo que la superficie pública disp
   it("y el detector VE de verdad las acciones públicas (anti-vacuidad)", () => {
     const simbolos = new Set(accionesQueLaSuperficieDispara().map((e) => e.simbolo));
     // R44: el rastreo público de la 229 queda declarado como productor REAL, no como excepción.
-    for (const s of [
-      "consultarRastreoPublico",
-      "postularRecurso",
-      "postularMensajero",
-      "obtenerConteosPublicos",
-    ]) {
+    for (const s of ["consultarRastreoPublico", "postularRecurso", "postularMensajero"]) {
       expect([...simbolos], s).toContain(s);
     }
-    expect(simbolos.size).toBeGreaterThanOrEqual(4);
+    expect(simbolos.size).toBeGreaterThanOrEqual(3);
   });
 
   it("la lista de exentos no tiene basura: todo lo que exime, la superficie lo dispara HOY", () => {

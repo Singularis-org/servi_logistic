@@ -194,7 +194,19 @@ const LECTOR_126 = "lib/repositories/AnaliticaOperativaRollupRepository.ts";
  */
 const METODOS_LECTURA_126 = ["agregarCubos", "etiquetasDeEstatus"];
 
-const ARCHIVOS_QUE_PUEDEN_NOMBRARLA = [...MODULOS_ESCRITOR, ...EXCEPCIONES_CATALOGO, LECTOR_126];
+/**
+ * SL-17 — la clasificacion de los modelos del esquema (negocio, plataforma, diferido). Nombra la
+ * tabla solo como dato de la lista: no importa Prisma ni la consulta. Puede NOMBRARLA, no
+ * ACCEDER a ella (ese test sigue igual).
+ */
+const CLASIFICACION_DE_MODELOS = "lib/db/modelos-de-negocio.ts";
+
+const ARCHIVOS_QUE_PUEDEN_NOMBRARLA = [
+  ...MODULOS_ESCRITOR,
+  ...EXCEPCIONES_CATALOGO,
+  LECTOR_126,
+  CLASIFICACION_DE_MODELOS,
+];
 
 /** El UNICO archivo del arbol autorizado a ACCEDER a la tabla. */
 const REPOSITORIO_ESCRITOR = "lib/repositories/AnaliticaRollupRepository.ts";

@@ -152,7 +152,8 @@ export class AporteCapitalRepository implements IAporteCapitalRepository {
   }
 
   async obtenerPorClave(claveIdempotencia: string): Promise<AporteCapitalRegistro | null> {
-    const row = await this.prisma.aporteCapital.findUnique({
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.aporteCapital.findFirst({
       where: { claveIdempotencia },
       include: INCLUDE_REGISTRO,
     });

@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 
 import { loadPostulacionRecursoConfig } from "@/lib/config/postulacion-recurso";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IPostulacionRecursoService } from "@/lib/interfaces/services/IPostulacionRecursoService";
 import { notificarPostulacionRecursoPendienteReal } from "@/lib/notificaciones/notificadores";
@@ -110,6 +111,15 @@ export async function postularRecurso(
       // R15: por campo, para que la pantalla pueda senalar al culpable.
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
+  }
+
+  // SL-17 (R41, D13): la postulacion es una fila de UNA empresa, y la landing es de la plataforma
+  // y aun no dice de cual (la ruta por empresa es SL-35). Sin empresa en contexto se rechaza
+  // antes de cualquier efecto, con el `error` neutro de siempre y sin 500. La sesion de quien
+  // navega no cuenta: una postulacion publica no hereda la empresa de un empleado con la sesion
+  // abierta. Un service inyectado (dobles de test) no escribe nada.
+  if (deps.service === undefined && contextoActual()?.tipo !== "empresa") {
+    return { status: "error" };
   }
 
   // 2. IP.

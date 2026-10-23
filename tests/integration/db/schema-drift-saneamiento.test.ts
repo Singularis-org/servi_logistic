@@ -100,7 +100,7 @@ function tablasConDefaultEnUpdatedAt(): string[] {
 }
 
 describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
-  it("el censo encuentra las DOCE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
+  it("el censo encuentra las TRECE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
     // Contrapeso: si el parser se rompiera y devolviera [], el caso de abajo pasaria por vacio
     // en vez de por limpio. Esta lista es la que devuelve la BASE viva consultando
     // `information_schema.columns` (evidencia en progress/chore_saneamiento-deudas.md).
@@ -127,6 +127,8 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       "gasto_fijo_cobro",
       "gasto_fijo_plantilla",
       "jobs",
+      // SL-17 M1 (`20261022130000_organizacion_y_rol_app`): la empresa nace con `updated_at DEFAULT CURRENT_TIMESTAMP`.
+      "organizacion",
       "premio_ranking",
       // FICHA 410 (2026-09-10) - las suscripciones de push web. Su `CREATE TABLE`
       // (`20260912120000_push_suscripcion/migration.sql`) escribe

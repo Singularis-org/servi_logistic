@@ -31,7 +31,6 @@ import {
   NotFoundError,
   MSG,
 } from "@/lib/errors";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiPdfEtiquetaService } from "@/lib/interfaces/services/IApiPdfEtiquetaService";
 import { ApiPdfEtiquetaService } from "@/lib/services/ApiPdfEtiquetaService";
 import { EtiquetaGuiaService } from "@/lib/services/EtiquetaGuiaService";
@@ -41,10 +40,15 @@ import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { etiquetasConfig } from "@/lib/config/etiquetas";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 
 export interface CargaGenerateApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   pdfService?: IApiPdfEtiquetaService;
 }
 
@@ -85,32 +89,35 @@ export async function handleCargaGenerateApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // -> 403
 
-    // 2. Valida el path param como uuid (design §5.3, paso 2). Sin invocar el service.
-    const parsed = cargaIdSchema.safeParse(rawCargaId);
-    if (!parsed.success) {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: { cargaId: ["cargaId invalido"] },
-      });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. Valida el path param como uuid (design §5.3, paso 2). Sin invocar el service.
+      const parsed = cargaIdSchema.safeParse(rawCargaId);
+      if (!parsed.success) {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: { cargaId: ["cargaId invalido"] },
+        });
+      }
 
-    // 3. R29-R34: el service resuelve la carga con el owner FORZADO y decide reuso o generacion.
-    const service = deps.pdfService ?? buildPdfService();
-    const salida = await service.porCarga(auth.actor, parsed.data);
+      // 3. R29-R34: el service resuelve la carga con el owner FORZADO y decide reuso o generacion.
+      const service = deps.pdfService ?? buildPdfService();
+      const salida = await service.porCarga(auth.actor, parsed.data);
 
-    switch (salida.status) {
-      case "ok":
-        // R28: misma forma exacta que el endpoint por orden.
-        return {
-          url: salida.url,
-          expiraEnSegundos: salida.expiraEnSegundos,
-        };
-      case "not_found":
-        throw new NotFoundError(); // R29: ajena e inexistente son indistinguibles
-      case "sin_etiqueta":
-        throw new ConflictError(); // R33
-      case "excede_tope":
-        throw new ConflictError(); // R34
-    }
+      switch (salida.status) {
+        case "ok":
+          // R28: misma forma exacta que el endpoint por orden.
+          return {
+            url: salida.url,
+            expiraEnSegundos: salida.expiraEnSegundos,
+          };
+        case "not_found":
+          throw new NotFoundError(); // R29: ajena e inexistente son indistinguibles
+        case "sin_etiqueta":
+          throw new ConflictError(); // R33
+        case "excede_tope":
+          throw new ConflictError(); // R34
+      }
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

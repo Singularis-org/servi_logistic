@@ -73,7 +73,7 @@ describe("app/page.tsx — landing pública (feature 86, R2–R5b)", () => {
     expect(anclasNav).toEqual(ordenDeLaPagina);
   });
 
-  it("R3: existen las secciones del home y el hero trae titular y cifras", async () => {
+  it("R3: existen las secciones del home y el hero trae titular", async () => {
     const { default: LandingPage } = await import("@/app/page");
     const { container } = render(await LandingPage({}));
 
@@ -83,11 +83,32 @@ describe("app/page.tsx — landing pública (feature 86, R2–R5b)", () => {
 
     const titular = container.querySelector("h1");
     expect(titular?.textContent).toContain("Costa Rica");
+  });
 
-    // Las tres cifras del hero van en un <dl> de pares etiqueta/valor. Se acota
-    // a la sección del titular: la banda de cifras usa otro <dl> más abajo.
-    const cifras = titular!.closest("section")!.querySelectorAll("dl dd");
-    expect(cifras.length).toBe(3);
+  // SL-17 R43: la landing es de la plataforma y no pinta ningún conteo de negocio. Se mira el DOM
+  // que llega al visitante, no el fuente: lo que importa es que no se vea, venga de donde venga.
+  it("SL-17 R43: ni el hero ni la banda muestran conteos, y la página no deja la rejilla vacía", async () => {
+    const { default: LandingPage } = await import("@/app/page");
+    const { container } = render(await LandingPage({}));
+
+    const hero = container.querySelector("h1")!.closest("section")!;
+    // Sin cifras el hero no lleva lista de pares: un <dl> vacío sería el hueco que no se quiere.
+    expect(hero.querySelectorAll("dl")).toHaveLength(0);
+
+    // Las etiquetas que tenían los tres conteos. Si alguna vuelve, vuelve un agregado.
+    const texto = container.textContent ?? "";
+    for (const etiqueta of ["Con cobertura", "Órdenes efectivas", "Usuarios que nos esperan"]) {
+      expect(texto, etiqueta).not.toContain(etiqueta);
+    }
+
+    // La banda conserva solo su rango fijo de días de entrega: un par etiqueta/valor, sin
+    // huecos al lado. Se localiza por su titular para no depender del orden de las secciones.
+    const banda = screen.getByRole("heading", { level: 2, name: /sin perder el rastro/ }).closest("section")!;
+    const valores = [...banda.querySelectorAll("dl dd")].map((dd) => dd.textContent);
+    expect(valores).toEqual(["1–3"]);
+    expect([...banda.querySelectorAll("dl dt")].map((dt) => dt.textContent)).toEqual([
+      "Días de entrega",
+    ]);
   });
 
   it("R4: reutiliza la paleta de marca (navy/brand) sin hex sueltos de color", async () => {
@@ -137,9 +158,8 @@ describe("app/page.tsx — landing pública (feature 86, R2–R5b)", () => {
 });
 
 // El CABLEADO del `?guia=` en la landing: página → nav. Se inspecciona el árbol que devuelve el
-// Server Component en vez de renderizarlo, y no es por comodidad: la página monta sus cifras en
-// componentes asíncronos que en jsdom no resuelven, así que el diálogo —que base-ui portalea en
-// un efecto— no llega a montarse nunca y el DOM no podría decir nada de esto.
+// Server Component en vez de renderizarlo: lo que se fija aquí es el CABLE página → nav, y el
+// árbol lo dice sin depender de cuándo base-ui portalea el diálogo en un efecto.
 //
 // Las otras dos mitades sí se miden donde se ven: la NORMALIZACIÓN del parámetro en
 // `tests/unit/guia-en-url.test.ts`, y el diálogo abierto con la guía puesta en

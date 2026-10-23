@@ -160,7 +160,8 @@ export class LiquidacionRepartoRepository implements ILiquidacionRepartoReposito
 
   /** §5.1/R28: relectura idempotente por la clave del cliente, con el cliente PROPIO. */
   async obtenerPorClave(claveIdempotencia: string): Promise<LiquidacionRepartoDTO | null> {
-    const row = await this.prisma.liquidacionReparto.findUnique({ where: { claveIdempotencia } });
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.liquidacionReparto.findFirst({ where: { claveIdempotencia } });
     return row === null ? null : toDTO(row);
   }
 }

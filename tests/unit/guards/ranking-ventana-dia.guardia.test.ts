@@ -178,7 +178,8 @@ describe("RankingService · ventana del dia natural CR (166)", () => {
     const modelo = /model PremioRanking \{[\s\S]*?\n\}/.exec(schema)?.[0] ?? "";
     expect(modelo).not.toBe("");
     expect(sinEspacios(modelo)).toContain('@@map("premio_ranking")');
-    expect(sinEspacios(modelo)).toContain("posicionInt@unique");
+    // SL-17 T3.9: la posicion es unica POR EMPRESA (cada empresa tiene su podio).
+    expect(sinEspacios(modelo)).toContain('@@unique([organizacionId,posicion],map:"premio_ranking_posicion_key")');
     expect(sinEspacios(modelo)).toContain("montoDecimal?@db.Decimal(12,2)");
     expect(sinEspacios(modelo)).toContain('descripcionString?@map("descripcion")');
   });

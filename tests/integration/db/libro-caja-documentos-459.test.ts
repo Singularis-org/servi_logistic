@@ -13,6 +13,7 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import {
   acreditar459,
   conCandado459,
+  conEmpresa459,
   formData459,
   limpiar459,
   sembrarPersonas459,
@@ -50,7 +51,8 @@ describeSiHayBase("459/T B.16 — el libro de la caja trae el documento de sus f
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        await conEmpresa459(sembradas, () => cuerpo(sembradas));
       } finally {
         await limpiar459(prisma, p);
       }

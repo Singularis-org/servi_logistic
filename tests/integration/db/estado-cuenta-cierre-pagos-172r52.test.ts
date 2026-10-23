@@ -175,7 +175,7 @@ describeSiHayBase("458-D B1 — 172 R52: el filtro por cierre del mensajero trae
             esc.maestro,
           );
           if (r.status !== "ok") throw new Error(`pago contra ${cierreId}: ${JSON.stringify(r)}`);
-          const doc = await tx.liquidacionPago.findUniqueOrThrow({
+          const doc = await tx.liquidacionPago.findFirstOrThrow({ // SL-17 T3.9: la clave es unica por empresa
             where: { claveIdempotencia: clave },
             select: { id: true, cierreId: true },
           });

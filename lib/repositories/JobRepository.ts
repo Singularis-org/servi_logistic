@@ -30,9 +30,24 @@ interface JobRow {
   dedupe_key: string | null;
   created_at: Date;
   updated_at: Date;
+  // SL-17 M4: NULL = job sin empresa. Opcional porque una base sin M4 (o un doble) no la trae.
+  organizacion_id?: string | null;
 }
 
-function toDTO(row: JobRow): JobDTO {
+/**
+ * SL-17 (D16, R42) — el job con la empresa que lo encolo. Va aqui y no en `JobDTO`
+ * (`IJobRepository.ts`) para no tocar los dobles de la cola de las otras fichas: el campo es un
+ * anadido estructural que el drenador lee con `empresaDelJob`.
+ */
+export type JobConEmpresa = JobDTO & { organizacionId: string | null };
+
+/** La empresa del job, o `null` si no la tiene (o si viene de un doble sin el campo). */
+export function empresaDelJob(job: JobDTO): string | null {
+  const id = (job as Partial<JobConEmpresa>).organizacionId;
+  return typeof id === "string" && id.trim() !== "" ? id : null;
+}
+
+function toDTO(row: JobRow): JobConEmpresa {
   return {
     id: row.id,
     tipo: row.tipo,
@@ -46,6 +61,7 @@ function toDTO(row: JobRow): JobDTO {
     dedupeKey: row.dedupe_key,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    organizacionId: row.organizacion_id ?? null,
   };
 }
 
@@ -78,6 +94,9 @@ export class JobRepository implements IJobRepository {
     // apunta al indice UNICO PARCIAL (por eso el `WHERE "dedupe_key" IS NOT NULL`); un
     // `dedupe_key` repetido no crea fila y no falla. `RETURNING *` -> null si se omitio.
     // `last_error` inicial (opcional): motivo del fallo sincrono que motivo el encolado.
+    // SL-17 (R42): `organizacion_id` NO va en la lista a proposito: su DEFAULT (M4) toma la empresa
+    // de la transaccion que encola; dentro de `conEmpresa` la fija la extension, y en plataforma
+    // (re-agendado de recurrentes) queda NULL.
     const rows = await client.$queryRaw<JobRow[]>`
       INSERT INTO "jobs" (
         "id", "tipo", "payload", "estado", "intentos", "max_intentos",

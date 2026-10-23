@@ -157,7 +157,7 @@ describe("KpiCard (R12-R15)", () => {
   // mensajero y la landing». Sin `arrancarEnCero`, react-countup emite el valor FINAL en el
   // HTML inicial y solo baja a `start` al hidratar: la tarjeta ensena la cifra, salta a 0 y
   // sube — un parpadeo, no una cuenta. Se mide sobre `renderToStaticMarkup` y no sobre
-  // `render` por lo mismo que en `cifras-publicas.test.tsx`: en jsdom el contador ya llego a
+  // `render` porque en jsdom el contador ya llego a
   // su valor final dentro del `act()` de Testing Library, asi que ahi el estado inicial es
   // INOBSERVABLE. Donde este 0 importa es en el HTML que se manda al navegador.
   it("el HTML de SERVIDOR sale en 0: la cuenta sube desde ahi, sin flash del valor final", () => {

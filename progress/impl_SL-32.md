@@ -250,7 +250,7 @@ Tras revertir: `Tests  12 passed (12)`.
 
 **Decisiones del leader aplicadas**
 - P8 y P9: el correo sale por SMTP de Brevo (`smtp-relay.brevo.com`, 587, con las variables de `lib/config/email.ts`), y Carlos lo pone en Vercel. No hay código nuevo de proveedor.
-- P7: diferida a SL-26, en `progress/deudas.md > D10`. No se resuelve aquí.
+- P7: diferida a SL-26, en `progress/deudas.md > D15`. No se resuelve aquí.
 - P10: leído en el spec de SL-17 (`11f7007`, §7.7). `altaEmpresaAction(input)` está en `lib/actions/organizaciones.ts`, y sus desenlaces son `creada | ya_existe | conflicto{campo: slug|email|documento} | invalida{campo}`. Al maestro se le guarda un hash de 32 bytes aleatorios que se descartan. SL-17 no trae listado, así que T14a se queda. Se confirma en T0.
 
 **T12.** La propuesta está en `specs/SL-32-rol-superadmin/design.md > Diseño visual > Propuesta de T12`. Falta el OK de Carlos.
@@ -273,7 +273,7 @@ Tras revertir: `Tests  12 passed (12)`.
   - `tests/components/LoginForm.test.tsx`;
   - `tests/integration/login-form-reset-link.test.tsx`;
   - `tests/integration/recuperar-contrasena-page.test.tsx`;
-  - `progress/deudas.md` (D10);
+  - `progress/deudas.md` (D10, renumerada a D15 al integrar SL-17);
   - `specs/SL-32-rol-superadmin/{requirements,design,tasks}.md`.
 - Borrados: `app/recuperar-contrasena/_components/RecuperacionDesactivadaAviso.tsx` y `tests/components/RecuperacionDesactivadaAviso.test.tsx`.
 

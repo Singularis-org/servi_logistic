@@ -391,7 +391,8 @@ describeSiHayBase("412/T2.5 — la base aplicada, y los DOS índices que la fich
     // ⚠️ Y AQUÍ SE VE EL HECHO QUE DECIDE TODA LA FICHA: el índice NO MIRA EL ESTADO DE LECTURA.
     // Por eso la entidad tiene que llevar el INSTANTE del rechazo dentro: con el cierre a secas,
     // el segundo rechazo no cabría en esta clave nunca más.
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
     expect(def).not.toMatch(/leida/);
   });
 });
@@ -544,7 +545,8 @@ describeSiHayBase("412/T2.5 — el DOWN ejercitado de verdad, con su precondici�
     expect(dedupe).toMatch(/CREATE UNIQUE INDEX/i);
     expect(dedupe).toMatch(/NULLS NOT DISTINCT/i);
     expect(dedupe).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
-    expect(dedupe).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(dedupe).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
 
     // ⭑ Y el de la 410, que ES la regla «un push al día por tipo»: si el down hubiera dejado la
     // columna sin retipar, no habríamos llegado hasta aquí.

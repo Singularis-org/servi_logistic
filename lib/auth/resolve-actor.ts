@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 import { SESSION_COOKIE_NAME } from "@/lib/constants/auth";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -17,18 +18,28 @@ export async function resolveActorFromSession(): Promise<Actor | null> {
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionId) return null;
 
-  const prisma = getPrismaClient();
-  const session = await new SessionRepository(prisma).findValidById(sessionId);
-  if (!session) return null;
+  // SL-17 (design §7): `usuario` es de negocio y aqui todavia no hay empresa, porque es este
+  // usuario quien la dice. Se lee en plataforma, buscando por el id que da la sesion.
+  return comoPlataforma("SL-17", "validar sesión", async () => {
+    const prisma = getPrismaClient();
+    const session = await new SessionRepository(prisma).findValidById(sessionId);
+    if (!session) return null;
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { id: session.userId },
-    include: { rol: true },
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: session.userId },
+      include: { rol: true },
+    });
+    if (!usuario) return null;
+
+    // Feature 146 (A3): `zonaId` viaja en el actor porque el alcance por zona de las
+    // notificaciones (R16) se resuelve contra `usuario.zona_id`. SL-17: `organizacionId` viaja
+    // por lo mismo (claves de cache por empresa sin volver a la base). Los dos ya venian en la
+    // fila leida: no hay consulta extra.
+    return {
+      usuarioId: usuario.id,
+      rol: usuario.rol.value,
+      zonaId: usuario.zonaId ?? null,
+      organizacionId: usuario.organizacionId,
+    };
   });
-  if (!usuario) return null;
-
-  // Feature 146 (A3): `zonaId` viaja en el actor porque el alcance por zona de las
-  // notificaciones (R16) se resuelve contra `usuario.zona_id`. El dato ya venia en la
-  // fila leida: no hay consulta extra.
-  return { usuarioId: usuario.id, rol: usuario.rol.value, zonaId: usuario.zonaId ?? null };
 }

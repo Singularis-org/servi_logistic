@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { PRISMA_OMIT } from "@/lib/db/prisma-client";
+import {
+  crearOrganizacion,
+  datosDeOrganizacionDePrueba,
+  fijarEmpresa,
+} from "../../fabricas/organizaciones";
 
 /**
  * Feature 169 — utilidades para los pocos tests que NECESITAN un Postgres de verdad.
@@ -217,15 +223,39 @@ class Revertir extends Error {
  * desarrollo: si el test pasa, si falla o si el proceso muere a mitad, no queda ni una
  * fila. Un `afterAll` que borre lo insertado no da esa garantia (no corre si el runner se
  * cae, y borra por un criterio que hay que mantener a mano).
+ *
+ * SL-17 (design §9.1, R33): toda fila de negocio lleva `organizacion_id NOT NULL`, y su `DEFAULT`
+ * sale de `app.organizacion_id`. Por eso la transaccion nace con una empresa fijada: la de
+ * `opciones.organizacionId` o, si no la pasan, una creada aqui dentro (el rollback se la lleva,
+ * como al resto). Los tests que ya existian insertan sin saber nada de empresas.
+ *
+ * `fn` corre ademas dentro de `conEmpresa` con esa misma empresa, para que el codigo bajo test que
+ * lea el contexto (`contextoActual`) vea la del test y no «sin empresa». No se usa
+ * `comoPlataforma`: un test de negocio no es un camino de plataforma, y lo taparia todo.
+ *
+ * Lo que esto NO cambia: el `tx` sigue siendo el del cliente BASE, con el rol de la conexion (dueno
+ * de las tablas), asi que la RLS no actua. Para probarla, `comoApp` de `tests/fabricas/organizaciones`.
+ *
+ * La empresa por defecto nace tras un SAVEPOINT: ver `serializarEscriturasReales`, que la deshace y
+ * la rehace despues del lock para no reabrir el deadlock de la feature 227.
  */
 export async function enTransaccionRevertida<T>(
   prisma: PrismaClient,
   fn: (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]) => Promise<T>,
+  opciones?: { organizacionId?: string },
 ): Promise<T> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        throw new Revertir(await fn(tx));
+        let organizacionId = opciones?.organizacionId;
+        if (organizacionId === undefined) {
+          await tx.$executeRawUnsafe(`SAVEPOINT ${SAVEPOINT_EMPRESA_POR_DEFECTO}`);
+          organizacionId = (await crearOrganizacion(tx)).id;
+          empresaPorDefectoAntesDelLock.set(tx, organizacionId);
+        }
+        await fijarEmpresa(tx, organizacionId);
+        const id = organizacionId;
+        throw new Revertir(await conEmpresa(id, () => fn(tx)));
       },
       { timeout: 30_000, maxWait: 15_000 },
     );
@@ -266,11 +296,135 @@ export const CLAVE_LOCK_ESCRITURA_REAL = 227_0815_00;
  * Toma el lock de aviso. DEBE ser la PRIMERA sentencia de la transaccion: si se toma despues de
  * haber tocado ya una tabla, la transaccion habra adquirido locks antes de serializarse y el
  * ciclo vuelve a ser posible.
+ *
+ * SL-17: `enTransaccionRevertida` ya inserto la empresa por defecto antes de que el test llegue
+ * aqui, y ese `INSERT` deja un `ROW EXCLUSIVE` sobre `organizacion` que choca con el
+ * `SHARE ROW EXCLUSIVE` que el DDL de otro test serializado toma al crear o soltar una FK hacia
+ * ella (todas las tablas de negocio la tienen). Medido: con el `INSERT` antes del lock, de 6 a 8
+ * archivos morian con `40P01` en cada corrida de los 85 de integracion. Por eso, si lo unico
+ * escrito es esa empresa, se vuelve al SAVEPOINT (que suelta sus locks), se toma el lock y se
+ * rehace con el mismo id.
  */
 export async function serializarEscriturasReales(tx: {
   $executeRawUnsafe: (sql: string, ...args: unknown[]) => Promise<number>;
 }): Promise<void> {
+  const pendiente = empresaPorDefectoAntesDelLock.get(tx);
+  empresaPorDefectoAntesDelLock.delete(tx);
+  const deshacer = pendiente !== undefined && (await soloSeEscribioLaEmpresa(tx));
+  if (deshacer) await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${SAVEPOINT_EMPRESA_POR_DEFECTO}`);
   await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+  if (deshacer) {
+    const { nombre, slug } = datosDeOrganizacionDePrueba();
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "organizacion" ("id", "nombre", "slug") VALUES ($1, $2, $3)`,
+      pendiente,
+      nombre,
+      slug,
+    );
+    await fijarEmpresa(tx, pendiente);
+  }
+}
+
+const SAVEPOINT_EMPRESA_POR_DEFECTO = "sl17_empresa_por_defecto";
+
+/** La empresa que `enTransaccionRevertida` creo en ese `tx`, mientras no se haya serializado. */
+const empresaPorDefectoAntesDelLock = new WeakMap<object, string>();
+
+// Volver al SAVEPOINT deshace TODO lo de despues, no solo la empresa. Si el test ya escribio algo
+// (incumpliendo «primera sentencia»), deshacerlo le quitaria datos en silencio: se deja como esta y
+// solo se toma el lock. La señal son los locks de escritura de esta sesion fuera de `organizacion`.
+// Solo se descuenta la de `public`: un esquema temporal de otro test con una tabla de igual nombre
+// es una escritura del test, no la empresa por defecto.
+async function soloSeEscribioLaEmpresa(tx: object): Promise<boolean> {
+  if (typeof (tx as Partial<ClienteDeSqlCrudo>).$queryRawUnsafe !== "function") return false;
+  const filas = await (tx as ClienteDeSqlCrudo).$queryRawUnsafe<{ n: number }[]>(
+    `SELECT count(*)::int AS n
+       FROM pg_locks l
+       JOIN pg_class c ON c.oid = l.relation
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE l.pid = pg_backend_pid()
+        AND l.locktype = 'relation'
+        AND l.mode NOT IN ('AccessShareLock', 'RowShareLock')
+        AND NOT (n.nspname = 'public'
+                 AND c.relname IN ('organizacion', 'organizacion_pkey', 'organizacion_slug_key'))`,
+  );
+  return filas[0]?.n === 0;
+}
+
+/**
+ * SL-17 T4.3b — corre `fn` con el lock de la 227 tomado EN SESION, en una conexion propia que solo
+ * lo sostiene. Es para lo que commitea FUERA de una transaccion revertida: la siembra y la limpieza
+ * de `usuario`/`organizacion` de los tests de dos empresas, y el DDL de esquemas desechables.
+ *
+ * POR QUE HACE FALTA. Los `down.sql` reales que corren serializados (familia `notificacion`)
+ * toman AccessExclusiveLock sobre tablas hijas de `usuario` y `organizacion`, y en su caso sobre
+ * las padres. Un `DELETE FROM organizacion` o `usuario` commiteado recorre sus hijas por las
+ * FK (cascada y comprobaciones RI) en un orden que no es el del down: medido en la suite completa,
+ * 40P01. Un `INSERT INTO usuario` es lo mismo en pequeño (usuario primero, luego `KEY SHARE` en
+ * `organizacion`/`rol`). Y un `DROP SCHEMA` a mitad de un down que recorre `pg_indexes` con
+ * `pg_get_indexdef` le borra el OID bajo los pies (XX000). Serializar con el mismo lock lo elimina.
+ *
+ * POR QUE EN SESION Y EN OTRA CONEXION, y no un `pg_advisory_xact_lock` dentro de `$transaction`:
+ * asi vale tambien para lo que va por el cliente EXTENDIDO (cada operacion abre su propia
+ * transaccion en el pool, donde no se puede meter el lock) y para la conexion fija de un test con
+ * `search_path` propio. Un lock de sesion y uno de transaccion con la misma clave se excluyen.
+ * Si el proceso muere, la conexion se cierra y el lock se va con ella.
+ *
+ * ⚠️ `fn` NO puede pedir este mismo lock por otra conexion: esperaria a esta, que espera a `fn`,
+ * y Postgres no lo ve como deadlock (la espera de en medio es de Node). Se colgaria.
+ */
+export async function bajoLockDeEscrituraReal<T>(fn: () => Promise<T>): Promise<T> {
+  const soltar = await tomarLockDeEscrituraReal();
+  try {
+    return await fn();
+  } finally {
+    await soltar();
+  }
+}
+
+/**
+ * La misma pieza que `bajoLockDeEscrituraReal`, pero abierta: toma el lock y devuelve con que
+ * soltarlo. Es para los archivos que COMMITEAN filas en `notificacion` (avisos de sus acciones y
+ * crons) y las dejan vivas hasta su `afterAll`: un `down.sql` historico de la familia `notificacion`
+ * reconstruye el enum sin los valores posteriores y su `ALTER COLUMN ... TYPE` muere con 22P02 si ve
+ * una de esas filas (medido: `cierre_dia_rechazado` de `aislamiento-cierres`). Serializar cada
+ * escritura no basta, porque la fila sigue ahi despues; lo que hay que serializar es su VIDA: se toma
+ * en el `beforeAll`, antes de sembrar, y se suelta en el `afterAll`, despues de limpiar.
+ *
+ * Mismo aviso que arriba: mientras se sostiene, nada del archivo puede pedir este lock por otra
+ * conexion (`serializarEscriturasReales`, `bajoLockDeEscrituraReal`, un `pg_advisory_xact_lock`).
+ */
+export async function tomarLockDeEscrituraReal(): Promise<() => Promise<void>> {
+  const adaptador = await new PrismaPg({ connectionString: urlDeBaseDeDatos() as string, max: 1 }).connect();
+  const pool = adaptador.underlyingDriver() as unknown as PoolDelDriver;
+  const conexion = await pool.connect();
+  const cerrar = async () => {
+    conexion.release();
+    await pool.end();
+  };
+  try {
+    await conexion.query(`SELECT pg_advisory_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+  } catch (error) {
+    await cerrar();
+    throw error;
+  }
+  let suelto = false;
+  return async () => {
+    if (suelto) return;
+    suelto = true;
+    try {
+      await conexion.query(`SELECT pg_advisory_unlock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+    } finally {
+      // Cerrar la conexion tambien lo suelta: si el `unlock` fallara, el lock no se queda tomado.
+      await cerrar();
+    }
+  };
+}
+
+/** Lo minimo del `pg.Pool` que hay debajo del driver adapter (sin dependencia nueva). */
+interface PoolDelDriver {
+  connect(): Promise<{ query(texto: string): Promise<unknown>; release(): void }>;
+  end(): Promise<void>;
 }
 
 /**
@@ -296,11 +450,30 @@ export async function serializarEscriturasReales(tx: {
  * es el modo de fallo correcto. Queda dicho tambien en `db/schema.prisma`, junto al modelo.
  *
  * Todo esto corre DENTRO de la transaccion revertida del test: la tabla vuelve al hacer rollback.
+ *
+ * SL-17 T4.3 — se suelta la COLUMNA y no la tabla, y antes se toma `notificacion`. Desde M2
+ * (`20261022130100_organizacion_id_en_negocio`) `push_envio_dia` tiene FK a `organizacion` ademas
+ * de a `usuario`, y `DROP TABLE` pide AccessExclusiveLock sobre las DOS tablas padre: la primera la
+ * tienen en RowExclusive casi todas las transacciones de test abiertas (su empresa por defecto), y
+ * la segunda los `deleteMany` de limpieza que commitean fuera del lock de la 227. Medido en la suite
+ * completa (log del servidor): `DROP TABLE "push_envio_dia"` esperaba a `usuario` mientras un
+ * `DELETE FROM usuario` esperaba a `push_envio_dia` por su ON DELETE CASCADE: 40P01. Para el enum da
+ * igual tabla que columna (solo `evento` depende de el); `DROP COLUMN` solo bloquea `push_envio_dia`,
+ * que es lo que bloquean los down posteriores a la 410 al retiparla.
+ *
+ * El orden importa: ese `DELETE` en cascada llega a `notificacion` antes que a `push_envio_dia` (sus
+ * triggers RI se disparan por nombre, y el de `notificacion` es mas antiguo). Tomando `notificacion`
+ * primero —el down la va a reescribir igual con AccessExclusiveLock, y es el orden de los down
+ * posteriores a la 410— esta transaccion espera a ese `DELETE` en vez de cerrarle el paso a mitad.
+ * Un `DELETE FROM organizacion` commiteado recorre sus hijas en el orden CONTRARIO (M2 creo antes la
+ * FK de `push_envio_dia`): contra ese no hay orden que valga; el remedio es que no corra fuera del
+ * lock de la 227.
  */
 export async function soltarDependientesPosterioresDelEnumDeEventos(tx: {
   $executeRawUnsafe: (sql: string, ...args: unknown[]) => Promise<number>;
 }): Promise<void> {
-  await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS "push_envio_dia"`);
+  await tx.$executeRawUnsafe(`LOCK TABLE "notificacion" IN ACCESS EXCLUSIVE MODE`);
+  await tx.$executeRawUnsafe(`ALTER TABLE "push_envio_dia" DROP COLUMN IF EXISTS "evento"`);
 }
 
 /** FKs obligatorias de `orden`, tomadas de una fila existente. `null` si la tabla esta vacia. */

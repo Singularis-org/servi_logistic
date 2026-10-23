@@ -8,8 +8,8 @@
  * POR QUE VIVE AQUI Y NO COMO PRIVADO DE `GeoRepository`. Es el mismo argumento, literal, que ya
  * justifica a su hermano `_shared/zona-colapso.ts`: dos copias son dos reglas que un dia divergen,
  * y la que divergiera dejaria fuera —o dentro— filas del catalogo SIN romper ningun test. Aqui
- * ademas hay cinco consumidores en tres capas distintas (`GeoRepository`, `OrdenRepository`,
- * `ConteosPublicosRepository`, `geo-resolucion` y la pantalla de administracion).
+ * ademas hay consumidores en tres capas distintas (`GeoRepository`, `OrdenRepository`,
+ * `geo-resolucion` y la pantalla de administracion).
  *
  * ⚠️ ESTE MODULO NO IMPORTA NADA DE `@prisma/client`, y no es casualidad: los fragmentos `where`
  * son literales que Prisma acepta ESTRUCTURALMENTE, y asi lo puede importar tambien
@@ -52,8 +52,8 @@ export function estaDisponible(flags: FlagsGeograficos): boolean {
 }
 
 /**
- * `where` de Prisma para las lecturas que SI recortan por disponibilidad. Son exactamente dos en
- * todo el arbol (design §4): los conteos publicos de la landing y nada mas. Todo lo demas
+ * `where` de Prisma para las lecturas que SI recortan por disponibilidad. La unica que las usaba
+ * eran los conteos publicos de la landing, retirados en SL-17 (R43). Todo lo demas
  * PROYECTA la bandera y deja filtrar al consumidor, porque en geografia el desplegable es la
  * unica via —nadie teclea un uuid— y ocultar un distrito retirado dejaria INFILTRABLES las
  * ordenes historicas de ese distrito.

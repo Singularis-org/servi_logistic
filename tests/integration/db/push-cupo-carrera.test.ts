@@ -40,6 +40,8 @@ const ESQUEMA = `${PREFIJO}${Date.now().toString(36)}_${randomUUID().slice(0, 8)
 
 const AHORA = new Date("2026-09-12T18:00:00.000Z"); // 12:00 CR del 2026-09-12
 const USUARIO = "u-mensajero-carrera";
+/** La empresa de las filas del clon: ninguna FK la exige (ver el `beforeAll`). */
+const EMPRESA_DEL_CLON = randomUUID();
 
 const ENTRADA: CrearNotificacionInput = {
   tipo: "alert",
@@ -212,6 +214,14 @@ describeSiHayBase("410/R7 — dos emisiones SIMULTANEAS dejan UN cupo y UN encol
     // falta sembrar usuarios reales en la base compartida.)
     await admin.$executeRawUnsafe(
       `CREATE TABLE "${ESQUEMA}"."push_envio_dia" (LIKE "public"."push_envio_dia" INCLUDING ALL)`,
+    );
+    // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el clon hereda `organizacion_id NOT
+    // NULL` con su DEFAULT de `app.organizacion_id`, y aqui el repositorio escribe en autocommit
+    // por dos conexiones, sin transaccion donde fijarla. Lo medido es el indice del cupo, no la
+    // empresa: un id fijo como DEFAULT del clon vale, porque `LIKE` no copia la FK a `organizacion`.
+    await admin.$executeRawUnsafe(
+      `ALTER TABLE "${ESQUEMA}"."push_envio_dia"
+         ALTER COLUMN "organizacion_id" SET DEFAULT '${EMPRESA_DEL_CLON}'`,
     );
 
     // ⚠️ EL ENUM HAY QUE CLONARLO TAMBIEN, y no es un capricho: el cliente de Prisma CUALIFICA el

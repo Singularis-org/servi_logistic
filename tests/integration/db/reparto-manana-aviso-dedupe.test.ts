@@ -361,7 +361,8 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     const def = filas[0]?.def ?? "";
 
     expect(def, "no existe `notificacion_dedupe_key`").not.toBe("");
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
     expect(def).toMatch(/NULLS NOT DISTINCT/i);
     expect(def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
     // ⚠️ El índice NO mira la lectura: por eso la entidad tiene que llevar el DÍA dentro.

@@ -4,7 +4,8 @@ import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import { prepararConsultaAnalitica, type ConsultaAnalitica } from "@/lib/analytics/consulta";
 import { trocear, type CuboTemporal } from "@/lib/analytics/cubo-temporal";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../db/_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "../db/_postgres-real";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 // Feature 187 / T6.1 y T6.2 — LA MITAD QUE SOLO POSTGRES PUEDE DEMOSTRAR.
 //
@@ -83,16 +84,28 @@ describeSiHayBase("la lectura consistente de la analitica financiera, contra Pos
   let prisma: PrismaClient;
   /** SEGUNDA conexion: la que confirma escrituras mientras la primera tiene el snapshot abierto. */
   let escritor: PrismaClient;
+  /**
+   * SL-17 M2 (20261022130100_organizacion_id_en_negocio): cada movimiento lleva empresa, y aqui se
+   * siembra CONFIRMADO, sin transaccion que la fije. Se crea confirmada y se borra al final,
+   * despues de sus filas (la FK es RESTRICT).
+   */
+  let empresaId: string;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     prisma = crearPrismaDeTest();
     escritor = crearPrismaDeTest();
-  });
+    empresaId = (await bajoLockDeEscrituraReal(() => crearOrganizacion(prisma))).id;
+  }, 120_000);
 
   afterAll(async () => {
-    await prisma.walletMovimiento.deleteMany({ where: { id: { in: TODOS_LOS_IDS } } });
+    // Bajo el lock de la 227: el `DELETE` commiteado de `organizacion` recorre sus hijas por las FK
+    // en otro orden que los `down.sql` serializados, y sin el chocaba con ellos (40P01).
+    await bajoLockDeEscrituraReal(async () => {
+      await prisma.walletMovimiento.deleteMany({ where: { id: { in: TODOS_LOS_IDS } } });
+      await prisma.organizacion.delete({ where: { id: empresaId } });
+    });
     await Promise.all([prisma.$disconnect(), escritor.$disconnect()]);
-  });
+  }, 120_000);
 
   /* ------------------------------------------------------------------------ */
   /* I1 — el nivel de aislamiento aterriza de verdad (R2)                       */
@@ -137,14 +150,14 @@ describeSiHayBase("la lectura consistente de la analitica financiera, contra Pos
       await exigirVentanaVacia(prisma, consulta);
       // Dinero preexistente y confirmado: sin el, el caso compararia 0 contra 0 y pasaria aunque
       // el alcance no existiera.
-      await sembrar(escritor, ID_PREEXISTENTE, "30.00");
+      await sembrar(escritor, empresaId, ID_PREEXISTENTE, "30.00");
 
       const [total, porCubo] = await new IngresosAnaliticaRepository(prisma).enLecturaConsistente(
         async (r) => {
           const t = await r.sumarPorCategoria(consulta);
           // AQUI, con el snapshot ya fijado por la sentencia de arriba, otra conexion CONFIRMA
           // dinero nuevo dentro de la misma ventana.
-          await sembrar(escritor, ID_ESCRITURA_CON_ALCANCE, "33.00");
+          await sembrar(escritor, empresaId, ID_ESCRITURA_CON_ALCANCE, "33.00");
           const c = await r.sumarPorCuboYCategoria(consulta, cubos);
           return [t, c] as const;
         },
@@ -166,13 +179,13 @@ describeSiHayBase("la lectura consistente de la analitica financiera, contra Pos
 
     try {
       await exigirVentanaVacia(prisma, consulta);
-      await sembrar(escritor, ID_PREEXISTENTE, "30.00");
+      await sembrar(escritor, empresaId, ID_PREEXISTENTE, "30.00");
 
       // Exactamente la misma secuencia de antes, sin el alcance. Esta es la mitad que demuestra
       // que el caso de arriba muerde: si esto tambien cuadrara, la feature no estaria arreglando
       // nada y el verde de I2 seria una casualidad del entorno.
       const total = await repo.sumarPorCategoria(consulta);
-      await sembrar(escritor, ID_ESCRITURA_SIN_ALCANCE, "33.00");
+      await sembrar(escritor, empresaId, ID_ESCRITURA_SIN_ALCANCE, "33.00");
       const porCubo = await repo.sumarPorCuboYCategoria(consulta, cubos);
 
       expect(sumar(total)).toBe("30.00");
@@ -251,10 +264,16 @@ async function exigirVentanaVacia(
  * Fila coherente con el CHECK `wallet_movimiento_tipo_categoria_check` de la 173: `ingreso_flete`
  * es de tipo `ingreso`.
  */
-async function sembrar(escritor: PrismaClient, id: string, monto: string): Promise<void> {
+async function sembrar(
+  escritor: PrismaClient,
+  organizacionId: string,
+  id: string,
+  monto: string,
+): Promise<void> {
   await escritor.walletMovimiento.create({
     data: {
       id,
+      organizacionId,
       tipo: "ingreso",
       categoria: "ingreso_flete",
       monto,

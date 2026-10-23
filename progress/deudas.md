@@ -48,7 +48,38 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** decidir con SL-27 si se reescriben como «la app de origen» o se archivan.
 - **Dueño:** quien tome SL-27.
 
-### D10 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
+### D10 — Excepciones de plataforma que absorbe SL-36
+- **Origen:** SL-17 (2026-10-23). El webhook de WhatsApp (`app/api/webhooks/whatsapp/route.ts`) corre en `comoPlataforma("SL-36", …)` y la sincronización de plantillas usa credenciales globales: dos empresas comparten número y plantillas de Meta.
+- **Qué falta:** credenciales de API por empresa y quitar la excepción de `lib/db/excepciones-aislamiento.ts`.
+- **Dueño:** quien tome SL-36.
+
+### D11 — Revisión fina del SQL a mano
+- **Origen:** SL-17, decisión D7. `EXCEPCIONES_SQL_A_MANO` (`lib/db/excepciones-aislamiento.ts`) arranca con 47 archivos que no filtran por `organizacion_id`; hoy solo los cubre la RLS.
+- **Qué falta:** revisarlos uno a uno, añadir el filtro y sacarlos de la lista (la guardia `sql-a-mano-por-empresa` exige que la lista solo baje).
+- **Dueño:** Carlos Restrepo (ficha propia).
+
+### D12 — Escritura de vehículos y de geografía del maestro
+- **Origen:** SL-17, D12 y R40. `vehiculos`, provincia, cantón y distrito son de plataforma: escribir desde una empresa falla cerrado. Las actions de `lib/actions/vehiculos.ts` y `crear/renombrarNodoGeografico` devuelven un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar. `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, una marca del flujo de Tarifas, que el maestro ya no puede cambiar.
+- **Qué falta:** pasar la edición al superadmin (SL-26), dejar las pantallas del maestro en solo lectura con su mensaje, y decidir dónde vive la marca de zona especial (¿`zona_distrito` de la empresa?).
+- **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26.
+
+### D13 — Coste medido de la envoltura y de los triggers
+- **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.
+- **Qué falta:** si una ruta caliente se pasa de presupuesto, una transacción por petición (en vez de una por operación) o triggers sin `EXECUTE` dinámico. No se optimizó en SL-17.
+- **Dueño:** Carlos Restrepo (cuando haya una medida en producción).
+
+### D14 — Huecos conocidos del aislamiento
+- **Origen:** SL-17 (2026-10-23).
+- **Qué falta:**
+  - dentro de una `$transaction` interactiva, usar el cliente global en vez de `tx` va filtrado pero sin envoltura (como dueño): el SQL a mano ahí no tiene RLS;
+  - `getPrismaClient().$extends(...)` deja fuera el `Proxy` de `$transaction`;
+  - lecturas de `organizacion_id` directas a Prisma en `lib/api/api-key-request.ts`, `lib/actions/rastreo-publico.ts` y el webhook de WhatsApp, que deberían ir a sus repositorios;
+  - ~20 suites inyectan dobles de `autenticar` sin `organizacionId` (rama sin contexto que falla cerrado);
+  - `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra choca (P2002) y la primera sigue enviándole push;
+  - código que quedó sin uso tras retirar los conteos públicos: `WHERE_*_DISPONIBLE` (`lib/repositories/_shared/geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts`.
+- **Dueño:** SL-18/SL-19 (push y únicos), Carlos Restrepo (el resto, ficha propia).
+
+### D15 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
 - **Origen:** SL-32 (2026-10-22), P7. Con SL-17, `renombrar` y `cambiarActivacion` de `GeografiaService` escriben `historial_accion`, y `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene empresa: esas operaciones fallan con `EmpresaNoResuelta`.
 - **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles.
 - **Dueño:** quien tome SL-26 (decide Carlos Restrepo).

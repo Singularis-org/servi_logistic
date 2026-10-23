@@ -3,7 +3,13 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, etiquetasDeEnum } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  crearPrismaDeTest,
+  enTransaccionRevertida,
+  etiquetasDeEnum,
+  serializarEscriturasReales,
+} from "./_postgres-real";
 
 // FEATURE 262 (B22, D7) — la migracion que anade el aviso «te corrigieron el dia de reparto» a los
 // DOS enums de la campana (`notificacion_evento` y `notificacion_entidad_tipo`).
@@ -447,44 +453,45 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
     // Es lo que ningun test estatico puede demostrar: que el valor no solo esta en el cliente
     // generado, sino que la BASE lo acepta en la columna. Se escribe y se borra en el acto; la fila
     // lleva `entidad_id` NULL, asi que no entra en el indice unico de dedupe (que es parcial).
-    const id = randomUUID();
-    try {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id")
-         VALUES ($1, 'box'::"notificacion_tipo",
-                 'dia_reparto_corregido'::"notificacion_evento",
-                 'prueba 262', 'orden_dia_reparto_cambio'::"notificacion_entidad_tipo",
-                 NULL, NULL)`,
-        id,
-      );
-      // Ojo: el CHECK XOR exige rol O usuario. Con los dos NULL la insercion de arriba falla, asi
-      // que si llegamos aqui es que el CHECK no existe — y eso tambien hay que saberlo.
-      const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+    // SL-17 T4.3: en una transaccion revertida y tras el lock de la 227, con la empresa del DEFAULT.
+    // Commitear una empresa y borrarla despues chocaba con el down de los archivos hermanos (40P01):
+    // ver `notificacion-evento-bloqueo-cierre-migration.test.ts`.
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const id = randomUUID();
+      const insertar = (destinatario: string) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO "notificacion"
+             ("id","tipo","evento","descripcion","entidad_tipo","entidad_id",${destinatario})
+           VALUES ($1, 'box'::"notificacion_tipo",
+                   'dia_reparto_corregido'::"notificacion_evento",
+                   'prueba 262', 'orden_dia_reparto_cambio'::"notificacion_entidad_tipo",
+                   NULL, ${destinatario === '"destinatario_rol"' ? `'mensajero'::"rol_value"` : "NULL"})`,
+          id,
+        );
+      // Ojo: el CHECK XOR exige rol O usuario. Con los dos NULL la insercion falla; si no fallara, es
+      // que el CHECK no existe — y eso tambien hay que saberlo. En SAVEPOINT: un error aborta la tx.
+      let errorSinDestinatario: string | null = null;
+      await tx.$executeRawUnsafe(`SAVEPOINT sin_destinatario`);
+      try {
+        await insertar(`"destinatario_usuario_id"`);
+        await tx.$executeRawUnsafe(`RELEASE SAVEPOINT sin_destinatario`);
+      } catch (error) {
+        errorSinDestinatario = (error as Error).message;
+        await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT sin_destinatario`);
+        // El CHECK XOR rechaza la fila SIN destinatario: se reintenta con uno, que es la forma real.
+        await insertar(`"destinatario_rol"`);
+      }
+      const filas = await tx.$queryRawUnsafe<{ n: bigint }[]>(
         `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
         id,
       );
-      expect(Number(filas[0].n)).toBe(1);
-    } catch (error) {
-      // El CHECK XOR rechaza la fila SIN destinatario: se reintenta con uno, que es la forma real.
-      expect((error as Error).message).toContain("notificacion_destinatario_xor");
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "notificacion"
-           ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_rol")
-         VALUES ($1, 'box'::"notificacion_tipo",
-                 'dia_reparto_corregido'::"notificacion_evento",
-                 'prueba 262', 'orden_dia_reparto_cambio'::"notificacion_entidad_tipo",
-                 NULL, 'mensajero'::"rol_value")`,
-        id,
-      );
-      const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-        `SELECT count(*) AS n FROM "notificacion" WHERE id = $1`,
-        id,
-      );
-      expect(Number(filas[0].n)).toBe(1);
-    } finally {
-      await prisma.$executeRawUnsafe(`DELETE FROM "notificacion" WHERE id = $1`, id);
+      return { errorSinDestinatario, n: Number(filas[0].n) };
+    });
+    if (r.errorSinDestinatario !== null) {
+      expect(r.errorSinDestinatario).toContain("notificacion_destinatario_xor");
     }
+    expect(r.n).toBe(1);
   }, 60_000);
 
   it("⭑⭑ el `notificacion_dedupe_key` conserva `NULLS NOT DISTINCT` y su `WHERE` parcial", async () => {
@@ -517,6 +524,8 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
     expect(filas.map((f) => f.indexname)).toEqual([
       "notificacion_dedupe_key",
       "notificacion_entidad_idx",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): el indice de la empresa.
+      "notificacion_organizacion_id_idx",
       "notificacion_pkey",
       "notificacion_rol_created_at_idx",
       "notificacion_tienda_id_created_at_idx",

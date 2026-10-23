@@ -13,6 +13,7 @@ import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { notificarCierreDiaVencidoReal } from "@/lib/notificaciones/notificadores";
 
@@ -20,6 +21,23 @@ export interface CorteDiarioDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
   getSecret?: () => string | null;
   service?: ICorteDiarioService;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
+}
+
+// R24: resumen SIN PII (solo conteos), campo a campo.
+type ResumenCorte = { vencidosCreados: number; mensajerosEvaluados: number };
+
+function sumar(corridas: ResumenCorte[]): ResumenCorte {
+  return corridas.reduce(
+    (t, r) => ({
+      vencidosCreados: t.vencidosCreados + r.vencidosCreados,
+      mensajerosEvaluados: t.mensajerosEvaluados + r.mensajerosEvaluados,
+    }),
+    { vencidosCreados: 0, mensajerosEvaluados: 0 },
+  );
 }
 
 function buildService(): ICorteDiarioService {
@@ -80,11 +98,29 @@ export async function handleCorteDiario(
 
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
-    const resumen = await service.ejecutarCorte();
-    // R24: resumen SIN PII (solo conteos).
+    const corrida = async (): Promise<ResumenCorte> => {
+      const resumen = await service.ejecutarCorte();
+      return {
+        vencidosCreados: resumen.vencidosCreados,
+        mensajerosEvaluados: resumen.mensajerosEvaluados,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): el corte toca ordenes y cierres, que son de cada empresa: una corrida por
+    // empresa, cada una en su contexto. Un fallo en una no frena a las demas y queda en `empresas`.
+    const corridas: ResumenCorte[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      vencidosCreados: resumen.vencidosCreados,
-      mensajerosEvaluados: resumen.mensajerosEvaluados,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

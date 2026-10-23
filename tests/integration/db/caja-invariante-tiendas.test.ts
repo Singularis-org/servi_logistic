@@ -17,7 +17,7 @@ import {
   type Escenario459,
   type LecturaCaja459,
 } from "./_fixtures/caja-459";
-import { UP_COMPLETAR_461 } from "./_fixtures/completar-caja-461-sql";
+import { UP_461_SOBRE_ESQUEMA_ACTUAL } from "./_fixtures/completar-caja-461-sql";
 import { CLAVE_CANDADO_459 } from "./_fixtures/escrituras-459";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -419,13 +419,17 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
     });
   }
 
-  /** Ejecuta el `migration.sql` REAL de `20260926120200_cobro_tienda_461_completar_caja`, TAL CUAL. */
+  /**
+   * Ejecuta el `migration.sql` REAL de `20260926120200_cobro_tienda_461_completar_caja`, con el unico
+   * cambio del objetivo de su `ON CONFLICT` al unico por empresa de SL-17 (ver el fixture): sobre el
+   * esquema de hoy, el texto tal cual cae con 42P10.
+   */
   async function completar(
     tx: TxDeTest,
     cobro: { id: string; monto: Prisma.Decimal; fechaMovimiento: Date },
     reclasificado: { id: string },
   ): Promise<NonNullable<Medida["completada"]>> {
-    await tx.$executeRawUnsafe(UP_COMPLETAR_461);
+    await tx.$executeRawUnsafe(UP_461_SOBRE_ESQUEMA_ACTUAL);
     const lineas = await tx.walletMovimiento.findMany({ where: { origenId: cobro.id } });
     const [l] = lineas;
     return {

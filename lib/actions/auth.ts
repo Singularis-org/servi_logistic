@@ -16,6 +16,7 @@ import { SessionRepository } from "@/lib/repositories/SessionRepository";
 import { RiskEngine } from "@/lib/services/RiskEngine";
 import { crearEmailProvider } from "@/lib/services/EmailProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { SESSION_COOKIE_NAME } from "@/lib/constants/auth";
 
 export interface RequestContext {
@@ -94,7 +95,12 @@ export async function login(input: unknown, deps: LoginDeps = {}): Promise<Login
   const authService = deps.authService ?? buildAuthService();
 
   const context = await getContext();
-  const result = await authService.login({ ...parsed.data, ...context });
+  // SL-17 (design §7): antes de entrar no hay empresa; el usuario se busca por email, que es
+  // unico global (R36), y la empresa la dira despues su sesion. `Session`, `trusted_device`,
+  // `email_otp_challenge` y `login_attempt` son de plataforma: aqui no se escribe negocio.
+  const result = await comoPlataforma("SL-17", "login", () =>
+    authService.login({ ...parsed.data, ...context }),
+  );
 
   switch (result.status) {
     case "ok":
@@ -135,7 +141,10 @@ export async function verifyChallenge(
   const authService = deps.authService ?? buildAuthService();
 
   const context = await getContext();
-  const result = await authService.verifyChallenge({ ...parsed.data, ...context });
+  // SL-17: el OTP lee el usuario del desafio (`findById`) antes de que exista sesion y empresa.
+  const result = await comoPlataforma("SL-17", "login", () =>
+    authService.verifyChallenge({ ...parsed.data, ...context }),
+  );
 
   if (result.status === "ok") {
     await setCookie(result.sessionId, result.expiresAt); // R23
