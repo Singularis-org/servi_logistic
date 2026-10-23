@@ -79,3 +79,21 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra choca (P2002) y la primera sigue enviándole push;
   - código que quedó sin uso tras retirar los conteos públicos: `WHERE_*_DISPONIBLE` (`lib/repositories/_shared/geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts`.
 - **Dueño:** SL-18/SL-19 (push y únicos), Carlos Restrepo (el resto, ficha propia).
+
+### D15 — Deadlock 40P01 entre el R34 de `cobro-tienda-461-completar-migration` y los tests de concurrencia de la caja
+- **Origen:** SL-38, review vuelta 1 (B1), 2026-10-23. Es de `dev`, no de SL-38.
+- **Causa (DETAIL de Postgres):**
+  - El R34 corre `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT "wallet_tienda_movimiento_tienda_id_fkey"` dentro de `enTransaccionRevertida459`, que toma el lock de la 227 (`CLAVE_LOCK_ESCRITURA_REAL`).
+  - Del otro lado hay una transacción del servicio real que lee o escribe `wallet_tienda_movimiento`: el `SUM(monto) … GROUP BY tipo` del saldo, o el `INSERT … ON CONFLICT DO NOTHING` de `WalletTiendaMovimientoRepository`.
+  - Esa transacción la abren `abono-tienda-457-concurrencia` y `pago-por-cuenta-tienda-concurrencia`, que commitean solo bajo `conCandado459` (`4590001`) o `hashtext(...)`, no bajo el de la 227. Los dos locks no se excluyen.
+  - El DDL ya tiene el libro de tiendas y espera `AccessExclusiveLock` sobre una segunda relación, que el servicio ya tiene tomada. Por la FK que suelta, esa relación es `usuario`, aunque es una inferencia: el OID no se resolvió porque la base se borró.
+  - El servicio espera el libro de tiendas. Toman las dos tablas en orden inverso, y por eso hay ciclo.
+- **Contraprueba sobre `origin/dev` (`fa67b57`, sin SL-38):**
+  - Base `sl38_devref` migrada con las de dev, cliente generado desde dev y los tres archivos juntos, 10 corridas.
+  - Resultado: **2/10 con 40P01**. La corrida 1 mató al `abono-tienda-457-concurrencia` (R16) y la 3 al R34. Las dos con el mismo par de sentencias en el log del servidor (14:32:54 y 14:33:27).
+  - En la selección de `test:rapido` solo sale cuando el planificador de vitest los cruza en el tiempo: el reviewer lo vio y la corrida instrumentada r1 no.
+- **Qué falta:**
+  - Serializar las dos familias con un único orden de locks. Una opción: que los tests de concurrencia 457/458/461 sostengan el lock de la 227 en sesión (`tomarLockDeEscrituraReal`) durante su escritura commiteada, ANTES del de la 459.
+  - Otra opción: que el R34 no haga DDL sobre una tabla real y pruebe el control con un esquema desechable.
+  - Un reintento no vale.
+- **Dueño:** quien tome la siguiente ficha de la caja (461/459), o Carlos Restrepo si se abre una propia.

@@ -559,3 +559,55 @@ política abierta, por `true` fijo en el predicado y por no sembrar la marca de 
 - **Limpieza:** dev server de `:3000` apagado (árbol matado, puerto libre, ningún `node` del
   worktree); `sl38_ui` borrada (`count = 0`); lock de `node_modules` liberado; cliente Prisma con
   `distritoZonaEspecial: SI | Distrito.zonaEspecial: ausente` al principio y al final.
+
+## Review vuelta 2 — B1 (40P01) y B2 (E2E de flujos críticos)
+
+`backend_dev`, 2026-10-23, bajo `gate.lock` («SL-38 backend_dev vuelta2»).
+
+### B1 — el 40P01 de `cobro-tienda-461-completar-migration` es deuda de `dev` (D15)
+
+- **DETAIL del servidor** (log de Postgres, corrida del reviewer, 13:33:05): de un lado el R34, `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT "wallet_tienda_movimiento_tienda_id_fkey"`; del otro, `INSERT INTO "public"."wallet_tienda_movimiento" (…) ON CONFLICT DO NOTHING`, que es el `createMany({ skipDuplicates })` de `WalletTiendaMovimientoRepository`, llamado por un servicio real.
+- **Quién está del otro lado.** La sonda del otro backend_dev (conexiones etiquetadas por archivo con `PGAPPNAME`, corrida `related` entera, verde) solo ve escribiendo en la caja, fuera del lock de la 227, a `abono-tienda-457-concurrencia` y `pago-por-cuenta-tienda-concurrencia`. Los dos commitean por el servicio bajo `conCandado459` o `hashtext(...)`. El R34 sí toma el de la 227 (`enTransaccionRevertida459` → `serializarEscriturasReales`). Los dos locks no se excluyen, y el DDL y el servicio toman las dos tablas en orden inverso.
+- **La hipótesis de SL-38 se descarta.** Los tests nuevos (`zona-especial-dos-empresas`, `distrito-zona-especial-por-empresa`) toman el lock de la 227 en la siembra, en la limpieza y en lo que commitean. Los dos de concurrencia no cambian frente a `origin/dev`.
+- **Contraprueba k/N sobre `origin/dev` sin SL-38** (`fa67b57`): worktree temporal `wt-dev`, base `sl38_devref` migrada con las de dev, cliente generado desde dev, y los tres archivos juntos, 10 corridas:
+  ```
+  run 1 EXIT=1 40P01=0  Tests 1 failed | 16 passed (17)   <- R16 de abono-tienda-457-concurrencia: «DriverAdapterError: se ha detectado un deadlock»
+  run 2 EXIT=0 40P01=0  Tests 17 passed (17)
+  run 3 EXIT=1 40P01=1  Tests 1 failed | 16 passed (17)   <- R34 de cobro-tienda-461-completar-migration
+  run 4..10 EXIT=0      Tests 17 passed (17)
+  ```
+  **2/10.** En las dos, el log del servidor da el mismo par (14:32:54 y 14:33:27): `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT …` contra `SELECT SUM("monto") … FROM "wallet_tienda_movimiento" WHERE "tienda_id" = $1 AND "organizacion_id" = $2 GROUP BY "tipo"`, que es el saldo que lee el servicio en la misma transacción.
+- **Por qué sale o no en `test:rapido`.** Solo cuando vitest cruza esos archivos en el tiempo. En la corrida r1 del otro backend_dev el 461 corrió a los 705 s y los de concurrencia entre 31 y 119 s: verde.
+- **Arreglo:** ninguno en SL-38, porque no es suyo. Queda anotado en `progress/deudas.md > D15`, con dos remedios posibles y sin reintento.
+- **Limpieza:** borrados `b1-appname.setup.ts` y `vitest.b1.config.ts`. Del `wt-dev` se quitó primero solo el junction de `node_modules` (`rmdir`; el `node_modules` principal sigue intacto) y después `git worktree remove`. Borradas `sl38_b1` y `sl38_devref`.
+
+### B2 — E2E de los flujos críticos (un solo dev server, base desechable `sl38_e2e`)
+
+- **Montaje:** `sl38_e2e` con `migrate deploy` y `db:seed`, y cliente Prisma de SL-38 regenerado. El puerto 3000 estaba libre antes de empezar. Un `pnpm dev` en el worktree con `DATABASE_URL` a `sl38_e2e`, las `SMTP_*` del `.env` principal y `.next/dev` limpio, con el stdout a un archivo (`SL17_HUMO_LOG_SERVIDOR`). Buzones: `SL17_HUMO_MAESTRO_A`/`_B`, por entorno (`@example.test`).
+- **`e2e/dos-empresas-humo.spec.ts`: VERDE.** Salida literal:
+  ```
+  Running 6 tests using 1 worker
+    ok 1 e2e\dos-empresas-humo.spec.ts:139:5 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (9ms)
+    ok 2 e2e\dos-empresas-humo.spec.ts:157:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.2m)
+    ok 3 e2e\dos-empresas-humo.spec.ts:157:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (26.7s)
+    ok 4 e2e\dos-empresas-humo.spec.ts:202:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.1s)
+    ok 5 e2e\dos-empresas-humo.spec.ts:223:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (14.0s)
+    ok 6 e2e\dos-empresas-humo.spec.ts:270:5 › vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40) (5.8s)
+    6 passed (2.3m)
+  PW_EXIT=0
+  ```
+  Las 46 visitas (23 rutas × 2 empresas) con `"fugas":[]`, y 0 `EmpresaNoResuelta` en el log del server.
+- **`e2e/cierre-dia.spec.ts`: ROJO, porque no puede correr en la app vacía.** Salida literal:
+  ```
+  Running 2 tests using 2 workers
+    x  2 e2e\cierre-dia.spec.ts:139:7 › Cierre del día — mensajero deshace una gestión (feature 64) › Devolver a gestión → confirma → la fila sale de la tabla, el total baja y la orden vuelve a 'en reparto'
+    x  1 e2e\cierre-dia.spec.ts:66:7 › Cierre del día — mensajero solicita el cierre › ve totales por método → Solicitar cierre → aparece 'Solicitado' en el histórico (5.7s)
+      TimeoutError: page.waitForURL: Timeout 5000ms exceeded.  (cierre-dia.spec.ts:57, loginMensajero)
+    2 failed
+  PW_EXIT=1
+  ```
+  - **Motivo:** el spec es una plantilla diferida. Su cabecera dice «WRITTEN but NOT EXECUTED». Tiene credenciales fijas (`mensajero@example.com` / `correct-password`), un total esperado (`₡150.00`) y una orden `REM-001 · Ana Pérez` que solo existirían con una siembra que la app vacía no tiene: el login responde con el aviso de credenciales y nunca navega a `/`.
+  - Hacerlo correr exige escribirle una fixture: empresa, mensajero con zona, órdenes gestionadas y dispositivo confiado. Eso es trabajo de e2e fuera de esta vuelta.
+  - Hoy el congelado de la marca en el cierre lo prueba contra Postgres real `zona-especial-dos-empresas.test.ts > R20/R21`, muerto por la mutación 2 del reviewer.
+  - **Decide el leader:** ficha de e2e (fixture del cierre, junto a SL-31) o aceptar R20/R21 de integración como evidencia.
+- **Cierre:** server apagado (árbol matado, puerto 3000 libre), `sl38_e2e` borrada y el log del server borrado (el dev registra la contraseña del login en claro, hallazgo 1 de SL-17 T4.2).
