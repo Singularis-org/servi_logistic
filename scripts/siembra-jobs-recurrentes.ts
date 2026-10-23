@@ -3,6 +3,7 @@ import type { JobTipo } from "@prisma/client";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { seedJobLiberarReprogramadas } from "./seed-jobs-liberar-reprogramadas";
 import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diario";
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
@@ -192,13 +193,22 @@ export async function sembrarJobsRecurrentes(
 /**
  * La misma siembra contra la base real. Es lo que invoca `scripts/migrate-deploy.ts` tras
  * aplicar las migraciones; se exporta con nombre propio para que ese enganche sea censable.
+ *
+ * SL-17 (design §6.2, fila del drenador): corre en plataforma. Es el build, no una peticion: no
+ * hay sesion de la que sacar la empresa, y sin contexto la extension rechaza el `$queryRaw` de
+ * `enqueue` con `EmpresaNoResuelta` (tumbo el build de Vercel). Asi la fila nace con
+ * `organizacion_id` NULL, que es lo que pide un recurrente: el drenador la corre una vez por
+ * empresa con `paraCadaEmpresa` (R16). Lo prueba
+ * `tests/integration/db/siembra-recurrentes-como-plataforma.test.ts`.
  */
 export async function sembrarJobsRecurrentesEnBase(
   now: Date = new Date(),
 ): Promise<ResultadoSiembra[]> {
   const prisma = getPrismaClient();
   try {
-    return await sembrarJobsRecurrentes(new JobRepository(prisma), now);
+    return await comoPlataforma("SL-17", "siembra de jobs recurrentes en el build", () =>
+      sembrarJobsRecurrentes(new JobRepository(prisma), now),
+    );
   } finally {
     await prisma.$disconnect();
   }
