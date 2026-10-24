@@ -124,3 +124,16 @@ un solo uso fuera del repo; FFD8 inicial, FFD9 final, decodifica a 2304 bytes RG
   tocado en esta rama: heredado, ajeno a T2.1.
 
 **Veredicto T2.1:** doble y test de contrato en verde, mutación en rojo, R6 intacto.
+
+### Gate de la tanda 1 (con T2.1)
+
+`TEST_RAPIDO_BASE=origin/dev ./init.sh`: `Tests 4145 passed | 1 skipped`, 247 rojos del baseline
+fuera de la selección, `init OK`, **INIT_EXIT=0**. El rojo de
+`dependencias-declaradas-presentes.guardia.test.ts` que vio T2.1 está en `tests/baseline-rojos.json`.
+
+### Aviso de choque con SL-45 (coordinador, 2026-10-24)
+
+SL-45 cambia la pista de la deuda que fija `e2e/cobro-plataforma-sl40.spec.ts:53` e importa
+`e2e/_dos-empresas-fixture.ts` y `e2e/_wallet-iva-sl39-siembra.ts`. Regla para SL-44: esas dos
+fixtures conservan sus exportaciones y firmas (solo se añade), y el texto de la línea 53 no se fija
+como literal nuevo.
