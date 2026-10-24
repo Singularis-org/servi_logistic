@@ -55,7 +55,7 @@ caminos, y también el que alguien añada mañana.
 | Anulación en otro período | Reverso con su fecha: los períodos pasados no cambian | Cambia hacia atrás la cifra del período de creación |
 | Cobro real futuro | Ya tiene el detalle por orden que se facturaría | Hay que reconstruirlo |
 
-**Recomendación: A** (P1, abierta). El resultado solo difiere cuando la tarifa cambia y ya hay órdenes
+**Recomendación: A** (P1, cerrada por Carlos el 2026-10-23: se congela). El resultado solo difiere cuando la tarifa cambia y ya hay órdenes
 creadas. Ejemplo: 100 órdenes a 500,00, y luego la tarifa sube a 600,00. Con A la deuda queda en
 50.000,00; con B, en 60.000,00. Por eso la pregunta va a Carlos. El spec está escrito sobre A.
 
@@ -260,7 +260,7 @@ de SL-38 (`20261023120000` y `20261023120100`). SL-39 no tiene migraciones.
     global sin conversión.
   - La excepción por empresa lo resuelve a mano. Que el valor global sea por moneda o por país lo
     decide SL-21; esta ficha no lo inventa.
-- **Los impuestos:** P2, abierta. El cargo va sin impuestos (R19).
+- **Los impuestos:** P2, cerrada por Carlos el 2026-10-23: sin IVA por ahora. El cargo va sin impuestos (R19).
 - No hay ningún literal de país ni de moneda en el código nuevo (bloqueante del reviewer).
 
 ## 8. Contratos I/O

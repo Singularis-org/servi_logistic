@@ -19,10 +19,10 @@ import {
 } from "./_fixtures/ida-y-vuelta-32";
 
 /**
- * SL-40 (R29) — las tres migraciones del cobro de la plataforma, de ida y vuelta, contra Postgres.
+ * SL-40 (R29) — las cuatro migraciones del cobro de la plataforma, de ida y vuelta, contra Postgres.
  *
- * - Con las tres, crear y anular una orden deja su cargo y su reverso.
- * - Los tres `down.sql`, en orden inverso, dejan el esquema como antes de SL-40: columnas,
+ * - Con las cuatro, crear y anular una orden deja su cargo y su reverso.
+ * - Los cuatro `down.sql`, en orden inverso, dejan el esquema como antes de SL-40: columnas,
  *   constraints, índices, tipos, y además funciones, triggers y políticas, que la foto del fixture
  *   de SL-32 no mira y que estas migraciones sí crean. Crear y anular otra orden sigue funcionando.
  * - Reaplicadas, todo vuelve igual que la primera vez y el trigger vuelve a cobrar.
@@ -38,11 +38,13 @@ const PREVIA = "20261023100200_usuario_empresa_o_superadmin";
 const M_TARIFA = "20261023130000_cobro_plataforma_tarifa";
 const M_MOVIMIENTO = "20261023130100_cobro_plataforma_movimiento";
 const M_TRIGGERS = "20261023130200_cobro_plataforma_triggers_orden";
-const DE_SL40 = [M_TARIFA, M_MOVIMIENTO, M_TRIGGERS];
+/** La de la review (B1, B2): sin DELETE de `orden` para `servi_app`, y cargo aunque la orden nazca borrada. */
+const M_BLINDAJE = "20261024120000_cobro_plataforma_blindaje_orden";
+const DE_SL40 = [M_TARIFA, M_MOVIMIENTO, M_TRIGGERS, M_BLINDAJE];
 
 const BASE = `sl40_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
-describe("SL-40 R29 — las tres migraciones en disco", () => {
+describe("SL-40 R29 — las cuatro migraciones en disco", () => {
   it("cada una trae su down.sql y van en orden detrás de la última de dev", () => {
     const carpetas = carpetasDeMigracion();
     const posiciones = [PREVIA, ...DE_SL40].map((c) => carpetas.indexOf(c));
@@ -175,7 +177,7 @@ describeSiHayBase("SL-40 R29 — cobro_plataforma de ida y vuelta", () => {
     // Sin esto el ciclo sería verde con migraciones vacías o mal leídas.
     expect(await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND t.tgname = 'cobro_plataforma_al_crear_orden'`), "la 3.ª no creo el trigger").toBe(true);
-    expect(diferencias(con, antes).length, "las tres migraciones no cambiaron nada").toBeGreaterThan(0);
+    expect(diferencias(con, antes).length, "las cuatro migraciones no cambiaron nada").toBeGreaterThan(0);
   }, 600_000);
 
   afterAll(async () => {
@@ -186,15 +188,15 @@ describeSiHayBase("SL-40 R29 — cobro_plataforma de ida y vuelta", () => {
     }
   }, 60_000);
 
-  it("con las tres, crear y anular una orden deja su cargo (sin configurar) y su reverso", async () => {
+  it("con las cuatro, crear y anular una orden deja su cargo (sin configurar) y su reverso", async () => {
     const id = await crearYAnular();
     expect(await movimientosDe(id)).toEqual(["cargo 0.00 sin_configurar", "reverso 0.00 sin_configurar"]);
   });
 
-  it("los tres down.sql, en orden inverso, dejan el esquema como antes de SL-40, y crear y anular sigue funcionando", async () => {
+  it("los cuatro down.sql, en orden inverso, dejan el esquema como antes de SL-40, y crear y anular sigue funcionando", async () => {
     for (const carpeta of [...DE_SL40].reverse()) await ejecutar(db, sqlDe(carpeta, "down.sql"), `${carpeta}/down.sql`);
 
-    expect(diferencias(await fotoCompleta(), antes), "tras los tres downs").toEqual([]);
+    expect(diferencias(await fotoCompleta(), antes), "tras los cuatro downs").toEqual([]);
     // Nombrados aparte: si la foto dejara de mirarlos, este caso lo diría igual.
     expect(await existe(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'cobro_plataforma%'`)).toBe(false);
     expect(await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND t.tgname LIKE '%cobro_plataforma%'`)).toBe(false);
@@ -209,7 +211,7 @@ describeSiHayBase("SL-40 R29 — cobro_plataforma de ida y vuelta", () => {
     await crearYAnular();
   }, 120_000);
 
-  it("reaplicadas las tres, todo vuelve igual que la primera vez y el trigger vuelve a cobrar", async () => {
+  it("reaplicadas las cuatro, todo vuelve igual que la primera vez y el trigger vuelve a cobrar", async () => {
     for (const carpeta of DE_SL40) await ejecutar(db, sqlDe(carpeta, "migration.sql"), `${carpeta}/migration.sql (otra vez)`);
     expect(diferencias(await fotoCompleta(), con), "tras reaplicar").toEqual([]);
 

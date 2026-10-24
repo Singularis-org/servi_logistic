@@ -897,3 +897,157 @@ baseline de `libro-kardex-468`, igual en `dev`. `e2e/wallet.spec.ts` sigue en ro
     incidente (ver «Merge de origin/dev»).
   - `wallet.spec.ts` rojo heredado (SL-44).
   - `cobro-plataforma-sl40` corre solo con `SL40_UI=1`.
+
+## Arreglo de la review (B1, B2, B3, m1–m4) — backend_dev, 2026-10-24
+
+Sobre `ddda589`. Bases desechables, borradas con `DROP DATABASE … WITH (FORCE)` (en `pg_database` no
+queda ninguna `sl40*`):
+- `sl40_fix` (`migrate deploy` + `db:seed`), para los tests y el gate;
+- `sl40_humo`, para el humo.
+
+Las URLs se derivan con `sl40-env.sh`, sin imprimirlas y sin `.env` en el worktree. `gate.lock`
+estuvo tomado («backend_dev SL-40 fix B1-B3») durante todo el trabajo, con `prisma generate` dentro,
+y se soltó al final. El MCP del grafo no estaba entre mis herramientas, así que usé Grep/Read.
+
+**Archivos**
+- Nueva `db/migrations/20261024120000_cobro_plataforma_blindaje_orden/` (`migration.sql` + `down.sql`).
+  Las tres de SL-40 no se tocan (están en QA).
+- `tests/integration/db/cobro-plataforma-cargos.test.ts`: 2 casos nuevos al final (B1, B2), con dos
+  ayudantes, `confirmarComoEmpresa` e `insertarComoEmpresa`.
+- `tests/integration/db/aislamiento-ordenes.test.ts`: el caso R8 de SL-17 esperaba `P2025` en
+  `app.orden.delete`/`deleteMany` de una orden ajena.
+  - Ahora la base lo rechaza antes, por permiso (42501), y para cualquier orden.
+  - `update` y `updateMany` siguen dando `P2025` / 0 filas.
+- `tests/integration/db/migracion-sl40-ida-y-vuelta.test.ts`: R29 cubre ahora las cuatro migraciones.
+  La foto incluye funciones (md5), triggers y privilegios de `servi_app`. Así, el `down.sql` nuevo
+  tiene que devolver el `GRANT DELETE` y el `WHEN` exactos.
+- `specs/…/requirements.md` y `design.md`: P1–P3 cerradas (m1).
+- `progress/deudas.md`: D19 (m2).
+
+### B1 — `DELETE FROM orden` desde la empresa
+**¿La app borra órdenes en duro?** No.
+- En `lib/` y `app/` no hay `orden.delete`, `orden.deleteMany` ni `DELETE FROM orden`. Eliminar es
+  `deleted_at`, por pantalla y por API.
+- El único SQL a mano está en `scripts/bench-busqueda-ordenes.ts` y en las limpiezas de tests, y los
+  dos corren como dueño.
+- `purga-pdf-cargas-repository` comprueba que la purga no llama a `orden.deleteMany`.
+- Ninguna FK de `orden` hacia sus padres es `ON DELETE CASCADE` (en `pg_constraint` son todas `r` o
+  `n`), así que tampoco hay un borrado indirecto.
+
+**Arreglo:** `REVOKE DELETE ON "orden" FROM servi_app`. La FK de los cargos sigue en `CASCADE`.
+- `RESTRICT` no protege más: quien borra la orden como dueño puede borrar antes sus cargos.
+- Además rompería las limpiezas de unos 11 archivos de tests y el bench, porque desde SL-40 toda
+  orden tiene su cargo.
+- Con el `REVOKE`, `servi_app` no tiene ningún camino para borrar una orden. Tampoco tiene `TRUNCATE`:
+  el `ALTER DEFAULT PRIVILEGES` solo da SELECT, INSERT, UPDATE y DELETE.
+
+**Test:** `cobro-plataforma-cargos` «R8 (review B1)».
+- Inserta la orden con SQL como `servi_app`, sin hijos `RESTRICT`. Un primer borrador usaba una orden
+  creada por la pantalla y daba 23001 por su historial, así que no probaba la vía.
+- Hace el `DELETE` como `servi_app`, en una transacción CONFIRMADA.
+- Espera 42501, la orden presente, los movimientos iguales y la misma deuda.
+- Rojo antes de aplicar la migración: `expected null to be '42501'` (el borrado se confirmaba).
+
+### B2 — Orden nacida borrada y recuperada
+**Arreglo:** el trigger de creación ya no lleva `WHEN`. Toda orden nueva registra su cargo.
+- Si nace con `deleted_at`, registra también su reverso: secuencia 2, mismo importe y fuente, y
+  `ocurrido_at` igual a su `deleted_at`, como una anulación de D7.
+- Así la alternancia empieza bien. Al recuperarla, el trigger de borrado que ya existía carga por el
+  mismo importe (R16).
+- La rama «sin movimientos» de D8/R18 no se tocó, y el R18 sigue verde.
+
+**Test:** `cobro-plataforma-cargos` «R12/R17 (review B2)», con el global en 700,00.
+- `INSERT … deleted_at = now()` como `servi_app`, confirmado: deja `[cargo 700 global 1, reverso 700
+  global 2]` y la deuda no cambia.
+- `UPDATE … deleted_at = NULL` como `servi_app`: suma `cargo 700 global 3` y la deuda sube 700,00.
+- Control: la orden es de A y nació borrada.
+- Rojo antes de aplicar la migración: `expected [] to deeply equal [ { tipo: 'cargo', …(3) }, …(1) ]`.
+
+### Mutaciones
+- Cada mutación se aplica como SQL sobre `sl40_fix`, se corren `cobro-plataforma-cargos` y
+  `aislamiento-ordenes` (36 tests) y se restaura.
+- Autocomprobación: `has_table_privilege(servi_app, orden, DELETE)` y el md5 de la función y del
+  trigger, antes, mutado y restaurado. El control vuelve siempre a `del=false f=2ae8d35a… t=60bc34ef…`.
+
+| # | Mutación | Control mutado | Resultado |
+|---|---|---|---|
+| B1 | `GRANT DELETE ON orden TO servi_app` (la migración sin el `REVOKE`) | `del=true` | 2 failed / 34 passed: «R8 (review B1)» y el R8 de `aislamiento-ordenes` |
+| B2a | El trigger de creación otra vez con `WHEN (NEW.deleted_at IS NULL)` | `t=10443d18…` | 1 failed / 35 passed: «R12/R17 (review B2)» |
+| B2b | La función sin el bloque del reverso al nacer borrada | `f=e03b6278…` | 1 failed / 35 passed: «R12/R17 (review B2)» |
+
+Sin mutar, todo verde:
+- `cobro-plataforma-cargos`: 22/22;
+- `aislamiento-ordenes`: 16/16;
+- `migracion-sl40-ida-y-vuelta`: 4/4.
+
+### B3 — `e2e/dos-empresas-humo.spec.ts`
+**Montaje**, como en SL-38 (script `…/scratchpad/sl40fix/humo.sh`):
+- base `sl40_humo`: `migrate deploy`, con la migración nueva, más `db:seed`, y el cliente regenerado;
+- el puerto 3000, libre antes de empezar;
+- un solo `pnpm dev` desde este worktree, con `.next/dev` limpio, `AUTH_OTP_DEBUG_LOG=1` y el stdout
+  en `SL17_HUMO_LOG_SERVIDOR`;
+- las `SMTP_*` del `.env` principal, exportadas sin imprimirlas;
+- los buzones `SL17_HUMO_MAESTRO_A`/`_B` = `humo-maestro-{a,b}@example.test`.
+
+**Primer intento: rojo por la red.** Cayó en el paso 1 con `EmailEnvioError … [cause]: Error: Timeout`
+de nodemailer. Un TCP al relay respondió luego con el banner `220`, y el segundo intento, idéntico,
+salió verde.
+
+Salida literal del segundo intento:
+```
+Running 6 tests using 1 worker
+  ok 1 e2e\dos-empresas-humo.spec.ts:141:5 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (12ms)
+  ok 2 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.4m)
+  ok 3 e2e\dos-empresas-humo.spec.ts:159:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (27.5s)
+  ok 4 e2e\dos-empresas-humo.spec.ts:204:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.2s)
+  ok 5 e2e\dos-empresas-humo.spec.ts:225:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (12.3s)
+  ok 6 e2e\dos-empresas-humo.spec.ts:272:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (4.7s)
+  6 passed (2.5m)
+PW_EXIT=0
+EmpresaNoResuelta en el log del server: 0
+```
+
+**Al acabar:**
+- el server, apagado, y el puerto 3000, libre;
+- `.next/dev`, borrado;
+- el log del server, borrado, porque registra contraseñas en claro (hallazgo 1 de SL-17 T4.2).
+
+### Menores
+- **m1:** P1 (se congela), P2 (sin IVA por ahora) y P3 (la cancelación por API se cobra) pasan a
+  «Preguntas cerradas» en `requirements.md`. Origen: Carlos Restrepo, 2026-10-23 (cabecera de
+  `tasks.md`). También se cerraron las dos menciones «abierta» de `design.md`.
+- **m2:** queda anotado en `progress/deudas.md > D19` para SL-44.
+- **m3:** sin hacer, porque no es trivial: pide montar una medición aparte.
+  - El coste por fila ya está medido en la carga de 500 filas (T4).
+  - El trigger nuevo solo añade un `INSERT` cuando la orden nace borrada, y la app no usa esa vía.
+- **m4:** queda para el leader. No toqué `servi-logistic`.
+
+### Mapa R<n> → test (cambios de esta vuelta)
+| R | Test |
+|---|---|
+| R8 | `cobro-plataforma-cargos` («R8: … 42501» y «R8 (review B1)»); `aislamiento-ordenes` («R8: update y updateMany … delete y deleteMany → sin permiso»); `cobro-plataforma-solo-por-trigger.guardia` |
+| R12, R17 | además, `cobro-plataforma-cargos` «R12/R17 (review B2)» |
+| R29 | `migracion-sl40-ida-y-vuelta`, ahora con las cuatro migraciones |
+
+El resto queda como en «Mapa R<n> → test (final, R1–R29)».
+
+### Evidencia
+- `pnpm run typecheck`: `TC_EXIT=0`. `eslint` sobre los tres tests tocados: `No issues found`.
+- Gate: `TEST_RAPIDO_BASE=origin/dev ./init.sh`, con `DATABASE_URL` a `sl40_fix`. Log en
+  `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl40-gate-fix.log`.
+  ```
+  ✓ typecheck paso
+  ✓ lint paso
+   Test Files  897 passed (897)
+        Tests  12098 passed | 26 skipped (12124)
+   Test Files  302 passed (302)
+        Tests  4134 passed | 1 skipped (4135)
+  ✓ test:rapido paso
+  INIT_EXIT=0
+  ```
+
+**Veredicto:**
+- B1 y B2 se cierran en una migración nueva. Cada uno tiene su test como `servi_app`, que da rojo sin
+  la migración y que su mutación tumba.
+- B3: el humo, en verde (6/6).
+- Gate: `INIT_EXIT=0`.

@@ -113,3 +113,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - Otra opción: que el R34 no haga DDL sobre una tabla real y pruebe el control con un esquema desechable.
   - Un reintento no vale.
 - **Dueño:** quien tome la siguiente ficha de la caja (461/459), o Carlos Restrepo si se abre una propia.
+
+### D19 — El E2E del cobro de la plataforma solo corre con `SL40_UI=1`
+- **Origen:** SL-40, review m2 (2026-10-24). `e2e/cobro-plataforma-sl40.spec.ts` se salta sin `SL40_UI=1`, así que en el job `e2e` de CI no protege nada. Lo mismo pasa con `e2e/wallet.spec.ts`, en rojo heredado (D8).
+- **Qué falta:** que la ficha de CI del E2E (SL-44) lo active, con su base y su log del servidor, o que decida quitar la bandera. Mientras tanto, lo cubren contra Postgres `cobro-plataforma-cargos` y `deuda-plataforma-wallet`.
+- **Dueño:** quien tome SL-44 (decide Carlos Restrepo).

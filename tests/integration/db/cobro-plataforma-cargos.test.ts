@@ -681,4 +681,88 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
     );
     expect(porExtension[0].n).toBe(0);
   });
+
+  /* ------------------- R8, SQL a mano contra «orden» (review) ------------------- */
+  //
+  // Los dos ataques de la review de SL-40 (B1, B2), tal como los hizo el reviewer: como `servi_app`,
+  // con la empresa fijada y en una transacción CONFIRMADA. Revertida no probaría nada, porque el
+  // rollback también se llevaría el borrado.
+
+  /** Corre `fn` como `servi_app` de la empresa y confirma. Devuelve el SQLSTATE si falla. */
+  async function confirmarComoEmpresa(
+    organizacionId: string,
+    fn: (tx: Pick<PrismaClient, "$executeRawUnsafe">) => Promise<unknown>,
+  ): Promise<string | null> {
+    return base
+      .$transaction(async (tx) => {
+        await comoApp(tx, organizacionId);
+        await fn(tx);
+      })
+      .then(() => null)
+      .catch((e: unknown) => sqlstateDe(e));
+  }
+
+  /** Inserta una orden de `e` con SQL a mano como `servi_app`, viva o ya borrada, y confirma. */
+  function insertarComoEmpresa(e: Empresa, id: string, nombre: string, borrada: boolean): Promise<string | null> {
+    return confirmarComoEmpresa(e.id, (tx) =>
+      tx.$executeRawUnsafe(
+        `INSERT INTO "orden" ("id", "num_remision", "estatus_id", "destinatario", "telefono_dest", "tienda_id", "zona_id",
+           "provincia_id", "canton_id", "distrito_id", "producto", "updated_at", "deleted_at")
+         VALUES ($1, $2, $3, 'SL40', '88887777', $4, $5, $6, $7, $8, 'Caja', now(), CASE WHEN $9 THEN now() END)`,
+        id,
+        `SL40-${nombre}-${RUN}`,
+        estatus.porRecolectar,
+        e.tienda.usuarioId,
+        e.zonaId,
+        e.geo.provinciaId,
+        e.geo.cantonId,
+        e.geo.distritoId,
+        borrada,
+      ),
+    );
+  }
+
+  it("R8 (review B1): la empresa (servi_app) no puede borrar de verdad una orden → 42501, y su cargo sigue", async () => {
+    // Insertada a mano y no por la pantalla: sin historial ni otros hijos con ON DELETE RESTRICT, que
+    // frenarían el DELETE por otro motivo (23001) y el caso no probaría la vía de la review.
+    const o = randomUUID();
+    expect(await insertarComoEmpresa(A, o, "b1", false)).toBeNull();
+    const antes = await movimientosDe(base, o);
+    expect(antes).toHaveLength(1);
+    const deuda = await deudaDe(base, A.id);
+
+    const r = await confirmarComoEmpresa(A.id, (tx) => tx.$executeRawUnsafe(`DELETE FROM "orden" WHERE "id" = $1`, o));
+
+    expect(r).toBe("42501");
+    expect(await base.orden.count({ where: { id: o } })).toBe(1);
+    expect(await movimientosDe(base, o)).toEqual(antes);
+    expect(await deudaDe(base, A.id)).toBe(deuda);
+  });
+
+  it("R12/R17 (review B2): una orden que la empresa inserta ya borrada nace con cargo y reverso, y al recuperarla se carga", async () => {
+    await tarifas().fijarGlobal("700.00");
+    const id = randomUUID();
+    const deuda = await deudaDe(base, A.id);
+
+    const insertada = await insertarComoEmpresa(A, id, "b2", true);
+    expect(insertada).toBeNull();
+    // Control: la orden es de A y nació borrada; si no, el caso no probaría la vía de la review.
+    expect(await base.orden.findUniqueOrThrow({ where: { id }, select: { organizacionId: true, deletedAt: true } })).toEqual({
+      organizacionId: A.id,
+      deletedAt: expect.any(Date),
+    });
+    expect(await movimientosDe(base, id)).toEqual([cargo("700.00", "global", 1), reverso("700.00", "global", 2)]);
+    expect(await deudaDe(base, A.id)).toBe(deuda);
+
+    const recuperada = await confirmarComoEmpresa(A.id, (tx) =>
+      tx.$executeRawUnsafe(`UPDATE "orden" SET "deleted_at" = NULL WHERE "id" = $1`, id),
+    );
+    expect(recuperada).toBeNull();
+    expect(await movimientosDe(base, id)).toEqual([
+      cargo("700.00", "global", 1),
+      reverso("700.00", "global", 2),
+      cargo("700.00", "global", 3),
+    ]);
+    expect(await deudaDe(base, A.id)).toBe((Number(deuda) + 700).toFixed(2));
+  });
 });

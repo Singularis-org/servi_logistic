@@ -28,7 +28,7 @@ muestra en la wallet de cada empresa como lo que le debe a la plataforma.
 - Cobrar de verdad: ni pasarela, ni facturas, ni pagos de la empresa a la plataforma, ni saldar la
   deuda. El proveedor de cobro es una decisión pendiente del humano (`docs/plan-saas.md > Lo que
   falta del humano`).
-- El IVA u otro impuesto del cobro de la plataforma (P2, abierta).
+- El IVA u otro impuesto del cobro de la plataforma (P2, cerrada: sin IVA por ahora).
 - Planes y límites (SL-24) y el resto del panel de superadmin (SL-26).
 - Que la deuda cambie la caja: no es un movimiento de `wallet_movimiento`, no sale de la caja y no
   cambia ninguna cifra de la caja (D10).
@@ -154,30 +154,23 @@ muestra en la wallet de cada empresa como lo que le debe a la plataforma.
   DEBE quedar sin las tablas, las columnas, los tipos, las funciones ni los triggers que añadió, y
   crear y anular una orden DEBE seguir funcionando.
 
-## Preguntas abiertas
+## Preguntas cerradas
 
-- **P1 (ABIERTA, para Carlos). ¿Una orden creada antes de un cambio de tarifa se cobra a la tarifa
-  vieja?**
-  - **Recomendación: sí. El importe se congela al crear la orden** (registro por orden,
-    `design.md > 2`). Es lo que la empresa vio vigente cuando la creó, y la deuda de ayer no cambia
-    al tocar el precio hoy.
-  - La otra opción es contar al vuelo (órdenes vivas × tarifa de hoy). Así, subir la tarifa
-    encarecería también las órdenes que ya existen.
-  - **Cambia el resultado** en cuanto la tarifa cambia con órdenes ya creadas. Ejemplo: con 100
-    órdenes a 500,00 y la tarifa subida a 600,00, la deuda queda en 50.000,00 si se congela y en
-    60.000,00 si se cuenta al vuelo.
-  - El spec asume la recomendación (R14). Si Carlos elige contar al vuelo, cambian el modelo de datos
-    y R12–R18.
-- **P2 (ABIERTA, para Carlos). ¿El cobro de la plataforma lleva IVA u otro impuesto?**
-  - No hay nada en `docs/` ni en el código que lo diga, y depende del país (SL-21).
-  - Hasta que se decida, el cargo es exactamente la tarifa, sin impuestos (R19), y la pantalla no
-    habla de impuestos.
-  - Si lleva impuesto: ¿se suma a la tarifa o ya va incluido? ¿Con qué tasa, y de dónde sale? La
-    respuesta añade un requisito y, como mucho, una columna en el cargo. No hace falta rehacer nada.
-- **P3 (ABIERTA, para Carlos). ¿Una orden que la tienda cancela por la API cuenta como anulada?**
-  - Hoy esa cancelación (`cancelacion_api`) no elimina la orden: la manda de vuelta a la tienda
-    (`devolviendo_a_tienda`) cuando ya está en la bodega central o en camino.
-  - **Recomendación: no cuenta como anulada.** La plataforma ya trabajó la orden: se recibió, se
-    movió y se devuelve. El spec asume la recomendación (D6).
-  - **Cambia el resultado**: cada orden cancelada así sigue debiendo su cargo. Si Carlos dice que sí
-    cuenta, se añade un reverso en esa transición, con el mismo mecanismo que R15.
+Las tres las cerró Carlos Restrepo el 2026-10-23, al aprobar el spec (`tasks.md`, cabecera), y las
+tres en línea con la recomendación. Quedan aquí con su razonamiento para quien las reabra.
+
+- **P1 (CERRADA: se congela). ¿Una orden creada antes de un cambio de tarifa se cobra a la tarifa
+  vieja?** Sí: **el importe se congela al crear la orden** (R14).
+  - Es lo que la empresa vio vigente cuando la creó, y la deuda de ayer no cambia al tocar el precio
+    hoy. La otra opción era contar al vuelo (órdenes vivas × tarifa de hoy).
+  - Ejemplo: con 100 órdenes a 500,00 y la tarifa subida a 600,00, la deuda queda en 50.000,00 (y no
+    en 60.000,00).
+- **P2 (CERRADA: sin IVA por ahora). ¿El cobro de la plataforma lleva IVA u otro impuesto?** No por
+  ahora: el cargo es exactamente la tarifa (R19), y la pantalla no habla de impuestos.
+  - Si un día lleva impuesto (¿sumado o incluido?, ¿con qué tasa y de dónde sale?, depende del país:
+    SL-21), se añade un requisito y, como mucho, una columna en el cargo.
+- **P3 (CERRADA: se cobra). ¿Una orden que la tienda cancela por la API cuenta como anulada?** No:
+  **la cancelación por API se cobra** y no genera reverso (D6).
+  - Esa cancelación (`cancelacion_api`) no elimina la orden: la manda de vuelta a la tienda
+    (`devolviendo_a_tienda`) cuando ya está en la bodega central o en camino. La plataforma ya la
+    trabajó.
