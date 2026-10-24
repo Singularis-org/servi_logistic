@@ -982,7 +982,7 @@ DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zon
 | R14 | los de R13, `WalletDeudaPlataformaSL45` (barrido), `EmpresasModuleCobro` (barrido) |
 | R15 | `pago-plataforma-sl45.test.ts` («R15/R22…»), `contexto-sl45` (ayuda), **E2E paso 3** (constancia con motivo, contra-asiento 600, caja y ganancia vuelven) |
 | R16 | `pago-plataforma-sl45.test.ts` («R16…») |
-| R17 | **Débil:** E2E paso 3 (anular no borra: el pago sigue con su constancia) y `wallet-migration.test.ts` («SIN updated_at/deleted_at»). Ningún test de SL-45 prueba que no hay acción de editar ni de borrar un pago |
+| R17 | **`pago-plataforma-inmutable-sl45.guardia.test.ts`** (ningún delegado Prisma ni SQL crudo actualiza o borra `wallet_movimiento` en `lib/`, `app/`, `scripts/`; los contratos del libro y del pago no ofrecen editar ni borrar), **`descarga-pago-plataforma-sl45.test.ts`** (tras «Anular…», la fila del pago tiene el mismo md5 en Postgres), E2E paso 3, `wallet-migration.test.ts` |
 | R18 | `pago-plataforma-sl45.test.ts` («R18…») |
 | R19 | `pago-plataforma-sl45.test.ts` (mensajero), `wallet-egreso-service` (cinco roles); anular: los de 458-B |
 | R20 | `pago-plataforma-sl45.test.ts` («R20…»), **E2E paso 6** |
@@ -991,7 +991,7 @@ DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zon
 | R23 | `wallet-labels.test.ts` (`CONCEPTOS_ESPERADOS`), **E2E paso 3** («Ver «Pago a la plataforma»…» y «Anular…») |
 | R24 | `ComposicionGananciaCard`, `DetalleFilaComposicion`, `caja-composicion-exhaustiva.guardia` |
 | R25 | `metrics-caja-naturaleza.guardia`, `financiera-ingresos-repo`, `finanzas-diario` |
-| R26 | **Hueco:** `WalletDescarga.test.tsx` solo lleva `egreso_pago_plataforma` en el `Record` total, y `libro-kardex-468` está en el baseline (rojo heredado). Ningún test comprueba que la descarga nombra el pago y que sus saldos cuadran |
+| R26 | **`descarga-pago-plataforma-sl45.test.ts`** (Postgres: `libroCajaKardexAction` + `filasKardex`/`filaBaseCaja`, como `descargaLibroCaja`; una fila «Pago a la plataforma» escrita a mano en «Sale» 600,00, columnas de antes a mano, saldos fila a fila y final = «Dinero en caja»; tras anular, pago y contra-asiento siguen y cuadran) |
 | R27 | `migracion-sl45-ida-y-vuelta.test.ts` |
 | R28 | `empresas-plataforma-deuda-sl45.test.ts`, `EmpresasModuleCobro.test.tsx` (SL-45 R28), **E2E pasos 2 y 5** («Debe», «Al día», «A favor» y «Pagado») |
 
@@ -1000,3 +1000,61 @@ el navegador la deuda va de 1.000 a 400 y vuelve a 1.000. Quedan abiertos para e
 - `cobro-plataforma-sl40.spec.ts` sigue en rojo con solo el literal; el arreglo de 3 líneas, medido y revertido, está en la
   sección 2;
 - R17 tiene cobertura débil y R26 no tiene test.
+
+## Huecos de T10: R26, R17 y el E2E de SL-40 (backend_dev, 2026-10-24)
+
+Sobre `951b311`. `gate.lock` («backend-SL-45») tomado tras esperar a SL-44-T6b y soltado al final. MCP del grafo no
+disponible entre las herramientas: Grep/Read.
+
+**Archivos**
+- Nuevo `tests/integration/db/descarga-pago-plataforma-sl45.test.ts` (R26, R17; Postgres, `sl45_t`). Recorre la descarga
+  «Solo los movimientos» como `descargaLibroCaja`: `libroCajaKardexAction` real + `filasKardex`/`filaBaseCaja`. Empresa
+  propia: ajuste 5.000, dos órdenes (trigger de SL-40, deuda 1.000) y un pago de 600 por la action del diálogo.
+- Nuevo `tests/unit/guards/pago-plataforma-inmutable-sl45.guardia.test.ts` (R17). El libro es append-only por código, no
+  por la base (`servi_app` tiene UPDATE/DELETE desde `20261022130000`): reutiliza el censo de escritores de
+  `premio-ranking-alcance.guardia` y cierra lo que nadie medía, que el escritor solo inserta. Detectores con control.
+- `e2e/cobro-plataforma-sl40.spec.ts`: el segundo hunk del diff propuesto (el primero ya estaba); el literal de «al día»
+  va en `TEXTO.pistaAlDia`.
+
+**Mutaciones (medidas y restauradas con `cmp`, `RESTAURADO_OK` en todas)**
+
+| Mutación | Cae | Fallos |
+|---|---|---|
+| `CATEGORIA_LABEL.egreso_pago_plataforma` → «Pago de la plataforma» | descarga R26 (×2): «una sola fila del pago… got +0» | 2 de 3 |
+| `listar` (camino Prisma, sin filtros) con `NOT: { categoria: "egreso_pago_plataforma" }` | descarga R26 (×2): `KardexDescuadradoError` del servidor | 2 de 3 |
+| `whereLibroCajaConTerminoSql` excluyendo la categoría | **sobrevive**: ese WHERE solo corre con término, «A quién» o guía; la descarga sin filtros va por `buildWhere` (la fila de arriba) | 0 |
+| `borrarPago` con `walletMovimiento.delete` en el repositorio + su firma en `IWalletMovimientoRepository` | guardia R17 (Prisma y contratos) | 2 de 4 |
+| `DELETE FROM "wallet_movimiento"` crudo en `PagoPlataformaRepository.ts` | guardia R17 (SQL crudo) | 1 de 4 |
+
+La comprobación md5 de la fila del pago tras anular no tiene mutación de app que la tumbe: no existe ningún camino que
+actualice el libro (lo que mide la guardia).
+
+**Salida**
+```
+pnpm run typecheck            -> tsc --noEmit, TC=0
+pnpm exec eslint <3 archivos> -> ESLint: No issues found
+pnpm exec vitest related --run tests/integration/db/descarga-pago-plataforma-sl45.test.ts tests/unit/guards/pago-plataforma-inmutable-sl45.guardia.test.ts
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+```
+
+**E2E.** Base desechable `sl45_e2e` en `sl45-pg` (`CREATE DATABASE`, `migrate deploy` 244 migraciones, `db:seed`),
+`DATABASE_URL` por entorno (el `.env` no se tocó). Un dev server (puerto 3000 libre antes, `rm -rf .next`) con
+`AUTH_OTP_DEBUG_LOG=1` y sin `SMTP_*`, PID 28732, parado por PID; 3000 libre, `.next/dev` y el log borrados,
+`DROP DATABASE sl45_e2e WITH (FORCE)`.
+```
+DATABASE_URL=…/sl45_e2e SL40_UI=1 SL45_UI=1 SL17_HUMO_LOG_SERVIDOR=<log> pnpm exec playwright test e2e/cobro-plataforma-sl40.spec.ts e2e/pago-plataforma-sl45.spec.ts --workers=1 --reporter=list
+  ok 1 cobro-plataforma-sl40.spec.ts:241:5 › T8: el superadmin fija el global, fija y quita la excepción de A, y ve cada valor sin recargar (R9–R11) (3.4s)
+  ok 2 cobro-plataforma-sl40.spec.ts:387:5 › T7: A crea dos órdenes y elimina una; la deuda dice ₡500 y la caja no cambia (R21, R22) (9.2s)
+  ok 3 pago-plataforma-sl45.spec.ts:358:5 › 1. A debe ₡1.000, … paga 600 y la región dice ₡400 sin recargar; 500 no pasa (R1, R4, R5, R8, R9) (3.5s)
+  ok 4 pago-plataforma-sl45.spec.ts:427:5 › 2. el superadmin ve «Debe ₡400 · Pagado ₡600» en A y «Al día · Pagado ₡0» en B (R28) (552ms)
+  ok 5 pago-plataforma-sl45.spec.ts:443:5 › 3. A anula el pago desde el libro y la región vuelve a ₡1.000 sin recargar (R5, R15, R23) (4.3s)
+  ok 6 pago-plataforma-sl45.spec.ts:494:5 › 4. A paga los ₡1.000 y queda al día sin botón; … ₡500 a favor (R2, R3) (3.4s)
+  ok 7 pago-plataforma-sl45.spec.ts:521:5 › 5. el superadmin ve «A favor ₡500 · Pagado ₡1.000» en A (R28) (607ms)
+  ok 8 pago-plataforma-sl45.spec.ts:534:5 › 6. B no ve nada de A: al día, sin pagos en su libro y su caja igual (R20) (977ms)
+  8 passed (40.4s)
+PW_EXIT=0
+```
+
+**Veredicto:** R26 y R17 con test propio que cae con su mutación; los E2E de SL-40 y SL-45 pasan 8/8, 0 skipped. Aviso
+para SL-44: `e2e/cobro-plataforma-sl40.spec.ts` cambia en `TEXTO` (+`pistaAlDia`) y en `leerDeuda`.
