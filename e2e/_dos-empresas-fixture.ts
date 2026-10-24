@@ -416,18 +416,19 @@ export async function sembrarDatos(dueno: PrismaClient, e: Empresa): Promise<Dat
 /* -------------------------------------------------------------------------- */
 
 /**
- * El stdout/stderr del dev server, que se levanta aparte con su salida a un archivo
- * (`SL17_HUMO_LOG_SERVIDOR`). Sin él no se puede afirmar que no hubo `EmpresaNoResuelta`: FALLA.
+ * El stdout/stderr del servidor de la app, que `e2e/_servidor-app.mjs` escribe en el archivo de
+ * `E2E_LOG_SERVIDOR` (SL-44 D3; lo fija `playwright.config.ts`). De ahí salen los OTP (R15) y la
+ * prueba de que no hubo `EmpresaNoResuelta`. Sin él, FALLA.
  */
 export class LogDelServidor {
   private desde = 0;
   constructor(private readonly ruta: string) {}
 
   static desdeEntorno(): LogDelServidor {
-    const ruta = process.env.SL17_HUMO_LOG_SERVIDOR;
+    const ruta = process.env.E2E_LOG_SERVIDOR;
     if (!ruta || !fs.existsSync(ruta)) {
       throw new Error(
-        "SL-17 T4.2: falta SL17_HUMO_LOG_SERVIDOR (archivo con el stdout/stderr del dev server). Sin él no se ve EmpresaNoResuelta.",
+        "SL-44 D3: falta el log del servidor (E2E_LOG_SERVIDOR sin definir o sin archivo). Lo crea e2e/_servidor-app.mjs al arrancar desde el webServer de Playwright; sin él no hay OTP ni se ve EmpresaNoResuelta.",
       );
     }
     const log = new LogDelServidor(ruta);

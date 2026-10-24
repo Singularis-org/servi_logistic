@@ -58,7 +58,7 @@ Convenciones:
   - el test de contrato, en verde;
   - con el doble devolviendo otros bytes, rojo;
   - `git diff --stat -- lib/storage lib/actions app/api` vacío (R6).
-- [ ] **T2.2 — Lanzador y configuración de Playwright** (D3; R14, R24, R26). `[P]`
+- [x] **T2.2 — Lanzador y configuración de Playwright** (D3; R14, R24, R26). `[P]`
   - `e2e/_servidor-app.mjs`.
   - `playwright.config.ts`: dos `webServer`, los proyectos, `retries`/`failOnFlakyTests` y el
     reporter.

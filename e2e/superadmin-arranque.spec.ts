@@ -23,11 +23,11 @@ import {
  *    configuración (desviación anotada junto a T9 en `tasks.md`).
  *
  * CÓMO SE CORRE (solo en local; una base remota lo aborta antes de escribir):
- * - `DATABASE_URL` a una base desechable migrada y con catálogos (`pnpm db:seed`), SIN `SMTP_*`:
- *   el código tiene que salir por el `ConsoleEmailSender`.
- * - El dev server en `localhost:3000`, levantado aparte con su stdout/stderr en un archivo, y
- *   `SL17_HUMO_LOG_SERVIDOR` apuntando a ese archivo (el mecanismo del humo de SL-17): de ahí sale
- *   el código. Sin él, FALLA.
+ * - `DATABASE_URL` a una base desechable migrada y con catálogos (`pnpm db:seed`). El código sale
+ *   por el `ConsoleEmailSender`: el `webServer` pasa `SMTP_USER` y `SMTP_PASSWORD` vacíos.
+ * - El servidor lo levanta Playwright (`webServer`, SL-44 D3): `e2e/_servidor-app.mjs` escribe su
+ *   stdout/stderr en el archivo de `E2E_LOG_SERVIDOR`, y de ahí sale el código. Sin él, FALLA.
+ *   Proyecto `plataforma-vacia`: `pnpm exec playwright test --project=plataforma-vacia`.
  */
 
 test.describe.configure({ mode: "serial" });

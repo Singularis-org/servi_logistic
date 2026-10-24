@@ -137,3 +137,82 @@ SL-45 cambia la pista de la deuda que fija `e2e/cobro-plataforma-sl40.spec.ts:53
 `e2e/_dos-empresas-fixture.ts` y `e2e/_wallet-iva-sl39-siembra.ts`. Regla para SL-44: esas dos
 fixtures conservan sus exportaciones y firmas (solo se añade), y el texto de la línea 53 no se fija
 como literal nuevo.
+
+## Tanda 3
+
+### T3.1 — `tests/fabricas/e2e.ts` (D4; R7, R10, R11, R12)
+
+**Archivos creados:** `tests/fabricas/e2e.ts`, `tests/unit/fabricas/e2e-host.test.ts`.
+
+**API:** `validarUrlBaseE2E(url)`, `abrirBaseE2E(): PrismaClient`, `catalogosQueFaltan(p)`,
+`correoE2E(rol)`, `crearEmpresaE2E(etiqueta): Promise<EmpresaE2E>`,
+`crearUsuarioE2E(e, rol, extra?: { zonaId?, vehiculoId? }): Promise<UsuarioE2E>`,
+`confiarDispositivo(u, userAgent)` (upsert, repetible), `sesionDe(browser, u): Promise<Cookie[]>`
+(confía el UA de su contexto y entra por `/login`).
+
+**Desvíos de la firma de D4:**
+- sin `tiendaId`: `usuario` no tiene esa columna; el `adminTienda` ES la tienda;
+- con `vehiculoId`: `UsuarioService.crear` exige vehículo al mensajero; por defecto, el primero de `VEHICULOS_SEED`.
+
+**Servicios:** empresa por `OrganizacionService.altaEmpresa` en `comoPlataforma("SL-44", …)`; usuarios por
+`UsuarioService.crear` (la composición de `lib/actions/usuarios.ts`) en `conEmpresa`, con actor el maestro y
+`passwordMode: "manual"` (hashea `hashPassword`).
+**Excepciones de R8** (cliente dueño, no son estado de negocio): la contraseña del maestro (`altaEmpresa` le
+pone una inservible y solo «recuperar contraseña» con OTP la cambia) y el `trusted_device` (técnica de `prepararAcceso`).
+**R12:** toda función valida `DATABASE_URL` antes de abrir el cliente dueño o tocar `getPrismaClient`; rechaza
+`?host=`/`?hostaddr=` (pg los deja pisar el host). **R11:** la base inalcanzable o un catálogo de `db:seed`
+ausente (rol, order_status, vehiculo, tipo_identificacion `cedula`, provincia) lanza con el nombre de lo que falta.
+
+**R → test** (`tests/unit/fabricas/e2e-host.test.ts`): R12 → «un host remoto inventado lanza antes de abrir
+conexión» (+ `?host=`, prefijo `localhost.`, mensaje sin URL; «localhost y 127.0.0.1 se aceptan»);
+R11 → «sin DATABASE_URL lanza…», «nombra el catálogo y el valor que falta»; R10 → «son @example.test…»,
+«dos llamadas dan correos distintos». R7: la fábrica; su uso en los specs lo prueban T3.2–T6.
+
+**Salida real:**
+- `pnpm exec vitest run tests/unit/fabricas/e2e-host.test.ts` → `Tests 11 passed (11)`.
+- Mutación (chequeo de host a `false &&`): `Tests 4 failed | 7 passed (11)`; restaurado de copia, `cmp` idéntico.
+- Humo contra `sl44_e2e` (localhost, script tsx de un solo uso, ya borrado, bajo `gate.lock`): empresa + maestro,
+  adminTienda, adminSatelite (zona), mensajero (zona y vehículo): misma `organizacion_id`, rol, `activo`,
+  contraseña verifica, `trusted_device` = 1 tras dos llamadas → `HUMO_OK`, exit 0.
+- `pnpm exec eslint` (2 archivos) → sin problemas. `pnpm run typecheck` → exit 0.
+- `pnpm run test:guardias` → `1 failed | 303 passed (304)`: solo `dependencias-declaradas-presentes` (baseline).
+
+**Veredicto T3.1:** fábrica en verde con humo real; queda el login sin OTP en `marca` (lo corre el agente de Playwright).
+
+### T2.2 — Lanzador y configuración de Playwright (D3; R14, R24, R26)
+
+**Archivos:** `e2e/_servidor-app.mjs` (nuevo), `playwright.config.ts`, `e2e/_dos-empresas-fixture.ts`
+(solo `LogDelServidor`: comentario, variable y mensaje; sin cambios de firma ni exportaciones),
+cabeceras de `e2e/superadmin-arranque.spec.ts` y `e2e/superadmin-empresas.spec.ts`.
+
+**Decisiones:**
+- El lanzador **trunca** el log al arrancar: cada corrida tiene su log entero y solo suyo (artefacto
+  de R25); `LogDelServidor` mide el tamaño al crearse, dentro de un test con el servidor ya arriba.
+- `next` se lanza con `process.execPath` + `next/dist/bin/next` (sin shell ni `.cmd`). Señales
+  SIGINT/SIGTERM/SIGHUP y `exit` matan al hijo; en Windows `taskkill /T /F`. Playwright 1.61.1 ya
+  hace `taskkill /T` del árbol en Windows y `kill(-pid)` en Linux; `gracefulShutdown: SIGTERM` deja
+  que el lanzador vacíe el log en Linux.
+- `workers: 1` también en local (superadmin único y crons que recorren todas las empresas);
+  `fullyParallel: false`.
+- **Desvío de D3 (no lo dice):** el config carga el `.env` del checkout con `process.loadEnvFile` si
+  existe (no pisa el entorno). Sin eso los workers no tienen `DATABASE_URL` en local (primera corrida:
+  «falta DATABASE_URL»). En CI no hay `.env`.
+- `home.spec.ts` fuera de todos los proyectos; `cobro-plataforma-sl40` en `aislamiento`.
+
+**Salida real** (base propia `sl44_t22` en `sl44-pg`, recreada + `migrate deploy` + `db:seed`, porque
+`sl44_e2e` la escribía a la vez T3.1 y el paso 1 de `superadmin-empresas` exige el vacío):
+- `next build` (con `NODE_OPTIONS=--max-old-space-size=8192`; sin él, OOM en «Running TypeScript»
+  con la máquina cargada) → exit 0.
+- `E2E_PUERTO=3044 pnpm exec playwright test --project=plataforma-vacia --reporter=list`:
+  corrida 1 `9 passed (15.8s)`, corrida 2 `9 passed (16.9s)`; 0 failed, 0 skipped, 0 flaky.
+  Log del servidor con 6 líneas `[email][debug] to=`. 3044 y 54329 libres antes y después.
+- Mutación `AUTH_OTP_DEBUG_LOG: ""` en `webServer.env` → `2 failed | 6 did not run | 1 passed`:
+  «el log del servidor no recibió ningún código para superadmin-e2e@example.test en 60000 ms».
+  Restaurado desde copia, `cmp` idéntico.
+- `pnpm exec eslint` (5 archivos) → sin problemas. `tsc --noEmit` → exit 0.
+- `pnpm run test:guardias` → `1 failed | 303 passed (304)`: solo `dependencias-declaradas-presentes` (baseline).
+
+**R → test:** R14 → `superadmin-arranque.spec.ts` + la mutación de arriba; R24 → `failOnFlakyTests`
+en `playwright.config.ts`; R26 → proyecto `plataforma-vacia` y `dependencies` de `aislamiento`.
+
+**Veredicto T2.2:** `plataforma-vacia` 9/9 dos veces sin levantar nada a mano; mutación en rojo.

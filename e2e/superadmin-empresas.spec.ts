@@ -32,7 +32,7 @@ import {
  * Los textos que se afirman son los literales de la propuesta aprobada de T12 (`design.md`).
  *
  * CÓMO SE CORRE: igual que `superadmin-arranque.spec.ts` (base local desechable y SIN empresas,
- * sin `SMTP_*`, y el dev server con su log en `SL17_HUMO_LOG_SERVIDOR`). Al terminar borra lo que
+ * y el servidor de Playwright con su log en `E2E_LOG_SERVIDOR`). Al terminar borra lo que
  * creó, para que la corrida siguiente vuelva a ver el estado vacío.
  */
 
