@@ -23,7 +23,8 @@ import { MODELOS_DE_NEGOCIO } from "../lib/db/modelos-de-negocio";
 const ROL_APP = "servi_app";
 // Contrato de M3 (SL-17 design §3): 150 FK de negocio a negocio, un trigger `sme_*` por FK. SL-38
 // no lo mueve: las dos FK de `distrito_zona_especial` apuntan a plataforma y a `organizacion`.
-const TRIGGERS_MISMA_EMPRESA = 150;
+// SL-40 (20261023130100) suma una: la de `cobro_plataforma_movimiento` a `orden`.
+const TRIGGERS_MISMA_EMPRESA = 151;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

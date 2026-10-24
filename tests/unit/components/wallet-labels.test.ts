@@ -281,20 +281,23 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
     });
   });
 
-  it("R9: las regiones secundarias del bolsillo, en orden, leen su importe y su signo del resumen", () => {
+  // SL-40 (design §10): las entradas leen `{ resumen, deudaPlataforma }`. Las de SL-39 leen del
+  // resumen lo mismo que antes; la deuda, de su propio dato.
+  it("R9 (SL-39) y R21 (SL-40): las regiones secundarias del bolsillo, en orden, con su importe y su signo", () => {
     const resumen = {
       iva: "416.00",
       signoIva: "positivo",
       capital: "-50.00",
       signoCapital: "negativo",
     } as unknown as CajaResumenDTO;
+    const datos = { resumen, deudaPlataforma: { deuda: "500.00" } };
     expect(
       REGIONES_BOLSILLO_EMPRESA.map((r) => ({
         id: r.id,
         rotulo: r.rotulo,
         pista: r.pista,
-        valor: r.valor(resumen),
-        signo: r.signo(resumen),
+        valor: r.valor(datos),
+        signo: r.signo(datos),
       })),
     ).toEqual([
       {
@@ -311,6 +314,29 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
         valor: "-50.00",
         signo: "negativo",
       },
+      {
+        id: "deuda_plataforma",
+        rotulo: "Lo que la empresa debe a la plataforma",
+        pista:
+          "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+        valor: "500.00",
+        signo: null,
+      },
+    ]);
+  });
+
+  it("R21 (SL-40, design §9.2): sin deuda (`null`), la región de la plataforma no tiene importe y las de SL-39 sí", () => {
+    const resumen = {
+      iva: "416.00",
+      signoIva: "positivo",
+      capital: "0.00",
+      signoCapital: "cero",
+    } as unknown as CajaResumenDTO;
+    const datos = { resumen, deudaPlataforma: null };
+    expect(REGIONES_BOLSILLO_EMPRESA.map((r) => [r.id, r.valor(datos)])).toEqual([
+      ["iva", "416.00"],
+      ["capital", "0.00"],
+      ["deuda_plataforma", null],
     ]);
   });
 });
