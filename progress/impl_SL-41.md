@@ -600,3 +600,66 @@ La primera vuelta (`d-sesion1.log`) dio dos rojos, ya corregidos:
    `crearContrasenaConEnlace(input: unknown, deps?)` son más anchas que la firma de la prop, así que encajan.
    El typecheck pasa contra el código real.
 10. El grafo MCP no se usó: el trabajo era sobre archivos concretos, que leí con Read/Grep.
+
+#### Rojo bajo carga del gate
+
+**Veredicto: el fallo NO lo introdujo SL-41. Ya estaba en el componente de dc95473 y bajo carga falla igual.
+Pero es un bug real del componente, no del test, y lo arreglé en el componente.** Los tests no se tocaron.
+
+### Causa
+Dentro de `startTransition(async () => { const res = await action(); setPhase(...) })`, los `setState` que
+van después del `await` ya no forman parte de la transición (React 19). Se pintan en un carril normal y
+`isPending` vuelve a false después, con la transición. Hay un hueco en el que la fase nueva ya está en
+pantalla con `isPending` aún en true, y por eso con sus campos `disabled={isPending}`. `findByLabelText(...)`
+encuentra el campo en ese hueco. `user.type` sobre un input deshabilitado no escribe nada.
+- Paso email→código: el código queda vacío, la validación del cliente falla y la pantalla sigue en «Verificar
+  código». Luego `findByLabelText("Nueva contraseña")` agota su tiempo. Es el rojo «sigue en Verificar código».
+- Paso código→contraseña: la contraseña queda vacía. Es el rojo `toHaveValue("Abcdef1!")` → `""`. En el
+  DOM volcado de los fallos «Contraseña actualizada» se ve `value=""` y «Debe tener al menos 8 caracteres».
+Sin carga, la transición se pinta enseguida y el hueco no se ve. El usuario real también lo sufre: si teclea
+justo al aparecer la fase, pierde esas teclas.
+Lo que añadió SL-41 (`useSyncExternalStore`, el render-copy, `useLayoutEffect`) no cambia nada sin `#enlace=`:
+el snapshot siempre es `""`, el `if` del render nunca dispara y el efecto sale en la primera línea.
+
+### Evidencia
+Escenario: N copias en paralelo de `vitest run tests/integration/recuperar-contrasena-form.test.tsx` más M
+procesos node quemando CPU. Script: `carga/ronda.sh`; logs en `carga/`.
+
+| componente | carga fuerte (6 copias + 12 burners, 18 corridas) | carga media (5 + 9, 15 corridas) |
+|---|---|---|
+| SL-41 antes del arreglo | **18/18 en rojo**, 81 tests caídos | **12/15 en rojo**, 20 tests caídos |
+| dc95473 (base, restaurado después, `cmp` OK) | **18/18 en rojo**, 74 tests caídos | **11/15 en rojo**, 23 tests caídos |
+| arreglo, solo `startTransition` interno | 0/18 | 0/15 |
+| arreglo final (+ foco por efecto) | **0/18** | **0/15** |
+| (control) test con espera `toBeEnabled()` en los helpers, componente sin tocar | 0/18 | — |
+
+En las dos tandas de antes, los fallos son de los mismos tipos que en el gate: «Unable to find a label …
+Nueva contraseña» (36 frente a 41), `toHaveValue(Abcdef1!)` (12 frente a 7), «/El código es inválido/»
+(17 frente a 10) y «Contraseña actualizada» (7 frente a 9).
+En el gate se vio lo mismo: el archivo tardó 18,2 s y 13,4 s, frente a 7,6 s cuando corre solo.
+
+### Cambio (`app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx`, diff en `e-arreglo.diff`)
+1. En los tres handlers, el `switch` que va tras el `await` queda envuelto en `startTransition(() => {...})`.
+   Es la forma que documenta React. La fase nueva y `isPending=false` se pintan juntas.
+2. El foco al entrar en una fase lo hace ahora `useEffect(..., [phase])`, que sustituye al foco de montaje.
+   Antes eran dos `setTimeout(…focus, 0)`. Con la fase en la transición, el temporizador podría disparar antes
+   de que se pinte la fase. No hay `setState` en el efecto, así que lint no protesta. `pedirCodigo` y
+   «Volver» conservan su `setTimeout`.
+Lo comprobé con un test temporal, ya borrado: el foco va al email al montar, al código tras el paso 1
+(`user.keyboard` escribe ahí) y a «Nueva contraseña» tras el paso 2. Pasó 1/1.
+
+### Mutaciones (`e-mutaciones.py` → `e-mutaciones.log`)
+- M1–M6 repetidas (M4 con la sangría nueva): **las 6 MUEREN**, con los mismos tests en rojo que antes.
+- M24 (sin foco por fase en la contraseña) y M25 (sin foco en el código): **SOBREVIVEN**. Ningún test comprueba
+  el foco al entrar en una fase. Ya pasaba con los `setTimeout` de dc95473: es un hueco preexistente, no lo cierro.
+- Quitar el `startTransition` interno no se ve en un test aislado. Solo se ve bajo carga: es la tabla de arriba.
+
+### Salida real (`e-verifica.log`, dentro del lock)
+```
+TC_EXIT=0
+ESLINT_EXIT=0
+Test Files  4 passed (4)   Tests  25 passed (25)   (form 11, enlace 7, page 3, guardia contrasena-maqueta-unica 4)
+VITEST_EXIT=0
+```
+R18/R19/R21 siguen en verde: el test de enlace pasa 7/7 y M1–M6 mueren. La guardia de la maqueta única
+sigue en verde.

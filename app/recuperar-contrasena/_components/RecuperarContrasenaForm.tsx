@@ -136,10 +136,13 @@ export function RecuperarContrasenaForm() {
     setTimeout(() => passwordRef.current?.focus(), 0);
   }, [hashUrl]);
 
-  // Foco inicial en el email al montar. En modo enlace el campo no está y no hace nada.
+  // Foco en el campo de cada fase al entrar en ella (al montar, el email). En un efecto y no en un
+  // `setTimeout`: la fase nueva llega con la transición, que puede pintarse después del temporizador.
   useEffect(() => {
-    emailRef.current?.focus();
-  }, []);
+    if (phase === "email") emailRef.current?.focus();
+    else if (phase === "code") codeRef.current?.focus();
+    else if (phase === "password") passwordRef.current?.focus();
+  }, [phase]);
 
   // R19: del enlace muerto se vuelve al paso 1 del flujo normal, sin rastro del enlace.
   const pedirCodigo = () => {
@@ -168,18 +171,22 @@ export function RecuperarContrasenaForm() {
     startTransition(async () => {
       const res = await solicitarRecuperacion({ email });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("code");
-          setCode("");
-          setCodeFieldErrors({});
-          setTimeout(() => codeRef.current?.focus(), 0);
-          break;
-        case "validation_error":
-          setEmailFieldErrors(res.fieldErrors);
-          emailRef.current?.focus();
-          break;
-      }
+      // Lo que sigue al `await` ya no es parte de la transición (React 19): sin este
+      // `startTransition`, la fase nueva se pinta con `isPending` aún en true y sus campos
+      // salen deshabilitados; lo que se teclea en ese hueco se pierde.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("code");
+            setCode("");
+            setCodeFieldErrors({});
+            break;
+          case "validation_error":
+            setEmailFieldErrors(res.fieldErrors);
+            emailRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
@@ -200,22 +207,24 @@ export function RecuperarContrasenaForm() {
     startTransition(async () => {
       const res = await verificarCodigoRecuperacion({ email, code });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("password");
-          setPassword("");
-          setConfirmPassword("");
-          setPasswordFieldErrors({});
-          setTimeout(() => passwordRef.current?.focus(), 0);
-          break;
-        case "invalid_or_expired":
-          setGeneralError(GENERIC_INVALID_MESSAGE);
-          break;
-        case "validation_error":
-          setCodeFieldErrors(res.fieldErrors);
-          codeRef.current?.focus();
-          break;
-      }
+      // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("password");
+            setPassword("");
+            setConfirmPassword("");
+            setPasswordFieldErrors({});
+            break;
+          case "invalid_or_expired":
+            setGeneralError(GENERIC_INVALID_MESSAGE);
+            break;
+          case "validation_error":
+            setCodeFieldErrors(res.fieldErrors);
+            codeRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
@@ -252,23 +261,26 @@ export function RecuperarContrasenaForm() {
             confirmPassword,
           });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("done");
-          break;
-        case "invalid_or_expired":
-          // El desafio dejo de estar activo: mensaje generico, sin tocar la contrasena.
-          if (enlace) {
-            setEnlaceInvalido(true);
-          } else {
-            setGeneralError(GENERIC_INVALID_MESSAGE);
-          }
-          break;
-        case "validation_error":
-          setPasswordFieldErrors(res.fieldErrors);
-          passwordRef.current?.focus();
-          break;
-      }
+      // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("done");
+            break;
+          case "invalid_or_expired":
+            // El desafio dejo de estar activo: mensaje generico, sin tocar la contrasena.
+            if (enlace) {
+              setEnlaceInvalido(true);
+            } else {
+              setGeneralError(GENERIC_INVALID_MESSAGE);
+            }
+            break;
+          case "validation_error":
+            setPasswordFieldErrors(res.fieldErrors);
+            passwordRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
