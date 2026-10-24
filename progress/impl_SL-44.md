@@ -534,3 +534,144 @@ propuesta de arriba.
 **Defectos de producción:** ninguno. **Excepciones de R8 nuevas:** ninguna.
 
 **Veredicto:** T7.1–T7.3 hechas. `aislamiento` sale verde dos veces seguidas sobre la misma base, y el vacío lo cubre el test de componente con su mutación.
+
+## T6.3 — `wallet`, `mi-wallet`, `wallet-mensajeros` (agente SL-44-T6b)
+
+Base propia `sl44_din2` en `sl44-pg`, servidor en 3044, logs fuera del repo (`scratchpad/sl44/SL-44-T6b/`).
+El MCP del grafo no se usó (Grep/Read).
+
+**Archivos:** nuevo `e2e/_escenarios/caja.ts`; reescritos `e2e/wallet.spec.ts`, `e2e/mi-wallet.spec.ts`,
+`e2e/wallet-mensajeros.spec.ts`. Sin tocar `cierres.ts`, `reparto.ts`, `crons.ts`, `lib/` ni `app/`.
+
+**API de `caja.ts`:**
+- `crearEscenarioCaja(etiqueta) → { r, mensajero, conCod, sinCod, cierreId }`: `crearEscenarioReparto` con
+  `TARIFA_CAJA` (flete 2.000 en las cuatro columnas, sin comisión ni IVA) y `PAGO_MENSAJERO_CAJA` (1.500 por
+  entrega); un mensajero de la central; dos órdenes llevadas a `en_reparto` y entregadas por
+  `MisAsignacionesService` (`conCod`: 8.000 = 1.000 efectivo + 7.000 transferencia; `sinCod`: sin cobro);
+  `solicitarCierre` + `aprobarCierre` (maestro). Comprueba que las órdenes salieron de `en_reparto`.
+- `importe(n) → RegExp`: el entero `n` como lo pinta la pantalla, tolerante a separadores y a `,00`.
+- `movimientosCajaDe(r)`: lectura de `wallet_movimiento` de la empresa (el spec de `wallet` comprueba la fila
+  manual).
+
+**Cifras, escritas a mano en la cabecera de cada spec:** caja: libro flete 4.000 / contra-entrega 8.000 / pago
+al mensajero 3.000 (3 movimientos); «Entró» 8.000 (el flete es un cargo a la tienda, no efectivo: ficha 459),
+«Salió» 3.000, flujo 5.000, ganancia 1.000, a las tiendas 4.000; tras la corrección manual de 500: «Salió»
+3.500, flujo 4.500, 4 movimientos. Tienda: a favor 8.000, cargos 4.000, ya pagado 0, saldo 4.000. Mensajero:
+devengado 3.000, pagado mín(3.000, 1.000) = 1.000, cuenta por pagar 2.000. La deuda con la plataforma (SL-40)
+no entra en la caja (D10 de SL-40) y no se afirma.
+
+**Qué recorre cada spec:** `wallet`: cifras + libro + desglose del flete (las dos órdenes); filtro
+«Entra/Sale» = «Sale» (1 fila, cifras quietas) y «Limpiar todo»; «Corrección de caja (resta)» sin motivo →
+alerta «La descripción es obligatoria.» y ninguna fila manual en la base; con motivo → aviso de éxito,
+cifras releídas y `egreso_ajuste` 500 en la base; mensajero y tienda → 404 sin cifras ni libro.
+`mi-wallet`: resumen, tarjeta «Saldo actual», dos filas y desglose del flete; filtro «Tipo de movimiento»
+(«Pagos» → 0 filas del cierre, «Cierres» → 2); mensajero y maestro → 404. `wallet-mensajeros`: fila con
+devengado/pagado/cuenta/«Pendiente», buscador (sin coincidencia → fuera, su nombre → vuelve); estado de cuenta
+(saldo, frase, devengo y pago, desglose del devengo con las dos órdenes); mensajero y tienda → 404 en la lista
+y en el estado de cuenta.
+
+**Salida real:**
+- por spec sobre `sl44_din2` (`--project=dinero --reporter=list`): `mi-wallet` 3 passed, `wallet-mensajeros`
+  3 passed (primera corrida); `wallet` 4 passed tras corregir el texto de la alerta (la primera esperaba «El
+  motivo es obligatorio.»; la pantalla dice «La descripción es obligatoria.»).
+- Final: `sl44_din2` recién recreada (DROP/CREATE + `migrate deploy` + `db:seed`, `DB_EXIT=0`) y los tres
+  juntos dos veces seguidas: corrida 1 `10 passed (28.2s)`, corrida 2 `10 passed (29.1s)`; 0 failed, 0
+  skipped, 0 flaky. 3044 y 54329 libres al terminar.
+
+**Mutaciones** (UNA toma del lock: mutar → `next build` (`BUILD_MUT=0`) → los tres specs → restaurar desde
+copia, `cmp OK` ×3 y `git diff --stat` vacío → `next build` limpio, `BUILD_LIMPIO=0`). Cada una en un cálculo
+que solo afirma su spec, y cada spec cae en SU aserción:
+- `wallet`: `LIQUIDEZ_POR_CATEGORIA.ingreso_flete` de `cargo_a_tienda` a `efectivo` (`lib/utils/caja-tesoreria.ts`)
+  → rojo en el flujo: `Received "…₡9.000…"`, esperado 5.000.
+- `mi-wallet`: `CUBETA_POR_CATEGORIA.flete` de `cargos` a `pagado` (`lib/utils/desglose-tienda.ts`) → rojo en
+  «Cargos de la empresa»: `Received "…₡0…"`, esperado 4.000.
+- `wallet-mensajeros`: `calcularSplitPago` con `pagado = P` (sin el mínimo con el efectivo,
+  `lib/utils/cuenta-por-pagar.ts`) → rojo en la columna «Pagado»: `Received "₡3.000"`, esperado 1.000.
+
+**Comprobaciones:** `pnpm exec eslint` (4 archivos) sin problemas; `pnpm run typecheck` exit 0;
+`pnpm run test:guardias` → `1 failed | 304 passed (305)`, solo `dependencias-declaradas-presentes` (baseline).
+Sin `skip`/`fixme`/`only`, sin `@example.com`, `correct-password` ni variables `E2E_RASTREO_*`/`SL17_HUMO_*`/`SL39_UI`.
+
+**Excepciones de R8:** ninguna nueva (todo movimiento nace de aprobar el cierre o de la pantalla). Siguen las
+de T3.1 (contraseña y dispositivo confiado). La de la fecha de gestión en el pasado no se usa aquí.
+
+**Defectos de producción:** ninguno.
+
+**Veredicto T6.3:** los tres specs 10/10 dos veces sobre base nueva, cada uno con su mutación en rojo.
+
+## T6.1 + T6.2 — dinero: cierres del día, de bodega y bloqueos (agente SL-44-T6a)
+
+Base propia `sl44_din1` en `sl44-pg`, servidor en 3044, log y trazas fuera del repo. MCP del grafo no usado (Grep/Read).
+
+**Archivos:**
+- reescritos: `e2e/{cierre-dia,cierres-admin,cierres-admin-rechazos-sla,cierre-bodega-satelite,cierre-vencido-modelo,reglas-bloqueos-cierre}.spec.ts`;
+- `e2e/_escenarios/cierres.ts`: solo se AÑADE (firmas previas intactas) `rechazarCierre(r, cierreId, motivo, {quien?})`,
+  `cierresDe(m)` (lectura), `anclarDevolucionHaceDias(r, orden, dias)` (excepción de R8, abajo) e `importe(n, {solo?})`
+  (RegExp tolerante al símbolo/separadores; `solo` la ancla al texto entero del elemento);
+- `e2e/_escenarios/crons.ts`: solo una línea de comentario (la excepción de la gestión se quita);
+- producción (defectos, abajo): `app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx`, `CierresBodegaAdminModule.tsx`;
+- tests nuevos: `tests/components/ConsolidacionBodegaRefresco.test.tsx`, `tests/components/CierresBodegaAdminRefresco.test.tsx`;
+- `specs/SL-44-e2e-verde-ci/design.md > D4`: fila de `crons.ts` (gestión: se quita) y fila nueva de `anclarDevolucionHaceDias`.
+
+**Contra la UI actual (R18), desvíos de la cabecera vieja:**
+- `cierre-bodega-satelite`: desde la ficha 431 la central ya no aprueba/rechaza una consolidación; la «Marca recibido» por
+  lo contado y la «Desmarca». El spec recorre solicitar (adminSatelite) → marcar recibido con evidencia y totales (maestro)
+  → desmarcar.
+- `reglas-bloqueos-cierre`: desde 241/271/431 la bodega satélite ya no se congela entera (`bloqueada` es constante `false`):
+  avisa «Tienes 1 cierre abierto de tus mensajeros.» y el selector deshabilita al mensajero bloqueado
+  («… (tiene cierres sin resolver)»). El spec afirma esa puerta y que el aviso de bloqueo total no sale.
+- `cierres-admin`: la aprobación de un cierre con paquetes que vuelven pasa por la confirmación física de la guía (238).
+
+**Excepciones de R8:**
+- se QUITA la de la fecha de la gestión en el pasado: `corte-diario` toma toda gestión sin cierre sin mirar su fecha, así
+  que el `vencido` sale del cron real con la gestión de hoy (`cierre-vencido-modelo`, `reglas-bloqueos-cierre`);
+- NUEVA, `anclarDevolucionHaceDias` (`cierres-admin-rechazos-sla`): mueve 6 días atrás SOLO el `created_at` de la fila
+  `anclaje_devolucion` de una orden en `novedad` (la escribe la aprobación del cierre). Sin reloj falso el plazo de 5 días
+  de una `wrong_*` no vence, ningún servicio lo fija, y la vía del tope de intentos está cerrada (con el tope la `novedad` ya
+  no se admite, 276). Gestión, aprobación y escalado: servicio y cron reales (`procesar-devueltas-sla`).
+
+**Cifras (a mano, de lo que crea cada spec):** cierre-dia 8.000 efectivo + 3.000 SINPE = 11.000, ganancia 2 × 1.700; deshacer
+7.000 → 2.000. cierres-admin 6.000 / 2.500. rechazos-sla automático 900, manual 2 × 900 = 1.800, total 2.700. bodega 9.000.
+vencido 4.000; reglas 3.000.
+
+**Defectos de producción encontrados y ARREGLADOS** (≤ 30 líneas, sin migración, mismo patrón ya aplicado en
+`CierreDiaModule`/`CierresAdminModule` el 2026-08-19):
+1. `ConsolidacionBodegaModule.confirmarSolicitud` solo hacía `router.refresh()`: las listas «A consolidar» y «Solicitados»
+   (`useSWR` con `fallbackData`) no se releían; tras «Cierre de bodega solicitado correctamente.» la pestaña «Solicitados»
+   decía «Aún no has solicitado ningún cierre de bodega.». Arreglo: `mutate` de `cierre-bodega:consolidables` y
+   `cierres-bodega:solicitados`. Test: `ConsolidacionBodegaRefresco.test.tsx` (1 passed); mutación (sin el `mutate`) →
+   `AssertionError: expected 1 to be greater than 1`; restaurado de copia, `cmp` OK.
+2. `CierresBodegaAdminModule.refrescarListas` revalidaba solo la cola: la consolidación marcada no entraba en «Resueltos».
+   Arreglo: también `cierres-bodega:resueltos`. Test: `CierresBodegaAdminRefresco.test.tsx` (1 passed); mutación (sin esa
+   clave) → `expected 1 to be greater than 1`; restaurado, `cmp` OK.
+   `vitest related` de los dos módulos: 13 archivos, 192 passed.
+
+**Salida real:**
+- por spec, en verde con `--project=dinero` (corridas `cd1`, `r2`, `r4`, `b5` en la bitácora del agente);
+- final, `sl44_din1` recién recreada (`DROP_CREATE=0`, `MIGRATE=0`, `SEED=0`) y los 6 specs juntos dos veces seguidas:
+  corrida 1 `18 passed (1.0m)`, corrida 2 `18 passed (42.8s)`; 0 failed, 0 skipped, 0 flaky. 3044 y 54329 libres antes y después.
+
+**Mutaciones** (las de servidor en UNA toma del lock: mutar → `tsc` → `next build` → corrida → restaurar desde copia con
+`cmp OK` → `next build` limpio, `BUILD_LIMPIO=0`; `git diff -- lib` vacío al final):
+- `cierre-dia`: `listarCierreDia` calcula los totales sin la primera gestión → rojo `SINPE₡0` (esperado 3.000) en (a) y
+  `Efectivo₡5.000` (esperado 7.000) en (b).
+- `cierre-vencido-modelo`: la re-solicitud del `vencido` responde ok sin `transicionarASolicitado` → rojo en el paso 3 (el
+  aviso de bloqueo sigue: `Received: 1`).
+- `reglas-bloqueos-cierre`: `findMensajerosBloqueadosPorCierres` no marca a nadie → rojo en el paso 3 (la opción
+  «… (tiene cierres sin resolver)» no existe). Una primera mutación en `existeBodegaSateliteBloqueada.mensajerosBloqueadosIds`
+  SOBREVIVIÓ (el selector no lee ese campo, lee `listarMensajerosSatelite.bloqueadosIds`): se descartó y se mutó la puerta real.
+- `cierre-bodega-satelite`: `solicitarCierreBodega` suma el snapshot sin el primer consolidable → rojo en el paso 1 (no
+  aparece el total 9.000 en «Solicitados»).
+- `cierres-admin-rechazos-sla`: el desglose SLA/manual intercambiado → rojo `Automático … ₡1.800` (esperado 900).
+- `cierres-admin` (sin build: el snapshot lo congela el worker): `computeTotales` suma el efectivo como SINPE → rojo
+  `Efectivo₡0` (esperado 6.000).
+- Un primer intento del lote de servidor no compiló (`resolicitable` posiblemente null en la mutación del vencido): `next
+  build` rojo, Playwright sin build; restaurado con `cmp OK` y build limpio en la misma toma; se repitió con la mutación corregida.
+
+**Comprobaciones:** `pnpm exec eslint` (9 archivos) sin problemas; `pnpm run typecheck` exit 0; `pnpm run test:guardias` →
+`1 failed | 304 passed (305)`, solo `dependencias-declaradas-presentes` (baseline).
+
+**R → test:** R7/R8/R10/R18 → los 6 specs de arriba (con las excepciones de R8 anotadas en D4).
+
+**Veredicto T6.1+T6.2:** los 6 specs 18/18 dos veces sobre base nueva, cada uno con su mutación en rojo, y dos defectos de
+refresco de la pantalla de cierres de bodega arreglados con su test.

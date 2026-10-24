@@ -1,225 +1,134 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+import { cierresDe } from "./_escenarios/cierres";
+import { correrCron, drenarGeocodificacion } from "./_escenarios/crons";
+import {
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Reglas y bloqueos de cierre" — the critical money/recaudo path of
- * Feature 41 (G3 / R6, R12–R15, R18, R19–R22). It ties together the three existing
- * screens (mensajero's "Cierre del día", adminSatelite's "Recepción satélite" and the
- * warehouse admin's "Cierres del día") around a `cierre_dia` in the NEW `vencido`
- * state that the daily cut-off (`/api/cron/corte-diario`) produced.
+ * E2E — Reglas y bloqueos de cierre: el camino crítico del `vencido` (features 41, 111 y 271;
+ * SL-44 T6.2, R18). Une las tres pantallas alrededor del cierre `vencido` que deja el corte:
+ *  1. El corte diario (la ruta real del cron) deja `vencido` el cierre del mensajero M.
+ *  2. M ve el aviso de bloqueo total en «Cierre del día».
+ *  3. La bodega satélite de M no puede asignarle trabajo a M: le avisa del cierre abierto de su
+ *     mensajero y, al asignar, M sale deshabilitado («tiene cierres sin resolver»).
+ *     ⚠️ Contra la UI ACTUAL (features 241, 271 y ficha 431): la bodega ya NO se congela entera
+ *     («No puedes asignar órdenes…» con «Asignar» apagado). Se veta al mensajero bloqueado y la
+ *     bodega sigue asignando a los demás; el spec afirma esa puerta y que el aviso de bloqueo
+ *     total de la bodega no aparece.
+ *  4. Válvula (111/R16): en «Cierres del día» el `vencido` sale marcado «Vencido» y sin «Ver /
+ *     decidir»; el adminSatelite lo destraba (`vencido → solicitado`) y lo aprueba por la vía normal.
+ *  5. M ya no está bloqueado y la bodega vuelve a poder asignarle.
  *
- * Covers the full critical path (all steps chained, DB-mutating, hence serial):
- *  1. Corte crea vencido (seed precondition): the daily cut-off already ran, so a
- *     courier with unclosed activity now has a `cierre_dia estado='vencido'` within
- *     the admin's scope (R6/R7/R8).
- *  2. Mensajero bloqueado: the courier's "Cierre del día" view shows the actionable
- *     block notice (role="alert") — feature 111/R12 makes the block TOTAL: they cannot
- *     gestionar NOR receive new assignments.
- *  3. Asignación rechazada: the adminSatelite's "Recepción satélite" view shows the
- *     warehouse-blocked notice (differentiated cause) and the "Asignar" action is
- *     disabled, so the satellite cannot assign to its couriers (R14/R18/R22; the
- *     maestro path R13 is the same derived block on `generarGuia`/`asignarDesdeBodega`).
- *  4. Admin destraba (válvula, feature 111/R15/R16): in `/cierres-admin` the `vencido`
- *     shows differentiated (a "Vencido" badge) but is NO LONGER directly approvable
- *     (R15). The admin uses the exception action "Destrabar cierre vencido"
- *     (vencido → solicitado) and then approves it as `solicitado` via the feature-38 flow.
- *  5. Desbloqueo: once the `vencido` is resolved, the courier is no longer blocked
- *     (their alert is gone) and the satellite can assign again (block notice gone,
- *     "Asignar" enabled) (R15).
- *
- * PRECONDITION (seed):
- * - A `mensajero` M WITH a `zonaId` that belongs to a SATELLITE zone Z (not the
- *   central one), with at least one `gestion_orden` managed during the day and left
- *   with `cierre_id IS NULL`, and NO `cierre_dia` in state `solicitado`. Running the
- *   daily cut-off once (or seeding the row directly) leaves exactly one `cierre_dia`
- *   for M with `estado='vencido'`, `destino_tipo='bodega_satelite'`,
- *   `destino_zona_id=Z`, its per-method totals/pago snapshotted and its gestiones
- *   linked (R6/R8) — this is the ONLY blocking closing for M (R12) and the (i) cause
- *   of the satellite block for Z (R17).
- * - An `adminSatelite` A whose `zonaId = Z`, with at least one order already in
- *   `en_bodega_satelite` of Z (so "Recibidas" is non-empty and selectable), and NO
- *   own `cierre_bodega` in `estado='solicitado'` (so the satellite block comes ONLY
- *   from cause (i), the courier's `vencido`, and disappears once it is resolved).
- * - A warehouse admin who resolves Z's closings: the `adminSatelite` A itself (its
- *   `/cierres-admin` scope is its own zone Z), so the SAME login used for step 3 sees
- *   and resolves the `vencido` in step 4. Set NUM_REMISION to the seeded received
- *   order so the "Recibidas" checkbox can be targeted by its accessible name.
- *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres, the `cierre_dia` table with the feature 41
- *   `vencido` enum value + `(mensajero_id, estado)` index migration applied, and the
- *   gestion/order catalog values seeded
- * - The seeded mensajero (with a satellite zona) carrying a `vencido`, and the
- *   adminSatelite of that same zona with a received order, per PRECONDITION above
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but
- * NOT EXECUTED. Execution is deferred until the test environment is fully set up
- * (same deferral as e2e/cierres-admin.spec.ts, e2e/cierre-dia.spec.ts and
- * e2e/recepcion-satelite.spec.ts). They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials (incl. CRON_SECRET)
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed M (mensajero of satellite zona Z, with unclosed activity) and A
- *    (adminSatelite of Z, with a received order); trigger the cut-off (GET
- *    /api/cron/corte-diario with the CRON_SECRET) so M gets a `vencido`; set the
- *    seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * DATOS (R7, R8): empresa nueva; M es el ÚNICO mensajero de la zona satélite (así el aviso de la
+ * bodega habla solo de él). Una entrega de 3.000 en efectivo gestionada por
+ * `MisAsignacionesService` sin cierre, y otra orden recibida en la bodega satélite
+ * (`RecepcionSateliteService`) para marcarla. El `vencido` lo crea el cron real; como en
+ * `cierre-vencido-modelo`, sin excepción de R8 (el corte no mira la fecha de la gestión).
  */
 
-// Seeded mensajero (blocked by the `vencido` produced by the cut-off).
-const MENSAJERO_EMAIL = "mensajero-vencido@example.com";
-const MENSAJERO_PASSWORD = "correct-password";
+const NO_PUEDES = "Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo.";
+const BODEGA_BLOQUEADA = "No puedes asignar órdenes: tu bodega tiene cierres pendientes de resolver.";
+const CIERRE_ABIERTO = "Tienes 1 cierre abierto de tus mensajeros.";
+const MOTIVO_CIERRE = "tiene cierres sin resolver";
 
-// Seeded adminSatelite of the SAME satellite zona (resolves the `vencido` in its
-// own `/cierres-admin` scope, and is blocked from assigning while it is pending).
-const ADMIN_SATELITE_EMAIL = "admin-satelite@example.com";
-const ADMIN_SATELITE_PASSWORD = "correct-password";
+let r: RepartoE2E;
+let m: MensajeroE2E;
+let enBodega: OrdenE2E;
+let vencidoId: string;
 
-// numRemision of a seeded order already `en_bodega_satelite` of the zona (targets the
-// "Recibidas" selection checkbox by its accessible name "Seleccionar <numRemision>").
-const NUM_REMISION = "REM-SAT-0001";
-
-/** Logs in with the given credentials and lands on the app. */
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
+async function bodegaDelSatelite(page: Page): Promise<Locator> {
+  await page.goto("/recepcion-satelite/en-bodega");
+  const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
+  await bodega.getByRole("checkbox", { name: `Seleccionar ${enBodega.numRemision}` }).check();
+  return bodega;
 }
 
-// Serial: the path mutates real state (approving the `vencido` desbloquea M and Z),
-// so step 5 depends on step 4 having run.
+/** «Asignar» con la orden marcada y el desplegable de mensajeros abierto. */
+async function abrirAsignar(page: Page, bodega: Locator): Promise<void> {
+  const asignar = bodega.getByRole("button", { name: "Asignar", exact: true });
+  await expect(asignar).toBeEnabled();
+  await asignar.click();
+  await page.getByRole("dialog", { name: "Asignar mensajero" }).getByRole("combobox", { name: "Mensajero para el lote" }).click();
+}
+
 test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencido", () => {
-  test("paso 2 — el mensajero con `vencido` ve el aviso accionable de bloqueo (R21)", async ({
-    page,
-  }) => {
-    // Precondition (seed): the cut-off already created M's `vencido` (paso 1, R6/R8).
-    await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("reglas-bloqueos");
+    m = await crearMensajero(r, "satelite");
+    const o = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 3000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, o, m, { resultado: "entregado" });
+    enBodega = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_bodega_satelite");
+    await drenarGeocodificacion([enBodega.id]);
+  });
+
+  test("paso 1 — el corte diario deja `vencido` el cierre de M", async () => {
+    await correrCron("corte-diario");
+    const cierres = await cierresDe(m);
+    expect(cierres.map((c) => [c.estado, c.destinoTipo, String(c.totalEfectivo)])).toEqual([["vencido", "bodega_satelite", "3000"]]);
+    vencidoId = cierres[0].id;
+  });
+
+  test("paso 2 — M ve el aviso de bloqueo total", async ({ browser }) => {
+    const page = await paginaDe(browser, m);
     await page.goto("/cierre-dia");
-
-    // R12/R21: derived block surfaced as an actionable alert on the courier's view.
-    const aviso = page.getByRole("alert").filter({
-      hasText:
-        "No puedes gestionar ni recibir nuevas asignaciones hasta resolver tu cierre pendiente.",
-    });
-    await expect(aviso).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toBeVisible();
   });
 
-  test("paso 3 — la bodega satélite bloqueada rechaza la asignación: aviso + 'Asignar' deshabilitado (R18/R22)", async ({
-    page,
-  }) => {
-    await login(page, ADMIN_SATELITE_EMAIL, ADMIN_SATELITE_PASSWORD);
-    // Feature 279 (T6.1, 2026-08-24): el portal del `adminSatelite` se partió en dos
-    // rutas y `/recepcion-satelite` sólo redirige. Se apunta a la pantalla que este
-    // caso describe. **No se afirma que este spec pase**: los e2e de este repo siguen
-    // sin ejecutarse (ver la cabecera del archivo), así que esto es una corrección de
-    // ruta por lectura, no una verificación.
-    await page.goto("/recepcion-satelite/en-bodega");
-
-    const recibidas = page.getByRole("region", { name: "Recibidas" });
-    await expect(recibidas).toBeVisible();
-
-    // R22: warehouse-blocked notice, differentiated cause (i) = couriers' closings.
-    const aviso = recibidas.getByRole("alert").filter({
-      hasText:
-        "No puedes asignar órdenes: tu bodega tiene cierres pendientes de resolver.",
-    });
-    await expect(aviso).toBeVisible();
-    await expect(
-      aviso.getByText("Resuelve los cierres pendientes de tus mensajeros."),
-    ).toBeVisible();
-
-    // R14/R18: selecting a received order does NOT enable assignment while blocked.
-    await recibidas
-      .getByRole("checkbox", { name: `Seleccionar ${NUM_REMISION}` })
-      .check();
-    await expect(recibidas.getByRole("button", { name: "Asignar" })).toBeDisabled();
+  test("paso 3 — la bodega satélite no puede asignarle a M: aviso del cierre abierto y M deshabilitado", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    const bodega = await bodegaDelSatelite(page);
+    // 241/271 (R32/R34): el cierre de UN mensajero ya no congela la bodega; avisa y lo veta a él.
+    await expect(page.getByRole("status").filter({ hasText: CIERRE_ABIERTO })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: BODEGA_BLOQUEADA })).toHaveCount(0);
+    await abrirAsignar(page, bodega);
+    await expect(page.getByRole("option", { name: `${m.nombre} (${MOTIVO_CIERRE})` })).toBeDisabled();
   });
 
-  test("paso 4 — el admin destraba el `vencido` (válvula R16) y lo aprueba ya como `solicitado` (R15)", async ({
-    page,
-  }) => {
-    // Same adminSatelite: its `/cierres-admin` scope is its own zona Z.
-    await login(page, ADMIN_SATELITE_EMAIL, ADMIN_SATELITE_PASSWORD);
+  test("paso 4 — válvula: destrabar el `vencido` y aprobarlo ya como `solicitado`", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
     await page.goto("/cierres-admin");
+    const comprobante = page
+      .getByRole("region", { name: "Pendientes de decisión" })
+      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    await expect(comprobante.getByText("Vencido", { exact: true })).toBeVisible();
+    // 111/R15: un `vencido` no se decide por la vía normal.
+    await expect(comprobante.getByRole("button", { name: "Ver / decidir" })).toHaveCount(0);
 
-    // R20: the `vencido` sits in the pending-decision queue, differentiated by a
-    // "Vencido" badge (vs "Solicitado").
-    const pendientes = page.getByRole("region", {
-      name: "Pendientes de decisión",
-    });
-    await expect(pendientes).toBeVisible();
-    await expect(pendientes.getByText("Vencido")).toBeVisible();
+    await comprobante.getByRole("button", { name: `Destrabar cierre vencido abandonado de ${m.nombre}` }).click();
+    const destrabar = page.getByRole("dialog", { name: "Destrabar cierre vencido abandonado" });
+    await destrabar.getByRole("button", { name: "Destrabar (excepción)" }).click();
+    await expect(page.getByText("Cierre vencido destrabado; quedó como solicitado para aprobación.")).toBeVisible();
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[vencidoId, "solicitado"]]);
 
-    // Feature 111/R15: el `vencido` YA NO es aprobable directo por la vía normal. La vía
-    // de EXCEPCIÓN de la bodega para destrabar un vencido abandonado es la válvula (R16):
-    // "Destrabar cierre vencido" (con confirmación), que lo transiciona `vencido → solicitado`
-    // en nombre del mensajero, sin recalcular montos (R21).
-    await pendientes
-      .getByRole("button", { name: /Destrabar cierre vencido/ })
-      .first()
-      .click();
-    const confirmDestrabar = page.getByRole("dialog", {
-      name: "Destrabar cierre vencido abandonado",
-    });
-    await expect(confirmDestrabar).toBeVisible();
-    await confirmDestrabar
-      .getByRole("button", { name: "Destrabar (excepción)" })
-      .click();
-    await expect(
-      page.getByText(/Cierre vencido destrabado; quedó como solicitado/i),
-    ).toBeVisible();
-
-    // Ya `solicitado`: ahora sí se resuelve por la vía normal (feature 38). Abrir el
-    // detalle (totales = snapshot congelado, R8 — no se recalcula) y aprobar.
-    await pendientes.getByRole("button", { name: "Ver / decidir" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("region", { name: "Totales del cierre" })).toBeVisible();
-    await dialog.getByRole("button", { name: "Aprobar" }).click();
-
-    // Success feedback + the closing lands in the read-only history as "Aprobado".
-    await expect(page.getByText(/Cierre aprobado/i)).toBeVisible();
-    const historico = page.getByRole("region", { name: "Histórico" });
-    await expect(historico.getByText("Aprobado")).toBeVisible();
+    await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
+    await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
+    await expect(detalle.getByRole("region", { name: "Totales del cierre" })).toBeVisible();
+    await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
+    await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[vencidoId, "aprobado"]]);
   });
 
-  test("paso 5 — tras resolver, el mensajero se desbloquea y la bodega puede asignar (R15)", async ({
-    page,
-  }) => {
-    // The courier no longer sees the block alert (R15).
-    await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
-    await page.goto("/cierre-dia");
-    await expect(
-      page.getByRole("alert").filter({
-        hasText:
-          "No puedes gestionar ni recibir nuevas asignaciones hasta resolver tu cierre pendiente.",
-      }),
-    ).toHaveCount(0);
+  test("paso 5 — resuelto, M no está bloqueado y la bodega vuelve a asignar", async ({ browser }) => {
+    const suya = await paginaDe(browser, m);
+    await suya.goto("/cierre-dia");
+    await expect(suya.getByRole("region", { name: "Totales del día" })).toBeVisible();
+    await expect(suya.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
 
-    // The satellite is unblocked: no warehouse-blocked notice, and selecting a
-    // received order enables "Asignar" again (R15/R22).
-    await login(page, ADMIN_SATELITE_EMAIL, ADMIN_SATELITE_PASSWORD);
-    // Feature 279 (T6.1, 2026-08-24): el portal del `adminSatelite` se partió en dos
-    // rutas y `/recepcion-satelite` sólo redirige. Se apunta a la pantalla que este
-    // caso describe. **No se afirma que este spec pase**: los e2e de este repo siguen
-    // sin ejecutarse (ver la cabecera del archivo), así que esto es una corrección de
-    // ruta por lectura, no una verificación.
-    await page.goto("/recepcion-satelite/en-bodega");
-    const recibidas = page.getByRole("region", { name: "Recibidas" });
-    await expect(
-      recibidas.getByRole("alert").filter({
-        hasText:
-          "No puedes asignar órdenes: tu bodega tiene cierres pendientes de resolver.",
-      }),
-    ).toHaveCount(0);
-
-    await recibidas
-      .getByRole("checkbox", { name: `Seleccionar ${NUM_REMISION}` })
-      .check();
-    await expect(recibidas.getByRole("button", { name: "Asignar" })).toBeEnabled();
+    const page = await paginaDe(browser, r.adminSatelite);
+    const bodega = await bodegaDelSatelite(page);
+    await expect(page.getByRole("status").filter({ hasText: CIERRE_ABIERTO })).toHaveCount(0);
+    await abrirAsignar(page, bodega);
+    await expect(page.getByRole("option", { name: m.nombre, exact: true })).toBeEnabled();
   });
 });

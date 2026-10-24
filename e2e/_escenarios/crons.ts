@@ -26,6 +26,8 @@ import { abrirBaseE2E } from "../../tests/fabricas/e2e";
  * reprogramación «ya llegada» la produce `CorreccionFechaReprogramacionService` (ver
  * `./reparto.ts > corregirFechaReprogramacion`), así que esa mitad de la excepción se QUITA. La de
  * la fecha de una GESTIÓN en el pasado (para `corte-diario`) la decide el grupo `dinero`.
+ * Decidido (T6, 2026-10-24): TAMBIÉN SE QUITA. El corte toma toda gestión sin cierre sin mirar su
+ * fecha, así que `correrCron("corte-diario")` deja el `vencido` con la gestión de hoy.
  */
 
 export type NombreCron = "corte-diario" | "liberar-reprogramadas" | "procesar-devueltas-sla" | "procesar-jobs";

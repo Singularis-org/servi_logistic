@@ -141,8 +141,8 @@ Convenciones:
 
 ## Tanda 6 — Dinero (depende de T3.2)
 
-- [ ] **T6.1 — `cierre-dia`, `cierres-admin`, `cierres-admin-rechazos-sla`** (R18). `[P]`
-- [ ] **T6.2 — `cierre-bodega-satelite`, `cierre-vencido-modelo`, `reglas-bloqueos-cierre`** (R18).
+- [x] **T6.1 — `cierre-dia`, `cierres-admin`, `cierres-admin-rechazos-sla`** (R18). `[P]`
+- [x] **T6.2 — `cierre-bodega-satelite`, `cierre-vencido-modelo`, `reglas-bloqueos-cierre`** (R18).
   `[P]`
 - [x] **T6.3 — `wallet`, `mi-wallet`, `wallet-mensajeros`** (R18). `[P]`
 
