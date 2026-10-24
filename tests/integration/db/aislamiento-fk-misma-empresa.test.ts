@@ -15,6 +15,7 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SL-17 / T3.7 (design §3 M3, §9.2) — R37 y R38 contra Postgres real. La garantia es de la BASE:
 // los casos de SQL a mano no pasan por servicio ni por extension, y se repiten como dueno de las
@@ -25,6 +26,10 @@ import {
 // en `beforeAll`: el cliente extendido abre su propia transaccion en otra conexion y no veria las
 // de una transaccion revertida. Se borran en `afterAll`. Cada caso escribe en una transaccion
 // revertida.
+//
+// SL-32: el usuario sin empresa es un superadmin de verdad (el `CHECK` de R28 ya no admite un
+// `maestro` sin empresa), y la base admite uno solo (R27): el archivo toma el lock de
+// `tomarLockDeSuperadmin` desde antes de sembrarlo hasta despues de borrarlo.
 //
 // Mutacion de T3.7: `DROP TRIGGER sme_orden_tienda_id_… ON orden` (nombre de `nombreTrigger`) en la
 // base desechable pone en rojo los tres casos de R37 sobre `orden.tienda_id`.
@@ -41,6 +46,7 @@ type Semillas = {
 
 let base: PrismaClient;
 let s: Semillas;
+let soltarSuperadmin: () => Promise<void> = async () => {};
 
 class Revertir extends Error {
   constructor(readonly valor: unknown) {
@@ -144,6 +150,8 @@ const empresaCruzada = (columna: string) => ({
 describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38)", () => {
   beforeAll(async () => {
     base = crearPrismaDeTest();
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+    await exigirSinSuperadmin(base);
     s = await base.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
@@ -155,7 +163,7 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
         const fksB = await crearFksDeOrden(tx);
         // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin (D15).
         await fijarEmpresa(tx, "");
-        const superadmin = await crearUsuarioDePrueba(tx, "maestro");
+        const superadmin = await crearUsuarioDePrueba(tx, "superadmin");
         return {
           a: { organizacionId: orgA, fks: fksA },
           b: { organizacionId: orgB, fks: fksB },
@@ -195,6 +203,8 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
         await base.organizacion.deleteMany({ where: { id: { in: [s.a.organizacionId, s.b.organizacionId] } } });
       });
     }
+    // Con el superadmin del archivo ya borrado.
+    await soltarSuperadmin();
     await base?.$disconnect();
   }, 120_000);
 

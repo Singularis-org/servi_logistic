@@ -33,6 +33,7 @@ import type {
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
 import { descargaConfig } from "@/lib/config/descarga";
+import { esPlataforma } from "@/lib/auth/plataforma";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
 import { generateStrongPassword } from "@/lib/utils/password-generator";
@@ -44,6 +45,10 @@ const ALLOWED_ROLES = new Set<string>(["maestro"]);
 // Feature 24/R27: roles que pueden (y DEBEN) llevar una zona asignada. Para el
 // resto el `zonaId` se fuerza a null (misma politica que el `fulfillment` de adminTienda).
 const ZONA_ROLES = new Set<string>(["mensajero", "adminSatelite"]);
+
+// SL-32 (R9): el texto del rechazo cuando un alta o una edicion piden un rol de plataforma. Es
+// el mismo que el de un rol inexistente a proposito: para el `maestro` ese rol no existe (R8).
+const ROL_NO_ASIGNABLE = "El rol indicado no existe";
 
 // FICHA 379: el rol que ADMINISTRA una bodega satelite. Es el unico que puede consolidar los
 // cierres de SU zona (`CierreBodegaService.ROL_AUTORIZADO`), y por eso dejar una zona sin
@@ -135,6 +140,12 @@ export class UsuarioService implements IUsuarioService {
     // a rechazar.
     const rechazoNombre = rechazoDeNombreDeEtiqueta(input.nombre);
     if (rechazoNombre) return { status: "validation_error", fieldErrors: rechazoNombre };
+
+    // SL-32 (R9): un rol de plataforma no se asigna desde aqui. Antes del hash y de toda escritura:
+    // el superadmin solo lo crea el comando de arranque, y la base admite uno solo (R27).
+    if (await this.esRolDePlataforma(input.rolId)) {
+      return { status: "validation_error", fieldErrors: { rolId: [ROL_NO_ASIGNABLE] } };
+    }
 
     // R30: resuelve la contrasena segun el modo. Nunca se loguea (R25/R34).
     const generated = input.passwordMode === "generate";
@@ -289,6 +300,8 @@ export class UsuarioService implements IUsuarioService {
 
     const usuario = await this.repo.findById(id);
     if (!usuario) return { status: "not_found" };
+    // SL-32 (R11): el superadmin no es de ninguna empresa; para el modulo no existe.
+    if (await this.esRolDePlataforma(usuario.rolId)) return { status: "not_found" };
     return { status: "ok", usuario };
   }
 
@@ -308,10 +321,17 @@ export class UsuarioService implements IUsuarioService {
       if (rechazoNombre) return { status: "validation_error", fieldErrors: rechazoNombre };
     }
 
+    // SL-32 (R9): nadie pasa a superadmin desde la edicion, igual que en el alta.
+    if (input.rolId !== undefined && (await this.esRolDePlataforma(input.rolId))) {
+      return { status: "validation_error", fieldErrors: { rolId: [ROL_NO_ASIGNABLE] } };
+    }
+
     // Feature 27/R12/R4a: se recalcula `fulfillment` con el rol resultante, por lo
     // que se necesita el usuario actual (rol e/o valor previo). `null` -> not_found.
     const actual = await this.repo.findById(id);
     if (!actual) return { status: "not_found" }; // R17
+    // SL-32 (R11): `not_found` y no `forbidden`, para no confirmar que el id existe.
+    if (await this.esRolDePlataforma(actual.rolId)) return { status: "not_found" };
 
     const data = await this.buildUpdateData(input, actual); // R16: solo campos editables
 
@@ -377,6 +397,10 @@ export class UsuarioService implements IUsuarioService {
   ): Promise<CambiarEstadoUsuarioServiceResult> {
     if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
 
+    // SL-32 (R11): se lee el objetivo antes de escribir, para no desactivar al superadmin.
+    const objetivo = await this.repo.findById(id);
+    if (objetivo && (await this.esRolDePlataforma(objetivo.rolId))) return { status: "not_found" };
+
     // FICHA 362 (R9): QUIEN cambio el estado; el registro lleva el estado anterior y el nuevo.
     const usuario = await this.repo.setEstado(id, input.estado, actor.usuarioId); // R20/R21
     if (!usuario) return { status: "not_found" }; // R22
@@ -395,7 +419,9 @@ export class UsuarioService implements IUsuarioService {
   async listarRoles(actor: Actor): Promise<ListarRolesServiceResult> {
     if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
 
-    const roles = await this.repo.listRoles();
+    // SL-32 (R8): el filtro va aqui y no en `repo.listRoles`, que lo usan completo los
+    // resolvedores internos de este mismo servicio.
+    const roles = (await this.repo.listRoles()).filter((r) => !esPlataforma(r.value));
     return { status: "ok", roles };
   }
 
@@ -435,6 +461,8 @@ export class UsuarioService implements IUsuarioService {
 
     const usuario = await this.repo.findById(id);
     if (!usuario) return { status: "not_found" }; // R4
+    // SL-32 (R11): antes de revocar sesiones o generar nada.
+    if (await this.esRolDePlataforma(usuario.rolId)) return { status: "not_found" };
 
     // R5: el maestro no se restablece a si mismo. Revocarle las sesiones a mitad del flujo puede
     // tumbarle la sesion antes de que copie la contrasena que solo se ve una vez, y si es el
@@ -524,6 +552,8 @@ export class UsuarioService implements IUsuarioService {
 
     const actual = await this.repo.findById(id);
     if (!actual) return { status: "not_found" };
+    // SL-32 (R11): tampoco se evalua un cambio sobre el superadmin.
+    if (await this.esRolDePlataforma(actual.rolId)) return { status: "not_found" };
 
     // (3) Sin zona no hay ninguna zona que se pueda quedar sola.
     const zonaId = actual.zonaId;
@@ -622,6 +652,14 @@ export class UsuarioService implements IUsuarioService {
       data.fulfillment = await this.resolverFulfillment(rolIdResultante, deseado);
     }
     return data;
+  }
+
+  // SL-32 (R9, R11): ¿el `rolId` es de un rol de plataforma? Se resuelve por valor con el mismo
+  // `listRoles` que usan los demas resolvedores: el `id` fijo del rol vive solo en la migracion.
+  private async esRolDePlataforma(rolId: string): Promise<boolean> {
+    const roles = await this.repo.listRoles();
+    const rolValue = roles.find((r) => r.id === rolId)?.value;
+    return rolValue !== undefined && esPlataforma(rolValue);
   }
 
   // Feature 27/R4a (Decision P1): resuelve el flag efectivo. Solo `adminTienda`

@@ -76,7 +76,9 @@ function repoUsuarios(overrides: Partial<IUserRepository> = {}): IUserRepository
     update: vi.fn(),
     setEstado: vi.fn(),
     listTiposIdentificacion: vi.fn(),
-    listRoles: vi.fn(),
+    // SL-32 (R11): el servicio mira el rol del objetivo antes de restablecer; sin roles de
+    // plataforma en el catalogo del doble, el objetivo es de empresa.
+    listRoles: vi.fn().mockResolvedValue([]),
     contarAdminSatelitesActivos: vi.fn().mockResolvedValue(0), // ficha 379: exigido por IUserRepository
     ...overrides,
   };

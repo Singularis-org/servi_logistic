@@ -55,10 +55,11 @@ describe("lib/analytics/types · roles de analitica (R7)", () => {
     expect(ROLES_ANALITICA as readonly string[]).not.toContain(apiKey);
   });
 
-  it("deja fuera de RolAnalitica exactamente un valor de RolValue: el de integracion", () => {
+  it("deja fuera de RolAnalitica exactamente dos valores de RolValue: el de integracion y el de plataforma", () => {
+    // SL-32 (R7): el superadmin no es lector; se le deniega con `ROLES_SIN_ANALITICA`.
     const rolValue = leerEnumDelEsquema("RolValue");
     const fuera = rolValue.filter((v) => !(ROLES_ANALITICA as readonly string[]).includes(v));
-    expect(fuera).toEqual([["api", "Key"].join("")]);
+    expect(fuera).toEqual([["api", "Key"].join(""), "superadmin"]);
   });
 
   it("cada literal de RolAnalitica es un valor del esquema tambien en tipos", () => {

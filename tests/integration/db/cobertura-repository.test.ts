@@ -121,11 +121,14 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
       data: { nombre: "Cantón Retirado", provinciaId: provincia.id, activo: false },
       select: { id: true },
     });
-    const distrito = async (nombre: string, cantonId: string, extra: Partial<{ activo: boolean; zonaEspecial: boolean | null }> = {}) =>
+    const distrito = async (nombre: string, cantonId: string, extra: Partial<{ activo: boolean }> = {}) =>
       (await tx.distrito.create({ data: { nombre, cantonId, ...extra }, select: { id: true } })).id;
 
-    const dCero = await distrito("Cero Zonas", cantonVivo.id, { zonaEspecial: null });
-    const dUna = await distrito("Una Zona", cantonVivo.id, { zonaEspecial: true });
+    const dCero = await distrito("Cero Zonas", cantonVivo.id);
+    const dUna = await distrito("Una Zona", cantonVivo.id);
+    // SL-38 (R15): la marca es de la EMPRESA. `enTransaccionRevertida` ya fijo una, y el `DEFAULT`
+    // de `organizacion_id` la toma de ahi. «Cero Zonas» se queda sin marca: «No», nunca «Sin definir».
+    await tx.distritoZonaEspecial.create({ data: { distritoId: dUna } });
     const dDos = await distrito("Dos Zonas", cantonVivo.id);
     const dCentral = await distrito("En La Central", cantonVivo.id);
     const dRetirado = await distrito("Retirado Propio", cantonVivo.id, { activo: false });
@@ -178,7 +181,7 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     const nombresZona = (r: DistritoCoberturaRow | undefined) => (r?.zonas ?? []).map((z) => z.id).sort();
 
     expect(mias.get("Cero Zonas")).toMatchObject({ disponible: true, zonas: [] });
-    expect(mias.get("Cero Zonas")!.distrito.zonaEspecial).toBeNull();
+    expect(mias.get("Cero Zonas")!.distrito.zonaEspecial).toBe(false);
 
     expect(mias.get("Una Zona")).toMatchObject({
       disponible: true,

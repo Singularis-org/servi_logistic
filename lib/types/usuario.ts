@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { RolValue } from "@prisma/client";
 import { usuariosConfig } from "@/lib/config/usuarios";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { esPlataforma } from "@/lib/auth/plataforma";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
@@ -151,7 +152,13 @@ export const USUARIO_BUSQUEDA_MAX_CHARS = 120;
 // Se filtra por el VALOR del enum y no por `rol_id`: el rol es un enum, no una fila de
 // catalogo, asi que no hay nada que precargar, no viajan UUIDs distintos por entorno y el
 // borde puede validar "es un rol", no solo "es un string no vacio".
-const ROLES_FILTRO = Object.keys(ROL_LABELS) as [RolValue, ...RolValue[]];
+//
+// SL-32 (R10): MENOS los roles de plataforma. El superadmin no es de ninguna empresa, asi que
+// para el filtro del `maestro` es un rol inexistente y el borde lo rechaza como tal.
+const ROLES_FILTRO = (Object.keys(ROL_LABELS) as RolValue[]).filter((r) => !esPlataforma(r)) as [
+  RolValue,
+  ...RolValue[],
+];
 export const usuarioRolFiltroSchema = z.enum(ROLES_FILTRO);
 
 // R13/R15: parametros del listado. `pageSize` acotado a MAX_PAGE_SIZE via clamp;

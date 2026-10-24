@@ -569,7 +569,7 @@ muestran, uno con objeto y otro con `null`.
 
 ## 2026-09-06 — Un motivo de error de fila NUEVO: provincia, cantón o distrito RETIRADOS del catálogo
 
-**Qué cambia.** La empresa pasa a poder **retirar** una provincia, un cantón o un distrito de su
+**Qué cambia.** Servi Logistic pasa a poder **retirar** una provincia, un cantón o un distrito del
 catálogo geográfico sin borrarlo. Un nodo retirado deja de admitirse en cargas y cotizaciones
 **nuevas**; las órdenes que ya lo referencian **no se tocan** y siguen consultándose y listándose
 igual que siempre.

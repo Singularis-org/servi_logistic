@@ -7,7 +7,8 @@
 export interface DistritoCoberturaRow {
   provincia: { nombre: string; activo: boolean };
   canton: { nombre: string; activo: boolean };
-  distrito: { nombre: string; activo: boolean; zonaEspecial: boolean | null };
+  /** `zonaEspecial`: la marca de la EMPRESA del actor (SL-38). Dos valores: hay marca o no. */
+  distrito: { nombre: string; activo: boolean; zonaEspecial: boolean };
   /** Disponibilidad efectiva (`disponibleDesdeCadena`), calculada en el repositorio. */
   disponible: boolean;
   /**

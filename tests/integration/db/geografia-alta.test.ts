@@ -31,7 +31,9 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUFIJO = `f374a${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
-const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+// SL-32 (R24): el alta es de la plataforma. `crear` solo escribe geografia (sin registro de acciones),
+// asi que no choca con P7.
+const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
 
 interface Sembrado {
   provincia: string;
@@ -93,20 +95,20 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
   describe("374/R12/R13 — el alta crea la fila bajo su padre, y nace ACTIVA", () => {
     it("provincia, canton y distrito: las tres filas existen bajo su padre", async () => {
       await conCorpus(async ({ s, service, tx }) => {
-        const p = await service.crear({ nivel: "provincia", nombre: `Nueva prov ${SUFIJO}` }, MAESTRO);
+        const p = await service.crear({ nivel: "provincia", nombre: `Nueva prov ${SUFIJO}` }, SUPERADMIN);
         expect(p.status).toBe("ok");
         if (p.status !== "ok") throw new Error("el alta de provincia no fue ok");
 
         const c = await service.crear(
           { nivel: "canton", nombre: `Nuevo canton ${SUFIJO}`, provinciaId: p.id },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(c.status).toBe("ok");
         if (c.status !== "ok") throw new Error("el alta de canton no fue ok");
 
         const d = await service.crear(
           { nivel: "distrito", nombre: `Nuevo distrito ${SUFIJO}`, cantonId: c.id },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(d.status).toBe("ok");
         if (d.status !== "ok") throw new Error("el alta de distrito no fue ok");
@@ -143,7 +145,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ s, service, tx }) => {
         const r = await service.crear(
           { nivel: "distrito", nombre: `Bajo canton retirado ${SUFIJO}`, cantonId: s.cantonOff },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r.status).toBe("ok");
         if (r.status !== "ok") throw new Error("el alta bajo un canton retirado se bloqueo");
@@ -195,7 +197,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
         const r = await service.crear(
           { nivel: "distrito", nombre: `san jose ${SUFIJO}`, cantonId: s.canton },
-          MAESTRO,
+          SUPERADMIN,
         );
 
         expect(r).toEqual({ status: "conflict" });
@@ -210,7 +212,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
         const r = await service.crear(
           { nivel: "distrito", nombre: `CABAGRA ${SUFIJO}`, cantonId: s.canton },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r).toEqual({ status: "conflict" });
       });
@@ -221,7 +223,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
         await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton);
         const r = await service.crear(
           { nivel: "distrito", nombre: `Cabagra ${SUFIJO}`, cantonId: s.cantonOff },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r.status).toBe("ok");
       });
@@ -300,7 +302,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
             nombre: `Huerfano ${SUFIJO}`,
             cantonId: "00000000-0000-0000-0000-000000000000",
           },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r).toEqual({ status: "not_found" });
         expect(await tx.distrito.count()).toBe(antes);

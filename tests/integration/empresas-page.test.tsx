@@ -1,0 +1,142 @@
+// @vitest-environment jsdom
+// SL-32 (R35, R29) — LA PÁGINA `/plataforma/empresas` AUTORIZA ANTES DE LEER.
+//
+// Se mide la frontera servidor→cliente: que ningún rol de empresa vea la pantalla, y que la página
+// ni siquiera pida el listado ni el catálogo (una página que consulta y luego decide no pintar ya
+// sacó los datos de todas las empresas). Con el superadmin se monta el `EmpresasModule` REAL con
+// el listado que baja por props, y se lee la tabla que pinta.
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup, within } from "@testing-library/react";
+import type { RolValue } from "@prisma/client";
+
+import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
+
+vi.mock("@/app/_components/LogoutButton", () => ({
+  LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
+}));
+
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NEXT_NOT_FOUND");
+  },
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
+vi.mock("@/lib/auth/resolve-actor", () => ({ resolveActorFromSession: vi.fn() }));
+
+const { listarMock, tiposMock } = vi.hoisted(() => ({
+  listarMock: vi.fn(),
+  tiposMock: vi.fn(),
+}));
+vi.mock("@/lib/actions/_shared/empresas-plataforma", () => ({
+  listarEmpresasPlataforma: (...a: unknown[]) => listarMock(...a),
+}));
+vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
+vi.mock("@/lib/repositories/UserRepository", () => ({
+  UserRepository: class {
+    listTiposIdentificacion = () => tiposMock();
+  },
+}));
+vi.mock("@/lib/actions/organizaciones", () => ({ altaEmpresaAction: vi.fn() }));
+
+import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import EmpresasPage from "@/app/(app)/plataforma/empresas/page";
+
+const EMPRESAS: EmpresaListada[] = [
+  {
+    id: "org-b",
+    nombre: "Envíos Norte",
+    slug: "envios-norte",
+    creadaEn: new Date("2026-10-20T12:00:00Z"),
+    maestros: [{ nombre: "Ana Pérez", email: "ana@norte.test" }],
+  },
+  {
+    id: "org-a",
+    nombre: "Reparto Sur",
+    slug: "reparto-sur",
+    creadaEn: new Date("2026-09-05T12:00:00Z"),
+    maestros: [],
+  },
+];
+
+const ROLES_DE_EMPRESA: RolValue[] = [
+  "maestro",
+  "admin",
+  "mensajero",
+  "adminTienda",
+  "adminSatelite",
+  "apiKey",
+];
+
+const actorMock = vi.mocked(resolveActorFromSession);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listarMock.mockResolvedValue({ status: "ok", empresas: EMPRESAS });
+  tiposMock.mockResolvedValue([{ id: "t-1", value: "cedula" }]);
+});
+
+afterEach(() => cleanup());
+
+describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
+  it.each(ROLES_DE_EMPRESA)("%s → notFound(), sin leer el listado ni el catálogo", async (rol) => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol });
+
+    await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(listarMock).not.toHaveBeenCalled();
+    expect(tiposMock).not.toHaveBeenCalled();
+  });
+
+  it("sin sesión → notFound(), sin leer nada", async () => {
+    actorMock.mockResolvedValue(null);
+
+    await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(listarMock).not.toHaveBeenCalled();
+    expect(tiposMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SL-32 (R29, R35) — con el superadmin, la página pinta el listado", () => {
+  it("pide el listado con su actor y pinta una fila por empresa, en el orden del servidor", async () => {
+    const actor = { usuarioId: "sa-1", rol: "superadmin" as const };
+    actorMock.mockResolvedValue(actor);
+
+    render(await EmpresasPage());
+
+    expect(listarMock).toHaveBeenCalledWith(actor);
+    expect(screen.getByRole("heading", { level: 1, name: "Empresas" })).toBeInTheDocument();
+    const filas = screen.getAllByRole("row").slice(1);
+    expect(filas.map((f) => within(f).getAllByRole("cell")[0].textContent)).toEqual([
+      "Envíos Norte",
+      "Reparto Sur",
+    ]);
+    expect(within(filas[0]).getByText("Ana Pérez · ana@norte.test")).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Crear empresa" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("el catálogo de tipos de documento baja al selector del formulario", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    tiposMock.mockResolvedValue([
+      { id: "t-1", value: "cedula" },
+      { id: "t-2", value: "pasaporte" },
+    ]);
+
+    render(await EmpresasPage());
+
+    expect(tiposMock).toHaveBeenCalledTimes(1);
+    screen.getByRole("combobox", { name: "Tipo de documento" }).click();
+    const opciones = await screen.findAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["cedula", "pasaporte"]);
+  });
+
+  it("si el listado no llega, lo dice y no inventa empresas", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    listarMock.mockResolvedValue({ status: "forbidden" });
+
+    render(await EmpresasPage());
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el listado de empresas.");
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+});

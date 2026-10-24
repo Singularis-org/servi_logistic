@@ -53,7 +53,8 @@ const ITEM: CoberturaDistritoDTO = {
   // GAM y tarifa general DISTINTOS a propósito: si el botón cruzara las dos columnas, el
   // archivo diría «No»/«Sí» y este test lo vería (revisión 465, B1).
   zonaUnica: { nombre: "Central", esCentral: true, tieneTarifaGeneral: false },
-  zonaEspecial: null,
+  // SL-38 (R15): dos valores. `true` para que «Sí» no coincida con la tarifa general («No»).
+  zonaEspecial: true,
 };
 
 function boton() {
@@ -136,7 +137,7 @@ describe("465/R4 + R17 — lee al pulsar y nombra el archivo", () => {
         motivo: null,
         zona: "Central",
         gam: "Sí",
-        zona_especial: "Sin definir",
+        zona_especial: "Sí",
         tarifa_general: "No",
       },
     ]);

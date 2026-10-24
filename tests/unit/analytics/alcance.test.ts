@@ -233,9 +233,10 @@ describe("R11 (122) / R6 (267) · apiKey no consume analitica POR EL CANAL DE SE
 });
 
 describe("R12 · rol fuera de RolValue => denegado/rol_desconocido, sin rama default", () => {
-  it("los SEIS RolValue del esquema reciben veredicto explicito y ninguno cae en un default permisivo", () => {
+  it("los SIETE RolValue del esquema reciben veredicto explicito y ninguno cae en un default permisivo", () => {
     const roles = Object.values(RolValue);
-    expect(roles.length).toBe(6);
+    // SL-32: el septimo es `superadmin`, en `ROLES_SIN_ANALITICA`.
+    expect(roles.length).toBe(7);
 
     for (const rol of roles) {
       const actor: ActorAnalitica = { usuarioId: "u1", rol, zonaId: "z1" };

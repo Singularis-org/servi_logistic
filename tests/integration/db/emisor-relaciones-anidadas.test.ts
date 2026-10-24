@@ -7,6 +7,10 @@ import {
   SNAPSHOT_SELECT,
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
+import {
+  SELECT_MARCA_ZONA_ESPECIAL,
+  esZonaEspecialDeLaEmpresa,
+} from "@/lib/repositories/_shared/zona-especial";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -86,7 +90,9 @@ const SNAPSHOT_SELECT_DE_ANTES = {
       tienda: { select: { nombre: true } },
       provincia: { select: { nombre: true } },
       canton: { select: { nombre: true } },
-      distrito: { select: { nombre: true, zonaEspecial: true } },
+      // SL-38: la columna `distrito.zona_especial` ya no existe; la marca de la empresa se lee por
+      // el fragmento compartido, que tambien es una relacion anidada desde `distrito`.
+      distrito: { select: { nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } },
     },
   },
 } as const;
@@ -279,7 +285,7 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
             provinciaNombre: antes.orden.provincia.nombre,
             cantonNombre: antes.orden.canton.nombre,
             distritoNombre: antes.orden.distrito?.nombre ?? null,
-            esZonaEspecial: antes.orden.distrito?.zonaEspecial === true,
+            esZonaEspecial: esZonaEspecialDeLaEmpresa(antes.orden.distrito),
           },
           nuevo: {
             esCentral: d.zonas.get(fila.orden.zonaId)!.esCentral,

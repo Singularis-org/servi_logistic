@@ -33,10 +33,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** llevar ese párrafo al YAML con las mismas palabras, y que un test de paridad lo cubra.
 - **Dueño:** Carlos Restrepo (ficha propia o la próxima que toque el contrato).
 
-### D7 — ¿Quién retira una provincia: la empresa o la plataforma?
-- **Origen:** SL-16 (2026-10-22), review H4. La ayuda dice que lo hace la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apunta a la plataforma.
-- **Qué falta:** decisión de Carlos. Mientras tanto queda «la empresa», como en el código.
-- **Dueño:** Carlos Restrepo.
+### D7 — ¿Quién retira una provincia: la empresa o la plataforma? — RESUELTA (2026-10-22)
+- **Origen:** SL-16 (2026-10-22), review H4. La ayuda decía que lo hacía la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apuntaba a la plataforma.
+- **Resolución:** decisión de Carlos del 2026-10-22, aplicada en SL-32 (R22–R26): gestionar la geografía (alta, cambio de nombre, retiro, reactivación y conteo) es de la plataforma (`GESTION_ROLES = ROLES_PLATAFORMA`); el `maestro` solo conserva `listarArbol` para Tarifas. Texto de la API, CHANGELOG y ayuda actualizados. Sin deuda nueva; lo que queda de la rama del superadmin es D15 y la escritura de `distrito.zona_especial` es D12.
+- **Dueño:** cerrada.
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
@@ -60,7 +60,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D12 — Escritura de vehículos y de geografía del maestro
 - **Origen:** SL-17, D12 y R40. `vehiculos`, provincia, cantón y distrito son de plataforma: escribir desde una empresa falla cerrado. Las actions de `lib/actions/vehiculos.ts` y `crear/renombrarNodoGeografico` devuelven un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar. `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, una marca del flujo de Tarifas, que el maestro ya no puede cambiar.
-- **Qué falta:** pasar la edición al superadmin (SL-26), dejar las pantallas del maestro en solo lectura con su mensaje, y decidir dónde vive la marca de zona especial (¿`zona_distrito` de la empresa?).
+- **Qué falta:** pasar la edición al superadmin (SL-26) y dejar las pantallas del maestro en solo lectura con su mensaje.
+- **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
 - **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26.
 
 ### D13 — Coste medido de la envoltura y de los triggers
@@ -78,3 +79,37 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra choca (P2002) y la primera sigue enviándole push;
   - código que quedó sin uso tras retirar los conteos públicos: `WHERE_*_DISPONIBLE` (`lib/repositories/_shared/geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts`.
 - **Dueño:** SL-18/SL-19 (push y únicos), Carlos Restrepo (el resto, ficha propia).
+
+### D15 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
+- **Origen:** SL-32 (2026-10-22), P7. Con SL-17, `renombrar` y `cambiarActivacion` de `GeografiaService` escriben `historial_accion`, y `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene empresa: esas operaciones fallan con `EmpresaNoResuelta`.
+- **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles. Efectos medidos el 2026-10-23 (review de SL-32, m5): con el superadmin, `renombrar` responde un «ya existe» falso (el `catch` genérico de D12 se traga el `EmpresaNoResuelta`), y el superadmin llega por URL a `/configuracion/geografia` (la puerta es `esPlataforma`, sin ítem de menú), donde retirar, reactivar y el conteo dan 500.
+- **Dueño:** quien tome SL-26 (decide Carlos Restrepo).
+
+### D16 — El humo de dos empresas da de alta por fixture, no por la pantalla (D19 de SL-17)
+- **Origen:** SL-17 D19 y SL-32 (2026-10-23), review B2. `e2e/dos-empresas-humo.spec.ts` crea las dos empresas por el servicio de SL-17. SL-32 trae la pantalla «Empresas», y D19 pedía que quien mergeara segundo cambiara el alta a la pantalla.
+- **Qué falta:** que el humo cree A y B desde `/plataforma/empresas` con el superadmin (como `e2e/superadmin-empresas.spec.ts`) y conserve sus aserciones de aislamiento (menú del maestro, datos de A invisibles en B). No es un cambio contenido: el humo comprueba también la repetición `ya_existe` del servicio, que la pantalla no muestra.
+- **Dueño:** Carlos Restrepo (ficha propia).
+
+### D17 — Los E2E que leen el OTP del log del servidor no corren en CI
+- **Origen:** SL-32 (2026-10-23), review m6. `e2e/superadmin-arranque.spec.ts`, `e2e/superadmin-empresas.spec.ts` y `e2e/dos-empresas-humo.spec.ts` leen el código del log del dev server (`SL17_HUMO_LOG_SERVIDOR`, con `AUTH_OTP_DEBUG_LOG=1`). `.github/workflows/gate.yml` no define ese log, así que en el job `e2e` (PR a `prod`, o `workflow_dispatch`) caen; ese job ya sale en rojo por specs heredados que esperan datos sembrados (D8).
+- **Qué falta:** que el job `e2e` arranque el servidor con su salida a un archivo y exporte la variable, o un canal de prueba del OTP que no dependa del log. Y decidir el estado de los specs heredados.
+- **Dueño:** quien tome la ficha de CI del E2E (decide Carlos Restrepo).
+
+### D18 — Deadlock 40P01 entre el R34 de `cobro-tienda-461-completar-migration` y los tests de concurrencia de la caja
+- **Origen:** SL-38, review vuelta 1 (B1), 2026-10-23. Es de `dev`, no de SL-38.
+- **Causa (DETAIL de Postgres):**
+  - El R34 corre `ALTER TABLE "wallet_tienda_movimiento" DROP CONSTRAINT "wallet_tienda_movimiento_tienda_id_fkey"` dentro de `enTransaccionRevertida459`, que toma el lock de la 227 (`CLAVE_LOCK_ESCRITURA_REAL`).
+  - Del otro lado hay una transacción del servicio real que lee o escribe `wallet_tienda_movimiento`: el `SUM(monto) … GROUP BY tipo` del saldo, o el `INSERT … ON CONFLICT DO NOTHING` de `WalletTiendaMovimientoRepository`.
+  - Esa transacción la abren `abono-tienda-457-concurrencia` y `pago-por-cuenta-tienda-concurrencia`, que commitean solo bajo `conCandado459` (`4590001`) o `hashtext(...)`, no bajo el de la 227. Los dos locks no se excluyen.
+  - El DDL ya tiene el libro de tiendas y espera `AccessExclusiveLock` sobre una segunda relación, que el servicio ya tiene tomada. Por la FK que suelta, esa relación es `usuario`, aunque es una inferencia: el OID no se resolvió porque la base se borró.
+  - El servicio espera el libro de tiendas. Toman las dos tablas en orden inverso, y por eso hay ciclo.
+- **Contraprueba sobre `origin/dev` (`fa67b57`, sin SL-38):**
+  - Base `sl38_devref` migrada con las de dev, cliente generado desde dev y los tres archivos juntos, 10 corridas.
+  - Resultado: **2/10 con 40P01**. La corrida 1 mató al `abono-tienda-457-concurrencia` (R16) y la 3 al R34. Las dos con el mismo par de sentencias en el log del servidor (14:32:54 y 14:33:27).
+  - En la selección de `test:rapido` solo sale cuando el planificador de vitest los cruza en el tiempo: el reviewer lo vio y la corrida instrumentada r1 no.
+- **Mismo origen, otro síntoma:** `gasto-fijo-plantilla-borrado.test.ts:143` cuenta `wallet_movimiento` entera dos veces en una transacción READ COMMITTED y vio `4 → 2` en el gate de SL-38 (corrida 1, 2026-10-23). Una cuenta global no aguanta escrituras commiteadas en paralelo. Debería contar solo sus filas.
+- **Qué falta:**
+  - Serializar las dos familias con un único orden de locks. Una opción: que los tests de concurrencia 457/458/461 sostengan el lock de la 227 en sesión (`tomarLockDeEscrituraReal`) durante su escritura commiteada, ANTES del de la 459.
+  - Otra opción: que el R34 no haga DDL sobre una tabla real y pruebe el control con un esquema desechable.
+  - Un reintento no vale.
+- **Dueño:** quien tome la siguiente ficha de la caja (461/459), o Carlos Restrepo si se abre una propia.

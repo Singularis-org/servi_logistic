@@ -61,7 +61,8 @@ export interface PasswordResetDeps {
  * servicio. SIEMPRE responde `ok` generico cuando la validacion pasa: nunca
  * revela si la cuenta existe.
  *
- * @sin-superficie DESACTIVADA EN LA UI el 2026-09-04, no borrada: esta accion emite el OTP por correo y el SMTP de Gmail rechaza la credencial con `535-5.7.8 Username and Password not accepted`, asi que el envio falla SIEMPRE — y como esta misma accion responde `ok` generico por diseno anti-enumeracion, falla MUDO (12 intentos de 2 personas reales medidos en produccion ese dia, cero correos). La pantalla que la llamaba ahora dice a quien acudir (`RecuperacionDesactivadaAviso`) y la via viva es el restablecimiento por un administrador (ficha 287). Vuelve a tener superficie en cuanto `app/recuperar-contrasena/page.tsx` monte otra vez `<RecuperarContrasenaForm />`; entonces esta anotacion SOBRA y la guardia exige quitarla.
+ * Reactivada el 2026-10-22 por SL-32 (R38): el correo sale por SMTP (Brevo en
+ * Vercel) y sin SMTP degrada a `ConsoleEmailSender`.
  */
 export async function solicitarRecuperacion(
   input: unknown,
@@ -94,8 +95,6 @@ export async function solicitarRecuperacion(
 /**
  * Server Action del paso 2 (R5/R6/R20). Verifica el codigo sin consumir el
  * desafio. Error generico `invalid_or_expired` ante cualquier fallo.
- *
- * @sin-superficie DESACTIVADA EN LA UI el 2026-09-04 junto al paso 1, no borrada: verifica un codigo que hoy no puede llegar a nadie, porque el correo que lo lleva no sale (SMTP de Gmail, `535 Username and Password not accepted`). Codigo y tests intactos. Recupera superficie cuando `app/recuperar-contrasena/page.tsx` vuelva a montar `<RecuperarContrasenaForm />`, y entonces esta anotacion debe borrarse.
  */
 export async function verificarCodigoRecuperacion(
   input: unknown,
@@ -126,8 +125,6 @@ export async function verificarCodigoRecuperacion(
  * Server Action del paso 3 (R7/R8/R9/R10/R11/R20). Valida coincidencia y
  * politica fuerte; delega el restablecimiento. Si el desafio ya no esta activo
  * responde `invalid_or_expired` sin tocar la contrasena.
- *
- * @sin-superficie DESACTIVADA EN LA UI el 2026-09-04 junto a los pasos 1 y 2, no borrada: es el final de un flujo cuyo primer paso depende de un correo que el SMTP de Gmail rechaza (`535 Username and Password not accepted`), asi que nadie puede llegar hasta aqui. Codigo y tests intactos. Recupera superficie cuando `app/recuperar-contrasena/page.tsx` vuelva a montar `<RecuperarContrasenaForm />`, y entonces esta anotacion debe borrarse.
  */
 export async function restablecerContrasena(
   input: unknown,

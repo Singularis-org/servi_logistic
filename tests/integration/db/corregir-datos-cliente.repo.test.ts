@@ -457,11 +457,13 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
         data: {
           nombre: `${nombre}-${sufijo}`,
           cantonId: FKS.cantonId,
-          zonaEspecial,
           zonas: { create: zonas.map((zonaId) => ({ zonaId })) },
         },
         select: { id: true },
       });
+      // SL-38: la marca es de la empresa. Sin `organizacion_id` en los datos: la pone el DEFAULT con
+      // la empresa que fija `enTransaccionRevertida`, que es la de la orden.
+      if (zonaEspecial) await tx.distritoZonaEspecial.create({ data: { distritoId: d.id } });
       return d.id;
     };
     return {
@@ -475,7 +477,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       sinZona: await crearDistrito("D-sin-zona", []),
       // DOS zonas -> ambiguo, tampoco resuelve.
       dosZonas: await crearDistrito("D-dos-zonas", [zonaDestino.id, zonaExtra.id]),
-      // Especial, con UNA zona: la marca es del distrito, no de su zona.
+      // Especial, con UNA zona: la marca es del distrito para la empresa, no de su zona.
       especial: await crearDistrito("D-especial", [zonaDestino.id], true),
       // Colgado de la zona CENTRAL: comprueba que `esCentral` viaja de la ZONA, no del distrito.
       enZonaCentral: await crearDistrito("D-central", [zonaCentral.id]),

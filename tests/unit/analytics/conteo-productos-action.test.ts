@@ -127,10 +127,19 @@ describe("R4 · adminSatelite y mensajero: `forbidden` SIN tocar el repositorio"
   });
 
   it("un rol inventado tambien es `forbidden`", async () => {
-    const { deps: d, service } = deps({ usuarioId: "u9", rol: "superadmin" });
+    // SL-32: antes este caso usaba `superadmin`, que ahora es un rol real (abajo).
+    const { deps: d, service } = deps({ usuarioId: "u9", rol: "rolInventado" });
 
     expect(await consultarConteoProductos({}, d)).toEqual({ status: "forbidden" });
     expect(service.consultar).not.toHaveBeenCalled();
+  });
+
+  it("SL-32 (R7): el superadmin es `forbidden`, con `rol_sin_analitica` en el log, y el servicio no se llama", async () => {
+    const { deps: d, service, logger } = deps({ usuarioId: "u9", rol: "superadmin" });
+
+    expect(await consultarConteoProductos({}, d)).toEqual({ status: "forbidden" });
+    expect(service.consultar).not.toHaveBeenCalled();
+    expect(logger.logError.mock.lastCall?.[0]).toMatchObject({ motivo: "rol_sin_analitica" });
   });
 
   it("pedir una tienda ajena es `forbidden`, NO un `ok` con lista vacia", async () => {
@@ -237,7 +246,7 @@ describe("R9 · el rastro del denegado: con motivo, sin PII y sin revelarlo al c
     const casos: [unknown, string][] = [
       [{ usuarioId: "u9", rol: "mensajero" }, "metrica_prohibida"],
       [{ usuarioId: "u9", rol: "adminSatelite", zonaId: "z1" }, "metrica_prohibida"],
-      [{ usuarioId: "u9", rol: "superadmin" }, "rol_desconocido"],
+      [{ usuarioId: "u9", rol: "rolInventado" }, "rol_desconocido"],
     ];
 
     for (const [actor, motivo] of casos) {
@@ -257,7 +266,7 @@ describe("R9 · el rastro del denegado: con motivo, sin PII y sin revelarlo al c
       [
         { usuarioId: "u9", rol: "mensajero" },
         { usuarioId: "u9", rol: "adminSatelite", zonaId: "z1" },
-        { usuarioId: "u9", rol: "superadmin" },
+        { usuarioId: "u9", rol: "rolInventado" },
       ].map((actor) => consultarConteoProductos({}, deps(actor).deps)),
     );
 

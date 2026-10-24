@@ -176,8 +176,9 @@ export type CorregirDatosClienteServiceResult =
    * confirmacion. En ese caso NO SE ESCRIBE NADA, y el aviso trae la zona actual, la que
    * resultaria, y para cada una el flete + IVA y la comision + IVA que se cobrarian.
    *
-   * El gate mira el DISTRITO y no la zona a proposito: la marca `zona_especial` es del distrito,
-   * asi que cambiar de distrito dentro de la MISMA zona tambien puede mover el flete.
+   * El gate mira el DISTRITO y no la zona a proposito: la marca de zona especial es del distrito
+   * (para la empresa, SL-38), asi que cambiar de distrito dentro de la MISMA zona tambien puede
+   * mover el flete.
    */
   | { status: "confirmacion_requerida"; aviso: AvisoCambioUbicacion };
 

@@ -45,8 +45,8 @@ export type TarifaTxClient = Pick<PrismaClient, "tarifa">;
 // que lo prohibia ya no aplica. Hasta hoy este contrato decia que `tarifa_especial` NO podia
 // entrar aqui, porque meterla la pondria al alcance de `derivarIngresoOrden`, "y esa funcion
 // decide dinero que se liquida". Ese era justamente el punto: la columna no debia cobrar. La
-// decision de producto cambio —un distrito marcado `zona_especial` cobra el monto pactado— y
-// entonces el pacto TIENE que llegar a la formula. Lo que sigue valiendo del criterio viejo es
+// decision de producto cambio —un distrito marcado zona especial (por la empresa desde SL-38)
+// cobra el monto pactado— y entonces el pacto TIENE que llegar a la formula. Lo que sigue valiendo del criterio viejo es
 // lo demas: `isDefault`, `createdAt`/`updatedAt` y los montos como `number` siguen FUERA, y el
 // listado sigue teniendo su propio tipo para MOSTRAR la tarifa.
 //

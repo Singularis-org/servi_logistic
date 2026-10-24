@@ -30,7 +30,7 @@
 
 import { z } from "zod";
 
-import { rolTieneAccesoTotal, esRolAnalitica } from "@/lib/analytics/alcance";
+import { ROLES_SIN_ANALITICA, rolTieneAccesoTotal, esRolAnalitica } from "@/lib/analytics/alcance";
 import type {
   ActorAnalitica,
   AlcanceDatos,
@@ -182,6 +182,9 @@ export function resolverAlcanceConteoEntregas(
   };
   if (!idUtil(usuarioId)) return denegado("sin_sesion");
   if (typeof rol !== "string") return denegado("rol_desconocido");
+  // SL-32 (R7): el superadmin es un rol real denegado por rol, y se nombra igual que en
+  // `resolverAlcance`, no como uno desconocido.
+  if ((ROLES_SIN_ANALITICA as readonly string[]).includes(rol)) return denegado("rol_sin_analitica");
   // Un rol que ni siquiera es lector de analitica (hoy `apiKey`, o cualquier rol inventado
   // o el label `"Admin Tienda"` de la DB) no llega ni a la tabla de abajo.
   if (!esRolAnalitica(rol)) return denegado("rol_desconocido");

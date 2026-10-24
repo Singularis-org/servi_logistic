@@ -169,11 +169,18 @@ describe("465/R7-R14 — textos de cada celda", () => {
     expect(fila.zona).toBe("Central");
   });
 
+  // SL-38 (R15, P1 aprobada): la marca es de la empresa —hay fila o no la hay—, asi que solo hay
+  // dos textos. «Sin definir» deja de existir.
   it.each([
     [true, "Sí"],
     [false, "No"],
-    [null, "Sin definir"],
-  ] as const)("R13 — zona especial %s → «%s»", (valor, texto) => {
+  ] as const)("SL-38/R15 — zona especial %s → «%s»", (valor, texto) => {
     expect(filaCobertura(dto({ zonaEspecial: valor })).zona_especial).toBe(texto);
+  });
+
+  it("SL-38/R15 — ningun distrito sale como «Sin definir»", () => {
+    const textos = [true, false].map((v) => filaCobertura(dto({ zonaEspecial: v })).zona_especial);
+    expect(textos).toEqual(["Sí", "No"]);
+    expect(textos).not.toContain("Sin definir");
   });
 });

@@ -51,6 +51,7 @@ const ETIQUETA_EN_BASE: Record<RolValue, string> = {
   adminTienda: "Admin Tienda",
   adminSatelite: "adminSatelite",
   apiKey: "apiKey",
+  superadmin: "superadmin",
 };
 
 /** Crea un usuario con el ROL y la ZONA pedidos, clonando la identidad de uno existente. */

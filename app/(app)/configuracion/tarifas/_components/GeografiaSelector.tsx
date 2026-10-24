@@ -43,8 +43,9 @@ export function GeografiaSelector({
   onSelectedChange?: (distritoIds: string[]) => void;
   /**
    * Reporta al padre los distritos marcados como zona especial. Va aparte de
-   * `onSelectedChange` a propósito: la marca es del DISTRITO y es independiente
-   * de que el distrito pertenezca o no a la zona que se está editando.
+   * `onSelectedChange` a propósito: la marca es de la EMPRESA sobre el distrito
+   * (no de la zona), así que es independiente de que el distrito pertenezca o
+   * no a la zona que se está editando.
    */
   onEspecialesChange?: (distritoIds: string[]) => void;
   /** Distritos pre-seleccionados (edición de zona). Se lee al montar. */
@@ -56,8 +57,9 @@ export function GeografiaSelector({
   const [selDist, setSelDist] = useState<Set<string>>(
     () => new Set(initialSelected ?? []),
   );
-  // Distritos marcados como zona especial. Se siembra del árbol (el servidor ya
-  // normalizó `zona_especial IS TRUE`) y NO se re-siembra: mientras el formulario
+  // Distritos marcados como zona especial. Se siembra del árbol, que ya trae
+  // solo las marcas de la empresa de la sesión (la RLS filtra
+  // `distrito_zona_especial`), y NO se re-siembra: mientras el formulario
   // esté abierto manda lo que el usuario tocó, hasta que Guardar lo persista.
   const [especiales, setEspeciales] = useState<Set<string>>(() => {
     const ids = new Set<string>();

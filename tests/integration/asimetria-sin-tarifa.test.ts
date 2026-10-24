@@ -308,7 +308,7 @@ async function porElCierre(filas: readonly FilaTarifa[]) {
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
     provincia: catalogoDoble450(() => ({ nombre: "Limón" })),
     canton: catalogoDoble450(() => ({ nombre: "Central" })),
-    distrito: catalogoDoble450(() => ({ nombre: "Oriental", zonaEspecial: null })),
+    distrito: catalogoDoble450(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
     ...prismaTarifas(filas),
   };
   const prisma = {

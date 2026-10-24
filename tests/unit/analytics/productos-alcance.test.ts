@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest";
 import { esAccesoTotal, ROLES_ACCESO_TOTAL } from "@/lib/auth/acceso-total";
 import { ALCANCE_PRODUCTOS } from "@/lib/analytics/metrics";
 import { resolverAlcanceProductos } from "@/lib/analytics/productos-consulta";
+import { resolverAlcance } from "@/lib/analytics/alcance";
+import { METRICAS } from "@/lib/analytics/metrics";
 import { ROLES_ANALITICA } from "@/lib/analytics/types";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 
@@ -129,10 +131,30 @@ describe("R6 · el conjunto `total` es exactamente el de `esAccesoTotal`", () =>
 
 describe("Falla CERRADO con cualquier entrada", () => {
   it("un rol inventado es `rol_desconocido`, no un alcance heredado", () => {
-    expect(resolverAlcanceProductos(ACTOR("superadmin"))).toEqual({
+    // SL-32: antes este caso usaba `superadmin`, que ahora es un rol real (abajo).
+    expect(resolverAlcanceProductos(ACTOR("rolInventado"))).toEqual({
       estado: "denegado",
       motivo: "rol_desconocido",
     });
+  });
+
+  it("SL-32 (R7): el superadmin queda fuera del conteo de productos con `rol_sin_analitica`", () => {
+    expect(resolverAlcanceProductos(ACTOR("superadmin"))).toEqual({
+      estado: "denegado",
+      motivo: "rol_sin_analitica",
+    });
+  });
+
+  it("SL-32 (R7): el resolutor general le da `rol_sin_analitica` en toda metrica y canal", () => {
+    expect(METRICAS.length).toBeGreaterThan(0);
+    for (const metrica of METRICAS) {
+      for (const canal of ["interno", "api_key"] as const) {
+        expect(resolverAlcance(ACTOR("superadmin"), metrica.id, canal), `${metrica.id}/${canal}`).toEqual({
+          estado: "denegado",
+          motivo: "rol_sin_analitica",
+        });
+      }
+    }
   });
 
   it("`apiKey` no es lector de analitica de sesion y queda fuera", () => {

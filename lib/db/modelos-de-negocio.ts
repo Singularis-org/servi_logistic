@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (73): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (74): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (14): catalogos, geografia, autenticacion previa a la empresa y cache tecnica.
 //   · diferidos   (1): tienen ficha propia que decide su aislamiento.
 //
@@ -36,6 +36,7 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Zonas y tarifas
   { modelo: "Zona", tabla: "zona" },
   { modelo: "ZonaDistrito", tabla: "zona_distrito" },
+  { modelo: "DistritoZonaEspecial", tabla: "distrito_zona_especial" }, // SL-38
   { modelo: "Tarifa", tabla: "tarifas" },
   { modelo: "TarifaZonaMensajero", tabla: "tarifa_zona_mensajero" },
   { modelo: "PremioRanking", tabla: "premio_ranking" },

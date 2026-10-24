@@ -65,10 +65,10 @@ import { computeTotales, type GestionConPagos } from "@/lib/utils/cierre-totales
 export interface OrdenIngresoInput {
   resultado: GestionResultado;
   esCentral: boolean;
-  // `distrito.zona_especial IS TRUE` del distrito de la orden. DOS valores, no tres: la
-  // columna de origen es nullable (`null` = nadie lo decidio) y esa duda se resuelve ANTES de
-  // llegar aca, en el borde que lee la fila. Una orden sin distrito (el unico FK nullable de
-  // `orden`) entra como `false`: sin distrito no hay marca que aplicar.
+  // La marca de zona especial del distrito de la orden PARA SU EMPRESA (SL-38,
+  // `distrito_zona_especial`). Se resuelve ANTES de llegar aca, en el borde que lee la fila. Una
+  // orden sin distrito (el unico FK nullable de `orden`) entra como `false`: sin distrito no hay
+  // marca que aplicar.
   esZonaEspecial: boolean;
   montoCobrar: string | null; // COD a recaudar; null -> 0 (money-safe)
   cobraComision: boolean;

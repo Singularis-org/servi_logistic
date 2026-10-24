@@ -88,7 +88,8 @@ describe("resolverAlcanceBorradoOrden", () => {
     expect(porAlcance).toEqual({
       todas: [RolValue.maestro, RolValue.admin],
       propias: [RolValue.adminTienda, RolValue.apiKey],
-      denegado: [RolValue.mensajero, RolValue.adminSatelite],
+      // SL-32 (R5): el superadmin no es de ninguna empresa y cae en la cubeta segura.
+      denegado: [RolValue.mensajero, RolValue.adminSatelite, RolValue.superadmin],
     });
   });
 

@@ -130,6 +130,43 @@ describe("ConsoleEmailSender", () => {
     await new ConsoleEmailSender().enviar(mensaje);
     expect(warn.mock.calls.flat().join(" ")).toContain(CODIGO);
   });
+
+  // SL-32 (review m4) — con el correo REAL de la plantilla, no con uno sintetico: el codigo se
+  // fugaba por el asunto, que la consola registra siempre.
+  const otpReal = () => plantillaOtpCodigo({ to: "ana@example.com", code: CODIGO, expiresInMinutes: 10 });
+  const todoLoEscrito = (...espias: { mock: { calls: unknown[][] } }[]) =>
+    espias.flatMap((e) => e.mock.calls.flat()).join(" ");
+
+  it("SL-32 m4 — el asunto de la plantilla OTP no lleva el codigo; el cuerpo, en texto y html, si", () => {
+    const m = otpReal();
+    expect(m.subject).not.toContain(CODIGO);
+    expect(m.subject).toBe("Tu codigo de verificacion de Servi Logistic");
+    expect(m.text).toContain(CODIGO);
+    expect(m.html).toContain(CODIGO);
+  });
+
+  it("SL-32 m4 — sin AUTH_OTP_DEBUG_LOG, la consola no escribe el codigo del OTP real por ningun canal", async () => {
+    delete process.env.AUTH_OTP_DEBUG_LOG;
+    const espias = (["info", "warn", "log", "error", "debug"] as const).map((n) =>
+      vi.spyOn(console, n).mockImplementation(() => {}),
+    );
+    await new ConsoleEmailSender().enviar(otpReal());
+    expect(todoLoEscrito(...espias)).toContain("ana@example.com");
+    expect(todoLoEscrito(...espias)).not.toContain(CODIGO);
+  });
+
+  it("SL-32 m4 — con AUTH_OTP_DEBUG_LOG=1, una sola linea con destinatario y codigo, y el asunto sigue sin el", async () => {
+    process.env.AUTH_OTP_DEBUG_LOG = "1";
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await new ConsoleEmailSender().enviar(otpReal());
+    expect(todoLoEscrito(info)).not.toContain(CODIGO);
+    expect(warn.mock.calls).toHaveLength(1);
+    const linea = String(warn.mock.calls[0][0]);
+    expect(linea).not.toContain("\n");
+    // El formato que leen los E2E (bitacora SL-32, «Review vuelta 1 — B1 y m4»): es contrato.
+    expect(linea).toMatch(new RegExp(`^\\[email\\]\\[debug\\] to=ana@example\\.com cuerpo="[^"]*\\\\n${CODIGO}\\\\n`));
+  });
 });
 
 describe("crearEmailSender", () => {
