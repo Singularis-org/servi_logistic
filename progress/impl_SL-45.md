@@ -779,3 +779,224 @@ escenario, porque el pago tiene tope. Es de backend y no lo toqué. El «Así qu
 **Veredicto (T7, T8, E1-pantalla, T9):** el concepto, la región por estado con su botón y su relectura, la columna
 «Plataforma» y la ayuda están hechos. Cada mutación medida los pone en rojo. Faltan, en otra vuelta, la comprobación de T8 en
 el navegador y T10.
+
+## T10 y el navegador de T8 (frontend_dev, 2026-10-24)
+
+Sobre `6a6dba0`. `gate.lock` («frontend-SL-45-e2e») tomado a las 14:10 y soltado al final, con `prisma generate` dentro.
+Base desechable `sl45_e2e` en `sl45-pg` (`migrate deploy` + `db:seed`). Al acabar se borró con `DROP … WITH (FORCE)`, y también
+`sl45_e2e_k`, la base limpia del kardex. El `.env` del worktree no se tocó: `DATABASE_URL` va por entorno.
+
+Hubo un solo dev server a la vez, desde este worktree, con el puerto 3000 libre antes y `rm -rf .next`:
+- uno sin `SMTP_*` y con `AUTH_OTP_DEBUG_LOG=1` (PID 10060), para SL-45, SL-40 y wallet;
+- después otro con las `SMTP_*` del `.env` principal, exportadas sin imprimirlas, para el humo (PID 27308).
+
+Los dos se pararon por PID. El 3000 quedó libre, `.next/dev` borrado y los logs del servidor también, porque registran
+contraseñas. El MCP del grafo no estaba entre las herramientas: usé Grep/Read.
+Logs y capturas en `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl45-e2e/`.
+
+**Archivos**
+- Nuevo `e2e/pago-plataforma-sl45.spec.ts`: 6 casos en serie, solo con `SL45_UI=1`, como los de SL-39 y SL-40.
+  - Importa `_dos-empresas-fixture.ts`, `_superadmin-fixture.ts` y `_wallet-iva-sl39-siembra.ts` sin modificarlos.
+  - Las órdenes se crean y se eliminan con el cliente dueño: los triggers de SL-40 escriben cargos y reversos.
+  - Los pagos y la anulación van solo por la pantalla.
+- `e2e/cobro-plataforma-sl40.spec.ts`: solo el literal de la pista (línea 53), cambiado a la de R1.
+
+### 1. E2E nuevo
+
+```
+SL45_UI=1 pnpm exec playwright test e2e/pago-plataforma-sl45.spec.ts --workers=1 --reporter=list
+MEDIDO A antes: principal=₡28.500 entro=₡30.000 salio=₡1.500 ganancia=₡1.700 deuda=₡1.000
+MEDIDO A tras pagar 600: principal=₡27.900 entro=₡30.000 salio=₡2.100 ganancia=₡1.100 deuda=₡400
+  ok 1 › 1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región dice ₡400 sin recargar; 500 no pasa (R1, R4, R5, R8, R9) (3.7s)
+MEDIDO Empresas (1): A=«Debe ₡400 / Pagado ₡600» B=«Al día / Pagado ₡0»
+  ok 2 › 2. el superadmin ve «Debe ₡400 · Pagado ₡600» en A y «Al día · Pagado ₡0» en B (R28) (626ms)
+MEDIDO A tras anular: principal=₡28.500 entro=₡30.600 salio=₡2.100 ganancia=₡1.700 deuda=₡1.000
+  ok 3 › 3. A anula el pago desde el libro y la región vuelve a ₡1.000 sin recargar (R5, R15, R23) (4.6s)
+MEDIDO A tras pagar 1000: principal=₡27.500 entro=₡30.600 salio=₡3.100 ganancia=₡700 deuda=₡0
+MEDIDO A a favor: deuda=₡500
+  ok 4 › 4. A paga los ₡1.000 y queda al día sin botón; se elimina una orden y queda ₡500 a favor (R2, R3) (3.0s)
+MEDIDO Empresas (2): A=«A favor ₡500 / Pagado ₡1.000»
+  ok 5 › 5. el superadmin ve «A favor ₡500 · Pagado ₡1.000» en A (R28) (691ms)
+MEDIDO B: principal=₡500 entro=₡500 salio=₡0 ganancia=₡40 deuda=₡0
+  ok 6 › 6. B no ve nada de A: al día, sin pagos en su libro y su caja igual (R20) (979ms)
+  6 passed (20.5s)
+PW_EXIT=0
+```
+
+Qué comprueba, además de los números:
+- **R1, R2 y R3, con sus literales:**
+  - R1: el rótulo, la pista y el botón, dentro de la región.
+  - R2: la pista, y ningún botón «Registrar pago…» en toda la pantalla.
+  - R3: «Saldo a favor…» como nombre de la región, la pista, y sin botón.
+- **El diálogo (R4, R6):** abre con el radio «Pago a la plataforma» marcado y «Gasto de la empresa» sin marcar, con la frase de R6.
+- **R9:** pagar 500 deja `aria-invalid` en «Monto», con el mensaje de R9 como descripción accesible. La base sigue con un solo pago.
+- **La anulación:** la constancia guarda el motivo y el contra-asiento es `ingreso:ingreso_ajuste:600.00`. El pago no se borra.
+- **Sin recarga:** una marca en `window` sigue ahí después de pagar y después de anular.
+- **B:** sus cuatro cifras son iguales a las que tenía antes del primer pago de A, y su libro no tiene ningún pago.
+
+Hice dos ajustes durante la medición. Los dos son del test, no de la app:
+- **(a) Hidratación.** Recién cargada, la página de `pnpm dev` puede no estar hidratada, y el primer clic en «Ver» caía en el
+  HTML del servidor. `abrirCon` repite el clic hasta que se abre lo esperado; abrir es idempotente.
+- **(b) El contra-asiento** no lleva la categoría del pago, sino `ingreso_ajuste`, como ya mide T1.
+
+**Navegador de T8.** La salida de arriba más las capturas, que miré una a una:
+- `sl45-dialogo.png`: el diálogo con «Pago a la plataforma» elegido, su frase y «Se registra en el libro como «Pago a la
+  plataforma».».
+- `sl45-region-400.png`:
+  - la región en ₡400, con la pista de R1 y el botón;
+  - «Pago a la plataforma ₡600» en la composición;
+  - el libro con «Pago a la plataforma · Sale ₡600 · La empresa».
+- Las demás: `sl45-region-anulado.png`, `sl45-region-a-favor.png`, `sl45-empresas-debe.png`, `sl45-empresas-a-favor.png` y
+  `sl45-wallet-b.png`.
+
+| | Dinero en caja | Entró | Salió | Ganancia | Deuda |
+|---|---|---|---|---|---|
+| dos órdenes a 500 | ₡28.500 | ₡30.000 | ₡1.500 | ₡1.700 | ₡1.000 |
+| paga 600 | ₡27.900 | ₡30.000 | ₡2.100 | ₡1.100 | ₡400 |
+| anula el pago | ₡28.500 | ₡30.600 | ₡2.100 | ₡1.700 | ₡1.000 |
+| paga 1.000 | ₡27.500 | ₡30.600 | ₡3.100 | ₡700 | ₡0 (al día) |
+| se elimina una orden | — | — | — | — | ₡500 a favor |
+
+Observación (no es de esta task): en el libro, la segunda línea del pago dice «Gasto o sueldo registrado a mano». Es el
+origen genérico `gasto` de los egresos manuales.
+
+**Mutación:** `recargarTrasCambio` sin `recargarDeuda()` (`WalletModule.tsx:639`). Copia en el scratchpad y restauración
+comprobada con `cmp` (`RESTAURADO_OK`).
+
+```
+  x  1 › 1. A debe ₡1.000, … (R1, R4, R5, R8, R9) (33.8s)
+    Error: expect(locator).toHaveText(expected) failed
+    Locator:  … [data-region="deuda_plataforma"] … .tabular-nums first()
+    Expected: "₡400"
+    Received: "₡1.000"
+  1 failed
+  5 did not run
+PW_EXIT=1
+```
+
+Con el archivo restaurado, la corrida final de arriba sale `6 passed`.
+
+### 2. `e2e/cobro-plataforma-sl40.spec.ts`: en ROJO con solo el literal (bloqueo para el leader)
+
+```
+SL40_UI=1 pnpm exec playwright test e2e/cobro-plataforma-sl40.spec.ts --workers=1 --reporter=list
+  ok 1 › T8: el superadmin fija el global, … (R9–R11) (1.9s)
+  x  2 › T7: A crea dos órdenes y elimina una; la deuda dice ₡500 y la caja no cambia (R21, R22) (5.9s)
+    Error: expect(locator).toContainText(expected) failed
+    Expected substring: "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, …"
+    Received string:    "Lo que la empresa debe a la plataforma₡0La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí."
+    > 376 |   await expect(region).toContainText(TEXTO.pistaDeuda);
+  1 failed
+  1 passed (13.7s)
+PW_EXIT=1
+```
+
+- **La causa es R2, no el literal.** `leerDeuda` exige la pista de «debe» también en la lectura «antes», con deuda ₡0. Con
+  SL-45, una deuda cero pinta la pista de «al día». Cambiar solo el literal no basta.
+- **El arreglo mínimo está medido y revertido.** Lo revertí porque el encargo limita este archivo al literal, que choca con
+  SL-44.
+  - Qué cambia: en `leerDeuda`, leer el importe primero y pedir la pista de «al día» si es `₡0`, y la de R1 si no (3 líneas).
+  - Con él: `2 passed (10.6s)`, `PW_EXIT=0`.
+  - El diff está en `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl45-e2e/sl40-propuesta.diff`.
+  - Decide el leader, y hay que avisar a SL-44.
+- **Con dos workers, los specs de SL-40 y SL-45 se pisan.** Los dos tocan la tarifa global, que es una fila única. Por eso se
+  corren con `--workers=1`.
+
+### 3. `e2e/wallet.spec.ts`: rojo heredado
+
+```
+pnpm exec playwright test e2e/wallet.spec.ts --workers=1 --reporter=list
+  x  1 › Wallet — acceso del maestro (libro + balance + manual) › … (5.5s)
+  x  2 › Wallet — bloqueo de rol NO autorizado › un mensajero es rechazado en /wallet … (R19) (5.5s)
+    TimeoutError: page.waitForURL: Timeout 5000ms exceeded.
+  2 failed
+PW_EXIT=1
+```
+
+El spec entra con `maestro@example.com` y `mensajero@example.com`, que una base vacía no tiene. Es el mismo rojo que midió
+SL-40, y no es de SL-45:
+- el archivo es idéntico al de `origin/dev`: `git diff --stat origin/dev -- e2e/wallet.spec.ts` sale vacío;
+- SL-44 lo reescribe en su rama (173 líneas de diff contra `origin/dev`);
+- `requirements.md:66` de SL-44 nombra la causa: «credenciales de usuarios sembrados a mano».
+
+### 4. `e2e/dos-empresas-humo.spec.ts`
+
+```
+pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --workers=1 --reporter=list
+  ok 1 › alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP (9ms)
+  ok 2 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (1.2m)
+  ok 3 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (26.3s)
+  ok 4 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.1s)
+  ok 5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (15.0s)
+  ok 6 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (5.1s)
+  6 passed (2.2m)
+PW_EXIT=0
+EmpresaNoResuelta en el log del server: 0
+```
+
+### 5. No regresión (R26)
+
+```
+pnpm exec vitest run tests/integration/db/libro-kardex-468.test.ts tests/components/descarga/WalletDescarga.test.tsx
+# base limpia (sl45_e2e_k: migrate deploy + db:seed)
+ ❯ tests/integration/db/libro-kardex-468.test.ts (6 tests | 6 skipped)
+Error: hay DATABASE_URL pero faltan la zona central, el tipo `cedula` o una orden … (SL-31).
+ Test Files  1 failed | 1 passed (2)
+      Tests  12 passed | 6 skipped (18)
+VITEST_EXIT=1
+# base con los datos del E2E (sl45_e2e)
+ ❯ tests/integration/db/libro-kardex-468.test.ts (6 tests | 6 failed)
+DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona
+```
+
+- `WalletDescarga`: verde (12).
+- `libro-kardex-468` está en `tests/baseline-rojos.json`, y su rojo no es de SL-45:
+  - con la base limpia cae en el `beforeAll` por falta de datos, lo mismo que midió SL-40;
+  - con la base del E2E cae porque toma una zona de otra empresa;
+  - desde `origin/dev` (`d7a6309`) y contra la misma base sale el mismo `DriverAdapterError … cierre_dia.destino_zona_id ->
+    zona`, con 6 failed. Lo corrí en un worktree temporal con junction de `node_modules`, ya borrado.
+
+### 6. Verificación propia
+
+- `pnpm run typecheck`: `TC_EXIT=0`, con `.next/dev` borrado.
+- `pnpm exec eslint e2e/pago-plataforma-sl45.spec.ts e2e/cobro-plataforma-sl40.spec.ts`: `LINT_EXIT=0`.
+- El archivo nuevo va en LF y no nombra a Ordenex.
+
+## Mapa R → test completo (R1–R28)
+
+| R | Test |
+|---|---|
+| R1 | `WalletDeudaPlataformaSL45` (R1), `wallet-labels` (SL-45 R1), `wallet-page` (R1, los dos «Registrar…»), `contexto-sl45`, **E2E paso 1** |
+| R2 | `WalletDeudaPlataformaSL45` (R2), `wallet-labels` (SL-45 R2), **E2E pasos 4 y 6** |
+| R3 | `WalletDeudaPlataformaSL45` (R3/R14), `wallet-labels` (SL-45 R3/R14), **E2E paso 4** |
+| R4 | `WalletDeudaPlataformaSL45` (R4), `wallet-registrar-movimiento-dialog` (SL-45 R4), **E2E paso 1** |
+| R5 | `wallet-page.test.tsx` (SL-45 R5, ×2), **E2E pasos 1 (registrar) y 3 (anular)**; mutación medida en los dos niveles |
+| R6 | `wallet-conceptos-manuales` (SL-45), `wallet-registrar-movimiento-dialog` (SL-45 R6 ×3), `wallet-egresos.composition-root` (sin «a quién»), E2E paso 1 (frase) |
+| R7 | `pago-plataforma-sl45.test.ts` («R7/R8/R13/R20/R22…») |
+| R8 | `pago-plataforma-sl45.test.ts`, `caja-tesoreria.test.ts` (R8, D9), `efecto-movimiento.test.ts` (SL-45 R8), **E2E paso 1** (−600 en caja y ganancia, +600 en «Salió») |
+| R9 | `pago-plataforma-sl45.test.ts` (cuatro R9), `tope-pago-plataforma-service`, `wallet-egreso-service`, `wallet-registrar-movimiento-dialog` (bajo el monto), **E2E paso 1** |
+| R10 | `pago-plataforma-sl45-concurrencia.test.ts` (los dos R10) |
+| R11 | `pago-plataforma-sl45.test.ts` (R11), `pago-plataforma-sl45-concurrencia.test.ts` (R11), `tope-pago-plataforma-service` |
+| R12 | `wallet-egresos.composition-root.test.ts` (referencia vacía, montos inválidos, monto que no cabe) |
+| R13 | `pago-plataforma-sl45.test.ts`, `deuda-plataforma-wallet.test.ts`, `deuda-plataforma.composition-root.test.ts` |
+| R14 | los de R13, `WalletDeudaPlataformaSL45` (barrido), `EmpresasModuleCobro` (barrido) |
+| R15 | `pago-plataforma-sl45.test.ts` («R15/R22…»), `contexto-sl45` (ayuda), **E2E paso 3** (constancia con motivo, contra-asiento 600, caja y ganancia vuelven) |
+| R16 | `pago-plataforma-sl45.test.ts` («R16…») |
+| R17 | **Débil:** E2E paso 3 (anular no borra: el pago sigue con su constancia) y `wallet-migration.test.ts` («SIN updated_at/deleted_at»). Ningún test de SL-45 prueba que no hay acción de editar ni de borrar un pago |
+| R18 | `pago-plataforma-sl45.test.ts` («R18…») |
+| R19 | `pago-plataforma-sl45.test.ts` (mensajero), `wallet-egreso-service` (cinco roles); anular: los de 458-B |
+| R20 | `pago-plataforma-sl45.test.ts` («R20…»), **E2E paso 6** |
+| R21 | `pago-plataforma-sl45.test.ts` («R21…») |
+| R22 | `pago-plataforma-sl45.test.ts` («R7/R8/R13/R20/R22», «R15/R22») |
+| R23 | `wallet-labels.test.ts` (`CONCEPTOS_ESPERADOS`), **E2E paso 3** («Ver «Pago a la plataforma»…» y «Anular…») |
+| R24 | `ComposicionGananciaCard`, `DetalleFilaComposicion`, `caja-composicion-exhaustiva.guardia` |
+| R25 | `metrics-caja-naturaleza.guardia`, `financiera-ingresos-repo`, `finanzas-diario` |
+| R26 | **Hueco:** `WalletDescarga.test.tsx` solo lleva `egreso_pago_plataforma` en el `Record` total, y `libro-kardex-468` está en el baseline (rojo heredado). Ningún test comprueba que la descarga nombra el pago y que sus saldos cuadran |
+| R27 | `migracion-sl45-ida-y-vuelta.test.ts` |
+| R28 | `empresas-plataforma-deuda-sl45.test.ts`, `EmpresasModuleCobro.test.tsx` (SL-45 R28), **E2E pasos 2 y 5** («Debe», «Al día», «A favor» y «Pagado») |
+
+**Veredicto (T10 y navegador de T8):** el E2E nuevo pasa 6/6 y lo tumba quitar la recarga de la deuda; el humo pasa 6/6, y en
+el navegador la deuda va de 1.000 a 400 y vuelve a 1.000. Quedan abiertos para el leader:
+- `cobro-plataforma-sl40.spec.ts` sigue en rojo con solo el literal; el arreglo de 3 líneas, medido y revertido, está en la
+  sección 2;
+- R17 tiene cobertura débil y R26 no tiene test.

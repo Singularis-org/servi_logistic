@@ -50,7 +50,7 @@ const TEXTO = {
   guardado: "Cobro guardado.",
   regionDeuda: `Lo que ${EMPRESA_EN_FRASE} debe a la plataforma`,
   pistaDeuda:
-    "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+    "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
 } as const;
 
 /** Lo que la tarifa vale en pantalla: `money("500.00")` y `money("750.00")`, escritos a mano. */

@@ -112,7 +112,7 @@
   - Tests: `tests/unit/components/wallet-conceptos-manuales.test.ts`, `tests/unit/utils/efecto-movimiento.test.ts`
     y `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`.
   - _Hecho:_ los tests en verde, con las frases literales escritas a mano.
-- [ ] **T8. [P] La región de la deuda** (R1–R5, R14, R24).
+- [x] **T8. [P] La región de la deuda** (R1–R5, R14, R24).
   - `wallet-labels.ts`: los textos de los tres estados, y `rotulo` y `pista` como función.
   - `CajaResumenCard.tsx`: `accionDeudaPlataforma` y el `importe`.
   - `WalletModule.tsx`: la deuda como estado, el botón solo en «debe» y la recarga en `recargarTrasCambio`.
@@ -132,13 +132,15 @@
       `progress/impl_SL-45.md`.
   - **Código y tests hechos (frontend_dev, 2026-10-24):** falta solo la comprobación en el navegador, que va en otra
     vuelta; por eso sigue sin `[x]`.
+  - **Navegador hecho (frontend_dev, T10, 2026-10-24):** 1.000 → paga 600 → 400 sin recargar → anula → 1.000. Números en
+    `progress/impl_SL-45.md > T10`.
 
 ## Tanda D — Ayuda, E2E y cierre
 
 - [x] **T9. [P] Ayuda** (apoya R1–R3, R9, R15; depende de T8).
   - `docs/ayuda/oficina/wallet-caja.md` (`design.md > 7.4`) y `actualizado:`.
   - _Hecho:_ las guardias de ayuda en verde con `vitest related` sobre el archivo.
-- [ ] **T10. E2E y cierre** (todos; depende de T1–T9).
+- [x] **T10. E2E y cierre** (todos; depende de T1–T9).
   - `e2e/pago-plataforma-sl45.spec.ts` (`design.md > 12.4`) y la pista de `e2e/cobro-plataforma-sl40.spec.ts`.
   - En verde: `e2e/pago-plataforma-sl45.spec.ts`, `e2e/cobro-plataforma-sl40.spec.ts`, `e2e/wallet.spec.ts`
     y `e2e/dos-empresas-humo.spec.ts`, con `--reporter=list`, 0 skipped y una mutación que tumbe el
@@ -147,6 +149,9 @@
     `tests/components/descarga/WalletDescarga.test.tsx` (R26).
   - El mapa `R<n> -> test`, de R1 a R27 (y R28 si P2 = sí), en `progress/impl_SL-45.md`.
   - _Hecho:_ `./init.sh` en verde, con `INIT_EXIT=0` escrito dentro del log.
+  - **E2E hecho (frontend_dev, 2026-10-24):** los cuatro specs medidos y la mutación, en `progress/impl_SL-45.md > T10`.
+    Abierto: `cobro-plataforma-sl40.spec.ts` sigue en rojo con solo el literal cambiado (ver la bitácora), y `./init.sh`
+    es del leader.
 
 ## Tanda E — Solo si P2 = sí
 
