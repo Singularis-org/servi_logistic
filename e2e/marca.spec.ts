@@ -1,4 +1,4 @@
-import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import { test, expect, type Page, type BrowserContext, type Locator } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 import { COOKIE_TEMA } from "../lib/tema/tema";
@@ -273,12 +273,29 @@ async function temaEnCookie(page: Page, tema: Tema): Promise<void> {
   ]);
 }
 
+const IMG_MARCA = 'img[src*="/brand/"]';
+
+/**
+ * Espera lo que `verificarPantalla` mide: la carga del documento, las fuentes y el elemento que
+ * marca la pantalla como pintada (`listo`). No usa `networkidle`: en la landing a 1280 px las
+ * fotos con `loading="lazy"` fuera de pantalla dejan peticiones abiertas que Chromium no completa
+ * hasta que se acercan al viewport, y la red nunca queda quieta (SL-44, medido con la caché de
+ * imágenes fría). Qué logo es se afirma después, en `verificarPantalla`.
+ */
+async function esperarPantallaLista(page: Page, listo: Locator): Promise<void> {
+  await page.waitForLoadState("load");
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await expect(listo).toBeVisible();
+}
+
 for (const ancho of [1280, 360] as const) {
   test(`landing a ${ancho} px: barra y héroe, y pie (claro)`, async ({ page }) => {
     await page.setViewportSize({ width: ancho, height: 800 });
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await esperarPantallaLista(page, page.locator("header, nav").locator(IMG_MARCA).filter({ visible: true }).first());
 
     // Bajo md la barra pinta el isotipo; desde md, el horizontal. Siempre sobre oscuro (R6).
     const logoBarra = ancho < 768 ? LOGO.isotipoBlanco : LOGO.horizontalOscuro;
@@ -307,7 +324,7 @@ for (const ancho of [1280, 360] as const) {
     await page.emulateMedia({ colorScheme: "light" });
     await temaEnCookie(page, "claro");
     await page.goto("/login");
-    await page.waitForLoadState("networkidle");
+    await esperarPantallaLista(page, page.locator(IMG_MARCA).filter({ visible: true }).first());
 
     // Desde lg se ve el panel de marca (oscuro); por debajo, la cabecera móvil (claro).
     await verificarPantalla(page, {
@@ -328,8 +345,8 @@ for (const tema of ["claro", "oscuro"] as const) {
     await page.context().addCookies(cookiesSesion);
     await temaEnCookie(page, tema);
     await page.goto("/dashboard");
-    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/dashboard/);
+    await esperarPantallaLista(page, page.locator('[data-sidebar="sidebar"]'));
 
     const barra = '[data-sidebar="sidebar"]';
     const expandir = page.getByRole("button", { name: "Expandir menú" });
