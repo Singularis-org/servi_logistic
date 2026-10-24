@@ -78,3 +78,49 @@ corrige.
 3. **Decisión: `next start` en CI**, por los motivos de D3; ninguna medida lo contradice.
    `E2E_SERVIDOR=dev` queda para local. El lanzador pasa `SMTP_USER=""` y `SMTP_PASSWORD=""` al hijo;
    no borra claves ni pone un `SMTP_HOST` cerrado.
+
+## Tanda 2
+
+### T2.1 — Doble de Storage (D2; R4, R5, R6)
+
+**Archivos creados:** `e2e/_storage-falso/servidor.mjs`, `tests/unit/e2e/storage-falso.test.ts`,
+`e2e/fixtures/evidencia.jpg` (274 B, 32x24, generado con el `sharp` ya instalado desde un script de
+un solo uso fuera del repo; FFD8 inicial, FFD9 final, decodifica a 2304 bytes RGB).
+
+**Protocolo leído de `@supabase/storage-js` 2.110.1** (`node_modules/.pnpm/@supabase+storage-js@2.110.1/.../src/`):
+- base `${SUPABASE_URL}/storage/v1`: supabase-js `SupabaseClient.ts:321`.
+- upload/update: `packages/StorageFileApi.ts:93` (`x-upsert` solo en POST), `:114-117` (Uint8Array = cuerpo
+  crudo + content-type; Blob = multipart `:98-104`), `:142-149` (`POST|PUT /object/<b>/<p>` → `{ Id, Key }`).
+- createSignedUrl: `:716-721` (`POST /object/sign/<b>/<p>` `{ expiresIn }` → `{ signedURL }` relativo), `:731-733`
+  (URL absoluta = `${url}${signedURL}` con `encodeURI`).
+- createSignedUrls: `:800-805` (`POST /object/sign/<b>` `{ expiresIn, paths }`), `:815-820` (array `{ error, path, signedURL }`).
+- download `:906-915` (`GET /object/<b>/<p>`); exists `:993` (HEAD); remove `:1154-1159` (`DELETE /object/<b>` `{ prefixes }`);
+  list `:1401-1408` (`POST /object/list/<b>`); `_getFinalPath` `:1495-1497`.
+- createBucket: `packages/StorageBucketApi.ts:215-227` (`POST /bucket`).
+- errores: `lib/common/fetch.ts:66-86` (no-ok → `StorageApiError(message, status, statusCode)`).
+- Uso en la app: `SupabaseFileStorage.ts:47,61`, `SupabaseSignedUrlProvider.ts:50,64`,
+  `SupabaseAlmacenDescargas.ts:82,88,101,116,126`, `SupabaseAlmacenEnviosWhatsapp.ts:70,76,91,99,108`.
+  Los `SupabaseAlmacen*` deciden por `/already exists/|409` y `/not found/|404`: el doble responde
+  duplicado como Storage real (400, `statusCode: "409"`, «The resource already exists»).
+- Decisión: los buckets existen implícitos al subir (la creación perezosa ya tiene sus tests de unidad);
+  multipart se rechaza explícito; una ruta desconocida da 501 con mensaje en stderr.
+
+**R → test** (`tests/unit/e2e/storage-falso.test.ts`):
+- R4 → «R4: las clases reales de lib/storage con SUPABASE_URL al doble suben y firman contra él» y «R4/R5: lo subido…».
+- R5 → «R4/R5: lo subido… mismos bytes y tipo», «R5: firmar varios…», «R5: firmar un objeto que no se subió…»,
+  «R5: borrar deja el objeto sin firma…», «R5: una URL firmada con un token que no casa…».
+- R6 → `git diff --stat -- lib/storage lib/actions app/api` vacío.
+
+**Salida real:**
+- `pnpm exec vitest run tests/unit/e2e/storage-falso.test.ts` → `Tests 11 passed (11)`.
+- Mutación (servir lo firmado con otros bytes): `Tests 5 failed | 6 passed (11)`; restaurado desde copia,
+  `cmp` idéntico, de nuevo `11 passed`.
+- Como script: `E2E_STORAGE_PUERTO=54391 node e2e/_storage-falso/servidor.mjs` → `/salud` 200; con
+  `E2E_STORAGE_PUERTO=abc` lanza «no es un puerto valido».
+- `pnpm exec eslint <2 archivos>` → exit 0. `pnpm run typecheck` → exit 0.
+- `pnpm run test:guardias` → `Test Files 1 failed | 303 passed (304)`; el rojo es
+  `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts` (4 casos: `init.sh` sin el marcador
+  «>>> FIN PASO 2: DEPENDENCIAS (ficha 420) <<<» ni `scripts/verificar-dependencias.mjs`). `init.sh` no está
+  tocado en esta rama: heredado, ajeno a T2.1.
+
+**Veredicto T2.1:** doble y test de contrato en verde, mutación en rojo, R6 intacto.

@@ -47,7 +47,7 @@ Convenciones:
 
 ## Tanda 2 — Infraestructura del E2E y CI (depende de T1.3)
 
-- [ ] **T2.1 — Doble de Storage** (D2; R4, R5). `[P]`
+- [x] **T2.1 — Doble de Storage** (D2; R4, R5). `[P]`
   - Fijar las rutas y las formas leyendo `@supabase/storage-js` instalado (citar archivo y línea en
     la bitácora).
   - `e2e/_storage-falso/servidor.mjs`.
