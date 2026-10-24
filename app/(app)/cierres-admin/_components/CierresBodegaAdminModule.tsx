@@ -514,8 +514,14 @@ export function CierresBodegaAdminModule({
    * visible: la fila resuelta puede estar en cualquiera de ellas.
    */
   function refrescarListas() {
+    // SL-44 (destapado por el E2E `cierre-bodega-satelite`): también «Resueltos». Marcar mueve la
+    // consolidación de una pestaña a la otra (y desmarcar, de vuelta), y las dos pestañas siguen
+    // montadas con su caché: revalidando solo la cola, la marcada no aparecía en «Resueltos» (ni
+    // la desmarcada salía de allí) hasta recargar. Mismo par que `CierresAdminModule`.
     void mutate(
-      (clave) => Array.isArray(clave) && clave[0] === "cierres-bodega:pendientes",
+      (clave) =>
+        Array.isArray(clave) &&
+        (clave[0] === "cierres-bodega:pendientes" || clave[0] === "cierres-bodega:resueltos"),
     );
     router.refresh();
   }
