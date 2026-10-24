@@ -64,7 +64,7 @@
 
 ## Tanda B — Servidor
 
-- [ ] **T5. [P] Configuración del superadmin** (R1–R7; depende de T2).
+- [x] **T5. [P] Configuración del superadmin** (R1–R7; depende de T2).
   - `lib/types/cobro-plataforma.ts`.
   - El repositorio `CobroPlataformaTarifaRepository` con su interfaz.
   - El servicio `CobroPlataformaService` con su interfaz.
@@ -80,7 +80,7 @@
     - los cuatro tests en verde;
     - `plataforma-solo-en-lista` y `superadmin-fuera-de-empresa` en verde;
     - quitar el `esPlataforma` del servicio pone en rojo el caso `forbidden`.
-- [ ] **T6. [P] La deuda de la empresa** (R23–R27; depende de T2).
+- [x] **T6. [P] La deuda de la empresa** (R23–R27; depende de T2).
   - `lib/utils/deuda-plataforma.ts`.
   - El repositorio `CobroPlataformaMovimientoRepository` con su interfaz.
   - El servicio `DeudaPlataformaService` con su interfaz.
@@ -115,7 +115,7 @@
     - en el navegador, con una empresa con dos órdenes creadas y una eliminada, la región dice
       500,00 y las cifras de la caja no cambian. Se anota en `progress/impl_SL-40.md` con los números
       medidos.
-- [ ] **T8. [P] «Cobro por orden» en «Empresas»** (R9–R11; depende de T5).
+- [x] **T8. [P] «Cobro por orden» en «Empresas»** (R9–R11; depende de T5). _(Código y tests hechos; falta la comprobación en el navegador.)_
   - `app/(app)/plataforma/empresas/page.tsx`: lee el valor global y pasa las actions.
   - `EmpresasModule.tsx`: el bloque y la columna de `design.md > 9.1`.
   - `tests/components/EmpresasModuleCobro.test.tsx` (nuevo).

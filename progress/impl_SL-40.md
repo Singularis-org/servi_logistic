@@ -529,3 +529,62 @@ herramientas de este agente: se exploró con Grep/Read.
 - Los 11 archivos están en LF.
 
 **Veredicto T6:** deuda con la plataforma servida por su propia action, con R21–R27 cubiertos (R21 en su parte de servidor), 8 mutaciones medidas en rojo y la caja intacta frente a `dev`.
+
+## Merge de `origin/dev` (SL-38, dc95473) — implementer
+
+- Merge sin rebase en `32e1c0f`. Choques resueltos: `lib/db/modelos-de-negocio.ts` (negocio 75,
+  plataforma 15), `scripts/verificar-rls-despliegue.ts` (se queda el contrato derivado de
+  `MODELOS_DE_NEGOCIO` de SL-38; `TRIGGERS_MISMA_EMPRESA` 150 → 151 por la FK de
+  `cobro_plataforma_movimiento` a `orden`), `rls-por-empresa.guardia.test.ts` (75) y
+  `tests/unit/scripts/verificar-rls-despliegue.test.ts` (75/151/75). `db/schema.prisma` mezcló solo.
+- Tras el merge, `test:guardias` sacó un rojo nuevo, no del baseline: `catalogo-postgres-acota-esquema`
+  por cinco consultas sin `public` en `migracion-sl40-ida-y-vuelta`. Arreglado en `99a8938` (T5).
+- **Incidente:** una corrida de `test:guardias` del implementer, tras el merge, cargó un `.env` copiado
+  del worktree principal, que apunta a la base compartida `servi-logistic`. Las guardias de integración
+  corrieron contra ella (las de zona salieron en rojo porque esa base no tiene las migraciones de SL-38).
+  El `.env` se borró en seguida; desde entonces se usa una base desechable `sl40_*`. Hay que confirmar
+  que esa base quedó sin residuos.
+
+## Gate de la tanda B (T5, T6, T8) — implementer
+
+`TEST_RAPIDO_BASE=dev ./init.sh` sobre `8eb1cab`, con `DATABASE_URL` hacia `sl40_gate` (migrada y
+sembrada; borrada al acabar), y el lock `gate.lock` tomado.
+Log: `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl40-gate-1.log`.
+
+```
+ Test Files  874 passed (874)
+      Tests  11752 passed | 26 skipped (11778)
+ Test Files  302 passed (302)
+      Tests  4128 passed | 1 skipped (4129)
+INIT_EXIT=0
+```
+
+## Mapa R<n> → test (consolidado tras la tanda B)
+
+| R | Test |
+|---|---|
+| R1, R2 | base: `cobro-plataforma-cargos`, `migracion-sl40-ida-y-vuelta`; servidor: `tests/unit/types/cobro-plataforma-schema.test.ts`, `tests/integration/db/empresas-plataforma-cobro.test.ts` |
+| R3 | `cobro-plataforma-cargos` (R3/D11, R3/R20, R3/R5) |
+| R4 | `tests/unit/types/cobro-plataforma-schema.test.ts`, `tests/unit/services/cobro-plataforma-service.test.ts` |
+| R5 | `cobro-plataforma-cargos` (R3/R5), `empresas-plataforma-cobro`, `cobro-plataforma-service` |
+| R6 | `cobro-plataforma-service` (`forbidden` sin llamar al repositorio) |
+| R7 | `cobro-plataforma-service`, `empresas-plataforma-cobro` |
+| R8 | `cobro-plataforma-cargos` (42501) |
+| R9–R11 | `tests/components/EmpresasModuleCobro.test.tsx`, `tests/integration/empresas-page.test.tsx` |
+| R12–R20 | `cobro-plataforma-cargos` (ver el mapa de la tanda A) |
+| R21 | servidor: `tests/integration/db/deuda-plataforma-wallet.test.ts`; pantalla: **pendiente T7** |
+| R22 | `deuda-plataforma-wallet` |
+| R23 | `deuda-plataforma-wallet` (filtros de período) |
+| R24 | `cobro-plataforma-cargos` (R24), `deuda-plataforma-wallet` (B no ve la deuda de A) |
+| R25 | `tests/unit/services/deuda-plataforma-service.test.ts` |
+| R26 | servidor: `tests/unit/utils/deuda-plataforma.test.ts`; pantalla: **pendiente T7** |
+| R27 | `deuda-plataforma-wallet` (0 filas en `wallet_movimiento`), `cobro-plataforma-solo-por-trigger.guardia`; descargas: T10 |
+| R28 | `organizacion-en-modelos`, `rls-por-empresa` (75), `fk-misma-empresa`, `tests/unit/scripts/verificar-rls-despliegue.test.ts` |
+| R29 | `migracion-sl40-ida-y-vuelta` |
+
+## Pendiente
+
+- **T7 y T9**: bloqueadas hasta que SL-39 entre en `dev` (sigue fuera a `dc95473`). Al cablear T7 hay
+  que quitar el `@sin-superficie` de `lib/actions/deuda-plataforma.ts`.
+- **T8 en el navegador**: no se hizo. Solo puede correr un dev server, y queda para el leader o para T10.
+- **T10**: no regresión, `e2e/wallet.spec.ts` y el gate final.
