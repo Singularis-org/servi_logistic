@@ -21,6 +21,7 @@ const VARS = [
   "SMTP_TIMEOUT_MS",
   "SMTP_TLS_REJECT_UNAUTHORIZED",
   "AUTH_OTP_DEBUG_LOG",
+  "VERCEL_ENV",
 ] as const;
 
 const ORIG = new Map(VARS.map((v) => [v, process.env[v]]));
@@ -171,6 +172,34 @@ describe("otpDebugLogHabilitado", () => {
     process.env.AUTH_OTP_DEBUG_LOG = "1";
     expect(otpDebugLogHabilitado()).toBe(true);
     process.env.AUTH_OTP_DEBUG_LOG = "true";
+    expect(otpDebugLogHabilitado()).toBe(true);
+  });
+
+  // SL-44 (R1, R2; design.md > D1) — en produccion de Vercel queda apagado aunque se encienda.
+  it("SL-44 R1 — VERCEL_ENV=production con AUTH_OTP_DEBUG_LOG=1: apagado", () => {
+    limpiar();
+    process.env.VERCEL_ENV = "production";
+    process.env.AUTH_OTP_DEBUG_LOG = "1";
+    expect(otpDebugLogHabilitado()).toBe(false);
+  });
+
+  it("SL-44 R1 — VERCEL_ENV=production con AUTH_OTP_DEBUG_LOG=true: apagado", () => {
+    limpiar();
+    process.env.VERCEL_ENV = "production";
+    process.env.AUTH_OTP_DEBUG_LOG = "true";
+    expect(otpDebugLogHabilitado()).toBe(false);
+  });
+
+  it("SL-44 R2 — VERCEL_ENV=preview con AUTH_OTP_DEBUG_LOG=1: encendido", () => {
+    limpiar();
+    process.env.VERCEL_ENV = "preview";
+    process.env.AUTH_OTP_DEBUG_LOG = "1";
+    expect(otpDebugLogHabilitado()).toBe(true);
+  });
+
+  it("SL-44 R2 — sin VERCEL_ENV con AUTH_OTP_DEBUG_LOG=1: encendido", () => {
+    limpiar();
+    process.env.AUTH_OTP_DEBUG_LOG = "1";
     expect(otpDebugLogHabilitado()).toBe(true);
   });
 });

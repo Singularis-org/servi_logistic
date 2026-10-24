@@ -1,5 +1,14 @@
 # SL-44 — E2E en verde en CI · tasks
 
+> **Aprobado por Carlos (2026-10-24).** Decisiones sobre las preguntas abiertas:
+> - **A1:** datos únicos por corrida, más dos corridas seguidas en verde. No hace falta borrar al
+>   terminar.
+> - **A2:** si un E2E destapa un defecto de producción y el arreglo es pequeño (≤ ~30 líneas y sin
+>   migración), se arregla dentro de SL-44 con su test. Si es mayor, se para y se avisa a Carlos con
+>   el defecto descrito, para abrir una ficha.
+> - `e2e/cobro-plataforma-sl40.spec.ts` (SL-40, llegó con el merge de `dev`) entra en el alcance y
+>   pierde su skip `SL40_UI`.
+
 Convenciones:
 - `[P]` = puede ir en paralelo con las otras `[P]` de su tanda.
 - Cada tanda cierra con `./init.sh` en verde (`INIT_EXIT` escrito en el log) y su bitácora en
@@ -10,13 +19,13 @@ Convenciones:
 
 ## Tanda 1 — Seguridad y diagnóstico
 
-- [ ] **T1.1 — El error real de cada spec.** Sin dependencias.
+- [x] **T1.1 — El error real de cada spec.** Sin dependencias.
   - `gh run view 40020120423 --log-failed`: el primer error de cada spec, en una tabla en la
     bitácora.
   - Cruzarla con `design.md > D5`; si una causa no coincide, corregir D5 en la misma tanda.
 
   **Hecho:** tabla con los 24 specs del run, y D5 coherente con ella.
-- [ ] **T1.2 — Guarda del OTP en producción** (D1; R1, R2, R3). `[P]`
+- [x] **T1.2 — Guarda del OTP en producción** (D1; R1, R2, R3). `[P]`
   - `lib/config/email.ts > otpDebugLogHabilitado`.
   - Casos en `tests/unit/config/email-config.test.ts` y `tests/unit/services/email-notificacion.test.ts`.
   - Guardia `tests/unit/guards/otp-debug-solo-en-pruebas.guardia.test.ts`, con un fixture verde y
@@ -27,7 +36,7 @@ Convenciones:
   - quitando el `if`, rojo el caso `production` y verde el resto. Restaurado desde copia, con `cmp`;
   - la guardia, roja con un `AUTH_OTP_DEBUG_LOG=1` en un archivo de `lib/` inyectado y verde al
     quitarlo.
-- [ ] **T1.3 — Medir el servidor del E2E** (D3). `[P]`
+- [x] **T1.3 — Medir el servidor del E2E** (D3). `[P]`
   - `next build` + `next start` contra una base local desechable migrada y con `db:seed`.
   - Un login real con `marca`: ¿entra la cookie `secure` en `http://localhost`?
   - Con un `.env` que tenga `SMTP_*` y el entorno con `SMTP_USER=""`: ¿qué emisor sale? Se mira la

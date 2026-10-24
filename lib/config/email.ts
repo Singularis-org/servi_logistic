@@ -139,8 +139,13 @@ export function loadEmailConfig(): EmailConfig {
 /**
  * Volcado del codigo OTP en claro por consola. SOLO para desarrollo local sin
  * SMTP: sin esto el flujo de recuperacion no se puede completar en una maquina
- * sin relay. Mismo patron que WHATSAPP_DEBUG_LOG. Vacio en produccion.
+ * sin relay. Mismo patron que WHATSAPP_DEBUG_LOG. Vacio en produccion, y apagado alli aunque
+ * se encienda.
  */
 export function otpDebugLogHabilitado(): boolean {
+  // SL-44 (R1, design.md > D1): en produccion el codigo del OTP no se escribe nunca, aunque alguien
+  // encienda la variable: los logs de Vercel los ve todo el equipo y se conservan. Se mira
+  // VERCEL_ENV y no NODE_ENV porque el E2E de CI corre `next start`, que es NODE_ENV=production.
+  if (process.env.VERCEL_ENV === "production") return false;
   return leerBooleano("AUTH_OTP_DEBUG_LOG", false);
 }
