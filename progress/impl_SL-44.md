@@ -325,3 +325,212 @@ copia con `cmp OK` y `git diff` vacío → `next build` limpio, `BUILD_LIMPIO=0`
 **Defectos de producción:** ninguno encontrado.
 
 **Veredicto:** grupo `reparto` 15/15 dos veces sobre base nueva, cada spec con su mutación en rojo.
+
+## Tanda 4 — Plataforma y aislamiento (T4.1–T4.4; agente SL-44-T4, base `sl44_aisl`)
+
+**Archivos.**
+- Nuevo: `e2e/_aislamiento-datos.ts`: `crearZonaE2E` (`ZonaService.crear`, con `crearZonaSchema`) y
+  `crearOrdenE2E` (`BulkOrdenService.cargarMasiva` de la tienda: orden con guía y su fila de historial).
+- `e2e/_dos-empresas-fixture.ts`: fuera `correoDelMaestro`, `liberarCorreos`, `solicitarRecuperacion`,
+  `EnvioRegistrado`/`EmisorRegistrado` y sus imports (SMTP, `SL17_HUMO_MAESTRO_*`). Nadie más los usaba;
+  lo que importa SL-45 (`altaDeEmpresa`, `clienteDueno`, `prepararAcceso`, `SINPE_DE_PRUEBA`, `Empresa`)
+  sigue igual.
+- `e2e/_superadmin-fixture.ts`: solo se añade `altaDeEmpresaPorPantalla`, `recuperarContrasena`,
+  `AltaPorPantalla` y `AVISO_EMPRESA_CREADA`.
+- `e2e/dos-empresas-humo.spec.ts` (T4.1, D16): el superadmin da de alta A y B en `/plataforma/empresas`.
+  Cada maestro entra por «¿Olvidaste tu contraseña?» con el OTP del log y luego por `/login` con OTP.
+  El primer caso afirma R16 y R17: un maestro por empresa y el código de recuperación leído de
+  `[email][debug] to=<maestro>`. Sale la repetición `ya_existe`, que ya cubren `superadmin-empresas` y
+  `organizacion-alta.test.ts`.
+- `e2e/wallet-iva-aparte-sl39.spec.ts` (T4.2): fuera el `test.skip(SL39_UI)`.
+- `e2e/cobro-plataforma-sl40.spec.ts`: fuera el `test.skip(SL40_UI)` y la cita a `SL17_HUMO_LOG_SERVIDOR`.
+  El `beforeAll` guarda el valor GLOBAL antes del `deleteMany` y el `afterAll` lo devuelve (`upsert` o
+  `deleteMany`). La línea 53 no se toca.
+- `e2e/marca.spec.ts`: el `admin` sin empresa se cambia por el `maestro` de `crearEmpresaE2E`. Caso nuevo
+  «un usuario de la fábrica entra por /login sin OTP (SL-44 T3.1)», que cierra el «Hecho» pendiente de T3.1.
+- `e2e/auth.spec.ts`: reescrito con usuarios de la fábrica.
+  - Bloqueo con 5 intentos fallidos por la UI; el 6.º, con la contraseña buena, da «Cuenta bloqueada».
+  - Contraseña mala con un usuario que existe.
+  - OTP real del log.
+  - Los `alert` se buscan dentro de `[data-slot="card"]`, para no casar `#__next-route-announcer__`.
+  - Teclado contra la UI de hoy: el foco al cargar y el botón de mostrar la contraseña.
+  - Login y logout con un maestro: a un `adminTienda`, `/dashboard` lo redirige a `/ordenes`, y pulsar
+    «Salir» en ese paso cruzaba el logout con la redirección y acababa en `/login?redirect=/ordenes`
+    (medido 2 veces). Es una carrera del test, no un defecto.
+- `e2e/rastreo-publico.spec.ts`: guía y factor de una orden creada por servicio, y guía inexistente
+  comprobada en la base. Fuera `E2E_RASTREO_*`.
+- `e2e/analitica-roles.spec.ts`: **rehecho contra la pantalla de hoy (desvío de D5, lo tiene que validar
+  el leader).**
+  - `AnaliticaShell` tiene comentadas las regiones «Filtros», «Tablero operativo» y «Tablero
+    financiero», y `page.tsx` la sección de finanzas (decisión humana del 2026-08-18). Lo que el spec
+    afirmaba (R6, R7, R10, R11, R14, R15, R17 de la 133) no tiene superficie, y su mutación de cabecera
+    (`financiero` a un rol acotado) no se puede ver.
+  - Ahora afirma el recorte que sí se pinta. Las secciones «Detalle - Movimiento de las órdenes» y
+    «Detalle - Cohorte de carga» salen para todos (anti-vacío). «Detalle - Productos» la ven `maestro` y
+    `adminTienda`, y `adminSatelite` no (`ALCANCE_PRODUCTOS`). El caso del `mensajero` (menú y ruta) queda
+    igual.
+- `zona-especial-dos-empresas.spec.ts` (T4.4): sin tocar.
+
+**Corridas finales** (`E2E_PUERTO=3044 pnpm exec playwright test --project=aislamiento --reporter=list`).
+La base es `sl44_aisl`, recreada (DROP + CREATE + `migrate deploy` + `db:seed`).
+- Corrida 1: `50 passed (1.8m)` (9 de `plataforma-vacia` y 41 de `aislamiento`); 0 failed, 0 skipped,
+  0 flaky.
+- Corrida 2, con dependencias: `1 failed | 46 did not run | 3 passed (9.4s)`. Cae
+  `superadmin-empresas.spec.ts:180`, «la base ya tiene empresas y el paso 1 exige el estado vacío», y
+  `aislamiento` no corre porque depende de ese proyecto.
+- Corrida 2b, la misma base con `--no-deps`: `41 passed (1.6m)`. `aislamiento` es re-ejecutable.
+- El cobro global queda «sin configurar» tras las dos corridas: el `afterAll` de SL-40 lo devuelve.
+
+**Mutaciones.** Las de código van todas dentro de una sola toma del lock: mutar, `tsc`, build, corrida
+de los 6 specs con `--no-deps`, restaurar desde copia con `cmp` IDÉNTICO en los 6 archivos, y build
+limpio con BUILD_LIMPIO=0. El script es `scratchpad/sl44/SL-44-T4/mutar.mjs`. La corrida mutada dio
+`12 failed | 3 did not run | 20 passed`.
+- **Puerta del humo** (`geografia/page.tsx`, `!actor || !esPlataforma(...)` pasa a `!actor`): cae el
+  punto 6, «geografía: el maestro no recibe 404» (Expected 404, Received 200).
+- **Aislamiento del humo** (dato: la tienda de A lleva un marcador `B-<uuid>`): cae «el maestro de A
+  recorre…», con «/analitica, /ordenes, /configuracion…: marcadores de B en una pantalla de A».
+  Restaurado con `cmp` IDÉNTICO.
+- **auth** (`AuthService`, `passwordValida` siempre `true`): caen «existing user with the wrong
+  password» y «N failed attempts… lock» (no aparece el error genérico). En esa corrida también cayó un
+  logout por la carrera de arriba, que ya está corregida.
+- **rastreo** (el factor errado devuelve `demasiados_intentos`): cae «los dos casos malos muestran el
+  mismo texto», con Received «Demasiadas consultas seguidas…».
+- **marca** (`Logo.tsx`: el horizontal oscuro se cambia por el claro): caen 5 casos por «logos visibles».
+- **analitica** (`ALCANCE_PRODUCTOS.adminSatelite` pasa a `"acotado"`): cae solo el caso de
+  `adminSatelite` (Expected 0, Received 1).
+- **wallet-iva SL-39** (sin la entrada `iva` de `REGIONES_BOLSILLO_EMPRESA`, la de SL-39): cae «la
+  region «IVA cobrado»…» (Expected 1, Received 0).
+- **SL-40** (dato: 3 órdenes en vez de 2): cae T7 por los movimientos (+1). Restaurado con `cmp` IDÉNTICO.
+
+**Excepciones de R8** (filas escritas con la empresa fijada):
+- Las de `tests/fabricas/e2e.ts` (T3.1): la contraseña del maestro y el `trusted_device`.
+- El humo, en `sembrarDatos`: zona, usuarios, orden, caja, cierre, tarifa, API key, webhook y plantilla
+  con marcadores. Se queda así: son marcadores para buscar fugas. No se midió si `ApiKeyService` o
+  `PlantillaService` servirían.
+- SL-39: las filas de caja y los cierres del ejemplo §1.
+- SL-40:
+  - las órdenes creadas y eliminadas con `fijarEmpresa`, porque lo que se prueba son los triggers que
+    cobran por cualquier vía;
+  - la tienda y la zona de esas órdenes;
+  - el saldo inicial;
+  - el borrado y la restauración del cobro global, que no tiene pantalla para «sin configurar».
+- `zona-especial`: la zona de su fixture.
+- `rastreo-publico`, `analitica-roles`, `auth` y `marca` no tienen ninguna; solo usan el
+  `trusted_device` de la fábrica.
+
+**Defectos de producción:** ninguno.
+
+**El conflicto del vacío (R26/R27), sin tapar.** `superadmin-empresas` exige `organizacion.count() == 0`
+en su `beforeAll`, afirma «Aún no hay empresas» en el paso 1 y cuenta `== 2` en los pasos 3 y 4. Su
+`afterAll` borra solo lo suyo, y `aislamiento` deja 15 empresas por corrida. Por eso la 2.ª corrida de
+`--project=aislamiento` sobre la misma base cae en `plataforma-vacia`, y con la dependencia arrastra a
+todo `aislamiento`. En CI no pasa, porque cada grupo tiene base nueva. Propuesta mínima, sin
+condicionales:
+- quitar la exigencia del vacío del `beforeAll` y la aserción del texto vacío del paso 1;
+- el estado vacío ya lo cubre `tests/components/empresas-module.test.tsx`;
+- contar por los slugs de la corrida en vez de `count() == 2` (filas del listado filtradas por slug);
+- con eso, `plataforma-vacia` deja de depender del vacío, y la dependencia de R26 se puede mantener o
+  quitar.
+
+Si se quiere conservar el vacío en el E2E, la otra salida es un proyecto de limpieza (`teardown`) que
+borre las empresas de `aislamiento`. Es cara por las FK `RESTRICT` de caja y cierres (A1).
+
+**Comandos.**
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` sobre los 10 archivos: «No issues found».
+- `pnpm run test:guardias`: `1 failed | 303 passed (304)`. Solo cae
+  `dependencias-declaradas-presentes`, que es del baseline. Un rojo nuevo de
+  `sinpe-en-toda-superficie` (`sinpeNumero: "…"` literal en `_aislamiento-datos.ts`) se corrigió usando
+  `SINPE_DE_PRUEBA`, y quedó 9/9.
+
+**Veredicto:** `aislamiento` 41/41 en la 1.ª corrida sobre base nueva y en la 2.ª (`--no-deps`). Cada
+spec tiene su mutación en rojo. Queda abierto el vacío de `plataforma-vacia` en la 2.ª corrida, con la
+propuesta de arriba.
+
+### Segundo aviso de SL-45 (coordinador)
+
+- SL-45 cambia en `e2e/cobro-plataforma-sl40.spec.ts` el literal de la pista y `leerDeuda` (acepta
+  la pista de «al día» con deuda 0), toca `e2e/_superadmin-fixture.ts` y `e2e/superadmin-empresas.spec.ts`,
+  y añade `e2e/pago-plataforma-sl45.spec.ts`. Llega a `dev` antes que SL-44.
+- SL-40 y SL-45 comparten la tarifa global: sus specs van en el **mismo grupo** (`aislamiento`), que
+  con `workers: 1` los corre en serie.
+- **Plan de integración (F2.3):** en `cobro-plataforma-sl40.spec.ts` se toma la versión de SL-45 y
+  encima se le vuelve a quitar el skip `SL40_UI` y la cita a `SL17_HUMO_LOG_SERVIDOR`, y se conserva el
+  `afterAll` que restaura el cobro global. `pago-plataforma-sl45.spec.ts` entra en el proyecto
+  `aislamiento` y sin skip (la guardia `e2e-sin-saltos` lo exige).
+
+## Tanda 7 (T7.1–T7.3) y el conflicto del vacío — agente SL-44-T7, base `sl44_t7`
+
+**Archivos.**
+- `e2e/home.spec.ts`: `git rm` (T7.1).
+- `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: nuevo (T7.2, D7).
+- `e2e/superadmin-empresas.spec.ts`: sin exigir ni afirmar el vacío, y el listado comprobado por los slugs de la corrida.
+- `playwright.config.ts`: solo el comentario que citaba `home.spec.ts`.
+- `specs/SL-31-tests-datos-propios-ci/design.md`: la mención de `home.spec.ts` dice que lo retiró SL-44.
+- `docs/verification.md`: la sección `## El E2E` y la línea de CI corregida (T7.3).
+- `progress/deudas.md`: D16 y D17 RESUELTAS.
+- `specs/SL-44-e2e-verde-ci/design.md`: D3 (el cambio y su motivo, A1), D4 (re-ejecutable) y la fila de D5.
+- `specs/SL-44-e2e-verde-ci/tasks.md`: la fila R26 de la trazabilidad, y T7.1 y T7.3 marcadas.
+
+**T7.1.**
+- Citas vivas de `home.spec.ts` en `docs/`, `specs/`, `tests/` y `e2e/`: ninguna.
+- Quedan solo las de SL-44 (D5 «se retira», T7.1 y la lista de archivos) y la de SL-31, ya anotada.
+- `test-citado-desaparecido` y `sin-nombre-heredado`: 29/29 en verde.
+
+**T7.2.** Funciones puras: `hallazgosDeContenido`, `proyectosDelConfig`/`hallazgosDeProyectos` y
+`citasDeFlujosCriticos`/`hallazgosDeFlujosCriticos`.
+- El config se lee como texto: los `specs("…")` y los `**/x.spec.ts` de cada `testMatch`.
+  - Un proyecto sin `testMatch` recoge todos los specs.
+  - Un `testMatch` que no se sabe leer es rojo.
+- De los flujos críticos solo cuentan los backticks con forma de spec: `e2e/` y `lib/db/` no son citas.
+- Fixtures: 23 casos.
+  - Un verde.
+  - Un rojo por motivo: `fixme`; `skip` condicional, de `describe` y en ejecución; `only` y `describe.serial.only`; `correct-password` (también en un archivo de apoyo); `@example.com`; `SL39_UI`, `SL40_UI`, `SL17_HUMO_` y `E2E_RASTREO_`.
+  - Más rojos de proyecto: un spec fuera de proyecto, uno en dos proyectos, un proyecto sin `testMatch`, un `testMatch` ilegible, un config sin proyectos y un proyecto que nombra un spec inexistente.
+  - Más rojos de flujos críticos: un flujo crítico sin archivo, con y sin `*`; un `*` que no casa con un trozo; la sección sin citas.
+- Árbol real:
+  - 1.ª corrida, a las 14:42: ROJA solo por `e2e/mi-wallet.spec.ts:52,53,56,57` y `e2e/wallet-mensajeros.spec.ts:61,62,65,66` (`@example.com` y `correct-password`). Son de dinero y no los toqué.
+  - Corrida final: `24 passed (24)`, con los specs de dinero ya cambiados por sus agentes.
+  - El caso del árbol afirma su tamaño: ≥ 20 specs, los 4 proyectos por nombre y ≥ 10 citas de flujos críticos.
+
+**El conflicto del vacío (A1).**
+- El estado vacío lo cubre `tests/components/empresas-module.test.tsx` («sin empresas pinta el estado vacío y no la tabla»: el texto y la ausencia de la tabla).
+- Mutación bajo el lock: `empresas.length === 0` pasa a `< 0` en `EmpresasModule.tsx`.
+  - Sin mutar, `24 passed`.
+  - Mutado, `1 failed | 23 passed`; cae solo ese caso.
+  - Restaurado desde copia, con `cmp` IDÉNTICO.
+- Cambios en el E2E:
+  - fuera la exigencia `organizacion.count() == 0` del `beforeAll`;
+  - el paso 1 afirma el título, el formulario y que no hay aviso;
+  - los `toHaveCount(2)` y los `count() == 2` pasan a `soloExistenAyB`: de los slugs que mandó la corrida, el listado y la base tienen A y B (una fila cada una), y nada más;
+  - `afterAll` sin borrado;
+  - cabecera reescrita.
+- Sin condicionales.
+- Mutación en el dato: el paso 2 da de alta una tercera empresa «X» de la corrida.
+  - Cae el paso 2 en `soloExistenAyB` (`Expected 0, Received 1`): `1 failed | 4 did not run | 1 passed`.
+  - Restaurado desde copia, con `cmp` IDÉNTICO.
+
+**Corridas** (`E2E_PUERTO=3044 … --reporter=list`; los puertos 3044 y 54329, libres antes y después).
+- `sl44_t7` recreada (DROP_CREATE=0, MIGRATE=0, SEED=0); `--project=plataforma-vacia`: `9 passed (16.6s)`, PW_EXIT=0.
+- `--project=aislamiento`, 1.ª, misma base: `50 passed (1.8m)`, PW_EXIT=0.
+- `--project=aislamiento`, 2.ª, misma base, con dependencias: `50 passed (1.8m)`, PW_EXIT=0.
+- Las dos: 0 failed, 0 skipped, 0 flaky. La base quedó con 39 empresas.
+
+**T7.3.**
+- `docs/verification.md > El E2E` cubre:
+  - CI en cada PR a `dev` y a `prod`, y `workflow_dispatch`;
+  - los tres grupos con base propia;
+  - el OTP, de la línea de debug de `E2E_LOG_SERVIDOR`. `AUTH_OTP_DEBUG_LOG=1` solo en Playwright y en CI, y nunca con `VERCEL_ENV=production`;
+  - el doble `e2e/_storage-falso/servidor.mjs`;
+  - local: `E2E_PUERTO`, base desechable y dos corridas.
+- `docs/gate.md` y `docs/checkpoints-proyecto.md`, sin tocar.
+- D19 (`SL40_UI`) también queda resuelta por SL-44 (T4), pero no la marqué: no estaba en el encargo.
+
+**Comandos.**
+- `pnpm exec eslint` sobre los 3 archivos de código: exit 0.
+- `pnpm run typecheck`: exit 0.
+- `pnpm run test:guardias`: `1 failed | 304 passed (305)`. Solo cae `dependencias-declaradas-presentes`, la del baseline.
+
+**Defectos de producción:** ninguno. **Excepciones de R8 nuevas:** ninguna.
+
+**Veredicto:** T7.1–T7.3 hechas. `aislamiento` sale verde dos veces seguidas sobre la misma base, y el vacío lo cubre el test de componente con su mutación.

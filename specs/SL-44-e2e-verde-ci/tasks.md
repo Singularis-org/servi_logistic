@@ -154,7 +154,7 @@ Convenciones:
 
 ## Tanda 7 — Retiro, guardias y cierre (depende de T4–T6)
 
-- [ ] **T7.1 — Retirar `e2e/home.spec.ts`** (D5). Grep de citas en `docs/`, `specs/` y `tests/`.
+- [x] **T7.1 — Retirar `e2e/home.spec.ts`** (D5). Grep de citas en `docs/`, `specs/` y `tests/`.
 
   **Hecho:** sin citas vivas; `test-citado-desaparecido` en verde.
 - [ ] **T7.2 — Guardia `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`** (D7; R9, R13, R19 y la
@@ -164,7 +164,7 @@ Convenciones:
   - un fixture verde y uno por motivo de rojo: un `fixme`, un `skip` condicional, un `only`, un
     `correct-password`, un spec fuera de proyecto y un flujo crítico sin archivo;
   - contra el árbol real, en verde.
-- [ ] **T7.3 — Docs y deudas** (R29).
+- [x] **T7.3 — Docs y deudas** (R29).
   - `docs/verification.md`: el E2E en cada PR a `dev`, el OTP del log y el doble de Storage.
   - `docs/gate.md` no se toca: está en `arnes.manifest`. Si la plantilla debe decir que el E2E
     puede correr en el PR a integración, va por `/afinar-regla`, fuera de esta ficha.
@@ -210,7 +210,7 @@ Convenciones:
 | R23 | T2.3: `gate.yml` sin `secrets.` en el job y `reprogramacion-liberacion` en verde |
 | R24 | `playwright.config.ts` (`failOnFlakyTests`) + T2.2 |
 | R25 | T2.3: artefacto `e2e-<grupo>` presente en una corrida roja |
-| R26 | `superadmin-empresas.spec.ts` (estado vacío) en verde dentro de `aislamiento` |
+| R26 | `playwright.config.ts` (`aislamiento` depende de `plataforma-vacia`). Desde T7 ningún E2E afirma el vacío (A1, `design.md > D3`): el estado vacío de «Empresas» lo cubre `tests/components/empresas-module.test.tsx` («sin empresas pinta el estado vacío y no la tabla») |
 | R27 | T7.4: dos corridas locales seguidas |
 | R28 | T7.4: duración de cada grupo en el run de CI |
 | R29 | T7.3, revisión del reviewer |

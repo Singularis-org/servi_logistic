@@ -53,7 +53,7 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "on-first-retry",
   },
-  // Proyectos de D3. `home.spec.ts` no esta en ninguno: se retira en T7.1.
+  // Proyectos de D3. Cada `e2e/*.spec.ts` cae en exactamente uno (guardia `e2e-sin-saltos`, D7).
   projects: [
     {
       // Afirman la plataforma sin empresas: tienen que terminar antes que cualquier alta (R26).

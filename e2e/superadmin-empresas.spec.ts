@@ -18,12 +18,12 @@ import {
 /**
  * SL-32 T17 — dos empresas desde la pantalla «Empresas» (R29–R35, R37).
  *
- * 1. Con el superadmin de T9 (el mismo setup: el índice permite uno solo), abre «Empresas» y ve el
- *    estado vacío.
+ * 1. Con el superadmin de T9 (el mismo setup: el índice permite uno solo), abre «Empresas» con su
+ *    formulario y sin aviso.
  * 2. Crea la empresa A y la B desde el formulario, con slugs, emails y documentos aleatorios. Las
  *    dos aparecen en el listado con su maestro.
  * 3. Repetir el slug de A, el email de su maestro y su documento muestra cada error junto a su
- *    campo, y el listado sigue con dos empresas.
+ *    campo, y de lo que intentó esta corrida solo existen A y B.
  * 4. Un slug inválido muestra el error sin crear nada.
  * 5. Cada maestro entra por «¿Olvidaste tu contraseña?» con el código del emisor de consola, y
  *    después por `/login` con OTP. «Empresas» le da 404 (R35).
@@ -31,9 +31,14 @@ import {
  *
  * Los textos que se afirman son los literales de la propuesta aprobada de T12 (`design.md`).
  *
- * CÓMO SE CORRE: igual que `superadmin-arranque.spec.ts` (base local desechable y SIN empresas,
- * y el servidor de Playwright con su log en `E2E_LOG_SERVIDOR`). Al terminar borra lo que
- * creó, para que la corrida siguiente vuelva a ver el estado vacío.
+ * CÓMO SE CORRE: igual que `superadmin-arranque.spec.ts` (base local desechable, y el servidor de
+ * Playwright con su log en `E2E_LOG_SERVIDOR`).
+ *
+ * La base puede traer empresas de otras corridas (SL-44 A1: datos únicos por corrida, sin borrar,
+ * y dos corridas seguidas en verde, R27). Por eso el listado se comprueba por los slugs de ESTA
+ * corrida y nunca por un recuento total, y no se afirma el estado vacío: su texto y la ausencia de
+ * la tabla los cubre `tests/components/empresas-module.test.tsx` («sin empresas pinta el estado
+ * vacío y no la tabla»). Nada se borra al terminar.
  */
 
 test.describe.configure({ mode: "serial" });
@@ -78,7 +83,7 @@ let dueno: PrismaClient | null = null;
 let contextoSa: BrowserContext | null = null;
 let sa: Page | null = null;
 const altas: Partial<Record<Letra, DatosDeAlta>> = {};
-/** Todo slug que esta corrida pudo crear, para borrarlo al final aunque un paso falle a medias. */
+/** Todo slug que esta corrida mandó al formulario: de ellos, solo A y B deben existir. */
 const slugsIntentados = new Set<string>();
 
 function superadmin(): Page {
@@ -96,9 +101,6 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   dueno = clienteDueno();
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(dueno!));
-  if ((await dueno.organizacion.count()) > 0) {
-    throw new Error("SL-32 T17: la base ya tiene empresas y el paso 1 exige el estado vacío. Usa una base desechable.");
-  }
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
@@ -109,22 +111,8 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  // Sin borrado: lo creado lleva sufijo aleatorio y la corrida siguiente no lo busca (A1).
   await contextoSa?.close();
-  if (dueno && slugsIntentados.size > 0) {
-    // La base es desechable, pero el paso 1 de la corrida siguiente necesita volver a verla vacía.
-    const ids = (
-      await dueno.organizacion.findMany({ where: { slug: { in: [...slugsIntentados] } }, select: { id: true } })
-    ).map((o) => o.id);
-    await dueno.usuarioPreferencia.deleteMany({ where: { organizacionId: { in: ids } } });
-    // Lo que deja el acceso de los pasos 5-6; sus FK a `usuario` no son en cascada.
-    const deMaestros = { usuario: { organizacionId: { in: ids } } };
-    await dueno.loginAttempt.deleteMany({ where: deMaestros });
-    await dueno.trustedDevice.deleteMany({ where: deMaestros });
-    await dueno.emailOtpChallenge.deleteMany({ where: deMaestros });
-    await dueno.usuario.deleteMany({ where: { organizacionId: { in: ids } } });
-    await dueno.premioRanking.deleteMany({ where: { organizacionId: { in: ids } } });
-    await dueno.organizacion.deleteMany({ where: { id: { in: ids } } });
-  }
   await dueno?.$disconnect();
 });
 
@@ -168,6 +156,19 @@ function filasDelListado(page: Page) {
   return page.getByRole("table").locator("tbody tr");
 }
 
+/**
+ * De todo lo que esta corrida mandó al formulario, el listado y la base tienen A y B, una fila cada
+ * una, y nada más. Las empresas de otras corridas no cuentan.
+ */
+async function soloExistenAyB(page: Page): Promise<void> {
+  const creadas = new Set([alta("A").slug, alta("B").slug]);
+  for (const slug of slugsIntentados) {
+    await expect(filasDelListado(page).filter({ hasText: slug })).toHaveCount(creadas.has(slug) ? 1 : 0);
+  }
+  const enBase = await dueno!.organizacion.findMany({ where: { slug: { in: [...slugsIntentados] } }, select: { slug: true } });
+  expect(enBase.map((o) => o.slug).sort()).toEqual([...creadas].sort());
+}
+
 async function esperarErrorEn(campo: ReturnType<typeof formulario>[keyof ReturnType<typeof formulario>], texto: string) {
   await expect(campo).toHaveAttribute("aria-invalid", "true");
   await expect(campo).toHaveAccessibleDescription(new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -177,12 +178,11 @@ async function esperarErrorEn(campo: ReturnType<typeof formulario>[keyof ReturnT
 /* Pasos 1-4: el superadmin                                                    */
 /* -------------------------------------------------------------------------- */
 
-test("1. «Empresas» abre en el estado vacío (R29)", async () => {
+test("1. «Empresas» abre con el formulario de alta y sin aviso (R29)", async () => {
   const page = superadmin();
   await page.goto("/plataforma/empresas");
   await expect(page.getByRole("heading", { level: 1, name: "Empresas" })).toBeVisible();
-  await expect(page.getByText(TEXTO.vacio, { exact: true })).toBeVisible();
-  await expect(page.getByRole("table")).toHaveCount(0);
+  await expect(formulario(page).boton).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
 });
 
@@ -202,8 +202,9 @@ test("2. crea A y B desde el formulario y las dos salen en el listado con su mae
     // Tras el éxito el formulario queda vacío para la siguiente (propuesta de T12).
     await expect(formulario(page).slug).toHaveValue("");
   }
-  await expect(filasDelListado(page)).toHaveCount(2);
+  // Con al menos A y B en la base, el listado no puede pintar el estado vacío.
   await expect(page.getByText(TEXTO.vacio)).toHaveCount(0);
+  await soloExistenAyB(page);
 
   const enBase = await dueno!.organizacion.findMany({
     where: { slug: { in: [alta("A").slug, alta("B").slug] } },
@@ -234,9 +235,8 @@ test("3. repetir el slug, el email o el documento de A marca su campo y no crea 
     await expect(page.getByText(caso.texto, { exact: true })).toHaveCount(1);
     await expect(page.getByRole("status")).toHaveCount(0);
     await page.reload();
-    await expect(filasDelListado(page)).toHaveCount(2);
+    await soloExistenAyB(page);
   }
-  expect(await dueno!.organizacion.count()).toBe(2);
 });
 
 test("4. un slug inválido marca el campo sin crear nada (R34)", async () => {
@@ -247,8 +247,7 @@ test("4. un slug inválido marca el campo sin crear nada (R34)", async () => {
   await esperarErrorEn(formulario(page).slug, TEXTO.errorCampo);
   await expect(page.getByRole("status")).toHaveCount(0);
   await page.reload();
-  await expect(filasDelListado(page)).toHaveCount(2);
-  expect(await dueno!.organizacion.count()).toBe(2);
+  await soloExistenAyB(page);
   expect(await dueno!.usuario.count({ where: { email: d.email } })).toBe(0);
 });
 

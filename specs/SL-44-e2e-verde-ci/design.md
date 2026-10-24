@@ -141,8 +141,8 @@ de Storage** y le da a la app `SUPABASE_URL` apuntando a él. Producción no cam
   no, CI usa `E2E_SERVIDOR=dev` y se anota el motivo. En local el valor por defecto es el mismo, y
   `reuseExistingServer` sigue fuera de CI.
 - **Proyectos** (R26), todos con `chromium`:
-  - `plataforma-vacia`: `superadmin-arranque` y `superadmin-empresas`, que afirman «Aún no hay
-    empresas»;
+  - `plataforma-vacia`: `superadmin-arranque` y `superadmin-empresas`, que afirmaban «Aún no hay
+    empresas» (hasta T7; ver el cambio de abajo);
   - `aislamiento`, con `dependencies: ["plataforma-vacia"]`: `dos-empresas-humo`,
     `zona-especial-dos-empresas`, `wallet-iva-aparte-sl39`, `marca`, `auth`, `rastreo-publico`,
     `analitica-roles`;
@@ -152,6 +152,16 @@ de Storage** y le da a la app `SUPABASE_URL` apuntando a él. Producción no cam
     `cierre-bodega-satelite`, `reglas-bloqueos-cierre`, `wallet`, `mi-wallet`, `wallet-mensajeros`.
   - `reparto` y `dinero` no dan de alta empresas por la pantalla ni afirman el vacío, así que no
     dependen de `plataforma-vacia`.
+  - **Cambio de T7 (2026-10-24), por A1.** Con datos únicos por corrida y sin borrado, la 2.ª
+    corrida local de `aislamiento` sobre la misma base encontraba las empresas de la 1.ª, y
+    `superadmin-empresas` caía en su `beforeAll` (exigía `organizacion.count() == 0`), arrastrando
+    a todo `aislamiento` por la dependencia. En CI no pasaba (base nueva por grupo). Salida mínima:
+    `superadmin-empresas` ya no exige ni afirma el vacío, y comprueba el listado por los slugs de
+    su corrida, no por un recuento total. El texto del estado vacío y la ausencia de la tabla los
+    cubre `tests/components/empresas-module.test.tsx` («sin empresas pinta el estado vacío y no la
+    tabla»), que cae si se quita esa rama del componente. El proyecto conserva su nombre y la
+    dependencia: el superadmin es único por base y su alta sigue yendo antes que el resto. Ningún
+    E2E afirma ya la plataforma sin empresas, así que R26 se cumple sin caso que ordenar.
   - **Guardia de cobertura** (en `e2e-sin-saltos`, D7): todo `e2e/*.spec.ts` cae en exactamente un
     proyecto.
 - **Reintentos:** `retries: process.env.CI ? 1 : 0` y `failOnFlakyTests: !!process.env.CI` (R24).
@@ -211,11 +221,13 @@ export async function sesionDe(browser: Browser, u: UsuarioE2E): Promise<Cookie[
   |---|---|---|
   | `_dos-empresas-fixture.ts > sembrarDatos` (humo) | API key, webhook, plantilla y movimiento manual con marcadores | Son marcadores de texto para buscar fugas; la pantalla que los crea no es lo que prueba el humo. T3 mira si `ApiKeyService`/`PlantillaService` sirven sin coste y, si sirven, se usan. |
   | `_wallet-iva-sl39-siembra.ts` (SL-39) | Filas de caja del ejemplo de design §1 de SL-39 | Las cifras del contrato son las de ese ejemplo. Producirlas aprobando cierres reales cambiaría el número que el spec afirma. |
-  | `crons.ts` | La fecha de una gestión en el pasado (para `corte-diario`) | Sin reloj falso, un cron no ve nada vencido el mismo día. Solo la fecha; el resto, por servicio. **T3.2 (2026-10-24):** la mitad de la REPROGRAMACIÓN se quita: la fecha «ya llegada» la produce `CorreccionFechaReprogramacionService` (fecha = hoy, con el liberador por defecto del servicio) y la libera el cron real. La de la gestión la confirma o la quita el grupo `dinero`. |
+  | `crons.ts` | La fecha de una gestión en el pasado (para `corte-diario`) | Sin reloj falso, un cron no ve nada vencido el mismo día. Solo la fecha; el resto, por servicio. **T3.2 (2026-10-24):** la mitad de la REPROGRAMACIÓN se quita: la fecha «ya llegada» la produce `CorreccionFechaReprogramacionService` (fecha = hoy, con el liberador por defecto del servicio) y la libera el cron real. La de la gestión la confirma o la quita el grupo `dinero`. **T6 (2026-10-24): se QUITA también la de la gestión:** `corte-diario` toma toda gestión sin cierre sin mirar su fecha (rama (a) de `CorteDiarioRepository.findMensajerosConActividadSinCierre`), así que el `vencido` sale del cron real con la gestión de hoy. |
+  | `cierres.ts > anclarDevolucionHaceDias` (T6.1, `cierres-admin-rechazos-sla`) | La fecha (`created_at`) de la fila `anclaje_devolucion` del historial de una orden en `novedad`, 6 días atrás | El plazo de 5 días de una devolución `wrong_*` corre desde la aprobación del cierre y ningún servicio lo fija; sin reloj falso el cron `procesar-devueltas-sla` no la ve vencida. La vía del tope de intentos no sirve: con el tope la gestión `novedad` ya no se admite (feature 276). Solo esa fecha; la gestión, la aprobación y el escalado son del servicio y del cron reales. |
 
 - **Re-ejecutable (R27):** cada corrida crea empresa y usuarios nuevos con sufijo aleatorio, y nada
-  se busca por nombre fijo. `superadmin-empresas` mantiene su `afterAll`, que borra lo que creó, para
-  que el estado vacío vuelva en la corrida siguiente.
+  se busca por nombre fijo ni por recuento total. Nada se borra al terminar (A1). `superadmin-empresas`
+  perdió en T7 su borrado del `afterAll` y su exigencia del vacío, con el motivo en D3; su listado
+  se comprueba por los slugs que mandó esa corrida.
 - **Lo que se retira de las fixtures:** `correoDelMaestro`, `liberarCorreos`, `solicitarRecuperacion`
   (SMTP), la lectura de `SL17_HUMO_*` y el `test.skip` de `SL39_UI`.
 
@@ -249,7 +261,7 @@ captura T1.1 en `progress/impl_SL-44.md`. Si contradice esta tabla, se corrige l
 | `rastreo-publico` | Consulta sin sesión; el mismo texto en los dos rechazos | Guía y factor fijos (`1001`/`8899`) o por `E2E_RASTREO_*` | **Se arregla.** Orden creada por servicio, con historial; guía y factor, los suyos. |
 | `dos-empresas-humo` | Aislamiento de dos empresas en todo el menú del maestro | Sin `SL17_HUMO_LOG_SERVIDOR`, buzones ni SMTP en CI | **Se arregla** con D16: alta por la pantalla, OTP del log y sin SMTP (R16, R17). |
 | `superadmin-arranque` | El comando de arranque, el login con OTP y el menú «Empresas» | Sin log del servidor | **Se arregla:** solo cambia el montaje (D3). |
-| `superadmin-empresas` | Alta de A y B por la pantalla, sus errores y el acceso de los maestros | Ídem | **Se arregla:** solo cambia el montaje; va en `plataforma-vacia`. |
+| `superadmin-empresas` | Alta de A y B por la pantalla, sus errores y el acceso de los maestros | Ídem | **Se arregla:** cambia el montaje; va en `plataforma-vacia`. En T7 deja de afirmar el vacío (D3). |
 | `zona-especial-dos-empresas` | La marca de zona especial por empresa | No debería fallar por datos (no lee log ni SMTP); no estaba en el run de 24 | **Se mantiene.** T1.1 lo confirma en CI. |
 | `wallet-iva-aparte-sl39` | El IVA aparte en `/wallet` y en el cierre, con dos empresas | `test.skip` sin `SL39_UI=1` | **Se arregla:** fuera el skip (R13). |
 
