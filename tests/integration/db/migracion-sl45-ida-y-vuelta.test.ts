@@ -74,7 +74,8 @@ async function fotoSinFilas(): Promise<Foto> {
 
 async function definicionDelCheck(): Promise<string> {
   const { rows } = await db.query(
-    `SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'wallet_movimiento_tipo_categoria_check'`,
+    `SELECT pg_get_constraintdef(c.oid) AS d FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+      WHERE n.nspname = 'public' AND c.conname = 'wallet_movimiento_tipo_categoria_check'`,
   );
   expect(rows, "el CHECK tipo-categoria no existe").toHaveLength(1);
   return String(rows[0].d);
