@@ -138,6 +138,8 @@ const BASE: CajaResumenDTO = {
   deTercerosAbsoluto: "4780583.97",
   estado: "flujo",
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 
 /** Texto + todos los nombres accesibles de lo pintado, en minúsculas. */

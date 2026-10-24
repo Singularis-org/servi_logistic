@@ -60,9 +60,9 @@ describe("466 · R1 — conceptos de dinero en la wallet (C5-C14, C16-C24)", () 
     expect(EGRESO_NOMBRADO_LABEL.egreso_reverso_flete_devolucion).toBe(
       "Fletes por devolución a origen cobrados a una tienda anulados",
     );
-    expect(EGRESO_NOMBRADO_LABEL.egreso_reverso_iva_flete_devolucion).toBe(
-      "IVA de fletes por devolución a origen cobrados a una tienda anulados",
-    );
+    // SL-39 (design §2.1): el reverso del IVA deja de ser un egreso nombrado; su fila va al bloque
+    // del IVA con el rótulo del libro (lo afirma `WalletCajaIvaSL39.test.tsx`).
+    expect(EGRESO_NOMBRADO_LABEL).not.toHaveProperty("egreso_reverso_iva_flete_devolucion");
   });
 
   it("libro de la tienda desde la oficina (C7-C10)", () => {
@@ -143,7 +143,7 @@ describe("466 · R4, R5 — cierres y tarifas (C29-C35, E8-E10)", () => {
       "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.",
     );
     expect(NETO_EMPRESA_NOTA).toBe(
-      "Lo que la empresa facturó menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.",
+      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.", // SL-39 (R23): dice «sin el IVA».
     );
   });
 

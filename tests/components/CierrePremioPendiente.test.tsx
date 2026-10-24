@@ -151,6 +151,7 @@ function conDetalleDe(cierre: CierreAdminResumen) {
     grupos: emptyGrupos(),
     totalesIngreso: zeroIngreso(),
     desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",

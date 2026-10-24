@@ -369,11 +369,14 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
 
-    // Por cierre_dia: cada mensajero con SU ingreso y SU pago.
+    // Por cierre_dia: cada mensajero con SU ingreso y SU pago. SL-39 (R21/R22): la ganancia
+    // parte de lo facturado SIN IVA, y el IVA de cada dia sale en su propia cifra.
     expect(r.cierres[0].totalesIngreso.total).toBe("2825.00");
-    expect(r.cierres[0].ganancia).toBe("1325.00"); // 2825 - 1500
+    expect(r.cierres[0].ivaFacturado).toBe("325.00");
+    expect(r.cierres[0].ganancia).toBe("1000.00"); // 2500 - 1500
     expect(r.cierres[1].totalesIngreso.total).toBe("1130.00");
-    expect(r.cierres[1].ganancia).toBe("630.00"); // 1130 - 500
+    expect(r.cierres[1].ivaFacturado).toBe("130.00"); // el IVA de la devolucion tambien cuenta
+    expect(r.cierres[1].ganancia).toBe("500.00"); // 1000 - 500
 
     // Agregado de la bodega: suma de los dos, menos el pago agregado del snapshot.
     expect(r.totalesIngreso).toMatchObject({
@@ -387,8 +390,10 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
       fleteDevolucion: "1000.00",
       ivaFleteDevolucion: "130.00",
     });
-    expect(r.ganancia).toBe("1955.00"); // 3955 - 2000
+    expect(r.ivaFacturado).toBe("455.00"); // 325 + 130
+    expect(r.ganancia).toBe("1500.00"); // (3955 - 455) - 2000
     expect(typeof r.ganancia).toBe("string"); // money-safe
+    expect(typeof r.ivaFacturado).toBe("string"); // money-safe
   });
 
   it("la ganancia agregada es negativa si la bodega no factura pero igual paga", async () => {
@@ -409,6 +414,8 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.totalesIngreso.total).toBe("0.00");
+    expect(r.ivaFacturado).toBe("0.00");
+    expect(r.cierres[0].ivaFacturado).toBe("0.00");
     expect(r.ganancia).toBe("-2000.00");
     expect(r.cierres[0].ganancia).toBe("-2000.00");
   });
@@ -1005,14 +1012,22 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
       r.totalesIngreso.total,
     );
 
-    // R8 — lo facturado menos los dos pagos de la empresa = neto. Sale NEGATIVO en este cierre, y
-    // se emite con su signo. NO es `ganancia`: la diferencia entre las dos es, al centimo, el
-    // ingreso de bodega.
-    expect(r.netoEmpresa).toBe("-6661.43");
-    expect(r.ganancia).toBe("-5410.98");
+    // R8 — lo facturado SIN IVA (SL-39, R23) menos los dos pagos de la empresa = neto. Sale
+    // NEGATIVO en este cierre, y se emite con su signo. NO es `ganancia`: la diferencia entre las
+    // dos es, al centimo, el ingreso de bodega.
+    // IVA = 325.07 + 156.04 + 234.05 + 117.01 + 156.06 = 988.23; sin IVA 8590.02 − 988.23 = 7601.79.
+    expect(r.ivaFacturado).toBe("988.23");
+    expect(r.netoEmpresa).toBe("-7649.66"); // 7601.79 − 14001.00 − 1250.45
+    expect(r.ganancia).toBe("-6399.21"); // 7601.79 − 14001.00
     expect(suma(r.netoEmpresa, r.cierre.totalIngresoBodegaRechazos)).toBe(r.ganancia);
+    // SL-39 (R24, lado servidor): IVA + pago + bodega + neto = lo facturado, al centimo.
     expect(
-      suma(r.netoEmpresa, r.cierre.totalPagoMensajero, r.cierre.totalIngresoBodegaRechazos),
+      suma(
+        r.netoEmpresa,
+        r.ivaFacturado,
+        r.cierre.totalPagoMensajero,
+        r.cierre.totalIngresoBodegaRechazos,
+      ),
     ).toBe(r.totalesIngreso.total);
 
     // R9 — lo recaudado menos los dos descuentos de la bodega = para la central.
@@ -1035,12 +1050,12 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     // Cada dia, desde SUS PROPIOS snapshots.
     expect(cd1.cobradoSobreRecaudado).toBe("4181.99");
     expect(cd1.pagoTienda).toBe("60818.46");
-    expect(cd1.netoEmpresa).toBe("-3818.56");
+    expect(cd1.netoEmpresa).toBe("-4299.67"); // SL-39: (4181.99 − 481.11) − 8000.55 − 0.00
     expect(cd1.paraLaCentral).toBe("56999.90");
 
     expect(cd2.cobradoSobreRecaudado).toBe("3051.52");
     expect(cd2.pagoTienda).toBe("38037.20");
-    expect(cd2.netoEmpresa).toBe("-2842.87");
+    expect(cd2.netoEmpresa).toBe("-3349.99"); // SL-39: (4408.03 − 507.12) − 6000.45 − 1250.45
     expect(cd2.paraLaCentral).toBe("33837.82");
 
     // Y la suma de los dos da el agregado, sin un centimo de deriva.
@@ -1050,6 +1065,10 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(suma(cd1.pagoTienda, cd2.pagoTienda)).toBe(r.pagoTienda);
     expect(suma(cd1.netoEmpresa, cd2.netoEmpresa)).toBe(r.netoEmpresa);
     expect(suma(cd1.paraLaCentral, cd2.paraLaCentral)).toBe(r.paraLaCentral);
+    // SL-39 (R21): el IVA de cada dia, y su suma es el IVA agregado.
+    expect(cd1.ivaFacturado).toBe("481.11"); // 325.07 + 156.04
+    expect(cd2.ivaFacturado).toBe("507.12"); // 234.05 + 117.01 + 156.06
+    expect(suma(cd1.ivaFacturado, cd2.ivaFacturado)).toBe(r.ivaFacturado);
   });
 
   it("3 · con un rechazo, «para la tienda» NO es «recaudado − facturado», y la linea puente explica la diferencia exacta (R7/R10)", async () => {
@@ -1108,7 +1127,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
 
     // El agregado sale de SUS numeros: 999.99 - 111.11 - 22.22.
     expect(r.paraLaCentral).toBe("866.66");
-    expect(r.netoEmpresa).toBe("8456.69"); // 8590.02 - 111.11 - 22.22
+    expect(r.netoEmpresa).toBe("7468.46"); // SL-39: (8590.02 - 988.23) - 111.11 - 22.22
 
     // Los dias NO se han tocado: siguen valiendo lo de su propio snapshot.
     expect(r.cierres[0].paraLaCentral).toBe("56999.90");
@@ -1167,17 +1186,17 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
     expect(r.cierres[0].paraLaCentral).toBe("56999.90");
   });
 
-  it("6 · `pagoTienda` y `ganancia` siguen valiendo lo mismo que antes de la ficha (R31)", async () => {
+  it("6 · `pagoTienda` sigue valiendo lo mismo (R31, SL-39 R26) y `ganancia` resta desde lo facturado sin IVA (SL-39 R22)", async () => {
     // Esta ficha AÑADE lineas, las agrupa y las renombra; no recalcula dinero existente. Los
     // dos derivados que ya existian se siguen devolviendo con la formula de siempre.
     const { service } = newService({ repo: repoDeDosDias() });
     const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
 
-    // `ganancia` = facturado - mensajeros (SIN la bodega), como desde la feature 40.
-    expect(r.ganancia).toBe("-5410.98");
-    expect(r.cierres[0].ganancia).toBe("-3818.56"); // 4181.99 - 8000.55
-    expect(r.cierres[1].ganancia).toBe("-1592.42"); // 4408.03 - 6000.45
+    // `ganancia` = facturado SIN IVA - mensajeros (SIN la bodega). SL-39 le quito el IVA.
+    expect(r.ganancia).toBe("-6399.21"); // 7601.79 - 14001.00
+    expect(r.cierres[0].ganancia).toBe("-4299.67"); // (4181.99 - 481.11) - 8000.55
+    expect(r.cierres[1].ganancia).toBe("-2099.54"); // (4408.03 - 507.12) - 6000.45
     // `pagoTienda` = recaudado - flete+IVA - comision+IVA (SIN el flete por devolución a origen).
     expect(r.pagoTienda).toBe("98855.66");
     expect(r.cierres[0].pagoTienda).toBe("60818.46");
@@ -1592,25 +1611,29 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
     expect(r.totalesIngreso.comisionConIva).toBe("5593.50"); // 3.390,00 + 1.356,00 + 847,50
     expect(r.totalesIngreso.fleteDevolucionConIva).toBe("1695.00");
     expect(r.totalesIngreso.total).toBe("14633.50");
-    expect(r.ganancia).toBe("5633.50"); // 14.633,50 − 9.000,00
+    // SL-39 (R21–R23): IVA 325 + 390 + 195 + 260 + 156 + 260 + 97,50 = 1.683,50; sin IVA 12.950,00.
+    expect(r.ivaFacturado).toBe("1683.50");
+    expect(r.ganancia).toBe("3950.00"); // 12.950,00 − 9.000,00
     expect(r.pagoTienda).toBe("152061.50");
     expect(r.cobradoSobreRecaudado).toBe("12938.50"); // 7.345,00 + 5.593,50
-    expect(r.netoEmpresa).toBe("5133.50"); // 14.633,50 − 9.000,00 − 500,00
+    expect(r.netoEmpresa).toBe("3450.00"); // 12.950,00 − 9.000,00 − 500,00
     expect(r.paraLaCentral).toBe("155500.00"); // 165.000,00 − 9.000,00 − 500,00
     expect(r.efectivoCubreDescuentos).toBe(true);
 
     // POR MENSAJERO: los mismos cinco, de sus propios snapshots.
     expect(r.cierres[0].totalesIngreso.total).toBe("7910.00");
-    expect(r.cierres[0].ganancia).toBe("2910.00"); // 7.910,00 − 5.000,00
+    expect(r.cierres[0].ivaFacturado).toBe("910.00"); // 325,00 + 390,00 + 195,00
+    expect(r.cierres[0].ganancia).toBe("2000.00"); // (7.910,00 − 910,00) − 5.000,00
     expect(r.cierres[0].pagoTienda).toBe("93785.00");
     expect(r.cierres[0].cobradoSobreRecaudado).toBe("6215.00"); // 2.825,00 + 3.390,00
-    expect(r.cierres[0].netoEmpresa).toBe("2410.00"); // 7.910,00 − 5.000,00 − 500,00
+    expect(r.cierres[0].netoEmpresa).toBe("1500.00"); // 7.000,00 − 5.000,00 − 500,00
     expect(r.cierres[0].paraLaCentral).toBe("94500.00"); // 100.000,00 − 5.000,00 − 500,00
     expect(r.cierres[1].totalesIngreso.total).toBe("6723.50");
-    expect(r.cierres[1].ganancia).toBe("2723.50");
+    expect(r.cierres[1].ivaFacturado).toBe("773.50"); // 260,00 + 156,00 + 260,00 + 97,50
+    expect(r.cierres[1].ganancia).toBe("1950.00"); // (6.723,50 − 773,50) − 4.000,00
     expect(r.cierres[1].pagoTienda).toBe("58276.50");
     expect(r.cierres[1].cobradoSobreRecaudado).toBe("6723.50");
-    expect(r.cierres[1].netoEmpresa).toBe("2723.50");
+    expect(r.cierres[1].netoEmpresa).toBe("1950.00"); // 5.950,00 − 4.000,00 − 0,00
     expect(r.cierres[1].paraLaCentral).toBe("61000.00"); // 65.000,00 − 4.000,00 − 0,00
   });
 

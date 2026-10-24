@@ -231,6 +231,9 @@ describe("derivarCaja — las dos cifras (R1/R4/R5)", () => {
       deTercerosAbsoluto: "0.00",
       estado: "flujo",
       flujoDesde: null,
+      // SL-39 (R2): el IVA de la caja, en cero y con su signo.
+      iva: "0.00",
+      signoIva: "cero",
     });
   });
 
@@ -248,10 +251,12 @@ describe("derivarCaja — las dos cifras (R1/R4/R5)", () => {
     // Ficha 459 (reescrito): los tres ingresos propios (489) son CARGOS a la tienda.
     expect(r.entradas).toBe("5000.00"); // solo el contra-entrega es efectivo
     expect(r.salidas).toBe("1250.00"); // 200 + 50 + 1000
-    expect(r.ingresosPropios).toBe("489.00"); // 300 + 150 + 39 (para la ganancia siguen contando)
+    // SL-39 (R1/R3): el IVA del flete (39) no es ganancia: va aparte. Antes 489 y 239.
+    expect(r.ingresosPropios).toBe("450.00"); // 300 + 150
     expect(r.egresosPropios).toBe("250.00"); // 200 + 50 (el pago a tienda es de terceros)
     expect(r.enCaja).toBe("3750.00"); // 5000 − 1250
-    expect(r.ganancia).toBe("239.00");
+    expect(r.ganancia).toBe("200.00"); // 450 − 250
+    expect(r.iva).toBe("39.00");
     expect(r.deTerceros).toBe("3511.00"); // 5000 − 1000 − 489
   });
 
