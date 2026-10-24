@@ -1,8 +1,12 @@
 # SL-45 «Pago a la plataforma desde la wallet» — tasks
 
-> Pendiente de aprobación de Carlos. P2 (columna del superadmin) está abierta. Las tasks parten de la
-> recomendación (P2 = no), y la tanda E solo se hace si Carlos dice que sí.
-> Orden: T0 → T1 → T2 → T3 → (T4 ∥ T5) → T6 → (T7 ∥ T8) → T9 → T10.
+> **Aprobado por Carlos Restrepo el 2026-10-24.**
+> - P1/D4: el sobrepago se rechaza (R9, R10 como están).
+> - **P2 = SÍ:** R28 entra. En «Empresas», el superadmin ve una columna con lo que debe cada empresa y
+>   lo que ha pagado. La tanda E se hace.
+> - El resto, como está en el spec.
+>
+> Orden: T0 → T1 → T2 → T3 → (T4 ∥ T5) → T6 → E1 → (T7 ∥ T8) → T9 → T10.
 > `[P]` = paralelizable con las otras `[P]` de su tanda.
 > Cada task cierra con `pnpm exec vitest related --run <archivos tocados>` en verde, salvo donde se dice
 > que debe estar en rojo. Un commit por task (`docs/conventions.md`).
