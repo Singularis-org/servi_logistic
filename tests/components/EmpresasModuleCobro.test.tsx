@@ -319,3 +319,89 @@ describe("SL-40 — los importes se pintan como texto", () => {
     expect(fuente).not.toMatch(/\bNumber\(|parseFloat|parseInt|\+\s*cobro|toFixed/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// SL-45 (R28, design §9; aprobado por Carlos el 2026-10-24, P2 = sí) — LA COLUMNA «PLATAFORMA».
+//
+// Cada fila dice si la empresa debe, está al día o tiene saldo a favor con la plataforma, con su
+// importe, y cuánto lleva pagado. Las palabras van escritas a mano; el importe, con el `money` de la
+// pantalla (es el formato de la moneda, no el texto que se mide). Los tres importes son distintos
+// entre sí y del pagado, para que pintar el de otra fila o el otro campo no pase en verde.
+
+const DEBE: EmpresaListada = {
+  ...NORTE,
+  deudaPlataforma: { deuda: "500.00", estado: "debe", importe: "500.00" },
+  pagadoPlataforma: "300.00",
+};
+const AL_DIA: EmpresaListada = {
+  ...SUR,
+  deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
+  pagadoPlataforma: "1200.00",
+};
+const A_FAVOR: EmpresaListada = {
+  id: "org-3",
+  nombre: "Mensajería Este",
+  slug: "mensajeria-este",
+  creadaEn: new Date("2026-10-01T12:00:00Z"),
+  maestros: [],
+  cobroPorOrden: null,
+  deudaPlataforma: { deuda: "-250.00", estado: "a_favor", importe: "250.00" },
+  pagadoPlataforma: "750.00",
+};
+
+/** La celda «Plataforma» de una fila, buscada por el nombre de la empresa. */
+function celdaPlataforma(nombre: string) {
+  const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+  const indice = cabeceras.indexOf("Plataforma");
+  expect(indice, "no hay columna «Plataforma»").toBeGreaterThan(-1);
+  const fila = screen.getAllByRole("row").find((f) => within(f).queryByText(nombre) !== null);
+  if (!fila) throw new Error(`no hay fila de ${nombre}`);
+  return within(fila).getAllByRole("cell")[indice];
+}
+
+describe("SL-45 (R28) — la columna «Plataforma» de cada empresa", () => {
+  it("la columna va justo después de «Cobro por orden»", () => {
+    montar({ empresas: [DEBE, AL_DIA, A_FAVOR] });
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+    expect(cabeceras.indexOf("Plataforma")).toBe(cabeceras.indexOf("Cobro por orden") + 1);
+  });
+
+  it("«debe»: «Debe» con su importe y lo pagado", () => {
+    montar({ empresas: [DEBE, AL_DIA, A_FAVOR] });
+    const celda = celdaPlataforma("Envíos Norte");
+    expect(within(celda).getByText(`Debe ${money("500.00")}`)).toBeInTheDocument();
+    expect(within(celda).getByText(`Pagado ${money("300.00")}`)).toBeInTheDocument();
+    expect(celda.textContent).toBe(`Debe ${money("500.00")}Pagado ${money("300.00")}`);
+  });
+
+  it("«al día»: «Al día» sin importe, y lo pagado", () => {
+    montar({ empresas: [DEBE, AL_DIA, A_FAVOR] });
+    const celda = celdaPlataforma("Reparto Sur");
+    expect(within(celda).getByText("Al día")).toBeInTheDocument();
+    expect(celda.textContent).toBe(`Al díaPagado ${money("1200.00")}`);
+  });
+
+  it("«a favor»: «A favor» con el importe en positivo (el del servidor), y lo pagado", () => {
+    montar({ empresas: [DEBE, AL_DIA, A_FAVOR] });
+    const celda = celdaPlataforma("Mensajería Este");
+    expect(within(celda).getByText(`A favor ${money("250.00")}`)).toBeInTheDocument();
+    expect(within(celda).getByText(`Pagado ${money("750.00")}`)).toBeInTheDocument();
+    // La `deuda` con signo no se pinta: nada de «-250».
+    expect(celda.textContent).not.toContain("-");
+  });
+
+  it("sin pagos, «Pagado» con el cero que manda el servidor", () => {
+    montar({ empresas: [{ ...DEBE, pagadoPlataforma: "0.00" }] });
+    expect(within(celdaPlataforma("Envíos Norte")).getByText(`Pagado ${money("0.00")}`)).toBeInTheDocument();
+  });
+
+  it("R14: el módulo no convierte importes a número", () => {
+    const fuente = readFileSync(
+      path.join(process.cwd(), "app/(app)/plataforma/empresas/_components/EmpresasModule.tsx"),
+      "utf8",
+    );
+    expect(fuente.length).toBeGreaterThan(500);
+    expect(fuente).toContain("deudaPlataforma");
+    expect(fuente).not.toMatch(/\bNumber\(|parseFloat|parseInt|toFixed/);
+  });
+});

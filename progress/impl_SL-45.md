@@ -649,3 +649,47 @@ $ pnpm exec vitest related --run <7 archivos de T8>
 
 **Pendiente de T8 (otra vuelta):** la comprobación en el navegador de `tasks.md > T8` (pagar 600 sobre 1.000,00 → 400,00;
 anular → 1.000,00). Por eso T8 sigue sin `[x]`.
+
+### E1. La pantalla: la columna «Plataforma» en «Empresas» (R28)
+
+**Choque con SL-41.** Miré su diff contra `dev` en `EmpresasModule.tsx`. SL-41 añade «Bienvenida» **después** de «Maestros»,
+`columnaBienvenida` después de `columnaMaestros` y su celda después de la de maestros. Por eso esta columna va **justo después
+de «Cobro por orden»**: la cabecera y la celda se insertan entre «Cobro» y «Maestros», con una línea sin tocar entre su cambio
+y el mío. Los textos y el componente de la celda van en un bloque nuevo al **final** del archivo (`TEXTOS_PLATAFORMA`,
+`ESTADO_PLATAFORMA`, `CeldaPlataforma`), no en `TEXTOS`, que SL-41 toca. Fuera de eso solo hay un import (`money` de
+`@/lib/config/moneda`, el de `CobroPorOrden`). Sin refactor ni reordenar. `page.tsx` no se toca: ya pasaba `empresas` con los
+dos campos.
+
+**Textos que pinta la columna** (cabecera «Plataforma», dos líneas por fila):
+- `debe`: «Debe ₡500»; `al_dia`: «Al día»; `a_favor`: «A favor ₡250». El importe es `money(importe)` (siempre en positivo,
+  del servidor).
+- Debajo: «Pagado ₡300», `money(pagadoPlataforma)`. Con «0.00» sale «Pagado ₡0» (no se compara con cero en el cliente).
+- `money()` pinta los enteros sin «,00» («₡500»), como el resto de la pantalla, así que «Debe 500,00» del spec sale como
+  «Debe ₡500».
+
+**Tests** (`tests/components/EmpresasModuleCobro.test.tsx`, bloque «SL-45 (R28)», 6 casos). Las palabras «Debe », «Al día»,
+«A favor » y «Pagado » van a mano. El importe va con `money()`, el mismo formato que ya usa el archivo. Tres empresas con
+importes distintos entre sí y del pagado (500/300, 0/1.200, −250/250/750). Los casos:
+- la posición de la columna;
+- el `textContent` exacto de «debe» y de «al día»;
+- «a favor» sin «-»;
+- «Pagado» con cero;
+- el barrido sin `Number(`/`parseFloat`/`parseInt`/`toFixed` en `EmpresasModule.tsx`.
+
+**Mutaciones** (script con `cmp` byte a byte):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| E1-M4 | `a_favor` se pinta con el texto de `debe` | **rojo**, 1 («a favor») |
+| E1-M5 | «Pagado» pinta el `importe` de la deuda en vez de `pagadoPlataforma` | **rojo**, 4 |
+| E1-M6 | se pinta `deuda` (con signo) en vez de `importe` | **rojo**, 1 («a favor») |
+
+**Salida** (dentro del lock, con `prisma generate` antes):
+
+```
+$ pnpm run typecheck                                     TC_EXIT=0
+$ pnpm exec eslint <EmpresasModule.tsx, EmpresasModuleCobro.test.tsx>   LINT_EXIT=0
+$ pnpm exec vitest related --run <los dos>
+ Test Files  3 passed (3)
+      Tests  60 passed (60)
+```

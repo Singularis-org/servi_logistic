@@ -21,6 +21,7 @@ import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { altaEmpresaInputSchema, type AltaEmpresaInput } from "@/lib/types/organizacion";
 import type { AltaEmpresaActionResultado } from "@/lib/actions/organizaciones";
 import type { CobroGlobalDTO } from "@/lib/types/cobro-plataforma";
+import { money } from "@/lib/config/moneda";
 
 import {
   BloqueCobroGlobal,
@@ -362,6 +363,7 @@ function ListadoEmpresas({
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
           <TableHead>{TEXTOS_COBRO.titulo}</TableHead>
+          <TableHead>{TEXTOS_PLATAFORMA.columna}</TableHead>
           <TableHead>{TEXTOS.columnaMaestros}</TableHead>
         </TableRow>
       </TableHeader>
@@ -381,6 +383,9 @@ function ListadoEmpresas({
               />
             </TableCell>
             <TableCell>
+              <CeldaPlataforma empresa={empresa} />
+            </TableCell>
+            <TableCell>
               {empresa.maestros.length === 0 ? (
                 TEXTOS.sinMaestros
               ) : (
@@ -397,5 +402,38 @@ function ListadoEmpresas({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * SL-45 (R28, design §9) — la columna «Plataforma»: cuánto debe cada empresa a la plataforma, o si está
+ * al día o a favor, y cuánto lleva pagado. El estado, el importe en positivo y lo pagado llegan ya
+ * derivados del servidor; aquí solo se elige la palabra por el `estado` y se formatea con `money`.
+ * Ninguna suma, resta ni comparación de importes.
+ */
+const TEXTOS_PLATAFORMA = {
+  columna: "Plataforma",
+  debe: (importe: string) => `Debe ${importe}`,
+  alDia: "Al día",
+  aFavor: (importe: string) => `A favor ${importe}`,
+  pagado: (importe: string) => `Pagado ${importe}`,
+} as const;
+
+/** El texto del estado de la deuda. `Record` total: un estado nuevo no compila sin el suyo. */
+const ESTADO_PLATAFORMA: Record<EmpresaListada["deudaPlataforma"]["estado"], (importe: string) => string> = {
+  debe: (importe) => TEXTOS_PLATAFORMA.debe(money(importe)),
+  al_dia: () => TEXTOS_PLATAFORMA.alDia,
+  a_favor: (importe) => TEXTOS_PLATAFORMA.aFavor(money(importe)),
+};
+
+function CeldaPlataforma({ empresa }: { empresa: EmpresaListada }) {
+  const { estado, importe } = empresa.deudaPlataforma;
+  return (
+    <div className="flex flex-col gap-0.5" data-estado-plataforma={estado}>
+      <span className="font-medium tabular-nums">{ESTADO_PLATAFORMA[estado](importe)}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {TEXTOS_PLATAFORMA.pagado(money(empresa.pagadoPlataforma))}
+      </span>
+    </div>
   );
 }

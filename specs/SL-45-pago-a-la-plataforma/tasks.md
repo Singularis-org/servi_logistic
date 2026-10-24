@@ -150,7 +150,7 @@
 
 ## Tanda E — Solo si P2 = sí
 
-- [ ] **E1. La columna «Plataforma» en «Empresas»** (R28; depende de T4).
+- [x] **E1. La columna «Plataforma» en «Empresas»** (R28; depende de T4).
   - `EmpresasPlataformaRepository`, `lib/types/empresas-plataforma.ts`, `app/(app)/plataforma/empresas/page.tsx`
     y `EmpresasModule.tsx` (`design.md > 9`).
   - Tests: `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`, con dos empresas, y
@@ -160,6 +160,8 @@
   - **Servidor hecho (backend_dev, 2026-10-24):** `EmpresaListada` gana `deudaPlataforma` y `pagadoPlataforma`
     (ampliación de Carlos: lo que ha pagado) y `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts` está
     en verde. Falta la pantalla (`page.tsx`, `EmpresasModule.tsx`, `EmpresasModuleCobro.test.tsx`): frontend_dev.
+  - **Pantalla hecha (frontend_dev, 2026-10-24):** la columna «Plataforma» en `EmpresasModule.tsx`, justo después de «Cobro
+    por orden» («Debe …», «Al día», «A favor …» y «Pagado …»). `page.tsx` no cambia.
 
 ## Archivos esperados
 
