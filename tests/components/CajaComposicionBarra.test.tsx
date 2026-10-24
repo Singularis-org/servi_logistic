@@ -56,6 +56,8 @@ const RESUMEN: CajaResumenDTO = {
   // conjunto de esta suite va en estado «saldo», a conciencia (`progress/impl_459_frontend.md`).
   estado: "saldo",
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 
 /**
@@ -411,12 +413,13 @@ describe("BarraComposicionCaja — money-safe y color por token (R12/R39)", () =
 
 // ─── Ficha 459 (design §3.4, R11/R26) — «De la empresa» es ganancia MÁS aportes ───
 describe("Ficha 459 — la barra reparte «De las tiendas» y «De la empresa» (R11/R26)", () => {
-  it("el nombre accesible usa «De la empresa» (ganancia y aportes), no la ganancia a secas", () => {
+  it("el nombre accesible usa «De la empresa» (ganancia, IVA cobrado y aportes), no la ganancia a secas", () => {
     // Capital distinto de cero: con 0 «De la empresa» y la ganancia valdrían lo mismo y el caso
     // no distinguiría nada.
     pintarBarra({ ganancia: "2000.00", capital: "500.25", deEmpresa: "2500.25" });
     expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
-      "Reparto del dinero en caja. De las tiendas: ₡10.000. De la empresa: ₡2.500,25 (ganancia y aportes).",
+      // SL-39 (R10, design §7.3): «De la empresa» incluye el IVA cobrado, y el nombre lo dice.
+      "Reparto del dinero en caja. De las tiendas: ₡10.000. De la empresa: ₡2.500,25 (ganancia, IVA cobrado y aportes).",
     );
   });
 
@@ -424,7 +427,8 @@ describe("Ficha 459 — la barra reparte «De las tiendas» y «De la empresa» 
     expect(CAJA_COMPOSICION_MENSAJE).toEqual({
       dos_bolsillos: null,
       solo_tiendas:
-        "Lo de la empresa (ganancia más aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.",
+        // SL-39 (R10, design §7.3).
+        "Lo de la empresa (ganancia, IVA cobrado y aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.",
       solo_empresa:
         "Las tiendas le deben a la empresa, así que todo lo que hay en la caja es de la empresa y además hay dinero por cobrarles.",
       sin_reparto:

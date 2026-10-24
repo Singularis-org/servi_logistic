@@ -80,6 +80,11 @@ vi.mock("@/lib/actions/rechazo-tienda-cobro", () => ({
   aprobarCobroRechazoTiendaAction: vi.fn(),
   rechazarCobroRechazoTiendaAction: vi.fn(),
 }));
+// SL-40 (T7): la página lee también la deuda con la plataforma. Sin este doble la action real abre
+// Prisma. Lo que la página hace con ella lo mide `tests/components/WalletDeudaPlataformaSL40.test.tsx`.
+vi.mock("@/lib/actions/deuda-plataforma", () => ({
+  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00" } })),
+}));
 
 // FICHA 458-E (T E.1/T E.2): el libro nuevo lee «A quién» y «Registró» de la página y el filtro de
 // concepto pide los conceptos del periodo. Con el módulo REAL montado, sin estos dobles las dos
@@ -220,6 +225,9 @@ const RESUMEN_OK = {
     deTercerosAbsoluto: "10000.00",
     estado: "flujo" as const,
     flujoDesde: "2026-08-25",
+    // SL-39 (R20): el IVA de la caja, STRING del servidor, y su signo.
+    iva: "0.00",
+    signoIva: "cero" as const,
   },
   // Feature 231 (design §2.4): la composición viaja HERMANA del resumen, no anidada dentro —
   // por eso el barrido de STRING sobre `props.resumen` sigue afirmando lo mismo que hoy.
@@ -228,9 +236,7 @@ const RESUMEN_OK = {
       ingreso_flete: "1500.00",
       ingreso_flete_devolucion: "0.00",
       ingreso_comision_cod: "0.00",
-      ingreso_iva_flete: "0.00",
-      ingreso_iva_flete_devolucion: "0.00",
-      ingreso_iva_comision_cod: "0.00",
+      // SL-39 (R8): las tres de IVA salen de aquí y van a `iva`.
       ingreso_ajuste: "0.00",
       ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     },
@@ -243,10 +249,17 @@ const RESUMEN_OK = {
       egreso_ajuste: "0.00",
       egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
       egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-      egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
     },
     otrosEgresos: "0.00",
     totalEgresos: "0.00",
+    // SL-39 (R7): el bloque del IVA, aparte de la ganancia.
+    iva: {
+      ingreso_iva_flete: "0.00",
+      ingreso_iva_flete_devolucion: "0.00",
+      ingreso_iva_comision_cod: "0.00",
+      egreso_reverso_iva_flete_devolucion: "0.00",
+    },
+    totalIva: "0.00",
     // Ficha 339 (R9): la UNICA clave no-STRING de la composicion, y no es una cantidad: es la
     // decision del SERVIDOR sobre si la fila «Otros gastos de la empresa» se pinta.
     hayOtrosEgresos: false,
@@ -464,11 +477,18 @@ describe("WalletPage — pre-fetch del maestro (R18/R21)", () => {
     // `number`. El precedente está en el mismo dominio: `CajaResumenDTO.periodoFiltrado` ya
     // está exceptuado así en el barrido del resumen de aquí arriba. Una BANDERA no es una
     // cantidad; lo que la 231 se negó a hacer fue meter una cantidad como `number`.
-    const { ingresos, egresos, hayOtrosEgresos, ...totales } = props.composicion;
-    // Control de no-vacuidad: el desglose trae las siete categorías, no un objeto vacío.
-    expect(Object.keys(ingresos)).toHaveLength(8); // ficha 461 (R27): + `ingreso_cobro_tienda`
+    //
+    // SL-39 (R20): `iva` es otro mapa de importes y recibe el mismo bucle, con su no-vacuidad.
+    const { ingresos, egresos, iva, hayOtrosEgresos, ...totales } = props.composicion;
+    // Control de no-vacuidad: SL-39 (R8) — los cinco ingresos que son ganancia, sin los de IVA.
+    expect(Object.keys(ingresos)).toHaveLength(5);
     for (const [categoria, valor] of Object.entries(ingresos)) {
       expect(typeof valor, `composicion.ingresos.${categoria}`).toBe("string");
+    }
+    // SL-39 (R7): las cuatro categorías de IVA, cada una STRING.
+    expect(Object.keys(iva)).toHaveLength(4);
+    for (const [categoria, valor] of Object.entries(iva)) {
+      expect(typeof valor, `composicion.iva.${categoria}`).toBe("string");
     }
     // Ídem para las cubetas de egreso: el `Record` no viene vacío y cada importe es STRING.
     expect(Object.keys(egresos).length).toBeGreaterThan(0);
@@ -495,6 +515,8 @@ describe("WalletPage — pre-fetch del maestro (R18/R21)", () => {
     // El desglose de ingresos cuadra con la cifra agregada del resumen: es la misma lectura.
     expect(props.composicion.totalIngresos).toBe(props.resumen.ingresosPropios);
     expect(props.composicion.totalEgresos).toBe(props.resumen.egresosPropios);
+    // SL-39 (R8): y el total del IVA es el IVA del resumen.
+    expect(props.composicion.totalIva).toBe(props.resumen.iva);
   });
 
   it("R62: los movimientos de las categorías NUEVAS llegan al listado como los demás", async () => {

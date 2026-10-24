@@ -25,7 +25,15 @@ import type {
   ReenviarBienvenidaResultado,
 } from "@/lib/actions/organizaciones";
 import type { EstadoBienvenida } from "@/lib/interfaces/services/IBienvenidaMaestroService";
+import type { CobroGlobalDTO } from "@/lib/types/cobro-plataforma";
 
+import {
+  BloqueCobroGlobal,
+  CeldaCobroEmpresa,
+  TEXTOS_COBRO,
+  type FijarCobroEmpresa,
+  type FijarCobroGlobal,
+} from "./CobroPorOrden";
 import { ReenviarBienvenidaBoton } from "./ReenviarBienvenidaBoton";
 
 export interface EmpresasModuleProps {
@@ -45,6 +53,12 @@ export interface EmpresasModuleProps {
    * pantalla no pudo leerlo: entonces vale R29 y toda fila con maestros lleva el botón.
    */
   bienvenidaPendiente: string[] | null;
+  /** SL-40 (R9): el valor global del cobro por orden; `null` si la página no pudo leerlo. */
+  cobroGlobal: CobroGlobalDTO | null;
+  /** SL-40 (R9, R11): `fijarCobroGlobalAction`, inyectada para poder probarla. */
+  fijarCobroGlobal: FijarCobroGlobal;
+  /** SL-40 (R10, R11): `fijarCobroEmpresaAction`; `monto: null` quita la excepción. */
+  fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
 type Campo =
@@ -195,6 +209,9 @@ export function EmpresasModule({
   altaEmpresa,
   reenviarBienvenida,
   bienvenidaPendiente,
+  cobroGlobal,
+  fijarCobroGlobal,
+  fijarCobroEmpresa,
 }: EmpresasModuleProps) {
   const router = useRouter();
   const base = useId();
@@ -279,6 +296,8 @@ export function EmpresasModule({
     <div className="flex flex-col gap-6">
       {creada ? <AvisoAltaEmpresa aviso={creada} /> : null}
 
+      <BloqueCobroGlobal cobroGlobal={cobroGlobal} fijarCobroGlobal={fijarCobroGlobal} />
+
       <form
         noValidate
         aria-label={TEXTOS.tituloFormulario}
@@ -341,6 +360,8 @@ export function EmpresasModule({
         empresas={empresas}
         reenviarBienvenida={reenviarBienvenida}
         bienvenidaPendiente={bienvenidaPendiente}
+        montoGlobal={cobroGlobal?.monto ?? null}
+        fijarCobroEmpresa={fijarCobroEmpresa}
       />
     </div>
   );
@@ -382,10 +403,14 @@ function ListadoEmpresas({
   empresas,
   reenviarBienvenida,
   bienvenidaPendiente,
+  montoGlobal,
+  fijarCobroEmpresa,
 }: {
   empresas: EmpresaListada[];
   reenviarBienvenida: EmpresasModuleProps["reenviarBienvenida"];
   bienvenidaPendiente: string[] | null;
+  montoGlobal: string | null;
+  fijarCobroEmpresa: FijarCobroEmpresa;
 }) {
   if (empresas.length === 0) {
     return (
@@ -402,6 +427,7 @@ function ListadoEmpresas({
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
+          <TableHead>{TEXTOS_COBRO.titulo}</TableHead>
           <TableHead>{TEXTOS.columnaMaestros}</TableHead>
           <TableHead>{TEXTOS.columnaBienvenida}</TableHead>
         </TableRow>
@@ -412,6 +438,15 @@ function ListadoEmpresas({
             <TableCell className="font-medium">{empresa.nombre}</TableCell>
             <TableCell>{empresa.slug}</TableCell>
             <TableCell>{FECHA_CORTA.format(empresa.creadaEn)}</TableCell>
+            <TableCell>
+              <CeldaCobroEmpresa
+                organizacionId={empresa.id}
+                nombreEmpresa={empresa.nombre}
+                cobroPorOrden={empresa.cobroPorOrden}
+                montoGlobal={montoGlobal}
+                fijarCobroEmpresa={fijarCobroEmpresa}
+              />
+            </TableCell>
             <TableCell>
               {empresa.maestros.length === 0 ? (
                 TEXTOS.sinMaestros

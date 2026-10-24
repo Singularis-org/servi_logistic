@@ -25,7 +25,7 @@ import type {
 } from "@/lib/types/wallet";
 import {
   WALLET_EGRESO_NOMBRADO_SEED,
-  WALLET_INGRESO_PROPIO_SEED,
+  WALLET_INGRESO_GANANCIA_SEED,
 } from "@/lib/types/wallet";
 import {
   LLAMADAS_PROHIBIDAS_EN_DINERO,
@@ -64,20 +64,19 @@ const DESGLOSE: DesgloseEgresosDTO = {
  * en el primer intento— una tarjeta que ordenara por magnitud pintaba EXACTAMENTE lo mismo y
  * el caso de R28 pasaba en verde con el código roto. Se descubrió matándolo con una mutación.
  *
- * Suman `totalIngresos` (5 709,75) exactamente; los egresos, 1 250,75 + 940 = 2 190,75.
+ * SL-39 (R8): las tres de IVA SALEN de «Ingresos» y van a `iva`. Los cinco ingresos que quedan suman
+ * `totalIngresos` (150 + 4 000 + 900 + 90 + 0 = 5 140,00) exactamente; el IVA, 19,50 + 520,00 +
+ * 30,25 − 0,00 = 569,75; los egresos, 1 250,75 + 940 = 2 190,75.
  */
 const COMPOSICION: ComposicionGananciaDTO = {
   ingresos: {
     ingreso_flete: "150.00",
     ingreso_flete_devolucion: "4000.00",
     ingreso_comision_cod: "900.00",
-    ingreso_iva_flete: "19.50",
-    ingreso_iva_flete_devolucion: "520.00",
-    ingreso_iva_comision_cod: "30.25",
     ingreso_ajuste: "90.00",
     ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
   },
-  totalIngresos: "5709.75",
+  totalIngresos: "5140.00",
   /**
    * Ficha 339 (T6.3) — las dos cubetas que la ficha SACA del cubo anónimo, con importes
    * distintos entre sí y distintos de todos los demás de la columna.
@@ -93,12 +92,19 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "45.75",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
   },
   otrosEgresos: "194.25",
   // R9: lo decide el SERVIDOR. Aqui quedan 194,25 sin clasificar, asi que la fila se pinta.
   hayOtrosEgresos: true,
   totalEgresos: "2190.75",
+  // SL-39 (R7): el bloque del IVA, aparte de la ganancia.
+  iva: {
+    ingreso_iva_flete: "19.50",
+    ingreso_iva_flete_devolucion: "520.00",
+    ingreso_iva_comision_cod: "30.25",
+    egreso_reverso_iva_flete_devolucion: "0.00",
+  },
+  totalIva: "569.75",
 };
 
 const RESUMEN: CajaResumenDTO = {
@@ -106,10 +112,10 @@ const RESUMEN: CajaResumenDTO = {
   salidas: "2190.75",
   enCaja: "15809.25",
   signoEnCaja: "positivo",
-  ingresosPropios: "5709.75",
+  // SL-39: sin el IVA. 5 140,00 - 2 190,75 = 2 949,25.
+  ingresosPropios: "5140.00",
   egresosPropios: "2190.75",
-  // 5 709,75 - 2 190,75 = 3 519,00
-  ganancia: "3519.00",
+  ganancia: "2949.25",
   signoGanancia: "positivo",
   deTerceros: "12290.25",
   periodoFiltrado: false,
@@ -118,11 +124,14 @@ const RESUMEN: CajaResumenDTO = {
   // Ficha 459 (T A.1): los campos nuevos del contrato; capital 0, sin saldo inicial.
   capital: "0.00",
   signoCapital: "cero",
+  // SL-39 (R5): «De la empresa» no cambia: 2 949,25 + 569,75 (IVA) + 0 (capital) = 3 519,00.
   deEmpresa: "3519.00",
   signoDeTerceros: "positivo",
   deTercerosAbsoluto: "12290.25",
   estado: "flujo",
   flujoDesde: "2026-08-25",
+  iva: "569.75",
+  signoIva: "positivo",
 };
 
 function pintar({
@@ -158,7 +167,6 @@ function pintarComoLa158(overrides: Partial<ComposicionGananciaDTO> = {}) {
         egreso_ajuste: "0.00",
         egreso_reverso_cobro_tienda: "0.00",
         egreso_reverso_flete_devolucion: "0.00", // ficha 458-B
-        egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
       },
       otrosEgresos: "0.00",
       hayOtrosEgresos: false, // ficha 343 (R7): sin residuo, la fila «Otros» no se pinta
@@ -307,7 +315,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
 
     // Los dos lados, cada uno con su grupo accesible y su total.
     expect(within(listaIngresos()).getByText("Total de ingresos")).toBeInTheDocument();
-    expect(within(listaIngresos()).getByText("₡5.709,75")).toBeInTheDocument();
+    expect(within(listaIngresos()).getByText("₡5.140")).toBeInTheDocument();
     expect(within(listaEgresos()).getByText("Total de egresos")).toBeInTheDocument();
     expect(within(listaEgresos()).getByText("₡2.190,75")).toBeInTheDocument();
 
@@ -315,18 +323,19 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
     const pie = container.querySelector<HTMLElement>('[data-slot="card-footer"]');
     expect(pie, "la tarjeta no tiene pie").not.toBeNull();
     expect(within(pie as HTMLElement).getByText("Ganancia de la empresa")).toBeInTheDocument();
-    expect(within(pie as HTMLElement).getByText("₡3.519")).toBeInTheDocument();
+    // SL-39 (R8): la ganancia sin IVA.
+    expect(within(pie as HTMLElement).getByText("₡2.949,25")).toBeInTheDocument();
   });
 
-  it("R23: hay una fila por cada categoría de ingreso propio del catálogo", () => {
+  it("R23: hay una fila por cada categoría de ingreso que es ganancia", () => {
     pintar();
 
     const filas = rotulos(listaIngresos());
-    // Control de no-vacuidad: el catálogo tiene siete conceptos, no cero.
-    expect(WALLET_INGRESO_PROPIO_SEED.length).toBe(8); // ficha 461 (R27): + el cobro de la empresa a una tienda
-    // Las siete filas más la del total: ninguna categoría propia se queda sin enseñar.
-    expect(filas).toHaveLength(WALLET_INGRESO_PROPIO_SEED.length + 1);
-    for (const categoria of WALLET_INGRESO_PROPIO_SEED) {
+    // Control de no-vacuidad: SL-39 (R8) — los ocho ingresos propios menos los tres de IVA.
+    expect(WALLET_INGRESO_GANANCIA_SEED.length).toBe(5);
+    // Las cinco filas más la del total: ninguna categoría de la ganancia se queda sin enseñar.
+    expect(filas).toHaveLength(WALLET_INGRESO_GANANCIA_SEED.length + 1);
+    for (const categoria of WALLET_INGRESO_GANANCIA_SEED) {
       expect(filas, `falta ${categoria}`).toContain(CATEGORIA_LABEL[categoria]);
     }
   });
@@ -348,13 +357,11 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       { rotulo: "Flete cobrado a la tienda", importe: "₡150" },
       { rotulo: "Flete por devolución a origen cobrado a la tienda", importe: "₡4.000" },
       { rotulo: "Comisión de contra-entrega cobrada a la tienda", importe: "₡900" },
-      { rotulo: "IVA del flete cobrado a la tienda", importe: "₡19,50" },
-      { rotulo: "IVA del flete por devolución a origen cobrado a la tienda", importe: "₡520" },
-      { rotulo: "IVA de la comisión cobrado a la tienda", importe: "₡30,25" },
+      // SL-39 (R7/R8): las tres de IVA ya no están aquí; van al bloque del IVA.
       { rotulo: "Corrección de caja (suma)", importe: "₡90" },
       // Ficha 461 (R27): la fila del cobro de la empresa a una tienda; en este fixture vale 0,00.
       { rotulo: "La empresa le cobra a una tienda", importe: "₡0" },
-      { rotulo: "Total de ingresos", importe: "₡5.709,75" },
+      { rotulo: "Total de ingresos", importe: "₡5.140" },
     ]);
 
     // La columna de egresos, con el mismo rasero: la 45/158 afirmaba rótulo e importe por
@@ -381,7 +388,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       { rotulo: "Cobros a una tienda anulados", importe: "₡0" },
       // Ficha 458-B (design §2.3): las dos filas de la anulacion de un cobro por devolución a origen; aqui 0,00.
       { rotulo: "Fletes por devolución a origen cobrados a una tienda anulados", importe: "₡0" },
-      { rotulo: "IVA de fletes por devolución a origen cobrados a una tienda anulados", importe: "₡0" },
+      // SL-39: el reverso del IVA sale de «Egresos» y va al bloque del IVA.
       { rotulo: "Otros gastos de la empresa", importe: "₡194,25" },
       { rotulo: "Total de egresos", importe: "₡2.190,75" },
     ]);
@@ -409,11 +416,11 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
     // en cuanto alguien toca un importe de `COMPOSICION` —el caso de emparejado se pondría rojo
     // y se actualizaría, y éste seguiría verde afirmando sobre un conjunto que ya no existe—,
     // que es justo cuando el control tiene que hablar.
-    const importesIngresos = WALLET_INGRESO_PROPIO_SEED.map((c) =>
+    const importesIngresos = WALLET_INGRESO_GANANCIA_SEED.map((c) =>
       money(COMPOSICION.ingresos[c]),
     );
-    expect(importesIngresos).toHaveLength(WALLET_INGRESO_PROPIO_SEED.length);
-    expect(new Set(importesIngresos).size).toBe(WALLET_INGRESO_PROPIO_SEED.length);
+    expect(importesIngresos).toHaveLength(WALLET_INGRESO_GANANCIA_SEED.length);
+    expect(new Set(importesIngresos).size).toBe(WALLET_INGRESO_GANANCIA_SEED.length);
 
     // Las SIETE filas de la columna de egresos, en el orden que declara el componente (ficha
     // 339: cuatro conceptos + los dos que salen del cubo + el cubo).
@@ -439,7 +446,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
     pintar();
 
     const filas = rotulos(listaIngresos());
-    for (const categoria of WALLET_INGRESO_PROPIO_SEED) {
+    for (const categoria of WALLET_INGRESO_GANANCIA_SEED) {
       expect(filas, `la tarjeta pinta el enum ${categoria}`).not.toContain(categoria);
       expect(CATEGORIA_LABEL[categoria]).not.toBe(categoria);
     }
@@ -450,7 +457,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
   it("R28: el orden es el declarado, no el de magnitud", () => {
     pintar();
 
-    const declarado = WALLET_INGRESO_PROPIO_SEED.map((c) => CATEGORIA_LABEL[c]);
+    const declarado = WALLET_INGRESO_GANANCIA_SEED.map((c) => CATEGORIA_LABEL[c]);
     expect(rotulos(listaIngresos()).slice(0, declarado.length)).toEqual(declarado);
 
     // CONTRAPRUEBA de que la aserción de arriba DISCRIMINA: el importe mayor del conjunto no
@@ -460,7 +467,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
     // Sin esta comprobación, un conjunto de prueba que resultara estar ya ordenado por importe
     // dejaría el caso pasando con el código roto. Pasó en el primer intento y lo destapó una
     // mutación; esta línea es lo que impide que vuelva a pasar sin que nadie se entere.
-    const importes = WALLET_INGRESO_PROPIO_SEED.map((c) => COMPOSICION.ingresos[c]);
+    const importes = WALLET_INGRESO_GANANCIA_SEED.map((c) => COMPOSICION.ingresos[c]);
     const mayor = importes.reduce((a, b) => (b.length > a.length ? b : a));
     expect(mayor).toBe("4000.00");
     expect(importes[0]).not.toBe(mayor);
@@ -482,7 +489,6 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       "Correcciones de caja (resta)",
       "Cobros a una tienda anulados", // ficha 461: tercer nombrado, antes de «Otros»
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
-      "IVA de fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
       "Otros gastos de la empresa",
       "Total de egresos",
     ]);
@@ -549,14 +555,14 @@ describe("ComposicionGananciaCard — el pie y el signo del servidor (R27)", () 
     cleanup();
 
     const negativo = pintar({
-      resumen: { ...RESUMEN, ganancia: "-3519.00", signoGanancia: "negativo" },
+      resumen: { ...RESUMEN, ganancia: "-2949.25", signoGanancia: "negativo" },
     });
     const pieNegativo = negativo.container.querySelector<HTMLElement>(
       '[data-slot="card-footer"]',
     ) as HTMLElement;
     expect(within(pieNegativo).getByText("Negativo")).toBeInTheDocument();
     // El STRING llega con su signo puesto y se pinta tal cual.
-    expect(within(pieNegativo).getByText("-₡3.519")).toBeInTheDocument();
+    expect(within(pieNegativo).getByText("-₡2.949,25")).toBeInTheDocument();
     cleanup();
 
     const cero = pintar({
@@ -677,7 +683,6 @@ describe("Ficha 339 — «Otros» sólo cuando de verdad queda algo (R7/R8/R9/R1
       "Correcciones de caja (resta)",
       "Cobros a una tienda anulados", // ficha 461
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
-      "IVA de fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
       "Total de egresos",
     ]);
   });
@@ -747,10 +752,12 @@ describe("Ficha 339 — lo que la tarjeta dice de sí misma (R41/R42)", () => {
     // La enumeración completa, concepto a concepto. Es la continuación literal de la
     // corrección que el propio docstring del componente documenta: o se nombra todo, o no se
     // enumera. Con los ajustes teniendo fila propia, callárselos volvería a hacerla parcial.
+    //
+    // SL-39 (R10): los «impuestos» salen de la enumeración porque ya no son ganancia; la
+    // descripción dice, en cambio, que el IVA va aparte (caso propio en `WalletCajaIvaSL39`).
     for (const concepto of [
       /flete/i,
       /comisi/i,
-      /impuesto/i,
       /gasto/i,
       /sueldo/i,
       /indemnizaci/i,

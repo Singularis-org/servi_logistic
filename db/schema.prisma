@@ -889,6 +889,9 @@ model Orden {
   // no 1-1: la unicidad es por GESTION, y una orden podria acumular mas de un rechazo a lo
   // largo de su vida (cada uno con su gestion sintetica y su cobro).
   cobrosRechazoTienda        RechazoTiendaCobro[]
+  // SL-40: lo que la plataforma cobra a la empresa por ESTA orden (cargo, reverso, cargo…). Lo escribe
+  // solo el trigger de la base; la FK es CASCADE (la app nunca borra una orden de verdad).
+  cobrosPlataforma           CobroPlataformaMovimiento[]
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -5236,7 +5239,71 @@ model Organizacion {
   analyticsDailys AnalyticsDaily[]
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
+  cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
 
+  // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
+  // global. Solo la escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // `CHECK (… IS NULL OR … >= 0)` vive solo en el SQL de 20261023130000 (Prisma no expresa CHECK).
+  cobroPlataformaPorOrden Decimal? @map("cobro_plataforma_por_orden") @db.Decimal(12, 2)
+
   @@map("organizacion")
+}
+
+// SL-40 (design §3.3): un movimiento del cobro de la plataforma.
+enum CobroPlataformaTipo {
+  cargo
+  reverso
+
+  @@map("cobro_plataforma_tipo")
+}
+
+// SL-40: de dónde salió el importe congelado del cargo.
+enum CobroPlataformaFuente {
+  empresa
+  global
+  sin_configurar
+
+  @@map("cobro_plataforma_fuente")
+}
+
+// SL-40 (design §3.1) — el valor global del cobro por orden. Es de PLATAFORMA: sin `organizacion_id`.
+// Una sola fila (`id = true`); si no hay fila, la tarifa es «sin configurar» (0,00). Viven solo en el
+// SQL de 20261023130000, porque Prisma no los expresa: `CHECK ("id")`, `CHECK ("monto" >= 0)`, la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app`.
+model CobroPlataformaTarifa {
+  id        Boolean  @id @default(true)
+  monto     Decimal  @db.Decimal(12, 2)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("cobro_plataforma_tarifa")
+}
+
+// SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.
+// Los escriben SOLO los triggers sobre `orden` de 20261023130200 (SECURITY DEFINER). Viven solo en el
+// SQL de 20261023130100, porque Prisma no los expresa:
+//   · `CHECK ("secuencia" >= 1)` y `CHECK ("monto" >= 0)`;
+//   · la política `cobro_plataforma_movimiento_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee sus cargos y no los toca (R8);
+//   · los triggers de misma empresa de SL-17.
+// El `id` no tiene default en Prisma porque ningún código de la app crea filas: lo pone el trigger.
+model CobroPlataformaMovimiento {
+  id         String                @id
+  ordenId    String                @map("orden_id")
+  secuencia  Int
+  tipo       CobroPlataformaTipo
+  fuente     CobroPlataformaFuente
+  monto      Decimal               @db.Decimal(12, 2)
+  ocurridoAt DateTime              @map("ocurrido_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+
+  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId, secuencia], map: "cobro_plataforma_movimiento_orden_secuencia_key")
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@map("cobro_plataforma_movimiento")
 }

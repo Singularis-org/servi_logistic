@@ -22,6 +22,7 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "empresa-ficticia-b",
     creadaEn: new Date("2026-10-21T10:00:00Z"),
     maestros: [{ nombre: "Maestro B", email: "maestro-b@example.test" }],
+    cobroPorOrden: null,
   },
   {
     id: "00000000-0000-4000-8000-000000000001",
@@ -29,6 +30,7 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "empresa-ficticia-a",
     creadaEn: new Date("2026-10-20T10:00:00Z"),
     maestros: [],
+    cobroPorOrden: null,
   },
 ];
 

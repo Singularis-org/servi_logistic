@@ -79,7 +79,7 @@ type FilaCaja = {
  * recaudado (de las TIENDAS), flete e IVA (de LA EMPRESA) y dos salidas propias.
  *
  *   enCaja   = 20 000 − 500 − 1 200 = 18 300,00  (ficha 459: flete e IVA son CARGOS, no efectivo)
- *   ganancia =           3 000 + 390 − 500 − 1 200 =  1 690,00
+ *   ganancia =           3 000 − 500 − 1 200 =  1 300,00  (SL-39: el IVA, 390, va aparte; antes 1 690,00)
  *
  * Las dos cifras son DISTINTAS a proposito: si la semilla no tuviera dinero de terceros, un
  * reverso mal clasificado podria pasar inadvertido.
@@ -303,7 +303,7 @@ describe("R30 — pagar y anular deja el dinero en caja donde estaba y la gananc
 
     const antes = d.cifras();
     expect(antes.enCaja).toBe("18300.00");
-    expect(antes.ganancia).toBe("1690.00");
+    expect(antes.ganancia).toBe("1300.00");
 
     // ── momento 2: el dinero SALE ────────────────────────────────────────────────────────────
     const pago = await d.service.registrarPagoTienda(pagoInput(), ACTOR);
@@ -313,7 +313,7 @@ describe("R30 — pagar y anular deja el dinero en caja donde estaba y la gananc
     // R18: el «dinero en caja» baja EXACTAMENTE el importe del pago…
     expect(trasPagar.enCaja).toBe("3300.00");
     // …y la ganancia NO se mueve ni un centimo: ese dinero nunca fue de la empresa.
-    expect(trasPagar.ganancia).toBe("1690.00");
+    expect(trasPagar.ganancia).toBe("1300.00");
 
     // ── momento 3: el dinero VUELVE ──────────────────────────────────────────────────────────
     if (pago.status !== "ok") return;
@@ -328,9 +328,9 @@ describe("R30 — pagar y anular deja el dinero en caja donde estaba y la gananc
     expect(trasAnular.enCaja).toBe(antes.enCaja);
     // R30, segunda mitad y R26: la ganancia es IDENTICA en los tres momentos.
     expect([antes.ganancia, trasPagar.ganancia, trasAnular.ganancia]).toEqual([
-      "1690.00",
-      "1690.00",
-      "1690.00",
+      "1300.00",
+      "1300.00",
+      "1300.00",
     ]);
     // Y la tercera linea (dinero de terceros) tambien vuelve a su sitio.
     expect(trasAnular.deTerceros).toBe(antes.deTerceros);

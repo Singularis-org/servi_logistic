@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-10-22
+actualizado: 2026-10-23
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -18,6 +18,7 @@ fuentes:
   - app/(app)/wallet/_components/libro-caja-labels.ts
   - lib/actions/wallet-filtros.ts
   - lib/actions/libro-caja-autoria.ts
+  - lib/actions/deuda-plataforma.ts
   - app/(app)/wallet/_components/VerMovimientoCaja.tsx
   - components/shared/wallet/RegistrarMovimientoDialog.tsx
   - components/shared/wallet/AsiQueda.tsx
@@ -54,10 +55,12 @@ no del de las tiendas ni del de los mensajeros —esos tienen la suya—.
 ## Qué vas a ver
 
 **El resumen de caja**, arriba: la cifra grande, lo que **entró** y lo que **salió**, la **ganancia de
-la empresa**, el **saldo inicial y aportes** y **lo que la empresa les debe a las tiendas**.
+la empresa**, el **saldo inicial y aportes**, el **IVA cobrado**, **lo que la empresa les debe a las
+tiendas** y **lo que la empresa debe a la plataforma**.
 
 **Cómo se compone la ganancia**, desglosada por concepto, para ver de dónde sale de verdad el margen —
-fletes, comisiones, IVA, lo que la empresa les cobra a las tiendas— y no solo el total.
+fletes, comisiones, lo que la empresa les cobra a las tiendas— y no solo el total. El IVA va aparte, en
+su propio bloque: no es ganancia.
 
 **El desglose de egresos**, del otro lado.
 
@@ -137,8 +140,49 @@ deuda de cada tienda»).
 ### La barra de reparto
 
 Solo aparece cuando hay un saldo inicial registrado (la cifra dice **Dinero en caja**). Parte el
-dinero en **De las tiendas** y **De la empresa** (ganancia más aportes). Si uno de los dos está en
+dinero en **De las tiendas** y **De la empresa** (ganancia, IVA cobrado y aportes). Si uno de los dos está en
 negativo, la barra no se parte y en su lugar te dice qué pasa.
+
+## La ganancia de la empresa no incluye el IVA
+
+El IVA que se les cobra a las tiendas sobre el flete y la comisión **no es ganancia**. Por eso el
+resumen y la composición lo cuentan aparte:
+
+- **Ganancia de la empresa** es lo que la empresa gana menos lo que gasta, **sin el IVA**.
+  **Ingresos de la empresa** y **Gastos de la empresa**, debajo, tampoco lo llevan.
+- En el lado de la empresa del resumen hay una región propia, **IVA cobrado**, entre la ganancia y
+  **Saldo inicial y aportes**. Lleva el importe, su signo y la pista «IVA que se les cobró a las
+  tiendas sobre el flete y la comisión. No es ganancia.».
+- En la tarjeta **Cómo se compone la ganancia de la empresa**, el IVA no está en **Ingresos** ni en
+  **Egresos**: va en el bloque **IVA cobrado (aparte de la ganancia)**, debajo de las dos columnas, con
+  una fila por cada tipo de IVA y el **Total del IVA**. Cada fila abre su detalle de movimientos, como
+  las demás. El total de **Ingresos** coincide con **Ingresos de la empresa**, el de **Egresos** con
+  **Gastos de la empresa**, y el pie dice la ganancia sin IVA.
+
+El IVA sigue siendo dinero de la empresa que está en la caja: la cifra grande lo cuenta igual que antes.
+
+Lo mismo en el detalle de un cierre, en **Cierres**: **Lo que le queda a la empresa** sale sin el IVA,
+y la cuenta lo muestra en su propia línea, **IVA facturado**.
+
+## Lo que la empresa debe a la plataforma
+
+La plataforma cobra a la empresa un monto fijo por cada orden. En el lado de la empresa del resumen,
+debajo de **Saldo inicial y aportes**, hay una región propia, **Lo que la empresa debe a la
+plataforma**, con la pista «Lo que la plataforma cobra por cada orden creada, menos las anuladas.
+Todavía no se cobra: no sale de la caja.».
+
+- **Qué cuenta.** Cada orden que se crea, por la pantalla, por la carga masiva o por la API, suma lo
+  que cobraba la plataforma por orden **el día en que se creó**. Si después cambia ese monto, las
+  órdenes que ya existían no cambian. Una orden **eliminada** resta lo mismo que había sumado, y si se
+  recupera vuelve a sumar. Una orden que la tienda cancela por la API y vuelve a la tienda **sigue
+  contando**: no se eliminó.
+- **Es de toda la historia.** La cifra no depende del periodo ni de nada de la barra del libro: cambiar
+  los filtros mueve las cifras de la caja, pero esta no.
+- **Todavía no se cobra.** Por ahora la app solo la muestra. No hay forma de pagarla desde aquí, y no
+  aparece en el libro.
+- **No cambia la caja.** No es dinero que haya salido: la cifra grande, **Entró**, **Salió**, la
+  ganancia, el IVA, la barra de reparto y **Cómo se compone la ganancia de la empresa** quedan igual que
+  si no existiera. Por eso no lleva insignia ni color de signo.
 
 ## De dónde entra el dinero solo
 
@@ -362,7 +406,7 @@ luego **Anular…**. Es la misma forma para todos:
   de la tienda a la empresa anulado».
 - Al anular una corrección de caja, aparece la corrección contraria por el mismo monto.
 - Un **cobro por devolución a origen** tiene dos líneas en la caja, el flete y su IVA: se anula desde **cualquiera de
-  las dos** y se anulan **las dos juntas**. La **ganancia baja** en el flete más el IVA, **lo que la empresa
+  las dos** y se anulan **las dos juntas**. La **ganancia baja** en el flete y el **IVA cobrado** en su IVA, **lo que la empresa
   les debe a las tiendas** y el saldo de la tienda **vuelven a subir** en lo mismo (si al cobrarlo se le
   descontó a la tienda), y **Entró**, **Salió** y la cifra grande no cambian. En la caja aparecen
   **Flete por devolución a origen cobrado a la tienda anulado** y **IVA del flete por devolución a origen cobrado a la tienda

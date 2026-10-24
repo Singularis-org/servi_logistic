@@ -185,6 +185,7 @@ function conIncidentes(incidente: CierreDetalleGestion[]) {
     cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
     grupos: { ...emptyGrupos(), incidente },
     totalesIngreso: zeroIngreso(),
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",

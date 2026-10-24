@@ -35,6 +35,7 @@ import type {
   DesgloseEgresosDTO,
   WalletMovimientoDTO,
 } from "@/lib/types/wallet";
+import type { DeudaPlataformaDTO } from "@/lib/interfaces/services/IDeudaPlataformaService";
 
 import { CajaResumenCard } from "./CajaResumenCard";
 import {
@@ -153,6 +154,14 @@ export interface WalletModuleProps {
    * garantiza el compilador, no la buena voluntad de quien monte el módulo mañana.
    */
   ahoraIso: string;
+  /**
+   * SL-40 (R21, R23): lo que la empresa debe a la plataforma, leído en el servidor. Es de toda la
+   * historia de la empresa y no depende de los filtros del libro, así que el módulo no lo vuelve a
+   * pedir al cambiarlos: solo lo transporta a la tarjeta. Opcional porque los tests de fichas
+   * anteriores montan el módulo sin él; ausente o `null`, la región no se pinta. Que la página lo
+   * pase lo mide `WalletDeudaPlataformaSL40.test.tsx`, montando la página.
+   */
+  deudaPlataforma?: DeudaPlataformaDTO | null;
 }
 
 /**
@@ -304,6 +313,7 @@ export function WalletModule({
   puedeDecidirCobros,
   puedeDecidirCobrosRechazo,
   ahoraIso,
+  deudaPlataforma = null,
 }: WalletModuleProps) {
   const toast = useToast();
 
@@ -642,7 +652,11 @@ export function WalletModule({
 
         {/* FICHA 467 (R1) — la tarjeta de filtros de la 463 ya no está aquí: Periodo y «A quién» viven en
             la barra única del libro y siguen moviendo estas cifras (R12). */}
-        <CajaResumenCard resumen={resumen} movimientos={totalWallet} />
+        <CajaResumenCard
+          resumen={resumen}
+          movimientos={totalWallet}
+          deudaPlataforma={deudaPlataforma}
+        />
       </section>
 
       {/* Ficha 333 (G2, design §7 · R37/R38/R42) — LA COLA DE COBROS DE GASTO FIJO POR APROBAR,

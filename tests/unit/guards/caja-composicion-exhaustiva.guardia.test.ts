@@ -13,8 +13,12 @@ import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoR
 import {
   WALLET_EGRESO_CON_FILA_SEED,
   WALLET_EGRESO_DESGLOSADO_SEED,
+  WALLET_EGRESO_IVA_SEED,
   WALLET_EGRESO_NOMBRADO_SEED,
+  WALLET_INGRESO_GANANCIA_SEED,
+  WALLET_INGRESO_IVA_SEED,
   WALLET_INGRESO_PROPIO_SEED,
+  WALLET_IVA_SEED,
   WALLET_MOVIMIENTO_CATEGORIA_SEED,
   type AgregadoCajaRow,
   type WalletMovimientoCategoria,
@@ -200,10 +204,13 @@ describe("R23/R26 — la particion de la ganancia cubre TODAS las categorias pro
       expect(complemento, `${categoria} sigue en «otros»`).not.toContain(categoria);
       expect(WALLET_EGRESO_CON_FILA_SEED as readonly string[]).toContain(categoria);
     }
-    // Y el seed CON FILA es la EXTENSION de los cuatro del desglose, sin repetidos.
+    // Y el seed CON FILA es la EXTENSION de los cuatro del desglose, sin repetidos. SL-39 (design
+    // §2.1): + el reverso del IVA, que sale de los nombrados pero sigue teniendo fila (en el bloque
+    // del IVA), y por eso no cae en «Otros».
     expect([...WALLET_EGRESO_CON_FILA_SEED]).toEqual([
       ...WALLET_EGRESO_DESGLOSADO_SEED,
       ...WALLET_EGRESO_NOMBRADO_SEED,
+      ...WALLET_EGRESO_IVA_SEED,
     ]);
     expect(new Set(WALLET_EGRESO_CON_FILA_SEED).size).toBe(WALLET_EGRESO_CON_FILA_SEED.length);
   });
@@ -218,14 +225,15 @@ describe("R23/R26 — la particion de la ganancia cubre TODAS las categorias pro
     expect(derivados).toContain("ingreso_cobro_tienda");
   });
 
-  it("⭑ 461 (R27) + 458-B: el reverso del cobro es el TERCER egreso nombrado y los dos del cobro por devolución a origen el cuarto y el quinto (3→5); «otros» sigue siendo solo `egreso_gasto`", () => {
+  it("⭑ 461 (R27) + 458-B + SL-39: el reverso del cobro es el TERCER egreso nombrado y el del flete por devolución a origen el cuarto; el reverso del IVA sale de los nombrados (5→4); «otros» sigue siendo solo `egreso_gasto`", () => {
     expect([...WALLET_EGRESO_NOMBRADO_SEED]).toEqual([
       "egreso_pago_mensajero",
       "egreso_ajuste",
       "egreso_reverso_cobro_tienda",
       "egreso_reverso_flete_devolucion", // ficha 458-B
-      "egreso_reverso_iva_flete_devolucion", // ficha 458-B
+      // SL-39 (R7/R8): `egreso_reverso_iva_flete_devolucion` va al bloque del IVA, no a «Egresos».
     ]);
+    expect([...WALLET_EGRESO_IVA_SEED]).toEqual(["egreso_reverso_iva_flete_devolucion"]);
     expect(NATURALEZA_POR_CATEGORIA.egreso_reverso_cobro_tienda).toBe("propio");
     expect(OTROS_EGRESOS_DE_EMPRESA).toEqual(["egreso_gasto"]);
   });
@@ -345,10 +353,113 @@ function esperadoDe(
 ): { ingresos: string; egresos: string } {
   const cero = "0.00";
   if (NATURALEZA_POR_CATEGORIA[categoria] !== "propio") return { ingresos: cero, egresos: cero };
+  // SL-39 (R8): una categoria de IVA es propia, pero no es ganancia: no mueve ninguna de las dos
+  // columnas, mueve el bloque del IVA (lo mide el caso R8 de abajo).
+  if ((WALLET_IVA_SEED as readonly string[]).includes(categoria)) {
+    return { ingresos: cero, egresos: cero };
+  }
   return tipoDe(categoria) === "ingreso"
     ? { ingresos: importe.toFixed(2), egresos: cero }
     : { ingresos: cero, egresos: importe.toFixed(2) };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════════════════
+// SL-39 (T1, R8 y R18) — el IVA, fuera de la ganancia y dentro de su bloque.
+// ═════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * EL DETECTOR DE R18. Las categorias cuyo nombre dice IVA (`_iva_`) y que el seed del IVA no
+ * recoge. Una categoria asi caeria como «propio» en la ganancia sin que nada lo dijera: es
+ * justo el error de esta ficha, repetido con un concepto nuevo.
+ */
+function ivaSinSeed(categorias: readonly string[]): string[] {
+  const seed = new Set<string>(WALLET_IVA_SEED);
+  return categorias.filter((c) => c.includes("_iva_") && !seed.has(c));
+}
+
+describe("SL-39/R18 — toda categoria `_iva_` del catalogo esta en el seed del IVA", () => {
+  it("R18: ninguna categoria de IVA del catalogo se queda fuera de `WALLET_IVA_SEED`", () => {
+    expect(ivaSinSeed(WALLET_MOVIMIENTO_CATEGORIA_SEED)).toEqual([]);
+    // Control de no vacuidad: el catalogo SI tiene categorias `_iva_`, y son las cuatro del seed.
+    const conIva = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => c.includes("_iva_"));
+    expect(conIva).toHaveLength(4);
+    expect([...conIva].sort()).toEqual([...WALLET_IVA_SEED].sort());
+  });
+
+  it("AUTO-COMPROBACION: el detector SE PONE ROJO con una categoria `_iva_` nueva, y no con otra", () => {
+    const ampliado = [
+      ...WALLET_MOVIMIENTO_CATEGORIA_SEED,
+      "ingreso_iva_concepto_inventado",
+      "egreso_reverso_iva_concepto_inventado",
+      "ingreso_concepto_sin_impuesto_inventado",
+    ];
+    expect(ivaSinSeed(ampliado)).toEqual([
+      "ingreso_iva_concepto_inventado",
+      "egreso_reverso_iva_concepto_inventado",
+    ]);
+  });
+
+  it("el seed del IVA son sus dos mitades, y los ingresos de la ganancia son los propios menos el IVA", () => {
+    expect([...WALLET_IVA_SEED]).toEqual([...WALLET_INGRESO_IVA_SEED, ...WALLET_EGRESO_IVA_SEED]);
+    const ganancia = new Set<string>(WALLET_INGRESO_GANANCIA_SEED);
+    const ivaIngreso = new Set<string>(WALLET_INGRESO_IVA_SEED);
+    // Disjuntos, y entre los dos cubren EXACTAMENTE los ingresos propios.
+    expect(WALLET_INGRESO_GANANCIA_SEED.filter((c) => ivaIngreso.has(c))).toEqual([]);
+    expect([...WALLET_INGRESO_GANANCIA_SEED, ...WALLET_INGRESO_IVA_SEED].sort()).toEqual(
+      [...WALLET_INGRESO_PROPIO_SEED].sort(),
+    );
+    expect(WALLET_INGRESO_PROPIO_SEED.filter((c) => !ganancia.has(c) && !ivaIngreso.has(c))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("SL-39/R8 — MEDIDO sobre el catalogo entero: columnas sin IVA, IVA en su bloque", () => {
+  const caja = derivarCaja(LIBRO_COMPLETO);
+  const composicion = derivarComposicionGanancia(LIBRO_COMPLETO);
+
+  it("R8: «Ingresos» = «Ingresos de la empresa», «Egresos» = «Gastos de la empresa», sin IVA", () => {
+    expect(composicion.totalIngresos).toBe(caja.ingresosPropios);
+    expect(composicion.totalEgresos).toBe(caja.egresosPropios);
+    // Ninguna de IVA es una fila de las dos columnas.
+    for (const iva of WALLET_IVA_SEED) {
+      expect(composicion.ingresos, iva).not.toHaveProperty(iva);
+      expect(composicion.egresos, iva).not.toHaveProperty(iva);
+    }
+  });
+
+  it("R8: el bloque del IVA tiene una fila por categoria de IVA y su total es el IVA del resumen", () => {
+    expect(Object.keys(composicion.iva).sort()).toEqual([...WALLET_IVA_SEED].sort());
+    expect(composicion.totalIva).toBe(caja.iva);
+    // Las filas, cada una con el importe que el libro le puso (todos distintos), y el total
+    // = ingresos de IVA − el reverso.
+    for (const iva of WALLET_IVA_SEED) {
+      const i = WALLET_MOVIMIENTO_CATEGORIA_SEED.indexOf(iva);
+      expect(composicion.iva[iva], iva).toBe(importeDe(i));
+    }
+    const ingresosIva = WALLET_INGRESO_IVA_SEED.reduce(
+      (s, c) => s.add(composicion.iva[c]),
+      new Prisma.Decimal(0),
+    );
+    const egresosIva = WALLET_EGRESO_IVA_SEED.reduce(
+      (s, c) => s.add(composicion.iva[c]),
+      new Prisma.Decimal(0),
+    );
+    expect(ingresosIva.minus(egresosIva).toFixed(2)).toBe(composicion.totalIva);
+    // Control: el libro tiene IVA, asi que el total no puede estar cuadrando con ceros.
+    expect(new Prisma.Decimal(composicion.totalIva).isZero()).toBe(false);
+  });
+
+  it("R8: quitar una categoria de IVA mueve SOLO el bloque del IVA", () => {
+    for (const iva of WALLET_IVA_SEED) {
+      const sinElla = derivarComposicionGanancia(LIBRO_COMPLETO.filter((f) => f.categoria !== iva));
+      expect(sinElla.totalIngresos, iva).toBe(composicion.totalIngresos);
+      expect(sinElla.totalEgresos, iva).toBe(composicion.totalEgresos);
+      expect(sinElla.iva[iva], iva).toBe("0.00");
+      expect(sinElla.totalIva, iva).not.toBe(composicion.totalIva);
+    }
+  });
+});
 
 // ═════════════════════════════════════════════════════════════════════════════════════════
 // SEGUNDO OFICIO — el barrido MONEY-SAFE de `lib/utils/monto-escala-2.ts`.

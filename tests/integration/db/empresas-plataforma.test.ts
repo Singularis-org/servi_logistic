@@ -132,13 +132,14 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     const mias = r.listado.filter((e) => e.id === r.s.a.id || e.id === r.s.b.id);
 
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB] },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
         slug: r.s.a.slug,
         creadaEn: ALTA_A,
         maestros: [r.s.maestroA1, r.s.maestroA2],
+        cobroPorOrden: null,
       },
     ]);
     expect(JSON.stringify(r.listado)).not.toContain(r.s.admin.email);
@@ -159,7 +160,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
 
     expect(mias).toHaveLength(2);
     for (const e of mias) {
-      expect(Object.keys(e).sort()).toEqual(["creadaEn", "id", "maestros", "nombre", "slug"]);
+      expect(Object.keys(e).sort()).toEqual(["cobroPorOrden", "creadaEn", "id", "maestros", "nombre", "slug"]);
       for (const m of e.maestros) expect(Object.keys(m).sort()).toEqual(["email", "nombre"]);
     }
     const texto = JSON.stringify(mias);

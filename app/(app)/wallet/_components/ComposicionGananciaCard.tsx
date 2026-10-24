@@ -27,15 +27,21 @@ import type {
   ComposicionGananciaDTO,
   DesgloseEgresosDTO,
   WalletBalanceSigno,
-  WalletIngresoPropio,
+  WalletCategoriaIva,
+  WalletIngresoGanancia,
 } from "@/lib/types/wallet";
-import { WALLET_INGRESO_PROPIO_SEED } from "@/lib/types/wallet";
+import { WALLET_INGRESO_GANANCIA_SEED, WALLET_IVA_SEED } from "@/lib/types/wallet";
 import { cn } from "@/lib/utils";
 
 import { DesgloseEgresosLista } from "./DesgloseEgresosLista";
 import { FilaComposicion } from "./FilaComposicion";
 import type { WalletFiltrosValue } from "./wallet-filtros-input";
-import { CATEGORIA_LABEL, money } from "./wallet-labels";
+import {
+  CATEGORIA_LABEL,
+  COMPOSICION_IVA_LABEL,
+  IMPUESTO_ROTULO,
+  money,
+} from "./wallet-labels";
 
 // Feature 231 (T6.2, design §4.3) — «Cómo se compone la ganancia de la empresa».
 //
@@ -56,8 +62,14 @@ import { CATEGORIA_LABEL, money } from "./wallet-labels";
 //
 // El ORDEN de las dos columnas es el DECLARADO en el código (R28), no el de magnitud: ordenar
 // por importe cambiaría el sitio de cada concepto en cada recarga —y obligaría a comparar montos
-// en el navegador—. El de ingresos es `WALLET_INGRESO_PROPIO_SEED`, que es el mismo con el que el
+// en el navegador—. El de ingresos es `WALLET_INGRESO_GANANCIA_SEED`, que es el mismo con el que el
 // servidor construye el desglose: una fila nueva del catálogo entra por los dos sitios a la vez.
+//
+// SL-39 (T5, design §7.2, R7/R8) — el IVA cobrado NO es ganancia. Sale de «Ingresos» (y su reverso, de
+// «Egresos») y se pinta en un bloque propio, «IVA cobrado (aparte de la ganancia)», entre las dos
+// columnas y el pie: una fila por categoría de `WALLET_IVA_SEED`, cada una se abre como cualquier
+// otra, y su total es `composicion.totalIva`, que deriva el servidor. Así el total de «Ingresos» es
+// «Ingresos de la empresa», el de «Egresos» es «Gastos de la empresa» y el pie, la ganancia sin IVA.
 
 // --- Textos i18n-ready (separados de la lógica, docs/conventions) ---
 const TITULO = `Cómo se compone la ganancia de ${EMPRESA.enFrase}`;
@@ -79,9 +91,13 @@ const TITULO = `Cómo se compone la ganancia de ${EMPRESA.enFrase}`;
  * un texto que siguiera callándoselos volvería a ser una lista parcial de lo que entra. R42: lo
  * que queda fuera —el dinero de las tiendas— se dice igual que hasta hoy.
  */
+//
+// SL-39 (R10, design §7.2): los «impuestos» salen de la enumeración, porque ya no entran en la
+// ganancia, y la descripción dice dónde están.
 const DESCRIPCION =
   "Ingresos y gastos propios del conjunto filtrado, concepto por concepto: fletes, comisiones, " +
-  "impuestos, gastos, sueldos, indemnizaciones, pagos a mensajeros y ajustes. No incluye el " +
+  "gastos, sueldos, indemnizaciones, pagos a mensajeros y ajustes. " +
+  `El ${IMPUESTO_ROTULO} cobrado a las tiendas no es ganancia: se muestra aparte. No incluye el ` +
   `dinero de las tiendas: el contra-entrega cobrado no es de ${EMPRESA.enFrase} y por eso no está en la ` +
   "ganancia.";
 
@@ -92,23 +108,33 @@ const INGRESOS_TOTAL_LABEL = "Total de ingresos";
 const GANANCIA_LABEL = `Ganancia de ${EMPRESA.enFrase}`;
 
 /**
- * Icono de cada concepto de ingreso. `Record` TOTAL sobre las siete categorías de ingreso
- * propio: una categoría nueva rompe el build hasta que alguien decida cómo se dibuja. Los tres
- * impuestos comparten icono a propósito — son la misma clase de dinero.
+ * Icono de cada concepto de ingreso. `Record` TOTAL sobre los ingresos que son ganancia: una
+ * categoría nueva rompe el build hasta que alguien decida cómo se dibuja. SL-39: las tres de IVA
+ * salen de aquí y van al bloque del IVA, con su icono (`IVA_ICONO`).
  */
-const INGRESO_ICONO: Record<WalletIngresoPropio, LucideIcon> = {
+const INGRESO_ICONO: Record<WalletIngresoGanancia, LucideIcon> = {
   ingreso_flete: Truck,
   ingreso_flete_devolucion: ArrowRightLeft,
   ingreso_comision_cod: HandCoins,
-  ingreso_iva_flete: Percent,
-  ingreso_iva_flete_devolucion: Percent,
-  ingreso_iva_comision_cod: Percent,
   ingreso_ajuste: Scale,
   // Ficha 461 (design §4, R27): el cobro de la empresa a una tienda, octavo ingreso propio. `Store`
   // —la tienda— porque es lo que lo distingue de los seis cargos del cierre: no nace de una
   // entrega ni de una tarifa, sino de algo que la empresa le cobra a esa tienda a mano. Decoracion
   // (`aria-hidden`); el rotulo «la empresa le cobra a una tienda» ya lo dice.
   ingreso_cobro_tienda: Store,
+};
+
+/**
+ * SL-39 (design §7.2) — el bloque del IVA. Las cuatro filas comparten icono a propósito: son la misma
+ * clase de dinero. El tono es el de su dirección: las tres de ingreso en verde y el reverso en rojo,
+ * en positivo como toda fila de egreso. `Record` TOTAL: una categoría de IVA nueva rompe el build.
+ */
+const IVA_ICONO: LucideIcon = Percent;
+const IVA_TONO: Record<WalletCategoriaIva, "ingreso" | "egreso"> = {
+  ingreso_iva_flete: "ingreso",
+  ingreso_iva_flete_devolucion: "ingreso",
+  ingreso_iva_comision_cod: "ingreso",
+  egreso_reverso_iva_flete_devolucion: "egreso",
 };
 
 /** Insignia del signo de la ganancia. Las mismas variantes semánticas que la tarjeta de la caja. */
@@ -185,7 +211,7 @@ export function ComposicionGananciaCard({
               {/* Ficha 339 (Q1, decisión cerrada): «cada fila se puede abrir» es CADA fila. Las
                   siete de ingreso también, y por el mismo mecanismo: una asimetría nueva entre
                   las dos columnas sería exactamente el defecto que la 343 vino a cerrar. */}
-              {WALLET_INGRESO_PROPIO_SEED.map((categoria) => (
+              {WALLET_INGRESO_GANANCIA_SEED.map((categoria) => (
                 <FilaComposicion
                   key={categoria}
                   fila={categoria}
@@ -225,6 +251,34 @@ export function ComposicionGananciaCard({
             total={composicion.totalEgresos}
             filtros={filtros}
           />
+        </div>
+      </CardContent>
+
+      {/* SL-39 (R7): el IVA cobrado, a todo el ancho y aparte de las dos columnas. Mismo patrón que
+          ellas —título visible, grupo con nombre accesible y `<dl>`— para que se lea igual. */}
+      <CardContent className="flex flex-col gap-2 border-t px-0 pt-4" data-bloque="iva">
+        <TituloColumna>{COMPOSICION_IVA_LABEL.titulo}</TituloColumna>
+        <div role="group" aria-label={COMPOSICION_IVA_LABEL.grupo}>
+          <dl className="flex flex-col gap-0.5">
+            {WALLET_IVA_SEED.map((categoria) => (
+              <FilaComposicion
+                key={categoria}
+                fila={categoria}
+                label={CATEGORIA_LABEL[categoria]}
+                valor={composicion.iva[categoria]}
+                icono={IVA_ICONO}
+                tono={IVA_TONO[categoria]}
+                filtros={filtros}
+              />
+            ))}
+
+            <div className="mt-3 flex items-center justify-between gap-4 border-t bg-muted/50 px-4 py-3">
+              <dt className="text-sm font-medium">{COMPOSICION_IVA_LABEL.total}</dt>
+              <dd className="text-base font-semibold tabular-nums text-foreground">
+                {money(composicion.totalIva)}
+              </dd>
+            </div>
+          </dl>
         </div>
       </CardContent>
 

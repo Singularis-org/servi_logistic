@@ -67,6 +67,8 @@ import {
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   esMontoNegativo,
 } from "./cierre-detalle-shared";
 import { CascadaDinero, type LineaCascada } from "./CascadaDinero";
@@ -214,6 +216,8 @@ interface DetalleAbierto {
    * simplemente no se pinta.
    */
   cobradoSobreRecaudado: string;
+  /** SL-39 (R21) — el IVA facturado AGREGADO, derivado en el servidor; línea propia (R24). */
+  ivaFacturado: string;
   netoEmpresa: string;
   paraLaCentral: string;
   efectivoCubreDescuentos: boolean;
@@ -301,6 +305,8 @@ function lineasCascadaDueno(
     totalIngresoBodegaRechazos: string;
     pagoTienda: string;
     cobradoSobreRecaudado: string;
+    // SL-39 (R21) — derivado en el servidor; la cascada sólo lo pinta (R24).
+    ivaFacturado: string;
     netoEmpresa: string;
   },
   // Ficha 396 (R1) — LA MARCA de este nivel, o `null` si sus gestiones son de una sola tienda.
@@ -341,6 +347,13 @@ function lineasCascadaDueno(
       notas: [FLETE_RECHAZO_NO_DEDUCIBLE_NOTA],
     },
     { label: FACTURADO_EMPRESA_LABEL, monto: nivel.totalesIngreso.total, signo: "neutro" },
+    // SL-39 (R24) — el IVA va JUSTO después de lo facturado: no es de la empresa.
+    {
+      label: IVA_FACTURADO_LABEL,
+      monto: nivel.ivaFacturado,
+      signo: "resta",
+      notas: [IVA_FACTURADO_NOTA],
+    },
     { label: PAGO_MENSAJERO_LABEL, monto: nivel.totalPagoMensajero, signo: "resta" },
     {
       label: GANA_BODEGA_SATELITE_LABEL,
@@ -462,6 +475,7 @@ export function CierresBodegaAdminModule({
         // Feature 393 (R12/R20): los cuatro llegan derivados del servidor con aritmética
         // decimal exacta. La pantalla no resta nada.
         cobradoSobreRecaudado: result.cobradoSobreRecaudado,
+        ivaFacturado: result.ivaFacturado,
         netoEmpresa: result.netoEmpresa,
         paraLaCentral: result.paraLaCentral,
         efectivoCubreDescuentos: result.efectivoCubreDescuentos,
@@ -724,6 +738,7 @@ export function CierresBodegaAdminModule({
                   totalIngresoBodegaRechazos: detalle.cierre.totalIngresoBodegaRechazos,
                   pagoTienda: detalle.pagoTienda,
                   cobradoSobreRecaudado: detalle.cobradoSobreRecaudado,
+                  ivaFacturado: detalle.ivaFacturado,
                   netoEmpresa: detalle.netoEmpresa,
                 },
                 marcaAgregada,
@@ -806,6 +821,7 @@ export function CierresBodegaAdminModule({
                       totalIngresoBodegaRechazos: cierreDia.totalIngresoBodegaRechazos,
                       pagoTienda: cierreDia.pagoTienda,
                       cobradoSobreRecaudado: cierreDia.cobradoSobreRecaudado,
+                      ivaFacturado: cierreDia.ivaFacturado,
                       netoEmpresa: cierreDia.netoEmpresa,
                     },
                     marcaDelMensajero,

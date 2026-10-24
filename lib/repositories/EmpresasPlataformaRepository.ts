@@ -24,6 +24,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
           nombre: true,
           slug: true,
           createdAt: true,
+          cobroPlataformaPorOrden: true,
           // Solo nombre y email: ni `password_hash`, ni telefono, ni documento salen de la base.
           usuarios: {
             where: { rol: { value: "maestro" } },
@@ -38,6 +39,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         slug: f.slug,
         creadaEn: f.createdAt,
         maestros: f.usuarios,
+        cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
       }));
     });
   }

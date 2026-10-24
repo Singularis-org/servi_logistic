@@ -252,12 +252,15 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       ingreso_flete: delta(foto(), (l) => l.composicion.ingresos.ingreso_flete),
       ingreso_flete_devolucion: delta(foto(), (l) => l.composicion.ingresos.ingreso_flete_devolucion),
       ingreso_comision_cod: delta(foto(), (l) => l.composicion.ingresos.ingreso_comision_cod),
-      ingreso_iva_flete: delta(foto(), (l) => l.composicion.ingresos.ingreso_iva_flete),
+      // SL-39 (R7/R8): las tres de IVA salen de la columna «Ingresos» y van al bloque del IVA, con
+      // los MISMOS importes.
+      ingreso_iva_flete: delta(foto(), (l) => l.composicion.iva.ingreso_iva_flete),
       ingreso_iva_flete_devolucion: delta(
         foto(),
-        (l) => l.composicion.ingresos.ingreso_iva_flete_devolucion,
+        (l) => l.composicion.iva.ingreso_iva_flete_devolucion,
       ),
-      ingreso_iva_comision_cod: delta(foto(), (l) => l.composicion.ingresos.ingreso_iva_comision_cod),
+      ingreso_iva_comision_cod: delta(foto(), (l) => l.composicion.iva.ingreso_iva_comision_cod),
+      totalIva: delta(foto(), (l) => l.composicion.totalIva),
       ingreso_ajuste: delta(foto(), (l) => l.composicion.ingresos.ingreso_ajuste),
       egreso_pago_mensajero: delta(foto(), (l) => l.composicion.egresos.egreso_pago_mensajero),
       egreso_ajuste: delta(foto(), (l) => l.composicion.egresos.egreso_ajuste),
@@ -271,6 +274,7 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       ingreso_iva_flete: "1040.00",
       ingreso_iva_flete_devolucion: "325.00",
       ingreso_iva_comision_cod: "127.21",
+      totalIva: "1492.21", // SL-39: 1 040,00 + 325,00 + 127,21
       ingreso_ajuste: "51000.25",
       egreso_pago_mensajero: "9500.00",
       egreso_ajuste: "500.10",
@@ -432,6 +436,7 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       //                 = Σ saldos (7 530,70 + 5 515,12), SIN excepcion  → R8 (461/HD2)
       //                 (la 459 daba 15 546,32 = Σ saldos + el cobro 2 500,50 sin linea de caja)
       // Capital 0,00 ; De la empresa = ganancia −87 374,34 + 0 = −87 374,34
+      //   (SL-39: = ganancia sin IVA −88 866,55 + IVA 1 492,21 + 0; la cifra no cambia, R5)
       // R7: −87 374,34 + 13 045,82 + 0 = −74 328,52 ✓
       expect({
         entradas: delta(foto(), (l) => l.resumen.entradas),
@@ -457,26 +462,31 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
   // −89 874,84 · ingresosPropios 63 970,93 · totalIngresos 63 970,93 · 22 filas de caja.
   // ───────────────────────────────────────────────────────────────────────────────────────────
   describe("⭑ lo que la 461 cambia a proposito (el cobro es un cargo con linea de caja)", () => {
-    it("la ganancia sube EXACTAMENTE el cobro: −89 874,84 + 2 500,50 = −87 374,34", () => {
+    it("la ganancia sube EXACTAMENTE el cobro (SL-39: y sin IVA): −91 367,05 + 2 500,50 = −88 866,55", () => {
       // Ingresos propios: 63 970,93 (los siete de la 459) + 2 500,50 (el cobro) = 66 471,43.
-      // Egresos propios: 153 845,77 (sin cambio). Ganancia = 66 471,43 − 153 845,77 = −87 374,34.
+      // SL-39 (R1/R3): menos el IVA del escenario, 1 040,00 + 325,00 + 127,21 = 1 492,21, que va
+      // aparte → 66 471,43 − 1 492,21 = 64 979,22.
+      // Egresos propios: 153 845,77 (sin cambio). Ganancia = 64 979,22 − 153 845,77 = −88 866,55
+      // (antes de SL-39: −87 374,34, con el IVA dentro).
       expect({
         ingresosPropios: delta(foto(), (l) => l.resumen.ingresosPropios),
         ganancia: delta(foto(), (l) => l.resumen.ganancia),
+        iva: delta(foto(), (l) => l.resumen.iva),
       }).toEqual({
-        ingresosPropios: "66471.43",
-        ganancia: "-87374.34",
+        ingresosPropios: "64979.22",
+        ganancia: "-88866.55",
+        iva: "1492.21",
       });
     });
 
     it("R27: el cobro es una fila PROPIA de la composicion, y el total de ingresos lo lleva dentro", () => {
-      // totalIngresos = 63 970,93 + 2 500,50 = 66 471,43 (= ingresosPropios).
+      // totalIngresos = 64 979,22 (= ingresosPropios, SL-39: sin el IVA; antes 66 471,43).
       expect({
         ingreso_cobro_tienda: delta(foto(), (l) => l.composicion.ingresos.ingreso_cobro_tienda),
         totalIngresos: delta(foto(), (l) => l.composicion.totalIngresos),
       }).toEqual({
         ingreso_cobro_tienda: "2500.50",
-        totalIngresos: "66471.43",
+        totalIngresos: "64979.22",
       });
     });
 
@@ -506,6 +516,8 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
   // la 458-B escribe en esta fotografia; todo lo de arriba se mide ANTES de anular y no cambia.
   // Literales calculados A MANO (nunca con la funcion probada):
   //   ganancia:        −87 374,34 − 1 130,00 = −88 504,34   (Δ −1 130,00)
+  //     SL-39: con el IVA aparte, ganancia −88 866,55 − 1 000,00 = −89 866,55 e IVA
+  //     1 492,21 − 130,00 = 1 362,21; los dos suman los −88 504,34 de arriba.
   //   De las tiendas:   13 045,82 + 1 130,00 =  14 175,82   (Δ +1 130,00)
   //   cifra principal: −74 328,52 (sin cambio) ; «Entro» 87 517,25 y «Salio» 161 845,77 (sin cambio)
   //   saldo tienda A:    7 530,70 + 1 130,00 =   8 660,70 ; tienda B 5 515,12 (sin cambio)
@@ -520,16 +532,21 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       expect(foto().trasAnularRechazo.respuesta).toBe("ok");
     });
 
-    it("la ganancia baja 1 130,00 y «De las tiendas» sube 1 130,00; la cifra principal, «Entro» y «Salio» no cambian", () => {
+    it("la ganancia baja 1 000,00, el IVA 130,00 y «De las tiendas» sube 1 130,00; la cifra principal, «Entro» y «Salio» no cambian", () => {
+      // SL-39: el reverso del flete (1 000,00) baja la ganancia sin IVA: −88 866,55 − 1 000,00 =
+      // −89 866,55; el reverso del IVA (130,00) baja el IVA: 1 492,21 − 130,00 = 1 362,21. Los dos
+      // juntos son los −1 130,00 de antes (−88 504,34 = −89 866,55 + 1 362,21).
       expect({
         ganancia: deltaAnulado((l) => l.resumen.ganancia),
+        iva: deltaAnulado((l) => l.resumen.iva),
         deTerceros: deltaAnulado((l) => l.resumen.deTerceros),
         enCaja: deltaAnulado((l) => l.resumen.enCaja),
         entradas: deltaAnulado((l) => l.resumen.entradas),
         salidas: deltaAnulado((l) => l.resumen.salidas),
         capital: deltaAnulado((l) => l.resumen.capital),
       }).toEqual({
-        ganancia: "-88504.34",
+        ganancia: "-89866.55",
+        iva: "1362.21",
         deTerceros: "14175.82",
         enCaja: "-74328.52",
         entradas: "87517.25",
@@ -559,7 +576,14 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       const mas = (a: string, b: string) => menos(a, menos("0.00", b));
       const r7 = menos(
         deltaAnulado((l) => l.resumen.enCaja),
-        mas(mas(deltaAnulado((l) => l.resumen.ganancia), deltaAnulado((l) => l.resumen.deTerceros)), deltaAnulado((l) => l.resumen.capital)),
+        // SL-39 (R4): la ganancia ya no lleva el IVA; la identidad lo suma aparte.
+        mas(
+          mas(
+            mas(deltaAnulado((l) => l.resumen.ganancia), deltaAnulado((l) => l.resumen.iva)),
+            deltaAnulado((l) => l.resumen.deTerceros),
+          ),
+          deltaAnulado((l) => l.resumen.capital),
+        ),
       );
       expect(r7).toBe("0.00");
       const saldos = mas(foto().trasAnularRechazo.tiendaA.saldo, foto().trasAnularRechazo.tiendaB.saldo);

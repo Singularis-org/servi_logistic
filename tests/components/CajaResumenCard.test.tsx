@@ -51,6 +51,8 @@ const RESUMEN: CajaResumenDTO = {
   // «flujo» —el de producción hoy— tiene su propia suite al final.
   estado: "saldo",
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 
 /** Vocabulario que NO puede aparecer en esta pantalla: es de contador, no del maestro. */
@@ -243,8 +245,12 @@ describe("CajaResumenCard — la nota de la diferencia (R60)", () => {
     const texto = diferencia?.textContent ?? "";
 
     expect(texto.length).toBeGreaterThan(0);
-    // Ninguna sigla: nada de dos o más mayúsculas seguidas.
-    expect(texto).not.toMatch(/\b[A-ZÁÉÍÓÚÑ]{2,}\b/);
+    // SL-39 (R10, design §7.3): la nota nombra el «IVA cobrado», que es como el usuario conoce el
+    // impuesto (el rótulo del libro ya lo dice así). Es la ÚNICA sigla admitida, y se afirma que
+    // está para que la excepción no se quede vacía.
+    expect(texto).toContain("el IVA cobrado");
+    // Ninguna otra sigla: nada de dos o más mayúsculas seguidas.
+    expect(texto.replace(/\bIVA\b/g, "")).not.toMatch(/\b[A-ZÁÉÍÓÚÑ]{2,}\b/);
     for (const palabra of JERGA) {
       expect(texto.toLowerCase(), `la nota dice «${palabra}»`).not.toContain(
         palabra.toLowerCase(),
@@ -391,6 +397,9 @@ describe("CajaResumenCard — money-safe en el navegador (R64)", () => {
       // última línea afirma que ningún importe de la tarjeta se lee «₡0».
       capital: "5.00",
       signoCapital: "positivo",
+      // SL-39: la región del IVA también se pinta, y por el mismo motivo no puede ser `0.00`.
+      iva: "7.00",
+      signoIva: "positivo",
     });
 
     expect(screen.getByText("₡12.345.678.901,99")).toBeInTheDocument();
@@ -581,7 +590,8 @@ describe("Ficha 459 — la nota de la diferencia usa el rótulo vigente (design 
     pintar(FLUJO);
     expect(
       screen.getByText(
-        "«Flujo de dinero registrado» cuenta todo el dinero, también el que es de las tiendas. «Ganancia de la empresa» es solo lo que la empresa gana menos lo que gasta: no incluye el dinero de las tiendas ni el saldo inicial o los aportes.",
+        // SL-39 (R10, design §7.3): la ganancia tampoco incluye el IVA cobrado.
+        "«Flujo de dinero registrado» cuenta todo el dinero, también el que es de las tiendas. «Ganancia de la empresa» es solo lo que la empresa gana menos lo que gasta: no incluye el dinero de las tiendas, el IVA cobrado ni el saldo inicial o los aportes.",
       ),
     ).toBeInTheDocument();
     cleanup();
