@@ -10,6 +10,7 @@ import {
   COMPOSICION_IVA_LABEL,
   IMPUESTO_ROTULO,
   REGIONES_BOLSILLO_EMPRESA,
+  textoDeRegion,
   composicionCajaNombreAccesible,
   CATEGORIA_TODAS_OPTION,
   DOCUMENTO_CAJA_NOMBRE,
@@ -303,8 +304,8 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
     expect(
       REGIONES_BOLSILLO_EMPRESA.map((r) => ({
         id: r.id,
-        rotulo: r.rotulo,
-        pista: r.pista,
+        rotulo: textoDeRegion(r.rotulo, datos),
+        pista: textoDeRegion(r.pista, datos),
         valor: r.valor(datos),
         signo: r.signo(datos),
       })),
@@ -326,8 +327,9 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       {
         id: "deuda_plataforma",
         rotulo: "Lo que la empresa debe a la plataforma",
+        // SL-45 (R1): la pista de «debe», escrita a mano.
         pista:
-          "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+          "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
         valor: "500.00",
         signo: null,
       },
@@ -414,5 +416,65 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     expect(textos.length).toBeGreaterThan(300);
     expect(textos.filter((t) => t.includes("Acme Envíos")).length).toBeGreaterThan(50);
     expect(textos.filter((t) => /la empresa/i.test(t))).toEqual([]);
+  });
+});
+
+// =================================================================================================
+// SL-45 (T8, design §7.2; R1–R3, R14) — LA REGIÓN DE LA DEUDA DICE QUÉ HACER, SEGÚN EL ESTADO
+// =================================================================================================
+//
+// Los textos van escritos a mano, nunca leídos de `CAJA_RESUMEN_LABEL`: compararlos contra su propia
+// fuente estaría siempre en verde. El importe es el `importe` del servidor (en positivo), no la `deuda`
+// con signo.
+
+describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por estado", () => {
+  const resumen = {
+    iva: "0.00",
+    signoIva: "cero",
+    capital: "0.00",
+    signoCapital: "cero",
+  } as unknown as CajaResumenDTO;
+  const region = REGIONES_BOLSILLO_EMPRESA.find((r) => r.id === "deuda_plataforma")!;
+  const leer = (deudaPlataforma: { deuda: string; estado: "debe" | "al_dia" | "a_favor"; importe: string }) => {
+    const datos = { resumen, deudaPlataforma };
+    return {
+      rotulo: textoDeRegion(region.rotulo, datos),
+      pista: textoDeRegion(region.pista, datos),
+      valor: region.valor(datos),
+      signo: region.signo(datos),
+    };
+  };
+
+  it("R1: «debe» — el rótulo de la deuda, el importe y la pista que lleva a pagar y registrar", () => {
+    expect(leer({ deuda: "500.00", estado: "debe", importe: "500.00" })).toEqual({
+      rotulo: "Lo que la empresa debe a la plataforma",
+      pista:
+        "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+      valor: "500.00",
+      signo: null,
+    });
+  });
+
+  it("R2: «al día» — el importe 0.00 y la pista de estar al día", () => {
+    expect(leer({ deuda: "0.00", estado: "al_dia", importe: "0.00" })).toEqual({
+      rotulo: "Lo que la empresa debe a la plataforma",
+      pista: "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.",
+      valor: "0.00",
+      signo: null,
+    });
+  });
+
+  it("R3/R14: «a favor» — el rótulo del saldo a favor y el importe en POSITIVO, el que manda el servidor", () => {
+    expect(leer({ deuda: "-500.00", estado: "a_favor", importe: "500.00" })).toEqual({
+      rotulo: "Saldo a favor de la empresa con la plataforma",
+      pista:
+        "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.",
+      valor: "500.00",
+      signo: null,
+    });
+  });
+
+  it("R1/R4: el botón de la región se llama «Registrar pago a la plataforma»", () => {
+    expect(CAJA_RESUMEN_LABEL.registrarPagoPlataforma).toBe("Registrar pago a la plataforma");
   });
 });

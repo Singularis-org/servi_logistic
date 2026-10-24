@@ -585,3 +585,67 @@ $ pnpm exec vitest related --run <7 archivos de T7>      (dentro del lock)
 
 El único rojo es `tests/integration/db/efecto-movimiento-predice.test.ts`, en `tests/baseline-rojos.json` (falta el catálogo
 sembrado de la 459 en `sl45_t`: «faltan la zona central, el tipo `cedula` o una orden…»). No es de T7.
+
+### T8. La región de la deuda (R1–R5, R14, R24)
+
+**Código:**
+- `app/(app)/wallet/_components/wallet-labels.ts`: en `CAJA_RESUMEN_LABEL`, la pista de «debe» (R1) sustituye a la de
+  SL-40, y entran `deudaPlataformaAlDiaPista` (R2), `deudaPlataformaAFavor` y `deudaPlataformaAFavorPista` (R3) y
+  `registrarPagoPlataforma` (el botón). «La empresa», siempre de `EMPRESA`. `RegionBolsilloEmpresa.rotulo` y `.pista` pasan
+  a `TextoDeRegion = string | ((datos) => string)`, con `textoDeRegion()` para resolverlos. Las de SL-39 siguen siendo texto.
+  La de la deuda elige el rótulo y la pista por `estado` (un `Record` total por estado para la pista), y su `valor` lee
+  `importe`, no `deuda`.
+- `app/(app)/wallet/_components/CajaResumenCard.tsx`: la prop `accionDeudaPlataforma?: ReactNode`, pintada dentro de la
+  región de la deuda, y los textos de región por `textoDeRegion`. Sin la prop, la tarjeta sigue sin controles.
+- `app/(app)/wallet/_components/WalletModule.tsx`: la deuda pasa a estado (inicializado con la prop). `recargarTrasCambio`
+  relee en paralelo la caja y la deuda (`verDeudaPlataformaAction()`; `forbidden` → `null`; si lanza, se queda la última y
+  sale el toast `LECTURA_CAJA_FALLO`). El botón es un `RegistrarMovimientoDialog` con
+  `conceptoInicial="pago_plataforma"` y la etiqueta «Registrar pago a la plataforma», solo si `estado === "debe"`. Los filtros
+  siguen sin pedir la deuda (SL-40 R23 sigue verde).
+- `composicion-detalle-labels.ts`: no se toca, porque T3 ya puso «Pago a la plataforma» (R24). `ComposicionGananciaCard` y
+  `WalletCajaIvaSL39` siguen en verde sin tocarlos en esta task.
+- `app/(app)/wallet/page.tsx`: no se toca. Ya pasaba `deudaPlataforma`.
+
+**Tests** (literales a mano):
+- `tests/components/WalletDeudaPlataformaSL45.test.tsx` (nuevo, 7): monta la página real. R1: rótulo, pista, «1.000» y el
+  botón dentro de la región. R2: pista de «al día», «0», ningún botón en la región ni en la pantalla, con contraprueba del
+  botón de la cabecera. R3/R14: rótulo «Saldo a favor de la empresa con la plataforma», pista e importe «500» sin signo. R4:
+  el botón abre el diálogo con «Pago a la plataforma» marcado y su frase; la contraprueba es que la cabecera abre con el
+  gasto. R14: barrido de `Number(`/`parseFloat(`/`parseInt(`/`.toFixed(` en tarjeta, rótulos y módulo; con «debe» e importe
+  0,00, el botón sale igual (decide el estado, no el importe).
+- `tests/components/WalletDeudaPlataformaSL40.test.tsx`: `PISTA` pasa a la de R1. Lo demás de SL-40, igual.
+- `tests/unit/components/wallet-labels.test.ts`: la región de la deuda del caso SL-39/SL-40 con la pista de R1 (por
+  `textoDeRegion`), más un bloque «SL-45 R1–R3» con los tres estados (rótulo, pista, valor = `importe`, sin signo) y la
+  etiqueta del botón.
+- `tests/integration/wallet-page.test.tsx` (jsdom, sin base): un doble nuevo de `@/lib/actions/efecto-movimiento`, porque el
+  diálogo pide «Así queda». Bloque «SL-45 R5»:
+  - tras registrar el pago desde el botón, `verDeudaPlataformaAction` se llama otra vez sin argumentos, y la región pasa de
+    «1.000» a «400»;
+  - si la relectura da `forbidden`, la región desaparece;
+  - con deuda, los botones «Registrar…» son exactamente «Registrar un movimiento» y «Registrar pago a la plataforma». Es la
+    excepción a la 334 que aprueba el design, y queda escrita en el test.
+
+**Mutaciones** (script con `cmp` byte a byte tras cada una):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T8-M1 | `recargarTrasCambio` sin `recargarDeuda()` | **rojo**, 2 casos R5 de `wallet-page.test.tsx` |
+| T8-M2 | botón con `deudaPlataforma !== null` (en todo estado) | **rojo**, 3: SL45 R2 y R3, y el «un solo botón» de la 334 en `wallet-page` |
+| T8-M3 | `valor` lee `deuda` (con signo) en vez de `importe` | **rojo**, 2: `wallet-labels` R3 y SL45 R3 |
+| T8-M4 | rótulo fijo (nunca el de «a favor») | **rojo**, 2: `wallet-labels` R3 y SL45 R3 |
+
+**Salida** (dentro del lock, con `prisma generate` antes):
+
+```
+$ pnpm run typecheck                                     TC_EXIT=0
+$ pnpm exec eslint <7 archivos de T8>                    LINT_EXIT=0
+$ pnpm exec vitest run <T8 + WalletCajaIvaSL39 + ComposicionGananciaCard>
+ Test Files  6 passed (6)
+      Tests  107 passed (107)
+$ pnpm exec vitest related --run <7 archivos de T8>
+ Test Files  104 passed (104)
+      Tests  1694 passed | 17 skipped (1711)
+```
+
+**Pendiente de T8 (otra vuelta):** la comprobación en el navegador de `tasks.md > T8` (pagar 600 sobre 1.000,00 → 400,00;
+anular → 1.000,00). Por eso T8 sigue sin `[x]`.

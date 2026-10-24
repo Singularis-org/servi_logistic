@@ -130,6 +130,8 @@
     - **en el navegador**, con un solo dev server: A con dos órdenes a 500 paga 600, y la región pasa de
       1.000,00 a 400,00 sin recargar; luego lo anula y vuelve a 1.000,00. Los números medidos van en
       `progress/impl_SL-45.md`.
+  - **Código y tests hechos (frontend_dev, 2026-10-24):** falta solo la comprobación en el navegador, que va en otra
+    vuelta; por eso sigue sin `[x]`.
 
 ## Tanda D — Ayuda, E2E y cierre
 
