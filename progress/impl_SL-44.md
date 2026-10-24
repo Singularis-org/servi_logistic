@@ -680,3 +680,32 @@ refresco de la pantalla de cierres de bodega arreglados con su test.
 
 `TEST_RAPIDO_BASE=origin/dev ./init.sh` → `init OK`, **INIT_EXIT=0** (log fuera del repo,
 `scratchpad/sl44-gate-2.log`). D19 marcada resuelta en `progress/deudas.md`.
+
+## T7.4 — Verde de verdad (en curso)
+
+### CI, run 40132245831 (`workflow_dispatch` sobre `e015cdd`)
+
+| Job | Resultado | Duración del job | Playwright |
+|---|---|---|---|
+| `e2e (reparto)` | success | 3,1 min | `15 passed (35.4s)` |
+| `e2e (dinero)` | success | 3,0 min | `28 passed (50.3s)` |
+| `e2e (aislamiento)` | **failure** | 4,8 min | `49 passed, 1 failed (2.5m)`: `marca.spec.ts:277` (`waitForLoadState("networkidle")`, timeout 30 s) |
+| `e2e` (agregador) | failure (por aislamiento) | — | — |
+| `gate-completo` | success | — | — |
+
+Los tres grupos quedan muy por debajo de los 30 min (R28) y de la estimación de D8.
+
+### Local, base nueva `sl44_t74` (DROP + CREATE + `migrate deploy` + `db:seed`, `next build` limpio)
+
+`E2E_PUERTO=3044 pnpm run test:e2e -- --reporter=list`, dos veces seguidas:
+- corrida 1: `92 passed, 1 failed (3.8m)`;
+- corrida 2: `92 passed, 1 failed (4.0m)`.
+El único rojo, en las dos y en CI, es el mismo `marca.spec.ts:277`. Se diagnostica aparte.
+
+### Estado al entregar el informe
+
+- Pendiente: el rojo de `marca.spec.ts:277` (`networkidle` en la landing a 1280 px). Un agente lo
+  diagnostica (scratchpad `sl44/SL-44-marca/`, base `sl44_marca`): ¿carga continua legítima o bucle de
+  peticiones (defecto de producción)? Sin su resultado, T7.4 sigue abierta.
+- Pendiente: decisión humana sobre `superadmin-empresas` sin exigencia de base vacía (A1), y validar
+  el nuevo alcance de `analitica-roles` (regiones financieras comentadas en `AnaliticaShell`).
