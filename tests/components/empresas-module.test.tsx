@@ -47,7 +47,14 @@ const GENERICO = "No se pudo crear la empresa. Inténtalo de nuevo.";
 
 function montar(altaEmpresa = vi.fn(), empresas: EmpresaListada[] = EMPRESAS) {
   const utils = render(
-    <EmpresasModule empresas={empresas} tiposDocumento={TIPOS} altaEmpresa={altaEmpresa} />,
+    <EmpresasModule
+      empresas={empresas}
+      tiposDocumento={TIPOS}
+      altaEmpresa={altaEmpresa}
+      cobroGlobal={{ monto: null }}
+      fijarCobroGlobal={vi.fn()}
+      fijarCobroEmpresa={vi.fn()}
+    />,
   );
   return { ...utils, altaEmpresa };
 }

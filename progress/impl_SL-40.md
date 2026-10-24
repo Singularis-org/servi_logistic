@@ -389,3 +389,63 @@ de `migracion-sl40-ida-y-vuelta` sin esquema. Acotadas a `public` (`pg_trigger` 
 | R10 (servidor) | `empresas-plataforma-cobro` «R10: el listado trae cobroPorOrden…»; la pantalla es de T8 |
 
 **Veredicto T5:** configuración del superadmin hecha y probada contra la base, con 6 mutaciones medidas en rojo; el único rojo de typecheck es de T6.
+
+## T8
+
+«Cobro por orden» en «Empresas» (R9–R11), `frontend_dev`. Sin base de datos: todo es pantalla con
+dobles. Vitest y typecheck con `gate.lock` tomado y `prisma generate` dentro (URL de marcador). El MCP
+`codebase-memory-mcp` no estaba entre las herramientas de este agente: Grep/Read.
+
+**Archivos**
+- Nuevo `app/(app)/plataforma/empresas/_components/CobroPorOrden.tsx`: `BloqueCobroGlobal` (h2, «Valor
+  global: …» o «Sin configurar (0,00)», `FormField` + `Input inputMode="decimal"` + «Guardar», la ayuda de
+  design §9.1) y `CeldaCobroEmpresa` (importe con `money`, «propio»/«global», «Cambiar» → editor en la fila
+  con «Guardar», «Usar el global» solo con excepción, y «Cancelar»). Valida con el MISMO `montoCobroSchema`
+  antes de llamar; tras éxito `router.refresh()` + `Alert role="status"` «Cobro guardado.»; errores:
+  `validation_error` bajo el campo, `not_found` «Esa empresa ya no existe.», el resto genérico; lo escrito
+  se conserva. La tarifa vigente se ELIGE (`cobroPorOrden ?? global ?? "0.00"`), sin aritmética.
+- `EmpresasModule.tsx`: props `cobroGlobal`, `fijarCobroGlobal`, `fijarCobroEmpresa`; el bloque entre el
+  aviso de alta y «Crear empresa»; la columna «Cobro por orden» después de «Alta».
+- `page.tsx`: `verCobroGlobalAction()` en el mismo `Promise.all`; `forbidden` → `cobroGlobal: null`, y el
+  bloque dice «No se pudo leer el valor global.» en vez de inventar un 0,00.
+- `lib/actions/cobro-plataforma.ts`: quitadas las tres `@sin-superficie` (cableadas), con un JSDoc corto.
+- Tests: nuevo `tests/components/EmpresasModuleCobro.test.tsx` (18). SL-32 ajustados sin cambiar lo que
+  afirman: `tests/components/empresas-module.test.tsx` (las tres props nuevas en `montar`) y
+  `tests/integration/empresas-page.test.tsx` (mock de `cobro-plataforma`, «no lee el valor global» en los
+  casos de R35, y dos casos SL-40 R9: «Sin configurar (0,00)» y «no se pudo leer»).
+
+**Desviaciones**
+- El importe se pinta con `money` (design §7), así que «500.00» sale como `money("500.00")` (hoy «₡500», el
+  formateador omite los `,00`) y no «500,00» como el ejemplo de §9.1. «Sin configurar (0,00)» va literal (R9).
+- «Cancelar» en el editor de fila no está en §9.1: sin él no hay forma de cerrar el editor sin guardar.
+
+**Mutaciones** (cada una aplicada, corrida y restaurada con copia de seguridad y comparación byte a byte)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T8-M1 | quitar `<BloqueCobroGlobal>` del módulo | 9 failed / 9 passed (todo R9 y R11 del global) |
+| T8-M2 | «global» siempre en la celda | 1 failed / 17 passed (R10 «propio»/«global») |
+| T8-M3a | `setTexto("")` tras un fallo del global | 4 failed / 14 passed (R11 validation, schema, forbidden, red) |
+| T8-M3b | `setTexto("")` tras un fallo de la fila | 2 failed / 16 passed (R11 not_found y validation de fila) |
+| T8-M4a | sin `router.refresh()` tras guardar el global | 1 failed / 17 passed |
+| T8-M4b | sin `router.refresh()` tras guardar la fila | 2 failed / 16 passed (fijar y «Usar el global») |
+| T8-M0 | volver a poner la anotación de T5 en `verCobroGlobalAction` | `superficie-de-uso` 1 failed / 17 passed («ninguna anotación sobrevive a su motivo»): la guardia exige quitarlas |
+| T8-M0b | la celda recibe un doble en vez de `fijarCobroEmpresa` | `superficie-de-uso` verde: la guardia mira el import de la página, no el cable de dentro. Lo cubre el test de componente («Guardar fija la excepción de ESA empresa»), no medido con esta mutación |
+
+**Evidencia**
+- `pnpm exec vitest run tests/components/EmpresasModuleCobro.test.tsx tests/components/empresas-module.test.tsx tests/integration/empresas-page.test.tsx`:
+  `Test Files 3 passed (3)`, `Tests 54 passed (54)`, `VITEST_EXIT=0`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 300 passed | 2 skipped (303)`, `Tests 4 failed | 4120 passed | 20 skipped (4144)`.
+  El único rojo es `dependencias-declaradas-presentes` (baseline).
+- `pnpm exec eslint` sobre los 7 archivos: `No issues found`, `LINT_EXIT=0`.
+- `pnpm run typecheck`: `TC_EXIT=2` con 1 error, de T6 en curso: `tests/unit/services/deuda-plataforma-service.test.ts(26,87)`.
+
+**Mapa R → test (T8)**
+
+| R | Test |
+|---|---|
+| R9 | `EmpresasModuleCobro` «sin valor global dice «Sin configurar (0,00)»…», «con valor global pinta ese importe…», «el bloque va antes de «Crear empresa»»; `empresas-page` «SL-40 (R9) — lee el valor global y lo pinta…» y «si no se pudo leer…» |
+| R10 | `EmpresasModuleCobro` «la empresa con excepción pinta la suya y «propio»…», «sin valor global… 0,00 y «global»», ««Cambiar» abre el editor… fija la excepción de ESA empresa», ««Usar el global» quita la excepción (monto null)…» |
+| R11 | `EmpresasModuleCobro` «tras un éxito…» (3: global con `rerender` de props nuevas, fila, «Usar el global») y «si falla, el error y lo escrito se conservan» (7: validation del servidor, schema en cliente, forbidden, red, not_found de fila, validation de fila, «Usar el global» que falla) |
+
+**Veredicto T8:** bloque y columna del cobro en «Empresas» hechos, R9–R11 con test y 6 mutaciones de pantalla medidas en rojo; el único rojo de typecheck es de T6.

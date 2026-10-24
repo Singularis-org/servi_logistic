@@ -2,6 +2,11 @@ import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
+import {
+  fijarCobroEmpresaAction,
+  fijarCobroGlobalAction,
+  verCobroGlobalAction,
+} from "@/lib/actions/cobro-plataforma";
 import { altaEmpresaAction } from "@/lib/actions/organizaciones";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -21,15 +26,19 @@ import { EmpresasModule } from "./_components/EmpresasModule";
  *
  * El catálogo se lee del repositorio y no con `listarTiposIdentificacion` (la de Usuarios): esa
  * action solo responde al `maestro`. `tipo_identificacion` es de plataforma y se lee sin empresa.
+ *
+ * SL-40 (R9–R11, design §9.1): el valor global del cobro por orden se lee en el mismo `Promise.all`,
+ * y las dos actions de guardado bajan por props. Si no se pudo leer, el módulo lo dice en su bloque.
  */
 export default async function EmpresasPage() {
   const actor = await resolveActorFromSession();
 
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
-  const [listado, tiposDocumento] = await Promise.all([
+  const [listado, tiposDocumento, cobro] = await Promise.all([
     listarEmpresasPlataforma(actor),
     new UserRepository(getPrismaClient()).listTiposIdentificacion(),
+    verCobroGlobalAction(),
   ]);
 
   return (
@@ -44,6 +53,9 @@ export default async function EmpresasPage() {
         empresas={listado.status === "ok" ? listado.empresas : []}
         tiposDocumento={tiposDocumento}
         altaEmpresa={altaEmpresaAction}
+        cobroGlobal={cobro.status === "ok" ? cobro.cobroGlobal : null}
+        fijarCobroGlobal={fijarCobroGlobalAction}
+        fijarCobroEmpresa={fijarCobroEmpresaAction}
       />
     </AppPage>
   );

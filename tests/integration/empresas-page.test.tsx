@@ -39,6 +39,14 @@ vi.mock("@/lib/repositories/UserRepository", () => ({
 }));
 vi.mock("@/lib/actions/organizaciones", () => ({ altaEmpresaAction: vi.fn() }));
 
+// SL-40 (R9): el valor global del cobro por orden también se lee en la página.
+const { verCobroMock } = vi.hoisted(() => ({ verCobroMock: vi.fn() }));
+vi.mock("@/lib/actions/cobro-plataforma", () => ({
+  verCobroGlobalAction: () => verCobroMock(),
+  fijarCobroGlobalAction: vi.fn(),
+  fijarCobroEmpresaAction: vi.fn(),
+}));
+
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import EmpresasPage from "@/app/(app)/plataforma/empresas/page";
 
@@ -76,6 +84,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listarMock.mockResolvedValue({ status: "ok", empresas: EMPRESAS });
   tiposMock.mockResolvedValue([{ id: "t-1", value: "cedula" }]);
+  verCobroMock.mockResolvedValue({ status: "ok", cobroGlobal: { monto: null } });
 });
 
 afterEach(() => cleanup());
@@ -87,6 +96,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(listarMock).not.toHaveBeenCalled();
     expect(tiposMock).not.toHaveBeenCalled();
+    expect(verCobroMock).not.toHaveBeenCalled();
   });
 
   it("sin sesión → notFound(), sin leer nada", async () => {
@@ -95,6 +105,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(listarMock).not.toHaveBeenCalled();
     expect(tiposMock).not.toHaveBeenCalled();
+    expect(verCobroMock).not.toHaveBeenCalled();
   });
 });
 
@@ -140,5 +151,28 @@ describe("SL-32 (R29, R35) — con el superadmin, la página pinta el listado", 
 
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el listado de empresas.");
     expect(screen.queryByRole("table")).toBeNull();
+  });
+});
+
+describe("SL-40 (R9) — la página baja el valor global al bloque «Cobro por orden»", () => {
+  it("lee el valor global y lo pinta; sin configurar dice «Sin configurar (0,00)»", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+
+    render(await EmpresasPage());
+
+    expect(verCobroMock).toHaveBeenCalledTimes(1);
+    const bloque = screen.getByRole("region", { name: "Cobro por orden" });
+    expect(bloque).toHaveTextContent("Valor global: Sin configurar (0,00)");
+  });
+
+  it("si no se pudo leer, el bloque lo dice en vez de inventar un 0,00", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    verCobroMock.mockResolvedValue({ status: "forbidden" });
+
+    render(await EmpresasPage());
+
+    const bloque = screen.getByRole("region", { name: "Cobro por orden" });
+    expect(bloque).toHaveTextContent("No se pudo leer el valor global.");
+    expect(bloque).not.toHaveTextContent("Sin configurar (0,00)");
   });
 });

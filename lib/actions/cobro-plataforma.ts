@@ -28,17 +28,17 @@ async function conServicio<T>(deps: CobroPlataformaDeps, fn: (s: ICobroPlataform
   return fn(deps.service ?? construirServicio(), actor);
 }
 
-/** @sin-superficie SL-40 T5 (tanda B): la lee la página «Empresas» en T8, que quita esta anotación al cablearla. */
+/** El valor global vigente: lo lee la página «Empresas» (R9). */
 export async function verCobroGlobalAction(deps: CobroPlataformaDeps = {}): Promise<VerCobroGlobalResult> {
   return conServicio(deps, (s, actor) => s.verGlobal(actor));
 }
 
-/** @sin-superficie SL-40 T5 (tanda B): la llama el bloque «Cobro por orden» de «Empresas» en T8, que quita esta anotación al cablearla. */
+/** Guarda el valor global: el bloque «Cobro por orden» de «Empresas» (R9, R11). */
 export async function fijarCobroGlobalAction(input: unknown, deps: CobroPlataformaDeps = {}): Promise<FijarCobroResult> {
   return conServicio(deps, (s, actor) => s.fijarGlobal(actor, input));
 }
 
-/** @sin-superficie SL-40 T5 (tanda B): la llama la columna «Cobro por orden» de «Empresas» en T8, que quita esta anotación al cablearla. */
+/** Fija o quita (`monto: null`) la excepción: la columna «Cobro por orden» de «Empresas» (R10, R11). */
 export async function fijarCobroEmpresaAction(input: unknown, deps: CobroPlataformaDeps = {}): Promise<FijarCobroResult> {
   return conServicio(deps, (s, actor) => s.fijarDeEmpresa(actor, input));
 }
