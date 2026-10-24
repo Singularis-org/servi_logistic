@@ -19,7 +19,7 @@
 > `[P]` = paralelizable con las demás `[P]` de su tanda. **T1 bloquea** la parte visual de T5 (la
 > maqueta HTML) y cualquier ajuste visual de T10.
 
-- [ ] **T0. Base y premisas.**
+- [x] **T0. Base y premisas.**
   - Hacer `git merge-base` con `dev`, y confirmar que estas piezas siguen donde las cita el diseño:
     - `plantillaOtpCodigo`;
     - `PasswordResetService`;
@@ -45,7 +45,7 @@
     tamaños y textos finales. Si cambia algo de `design.md > 3.2` o `6.4`, se actualiza el design en
     la misma tanda.
 
-- [ ] **T2. Configuración [P].** Depende de T0.
+- [x] **T2. Configuración [P].** Depende de T0.
   - `lib/config/app-url.ts` con `baseUrlDeLaApp()`. `baseUrlEnlace()` de `whatsapp-envios.ts`
     pasa a delegar en ella.
   - `BIENVENIDA_TTL_HORAS` en `lib/config/auth.ts`, a 72 por defecto.
@@ -60,7 +60,7 @@
     - los tests de WhatsApp que usan `baseUrlEnlace` siguen en verde.
   - **Hecho:** `pnpm exec vitest related --run` de esos archivos en verde, y typecheck limpio.
 
-- [ ] **T3. `consumirSiActivo` en el repositorio de desafíos [P].** Depende de T0.
+- [x] **T3. `consumirSiActivo` en el repositorio de desafíos [P].** Depende de T0.
   - Añadirlo a la interfaz y a `EmailOtpChallengeRepository` (`design.md > 5.4`).
   - Test de integración `tests/integration/db/enlace-bienvenida.test.ts` contra Postgres real:
     - dos llamadas a la vez sobre la misma fila: exactamente una devuelve `true`;
@@ -69,7 +69,7 @@
   - Con una mutación del `WHERE`, quitando `consumedAt: null`, el test se pone rojo. Anotarlo.
   - **Hecho:** test verde con `HAY_BASE_DE_DATOS`, y la mutación registrada como «muere».
 
-- [ ] **T4. `BienvenidaMaestroRepository` [P].** Depende de T0.
+- [x] **T4. `BienvenidaMaestroRepository` [P].** Depende de T0.
   - Interfaz y repositorio (`design.md > 6.2`).
   - Test de integración `tests/integration/db/bienvenida-maestro-repository.test.ts`:
     - el maestro de otra empresa no sale;
@@ -81,7 +81,7 @@
     `organizacion_id`, se pone rojo.
   - **Hecho:** test verde y mutación anotada.
 
-- [ ] **T5. Plantilla común y correos OTP.** Depende de T2. La maqueta, de T1.
+- [x] **T5. Plantilla común y correos OTP.** (El HTML es la propuesta de T1; se ajusta si Carlos la cambia.) Depende de T2. La maqueta, de T1.
   - `lib/services/email/plantillas/plantilla-marca.ts`, con `componerCorreo` y `escaparHtml` compartido.
   - `otp-codigo.ts` reescrito sobre `componerCorreo` (`design.md > 4`).
   - Tests:
@@ -93,7 +93,7 @@
   - **Hecho:** tests verdes, `pnpm run test:guardias` verde (`sin-nombre-heredado` incluida), y el
     HTML coincide con la maqueta de T1.
 
-- [ ] **T6. `PasswordResetService`: emitir y canjear el enlace.** Depende de T2 y T3.
+- [x] **T6. `PasswordResetService`: emitir y canjear el enlace.** Depende de T2 y T3.
   - `emitirEnlaceBienvenida` y `crearContrasenaConEnlace` (`design.md > 6.1`), y `DEVICE_HASH_BIENVENIDA`.
   - `tests/unit/password-reset-enlace.test.ts`, que cubre R15, R17, R18, R19, R22 y R34:
     - secreto de 43 caracteres o más, y solo el hash llega a `create`;
@@ -105,7 +105,7 @@
   - Los tests de `password-reset-service.test.ts` siguen verdes sin tocarse.
   - **Hecho:** tests verdes.
 
-- [ ] **T7. Correo de bienvenida y `BienvenidaMaestroService`.** Depende de T4, T5 y T6.
+- [x] **T7. Correo de bienvenida y `BienvenidaMaestroService`.** Depende de T4, T5 y T6.
   - `bienvenida-maestro.ts` (`design.md > 6.4`), con los textos de T1.
   - `BienvenidaMaestroService` y su interfaz (`design.md > 6.3`).
   - Tests:
@@ -115,7 +115,7 @@
     - `correos-sin-secretos.test.ts`: R7, R11 y R35 sobre los tres correos.
   - **Hecho:** tests verdes.
 
-- [ ] **T8. Actions.** Depende de T7.
+- [x] **T8. Actions.** Depende de T7.
   - `lib/actions/_shared/contexto-peticion.ts`, con `requestContextFromHeaders` y
     `buildPasswordResetService` movidos desde `password-reset.ts` (`design.md > 7.1`).
   - `altaEmpresaAction` con la bienvenida, y `reenviarBienvenidaAction` (`design.md > 7.2`).
@@ -130,7 +130,7 @@
     - `alta-empresa-rol.test.ts` y los tests de `password-reset-*` siguen verdes.
   - **Hecho:** tests verdes, `plataforma-solo-en-lista` verde sin tocar la lista, y typecheck limpio.
 
-- [ ] **T9. `/recuperar-contrasena` en modo enlace [P].** Depende de T8.
+- [x] **T9. `/recuperar-contrasena` en modo enlace [P].** Depende de T8.
   - `RecuperarContrasenaForm.tsx` (`design.md > 9.2`), reutilizando los dos `PasswordInput` del paso 3.
   - `tests/integration/recuperar-contrasena-enlace.test.tsx` (jsdom), que cubre R18, R19 y R21:
     - el hash se borra al montar;
@@ -150,7 +150,7 @@
     - `reenviar-bienvenida-boton.test.tsx`: R31, con los cuatro resultados y una excepción de red.
   - **Hecho:** tests verdes y captura de la pantalla con los dos avisos en `progress/impl_SL-41.md`.
 
-- [ ] **T11. Documentación.** Depende de T8.
+- [x] **T11. Documentación.** Depende de T8.
   - `README.md` > «El correo, sin el cual nadie entra».
   - `docs/architecture.md` > Alta de empresa.
   - **Hecho:** los textos describen la bienvenida, el reenvío y las variables que necesita
@@ -173,7 +173,7 @@
     Brevo, `SMTP_FROM` y `NEXT_PUBLIC_APP_URL` puestos (P2).
   - **Hecho:** gate local verde, con `INIT_EXIT=0` dentro del log, y cada `R<n>` con su test.
 
-- [ ] **T14. P3: «ya creó su contraseña» (R38).** Depende de T0. La parte de pantalla, de T10.
+- [x] **T14. P3: «ya creó su contraseña» (R38).** Depende de T0. La parte de pantalla, de T10.
   - Migración nueva `db/migrations/20261023140000_usuario_contrasena_definida_at/` con
     `migration.sql` y `down.sql` (`design.md > 16.1`).
   - `UserRepository.updatePasswordHash` pone `contrasena_definida_at = now()` en el mismo `UPDATE`.
@@ -190,7 +190,7 @@
   - Migración aplicada y revertida (`down.sql`) en `sl41_*`.
   - **Hecho:** tests verdes y mutación anotada.
 
-- [ ] **T15. P4: contacto en el pie (R39).** Depende de T5.
+- [x] **T15. P4: contacto en el pie (R39).** Depende de T5.
   - `EMAIL_CONTACTO` en `lib/config/email.ts` (`emailContacto()`, `null` si vacía o no es un
     email) y en `.env.example`.
   - `componerCorreo` la recibe y la pinta en el pie de texto y de HTML (`mailto:` escapado).
