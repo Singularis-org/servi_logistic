@@ -17,9 +17,10 @@ function repoDoble(pagosVigentes = "0.00") {
   ]);
   const sumaPagosVigentes = vi.fn<IPagoPlataformaRepository["sumaPagosVigentes"]>(async () => pagosVigentes);
   const bloquear = vi.fn<IPagoPlataformaRepository["bloquear"]>(async () => undefined);
+  const claveYaRegistrada = vi.fn<IPagoPlataformaRepository["claveYaRegistrada"]>(async () => false);
   return {
     repo: { sumasPorTipo } satisfies ICobroPlataformaMovimientoRepository,
-    pagos: { sumaPagosVigentes, bloquear } satisfies IPagoPlataformaRepository,
+    pagos: { sumaPagosVigentes, bloquear, claveYaRegistrada } satisfies IPagoPlataformaRepository,
     sumasPorTipo,
     sumaPagosVigentes,
   };

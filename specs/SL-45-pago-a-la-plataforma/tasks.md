@@ -74,7 +74,7 @@
     - los tests en verde;
     - `tests/integration/db/deuda-plataforma-wallet.test.ts` (SL-40) sigue en verde;
     - la mutación «contar los pagos anulados» pone en rojo un test.
-- [ ] **T5. [P] El registro con tope** (R6, R7, R9–R12, R19).
+- [x] **T5. [P] El registro con tope** (R6, R7, R9–R12, R19).
   - `ITopePagoPlataformaService.ts` y `TopePagoPlataformaService.ts` (`design.md > 6`).
   - `WalletMovimientoRepository.crearMovimientoRegistrado` y su interfaz: el parámetro `antes`.
   - `WalletEgresoService` e `IWalletEgresoService`: el tope solo para `pago_plataforma`,

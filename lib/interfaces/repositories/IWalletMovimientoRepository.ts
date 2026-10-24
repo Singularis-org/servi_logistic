@@ -2,7 +2,7 @@ import type { ParDeGuia } from "@/lib/types/busqueda-por-guia";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type {
   AgregadoCajaRow,
   WalletMovimientoDTO,
@@ -29,6 +29,12 @@ export interface LateralesDelRegistro {
   anotacion?: { contraparteNombre: string | null; referencia: string | null };
   comprobante?: { storagePath: string; contentType: string; subidoPor: string };
 }
+
+/**
+ * SL-45 (design §6) — lo que corre dentro de la transacción del registro y ANTES del `INSERT`: el
+ * tope del pago a la plataforma. Si lanza, la transacción entera se deshace y no se escribe nada.
+ */
+export type AntesDelRegistro = (tx: Prisma.TransactionClient) => Promise<void>;
 
 // Fila a insertar en el libro. `monto` STRING (money-safe); origenId NULL solo en manual.
 export interface CrearMovimientoInput {
@@ -183,11 +189,15 @@ export interface IWalletMovimientoRepository {
    * `id` es OBLIGATORIO aqui —y no opcional como en `crearMovimientos`— porque es lo que la fila
    * del registro apunta como `entidad_id`. Devuelve `0` cuando el indice unico parcial deduplico
    * la insercion, y en ese caso NO escribe registro.
+   *
+   * SL-45 (design §6): `antes` corre dentro de la transacción, antes del `INSERT`. Sin él, la
+   * llamada es exactamente la de antes.
    */
   crearMovimientoRegistrado(
     mov: CrearMovimientoInput & { id: string },
     registro: { accion: HistorialAccionTipo; actorUsuarioId: string | null },
     laterales?: LateralesDelRegistro,
+    antes?: AntesDelRegistro,
   ): Promise<number>;
   /**
    * R20/R24: pagina el libro (fecha_movimiento desc por defecto; asc o desc segun `sortDir`, ficha 463)

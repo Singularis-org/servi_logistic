@@ -54,3 +54,6 @@ export type DeudaPlataformaDTO = {
   /** |deuda|: lo que se pinta en la región (R3: a favor, en positivo). */
   importe: string;
 };
+
+/** SL-45 (R9): el mensaje bajo el monto cuando el pago supera la deuda o no hay deuda. */
+export const MENSAJE_TOPE_PAGO_PLATAFORMA = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";

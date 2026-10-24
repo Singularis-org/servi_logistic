@@ -338,3 +338,75 @@ $ pnpm exec vitest related --run <archivos de T4>
 | # | Mutación | Resultado |
 |---|---|---|
 | T4-M1 | `sumaPagosVigentes` cuenta también los pagos anulados (sin `!anulados.has(p.id)`) | **rojo**, 1 caso: `deuda-plataforma.composition-root` («…y deriva la deuda»: 350,00 en vez de 600,00) |
+
+### T5. El registro con tope
+
+**Código:**
+- `lib/interfaces/services/ITopePagoPlataformaService.ts` (`ITopePagoPlataforma`, `comprobar(tx, { organizacionId,
+  monto, claveIdempotencia })` → `"cabe" | "supera" | "reenvio"`) y `lib/services/TopePagoPlataformaService.ts`:
+  candado → clave → cargos → pagos vigentes, todo con el `tx`; `Prisma.Decimal`, nunca `Number`.
+- `PagoPlataformaRepository.claveYaRegistrada(organizacionId, clave, cliente?)` (y su interfaz).
+- `WalletMovimientoRepository.crearMovimientoRegistrado(mov, registro, laterales?, antes?)` y su interfaz
+  (`AntesDelRegistro`): `antes(tx)` corre dentro de su transacción, antes del `INSERT`.
+- `WalletEgresoService`: 4.º parámetro `tope?`. Solo con `tipoEgreso === "pago_plataforma"` pasa un `antes` que
+  llama al tope y lanza `TopeSuperadoError` (privada del servicio) si no cabe; el servicio la traduce a
+  `validation_error` en `monto` con `MENSAJE_TOPE_PAGO_PLATAFORMA` (`lib/types/cobro-plataforma.ts`, el texto de
+  R9). **Sin tope inyectado, registrar un pago lanza** antes de subir el comprobante o tocar la base. Un actor
+  sin empresa también lanza. Para sueldo y gasto, la llamada al repositorio es la de antes (2 o 3 argumentos).
+- `lib/types/wallet-laterales.ts`: «a quién» opcional SOLO para `pago_plataforma` (el sitio que dijo T0).
+- `lib/actions/wallet-egresos.ts > buildService`: construye y pasa `TopePagoPlataformaService` con los repositorios reales.
+
+**Reenvío contra tope (aviso 5 de T0).** El tope mira la clave **dentro de la transacción y después del
+candado** (`claveYaRegistrada`). Si la clave ya tiene su fila, responde `reenvio` sin comparar; el `createMany`
+con `skipDuplicates` devuelve 0 y el servicio responde `ya_registrado` con el original, como siempre. Se
+mira después del candado y no antes a propósito: dos envíos simultáneos con la misma clave hacen esperar al
+segundo en el candado; al entrar, ya ve la fila commiteada del primero. Si la mirara antes del candado, el
+segundo pasaría la mirada (aún no hay fila), esperaría y chocaría con el tope (`validation_error`). Lo cubren
+T1 («R11: el reenvío…», deuda ya en 500 y reenvío de 1.000) y el caso R11 de la concurrencia.
+
+**R12 y `DECIMAL(12,2)`.** `montoPositivoSchema` (compartido por toda la caja) no acota las cifras enteras, y
+no se ha tocado: cambiaría los demás formularios. En el pago, un monto que no cabe lo para el tope antes del
+`INSERT` (`validation_error` en `monto`, con el texto de R9), porque ninguna deuda llega a 10^11. Test:
+`wallet-egresos.composition-root` («R12: un monto que no cabe en DECIMAL(12,2)…»).
+
+**Tests:**
+- `tests/unit/services/tope-pago-plataforma-service.test.ts` (nuevo, 9): el borde exacto (500,00 cabe, 500,01
+  no), deuda 0, sin movimientos, a favor, importes de 16 cifras; el orden candado → clave → sumas → pagos con el
+  mismo `tx`; el reenvío sin comparar.
+- `tests/unit/services/wallet-egreso-service.test.ts` (+12): R19 `forbidden` para los cinco roles sin acceso
+  total sin tocar repo ni tope; `cabe` con los argumentos del tope; `supera` → `validation_error`; reenvío →
+  `ya_registrado`; sin tope lanza; sin empresa lanza; sueldo y gasto no pasan por el tope; un error de base se
+  propaga.
+- `tests/unit/actions/wallet-egresos.composition-root.test.ts` (nuevo, 12): la action **sin servicio
+  inyectado** sobre un cliente falso toma el candado (SQL con `pg_advisory_xact_lock`, `'pago_plataforma:'`,
+  `current_setting('app.organizacion_id')`), lee con `org-a` y rechaza o llega al `INSERT`; el borde: «a quién»
+  opcional solo en el pago, referencia vacía y montos inválidos → `validation_error`.
+- `tests/integration/db/pago-plataforma-sl45-concurrencia.test.ts` (nuevo, 4, Postgres): control; R10 con pausa
+  dentro de la transacción del primero (el segundo no termina durante la pausa, luego `validation_error`, deuda
+  100,00); R10 sin pausa (exactamente uno entra); R11 con la misma clave a la vez (`ya_registrado`, mismo id).
+
+**Evidencia** (dentro del lock, con `prisma generate`):
+
+```
+$ pnpm run typecheck                                    TC_EXIT=0
+$ pnpm exec eslint <archivos de T5>                     0 errores, 0 avisos
+$ pnpm exec vitest run tope-pago-plataforma-service wallet-egreso-service wallet-egresos.composition-root \
+    wallet-egresos-actions deuda-plataforma-service       Tests  todos en verde (tras dos arreglos de dobles del propio test)
+$ pnpm exec vitest run tests/integration/db/pago-plataforma-sl45.test.ts tests/integration/db/pago-plataforma-sl45-concurrencia.test.ts
+ Test Files  2 passed (2)
+      Tests  19 passed (19)                             ← T1 en 15/15 ya con T5; la concurrencia 4/4
+$ pnpm exec vitest related --run <archivos de T5>
+ Test Files  118 failed | 269 passed (387)
+      Tests  58 failed | 4066 passed | 667 skipped (4791)
+                                                         ← los 118 archivos en rojo están TODOS en tests/baseline-rojos.json
+$ pnpm run test:guardias
+ Test Files  1 failed | 302 passed (303)                 ← dependencias-declaradas-presentes, del baseline
+```
+
+**Mutaciones** (una cada vez con `scratchpad/sl45be-mut.py`, que restaura y compara byte a byte):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T5-M1 | `TopePagoPlataformaService` sin `bloquear(tx)` | **rojo**, 3 de 4 en `pago-plataforma-sl45-concurrencia` (el primero: «el segundo pago NO debe poder evaluarse mientras el primero tiene el candado»; los otros dos caen por la deuda que deja) |
+| T5-M2 | el servicio no llama al tope (`antesDelPago` devuelve siempre `undefined`) | **rojo**, 10 de 15 en T1 (los cuatro R9 y todo lo que viene detrás de la deuda que deja) |
+| T5-M3 | `buildService` no pasa el tope | **rojo**, 5 de 12 en `wallet-egresos.composition-root` (el servicio lanza «sin el tope inyectado») |

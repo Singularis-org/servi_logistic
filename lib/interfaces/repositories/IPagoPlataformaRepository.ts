@@ -24,4 +24,9 @@ export interface IPagoPlataformaRepository {
    * de otra empresa no esperan. Se suelta solo al terminar la transacción.
    */
   bloquear(tx: PagoPlataformaTxCandado): Promise<void>;
+  /**
+   * ¿Ya hay una fila del libro de la empresa con esa clave de idempotencia? (R11). El tope la mira
+   * dentro de su transacción, después del candado, para que un reenvío no choque con el tope.
+   */
+  claveYaRegistrada(organizacionId: string, claveIdempotencia: string, cliente?: PagoPlataformaCliente): Promise<boolean>;
 }

@@ -501,3 +501,113 @@ describe("WalletEgresoService.registrarEgreso — la clave de idempotencia (461/
     ).rejects.toThrow(/clave de idempotencia repetida/);
   });
 });
+
+// ─── SL-45 (design §6, §12.3) — el pago a la plataforma: el tope, solo para ese tipo ───
+
+describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la plataforma (R9, R11, R19)", () => {
+  const MAESTRO_A: Actor = { ...MAESTRO, organizacionId: "org-a" };
+  /** Copiado a mano de R9: es el texto que la persona ve bajo el monto. */
+  const MENSAJE_R9 = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+  const TX_FALSO = { tx: "del-registro" };
+
+  /** El repositorio corre el `antes` que le pasan, como lo hace el real dentro de su transacción. */
+  function repoQueCorreElAntes(escritas = 1) {
+    return buildRepo({
+      crearMovimientoRegistrado: vi.fn(async (_m, _r, _l, antes?: (tx: never) => Promise<void>) => {
+        if (antes !== undefined) await antes(TX_FALSO as never);
+        return escritas;
+      }),
+      obtenerPorId: vi.fn(async (id: string) => mov({ id })),
+    });
+  }
+  function topeQueResponde(r: "cabe" | "supera" | "reenvio") {
+    return { comprobar: vi.fn(async () => r) };
+  }
+  const pagoDe = (monto: string) => ({
+    claveIdempotencia: "clave-pago",
+    tipoEgreso: "pago_plataforma" as const,
+    monto,
+    descripcion: "Transferencia de octubre",
+  });
+
+  const SIN_ACCESO_TOTAL = ["mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"] as const;
+
+  it.each(SIN_ACCESO_TOTAL)("R19: el rol %s recibe forbidden sin tocar el repositorio ni el tope", async (rol) => {
+    const repo = repoQueCorreElAntes();
+    const tope = topeQueResponde("cabe");
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), {
+      usuarioId: "u-x",
+      rol,
+      organizacionId: "org-a",
+    });
+    expect(r).toEqual({ status: "forbidden" });
+    expect(repo.crearMovimientoRegistrado).not.toHaveBeenCalled();
+    expect(tope.comprobar).not.toHaveBeenCalled();
+  });
+
+  it("cabe: registra el egreso con la categoría del pago, y el tope corre dentro de la transacción con la empresa, el monto y la clave", async () => {
+    const repo = repoQueCorreElAntes();
+    const tope = topeQueResponde("cabe");
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("500.00"), MAESTRO_A);
+    expect(r.status).toBe("ok");
+    expect(crearMovCall(repo)).toMatchObject({ tipo: "egreso", categoria: "egreso_pago_plataforma", monto: "500.00", origenTipo: "gasto" });
+    expect(tope.comprobar).toHaveBeenCalledTimes(1);
+    expect(tope.comprobar).toHaveBeenCalledWith(TX_FALSO, { organizacionId: "org-a", monto: "500.00", claveIdempotencia: "clave-pago" });
+  });
+
+  it("R9: supera → validation_error en monto con el mensaje de R9, y no se relee nada", async () => {
+    const repo = repoQueCorreElAntes();
+    const tope = topeQueResponde("supera");
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("600.00"), MAESTRO_A);
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { monto: [MENSAJE_R9] } });
+    expect(repo.obtenerPorId).not.toHaveBeenCalled();
+    expect(repo.obtenerPorClave).not.toHaveBeenCalled();
+  });
+
+  it("R11: reenvío → el tope no rechaza, el INSERT deduplica (0) y se responde ya_registrado con el original", async () => {
+    const original = mov({ id: "pago-original", categoria: "egreso_pago_plataforma" });
+    const repo = repoQueCorreElAntes(0);
+    (repo.obtenerPorClave as ReturnType<typeof vi.fn>).mockResolvedValue(original);
+    const tope = topeQueResponde("reenvio");
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("1000.00"), MAESTRO_A);
+    expect(r).toEqual({ status: "ya_registrado", movimiento: original });
+    expect(repo.obtenerPorClave).toHaveBeenCalledWith("clave-pago");
+  });
+
+  it("sin tope inyectado, registrar un pago lanza sin tocar el repositorio", async () => {
+    const repo = repoQueCorreElAntes();
+    await expect(new WalletEgresoService(repo, writeClient).registrarEgreso(pagoDe("100.00"), MAESTRO_A)).rejects.toThrow(
+      /sin el tope inyectado/,
+    );
+    expect(repo.crearMovimientoRegistrado).not.toHaveBeenCalled();
+  });
+
+  it("sin empresa en el actor, el pago lanza en vez de comparar con una deuda sin filtro", async () => {
+    const repo = repoQueCorreElAntes();
+    const tope = topeQueResponde("cabe");
+    await expect(
+      new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), MAESTRO),
+    ).rejects.toThrow(/sin empresa/);
+    expect(tope.comprobar).not.toHaveBeenCalled();
+  });
+
+  it.each(["gasto_variable", "sueldo"] as const)("el %s no pasa por el tope: la llamada al repositorio es la de antes", async (tipoEgreso) => {
+    const repo = repoQueCorreElAntes();
+    const tope = topeQueResponde("supera");
+    const r = await new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(
+      { claveIdempotencia: randomUUID(), tipoEgreso, monto: "100.00", descripcion: "x" },
+      MAESTRO_A,
+    );
+    expect(r.status).toBe("ok");
+    expect(tope.comprobar).not.toHaveBeenCalled();
+    expect((repo.crearMovimientoRegistrado as ReturnType<typeof vi.fn>).mock.calls[0]).toHaveLength(2);
+  });
+
+  it("un error de la base que no es el tope se propaga, no se disfraza de validation_error", async () => {
+    const repo = buildRepo({ crearMovimientoRegistrado: vi.fn(async () => Promise.reject(new Error("conexión caída"))) });
+    const tope = topeQueResponde("cabe");
+    await expect(
+      new WalletEgresoService(repo, writeClient, undefined, tope).registrarEgreso(pagoDe("100.00"), MAESTRO_A),
+    ).rejects.toThrow("conexión caída");
+  });
+});

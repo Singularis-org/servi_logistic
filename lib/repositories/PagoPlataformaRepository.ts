@@ -41,6 +41,19 @@ export class PagoPlataformaRepository implements IPagoPlataformaRepository {
     return suma.toFixed(2);
   }
 
+  async claveYaRegistrada(
+    organizacionId: string,
+    claveIdempotencia: string,
+    cliente?: PagoPlataformaCliente,
+  ): Promise<boolean> {
+    // El único es `(organizacion_id, clave_idempotencia)`: con la empresa en el `where`, a lo sumo una.
+    const fila = await (cliente ?? this.prisma).walletMovimiento.findFirst({
+      where: { organizacionId, claveIdempotencia },
+      select: { id: true },
+    });
+    return fila !== null;
+  }
+
   async bloquear(tx: PagoPlataformaTxCandado): Promise<void> {
     // La clave sale de la empresa que la transacción ya fijó para la RLS: dos empresas no comparten
     // candado, y sin empresa fijada `current_setting` falla en vez de bloquear a todas.
