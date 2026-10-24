@@ -612,7 +612,7 @@ ALTER TABLE "usuario" DROP COLUMN "contrasena_definida_at";
 
 ### 16.3 P4: contacto en el pie (R39)
 
-- `EMAIL_CONTACTO` en `lib/config/email.ts`: `emailConfig().contacto`, `null` si falta, está vacía
+- `EMAIL_CONTACTO` en `lib/config/email.ts`: `emailContacto()`, un lector aparte de `loadEmailConfig()` (que lanza sin SMTP, y el OTP por consola tiene que seguir saliendo); `null` si falta, está vacía
   o no pasa `z.email()`.
 - `CorreoDeMarca` gana `contacto: string | null`. El pie añade «¿Dudas? Escríbenos a {contacto}.»,
   con un `mailto:` escapado en el HTML. Cada plantilla lo recibe de quien la llama, igual que

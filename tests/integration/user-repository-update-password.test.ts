@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 
 // Feature 20 / R9: updatePasswordHash actualiza solo password_hash.
+// SL-41 / R38 (design §16.1): y, en el mismo UPDATE, la marca `contrasena_definida_at`. Nada mas.
 
 // FICHA 362: el alta pasa a `$transaction` y registra su accion en ella.
 type MockedPrisma = Pick<
@@ -11,7 +12,7 @@ type MockedPrisma = Pick<
 >;
 
 describe("UserRepository.updatePasswordHash (R9)", () => {
-  it("actualiza password_hash del usuario indicado y no toca otros campos", async () => {
+  it("actualiza password_hash y contrasena_definida_at del usuario indicado y no toca otros campos", async () => {
     const update = vi.fn().mockResolvedValue({ id: "usr-1" });
     const prisma = { usuario: { update } } as unknown as MockedPrisma;
     const repo = new UserRepository(prisma);
@@ -20,10 +21,10 @@ describe("UserRepository.updatePasswordHash (R9)", () => {
 
     expect(update).toHaveBeenCalledWith({
       where: { id: "usr-1" },
-      data: { passwordHash: "hash-nuevo" },
+      data: { passwordHash: "hash-nuevo", contrasenaDefinidaAt: expect.any(Date) },
     });
     const dataArg = update.mock.calls[0][0].data;
-    expect(Object.keys(dataArg)).toEqual(["passwordHash"]);
+    expect(Object.keys(dataArg).sort()).toEqual(["contrasenaDefinidaAt", "passwordHash"]);
   });
 
   it("no devuelve el hash (retorna void)", async () => {

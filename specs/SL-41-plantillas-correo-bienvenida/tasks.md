@@ -191,7 +191,7 @@
   - **Hecho:** tests verdes y mutación anotada.
 
 - [ ] **T15. P4: contacto en el pie (R39).** Depende de T5.
-  - `EMAIL_CONTACTO` en `lib/config/email.ts` (`emailConfig().contacto`, `null` si vacía o no es un
+  - `EMAIL_CONTACTO` en `lib/config/email.ts` (`emailContacto()`, `null` si vacía o no es un
     email) y en `.env.example`.
   - `componerCorreo` la recibe y la pinta en el pie de texto y de HTML (`mailto:` escapado).
   - Tests en `plantilla-marca.test.ts` y `email-config.test.ts`: con contacto aparece, vacía no.

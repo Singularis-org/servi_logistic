@@ -19,7 +19,7 @@ const { NodemailerEmailSender, EmailEnvioError } = await import(
 const PASSWORD = "s3cr3t0-que-no-debe-salir";
 
 const config: EmailConfig = {
-  host: "smtp.gmail.com",
+  host: "smtp-relay.brevo.com",
   port: 587,
   secure: false,
   user: "bot@example.com",
@@ -60,11 +60,11 @@ describe("NodemailerEmailSender", () => {
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
 
-  it("autentica con la cuenta y la contrasena de aplicacion de Google", async () => {
+  it("autentica en el relay de Brevo con el login y la clave SMTP", async () => {
     await new NodemailerEmailSender(config).enviar(mensaje);
     expect(createTransport).toHaveBeenCalledWith(
       expect.objectContaining({
-        host: "smtp.gmail.com",
+        host: "smtp-relay.brevo.com",
         port: 587,
         secure: false,
         auth: { user: "bot@example.com", pass: PASSWORD },

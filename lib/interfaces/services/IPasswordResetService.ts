@@ -27,8 +27,35 @@ export type SolicitarResetResult = { status: "ok" };
 /** Resultado de verificacion/restablecimiento (R5/R6/R9/R10/R11). */
 export type ResetOutcome = { status: "ok" } | { status: "invalid_or_expired" };
 
+/** SL-41 (design §6.1): emision del enlace de bienvenida del primer maestro. */
+export interface EmitirEnlaceBienvenidaInput {
+  usuarioId: string;
+  /** IP de quien dio el alta o pidio el reenvio (el superadmin), no la del maestro. */
+  ipAddress: string;
+}
+
+/**
+ * `enlace` es `<challengeId>.<secreto>`, lo que va detras de `#enlace=` en la URL. Es una
+ * credencial: quien lo recibe lo mete en el correo y no lo registra en ningun log (R34).
+ */
+export interface EnlaceBienvenidaEmitido {
+  enlace: string;
+  ttlHoras: number;
+}
+
+/** SL-41 (design §6.1): canje del enlace. `enlace` ya llega validado de formato en el borde. */
+export interface CrearContrasenaConEnlaceInput {
+  enlace: string;
+  newPassword: string;
+  ipAddress: string;
+}
+
 export interface IPasswordResetService {
   solicitar(input: SolicitarResetInput): Promise<SolicitarResetResult>;
   verificarCodigo(input: VerificarCodigoInput): Promise<ResetOutcome>;
   restablecer(input: RestablecerInput): Promise<ResetOutcome>;
+  /** SL-41 (R15, R17): crea el desafio de bienvenida y devuelve el enlace. Solo el hash se guarda. */
+  emitirEnlaceBienvenida(input: EmitirEnlaceBienvenidaInput): Promise<EnlaceBienvenidaEmitido>;
+  /** SL-41 (R18-R20, R22): canjea el enlace por una contrasena. No abre sesion. */
+  crearContrasenaConEnlace(input: CrearContrasenaConEnlaceInput): Promise<ResetOutcome>;
 }

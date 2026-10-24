@@ -1,5 +1,8 @@
+import { baseUrlDeLaApp } from "@/lib/config/app-url";
+import { emailContacto } from "@/lib/config/email";
 import { MARCA } from "@/lib/config/marca";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
+import { componerCorreo } from "@/lib/services/email/plantillas/plantilla-marca";
 
 export interface OtpPlantillaParams {
   to: string;
@@ -7,45 +10,35 @@ export interface OtpPlantillaParams {
   expiresInMinutes: number;
 }
 
-/** Escapa el texto que se interpola en el cuerpo HTML. */
-function escaparHtml(valor: string): string {
-  return valor
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /**
- * Renderiza el correo del codigo de verificacion. Es una funcion pura: el mismo
- * mensaje se puede afirmar en un test sin abrir una conexion.
+ * El correo del código de verificación, sobre la plantilla común (SL-41, design §4). Lo envían el
+ * login de riesgo alto y «recuperar contraseña» por el mismo `OtpChallengeIssuer`, así que los dos
+ * reciben este mismo correo (R9): «código de verificación» vale para ambos, y separarlos obligaría
+ * a cambiar la firma del emisor sin que nadie lo haya pedido.
+ *
+ * La firma no cambia desde la feature 80: `EmailNotificacionProvider` sigue llamándola igual. La
+ * URL base y el contacto se leen aquí, del entorno, y se pasan a `componerCorreo`, que sigue pura.
+ * Sin URL base el OTP sale igual, con la cabecera de texto (R4): el login no puede depender del
+ * logo.
  */
 export function plantillaOtpCodigo(params: OtpPlantillaParams): EmailMessage {
   const { code, expiresInMinutes } = params;
-  const texto = [
-    `Tu codigo de verificacion de ${MARCA.nombre} es:`,
-    "",
-    code,
-    "",
-    `Vence en ${expiresInMinutes} minutos y solo sirve una vez.`,
-    "Si no solicitaste este codigo, ignora este mensaje y no lo compartas con nadie.",
-  ].join("\n");
-
-  const html = [
-    '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#0b2545">',
-    `<p>Tu codigo de verificacion de ${escaparHtml(MARCA.nombre)} es:</p>`,
-    `<p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#f26419">${escaparHtml(code)}</p>`,
-    `<p>Vence en ${expiresInMinutes} minutos y solo sirve una vez.</p>`,
-    "<p>Si no solicitaste este codigo, ignora este mensaje y no lo compartas con nadie.</p>",
-    "</div>",
-  ].join("");
-
-  // El asunto NO lleva el codigo: `ConsoleEmailSender` registra siempre el asunto, y lo muestran
-  // tambien las notificaciones del movil con la pantalla bloqueada. El codigo va solo en el cuerpo.
-  return {
+  // El asunto NO lleva el código (SL-32 m4, R11): `ConsoleEmailSender` registra siempre el asunto,
+  // y lo muestran también las notificaciones del móvil con la pantalla bloqueada.
+  return componerCorreo({
     to: params.to,
-    subject: `Tu codigo de verificacion de ${MARCA.nombre}`,
-    text: texto,
-    html,
-  };
+    asunto: `Tu código de verificación de ${MARCA.nombre}`,
+    preheader: `Tu código vence en ${expiresInMinutes} minutos.`,
+    bloques: [
+      { tipo: "parrafo", texto: `Tu código de verificación de ${MARCA.nombre} es:` },
+      { tipo: "codigo", codigo: code },
+      { tipo: "parrafo", texto: `Vence en ${expiresInMinutes} minutos y solo sirve una vez.` },
+      {
+        tipo: "nota",
+        texto: "Si no lo pediste, ignora este correo y no compartas el código con nadie.",
+      },
+    ],
+    baseUrl: baseUrlDeLaApp(),
+    contacto: emailContacto(),
+  });
 }

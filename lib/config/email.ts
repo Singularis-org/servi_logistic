@@ -7,18 +7,19 @@
 // INVARIANTE DE SEGURIDAD: si falta una pieza se cita el NOMBRE de la variable,
 // jamas su valor. La contrasena SMTP no aparece nunca en un error ni en un log.
 
-// Valores que los pone el PROVEEDOR, no el negocio: el canal es Gmail /
-// Google Workspace, asi que host, puerto y modo TLS son constantes conocidas y
-// no piezas de configuracion que alguien deba averiguar. Se dejan igualmente
-// sobreescribibles por env para no clavar el proveedor en el codigo (mudarse a
-// SES o a `smtp-relay.gmail.com` es cambiar SMTP_HOST, nada mas).
+// Valores que los pone el PROVEEDOR, no el negocio: el canal es Brevo (SL-41, D8), asi que
+// host, puerto y modo TLS son constantes conocidas y no piezas de configuracion que alguien deba
+// averiguar. Se dejan igualmente sobreescribibles por env para no clavar el proveedor en el
+// codigo: mudarse a otro relay es cambiar SMTP_HOST, nada mas.
+
+import { z } from "zod";
 
 import { MARCA } from "@/lib/config/marca";
 
-/** Host SMTP de Google. Workspace con relay propio usa smtp-relay.gmail.com. */
-const DEFAULT_SMTP_HOST = "smtp.gmail.com";
+/** Relay SMTP de Brevo. */
+const DEFAULT_SMTP_HOST = "smtp-relay.brevo.com";
 
-/** Puerto SMTP por defecto: submission con STARTTLS, el que Google recomienda. */
+/** Puerto SMTP por defecto: submission con STARTTLS, el que Brevo documenta para su relay. */
 const DEFAULT_SMTP_PORT = 587;
 
 /** Nombre visible del remitente cuando no se configura uno. */
@@ -45,18 +46,20 @@ export interface EmailConfig {
   port: number;
   /** TLS implicito desde el saludo. Derivado del puerto salvo override explicito. */
   secure: boolean;
-  /** Cuenta de Google que autentica el envio. Es tambien el From efectivo. */
+  /**
+   * Login SMTP de Brevo (el que da su panel en «SMTP y API»). No es una direccion desde la
+   * que se pueda enviar: por eso conviene declarar SMTP_FROM.
+   */
   user: string;
   /**
-   * Contrasena de aplicacion de Google (16 caracteres). NO es la contrasena de
-   * la cuenta: Google rechaza esa desde 2022. Solo se pasa a nodemailer; nunca
-   * se loguea ni se serializa.
+   * Clave SMTP de Brevo. NO es la contrasena de la cuenta de Brevo ni una clave de su API REST.
+   * Solo se pasa a nodemailer; nunca se loguea ni se serializa.
    */
   password: string;
   /**
-   * Direccion remitente (From). Por defecto la propia cuenta autenticada: Google
-   * REESCRIBE el From a la cuenta salvo que la direccion este dada de alta como
-   * alias verificado ("Enviar como") en Gmail.
+   * Direccion remitente (From): un remitente verificado en Brevo. Si falta SMTP_FROM cae en el
+   * login SMTP para no romper el envio en un entorno que aun no lo declara (SL-41, P2); Brevo
+   * rechaza un From que no este verificado, asi que en produccion se declara.
    */
   from: string;
   /** Nombre visible del remitente. */
@@ -96,9 +99,9 @@ function leerEnteroPositivo(name: string, fallback: number): number {
 }
 
 /**
- * Normaliza la contrasena de aplicacion de Google. La consola la muestra en
- * cuatro grupos de cuatro ("abcd efgh ijkl mnop") y se copia con los espacios
- * dentro; el servidor la espera sin ellos. Sin esto el fallo es un 535 opaco.
+ * Quita los espacios de la clave SMTP. Una clave pegada desde un panel o un gestor de claves
+ * arrastra a veces espacios o un salto de linea, y el servidor la espera sin ellos: sin esto el
+ * fallo es un 535 opaco. Ninguna clave SMTP de Brevo lleva espacios, asi que no estorba.
  */
 function normalizarPassword(valor: string): string {
   return valor.replace(/\s+/g, "");
@@ -107,7 +110,7 @@ function normalizarPassword(valor: string): string {
 /**
  * Hay SMTP utilizable. Es la condicion que decide, en el borde, si se instancia
  * el emisor real o el de consola. Se mira la CREDENCIAL y no el host, porque el
- * host ya trae default de proveedor: sin cuenta ni contrasena de aplicacion no
+ * host ya trae default de proveedor: sin login ni clave SMTP no
  * hay envio posible, y el flujo debe degradar en vez de reventar en dev y en
  * los tests.
  */
@@ -143,4 +146,18 @@ export function loadEmailConfig(): EmailConfig {
  */
 export function otpDebugLogHabilitado(): boolean {
   return leerBooleano("AUTH_OTP_DEBUG_LOG", false);
+}
+
+/**
+ * SL-41 (R39, P4) — direccion de contacto que el pie de cada correo muestra, o `null`.
+ *
+ * Es un lector APARTE de `loadEmailConfig()` a proposito: aquel lanza si falta SMTP, y el OTP por
+ * consola (dev, CI, entornos sin relay) tiene que seguir componiendo su correo sin SMTP. Un valor
+ * que no es un email se descarta en vez de pintarse: un pie con «Escribenos a xyz» seria peor que
+ * un pie sin direccion.
+ */
+export function emailContacto(): string | null {
+  const valor = leerTexto("EMAIL_CONTACTO");
+  if (valor === null) return null;
+  return z.email().safeParse(valor).success ? valor : null;
 }
