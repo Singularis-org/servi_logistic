@@ -572,13 +572,13 @@ INIT_EXIT=0
 | R8 | `cobro-plataforma-cargos` (42501) |
 | R9–R11 | `tests/components/EmpresasModuleCobro.test.tsx`, `tests/integration/empresas-page.test.tsx` |
 | R12–R20 | `cobro-plataforma-cargos` (ver el mapa de la tanda A) |
-| R21 | servidor: `tests/integration/db/deuda-plataforma-wallet.test.ts`; pantalla: **pendiente T7** |
+| R21 | servidor: `tests/integration/db/deuda-plataforma-wallet.test.ts`; pantalla: `tests/components/WalletDeudaPlataformaSL40.test.tsx`, `tests/unit/components/wallet-labels.test.ts`; navegador: `e2e/cobro-plataforma-sl40.spec.ts` «T7» (T10) |
 | R22 | `deuda-plataforma-wallet` |
 | R23 | `deuda-plataforma-wallet` (filtros de período) |
 | R24 | `cobro-plataforma-cargos` (R24), `deuda-plataforma-wallet` (B no ve la deuda de A) |
 | R25 | `tests/unit/services/deuda-plataforma-service.test.ts` |
-| R26 | servidor: `tests/unit/utils/deuda-plataforma.test.ts`; pantalla: **pendiente T7** |
-| R27 | `deuda-plataforma-wallet` (0 filas en `wallet_movimiento`), `cobro-plataforma-solo-por-trigger.guardia`; descargas: T10 |
+| R26 | servidor: `tests/unit/utils/deuda-plataforma.test.ts`; pantalla: `WalletDeudaPlataformaSL40` (R26, dos casos) |
+| R27 | `deuda-plataforma-wallet` (0 filas en `wallet_movimiento`), `cobro-plataforma-solo-por-trigger.guardia`; descargas: `tests/components/descarga/WalletDescarga.test.tsx` sin tocar, en verde (T10) |
 | R28 | `organizacion-en-modelos`, `rls-por-empresa` (75), `fk-misma-empresa`, `tests/unit/scripts/verificar-rls-despliegue.test.ts` |
 | R29 | `migracion-sl40-ida-y-vuelta` |
 
@@ -699,3 +699,172 @@ falta la comprobación en el navegador.
 
 **Veredicto T9:** la ayuda de la caja explica la deuda con la plataforma con el tono del archivo, y sus
 guardias van en verde.
+
+## T10
+
+Cierre, por `frontend_dev`, sobre `782ec13`. Base desechable `sl40_e2e` (`migrate deploy` + `db:seed`,
+borrada con `DROP DATABASE … WITH (FORCE)` al acabar), creada con el helper `sl40-env.sh` sin imprimir
+URLs. `gate.lock` tomado («SL-40 T10») con `prisma generate` dentro, durante el dev server y los E2E, y
+soltado al final. Un solo dev server (`pnpm dev` desde este worktree, puerto 3000 libre antes, sin
+`SMTP_*`, `AUTH_OTP_DEBUG_LOG=1`, log en `SL17_HUMO_LOG_SERVIDOR`). Apagado al acabar: el 3000 quedó
+libre y se borró `.next/dev`. El MCP del grafo no estaba entre las herramientas: Grep/Read. El gate
+final (`./init.sh`) es del leader.
+
+Logs y capturas en
+`C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl40-e2e/`.
+
+**Archivos**
+- Nuevo `e2e/cobro-plataforma-sl40.spec.ts` (2 casos, serie). Ningún otro archivo de código ni de
+  tests cambia.
+
+**1. No regresión (R24, R27)**, los cuatro archivos sin tocar, contra `sl40_e2e`:
+
+```
+pnpm exec vitest run tests/integration/db/libro-kardex-468.test.ts tests/components/descarga/WalletDescarga.test.tsx \
+  tests/integration/db/aislamiento-ordenes.test.ts tests/integration/db/aislamiento-wallet.test.ts
+ ❯ tests/integration/db/libro-kardex-468.test.ts (6 tests | 6 skipped)
+ FAIL  tests/integration/db/libro-kardex-468.test.ts > 468 — el libro en Excel (Postgres real)
+Error: hay DATABASE_URL pero faltan la zona central, el tipo `cedula` o una orden de la que tomar provincia y canton: esta suite necesita crear sus datos en el test (SL-31).
+ Test Files  1 failed | 3 passed (4)
+      Tests  33 passed | 6 skipped (39)
+VITEST_EXIT=1
+```
+
+- `WalletDescarga`, `aislamiento-ordenes` y `aislamiento-wallet`: verdes (33 casos).
+- `libro-kardex-468` está en `tests/baseline-rojos.json` («La app nace vacia… La retira SL-31»). Cae
+  en el `beforeAll` por falta de datos sembrados, antes de ejecutar nada de SL-40. Corrido también
+  sobre `origin/dev` (`f90799a`, worktree temporal con junction de `node_modules`, ya borrado),
+  contra la misma base: el mismo rojo, `Test Files 1 failed (1)`, `Tests 6 skipped (6)`,
+  `VITEST_EXIT=1`. No es regresión de SL-40.
+
+**2. E2E existentes**
+
+```
+pnpm exec playwright test e2e/superadmin-empresas.spec.ts --reporter=list
+  ok 1 › 1. «Empresas» abre en el estado vacío (R29) (1.2s)
+  ok 2 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (1.6s)
+  ok 3 › 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (4.1s)
+  ok 4 › 4. un slug inválido marca el campo sin crear nada (R34) (1.1s)
+  ok 5 › 5-6. el maestro de A entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (3.4s)
+  ok 6 › 5-6. el maestro de B entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35) (2.9s)
+  6 passed (28.9s)
+PW_EXIT=0
+
+SL39_UI=1 pnpm exec playwright test e2e/wallet-iva-aparte-sl39.spec.ts --reporter=list
+  ok 1 › SL-39 /wallet de A: IVA cobrado 416,00 aparte y ganancia 1.700,00 (5.7s)
+  ok 2 › SL-39 /wallet de B: IVA cobrado 6,50 y ganancia 40,00, sin un centimo de A (1.6s)
+  ok 3 › SL-39 cierres-admin de A: la cascada del cierre A resta el IVA facturado 416,00 y el neto es 1.700,00 (5.9s)
+  ok 4 › SL-39 cierres-admin de A: el cierre B (rechazo) «Debe» 100,00 con la nota sin IVA (1.2s)
+  4 passed (18.9s)
+PW_EXIT=0
+
+pnpm exec playwright test e2e/wallet.spec.ts --reporter=list
+  x  1 › Wallet — bloqueo de rol NO autorizado › un mensajero es rechazado en /wallet y NO ve movimientos ni balance (R19) (5.7s)
+  x  2 › Wallet — acceso del maestro (libro + balance + manual) › ve el balance derivado y el libro → … (5.6s)
+    TimeoutError: page.waitForURL: Timeout 5000ms exceeded.
+  2 failed
+PW_EXIT=1
+```
+
+- **`e2e/wallet.spec.ts` sale en rojo, y es heredado.** Entra con usuarios fijos
+  (`maestro@example.com` / `mensajero@example.com`, `correct-password`) que una base vacía no tiene, y
+  espera `waitForURL("/")`. El archivo es idéntico a `origin/dev` (`git diff origin/dev` vacío), y
+  `specs/SL-44-e2e-verde-ci/requirements.md` lo lista entre los 21 E2E heredados en rojo por ese
+  motivo. No hay baseline de E2E. El recorrido de la wallet de SL-40 lo cubre el E2E nuevo.
+
+**3. E2E nuevo `e2e/cobro-plataforma-sl40.spec.ts`** (solo con `SL40_UI=1`, como el de SL-39)
+
+- **T8 (R9–R11).** El superadmin, logado con OTP del log, abre «Empresas». El valor global sale como
+  «Sin configurar (0,00)», y la fila de A, «₡0 · global». Se fija el global en `500.00`: «Cobro
+  guardado.», «Valor global: ₡500» y la fila de A en «₡500 · global». Se fija la excepción de A en
+  `750.00`: «₡750 · propio», y en la base `cobro_plataforma_por_orden = 750.00`. «Usar el global» la
+  quita: «₡500 · global» y en la base `NULL`. Una marca en `window`, puesta antes del primer guardado,
+  sigue al final: ningún valor necesitó recargar.
+- **T7 (R21, R22).** A se da de alta por el servicio, con la caja de SL-39 (`CAJA_A`) y un saldo
+  inicial de 10.000,00, para que la barra de reparto, y con ella «De la empresa», se pinte. Las
+  órdenes se crean y se eliminan con el cliente dueño y la empresa fijada: el INSERT y el UPDATE de
+  `deleted_at` pasan por los triggers. La base, leída por detrás: `0:cargo:500.00, 1:cargo:500.00` y
+  después `+ 1:reverso:500.00`.
+
+Números medidos en `/wallet` de A (lo que pinta la app):
+
+| | cifra principal | Entró | Salió | ganancia | IVA | saldo inicial y aportes | tiendas | De la empresa (barra) | deuda |
+|---|---|---|---|---|---|---|---|---|---|
+| antes | Dinero en caja ₡28.500 | ₡30.000 | ₡1.500 | ₡1.700 | ₡416 | ₡10.000 | ₡16.384 | ₡12.116 | ₡0 |
+| dos órdenes | Dinero en caja ₡28.500 | ₡30.000 | ₡1.500 | ₡1.700 | ₡416 | ₡10.000 | ₡16.384 | ₡12.116 | ₡1.000 |
+| una eliminada | Dinero en caja ₡28.500 | ₡30.000 | ₡1.500 | ₡1.700 | ₡416 | ₡10.000 | ₡16.384 | ₡12.116 | ₡500 |
+
+El spec también compara el texto entero de la tarjeta de la caja, sin la región de la deuda, y el de
+«Cómo se compone la ganancia de la empresa»: iguales en las tres lecturas (R22). La región va sin
+insignia de signo, con la pista de R21.
+
+```
+SL40_UI=1 pnpm exec playwright test e2e/cobro-plataforma-sl40.spec.ts --reporter=list
+  ok 1 › T8: el superadmin fija el global, fija y quita la excepción de A, y ve cada valor sin recargar (R9–R11) (1.8s)
+  ok 2 › T7: A crea dos órdenes y elimina una; la deuda dice ₡500 y la caja no cambia (R21, R22) (3.4s)
+  2 passed (11.1s)
+PW_EXIT=0
+```
+
+Capturas: `…/scratchpad/sl40-e2e/sl40-empresas.png` y `…/scratchpad/sl40-e2e/sl40-wallet.png` (ruta
+completa arriba).
+
+**Mutación** (copia, corrida y restauración comprobada por md5): quitar la entrada `deuda_plataforma`
+de `REGIONES_BOLSILLO_EMPRESA`:
+
+```
+  ok 1 › T8: … (2.1s)
+  x  2 › T7: A crea dos órdenes y elimina una; la deuda dice ₡500 y la caja no cambia (R21, R22) (7.1s)
+    Error: la región de la deuda con la plataforma
+    expect(locator).toHaveCount(expected) failed
+  1 failed
+  1 passed (15.6s)
+PW_EXIT=1
+```
+
+Restaurado (`RESTAURADO_OK`, `git status` sin cambios en `wallet-labels.ts`) y vuelto a correr:
+`2 passed (12.4s)`, `PW_EXIT=0`.
+
+**Verificación propia** (con `.next/dev` borrado)
+- `pnpm run typecheck`: `TC_EXIT=0`.
+- `pnpm run lint`: `LINT_EXIT=0`, `0 errors, 232 warnings`, todos heredados.
+  `pnpm exec eslint e2e/cobro-plataforma-sl40.spec.ts`: «No issues found».
+- El archivo nuevo está en LF y no nombra a Ordenex.
+
+**Desviaciones**
+1. El E2E nuevo se salta sin `SL40_UI=1`, como el de SL-39. El E2E de CI no tiene log del servidor
+   para el OTP ni siembra, así que añadiría otro rojo de entorno (SL-44).
+2. Las órdenes se crean y se eliminan por fixture con los triggers, no por la pantalla: el encargo lo
+   admite. La vía de `EliminarOrdenService` ya la mide `deuda-plataforma-wallet`.
+3. «De la empresa» se lee del nombre accesible de la barra, que solo existe con saldo inicial. Por eso
+   la siembra añade uno.
+
+## Mapa R<n> → test (final, R1–R29)
+
+| R | Test |
+|---|---|
+| R1, R2 | `cobro-plataforma-cargos`, `migracion-sl40-ida-y-vuelta`, `tests/unit/types/cobro-plataforma-schema.test.ts`, `tests/integration/db/empresas-plataforma-cobro.test.ts` |
+| R3 | `cobro-plataforma-cargos` (R3/D11, R3/R20, R3/R5) |
+| R4 | `cobro-plataforma-schema`, `cobro-plataforma-service` |
+| R5 | `cobro-plataforma-cargos` (R3/R5), `empresas-plataforma-cobro`, `cobro-plataforma-service`; navegador: `e2e/cobro-plataforma-sl40.spec.ts` «T8» («Usar el global») |
+| R6 | `cobro-plataforma-service` (`forbidden` sin repositorio), `cobro-plataforma.composition-root` |
+| R7 | `cobro-plataforma-service`, `empresas-plataforma-cobro` |
+| R8 | `cobro-plataforma-cargos` (42501), `cobro-plataforma-solo-por-trigger.guardia` |
+| R9 | `tests/components/EmpresasModuleCobro.test.tsx`, `tests/integration/empresas-page.test.tsx`; navegador: `cobro-plataforma-sl40` «T8» |
+| R10 | `EmpresasModuleCobro`; navegador: `cobro-plataforma-sl40` «T8» («global»/«propio») |
+| R11 | `EmpresasModuleCobro`; navegador: `cobro-plataforma-sl40` «T8» (marca en `window`) |
+| R12–R20 | `cobro-plataforma-cargos` (ver el mapa de la tanda A); R12/R15 también en `cobro-plataforma-sl40` «T7» (cargos y reverso leídos de la base) |
+| R21 | `deuda-plataforma-wallet`, `WalletDeudaPlataformaSL40`, `wallet-labels`; navegador: `cobro-plataforma-sl40` «T7» |
+| R22 | `deuda-plataforma-wallet`; navegador: `cobro-plataforma-sl40` «T7» (todas las cifras y el texto de las dos tarjetas, iguales en las tres lecturas) |
+| R23 | `deuda-plataforma-wallet`, `WalletDeudaPlataformaSL40` «R23» |
+| R24 | `cobro-plataforma-cargos` (R24), `deuda-plataforma-wallet`, `deuda-plataforma.composition-root`; no regresión: `aislamiento-ordenes`, `aislamiento-wallet` (T10, verdes) |
+| R25 | `deuda-plataforma-service`, `deuda-plataforma.composition-root`, `deuda-plataforma-wallet` «R25» |
+| R26 | `deuda-plataforma` (puro), `deuda-plataforma-wallet`, `WalletDeudaPlataformaSL40` «R26» |
+| R27 | `deuda-plataforma-wallet` (0 filas en `wallet_movimiento`), `cobro-plataforma-solo-por-trigger.guardia`, `WalletDescarga` sin tocar y en verde (T10); `libro-kardex-468` en el baseline (rojo igual en `origin/dev`) |
+| R28 | `organizacion-en-modelos`, `rls-por-empresa` (75), `fk-misma-empresa`, `tests/unit/scripts/verificar-rls-despliegue.test.ts` |
+| R29 | `migracion-sl40-ida-y-vuelta` |
+
+**Veredicto T10:** la comprobación en el navegador de T7 y T8 está en verde: deuda «₡500» y la caja
+igual en las tres lecturas, con la mutación medida en rojo. La no regresión pasa, salvo el rojo de
+baseline de `libro-kardex-468`, igual en `dev`. `e2e/wallet.spec.ts` sigue en rojo por herencia
+(SL-44). Falta el gate final del leader.
