@@ -1830,6 +1830,12 @@ enum WalletMovimientoCategoria {
   // Migracion `20260928120000_wallet_458_enums`.
   egreso_reverso_flete_devolucion
   egreso_reverso_iva_flete_devolucion
+  // SL-45 (design §2): el pago de la empresa a la plataforma, registrado a mano. Egreso PROPIO en
+  // EFECTIVO, como el sueldo: baja la cifra principal y la ganancia, y descuenta la deuda de SL-40
+  // mientras no tenga contra-asiento. Categoría propia porque la deuda la cuenta por categoría:
+  // `egreso_gasto` (reservada) o `egreso_gasto_variable` mezclarían pagos con gastos.
+  // Migración `20261024130000_pago_plataforma_categoria`.
+  egreso_pago_plataforma
 
   @@map("wallet_movimiento_categoria")
 }

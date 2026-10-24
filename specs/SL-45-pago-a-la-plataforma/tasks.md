@@ -35,7 +35,7 @@
     vacuidad.
   - _Hecho:_ corre contra Postgres y sale **en rojo** porque la categoría no existe. La salida va pegada
     en `progress/impl_SL-45.md`. Un `skip` por falta de base no cuenta como rojo.
-- [ ] **T2. Migraciones y esquema** (R27; depende de T0).
+- [x] **T2. Migraciones y esquema** (R27; depende de T0).
   - `db/migrations/20261024130000_pago_plataforma_categoria/{migration,down}.sql` y
     `db/migrations/20261024130100_pago_plataforma_check/{migration,down}.sql` (`design.md > 8`).
   - `db/schema.prisma`: el valor `egreso_pago_plataforma`, con su comentario.

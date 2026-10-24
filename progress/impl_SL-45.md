@@ -99,3 +99,63 @@ T1_EXIT=1
 Es rojo por la razón correcta: la categoría no está en la base, `tipoEgreso` no admite `pago_plataforma` y la
 deuda no trae ni estado ni importe. Ningún `skip`: el `beforeAll` sembró las dos empresas, las cuatro
 órdenes y las dos cajas, y el `afterAll` dejó la base limpia (`organizacion` = 0 filas).
+
+### T2. Migraciones y esquema
+
+- `db/migrations/20261024130000_pago_plataforma_categoria/migration.sql`: `ADD VALUE IF NOT EXISTS
+  'egreso_pago_plataforma'`, sola en su archivo (55P04).
+- `…/down.sql`: la función `quitar_valores_de_enum` de la 457, copiada con `sed` del original. Solo cambian
+  el sufijo (`_457` → `_sl45`) y el prefijo de los mensajes (`rollback 457` → `rollback SL-45`).
+- `db/migrations/20261024130100_pago_plataforma_check/{migration,down}.sql`: el CHECK de la 458
+  (`20260928120100`, l. 110-126) con `'egreso_pago_plataforma'` al final del lado `egreso`. El `down`
+  restaura la definición de la 458 tal cual.
+- `db/schema.prisma`: `egreso_pago_plataforma` al final de `WalletMovimientoCategoria`, con su comentario.
+- `tests/integration/db/migracion-sl45-ida-y-vuelta.test.ts`, en una base propia `sl45_iv_*` construida
+  aplicando las migraciones anteriores y borrada en el `afterAll`. Tiene cinco casos:
+  1. las dos migraciones en disco, con su `down.sql` y en orden detrás de la última de `dev`;
+  2. con las dos, un pago entra como egreso, y como ingreso lo rechaza el CHECK con 23514;
+  3. **con un pago registrado, los dos `down` abortan sin tocar nada**: el del CHECK con 23514 y el del
+     enum con P0001 («se aborta sin borrar nada»). La foto queda igual a la de después de migrar;
+  4. borrado el pago, los dos `down` en orden inverso dejan la foto igual a la de antes de SL-45. El valor
+     sale de `pg_enum` y el CHECK queda igual, byte a byte, al de la 458;
+  5. reaplicadas, la foto es la de la primera vez.
+
+**Salida** (con `migrate deploy` ya aplicado sobre `sl45_t` y `prisma generate` dentro del lock):
+
+```
+$ pnpm exec prisma migrate deploy
+  └─ 20261024130000_pago_plataforma_categoria/migration.sql
+  └─ 20261024130100_pago_plataforma_check/migration.sql
+All migrations have been successfully applied.
+
+$ pnpm exec vitest run tests/integration/db/migracion-sl45-ida-y-vuelta.test.ts tests/integration/db/schema-drift-saneamiento.test.ts
+ Test Files  2 passed (2)
+      Tests  21 passed (21)
+T2_EXIT=0
+
+$ pnpm run test:guardias
+ Test Files  1 failed | 302 passed (303)
+      Tests  4 failed | 4145 passed | 1 skipped (4150)
+```
+
+- El único rojo de las guardias es `dependencias-declaradas-presentes`, un rojo heredado que ya está en
+  `tests/baseline-rojos.json`.
+- **`pnpm run db:migrate` no sirve en este repo.** Es `prisma migrate dev`, y falla al montar la base
+  sombra (`relation "_prisma_migrations" does not exist`): es la misma P3006 que ya impide
+  `db:migrate:create`. La aplicación limpia se comprobó con `prisma migrate deploy`, que es la que usa el
+  despliegue (`scripts/migrate-deploy.ts`).
+- **Typecheck.** Tras el `generate`, el union de Prisma tiene un valor que todavía no está en
+  `WALLET_MOVIMIENTO_CATEGORIA_SEED`, así que el typecheck queda en rojo hasta T3, que es la siguiente task.
+
+**Mutaciones** (una cada vez, medida y revertida; la restauración se comprobó con `cmp` contra la copia):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T2-M1 | `down.sql` del enum con `RAISE NOTICE` en vez de `RAISE EXCEPTION` en la precondición | **rojo**, 1 caso: el caso 3 recibe `22P02` (el `USING` choca con la fila) y espera `P0001` |
+| T2-M2 | `down.sql` del CHECK que deja `'egreso_pago_plataforma'` en la lista | **rojo**, 2 casos: el 3 («el down del CHECK no abortó») y el 4 (el down del enum cae con 22P02 al restaurar el CHECK) |
+
+Revertidas las dos: `Tests 5 passed (5)`.
+
+**Aviso de entorno.** `prisma generate` escribe en el `node_modules` compartido. Antes había un cliente con
+el esquema de SL-41 (`contrasenaDefinidaAt`); ahora queda el de SL-45. Quien typechequee otra rama tiene
+que regenerar el suyo dentro del lock.
