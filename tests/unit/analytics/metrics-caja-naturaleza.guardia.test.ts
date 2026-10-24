@@ -163,7 +163,8 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
 
     // Ficha 459 (P13): DIEZ, con `egreso_pago_por_cuenta_tienda` al final. Ficha 461 (R29, P14):
     // SIGUEN siendo diez — el reverso del cobro a una tienda NO entra: no es dinero que salga.
-    expect(categorias).toHaveLength(10);
+    // SL-45 (review B2, decision de Carlos 2026-10-24): ONCE, con `egreso_pago_plataforma` al final.
+    expect(categorias).toHaveLength(11);
     expect(categorias).not.toContain("egreso_reverso_cobro_tienda");
     // Las OCHO historicas, sin que falte ninguna: sustituir una por `ingreso_ajuste` en vez de
     // anadirla —la mutacion que R5 nombra— deja aqui una lista corta.
@@ -177,6 +178,7 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
       "egreso_gasto_variable",
       "egreso_indemnizacion",
       "egreso_pago_por_cuenta_tienda", // ficha 459 (P13)
+      "egreso_pago_plataforma", // SL-45 (review B2): efectivo que sale de la caja
     ]);
     // Y la novena, la unica que no es `egreso_*`.
     expect(categorias.filter((c) => !c.startsWith("egreso_"))).toEqual(["ingreso_ajuste"]);

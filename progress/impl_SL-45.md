@@ -1077,3 +1077,135 @@ o guía; la descarga sin filtros va por `listar`, que sí está cubierto.
 Entorno: base en un contenedor Docker propio `sl45-pg` (:5445), borrado al cerrar junto con sus bases
 `sl45_*`. El `.env` local del worktree (no versionado) apunta a esa base; para revisar, recrear el
 contenedor y aplicar `prisma migrate deploy` + `db:seed`.
+
+## Arreglo del rechazo del reviewer (backend_dev, 2026-10-24, sobre `bf89522`)
+
+### B1 — REVOKE, no trigger por categoría
+
+**Medido antes de cambiar nada:** la app nunca cambia ni borra filas de `wallet_movimiento`.
+- En `lib/`, `app/` y `scripts/`, los delegados del libro solo hacen `aggregate`, `count`, `createMany`,
+  `findFirst`, `findMany`, `findUnique` y `groupBy`.
+- No hay `UPDATE` ni `DELETE FROM` a mano sobre la tabla, ni `SELECT … FOR UPDATE`, que también pediría
+  UPDATE.
+- Las anulaciones son contra-asiento. La escritura es `createMany({ skipDuplicates })` =
+  `INSERT … ON CONFLICT DO NOTHING`, que solo pide INSERT.
+- Las acciones referenciales y las limpiezas de los tests corren como dueño.
+
+Por eso la opción es `REVOKE UPDATE, DELETE ON wallet_movimiento FROM servi_app`. La guardia
+`pago-plataforma-inmutable-sl45` sostiene la premisa: su cabecera ya lo dice.
+
+**Migración nueva `20261024140000_pago_plataforma_blindaje`** (con `down.sql`; las de SL-45 no se tocan):
+1. El `REVOKE` (ataques a, b y d).
+2. El trigger `BEFORE INSERT` `wallet_movimiento_tope_pago_plataforma`, con
+   `WHEN (categoria = 'egreso_pago_plataforma' AND tipo = 'egreso')`, `SECURITY DEFINER` y
+   `REVOKE EXECUTE … FROM PUBLIC` (ataque c):
+   - toma el mismo `pg_advisory_xact_lock(hashtext('pago_plataforma:' || org))` que
+     `PagoPlataformaRepository.bloquear`. En la app el candado ya está tomado y es reentrante;
+   - deuda = Σ cargo − Σ reverso − Σ pagos sin `ingreso_ajuste/gasto` que los anule (regla R13), con la
+     empresa de la fila;
+   - rechaza con 23514 si la deuda ≤ 0 o si el monto la supera;
+   - deja pasar una clave de idempotencia ya registrada: el reenvío de R11 llega como
+     `ON CONFLICT DO NOTHING` y el trigger corre antes del choque. Sin esa excepción, R11 cae en 2
+     archivos (medido, M7). A mano, sin ON CONFLICT, el único lo rechaza con 23505 y no entra nada
+     (lo cubre un test).
+   - El `tipo = 'egreso'` del WHEN existe para que un `ingreso` con esa categoría lo siga rechazando el
+     CHECK con su nombre (`caja-tesoreria-migration` R45).
+
+### Los cuatro ataques, como `servi_app` con la empresa fijada (`pago-plataforma-sl45-blindaje.test.ts`)
+
+Estado de partida, el de la review: cargos 1.000, P1 600 vigente, P2 300 anulado y S1 sueldo 400, con
+deuda 400,00. Cada ataque corre en una transacción revertida, y después se comprueba que la deuda sigue
+en 400,00. Un control comprueba que `servi_app` ve las tres filas atacadas y que sí puede insertar.
+
+| Ataque | Resultado |
+|---|---|
+| a) `UPDATE … SET monto = 5000` de P1 | 42501 |
+| b) `DELETE` del contra-asiento de P2 (y de P1) | 42501 |
+| c) `INSERT` de un pago de 5.000 y de 400,01 | 23514; 400,00 sí entra |
+| c) `INSERT` de dos filas de 300 en una sentencia | 23514 |
+| c) dos `INSERT` de 300 a la vez, en dos conexiones | el segundo espera al candado y da 23514; la deuda queda en 100,00 |
+| c) reenvío a mano con la clave de P1 y 5.000 | 23505, y con ON CONFLICT entran 0 filas |
+| d) `UPDATE … SET categoria = 'egreso_pago_plataforma'` de S1 | 42501 |
+
+### B2 — `egresos` cuenta el pago (decisión de Carlos, 2026-10-24)
+
+Cambios:
+- `lib/analytics/metrics.ts > egresos`: gana `egreso_pago_plataforma` (11 categorías) y una frase en la
+  `descripcion`.
+- Se actualizaron los cuatro tests que fijan la lista: `financiera-ingresos-repo`,
+  `financiera-produccion.guardia`, `metrics-caja-naturaleza.guardia` y `analitica-financiera-service`.
+
+Test contra Postgres (B2 en `pago-plataforma-sl45-blindaje`): B paga 600 y el neto de `egresos` de hoy
+cambia en −600,00. Anula ese pago y el neto vuelve a cambiar 0,00 respecto al de antes. Se mide por
+diferencia, con el servicio real.
+
+### Menores
+- **m1:** P2 queda cerrada en `requirements.md`, con D11 (R28 entra y amplía con «Pagado»). D12 recoge
+  `egresos` y D13 el blindaje. R28 ya no es condicional.
+- **m2:** `wallet-anulacion-service.test.ts` recorre los cinco roles (con apiKey y superadmin) en
+  `EgresoCajaAnulacionService.anular` y en `WalletAnulacionService.enrutar`. El enrutador lo hace sobre
+  una fila `egreso_pago_plataforma`.
+- **m3:** test con el cliente DUEÑO (sin extensión ni RLS). `sumaPagosVigentes(A)` = 600,00 y
+  `sumaPagosVigentes(B)` = 200,00, con pagos de las dos empresas en la base.
+- **m4:** el E2E `e2e/pago-plataforma-sl45.spec.ts` sigue saltándose sin `SL45_UI=1`. Lo resuelve SL-44,
+  que retira esos skips. No se toca aquí.
+- `migracion-sl45-ida-y-vuelta` mide además el blindaje:
+  - aplicado: sin UPDATE ni DELETE, con INSERT, con el trigger, y un pago sin cargos da 23514;
+  - con su `down.sql`: vuelven los privilegios, se va el trigger, el esquema queda igual que con las dos
+    de SL-45 y el pago entra.
+- `caja-tesoreria-migration` R46: el pago va aparte de las 27 legítimas. En una empresa sin deuda, quien
+  lo para es el tope (23514, «supera la deuda vigente») y no el CHECK.
+
+### Mutaciones medidas (base desechable `sl45_t`, contenedor `sl45-pg`)
+
+Se restauraron todas. Las de la base, reaplicando la migración, con una corrida de control en 10/10. Las
+de archivo, con `cp` + `cmp` (`RESTAURADO_OK`).
+
+| Mutación | Cae |
+|---|---|
+| control | 10/10 verde |
+| sin la migración entera (suite de integración completa A/B sobre bases nuevas) | solo cambian el archivo de blindaje (6 ataques) y `caja-tesoreria-migration` R46; ningún archivo falla solo CON el blindaje |
+| M1 sin el `REVOKE` (`GRANT UPDATE, DELETE`) | a), b), d) |
+| M2 sin el trigger | c) 5.000, c) dos filas, c) concurrencia |
+| M3 trigger sin el candado | c) concurrencia (el segundo no espera) |
+| M4 el trigger cuenta también los anulados | c) 5.000/400, c) concurrencia |
+| M5 `egresos` sin `egreso_pago_plataforma` (`metrics.ts:675`) | B2: «el pago: expected '0.00' to be '-600.00'» |
+| M6 `sumaPagosVigentes` sin `organizacionId` en el `where` | m3 |
+| M7 trigger sin la excepción del reenvío | R11 en `pago-plataforma-sl45` y en `…-concurrencia` |
+
+### Archivos
+- Nuevos:
+  - `db/migrations/20261024140000_pago_plataforma_blindaje/{migration,down}.sql`
+  - `tests/integration/db/pago-plataforma-sl45-blindaje.test.ts`
+- Modificados:
+  - `lib/analytics/metrics.ts`
+  - `specs/SL-45-pago-a-la-plataforma/requirements.md`
+  - `tests/integration/db/{caja-tesoreria-migration,migracion-sl45-ida-y-vuelta}.test.ts`
+  - `tests/unit/analytics/{financiera-ingresos-repo.test,financiera-produccion.guardia.test,metrics-caja-naturaleza.guardia.test}.ts`
+  - `tests/unit/services/{wallet-anulacion-service,analitica-financiera-service}.test.ts`
+  - `tests/unit/guards/pago-plataforma-inmutable-sl45.guardia.test.ts`
+
+### Mapa R → test (lo que cambia en esta vuelta)
+- R9, R10 (en la base): `pago-plataforma-sl45-blindaje` (los casos c).
+- R17 (en la base): `pago-plataforma-sl45-blindaje` (a, b, d) y `migracion-sl45-ida-y-vuelta` (blindaje).
+- R19 (anular con los cinco roles): `wallet-anulacion-service.test.ts`.
+- R20 (filtro explícito): `pago-plataforma-sl45-blindaje` (m3).
+- R25 (`egresos`): `pago-plataforma-sl45-blindaje` (B2) y los cuatro unitarios del catálogo.
+- R28: sin cambio de test; ahora incondicional (D11).
+
+### Verificación
+- Typecheck: `TC=0`.
+- Lint de los archivos tocados: `ESLint: No issues found`.
+- Tests:
+  - unitarios de analítica, asistente, anulación y la guardia: 191 archivos, 2585 passed;
+  - los 7 archivos de integración de SL-45 contra Postgres: 74/74.
+- Gate `TEST_RAPIDO_BASE=origin/dev ./init.sh`, con el lock tomado como «SL-45-fix»:
+  - test:rapido 627/627 archivos, 8902 passed / 17 skipped;
+  - guardias 303/303 archivos, 4138 passed / 1 skipped;
+  - `INIT_EXIT=0`.
+  - El primer intento dio `INIT_EXIT=1`: `analitica-financiera-service.test.ts` fijaba 10 categorías. Se
+    corrigió y se repitió.
+  - Log: `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl45-gate-fix.log`.
+
+**Veredicto:** B1 queda cerrado en la base (REVOKE + tope con candado) y B2 cuenta el pago en `egresos`.
+Los 4 ataques caen, y cada uno con su mutación. Gate en verde.

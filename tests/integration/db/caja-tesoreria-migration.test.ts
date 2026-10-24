@@ -548,10 +548,24 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
     // Un CHECK que rechaza de mas es tan roto como uno que no rechaza: tumbaria las escrituras
     // de las tandas B (`ingreso_cod_recaudado`), C (`egreso_pago_tienda` /
     // `ingreso_reverso_pago_tienda`) y E (el registro retroactivo de las tres).
+    //
+    // SL-45 (review B1): el pago a la plataforma va APARTE. Desde `20261024140000` un trigger le pone
+    // el tope de la deuda (R9) ANTES del CHECK, y la empresa recién creada de esta transacción no
+    // debe nada: aquí el rechazo sería el del tope y no el del CHECK. Que el CHECK lo admite como
+    // egreso lo mide `migracion-sl45-ida-y-vuelta.test.ts` (en una base sin el tope), y que entra
+    // con deuda, `pago-plataforma-sl45.test.ts`. Aquí se afirma que, sin deuda, quien lo para es el
+    // tope y no el CHECK.
+    const LEGITIMAS_SIN_TOPE = COMBINACIONES_LEGITIMAS.filter((c) => c.categoria !== "egreso_pago_plataforma");
+    expect(LEGITIMAS_SIN_TOPE).toHaveLength(COMBINACIONES_LEGITIMAS.length - 1);
+    const sinDeuda = await intentar("egreso", "egreso_pago_plataforma");
+    expect(sinDeuda?.sqlstate).toBe("23514");
+    expect(sinDeuda?.mensaje).toContain("supera la deuda vigente");
+    expect(esRechazoDelCheck(sinDeuda)).toBe(false);
+
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
       const marca = randomUUID();
       await tx.walletMovimiento.createMany({
-        data: COMBINACIONES_LEGITIMAS.map(({ categoria, tipo }) => ({
+        data: LEGITIMAS_SIN_TOPE.map(({ categoria, tipo }) => ({
           ...filaDePrueba(tipo, categoria),
           origenId: marca,
         })),
@@ -563,11 +577,11 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
     });
 
     // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45: el CHECK de HOY
-    // (migracion 20261024130100).
-    expect(resultado).toHaveLength(28);
+    // (migracion 20261024130100), menos el pago a la plataforma, que va aparte (arriba).
+    expect(resultado).toHaveLength(27);
     expect(
       resultado.map((f) => `${f.tipo}/${f.categoria}`).sort(),
-    ).toEqual(COMBINACIONES_LEGITIMAS.map((c) => `${c.tipo}/${c.categoria}`).sort());
+    ).toEqual(LEGITIMAS_SIN_TOPE.map((c) => `${c.tipo}/${c.categoria}`).sort());
   });
 
   it("R46: FALLA CERRADO — el catalogo de Postgres lista el CHECK y nombra las 17, ni una mas", async () => {

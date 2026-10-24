@@ -41,18 +41,20 @@ const PREVIA = "20261024120000_cobro_plataforma_blindaje_orden";
 const M_CATEGORIA = "20261024130000_pago_plataforma_categoria";
 const M_CHECK = "20261024130100_pago_plataforma_check";
 const DE_SL45 = [M_CATEGORIA, M_CHECK];
+/** Review B1: el REVOKE y el tope en la base. Se mide aparte, al final: no entra en los downs de R27. */
+const M_BLINDAJE = "20261024140000_pago_plataforma_blindaje";
 
 const BASE = `sl45_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
 describe("SL-45 R27 — las dos migraciones en disco", () => {
   it("cada una trae su down.sql y van en orden detrás de la última de dev", () => {
     const carpetas = carpetasDeMigracion();
-    const posiciones = [PREVIA, ...DE_SL45].map((c) => carpetas.indexOf(c));
+    const posiciones = [PREVIA, ...DE_SL45, M_BLINDAJE].map((c) => carpetas.indexOf(c));
     expect(posiciones.every((p) => p >= 0), "falta alguna migracion").toBe(true);
     for (let i = 1; i < posiciones.length; i++) {
       expect(posiciones[i], `${carpetas[posiciones[i]]} fuera de orden`).toBeGreaterThan(posiciones[i - 1]);
     }
-    for (const c of DE_SL45) {
+    for (const c of [...DE_SL45, M_BLINDAJE]) {
       expect(existsSync(path.join(MIGRACIONES, c, "down.sql")), `${c} sin down.sql`).toBe(true);
     }
   });
@@ -204,5 +206,44 @@ describeSiHayBase("SL-45 R27 — egreso_pago_plataforma de ida y vuelta", () => 
     expect(diferencias(await fotoSinFilas(), con), "tras reaplicar").toEqual([]);
     await insertarPago("egreso");
     expect(await pagos()).toBe(1);
+  }, 120_000);
+
+  /* ------------------ review B1: 20261024140000_pago_plataforma_blindaje ------------------ */
+
+  async function privilegioDeApp(privilegio: "INSERT" | "UPDATE" | "DELETE"): Promise<boolean> {
+    const { rows } = await db.query(`SELECT has_table_privilege('servi_app', 'public.wallet_movimiento', $1) AS si`, [privilegio]);
+    return rows[0].si === true;
+  }
+
+  async function hayTriggerDelTope(): Promise<boolean> {
+    const { rows } = await db.query(
+      `SELECT count(*)::int AS n FROM pg_trigger WHERE tgrelid = 'public.wallet_movimiento'::regclass AND tgname = 'wallet_movimiento_tope_pago_plataforma'`,
+    );
+    return Number(rows[0].n) === 1;
+  }
+
+  it("blindaje: quita a servi_app UPDATE y DELETE (no INSERT) y pone el tope: sin cargos, un pago es 23514", async () => {
+    expect(await privilegioDeApp("UPDATE")).toBe(true);
+    await ejecutar(db, sqlDe(M_BLINDAJE, "migration.sql"), M_BLINDAJE);
+    expect(await privilegioDeApp("UPDATE")).toBe(false);
+    expect(await privilegioDeApp("DELETE")).toBe(false);
+    expect(await privilegioDeApp("INSERT")).toBe(true);
+    expect(await hayTriggerDelTope()).toBe(true);
+    const fallo = await insertarPago("egreso").then(
+      () => null,
+      (e: { code?: string }) => e.code,
+    );
+    expect(fallo).toBe("23514");
+    expect(await pagos()).toBe(1);
+  }, 120_000);
+
+  it("blindaje: su down.sql devuelve los privilegios, quita el tope y deja el esquema como con las dos de SL-45", async () => {
+    await ejecutar(db, sqlDe(M_BLINDAJE, "down.sql"), `${M_BLINDAJE}/down.sql`);
+    expect(await privilegioDeApp("UPDATE")).toBe(true);
+    expect(await privilegioDeApp("DELETE")).toBe(true);
+    expect(await hayTriggerDelTope()).toBe(false);
+    expect(diferencias(await fotoSinFilas(), con), "tras el down del blindaje").toEqual([]);
+    await insertarPago("egreso");
+    expect(await pagos()).toBe(2);
   }, 120_000);
 });

@@ -311,8 +311,10 @@ describe("R18 · egresos se sirve de verdad, incluida la indemnizacion", () => {
     // `progress/decision_183.md`) anadio `ingreso_ajuste` sin quitar ninguna de las ocho.
     const egresos = listarMetricas({ dominio: "financiera" }).find((m) => m.id === "egresos");
     // FICHA 459 (P13): DIEZ, con `egreso_pago_por_cuenta_tienda`.
-    expect(egresos?.definicion.categorias).toHaveLength(10);
+    // SL-45 (review B2, decision de Carlos 2026-10-24): ONCE, con `egreso_pago_plataforma`.
+    expect(egresos?.definicion.categorias).toHaveLength(11);
     expect(egresos?.definicion.categorias).toContain("egreso_pago_por_cuenta_tienda");
+    expect(egresos?.definicion.categorias).toContain("egreso_pago_plataforma");
     expect(egresos?.definicion.categorias).toContain("ingreso_ajuste");
     // R10/183 — y de la entrada NO cambia nada mas que la definicion y la descripcion.
     expect(egresos?.id).toBe("egresos");

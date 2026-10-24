@@ -638,7 +638,7 @@ const CATALOGO = [
     // `ingreso_ajuste` y cero `egreso_ajuste`, luego el cambio no mueve hoy ningun numero
     // (`egresos` sigue valiendo 22042.40 de bruto). Es la ventana barata.
     descripcion:
-      "Salidas de la caja principal (pagos a tienda y mensajero, sueldos, gastos fijos y variables, indemnizaciones y ajustes) segun el libro append-only de la wallet; DESDE LA FEATURE 173 incluye el dinero ENTREGADO A LAS TIENDAS, que antes ninguna via emitia, asi que su cifra crece a partir de esa fecha sin que su id ni su nombre cambien y no es comparable con la de antes; DESDE LA FEATURE 183 la ANULACION de un egreso se DESCUENTA de esta cifra: el reverso que la anulacion emite (ingreso_ajuste) entra en la definicion, de modo que el bruto cuenta los DOS movimientos (el pago y su reverso) y el neto es lo que de verdad salio de caja. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
+      "Salidas de la caja principal (pagos a tienda y mensajero, sueldos, gastos fijos y variables, indemnizaciones y ajustes) segun el libro append-only de la wallet; DESDE LA FEATURE 173 incluye el dinero ENTREGADO A LAS TIENDAS, que antes ninguna via emitia, asi que su cifra crece a partir de esa fecha sin que su id ni su nombre cambien y no es comparable con la de antes; DESDE LA FEATURE 183 la ANULACION de un egreso se DESCUENTA de esta cifra: el reverso que la anulacion emite (ingreso_ajuste) entra en la definicion, de modo que el bruto cuenta los DOS movimientos (el pago y su reverso) y el neto es lo que de verdad salio de caja; DESDE SL-45 incluye el PAGO A LA PLATAFORMA, y su anulacion lo compensa. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
     dominio: "financiera",
     clase: "live",
     unidad: "moneda",
@@ -669,6 +669,10 @@ const CATALOGO = [
         // FICHA 459 (P13): el pago por cuenta de una tienda es dinero que SALE de la caja, como el
         // pago a tienda. Su reverso NO entra (decision de la 457 para los reversos de terceros).
         "egreso_pago_por_cuenta_tienda",
+        // SL-45 (review B2, decision de Carlos 2026-10-24): el pago a la plataforma es efectivo que
+        // sale de la caja. Sin el, su anulacion (el `ingreso_ajuste` de arriba) contaba y el pago
+        // no: un pago anulado daba +M con el signo cambiado.
+        "egreso_pago_plataforma",
       ],
     },
   },

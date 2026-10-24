@@ -6,10 +6,12 @@ import { describe, it, expect } from "vitest";
 // SL-45 R17 — un pago a la plataforma registrado NO se edita ni se borra por ningún camino de la app.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// El pago es una fila de `wallet_movimiento` (categoría `egreso_pago_plataforma`). El libro es
-// append-only por CÓDIGO, no por la base: `servi_app` tiene UPDATE y DELETE sobre todas las tablas
-// (`20261022130000_organizacion_y_rol_app`) y la tabla nació sin `updated_at`/`deleted_at`
-// (`wallet-migration.test.ts`). Lo que lo garantiza es que el único escritor del libro es su
+// El pago es una fila de `wallet_movimiento` (categoría `egreso_pago_plataforma`). Desde la review B1
+// el libro es append-only también en la BASE: `20261024140000_pago_plataforma_blindaje` le quita a
+// `servi_app` el UPDATE y el DELETE (medido en `pago-plataforma-sl45-blindaje.test.ts`). Ese REVOKE
+// solo vale mientras la app no los necesite, y eso es lo que esta guardia sostiene: si un día un
+// módulo cambiara o borrara filas del libro, aquí se pone rojo antes de que falle en producción con
+// 42501. Lo que lo garantiza es que el único escritor del libro es su
 // repositorio (`premio-ranking-alcance.guardia.test.ts`) y que ese escritor solo inserta. Esta guardia
 // cierra lo segundo, que ninguna otra medía: ni un delegado de Prisma ni SQL crudo cambian o borran una
 // fila del libro en `lib/`, `app/` o `scripts/`, y ningún contrato del libro ni del pago ofrece hacerlo.

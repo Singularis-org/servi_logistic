@@ -38,8 +38,7 @@ Carlos Restrepo, 2026-10-24, literal:
 - Editar un pago: se anula y se registra otro (R17).
 - Repartir un pago entre órdenes o períodos: el pago baja la deuda acumulada, sin imputarse a cargos
   concretos.
-- Ver el pago o la deuda de cada empresa desde la pantalla del superadmin, salvo que Carlos diga que sí
-  en P2 (R28).
+- Registrar o anular el pago desde la pantalla del superadmin: allí solo se ve (R28, P2 cerrada).
 - Que «Así queda» muestre la deuda antes y después: muestra las cifras de la caja, como cualquier
   egreso.
 
@@ -57,6 +56,9 @@ Carlos Restrepo, 2026-10-24, literal:
 | D8 | El pago tiene **categoría propia del libro, `egreso_pago_plataforma`**, añadida con el patrón de categorías de siempre. Ninguna categoría existente sirve (`design.md > 2`). | `spec_author` | R7, R23, R24, R26, R27 |
 | D9 | El pago es un **gasto propio de la empresa pagado en efectivo**, como el sueldo: baja la caja y **baja la ganancia**. | `spec_author`, con la ganancia de caja de SL-39 (`design.md > 4`) | R8, R25 |
 | D10 | Migraciones nuevas, con timestamp posterior a todas las de `dev` (la última es `20261024120000`). | Leader, 2026-10-24 | R27 |
+| D11 | **P2 = sí**: el superadmin ve en «Empresas» el estado y el importe de la deuda vigente de cada empresa y, además, lo que cada una lleva **«Pagado»** a la plataforma (Σ pagos vigentes). Solo lectura. | Carlos, 2026-10-24 (cierra P2) | R28 |
+| D12 | La métrica `egresos` (tablero de `/analitica` y exportación financiera) **cuenta el pago a la plataforma**: un pago de M baja su neto M, y su anulación lo compensa. | Carlos, 2026-10-24 (review B2) | R25 |
+| D13 | El libro de la caja es **append-only también en la base**: `servi_app` no tiene UPDATE ni DELETE sobre `wallet_movimiento`, y un trigger pone en la base el tope de R9 y R10 a todo INSERT de un pago. | Review B1, 2026-10-24 | R9, R10, R17 |
 
 ## Glosario
 
@@ -171,9 +173,9 @@ Carlos Restrepo, 2026-10-24, literal:
 - **R27.** CUANDO se aplican los `down.sql` de esta ficha en orden inverso, la base DEBE quedar sin la
   categoría `egreso_pago_plataforma` y con la regla tipo-categoría del libro igual que antes. SI alguna
   fila usa esa categoría, ENTONCES el `down.sql` DEBE abortar sin borrar nada.
-- **R28.** DONDE la columna de la deuda en «Empresas» esté incluida (solo si P2 = sí), CUANDO el superadmin
-  abre `/plataforma/empresas`, cada fila DEBE mostrar el estado y el importe de la deuda vigente de esa
-  empresa, calculados en el servidor con la regla de R13.
+- **R28.** CUANDO el superadmin abre `/plataforma/empresas`, cada fila DEBE mostrar el estado y el importe
+  de la deuda vigente de esa empresa y lo que lleva «Pagado» a la plataforma, calculados en el servidor
+  con la regla de R13 (D11).
 
 ## Preguntas abiertas
 
@@ -185,9 +187,10 @@ Carlos Restrepo, 2026-10-24, literal:
   - El saldo a favor existe igual, pero solo por un camino: anular órdenes ya pagadas (R3).
   - Si Carlos prefiere admitir el pago de más, cambian solo R9 y R10 y sus tests. El resto del spec no
     cambia.
-- **P2 (ABIERTA, para Carlos): ¿ve el superadmin, en «Empresas», cuánto debe o tiene a favor cada
-  empresa?**
-  - **Recomendación: no en esta ficha.** Nadie lo ha pedido, y es la pantalla del panel de SL-26.
-  - Si es sí, es una columna «Plataforma» con «Debe 500,00», «Al día» o «A favor 500,00» (R28,
-    `design.md > 9`, tanda E de `tasks.md`).
-  - Esa columna toca dos archivos que SL-41 tiene en vuelo.
+- **P2 (CERRADA por Carlos, 2026-10-24, D11): ¿ve el superadmin, en «Empresas», cuánto debe o tiene a
+  favor cada empresa?** Sí: R28 entra.
+  - Es una columna «Plataforma» con «Debe 500,00», «Al día» o «A favor 500,00» (`design.md > 9`, tanda E
+    de `tasks.md`).
+  - Ampliada con lo que la empresa lleva «Pagado» a la plataforma (desviación aprobada, anotada en
+    `progress/impl_SL-45.md > Tanda E`).
+  - La recomendación del `spec_author` era no hacerlo en esta ficha; Carlos decidió que sí.
