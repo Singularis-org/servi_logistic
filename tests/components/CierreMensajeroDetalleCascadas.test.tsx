@@ -47,6 +47,7 @@ import {
   PAGO_TIENDA_LABEL,
   TOTAL_GENERAL_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+import { IMPUESTO_ROTULO } from "@/app/(app)/wallet/_components/wallet-labels";
 
 /**
  * 💰 FICHA 395 — EL DETALLE DEL CIERRE DE MENSAJERO DICE QUÉ PLATA ES PARA QUIÉN.
@@ -970,5 +971,83 @@ describe("395 — las cascadas salen igual se abra el detalle por donde se abra"
     cleanup();
     await abrirDetalle(CON_RECHAZO);
     expect(particion()).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SL-39 (menor 1 de la revisión) — el IVA facturado también resta en «Liquidación»
+// ---------------------------------------------------------------------------
+//
+// «Ingreso bruto» lleva IVA y «Debe» no. Sin un renglón entre los dos, la lectura no cuadraba: el
+// usuario tenía que ir a la cascada de arriba. El pago al mensajero sigue en su bloque de abajo,
+// como siempre, así que la cuenta que se lee es:
+//
+//   Ingreso bruto − IVA facturado − Pago al mensajero = Debe (cuando sale negativa)
+//
+// Los literales son el contrato (design §12.4): cierre A 3.616 − 416 − 1.500 = 1.700 (no hay
+// «Debe»: la ganancia es positiva) y cierre B 2.260 − 260 − 2.100 = −100.
+
+/** La región «Liquidación» del detalle abierto. */
+const liquidacion = () =>
+  within(screen.getByRole("dialog", { name: "Detalle del cierre" })).getByRole("region", {
+    name: "Liquidación",
+  });
+
+/** El pago al mensajero del bloque de abajo, tal y como se lee (sin operador: es una tarjeta). */
+function pagoMensajeroDelBloque(): string {
+  const dialog = screen.getByRole("dialog", { name: "Detalle del cierre" });
+  // La cascada «Lo que le queda a la empresa» también lo pinta, con su «-» delante. Sin operador lo
+  // pintan la tarjeta del bloque de abajo y la de la cabecera: las dos tienen que decir lo mismo.
+  const sinOperador = importesTras(dialog, PAGO_MENSAJERO_LABEL).filter(
+    (importe) => !/^[+-]/.test(importe),
+  );
+  expect(sinOperador.length, "la tarjeta del pago al mensajero no está").toBeGreaterThan(0);
+  expect(new Set(sinOperador).size, `el pago se lee distinto: ${sinOperador.join(" / ")}`).toBe(1);
+  return sinOperador[0];
+}
+
+describe("SL-39 — «Liquidación» pinta el IVA facturado entre el bruto y el resultado (menor 1)", () => {
+  it("cierre A: Ingreso bruto ₡3.616, IVA facturado −₡416, en ese orden y sin «Debe»", async () => {
+    await abrirDetalle(CIERRE_A);
+    const region = liquidacion();
+
+    expect(importeTras(region, "Ingreso bruto")).toBe("₡3.616");
+    expect(importeTras(region, "IVA facturado")).toBe("-₡416");
+    expect(within(region).queryByText("Debe")).toBeNull();
+
+    const texto = region.textContent ?? "";
+    expect(texto.indexOf("Ingreso bruto")).toBeLessThan(texto.indexOf("IVA facturado"));
+
+    // La lectura cuadra con el pago del bloque de abajo: 3.616 − 416 − 1.500 = 1.700.
+    const pago = pagoMensajeroDelBloque();
+    expect(pago).toBe("₡1.500");
+    laCuentaCierra(
+      [importeTras(region, "Ingreso bruto"), importeTras(region, "IVA facturado"), `-${pago}`],
+      "₡1.700",
+      "Liquidación del cierre A",
+    );
+  });
+
+  it("cierre B: Ingreso bruto ₡2.260 − IVA facturado ₡260 − pago ₡2.100 = Debe −₡100", async () => {
+    await abrirDetalle(CIERRE_B);
+    const region = liquidacion();
+
+    const bruto = importeTras(region, "Ingreso bruto");
+    const iva = importeTras(region, "IVA facturado");
+    const debe = importeTras(region, "Debe");
+    expect([bruto, iva, debe]).toEqual(["₡2.260", "-₡260", "-₡100"]);
+
+    // El IVA va ENTRE el bruto y el resultado.
+    const texto = region.textContent ?? "";
+    expect(texto.indexOf("Ingreso bruto")).toBeLessThan(texto.indexOf("IVA facturado"));
+    expect(texto.indexOf("IVA facturado")).toBeLessThan(texto.indexOf("Debe"));
+
+    const pago = pagoMensajeroDelBloque();
+    expect(pago).toBe("₡2.100");
+    laCuentaCierra([bruto, iva, `-${pago}`], debe, "Liquidación del cierre B");
+  });
+
+  it("el rótulo sale de `IMPUESTO_ROTULO`: es el mismo que pinta la línea de la cascada", () => {
+    expect(IVA_FACTURADO_LABEL).toBe(`${IMPUESTO_ROTULO} facturado`);
   });
 });

@@ -279,3 +279,51 @@ Solo texto, sin código, en `lib/utils/ingreso-empresa.ts`:
     - Sin deadlock de D18.
 
 Veredicto: SL-39 lista para revisión.
+
+## Seguimiento: el IVA en «Liquidación» (menores 1 y 6 de la revisión, 2026-10-23)
+
+Lo pidió Carlos tras la revisión. Solo capa de presentación.
+
+**Archivos**
+- `app/(app)/cierres-admin/_components/cierre-factura.tsx`: prop nueva `ivaFacturado?`. En
+  «Liquidación», entre «Ingreso bruto» y «Debe», el renglón «IVA facturado» con su operador
+  (`conOperador(iva, true)` → `-₡260`). Ausente = no se pinta. No se añade otro renglón: el pago al
+  mensajero sigue en su bloque de abajo, como antes.
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`: pasa `ivaFacturado={detalle.ivaFacturado}`
+  al comprobante. La vista del mensajero (`CierreDiaModule`) no pinta «Liquidación» y el detalle de
+  bodega no monta ese bloque, así que no cambian.
+- `lib/constants/impuesto-rotulo.ts` (nuevo): `IMPUESTO_ROTULO` se muda aquí, sin dependencias.
+  `wallet-labels.ts` lo importa y lo re-exporta: es la misma constante. Motivo: importarlo desde
+  `wallet-labels` arrastraba `lib/types/wallet.ts` (`Prisma` como valor) al bundle del panel y
+  ponía rojo `pagos-captura.guardia` (R19). Lo cazó el primer gate.
+- `app/(app)/cierres-admin/_components/cierre-labels.ts`: `IVA_FACTURADO_LABEL = \`${IMPUESTO_ROTULO} facturado\``
+  (menor 6). El texto pintado no cambia («IVA facturado»).
+- `tests/components/CierreMensajeroDetalleCascadas.test.tsx`: describe nuevo «Liquidación pinta el IVA
+  facturado…», con 3 tests.
+
+**Mapa**
+- R24/R27, «Liquidación» del cierre A: `Ingreso bruto` ₡3.616 y `IVA facturado` -₡416, en ese orden y
+  sin «Debe». Cuadra con el pago del bloque de abajo: 3.616 − 416 − 1.500 = 1.700.
+- R24/R27, «Liquidación» del cierre B: [₡2.260, -₡260, -₡100]. El IVA va entre el bruto y «Debe», y
+  2.260 − 260 − 2.100 = −100, leído del DOM.
+- Menor 6: `IVA_FACTURADO_LABEL` === `${IMPUESTO_ROTULO} facturado`. El literal «IVA facturado» ya lo
+  fija el `it.each` de R24.
+
+**Mutaciones** (las dos se restauraron después)
+1. Se quitó el renglón (`{true ? null : (`): **2 failed | 39 passed**. Caen A y B.
+2. `CierresAdminModule` dejó de pasar `ivaFacturado` al comprobante (solo esa línea; la de la cascada
+   queda): **2 failed | 39 passed**. Caen A y B.
+
+**Comandos**
+- `pnpm run typecheck`: TC_EXIT=0.
+- `pnpm run lint`: 0 errores y 232 avisos. LINT_EXIT=0.
+- vitest de `pagos-captura.guardia`, `CierreMensajeroDetalleCascadas` y `wallet-labels`: 3 archivos y
+  87 tests verdes.
+- Primer gate: INIT_EXIT=1. `pagos-captura.guardia` salió rojo, como se explica arriba.
+- Segundo gate (`TEST_RAPIDO_BASE=origin/dev ./init.sh`, dentro del lock), tras mudar la
+  constante: **INIT_EXIT=0**.
+  - Related: 837 archivos verdes y 62 saltados (899). Tests: 12676 verdes y 440 saltados.
+  - Guardias: 299 archivos verdes y 2 saltados (301). Tests: 4096 verdes y 20 saltados.
+
+Veredicto: «Liquidación» cuadra en A y en B (bruto − IVA − pago = resultado), con el rótulo compuesto
+desde `IMPUESTO_ROTULO`. Gate verde.

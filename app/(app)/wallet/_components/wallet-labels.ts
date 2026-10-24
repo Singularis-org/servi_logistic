@@ -50,9 +50,12 @@ export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
 // ── SL-39 (design §5) — el nombre del impuesto, en UN solo sitio ──
 //
 // SL-21 decidira como se llama el impuesto en cada pais. Hasta entonces, todo rotulo nuevo de esta
-// ficha compone la palabra desde aqui y no la escribe suelta en el JSX: cambiarla es cambiar esta
-// linea. Los rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
-export const IMPUESTO_ROTULO = "IVA";
+// ficha compone la palabra desde `IMPUESTO_ROTULO` y no la escribe suelta en el JSX. Vive en
+// `lib/constants/impuesto-rotulo` (sin dependencias) porque tambien lo lee el detalle de cierres, y
+// se importa aqui para componer los rotulos y se re-exporta para los consumidores de siempre. Los
+// rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+export { IMPUESTO_ROTULO };
 
 // ── Feature 173 (T G.1/T G.2, design §8) — las DOS cifras de la caja ──
 

@@ -1277,6 +1277,8 @@ export function CierresAdminModule({
                 detalle.desgloseIngresoBodegaRechazos
               }
               ganancia={detalle.ganancia}
+              // SL-39 (menor 1 de la revisión): el renglón del IVA en «Liquidación».
+              ivaFacturado={detalle.ivaFacturado}
               pagoTienda={detalle.pagoTienda}
               // FICHA 481: `satelite` no ve el fulfillment de la fila; todo lo demás, igual.
               audiencia={audiencia}
