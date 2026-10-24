@@ -242,7 +242,7 @@ Pendiente (lo lanza el leader): `gh workflow run gate.yml --ref feature/SL-44-e2
 
 **Veredicto T2.3:** workflow montado y parseado; falta la corrida real de CI.
 
-### T2.3 — Primera corrida en CI (run 40112266371, `workflow_dispatch` sobre `bc…` de T2.3)
+### T2.3 — Primera corrida en CI (run 40112266371, `workflow_dispatch` sobre `cc461a7` de T2.3)
 
 - `gate-completo` y los 3 shards de vitest: **success**.
 - `e2e (aislamiento)`: `15 passed, 20 failed, 6 skipped, 10 did not run` (3,4 min de Playwright). Los
@@ -253,3 +253,75 @@ Pendiente (lo lanza el leader): `gh workflow run gate.yml --ref feature/SL-44-e2
   paso de build lleva `NODE_OPTIONS=--max-old-space-size=8192`.
 - `e2e` (agregador): **failure** con `los grupos del E2E (e2e-grupo) salieron 'failure': mira el job
   de cada grupo y su artefacto e2e-<grupo>` → R22 comprobado con un grupo rojo real.
+
+## T3.2 (parcial: reparto, crons, cierre mínimo) + Tanda 5 — agente SL-44-T5
+
+Base propia `sl44_rep` en `sl44-pg`, servidor en 3044, log del servidor fuera del repo. El MCP del
+grafo no se usó (Grep/Read).
+
+**Archivos:**
+- nuevos: `e2e/_escenarios/reparto.ts`, `e2e/_escenarios/crons.ts`, `e2e/_escenarios/cierres.ts`
+  (mínimo: solicitar y aprobar; el grupo `dinero` lo amplía);
+- reescritos: `e2e/{asignacion-satelite,recepcion-satelite,mis-asignaciones,devolucion-origen,historial-orden,reintentos-escalado,reprogramacion-liberacion}.spec.ts`;
+- `tests/fabricas/e2e.ts`: solo se AÑADE `extra.fulfillment` a `crearUsuarioE2E` (tienda con bodega
+  propia: sus órdenes nacen `en_preparacion`);
+- `specs/SL-44-e2e-verde-ci/design.md > D4`: la fila de `crons.ts`, con lo medido (abajo).
+
+**API de los escenarios** (detalle en la cabecera de cada archivo):
+- `reparto.ts`: `crearEscenarioReparto(etiqueta, {tarifa?, tarifaMensajero?})` (empresa, zona central y
+  satélite por `ZonaService` con SINPE confirmado por `SinpeBodegaService`, tienda con `fulfillment`,
+  tarifa por `TarifaService`, adminSatelite), `crearMensajero(r, zona)`, `crearOrden(r, {zona,
+  montoCobrar?, …})` (`BulkOrdenService.cargarMasiva`), `llevarA(r, orden, destino, {mensajero})`
+  (generarGuia → rutear → recibir → asignar/asignarDesdeBodega → recoger, desde el estado ACTUAL),
+  `gestionar(r, orden, m, {resultado…})` (escoger + gestionar, evidencia al doble de Storage),
+  `corregirFechaReprogramacion`, `estadoDe`, `gestionesDe`, `paginaDe(browser, u, ctx?)`, `hoyCR`/`mananaCR`.
+- `crons.ts`: `llamarCron(nombre, {secreto?})`, `correrCron(nombre)` (exige 200),
+  `drenarGeocodificacion(ordenIds)` (`procesar-jobs` hasta que la geocodificación falla POR
+  CONFIGURACIÓN: sin eso ninguna asignación acepta la orden).
+- `cierres.ts`: `solicitarCierre(r, m)`, `aprobarCierre(r, cierreId, {quien?})` (confirmación física =
+  las gestiones retornables del cierre con su guía).
+
+**Desvíos de D4 medidos:** la orden no la crea `OrdenService` (ya no tiene `crear`, ver la cabecera de
+`lib/actions/ordenes.ts`) sino la carga masiva; `RecepcionBodegaCentralService` no hace falta en estos
+flujos (la tienda con bodega propia entra a la central por `generarGuia`). Desde la ficha 454 la
+gestión NO mueve la orden: la mueve la APROBACIÓN del cierre, por eso `reparto` necesita `cierres.ts`.
+La UI de 276 cambió `reintentos-escalado`: con 2 intentos el panel ya no ofrece «Reprogramar» ni
+«Devolver» (el escalado de la tercera devolución de la 47 no existe); el spec afirma esa puerta.
+
+**Excepciones de R8 (D4):** en el grupo `reparto` no queda ninguna. La de la fecha de reprogramación
+en el pasado se QUITA: la produce `CorreccionFechaReprogramacionService` (fecha = hoy) con su liberador
+por defecto (no-op; la action inyecta el real, que la soltaría en el acto) y la libera el cron real. La
+de la fecha de una gestión en el pasado (`corte-diario`) queda para `dinero`. Siguen las de T3.1
+(contraseña y dispositivo confiado).
+
+**Salida real:**
+- por spec, sobre `sl44_rep`: los 7 en verde con `--project=reparto`.
+- Final, `sl44_rep` recién recreada (DROP/CREATE + `migrate deploy` + `db:seed`, `DB_EXIT=0`) y
+  `pnpm exec playwright test --project=reparto --reporter=list` dos veces seguidas:
+  corrida 1 `15 passed (45.3s)`, corrida 2 `15 passed (47.2s)`; 0 failed, 0 skipped, 0 flaky.
+
+**Mutaciones** (las de código, en UNA toma del lock: mutar → `next build` → corrida → restaurar desde
+copia con `cmp OK` y `git diff` vacío → `next build` limpio, `BUILD_LIMPIO=0`):
+- `recepcion-satelite`: `recibirPorQr` responde `ok` sin llamar al servicio → rojo en
+  `porRecibir…toHaveCount(0)` (Received 2).
+- `asignacion-satelite`: `asignarDesdeSatelite` responde `ok` sin asignar → rojo en «Mensajero recogiendo
+  en la bodega» de la fila.
+- `mis-asignaciones`: el borde de `gestionar` intercambia efectivo↔transferencia → rojo (a) en los pagos
+  guardados y (d) en «Totales del día»: `Received "Efectivo₡3.000"`. (Una primera versión, todo a
+  efectivo, chocaba con el único `(gestion, metodo)` y no llegaba a los totales: se descartó.)
+- `devolucion-origen`: `devolverATienda` responde `ok` sin transicionar → rojo en «Devolviendo a tienda».
+- `historial-orden`: `obtenerHistorialOrden` borra el actor de las transiciones → rojo en `Por <mensajero>`.
+- `reprogramacion-liberacion`: la ruta `liberar-reprogramadas` no llama al servicio → rojo en
+  `liberadas >= 1` (Received 0).
+- `reintentos-escalado`: sin rebuild, `REINTENTOS_MIN_INTENTOS=4` en el entorno (umbral 3→4) → rojo en
+  la nota del tope del panel.
+
+**Comprobaciones:** `pnpm exec eslint` (10 archivos) sin problemas; `pnpm run typecheck` exit 0;
+`tests/baseline-rojos.json` sin cambios. `pnpm run test:guardias` → `2 failed | 302 passed (304)`:
+`dependencias-declaradas-presentes` (baseline) y `sinpe-en-toda-superficie`, que señala SOLO
+`e2e/_aislamiento-datos.ts` (`sinpeNumero: "…"` literal, del agente de `aislamiento`; el de
+`reparto.ts` se corrigió con una constante).
+
+**Defectos de producción:** ninguno encontrado.
+
+**Veredicto:** grupo `reparto` 15/15 dos veces sobre base nueva, cada spec con su mutación en rojo.

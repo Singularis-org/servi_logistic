@@ -1,96 +1,61 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import {
+  crearEscenarioReparto,
+  crearOrden,
+  estadoDe,
+  llevarA,
+  paginaDe,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Recepción satélite" — adminSatelite QR reception flow
- * (Feature 33, T15 / R22, F1.4 decisión (g)).
+ * E2E — Recepción en la bodega satélite (feature 33; SL-44 T5.1, R18).
  *
- * Covers the critical happy path of the satellite-warehouse reception:
- *  Happy path (keyboard-wedge): adminSatelite logs in → /recepcion-satelite →
- *  types an `orden.id` into the scan input (simulating the physical barcode/QR
- *  gun, which "types" the decoded text + Enter) → the order transitions
- *  `en_ruta_bodega_satelite` → `en_bodega_satelite` and moves from the "Por
- *  recibir" region into the "Recibidas" region.
+ * El `adminSatelite` ve en «Por recibir» la orden que la central ruteó a su bodega
+ * (`en_ruta_bodega_satelite`), abre «Recibir paquete», teclea el número de guía (el mismo camino que
+ * la pistola lectora, que «teclea» el código) y la orden pasa a `en_bodega_satelite`: sale de «Por
+ * recibir» y aparece en «Órdenes de la bodega» con el estado «En bodega satélite».
  *
- * MANUAL VERIFICATION (not automatable here):
- *  - The physical keyboard-wedge scanner gun (hardware "types" into the input):
- *    verified manually; this E2E simulates that input as plain typed text.
- *  - The device CAMERA path (getUserMedia + html5-qrcode): requires a real camera
- *    and a rendered QR; verified manually. CI has no camera/media, so it is out of
- *    scope for this automated spec.
+ * DATOS (R7, R8): una empresa nueva por corrida (`crearEscenarioReparto`) y una orden llevada hasta
+ * `en_ruta_bodega_satelite` por los servicios reales (carga masiva → generar guía → rutear).
  *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres and the `en_bodega_satelite` catalog
- *   value seeded (feature 33 migration applied)
- * - A seeded `adminSatelite` user WITH a `zonaId`, and at least one order in
- *   `en_ruta_bodega_satelite` in that same zone (so "Por recibir" is non-empty)
- * - The `orden.id` of that seeded order, injected as ORDEN_ID below
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but
- * NOT EXECUTED. Execution is deferred until the test environment is fully set up
- * (same deferral as e2e/auth.spec.ts and e2e/mis-asignaciones.spec.ts). They do
- * NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed an adminSatelite (with zona) + an order in en_ruta_bodega_satelite of
- *    that zona; set ORDEN_ID to that order's id
- * 4. Run tests: pnpm run test:e2e
+ * FUERA DE ESTE SPEC: la cámara (html5-qrcode necesita una cámara real) se verifica a mano.
  */
 
-// Seeded adminSatelite credentials (would come from test config / a user factory).
-const ADMIN_SATELITE_EMAIL = "admin-satelite@example.com";
-const ADMIN_SATELITE_PASSWORD = "correct-password";
+let r: RepartoE2E;
+let orden: OrdenE2E;
 
-// Id (QR content) of a seeded order in `en_ruta_bodega_satelite` of the actor's zone.
-const ORDEN_ID = "seed-orden-en-ruta-bodega-satelite";
-
-/** Logs in as the seeded adminSatelite and lands on the app. */
-async function loginAdminSatelite(page: Page) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', ADMIN_SATELITE_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_SATELITE_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
-}
-
-test.describe("Recepción satélite — recepción por QR (keyboard-wedge)", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAdminSatelite(page);
-    // Feature 279 (T6.1, 2026-08-24): el portal del `adminSatelite` se partió en dos
-    // rutas y `/recepcion-satelite` sólo redirige. Se apunta a la pantalla que este
-    // caso describe. **No se afirma que este spec pase**: los e2e de este repo siguen
-    // sin ejecutarse (ver la cabecera del archivo), así que esto es una corrección de
-    // ruta por lectura, no una verificación.
-    await page.goto("/recepcion-satelite/por-recibir");
+test.describe.serial("Recepción satélite — recibir por número de guía", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("recepcion-satelite");
+    orden = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_ruta_bodega_satelite");
   });
 
-  test("escanear (teclear orden.id + Enter) → la orden pasa a 'Recibidas'", async ({
-    page,
-  }) => {
-    // Both sections render, differentiated by their accessible region name.
+  test("la orden en camino está en «Por recibir» y al teclear su guía pasa a la bodega", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await page.goto("/recepcion-satelite/por-recibir");
+
     const porRecibir = page.getByRole("region", { name: "Por recibir" });
-    const recibidas = page.getByRole("region", { name: "Recibidas" });
-    await expect(porRecibir).toBeVisible();
-    await expect(recibidas).toBeVisible();
+    await expect(porRecibir.getByText(orden.numRemision).first()).toBeVisible();
+    await expect(porRecibir.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
 
-    // Simulate the physical scanner: focus the input, type the orden.id, press Enter.
-    const input = page.getByRole("textbox", { name: "Código de la orden" });
-    await input.click();
-    await input.fill(ORDEN_ID);
-    await input.press("Enter");
+    await page.getByRole("button", { name: "Recibir paquete" }).click();
+    const tarjeta = page.getByRole("region", { name: "Recibir por número de guía o escaneo" });
+    await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
+    await tarjeta.getByRole("button", { name: "Recibir", exact: true }).click();
 
-    // Reception feedback (per-item toast) confirms success.
-    await expect(page.getByText(/recibida/i)).toBeVisible();
+    await expect(page.getByText(`Guía ${orden.numGuia} recibida.`, { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
 
-    // After router.refresh(), the order shows up under "Recibidas" as `en_bodega_satelite`.
-    //
-    // FICHA 349: the state cell is now the SAME `EstatusBadge` as `/ordenes`, so it reads
-    // "En bodega satélite" WITHOUT the " de <zona>" suffix this screen used to compose. The
-    // zone is not lost: it has its own column. **Not asserted to pass**: the e2e of this repo
-    // still do not run (see the file header); this is a correction by reading, not a check.
-    await expect(recibidas.getByText("En bodega satélite")).toBeVisible();
+    // Tras el refresco, la orden ya no está por recibir…
+    await expect(porRecibir.getByText(orden.numRemision)).toHaveCount(0);
+    expect(await estadoDe(orden)).toBe("en_bodega_satelite");
+
+    // …y está en la bodega, con su estado legible.
+    await page.goto("/recepcion-satelite/en-bodega");
+    const fila = page.getByRole("table", { name: "Órdenes de la bodega" }).getByRole("row", { name: new RegExp(orden.numRemision) });
+    await expect(fila.getByText("En bodega satélite")).toBeVisible();
   });
 });

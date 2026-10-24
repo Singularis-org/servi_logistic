@@ -211,7 +211,7 @@ export async function sesionDe(browser: Browser, u: UsuarioE2E): Promise<Cookie[
   |---|---|---|
   | `_dos-empresas-fixture.ts > sembrarDatos` (humo) | API key, webhook, plantilla y movimiento manual con marcadores | Son marcadores de texto para buscar fugas; la pantalla que los crea no es lo que prueba el humo. T3 mira si `ApiKeyService`/`PlantillaService` sirven sin coste y, si sirven, se usan. |
   | `_wallet-iva-sl39-siembra.ts` (SL-39) | Filas de caja del ejemplo de design §1 de SL-39 | Las cifras del contrato son las de ese ejemplo. Producirlas aprobando cierres reales cambiaría el número que el spec afirma. |
-  | `crons.ts` | La fecha de una gestión o reprogramación en el pasado | Sin reloj falso, un cron no ve nada vencido el mismo día. Solo la fecha; el resto, por servicio. |
+  | `crons.ts` | La fecha de una gestión en el pasado (para `corte-diario`) | Sin reloj falso, un cron no ve nada vencido el mismo día. Solo la fecha; el resto, por servicio. **T3.2 (2026-10-24):** la mitad de la REPROGRAMACIÓN se quita: la fecha «ya llegada» la produce `CorreccionFechaReprogramacionService` (fecha = hoy, con el liberador por defecto del servicio) y la libera el cron real. La de la gestión la confirma o la quita el grupo `dinero`. |
 
 - **Re-ejecutable (R27):** cada corrida crea empresa y usuarios nuevos con sufijo aleatorio, y nada
   se busca por nombre fijo. `superadmin-empresas` mantiene su `afterAll`, que borra lo que creó, para

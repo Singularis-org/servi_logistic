@@ -1,133 +1,80 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { drenarGeocodificacion } from "./_escenarios/crons";
+import {
+  baseReparto,
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  estadoDe,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Asignación satélite" — adminSatelite assigns received orders to
- * couriers of their own zone (Feature 34, T11 / R18, F1.4 decisión (f)).
+ * E2E — Asignación desde la bodega satélite (feature 34; SL-44 T5.1, R18).
  *
- * Covers the critical happy path of the satellite-warehouse assignment:
- *  Happy path: adminSatelite logs in → /recepcion-satelite → in the "Recibidas"
- *  region selects one or more orders (state `en_bodega_satelite`, of their zone)
- *  via the per-row checkbox → clicks "Asignar" → picks a courier of their zone in
- *  the modal Select → confirms → the batch transitions
- *  `en_bodega_satelite` → `por_recoger` and a success toast is shown.
+ * El `adminSatelite` marca en «Órdenes de la bodega» una orden recibida (`en_bodega_satelite`) de su
+ * zona, pulsa «Asignar», elige en el modal a un mensajero de su zona y confirma. El modal pasa a la
+ * fase «resultado» (resumen + manifiesto del lote); al cerrarla, la orden sale de las asignables:
+ * queda `mensajero_recogiendo_en_bodega` con ese mensajero, y el mensajero la ve en «Recoger en
+ * bodega». Este spec se para en esa frontera; recogerla es de `mis-asignaciones`.
  *
- * MANUAL VERIFICATION (not automatable here):
- *  - The downstream consumption by the courier module (feature 36, "Recoger" →
- *    `en_reparto`) is verified by e2e/mis-asignaciones.spec.ts and manually; this
- *    spec stops at `por_recoger` (the boundary of feature 34, R17).
- *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres and the `en_bodega_satelite` and
- *   `por_recoger` catalog values seeded (features 33/17 migrations applied)
- * - A seeded `adminSatelite` user WITH a `zonaId`, at least one order already in
- *   `en_bodega_satelite` in that same zone (so "Recibidas" is non-empty), and at
- *   least one `mensajero` user in that same zone (so the modal Select is non-empty)
- * - The `orden.numRemision` of that seeded order, injected as ORDEN_REMISION below,
- *   and the courier display name, injected as MENSAJERO_NOMBRE below
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but
- * NOT EXECUTED. Execution is deferred until the test environment is fully set up
- * (same deferral as e2e/auth.spec.ts, e2e/mis-asignaciones.spec.ts and
- * e2e/recepcion-satelite.spec.ts). They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed an adminSatelite (with zona), an order in en_bodega_satelite of that
- *    zona and a mensajero of that zona; set ORDEN_REMISION and MENSAJERO_NOMBRE
- * 4. Run tests: pnpm run test:e2e
+ * DATOS (R7, R8): empresa nueva (`crearEscenarioReparto`), un mensajero de la satélite y una orden
+ * llevada hasta `en_bodega_satelite` por los servicios reales. La geocodificación de la orden se
+ * drena con el cron real `procesar-jobs` (sin credencial de mapas falla por configuración, y con
+ * ese fallo el gate deja asignar sin ubicación, feature 400).
  */
 
-// Seeded adminSatelite credentials (would come from test config / a user factory).
-const ADMIN_SATELITE_EMAIL = "admin-satelite@example.com";
-const ADMIN_SATELITE_PASSWORD = "correct-password";
+let r: RepartoE2E;
+let mensajero: MensajeroE2E;
+let orden: OrdenE2E;
 
-// Remisión (visible label) of a seeded order in `en_bodega_satelite` of the actor's zone.
-const ORDEN_REMISION = "REM-SEED-BODEGA-SATELITE";
-// Display name of a seeded `mensajero` of the actor's zone.
-const MENSAJERO_NOMBRE = "Mensajero Seed Zona";
-
-/** Logs in as the seeded adminSatelite and lands on the app. */
-async function loginAdminSatelite(page: Page) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', ADMIN_SATELITE_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_SATELITE_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
-}
-
-test.describe("Asignación satélite — asignar mensajero de la zona", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAdminSatelite(page);
-    // Feature 279 (T6.1, 2026-08-24): el portal del `adminSatelite` se partió en dos
-    // rutas y `/recepcion-satelite` sólo redirige. Se apunta a la pantalla que este
-    // caso describe. **No se afirma que este spec pase**: los e2e de este repo siguen
-    // sin ejecutarse (ver la cabecera del archivo), así que esto es una corrección de
-    // ruta por lectura, no una verificación.
-    await page.goto("/recepcion-satelite/en-bodega");
+test.describe.serial("Asignación satélite — asignar un mensajero de la zona", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("asignacion-satelite");
+    mensajero = await crearMensajero(r, "satelite");
+    orden = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_bodega_satelite");
+    await drenarGeocodificacion([orden.id]);
   });
 
-  test("seleccionar orden recibida → Asignar mensajero → mensajero_recogiendo_en_bodega", async ({
-    page,
-  }) => {
-    // The "Recibidas" region lists orders in `en_bodega_satelite` of the zone.
-    const recibidas = page.getByRole("region", { name: "Recibidas" });
-    await expect(recibidas).toBeVisible();
+  test("marcar la orden → Asignar → elegir el mensajero → queda asignada a él", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await page.goto("/recepcion-satelite/en-bodega");
 
-    // The batch "Asignar" action starts disabled (no selection yet).
-    const asignar = recibidas.getByRole("button", { name: "Asignar" });
-    await expect(asignar).toBeDisabled();
+    const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
+    const marcar = bodega.getByRole("checkbox", { name: `Seleccionar ${orden.numRemision}` });
+    await expect(marcar).toBeVisible();
+    await marcar.check();
+    await bodega.getByRole("button", { name: "Asignar", exact: true }).click();
 
-    // Select the seeded received order via its per-row checkbox.
-    const checkbox = recibidas.getByRole("checkbox", {
-      name: `Seleccionar ${ORDEN_REMISION}`,
-    });
-    await checkbox.check();
-    await expect(asignar).toBeEnabled();
-
-    // Open the assignment modal and pick a courier of the zone.
-    await asignar.click();
-    const select = page.getByRole("combobox", { name: "Mensajero para el lote" });
-    await select.click();
-    await page
-      .getByRole("option", { name: MENSAJERO_NOMBRE })
-      .click();
-
-    // Confirm the assignment.
     const modal = page.getByRole("dialog", { name: "Asignar mensajero" });
-    await page.getByRole("button", { name: "Asignar" }).last().click();
-
-    // Success feedback (toast) confirms the batch transition. Feature 148 (§9.7):
-    // the SAME summary string now also renders inside the modal's "resultado"
-    // phase, so the toast assertion is scoped to the toast viewport region
-    // ("Notificaciones") to keep it unambiguous under Playwright strict mode.
-    // Without the scope this resolves to 2 elements and fails.
-    const notificaciones = page.getByRole("region", { name: "Notificaciones" });
-    await expect(notificaciones.getByText(/Mensajero asignado a/i)).toBeVisible();
-
-    // Feature 148 (§9.7): the modal no longer closes on confirm. It switches to the
-    // "resultado" phase, which repeats the summary and offers the batch manifest.
     await expect(modal).toBeVisible();
-    await expect(modal.getByText(/Mensajero asignado a/i)).toBeVisible();
-    await expect(
-      modal.getByRole("button", { name: /Descargar manifiesto/i }),
-    ).toBeVisible();
+    await expect(modal.getByText(orden.numRemision)).toBeVisible();
+    await modal.getByRole("combobox", { name: "Mensajero para el lote" }).click();
+    await page.getByRole("option", { name: mensajero.nombre, exact: true }).click();
+    await modal.getByRole("button", { name: "Asignar", exact: true }).click();
 
-    // The parent's refresh (router.refresh) is deferred to the CLOSING of that
-    // phase — that is the real user journey now. Closing it here keeps the next
-    // assertion measuring the state transition and not the modal's aria-hidden
-    // backdrop.
-    await modal.getByRole("button", { name: "Cerrar" }).click();
+    // Fase «resultado»: el resumen de lo cometido y el manifiesto del lote.
+    await expect(modal.getByText("Mensajero asignado a 1 orden(es).").first()).toBeVisible();
+    await expect(modal.getByRole("button", { name: /Descargar manifiesto/i })).toBeVisible();
+    await modal.getByRole("button", { name: "Cerrar" }).first().click();
     await expect(modal).toBeHidden();
 
-    // After router.refresh(), the order left "Recibidas" (now por_recoger),
-    // so it is no longer selectable there.
-    await expect(
-      recibidas.getByRole("checkbox", {
-        name: `Seleccionar ${ORDEN_REMISION}`,
-      }),
-    ).toHaveCount(0);
+    // Al cerrar se refresca: la fila sigue en la bodega (se puede deshacer) pero con el estado nuevo.
+    const fila = bodega.getByRole("row", { name: new RegExp(orden.numRemision) });
+    await expect(fila.getByText("Mensajero recogiendo en la bodega")).toBeVisible();
+    await expect(fila.getByText("En bodega satélite")).toHaveCount(0);
+    expect(await estadoDe(orden)).toBe("mensajero_recogiendo_en_bodega");
+    const enBase = await baseReparto().orden.findUniqueOrThrow({ where: { id: orden.id }, select: { mensajeroAsignadoId: true } });
+    expect(enBase.mensajeroAsignadoId).toBe(mensajero.id);
+
+    // El mensajero la tiene para recoger en la bodega.
+    const suya = await paginaDe(browser, mensajero);
+    await suya.goto("/mis-asignaciones/recoger");
+    await expect(suya.getByRole("region", { name: "Recoger en bodega" }).getByText(orden.numRemision).first()).toBeVisible();
   });
 });

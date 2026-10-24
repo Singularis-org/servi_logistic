@@ -1,283 +1,197 @@
-import { test, expect, type Page } from "@playwright/test";
+import path from "node:path";
+
+import { expect, test, type Browser, type Page } from "@playwright/test";
+
+import {
+  baseReparto,
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  estadoDe,
+  llevarA,
+  mananaCR,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Mis asignaciones" — mensajero collection/management flow
- * (T21 — closes the critical recaudo-flow checkpoint of
- * specs/36-mensajero-mis-asignaciones/tasks.md)
+ * E2E — «Mis asignaciones», el portal del mensajero (features 36, 96, 98, 113, 213; SL-44 T5.2, R18).
  *
- * These tests cover the critical happy path of the recaudo (cash-on-delivery)
- * flow plus the rejection and reschedule branches:
- * (a) Happy path (delivery): mensajero logs in → /mis-asignaciones → "Por
- *     recoger" → "Recoger" (por_recoger → en_reparto) → the order shows
- *     up under "En reparto / por gestionar" → "Gestionar" (sets the 1-to-1 lock)
- *     → in the "Gestionar orden" modal, result "Entregada" + monto == montoCobrar
- *     + método de pago + evidence photo → "Guardar gestión" → order becomes
- *     `entregada`.
- * (b) Rejection: result "Rechazo" + evidence photo + motivo → "Guardar gestión"
- *     → order becomes `rechazada`.
- * (c) Reschedule: result "Reprogramar" + future date + motivo → "Guardar
- *     gestión" → order becomes `reprogramada`.
- * (d) Feature 213 (R35) — MIXED delivery: an 8.000 collection split into 5.000
- *     cash + 3.000 transfer, followed by a check that the day's closing screen
- *     shows `total_efectivo` = 5.000. This is the full capture → totals path,
- *     which is what actually protects the `E` of the `min(P, E)` used to pay the
- *     mensajero (feature 44): whatever the mensajero captures here IS that `E`.
+ * Reescrito contra la UI ACTUAL:
+ *  - RECOGER es por número de guía (o escáner) desde «Recoger paquete» en `/mis-asignaciones/recoger`
+ *    (feature 96; ya no hay «Recoger» por fila ni modal de confirmación);
+ *  - GESTIONAR es un panel EN LÍNEA en `/mis-asignaciones/reparto` (feature 113): «Gestionar esta
+ *    orden» abre la verificación de la guía (feature 98), y el resultado se elige con BOTONES
+ *    («Entregar», «Rechazar», «Reprogramar»), no con un select;
+ *  - el cobro es un desglose por líneas (feature 213): «Método de pago línea N» + «Monto línea N».
  *
- * FEATURE 213 SCOPE ([Q5], closed at the approval gate on 2026-08-13):
- * this spec was ALREADY out of date before feature 213. Only the RECAUDO part
- * was updated here — the single "Método de pago" select became one accessible
- * "Método de pago línea N" per payment line. Everything else was left ALONE on
- * purpose, as separate debt:
- *   · `recogerPrimeraOrden` still assumes the per-row "Recoger" button and the
- *     "Recoger órdenes" confirmation modal, both removed by feature 96 (pick-up
- *     is now the guide input or the scanner);
- *   · `abrirGestionPrimeraOrden` still waits for a `dialog` named "Gestionar
- *     orden" that the ux redesign (feature 113) replaced with an INLINE panel,
- *     so every `expect(modal).toBeHidden()` is obsolete too;
- *   · `elegirEnSelect(page, "Resultado de la gestión", …)` is obsolete as well:
- *     the result is now chosen with buttons, not with a select.
- * Fixing those is a separate ticket, not this one.
+ * Casos:
+ *  (a) recoger → Entregar, un método (el monto viene puesto) + foto → gestión `entregado`;
+ *  (b) recoger → Rechazar + foto + motivo → gestión `devolucion_a_origen_por_rechazo`;
+ *  (c) recoger → Reprogramar (mañana) + motivo → gestión `reprogramado`;
+ *  (d) recoger → Entregar MIXTO, 8.000 = 5.000 efectivo + 3.000 transferencia → en `/cierre-dia`
+ *      «Totales del día» dice Efectivo 5.000 y Transferencia 3.000 (feature 213/R35: lo capturado
+ *      aquí ES la `E` del `min(P, E)` con que se paga al mensajero).
  *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres
- * - A seeded `mensajero` user with several orders in `por_recoger`
- *   assigned to them (so "Por recoger" is non-empty)
- * - For (d): the FIRST of those orders must have `montoCobrar` = 8000 and the
- *   day's `cierre_dia` must start empty, so that `total_efectivo` = 5.000 is
- *   attributable to this delivery and to nothing else
- * - The private Supabase Storage bucket `gestion-evidencias` created (evidence
- *   uploads target it)
- * - An evidence image fixture at `e2e/fixtures/evidencia.jpg`
+ * Desde la ficha 454 la gestión NO cambia el estado de la orden (lo cambia la aprobación del
+ * cierre): la orden sigue `en_reparto` con su gestión pendiente, y eso también se comprueba.
  *
- * If the environment lacks .env or a real database/bucket, these tests are
- * WRITTEN but NOT EXECUTED. Execution is deferred until the test environment is
- * fully set up (same deferral as the E2E pattern of specs/login/tasks.md and
- * e2e/auth.spec.ts).
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Create the `gestion-evidencias` private bucket
- * 4. Seed a mensajero user with orders in `por_recoger`
- * 5. Add the fixture image at e2e/fixtures/evidencia.jpg
- * 6. Run tests: pnpm run test:e2e
+ * DATOS (R7, R8): empresa nueva; cada caso con SU mensajero y SU orden, llevada hasta
+ * `mensajero_recogiendo_en_bodega` por los servicios reales. La foto es `e2e/fixtures/evidencia.jpg`
+ * y la recibe el doble de Storage (D2). Los importes son los de la orden que crea cada caso.
  */
 
-// Seeded mensajero credentials (would come from test config / a user factory).
-const MENSAJERO_EMAIL = "mensajero@example.com";
-const MENSAJERO_PASSWORD = "correct-password";
+const EVIDENCIA = path.join(__dirname, "fixtures", "evidencia.jpg");
+// El panel pide la ubicación al guardar (feature 193): el mensajero la concede.
+const CONTEXTO_MENSAJERO = { geolocation: { latitude: 9.9281, longitude: -84.0907 }, permissions: ["geolocation"] };
+// El símbolo y los separadores salen de configuración (`lib/config/moneda.ts`): separador tolerante.
+const monto = (miles: number): RegExp => new RegExp(`${miles}[.,\\s\\u00a0\\u202f]?000(?!\\d)`);
 
-// Evidence image fixture uploaded to the private `gestion-evidencias` bucket.
-const EVIDENCIA_FIXTURE = "e2e/fixtures/evidencia.jpg";
+let r: RepartoE2E;
 
-/** Logs in as the seeded mensajero and lands on the app. */
-async function loginMensajero(page: Page) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', MENSAJERO_EMAIL);
-  await page.fill('input[type="password"]', MENSAJERO_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
+async function prepararCaso(montoCobrar: number): Promise<{ m: MensajeroE2E; orden: OrdenE2E }> {
+  const m = await crearMensajero(r, "satelite");
+  const orden = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar }), "mensajero_recogiendo_en_bodega", {
+    mensajero: m,
+  });
+  return { m, orden };
 }
 
-/**
- * Picks up the first order under "Por recoger" (por_recoger → en_reparto).
- *
- * 2026-07-31: "Por recoger" moved to its own route, so this helper navigates there and the
- * caller is expected to go back to /mis-asignaciones/reparto afterwards.
- *
- * PRE-EXISTING DRIFT (not introduced by the route split): the interactions below still
- * assume the per-row "Recoger" button and the "Recoger órdenes" confirmation modal, both
- * removed by feature 96 (pick-up is now the guide input or the scanner), and
- * `abrirGestionPrimeraOrden` still assumes the "Gestionar orden" dialog that feature 113
- * replaced with an inline panel. This spec needs a seeded DB and is not part of the unit
- * gate, so it was already red before this change; it is left as-is rather than rewritten
- * blind.
- */
-async function recogerPrimeraOrden(page: Page) {
+/** Recoge la orden por su guía y abre su gestión en el panel en línea, ya verificada. */
+async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: OrdenE2E): Promise<{ page: Page; panel: ReturnType<Page["getByRole"]> }> {
+  const page = await paginaDe(browser, m, CONTEXTO_MENSAJERO);
   await page.goto("/mis-asignaciones/recoger");
-  const porRecoger = page.getByRole("region", { name: "Por recoger" });
-  await expect(porRecoger).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recoger en bodega" }).getByText(orden.numRemision).first()).toBeVisible();
+  await page.getByRole("button", { name: "Recoger paquete" }).click();
+  const tarjeta = page.getByRole("region", { name: "Recoger por número de guía o escaneo" });
+  await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
+  await tarjeta.getByRole("button", { name: "Recoger", exact: true }).click();
+  await expect(page.getByText(`Guía ${orden.numGuia} recogida.`, { exact: true })).toBeVisible();
+  await expect.poll(() => estadoDe(orden)).toBe("en_reparto");
 
-  // Single-row "Recoger" opens the confirmation modal.
-  await porRecoger.getByRole("button", { name: "Recoger" }).first().click();
-
-  const confirmDialog = page.getByRole("dialog", { name: "Recoger órdenes" });
-  await expect(confirmDialog).toBeVisible();
-  await confirmDialog.getByRole("button", { name: "Recoger" }).click();
+  await page.goto("/mis-asignaciones/reparto");
+  const panel = page.getByRole("region", { name: "Detalle de la orden" });
+  await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
+  await panel.getByRole("button", { name: "Gestionar esta orden" }).click();
+  const gate = panel.getByRole("region", { name: "Verificar la guía del paquete antes de gestionar" });
+  await gate.getByLabel("Número de guía").fill(String(orden.numGuia));
+  await gate.getByRole("button", { name: "Gestionar", exact: true }).click();
+  await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
+  return { page, panel };
 }
 
-/** Opens the 1-to-1 management modal for the first order in "En reparto / por gestionar". */
-async function abrirGestionPrimeraOrden(page: Page) {
-  const porGestionar = page.getByRole("region", {
-    name: "En reparto / por gestionar",
-  });
-  await expect(porGestionar).toBeVisible();
-
-  // "Gestionar" sets the 1-to-1 lock, then opens the "Gestionar orden" modal.
-  await porGestionar.getByRole("button", { name: "Gestionar" }).first().click();
-
-  const modal = page.getByRole("dialog", { name: "Gestionar orden" });
-  await expect(modal).toBeVisible();
-  return modal;
+async function elegir(page: Page, combobox: string, opcion: string): Promise<void> {
+  await page.getByRole("combobox", { name: combobox }).click();
+  await page.getByRole("option", { name: opcion, exact: true }).click();
 }
 
-/** Chooses an option in a base-ui Select identified by its accessible name. */
-async function elegirEnSelect(
-  page: Page,
-  comboboxName: string,
-  optionName: string,
-) {
-  await page.getByRole("combobox", { name: comboboxName }).click();
-  await page.getByRole("option", { name: optionName }).click();
+async function gestionVigente(orden: OrdenE2E) {
+  return baseReparto().gestionOrden.findFirst({
+    where: { ordenId: orden.id, anuladaAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      resultado: true,
+      motivo: true,
+      fechaReprogramacion: true,
+      montoRecibido: true,
+      evidencias: { select: { contentType: true } },
+      pagos: { select: { metodo: true, monto: true } },
+    },
+  });
 }
 
-/**
- * Feature 213 (R1/R2) — fills payment LINE `n` of the delivery breakdown.
- *
- * There is no single "Método de pago" select any more: a delivery with a
- * collection shows one line per payment method, each line a
- * "Método de pago línea N" combobox plus a "Monto línea N" amount input.
- *
- * `monto` is optional because the editor PRE-FILLS it ([Q4]: line 1 with the
- * full amount to collect, a new line with what is still pending), so the
- * single-method case is still a single gesture and the test must not pretend
- * otherwise by always typing.
- */
-async function capturarLineaDePago(
-  page: Page,
-  n: number,
-  metodo: string,
-  monto?: string,
-) {
-  await elegirEnSelect(page, `Método de pago línea ${n}`, metodo);
-  if (monto !== undefined) {
-    await page.getByLabel(`Monto línea ${n}`).fill(monto);
-  }
-}
-
-test.describe("Mis asignaciones — recaudo E2E flow", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginMensajero(page);
-    await page.goto("/mis-asignaciones/reparto");
+test.describe("Mis asignaciones — recoger y gestionar", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("mis-asignaciones");
   });
 
-  test.describe("(a) Happy path: entrega (recaudo cobrado)", () => {
-    test("recoger → gestionar → entregada", async ({ page }) => {
-      await recogerPrimeraOrden(page);
+  test("(a) recoger por guía → Entregar con un método y foto", async ({ browser }) => {
+    const { m, orden } = await prepararCaso(4000);
+    const { page, panel } = await recogerYAbrirGestion(browser, m, orden);
 
-      const modal = await abrirGestionPrimeraOrden(page);
+    await panel.getByRole("button", { name: "Entregar", exact: true }).click();
+    // Una línea, con el monto a cobrar ya puesto: solo se elige el método.
+    await expect(page.getByLabel("Monto línea 1")).toHaveValue("4000");
+    await elegir(page, "Método de pago línea 1", "Efectivo");
+    await page.getByLabel("Foto de evidencia de entrega", { exact: true }).setInputFiles(EVIDENCIA);
+    await panel.getByRole("button", { name: "Guardar gestión" }).click();
 
-      // Result defaults to "Entregada"; ensure it explicitly.
-      await elegirEnSelect(page, "Resultado de la gestión", "Entregada");
-
-      // Feature 213: one line, method only — the amount comes pre-filled with the
-      // full amount to collect, so a single-method delivery is still one gesture.
-      await capturarLineaDePago(page, 1, "Efectivo");
-
-      await modal
-        .getByLabel("Foto de evidencia de entrega")
-        .setInputFiles(EVIDENCIA_FIXTURE);
-
-      await modal.getByRole("button", { name: "Guardar gestión" }).click();
-
-      // Modal closes on success; the order leaves the "por gestionar" list.
-      await expect(modal).toBeHidden();
-    });
+    await expect(page.getByText(`Orden ${orden.numRemision}: Entregado.`)).toBeVisible();
+    const g = await gestionVigente(orden);
+    expect(g?.resultado).toBe("entregado");
+    expect(g?.montoRecibido?.toString()).toBe("4000");
+    expect(g?.pagos.map((p) => [p.metodo, p.monto.toString()])).toEqual([["efectivo", "4000"]]);
+    expect(g?.evidencias).toEqual([{ contentType: "image/jpeg" }]);
+    // 454: la orden espera al cierre en reparto, con la gestión pendiente.
+    expect(await estadoDe(orden)).toBe("en_reparto");
   });
 
-  test.describe("(b) Rejection: rechazo", () => {
-    test("recoger → gestionar → rechazada", async ({ page }) => {
-      await recogerPrimeraOrden(page);
+  test("(b) recoger por guía → Rechazar con foto y motivo", async ({ browser }) => {
+    const { m, orden } = await prepararCaso(0);
+    const { page, panel } = await recogerYAbrirGestion(browser, m, orden);
 
-      const modal = await abrirGestionPrimeraOrden(page);
+    await panel.getByRole("button", { name: "Rechazar", exact: true }).click();
+    await page.getByLabel("Foto de evidencia del rechazo", { exact: true }).setInputFiles(EVIDENCIA);
+    await panel.getByLabel("Motivo").fill("Dirección inexistente");
+    await panel.getByRole("button", { name: "Guardar gestión" }).click();
 
-      await elegirEnSelect(page, "Resultado de la gestión", "Rechazo");
-
-      await modal
-        .getByLabel("Foto de evidencia del rechazo")
-        .setInputFiles(EVIDENCIA_FIXTURE);
-      await modal.getByLabel("Motivo").fill("Dirección inexistente");
-
-      await modal.getByRole("button", { name: "Guardar gestión" }).click();
-
-      await expect(modal).toBeHidden();
-    });
+    await expect(page.getByText(`Orden ${orden.numRemision}: Devolución a origen por rechazo.`)).toBeVisible();
+    const g = await gestionVigente(orden);
+    expect(g?.resultado).toBe("devolucion_a_origen_por_rechazo");
+    expect(g?.motivo).toBe("Dirección inexistente");
+    expect(g?.evidencias).toEqual([{ contentType: "image/jpeg" }]);
+    expect(await estadoDe(orden)).toBe("en_reparto");
   });
 
-  test.describe("(c) Reschedule: reprogramación", () => {
-    test("recoger → gestionar → reprogramada", async ({ page }) => {
-      await recogerPrimeraOrden(page);
+  test("(c) recoger por guía → Reprogramar para mañana con motivo", async ({ browser }) => {
+    const { m, orden } = await prepararCaso(0);
+    const { page, panel } = await recogerYAbrirGestion(browser, m, orden);
 
-      const modal = await abrirGestionPrimeraOrden(page);
+    await panel.getByRole("button", { name: "Reprogramar", exact: true }).click();
+    const fecha = panel.getByLabel("Nueva fecha de reprogramación");
+    await fecha.fill(mananaCR());
+    await panel.getByLabel("Motivo").fill("Cliente ausente");
+    await panel.getByRole("button", { name: "Guardar gestión" }).click();
 
-      await elegirEnSelect(page, "Resultado de la gestión", "Reprogramar");
-
-      await modal
-        .getByLabel("Nueva fecha de reprogramación")
-        .fill("2030-12-31");
-      await modal.getByLabel("Motivo").fill("Cliente ausente");
-
-      await modal.getByRole("button", { name: "Guardar gestión" }).click();
-
-      await expect(modal).toBeHidden();
-    });
+    await expect(page.getByText(`Orden ${orden.numRemision}: Reprogramado.`)).toBeVisible();
+    const g = await gestionVigente(orden);
+    expect(g?.resultado).toBe("reprogramado");
+    expect(g?.motivo).toBe("Cliente ausente");
+    expect(g?.fechaReprogramacion?.toISOString().slice(0, 10)).toBe(mananaCR());
+    expect(await estadoDe(orden)).toBe("en_reparto");
   });
-  test.describe("(d) Feature 213 (R35): entrega MIXTA → totales del cierre", () => {
-    test("8.000 = 5.000 efectivo + 3.000 transferencia → total_efectivo 5.000", async ({
-      page,
-    }) => {
-      await recogerPrimeraOrden(page);
 
-      const modal = await abrirGestionPrimeraOrden(page);
+  test("(d) entrega MIXTA 8.000 = 5.000 efectivo + 3.000 transferencia → totales del cierre", async ({ browser }) => {
+    const { m, orden } = await prepararCaso(8000);
+    const { page, panel } = await recogerYAbrirGestion(browser, m, orden);
 
-      await elegirEnSelect(page, "Resultado de la gestión", "Entregada");
+    await panel.getByRole("button", { name: "Entregar", exact: true }).click();
+    // La línea 1 nace con los 8.000; el caso mixto es corregirla a lo que se pagó en efectivo.
+    await elegir(page, "Método de pago línea 1", "Efectivo");
+    await page.getByLabel("Monto línea 1").fill("5000");
+    // La línea nueva nace con lo PENDIENTE (3.000); se teclea igual para no depender del prefill.
+    await panel.getByRole("button", { name: "Añadir método" }).click();
+    await elegir(page, "Método de pago línea 2", "Transferencia");
+    await page.getByLabel("Monto línea 2").fill("3000");
 
-      // R1/R2: line 1 arrives pre-filled with the whole 8.000; the mixed case is
-      // the one where the mensajero has to correct it down to what was paid in cash.
-      await capturarLineaDePago(page, 1, "Efectivo", "5000");
+    const resumen = panel.getByLabel("Resumen del cobro");
+    await expect(resumen).toContainText(monto(8));
 
-      // R3/R4: the new line is born with what is still PENDING (3.000). It is
-      // typed anyway: the test must not depend on the pre-fill to reach the
-      // amount it is going to assert on the closing screen.
-      await modal.getByRole("button", { name: "Añadir método" }).click();
-      await capturarLineaDePago(page, 2, "Transferencia", "3000");
+    await page.getByLabel("Foto de evidencia de entrega", { exact: true }).setInputFiles(EVIDENCIA);
+    await panel.getByRole("button", { name: "Guardar gestión" }).click();
+    await expect(page.getByText(`Orden ${orden.numRemision}: Entregado.`)).toBeVisible();
 
-      // R8: the breakdown adds up, so the difference is zero and the panel lets
-      // the gestión through (R9 would block it otherwise, before any request).
-      const resumen = modal.locator('[aria-label="Resumen del cobro"]');
-      await expect(resumen).toContainText(/8[.,]000/);
-      await expect(resumen).toContainText(/5[.,]000|3[.,]000/);
-
-      await modal
-        .getByLabel("Foto de evidencia de entrega")
-        .setInputFiles(EVIDENCIA_FIXTURE);
-
-      await modal.getByRole("button", { name: "Guardar gestión" }).click();
-      await expect(modal).toBeHidden();
-
-      // R35 — THE POINT OF THIS TEST: the totals of the day are not recalculated
-      // by this feature, they are FED by what was captured above. 5.000 of the
-      // 8.000 went in as cash, so `total_efectivo` must be 5.000 and not 8.000.
-      // That number is the `E` of the `min(P, E)` the mensajero gets paid with.
-      await page.goto("/cierre-dia");
-
-      const totales = page.getByRole("region", { name: "Totales del día" });
-      await expect(totales).toBeVisible();
-
-      const efectivo = totales.locator("div").filter({ hasText: /^Efectivo/ }).first();
-      const transferencia = totales
-        .locator("div")
-        .filter({ hasText: /^Transferencia/ })
-        .first();
-
-      // Amounts are asserted with a loose separator: the currency symbol and the
-      // thousands separator come from configuration (`lib/config/moneda.ts`), so
-      // hardcoding "₡5.000,00" here would pin the test to one deployment.
-      await expect(efectivo).toContainText(/5[.,]000/);
-      await expect(efectivo).not.toContainText(/8[.,]000/);
-      await expect(transferencia).toContainText(/3[.,]000/);
-    });
+    // R35: los totales del día no se recalculan aquí, los ALIMENTA lo capturado arriba.
+    await page.goto("/cierre-dia");
+    const totales = page.getByRole("region", { name: "Totales del día" });
+    await expect(totales).toBeVisible();
+    // Cada total es una pareja rótulo/importe (`TotalItem`): el contenedor del rótulo exacto.
+    const efectivo = totales.getByText("Efectivo", { exact: true }).locator("..");
+    const transferencia = totales.getByText("Transferencia", { exact: true }).locator("..");
+    await expect(efectivo).toContainText(monto(5));
+    await expect(efectivo).not.toContainText(monto(8));
+    await expect(transferencia).toContainText(monto(3));
   });
 });

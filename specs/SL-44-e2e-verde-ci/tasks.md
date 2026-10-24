@@ -128,11 +128,11 @@ Convenciones:
 
 ## Tanda 5 — Reparto (depende de T3.2)
 
-- [ ] **T5.1 — `asignacion-satelite`, `recepcion-satelite`** (R18). `[P]`
-- [ ] **T5.2 — `mis-asignaciones`**, reescrito contra la UI actual: recoger por guía o escáner,
+- [x] **T5.1 — `asignacion-satelite`, `recepcion-satelite`** (R18). `[P]`
+- [x] **T5.2 — `mis-asignaciones`**, reescrito contra la UI actual: recoger por guía o escáner,
   gestión en panel y pago mixto (R18). `[P]`
-- [ ] **T5.3 — `devolucion-origen`, `historial-orden`** (R18). `[P]`
-- [ ] **T5.4 — `reintentos-escalado`, `reprogramacion-liberacion`**, con el cron real (R18, R23).
+- [x] **T5.3 — `devolucion-origen`, `historial-orden`** (R18). `[P]`
+- [x] **T5.4 — `reintentos-escalado`, `reprogramacion-liberacion`**, con el cron real (R18, R23).
   `[P]`
 
   **Hecho (T5.x):** cada spec en verde con `--project=reparto` y una mutación que lo tumba. Por

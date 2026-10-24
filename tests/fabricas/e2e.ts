@@ -234,11 +234,14 @@ function servicioDeUsuarios(): UsuarioService {
  * `zonaId` es obligatoria para `mensajero` y `adminSatelite` (la exige el servicio). No hay
  * `tiendaId`: el `adminTienda` ES la tienda (las órdenes y tarifas apuntan a su `usuario.id`).
  * El servicio exige vehículo al `mensajero`: sin `vehiculoId`, va el primero del catálogo sembrado.
+ * `fulfillment` (solo `adminTienda`, lo restringe el servicio): la tienda con bodega propia, cuyas
+ * órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin él, nacen en
+ * `por_recolectar_en_tienda`, con guía.
  */
 export async function crearUsuarioE2E(
   e: EmpresaE2E,
   rol: RolValue,
-  extra: { zonaId?: string; vehiculoId?: string } = {},
+  extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
 ): Promise<UsuarioE2E> {
   await comprobarBaseE2E();
   const db = dueno();
@@ -270,6 +273,7 @@ export async function crearUsuarioE2E(
         rolId: rolFila.id,
         ...(extra.zonaId ? { zonaId: extra.zonaId } : {}),
         ...(vehiculoId ? { vehiculoId } : {}),
+        ...(extra.fulfillment !== undefined ? { fulfillment: extra.fulfillment } : {}),
         passwordMode: "manual",
         password,
       },
