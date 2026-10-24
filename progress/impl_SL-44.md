@@ -709,3 +709,29 @@ El único rojo, en las dos y en CI, es el mismo `marca.spec.ts:277`. Se diagnost
   peticiones (defecto de producción)? Sin su resultado, T7.4 sigue abierta.
 - Pendiente: decisión humana sobre `superadmin-empresas` sin exigencia de base vacía (A1), y validar
   el nuevo alcance de `analitica-roles` (regiones financieras comentadas en `AnaliticaShell`).
+
+### SL-44-marca: el rojo de `marca.spec.ts:277` (landing a 1280 px, `networkidle`)
+
+- **Causa (medida).** En la traza de CI (run 40132245831, `e2e-aislamiento`, `retry1/trace.zip`) hay
+  34 peticiones; 31 terminan y 3 se quedan abiertas hasta el timeout: las tres fotos `next/image`
+  con `loading="lazy"` y fuera de pantalla (`paquetes.jpg` w=1920, `logistica.jpg` y `mensajera.jpg`
+  w=384, `top` 1539 y 3275 px con viewport de 800). Reproducido en local
+  (`sl44/SL-44-marca/diag5.log`, base recién recreada + `.next/cache/images` vaciada + grupo con deps):
+  `networkidle=false` a los 20 s con esas 3 en vuelo, `img.complete=false`, y el servidor las sirve
+  con 200 en 42–153 ms al pedirlas aparte. No es un bucle: no hay repeticiones, ni polling, ni
+  websocket. Es Chromium, que deja abiertas las peticiones de imágenes lazy lejos del viewport. Con
+  la caché de imágenes caliente o sin specs previos en el mismo navegador pasa (diag1–diag4 en verde),
+  y por eso pasó en la tanda 4. En CI el grupo es la primera visita a `/` con la caché fría, y falla
+  también en el reintento.
+- **Cambio** (solo `e2e/marca.spec.ts`): fuera los 3 `networkidle`. Ahora `esperarPantallaLista` espera
+  `load` + `document.fonts.ready` + un elemento visible que lo que se mide necesita (logo de marca
+  visible en la barra o en `/login`; `[data-sidebar]` en el dashboard). `dos-empresas-humo.spec.ts:168`
+  no se toca: lleva `.catch(() => undefined)` (no puede fallar) y sus rutas privadas no tienen fotos lazy.
+- **Corridas** (`E2E_PUERTO=3044`, base `sl44_marca`, caché de imágenes vaciada antes de cada una salvo
+  la última): `marca --no-deps` 7 passed ×2; `--project=aislamiento` sobre base recreada: 50 passed
+  (1.7m) y 50 passed (1.7m), 0 failed/flaky/skipped.
+- **Mutación del logo** (la hizo `sl44/t74final/mut.log`, sobre esta versión del spec): 5 failed por
+  `logos visibles` (no por timeout), `cmp OK` y `BUILD_LIMPIO=0`.
+- eslint 0, typecheck 0. Guardias: 2 rojos ajenos. `dependencias-declaradas-presentes` es baseline, y
+  `no-embalaje` salta por `playwright-report/data/*.md`, un artefacto que dejan las corridas de E2E.
+- **Defecto de producción: ninguno.**
