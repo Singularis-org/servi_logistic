@@ -34,6 +34,9 @@ import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+/** SL-45 (R28): una empresa sin cargos ni pagos está al día con la plataforma. */
+const AL_DIA = { deuda: "0.00", estado: "al_dia", importe: "0.00" } as const;
+
 let prisma: PrismaClient;
 
 // En el futuro lejano: asi las dos son las mas recientes de la base y su orden no depende de
@@ -132,7 +135,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     const mias = r.listado.filter((e) => e.id === r.s.a.id || e.id === r.s.b.id);
 
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00" },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
@@ -140,6 +143,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         creadaEn: ALTA_A,
         maestros: [r.s.maestroA1, r.s.maestroA2],
         cobroPorOrden: null,
+        deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00",
       },
     ]);
     expect(JSON.stringify(r.listado)).not.toContain(r.s.admin.email);
@@ -160,7 +164,16 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
 
     expect(mias).toHaveLength(2);
     for (const e of mias) {
-      expect(Object.keys(e).sort()).toEqual(["cobroPorOrden", "creadaEn", "id", "maestros", "nombre", "slug"]);
+      expect(Object.keys(e).sort()).toEqual([
+        "cobroPorOrden",
+        "creadaEn",
+        "deudaPlataforma",
+        "id",
+        "maestros",
+        "nombre",
+        "pagadoPlataforma",
+        "slug",
+      ]);
       for (const m of e.maestros) expect(Object.keys(m).sort()).toEqual(["email", "nombre"]);
     }
     const texto = JSON.stringify(mias);
@@ -178,6 +191,12 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       for (const tabla of ["rol", "organizacion", "usuario"]) {
         await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}" INCLUDING ALL)`);
       }
+      // SL-45 (R28): el listado lee también los cargos y los pagos de cada empresa. Sin restricciones
+      // (`LIKE` a secas): el CHECK tipo-categoría compara con el enum de `public` y no dejaría cambiar
+      // el tipo de la columna. Vacías: aquí solo importa que existan.
+      for (const tabla of ["cobro_plataforma_movimiento", "wallet_movimiento"]) {
+        await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}")`);
+      }
       // Prisma califica el cast del enum con el esquema del cliente (`"<esquema>".rol_value`): el
       // tipo tiene que existir ahi, con las mismas etiquetas, y `rol.value` tiene que usarlo.
       const [{ etiquetas }] = await prisma.$queryRawUnsafe<{ etiquetas: string }[]>(
@@ -188,6 +207,20 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       await prisma.$executeRawUnsafe(
         `ALTER TABLE "${esquema}"."rol" ALTER COLUMN "value" TYPE "${esquema}"."rol_value" USING "value"::text::"${esquema}"."rol_value"`,
       );
+      // SL-45: lo mismo para los enums que filtra la lectura de los pagos.
+      for (const [tipo, columna] of [
+        ["wallet_movimiento_tipo", "tipo"],
+        ["wallet_movimiento_categoria", "categoria"],
+      ] as const) {
+        const [{ etiquetas: deEsteTipo }] = await prisma.$queryRawUnsafe<{ etiquetas: string }[]>(
+          `SELECT string_agg(quote_literal(enumlabel), ',' ORDER BY enumsortorder) AS etiquetas
+             FROM pg_enum WHERE enumtypid = 'public.${tipo}'::regtype`,
+        );
+        await prisma.$executeRawUnsafe(`CREATE TYPE "${esquema}"."${tipo}" AS ENUM (${deEsteTipo})`);
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "${esquema}"."wallet_movimiento" ALTER COLUMN "${columna}" TYPE "${esquema}"."${tipo}" USING "${columna}"::text::"${esquema}"."${tipo}"`,
+        );
+      }
     });
     const enEsquema = crearPrismaDeTestEnEsquema(esquema);
     try {

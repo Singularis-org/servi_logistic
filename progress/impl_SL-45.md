@@ -437,3 +437,94 @@ comprobada byte a byte):
 | 3 (T6-M3) | `NATURALEZA_POR_CATEGORIA.egreso_pago_plataforma = "terceros"` | **rojo**, 12 de 15 (desde el primer pago: la caja de A no se mueve como R8) |
 | 4 (T6-M4) | `sumaPagosVigentes` sin el filtro de empresa: sin `organizacionId` en los dos `where` y leyendo como dueño (`comoPlataforma`, sin extensión ni RLS) | **rojo**, 12 de 15: «deuda de B: esperado 300.00, recibido -700.00» (B ve el pago de A) |
 | 4a (T6-M4a) | solo quitar el `organizacionId` escrito, con la extensión puesta | **verde**, 15 de 15: lo para la extensión + RLS. Es la defensa en capas que se buscaba (molde SL-40 R24); la 4 completa es la que pide el design |
+
+## Tanda E — E1, solo la parte de servidor
+
+**Desviación aprobada (Carlos, 2026-10-24, P2 = sí):** además de la `DeudaPlataformaDTO` de `design.md > 9`, cada
+empresa trae lo que ha pagado a la plataforma. El contrato que lee la pantalla:
+
+```ts
+// lib/types/empresas-plataforma.ts
+export type EmpresaListada = {
+  id: string; nombre: string; slug: string; creadaEn: Date;
+  maestros: { nombre: string; email: string }[];
+  cobroPorOrden: string | null;
+  deudaPlataforma: DeudaPlataformaDTO;   // { deuda: "700.00" | "0.00" | "-300.00", estado: "debe" | "al_dia" | "a_favor", importe: "700.00" }
+  pagadoPlataforma: string;              // Σ pagos vigentes, "0.00" si no ha pagado; un pago anulado no cuenta
+};
+```
+
+La página ya la recibe sin cambios de cableado: `app/(app)/plataforma/empresas/page.tsx` → `listarEmpresasPlataforma(actor)`
+(`lib/actions/_shared/empresas-plataforma.ts`) → `EmpresasPlataformaService.listarEmpresas` → `EmpresasPlataformaRepository.listar()`.
+`EmpresasModule` recibe `empresas: EmpresaListada[]` por props; pinta «Debe {importe}», «Al día» o «A favor {importe}» según
+`deudaPlataforma.estado`, y `pagadoPlataforma` tal cual (texto, sin aritmética). La pantalla es de frontend_dev (SL-41 tiene en
+vuelo esos dos archivos).
+
+**Código:**
+- `lib/repositories/EmpresasPlataformaRepository.ts`: dentro del mismo `comoPlataforma` de SL-32, tres consultas para
+  todas las empresas del listado (`organizacion_id in ids`): `groupBy` de los cargos por `(organizacion_id, tipo)`, los pagos y sus
+  contra-asientos (la regla de «vigente» de `PagoPlataformaRepository`). Sin empresas no consulta nada. La deuda sale de
+  `derivarDeudaPlataforma`.
+- `lib/types/empresas-plataforma.ts`: los dos campos.
+- `lib/actions/_shared/empresas-plataforma.ts` (fuera de `## Archivos esperados`): el tipo del cliente del composition
+  root pasa a `EmpresasPlataformaPrismaClient` (lee también `cobroPlataformaMovimiento` y `walletMovimiento`).
+- `lib/interfaces/repositories/IEmpresasPlataformaRepository.ts` (fuera de la lista): solo el comentario del contrato.
+
+**Tests que cambian (fuera de la lista, por el tipo):** las fixtures de `EmpresaListada` ganan los dos campos («al día»,
+"0.00") en `tests/unit/services/empresas-plataforma-service.test.ts`, `tests/integration/empresas-page.test.tsx`,
+`tests/components/empresas-module.test.tsx` y `tests/components/EmpresasModuleCobro.test.tsx` (este último sí está en la
+lista; T7/E1 de frontend lo seguirá cambiando). `tests/unit/actions/empresas-plataforma.composition-root.test.ts`: el doble
+del cliente gana las dos tablas y la fila esperada, `debe 300,00` y `pagado 200,00`. `tests/integration/db/empresas-plataforma.test.ts`
+(SL-32): la forma esperada y la lista de claves ganan los dos campos, y el esquema desechable de «sin organizaciones»
+gana las dos tablas (`LIKE` sin restricciones) y los dos enums que filtra la lectura de pagos, con el molde de `rol_value`.
+
+**Test nuevo:** `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts` (5, Postgres). Dos empresas reales; los pagos y la
+anulación por las server actions; el listado por `listarEmpresasPlataforma` (la puerta de la página):
+- control: los cargos en la base (1.000 de A, 300 de B) y nadie ha pagado;
+- A paga 300 y 200, anula el de 200; B paga 300 → A debe 700,00 con 300,00 pagado, B al día con 300,00;
+- B elimina su orden → a favor 300,00, lo pagado no cambia, A igual;
+- el repositorio con el cliente dueño reparte igual (el dinero de A no sale en la fila de B);
+- un `maestro` recibe `forbidden`.
+
+**Evidencia** (dentro del lock):
+
+```
+$ pnpm run typecheck                                    TC_EXIT=0
+$ pnpm exec eslint <archivos de E1>                     LINT_EXIT=0
+$ pnpm exec vitest run empresas-plataforma-deuda-sl45 empresas-plataforma empresas-plataforma-cobro \
+    empresas-plataforma.composition-root empresas-plataforma-service empresas-page empresas-module EmpresasModuleCobro
+ Test Files  8 passed (8)
+      Tests  89 passed (89)                              (0 skipped)
+$ pnpm exec vitest related --run <archivos de E1>
+ Test Files  8 passed (8)
+      Tests  89 passed (89)
+$ pnpm run test:guardias
+ Test Files  1 failed | 302 passed (303)                 ← dependencias-declaradas-presentes, del baseline
+```
+
+**Mutaciones** (medidas y revertidas, byte a byte):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| E1-M1 | el listado cuenta los pagos anulados | **rojo**, 3 de 5 en `empresas-plataforma-deuda-sl45` (A: pagado 500,00 en vez de 300,00) |
+| E1-M2 | `pagadoPlataforma` suma los pagos de todas las empresas (sin repartir por `organizacion_id`) | **rojo**, 3 de 5 («600.00» en vez de «300.00») |
+| E1-M3 | la deuda del listado no resta los pagos | **rojo**, 3 de 5 y el composition root (1.000,00 en vez de 700,00) |
+
+## Mapa R → test de esta tanda (T4–T6, E1-servidor)
+
+| R | Test |
+|---|---|
+| R6 (servidor: sin «a quién») | `wallet-egresos.composition-root` («R6: el pago sin «a quién» pasa el borde») |
+| R7, R8, R13, R15, R16, R18, R21, R22 | `pago-plataforma-sl45.test.ts` (T1, 15/15) |
+| R9 | T1 (los cuatro R9), `tope-pago-plataforma-service` (bordes), `wallet-egreso-service` («R9: supera…»), `wallet-egresos.composition-root` |
+| R10 | `pago-plataforma-sl45-concurrencia.test.ts` (los dos R10) |
+| R11 | T1 («R11: el reenvío…»), concurrencia («R11: la misma clave…»), `tope-pago-plataforma-service` («reenvío sin comparar») |
+| R12 | `wallet-egresos.composition-root` (referencia vacía, montos inválidos, monto que no cabe) |
+| R13, R14 | `deuda-plataforma.test.ts`, `deuda-plataforma-service.test.ts`, `deuda-plataforma.composition-root.test.ts`, T1 |
+| R19 | T1 (mensajero), `wallet-egreso-service` (cinco roles, registrar). Anular: T1 R21 y los de 458-B (`EgresoCajaAnulacionService`, sin cambios) |
+| R20 | T1 («R20: B paga…» y la caja de B en cada paso), T6-M4 |
+| R28 (servidor) | `empresas-plataforma-deuda-sl45.test.ts` |
+
+**Veredicto (T4–T6 y E1-servidor):** la deuda resta los pagos vigentes, el pago tiene tope con candado dentro de la
+transacción y nunca se acepta sin tope, T1 está en 15/15 y cada mutación pedida lo pone en rojo; el listado del
+superadmin ya trae deuda y pagado por empresa, a falta de la pantalla.

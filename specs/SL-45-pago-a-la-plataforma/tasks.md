@@ -155,6 +155,9 @@
     `tests/components/EmpresasModuleCobro.test.tsx`.
   - Antes de empezar, coordinar con SL-41: tiene en vuelo los dos archivos de la pantalla.
   - _Hecho:_ los tests en verde y el superadmin ve «Debe», «Al día» o «A favor» por empresa.
+  - **Servidor hecho (backend_dev, 2026-10-24):** `EmpresaListada` gana `deudaPlataforma` y `pagadoPlataforma`
+    (ampliación de Carlos: lo que ha pagado) y `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts` está
+    en verde. Falta la pantalla (`page.tsx`, `EmpresasModule.tsx`, `EmpresasModuleCobro.test.tsx`): frontend_dev.
 
 ## Archivos esperados
 
