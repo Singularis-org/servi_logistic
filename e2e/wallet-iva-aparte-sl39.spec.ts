@@ -8,8 +8,10 @@ import { CAJA_A, CAJA_B, importeDeTexto, sembrarCaja, sembrarCierres, type Cierr
 // SL-39 (T5, C2, T7) — el recorrido en el navegador: el IVA cobrado va aparte de la ganancia, en
 // `/wallet` y en el detalle del cierre de `cierres-admin`, con dos empresas.
 //
-// SOLO CORRE CON `SL39_UI=1`: necesita una base local migrada, con `pnpm run db:seed` y un dev
-// server levantado aparte. El E2E de CI no tiene esa siembra.
+// Corre en el proyecto `aislamiento` (SL-44 T4.2): Playwright levanta el servidor y la siembra la
+// hace el `beforeAll` sobre una base local migrada y con `pnpm run db:seed`. Las filas de caja y los
+// cierres se escriben con la empresa fijada (excepción de R8 de SL-44, `design.md > D4`: las cifras
+// del contrato son las del ejemplo de design §1 de SL-39).
 //
 // Cifras ESCRITAS A MANO (design §1 y §12.4): son el contrato. Derivarlas con las funciones de
 // produccion las compararia contra su propia fuente.
@@ -20,7 +22,6 @@ import { CAJA_A, CAJA_B, importeDeTexto, sembrarCaja, sembrarCierres, type Cierr
 //   Cierre A (entrega): facturado 3.616,00 · IVA 416,00 · pago 1.500,00 → neto 1.700,00
 //   Cierre B (rechazo): flete devuelto 2000 + IVA 260 · pago 2.100,00 → «Debe» −100,00
 
-test.skip(process.env.SL39_UI !== "1", "SL-39: recorrido local, solo con SL39_UI=1 y su siembra");
 test.describe.configure({ mode: "serial" });
 
 const EMPRESA_EN_FRASE = "la empresa";

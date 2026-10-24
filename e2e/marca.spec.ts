@@ -1,11 +1,8 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { COOKIE_TEMA } from "../lib/tema/tema";
+import { confiarDispositivo, crearEmpresaE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
 
 /**
  * SL-8 T13 — verificación de la marca en el navegador real (R8, R21, R27, R28; design D9).
@@ -21,18 +18,16 @@ import { COOKIE_TEMA } from "../lib/tema/tema";
  *  6. a 360 px, `scrollWidth <= 360` (R8).
  * Las cifras de cada pantalla van a `_trabajo/capturas-SL-8/cifras.json`.
  *
- * SESIÓN (D9, D13). El `beforeAll` crea un `admin` activo con correo único y contraseña aleatoria
- * en la base local de la feature y entra por `/login`; el `afterAll` lo borra. Nada de seeds.
- * Para que el login no pida OTP, el fixture confía de antemano el dispositivo del navegador de la
- * prueba (`trusted_device` con el hash de su user agent), igual que haría un primer login con OTP
- * superado. Si falta `DATABASE_URL`, el caso FALLA con un mensaje: no se salta.
+ * SESIÓN (SL-44 T3.1/T4.3; R7, R10). El `beforeAll` da de alta una empresa con la fábrica del
+ * E2E (`crearEmpresaE2E`: el servicio del superadmin, correo `@example.test` por corrida) y su
+ * `maestro` entra por el `/login` real. Para que el login no pida OTP, la fábrica confía de
+ * antemano el dispositivo del navegador (`confiarDispositivo`), igual que haría un primer login
+ * con OTP superado. El primer caso es ese login, mirado por fuera: sale a `/dashboard` sin pasar
+ * por el código. La base es desechable: no se borra nada. Sin base, el `beforeAll` FALLA.
  */
 
 // El nombre anterior de la plataforma, partido: este archivo no puede contenerlo literal (R26).
 const NOMBRE_ANTERIOR = ["orden", "ex"].join("");
-
-/** Proyectos remotos que este spec nunca debe tocar: aborta antes de escribir. */
-const BASES_PROHIBIDAS = { literal: ["supabase"], sha256DeRef: ["5a90bb618312dada235c0abc72c00d6df493b266880f9531c1688ea1d39f2d87", "ff8fbc8104b321044f1c597d4cb267c53a9ee99aa68f6835dd04aaec24a75d82"] }; // SL-34: los dos ids, por sha256 de 20 caracteres
 
 const AMARILLO = { r: 255, g: 208, b: 0 };
 
@@ -63,82 +58,35 @@ interface Cifras {
 // Un solo worker, en orden: un usuario por corrida y las cifras se escriben sin carreras.
 test.describe.configure({ mode: "default" });
 
-function urlDeBase(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "SL-8 T13: falta DATABASE_URL. Hace falta la base local migrada de la feature (D9); sin ella la tarea queda BLOQUEADA.",
-    );
-  }
-  const minus = url.toLowerCase(), prohibida = BASES_PROHIBIDAS.literal.some((p) => minus.includes(p)) || Array.from({ length: Math.max(0, minus.length - 19) }, (_, i) => minus.slice(i, i + 20)).some((t) => BASES_PROHIBIDAS.sha256DeRef.includes(crypto.createHash("sha256").update(t).digest("hex")));
-  if (prohibida) {
-    throw new Error("SL-8 T13: DATABASE_URL apunta a una base remota prohibida. Aborta antes de escribir.");
-  }
-  return url;
-}
-
-let prisma: PrismaClient | null = null;
-let usuarioId: string | null = null;
+let maestro: UsuarioE2E | null = null;
 let cookiesSesion: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
+
+/** Entra por `/login` con el dispositivo ya confiado: sin OTP, la app lo lleva a `/dashboard`. */
+async function entrarSinOtp(page: Page, u: UsuarioE2E): Promise<void> {
+  await confiarDispositivo(u, await page.evaluate(() => navigator.userAgent));
+  await page.goto("/login");
+  await page.fill('input[type="email"]', u.email);
+  await page.fill('input[type="password"]', u.password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\/dashboard/, { timeout: 60_000 });
+}
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
-  prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlDeBase(), max: 2 }) });
-
-  const rol = await prisma.rol.findUnique({ where: { value: "admin" } });
-  const tipo = await prisma.tipoIdentificacion.findFirst();
-  if (!rol || !tipo) {
-    throw new Error("SL-8 T13: la base no tiene el rol `admin` o un tipo de identificación (¿sin migrar ni sembrar?).");
-  }
-
-  const marca = Date.now();
-  const email = `sl8-${marca}@example.com`;
-  const password = crypto.randomBytes(18).toString("base64url");
-  const usuario = await prisma.usuario.create({
-    data: {
-      nombre: "Prueba",
-      primerApellido: "Marca",
-      email,
-      telefono: `8${String(marca).slice(-7)}`,
-      passwordHash: await bcrypt.hash(password, 10),
-      estado: "activo",
-      cedula: `SL8${marca}`,
-      tipoIdentificacionId: tipo.id,
-      rolId: rol.id,
-    },
-  });
-  usuarioId = usuario.id;
-
+  maestro = (await crearEmpresaE2E("marca")).maestro;
   const contexto = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await contexto.newPage();
-  const userAgent = await page.evaluate(() => navigator.userAgent);
-  await prisma.trustedDevice.create({
-    data: {
-      usuarioId: usuario.id,
-      deviceHash: crypto.createHash("sha256").update(userAgent).digest("hex"),
-      ipAddress: "127.0.0.1",
-    },
-  });
-
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL(/\/dashboard/, { timeout: 60_000 });
+  await entrarSinOtp(page, maestro);
   cookiesSesion = await contexto.cookies();
   await contexto.close();
 });
 
-test.afterAll(async () => {
-  if (prisma && usuarioId) {
-    const id = usuarioId;
-    await prisma.trustedDevice.deleteMany({ where: { usuarioId: id } });
-    await prisma.loginAttempt.deleteMany({ where: { usuarioId: id } });
-    await prisma.emailOtpChallenge.deleteMany({ where: { usuarioId: id } });
-    await prisma.session.deleteMany({ where: { userId: id } });
-    await prisma.usuario.delete({ where: { id } });
-  }
-  await prisma?.$disconnect();
+test("un usuario de la fábrica entra por /login sin OTP (SL-44 T3.1)", async ({ page }) => {
+  if (!maestro) throw new Error("no hay maestro: falló el beforeAll");
+  await entrarSinOtp(page, maestro);
+  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page.getByLabel("Código de verificación")).toHaveCount(0);
+  expect((await page.context().cookies()).some((c) => c.name === "session")).toBe(true);
 });
 
 /** Recorre el DOM en el navegador y devuelve las cifras de D9 (puntos 2 a 6). */

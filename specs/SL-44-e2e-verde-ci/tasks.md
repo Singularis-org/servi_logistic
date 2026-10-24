@@ -85,7 +85,7 @@ Convenciones:
 
 ## Tanda 3 — Fábricas y escenarios (depende de T2.1)
 
-- [ ] **T3.1 — `tests/fabricas/e2e.ts`** (D4; R7, R10, R11, R12).
+- [x] **T3.1 — `tests/fabricas/e2e.ts`** (D4; R7, R10, R11, R12).
   - `abrirBaseE2E`, `crearEmpresaE2E`, `crearUsuarioE2E`, `confiarDispositivo` y `sesionDe`.
   - Test de unidad del guardián de host: `tests/unit/fabricas/e2e-host.test.ts`.
 
@@ -93,7 +93,7 @@ Convenciones:
   - con `DATABASE_URL` a un host remoto inventado, lanza antes de abrir conexión;
   - sin `DATABASE_URL`, lanza con mensaje;
   - un usuario creado entra por `/login` sin OTP en un caso mínimo dentro de `marca`.
-- [ ] **T3.2 — Escenarios** `e2e/_escenarios/{reparto,cierres,crons}.ts` (D4; R8). Depende de T3.1.
+- [x] **T3.2 — Escenarios** `e2e/_escenarios/{reparto,cierres,crons}.ts` (D4; R8). Depende de T3.1.
   - Cada estado se produce por su servicio o su cron.
   - Confirmar o quitar cada excepción de la tabla de D4, y anotar el resultado.
 
@@ -102,7 +102,7 @@ Convenciones:
 
 ## Tanda 4 — Plataforma y aislamiento (depende de T2.2 y T3.1)
 
-- [ ] **T4.1 — Humo de dos empresas por la pantalla** (D16; R16, R17).
+- [x] **T4.1 — Humo de dos empresas por la pantalla** (D16; R16, R17).
   - Alta de A y B en `/plataforma/empresas` como superadmin; primer acceso por «¿Olvidaste tu
     contraseña?» con el OTP del log; datos marcados (`sembrarDatos`).
   - Fuera `correoDelMaestro`, `liberarCorreos` y `solicitarRecuperacion`.
@@ -111,10 +111,10 @@ Convenciones:
   - 6/6 dos veces seguidas;
   - mutación de la puerta (`!esPlataforma` → solo `!actor`, como en SL-32): rojo el punto 6;
   - mutación de aislamiento (marcador de B en una pantalla de A): rojo.
-- [ ] **T4.2 — `wallet-iva-aparte-sl39` sin skip** (R13). `[P]`
+- [x] **T4.2 — `wallet-iva-aparte-sl39` sin skip** (R13). `[P]`
 
   **Hecho:** pasa en `aislamiento`, y su mutación de SL-39 sigue tumbándolo.
-- [ ] **T4.3 — `marca`, `auth`, `rastreo-publico`, `analitica-roles`** (D5; R7–R11, R18). `[P]`
+- [x] **T4.3 — `marca`, `auth`, `rastreo-publico`, `analitica-roles`** (D5; R7–R11, R18). `[P]`
   - `auth`: bloqueo por intentos fallidos desde la UI, y OTP real del log.
 
   **Hecho:** cada uno en verde. Mutaciones:
@@ -122,7 +122,7 @@ Convenciones:
   - `analitica-roles`: la que nombra su cabecera;
   - `rastreo-publico`: textos distintos en los dos rechazos;
   - `marca`: un logo cambiado.
-- [ ] **T4.4 — `zona-especial-dos-empresas`** en el proyecto `aislamiento`. `[P]`
+- [x] **T4.4 — `zona-especial-dos-empresas`** en el proyecto `aislamiento`. `[P]`
 
   **Hecho:** en verde en el grupo, junto al resto, sin tocar el spec.
 
