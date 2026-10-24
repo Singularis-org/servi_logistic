@@ -663,3 +663,14 @@ VITEST_EXIT=0
 ```
 R18/R19/R21 siguen en verde: el test de enlace pasa 7/7 y M1–M6 mueren. La guardia de la maqueta única
 sigue en verde.
+
+## Gate local (`TEST_RAPIDO_BASE=dev ./init.sh`, dentro del lock, base `sl41_base`)
+
+- Gate 1 (`435355c`): `INIT_EXIT=1`. Rojos nuevos: `tests/integration/recuperar-contrasena-form.test.tsx`
+  (3 tests) y `tests/integration/db/abono-tienda-457-concurrencia.test.ts` (deadlock; no reaparece).
+- Gate 2: `INIT_EXIT=1`. Rojo nuevo: el mismo `recuperar-contrasena-form.test.tsx` (otro test).
+  Diagnóstico: bug previo del componente bajo carga (18/18 en rojo también con el de `dc95473`),
+  que SL-41 destapa porque toca el archivo. Se arregla en el componente (`284e328`), sin tocar tests.
+- Gate 3 (`284e328`): **`INIT_EXIT=0`**, `== init OK ==`. Vitest: 453 archivos y 6163 tests pasados
+  (26 saltados); segunda tanda, 301 archivos y 4109 tests pasados (1 saltado).
+  Log: `scratchpad/sl41-gate-3.log`.
