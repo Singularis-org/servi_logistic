@@ -13,7 +13,7 @@
 
 ## Tanda 0 — Punto de partida
 
-- [ ] **T0. Leer el estado de `dev`** (sin código).
+- [x] **T0. Leer el estado de `dev`** (sin código).
   - La última migración de `dev`. Si hay alguna posterior a `20261024120000`, se mueven los dos
     timestamps de `design.md > 8`.
   - La definición vigente de `wallet_movimiento_tipo_categoria_check`: la última migración que la
@@ -233,6 +233,7 @@ Tests que cambian:
 - `tests/unit/utils/efecto-movimiento.test.ts`
 - `tests/unit/analytics/metrics-caja-naturaleza.guardia.test.ts`
 - `tests/unit/analytics/finanzas-diario.test.ts`
+- `tests/unit/guards/egreso-indemnizacion-emisores.test.ts` (T0: fija `TIPO_EGRESO_MANUAL_SEED` con una regex)
 - `tests/components/WalletDeudaPlataformaSL40.test.tsx`
 - `tests/integration/wallet-page.test.tsx`
 - `e2e/cobro-plataforma-sl40.spec.ts`
