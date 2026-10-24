@@ -10,6 +10,7 @@ import { verDesgloseEgresosAction } from "@/lib/actions/wallet-egresos";
 import { listarPlantillasPaginadoAction } from "@/lib/actions/gasto-fijo-plantilla";
 import { listarCobrosPendientesAction } from "@/lib/actions/gasto-fijo-cobro";
 import { listarCobrosRechazoTiendaAction } from "@/lib/actions/rechazo-tienda-cobro";
+import { verDeudaPlataformaAction } from "@/lib/actions/deuda-plataforma";
 
 import { WalletModule } from "./_components/WalletModule";
 
@@ -44,6 +45,7 @@ export default async function WalletPage() {
     plantillasResult,
     cobrosResult,
     cobrosRechazoResult,
+    deudaResult,
   ] = await Promise.all([
     listarMovimientosAction({}),
     verResumenCajaAction({}),
@@ -61,6 +63,9 @@ export default async function WalletPage() {
     // y no se pide desde el navegador sin pasar por el guardia de esta pagina
     // (`docs/architecture.md`). La ven y la deciden los dos roles de acceso total.
     listarCobrosRechazoTiendaAction({}),
+    // SL-40 (R21, R23, design §9.2): lo que la empresa debe a la plataforma. Sin filtros: es la
+    // deuda de toda la historia, y por eso se lee una vez aquí y no con cada filtro del libro.
+    verDeudaPlataformaAction(),
   ]);
 
   // Defensa en profundidad: si algún service niega (forbidden/unauthenticated) o valida
@@ -103,6 +108,10 @@ export default async function WalletPage() {
   // con el que `wallet/mensajeros/page.tsx` resuelve la suya.
   const ahoraIso = new Date().toISOString();
 
+  // SL-40 (design §9.2): sin permiso para la deuda, la región no se pinta, pero la caja sí. No entra
+  // en el `notFound` de arriba porque no es una cifra de la caja (D10).
+  const deudaPlataforma = deudaResult.status === "ok" ? deudaResult.deudaPlataforma : null;
+
   return (
     <AppPage
       title="Wallet"
@@ -135,6 +144,7 @@ export default async function WalletPage() {
         }}
         puedeDecidirCobrosRechazo={puedeDecidirCobrosRechazo}
         ahoraIso={ahoraIso}
+        deudaPlataforma={deudaPlataforma}
       />
     </AppPage>
   );

@@ -11,6 +11,7 @@ import type {
   ModoComposicionCaja,
   WalletBalanceSigno,
 } from "@/lib/types/wallet";
+import type { DeudaPlataformaDTO } from "@/lib/interfaces/services/IDeudaPlataformaService";
 import { cn } from "@/lib/utils";
 
 import { BarraComposicionCaja } from "./BarraComposicionCaja";
@@ -78,6 +79,12 @@ import {
 //    empresa, hermana de la ganancia y de «Saldo inicial y aportes» (R6).
 //  - Las regiones secundarias se pintan recorriendo `REGIONES_BOLSILLO_EMPRESA` (R9): una region
 //    nueva es una entrada en esa lista, no un bloque copiado aqui. Importe y signo, del servidor (R20).
+//
+// ── SL-40 (T7, design §9.2) — LO QUE LA EMPRESA DEBE A LA PLATAFORMA ──
+//
+//  - Es la ultima region de la lista. Llega aparte del resumen y no cambia ninguna cifra de la caja
+//    (D10): no es dinero que haya salido.
+//  - Va sin insignia y sin color de signo, y no se pinta si la pagina no la tiene.
 
 /**
  * Feature 200 (tanda 2) — las insignias de signo usan las variantes SEMANTICAS de la
@@ -172,9 +179,19 @@ export interface CajaResumenCardProps {
    * servidor, no el largo de la pagina pintada. Opcional: sin el, la fila queda de dos datos.
    */
   movimientos?: number;
+  /**
+   * SL-40 (R21, R23): lo que la empresa debe a la plataforma, de toda su historia y aparte del
+   * resumen. Opcional porque los tests de la caja de fichas anteriores montan la tarjeta sin ella;
+   * sin ella, o con `null`, la región no se pinta.
+   */
+  deudaPlataforma?: DeudaPlataformaDTO | null;
 }
 
-export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) {
+export function CajaResumenCard({
+  resumen,
+  movimientos,
+  deudaPlataforma = null,
+}: CajaResumenCardProps) {
   // R14/R15/R18/R20 (y `[P7]` de la 173): los HECHOS los da el servidor; la MISMA funcion que
   // usan los KPIs de la analitica elige el nombre que no miente.
   const rotuloPrincipal = rotuloCifraPrincipal(resumen);
@@ -328,11 +345,16 @@ export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) 
               />
             </div>
 
-            {/* R25 (ficha 459) y SL-39 (R6/R9): las regiones secundarias —«IVA cobrado» y «Saldo
-                inicial y aportes», en ese orden—, cada una con su importe, su insignia y su pista. */}
+            {/* R25 (ficha 459), SL-39 (R6/R9) y SL-40 (R21): las regiones secundarias —«IVA
+                cobrado», «Saldo inicial y aportes» y la deuda con la plataforma, en ese orden—, cada
+                una con su importe, su pista y, si tiene signo, su insignia. */}
             {REGIONES_BOLSILLO_EMPRESA.map((region) => {
-              const signo = region.signo(resumen);
-              const badge = SIGNO_BADGE[signo];
+              const datos = { resumen, deudaPlataforma };
+              const valor = region.valor(datos);
+              // SL-40: sin dato (la deuda con `null`) no hay región que pintar.
+              if (valor === null) return null;
+              const signo = region.signo(datos);
+              const badge = signo === null ? null : SIGNO_BADGE[signo];
               return (
                 <section
                   key={region.id}
@@ -342,10 +364,15 @@ export function CajaResumenCard({ resumen, movimientos }: CajaResumenCardProps) 
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{region.rotulo}</span>
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                    {badge === null ? null : <Badge variant={badge.variant}>{badge.label}</Badge>}
                   </div>
-                  <span className={cn("text-lg font-medium tabular-nums", SIGNO_COLOR[signo])}>
-                    {money(region.valor(resumen))}
+                  <span
+                    className={cn(
+                      "text-lg font-medium tabular-nums",
+                      signo === null ? "text-foreground" : SIGNO_COLOR[signo],
+                    )}
+                  >
+                    {money(valor)}
                   </span>
                   <span className="text-xs text-muted-foreground">{region.pista}</span>
                 </section>

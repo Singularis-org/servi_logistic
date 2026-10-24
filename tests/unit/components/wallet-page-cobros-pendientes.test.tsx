@@ -59,6 +59,11 @@ vi.mock("@/lib/actions/rechazo-tienda-cobro", () => ({
   aprobarCobroRechazoTiendaAction: vi.fn(),
   rechazarCobroRechazoTiendaAction: vi.fn(),
 }));
+// SL-40 (T7): la página lee también la deuda con la plataforma. Sin este doble la action real abre
+// Prisma, igual que la de arriba.
+vi.mock("@/lib/actions/deuda-plataforma", () => ({
+  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00" } })),
+}));
 
 class NotFoundError extends Error {
   constructor() {

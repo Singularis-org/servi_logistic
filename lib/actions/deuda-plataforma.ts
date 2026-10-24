@@ -26,8 +26,6 @@ function construirServicio(): IDeudaPlataformaService {
 }
 
 /**
- * @sin-superficie SL-40 T6 (tanda B): la pinta la wallet en T7 (tanda C, `app/(app)/wallet/page.tsx`), que espera a SL-39 en `dev`; T7 quita esta anotación al cablearla.
- *
  * Sin parámetros a propósito: no recibe filtros del libro, porque la deuda es la de toda la historia
  * de la empresa (R23). El actor y su empresa salen de la sesión.
  */

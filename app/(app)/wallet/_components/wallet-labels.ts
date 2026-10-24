@@ -11,6 +11,7 @@ import type {
   WalletMovimientoTipo,
 } from "@/lib/types/wallet";
 import { TIPO_EGRESO_MANUAL_SEED } from "@/lib/types/wallet";
+import type { DeudaPlataformaDTO } from "@/lib/interfaces/services/IDeudaPlataformaService";
 import type { MotivoNoAnulable } from "@/lib/types/wallet-tienda";
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
 import { proximoCobro, type PeriodicidadUnidad } from "@/lib/utils/periodicidad";
@@ -113,6 +114,13 @@ export const CAJA_RESUMEN_LABEL = {
   /** SL-39 (R6, design §7.1) — el IVA cobrado, region propia del bolsillo de la empresa. */
   iva: `${IMPUESTO_ROTULO} cobrado`,
   ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.`,
+  /**
+   * SL-40 (R21, design §9.2) — la deuda con la plataforma. «la plataforma» va en minúscula: nombra
+   * al sistema, no a una marca, y la empresa sale del módulo de marca como en el resto.
+   */
+  deudaPlataforma: `Lo que ${EMPRESA.enFrase} debe a la plataforma`,
+  deudaPlataformaPista:
+    "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
   // Feature 200 (tanda 1) — el TERCER tile de la cabecera. No es dinero: es cuántos registros
   // hay en el conjunto que se está mirando, y por eso se pinta en color neutro y sin insignia
   // de signo. La pista no nombra el control que recorta el conjunto: dice lo que la persona
@@ -278,16 +286,30 @@ export function composicionCajaNombreAccesible(resumen: CajaResumenDTO): string 
 // ESTE ORDEN: añadir una region (la de SL-40, por ejemplo) es añadir una entrada aqui y un campo en
 // `CajaResumenDTO`, sin tocar la tarjeta. El importe y el signo los lee cada entrada del resumen que
 // manda el servidor; la tarjeta no suma, no resta ni convierte nada (R20).
+//
+// SL-40 (design §10): la deuda con la plataforma no sale de `CajaResumenDTO` —no es dinero de la
+// caja (D10)—, así que las entradas leen de un par `{ resumen, deudaPlataforma }` y no del resumen
+// solo. Las de SL-39 leen lo mismo que antes.
+
+/** Lo que leen las regiones: el resumen de la caja y, aparte, la deuda con la plataforma. */
+export interface DatosBolsilloEmpresa {
+  resumen: CajaResumenDTO;
+  /** `null` cuando la página no la tiene (sin permiso): la región no se pinta. */
+  deudaPlataforma: DeudaPlataformaDTO | null;
+}
 
 /** Una region secundaria del bolsillo de la empresa. */
 export interface RegionBolsilloEmpresa {
-  id: "iva" | "capital";
+  id: "iva" | "capital" | "deuda_plataforma";
   rotulo: string;
   pista: string;
-  /** El importe, STRING del servidor, tal cual. */
-  valor: (resumen: CajaResumenDTO) => string;
-  /** El signo que derivo el servidor. */
-  signo: (resumen: CajaResumenDTO) => WalletBalanceSigno;
+  /** El importe, STRING del servidor, tal cual. `null`: la región no se pinta. */
+  valor: (datos: DatosBolsilloEmpresa) => string | null;
+  /**
+   * El signo que derivo el servidor. `null`: sin insignia ni color de signo, porque la cifra no es
+   * un saldo a favor o en contra de la caja (la deuda con la plataforma, SL-40 design §9.2).
+   */
+  signo: (datos: DatosBolsilloEmpresa) => WalletBalanceSigno | null;
 }
 
 export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
@@ -295,15 +317,24 @@ export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
     id: "iva",
     rotulo: CAJA_RESUMEN_LABEL.iva,
     pista: CAJA_RESUMEN_LABEL.ivaPista,
-    valor: (resumen) => resumen.iva,
-    signo: (resumen) => resumen.signoIva,
+    valor: ({ resumen }) => resumen.iva,
+    signo: ({ resumen }) => resumen.signoIva,
   },
   {
     id: "capital",
     rotulo: CAJA_RESUMEN_LABEL.capital,
     pista: CAJA_RESUMEN_LABEL.capitalPista,
-    valor: (resumen) => resumen.capital,
-    signo: (resumen) => resumen.signoCapital,
+    valor: ({ resumen }) => resumen.capital,
+    signo: ({ resumen }) => resumen.signoCapital,
+  },
+  // SL-40 (R21, R26): la última. Sin signo: una deuda no es «positiva» ni «negativa» para la caja, y
+  // el verde la confundiría con dinero a favor.
+  {
+    id: "deuda_plataforma",
+    rotulo: CAJA_RESUMEN_LABEL.deudaPlataforma,
+    pista: CAJA_RESUMEN_LABEL.deudaPlataformaPista,
+    valor: ({ deudaPlataforma }) => deudaPlataforma?.deuda ?? null,
+    signo: () => null,
   },
 ];
 
