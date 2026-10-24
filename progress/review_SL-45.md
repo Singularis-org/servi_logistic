@@ -212,3 +212,73 @@ El resto está sólido:
 - los roles están bien al registrar;
 - la columna de «Empresas» se mergea limpia con SL-41 y queda en verde;
 - typecheck, lint y guardias en verde, salvo el rojo del baseline.
+
+## Revisión 2 (acotada a bf89522..ced8394)
+
+- Revisor: `reviewer`, 2026-10-24.
+- Base desechable `sl45r_main` en un contenedor propio `sl45r-pg`, con `migrate deploy` (incluida
+  `20261024140000_pago_plataforma_blindaje`) y `db:seed`. La base y el contenedor se borraron al acabar.
+- `gate.lock` tomado como «reviewer-SL-45 (vuelta 2)», con `prisma generate` dentro, y soltado al acabar.
+- `prisma migrate diff`: «No difference detected». Typecheck TC=0 y lint 0 errores.
+- Guardias 303/304. El rojo es el mismo de baseline, `dependencias-declaradas-presentes`.
+- Unitarios del rango 98/98. Integración: 8 archivos y 84/84, entre ellos `pago-plataforma-sl45-blindaje`,
+  la ida y vuelta y `caja-tesoreria-migration`.
+
+### B1 — RESUELTO
+Repetí los ataques a mano como `servi_app` de A, con una deuda de 400,00:
+
+| Ataque | Resultado |
+|---|---|
+| a) `UPDATE` del monto de un pago | `permission denied` |
+| b) `DELETE` del contra-asiento | `permission denied` |
+| c) `INSERT` a mano de 5.000 | rechazado por el trigger (23514, «supera la deuda vigente (400.00)») |
+| c') `INSERT` de dos filas de 300 en una sentencia | rechazada la segunda («… (100.00)»): cada fila ve las anteriores |
+| d) `UPDATE` de un sueldo a pago | `permission denied` |
+| Privilegios | `UPDATE`, `DELETE` y `TRUNCATE` en `f`; `INSERT` en `t` |
+| Pago legítimo de 400 y anulación legítima con contra-asiento | pasan (deuda 0,00 y 1.000,00) |
+
+**El REVOKE no rompe ningún flujo real.**
+- En `lib/`, `app/` y `scripts/` no hay `walletMovimiento.update/updateMany/upsert/delete/deleteMany`, ni
+  `UPDATE` o `DELETE FROM` a mano, ni `FOR UPDATE` sobre `wallet_movimiento`.
+- Las suites de wallet y pago del rango pasan con el REVOKE puesto.
+
+**La excepción del reenvío no abre hueco.** El único `wallet_movimiento_clave_idempotencia_key` hace que
+toda clave ya usada choque, así que la excepción nunca deja escribir una fila:
+
+| Intento | Resultado |
+|---|---|
+| Clave de un pago ya registrado, monto 5.000, `ON CONFLICT DO NOTHING` | `INSERT 0 0`, deuda 400,00 |
+| La misma, sin `ON CONFLICT` | 23505 |
+| Clave de un **sueldo** reutilizada para un pago de 5.000 | `INSERT 0 0` |
+| `ON CONFLICT (id) DO NOTHING`, que no cubre la clave | 23505 |
+| A usa una clave que solo existe en B | el trigger busca por empresa, no la encuentra, aplica el tope y rechaza |
+| La misma clave nueva dos veces en una sentencia (400 y 5.000) | entra la de 400 y la de 5.000 se descarta; deuda 0,00 |
+
+**Mutaciones en la base**, contra `pago-plataforma-sl45-blindaje`:
+- `GRANT UPDATE, DELETE` de vuelta: 3 failed / 7 passed.
+- `DISABLE TRIGGER` del tope: 3 failed / 7 passed.
+- Las dos se revirtieron, y lo comprobé: `UPDATE` en `f` y trigger `O`.
+
+### B2 — RESUELTO
+- `egresos` ya incluye `egreso_pago_plataforma`, con una línea en la `descripcion` y la decisión de
+  Carlos anotada.
+- El test de integración pasa por `AnaliticaFinancieraService` real: el pago de 600 da −600,00 en el
+  neto, y su anulación lo deja en 0,00.
+- Mutación: quitar la categoría de la lista tumba ese test (1 failed). La restauré y `cmp` dio
+  `RESTAURADO_OK`.
+
+### Menores
+- **m1 — resuelto:** P2 pasa a CERRADA (D11, Carlos, con «Pagado»).
+- **m2 — resuelto:** apiKey y superadmin entran en los dos tests de anulación, en
+  `EgresoCajaAnulacionService.anular` y en `WalletAnulacionService.enrutar`.
+- **m3 — resuelto:** hay un caso con el cliente dueño para `sumaPagosVigentes`. Quitar `organizacionId`
+  del `where` lo tumba (1 failed). Lo restauré con `RESTAURADO_OK`.
+- **m4 — sigue abierto, no bloquea:** el E2E sigue con `SL45_UI=1`. La bitácora lo deja anotado para
+  SL-44 (línea 1150).
+
+### Regresiones
+No encontré ninguna: la anulación, el reenvío de la app y el pago justo a la deuda siguen pasando.
+
+## Veredicto (Revisión 2)
+
+**OK.** B1 y B2 resueltos, con test y mutación. m1–m3 resueltos y m4 anotado para SL-44.
