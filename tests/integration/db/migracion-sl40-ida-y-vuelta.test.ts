@@ -173,7 +173,8 @@ describeSiHayBase("SL-40 R29 — cobro_plataforma de ida y vuelta", () => {
     for (const carpeta of DE_SL40) await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
     con = await fotoCompleta();
     // Sin esto el ciclo sería verde con migraciones vacías o mal leídas.
-    expect(await existe(`SELECT 1 FROM pg_trigger WHERE tgname = 'cobro_plataforma_al_crear_orden'`), "la 3.ª no creo el trigger").toBe(true);
+    expect(await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND t.tgname = 'cobro_plataforma_al_crear_orden'`), "la 3.ª no creo el trigger").toBe(true);
     expect(diferencias(con, antes).length, "las tres migraciones no cambiaron nada").toBeGreaterThan(0);
   }, 600_000);
 
@@ -195,13 +196,13 @@ describeSiHayBase("SL-40 R29 — cobro_plataforma de ida y vuelta", () => {
 
     expect(diferencias(await fotoCompleta(), antes), "tras los tres downs").toEqual([]);
     // Nombrados aparte: si la foto dejara de mirarlos, este caso lo diría igual.
-    expect(await existe(`SELECT 1 FROM pg_proc WHERE proname LIKE 'cobro_plataforma%'`)).toBe(false);
-    expect(await existe(`SELECT 1 FROM pg_trigger WHERE tgname LIKE '%cobro_plataforma%'`)).toBe(false);
-    expect(await existe(`SELECT 1 FROM pg_type WHERE typname LIKE 'cobro_plataforma%'`)).toBe(false);
-    expect(await existe(`SELECT 1 FROM pg_class WHERE relname LIKE 'cobro_plataforma%'`)).toBe(false);
+    expect(await existe(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'cobro_plataforma%'`)).toBe(false);
+    expect(await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND t.tgname LIKE '%cobro_plataforma%'`)).toBe(false);
+    expect(await existe(`SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typname LIKE 'cobro_plataforma%'`)).toBe(false);
+    expect(await existe(`SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname LIKE 'cobro_plataforma%'`)).toBe(false);
     expect(
       await existe(
-        `SELECT 1 FROM information_schema.columns WHERE table_name = 'organizacion' AND column_name = 'cobro_plataforma_por_orden'`,
+        `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'organizacion' AND column_name = 'cobro_plataforma_por_orden'`,
       ),
     ).toBe(false);
 
