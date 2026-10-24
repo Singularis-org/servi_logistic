@@ -381,8 +381,12 @@ jobs:
 
       # `next build` y no `pnpm build`: el script de package.json migraria otra vez por su cuenta.
       # Playwright sirve este `.next` con `next start` (e2e/_servidor-app.mjs).
+      # 4 GB no le bastan: en el run 40112266371 el grupo `dinero` murio por falta de memoria en el
+      # build (los otros dos pasaron con el mismo codigo). El runner tiene 16 GB.
       - name: Build de la app
         shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: pnpm exec next build
 
       # Se cachean los binarios por version de Playwright; las dependencias del sistema se

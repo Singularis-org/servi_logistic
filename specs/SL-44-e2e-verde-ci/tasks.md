@@ -70,7 +70,7 @@ Convenciones:
     seguidas;
   - mutación: `AUTH_OTP_DEBUG_LOG` vacío en `webServer.env` da rojo «el log del servidor no recibió
     ningún código».
-- [ ] **T2.3 — Montaje en `gate.yml`** (D6; R20–R23, R25, R28). Depende de T2.2.
+- [x] **T2.3 — Montaje en `gate.yml`** (D6; R20–R23, R25, R28). Depende de T2.2.
   - Matriz `e2e-grupo` con base propia, `CRON_SECRET` efímero, `next build`, artefacto si falla y
     `timeout-minutes: 30`.
   - El check `e2e`, que agrega.

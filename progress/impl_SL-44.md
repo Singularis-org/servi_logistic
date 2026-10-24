@@ -216,3 +216,40 @@ cabeceras de `e2e/superadmin-arranque.spec.ts` y `e2e/superadmin-empresas.spec.t
 en `playwright.config.ts`; R26 → proyecto `plataforma-vacia` y `dependencies` de `aislamiento`.
 
 **Veredicto T2.2:** `plataforma-vacia` 9/9 dos veces sin levantar nada a mano; mutación en rojo.
+
+## T2.3 — Montaje en `gate.yml` (D6; R20–R23, R25, R28)
+
+**Archivo:** `.github/workflows/gate.yml` (solo este).
+
+- Cabecera: «PR hacia `dev` → gate-completo + e2e».
+- El job `e2e` antiguo (solo `base_ref == 'prod'`, `pnpm run test:e2e`, 60 min) se sustituye por:
+  - `e2e-grupo`: matriz `grupo: [aislamiento, reparto, dinero]`, `fail-fast: false`,
+    `timeout-minutes: 30` (R28), `postgres:17` propio (R21), mismo `if` que `gate-completo` (R20).
+    Pasos: checkout, pnpm, Node 24, install frozen, `prisma generate` + `next typegen`;
+    credenciales efímeras `SESSION_SECRET` y `CRON_SECRET` con `::add-mask::` antes de
+    `$GITHUB_ENV` (R23; `grep -c "secrets\." gate.yml` = 0), `E2E_LOG_SERVIDOR=$RUNNER_TEMP/servidor-e2e.log`;
+    «Base del grupo» con `set -euo pipefail` (R21); «Build de la app» con `pnpm exec next build`;
+    caché de navegadores igual que antes; `pnpm exec playwright test --project=<grupo>`;
+    `if: failure()` → artefacto `e2e-<grupo>` con `test-results/`, `playwright-report/` y el log (R25).
+  - `e2e` (agregador): `needs: [e2e-grupo]`, `if: always() && (…)`, rojo con
+    «los grupos del E2E (e2e-grupo) salieron '<resultado>'» salvo `success` (R22).
+
+**Validación local:** `actionlint` no está instalado. YAML parseado con `js-yaml@4.3.0` (ya en
+node_modules): jobs `estatico,vitest,gate-completo,e2e-grupo,e2e`; matriz, timeout, `if` y pasos
+como arriba. Guardias que leen `gate.yml` (`gate-cableado-arnes-v2`, `otp-debug-solo-en-pruebas`,
+`analitica-rollup-handler`): 3 files, 37 passed. `node scripts/check-perfil.mjs`: EXIT=0.
+Pendiente (lo lanza el leader): `gh workflow run gate.yml --ref feature/SL-44-e2e-verde-ci` y el rojo de R22.
+
+**Veredicto T2.3:** workflow montado y parseado; falta la corrida real de CI.
+
+### T2.3 — Primera corrida en CI (run 40112266371, `workflow_dispatch` sobre `bc…` de T2.3)
+
+- `gate-completo` y los 3 shards de vitest: **success**.
+- `e2e (aislamiento)`: `15 passed, 20 failed, 6 skipped, 10 did not run` (3,4 min de Playwright). Los
+  **9 de `plataforma-vacia` en verde** en CI (superadmin-arranque 1-3, superadmin-empresas 1-6, con el
+  OTP leído del log). Los rojos son los specs heredados aún sin reescribir (tanda 4), `waitForURL`.
+- `e2e (reparto)`: 10 failed, 6 did not run: specs heredados sin reescribir (tanda 5).
+- `e2e (dinero)`: rojo en «Build de la app», `JavaScript heap out of memory` con 4 GB. Arreglo: el
+  paso de build lleva `NODE_OPTIONS=--max-old-space-size=8192`.
+- `e2e` (agregador): **failure** con `los grupos del E2E (e2e-grupo) salieron 'failure': mira el job
+  de cada grupo y su artefacto e2e-<grupo>` → R22 comprobado con un grupo rojo real.
