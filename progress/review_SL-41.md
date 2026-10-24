@@ -132,3 +132,23 @@ El resultado: el maestro escribe una contraseña válida, pulsa y no pasa nada. 
 **RECHAZADO**, por H1 (R19 en la pantalla). Es un arreglo pequeño: el formulario más un test de componente.
 
 Todo lo demás está en verde, incluidas las seis prioridades del leader y las 16 mutaciones. Cuando H1 esté resuelto, la vuelta 2 puede acotarse a su diff.
+
+## Revisión 2 (acotada a 3e0aa6b..2469449)
+
+Corrí typecheck, lint, guardias y la mutación de base de datos dentro de `gate.lock`, con owner `reviewer-SL-41`, sobre la base desechable `sl41r_mut`. La borré al acabar: quedan 0 bases `sl41r_%`, y `git status` quedó limpio.
+- `pnpm run typecheck`: TC_EXIT=0.
+- `pnpm run lint`: LINT_EXIT=0, sin errores.
+- `pnpm run test:guardias`: solo los 4 rojos de `dependencias-declaradas-presentes`, que ya están en el baseline.
+- Tests de la vuelta, sin mutar: 9 archivos unit/componente con 131 tests, y `enlace-bienvenida` (Postgres) con `password-reset-enlace`, 25 tests. Todo en verde y nada saltado.
+
+| Punto | Estado | Evidencia |
+|---|---|---|
+| **H1** (R19): enlace mal formado | **Resuelto** | `RecuperarContrasenaForm.tsx`: si llega `validation_error` con `fieldErrors.enlace`, la pantalla pasa a `enlaceInvalido`, con el genérico y «Pedir un código por correo». Lo cubre el test «con validation_error del ENLACE (mal formado)…». **Mutación** sin ese mapeo: 1 rojo. **Muere** |
+| **m3**: texto de éxito | **Resuelto** | En modo enlace dice «Contraseña creada / se creó correctamente»; en recuperación sigue el texto anterior. Hay test de componente y el E2E se ajustó a «Contraseña creada» |
+| **m2**: «Reenviar» que falla | **Resuelto** | Si falla el envío, `BienvenidaMaestroService` anula el enlace recién emitido con `anularEnlaceBienvenida`, que llama a `consumirSiActivo`. Así el anterior vuelve a ser el último activo. Si la anulación también falla, se ignora y se mantiene `no_enviada`. **Mutaciones:** quitar la llamada en el servicio da 1 rojo; dejar `anularEnlaceBienvenida` sin consumir da 2 rojos, uno de ellos contra Postgres («m2: anular el enlace nuevo devuelve el valor al anterior…»). **Mueren las dos** |
+| **m2 con `sin_correo`** | **Me parece bien** | Sin SMTP, el emisor de consola es la entrega real: en local y en el E2E el enlace se lee del log con `AUTH_OTP_DEBUG_LOG=1`. Anularlo rompería ese camino. Además, en un entorno sin SMTP no existe una bienvenida anterior que haya salido por correo, y la UI ya avisa de que el correo no está configurado |
+| **m1 → R4 relajado** | **Aplicado** | Decisión del leader. `requirements.md` reescribe R4 y R40 y cita el texto anterior. `componerCorreo` adjunta siempre el logo y la cabecera es siempre `cid:`. `CorreoDeMarca` ya no lleva `baseUrl`, y el OTP ya no lee `baseUrlDeLaApp()`. La bienvenida sigue exigiendo la URL para su enlace (R23, R40). **Mutación** (volver a quitar el adjunto): 3 rojos en `plantilla-marca` y `email-notificacion`. **Muere** |
+
+No encontré regresiones en el diff de la vuelta. Los demás puntos de la revisión 1 no cambian.
+
+### Veredicto de la revisión 2: **OK**
