@@ -131,7 +131,7 @@
   - `docs/ayuda/oficina/wallet-caja.md`: la línea, qué cuenta, que todavía no se cobra y que no
     cambia la caja. Se actualiza `actualizado:`.
   - _Hecho:_ las guardias de ayuda en verde con `vitest related` sobre el archivo.
-- [ ] **T10. Cierre** (todos; depende de T1–T9).
+- [x] **T10. Cierre** (todos; depende de T1–T9).
   - No regresión, en verde: `tests/integration/db/libro-kardex-468.test.ts`,
     `tests/components/descarga/WalletDescarga.test.tsx`,
     `tests/integration/db/aislamiento-ordenes.test.ts` y

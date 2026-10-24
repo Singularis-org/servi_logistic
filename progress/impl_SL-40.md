@@ -868,3 +868,32 @@ Restaurado (`RESTAURADO_OK`, `git status` sin cambios en `wallet-labels.ts`) y v
 igual en las tres lecturas, con la mutación medida en rojo. La no regresión pasa, salvo el rojo de
 baseline de `libro-kardex-468`, igual en `dev`. `e2e/wallet.spec.ts` sigue en rojo por herencia
 (SL-44). Falta el gate final del leader.
+
+## Estado final (implementer, 2026-10-24)
+
+- Hechas T0–T10, con la rama al día con `origin/dev` f90799a (SL-38 y SL-39 dentro).
+- Gate final sobre `5443464`: `TEST_RAPIDO_BASE=origin/dev ./init.sh`, con el lock tomado y contra
+  `sl40_gate` (migrada y sembrada).
+  - Primera corrida (`sl40-gate-2.log`): `INIT_EXIT=1`, por 3 guardias que agotaron los 20 s
+    (`tarifa-status-retirado`, `catalogo-postgres-acota-esquema`, `dominio-ordenex-fuera`). Corridas
+    solas dieron 24/24 en verde, así que eran saturación y no un rojo de SL-40.
+  - Segunda corrida (`sl40-gate-3.log`):
+    ```
+     Test Files  897 passed (897)
+          Tests  12096 passed | 26 skipped (12122)
+     Test Files  302 passed (302)
+          Tests  4134 passed | 1 skipped (4135)
+    INIT_EXIT=0
+    ```
+  - Los dos logs están en
+    `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/`.
+- E2E: `e2e/wallet.spec.ts` da 2 rojos heredados: usuarios de ejemplo que la base vacía no tiene; el
+  archivo es igual al de `dev` y lo lista SL-44. El resto en verde, también `cobro-plataforma-sl40`
+  (ver «## T10»).
+- Limpieza: no queda ninguna base `sl40_*` (comprobado en `pg_database`). Dev server apagado, puerto
+  3000 libre y `gate.lock` suelto.
+- Abierto para el leader:
+  - Confirmar que la base compartida `servi-logistic` quedó sin residuo de la corrida de guardias del
+    incidente (ver «Merge de origin/dev»).
+  - `wallet.spec.ts` rojo heredado (SL-44).
+  - `cobro-plataforma-sl40` corre solo con `SL40_UI=1`.
