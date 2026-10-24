@@ -360,9 +360,13 @@ for (const letra of ["A", "B"] as const) {
   });
 }
 
-test("7. con las dos contraseñas creadas, ninguna fila ofrece «Reenviar bienvenida» (R38)", async () => {
+test("7. con las dos contraseñas creadas, ni la fila de A ni la de B ofrecen «Reenviar bienvenida» (R38)", async () => {
   const page = superadmin();
   await page.goto("/plataforma/empresas");
-  await expect(filasDelListado(page)).toHaveCount(2);
-  await expect(page.getByRole("button", { name: TEXTO.reenviar })).toHaveCount(0);
+  // La base puede traer empresas de otras corridas (A1): se miran las filas de A y B.
+  for (const letra of ["A", "B"] as const) {
+    const fila = filasDelListado(page).filter({ hasText: alta(letra).slug });
+    await expect(fila).toHaveCount(1);
+    await expect(fila.getByRole("button", { name: TEXTO.reenviar })).toHaveCount(0);
+  }
 });

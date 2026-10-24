@@ -288,7 +288,8 @@ test("T8: el superadmin fija el global, fija y quita la excepción de A, y ve ca
   const editor = fila.getByRole("form", { name: `${TEXTO.regionCobro} · ${nombreA}`, exact: true });
   await editor.getByRole("textbox").fill("750.00");
   await editor.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(fila.getByRole("status")).toHaveText(TEXTO.guardado);
+  // El aviso del cobro, no la región `role="status"` de «Reenviar bienvenida» (SL-41) de la misma fila.
+  await expect(fila.locator('[data-slot="alert"][role="status"]')).toHaveText(TEXTO.guardado);
   await expect(fila).toContainText(PINTADO.excepcion);
   await expect(fila.getByText("propio", { exact: true })).toBeVisible();
   const conExcepcion = await base().organizacion.findUniqueOrThrow({

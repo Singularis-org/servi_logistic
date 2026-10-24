@@ -206,12 +206,17 @@ export interface AltaPorPantalla {
   documento: string;
 }
 
-/** El aviso de alta correcta (propuesta aprobada de T12 de SL-32). */
-export const AVISO_EMPRESA_CREADA = "Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.";
+/**
+ * El aviso del alta en el E2E. Desde SL-41 el alta envía la bienvenida; sin `SMTP_*` sale por
+ * consola y la action responde `sin_correo`, así que el aviso es la advertencia (`role="alert"`) y
+ * no el de éxito (SL-41 R26; el mismo literal que `superadmin-empresas.spec.ts`).
+ */
+export const AVISO_EMPRESA_CREADA =
+  "Empresa creada, pero el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.";
 
 /**
  * Da de alta una empresa desde `/plataforma/empresas` como lo haría el superadmin, y espera el
- * aviso de éxito y la fila en el listado. `page` ya tiene la sesión del superadmin.
+ * aviso del alta y la fila en el listado. `page` ya tiene la sesión del superadmin.
  */
 export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): Promise<void> {
   await page.goto("/plataforma/empresas");
@@ -227,7 +232,7 @@ export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): 
   await page.getByRole("option", { name: "cedula", exact: true }).click();
   await maestro.getByLabel("Documento", { exact: true }).fill(d.documento);
   await form.getByRole("button", { name: "Crear empresa" }).click();
-  await expect(page.getByRole("status").filter({ hasText: AVISO_EMPRESA_CREADA })).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByRole("alert").filter({ hasText: AVISO_EMPRESA_CREADA })).toHaveCount(1, { timeout: 60_000 });
   await expect(page.getByRole("table").locator("tbody tr").filter({ hasText: d.slug })).toHaveCount(1);
 }
 
