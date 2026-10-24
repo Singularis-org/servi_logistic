@@ -30,7 +30,7 @@
 
 ## Tanda A — El rojo primero y la base
 
-- [ ] **T1. El test que hoy falla** (R7–R9, R11, R13–R16, R18, R20–R22; depende de T0).
+- [x] **T1. El test que hoy falla** (R7–R9, R11, R13–R16, R18, R20–R22; depende de T0).
   - `tests/integration/db/pago-plataforma-sl45.test.ts` según `design.md > 12.1`, con el control de no
     vacuidad.
   - _Hecho:_ corre contra Postgres y sale **en rojo** porque la categoría no existe. La salida va pegada
