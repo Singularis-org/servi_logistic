@@ -99,7 +99,7 @@
 
 ## Tanda C — Pantallas (`frontend_dev`)
 
-- [ ] **T7. La línea en la wallet** (R21, R23, R26; depende de T6 y **de SL-39 en `dev`**).
+- [x] **T7. La línea en la wallet** (R21, R23, R26; depende de T6 y **de SL-39 en `dev`**).
   - `app/(app)/wallet/page.tsx` y `WalletModule.tsx` pasan `deudaPlataforma`.
   - `wallet-labels.ts`: la entrada `deuda_plataforma` en `REGIONES_BOLSILLO_EMPRESA`, con su rótulo y
     su pista. El accesor pasa a recibir `{ resumen, deudaPlataforma }` (`design.md > 10`).
@@ -127,7 +127,7 @@
 
 ## Tanda D — Ayuda y cierre
 
-- [ ] **T9. [P] Ayuda** (R21; depende de T7).
+- [x] **T9. [P] Ayuda** (R21; depende de T7).
   - `docs/ayuda/oficina/wallet-caja.md`: la línea, qué cuenta, que todavía no se cobra y que no
     cambia la caja. Se actualiza `actualizado:`.
   - _Hecho:_ las guardias de ayuda en verde con `vitest related` sobre el archivo.
