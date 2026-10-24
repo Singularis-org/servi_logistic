@@ -18,17 +18,12 @@ Spec: `specs/SL-41-plantillas-correo-bienvenida/` (`7be57e8`, R1–R37), aprobad
 
 ## Estado de las tareas
 
-- **T1 (/design) ABIERTA: espera la aprobación de Carlos.** La propuesta está en
-  `specs/SL-41-plantillas-correo-bienvenida/maqueta/` (`README.md`, `otp.html`, `bienvenida.html`,
-  `bienvenida-sin-url.html`), renderizada con el `componerCorreo` real. Si Carlos cambia algo, se
-  ajusta `lib/services/email/plantillas/plantilla-marca.ts` y la «Hecho» de T5 se cierra entonces.
-- **T10:** la captura de la pantalla con los dos avisos queda pendiente: no se levantó dev server.
-- **T12:** el E2E está escrito y pasa typecheck y lint, pero no se ha ejecutado. Necesita
-  `NEXT_PUBLIC_APP_URL` en el dev server (R40) y corre sin `SMTP_*`, así que espera el aviso de
-  `sin_correo`.
+- **Todas cerradas (T0–T15)** el 2026-10-24. Detalle de la última sesión al final, en
+  «Sesión 2026-10-24».
+- **T1 aprobada por Carlos Restrepo el 2026-10-24**, con un cambio: el logo va incrustado como
+  adjunto CID (antes, `src` absoluto a `{baseUrl}/brand/…`).
 - **Para T19 de SL-32 (P2):** el correo real de bienvenida se comprueba en cada entorno con Brevo,
-  `SMTP_FROM` y `NEXT_PUBLIC_APP_URL` puestos.
-- El resto (T0, T2–T9, T11, T13, T14, T15) está hecho.
+  `SMTP_FROM` y `NEXT_PUBLIC_APP_URL` puestos. En producción, `NEXT_PUBLIC_APP_URL=https://servilogistic.co`.
 
 ## Mapa R → test
 
@@ -52,7 +47,8 @@ Spec: `specs/SL-41-plantillas-correo-bienvenida/` (`7be57e8`, R1–R37), aprobad
 | R36, R37 | `tests/unit/config/email-config.test.ts` |
 | R38 | `tests/integration/db/bienvenida-maestro-repository.test.ts`, `tests/integration/db/user-repository-contrasena-definida.test.ts`, `tests/unit/actions/reenviar-bienvenida-action.test.ts`, `tests/components/empresas-module.test.tsx`, `tests/integration/empresas-page.test.tsx` |
 | R39 | `tests/unit/services/email/plantilla-marca.test.ts`, `tests/unit/config/email-config.test.ts` |
-| E2E | `e2e/superadmin-empresas.spec.ts` (escrito; sin ejecutar) |
+| R2 (logo CID) | `tests/unit/services/email/plantilla-marca.test.ts` (`cid:` en la cabecera, adjunto PNG con ese cid), `tests/unit/services/email/logo-correo.test.ts` (bytes = `public/brand/logo-correo.png`), `tests/unit/services/nodemailer-email-sender.test.ts` (adjunto `inline` con `cid`) |
+| E2E | `e2e/superadmin-empresas.spec.ts`: 7 passed el 2026-10-24 |
 
 ## Detalle por parte
 
@@ -775,3 +771,108 @@ están borradas, no hay dev server vivo y el lock está suelto.
    `EmpresasModule.tsx`.
 6. **Hueco anotado:** dos mutaciones del foco al entrar en cada paso de `/recuperar-contrasena`
    sobreviven. No hay test de foco, y con `dc95473` tampoco lo había.
+
+## Sesión 2026-10-24 (backend_dev): bloqueante, logo CID, merge de SL-40, T10, T12 y T13
+
+### 1. Bloqueante de `/recuperar-contrasena` (commit `08c8ac2`)
+- Borrada `export type { RequestContext };` de `lib/actions/password-reset.ts`. Nadie lo importaba
+  desde ahí.
+- Censo de los archivos `"use server"` de `lib/` y `app/`: ningún otro tiene una lista
+  `export type { … }` ni `export { type … }` sin `from`. Los demás exports de tipo son
+  declaraciones (`export type X = …`) o, en `lib/actions/geografia.ts`, una lista con `from`, que sí
+  compila.
+- Guardia nueva `tests/unit/guards/use-server-sin-reexport-de-tipos.guardia.test.ts`: control de
+  no vacuidad, sin infractores, y una contraprueba con la línea original, la forma inline y la
+  multilínea.
+- **Mutación:** con la línea devuelta a `password-reset.ts` la guardia se pone roja
+  (`1 failed | 2 passed`, infractor `lib/actions/password-reset.ts: export type { RequestContext }`).
+  **Muere.**
+
+### 2. T1 aprobada y logo incrustado (commit `cb16feb`)
+**Aprobación:** Carlos Restrepo aprobó la maqueta el **2026-10-24**, con un cambio: el logo tiene
+que verse, así que va como adjunto CID. Colores, tamaños y textos, sin cambios respecto a
+`maqueta/README.md`.
+- `public/brand/logo-correo.png`: 360 × 105 px, 6.806 bytes y fondo blanco aplanado. Sale del SVG
+  de marca con `node scripts/generar-logo-correo.mjs`, que usa `sharp`, ya aprobada. El mismo
+  script escribe sus bytes en base64 en `lib/services/email/plantillas/logo-correo.ts`. El correo
+  no lee `public/` con `fs`: en Vercel ese archivo no viaja a la función (ver
+  `outputFileTracingIncludes`).
+- `EmailMessage.imagenesEnLinea?: ImagenEnLinea[]`, la ampliación mínima del contrato.
+  `NodemailerEmailSender` las manda como `attachments` con `cid`, `encoding: "base64"` y
+  `contentDisposition: "inline"`.
+- `componerCorreo`: la cabecera pinta `<img src="cid:logo@servilogistic" … width="180">` y el
+  mensaje lleva el adjunto. **R4 se mantiene:** sin `baseUrl`, la cabecera sigue siendo de texto y
+  el mensaje no lleva adjunto.
+  - **Abierto para Carlos:** el logo ya no depende de la URL, así que R4 podría relajarse para que
+    el OTP lleve logo también sin `NEXT_PUBLIC_APP_URL`. No se toca sin su OK.
+- Maqueta regenerada: `otp.html` y `bienvenida.html` llevan el mismo PNG en data URI, solo para la
+  vista previa local. Comprobado con Chromium: `img.complete=true`, `naturalWidth=360`, pintado a
+  180. Captura en
+  `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41/capturas/t1-otp-logo.png`.
+- Tests:
+  - `plantilla-marca.test.ts`: `cid:` en la cabecera, ningún `src` remoto, un adjunto PNG con
+    firma válida por cada `cid:` y ninguno sin `baseUrl`;
+  - `logo-correo.test.ts`: los bytes son los de `public/brand/logo-correo.png`, sha256, 360 px y
+    menos de 20 KB;
+  - `nodemailer-email-sender.test.ts`: el adjunto `inline` y nada cuando no hay imágenes;
+  - `email-notificacion.test.ts`: el OTP con `cid:`.
+- **Mutaciones:**
+  - quitar el adjunto en `componerCorreo` da 2 rojos: **muere**;
+  - añadir un byte al PNG da rojo en `logo-correo.test.ts`: **muere**.
+- `design.md > 3.2` y `> 12 (A6)`, y `maqueta/README.md`, actualizados.
+- `.env.example`: `NEXT_PUBLIC_APP_URL` también arma los enlaces de los correos. El valor de
+  producción es `https://servilogistic.co`. El dominio no está en el código.
+
+### 3. Merge de `origin/dev` (`87269af`, SL-40), commit `4859471`
+- Choques en `page.tsx`, `EmpresasModule.tsx`, `empresas-module.test.tsx` y
+  `empresas-page.test.tsx`. Se resolvieron sumando los dos lados:
+  - `Promise.all` con pendientes y cobro global;
+  - props de las dos features;
+  - la tabla con «Cobro por orden» y «Bienvenida».
+- `tests/components/EmpresasModuleCobro.test.tsx`, de SL-40, recibe `reenviarBienvenida` y
+  `bienvenidaPendiente: []`.
+- Typecheck en 0. Pasan los 18 tests de `EmpresasModuleCobro` y los 131 de los archivos fusionados
+  y de correo.
+
+### 4. T12, el E2E (base desechable `sl41_e2e2`, borrada al terminar)
+Antes de arrancar, el puerto 3000 estaba libre. Se ejecutaron `migrate deploy` y el seed, y se
+levantó `pnpm dev` sin `SMTP_*`, con `AUTH_OTP_DEBUG_LOG=1` y
+`NEXT_PUBLIC_APP_URL=http://localhost:3000`.
+```
+  ok 1 › 1. «Empresas» abre en el estado vacío (R29) (1.1s)
+  ok 2 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (1.4s)
+  ok 3 › 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (4.0s)
+  ok 4 › 4. un slug inválido marca el campo sin crear nada (R34) (1.1s)
+  ok 5 › 5-6. el maestro de A crea su contraseña con el enlace de bienvenida, «Empresas» le da 404 y no la ve (R18, R19, R35) (3.2s)
+  ok 6 › 5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R18, R19, R35) (2.6s)
+  ok 7 › 7. con las dos contraseñas creadas, ninguna fila ofrece «Reenviar bienvenida» (R38) (339ms)
+  7 passed (24.4s)   PW_EXIT=0
+```
+- Log del dev server: `500s=0` y ningún `is not defined`.
+- El servidor se mató («nada en 3000») y se borraron `.next`, `test-results` y el log, que guarda
+  contraseñas y enlaces.
+
+### 5. T10
+Pasan los tests de componente: `empresas-module.test.tsx`, `reenviar-bienvenida-boton.test.tsx` y
+`EmpresasModuleCobro.test.tsx`. Las capturas están en «Capturas de T10». La revisión visual de
+Carlos queda a su criterio; no bloquea.
+
+### 6. T13, el gate final (dentro del lock, base desechable `sl41_base`, que se recreó con `migrate deploy` y el seed y se borró al terminar)
+Comando: `TEST_RAPIDO_BASE=origin/dev ./init.sh`. Log:
+`C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41-gate-final.log`.
+```
+✓ typecheck paso
+✓ lint paso
+ Test Files  461 passed (461)      Tests  6258 passed | 26 skipped (6284)
+ Test Files  303 passed (303)      Tests  4137 passed | 1 skipped (4138)
+✓ test:rapido paso
+✓ todas las migraciones tienen down.sql
+== init OK ==
+INIT_EXIT=0
+```
+El primer intento dio `INIT_EXIT=1`: `sl41_base` no existía (se había borrado el 2026-10-23) y los
+tests de integración se quedaron colgados 120 s cada uno. Se cortó, se recreó la base y se repitió.
+No fue un rojo del código.
+
+**Veredicto:** SL-41 lista para revisión. T0–T15 cerradas, cada R1–R40 con su test, E2E con 7
+passed y gate con `INIT_EXIT=0`.

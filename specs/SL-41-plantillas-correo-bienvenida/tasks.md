@@ -140,7 +140,7 @@
   - `recuperar-contrasena-form.test.tsx` y `contrasena-maqueta-unica` siguen verdes, con el censo en 2.
   - **Hecho:** tests verdes.
 
-- [ ] **T10. «Empresas»: aviso del alta y «Reenviar bienvenida» [P].** Depende de T8. Si T1 propone
+- [x] **T10. «Empresas»: aviso del alta y «Reenviar bienvenida» [P].** Depende de T8. Si T1 propone
   algo para la fila, también depende de T1.
   - `page.tsx` pasa `reenviarBienvenida`.
   - `EmpresasModule.tsx`: `desenlaceDe` con `bienvenida`, los dos avisos y la columna «Bienvenida».
@@ -156,7 +156,7 @@
   - **Hecho:** los textos describen la bienvenida, el reenvío y las variables que necesita
     (`NEXT_PUBLIC_APP_URL`, `SMTP_FROM`, `AUTH_BIENVENIDA_TTL_HORAS`), sin Gmail.
 
-- [ ] **T12. E2E.** Depende de T9 y T10.
+- [x] **T12. E2E.** Depende de T9 y T10.
   - `e2e/superadmin-empresas.spec.ts`:
     - el superadmin da de alta una empresa;
     - lee el enlace de la línea de depuración del `ConsoleEmailSender`, con un helper nuevo en
@@ -166,7 +166,7 @@
   - Ajustar el paso que hoy espera el aviso «¿Olvidaste tu contraseña?».
   - **Hecho:** `pnpm exec playwright test e2e/superadmin-empresas.spec.ts` en verde.
 
-- [ ] **T13. Cierre.**
+- [x] **T13. Cierre.**
   - Correr `./init.sh`.
   - Escribir en `progress/impl_SL-41.md` el mapa R1–R37 → test (`design.md > 15`).
   - Anotar para T19 de SL-32 que el correo real de bienvenida se comprueba en cada entorno, con
