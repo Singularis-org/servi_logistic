@@ -27,6 +27,9 @@ import { elegirEnSelector } from "@/tests/fixtures/selector-buscable";
 //  - R44–R47: «Así queda» se pide al SERVIDOR con retardo y solo con monto (y cuenta); cargando y error
 //    sin cifras; «no cambia»; el aviso de saldo en contra lo decide el servidor.
 //  - R48/R49/R51/R52, R74–R76.
+//  - SL-45 (T7, R6): el undécimo concepto, «Pago a la plataforma», en «Sale dinero de la empresa»: su
+//    frase, su `FormData` sin «a quién», la referencia opcional del sueldo y el tope del servidor bajo el
+//    monto.
 //
 // El monto se mide como STRING exacto en todos los envíos (R90): ni `Number(` ni `parseFloat`.
 
@@ -219,7 +222,7 @@ afterEach(() => cleanup());
 
 // ─── R37 / R38 — el catálogo ─────────────────────────────────────────────────────────────────────
 
-describe("458-C R37/R38 — el catálogo: diez conceptos en tres grupos y el enlace a las plantillas", () => {
+describe("458-C R37/R38 / SL-45 R6 — el catálogo: once conceptos en tres grupos y el enlace a las plantillas", () => {
   it("cada grupo es un grupo de opciones con su nombre, y dentro están sus conceptos en orden", async () => {
     const { dialog } = await abrir();
     const nombres = (grupo: string) =>
@@ -233,6 +236,7 @@ describe("458-C R37/R38 — el catálogo: diez conceptos en tres grupos y el enl
       "Corrección de caja (resta)",
       "La empresa le paga a una tienda",
       "La empresa le paga a un mensajero",
+      "Pago a la plataforma",
     ]);
     expect(nombres("Llega dinero a la caja")).toEqual([
       "Aporte de dinero a la caja",
@@ -240,7 +244,7 @@ describe("458-C R37/R38 — el catálogo: diez conceptos en tres grupos y el enl
       "Corrección de caja (suma)",
     ]);
     expect(nombres("Se descuenta del saldo de una tienda")).toEqual(["La empresa le cobra a una tienda"]);
-    expect(within(dialog).getAllByRole("radio")).toHaveLength(10);
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(11);
   });
 
   it("R38: no se ofrece «Gasto fijo»; el enlace lleva a las plantillas", async () => {
@@ -288,6 +292,11 @@ describe("458-C R39/R52 — la frase del efecto y la del libro siguen al concept
       [
         "La empresa le paga a un mensajero",
         "La empresa le paga al mensajero lo que le debe por sus cierres y baja su cuenta por pagar; la ganancia no cambia.",
+      ],
+      // SL-45 (R6): literal del requisito.
+      [
+        "Pago a la plataforma",
+        "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
       ],
     ];
     for (const [concepto, frase] of casos) {
@@ -1148,4 +1157,78 @@ describe("458-C M3 — un fallo de red no es un diálogo mudo, y cambiar de conc
     expect(sueldo.claveIdempotencia).toMatch(UUID);
     expect(sueldo.claveIdempotencia).not.toBe(gasto.claveIdempotencia);
   }, 30000);
+});
+
+// ─── SL-45 (T7, R6, R9) — «Pago a la plataforma» ─────────────────────────────────────────────────
+
+describe("SL-45 R6/R9 — «Pago a la plataforma» en el diálogo", () => {
+  it("R6: dice su libro, no pide «a quién» y pide la referencia del pago, con la referencia y el comprobante opcionales", async () => {
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "Pago a la plataforma");
+    expect(dialog.querySelector("#movimiento-concepto-libro")?.textContent).toBe(
+      "Se registra en el libro como «Pago a la plataforma».",
+    );
+    expect(within(dialog).getByText("Registrar movimiento en la caja")).toBeTruthy();
+    expect(within(dialog).queryByLabelText(/^A quién/)).toBeNull();
+    expect(within(dialog).getByLabelText(/^Referencia del pago/)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/^Referencia \(opcional\)/)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/^Monto/)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/^Fecha/)).toBeTruthy();
+  });
+
+  it("R6: manda SOLO sus claves al egreso administrativo, sin `contraparteNombre`", async () => {
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "Pago a la plataforma");
+    escribir(dialog, /^Monto/, "600");
+    escribir(dialog, /^Referencia del pago/, "  Transferencia 4455  ");
+    escribir(dialog, /^Referencia \(opcional\)/, "SINPE 7788");
+    await confirmar(user, dialog);
+    await waitFor(() => expect(registrarEgresoMock).toHaveBeenCalledTimes(1));
+    const fd = entradas(registrarEgresoMock.mock.calls[0][0]);
+    expect(Object.keys(fd).sort()).toEqual(
+      ["claveIdempotencia", "descripcion", "monto", "referencia", "tipoEgreso"].sort(),
+    );
+    expect(fd).toMatchObject({
+      tipoEgreso: "pago_plataforma",
+      monto: "600",
+      descripcion: "Transferencia 4455",
+      referencia: "SINPE 7788",
+    });
+    expect(fd.claveIdempotencia).toMatch(UUID);
+  });
+
+  it("sin la referencia del pago no llama al servidor y lo dice bajo el campo", async () => {
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "Pago a la plataforma");
+    escribir(dialog, /^Monto/, "600");
+    await confirmar(user, dialog);
+    expect(await within(dialog).findByText("La descripción es obligatoria.")).toBeTruthy();
+    expect(registrarEgresoMock).not.toHaveBeenCalled();
+  });
+
+  it("R9: el tope del servidor se pinta bajo el MONTO, con su literal, y el diálogo no cierra", async () => {
+    registrarEgresoMock.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { monto: ["El pago no puede ser mayor que lo que la empresa debe a la plataforma."] },
+    });
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "Pago a la plataforma");
+    escribir(dialog, /^Monto/, "600");
+    escribir(dialog, /^Referencia del pago/, "Transferencia 4455");
+    await confirmar(user, dialog);
+    const aviso = await within(dialog).findByText(
+      "El pago no puede ser mayor que lo que la empresa debe a la plataforma.",
+    );
+    expect(aviso.closest("#movimiento-monto-error")).not.toBeNull();
+    expect(successMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("R4: con `conceptoInicial` abre con «Pago a la plataforma» ya elegido y el botón con su etiqueta", async () => {
+    const { dialog } = await abrir(
+      { conceptoInicial: "pago_plataforma", etiquetaBoton: "Registrar pago a la plataforma" },
+      "Registrar pago a la plataforma",
+    );
+    expect(within(dialog).getByRole("radio", { name: "Pago a la plataforma" })).toBeChecked();
+  });
 });

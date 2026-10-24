@@ -8,7 +8,7 @@ import { montoPositivoSchema, type EstadoCaja } from "@/lib/types/wallet";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 /**
- * Los DIEZ conceptos del registro unico (design §4.1), en los tres grupos de la 461. Es la clave de
+ * Los ONCE conceptos del registro unico (design §4.1; SL-45 suma el pago a la plataforma), en los tres grupos de la 461. Es la clave de
  * `EFECTO_POR_TIPO` y de la tabla de enrutado del dialogo (458-C): un concepto nuevo no compila
  * hasta que alguien decida su efecto.
  */
@@ -20,6 +20,8 @@ export const CONCEPTO_REGISTRO_SEED = [
   "correccion_resta",
   "pago_a_tienda",
   "pago_a_mensajero",
+  // SL-45 (design §7.1): el pago a la plataforma, un egreso propio de la caja.
+  "pago_plataforma",
   // Llega
   "aporte",
   "correccion_suma",

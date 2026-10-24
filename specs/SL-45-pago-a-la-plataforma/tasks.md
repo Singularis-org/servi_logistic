@@ -104,7 +104,7 @@
 
 ## Tanda C — Pantallas (`frontend_dev`; dependen de T6)
 
-- [ ] **T7. [P] El concepto en el diálogo** (R6).
+- [x] **T7. [P] El concepto en el diálogo** (R6).
   - `wallet-conceptos-manuales.ts`: el undécimo concepto, su frase y su clave de «Así queda».
   - `lib/types/efecto-movimiento.ts` y `lib/utils/efecto-movimiento.ts`: `pago_plataforma`.
   - `wallet-labels.ts`: `DESCRIPCION_EGRESO_LABEL` y `DESCRIPCION_EGRESO_PLACEHOLDER` de `pago_plataforma`.

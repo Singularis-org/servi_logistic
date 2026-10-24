@@ -528,3 +528,60 @@ $ pnpm run test:guardias
 **Veredicto (T4–T6 y E1-servidor):** la deuda resta los pagos vigentes, el pago tiene tope con candado dentro de la
 transacción y nunca se acepta sin tope, T1 está en 15/15 y cada mutación pedida lo pone en rojo; el listado del
 superadmin ya trae deuda y pagado por empresa, a falta de la pantalla.
+
+## Tanda C (frontend_dev, 2026-10-24)
+
+Exploración con Grep/Read: el MCP `codebase-memory-mcp` no estaba entre las herramientas de este agente.
+
+### T7. El concepto en el diálogo (R6)
+
+**Código:**
+- `app/(app)/wallet/_components/wallet-conceptos-manuales.ts`: el undécimo concepto `pago_plataforma` justo después de
+  `pago_a_mensajero` (tramo «sale»), con destino `egreso_administrativo` / `pago_plataforma` / `egreso_pago_plataforma`, sus
+  etiquetas de `DESCRIPCION_EGRESO_*` (ya puestas por T3), su frase en `FRASE_DEL_EFECTO` y `CONCEPTO_REGISTRO_DE.pago_plataforma`.
+  `aQuienDelConcepto` devuelve `null` para él (el resto de egresos administrativos siguen en «obligatorio»).
+- `lib/types/efecto-movimiento.ts`: `CONCEPTO_REGISTRO_SEED` gana `pago_plataforma`.
+- `lib/utils/efecto-movimiento.ts`: `EFECTO_POR_TIPO.pago_plataforma` = solo caja, `egreso`/`egreso_pago_plataforma`.
+- `components/shared/wallet/RegistrarMovimientoDialog.tsx` (lo pide «a quién»): la referencia opcional y el mensaje de
+  descripción vacía se decidían por `aQuienPide !== null`; ahora por la clase (`egreso_administrativo` | `ajuste_manual`).
+  Sin esto, quitar «a quién» al pago le quitaba también la referencia opcional del sueldo y cambiaba su error a «El motivo es
+  obligatorio.». Para los otros diez conceptos el resultado es el mismo que antes.
+
+**Tests** (literales a mano):
+- `tests/unit/components/wallet-conceptos-manuales.test.ts`: las listas de «diez» pasan a once con `pago_plataforma` /
+  «Pago a la plataforma» escritos a mano (ids, nombres, libros, categorías de caja, grupos, frases, cuentas, «a quién», claves
+  de «Así queda»). `conceptosDeCaja()` (los cuatro de la 334) excluye el pago, que no es de la 334. Bloque nuevo «SL-45»: grupo y
+  posición, destino literal, «Referencia del pago» y su ejemplo, sin «a quién», la frase del efecto y la del libro, la cabecera de
+  la caja.
+- `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx`: once radios con el nuevo en «Sale dinero de la empresa»;
+  su frase; bloque nuevo «SL-45 R6/R9»: libro y campos (sin «A quién», con «Referencia del pago» y «Referencia (opcional)»),
+  `FormData` con exactamente `claveIdempotencia, descripcion, monto, referencia, tipoEgreso` (sin `contraparteNombre`), sin
+  referencia no llama al servidor, el `validation_error` del tope bajo `#movimiento-monto-error` con el literal de R9, y
+  `conceptoInicial="pago_plataforma"` abre con él elegido (R4).
+- `tests/unit/utils/efecto-movimiento.test.ts`: «SL-45 (R8)»: con 600 sobre la caja de 7.500,00 la cifra pasa a 6.900,00 y la
+  ganancia de 1.000,00 a 400,00; tiendas y capital no cambian; la fila de `EFECTO_POR_TIPO`, literal.
+
+**Mutaciones** (medidas y revertidas, `cmp` byte a byte):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T7-M1 | `aQuienDelConcepto` devuelve «obligatorio» también para el pago | **rojo**, 5 casos en 2 archivos (`wallet-conceptos-manuales` ×2, diálogo ×3) |
+| T7-M2 | el diálogo vuelve a `referenciaOpcional = aQuienPide !== null` | **rojo**, 2 casos del diálogo (no aparece «Referencia (opcional)») |
+| T7-M3 | `EFECTO_POR_TIPO.pago_plataforma` con `egreso_pago_por_cuenta_tienda` | **rojo**, 1 caso (`efecto-movimiento`, la ganancia no baja) |
+
+**Salida:**
+
+```
+$ pnpm exec prisma generate --schema db/schema.prisma   (dentro del lock: el cliente compartido no traía egreso_pago_plataforma)
+$ pnpm run typecheck                                     TC_EXIT=0
+$ pnpm exec eslint <7 archivos de T7>                    LINT_EXIT=0
+$ pnpm exec vitest run <los 3 tests de T7>
+ Test Files  3 passed (3)
+      Tests  113 passed (113)
+$ pnpm exec vitest related --run <7 archivos de T7>      (dentro del lock)
+ Test Files  1 failed | 34 passed (35)
+      Tests  601 passed | 5 skipped (606)
+```
+
+El único rojo es `tests/integration/db/efecto-movimiento-predice.test.ts`, en `tests/baseline-rojos.json` (falta el catálogo
+sembrado de la 459 en `sl45_t`: «faltan la zona central, el tipo `cedula` o una orden…»). No es de T7.
