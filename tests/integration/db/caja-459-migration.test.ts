@@ -78,10 +78,13 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // Ficha 457 (2026-09-25): sus valores van DESPUES de los de la 461 (`20260927120000`): dos en la
     // caja, dos en la tienda, uno en el origen. El orden relativo se afirma igual, un tramo mas atras.
     // Ficha 458-B (2026-09-26): dos valores mas en la caja y dos en la tienda (`20260928120000`).
-    expect(caja.slice(-10, -6)).toEqual(VALORES_CAJA_459);
-    expect(caja.slice(-6, -4)).toEqual(["ingreso_cobro_tienda", "egreso_reverso_cobro_tienda"]);
-    expect(caja.slice(-4, -2)).toEqual(["ingreso_abono_tienda", "egreso_reverso_abono_tienda"]);
-    expect(caja.slice(-2)).toEqual(["egreso_reverso_flete_devolucion", "egreso_reverso_iva_flete_devolucion"]);
+    // SL-45 (2026-10-24): un valor mas en la caja (`20261024130000`), al final; los tramos de antes se
+    // leen uno mas atras.
+    expect(caja.slice(-11, -7)).toEqual(VALORES_CAJA_459);
+    expect(caja.slice(-7, -5)).toEqual(["ingreso_cobro_tienda", "egreso_reverso_cobro_tienda"]);
+    expect(caja.slice(-5, -3)).toEqual(["ingreso_abono_tienda", "egreso_reverso_abono_tienda"]);
+    expect(caja.slice(-3, -1)).toEqual(["egreso_reverso_flete_devolucion", "egreso_reverso_iva_flete_devolucion"]);
+    expect(caja.slice(-1)).toEqual(["egreso_pago_plataforma"]);
     expect(tienda.slice(-7, -5)).toEqual(["pago_por_cuenta", "pago_por_cuenta_anulado"]);
     expect(tienda.slice(-5, -4)).toEqual(["cobro_tienda_anulado"]);
     expect(tienda.slice(-4, -2)).toEqual(["abono_tienda", "abono_tienda_anulado"]);

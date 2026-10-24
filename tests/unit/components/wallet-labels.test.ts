@@ -71,6 +71,8 @@ const CONCEPTOS_ESPERADOS: Record<WalletMovimientoCategoria, string> = {
   // Ficha 458-B (design 458 §2.3): la anulacion de un cobro por devolución a origen, flete e IVA por separado.
   egreso_reverso_flete_devolucion: "Flete por devolución a origen cobrado a la tienda anulado",
   egreso_reverso_iva_flete_devolucion: "IVA del flete por devolución a origen cobrado a la tienda anulado",
+  // SL-45 (R23): el nombre del pago en el libro, tal como lo pide el requisito.
+  egreso_pago_plataforma: "Pago a la plataforma",
 };
 
 /** design §7.3 — los 13 origenes del libro de la caja (+ el de la 457: 14). */
@@ -93,14 +95,14 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
-  it("dice exactamente los 27 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B), y el seed es exactamente esas 27 claves", () => {
+  it("dice exactamente los 28 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45), y el seed es exactamente esas 28 claves", () => {
     expect(CATEGORIA_LABEL).toEqual(CONCEPTOS_ESPERADOS);
     // Anti-vacuidad: la igualdad de arriba compara contra una lista escrita a mano; esta linea
     // afirma que esa lista cubre el catalogo ENTERO y no un subconjunto que casara por casualidad.
     expect([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(CONCEPTOS_ESPERADOS).sort(),
     );
-    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(27);
+    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(28);
   });
 
   it("⭑ 457 (R45/R53): el pago de una tienda a la empresa y su anulacion, con los nombres reservados por la 461", () => {
@@ -137,8 +139,8 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
   });
 
-  it("el filtro por concepto ofrece los 27 con SU nombre (R42; 457/R45; 458-B), tras la opcion «todas»", () => {
-    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 27 presentes, los 27.
+  it("el filtro por concepto ofrece los 28 con SU nombre (R42; 457/R45; 458-B; SL-45), tras la opcion «todas»", () => {
+    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 28 presentes, los 28.
     const lista = opcionesDeConceptos(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.map((categoria) => ({ categoria, movimientos: 1 })),
       CATEGORIA_LABEL,
@@ -147,7 +149,7 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
     expect(lista[0]).toEqual({ value: "", label: "Todas las categorías" });
     const opciones = new Map(lista.slice(1).map((o) => [o.value, o.label]));
-    expect(opciones.size).toBe(27);
+    expect(opciones.size).toBe(28);
     for (const [clave, texto] of Object.entries(CONCEPTOS_ESPERADOS)) {
       expect(opciones.get(clave), clave).toBe(`${texto} (1)`);
     }
@@ -185,7 +187,12 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
   });
 
   it("el tipo de egreso manual se llama «Gasto de la empresa», igual que el concepto del dialogo", () => {
-    expect(TIPO_EGRESO_MANUAL_LABEL).toEqual({ gasto_variable: "Gasto de la empresa", sueldo: "Sueldo" });
+    // SL-45 (R6): + el pago a la plataforma, con el nombre que el requisito le da al concepto.
+    expect(TIPO_EGRESO_MANUAL_LABEL).toEqual({
+      gasto_variable: "Gasto de la empresa",
+      sueldo: "Sueldo",
+      pago_plataforma: "Pago a la plataforma",
+    });
     expect(TIPO_EGRESO_MANUAL_LABEL.gasto_variable).toBe(CATEGORIA_LABEL.egreso_gasto_variable);
   });
 
@@ -227,6 +234,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // Ficha 458-B (design 458 §2.3): las dos filas de la anulacion de un cobro por devolución a origen.
       egreso_reverso_flete_devolucion: "Fletes por devolución a origen cobrados a una tienda anulados",
       // SL-39 (design §2.1): el reverso del IVA sale de las filas nombradas; va al bloque del IVA.
+      // SL-45 (R24): la fila del pago a la plataforma, con el nombre que le da el requisito.
+      egreso_pago_plataforma: "Pago a la plataforma",
     });
   });
 });

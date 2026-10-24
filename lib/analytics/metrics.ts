@@ -736,6 +736,9 @@ const CATALOGO = [
         // ahora 27. La cifra NO cambia con ellos (son reversos de cargo: no sale dinero).
         "egreso_reverso_flete_devolucion",
         "egreso_reverso_iva_flete_devolucion",
+        // SL-45 (design §2): el pago a la plataforma. La caja entera, ahora 28. SI mueve la cifra:
+        // es efectivo que sale.
+        "egreso_pago_plataforma",
       ],
     },
   },
@@ -778,6 +781,9 @@ const CATALOGO = [
         // (flete e IVA por separado); los dos son propios en `NATURALEZA_POR_CATEGORIA`.
         // SL-39: el reverso del IVA sale con las otras tres de IVA. Quedan CATORCE.
         "egreso_reverso_flete_devolucion",
+        // SL-45 (R25): QUINCE. El pago a la plataforma es un egreso propio, como el sueldo: baja la
+        // ganancia igual que en la caja.
+        "egreso_pago_plataforma",
       ],
     },
   },

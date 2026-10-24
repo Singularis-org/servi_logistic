@@ -159,3 +159,133 @@ Revertidas las dos: `Tests 5 passed (5)`.
 **Aviso de entorno.** `prisma generate` escribe en el `node_modules` compartido. Antes había un cliente con
 el esquema de SL-41 (`contrasenaDefinidaAt`); ahora queda el de SL-45. Quien typechequee otra rama tiene
 que regenerar el suyo dentro del lock.
+
+**Arreglo posterior de T2 (`0fd1c46`).** Con el test ya commiteado, la guardia
+`catalogo-postgres-acota-esquema` lo marcó: la lectura del CHECK en `pg_constraint` no acotaba el esquema.
+Antes de commitear no lo veía, porque el archivo no estaba en el árbol. Se arregló con `JOIN pg_namespace`
+y `nspname = 'public'`. Vuelve a verde: `Tests 12 passed (12)`, con la guardia y la ida y vuelta.
+
+### T3. La clasificación de la categoría
+
+**Código** (`design.md > 2`):
+- `lib/types/wallet.ts`:
+  - `WALLET_MOVIMIENTO_CATEGORIA_SEED` gana `egreso_pago_plataforma`. Lo exige `_EnsureCategoriaExhaustive`
+    en cuanto el cliente de Prisma la trae;
+  - `TIPO_EGRESO_MANUAL_SEED` y `TIPO_EGRESO_MANUAL_A_CATEGORIA` ganan `pago_plataforma` →
+    `egreso_pago_plataforma`;
+  - `WALLET_EGRESO_NOMBRADO_SEED` gana `egreso_pago_plataforma` (R24).
+- `lib/utils/caja-tesoreria.ts`: `propio` y `efectivo`.
+- `lib/constants/wallet-rotulos.ts` y `lib/utils/egreso-anulable.ts`: «Pago a la plataforma».
+- `lib/utils/aporte-por-orden.ts`: `sin_reparto` / `no_nace_de_un_cierre`.
+- `lib/analytics/metrics.ts`: `dinero_en_caja` (la caja entera, 28) y `ganancia_empresa` (15).
+
+**Los `Record` totales que pidió el typecheck** (fuera de `lib/`, porque el seed los obliga a compilar):
+- `app/(app)/wallet/_components/composicion-detalle-labels.ts`, `EGRESO_NOMBRADO_LABEL`: «Pago a la
+  plataforma», en singular. Es el nombre que R24 le da a la fila; las demás filas de la columna van en
+  plural.
+- `app/(app)/wallet/_components/DesgloseEgresosLista.tsx`, `NOMBRADO_ICONO`: `Receipt`, el icono de
+  «Gastos de la empresa», que ya estaba importado. **No estaba en `## Archivos esperados`.**
+- `app/(app)/wallet/_components/wallet-labels.ts`: `TIPO_EGRESO_MANUAL_LABEL`, `DESCRIPCION_EGRESO_LABEL` y
+  `DESCRIPCION_EGRESO_PLACEHOLDER` de `pago_plataforma`, con los textos de `design.md > 7.1`. T7 ya los
+  encuentra puestos.
+- Catorce fixtures de tests con `ComposicionGananciaDTO.egresos` ganan `egreso_pago_plataforma: "0.00"`,
+  con el comentario «la exige el `Record` total», el mismo que dejó la 458-B. **Fuera de la lista
+  esperada:** `BusquedaPorGuia469`, `ComposicionGananciaCard`, `DetalleFilaComposicion`, `WalletCaja463`,
+  `WalletCaja468`, `WalletCajaBarra467`, `WalletCajaIvaSL39`, `WalletDeudaPlataformaSL40`,
+  `WalletFiltroAQuien458E`, `WalletLibroCaja458E`, `descarga/WalletDescarga`, `wallet-page`,
+  `wallet-actions` y `wallet-page-cobros-pendientes`.
+- `tests/integration/db/caja-tesoreria-migration.test.ts`, `TIPO_LEGITIMO_POR_CATEGORIA`:
+  `egreso_pago_plataforma: "egreso"`.
+
+**Tests que cambian, cada literal escrito a mano y con su motivo:**
+
+| Archivo | Cambio | Motivo |
+|---|---|---|
+| `metrics-caja-naturaleza.guardia` | `dinero_en_caja` 27 → 28, `ganancia_empresa` 14 → 15, más `toContain("egreso_pago_plataforma")` | R25. Con la lista derivada del `Record`, la mutación a `terceros` la pone en rojo |
+| `financiera-ingresos-repo` | el `WHERE` de `ganancia_empresa` 14 → 15, más `toContain` | R25, medido en el `WHERE` |
+| `caja-composicion-exhaustiva.guardia` | `WALLET_EGRESO_NOMBRADO_SEED` + `egreso_pago_plataforma` | R24: fila propia, no «Otros» |
+| `egreso-indemnizacion-emisores` (T0) | la regex con `"pago_plataforma"` | el enum del formulario sigue cerrado; la indemnización sigue fuera |
+| `wallet-egreso-service` | el `toEqual` del mapa + `pago_plataforma` | es el contrato: el literal sigue cerrado y un cuarto concepto vuelve a ponerlo en rojo |
+| `wallet-labels` | `CONCEPTOS_ESPERADOS` + «Pago a la plataforma» (R23), 27 → 28, `TIPO_EGRESO_MANUAL_LABEL` y `EGRESO_NOMBRADO_LABEL` | R6, R23, R24 |
+| `caja-tesoreria-migration` (integración) | + `AGREGADAS_459`, 27 → 28 en el CHECK de hoy | el patrón de la 457 y la 458-B |
+| `caja-459-migration` (integración) | los tramos de `pg_enum` se leen uno más atrás, más `slice(-1)` = `["egreso_pago_plataforma"]` | el orden real del enum |
+| `caja-derivacion-457` | el `POOL` gana `egreso_pago_plataforma` (27 → 28) | anti-vacuidad del pool |
+| `ComposicionGananciaCard`, `DetalleFilaComposicion` | la fila «Pago a la plataforma» antes de «Otros»; 18 → 19 controles, más el nombre «Ver los movimientos de Pago a la plataforma» | R24: la fila sale sola del seed y abre su detalle |
+
+**Tests nuevos:**
+- `tests/unit/utils/caja-tesoreria.test.ts`, dos casos:
+  - «R8: un pago de 1.000,00 es un egreso propio en efectivo». Con `derivarCaja`, la cifra principal pasa
+    de 5.000 a 4.000, «Salió» de 0 a 1.000 y la ganancia de 5.000 a 4.000; terceros, capital e IVA quedan
+    en 0,00;
+  - «D9: se clasifica como el sueldo».
+- `tests/unit/analytics/finanzas-diario.test.ts`, «un pago a la plataforma suma a los egresos del día y baja
+  su ganancia» (R25): con un ingreso de 1.000 y un pago de 300 el día queda en ganancia 700, egresos 300.
+
+**Mutaciones** (cada una medida y revertida; la restauración se comprobó con `cmp`):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T3-M1 | `NATURALEZA_POR_CATEGORIA.egreso_pago_plataforma = "terceros"` | **rojo**: 8 casos en 5 archivos puros (`caja-tesoreria` ×3, `finanzas-diario`, `metrics-caja-naturaleza` ×2, `caja-clasificacion-459`, `caja-composicion-exhaustiva`) |
+| T3-M2 | `LIQUIDEZ_POR_CATEGORIA.egreso_pago_plataforma = "cargo_a_tienda"` | **rojo**: 5 casos (`caja-tesoreria` ×2, `finanzas-diario`, `caja-clasificacion-459` ×2) |
+
+**Salida:**
+
+```
+$ pnpm run typecheck
+TC_EXIT=0   (0 errores)
+
+$ pnpm exec eslint <los .ts/.tsx tocados>
+LINT_EXIT=0
+
+$ pnpm exec vitest run <los 13 archivos que cambiaron o se pusieron en rojo>
+ Test Files  13 passed (13)
+      Tests  271 passed (271)
+
+$ pnpm exec vitest related --run <los 34 archivos del diff>
+ Test Files  128 failed | 601 passed (729)
+      Tests  85 failed | 8626 passed | 729 skipped (9440)
+```
+
+- De esos 128 archivos en rojo, 127 están en `tests/baseline-rojos.json`.
+- El único que no está es `pago-plataforma-sl45.test.ts`, el rojo de T1, que se cierra en T6. Ahora va en
+  rojo 14 de 15, por las razones que esperan T4 y T5:
+  - la deuda todavía no trae `estado` ni `importe` (T4);
+  - el schema todavía exige «a quién» (`contraparteNombre`, T5);
+  - todavía no hay tope (T5).
+  El control de no vacuidad ya pasa.
+
+```
+$ pnpm run test:guardias
+ Test Files  1 failed | 302 passed (303)
+      Tests  4 failed | 4145 passed | 1 skipped (4150)
+```
+
+El único rojo es `dependencias-declaradas-presentes`, que está en el baseline.
+
+**Para el leader:**
+- **Contradicción del spec.** `tasks.md > T8` y `design.md > 12.3` dicen que `ComposicionGananciaCard.test.tsx`
+  y `WalletCajaIvaSL39.test.tsx` siguen en verde «sin tocarlos». No es posible: el `Record` total de
+  `ComposicionGananciaDTO.egresos` obliga a tocar sus fixtures, y la fila nueva sale en la tarjeta (R24).
+  En `WalletCajaIvaSL39` el cambio es solo la clave del fixture. En `ComposicionGananciaCard`, además, la
+  fila en las tres listas literales.
+- **Abierto: la métrica `egresos`.** Es «Salidas de la caja principal», y `design.md > 2` no la nombra. Se
+  dejó igual: diez categorías, sin el pago, como fija `metrics-caja-naturaleza`. Si el pago tiene que
+  contar en `egresos`, como cuenta en «Salió», es una decisión del spec.
+- **Estado intermedio.** Desde T3, `registrarEgresoAdministrativoSchema` acepta `tipoEgreso:
+  "pago_plataforma"`. Hasta T5, con «a quién» relleno, se podría registrar un pago **sin tope**. La rama no
+  debe mergearse antes de T5.
+
+## Mapa parcial R → test (T1–T3)
+
+| R | Test |
+|---|---|
+| R7, R8, R9, R11, R13, R14, R15, R16, R18, R19, R20, R21, R22 | `tests/integration/db/pago-plataforma-sl45.test.ts` (rojo hasta T6) |
+| R8 | `tests/unit/utils/caja-tesoreria.test.ts` («R8: un pago de 1.000,00…», «D9…») |
+| R23 | `tests/unit/components/wallet-labels.test.ts` (`CONCEPTOS_ESPERADOS`) |
+| R24 | `caja-composicion-exhaustiva.guardia`, `ComposicionGananciaCard`, `DetalleFilaComposicion` (19 controles) |
+| R25 | `metrics-caja-naturaleza.guardia`, `financiera-ingresos-repo`, `finanzas-diario` |
+| R27 | `tests/integration/db/migracion-sl45-ida-y-vuelta.test.ts` |
+
+**Veredicto T0–T3:** la categoría, sus migraciones de ida y vuelta y su clasificación están hechas y
+probadas, con typecheck y guardias en verde (salvo el baseline). T1 sigue en rojo, como se espera hasta
+T4–T6.

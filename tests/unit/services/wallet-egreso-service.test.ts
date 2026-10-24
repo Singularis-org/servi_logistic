@@ -459,9 +459,12 @@ describe("WalletEgresoService.registrarEgreso — la fecha elegida (R22/R23/R28)
     // La regla vive en el catalogo (`TIPO_EGRESO_MANUAL_A_CATEGORIA`) y esta ficha NO la toca.
     // Se afirma sobre el mapa ENTERO y cerrado, no con un `toBeUndefined()` suelto: asi cae
     // igual cualquier concepto nuevo que alguien cuele en el formulario manual.
+    // SL-45 (design §2): el pago a la plataforma entra a proposito, con su categoria propia. El
+    // literal sigue cerrado: un cuarto concepto cualquiera lo vuelve a poner rojo.
     expect(TIPO_EGRESO_MANUAL_A_CATEGORIA).toEqual({
       gasto_variable: "egreso_gasto_variable",
       sueldo: "egreso_sueldo",
+      pago_plataforma: "egreso_pago_plataforma",
     });
     expect(Object.values(TIPO_EGRESO_MANUAL_A_CATEGORIA)).not.toContain("egreso_gasto_fijo");
   });

@@ -104,6 +104,9 @@ const TIPO_LEGITIMO_POR_CATEGORIA: Record<WalletMovimientoCategoria, WalletMovim
   // migracion `20260928120100`; lo prueba `wallet-458-migration.test.ts`.
   egreso_reverso_flete_devolucion: "egreso",
   egreso_reverso_iva_flete_devolucion: "egreso",
+  // SL-45: el pago de la empresa a la plataforma sale de la caja. El CHECK que lo admite es el de la
+  // migracion `20261024130100`; lo prueba `migracion-sl45-ida-y-vuelta.test.ts`.
+  egreso_pago_plataforma: "egreso",
 };
 
 const COMBINACIONES_LEGITIMAS = (
@@ -134,6 +137,9 @@ const AGREGADAS_459: readonly string[] = [
   // la foto de la 173. Mismo criterio.
   "egreso_reverso_flete_devolucion",
   "egreso_reverso_iva_flete_devolucion",
+  // SL-45 (2026-10-24): el pago de la empresa a la plataforma, tambien POSTERIOR a la foto de la 173.
+  // Mismo criterio.
+  "egreso_pago_plataforma",
 ];
 const COMBINACIONES_DE_LA_173 = COMBINACIONES_LEGITIMAS.filter((c) => !AGREGADAS_459.includes(c.categoria));
 const SEED_DE_LA_173 = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => !AGREGADAS_459.includes(c));
@@ -556,8 +562,9 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
       });
     });
 
-    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B: el CHECK de HOY (migracion 20260928120100).
-    expect(resultado).toHaveLength(27);
+    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45: el CHECK de HOY
+    // (migracion 20261024130100).
+    expect(resultado).toHaveLength(28);
     expect(
       resultado.map((f) => `${f.tipo}/${f.categoria}`).sort(),
     ).toEqual(COMBINACIONES_LEGITIMAS.map((c) => `${c.tipo}/${c.categoria}`).sort());
@@ -587,8 +594,9 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
       ),
     ];
     expect(nombradasEnElCheck.sort()).toEqual([...etiquetasDelEnum].sort());
-    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B: el CHECK de HOY (migracion 20260928120100).
-    expect(nombradasEnElCheck).toHaveLength(27);
+    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45: el CHECK de HOY
+    // (migracion 20261024130100).
+    expect(nombradasEnElCheck).toHaveLength(28);
     // Enumera, no niega: en la definicion que devuelve el motor no hay negacion alguna.
     expect(check.def).not.toMatch(/<>|NOT IN|!=/i);
   });

@@ -45,7 +45,7 @@
     - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde;
     - el test de ida y vuelta en verde, con el caso «el `down` aborta con una fila»;
     - `pnpm run test:guardias` en verde.
-- [ ] **T3. La clasificación de la categoría** (R8, R23–R26; depende de T2).
+- [x] **T3. La clasificación de la categoría** (R8, R23–R26; depende de T2).
   - `lib/types/wallet.ts`: `TIPO_EGRESO_MANUAL_SEED` y `TIPO_EGRESO_MANUAL_A_CATEGORIA` ganan
     `pago_plataforma`; `WALLET_EGRESO_NOMBRADO_SEED` gana `egreso_pago_plataforma`.
   - `lib/utils/caja-tesoreria.ts`: `propio` y `efectivo`.
@@ -237,6 +237,20 @@ Tests que cambian:
 - `tests/components/WalletDeudaPlataformaSL40.test.tsx`
 - `tests/integration/wallet-page.test.tsx`
 - `e2e/cobro-plataforma-sl40.spec.ts`
+
+Tocados por T3 porque un `Record` total los obliga a compilar (detalle en `progress/impl_SL-45.md > T3`):
+- `app/(app)/wallet/_components/DesgloseEgresosLista.tsx`
+- `tests/integration/db/caja-459-migration.test.ts`
+- `tests/integration/db/caja-tesoreria-migration.test.ts`
+- `tests/unit/analytics/financiera-ingresos-repo.test.ts`
+- `tests/unit/guards/caja-composicion-exhaustiva.guardia.test.ts`
+- `tests/unit/services/wallet-egreso-service.test.ts` (ya listado)
+- `tests/unit/utils/caja-derivacion-457.test.ts`
+- `tests/unit/utils/caja-tesoreria.test.ts`
+- `tests/unit/actions/wallet-actions.test.ts`
+- `tests/unit/components/wallet-page-cobros-pendientes.test.tsx`
+- `tests/components/{BusquedaPorGuia469,ComposicionGananciaCard,DetalleFilaComposicion,WalletCaja463,WalletCaja468,WalletCajaBarra467,WalletCajaIvaSL39,WalletFiltroAQuien458E,WalletLibroCaja458E}.test.tsx`
+- `tests/components/descarga/WalletDescarga.test.tsx`
 
 Estado:
 - `progress/impl_SL-45.md`

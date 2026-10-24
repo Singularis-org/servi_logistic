@@ -478,6 +478,7 @@ export const CATEGORIA_TODAS_OPTION = { value: "", label: "Todas las categorías
 export const TIPO_EGRESO_MANUAL_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: `Gasto de ${EMPRESA.enFrase}`,
   sueldo: "Sueldo",
+  pago_plataforma: "Pago a la plataforma", // SL-45 (design §7.1): el nombre del concepto del diálogo
 };
 
 /** Opciones del `Select` de tipo del egreso manual (solo {gasto variable, sueldo}). */
@@ -491,11 +492,13 @@ export const TIPO_EGRESO_MANUAL_OPTIONS = TIPO_EGRESO_MANUAL_SEED.map((tipo) => 
 export const DESCRIPCION_EGRESO_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: "Concepto del gasto",
   sueldo: "Trabajador y periodo",
+  pago_plataforma: "Referencia del pago", // SL-45 (design §7.1)
 };
 
 export const DESCRIPCION_EGRESO_PLACEHOLDER: Record<TipoEgresoManual, string> = {
   gasto_variable: "Ej. Compra de suministros de oficina",
   sueldo: "Ej. Juan Pérez — julio 2026",
+  pago_plataforma: "Ej. Transferencia del cobro de octubre", // SL-45 (design §7.1)
 };
 
 /**

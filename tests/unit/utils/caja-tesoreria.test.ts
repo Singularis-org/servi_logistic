@@ -442,3 +442,30 @@ describe("derivarCaja — money-safe y frontera (R7/R10)", () => {
     expect({ ...conFiltros, periodoFiltrado: false }).toEqual(sinFiltros);
   });
 });
+
+describe("SL-45 — el pago a la plataforma en la caja (R8, D9)", () => {
+  // Los importes van escritos a mano: son R8 dicho con números. Un pago de 1.000,00 desde una caja que
+  // tenía 5.000,00 de una corrección (propia y en efectivo): la cifra principal baja 1.000, «Salió» sube
+  // 1.000, la ganancia baja 1.000, y «De las tiendas», el capital y el IVA no se mueven.
+  it("R8: un pago de 1.000,00 es un egreso propio en efectivo", () => {
+    const antes = derivarCaja([fila("ingreso_ajuste", "5000.00")]);
+    const despues = derivarCaja([fila("ingreso_ajuste", "5000.00"), fila("egreso_pago_plataforma", "1000.00")]);
+
+    expect(antes).toMatchObject({ enCaja: "5000.00", salidas: "0.00", ganancia: "5000.00" });
+    expect(despues).toMatchObject({
+      enCaja: "4000.00",
+      entradas: "5000.00",
+      salidas: "1000.00",
+      ganancia: "4000.00",
+      egresosPropios: "1000.00",
+      deTerceros: "0.00",
+      capital: "0.00",
+      iva: "0.00",
+    });
+  });
+
+  it("D9: se clasifica como el sueldo, propio y en efectivo", () => {
+    expect(NATURALEZA_POR_CATEGORIA.egreso_pago_plataforma).toBe("propio");
+    expect(LIQUIDEZ_POR_CATEGORIA.egreso_pago_plataforma).toBe("efectivo");
+  });
+});

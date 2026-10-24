@@ -416,6 +416,7 @@ describe("469 T12/T13 — la caja (`/wallet`)", () => {
     egresos: {
       egreso_pago_mensajero: "0.00", egreso_ajuste: "0.00", egreso_reverso_cobro_tienda: "0.00",
       egreso_reverso_flete_devolucion: "0.00",
+      egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
     },
     otrosEgresos: "0.00", hayOtrosEgresos: false, totalEgresos: "0.00",
     // SL-39: el IVA va en su bloque, fuera de las dos columnas de la ganancia.

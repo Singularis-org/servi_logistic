@@ -78,6 +78,9 @@ export const EGRESO_NOMBRADO_LABEL: Record<WalletEgresoNombrado, string> = {
   // fila se rotula «Flete por rechazo cobrado a la tienda anulado». SL-39 (design §2.1): el reverso
   // del IVA ya no es un egreso nombrado; su fila está en el bloque del IVA, con `CATEGORIA_LABEL`.
   egreso_reverso_flete_devolucion: "Fletes por devolución a origen cobrados a una tienda anulados",
+  // SL-45 (design §7.3): la fila de los pagos a la plataforma. En singular, a diferencia de las otras,
+  // porque R24 nombra la fila «Pago a la plataforma», igual que cada movimiento en el libro.
+  egreso_pago_plataforma: "Pago a la plataforma",
 };
 
 /**
