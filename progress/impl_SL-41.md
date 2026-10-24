@@ -674,3 +674,104 @@ sigue en verde.
 - Gate 3 (`284e328`): **`INIT_EXIT=0`**, `== init OK ==`. Vitest: 453 archivos y 6163 tests pasados
   (26 saltados); segunda tanda, 301 archivos y 4109 tests pasados (1 saltado).
   Log: `scratchpad/sl41-gate-3.log`.
+
+#### E2E y captura — frontend_dev — 2026-10-23
+
+**Preparación.** HEAD `45f44fa` (284e328 es ancestro; solo cambia la bitácora). Antes de arrancar: nada en el 3000, ningún
+`next dev` vivo y `gate.lock` libre. Base desechable `sl41_e2e`: `CREATE DATABASE`, `prisma migrate deploy` («All migrations
+have been successfully applied») y `db:seed` («Seed de catalogos completado»). Todo lo demás corrió dentro de
+`bajo-lock.sh frontend-SL-41-e2e` con `SL41_DB=sl41_e2e`, con el lock retenido de principio a fin (tomado a las 23:43:32):
+`prisma generate`, `rm -rf .next`, `pnpm dev` (`AUTH_OTP_DEBUG_LOG=1`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`, sin `SMTP_*`,
+stdout+stderr a `f-dev.log`, `SL17_HUMO_LOG_SERVIDOR` apuntando a él; «Ready in 556ms»), Playwright, y matar el server.
+Script: `sl41/f-e2e.sh`.
+
+### Salida real de Playwright (`e2e/superadmin-empresas.spec.ts --reporter=list`)
+```
+  ok 1 › 1. «Empresas» abre en el estado vacío (R29) (1.1s)
+  ok 2 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (1.6s)
+  ok 3 › 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (3.8s)
+  ok 4 › 4. un slug inválido marca el campo sin crear nada (R34) (1.1s)
+  x  5 › 5-6. el maestro de A crea su contraseña con el enlace de bienvenida, «Empresas» le da 404 y no la ve (R18, R19, R35) (1.0m)
+  -  6 › 5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?» ... (serial: no corre)
+  -  7 › 7. con las dos contraseñas creadas, ninguna fila ofrece «Reenviar bienvenida» (R38)
+    Error: expect(locator).toBeVisible() failed — getByText('Contraseña actualizada'), Timeout 60000ms (spec:306)
+  1 failed | 2 did not run | 4 passed (1.4m)
+PW_EXIT=1
+```
+El paso 2 sí pasó: el aviso `sin_correo` en pantalla, el enlace leído del log para A y B, y «Reenviar bienvenida» en cada fila.
+
+### Causa del rojo: bug de SL-41 en `lib/` (backend). NO lo toqué; paro aquí.
+Log del dev server, al pulsar «Crear contraseña»:
+```
+⨯ ReferenceError: RequestContext is not defined
+    at module evaluation (.next/dev/server/chunks/ssr/[root-of-the-server]__1k_st7_._.js:3373:5)
+    at <unknown> (.next-internal/server/app/recuperar-contrasena/page/actions.js (server actions loader):1:1)
+ POST /recuperar-contrasena 500 in 340ms
+[browser] Uncaught ReferenceError: RequestContext is not defined   (lo pinta app/error.tsx)
+```
+- Origen: `lib/actions/password-reset.ts:23`, `export type { RequestContext };`. Es un re-export LOCAL de un import con
+  `type` inline, dentro de un archivo `"use server"`. El transform de server actions de Turbopack (Next 16.2.10) lo trata
+  como un export de runtime. En el chunk compilado la lista de exports validados es
+  `[solicitarRecuperacion, verificarCodigoRecuperacion, restablecerContrasena, crearContrasenaConEnlace, RequestContext]`, y
+  el módulo revienta al evaluarse.
+- Alcance: cae el módulo ENTERO, no solo el enlace. Tampoco funcionan «Enviar código», «Verificar código» ni
+  «Restablecer contraseña» de `/recuperar-contrasena`, que en `dc95473` sí iban (el `RequestContext` era una interfaz local).
+  Los tests de vitest no lo ven: importan el módulo sin pasar por el compilador de Next. El typecheck tampoco.
+- Contraste: `lib/actions/geografia.ts:55` usa `export type { … } from "…"` (re-export con `from`), y ese caso funciona.
+- Arreglo propuesto (backend): borrar la línea 23. Nadie importa `RequestContext` desde `@/lib/actions/password-reset`
+  (grep vacío). Si hace falta mantenerlo, `export type { RequestContext } from "@/lib/actions/_shared/contexto-peticion";`.
+  Hay que volver a correr este E2E después: es el único test que pasa por el compilador real.
+
+### Capturas de T10 (fuera del repo)
+Las sacó un spec temporal, `e2e/zz-captura-sl41-temporal.spec.ts`: login del superadmin, alta de dos empresas desde el
+formulario y clic en «Reenviar bienvenida» de una fila. Resultado `1 passed (7.4s)`, `CAP_EXIT=0`. El spec ya está BORRADO
+y no se commitea. Su `afterAll` borró sus empresas.
+- `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41/capturas/t10-1-aviso-sin-correo.png`: página completa con la advertencia (R26: «Empresa creada, pero el correo de bienvenida no salió…» + «El correo no está configurado en este entorno.») y la columna «Bienvenida» con un botón en cada fila.
+- `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41/capturas/t10-1b-aviso-detalle.png`: solo el aviso.
+- `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41/capturas/t10-2-reenvio-sin-correo.png`: página completa tras el reenvío; bajo el botón de la fila, «No salió: el correo no está configurado.».
+- `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl41/capturas/t10-2b-tabla-bienvenida.png`: solo la tabla, con la columna y el resultado.
+- El aviso de «enviada» no se capturó: sin SMTP no sale.
+
+### Limpieza
+Dev server matado con `taskkill /T` (sin procesos `next` ni `playwright` del worktree vivos y «nada en 3000»). Borrados
+`.next`, `test-results`, el spec temporal, `f-dev.log` (guarda los argumentos de las actions, con contraseñas y enlaces),
+`f-pw.log`, `f-cap.log` y `f-lock.log`. `DROP DATABASE sl41_e2e`: queda solo `sl41_base`. `gate.lock` suelto.
+`git status --porcelain` limpio en el worktree.
+
+## Dónde queda (2026-10-23, cierre del día) y qué falta
+
+Último commit de código: `284e328`. Gate local verde en `284e328` (`INIT_EXIT=0`). Las bases `sl41_*`
+están borradas, no hay dev server vivo y el lock está suelto.
+
+1. **T1, la propuesta de `/design`, espera la aprobación de Carlos.** Está en
+   `specs/SL-41-plantillas-correo-bienvenida/maqueta/`:
+   - `README.md`: la estructura, la tabla de contraste medida con `tests/fixtures/contraste.ts`,
+     tamaños, los textos finales (asunto, preheader y bloques) y qué mirar en Gmail y Outlook;
+   - `otp.html`, `bienvenida.html` y `bienvenida-sin-url.html`, renderizados con el
+     `componerCorreo` real.
+
+   El logo, con `src` absoluto a `{baseUrl}/brand/…`, no se ve al abrir los `.html` en local. Si
+   Carlos cambia algo, se ajusta `lib/services/email/plantillas/plantilla-marca.ts`, se actualiza
+   `design.md > 3.2` y `6.4`, y se cierra T1.
+2. **BLOQUEANTE, encontrado en el E2E: `/recuperar-contrasena` da 500 con el dev server real.**
+   - **Causa:** `lib/actions/password-reset.ts:23`, `export type { RequestContext };` dentro de un
+     archivo `"use server"`. Turbopack lo trata como un export de valor y el módulo falla al
+     cargarse con `ReferenceError: RequestContext is not defined`.
+   - **Alcance:** caen las 4 actions de la pantalla, incluido el flujo por código, que en `dc95473`
+     funcionaba.
+   - **Por qué el gate no lo vio:** ni vitest ni el typecheck pasan por el compilador de Next.
+   - **Arreglo:** borrar esa línea, porque nadie importa `RequestContext` desde ese módulo. Va con
+     `backend_dev`.
+   - **Después:** gate y repetir `pnpm exec playwright test e2e/superadmin-empresas.spec.ts`. Hoy
+     da 4 passed, 1 failed (paso 5, el maestro A con el enlace) y 2 did not run.
+   - **Antes del PR:** comprobar que ningún otro archivo `"use server"` de SL-41 reexporta tipos.
+3. **T10:** las capturas están fuera del repo, en
+   `scratchpad/sl41/capturas/t10-1-aviso-sin-correo.png`, `t10-1b-aviso-detalle.png`,
+   `t10-2-reenvio-sin-correo.png` y `t10-2b-tabla-bienvenida.png`. El aviso de «enviada» solo se
+   ve con SMTP. T10 se cierra cuando Carlos las vea.
+4. **T12 y T13** quedan abiertas hasta que el E2E dé verde.
+5. **Merge de `origin/dev`:** hoy `dev` sigue en `dc95473` y SL-40 no ha entrado. Cuando entre, hay
+   que mergear y resolver los choques de `app/(app)/plataforma/empresas/page.tsx` y
+   `EmpresasModule.tsx`.
+6. **Hueco anotado:** dos mutaciones del foco al entrar en cada paso de `/recuperar-contrasena`
+   sobreviven. No hay test de foco, y con `dc95473` tampoco lo había.

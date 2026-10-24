@@ -19,8 +19,9 @@ import {
 } from "@/lib/actions/_shared/contexto-peticion";
 
 // SL-41 (design §7.1): el composition root y la lectura de cabeceras viven en `_shared/`, fuera de
-// este archivo "use server", porque aqui todo export de funcion es un endpoint publico.
-export type { RequestContext };
+// este archivo "use server", porque aqui todo export de funcion es un endpoint publico. El tipo
+// `RequestContext` NO se reexporta desde aqui: Turbopack trata `export type { X };` como un export
+// de runtime y el modulo entero falla al cargar (guardia use-server-sin-reexport-de-tipos).
 
 export interface PasswordResetDeps {
   service?: IPasswordResetService;
