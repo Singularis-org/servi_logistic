@@ -78,10 +78,28 @@ describe("componerCorreo — estructura del HTML (R2)", () => {
     expect(pie).toBeGreaterThan(contenido);
   });
 
-  it("la cabecera lleva el logo PNG alojado, con alt y 180 px de ancho", () => {
+  it("la cabecera lleva el logo incrustado por CID, con alt y 180 px de ancho (Carlos, 2026-10-24)", () => {
     expect(zona(html(), "cabecera")).toContain(
-      '<img src="https://app.example.com/brand/logo-horizontal-fondo-claro.png" alt="Servi Logistic" width="180"',
+      '<img src="cid:logo@servilogistic" alt="Servi Logistic" width="180"',
     );
+    // Ningún `src` remoto: el logo no depende de que la URL resuelva ni de las imágenes remotas.
+    expect(html()).not.toMatch(/src="https?:/);
+  });
+
+  it("el mensaje lleva el PNG del logo como imagen en línea con el cid que referencia el HTML", () => {
+    const m = componerCorreo(correo());
+    expect(m.imagenesEnLinea).toHaveLength(1);
+    const [logo] = m.imagenesEnLinea!;
+    expect(logo.cid).toBe("logo@servilogistic");
+    expect(logo.tipoContenido).toBe("image/png");
+    expect(logo.nombreArchivo).toMatch(/\.png$/);
+    const bytes = Buffer.from(logo.contenidoBase64, "base64");
+    // Firma PNG: el adjunto existe y es una imagen PNG, no un SVG ni un texto vacío.
+    expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    expect(bytes.length).toBeGreaterThan(1000);
+    // Cada `cid:` del HTML tiene su adjunto, y no sobra ninguno.
+    const cids = [...m.html!.matchAll(/src="cid:([^"]+)"/g)].map((x) => x[1]);
+    expect(cids).toEqual(m.imagenesEnLinea!.map((i) => i.cid));
   });
 
   it("bajo la cabecera va una franja amarilla de 4 px, como fondo y no como texto", () => {
@@ -184,6 +202,10 @@ describe("componerCorreo — sin URL base (R4)", () => {
     const h = html({ baseUrl: null });
     expect(h).not.toContain("<img");
     expect(zona(h, "cabecera")).toMatch(/font-weight:700;color:#111111;">Servi Logistic<\/p>/);
+  });
+
+  it("sin imagen en la cabecera, el mensaje no lleva el logo adjunto", () => {
+    expect(componerCorreo(correo({ baseUrl: null })).imagenesEnLinea).toBeUndefined();
   });
 });
 

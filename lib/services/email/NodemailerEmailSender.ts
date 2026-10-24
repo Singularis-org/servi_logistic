@@ -53,6 +53,14 @@ export class NodemailerEmailSender implements IEmailSender {
         subject: mensaje.subject,
         text: mensaje.text,
         html: mensaje.html,
+        attachments: mensaje.imagenesEnLinea?.map((img) => ({
+          cid: img.cid,
+          filename: img.nombreArchivo,
+          contentType: img.tipoContenido,
+          content: img.contenidoBase64,
+          encoding: "base64",
+          contentDisposition: "inline" as const,
+        })),
       });
       return { messageId: info.messageId ?? null };
     } catch (causa) {

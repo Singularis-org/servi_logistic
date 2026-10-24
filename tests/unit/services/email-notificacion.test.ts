@@ -119,7 +119,8 @@ describe("plantillaOtpCodigo en la plantilla común (SL-41)", () => {
   it("R4 — sin URL base el OTP sale igual, con la cabecera de texto; con ella, con el logo", () => {
     expect(otp().html).not.toContain("<img");
     process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com/";
-    expect(otp().html).toContain('<img src="https://app.example.com/brand/logo-horizontal-fondo-claro.png"');
+    expect(otp().html).toContain('<img src="cid:logo@servilogistic"');
+    expect(otp().imagenesEnLinea?.map((i) => i.cid)).toEqual(["logo@servilogistic"]);
   });
 
   it("R11 — el asunto no lleva el código ni ningún número", () => {

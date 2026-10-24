@@ -32,7 +32,7 @@
   - **Hecho:** nota en `progress/impl_SL-41.md` con el SHA de la base y cada premisa confirmada o
     refutada.
 
-- [ ] **T1. `/design` de la plantilla HTML (BLOQUEANTE para la maqueta de T5).**
+- [x] **T1. `/design` de la plantilla HTML (BLOQUEANTE para la maqueta de T5).**
   - Pasar por `/design` la plantilla común (cabecera, cuerpo, botón, nota y pie) y sus dos
     instancias: el OTP y la bienvenida. La propuesta de partida está en `design.md > 3.2`.
   - Restricciones:

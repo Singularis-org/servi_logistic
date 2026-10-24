@@ -116,7 +116,16 @@ bloques (R5).
   `Archivo, Arial, Helvetica, sans-serif`, porque Archivo no carga en casi ningún cliente y el
   respaldo tiene que ser legible.
 - **Cabecera.** Fondo blanco, con
-  `<img src="{baseUrl}/brand/logo-horizontal-fondo-claro.png" alt="Servi Logistic" width="180">`.
+  `<img src="cid:logo@servilogistic" alt="Servi Logistic" width="180">`. **Cambio aprobado por Carlos
+  el 2026-10-24 (T1):** el logo va incrustado en el correo como imagen en línea (adjunto CID), no
+  con un `src` absoluto a `{baseUrl}/brand/…`, que no se veía en local y dependía de que la URL
+  resolviera y de que el cliente cargara imágenes remotas. Es `public/brand/logo-correo.png`, un
+  PNG de 360 px (el doble del ancho pintado) generado desde el SVG de marca por
+  `scripts/generar-logo-correo.mjs`, que también escribe sus bytes en base64 en
+  `lib/services/email/plantillas/logo-correo.ts`: el correo no lee `public/` con `fs`, porque en
+  Vercel ese archivo no viaja a la función. `EmailMessage` suma `imagenesEnLinea` y
+  `NodemailerEmailSender` las pasa como `attachments` con `cid` e `inline`. R4 no cambia: sin
+  `baseUrl` la cabecera sigue siendo de texto y el mensaje no lleva el adjunto.
   Los 180 px cumplen la regla de 140 px o más de `docs/marca.md`. Debajo, una franja `#FFD000` de
   4 px: el amarillo como franja, no como texto (R3). Sin `baseUrl`, la cabecera es el texto
   «Servi Logistic» en `#111111`, en negrita (R4).
@@ -536,7 +545,7 @@ No depende de ningún módulo encendido: la plataforma no tiene módulos.
 | A3 | Una **tabla nueva** `token_bienvenida`. | Carlos pidió no inventar otro mecanismo, y `email_otp_challenge` ya tiene las columnas exactas: hash, vigencia y consumo. Una tabla más es una migración más y un segundo sitio donde mirar. |
 | A4 | Una **ruta nueva**, `/crear-contrasena`. | Habría que tocar `PUBLIC_ROUTES`, que está firmada literalmente por la guardia de la 229, y el censo de `PasswordInput`. El flujo de la contraseña nueva ya existe en `/recuperar-contrasena`. |
 | A5 | El secreto en la **query** (`?t=`). | Queda en los logs de acceso de Vercel y de cualquier proxy, y viaja en el `Referer`. |
-| A6 | El logo como **adjunto CID**. | Cambia el contrato de `IEmailSender`, que hoy no tiene adjuntos, y suma peso a cada OTP. El PNG alojado, con su `alt`, cubre el caso en el que el cliente bloquea las imágenes. |
+| A6 | El logo como **adjunto CID**. | **Revertida por Carlos el 2026-10-24: es la opción que se implementa** (§3.2). El contrato de `IEmailSender` se amplía lo mínimo (`imagenesEnLinea`) y el PNG pesa 6,8 KB. |
 | A7 | Una **librería de plantillas** (MJML, react-email). | Son tres correos con la misma forma, y una función pura los cubre. Sería una dependencia que aprobar sin código que ahorrar. No se propone ninguna, así que no se pasan los cuatro checks. |
 | A8 | Enviar la bienvenida **dentro** de `OrganizacionService.altaEmpresa`. | Mezcla la transacción del alta con la red. Además cambia el resultado del servicio que usan el E2E de dos empresas y el test de integración del alta, que no quieren correo. |
 

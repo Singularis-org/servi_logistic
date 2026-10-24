@@ -52,6 +52,35 @@ describe("NodemailerEmailSender", () => {
     );
   });
 
+  it("SL-41: manda las imagenes en linea como adjuntos inline con su cid (el logo del correo)", async () => {
+    await new NodemailerEmailSender(config).enviar({
+      ...mensaje,
+      html: '<img src="cid:logo@servilogistic">',
+      imagenesEnLinea: [
+        { cid: "logo@servilogistic", nombreArchivo: "servi-logistic.png", tipoContenido: "image/png", contenidoBase64: "iVBORw0K" },
+      ],
+    });
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            cid: "logo@servilogistic",
+            filename: "servi-logistic.png",
+            contentType: "image/png",
+            content: "iVBORw0K",
+            encoding: "base64",
+            contentDisposition: "inline",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("sin imagenes en linea no manda adjuntos", async () => {
+    await new NodemailerEmailSender(config).enviar(mensaje);
+    expect(sendMail.mock.calls[0][0].attachments).toBeUndefined();
+  });
+
   it("reutiliza el mismo transporte entre envios en vez de rehacer el saludo TLS", async () => {
     const sender = new NodemailerEmailSender(config);
     await sender.enviar(mensaje);

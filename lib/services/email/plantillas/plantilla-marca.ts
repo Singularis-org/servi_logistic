@@ -1,5 +1,6 @@
 import { MARCA } from "@/lib/config/marca";
-import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
+import type { EmailMessage, ImagenEnLinea } from "@/lib/interfaces/external/IEmailSender";
+import { LOGO_CORREO_PNG_BASE64 } from "@/lib/services/email/plantillas/logo-correo";
 
 // SL-41 (design §3, R1–R6, R39) — LA plantilla de todos los correos de la app.
 //
@@ -30,7 +31,10 @@ export interface CorreoDeMarca {
   /** Línea de vista previa que muestran los clientes de correo; no se ve en el cuerpo. */
   preheader: string;
   bloques: Bloque[];
-  /** URL base de la app, sin barra final. `null`: cabecera de texto, sin imagen (R4). */
+  /**
+   * URL base de la app, sin barra final. `null`: cabecera de texto, sin imagen (R4). El logo ya no
+   * se carga desde esta URL (va en línea), pero R4 sigue atando la cabecera a ella.
+   */
   baseUrl: string | null;
   /** Dirección de contacto del pie (R39). `null`: el pie no muestra ninguna. */
   contacto: string | null;
@@ -48,8 +52,20 @@ const COLOR = {
 /** Archivo no carga en casi ningún cliente de correo: el respaldo tiene que ser legible. */
 const FUENTE = "Archivo, Arial, Helvetica, sans-serif";
 
-/** Ruta pública del logo en PNG: los clientes de correo no pintan SVG. 1466 px de ancho real. */
-const RUTA_LOGO = "/brand/logo-horizontal-fondo-claro.png";
+/**
+ * El logo viaja DENTRO del correo, como imagen en línea, y el HTML lo pinta con `cid:` (decisión de
+ * Carlos, 2026-10-24). Con un `src` absoluto no se veía en local y dependía de que la URL
+ * resolviera y de que el cliente cargara imágenes remotas. PNG de 360 px (el doble del ancho
+ * pintado), generado por `scripts/generar-logo-correo.mjs`: los clientes de correo no pintan SVG.
+ */
+export const CID_LOGO = "logo@servilogistic";
+
+const IMAGEN_LOGO: ImagenEnLinea = {
+  cid: CID_LOGO,
+  nombreArchivo: "servi-logistic.png",
+  tipoContenido: "image/png",
+  contenidoBase64: LOGO_CORREO_PNG_BASE64,
+};
 
 /** 180 px: por encima de los 140 px por debajo de los cuales docs/marca.md pide el isotipo. */
 const ANCHO_LOGO = 180;
@@ -83,7 +99,7 @@ function cabeceraHtml(baseUrl: string | null): string {
       ? `<p style="margin:0;font-family:${FUENTE};font-size:22px;line-height:28px;font-weight:700;color:${COLOR.tinta};">${escaparHtml(MARCA.nombre)}</p>`
       : // El estilo de texto del <img> es para el `alt`: con las imágenes bloqueadas, el cliente
         // pinta el nombre con la tinta de la marca en vez del azul de un enlace.
-        `<img src="${escaparHtml(baseUrl + RUTA_LOGO)}" alt="${escaparHtml(MARCA.nombre)}" width="${ANCHO_LOGO}" style="display:block;width:${ANCHO_LOGO}px;max-width:${ANCHO_LOGO}px;height:auto;border:0;outline:none;text-decoration:none;font-family:${FUENTE};font-size:20px;font-weight:700;color:${COLOR.tinta};">`;
+        `<img src="cid:${CID_LOGO}" alt="${escaparHtml(MARCA.nombre)}" width="${ANCHO_LOGO}" style="display:block;width:${ANCHO_LOGO}px;max-width:${ANCHO_LOGO}px;height:auto;border:0;outline:none;text-decoration:none;font-family:${FUENTE};font-size:20px;font-weight:700;color:${COLOR.tinta};">`;
   return [
     `<tr><td data-zona="cabecera" style="padding:24px 32px;background-color:${COLOR.blanco};">${contenido}</td></tr>`,
     `<tr><td style="height:4px;line-height:4px;font-size:0;background-color:${COLOR.acento};">&nbsp;</td></tr>`,
@@ -192,5 +208,9 @@ function texto(c: CorreoDeMarca): string {
  * llama, por la misma razón.
  */
 export function componerCorreo(c: CorreoDeMarca): EmailMessage {
-  return { to: c.to, subject: c.asunto, text: texto(c), html: html(c) };
+  const mensaje: EmailMessage = { to: c.to, subject: c.asunto, text: texto(c), html: html(c) };
+  // Solo cuando la cabecera pinta el logo: un adjunto que el HTML no referencia aparece como
+  // archivo suelto en algunos clientes.
+  if (c.baseUrl !== null) mensaje.imagenesEnLinea = [IMAGEN_LOGO];
+  return mensaje;
 }

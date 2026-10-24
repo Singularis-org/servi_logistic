@@ -1,6 +1,7 @@
 # SL-41 — Maqueta de la plantilla de correo (T1)
 
-> **Propuesta para aprobación de Carlos.** No está aprobada todavía. Los tres `.html` de esta
+> **Aprobada por Carlos Restrepo el 2026-10-24**, con un cambio: el logo va incrustado en el
+> correo (adjunto CID), no alojado. Los tres `.html` de esta
 > carpeta no están dibujados a mano: los genera la plantilla real
 > (`lib/services/email/plantillas/plantilla-marca.ts`, con `otp-codigo.ts` y `bienvenida-maestro.ts`)
 > con datos ficticios. Lo que se ve aquí es lo que se enviaría.
@@ -14,12 +15,11 @@
 Datos ficticios: URL base `https://app.example.com`, contacto `soporte@example.com`, código
 `045912`, maestra «Ana Pérez» de «Mensajería Rápida».
 
-**El logo no se ve al abrir estos archivos en el navegador.** La cabecera pide
-`https://app.example.com/brand/logo-horizontal-fondo-claro.png`, un dominio de ejemplo que no existe,
-así que en su lugar aparece el texto alternativo «Servi Logistic» en negro y negrita. Es justo lo
-que verá quien tenga las imágenes bloqueadas en su cliente de correo. El PNG real es
-`public/brand/logo-horizontal-fondo-claro.png` (1466 × 428 px), y en el correo se pinta a 180 px de
-ancho. En un entorno desplegado, la URL base es la de la app y el logo sí carga.
+**El logo.** En el correo real la cabecera pinta `<img src="cid:logo@servilogistic">` y el
+mensaje lleva el PNG como imagen en línea: no se descarga de ninguna URL. Un navegador no resuelve
+`cid:`, así que en estos `.html`, **solo para la vista previa local**, ese `src` se sustituye por
+el mismo PNG en data URI. El PNG es `public/brand/logo-correo.png` (360 × 105 px, 6,8 KB),
+generado desde el SVG de marca con `node scripts/generar-logo-correo.mjs`, y se pinta a 180 px.
 
 ## Estructura
 
@@ -27,7 +27,7 @@ De arriba abajo, sobre un fondo `#F7F7F5` y en una columna de 600 px como máxim
 
 1. **Preheader** oculto: la línea de vista previa que muestra la bandeja de entrada.
 2. **Cabecera** sobre blanco, con un relleno de 24 px y 32 px a los lados:
-   - con URL base: el logo PNG alojado, a 180 px, con `alt="Servi Logistic"`;
+   - con URL base: el logo PNG incrustado (CID), a 180 px, con `alt="Servi Logistic"`;
    - sin ella: el texto «Servi Logistic» en `#111111`, a 22 px y en negrita.
 3. **Franja amarilla** `#FFD000` de 4 px, a todo el ancho. Es el único amarillo del correo, y
    va como fondo, nunca como texto.
@@ -108,9 +108,10 @@ Eso es T13 y la nota para T19 de SL-32.
 - **Tablas y estilos en línea.** No hay `<style>` ni hojas externas: Gmail y Outlook los quitan.
   Hay que mirar que se respeten el ancho de 600 px, los rellenos de las celdas y la franja de 4 px.
   Outlook de escritorio a veces dibuja una franja más alta.
-- **Logo PNG alojado con `alt`.** Con las imágenes activadas, el logo se ve a 180 px y nítido.
-  Con las imágenes bloqueadas, que es lo que hace Outlook por defecto con un remitente nuevo, se ve
-  «Servi Logistic» en negro y negrita, nunca un recuadro vacío ni un enlace azul.
+- **Logo incrustado (CID) con `alt`.** El logo se ve a 180 px y nítido, sin pedir «mostrar
+  imágenes»: va dentro del correo. No aparece además como archivo adjunto suelto. Si un cliente lo
+  bloquea igual, se ve «Servi Logistic» en negro y negrita, nunca un recuadro vacío ni un enlace
+  azul.
 - **Botón.** En Outlook, el fondo negro sale de la celda (`bgcolor`). El enlace tiene que verse
   blanco sobre negro y poder pulsarse en todo el botón en Gmail. En Outlook basta con que se pueda
   pulsar el texto.
