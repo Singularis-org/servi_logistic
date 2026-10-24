@@ -588,3 +588,114 @@ INIT_EXIT=0
   que quitar el `@sin-superficie` de `lib/actions/deuda-plataforma.ts`.
 - **T8 en el navegador**: no se hizo. Solo puede correr un dev server, y queda para el leader o para T10.
 - **T10**: no regresión, `e2e/wallet.spec.ts` y el gate final.
+
+## T7
+
+La deuda con la plataforma en la wallet (R21, R23, R26), por `frontend_dev`, sobre `c760adc` (trae
+SL-39). El MCP del grafo no estaba entre las herramientas de este agente: se exploró con Grep/Read.
+Todo lo que usa `node_modules` corrió con `gate.lock` tomado y `prisma generate` dentro, con una
+`DATABASE_URL` de marcador que no conecta. No se levantó dev server.
+
+**Archivos**
+- `app/(app)/wallet/page.tsx`: `verDeudaPlataformaAction()` en el mismo `Promise.all`, sin
+  argumentos. Con `forbidden` pasa `null`, y la caja se pinta igual: no entra en el `notFound`.
+- `app/(app)/wallet/_components/WalletModule.tsx`: prop `deudaPlataforma`, que solo transporta a la
+  tarjeta. No la vuelve a pedir al cambiar filtros (R23).
+- `app/(app)/wallet/_components/wallet-labels.ts`:
+  - `CAJA_RESUMEN_LABEL.deudaPlataforma` = `Lo que ${EMPRESA.enFrase} debe a la plataforma`, y la pista exacta de R21;
+  - el tipo `DatosBolsilloEmpresa` (`{ resumen, deudaPlataforma }`);
+  - la entrada `deuda_plataforma`, la última de `REGIONES_BOLSILLO_EMPRESA`.
+- `app/(app)/wallet/_components/CajaResumenCard.tsx`: prop `deudaPlataforma`. Una región cuyo `valor`
+  es `null` no se pinta, y una con `signo` `null` va sin `Badge` y en `text-foreground`.
+- `lib/actions/deuda-plataforma.ts`: fuera la anotación `@sin-superficie` (la única línea de `lib/`).
+- Tests:
+  - `tests/components/WalletDeudaPlataformaSL40.test.tsx` (nuevo, 10 casos): la tarjeta sola; la
+    página real con el módulo real; el periodo del libro;
+  - `tests/unit/components/wallet-labels.test.ts`: la lista con su tercera entrada y el caso `null`;
+  - `tests/integration/wallet-page.test.tsx` y `tests/unit/components/wallet-page-cobros-pendientes.test.tsx`:
+    solo un `vi.mock` de la action nueva. Sin él, la action real abre Prisma.
+
+**Desviaciones (dentro del spec)**
+1. **`deudaPlataforma` es opcional** (`?: DeudaPlataformaDTO | null`) en `WalletModule` y en
+   `CajaResumenCard`. Design §9.2 lo tipa `DeudaPlataformaDTO | null`.
+   - Si fuera requerida, habría que tocar siete tests que montan el módulo, entre ellos
+     `WalletDescarga.test.tsx`, que T10 pide intacto. También los de la tarjeta, entre ellos
+     `WalletCajaIvaSL39.test.tsx`, que esta task pide sin tocar.
+   - Que la página la pase lo mide el test nuevo montando `page.tsx` real (M5 y M6, abajo), no el
+     compilador.
+2. **El accesor `signo` devuelve `WalletBalanceSigno | null`** y **`valor` devuelve `string | null`**.
+   Así, «sin insignia» y «oculta» son datos de la entrada y no un `if (id === …)` en la tarjeta. Las
+   dos entradas de SL-39 devuelven lo mismo que antes.
+3. **El rótulo usa `EMPRESA.enFrase`**, no el literal «la empresa»: la guardia SL-15 R4 de
+   `wallet-labels.test.ts` lo exige. En pantalla se lee igual.
+4. **La comprobación en el navegador** de T7 (dos órdenes, una eliminada, 500,00 y la caja igual) no
+   se hizo: queda para el leader.
+
+**`R<n>` → test (pantalla)**
+
+| R | Test |
+|---|---|
+| R21 | `WalletDeudaPlataformaSL40` «R21: con la deuda, el bolsillo de la empresa pinta la región…», «…es la última región del bolsillo…», «…sin insignia de signo y sin color de signo…», «…con la deuda en `null`, la región no se pinta…», «…sin la prop, tampoco se pinta…», «R21: la página pide la deuda una vez, sin filtros…», «…responde `forbidden`, la caja se pinta y la región no»; `wallet-labels` «R9 (SL-39) y R21 (SL-40)…» y «R21 (SL-40, design §9.2): sin deuda (`null`)…» |
+| R23 | `WalletDeudaPlataformaSL40` «R23: con un periodo en el libro la caja se relee y la deuda ni se vuelve a pedir ni cambia» (con un control de que la ganancia sí cambió) |
+| R26 | `WalletDeudaPlataformaSL40` «R26: once dígitos con céntimos salen exactos…» y «R26: ni la tarjeta ni los rótulos convierten un importe a número» |
+
+**Mutaciones** (una a una, con copia y restauración comprobada por md5; corridas sobre
+`WalletDeudaPlataformaSL40` + `wallet-labels`, 33 casos)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| M1 | quitar la entrada `deuda_plataforma` de `REGIONES_BOLSILLO_EMPRESA` | 8 failed / 25 passed: los 6 de la región y de la página, y los 2 de `wallet-labels` |
+| M2 | pintar con `money(String(Number(valor)))` | 1 failed / 32 passed: «R26: ni la tarjeta ni los rótulos convierten un importe a número». El caso de once dígitos no lo mata: un `DECIMAL(12,2)` cabe exacto en un `number` y vuelve igual con `String`. El barrido de la fuente es el que lo detecta |
+| M3 | insignia siempre (`badge ?? SIGNO_BADGE.cero`) | 1 failed / 32 passed: «R21: la región va sin insignia de signo y sin color de signo…» |
+| M4 | no ocultar con `null` (`if (valor === "__nunca__")`) | 3 failed / 30 passed: «…con la deuda en `null`…», «…sin la prop…» y «…responde `forbidden`…» |
+| M5 | `page.tsx` no pasa `deudaPlataforma` al módulo | 2 failed / 8 passed (solo `WalletDeudaPlataformaSL40`): «R21: la página pide la deuda…» y «R23» |
+| M6 | `WalletModule` no la pasa a la tarjeta | 2 failed / 8 passed: los mismos dos |
+
+**Evidencia** (lock tomado)
+- `pnpm exec vitest run` sobre `WalletDeudaPlataformaSL40`, `wallet-labels`, `WalletCajaIvaSL39`,
+  `ComposicionGananciaCard`, `wallet-page` y `wallet-page-cobros-pendientes`: `Test Files  6 passed (6)`,
+  `Tests  103 passed (103)`, `VITEST_EXIT=0`. `WalletCajaIvaSL39.test.tsx` y
+  `ComposicionGananciaCard.test.tsx` no se tocaron.
+- `pnpm run typecheck`: `TC_EXIT=0`.
+- `pnpm exec eslint` sobre los 9 archivos: `LINT_EXIT=0`, sin salida.
+- `pnpm run test:guardias` (sin `DATABASE_URL`): `Test Files  1 failed | 300 passed | 2 skipped (303)`,
+  `Tests  4 failed | 4126 passed | 20 skipped (4150)`.
+  - El único rojo es `dependencias-declaradas-presentes`, que está en el baseline.
+  - `superficie-de-uso` va en verde sin la anotación (corrido solo: `Tests  18 passed (18)`).
+  - Ojo: con la `DATABASE_URL` de marcador exportada, `test:guardias` activa tests de
+    `tests/integration/db/` (zona central, zona y distritos), que caen al no conectar. No son rojos
+    de esta task: se repitió sin la variable.
+- Los 9 archivos, en LF (`git ls-files --eol`: `w/lf`).
+
+**Veredicto T7:** la región «Lo que la empresa debe a la plataforma» va cableada de la página a la
+tarjeta, sin signo, oculta sin dato y fija frente a los filtros. Seis mutaciones medidas en rojo;
+falta la comprobación en el navegador.
+
+## T9
+
+**Archivo:** `docs/ayuda/oficina/wallet-caja.md`.
+- «Qué vas a ver» nombra la línea.
+- Sección nueva, «Lo que la empresa debe a la plataforma», entre la del IVA y «De dónde entra el
+  dinero solo». Explica:
+  - qué cuenta: cada orden creada por cualquier vía, al importe del día en que se creó; una eliminada
+    resta, y una recuperada vuelve a sumar;
+  - que la cancelación por API sigue contando (P3);
+  - que es de toda la historia y no la mueven los filtros;
+  - que todavía no se cobra y no aparece en el libro;
+  - que no cambia ninguna cifra de la caja, y por eso no lleva signo.
+- `fuentes:` gana `lib/actions/deuda-plataforma.ts`.
+- `actualizado:` ya decía `2026-10-23`, del merge de SL-39, así que se queda igual.
+
+**Evidencia** (lock tomado)
+- `pnpm exec vitest related --run docs/ayuda/oficina/wallet-caja.md`: `No test files found, exiting
+  with code 0`. Un `.md` no se importa, así que `related` no ve nada y no sirve de prueba aquí. Por eso
+  se corrieron a mano los tests que leen la ayuda:
+  - `tests/unit/asistente`, `AyudaDocumentoPage`, `AyudaLayout`, `AyudaBoton` y `changelog-455`:
+    `Test Files  16 passed (16)`, `Tests  249 passed (249)`;
+  - `tests/unit/ayuda`: `Test Files  3 passed (3)`, `Tests  40 passed (40)`;
+  - `pnpm run test:guardias`, que incluye las guardias de ayuda y `docs-marca-heredada`: el mismo
+    resultado que en T7, con un solo rojo, el del baseline.
+- El archivo está en LF.
+
+**Veredicto T9:** la ayuda de la caja explica la deuda con la plataforma con el tono del archivo, y sus
+guardias van en verde.
