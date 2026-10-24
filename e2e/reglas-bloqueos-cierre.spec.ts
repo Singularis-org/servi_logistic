@@ -49,7 +49,14 @@ let vencidoId: string;
 async function bodegaDelSatelite(page: Page): Promise<Locator> {
   await page.goto("/recepcion-satelite/en-bodega");
   const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
-  await bodega.getByRole("checkbox", { name: `Seleccionar ${enBodega.numRemision}` }).check();
+  const casilla = bodega.getByRole("checkbox", { name: `Seleccionar ${enBodega.numRemision}` });
+  // Recién cargada, la página puede no estar hidratada: el clic llega a la casilla del HTML del
+  // servidor y no la marca («Clicking the checkbox did not change its state», run 40142523437 de
+  // CI, paso 5). Se reintenta hasta que la marca de verdad; `check` no desmarca una ya marcada.
+  await expect(async () => {
+    await casilla.check({ timeout: 2_000 });
+    await expect(casilla).toBeChecked({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   return bodega;
 }
 
