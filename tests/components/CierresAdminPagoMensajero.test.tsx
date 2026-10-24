@@ -181,6 +181,7 @@ function conDetalleDe(cierre: CierreAdminResumen) {
     grupos: emptyGrupos(), // sin incidentes: aprobar NO pasa por el sub-modal de la 158 (R36)
     totalesIngreso: zeroIngreso(),
     desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
@@ -619,6 +620,7 @@ describe("T E.2/R19 — el detalle de un cierre APROBADO ofrece registrar el pag
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
       desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "0.00", total: "0.00" },
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",

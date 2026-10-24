@@ -582,7 +582,7 @@ const LIBRO_R15: Partial<DatosFinancieros> = {
  *   egresos  = Σ ingreso (1000+130+5000+200) − Σ egreso (400+3000) = 2930.00;
  *   enCaja   = por `derivarCaja` (ficha 459: flete e IVA son CARGOS, no efectivo)
  *            = (5000+200) − (400+3000)                             = 1800.00;
- *   ganancia = (1000+130) − 400, sin el dinero de terceros          =  730.00.
+ *   ganancia = 1000 − 400, sin el dinero de terceros ni el IVA (SL-39; antes 730) =  600.00.
  */
 const TOTALES_ESPERADOS: Readonly<Record<string, ImporteAnalitico>> = {
   // FICHA 458-B (revision B2): `ingreso_flete` e `ingreso_iva` publican neto (ganan el reverso de la
@@ -593,7 +593,7 @@ const TOTALES_ESPERADOS: Readonly<Record<string, ImporteAnalitico>> = {
   ingreso_iva: { forma: "bruto_y_neto", bruto: "9730.00", neto: "2930.00", moneda: MONEDA },
   egresos: { forma: "bruto_y_neto", bruto: "9730.00", neto: "2930.00", moneda: MONEDA },
   dinero_en_caja: { forma: "bruto_y_neto", bruto: "9730.00", neto: "1800.00", moneda: MONEDA },
-  ganancia_empresa: { forma: "bruto_y_neto", bruto: "9730.00", neto: "730.00", moneda: MONEDA },
+  ganancia_empresa: { forma: "bruto_y_neto", bruto: "9730.00", neto: "600.00", moneda: MONEDA },
   cod_recaudado__por_metodo: {
     forma: "bruto_y_neto",
     bruto: "400.00",

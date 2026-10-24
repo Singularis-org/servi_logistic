@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 import { consultarFinanzasDiario } from "@/lib/actions/finanzas-diario";
 import { FinanzasDiarioRepository } from "@/lib/repositories/FinanzasDiarioRepository";
 import { FinanzasDiarioService } from "@/lib/services/FinanzasDiarioService";
 import { derivarFinanzasDiarias } from "@/lib/utils/finanzas-diarias";
+import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
@@ -138,10 +140,51 @@ describe("La derivación del dinero por día", () => {
       fecha: "2026-08-18",
       ingresos: "0.00",
       egresos: "0.00",
-      ganancia: "2825.00",
+      ganancia: "2500.00", // SL-39 (R12): solo el flete; el IVA (325) no es ganancia. Antes 2825.00
       pagoMensajeros: "0.00",
       pagoTiendas: "0.00",
     });
+  });
+
+  it("SL-39/R12: la ganancia de cada dia no cuenta el IVA, y la suma de los dias es la ganancia de la caja", () => {
+    // Dia 1, el ejemplo de design §1: contra-entrega 20 000, flete 2 500 + IVA 325, comision 700 +
+    //   IVA 91, pago al mensajero 1 500 → ganancia (2 500 + 700) − 1 500 = 1 700,00.
+    // Dia 2, un cobro por devolucion y su anulacion parcial: flete de devolucion 1 000 + IVA 130,
+    //   reverso del IVA 130 → ganancia 1 000,00 (el IVA y su reverso quedan fuera).
+    // Dia 3, solo el reverso del flete de devolucion 1 000 → ganancia −1 000,00.
+    // Σ = 1 700 + 1 000 − 1 000 = 1 700,00.
+    const filas = [
+      fila("2026-10-21", "ingreso_cod_recaudado", "ingreso", "20000.00"),
+      fila("2026-10-21", "ingreso_flete", "ingreso", "2500.00"),
+      fila("2026-10-21", "ingreso_iva_flete", "ingreso", "325.00"),
+      fila("2026-10-21", "ingreso_comision_cod", "ingreso", "700.00"),
+      fila("2026-10-21", "ingreso_iva_comision_cod", "ingreso", "91.00"),
+      fila("2026-10-21", "egreso_pago_mensajero", "egreso", "1500.00"),
+      fila("2026-10-22", "ingreso_flete_devolucion", "ingreso", "1000.00"),
+      fila("2026-10-22", "ingreso_iva_flete_devolucion", "ingreso", "130.00"),
+      fila("2026-10-22", "egreso_reverso_iva_flete_devolucion", "egreso", "130.00"),
+      fila("2026-10-23", "egreso_reverso_flete_devolucion", "egreso", "1000.00"),
+    ];
+    const dias = derivarFinanzasDiarias(filas);
+
+    expect(dias.map((d) => [d.fecha, d.ganancia])).toEqual([
+      ["2026-10-21", "1700.00"], // antes de la ficha: 2116.00
+      ["2026-10-22", "1000.00"], // antes: 1000.00 + 130 − 130 = 1000.00 (no lo distinguia)
+      ["2026-10-23", "-1000.00"],
+    ]);
+    // Los ingresos y egresos de efectivo no cambian: el IVA es un cargo, no efectivo.
+    expect(dias[0]?.ingresos).toBe("20000.00");
+    expect(dias[0]?.egresos).toBe("1500.00");
+
+    // R12: la suma de las ganancias diarias es la ganancia de la caja sobre las mismas filas.
+    const caja = derivarCaja(
+      filas.map((f) => ({ categoria: f.categoria, tipo: f.tipo, total: f.total })),
+    );
+    const sumaDias = dias
+      .reduce((s, d) => s.add(new Prisma.Decimal(d.ganancia)), new Prisma.Decimal(0))
+      .toFixed(2);
+    expect(sumaDias).toBe("1700.00");
+    expect(caja.ganancia).toBe("1700.00");
   });
 
   it("⭑ 461/R30: el cobro de la empresa a una tienda y su reverso NO son efectivo del dia, pero SI cuentan en la ganancia", () => {

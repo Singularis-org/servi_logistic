@@ -337,7 +337,10 @@ const FRASES_OPERADOR: readonly FraseOperador[] = [
   ...enArchivo("docs/ayuda/oficina/wallet-caja.md", [
     "La caja de la empresa",
     "ganancia de la empresa**, el **saldo inicial y aportes**",
-    "fletes, comisiones, IVA, lo que la empresa les cobra a las tiendas",
+    // SL-39 (R7 de esa ficha): la frase decía «fletes, comisiones, IVA, …» como partes de la
+    // ganancia, y desde SL-39 el IVA no es ganancia (va en su propio bloque). La forma final es
+    // la de abajo; la frase de operador («lo que la empresa les cobra») sigue siendo la misma.
+    "fletes, comisiones, lo que la empresa les cobra a las tiendas",
     "El concepto, dicho desde la empresa",
     "**La empresa** en un aporte",
     "siempre desde la empresa, y diciendo quién le paga a quién",

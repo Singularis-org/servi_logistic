@@ -309,6 +309,8 @@ const CAJA_CON_CENTIMOS: CajaResumenDTO = {
   // Estado «flujo»: el de producción hoy. La identidad no depende del estado (R7).
   estado: "flujo",
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 
 /** El rótulo de la cifra principal en el estado del conjunto (literal: design §3.3). */
@@ -540,14 +542,20 @@ import {
   listarHistoricoCierresBodegaPaginado,
   listarPendientesCierresBodegaPaginado,
 } from "@/lib/actions/cierre-bodega";
-import { CierreBodegaFacturaResumen } from "@/app/(app)/cierres-admin/_components/cierre-factura";
+import {
+  CierreBodegaFacturaResumen,
+  CierreFacturaDetalle,
+} from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import { CierresBodegaAdminModule } from "@/app/(app)/cierres-admin/_components/CierresBodegaAdminModule";
+import { CascadasCierreMensajero } from "@/app/(app)/cierres-admin/_components/CascadasCierreMensajero";
 import {
   CASCADA_CENTRAL_TITULO,
   CASCADA_DUENO_TITULO,
+  CASCADA_NETO_EMPRESA_TITULO,
   COBRADO_SOBRE_RECAUDADO_LABEL,
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
+  IVA_FACTURADO_LABEL,
   NETO_EMPRESA_LABEL,
   PARA_LA_CENTRAL_LABEL,
   PARA_LA_TIENDA_LABEL,
@@ -556,7 +564,9 @@ import {
   COMISION_CON_IVA_LABEL,
   FLETE_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  INGRESO_BODEGA_RECHAZOS_LABEL,
   PAGO_MENSAJERO_LABEL,
+  PAGO_TIENDA_LABEL,
   TOTAL_GENERAL_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
@@ -890,6 +900,8 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
       cierre: BODEGA_CABECERA,
       cierres: [],
       totalesIngreso: TOTALES_INGRESO,
+      // SL-39: los conceptos de esta fixtura no llevan IVA (`ivaFlete` & co. a "0.00").
+      ivaFacturado: "0.00",
       ganancia: "13635.03",
       // 126089.17 − 23000.33 − 4134.50 (el flete por devolución a origen NO se resta: no salió
       // de lo recaudado, y por eso existe la línea puente).
@@ -963,11 +975,12 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     expect(tienda - (recaudado - facturado)).toBe(centimosDelServidor("500.75"));
   });
 
-  it("R8 — facturado − mensajeros − gana la bodega = neto de la empresa", async () => {
+  it("R8 — facturado − IVA − mensajeros − gana la bodega = neto de la empresa (SL-39)", async () => {
     const { dueno } = await abrir();
     laCuentaCierra(
       [
         importeTrasEn(dueno, FACTURADO_EMPRESA_LABEL),
+        importeTrasEn(dueno, IVA_FACTURADO_LABEL),
         importeTrasEn(dueno, PAGO_MENSAJERO_LABEL),
         importeTrasEn(dueno, GANA_BODEGA_SATELITE_LABEL),
       ],
@@ -990,6 +1003,162 @@ describe("ficha 393 · B5 — el DETALLE del cierre de bodega: las cuatro identi
     expect(centimosPintados(importeTrasEn(central, PARA_LA_CENTRAL_LABEL))).toBe(
       centimosDelServidor(BODEGA_CABECERA.paraLaCentral),
     );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SL-39 · B6 — EL IVA FACTURADO, APARTE, EN EL DETALLE DEL CIERRE DE MENSAJERO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La identidad de la cascada «Lo que le queda a la empresa» gana un sustraendo:
+//
+//   facturado − IVA facturado − pago al mensajero − ingreso de bodega = neto
+//
+// con los importes del cierre A de `design.md > 12.4` (3.616 − 416 − 1.500 − 0 = 1.700) leídos
+// del DOM, y la tarjeta «Debe» del cierre B (−100) con su nota sin IVA (R27). Lo que no cambia
+// (R26) se afirma con sus cifras: lo facturado sigue llevando el IVA, porque es lo que se le
+// factura a la tienda.
+
+describe("SL-39 · B6 — el IVA facturado aparte en el detalle del cierre (R24, R26, R27)", () => {
+  const INGRESO_A = {
+    montoCobrar: "20000.00",
+    flete: "3200.00",
+    ivaFlete: "416.00",
+    fleteDevolucion: "0.00",
+    ivaFleteDevolucion: "0.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "3616.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "0.00",
+    total: "3616.00",
+  };
+
+  function montarCascadasA() {
+    render(
+      <CascadasCierreMensajero
+        mensajeroNombre="Ana Mensajera"
+        estado="solicitado"
+        general="20000.00"
+        totalesIngreso={INGRESO_A}
+        totalPagoMensajero="1500.00"
+        totalIngresoBodegaRechazos="0.00"
+        pagoTienda="16384.00"
+        cobradoSobreRecaudado="3616.00"
+        ivaFacturado="416.00"
+        netoEmpresa="1700.00"
+        ganaLaTienda="16384.00"
+        fleteRechazoYaCobradoATienda={false}
+        partesPorTienda={[]}
+      />,
+    );
+    return {
+      neto: screen.getByRole("region", {
+        name: `${CASCADA_NETO_EMPRESA_TITULO} · cierre de Ana Mensajera`,
+      }),
+      particion: screen.getByRole("region", {
+        name: `${CASCADA_DUENO_TITULO} · cierre de Ana Mensajera`,
+      }),
+    };
+  }
+
+  it("R24 — facturado − IVA − pago al mensajero − bodega = lo que le queda a la empresa (cierre A)", () => {
+    const { neto } = montarCascadasA();
+    const facturado = importeTrasEn(neto, FACTURADO_EMPRESA_LABEL);
+    const iva = importeTrasEn(neto, IVA_FACTURADO_LABEL);
+    const mensajero = importeTrasEn(neto, PAGO_MENSAJERO_LABEL);
+    const bodega = importeTrasEn(neto, INGRESO_BODEGA_RECHAZOS_LABEL);
+    const resultado = importeTrasEn(neto, NETO_EMPRESA_LABEL);
+
+    expect([facturado, iva, mensajero, bodega, resultado]).toEqual([
+      "₡3.616",
+      "-₡416",
+      "-₡1.500",
+      "-₡0",
+      "₡1.700",
+    ]);
+    laCuentaCierra(
+      [facturado, iva, mensajero, bodega],
+      resultado,
+      "cierre A: lo que le queda a la empresa",
+    );
+    // Y el orden que se lee: lo facturado, el IVA justo detrás, y después el pago.
+    const texto = neto.textContent ?? "";
+    const enFacturado = texto.indexOf(FACTURADO_EMPRESA_LABEL);
+    const enIva = texto.indexOf(IVA_FACTURADO_LABEL);
+    const enPago = texto.indexOf(PAGO_MENSAJERO_LABEL);
+    expect(enFacturado).toBeLessThan(enIva);
+    expect(enIva).toBeLessThan(enPago);
+    // La nota, a mano.
+    expect(
+      within(neto).getByText(
+        "El IVA que se le cobró a la tienda en este cierre. No es de la empresa.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("R26 — lo facturado conserva su IVA: la partición sigue cerrando con 3.616", () => {
+    const { particion } = montarCascadasA();
+    expect(importeTrasEn(particion, FACTURADO_EMPRESA_LABEL)).toBe("-₡3.616");
+    laCuentaCierra(
+      [
+        importeTrasEn(particion, TOTAL_GENERAL_LABEL),
+        importeTrasEn(particion, FACTURADO_EMPRESA_LABEL),
+      ],
+      importeTrasEn(particion, "Gana la tienda"),
+      "cierre A: la partición",
+    );
+    expect(particion.textContent ?? "").not.toContain(IVA_FACTURADO_LABEL);
+    expect(document.body.textContent ?? "").toContain(PAGO_TIENDA_LABEL);
+  });
+
+  it("R27 — el cierre B sale en «Debe» −100, con la nota «Ingreso sin IVA menos el pago al mensajero.»", () => {
+    render(
+      <CierreFacturaDetalle
+        cierre={{
+          cierreId: "c-sl39-b",
+          estado: "solicitado",
+          destinoTipo: "bodega_central",
+          destinoZonaNombre: "GAM",
+          totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+          totalPagoMensajero: "2100.00",
+          totalIngresoBodegaRechazos: "0.00",
+          solicitadoAt: "2026-10-23T10:00:00.000Z",
+          resueltoAt: null,
+          motivoRechazo: null,
+          mensajeroNombre: "Ana Mensajera",
+        }}
+        grupos={{
+          entregado: [],
+          reprogramado: [],
+          novedad: [],
+          devolucion_a_origen_por_rechazo: [],
+          incidente: [],
+        }}
+        totalesIngreso={{
+          montoCobrar: "0.00",
+          flete: "0.00",
+          ivaFlete: "0.00",
+          fleteDevolucion: "2000.00",
+          ivaFleteDevolucion: "260.00",
+          comisionCod: "0.00",
+          ivaComisionCod: "0.00",
+          fleteConIva: "0.00",
+          comisionConIva: "0.00",
+          fleteDevolucionConIva: "2260.00",
+          total: "2260.00",
+        }}
+        desgloseIngresoBodegaRechazos={{ sla: "0.00", manual: "0.00", total: "0.00" }}
+        ganancia="-100.00"
+        pagoTienda="0.00"
+      />,
+    );
+    const liquidacion = screen.getByRole("region", { name: "Liquidación" });
+    expect(within(liquidacion).getByText("Debe")).toBeInTheDocument();
+    expect(importeTrasEn(liquidacion, "Debe")).toBe("-₡100");
+    expect(
+      within(liquidacion).getByText("Ingreso sin IVA menos el pago al mensajero."),
+    ).toBeInTheDocument();
   });
 });
 
@@ -1194,7 +1363,8 @@ const CENSO: readonly { ruta: string; identidad: string }[] = [
   },
   {
     ruta: "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
-    identidad: "las dos cascadas: para la tienda, neto de la empresa y para la central",
+    identidad:
+      "las dos cascadas: para la tienda, neto de la empresa (facturado − IVA − mensajeros − bodega, SL-39) y para la central",
   },
   // FICHA 395 — la superficie que estrena el detalle del cierre de MENSAJERO. Entra en el censo
   // porque pinta dinero derivado y porque sus identidades son justo las que el humano no podía
@@ -1202,7 +1372,7 @@ const CENSO: readonly { ruta: string; identidad: string }[] = [
   {
     ruta: "app/(app)/cierres-admin/_components/CascadasCierreMensajero.tsx",
     identidad:
-      "recaudado − facturado = gana la tienda; puente + flete por devolución a origen = facturado; recaudado − puente = pago a tienda",
+      "recaudado − facturado = gana la tienda; puente + flete por devolución a origen = facturado; recaudado − puente = pago a tienda; facturado − IVA − pago al mensajero − bodega = neto (SL-39)",
   },
   // FICHA 396 — el desglose por tienda. Entra en el censo porque es una superficie de dinero MÁS,
   // no un refactor: la monta el detalle del cierre de mensajero Y los DOS niveles del de bodega

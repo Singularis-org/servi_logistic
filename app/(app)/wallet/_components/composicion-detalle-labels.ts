@@ -74,10 +74,10 @@ export const EGRESO_NOMBRADO_LABEL: Record<WalletEgresoNombrado, string> = {
   // La fila de la anulacion de un cobro de la empresa a una tienda (R27); en el libro, cada fila se
   // rotula «Cobro a una tienda anulado».
   egreso_reverso_cobro_tienda: "Cobros a una tienda anulados",
-  // Ficha 458-B (design §2.3): las filas de la anulación de un cobro por rechazo; en el libro, cada
-  // fila se rotula «Flete por rechazo cobrado a la tienda anulado» / «IVA del flete…».
+  // Ficha 458-B (design §2.3): la fila de la anulación de un cobro por rechazo; en el libro, cada
+  // fila se rotula «Flete por rechazo cobrado a la tienda anulado». SL-39 (design §2.1): el reverso
+  // del IVA ya no es un egreso nombrado; su fila está en el bloque del IVA, con `CATEGORIA_LABEL`.
   egreso_reverso_flete_devolucion: "Fletes por devolución a origen cobrados a una tienda anulados",
-  egreso_reverso_iva_flete_devolucion: "IVA de fletes por devolución a origen cobrados a una tienda anulados",
 };
 
 /**

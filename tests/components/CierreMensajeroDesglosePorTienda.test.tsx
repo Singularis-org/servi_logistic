@@ -262,6 +262,7 @@ const DOS_TIENDAS: DetalleOk = {
     total: "70946.67",
   }),
   desgloseIngresoBodegaRechazos: { sla: "1200.25", manual: "0.00", total: "1200.25" },
+  ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "25946.12",
   pagoTienda: "225176.33",
   cobradoSobreRecaudado: "60098.67",

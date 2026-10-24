@@ -119,15 +119,17 @@ describe("R9 — `derivarBalance` conserva firma y salida", () => {
 });
 
 describe("R9 — `derivarCaja` REUSA la resta con signo, no la duplica", () => {
-  it("R9: importa `derivarBalance` y lo llama una vez por cada cifra (cuatro, ficha 459)", () => {
+  it("R9: importa `derivarBalance` y lo llama una vez por cada cifra (cinco, SL-39)", () => {
     const fuente = codigoSinComentarios(FUENTE_CAJA);
     expect(fuente).toMatch(
       /import\s*\{\s*derivarBalance\s*\}\s*from\s*"@\/lib\/utils\/wallet-balance"/,
     );
     const llamadas = [...fuente.matchAll(/derivarBalance\s*\(/g)].length;
     // Ficha 459 (design §2.2): de tres a CUATRO — cifra principal, ganancia, «De las tiendas» y
-    // capital. La propiedad protegida es «no hay restas propias»; la cuenta es su sintoma.
-    expect(llamadas).toBe(4);
+    // capital. SL-39 (design §2.2): CINCO — el IVA de la caja, que sale de la ganancia y tiene su
+    // propia resta con signo (ingresos de IVA − el reverso). La propiedad protegida es «no hay
+    // restas propias»; la cuenta es su sintoma.
+    expect(llamadas).toBe(5);
   });
 
   it("R9: no reimplementa el calculo del signo (ni un literal positivo/negativo/cero en el codigo)", () => {
@@ -151,19 +153,31 @@ describe("R9 — `derivarCaja` REUSA la resta con signo, no la duplica", () => {
     }
   });
 
-  it("R9: y `ganancia` es lo que devuelve `derivarBalance` sobre el subconjunto PROPIO", () => {
+  it("R9 (SL-39): `ganancia` es `derivarBalance` sobre lo PROPIO sin IVA, e `iva` sobre lo de IVA", () => {
+    // SL-39 (R1/R2): el IVA se reconoce aqui por su nombre (`_iva_`), no con `esCategoriaIva`: es la
+    // definicion del glosario, y R18 vigila que el seed no se deje ninguna.
+    const esIva = (f: AgregadoCajaRow) => f.categoria.includes("_iva_");
+    const sumar = (filas: readonly AgregadoCajaRow[], tipo: AgregadoCajaRow["tipo"]) =>
+      filas
+        .filter((f) => f.tipo === tipo)
+        .reduce((s, f) => s.add(new Prisma.Decimal(f.total)), new Prisma.Decimal(0));
+    let conIva = 0;
     for (const { nombre, filas } of CONJUNTOS) {
       const caja = derivarCaja(filas);
       const propias = filas.filter((f) => NATURALEZA_POR_CATEGORIA[f.categoria] === "propio");
-      const sumar = (tipo: AgregadoCajaRow["tipo"]) =>
-        propias
-          .filter((f) => f.tipo === tipo)
-          .reduce((s, f) => s.add(new Prisma.Decimal(f.total)), new Prisma.Decimal(0));
-      const balance = derivarBalance(sumar("ingreso"), sumar("egreso"));
+      const ganancia = propias.filter((f) => !esIva(f));
+      const iva = propias.filter(esIva);
+      if (iva.length > 0) conIva += 1;
+      const balance = derivarBalance(sumar(ganancia, "ingreso"), sumar(ganancia, "egreso"));
+      const balanceIva = derivarBalance(sumar(iva, "ingreso"), sumar(iva, "egreso"));
 
       expect(caja.ganancia, nombre).toBe(balance.balance);
       expect(caja.signoGanancia, nombre).toBe(balance.signo);
+      expect(caja.iva, nombre).toBe(balanceIva.balance);
+      expect(caja.signoIva, nombre).toBe(balanceIva.signo);
     }
+    // Control: hay conjuntos con IVA dentro (el de «solo dinero propio» y el catalogo entero).
+    expect(conIva).toBeGreaterThanOrEqual(2);
   });
 
   it("R9: las dos derivaciones COEXISTEN — la nueva no sustituye a la vieja en el arbol", () => {

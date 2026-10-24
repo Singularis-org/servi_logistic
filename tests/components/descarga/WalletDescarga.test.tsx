@@ -223,6 +223,8 @@ const RESUMEN = {
   deTercerosAbsoluto: "0.00",
   estado: "flujo" as const,
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 // Feature 231 (T6.3): el módulo monta ahora la tarjeta de la ganancia, que recibe la
 // composición hermana del resumen. Este archivo mide la DESCARGA y el FILTRO, no esa tarjeta;
@@ -232,9 +234,6 @@ const COMPOSICION = {
     ingreso_flete: "1.00",
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "0.00",
-    ingreso_iva_flete: "0.00",
-    ingreso_iva_flete_devolucion: "0.00",
-    ingreso_iva_comision_cod: "0.00",
     ingreso_ajuste: "0.00",
     ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
   },
@@ -245,10 +244,17 @@ const COMPOSICION = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
+  // SL-39: el IVA va en su bloque, fuera de las dos columnas de la ganancia.
+  iva: {
+    ingreso_iva_flete: "0.00",
+    ingreso_iva_flete_devolucion: "0.00",
+    ingreso_iva_comision_cod: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00",
+  },
+  totalIva: "0.00",
   totalEgresos: "0.00",
 };
 // Feature 201 (tanda B): era `{} as never`, y ese `as never` tapaba que el objeto NO tenía

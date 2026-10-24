@@ -316,6 +316,7 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
     fleteDevolucionConIva: "500.75",
     total: "18001.10",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "9000.80",
   pagoTienda: "62499.75",
   cobradoSobreRecaudado: "17500.35",
@@ -348,6 +349,7 @@ const DIA_BETO: CierreBodegaDetalleCierre = {
     fleteDevolucionConIva: "0.00",
     total: "9634.48",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "4634.23",
   pagoTienda: "36454.59",
   cobradoSobreRecaudado: "9634.48",
@@ -370,6 +372,7 @@ const DETALLE_OK = {
     fleteDevolucionConIva: "500.75",
     total: "27635.58",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
   ganancia: "13635.03",
   pagoTienda: "98954.34",
   cobradoSobreRecaudado: "27134.83",

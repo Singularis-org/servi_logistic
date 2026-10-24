@@ -2,8 +2,15 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 
 import {
   ANULAR_DOCUMENTO_CAJA_RESPUESTA,
+  CAJA_COMPOSICION_MENSAJE,
   CAJA_RESUMEN_AVISO_TERCEROS,
+  CAJA_RESUMEN_LABEL,
+  CAJA_RESUMEN_NOTA_DIFERENCIA,
   CATEGORIA_LABEL,
+  COMPOSICION_IVA_LABEL,
+  IMPUESTO_ROTULO,
+  REGIONES_BOLSILLO_EMPRESA,
+  composicionCajaNombreAccesible,
   CATEGORIA_TODAS_OPTION,
   DOCUMENTO_CAJA_NOMBRE,
   MOTIVO_NO_ANULABLE_LABEL,
@@ -13,6 +20,7 @@ import {
 import { opcionesDeConceptos } from "@/components/shared/wallet/conceptos-filtro";
 import { EGRESO_NOMBRADO_LABEL } from "@/app/(app)/wallet/_components/composicion-detalle-labels";
 import {
+  type CajaResumenDTO,
   WALLET_MOVIMIENTO_CATEGORIA_SEED,
   WALLET_ORIGEN_TIPO_SEED,
   type WalletMovimientoCategoria,
@@ -218,8 +226,92 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       egreso_reverso_cobro_tienda: "Cobros a una tienda anulados",
       // Ficha 458-B (design 458 §2.3): las dos filas de la anulacion de un cobro por devolución a origen.
       egreso_reverso_flete_devolucion: "Fletes por devolución a origen cobrados a una tienda anulados",
-      egreso_reverso_iva_flete_devolucion: "IVA de fletes por devolución a origen cobrados a una tienda anulados",
+      // SL-39 (design §2.1): el reverso del IVA sale de las filas nombradas; va al bloque del IVA.
     });
+  });
+});
+
+// =================================================================================================
+// SL-39 (T4, R10, design §5 y §7.3) — LOS TEXTOS DICEN QUE LA GANANCIA NO INCLUYE EL IVA
+// =================================================================================================
+//
+// Las frases van ESCRITAS A MANO: compararlas contra la constante que las define estaria siempre en
+// verde (leccion «asercion contra su propia fuente»). Son el texto aprobado de design §7.3.
+
+describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
+  it("el impuesto se nombra desde una sola constante", () => {
+    expect(IMPUESTO_ROTULO).toBe("IVA");
+  });
+
+  it("R6: la region «IVA cobrado» y su pista", () => {
+    expect(CAJA_RESUMEN_LABEL.iva).toBe("IVA cobrado");
+    expect(CAJA_RESUMEN_LABEL.ivaPista).toBe(
+      "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+    );
+  });
+
+  it("R10: la pista de la ganancia dice que no lleva el IVA", () => {
+    expect(CAJA_RESUMEN_LABEL.gananciaPista).toBe(
+      "Lo que la empresa gana menos lo que gasta, sin el IVA",
+    );
+  });
+
+  it("R10: la nota «en qué se diferencian» excluye el IVA cobrado de la ganancia", () => {
+    expect(CAJA_RESUMEN_NOTA_DIFERENCIA("Dinero en caja")).toBe(
+      "«Dinero en caja» cuenta todo el dinero, también el que es de las tiendas. «Ganancia de la empresa» es solo lo que la empresa gana menos lo que gasta: no incluye el dinero de las tiendas, el IVA cobrado ni el saldo inicial o los aportes.",
+    );
+  });
+
+  it("R10: «De la empresa» incluye el IVA en el nombre accesible de la barra y en `solo_tiendas`", () => {
+    // design §1: ganancia 1.700 + IVA 416 = 2.116 de la empresa, la cuenta a mano.
+    const resumen = { deTerceros: "10000.00", deEmpresa: "2116.00" } as unknown as CajaResumenDTO;
+    expect(composicionCajaNombreAccesible(resumen)).toBe(
+      "Reparto del dinero en caja. De las tiendas: ₡10.000. De la empresa: ₡2.116 (ganancia, IVA cobrado y aportes).",
+    );
+    expect(CAJA_COMPOSICION_MENSAJE.solo_tiendas).toBe(
+      "Lo de la empresa (ganancia, IVA cobrado y aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.",
+    );
+  });
+
+  it("R7: los rótulos del bloque del IVA en la composición", () => {
+    expect(COMPOSICION_IVA_LABEL).toEqual({
+      titulo: "IVA cobrado (aparte de la ganancia)",
+      grupo: "Desglose del IVA",
+      total: "Total del IVA",
+    });
+  });
+
+  it("R9: las regiones secundarias del bolsillo, en orden, leen su importe y su signo del resumen", () => {
+    const resumen = {
+      iva: "416.00",
+      signoIva: "positivo",
+      capital: "-50.00",
+      signoCapital: "negativo",
+    } as unknown as CajaResumenDTO;
+    expect(
+      REGIONES_BOLSILLO_EMPRESA.map((r) => ({
+        id: r.id,
+        rotulo: r.rotulo,
+        pista: r.pista,
+        valor: r.valor(resumen),
+        signo: r.signo(resumen),
+      })),
+    ).toEqual([
+      {
+        id: "iva",
+        rotulo: "IVA cobrado",
+        pista: "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+        valor: "416.00",
+        signo: "positivo",
+      },
+      {
+        id: "capital",
+        rotulo: "Saldo inicial y aportes",
+        pista: "Dinero de la empresa que no es ganancia.",
+        valor: "-50.00",
+        signo: "negativo",
+      },
+    ]);
   });
 });
 

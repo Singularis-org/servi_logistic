@@ -325,9 +325,10 @@ export function totalesIngresoEmpresa(
 }
 
 /**
- * Ganancia de la empresa: el ingreso BRUTO facturado menos lo que se le debe al mensajero.
- * Incluye los conceptos de devolucion (un rechazo tambien factura flete), asi que siempre
- * cuadra con el `total` del desglose. Puede ser NEGATIVA: un cierre de puras
+ * Ganancia de la empresa: lo facturado SIN IVA menos lo que se le debe al mensajero.
+ * Desde SL-39 los llamadores le pasan `facturadoSinIva(totales)` (`lib/utils/iva-cierre.ts`):
+ * el IVA cobrado es de Hacienda, no ganancia, y se muestra aparte. Incluye los conceptos de
+ * devolucion (un rechazo tambien factura flete). Puede ser NEGATIVA: un cierre de puras
  * reprogramaciones no factura nada y aun asi paga.
  *
  * Vive aca, y no duplicada en cada service, porque los dos detalles de admin (cierre de
@@ -630,8 +631,9 @@ export function cobradoSobreRecaudado(fleteConIva: string, comisionConIva: strin
 }
 
 /**
- * Feature 393 (R8, design §2.2) — NETO de la empresa: lo FACTURADO menos lo que la empresa paga,
- * que son DOS pagos y no uno: a los mensajeros y a la bodega satelite por los rechazos.
+ * Feature 393 (R8, design §2.2) — NETO de la empresa: lo FACTURADO SIN IVA menos lo que la
+ * empresa paga, que son DOS pagos y no uno: a los mensajeros y a la bodega satelite por los
+ * rechazos. Desde SL-39 `ingresoTotal` es `facturadoSinIva(totales)`: el IVA no es de la empresa.
  *
  * **NO es `gananciaEmpresa`, y por eso no se implementa encadenandola.** `gananciaEmpresa`
  * resta solo el pago al mensajero; este resta ademas el ingreso de bodega por rechazos. Los

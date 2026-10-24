@@ -308,7 +308,18 @@ describe("R57 · las dos metricas de la 173 salen de este repositorio, con sus c
     expect(where.categoria.in).not.toContain("ingreso_cod_recaudado");
     expect(where.categoria.in).not.toContain("egreso_pago_tienda");
     expect(where.categoria.in).not.toContain("ingreso_reverso_pago_tienda");
-    expect(where.categoria.in).toHaveLength(18); // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos reversos del cobro por devolución a origen
+    // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos
+    // reversos del cobro por devolución a origen = 18; SL-39 (R11): − las cuatro de IVA = 14.
+    expect(where.categoria.in).toHaveLength(14);
+    // SL-39 (R11): el IVA tampoco se le pide a la base: no es ganancia, se publica en `ingreso_iva`.
+    for (const iva of [
+      "ingreso_iva_flete",
+      "ingreso_iva_flete_devolucion",
+      "ingreso_iva_comision_cod",
+      "egreso_reverso_iva_flete_devolucion",
+    ]) {
+      expect(where.categoria.in, iva).not.toContain(iva);
+    }
   });
 
   it("y la validacion sigue reventando si una de ellas declarara una categoria ajena", async () => {

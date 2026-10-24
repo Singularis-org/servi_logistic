@@ -46,7 +46,7 @@ export function correoDelMaestro(letra: Letra): string {
 }
 
 /** El teléfono SINPE de la zona sembrada: un número de prueba válido para el `CHECK` de `zona`. */
-const SINPE_DE_PRUEBA = "80000000";
+export const SINPE_DE_PRUEBA = "80000000";
 
 export type Letra = "A" | "B";
 
