@@ -276,6 +276,13 @@ export function RecuperarContrasenaForm() {
             }
             break;
           case "validation_error":
+            // R19: un enlace mal formado (truncado, con un carácter de más) es un enlace que no
+            // sirve. La pantalla no tiene campo para `enlace`, así que su error iría a ningún
+            // sitio: se trata igual que el caducado o ya usado.
+            if (enlace && res.fieldErrors.enlace) {
+              setEnlaceInvalido(true);
+              break;
+            }
             setPasswordFieldErrors(res.fieldErrors);
             passwordRef.current?.focus();
             break;
@@ -289,12 +296,15 @@ export function RecuperarContrasenaForm() {
     return (
       <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
         <div>
+          {/* El texto sigue al flujo: quien llega del enlace de bienvenida la crea por primera
+              vez, no la restablece. `enlace` sigue en estado tras el éxito. */}
           <h1 className="text-2xl font-semibold text-center text-foreground">
-            Contraseña actualizada
+            {enlace ? "Contraseña creada" : "Contraseña actualizada"}
           </h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
-            Tu contraseña se restableció correctamente. Ya puedes iniciar sesión con tu
-            nueva contraseña.
+            {enlace
+              ? "Tu contraseña se creó correctamente. Ya puedes iniciar sesión con ella."
+              : "Tu contraseña se restableció correctamente. Ya puedes iniciar sesión con tu nueva contraseña."}
           </p>
         </div>
         {/* `cn(...)` y no `buttonVariants(...)` a pelo: ficha 439. Esta variante es la de

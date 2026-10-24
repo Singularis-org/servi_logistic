@@ -1,4 +1,3 @@
-import { baseUrlDeLaApp } from "@/lib/config/app-url";
 import { emailContacto } from "@/lib/config/email";
 import { MARCA } from "@/lib/config/marca";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
@@ -16,10 +15,9 @@ export interface OtpPlantillaParams {
  * reciben este mismo correo (R9): «código de verificación» vale para ambos, y separarlos obligaría
  * a cambiar la firma del emisor sin que nadie lo haya pedido.
  *
- * La firma no cambia desde la feature 80: `EmailNotificacionProvider` sigue llamándola igual. La
- * URL base y el contacto se leen aquí, del entorno, y se pasan a `componerCorreo`, que sigue pura.
- * Sin URL base el OTP sale igual, con la cabecera de texto (R4): el login no puede depender del
- * logo.
+ * La firma no cambia desde la feature 80: `EmailNotificacionProvider` sigue llamándola igual. El
+ * contacto se lee aquí, del entorno, y se pasa a `componerCorreo`, que sigue pura. El OTP lleva el
+ * logo por CID siempre, con o sin URL base (R4, decisión del leader del 2026-10-24).
  */
 export function plantillaOtpCodigo(params: OtpPlantillaParams): EmailMessage {
   const { code, expiresInMinutes } = params;
@@ -38,7 +36,6 @@ export function plantillaOtpCodigo(params: OtpPlantillaParams): EmailMessage {
         texto: "Si no lo pediste, ignora este correo y no compartas el código con nadie.",
       },
     ],
-    baseUrl: baseUrlDeLaApp(),
     contacto: emailContacto(),
   });
 }

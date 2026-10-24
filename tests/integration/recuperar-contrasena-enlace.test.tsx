@@ -111,9 +111,16 @@ describe("SL-41 (R18) — crear la contraseña con el enlace", () => {
       }),
     );
     expect(mockedRestablecer).not.toHaveBeenCalled();
+    // El texto sigue al flujo: con el enlace de bienvenida la contraseña se CREA, no se
+    // restablece (el texto de recuperación lo fija `recuperar-contrasena-form.test.tsx`).
     expect(
-      await screen.findByRole("heading", { name: "Contraseña actualizada" }),
+      await screen.findByRole("heading", { name: "Contraseña creada" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Tu contraseña se creó correctamente. Ya puedes iniciar sesión con ella."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Contraseña actualizada")).toBeNull();
+    expect(screen.queryByText(/restableció/)).toBeNull();
     expect(screen.getByRole("link", { name: "Ir a iniciar sesión" })).toHaveAttribute(
       "href",
       "/login",
@@ -156,6 +163,31 @@ describe("SL-41 (R19) — el enlace que ya no sirve", () => {
     expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
     expect(screen.queryByText("El enlace no es válido o ya venció.")).toBeNull();
+  });
+
+  it("con validation_error del ENLACE (mal formado) muestra el genérico y «Pedir un código por correo»", async () => {
+    // El borde valida la forma con zod y devuelve `fieldErrors.enlace`. La pantalla no tiene campo
+    // para el enlace: si ese error se tratara como de campo, el maestro pulsaría y no vería nada.
+    const user = userEvent.setup();
+    abrirCon(`#enlace=${ENLACE}`);
+    mockedCrear.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { enlace: ["Enlace no válido"] },
+    });
+    render(<RecuperarContrasenaForm />);
+
+    await crearContrasena(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El enlace no es válido o ya venció.",
+    );
+    expect(screen.queryByLabelText("Nueva contraseña")).toBeNull();
+    expect(screen.queryByText("Enlace no válido")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Pedir un código por correo" }));
+
+    expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
   });
 
   it("con #enlace= vacío muestra el genérico sin llamar a la action", () => {

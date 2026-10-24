@@ -38,7 +38,6 @@ function correo(extra: Partial<CorreoDeMarca> = {}): CorreoDeMarca {
     asunto: "Asunto de prueba",
     preheader: "Vista previa de prueba",
     bloques: BLOQUES,
-    baseUrl: "https://app.example.com",
     contacto: null,
     ...extra,
   };
@@ -159,8 +158,8 @@ describe("componerCorreo — colores (R3)", () => {
   });
 
   it.each([
-    ["con logo y sin contacto", {}],
-    ["sin logo y con contacto", { baseUrl: null, contacto: "soporte@example.com" }],
+    ["sin contacto", {}],
+    ["con contacto", { contacto: "soporte@example.com" }],
   ])("todos los colores del HTML son de la paleta o la mezcla declarada (%s)", (_, extra) => {
     const permitidos = new Set<string>([...Object.values(PALETA), SECUNDARIO]);
     const usados = colores(html(extra as Partial<CorreoDeMarca>));
@@ -197,15 +196,17 @@ describe("componerCorreo — colores (R3)", () => {
   });
 });
 
-describe("componerCorreo — sin URL base (R4)", () => {
-  it("la cabecera es el nombre «Servi Logistic» como texto negro en negrita, sin imagen", () => {
-    const h = html({ baseUrl: null });
-    expect(h).not.toContain("<img");
-    expect(zona(h, "cabecera")).toMatch(/font-weight:700;color:#111111;">Servi Logistic<\/p>/);
+// R4 (decisión del leader, 2026-10-24): con el logo por CID, la cabecera lo pinta siempre. La
+// plantilla ya no recibe ninguna URL base, así que no hay un «sin URL» que pueda quitarlo.
+describe("componerCorreo — el logo siempre, sin depender de la URL base (R4)", () => {
+  it("la cabecera es el logo por CID, sin cabecera de texto", () => {
+    const h = html();
+    expect(zona(h, "cabecera")).toContain('<img src="cid:logo@servilogistic" alt="Servi Logistic"');
+    expect(zona(h, "cabecera")).not.toContain(">Servi Logistic</p>");
   });
 
-  it("sin imagen en la cabecera, el mensaje no lleva el logo adjunto", () => {
-    expect(componerCorreo(correo({ baseUrl: null })).imagenesEnLinea).toBeUndefined();
+  it("el mensaje lleva siempre el logo adjunto", () => {
+    expect(componerCorreo(correo()).imagenesEnLinea?.map((i) => i.cid)).toEqual(["logo@servilogistic"]);
   });
 });
 
@@ -272,11 +273,10 @@ describe("componerCorreo — escapado (R6)", () => {
     expect(h).toContain('href="https://x.example/&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
   });
 
-  it("escapa el asunto, el preheader, la URL base y el contacto", () => {
+  it("escapa el asunto, el preheader y el contacto", () => {
     const h = html({
       asunto: MALO,
       preheader: MALO,
-      baseUrl: 'https://x.example/"onerror="x',
       contacto: '"><b>@example.com',
     });
     expect(h).not.toContain("<b>");

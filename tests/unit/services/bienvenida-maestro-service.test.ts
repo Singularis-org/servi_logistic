@@ -37,12 +37,13 @@ function dobles(opts: { maestro?: MaestroParaBienvenida | null } = {}) {
     enlace: ENLACE,
     ttlHoras: 72,
   }));
+  const anularEnlaceBienvenida = vi.fn<IPasswordResetService["anularEnlaceBienvenida"]>(async () => {});
   const enviados: EmailMessage[] = [];
   const enviar = vi.fn<IEmailSender["enviar"]>(async (m) => {
     enviados.push(m);
     return { messageId: "id-smtp" };
   });
-  return { repo, passwordReset: { emitirEnlaceBienvenida }, sender: { enviar }, enviados };
+  return { repo, passwordReset: { emitirEnlaceBienvenida, anularEnlaceBienvenida }, sender: { enviar }, enviados };
 }
 
 function servicio(
@@ -80,6 +81,7 @@ describe("BienvenidaMaestroService — el camino bueno", () => {
     const r = await servicio(d).enviar({ organizacionId: ORG, ipAddress: IP });
 
     expect(r).toEqual({ estado: "enviada", email: MAESTRO.email });
+    expect(d.passwordReset.anularEnlaceBienvenida).not.toHaveBeenCalled();
     expect(d.repo.maestroParaBienvenida).toHaveBeenCalledWith(ORG);
     expect(d.passwordReset.emitirEnlaceBienvenida).toHaveBeenCalledWith({
       usuarioId: MAESTRO.usuarioId,
@@ -127,6 +129,27 @@ describe("R23 — si algo falla, devuelve no_enviada y no lanza", () => {
       estado: "no_enviada",
       email: MAESTRO.email,
     });
+  });
+
+  // Revisión m2: un envío que falla no puede dejar muerto el enlace anterior. El nuevo, que no lo
+  // tiene nadie, se anula, y el anterior vuelve a ser el último activo (R22).
+  it("falla el SMTP: anula el enlace recién emitido, y solo ese", async () => {
+    const d = dobles();
+    d.sender.enviar.mockRejectedValueOnce(new EmailEnvioError(MAESTRO.email, new Error("ECONNRESET")));
+    await servicio(d).enviar({ organizacionId: ORG, ipAddress: IP });
+    expect(d.passwordReset.anularEnlaceBienvenida).toHaveBeenCalledTimes(1);
+    expect(d.passwordReset.anularEnlaceBienvenida).toHaveBeenCalledWith(ENLACE);
+  });
+
+  it("falla el SMTP y también anular: no_enviada igual, y el registro nombra el error del envío", async () => {
+    const d = dobles();
+    d.sender.enviar.mockRejectedValueOnce(new EmailEnvioError(MAESTRO.email, new Error("ECONNRESET")));
+    d.passwordReset.anularEnlaceBienvenida.mockRejectedValueOnce(new Error("fallo de base"));
+    await expect(servicio(d).enviar({ organizacionId: ORG, ipAddress: IP })).resolves.toEqual({
+      estado: "no_enviada",
+      email: MAESTRO.email,
+    });
+    expect(registrado()).toContain("causa=EmailEnvioError");
   });
 
   it("falla la emisión del enlace: no se intenta enviar nada", async () => {
@@ -184,6 +207,9 @@ describe("R24 — sin SMTP configurado", () => {
     const r = await servicio(d, { smtp: false }).enviar({ organizacionId: ORG, ipAddress: IP });
     expect(r).toEqual({ estado: "sin_correo", email: MAESTRO.email });
     expect(d.sender.enviar).toHaveBeenCalledTimes(1);
+    // Revisión m2, decidido: sin SMTP el emisor de consola ES la entrega (en local y en el E2E el
+    // enlace se lee del registro con AUTH_OTP_DEBUG_LOG=1). No falló nada, así que no se anula.
+    expect(d.passwordReset.anularEnlaceBienvenida).not.toHaveBeenCalled();
   });
 
   it("con SMTP, un messageId null no lo convierte en sin_correo: manda el flag", async () => {

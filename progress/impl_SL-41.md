@@ -876,3 +876,89 @@ No fue un rojo del código.
 
 **Veredicto:** SL-41 lista para revisión. T0–T15 cerradas, cada R1–R40 con su test, E2E con 7
 passed y gate con `INIT_EXIT=0`.
+
+## Vuelta 2: corrección del rechazo de la revisión (frontend_dev, 2026-10-24)
+
+Rechazo: `progress/review_SL-41.md` (H1 bloqueante; m1, m2 y m3 menores). Head de partida `3e0aa6b`.
+MCP del grafo: no lo usé; Grep/Read sobre el worktree.
+
+### Qué se corrigió
+1. **H1 (R19).** `RecuperarContrasenaForm.tsx`: un `validation_error` con `fieldErrors.enlace` en
+   modo enlace pasa al estado `enlaceInvalido` («El enlace no es válido o ya venció.» y «Pedir un
+   código por correo»), igual que `invalid_or_expired`. Los errores de `password`/`confirmPassword`
+   siguen pintándose en su campo.
+2. **m3 (texto de éxito).** En modo enlace: «Contraseña creada / Tu contraseña se creó
+   correctamente. Ya puedes iniciar sesión con ella.». El flujo de recuperación conserva «Contraseña
+   actualizada / se restableció». El E2E (`e2e/superadmin-empresas.spec.ts`, paso del enlace) espera
+   ahora «Contraseña creada»; el del código, «Contraseña actualizada».
+3. **m2 («Reenviar» que falla).** Si `sender.enviar` LANZA, `BienvenidaMaestroService` llama a
+   `PasswordResetService.anularEnlaceBienvenida(enlace)` (nuevo; consume el desafío recién emitido
+   con `consumirSiActivo`) y relanza. Como el canje exige que el enlace sea el último activo (R22) y
+   `findLatestActiveByUsuarioId` excluye los consumidos, el enlace anterior vuelve a valer. Si anular
+   falla, se ignora y manda el error del envío (sigue `no_enviada`, R23).
+   **`sin_correo` se deja como está, a propósito:** sin SMTP el emisor de consola ES la entrega
+   (en local y en el E2E el enlace se lee del registro con `AUTH_OTP_DEBUG_LOG=1`). No falló nada;
+   anular ahí rompería ese camino. La UI ya dice «No salió: el correo no está configurado.», y en un
+   entorno sin SMTP no hay bienvenida previa que haya salido por correo. Cortar antes de emitir con
+   `smtpConfigurado=false` rompería el E2E y el desarrollo local por la misma razón.
+4. **m1 → R4 (decisión del leader, 2026-10-24).** El logo por CID va siempre, con o sin
+   `NEXT_PUBLIC_APP_URL`. `CorreoDeMarca` ya no tiene `baseUrl` (la plantilla no lo usaba para nada
+   más); `componerCorreo` adjunta siempre el logo; el OTP ya no lee `baseUrlDeLaApp()`. La
+   bienvenida sigue necesitando la URL para su enlace (R23, R40). `requirements.md` (R4 y R40) y
+   `design.md` llevan la nota con la fecha.
+
+### Archivos modificados
+- `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx`
+- `lib/interfaces/services/IPasswordResetService.ts`, `lib/services/PasswordResetService.ts`,
+  `lib/services/BienvenidaMaestroService.ts`
+- `lib/services/email/plantillas/plantilla-marca.ts`, `otp-codigo.ts`, `bienvenida-maestro.ts`
+- `specs/SL-41-plantillas-correo-bienvenida/requirements.md`, `design.md`
+- Tests: `tests/integration/recuperar-contrasena-enlace.test.tsx`,
+  `tests/unit/services/bienvenida-maestro-service.test.ts`, `tests/unit/password-reset-enlace.test.ts`,
+  `tests/integration/db/enlace-bienvenida.test.ts`, `tests/unit/services/email/plantilla-marca.test.ts`,
+  `tests/unit/services/email-notificacion.test.ts`, `e2e/superadmin-empresas.spec.ts`, y el método
+  nuevo en los dobles de `tests/unit/auth/empresa-de-la-peticion.test.ts`,
+  `tests/unit/password-reset-actions.test.ts` y `tests/unit/password-reset-enlace-action.test.ts`.
+
+### Mapa R → test (lo que cambió)
+| Requisito | Test |
+|---|---|
+| R19 (enlace mal formado) | `recuperar-contrasena-enlace.test.tsx` > «con validation_error del ENLACE (mal formado) muestra el genérico…» |
+| R18 / m3 (texto de éxito por flujo) | `recuperar-contrasena-enlace.test.tsx` > «con ok envía el enlace…» (creada) y `recuperar-contrasena-form.test.tsx` (actualizada) |
+| R22 / m2 (envío fallido no rompe el anterior) | `bienvenida-maestro-service.test.ts` > «falla el SMTP: anula el enlace recién emitido…» y «…también anular…»; `password-reset-enlace.test.ts` > «anularEnlaceBienvenida»; Postgres: `enlace-bienvenida.test.ts` > «m2: anular el enlace nuevo devuelve el valor al anterior…» |
+| R24 / m2 (`sin_correo` no anula) | `bienvenida-maestro-service.test.ts` > «R24 — el correo pasa por el emisor (de consola)…» |
+| R4 (nuevo) | `plantilla-marca.test.ts` > «el logo siempre, sin depender de la URL base (R4)»; `email-notificacion.test.ts` > «R4 — sin URL base el OTP lleva el logo por CID…» |
+
+### Mutaciones (script `scratchpad/sl41fix/mut.mjs`, con autocomprobación en verde antes; restaura byte a byte)
+```
+BASE sin mutar: exit=0
+H1: sin mapear fieldErrors.enlace al genérico: exit=1 failed=1 -> MUERE
+m3a: éxito siempre con el texto de recuperación: exit=1 failed=1 -> MUERE
+m3b: éxito siempre con el texto de creación: exit=1 failed=1 -> MUERE
+m2a: el envío fallido no anula el enlace nuevo: exit=1 failed=1 -> MUERE
+m2b: anular deja escapar su propio error: exit=1 failed=1 -> MUERE
+m2c: anularEnlaceBienvenida no consume: exit=1 failed=1 -> MUERE
+R4a: cabecera de texto en vez del logo: exit=1 failed=4 -> MUERE
+R4b: sin adjuntar el logo: exit=1 failed=3 -> MUERE
+```
+BD (base desechable `sl41f_base`, dentro del lock): `enlace-bienvenida.test.ts` 9/9 en verde, ninguno
+saltado. Mutación «anular consume otro id»: `1 failed | 8 passed` → MUERE. Restaurado.
+
+### Tests tocados (sin la suite completa)
+13 archivos (formulario, enlace, servicio, plantillas, actions, guardia `html-lang`): `Test Files 13
+passed`, `Tests 159 passed`, EXIT=0.
+
+### Gate (dentro de `gate.lock`, owner `frontend-SL-41-fix`; base `sl41f_base`, borrada al terminar)
+Comando: `TEST_RAPIDO_BASE=origin/dev ./init.sh`. Log: `scratchpad/sl41-gate-fix.log` (URLs enmascaradas).
+```
+✓ typecheck paso
+✓ lint paso
+ Test Files  461 passed (461)      Tests  6264 passed | 26 skipped (6290)
+ Test Files  303 passed (303)      Tests  4137 passed | 1 skipped (4138)
+✓ test:rapido paso
+✓ todas las migraciones tienen down.sql
+== init OK ==
+INIT_EXIT=0
+```
+
+**Veredicto:** H1, m2, m3 y R4 corregidos, cada uno con su test y su mutación muerta; gate con `INIT_EXIT=0`.

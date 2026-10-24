@@ -31,11 +31,6 @@ export interface CorreoDeMarca {
   /** Línea de vista previa que muestran los clientes de correo; no se ve en el cuerpo. */
   preheader: string;
   bloques: Bloque[];
-  /**
-   * URL base de la app, sin barra final. `null`: cabecera de texto, sin imagen (R4). El logo ya no
-   * se carga desde esta URL (va en línea), pero R4 sigue atando la cabecera a ella.
-   */
-  baseUrl: string | null;
   /** Dirección de contacto del pie (R39). `null`: el pie no muestra ninguna. */
   contacto: string | null;
 }
@@ -93,13 +88,15 @@ export function escaparHtml(valor: string): string {
 
 const TABLA = 'role="presentation" cellpadding="0" cellspacing="0" border="0"';
 
-function cabeceraHtml(baseUrl: string | null): string {
+/**
+ * R4 (decisión del leader, 2026-10-24): con el logo en línea por CID, la cabecera lo pinta SIEMPRE,
+ * también sin `NEXT_PUBLIC_APP_URL`. Ya no hay cabecera de texto: el logo no depende de ninguna URL.
+ */
+function cabeceraHtml(): string {
+  // El estilo de texto del <img> es para el `alt`: con las imágenes bloqueadas, el cliente pinta
+  // el nombre con la tinta de la marca en vez del azul de un enlace.
   const contenido =
-    baseUrl === null
-      ? `<p style="margin:0;font-family:${FUENTE};font-size:22px;line-height:28px;font-weight:700;color:${COLOR.tinta};">${escaparHtml(MARCA.nombre)}</p>`
-      : // El estilo de texto del <img> es para el `alt`: con las imágenes bloqueadas, el cliente
-        // pinta el nombre con la tinta de la marca en vez del azul de un enlace.
-        `<img src="cid:${CID_LOGO}" alt="${escaparHtml(MARCA.nombre)}" width="${ANCHO_LOGO}" style="display:block;width:${ANCHO_LOGO}px;max-width:${ANCHO_LOGO}px;height:auto;border:0;outline:none;text-decoration:none;font-family:${FUENTE};font-size:20px;font-weight:700;color:${COLOR.tinta};">`;
+    `<img src="cid:${CID_LOGO}" alt="${escaparHtml(MARCA.nombre)}" width="${ANCHO_LOGO}" style="display:block;width:${ANCHO_LOGO}px;max-width:${ANCHO_LOGO}px;height:auto;border:0;outline:none;text-decoration:none;font-family:${FUENTE};font-size:20px;font-weight:700;color:${COLOR.tinta};">`;
   return [
     `<tr><td data-zona="cabecera" style="padding:24px 32px;background-color:${COLOR.blanco};">${contenido}</td></tr>`,
     `<tr><td style="height:4px;line-height:4px;font-size:0;background-color:${COLOR.acento};">&nbsp;</td></tr>`,
@@ -172,7 +169,7 @@ function html(c: CorreoDeMarca): string {
     `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escaparHtml(c.preheader)}</div>`,
     `<table ${TABLA} width="100%" style="background-color:${COLOR.fondoClaro};"><tr><td align="center" style="padding:24px 12px;">`,
     `<table ${TABLA} width="600" style="width:100%;max-width:600px;background-color:${COLOR.blanco};">`,
-    cabeceraHtml(c.baseUrl),
+    cabeceraHtml(),
     `<tr><td data-zona="contenido" style="padding:32px;background-color:${COLOR.blanco};">`,
     ...c.bloques.map(bloqueHtml),
     "</td></tr>",
@@ -204,13 +201,11 @@ function texto(c: CorreoDeMarca): string {
 
 /**
  * Compone el mensaje completo. Función pura: depende solo de `MARCA` y de lo que recibe, así que
- * cada correo se afirma en un test sin red y sin entorno. `baseUrl` y `contacto` los pasa quien
- * llama, por la misma razón.
+ * cada correo se afirma en un test sin red y sin entorno. `contacto` lo pasa quien llama, por la
+ * misma razón.
  */
 export function componerCorreo(c: CorreoDeMarca): EmailMessage {
-  const mensaje: EmailMessage = { to: c.to, subject: c.asunto, text: texto(c), html: html(c) };
-  // Solo cuando la cabecera pinta el logo: un adjunto que el HTML no referencia aparece como
-  // archivo suelto en algunos clientes.
-  if (c.baseUrl !== null) mensaje.imagenesEnLinea = [IMAGEN_LOGO];
-  return mensaje;
+  // La cabecera pinta el logo siempre (R4), así que el adjunto va siempre: cada `cid:` del HTML
+  // tiene el suyo, y no sobra ninguno.
+  return { to: c.to, subject: c.asunto, text: texto(c), html: html(c), imagenesEnLinea: [IMAGEN_LOGO] };
 }

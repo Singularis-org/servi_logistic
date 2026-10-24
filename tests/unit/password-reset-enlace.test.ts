@@ -264,3 +264,21 @@ describe("SL-41 — R34: el secreto no sale por consola", () => {
     expect(impreso).not.toContain(NUEVA);
   });
 });
+
+// Revisión m2: un «Reenviar» cuyo correo falla anula el enlace nuevo, y el anterior vuelve a valer.
+// Que el anterior pase a ser el último activo se prueba contra Postgres en
+// `tests/integration/db/enlace-bienvenida.test.ts`.
+describe("SL-41 — anularEnlaceBienvenida (revisión m2)", () => {
+  it("consume el desafío del enlace por su id", async () => {
+    const deps = buildDeps();
+    await buildService(deps).anularEnlaceBienvenida(`${CHALLENGE_ID}.${SECRETO}`);
+    expect(deps.otpRepo.consumirSiActivo).toHaveBeenCalledTimes(1);
+    expect(deps.otpRepo.consumirSiActivo).toHaveBeenCalledWith(CHALLENGE_ID);
+  });
+
+  it("con un enlace roto no toca la base", async () => {
+    const deps = buildDeps();
+    await buildService(deps).anularEnlaceBienvenida("sin-punto");
+    expect(deps.otpRepo.consumirSiActivo).not.toHaveBeenCalled();
+  });
+});

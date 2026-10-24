@@ -98,8 +98,7 @@ interface CorreoDeMarca {
   /** Línea de vista previa que muestran los clientes de correo; no se ve en el cuerpo. */
   preheader: string;
   bloques: Bloque[];
-  /** URL base de la app, sin barra final. `null`: cabecera de texto (R4). */
-  baseUrl: string | null;
+  // (2026-10-24) `baseUrl` salió de aquí: con R4 nuevo el logo va siempre y la plantilla no la usa.
 }
 
 export function componerCorreo(c: CorreoDeMarca): EmailMessage; // { to, subject, text, html }
@@ -124,11 +123,10 @@ bloques (R5).
   `scripts/generar-logo-correo.mjs`, que también escribe sus bytes en base64 en
   `lib/services/email/plantillas/logo-correo.ts`: el correo no lee `public/` con `fs`, porque en
   Vercel ese archivo no viaja a la función. `EmailMessage` suma `imagenesEnLinea` y
-  `NodemailerEmailSender` las pasa como `attachments` con `cid` e `inline`. R4 no cambia: sin
-  `baseUrl` la cabecera sigue siendo de texto y el mensaje no lleva el adjunto.
+  `NodemailerEmailSender` las pasa como `attachments` con `cid` e `inline`. R4 (cambiado por el
+  leader el 2026-10-24): el logo y su adjunto van siempre, haya o no `baseUrl`.
   Los 180 px cumplen la regla de 140 px o más de `docs/marca.md`. Debajo, una franja `#FFD000` de
-  4 px: el amarillo como franja, no como texto (R3). Sin `baseUrl`, la cabecera es el texto
-  «Servi Logistic» en `#111111`, en negrita (R4).
+  4 px: el amarillo como franja, no como texto (R3). Ya no hay cabecera de texto (R4, 2026-10-24).
 - **Cuerpo.** Fondo `#FFFFFF`, texto `#111111` (18.9:1). El código va en `#111111`, a 28 px, con
   espaciado entre letras.
 - **Botón.** Un `<a>` con fondo `#111111` y texto `#FFFFFF`, y el ancho y el relleno puestos en una
@@ -169,8 +167,8 @@ Login y recuperación siguen compartiendo el texto (R9). «Código de verificaci
 y separarlos obligaría a cambiar la firma de `OtpChallengeIssuer` y sus dos llamadores sin que nadie
 lo haya pedido.
 
-`baseUrl` sale de `baseUrlDeLaApp()` (§8). El OTP **no** se bloquea sin URL base: cae en la cabecera
-de texto (R4). El login no puede depender del logo.
+El OTP ya no lee `baseUrlDeLaApp()` (§8). **No** se bloquea sin URL base y lleva el logo por CID
+igual (R4, 2026-10-24). El login no depende de ninguna URL.
 
 Cambian los literales de `tests/unit/services/email-notificacion.test.ts`, l. 55, 56 y 143. Son el
 contrato, y se reescriben con el texto nuevo; no se cambian por su propia fuente.
@@ -565,7 +563,7 @@ Ninguna nueva. `nodemailer` y `bcryptjs` ya están aprobados en `docs/dependenci
 | R | Test |
 |---|---|
 | R1, R5, R6 | `tests/unit/services/email/plantilla-marca.test.ts` |
-| R2, R3, R4 | `tests/unit/services/email/plantilla-marca.test.ts`: estructura, colores contra la paleta, ningún `#FFD000` como `color:` sobre un fondo claro, ningún color de la marca anterior, y cabecera de texto sin `baseUrl` |
+| R2, R3, R4 | `tests/unit/services/email/plantilla-marca.test.ts`: estructura, colores contra la paleta, ningún `#FFD000` como `color:` sobre un fondo claro, ningún color de la marca anterior, y el logo por CID siempre (R4, 2026-10-24) |
 | R7, R11, R35 | `tests/unit/services/email/correos-sin-secretos.test.ts`: recorre los tres correos renderizados. El nombre heredado sale de `tests/fixtures/nombre-heredado.ts`, porque un literal en `tests/` dispararía `sin-nombre-heredado` |
 | R8, R9, R10 | `tests/unit/services/email-notificacion.test.ts` (literales nuevos) y `tests/unit/services/otp-challenge-issuer.test.ts` (login y recuperación, mismo correo) |
 | R12, R23, R24, R27, R28 | `tests/unit/actions/organizaciones-action.test.ts`, `tests/unit/actions/organizaciones-action.composition-root.test.ts` |

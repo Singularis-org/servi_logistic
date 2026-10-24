@@ -59,8 +59,14 @@
 - **R3.** El cuerpo HTML DEBE usar solo colores de la paleta de `docs/marca.md`, o mezclas
   declaradas de dos de ellos. NO DEBE pintar texto en amarillo `#FFD000` sobre un fondo claro, y NO
   DEBE contener los colores de la marca anterior (`#0b2545`, `#0d2444`, `#f26419`).
-- **R4.** SI no hay URL base de la app configurada, ENTONCES la cabecera del cuerpo HTML DEBE
-  mostrar el nombre «Servi Logistic» como texto, sin ninguna imagen.
+- **R4.** La cabecera del cuerpo HTML de todo correo DEBE mostrar el logo de Servi Logistic como
+  imagen en línea (CID), adjunta al mensaje, haya o no URL base de la app configurada. Su texto
+  alternativo DEBE ser «Servi Logistic».
+  > Cambiado por decisión del leader, 2026-10-24 (revisión de SL-41, m1). Antes decía: «SI no hay
+  > URL base de la app configurada, ENTONCES la cabecera del cuerpo HTML DEBE mostrar el nombre
+  > "Servi Logistic" como texto, sin ninguna imagen». Con el logo por CID ya no se carga desde
+  > ninguna URL, así que no hay razón técnica para quitarlo. `NEXT_PUBLIC_APP_URL` sigue siendo
+  > necesaria para el enlace de la bienvenida (R23, R40).
 - **R5.** El cuerpo de texto plano de todo correo DEBE contener cada párrafo del cuerpo HTML y la
   URL completa de cada enlace, sin etiquetas HTML.
 - **R6.** El sistema DEBE escapar en el cuerpo HTML todo dato variable que interpola: el nombre del
@@ -198,4 +204,5 @@ contraseña» de `## Lo que NO entra`.
   ENTONCES el pie NO DEBE mostrar ninguna dirección.
 - **R40 (P2).** SI no hay URL base de la app, ENTONCES la bienvenida DEBE terminar en `no_enviada`
   (R23) y el servidor DEBE registrar un aviso que nombre `NEXT_PUBLIC_APP_URL`, sin ningún valor
-  de entorno. El OTP DEBE seguir saliendo con la cabecera de texto (R4).
+  de entorno. El OTP DEBE seguir saliendo, con el logo por CID (R4; hasta el 2026-10-24 decía «con la
+  cabecera de texto»).

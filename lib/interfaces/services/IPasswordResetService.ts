@@ -56,6 +56,12 @@ export interface IPasswordResetService {
   restablecer(input: RestablecerInput): Promise<ResetOutcome>;
   /** SL-41 (R15, R17): crea el desafio de bienvenida y devuelve el enlace. Solo el hash se guarda. */
   emitirEnlaceBienvenida(input: EmitirEnlaceBienvenidaInput): Promise<EnlaceBienvenidaEmitido>;
+  /**
+   * SL-41 (revisión, m2): deja sin valor un enlace recién emitido cuyo correo no salió. Como el
+   * canje exige que el enlace sea el último activo (R22), anular el nuevo devuelve el valor al
+   * anterior: un «Reenviar» que falla no rompe la bienvenida que ya había salido.
+   */
+  anularEnlaceBienvenida(enlace: string): Promise<void>;
   /** SL-41 (R18-R20, R22): canjea el enlace por una contrasena. No abre sesion. */
   crearContrasenaConEnlace(input: CrearContrasenaConEnlaceInput): Promise<ResetOutcome>;
 }

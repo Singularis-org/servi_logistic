@@ -23,6 +23,7 @@ function servicio(outcome: ResetOutcome = { status: "ok" }) {
     verificarCodigo: vi.fn(),
     restablecer: vi.fn(),
     emitirEnlaceBienvenida: vi.fn(),
+    anularEnlaceBienvenida: vi.fn(),
     crearContrasenaConEnlace: crear,
   };
   return { service, crear, contextos };

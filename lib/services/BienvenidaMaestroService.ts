@@ -37,7 +37,7 @@ function causaDe(error: unknown): string {
 export class BienvenidaMaestroService implements IBienvenidaMaestroService {
   constructor(
     private readonly repo: IBienvenidaMaestroRepository,
-    private readonly passwordReset: Pick<IPasswordResetService, "emitirEnlaceBienvenida">,
+    private readonly passwordReset: Pick<IPasswordResetService, "emitirEnlaceBienvenida" | "anularEnlaceBienvenida">,
     private readonly sender: IEmailSender,
     private readonly baseUrl: string | null,
     /**
@@ -71,17 +71,25 @@ export class BienvenidaMaestroService implements IBienvenidaMaestroService {
         usuarioId: maestro.usuarioId,
         ipAddress: input.ipAddress,
       });
-      await this.sender.enviar(
-        plantillaBienvenidaMaestro({
-          to: maestro.email,
-          nombre: maestro.nombre,
-          empresaNombre: maestro.empresaNombre,
-          url: urlDelEnlace(this.baseUrl, enlace),
-          ttlHoras,
-          baseUrl: this.baseUrl,
-          contacto: this.contacto,
-        }),
-      );
+      try {
+        await this.sender.enviar(
+          plantillaBienvenidaMaestro({
+            to: maestro.email,
+            nombre: maestro.nombre,
+            empresaNombre: maestro.empresaNombre,
+            url: urlDelEnlace(this.baseUrl, enlace),
+            ttlHoras,
+            baseUrl: this.baseUrl,
+            contacto: this.contacto,
+          }),
+        );
+      } catch (error) {
+        // Revisión m2: el correo no salió, así que el enlace nuevo no lo tiene nadie. Se anula para
+        // que el anterior vuelva a ser el último activo (R22) y un «Reenviar» fallido no rompa la
+        // bienvenida que ya había salido. Si anular también falla, manda el error del envío.
+        await this.passwordReset.anularEnlaceBienvenida(enlace).catch(() => undefined);
+        throw error;
+      }
       // Sin SMTP el emisor es el de consola: no fallo nada, pero el correo tampoco salio (R24).
       return { estado: this.smtpConfigurado ? "enviada" : "sin_correo", email };
     } catch (error) {

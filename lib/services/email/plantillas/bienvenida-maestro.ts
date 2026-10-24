@@ -55,7 +55,6 @@ export function plantillaBienvenidaMaestro(p: BienvenidaMaestroParams): EmailMes
           "Si no esperabas este correo, ignóralo: sin la contraseña nadie puede entrar a tu cuenta.",
       },
     ],
-    baseUrl: p.baseUrl,
     contacto: p.contacto,
   });
 }

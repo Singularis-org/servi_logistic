@@ -148,6 +148,16 @@ export class PasswordResetService implements IPasswordResetService {
   }
 
   /**
+   * SL-41 (revisión, m2): consume el desafío del enlace para que deje de ser el último activo. Solo
+   * lo llama `BienvenidaMaestroService` con el enlace que acaba de emitir y cuyo envío falló.
+   */
+  async anularEnlaceBienvenida(enlace: string): Promise<void> {
+    const partes = partirEnlace(enlace);
+    if (!partes) return;
+    await this.otpRepo.consumirSiActivo(partes.challengeId);
+  }
+
+  /**
    * SL-41 (R18-R20, R22, design §6.1): los 8 pasos del canje, en ese orden. Toda salida temprana
    * es la misma respuesta generica (R19), para no decir si el enlace existe, vencio o fue sustituido.
    *

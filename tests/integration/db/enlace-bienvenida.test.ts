@@ -183,6 +183,31 @@ describeSiHayBase("SL-41 — enlace de bienvenida contra Postgres (R20, R22)", (
       expect((await hashDe(usuarioId)).passwordHash).toBe(despues.passwordHash);
     });
 
+    // Revision m2: un «Reenviar» cuyo correo falla anula el enlace nuevo, y el anterior, que ya habia
+    // salido, vuelve a ser el ultimo activo y se canjea.
+    it("m2: anular el enlace nuevo devuelve el valor al anterior; el anulado no se canjea", async () => {
+      const usuarioId = await nuevoUsuario();
+      const s = servicio(a);
+      const viejo = await s.emitirEnlaceBienvenida({ usuarioId, ipAddress: "10.0.0.1" });
+      await a.emailOtpChallenge.update({
+        where: { id: viejo.enlace.split(".")[0] },
+        data: { createdAt: new Date(Date.now() - 60_000) },
+      });
+      const nuevo = await s.emitirEnlaceBienvenida({ usuarioId, ipAddress: "10.0.0.1" });
+
+      await s.anularEnlaceBienvenida(nuevo.enlace);
+
+      expect(await consumidoEn(nuevo.enlace.split(".")[0])).toBeInstanceOf(Date);
+      expect(await consumidoEn(viejo.enlace.split(".")[0])).toBeNull();
+      expect(await s.crearContrasenaConEnlace({ enlace: nuevo.enlace, newPassword: "Nuevo-2026!x", ipAddress: "1.1.1.1" })).toEqual({
+        status: "invalid_or_expired",
+      });
+      expect(await s.crearContrasenaConEnlace({ enlace: viejo.enlace, newPassword: "Viejo-2026!x", ipAddress: "1.1.1.1" })).toEqual({
+        status: "ok",
+      });
+      expect((await hashDe(usuarioId)).contrasenaDefinidaAt).toBeInstanceOf(Date);
+    });
+
     it("R22: un codigo de «recuperar contrasena» posterior deja sin valor el enlace", async () => {
       const usuarioId = await nuevoUsuario();
       const s = servicio(a);

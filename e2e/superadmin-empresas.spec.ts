@@ -303,7 +303,7 @@ async function usarEnlace(page: Page, letra: Letra, password: string): Promise<v
 /** SL-41 (R18, R19): A crea la contraseña con el enlace, y el enlace ya usado no vale. */
 async function contrasenaPorEnlace(page: Page, password: string): Promise<void> {
   await usarEnlace(page, "A", password);
-  await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Contraseña creada")).toBeVisible({ timeout: 60_000 });
 
   await usarEnlace(page, "A", `Bb2!${randomBytes(12).toString("base64url")}`);
   // Filtrado: el anunciador de rutas de Next también es un `role="alert"`.
