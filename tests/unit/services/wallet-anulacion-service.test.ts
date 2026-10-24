@@ -34,6 +34,10 @@ const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
 const TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda" };
 const MENSAJERO: Actor = { usuarioId: "u-mensajero", rol: "mensajero" };
 const SATELITE: Actor = { usuarioId: "u-sat", rol: "adminSatelite", zonaId: "z" };
+// SL-45 (review m2): R19 nombra los cinco roles sin acceso total al anular un pago a la plataforma.
+const API_KEY: Actor = { usuarioId: "u-api", rol: "apiKey" };
+const SUPERADMIN: Actor = { usuarioId: "u-super", rol: "superadmin" };
+const SIN_ACCESO_TOTAL = [TIENDA, MENSAJERO, SATELITE, API_KEY, SUPERADMIN];
 const AHORA = new Date("2026-09-26T14:15:33.123Z");
 
 function mov(over: Partial<WalletMovimientoDTO> = {}): WalletMovimientoDTO {
@@ -72,8 +76,9 @@ function montaje(
 const PETICION = { movimientoId: "egr-1", motivo: "Se pagó dos veces" };
 
 describe("458-B — EgresoCajaAnulacionService.anular (R63–R67, R82)", () => {
-  it("R82: sin acceso total responde `forbidden` ANTES de leer nada (tienda, mensajero, satelite)", async () => {
-    for (const actor of [TIENDA, MENSAJERO, SATELITE]) {
+  it("R82/R19 (SL-45): sin acceso total responde `forbidden` ANTES de leer nada (tienda, mensajero, satelite, apiKey, superadmin)", async () => {
+    expect(SIN_ACCESO_TOTAL.map((a) => a.rol)).toEqual(["adminTienda", "mensajero", "adminSatelite", "apiKey", "superadmin"]);
+    for (const actor of SIN_ACCESO_TOTAL) {
       const m = montaje();
       expect(await m.servicio.anular(PETICION, actor)).toEqual({ status: "forbidden" });
       expect(m.walletRepo.obtenerPorId).not.toHaveBeenCalled();
@@ -185,10 +190,12 @@ function router(filas: {
 const CAJA = (movimientoId = "m-1") => ({ libro: "caja" as const, movimientoId });
 
 describe("458-B — WalletAnulacionService.enrutar: cada destino a SU camino (design §4.2, R63/R65/R82)", () => {
-  it("R82: sin acceso total responde `forbidden` ANTES de leer ninguna fila", async () => {
-    const r = router({ caja: fila() });
-    expect(await r.servicio.enrutar(CAJA(), TIENDA)).toEqual({ status: "forbidden" });
-    expect(r.repo.filaDeCaja).not.toHaveBeenCalled();
+  it("R82/R19 (SL-45): sin acceso total responde `forbidden` ANTES de leer ninguna fila (los cinco roles)", async () => {
+    for (const actor of SIN_ACCESO_TOTAL) {
+      const r = router({ caja: fila({ categoria: "egreso_pago_plataforma" }) });
+      expect(await r.servicio.enrutar(CAJA(), actor), actor.rol).toEqual({ status: "forbidden" });
+      expect(r.repo.filaDeCaja).not.toHaveBeenCalled();
+    }
   });
 
   it("caja: cada original a su camino, con el id que su action espera", async () => {

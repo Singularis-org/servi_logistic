@@ -163,7 +163,8 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
 
     // Ficha 459 (P13): DIEZ, con `egreso_pago_por_cuenta_tienda` al final. Ficha 461 (R29, P14):
     // SIGUEN siendo diez — el reverso del cobro a una tienda NO entra: no es dinero que salga.
-    expect(categorias).toHaveLength(10);
+    // SL-45 (review B2, decision de Carlos 2026-10-24): ONCE, con `egreso_pago_plataforma` al final.
+    expect(categorias).toHaveLength(11);
     expect(categorias).not.toContain("egreso_reverso_cobro_tienda");
     // Las OCHO historicas, sin que falte ninguna: sustituir una por `ingreso_ajuste` en vez de
     // anadirla —la mutacion que R5 nombra— deja aqui una lista corta.
@@ -177,6 +178,7 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
       "egreso_gasto_variable",
       "egreso_indemnizacion",
       "egreso_pago_por_cuenta_tienda", // ficha 459 (P13)
+      "egreso_pago_plataforma", // SL-45 (review B2): efectivo que sale de la caja
     ]);
     // Y la novena, la unica que no es `egreso_*`.
     expect(categorias.filter((c) => !c.startsWith("egreso_"))).toEqual(["ingreso_ajuste"]);
@@ -451,7 +453,8 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     const declaradas = [...(getMetrica("dinero_en_caja")?.definicion.categorias ?? [])].sort();
     expect(declaradas).toEqual(Object.keys(NATURALEZA_POR_CATEGORIA).sort());
     expect(declaradas).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect(declaradas).toHaveLength(27); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2
+    expect(declaradas).toHaveLength(28); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1
+    expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("egreso_reverso_iva_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("ingreso_cobro_tienda");
@@ -473,8 +476,10 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
 
     expect(declaradas).toEqual(propiasSinIva);
     // ficha 461 (R29): 14 + el cobro a una tienda y su reverso; ficha 458-B: + los dos reversos del
-    // cobro por devolución a origen = 18; SL-39: − las cuatro de IVA = 14.
-    expect(declaradas).toHaveLength(14);
+    // cobro por devolución a origen = 18; SL-39: − las cuatro de IVA = 14; SL-45 (R25): + el pago a la
+    // plataforma = 15.
+    expect(declaradas).toHaveLength(15);
+    expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45 (R25): un egreso propio baja la ganancia
     for (const iva of WALLET_IVA_SEED) {
       expect(declaradas, `${iva} no es ganancia`).not.toContain(iva);
     }

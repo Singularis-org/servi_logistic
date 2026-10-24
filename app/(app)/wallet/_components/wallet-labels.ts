@@ -119,8 +119,17 @@ export const CAJA_RESUMEN_LABEL = {
    * al sistema, no a una marca, y la empresa sale del módulo de marca como en el resto.
    */
   deudaPlataforma: `Lo que ${EMPRESA.enFrase} debe a la plataforma`,
-  deudaPlataformaPista:
-    "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+  /**
+   * SL-45 (R1–R3, design §7.2) — la región dice qué hacer según el ESTADO que manda el servidor: con
+   * deuda, cómo se paga y se registra; al día, que no hay nada pendiente; a favor, de dónde sale.
+   * La pista de SL-40 («Todavía no se cobra…») se retira: desde esta ficha el pago sí sale de la caja.
+   */
+  deudaPlataformaPista: `Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando ${EMPRESA.enFrase} le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.`,
+  deudaPlataformaAlDiaPista: `${EMPRESA.alInicio} está al día con la plataforma. Cada orden nueva suma su cobro aquí.`,
+  deudaPlataformaAFavor: `Saldo a favor de ${EMPRESA.enFrase} con la plataforma`,
+  deudaPlataformaAFavorPista: `${EMPRESA.alInicio} pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.`,
+  /** SL-45 (R1, R4): el botón de la región, que abre el registro con el concepto ya elegido. */
+  registrarPagoPlataforma: "Registrar pago a la plataforma",
   // Feature 200 (tanda 1) — el TERCER tile de la cabecera. No es dinero: es cuántos registros
   // hay en el conjunto que se está mirando, y por eso se pinta en color neutro y sin insignia
   // de signo. La pista no nombra el control que recorta el conjunto: dice lo que la persona
@@ -298,11 +307,22 @@ export interface DatosBolsilloEmpresa {
   deudaPlataforma: DeudaPlataformaDTO | null;
 }
 
+/**
+ * SL-45 (design §7.2): un texto de región es fijo o depende de los datos. Las de SL-39 siguen siendo
+ * texto; la de la deuda elige por el `estado` que manda el servidor.
+ */
+export type TextoDeRegion = string | ((datos: DatosBolsilloEmpresa) => string);
+
+/** El texto de una región ya resuelto para estos datos. */
+export function textoDeRegion(texto: TextoDeRegion, datos: DatosBolsilloEmpresa): string {
+  return typeof texto === "string" ? texto : texto(datos);
+}
+
 /** Una region secundaria del bolsillo de la empresa. */
 export interface RegionBolsilloEmpresa {
   id: "iva" | "capital" | "deuda_plataforma";
-  rotulo: string;
-  pista: string;
+  rotulo: TextoDeRegion;
+  pista: TextoDeRegion;
   /** El importe, STRING del servidor, tal cual. `null`: la región no se pinta. */
   valor: (datos: DatosBolsilloEmpresa) => string | null;
   /**
@@ -311,6 +331,13 @@ export interface RegionBolsilloEmpresa {
    */
   signo: (datos: DatosBolsilloEmpresa) => WalletBalanceSigno | null;
 }
+
+/** SL-45 (R1–R3): la pista de la deuda por estado. `Record` total: un estado nuevo no compila sin la suya. */
+const PISTA_DEUDA_PLATAFORMA: Record<DeudaPlataformaDTO["estado"], string> = {
+  debe: CAJA_RESUMEN_LABEL.deudaPlataformaPista,
+  al_dia: CAJA_RESUMEN_LABEL.deudaPlataformaAlDiaPista,
+  a_favor: CAJA_RESUMEN_LABEL.deudaPlataformaAFavorPista,
+};
 
 export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
   {
@@ -329,11 +356,17 @@ export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
   },
   // SL-40 (R21, R26): la última. Sin signo: una deuda no es «positiva» ni «negativa» para la caja, y
   // el verde la confundiría con dinero a favor.
+  //
+  // SL-45 (R1–R3, R14): el rótulo y la pista los elige el `estado` del servidor, y el importe es el
+  // `importe` (siempre en positivo), no la `deuda` con signo: la pantalla no le quita el signo a nada.
   {
     id: "deuda_plataforma",
-    rotulo: CAJA_RESUMEN_LABEL.deudaPlataforma,
-    pista: CAJA_RESUMEN_LABEL.deudaPlataformaPista,
-    valor: ({ deudaPlataforma }) => deudaPlataforma?.deuda ?? null,
+    rotulo: ({ deudaPlataforma }) =>
+      deudaPlataforma?.estado === "a_favor"
+        ? CAJA_RESUMEN_LABEL.deudaPlataformaAFavor
+        : CAJA_RESUMEN_LABEL.deudaPlataforma,
+    pista: ({ deudaPlataforma }) => PISTA_DEUDA_PLATAFORMA[deudaPlataforma?.estado ?? "debe"],
+    valor: ({ deudaPlataforma }) => deudaPlataforma?.importe ?? null,
     signo: () => null,
   },
 ];
@@ -478,6 +511,7 @@ export const CATEGORIA_TODAS_OPTION = { value: "", label: "Todas las categorías
 export const TIPO_EGRESO_MANUAL_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: `Gasto de ${EMPRESA.enFrase}`,
   sueldo: "Sueldo",
+  pago_plataforma: "Pago a la plataforma", // SL-45 (design §7.1): el nombre del concepto del diálogo
 };
 
 /** Opciones del `Select` de tipo del egreso manual (solo {gasto variable, sueldo}). */
@@ -491,11 +525,13 @@ export const TIPO_EGRESO_MANUAL_OPTIONS = TIPO_EGRESO_MANUAL_SEED.map((tipo) => 
 export const DESCRIPCION_EGRESO_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: "Concepto del gasto",
   sueldo: "Trabajador y periodo",
+  pago_plataforma: "Referencia del pago", // SL-45 (design §7.1)
 };
 
 export const DESCRIPCION_EGRESO_PLACEHOLDER: Record<TipoEgresoManual, string> = {
   gasto_variable: "Ej. Compra de suministros de oficina",
   sueldo: "Ej. Juan Pérez — julio 2026",
+  pago_plataforma: "Ej. Transferencia del cobro de octubre", // SL-45 (design §7.1)
 };
 
 /**

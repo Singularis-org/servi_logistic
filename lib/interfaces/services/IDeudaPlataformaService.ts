@@ -1,13 +1,11 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { DeudaPlataformaDTO } from "@/lib/types/cobro-plataforma";
 
-// SL-40 (design §5, §8) — lo que la empresa debe a la plataforma, para la wallet.
-//
-// Los dos tipos de abajo viven aquí y no en `lib/types/cobro-plataforma.ts` (donde los pone design
-// §8) porque ese archivo es de T5, que se escribe en paralelo: así ninguna de las dos tasks pisa a la
-// otra. La forma es la de design §8.
+// SL-40 (design §5, §8) — lo que la empresa debe a la plataforma, para la wallet. SL-45 (design §3):
+// el DTO gana `estado` e `importe` y se muda a `lib/types/cobro-plataforma.ts`, porque también lo
+// usa la pantalla «Empresas». Se reexporta aquí para que los importadores de SL-40 no cambien.
 
-/** La deuda, derivada en el servidor: texto con dos decimales (R26). */
-export type DeudaPlataformaDTO = { deuda: string };
+export type { DeudaPlataformaDTO };
 
 export type VerDeudaPlataformaResult =
   | { status: "ok"; deudaPlataforma: DeudaPlataformaDTO }
@@ -15,8 +13,8 @@ export type VerDeudaPlataformaResult =
 
 export interface IDeudaPlataformaService {
   /**
-   * La deuda de la empresa del actor: Σ cargos − Σ reversos de toda su historia (R23, R24). Sin
-   * acceso total, `forbidden` antes de consultar la base (R25).
+   * La deuda de la empresa del actor: Σ cargos − Σ reversos − Σ pagos vigentes de toda su historia
+   * (SL-40 R23, R24; SL-45 R13, R14). Sin acceso total, `forbidden` antes de consultar la base (R25).
    */
   verDeuda(actor: Actor | null): Promise<VerDeudaPlataformaResult>;
 }

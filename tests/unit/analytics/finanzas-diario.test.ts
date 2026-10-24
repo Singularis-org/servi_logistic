@@ -241,6 +241,26 @@ describe("La derivación del dinero por día", () => {
   it("no inventa días vacíos", () => {
     expect(derivarFinanzasDiarias([])).toEqual([]);
   });
+
+  // SL-45 (R25): el pago a la plataforma es un egreso propio en efectivo, como el sueldo. Suma a los
+  // egresos del día y baja su ganancia lo mismo que baja la de la caja. Importes escritos a mano.
+  it("un pago a la plataforma suma a los egresos del día y baja su ganancia", () => {
+    const dias = derivarFinanzasDiarias([
+      fila("2026-10-24", "ingreso_ajuste", "ingreso", "1000.00"),
+      fila("2026-10-24", "egreso_pago_plataforma", "egreso", "300.00"),
+    ]);
+
+    expect(dias).toEqual([
+      {
+        fecha: "2026-10-24",
+        ingresos: "1000.00",
+        egresos: "300.00",
+        ganancia: "700.00",
+        pagoMensajeros: "0.00",
+        pagoTiendas: "0.00",
+      },
+    ]);
+  });
 });
 
 describe("El servicio: la ventana la pone el reloj", () => {

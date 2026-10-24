@@ -25,8 +25,20 @@ const findMany = vi.fn(async () => {
   ];
 });
 
+// SL-45 (R28): un cargo de 500 y un pago vigente de 200 → debe 300,00 y ha pagado 200,00.
+const groupBy = vi.fn(async () => [{ organizacionId: "org-1", tipo: "cargo", _sum: { monto: new Prisma.Decimal("500") } }]);
+const findManyLibro = vi.fn(async (args: { where: { categoria?: string } }) =>
+  args.where.categoria === "egreso_pago_plataforma"
+    ? [{ id: "pago-1", organizacionId: "org-1", monto: new Prisma.Decimal("200.00") }]
+    : [],
+);
+
 vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({ organizacion: { findMany } }),
+  getPrismaClient: () => ({
+    organizacion: { findMany },
+    cobroPlataformaMovimiento: { groupBy },
+    walletMovimiento: { findMany: findManyLibro },
+  }),
   PRISMA_OMIT: {},
 }));
 
@@ -34,6 +46,8 @@ const { listarEmpresasPlataforma } = await import("@/lib/actions/_shared/empresa
 
 beforeEach(() => {
   findMany.mockClear();
+  groupBy.mockClear();
+  findManyLibro.mockClear();
   contextos.length = 0;
 });
 
@@ -51,6 +65,8 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           creadaEn: new Date("2026-10-23T10:00:00Z"),
           maestros: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
           cobroPorOrden: "300.00",
+          deudaPlataforma: { deuda: "300.00", estado: "debe", importe: "300.00" },
+          pagadoPlataforma: "200.00",
         },
       ],
     });
@@ -65,6 +81,8 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
     async (rol) => {
       expect(await listarEmpresasPlataforma({ rol })).toEqual({ status: "forbidden" });
       expect(findMany).not.toHaveBeenCalled();
+      expect(groupBy).not.toHaveBeenCalled();
+      expect(findManyLibro).not.toHaveBeenCalled();
     },
   );
 

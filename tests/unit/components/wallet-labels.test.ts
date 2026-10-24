@@ -10,6 +10,7 @@ import {
   COMPOSICION_IVA_LABEL,
   IMPUESTO_ROTULO,
   REGIONES_BOLSILLO_EMPRESA,
+  textoDeRegion,
   composicionCajaNombreAccesible,
   CATEGORIA_TODAS_OPTION,
   DOCUMENTO_CAJA_NOMBRE,
@@ -71,6 +72,8 @@ const CONCEPTOS_ESPERADOS: Record<WalletMovimientoCategoria, string> = {
   // Ficha 458-B (design 458 §2.3): la anulacion de un cobro por devolución a origen, flete e IVA por separado.
   egreso_reverso_flete_devolucion: "Flete por devolución a origen cobrado a la tienda anulado",
   egreso_reverso_iva_flete_devolucion: "IVA del flete por devolución a origen cobrado a la tienda anulado",
+  // SL-45 (R23): el nombre del pago en el libro, tal como lo pide el requisito.
+  egreso_pago_plataforma: "Pago a la plataforma",
 };
 
 /** design §7.3 — los 13 origenes del libro de la caja (+ el de la 457: 14). */
@@ -93,14 +96,14 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
-  it("dice exactamente los 27 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B), y el seed es exactamente esas 27 claves", () => {
+  it("dice exactamente los 28 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45), y el seed es exactamente esas 28 claves", () => {
     expect(CATEGORIA_LABEL).toEqual(CONCEPTOS_ESPERADOS);
     // Anti-vacuidad: la igualdad de arriba compara contra una lista escrita a mano; esta linea
     // afirma que esa lista cubre el catalogo ENTERO y no un subconjunto que casara por casualidad.
     expect([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(CONCEPTOS_ESPERADOS).sort(),
     );
-    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(27);
+    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(28);
   });
 
   it("⭑ 457 (R45/R53): el pago de una tienda a la empresa y su anulacion, con los nombres reservados por la 461", () => {
@@ -137,8 +140,8 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
   });
 
-  it("el filtro por concepto ofrece los 27 con SU nombre (R42; 457/R45; 458-B), tras la opcion «todas»", () => {
-    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 27 presentes, los 27.
+  it("el filtro por concepto ofrece los 28 con SU nombre (R42; 457/R45; 458-B; SL-45), tras la opcion «todas»", () => {
+    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 28 presentes, los 28.
     const lista = opcionesDeConceptos(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.map((categoria) => ({ categoria, movimientos: 1 })),
       CATEGORIA_LABEL,
@@ -147,7 +150,7 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
     expect(lista[0]).toEqual({ value: "", label: "Todas las categorías" });
     const opciones = new Map(lista.slice(1).map((o) => [o.value, o.label]));
-    expect(opciones.size).toBe(27);
+    expect(opciones.size).toBe(28);
     for (const [clave, texto] of Object.entries(CONCEPTOS_ESPERADOS)) {
       expect(opciones.get(clave), clave).toBe(`${texto} (1)`);
     }
@@ -185,7 +188,12 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
   });
 
   it("el tipo de egreso manual se llama «Gasto de la empresa», igual que el concepto del dialogo", () => {
-    expect(TIPO_EGRESO_MANUAL_LABEL).toEqual({ gasto_variable: "Gasto de la empresa", sueldo: "Sueldo" });
+    // SL-45 (R6): + el pago a la plataforma, con el nombre que el requisito le da al concepto.
+    expect(TIPO_EGRESO_MANUAL_LABEL).toEqual({
+      gasto_variable: "Gasto de la empresa",
+      sueldo: "Sueldo",
+      pago_plataforma: "Pago a la plataforma",
+    });
     expect(TIPO_EGRESO_MANUAL_LABEL.gasto_variable).toBe(CATEGORIA_LABEL.egreso_gasto_variable);
   });
 
@@ -227,6 +235,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // Ficha 458-B (design 458 §2.3): las dos filas de la anulacion de un cobro por devolución a origen.
       egreso_reverso_flete_devolucion: "Fletes por devolución a origen cobrados a una tienda anulados",
       // SL-39 (design §2.1): el reverso del IVA sale de las filas nombradas; va al bloque del IVA.
+      // SL-45 (R24): la fila del pago a la plataforma, con el nombre que le da el requisito.
+      egreso_pago_plataforma: "Pago a la plataforma",
     });
   });
 });
@@ -290,12 +300,12 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       capital: "-50.00",
       signoCapital: "negativo",
     } as unknown as CajaResumenDTO;
-    const datos = { resumen, deudaPlataforma: { deuda: "500.00" } };
+    const datos = { resumen, deudaPlataforma: { deuda: "500.00", estado: "debe" as const, importe: "500.00" } };
     expect(
       REGIONES_BOLSILLO_EMPRESA.map((r) => ({
         id: r.id,
-        rotulo: r.rotulo,
-        pista: r.pista,
+        rotulo: textoDeRegion(r.rotulo, datos),
+        pista: textoDeRegion(r.pista, datos),
         valor: r.valor(datos),
         signo: r.signo(datos),
       })),
@@ -317,8 +327,9 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       {
         id: "deuda_plataforma",
         rotulo: "Lo que la empresa debe a la plataforma",
+        // SL-45 (R1): la pista de «debe», escrita a mano.
         pista:
-          "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+          "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
         valor: "500.00",
         signo: null,
       },
@@ -405,5 +416,65 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     expect(textos.length).toBeGreaterThan(300);
     expect(textos.filter((t) => t.includes("Acme Envíos")).length).toBeGreaterThan(50);
     expect(textos.filter((t) => /la empresa/i.test(t))).toEqual([]);
+  });
+});
+
+// =================================================================================================
+// SL-45 (T8, design §7.2; R1–R3, R14) — LA REGIÓN DE LA DEUDA DICE QUÉ HACER, SEGÚN EL ESTADO
+// =================================================================================================
+//
+// Los textos van escritos a mano, nunca leídos de `CAJA_RESUMEN_LABEL`: compararlos contra su propia
+// fuente estaría siempre en verde. El importe es el `importe` del servidor (en positivo), no la `deuda`
+// con signo.
+
+describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por estado", () => {
+  const resumen = {
+    iva: "0.00",
+    signoIva: "cero",
+    capital: "0.00",
+    signoCapital: "cero",
+  } as unknown as CajaResumenDTO;
+  const region = REGIONES_BOLSILLO_EMPRESA.find((r) => r.id === "deuda_plataforma")!;
+  const leer = (deudaPlataforma: { deuda: string; estado: "debe" | "al_dia" | "a_favor"; importe: string }) => {
+    const datos = { resumen, deudaPlataforma };
+    return {
+      rotulo: textoDeRegion(region.rotulo, datos),
+      pista: textoDeRegion(region.pista, datos),
+      valor: region.valor(datos),
+      signo: region.signo(datos),
+    };
+  };
+
+  it("R1: «debe» — el rótulo de la deuda, el importe y la pista que lleva a pagar y registrar", () => {
+    expect(leer({ deuda: "500.00", estado: "debe", importe: "500.00" })).toEqual({
+      rotulo: "Lo que la empresa debe a la plataforma",
+      pista:
+        "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+      valor: "500.00",
+      signo: null,
+    });
+  });
+
+  it("R2: «al día» — el importe 0.00 y la pista de estar al día", () => {
+    expect(leer({ deuda: "0.00", estado: "al_dia", importe: "0.00" })).toEqual({
+      rotulo: "Lo que la empresa debe a la plataforma",
+      pista: "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.",
+      valor: "0.00",
+      signo: null,
+    });
+  });
+
+  it("R3/R14: «a favor» — el rótulo del saldo a favor y el importe en POSITIVO, el que manda el servidor", () => {
+    expect(leer({ deuda: "-500.00", estado: "a_favor", importe: "500.00" })).toEqual({
+      rotulo: "Saldo a favor de la empresa con la plataforma",
+      pista:
+        "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.",
+      valor: "500.00",
+      signo: null,
+    });
+  });
+
+  it("R1/R4: el botón de la región se llama «Registrar pago a la plataforma»", () => {
+    expect(CAJA_RESUMEN_LABEL.registrarPagoPlataforma).toBe("Registrar pago a la plataforma");
   });
 });

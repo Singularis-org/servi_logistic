@@ -53,7 +53,8 @@ describe("457 R68/R69 — la oficina puede preguntar por el pago de una tienda a
     );
     expect(caja).toContain("**Pago de una tienda a la empresa**");
     // FICHA 458-C (TC.6, R37) — REESCRITO: el registro único tiene DIEZ conceptos (impl_458-C.md).
-    expect(caja).toContain("**diez conceptos en tres grupos**");
+    // SL-45 (T9, R6) — REESCRITO otra vez: ONCE, con el pago a la plataforma (impl_SL-45.md).
+    expect(caja).toContain("**once conceptos en tres grupos**");
     expect(caja).toContain(
       "**Llega dinero a la caja** | Aporte de dinero a la caja · Una tienda le paga a la empresa · Corrección de caja (suma)",
     );

@@ -1,8 +1,13 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
+import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/ICobroPlataformaMovimientoRepository";
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
+import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
+
+/** Lo que lee el listado: las empresas, sus cargos de la plataforma y sus pagos (SL-45). */
+export type EmpresasPlataformaPrismaClient = Pick<PrismaClient, "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento">;
 
 /**
  * SL-32 (R29) — el listado de la pantalla «Empresas» del superadmin.
@@ -10,9 +15,13 @@ import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
  * Es una lectura de TODAS las empresas, asi que corre en contexto de plataforma: ahi la extension
  * del cliente no filtra por empresa. Quien decide que el actor puede verla es el servicio (R35);
  * aqui solo se elige que sale, y sale lo minimo que pinta la tabla.
+ *
+ * SL-45 (design §9, R28): cada empresa trae ademas su deuda con la plataforma (la regla de R13, la
+ * misma que ve la empresa en su wallet) y lo que ha pagado (Σ pagos vigentes). Son tres consultas
+ * agrupadas por `organizacion_id` para todas las empresas a la vez, no tres por empresa.
  */
 export class EmpresasPlataformaRepository implements IEmpresasPlataformaRepository {
-  constructor(private readonly prisma: Pick<PrismaClient, "organizacion">) {}
+  constructor(private readonly prisma: EmpresasPlataformaPrismaClient) {}
 
   listar(): Promise<EmpresaListada[]> {
     return comoPlataforma("SL-32", "listado de empresas del superadmin", async () => {
@@ -33,6 +42,8 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
           },
         },
       });
+      if (filas.length === 0) return [];
+      const { cargosDe, pagadoDe } = await this.cuentasConLaPlataforma(filas.map((f) => f.id));
       return filas.map((f) => ({
         id: f.id,
         nombre: f.nombre,
@@ -40,7 +51,60 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         creadaEn: f.createdAt,
         maestros: f.usuarios,
         cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
+        deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
+        pagadoPlataforma: pagadoDe(f.id),
       }));
     });
+  }
+
+  /**
+   * SL-45 (design §3, §9) — por empresa, las sumas de cargos y reversos y la Σ de los pagos vigentes.
+   * «Vigente» es la regla de `PagoPlataformaRepository.sumaPagosVigentes`: un pago con contra-asiento
+   * (`ingreso_ajuste`, `origen_tipo = gasto`, `origen_id` = el pago) está anulado y no cuenta.
+   *
+   * Cada consulta acota a las empresas del listado: en plataforma no hay extensión que filtre, y el
+   * `organizacion_id` de la fila es lo que reparte cada suma a su empresa.
+   */
+  private async cuentasConLaPlataforma(organizacionIds: string[]) {
+    const cargos = await this.prisma.cobroPlataformaMovimiento.groupBy({
+      by: ["organizacionId", "tipo"],
+      where: { organizacionId: { in: organizacionIds } },
+      _sum: { monto: true },
+    });
+    const pagos = await this.prisma.walletMovimiento.findMany({
+      where: { organizacionId: { in: organizacionIds }, tipo: "egreso", categoria: "egreso_pago_plataforma" },
+      select: { id: true, organizacionId: true, monto: true },
+    });
+    const contra =
+      pagos.length === 0
+        ? []
+        : await this.prisma.walletMovimiento.findMany({
+            where: {
+              organizacionId: { in: organizacionIds },
+              tipo: "ingreso",
+              categoria: "ingreso_ajuste",
+              origenTipo: "gasto",
+              origenId: { in: pagos.map((p) => p.id) },
+            },
+            select: { origenId: true },
+          });
+
+    const sumasPorEmpresa = new Map<string, SumaCobroPlataformaPorTipo[]>();
+    for (const c of cargos) {
+      const lista = sumasPorEmpresa.get(c.organizacionId) ?? [];
+      lista.push({ tipo: c.tipo, monto: c._sum.monto === null ? "0.00" : c._sum.monto.toFixed(2) });
+      sumasPorEmpresa.set(c.organizacionId, lista);
+    }
+    const anulados = new Set(contra.map((c) => c.origenId));
+    const pagadoPorEmpresa = new Map<string, Prisma.Decimal>();
+    for (const p of pagos) {
+      if (anulados.has(p.id)) continue;
+      pagadoPorEmpresa.set(p.organizacionId, (pagadoPorEmpresa.get(p.organizacionId) ?? new Prisma.Decimal(0)).add(p.monto));
+    }
+
+    return {
+      cargosDe: (id: string): SumaCobroPlataformaPorTipo[] => sumasPorEmpresa.get(id) ?? [],
+      pagadoDe: (id: string): string => (pagadoPorEmpresa.get(id) ?? new Prisma.Decimal(0)).toFixed(2),
+    };
   }
 }

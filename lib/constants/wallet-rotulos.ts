@@ -58,6 +58,8 @@ export const CATEGORIA_LABEL: Record<WalletMovimientoCategoria, string> = {
   // Categoría RESERVADA, sin escritor en el árbol: si aparece, alguien empezó a escribirla.
   egreso_gasto: `Otro gasto de ${EMPRESA.enFrase}`,
   egreso_indemnizacion: `Indemnización que ${EMPRESA.enFrase} paga por un incidente`,
+  // SL-45 (R6, R23, R26): el nombre del pago en el libro, el diálogo y las descargas.
+  egreso_pago_plataforma: "Pago a la plataforma",
   // Las correcciones de caja (antes «ajustes») y el capital de la empresa.
   ingreso_ajuste: "Corrección de caja (suma)",
   egreso_ajuste: "Corrección de caja (resta)",

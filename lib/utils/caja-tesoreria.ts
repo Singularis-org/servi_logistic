@@ -105,6 +105,10 @@ export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, Natural
   // reverso del cobro de la 461.
   egreso_reverso_flete_devolucion: "propio",
   egreso_reverso_iva_flete_devolucion: "propio",
+  // SL-45 (design §2, D9): el pago a la plataforma es dinero de la empresa que paga un servicio que
+  // ella usa, como un sueldo. Como `terceros` no bajaria la ganancia y bajaria «De las tiendas», que
+  // no tienen nada que ver con la plataforma.
+  egreso_pago_plataforma: "propio",
 };
 
 /**
@@ -168,6 +172,8 @@ export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezM
   // el dinero entro: rompe R7/R8 en cuanto la tienda paga (A6 descartada).
   ingreso_abono_tienda: "efectivo",
   egreso_reverso_abono_tienda: "efectivo",
+  // SL-45 (R8): el pago sale de la caja de verdad, asi que sube «Salió» y baja la cifra principal.
+  egreso_pago_plataforma: "efectivo",
 };
 
 const CATEGORIAS_DE_IVA: ReadonlySet<string> = new Set(WALLET_IVA_SEED);

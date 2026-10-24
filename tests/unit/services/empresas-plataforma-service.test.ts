@@ -23,6 +23,9 @@ const EMPRESAS: EmpresaListada[] = [
     creadaEn: new Date("2026-10-21T10:00:00Z"),
     maestros: [{ nombre: "Maestro B", email: "maestro-b@example.test" }],
     cobroPorOrden: null,
+    // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
+    deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
+    pagadoPlataforma: "0.00",
   },
   {
     id: "00000000-0000-4000-8000-000000000001",
@@ -31,6 +34,9 @@ const EMPRESAS: EmpresaListada[] = [
     creadaEn: new Date("2026-10-20T10:00:00Z"),
     maestros: [],
     cobroPorOrden: null,
+    // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
+    deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
+    pagadoPlataforma: "0.00",
   },
 ];
 
