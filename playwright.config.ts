@@ -65,6 +65,8 @@ export default defineConfig({
       name: "aislamiento",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["plataforma-vacia"],
+      // `pago-plataforma-sl45` va detrás de `cobro-plataforma-sl40`: los dos tocan el valor global del
+      // cobro (workers: 1, en orden).
       testMatch: specs(
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
@@ -74,7 +76,6 @@ export default defineConfig({
         "rastreo-publico",
         "analitica-roles",
         "cobro-plataforma-sl40",
-        // Detrás del de SL-40: los dos tocan el valor global del cobro (workers: 1, en orden).
         "pago-plataforma-sl45",
       ),
     },
