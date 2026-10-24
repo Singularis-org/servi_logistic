@@ -72,16 +72,19 @@ describe("idioma · los documentos HTML de produccion", () => {
     expect(raiz?.lang).toBe("es");
   });
 
-  it("los cuatro documentos completos y su censo", () => {
+  it("los cinco documentos completos y su censo", () => {
     // El CUARTO lo trajo la feature 365 (2026-09-02) y esta guardia hizo exactamente lo que
     // dice su cabecera: se puso roja al aparecer, en vez de dejarlo pasar mudo.
     // `app/global-error.tsx` es la frontera de error del layout RAIZ: sustituye al documento
     // entero cuando el layout no llega a renderizar, asi que tiene que traer su propio
     // `<html>` — y por tanto su propio `lang`, que es justo lo que este censo vigila.
+    // El QUINTO lo trajo SL-41 (2026-10-23): la plantilla común de los correos es un documento
+    // completo, y su `lang` decide como lee el correo un lector de pantalla del cliente.
     expect(DOCUMENTOS.map((d) => d.archivo).sort()).toEqual([
       "app/api-docs/route.ts",
       "app/global-error.tsx",
       "app/layout.tsx",
+      "lib/services/email/plantillas/plantilla-marca.ts",
       "public/offline.html",
     ]);
     for (const documento of DOCUMENTOS) {

@@ -29,6 +29,20 @@ export class EmailOtpChallengeRepository implements IEmailOtpChallengeRepository
     });
   }
 
+  /**
+   * SL-41/R20: la condicion va en el `WHERE` del UPDATE, no en una lectura previa. Postgres
+   * bloquea la fila y el segundo UPDATE reevalua el `WHERE` tras el primero: ve `consumed_at`
+   * puesto y no toca nada (count 0). Leer y luego escribir dejaria pasar a los dos.
+   */
+  async consumirSiActivo(id: string): Promise<boolean> {
+    const ahora = new Date();
+    const { count } = await this.prisma.emailOtpChallenge.updateMany({
+      where: { id, consumedAt: null, expiresAt: { gt: ahora } },
+      data: { consumedAt: ahora },
+    });
+    return count === 1;
+  }
+
   /** Feature 20/R5/R13: desafio activo mas reciente del usuario, o null. */
   async findLatestActiveByUsuarioId(
     usuarioId: string,

@@ -23,6 +23,12 @@ export interface IEmailOtpChallengeRepository {
   findActiveById(id: string): Promise<EmailOtpChallengeRecord | null>;
   markConsumed(id: string): Promise<void>;
   /**
+   * SL-41/R20: marca consumido SOLO si sigue activo (sin consumir y sin vencer), en una sola
+   * sentencia. `true` = este llamador lo consumio; con dos canjes a la vez, solo uno gana.
+   * `markConsumed` no sirve para eso: actualiza sin condicion y los dos pasarian.
+   */
+  consumirSiActivo(id: string): Promise<boolean>;
+  /**
    * Feature 20/R5/R13: desafio mas reciente del usuario que NO esta consumido
    * ni expirado (`consumedAt = null` y `expiresAt > now`), o `null`.
    */

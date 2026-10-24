@@ -11,7 +11,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock, push: vi.fn(), replace: vi.fn() }),
 }));
 
-import { EmpresasModule } from "@/app/(app)/plataforma/empresas/_components/EmpresasModule";
+import {
+  EmpresasModule,
+  type EmpresasModuleProps,
+} from "@/app/(app)/plataforma/empresas/_components/EmpresasModule";
 
 const TIPOS = [
   { id: "tipo-1", value: "cedula" },
@@ -41,22 +44,45 @@ const EMPRESAS: EmpresaListada[] = [
   },
 ];
 
-const AVISO =
-  "Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.";
+// SL-41 (R25): sustituye al aviso de SL-32 R37, que mandaba al maestro a «¿Olvidaste tu contraseña?».
+const AVISO_ENVIADA = "Empresa creada. Enviamos a marta@este.test un correo para crear su contraseña.";
+const AVISO_NO_ENVIADA =
+  "Empresa creada, pero el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.";
+const AVISO_SIN_CORREO = "El correo no está configurado en este entorno.";
+const AVISO_VIEJO = "¿Olvidaste tu contraseña?";
 const GENERICO = "No se pudo crear la empresa. Inténtalo de nuevo.";
+const CREADA = { estado: "creada", organizacionId: "o", maestroId: "m", bienvenida: "enviada" };
 
-function montar(altaEmpresa = vi.fn(), empresas: EmpresaListada[] = EMPRESAS) {
+// El doble se pasa sin el tipo de la action a propósito, como `altaEmpresa`: los tests le dan
+// también respuestas fuera del contrato.
+type Reenviar = EmpresasModuleProps["reenviarBienvenida"];
+
+function montar(
+  altaEmpresa = vi.fn(),
+  empresas: EmpresaListada[] = EMPRESAS,
+  {
+    reenviarBienvenida = vi.fn(),
+    bienvenidaPendiente = null,
+  }: { reenviarBienvenida?: ReturnType<typeof vi.fn>; bienvenidaPendiente?: string[] | null } = {},
+) {
   const utils = render(
     <EmpresasModule
       empresas={empresas}
       tiposDocumento={TIPOS}
       altaEmpresa={altaEmpresa}
+      reenviarBienvenida={reenviarBienvenida as unknown as Reenviar}
+      bienvenidaPendiente={bienvenidaPendiente}
       cobroGlobal={{ monto: null }}
       fijarCobroGlobal={vi.fn()}
       fijarCobroEmpresa={vi.fn()}
     />,
   );
-  return { ...utils, altaEmpresa };
+  return { ...utils, altaEmpresa, reenviarBienvenida };
+}
+
+/** Cualquier aviso del alta, el de éxito o el de advertencia. */
+function avisoDeAlta() {
+  return screen.queryByText(/^Empresa creada/);
 }
 
 /** Los campos, buscados dentro de su grupo: hay dos «Nombre». */
@@ -165,7 +191,7 @@ describe("EmpresasModule — alta (R30, R37)", () => {
   it("llama a la action una vez con la forma del contrato, vacía el formulario y refresca", async () => {
     const user = userEvent.setup();
     const { altaEmpresa } = montar(
-      vi.fn().mockResolvedValue({ estado: "creada", organizacionId: "o", maestroId: "m" }),
+      vi.fn().mockResolvedValue(CREADA),
     );
     await rellenar(user);
     await user.click(screen.getByRole("button", { name: "Crear empresa" }));
@@ -193,10 +219,10 @@ describe("EmpresasModule — alta (R30, R37)", () => {
     expect(c.tipo).not.toHaveTextContent("ruc");
   });
 
-  it("tras el éxito avisa del primer acceso, y nunca hay campo de contraseña", async () => {
+  it("tras el éxito avisa de la bienvenida enviada, y nunca hay campo de contraseña", async () => {
     const user = userEvent.setup();
     const { container } = montar(
-      vi.fn().mockResolvedValue({ estado: "creada", organizacionId: "o", maestroId: "m" }),
+      vi.fn().mockResolvedValue(CREADA),
     );
     const sinContrasena = () => {
       expect(container.querySelector('input[type="password"]')).toBeNull();
@@ -206,16 +232,110 @@ describe("EmpresasModule — alta (R30, R37)", () => {
     };
 
     sinContrasena();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(avisoDeAlta()).not.toBeInTheDocument();
     await rellenar(user);
     await user.click(screen.getByRole("button", { name: "Crear empresa" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(AVISO);
+    expect(await screen.findByText(AVISO_ENVIADA)).toBeInTheDocument();
     sinContrasena();
 
     // Se cierra al empezar a escribir otra empresa.
     await user.type(campos().nombre, "x");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(avisoDeAlta()).not.toBeInTheDocument();
+  });
+});
+
+describe("SL-41 — el aviso del alta según la bienvenida (R25, R26)", () => {
+  async function crearCon(respuesta: unknown) {
+    const user = userEvent.setup();
+    montar(vi.fn().mockResolvedValue(respuesta));
+    await rellenar(user);
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  }
+
+  it("R25: con «enviada», un aviso de estado que nombra el email del maestro", async () => {
+    await crearCon(CREADA);
+    const aviso = screen.getByText(AVISO_ENVIADA).closest('[data-slot="alert"]');
+    expect(aviso).toHaveAttribute("role", "status");
+    expect(screen.queryByText(AVISO_NO_ENVIADA)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(AVISO_VIEJO);
+  });
+
+  it("R26: con «no_enviada», una advertencia que manda a «Reenviar bienvenida»", async () => {
+    await crearCon({ ...CREADA, bienvenida: "no_enviada" });
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent(AVISO_NO_ENVIADA);
+    expect(aviso).not.toHaveTextContent(AVISO_SIN_CORREO);
+    expect(screen.queryByText(AVISO_ENVIADA)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(AVISO_VIEJO);
+  });
+
+  it("R26: con «sin_correo», la misma advertencia y que el correo no está configurado", async () => {
+    await crearCon({ ...CREADA, bienvenida: "sin_correo" });
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent(AVISO_NO_ENVIADA);
+    expect(aviso).toHaveTextContent(AVISO_SIN_CORREO);
+    expect(screen.queryByText(AVISO_ENVIADA)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["sin «bienvenida»", { estado: "creada", organizacionId: "o", maestroId: "m" }],
+    ["con un valor fuera del contrato", { ...CREADA, bienvenida: "quizas" }],
+  ])("R26: %s se toma como «no_enviada»: ante la duda, se avisa", async (_n, respuesta) => {
+    await crearCon(respuesta);
+    expect(screen.getByRole("alert")).toHaveTextContent(AVISO_NO_ENVIADA);
+    expect(screen.queryByText(AVISO_ENVIADA)).not.toBeInTheDocument();
+  });
+});
+
+describe("SL-41 — «Reenviar bienvenida» en la fila (R29, R38)", () => {
+  const BOTON = { name: "Reenviar bienvenida" } as const;
+
+  function filas() {
+    return screen.getAllByRole("row").slice(1);
+  }
+
+  it("la tabla gana una columna final «Bienvenida»", () => {
+    montar();
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+    expect(cabeceras.at(-1)).toBe("Bienvenida");
+  });
+
+  it("R29: sin el dato de pendientes (null), la fila con maestros lleva el botón y la sin maestros no", () => {
+    montar(vi.fn(), EMPRESAS, { bienvenidaPendiente: null });
+    expect(within(filas()[0]).getByRole("button", BOTON)).toBeInTheDocument();
+    expect(within(filas()[1]).queryByRole("button", BOTON)).not.toBeInTheDocument();
+  });
+
+  it("R38: la empresa pendiente lleva el botón", () => {
+    montar(vi.fn(), EMPRESAS, { bienvenidaPendiente: ["org-2"] });
+    expect(within(filas()[0]).getByRole("button", BOTON)).toBeInTheDocument();
+  });
+
+  it("R38: la empresa cuyo maestro ya creó su contraseña no lo lleva", () => {
+    montar(vi.fn(), EMPRESAS, { bienvenidaPendiente: [] });
+    expect(screen.queryByRole("button", BOTON)).not.toBeInTheDocument();
+  });
+
+  it("R29: una empresa sin maestros no lo lleva aunque figure como pendiente", () => {
+    montar(vi.fn(), EMPRESAS, { bienvenidaPendiente: ["org-1"] });
+    expect(screen.queryByRole("button", BOTON)).not.toBeInTheDocument();
+  });
+
+  it("el botón de la fila reenvía la bienvenida de ESA empresa", async () => {
+    const user = userEvent.setup();
+    const reenviarBienvenida = vi
+      .fn()
+      .mockResolvedValue({ estado: "enviada", email: "ana@norte.test" });
+    montar(vi.fn(), EMPRESAS, { reenviarBienvenida });
+
+    await user.click(within(filas()[0]).getByRole("button", BOTON));
+
+    await waitFor(() =>
+      expect(reenviarBienvenida).toHaveBeenCalledWith({ organizacionId: "org-2" }),
+    );
+    expect(await within(filas()[0]).findByText("Enviada a ana@norte.test.")).toBeInTheDocument();
   });
 });
 
@@ -236,8 +356,7 @@ describe("EmpresasModule — errores de la action (R31–R34)", () => {
 
   function sinCrear() {
     expect(lo_escrito()).toEqual(ESCRITO);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+    expect(avisoDeAlta()).not.toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   }
 

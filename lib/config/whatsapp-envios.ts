@@ -4,6 +4,8 @@
 // importar) para que cambiar una variable no exija reiniciar y para que los tests puedan fijarla.
 // Las credenciales de Meta NO viven aqui: son las de `loadWhatsappConfig` (lib/config/whatsapp.ts).
 
+import { baseUrlDeLaApp } from "@/lib/config/app-url";
+
 const BUCKET_DEFECTO = "whatsapp-envios";
 const RETENCION_DIAS_DEFECTO = 30; // D3
 const VENTANA_MINUTOS_DEFECTO = 60; // R24
@@ -36,10 +38,8 @@ export function ventanaMinutos(): number {
  * nombrando `enlace` (R32), visible en el historial, en vez de mandar un enlace roto.
  */
 export function baseUrlEnlace(): string | null {
-  const raw =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || "";
-  if (raw === "") return null;
-  return raw.replace(/\/+$/, "");
+  // Una sola fuente para la URL base (SL-41, design §8): los correos usan la misma.
+  return baseUrlDeLaApp();
 }
 
 /** Segundos de vida del enlace firmado de descarga del PDF (R43). */

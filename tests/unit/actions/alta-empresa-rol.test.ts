@@ -47,11 +47,14 @@ describe("SL-32 T15 (R35) — quién llega al alta de empresa", () => {
     const { service, altaEmpresa, contextos } = servicioDoble();
     const superadmin: Actor = { usuarioId: "u-super", rol: "superadmin", organizacionId: null };
 
-    const r = await altaEmpresaAction(ENTRADA, { getActor: async () => superadmin, service });
+    // SL-41: tras `creada` la action envia la bienvenida; un doble la deja fuera de la base.
+    const bienvenida = { enviar: vi.fn(async () => ({ estado: "enviada" as const, email: "marta@ejemplo.test" })) };
+    const getContext = async () => ({ ipAddress: "203.0.113.5", userAgent: "vitest" });
+    const r = await altaEmpresaAction(ENTRADA, { getActor: async () => superadmin, service, bienvenida, getContext });
 
     expect(altaEmpresa).toHaveBeenCalledTimes(1);
     expect(altaEmpresa).toHaveBeenCalledWith(ENTRADA);
-    expect(r).toEqual({ estado: "creada", organizacionId: "org-1", maestroId: "u-1" });
+    expect(r).toEqual({ estado: "creada", organizacionId: "org-1", maestroId: "u-1", bienvenida: "enviada" });
     expect(contextos).toEqual([{ tipo: "plataforma", ficha: "SL-17", motivo: "alta de empresa por el superadmin" }]);
   });
 });

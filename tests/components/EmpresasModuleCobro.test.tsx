@@ -65,6 +65,9 @@ function montar(opts: {
     cobroGlobal: opts.cobroGlobal === undefined ? { monto: "500.00" } : opts.cobroGlobal,
     fijarCobroGlobal,
     fijarCobroEmpresa,
+    // SL-41: la columna «Bienvenida» no es de este test; sin pendientes, ninguna fila lleva el botón.
+    reenviarBienvenida: vi.fn(),
+    bienvenidaPendiente: [],
   };
   const utils = render(<EmpresasModule {...props} />);
   return { ...utils, props, fijarCobroGlobal, fijarCobroEmpresa };

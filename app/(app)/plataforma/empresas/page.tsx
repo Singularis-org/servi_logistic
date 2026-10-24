@@ -7,7 +7,11 @@ import {
   fijarCobroGlobalAction,
   verCobroGlobalAction,
 } from "@/lib/actions/cobro-plataforma";
-import { altaEmpresaAction } from "@/lib/actions/organizaciones";
+import {
+  altaEmpresaAction,
+  bienvenidasPendientesAction,
+  reenviarBienvenidaAction,
+} from "@/lib/actions/organizaciones";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -35,11 +39,15 @@ export default async function EmpresasPage() {
 
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
-  const [listado, tiposDocumento, cobro] = await Promise.all([
+  const [listado, tiposDocumento, pendientes, cobro] = await Promise.all([
     listarEmpresasPlataforma(actor),
     new UserRepository(getPrismaClient()).listTiposIdentificacion(),
+    bienvenidasPendientesAction(),
     verCobroGlobalAction(),
   ]);
+  // SL-41 (R38): si no se pudo saber qué bienvenidas siguen pendientes, `null`, y el módulo
+  // vuelve a R29 (el botón en toda fila con maestros) en vez de esconderlo por error.
+  const bienvenidaPendiente = pendientes.estado === "ok" ? pendientes.organizacionIds : null;
 
   return (
     <AppPage title="Empresas">
@@ -53,6 +61,8 @@ export default async function EmpresasPage() {
         empresas={listado.status === "ok" ? listado.empresas : []}
         tiposDocumento={tiposDocumento}
         altaEmpresa={altaEmpresaAction}
+        reenviarBienvenida={reenviarBienvenidaAction}
+        bienvenidaPendiente={bienvenidaPendiente}
         cobroGlobal={cobro.status === "ok" ? cobro.cobroGlobal : null}
         fijarCobroGlobal={fijarCobroGlobalAction}
         fijarCobroEmpresa={fijarCobroEmpresaAction}
