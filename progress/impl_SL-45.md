@@ -693,3 +693,89 @@ $ pnpm exec vitest related --run <los dos>
  Test Files  3 passed (3)
       Tests  60 passed (60)
 ```
+
+### T9. Ayuda (apoya R1–R3, R9, R15)
+
+**`docs/ayuda/oficina/wallet-caja.md`** (`actualizado: 2026-10-24`; en `fuentes` entran `lib/utils/deuda-plataforma.ts`,
+`lib/services/TopePagoPlataformaService.ts` y `lib/actions/wallet-egresos.ts`):
+- «Lo que la empresa debe a la plataforma». La pista de SL-40 («Todavía no se cobra…») sale. Entra una tabla con los tres
+  estados: rótulo, pista literal de R1–R3 y botón. «La deuda sola no cambia la caja» se mantiene, y «Lo ya pagado se
+  descuenta» es nuevo.
+- Sección nueva «Pagarle a la plataforma» (`design.md > 7.4`):
+  - cómo se registra: el botón, o el concepto en «Sale dinero de la empresa»;
+  - qué pide;
+  - qué le pasa a la caja y a la ganancia;
+  - que la deuda baja sin recargar;
+  - el nombre en el libro y en la composición;
+  - por qué no se puede pagar de más, con el literal de R9;
+  - cuándo aparece el saldo a favor;
+  - cómo se anula un pago mal registrado (R15, R18).
+- «Lo que sí se registra a mano»: «once conceptos», «Pago a la plataforma» al final de «Sale dinero de la empresa» y lo que
+  pide.
+- La tabla de nombres del libro gana la fila «Pago a la plataforma».
+- «Anular»: el pago entra en la lista, con su efecto (una «Corrección de caja (suma)» que sube la caja, la ganancia y la
+  deuda).
+- «Lo que esta pantalla NO hace»: el pago se anula con motivo, y «No cobra la plataforma».
+
+**Primer rojo, corregido.** `docs-marca-heredada.guardia` fija la frase «tienda, un pago de una tienda a la empresa, una
+corrección, un cobro por» del apartado «NO hace». Yo había metido «un pago a la plataforma» en medio. Ahora va detrás, en
+una frase propia.
+
+**Tests** (fuera de `## Archivos esperados`, porque leen la ayuda):
+- `tests/unit/asistente/contexto-457.test.ts` y `contexto-458.test.ts`: «diez conceptos» pasa a «once conceptos», y la fila
+  «Sale dinero de la empresa» se fija entera con «· Pago a la plataforma |». En 458 se añade `not.toContain` de «diez
+  conceptos». Es el contrato nuevo, escrito a mano.
+- `tests/unit/asistente/contexto-sl45.test.ts` (nuevo, 11; molde `contexto-457`):
+  - maestro y admin reciben las tres pistas literales de R1–R3 y ya no reciben «Todavía no se cobra»;
+  - también reciben cómo se registra, R9 con su mensaje y R15;
+  - mensajero, adminTienda y adminSatelite no reciben nada de esto.
+
+**Mutación:**
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T9-M1 | en la ayuda, «**No se puede pagar de más.** El pago no puede…» → «**Se puede pagar de más.** El pago puede…» | **rojo**, 2 (`contexto-sl45`, R9 en maestro y admin); restaurado con `cmp` |
+
+**Salida** (dentro del lock):
+
+```
+$ pnpm run test:guardias
+ Test Files  1 failed | 302 passed (303)
+      Tests  4 failed | 4145 passed | 1 skipped (4150)      ← dependencias-declaradas-presentes, del baseline
+$ pnpm exec vitest related --run docs/ayuda/oficina/wallet-caja.md <los 3 tests de asistente>
+ Test Files  3 passed (3)
+      Tests  75 passed (75)
+$ pnpm exec vitest run <los 34 archivos de tests/ que leen docs/ayuda>
+ Test Files  34 passed (34)
+      Tests  583 passed (583)
+$ pnpm run typecheck                                      TC_EXIT=0
+$ pnpm exec eslint <los 3 tests de asistente>             LINT_EXIT=0
+```
+
+`vitest related` sobre el `.md` no encuentra tests, porque nadie lo importa: lo leen con `fs`. Por eso se corren a mano los
+34 archivos que lo leen, y las guardias completas.
+
+## Mapa R → test de esta tanda (T7, T8, E1-pantalla, T9)
+
+| R | Test |
+|---|---|
+| R1 | `WalletDeudaPlataformaSL45` (R1), `wallet-labels` (SL-45 R1), `WalletDeudaPlataformaSL40` (pista), `wallet-page` (R1, los dos «Registrar…»), `contexto-sl45` |
+| R2 | `WalletDeudaPlataformaSL45` (R2), `wallet-labels` (SL-45 R2), `contexto-sl45` |
+| R3 | `WalletDeudaPlataformaSL45` (R3/R14), `wallet-labels` (SL-45 R3/R14), `contexto-sl45` |
+| R4 | `WalletDeudaPlataformaSL45` (R4), `wallet-registrar-movimiento-dialog` (SL-45 R4) |
+| R5 | `wallet-page.test.tsx` (SL-45 R5, ×2). La anulación usa el mismo `recargarTrasCambio` (el `onCambio` del libro), y la recorre el E2E de T10 |
+| R6 | `wallet-conceptos-manuales` (bloque SL-45 y listas de once), `wallet-registrar-movimiento-dialog` (SL-45 R6 ×3), `efecto-movimiento` (SL-45 R8) |
+| R9 (pantalla) | `wallet-registrar-movimiento-dialog` (SL-45 R9: bajo el monto), `contexto-sl45` |
+| R14 (pantalla) | `WalletDeudaPlataformaSL45` (barrido y «debe» con 0,00), `EmpresasModuleCobro` (barrido) |
+| R15 (ayuda) | `contexto-sl45` |
+| R24 | `ComposicionGananciaCard` y `DetalleFilaComposicion` (de T3), en verde |
+| R28 (pantalla) | `EmpresasModuleCobro.test.tsx` (SL-45 R28, 6) |
+
+**Abierto para el leader:** `tests/integration/db/efecto-movimiento-predice.test.ts` (458-B, en el baseline por falta de datos)
+registra los diez conceptos uno a uno y no el pago a la plataforma. Para incluirlo hacen falta cargos de la plataforma en su
+escenario, porque el pago tiene tope. Es de backend y no lo toqué. El «Así queda» del pago está cubierto en puro por
+`efecto-movimiento.test.ts` (SL-45 R8).
+
+**Veredicto (T7, T8, E1-pantalla, T9):** el concepto, la región por estado con su botón y su relectura, la columna
+«Plataforma» y la ayuda están hechos. Cada mutación medida los pone en rojo. Faltan, en otra vuelta, la comprobación de T8 en
+el navegador y T10.

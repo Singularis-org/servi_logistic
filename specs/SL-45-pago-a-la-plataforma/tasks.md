@@ -135,7 +135,7 @@
 
 ## Tanda D — Ayuda, E2E y cierre
 
-- [ ] **T9. [P] Ayuda** (apoya R1–R3, R9, R15; depende de T8).
+- [x] **T9. [P] Ayuda** (apoya R1–R3, R9, R15; depende de T8).
   - `docs/ayuda/oficina/wallet-caja.md` (`design.md > 7.4`) y `actualizado:`.
   - _Hecho:_ las guardias de ayuda en verde con `vitest related` sobre el archivo.
 - [ ] **T10. E2E y cierre** (todos; depende de T1–T9).
