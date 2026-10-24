@@ -29,6 +29,7 @@ import {
   money,
   pistaCifraPrincipal,
   rotuloCifraPrincipal,
+  textoDeRegion,
 } from "./wallet-labels";
 
 // Feature 173 (T G.1, design §8) — la tarjeta de la caja. Sustituye a la tarjeta de una sola
@@ -85,6 +86,14 @@ import {
 //  - Es la ultima region de la lista. Llega aparte del resumen y no cambia ninguna cifra de la caja
 //    (D10): no es dinero que haya salido.
 //  - Va sin insignia y sin color de signo, y no se pinta si la pagina no la tiene.
+//
+// ── SL-45 (T8, design §7.2) — LA DEUDA DICE QUE HACER ──
+//
+//  - El rotulo y la pista los elige el `estado` del servidor («debe», «al dia», «a favor»), y el importe
+//    es el `importe` en positivo (R1–R3, R14). Aqui no se compara nada.
+//  - La region de la deuda puede llevar UNA accion, el boton «Registrar pago a la plataforma», que le
+//    pasa el modulo (`accionDeudaPlataforma`) solo en «debe». Es la unica excepcion a «cero elementos
+//    interactivos»: sin la prop, la tarjeta sigue sin ningun control.
 
 /**
  * Feature 200 (tanda 2) — las insignias de signo usan las variantes SEMANTICAS de la
@@ -185,12 +194,18 @@ export interface CajaResumenCardProps {
    * sin ella, o con `null`, la región no se pinta.
    */
   deudaPlataforma?: DeudaPlataformaDTO | null;
+  /**
+   * SL-45 (R1, R4): la acción que se pinta DENTRO de la región de la deuda (el botón que abre el
+   * registro del pago). La decide el módulo con el `estado` del servidor; sin ella no hay acción.
+   */
+  accionDeudaPlataforma?: ReactNode;
 }
 
 export function CajaResumenCard({
   resumen,
   movimientos,
   deudaPlataforma = null,
+  accionDeudaPlataforma,
 }: CajaResumenCardProps) {
   // R14/R15/R18/R20 (y `[P7]` de la 173): los HECHOS los da el servidor; la MISMA funcion que
   // usan los KPIs de la analitica elige el nombre que no miente.
@@ -355,15 +370,17 @@ export function CajaResumenCard({
               if (valor === null) return null;
               const signo = region.signo(datos);
               const badge = signo === null ? null : SIGNO_BADGE[signo];
+              const rotulo = textoDeRegion(region.rotulo, datos);
+              const accion = region.id === "deuda_plataforma" ? accionDeudaPlataforma : undefined;
               return (
                 <section
                   key={region.id}
-                  aria-label={region.rotulo}
+                  aria-label={rotulo}
                   data-region={region.id}
                   className="flex flex-col gap-1 border-t pt-3"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{region.rotulo}</span>
+                    <span className="text-sm font-medium text-foreground">{rotulo}</span>
                     {badge === null ? null : <Badge variant={badge.variant}>{badge.label}</Badge>}
                   </div>
                   <span
@@ -374,7 +391,8 @@ export function CajaResumenCard({
                   >
                     {money(valor)}
                   </span>
-                  <span className="text-xs text-muted-foreground">{region.pista}</span>
+                  <span className="text-xs text-muted-foreground">{textoDeRegion(region.pista, datos)}</span>
+                  {accion === undefined || accion === null ? null : <div className="pt-1">{accion}</div>}
                 </section>
               );
             })}

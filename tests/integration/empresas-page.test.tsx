@@ -24,9 +24,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/resolve-actor", () => ({ resolveActorFromSession: vi.fn() }));
 
-const { listarMock, tiposMock } = vi.hoisted(() => ({
+const { listarMock, tiposMock, pendientesMock } = vi.hoisted(() => ({
   listarMock: vi.fn(),
   tiposMock: vi.fn(),
+  pendientesMock: vi.fn(),
 }));
 vi.mock("@/lib/actions/_shared/empresas-plataforma", () => ({
   listarEmpresasPlataforma: (...a: unknown[]) => listarMock(...a),
@@ -37,7 +38,11 @@ vi.mock("@/lib/repositories/UserRepository", () => ({
     listTiposIdentificacion = () => tiposMock();
   },
 }));
-vi.mock("@/lib/actions/organizaciones", () => ({ altaEmpresaAction: vi.fn() }));
+vi.mock("@/lib/actions/organizaciones", () => ({
+  altaEmpresaAction: vi.fn(),
+  reenviarBienvenidaAction: vi.fn(),
+  bienvenidasPendientesAction: () => pendientesMock(),
+}));
 
 // SL-40 (R9): el valor global del cobro por orden también se lee en la página.
 const { verCobroMock } = vi.hoisted(() => ({ verCobroMock: vi.fn() }));
@@ -58,6 +63,9 @@ const EMPRESAS: EmpresaListada[] = [
     creadaEn: new Date("2026-10-20T12:00:00Z"),
     maestros: [{ nombre: "Ana Pérez", email: "ana@norte.test" }],
     cobroPorOrden: null,
+    // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
+    deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
+    pagadoPlataforma: "0.00",
   },
   {
     id: "org-a",
@@ -66,6 +74,9 @@ const EMPRESAS: EmpresaListada[] = [
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
     cobroPorOrden: null,
+    // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
+    deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
+    pagadoPlataforma: "0.00",
   },
 ];
 
@@ -84,6 +95,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listarMock.mockResolvedValue({ status: "ok", empresas: EMPRESAS });
   tiposMock.mockResolvedValue([{ id: "t-1", value: "cedula" }]);
+  pendientesMock.mockResolvedValue({ estado: "ok", organizacionIds: ["org-b"] });
   verCobroMock.mockResolvedValue({ status: "ok", cobroGlobal: { monto: null } });
 });
 
@@ -96,6 +108,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(listarMock).not.toHaveBeenCalled();
     expect(tiposMock).not.toHaveBeenCalled();
+    expect(pendientesMock).not.toHaveBeenCalled();
     expect(verCobroMock).not.toHaveBeenCalled();
   });
 
@@ -105,6 +118,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     await expect(EmpresasPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(listarMock).not.toHaveBeenCalled();
     expect(tiposMock).not.toHaveBeenCalled();
+    expect(pendientesMock).not.toHaveBeenCalled();
     expect(verCobroMock).not.toHaveBeenCalled();
   });
 });
@@ -141,6 +155,38 @@ describe("SL-32 (R29, R35) — con el superadmin, la página pinta el listado", 
     screen.getByRole("combobox", { name: "Tipo de documento" }).click();
     const opciones = await screen.findAllByRole("option");
     expect(opciones.map((o) => o.textContent)).toEqual(["cedula", "pasaporte"]);
+  });
+
+  // SL-41 (R38): la página pasa al módulo qué bienvenidas siguen pendientes.
+  it("R38: con la lectura de pendientes, solo la fila pendiente lleva «Reenviar bienvenida»", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    listarMock.mockResolvedValue({
+      status: "ok",
+      empresas: [EMPRESAS[0], { ...EMPRESAS[0], id: "org-c", nombre: "Carga Este", slug: "carga-este" }],
+    });
+
+    render(await EmpresasPage());
+
+    expect(pendientesMock).toHaveBeenCalledTimes(1);
+    const filas = screen.getAllByRole("row").slice(1);
+    expect(within(filas[0]).getByRole("button", { name: "Reenviar bienvenida" })).toBeInTheDocument();
+    expect(within(filas[1]).queryByRole("button", { name: "Reenviar bienvenida" })).toBeNull();
+  });
+
+  it("R38: si la lectura de pendientes falla, vale R29 y toda fila con maestros lleva el botón", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    pendientesMock.mockResolvedValue({ estado: "error" });
+    listarMock.mockResolvedValue({
+      status: "ok",
+      empresas: [EMPRESAS[0], { ...EMPRESAS[0], id: "org-c", nombre: "Carga Este", slug: "carga-este" }],
+    });
+
+    render(await EmpresasPage());
+
+    const filas = screen.getAllByRole("row").slice(1);
+    for (const fila of filas) {
+      expect(within(fila).getByRole("button", { name: "Reenviar bienvenida" })).toBeInTheDocument();
+    }
   });
 
   it("si el listado no llega, lo dice y no inventa empresas", async () => {

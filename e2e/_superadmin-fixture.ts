@@ -9,7 +9,8 @@ import type { PrismaClient } from "@prisma/client";
 import { LogDelServidor } from "./_dos-empresas-fixture";
 
 // SL-32 T9 y T17 — lo que comparten los dos E2E del superadmin: crearlo con el comando de arranque,
-// leer el OTP del emisor de consola en el log del dev server y entrar por `/login`.
+// leer el OTP del emisor de consola en el log del dev server y entrar por `/login`. SL-41 T12 añade
+// leer de ese mismo log el enlace de bienvenida.
 
 /**
  * Credenciales ficticias del único superadmin de la base de prueba. Fijas a propósito: el índice
@@ -87,6 +88,38 @@ function escaparRegex(texto: string): string {
  */
 export async function codigoEnviadoA(log: LogDelServidor, email: string, timeoutMs = 60_000): Promise<string> {
   const patron = new RegExp(`\\[email\\]\\[debug\\] to=${escaparRegex(email)} cuerpo="[^"]*?\\\\n(\\d{6})\\\\n`, "g");
+  return ultimaCoincidencia(log, patron, timeoutMs, `ningún código para ${email}`);
+}
+
+/**
+ * SL-41 T12 — espera el enlace de bienvenida que el `ConsoleEmailSender` acaba de «enviar» a
+ * `email` y devuelve lo que va detrás de `#enlace=` (`<challengeId>.<secreto>`). Sale de la misma
+ * línea de depuración que el código: el texto plano lleva la URL completa (R5), y sus caracteres
+ * (base64url, guion y punto) no se escapan en el JSON. Se devuelve el valor y no la URL porque la
+ * base de la URL es `NEXT_PUBLIC_APP_URL` del servidor, que puede no ser la `baseURL` de Playwright.
+ */
+export async function enlaceEnviadoA(log: LogDelServidor, email: string, timeoutMs = 60_000): Promise<string> {
+  const patron = new RegExp(
+    // `[^\n]` y no `[^"]`: el JSON deja la línea entera en una sola, y el saludo o el nombre de
+    // la empresa podrían llevar comillas escapadas antes del enlace.
+    `\\[email\\]\\[debug\\] to=${escaparRegex(email)} cuerpo="[^\\n]*?#enlace=([A-Za-z0-9_.-]+)`,
+    "g",
+  );
+  return ultimaCoincidencia(
+    log,
+    patron,
+    timeoutMs,
+    `ningún enlace de bienvenida para ${email} (¿falta NEXT_PUBLIC_APP_URL en el dev server?)`,
+  );
+}
+
+/** El primer grupo de la ÚLTIMA coincidencia de `patron` en lo nuevo del log, esperando hasta `timeoutMs`. */
+async function ultimaCoincidencia(
+  log: LogDelServidor,
+  patron: RegExp,
+  timeoutMs: number,
+  queFalta: string,
+): Promise<string> {
   let acumulado = "";
   const limite = Date.now() + timeoutMs;
   while (Date.now() < limite) {
@@ -96,7 +129,7 @@ export async function codigoEnviadoA(log: LogDelServidor, email: string, timeout
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error(
-    `SL-32 E2E: el log del servidor no recibió ningún código para ${email} en ${timeoutMs} ms. ` +
+    `E2E: el log del servidor no recibió ${queFalta} en ${timeoutMs} ms. ` +
       "¿El dev server corre con AUTH_OTP_DEBUG_LOG=1 y su stderr va al log?",
   );
 }

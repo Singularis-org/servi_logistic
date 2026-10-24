@@ -232,6 +232,7 @@ describe("R23/R26 — la particion de la ganancia cubre TODAS las categorias pro
       "egreso_reverso_cobro_tienda",
       "egreso_reverso_flete_devolucion", // ficha 458-B
       // SL-39 (R7/R8): `egreso_reverso_iva_flete_devolucion` va al bloque del IVA, no a «Egresos».
+      "egreso_pago_plataforma", // SL-45 (R24): fila propia, no «Otros gastos»
     ]);
     expect([...WALLET_EGRESO_IVA_SEED]).toEqual(["egreso_reverso_iva_flete_devolucion"]);
     expect(NATURALEZA_POR_CATEGORIA.egreso_reverso_cobro_tienda).toBe("propio");

@@ -38,6 +38,8 @@ export const EFECTO_POR_TIPO: Record<ConceptoRegistro, EfectoDeConcepto> = {
   pago_a_tienda: { cuenta: "tienda", caja: [{ tipo: "egreso", categoria: "egreso_pago_tienda" }], enCuenta: "debito" },
   // [P2] de la 173: el pago a un mensajero NO toca la caja (la salida ya estaba en el cierre).
   pago_a_mensajero: { cuenta: "mensajero", caja: [], enCuenta: "pago" },
+  // SL-45 (design §7.1): solo la caja; la deuda con la plataforma no es una cuenta de «Así queda».
+  pago_plataforma: { cuenta: null, caja: [{ tipo: "egreso", categoria: "egreso_pago_plataforma" }], enCuenta: null },
   aporte: { cuenta: null, caja: [{ tipo: "ingreso", categoria: "ingreso_aporte_capital" }], enCuenta: null },
   correccion_suma: { cuenta: null, caja: [{ tipo: "ingreso", categoria: "ingreso_ajuste" }], enCuenta: null },
   tienda_paga_a_empresa: {

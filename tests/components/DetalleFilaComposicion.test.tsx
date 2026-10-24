@@ -63,6 +63,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "45.75",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
   },
   otrosEgresos: "194.25",
   hayOtrosEgresos: true,
@@ -361,10 +362,12 @@ describe("Ficha 339 — el nombre de cada control y sus estados (R24/R25/R26)", 
     // (Ficha 461, R27: + «La empresa le cobra a una tienda» y + «Cobros a una tienda anulados».)
     // (Ficha 458-B: + las dos filas de la anulacion de un cobro por devolución a origen: 18.)
     // (SL-39: las cuatro de IVA pasan a su bloque —5 de ingreso + 9 de egreso + 4 de IVA—: 18.)
-    expect(controles).toHaveLength(18);
+    // (SL-45, R24: + la fila del pago a la plataforma, que abre su detalle: 19.)
+    expect(controles).toHaveLength(19);
 
     const nombres = controles.map((b) => b.getAttribute("aria-label") ?? "");
-    expect(new Set(nombres).size).toBe(18);
+    expect(new Set(nombres).size).toBe(19);
+    expect(nombres).toContain("Ver los movimientos de Pago a la plataforma"); // SL-45 (R24)
     // Y cada nombre CONTIENE el rótulo visible de su fila («Label in Name»).
     expect(nombres).toContain(ABRIR_MENSAJEROS);
     expect(nombres).toContain(ABRIR_AJUSTES);

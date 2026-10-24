@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect } from "react";
+import {
+  useState,
+  useTransition,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useSyncExternalStore,
+} from "react";
 import Link from "next/link";
 import { z } from "zod";
 import {
   solicitarRecuperacion,
   verificarCodigoRecuperacion,
   restablecerContrasena,
+  crearContrasenaConEnlace,
 } from "@/lib/actions/password-reset";
 import { OTP_CODE_LENGTH } from "@/lib/types/auth";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
@@ -40,10 +48,35 @@ const codeSchema = z.object({
 // existencia de la cuenta (R6/R11 + seguridad).
 const GENERIC_INVALID_MESSAGE = "El código es inválido o ha expirado. Verifica e intenta de nuevo";
 
+// SL-41: el enlace del correo de bienvenida trae su secreto en el fragmento, nunca en la ruta ni
+// en la query (R16), para que no llegue al servidor ni a sus registros.
+const PREFIJO_ENLACE = "#enlace=";
+
+// SL-41 (R19): un único mensaje para el enlace usado, vencido, sustituido o desconocido.
+const ENLACE_INVALIDO_MESSAGE = "El enlace no es válido o ya venció.";
+
+// La fuente externa del fragmento, para `useSyncExternalStore`. No se suscribe a `hashchange`: el
+// enlace solo cuenta al llegar a la página, y lo que cambie después lo provoca el propio
+// formulario al limpiar la barra.
+function sinSuscripcion(): () => void {
+  return () => {};
+}
+
+function hashDelCliente(): string {
+  return window.location.hash;
+}
+
+function hashDelServidor(): string {
+  return "";
+}
+
 /**
  * Flujo de recuperacion en 3 pasos (email -> codigo -> nueva contrasena). Lo monta
  * `app/recuperar-contrasena/page.tsx`. Desmontado el 2026-09-04 (el OTP no llegaba) y vuelto a
  * montar el 2026-10-22 por SL-32 (R38).
+ *
+ * SL-41 añade el modo enlace: con `#enlace=` en la URL arranca en el paso 3 («Crea tu
+ * contraseña»), con los mismos dos campos, y guarda con el enlace en vez de con email y código.
  */
 export function RecuperarContrasenaForm() {
   const [isPending, startTransition] = useTransition();
@@ -62,14 +95,63 @@ export function RecuperarContrasenaForm() {
   const [passwordFieldErrors, setPasswordFieldErrors] = useState<Record<string, string[]>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
 
+  // Modo enlace (SL-41). `enlaceInvalido` sustituye el formulario: un enlace muerto no se
+  // reintenta, se pide un código.
+  const [enlace, setEnlace] = useState<string | null>(null);
+  const [enlaceInvalido, setEnlaceInvalido] = useState(false);
+
   const emailRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // Foco inicial en el email al montar.
+  // El fragmento de la URL, leído como fuente externa: el servidor no lo tiene (ve "") y el
+  // cliente lo lee al hidratar, sin discrepancia y sin un `setState` dentro de un efecto, que en
+  // este repo es error de lint (`react-hooks/set-state-in-effect`).
+  const hashUrl = useSyncExternalStore(sinSuscripcion, hashDelCliente, hashDelServidor);
+
+  // El enlace se copia a estado DURANTE el render, la forma que React documenta para reaccionar a
+  // un valor nuevo. Hace falta copiarlo: en cuanto el efecto de abajo limpia la barra, `hashUrl`
+  // pasa a "" y el enlace se perdería. Un `#enlace=` vacío es un enlace roto: va directo al
+  // genérico (R19) sin llamar a nadie.
+  const [hashVisto, setHashVisto] = useState("");
+  if (hashUrl !== hashVisto) {
+    setHashVisto(hashUrl);
+    if (hashUrl.startsWith(PREFIJO_ENLACE)) {
+      const valor = hashUrl.slice(PREFIJO_ENLACE.length);
+      if (valor === "") {
+        setEnlaceInvalido(true);
+      } else {
+        setEnlace(valor);
+        setPhase("password");
+      }
+    }
+  }
+
+  // R21: el secreto sale de la barra en cuanto se lee, antes de que el maestro escriba nada. De
+  // layout para que corra antes del pintado. `replaceState` no recarga ni avisa a nadie: solo
+  // quita el fragmento.
+  useLayoutEffect(() => {
+    if (!hashUrl.startsWith(PREFIJO_ENLACE)) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    setTimeout(() => passwordRef.current?.focus(), 0);
+  }, [hashUrl]);
+
+  // Foco en el campo de cada fase al entrar en ella (al montar, el email). En un efecto y no en un
+  // `setTimeout`: la fase nueva llega con la transición, que puede pintarse después del temporizador.
   useEffect(() => {
-    emailRef.current?.focus();
-  }, []);
+    if (phase === "email") emailRef.current?.focus();
+    else if (phase === "code") codeRef.current?.focus();
+    else if (phase === "password") passwordRef.current?.focus();
+  }, [phase]);
+
+  // R19: del enlace muerto se vuelve al paso 1 del flujo normal, sin rastro del enlace.
+  const pedirCodigo = () => {
+    setEnlace(null);
+    setEnlaceInvalido(false);
+    setGeneralError(null);
+    setPhase("email");
+    setTimeout(() => emailRef.current?.focus(), 0);
+  };
 
   // Paso 1 (R1/R12): solicitar recuperacion. Respuesta siempre generica: se
   // avanza a la fase de codigo tanto si el email existe como si no.
@@ -89,18 +171,22 @@ export function RecuperarContrasenaForm() {
     startTransition(async () => {
       const res = await solicitarRecuperacion({ email });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("code");
-          setCode("");
-          setCodeFieldErrors({});
-          setTimeout(() => codeRef.current?.focus(), 0);
-          break;
-        case "validation_error":
-          setEmailFieldErrors(res.fieldErrors);
-          emailRef.current?.focus();
-          break;
-      }
+      // Lo que sigue al `await` ya no es parte de la transición (React 19): sin este
+      // `startTransition`, la fase nueva se pinta con `isPending` aún en true y sus campos
+      // salen deshabilitados; lo que se teclea en ese hueco se pierde.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("code");
+            setCode("");
+            setCodeFieldErrors({});
+            break;
+          case "validation_error":
+            setEmailFieldErrors(res.fieldErrors);
+            emailRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
@@ -121,22 +207,24 @@ export function RecuperarContrasenaForm() {
     startTransition(async () => {
       const res = await verificarCodigoRecuperacion({ email, code });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("password");
-          setPassword("");
-          setConfirmPassword("");
-          setPasswordFieldErrors({});
-          setTimeout(() => passwordRef.current?.focus(), 0);
-          break;
-        case "invalid_or_expired":
-          setGeneralError(GENERIC_INVALID_MESSAGE);
-          break;
-        case "validation_error":
-          setCodeFieldErrors(res.fieldErrors);
-          codeRef.current?.focus();
-          break;
-      }
+      // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("password");
+            setPassword("");
+            setConfirmPassword("");
+            setPasswordFieldErrors({});
+            break;
+          case "invalid_or_expired":
+            setGeneralError(GENERIC_INVALID_MESSAGE);
+            break;
+          case "validation_error":
+            setCodeFieldErrors(res.fieldErrors);
+            codeRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
@@ -164,26 +252,42 @@ export function RecuperarContrasenaForm() {
     }
 
     startTransition(async () => {
-      const res = await restablecerContrasena({
-        email,
-        code,
-        password,
-        confirmPassword,
-      });
+      const res = enlace
+        ? await crearContrasenaConEnlace({ enlace, password, confirmPassword })
+        : await restablecerContrasena({
+            email,
+            code,
+            password,
+            confirmPassword,
+          });
 
-      switch (res.status) {
-        case "ok":
-          setPhase("done");
-          break;
-        case "invalid_or_expired":
-          // El desafio dejo de estar activo: mensaje generico, sin tocar la contrasena.
-          setGeneralError(GENERIC_INVALID_MESSAGE);
-          break;
-        case "validation_error":
-          setPasswordFieldErrors(res.fieldErrors);
-          passwordRef.current?.focus();
-          break;
-      }
+      // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
+      startTransition(() => {
+        switch (res.status) {
+          case "ok":
+            setPhase("done");
+            break;
+          case "invalid_or_expired":
+            // El desafio dejo de estar activo: mensaje generico, sin tocar la contrasena.
+            if (enlace) {
+              setEnlaceInvalido(true);
+            } else {
+              setGeneralError(GENERIC_INVALID_MESSAGE);
+            }
+            break;
+          case "validation_error":
+            // R19: un enlace mal formado (truncado, con un carácter de más) es un enlace que no
+            // sirve. La pantalla no tiene campo para `enlace`, así que su error iría a ningún
+            // sitio: se trata igual que el caducado o ya usado.
+            if (enlace && res.fieldErrors.enlace) {
+              setEnlaceInvalido(true);
+              break;
+            }
+            setPasswordFieldErrors(res.fieldErrors);
+            passwordRef.current?.focus();
+            break;
+        }
+      });
     });
   };
 
@@ -192,12 +296,15 @@ export function RecuperarContrasenaForm() {
     return (
       <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
         <div>
+          {/* El texto sigue al flujo: quien llega del enlace de bienvenida la crea por primera
+              vez, no la restablece. `enlace` sigue en estado tras el éxito. */}
           <h1 className="text-2xl font-semibold text-center text-foreground">
-            Contraseña actualizada
+            {enlace ? "Contraseña creada" : "Contraseña actualizada"}
           </h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
-            Tu contraseña se restableció correctamente. Ya puedes iniciar sesión con tu
-            nueva contraseña.
+            {enlace
+              ? "Tu contraseña se creó correctamente. Ya puedes iniciar sesión con ella."
+              : "Tu contraseña se restableció correctamente. Ya puedes iniciar sesión con tu nueva contraseña."}
           </p>
         </div>
         {/* `cn(...)` y no `buttonVariants(...)` a pelo: ficha 439. Esta variante es la de
@@ -209,6 +316,25 @@ export function RecuperarContrasenaForm() {
         <Link href="/login" className={cn(buttonVariants({ className: "w-full" }))}>
           Ir a iniciar sesión
         </Link>
+      </Card>
+    );
+  }
+
+  // SL-41 (R19): el enlace ya no sirve. Sin formulario: se ofrece pedir un código por correo.
+  if (enlaceInvalido) {
+    return (
+      <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
+        <h1 className="text-2xl font-semibold text-center text-foreground">
+          Crea tu contraseña
+        </h1>
+
+        <Alert variant="destructive" role="alert" aria-live="assertive">
+          <AlertDescription>{ENLACE_INVALIDO_MESSAGE}</AlertDescription>
+        </Alert>
+
+        <Button type="button" onClick={pedirCodigo} className="w-full">
+          Pedir un código por correo
+        </Button>
       </Card>
     );
   }
@@ -338,7 +464,7 @@ export function RecuperarContrasenaForm() {
     <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-center text-foreground">
-          Nueva contraseña
+          {enlace ? "Crea tu contraseña" : "Nueva contraseña"}
         </h1>
         <p className="text-sm text-muted-foreground text-center mt-2">
           Debe tener al menos 8 caracteres e incluir mayúscula, minúscula, dígito y
@@ -386,7 +512,7 @@ export function RecuperarContrasenaForm() {
         </FormField>
 
         <Button type="submit" loading={isPending} className="w-full">
-          {isPending ? "Guardando..." : "Restablecer contraseña"}
+          {isPending ? "Guardando..." : enlace ? "Crear contraseña" : "Restablecer contraseña"}
         </Button>
       </form>
     </Card>

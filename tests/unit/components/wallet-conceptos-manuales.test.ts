@@ -47,6 +47,10 @@ import { CONCEPTO_REGISTRO_SEED } from "@/lib/types/efecto-movimiento";
 // contrato nuevo (461-R39 superado por 458-R37, listado en `progress/impl_458-C.md`): DIEZ conceptos;
 // «La empresa le paga a una tienda» y «La empresa le paga a un mensajero» entran en «Sale dinero de
 // La empresa». Las siete frases de la 461 y la de la 457 siguen byte a byte; las dos nuevas, literales.
+//
+// ⭑ SL-45 (T7, design §7.1; R6) — AMPLIADO: ONCE conceptos; «Pago a la plataforma» entra en «Sale dinero
+// de la empresa», justo después del pago a un mensajero. Es un egreso administrativo que NO pide «a
+// quién». Las listas de «diez» se reescriben como contrato nuevo, con el undécimo escrito a mano.
 
 const CATEGORIAS_CAJA_ESPERADAS = [
   "egreso_gasto_variable",
@@ -55,10 +59,15 @@ const CATEGORIAS_CAJA_ESPERADAS = [
   "egreso_ajuste",
 ] as const;
 
-/** Los cuatro conceptos de la ficha 334 (gastos administrativos y correcciones). */
+/**
+ * Los cuatro conceptos de la ficha 334 (gastos administrativos y correcciones). SL-45: el pago a la
+ * plataforma va por la misma clase, pero no es de la 334; su categoría se fija en su propio bloque.
+ */
 function conceptosDeCaja(): ConceptoManual[] {
   return CONCEPTOS_MANUALES.filter(
-    (c) => c.destino.clase === "egreso_administrativo" || c.destino.clase === "ajuste_manual",
+    (c) =>
+      (c.destino.clase === "egreso_administrativo" && c.destino.tipoEgreso !== "pago_plataforma") ||
+      c.destino.clase === "ajuste_manual",
   );
 }
 
@@ -75,9 +84,9 @@ function conLineaDeCaja(): ConceptoManual[] {
   return CONCEPTOS_MANUALES.filter((c) => c.destino.categoria !== null);
 }
 
-describe("catálogo de conceptos manuales — son exactamente DIEZ (458-R37, que supera a 461-R39 / 457-R54)", () => {
-  it("el catálogo ofrece los diez conceptos del pedido y ninguno más, en los tres grupos", () => {
-    expect(CONCEPTOS_MANUALES).toHaveLength(10);
+describe("catálogo de conceptos manuales — son exactamente ONCE (SL-45 R6, sobre 458-R37)", () => {
+  it("el catálogo ofrece los once conceptos del pedido y ninguno más, en los tres grupos", () => {
+    expect(CONCEPTOS_MANUALES).toHaveLength(11);
     expect(CONCEPTOS_MANUALES.map((c) => c.id)).toEqual([
       "gasto_variable",
       "sueldo",
@@ -85,6 +94,7 @@ describe("catálogo de conceptos manuales — son exactamente DIEZ (458-R37, que
       "ajuste_egreso",
       "pago_a_tienda",
       "pago_a_mensajero",
+      "pago_plataforma",
       "aporte_capital",
       "abono_tienda",
       "ajuste_ingreso",
@@ -94,7 +104,7 @@ describe("catálogo de conceptos manuales — son exactamente DIEZ (458-R37, que
     expect(CONCEPTO_MANUAL_OPTIONS.map((o) => o.value)).toEqual([...CONCEPTO_MANUAL_IDS]);
   });
 
-  it("⭑ 458 R37: los diez se llaman EXACTAMENTE así, desde la empresa y diciendo quién le paga a quién", () => {
+  it("⭑ 458 R37 / SL-45 R6: los once se llaman EXACTAMENTE así, desde la empresa y diciendo quién le paga a quién", () => {
     expect(CONCEPTOS_MANUALES.map((c) => c.label)).toEqual([
       "Gasto de la empresa",
       "Sueldo",
@@ -102,6 +112,7 @@ describe("catálogo de conceptos manuales — son exactamente DIEZ (458-R37, que
       "Corrección de caja (resta)",
       "La empresa le paga a una tienda",
       "La empresa le paga a un mensajero",
+      "Pago a la plataforma",
       "Aporte de dinero a la caja",
       "Una tienda le paga a la empresa",
       "Corrección de caja (suma)",
@@ -188,7 +199,7 @@ describe("⭑ FICHA 381/461 — el cobro de la empresa a una tienda cae en los D
     expect(libroDelConcepto(cobro!)).toBe("caja_y_tienda");
   });
 
-  it("cuatro conceptos van a los DOS libros (el pago de un gasto, el pago a una tienda, el pago de la tienda y el cobro); el pago a un mensajero, al suyo; los otros cinco, a la caja", () => {
+  it("cuatro conceptos van a los DOS libros (el pago de un gasto, el pago a una tienda, el pago de la tienda y el cobro); el pago a un mensajero, al suyo; los otros seis (SL-45: con el pago a la plataforma), a la caja", () => {
     // Sin la segunda mitad, un `libroDelConcepto` que devolviera siempre lo mismo pasaría.
     const porLibro = CONCEPTOS_MANUALES.map((c) => [c.id, libroDelConcepto(c)]);
     expect(porLibro).toEqual([
@@ -198,6 +209,7 @@ describe("⭑ FICHA 381/461 — el cobro de la empresa a una tienda cae en los D
       ["ajuste_egreso", "caja"],
       ["pago_a_tienda", "caja_y_tienda"],
       ["pago_a_mensajero", "mensajero"],
+      ["pago_plataforma", "caja"],
       ["aporte_capital", "caja"],
       ["abono_tienda", "caja_y_tienda"],
       ["ajuste_ingreso", "caja"],
@@ -212,7 +224,7 @@ describe("⭑ FICHA 381/461 — el cobro de la empresa a una tienda cae en los D
     expect(cobro.descripcionPlaceholder.trim().length).toBeGreaterThan(0);
   });
 
-  it("las categorías de caja que abren son exactamente nueve: las de la 334, el pago de un gasto, el aporte, el pago de la tienda, el cargo del cobro y (458-C) el pago a una tienda; el pago a un mensajero no tiene", () => {
+  it("las categorías de caja que abren son exactamente diez: las de la 334, el pago de un gasto, el aporte, el pago de la tienda, el cargo del cobro, (458-C) el pago a una tienda y (SL-45) el pago a la plataforma; el pago a un mensajero no tiene", () => {
     const caja = conLineaDeCaja().map(categoriaDeCaja);
     expect([...caja].sort()).toEqual(
       [
@@ -222,6 +234,7 @@ describe("⭑ FICHA 381/461 — el cobro de la empresa a una tienda cae en los D
         "ingreso_abono_tienda",
         "ingreso_cobro_tienda",
         "egreso_pago_tienda",
+        "egreso_pago_plataforma",
       ].sort(),
     );
     // 458-C: el pago a un mensajero no escribe en la caja ([P2] de la 173).
@@ -278,7 +291,7 @@ describe("⭑ FICHA 457 — «Una tienda le paga a la empresa» (design §8.1/§
 });
 
 describe("catálogo de conceptos manuales — cada concepto trae su etiqueta de descripción (R9)", () => {
-  it("los diez tienen etiqueta, etiqueta de descripción y ejemplo no vacíos", () => {
+  it("los once tienen etiqueta, etiqueta de descripción y ejemplo no vacíos", () => {
     for (const concepto of CONCEPTOS_MANUALES) {
       expect(concepto.label.trim().length, concepto.id).toBeGreaterThan(0);
       expect(concepto.descripcionLabel.trim().length, concepto.id).toBeGreaterThan(0);
@@ -405,6 +418,7 @@ describe("⭑ FICHA 459/461 — los tres grupos del selector (R59 / 461-R40)", (
       ["ajuste_egreso", "Sale dinero de la empresa"],
       ["pago_a_tienda", "Sale dinero de la empresa"],
       ["pago_a_mensajero", "Sale dinero de la empresa"],
+      ["pago_plataforma", "Sale dinero de la empresa"],
       ["aporte_capital", "Llega dinero a la caja"],
       ["abono_tienda", "Llega dinero a la caja"],
       ["ajuste_ingreso", "Llega dinero a la caja"],
@@ -447,6 +461,9 @@ describe("⭑ FICHA 459/461 — la frase del efecto, una línea por concepto (R6
         "Sale dinero de la empresa hacia la tienda y baja lo que la empresa le debe; la ganancia no cambia.",
       pago_a_mensajero:
         "La empresa le paga al mensajero lo que le debe por sus cierres y baja su cuenta por pagar; la ganancia no cambia.",
+      // ⭑ SL-45 (R6): literal del requisito.
+      pago_plataforma:
+        "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
       aporte_capital: "Llega dinero de la empresa a la caja; no es ganancia, la ganancia no cambia.",
       abono_tienda:
         "Llega dinero de la tienda a la caja: paga lo que debe y su saldo sube; la ganancia de la empresa no cambia.",
@@ -510,6 +527,7 @@ describe("⭑ FICHA 458-C — los dos pagos de la empresa, la cuenta, «a quién
       ajuste_egreso: null,
       pago_a_tienda: "tienda",
       pago_a_mensajero: "mensajero",
+      pago_plataforma: null,
       aporte_capital: null,
       abono_tienda: "tienda",
       ajuste_ingreso: null,
@@ -517,7 +535,7 @@ describe("⭑ FICHA 458-C — los dos pagos de la empresa, la cuenta, «a quién
     });
   });
 
-  it("R42 (D5): «a quién» obligatorio en sueldo y gasto de la empresa, opcional en las dos correcciones, y no se pide en el resto", () => {
+  it("R42 (D5) / SL-45 R6: «a quién» obligatorio en sueldo y gasto de la empresa, opcional en las dos correcciones, y no se pide en el resto (tampoco en el pago a la plataforma)", () => {
     expect(Object.fromEntries(CONCEPTOS_MANUALES.map((c) => [c.id, aQuienDelConcepto(c)]))).toEqual({
       gasto_variable: "obligatorio",
       sueldo: "obligatorio",
@@ -525,6 +543,7 @@ describe("⭑ FICHA 458-C — los dos pagos de la empresa, la cuenta, «a quién
       ajuste_egreso: "opcional",
       pago_a_tienda: null,
       pago_a_mensajero: null,
+      pago_plataforma: null,
       aporte_capital: null,
       abono_tienda: null,
       ajuste_ingreso: "opcional",
@@ -532,15 +551,16 @@ describe("⭑ FICHA 458-C — los dos pagos de la empresa, la cuenta, «a quién
     });
   });
 
-  it("R44: cada concepto pide su «Así queda» con una clave DISTINTA del catálogo del servidor, y las diez están", () => {
+  it("R44: cada concepto pide su «Así queda» con una clave DISTINTA del catálogo del servidor, y las once están", () => {
     const claves = CONCEPTOS_MANUALES.map((c) => CONCEPTO_REGISTRO_DE[c.id]);
-    expect(new Set(claves).size).toBe(10);
+    expect(new Set(claves).size).toBe(11);
     expect([...claves].sort()).toEqual([...CONCEPTO_REGISTRO_SEED].sort());
     // Literales de la correspondencia que importa (el nombre del servidor no es el de la pantalla).
     expect(CONCEPTO_REGISTRO_DE.gasto_variable).toBe("gasto_empresa");
     expect(CONCEPTO_REGISTRO_DE.abono_tienda).toBe("tienda_paga_a_empresa");
     expect(CONCEPTO_REGISTRO_DE.cobro_tienda).toBe("cobro_a_tienda");
     expect(CONCEPTO_REGISTRO_DE.pago_por_cuenta_tienda).toBe("pago_gasto_tienda");
+    expect(CONCEPTO_REGISTRO_DE.pago_plataforma).toBe("pago_plataforma");
   });
 
   it("las cabeceras de los dos pagos llevan su nombre y dicen que se anulan con un motivo", () => {
@@ -550,5 +570,47 @@ describe("⭑ FICHA 458-C — los dos pagos de la empresa, la cuenta, «a quién
         "Elegí la tienda, el monto, la fecha real y el método. Solo se admite hasta lo que la empresa le debe a la tienda. El pago no se edita: si hay un error, se anula con un motivo.",
     });
     expect(cabeceraDelConcepto(conceptoPorId("pago_a_mensajero")!).titulo).toBe("La empresa le paga a un mensajero");
+  });
+});
+
+describe("⭑ SL-45 — «Pago a la plataforma» (design §7.1; R6)", () => {
+  it("está en «Sale dinero de la empresa», justo después del pago a un mensajero, y va al egreso administrativo con su categoría", () => {
+    const pago = conceptoPorId("pago_plataforma");
+    expect(pago).toBeDefined();
+    // Literales, y SON el contrato: el payload que viaja a `registrarEgresoAdministrativoAction`.
+    expect(pago?.label).toBe("Pago a la plataforma");
+    expect(pago?.grupo).toBe("sale");
+    expect(pago?.destino).toEqual({
+      clase: "egreso_administrativo",
+      tipoEgreso: "pago_plataforma",
+      categoria: "egreso_pago_plataforma",
+    });
+    const ids = CONCEPTOS_MANUALES.map((c) => c.id);
+    expect(ids.indexOf("pago_plataforma")).toBe(ids.indexOf("pago_a_mensajero") + 1);
+  });
+
+  it("R6: pide la referencia del pago, con su ejemplo, y no pide «a quién»", () => {
+    const pago = conceptoPorId("pago_plataforma")!;
+    expect(pago.descripcionLabel).toBe("Referencia del pago");
+    expect(pago.descripcionPlaceholder).toBe("Ej. Transferencia del cobro de octubre");
+    expect(aQuienDelConcepto(pago)).toBeNull();
+    // El sueldo, que va por la misma clase, sigue pidiéndolo: la excepción es solo del pago.
+    expect(aQuienDelConcepto(conceptoPorId("sueldo")!)).toBe("obligatorio");
+    expect(cuentaDelConcepto(pago)).toBeNull();
+  });
+
+  it("R6: sus dos frases, literales: la del efecto y la del libro", () => {
+    const pago = conceptoPorId("pago_plataforma")!;
+    expect(FRASE_DEL_EFECTO.pago_plataforma).toBe(
+      "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
+    );
+    expect(fraseDelLibro(pago)).toBe("Se registra en el libro como «Pago a la plataforma».");
+    expect(nombreEnElLibroDeLaTienda(pago)).toBe("");
+  });
+
+  it("su cabecera es la de la caja, y su «Así queda» se pide con la clave `pago_plataforma`", () => {
+    const pago = conceptoPorId("pago_plataforma")!;
+    expect(cabeceraDelConcepto(pago)).toBe(CABECERA_CAJA);
+    expect(CONCEPTO_REGISTRO_DE[pago.id]).toBe("pago_plataforma");
   });
 });

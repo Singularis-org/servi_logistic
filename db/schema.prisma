@@ -98,6 +98,7 @@ model Usuario {
   fulfillment          Boolean       @default(false) // feature 27: tienda con fulfillment (rol adminTienda); default false
   zonaId               String?       @map("zona_id") // feature 24/R6: nullable; solo mensajero/adminSatelite lo llevan
   ordenEnGestionId     String?       @map("orden_en_gestion_id") // feature 36/R19-R21: orden activa 1-a-1 en gestion; NULL = ninguna
+  contrasenaDefinidaAt DateTime?     @map("contrasena_definida_at") // SL-41/R38: la pone updatePasswordHash cuando el usuario fija SU contrasena; NULL = nunca (o fila anterior a SL-41)
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
@@ -1830,6 +1831,12 @@ enum WalletMovimientoCategoria {
   // Migracion `20260928120000_wallet_458_enums`.
   egreso_reverso_flete_devolucion
   egreso_reverso_iva_flete_devolucion
+  // SL-45 (design §2): el pago de la empresa a la plataforma, registrado a mano. Egreso PROPIO en
+  // EFECTIVO, como el sueldo: baja la cifra principal y la ganancia, y descuenta la deuda de SL-40
+  // mientras no tenga contra-asiento. Categoría propia porque la deuda la cuenta por categoría:
+  // `egreso_gasto` (reservada) o `egreso_gasto_variable` mezclarían pagos con gastos.
+  // Migración `20261024130000_pago_plataforma_categoria`.
+  egreso_pago_plataforma
 
   @@map("wallet_movimiento_categoria")
 }

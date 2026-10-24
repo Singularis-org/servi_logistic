@@ -365,6 +365,9 @@ jobs:
             echo "SESSION_SECRET=$S1"
             echo "CRON_SECRET=$C1"
             echo "APP_BASE_URL=http://localhost:3000"
+            # SL-41 (R40): sin ella no hay enlace de bienvenida. Next la incrusta al compilar, asi
+            # que tiene que estar antes de `next build`.
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
             # Fuera del checkout: lo sube el artefacto si el grupo cae (R25).
             echo "E2E_LOG_SERVIDOR=$RUNNER_TEMP/servidor-e2e.log"
           } >> "$GITHUB_ENV"

@@ -16,6 +16,8 @@ const NOMBRE_EGRESO: Partial<Record<WalletMovimientoCategoria, string>> = {
   egreso_gasto_fijo: `Gasto fijo de ${EMPRESA.enFrase}`,
   egreso_gasto: `Otro gasto de ${EMPRESA.enFrase}`,
   egreso_indemnizacion: `Indemnización que ${EMPRESA.enFrase} paga por un incidente`,
+  // SL-45 (design §2): el pago se anula por esta misma vía, y su contra-asiento necesita nombre.
+  egreso_pago_plataforma: "Pago a la plataforma",
 };
 
 export function nombreDelEgresoAnulable(categoria: WalletMovimientoCategoria): string {

@@ -1,4 +1,4 @@
-import type { PrismaClient, RolValue } from "@prisma/client";
+import type { RolValue } from "@prisma/client";
 
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -6,7 +6,10 @@ import type {
   ActorEmpresasPlataforma,
   IEmpresasPlataformaService,
 } from "@/lib/interfaces/services/IEmpresasPlataformaService";
-import { EmpresasPlataformaRepository } from "@/lib/repositories/EmpresasPlataformaRepository";
+import {
+  EmpresasPlataformaRepository,
+  type EmpresasPlataformaPrismaClient,
+} from "@/lib/repositories/EmpresasPlataformaRepository";
 import { EmpresasPlataformaService } from "@/lib/services/EmpresasPlataformaService";
 import type { ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
 
@@ -16,7 +19,8 @@ import type { ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
 
 /** El servicio con su repositorio real y la fuente unica de plataforma (R4). */
 export function construirEmpresasPlataformaService(
-  prisma: Pick<PrismaClient, "organizacion"> = getPrismaClient(),
+  // SL-45 (R28): el listado lee también los cargos y los pagos de cada empresa.
+  prisma: EmpresasPlataformaPrismaClient = getPrismaClient(),
 ): IEmpresasPlataformaService {
   // El servicio tipa el rol como `string` (T14a nacio antes del enum con `superadmin`); el actor de
   // la app trae un `RolValue`, y para cualquier otro texto `esPlataforma` responde `false`.

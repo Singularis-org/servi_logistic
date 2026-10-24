@@ -92,6 +92,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "45.75",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
   },
   otrosEgresos: "194.25",
   // R9: lo decide el SERVIDOR. Aqui quedan 194,25 sin clasificar, asi que la fila se pinta.
@@ -167,6 +168,7 @@ function pintarComoLa158(overrides: Partial<ComposicionGananciaDTO> = {}) {
         egreso_ajuste: "0.00",
         egreso_reverso_cobro_tienda: "0.00",
         egreso_reverso_flete_devolucion: "0.00", // ficha 458-B
+        egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
       },
       otrosEgresos: "0.00",
       hayOtrosEgresos: false, // ficha 343 (R7): sin residuo, la fila «Otros» no se pinta
@@ -388,6 +390,8 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       { rotulo: "Cobros a una tienda anulados", importe: "₡0" },
       // Ficha 458-B (design §2.3): las dos filas de la anulacion de un cobro por devolución a origen; aqui 0,00.
       { rotulo: "Fletes por devolución a origen cobrados a una tienda anulados", importe: "₡0" },
+      // SL-45 (R24): la fila del pago a la plataforma, antes de «Otros»; en este fixture vale 0,00.
+      { rotulo: "Pago a la plataforma", importe: "₡0" },
       // SL-39: el reverso del IVA sale de «Egresos» y va al bloque del IVA.
       { rotulo: "Otros gastos de la empresa", importe: "₡194,25" },
       { rotulo: "Total de egresos", importe: "₡2.190,75" },
@@ -489,6 +493,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       "Correcciones de caja (resta)",
       "Cobros a una tienda anulados", // ficha 461: tercer nombrado, antes de «Otros»
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
+      "Pago a la plataforma", // SL-45 (R24)
       "Otros gastos de la empresa",
       "Total de egresos",
     ]);
@@ -683,6 +688,7 @@ describe("Ficha 339 — «Otros» sólo cuando de verdad queda algo (R7/R8/R9/R1
       "Correcciones de caja (resta)",
       "Cobros a una tienda anulados", // ficha 461
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
+      "Pago a la plataforma", // SL-45 (R24)
       "Total de egresos",
     ]);
   });

@@ -141,6 +141,9 @@ const NOMBRADO_ICONO: Record<WalletEgresoNombrado, LucideIcon> = {
   // Ficha 458-B (design §2.3): los dos reversos del cobro por rechazo, el mismo gesto que el anterior.
   egreso_reverso_flete_devolucion: Undo2,
   // SL-39 (design §2.1): el reverso del IVA sale de aquí; su fila vive en el bloque del IVA.
+  // SL-45 (design §7.3): el pago a la plataforma. `Receipt`, el mismo dibujo que la fila «Gastos de la
+  // empresa», porque es otro gasto de ella. Es decoración (`aria-hidden`).
+  egreso_pago_plataforma: Receipt,
 };
 
 export interface DesgloseEgresosListaProps {

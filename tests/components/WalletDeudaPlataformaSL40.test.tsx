@@ -164,6 +164,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
+    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -186,15 +187,16 @@ const DESGLOSE: DesgloseEgresosDTO = {
 };
 
 /** El ejemplo de design §11.2: dos órdenes a 500,00 y una anulada. */
-const DEUDA_500: DeudaPlataformaDTO = { deuda: "500.00" };
+const DEUDA_500: DeudaPlataformaDTO = { deuda: "500.00", estado: "debe", importe: "500.00" };
 
 /** Once dígitos con céntimos: lo que un `number` ya no garantiza al pasar por una conversión. */
-const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99" };
+const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99", estado: "debe", importe: "12345678901.99" };
 
-// El contrato de R21, escrito a mano.
+// El contrato de R21, escrito a mano. SL-45 (R1): con deuda, la pista dice cómo se paga y se registra; la
+// de SL-40 («Todavía no se cobra…») se retira.
 const ROTULO = "Lo que la empresa debe a la plataforma";
 const PISTA =
-  "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.";
+  "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
 
 const INSIGNIAS_DE_SIGNO = /^(Positivo|Negativo|En cero)$/;
 

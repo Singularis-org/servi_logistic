@@ -54,7 +54,9 @@ const TEXTO = {
   guardado: "Cobro guardado.",
   regionDeuda: `Lo que ${EMPRESA_EN_FRASE} debe a la plataforma`,
   pistaDeuda:
-    "Lo que la plataforma cobra por cada orden creada, menos las anuladas. Todavía no se cobra: no sale de la caja.",
+    "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+  /** SL-45 R2: con deuda cero la región dice que la empresa está al día. */
+  pistaAlDia: "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.",
 } as const;
 
 /** Lo que la tarifa vale en pantalla: `money("500.00")` y `money("750.00")`, escritos a mano. */
@@ -393,8 +395,9 @@ async function leerCaja(page: Page): Promise<Caja> {
 async function leerDeuda(page: Page): Promise<string> {
   const region = regionDeuda(page);
   await expect(region, "la región de la deuda con la plataforma").toHaveCount(1);
-  await expect(region).toContainText(TEXTO.pistaDeuda);
-  return primerImporte(region);
+  const importe = await primerImporte(region);
+  await expect(region).toContainText(importe === PINTADO.deudaCero ? TEXTO.pistaAlDia : TEXTO.pistaDeuda);
+  return importe;
 }
 
 function resumen(c: Caja): string {

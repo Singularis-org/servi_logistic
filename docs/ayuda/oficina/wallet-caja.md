@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-10-23
+actualizado: 2026-10-24
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -19,6 +19,9 @@ fuentes:
   - lib/actions/wallet-filtros.ts
   - lib/actions/libro-caja-autoria.ts
   - lib/actions/deuda-plataforma.ts
+  - lib/utils/deuda-plataforma.ts
+  - lib/services/TopePagoPlataformaService.ts
+  - lib/actions/wallet-egresos.ts
   - app/(app)/wallet/_components/VerMovimientoCaja.tsx
   - components/shared/wallet/RegistrarMovimientoDialog.tsx
   - components/shared/wallet/AsiQueda.tsx
@@ -95,6 +98,7 @@ Cada concepto del libro se lee desde la empresa y dice quién le paga a quién. 
 | **La empresa paga un gasto de una tienda** / **Pago de un gasto de una tienda anulado** | Lo que la empresa le pagó a un tercero en nombre de la tienda, y su anulación |
 | **La empresa le paga a un mensajero** | El pago al mensajero |
 | **Sueldo**, **Gasto de la empresa**, **Gasto fijo de la empresa** | Lo que la empresa gasta |
+| **Pago a la plataforma** | Lo que la empresa le paga a la plataforma por el cobro de sus órdenes. Baja la deuda con la plataforma y la ganancia |
 | **Corrección de caja (suma)** / **Corrección de caja (resta)** | Una corrección hecha a mano para cuadrar la caja |
 | **Aporte de dinero a la caja** / **Aporte de dinero a la caja anulado** | El saldo inicial o un aporte de la empresa, y su anulación |
 | **Una tienda le paga a la empresa** / **Pago de una tienda a la empresa anulado** | Lo que una tienda con saldo en contra le paga a la empresa, y su anulación. Es dinero de la tienda: sube lo que la empresa les debe a las tiendas |
@@ -167,9 +171,14 @@ y la cuenta lo muestra en su propia línea, **IVA facturado**.
 ## Lo que la empresa debe a la plataforma
 
 La plataforma cobra a la empresa un monto fijo por cada orden. En el lado de la empresa del resumen,
-debajo de **Saldo inicial y aportes**, hay una región propia, **Lo que la empresa debe a la
-plataforma**, con la pista «Lo que la plataforma cobra por cada orden creada, menos las anuladas.
-Todavía no se cobra: no sale de la caja.».
+debajo de **Saldo inicial y aportes**, hay una región propia que dice cuánto se debe y qué hacer. Cambia
+según cómo esté la empresa con la plataforma:
+
+| Cómo está | Qué dice la región | Botón |
+| --- | --- | --- |
+| **Debe** | **Lo que la empresa debe a la plataforma**, con lo que se debe y la pista «Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.» | **Registrar pago a la plataforma** |
+| **Al día** | **Lo que la empresa debe a la plataforma**, en cero, con la pista «La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.» | — |
+| **A favor** | **Saldo a favor de la empresa con la plataforma**, con lo que tiene a favor y la pista «La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.» | — |
 
 - **Qué cuenta.** Cada orden que se crea, por la pantalla, por la carga masiva o por la API, suma lo
   que cobraba la plataforma por orden **el día en que se creó**. Si después cambia ese monto, las
@@ -178,11 +187,39 @@ Todavía no se cobra: no sale de la caja.».
   contando**: no se eliminó.
 - **Es de toda la historia.** La cifra no depende del periodo ni de nada de la barra del libro: cambiar
   los filtros mueve las cifras de la caja, pero esta no.
-- **Todavía no se cobra.** Por ahora la app solo la muestra. No hay forma de pagarla desde aquí, y no
-  aparece en el libro.
-- **No cambia la caja.** No es dinero que haya salido: la cifra grande, **Entró**, **Salió**, la
-  ganancia, el IVA, la barra de reparto y **Cómo se compone la ganancia de la empresa** quedan igual que
-  si no existiera. Por eso no lleva insignia ni color de signo.
+- **Lo ya pagado se descuenta.** Lo que se debe es lo que suman las órdenes, menos las eliminadas, menos
+  los pagos registrados que no se anularon.
+- **La deuda sola no cambia la caja.** Mientras no se paga, no es dinero que haya salido: la cifra grande,
+  **Entró**, **Salió**, la ganancia, el IVA, la barra de reparto y **Cómo se compone la ganancia de la
+  empresa** quedan igual que si no existiera. Por eso no lleva insignia ni color de signo.
+
+### Pagarle a la plataforma
+
+El pago se hace **por fuera de la app** (una transferencia, por ejemplo), y aquí se **registra**. Pulsá
+**Registrar pago a la plataforma** en la región: se abre **Registrar un movimiento** con el concepto
+**Pago a la plataforma** ya elegido. También se puede elegir desde **Registrar un movimiento**, en **Sale
+dinero de la empresa**.
+
+- **Se pide** el monto, la fecha, la **referencia del pago** y, si lo tenés, un comprobante. No se pide a
+  quién: es la plataforma.
+- **Qué le pasa a la caja.** Es dinero de la empresa que sale: la cifra grande baja en el monto,
+  **Salió** sube en el monto y **la ganancia de la empresa baja** en el monto, como con un sueldo. **Lo que
+  la empresa les debe a las tiendas**, el **saldo inicial y aportes** y el IVA no cambian.
+- **La deuda baja** en el monto, y la región lo dice en cuanto se registra, sin recargar la página.
+- En el libro sale como **Pago a la plataforma**, con dueño **La empresa**, y en **Cómo se compone la
+  ganancia de la empresa** tiene su propia fila en **Egresos**.
+
+**No se puede pagar de más.** El pago no puede superar lo que la empresa debe en ese momento, y sin
+deuda no se registra. Si te pasás, el diálogo dice bajo el monto «El pago no puede ser mayor que lo que
+la empresa debe a la plataforma.» y no registra nada.
+
+**Cuándo aparece el saldo a favor.** Solo de una forma: si, después de pagar, se eliminan órdenes que ya
+estaban pagadas. Lo que esas órdenes habían sumado se resta, y la empresa queda con dinero a favor, que
+se descuenta de los cobros de las órdenes que vengan.
+
+**Si un pago se registró mal**, no se edita: se anula desde su fila del libro (**Ver** y luego
+**Anular…**), con un motivo, y se registra otro. Al anularlo, la deuda vuelve a subir en el monto y la
+caja y la ganancia también. Se puede anular aunque la empresa esté al día o a favor.
 
 ## De dónde entra el dinero solo
 
@@ -195,14 +232,14 @@ cierre se apruebe.
 
 ## Lo que sí se registra a mano
 
-**Registrar un movimiento** abre un diálogo con **diez conceptos en tres grupos**, a la izquierda; a la
+**Registrar un movimiento** abre un diálogo con **once conceptos en tres grupos**, a la izquierda; a la
 derecha, los campos del concepto que elegiste. Al elegir uno, el diálogo dice con una frase qué le pasa
 al dinero de la empresa, al saldo de la cuenta (si la toca) y a la ganancia, y con qué nombre va a salir en
 cada libro.
 
 | Grupo | Conceptos |
 | --- | --- |
-| **Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero |
+| **Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · Pago a la plataforma |
 | **Llega dinero a la caja** | Aporte de dinero a la caja · Una tienda le paga a la empresa · Corrección de caja (suma) |
 | **Se descuenta del saldo de una tienda** | La empresa le cobra a una tienda |
 
@@ -215,6 +252,8 @@ enlace a ellas.
 - **Sueldo** y **Gasto de la empresa**: **a quién se le pagó** —la persona o el proveedor, con su nombre
   libre—. **Es obligatorio.** La referencia es opcional.
 - **Corrección de caja**: **a quién**, si lo sabés (opcional), y la referencia, también opcional.
+- **Pago a la plataforma**: la **referencia del pago**, en lugar del motivo. No pide a quién. Más arriba,
+  en **Pagarle a la plataforma**, está qué le pasa a la caja y a la deuda.
 - **Los conceptos de una tienda o de un mensajero**: la cuenta, que se elige **buscando por su nombre**
   (solo cuentas activas).
 - **Los pagos** (a una tienda, a un mensajero, de una tienda a la empresa, y el pago de un gasto de una
@@ -387,7 +426,7 @@ de la tienda baja, sin dinero nuevo en la caja.
 Un **sueldo**, un **gasto de la empresa**, un **gasto fijo cobrado**, un **pago de un gasto de una tienda**,
 un **aporte de dinero a la caja**, un **cobro de la empresa a una tienda**, un **pago de una tienda a
 la empresa** o una **corrección de caja** no se editan. Tampoco un **cobro por devolución a origen a una tienda** ni una
-**indemnización por un incidente**. Ni un **pago de la empresa a una tienda** o un **premio del ranking**. Si hubo un error, se anulan desde el detalle de su fila: **Ver** y
+**indemnización por un incidente**. Ni un **pago de la empresa a una tienda**, un **pago a la plataforma** o un **premio del ranking**. Si hubo un error, se anulan desde el detalle de su fila: **Ver** y
 luego **Anular…**. Es la misma forma para todos:
 
 - **El motivo es obligatorio.** Queda guardado junto a la anulación.
@@ -405,6 +444,9 @@ luego **Anular…**. Es la misma forma para todos:
   cambia. En la caja aparece **Pago de una tienda a la empresa anulado**; en el libro de la tienda, «Pago
   de la tienda a la empresa anulado».
 - Al anular una corrección de caja, aparece la corrección contraria por el mismo monto.
+- Al anular un **pago a la plataforma**, aparece una **Corrección de caja (suma)** por el mismo monto: la
+  cifra grande, **Entró** y la ganancia vuelven a subir, y **lo que la empresa debe a la plataforma** sube
+  en el monto.
 - Un **cobro por devolución a origen** tiene dos líneas en la caja, el flete y su IVA: se anula desde **cualquiera de
   las dos** y se anulan **las dos juntas**. La **ganancia baja** en el flete y el **IVA cobrado** en su IVA, **lo que la empresa
   les debe a las tiendas** y el saldo de la tienda **vuelven a subir** en lo mismo (si al cobrarlo se le
@@ -509,6 +551,7 @@ mirando, y las mismas columnas que la tabla (**A quién** y **Registró** inclui
 - **No es el saldo del banco**, salvo que alguien haya registrado el saldo inicial real.
 - **No se editan movimientos.** Un sueldo, un gasto, un pago de un gasto, un aporte, un cobro a una
   tienda, un pago de una tienda a la empresa, una corrección, un cobro por devolución a origen o una indemnización se
-  anulan con motivo; los demás son inmutables.
+  anulan con motivo; los demás son inmutables. Un pago a la plataforma, también.
+- **No cobra la plataforma.** El pago a la plataforma se hace por fuera de la app; aquí solo se registra.
 - **No se corrigen cifras de entregas.** Un movimiento que nació de un cierre se arregla en el cierre,
   no acá.

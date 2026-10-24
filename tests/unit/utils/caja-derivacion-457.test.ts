@@ -163,9 +163,11 @@ describe("457/T2.2 — R7 por construccion: identidad sobre 500 subconjuntos con
     // Ficha 458-B: los dos reversos de cargo de la anulacion de un cobro por devolución a origen.
     fila("egreso_reverso_flete_devolucion", "1000.00"),
     fila("egreso_reverso_iva_flete_devolucion", "130.00"),
+    // SL-45: el pago de la empresa a la plataforma.
+    fila("egreso_pago_plataforma", "750.00"),
   ];
 
-  it("el POOL cubre las 27 categorias del catalogo (anti-vacuidad)", () => {
+  it("el POOL cubre las 28 categorias del catalogo (anti-vacuidad)", () => {
     const cubiertas = new Set(POOL.map((f) => f.categoria));
     for (const c of WALLET_MOVIMIENTO_CATEGORIA_SEED) expect(cubiertas.has(c), c).toBe(true);
   });

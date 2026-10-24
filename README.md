@@ -125,19 +125,32 @@ pnpm arranque:superadmin
 
 #### El correo, sin el cual nadie entra
 
-El superadmin entra por `/login`. En un dispositivo nuevo, el login pide un código por correo, y el
-maestro de cada empresa nueva entra con «¿Olvidaste tu contraseña?», que también lo manda por
-correo. Así que, antes de dar de alta la primera empresa real, cada entorno necesita el correo
-configurado (variables de `lib/config/email.ts`, por entorno en Vercel: Production y Preview por
-separado):
+El superadmin entra por `/login`. En un dispositivo nuevo, el login pide un código por correo. El
+maestro de cada empresa nueva recibe al darse de alta un correo de bienvenida con un enlace para
+crear su contraseña; vale una sola vez y caduca. Si no le llega o se le vence, el superadmin lo
+reenvía con «Reenviar bienvenida» en la fila de la empresa, en «Empresas», o el maestro pide un
+código con «¿Olvidaste tu contraseña?», que queda de respaldo. Así que, antes de dar de alta la
+primera empresa real, cada entorno necesita el correo configurado (por entorno en Vercel:
+Production y Preview por separado):
 
 - **Con SMTP:** el relay de Brevo. `SMTP_HOST=smtp-relay.brevo.com` y `SMTP_PORT=587`, con
-  `SMTP_USER` y `SMTP_PASSWORD`, que son el usuario y la clave SMTP de la cuenta de Brevo. Si
-  `SMTP_FROM` se rellena, tiene que ser un remitente verificado en Brevo. Con `SMTP_USER` y
-  `SMTP_PASSWORD` puestas, el correo sale de verdad.
+  `SMTP_USER` y `SMTP_PASSWORD`, que son el usuario y la clave SMTP de la cuenta de Brevo.
+  `SMTP_FROM` es el remitente, y tiene que ser uno verificado en Brevo: si falta, se usa
+  `SMTP_USER`, que en Brevo es un login y no una dirección desde la que se pueda enviar. Con
+  `SMTP_USER` y `SMTP_PASSWORD` puestas, el correo sale de verdad.
 - **Sin SMTP** (desarrollo y CI): si falta `SMTP_USER` o `SMTP_PASSWORD`, el correo cae a
   `ConsoleEmailSender` y no sale ninguno. El log recoge el destinatario y el asunto, que no lleva
   el código. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`,
   que en producción se deja vacío porque deja un secreto en los logs.
 
-Comprueba que llega un código real en cada entorno antes de dar de alta la primera empresa.
+- **`NEXT_PUBLIC_APP_URL`**: la URL pública de la app, sin barra final. Sin ella la bienvenida no
+  sale (el alta termina igual, la pantalla avisa de que el correo no salió y el servidor registra un
+  aviso que nombra la variable), y la cabecera de los correos lleva el nombre en texto en vez del
+  logo.
+- **`AUTH_BIENVENIDA_TTL_HORAS`** (opcional): las horas que vale el enlace de bienvenida. Por
+  defecto, 72.
+- **`EMAIL_CONTACTO`** (opcional): un email de contacto para el pie de todos los correos. Vacía o
+  con un valor que no es un email, el pie no muestra ninguna dirección.
+
+Comprueba que llega un código real en cada entorno antes de dar de alta la primera empresa, y que
+la bienvenida de la primera empresa llega con el enlace bien formado.

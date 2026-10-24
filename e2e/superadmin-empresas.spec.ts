@@ -8,6 +8,7 @@ import {
   asegurarSuperadmin,
   codigoEnviadoA,
   conCandadoDelSuperadmin,
+  enlaceEnviadoA,
   enlacesDelMenu,
   entrarConOtp,
   NO_ENCONTRADO,
@@ -25,9 +26,12 @@ import {
  * 3. Repetir el slug de A, el email de su maestro y su documento muestra cada error junto a su
  *    campo, y de lo que intentó esta corrida solo existen A y B.
  * 4. Un slug inválido muestra el error sin crear nada.
- * 5. Cada maestro entra por «¿Olvidaste tu contraseña?» con el código del emisor de consola, y
- *    después por `/login` con OTP. «Empresas» le da 404 (R35).
+ * 5. SL-41 T12: el maestro de A crea su contraseña con el enlace de bienvenida, leído de la línea
+ *    de depuración del emisor de consola. Un segundo uso del enlace muestra el genérico (R18, R19,
+ *    R21). El de B entra por «¿Olvidaste tu contraseña?» con el código, que sigue vivo (SL-32 R38).
+ *    Los dos entran después por `/login` con OTP. «Empresas» les da 404 (R35).
  * 6. Ningún maestro ve el ítem «Empresas».
+ * 7. SL-41 (R38): con los dos maestros ya con contraseña, ninguna fila lleva «Reenviar bienvenida».
  *
  * Los textos que se afirman son los literales de la propuesta aprobada de T12 (`design.md`).
  *
@@ -38,13 +42,21 @@ import {
  * y dos corridas seguidas en verde, R27). Por eso el listado se comprueba por los slugs de ESTA
  * corrida y nunca por un recuento total, y no se afirma el estado vacío: su texto y la ausencia de
  * la tabla los cubre `tests/components/empresas-module.test.tsx` («sin empresas pinta el estado
- * vacío y no la tabla»). Nada se borra al terminar.
+ * vacío y no la tabla»). Nada se borra al terminar. SL-41: el build de la app necesita además
+ * `NEXT_PUBLIC_APP_URL` (Next la incrusta al compilar); sin ella no hay enlace (R40) y el paso 2
+ * falla al leerlo.
  */
 
 test.describe.configure({ mode: "serial" });
 
 const TEXTO = {
-  aviso: "Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.",
+  // SL-41 (R26): sin `SMTP_*` la bienvenida sale por consola, así que la action dice `sin_correo`.
+  avisoNoEnviada:
+    "Empresa creada, pero el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.",
+  avisoSinCorreo: "El correo no está configurado en este entorno.",
+  reenviar: "Reenviar bienvenida",
+  creaTuContrasena: "Crea tu contraseña",
+  enlaceInvalido: "El enlace no es válido o ya venció.",
   vacio: "Aún no hay empresas. Crea la primera con el formulario.",
   errorSlug: "Ya hay una empresa con ese slug.",
   errorEmail: "Ese email ya pertenece a otro usuario.",
@@ -83,6 +95,8 @@ let dueno: PrismaClient | null = null;
 let contextoSa: BrowserContext | null = null;
 let sa: Page | null = null;
 const altas: Partial<Record<Letra, DatosDeAlta>> = {};
+/** SL-41: el valor de `#enlace=` de la bienvenida de cada alta, leído del log en el paso 2. */
+const enlaces: Partial<Record<Letra, string>> = {};
 /** Todo slug que esta corrida mandó al formulario: de ellos, solo A y B deben existir. */
 const slugsIntentados = new Set<string>();
 
@@ -151,6 +165,11 @@ async function enviarAlta(page: Page, d: DatosDeAlta): Promise<void> {
   await f.boton.click();
 }
 
+/** Cualquier aviso del alta: el de éxito o la advertencia de SL-41 empiezan igual. */
+function avisoDeAlta(page: Page) {
+  return page.getByText(/^Empresa creada/);
+}
+
 /** Las filas del cuerpo del listado (sin la cabecera). */
 function filasDelListado(page: Page) {
   return page.getByRole("table").locator("tbody tr");
@@ -183,7 +202,7 @@ test("1. «Empresas» abre con el formulario de alta y sin aviso (R29)", async (
   await page.goto("/plataforma/empresas");
   await expect(page.getByRole("heading", { level: 1, name: "Empresas" })).toBeVisible();
   await expect(formulario(page).boton).toBeVisible();
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(avisoDeAlta(page)).toHaveCount(0);
 });
 
 test("2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29)", async () => {
@@ -191,14 +210,21 @@ test("2. crea A y B desde el formulario y las dos salen en el listado con su mae
   const page = superadmin();
   for (const letra of ["A", "B"] as const) {
     const d = datosNuevos(letra);
+    // El log se abre ANTES del alta: solo cuenta lo que el servidor escriba desde aquí.
+    const log = LogDelServidor.desdeEntorno();
     await enviarAlta(page, d);
-    await expect(page.getByRole("status")).toHaveText(TEXTO.aviso);
+    const aviso = page.getByRole("alert").filter({ hasText: TEXTO.avisoNoEnviada });
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toContainText(TEXTO.avisoSinCorreo);
     altas[letra] = d;
+    enlaces[letra] = await enlaceEnviadoA(log, d.email);
 
     const fila = filasDelListado(page).filter({ hasText: d.slug });
     await expect(fila).toHaveCount(1);
     await expect(fila).toContainText(d.nombre);
     await expect(fila.getByRole("listitem")).toHaveText(`${d.maestroNombre} · ${d.email}`);
+    // R29/R38: el maestro aún no tiene contraseña propia, así que la fila ofrece el reenvío.
+    await expect(fila.getByRole("button", { name: TEXTO.reenviar })).toBeVisible();
     // Tras el éxito el formulario queda vacío para la siguiente (propuesta de T12).
     await expect(formulario(page).slug).toHaveValue("");
   }
@@ -233,7 +259,7 @@ test("3. repetir el slug, el email o el documento de A marca su campo y no crea 
     const f = formulario(page);
     await esperarErrorEn(f[caso.campo], caso.texto);
     await expect(page.getByText(caso.texto, { exact: true })).toHaveCount(1);
-    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(avisoDeAlta(page)).toHaveCount(0);
     await page.reload();
     await soloExistenAyB(page);
   }
@@ -245,7 +271,7 @@ test("4. un slug inválido marca el campo sin crear nada (R34)", async () => {
   const d = { ...datosNuevos("D"), slug: "Slug Con Espacios" };
   await enviarAlta(page, d);
   await esperarErrorEn(formulario(page).slug, TEXTO.errorCampo);
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(avisoDeAlta(page)).toHaveCount(0);
   await page.reload();
   await soloExistenAyB(page);
   expect(await dueno!.usuario.count({ where: { email: d.email } })).toBe(0);
@@ -255,30 +281,72 @@ test("4. un slug inválido marca el campo sin crear nada (R34)", async () => {
 /* Pasos 5-6: cada maestro                                                     */
 /* -------------------------------------------------------------------------- */
 
+function enlace(letra: Letra): string {
+  const e = enlaces[letra];
+  if (!e) throw new Error(`no hay enlace de bienvenida de ${letra}: falló el paso 2`);
+  return e;
+}
+
+/** Abre el enlace de bienvenida y rellena «Crea tu contraseña» con `password`. */
+async function usarEnlace(page: Page, letra: Letra, password: string): Promise<void> {
+  // Desde otra ruta: un `goto` que solo cambia el fragmento no vuelve a montar el formulario.
+  await page.goto("/login");
+  await page.goto(`/recuperar-contrasena#enlace=${enlace(letra)}`);
+  await expect(page.getByRole("heading", { name: TEXTO.creaTuContrasena })).toBeVisible({ timeout: 60_000 });
+  // R21: el secreto ya no está en la barra.
+  expect(new URL(page.url()).hash).toBe("");
+  await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
+  await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Crear contraseña" }).click();
+}
+
+/** SL-41 (R18, R19): A crea la contraseña con el enlace, y el enlace ya usado no vale. */
+async function contrasenaPorEnlace(page: Page, password: string): Promise<void> {
+  await usarEnlace(page, "A", password);
+  await expect(page.getByText("Contraseña creada")).toBeVisible({ timeout: 60_000 });
+
+  await usarEnlace(page, "A", `Bb2!${randomBytes(12).toString("base64url")}`);
+  // Filtrado: el anunciador de rutas de Next también es un `role="alert"`.
+  await expect(page.getByRole("alert").filter({ hasText: TEXTO.enlaceInvalido })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByRole("button", { name: "Pedir un código por correo" })).toBeVisible();
+}
+
+/** SL-32 (R38): B la crea por «¿Olvidaste tu contraseña?» con el código del emisor de consola. */
+async function contrasenaPorCodigo(page: Page, d: DatosDeAlta, password: string): Promise<void> {
+  await page.goto("/login");
+  await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
+  await page.waitForURL("**/recuperar-contrasena");
+
+  const log = LogDelServidor.desdeEntorno();
+  await page.getByLabel("Correo electrónico").fill(d.email);
+  await page.getByRole("button", { name: "Enviar código" }).click();
+  const campoCodigo = page.getByLabel("Código de verificación");
+  await expect(campoCodigo).toBeVisible({ timeout: 60_000 });
+  await campoCodigo.fill(await codigoEnviadoA(log, d.email));
+  await page.getByRole("button", { name: "Verificar código" }).click();
+
+  await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
+  await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Restablecer contraseña" }).click();
+  await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
+}
+
 for (const letra of ["A", "B"] as const) {
-  test(`5-6. el maestro de ${letra} entra con «¿Olvidaste tu contraseña?», «Empresas» le da 404 y no la ve (R37, R35)`, async ({
+  const via = letra === "A" ? "el enlace de bienvenida" : "«¿Olvidaste tu contraseña?»";
+  test(`5-6. el maestro de ${letra} crea su contraseña con ${via}, «Empresas» le da 404 y no la ve (R18, R19, R35)`, async ({
     page,
   }) => {
     test.setTimeout(180_000);
     const d = alta(letra);
     const password = `Aa1!${randomBytes(12).toString("base64url")}`;
 
-    await page.goto("/login");
-    await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
-    await page.waitForURL("**/recuperar-contrasena");
-
-    const log = LogDelServidor.desdeEntorno();
-    await page.getByLabel("Correo electrónico").fill(d.email);
-    await page.getByRole("button", { name: "Enviar código" }).click();
-    const campoCodigo = page.getByLabel("Código de verificación");
-    await expect(campoCodigo).toBeVisible({ timeout: 60_000 });
-    await campoCodigo.fill(await codigoEnviadoA(log, d.email));
-    await page.getByRole("button", { name: "Verificar código" }).click();
-
-    await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
-    await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Restablecer contraseña" }).click();
-    await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
+    if (letra === "A") {
+      await contrasenaPorEnlace(page, password);
+    } else {
+      await contrasenaPorCodigo(page, d, password);
+    }
 
     await entrarConOtp(page, d.email, password);
     const menu = await enlacesDelMenu(page);
@@ -291,3 +359,10 @@ for (const letra of ["A", "B"] as const) {
     await expect(page.getByText(alta(letra === "A" ? "B" : "A").slug)).toHaveCount(0);
   });
 }
+
+test("7. con las dos contraseñas creadas, ninguna fila ofrece «Reenviar bienvenida» (R38)", async () => {
+  const page = superadmin();
+  await page.goto("/plataforma/empresas");
+  await expect(filasDelListado(page)).toHaveCount(2);
+  await expect(page.getByRole("button", { name: TEXTO.reenviar })).toHaveCount(0);
+});

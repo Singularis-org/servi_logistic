@@ -132,11 +132,17 @@ export class UserRepository implements IUserRepository {
     }
   }
 
-  /** Feature 20/R9: actualiza solo `password_hash`; no expone el hash de vuelta. */
+  /**
+   * Feature 20/R9: actualiza `password_hash`; no expone el hash de vuelta.
+   *
+   * SL-41/R38: en el mismo UPDATE marca `contrasena_definida_at`. Este metodo solo lo usa el
+   * auto-servicio (codigo o enlace de bienvenida), asi que la marca significa «la eligio el propio
+   * usuario»; `restablecerContrasena` (la pone otra persona) no la toca a proposito.
+   */
   async updatePasswordHash(usuarioId: string, passwordHash: string): Promise<void> {
     await this.prisma.usuario.update({
       where: { id: usuarioId },
-      data: { passwordHash },
+      data: { passwordHash, contrasenaDefinidaAt: new Date() },
     });
   }
 

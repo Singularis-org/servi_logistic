@@ -3,6 +3,9 @@
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
+import { TopePagoPlataformaService } from "@/lib/services/TopePagoPlataformaService";
+import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
+import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -64,7 +67,13 @@ function toEgresoActionError(
 function buildService(): IWalletEgresoService {
   const prisma = getPrismaClient();
   const repo = new WalletMovimientoRepository(prisma);
-  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma));
+  // SL-45 (design §6): el tope del pago a la plataforma, con los repositorios reales. Sin él, el
+  // servicio rechaza todo pago (lo vigila `wallet-egresos.composition-root.test.ts`).
+  const tope = new TopePagoPlataformaService(
+    new CobroPlataformaMovimientoRepository(prisma),
+    new PagoPlataformaRepository(prisma),
+  );
+  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma), tope);
 }
 
 export interface WalletEgresoDeps {

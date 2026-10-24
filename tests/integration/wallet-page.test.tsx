@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));
-import { render, screen, cleanup, waitFor, within } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, within, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RolValue } from "@prisma/client";
 
 import { SWRConfig } from "swr";
@@ -83,7 +84,12 @@ vi.mock("@/lib/actions/rechazo-tienda-cobro", () => ({
 // SL-40 (T7): la página lee también la deuda con la plataforma. Sin este doble la action real abre
 // Prisma. Lo que la página hace con ella lo mide `tests/components/WalletDeudaPlataformaSL40.test.tsx`.
 vi.mock("@/lib/actions/deuda-plataforma", () => ({
-  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00" } })),
+  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" } })),
+}));
+// SL-45 (T8, R5): el caso del pago teclea un monto en el diálogo, y el diálogo pide su «Así queda» al
+// servidor. Sin este doble esa lectura iría contra la base.
+vi.mock("@/lib/actions/efecto-movimiento", () => ({
+  previsualizarMovimientoAction: vi.fn(async () => ({ status: "forbidden" })),
 }));
 
 // FICHA 458-E (T E.1/T E.2): el libro nuevo lee «A quién» y «Registró» de la página y el filtro de
@@ -145,6 +151,8 @@ import { listarPlantillasPaginadoAction } from "@/lib/actions/gasto-fijo-plantil
 import { listarCobrosPendientesAction } from "@/lib/actions/gasto-fijo-cobro";
 import { listarCobrosRechazoTiendaAction } from "@/lib/actions/rechazo-tienda-cobro";
 import { autoriaDelLibroCajaAction } from "@/lib/actions/libro-caja-autoria";
+import { verDeudaPlataformaAction } from "@/lib/actions/deuda-plataforma";
+import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egresos";
 import { money } from "@/app/(app)/wallet/_components/wallet-labels";
 
 const resolveActorMock = vi.mocked(resolveActorFromSession);
@@ -249,6 +257,7 @@ const RESUMEN_OK = {
       egreso_ajuste: "0.00",
       egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
       egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
+      egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
     },
     otrosEgresos: "0.00",
     totalEgresos: "0.00",
@@ -697,5 +706,88 @@ describe("SL-15 R21 — /wallet nombra a la empresa", () => {
       "Caja principal de la empresa: libro de movimientos, cifras de la caja y ganancia de la empresa",
     );
     expect(screen.getByRole("region", { name: "Ganancia de la empresa" })).toBeInTheDocument();
+  });
+});
+
+// =================================================================================================
+// SL-45 (T8, R5, design §7.2) — TRAS REGISTRAR, LA DEUDA SE RELEE SIN RECARGAR LA PÁGINA
+// =================================================================================================
+//
+// Se monta `/wallet` entera (página real → módulo REAL) con la deuda en «debe» 1.000,00. El pago se
+// registra desde el botón de la región; el servidor responde que ahora se deben 400,00, y la región lo
+// dice sin recargar. Los importes esperados van escritos a mano. La anulación vuelve a la pantalla por el
+// mismo `recargarTrasCambio` (el `onCambio` del libro); el E2E de T10 la recorre en el navegador.
+describe("SL-45 R5 — la región de la deuda se relee tras registrar", () => {
+  const DEBE_1000 = { status: "ok" as const, deudaPlataforma: { deuda: "1000.00", estado: "debe" as const, importe: "1000.00" } };
+  const DEBE_400 = { status: "ok" as const, deudaPlataforma: { deuda: "400.00", estado: "debe" as const, importe: "400.00" } };
+
+  // `clearAllMocks` no repone implementaciones: se deja la deuda «al día» del doble de arriba, para que
+  // ningún caso de otro bloque herede la de este.
+  afterEach(() => {
+    vi.mocked(verDeudaPlataformaAction)
+      .mockReset()
+      .mockResolvedValue({ status: "ok", deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" } });
+  });
+
+  async function pintarConDeuda() {
+    montarModuloReal = true;
+    resolveActorMock.mockResolvedValue({ usuarioId: "m", rol: "maestro" });
+    vi.mocked(verDeudaPlataformaAction).mockResolvedValueOnce(DEBE_1000).mockResolvedValue(DEBE_400);
+    vi.mocked(registrarEgresoAdministrativoAction).mockResolvedValue({
+      status: "ok",
+      movimiento: { id: "pago-1" },
+    } as unknown as Awaited<ReturnType<typeof registrarEgresoAdministrativoAction>>);
+    const { default: WalletPage } = await import("@/app/(app)/wallet/page");
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ToastProvider>{await WalletPage()}</ToastProvider>
+      </SWRConfig>,
+    );
+    return userEvent.setup();
+  }
+
+  const region = () => screen.getByRole("region", { name: "Lo que la empresa debe a la plataforma" });
+  const cifras = () => (region().querySelector(".tabular-nums")?.textContent ?? "").replace(/[^\d.,-]/g, "");
+
+  it("R5: tras registrar el pago, la región pinta la deuda nueva que respondió el servidor", async () => {
+    const user = await pintarConDeuda();
+    expect(cifras()).toBe("1.000");
+    expect(vi.mocked(verDeudaPlataformaAction)).toHaveBeenCalledTimes(1);
+
+    await user.click(within(region()).getByRole("button", { name: "Registrar pago a la plataforma" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Monto/), { target: { value: "600" } });
+    fireEvent.change(within(dialog).getByLabelText(/^Referencia del pago/), { target: { value: "Transferencia 4455" } });
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+
+    await waitFor(() => expect(vi.mocked(registrarEgresoAdministrativoAction)).toHaveBeenCalledTimes(1));
+    // La deuda se pidió otra vez, sin filtros, y la región dice la nueva.
+    await waitFor(() => expect(vi.mocked(verDeudaPlataformaAction)).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(verDeudaPlataformaAction)).toHaveBeenLastCalledWith();
+    await waitFor(() => expect(cifras()).toBe("400"));
+  });
+
+  it("R5: si la relectura responde `forbidden`, la región deja de pintarse (como en la página)", async () => {
+    const user = await pintarConDeuda();
+    vi.mocked(verDeudaPlataformaAction).mockReset().mockResolvedValue({ status: "forbidden" });
+    await user.click(within(region()).getByRole("button", { name: "Registrar pago a la plataforma" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Monto/), { target: { value: "600" } });
+    fireEvent.change(within(dialog).getByLabelText(/^Referencia del pago/), { target: { value: "Transferencia 4455" } });
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+
+    await waitFor(() => expect(vi.mocked(verDeudaPlataformaAction)).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.querySelector('[data-region="deuda_plataforma"]')).toBeNull());
+  });
+
+  it("R1 (excepción a la 334): con deuda, la región suma el botón del pago a «Registrar un movimiento»", async () => {
+    await pintarConDeuda();
+    const registradores = screen
+      .getAllByRole("button")
+      .filter((b) => (b.textContent ?? "").trim().startsWith("Registrar"));
+    expect(registradores.map((b) => (b.textContent ?? "").trim())).toEqual([
+      "Registrar un movimiento",
+      "Registrar pago a la plataforma",
+    ]);
   });
 });

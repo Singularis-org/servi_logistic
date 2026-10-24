@@ -32,6 +32,11 @@ export interface AuthConfig {
   RESET_VERIFY_WINDOW_MINUTES: number;
   /** Maximo de intentos de verificacion por email/IP dentro de la ventana (F20/R20). */
   RESET_MAX_VERIFY_ATTEMPTS: number;
+  /**
+   * SL-41/R17: vida en horas del enlace de bienvenida del primer maestro. 72 por defecto: un alta
+   * del viernes por la tarde se abre el lunes, y un enlace vencido cuesta un clic de «Reenviar».
+   */
+  BIENVENIDA_TTL_HORAS: number;
 }
 
 export function loadAuthConfig(): AuthConfig {
@@ -47,6 +52,7 @@ export function loadAuthConfig(): AuthConfig {
     RESET_MAX_REQUESTS: readPositiveInt("AUTH_RESET_MAX_REQUESTS", 3),
     RESET_VERIFY_WINDOW_MINUTES: readPositiveInt("AUTH_RESET_VERIFY_WINDOW_MINUTES", 10),
     RESET_MAX_VERIFY_ATTEMPTS: readPositiveInt("AUTH_RESET_MAX_VERIFY_ATTEMPTS", 5),
+    BIENVENIDA_TTL_HORAS: readPositiveInt("AUTH_BIENVENIDA_TTL_HORAS", 72),
   };
 }
 

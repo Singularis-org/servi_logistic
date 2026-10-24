@@ -7,7 +7,8 @@ export interface IEmpresasPlataformaRepository {
   /**
    * Todas las organizaciones, la mas reciente primero (`created_at` descendente). Cada una con
    * sus usuarios de rol `maestro`, por orden de alta (`created_at` ascendente), y de ellos solo
-   * `nombre` y `email`. Sin organizaciones, `[]`.
+   * `nombre` y `email`. Sin organizaciones, `[]`. SL-45 (R28): cada una con su deuda con la
+   * plataforma y lo que ha pagado (`deudaPlataforma`, `pagadoPlataforma`).
    *
    * No filtra por `organizacion_id`: es una lectura de plataforma, y la implementacion corre
    * dentro de `comoPlataforma` (T14b). Quien comprueba que el actor puede leerla es el servicio.

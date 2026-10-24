@@ -85,6 +85,10 @@ export const WALLET_MOVIMIENTO_CATEGORIA_SEED = [
   // liquidez «cargo»; bajan la ganancia y suben «De las tiendas» sin tocar «Entro» ni «Salio».
   "egreso_reverso_flete_devolucion",
   "egreso_reverso_iva_flete_devolucion",
+  // SL-45 (design §2): el pago de la empresa a la plataforma, registrado a mano. Egreso propio en
+  // efectivo, como el sueldo: baja la cifra principal y la ganancia. Descuenta la deuda de SL-40
+  // mientras no tenga contra-asiento.
+  "egreso_pago_plataforma",
 ] as const satisfies readonly PrismaWalletMovimientoCategoria[];
 
 export type WalletMovimientoCategoria = (typeof WALLET_MOVIMIENTO_CATEGORIA_SEED)[number];
@@ -267,6 +271,9 @@ export const WALLET_EGRESO_NOMBRADO_SEED = [
   "egreso_ajuste",
   "egreso_reverso_cobro_tienda",
   "egreso_reverso_flete_devolucion",
+  // SL-45 (design §2, R24): el pago a la plataforma tiene nombre propio en la tarjeta. Dentro de
+  // «Otros gastos» no se veria cuanto de la ganancia se fue en pagarle a la plataforma.
+  "egreso_pago_plataforma",
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletEgresoNombrado = (typeof WALLET_EGRESO_NOMBRADO_SEED)[number];
@@ -824,9 +831,12 @@ export type ListarMovimientosCompletoResult = ListarCompletoResult<ConOrigen<Wal
 
 // ── Feature 45 — egresos administrativos (manual) + reversa ──
 
-// Los DOS tipos de egreso administrativo que se registran A MANO (R2/R19). El gasto FIJO
+// Los tipos de egreso administrativo que se registran A MANO (R2/R19). El gasto FIJO
 // NO entra aqui: lo EMITE el cron mensual (R27), no el formulario manual.
-export const TIPO_EGRESO_MANUAL_SEED = ["gasto_variable", "sueldo"] as const;
+// SL-45 (design §2): + el pago a la plataforma. Va por este mismo camino porque ya trae la
+// idempotencia, el historial y la anulacion de los egresos con origen `gasto`; lo unico suyo es el
+// tope contra la deuda, que vive en el servicio.
+export const TIPO_EGRESO_MANUAL_SEED = ["gasto_variable", "sueldo", "pago_plataforma"] as const;
 export type TipoEgresoManual = (typeof TIPO_EGRESO_MANUAL_SEED)[number];
 
 // Mapa tipo de egreso manual -> categoria del libro (R2). Se reutiliza `egreso_sueldo`
@@ -835,6 +845,7 @@ export type TipoEgresoManual = (typeof TIPO_EGRESO_MANUAL_SEED)[number];
 export const TIPO_EGRESO_MANUAL_A_CATEGORIA = {
   gasto_variable: "egreso_gasto_variable",
   sueldo: "egreso_sueldo",
+  pago_plataforma: "egreso_pago_plataforma", // SL-45: categoria propia, la que cuenta la deuda
 } as const satisfies Record<TipoEgresoManual, WalletMovimientoCategoria>;
 
 // R2/R4/R5/R19 (borde): egreso manual = tipo del conjunto {gasto_variable, sueldo}, monto

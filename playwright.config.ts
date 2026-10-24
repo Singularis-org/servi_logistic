@@ -74,6 +74,8 @@ export default defineConfig({
         "rastreo-publico",
         "analitica-roles",
         "cobro-plataforma-sl40",
+        // Detrás del de SL-40: los dos tocan el valor global del cobro (workers: 1, en orden).
+        "pago-plataforma-sl45",
       ),
     },
     {
