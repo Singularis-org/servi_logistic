@@ -4,6 +4,8 @@ import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
+import { SINPE_DE_PRUEBA } from "./_dos-empresas-fixture";
+
 // SL-39 (T5, C2, T7) — la siembra del recorrido en el navegador de `wallet-iva-aparte-sl39.spec.ts`.
 //
 // Dos empresas, A y B, dadas de alta por el servicio (molde de SL-17, `_dos-empresas-fixture.ts`).
@@ -145,7 +147,7 @@ export async function sembrarCierres(
       const central = await tx.zona.create({
         data: {
           nombre: `Central SL39 ${sufijo}`,
-          sinpeNumero: "80000000",
+          sinpeNumero: SINPE_DE_PRUEBA,
           sinpeNombre: "Titular SL39",
           esCentral: true,
           sinpeRevisadoAt: new Date(),
@@ -155,7 +157,7 @@ export async function sembrarCierres(
       const zona = await tx.zona.create({
         data: {
           nombre: `Zona SL39 ${sufijo}`,
-          sinpeNumero: "80000000",
+          sinpeNumero: SINPE_DE_PRUEBA,
           sinpeNombre: "Titular SL39",
           sinpeRevisadoAt: new Date(),
         },

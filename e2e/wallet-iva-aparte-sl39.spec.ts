@@ -13,7 +13,7 @@ import { CAJA_A, CAJA_B, importeDeTexto, sembrarCaja, sembrarCierres, type Cierr
 //
 // Cifras ESCRITAS A MANO (design §1 y §12.4): son el contrato. Derivarlas con las funciones de
 // produccion las compararia contra su propia fuente.
-//   A, caja: cod 20000 · flete 2500 + IVA 325 · comision 700 + IVA 91 · pago al mensajero 1500
+//   A, caja: cod 20.000 · flete 2500 + IVA 325 · comision 700 + IVA 91 · pago al mensajero 1500
 //     → IVA cobrado 325 + 91 = 416,00 · ganancia (2500 + 700) − 1500 = 1.700,00
 //   B, caja: cod 500 · flete 40 + IVA 5,20 · IVA de la comision 1,30
 //     → IVA cobrado 6,50 · ganancia 40,00
