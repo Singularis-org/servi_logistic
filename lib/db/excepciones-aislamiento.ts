@@ -171,4 +171,9 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-32",
     motivo: "marco del portal: leer el nombre del superadmin, que no tiene empresa, para el pie (R6)",
   },
+  {
+    archivo: "lib/repositories/CobroPlataformaTarifaRepository.ts",
+    ficha: "SL-40",
+    motivo: "valor global y excepción por empresa del cobro por orden: los edita el superadmin, que no tiene empresa (R1, R2)",
+  },
 ];

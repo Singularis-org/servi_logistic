@@ -29,6 +29,7 @@ const EMPRESAS: EmpresaListada[] = [
       { nombre: "Ana Pérez", email: "ana@norte.test" },
       { nombre: "Luis Gómez", email: "luis@norte.test" },
     ],
+    cobroPorOrden: null,
   },
   {
     id: "org-1",
@@ -36,6 +37,7 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "reparto-sur",
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
+    cobroPorOrden: null,
   },
 ];
 

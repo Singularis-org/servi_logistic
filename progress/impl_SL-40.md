@@ -312,3 +312,80 @@ Typecheck (con el cliente regenerado dentro del lock) → 0 errores. Lint de los
 
 T0–T4 hechas: las tres migraciones con su down, los triggers registran cargo y reverso por las tres
 vías de creación y las dos de anulación, 17 + 2 mutaciones medidas en rojo y ninguna regresión fuera del baseline.
+
+## T5
+
+Configuración del superadmin (R1–R7), tanda B. Base desechable `sl40_t5` (`migrate deploy` + `db:seed`,
+borrada al terminar). Todo lo que usa el cliente corrió con `gate.lock` tomado y `prisma generate` dentro.
+El MCP `codebase-memory-mcp` no estaba entre las herramientas de este agente: Grep/Read.
+
+**Arreglo previo (`99a8938`).** `catalogo-postgres-acota-esquema` estaba en rojo por cinco consultas
+de `migracion-sl40-ida-y-vuelta` sin esquema. Acotadas a `public` (`pg_trigger` por `pg_class` →
+`pg_namespace`). Guardia 7/7 en verde; ida y vuelta 4/4 en verde contra la base; sin el
+`DROP FUNCTION cobro_plataforma_al_crear_orden()` del down de 130200 → 2 failed / 2 passed, y sin el
+`DROP TYPE "cobro_plataforma_fuente"` del down de 130100 → 2 failed / 2 passed.
+
+**Archivos nuevos**
+- `lib/types/cobro-plataforma.ts`: `montoCobroSchema` (texto `^\d{1,10}(\.\d{1,2})?$`, sin `Number`),
+  `fijarCobroGlobalSchema`, `fijarCobroEmpresaSchema` (`monto` nulable = quitar), `CobroGlobalDTO`,
+  `VerCobroGlobalResult` y `FijarCobroResult`. Los tipos de la deuda no están aquí: T6 los dejó en
+  `IDeudaPlataformaService.ts` para no pisar este archivo.
+- `lib/interfaces/repositories/ICobroPlataformaTarifaRepository.ts` y
+  `lib/repositories/CobroPlataformaTarifaRepository.ts`: `leerGlobal`, `fijarGlobal` (upsert de la fila
+  `true`), `existeEmpresa` y `fijarDeEmpresa`, todo en `comoPlataforma("SL-40", …)`.
+- `lib/interfaces/services/ICobroPlataformaService.ts` y `lib/services/CobroPlataformaService.ts`:
+  `esPlataforma` (por import) → zod → existencia → escritura.
+- `lib/actions/cobro-plataforma.ts` (`'use server'`): `verCobroGlobalAction`, `fijarCobroGlobalAction`
+  y `fijarCobroEmpresaAction`, con `@sin-superficie` hasta que T8 las cablee en «Empresas».
+- Tests: `tests/unit/types/cobro-plataforma-schema.test.ts`, `tests/unit/services/cobro-plataforma-service.test.ts`,
+  `tests/unit/actions/cobro-plataforma.composition-root.test.ts`, `tests/integration/db/empresas-plataforma-cobro.test.ts`.
+
+**Archivos modificados**
+- `lib/db/excepciones-aislamiento.ts`: la fila de `CobroPlataformaTarifaRepository` (SL-40).
+- `lib/types/empresas-plataforma.ts` y `lib/repositories/EmpresasPlataformaRepository.ts`:
+  `cobroPorOrden: string | null` (`toFixed(2)` del `Decimal`).
+- Tests de SL-32 que construyen o comparan `EmpresaListada` y fallaban por el campo nuevo (typecheck o
+  aserción exacta): `tests/integration/db/empresas-plataforma.test.ts` (claves y filas esperadas),
+  `tests/unit/actions/empresas-plataforma.composition-root.test.ts` (la fila falsa trae el `Decimal`,
+  se espera `"300.00"`), y `cobroPorOrden: null` en los fixtures de `tests/components/empresas-module.test.tsx`,
+  `tests/integration/empresas-page.test.tsx` y `tests/unit/services/empresas-plataforma-service.test.ts`.
+- `tests/integration/db/cobro-plataforma-cargos.test.ts`: la desviación de T1 se cierra. El global
+  (500.00 y 600.00) y la excepción de B (fijar y quitar) van ahora por `CobroPlataformaTarifaRepository`
+  real (design §11.1). Solo «sin configurar» sigue en el fixture: el superadmin no tiene cómo borrar el
+  global, y el fixture es quien restaura la fila. Sigue 18/18.
+
+**Mutaciones** (cada una aplicada, corrida y restaurada; `git status` limpio después)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T5-M1 | el servicio sin `esPlataforma` (`actor !== null`) | `cobro-plataforma-service` y composition root en rojo: los seis roles de empresa, «entrada inválida → forbidden» y «un maestro recibe forbidden» |
+| T5-M2 | el composition root construye el servicio con `{}` en vez del repositorio real | composition root 3 failed / 1 passed |
+| T5-M3 | `fijarDeEmpresa` con `where: {}` | `empresas-plataforma-cobro` 4 failed / 2 passed (R2 «deja a B sin tocar», R5 «conserva la de B», R7, R10) |
+| T5-M4 | zod `\d{1,11}` (once cifras enteras) | schema 2 failed / 23 passed |
+| T5-M5 | zod `\.\d{1,3}` (tres decimales) | schema y servicio, 2 failed / 47 passed |
+| T5-M6 | el listado sin `cobroPlataformaPorOrden` en el `select` | `empresas-plataforma-cobro` R10, 1 failed / 5 passed |
+
+**Evidencia** (base `sl40_t5`)
+- Los 14 archivos tocados o relacionados, más `plataforma-solo-en-lista`, `superadmin-fuera-de-empresa`
+  y `catalogo-postgres-acota-esquema`: `Test Files 14 passed (14)`, `Tests 166 passed (166)`, `VITEST_EXIT=0`,
+  sin skips.
+- `pnpm run test:guardias`: `Test Files 1 failed | 302 passed (303)`, `Tests 4 failed | 4139 passed | 1 skipped (4144)`.
+  El único rojo es `dependencias-declaradas-presentes` (baseline).
+- `pnpm run lint` sobre los 20 archivos: `No issues found`.
+- `pnpm run typecheck`: 1 error, **no de T5**: `tests/unit/services/deuda-plataforma-service.test.ts(26,87)`,
+  un `RolValue` pasado donde se espera `"maestro" | "admin"`. Es el archivo de T6, en curso en paralelo; no se tocó.
+
+**Mapa R → test (T5)**
+
+| R | Test |
+|---|---|
+| R1 | `empresas-plataforma-cobro` «R1/R3: sin fila el global es null; fijarlo crea la fila única…» y «R1/R4: el CHECK de la base rechaza un global negativo»; `cobro-plataforma-service` «R1/R9» |
+| R2 | `empresas-plataforma-cobro` «R2: fijar la excepción de A la escribe en A y deja a B sin tocar»; servicio «R2» |
+| R3 | `empresas-plataforma-cobro` «R1/R3» (sin fila → null); el resto en `cobro-plataforma-cargos` (tanda A) |
+| R4 | `cobro-plataforma-schema` (negativos, tres decimales, once cifras, vacío, número); servicio «R4 — validation_error con el campo, sin escribir nada» |
+| R5 | `empresas-plataforma-cobro` «R5: quitar la excepción de A…»; servicio «R5: monto null la quita»; `cobro-plataforma-cargos` «R3/R5» |
+| R6 | servicio «R6 — solo el superadmin…» (cada rol de empresa del enum y sin actor, cero llamadas); composition root «un maestro recibe forbidden y el cliente no se toca» |
+| R7 | servicio «R7: una empresa que no existe es not_found…» y «si desaparece entre la comprobación y la escritura»; `empresas-plataforma-cobro` «R7» |
+| R10 (servidor) | `empresas-plataforma-cobro` «R10: el listado trae cobroPorOrden…»; la pantalla es de T8 |
+
+**Veredicto T5:** configuración del superadmin hecha y probada contra la base, con 6 mutaciones medidas en rojo; el único rojo de typecheck es de T6.

@@ -10,6 +10,7 @@ import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { CobroPlataformaTarifaRepository } from "@/lib/repositories/CobroPlataformaTarifaRepository";
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { ApiOrdenEliminacionService } from "@/lib/services/ApiOrdenEliminacionService";
@@ -39,8 +40,10 @@ import { deudaDe, movimientosDe, tomarTarifaGlobal, type TarifaGlobalBajoLock } 
 // `RecuperarOrdenService` (`lib/actions/recuperar-orden.ts`), cableados como en sus composition roots
 // sobre el cliente EXTENDIDO y con la empresa fijada por `conEmpresa`, como haría la sesión.
 //
-// El valor global y la excepción se fijan como dueño, bajo el lock de `_fixtures/cobro-plataforma-40`:
-// el repositorio del superadmin es de la tanda B (T5) y aquí es preparación, no lo que se mide.
+// El valor global y la excepción se fijan con el repositorio REAL del superadmin
+// (`CobroPlataformaTarifaRepository`, T5), bajo el lock de `_fixtures/cobro-plataforma-40`. Solo
+// «sin configurar» se fija con el fixture: el superadmin no tiene cómo borrar el global, y el fixture
+// es también quien deja la fila como la encontró.
 //
 // Lo que se mide se mide con el cliente BASE (dueño, sin extensión ni RLS). Las órdenes se commitean
 // (los repositorios abren su propia transacción) y se limpian en el `afterAll`, acotado a las dos
@@ -53,6 +56,9 @@ const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 let base: PrismaClient;
 let app: PrismaClient;
 let tarifaGlobal: TarifaGlobalBajoLock | undefined;
+
+/** El repositorio del superadmin sobre el cliente base: `comoPlataforma` corre como dueño. */
+const tarifas = () => new CobroPlataformaTarifaRepository(base);
 
 interface Geo {
   provinciaId: string;
@@ -391,8 +397,8 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
   /* --------------------------- §2.5, paso a paso --------------------------- */
 
   it("R12/R19: A crea o1 y o2 por pantalla y o3 por carga masiva con el global en 500.00 → tres cargos de 500.00", async () => {
-    await tarifaGlobal!.fijar("500.00");
-    await base.$executeRawUnsafe(`UPDATE "organizacion" SET "cobro_plataforma_por_orden" = 300.00 WHERE "id" = $1`, B.id);
+    await tarifas().fijarGlobal("500.00");
+    expect(await tarifas().fijarDeEmpresa(B.id, "300.00")).toBe(true);
 
     orden.o1 = await crearPorPantalla(A, "o1");
     orden.o2 = await crearPorPantalla(A, "o2");
@@ -417,7 +423,7 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
 
   it("R14: el superadmin sube el global a 600.00 → los cargos ya registrados no cambian", async () => {
     const antes = await filaCompleta(orden.o1, 1);
-    await tarifaGlobal!.fijar("600.00");
+    await tarifas().fijarGlobal("600.00");
     expect(await filaCompleta(orden.o1, 1)).toEqual(antes);
     expect(await deudaDe(base, A.id)).toBe("1500.00");
     expect(await deudaDe(base, B.id)).toBe("300.00");
@@ -497,7 +503,7 @@ describeSiHayBase("SL-40 — cargos y reversos del cobro de la plataforma por or
   });
 
   it("R3/R5: quitada la excepción de B, su orden siguiente usa el global (600.00)", async () => {
-    await base.$executeRawUnsafe(`UPDATE "organizacion" SET "cobro_plataforma_por_orden" = NULL WHERE "id" = $1`, B.id);
+    expect(await tarifas().fijarDeEmpresa(B.id, null)).toBe(true);
     orden.p2 = await crearPorPantalla(B, "p2");
     expect(await movimientosDe(base, orden.p2)).toEqual([cargo("600.00", "global", 1)]);
     expect(await movimientosDe(base, orden.p1)).toEqual([cargo("300.00", "empresa", 1)]);
