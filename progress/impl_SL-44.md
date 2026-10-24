@@ -675,3 +675,8 @@ vencido 4.000; reglas 3.000.
 
 **Veredicto T6.1+T6.2:** los 6 specs 18/18 dos veces sobre base nueva, cada uno con su mutación en rojo, y dos defectos de
 refresco de la pantalla de cierres de bodega arreglados con su test.
+
+### Gate tras las tandas 4–7 (con el arreglo A2 de cierres de bodega)
+
+`TEST_RAPIDO_BASE=origin/dev ./init.sh` → `init OK`, **INIT_EXIT=0** (log fuera del repo,
+`scratchpad/sl44-gate-2.log`). D19 marcada resuelta en `progress/deudas.md`.

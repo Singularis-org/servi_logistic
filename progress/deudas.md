@@ -118,7 +118,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - Un reintento no vale.
 - **Dueño:** quien tome la siguiente ficha de la caja (461/459), o Carlos Restrepo si se abre una propia.
 
-### D19 — El E2E del cobro de la plataforma solo corre con `SL40_UI=1`
+### D19 — El E2E del cobro de la plataforma solo corre con `SL40_UI=1` — RESUELTA (2026-10-24)
 - **Origen:** SL-40, review m2 (2026-10-24). `e2e/cobro-plataforma-sl40.spec.ts` se salta sin `SL40_UI=1`, así que en el job `e2e` de CI no protege nada. Lo mismo pasa con `e2e/wallet.spec.ts`, en rojo heredado (D8).
-- **Qué falta:** que la ficha de CI del E2E (SL-44) lo active, con su base y su log del servidor, o que decida quitar la bandera. Mientras tanto, lo cubren contra Postgres `cobro-plataforma-cargos` y `deuda-plataforma-wallet`.
-- **Dueño:** quien tome SL-44 (decide Carlos Restrepo).
+- **Resolución:** SL-44 (R13; T4). El spec pierde la bandera, corre en el grupo `aislamiento` con su base y el log del servidor, y un `afterAll` deja el cobro global como estaba. `wallet.spec.ts` se rehízo con datos propios (T6.3). La guardia `e2e-sin-saltos` impide que vuelva un skip.
+- **Dueño:** cerrada.
