@@ -18,6 +18,7 @@ fuentes:
   - app/(app)/wallet/_components/libro-caja-labels.ts
   - lib/actions/wallet-filtros.ts
   - lib/actions/libro-caja-autoria.ts
+  - lib/actions/deuda-plataforma.ts
   - app/(app)/wallet/_components/VerMovimientoCaja.tsx
   - components/shared/wallet/RegistrarMovimientoDialog.tsx
   - components/shared/wallet/AsiQueda.tsx
@@ -54,8 +55,8 @@ no del de las tiendas ni del de los mensajeros —esos tienen la suya—.
 ## Qué vas a ver
 
 **El resumen de caja**, arriba: la cifra grande, lo que **entró** y lo que **salió**, la **ganancia de
-la empresa**, el **saldo inicial y aportes**, el **IVA cobrado** y **lo que la empresa les debe a las
-tiendas**.
+la empresa**, el **saldo inicial y aportes**, el **IVA cobrado**, **lo que la empresa les debe a las
+tiendas** y **lo que la empresa debe a la plataforma**.
 
 **Cómo se compone la ganancia**, desglosada por concepto, para ver de dónde sale de verdad el margen —
 fletes, comisiones, lo que la empresa les cobra a las tiendas— y no solo el total. El IVA va aparte, en
@@ -162,6 +163,26 @@ El IVA sigue siendo dinero de la empresa que está en la caja: la cifra grande l
 
 Lo mismo en el detalle de un cierre, en **Cierres**: **Lo que le queda a la empresa** sale sin el IVA,
 y la cuenta lo muestra en su propia línea, **IVA facturado**.
+
+## Lo que la empresa debe a la plataforma
+
+La plataforma cobra a la empresa un monto fijo por cada orden. En el lado de la empresa del resumen,
+debajo de **Saldo inicial y aportes**, hay una región propia, **Lo que la empresa debe a la
+plataforma**, con la pista «Lo que la plataforma cobra por cada orden creada, menos las anuladas.
+Todavía no se cobra: no sale de la caja.».
+
+- **Qué cuenta.** Cada orden que se crea, por la pantalla, por la carga masiva o por la API, suma lo
+  que cobraba la plataforma por orden **el día en que se creó**. Si después cambia ese monto, las
+  órdenes que ya existían no cambian. Una orden **eliminada** resta lo mismo que había sumado, y si se
+  recupera vuelve a sumar. Una orden que la tienda cancela por la API y vuelve a la tienda **sigue
+  contando**: no se eliminó.
+- **Es de toda la historia.** La cifra no depende del periodo ni de nada de la barra del libro: cambiar
+  los filtros mueve las cifras de la caja, pero esta no.
+- **Todavía no se cobra.** Por ahora la app solo la muestra. No hay forma de pagarla desde aquí, y no
+  aparece en el libro.
+- **No cambia la caja.** No es dinero que haya salido: la cifra grande, **Entró**, **Salió**, la
+  ganancia, el IVA, la barra de reparto y **Cómo se compone la ganancia de la empresa** quedan igual que
+  si no existiera. Por eso no lleva insignia ni color de signo.
 
 ## De dónde entra el dinero solo
 

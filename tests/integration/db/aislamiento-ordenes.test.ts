@@ -349,14 +349,16 @@ describeSiHayBase("SL-17 — aislamiento de órdenes entre dos empresas (Postgre
     expect(await filaDe(idA)).toEqual(antes);
   });
 
-  it("R8: update, delete, updateMany y deleteMany del cliente de la app sobre una orden de A → P2025 / 0 filas", async () => {
+  it("R8: update y updateMany del cliente de la app sobre una orden de A → P2025 / 0 filas; delete y deleteMany → sin permiso", async () => {
     const idA = A.ordenes[1].id;
     const antes = await ordenesDeA();
     await conEmpresa(B.id, async () => {
       await expect(app.orden.update({ where: { id: idA }, data: { notas: "B" } })).rejects.toMatchObject({ code: "P2025" });
-      await expect(app.orden.delete({ where: { id: idA } })).rejects.toMatchObject({ code: "P2025" });
       expect((await app.orden.updateMany({ where: { id: idA }, data: { notas: "B" } })).count).toBe(0);
-      expect((await app.orden.deleteMany({ where: { id: idA } })).count).toBe(0);
+      // Desde SL-40 (20261024120000) `servi_app` no tiene DELETE sobre `orden`: ninguna empresa borra
+      // de verdad una orden, ni suya ni ajena. La base lo rechaza antes de llegar a la RLS.
+      await expect(app.orden.delete({ where: { id: idA } })).rejects.toThrow(/42501|permiso denegado|permission denied/);
+      await expect(app.orden.deleteMany({ where: { id: idA } })).rejects.toThrow(/42501|permiso denegado|permission denied/);
     });
     expect(await ordenesDeA()).toEqual(antes);
   });

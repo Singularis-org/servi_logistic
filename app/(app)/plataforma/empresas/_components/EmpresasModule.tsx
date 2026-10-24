@@ -20,6 +20,15 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { altaEmpresaInputSchema, type AltaEmpresaInput } from "@/lib/types/organizacion";
 import type { AltaEmpresaActionResultado } from "@/lib/actions/organizaciones";
+import type { CobroGlobalDTO } from "@/lib/types/cobro-plataforma";
+
+import {
+  BloqueCobroGlobal,
+  CeldaCobroEmpresa,
+  TEXTOS_COBRO,
+  type FijarCobroEmpresa,
+  type FijarCobroGlobal,
+} from "./CobroPorOrden";
 
 export interface EmpresasModuleProps {
   /** Las empresas, ya ordenadas por el servidor: la pantalla no reordena. */
@@ -31,6 +40,12 @@ export interface EmpresasModuleProps {
    * `no_autorizado` cae en el genérico, como cualquier respuesta que no sea de un campo.
    */
   altaEmpresa: (input: AltaEmpresaInput) => Promise<AltaEmpresaActionResultado>;
+  /** SL-40 (R9): el valor global del cobro por orden; `null` si la página no pudo leerlo. */
+  cobroGlobal: CobroGlobalDTO | null;
+  /** SL-40 (R9, R11): `fijarCobroGlobalAction`, inyectada para poder probarla. */
+  fijarCobroGlobal: FijarCobroGlobal;
+  /** SL-40 (R10, R11): `fijarCobroEmpresaAction`; `monto: null` quita la excepción. */
+  fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
 type Campo =
@@ -157,7 +172,14 @@ const FECHA_CORTA = new Intl.DateTimeFormat("es", { dateStyle: "short" });
  * cada error junto a su campo. Nunca maneja contraseñas: el maestro pone la suya con
  * «¿Olvidaste tu contraseña?».
  */
-export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: EmpresasModuleProps) {
+export function EmpresasModule({
+  empresas,
+  tiposDocumento,
+  altaEmpresa,
+  cobroGlobal,
+  fijarCobroGlobal,
+  fijarCobroEmpresa,
+}: EmpresasModuleProps) {
   const router = useRouter();
   const base = useId();
   const [form, setForm] = useState<Formulario>(VACIO);
@@ -245,6 +267,8 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
         </Alert>
       ) : null}
 
+      <BloqueCobroGlobal cobroGlobal={cobroGlobal} fijarCobroGlobal={fijarCobroGlobal} />
+
       <form
         noValidate
         aria-label={TEXTOS.tituloFormulario}
@@ -303,13 +327,25 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
         </div>
       </form>
 
-      <ListadoEmpresas empresas={empresas} />
+      <ListadoEmpresas
+        empresas={empresas}
+        montoGlobal={cobroGlobal?.monto ?? null}
+        fijarCobroEmpresa={fijarCobroEmpresa}
+      />
     </div>
   );
 }
 
 /** La tabla del listado (R29), o el estado vacío si aún no hay empresas. */
-function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
+function ListadoEmpresas({
+  empresas,
+  montoGlobal,
+  fijarCobroEmpresa,
+}: {
+  empresas: EmpresaListada[];
+  montoGlobal: string | null;
+  fijarCobroEmpresa: FijarCobroEmpresa;
+}) {
   if (empresas.length === 0) {
     return (
       <div className="rounded-md border border-border">
@@ -325,6 +361,7 @@ function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
+          <TableHead>{TEXTOS_COBRO.titulo}</TableHead>
           <TableHead>{TEXTOS.columnaMaestros}</TableHead>
         </TableRow>
       </TableHeader>
@@ -334,6 +371,15 @@ function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
             <TableCell className="font-medium">{empresa.nombre}</TableCell>
             <TableCell>{empresa.slug}</TableCell>
             <TableCell>{FECHA_CORTA.format(empresa.creadaEn)}</TableCell>
+            <TableCell>
+              <CeldaCobroEmpresa
+                organizacionId={empresa.id}
+                nombreEmpresa={empresa.nombre}
+                cobroPorOrden={empresa.cobroPorOrden}
+                montoGlobal={montoGlobal}
+                fijarCobroEmpresa={fijarCobroEmpresa}
+              />
+            </TableCell>
             <TableCell>
               {empresa.maestros.length === 0 ? (
                 TEXTOS.sinMaestros

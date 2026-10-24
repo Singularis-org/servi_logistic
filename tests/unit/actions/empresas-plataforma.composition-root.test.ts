@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { RolValue } from "@prisma/client";
+import { Prisma, RolValue } from "@prisma/client";
 
 import { contextoActual } from "@/lib/db/contexto-empresa";
 
@@ -18,6 +18,8 @@ const findMany = vi.fn(async () => {
       nombre: "Empresa Ficticia",
       slug: "empresa-ficticia",
       createdAt: new Date("2026-10-23T10:00:00Z"),
+      // SL-40 (R10): la excepción del cobro por orden sale de la base como Decimal y llega como texto.
+      cobroPlataformaPorOrden: new Prisma.Decimal("300"),
       usuarios: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
     },
   ];
@@ -48,6 +50,7 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           slug: "empresa-ficticia",
           creadaEn: new Date("2026-10-23T10:00:00Z"),
           maestros: [{ nombre: "Maestro Ficticio", email: "maestro@example.test" }],
+          cobroPorOrden: "300.00",
         },
       ],
     });
