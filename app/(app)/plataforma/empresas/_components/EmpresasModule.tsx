@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,13 @@ import { FormField } from "@/components/shared/FormField";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { altaEmpresaInputSchema, type AltaEmpresaInput } from "@/lib/types/organizacion";
-import type { AltaEmpresaActionResultado } from "@/lib/actions/organizaciones";
+import type {
+  AltaEmpresaActionResultado,
+  ReenviarBienvenidaResultado,
+} from "@/lib/actions/organizaciones";
+import type { EstadoBienvenida } from "@/lib/interfaces/services/IBienvenidaMaestroService";
+
+import { ReenviarBienvenidaBoton } from "./ReenviarBienvenidaBoton";
 
 export interface EmpresasModuleProps {
   /** Las empresas, ya ordenadas por el servidor: la pantalla no reordena. */
@@ -31,6 +38,13 @@ export interface EmpresasModuleProps {
    * `no_autorizado` cae en el genérico, como cualquier respuesta que no sea de un campo.
    */
   altaEmpresa: (input: AltaEmpresaInput) => Promise<AltaEmpresaActionResultado>;
+  /** SL-41 (R29–R31): `reenviarBienvenidaAction`, inyectada igual que `altaEmpresa`. */
+  reenviarBienvenida: (input: { organizacionId: string }) => Promise<ReenviarBienvenidaResultado>;
+  /**
+   * SL-41 (R38): las empresas cuyo primer maestro aún no creó su contraseña. `null` si la
+   * pantalla no pudo leerlo: entonces vale R29 y toda fila con maestros lleva el botón.
+   */
+  bienvenidaPendiente: string[] | null;
 }
 
 type Campo =
@@ -57,8 +71,11 @@ const VACIO: Formulario = {
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
-  avisoCreada:
-    "Empresa creada. El maestro entra con «¿Olvidaste tu contraseña?» y su email.",
+  avisoEnviada: (email: string) =>
+    `Empresa creada. Enviamos a ${email} un correo para crear su contraseña.`,
+  avisoNoEnviada:
+    "Empresa creada, pero el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.",
+  avisoSinCorreo: "El correo no está configurado en este entorno.",
   tituloFormulario: "Crear empresa",
   grupoEmpresa: "Empresa",
   grupoMaestro: "Primer maestro",
@@ -79,6 +96,7 @@ const TEXTOS = {
   columnaSlug: "Slug",
   columnaAlta: "Alta",
   columnaMaestros: "Maestros",
+  columnaBienvenida: "Bienvenida",
   sinMaestros: "—",
   vacio: "Aún no hay empresas. Crea la primera con el formulario.",
 } as const;
@@ -99,7 +117,7 @@ const CAMPO_DE_LA_ACTION: Record<string, Campo> = {
 };
 
 type Desenlace =
-  | { tipo: "creada" }
+  | { tipo: "creada"; bienvenida: EstadoBienvenida }
   | { tipo: "campo"; campo: Campo; mensaje: string }
   | { tipo: "generico" };
 
@@ -110,7 +128,7 @@ type Desenlace =
 function desenlaceDe(respuesta: unknown): Desenlace {
   if (typeof respuesta !== "object" || respuesta === null) return { tipo: "generico" };
   const r = respuesta as { estado?: unknown; campo?: unknown };
-  if (r.estado === "creada") return { tipo: "creada" };
+  if (r.estado === "creada") return { tipo: "creada", bienvenida: bienvenidaDe(respuesta) };
   if (r.estado === "ya_existe") {
     return { tipo: "campo", campo: "slug", mensaje: TEXTOS.errorSlug };
   }
@@ -130,6 +148,20 @@ function desenlaceDe(respuesta: unknown): Desenlace {
   }
   return { tipo: "generico" };
 }
+
+const ESTADOS_BIENVENIDA: readonly EstadoBienvenida[] = ["enviada", "no_enviada", "sin_correo"];
+
+/**
+ * El estado de la bienvenida de un `creada` (R25, R26). Si falta o no es uno de los tres, se toma
+ * como `no_enviada`: ante la duda se avisa de que el correo pudo no salir, y no de que salió.
+ */
+function bienvenidaDe(respuesta: object): EstadoBienvenida {
+  const valor = (respuesta as { bienvenida?: unknown }).bienvenida;
+  return ESTADOS_BIENVENIDA.find((e) => e === valor) ?? "no_enviada";
+}
+
+/** El aviso del alta: a quién se escribió y si el correo salió. */
+type AvisoAlta = { email: string; bienvenida: EstadoBienvenida };
 
 /**
  * Valida con el MISMO schema que la action (`lib/types/organizacion.ts`), importado y no copiado
@@ -154,16 +186,22 @@ const FECHA_CORTA = new Intl.DateTimeFormat("es", { dateStyle: "short" });
 /**
  * Pantalla «Empresas» del superadmin (SL-32, R29–R34, R37): el formulario «Crear empresa»,
  * siempre visible, y el listado. Valida con el schema de la action antes de llamarla, y pinta
- * cada error junto a su campo. Nunca maneja contraseñas: el maestro pone la suya con
- * «¿Olvidaste tu contraseña?».
+ * cada error junto a su campo. Nunca maneja contraseñas: el maestro pone la suya con el enlace
+ * del correo de bienvenida (SL-41).
  */
-export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: EmpresasModuleProps) {
+export function EmpresasModule({
+  empresas,
+  tiposDocumento,
+  altaEmpresa,
+  reenviarBienvenida,
+  bienvenidaPendiente,
+}: EmpresasModuleProps) {
   const router = useRouter();
   const base = useId();
   const [form, setForm] = useState<Formulario>(VACIO);
   const [errores, setErrores] = useState<Errores>({});
   const [errorGenerico, setErrorGenerico] = useState(false);
-  const [creada, setCreada] = useState(false);
+  const [creada, setCreada] = useState<AvisoAlta | null>(null);
   const [enviando, setEnviando] = useState(false);
 
   const opcionesTipo: SelectOption[] = tiposDocumento.map((t) => ({
@@ -176,7 +214,7 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
   function cambiar(campo: Campo, valor: string) {
     setForm((f) => ({ ...f, [campo]: valor }));
     // El aviso de la empresa anterior se cierra al empezar a escribir otra (R37).
-    setCreada(false);
+    setCreada(null);
   }
 
   async function enviar(e: FormEvent<HTMLFormElement>) {
@@ -184,7 +222,7 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
     setEnviando(true);
     setErrores({});
     setErrorGenerico(false);
-    setCreada(false);
+    setCreada(null);
 
     const entrada: AltaEmpresaInput = {
       nombre: form.nombre,
@@ -214,7 +252,7 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
 
     if (desenlace.tipo === "creada") {
       setForm(VACIO);
-      setCreada(true);
+      setCreada({ email: entrada.maestro.email, bienvenida: desenlace.bienvenida });
       router.refresh();
     } else if (desenlace.tipo === "campo") {
       setErrores({ [desenlace.campo]: desenlace.mensaje });
@@ -239,11 +277,7 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
 
   return (
     <div className="flex flex-col gap-6">
-      {creada ? (
-        <Alert role="status">
-          <AlertDescription>{TEXTOS.avisoCreada}</AlertDescription>
-        </Alert>
-      ) : null}
+      {creada ? <AvisoAltaEmpresa aviso={creada} /> : null}
 
       <form
         noValidate
@@ -303,13 +337,56 @@ export function EmpresasModule({ empresas, tiposDocumento, altaEmpresa }: Empres
         </div>
       </form>
 
-      <ListadoEmpresas empresas={empresas} />
+      <ListadoEmpresas
+        empresas={empresas}
+        reenviarBienvenida={reenviarBienvenida}
+        bienvenidaPendiente={bienvenidaPendiente}
+      />
     </div>
   );
 }
 
+/**
+ * El aviso tras el alta (SL-41): de éxito si la bienvenida salió (R25) y de advertencia si no
+ * (R26). La advertencia se queda con el `role="alert"` de la primitiva: el superadmin tiene que
+ * enterarse de que el maestro aún no puede entrar. El icono va como PRIMER hijo para que la
+ * primitiva forme su rejilla de dos columnas.
+ */
+function AvisoAltaEmpresa({ aviso }: { aviso: AvisoAlta }) {
+  if (aviso.bienvenida === "enviada") {
+    return (
+      <Alert role="status">
+        <AlertDescription>{TEXTOS.avisoEnviada(aviso.email)}</AlertDescription>
+      </Alert>
+    );
+  }
+  return (
+    <Alert className="border-warning/40 text-warning-strong">
+      <TriangleAlert aria-hidden="true" />
+      <AlertDescription className="text-warning-strong">
+        <p>{TEXTOS.avisoNoEnviada}</p>
+        {aviso.bienvenida === "sin_correo" ? <p>{TEXTOS.avisoSinCorreo}</p> : null}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/** R29 y R38: el botón va en las filas con maestro cuya bienvenida sigue pendiente. */
+function llevaReenvio(empresa: EmpresaListada, pendientes: string[] | null): boolean {
+  if (empresa.maestros.length === 0) return false;
+  return pendientes === null || pendientes.includes(empresa.id);
+}
+
 /** La tabla del listado (R29), o el estado vacío si aún no hay empresas. */
-function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
+function ListadoEmpresas({
+  empresas,
+  reenviarBienvenida,
+  bienvenidaPendiente,
+}: {
+  empresas: EmpresaListada[];
+  reenviarBienvenida: EmpresasModuleProps["reenviarBienvenida"];
+  bienvenidaPendiente: string[] | null;
+}) {
   if (empresas.length === 0) {
     return (
       <div className="rounded-md border border-border">
@@ -326,6 +403,7 @@ function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
           <TableHead>{TEXTOS.columnaMaestros}</TableHead>
+          <TableHead>{TEXTOS.columnaBienvenida}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -345,6 +423,16 @@ function ListadoEmpresas({ empresas }: { empresas: EmpresaListada[] }) {
                     </li>
                   ))}
                 </ul>
+              )}
+            </TableCell>
+            <TableCell>
+              {llevaReenvio(empresa, bienvenidaPendiente) ? (
+                <ReenviarBienvenidaBoton
+                  organizacionId={empresa.id}
+                  reenviarBienvenida={reenviarBienvenida}
+                />
+              ) : (
+                TEXTOS.sinMaestros
               )}
             </TableCell>
           </TableRow>

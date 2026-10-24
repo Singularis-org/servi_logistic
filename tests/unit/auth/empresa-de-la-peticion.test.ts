@@ -300,6 +300,8 @@ describe("login, OTP y recuperacion en plataforma (R15, R36)", () => {
         vistos.push(contextoActual());
         return { status: "invalid_or_expired" as const };
       }),
+      emitirEnlaceBienvenida: vi.fn(),
+      crearContrasenaConEnlace: vi.fn(),
     };
     const deps = { service, getContext: async () => CONTEXTO };
 

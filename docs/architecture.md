@@ -80,7 +80,15 @@ esta bien hecha, no solo si "funciona".
   son de SL-18.
 - **Alta de empresa:** `OrganizacionService.altaEmpresa` (`lib/services/OrganizacionService.ts`, con
   `lib/repositories/OrganizacionRepository.ts`) crea, en una transacción, la organización, su podio del
-  ranking y el primer maestro sin contraseña utilizable; el maestro la fija con «recuperar contraseña».
+  ranking y el primer maestro sin contraseña utilizable.
+  Tras un alta buena, la action envía al maestro un correo de bienvenida
+  (`lib/services/BienvenidaMaestroService.ts`, SL-41) con un enlace para crear su contraseña: de un
+  solo uso, con el secreto en el fragmento de la URL y válido `AUTH_BIENVENIDA_TTL_HORAS` horas (72
+  por defecto), sobre `email_otp_challenge` y `PasswordResetService`. Corre fuera de la transacción
+  del alta y nunca la tumba: si el correo no sale, la empresa queda creada y la pantalla lo avisa. El
+  superadmin la reenvía con «Reenviar bienvenida» en la fila de la empresa, que se oculta cuando el
+  primer maestro ya fijó su contraseña (`usuario.contrasena_definida_at`). «¿Olvidaste tu
+  contraseña?» sigue sirviendo de respaldo.
   La action `lib/actions/organizaciones.ts` exige superadmin a través de `lib/auth/exigir-superadmin.ts`,
   el punto de enganche con SL-32: hasta que exista `lib/auth/plataforma.ts`, rechaza a todos.
 

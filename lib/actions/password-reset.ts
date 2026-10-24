@@ -1,55 +1,26 @@
 "use server";
 
-import { headers } from "next/headers";
 import {
   requestResetSchema,
   verifyResetCodeSchema,
   resetPasswordSchema,
+  crearConEnlaceSchema,
   type PasswordResetRequestResult,
   type VerifyResetCodeResult,
   type ResetPasswordResult,
 } from "@/lib/types/password-reset";
 import type { IPasswordResetService } from "@/lib/interfaces/services/IPasswordResetService";
-import { PasswordResetService } from "@/lib/services/PasswordResetService";
-import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
-import { UserRepository } from "@/lib/repositories/UserRepository";
-import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
-import { crearEmailProvider } from "@/lib/services/EmailProvider";
-import { getPrismaClient } from "@/lib/db/prisma-client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { computeDeviceHash } from "@/lib/utils/device";
-import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
+import {
+  buildPasswordResetService,
+  requestContextFromHeaders,
+  type RequestContext,
+} from "@/lib/actions/_shared/contexto-peticion";
 
-export interface RequestContext {
-  ipAddress: string;
-  userAgent: string;
-}
-
-// Limitador de intentos de verificacion (R20): unico por proceso para que la
-// ventana deslizante persista entre invocaciones de las Server Actions.
-const verifyLimiter = new ResetRateLimiter();
-
-function buildPasswordResetService(): IPasswordResetService {
-  const prisma = getPrismaClient();
-  const userRepo = new UserRepository(prisma);
-  const otpRepo = new EmailOtpChallengeRepository(prisma);
-  // El proveedor de correo se elige por entorno (feature 80): con SMTP
-  // configurado se envia de verdad por nodemailer; sin el —dev o CI— se
-  // degrada a consola. Ver lib/services/EmailProvider.ts y lib/config/email.ts.
-  const emailProvider = crearEmailProvider();
-  const otpIssuer = new OtpChallengeIssuer(otpRepo, emailProvider);
-  return new PasswordResetService(userRepo, otpRepo, otpIssuer, verifyLimiter);
-}
-
-async function requestContextFromHeaders(): Promise<RequestContext> {
-  const requestHeaders = await headers();
-  const forwardedFor = requestHeaders.get("x-forwarded-for");
-  const ipAddress = forwardedFor
-    ? forwardedFor.split(",")[0].trim()
-    : (requestHeaders.get("x-real-ip") ?? "unknown");
-  const userAgent = requestHeaders.get("user-agent") ?? "unknown";
-  return { ipAddress, userAgent };
-}
+// SL-41 (design §7.1): el composition root y la lectura de cabeceras viven en `_shared/`, fuera de
+// este archivo "use server", porque aqui todo export de funcion es un endpoint publico.
+export type { RequestContext };
 
 export interface PasswordResetDeps {
   service?: IPasswordResetService;
@@ -149,6 +120,38 @@ export async function restablecerContrasena(
     service.restablecer({
       email: parsed.data.email,
       code: parsed.data.code,
+      newPassword: parsed.data.password,
+      ipAddress: context.ipAddress,
+    }),
+  );
+}
+
+/**
+ * SL-41 (design §7.3, R18-R20): el maestro crea su contrasena con el enlace de la bienvenida.
+ * Responde con el mismo tipo que el paso 3 para que el formulario lo pinte con el codigo que ya
+ * tiene. No abre sesion: el maestro entra despues por `/login`.
+ */
+export async function crearContrasenaConEnlace(
+  input: unknown,
+  deps: PasswordResetDeps = {},
+): Promise<ResetPasswordResult> {
+  const parsed = crearConEnlaceSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      status: "validation_error",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const getContext = deps.getContext ?? requestContextFromHeaders;
+  const service = deps.service ?? buildPasswordResetService();
+  const context = await getContext();
+
+  // Quien abre el enlace no tiene sesion ni empresa; el desafio lleva al usuario por su id. Como en
+  // el paso 3, la escritura es la del propio `usuario.password_hash` y no cambia `organizacion_id`.
+  return comoPlataforma("SL-41", "login", () =>
+    service.crearContrasenaConEnlace({
+      enlace: parsed.data.enlace,
       newPassword: parsed.data.password,
       ipAddress: context.ipAddress,
     }),

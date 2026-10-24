@@ -15,6 +15,8 @@ function buildService(overrides: Partial<IPasswordResetService> = {}): IPassword
     solicitar: vi.fn().mockResolvedValue({ status: "ok" }),
     verificarCodigo: vi.fn().mockResolvedValue({ status: "ok" }),
     restablecer: vi.fn().mockResolvedValue({ status: "ok" }),
+    emitirEnlaceBienvenida: vi.fn(),
+    crearContrasenaConEnlace: vi.fn(),
     ...overrides,
   };
 }

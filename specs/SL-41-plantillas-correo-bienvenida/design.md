@@ -631,3 +631,15 @@ devuelve `no_enviada`. La pantalla muestra el aviso de R26.
 | R38 | `tests/integration/db/bienvenida-maestro-repository.test.ts` (pendientes y el `IS NULL`), `tests/integration/db/user-repository-contrasena-definida.test.ts`, `tests/unit/actions/reenviar-bienvenida-action.test.ts` (`bienvenidasPendientesAction`) y `tests/components/empresas-module.test.tsx` |
 | R39 | `tests/unit/services/email/plantilla-marca.test.ts` y `tests/unit/config/email-config.test.ts` |
 | R40 | `tests/unit/services/bienvenida-maestro-service.test.ts` |
+
+### 16.6 Ajustes de la implementación
+
+- `BienvenidaMaestroService` recibe el contacto del pie (`emailContacto()`) como sexto parámetro
+  del constructor, igual que `baseUrl`.
+- En `no_enviada` el email es `string | null`: si falla la lectura del maestro, no hay email.
+- En el alta, `sin_maestro` se devuelve como `no_enviada` (el alta siempre crea un maestro; si
+  no se encuentra, el correo no salió). La action envuelve la bienvenida en un `try/catch` propio,
+  porque `headers()`, el cliente o `comoPlataforma` pueden lanzar aunque el servicio no lo haga.
+- `/recuperar-contrasena`: el fragmento se lee con `useSyncExternalStore` y un `useLayoutEffect`
+  sin `setState` llama a `replaceState`; la regla `react-hooks/set-state-in-effect` impide hacerlo
+  «en el mismo efecto» (§9.2). R21 se cumple igual.

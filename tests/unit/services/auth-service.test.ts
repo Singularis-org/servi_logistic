@@ -74,6 +74,7 @@ function buildMocks() {
     markConsumed: vi.fn(),
     findLatestActiveByUsuarioId: vi.fn(),
     contarRecientesPorUsuario: vi.fn().mockResolvedValue(0),
+    consumirSiActivo: vi.fn(),
   };
   const sessionRepo: ISessionRepository = {
     create: vi.fn().mockResolvedValue({
