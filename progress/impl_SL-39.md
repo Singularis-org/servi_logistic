@@ -258,3 +258,24 @@ Solo texto, sin código, en `lib/utils/ingreso-empresa.ts`:
 - `gananciaEmpresa` (≈ l. 328) y `netoEmpresa` (≈ l. 632-633) dicen «ingreso BRUTO» / «lo FACTURADO».
 - Desde SL-39 reciben lo facturado sin IVA (`facturadoSinIva`).
 - Opcional: renombrar el parámetro `ingresoTotal`.
+- **Hecho** en e63be32: docstrings de `gananciaEmpresa` y `netoEmpresa` dicen «lo facturado SIN IVA»
+  (`facturadoSinIva`). El parámetro `ingresoTotal` no se renombra.
+
+## Cierre: guardias e2e, merge de dev y gate final (2026-10-23)
+
+- f0d1f23. R47 (`rollup-guards`): la cifra solo salía en el comentario del spec («cod 20000»). Los
+  montos de la siembra (`"20000.00"`) no son una forma literal del umbral, y la guardia no los ve. El
+  comentario pasa a «20.000». No se toca la guardia ni el dato.
+- SINPE: `SINPE_DE_PRUEBA` se exporta de `e2e/_dos-empresas-fixture.ts` y la siembra la importa.
+  Queda una sola fuente.
+- 9de69bd: merge de `origin/dev` (SL-32, SL-38) sin conflictos. `prisma migrate deploy` en la base
+  del gate aplicó las dos migraciones nuevas.
+- Gate (dentro del lock) sobre e63be32:
+  - Con `TEST_RAPIDO_BASE=dev` dio INIT_EXIT=1 y vitest no llegó a arrancar. La rama local `dev`
+    está desfasada: 493 archivos de diff, frente a 88 con `origin/dev`.
+  - Repetido con `TEST_RAPIDO_BASE=origin/dev`: **INIT_EXIT=0**.
+    - Related: 899 archivos y 13087 tests verdes.
+    - Guardias: 301 archivos y 4115 tests verdes.
+    - Sin deadlock de D18.
+
+Veredicto: SL-39 lista para revisión.
