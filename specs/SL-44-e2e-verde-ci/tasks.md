@@ -144,7 +144,7 @@ Convenciones:
 - [ ] **T6.1 — `cierre-dia`, `cierres-admin`, `cierres-admin-rechazos-sla`** (R18). `[P]`
 - [ ] **T6.2 — `cierre-bodega-satelite`, `cierre-vencido-modelo`, `reglas-bloqueos-cierre`** (R18).
   `[P]`
-- [ ] **T6.3 — `wallet`, `mi-wallet`, `wallet-mensajeros`** (R18). `[P]`
+- [x] **T6.3 — `wallet`, `mi-wallet`, `wallet-mensajeros`** (R18). `[P]`
 
   **Hecho (T6.x):**
   - cada spec en verde con `--project=dinero`;
