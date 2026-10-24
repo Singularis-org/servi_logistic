@@ -91,7 +91,7 @@
     - quitar el candado pone en rojo el de concurrencia;
     - no llamar al tope pone en rojo T1;
     - `tests/unit/actions/wallet-egresos-actions.test.ts` sigue en verde.
-- [ ] **T6. La anulación y el cierre del rojo** (R15–R18, R21–R23; depende de T4 y T5).
+- [x] **T6. La anulación y el cierre del rojo** (R15–R18, R21–R23; depende de T4 y T5).
   - Si T0 dijo que el lector `egresos` filtra por lista, se le añade la categoría. Si no, no se toca
     código.
   - _Hecho:_

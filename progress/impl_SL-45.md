@@ -410,3 +410,30 @@ $ pnpm run test:guardias
 | T5-M1 | `TopePagoPlataformaService` sin `bloquear(tx)` | **rojo**, 3 de 4 en `pago-plataforma-sl45-concurrencia` (el primero: «el segundo pago NO debe poder evaluarse mientras el primero tiene el candado»; los otros dos caen por la deuda que deja) |
 | T5-M2 | el servicio no llama al tope (`antesDelPago` devuelve siempre `undefined`) | **rojo**, 10 de 15 en T1 (los cuatro R9 y todo lo que viene detrás de la deuda que deja) |
 | T5-M3 | `buildService` no pasa el tope | **rojo**, 5 de 12 en `wallet-egresos.composition-root` (el servicio lanza «sin el tope inyectado») |
+
+### T6. La anulación y el cierre del rojo
+
+**Sin código.** El lector `egresos` (`EgresoCajaDocumentosRepository.estadoDeDocumentos`) no filtra por
+categoría (dato 4 de T0): el pago, con origen `gasto`, entra solo en «Anular…». Lo confirma T1: R15, R16, R18 y
+R21 van por `anularMovimientoAction` sin servicio inyectado.
+
+**Evidencia** (dentro del lock):
+
+```
+$ pnpm exec vitest run tests/integration/db/pago-plataforma-sl45.test.ts tests/integration/db/cobro-plataforma-cargos.test.ts \
+    tests/integration/db/aislamiento-wallet.test.ts tests/integration/db/deuda-plataforma-wallet.test.ts
+ Test Files  4 passed (4)
+      Tests  49 passed (49)          ← T1 15/15; cobro-plataforma-cargos y aislamiento-wallet sin tocarlos; 0 skipped
+T6_EXIT=0
+```
+
+**Las cuatro mutaciones de `design.md > 12.1`**, sobre T1, una cada vez (`scratchpad/sl45be-mut.py`, restauración
+comprobada byte a byte):
+
+| # | Mutación | Resultado en T1 |
+|---|---|---|
+| 1 (= T5-M2) | el servicio no llama al tope | **rojo**, 10 de 15 |
+| 2 (T6-M2) | `sumaPagosVigentes` cuenta también los pagos anulados | **rojo**, 8 de 15 (el primero, R15: la deuda no vuelve a 1.500,00) |
+| 3 (T6-M3) | `NATURALEZA_POR_CATEGORIA.egreso_pago_plataforma = "terceros"` | **rojo**, 12 de 15 (desde el primer pago: la caja de A no se mueve como R8) |
+| 4 (T6-M4) | `sumaPagosVigentes` sin el filtro de empresa: sin `organizacionId` en los dos `where` y leyendo como dueño (`comoPlataforma`, sin extensión ni RLS) | **rojo**, 12 de 15: «deuda de B: esperado 300.00, recibido -700.00» (B ve el pago de A) |
+| 4a (T6-M4a) | solo quitar el `organizacionId` escrito, con la extensión puesta | **verde**, 15 de 15: lo para la extensión + RLS. Es la defensa en capas que se buscaba (molde SL-40 R24); la 4 completa es la que pide el design |
