@@ -449,3 +449,83 @@ dobles. Vitest y typecheck con `gate.lock` tomado y `prisma generate` dentro (UR
 | R11 | `EmpresasModuleCobro` «tras un éxito…» (3: global con `rerender` de props nuevas, fila, «Usar el global») y «si falla, el error y lo escrito se conservan» (7: validation del servidor, schema en cliente, forbidden, red, not_found de fila, validation de fila, «Usar el global» que falla) |
 
 **Veredicto T8:** bloque y columna del cobro en «Empresas» hechos, R9–R11 con test y 6 mutaciones de pantalla medidas en rojo; el único rojo de typecheck es de T6.
+
+## T6
+
+La deuda de la empresa con la plataforma (R23–R27), del lado del servidor. Base desechable
+`sl40_t6` (`migrate deploy` + `db:seed`, borrada al terminar), y todo lo que usa el cliente corrió
+con `gate.lock` tomado y `prisma generate` dentro. El MCP del grafo no estaba entre las
+herramientas de este agente: se exploró con Grep/Read.
+
+**Archivos (todos nuevos)**
+- `lib/utils/deuda-plataforma.ts`: `derivarDeudaPlataforma(sumas)`, Σ cargo − Σ reverso en `Prisma.Decimal`, y el resultado como texto con dos decimales.
+- `lib/interfaces/repositories/ICobroPlataformaMovimientoRepository.ts` y `lib/repositories/CobroPlataformaMovimientoRepository.ts`: `sumasPorTipo(organizacionId)`, un `groupBy` por `tipo` con `_sum.monto`. Ningún método escribe.
+- `lib/interfaces/services/IDeudaPlataformaService.ts` y `lib/services/DeudaPlataformaService.ts`: `verDeuda(actor)`. Primero `esAccesoTotal`, y después el repositorio.
+- `lib/actions/deuda-plataforma.ts`: `verDeudaPlataformaAction(deps = {})`, con su composition root. No recibe ningún parámetro del cliente (R23).
+- Tests:
+  - `tests/unit/utils/deuda-plataforma.test.ts`;
+  - `tests/unit/services/deuda-plataforma-service.test.ts`;
+  - `tests/unit/actions/deuda-plataforma.composition-root.test.ts`;
+  - `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`;
+  - `tests/integration/db/deuda-plataforma-wallet.test.ts`.
+
+**Desviaciones (dentro del spec)**
+1. **Los tipos `DeudaPlataformaDTO` y `VerDeudaPlataformaResult`** van en `IDeudaPlataformaService.ts`, no en
+   `lib/types/cobro-plataforma.ts` (design §8). Ese archivo es de T5, que corría en paralelo. La forma
+   es la de §8, y T5 lo anota en su cabecera. T7 los importa de ahí.
+2. **El repositorio filtra explícitamente por `organizacionId`**, que le pasa el servicio desde
+   `actor.organizacionId`, es decir, la sesión. Design §5 decía que no habría «ningún filtro más» y
+   que bastaba la extensión.
+   - No se usa `contextoActual()`: en una petición real la empresa la resuelve la extensión desde la
+     cookie, y el contexto explícito está vacío.
+   - El filtro se puede medir solo, construyendo el repositorio sobre el cliente dueño (sin
+     extensión ni RLS). Es la mutación M2. Por la action, la extensión y la RLS siguen acotando igual.
+3. **Un actor de acceso total sin `organizacionId` recibe `forbidden`**, sin leer nada.
+4. **`verDeudaPlataformaAction` lleva `@sin-superficie`** hasta que T7 la cablee en
+   `app/(app)/wallet/page.tsx`. Sin la anotación, `superficie-de-uso` se pondría en rojo. **T7 debe
+   quitarla.**
+5. **El montaje de `deuda-plataforma-wallet` es el molde de la 459 que commitea**
+   (`_fixtures/escrituras-459`: `sembrarPersonas459` y `limpiar459`), con la caja y la deuda leídas
+   por sus actions reales.
+   - No se usa `sembrarEscenario459`: necesita una orden previa y la zona central, que una base
+     recién migrada no tiene (por eso `caja-caracterizacion-459` está en el baseline).
+   - La caja de A no está vacía: un ajuste real de 7777.77, con un control que lo comprueba.
+   - Las órdenes se crean con el cliente extendido (`servi_app`) y se anulan con
+     `EliminarOrdenService` real.
+
+**`R<n>` → test**
+
+| R | Test |
+|---|---|
+| R21 (el dato del servidor; la región es de T7) | `deuda-plataforma-wallet` «R21/R26: A crea dos órdenes con el global en 500.00 y anula una → la deuda sube 500.00, en texto» |
+| R22 | `deuda-plataforma-wallet` «R22: todas las cifras del resumen y de la composición de la caja siguen iguales, campo a campo» (con el control «la caja de A tiene dinero…») |
+| R23 | `deuda-plataforma-wallet` «R23: con los filtros de período del libro la caja cambia, y la deuda no» y «R23: la deuda cuenta los movimientos desde el principio, sin corte de fechas» |
+| R24 | `deuda-plataforma-wallet` «R24: B ve solo su deuda (300.00, su excepción) y nada de la de A» (por la action) y «R24: el filtro del repositorio aísla por sí solo…» (cliente dueño); `deuda-plataforma.composition-root` (el `where` que llega al cliente) |
+| R25 | `deuda-plataforma-service` (`forbidden` sin llamar al repositorio, para cada rol sin acceso total, sin actor y sin empresa); `deuda-plataforma.composition-root` (mensajero, adminTienda y superadmin); `deuda-plataforma-wallet` «R25» |
+| R26 | `deuda-plataforma` (puro: Σ − Σ, tipo ausente, dos decimales, céntimos que un `number` pierde, la fuente sin `Number`/`parseFloat`); `deuda-plataforma-wallet` (la deuda llega como texto `"500.00"`) |
+| R27 | `deuda-plataforma-wallet` «R27: los cargos y el reverso no escriben ninguna fila en wallet_movimiento» |
+| R8 / D3 (escritura solo por trigger) | `cobro-plataforma-solo-por-trigger.guardia` |
+
+**Mutaciones** (una a una, con copia y restauración por md5; ninguna salió como skip)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| M1 | sumar la deuda a `deEmpresa` en `WalletService.verResumenCaja` | `deuda-plataforma-wallet` 1 failed / 8 passed: R22 (`deEmpresa` `"7777.77"` → `"8277.77"`) |
+| M2 | quitar `where: { organizacionId }` del repositorio | 2 failed / 12 passed: «R24: el filtro del repositorio aísla por sí solo» (`expected '800.00' to be '300.00'`) y el `where` del composition root |
+| M3 | quitar el chequeo de acceso total del servicio (`!(esAccesoTotal(rol) \|\| true)`) | 9 failed: los 5 roles del servicio, 3 del composition root y R25 de integración |
+| M4 | el composition root construye el servicio con un repositorio de mentira (`sumasPorTipo: async () => []`) | 5 failed / 9 passed: composition root, R21/R26, los dos R23 y R24 por la action |
+| M5 | `Number` en la resta del puro | 2 failed / 5 passed: «conserva los céntimos donde un number ya no los guarda» y «la fuente no convierte importes a number» |
+| M6a | la guardia sin su patrón de Prisma (`/(?!)/`) | la contraprueba cae: 9 failed (los 9 métodos que escriben) |
+| M6b | la guardia sin su patrón de SQL | la contraprueba cae: 4 failed / 15 passed |
+| M7 | un archivo plantado en `lib/utils/` que llama a `cobroPlataformaMovimiento.create` | 1 failed / 18 passed: «ningún archivo de lib/ ni de app/ escribe…», y el fallo nombra el archivo y la línea. Se borró |
+
+**Evidencia** (`sl40_t6`, lock tomado)
+- `pnpm exec vitest run` sobre los cinco archivos: `Test Files  5 passed (5)`, `Tests  50 passed (50)`, `VITEST_EXIT=0`. De ellos, `deuda-plataforma-wallet` son `Tests  9 passed (9)`, sin skips.
+- Tras cada corrida, la base queda sin residuo: 0 organizaciones, 0 filas en `cobro_plataforma_tarifa`, 0 movimientos, 0 órdenes y 0 filas de caja.
+- `pnpm run typecheck`: `TC_EXIT=0`, 0 errores. El rojo que anotaron T5 y T8 era de un archivo de T6 a medio escribir, y ya está corregido.
+- `pnpm exec eslint` sobre los 11 archivos: «No issues found».
+- `pnpm run test:guardias`: `Test Files  1 failed | 302 passed (303)`, `Tests  4 failed | 4139 passed | 1 skipped (4144)`. El único rojo es `dependencias-declaradas-presentes`, que está en el baseline. `superficie-de-uso` está en verde con la anotación.
+- `git diff origin/dev -- lib/services/WalletService.ts lib/actions/wallet.ts lib/utils/caja-tesoreria.ts` → vacío (0 líneas).
+- Los 11 archivos están en LF.
+
+**Veredicto T6:** deuda con la plataforma servida por su propia action, con R21–R27 cubiertos (R21 en su parte de servidor), 8 mutaciones medidas en rojo y la caja intacta frente a `dev`.
