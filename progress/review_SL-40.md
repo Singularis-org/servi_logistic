@@ -191,3 +191,74 @@ guardias del incidente. No la toqué, como pedía el encargo.
 El resto está sólido: las 6 mutaciones dan rojo, no hay drift, las downs están probadas, la caja y el
 IVA no cambian, el rendimiento está medido y typecheck, lint y guardias salen en verde, salvo el rojo
 del baseline.
+
+## Revisión 2 (acotada a ddda589..8a7e6e9)
+
+- Revisor: `reviewer`, 2026-10-24.
+- Base desechable `sl40r_main`: `migrate deploy` con las cuatro migraciones, sin seed. La borré al
+  acabar, y en `pg_database` no queda ninguna `sl40*`.
+- `gate.lock` tomado («reviewer SL-40 (vuelta 2)») con `prisma generate` dentro, y soltado al acabar.
+
+### B1 — RESUELTO
+- `20261024120000_cobro_plataforma_blindaje_orden` hace `REVOKE DELETE ON "orden" FROM servi_app`.
+  Los privilegios de `servi_app` sobre `orden` quedan en `INSERT,SELECT,UPDATE`, y la FK de los cargos
+  sigue en `CASCADE`.
+- Ninguna ruta lo necesita:
+  - en `lib/`, `app/` y `e2e/` no hay `orden.delete`, `deleteMany` ni `DELETE FROM orden`;
+  - el único es `scripts/bench-busqueda-ordenes.ts`, y corre como dueño.
+- Sin borrado indirecto: las 9 FK de `orden` hacia sus padres son `r` o `n`, ninguna `CASCADE`. Borrar
+  una tienda, una carga o una organización no llega a la orden.
+- Repetí el ataque como `servi_app`: `DELETE FROM orden` da `42501 permiso denegado` y la transacción
+  no deja nada.
+- La mutación la hice yo: `GRANT DELETE ON orden TO servi_app` da 1 failed / 19 passed en
+  `cobro-plataforma-cargos` («R8 (review B1)»).
+  - El md5 de control cambia al mutar (`9d5cab32…`) y vuelve a `aa8231a9…` tras restaurar.
+
+### B2 — RESUELTO
+- El trigger de creación ya no lleva `WHEN`. Una orden que nace borrada registra cargo y reverso,
+  con el reverso en su `deleted_at`.
+- Repetí el ataque como `servi_app`, con el global en 500: `INSERT … deleted_at = now()` y después
+  `UPDATE … deleted_at = NULL` dan `1:cargo:500 2:reverso:500 3:cargo:500`. La orden viva vuelve a
+  estar cargada.
+- Mutaciones hechas por mí, con autocomprobación por md5:
+  - `WHEN (NEW.deleted_at IS NULL)` de vuelta: 1 failed / 19 passed («R12/R17 (review B2)»);
+  - la función sin el reverso al nacer borrada: 1 failed / 19 passed (el mismo caso).
+- La rama «sin movimientos» de D8/R18 no se tocó, y R18 sigue verde.
+
+### B3 — RESUELTO
+La bitácora (`## Arreglo de la review > B3`) trae la salida literal:
+- `6 passed (2.5m)`, `PW_EXIT=0` y `EmpresaNoResuelta en el log del server: 0`;
+- montaje con base `sl40_humo` desechable, un solo dev server, log borrado al acabar.
+- El primer intento cayó por un timeout del SMTP. Eso es red, no SL-40, y el segundo, idéntico, dio verde.
+
+### R8 de `aislamiento-ordenes` (de P2025 a 42501): no se debilitó
+- Antes probaba que B no borraba la orden de A por la RLS (P2025 / 0 filas). Ahora `servi_app` no
+  puede borrar ninguna orden, ni ajena ni propia: es un rechazo más fuerte, y la aserción
+  `ordenesDeA()` sin cambios sigue.
+- `update` y `updateMany` siguen probando la RLS (P2025 / 0 filas).
+- Se pierde la prueba de la RLS sobre `DELETE`, pero ese camino ya no existe. Si alguien devolviera el
+  `GRANT`, caerían este caso y «R8 (review B1)»: lo midió el implementer y yo lo confirmé con B1.
+
+### Menores
+- m1: cerrado. P1, P2 y P3 figuran como «CERRADA» en `requirements.md`, con la decisión de Carlos.
+- m2: cerrado como deuda `progress/deudas.md > D19`, con dueño (SL-44).
+- m3: sigue sin hacer y **no bloquea**.
+  - El coste por fila está medido en la carga de 500 (+0,14 a +0,22 ms por orden).
+  - El cambio de esta vuelta solo añade un `INSERT` cuando la orden nace borrada, y la app no usa
+    esa vía.
+- m4: sigue para el leader.
+
+### Verificación ejecutable
+- Sin drift: `migrate diff` da «empty migration».
+- Sin mutar, en verde: `cobro-plataforma-cargos`, `aislamiento-ordenes`,
+  `migracion-sl40-ida-y-vuelta`, `deuda-plataforma-wallet` y `empresas-plataforma-cobro` (5 archivos,
+  55/55).
+- `pnpm run typecheck`: 0. `eslint` de los tres tests tocados: sin errores.
+- `pnpm run test:guardias`: 302/303. El único rojo es `dependencias-declaradas-presentes`, que está en
+  el baseline.
+- La migración nueva trae `down.sql`, y R29 la cubre: la foto incluye funciones, triggers y
+  privilegios. Las tres de SL-40 no se tocaron (`git diff ddda589..HEAD` no las incluye).
+
+### Veredicto vuelta 2: **OK**
+B1, B2 y B3 están resueltos y la vuelta no trae regresiones. Quedan dos menores no bloqueantes: m3 y
+m4 (este último, del leader).
