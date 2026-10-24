@@ -83,7 +83,7 @@ vi.mock("@/lib/actions/rechazo-tienda-cobro", () => ({
 // SL-40 (T7): la página lee también la deuda con la plataforma. Sin este doble la action real abre
 // Prisma. Lo que la página hace con ella lo mide `tests/components/WalletDeudaPlataformaSL40.test.tsx`.
 vi.mock("@/lib/actions/deuda-plataforma", () => ({
-  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00" } })),
+  verDeudaPlataformaAction: vi.fn(async () => ({ status: "ok", deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" } })),
 }));
 
 // FICHA 458-E (T E.1/T E.2): el libro nuevo lee «A quién» y «Registró» de la página y el filtro de

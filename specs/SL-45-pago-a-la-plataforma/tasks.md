@@ -60,7 +60,7 @@
 
 ## Tanda B — Servidor (dependen de T3)
 
-- [ ] **T4. [P] La deuda con pagos** (R13, R14, R20).
+- [x] **T4. [P] La deuda con pagos** (R13, R14, R20).
   - `lib/interfaces/repositories/IPagoPlataformaRepository.ts` y `lib/repositories/PagoPlataformaRepository.ts`:
     `sumaPagosVigentes(cliente?)` y `bloquear(tx)`.
   - `CobroPlataformaMovimientoRepository.sumasPorTipo` y su interfaz aceptan un cliente opcional.

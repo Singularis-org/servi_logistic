@@ -8,6 +8,7 @@ import type {
 } from "@/lib/interfaces/services/IDeudaPlataformaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
+import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
 import { DeudaPlataformaService } from "@/lib/services/DeudaPlataformaService";
 
 // SL-40 (design §5, §9.2) — el borde de la deuda con la plataforma que pinta la wallet. Es una
@@ -20,9 +21,13 @@ export interface DeudaPlataformaDeps {
   readonly getActor?: () => Promise<Actor | null>;
 }
 
-/** El composition root: el repositorio real sobre el cliente con el aislamiento por empresa. */
+/**
+ * El composition root: los dos repositorios reales sobre el cliente con el aislamiento por empresa.
+ * SL-45: sin el de pagos, la deuda no bajaría al pagar (lo vigila su test de composition root).
+ */
 function construirServicio(): IDeudaPlataformaService {
-  return new DeudaPlataformaService(new CobroPlataformaMovimientoRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  return new DeudaPlataformaService(new CobroPlataformaMovimientoRepository(prisma), new PagoPlataformaRepository(prisma));
 }
 
 /**

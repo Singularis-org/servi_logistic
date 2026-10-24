@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 // SL-40 (design §5, §8) — el valor global del cobro por orden y la excepción por empresa, que fija
-// el superadmin. Los tipos de la deuda de la wallet viven en `lib/interfaces/services/IDeudaPlataformaService.ts`
-// (T6): se escribieron en paralelo y así ninguna task pisó el archivo de la otra.
+// el superadmin. Desde SL-45 también la deuda de la wallet (`DeudaPlataformaDTO`), que comparten la
+// wallet y la pantalla «Empresas» (design §3, §9).
 
 /** El mensaje bajo el campo: es el que pinta la pantalla «Empresas» (design §9.1, punto 4). */
 export const MENSAJE_MONTO_COBRO_INVALIDO =
@@ -38,3 +38,19 @@ export type FijarCobroResult =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R4
   | { status: "not_found" } // R7
   | { status: "forbidden" }; // R6
+
+/** SL-45 (design §3, R14): el estado de la deuda, decidido en el servidor por el signo. */
+export type EstadoDeudaPlataforma = "debe" | "al_dia" | "a_favor";
+
+/**
+ * SL-45 (design §3, R13, R14) — la deuda de la empresa con la plataforma, derivada en el servidor.
+ * Los tres campos son texto con dos decimales: la pantalla los pinta sin comparar ni convertir.
+ * `deuda` conserva su significado de SL-40 cuando no hay pagos (Σ cargos − Σ reversos).
+ */
+export type DeudaPlataformaDTO = {
+  /** Con signo: "500.00", "0.00", "-500.00". */
+  deuda: string;
+  estado: EstadoDeudaPlataforma;
+  /** |deuda|: lo que se pinta en la región (R3: a favor, en positivo). */
+  importe: string;
+};

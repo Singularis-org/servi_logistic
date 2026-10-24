@@ -259,8 +259,8 @@ describeSiHayBase("SL-40 — la deuda con la plataforma en la wallet (Postgres, 
 
   it("R24: el filtro del repositorio aísla por sí solo, también con el cliente dueño (sin extensión ni RLS)", async () => {
     const repo = new CobroPlataformaMovimientoRepository(base);
-    expect(derivarDeudaPlataforma(await repo.sumasPorTipo(B.p.organizacionId))).toBe("300.00");
-    expect(derivarDeudaPlataforma(await repo.sumasPorTipo(A.p.organizacionId))).toBe("500.00");
+    expect(derivarDeudaPlataforma(await repo.sumasPorTipo(B.p.organizacionId), "0.00").deuda).toBe("300.00");
+    expect(derivarDeudaPlataforma(await repo.sumasPorTipo(A.p.organizacionId), "0.00").deuda).toBe("500.00");
   });
 
   it("R25: un rol sin acceso total no lee la deuda", async () => {

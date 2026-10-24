@@ -299,7 +299,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       capital: "-50.00",
       signoCapital: "negativo",
     } as unknown as CajaResumenDTO;
-    const datos = { resumen, deudaPlataforma: { deuda: "500.00" } };
+    const datos = { resumen, deudaPlataforma: { deuda: "500.00", estado: "debe" as const, importe: "500.00" } };
     expect(
       REGIONES_BOLSILLO_EMPRESA.map((r) => ({
         id: r.id,

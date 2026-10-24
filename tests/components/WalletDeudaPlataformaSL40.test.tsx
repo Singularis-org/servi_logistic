@@ -187,10 +187,10 @@ const DESGLOSE: DesgloseEgresosDTO = {
 };
 
 /** El ejemplo de design §11.2: dos órdenes a 500,00 y una anulada. */
-const DEUDA_500: DeudaPlataformaDTO = { deuda: "500.00" };
+const DEUDA_500: DeudaPlataformaDTO = { deuda: "500.00", estado: "debe", importe: "500.00" };
 
 /** Once dígitos con céntimos: lo que un `number` ya no garantiza al pasar por una conversión. */
-const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99" };
+const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99", estado: "debe", importe: "12345678901.99" };
 
 // El contrato de R21, escrito a mano.
 const ROTULO = "Lo que la empresa debe a la plataforma";

@@ -289,3 +289,52 @@ El único rojo es `dependencias-declaradas-presentes`, que está en el baseline.
 **Veredicto T0–T3:** la categoría, sus migraciones de ida y vuelta y su clasificación están hechas y
 probadas, con typecheck y guardias en verde (salvo el baseline). T1 sigue en rojo, como se espera hasta
 T4–T6.
+
+## Tanda B (segundo backend_dev, 2026-10-24)
+
+Exploración con Grep/Read: el MCP `codebase-memory-mcp` no estaba entre las herramientas de este agente.
+
+### T4. La deuda con pagos
+
+**Código:**
+- `lib/types/cobro-plataforma.ts`: `EstadoDeudaPlataforma` y `DeudaPlataformaDTO` (`deuda`, `estado`,
+  `importe`). `IDeudaPlataformaService` lo reexporta: los importadores de SL-40 no cambian.
+- `lib/utils/deuda-plataforma.ts`: `derivarDeudaPlataforma(sumas, pagosVigentes)` → DTO, en
+  `Prisma.Decimal`. Un cero que nace de restas sale «0.00» sin signo.
+- `lib/interfaces/repositories/IPagoPlataformaRepository.ts` y `lib/repositories/PagoPlataformaRepository.ts`:
+  `sumaPagosVigentes(organizacionId, cliente?)` (dos `findMany`, como §3) y `bloquear(tx)`
+  (`pg_advisory_xact_lock(hashtext('pago_plataforma:' || current_setting('app.organizacion_id')))`).
+- `CobroPlataformaMovimientoRepository.sumasPorTipo(organizacionId, cliente?)` y su interfaz.
+- `DeudaPlataformaService(movimientos, pagos)`; `lib/actions/deuda-plataforma.ts` pasa los dos.
+
+**Desviación menor de §3:** `sumaPagosVigentes` recibe `organizacionId` y lo escribe en el `where`
+(§3 dice `sumaPagosVigentes(cliente?)` y deja el filtro a la extensión). Es el molde de
+`sumasPorTipo` de SL-40 y la regla de `docs/perfil-agentes.md` («toda query de negocio filtra por
+`organizacion_id`»). Consecuencia para la mutación 4 de §12.1: ver T6.
+
+**Tests que cambian** (fuera de `## Archivos esperados`, por el `Record`/tipo nuevo):
+- `tests/integration/db/deuda-plataforma-wallet.test.ts` (SL-40), l. 262-263: `derivarDeudaPlataforma(…, "0.00").deuda`.
+  El caso y sus cifras no cambian.
+- Fixtures con la forma vieja `{ deuda }`, ganan `estado` e `importe`: `tests/unit/components/wallet-labels.test.ts`
+  (l. 302), `tests/components/WalletDeudaPlataformaSL40.test.tsx` (l. 190, 193) y
+  `tests/integration/wallet-page.test.tsx` (l. 86). Solo el tipo; nada de lo que afirman.
+
+**Evidencia** (con `prisma generate` dentro del lock: el cliente compartido no traía `egreso_pago_plataforma`):
+
+```
+$ pnpm run typecheck                                   TC_EXIT=0 (0 errores)
+$ pnpm exec eslint <archivos de T4>                    LINT_EXIT=0
+$ pnpm exec vitest run deuda-plataforma.test.ts deuda-plataforma-service.test.ts deuda-plataforma.composition-root.test.ts \
+    deuda-plataforma-wallet.test.ts wallet-labels.test.ts WalletDeudaPlataformaSL40.test.tsx wallet-page.test.tsx
+ Test Files  7 passed (7)
+      Tests  90 passed (90)                            (deuda-plataforma-wallet de SL-40, contra Postgres, sin skip)
+$ pnpm exec vitest related --run <archivos de T4>
+ Test Files  1 failed | 14 passed (15)
+      Tests  13 failed | 209 passed (222)              ← el único rojo es T1 (13/15): falta T5
+```
+
+**Mutación** (medida y revertida, `cmp` contra la copia):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| T4-M1 | `sumaPagosVigentes` cuenta también los pagos anulados (sin `!anulados.has(p.id)`) | **rojo**, 1 caso: `deuda-plataforma.composition-root` («…y deriva la deuda»: 350,00 en vez de 600,00) |
