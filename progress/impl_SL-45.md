@@ -1058,3 +1058,22 @@ PW_EXIT=0
 
 **Veredicto:** R26 y R17 con test propio que cae con su mutación; los E2E de SL-40 y SL-45 pasan 8/8, 0 skipped. Aviso
 para SL-44: `e2e/cobro-plataforma-sl40.spec.ts` cambia en `TEXTO` (+`pistaAlDia`) y en `leerDeuda`.
+
+## Gates del implementer (`TEST_RAPIDO_BASE=origin/dev ./init.sh`, lock tomado)
+
+| Gate | HEAD | Resultado |
+|---|---|---|
+| 1 (tandas A+B) | `c93ce4d` | `INIT_EXIT=1`: 3 timeouts de 20 s por carga (`cache-tags`, `modulo-puro`, `caja-173-alcance`); en aislado 70/70 en 4 s |
+| 2 (tandas A+B, repetido) | `c93ce4d` | 620/620 archivos, 8778 passed / 17 skipped; guardias 302/302; `INIT_EXIT=0` |
+| 3 (tanda C + T9) | `6a6dba0` | 624/624, 8883 passed / 17 skipped; guardias 302/302; `INIT_EXIT=0` |
+| 4 (cierre) | `0f470aa` | 626/626, 8890 passed / 17 skipped; guardias 303/303; `INIT_EXIT=0` |
+
+Logs: `C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/c68afbf4-2e7b-4cf8-895a-a06ecd3a8118/scratchpad/sl45-gate-{1..4}.log`.
+
+Mutación que sobrevive (anotada, fuera del alcance de SL-45): excluir la categoría en
+`whereLibroCajaConTerminoSql` no tumba el test de R26, porque ese WHERE solo corre con término, «A quién»
+o guía; la descarga sin filtros va por `listar`, que sí está cubierto.
+
+Entorno: base en un contenedor Docker propio `sl45-pg` (:5445), borrado al cerrar junto con sus bases
+`sl45_*`. El `.env` local del worktree (no versionado) apunta a esa base; para revisar, recrear el
+contenedor y aplicar `prisma migrate deploy` + `db:seed`.
