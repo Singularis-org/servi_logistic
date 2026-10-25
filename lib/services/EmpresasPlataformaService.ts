@@ -4,7 +4,7 @@ import type {
   EsRolDePlataforma,
   IEmpresasPlataformaService,
 } from "@/lib/interfaces/services/IEmpresasPlataformaService";
-import type { ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
+import type { EstadoIntegracionesResultado, ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
 
 /**
  * SL-32 — el listado de empresas del superadmin (R29, R35).
@@ -24,5 +24,13 @@ export class EmpresasPlataformaService implements IEmpresasPlataformaService {
     if (!actor || !this.esPlataforma(actor.rol)) return { status: "forbidden" };
     const empresas = await this.repo.listar();
     return { status: "ok", empresas };
+  }
+
+  async estadoIntegraciones(actor: ActorEmpresasPlataforma | null): Promise<EstadoIntegracionesResultado> {
+    // R37: como el listado, el rechazo va antes de leer. El superadmin solo ve el estado; ninguna
+    // operación de cambio lo admite (R6, en `IntegracionesService`).
+    if (!actor || !this.esPlataforma(actor.rol)) return { status: "forbidden" };
+    const estados = await this.repo.estadoIntegraciones();
+    return { status: "ok", estados };
   }
 }

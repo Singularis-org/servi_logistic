@@ -126,9 +126,10 @@ export function buildHandlers(
     crearLiberarReprogramadasHandler(buildLiberarReprogramadasService(), now),
   );
   // Feature 91 (R32): geocodificacion de la direccion de UNA orden. NO se registra en
-  // `buildRecurrencias()`: se encola por EVENTO, no por reloj. Un fallo suyo (p. ej. sin
-  // `GOOGLE_MAPS_API_KEY`) lo captura `JobQueueService.drenar` job a job, asi que NO
-  // afecta al drenado de `liberar_reprogramadas`, que comparte este cron.
+  // `buildRecurrencias()`: se encola por EVENTO, no por reloj. Un fallo suyo (p. ej. una
+  // empresa sin Google Maps, SL-36) lo captura `JobQueueService.drenar` job a job, asi que NO
+  // afecta al drenado de `liberar_reprogramadas`, que comparte este cron. La clave se lee en el
+  // job, dentro de `conSuEmpresa`: el service se construye una vez para todas las empresas.
   handlers.set("geocodificacion", crearGeocodificacionHandler(buildGeocodificacionService(now)));
   // Feature 92 (R21): reoptimizacion de la ruta de UN mensajero. Como la geocodificacion,
   // NO se registra en `buildRecurrencias()`: se encola por EVENTO (recogida con debounce,

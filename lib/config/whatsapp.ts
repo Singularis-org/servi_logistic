@@ -1,10 +1,14 @@
 // Configuracion de la integracion con WhatsApp Cloud API (Meta Graph API).
-// Las credenciales viven SOLO en variables de entorno (docs/architecture.md:
-// "Sin hardcode de contexto"); este modulo las lee y valida en un unico sitio.
 //
-// INVARIANTE DE SEGURIDAD (mismo criterio que google-token-shared.ts): si falta
-// una pieza se cita el NOMBRE de la variable, jamas su valor. El token nunca
-// aparece en un mensaje de error ni en un log.
+// SL-36 (design §9.1, R23): las credenciales ya NO viven en el entorno. Son de cada empresa y se
+// leen de su integracion (`ICredencialesIntegracion.leer("whatsapp")`, ver
+// `lib/services/whatsapp/whatsapp-de-la-empresa.ts`). Este modulo solo arma la config a partir de
+// esa credencial (`whatsappConfigDe`, puro) y conserva del entorno lo que NO es una clave: la
+// version de la Graph API y la categoria e idioma con que se crean las plantillas.
+//
+// INVARIANTE DE SEGURIDAD: el token nunca aparece en un mensaje de error ni en un log.
+
+import type { CredencialPorServicio, DatosPublicosPorServicio } from "@/lib/types/integraciones";
 
 /** Version de la Graph API. Sobreescribible; default estable a fecha de la feature. */
 const DEFAULT_API_VERSION = "v21.0";
@@ -21,19 +25,26 @@ const DEFAULT_TEMPLATE_LANG = "es";
  */
 export const MAX_INTENTOS_WHATSAPP_TEMPLATE = 5;
 
+/** R24: lo que se le dice a la empresa sin WhatsApp; la pantalla lo acompana del enlace. */
+export const TEXTO_WHATSAPP_NO_CONFIGURADO = "WhatsApp no está configurado en tu empresa.";
+
+/** R24: a donde lleva el enlace del aviso (la pantalla de T7). */
+export const RUTA_CONFIGURAR_INTEGRACIONES = "/configuracion/integraciones";
+
 /**
- * Falta alguna pieza de la credencial de WhatsApp. Se lanza ANTES de cualquier
- * llamada de red. Cita QUE falta (nombre de la variable), nunca el valor.
+ * La empresa en curso no tiene una credencial de WhatsApp que se pueda usar. Se lanza ANTES de
+ * cualquier llamada de red. `ilegible` ya dejo la integracion en `error` (R29); para quien consume
+ * las dos son lo mismo: no hay con que llamar a Meta.
  */
 export class WhatsappNoConfiguradoError extends Error {
-  constructor(pieza: string) {
-    super(`whatsapp: credencial incompleta (falta ${pieza})`);
+  constructor(readonly motivo: "sin_configurar" | "ilegible" = "sin_configurar") {
+    super(`whatsapp: no esta configurado en la empresa (${motivo})`);
     this.name = "WhatsappNoConfiguradoError";
   }
 }
 
 export interface WhatsappConfig {
-  /** Token de acceso (Bearer) de la app de WhatsApp Cloud. */
+  /** Token de acceso (Bearer) de la app de WhatsApp Cloud de la empresa. */
   token: string;
   /** ID del numero de telefono emisor (Phone Number ID de Meta). Envio de mensajes. */
   numeroId: string;
@@ -50,50 +61,30 @@ export interface WhatsappConfig {
   templateIdioma: string;
 }
 
-function readRequired(name: string): string {
-  const raw = process.env[name];
-  if (raw === undefined || raw.trim() === "") {
-    throw new WhatsappNoConfiguradoError(name);
-  }
-  return raw.trim();
+/** Version de la Graph API: un parametro de la plataforma, no una credencial. */
+export function versionApiWhatsapp(): string {
+  return process.env.WHATSAPP_API_VERSION?.trim() || DEFAULT_API_VERSION;
+}
+
+/** Idioma con que se crean las plantillas; tambien el de reserva al enviar una sin idioma propio. */
+export function idiomaPlantillasWhatsapp(): string {
+  return process.env.WHATSAPP_TEMPLATE_LANG?.trim() || DEFAULT_TEMPLATE_LANG;
 }
 
 /**
- * Feature 109 (design §4, R12): configuracion del WEBHOOK de entrada de WhatsApp. Son
- * secretos DISTINTOS de los del envio: el token de verificacion del handshake GET y el App
- * Secret con el que Meta firma el POST (`X-Hub-Signature-256`). Se leen aparte porque el
- * webhook puede estar operativo sin credencial de envio y viceversa.
+ * La config de envio a partir de la credencial de la empresa. Pura salvo los tres parametros de
+ * producto del entorno, que son iguales para todas las empresas.
  */
-export interface WhatsappWebhookConfig {
-  /** Token del handshake GET (`hub.verify_token`); se compara, jamas se loguea. */
-  verifyToken: string;
-  /** App Secret con el que se calcula el HMAC-SHA256 del cuerpo crudo del POST. */
-  appSecret: string;
-}
-
-/**
- * Lee y valida la config del webhook. Lanza WhatsappNoConfiguradoError citando el NOMBRE de
- * la variable ausente, nunca su valor (R12). Llamar en el borde del route handler.
- */
-export function loadWhatsappWebhookConfig(): WhatsappWebhookConfig {
+export function whatsappConfigDe(
+  credencial: CredencialPorServicio["whatsapp"],
+  datosPublicos: Pick<DatosPublicosPorServicio["whatsapp"], "numeroId" | "wabaId">,
+): WhatsappConfig {
   return {
-    verifyToken: readRequired("WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
-    appSecret: readRequired("WHATSAPP_APP_SECRET"),
-  };
-}
-
-/**
- * Lee y valida la configuracion de WhatsApp. Lanza WhatsappNoConfiguradoError si
- * falta el token o el numeroId. Llamar en el borde, justo antes de construir el
- * cliente; asi un fallo de configuracion se detecta sin tocar la red.
- */
-export function loadWhatsappConfig(): WhatsappConfig {
-  return {
-    token: readRequired("WHATSAPP_CLOUD_TOKEN"),
-    numeroId: readRequired("WHATSAPP_NUMERO_ID"),
-    wabaId: readRequired("WHATSAPP_WABA_ID"),
-    apiVersion: process.env.WHATSAPP_API_VERSION?.trim() || DEFAULT_API_VERSION,
+    token: credencial.token_acceso,
+    numeroId: datosPublicos.numeroId,
+    wabaId: datosPublicos.wabaId,
+    apiVersion: versionApiWhatsapp(),
     templateCategoria: process.env.WHATSAPP_TEMPLATE_CATEGORY?.trim() || DEFAULT_TEMPLATE_CATEGORY,
-    templateIdioma: process.env.WHATSAPP_TEMPLATE_LANG?.trim() || DEFAULT_TEMPLATE_LANG,
+    templateIdioma: idiomaPlantillasWhatsapp(),
   };
 }

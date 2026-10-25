@@ -15,10 +15,12 @@ import { abrirBaseE2E } from "../../tests/fabricas/e2e";
  *
  *   drenarGeocodificacion(ordenIds)
  *     Corre `procesar-jobs` hasta que el job de geocodificación de cada orden haya fallado POR
- *     CONFIGURACIÓN (el E2E no tiene `GOOGLE_MAPS_API_KEY`): con ese fallo el gate de asignabilidad
- *     deja asignar la orden sin ubicación (`asignable_sin_ubicacion`, feature 400), que es lo que
- *     pasa en un despliegue sin credencial. Sin drenar, la orden queda «geocodificación en curso» y
- *     ninguna de las dos asignaciones la acepta.
+ *     CONFIGURACIÓN: las empresas del E2E no configuran Google Maps en
+ *     `/configuracion/integraciones` (SL-36: la credencial es de cada empresa, no del entorno), y
+ *     el service corta antes de la red con el marcador de configuración. Con ese fallo el gate de
+ *     asignabilidad deja asignar la orden sin ubicación (`asignable_sin_ubicacion`, feature 400),
+ *     que es lo que pasa en una empresa sin la integración. Sin drenar, la orden queda
+ *     «geocodificación en curso» y ninguna de las dos asignaciones la acepta.
  *
  * Los crons recorren TODAS las empresas de la base: por eso `workers: 1` (D3).
  *
@@ -79,7 +81,7 @@ export async function drenarGeocodificacion(ordenIds: string[], intentos = 15): 
       await correrCron("procesar-jobs");
     }
     throw new Error(
-      `SL-44 E2E: tras ${intentos} pasadas de procesar-jobs, la geocodificación de ${ordenIds.join(", ")} no falló por configuración (¿hay GOOGLE_MAPS_API_KEY en el entorno del servidor?).`,
+      `SL-44 E2E: tras ${intentos} pasadas de procesar-jobs, la geocodificación de ${ordenIds.join(", ")} no falló por configuración (¿alguna de esas empresas tiene configurada la integración de Google Maps?).`,
     );
   } finally {
     await db.$disconnect();

@@ -149,6 +149,11 @@ export interface FuentesEtiqueta {
   provincia: { nombre: string };
   canton: { nombre: string; provinciaNombre: string | null };
   distrito: { nombre: string; cantonNombre: string | null; provinciaNombre: string | null };
+  /**
+   * SL-36 (design §13) — la integracion se etiqueta por el NOMBRE de su servicio y nada mas. Nunca
+   * la credencial, su valor cifrado, el numero de WhatsApp ni el mensaje del proveedor (R33).
+   */
+  integracion: { servicioNombre: string };
 }
 
 /**
@@ -229,6 +234,7 @@ const CONSTRUCTORES: {
   provincia: (f) => limpiar(f?.nombre),
   canton: (f) => unir(f?.nombre, f?.provinciaNombre),
   distrito: (f) => unir(f?.nombre, f?.cantonNombre, f?.provinciaNombre),
+  integracion: (f) => limpiar(f?.servicioNombre),
 };
 
 /**

@@ -42,7 +42,11 @@ const EMPRESAS: EmpresaListada[] = [
 
 function repoDoble(empresas: EmpresaListada[] = EMPRESAS) {
   const listar = vi.fn<IEmpresasPlataformaRepository["listar"]>(async () => empresas);
-  const repo: IEmpresasPlataformaRepository = { listar };
+  // SL-36: el contrato suma `estadoIntegraciones`; este archivo prueba solo el listado.
+  const repo: IEmpresasPlataformaRepository = {
+    listar,
+    estadoIntegraciones: vi.fn<IEmpresasPlataformaRepository["estadoIntegraciones"]>(async () => []),
+  };
   return { repo, listar };
 }
 

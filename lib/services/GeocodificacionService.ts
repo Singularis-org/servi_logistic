@@ -9,7 +9,7 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { IGeocodeCacheRepository } from "@/lib/interfaces/repositories/IGeocodeCacheRepository";
 import type { IOrdenGeocodeRepository } from "@/lib/interfaces/repositories/IOrdenGeocodeRepository";
 import type { IGeocodeClient } from "@/lib/interfaces/external/IGeocodeClient";
-import type { GeocodeConfig } from "@/lib/config/geocode";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import { construirQueryDireccion, hashDireccion } from "@/lib/geo/direccion-query";
 import { marcarFalloConfigGeocode } from "@/lib/geo/fallo-config-geocode";
 // FICHA 401 (design §5.3): el colaborador que reconoce la caida por configuracion NUESTRA y
@@ -45,7 +45,10 @@ export class GeocodeNoConfiguradoError extends Error {
     // fallo NUESTRO, no de la direccion, y el gate de asignabilidad tiene que poder
     // distinguirlo al otro lado de la cola (`jobs.last_error`), donde lo unico que queda
     // es esta cadena. El texto legible NO cambia: solo gana el prefijo.
-    super(marcarFalloConfigGeocode("geocodificacion: GOOGLE_MAPS_API_KEY no esta configurada"));
+    //
+    // SL-36 (R25): la clave es de cada empresa; el texto dice que falta la integracion, no una
+    // variable que el maestro no puede tocar.
+    super(marcarFalloConfigGeocode("geocodificacion: Google Maps no está configurado en la empresa"));
     this.name = "GeocodeNoConfiguradoError";
   }
 }
@@ -91,6 +94,13 @@ export class GeocodeConfigInvalidaError extends Error {
   }
 }
 
+/**
+ * SL-36 (design §9.1) — construye el cliente del proveedor con la clave de la empresa del job. Es una
+ * fabrica y no un cliente ya hecho porque la clave cambia de un job a otro: un cliente construido al
+ * registrar el handler serviria la clave de una empresa a todas (R28).
+ */
+export type FabricaClienteGeocode = (claveApi: string) => IGeocodeClient;
+
 /** R14: el payload solo lleva el id de la orden. Cualquier otra forma es un error. */
 const payloadSchema = z.object({ ordenId: z.string().min(1) });
 
@@ -98,8 +108,12 @@ export class GeocodificacionService {
   constructor(
     private readonly ordenes: IOrdenGeocodeRepository,
     private readonly cache: IGeocodeCacheRepository,
-    private readonly client: IGeocodeClient,
-    private readonly config: GeocodeConfig,
+    /**
+     * SL-36 (R23): la credencial de la empresa EN CURSO. El job ya corre en `conEmpresa` de la
+     * empresa que lo encolo (`conSuEmpresa`), asi que leer aqui es leer la de esa empresa.
+     */
+    private readonly credenciales: ICredencialesIntegracion,
+    private readonly crearCliente: FabricaClienteGeocode,
     private readonly now: () => Date = () => new Date(),
     private readonly logger: GeocodeLogger = defaultLogger,
     /**
@@ -162,8 +176,12 @@ export class GeocodificacionService {
       return;
     }
 
-    // R25: sin credencial se lanza ANTES de llamar. Mensaje agregado, sin PII.
-    if (this.config.GOOGLE_MAPS_API_KEY === null) {
+    // R25: sin credencial se lanza ANTES de llamar. Mensaje agregado, sin PII. SL-36: «sin
+    // credencial» es que la empresa no tiene Google Maps, o que su clave no se lee (R29: ya quedo
+    // marcada y no se llama al proveedor). Va DESPUES de la cache a proposito (design §7.1): una
+    // direccion ya conocida se ubica aunque la empresa no tenga clave.
+    const lectura = await this.credenciales.leer("google_maps");
+    if (lectura.estado !== "lista") {
       this.logger.warn("[geocodificacion] job sin credencial configurada");
       // FICHA 401 (R2): el OTRO camino de configuracion NUESTRA que la 400 marca. Va ANTES del
       // `throw` y no puede cambiarlo (R11).
@@ -171,7 +189,7 @@ export class GeocodificacionService {
       throw new GeocodeNoConfiguradoError();
     }
 
-    const outcome = await this.client.geocodificar(query);
+    const outcome = await this.crearCliente(lectura.credencial.clave_api).geocodificar(query);
 
     switch (outcome.status) {
       case "ok": {
@@ -243,7 +261,24 @@ export class GeocodificacionService {
         // tabla que no se purga, ni en `JobQueueService`, que sirve a nueve tipos de job. Coste:
         // CERO consultas cuando no pasa nada, ~2-3 por hora durante un corte.
         await this.avisarSalud(() => this.salud.registrarFalloConfig(job.id, this.now()));
+        // SL-36 (R30, design §5): `REQUEST_DENIED` es la señal de que Google rechazo la clave de
+        // ESTA empresa; la integracion queda en «error» para que su maestro la vuelva a escribir.
+        // Cortesia como la salud: anotarlo no puede cambiar el desenlace del job.
+        await this.anotarRechazo();
         throw new GeocodeConfigInvalidaError(outcome.detalle);
+    }
+  }
+
+  /**
+   * SL-36 (R30) — mismo trato que la salud: un fallo al anotar el rechazo queda registrado con su
+   * nombre y no cambia el desenlace del job. Sin PII ni clave: solo el nombre del error.
+   */
+  private async anotarRechazo(): Promise<void> {
+    try {
+      await this.credenciales.marcarRechazo("google_maps", "google_maps.credencial_rechazada");
+    } catch (error) {
+      const causa = error instanceof Error ? error.name : "error";
+      this.logger.warn(`[geocodificacion] rechazo de credencial no anotado (best-effort): ${causa}`);
     }
   }
 

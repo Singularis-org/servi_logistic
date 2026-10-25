@@ -49,9 +49,11 @@ env:
   NO_COLOR: '1'
   # `tsc --noEmit` ya pide ~2.1 GB sobre `dev` (medido el 2026-10-07) y ~2.5 GB con un PR
   # mediano encima; en el runner de 2 vCPU el heap por defecto de Node se queda corto y el
-  # typecheck muere con "JavaScript heap out of memory" (PRs #160 y #162). 4 GB cabe en los
-  # 7 GB del runner y es solo un techo: no reserva memoria.
-  NODE_OPTIONS: --max-old-space-size=4096
+  # typecheck muere con "JavaScript heap out of memory" (PRs #160 y #162). Con SL-36 (PR #13)
+  # 4 GB tampoco basta: `estatico` murio en el run 40188265664 (en local, tsc mide ~5,2 GB). El
+  # runner de repo publico tiene 16 GB (ver el paso del build, que ya usa 8 GB) y esto es solo
+  # un techo: no reserva memoria.
+  NODE_OPTIONS: --max-old-space-size=8192
 
 jobs:
   # LA SUITE VA EN SHARDS (docs/gate.md > En CI la suite va en shards). Tres jobs para un solo

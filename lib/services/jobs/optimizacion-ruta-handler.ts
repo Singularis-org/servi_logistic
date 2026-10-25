@@ -7,6 +7,8 @@ import { z } from "zod";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
+import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import { OptimizacionRutaService } from "@/lib/services/OptimizacionRutaService";
 import { GoogleRouteOptimizationClient } from "@/lib/clients/google-route-optimization";
 import { GoogleRoutesClient } from "@/lib/clients/google-routes";
@@ -16,8 +18,8 @@ import { RutaOptimizadaRepository } from "@/lib/repositories/RutaOptimizadaRepos
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
-import { construirTokenProvider } from "@/lib/auth/google-sa-token";
-import type { TokenProvider } from "@/lib/auth/google-token-shared";
+import { credencialesIntegracionReales } from "@/lib/services/integraciones/credencial-de-la-empresa";
+import { RutasPorEmpresa } from "@/lib/services/integraciones/rutas-de-la-empresa";
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 
 /** R21/PII: el payload lleva SOLO el id del mensajero. Cualquier otra forma es un error. */
@@ -52,33 +54,36 @@ export function crearOptimizacionRutaHandler(service: OptimizacionRutaService): 
   };
 }
 
+/** Lo que el composition root deja cambiar a un test: de donde salen la credencial y el `fetch`. */
+export interface OptimizacionRutaDeps {
+  credenciales?: ICredencialesIntegracion;
+  /** El `fetch` de los tres extremos de Google (token, optimizacion y trazado). */
+  fetchImpl?: typeof fetch;
+  /** La empresa de la sesion, para la action del mensajero (inyectable en tests). */
+  empresaDeLaSesion?: () => Promise<string | null>;
+}
+
 /**
- * Construye el service real con sus repos y el cliente HTTP.
+ * Construye el service real con sus repos y los clientes HTTP.
  *
- * OJO: la config se carga aqui y NUNCA lanza si falta la credencial (design §2). La
- * ELECCION del modo de autenticacion (ADC / WIF keyless / JWT-bearer) y la validacion de
- * las piezas del modo elegido ocurren en `construirTokenProvider`, que lanza
- * `RutaNoConfiguradoError` — pero SOLO cuando se pide el token, es decir DESPUES de todas
- * las guardas de coste y dentro del `try` por job de `JobQueueService.drenar`. Esto es lo
- * que garantiza que un despliegue sin credencial de Route Optimization NO tumbe el drenado
- * de la cola, que comparte cron con `liberar_reprogramadas` (feature 46, en produccion) y
- * `geocodificacion` (feature 91). El proveedor de token se construye PEREZOSAMENTE por el
- * mismo motivo: construirlo aqui lanzaria al registrar el handler.
+ * SL-36 (design §9.1; R23, R26, R28): aqui NO se lee ninguna credencial. Este service se construye
+ * una vez por corrida del drenador (y una por pulsacion del boton del mensajero) y atiende jobs de
+ * VARIAS empresas, asi que la credencial se resuelve en cada llamada a Google con la empresa en curso
+ * (`RutasPorEmpresa`), y el token se cachea por empresa. Antes habia aqui un `tokenProvider ??=` de
+ * proceso: con credenciales por empresa, el primer job habria fijado el token de su empresa para
+ * todos los demas.
+ *
+ * Construir NUNCA lanza por falta de credencial: `RutaNoConfiguradoError` sale al pedir el token,
+ * DESPUES de todas las guardas de coste, y `FallbackRouteOptimizationClient` lo convierte en el orden
+ * local aproximado (R26). Asi una empresa sin la integracion no tumba el drenado de la cola.
  */
-export function buildOptimizacionRutaService(now: () => Date = () => new Date()) {
+export function buildOptimizacionRutaService(
+  now: () => Date = () => new Date(),
+  deps: OptimizacionRutaDeps = {},
+) {
   const prisma = getPrismaClient();
   const config = loadRouteOptimizationConfig();
   optlog("build — config cargada", {
-    projectId: config.GOOGLE_ROUTE_OPT_PROJECT_ID ?? "AUSENTE",
-    // Ficha 251: solo los NOMBRES de las `GOOGLE_*` que ve el proceso, nunca sus valores
-    // (R14). Existe porque `AUSENTE` es AMBIGUO: `readSecret` colapsa "la variable no esta
-    // en el entorno" y "esta pero vale cadena vacia" al mismo `null`, y esos dos casos se
-    // arreglan de forma distinta -uno es redesplegar, el otro es corregir el valor-. Sin
-    // esta linea hay que adivinar cual de los dos es, y ya se adivino mal una vez.
-    clavesGoogle: Object.keys(process.env)
-      .filter((k) => k.startsWith("GOOGLE_"))
-      .sort(),
-    useAdc: config.GOOGLE_ROUTE_OPT_USE_ADC,
     timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
     maxParadas: config.RUTA_MAX_PARADAS,
     debounceS: config.RUTA_DEBOUNCE_S,
@@ -87,31 +92,41 @@ export function buildOptimizacionRutaService(now: () => Date = () => new Date())
     routingPreference: config.ROUTES_ROUTING_PREFERENCE,
   });
 
-  let tokenProvider: TokenProvider | null = null;
-  // UN solo proveedor de token para las DOS APIs (optimizacion y trazado): el selector
-  // ADC/WIF/JWT se resuelve una vez y ambos clientes heredan el modo que salga.
-  const getToken = async () => {
-    // R12: lanza `RutaNoConfiguradoError` ANTES de firmar nada y ANTES de la red.
-    tokenProvider ??= construirTokenProvider(config);
-    return tokenProvider.obtener();
+  // UNA instancia para los dos clientes: optimizacion y trazado usan el MISMO token de la empresa.
+  // ⚠️ ESTA LINEA ES R23: sin el lector real no hay de donde sacar la clave de la empresa.
+  const rutas = new RutasPorEmpresa({
+    credenciales: deps.credenciales ?? credencialesIntegracionReales(),
+    fetchBase: deps.fetchImpl,
+    empresaDeLaSesion: deps.empresaDeLaSesion,
+  });
+
+  // El proyecto va en la URL de `optimizeTours` y es de la empresa: el cliente se arma por llamada.
+  // `GoogleRouteOptimizationClient` pide el token lo primero, asi que armarlo aqui dentro no adelanta
+  // ninguna llamada respecto a antes.
+  const google: IRouteOptimizationClient = {
+    async optimizar(input) {
+      const empresa = await rutas.deLaEmpresa();
+      return new GoogleRouteOptimizationClient({
+        projectId: empresa.projectId,
+        timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
+        getToken: empresa.getToken,
+        fetchImpl: empresa.fetchOptimizacion,
+      }).optimizar(input);
+    },
   };
 
-  const google = new GoogleRouteOptimizationClient({
-    projectId: config.GOOGLE_ROUTE_OPT_PROJECT_ID ?? "",
-    timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
-    getToken,
-  });
-
-  const routes = new GoogleRoutesClient({
-    getToken,
+  // El trazado no necesita proyecto: un cliente basta, y su token se resuelve PEREZOSAMENTE en la
+  // empresa en curso, en el mismo punto donde el cliente lo pedia antes (despues de sus guardas).
+  const routes: IRoutesClient = new GoogleRoutesClient({
+    getToken: async () => (await rutas.deLaEmpresa()).getToken(),
     timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
     routingPreference: config.ROUTES_ROUTING_PREFERENCE,
+    fetchImpl: deps.fetchImpl,
   });
 
-  // Fallback (design §9.A): si falta la credencial, `google.optimizar` propaga
-  // `RutaNoConfiguradoError` (perezoso, dentro de `getToken`) y el compuesto cae a un orden
-  // local aproximado (Haversine + vecino mas cercano) en vez de dejar la ruta sin ordenar.
-  // Cualquier otro fallo del proveedor se propaga tal cual.
+  // Fallback (design §9.A): sin credencial de la empresa, `google.optimizar` propaga
+  // `RutaNoConfiguradoError` y el compuesto cae a un orden local aproximado (Haversine + vecino mas
+  // cercano) en vez de dejar la ruta sin ordenar. Cualquier otro fallo del proveedor se propaga.
   const client: IRouteOptimizationClient = new FallbackRouteOptimizationClient(
     google,
     new HaversineRouteOptimizationClient(),

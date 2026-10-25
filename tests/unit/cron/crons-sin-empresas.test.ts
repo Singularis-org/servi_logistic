@@ -52,6 +52,11 @@ interface CasoCron {
   corrida: Record<string, unknown>;
   /** Cuerpo esperado sin empresas (sin la clave `empresas`). */
   vacio: Record<string, unknown>;
+  /**
+   * SL-36: claves de mas en `empresas` propias de un cron. El de plantillas cuenta las empresas sin
+   * WhatsApp (saltadas sin red); con el servicio doble inyectado no hay ninguna.
+   */
+  empresasExtra?: Record<string, unknown>;
 }
 
 const CASOS: CasoCron[] = [
@@ -174,6 +179,7 @@ const CASOS: CasoCron[] = [
     metodo: "sincronizar",
     corrida: { leidas: 1, actualizadas: 1, sinCambios: 1, ignoradas: 1 },
     vacio: { leidas: 0, actualizadas: 0, sinCambios: 0, ignoradas: 0 },
+    empresasExtra: { sinWhatsapp: 0 },
   },
 ];
 
@@ -213,7 +219,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
 
     expect(res.status).toBe(200);
     expect(fn).not.toHaveBeenCalled();
-    expect(await res.json()).toEqual({ ...caso.vacio, empresas: { procesadas: 0, fallidas: [] } });
+    expect(await res.json()).toEqual({ ...caso.vacio, empresas: { procesadas: 0, fallidas: [], ...caso.empresasExtra } });
   });
 
   it("dos empresas: una corrida por empresa, cada una con la suya en contexto, y el resumen suma", async () => {
@@ -227,7 +233,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
       { tipo: "empresa", organizacionId: "org-b" },
     ]);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.empresas).toEqual({ procesadas: 2, fallidas: [] });
+    expect(body.empresas).toEqual({ procesadas: 2, fallidas: [], ...caso.empresasExtra });
     for (const [k, v] of Object.entries(caso.vacio)) {
       if (typeof v === "number") expect(body[k], k).toBe(2);
     }
@@ -241,7 +247,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
     expect(res.status).toBe(200);
     expect(contextos).toHaveLength(2);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.empresas).toEqual({ procesadas: 1, fallidas: ["org-a"] });
+    expect(body.empresas).toEqual({ procesadas: 1, fallidas: ["org-a"], ...caso.empresasExtra });
     for (const [k, v] of Object.entries(caso.vacio)) {
       if (typeof v === "number") expect(body[k], k).toBe(1);
     }

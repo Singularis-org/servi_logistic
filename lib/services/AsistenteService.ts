@@ -30,7 +30,12 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 const PREFIJO_PARA_LA_SENAL = 80;
 
 export interface AsistenteServiceDeps {
-  proveedor: IAsistenteProvider;
+  /**
+   * SL-36 (R27): `null` cuando la empresa de la sesión no configuró el asistente. Es un valor y no
+   * un proveedor que conteste `sin_credencial` porque el corte tiene que ir ANTES del tope: con un
+   * proveedor así, la consulta ya se habría contado.
+   */
+  proveedor: IAsistenteProvider | null;
   usoRepo: IAsistenteUsoRepository;
   /** El catálogo de `docs/ayuda/**`. Inyectado: el servicio no sabe si sale de `fs` o de un doble. */
   leerCatalogo: () => Promise<DocumentoAyuda[]>;
@@ -57,6 +62,12 @@ export class AsistenteService implements IAsistenteService {
     if (!(ROLES_AYUDA as readonly string[]).includes(actor.rol)) {
       return { status: "rol_no_admitido" };
     }
+
+    // ⭑ SL-36 · R27 — SIN ASISTENTE EN LA EMPRESA, NI SE CUENTA NI SE LLAMA. Va después del rol (un
+    // rol sin ayuda sigue siendo `forbidden`, tenga o no la empresa el asistente) y ANTES del tope:
+    // una consulta que no se pudo atender por configuración no le gasta cupo a la persona.
+    const proveedor = this.deps.proveedor;
+    if (proveedor === null) return { status: "sin_credencial" };
 
     // ⭑ R15/R16 — EL TOPE SE CUENTA **ANTES** DE LLAMAR AL PROVEEDOR.
     //
@@ -99,7 +110,7 @@ export class AsistenteService implements IAsistenteService {
     // ⭑ R32 — EL ROL VA EN LAS INSTRUCCIONES, Y ES EL MISMO `actor.rol` QUE ACOTÓ LOS DOCUMENTOS.
     // Una sola fuente para las dos cosas: no puede pasar que el contexto sea de un rol y el texto
     // de sistema hable de otro.
-    const respuesta = await this.deps.proveedor.responder({
+    const respuesta = await proveedor.responder({
       instrucciones: instruccionesDelSistema(actor.rol),
       documentos,
       mensajes: consulta.mensajes,

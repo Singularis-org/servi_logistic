@@ -417,6 +417,13 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       // caja (D13). Su migracion: `20260928120000_wallet_458_enums`.
       "cobro_rechazo_tienda_anulado",
       "egreso_caja_anulado",
+      // SL-36 (2026-10-25): el rastro de las integraciones. Su migracion:
+      // `20261025120100_historial_accion_integraciones`.
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -425,8 +432,12 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
     );
     expect([...entidadesAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_ENTIDADES]
-        // ficha 459: las dos entidades de sus documentos, apendidas despues.
-        .filter((e) => e !== ENTIDAD_NUEVA && !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda"].includes(e))
+        // ficha 459: las dos entidades de sus documentos, apendidas despues; 457 y SL-36, una cada una.
+        .filter(
+          (e) =>
+            e !== ENTIDAD_NUEVA &&
+            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion"].includes(e),
+        )
         .sort(),
     );
   });

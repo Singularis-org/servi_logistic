@@ -29,6 +29,22 @@ const BASE_URL = `http://localhost:${PUERTO_APP}`;
 const LOG_SERVIDOR = (process.env.E2E_LOG_SERVIDOR ||= path.join(os.tmpdir(), "servi-logistic-e2e-servidor.log"));
 const CRON_SECRET = (process.env.CRON_SECRET ||= randomBytes(32).toString("hex"));
 
+// SL-36 (design §15, §18) — el anillo de claves de la boveda de integraciones. Sin el, la app
+// arranca pero la pantalla `/configuracion/integraciones` responde `unexpected` al guardar. Si el
+// entorno (o el `.env` local) ya trae un anillo, se respeta el par entero: una base local con
+// integraciones cifradas con la clave del desarrollador no se volveria ilegible por correr el E2E.
+// Si no, uno de prueba FIJO (no aleatorio: lo cifrado en una corrida tiene que leerse en la
+// siguiente contra la misma base). Se deriva de un texto legible para que no tenga forma de
+// secreto real: protege datos de prueba, no de nadie.
+const ANILLO_E2E = {
+  claves: `v1:${Buffer.from("e2e-clave-de-prueba-no-secreta!!", "utf8").toString("base64")}`,
+  activa: "v1",
+};
+const { claves: INTEGRACIONES_CLAVES_CIFRADO, activa: INTEGRACIONES_CLAVE_ACTIVA } =
+  process.env.INTEGRACIONES_CLAVES_CIFRADO && process.env.INTEGRACIONES_CLAVE_ACTIVA
+    ? { claves: process.env.INTEGRACIONES_CLAVES_CIFRADO, activa: process.env.INTEGRACIONES_CLAVE_ACTIVA }
+    : ANILLO_E2E;
+
 /** Un patron por spec: un archivo que no se nombra en ningun proyecto no corre. */
 function specs(...nombres: string[]): string[] {
   return nombres.map((n) => `**/${n}.spec.ts`);
@@ -78,6 +94,7 @@ export default defineConfig({
         "analitica-roles",
         "cobro-plataforma-sl40",
         "pago-plataforma-sl45",
+        "integraciones-por-empresa",
       ),
     },
     {
@@ -134,6 +151,12 @@ export default defineConfig({
         SMTP_USER: "",
         SMTP_PASSWORD: "",
         CRON_SECRET,
+        // SL-36 (design §15): la pantalla de integraciones prueba contra el doble
+        // (`lib/clients/probadores/probador-doble.ts`, acepta los secretos `valido-...`), no contra
+        // Meta, Google y Anthropic. El composition root lo ignora con `VERCEL_ENV=production`.
+        INTEGRACIONES_PROBADOR_DOBLE: "1",
+        INTEGRACIONES_CLAVES_CIFRADO,
+        INTEGRACIONES_CLAVE_ACTIVA,
       },
       reuseExistingServer: !CI,
       // `next start` sube en segundos; `next dev` compila la primera ruta al pedir `url`.

@@ -87,7 +87,8 @@ export class GeocodeSaludService implements IGeocodeSaludService {
       // R26 — por que se puede registrar el mensaje del error sin filtrar secretos: los UNICOS
       // colaboradores de este service son el repositorio de `jobs`, cinco numeros de
       // configuracion, un notificador y este logger. NINGUNO ve la credencial del proveedor
-      // (`GOOGLE_MAPS_API_KEY` vive en `GeocodeConfig`, que este archivo ni importa), asi que no
+      // (la clave de Google Maps de la empresa la lee `GeocodificacionService`, que este archivo ni
+      // importa), asi que no
       // hay camino por el que pueda llegar hasta aqui.
       this.logger.warn(
         `[geocodificacion] la evaluacion de la caida fallo (best-effort): ${mensajeDe(error)}`,

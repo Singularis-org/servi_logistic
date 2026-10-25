@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { loadGeocodeConfig } from "@/lib/config/geocode";
 
-// Feature 91 (R33) — la credencial se resuelve por ENTORNO y su ausencia NO lanza. Es la
-// propiedad que impide que un despliegue sin `GOOGLE_MAPS_API_KEY` tumbe el drenado de la
-// cola, que comparte cron con `liberar_reprogramadas` (feature 46, ya en produccion).
+// Feature 91 (R33) — la config del proveedor NUNCA lanza: es la propiedad que impide que una
+// variable mal puesta tumbe el drenado de la cola, que comparte cron con `liberar_reprogramadas`.
+//
+// SL-36 (R23): la clave de Google Maps es de cada empresa y ya no sale del entorno. Lo que antes se
+// probaba aqui («ausente -> null», «presente -> se devuelve») ahora es lo contrario: aunque el
+// entorno traiga la variable retirada, la config no la expone.
 
 const ENV_ORIGINAL = { ...process.env };
 
@@ -16,26 +19,16 @@ afterEach(() => {
   process.env = { ...ENV_ORIGINAL };
 });
 
-describe("R33 — la credencial ausente o vacia se resuelve a null sin lanzar", () => {
-  it("variable AUSENTE -> null, sin excepcion", () => {
-    expect(() => loadGeocodeConfig()).not.toThrow();
-    expect(loadGeocodeConfig().GOOGLE_MAPS_API_KEY).toBeNull();
-  });
-
-  it('variable VACIA ("") -> null, sin excepcion', () => {
-    process.env.GOOGLE_MAPS_API_KEY = "";
-    expect(() => loadGeocodeConfig()).not.toThrow();
-    expect(loadGeocodeConfig().GOOGLE_MAPS_API_KEY).toBeNull();
-  });
-
-  it("variable presente -> se devuelve tal cual", () => {
+describe("SL-36/R23 — la config no lleva credencial", () => {
+  it("con la variable retirada en el entorno, la config sigue siendo solo el timeout", () => {
     process.env.GOOGLE_MAPS_API_KEY = "clave-de-prueba";
-    expect(loadGeocodeConfig().GOOGLE_MAPS_API_KEY).toBe("clave-de-prueba");
+    expect(() => loadGeocodeConfig()).not.toThrow();
+    expect(loadGeocodeConfig()).toEqual({ GEOCODE_TIMEOUT_MS: 10_000 });
+    expect(JSON.stringify(loadGeocodeConfig())).not.toContain("clave-de-prueba");
   });
 
-  it("la credencial NO esta incrustada en el codigo: sin entorno no hay valor por defecto", () => {
-    const config = loadGeocodeConfig();
-    expect(config.GOOGLE_MAPS_API_KEY).toBeNull();
+  it("sin entorno tampoco lanza", () => {
+    expect(() => loadGeocodeConfig()).not.toThrow();
   });
 });
 

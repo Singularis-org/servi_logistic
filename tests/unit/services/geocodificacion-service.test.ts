@@ -25,6 +25,10 @@ import type {
 } from "@/lib/interfaces/repositories/IGeocodeCacheRepository";
 import { hashDireccion, construirQueryDireccion } from "@/lib/geo/direccion-query";
 import type { IGeocodeSaludService } from "@/lib/interfaces/services/IGeocodeSaludService";
+import type {
+  ICredencialesIntegracion,
+  LecturaCredencial,
+} from "@/lib/interfaces/services/ICredencialesIntegracion";
 
 // Feature 91 (R18, R20-R31) — el handler y su TABLA DE DECISION normativa (gate F1.4-Q3,
 // requirements.md Bloque E). Retornar = el job se completa; lanzar = backoff y, agotados
@@ -61,11 +65,31 @@ function job(payload: Record<string, unknown> = { ordenId: ORDEN_ID }): JobDTO {
   };
 }
 
+/**
+ * SL-36 (R23) — el lector de credenciales de la empresa del job. `null` = la empresa no tiene Google
+ * Maps; `"ilegible"` = su clave no se descifra (R29). Cuenta sus llamadas para afirmar el orden.
+ */
+function credencialesMaps(clave: string | null | "ilegible" = "clave-de-prueba") {
+  const lectura: LecturaCredencial<"google_maps"> =
+    clave === null
+      ? { estado: "sin_configurar" }
+      : clave === "ilegible"
+        ? { estado: "ilegible" }
+        : { estado: "lista", integracionId: "int-maps", credencial: { clave_api: clave }, datosPublicos: {} };
+  return {
+    leer: vi.fn(async () => lectura),
+    marcarRechazo: vi.fn(async () => {}),
+  };
+}
+
 interface Dobles {
   service: GeocodificacionService;
   ordenes: { findParaGeocodificar: ReturnType<typeof vi.fn>; guardarResultado: ReturnType<typeof vi.fn> };
   cache: { findByHash: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
   geocodificar: ReturnType<typeof vi.fn>;
+  /** SL-36: con que clave se construyo cada cliente. */
+  crearCliente: ReturnType<typeof vi.fn>;
+  credenciales: ReturnType<typeof credencialesMaps>;
   logs: string[];
   /** FICHA 401 (T12): el doble de salud que CUENTA LLAMADAS. */
   salud: {
@@ -78,7 +102,9 @@ function build(opts: {
   orden?: OrdenGeocodeRow | null;
   enCache?: GeocodeCacheEntry | null;
   outcome?: GeocodeOutcome;
-  apiKey?: string | null;
+  apiKey?: string | null | "ilegible";
+  /** SL-36: `marcarRechazo` revienta — el desenlace del job NO puede cambiar por eso. */
+  marcarLanza?: Error;
   /** FICHA 401: la salud revienta — el desenlace del job NO puede cambiar por eso (R11/R20). */
   saludLanza?: Error;
 } = {}): Dobles {
@@ -105,19 +131,24 @@ function build(opts: {
       return 0;
     }),
   };
+  const credenciales = credencialesMaps(opts.apiKey === undefined ? "clave-de-prueba" : opts.apiKey);
+  if (opts.marcarLanza) {
+    const error = opts.marcarLanza;
+    credenciales.marcarRechazo.mockImplementation(async () => {
+      throw error;
+    });
+  }
+  const crearCliente = vi.fn<(clave: string) => { geocodificar: typeof geocodificar }>(() => ({ geocodificar }));
   const service = new GeocodificacionService(
     ordenes as unknown as IOrdenGeocodeRepository,
     cache as unknown as IGeocodeCacheRepository,
-    { geocodificar },
-    {
-      GOOGLE_MAPS_API_KEY: opts.apiKey === undefined ? "clave-de-prueba" : opts.apiKey,
-      GEOCODE_TIMEOUT_MS: 10_000,
-    },
+    credenciales as unknown as ICredencialesIntegracion,
+    crearCliente,
     () => AHORA,
     { warn: (m) => logs.push(m) },
     salud as unknown as IGeocodeSaludService,
   );
-  return { service, ordenes, cache, geocodificar, logs, salud };
+  return { service, ordenes, cache, geocodificar, crearCliente, credenciales, logs, salud };
 }
 
 const OUTCOME_OK: GeocodeOutcome = {
@@ -308,10 +339,11 @@ describe("R25 — sin credencial configurada", () => {
     const d = build({ apiKey: null });
     const error = (await d.service.ejecutar(job()).catch((e: unknown) => e)) as Error;
     expect(error.message).not.toContain(ORDEN.direccion as string);
-    // FEATURE 400 (T4): este literal SE CONSERVA porque ES el contrato — dice CUAL es la
-    // configuracion que falta, que es lo unico accionable del mensaje. La ficha 400 solo le
-    // antepone el marcador, asi que sigue estando contenido.
-    expect(error.message).toContain("GOOGLE_MAPS_API_KEY");
+    // FEATURE 400 (T4): el texto dice CUAL es la configuracion que falta, que es lo unico
+    // accionable del mensaje. SL-36 (R25) cambio el contrato: la clave es de la empresa, asi que el
+    // texto nombra la integracion, LITERAL del design §9.1, y ya no una variable de entorno.
+    expect(error.message).toContain("Google Maps no está configurado en la empresa");
+    expect(error.message).not.toContain("GOOGLE_MAPS_API_KEY");
   });
 
   // FEATURE 400 (T3, R11): la credencial ausente es el SEGUNDO fallo nuestro, y tambien
@@ -455,8 +487,8 @@ describe("R29 — idempotencia", () => {
     const service = new GeocodificacionService(
       ordenes as unknown as IOrdenGeocodeRepository,
       cache as unknown as IGeocodeCacheRepository,
-      { geocodificar },
-      { GOOGLE_MAPS_API_KEY: "k", GEOCODE_TIMEOUT_MS: 10_000 },
+      credencialesMaps("k") as unknown as ICredencialesIntegracion,
+      () => ({ geocodificar }),
       () => AHORA,
       { warn: () => {} },
     );
@@ -572,8 +604,8 @@ describe("R31 — privacidad de los logs", () => {
     const service = new GeocodificacionService(
       ordenes as unknown as IOrdenGeocodeRepository,
       cache as unknown as IGeocodeCacheRepository,
-      new GoogleGeocodeClient({ apiKey: "clave-de-prueba", fetchImpl }),
-      { GOOGLE_MAPS_API_KEY: "clave-de-prueba", GEOCODE_TIMEOUT_MS: 10_000 },
+      credencialesMaps("clave-de-prueba") as unknown as ICredencialesIntegracion,
+      (apiKey) => new GoogleGeocodeClient({ apiKey, fetchImpl }),
       () => AHORA,
       { warn: () => {} },
     );
@@ -808,13 +840,110 @@ describe("401/R12 — el DEFAULT del colaborador de salud es el no-op", () => {
     const service = new GeocodificacionService(
       { findParaGeocodificar: vi.fn(async () => ORDEN), guardarResultado: vi.fn(async () => {}) } as unknown as IOrdenGeocodeRepository,
       { findByHash: vi.fn(async () => null), upsert: vi.fn(async () => {}) } as unknown as IGeocodeCacheRepository,
-      { geocodificar: vi.fn(async () => OUTCOME_OK) },
-      { GOOGLE_MAPS_API_KEY: "clave-de-prueba", GEOCODE_TIMEOUT_MS: 10_000 },
+      credencialesMaps() as unknown as ICredencialesIntegracion,
+      () => ({ geocodificar: vi.fn(async () => OUTCOME_OK) }),
       () => AHORA,
       { warn: () => {} },
       // ← sin séptimo argumento: `geocodeSaludNoOp`
     );
 
     await expect(service.ejecutar(job())).resolves.toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SL-36 (design §7.1, §9.1; R23, R25, R28, R29, R30) — LA CLAVE DE GOOGLE MAPS ES DE LA EMPRESA DEL JOB
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SL-36/R25 — sin Google Maps en la empresa la geocodificacion se DEGRADA, no bloquea", () => {
+  it("⭑ sin integración y sin caché: fallo marcado, sin red", async () => {
+    const d = build({ apiKey: null });
+
+    const error = (await d.service.ejecutar(job()).catch((e: unknown) => e)) as Error;
+
+    expect(error).toBeInstanceOf(GeocodeNoConfiguradoError);
+    // El marcador es lo que hace la orden `asignable_sin_ubicacion` al otro lado de la cola (400).
+    expect(esFalloConfigGeocode(error.message)).toBe(true);
+    // Sin red: ni se construyó un cliente ni se llamó al proveedor.
+    expect(d.crearCliente).not.toHaveBeenCalled();
+    expect(d.geocodificar).not.toHaveBeenCalled();
+    expect(d.ordenes.guardarResultado).not.toHaveBeenCalled();
+    expect(d.credenciales.leer).toHaveBeenCalledWith("google_maps");
+  });
+
+  it("sin integración pero con la dirección en caché: se ubica igual y ni se lee la credencial", async () => {
+    // design §7.1: la caché va ANTES que la credencial. Una dirección ya conocida no necesita clave.
+    const d = build({ apiKey: null, enCache: { latitud: 1, longitud: 2, precision: "ROOFTOP" } });
+
+    await d.service.ejecutar(job());
+
+    expect(d.credenciales.leer).not.toHaveBeenCalled();
+    expect(d.ordenes.guardarResultado).toHaveBeenCalledWith(ORDEN_ID, expect.objectContaining({ status: "OK" }));
+  });
+
+  it("R29: credencial ilegible = mismo desenlace que sin integración, sin llamar al proveedor", async () => {
+    const d = build({ apiKey: "ilegible" });
+
+    await expect(d.service.ejecutar(job())).rejects.toBeInstanceOf(GeocodeNoConfiguradoError);
+    expect(d.crearCliente).not.toHaveBeenCalled();
+    expect(d.geocodificar).not.toHaveBeenCalled();
+  });
+});
+
+describe("SL-36/R23 y R28 — el cliente sale de la clave de la empresa, job a job", () => {
+  it("⭑ el cliente se construye con la clave que devolvió la empresa", async () => {
+    const d = build({ apiKey: "clave-de-la-empresa-a", outcome: OUTCOME_OK });
+
+    await d.service.ejecutar(job());
+
+    expect(d.crearCliente).toHaveBeenCalledTimes(1);
+    expect(d.crearCliente).toHaveBeenCalledWith("clave-de-la-empresa-a");
+  });
+
+  it("⭑ dos jobs de dos empresas: cada uno con SU clave, ningún cliente reutilizado", async () => {
+    const d = build({ outcome: OUTCOME_OK });
+    d.credenciales.leer
+      .mockResolvedValueOnce({ estado: "lista", integracionId: "int-a", credencial: { clave_api: "clave-a" }, datosPublicos: {} })
+      .mockResolvedValueOnce({ estado: "lista", integracionId: "int-b", credencial: { clave_api: "clave-b" }, datosPublicos: {} });
+
+    await d.service.ejecutar(job());
+    await d.service.ejecutar({ ...job(), id: "job-2" });
+
+    expect(d.crearCliente.mock.calls.map((c) => c[0])).toEqual(["clave-a", "clave-b"]);
+    expect(d.credenciales.leer).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("SL-36/R30 — Google rechaza la clave durante un uso real", () => {
+  it("⭑ REQUEST_DENIED: marcarRechazo('google_maps', 'google_maps.credencial_rechazada') y el job falla marcado", async () => {
+    const d = build({ outcome: { status: "config_invalida", detalle: "REQUEST_DENIED" } });
+
+    const error = (await d.service.ejecutar(job()).catch((e: unknown) => e)) as Error;
+
+    expect(error).toBeInstanceOf(GeocodeConfigInvalidaError);
+    expect(d.credenciales.marcarRechazo).toHaveBeenCalledTimes(1);
+    expect(d.credenciales.marcarRechazo).toHaveBeenCalledWith("google_maps", "google_maps.credencial_rechazada");
+  });
+
+  it.each([
+    ["ok", OUTCOME_OK],
+    ["sin_resultados", { status: "sin_resultados" } as GeocodeOutcome],
+    ["consulta_invalida", { status: "consulta_invalida" } as GeocodeOutcome],
+    ["transitorio", { status: "transitorio", detalle: "OVER_QUERY_LIMIT" } as GeocodeOutcome],
+  ])("%s NO es un rechazo de la credencial: no se marca", async (_n, outcome) => {
+    const d = build({ outcome });
+    await d.service.ejecutar(job()).catch(() => {});
+    expect(d.credenciales.marcarRechazo).not.toHaveBeenCalled();
+  });
+
+  it("si anotar el rechazo revienta, el job falla IGUAL y queda registrado sin la clave", async () => {
+    const d = build({
+      outcome: { status: "config_invalida", detalle: "REQUEST_DENIED" },
+      marcarLanza: new Error("base caida clave-de-prueba"),
+    });
+
+    await expect(d.service.ejecutar(job())).rejects.toBeInstanceOf(GeocodeConfigInvalidaError);
+    expect(d.logs.some((l) => l.includes("rechazo de credencial no anotado"))).toBe(true);
+    for (const linea of d.logs) expect(linea).not.toContain("clave-de-prueba");
   });
 });

@@ -101,19 +101,11 @@ describe("R21 — registro en el drenador", () => {
     expect(dedupeKey).toBe("analitica_rollup_diario:2026-08-02");
   });
 
-  it("construir los handlers NO lanza aunque falte la credencial del proveedor", () => {
-    // La fabrica construye el cliente con `projectId ?? ""` y difiere la validacion de la
-    // credencial al momento de pedir el token. Si lanzara aqui, un despliegue sin el SKU
-    // de Route Optimization tumbaria el registro entero del cron.
-    const previo = process.env.GOOGLE_ROUTE_OPT_PROJECT_ID;
-    delete process.env.GOOGLE_ROUTE_OPT_PROJECT_ID;
-    delete process.env.GOOGLE_ROUTE_OPT_SA_EMAIL;
-    delete process.env.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY;
-    try {
-      expect(() => buildHandlers(() => AHORA)).not.toThrow();
-    } finally {
-      if (previo !== undefined) process.env.GOOGLE_ROUTE_OPT_PROJECT_ID = previo;
-    }
+  it("construir los handlers NO lanza: ninguna credencial se lee al registrar", () => {
+    // SL-36 (R23): la credencial de rutas y la de Maps son de cada empresa y se leen job a job,
+    // dentro de `conSuEmpresa`. Construir el registro no consulta ninguna (ni la base ni el
+    // entorno), asi que una empresa sin integracion no puede tumbar el registro entero del cron.
+    expect(() => buildHandlers(() => AHORA)).not.toThrow();
   });
 });
 

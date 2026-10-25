@@ -38,6 +38,8 @@ function montar(o: {
   fila?: Partial<ReturnType<typeof ejecucionFila>>;
   meta?: ReturnType<typeof meta>;
   metaLanza?: Error;
+  /** SL-36: la `meta` real es asíncrona; un rechazo debe tratarse igual que un `throw`. */
+  metaRechaza?: Error;
   informe?: InformeWhatsapp<unknown>;
 } = {}) {
   const envios = enviosRepo({
@@ -63,6 +65,7 @@ function montar(o: {
     cola,
     meta: () => {
       if (o.metaLanza) throw o.metaLanza;
+      if (o.metaRechaza) return Promise.reject(o.metaRechaza);
       return mt.m;
     },
     now: () => AHORA,
@@ -344,9 +347,17 @@ describe("474/R19 — apagado al ejecutar y credenciales", () => {
   });
 
   it("sin credencial de WhatsApp -> error visible «WhatsApp no está configurado» y el job registra el motivo", async () => {
-    const { s, ej } = montar({ metaLanza: new WhatsappNoConfiguradoError("WHATSAPP_CLOUD_TOKEN") });
-    await expect(s.ejecutar("ej-1")).rejects.toThrow(/WHATSAPP_CLOUD_TOKEN/);
-    expect(ej.fila()).toMatchObject({ estado: "error", motivo: MOTIVOS.noConfigurado("WHATSAPP_CLOUD_TOKEN") });
+    // SL-36 (R24): la credencial es de la empresa; el motivo ya no nombra una variable.
+    const { s, ej } = montar({ metaLanza: new WhatsappNoConfiguradoError("sin_configurar") });
+    await expect(s.ejecutar("ej-1")).rejects.toThrow(WhatsappNoConfiguradoError);
+    expect(ej.fila()).toMatchObject({ estado: "error", motivo: MOTIVOS.noConfigurado });
+    expect(MOTIVOS.noConfigurado).toContain("WhatsApp no está configurado en tu empresa");
+  });
+
+  it("SL-36: `meta` asíncrona (la credencial sale de la base) que rechaza -> mismo error visible", async () => {
+    const { s, ej } = montar({ metaRechaza: new WhatsappNoConfiguradoError("ilegible") });
+    await expect(s.ejecutar("ej-1")).rejects.toThrow(WhatsappNoConfiguradoError);
+    expect(ej.fila()).toMatchObject({ estado: "error", motivo: MOTIVOS.noConfigurado });
   });
 });
 

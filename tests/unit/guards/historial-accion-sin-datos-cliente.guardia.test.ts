@@ -93,6 +93,9 @@ const PUNTOS_DE_ESCRITURA = [
   // en la lista aunque esta guardia no sea obligatoria, porque un punto de escritura FUERA de la
   // lista es un punto sin vigilar.
   "lib/repositories/GeoRepository.ts",
+  // SL-36 (R33). Sus cinco bloques llevan el NOMBRE del servicio y, en la prueba, el codigo del
+  // catalogo: ni la credencial, ni su cifrado, ni el numero de WhatsApp, ni el texto del proveedor.
+  "lib/repositories/IntegracionRepository.ts",
 ] as const;
 
 const FUENTE_ETIQUETAS = "lib/types/historial-accion-etiquetas.ts";

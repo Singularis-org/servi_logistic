@@ -125,29 +125,31 @@ describe("R11 — cache del token en memoria", () => {
 });
 
 describe("R12 — credencial incompleta corta ANTES de firmar y ANTES de la red", () => {
-  const COMPLETA = {
-    GOOGLE_ROUTE_OPT_PROJECT_ID: "proyecto",
-    GOOGLE_ROUTE_OPT_SA_EMAIL: CREDENCIAL.email,
-    GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: privateKey,
-  };
-
+  // SL-36: la credencial es la clave de la cuenta de servicio de la empresa (`client_email` y
+  // `private_key` de su JSON). El proyecto ya no se valida aqui: va en la URL y lo pone quien arma
+  // el cliente con la misma clave (`rutas-de-la-empresa.ts`).
   it.each([
-    ["GOOGLE_ROUTE_OPT_PROJECT_ID"],
-    ["GOOGLE_ROUTE_OPT_SA_EMAIL"],
-    ["GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY"],
-  ] as const)("falta %s -> RutaNoConfiguradoError sin tocar fetch", (pieza) => {
+    ["email", { ...CREDENCIAL, email: "" }],
+    ["clave privada", { ...CREDENCIAL, privateKey: "  " }],
+  ] as const)("sin %s -> RutaNoConfiguradoError(clave_mal_formada) sin tocar fetch", (_pieza, credencial) => {
     const fetchImpl = vi.fn();
-    expect(() =>
-      construirTokenProvider(
-        { ...COMPLETA, [pieza]: null },
-        { fetchImpl: fetchImpl as unknown as typeof fetch },
-      ),
-    ).toThrow(RutaNoConfiguradoError);
+    let error: unknown;
+    try {
+      construirTokenProvider(credencial, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(RutaNoConfiguradoError);
+    expect((error as RutaNoConfiguradoError).motivo).toBe("clave_mal_formada");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("con las tres piezas construye el provider sin lanzar", () => {
-    expect(() => construirTokenProvider(COMPLETA)).not.toThrow();
+  it("con email y clave construye el provider sin lanzar y sin red", () => {
+    const fetchImpl = vi.fn();
+    expect(() =>
+      construirTokenProvider(CREDENCIAL, { fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).not.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

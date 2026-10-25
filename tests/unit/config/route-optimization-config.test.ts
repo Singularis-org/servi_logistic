@@ -41,89 +41,35 @@ function limpiar() {
   for (const v of VARS) delete process.env[v];
 }
 
-describe("R10 — secretos ausentes o vacios se resuelven a null", () => {
-  it("sin ninguna variable, las tres piezas de la credencial son null y no lanza", () => {
+describe("SL-36/R23 — la config no lleva credencial ni modo de autenticacion", () => {
+  // Antes estos casos fijaban como se LEIAN la clave, las piezas WIF y el flag de ADC. SL-36 los
+  // retiro (design §9.2): la credencial es la clave JSON de cada empresa. Lo que se fija ahora es
+  // que, aunque el entorno siga trayendo las variables retiradas, la config no las expone.
+  const RETIRADAS = VARS.filter((v) => v.startsWith("GOOGLE_"));
+
+  it("con TODAS las variables retiradas puestas, ninguna llega a la config", () => {
     limpiar();
+    for (const v of RETIRADAS) process.env[v] = `valor-de-${v}`;
     const config = loadRouteOptimizationConfig();
-    expect(config.GOOGLE_ROUTE_OPT_PROJECT_ID).toBeNull();
-    expect(config.GOOGLE_ROUTE_OPT_SA_EMAIL).toBeNull();
-    expect(config.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY).toBeNull();
+    const texto = JSON.stringify(config);
+    for (const v of RETIRADAS) {
+      expect(Object.keys(config)).not.toContain(v);
+      expect(texto).not.toContain(`valor-de-${v}`);
+    }
   });
 
-  it("cadena VACIA cuenta como ausente (no como credencial valida de longitud 0)", () => {
+  it("las claves de la config son exactamente los parametros de la feature", () => {
+    // LITERAL a proposito: es el contrato de lo que queda en el entorno (design §9.1).
     limpiar();
-    process.env.GOOGLE_ROUTE_OPT_PROJECT_ID = "";
-    process.env.GOOGLE_ROUTE_OPT_SA_EMAIL = "";
-    process.env.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY = "";
-    const config = loadRouteOptimizationConfig();
-    expect(config.GOOGLE_ROUTE_OPT_PROJECT_ID).toBeNull();
-    expect(config.GOOGLE_ROUTE_OPT_SA_EMAIL).toBeNull();
-    expect(config.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY).toBeNull();
-  });
-
-  it("los `\\n` escapados de la PEM se desescapan a saltos de linea reales", () => {
-    // En Vercel un secreto multilinea viaja con `\n` LITERALES. Sin este desescapado,
-    // `createSign` recibiria una sola linea y la firma fallaria en produccion aunque la
-    // credencial fuera correcta.
-    limpiar();
-    process.env.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY =
-      "-----BEGIN PRIVATE KEY-----\\nAAAA\\n-----END PRIVATE KEY-----\\n";
-    const pem = loadRouteOptimizationConfig().GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY;
-    expect(pem).toBe("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n");
-    expect(pem).not.toContain("\\n");
-  });
-});
-
-describe("R10 — piezas de WIF: nombre canonico y alias del entorno ya desplegado", () => {
-  it("sin variables, las tres piezas WIF son null y ADC queda desactivado", () => {
-    limpiar();
-    const config = loadRouteOptimizationConfig();
-    expect(config.GOOGLE_WIF_PROJECT_NUMBER).toBeNull();
-    expect(config.GOOGLE_WIF_POOL_ID).toBeNull();
-    expect(config.GOOGLE_WIF_PROVIDER_ID).toBeNull();
-    expect(config.GOOGLE_ROUTE_OPT_USE_ADC).toBe(false);
-  });
-
-  it("los nombres GOOGLE_CLOUD_* del entorno ya desplegado valen como alias", () => {
-    // El `.env` de produccion nombra estas piezas asi desde antes de la feature 92. Aceptar
-    // el alias evita un renombrado coordinado en Vercel para encender WIF.
-    limpiar();
-    process.env.GOOGLE_CLOUD_PROJECT_NUMBER = "123456789012";
-    process.env.GOOGLE_CLOUD_WORKLOAD_IDENTITY_POOL_ID = "vercel";
-    process.env.GOOGLE_CLOUD_WORKLOAD_IDENTITY_POOL_PROVIDER_ID = "vercel";
-    const config = loadRouteOptimizationConfig();
-    expect(config.GOOGLE_WIF_PROJECT_NUMBER).toBe("123456789012");
-    expect(config.GOOGLE_WIF_POOL_ID).toBe("vercel");
-    expect(config.GOOGLE_WIF_PROVIDER_ID).toBe("vercel");
-  });
-
-  it("el nombre canonico GANA cuando estan los dos", () => {
-    limpiar();
-    process.env.GOOGLE_WIF_POOL_ID = "canonico";
-    process.env.GOOGLE_CLOUD_WORKLOAD_IDENTITY_POOL_ID = "alias";
-    expect(loadRouteOptimizationConfig().GOOGLE_WIF_POOL_ID).toBe("canonico");
-  });
-
-  it("un canonico VACIO cede al alias (vacio == ausente, R10)", () => {
-    limpiar();
-    process.env.GOOGLE_WIF_POOL_ID = "";
-    process.env.GOOGLE_CLOUD_WORKLOAD_IDENTITY_POOL_ID = "alias";
-    expect(loadRouteOptimizationConfig().GOOGLE_WIF_POOL_ID).toBe("alias");
-  });
-
-  it.each([
-    ["true", true],
-    ["TRUE", true],
-    ["1", false],
-    ["yes", false],
-    ["false", false],
-    ["", false],
-  ])("GOOGLE_ROUTE_OPT_USE_ADC=%j -> %s", (valor, esperado) => {
-    // Solo "true" activa: el flag conmuta a ADC, que en Vercel NO funciona. Un valor
-    // ambiguo debe caer del lado seguro (produccion sigue en WIF).
-    limpiar();
-    process.env.GOOGLE_ROUTE_OPT_USE_ADC = valor;
-    expect(loadRouteOptimizationConfig().GOOGLE_ROUTE_OPT_USE_ADC).toBe(esperado);
+    expect(Object.keys(loadRouteOptimizationConfig()).sort()).toEqual([
+      "ROUTES_ROUTING_PREFERENCE",
+      "ROUTE_OPT_TIMEOUT_MS",
+      "RUTA_DEBOUNCE_S",
+      "RUTA_MAX_PARADAS",
+      "RUTA_ORIGEN_MAX_KM",
+      "RUTA_ORIGEN_TTL_MIN",
+      "RUTA_SYNC_MIN_INTERVALO_S",
+    ]);
   });
 });
 

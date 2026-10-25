@@ -33,8 +33,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ### Variables de entorno
 
-El código lee exactamente estas (`GOOGLE_MAPS_API_KEY` es opcional: sin ella se
-desactiva la geocodificación):
+El código lee exactamente estas:
 
 | Variable | Notas |
 | --- | --- |
@@ -45,8 +44,27 @@ desactiva la geocodificación):
 | `NEXT_PUBLIC_APP_URL` | Origin de los QR de etiqueta. Ver aviso abajo. |
 | `NEXT_PUBLIC_SITE_URL` | Origin para metadatos (`app/layout.tsx`). |
 | `CRON_SECRET` | Autoriza los endpoints de `/api/cron/*`. |
-| `GOOGLE_MAPS_API_KEY` | Geocodificación. |
+| `INTEGRACIONES_CLAVES_CIFRADO` | Anillo de claves maestras de la bóveda de integraciones: `v1:<base64 de 32 bytes>,v2:...`. Secreto. Ver `lib/config/integraciones.ts`. |
+| `INTEGRACIONES_CLAVE_ACTIVA` | Versión del anillo con la que se cifra todo valor nuevo (`v2`). |
+| `INTEGRACIONES_PRUEBAS_POR_MINUTO` | Opcional. Pruebas de conexión por minuto y empresa (default 5). |
+| `INTEGRACIONES_PROBADOR_DOBLE` | Solo E2E: `1` cambia los probadores reales por un doble. Ignorada con `VERCEL_ENV=production`. |
 | `DB_POOL_MAX` | Opcional. Conexiones `pg` por instancia (default 3). |
+
+#### Credenciales de WhatsApp, Google Maps, optimización de rutas y asistente
+
+**No van en el entorno** (SL-36). Son de cada empresa: su maestro las configura en
+`/configuracion/integraciones` y se guardan cifradas con el anillo de arriba. La plataforma no
+presta claves: una empresa sin una integración se queda sin ese servicio (la geocodificación y
+las rutas se degradan, WhatsApp y el asistente avisan de que falta configurarlo).
+
+Las cuatro `INTEGRACIONES_*` son las únicas variables de plataforma de esta parte. Las antiguas
+variables de credenciales de Meta, Google y Anthropic (la lista está en el design de SL-36, §9.3)
+ya no las lee nadie, y la guardia `tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts`
+impide que vuelvan. Si siguen en el panel de Vercel, retirarlas es un paso manual.
+
+Orden del despliegue: primero `INTEGRACIONES_CLAVES_CIFRADO` e `INTEGRACIONES_CLAVE_ACTIVA` en
+Vercel, luego las migraciones y luego el código. Sin ellas la app arranca, pero guardar una
+integración responde con error.
 
 > **`NEXT_PUBLIC_*` se inlinea en build time.** Cambiarlas exige un redeploy.
 > `NEXT_PUBLIC_APP_URL` queda impresa en los QR de las etiquetas físicas: si el
