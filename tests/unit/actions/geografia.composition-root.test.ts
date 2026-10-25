@@ -19,6 +19,8 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 // lanzaria en vez de devolver el conteo.
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+// SL-32 (R24): el conteo es de la gestion, y la gestion es de la plataforma.
+const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
 
 const ordenCount = vi.fn(async (_args: { where: Record<string, unknown> }) => 7);
 const provinciaFindMany = vi.fn(async () => [
@@ -43,7 +45,7 @@ describe("374/D3 — el composition root PASA el repositorio de ordenes, no solo
   it("la accion real, sin `deps.geografiaService`, devuelve el conteo", async () => {
     const r = await contarOrdenesSinEntregarDeNodo(
       { nivel: "distrito", id: "d-1" },
-      { getActor: async () => MAESTRO },
+      { getActor: async () => SUPERADMIN },
     );
 
     expect(r).toEqual({ status: "ok", ordenes: 7 });
@@ -56,7 +58,7 @@ describe("374/D3 — el composition root PASA el repositorio de ordenes, no solo
     ordenCount.mockClear();
     await contarOrdenesSinEntregarDeNodo(
       { nivel: "canton", id: "c-1" },
-      { getActor: async () => MAESTRO },
+      { getActor: async () => SUPERADMIN },
     );
     const arg = ordenCount.mock.calls[0][0];
     expect(arg.where).toMatchObject({ cantonId: "c-1", deletedAt: null });

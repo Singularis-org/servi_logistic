@@ -116,7 +116,9 @@ describe("196 / R1 — la cabecera congela fecha, instante, umbral y conteo", ()
     expect(upDdl).toMatch(
       /CREATE UNIQUE INDEX "ranking_snapshot_dia_fecha_key" ON "ranking_snapshot_dia"\("fecha"\)/,
     );
-    expect(MODELO_DIA).toMatch(/fecha\s+DateTime\s+@unique @db\.Date/);
+    // SL-17 T3.9: la fecha es unica POR EMPRESA (cada una congela su dia; mismo nombre de indice).
+    expect(MODELO_DIA).toMatch(/fecha\s+DateTime\s+@db\.Date/);
+    expect(MODELO_DIA).toContain('@@unique([organizacionId, fecha], map: "ranking_snapshot_dia_fecha_key")');
   });
 
   it("guarda el instante de generacion, el umbral aplicado y el conteo de filas", () => {

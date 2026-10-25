@@ -3,6 +3,7 @@ import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
+  AntesDelRegistro,
   BalanceFiltros,
   CrearMovimientoInput,
   DesgloseEgresosAgregado,
@@ -206,8 +207,12 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
     mov: CrearMovimientoInput & { id: string },
     registro: { accion: HistorialAccionTipo; actorUsuarioId: string | null },
     laterales: LateralesDelRegistro = {},
+    antes?: AntesDelRegistro,
   ): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
+      // SL-45 (design §6, R10): el tope del pago a la plataforma, en ESTA transacción y antes del
+      // INSERT. Si lanza, no queda ni el asiento ni el historial.
+      if (antes !== undefined) await antes(tx);
       const count = await this.crearMovimientos(tx, [mov]);
       if (count === 0) return 0;
 
@@ -397,7 +402,8 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
 
   /** Ficha 461 (R68): la fila que lleva ESA clave de idempotencia (columna UNIQUE), o null. */
   async obtenerPorClave(claveIdempotencia: string): Promise<WalletMovimientoDTO | null> {
-    const row = await this.prisma.walletMovimiento.findUnique({ where: { claveIdempotencia } });
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const row = await this.prisma.walletMovimiento.findFirst({ where: { claveIdempotencia } });
     return row === null ? null : toDTO(row);
   }
 

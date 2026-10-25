@@ -27,6 +27,8 @@ import type { ActualizarZonaInput, CrearZonaInput, ZonaDTO } from "@/lib/types/z
 // afirmar de verdad es que NADIE le pidio escribir.
 
 const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
+// SL-32 (R24): la geografia la gestiona la plataforma; sus escrituras se piden como superadmin.
+const SUPERADMIN: Actor = { usuarioId: "s1", rol: "superadmin" };
 
 /** El nombre irreparable: un emoji. Ninguna normalizacion lo vuelve imprimible. */
 const NOMBRE_EMOJI = "Tienda \u{1F642}";
@@ -273,7 +275,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("alta de PROVINCIA con un caracter irreparable: `validation_error`, sin leer ni escribir", async () => {
-    const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI }, MAESTRO);
+    const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI }, SUPERADMIN);
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
     expect(repo.crear).not.toHaveBeenCalled();
@@ -284,7 +286,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it("alta de CANTON con un caracter reparable: `validation_error` con la sugerencia", async () => {
     const res = await service.crear(
       { nivel: "canton", nombre: NOMBRE_DOUBLE_STRUCK, provinciaId: "p1" },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     expect(res).toEqual({
@@ -297,7 +299,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it("alta de DISTRITO con un caracter irreparable: `validation_error`", async () => {
     const res = await service.crear(
       { nivel: "distrito", nombre: NOMBRE_EMOJI, cantonId: "c1" },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
@@ -307,7 +309,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it("RENOMBRAR un distrito a un nombre no imprimible: `validation_error` y no se renombra", async () => {
     const res = await service.renombrar(
       { nivel: "distrito", id: "d1", nombre: NOMBRE_EMOJI },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
@@ -318,7 +320,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it("RENOMBRAR a un nombre reparable: tampoco se renombra; se devuelve la sugerencia", async () => {
     const res = await service.renombrar(
       { nivel: "canton", id: "c1", nombre: NOMBRE_DOUBLE_STRUCK },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     expect(res).toEqual({
@@ -329,24 +331,24 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("un nombre imprimible sigue dando de alta y renombrando igual que antes", async () => {
-    expect((await service.crear({ nivel: "provincia", nombre: "San José" }, MAESTRO)).status).toBe(
+    expect((await service.crear({ nivel: "provincia", nombre: "San José" }, SUPERADMIN)).status).toBe(
       "ok",
     );
     expect(
-      (await service.renombrar({ nivel: "distrito", id: "d1", nombre: "Purral" }, MAESTRO)).status,
+      (await service.renombrar({ nivel: "distrito", id: "d1", nombre: "Purral" }, SUPERADMIN)).status,
     ).toBe("ok");
     expect(repo.crear).toHaveBeenCalledTimes(1);
     expect(repo.renombrar).toHaveBeenCalledTimes(1);
   });
 
-  it("el rol manda ANTES que el nombre: un no-maestro con nombre malo recibe `forbidden`", async () => {
-    const res = await service.crear(
-      { nivel: "provincia", nombre: NOMBRE_EMOJI },
-      { usuarioId: "x", rol: "adminTienda" },
-    );
+  it.each(["adminTienda", "maestro"] as const)(
+    "el rol manda ANTES que el nombre: `%s` con nombre malo recibe `forbidden`",
+    async (rol) => {
+      const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI }, { usuarioId: "x", rol });
 
-    expect(res).toEqual({ status: "forbidden" });
-  });
+      expect(res).toEqual({ status: "forbidden" });
+    },
+  );
 });
 
 // ── La prueba de que la definicion es UNA ────────────────────────────────────────────────────
@@ -364,7 +366,7 @@ describe("392/R1 — las cinco escrituras comparten definicion Y redaccion", () 
     const rZona = await new ZonaService(zonas).crear(crearZona(NOMBRE_DOUBLE_STRUCK), MAESTRO);
     const rGeo = await new GeografiaService(geo, repoOrdenes()).renombrar(
       { nivel: "distrito", id: "d1", nombre: NOMBRE_DOUBLE_STRUCK },
-      MAESTRO,
+      SUPERADMIN,
     );
 
     const esperado = { status: "validation_error", fieldErrors: { nombre: [MSG_DOUBLE_STRUCK] } };

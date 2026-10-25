@@ -76,8 +76,11 @@ export type CierreBodegaDetalleServiceResult =
       cierres: CierreBodegaDetalleCierre[]; // un elemento por cierre_dia incluido (R11)
       // Ingreso de la empresa AGREGADO de todo el cierre de bodega (suma de los cierre_dia).
       totalesIngreso: TotalesIngresoEmpresa;
-      // DERIVADO: `totalesIngreso.total` - `cierre.totalPagoMensajero` (STRING money-safe).
-      // Lo que le queda a la empresa de toda la bodega. Puede ser NEGATIVO.
+      // SL-39 (R21): IVA facturado AGREGADO = `ivaFlete` + `ivaFleteDevolucion` +
+      // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
+      ivaFacturado: string;
+      // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `cierre.totalPagoMensajero`
+      // (STRING money-safe). Lo que le queda a la empresa de toda la bodega. Puede ser NEGATIVO.
       ganancia: string;
       // DERIVADO: `cierre.totales.general` - `fleteConIva` - `comisionConIva` (STRING
       // money-safe). Lo que se le paga a las tiendas. Puede ser NEGATIVO.
@@ -88,8 +91,8 @@ export type CierreBodegaDetalleServiceResult =
        */
       cobradoSobreRecaudado: string;
       /**
-       * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `cierre.totalPagoMensajero` −
-       * `cierre.totalIngresoBodegaRechazos`. NO es `ganancia` (que no resta la bodega). Puede
+       * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
+       * `cierre.totalPagoMensajero` − `cierre.totalIngresoBodegaRechazos`. NO es `ganancia` (que no resta la bodega). Puede
        * ser NEGATIVO.
        */
       netoEmpresa: string;

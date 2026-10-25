@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { conAislamientoPorEmpresa } from "./extension-empresa";
 
 // Singleton perezoso de PrismaClient: se construye recien cuando algo lo pide
 // (getPrismaClient()), no al importar este modulo. Esto evita que importar
@@ -142,7 +143,16 @@ export function getPrismaClient(): PrismaClient {
     // parametro generico por toda la capa de datos para expresar la ausencia de un campo
     // que nadie lee. La garantia que importa (R28) es de EJECUCION —la columna no viaja en
     // ninguna fila— y la demuestra un test contra Postgres real, no el compilador.
-    globalThis.__prisma__ = construirCliente(adapter);
+    // SL-17 (design §6): el singleton es el cliente ya aislado por empresa. Envolverlo AQUI, y
+    // no en cada llamador, es lo que hace que ninguno de los ~170 archivos pueda olvidarlo.
+    globalThis.__prisma__ = conAislamientoPorEmpresa(construirCliente(adapter), resolverEmpresaDeLaPeticion);
   }
   return globalThis.__prisma__;
+}
+
+// Import perezoso: el resolutor depende de `next/headers`, y `lib/db` se importa tambien desde
+// scripts y tests fuera de Next. Asi solo se carga cuando una operacion necesita empresa.
+async function resolverEmpresaDeLaPeticion(): Promise<string | null> {
+  const { empresaDeLaPeticion } = await import("@/lib/auth/empresa-de-la-peticion");
+  return empresaDeLaPeticion();
 }

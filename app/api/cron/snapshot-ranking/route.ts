@@ -15,6 +15,7 @@ import { RankingRepository } from "@/lib/repositories/RankingRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { PremioRankingRepository } from "@/lib/repositories/PremioRankingRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 
 export interface SnapshotRankingDeps {
@@ -25,6 +26,28 @@ export interface SnapshotRankingDeps {
   // se DERIVA de este instante dentro del service; el endpoint NO acepta fecha por parametro
   // ni la lee del querystring, asi que no hay backfill por la puerta de atras.
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
+}
+
+type ResumenSnapshot = { fecha: string; estado: "creado" | "omitido"; filas: number };
+
+// La fecha es la misma en todas las corridas (D-1 del mismo instante). `estado` es `creado` si
+// alguna empresa congelo algo, y `omitido` si todas lo tenian ya; sin empresas, fecha y estado
+// van `null`: no hubo corrida.
+type TotalSnapshot = { fecha: string | null; estado: ResumenSnapshot["estado"] | null; filas: number };
+
+function sumar(corridas: ResumenSnapshot[]): TotalSnapshot {
+  return corridas.reduce<TotalSnapshot>(
+    (t, r) => ({
+      fecha: t.fecha ?? r.fecha,
+      estado: t.estado === "creado" || r.estado === "creado" ? "creado" : "omitido",
+      filas: t.filas + r.filas,
+    }),
+    { fecha: null, estado: null, filas: 0 },
+  );
 }
 
 function buildService(): IRankingSnapshotService {
@@ -66,13 +89,33 @@ export async function handleSnapshotRanking(
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const ahora = (deps.now ?? (() => new Date()))();
-    const resumen = await service.congelar(ahora);
-    // R20: exactamente tres claves y ninguna PII —ni un nombre, ni un id—. `status` es el
-    // vocabulario del dominio; en el borde HTTP la clave se llama `estado` (design §5).
+    const corrida = async (): Promise<ResumenSnapshot> => {
+      const resumen = await service.congelar(ahora);
+      // R20: exactamente tres claves y ninguna PII —ni un nombre, ni un id—. `status` es el
+      // vocabulario del dominio; en el borde HTTP la clave se llama `estado` (design §5).
+      return {
+        fecha: resumen.fecha,
+        estado: resumen.status,
+        filas: resumen.filas,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): el ranking y su snapshot son de cada empresa: una corrida por empresa, cada una
+    // en su contexto. Un fallo en una no frena a las demas y queda en `empresas`, la cuarta clave:
+    // ids de empresa, no PII.
+    const corridas: ResumenSnapshot[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      fecha: resumen.fecha,
-      estado: resumen.status,
-      filas: resumen.filas,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

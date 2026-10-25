@@ -235,6 +235,7 @@ function conGrupos(grupos: Partial<CierreGrupos>) {
     cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
     grupos: { ...emptyGrupos(), ...grupos },
     totalesIngreso: zeroIngreso(),
+    ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
     ganancia: "0.00",
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",

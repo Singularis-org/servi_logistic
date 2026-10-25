@@ -414,8 +414,8 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     }
 
     // 7. EL GATE DEL DINERO (R11/R15). Se dispara con el cambio de DISTRITO —no de zona—: la marca
-    //    `zona_especial` es del distrito, asi que cambiar de distrito dentro de la MISMA zona
-    //    tambien puede mover el flete. Fail-closed: sin `confirmaCambioDeUbicacion === true` no se
+    //    de zona especial es del distrito (para la empresa, SL-38), asi que cambiar de distrito
+    //    dentro de la MISMA zona tambien puede mover el flete. Fail-closed: sin `confirmaCambioDeUbicacion === true` no se
     //    escribe NADA y se devuelve el aviso con las dos columnas de importes.
     if (
       distritoPropuesto !== null &&

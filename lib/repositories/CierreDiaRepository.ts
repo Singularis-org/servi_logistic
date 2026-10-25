@@ -25,6 +25,11 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // declaracion de la regla que R21 existe para impedir.
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
+// SL-38 (R20): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
+import {
+  esZonaEspecialDeLaEmpresa,
+  SELECT_MARCA_ZONA_ESPECIAL,
+} from "@/lib/repositories/_shared/zona-especial";
 import {
   SELECT_REGISTRO_DE_CALLE,
   whereOrdenSinGestionPendiente,
@@ -301,7 +306,8 @@ export interface DescriptivosDeOrden {
   tiendas: Map<string, { nombre: string }>;
   provincias: Map<string, { nombre: string }>;
   cantones: Map<string, { nombre: string }>;
-  distritos: Map<string, { nombre: string; zonaEspecial: boolean | null }>;
+  /** `zonaEspecial`: la marca de la EMPRESA de la transaccion (SL-38), ya resuelta a dos valores. */
+  distritos: Map<string, { nombre: string; zonaEspecial: boolean }>;
 }
 
 /** Lo minimo que `leerDescriptivosDeOrdenes` necesita del cliente de la transaccion. */
@@ -343,7 +349,8 @@ export async function leerDescriptivosDeOrdenes(
   });
   const distritos = await tx.distrito.findMany({
     where: { id: { in: distritoIds } },
-    select: { id: true, nombre: true, zonaEspecial: true },
+    // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico (la RLS la acota).
+    select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL },
   });
 
   return {
@@ -352,7 +359,10 @@ export async function leerDescriptivosDeOrdenes(
     provincias: new Map(provincias.map((p) => [p.id, { nombre: p.nombre }])),
     cantones: new Map(cantones.map((c) => [c.id, { nombre: c.nombre }])),
     distritos: new Map(
-      distritos.map((d) => [d.id, { nombre: d.nombre, zonaEspecial: d.zonaEspecial }]),
+      distritos.map((d) => [
+        d.id,
+        { nombre: d.nombre, zonaEspecial: esZonaEspecialDeLaEmpresa(d) },
+      ]),
     ),
   };
 }
@@ -1327,14 +1337,14 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               zonaId: f.orden.zonaId,
               tiendaId: f.orden.tiendaId,
               esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
-              // `=== true` y no `!!`: la columna es tri-valuada y `null` ("nadie lo decidio")
-              // NO es especial. Una orden sin distrito (el unico FK nullable de `orden`)
+              // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
+              // no mueve esta fila. Una orden sin distrito (el unico FK nullable de `orden`)
               // congela `false`: sin distrito no hay marca que aplicar.
               esZonaEspecial:
-                (f.orden.distritoId === null
-                  ? null
+                f.orden.distritoId === null
+                  ? false
                   : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
-                      .zonaEspecial) === true,
+                      .zonaEspecial,
               ...tarifaColumnas(
                 tarifas.get(
                   clavePar({ tiendaId: f.orden.tiendaId, zonaId: f.orden.zonaId }),

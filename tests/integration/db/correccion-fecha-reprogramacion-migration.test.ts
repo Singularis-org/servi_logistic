@@ -166,6 +166,8 @@ describeSiHayBase("371/T1 — la base APLICADA", () => {
         "id",
         "motivo",
         "orden_id",
+        // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la empresa de la fila.
+        "organizacion_id",
       ].sort(),
     );
     // ⭑ Las dos fechas son DATE y no timestamp: son FECHAS calendario, y un `timestamp` reabriria
@@ -182,7 +184,7 @@ describeSiHayBase("371/T1 — la base APLICADA", () => {
     expect(porNombre.has("deleted_at")).toBe(false);
   });
 
-  it("⭑ el CHECK de fecha distinta y las tres FK RESTRICT estan en la base", async () => {
+  it("⭑ el CHECK de fecha distinta y las tres FK RESTRICT (mas la de empresa de SL-17) estan en la base", async () => {
     // `contype` es `char` y Prisma no sabe deserializarlo: se castea a texto en el SQL.
     const constraints = await prisma.$queryRawUnsafe<{ conname: string; contype: string }[]>(
       `SELECT c.conname, c.contype::text AS contype FROM pg_constraint c
@@ -192,7 +194,20 @@ describeSiHayBase("371/T1 — la base APLICADA", () => {
     );
     const nombres = constraints.map((c) => c.conname);
     expect(nombres).toContain(`${TABLA}_fecha_distinta`);
-    expect(constraints.filter((c) => c.contype === "f")).toHaveLength(3);
+    // Las tres de la ficha y la de la empresa que anade SL-17 M2 (20261022130100_organizacion_id_en_negocio).
+    expect(
+      constraints
+        .filter((c) => c.contype === "f")
+        .map((c) => c.conname)
+        .sort(),
+    ).toEqual(
+      [
+        `${TABLA}_actor_usuario_id_fkey`,
+        `${TABLA}_gestion_id_fkey`,
+        `${TABLA}_orden_id_fkey`,
+        `${TABLA}_organizacion_id_fkey`,
+      ].sort(),
+    );
 
     const restrict = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
       `SELECT count(*)::bigint AS n FROM pg_constraint c
@@ -201,21 +216,24 @@ describeSiHayBase("371/T1 — la base APLICADA", () => {
         WHERE t.relname = '${TABLA}' AND n.nspname = 'public'
           AND c.contype = 'f' AND c.confdeltype = 'r'`,
     );
-    expect(Number(restrict[0].n), "alguna FK dejo de ser RESTRICT").toBe(3);
+    expect(Number(restrict[0].n), "alguna FK dejo de ser RESTRICT").toBe(4);
   });
 
-  it("la RLS esta habilitada y sin policies (solo service role)", async () => {
+  it("la RLS esta habilitada y sin policies propias (solo la de empresa de SL-17 M2)", async () => {
     const filas = await prisma.$queryRawUnsafe<{ relrowsecurity: boolean }[]>(
       `SELECT relrowsecurity FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE c.relname = '${TABLA}' AND n.nspname = 'public'`,
     );
     expect(filas[0].relrowsecurity).toBe(true);
-    const policies = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT count(*)::bigint AS n FROM pg_policies
+    // Esta migracion no crea policies; la unica en la base es la de empresa que SL-17 M2
+    // (20261022130100_organizacion_id_en_negocio) anade a todas las tablas de negocio.
+    expect(sql(CARPETA, "migration.sql")).not.toMatch(/CREATE POLICY/i);
+    const policies = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
+      `SELECT policyname::text FROM pg_policies
         WHERE schemaname = 'public' AND tablename = '${TABLA}'`,
     );
-    expect(Number(policies[0].n)).toBe(0);
+    expect(policies).toEqual([{ policyname: `${TABLA}_por_empresa` }]);
   });
 
   it("los tres indices declarados existen", async () => {

@@ -425,7 +425,8 @@ export class WalletTiendaMovimientoRepository
    */
   /** Ficha 461 (R68): el cobro que lleva ESA clave de idempotencia (columna UNIQUE), como DTO, o null. */
   async obtenerCobroPorClave(claveIdempotencia: string): Promise<WalletTiendaMovimientoDTO | null> {
-    const fila = await this.prisma.walletTiendaMovimiento.findUnique({ where: { claveIdempotencia } });
+    // SL-17 T3.9: el unico es (organizacion_id, clave_idempotencia); findFirst deja que la extension ponga la empresa.
+    const fila = await this.prisma.walletTiendaMovimiento.findFirst({ where: { claveIdempotencia } });
     return fila === null ? null : toDTO(fila);
   }
 

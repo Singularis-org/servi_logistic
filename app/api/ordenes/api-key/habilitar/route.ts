@@ -25,7 +25,6 @@ import {
   ValidationError,
   MSG,
 } from "@/lib/errors";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type {
   FilaHabilitacionInput,
   IApiHabilitacionService,
@@ -34,14 +33,19 @@ import { ApiHabilitacionService } from "@/lib/services/ApiHabilitacionService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrdenHabilitacionApiRepository } from "@/lib/repositories/OrdenHabilitacionApiRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import { TOPE_FILAS_HABILITAR } from "@/lib/config/habilitacion-api";
 
 // Prisma y el hash de la API key no corren en edge.
 export const runtime = "nodejs";
 
 export interface HabilitarApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   habilitacionService?: IApiHabilitacionService;
 }
 
@@ -82,30 +86,33 @@ export async function handleHabilitarApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R2 -> 403
 
-    // 2. R6: cuerpo JSON + envoltorio. Los dos fallos posibles son el mismo 422.
-    let json: unknown;
-    try {
-      json = await req.json();
-    } catch {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
-      });
-    }
-    const parsed = habilitarBodySchema.safeParse(json);
-    if (!parsed.success) {
-      const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
-      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. R6: cuerpo JSON + envoltorio. Los dos fallos posibles son el mismo 422.
+      let json: unknown;
+      try {
+        json = await req.json();
+      } catch {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
+        });
+      }
+      const parsed = habilitarBodySchema.safeParse(json);
+      if (!parsed.success) {
+        const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
+        throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
+      }
 
-    // 3. R3/R9/R10/R11: el service decide fila por fila. El owner es el actor de la key y no
-    //    ningun identificador del cuerpo. El resultado se devuelve tal cual: el borde traduce
-    //    HTTP, no reinterpreta desenlaces.
-    const service = deps.habilitacionService ?? buildHabilitacionService();
-    const filas: FilaHabilitacionInput[] = parsed.data.ordenes.map((o) => ({
-      num_guia: o.num_guia,
-      nota: o.nota,
-    }));
-    return await service.habilitarLote(auth.actor, filas);
+      // 3. R3/R9/R10/R11: el service decide fila por fila. El owner es el actor de la key y no
+      //    ningun identificador del cuerpo. El resultado se devuelve tal cual: el borde traduce
+      //    HTTP, no reinterpreta desenlaces.
+      const service = deps.habilitacionService ?? buildHabilitacionService();
+      const filas: FilaHabilitacionInput[] = parsed.data.ordenes.map((o) => ({
+        num_guia: o.num_guia,
+        nota: o.nota,
+      }));
+      return await service.habilitarLote(auth.actor, filas);
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

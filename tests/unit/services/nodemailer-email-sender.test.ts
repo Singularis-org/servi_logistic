@@ -19,7 +19,7 @@ const { NodemailerEmailSender, EmailEnvioError } = await import(
 const PASSWORD = "s3cr3t0-que-no-debe-salir";
 
 const config: EmailConfig = {
-  host: "smtp.gmail.com",
+  host: "smtp-relay.brevo.com",
   port: 587,
   secure: false,
   user: "bot@example.com",
@@ -52,6 +52,35 @@ describe("NodemailerEmailSender", () => {
     );
   });
 
+  it("SL-41: manda las imagenes en linea como adjuntos inline con su cid (el logo del correo)", async () => {
+    await new NodemailerEmailSender(config).enviar({
+      ...mensaje,
+      html: '<img src="cid:logo@servilogistic">',
+      imagenesEnLinea: [
+        { cid: "logo@servilogistic", nombreArchivo: "servi-logistic.png", tipoContenido: "image/png", contenidoBase64: "iVBORw0K" },
+      ],
+    });
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            cid: "logo@servilogistic",
+            filename: "servi-logistic.png",
+            contentType: "image/png",
+            content: "iVBORw0K",
+            encoding: "base64",
+            contentDisposition: "inline",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("sin imagenes en linea no manda adjuntos", async () => {
+    await new NodemailerEmailSender(config).enviar(mensaje);
+    expect(sendMail.mock.calls[0][0].attachments).toBeUndefined();
+  });
+
   it("reutiliza el mismo transporte entre envios en vez de rehacer el saludo TLS", async () => {
     const sender = new NodemailerEmailSender(config);
     await sender.enviar(mensaje);
@@ -60,11 +89,11 @@ describe("NodemailerEmailSender", () => {
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
 
-  it("autentica con la cuenta y la contrasena de aplicacion de Google", async () => {
+  it("autentica en el relay de Brevo con el login y la clave SMTP", async () => {
     await new NodemailerEmailSender(config).enviar(mensaje);
     expect(createTransport).toHaveBeenCalledWith(
       expect.objectContaining({
-        host: "smtp.gmail.com",
+        host: "smtp-relay.brevo.com",
         port: 587,
         secure: false,
         auth: { user: "bot@example.com", pass: PASSWORD },

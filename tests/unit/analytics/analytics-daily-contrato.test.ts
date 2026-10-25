@@ -57,8 +57,11 @@ function columnasDelModelo(modelo: string): readonly Columna[] {
 const COLUMNAS = MODELO ? columnasDelModelo(MODELO) : [];
 const NOMBRES = new Set(COLUMNAS.map((c) => c.nombre));
 
-/** Columnas tecnicas de toda tabla del repo: ni grano ni medida. */
-const TECNICAS = new Set(["id", "created_at", "updated_at"]);
+/**
+ * Columnas tecnicas de toda tabla del repo: ni grano ni medida. `organizacion_id` es la empresa de
+ * la fila (SL-17), presente en toda tabla de negocio.
+ */
+const TECNICAS = new Set(["id", "created_at", "updated_at", "organizacion_id"]);
 
 /**
  * Nombres de columna con los que una dimension del catalogo podria materializarse en el

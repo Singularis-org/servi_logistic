@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // FICHA 374 (H5 · R38) — LA PÁGINA `/configuracion/geografia` AUTORIZA ANTES DE LEER.
+// SL-32 (R26): la puerta pasa de `maestro` a la plataforma (`esPlataforma`), con `notFound()`.
 //
-// Lo que se mide aquí es la FRONTERA servidor→cliente, no la pantalla: que un rol que no es
-// `maestro` no vea el árbol Y que la página ni siquiera lo pida. Lo segundo importa tanto como lo
+// Lo que se mide aquí es la FRONTERA servidor→cliente, no la pantalla: que un rol que no es de la
+// plataforma no vea el árbol Y que la página ni siquiera lo pida. Lo segundo importa tanto como lo
 // primero: una página que consulta y luego decide no pintar ya sacó los datos de la base.
 //
 // El módulo cliente va STUBBEADO y captura sus props: montar el árbol real metería en el camino los
@@ -16,6 +17,13 @@ import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
 // stubbea para aislar la frontera de props, igual que hace `wallet-page-cobros-pendientes`.
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
+}));
+
+// `notFound()` de Next lanza; el doble lanza un error con el mismo texto para poder esperarlo.
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NEXT_NOT_FOUND");
+  },
 }));
 
 vi.mock("@/lib/auth/resolve-actor", () => ({
@@ -84,36 +92,28 @@ afterEach(() => {
   cleanup();
 });
 
-describe("374/R38 — /configuracion/geografia solo para `maestro`", () => {
-  it.each(["admin", "mensajero", "adminTienda", "adminSatelite", "apiKey"])(
-    "el rol %s no ve el árbol y la página NO consulta el catálogo",
+describe("SL-32 (R26) — /configuracion/geografia solo para la plataforma", () => {
+  it.each(["maestro", "admin", "mensajero", "adminTienda", "adminSatelite", "apiKey"])(
+    "el rol %s recibe notFound() y la página NO consulta el catálogo",
     async (rol) => {
       vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe(rol));
 
-      render(await GeografiaPage());
-
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "No tienes permiso para acceder a esta sección.",
-      );
-      expect(screen.queryByTestId("geografia-module-stub")).toBeNull();
+      await expect(GeografiaPage()).rejects.toThrow("NEXT_NOT_FOUND");
       // ⭑ Lo que hace que este test no sea decorativo: la lectura NI SIQUIERA SE PIDE.
       expect(listarArbolGeograficoMock).not.toHaveBeenCalled();
+      expect(propsRecibidas).toHaveLength(0);
     },
   );
 
   it("sin sesión tampoco: `resolveActorFromSession` devuelve null", async () => {
     vi.mocked(resolveActorFromSession).mockResolvedValue(null);
 
-    render(await GeografiaPage());
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "No tienes permiso para acceder a esta sección.",
-    );
+    await expect(GeografiaPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(listarArbolGeograficoMock).not.toHaveBeenCalled();
   });
 
-  it("el `maestro` sí ve el árbol, y le baja por PROPS desde el servidor", async () => {
-    vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("maestro"));
+  it("el `superadmin` sí ve el árbol, y le baja por PROPS desde el servidor", async () => {
+    vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin"));
     listarArbolGeograficoMock.mockResolvedValue({ status: "ok", provincias: ARBOL });
 
     render(await GeografiaPage());
@@ -126,7 +126,7 @@ describe("374/R38 — /configuracion/geografia solo para `maestro`", () => {
   });
 
   it("si la lectura falla, la página lo dice y monta el módulo vacío", async () => {
-    vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("maestro"));
+    vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin"));
     listarArbolGeograficoMock.mockResolvedValue({ status: "forbidden" });
 
     render(await GeografiaPage());

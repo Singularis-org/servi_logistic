@@ -208,6 +208,13 @@ describe("Alcance del conteo — quién ve qué", () => {
     },
   );
 
+  it("SL-32 (R7): el superadmin se deniega con `rol_sin_analitica`", () => {
+    expect(resolverAlcanceConteoEntregas(actor("superadmin"))).toEqual({
+      estado: "denegado",
+      motivo: "rol_sin_analitica",
+    });
+  });
+
   it("un rol que no es cadena no se compara con nada", () => {
     expect(resolverAlcanceConteoEntregas({ usuarioId: "u1", rol: 3 } as never)).toEqual({
       estado: "denegado",

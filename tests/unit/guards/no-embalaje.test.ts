@@ -92,6 +92,11 @@ const IGNORED_DIRS = new Set([
   // mismo motivo que `.claude`. Sin este ignore, en el checkout principal con un
   // worktree abierto, el guard se encuentra a si mismo bajo otra ruta (SL-10, R12).
   ".worktrees",
+  // `playwright-report/` y `test-results/` son lo que deja una corrida de E2E (el informe HTML,
+  // sus `data/*.md` y las trazas), ignorados en `.gitignore`. Llevan el texto de los specs y de
+  // sus errores: no son fuente, y sin esto el guard caia por el reflejo de una corrida (SL-44).
+  "playwright-report",
+  "test-results",
 ]);
 
 // Archivos que se ignoran por NOMBRE, en cualquier carpeta. `.vitest-rojos.json` es

@@ -6,10 +6,12 @@ import type {
   ModoComposicionCaja,
   NaturalezaMovimiento,
   TipoEgresoManual,
+  WalletBalanceSigno,
   WalletMovimientoDTO,
   WalletMovimientoTipo,
 } from "@/lib/types/wallet";
 import { TIPO_EGRESO_MANUAL_SEED } from "@/lib/types/wallet";
+import type { DeudaPlataformaDTO } from "@/lib/interfaces/services/IDeudaPlataformaService";
 import type { MotivoNoAnulable } from "@/lib/types/wallet-tienda";
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
 import { proximoCobro, type PeriodicidadUnidad } from "@/lib/utils/periodicidad";
@@ -45,6 +47,16 @@ export const TIPO_LABEL: Record<WalletMovimientoTipo, string> = {
 };
 
 export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
+
+// ── SL-39 (design §5) — el nombre del impuesto, en UN solo sitio ──
+//
+// SL-21 decidira como se llama el impuesto en cada pais. Hasta entonces, todo rotulo nuevo de esta
+// ficha compone la palabra desde `IMPUESTO_ROTULO` y no la escribe suelta en el JSX. Vive en
+// `lib/constants/impuesto-rotulo` (sin dependencias) porque tambien lo lee el detalle de cierres, y
+// se importa aqui para componer los rotulos y se re-exporta para los consumidores de siempre. Los
+// rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+export { IMPUESTO_ROTULO };
 
 // ── Feature 173 (T G.1/T G.2, design §8) — las DOS cifras de la caja ──
 
@@ -89,7 +101,8 @@ export const CAJA_RESUMEN_LABEL = {
   entradas: "Entró",
   salidas: "Salió",
   ganancia: `Ganancia de ${EMPRESA.enFrase}`,
-  gananciaPista: `Lo que ${EMPRESA.enFrase} gana menos lo que gasta`,
+  // SL-39 (R10, design §7.3): la ganancia ya no cuenta el IVA, y la pista lo dice.
+  gananciaPista: `Lo que ${EMPRESA.enFrase} gana menos lo que gasta, sin el ${IMPUESTO_ROTULO}`,
   ingresosPropios: `Ingresos de ${EMPRESA.enFrase}`,
   egresosPropios: `Gastos de ${EMPRESA.enFrase}`,
   /** R23 — desde esta ficha «De las tiendas» ES lo que la empresa les debe. */
@@ -98,6 +111,25 @@ export const CAJA_RESUMEN_LABEL = {
   /** R25 — el capital de la empresa, cifra propia junto a la ganancia. */
   capital: "Saldo inicial y aportes",
   capitalPista: `Dinero de ${EMPRESA.enFrase} que no es ganancia.`,
+  /** SL-39 (R6, design §7.1) — el IVA cobrado, region propia del bolsillo de la empresa. */
+  iva: `${IMPUESTO_ROTULO} cobrado`,
+  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.`,
+  /**
+   * SL-40 (R21, design §9.2) — la deuda con la plataforma. «la plataforma» va en minúscula: nombra
+   * al sistema, no a una marca, y la empresa sale del módulo de marca como en el resto.
+   */
+  deudaPlataforma: `Lo que ${EMPRESA.enFrase} debe a la plataforma`,
+  /**
+   * SL-45 (R1–R3, design §7.2) — la región dice qué hacer según el ESTADO que manda el servidor: con
+   * deuda, cómo se paga y se registra; al día, que no hay nada pendiente; a favor, de dónde sale.
+   * La pista de SL-40 («Todavía no se cobra…») se retira: desde esta ficha el pago sí sale de la caja.
+   */
+  deudaPlataformaPista: `Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando ${EMPRESA.enFrase} le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.`,
+  deudaPlataformaAlDiaPista: `${EMPRESA.alInicio} está al día con la plataforma. Cada orden nueva suma su cobro aquí.`,
+  deudaPlataformaAFavor: `Saldo a favor de ${EMPRESA.enFrase} con la plataforma`,
+  deudaPlataformaAFavorPista: `${EMPRESA.alInicio} pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.`,
+  /** SL-45 (R1, R4): el botón de la región, que abre el registro con el concepto ya elegido. */
+  registrarPagoPlataforma: "Registrar pago a la plataforma",
   // Feature 200 (tanda 1) — el TERCER tile de la cabecera. No es dinero: es cuántos registros
   // hay en el conjunto que se está mirando, y por eso se pinta en color neutro y sin insignia
   // de signo. La pista no nombra el control que recorta el conjunto: dice lo que la persona
@@ -190,7 +222,7 @@ export function CAJA_RESUMEN_NOTA_DIFERENCIA(rotulo: string): string {
   return (
     `«${rotulo}» cuenta todo el dinero, también el que es de las tiendas. ` +
     `«${CAJA_RESUMEN_LABEL.ganancia}» es solo lo que ${EMPRESA.enFrase} gana menos lo que gasta: no incluye ` +
-    `el dinero de las tiendas ni el saldo inicial o los aportes.`
+    `el dinero de las tiendas, el ${CAJA_RESUMEN_LABEL.iva} ni el saldo inicial o los aportes.`
   );
 }
 
@@ -231,7 +263,7 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
   dos_bolsillos: null,
   // R16 de la 231: con todas sus letras. Es el aviso mas importante de la pantalla.
   solo_tiendas:
-    `Lo de ${EMPRESA.enFrase} (ganancia más aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.`,
+    `Lo de ${EMPRESA.enFrase} (ganancia, ${CAJA_RESUMEN_LABEL.iva} y aportes) está en negativo, así que hay dinero de las tiendas cubriendo ese saldo. Lo que hay en la caja no alcanza para entregarles todo lo suyo.`,
   // R17 de la 231 (D4): el espejo — «De las tiendas» negativo.
   solo_empresa:
     `Las tiendas le deben a ${EMPRESA.enFrase}, así que todo lo que hay en la caja es de ${EMPRESA.enFrase} y además hay dinero por cobrarles.`,
@@ -243,7 +275,7 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
 /**
  * R13 de la 231 — el nombre accesible de la barra: las DOS porciones, cada una con su rotulo y
  * su importe. Ficha 459 (design §3.4): el bolsillo de la empresa es «De la empresa» (ganancia y
- * aportes), no la ganancia a secas. La barra solo se monta en estado «saldo», asi que «dinero en
+ * aportes), no la ganancia a secas. SL-39 (R10): y tambien el IVA cobrado, que no es ganancia. La barra solo se monta en estado «saldo», asi que «dinero en
  * caja» es cierto donde aparece (R16).
  *
  * NO enuncia el porcentaje a proposito (R20): fuera de `dos_bolsillos` no existe reparto que
@@ -253,9 +285,101 @@ export function composicionCajaNombreAccesible(resumen: CajaResumenDTO): string 
   return (
     `${CAJA_COMPOSICION_LABEL.barra}. ` +
     `${CAJA_COMPOSICION_LABEL.tiendas}: ${money(resumen.deTerceros)}. ` +
-    `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresa)} (ganancia y aportes).`
+    `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresa)} (ganancia, ${CAJA_RESUMEN_LABEL.iva} y aportes).`
   );
 }
+
+// ── SL-39 (design §7.1/§8, R9) — las regiones SECUNDARIAS del bolsillo de la empresa ──
+//
+// Debajo de la ganancia, el bolsillo de la empresa pinta una region por entrada de esta lista, EN
+// ESTE ORDEN: añadir una region (la de SL-40, por ejemplo) es añadir una entrada aqui y un campo en
+// `CajaResumenDTO`, sin tocar la tarjeta. El importe y el signo los lee cada entrada del resumen que
+// manda el servidor; la tarjeta no suma, no resta ni convierte nada (R20).
+//
+// SL-40 (design §10): la deuda con la plataforma no sale de `CajaResumenDTO` —no es dinero de la
+// caja (D10)—, así que las entradas leen de un par `{ resumen, deudaPlataforma }` y no del resumen
+// solo. Las de SL-39 leen lo mismo que antes.
+
+/** Lo que leen las regiones: el resumen de la caja y, aparte, la deuda con la plataforma. */
+export interface DatosBolsilloEmpresa {
+  resumen: CajaResumenDTO;
+  /** `null` cuando la página no la tiene (sin permiso): la región no se pinta. */
+  deudaPlataforma: DeudaPlataformaDTO | null;
+}
+
+/**
+ * SL-45 (design §7.2): un texto de región es fijo o depende de los datos. Las de SL-39 siguen siendo
+ * texto; la de la deuda elige por el `estado` que manda el servidor.
+ */
+export type TextoDeRegion = string | ((datos: DatosBolsilloEmpresa) => string);
+
+/** El texto de una región ya resuelto para estos datos. */
+export function textoDeRegion(texto: TextoDeRegion, datos: DatosBolsilloEmpresa): string {
+  return typeof texto === "string" ? texto : texto(datos);
+}
+
+/** Una region secundaria del bolsillo de la empresa. */
+export interface RegionBolsilloEmpresa {
+  id: "iva" | "capital" | "deuda_plataforma";
+  rotulo: TextoDeRegion;
+  pista: TextoDeRegion;
+  /** El importe, STRING del servidor, tal cual. `null`: la región no se pinta. */
+  valor: (datos: DatosBolsilloEmpresa) => string | null;
+  /**
+   * El signo que derivo el servidor. `null`: sin insignia ni color de signo, porque la cifra no es
+   * un saldo a favor o en contra de la caja (la deuda con la plataforma, SL-40 design §9.2).
+   */
+  signo: (datos: DatosBolsilloEmpresa) => WalletBalanceSigno | null;
+}
+
+/** SL-45 (R1–R3): la pista de la deuda por estado. `Record` total: un estado nuevo no compila sin la suya. */
+const PISTA_DEUDA_PLATAFORMA: Record<DeudaPlataformaDTO["estado"], string> = {
+  debe: CAJA_RESUMEN_LABEL.deudaPlataformaPista,
+  al_dia: CAJA_RESUMEN_LABEL.deudaPlataformaAlDiaPista,
+  a_favor: CAJA_RESUMEN_LABEL.deudaPlataformaAFavorPista,
+};
+
+export const REGIONES_BOLSILLO_EMPRESA: readonly RegionBolsilloEmpresa[] = [
+  {
+    id: "iva",
+    rotulo: CAJA_RESUMEN_LABEL.iva,
+    pista: CAJA_RESUMEN_LABEL.ivaPista,
+    valor: ({ resumen }) => resumen.iva,
+    signo: ({ resumen }) => resumen.signoIva,
+  },
+  {
+    id: "capital",
+    rotulo: CAJA_RESUMEN_LABEL.capital,
+    pista: CAJA_RESUMEN_LABEL.capitalPista,
+    valor: ({ resumen }) => resumen.capital,
+    signo: ({ resumen }) => resumen.signoCapital,
+  },
+  // SL-40 (R21, R26): la última. Sin signo: una deuda no es «positiva» ni «negativa» para la caja, y
+  // el verde la confundiría con dinero a favor.
+  //
+  // SL-45 (R1–R3, R14): el rótulo y la pista los elige el `estado` del servidor, y el importe es el
+  // `importe` (siempre en positivo), no la `deuda` con signo: la pantalla no le quita el signo a nada.
+  {
+    id: "deuda_plataforma",
+    rotulo: ({ deudaPlataforma }) =>
+      deudaPlataforma?.estado === "a_favor"
+        ? CAJA_RESUMEN_LABEL.deudaPlataformaAFavor
+        : CAJA_RESUMEN_LABEL.deudaPlataforma,
+    pista: ({ deudaPlataforma }) => PISTA_DEUDA_PLATAFORMA[deudaPlataforma?.estado ?? "debe"],
+    valor: ({ deudaPlataforma }) => deudaPlataforma?.importe ?? null,
+    signo: () => null,
+  },
+];
+
+/**
+ * SL-39 (R7, design §7.2) — el bloque del IVA en la tarjeta «Cómo se compone la ganancia de la
+ * empresa»: aparte de las dos columnas, porque no es ganancia.
+ */
+export const COMPOSICION_IVA_LABEL = {
+  titulo: `${CAJA_RESUMEN_LABEL.iva} (aparte de la ganancia)`,
+  grupo: `Desglose del ${IMPUESTO_ROTULO}`,
+  total: `Total del ${IMPUESTO_ROTULO}`,
+} as const;
 
 /**
  * R33/R34 — de quien es el dinero de un movimiento, en palabras. El servidor manda el campo
@@ -387,6 +511,7 @@ export const CATEGORIA_TODAS_OPTION = { value: "", label: "Todas las categorías
 export const TIPO_EGRESO_MANUAL_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: `Gasto de ${EMPRESA.enFrase}`,
   sueldo: "Sueldo",
+  pago_plataforma: "Pago a la plataforma", // SL-45 (design §7.1): el nombre del concepto del diálogo
 };
 
 /** Opciones del `Select` de tipo del egreso manual (solo {gasto variable, sueldo}). */
@@ -400,11 +525,13 @@ export const TIPO_EGRESO_MANUAL_OPTIONS = TIPO_EGRESO_MANUAL_SEED.map((tipo) => 
 export const DESCRIPCION_EGRESO_LABEL: Record<TipoEgresoManual, string> = {
   gasto_variable: "Concepto del gasto",
   sueldo: "Trabajador y periodo",
+  pago_plataforma: "Referencia del pago", // SL-45 (design §7.1)
 };
 
 export const DESCRIPCION_EGRESO_PLACEHOLDER: Record<TipoEgresoManual, string> = {
   gasto_variable: "Ej. Compra de suministros de oficina",
   sueldo: "Ej. Juan Pérez — julio 2026",
+  pago_plataforma: "Ej. Transferencia del cobro de octubre", // SL-45 (design §7.1)
 };
 
 /**

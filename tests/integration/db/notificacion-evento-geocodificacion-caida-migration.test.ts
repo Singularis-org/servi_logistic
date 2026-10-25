@@ -667,7 +667,8 @@ describeSiHayBase("401/T5 — el DOWN ejercitado de verdad, con su precondición
     expect(def).toMatch(/CREATE UNIQUE INDEX/i);
     expect(def).toMatch(/NULLS NOT DISTINCT/i);
     expect(def).toMatch(/WHERE \(entidad_id IS NOT NULL\)/i);
-    expect(def).toMatch(/\(evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
+    // SL-17 T3.9: el dedupe es por empresa, con `organizacion_id` primera.
+    expect(def).toMatch(/\(organizacion_id, evento, entidad_id, destinatario_rol, destinatario_usuario_id\)/);
   });
 
   it("⭑ y sobre la base TAL CUAL está, `notificacion_dedupe_key` sigue intacto tras el UP", async () => {

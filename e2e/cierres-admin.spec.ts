@@ -1,140 +1,140 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import {
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Cierres del día" (admin) — a warehouse admin (maestro for the
- * central/GAM warehouse, adminSatelite for a satellite one) reviews the closings
- * their couriers requested, opens the full detail (per-method totals + evidence)
- * and approves or rejects each one (Feature 38, T15 / R4-R11, F1.4 decisions c/g).
+ * E2E — «Cierres del día» del admin de la bodega (features 38 y 238; SL-44 T6.1, R18).
  *
- * Covers the critical money flow happy path of the admin's decision:
- *  Happy path (approve): admin logs in → /cierres-admin → sees a courier's closing
- *  in "Pendientes de decisión" (Solicitado) → clicks "Ver / decidir" → the detail
- *  modal shows the snapshot totals panel and the 4 result sections (with signed
- *  evidence for rejected orders) → clicks "Aprobar" → a success toast is shown and
- *  the closing moves to the "Histórico" section as "Aprobado".
+ * El maestro decide los cierres de los mensajeros de la bodega central:
+ *  (a) APROBAR: abre el detalle de un cierre solicitado, lee los totales del snapshot, abre la
+ *      evidencia firmada de la orden rechazada (sale del doble de Storage, D2), pulsa «Aprobar»,
+ *      confirma físicamente el paquete que vuelve (su guía) y el cierre pasa a «Resueltos» como
+ *      «Aprobado».
+ *  (b) RECHAZAR: el motivo es obligatorio; con motivo, el cierre pasa a «Resueltos» como
+ *      «Rechazado» y el motivo queda guardado.
  *
- *  Alternate path (reject): same up to the detail modal → clicks "Rechazar" →
- *  a sub-modal requires a non-empty reason (R11) → typing a reason and confirming
- *  moves the closing to "Histórico" as "Rechazado" with the reason persisted.
- *
- * PRECONDITION (seed): at least one `cierre_dia` in state `solicitado` within the
- * admin's scope (destino_tipo = bodega_central for maestro; bodega_satelite + the
- * admin's zona for adminSatelite), with its snapshot totals and gestiones (at least
- * one `entregada` with a known amount+method, and at least one `rechazada` with a
- * stored evidence so the signed-URL viewer can be exercised, R7).
- *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres, the `cierre_dia` table + enums and the
- *   feature 38 audit columns (resuelto_por/resuelto_at/motivo_rechazo) plus the
- *   gestion/order catalog values seeded
- * - A seeded `maestro` (or `adminSatelite` WITH a zona) whose scope contains at
- *   least one closing in `solicitado`; the expected cash total injected below
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but
- * NOT EXECUTED. Execution is deferred until the test environment is fully set up
- * (same deferral as e2e/cierre-dia.spec.ts and e2e/recepcion-satelite.spec.ts).
- * They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed a maestro/adminSatelite and a courier closing in `solicitado` within the
- *    admin's scope; set the seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * DATOS (R7, R8): empresa nueva; cada caso con SU mensajero de la zona central. Las gestiones, por
+ * `MisAsignacionesService` (con la foto subida al doble de Storage); el cierre, por
+ * `CierreDiaService.solicitarCierre`. Cifras a mano:
+ *  (a) entrega de 6.000 en efectivo + un rechazo → Efectivo 6.000, Total general 6.000.
+ *  (b) entrega de 2.500 en efectivo.
  */
 
-// Seeded admin credentials (would come from test config / a user factory).
-const ADMIN_EMAIL = "maestro@example.com";
-const ADMIN_PASSWORD = "correct-password";
+let r: RepartoE2E;
 
-// Expected cash total (₡ prefix added by the UI) of the seeded closing snapshot.
-const TOTAL_EFECTIVO = "₡150.00";
-
-/** Logs in as the seeded admin and lands on the app. */
-async function loginAdmin(page: Page) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
+async function conCierreSolicitado(
+  entregas: number[],
+  rechazos: number,
+): Promise<{ m: MensajeroE2E; rechazadas: OrdenE2E[]; cierreId: string }> {
+  const m = await crearMensajero(r, "central");
+  for (const monto of entregas) {
+    const o = await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: monto }), "en_reparto", { mensajero: m });
+    await gestionar(r, o, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto }] });
+  }
+  const rechazadas: OrdenE2E[] = [];
+  for (let i = 0; i < rechazos; i++) {
+    const o = await llevarA(r, await crearOrden(r, { zona: "central" }), "en_reparto", { mensajero: m });
+    await gestionar(r, o, m, { resultado: "devolucion_a_origen_por_rechazo", motivo: "No la quiere" });
+    rechazadas.push(o);
+  }
+  return { m, rechazadas, cierreId: await solicitarCierre(r, m) };
 }
 
-test.describe("Cierres del día — admin decide un cierre solicitado", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAdmin(page);
-    await page.goto("/cierres-admin");
+async function abrirDetalle(page: Page, m: MensajeroE2E) {
+  await page.goto("/cierres-admin");
+  const pendientes = page.getByRole("region", { name: "Pendientes de decisión" });
+  const comprobante = pendientes.getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+  await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
+  await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
+  const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
+  await expect(detalle).toBeVisible();
+  return detalle;
+}
+
+async function verResueltos(page: Page, m: MensajeroE2E) {
+  await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
+  return page.getByRole("region", { name: "Histórico" }).getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+}
+
+test.describe("Cierres del día — el admin aprueba o rechaza", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("cierres-admin");
   });
 
-  test("ve un cierre Solicitado → abre detalle (totales+evidencia) → aprueba → pasa a histórico", async ({
-    page,
-  }) => {
-    // The pending queue shows the courier's closing (R4).
-    const pendientes = page.getByRole("region", {
-      name: "Pendientes de decisión",
-    });
-    await expect(pendientes).toBeVisible();
+  test("(a) detalle con totales y evidencia → Aprobar con la guía confirmada → «Aprobado»", async ({ browser }) => {
+    const { m, rechazadas, cierreId } = await conCierreSolicitado([6000], 1);
+    const [rechazada] = rechazadas;
+    const page = await paginaDe(browser, r.empresa.maestro);
+    const detalle = await abrirDetalle(page, m);
 
-    // Open the full detail of the first pending closing.
-    await pendientes.getByRole("button", { name: "Ver / decidir" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(dialog).toBeVisible();
+    const totales = detalle.getByRole("region", { name: "Totales del cierre" });
+    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
+    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
 
-    // Snapshot totals panel (R8) with the per-method cash total.
-    const totales = dialog.getByRole("region", { name: "Totales del cierre" });
-    await expect(totales).toBeVisible();
-    await expect(totales.getByText(TOTAL_EFECTIVO)).toBeVisible();
-
-    // Evidence of a rejected order opens via a signed URL in the viewer (R7).
-    const rechazadas = dialog.getByRole("region", { name: "Rechazadas" });
-    await rechazadas.getByRole("button", { name: "Ver evidencia" }).first().click();
+    // R7 de la 38: la evidencia de la rechazada abre por URL firmada y la imagen CARGA (bytes del doble).
+    // Las gestiones van en pestañas por resultado, con la fila desplegable (fichas 456 y 478).
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await ordenes.getByRole("button", { name: new RegExp(rechazada.numRemision), expanded: false }).click();
+    await detalle.getByRole("button", { name: `Ver evidencia de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` }).click();
     const visor = page.getByRole("dialog", { name: "Evidencia de la gestión" });
-    await expect(
-      visor.getByRole("img", { name: "Evidencia fotográfica de la gestión" }),
-    ).toBeVisible();
+    const foto = visor.getByRole("img", { name: "Evidencia fotográfica de la gestión" });
+    await expect(foto).toBeVisible();
+    await expect.poll(() => foto.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
     await visor.getByRole("button", { name: "Cerrar" }).click();
 
-    // Approve the closing (R10).
-    await dialog.getByRole("button", { name: "Aprobar" }).click();
+    await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
+    // Feature 238: el paquete que vuelve se confirma con su guía antes de aprobar.
+    const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
+    const aprobar = confirmar.getByRole("button", { name: "Confirmar y aprobar" });
+    await expect(aprobar).toBeDisabled();
+    const lector = confirmar.getByRole("region", { name: "Confirmar por número de guía o escaneo" });
+    await lector.getByLabel("Número de guía").fill(String(rechazada.numGuia));
+    await lector.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await expect(aprobar).toBeEnabled();
+    await aprobar.click();
 
-    // Success feedback (toast) confirms the decision.
-    await expect(page.getByText(/Cierre aprobado/i)).toBeVisible();
+    await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
+    // El detalle se cierra. El efectivo (6.000) cubre la ganancia del mensajero, así que no queda
+    // nada que liquidar y tampoco se ofrece registrar un pago (feature 172/R16).
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    // After router.refresh(), the closing appears in the history as "Aprobado" (R5).
-    const historico = page.getByRole("region", { name: "Histórico" });
-    await expect(historico.getByText("Aprobado")).toBeVisible();
+    const resuelto = await verResueltos(page, m);
+    await expect(resuelto.getByText("Aprobado", { exact: true })).toBeVisible();
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[cierreId, "aprobado"]]);
   });
 
-  test("rechazar exige motivo → con motivo pasa a histórico como Rechazado", async ({
-    page,
-  }) => {
-    const pendientes = page.getByRole("region", {
-      name: "Pendientes de decisión",
-    });
-    await pendientes.getByRole("button", { name: "Ver / decidir" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(dialog).toBeVisible();
+  test("(b) Rechazar exige motivo → con motivo pasa a «Rechazado» con el motivo guardado", async ({ browser }) => {
+    const { m, cierreId } = await conCierreSolicitado([2500], 0);
+    const page = await paginaDe(browser, r.empresa.maestro);
+    const detalle = await abrirDetalle(page, m);
+    await expect(detalle.getByRole("region", { name: "Totales del cierre" })).toContainText(importe(2500));
 
-    // Open the reject sub-modal (R11).
-    await dialog.getByRole("button", { name: "Rechazar" }).click();
+    await detalle.getByRole("button", { name: "Rechazar", exact: true }).click();
     const rechazo = page.getByRole("dialog", { name: "Rechazar cierre" });
-    await expect(rechazo).toBeVisible();
-
-    // Confirming with an empty reason is blocked and shows the validation error (R11).
     await rechazo.getByRole("button", { name: "Rechazar cierre" }).click();
-    await expect(
-      rechazo.getByText("El motivo de rechazo es obligatorio."),
-    ).toBeVisible();
+    await expect(rechazo.getByText("El motivo de rechazo es obligatorio.")).toBeVisible();
+    expect((await cierresDe(m))[0].estado).toBe("solicitado");
 
-    // With a reason, the rejection goes through.
     await rechazo.getByLabel("Motivo del rechazo").fill("Los montos no cuadran");
     await rechazo.getByRole("button", { name: "Rechazar cierre" }).click();
+    await expect(page.getByText("Cierre rechazado correctamente.")).toBeVisible();
 
-    await expect(page.getByText(/Cierre rechazado/i)).toBeVisible();
-
-    const historico = page.getByRole("region", { name: "Histórico" });
-    await expect(historico.getByText("Rechazado")).toBeVisible();
-    await expect(historico.getByText("Los montos no cuadran")).toBeVisible();
+    const resuelto = await verResueltos(page, m);
+    await expect(resuelto.getByText("Rechazado", { exact: true })).toBeVisible();
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado, c.motivoRechazo])).toEqual([
+      [cierreId, "rechazado", "Los montos no cuadran"],
+    ]);
   });
 });

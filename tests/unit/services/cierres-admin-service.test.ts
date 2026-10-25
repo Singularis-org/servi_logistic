@@ -398,7 +398,7 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
     };
   }
 
-  it("suma el ingreso por concepto y deriva la ganancia = bruto - pago al mensajero", async () => {
+  it("SL-39 R21/R22: suma el ingreso por concepto, emite el IVA aparte y deriva la ganancia = facturado sin IVA − pago al mensajero", async () => {
     const repo = fakeRepo({
       findCierreByIdEnAlcance: vi.fn(async () => ({
         sinGestion: [],
@@ -450,9 +450,12 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
       fleteDevolucion: "1000.00",
       ivaFleteDevolucion: "130.00",
     });
-    // La devolución también factura, así que entra en la ganancia.
-    expect(r.ganancia).toBe("3302.50"); // 4802.50 - 1500.00
+    // SL-39 (R21): los TRES IVA, también el de la devolución, en su propia cifra.
+    expect(r.ivaFacturado).toBe("552.50"); // 325.00 + 97.50 + 130.00
+    // La devolución también factura, así que entra en la ganancia, pero sin su IVA (R22).
+    expect(r.ganancia).toBe("2750.00"); // (2500.00 + 750.00 + 1000.00) − 1500.00
     expect(typeof r.ganancia).toBe("string"); // money-safe
+    expect(typeof r.ivaFacturado).toBe("string"); // money-safe
   });
 
   it("la ganancia es negativa si el cierre no factura pero igual paga al mensajero", async () => {
@@ -471,6 +474,7 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.totalesIngreso.total).toBe("0.00");
+    expect(r.ivaFacturado).toBe("0.00");
     expect(r.ganancia).toBe("-1500.00");
   });
 });
@@ -604,10 +608,13 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
     const r = await service.verCierreDetalle("c1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
 
+    // SL-39 (R21–R23): las dos restas parten de lo facturado SIN IVA:
+    // 4973.15 − (325.07 + 91.00 + 156.06 = 572.13) = 4401.02 (2500.55 + 700.02 + 1200.45).
+    expect(r.ivaFacturado).toBe("572.13");
     // `ganancia` resta SOLO el pago al mensajero y sigue viajando intacta (no la absorbe nadie).
-    expect(r.ganancia).toBe("1372.80"); // 4973.15 − 3600.35
-    // El neto resta ademas la bodega. Implementarlo encadenando `ganancia` daria 1372.80.
-    expect(r.netoEmpresa).toBe("922.55"); // 4973.15 − 3600.35 − 450.25
+    expect(r.ganancia).toBe("800.67"); // 4401.02 − 3600.35
+    // El neto resta ademas la bodega. Implementarlo encadenando `ganancia` daria 800.67.
+    expect(r.netoEmpresa).toBe("350.42"); // 4401.02 − 3600.35 − 450.25
     expect(r.netoEmpresa).not.toBe(r.ganancia);
     expect(typeof r.netoEmpresa).toBe("string"); // money-safe
   });
@@ -641,7 +648,8 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
 
     // Y con la bodega en 0.00 el neto SI coincide con la ganancia: si divergieran aqui, alguien
     // estaria restando dos veces.
-    expect(r.netoEmpresa).toBe("16.29"); // 3616.64 − 3600.35 − 0.00
+    // SL-39: sin IVA lo facturado es 2500.55 + 700.02 = 3200.57, y el neto sale NEGATIVO.
+    expect(r.netoEmpresa).toBe("-399.78"); // 3200.57 − 3600.35 − 0.00
     expect(r.netoEmpresa).toBe(r.ganancia);
   });
 
@@ -2380,11 +2388,14 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
     expect(r.totalesIngreso.fleteConIva).toBe("5085.00"); // 2.825,00 + 2.260,00
     expect(r.totalesIngreso.comisionConIva).toBe("4746.00"); // 3.390,00 + 1.356,00
     expect(r.totalesIngreso.fleteDevolucionConIva).toBe("1695.00");
-    expect(r.ganancia).toBe("8526.00"); // 11.526,00 − 3.000,00
+    // SL-39 (R21–R23): la ganancia y el neto parten de lo facturado SIN IVA, y el IVA va aparte:
+    // 325 + 390 + 195 + 260 + 156 = 1.326,00; 11.526,00 − 1.326,00 = 10.200,00.
+    expect(r.ivaFacturado).toBe("1326.00");
+    expect(r.ganancia).toBe("7200.00"); // 10.200,00 − 3.000,00
     expect(r.pagoTienda).toBe("130169.00");
-    // Los CUATRO campos que dejó la ficha 395, intactos.
+    // Los campos de la ficha 395 que SL-39 no toca, intactos (R26).
     expect(r.cobradoSobreRecaudado).toBe("9831.00"); // 5.085,00 + 4.746,00
-    expect(r.netoEmpresa).toBe("8026.00"); // 11.526,00 − 3.000,00 − 500,00
+    expect(r.netoEmpresa).toBe("6700.00"); // 10.200,00 − 3.000,00 − 500,00
     expect(r.ganaLaTienda).toBe("128474.00");
     expect(r.fleteRechazoYaCobradoATienda).toBe(false); // el cierre está `solicitado`
   });

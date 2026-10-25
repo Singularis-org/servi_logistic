@@ -130,9 +130,10 @@ describe("458-B (bloque B) — la oficina puede preguntar por la anulacion del c
 describe("458-C (bloque C) — la oficina puede preguntar cómo registrar, ver y anular un movimiento", () => {
   it.each(OFICINA)("%s: el diálogo único, sus diez conceptos y lo que pide cada uno", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
-    expect(caja).toContain("**Registrar un movimiento** abre un diálogo con **diez conceptos en tres grupos**");
+    // SL-45 (T9, R6) — REESCRITO: once conceptos; «Pago a la plataforma» cierra «Sale dinero de la empresa».
+    expect(caja).toContain("**Registrar un movimiento** abre un diálogo con **once conceptos en tres grupos**");
     expect(caja).toContain(
-      "**Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero",
+      "**Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · Pago a la plataforma |",
     );
     expect(caja).toContain("**a quién se le pagó** —la persona o el proveedor, con su nombre libre—. **Es obligatorio.**");
     expect(caja).toContain("la cuenta, que se elige **buscando por su nombre**");
@@ -157,6 +158,7 @@ describe("458-C (bloque C) — la oficina puede preguntar cómo registrar, ver y
     // D11: «Reversar» ya no existe en la ayuda de la caja.
     expect(caja).not.toMatch(/Reversar|Reversado/);
     expect(caja).not.toContain("**ocho conceptos en tres grupos**");
+    expect(caja).not.toContain("**diez conceptos en tres grupos**");
   });
 
   it("la caja y su diálogo NO llegan a la tienda, al mensajero ni a la bodega", () => {

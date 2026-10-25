@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import {
   dedupeKeyMantenimiento,
   proximaCorridaMantenimiento,
@@ -33,7 +34,11 @@ async function main(): Promise<void> {
   }
   const prisma = getPrismaClient();
   try {
-    const fila = await seedJobWhatsappEnvioMantenimiento(new JobRepository(prisma));
+    // SL-17: script de consola, sin sesion: la siembra va en plataforma y la fila nace sin
+    // empresa, como la del build (`scripts/siembra-jobs-recurrentes.ts`).
+    const fila = await comoPlataforma("SL-17", "siembra manual de un job recurrente", () =>
+      seedJobWhatsappEnvioMantenimiento(new JobRepository(prisma)),
+    );
     console.log(
       fila === null
         ? "Seed whatsapp_envio_mantenimiento: la fila ya existia (idempotente, sin cambios)."

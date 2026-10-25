@@ -14,6 +14,8 @@ import { leerResumenesAyuda } from "@/lib/ayuda/catalogo";
 import { mapaRutaDocumento } from "@/lib/ayuda/documento";
 import { COOKIE_TEMA, normalizarTema } from "@/lib/tema/tema";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { esPlataforma } from "@/lib/auth/plataforma";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { resolverRevisionSinpePendiente } from "@/lib/auth/revision-sinpe-pendiente";
 import { puedeEditarAlgunSinpe } from "@/lib/types/sinpe-bodega";
 import { itemsVisibles, SIDEBAR_ITEMS } from "@/lib/auth/menu-visibility";
@@ -71,16 +73,31 @@ export default async function AppLayout({
   //
   // ⚠️ ESTO NO DECIDE ACCESO (R28). Es un dato para PINTAR un aviso: ninguna rama de aquí
   // redirige, ninguna devuelve 403 y ninguna deja de pintar `{children}`.
+  //
+  // ⭑ SL-32 (R6) — EL SUPERADMIN NO TIENE EMPRESA. `usuario` y `usuario_preferencia` son tablas de
+  // negocio: sin empresa, las dos lecturas lanzarían `EmpresaNoResuelta` y tumbarían todas sus
+  // páginas. Su nombre se lee en contexto de plataforma, declarado, y los avisos se quedan en
+  // `false` sin consulta: el superadmin no recibe avisos de empresa. La tercera lectura ya es `null`
+  // para él (`puedeEditarAlgunSinpe` no lo incluye).
+  const deLaPlataforma = actor !== null && esPlataforma(actor.rol);
   const pideRevisionSinpe = actor !== null && puedeEditarAlgunSinpe(actor.rol);
-  const [usuarioRow, avisosRecordados, revisionSinpe] = actor
+  const [usuarioRow, avisosRecordados, revisionSinpe] = !actor
+    ? ([null, false, null] as const)
+    : deLaPlataforma
     ? await Promise.all([
+        comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
+          new UserRepository(getPrismaClient()).findById(actor.usuarioId),
+        ),
+        false,
+        null,
+      ])
+    : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
         new UsuarioPreferenciaRepository(getPrismaClient()).avisosPushDe(actor.usuarioId),
         pideRevisionSinpe
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
-      ])
-    : ([null, false, null] as const);
+      ]);
   const usuario =
     actor && usuarioRow
       ? { nombre: nombreCompletoUsuario(usuarioRow), rolLabel: ROL_LABELS[actor.rol] }

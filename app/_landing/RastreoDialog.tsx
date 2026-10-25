@@ -169,7 +169,7 @@ export interface RastreoDialogProps {
  * El disparador «Rastrear envío» de la landing y su diálogo, en la misma isla cliente.
  *
  * La nav sigue siendo Server Component: solo monta esto y le pasa el aspecto y el texto del
- * botón, que es el patrón que la landing ya usa para sus islas (`cifras-publicas.tsx`).
+ * botón: la isla cliente es lo mínimo que necesita el diálogo para abrirse.
  */
 export function RastreoDialog({ className, children, guiaInicial = null }: RastreoDialogProps) {
   const idGuia = useId();

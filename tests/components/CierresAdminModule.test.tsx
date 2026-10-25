@@ -329,6 +329,7 @@ describe("CierresAdminModule", () => {
       }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -371,6 +372,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", totalPagoMensajero: "1500.00" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso({ total: "3672.50" }),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "2172.50", // 3672.50 - 1500.00, derivado server-side (positiva)
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -414,6 +416,7 @@ describe("CierresAdminModule", () => {
       }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso({ fleteConIva: "2825.00", comisionConIva: "847.50" }),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "21327.50", // 25000.00 - 2825.00 - 847.50, derivado server-side
       // Ficha 395: la MISMA resta, dicha por su eslabon. Aqui NO puede ir "0.00" como en el
@@ -446,6 +449,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", totalPagoMensajero: "1500.00" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(), // total "0.00": p.ej. puras reprogramaciones
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "-1500.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -486,6 +490,7 @@ describe("CierresAdminModule", () => {
         fleteDevolucionConIva: "1130.00",
         total: "4802.50",
       }),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -566,6 +571,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -639,6 +645,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -680,6 +687,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -727,6 +735,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -779,6 +788,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -827,6 +837,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -867,6 +878,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -906,6 +918,7 @@ describe("CierresAdminModule", () => {
       }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -967,6 +980,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1011,6 +1025,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1" }),
       grupos,
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1056,6 +1071,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1096,6 +1112,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1135,6 +1152,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1186,6 +1204,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c2", estado: "aprobado", resueltoAt: "2026-07-12T00:00:00.000Z" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1226,6 +1245,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "c1", estado: "solicitado" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
@@ -1327,6 +1347,7 @@ describe("CierresAdminModule", () => {
       cierre: makeResumen({ cierreId: "cv", estado: "vencido" }),
       grupos: emptyGrupos(),
       totalesIngreso: zeroIngreso(),
+      ivaFacturado: "0.00", // SL-39: los conceptos de la fixtura no llevan IVA
       ganancia: "0.00",
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",

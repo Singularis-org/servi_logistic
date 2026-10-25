@@ -32,6 +32,7 @@ import {
   type GuardarEnvioInput,
   type PreviewDestinatariosDTO,
   type SeleccionDestinatariosInput,
+  esRolDeSeleccion,
 } from "@/lib/types/envios-whatsapp";
 import type { InformeWhatsapp } from "@/lib/whatsapp-envios/informes/tipos";
 import {
@@ -313,7 +314,12 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
       diasSemana: envio.diasSemana,
       hora: envio.hora,
       eventoClave: envio.eventoClave,
-      destinatarios: envio.destinatarios,
+      // SL-32: la fila guarda un `RolValue` cualquiera; al formulario solo vuelven los que el borde
+      // acepta, asi que un rol de plataforma no se reofrece al editar.
+      destinatarios: {
+        roles: envio.destinatarios.roles.filter(esRolDeSeleccion),
+        usuarioIds: envio.destinatarios.usuarioIds,
+      },
     };
   }
 

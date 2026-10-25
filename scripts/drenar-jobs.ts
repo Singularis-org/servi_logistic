@@ -21,6 +21,10 @@
 // apunta a `localhost:5432/servi_logistic`. Este script ejecuta EFECTOS EXTERNOS —POST firmados a
 // callbacks de integradores, llamadas a Google, envios de WhatsApp—; correrlo por descuido
 // contra produccion no es un incidente recuperable. `--host-remoto` lo permite a proposito.
+//
+// SL-17 (D16, R42): todo `main` corre en plataforma —el claim, el informe y el cierre solo tocan
+// `jobs`, que no es de negocio— y cada handler cambia a la empresa de su job, porque los handlers
+// de `buildHandlers()` ya salen envueltos en `conSuEmpresa`.
 import type {
   ClaimOpts,
   IJobRepository,
@@ -29,7 +33,8 @@ import type {
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobTipo } from "@prisma/client";
 import { JobQueueService } from "@/lib/services/JobQueueService";
-import { JobRepository } from "@/lib/repositories/JobRepository";
+import { JobRepository, type JobConEmpresa } from "@/lib/repositories/JobRepository";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadJobsConfig } from "@/lib/config/jobs";
 import { buildHandlers, buildRecurrencias } from "@/app/api/cron/procesar-jobs/route";
@@ -115,9 +120,10 @@ interface JobRow {
   dedupe_key: string | null;
   created_at: Date;
   updated_at: Date;
+  organizacion_id?: string | null;
 }
 
-function toDTO(r: JobRow): JobDTO {
+function toDTO(r: JobRow): JobConEmpresa {
   return {
     id: r.id,
     tipo: r.tipo,
@@ -131,6 +137,8 @@ function toDTO(r: JobRow): JobDTO {
     dedupeKey: r.dedupe_key,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    // SL-17 (R42): sin esto el job llegaria al handler sin empresa y correria en plataforma.
+    organizacionId: r.organizacion_id ?? null,
   };
 }
 
@@ -324,7 +332,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+comoPlataforma("SL-17", "drenador: reclamo y cierre de jobs", main).catch((e) => {
   console.error(e);
   process.exitCode = 1;
 });

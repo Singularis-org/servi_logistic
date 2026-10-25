@@ -17,6 +17,21 @@ export interface EmailMessage {
   text: string;
   /** Cuerpo HTML opcional. */
   html?: string;
+  /**
+   * Imágenes que viajan dentro del mensaje y que el HTML pinta con `src="cid:<cid>"` (el logo de
+   * la marca, SL-41). Van en el propio correo para no depender de una URL pública ni de que el
+   * cliente cargue imágenes remotas.
+   */
+  imagenesEnLinea?: ImagenEnLinea[];
+}
+
+export interface ImagenEnLinea {
+  /** Identificador que referencia el HTML, sin el prefijo `cid:`. */
+  cid: string;
+  nombreArchivo: string;
+  /** Solo PNG: Gmail y Outlook bloquean el SVG. */
+  tipoContenido: "image/png";
+  contenidoBase64: string;
 }
 
 export interface EmailSendResult {

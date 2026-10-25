@@ -18,6 +18,7 @@ const CONFIG: AuthConfig = {
   RESET_MAX_REQUESTS: 3,
   RESET_VERIFY_WINDOW_MINUTES: 10,
   RESET_MAX_VERIFY_ATTEMPTS: 5,
+  BIENVENIDA_TTL_HORAS: 72,
 };
 
 const USUARIO = {
@@ -55,6 +56,9 @@ function buildDeps() {
     findLatestActiveByUsuarioId: vi.fn(),
     contarRecientesPorUsuario: vi.fn().mockResolvedValue(0),
     markConsumed: vi.fn().mockResolvedValue(undefined),
+    create: vi.fn(),
+    findActiveById: vi.fn(),
+    consumirSiActivo: vi.fn(),
   };
   const otpIssuer = { emitir: vi.fn().mockResolvedValue({ challengeId: "otp-1" }) };
   const limiter = new ResetRateLimiter(() => 1000);

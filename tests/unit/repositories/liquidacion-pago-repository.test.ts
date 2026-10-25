@@ -79,6 +79,8 @@ function buildPrisma() {
     liquidacionPago: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      // SL-17 T3.9: la clave es unica por empresa; la relectura por clave va por `findFirst`.
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       groupBy: vi.fn(),
       aggregate: vi.fn(),
@@ -816,14 +818,14 @@ describe("LiquidacionPagoRepository — los LISTADOS si traen los anulados (R74)
 });
 
 describe("LiquidacionPagoRepository — relecturas por clave y por id (§4.1/R70)", () => {
-  it("obtenerPorClave busca por el UNIQUE de la clave de idempotencia", async () => {
+  it("obtenerPorClave busca por la clave de idempotencia (la empresa la pone la extension)", async () => {
     const prisma = buildPrisma();
-    prisma.liquidacionPago.findUnique.mockResolvedValue(documentoRow());
+    prisma.liquidacionPago.findFirst.mockResolvedValue(documentoRow());
     const repo = buildRepo(prisma);
 
     const pago = await repo.obtenerPorClave(INPUT.claveIdempotencia);
 
-    expect(prisma.liquidacionPago.findUnique.mock.calls[0][0].where).toEqual({
+    expect(prisma.liquidacionPago.findFirst.mock.calls[0][0].where).toEqual({
       claveIdempotencia: INPUT.claveIdempotencia,
     });
     expect(pago?.id).toBe("pago-1");
@@ -831,7 +833,7 @@ describe("LiquidacionPagoRepository — relecturas por clave y por id (§4.1/R70
 
   it("una clave nunca usada devuelve null (y no un objeto vacio)", async () => {
     const prisma = buildPrisma();
-    prisma.liquidacionPago.findUnique.mockResolvedValue(null);
+    prisma.liquidacionPago.findFirst.mockResolvedValue(null);
     const repo = buildRepo(prisma);
     expect(await repo.obtenerPorClave("no-existe")).toBeNull();
   });

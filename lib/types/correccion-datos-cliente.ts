@@ -206,8 +206,8 @@ export const corregirDatosClienteSchema = actualizarOrdenSchema
      * FICHA 327 (design §4.1) — EL GATE DEL DINERO, y su nombre esta elegido a proposito.
      *
      * Se llama `…DeUbicacion` y no `…DeZona` porque el gate se dispara con el cambio de
-     * DISTRITO: la marca `zona_especial` es del distrito, asi que cambiar de distrito DENTRO de
-     * la misma zona tambien puede mover el flete.
+     * DISTRITO: la marca de zona especial es del distrito (para la empresa, SL-38), asi que
+     * cambiar de distrito DENTRO de la misma zona tambien puede mover el flete.
      *
      * `false` por defecto: la AUSENCIA no confirma nada. Un cliente que omita la clave recibe el
      * aviso, no la escritura.

@@ -12,6 +12,7 @@ import { PurgaPdfCargasService } from "@/lib/services/PurgaPdfCargasService";
 import { PurgaPdfCargasRepository } from "@/lib/repositories/PurgaPdfCargasRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadPurgaPdfConfig } from "@/lib/config/purga-pdf";
 import { etiquetasConfig } from "@/lib/config/etiquetas";
@@ -40,6 +41,10 @@ export interface PurgaPdfCargasDeps {
   // `now - N dias` en milisegundos (R5), no un corte de dia natural, asi que NO se trunca por
   // `startOfDayCR`.
   now?: () => Date;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
+  // de controller anteriores a SL-17.
+  empresas?: ClienteDeOrganizaciones;
 }
 
 /**
@@ -58,6 +63,33 @@ function buildService(): IPurgaPdfCargasService {
     new PurgaPdfCargasRepository(prisma),
     new SupabaseFileStorage(undefined, etiquetasConfig.ETIQUETAS_BUCKET),
     loadPurgaPdfConfig,
+  );
+}
+
+// Resumen de UNA corrida, campo a campo y sin PII (el mismo que devolvia la ruta).
+type ResumenPurgaPdf = {
+  quedaPendiente: boolean;
+  cargasPurgadas: number;
+  ordenesAfectadas: number;
+  objetosBorrados: number;
+};
+
+type Total = {
+  quedaPendiente: boolean;
+  cargasPurgadas: number;
+  ordenesAfectadas: number;
+  objetosBorrados: number;
+};
+
+function sumar(corridas: ResumenPurgaPdf[]): Total {
+  return corridas.reduce<Total>(
+    (t, r) => ({
+      quedaPendiente: t.quedaPendiente || r.quedaPendiente,
+      cargasPurgadas: t.cargasPurgadas + r.cargasPurgadas,
+      ordenesAfectadas: t.ordenesAfectadas + r.ordenesAfectadas,
+      objetosBorrados: t.objetosBorrados + r.objetosBorrados,
+    }),
+    { quedaPendiente: false, cargasPurgadas: 0, ordenesAfectadas: 0, objetosBorrados: 0 },
   );
 }
 
@@ -91,13 +123,33 @@ export async function handlePurgaPdfCargas(
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const now = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(now);
-    // R23/R24: resumen agregado SIN PII (solo conteos + el flag de pendiente de R22).
+    const corrida = async (): Promise<ResumenPurgaPdf> => {
+      const resumen = await service.ejecutar(now);
+      // R23/R24: resumen agregado SIN PII (solo conteos + el flag de pendiente de R22).
+      return {
+        cargasPurgadas: resumen.cargasPurgadas,
+        ordenesAfectadas: resumen.ordenesAfectadas,
+        objetosBorrados: resumen.objetosBorrados,
+        quedaPendiente: resumen.quedaPendiente,
+      };
+    };
+    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
+    // SL-17 (R16): lee `carga` y `orden`, que son de cada empresa, para saber que PDF borrar: una
+    // corrida por empresa, cada una en su contexto. Un fallo en una no frena a las demas y queda en
+    // `empresas`.
+    const corridas: ResumenPurgaPdf[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
     return {
-      cargasPurgadas: resumen.cargasPurgadas,
-      ordenesAfectadas: resumen.ordenesAfectadas,
-      objetosBorrados: resumen.objetosBorrados,
-      quedaPendiente: resumen.quedaPendiente,
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
     };
   });
 

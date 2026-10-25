@@ -9,7 +9,7 @@ export interface OpcionesFila {
   provinciaActiva?: boolean;
   cantonActivo?: boolean;
   distritoActivo?: boolean;
-  zonaEspecial?: boolean | null;
+  zonaEspecial?: boolean;
   zonas?: { id: string; nombre: string; esCentral?: boolean }[];
 }
 
@@ -24,7 +24,7 @@ export function fila(o: OpcionesFila = {}): DistritoCoberturaRow {
     distrito: {
       nombre: o.distrito ?? "San Rafael",
       activo: distritoActivo,
-      zonaEspecial: o.zonaEspecial === undefined ? false : o.zonaEspecial,
+      zonaEspecial: o.zonaEspecial ?? false,
     },
     disponible: provinciaActiva && cantonActivo && distritoActivo,
     zonas: (o.zonas ?? [{ id: "z-gam", nombre: "GAM", esCentral: true }]).map((z) => ({

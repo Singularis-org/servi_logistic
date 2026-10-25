@@ -46,12 +46,13 @@ export type CamposLateralesCaja = z.infer<typeof camposLateralesCaja>;
 
 /**
  * Sueldo / gasto de la empresa CON sus laterales. Intersección: cada lado conserva sus reglas. FICHA
- * 458-C (D5): «a quién» es OBLIGATORIO en los dos (los únicos `tipoEgreso` que admite el borde).
+ * 458-C (D5): «a quién» es OBLIGATORIO en el sueldo y el gasto. SL-45 (design §6, R6): en el pago a
+ * la plataforma es opcional, porque la contraparte es siempre la plataforma.
  */
 export const registrarEgresoConLateralesSchema = z
   .intersection(registrarEgresoAdministrativoSchema, camposLateralesCaja)
   .superRefine((valor, ctx) => {
-    if (valor.contraparteNombre === undefined) {
+    if (valor.tipoEgreso !== "pago_plataforma" && valor.contraparteNombre === undefined) {
       ctx.addIssue({ code: "custom", path: ["contraparteNombre"], message: CONTRAPARTE_OBLIGATORIA });
     }
   });

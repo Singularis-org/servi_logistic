@@ -17,7 +17,7 @@ import {
   type Escenario459,
   type LecturaCaja459,
 } from "./_fixtures/caja-459";
-import { UP_COMPLETAR_461 } from "./_fixtures/completar-caja-461-sql";
+import { UP_461_SOBRE_ESQUEMA_ACTUAL } from "./_fixtures/completar-caja-461-sql";
 import { CLAVE_CANDADO_459 } from "./_fixtures/escrituras-459";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -419,13 +419,17 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
     });
   }
 
-  /** Ejecuta el `migration.sql` REAL de `20260926120200_cobro_tienda_461_completar_caja`, TAL CUAL. */
+  /**
+   * Ejecuta el `migration.sql` REAL de `20260926120200_cobro_tienda_461_completar_caja`, con el unico
+   * cambio del objetivo de su `ON CONFLICT` al unico por empresa de SL-17 (ver el fixture): sobre el
+   * esquema de hoy, el texto tal cual cae con 42P10.
+   */
   async function completar(
     tx: TxDeTest,
     cobro: { id: string; monto: Prisma.Decimal; fechaMovimiento: Date },
     reclasificado: { id: string },
   ): Promise<NonNullable<Medida["completada"]>> {
-    await tx.$executeRawUnsafe(UP_COMPLETAR_461);
+    await tx.$executeRawUnsafe(UP_461_SOBRE_ESQUEMA_ACTUAL);
     const lineas = await tx.walletMovimiento.findMany({ where: { origenId: cobro.id } });
     const [l] = lineas;
     return {
@@ -533,15 +537,22 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
     });
   });
 
-  it("R7: cifra principal = ganancia + «De las tiendas» + capital, tras CADA paso (libro entero y diferencia)", () => {
+  // SL-39 (R4): la ganancia ya no lleva el IVA, que va aparte; la identidad lo suma como cuarto sumando,
+  // y «De la empresa» es ganancia + IVA + capital.
+  it("R7 (SL-39 R4): cifra principal = ganancia + IVA + «De las tiendas» + capital, tras CADA paso (libro entero y diferencia)", () => {
     for (const p of m().pasos) {
       const r = p.lectura.resumen;
-      expect(suma([r.ganancia, r.deTerceros, r.capital]), `R7 libro entero · ${p.nombre}`).toBe(r.enCaja);
+      expect(suma([r.ganancia, r.iva, r.deTerceros, r.capital]), `R7 libro entero · ${p.nombre}`).toBe(r.enCaja);
       expect(
-        suma([delta(p, (l) => l.resumen.ganancia), delta(p, (l) => l.resumen.deTerceros), delta(p, (l) => l.resumen.capital)]),
+        suma([
+          delta(p, (l) => l.resumen.ganancia),
+          delta(p, (l) => l.resumen.iva),
+          delta(p, (l) => l.resumen.deTerceros),
+          delta(p, (l) => l.resumen.capital),
+        ]),
         `R7 diferencia · ${p.nombre}`,
       ).toBe(delta(p, (l) => l.resumen.enCaja));
-      expect(r.deEmpresa, `«De la empresa» · ${p.nombre}`).toBe(suma([r.ganancia, r.capital]));
+      expect(r.deEmpresa, `«De la empresa» · ${p.nombre}`).toBe(suma([r.ganancia, r.iva, r.capital]));
     }
   });
 
@@ -576,11 +587,12 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
         deTerceros: menos(b.deTerceros, a.deTerceros),
         capital: menos(b.capital, a.capital),
         ganancia: menos(b.ganancia, a.ganancia),
+        iva: menos(b.iva, a.iva), // SL-39
         saldoTiendaA: menos(pasos[i].saldoTiendaA, pasos[i - 1].saldoTiendaA),
         saldoTiendaB: menos(pasos[i].saldoTiendaB, pasos[i - 1].saldoTiendaB),
       };
     };
-    const nada = { enCaja: "0.00", deTerceros: "0.00", capital: "0.00", ganancia: "0.00", saldoTiendaA: "0.00", saldoTiendaB: "0.00" };
+    const nada = { enCaja: "0.00", deTerceros: "0.00", capital: "0.00", ganancia: "0.00", iva: "0.00", saldoTiendaA: "0.00", saldoTiendaB: "0.00" };
     expect(cambio(1)).toEqual({ ...nada, enCaja: "-1234.56", deTerceros: "-1234.56", saldoTiendaA: "-1234.56" });
     expect(cambio(2)).toEqual({ ...nada, enCaja: "1234.56", deTerceros: "1234.56", saldoTiendaA: "1234.56" });
     expect(cambio(3)).toEqual({ ...nada, enCaja: "1000000.00", capital: "1000000.00" });
@@ -623,10 +635,12 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
     // 14 — la anulacion del cobro por devolución a origen: lo contrario exacto de su aprobacion. «De las tiendas» y el
     // saldo de A suben 1 130,00; la ganancia baja lo mismo; la cifra principal, «Entro» y «Salio» NO se
     // mueven (son reversos de cargo). Mutacion 4 de §8.2 (reverso como efectivo) → «Salio» sube aqui.
+    // SL-39 (R1/R2): de los 1 130,00, el flete (1 000,00) baja la ganancia y su IVA (130,00) baja el IVA.
     expect(cambio(14)).toEqual({
       ...nada,
       deTerceros: COBRO_RECHAZO_458,
-      ganancia: `-${COBRO_RECHAZO_458}`,
+      ganancia: "-1000.00",
+      iva: "-130.00",
       saldoTiendaA: COBRO_RECHAZO_458,
     });
     expect(menos(pasos[14].lectura.resumen.entradas, pasos[13].lectura.resumen.entradas)).toBe("0.00");

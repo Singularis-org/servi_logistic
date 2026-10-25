@@ -158,7 +158,8 @@ describe("schema.prisma refleja el modelo (feature 54)", () => {
     expect(schema).toMatch(/esCentral\s+Boolean .*@map\("es_central"\)/);
     expect(schema).not.toMatch(/@map\("pago_entrega"\)/);
     expect(schema).not.toMatch(/@map\("pago_rechazo"\)/);
-    expect(schema).toMatch(/nombre\s+String\s+@unique/);
+    // SL-17 T3.9: el nombre de zona es unico POR EMPRESA (mismo nombre de indice).
+    expect(schema).toContain('@@unique([organizacionId, nombre], map: "zona_nombre_key")');
   });
 
   it("Distrito y Usuario tienen zonaId nullable con relacion e indice", () => {

@@ -4,7 +4,7 @@ import {
   VISTA_COD_RECAUDADO_POR_METODO,
   VISTA_COD_RECAUDADO_POR_TIENDA,
 } from "@/lib/types/analitica-financiera";
-import { WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
+import { WALLET_IVA_SEED, WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
 import {
   NATURALEZA_POR_CATEGORIA,
   type NaturalezaMovimiento,
@@ -163,7 +163,8 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
 
     // Ficha 459 (P13): DIEZ, con `egreso_pago_por_cuenta_tienda` al final. Ficha 461 (R29, P14):
     // SIGUEN siendo diez — el reverso del cobro a una tienda NO entra: no es dinero que salga.
-    expect(categorias).toHaveLength(10);
+    // SL-45 (review B2, decision de Carlos 2026-10-24): ONCE, con `egreso_pago_plataforma` al final.
+    expect(categorias).toHaveLength(11);
     expect(categorias).not.toContain("egreso_reverso_cobro_tienda");
     // Las OCHO historicas, sin que falte ninguna: sustituir una por `ingreso_ajuste` en vez de
     // anadirla —la mutacion que R5 nombra— deja aqui una lista corta.
@@ -177,6 +178,7 @@ describe("egresos: gana el pago a tienda por diseno, y nada mas", () => {
       "egreso_gasto_variable",
       "egreso_indemnizacion",
       "egreso_pago_por_cuenta_tienda", // ficha 459 (P13)
+      "egreso_pago_plataforma", // SL-45 (review B2): efectivo que sale de la caja
     ]);
     // Y la novena, la unica que no es `egreso_*`.
     expect(categorias.filter((c) => !c.startsWith("egreso_"))).toEqual(["ingreso_ajuste"]);
@@ -451,7 +453,8 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     const declaradas = [...(getMetrica("dinero_en_caja")?.definicion.categorias ?? [])].sort();
     expect(declaradas).toEqual(Object.keys(NATURALEZA_POR_CATEGORIA).sort());
     expect(declaradas).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect(declaradas).toHaveLength(27); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2
+    expect(declaradas).toHaveLength(28); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1
+    expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("egreso_reverso_iva_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("ingreso_cobro_tienda");
@@ -460,17 +463,30 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     expect(declaradas).toContain("egreso_reverso_abono_tienda");
   });
 
-  it("`ganancia_empresa` declara EXACTAMENTE las de naturaleza propio, y ni una de terceros", () => {
-    const propiasDelRecord = Object.entries(NATURALEZA_POR_CATEGORIA)
-      .filter(([, n]) => n === "propio")
+  it("`ganancia_empresa` declara EXACTAMENTE las de naturaleza propio menos las de IVA (SL-39, R11), y ni una de terceros", () => {
+    // SL-39 (design §2.5): el catalogo es puro y no importa `caja-tesoreria.ts`, asi que su lista
+    // sigue escrita a mano; la verdad se lee aqui, en tiempo de ejecucion, del `Record` de la
+    // naturaleza y de `WALLET_IVA_SEED`.
+    const deIva = new Set<string>(WALLET_IVA_SEED);
+    const propiasSinIva = Object.entries(NATURALEZA_POR_CATEGORIA)
+      .filter(([c, n]) => n === "propio" && !deIva.has(c))
       .map(([c]) => c)
       .sort();
     const declaradas = [...(getMetrica("ganancia_empresa")?.definicion.categorias ?? [])].sort();
 
-    expect(declaradas).toEqual(propiasDelRecord);
-    expect(declaradas).toHaveLength(18); // ficha 461 (R29): 14 + el cobro a una tienda y su reverso; ficha 458-B: + los dos reversos del cobro por devolución a origen
+    expect(declaradas).toEqual(propiasSinIva);
+    // ficha 461 (R29): 14 + el cobro a una tienda y su reverso; ficha 458-B: + los dos reversos del
+    // cobro por devolución a origen = 18; SL-39: − las cuatro de IVA = 14; SL-45 (R25): + el pago a la
+    // plataforma = 15.
+    expect(declaradas).toHaveLength(15);
+    expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45 (R25): un egreso propio baja la ganancia
+    for (const iva of WALLET_IVA_SEED) {
+      expect(declaradas, `${iva} no es ganancia`).not.toContain(iva);
+    }
+    // Control de no vacuidad del «menos»: el seed de IVA tiene las cuatro, y las cuatro son propias.
+    expect(WALLET_IVA_SEED).toHaveLength(4);
+    for (const iva of WALLET_IVA_SEED) expect(NATURALEZA_POR_CATEGORIA[iva], iva).toBe("propio");
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
-    expect(declaradas).toContain("egreso_reverso_iva_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("ingreso_cobro_tienda");
     expect(declaradas).toContain("egreso_reverso_cobro_tienda");
     // Dicho por el otro lado, que es el que rompe la cifra: el contra-entrega y su reverso no
@@ -487,15 +503,20 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     const ganancia = new Set(getMetrica("ganancia_empresa")?.definicion.categorias ?? []);
     // Ficha 459: + los dos de terceros del pago por cuenta y los dos de CAPITAL, que tampoco son
     // ganancia. Ficha 457 (R52, D11): + el pago de una tienda a la empresa y su anulacion, que son de
-    // TERCEROS (DH1) y por eso `ganancia_empresa` no los ve: 9 categorias.
+    // TERCEROS (DH1) y por eso `ganancia_empresa` no los ve: 9 categorias. SL-39 (R11): + las cuatro
+    // de IVA, que estan en la caja pero no son ganancia: 13.
     expect(enCaja.filter((c) => !ganancia.has(c)).sort()).toEqual([
       "egreso_pago_por_cuenta_tienda",
       "egreso_pago_tienda",
       "egreso_reverso_abono_tienda",
       "egreso_reverso_aporte_capital",
+      "egreso_reverso_iva_flete_devolucion",
       "ingreso_abono_tienda",
       "ingreso_aporte_capital",
       "ingreso_cod_recaudado",
+      "ingreso_iva_comision_cod",
+      "ingreso_iva_flete",
+      "ingreso_iva_flete_devolucion",
       "ingreso_reverso_pago_por_cuenta_tienda",
       "ingreso_reverso_pago_tienda",
     ]);

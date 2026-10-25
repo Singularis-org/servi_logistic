@@ -47,10 +47,8 @@ const AMBITO = ["lib/analytics", "lib/cache", "lib/services", "lib/repositories"
 const ADAPTADORES = [
   "lib/cache/next-analitica-cache.ts",
   "lib/cache/next-tablero-dia-cache.ts",
-  // Feature 198 — la cache de 6 h de los conteos publicos. Se registra AQUI, a mano y con su
-  // motivo, que es exactamente lo que esta guardia busca: que anadir un tercer archivo con
-  // acceso a `next/cache` sea una decision visible en el diff, no algo que se cuela.
-  "lib/cache/next-conteos-publicos-cache.ts",
+  // La cache de los conteos publicos (feature 198) fue el tercer adaptador hasta SL-17, que la
+  // retira con los conteos (R43). No se deja la entrada: autorizaria un archivo que ya no existe.
 ];
 
 function archivos(dir: string): string[] {

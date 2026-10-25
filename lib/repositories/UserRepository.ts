@@ -3,6 +3,7 @@ import type { EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAcci
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import { Prisma, type EstadoUsuario, type PrismaClient, type RolValue } from "@prisma/client";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { UsuarioPorRolDTO } from "@/lib/types/usuario-por-rol";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
@@ -131,11 +132,17 @@ export class UserRepository implements IUserRepository {
     }
   }
 
-  /** Feature 20/R9: actualiza solo `password_hash`; no expone el hash de vuelta. */
+  /**
+   * Feature 20/R9: actualiza `password_hash`; no expone el hash de vuelta.
+   *
+   * SL-41/R38: en el mismo UPDATE marca `contrasena_definida_at`. Este metodo solo lo usa el
+   * auto-servicio (codigo o enlace de bienvenida), asi que la marca significa «la eligio el propio
+   * usuario»; `restablecerContrasena` (la pone otra persona) no la toca a proposito.
+   */
   async updatePasswordHash(usuarioId: string, passwordHash: string): Promise<void> {
     await this.prisma.usuario.update({
       where: { id: usuarioId },
-      data: { passwordHash },
+      data: { passwordHash, contrasenaDefinidaAt: new Date() },
     });
   }
 
@@ -356,7 +363,14 @@ export class UserRepository implements IUserRepository {
     // Un solo `where`, construido una vez, usado por la pagina Y por el conteo.
     const termino = params.busqueda ? escaparComodinesLike(params.busqueda) : undefined;
     const where: Prisma.UsuarioWhereInput = {
-      ...(params.roles?.length ? { rol: { value: { in: params.roles } } } : {}), // R13/R14
+      // SL-32 (R10): el superadmin no es de ninguna empresa; ni se lista ni cuenta en el total,
+      // filtre o no el `maestro` por rol. El filtro por rol (R13/R14) se suma al mismo `value`.
+      rol: {
+        value: {
+          notIn: [...ROLES_PLATAFORMA],
+          ...(params.roles?.length ? { in: params.roles } : {}),
+        },
+      },
       ...(termino !== undefined
         ? {
             OR: [

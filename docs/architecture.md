@@ -43,9 +43,54 @@ esta bien hecha, no solo si "funciona".
 - Los únicos y las secuencias se declaran por empresa (`@@unique([organizacion_id, ...])`),
   nunca globales.
 - La empresa activa se resuelve en el servidor desde la sesión; nunca llega del cliente.
-- Las tablas heredadas aún no la tienen (0 de 88 modelos el 2026-10-21): las migra la fase 2
-  de `docs/plan-saas.md`. Hasta entonces, código nuevo sobre tablas heredadas no inventa su
-  propio aislamiento: lo anota como pendiente de la fase 2 en su `design.md`.
+- **Estado (SL-17, 2026-10-23).** Las 73 tablas de negocio ya tienen `organizacion_id` (NOT NULL
+  salvo `usuario`, nulable para el superadmin), FK a `organizacion`, índice y política RLS
+  `<t>_por_empresa`. La clasificación de los 88 modelos heredados (73 de negocio, 14 de
+  plataforma, 1 diferido) vive en `lib/db/modelos-de-negocio.ts`, y un modelo nuevo sin clasificar
+  pone el gate en rojo (`tests/unit/guards/organizacion-en-modelos.guardia.test.ts`).
+- **SL-38 (2026-10-23):** son 74. La marca de zona especial es de la empresa, no del distrito: una
+  fila de `distrito_zona_especial(organizacion_id, distrito_id)` por distrito marcado, sobre la
+  geografía de la plataforma. Se lee solo por `lib/repositories/_shared/zona-especial.ts`.
+- **Cómo se aplica, en capas** (cada una frena el fallo de la anterior):
+  - **Contexto** (`lib/db/contexto-empresa.ts`): `conEmpresa(id, fn)` y `comoPlataforma(ficha, motivo, fn)`.
+    Sin contexto explícito, la empresa sale de la cookie de sesión
+    (`lib/auth/empresa-de-la-peticion.ts`). Sin empresa, toda operación de negocio y todo SQL a mano
+    fallan con `EmpresaNoResuelta` sin ejecutarse.
+  - **Extensión del cliente** (`lib/db/extension-empresa.ts`, enchufada en `getPrismaClient()`): inyecta
+    `organizacion_id` en los `where` y las creaciones de los modelos de negocio y envuelve cada operación
+    en una transacción que fija la empresa y baja al rol `servi_app`. En contexto de empresa también
+    envuelve los modelos de plataforma, para que la RLS cubra sus relaciones anidadas.
+  - **RLS** con el rol `servi_app` (NOLOGIN, NOBYPASSRLS; migración `20261022130000_organizacion_y_rol_app`):
+    la política compara con `current_setting('app.organizacion_id')`, fijado por transacción. Cubre el
+    SQL a mano. Los catálogos, la geografía y `vehiculos` son de solo lectura para la empresa.
+  - **Triggers de misma empresa** (migración `20261022130300_misma_empresa_en_fk`): una fila de negocio
+    no puede apuntar a otra empresa (SQLSTATE `SL017`, traducido a `EmpresaCruzada`) ni cambiar de
+    empresa. Una FK nueva entre tablas de negocio necesita su trigger: se genera con
+    `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes` en una migración nueva, y la guardia
+    `tests/unit/guards/fk-misma-empresa.guardia.test.ts` falla si falta.
+- **Entradas sin sesión:** API key (`conEmpresaDeLaKey` en `lib/api/api-key-request.ts`), crons y jobs
+  recurrentes (`lib/db/para-cada-empresa.ts`) y el drenador, que corre cada job con su
+  `jobs.organizacion_id`.
+- **Excepciones con ficha** (`lib/db/excepciones-aislamiento.ts`): `EXCEPCIONES_DE_PLATAFORMA` (quién
+  puede llamar a `comoPlataforma`) y `EXCEPCIONES_SQL_A_MANO` (SQL a mano que aún no filtra y que la RLS
+  cubre). Las dos solo pueden bajar; las vigilan `plataforma-solo-en-lista` y `sql-a-mano-por-empresa`.
+- **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migración
+  `20261023090000_unicos_por_empresa`). Siguen globales a propósito `usuario.email`, `usuario.cedula`,
+  `orden.num_guia` (rastreo público), `api_key.key_hash` y los ids externos. Las secuencias por empresa
+  son de SL-18.
+- **Alta de empresa:** `OrganizacionService.altaEmpresa` (`lib/services/OrganizacionService.ts`, con
+  `lib/repositories/OrganizacionRepository.ts`) crea, en una transacción, la organización, su podio del
+  ranking y el primer maestro sin contraseña utilizable.
+  Tras un alta buena, la action envía al maestro un correo de bienvenida
+  (`lib/services/BienvenidaMaestroService.ts`, SL-41) con un enlace para crear su contraseña: de un
+  solo uso, con el secreto en el fragmento de la URL y válido `AUTH_BIENVENIDA_TTL_HORAS` horas (72
+  por defecto), sobre `email_otp_challenge` y `PasswordResetService`. Corre fuera de la transacción
+  del alta y nunca la tumba: si el correo no sale, la empresa queda creada y la pantalla lo avisa. El
+  superadmin la reenvía con «Reenviar bienvenida» en la fila de la empresa, que se oculta cuando el
+  primer maestro ya fijó su contraseña (`usuario.contrasena_definida_at`). «¿Olvidaste tu
+  contraseña?» sigue sirviendo de respaldo.
+  La action `lib/actions/organizaciones.ts` exige superadmin a través de `lib/auth/exigir-superadmin.ts`,
+  el punto de enganche con SL-32: hasta que exista `lib/auth/plataforma.ts`, rechaza a todos.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

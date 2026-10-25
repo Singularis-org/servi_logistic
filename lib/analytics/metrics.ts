@@ -638,7 +638,7 @@ const CATALOGO = [
     // `ingreso_ajuste` y cero `egreso_ajuste`, luego el cambio no mueve hoy ningun numero
     // (`egresos` sigue valiendo 22042.40 de bruto). Es la ventana barata.
     descripcion:
-      "Salidas de la caja principal (pagos a tienda y mensajero, sueldos, gastos fijos y variables, indemnizaciones y ajustes) segun el libro append-only de la wallet; DESDE LA FEATURE 173 incluye el dinero ENTREGADO A LAS TIENDAS, que antes ninguna via emitia, asi que su cifra crece a partir de esa fecha sin que su id ni su nombre cambien y no es comparable con la de antes; DESDE LA FEATURE 183 la ANULACION de un egreso se DESCUENTA de esta cifra: el reverso que la anulacion emite (ingreso_ajuste) entra en la definicion, de modo que el bruto cuenta los DOS movimientos (el pago y su reverso) y el neto es lo que de verdad salio de caja. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
+      "Salidas de la caja principal (pagos a tienda y mensajero, sueldos, gastos fijos y variables, indemnizaciones y ajustes) segun el libro append-only de la wallet; DESDE LA FEATURE 173 incluye el dinero ENTREGADO A LAS TIENDAS, que antes ninguna via emitia, asi que su cifra crece a partir de esa fecha sin que su id ni su nombre cambien y no es comparable con la de antes; DESDE LA FEATURE 183 la ANULACION de un egreso se DESCUENTA de esta cifra: el reverso que la anulacion emite (ingreso_ajuste) entra en la definicion, de modo que el bruto cuenta los DOS movimientos (el pago y su reverso) y el neto es lo que de verdad salio de caja; DESDE SL-45 incluye el PAGO A LA PLATAFORMA, y su anulacion lo compensa. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
     dominio: "financiera",
     clase: "live",
     unidad: "moneda",
@@ -669,6 +669,10 @@ const CATALOGO = [
         // FICHA 459 (P13): el pago por cuenta de una tienda es dinero que SALE de la caja, como el
         // pago a tienda. Su reverso NO entra (decision de la 457 para los reversos de terceros).
         "egreso_pago_por_cuenta_tienda",
+        // SL-45 (review B2, decision de Carlos 2026-10-24): el pago a la plataforma es efectivo que
+        // sale de la caja. Sin el, su anulacion (el `ingreso_ajuste` de arriba) contaba y el pago
+        // no: un pago anulado daba +M con el signo cambiado.
+        "egreso_pago_plataforma",
       ],
     },
   },
@@ -736,6 +740,9 @@ const CATALOGO = [
         // ahora 27. La cifra NO cambia con ellos (son reversos de cargo: no sale dinero).
         "egreso_reverso_flete_devolucion",
         "egreso_reverso_iva_flete_devolucion",
+        // SL-45 (design §2): el pago a la plataforma. La caja entera, ahora 28. SI mueve la cifra:
+        // es efectivo que sale.
+        "egreso_pago_plataforma",
       ],
     },
   },
@@ -743,7 +750,7 @@ const CATALOGO = [
     id: "ganancia_empresa",
     etiqueta: `Ganancia de ${EMPRESA.enFrase}`,
     descripcion:
-      `RESULTADO: ingresos propios de ${EMPRESA.enFrase} menos sus egresos propios, dejando fuera el dinero de terceros que solo pasa por la caja (el contra-entrega y su devolucion a la tienda). Incluye lo que ${EMPRESA.enFrase} les cobra a las tiendas (el cobro de ${EMPRESA.enFrase} a una tienda es ganancia: se toma del saldo que le guardaba) y descuenta sus anulaciones. Es, numero por numero, lo que \`derivarBalance\` devolvia sobre el libro entero antes de la 173: no cambia de valor, cambia de nombre. Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+      `RESULTADO: ingresos propios de ${EMPRESA.enFrase} menos sus egresos propios, dejando fuera el dinero de terceros que solo pasa por la caja (el contra-entrega y su devolucion a la tienda). Incluye lo que ${EMPRESA.enFrase} les cobra a las tiendas (el cobro de ${EMPRESA.enFrase} a una tienda es ganancia: se toma del saldo que le guardaba) y descuenta sus anulaciones. Sin el IVA: el IVA cobrado se publica aparte en \`ingreso_iva\`. Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
     dominio: "financiera",
     clase: "live",
     unidad: "moneda",
@@ -755,13 +762,13 @@ const CATALOGO = [
     definicion: {
       // LAS CATORCE de naturaleza «propio»: las diecisiete menos `egreso_pago_tienda`,
       // `ingreso_cod_recaudado` y `ingreso_reverso_pago_tienda`.
+      // SL-39 (design §2.5, R11): SIN las cuatro de IVA, que estan en `ingreso_iva`. Este modulo es
+      // puro y no importa `caja-tesoreria.ts`, asi que la lista va escrita; la guardia
+      // `metrics-caja-naturaleza` la compara con «propio menos `WALLET_IVA_SEED`».
       categorias: [
         "ingreso_flete",
         "ingreso_flete_devolucion",
         "ingreso_comision_cod",
-        "ingreso_iva_flete",
-        "ingreso_iva_flete_devolucion",
-        "ingreso_iva_comision_cod",
         "ingreso_ajuste",
         "egreso_pago_mensajero",
         "egreso_gasto",
@@ -776,8 +783,11 @@ const CATALOGO = [
         "egreso_reverso_cobro_tienda",
         // FICHA 458-B (design §2.3): DIECIOCHO. La anulacion de un cobro por rechazo baja la ganancia
         // (flete e IVA por separado); los dos son propios en `NATURALEZA_POR_CATEGORIA`.
+        // SL-39: el reverso del IVA sale con las otras tres de IVA. Quedan CATORCE.
         "egreso_reverso_flete_devolucion",
-        "egreso_reverso_iva_flete_devolucion",
+        // SL-45 (R25): QUINCE. El pago a la plataforma es un egreso propio, como el sueldo: baja la
+        // ganancia igual que en la caja.
+        "egreso_pago_plataforma",
       ],
     },
   },

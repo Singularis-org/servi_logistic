@@ -16,6 +16,7 @@ export const ETIQUETA_ROL: Record<RolValue, string> = {
   adminTienda: "Admin Tienda",
   adminSatelite: "adminSatelite",
   apiKey: "apiKey",
+  superadmin: "superadmin",
 };
 
 /** Un usuario existente cuya identidad (tipo de identificacion) se clona. Lanza si no hay. */

@@ -43,7 +43,7 @@ import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 export interface EntradasCostoOrden {
   /** `zona.es_central`: elige la COLUMNA de flete (variante GAM vs estandar). */
   esCentral: boolean;
-  /** `distrito.zona_especial IS TRUE`: elige el pacto especial del distrito si lo hay. */
+  /** La marca de zona especial de la empresa (SL-38): elige el pacto especial del distrito si lo hay. */
   esZonaEspecial: boolean;
   /** COD a recaudar, como CADENA de escala 2. `null` -> cero (money-safe). */
   montoCobrar: string | null;

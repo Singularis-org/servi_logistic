@@ -59,6 +59,9 @@ import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
 import { desgloseCargaApi, tieneFulfillment } from "@/lib/utils/ingreso-empresa";
 import { nombreDeEstado } from "@/lib/types/order-status";
 
+/** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
+export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
+
 // FEATURE 155/R19/R22: la constante `ESTATUS_INICIAL_API` (= `en_ruta_bodega_central`) se
 // RETIRO. Era la tercera regla de nacimiento del sistema y la peor: declaraba que una orden
 // recien creada por el integrador ya estaba VIAJANDO hacia la bodega central, sin que nadie la
@@ -166,7 +169,20 @@ export class BulkOrdenService implements IBulkOrdenService {
     // Feature 27/R15-R18 + 155/R1/R4/R6/R16: UNA sola lectura del flag `fulfillment` por
     // LOTE (no por fila) y UNA sola llamada al punto de decision compartido. El adminTienda
     // solo puede cargar para si mismo, asi que el dueño de las ordenes es el actor.
-    const destino = resolverDestinoCreacion(await this.repo.findUsuarioFulfillment(tiendaId));
+    const fulfillment = await this.repo.findUsuarioFulfillment(tiendaId);
+    if (fulfillment === null) {
+      // SL-17 (D15): es tambien la lectura previa de la tienda. Si no existe para la empresa en
+      // curso, ninguna fila se crea y cada una dice por que, como con el estatus que falta de
+      // abajo. Sin esto, la carga seguia y la paraba el trigger de la base (`EmpresaCruzada`).
+      const filas: RowResult[] = rows.map((raw, idx) => ({
+        fila: idx + 1,
+        numRemision: (raw.num_remision ?? "").trim(),
+        resultado: "error",
+        errores: { tienda: [MSG_TIENDA_NO_ENCONTRADA] },
+      }));
+      return { status: "ok", summary: this.buildSummary(rows.length, filas, null) };
+    }
+    const destino = resolverDestinoCreacion(fulfillment);
 
     const ctx = await this.precargar(rows, destino.estatus, tiendaId);
 
@@ -405,7 +421,8 @@ export class BulkOrdenService implements IBulkOrdenService {
     // `numGuia`) para tarifar SIN N+1. Solo las creadas se tarifan (R4).
     const esCentralPorRemision = new Map<string, boolean>();
     // Hermana de la anterior, por el mismo camino y el mismo cruce (2026-08-25): la marca
-    // `zona_especial` del distrito de cada fila, que es la que elige el monto pactado.
+    // de zona especial del distrito de cada fila PARA LA EMPRESA (SL-38), que es la que elige el
+    // monto pactado.
     const esZonaEspecialPorRemision = new Map<string, boolean>();
     // Feature 274/R25 (design §4.3): la ZONA de cada fila candidata, por el mismo camino y con
     // el mismo cruce que `esCentralPorRemision`. Es lo que convierte "una tarifa por lote" en

@@ -47,7 +47,6 @@ import {
   MSG,
 } from "@/lib/errors";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiOrdenResolucionService } from "@/lib/interfaces/services/IApiOrdenResolucionService";
 import type { IApiOrdenEliminacionService } from "@/lib/interfaces/services/IApiOrdenEliminacionService";
 import type { ApiOrdenDetalleDTO } from "@/lib/types/api-orden";
@@ -64,7 +63,12 @@ import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { gestionConfig } from "@/lib/config/gestion";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 import { idOrdenApiSchema } from "@/lib/api/api-orden-identificador";
 
 /** Lee el detalle publico (DTO de la feature 106) de una orden YA resuelta a `orden.id`. */
@@ -74,7 +78,7 @@ export type DetallePorOrdenId = (
 ) => Promise<ApiOrdenDetalleDTO | null>;
 
 export interface ConsultaOrdenApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   resolucionService?: IApiOrdenResolucionService;
   detallePorOrdenId?: DetallePorOrdenId;
 }
@@ -117,38 +121,41 @@ export async function handleConsultaOrdenApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1/R2 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R3 -> 403
 
-    // 2. R13: validacion del path param SIN consultar la base.
-    const parsed = idOrdenApiSchema.safeParse(rawId);
-    if (!parsed.success) {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: {
-          id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
-        },
-      });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. R13: validacion del path param SIN consultar la base.
+      const parsed = idOrdenApiSchema.safeParse(rawId);
+      if (!parsed.success) {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: {
+            id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
+          },
+        });
+      }
 
-    // 3. R6-R15: resolucion con el owner forzado y precedencia `num_guia` > `num_remision`.
-    //    El dominio no tiene estado `ambiguo`, asi que este endpoint NUNCA responde 409.
-    const resolucion = deps.resolucionService ?? buildResolucionService();
-    const resuelta = await resolucion.resolver(auth.actor, parsed.data);
-    if (resuelta.status === "not_found") throw new NotFoundError(); // R11/R12 -> 404 uniforme
+      // 3. R6-R15: resolucion con el owner forzado y precedencia `num_guia` > `num_remision`.
+      //    El dominio no tiene estado `ambiguo`, asi que este endpoint NUNCA responde 409.
+      const resolucion = deps.resolucionService ?? buildResolucionService();
+      const resuelta = await resolucion.resolver(auth.actor, parsed.data);
+      if (resuelta.status === "not_found") throw new NotFoundError(); // R11/R12 -> 404 uniforme
 
-    // 4. R16/R18: detalle publico (mismo DTO de la 106), sin storage_path, sin bucket y sin ids
-    //    internos.
-    //    ⏳ 2026-09-09 (feature 404) — AQUI DECIA ademas «y sin PII del mensajero», y ya no es
-    //    cierto tal cual: el detalle lleva `mensajero: { id, nombre } | null`, que es el mensajero
-    //    ASIGNADO a la orden (`orden.mensajero_asignado_id`, «quien la lleva»). Lo que sigue sin
-    //    salir por aqui es el mensajero que la GESTIONO —`gestion_orden.mensajero_id` y su texto
-    //    libre `motivo` (256/R22), material de la feature 405— y el resto de la PII del asignado
-    //    (telefono, email, cedula, foto, zona, vehiculo). El nombre va SOLO al dueno de la orden:
-    //    el owner sigue forzado por la autenticacion del canal y no se toca en esta feature.
-    const detalle = await (deps.detallePorOrdenId ?? buildDetallePorOrdenId())(
-      auth.actor,
-      resuelta.orden.id,
-    );
-    // Carrera (borrada entre la resolucion y la lectura): MISMO 404, sin filtrar nada.
-    if (!detalle) throw new NotFoundError();
-    return detalle;
+      // 4. R16/R18: detalle publico (mismo DTO de la 106), sin storage_path, sin bucket y sin ids
+      //    internos.
+      //    ⏳ 2026-09-09 (feature 404) — AQUI DECIA ademas «y sin PII del mensajero», y ya no es
+      //    cierto tal cual: el detalle lleva `mensajero: { id, nombre } | null`, que es el mensajero
+      //    ASIGNADO a la orden (`orden.mensajero_asignado_id`, «quien la lleva»). Lo que sigue sin
+      //    salir por aqui es el mensajero que la GESTIONO —`gestion_orden.mensajero_id` y su texto
+      //    libre `motivo` (256/R22), material de la feature 405— y el resto de la PII del asignado
+      //    (telefono, email, cedula, foto, zona, vehiculo). El nombre va SOLO al dueno de la orden:
+      //    el owner sigue forzado por la autenticacion del canal y no se toca en esta feature.
+      const detalle = await (deps.detallePorOrdenId ?? buildDetallePorOrdenId())(
+        auth.actor,
+        resuelta.orden.id,
+      );
+      // Carrera (borrada entre la resolucion y la lectura): MISMO 404, sin filtrar nada.
+      if (!detalle) throw new NotFoundError();
+      return detalle;
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);
@@ -166,7 +173,7 @@ export async function GET(
 // ─── FICHA 320 — BORRADO (`DELETE`) ──────────────────────────────────────────────────────────
 
 export interface EliminarOrdenApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   resolucionService?: IApiOrdenResolucionService;
   eliminacionService?: IApiOrdenEliminacionService;
 }
@@ -208,31 +215,34 @@ export async function handleEliminarOrdenApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // -> 403
 
-    // 2. Validacion del path param SIN consultar la base (mismo zod que el GET).
-    const parsed = idOrdenApiSchema.safeParse(rawId);
-    if (!parsed.success) {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: {
-          id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
-        },
-      });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. Validacion del path param SIN consultar la base (mismo zod que el GET).
+      const parsed = idOrdenApiSchema.safeParse(rawId);
+      if (!parsed.success) {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: {
+            id: ["id invalido: requerido, no vacio y de hasta 128 caracteres"],
+          },
+        });
+      }
 
-    // 3. Resolucion `{id}` -> `orden.id` con el owner FORZADO en el `where` (177).
-    const resolucion = deps.resolucionService ?? buildResolucionService();
-    const resuelta = await resolucion.resolver(auth.actor, parsed.data);
-    if (resuelta.status === "not_found") throw new NotFoundError(); // 404 uniforme
+      // 3. Resolucion `{id}` -> `orden.id` con el owner FORZADO en el `where` (177).
+      const resolucion = deps.resolucionService ?? buildResolucionService();
+      const resuelta = await resolucion.resolver(auth.actor, parsed.data);
+      if (resuelta.status === "not_found") throw new NotFoundError(); // 404 uniforme
 
-    // 4. Borrado. El service vuelve a exigir el dueño: el controller NO le pasa ningun owner
-    //    que venga de la peticion, y el service no da por buena la resolucion previa.
-    const eliminacion = deps.eliminacionService ?? buildEliminacionService();
-    const res = await eliminacion.eliminar(auth.actor, resuelta.orden.id);
-    // Ajena, inexistente, ya borrada o carrera: SIEMPRE el mismo 404. Un 401/403 aqui delataria
-    // que la orden EXISTE y es de otro —justo lo que el 404 uniforme del canal evita—.
-    if (res.status === "not_found") throw new NotFoundError();
-    // Propia y viva, pero en un estado que no admite borrado -> 409, como `cancelar`.
-    if (res.status === "conflict") throw new ConflictError();
-    return res.data; // 200 { numGuia, numRemision, estado }
+      // 4. Borrado. El service vuelve a exigir el dueño: el controller NO le pasa ningun owner
+      //    que venga de la peticion, y el service no da por buena la resolucion previa.
+      const eliminacion = deps.eliminacionService ?? buildEliminacionService();
+      const res = await eliminacion.eliminar(auth.actor, resuelta.orden.id);
+      // Ajena, inexistente, ya borrada o carrera: SIEMPRE el mismo 404. Un 401/403 aqui delataria
+      // que la orden EXISTE y es de otro —justo lo que el 404 uniforme del canal evita—.
+      if (res.status === "not_found") throw new NotFoundError();
+      // Propia y viva, pero en un estado que no admite borrado -> 409, como `cancelar`.
+      if (res.status === "conflict") throw new ConflictError();
+      return res.data; // 200 { numGuia, numRemision, estado }
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

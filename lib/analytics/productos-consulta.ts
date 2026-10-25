@@ -22,7 +22,7 @@
 // directorio entero): sin `'use server'`, sin `@/lib/db`, sin repositorios ni servicios —ni
 // siquiera como `import type`—, sin `next/*`, sin `process.env` y sin efectos al importarse.
 
-import { esRolAnalitica, rolTieneAccesoTotal } from "@/lib/analytics/alcance";
+import { ROLES_SIN_ANALITICA, esRolAnalitica, rolTieneAccesoTotal } from "@/lib/analytics/alcance";
 import type {
   ActorAnalitica,
   AlcanceDatos,
@@ -103,6 +103,9 @@ export function resolverAlcanceProductos(
   const { usuarioId, rol } = actor as { usuarioId?: unknown; rol?: unknown };
   if (!idUtil(usuarioId)) return denegado("sin_sesion");
   if (typeof rol !== "string") return denegado("rol_desconocido");
+  // SL-32 (R7): un rol del esquema denegado por rol (el superadmin) se nombra como tal, igual que
+  // en `resolverAlcance`. Sin esto caeria abajo como `rol_desconocido`, y el log mentiria.
+  if ((ROLES_SIN_ANALITICA as readonly string[]).includes(rol)) return denegado("rol_sin_analitica");
   // Un rol que ni siquiera es lector de analitica (`apiKey`, un rol inventado, el label
   // "Admin Tienda" de la DB) no llega a la tabla.
   if (!esRolAnalitica(rol)) return denegado("rol_desconocido");

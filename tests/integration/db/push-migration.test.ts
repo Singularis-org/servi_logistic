@@ -211,6 +211,8 @@ describeSiHayBase("410 — y lo que SOLO sabe el motor: la base tiene lo que la 
       "ultimo_envio_ok_at",
       "created_at",
       "updated_at",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la empresa, al final por `ADD COLUMN`.
+      "organizacion_id",
     ]);
     expect(por("push_envio_dia")).toEqual([
       "id",
@@ -219,6 +221,8 @@ describeSiHayBase("410 — y lo que SOLO sabe el motor: la base tiene lo que la 
       "dia_cr",
       "notificacion_id",
       "created_at",
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la empresa, al final por `ADD COLUMN`.
+      "organizacion_id",
     ]);
   });
 
@@ -238,8 +242,10 @@ describeSiHayBase("410 — y lo que SOLO sabe el motor: la base tiene lo que la 
   });
 
   it("⭑ las dos FK a `usuario` son CASCADE", async () => {
-    const filas = await prisma.$queryRawUnsafe<{ table_name: string; delete_rule: string }[]>(
-      `SELECT tc.table_name, rc.delete_rule
+    const filas = await prisma.$queryRawUnsafe<
+      { table_name: string; constraint_name: string; delete_rule: string }[]
+    >(
+      `SELECT tc.table_name::text, tc.constraint_name::text, rc.delete_rule::text
          FROM information_schema.table_constraints tc
          JOIN information_schema.referential_constraints rc
            ON rc.constraint_name = tc.constraint_name
@@ -247,10 +253,32 @@ describeSiHayBase("410 — y lo que SOLO sabe el motor: la base tiene lo que la 
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema = 'public'
           AND tc.table_name IN ('push_suscripcion','push_envio_dia')
-        ORDER BY tc.table_name`,
+        ORDER BY tc.table_name, tc.constraint_name`,
     );
-    expect(filas.map((f) => f.table_name)).toEqual(["push_envio_dia", "push_suscripcion"]);
-    for (const f of filas) expect(f.delete_rule, `${f.table_name}`).toBe("CASCADE");
+    expect(filas).toEqual([
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la FK a la empresa es RESTRICT.
+      {
+        table_name: "push_envio_dia",
+        constraint_name: "push_envio_dia_organizacion_id_fkey",
+        delete_rule: "RESTRICT",
+      },
+      {
+        table_name: "push_envio_dia",
+        constraint_name: "push_envio_dia_usuario_id_fkey",
+        delete_rule: "CASCADE",
+      },
+      // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la FK a la empresa es RESTRICT.
+      {
+        table_name: "push_suscripcion",
+        constraint_name: "push_suscripcion_organizacion_id_fkey",
+        delete_rule: "RESTRICT",
+      },
+      {
+        table_name: "push_suscripcion",
+        constraint_name: "push_suscripcion_usuario_id_fkey",
+        delete_rule: "CASCADE",
+      },
+    ]);
   });
 
   it("⭑ `push_envio_dia.notificacion_id` NO tiene FK, y es deliberado", async () => {

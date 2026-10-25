@@ -92,8 +92,9 @@ export const PRODUCTOR_POR_SUPERFICIE = {
  * con su razón. Es la lista hermana de `NO_SON_ACCIONES_DE_FILA` en la guardia de la 240, y va
  * junto al censo por el mismo motivo: una lista que vive lejos de su detector nadie la poda.
  *
- *  · **`obtenerConteosPublicos`** es una LECTURA que alimenta las cifras del héroe de la landing
- *    (`app/_landing/cifras-publicas.tsx`). No hay formulario, no hay envío y no hay nada que
- *    prometer: no le corresponde una entrada en el censo de superficies de envío.
+ * Hoy está VACÍA, y es el estado buscado. Su único inquilino era `obtenerConteosPublicos`, la
+ * lectura de las cifras de la landing, retirada en SL-17 (R43): sin sesión no se expone ningún
+ * agregado de negocio. Una lectura pública nueva que quiera entrar aquí rompe además
+ * `conteos-publicos-retirados.guardia.test.ts`, que exige que esta lista siga vacía.
  */
-export const NO_SON_SUPERFICIES_DE_ENVIO = new Set(["obtenerConteosPublicos"]);
+export const NO_SON_SUPERFICIES_DE_ENVIO: ReadonlySet<string> = new Set<string>();

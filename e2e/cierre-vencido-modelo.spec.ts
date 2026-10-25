@@ -1,123 +1,107 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { cierresDe } from "./_escenarios/cierres";
+import { correrCron } from "./_escenarios/crons";
+import {
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E — Feature 111: cierre `vencido`, bloqueo total y resolución POR EL MENSAJERO.
+ * E2E — Cierre `vencido`: bloqueo total y resolución POR EL MENSAJERO (features 41, 111 y 271;
+ * SL-44 T6.2, R18).
  *
- * Complementa e2e/reglas-bloqueos-cierre.spec.ts (que cubre la VÁLVULA del admin, R16):
- * aquí el propio MENSAJERO resuelve su `vencido` enviándolo a aprobación.
- *  1. Precondición (seed): el corte diario dejó a M con un `cierre_dia estado='vencido'`
- *     (su único cierre bloqueante), igual que reglas-bloqueos-cierre.spec.ts.
- *  2. Bloqueo TOTAL (feature 111/R1/R12/R14): en "Cierre del día" y "Mis asignaciones" M
- *     ve el aviso de bloqueo total (no puede gestionar NI recibir).
- *  3. Solicitar el `vencido` (R6/R13): M usa el CTA "Solicitar aprobación del cierre
- *     vencido" (disponible aunque `puedesSolicitar` sea false) → `vencido → solicitado`
- *     (invariante R10: no crea un segundo cierre).
- *  4. Aprobación normal (feature 38 / R15): el admin ve el `solicitado` (ya NO un
- *     `vencido`) y lo aprueba por la vía normal.
- *  5. Desbloqueo (R18): resuelto el cierre, M deja de estar bloqueado.
+ * Complementa `reglas-bloqueos-cierre.spec.ts` (la válvula del admin): aquí el propio mensajero
+ * envía su `vencido` a aprobación.
+ *  1. El corte diario (`/api/cron/corte-diario`, la ruta real) le deja un cierre `vencido` al
+ *     mensajero que gestionó y no cerró.
+ *  2. Bloqueo total: en «Cierre del día» y en «Entregas» ve el aviso (no puede entregar, cobrar ni
+ *     recibir trabajo nuevo).
+ *  3. Pulsa «Solicitar aprobación del cierre vencido» → el MISMO cierre pasa a `solicitado` (no se
+ *     crea otro) y el aviso desaparece.
+ *  4. El adminSatelite lo ve como «Solicitado» (ya no «Vencido») y lo aprueba por la vía normal.
+ *  5. El mensajero sigue libre.
  *
- * PRECONDICIÓN (seed): igual que e2e/reglas-bloqueos-cierre.spec.ts — un mensajero M de
- * una zona satélite Z con un `vencido` (su único cierre bloqueante), y el adminSatelite A
- * de Z que lo aprueba en su `/cierres-admin`.
- *
- * NO SE EJECUTA todavía (emails placeholder / sin DB de test — misma deferral que el
- * resto de los e2e/*.spec.ts: no corren bajo `pnpm test`). Escrito para ejecutarse
- * cuando exista el harness E2E (seed + login por rol).
+ * DATOS (R7, R8): empresa nueva; un mensajero de la zona satélite con una entrega de 4.000 en
+ * efectivo gestionada por `MisAsignacionesService` y sin cierre. El `vencido` lo crea el cron real:
+ * el corte toma toda gestión sin cierre, sin mirar su fecha (rama (a) de
+ * `CorteDiarioRepository.findMensajerosConActividadSinCierre`), así que NO hace falta la excepción de
+ * R8 de la fecha de la gestión en el pasado prevista en D4: se QUITA.
  */
 
-const MENSAJERO_EMAIL = "mensajero-vencido@example.com";
-const MENSAJERO_PASSWORD = "correct-password";
-const ADMIN_SATELITE_EMAIL = "admin-satelite@example.com";
-const ADMIN_SATELITE_PASSWORD = "correct-password";
+const AVISO_SIN_ENVIAR = "Tienes un cierre sin enviar a aprobación.";
+const NO_PUEDES = "Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo.";
 
-// Feature 111/R12: aviso de bloqueo TOTAL (gestionar + recibir) en la vista del mensajero.
-const BLOQUEO_TOTAL_TEXT =
-  "No puedes gestionar ni recibir nuevas asignaciones hasta resolver tu cierre pendiente.";
+let r: RepartoE2E;
+let m: MensajeroE2E;
+let vencidoId: string;
 
-/** Inicia sesión con las credenciales dadas y aterriza en la app. */
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
-}
+test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo aprueba", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("cierre-vencido");
+    m = await crearMensajero(r, "satelite");
+    const o = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 4000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, o, m, { resultado: "entregado" });
+  });
 
-// Serial: muta estado real (aprobar el cierre desbloquea a M), así que el paso 5
-// depende de que el 4 haya corrido.
-test.describe.serial(
-  "Feature 111 — el mensajero solicita y resuelve su cierre vencido",
-  () => {
-    test("paso 2 — bloqueo TOTAL: el mensajero con `vencido` ve el aviso (R1/R12/R14)", async ({
-      page,
-    }) => {
-      await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
+  test("paso 1 — el corte diario deja el cierre del mensajero en `vencido`", async () => {
+    expect(await cierresDe(m)).toEqual([]);
+    await correrCron("corte-diario");
+    const cierres = await cierresDe(m);
+    expect(cierres.map((c) => [c.estado, c.destinoTipo, String(c.totalEfectivo)])).toEqual([["vencido", "bodega_satelite", "4000"]]);
+    vencidoId = cierres[0].id;
+  });
 
-      await page.goto("/cierre-dia");
-      await expect(
-        page.getByRole("alert").filter({ hasText: BLOQUEO_TOTAL_TEXT }),
-      ).toBeVisible();
+  test("paso 2 — bloqueo total: el aviso en «Cierre del día» y en «Entregas»", async ({ browser }) => {
+    const page = await paginaDe(browser, m);
+    await page.goto("/cierre-dia");
+    const aviso = page.getByRole("alert").filter({ hasText: AVISO_SIN_ENVIAR });
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toContainText(NO_PUEDES);
 
-      // R14: el mismo bloqueo total se refleja en "Mis asignaciones".
-      await page.goto("/mis-asignaciones");
-      await expect(
-        page.getByRole("alert").filter({ hasText: BLOQUEO_TOTAL_TEXT }),
-      ).toBeVisible();
-    });
+    await page.goto("/mis-asignaciones/reparto");
+    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toBeVisible();
+  });
 
-    test("paso 3 — el mensajero solicita su `vencido` → `solicitado` (R6/R13)", async ({
-      page,
-    }) => {
-      await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
-      await page.goto("/cierre-dia");
+  test("paso 3 — «Solicitar aprobación del cierre vencido» → el mismo cierre queda `solicitado`", async ({ browser }) => {
+    const page = await paginaDe(browser, m);
+    await page.goto("/cierre-dia");
+    await page.getByRole("region", { name: "Cierre vencido" }).getByRole("button", { name: "Solicitar aprobación del cierre vencido" }).click();
+    const confirmar = page.getByRole("dialog", { name: "Solicitar aprobación del cierre vencido" });
+    await confirmar.getByRole("button", { name: "Solicitar aprobación" }).click();
+    await expect(page.getByText("Cierre vencido enviado a aprobación.")).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
 
-      // R13: CTA diferenciado del vencido, disponible con independencia de `puedesSolicitar`.
-      await page
-        .getByRole("button", { name: "Solicitar aprobación del cierre vencido" })
-        .click();
-      const confirm = page.getByRole("dialog", {
-        name: "Solicitar aprobación del cierre vencido",
-      });
-      await expect(confirm).toBeVisible();
-      await confirm.getByRole("button", { name: "Solicitar aprobación" }).click();
+    // R10 de la 111: no nace un segundo cierre; los montos no se recalculan.
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado, String(c.totalEfectivo)])).toEqual([[vencidoId, "solicitado", "4000"]]);
+  });
 
-      // R6: transición `vencido → solicitado` (sin recalcular los montos ya snapshoteados).
-      await expect(
-        page.getByText(/Cierre vencido enviado a aprobación/i),
-      ).toBeVisible();
-    });
+  test("paso 4 — el adminSatelite ve «Solicitado» y lo aprueba por la vía normal", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await page.goto("/cierres-admin");
+    const comprobante = page
+      .getByRole("region", { name: "Pendientes de decisión" })
+      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
+    await expect(comprobante.getByText("Vencido", { exact: true })).toHaveCount(0);
+    await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
+    await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
+    await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
+    expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[vencidoId, "aprobado"]]);
+  });
 
-    test("paso 4 — el admin aprueba el `solicitado` (ya no un `vencido`) por la vía normal (feature 38/R15)", async ({
-      page,
-    }) => {
-      await login(page, ADMIN_SATELITE_EMAIL, ADMIN_SATELITE_PASSWORD);
-      await page.goto("/cierres-admin");
-
-      const pendientes = page.getByRole("region", {
-        name: "Pendientes de decisión",
-      });
-      await expect(pendientes).toBeVisible();
-      // Aparece como `Solicitado` (lo envió el mensajero), no `Vencido`.
-      await expect(pendientes.getByText("Solicitado")).toBeVisible();
-
-      await pendientes
-        .getByRole("button", { name: "Ver / decidir" })
-        .first()
-        .click();
-      const dialog = page.getByRole("dialog", { name: "Detalle del cierre" });
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: "Aprobar" }).click();
-      await expect(page.getByText(/Cierre aprobado/i)).toBeVisible();
-    });
-
-    test("paso 5 — tras la aprobación, el mensajero se desbloquea (R18)", async ({
-      page,
-    }) => {
-      await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
-      await page.goto("/cierre-dia");
-      await expect(
-        page.getByRole("alert").filter({ hasText: BLOQUEO_TOTAL_TEXT }),
-      ).toHaveCount(0);
-    });
-  },
-);
+  test("paso 5 — resuelto el cierre, el mensajero no tiene bloqueo", async ({ browser }) => {
+    const page = await paginaDe(browser, m);
+    await page.goto("/cierre-dia");
+    await expect(page.getByRole("region", { name: "Totales del día" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Cierre vencido" })).toHaveCount(0);
+  });
+});

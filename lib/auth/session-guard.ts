@@ -1,4 +1,5 @@
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 
 /**
@@ -20,15 +21,19 @@ import { SessionRepository } from "@/lib/repositories/SessionRepository";
  * necesite el rol usa `resolveActorFromSession()`.
  */
 export async function isSessionActive(sessionId: string): Promise<boolean> {
-  const prisma = getPrismaClient();
+  // SL-17 (design §7): el middleware valida la sesion antes de saber la empresa, y `usuario` es
+  // de negocio; sin plataforma la lectura fallaria cerrado y nadie pasaria el guard.
+  return comoPlataforma("SL-17", "validar sesión", async () => {
+    const prisma = getPrismaClient();
 
-  const session = await new SessionRepository(prisma).findValidById(sessionId);
-  if (!session) return false;
+    const session = await new SessionRepository(prisma).findValidById(sessionId);
+    if (!session) return false;
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { id: session.userId },
-    select: { estado: true },
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: session.userId },
+      select: { estado: true },
+    });
+
+    return usuario?.estado === "activo";
   });
-
-  return usuario?.estado === "activo";
 }

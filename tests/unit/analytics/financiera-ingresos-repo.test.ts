@@ -139,8 +139,10 @@ describe("R16 · la caja principal agrega solo lo que la metrica declara y solo 
       "ingreso_ajuste",
       // FICHA 459 (P13): el pago por cuenta de una tienda sale de la caja.
       "egreso_pago_por_cuenta_tienda",
+      // SL-45 (review B2, decision de Carlos 2026-10-24): el pago a la plataforma sale de la caja.
+      "egreso_pago_plataforma",
     ]);
-    expect(where.categoria.in).toHaveLength(10);
+    expect(where.categoria.in).toHaveLength(11);
     // FICHA 459: tampoco el reverso del pago por cuenta.
     expect(where.categoria.in).not.toContain("ingreso_reverso_pago_por_cuenta_tienda");
     // Y lo que NO lleva: meter el reverso del pago a tienda cambiaria lo que la cifra significa.
@@ -308,7 +310,20 @@ describe("R57 · las dos metricas de la 173 salen de este repositorio, con sus c
     expect(where.categoria.in).not.toContain("ingreso_cod_recaudado");
     expect(where.categoria.in).not.toContain("egreso_pago_tienda");
     expect(where.categoria.in).not.toContain("ingreso_reverso_pago_tienda");
-    expect(where.categoria.in).toHaveLength(18); // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos reversos del cobro por devolución a origen
+    // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos
+    // reversos del cobro por devolución a origen = 18; SL-39 (R11): − las cuatro de IVA = 14; SL-45
+    // (R25): + el pago a la plataforma, propio = 15.
+    expect(where.categoria.in).toHaveLength(15);
+    expect(where.categoria.in).toContain("egreso_pago_plataforma");
+    // SL-39 (R11): el IVA tampoco se le pide a la base: no es ganancia, se publica en `ingreso_iva`.
+    for (const iva of [
+      "ingreso_iva_flete",
+      "ingreso_iva_flete_devolucion",
+      "ingreso_iva_comision_cod",
+      "egreso_reverso_iva_flete_devolucion",
+    ]) {
+      expect(where.categoria.in, iva).not.toContain(iva);
+    }
   });
 
   it("y la validacion sigue reventando si una de ellas declarara una categoria ajena", async () => {

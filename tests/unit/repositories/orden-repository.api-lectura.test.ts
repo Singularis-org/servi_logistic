@@ -525,21 +525,25 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
 
     const select = (prisma.orden.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0].select;
     expect(select.zona).toEqual({ select: { id: true, nombre: true, esCentral: true } });
-    // R5: del distrito solo la marca, ni el nombre ni la geografia.
-    expect(select.distrito).toEqual({ select: { zonaEspecial: true } });
+    // R5: del distrito solo la marca, ni el nombre ni la geografia. SL-38: la marca es la de la
+    // EMPRESA (`distrito_zona_especial`), por el fragmento del punto unico. Literal a proposito:
+    // es el contrato de lo que viaja, no se compara contra `SELECT_MARCA_ZONA_ESPECIAL`.
+    expect(select.distrito).toEqual({
+      select: { zonasEspeciales: { select: { id: true }, take: 1 } },
+    });
   });
 
-  it("415/R21: distrito con `zonaEspecial: null` y orden SIN distrito dan los DOS `false`", async () => {
-    // La columna es TRI-VALUADA: `null` = «nadie lo decidio», y NO vale `!zonaEspecial`. Si el
-    // mapeo usara la negacion, el caso `null` saldria `true` y este aserto se pondria rojo.
+  it("415/R21: distrito SIN marca de la empresa y orden SIN distrito dan los DOS `false`", async () => {
+    // SL-38: la marca es una fila de la empresa; sin fila (`[]`) no es especial. Una orden sin
+    // distrito tampoco. Si el mapeo leyera mal la relacion, uno de los tres asertos se pondria rojo.
     const prisma = buildPrisma({
       orden: {
         findMany: vi.fn().mockResolvedValue([
-          ordenSelectRow({ distrito: { zonaEspecial: null } }),
+          ordenSelectRow({ distrito: { zonasEspeciales: [] } }),
           ordenSelectRow({ numRemision: "REM-2", distrito: null }),
-          // Y el contraste: `true` SI es `true`, para que el caso de arriba no salga verde por
+          // Y el contraste: con marca SI es `true`, para que el caso de arriba no salga verde por
           // vacio (un mapeo que devolviera siempre `false` moriria aqui).
-          ordenSelectRow({ numRemision: "REM-3", distrito: { zonaEspecial: true } }),
+          ordenSelectRow({ numRemision: "REM-3", distrito: { zonasEspeciales: [{ id: "m-1" }] } }),
         ]),
         count: vi.fn().mockResolvedValue(3),
         findFirst: vi.fn(),

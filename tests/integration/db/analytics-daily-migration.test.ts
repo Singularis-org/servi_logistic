@@ -401,7 +401,17 @@ describe("R36/R37 — integridad referencial", () => {
     expect(upDdl.match(/ON DELETE RESTRICT/g)).toHaveLength(4);
     expect(upDdl).not.toMatch(/ON DELETE CASCADE/);
     expect(upDdl).not.toMatch(/ON DELETE SET NULL/);
-    expect(MODELO.match(/onDelete: Restrict/g)).toHaveLength(4);
+    // Por relacion y no por conteo: una que pase a Cascade/SetNull sale aqui con su nombre.
+    const relaciones = [...MODELO.matchAll(/^\s*(\w+)\s+\w+\??\s+@relation\(.*?onDelete: (\w+)/gm)].map(
+      ([, campo, onDelete]) => `${campo}: ${onDelete}`,
+    );
+    expect(relaciones).toEqual([
+      "zona: Restrict",
+      "tienda: Restrict",
+      "mensajero: Restrict",
+      "estatus: Restrict",
+      "organizacion: Restrict", // SL-17 M2 (20261022130100_organizacion_id_en_negocio): la FK a la empresa
+    ]);
   });
 
   it("R36: el estatus huerfano cabe — hay FK pero ninguna lista cerrada de values", () => {

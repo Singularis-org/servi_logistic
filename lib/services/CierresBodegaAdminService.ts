@@ -40,6 +40,7 @@ import {
   partesPorTienda,
   totalesIngresoEmpresa,
 } from "@/lib/utils/ingreso-empresa";
+import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Roles autorizados (R2): acceso total (maestro/admin, bodega central). El alcance es
 // "todos los cierres de bodega" (van a la central), sin filtro de zona.
@@ -298,6 +299,8 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         grupos[g.resultado].push(toDetalleDTO(g, urlByPath));
       }
       const totalesIngreso = totalesIngresoEmpresa(cd.gestiones);
+      // SL-39 (R21–R23): ganancia y neto de ESTE dia restan desde lo facturado SIN IVA.
+      const sinIva = facturadoSinIva(totalesIngreso);
       return {
         cierreDiaId: cd.resumen.cierreDiaId,
         mensajeroId: cd.resumen.mensajeroId,
@@ -308,8 +311,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         grupos,
         // Totales por concepto de ESTE cierre_dia, sumados desde el desglose por orden.
         totalesIngreso,
-        // Ganancia del dia de ESE mensajero: su ingreso menos SU pago (snapshot, sin recomputar).
-        ganancia: gananciaEmpresa(totalesIngreso.total, cd.resumen.totalPagoMensajero),
+        // SL-39 (R21): el IVA de lo facturado de ESTE dia, en su propia linea.
+        ivaFacturado: ivaFacturado(totalesIngreso),
+        // Ganancia del dia de ESE mensajero: su ingreso sin IVA menos SU pago (snapshot).
+        ganancia: gananciaEmpresa(sinIva, cd.resumen.totalPagoMensajero),
         // Pago a la tienda de ESTE cierre_dia: lo que recibio menos lo que se le facturo.
         pagoTienda: pagoTiendaEmpresa(
           cd.resumen.totales.general,
@@ -325,7 +330,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
           totalesIngreso.comisionConIva,
         ),
         netoEmpresa: netoEmpresa(
-          totalesIngreso.total,
+          sinIva,
           cd.resumen.totalPagoMensajero,
           cd.resumen.totalIngresoBodegaRechazos,
         ),
@@ -372,8 +377,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     // divergir; asi es literal que las dos cifras salen del MISMO conjunto de gestiones.
     const gestionesDeTodaLaBodega = found.cierresDia.flatMap((cd) => cd.gestiones);
     const totalesIngreso = totalesIngresoEmpresa(gestionesDeTodaLaBodega);
+    // SL-39 (R21–R23): el agregado tambien resta desde lo facturado SIN IVA.
+    const sinIvaAgregado = facturadoSinIva(totalesIngreso);
     // El pago agregado sale del snapshot del cierre de bodega (R13), no de sumar los cierre_dia.
-    const ganancia = gananciaEmpresa(totalesIngreso.total, resumen.totalPagoMensajero);
+    const ganancia = gananciaEmpresa(sinIvaAgregado, resumen.totalPagoMensajero);
     // Pago a tiendas agregado: parte del total general recibido, no del bruto facturado.
     const pagoTienda = pagoTiendaEmpresa(
       resumen.totales.general,
@@ -392,7 +399,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       totalesIngreso.comisionConIva,
     );
     const netoEmpresaAgregado = netoEmpresa(
-      totalesIngreso.total,
+      sinIvaAgregado,
       resumen.totalPagoMensajero,
       resumen.totalIngresoBodegaRechazos,
     );
@@ -431,6 +438,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       cierre: resumen,
       cierres,
       totalesIngreso,
+      ivaFacturado: ivaFacturado(totalesIngreso), // SL-39 (R21)
       ganancia,
       pagoTienda,
       cobradoSobreRecaudado: cobradoSobreRecaudadoAgregado,

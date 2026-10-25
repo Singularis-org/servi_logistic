@@ -13,6 +13,8 @@ import { ROLES_ANALITICA, type RolAnalitica } from "@/lib/analytics/types";
 // imports de TIPO (`RolValue`, `FrontmatterAyuda`), así que no lleva Prisma ni `node:fs` detrás
 // — el que toca `fs` es `lib/ayuda/catalogo.ts`, que este archivo no importa.
 import { ROLES_AYUDA } from "@/lib/ayuda/documento";
+// SL-32: solo importa un tipo de Prisma, así que tampoco arrastra servidor al Sidebar cliente.
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 
 /**
  * Clave string del icono de un item. El icono real (componente de lucide) NO
@@ -65,7 +67,10 @@ export type IconKey =
   // `IconKey` es una unión cerrada y compartir icono con otra sección invitaría a leer la ayuda
   // como parte de esa sección. Mismo criterio escrito para `shieldAlert` (158), `chartColumn`
   // (129), `store` (167), `gauge` (192), `history` (321) y `warehouse` (429).
-  | "circleHelp";
+  | "circleHelp"
+  // SL-32 (R36): «Empresas», la pantalla de plataforma del superadmin. Icono propio por el mismo
+  // criterio de unión cerrada que los anteriores.
+  | "building";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -558,14 +563,11 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
       // del ítem padre: quien ve el catálogo es quien lo administra.
       { label: "Vehículos", href: "/configuracion/vehiculos" },
-      // Ficha 374: administración del catálogo geográfico (alta y retirada de
-      // provincias, cantones y distritos). AL FINAL del array, y verificado:
-      // `primerDestino` devuelve el `href` del PRIMER hijo del PRIMER ítem
-      // visible, así que un hijo añadido al final no puede mover el aterrizaje
-      // post-login de ningún rol (R46).
-      { label: "Geografía", href: "/configuracion/geografia" },
-      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array, por el mismo
-      // motivo que «Geografía» (R46 de la 374): `primerDestino` devuelve el `href` del PRIMER
+      // SL-32 (R26): aquí iba «Geografía» (ficha 374). Gestionar la geografía es de la plataforma,
+      // y la página responde `notFound()` al `maestro`. Era un hijo del final, así que quitarlo no
+      // mueve `primerDestino`.
+      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array (R46 de la
+      // 374): `primerDestino` devuelve el `href` del PRIMER
       // hijo del PRIMER ítem visible, así que un hijo añadido al final no puede mover el
       // aterrizaje post-login de ningún rol.
       //
@@ -644,6 +646,23 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
         roles: ROLES_HISTORIAL_ACCIONES,
       },
     ],
+  },
+  {
+    // SL-32 (R6, R36) — «Empresas»: el único ítem del superadmin, que no ve nada de empresa.
+    //
+    // Va JUSTO ANTES de «Mi bodega», no el último: que la barra cierre con «Mi bodega» y
+    // «Ayuda», en ese orden, es un contrato previo (lo afirman `menu-mi-bodega.test.ts` y
+    // `menu-ayuda.test.ts`). Aquí basta con eso porque solo lo ve el superadmin: ningún
+    // aterrizaje de los seis roles de empresa puede moverse, y para el superadmin es el primero
+    // (y único) de su lista, de modo que `primerDestino` le manda aquí sin marca. Por eso no
+    // lleva `destinoInicial: false`.
+    //
+    // `roles` ES `ROLES_PLATAFORMA`, por identidad y no copiado: la guardia
+    // `superadmin-fuera-de-empresa` solo admite el rol de plataforma en este ítem si lo lee así.
+    label: "Empresas",
+    href: "/plataforma/empresas",
+    iconKey: "building",
+    roles: ROLES_PLATAFORMA,
   },
   {
     // ⭑ FICHA 429 (T23, Q3) — «Mi bodega»: el SINPE al que cobran los clientes de ESTA bodega.

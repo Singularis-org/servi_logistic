@@ -5,16 +5,36 @@
 // estructural de `liberar-reprogramadas/route.ts`.
 import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
-import { SincronizarPlantillasWhatsappService } from "@/lib/services/SincronizarPlantillasWhatsappService";
+import {
+  SincronizarPlantillasWhatsappService,
+  type SincronizarPlantillasResult,
+} from "@/lib/services/SincronizarPlantillasWhatsappService";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
 import { WhatsappPlantillasClient } from "@/lib/clients/whatsapp-cloud";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadWhatsappConfig } from "@/lib/config/whatsapp";
 
 export interface SyncPlantillasDeps {
   getSecret?: () => string | null;
-  service?: SincronizarPlantillasWhatsappService | null;
+  // `Pick` y no la clase: un doble de test solo necesita `sincronizar`.
+  service?: Pick<SincronizarPlantillasWhatsappService, "sincronizar"> | null;
+  // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
+  // inyectado y sin `empresas`, una sola corrida sin recorrer empresas.
+  empresas?: ClienteDeOrganizaciones;
+}
+
+function sumar(corridas: SincronizarPlantillasResult[]): SincronizarPlantillasResult {
+  return corridas.reduce(
+    (t, r) => ({
+      leidas: t.leidas + r.leidas,
+      actualizadas: t.actualizadas + r.actualizadas,
+      sinCambios: t.sinCambios + r.sinCambios,
+      ignoradas: t.ignoradas + r.ignoradas,
+    }),
+    { leidas: 0, actualizadas: 0, sinCambios: 0, ignoradas: 0 },
+  );
 }
 
 /**
@@ -60,7 +80,27 @@ export async function handleSyncPlantillas(
     return NextResponse.json({ skipped: "whatsapp no configurado" }, { status: 200 });
   }
 
-  const result = await withErrorHandler(async () => service.sincronizar());
+  const result = await withErrorHandler(async () => {
+    if (deps.service !== undefined && deps.empresas === undefined) return service.sincronizar();
+    // SL-17 (R16, D14): `plantilla_mensaje` es de cada empresa, asi que se sincroniza empresa por
+    // empresa, cada una en su contexto. Las credenciales de Meta siguen siendo las globales hasta
+    // SL-36: cada empresa lee la misma lista de Meta y casa solo sus plantillas locales por nombre
+    // (por eso `leidas` suma la lista una vez por empresa).
+    const corridas: SincronizarPlantillasResult[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await service.sincronizar());
+      },
+      { cliente: deps.empresas },
+    );
+    return {
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
+    };
+  });
   if (isAppErrorShape(result)) return appErrorToResponse(result);
   return NextResponse.json(result, { status: 200 });
 }

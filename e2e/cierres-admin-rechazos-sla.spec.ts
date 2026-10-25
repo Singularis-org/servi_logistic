@@ -1,102 +1,114 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { anclarDevolucionHaceDias, aprobarCierre, cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
+import { correrCron } from "./_escenarios/crons";
+import {
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  estadoDe,
+  gestionar,
+  gestionesDe,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Ingreso de bodega por rechazos SLA VISIBLE en cierres" (Feature 102, T14 / R8/R9).
- * A warehouse admin (maestro for the central/GAM warehouse; adminSatelite for a satellite one)
- * opens a closing detail whose rejected orders come from BOTH origins — the SLA cron (Feature 99,
- * `origen_tipo = "escalado_devuelta_sla"`) AND a manual courier rejection (`origen_tipo = "gestion"`) —
- * and sees:
- *  - The "Ingreso de bodega por rechazos" panel now splitting the combined total (Feature 56) into
- *    two subtotals: "Por SLA (cron)" and "Manual (mensajero)" (R8). By construction
- *    `sla + manual === total` (partitioned server-side, R5).
- *  - Each row of the "Rechazadas" section marked with its origin badge — "SLA" for the escalated
- *    one, "Manual" for the courier one (R9) — so every warehouse income is auditable.
+ * E2E — El ingreso de la bodega por devoluciones a origen, partido por su ORIGEN (features 56, 99
+ * y 102; SL-44 T6.1, R18).
  *
- * This is the read-only visibility surface: no money is moved (R16). The subtotal is derived from
- * the immutable history (49/99) + the frozen per-gestión amount (56); it does NOT change if the
- * tariff is edited afterwards (R7).
+ * El maestro abre un cierre cuyas rechazadas vienen de los dos orígenes —una escalada por el cron
+ * del SLA de devoluciones (`procesar-devueltas-sla`) y dos rechazos del mensajero— y ve:
+ *  - la tarjeta «Ingreso de bodega por devoluciones a origen» con el total y sus dos subtotales,
+ *    «Automático (por plazo vencido)» y «Manual (mensajero)» (R8 de la 102);
+ *  - cada fila rechazada marcada con su origen: «Automático» la del cron, «Manual» las otras (R9).
  *
- * PRECONDITION (seed): at least one `cierre_dia` in state `solicitado` within the admin's scope
- * (destino_tipo = bodega_central for maestro; bodega_satelite + the admin's zona for adminSatelite),
- * with its snapshot totals AND at least TWO `rechazada` gestiones over the same closing:
- *  - one escalated by the SLA cron (a linked `orden_historial_estado` row with
- *    `origen_tipo = "escalado_devuelta_sla"` towards `rechazada`) with a known
- *    `ingreso_bodega_rechazo` amount (SLA subtotal), and
- *  - one manual courier rejection (`origen_tipo = "gestion"`) with its own known
- *    `ingreso_bodega_rechazo` amount (manual subtotal).
- * The expected combined total and the two subtotals are injected below.
+ * DATOS (R7, R8): empresa nueva, zona central, tarifa del mensajero 900 por rechazo. Una orden se
+ * devuelve con causa «dirección equivocada» (gestión `novedad`) y su cierre se APRUEBA (la orden
+ * queda en `novedad`, anclada); el cron real la escala a «Devolución a origen por rechazo» con una
+ * gestión sintética del mensajero. Después el mensajero rechaza otras dos órdenes y solicita el
+ * cierre (`CierreDiaService`). Cifras a mano: SLA 1 × 900 = 900; manual 2 × 900 = 1.800; total 2.700.
  *
- * EXECUTION NOTE:
- * These tests require a running Next.js dev server + a seeded test database (Supabase/Postgres) with
- * the feature 56 snapshot columns and the feature 49/99 history rows, plus a seeded admin whose
- * scope contains the closing above. As with the other e2e specs in this repo (e.g.
- * e2e/cierres-admin.spec.ts, e2e/cierre-dia.spec.ts), there is NO seed+login harness yet, so this
- * spec is WRITTEN but NOT EXECUTED under `pnpm test` / CI. The executable coverage of R9 lives in
- * the component test tests/components/CierresAdminModule.test.tsx ("feature 102/R8" and
- * "feature 102/R9"). This spec is ready to run once the harness exists.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed a maestro/adminSatelite and a courier closing in `solicitado` with the two rejected
- *    gestiones (SLA + manual) described above; set the seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * ⚠️ EXCEPCIÓN DE R8 (design D4): el plazo de 5 días de una `wrong_*` no se puede esperar ni lo fija
+ * ningún servicio, así que `anclarDevolucionHaceDias` mueve 6 días al pasado la fecha de la fila
+ * `anclaje_devolucion` que escribió la aprobación. Solo esa fecha; el escalado lo hace el cron.
  */
 
-// Seeded admin credentials (would come from test config / a user factory).
-const ADMIN_EMAIL = "maestro@example.com";
-const ADMIN_PASSWORD = "correct-password";
+const TARIFA_MENSAJERO = { cobroEntregado: 1500, cobroRechazado: 900 };
 
-// Expected amounts (₡ prefix added by the UI) of the seeded closing's rejected orders.
-const TOTAL_INGRESO_BODEGA = "₡9200.00"; // combined total (Feature 56 snapshot)
-const SUBTOTAL_SLA = "₡6000.00"; // escalated by the SLA cron (99)
-const SUBTOTAL_MANUAL = "₡3200.00"; // manual courier rejection
+let r: RepartoE2E;
+let m: MensajeroE2E;
+let sla: OrdenE2E;
+const manuales: OrdenE2E[] = [];
+let cierreId: string;
 
-/** Logs in as the seeded admin and lands on the app. */
-async function loginAdmin(page: Page) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
-}
+test.describe("Cierres del día — el ingreso por rechazos separa SLA y manual", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("rechazos-sla", { tarifaMensajero: TARIFA_MENSAJERO });
+    m = await crearMensajero(r, "central");
 
-test.describe("Cierres del día — el desglose SLA/manual del ingreso de bodega por rechazos", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAdmin(page);
-    await page.goto("/cierres-admin");
+    // 1) La devolución anclada que el cron escala.
+    sla = await llevarA(r, await crearOrden(r, { zona: "central" }), "en_reparto", { mensajero: m });
+    await gestionar(r, sla, m, { resultado: "novedad", causa: "wrong_address", motivo: "La dirección no existe" });
+    await aprobarCierre(r, await solicitarCierre(r, m));
+    expect(await estadoDe(sla)).toBe("novedad");
+    await anclarDevolucionHaceDias(r, sla, 6);
+    await correrCron("procesar-devueltas-sla");
+    expect(await estadoDe(sla)).toBe("devolucion_a_origen_por_rechazo");
+    const sintetica = (await gestionesDe(sla)).filter((g) => g.resultado === "devolucion_a_origen_por_rechazo");
+    expect(sintetica.map((g) => g.cierreId)).toEqual([null]);
+
+    // 2) Dos rechazos del mensajero, en el mismo día.
+    for (let i = 1; i <= 2; i++) {
+      const o = await llevarA(r, await crearOrden(r, { zona: "central" }), "en_reparto", { mensajero: m });
+      await gestionar(r, o, m, { resultado: "devolucion_a_origen_por_rechazo", motivo: `Rechazo manual ${i}` });
+      manuales.push(o);
+    }
+    cierreId = await solicitarCierre(r, m);
   });
 
-  test("R8/R9: el detalle separa el subtotal SLA del manual y marca cada fila rechazada", async ({
-    page,
-  }) => {
-    // Open the full detail of the first pending closing.
-    const pendientes = page.getByRole("region", {
-      name: "Pendientes de decisión",
-    });
-    await expect(pendientes).toBeVisible();
-    await pendientes.getByRole("button", { name: "Ver / decidir" }).first().click();
+  test("R8/R9: subtotal automático 900 y manual 1.800 de 2.700, y cada fila con su origen", async ({ browser }) => {
+    const [, segundo] = await cierresDe(m);
+    expect([segundo.id, segundo.estado, String(segundo.totalIngresoBodegaRechazos)]).toEqual([cierreId, "solicitado", "2700"]);
 
-    const dialog = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(dialog).toBeVisible();
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await page.goto("/cierres-admin");
+    const comprobante = page
+      .getByRole("region", { name: "Pendientes de decisión" })
+      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
 
-    // R8: the "Ingreso de bodega por rechazos" panel shows the combined total AND the two
-    // subtotals split by origin (SLA cron vs manual courier). sla + manual === total (R5).
-    const ingreso = dialog.getByRole("region", {
-      name: "Ingreso de bodega por rechazos del cierre",
-    });
-    await expect(ingreso).toBeVisible();
-    await expect(ingreso.getByText(TOTAL_INGRESO_BODEGA)).toBeVisible();
-    await expect(ingreso.getByText("Por SLA (cron)")).toBeVisible();
-    await expect(ingreso.getByText(SUBTOTAL_SLA)).toBeVisible();
-    await expect(ingreso.getByText("Manual (mensajero)")).toBeVisible();
-    await expect(ingreso.getByText(SUBTOTAL_MANUAL)).toBeVisible();
+    const ingreso = detalle.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen del cierre" });
+    await expect(ingreso).toContainText(importe(2700));
+    await expect(ingreso.getByText("Automático (por plazo vencido)", { exact: true }).locator("xpath=following-sibling::b[1]")).toHaveText(
+      importe(900),
+    );
+    await expect(ingreso.getByText("Manual (mensajero)", { exact: true }).locator("xpath=following-sibling::b[1]")).toHaveText(
+      importe(1800),
+    );
 
-    // R9: each rejected row is marked with its origin badge (SLA vs Manual), so the origin of
-    // every warehouse income is auditable.
-    const rechazadas = dialog.getByRole("region", { name: "Rechazadas" });
-    await expect(rechazadas).toBeVisible();
-    await expect(rechazadas.getByText("SLA", { exact: true })).toBeVisible();
-    await expect(rechazadas.getByText("Manual", { exact: true })).toBeVisible();
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    const rechazadas = ordenes.getByRole("region", { name: "Devolución a origen por rechazo" });
+    // La marca de origen vive en el bloque desplegado de cada fila (la fila es su botón + ese bloque).
+    const fila = async (o: OrdenE2E) => {
+      const boton = rechazadas.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${o.numRemision} · `) });
+      await boton.click();
+      await expect(boton).toHaveAttribute("aria-expanded", "true");
+      return boton.locator("..");
+    };
+    await expect(rechazadas.getByRole("button", { expanded: false })).toHaveCount(3);
+    const delCron = await fila(sla);
+    await expect(delCron.getByText("Automático", { exact: true })).toBeVisible();
+    await expect(delCron.getByText("Manual", { exact: true })).toHaveCount(0);
+    for (const o of manuales) {
+      const delMensajero = await fila(o);
+      await expect(delMensajero.getByText("Manual", { exact: true })).toBeVisible();
+      await expect(delMensajero.getByText("Automático", { exact: true })).toHaveCount(0);
+    }
   });
 });

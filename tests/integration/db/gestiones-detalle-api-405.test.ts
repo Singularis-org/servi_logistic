@@ -87,11 +87,16 @@ const CONSULTAS_DEL_DETALLE = [
   "order_status", //   2. `estatus` de la orden
   "usuario", //   3. `mensajeroAsignado` (feature 404)
   "zona", // ⭑ 4. 415: la zona DE LA ORDEN (id, nombre, esCentral)
-  "distrito", // ⭑ 5. 415: `distrito.zonaEspecial`, la marca tri-valuada
+  "distrito", // ⭑ 5. 415: el distrito (desde SL-38 la marca es la relacion de 9b)
   "cierre_detail", // ⭑ 6. 415: la fila congelada del cierre aprobado (take: 1)
   "gestion_orden", //   7. la relacion `gestiones` (superconjunto)
   "orden_historial_estado", //   8. 405: el historial de la ORDEN (R6)
   "orden_incidente", //   9. `incidentesAdmin` (feature 268)
+  // ⭑ 9b. SL-38 (2026-10-23): `distrito.zonasEspeciales` — la marca de zona especial de la EMPRESA,
+  //   que sustituye a la columna `distrito.zona_especial`. Es una relacion anidada mas, y Prisma la
+  //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
+  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
+  "distrito_zona_especial",
   "usuario", //  10. 405: `gestiones.mensajero` (R9)
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -589,7 +594,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
   //
   // El requisito se reescribió con el número MEDIDO y aquí se CONGELA. Las dos mitades se afirman
   // por separado, porque protegen cosas distintas.
-  it("R19/R19-b (+415, +454): el detalle emite EXACTAMENTE 13 consultas, y son estas trece", async () => {
+  it("R19/R19-b (+415, +454): el detalle emite EXACTAMENTE 14 consultas, y son estas catorce", async () => {
     const m = await escenario();
 
     // ⭑ EL NUMERO, CON NOMBRE Y APELLIDOS. Un `toEqual` de la lista entera: si mañana alguien
@@ -597,7 +602,8 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     expect(m.tablasConGestiones).toEqual(CONSULTAS_DEL_DETALLE);
     // ⏳ 2026-09-10 (feature 415): NUEVE -> DOCE, medido con este mismo espia.
     // ⏳ 2026-09-23 (ficha 454): DOCE -> TRECE (`orden_evento`, R32), medido igual.
-    expect(m.tablasConGestiones).toHaveLength(13);
+    // ⏳ 2026-10-23 (SL-38): TRECE -> CATORCE (`distrito_zona_especial`, la marca de la empresa).
+    expect(m.tablasConGestiones).toHaveLength(14);
     // Y el espía está midiendo de verdad: una lista vacía significaría que el `log: query` no
     // llegó y que este caso lleva pasando en falso.
     expect(m.tablasConGestiones.length).toBeGreaterThan(0);
@@ -611,7 +617,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     // La segunda mitad del requisito, y la que de verdad importa para el coste: si alguien
     // resolviera `estadoResultante` con una consulta por gestión, aquí habría tres de más.
     expect(m.tablasConGestiones).toHaveLength(m.tablasSinGestiones.length);
-    // Ojo con el matiz: una orden SIN gestiones emite las mismas 13. Prisma pide la relación
+    // Ojo con el matiz: una orden SIN gestiones emite las mismas 14. Prisma pide la relación
     // igualmente, y por eso el conteo no se mueve.
     expect(m.tablasSinGestiones).toEqual(CONSULTAS_DEL_DETALLE);
   });

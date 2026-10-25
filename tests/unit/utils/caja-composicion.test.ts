@@ -13,7 +13,6 @@ import {
   WALLET_EGRESO_CON_FILA_SEED,
   WALLET_EGRESO_DESGLOSADO_SEED,
   WALLET_EGRESO_NOMBRADO_SEED,
-  WALLET_INGRESO_PROPIO_SEED,
   WALLET_MOVIMIENTO_CATEGORIA_SEED,
   type AgregadoCajaRow,
   type ModoComposicionCaja,
@@ -262,9 +261,16 @@ describe("derivarCaja — el modo de composicion y la proporcion (R10/R14-R19)",
 // La ganancia, concepto por concepto (R23/R26)
 // ═════════════════════════════════════════════════════════════════════════════════════════
 
-/** Las categorias PROPIAS del catalogo, partidas por tipo. Se leen del SEED, no a mano. */
+/**
+ * Las categorias PROPIAS del catalogo, partidas por tipo. Se leen del SEED, no a mano.
+ *
+ * SL-39 (R1/R8): los ingresos de la columna son los propios que NO son IVA. El IVA se reconoce por
+ * su nombre (`_iva_`, glosario de requirements; R18 vigila que el seed del IVA no se deje ninguno)
+ * y no con `esCategoriaIva`: comparar la columna contra el predicado que la arma estaria siempre en
+ * verde.
+ */
 const INGRESOS_PROPIOS = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter(
-  (c) => NATURALEZA_POR_CATEGORIA[c] === "propio" && c.startsWith("ingreso_"),
+  (c) => NATURALEZA_POR_CATEGORIA[c] === "propio" && c.startsWith("ingreso_") && !c.includes("_iva_"),
 );
 const EGRESOS_PROPIOS = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter(
   (c) => NATURALEZA_POR_CATEGORIA[c] === "propio" && c.startsWith("egreso_"),
@@ -277,7 +283,8 @@ function importeDe(indice: number): string {
 
 describe("derivarComposicionGanancia — la ganancia concepto por concepto (R23/R26)", () => {
   it("CONTROL DE NO-VACUIDAD: el catalogo tiene categorias propias de los dos tipos", () => {
-    expect(INGRESOS_PROPIOS.length).toBeGreaterThan(5);
+    // SL-39: los ingresos de la ganancia son cinco (los ocho propios menos los tres de IVA).
+    expect(INGRESOS_PROPIOS.length).toBe(5);
     expect(EGRESOS_PROPIOS.length).toBeGreaterThan(5);
     // …y hay dinero de terceros que dejar fuera, que es la mitad del trabajo de esta funcion.
     expect(
@@ -404,7 +411,9 @@ describe("derivarComposicionGanancia — la ganancia concepto por concepto (R23/
 
   it("R23: el conjunto VACIO da las siete cubetas en 0.00, nunca un hueco", () => {
     const composicion = derivarComposicionGanancia([]);
-    expect(Object.keys(composicion.ingresos).sort()).toEqual([...WALLET_INGRESO_PROPIO_SEED].sort());
+    // SL-39: las cinco de la ganancia (los propios sin IVA), no las ocho propias.
+    expect(Object.keys(composicion.ingresos).sort()).toEqual([...INGRESOS_PROPIOS].sort());
+    expect(Object.keys(composicion.ingresos)).toHaveLength(5);
     for (const importe of Object.values(composicion.ingresos)) expect(importe).toBe("0.00");
     expect(composicion).toMatchObject({
       totalIngresos: "0.00",

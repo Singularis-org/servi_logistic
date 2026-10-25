@@ -681,7 +681,7 @@ describe("SL-15 R3 — el cierre nombra a «la empresa», escrito a mano", () =>
     [
       "NETO_EMPRESA_NOTA",
       NETO_EMPRESA_NOTA,
-      "Lo que la empresa facturó menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.",
+      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.", // SL-39 (R23): dice «sin el IVA».
     ],
     [
       "NETO_EMPRESA_NEGATIVO_NOTA",

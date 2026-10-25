@@ -9,7 +9,9 @@ import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/err
 import type { IJobQueueService } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import { JobQueueService } from "@/lib/services/JobQueueService";
-import { JobRepository } from "@/lib/repositories/JobRepository";
+import { JobRepository, empresaDelJob } from "@/lib/repositories/JobRepository";
+import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadJobsConfig } from "@/lib/config/jobs";
@@ -61,6 +63,48 @@ export interface ProcesarJobsDeps {
   service?: IJobQueueService;
   // Reloj inyectable (tests): por defecto `new Date()`.
   now?: () => Date;
+  // SL-17 (R16): fuente de empresas de los recurrentes sin empresa (un doble en tests).
+  empresas?: ClienteDeOrganizaciones;
+}
+
+export interface OpcionesDeEmpresa {
+  empresas?: ClienteDeOrganizaciones;
+}
+
+/**
+ * SL-17 (D16, R42, R16) — corre el handler de un job con la empresa que lo encolo. El reclamo y el
+ * cierre van fuera, en plataforma (`handleProcesarJobs`), porque `jobs` no es de negocio.
+ *
+ *  - Con empresa: `conEmpresa`, asi el filtro y la RLS le aplican igual que a la peticion que lo
+ *    encolo, y lo que encole a su vez hereda la empresa por el DEFAULT de M4.
+ *  - Sin empresa y recurrente: lo dispara el reloj, no una empresa, asi que corre una vez por
+ *    empresa. Si alguna falla, el job falla DESPUES de correr las demas, para que el backoff lo
+ *    reintente; los tres recurrentes de hoy son idempotentes por fecha, y repetir las que fueron
+ *    bien no duplica nada.
+ *  - Sin empresa y por evento (filas previas a M4, o encoladas desde un script en plataforma):
+ *    en plataforma, como dice R42.
+ */
+export function conSuEmpresa(
+  handler: JobHandler,
+  recurrente: boolean,
+  opciones: OpcionesDeEmpresa = {},
+): JobHandler {
+  return async (job) => {
+    const empresa = empresaDelJob(job);
+    if (empresa !== null) {
+      await conEmpresa(empresa, () => handler(job));
+      return;
+    }
+    if (!recurrente) {
+      await comoPlataforma("SL-17", "job sin empresa", () => handler(job));
+      return;
+    }
+    const resumen = await paraCadaEmpresa(() => handler(job), { cliente: opciones.empresas });
+    if (resumen.fallidas.length > 0) {
+      const ids = resumen.fallidas.map((f) => f.organizacionId).join(", ");
+      throw new Error(`fallo en ${resumen.fallidas.length} empresa(s): ${ids}`);
+    }
+  };
 }
 
 /**
@@ -68,7 +112,14 @@ export interface ProcesarJobsDeps {
  * Exportada para que el test de registro (R32) verifique que el tipo esta enganchado sin
  * levantar el endpoint entero. Construir el service NO abre conexion (singleton perezoso).
  */
-export function buildHandlers(now: () => Date): Map<JobTipo, JobHandler> {
+export function buildHandlers(
+  now: () => Date,
+  opciones: OpcionesDeEmpresa = {},
+): Map<JobTipo, JobHandler> {
+  // SL-17: todo handler sale envuelto en `conSuEmpresa`; la recurrencia decide si un job sin
+  // empresa itera las empresas. Se envuelve aqui para que `scripts/drenar-jobs.ts`, que reutiliza
+  // este registro, ejecute igual que el cron.
+  const recurrentes = buildRecurrencias();
   const handlers = new Map<JobTipo, JobHandler>();
   handlers.set(
     "liberar_reprogramadas",
@@ -165,7 +216,9 @@ export function buildHandlers(now: () => Date): Map<JobTipo, JobHandler> {
   handlers.set("whatsapp_envio_ejecucion", crearWhatsappEnvioEjecucionHandler());
   handlers.set("whatsapp_envio_reintento", crearWhatsappEnvioReintentoHandler());
   handlers.set("whatsapp_envio_mantenimiento", crearWhatsappEnvioMantenimientoHandler());
-  return handlers;
+  return new Map(
+    [...handlers].map(([tipo, h]) => [tipo, conSuEmpresa(h, recurrentes.has(tipo), opciones)]),
+  );
 }
 
 /**
@@ -190,11 +243,11 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   return recurrencias;
 }
 
-function buildService(now: () => Date): IJobQueueService {
+function buildService(now: () => Date, opciones: OpcionesDeEmpresa): IJobQueueService {
   const prisma = getPrismaClient();
   return new JobQueueService(
     new JobRepository(prisma),
-    buildHandlers(now),
+    buildHandlers(now, opciones),
     buildRecurrencias(),
     loadJobsConfig(),
     now,
@@ -228,9 +281,14 @@ export async function handleProcesarJobs(
 
   const result = await withErrorHandler(async () => {
     const now = deps.now ?? (() => new Date());
-    const service = deps.service ?? buildService(now);
+    const service = deps.service ?? buildService(now, { empresas: deps.empresas });
     // R18: drena hasta JOBS_BATCH_SIZE jobs; devuelve conteos agregados SIN PII.
-    return service.drenar(loadJobsConfig().JOBS_BATCH_SIZE);
+    // SL-17 (R42): el reclamo (`FOR UPDATE SKIP LOCKED`), el cierre, el backoff y el re-agendado de
+    // recurrentes tocan solo `jobs`, que no es de negocio: van en plataforma. Cada handler cambia a
+    // la empresa de su job dentro de `conSuEmpresa`.
+    return comoPlataforma("SL-17", "drenador: reclamo y cierre de jobs", () =>
+      service.drenar(loadJobsConfig().JOBS_BATCH_SIZE),
+    );
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result); // R19: sin secreto ni PII

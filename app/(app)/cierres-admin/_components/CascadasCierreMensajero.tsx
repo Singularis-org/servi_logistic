@@ -28,6 +28,8 @@ import {
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   GANA_LA_TIENDA_NOTA,
   INGRESO_BODEGA_RECHAZOS_LABEL,
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   NETO_EMPRESA_LABEL,
   NETO_EMPRESA_NEGATIVO_NOTA,
   NETO_EMPRESA_NOTA,
@@ -151,7 +153,12 @@ export interface CascadasCierreMensajeroProps {
   pagoTienda: string;
   /** La LÍNEA PUENTE: `fleteConIva + comisionConIva`. Se pinta SIEMPRE (ver abajo). */
   cobradoSobreRecaudado: string;
-  /** Facturado − pago al mensajero − ingreso de bodega. NO es `ganancia`. */
+  /**
+   * SL-39 (R21) — el IVA facturado del cierre, derivado en el servidor. Se pinta como línea propia
+   * que resta en la cascada «Lo que le queda a la empresa» (R24); aquí no se calcula.
+   */
+  ivaFacturado: string;
+  /** Facturado − IVA facturado − pago al mensajero − ingreso de bodega (SL-39). NO es `ganancia`. */
   netoEmpresa: string;
   /** Recaudado − facturado. NO es `pagoTienda`. */
   ganaLaTienda: string;
@@ -305,6 +312,14 @@ function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] 
 
   return [
     { label: FACTURADO_EMPRESA_LABEL, monto: props.totalesIngreso.total, signo: "neutro" },
+    // SL-39 (R24) — el IVA va JUSTO después de lo facturado: lo facturado lo lleva y no es de la
+    // empresa. Llega derivado del servidor; la cascada sólo lo pinta.
+    {
+      label: IVA_FACTURADO_LABEL,
+      monto: props.ivaFacturado,
+      signo: "resta",
+      notas: [IVA_FACTURADO_NOTA],
+    },
     { label: PAGO_MENSAJERO_LABEL, monto: props.totalPagoMensajero, signo: "resta" },
     {
       label: INGRESO_BODEGA_RECHAZOS_LABEL,

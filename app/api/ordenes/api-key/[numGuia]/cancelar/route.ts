@@ -17,15 +17,19 @@ import {
   ConflictError,
   MSG,
 } from "@/lib/errors";
-import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IApiOrdenCancelacionService } from "@/lib/interfaces/services/IApiOrdenCancelacionService";
 import { ApiOrdenCancelacionService } from "@/lib/services/ApiOrdenCancelacionService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { extraerBearer, buildAutenticar } from "@/lib/api/api-key-request";
+import {
+  extraerBearer,
+  buildAutenticar,
+  conEmpresaDeLaKey,
+  type AutenticadorApiKey,
+} from "@/lib/api/api-key-request";
 
 export interface CancelarApiDeps {
-  autenticar?: (rawKey: string | null) => Promise<ApiKeyAuthResult>;
+  autenticar?: AutenticadorApiKey;
   cancelacionService?: IApiOrdenCancelacionService;
 }
 
@@ -48,20 +52,23 @@ export async function handleCancelarApi(
     if (auth.status === "unauthenticated") throw new UnauthenticatedError(); // R1/R2 -> 401
     if (auth.status === "forbidden") throw new ForbiddenError(); // R3 -> 403
 
-    // 2. Valida el path param como entero positivo.
-    const parsed = numGuiaSchema.safeParse(rawNumGuia);
-    if (!parsed.success) {
-      throw new ValidationError(MSG.VALIDATION_ERROR, {
-        fieldErrors: { numGuia: ["num_guia invalido"] },
-      });
-    }
+    // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
+    return conEmpresaDeLaKey(auth, async () => {
+      // 2. Valida el path param como entero positivo.
+      const parsed = numGuiaSchema.safeParse(rawNumGuia);
+      if (!parsed.success) {
+        throw new ValidationError(MSG.VALIDATION_ERROR, {
+          fieldErrors: { numGuia: ["num_guia invalido"] },
+        });
+      }
 
-    // 3. R19/R20/R23: cancela; traduce el resultado de dominio a HTTP.
-    const service = deps.cancelacionService ?? buildCancelacionService();
-    const res = await service.cancelar(auth.actor, parsed.data);
-    if (res.status === "not_found") throw new NotFoundError(); // R23/R24 -> 404
-    if (res.status === "conflict") throw new ConflictError(); // R20 -> 409
-    return res.data; // R19 -> 200 { numGuia, estadoAnterior, estado }
+      // 3. R19/R20/R23: cancela; traduce el resultado de dominio a HTTP.
+      const service = deps.cancelacionService ?? buildCancelacionService();
+      const res = await service.cancelar(auth.actor, parsed.data);
+      if (res.status === "not_found") throw new NotFoundError(); // R23/R24 -> 404
+      if (res.status === "conflict") throw new ConflictError(); // R20 -> 409
+      return res.data; // R19 -> 200 { numGuia, estadoAnterior, estado }
+    });
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);
