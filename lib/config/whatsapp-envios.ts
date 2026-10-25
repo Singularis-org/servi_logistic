@@ -2,7 +2,7 @@
 //
 // Todo con default: ninguna variable NUEVA es obligatoria (D2). Se lee en cada llamada (no al
 // importar) para que cambiar una variable no exija reiniciar y para que los tests puedan fijarla.
-// Las credenciales de Meta NO viven aqui: son las de `loadWhatsappConfig` (lib/config/whatsapp.ts).
+// Las credenciales de Meta NO viven aqui: son las de cada empresa (SL-36, `whatsappDeLaEmpresa`).
 
 import { baseUrlDeLaApp } from "@/lib/config/app-url";
 

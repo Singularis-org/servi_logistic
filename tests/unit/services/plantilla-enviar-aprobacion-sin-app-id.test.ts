@@ -59,16 +59,17 @@ describe("474/R9 — documento_no_disponible", () => {
     expect(trasActualizar).not.toHaveBeenCalled();
   });
 
-  it("credencial ausente -> nombra la VARIABLE, nunca un valor", async () => {
+  it("credencial ausente -> dice que WhatsApp no está configurado en la empresa, nunca un valor", async () => {
+    // SL-36 (R24): la credencial es de la empresa; el mensaje ya no nombra una variable de entorno.
     const { s, updateEstado } = montar(plantilla(), {
       ok: false,
       motivo: "sin_credencial",
-      variableFaltante: "WHATSAPP_CLOUD_TOKEN",
     });
     const out = await s.enviarAprobacion("pl-1", MAESTRO);
     expect(out.status).toBe("documento_no_disponible");
     if (out.status !== "documento_no_disponible") throw new Error();
-    expect(out.mensaje).toContain("Falta configurar WhatsApp (falta WHATSAPP_CLOUD_TOKEN)");
+    expect(out.mensaje).toContain("WhatsApp no está configurado en tu empresa");
+    expect(out.mensaje).not.toMatch(/WHATSAPP_[A-Z_]+/);
     expect(out.mensaje).not.toMatch(/EAA|Bearer/);
     expect(updateEstado).not.toHaveBeenCalled();
   });

@@ -16,7 +16,8 @@ import { JobRepository } from "@/lib/repositories/JobRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
 import { WhatsappCloudClient } from "@/lib/clients/whatsapp-cloud";
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import { idiomaPlantillasWhatsapp } from "@/lib/config/whatsapp";
+import { whatsappDeLaEmpresaOpcional } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
 import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
@@ -58,22 +59,22 @@ export interface ChatWhatsappDeps {
   now?: () => Date;
 }
 
-/** Construye el service de envio; `null` si WhatsApp no esta configurado todavia. */
-function buildEnvioService(): ChatWhatsappService | null {
-  let config;
-  try {
-    config = loadWhatsappConfig();
-  } catch {
-    return null;
-  }
+/**
+ * Construye el service de envio con la credencial de la empresa de la sesion (SL-36, R23); `null`
+ * si la empresa no tiene WhatsApp (R24): la action responde `no_configurado` sin llamar a Meta.
+ */
+async function buildEnvioService(): Promise<ChatWhatsappService | null> {
+  const wa = await whatsappDeLaEmpresaOpcional();
+  if (wa === null) return null;
+  const { config, fetchImpl } = wa;
   const prisma = getPrismaClient();
   return new ChatWhatsappService({
     conversacionRepo: new ChatConversacionRepository(prisma),
     mensajeRepo: new ChatMensajeRepository(prisma),
-    client: new WhatsappCloudClient({ config, logger: consoleLogger }),
+    client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
     // Feature 316: cliente de SUBIDA aparte del de envio (design 3.1). Sin el, `enviarMedia`
     // del service falla claro en vez de a medias.
-    subidor: new WhatsappMediaUploadClient({ config }),
+    subidor: new WhatsappMediaUploadClient({ config, fetchImpl }),
     encolarReintento: crearEncolarReintentoChatEnvio(new JobRepository(prisma)),
   });
 }
@@ -99,7 +100,7 @@ export async function enviarMensajeChat(
   const datos = await ordenReader.findParaEnvio(oId.data, actor.usuarioId);
   if (datos === null) return { status: "forbidden" }; // R17: inexistente o de otro mensajero
 
-  const service = deps.service !== undefined ? deps.service : buildEnvioService();
+  const service = deps.service !== undefined ? deps.service : await buildEnvioService();
   if (service === null) return { status: "no_configurado" };
 
   const outcome = await service.enviarTexto({
@@ -199,7 +200,7 @@ export async function enviarMediaChat(
       : { status: "demasiado_grande", limiteBytes: validacion.limiteBytes };
   }
 
-  const service = deps.service !== undefined ? deps.service : buildEnvioService();
+  const service = deps.service !== undefined ? deps.service : await buildEnvioService();
   if (service === null) return { status: "no_configurado" };
 
   const outcome = await service.enviarMedia({
@@ -242,15 +243,6 @@ export async function enviarMediaChat(
   }
 }
 
-/** Idioma por defecto de los templates si la config esta disponible; `undefined` si no. */
-function idiomaPorDefectoDeConfig(): string | undefined {
-  try {
-    return loadWhatsappConfig().templateIdioma;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Envia la PLANTILLA `plantillaId` al cliente de la orden `ordenId` y la persiste en el hilo
  * del chat (`tipo=plantilla`). La orden DEBE estar asignada al actor (scope `OrdenEnvioReader`,
@@ -279,7 +271,7 @@ export async function enviarPlantillaChat(
   const plantilla = await plantillaRepo.findEnviableById(pId.data);
   if (plantilla === null) return { status: "not_found" }; // no existe o no es enviable
 
-  const service = deps.service !== undefined ? deps.service : buildEnvioService();
+  const service = deps.service !== undefined ? deps.service : await buildEnvioService();
   if (service === null) return { status: "no_configurado" };
 
   // Mapeo variables->orden y construccion de componentes: MISMA logica que el envio server-side
@@ -288,7 +280,7 @@ export async function enviarPlantillaChat(
   const componentes = construirComponentsEnvio(plantilla.variables, valores);
   const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
   const idioma =
-    plantilla.templateIdioma || deps.idiomaPorDefecto || idiomaPorDefectoDeConfig() || "es";
+    plantilla.templateIdioma || deps.idiomaPorDefecto || idiomaPlantillasWhatsapp();
 
   const outcome = await service.enviarPlantilla({
     ordenId: oId.data,

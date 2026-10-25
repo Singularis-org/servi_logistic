@@ -25,7 +25,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { ROLES_HISTORICO_CONVERSACIONES } from "@/lib/auth/menu-visibility";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { WhatsappMediaClient } from "@/lib/clients/whatsapp-media";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import { whatsappDeLaEmpresaOpcional } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { CACHE_CONTROL_MEDIA } from "@/lib/config/chat-media";
 import { contentDisposition, contentTypeSeguro } from "@/lib/utils/chat-media-headers";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -65,7 +65,7 @@ export interface ChatMediaRouteDeps {
    */
   mensajeRepo?: Pick<IChatMensajeRepository, "findMediaParaMensajero"> &
     Partial<IChatMediaHistoricoReader>;
-  /** `null` explicito = WhatsApp sin credenciales; se responde 502 sin tocar la red. */
+  /** `null` explicito = la empresa no tiene WhatsApp (R24); se responde 502 sin tocar la red. */
   descargador?: WhatsappMediaDescargador | null;
 }
 
@@ -80,13 +80,14 @@ function normalizarRepo(inyectado: ChatMediaRouteDeps["mensajeRepo"]): ChatMedia
   };
 }
 
-/** Construye el descargador; `null` si la credencial de WhatsApp no esta configurada. */
-function buildDescargador(): WhatsappMediaDescargador | null {
-  try {
-    return new WhatsappMediaClient({ config: loadWhatsappConfig() });
-  } catch {
-    return null;
-  }
+/**
+ * El descargador con la credencial de la empresa de la sesion (SL-36, R23): el adjunto lo subio el
+ * numero de ESA empresa y solo su token lo puede bajar. `null` si no tiene WhatsApp (R24).
+ */
+async function buildDescargador(): Promise<WhatsappMediaDescargador | null> {
+  const wa = await whatsappDeLaEmpresaOpcional();
+  if (wa === null) return null;
+  return new WhatsappMediaClient({ config: wa.config, fetchImpl: wa.fetchImpl });
 }
 
 export async function GET(
@@ -124,7 +125,7 @@ export async function GET(
   // 3) El mensaje es suyo pero no tiene adjunto (un texto, una ubicacion, una reaccion).
   if (media.mediaId === null) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const descargador = deps.descargador !== undefined ? deps.descargador : buildDescargador();
+  const descargador = deps.descargador !== undefined ? deps.descargador : await buildDescargador();
   if (descargador === null) {
     return NextResponse.json({ error: "no_configurado" }, { status: 502 });
   }

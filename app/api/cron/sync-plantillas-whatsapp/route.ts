@@ -3,6 +3,10 @@
 // MISMO que corte-diario / liberar-reprogramadas / procesar-jobs); delega TODA la logica en
 // `SincronizarPlantillasWhatsappService`. NUNCA loguea el secreto ni el token (R19). Clon
 // estructural de `liberar-reprogramadas/route.ts`.
+//
+// SL-36 (design §9.1; R23, R24): cada empresa sincroniza con SU cuenta de WhatsApp. El service se
+// construye DENTRO de `paraCadaEmpresa`, con la credencial de la empresa en curso; una empresa sin
+// WhatsApp se salta (sin red) y se cuenta en `sinWhatsapp`.
 import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import {
@@ -14,15 +18,23 @@ import { WhatsappPlantillasClient } from "@/lib/clients/whatsapp-cloud";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import {
+  whatsappDeLaEmpresaOpcional,
+  type WhatsappDeLaEmpresa,
+} from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
+
+type ServicioSync = Pick<SincronizarPlantillasWhatsappService, "sincronizar">;
 
 export interface SyncPlantillasDeps {
   getSecret?: () => string | null;
-  // `Pick` y no la clase: un doble de test solo necesita `sincronizar`.
-  service?: Pick<SincronizarPlantillasWhatsappService, "sincronizar"> | null;
+  // `Pick` y no la clase: un doble de test solo necesita `sincronizar`. Es el MISMO service para
+  // todas las empresas: solo sirve a los tests de recorrido; en produccion cada una construye el suyo.
+  service?: ServicioSync | null;
   // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
   // inyectado y sin `empresas`, una sola corrida sin recorrer empresas.
   empresas?: ClienteDeOrganizaciones;
+  /** SL-36: la credencial de la empresa en curso; `null` si no tiene WhatsApp. Inyectable en tests. */
+  whatsapp?: () => Promise<WhatsappDeLaEmpresa | null>;
 }
 
 function sumar(corridas: SincronizarPlantillasResult[]): SincronizarPlantillasResult {
@@ -38,21 +50,17 @@ function sumar(corridas: SincronizarPlantillasResult[]): SincronizarPlantillasRe
 }
 
 /**
- * Construye el service real. Devuelve `null` si WhatsApp NO esta configurado (faltan envs): en
- * ese caso el cron responde 200 "skipped" en vez de fallar, para no alarmar antes de que se
- * llenen las credenciales.
+ * El service real de la empresa EN CURSO (ya dentro de su `conEmpresa`). `null` si no tiene
+ * WhatsApp (R24): esa empresa se salta sin llamar a Meta.
  */
-function buildService(): SincronizarPlantillasWhatsappService | null {
-  let config;
-  try {
-    config = loadWhatsappConfig();
-  } catch {
-    return null;
-  }
-  const prisma = getPrismaClient();
+async function buildServiceDeLaEmpresa(
+  whatsapp: () => Promise<WhatsappDeLaEmpresa | null>,
+): Promise<SincronizarPlantillasWhatsappService | null> {
+  const wa = await whatsapp();
+  if (wa === null) return null;
   return new SincronizarPlantillasWhatsappService(
-    new WhatsappPlantillasClient({ config }),
-    new PlantillaMensajeRepository(prisma),
+    new WhatsappPlantillasClient({ config: wa.config, fetchImpl: wa.fetchImpl }),
+    new PlantillaMensajeRepository(getPrismaClient()),
   );
 }
 
@@ -74,21 +82,27 @@ export async function handleSyncPlantillas(
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const service = deps.service !== undefined ? deps.service : buildService();
-  if (service === null) {
-    // WhatsApp no configurado: nada que sincronizar todavia.
+  const inyectado = deps.service;
+  if (inyectado === null) {
+    // Doble de test sin service: nada que sincronizar.
     return NextResponse.json({ skipped: "whatsapp no configurado" }, { status: 200 });
   }
 
   const result = await withErrorHandler(async () => {
-    if (deps.service !== undefined && deps.empresas === undefined) return service.sincronizar();
+    if (inyectado !== undefined && deps.empresas === undefined) return inyectado.sincronizar();
+    const whatsapp = deps.whatsapp ?? (() => whatsappDeLaEmpresaOpcional());
+    const construir = inyectado !== undefined ? async () => inyectado : () => buildServiceDeLaEmpresa(whatsapp);
     // SL-17 (R16, D14): `plantilla_mensaje` es de cada empresa, asi que se sincroniza empresa por
-    // empresa, cada una en su contexto. Las credenciales de Meta siguen siendo las globales hasta
-    // SL-36: cada empresa lee la misma lista de Meta y casa solo sus plantillas locales por nombre
-    // (por eso `leidas` suma la lista una vez por empresa).
+    // empresa, cada una en su contexto y, desde SL-36, con su propia cuenta de Meta.
     const corridas: SincronizarPlantillasResult[] = [];
+    let sinWhatsapp = 0;
     const empresas = await paraCadaEmpresa(
       async () => {
+        const service = await construir();
+        if (service === null) {
+          sinWhatsapp += 1;
+          return;
+        }
         corridas.push(await service.sincronizar());
       },
       { cliente: deps.empresas },
@@ -96,8 +110,9 @@ export async function handleSyncPlantillas(
     return {
       ...sumar(corridas),
       empresas: {
-        procesadas: empresas.ok.length,
+        procesadas: empresas.ok.length - sinWhatsapp,
         fallidas: empresas.fallidas.map((f) => f.organizacionId),
+        sinWhatsapp,
       },
     };
   });

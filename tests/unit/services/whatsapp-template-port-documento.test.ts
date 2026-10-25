@@ -88,7 +88,7 @@ describe("474/R5/R48 — ProveedorHandleDocumentoEjemplo", () => {
 
   it("subida rechazada -> lanza con el detalle", async () => {
     const p = new ProveedorHandleDocumentoEjemplo(
-      { resolver: async () => ({ ok: true, appId: "1", origen: "env" }) },
+      { resolver: async () => ({ ok: true, appId: "1", origen: "meta" }) },
       { subir: async () => ({ status: "rechazado", detalle: "HTTP 400 (Meta 100)", codigoMeta: 100 }) },
     );
     await expect(p.obtenerHandle()).rejects.toThrow(/Meta 100/);

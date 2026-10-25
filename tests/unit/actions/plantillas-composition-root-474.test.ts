@@ -38,7 +38,7 @@ describe("474/T5.3 — buildPlantillaService inyecta envios y resolutor", () => 
   });
 
   it("⭑ el `new PlantillaMensajeService(` recibe envios: new WhatsappEnvioRepository y resolutorAppId: new ResolutorAppIdMeta", () => {
-    const cuerpo = cuerpoDe(acciones, "function buildPlantillaService()");
+    const cuerpo = cuerpoDe(acciones, "async function buildPlantillaService()");
     const llamada = cuerpo.slice(cuerpo.indexOf("new PlantillaMensajeService("));
     expect(llamada).toMatch(/envios:\s*new WhatsappEnvioRepository\(/);
     expect(llamada).toMatch(/resolutorAppId:\s*new ResolutorAppIdMeta\(/);
@@ -51,7 +51,7 @@ describe("474/T5.3 — buildPlantillaService inyecta envios y resolutor", () => 
 
   it("la propagacion usa la fabrica compartida del puerto", () => {
     const cuerpo = cuerpoDe(acciones, "function buildWhatsappPropagator(");
-    expect(cuerpo).toContain("construirWhatsappTemplatePort(config)");
+    expect(cuerpo).toContain("construirWhatsappTemplatePort(wa)");
   });
 });
 
@@ -66,7 +66,7 @@ describe("474/T5.3 — la fabrica del puerto pasa el proveedor del documento", (
 
   it("⭑ el job de reintento de plantillas usa la MISMA fabrica", () => {
     const handler = leer("lib/services/jobs/whatsapp-template-sync-handler.ts");
-    expect(handler).toContain("construirWhatsappTemplatePort(config)");
+    expect(handler).toContain("construirWhatsappTemplatePort(wa)");
     expect(handler).not.toContain("new WhatsappTemplatePort(");
   });
 });

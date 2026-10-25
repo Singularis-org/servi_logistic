@@ -77,13 +77,13 @@
 
 ## T6. Consumidores (depende de T5.2). Cada fila de design §9.1 es una casilla
 
-- [ ] **T6.1** WhatsApp:
+- [x] **T6.1** WhatsApp:
   - `lib/config/whatsapp.ts` y `lib/clients/whatsapp-app-id.ts`, con la caché por empresa (R28);
   - los handlers de jobs, las actions, `construir-template-port.ts`, `PlantillaMensajeService.ts`
     y `documento-ejemplo-plantilla.ts`;
   - el cron de plantillas por empresa;
   - `app/api/chat/media/[mensajeId]/route.ts`.
-- [ ] **T6.2** Webhook:
+- [x] **T6.2** Webhook:
   - `app/api/webhooks/whatsapp/route.ts` delega en `WebhookWhatsappService`;
   - `lib/types/whatsapp-webhook.ts` conserva `metadata.phone_number_id`;
   - se borra `repartirPorEmpresa`;
@@ -111,7 +111,7 @@
   `/configuracion/integraciones` NO pasa por `/design`: sigue los patrones visuales y componentes ya
   existentes de `app/(app)/configuracion/` (p. ej. `configuracion/api`, `configuracion/geografia`).
   Carlos la revisa en el PR; un rediseño posterior es otra ficha.
-- [ ] **T7.1** `lib/actions/integraciones.ts`, con las Server Actions y el composition root.
+- [x] **T7.1** `lib/actions/integraciones.ts`, con las Server Actions y el composition root.
 - [ ] **T7.2** Página, tarjetas, formularios, diálogo de desconexión, revelado único del token y menú
   (`lib/auth/menu-visibility.ts`), siguiendo los patrones de `app/(app)/configuracion/` (T7.0 dispensada).
   - Hecho cuando: los tests de componentes de R18 (token una vez), R31, R34, R35 y R36 están en verde.
