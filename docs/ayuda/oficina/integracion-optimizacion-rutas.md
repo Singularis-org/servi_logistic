@@ -100,7 +100,8 @@ Si la conexión salió bien pero la tarjeta pasa a **Error** la primera vez que 
 la cuenta de servicio **le falta permiso**: la Route Optimization API no está habilitada en el proyecto
 (paso 1) o la cuenta no tiene el rol (paso 3). Corrígelo en Google Cloud y pulsa **Probar conexión**.
 
-Esa ruta no se pierde: se ordena con el cálculo aproximado.
+Esa ruta no se pierde: conserva el orden que tenía y la aplicación vuelve a intentarlo sola. Se
+actualiza cuando corrijas el permiso.
 
 ## Mientras no esté conectado
 

@@ -114,3 +114,66 @@ Gate local: ver `progress/features/SL-36.md > Tandas`.
 - T8.2: falta la revisión humana de los pasos en las consolas de terceros. La lista de pasos marcados
   «(verificar en la consola)» está en `progress/impl_SL-36-T8.md`.
 - T9.1, segundo navegador: `playwright.config.ts` solo define Chromium. Añadir otro es una decisión de CI.
+
+## Vuelta 2 (m1, m2, m4 de `progress/review_SL-36.md`; m3 no se toca)
+
+**m1, el design §5 alineado con el código, sin cambiar la conducta.**
+- `specs/SL-36-integraciones-por-empresa/design.md` §5 describe lo que hace el código ante un 403 de
+  `optimizeTours`:
+  - `fetchOptimizacion` marca `optimizacion_rutas.permiso`;
+  - el cliente de Google devuelve `config_invalida` y `FallbackRouteOptimizationClient` lo re-lanza
+    sin pasar a Haversine;
+  - `OptimizacionRutaService` conserva el orden previo, marca la ruta `desactualizada` y lanza
+    `RutaIntentoFallidoError`; la cola reintenta y, si sigue fallando, el job va a dead-letter.
+  - Incluye el porqué: R26 y R30 se cumplen, y caer a Haversine sería cambiar la conducta del
+    cliente compuesto de la feature 92.
+- `docs/ayuda/oficina/integracion-optimizacion-rutas.md` decía «se ordena con el cálculo
+  aproximado». Ahora dice que la ruta conserva el orden que tenía y se reintenta.
+- Sin test: solo cambian documentos.
+
+**m2, la caché del app id de Meta ve un token editado.**
+- En `lib/clients/whatsapp-app-id.ts`, la entrada de `CacheAppId` guarda `huellaToken`: un sha256 en
+  hex del token, que no se loguea. La entrada solo vale si coinciden empresa, integración y huella.
+- No reutilicé `huellaDe` de `rutas-de-la-empresa.ts`: no se exporta y recibe una
+  `ClaveCuentaServicio`. Uso el mismo método (`createHash("sha256")`).
+- Test nuevo en `tests/unit/clients/whatsapp-app-id.test.ts`: «un token editado en la misma
+  integración no reutiliza el app id cacheado».
+  - Con el token viejo devuelve 444; con el nuevo, 555 y una segunda llamada a Graph.
+  - Con el mismo token sirve la caché y no hay tercera llamada.
+  - La caché no contiene el token en claro.
+- Las dos cachés que precargan los tests existentes llevan ahora `huellaToken: "h"`.
+- Mutación: cambié `enCache.huellaToken === huellaToken` por `true`.
+  - Mutado: `× un token editado en la misma integración no reutiliza el app id cacheado`, `Tests  1 failed | 13 passed (14)`.
+    El de R28 «la caché de A no responde a B» siguió verde.
+  - Revertido: `Tests  14 passed (14)`.
+
+**m4, la forma de R5 en el test de base, con el contrato exacto.**
+- `tests/integration/db/integracion-dos-empresas.test.ts` (test R5) define el literal
+  `FORMA_CIFRADA` sin importarlo de producción:
+  `^v[1-9][0-9]*:[A-Za-z0-9+/]{16}:[A-Za-z0-9+/]{22}==:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$`.
+  - Las longitudes salen de `lib/crypto/boveda-integraciones.ts`: `BYTES_IV = 12` da 16 caracteres;
+    `BYTES_TAG = 16` da 22 caracteres más `==`.
+  - El cifrado es base64 estándar, no vacío y con relleno canónico, como el CHECK
+    `integracion_secretos_cifrados` de `db/migrations/20261025120000_integracion/migration.sql`.
+- Mutación: no muté la bóveda, porque un valor con otra forma lo rechaza el CHECK antes del INSERT.
+  Muté una copia del valor leído, dentro del `expect`. Cada mutante corrió con `-t "R5: en la base"`:
+  - `v.replace(/^(v[0-9]+:)./, "$1_")` (base64url en el iv): `Tests  1 failed | 11 skipped (12)`;
+  - `v.replace(/:[^:]+:([^:]+)$/, ":$1")` (sin la parte del tag): `Tests  1 failed | 11 skipped (12)`;
+  - `v + "x"` (comprueba el ancla `$`): `Tests  1 failed | 11 skipped (12)`;
+  - revertido, el archivo completo: `Tests  12 passed (12)`.
+
+**Salida real (vuelta 2)**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit`, `TC_EXIT=0`.
+- `pnpm run lint` → `LINT_EXIT=0`, `✖ 231 problems (0 errors, 231 warnings)`. Ningún aviso es de
+  los archivos tocados.
+- `pnpm run test:guardias` → `Test Files  1 failed | 305 passed | 2 skipped (308)`,
+  `Tests  4 failed | 4190 passed | 20 skipped (4214)`. Los 4 rojos son de
+  `dependencias-declaradas-presentes.guardia.test.ts` (baseline conocido).
+- `pnpm exec vitest run tests/unit/clients/whatsapp-app-id.test.ts` → `Tests  14 passed (14)`.
+- `pnpm exec vitest run tests/integration/db/integracion-dos-empresas.test.ts` (base de la feature)
+  → `Tests  12 passed (12)`.
+- `pnpm exec vitest related --run lib/clients/whatsapp-app-id.ts` (base de la feature) →
+  `Test Files  193 passed (193)`, `Tests  2584 passed (2584)`, `REL_EXIT=0`.
+
+Veredicto vuelta 2: m1, m2 y m4 corregidos, cada mutación probada y revertida, y todo lo tocado en
+verde.

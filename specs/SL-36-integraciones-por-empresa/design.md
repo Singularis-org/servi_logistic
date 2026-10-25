@@ -289,9 +289,19 @@ resultado, nunca una excepción. Cada llamada tiene un timeout de 10 s (QC inv. 
 | Asistente | `GET https://api.anthropic.com/v1/models` con `x-api-key` | HTTP 401 |
 
 Lo que la prueba de rutas **no** verifica: que el proyecto tenga habilitada la API de Route
-Optimization y que la cuenta tenga el rol. Si falta, la primera optimización real falla con 403; la
-ruta cae al orden aproximado y la integración pasa a `error` con el código
-`optimizacion_rutas.permiso` (R30). La guía (§14) lo advierte.
+Optimization y que la cuenta tenga el rol. Si falta, la primera optimización real falla con 403:
+- `RutasPorEmpresa.fetchOptimizacion` marca la integración en `error` con el código
+  `optimizacion_rutas.permiso` (R30);
+- el cliente de Google devuelve `config_invalida` y `FallbackRouteOptimizationClient` lo propaga,
+  sin caer a Haversine (su fallback es solo para credencial ausente o `sin_solucion`);
+- `OptimizacionRutaService` conserva el orden previo de las paradas, marca la ruta
+  `desactualizada` y lanza `RutaIntentoFallidoError`: la cola reintenta con backoff y, si el 403
+  persiste, el job termina en dead-letter.
+
+Por qué se deja así: R26 (sin credencial usable no se llama a Google con otra) y R30 (el rechazo
+se ve en la tarjeta) se cumplen, y la ruta no pierde orden. Caer a Haversine ante `permiso` sería
+un cambio de conducta del compuesto de la feature 92, fuera del alcance de SL-36. La guía (§14) lo
+advierte.
 
 ## 6. Límite de pruebas (D4)
 

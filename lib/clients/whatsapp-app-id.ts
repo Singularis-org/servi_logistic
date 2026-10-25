@@ -16,6 +16,7 @@
 //      los logs). Por eso NO se usa `debug_token`, que exige el token en la query (design §5.2.1).
 // Nunca se loguea ni se devuelve el token ni el cuerpo de la respuesta: el log lleva operacion,
 // estado y codigo.
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { WhatsappNoConfiguradoError, type WhatsappConfig } from "@/lib/config/whatsapp";
 
@@ -51,8 +52,19 @@ export interface CredencialAppId {
 /**
  * Cache del EXITO por empresa (R28). Se guarda tambien la integracion: si el maestro desconecta y
  * conecta otra cuenta, el token nuevo puede ser de otra app y la entrada vieja ya no vale.
+ * Y la huella del token (review SL-36 m2): el maestro puede EDITAR el token sin cambiar de
+ * integracion, y el token nuevo puede ser de otra app de Meta.
  */
-export type CacheAppId = Map<string, { integracionId: string; appId: string }>;
+export type CacheAppId = Map<string, { integracionId: string; huellaToken: string; appId: string }>;
+
+/**
+ * Identifica el token sin guardarlo en la cache: un sha256 no se revierte a un token de Meta (alta
+ * entropia), y asi la cache no es una segunda copia del secreto en memoria. Mismo criterio que
+ * `RutasPorEmpresa` con la clave de la cuenta de servicio. Nunca se loguea.
+ */
+function huellaDelToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 const CACHE_PROCESO: CacheAppId = new Map();
 
@@ -110,8 +122,13 @@ export class ResolutorAppIdMeta implements IResolutorAppIdMeta {
     }
 
     // 2. Cache de la empresa: SOLO del exito. Un fallo transitorio no deja la funcion rota.
+    const huellaToken = huellaDelToken(credencial.config.token);
     const enCache = this.cache.get(credencial.organizacionId);
-    if (enCache !== undefined && enCache.integracionId === credencial.integracionId) {
+    if (
+      enCache !== undefined &&
+      enCache.integracionId === credencial.integracionId &&
+      enCache.huellaToken === huellaToken
+    ) {
       return { ok: true, appId: enCache.appId, origen: "meta" };
     }
 
@@ -152,7 +169,11 @@ export class ResolutorAppIdMeta implements IResolutorAppIdMeta {
       this.logger.warn(`[whatsapp] ${OPERACION}: respuesta sin id numerico`);
       return { ok: false, motivo: "respuesta_invalida" };
     }
-    this.cache.set(credencial.organizacionId, { integracionId: credencial.integracionId, appId: parsed.data.id });
+    this.cache.set(credencial.organizacionId, {
+      integracionId: credencial.integracionId,
+      huellaToken,
+      appId: parsed.data.id,
+    });
     return { ok: true, appId: parsed.data.id, origen: "meta" };
   }
 }

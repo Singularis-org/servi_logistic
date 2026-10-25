@@ -103,15 +103,43 @@ describe("SL-36/R28 — la cache es por empresa", () => {
 
   it("si la empresa conecta OTRA integracion, la app vieja no se reutiliza", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, { id: "333" }));
-    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-vieja", appId: "111" }]]);
+    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-vieja", huellaToken: "h", appId: "111" }]]);
     const { r } = crear(fetchImpl as unknown as typeof fetch, { cache });
     expect(await r.resolver()).toEqual({ ok: true, appId: "333", origen: "meta" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("un token editado en la misma integración no reutiliza el app id cacheado", async () => {
+    // Review SL-36 m2: misma empresa y misma integracion; lo unico que cambia es el token, que el
+    // maestro edito y que puede ser de otra app de Meta. Cada token responde con su app.
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).Authorization;
+      return respuesta(200, { id: auth === "Bearer token-nuevo" ? "555" : "444" });
+    });
+    const cache: CacheAppId = new Map();
+    let token = "token-viejo";
+    const { r } = crear(fetchImpl as unknown as typeof fetch, {
+      cache,
+      leerWhatsapp: async () => ({ organizacionId: "org-a", integracionId: "int-1", config: { token, apiVersion: "v21.0" } }),
+    });
+
+    expect(await r.resolver()).toEqual({ ok: true, appId: "444", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    token = "token-nuevo";
+    expect(await r.resolver()).toEqual({ ok: true, appId: "555", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    // Mismo token: la cache si sirve, sin volver a la red.
+    expect(await r.resolver()).toEqual({ ok: true, appId: "555", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // La cache no guarda el token en claro.
+    expect(JSON.stringify([...cache.values()])).not.toContain("token-nuevo");
+  });
+
   it("sin WhatsApp no responde la cache aunque la empresa tuviera app antes", async () => {
     const fetchImpl = vi.fn();
-    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-org-a", appId: "111" }]]);
+    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-org-a", huellaToken: "h", appId: "111" }]]);
     const { r } = crear(fetchImpl as unknown as typeof fetch, {
       cache,
       leerWhatsapp: async () => {

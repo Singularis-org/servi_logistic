@@ -227,7 +227,14 @@ describeSiHayBase("SL-36 T3.1 — IntegracionRepository con dos empresas contra 
     expect(r.fila).not.toBeNull();
     const valores = Object.values(r.fila!.secretos);
     expect(valores).toHaveLength(2);
-    for (const v of valores) expect(v).toMatch(/^v[1-9][0-9]*:[A-Za-z0-9_-]+/);
+    // La forma COMPLETA del contrato (CHECK `integracion_secretos_cifrados` y la boveda), escrita
+    // aqui y no importada: si la boveda cambiara de forma, este literal es el que lo delata.
+    // `v<n>:<iv>:<tag>:<cifrado>` en base64 ESTANDAR (con `+` y `/`, nunca base64url): iv de 12
+    // bytes = 16 caracteres sin relleno, tag de 16 bytes = 22 caracteres + `==`, cifrado no vacio
+    // y con su relleno canonico. Anclada al final: nada puede colgar detras del cifrado.
+    const FORMA_CIFRADA =
+      /^v[1-9][0-9]*:[A-Za-z0-9+/]{16}:[A-Za-z0-9+/]{22}==:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/;
+    for (const v of valores) expect(v).toMatch(FORMA_CIFRADA);
     expect(r.fila!.whatsapp_resumen_verificacion).toMatch(/^[0-9a-f]{64}$/);
     const enBase = JSON.stringify(r.fila);
     for (const claro of r.alta.sensibles.slice(0, 3)) expect(enBase).not.toContain(claro);
