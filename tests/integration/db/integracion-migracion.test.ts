@@ -146,8 +146,9 @@ describeSiHayBase("SL-36 T1.3 — migracion integracion contra Postgres (RLS y C
 
   it("R8: las dos tablas tienen RLS activa y su politica por empresa para servi_app", async () => {
     const rls = await base.$queryRawUnsafe<{ relname: string; relrowsecurity: boolean }[]>(
-      `SELECT relname, relrowsecurity FROM pg_class
-        WHERE relname IN ('integracion', 'integracion_prueba_minuto') AND relkind = 'r' ORDER BY relname`,
+      `SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname IN ('integracion', 'integracion_prueba_minuto') AND c.relkind = 'r'
+        ORDER BY c.relname`,
     );
     expect(rls).toEqual([
       { relname: "integracion", relrowsecurity: true },
@@ -155,7 +156,7 @@ describeSiHayBase("SL-36 T1.3 — migracion integracion contra Postgres (RLS y C
     ]);
     const politicas = await base.$queryRawUnsafe<{ tablename: string; policyname: string; roles: string; cmd: string }[]>(
       `SELECT tablename::text, policyname::text, roles::text AS roles, cmd::text FROM pg_policies
-        WHERE tablename IN ('integracion', 'integracion_prueba_minuto') ORDER BY tablename`,
+        WHERE schemaname = 'public' AND tablename IN ('integracion', 'integracion_prueba_minuto') ORDER BY tablename`,
     );
     expect(politicas).toEqual([
       { tablename: "integracion", policyname: "integracion_por_empresa", roles: "{servi_app}", cmd: "ALL" },

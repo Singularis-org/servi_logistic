@@ -8,15 +8,15 @@
 
 ## T1. Datos
 
-- [ ] **T1.1** Migración `20261025120000_integracion` (design §2.1-2.4), con UP y `down.sql`.
+- [x] **T1.1** Migración `20261025120000_integracion` (design §2.1-2.4), con UP y `down.sql`.
   - Hecho cuando: `pnpm run db:migrate` y `pnpm run db:rollback` dejan el esquema igual en
     ida-vuelta-ida;
   - los dos modelos están en `MODELOS_DE_NEGOCIO`;
   - las guardias `organizacion-en-modelos` y `fk-misma-empresa` están en verde.
-- [ ] **T1.2** Migración `20261025120100_historial_accion_integraciones`, con UP y `down.sql`; enums
+- [x] **T1.2** Migración `20261025120100_historial_accion_integraciones`, con UP y `down.sql`; enums
   y categoría en `lib/types/historial-accion.ts` (design §13).
   - Hecho cuando: los tests del catálogo del historial pasan con el total nuevo.
-- [ ] **T1.3** Test de integración de la migración contra Postgres real:
+- [x] **T1.3** Test de integración de la migración contra Postgres real:
   - RLS activa en las dos tablas;
   - los CHECK de `secretos` y de las columnas de WhatsApp rechazan un valor en claro y una columna de
     WhatsApp en otro servicio.
@@ -24,38 +24,38 @@
 
 ## T2. Bóveda (depende de nada; puede empezar con T1)
 
-- [ ] **T2.1** `lib/config/integraciones.ts`: el anillo, el valor activo y el límite de pruebas, leídos
+- [x] **T2.1** `lib/config/integraciones.ts`: el anillo, el valor activo y el límite de pruebas, leídos
   en cada llamada.
   - Hecho cuando: los tests de config de R4 están en verde.
-- [ ] **T2.2** `lib/crypto/boveda-integraciones.ts`, con sus tres interfaces (design §3).
+- [x] **T2.2** `lib/crypto/boveda-integraciones.ts`, con sus tres interfaces (design §3).
   - Hecho cuando: la batería de QC §10 «Cifrador», «Resumen» y «Configuración» está en verde.
   - Se comprueba que el test de contexto falla si el AAD se arma con `join(":")`.
 
 ## T3. Repositorios [P]
 
-- [ ] **T3.1** `IntegracionRepository`:
+- [x] **T3.1** `IntegracionRepository`:
   - filtro por empresa en el `where`, empresa tomada del contexto y nunca de la fila;
   - `P2002` traducido a `ya_existe` o `numero_ocupado`; cualquier otra violación se propaga;
   - `appendAccion` en la misma `$transaction` (design §13).
   - Hecho cuando: el test de dos empresas contra base real (R8-R11, R32) está en verde.
-- [ ] **T3.2** `IntegracionPruebaMinutoRepository`, con SQL `ON CONFLICT … RETURNING` que filtra por
+- [x] **T3.2** `IntegracionPruebaMinutoRepository`, con SQL `ON CONFLICT … RETURNING` que filtra por
   `organizacion_id`.
   - Hecho cuando: el test real de dos empresas y de concurrencia está en verde.
-- [ ] **T3.3** `IntegracionEnrutadoRepository` y su entrada en `EXCEPCIONES_DE_PLATAFORMA`, ficha
+- [x] **T3.3** `IntegracionEnrutadoRepository` y su entrada en `EXCEPCIONES_DE_PLATAFORMA`, ficha
   SL-36 (design §10).
   - Hecho cuando: el test afirma que el `select` trae solo `id` y `organizacion_id`.
-- [ ] **T3.4** `EmpresasPlataformaRepository.estadoIntegraciones()` y
+- [x] **T3.4** `EmpresasPlataformaRepository.estadoIntegraciones()` y
   `EmpresasPlataformaService.estadoIntegraciones(actor)` (design §11).
 
 ## T4. Probadores [P]
 
-- [ ] **T4.1** Probador de WhatsApp: número + WABA y señales de rechazo (design §5).
-- [ ] **T4.2** Probador de Google Maps: dirección fija; `REQUEST_DENIED` da prueba fallida; la URL no
+- [x] **T4.1** Probador de WhatsApp: número + WABA y señales de rechazo (design §5).
+- [x] **T4.2** Probador de Google Maps: dirección fija; `REQUEST_DENIED` da prueba fallida; la URL no
   va al log.
-- [ ] **T4.3** Probador de optimización de rutas: zod del JSON de la clave e intercambio JWT-bearer.
-- [ ] **T4.4** Probador del asistente: confirmar con context7 el endpoint de listado de modelos de
+- [x] **T4.3** Probador de optimización de rutas: zod del JSON de la clave e intercambio JWT-bearer.
+- [x] **T4.4** Probador del asistente: confirmar con context7 el endpoint de listado de modelos de
   Anthropic antes de escribirlo (design §18).
-- [ ] **T4.5** `probador-doble.ts` y su selección por entorno (design §15).
+- [x] **T4.5** `probador-doble.ts` y su selección por entorno (design §15).
 - Hecho (todo T4) cuando:
   - cada probador tiene tests con `fetch` inyectado: éxito, rechazo, red, timeout y respuesta
     inválida;
@@ -71,7 +71,7 @@
 - [ ] **T5.3** `WebhookWhatsappService`: GET y POST (design §10).
 - [ ] **T5.4** `RecifradoIntegracionesService` + `scripts/recifrar-integraciones.ts` + el script
   `integraciones:recifrar` en `package.json` (design §12).
-- [ ] **T5.5** Catálogo de servicios `lib/types/integraciones.ts` (design §7, §8), con la marca
+- [x] **T5.5** Catálogo de servicios `lib/types/integraciones.ts` (design §7, §8), con la marca
   propuesta.
   - La marca se ajusta si el humano responde la pregunta abierta 1.
 

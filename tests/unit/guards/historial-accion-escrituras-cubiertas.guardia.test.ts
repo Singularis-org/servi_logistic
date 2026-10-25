@@ -596,6 +596,49 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.(provincia|canton|distrito)\.update\(/,
   },
+  // --- SL-36 (design §13, R33) · cambia integraciones ---
+  //
+  // UN METODO POR TIPO, a proposito y como en la 431: si `registrarPrueba` y `regenerarToken`
+  // fueran ramas de un `actualizar` generico, borrar uno de sus `appendAccion` dejaria esta guardia
+  // verde, porque mide por metodo. Lo que comprueba que la fila se escribe de verdad, sin secretos y
+  // sobreviviendo al borrado, es `tests/integration/db/integracion-dos-empresas.test.ts`.
+  {
+    tipos: ["integracion_conectada"],
+    archivo: "lib/repositories/IntegracionRepository.ts",
+    metodo: "crear",
+    forma: "abre_tx",
+    mutacion: /tx\.integracion\.create\(/,
+  },
+  {
+    tipos: ["integracion_actualizada"],
+    archivo: "lib/repositories/IntegracionRepository.ts",
+    metodo: "actualizar",
+    forma: "abre_tx",
+    mutacion: /tx\.integracion\.update\(/,
+  },
+  {
+    tipos: ["integracion_probada"],
+    archivo: "lib/repositories/IntegracionRepository.ts",
+    metodo: "registrarPrueba",
+    forma: "abre_tx",
+    mutacion: /tx\.integracion\.update\(/,
+  },
+  {
+    tipos: ["integracion_token_regenerado"],
+    archivo: "lib/repositories/IntegracionRepository.ts",
+    metodo: "regenerarToken",
+    forma: "abre_tx",
+    mutacion: /tx\.integracion\.update\(/,
+  },
+  {
+    // Borrado FISICO (D7): la mutacion exigida es el `delete` de la propia fila, y la del historial
+    // sobrevive porque `entidad_id` es opaco y sin FK.
+    tipos: ["integracion_desconectada"],
+    archivo: "lib/repositories/IntegracionRepository.ts",
+    metodo: "borrar",
+    forma: "abre_tx",
+    mutacion: /tx\.integracion\.delete\(/,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -983,7 +1026,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // de `AbonoTiendaRepository`).
     // 65 desde la ficha 458-B (`cobro_rechazo_tienda_anulado` y `egreso_caja_anulado`, cada uno con
     // su metodo propio).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(65);
+    // 70 desde SL-36 (los cinco `integracion_*`, un metodo de `IntegracionRepository` por tipo).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(70);
   });
 });
 

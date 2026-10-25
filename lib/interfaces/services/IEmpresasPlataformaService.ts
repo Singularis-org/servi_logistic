@@ -1,4 +1,4 @@
-import type { ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
+import type { EstadoIntegracionesResultado, ListarEmpresasResultado } from "@/lib/types/empresas-plataforma";
 
 // SL-32 — contrato del servicio del listado de la pantalla «Empresas» (R29, R35).
 
@@ -17,4 +17,10 @@ export interface IEmpresasPlataformaService {
    * el listado del repositorio tal cual (R29).
    */
   listarEmpresas(actor: ActorEmpresasPlataforma | null): Promise<ListarEmpresasResultado>;
+
+  /**
+   * SL-36 (R37): `forbidden` si no hay actor o su rol no es de la plataforma, sin leer nada. Si lo
+   * es, el estado de cada integración de cada empresa, y nada más.
+   */
+  estadoIntegraciones(actor: ActorEmpresasPlataforma | null): Promise<EstadoIntegracionesResultado>;
 }

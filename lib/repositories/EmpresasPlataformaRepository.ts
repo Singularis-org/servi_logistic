@@ -3,11 +3,16 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/ICobroPlataformaMovimientoRepository";
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
-import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
+import type { EmpresaListada, EstadoIntegracionDeEmpresa } from "@/lib/types/empresas-plataforma";
+import { SERVICIOS_INTEGRACION } from "@/lib/types/integraciones";
 import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
 /** Lo que lee el listado: las empresas, sus cargos de la plataforma y sus pagos (SL-45). */
-export type EmpresasPlataformaPrismaClient = Pick<PrismaClient, "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento">;
+/** SL-36 (R37): y el estado de sus integraciones. */
+export type EmpresasPlataformaPrismaClient = Pick<
+  PrismaClient,
+  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion"
+>;
 
 /**
  * SL-32 (R29) — el listado de la pantalla «Empresas» del superadmin.
@@ -54,6 +59,36 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
       }));
+    });
+  }
+
+  /**
+   * SL-36 (design §11, R37) — el estado de cada integración de cada empresa, para SL-26.
+   *
+   * El `select` es el requisito: solo `organizacion_id`, `servicio` y `estado`. Ni los secretos, ni
+   * los datos públicos, ni el código del último error salen de la base, así que no pueden filtrarse
+   * después por un spread. Los servicios sin fila se completan como `sin_configurar` aquí, con la
+   * lista de organizaciones, para que SL-26 no tenga que saber cuántos servicios hay.
+   */
+  estadoIntegraciones(): Promise<EstadoIntegracionDeEmpresa[]> {
+    return comoPlataforma("SL-36", "estado de las integraciones de cada empresa para el superadmin", async () => {
+      const organizaciones = await this.prisma.organizacion.findMany({
+        orderBy: [{ createdAt: "desc" }, { slug: "asc" }],
+        select: { id: true },
+      });
+      if (organizaciones.length === 0) return [];
+      const filas = await this.prisma.integracion.findMany({
+        where: { organizacionId: { in: organizaciones.map((o) => o.id) } },
+        select: { organizacionId: true, servicio: true, estado: true },
+      });
+      const estadoDe = new Map(filas.map((f) => [`${f.organizacionId}|${f.servicio}`, f.estado]));
+      return organizaciones.flatMap((o) =>
+        SERVICIOS_INTEGRACION.map((servicio) => ({
+          organizacionId: o.id,
+          servicio,
+          estado: estadoDe.get(`${o.id}|${servicio}`) ?? ("sin_configurar" as const),
+        })),
+      );
     });
   }
 

@@ -122,6 +122,13 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "webhook entrante de WhatsApp: llega sin sesion; su aislamiento lo decide SL-36",
   },
   {
+    // T6.2 quita la entrada de arriba: el route delega en `WebhookWhatsappService`, y lo único que
+    // queda en plataforma es esta traducción, que solo selecciona los dos ids (R22).
+    archivo: "lib/repositories/IntegracionEnrutadoRepository.ts",
+    ficha: "SL-36",
+    motivo: "webhook de WhatsApp: traducir un numero o un resumen de token a su empresa, sin sesion (R22)",
+  },
+  {
     archivo: "app/api/cron/procesar-jobs/route.ts",
     ficha: "SL-17",
     motivo: "cron del drenador: reclama jobs de todas las empresas y corre cada uno en la suya",
