@@ -5,7 +5,9 @@
 // coordenadas ni credencial por el logger, y no usa `console.*`. Los mensajes son
 // agregados y citan la operacion, nunca el dato.
 import { z } from "zod";
-import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+// SL-36 (R42/R43): la empresa sale DEL JOB (no del contexto ambiental) para filtrar la salud de
+// la geocodificacion por empresa.
+import { empresaDelJob, type JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { IGeocodeCacheRepository } from "@/lib/interfaces/repositories/IGeocodeCacheRepository";
 import type { IOrdenGeocodeRepository } from "@/lib/interfaces/repositories/IOrdenGeocodeRepository";
 import type { IGeocodeClient } from "@/lib/interfaces/external/IGeocodeClient";
@@ -185,7 +187,9 @@ export class GeocodificacionService {
       this.logger.warn("[geocodificacion] job sin credencial configurada");
       // FICHA 401 (R2): el OTRO camino de configuracion NUESTRA que la 400 marca. Va ANTES del
       // `throw` y no puede cambiarlo (R11).
-      await this.avisarSalud(() => this.salud.registrarFalloConfig(job.id, this.now()));
+      await this.avisarSalud(() =>
+        this.salud.registrarFalloConfig(job.id, empresaDelJob(job), this.now()),
+      );
       throw new GeocodeNoConfiguradoError();
     }
 
@@ -216,7 +220,9 @@ export class GeocodificacionService {
         // tocar la red, y por tanto SIGUE FUNCIONANDO DURANTE UN CORTE. Tomarlo por prueba de
         // recuperacion reviviria jobs con el proveedor todavia caido, y cada uno quemaria sus 8
         // intentos.
-        await this.avisarSalud(() => this.salud.registrarExitoProveedor(this.now()));
+        await this.avisarSalud(() =>
+          this.salud.registrarExitoProveedor(empresaDelJob(job), this.now()),
+        );
         return;
       }
       case "sin_resultados": {
@@ -260,7 +266,9 @@ export class GeocodificacionService {
         // conoce con certeza y sin leer prosa. NO en el drenador, que corre cada minuto sobre una
         // tabla que no se purga, ni en `JobQueueService`, que sirve a nueve tipos de job. Coste:
         // CERO consultas cuando no pasa nada, ~2-3 por hora durante un corte.
-        await this.avisarSalud(() => this.salud.registrarFalloConfig(job.id, this.now()));
+        await this.avisarSalud(() =>
+          this.salud.registrarFalloConfig(job.id, empresaDelJob(job), this.now()),
+        );
         // SL-36 (R30, design §5): `REQUEST_DENIED` es la señal de que Google rechazo la clave de
         // ESTA empresa; la integracion queda en «error» para que su maestro la vuelva a escribir.
         // Cortesia como la salud: anotarlo no puede cambiar el desenlace del job.
