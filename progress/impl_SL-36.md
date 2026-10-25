@@ -269,3 +269,53 @@ otros censos/guardias (23 archivos): Test Files  1 failed | 22 passed (23) · Te
 El único archivo rojo es `historial-accion-migration.test.ts` (6 casos: policy por empresa, segunda FK
 `organizacion_id`, corpus sin usuarios sembrados). Está en `tests/baseline-rojos.json` desde 2026-10-22
 (SL-11/SL-17) y no lo toca SL-36.
+
+## R42-R43
+
+Arreglo acotado aprobado por el humano: la salud de la geocodificación separa por empresa. Commits
+825ced6 (fix) y 19f0354 (test). La política de `jobs` no se toca (SL-19).
+
+### Archivos modificados
+- `lib/repositories/GeocodeSaludRepository.ts` — `"organizacion_id" = $1` en `contarFallosConfigDesde` (R43) y en la CTE `elegibles` de `revivirFallosConfig` (R42).
+- `lib/interfaces/repositories/IGeocodeSaludRepository.ts` — `contarFallosConfigDesde(organizacionId, desde, excluirJobId)`; `RevivirFallosConfigOpts.organizacionId`.
+- `lib/interfaces/services/IGeocodeSaludService.ts` — `registrarFalloConfig(jobId, organizacionId | null, ahora)`, `registrarExitoProveedor(organizacionId | null, ahora)`; `geocodeSaludNoOp` sigue valiendo (ignora argumentos).
+- `lib/services/GeocodeSaludService.ts` — empresa `null`: fallo → no consulta, regla pura con `otros = 0` (con el umbral por defecto 3 no avisa; con umbral 1 avisa 1); éxito → devuelve 0 sin tocar la base.
+- `lib/services/GeocodificacionService.ts` — las 3 llamadas pasan `empresaDelJob(job)`.
+- `lib/interfaces/repositories/IJobRepository.ts` — recibe `JobConEmpresa` y `empresaDelJob` (antes en `JobRepository.ts`, que importa Prisma en runtime; un service no debe importarlo).
+- `lib/repositories/JobRepository.ts` — los reexporta (el cron sigue importando de ahí).
+- Tests: `tests/integration/db/geocode-recuperacion.test.ts` (empresa nueva por test en todas las semillas + bloque R42/R43), `tests/unit/services/geocode-salud-service.test.ts`, `tests/unit/services/geocodificacion-service.test.ts`.
+
+### Mapa R → test
+- R42 → integración «R42: el éxito de la empresa A revive SOLO jobs de A…», «R42: y al revés…»; unit «R42: la recuperación se pide para la empresa…», «R42: un éxito SIN empresa devuelve 0…», «R42: el `ok` del proveedor de un job de B…».
+- R43 → integración «R43: el conteo para un fallo de A cuenta SOLO los de A…»; unit «R43: el conteo se pide para la empresa…», «R43: un job SIN empresa no consulta…», «R43: sin empresa la regla pura…», «R43: `config_invalida` de un job de la empresa B…», «R43: credencial ausente en un job SIN empresa…».
+
+### Mutaciones (restauradas; `cmp` contra copia = idéntico)
+- M1 sin filtro en `contarFallosConfigDesde` → integración 1 failed | 14 passed (muere R43).
+- M2 sin filtro en `revivirFallosConfig` → integración 2 failed | 13 passed (mueren los dos R42).
+- M3 `GeocodificacionService` pasa `null` → unit 5 failed | 55 passed.
+- M4 `GeocodeSaludService` pasa empresa fija → unit 2 failed | 38 passed.
+
+### EXPLAIN (base sl36, 1 fila en `jobs`)
+Plan natural: seq scan (tabla trivial). Con `enable_seqscan=off`, ambas usan `jobs_geocodificacion_estado_updated_idx` con `organizacion_id` como filtro residual. Sin evidencia para un índice nuevo: no se añade ni migración.
+
+### Verificación
+- `npx tsc --noEmit` → exit 0.
+- `npx eslint <archivos tocados>` → 0 errores, 1 warning preexistente (`_args`, geocodificacion-service.test.ts:385).
+- vitest (con base sl36): 3 suites tocadas + guardias `geocode-salud-sin-prosa`, `marcador-fallo-config-declaracion-unica`, `envios-whatsapp-cableado`, `jobs-recurrentes-con-siembra`, `mensajero-forma-unica`, `push-cableado-unico`, `lib-no-importa-app`, `jobs-handler-por-tipo` → 11 files, 218 passed.
+
+### Comprobación independiente del implementer (mutaciones repetidas)
+```
+base:                          Test Files  1 passed (1) · Tests  15 passed (15)
+M1 sin filtro en contar:       Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)   (× R43: el conteo para un fallo de A…)
+M2 sin filtro en revivir:      Test Files  1 failed (1) · Tests  2 failed | 13 passed (15)   (× los dos R42)
+restaurado con git checkout:   árbol limpio
+```
+
+### Gate
+`./init.sh` contra `servi_logistic_sl36` (`prisma migrate deploy`: sin migraciones pendientes), con
+`NODE_OPTIONS=--max-old-space-size=8192`:
+```
+relacionados: Test Files  665 passed (665) · Tests  9514 passed | 26 skipped (9540)
+guardias:     Test Files  307 passed (307) · Tests  4198 passed | 1 skipped (4199)
+INIT_EXIT=0
+```
