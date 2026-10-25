@@ -111,7 +111,7 @@
     `fail` con `runAfter = null`.
   - _Hecho:_ verde.
 
-- [ ] **T8. La receta** (R11–R19, R24; depende de T1, T5 y T7).
+- [x] **T8. La receta** (R11–R19, R24; depende de T1, T5 y T7).
   - `scripts/demo-qa/receta.ts`, sobre las fábricas de T4/T5 y los servicios de T1. A y B con la misma
     receta, y el recorte de B (`design.md > D5.2`) detrás de una constante, apagado.
   - Solo las escrituras directas de `design.md > D5.3`.

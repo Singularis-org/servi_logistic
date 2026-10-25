@@ -117,6 +117,11 @@ export interface OpcionesReparto {
   distritos?: { central: Geo; satelite: Geo };
   /** Nombres de las zonas. Por defecto, «Central/Satelite E2E <sufijo>». */
   nombresZona?: { central: string; satelite: string };
+  /**
+   * Distritos de más que cubre cada zona, además del suyo. La demo de QA mete aquí el distrito
+   * que marca como zona especial (SL-38): sin órdenes en él, la tarifa de las demás no cambia.
+   */
+  distritosExtra?: { central?: string[]; satelite?: string[] };
 }
 
 /** Datos extra del alta de un usuario (los que pide `crearUsuario`). */
@@ -282,12 +287,13 @@ export async function crearZona(
   esCentral: boolean,
   tarifaMensajero: { cobroEntregado: number; cobroRechazado: number },
   nombre: string = `${esCentral ? "Central" : "Satelite"} E2E ${sufijo()}`,
+  distritosExtra: readonly string[] = [],
 ): Promise<ZonaReparto> {
   // El mismo esquema del borde que la action: pone los `default` que el servicio espera.
   const input = crearZonaSchema.parse({
     nombre,
     cobroVehiculo: false,
-    distritoIds: [geo.distritoId],
+    distritoIds: [geo.distritoId, ...distritosExtra],
     esCentral,
     tarifas: [tarifaMensajero],
     sinpeNumero: SINPE_BODEGA.numero,
@@ -330,8 +336,24 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
       ? [opts.distritos.central, opts.distritos.satelite]
       : await dosDistritos(deps.lector());
     const tarifaMensajero = opts.tarifaMensajero ?? TARIFA_MENSAJERO_POR_DEFECTO;
-    const zonaCentral = await crearZona(empresa, maestro, geoCentral, true, tarifaMensajero, opts.nombresZona?.central);
-    const zonaSatelite = await crearZona(empresa, maestro, geoSatelite, false, tarifaMensajero, opts.nombresZona?.satelite);
+    const zonaCentral = await crearZona(
+      empresa,
+      maestro,
+      geoCentral,
+      true,
+      tarifaMensajero,
+      opts.nombresZona?.central,
+      opts.distritosExtra?.central,
+    );
+    const zonaSatelite = await crearZona(
+      empresa,
+      maestro,
+      geoSatelite,
+      false,
+      tarifaMensajero,
+      opts.nombresZona?.satelite,
+      opts.distritosExtra?.satelite,
+    );
 
     const tienda = await deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true });
     const adminSatelite = await deps.altas.usuario(empresa, "admin-satelite", "adminSatelite", { zonaId: zonaSatelite.id });

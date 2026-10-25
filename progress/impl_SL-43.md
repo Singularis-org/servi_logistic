@@ -100,6 +100,56 @@ Desviaciones de T6:
 - **Para el reviewer (D12):** el borrado genérico borra `wallet_movimiento` como dueño, y la guardia
   de SL-45 no lo detecta.
 
+## T8 — La receta (2026-10-25)
+
+`scripts/demo-qa/receta.ts` (`crearEmpresaDemo`, `comprobarEmpresaDemo`, `ResumenEmpresaDemo`).
+`tests/fabricas/escenarios/reparto.ts` recibe un parámetro aditivo (`distritosExtra`) para la zona
+especial.
+- E2E repetido tras el cambio: reparto 15 passed (41.5s) y dinero 28 passed (54.0s).
+
+**Corridas locales** (sl43, marca `entorno_marca`, doble de Storage). Fueron dos seguidas, la segunda
+borró la primera, y las dos salieron con exit 0:
+- **Volumen:** por empresa, 43 órdenes y 13 usuarios.
+  - 12 usuarios `demo-qa-<x>-<perfil>@example.test`.
+  - El usuario de la API key lo crea `ApiKeyService` (`apikey+…@apikey.invalid`).
+- **Estados:** `entregado` 3, `en_reparto` 4 y los otros 18 estados, 2 cada uno. No falta ninguno.
+- **Jobs:** 43 `geocodificacion` cerrados con `complete` y 27 `optimizacion_ruta` cerrados sin
+  ejecutar. Ningún `push_web` (en local no hay VAPID) y ningún tipo no esperado.
+- **Comprobaciones:** 0 órdenes no asignables por el gate, 0 filas en las 4 tablas de integraciones y
+  0 llamadas a los emisores de correo (espía).
+- **Tiempos:**
+
+| Corrida | Borrado | A | B | Total |
+|---|---|---|---|---|
+| 1 | 0,66 s | 6,4 s | 5,3 s | 11,7 s |
+| 2 | 0,57 s | 6,4 s | 5,1 s | 11,5 s |
+| recorte de B (prueba) | — | — | 3,3 s | — |
+
+**Decisiones y desviaciones de T8:**
+- **B1 `novedad_interna`: pendiente de confirmar por Carlos.**
+  - Se llama a `CorteDiarioService.ejecutarCorte(ahora + 24 h)` montado como en su route y dentro de
+    `conEmpresa(<demo>)`, nunca a la ruta del cron.
+  - Va detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA = true`.
+  - La receta comprueba que el corte creó exactamente 1 vencido y que solo cambiaron sus órdenes.
+- **R14:** no existe una pantalla de alta individual (`OrdenService.crear` se borró el 2026-08-07).
+  - La pantalla es la subida de archivo (`procesarEnChunks` → `handleCargaMasivaChunk`).
+  - La carga masiva es `cargarMasiva`. En los datos **no se distinguen**: las dos tienen origen
+    `carga_masiva`.
+- **R12:** el usuario `api` no termina en `@example.test` porque `ApiKeyService.generar` crea el suyo.
+  Su secreto solo vive en memoria: 0 coincidencias en los logs.
+- **R17, cierre de bodega:** `CierresBodegaAdminService.aprobarCierreBodega` choca con el CHECK
+  `cierre_bodega_conciliacion_coherente`. **Posible bug de la app, para el leader.** La receta usa
+  `ConciliacionSatelitesService.marcarRecibida`, el camino de la UI actual (ficha 431).
+- **Montos:** solo cobran la entrega mixta (8.000), la satélite, los incidentes y las órdenes por API.
+  El abono necesita deuda de la tienda, y el pago al mensajero es `min(P, E)`: por eso quedó en 500.
+- El pago mixto usa transferencia en vez del método local, para no meter un literal de país.
+- Mensajeros añadidos a D7: recolector, corte, cierre-rechazado, cierre-pendiente y reposo.
+- **Excepción de cobro:** 100 por orden, antes de crear órdenes, con un actor superadmin sintético
+  (`usuarioId` «demo-qa»; el servicio no lo escribe).
+- **Pago a la plataforma:** `registrarEgreso` de tipo `pago_plataforma` por 1.000.
+- Escrituras directas: solo las de D5.3 (contraseña del maestro y `contrasena_definida_at`,
+  `es_demo` con 1 fila exacta, coordenadas y cierre de jobs).
+
 ## T1 — Inventario de la receta
 
 > Solo lectura. Leído con Grep/Read: el MCP del grafo no tiene proyecto para este worktree (lo dice
