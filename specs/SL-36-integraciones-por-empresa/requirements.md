@@ -207,6 +207,19 @@ Vocabulario de este archivo:
 - **R41.** El sistema NO DEBE leer en código de producción ninguna de las variables de credencial
   retiradas (design §9.3), y `.env.example` NO DEBE declararlas.
 
+### K. Salud de la geocodificación por empresa (hallazgo en QA, 2026-10-25)
+
+> La tabla `jobs` tiene política abierta (`jobs_abierta`) hasta SL-19, así que la RLS no separa estas
+> consultas: el filtro por empresa tiene que ir en el SQL. Antes de SL-36 la clave era única y daba igual.
+
+- **R42.** CUANDO una geocodificación de una empresa salga bien y se recuperen jobs muertos por
+  configuración (`revivirFallosConfig`), el sistema DEBE revivir SOLO jobs de esa misma empresa
+  (`organizacion_id` del job que tuvo éxito). Un job sin empresa (`organizacion_id` NULL) no se revive
+  por el éxito de ninguna empresa.
+- **R43.** CUANDO se cuente cuántos fallos de configuración hubo para decidir y redactar el aviso al
+  maestro (`contarFallosConfigDesde`), el sistema DEBE contar SOLO los jobs de la empresa del job que
+  falló, de modo que el umbral y el número «afectados» nunca incluyan órdenes de otra empresa.
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | Requisitos |
