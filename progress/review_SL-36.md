@@ -247,3 +247,30 @@ La base es `servi_logistic_sl36`, con la URL reescrita sin imprimirla, igual que
 - **m7 (menor).** `progress/impl_SL-36.md > R42-R43 > Verificación` no registra una corrida de `e2e/dos-empresas-humo.spec.ts` después de este cambio.
   - `docs/checkpoints-proyecto.md > Flujos críticos` pide correrlo cuando se toca una entrada de job.
   - El E2E no ejercita este camino, y el aislamiento ya lo prueba la integración, así que no bloquea. Lo cubre el CI del PR.
+
+## Chore m3 (acotada a `048bf0a..dd49a4e`)
+
+**Veredicto: OK.** No hay bloqueantes y quedan 2 menores (m8, m9). El chore quita `google-auth-library` y `@vercel/oidc` de `package.json`, `pnpm-lock.yaml` y `docs/dependencias.md`. Fuera de eso solo cambian comentarios.
+
+### Verificación
+
+1. **Ninguna de las dos se importa ni se carga.**
+   - `git grep` de `google-auth-library`, `@vercel/oidc`, `vercel/oidc`, `GoogleAuth`, `getVercelOidcToken` y `VERCEL_OIDC` no da ninguna aparición de código. Busqué en todo el árbol menos `progress/` y `specs/`, así que entran `lib/`, `app/`, `tests/`, `e2e/`, `scripts/`, `next.config.ts` y `vercel.json`.
+   - Lo único que queda es el comentario `lib/auth/google-sa-token.ts:18`, que dice que esa librería NO se añade: sigue siendo cierto.
+   - No hay `require` ni `import()` con nombre en texto que las cargue. `next.config.ts` no tiene `serverExternalPackages` con ellas.
+2. **Ninguna es transitiva necesaria en tiempo de ejecución.**
+   - `google-auth-library@11.0.2` sigue en el lockfile como hija de `google-gax@6.0.2` ← `@googlemaps/routeoptimization@0.7.0` (`pnpm-lock.yaml:5636-5639`, `:8104`, `:8120`). Es otra versión (la quitada era la `10.9.1` directa) y nadie en el código la pide por nombre.
+   - `@vercel/oidc` no queda en el lockfile (0 apariciones). Con ella se fueron sus hijas `@vercel/cli-*`, `jose@5`, `xdg-*` y `os-paths`, y `gcp-metadata@8` y `google-logging-utils@1`, que colgaban de la 10.9.1. Ninguna aparece en el código.
+3. **Lockfile y docs coherentes.**
+   - `pnpm install --lockfile-only --frozen-lockfile --ignore-scripts` sale con exit 0: el lockfile casa con `package.json`.
+   - En `importers` solo desaparecen las dos entradas.
+   - `node scripts/verificar-dependencias.mjs` → «56 declaradas, todas presentes».
+   - `docs/dependencias.md` pierde exactamente sus dos filas.
+   - `guard-dependencias-aprobadas` y `api-key-dependencias-usuario` están en verde. `dependencias-declaradas-presentes` sigue con sus 4 rojos, que están en `tests/baseline-rojos.json` y no son hallazgo.
+4. **Los comentarios no cambian comportamiento.** Los tres hunks (`lib/services/OptimizacionRutaService.ts:119-120`, `lib/logging/optimizer-log.ts:80`, `tests/unit/services/optimizacion-ruta-service.test.ts:569`) son solo líneas `//` o `*`. `optimizacion-ruta-service` da 40/40 y `tsc --noEmit` sale con exit 0.
+5. El rojo del validador de features por el `feature_list.json` local no es hallazgo, como indicó el leader. `git status --porcelain` quedó vacío.
+
+### Hallazgos
+
+- **m8 (menor).** `lib/logging/optimizer-log.ts:18` sigue citando «el token OIDC de Vercel» entre lo que no se imprime. El flujo WIF ya no existe. No afecta a nada, pero es el mismo tipo de comentario obsoleto que este chore limpió en la línea 80.
+- **m9 (menor, para que decida el humano).** `@googlemaps/routeoptimization` (`package.json:31`, `docs/dependencias.md:25`) tampoco se importa en ningún sitio: `lib/clients/google-route-optimization.ts` llama a la API REST con `fetch`. Es además lo único que mantiene `google-auth-library@11` y `google-gax` en el árbol. Puede ir en otro chore como este, con aprobación humana.
