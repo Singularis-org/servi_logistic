@@ -150,6 +150,59 @@ borró la primera, y las dos salieron con exit 0:
 - Escrituras directas: solo las de D5.3 (contraseña del maestro y `contrasena_definida_at`,
   `es_demo` con 1 fila exacta, coordenadas y cierre de jobs).
 
+## T9 — Entrypoint, candado, tope, salida y build (2026-10-25)
+
+Archivos:
+- nuevos: `scripts/demo-qa.ts` (`ejecutarDemo(parciales: Partial<EfectosDemo>)` →
+  `{ codigo, topeVencido }`, `TOPE_MS` = 15 min), `scripts/demo-qa/candado.ts`,
+  `scripts/demo-qa/salida.ts` y `tests/unit/scripts/demo-qa-candado.test.ts`;
+- modificados: `package.json` (`build` y `demo:qa`), `.env.example`, `demo-qa-build.test.ts` y
+  `demo-qa-guardia.test.ts`.
+
+Tests: `pnpm exec vitest run tests/unit/scripts/` da 11 archivos y 154 passed (`demo-qa-build` 33,
+`demo-qa-guardia` 45, `demo-qa-candado` 6).
+
+| Mutación | Test que cae |
+|---|---|
+| 11: fallo de la receta convertido en aviso con salida 0 | 5 tests de R31 («fallo de la receta → salir(1)…», y los de R5, R3, R23 y R15 por el entrypoint) |
+| conectar antes de decidir | los 5 «OMITIDA… sin conectar» (R30) y 8 de la guardia (R2/R4/R25) |
+| sin el tope | los 2 tests de R33 |
+
+**Build local (R30):**
+- Con `VERCEL_ENV` sin definir sale `[migrate] migraciones OMITIDAS — build local…`, después
+  `[demo-qa] OMITIDA — build local (sin VERCEL_ENV): usa pnpm demo:qa`, y `next build` compila con
+  `BUILD_EXIT=0`.
+- Con `DIRECT_URL`/`DATABASE_URL` en `127.0.0.1:1` (puerto cerrado), la cadena migrate → demo omite
+  los dos pasos con `CADENA_EXIT=0` en 3,7 s, así que no conecta.
+
+**Corrida simulada `--build`** con `VERCEL_ENV=preview`, `MIGRATE_ON_PREVIEW=true` y
+`DEMO_ON_PREVIEW=true`, contra sl43, el doble de Storage y una contraseña generada en el momento:
+- **Sin la fila de `entorno_marca`:** sale 1, con «la base no es la de QA…» y la línea de desbloqueo.
+- **1.ª corrida con la marca:** exit 0. La demo tarda 13,5 s (A 7,0 s, B 5,5 s) y el proceso
+  entero, 15,0 s.
+- **2.ª corrida con la marca:** exit 0 en 14,0 s. Borró 2 empresas, 1.252 filas y 48 archivos.
+- **Salida:**
+  - la tabla `empresa · perfil · correo`, con 13 perfiles por empresa;
+  - los 20 estados en cada empresa;
+  - los jobs: 86 `geocodificacion` cerrados como hechos y 54 `optimizacion_ruta` sin ejecutar;
+  - la línea del corte de mañana.
+- **Sin secretos:** en la salida no aparecen la contraseña, `postgresql://`, la clave ni ningún hash.
+- **Al terminar:** 0 empresas demo y 0 filas en `entorno_marca`.
+
+**Desviación:** `EXCEPCIONES_DE_PLATAFORMA` no hizo falta.
+- Ningún archivo de `scripts/` llama a `comoPlataforma`: el alta pasa por `tests/fabricas/`, que la
+  guardia `plataforma-solo-en-lista` no recorre (7/7 en verde).
+- El design y la task la pedían. **Para el reviewer.**
+
+## T11 — Documentación (2026-10-25)
+
+- README: sección «Datos de demostración en QA (SL-43)», con cuándo corre, las variables, las tres
+  capas, la marca con su `INSERT`, el orden del primer despliegue, qué se pierde, cómo entrar y cómo
+  desbloquear `dev`.
+- `docs/verification.md`:
+  - en «El OTP», la excepción de Carlos del 2026-10-25;
+  - en «Base de datos de test», la marca del test de la demo y su limpieza en `afterAll`.
+
 ## T1 — Inventario de la receta
 
 > Solo lectura. Leído con Grep/Read: el MCP del grafo no tiene proyecto para este worktree (lo dice

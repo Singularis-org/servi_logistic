@@ -118,7 +118,7 @@
   - _Hecho:_ la receta corre entera contra una base local desechable con la marca de QA y el doble de
     Storage. La comprobación final de D6.3 sale limpia.
 
-- [ ] **T9. Entrypoint, candado, tope, salida y build** (R1, R5, R25, R26, R29–R33; depende de T3, T6,
+- [x] **T9. Entrypoint, candado, tope, salida y build** (R1, R5, R25, R26, R29–R33; depende de T3, T6,
   T7 y T8).
   - `scripts/demo-qa.ts` (`ejecutarDemo` con efectos inyectables, los modos `--build` y a mano, el
     tope de 15 min), `scripts/demo-qa/candado.ts` y `scripts/demo-qa/salida.ts`.
@@ -145,7 +145,7 @@
     - las mutaciones 1–8 de D9.3 dan rojo, una a una, anotadas con su salida;
     - el mapa `R<n> → test` completo en `progress/impl_SL-43.md`.
 
-- [ ] **T11. Documentación** `[P]` (depende de T9).
+- [x] **T11. Documentación** `[P]` (depende de T9).
   - README, sección «Datos de demostración en QA»:
     - que corre en cada despliegue de `dev` a QA y que nunca en producción;
     - las variables de `design.md > D10.5`;

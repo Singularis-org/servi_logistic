@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { ejecutarDemo, type EfectosDemo } from "@/scripts/demo-qa";
 import {
   comprobarMarcaDeQa,
   validarEntornoDemo,
@@ -11,7 +12,7 @@ import {
 
 // SL-43 (design §2.1–§2.3; R2, R3, R4, R5, R25) — la guardia anti-producción de la demo de QA. Las
 // capas 1 y 2 y la contraseña son puras; la capa 3 se prueba con un doble del cliente.
-// La orquestación (con la guardia en rojo no se abre conexión) la añade T9 con `ejecutarDemo`.
+// Al final, `ejecutarDemo` con la guardia en rojo: no se abre conexión y la salida no trae secretos.
 
 const REF = "abcdefghijklmnopqrst";
 const OTRO_REF = "zyxwvutsrqponmlkjihg";
@@ -196,5 +197,59 @@ describe("comprobarMarcaDeQa", () => {
       expect(r.motivo).toContain("08006");
       for (const p of PROHIBIDOS) expect(r.motivo).not.toContain(p);
     }
+  });
+});
+
+describe("ejecutarDemo con la guardia en rojo — no se abre ninguna conexión (R2, R4, R25, R5)", () => {
+  async function correr(env: EnvDemo, argumentos: string[] = []) {
+    const lineas: string[] = [];
+    const conectar = vi.fn();
+    const cargarPasos = vi.fn();
+    const salir = vi.fn();
+    const efectos: Partial<EfectosDemo> = {
+      argumentos,
+      env,
+      conectar,
+      cargarPasos,
+      salir,
+      salida: { log: (l) => lineas.push(l), error: (l) => lineas.push(l) },
+      armarTope: () => ({ vencido: new Promise<void>(() => {}), desarmar: () => {} }),
+    };
+    const r = await ejecutarDemo(efectos);
+    return { r, lineas, conectar, cargarPasos, salir };
+  }
+
+  it.each<[string, EnvDemo]>([
+    ["VERCEL_ENV=production, a mano (R2)", { ...REMOTO, VERCEL_ENV: "production" }],
+    ["DIRECT_URL y DATABASE_URL de refs distintos (R4)", { ...REMOTO, DATABASE_URL: poolerTx(OTRO_REF) }],
+    ["Storage de otro proyecto (R4)", { ...REMOTO, SUPABASE_URL: storage(OTRO_REF) }],
+    ["base local y Storage remoto (R4)", { ...LOCAL, SUPABASE_URL: storage(REF) }],
+    ["sin DEMO_QA_CONTRASENA (R25)", { ...REMOTO, DEMO_QA_CONTRASENA: undefined }],
+    ["DEMO_QA_CONTRASENA débil (R25)", { ...REMOTO, DEMO_QA_CONTRASENA: "demoqa2026" }],
+  ])("%s → salida 1, el doble de conexión sin llamar y sin secretos en la salida", async (_n, env) => {
+    const { r, lineas, conectar, cargarPasos, salir } = await correr(env);
+    expect(r.codigo).toBe(1);
+    expect(salir).toHaveBeenCalledWith(1);
+    expect(conectar).not.toHaveBeenCalled();
+    expect(cargarPasos).not.toHaveBeenCalled();
+    const texto = lineas.join("\n");
+    expect(texto).toMatch(/NO se corre la demo/);
+    for (const p of PROHIBIDOS) expect(texto).not.toContain(p);
+    if (env.DEMO_QA_CONTRASENA) expect(texto).not.toContain(env.DEMO_QA_CONTRASENA);
+  });
+
+  it("en --build con producción la decisión omite antes que la guardia: 0 y sin conectar (R2, R30)", async () => {
+    const { r, conectar } = await correr({ ...REMOTO, VERCEL_ENV: "production", MIGRATE_ON_PREVIEW: "true", DEMO_ON_PREVIEW: "true" }, ["--build"]);
+    expect(r.codigo).toBe(0);
+    expect(conectar).not.toHaveBeenCalled();
+  });
+
+  it("en --build en un preview de QA con la guardia en rojo → 1 sin conectar (R31, R4)", async () => {
+    const env = { ...REMOTO, MIGRATE_ON_PREVIEW: "true", DEMO_ON_PREVIEW: "true", SUPABASE_URL: storage(OTRO_REF) };
+    const { r, lineas, conectar } = await correr(env, ["--build"]);
+    expect(r.codigo).toBe(1);
+    expect(conectar).not.toHaveBeenCalled();
+    expect(lineas.join("\n")).toMatch(/quita DEMO_ON_PREVIEW/);
+    for (const p of PROHIBIDOS) expect(lineas.join("\n")).not.toContain(p);
   });
 });
