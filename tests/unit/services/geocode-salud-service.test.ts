@@ -411,11 +411,13 @@ describe("SL-36 R42/R43 — la salud se evalúa por EMPRESA del job", () => {
     expect(d.avisos).toEqual([]);
   });
 
-  it("R43: sin empresa la regla pura decide con el job en curso solo: con umbral 1, avisa 1", async () => {
+  it("R43: sin empresa no consulta ni avisa NI con umbral 1 (no hay empresa a la que avisar)", async () => {
+    // Con umbral 1 el job en curso solo ya bastaria para la regla pura: si avisa, el return
+    // temprano por `organizacionId === null` se perdio.
     const d = build({ otros: 9, config: { GEOCODE_CAIDA_JOBS_MINIMOS: 1 } });
     await d.service.registrarFalloConfig("job-1", null, AHORA);
     expect(d.contar).not.toHaveBeenCalled();
-    expect(d.avisos).toEqual([{ afectados: 1, diaCR: "2026-09-08" }]);
+    expect(d.avisos).toEqual([]);
   });
 
   it("R42: la recuperación se pide para la empresa del job que tuvo éxito", async () => {

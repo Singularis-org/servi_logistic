@@ -17,8 +17,9 @@ export interface IGeocodeSaludService {
    * NUNCA lanza (R11): el desenlace del job en curso no puede depender de que el aviso salga.
    *
    * SL-36 (R43) — `organizacionId` es la empresa DEL JOB en curso (`empresaDelJob(job)`), nunca
-   * contexto ambiental: solo se cuentan fallos de esa empresa. Con `null` (job sin empresa) no se
-   * consulta la base y la regla pura se evalua con el job en curso solo (`otros = 0`).
+   * contexto ambiental: solo se cuentan fallos de esa empresa. Con `null` (job sin empresa) vuelve
+   * de inmediato, con cualquier umbral: no consulta la base, no avisa y no loguea — no hay empresa
+   * a la que avisar (`notificacion.organizacion_id` es NOT NULL).
    */
   registrarFalloConfig(jobId: string, organizacionId: string | null, ahora: Date): Promise<void>;
 

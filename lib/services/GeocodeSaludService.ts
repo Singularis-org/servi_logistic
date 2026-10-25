@@ -71,17 +71,15 @@ export class GeocodeSaludService implements IGeocodeSaludService {
     organizacionId: string | null,
     ahora: Date,
   ): Promise<void> {
+    // SL-36 (R43) — se cuentan SOLO fallos de la empresa del job en curso. Un job sin empresa
+    // termina aqui, con cualquier umbral: no se consulta la base (el filtro `= $1` tampoco casaria
+    // con NULL), no se avisa y no se loguea. No hay empresa a la que avisar —
+    // `notificacion.organizacion_id` es NOT NULL— y un aviso sin destinatario no es un aviso.
+    if (organizacionId === null) return;
+
     try {
       const desde = new Date(ahora.getTime() - this.config.GEOCODE_CAIDA_VENTANA_MIN * MS_POR_MINUTO);
-      // SL-36 (R43) — se cuentan SOLO fallos de la empresa del job en curso. Un job sin empresa no
-      // tiene con quien sumarse: no se consulta la base (el filtro `= $1` tampoco casaria con NULL)
-      // y la regla pura decide con el job en curso solo, `otros = 0`. Con el umbral por defecto
-      // (3) eso no avisa; solo avisaria si alguien configurara el umbral en 1, y entonces es
-      // exactamente lo que ese umbral pide.
-      const otros =
-        organizacionId === null
-          ? 0
-          : await this.repo.contarFallosConfigDesde(organizacionId, desde, jobId);
+      const otros = await this.repo.contarFallosConfigDesde(organizacionId, desde, jobId);
 
       // R4: sin umbral no hay aviso. Un fallo de configuracion AISLADO no emite nada — el marcador
       // cubre tambien «falta la credencial», que aparece de forma legitima en un despliegue.
