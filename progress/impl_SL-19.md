@@ -129,3 +129,88 @@ esperado 77 y salido en rojo.
 
 **Veredicto:** T1–T4 hechas; la cola `jobs` queda separada por empresa en la base, el drenador sigue
 reclamando todo en plataforma, y cada test clave tiene su mutación roja anotada.
+
+## Tanda B — T5 a T9: Storage por empresa (backend_dev, 2026-10-25)
+
+Commits: `36d0517` (T5), `2de55f2` (T6), `78cfa83` (T7), `3e4dbb9` (T8), `60f443b` (T9).
+
+### Archivos
+
+- Nuevo: `lib/storage/carpeta-de-empresa.ts` — `RutaDeAlmacenInvalida`, `empresaDelAlmacen` (regla de
+  `empresaEnCurso`, resolutor de sesión con import perezoso como `prisma-client.ts`), `rutaEnCarpeta`,
+  `rutaRelativa`.
+- Adaptadores: `lib/storage/{SupabaseFileStorage,SupabaseSignedUrlProvider,SupabaseAlmacenDescargas,SupabaseAlmacenEnviosWhatsapp}.ts`
+  (design §3.2; `createSignedUrls` re-indexa por la ruta relativa, R19). Firmas y composition roots sin cambios.
+- Borrado: `lib/storage/getFile.ts` (Grep: sin usos; solo lo citaba un comentario de `buckets.ts`, actualizado).
+- Comentario de las cuatro interfaces de `lib/interfaces/external/` (ruta relativa a la carpeta).
+- Cron: `app/api/cron/purga-descargas/route.ts` con `paraCadaEmpresa` y `deps.empresas` (design §3.4).
+- Excepciones: `EXCEPCIONES_DE_STORAGE` (vacía) en `lib/db/excepciones-aislamiento.ts`.
+- Tests nuevos: `tests/unit/storage/carpeta-de-empresa.test.ts`,
+  `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts`,
+  `tests/integration/storage/storage-dos-empresas.test.ts`.
+- Tests ajustados: los cuatro de `tests/unit/storage/`, `tests/unit/e2e/storage-falso.test.ts` (su caso
+  «clases reales» corre en `conEmpresa` y afirma que el objeto vive en la carpeta),
+  `tests/unit/api/cron-purga-descargas.test.ts`, `tests/unit/cron/crons-sin-empresas.test.ts`.
+
+### Mapa R → test (tanda B)
+
+| R | Test |
+|---|---|
+| R15 | `tests/integration/storage/storage-dos-empresas.test.ts` › «SupabaseFileStorage: devuelve la ruta relativa y el objeto vive en <A>/<ruta>, no en la raiz», «SupabaseAlmacenEnviosWhatsapp: <envioId>/<ejecucionId>.pdf dentro de la carpeta de A», «SupabaseAlmacenDescargas: tmp/<uuid>.json.gz dentro de la carpeta de A, y A la firma»; unit: `supabase-file-storage.test.ts` › «sube a la carpeta de la empresa del bucket privado…» |
+| R16 | `storage-dos-empresas.test.ts` › «firmar (uno y en lote), descargar y borrar desde B no alcanzan el objeto de A, que queda intacto», «leer, firmar y borrar un PDF de envios de A desde B…», «firmar desde B una descarga temporal de A falla», «con la misma ruta, cada empresa ve solo su objeto», «firmar o subir `../<A>/<ruta>` desde B no sale de la carpeta de B…» |
+| R17 | `tests/unit/storage/carpeta-de-empresa.test.ts` › «R17 — una ruta invalida…» (8 casos: vacía, `/` inicial, `\`, segmento vacío en medio y al final, `.`, `..`, solo `..`); en cada adaptador › «SL-19 R17/R18: ruta invalida o sin empresa ⇒ falla sin llamar a Storage» |
+| R18 | `carpeta-de-empresa.test.ts` › «con empresa en contexto…», «en plataforma: EmpresaNoResuelta…», «sin contexto y con sesion…», «sin contexto y sin sesion…», «…el resolutor real (perezoso) no da empresa»; `almacen-descargas.test.ts` › «guardar, firmar y purgar fuera de una empresa fallan con EmpresaNoResuelta» |
+| R19 | `storage-dos-empresas.test.ts` › «las claves son las rutas relativas pedidas; la que falta se omite; cada URL sirve su objeto»; `supabase-signed-url-provider.test.ts` › «firma varias URLs en batch y devuelve mapa path relativo->url…», «SL-19 R19: una entrada que Storage devuelve fuera de la carpeta se descarta» |
+| R20 | `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts` › «todo archivo fuera de lib/storage que accede a Storage está en EXCEPCIONES_DE_STORAGE», «cada excepción trae ficha SL-<n>, motivo y un archivo que existe…» y sus autocomprobaciones |
+| R21 | `tests/unit/api/cron-purga-descargas.test.ts` › «dos empresas: purga lo vencido de cada carpeta…», «el fallo de una empresa no frena a la otra…», «sin empresas: 200 en cero, sin tocar Storage»; `tests/unit/cron/crons-sin-empresas.test.ts` › caso `purga-descargas` (3 tests); `storage-dos-empresas.test.ts` › «purga de descargas en A: borra lo vencido de <A>/tmp y deja <B>/tmp y la raiz» |
+| R22 | `storage-dos-empresas.test.ts` › «purga de PDF de cargas (SupabaseFileStorage.remove en etiquetas)…», «mantenimiento de envios (borrar)…»; `supabase-almacen-envios-whatsapp.test.ts` › «SL-19 R22: borra solo dentro de la carpeta de la empresa en curso» |
+
+### Mutaciones (tanda B)
+
+Cada una aplicada a mano y revertida justo después desde una copia (`cmp` / `git diff --stat` vacío).
+
+| # | Mutación | Test | Con la mutación | Sin ella |
+|---|---|---|---|---|
+| M9 | `validarRuta` acepta `..` | `carpeta-de-empresa` | ROJO 3 de 16 (`segmento ..`, `solo ..`, `rutaRelativa…`) | verde 16/16 |
+| M10 | `empresaDelAlmacen` en plataforma devuelve una empresa en vez de lanzar | `carpeta-de-empresa` | ROJO 1 de 16 («en plataforma…») | verde 16/16 |
+| M11.a | `rutaEnCarpeta` devuelve la ruta sin carpeta (la de §6) | `storage-dos-empresas` | ROJO 12/12 (la subida ya falla: la respuesta queda fuera de la carpeta) | verde 12/12 |
+| M11.b | `rutaEnCarpeta` sin carpeta **y** `rutaRelativa` identidad (un mundo coherente sin carpetas) | `storage-dos-empresas` | ROJO 11 de 12: B firma y lee el `x` de A («promise resolved … instead of rejecting») y B borra el de A. Solo R19 sigue verde, que no depende de la carpeta | verde 12/12 |
+| M12 | `createSignedUrls` indexa por `entry.path` (sin re-indexar) | `storage-dos-empresas` + `supabase-signed-url-provider` | ROJO 4 de 21 (R19 en los dos) | verde 21/21 |
+| M13 | purga-descargas sin `paraCadaEmpresa` (`return corrida()` siempre) | `cron-purga-descargas` + `crons-sin-empresas` | ROJO 7 de 54; la respuesta es 500 con `EmpresaNoResuelta: … Storage.descargas:purgar` | verde 54/54 |
+| M14 | archivo real `lib/services/intruso-sl19.ts` con `createServerClient().storage.from(…)` | `storage-solo-por-adaptador.guardia` | ROJO 1 de 7, nombra `lib/services/intruso-sl19.ts` | verde 7/7 (archivo borrado) |
+| M15 | `EXCEPCIONES_DE_STORAGE` con una entrada de ficha `SL19` y archivo inexistente | `storage-solo-por-adaptador.guardia` | ROJO 1 de 7 («ficha «SL19» no es SL-<n>», «el archivo no existe») | verde 7/7 |
+
+### Desviaciones y hallazgos
+
+- **Respuesta de `purga-descargas`:** design §7 dice que mantiene `{ objetosBorrados, quedaPendiente }`.
+  Se mantienen esos dos campos y, por el patrón de `purga-pdf-cargas` y de `crons-sin-empresas.test.ts`
+  (que lo exige a todos los crons), se añade `empresas: { procesadas, fallidas }` (ids de empresa, sin
+  rutas ni PII). Con `service` inyectado y sin `empresas` sigue una sola corrida con el cuerpo de antes
+  (contrato de los tests de controller previos, igual que `purga-pdf-cargas`).
+- **`SupabaseFileStorage.remove`** sigue sin propagar el error del SDK, pero ahora sí lanza
+  `EmpresaNoResuelta` / `RutaDeAlmacenInvalida` antes de llamar a Storage (R17, R18).
+- **Mutación de T9:** la de §6 tal cual (M11.a) pone todo en rojo porque la subida ya falla. Para medir
+  justo «B firma y descarga el `x` de A» se anota también M11.b, que deja la subida funcionando.
+- **E2E (T11, no tocado):** `e2e/_escenarios/reparto.ts` (l. 264-265) y `cierres.ts` (l. 62, 84)
+  construyen `SupabaseFileStorage` / `SupabaseSignedUrlProvider`; compilan (typecheck verde), pero si
+  operan fuera de `conEmpresa` fallarán con `EmpresaNoResuelta` al ejecutarse.
+- **Vitest y CI:** `vitest.config.ts` incluye `tests/**/*.test.ts` y el gate de CI corre `vitest run`
+  sin filtro de rutas, así que `tests/integration/storage/` entra. No necesita base.
+- No apareció ningún acceso a `.storage` fuera de `lib/storage/` en `app/`, `lib/` ni `scripts/`.
+
+### Verificación (salida real)
+
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`) → `TC_EXIT=0`.
+- `pnpm run lint` → `✖ 231 problems (0 errors, 231 warnings)`, ninguno en archivos de esta tanda; `LINT_EXIT=0`.
+- `pnpm run test:guardias` → `Test Files 1 failed | 306 passed | 2 skipped (309)`, `Tests 4 failed | 4208 passed | 20 skipped`.
+  El rojo es `dependencias-declaradas-presentes.guardia.test.ts`, en `tests/baseline-rojos.json` (el mismo de la tanda A).
+- Tests de la tanda: `vitest run tests/unit/storage tests/unit/e2e/storage-falso.test.ts tests/integration/storage
+  tests/unit/api/cron-purga-descargas.test.ts tests/unit/cron/crons-sin-empresas.test.ts
+  tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts` → `Test Files 10 passed (10)`, `Tests 145 passed (145)`.
+- `vitest related --run` de los 6 archivos de `lib/storage/` contra `servi_logistic_sl19` →
+  `Test Files 16 failed | 319 passed (335)`. Los 16 están en `tests/baseline-rojos.json`; fallan por base
+  sin sembrar o por `EmpresaNoResuelta` de Prisma (`WalletMovimiento`, `AporteCapital`, `CierreDia`), ninguno de Storage.
+- `vitest related --run app/api/cron/purga-descargas/route.ts` → `Test Files 2 passed (2)`, `Tests 54 passed (54)`.
+
+**Veredicto:** T5–T9 hechas; cada archivo de Storage vive en la carpeta de su empresa, desde otra empresa
+no se alcanza, la purga de descargas corre por empresa y el gate vigila que nadie se salte los adaptadores.
