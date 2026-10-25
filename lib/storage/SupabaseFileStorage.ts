@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/client";
 import { postulacionConfig } from "@/lib/config/postulacion";
 import type { IFileStorage, UploadInput } from "@/lib/interfaces/external/IFileStorage";
+import { empresaDelAlmacen, rutaEnCarpeta, rutaRelativa } from "@/lib/storage/carpeta-de-empresa";
 
 // Feature 21 — implementacion de IFileStorage sobre Supabase Storage (A2). Sube
 // al bucket PRIVADO `mensajero-docs` con el service role (nunca desde el cliente
@@ -9,6 +10,9 @@ import type { IFileStorage, UploadInput } from "@/lib/interfaces/external/IFileS
 //
 // El cliente Storage se inyecta (o se construye con createServerClient) para
 // poder testear sin red. No hardcodea URL/keys: viven en env via createServerClient.
+//
+// SL-19 (design §3.2; R15–R18, R22): toda ruta es relativa a la carpeta de la empresa en curso
+// (`<organizacion_id>/<ruta>`). Quien sube recibe la ruta de siempre, y es la que guarda la base.
 
 /** Superficie minima del cliente Storage de Supabase que usamos (testeable). */
 export interface StorageClientLike {
@@ -44,20 +48,26 @@ export class SupabaseFileStorage implements IFileStorage {
   }
 
   async upload(input: UploadInput): Promise<string> {
-    const { data, error } = await this.storage.from(this.bucket).upload(input.path, input.bytes, {
+    const org = await empresaDelAlmacen(this.bucket, "subir");
+    const completa = rutaEnCarpeta(org, input.path);
+    const { data, error } = await this.storage.from(this.bucket).upload(completa, input.bytes, {
       contentType: input.contentType,
       upsert: false,
     });
     if (error || !data) {
       throw new Error(`fallo al subir documento a storage: ${error?.message ?? "sin data"}`);
     }
-    return data.path;
+    const relativa = rutaRelativa(org, data.path);
+    if (relativa === null) throw new Error("fallo al subir documento a storage: ruta fuera de la carpeta");
+    return relativa;
   }
 
   async remove(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
+    const org = await empresaDelAlmacen(this.bucket, "borrar");
+    const completas = paths.map((p) => rutaEnCarpeta(org, p));
     // Best-effort (R24): no propaga el error para no enmascarar la causa raiz
     // del rollback que dispara la limpieza.
-    await this.storage.from(this.bucket).remove(paths);
+    await this.storage.from(this.bucket).remove(completas);
   }
 }

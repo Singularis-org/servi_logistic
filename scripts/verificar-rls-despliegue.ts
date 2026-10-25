@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { MODELOS_DE_NEGOCIO } from "../lib/db/modelos-de-negocio";
+import { MODELOS_CON_EMPRESA_OPCIONAL, MODELOS_DE_NEGOCIO } from "../lib/db/modelos-de-negocio";
 
 const ROL_APP = "servi_app";
 // Contrato de M3 (SL-17 design §3): 150 FK de negocio a negocio, un trigger `sme_*` por FK. SL-38
@@ -38,10 +38,16 @@ export interface ContratoRls {
  * `*_por_empresa` y un trigger `*_sin_cambio_de_empresa` por tabla de negocio. Con la cuenta escrita
  * a mano, cada tabla nueva dejaba el script en rojo en un despliegue correcto: tras SL-38 esperaba 73
  * y la base tiene 74.
+ *
+ * SL-19 — las tablas de empresa opcional (`jobs`) tambien tienen su `*_por_empresa`, pero no el
+ * trigger de sin cambio de empresa: suman a las politicas y no a los triggers.
  */
-export function contratoEsperado(modelos: readonly unknown[] = MODELOS_DE_NEGOCIO): ContratoRls {
+export function contratoEsperado(
+  modelos: readonly unknown[] = MODELOS_DE_NEGOCIO,
+  conEmpresaOpcional: readonly unknown[] = MODELOS_CON_EMPRESA_OPCIONAL,
+): ContratoRls {
   return {
-    politicasPorEmpresa: modelos.length,
+    politicasPorEmpresa: modelos.length + conEmpresaOpcional.length,
     triggersMismaEmpresa: TRIGGERS_MISMA_EMPRESA,
     triggersSinCambio: modelos.length,
   };

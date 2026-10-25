@@ -1,12 +1,16 @@
 import { createServerClient } from "@/lib/supabase/client";
 import { postulacionConfig } from "@/lib/config/postulacion";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import { empresaDelAlmacen, rutaEnCarpeta, rutaRelativa } from "@/lib/storage/carpeta-de-empresa";
 
 // Feature 22 (R8/R9) — implementacion de ISignedUrlProvider sobre Supabase
 // Storage. Firma URLs temporales de objetos del bucket PRIVADO `mensajero-docs`
 // con el service role (createServerClient), nunca desde el cliente. El cliente
 // se inyecta para testear sin red (patron StorageClientLike de SupabaseFileStorage).
 // No hardcodea URL/keys: viven en env via createServerClient.
+//
+// SL-19 (design §3.2; R16–R19): se firma solo dentro de la carpeta de la empresa en curso. Desde B,
+// la ruta `x` es `B/x`: un objeto de A con esa misma ruta no existe para B.
 
 /** Superficie minima del cliente Storage de Supabase que usamos (testeable). */
 export interface SignedUrlClientLike {
@@ -45,9 +49,10 @@ export class SupabaseSignedUrlProvider implements ISignedUrlProvider {
   }
 
   async createSignedUrl(path: string, expiresInSeconds: number): Promise<string> {
+    const org = await empresaDelAlmacen(this.bucket, "firmar");
     const { data, error } = await this.storage
       .from(this.bucket)
-      .createSignedUrl(path, expiresInSeconds);
+      .createSignedUrl(rutaEnCarpeta(org, path), expiresInSeconds);
     if (error || !data) {
       throw new Error(`fallo al firmar URL de documento: ${error?.message ?? "sin data"}`);
     }
@@ -59,9 +64,11 @@ export class SupabaseSignedUrlProvider implements ISignedUrlProvider {
     expiresInSeconds: number,
   ): Promise<Record<string, string>> {
     if (paths.length === 0) return {};
+    const org = await empresaDelAlmacen(this.bucket, "firmar-lote");
+    const completas = paths.map((p) => rutaEnCarpeta(org, p));
     const { data, error } = await this.storage
       .from(this.bucket)
-      .createSignedUrls(paths, expiresInSeconds);
+      .createSignedUrls(completas, expiresInSeconds);
     if (error || !data) {
       throw new Error(`fallo al firmar URLs de documentos: ${error?.message ?? "sin data"}`);
     }
@@ -72,10 +79,16 @@ export class SupabaseSignedUrlProvider implements ISignedUrlProvider {
     // existir por diseño. Lanzar aqui convertia una evidencia huerfana en una pantalla
     // entera caida — asi se quedo un cierre de dia sin poder aprobarse (2026-07-29), y
     // con el, bloqueadas todas las asignaciones de la zona de ese mensajero.
+    //
+    // SL-19 (R19): Storage devuelve `entry.path` completo (`<org>/<ruta>`) y los consumidores buscan
+    // `urlByPath[path]` con la ruta que pidieron: se re-indexa por la relativa. Una entrada fuera de
+    // la carpeta no es de esta empresa y se descarta.
     const result: Record<string, string> = {};
     for (const entry of data) {
       if (entry.error || !entry.path) continue;
-      result[entry.path] = entry.signedUrl;
+      const relativa = rutaRelativa(org, entry.path);
+      if (relativa === null) continue;
+      result[relativa] = entry.signedUrl;
     }
     return result;
   }
