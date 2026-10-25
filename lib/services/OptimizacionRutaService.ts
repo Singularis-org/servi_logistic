@@ -116,8 +116,8 @@ const ERRORES_SANEADOS: readonly string[] = [
 const MOTIVO_EXCEPCION_GENERICO = "optimizar ruta: el proveedor no respondio correctamente";
 
 export function motivoDeExcepcion(error: unknown): string {
-  // Ante un error de LIBRERIA se usa texto fijo: `error.message` de `google-auth-library` o de
-  // `fetch` puede traer la peticion completa colgada, y ahi es donde viven las cabeceras con el
+  // Ante un error de LIBRERIA se usa texto fijo: `error.message` de `fetch` o de otra libreria
+  // de red puede traer la peticion completa colgada, y ahi es donde viven las cabeceras con el
   // Bearer. Es la misma trampa que `opterror` ya documenta.
   if (!(error instanceof Error) || !ERRORES_SANEADOS.includes(error.name)) {
     return MOTIVO_EXCEPCION_GENERICO;

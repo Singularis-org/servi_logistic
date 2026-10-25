@@ -77,7 +77,7 @@ export function optlog(paso: string, datos?: Record<string, unknown>): void {
  *
  * Del error se imprime el NOMBRE y el MENSAJE, no el objeto entero: los mensajes de esta
  * feature ya vienen saneados de sus clases de error, pero un error de una libreria
- * (`google-auth-library`, `fetch`) puede traer la peticion completa colgada de una
+ * (`fetch` u otra libreria de red) puede traer la peticion completa colgada de una
  * propiedad, y ahi es donde aparecen las cabeceras con el Bearer.
  */
 export function opterror(paso: string, error: unknown, datos?: Record<string, unknown>): void {

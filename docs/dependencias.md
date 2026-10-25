@@ -39,7 +39,6 @@ fila que se toque por otra razón se re-verifica entonces.
 | `@types/react` | tipos | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@types/react-dom` | tipos | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@types/web-push` | tipos | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
-| `@vercel/oidc` | tokens OIDC de Vercel | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `bcryptjs` | hash de contraseñas | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `bwip-js` | códigos de barras | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `class-variance-authority` | variantes de clases (shadcn) | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
@@ -48,7 +47,6 @@ fila que se toque por otra razón se re-verifica entonces.
 | `eslint` | lint | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `eslint-config-next` | reglas de lint de Next | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `exceljs` | lectura/escritura xlsx | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
-| `google-auth-library` | auth de cuentas de servicio Google | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `html5-qrcode` | escaneo QR/código de barras | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `jsbarcode` | códigos de barras en canvas | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `jsdom` | DOM en tests | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
