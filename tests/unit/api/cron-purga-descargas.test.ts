@@ -75,18 +75,44 @@ describe("R19 — sin el secreto correcto: 401 y NADA se construye ni se lee", (
 });
 
 describe("R20 — 200 con SOLO conteos", () => {
-  it("el cuerpo es exactamente { objetosBorrados, quedaPendiente }", async () => {
-    const service = { ejecutar: vi.fn(async () => ({ objetosBorrados: 7, quedaPendiente: true, ruta: "tmp/x.json.gz" }) as never) };
-    const res = await handlePurgaDescargas(conAuth(SECRETO), { getSecret: () => SECRETO, service });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ objetosBorrados: 7, quedaPendiente: true });
+  // SL-19 (m3 de la revision): siempre por el camino real, recorriendo empresas (aqui, una).
+  const unaEmpresa = (): ClienteDeOrganizaciones => ({
+    organizacion: { findMany: vi.fn(async () => [{ id: "11111111-1111-4111-8111-111111111111" }]) },
   });
 
-  it("un fallo del servicio sale con codigo de error (no 200) y sin rutas", async () => {
-    const service = { ejecutar: vi.fn(async () => Promise.reject(new Error("fallo al borrar descargas temporales: boom"))) };
-    const res = await handlePurgaDescargas(conAuth(SECRETO), { getSecret: () => SECRETO, service });
+  it("el cuerpo es exactamente { objetosBorrados, quedaPendiente, empresas }", async () => {
+    const service = { ejecutar: vi.fn(async () => ({ objetosBorrados: 7, quedaPendiente: true, ruta: "tmp/x.json.gz" }) as never) };
+    const res = await handlePurgaDescargas(conAuth(SECRETO), { getSecret: () => SECRETO, service, empresas: unaEmpresa() });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ objetosBorrados: 7, quedaPendiente: true, empresas: { procesadas: 1, fallidas: [] } });
+  });
+
+  it("un fallo del servicio en una empresa queda en empresas.fallidas, sin rutas", async () => {
+    const consola = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const service = { ejecutar: vi.fn(async () => Promise.reject(new Error("fallo al borrar descargas temporales: tmp/x.json.gz"))) };
+      const res = await handlePurgaDescargas(conAuth(SECRETO), { getSecret: () => SECRETO, service, empresas: unaEmpresa() });
+      expect(res.status).toBe(200);
+      const cuerpo = await res.json();
+      expect(cuerpo).toEqual({
+        objetosBorrados: 0,
+        quedaPendiente: false,
+        empresas: { procesadas: 0, fallidas: ["11111111-1111-4111-8111-111111111111"] },
+      });
+      expect(JSON.stringify(cuerpo)).not.toMatch(/tmp\//);
+    } finally {
+      consola.mockRestore();
+    }
+  });
+
+  it("si no se pueden listar las empresas, sale con codigo de error (no 200) y sin tocar el servicio", async () => {
+    const service = { ejecutar: vi.fn() };
+    const empresas: ClienteDeOrganizaciones = {
+      organizacion: { findMany: vi.fn(async () => Promise.reject(new Error("sin base"))) },
+    };
+    const res = await handlePurgaDescargas(conAuth(SECRETO), { getSecret: () => SECRETO, service, empresas });
     expect(res.status).toBeGreaterThanOrEqual(500);
-    expect(JSON.stringify(await res.json())).not.toMatch(/tmp\//);
+    expect(service.ejecutar).not.toHaveBeenCalled();
   });
 });
 

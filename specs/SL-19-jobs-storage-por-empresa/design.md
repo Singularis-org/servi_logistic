@@ -415,8 +415,12 @@ los specs E2E que usan evidencias (T11).
   interfaz.
 - **Errores nuevos:** `RutaDeAlmacenInvalida` (R17). La falta de empresa reutiliza `EmpresaNoResuelta`
   (R18), así que `traducirErrorDeEmpresa` y las acciones que ya la manejan no cambian.
-- **Rutas HTTP:** ninguna nueva. `purga-descargas` mantiene su respuesta
-  `{ objetosBorrados, quedaPendiente }`.
+- **Rutas HTTP:** ninguna nueva. `purga-descargas` conserva `{ objetosBorrados, quedaPendiente }`
+  (ahora sumados de todas las empresas) y añade `empresas: { procesadas, fallidas }`, como
+  `purga-pdf-cargas`: `procesadas` es cuántas empresas corrieron sin fallo y `fallidas`, los ids de
+  las que fallaron (sin rutas ni PII). El fallo de una empresa no cambia el `200`; un fallo al listar
+  las empresas sí sale con código de error. El único consumidor, el cron de `vercel.json`, ignora el
+  cuerpo.
 - **Base:** una migración (§2.1). Sin columnas nuevas.
 
 ## 8. Autorización, módulos, país y dependencias

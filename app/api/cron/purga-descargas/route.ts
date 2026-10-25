@@ -29,11 +29,7 @@ export interface PurgaDescargasDeps {
   service?: IPurgaDescargasService;
   /** Reloj inyectable (tests). El corte es `now − RETENCION_MINUTOS` en milisegundos exactos. */
   now?: () => Date;
-  /**
-   * SL-19 (R21): fuente de las empresas que se recorren (un doble en tests). Con `service` inyectado
-   * y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests de controller
-   * anteriores a SL-19.
-   */
+  /** SL-19 (R21): fuente de las empresas que se recorren (un doble en tests). */
   empresas?: ClienteDeOrganizaciones;
 }
 
@@ -85,7 +81,6 @@ export async function handlePurgaDescargas(req: Request, deps: PurgaDescargasDep
       const resumen = await service.ejecutar(now);
       return { objetosBorrados: resumen.objetosBorrados, quedaPendiente: resumen.quedaPendiente };
     };
-    if (deps.service !== undefined && deps.empresas === undefined) return corrida();
     // R21: el almacen solo alcanza la carpeta de la empresa en curso; sin empresa falla cerrado. Una
     // corrida por empresa, y el fallo de una no frena a las demas: queda en `empresas`.
     const corridas: ResumenPurgaDescargas[] = [];
