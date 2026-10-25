@@ -402,3 +402,81 @@ cada tanda.
 **Veredicto:** T10.1–T10.3, T11 y T12.1–T12.2 están hechas. El comando mueve, revierte y se puede repetir
 sin efectos, los 11 E2E con evidencias o cierres pasan y los 28 requisitos tienen test. Quedan T10.4
 (puerta humana) y T12.3.
+
+## Vuelta 1 — B1, m1, m2, m3, m4, m6 y m8 de la revisión (backend_dev, 2026-10-25)
+
+m5 y m7 no se tocan: van en el PR (decisión del leader).
+
+### Qué se arregló
+
+- **B1 (R17, R16).**
+  - `tests/unit/storage/carpeta-de-empresa.test.ts`: el `it.each` de R17 suma `"orden-1/../../<A>/foto.jpg"`
+    (`..` en medio) y `"orden-1/.."` (`..` al final).
+  - `tests/integration/storage/storage-dos-empresas.test.ts`: caso nuevo de R16. Desde B, firmar
+    `x/../../<A>/<ruta>` se rechaza con `RutaDeAlmacenInvalida`, sin ninguna operación de firma en
+    Storage (se cuenta `createSignedUrl` sobre el SDK real; `from` solo arma el cliente del bucket y
+    el adaptador lo evalúa antes de validar, sin red), y el objeto de A queda intacto.
+  - **Mutación RV3** en `lib/storage/carpeta-de-empresa.ts:49`
+    (`segmento === "." || (segmento === ".." && ruta.startsWith(".."))`): **ROJO 3 de 31**
+    (`segmento .. en medio`, `segmento .. al final` y el caso nuevo de R16, que con la mutación
+    *resuelve* una URL firmada en vez de rechazar). Sin ella, `31 passed`. Restaurada desde copia;
+    `git diff --stat lib/storage/carpeta-de-empresa.ts` vacío.
+- **m1.** `storage-solo-por-adaptador` casa también `const { storage } = create*Client(...)` y el alias
+  `const s = cliente.storage;` (no casa `this.storage`, `this.deps.storage` ni `{ storage } = deps`).
+  Autocomprobación por cada forma, y el árbol inventado nombra los dos archivos nuevos. Mutación: quitar
+  cada alternativa nueva → 2 rojos cada una. Con el código real: `9 passed`.
+- **m2.** `rls-por-empresa`: `aplicaAServiApp` mira la cabecera de la política (antes de `USING`/`WITH CHECK`).
+  Sin `TO`, con `TO PUBLIC` o con `servi_app` en la lista, aplica a la app. Autocomprobaciones: sin `TO` + `USING (true)`
+  → abierta; `TO PUBLIC` + `USING (true)` → abierta; por empresa sin `TO` → cubre. Con las migraciones
+  reales, verde (`21 passed`): no hizo falta ninguna excepción. Mutación: «sin TO → no aplica» → 2 rojos;
+  quitar `public` → 1 rojo.
+- **m3.** Fuera la rama `if (deps.service !== undefined && deps.empresas === undefined) return corrida()`
+  de `app/api/cron/purga-descargas/route.ts`. Los tests R20 de `cron-purga-descargas.test.ts` pasan
+  `empresas`: el cuerpo incluye `empresas`, un fallo del servicio en una empresa queda en `fallidas` (200,
+  sin rutas) y un fallo al listar las empresas sale ≥ 500. Design §7 documenta `empresas: { procesadas, fallidas }`.
+- **m4.** Comentarios de `GeocodeSaludRepository.ts` (~l. 42 y ~l. 75): la política de `jobs` ya es por
+  empresa y el filtro queda como segunda barrera. Solo comentarios.
+- **m6.** Humo E2E corrido (abajo).
+- **m8.** Design §3.6 C y §4: en la ventana, un archivo antiguo no siempre da «no encontrado». Se listan
+  los cuatro comportamientos de (f): lote sin imagen ni enlace, error genérico controlado, PDF de
+  etiquetas que responde error y no regenera, WhatsApp que reintenta y puede acabar en dead-letter.
+
+### Archivos
+
+- `tests/unit/storage/carpeta-de-empresa.test.ts`, `tests/integration/storage/storage-dos-empresas.test.ts`
+- `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts`, `tests/unit/guards/rls-por-empresa.guardia.test.ts`
+- `app/api/cron/purga-descargas/route.ts`, `tests/unit/api/cron-purga-descargas.test.ts`
+- `lib/repositories/GeocodeSaludRepository.ts` (comentarios)
+- `specs/SL-19-jobs-storage-por-empresa/design.md` (§3.6 C, §4, §7)
+
+### Mapa R → test (cambios de esta vuelta)
+
+- R16 → `storage-dos-empresas.test.ts` > «firmar desde B `x/../../<A>/<ruta>` (el .. en medio) se rechaza sin llamar a Storage…» (nuevo).
+- R17 → `carpeta-de-empresa.test.ts` > `segmento .. en medio`, `segmento .. al final` (nuevos).
+- R21 → `cron-purga-descargas.test.ts` > R20 reescritos por el camino real (con `empresas`).
+- El resto del mapa no cambia.
+
+### Verificación (salida real)
+
+- `vitest run` de `carpeta-de-empresa` + `storage-dos-empresas` → `Test Files 2 passed (2)`, `Tests 31 passed (31)`.
+- `vitest run` de `cron-purga-descargas` + `crons-sin-empresas` → `Test Files 2 passed (2)`, `Tests 55 passed (55)`.
+- `storage-solo-por-adaptador` → `9 passed`; `rls-por-empresa` → `21 passed`.
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`) → `TC_EXIT=0`.
+- `pnpm run lint` → `✖ 231 problems (0 errors, 231 warnings)`; `LINT_EXIT=0`.
+- `pnpm run test:guardias` → `Test Files 1 failed | 306 passed | 2 skipped (309)`, `Tests 4 failed | 4213 passed | 20 skipped`.
+  El rojo es `dependencias-declaradas-presentes` (baseline). Los 2 archivos saltados son de
+  `tests/integration/db/` (`zona-central-guarda-y-rastro`, `zona-guardado-conserva-inactivos`), que casan
+  con `guard` y se saltan sin base: corrí las guardias sin el envoltorio de la base, igual que en la tanda C.
+- **E2E `dos-empresas-humo` (m6)**, contra `servi_logistic_sl19_e2e`, `--no-deps`, `E2E_SERVIDOR=dev`,
+  puertos 3119/54319 libres antes y después:
+  ```
+  ok 1 alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)
+  ok 2 el maestro de A recorre todas las rutas de su menú sin error ni datos de B (36.1s)
+  ok 3 el maestro de B recorre todas las rutas de su menú sin error ni datos de A (25.4s)
+  ok 4 cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (3.0s)
+  ok 5 B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (8.9s)
+  ok 6 vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)
+  6 passed (1.7m)   E2E_EXIT=0
+  ```
+
+**Veredicto:** B1 resuelto y matado con RV3 (3 rojos); m1, m2, m3, m4, m6 y m8 hechos; m5 y m7 quedan para el PR.
