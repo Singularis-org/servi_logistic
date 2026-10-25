@@ -216,3 +216,103 @@ verificación ejecutada:
 - el arreglo A2;
 - el doble de Storage;
 - la absorción de SL-31.
+
+## Revisión 2 (vuelta 2, acotada a 24e19d1..df5198c)
+
+- La rama se actualizó con `git pull` hasta el head `df5198c`. Diff revisado: `2ea906c` (los arreglos
+  de la vuelta 1) y `df5198c` (el A2 de «Liberadas hoy»).
+- Lock tomado como `reviewer SL-44 vuelta 2` y ya soltado.
+- Base desechable `sl44r_int`, en un contenedor propio `sl44r-pg` (`postgres:17`, contraseña
+  aleatoria), con `migrate deploy` y `db:seed` en verde. Al terminar se borraron el contenedor y la
+  contraseña. No se usó el `.env` de la raíz ni se imprimió ninguna URL.
+- CI, run 40152025447 sobre `df5198c`: `success` en los 9 jobs.
+  - Playwright: `57 passed`, `15 passed` y `28 passed`, sin flaky ni retry.
+  - `✓ tests/integration/db/liberadas-hoy-ventana-cr-sl44.test.ts (3 tests)` corrió de verdad, no
+    se saltó, y no está en el baseline.
+
+**Mutaciones** (`scratchpad/sl44rev/mutar3.mjs`). Cada una se restauró desde la copia, se comparó
+con `cmp` (OK) y se cerró con `git status` limpio.
+
+| Mutación | Resultado |
+|---|---|
+| Base sin mutar: integración + unit del repositorio + `e2e-sin-saltos` | VERDE, `49 passed` (la integración, contra Postgres) |
+| A2: ventana UTC repuesta (`[hoyCR, +24 h)`) | ROJO, `4 failed`: los 3 de integración y el unit del literal |
+| A2: cota superior inclusiva (+1 ms) | ROJO, `2 failed` de integración (entra la de las 00:00 CR del día siguiente) |
+| m1: alias `const t = test; t.skip(…)` | ROJO |
+| m1: `test\n  .skip(…)` | ROJO |
+| m1: `const { fixme } = test` | ROJO |
+| m1: `const d = test.describe; d.only(…)` | ROJO |
+| `.check()` directo en vez de `marcarCasilla` | VERDE en la guardia: solo informativo, ver m6 |
+
+### Punto por punto
+
+- **B1: RESUELTO.**
+  - `e2e/_escenarios/casillas.ts > marcarCasilla` es el `toPass(check + toBeChecked)` de reglas,
+    sacado a un helper.
+  - Lo usan `asignacion-satelite`, `devolucion-origen`, `reprogramacion-liberacion` (las dos
+    llamadas) y `reglas-bloqueos-cierre`. `git grep "\.check("` en `e2e/` ya no da nada fuera del
+    helper.
+  - Una casilla deshabilitada o que no responde hace que `check` lance dentro de `toPass`, y el plazo
+    se agota. No tapa un fallo real.
+  - La mutación de la casilla `disabled` (más `next build`) la ejecutó el implementer: 2 rojos con
+    «element is not enabled». No la repetí porque exige un build y un E2E. La lógica del helper lo
+    garantiza, y el CI de `df5198c` está verde.
+- **B2: RESUELTO.** T7.2 está `[x]` en `tasks.md:160`.
+- **m1: RESUELTO.** Mis cuatro formas dan rojo, y los fixtures nuevos cubren alias, desestructuración
+  y tres saltos en dos líneas. `LLAMADA_CON_ALIAS` (`\.\s*(skip|fixme|only)\s*\(`) caería también
+  sobre otra API con esos nombres. Hoy no hay ninguna en `e2e/` y el árbol real está en verde; si
+  aparece, se ajusta.
+- **m2: RESUELTO.** `reparto.ts` ya no tiene el `-6 h`. `hoyDeLaApp` y `mananaDeLaApp` delegan en
+  `fechaCalendarioCR` y `mananaCalendarioCR` de `lib/utils/fecha-cr.ts`, la misma función con la que
+  la app decide el día.
+- **m3: RESUELTO.** La aprobación de Carlos del 2026-10-24 está anotada en `tasks.md`, tras T7.4,
+  para las dos decisiones.
+- **m5: RESUELTO.** El comentario de `plataforma-vacia` da el motivo vigente: el superadmin es único
+  por base.
+- **m4:** sin cambios; sigue menor. El mapa completo está en `tasks.md`, y la bitácora añade el del A2.
+
+### Defecto A2 nuevo: `findLiberadasHoy`
+
+- **Es un defecto real y el arreglo es el mínimo.**
+  - `liberada_reprogramada_at` es un `timestamp` (`schema.prisma:793`).
+  - La ventana `[hoyCR, +24 h)` usaba la convención de las columnas `@db.Date` (medianoche UTC), es
+    decir, de 18:00 CR del día anterior a 18:00 CR de hoy.
+  - Ahora es `[inicioDelDiaCREnUtc(f), inicioDelDiaSiguienteCREnUtc(f))`, con utilidades que ya
+    existían. Son 9/7 líneas, sin migración, dentro del umbral de A2.
+  - Lo destapó `reprogramacion-liberacion.spec.ts:69` en rojo a las 18:45 CR, y la bitácora lo
+    describe con instantes medidos.
+- **El test de integración `liberadas-hoy-ventana-cr-sl44` es bueno.**
+  - Usa Postgres real, crea sus datos en una transacción que se revierte y fija el reloj a las
+    19:00 CR del 15 (`01:00Z` del 16), igual que el action (`startOfDayCR(now)`).
+  - Prueba los cuatro bordes: 19:00 CR y 00:00 CR entran; 23:59 CR del día anterior y 00:00 CR del
+    siguiente no.
+  - La aserción `toEqual(["tarde", "cron"])` impide que pase en verde sin datos.
+  - Cae con la ventana UTC y con la cota inclusiva.
+  - El `describe.skip` sin base es el patrón de `tests/integration` (`HAY_BASE_DE_DATOS`). En CI
+    corrió con sus 3 casos.
+- **El literal del unit test `liberacion-reprogramada-repository` era el defecto, no el contrato.**
+  - El contrato es el de la feature 46: R9 manda evaluar «hoy» en America/Costa_Rica, y R15 pide
+    las liberadas «hoy (CR)».
+  - El literal `gte 2026-07-15T00:00Z` fijaba la ventana UTC, y la apoyaba un supuesto del
+    comentario («la corrida marca ~06:00Z»). Ese supuesto no se cumple para las liberaciones que hace
+    la Server Action durante el día.
+  - El literal nuevo, `[T06:00Z, T06:00Z +1 día)`, está escrito a mano. No se calcula con la función
+    de producción.
+- **Auditoría de ventanas de día (bitácora): convincente.**
+  - Recorre cada comparación contra `startOfDayCR` en `lib/`, con su columna y su tipo.
+  - Todas las demás son `@db.Date` (`fecha_reprogramacion`, `fecha_reparto`) y están bien comparadas
+    a medianoche UTC.
+  - El resto de `timestamp` ya usa `inicioDelDiaCREnUtc`. Revisé por muestreo las filas del
+    repositorio y de `schema.prisma`, y no encontré ninguna omisión.
+
+### Hallazgos nuevos
+
+- **m6, menor:** nada impide que vuelva un `.check()` directo en `e2e/` (mutación «`.check()`
+  directo», verde). Se cierra añadiendo `.check(`, `.uncheck(` y `.setChecked(` fuera de
+  `casillas.ts` como motivo de `e2e-sin-saltos`. No bloquea: hoy no queda ninguno.
+
+### Veredicto de la vuelta 2
+
+**OK.** B1 y B2 están resueltos, igual que m1, m2, m3 y m5. El A2 de «Liberadas hoy» es correcto,
+tiene su test de integración y dos mutaciones que lo tumban, y el cambio del literal corrige el
+defecto sin romper el contrato. CI en verde sobre `df5198c`. Sin bloqueantes. Quedan m4 y m6, menores.
