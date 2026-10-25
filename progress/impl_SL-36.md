@@ -177,3 +177,75 @@ Gate local: ver `progress/features/SL-36.md > Tandas`.
 
 Veredicto vuelta 2: m1, m2 y m4 corregidos, cada mutación probada y revertida, y todo lo tocado en
 verde.
+
+### B1: dos-empresas-humo
+
+Base desechable `servi_logistic_sl36_e2e` en localhost, recreada solo antes de la primera corrida.
+- DROP y CREATE en dos `prisma db execute` separados contra `postgres`. Prisma 7 no acepta `--url`
+  y `DROP DATABASE` no corre dentro de una transacción.
+- Después `pnpm exec prisma migrate deploy` («All migrations have been successfully applied.») y
+  `pnpm run db:seed` (exit 0).
+- Build nuevo, porque m2 cambió `lib/clients/whatsapp-app-id.ts`:
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec next build` → `BUILD_EXIT=0`.
+- Antes de correr, los puertos 3044 y 54329 estaban libres.
+
+Comando exacto, el mismo en las dos corridas:
+`E2E_PUERTO=3044 pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --project=aislamiento --no-deps --reporter=list`
+
+Opción elegida: **`--no-deps`**. El humo no depende de `plataforma-vacia`:
+- en su `beforeAll` llama a `conCandadoDelSuperadmin(() => asegurarSuperadmin(db))`, que corre el
+  arranque del superadmin por su cuenta;
+- las dos empresas las da de alta él mismo, por la pantalla;
+- los correos cambian en cada corrida.
+
+Por eso no hizo falta `NEXT_PUBLIC_APP_URL`, que solo lo pide `superadmin-empresas` (T9, desviación 2).
+
+Corrida 1 (Chromium):
+```
+Running 6 tests using 1 worker
+  ok 1 [aislamiento] › e2e\dos-empresas-humo.spec.ts:174:5 › alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17) (11ms)
+  ok 2 [aislamiento] › e2e\dos-empresas-humo.spec.ts:198:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (18.5s)
+  ok 3 [aislamiento] › e2e\dos-empresas-humo.spec.ts:198:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (17.5s)
+  ok 4 [aislamiento] › e2e\dos-empresas-humo.spec.ts:243:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (2.3s)
+  ok 5 [aislamiento] › e2e\dos-empresas-humo.spec.ts:264:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (3.2s)
+  ok 6 [aislamiento] › e2e\dos-empresas-humo.spec.ts:311:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (3.3s)
+  6 passed (55.3s)
+PW_EXIT=0
+```
+En el recorrido del menú entró la ruta nueva de SL-36. Para cada maestro salió
+`{"ruta":"/configuracion/integraciones","estado":200,"error":false,"noEncontrado":false,"cincoXX":[],"empresaNoResuelta":false,"fugas":[]}`.
+
+Corrida 2 (misma base, sin recrear):
+```
+Running 6 tests using 1 worker
+  ok 1 [aislamiento] › ... (R16, R17) (11ms)
+  ok 2 [aislamiento] › ... el maestro de A recorre ... (18.6s)
+  ok 3 [aislamiento] › ... el maestro de B recorre ... (17.3s)
+  ok 4 [aislamiento] › ... webhook de su API key ... (2.4s)
+  ok 5 [aislamiento] › ... detalles de A ... (3.2s)
+  ok 6 [aislamiento] › ... vehículos ... (R40) ... (SL-32 R26) (3.3s)
+  6 passed (55.4s)
+PW_EXIT=0
+```
+En las dos: 6/6 passed, 0 failed, 0 skipped y 0 flaky.
+
+Confirmación de m2, una corrida sobre la misma base y el mismo build:
+`E2E_PUERTO=3044 pnpm exec playwright test e2e/integraciones-por-empresa.spec.ts --project=aislamiento --no-deps --reporter=list`
+```
+Running 4 tests using 1 worker
+  ok 1 [aislamiento] › e2e\integraciones-por-empresa.spec.ts:127:5 › alta rechazada: texto del catálogo, ninguna fila y solo lo no secreto se conserva (R13, R36) (872ms)
+  ok 2 [aislamiento] › e2e\integraciones-por-empresa.spec.ts:150:5 › alta buena: conectada, el token se ve una vez y al recargar no está en el HTML (R12, R18) (915ms)
+  ok 3 [aislamiento] › e2e\integraciones-por-empresa.spec.ts:190:5 › el admin de A, el maestro de B y el superadmin no ven la integración de A ni su formulario (R6) (4.3s)
+  ok 4 [aislamiento] › e2e\integraciones-por-empresa.spec.ts:243:5 › probar y desconectar: el aviso de qué deja de funcionar va antes y la fila se borra (R31, R32) (923ms)
+  4 passed (13.2s)
+PW_EXIT=0
+```
+Al terminar:
+- los puertos 3044 y 54329 quedaron libres;
+- no quedó vivo ningún proceso `next start`, `_servidor-app` ni `storage-falso`;
+- no hay `.next/dev`.
+
+No se tocó código.
+
+Veredicto B1: el humo de aislamiento pasa 6/6 en las dos corridas seguidas, y
+`integraciones-por-empresa` sigue en 4/4 con el build que ya trae m2.
