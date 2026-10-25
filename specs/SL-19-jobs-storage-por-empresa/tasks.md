@@ -61,9 +61,9 @@
 
 ## T5. La carpeta de la empresa (depende de T1) [P con T2]
 
-- [ ] **T5.1** `lib/storage/carpeta-de-empresa.ts`: `RutaDeAlmacenInvalida`, `empresaDelAlmacen`,
+- [x] **T5.1** `lib/storage/carpeta-de-empresa.ts`: `RutaDeAlmacenInvalida`, `empresaDelAlmacen`,
   `rutaEnCarpeta`, `rutaRelativa` (`design.md > §3.3`).
-- [ ] **T5.2** `tests/unit/storage/carpeta-de-empresa.test.ts`: R17 (cada forma inválida, una por
+- [x] **T5.2** `tests/unit/storage/carpeta-de-empresa.test.ts`: R17 (cada forma inválida, una por
   caso) y R18 (empresa, plataforma, sin contexto con sesión, sin contexto sin sesión).
   - Hecho cuando: está verde, y en rojo si se acepta `..` o si se resuelve empresa en plataforma.
 
