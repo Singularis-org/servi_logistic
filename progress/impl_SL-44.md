@@ -735,3 +735,58 @@ El único rojo, en las dos y en CI, es el mismo `marca.spec.ts:277`. Se diagnost
 - eslint 0, typecheck 0. Guardias: 2 rojos ajenos. `dependencias-declaradas-presentes` es baseline, y
   `no-embalaje` salta por `playwright-report/data/*.md`, un artefacto que dejan las corridas de E2E.
 - **Defecto de producción: ninguno.**
+
+### T7.4 — cierre (2026-10-24)
+
+**1. `marca`, revisión del arreglo.** `esperarPantallaLista` solo cambia la ESPERA (`load` + `document.fonts.ready`
++ un elemento visible); `verificarPantalla` afirma lo mismo que antes (logos, amarillo sobre claro, familia «Archivo»,
+nombre anterior, `scrollWidth`). Mutación en `components/shared/Logo.tsx` (`oscuro.horizontal` → el SVG de fondo
+claro), con `next build`: `5 failed, 2 passed (16.9s)`, los cinco por `logos visibles` (landing 1280, login 1280,
+pie 360, dashboard claro y oscuro). Restaurado (`cmp OK`, `git diff -- components` vacío, `BUILD_LIMPIO=0`):
+`7 passed (11.2s)` y `7 passed (11.2s)`. Commit `0a9099d`. (Un primer intento murió por OOM en «Running TypeScript»
+del build sin `NODE_OPTIONS=--max-old-space-size=8192`: Playwright no arrancó; se repitió con él.)
+
+**2. Merge de `origin/dev` (SL-41 y SL-45), sin rebase** (`636f517`). Conflictos: `superadmin-empresas` (versión de
+SL-44, sin base vacía ni borrado, con el enlace de bienvenida de SL-41), `email-config` y `email-notificacion` (las dos
+partes). `cobro-plataforma-sl40`: `leerDeuda` y literal de SL-45, sin skip ni `SL17_HUMO_LOG_SERVIDOR`.
+`pago-plataforma-sl45` entra en `aislamiento` sin skip, detrás de SL-40, y devuelve el global del cobro en su
+`afterAll`. Ningún otro spec de `dev` tiene skip. Lo que rompió el merge, con su arreglo:
+- sin `NEXT_PUBLIC_APP_URL` no hay enlace de bienvenida (R40 de SL-41): `gate.yml` la pone antes de `next build`
+  (Next la incrusta al compilar); en local, `http://localhost:3044`.
+- `_superadmin-fixture` esperaba el aviso de éxito de SL-32; sin SMTP el alta avisa ahora con la advertencia
+  (`role="alert"`) de que la bienvenida no salió (`dos-empresas-humo` en rojo).
+- `superadmin-empresas` paso 7 (de SL-41) contaba todas las filas (`Received: 36`): mira las de A y B (A1).
+- `cobro-plataforma-sl40` T8: la fila tiene también el `role="status"` de «Reenviar bienvenida» (strict mode): el
+  aviso del cobro por su `data-slot="alert"`.
+- `no-embalaje` recorría `playwright-report/` y `test-results/` (ignorados en `.gitignore`): fuera de su recorrido.
+- `e2e-sin-saltos` no leía un comentario dentro de `specs(...)`: el comentario va encima de `testMatch`.
+
+**3. Flaky en CI** (run 40142523437, `e2e (dinero)`): `reglas-bloqueos-cierre` paso 5, `locator.check: Clicking the
+checkbox did not change its state`, verde en el reintento (`failOnFlakyTests`). Causa: el clic llega antes de la
+hidratación. Arreglo: `check` + `toBeChecked` dentro de `toPass` (15 s; 20 000 chocaba con la guardia R47 de
+`rollup-guards`). `reglas-bloqueos-cierre` 5 passed ×2. Mismo patrón sin arreglar (no evidenciado): `.check()` en
+`asignacion-satelite`, `devolucion-origen` y `reprogramacion-liberacion`.
+
+**4. Dos corridas seguidas de `E2E_PUERTO=3044 pnpm run test:e2e`** sobre base nueva `sl44_t74i` (DROP + CREATE +
+`migrate deploy` + `db:seed`, `next build` limpio), con el árbol final:
+- corrida 1: `100 passed (3.4m)`
+- corrida 2: `100 passed (3.4m)`
+0 failed, 0 skipped, 0 flaky; 3044 y 54329 libres antes y después. (Antes del merge, sobre `sl44_t74f`:
+`93 passed (3.3m)` y `93 passed (3.4m)`.)
+
+**5. Gate:** `TEST_RAPIDO_BASE=origin/dev ./init.sh` → `init OK`, **INIT_EXIT=0** (`scratchpad/sl44-gate-final.log`).
+
+**6. CI, run 40144681190** (`workflow_dispatch` sobre `5f9a823`): conclusión `success`.
+
+| Job | Resultado | Duración | Playwright |
+|---|---|---|---|
+| `e2e (aislamiento)` | success | 3,4 min | `57 passed (1.5m)` |
+| `e2e (reparto)` | success | 3,4 min | `15 passed (41.3s)` |
+| `e2e (dinero)` | success | 2,9 min | `28 passed (43.6s)` |
+| `e2e` | success | — | — |
+| `gate-completo` | success | — | — |
+
+Los tres grupos, muy por debajo de 25 min (R28) y de la estimación de D8.
+
+**Veredicto T7.4:** E2E en verde de verdad: 100/100 dos veces en local sobre base nueva y los tres grupos en verde en
+CI sin flaky (run 40144681190).

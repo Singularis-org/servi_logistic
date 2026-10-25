@@ -172,7 +172,7 @@ Convenciones:
   - La línea `Login y sesión` de `docs/checkpoints-proyecto.md`, sin cambios.
 
   **Hecho:** el reviewer lo comprueba leyendo; la guardia de R19 sigue en verde.
-- [ ] **T7.4 — Verde de verdad** (R27, R28, R22).
+- [x] **T7.4 — Verde de verdad** (R27, R28, R22). Run de CI 40144681190 (`5f9a823`): `e2e` y `gate-completo` en verde; local 100 passed ×2.
   - En local: base nueva (`DROP` + `CREATE` + `migrate deploy` + `db:seed`) y `pnpm run test:e2e`
     **dos veces seguidas**, cada una con 0 failed, 0 skipped y 0 flaky.
   - En CI: el PR de SL-44 a `dev` con `gate-completo` y `e2e` en verde, y el tiempo de cada grupo
