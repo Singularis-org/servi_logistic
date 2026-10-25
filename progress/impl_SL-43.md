@@ -60,6 +60,46 @@ Tests: `demo-qa-guardia` 37, `demo-qa-build` 16, `demo-qa-jobs` 11, más los cen
 `empresas-plataforma-cobro`, `migracion-sl17/sl40-ida-y-vuelta`): 14 archivos, 182 tests en verde y
 ninguno saltado, contra sl43.
 
+## Tanda B (T4, T5) y T6 — 2026-10-25
+
+**T4/T5.** `tests/fabricas/empresa-y-usuarios.ts` (`crearEmpresa`, `crearUsuario`),
+`tests/fabricas/escenarios/reparto.ts` (`escenarioReparto(deps)` con `lector`, `evidencia`,
+`prepararAsignacion` y `altas`) y `cierres.ts` (`escenarioCierres({ lector })`). Los núcleos no leen
+`process.env` ni importan Playwright. `tests/fabricas/e2e.ts` y `e2e/_escenarios/*` delegan en ellos,
+y ningún `*.spec.ts` cambió.
+- Contra la base `servi_logistic_sl43_e2e`, con `next build` y una sola app en el puerto 3044:
+
+| Corrida | Resultado | Duración |
+|---|---|---|
+| reparto 1 | 15 passed, 0 failed, 0 flaky | 47.2s |
+| reparto 2 | 15 passed, 0 failed, 0 flaky | 44.1s |
+| dinero 1 | 28 passed, 0 failed, 0 flaky | 1.1m |
+| dinero 2 | 28 passed, 0 failed, 0 flaky | 1.5m |
+
+- Además: `e2e-sin-saltos` 30/30 y `vitest related` de las fábricas 11/11.
+- `contrasena_definida_at` solo se escribe con `marcarContrasenaDefinida: true` (D5.3). El E2E no lo
+  pasa y la demo sí debe pasarlo.
+
+**T6.** `scripts/demo-qa/borrar.ts` y `tests/integration/db/demo-qa-borrado.test.ts`: 3 passed, 0
+failed, 0 skipped, contra sl43 y con el doble de Storage.
+- Casos: R7+R9 (siete familias de filas y los objetos); R8 (FK sintética hacia `orden`, y R28 al
+  reintentar); R10.
+- Cada caso tiene un control de no vacuidad: siete familias con más de 0 filas.
+
+| # | Mutación | Test que cae |
+|---|---|---|
+| 9 | `orden` fuera de la pasada | R8: «expected ['zona'] to include 'orden'» (y también R7/R9) |
+| 1 | sin el filtro `es_demo` | R7/R9: `r.empresas` trae la real (repetida sin la comprobación extra `EmpresaNoDemo`, que también la frena) |
+| 2 | la base antes que Storage | R7/R9: los objetos de la demo siguen en el doble |
+
+Desviaciones de T6:
+- `"Session"."userId"` no tiene FK. Va en una lista fija, `COLUMNAS_DE_USUARIO_SIN_FK`.
+- Doble comprobación de `es_demo`: antes de borrar, y en el `DELETE` de `organizacion`.
+- Solo una violación de FK manda la tabla a la siguiente pasada. Cualquier otro error aborta con
+  `BorradoDemoFallido`.
+- **Para el reviewer (D12):** el borrado genérico borra `wallet_movimiento` como dueño, y la guardia
+  de SL-45 no lo detecta.
+
 ## T1 — Inventario de la receta
 
 > Solo lectura. Leído con Grep/Read: el MCP del grafo no tiene proyecto para este worktree (lo dice

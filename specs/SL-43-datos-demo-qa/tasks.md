@@ -75,14 +75,14 @@
 
 ## Tanda B — Fábricas compartidas (sin cambiar el E2E)
 
-- [ ] **T4. Empresa y usuarios genéricos** `[P]` (R11, R12; depende de T0).
+- [x] **T4. Empresa y usuarios genéricos** `[P]` (R11, R12; depende de T0).
   - `tests/fabricas/empresa-y-usuarios.ts`. `tests/fabricas/e2e.ts` pasa a delegar en él y conserva su
     API y su guarda de host (`design.md > D1.2`). Sin importaciones de Playwright en tiempo de
     ejecución.
   - _Hecho:_ `pnpm exec vitest related --run tests/fabricas/e2e.ts tests/fabricas/empresa-y-usuarios.ts`
     en verde y `pnpm run test:guardias` en verde.
 
-- [ ] **T5. Núcleo de los escenarios** (R11, R15–R17; depende de T4).
+- [x] **T5. Núcleo de los escenarios** (R11, R15–R17; depende de T4).
   - `tests/fabricas/escenarios/reparto.ts` y `cierres.ts`, con el lector, la evidencia y
     `prepararAsignacion` inyectados, sin tocar `process.env` y sin importar Playwright en tiempo de
     ejecución.
@@ -95,7 +95,7 @@
 
 ## Tanda C — La demo
 
-- [ ] **T6. Borrado** (R7, R8, R9, R10; depende de T2 y T3).
+- [x] **T6. Borrado** (R7, R8, R9, R10; depende de T2 y T3).
   - `scripts/demo-qa/borrar.ts` (`design.md > D4`).
   - `tests/integration/db/demo-qa-borrado.test.ts`:
     - el caso de R8, con una FK sintética creada y quitada por el test;
