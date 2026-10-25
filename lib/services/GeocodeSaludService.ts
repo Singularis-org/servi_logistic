@@ -66,10 +66,20 @@ export class GeocodeSaludService implements IGeocodeSaludService {
    * ya es best-effort por construccion, y aun asi se envuelve — un doble que lance en una suite no
    * puede cambiar lo que hace la cola.
    */
-  async registrarFalloConfig(jobId: string, ahora: Date): Promise<void> {
+  async registrarFalloConfig(
+    jobId: string,
+    organizacionId: string | null,
+    ahora: Date,
+  ): Promise<void> {
+    // SL-36 (R43) — se cuentan SOLO fallos de la empresa del job en curso. Un job sin empresa
+    // termina aqui, con cualquier umbral: no se consulta la base (el filtro `= $1` tampoco casaria
+    // con NULL), no se avisa y no se loguea. No hay empresa a la que avisar —
+    // `notificacion.organizacion_id` es NOT NULL— y un aviso sin destinatario no es un aviso.
+    if (organizacionId === null) return;
+
     try {
       const desde = new Date(ahora.getTime() - this.config.GEOCODE_CAIDA_VENTANA_MIN * MS_POR_MINUTO);
-      const otros = await this.repo.contarFallosConfigDesde(desde, jobId);
+      const otros = await this.repo.contarFallosConfigDesde(organizacionId, desde, jobId);
 
       // R4: sin umbral no hay aviso. Un fallo de configuracion AISLADO no emite nada — el marcador
       // cubre tambien «falta la credencial», que aparece de forma legitima en un despliegue.
@@ -98,7 +108,8 @@ export class GeocodeSaludService implements IGeocodeSaludService {
 
   /**
    * R13/R19/R21/R22/R24 — el proveedor respondio bien DE VERDAD: se devuelven a la cola hasta
-   * `LOTE` jobs muertos por configuracion, los mas antiguos primero y escalonados.
+   * `LOTE` jobs muertos por configuracion DE LA MISMA EMPRESA (SL-36 R42), los mas antiguos
+   * primero y escalonados.
    *
    * Los tres numeros que pasa son las tres defensas de design §6:
    *   · `limite`       — R21, techo por respuesta satisfactoria (nunca «todos de golpe»);
@@ -110,8 +121,12 @@ export class GeocodeSaludService implements IGeocodeSaludService {
    * Devuelve cuantos revivio. Quien lo llama lo hace dentro de un `try/catch` (R20): una
    * recuperacion caida NO puede revertir una geocodificacion buena que ya esta escrita.
    */
-  async registrarExitoProveedor(ahora: Date): Promise<number> {
+  async registrarExitoProveedor(organizacionId: string | null, ahora: Date): Promise<number> {
+    // SL-36 (R42) — el exito de una empresa solo revive jobs de ESA empresa. Un job sin empresa no
+    // prueba nada sobre la credencial de nadie: 0 y sin tocar la base.
+    if (organizacionId === null) return 0;
     const n = await this.repo.revivirFallosConfig({
+      organizacionId,
       ahora,
       limite: this.config.GEOCODE_RECUPERACION_LOTE,
       espaciadoMs: this.config.GEOCODE_RECUPERACION_ESPACIADO_MS,

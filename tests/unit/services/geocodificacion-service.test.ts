@@ -10,7 +10,7 @@ import { GoogleGeocodeClient, GeocodeRespuestaInvalidaError } from "@/lib/client
 import { esFalloConfigGeocode } from "@/lib/geo/fallo-config-geocode";
 import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepository";
 import type { PrismaClient } from "@prisma/client";
-import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import type { JobConEmpresa, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobTipo } from "@prisma/client";
@@ -48,8 +48,15 @@ const ORDEN: OrdenGeocodeRow = {
 const QUERY = construirQueryDireccion(ORDEN) as string;
 const HASH = hashDireccion(QUERY);
 
-function job(payload: Record<string, unknown> = { ordenId: ORDEN_ID }): JobDTO {
+/** SL-36 (R42/R43) — la empresa del job; la salud de la geocodificacion se evalua por ella. */
+const EMPRESA = "org-a";
+
+function job(
+  payload: Record<string, unknown> = { ordenId: ORDEN_ID },
+  organizacionId: string | null = EMPRESA,
+): JobConEmpresa {
   return {
+    organizacionId,
     id: "job-1",
     tipo: "geocodificacion",
     payload,
@@ -669,7 +676,7 @@ describe("401/R2 — la caída se evalúa en los DOS caminos de configuración p
     await expect(d.service.ejecutar(job())).rejects.toBeInstanceOf(GeocodeConfigInvalidaError);
 
     expect(d.salud.registrarFalloConfig).toHaveBeenCalledTimes(1);
-    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", AHORA);
+    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", EMPRESA, AHORA);
     expect(d.salud.registrarExitoProveedor).not.toHaveBeenCalled();
   });
 
@@ -679,7 +686,7 @@ describe("401/R2 — la caída se evalúa en los DOS caminos de configuración p
     await expect(d.service.ejecutar(job())).rejects.toBeInstanceOf(GeocodeNoConfiguradoError);
 
     expect(d.salud.registrarFalloConfig).toHaveBeenCalledTimes(1);
-    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", AHORA);
+    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", EMPRESA, AHORA);
   });
 
   it("⭑ R11: con la salud LANZANDO, el `throw` del job sigue ocurriendo IGUAL", async () => {
@@ -706,6 +713,34 @@ describe("401/R2 — la caída se evalúa en los DOS caminos de configuración p
   });
 });
 
+describe("SL-36 R42/R43 — la empresa que llega a la salud sale DEL JOB", () => {
+  it("R43: `config_invalida` de un job de la empresa B evalúa la caída con la empresa B", async () => {
+    const d = build({ outcome: { status: "config_invalida", detalle: "REQUEST_DENIED" } });
+    await expect(d.service.ejecutar(job(undefined, "org-b"))).rejects.toBeInstanceOf(
+      GeocodeConfigInvalidaError,
+    );
+    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", "org-b", AHORA);
+  });
+
+  it("R43: credencial ausente en un job SIN empresa → la salud recibe `null`", async () => {
+    const d = build({ apiKey: null });
+    await expect(d.service.ejecutar(job(undefined, null))).rejects.toBeInstanceOf(
+      GeocodeNoConfiguradoError,
+    );
+    expect(d.salud.registrarFalloConfig).toHaveBeenCalledWith("job-1", null, AHORA);
+  });
+
+  it("R42: el `ok` del proveedor de un job de B pide la recuperación para B; sin empresa, `null`", async () => {
+    const deB = build({ outcome: OUTCOME_OK });
+    await deB.service.ejecutar(job(undefined, "org-b"));
+    expect(deB.salud.registrarExitoProveedor).toHaveBeenCalledWith("org-b", AHORA);
+
+    const sinEmpresa = build({ outcome: OUTCOME_OK });
+    await sinEmpresa.service.ejecutar(job(undefined, null));
+    expect(sinEmpresa.salud.registrarExitoProveedor).toHaveBeenCalledWith(null, AHORA);
+  });
+});
+
 describe("401/R13-R14 — la recuperación viaja SÓLO en la estela de un éxito REAL", () => {
   it("⭑ R13: tras un `ok` del proveedor, se invoca la recuperación exactamente UNA vez", async () => {
     const d = build({ outcome: OUTCOME_OK });
@@ -713,7 +748,7 @@ describe("401/R13-R14 — la recuperación viaja SÓLO en la estela de un éxito
     await d.service.ejecutar(job());
 
     expect(d.salud.registrarExitoProveedor).toHaveBeenCalledTimes(1);
-    expect(d.salud.registrarExitoProveedor).toHaveBeenCalledWith(AHORA);
+    expect(d.salud.registrarExitoProveedor).toHaveBeenCalledWith(EMPRESA, AHORA);
   });
 
   it("⭑ R13: la recuperación va DESPUÉS de escribir la caché y la orden", async () => {

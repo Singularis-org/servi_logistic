@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { JobEstado, JobTipo } from "@prisma/client";
-import type {
-  ClaimOpts,
-  EnqueueOpts,
-  IJobRepository,
-  JobDTO,
-  JobTxClient,
+import {
+  empresaDelJob,
+  type ClaimOpts,
+  type EnqueueOpts,
+  type IJobRepository,
+  type JobConEmpresa,
+  type JobDTO,
+  type JobTxClient,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import { loadJobsConfig } from "@/lib/config/jobs";
 
@@ -34,18 +36,10 @@ interface JobRow {
   organizacion_id?: string | null;
 }
 
-/**
- * SL-17 (D16, R42) — el job con la empresa que lo encolo. Va aqui y no en `JobDTO`
- * (`IJobRepository.ts`) para no tocar los dobles de la cola de las otras fichas: el campo es un
- * anadido estructural que el drenador lee con `empresaDelJob`.
- */
-export type JobConEmpresa = JobDTO & { organizacionId: string | null };
-
-/** La empresa del job, o `null` si no la tiene (o si viene de un doble sin el campo). */
-export function empresaDelJob(job: JobDTO): string | null {
-  const id = (job as Partial<JobConEmpresa>).organizacionId;
-  return typeof id === "string" && id.trim() !== "" ? id : null;
-}
+// SL-17 (D16, R42) — `JobConEmpresa` y `empresaDelJob` viven en el modulo de contratos
+// (`IJobRepository.ts`) para que un service los lea sin importar este repositorio, que arrastra
+// Prisma; se reexportan aqui para no mover a quien ya los importaba de este archivo.
+export { empresaDelJob, type JobConEmpresa };
 
 function toDTO(row: JobRow): JobConEmpresa {
   return {

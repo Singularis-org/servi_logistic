@@ -34,7 +34,15 @@ const LARGO_MARCADOR = MARCADOR_FALLO_CONFIG_GEOCODE.length;
 export class GeocodeSaludRepository implements IGeocodeSaludRepository {
   constructor(private readonly prisma: GeocodeSaludPrismaClient) {}
 
-  async contarFallosConfigDesde(desde: Date, excluirJobId: string): Promise<number> {
+  async contarFallosConfigDesde(
+    organizacionId: string,
+    desde: Date,
+    excluirJobId: string,
+  ): Promise<number> {
+    // SL-36 (R43) — `"organizacion_id" = $empresa`: la politica de `jobs` esta abierta hasta SL-19,
+    // asi que sin este filtro el umbral y el «afectados» sumarian fallos de TODAS las empresas. La
+    // igualdad ya excluye las filas con `organizacion_id` NULL.
+    //
     // R2/R3/R5 — se cuentan JOBS DISTINTOS (una fila = un job), no intentos.
     //
     // `left("last_error", $len) = $marcador` y NO `LIKE '%...%'`: es la traduccion SQL EXACTA del
@@ -53,6 +61,7 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
       SELECT COUNT(*)::int AS n
       FROM "jobs"
       WHERE "tipo"   = 'geocodificacion'
+        AND "organizacion_id" = ${organizacionId}
         AND "estado" IN ('pending', 'processing', 'failed')
         AND "updated_at" >= ${desde}
         AND "id" <> ${excluirJobId}
@@ -61,7 +70,10 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
   }
 
   async revivirFallosConfig(opts: RevivirFallosConfigOpts): Promise<number> {
-    const { ahora, limite, espaciadoMs, tocadoAntesDe } = opts;
+    const { organizacionId, ahora, limite, espaciadoMs, tocadoAntesDe } = opts;
+    // SL-36 (R42) — `"organizacion_id" = $empresa` en `elegibles`: el exito de una empresa solo
+    // revive SUS jobs (la politica de `jobs` esta abierta hasta SL-19; la RLS no separa nada). La
+    // igualdad deja fuera los jobs con `organizacion_id` NULL: no los revive ninguna empresa.
     // R13/R15/R16/R19/R21/R22/R23/R24 — UNA sola sentencia atomica.
     //
     // ⚠️ TRES CTEs Y NO DOS, Y NO ES ESTETICA. `design.md` §5.1 escribe `row_number()` y
@@ -91,6 +103,7 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
         SELECT "id", "updated_at"
         FROM "jobs"
         WHERE "tipo"   = 'geocodificacion'
+          AND "organizacion_id" = ${organizacionId}
           AND "estado" = 'failed'
           AND "updated_at" < ${tocadoAntesDe}
           AND left("last_error", ${LARGO_MARCADOR}) = ${MARCADOR_FALLO_CONFIG_GEOCODE}
