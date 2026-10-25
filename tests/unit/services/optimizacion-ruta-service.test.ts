@@ -566,7 +566,7 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
   });
 
   it("R32: el motivo de un error de LIBRERIA es fijo — nunca reenvia su mensaje", async () => {
-    // `error.message` de `google-auth-library` o de `fetch` puede traer la peticion completa
+    // `error.message` de `fetch` o de otra libreria de red puede traer la peticion completa
     // colgada, y ahi es donde viven las cabeceras con el Bearer.
     const { service, rutas } = build({
       paradas: [parada("o1"), parada("o2")],
