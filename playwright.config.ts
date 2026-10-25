@@ -94,6 +94,7 @@ export default defineConfig({
         "analitica-roles",
         "cobro-plataforma-sl40",
         "pago-plataforma-sl45",
+        "integraciones-por-empresa",
       ),
     },
     {

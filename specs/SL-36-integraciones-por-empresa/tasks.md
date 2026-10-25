@@ -125,7 +125,7 @@
 
 ## T9. E2E
 
-- [ ] **T9.1** `e2e/integraciones-por-empresa.spec.ts`, con el doble de design §15, sobre dos empresas.
+- [x] **T9.1** `e2e/integraciones-por-empresa.spec.ts`, con el doble de design §15, sobre dos empresas.
   - El maestro de A da de alta WhatsApp:
     - un intento rechazado no crea fila;
     - un alta buena muestra el token una vez, y al recargar el token ya no está en el HTML.
