@@ -9,7 +9,7 @@
 
 ## T1. Medir antes de construir
 
-- [ ] **T1.1** Contra Postgres real (base local o contenedor propio, nunca QA ni producción), con dos
+- [x] **T1.1** Contra Postgres real (base local o contenedor propio, nunca QA ni producción), con dos
   organizaciones de prueba y en una transacción revertida, medir y anotar en `progress/impl_SL-19.md`:
   1. con la política nueva aplicada a mano, `JobRepository.enqueue` dentro de `comoApp(tx, A)` devuelve
      la fila (el `RETURNING` pasa la política) y la guarda con A;
@@ -21,25 +21,25 @@
 
 ## T2. La política de `jobs` (depende de T1)
 
-- [ ] **T2.1** Migración `20261025150000_jobs_por_empresa`, con `migration.sql` y `down.sql`
+- [x] **T2.1** Migración `20261025150000_jobs_por_empresa`, con `migration.sql` y `down.sql`
   (`design.md > §2.1`). Antes de crearla se comprueba que su timestamp es posterior a la última
   migración de `origin/dev`.
   - Hecho cuando: `pnpm run db:migrate` y después el `down.sql` y otra vez la migración dejan
     `pg_policies` de `jobs` con solo `jobs_por_empresa`; con el `down.sql` aplicado, solo
     `jobs_abierta`.
-- [ ] **T2.2** `tests/integration/db/jobs-por-empresa-migracion.test.ts` (R11).
+- [x] **T2.2** `tests/integration/db/jobs-por-empresa-migracion.test.ts` (R11).
   - Hecho cuando: está verde, y en rojo con la mutación de §6.
 
 ## T3. Clasificación y guardias de la base (depende de T2)
 
-- [ ] **T3.1** `lib/db/modelos-de-negocio.ts`: lista `MODELOS_CON_EMPRESA_OPCIONAL` con `Job`;
+- [x] **T3.1** `lib/db/modelos-de-negocio.ts`: lista `MODELOS_CON_EMPRESA_OPCIONAL` con `Job`;
   `MODELOS_DIFERIDOS` vacía (`design.md > §5.1`). Se actualiza el comentario de cabecera con los
   conteos.
-- [ ] **T3.2** `organizacion-en-modelos.guardia.test.ts`: la lista nueva entra en la suma, y cada
+- [x] **T3.2** `organizacion-en-modelos.guardia.test.ts`: la lista nueva entra en la suma, y cada
   modelo de ella exige `organizacion_id` nulable y un índice que empiece por esa columna (R13, R14).
   - Hecho cuando: está verde con el esquema real, y en rojo con un esquema inventado donde `Job`
     pierde la nulabilidad o el índice.
-- [ ] **T3.3** `rls-por-empresa.guardia.test.ts`: comprueba también las tablas de empresa opcional, y
+- [x] **T3.3** `rls-por-empresa.guardia.test.ts`: comprueba también las tablas de empresa opcional, y
   añade la comprobación de políticas abiertas (`design.md > §5.2`, R9, R12, R13).
   - Hecho cuando:
     - está verde con las migraciones reales;
@@ -49,13 +49,13 @@
 
 ## T4. Tests de `jobs` con dos empresas (depende de T2) [P]
 
-- [ ] **T4.1** [P] `tests/integration/db/jobs-por-empresa.test.ts`: R1, R2, R3, R4, R5, R7, R10.
+- [x] **T4.1** [P] `tests/integration/db/jobs-por-empresa.test.ts`: R1, R2, R3, R4, R5, R7, R10.
   - Hecho cuando: está verde, y en rojo con las mutaciones (a), (b) y (c) de §6, cada una por
     separado.
-- [ ] **T4.2** [P] `tests/integration/db/jobs-drenador-dos-empresas.test.ts`: R6 (reclamo, `complete`
+- [x] **T4.2** [P] `tests/integration/db/jobs-drenador-dos-empresas.test.ts`: R6 (reclamo, `complete`
   y `fail` con reintento y con agotamiento).
   - Hecho cuando: está verde, y en rojo con su mutación.
-- [ ] **T4.3** [P] `tests/integration/db/geocode-salud-dos-empresas.test.ts`: R8.
+- [x] **T4.3** [P] `tests/integration/db/geocode-salud-dos-empresas.test.ts`: R8.
   - Hecho cuando: está verde, y la mutación de §6 está anotada según SL-36 esté o no mergeado en la
     rama.
 
