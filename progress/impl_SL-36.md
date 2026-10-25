@@ -337,3 +337,6 @@ gate: relacionados 665/665 archivos (9514 passed | 26 skipped) · guardias 307/3
 
 ### Chore m3: quitar `google-auth-library` y `@vercel/oidc` (2b1166f)
 `init.sh` INIT_EXIT=1 solo por el validador de features (`faltan specs para features sdd en vuelo: SL-19`: estado del `feature_list.json` local, SL-19 con spec en marcha; el CI no lo usa); verificado a mano: `tsc --noEmit` exit 0, `guard-dependencias-aprobadas` 2/2, `optimizacion-ruta-service` 40/40, `dependencias-declaradas-presentes` con sus 4 rojos del baseline sin cambio. Push autorizado por el leader.
+
+### Chore m8, m9: quitar `@googlemaps/routeoptimization` y el comentario OIDC
+Sin import, `require` ni `import()` por nombre (solo el rol IAM `roles/routeoptimization.editor` en textos). `pnpm remove`; fila borrada de `docs/dependencias.md`; `google-gax` y `google-auth-library` ya no aparecen en `pnpm-lock.yaml` (0 coincidencias). `optimizer-log.ts:18` ya no nombra el token OIDC de Vercel. Verificado: `tsc --noEmit` exit 0, `verificar-dependencias.mjs` exit 0 (55 declaradas, todas presentes), `guard-dependencias-aprobadas` + `optimizacion-ruta-service` + clientes `google-`/`fallback-`/`haversine-route-optimization` 5/5 archivos, 97/97. El validador local sigue rojo por SL-19 (no es hallazgo).

@@ -22,7 +22,6 @@ fila que se toque por otra razón se re-verifica entonces.
 | --- | --- | --- | --- | --- |
 | `@base-ui/react` | primitivas de UI headless (base de shadcn) | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@daypicker/react` | selector de fechas | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
-| `@googlemaps/routeoptimization` | optimización de rutas (Google) | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@playwright/test` | E2E | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@prisma/adapter-pg` | adaptador pg de Prisma | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `@prisma/client` | cliente ORM | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |

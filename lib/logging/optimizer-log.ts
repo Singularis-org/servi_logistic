@@ -15,9 +15,9 @@
 //     ⏳ FEATURE 265 (2026-08-22): ese diagnostico termino y el DEFAULT SE INVIRTIO — hoy la
 //     traza nace APAGADA y se enciende a proposito con `RUTA_DEBUG_LOG=1`. Ver `activo()`.
 //
-// LO QUE NO SE IMPRIME, NI CON LA TRAZA ENCENDIDA: el `access_token`, el token OIDC de
-// Vercel, la clave privada PEM y el JSON de la assertion. De un token solo se dice SI llego
-// y CUANTOS caracteres mide — que es todo lo que sirve para depurar. Un token en un log es
+// LO QUE NO SE IMPRIME, NI CON LA TRAZA ENCENDIDA: el `access_token`, la clave privada PEM y
+// el JSON de la assertion. De un token solo se dice SI llego y CUANTOS caracteres mide — que
+// es todo lo que sirve para depurar. Un token en un log es
 // una credencial reutilizable por quien lo lea; una coordenada, al menos, no abre sesion.
 
 /** Prefijo comun. Cualquier linea de esta feature empieza asi, sin excepcion. */
