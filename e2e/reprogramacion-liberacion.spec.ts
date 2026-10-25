@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { marcarCasilla } from "./_escenarios/casillas";
 import { aprobarCierre, solicitarCierre } from "./_escenarios/cierres";
 import { llamarCron } from "./_escenarios/crons";
 import {
@@ -10,7 +11,7 @@ import {
   estadoDe,
   gestionar,
   llevarA,
-  mananaCR,
+  mananaDeLaApp,
   paginaDe,
   type OrdenE2E,
   type RepartoE2E,
@@ -43,8 +44,8 @@ test.describe.serial("Reprogramación — bloqueo y liberación por el cron", ()
     const m = await crearMensajero(r, "satelite");
     a = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
     b = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
-    await gestionar(r, a, m, { resultado: "reprogramado", fecha: mananaCR() });
-    await gestionar(r, b, m, { resultado: "reprogramado", fecha: mananaCR() });
+    await gestionar(r, a, m, { resultado: "reprogramado", fecha: mananaDeLaApp() });
+    await gestionar(r, b, m, { resultado: "reprogramado", fecha: mananaDeLaApp() });
     await aprobarCierre(r, await solicitarCierre(r, m));
     expect(await estadoDe(a)).toBe("reprogramado");
     expect(await estadoDe(b)).toBe("reprogramado");
@@ -57,7 +58,7 @@ test.describe.serial("Reprogramación — bloqueo y liberación por el cron", ()
     // Se ven en la bodega (ficha 357), con su estado…
     for (const o of [a, b]) {
       await expect(bodega.getByRole("row", { name: new RegExp(o.numRemision) }).getByText("Reprogramado")).toBeVisible();
-      await bodega.getByRole("checkbox", { name: `Seleccionar ${o.numRemision}` }).check();
+      await marcarCasilla(bodega.getByRole("checkbox", { name: `Seleccionar ${o.numRemision}` }));
     }
     // …pero marcadas no ofrecen «Asignar»: la barra solo ofrece la transición de su estado.
     // (La contraprueba, «Asignar» presente para una orden ya liberada, está en el caso siguiente.)
@@ -86,7 +87,7 @@ test.describe.serial("Reprogramación — bloqueo y liberación por el cron", ()
     const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
     await expect(bodega.getByRole("row", { name: new RegExp(b.numRemision) }).getByText("En bodega satélite")).toBeVisible();
     await expect(bodega.getByRole("row", { name: new RegExp(a.numRemision) }).getByText("Reprogramado")).toBeVisible();
-    await bodega.getByRole("checkbox", { name: `Seleccionar ${b.numRemision}` }).check();
+    await marcarCasilla(bodega.getByRole("checkbox", { name: `Seleccionar ${b.numRemision}` }));
     await expect(bodega.getByRole("button", { name: "Asignar", exact: true })).toBeEnabled();
   });
 

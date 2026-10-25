@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { marcarCasilla } from "./_escenarios/casillas";
 import { aprobarCierre, solicitarCierre } from "./_escenarios/cierres";
 import {
   crearEscenarioReparto,
@@ -49,7 +50,7 @@ test.describe.serial("Devolución a la tienda — por_devolver_a_tienda → devo
 
     const fila = page.getByRole("row", { name: new RegExp(orden.numRemision) });
     await expect(fila.getByText("Por devolver a tienda")).toBeVisible();
-    await fila.getByRole("checkbox", { name: `Seleccionar orden ${orden.numRemision}` }).check();
+    await marcarCasilla(fila.getByRole("checkbox", { name: `Seleccionar orden ${orden.numRemision}` }));
     await page.getByRole("button", { name: "Enviar a la tienda", exact: true }).click();
 
     const modal = page.getByRole("dialog", { name: "Enviar a la tienda" });

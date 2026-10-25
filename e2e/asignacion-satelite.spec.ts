@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { marcarCasilla } from "./_escenarios/casillas";
 import { drenarGeocodificacion } from "./_escenarios/crons";
 import {
   baseReparto,
@@ -48,7 +49,7 @@ test.describe.serial("Asignación satélite — asignar un mensajero de la zona"
     const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
     const marcar = bodega.getByRole("checkbox", { name: `Seleccionar ${orden.numRemision}` });
     await expect(marcar).toBeVisible();
-    await marcar.check();
+    await marcarCasilla(marcar);
     await bodega.getByRole("button", { name: "Asignar", exact: true }).click();
 
     const modal = page.getByRole("dialog", { name: "Asignar mensajero" });

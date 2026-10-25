@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { marcarCasilla } from "./_escenarios/casillas";
 import { cierresDe } from "./_escenarios/cierres";
 import { correrCron, drenarGeocodificacion } from "./_escenarios/crons";
 import {
@@ -50,13 +51,9 @@ async function bodegaDelSatelite(page: Page): Promise<Locator> {
   await page.goto("/recepcion-satelite/en-bodega");
   const bodega = page.getByRole("region", { name: "Órdenes de la bodega" });
   const casilla = bodega.getByRole("checkbox", { name: `Seleccionar ${enBodega.numRemision}` });
-  // Recién cargada, la página puede no estar hidratada: el clic llega a la casilla del HTML del
-  // servidor y no la marca («Clicking the checkbox did not change its state», run 40142523437 de
-  // CI, paso 5). Se reintenta hasta que la marca de verdad; `check` no desmarca una ya marcada.
-  await expect(async () => {
-    await casilla.check({ timeout: 2_000 });
-    await expect(casilla).toBeChecked({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+  // Recién cargada, la página puede no estar hidratada (run 40142523437 de CI, paso 5): ver
+  // `marcarCasilla`.
+  await marcarCasilla(casilla);
   return bodega;
 }
 

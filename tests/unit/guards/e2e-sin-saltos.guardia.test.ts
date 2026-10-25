@@ -9,7 +9,8 @@ import { RAIZ_DEL_REPO } from "../../fixtures/raices-de-codigo";
 //
 // 1. **Sin saltos (R13).** Ningun archivo de `e2e/` contiene `test.skip`, `test.fixme`, `.only` ni
 //    sus formas en `describe`, `serial`/`parallel` o `test.info()`/`testInfo`. Tampoco condicional:
-//    `test.skip(cond, "…")` es la misma llamada.
+//    `test.skip(cond, "…")` es la misma llamada. Ni con alias (`t.skip(…)`, `const { skip } = test`)
+//    ni partida en dos lineas (`test\n  .skip(…)`): review m1.
 // 2. **Sin datos heredados (R9).** Ni `correct-password`, ni un correo literal `@example.com`, ni
 //    lecturas de `E2E_RASTREO_*`, `SL17_HUMO_*`, `SL39_UI` o `SL40_UI`. Los correos de la fabrica son
 //    `@example.test` con sufijo aleatorio (R10). Se busca en todo el texto, comentarios incluidos:
@@ -62,6 +63,20 @@ const LLAMADA_DE_SALTO =
   /\b(?:test|it|describe)(?:\s*\.\s*describe)?(?:\s*\.\s*(?:serial|parallel))?\s*\.\s*(skip|fixme|only)\b/g;
 /** `test.info().skip(…)`, `testInfo.fixme(…)`. */
 const SALTO_EN_TIEMPO_DE_EJECUCION = /(?:\.info\(\s*\)|\btestInfo)\s*\.\s*(skip|fixme)\b/g;
+/**
+ * Cualquier LLAMADA `.skip(`, `.fixme(` u `.only(`, sea cual sea el receptor: cubre el alias
+ * (`const t = test; t.skip(true)`, review m1, M2c). En `e2e/` no hay otra API con esos nombres.
+ */
+const LLAMADA_CON_ALIAS = /\.\s*(skip|fixme|only)\s*\(/g;
+/** `const { skip } = test`: el alias por desestructuración. */
+const SALTO_DESESTRUCTURADO = /\{[^}]*?\b(skip|fixme|only)\b[^}]*\}\s*=\s*(?:test|it|describe)\b/g;
+
+/**
+ * Los patrones de salto se buscan sobre el texto ENTERO, no línea a línea: `\s` casa también el
+ * salto de línea, así que `test\n  .skip(true)` (review m1, M2d) es la misma llamada. La línea
+ * que se reporta es la de la palabra clave. Un mismo salto que casan dos patrones cuenta una vez.
+ */
+const PATRONES_DE_SALTO = [LLAMADA_DE_SALTO, SALTO_EN_TIEMPO_DE_EJECUCION, LLAMADA_CON_ALIAS, SALTO_DESESTRUCTURADO];
 
 const PROHIBIDOS: readonly { patron: RegExp; motivo: Motivo }[] = [
   { patron: /correct-password/, motivo: "credencial-sembrada" },
@@ -69,15 +84,24 @@ const PROHIBIDOS: readonly { patron: RegExp; motivo: Motivo }[] = [
   { patron: /\b(?:E2E_RASTREO_|SL17_HUMO_)|\bSL39_UI\b|\bSL40_UI\b/, motivo: "variable-heredada" },
 ];
 
+function saltosDe(ruta: string, texto: string): Hallazgo[] {
+  const vistos = new Map<number, Hallazgo>();
+  for (const re of PATRONES_DE_SALTO) {
+    for (const m of texto.matchAll(re)) {
+      const posicion = (m.index ?? 0) + m[0].lastIndexOf(m[1]);
+      if (vistos.has(posicion)) continue;
+      const linea = texto.slice(0, posicion).split("\n").length;
+      vistos.set(posicion, { ruta, linea, motivo: m[1] as Motivo });
+    }
+  }
+  return [...vistos.entries()].sort(([a], [b]) => a - b).map(([, h]) => h);
+}
+
 export function hallazgosDeContenido(archivos: readonly Archivo[]): Hallazgo[] {
   const hallazgos: Hallazgo[] = [];
   for (const { ruta, texto } of archivos) {
+    hallazgos.push(...saltosDe(ruta, texto));
     texto.split(/\r?\n/).forEach((linea, i) => {
-      for (const re of [LLAMADA_DE_SALTO, SALTO_EN_TIEMPO_DE_EJECUCION]) {
-        for (const m of linea.matchAll(re)) {
-          hallazgos.push({ ruta, linea: i + 1, motivo: m[1] as Motivo });
-        }
-      }
       for (const { patron, motivo } of PROHIBIDOS) {
         if (patron.test(linea)) hallazgos.push({ ruta, linea: i + 1, motivo });
       }
@@ -286,6 +310,9 @@ describe("SL-44 R9, R13, R19, D3 — el E2E sale verde de verdad", () => {
       ["skip en ejecucion", "test.info().skip();", "skip"],
       ["only", 'test.only("solo este", async () => {});', "only"],
       ["only de describe serial", 'test.describe.serial.only("b", () => {});', "only"],
+      ["skip con alias", "const t = test; t.skip(true);", "skip"],
+      ["only con alias", 'const d = test.describe; d.only("b", () => {});', "only"],
+      ["fixme desestructurado", "const { fixme } = test;", "fixme"],
       ["correct-password", 'const PASSWORD = "correct-password";', "credencial-sembrada"],
       ["@example.com literal", 'const CORREO = "maestro@example.com";', "correo-example-com"],
       ["SL39_UI", 'if (process.env.SL39_UI !== "1") return;', "variable-heredada"],
@@ -296,6 +323,17 @@ describe("SL-44 R9, R13, R19, D3 — el E2E sale verde de verdad", () => {
       const ruta = "e2e/auth.spec.ts";
       expect(hallazgosE2e(conArchivo(ruta, `${SPEC_LIMPIO}\n${linea}`), CONFIG_OK, CHECKPOINTS_OK)).toEqual([
         { ruta, linea: 5, motivo },
+      ]);
+    });
+
+    it.each([
+      ["skip partido en dos lineas", "test\n  .skip(true);", 6, "skip"],
+      ["fixme partido tras el punto", 'test.\n  fixme("pendiente", async () => {});', 6, "fixme"],
+      ["only de describe partido", 'test.describe\n  .only("b", () => {});', 6, "only"],
+    ])("rojo, %s (la linea de la palabra clave, una sola vez)", (_caso, trozo, linea, motivo) => {
+      const ruta = "e2e/auth.spec.ts";
+      expect(hallazgosE2e(conArchivo(ruta, `${SPEC_LIMPIO}\n${trozo}`), CONFIG_OK, CHECKPOINTS_OK)).toEqual([
+        { ruta, linea, motivo },
       ]);
     });
 

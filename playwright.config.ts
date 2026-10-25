@@ -56,7 +56,8 @@ export default defineConfig({
   // Proyectos de D3. Cada `e2e/*.spec.ts` cae en exactamente uno (guardia `e2e-sin-saltos`, D7).
   projects: [
     {
-      // Afirman la plataforma sin empresas: tienen que terminar antes que cualquier alta (R26).
+      // El superadmin es único por base: su arranque y su alta de empresas van antes que el resto
+      // (D3). Desde T7 ningún E2E afirma la plataforma sin empresas (eso es de `empresas-module`).
       name: "plataforma-vacia",
       use: { ...devices["Desktop Chrome"] },
       testMatch: specs("superadmin-arranque", "superadmin-empresas"),

@@ -9,7 +9,7 @@ import {
   crearOrden,
   estadoDe,
   llevarA,
-  mananaCR,
+  mananaDeLaApp,
   paginaDe,
   type MensajeroE2E,
   type OrdenE2E,
@@ -151,7 +151,7 @@ test.describe("Mis asignaciones — recoger y gestionar", () => {
 
     await panel.getByRole("button", { name: "Reprogramar", exact: true }).click();
     const fecha = panel.getByLabel("Nueva fecha de reprogramación");
-    await fecha.fill(mananaCR());
+    await fecha.fill(mananaDeLaApp());
     await panel.getByLabel("Motivo").fill("Cliente ausente");
     await panel.getByRole("button", { name: "Guardar gestión" }).click();
 
@@ -159,7 +159,7 @@ test.describe("Mis asignaciones — recoger y gestionar", () => {
     const g = await gestionVigente(orden);
     expect(g?.resultado).toBe("reprogramado");
     expect(g?.motivo).toBe("Cliente ausente");
-    expect(g?.fechaReprogramacion?.toISOString().slice(0, 10)).toBe(mananaCR());
+    expect(g?.fechaReprogramacion?.toISOString().slice(0, 10)).toBe(mananaDeLaApp());
     expect(await estadoDe(orden)).toBe("en_reparto");
   });
 

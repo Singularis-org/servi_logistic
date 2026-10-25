@@ -37,6 +37,7 @@ import { SupabaseFileStorage } from "../../lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "../../lib/storage/SupabaseSignedUrlProvider";
 import { crearTarifaSchema } from "../../lib/types/tarifa";
 import { crearZonaSchema } from "../../lib/types/zona";
+import { fechaCalendarioCR, mananaCalendarioCR } from "../../lib/utils/fecha-cr";
 import {
   abrirBaseE2E,
   crearEmpresaE2E,
@@ -89,19 +90,19 @@ import { drenarGeocodificacion } from "./crons";
  *     la evidencia `e2e/fixtures/evidencia.jpg` subida al doble de Storage (D2). `gestion`:
  *       { resultado: "entregado", pagos?: [{ metodo, monto }] }   // sin pagos: una línea en efectivo por el monto
  *       { resultado: "devolucion_a_origen_por_rechazo", motivo? }
- *       { resultado: "reprogramado", fecha?: "YYYY-MM-DD", motivo? } // por defecto, mañana en CR
+ *       { resultado: "reprogramado", fecha?: "YYYY-MM-DD", motivo? } // por defecto, mañana en la zona de la app
  *       { resultado: "novedad", causa?, motivo? }
  *     La orden NO cambia de estado (ficha 454): queda `en_reparto` con la gestión pendiente hasta
  *     que se APRUEBA el cierre (`./cierres.ts`).
  *
- *   corregirFechaReprogramacion(r, orden, fecha = hoyCR()) → void
+ *   corregirFechaReprogramacion(r, orden, fecha = hoyDeLaApp()) → void
  *     El maestro corrige la fecha de una reprogramada (`CorreccionFechaReprogramacionService`), con
  *     el liberador POR DEFECTO del servicio (no-op): la orden queda `reprogramado` con la fecha ya
  *     llegada y la libera el cron `liberar-reprogramadas`, que es lo que pasa en la app cuando el
  *     día llega solo. La Server Action inyecta el liberador real y la soltaría en el acto; aquí no
  *     se inyecta porque el estado que se quiere es «vencida, esperando al cron».
  *
- *   estadoDe(orden) → value del estado; gestionesDe(orden) → gestiones de la orden; hoyCR(), mananaCR().
+ *   estadoDe(orden) → value del estado; gestionesDe(orden) → gestiones de la orden; hoyDeLaApp(), mananaDeLaApp().
  *
  *   paginaDe(browser, usuario, opcionesDeContexto?) → Page
  *     Un contexto nuevo con la sesión de `usuario` (`sesionDe`: `/login` real, sin OTP). Las
@@ -216,14 +217,12 @@ function exigirOk<T extends { status: string }>(paso: string, r: T, validos: str
   return r;
 }
 
-// ── Fechas de Costa Rica (UTC-6 fijo, sin horario de verano) ────────────────────────────────────
-function fechaCR(diasDesdeHoy: number): string {
-  const cr = new Date(Date.now() - 6 * 60 * 60 * 1000);
-  cr.setUTCDate(cr.getUTCDate() + diasDesdeHoy);
-  return cr.toISOString().slice(0, 10);
-}
-export const hoyCR = (): string => fechaCR(0);
-export const mananaCR = (): string => fechaCR(1);
+// ── Fechas calendario de la app ─────────────────────────────────────────────────────────────────
+// Las da la MISMA función con la que la app decide «hoy» (`lib/utils/fecha-cr.ts`), no un desfase
+// propio: si la zona de la app cambia, el escenario la sigue sin tocarse (review m2). La app no
+// expone una zona configurable para el día de reparto; esa es su única fuente.
+export const hoyDeLaApp = (): string => fechaCalendarioCR();
+export const mananaDeLaApp = (): string => mananaCalendarioCR();
 
 // ── Servicios, montados como en su Server Action ────────────────────────────────────────────────
 function historial(prisma: PrismaClient, ordenRepo: OrdenRepository): OrdenHistorialService {
@@ -535,7 +534,7 @@ function entradaGestion(orden: OrdenE2E, g: GestionE2E): GestionarInput {
     case "devolucion_a_origen_por_rechazo":
       return { ...base, resultado: g.resultado, motivo: g.motivo ?? "No la quiere", evidencias: evidencia() };
     case "reprogramado":
-      return { ...base, resultado: g.resultado, fechaReprogramacion: g.fecha ?? mananaCR(), motivo: g.motivo ?? "Cliente ausente" };
+      return { ...base, resultado: g.resultado, fechaReprogramacion: g.fecha ?? mananaDeLaApp(), motivo: g.motivo ?? "Cliente ausente" };
     case "novedad":
       return {
         ...base,
@@ -568,7 +567,7 @@ export async function paginaDe(browser: Browser, u: UsuarioE2E, opts: BrowserCon
   return ctx.newPage();
 }
 
-export async function corregirFechaReprogramacion(r: RepartoE2E, orden: OrdenE2E, fecha: string = hoyCR()): Promise<void> {
+export async function corregirFechaReprogramacion(r: RepartoE2E, orden: OrdenE2E, fecha: string = hoyDeLaApp()): Promise<void> {
   const s = servicios();
   exigirOk(
     "CorreccionFechaReprogramacionService.corregir",

@@ -790,3 +790,55 @@ Los tres grupos, muy por debajo de 25 min (R28) y de la estimación de D8.
 
 **Veredicto T7.4:** E2E en verde de verdad: 100/100 dos veces en local sobre base nueva y los tres grupos en verde en
 CI sin flaky (run 40144681190).
+
+## Review vuelta 1 (RECHAZADO): arreglos (frontend_dev, 2026-10-24)
+
+Base `24e19d1`. Contenedor propio `sl44-pg`, bases `sl44_b1a/b/c` (cada una nueva, borradas al terminar). El `.env`
+del worktree, solo con `DATABASE_URL`/`DIRECT_URL` al contenedor, `SESSION_SECRET` generado y
+`APP_BASE_URL`/`NEXT_PUBLIC_APP_URL=http://localhost:3044` (Next la incrusta al compilar), borrado al terminar.
+
+**Archivos:** `e2e/_escenarios/casillas.ts` (nuevo), `e2e/asignacion-satelite.spec.ts`, `e2e/devolucion-origen.spec.ts`,
+`e2e/reprogramacion-liberacion.spec.ts`, `e2e/reglas-bloqueos-cierre.spec.ts`, `e2e/mis-asignaciones.spec.ts`,
+`e2e/_escenarios/reparto.ts`, `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`, `playwright.config.ts`,
+`specs/SL-44-e2e-verde-ci/tasks.md`.
+
+- **B1.** `marcarCasilla(locator)` en `e2e/_escenarios/casillas.ts`: `toPass(check + toBeChecked)` con 15 s. Es la única
+  fuente: la usan `asignacion-satelite:52`, `devolucion-origen:53`, `reprogramacion-liberacion:61` y `:90`, y
+  `reglas-bloqueos-cierre` (su bloque inline se retiró). No queda ningún `.check()`/`.uncheck()`/`setChecked` más en `e2e/`.
+  **Mutación:** `disabled` en `components/ui/checkbox.tsx` + `next build` → `asignacion-satelite` y `devolucion-origen`
+  ROJOS (`2 failed, 1 did not run`; «element is not enabled» en `casillas.ts:23 toPass`). Restaurado (`git diff` vacío)
+  y reconstruido.
+- **B2.** T7.2 `[x]`.
+- **m1.** `e2e-sin-saltos`: los patrones de salto se buscan sobre el texto entero (`\s` cruza líneas) y se añaden la
+  llamada con cualquier receptor (`\.\s*(skip|fixme|only)\s*\(`) y la desestructuración (`const { skip } = test`);
+  un mismo salto cuenta una vez y se reporta en la línea de la palabra clave. Fixtures nuevos: alias `skip`/`only`,
+  `fixme` desestructurado y tres partidos en dos líneas. 30 passed. **Mutaciones:** sin el patrón de alias → 2 rojos
+  (los dos alias); sin el desestructurado → 1 rojo; línea a línea (`\n` → `\0`) → 1 rojo (`test.\n fixme(`); las dos
+  primeras juntas → 5 rojos (alias + los tres partidos, el M2d del reviewer incluido). Restaurado con `cmp`.
+- **m2.** `reparto.ts`: fuera el `-6 h` fijo. `hoyDeLaApp()`/`mananaDeLaApp()` (antes `hoyCR`/`mananaCR`) delegan en
+  `fechaCalendarioCR`/`mananaCalendarioCR` de `lib/utils/fecha-cr.ts`, la fuente con la que la app decide el día. La app
+  no expone una zona configurable para el día de reparto (`RASTREO_PUBLICO_ZONA_HORARIA` es solo del rastreo).
+- **m3.** Aprobado por Carlos el 2026-10-24; anotado en `tasks.md` (tras T7.4).
+- **m5.** Comentario de `plataforma-vacia` en `playwright.config.ts`: el motivo vigente es que el superadmin es único
+  por base (D3).
+
+**Comandos:**
+- `pnpm run typecheck` → `TC_EXIT=0`; `eslint e2e tests/unit/guards/e2e-sin-saltos.guardia.test.ts playwright.config.ts` → 0 errores.
+- `TEST_RAPIDO_BASE=origin/dev ./init.sh` dentro de `scratchpad/gate.lock` (owner `frontend_dev SL-44 review-fix`) →
+  `init OK`, **INIT_EXIT=0** (`scratchpad/sl44-gate-b1.log`).
+- E2E sobre `sl44_b1c` (nueva), `E2E_PUERTO=3044`, entre 00:45 y 00:51 UTC (18:45–18:51 en CR):
+  - `--project=reparto` ×2: `13 passed, 1 failed, 1 did not run` las dos;
+  - completo ×1: `98 passed, 1 failed, 1 did not run (3.5m)`.
+  - El único rojo, en las tres: `reprogramacion-liberacion.spec.ts:69`, la región «Liberadas hoy (reprogramación)» no
+    sale (el resto del caso, el 200 del cron y `en_bodega_satelite`, pasa).
+
+**Defecto de producción encontrado (no arreglado: fuera del alcance de frontend).**
+`LiberacionReprogramadaRepository.findLiberadasHoy` (`lib/repositories/LiberacionReprogramadaRepository.ts:255-263`) filtra la
+columna TIMESTAMP `liberada_reprogramada_at` con `[startOfDayCR(), +24 h)`, es decir, medianoche UTC del día de CR. Es la
+convención de las columnas `@db.Date`, y el comentario de `lib/utils/fecha-cr.ts` dice que contra un `timestamp` va
+`inicioDelDiaCREnUtc` (6 h más tarde). Efecto: entre las 18:00 y las 24:00 de CR, lo que el cron libera no aparece en
+«Liberadas hoy». Medido: liberadas `2026-10-25 00:40Z`, ventana `[2026-10-24 00:00Z, 2026-10-25 00:00Z)`. El spec acierta;
+corre en verde fuera de esa franja (runs anteriores). Con `failOnFlakyTests` no es flaky: es rojo determinista según la hora.
+
+**Veredicto:** B1, B2, m1, m2, m3 y m5 resueltos con mutación; el E2E queda rojo de 18:00 a 24:00 CR por un defecto de
+producción en `findLiberadasHoy`, que necesita un arreglo de backend.

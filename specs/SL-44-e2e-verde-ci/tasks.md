@@ -157,7 +157,7 @@ Convenciones:
 - [x] **T7.1 — Retirar `e2e/home.spec.ts`** (D5). Grep de citas en `docs/`, `specs/` y `tests/`.
 
   **Hecho:** sin citas vivas; `test-citado-desaparecido` en verde.
-- [ ] **T7.2 — Guardia `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`** (D7; R9, R13, R19 y la
+- [x] **T7.2 — Guardia `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`** (D7; R9, R13, R19 y la
   cobertura de proyectos).
 
   **Hecho:**
@@ -180,6 +180,12 @@ Convenciones:
 
   **Hecho:** las dos corridas locales y el run de CI citados en la bitácora. Si un grupo pasa de
   25 min, se parte otra vez antes de cerrar.
+
+**Decisiones aprobadas por Carlos (2026-10-24, review m3):**
+- `superadmin-empresas` sin base vacía (A1, cambio de T7 en D3): el estado vacío lo cubre el test de
+  componente `tests/components/empresas-module.test.tsx`.
+- `analitica-roles` rehecho contra la pantalla actual (desvío de D5): afirma el recorte que
+  `AnaliticaShell` pinta hoy (`ALCANCE_PRODUCTOS`).
 
 ## Trazabilidad prevista
 
