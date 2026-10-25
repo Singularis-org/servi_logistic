@@ -107,14 +107,14 @@
 
 ## T10. Lo ya guardado (depende de T6 y T8)
 
-- [ ] **T10.1** `scripts/migrar-storage-a-carpetas.ts` (`design.md > §4`), con su entrada en
+- [x] **T10.1** `scripts/migrar-storage-a-carpetas.ts` (`design.md > §4`), con su entrada en
   `EXCEPCIONES_DE_PLATAFORMA` y en `EXCEPCIONES_DE_STORAGE` (ficha SL-19), y el script
   `storage:migrar-a-carpetas` en `package.json`.
-- [ ] **T10.2** `tests/integration/storage/migrar-storage-a-carpetas.test.ts`: Postgres real con dos
+- [x] **T10.2** `tests/integration/storage/migrar-storage-a-carpetas.test.ts`: Postgres real con dos
   empresas, más el doble de Storage. Cubre R23 (modo de prueba sin efectos), R24 (después, B no ve lo
   de A y A firma lo suyo), R25 (segunda corrida sin cambios), R26, R27 y R28 (ida y vuelta).
   - Hecho cuando: está verde, y en rojo con las mutaciones (a) y (b) de §6.
-- [ ] **T10.3** Correr el comando contra la base y el Storage **locales** (o el doble), sin y con
+- [x] **T10.3** Correr el comando contra la base y el Storage **locales** (o el doble), sin y con
   `--aplicar`, y anotar los conteos en `progress/impl_SL-19.md`.
 - [ ] **T10.4** **PUERTA HUMANA.** Correr el comando contra dev compartido, QA y producción (en
   producción, solo sin `--aplicar`) según el orden de `design.md > §4`, después del despliegue.
@@ -124,20 +124,20 @@
 
 ## T11. E2E (depende de T6)
 
-- [ ] **T11.1** Revisar `e2e/_escenarios/reparto.ts` y `e2e/_escenarios/cierres.ts`: los adaptadores
+- [x] **T11.1** Revisar `e2e/_escenarios/reparto.ts` y `e2e/_escenarios/cierres.ts`: los adaptadores
   corren dentro de la empresa del escenario, y lo que se siembra en el doble va en su carpeta.
-- [ ] **T11.2** Correr, uno a uno, los specs E2E que usan evidencias o comprobantes
+- [x] **T11.2** Correr, uno a uno, los specs E2E que usan evidencias o comprobantes
   (`pnpm exec playwright test e2e/<archivo>.spec.ts`).
   - Hecho cuando: están verdes, o el rojo está identificado como previo a SL-19, con su evidencia.
 
 ## T12. Cierre
 
-- [ ] **T12.1** `docs/architecture.md > Multi-empresa`:
+- [x] **T12.1** `docs/architecture.md > Multi-empresa`:
   - una viñeta de `jobs`: política por empresa, quién ve los jobs sin empresa y por qué
     `dedupe_key` sigue global;
   - una de Storage: carpeta de la empresa en los adaptadores, rutas relativas en la base, la guardia
     de R20 y el comando de §4.
-- [ ] **T12.2** `progress/impl_SL-19.md` con:
+- [x] **T12.2** `progress/impl_SL-19.md` con:
   - el mapa `R<n> → test`, con los 28 requisitos;
   - las mutaciones y su resultado;
   - las mediciones de T1.1 y los conteos de T10.3.

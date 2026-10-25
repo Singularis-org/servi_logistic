@@ -214,3 +214,191 @@ Cada una aplicada a mano y revertida justo después desde una copia (`cmp` / `gi
 
 **Veredicto:** T5–T9 hechas; cada archivo de Storage vive en la carpeta de su empresa, desde otra empresa
 no se alcanza, la purga de descargas corre por empresa y el gate vigila que nadie se salte los adaptadores.
+
+## Tanda C — T10 a T12: lo ya guardado, E2E y cierre (backend_dev, 2026-10-25)
+
+Commits: `4337e00` (T10.1), `afd8ef4` (T10.2), y el de docs de esta sección (T10.3, T11, T12.1, T12.2).
+T10.4 (puerta humana) y T12.3 (`./init.sh`) quedan sin hacer.
+
+### Archivos
+
+- Nuevo: `scripts/migrar-storage-a-carpetas.ts` (design §4). `migrarStorageACarpetas({ db, storage, modo,
+  bucket?, soloEmpresas? })` devuelve los conteos. `main` lo corre en `comoPlataforma("SL-19", …)` con
+  `getPrismaClient()` y `createServerClient().storage`. Lee las 12 columnas de §3.1 con la API de modelos
+  (`RUTAS_GUARDADAS`, con los buckets de los mismos `load*Config`) y deduplica por `(bucket, ruta)`. Mueve con
+  `download` + `upload` sin pisar + `remove`. La existencia del destino sale del listado de su carpeta padre.
+- `lib/db/excepciones-aislamiento.ts`: entrada SL-19 del comando en `EXCEPCIONES_DE_PLATAFORMA` y en
+  `EXCEPCIONES_DE_STORAGE`, que deja de estar vacía.
+- `package.json`: solo `"storage:migrar-a-carpetas": "tsx scripts/migrar-storage-a-carpetas.ts"` en `scripts`.
+- Nuevo test: `tests/integration/storage/migrar-storage-a-carpetas.test.ts` (9 casos).
+- `docs/architecture.md > Multi-empresa`: viñetas «Cola `jobs` (SL-19)» y «Storage (SL-19)».
+- `e2e/_escenarios/reparto.ts` y `cierres.ts`: **sin cambios** (T11.1, ver abajo).
+
+### T11.1 — revisión de los escenarios E2E
+
+- `reparto.ts`: `SupabaseFileStorage` y `SupabaseSignedUrlProvider` solo los usa `misAsignaciones`. Sus
+  tres llamadas (`recogerAsignaciones` l. 488, `escogerParaGestion` l. 552, `gestionar` l. 553) ya van
+  dentro de `conEmpresa(org, …)`.
+- `cierres.ts`: los dos `SupabaseSignedUrlProvider` (l. 62 y 84) solo se usan desde `solicitarCierre`
+  y `aprobarCierre`, que ya envuelven en `conEmpresa(r.empresa.organizacionId, …)`.
+- Ningún escenario ni spec siembra objetos en el doble por ruta (Grep de `storage/v1` y `.storage` en
+  `e2e/`): todo lo sube la app por los adaptadores, que ya lo meten en la carpeta. No hay nada que tocar.
+
+### T10.3 — el comando contra la base local y el doble
+
+Contra `servi_logistic_sl19` y el doble `e2e/_storage-falso/servidor.mjs` en `127.0.0.1:54319`.
+`SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` del doble se pasaron por entorno: `process.loadEnvFile()` no
+pisa una variable ya puesta (medido con un `.env` de prueba). En el doble se sembraron a mano un temporal
+`descargas/tmp/viejo-t103.json.gz` y un huérfano `gestion-evidencias/suelto-t103/sin-fila.jpg`. La base
+local no tiene filas con ruta en las 12 columnas.
+
+| Corrida | descargas | etiquetas-guia | gestion-evidencias | mensajero-docs | wallet-comprobantes | whatsapp-envios | Salida |
+|---|---|---|---|---|---|---|---|
+| sin `--aplicar` | temporales 1 | 0 | huérfanos 1 | 0 | 0 | 0 | 0 |
+| `--aplicar` | temporales 1 (borrado) | 0 | huérfanos 1 | 0 | 0 | 0 | 0 |
+| sin `--aplicar` otra vez | temporales 0 | 0 | huérfanos 1 | 0 | 0 | 0 | 0 |
+
+En las tres corridas, todos los demás conteos salen en 0: a mover, ya en su sitio, duplicados, bytes
+distintos, filas sin objeto, rutas no válidas y fallos. La única línea de detalle es
+`huerfano gestion-evidencias suelto-t103/sin-fila.jpg`. La corrida prueba además que `findMany` de los
+12 modelos funciona dentro de `comoPlataforma` con el cliente real (con extensión). El movimiento con
+filas reales lo mide T10.2. El doble se paró al terminar (54319 libre).
+
+### T11.2 — E2E, uno a uno, contra `servi_logistic_sl19_e2e`
+
+`env E2E_SERVIDOR=dev E2E_PUERTO=3119 E2E_STORAGE_PUERTO=54319 pnpm exec playwright test e2e/<spec>.spec.ts`.
+Antes de cada spec se comprobó que 3119 y 54319 estaban libres. Hubo dos arranques en falso, sin relación
+con SL-19:
+1. sin `E2E_SERVIDOR=dev`, el lanzador hace `next start`, y el worktree no tiene build;
+2. a la base E2E le faltaban los catálogos («faltan catálogos: vehiculo»): se corrió `pnpm run db:seed`
+   contra ella.
+
+Después, los 11 specs que usan los escenarios con `gestionar` o cierres:
+
+| Spec | Resultado |
+|---|---|
+| `mis-asignaciones` | 4 passed (46.8s) |
+| `cierre-bodega-satelite` | 3 passed (31.1s) |
+| `cierre-vencido-modelo` | 5 passed (28.4s) |
+| `cierres-admin-rechazos-sla` | 1 passed (15.8s) |
+| `cierres-admin` | 2 passed (19.2s) |
+| `reglas-bloqueos-cierre` | 5 passed (30.9s) |
+| `reintentos-escalado` | 2 passed (22.4s) |
+| `cierre-dia` | 2 passed (18.2s) |
+| `devolucion-origen` | 2 passed (19.6s) |
+| `historial-orden` | 2 passed (15.2s) |
+| `reprogramacion-liberacion` | 3 passed (18.2s) |
+
+Ningún log trae `EmpresaNoResuelta` ni `ruta no atendida`. Al terminar, 3119 y 54319 quedaron libres. Otros
+5 specs importan escenarios: `asignacion-satelite`, `recepcion-satelite`, `mi-wallet`, `wallet` y
+`wallet-mensajeros`. No gestionan ni cierran, así que no tocan Storage, y no se corrieron.
+
+### Mutaciones (tanda C)
+
+Se aplicaron con `sed` sobre `scripts/migrar-storage-a-carpetas.ts` y se revirtieron justo después desde
+una copia (`cmp` igual).
+
+| # | Mutación | Test | Con la mutación | Sin ella |
+|---|---|---|---|---|
+| M16 (a) | mover a la raíz en vez de a la carpeta (`[origen, destino] = [ruta, ruta]`) | `migrar-storage-a-carpetas` | ROJO 7 de 9, R24 incluido: origen y destino son el mismo objeto; el comando lo cuenta como «duplicado igual» y lo borra, así que A ya no lo firma | verde 9/9 |
+| M17 (b) | no comprobar el destino (`hayDestino = false` fuera de `--revertir`) | `migrar-storage-a-carpetas` | ROJO 3 de 9, los tres R25: la segunda corrida cuenta las filas como «sin objeto», y con la corrida cortada intenta subir encima y sale con 1 | verde 9/9 |
+
+### Desviaciones y hallazgos
+
+- **Modo réplica al sembrar (T10.2).** Una evidencia cuelga de gestión → orden → tienda, zona…, y un
+  comprobante cuelga de un movimiento y un usuario. El comando solo lee `organizacion_id` y la ruta, y la
+  base de los tests no trae catálogo. Por eso el test siembra con `SET LOCAL session_replication_role = replica`
+  dentro de su transacción revertida, como la limpieza de `dos-empresas-entradas.test.ts`. Los CHECK siguen.
+- **`soloEmpresas`:** es un parámetro de la función, no del comando, para que el test no dependa de las
+  filas de otros tests en la base compartida. Las carpetas de empresa se reconocen con todas las organizaciones.
+- **Más conteos de los que pide R23.** R23 pide a mover, ya en su sitio, filas sin objeto y huérfanos. Salen
+  además temporales (R26), duplicados iguales (corrida cortada), bytes distintos, rutas no válidas (R17, o la
+  misma ruta en filas de dos empresas) y fallos de Storage. El comando sale con 1 si hay bytes distintos,
+  rutas no válidas o fallos.
+- **`--revertir`** no borra temporales ni toca huérfanos; los huérfanos se siguen listando.
+- **E2E:** hizo falta `E2E_SERVIDOR=dev` y sembrar los catálogos de la base E2E (ver T11.2). No es de SL-19.
+
+### Mapa R → test (los 28)
+
+| R | Test |
+|---|---|
+| R1 | `tests/integration/db/jobs-por-empresa.test.ts` › «R1 — con A fijada, leer jobs devuelve solo los de A…» |
+| R2 | `jobs-por-empresa.test.ts` › «R2 — con A fijada, actualizar o borrar un job de B o sin empresa afecta cero filas…» |
+| R3 | `jobs-por-empresa.test.ts` › «R3 — … insertar un job de B o con organizacion_id NULL explicito se rechaza…» |
+| R4 | `jobs-por-empresa.test.ts` › «R4 — encolar dentro de A sin nombrar la empresa guarda el job con A…» |
+| R5 | `jobs-por-empresa.test.ts` › «R5 — con servi_app y sin empresa fijada, jobs devuelve cero filas…» |
+| R6 | `tests/integration/db/jobs-drenador-dos-empresas.test.ts` › «R6 — reclama en una corrida los vencidos de A, de B y sin empresa…» |
+| R7 | `jobs-por-empresa.test.ts` › «R7 — dentro de A, encolar dos veces la misma clave deja una sola fila…» |
+| R8 | `tests/integration/db/geocode-salud-dos-empresas.test.ts` › los dos casos «R8 — …» |
+| R9 | `tests/unit/guards/rls-por-empresa.guardia.test.ts` › «R9, R12 — ninguna tabla comprobada conserva una política abierta…»; `jobs-por-empresa.test.ts` › «la politica aplicada es solo jobs_por_empresa» |
+| R10 | `jobs-por-empresa.test.ts` › «R10 — A busca por claves de deduplicacion y recibe solo sus jobs…» |
+| R11 | `tests/integration/db/jobs-por-empresa-migracion.test.ts` › «R11 — la migracion trae su down.sql», «R11 — up → down … down → up …» |
+| R12 | `rls-por-empresa.guardia.test.ts` › «R9, R12 — …» y las tres autocomprobaciones R12 |
+| R13 | `rls-por-empresa.guardia.test.ts` › «R13 — jobs y cada tabla de negocio tienen su política…»; `organizacion-en-modelos.guardia.test.ts` › «R13, R14 — autocomprobación…» |
+| R14 | `tests/unit/guards/organizacion-en-modelos.guardia.test.ts` › «R14 — Job ya no es diferido…», «R14 — autocomprobación: como diferido…» |
+| R15 | `tests/integration/storage/storage-dos-empresas.test.ts` › bloque «R15 — …» (tres adaptadores); `tests/unit/storage/supabase-file-storage.test.ts` |
+| R16 | `storage-dos-empresas.test.ts` › bloque «R16 — desde B, la ruta de un objeto de A se comporta como inexistente» (5 casos) |
+| R17 | `tests/unit/storage/carpeta-de-empresa.test.ts` › «R17 — una ruta invalida…» (8 casos); cada test de adaptador › «SL-19 R17/R18 …» |
+| R18 | `carpeta-de-empresa.test.ts` › los casos R18 (empresa, plataforma, sesión, sin sesión); `almacen-descargas.test.ts` › «… fuera de una empresa fallan con EmpresaNoResuelta» |
+| R19 | `storage-dos-empresas.test.ts` › «las claves son las rutas relativas pedidas…»; `supabase-signed-url-provider.test.ts` › dos casos R19 |
+| R20 | `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts` › «todo archivo fuera de lib/storage…», «cada excepción trae ficha…» y autocomprobaciones |
+| R21 | `tests/unit/api/cron-purga-descargas.test.ts` (dos empresas, una que falla, ninguna); `tests/unit/cron/crons-sin-empresas.test.ts` › `purga-descargas`; `storage-dos-empresas.test.ts` › «purga de descargas en A…» |
+| R22 | `storage-dos-empresas.test.ts` › «purga de PDF de cargas…», «mantenimiento de envios (borrar)…»; `supabase-almacen-envios-whatsapp.test.ts` › «SL-19 R22 …» |
+| R23 | `tests/integration/storage/migrar-storage-a-carpetas.test.ts` › «R23 — sin --aplicar cuenta por bucket … y no toca nada», «R23 — la salida son conteos y huerfanos…» |
+| R24 | `migrar-storage-a-carpetas.test.ts` › «R24 — con --aplicar cada objeto pasa a la carpeta de su fila; A lo firma con el adaptador real y B no lo alcanza» |
+| R25 | `migrar-storage-a-carpetas.test.ts` › «R25 — otra corrida sobre lo migrado no mueve nada ni falla…», «R25 — una corrida cortada … se completa sin fallar», «R25 — si raiz y carpeta tienen bytes distintos, no toca ninguno y sale con 1» |
+| R26 | `migrar-storage-a-carpetas.test.ts` › «R26 — con --aplicar borra los temporales de descargas de la raiz y deja los de la carpeta de A» |
+| R27 | `migrar-storage-a-carpetas.test.ts` › «R27 — el huerfano de la raiz no se mueve ni se borra, y se lista con su bucket y su ruta» |
+| R28 | `migrar-storage-a-carpetas.test.ts` › «R28 — --revertir devuelve a la raiz lo que se movio …; ida y vuelta» |
+
+### Mutaciones de toda la feature
+
+Hay 17 mutaciones: M1–M8 (tanda A), M9–M15 (tanda B) y M16–M17 (tanda C). Cada una sale roja con la
+mutación y verde sin ella. Las excepciones son M6.i y M6.ii, que siguen verdes a propósito: son las dos
+barreras de R8, y con las dos juntas (M6.iii) sale rojo. El detalle está en la tabla «Mutaciones» de
+cada tanda.
+
+### Mediciones T1.1 y conteos T10.3
+
+- **T1.1:** en «Tanda A › Mediciones T1.1». Las mediciones 1 y 3 se cumplen. En la 2, el `ON CONFLICT`
+  con la clave de B devuelve «omitido» sin tocar la fila de B.
+- **T10.3:** en la tabla de arriba.
+
+### Archivos de la feature (`git diff --stat origin/dev...HEAD`, antes del commit de docs de esta tanda)
+
+43 archivos, +3826 −179.
+
+- **Código:**
+  - `app/api/cron/purga-descargas/route.ts`;
+  - `db/migrations/20261025150000_jobs_por_empresa/{migration.sql,down.sql}`;
+  - `lib/db/{excepciones-aislamiento,modelos-de-negocio}.ts`;
+  - las 4 interfaces de `lib/interfaces/external/`;
+  - `lib/storage/{SupabaseAlmacenDescargas,SupabaseAlmacenEnviosWhatsapp,SupabaseFileStorage,SupabaseSignedUrlProvider,buckets,carpeta-de-empresa}.ts`;
+  - `lib/storage/getFile.ts` (borrado);
+  - `package.json`;
+  - `scripts/{migrar-storage-a-carpetas,verificar-rls-despliegue}.ts`.
+- **Tests:**
+  - `tests/integration/db/{_jobs-dos-empresas.ts,geocode-salud-dos-empresas,jobs-drenador-dos-empresas,jobs-por-empresa-migracion,jobs-por-empresa}.test.ts`;
+  - `tests/integration/storage/{migrar-storage-a-carpetas,storage-dos-empresas}.test.ts`;
+  - `tests/unit/api/cron-purga-descargas.test.ts`, `tests/unit/cron/crons-sin-empresas.test.ts`;
+  - `tests/unit/e2e/storage-falso.test.ts`;
+  - `tests/unit/guards/{organizacion-en-modelos,rls-por-empresa,storage-solo-por-adaptador}.guardia.test.ts`;
+  - `tests/unit/scripts/verificar-rls-despliegue.test.ts`;
+  - los 5 de `tests/unit/storage/`.
+- **Docs:** `specs/SL-19-jobs-storage-por-empresa/*`, `progress/features/SL-19.md`, `progress/impl_SL-19.md`,
+  y en esta tanda `docs/architecture.md`.
+
+### Verificación (salida real)
+
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`), después de los E2E → `TC_EXIT=0`.
+- `pnpm run lint` → `✖ 231 problems (0 errors, 231 warnings)`, ninguno en archivos de esta tanda; `LINT_EXIT=0`.
+- `pnpm run test:guardias` → `Test Files 1 failed | 306 passed | 2 skipped (309)`, `Tests 4 failed | 4208 passed | 20 skipped`.
+  El rojo es `dependencias-declaradas-presentes.guardia.test.ts`, que está en `tests/baseline-rojos.json`
+  (el mismo de las tandas A y B).
+- `migrar-storage-a-carpetas.test.ts` contra `servi_logistic_sl19` → `Tests 9 passed (9)`. Junto con
+  `storage-solo-por-adaptador` y `plataforma-solo-en-lista` → `Test Files 3 passed (3)`, `Tests 23 passed (23)`.
+- `vitest related --run scripts/migrar-storage-a-carpetas.ts lib/db/excepciones-aislamiento.ts` → `Test Files 5 passed (5)`, `Tests 44 passed (44)`.
+
+**Veredicto:** T10.1–T10.3, T11 y T12.1–T12.2 están hechas. El comando mueve, revierte y se puede repetir
+sin efectos, los 11 E2E con evidencias o cierres pasan y los 28 requisitos tienen test. Quedan T10.4
+(puerta humana) y T12.3.
