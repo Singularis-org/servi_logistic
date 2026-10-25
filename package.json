@@ -23,7 +23,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed-catalogos.ts",
     "arranque:superadmin": "tsx scripts/arranque-superadmin.ts",
-    "integraciones:recifrar": "tsx scripts/recifrar-integraciones.ts"
+    "integraciones:recifrar": "tsx scripts/recifrar-integraciones.ts",
+    "storage:migrar-a-carpetas": "tsx scripts/migrar-storage-a-carpetas.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
