@@ -249,3 +249,23 @@ No se tocó código.
 
 Veredicto B1: el humo de aislamiento pasa 6/6 en las dos corridas seguidas, y
 `integraciones-por-empresa` sigue en 4/4 con el build que ya trae m2.
+
+### CI: censo schema-drift
+
+Rojo de `gate-completo` en `tests/integration/db/schema-drift-saneamiento.test.ts:113`: el censo de
+tablas con DEFAULT en `updated_at` esperaba 14 y encontraba 15 (la nueva `integracion`). Se añade
+`integracion` al censo con su comentario de ficha y el título pasa a «QUINCE». `integracion_prueba_minuto`
+no tiene `updated_at` y no entra. El schema ya cuadraba (`Integracion.updatedAt` declara
+`@default(now()) @updatedAt`): `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script`
+devuelve `-- This is an empty migration.`. Sin cambio de schema ni migración.
+
+Salida real:
+```
+schema-drift-saneamiento:     Test Files  1 passed (1) · Tests  16 passed (16)
+mutación (sin "integracion"): Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)   (× el censo encuentra las QUINCE tablas…)
+revertida:                    Test Files  1 passed (1) · Tests  16 passed (16)
+otros censos/guardias (23 archivos): Test Files  1 failed | 22 passed (23) · Tests  6 failed | 312 passed (318)
+```
+El único archivo rojo es `historial-accion-migration.test.ts` (6 casos: policy por empresa, segunda FK
+`organizacion_id`, corpus sin usuarios sembrados). Está en `tests/baseline-rojos.json` desde 2026-10-22
+(SL-11/SL-17) y no lo toca SL-36.
