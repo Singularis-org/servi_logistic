@@ -178,3 +178,61 @@ grafo no tiene indexado este worktree (`list_projects` solo trae el de SL-36): e
 
 **RECHAZADO** por B1. Es un test que falta, no un fallo del código. Con B1 resuelto y matado con su mutación,
 lo demás son menores y no bloquean.
+
+## Vuelta 2 (acotada a a88d2c5..c9f6a56)
+
+Reviewer, 2026-10-25. Diff de 10 archivos: `purga-descargas/route.ts`, `GeocodeSaludRepository.ts` (solo
+comentarios), design §3.6 C, §4 y §7, cuatro tests y la bitácora.
+
+### Verificación ejecutada
+
+- Tests tocados o afectados (`tests/unit/storage`, `tests/integration/storage`, `cron-purga-descargas`,
+  `crons-sin-empresas`, las guardias `rls-por-empresa` y `storage-solo-por-adaptador`,
+  `geocode-salud-dos-empresas`) → `Test Files 12 passed (12)`, `Tests 172 passed (172)`.
+- `pnpm run test:guardias` → `4 failed | 4232 passed`. Los 4 son de
+  `dependencias-declaradas-presentes.guardia.test.ts`, que está en el baseline.
+- `pnpm run typecheck` → `CMD_EXIT=0`. `pnpm run lint` → `0 errors`.
+
+### Mutaciones propias (todas restauradas desde copia; `git status --porcelain` vacío)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| RV3 (B1) | `validarRuta` rechaza `..` solo si la ruta empieza por `..` | ROJO 3 de 76: «segmento .. en medio», «segmento .. al final» y el caso R16 de `storage-dos-empresas` (desde B, `x/../../<A>/<ruta>`) |
+| RV4 (m1) | Quitar del regex de la guardia de Storage las alternativas de desestructuración y alias | ROJO 3 de 9: las dos autocomprobaciones m1 y el barrido del árbol inventado |
+| RV5 (m2) | `aplicaAServiApp` vuelve a «solo `TO servi_app`» (sin `TO` ⇒ no aplica; `PUBLIC` no cuenta) | ROJO 3 de 21: las tres autocomprobaciones m2 |
+
+### Hallazgos de la vuelta 1
+
+- **B1 — resuelto.**
+  - R17 cubre ya el `..` en medio y al final.
+  - R16 lo prueba desde B contra el doble real, con un espía que confirma que no se llamó a Storage.
+  - RV3 lo pone rojo.
+- **m1 — resuelto.**
+  - La guardia ve la desestructuración y el alias.
+  - Sigue sin confundir `this.storage`, `this.deps.storage` ni `{ storage } = deps`.
+  - El barrido real sigue verde, sin falsos positivos.
+  - RV4 la pone roja.
+- **m2 — resuelto.**
+  - Una política sin `TO` o con `TO PUBLIC` cuenta para `servi_app`.
+  - Solo se lee la cabecera, para no confundir un `TO` de la expresión.
+  - RV5 la pone roja.
+- **m3 — resuelto.**
+  - Desaparece la rama solo-para-tests: los tests de controller ahora pasan `empresas`.
+  - Design §7 documenta `empresas: { procesadas, fallidas }`.
+  - **Cambio de comportamiento: correcto según R21.**
+    - R21 exige que el fallo de una empresa no frene a las demás y que el cron responda con los conteos sumados.
+    - Responder 200 con la empresa en `fallidas` es justo eso, y es el mismo contrato de `purga-pdf-cargas` (`route.ts:151-157`).
+    - El fallo no queda mudo: `paraCadaEmpresa` lo registra con `console.error` (`lib/db/para-cada-empresa.ts:43`).
+    - Un fallo al listar las empresas sigue saliendo con 5xx, y hay test.
+    - El cuerpo no lleva rutas, y hay test.
+  - Observación, sin hallazgo: si fallan **todas** las empresas, el cron responde igualmente 200. Pasa lo mismo en `purga-pdf-cargas`. Si se quiere una señal en Vercel, sería una ficha aparte para los dos crons.
+- **m4 — resuelto.** Los comentarios de `GeocodeSaludRepository` ya describen el filtro como segunda barrera tras `jobs_por_empresa`. No hay cambios de código en ese archivo.
+- **m6 — resuelto.** El humo `dos-empresas-humo` está en la bitácora.
+- **m8 — resuelto.** Design §3.6 C y §4 describen lo que se ve en la ventana, por tipo de firma.
+- **m5 y m7 — abiertos a propósito.** Van en el PR por decisión del leader. T10.4 sigue siendo la puerta humana posterior al merge, y la feature no pasa a `done` hasta cerrarla.
+
+No aparecen regresiones en el rango.
+
+### Veredicto
+
+**OK.** No queda ningún bloqueante.
