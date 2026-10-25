@@ -96,9 +96,9 @@
   - `optimizacion-ruta-handler.ts`, con el token por empresa (R28).
 - [x] **T6.5** Asistente: `lib/config/asistente.ts` y `app/api/asistente/route.ts`, con el texto nuevo
   de R27.
-- [ ] **T6.6** `app/api/cron/procesar-jobs/route.ts` (builders), `e2e/_escenarios/crons.ts`,
+- [x] **T6.6** `app/api/cron/procesar-jobs/route.ts` (builders), `e2e/_escenarios/crons.ts`,
   `.env.example` y `README.md`.
-- [ ] **T6.7** Guardia `sin-credenciales-de-entorno` (R41), con su autocomprobación.
+- [x] **T6.7** Guardia `sin-credenciales-de-entorno` (R41), con su autocomprobación.
 - Hecho (todo T6) cuando:
   - Grep de cada variable de design §9.3 en `app/`, `lib/` y `scripts/` da 0 lecturas de
     `process.env`;
