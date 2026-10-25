@@ -19,12 +19,12 @@ import { ORIGEN_TIPOS_VISITA_REAL } from "@/lib/types/orden-historial";
 // El `resultado` de la gestion ya viaja DENTRO de `GESTION_REPROGRAMADA_VIGENTE.where`: importarlo
 // suelto ademas dejaria dos formas de nombrar lo mismo en este archivo.
 import { GESTION_REPROGRAMADA_VIGENTE } from "@/lib/repositories/gestion-reprogramada-vigente";
+import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
+import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
 
 // Estatus de ORIGEN de la liberacion (una orden reprogramada). Valor de catalogo ya sembrado;
 // esta feature NO agrega estados. (El `resultado` de la gestion vive en la correlacion compartida.)
 const ESTATUS_REPROGRAMADA = "reprogramado";
-
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
 
 // Feature 49/#10: `$transaction` para que el UPDATE guardado y el append del historial
 // compartan tx (R7). El `tx` del callback expone `ordenHistorialEstado` (choke point).
@@ -248,13 +248,15 @@ export class LiberacionReprogramadaRepository implements ILiberacionReprogramada
   }
 
   /**
-   * R15/R16: ordenes liberadas HOY (CR) de una bodega. `liberada_reprogramada_at` cae en
-   * el dia de `hoyCR` (`[hoyCR, hoyCR + 24h)`; la corrida marca ~06:00Z = 00:00 CR, mismo
-   * dia UTC que `hoyCR`) + estatus destino de la bodega + su zona. Excluye borradas.
+   * R15/R16: ordenes liberadas HOY (CR) de una bodega + estatus destino + su zona. Excluye borradas.
+   * `hoyCR` llega en la convencion `@db.Date` (`startOfDayCR`, medianoche UTC), pero
+   * `liberada_reprogramada_at` es un `timestamp`: la ventana es el dia de pared de CR,
+   * `[T06:00Z, T06:00Z + 1 dia)`. Con `[hoyCR, +24 h)` lo liberado de 18:00 a 24:00 CR no salia (SL-44).
    */
   async findLiberadasHoy(filter: LiberadaHoyFilter, hoyCR: Date): Promise<LiberadaHoyRow[]> {
-    const start = hoyCR;
-    const end = new Date(hoyCR.getTime() + UN_DIA_MS);
+    const fecha = fechaRepartoComoTexto(hoyCR);
+    const start = inicioDelDiaCREnUtc(fecha);
+    const end = inicioDelDiaSiguienteCREnUtc(fecha);
     const rows = await this.prisma.orden.findMany({
       where: {
         zonaId: filter.zonaId,

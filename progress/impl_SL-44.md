@@ -842,3 +842,59 @@ corre en verde fuera de esa franja (runs anteriores). Con `failOnFlakyTests` no 
 
 **Veredicto:** B1, B2, m1, m2, m3 y m5 resueltos con mutación; el E2E queda rojo de 18:00 a 24:00 CR por un defecto de
 producción en `findLiberadasHoy`, que necesita un arreglo de backend.
+
+## A2 — defecto de producción en «Liberadas hoy» (backend_dev SL-44-A2)
+
+Base propia en el contenedor `sl44-pg`: `sl44_a2` (integración) y `sl44_e2e` (E2E), las dos nuevas
+(migrate deploy + db:seed). MCP del grafo no usado (Grep/Read).
+
+**Arreglo.** `LiberacionReprogramadaRepository.findLiberadasHoy`: la ventana era `[hoyCR, hoyCR + 24 h)`
+(medianoche UTC, convención `@db.Date`) contra `liberada_reprogramada_at`, que es `timestamp`. Ahora es
+`[inicioDelDiaCREnUtc(f), inicioDelDiaSiguienteCREnUtc(f))` con `f = fechaRepartoComoTexto(hoyCR)`,
+utilidades ya existentes. Sin migración; +9/−7 en el repositorio y +3/−3 en el unit test.
+
+**Archivos:**
+- `lib/repositories/LiberacionReprogramadaRepository.ts` (arreglo; fuera `UN_DIA_MS`, sin uso).
+- `tests/integration/db/liberadas-hoy-ventana-cr-sl44.test.ts` (nuevo, Postgres real, datos propios
+  con `crearFksDeOrden`, reloj fijo a las 19:00 CR del 15 = `2026-07-16T01:00Z`).
+- `tests/unit/repositories/liberacion-reprogramada-repository.test.ts`: el literal de la ventana
+  fijaba el defecto (`gte 00:00Z`); pasa al contrato correcto `[T06:00Z, +1 día)`.
+
+**Mapa:** R15/R16 (ventana del día CR de «Liberadas hoy») → `liberadas-hoy-ventana-cr-sl44.test.ts`
+(19:00 CR y 00:00 CR entran; 23:59 CR del día anterior y 00:00 CR del siguiente no) y
+`liberacion-reprogramada-repository.test.ts > findLiberadasHoy`.
+
+**Auditoría** de `lib/` (comparaciones de columnas contra `startOfDayCR` o ventanas de día):
+
+| archivo:línea | columna | veredicto |
+|---|---|---|
+| `lib/repositories/LiberacionReprogramadaRepository.ts:256` (vía `actions/liberacion-reprogramada.ts:89`) | `orden.liberada_reprogramada_at` (timestamp) | incorrecto → arreglado |
+| `lib/repositories/LiberacionReprogramadaRepository.ts:183` (cron, cierre, corrección) | `gestion_orden.fecha_reprogramacion` (`@db.Date`) | correcto |
+| `lib/repositories/ReprogramadaRetenidaRepository.ts:52/77` (`actions/reprogramadas-retenidas.ts:62`, `AvisosDiariosService:136`, `CierresAdminService:1195`, `VigenciaAvisoAgregadoService:243`) | `fecha_reprogramacion` (`@db.Date`, `::date`) | correcto |
+| `lib/repositories/CierreDiaRepository.ts:864/1077/1933` (`CierreDiaService:300/652/959`) | `orden.fecha_reparto` (`@db.Date`) | correcto |
+| `lib/repositories/GestionOrdenRepository.ts:711/1023` | `orden.fecha_reparto` (`@db.Date`, `::date`) | correcto |
+| `lib/repositories/RepartoMananaRepository.ts:100` (`RepartoMananaAvisoService:75`, `VigenciaAvisoAgregadoService:218`) | `orden.fecha_reparto` (`@db.Date`) | correcto |
+| `lib/services/MisAsignacionesService.ts:275/508/579/636`, `GestionDesdeAyudaService.ts:183`, `CorteDiarioService.ts:118`, `utils/dia-reparto.ts:30` | `orden.fecha_reparto` (`@db.Date`) | correcto |
+| `lib/repositories/OrdenRepository.ts:3736` | escribe `fecha_reparto` (`@db.Date`) | correcto |
+| `lib/utils/periodicidad.ts:67/105/158` | fechas de plantilla (`YYYY-MM-DD`, sin columna `timestamp`) | correcto |
+| `lib/services/jobs/whatsapp-envio-mantenimiento-handler.ts:29` | programa una corrida (no compara columnas) | n/a |
+
+Las comparaciones contra columnas `timestamp` del resto de `lib/` ya usan `inicioDelDiaCREnUtc`
+(analytics, ranking, chat-whatsapp, `ventana-dia-cr`). Solo había un defecto.
+
+**Salida real:**
+- Antes del arreglo: `3 failed (3)` — `expected [ 'cron', 'ayer' ] to include 'tarde'`.
+- Después: `3 passed (3)`.
+- **Mutación** (ventana UTC repuesta): `3 failed`, mismo mensaje. Restaurado desde copia, `cmp` OK, `3 passed`.
+- `pnpm run typecheck` → `TC_EXIT=0`; `eslint` de los dos archivos → sin hallazgos.
+- `vitest related` (repositorio + test nuevo): 81 archivos rojos, todos en `tests/baseline-rojos.json`
+  (app vacía) salvo el unit test del literal, ya corregido (`25 passed` con el del action).
+- E2E sobre `sl44_e2e`, `E2E_PUERTO=3044`, entre 01:36Z y 01:40Z (19:36–19:40 CR, dentro de la franja
+  del defecto), `next build` con `NEXT_PUBLIC_APP_URL`:
+  - `--project=reparto` ×2: `15 passed (42.5s)` y `15 passed (42.8s)`, `PW_EXIT=0`;
+    `reprogramacion-liberacion.spec.ts:69` en verde las dos.
+  - completo ×1: `100 passed (3.5m)`, `PW_EXIT=0`. 0 failed, 0 skipped, 0 flaky.
+
+**Veredicto:** «Liberadas hoy» usa el día de pared de CR; el rojo de 18:00 a 24:00 CR desaparece.
+- Gate: `TEST_RAPIDO_BASE=origin/dev ./init.sh` dentro de `scratchpad/gate.lock` (owner `backend_dev SL-44 A2`)
+  → `init OK`, **INIT_EXIT=0** (`4182 passed | 1 skipped`, log en `scratchpad/sl44-a2-gate.log`).
