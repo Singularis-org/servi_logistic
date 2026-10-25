@@ -92,7 +92,7 @@
 
 ## T8. Guardia de acceso a Storage (depende de T6) [P]
 
-- [ ] **T8.1** `EXCEPCIONES_DE_STORAGE` en `lib/db/excepciones-aislamiento.ts` (de momento vacía; el
+- [x] **T8.1** `EXCEPCIONES_DE_STORAGE` en `lib/db/excepciones-aislamiento.ts` (de momento vacía; el
   comando de T10 entra ahí) y `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts`
   (`design.md > §5.3`, R20).
   - Hecho cuando: está verde con el código real, y en rojo con el archivo inventado de la

@@ -179,3 +179,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "valor global y excepción por empresa del cobro por orden: los edita el superadmin, que no tiene empresa (R1, R2)",
   },
 ];
+
+/**
+ * SL-19 (R20): archivos de produccion (`app/`, `lib/`, `scripts/`) fuera de `lib/storage/` que tocan
+ * Storage con el cliente de Supabase. Solo los adaptadores ponen la carpeta de la empresa en curso:
+ * quien llama a `.storage` por su cuenta puede leer o borrar la carpeta de otra empresa. Vacia hasta
+ * que entre el comando que mueve lo ya guardado a las carpetas (T10).
+ */
+export const EXCEPCIONES_DE_STORAGE: readonly ExcepcionDeAislamiento[] = [];
