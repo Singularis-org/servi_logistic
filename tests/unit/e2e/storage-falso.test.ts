@@ -11,9 +11,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { arrancarStorageFalso } from "@/e2e/_storage-falso/servidor.mjs";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 
 const JPEG = new Uint8Array(readFileSync(path.join(process.cwd(), "e2e/fixtures/evidencia.jpg")));
 const BUCKET = "gestion-evidencias";
+/** SL-19: las clases de `lib/storage` operan en la carpeta de la empresa en curso. */
+const EMPRESA = "33333333-3333-4333-8333-333333333333";
 
 let doble: Awaited<ReturnType<typeof arrancarStorageFalso>>;
 let cliente: SupabaseClient;
@@ -167,15 +170,19 @@ describe("doble de Storage del E2E (SL-44 D2)", () => {
     expect(lista.data?.map((o) => o.name)).toEqual(["a.json.gz", "b.json.gz", "sub"]);
   });
 
-  it("R4: las clases reales de lib/storage con SUPABASE_URL al doble suben y firman contra el", async () => {
+  it("R4: las clases reales de lib/storage con SUPABASE_URL al doble suben y firman contra el", () => conEmpresa(EMPRESA, async () => {
     // Igual que la app y las fixtures del E2E: `new ...(undefined, bucket)` construye el cliente con
-    // `createServerClient()` desde el entorno; no se inyecta nada.
+    // `createServerClient()` desde el entorno; no se inyecta nada. Desde SL-19 operan dentro de una
+    // empresa y guardan en su carpeta del bucket.
     vi.stubEnv("SUPABASE_URL", doble.url);
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "clave-falsa");
     const p = nuevoPath();
 
     const guardado = await new SupabaseFileStorage(undefined, BUCKET).upload({ path: p, bytes: JPEG, contentType: "image/jpeg" });
     expect(guardado).toBe(p);
+    // SL-19: el objeto vive en la carpeta de la empresa; en la raiz del bucket no hay nada.
+    expect((await cliente.storage.from(BUCKET).download(`${EMPRESA}/${p}`)).error).toBeNull();
+    expect((await cliente.storage.from(BUCKET).download(p)).error).not.toBeNull();
 
     const firmador = new SupabaseSignedUrlProvider(undefined, BUCKET);
     const varias = await firmador.createSignedUrls([p, "no/subido.jpg"], 60);
@@ -190,5 +197,5 @@ describe("doble de Storage del E2E (SL-44 D2)", () => {
 
     await new SupabaseFileStorage(undefined, BUCKET).remove([p]);
     await expect(firmador.createSignedUrl(p, 60)).rejects.toThrow();
-  });
+  }));
 });

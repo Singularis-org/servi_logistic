@@ -2,6 +2,7 @@
 // descargas grandes: el conjunto serializado y comprimido que el navegador lee una sola vez por URL
 // firmada. Abstrae Supabase Storage para que la entrega y la purga se prueben con dobles, sin red
 // (el `.env` local apunta Storage a PRODUCCION: ningun test debe tocar el real).
+// SL-19: toda ruta es RELATIVA a la carpeta de la empresa en curso (`<organizacion_id>/`), que pone el adaptador.
 
 export interface IAlmacenDescargas {
   /**

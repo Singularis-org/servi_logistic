@@ -69,12 +69,12 @@
 
 ## T6. Adaptadores (depende de T5)
 
-- [ ] **T6.1** `SupabaseFileStorage` y `SupabaseSignedUrlProvider` (`design.md > §3.2`), con la
+- [x] **T6.1** `SupabaseFileStorage` y `SupabaseSignedUrlProvider` (`design.md > §3.2`), con la
   re-indexación por ruta relativa de `createSignedUrls` (R19).
-- [ ] **T6.2** `SupabaseAlmacenDescargas` y `SupabaseAlmacenEnviosWhatsapp`.
-- [ ] **T6.3** Borrar `lib/storage/getFile.ts`, que no tiene usos, después de comprobar con Grep que
+- [x] **T6.2** `SupabaseAlmacenDescargas` y `SupabaseAlmacenEnviosWhatsapp`.
+- [x] **T6.3** Borrar `lib/storage/getFile.ts`, que no tiene usos, después de comprobar con Grep que
   sigue sin tenerlos.
-- [ ] **T6.4** Ajustar los cuatro tests de `tests/unit/storage/`: corren dentro de `conEmpresa`,
+- [x] **T6.4** Ajustar los cuatro tests de `tests/unit/storage/`: corren dentro de `conEmpresa`,
   afirman la ruta completa que recibe el cliente y la relativa que se devuelve.
   - Hecho (T6) cuando:
     - `pnpm exec vitest related --run lib/storage/*.ts` está verde;

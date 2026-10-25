@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServerClient } from "@/lib/supabase/client";
 import { descargaConfig } from "@/lib/config/descarga";
 import type { IAlmacenDescargas } from "@/lib/interfaces/external/IAlmacenDescargas";
+import { empresaDelAlmacen, rutaEnCarpeta } from "@/lib/storage/carpeta-de-empresa";
 
 // Ficha 470 (design §3.3, R9/R10/R14/R17) — almacen de los objetos temporales de las descargas grandes
 // sobre Supabase Storage, con el service role (`createServerClient`), nunca desde el cliente.
@@ -12,6 +13,10 @@ import type { IAlmacenDescargas } from "@/lib/interfaces/external/IAlmacenDescar
 //
 // A diferencia de `SupabaseFileStorage.remove`, la purga SI propaga el `error` del SDK: una purga que
 // falla en silencio deja el bucket creciendo sin ninguna señal (leccion de `purga-pdf-cargas`).
+//
+// SL-19 (design §3.2 y §3.4; R15–R18, R21): `tmp/` vive dentro de la carpeta de la empresa en curso
+// (`<organizacion_id>/tmp/…`); la ruta que se devuelve y se firma es la relativa de siempre, y la
+// purga solo lista y borra la carpeta de la empresa en curso (el cron la corre una vez por empresa).
 
 type ErrorSdk = { message: string; status?: number | string; statusCode?: number | string } | null;
 
@@ -78,8 +83,10 @@ export class SupabaseAlmacenDescargas implements IAlmacenDescargas {
   }
 
   async guardar(bytes: Uint8Array): Promise<{ ruta: string }> {
+    const org = await empresaDelAlmacen(this.bucket, "guardar");
     const ruta = `${CARPETA}/${this.nuevoId()}.json.gz`;
-    const subir = () => this.storage.from(this.bucket).upload(ruta, bytes, { contentType: CONTENT_TYPE, upsert: false });
+    const completa = rutaEnCarpeta(org, ruta);
+    const subir = () => this.storage.from(this.bucket).upload(completa, bytes, { contentType: CONTENT_TYPE, upsert: false });
 
     let r = await subir();
     if (r.error && esBucketInexistente(r.error)) {
@@ -98,7 +105,8 @@ export class SupabaseAlmacenDescargas implements IAlmacenDescargas {
   }
 
   async firmar(ruta: string, ttlSegundos: number): Promise<string> {
-    const { data, error } = await this.storage.from(this.bucket).createSignedUrl(ruta, ttlSegundos);
+    const org = await empresaDelAlmacen(this.bucket, "firmar");
+    const { data, error } = await this.storage.from(this.bucket).createSignedUrl(rutaEnCarpeta(org, ruta), ttlSegundos);
     if (error || !data) {
       throw new Error(`fallo al firmar la descarga temporal: ${error?.message ?? "sin data"}`);
     }
@@ -106,6 +114,8 @@ export class SupabaseAlmacenDescargas implements IAlmacenDescargas {
   }
 
   async purgarAnterioresA(corte: Date, maximo: number): Promise<{ borrados: number; quedaPendiente: boolean }> {
+    const org = await empresaDelAlmacen(this.bucket, "purgar");
+    const carpeta = rutaEnCarpeta(org, CARPETA);
     const pagina = PAGINA_PURGA;
     let borrados = 0;
     // Cada vuelta relee la PRIMERA pagina (orden ascendente por creacion): lo borrado ya no aparece.
@@ -113,7 +123,7 @@ export class SupabaseAlmacenDescargas implements IAlmacenDescargas {
     while (borrados < maximo) {
       const { data, error } = await this.storage
         .from(this.bucket)
-        .list(CARPETA, { limit: pagina, offset: 0, sortBy: { column: "created_at", order: "asc" } });
+        .list(carpeta, { limit: pagina, offset: 0, sortBy: { column: "created_at", order: "asc" } });
       if (error) {
         if (esBucketInexistente(error)) return { borrados, quedaPendiente: false };
         throw new Error(`fallo al listar las descargas temporales: ${error.message}`);
@@ -123,7 +133,7 @@ export class SupabaseAlmacenDescargas implements IAlmacenDescargas {
       if (viejos.length === 0) return { borrados, quedaPendiente: false };
 
       const lote = viejos.slice(0, maximo - borrados);
-      const r = await this.storage.from(this.bucket).remove(lote.map((o) => `${CARPETA}/${o.name}`));
+      const r = await this.storage.from(this.bucket).remove(lote.map((o) => rutaEnCarpeta(org, `${CARPETA}/${o.name}`)));
       if (r.error) throw new Error(`fallo al borrar descargas temporales: ${r.error.message}`);
       borrados += lote.length;
 

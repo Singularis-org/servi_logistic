@@ -2,6 +2,7 @@
 // el backend concreto (Supabase Storage) para que el servicio de postulacion sea
 // testeable con un doble sin red. El binario nunca es publico (R18): la lectura
 // futura (feature 22) usa URL firmada del service role.
+// SL-19: toda ruta es RELATIVA a la carpeta de la empresa en curso (`<organizacion_id>/`), que pone el adaptador.
 
 export interface UploadInput {
   /** Ruta destino dentro del bucket privado, p. ej. `{usuarioId}/{tipo}.jpg`. */
