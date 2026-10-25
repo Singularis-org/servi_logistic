@@ -16,6 +16,8 @@ import type { GeocodificacionCaidaContexto } from "@/lib/notificaciones/emitir";
 // Postgres: medido cuatro veces en este repo, una mutación del `WHERE` pasa en verde con dobles.
 
 const AHORA = new Date("2026-09-08T21:00:00.000Z");
+/** SL-36 (R42/R43) — la empresa del job en curso. */
+const EMPRESA = "org-a";
 const CREDENCIAL_DE_PRUEBA = "AIza" + "SyClaveDePruebaQueNuncaDebeAparecer";
 
 const CONFIG: GeocodeSaludConfig = {
@@ -94,11 +96,11 @@ describe("401/R1 — el marcador de la 400 es la ÚNICA forma de reconocer el fa
 
   it("el servicio no consulta al proveedor ni inspecciona prosa: sólo pregunta al repositorio", async () => {
     const d = build({ otros: 0 });
-    await d.service.registrarFalloConfig("job-1", AHORA);
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
     // Un único colaborador de lectura, y su firma no admite ningún texto de error.
     expect(d.contar).toHaveBeenCalledTimes(1);
-    expect(d.contar.mock.calls[0]).toHaveLength(2);
-    expect(typeof d.contar.mock.calls[0][1]).toBe("string");
+    expect(d.contar.mock.calls[0]).toHaveLength(3);
+    expect(typeof d.contar.mock.calls[0][2]).toBe("string");
   });
 });
 
@@ -113,7 +115,7 @@ describe("401/R2 — se cuentan JOBS DISTINTOS, no intentos", () => {
     // de 3 en TRES MINUTOS (backoff 1-2-4 min) — el «fallo aislado» que R4 prohíbe avisar.
     const d = build({ otros: 0 });
 
-    await d.service.registrarFalloConfig("job-unico", AHORA);
+    await d.service.registrarFalloConfig("job-unico", EMPRESA, AHORA);
 
     expect(d.avisos).toEqual([]);
   });
@@ -122,7 +124,7 @@ describe("401/R2 — se cuentan JOBS DISTINTOS, no intentos", () => {
     // `otros` = 2 (dos jobs distintos ya registrados) + el job en curso = 3.
     const d = build({ otros: 2 });
 
-    await d.service.registrarFalloConfig("job-3", AHORA);
+    await d.service.registrarFalloConfig("job-3", EMPRESA, AHORA);
 
     expect(d.avisos).toEqual([{ afectados: 3, diaCR: "2026-09-08" }]);
   });
@@ -140,7 +142,7 @@ describe("401/R3 — matriz sobre el umbral", () => {
     [7, true],
   ])("con %i otros jobs registrados, ¿avisa? %s", async (otros, esperaAviso) => {
     const d = build({ otros });
-    await d.service.registrarFalloConfig("job-en-curso", AHORA);
+    await d.service.registrarFalloConfig("job-en-curso", EMPRESA, AHORA);
     expect(d.avisos.length > 0).toBe(esperaAviso);
   });
 
@@ -149,9 +151,10 @@ describe("401/R3 — matriz sobre el umbral", () => {
     // CONSULTA. Que la ventana sea correcta es, por tanto, este parámetro — y por eso se afirma.
     const d = build({ otros: 0 });
 
-    await d.service.registrarFalloConfig("job-1", AHORA);
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
 
-    const [desde, excluido] = d.contar.mock.calls[0] as [Date, string];
+    const [empresa, desde, excluido] = d.contar.mock.calls[0] as [string, Date, string];
+    expect(empresa).toBe(EMPRESA);
     expect(desde.toISOString()).toBe("2026-09-08T20:00:00.000Z");
     expect(AHORA.getTime() - desde.getTime()).toBe(60 * 60_000);
     expect(excluido).toBe("job-1");
@@ -159,18 +162,18 @@ describe("401/R3 — matriz sobre el umbral", () => {
 
   it("una ventana configurada distinta viaja tal cual al `desde`", async () => {
     const d = build({ otros: 0, config: { GEOCODE_CAIDA_VENTANA_MIN: 15 } });
-    await d.service.registrarFalloConfig("job-1", AHORA);
-    const [desde] = d.contar.mock.calls[0] as [Date];
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
+    const [, desde] = d.contar.mock.calls[0] as [string, Date];
     expect(desde.toISOString()).toBe("2026-09-08T20:45:00.000Z");
   });
 
   it("un umbral configurado distinto cambia el punto de corte", async () => {
     const conUmbral10 = build({ otros: 8, config: { GEOCODE_CAIDA_JOBS_MINIMOS: 10 } });
-    await conUmbral10.service.registrarFalloConfig("job-9", AHORA);
+    await conUmbral10.service.registrarFalloConfig("job-9", EMPRESA, AHORA);
     expect(conUmbral10.avisos).toEqual([]);
 
     const cruzado = build({ otros: 9, config: { GEOCODE_CAIDA_JOBS_MINIMOS: 10 } });
-    await cruzado.service.registrarFalloConfig("job-10", AHORA);
+    await cruzado.service.registrarFalloConfig("job-10", EMPRESA, AHORA);
     expect(cruzado.avisos).toEqual([{ afectados: 10, diaCR: "2026-09-08" }]);
   });
 
@@ -189,7 +192,7 @@ describe("401/R4 — un fallo de configuración AISLADO no emite nada", () => {
   it("⭑ con cero jobs previos, el aviso no sale (y sí se consultó: no es un no-op mudo)", async () => {
     const d = build({ otros: 0 });
 
-    await d.service.registrarFalloConfig("job-solitario", AHORA);
+    await d.service.registrarFalloConfig("job-solitario", EMPRESA, AHORA);
 
     expect(d.contar).toHaveBeenCalledTimes(1);
     expect(d.avisos).toEqual([]);
@@ -202,9 +205,9 @@ describe("401/R4 — un fallo de configuración AISLADO no emite nada", () => {
     // esa exclusión el umbral efectivo bailaría entre 2 y 4 según el intento.
     const d = build({ otros: 2 });
 
-    await d.service.registrarFalloConfig("job-en-curso", AHORA);
+    await d.service.registrarFalloConfig("job-en-curso", EMPRESA, AHORA);
 
-    expect(d.contar.mock.calls[0][1]).toBe("job-en-curso"); // se excluye de la consulta
+    expect(d.contar.mock.calls[0][2]).toBe("job-en-curso"); // se excluye de la consulta
     expect(d.avisos).toEqual([{ afectados: 3, diaCR: "2026-09-08" }]); // y se suma como uno
   });
 });
@@ -241,7 +244,7 @@ describe("401/R5 — los fallos AJENOS a la configuración no son evidencia de n
     // `GeocodificacionService`). Aquí se fija la otra mitad: sin evidencia con marcador —`otros`
     // = 0 porque el `WHERE` no los cuenta— no hay aviso.
     const d = build({ otros: 0 });
-    await d.service.registrarFalloConfig("job-1", AHORA);
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
     expect(d.avisos).toEqual([]);
   });
 });
@@ -254,13 +257,13 @@ describe("401/R11 — un aviso que revienta queda registrado y NO se propaga", (
   it("⭑ con el notificador lanzando, `registrarFalloConfig` resuelve sin lanzar", async () => {
     const d = build({ otros: 5, notificarLanza: new Error("campana caida") });
 
-    await expect(d.service.registrarFalloConfig("job-1", AHORA)).resolves.toBeUndefined();
+    await expect(d.service.registrarFalloConfig("job-1", EMPRESA, AHORA)).resolves.toBeUndefined();
   });
 
   it("⭑ y el fallo queda LOGUEADO con contexto: no es un `catch` vacío", async () => {
     const d = build({ otros: 5, notificarLanza: new Error("campana caida") });
 
-    await d.service.registrarFalloConfig("job-1", AHORA);
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
 
     expect(d.logs).toHaveLength(1);
     expect(d.logs[0]).toContain("campana caida");
@@ -270,7 +273,7 @@ describe("401/R11 — un aviso que revienta queda registrado y NO se propaga", (
   it("⭑ con el REPOSITORIO lanzando tampoco se propaga (la cola manda)", async () => {
     const d = build({ contarLanza: new Error("base caida") });
 
-    await expect(d.service.registrarFalloConfig("job-1", AHORA)).resolves.toBeUndefined();
+    await expect(d.service.registrarFalloConfig("job-1", EMPRESA, AHORA)).resolves.toBeUndefined();
     expect(d.logs[0]).toContain("base caida");
     expect(d.avisos).toEqual([]);
   });
@@ -284,11 +287,12 @@ describe("401/R21-R22-R24 — lo que el servicio le pide al repositorio para rec
   it("⭑ lote, espaciado y enfriamiento, los tres, afirmados A MANO", async () => {
     const d = build({ revividos: 5 });
 
-    const n = await d.service.registrarExitoProveedor(AHORA);
+    const n = await d.service.registrarExitoProveedor(EMPRESA, AHORA);
 
     expect(n).toBe(5);
     expect(d.revivir).toHaveBeenCalledTimes(1);
     const opts = d.revivir.mock.calls[0][0] as RevivirFallosConfigOpts;
+    expect(opts.organizacionId).toBe(EMPRESA); // SL-36 R42: solo la empresa del job
     expect(opts.ahora).toBe(AHORA);
     expect(opts.limite).toBe(5); // R21: nunca «todos de golpe»
     expect(opts.espaciadoMs).toBe(60_000); // R22: el intervalo del cron
@@ -300,7 +304,7 @@ describe("401/R21-R22-R24 — lo que el servicio le pide al repositorio para rec
   it("⭑ el lote nunca puede ser «todos»: no hay ninguna rama que omita el límite", async () => {
     for (const lote of [1, 5, 25]) {
       const d = build({ revividos: 0, config: { GEOCODE_RECUPERACION_LOTE: lote } });
-      await d.service.registrarExitoProveedor(AHORA);
+      await d.service.registrarExitoProveedor(EMPRESA, AHORA);
       const opts = d.revivir.mock.calls[0][0] as RevivirFallosConfigOpts;
       expect(opts.limite).toBe(lote);
       expect(Number.isFinite(opts.limite)).toBe(true);
@@ -309,11 +313,11 @@ describe("401/R21-R22-R24 — lo que el servicio le pide al repositorio para rec
 
   it("con cero revividos no se ensucia el log; con más de cero deja la huella forense", async () => {
     const vacio = build({ revividos: 0 });
-    await vacio.service.registrarExitoProveedor(AHORA);
+    await vacio.service.registrarExitoProveedor(EMPRESA, AHORA);
     expect(vacio.logs).toEqual([]);
 
     const conRevividos = build({ revividos: 3 });
-    await conRevividos.service.registrarExitoProveedor(AHORA);
+    await conRevividos.service.registrarExitoProveedor(EMPRESA, AHORA);
     expect(conRevividos.logs).toHaveLength(1);
     expect(conRevividos.logs[0]).toContain("recuperados 3");
   });
@@ -322,7 +326,7 @@ describe("401/R21-R22-R24 — lo que el servicio le pide al repositorio para rec
     // Mientras la geocodificación siga caída no se devuelve nada a la cola: revivir con el
     // proveedor todavía caído quemaría los 8 intentos de cada job.
     const d = build({ otros: 9 });
-    await d.service.registrarFalloConfig("job-1", AHORA);
+    await d.service.registrarFalloConfig("job-1", EMPRESA, AHORA);
     expect(d.revivir).not.toHaveBeenCalled();
   });
 });
@@ -340,8 +344,8 @@ describe("401/R26 — ningún log de esta ficha lleva PII ni secretos", () => {
       build({ revividos: 4 }),
     ];
     for (const d of escenarios) {
-      await d.service.registrarFalloConfig("orden-1", AHORA).catch(() => {});
-      await d.service.registrarExitoProveedor(AHORA).catch(() => {});
+      await d.service.registrarFalloConfig("orden-1", EMPRESA, AHORA).catch(() => {});
+      await d.service.registrarExitoProveedor(EMPRESA, AHORA).catch(() => {});
       for (const linea of d.logs) {
         expect(linea).not.toContain(CREDENCIAL_DE_PRUEBA);
         expect(linea).not.toContain("Av. Central 100");
@@ -355,7 +359,7 @@ describe("401/R26 — ningún log de esta ficha lleva PII ni secretos", () => {
   it("⭑ el aviso que sale lleva UN NÚMERO y UN DÍA, y nada más", async () => {
     const d = build({ otros: 24 });
 
-    await d.service.registrarFalloConfig("orden-1", AHORA);
+    await d.service.registrarFalloConfig("orden-1", EMPRESA, AHORA);
 
     expect(d.avisos).toHaveLength(1);
     expect(Object.keys(d.avisos[0]).sort()).toEqual(["afectados", "diaCR"]);
@@ -380,8 +384,53 @@ describe("401/R26 — ningún log de esta ficha lleva PII ni secretos", () => {
       () => new Date("2026-09-09T02:00:00.000Z"),
     );
 
-    await service.registrarFalloConfig("job-1", new Date("2026-09-09T02:00:00.000Z"));
+    await service.registrarFalloConfig("job-1", EMPRESA, new Date("2026-09-09T02:00:00.000Z"));
 
     expect(d.avisos[0].diaCR).toBe("2026-09-08");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SL-36 R42/R43 — la empresa del job viaja al repositorio; sin empresa, no se toca la base
+// ---------------------------------------------------------------------------
+
+describe("SL-36 R42/R43 — la salud se evalúa por EMPRESA del job", () => {
+  it("R43: el conteo se pide para la empresa del job en curso, tal cual", async () => {
+    const d = build({ otros: 2 });
+    await d.service.registrarFalloConfig("job-1", "org-b", AHORA);
+    expect(d.contar).toHaveBeenCalledTimes(1);
+    expect(d.contar.mock.calls[0][0]).toBe("org-b");
+    expect(d.avisos).toEqual([{ afectados: 3, diaCR: "2026-09-08" }]);
+  });
+
+  it("R43: un job SIN empresa no consulta la base ni avisa con el umbral por defecto (otros = 0)", async () => {
+    // Aunque el repositorio dijera 9, no se le pregunta: un job sin empresa no se suma a nadie.
+    const d = build({ otros: 9 });
+    await d.service.registrarFalloConfig("job-1", null, AHORA);
+    expect(d.contar).not.toHaveBeenCalled();
+    expect(d.avisos).toEqual([]);
+  });
+
+  it("R43: sin empresa no consulta ni avisa NI con umbral 1 (no hay empresa a la que avisar)", async () => {
+    // Con umbral 1 el job en curso solo ya bastaria para la regla pura: si avisa, el return
+    // temprano por `organizacionId === null` se perdio.
+    const d = build({ otros: 9, config: { GEOCODE_CAIDA_JOBS_MINIMOS: 1 } });
+    await d.service.registrarFalloConfig("job-1", null, AHORA);
+    expect(d.contar).not.toHaveBeenCalled();
+    expect(d.avisos).toEqual([]);
+  });
+
+  it("R42: la recuperación se pide para la empresa del job que tuvo éxito", async () => {
+    const d = build({ revividos: 2 });
+    await d.service.registrarExitoProveedor("org-b", AHORA);
+    const opts = d.revivir.mock.calls[0][0] as RevivirFallosConfigOpts;
+    expect(opts.organizacionId).toBe("org-b");
+  });
+
+  it("R42: un éxito SIN empresa devuelve 0 y no toca la base", async () => {
+    const d = build({ revividos: 7 });
+    const n = await d.service.registrarExitoProveedor(null, AHORA);
+    expect(n).toBe(0);
+    expect(d.revivir).not.toHaveBeenCalled();
   });
 });

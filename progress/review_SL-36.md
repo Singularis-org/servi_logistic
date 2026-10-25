@@ -168,3 +168,82 @@ las dependencias lo decide el humano. No hay regresiones en el diff.
 ### Hallazgos
 
 Ninguno nuevo. Queda abierto m3 (`package.json:36,43`), para que el humano decida, y T8.2, la revisión humana de las guías, antes de `done`.
+
+## R42-R43, vuelta 1 (diff `origin/dev..b50ccab`)
+
+**Veredicto: OK.** No hay bloqueantes y quedan 3 menores (m5, m6, m7). Las dos consultas filtran por
+la empresa de la fila del job. Los tests de integración contra Postgres real distinguen A, B y el
+job sin empresa, y yo mismo maté seis mutaciones, cuatro de ellas en el SQL.
+
+### Verificación ejecutada por el reviewer
+
+La base es `servi_logistic_sl36`, con la URL reescrita sin imprimirla, igual que en `gate-sl36.sh`.
+
+- **Suites tocadas.** `geocode-recuperacion` (integración), `geocode-salud-service` y `geocodificacion-service` dan `3 passed · 115 passed`, sin skipped. La integración corrió de verdad, no se saltó por falta de base.
+- **Mutaciones propias.** Todas se restauraron con `git checkout` y `git status --porcelain` quedó vacío:
+
+  | Mutación | Resultado |
+  |---|---|
+  | M1: quitar `"organizacion_id" = $empresa` en `contarFallosConfigDesde` (`GeocodeSaludRepository.ts:64`) | `1 failed \| 14 passed`; cae «R43: el conteo para un fallo de A…» |
+  | M2: quitar el filtro en la CTE `elegibles` (`:106`) | `2 failed \| 13 passed`; caen los dos R42 |
+  | M3: `(= $empresa OR organizacion_id IS NULL)` en revivir | `2 failed`; caen los dos R42, porque el job sin empresa se revive |
+  | M4: lo mismo en contar | `1 failed`; cae R43 |
+  | M5: quitar `if (organizacionId === null) return 0` (`GeocodeSaludService.ts:129`) | `1 failed \| 39 passed` |
+  | M6: `GeocodificacionService` pasa una empresa fija en el éxito | `2 failed \| 58 passed` |
+
+- **Typecheck y lint.** `tsc --noEmit` sale con exit 0 (heap de 8 GB). `eslint` sobre los 10 archivos tocados da 0 errores y 1 warning ya existente (`_args`, que ya estaba en `origin/dev`).
+- **Guardias.** `vitest run guard` da `1 failed | 307 passed (308)`. El único rojo es `dependencias-declaradas-presentes.guardia.test.ts`, que está en `tests/baseline-rojos.json` y no toca este diff (`init.sh`, `scripts/` y `package.json` siguen sin cambios), así que no es hallazgo.
+
+### Los cinco puntos del leader
+
+1. **Filtro y origen de la empresa: cumple.**
+   - El filtro está en `GeocodeSaludRepository.ts:64` (contar) y `:106` (CTE `elegibles` de revivir).
+   - El `UPDATE` solo toca `candidatos`, que sale de `elegibles`, así que el filtro alcanza la sentencia entera.
+   - La empresa viene de `empresaDelJob(job)` en las tres llamadas (`GeocodificacionService.ts:191,224,270`).
+   - `empresaDelJob` lee `organizacionId`, que `JobRepository.toDTO` rellena desde `organizacion_id` de la fila (`JobRepository.ts:58`; el claim hace `RETURNING j.*`). No se usa `contextoActual()` ni ningún otro contexto ambiental.
+2. **Job sin empresa.**
+   - **Éxito:** devuelve 0 sin consultar (`GeocodeSaludService.ts:129`). Correcto.
+   - **Fallo:** no consulta y evalúa la regla con `otros = 0` (`:81-84`). Con el umbral por defecto (3) no avisa.
+   - **Umbral 1:** avisaría `afectados: 1`. El número no incluye órdenes de otra empresa, así que R43 se cumple.
+   - Juicio: es aceptable y no bloquea, pero lo más limpio sería no avisar. Detalle en m5.
+3. **Tests de integración: prueban R42 y R43 de verdad.**
+   - `geocode-recuperacion.test.ts:641-739` siembra dos empresas recién creadas y un job con `organizacion_id` NULL.
+   - Los jobs de B y el sin empresa se siembran más viejos y con `LIMITE_ALTO`, así que sin el filtro irían primero.
+   - Se afirman `n` exacto, el estado de cada fila y los conteos absolutos con y sin el job en curso excluido.
+   - El guard «faltan filas sembradas» (`:675`) evita el verde sin datos.
+   - Los tests 401 que ya existían ahora siembran en una empresa nueva por test, así que siguen midiendo lo mismo.
+4. **Coherencia de puertos.**
+   - `IGeocodeSaludRepository`, `IGeocodeSaludService`, `geocodeSaludNoOp` (ignora argumentos), los dobles de las dos suites unitarias y el composition root (`geocodificacion-handler.ts:91-118`, sin cambios de firma) compilan juntos: `tsc` exit 0.
+   - Mover `empresaDelJob`/`JobConEmpresa` a `lib/interfaces/repositories/IJobRepository.ts` no rompe capas. El módulo solo importa tipos de `@prisma/client` (`import type`), y hay precedente de código runtime en contratos (`geocodeSaludNoOp`).
+   - `JobRepository.ts` los reexporta, y `app/api/cron/procesar-jobs/route.ts:12` sigue importando de ahí.
+   - `lib-no-importa-app` y el resto de guardias están en verde.
+5. **No se coló otra consulta sin filtro.**
+   - `GeocodeSaludRepository` tiene exactamente dos sentencias sobre `jobs` (`$queryRaw` en `:60` y `:101`) y las dos filtran.
+   - `GeocodeSaludService` no hace SQL, solo usa `this.repo` (`:84`, `:130`).
+   - El aviso (`emitirGeocodificacionCaida`) no lee `jobs`. Su `organizacion_id` sale del contexto `conEmpresa(empresa del job)` que fija `conSuEmpresa` (`procesar-jobs/route.ts:93-96`), así que el maestro que recibe el aviso es el de la empresa del job.
+
+### Checklist (alcance del arreglo)
+
+- [x] R42 y R43 son EARS y están en `requirements.md > K` (`:210-221`).
+- [x] Hay mapa R→test en `progress/impl_SL-36.md > R42-R43 > Mapa R → test`, con tests reales (integración + unit) que cayeron con mutación.
+- [x] Typecheck, lint y guardias en verde, sin contar el rojo que ya está en el baseline.
+- [x] Query de negocio nueva o tocada filtra por `organizacion_id`, con test de integración con dos empresas (`checkpoints-proyecto > Datos y seguridad`).
+- [x] Sin migraciones, sin dependencias, sin secretos ni literales de país o moneda, sin Ordenex.
+- [x] Comentarios del porqué, no del qué (`docs/conventions.md`).
+- [x] Tasks: solo sigue abierta T8.2, que es humana y ya existía. No hay tasks para R42 y R43; ver m6.
+- [ ] E2E `dos-empresas-humo` no corrido tras este cambio (m7).
+
+### Hallazgos
+
+- **m5 (menor).** `lib/services/GeocodeSaludService.ts:81-90`: con un job sin empresa y umbral 1, la regla llama a `notificar`.
+  - Ese job corre en `comoPlataforma` (`app/api/cron/procesar-jobs/route.ts:99`), sin `app.organizacion_id`.
+  - `notificacion.organizacion_id` es `NOT NULL DEFAULT NULLIF(current_setting('app.organizacion_id'), '')` (`db/migrations/20261022130100_organizacion_id_en_negocio/migration.sql:590`). Por eso la fila del aviso no tiene empresa a la que llegar. Previsiblemente falla y `emitirBestEffort` lo deja en el log; no lo medí.
+  - Además se escribe el warn «caída detectada», que es engañoso.
+  - No cruza empresas ni viola R43, así que no bloquea.
+  - Recomendación: con `organizacionId === null`, salir sin avisar (`return`) y ajustar el test que hoy fija la conducta (`tests/unit/services/geocode-salud-service.test.ts:414-419`).
+- **m6 (menor).** `specs/SL-36-integraciones-por-empresa/tasks.md:143`: la tabla `Trazabilidad R<n> → test` llega hasta R41.
+  - R42 y R43 no tienen task ni fila en esa tabla, tampoco en la «Cobertura de las decisiones cerradas» de `requirements.md`, y `design.md` no los menciona.
+  - El mapa sí existe en `progress/impl_SL-36.md > R42-R43`, así que el checkpoint de trazabilidad se cumple. Es deriva del spec y conviene cerrarla con una fila en tasks.md.
+- **m7 (menor).** `progress/impl_SL-36.md > R42-R43 > Verificación` no registra una corrida de `e2e/dos-empresas-humo.spec.ts` después de este cambio.
+  - `docs/checkpoints-proyecto.md > Flujos críticos` pide correrlo cuando se toca una entrada de job.
+  - El E2E no ejercita este camino, y el aislamiento ya lo prueba la integración, así que no bloquea. Lo cubre el CI del PR.

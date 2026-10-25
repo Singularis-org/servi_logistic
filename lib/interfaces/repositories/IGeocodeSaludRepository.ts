@@ -12,6 +12,12 @@
 // `tests/integration/db/geocode-recuperacion.test.ts`.
 
 export interface RevivirFallosConfigOpts {
+  /**
+   * SL-36 (R42) — la empresa del job que tuvo exito. Solo se reviven jobs de ESA empresa: la
+   * tabla `jobs` tiene politica abierta hasta SL-19, asi que la RLS no separa nada y el filtro
+   * va en el SQL. Un job con `organizacion_id` NULL no lo revive el exito de ninguna empresa.
+   */
+  organizacionId: string;
   /** Instante inyectado de la recuperacion. Nunca `NOW()` de Postgres: tests deterministas. */
   ahora: Date;
   /** Maximo de jobs a devolver a la cola en esta tanda (R21). */
@@ -36,13 +42,22 @@ export interface IGeocodeSaludRepository {
    *
    * «No completados» = `pending`, `processing` o `failed`. Un job `done` con marcador es la
    * fotografia de un intento anterior YA SUPERADO: contarlo seria contar un corte que termino.
+   *
+   * SL-36 (R43) — cuenta SOLO jobs de `organizacionId`, la empresa del job que fallo: el umbral y
+   * el «afectados» del aviso nunca incluyen ordenes de otra empresa. La RLS de `jobs` esta abierta
+   * hasta SL-19, asi que el filtro va en el SQL; los jobs con `organizacion_id` NULL no cuentan.
    */
-  contarFallosConfigDesde(desde: Date, excluirJobId: string): Promise<number>;
+  contarFallosConfigDesde(
+    organizacionId: string,
+    desde: Date,
+    excluirJobId: string,
+  ): Promise<number>;
 
   /**
    * R13/R15/R16/R19/R21/R22/R23/R24 — devuelve a `pending` hasta `limite` jobs de geocodificacion
    * en `failed` cuyo `last_error` lleva el marcador, **los mas ANTIGUOS primero** (`updated_at`
-   * ASC), sin tocar los modificados despues de `tocadoAntesDe`.
+   * ASC), sin tocar los modificados despues de `tocadoAntesDe`, y SOLO de `opts.organizacionId`
+   * (SL-36 R42).
    *
    * Los deja en condiciones de volver a ejecutarse: `intentos = 0`, `last_error = NULL`,
    * `locked_at = NULL`, y `run_after` ESCALONADO desde `ahora` cada `espaciadoMs`. NO cambia
