@@ -100,7 +100,7 @@
 
 ## T9. Storage con dos empresas (depende de T6)
 
-- [ ] **T9.1** `tests/integration/storage/storage-dos-empresas.test.ts` sobre el doble
+- [x] **T9.1** `tests/integration/storage/storage-dos-empresas.test.ts` sobre el doble
   `e2e/_storage-falso/servidor.mjs`, con los cuatro adaptadores reales: R15, R16 (firmar, descargar y
   borrar desde B un objeto de A), R19 y R22.
   - Hecho cuando: está verde, y en rojo con la mutación de §6 (`rutaEnCarpeta` sin carpeta).
