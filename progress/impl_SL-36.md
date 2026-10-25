@@ -334,3 +334,6 @@ mutación (sin el return temprano):     Tests  2 failed | 38 passed (40)   (× l
 restaurado:                            Tests  40 passed (40)
 gate: relacionados 665/665 archivos (9514 passed | 26 skipped) · guardias 307/307 (4198 passed | 1 skipped) · INIT_EXIT=0
 ```
+
+### Chore m3: quitar `google-auth-library` y `@vercel/oidc` (2b1166f)
+`init.sh` INIT_EXIT=1 solo por el validador de features (`faltan specs para features sdd en vuelo: SL-19`: estado del `feature_list.json` local, SL-19 con spec en marcha; el CI no lo usa); verificado a mano: `tsc --noEmit` exit 0, `guard-dependencias-aprobadas` 2/2, `optimizacion-ruta-service` 40/40, `dependencias-declaradas-presentes` con sus 4 rojos del baseline sin cambio. Push autorizado por el leader.
