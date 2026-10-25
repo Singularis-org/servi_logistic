@@ -318,6 +318,17 @@ export const TEXTOS_ERROR_INTEGRACION: Readonly<Record<CodigoErrorIntegracion, s
   unexpected: "Algo falló al guardar. Si se repite, comparte la referencia con soporte.",
 };
 
+/**
+ * Lo que devuelve una action de integraciones cuando el service LANZA (base caída, bóveda sin
+ * configurar). `referencia` es lo único que une la pantalla con la línea del log: el error en sí no
+ * sale del servidor, porque su mensaje puede citar la consulta y con ella valores cifrados.
+ */
+export interface ResultadoInesperadoIntegracion {
+  status: "unexpected";
+  referencia: string;
+  texto: string;
+}
+
 /** El texto del rechazo de una credencial durante el uso (R30). */
 export const TEXTOS_RECHAZO_USO: Readonly<Record<CodigoRechazoUso, string>> = {
   "whatsapp.credencial_rechazada": "Meta rechazó el token al enviar un mensaje. Vuelve a escribir el token de acceso.",
