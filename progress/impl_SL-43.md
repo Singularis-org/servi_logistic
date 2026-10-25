@@ -1,0 +1,226 @@
+# SL-43 «datos-demo-qa» — bitácora de implementación
+
+## T0 — Punto de partida (2026-10-25)
+
+- `git merge origin/dev` → `c80c508` (trae SL-19 `9ba60c2` y los PR #14 y #15). `pnpm install` limpio.
+- Última migración de `dev`: `20261025150000_jobs_por_empresa`. Timestamps de SL-43:
+  `20261025160000_organizacion_es_demo` y `20261025160100_entorno_marca` (T2b cayó en la opción 3).
+- Base local `servi_logistic_sl43`, creada y migrada. Gate tras el merge: `INIT_EXIT=0`.
+- Variables de Preview y duración del build: ver `progress/features/SL-43.md > Cierre` (leader).
+- Firmas de SL-19, `JobRepository` y guardias: ver `## T1 > 5`.
+
+## T2b — La marca de QA en Supabase (2026-10-25)
+
+Sobre el Supabase de QA (`.env.qa`, por `DIRECT_URL`), tras comprobar con booleanos que las tres URLs
+de `.env.qa` son de un proyecto distinto del de `.env.prod` y del mismo proyecto entre sí. Las dos
+conexiones (`DIRECT_URL` y `DATABASE_URL`) entran con el rol `postgres` en la base `postgres`.
+
+| Sentencia | Resultado |
+|---|---|
+| `ALTER DATABASE postgres SET servi.entorno = 'qa'` | **rechazada**: `42501 permission denied to set parameter "servi.entorno"` |
+| `ALTER ROLE postgres SET servi.entorno = 'qa'` | **rechazada**: `42501`, mismo mensaje |
+
+Lectura posterior por conexión nueva: `DIRECT_URL` → `""` y `DATABASE_URL` → `null`. Ninguna vale
+`qa`. El `""` de `DIRECT_URL` sale de que el pooler en modo sesión reutiliza el backend en el que
+se intentó la sentencia. **No es una marca.**
+
+**Se aplica la opción 3 de `design.md > D2.2`:** migración `20261025160100_entorno_marca`, una tabla
+de plataforma vacía en todos los entornos, y `comprobarMarcaDeQa` lee
+`SELECT valor FROM entorno_marca WHERE clave = 'entorno'`.
+
+- **Pendiente humano (Carlos):** la tabla solo existe en QA cuando el build de QA aplica la migración,
+  así que hoy no se puede insertar la fila `('entorno', 'qa')`.
+- **Orden recomendado:** primero un despliegue de QA con la migración y sin `DEMO_ON_PREVIEW`; luego
+  `INSERT INTO entorno_marca VALUES ('entorno','qa')` en QA; al final se crea `DEMO_ON_PREVIEW`.
+- Si `DEMO_ON_PREVIEW` ya existe en el primer despliegue, ese build sale rojo por R3 (sin marca)
+  después de migrar. Basta insertar la fila y redesplegar.
+- Producción no se leyó (orden del leader: nunca apuntar a producción). Sin la migración aplicada, no
+  tiene la tabla; con ella, la tiene vacía. En los dos casos, `comprobarMarcaDeQa` rechaza.
+
+## Tanda A + T7 — mutaciones (2026-10-25)
+
+Cada mutación se aplicó sola, dio rojo y se revirtió.
+
+| # | Mutación | Test que cae |
+|---|---|---|
+| 1 | quitar el `if` de `production` | `demo-qa-guardia` «VERCEL_ENV=production…» (2), «R5 — ningún motivo…», «la capa 1 va primero» |
+| 2 | marca con `includes` en vez de `!==` | `demo-qa-guardia > comprobarMarcaDeQa` «'qa ' con espacio», «'qaa'», «'prod-qa'» (3 failed / 34 passed, repetida sola por el implementer) |
+| 3 | aceptar base local + Storage remoto | «base local y Storage remoto», «base remota y Storage local» |
+| 4 (unit) | no cerrar `optimizacion_ruta` | `demo-qa-jobs` «cierra todos los abiertos con fail(id, motivo, null)…» |
+| 5 | no comparar `DATABASE_URL` con `DIRECT_URL` | «DIRECT_URL y DATABASE_URL de refs distintos» |
+| 10 | `decidirDemo` sin mirar `MIGRATE_ON_PREVIEW` | los cuatro «preview sin migraciones (…) → omitida (R30)» |
+
+Migraciones en sl43: las dos se aplican, se revierten en orden inverso (`160100` con
+`db:rollback`; `160000` con su `down.sql`) y se vuelven a aplicar. Resultado: `rls=true`, 0
+políticas y ningún permiso de `servi_app` sobre `entorno_marca`. `servi_app` tampoco tiene
+`UPDATE` sobre `es_demo`. `prisma migrate diff` contra sl43 sale vacío.
+
+Tests: `demo-qa-guardia` 37, `demo-qa-build` 16, `demo-qa-jobs` 11, más los censos
+(`schema-drift-saneamiento`, `organizacion-en-modelos`, `rls-por-empresa`, `aislamiento-*`,
+`empresas-plataforma-cobro`, `migracion-sl17/sl40-ida-y-vuelta`): 14 archivos, 182 tests en verde y
+ninguno saltado, contra sl43.
+
+## T1 — Inventario de la receta
+
+> Solo lectura. Leído con Grep/Read: el MCP del grafo no tiene proyecto para este worktree (lo dice
+> ya `design.md > Lo que ya existe`). Rama con `dev` mergeado (SL-19 incluido, `c80c508`).
+> Aviso: al escribir esto el árbol tiene cambios sin commitear de OTRA tanda (`db/schema.prisma`,
+> `lib/db/modelos-de-negocio.ts`, `db/migrations/20261025160000_organizacion_es_demo/`,
+> `db/migrations/20261025160100_entorno_marca/`, `chk-tmp.ts`). No son de T1 y no se tocaron.
+
+### 0. El contexto de empresa y el actor
+
+| Pieza | Dónde | Firma |
+|---|---|---|
+| `conEmpresa` | `lib/db/contexto-empresa.ts:36` | `conEmpresa<T>(organizacionId: string, fn: () => Promise<T>): Promise<T>`. Rechaza id vacío. Corre `fn` dentro de `AsyncLocalStorage` y la espera dentro (las `PrismaPromise` perezosas corren con la empresa). |
+| `comoPlataforma` | `lib/db/contexto-empresa.ts:45` | `comoPlataforma<T>(ficha: \`SL-${number}\`, motivo: string, fn: () => Promise<T>): Promise<T>`. Exige ficha `SL-<n>` y motivo no vacío. |
+| Tabla de la extensión | `lib/db/extension-empresa.ts:14-19` | Empresa fuera de tx: filtro + envoltura (`set_config('app.organizacion_id')` + `set role servi_app`). Plataforma: tal cual. **Sin contexto: modelo de negocio y SQL a mano lanzan `EmpresaNoResuelta`.** |
+| `Actor` | `lib/interfaces/services/IOrdenService.ts:11` | `{ usuarioId, rol: RolValue, zonaId?: string \| null, organizacionId }`. Las actions lo sacan de `resolveActorFromSession` (`lib/auth/resolve-actor.ts:16`) y lo pasan al servicio tras validar con zod. |
+| Storage | `lib/storage/carpeta-de-empresa.ts:29` | `empresaDelAlmacen` toma la empresa de `conEmpresa`; en `comoPlataforma` **lanza**; sin contexto intenta la sesión (en un script, lanza). Todo upload/remove de la demo va dentro de `conEmpresa(<demo>)`. |
+
+Patrón común de las actions: `actor = resolveActorFromSession()` → `schema.parse(input)` → `build*()` → `service.metodo(data, actor)`. La demo sustituye las dos primeras por el actor construido y el mismo `schema.parse`.
+
+### 1. Mapa D5.1, fila a fila
+
+Notación: `P = getPrismaClient()`, `OR = new OrdenRepository(P)`, `HIST = new OrdenHistorialService(OR, new OrdenHistorialRepository(P), new OrdenDiaRepartoCambioRepository(P), new OrdenTraspasoRepository(P))`, `EVID = gestionConfig.EVIDENCIA_BUCKET`, `COMP = walletComprobanteConfig.BUCKET`.
+
+| Qué | Composition root (action/route) | Servicio y constructor exacto | Método y actor |
+|---|---|---|---|
+| Empresa y maestro | `lib/actions/organizaciones.ts:67` (`construirServicio`), `altaEmpresaAction` :122 | `new OrganizacionService(new OrganizacionRepository(P))` | `altaEmpresa(input)` (`lib/services/OrganizacionService.ts:20`) dentro de `comoPlataforma("SL-…", motivo, …)`. Input `altaEmpresaInputSchema` (`lib/types/organizacion.ts:17`, `.strict()`): `{ nombre, slug, maestro: { nombre, email, telefono, documento, tipoDocumento } }`. Resultado `{ estado: "creada", organizacionId, maestroId }`. La action manda además la bienvenida (SL-41) **fuera** del servicio: la demo no la llama. |
+| Usuarios (R12) | `lib/actions/usuarios.ts:55` (`buildUsuarioService`), `crearUsuario` :83 | `new UsuarioService(new UserRepository(P), new ZonaRepository(P), new VehiculoRepository(P), new SessionRepository(P), new CierreBodegaRepository(P))` | `crear(crearUsuarioSchema.parse(...), actorMaestro)` (`UsuarioService.ts:115`), `passwordMode: "manual"`, `password`. `zonaId` obligatoria para `mensajero`/`adminSatelite`; `vehiculoId` para `mensajero`; `fulfillment` solo `adminTienda`. Igual que `tests/fabricas/e2e.ts:221-287`. |
+| Zonas central y satélite + tarifa del mensajero | `lib/actions/zonas.ts:65` (`buildZonaService`), `crearZona` :76 | `new ZonaService(new ZonaRepository(P))` | `crear(crearZonaSchema.parse({ nombre, cobroVehiculo, distritoIds, esCentral, tarifas: [{ cobroEntregado, cobroRechazado }], sinpeNumero, sinpeNombre }), maestro)` (`ZonaService.ts:111`). |
+| SINPE de la bodega | `lib/actions/sinpe-bodega.ts:72`, `confirmarSinpeBodega` :143 | `new SinpeBodegaService(new ZonaRepository(P))` | `confirmar(zonaId, maestro)` (`SinpeBodegaService.ts:92`). Sin ella, la pantalla abre «Confirmá el SINPE» (ficha 429). |
+| Tarifas de tienda | `lib/actions/tarifas.ts:40`, `crearTarifa` :51 | `new TarifaService(new TarifaRepository(P))` | `crear(crearTarifaSchema.parse({ tiendaId, valorFlete, valorFleteDevuelto, valorFleteGam, valorFleteDevueltoGam, comisionCod, ivaFlete, ivaComisionCod }), maestro)` (`TarifaService.ts:57`). Una por tienda (las dos `adminTienda`). |
+| Zona especial (SL-38) | `lib/actions/geografia.ts:269` (`buildDistritoZonaEspecialService`), `actualizarDistritosEspeciales` :285 | `new DistritoZonaEspecialService(new DistritoZonaEspecialRepository(P))` | `actualizar(distritosEspecialesSchema.parse({ marcar: [distritoId], desmarcar: [] }), maestro)` (`DistritoZonaEspecialService.ts:16`). Solo `maestro`. |
+| **Orden por pantalla (R14)** | **No existe `OrdenService.crear`.** `lib/actions/ordenes.ts:41-48`: `crearOrden` se borró el 2026-08-07 («nacieron muertas»). La pantalla crea órdenes por la **carga masiva por chunks**: `app/(app)/ordenes/_components/carga-masiva-chunks.ts` → `app/api/ordenes/carga-masiva/chunk/route.ts` (`handleCargaMasivaChunk`, `buildBulkService` :37) | `new BulkOrdenService(OR, new TarifaVigenteRepository(P))` (sin notificador: el default es no-op) | `cargarMasiva(rows: RawRow[], actorTienda, { dryRun?, cargaId?, name?, totalFiles? })` (`BulkOrdenService.ts:159`). Solo `adminTienda`; `tiendaId = actor.usuarioId`. Es la misma fila de abajo: «por pantalla» y «carga masiva» son un solo camino. |
+| Órdenes por carga masiva (R14) | idem | idem | Filas con claves `num_remision, destinatario, telefono, producto, provincia, canton_distrito ("<cantón> (<distrito>)"), direccion, notas, monto_cobrar` (`e2e/_escenarios/reparto.ts:386-401`). La tienda **con** `fulfillment` nace `en_preparacion` sin guía; **sin** él, `por_recolectar_en_tienda` con guía. |
+| API key (R12, R14) | `lib/actions/api-keys.ts:34`, `generarApiKey` :86 | `new ApiKeyService(new ApiKeyRepository(P))` | `generar(generarApiKeySchema.parse({ identificador, tiendaDestinoId? }), maestro)` (`ApiKeyService.ts:66`). Solo `maestro`. Devuelve `{ status: "ok", apiKey, plainKey }` una sola vez. **Crea su propio usuario `apiKey`** con correo `apikey+<slug>@apikey.invalid` y contraseña aleatoria que no se devuelve (`lib/utils/api-key-identity.ts:9-48`, `ApiKeyService.ts:104-120`). |
+| Órdenes por API (R14) | `app/api/ordenes/api-key/carga/route.ts:264` `handleCargaApi(req, deps?)` | Se llama con una `Request` real. Monta dentro: `buildAutenticar()` (`lib/api/api-key-request.ts:47`, resuelve la key en `comoPlataforma("SL-17")`), `conEmpresaDeLaKey` (:74), `new BulkOrdenService(OR, new TarifaVigenteRepository(P), notificarCargaMasivaTerminadaReal)` (:167), `EtiquetasDescargaService(EtiquetasLotePdfService(EtiquetaGuiaService(OR), new SupabaseFileStorage(undefined, ETIQUETAS_BUCKET), new SupabaseSignedUrlProvider(undefined, ETIQUETAS_BUCKET), TTL, MAX), OR)` (:184) y `ManifiestoService` (:200) | `POST` con `Authorization: Bearer <plainKey>` y cuerpo `{ ordenes: Record<string,string>[], name?, download_type? }`. Fija la empresa él mismo: **llamarlo fuera de `conEmpresa`**. Lleva el notificador real de «carga terminada» (puede encolar `push_web`). |
+| Recolección en tienda (157) | Asignar: `lib/actions/ordenes-guia.ts:144` `asignarRecoleccion` (con `buildGuiaService` :33). Confirmar: `lib/actions/recoleccion-tienda.ts:87` `recolectarEnTiendaPorQr` (`buildService` :61) | Guía: `new GuiaAsignacionService(OR, new ZonaRepository(P), new AsignabilidadCoordenadasService(new JobRepository(P)), HIST)`. Recolección: `new RecoleccionTiendaService(new OrdenRepository(P), new GestionOrdenRepository(P), new OrdenHistorialRepository(P))` | `asignarRecoleccion({ ordenIds, mensajeroId }, maestro)` (`GuiaAsignacionService.ts:618`; el comentario de la action :140 dice «NO transiciona», pero el servicio sí pasa a `recolectando`, :731). `recolectarEnTienda(numGuia, mensajero)` (`RecoleccionTiendaService.ts:98`). |
+| Camino de estados (R15) | `lib/actions/ordenes-guia.ts` (`generarGuia` :110, `asignarDesdeBodega` :125, `rutearABodegaSatelite` :250); `lib/actions/recepcion-satelite.ts:67/82` (`recibirPorQr` :247, `asignarDesdeSatelite` :268); `lib/actions/mis-asignaciones.ts:112` (`recogerAsignaciones` :169) | Guía: el de arriba. `new RecepcionSateliteService(OR, HIST)`. `new AsignacionSateliteService(OR, new AsignabilidadCoordenadasService(new JobRepository(P)), HIST)`. `MisAsignacionesService`: fila de gestiones | Igual que `e2e/_escenarios/reparto.ts:237-276` y `llevarA` :443 (comprobado contra las actions: coinciden). |
+| Gestiones (R16) | `lib/actions/mis-asignaciones.ts:112` (`escogerParaGestion` :188, `gestionar` :208) | `new MisAsignacionesService(new GestionOrdenRepository(P), OR, new SupabaseFileStorage(undefined, EVID), new SupabaseSignedUrlProvider(undefined, EVID), new RutaOptimizadaRepository(P), new OrdenMensajeroMetaRepository(P), HIST)` | `escogerParaGestion(ordenId, mensajero)` :558 y `gestionar(GestionarInput, mensajero)` :592. Resultados: `entregado`, `reprogramado`, `novedad`, `devolucion_a_origen_por_rechazo`, `incidente` (`IMisAsignacionesService.ts:403-445`). La orden sigue `en_reparto` hasta aprobar el cierre (ficha 454). |
+| Incidente con indemnización (158) | `lib/actions/incidentes.ts:73` (`buildService`), `reportarIncidente` :221, `aprobarIncidente` :242 | `new IncidenteAdminService(new IncidenteAdminRepository(P, new WalletMovimientoRepository(P), new WalletIndemnizacionIncidenteFeedService()), OR, new OrdenHistorialRepository(P), new SupabaseFileStorage(undefined, EVID), new SupabaseSignedUrlProvider(undefined, EVID))` | `reportar({ ordenId, causa, motivo, evidencias: EvidenciaArchivo[] }, actor)` :362 → la orden pasa a `incidente` en el acto. `aprobar(incidenteId, monto: string, actor)` :414 → indemnización. **R51: quien aprueba no puede ser quien reportó** (reporta el `maestro`, aprueba el `admin`, o al revés). `causa` ∈ `CAUSA_INCIDENTE_SEED`. |
+| Devolución a tienda (139/48/419) | `lib/actions/envio-devolucion-central.ts:42` (`enviarACentral` :73); `lib/actions/recepcion-bodega-central.ts:46` (`recibirEnBodegaCentralPorQr` :62); `lib/actions/devolucion-origen.ts:42` (`devolverATienda` :74); `lib/actions/recepcion-origen.ts:47` (`recibirEnOrigenPorQr` :61); `lib/actions/devolucion-tienda.ts:50` (`confirmarEntregaTienda` :73) | `new EnvioDevolucionCentralService(OR)`; `new RecepcionBodegaCentralService(OR)`; `new DevolucionOrigenService(OR)`; `new RecepcionOrigenService(OR)`; `new DevolucionTiendaService(new DevolucionTiendaRepository(P), new SupabaseFileStorage(undefined, EVID), new SupabaseSignedUrlProvider(undefined, EVID))` | `enviarACentral(ordenId, adminSatelite)`; `recibirEnBodegaCentral(numGuia, maestro)`; `devolverATienda(ordenId, maestro)`; `recibirEnOrigen(numGuia, adminTienda)`; `confirmarEntrega({ tiendaId, ordenIds, evidencias }, maestro)` (comprobante obligatorio, imagen). |
+| Rechazo de la tienda sobre una novedad (240) | `lib/actions/resolver-novedad.ts:116` (`buildRechazoService`), `rechazarNovedad` :197 | `new RechazoTiendaService(new OrdenRepository(P), new GestionOrdenRepository(P), new TarifaVigenteRepository(P), new RechazoTiendaCobroRepository(P))` | `rechazar(ordenId, motivo, adminTiendaDueña)` (`RechazoTiendaService.ts:102`): `novedad → devolucion_a_origen_por_rechazo` y alta de un cobro pendiente (`rechazo_tienda_cobro`). No estaba en D5.1; hace falta para un estado (§2). |
+| Cierres de día (R17) | `lib/actions/cierre-dia.ts:46` (`solicitarCierre` :186); `lib/actions/cierres-admin.ts:101` (`aprobarCierre` :342, `rechazarCierre` :416) | `CierreDiaService(new CierreDiaRepository(P, new TarifaVigenteRepository(P)), new ZonaRepository(P), OR, new SupabaseSignedUrlProvider(undefined, EVID), new TarifaZonaMensajeroRepository(P), notificarCierreDiaPorAprobarReal, notificarMensajeroBloqueadoReal)`. `CierresAdminService(new CierresAdminRepository(P, new WalletMovimientoRepository(P), new WalletFeedService(), new WalletTiendaMovimientoRepository(P), new WalletTiendaFeedService(), new PagoMensajeroMovimientoRepository(P), new WalletMensajeroFeedService(), new WalletIndemnizacionFeedService()), new ZonaRepository(P), OR, new SupabaseSignedUrlProvider(undefined, EVID), new LiquidacionPagoRepository(P), new PagoMensajeroMovimientoRepository(P), buildReprogramadasRetenidasService(P), notificarMensajeroBloqueadoReal, liberarAlAprobarCierreCon(buildLiberarReprogramadasService()), notificarCierreDiaRechazadoReal)` | `solicitarCierre(mensajero)` (`CierreDiaService.ts:583`). `aprobarCierre(cierreId, actor, indemnizaciones, confirmacionFisica)` (`CierresAdminService.ts:962`): `adminSatelite` si `destinoTipo = bodega_satelite`, si no `maestro`. `rechazarCierre(cierreId, motivo, actor)` :1597. Coincide con `e2e/_escenarios/cierres.ts:56-92`. |
+| Cierre de bodega satélite (R17) | `lib/actions/cierre-bodega.ts:73` (`solicitarCierreBodega` :108), :78 (`aprobarCierreBodega`) | `new CierreBodegaService(new CierreBodegaRepository(P), OR)`; `new CierresBodegaAdminService(new CierresBodegaAdminRepository(P), new SupabaseSignedUrlProvider(undefined, EVID))` | `solicitarCierreBodega(adminSatelite)` (`CierreBodegaService.ts:419`); `aprobarCierreBodega(cierreBodegaId, maestro)` (`CierresBodegaAdminService.ts:455`). |
+| Novedad interna (corte diario) | `app/api/cron/corte-diario/route.ts` (`buildService`), recorre todas las empresas con `paraCadaEmpresa` | `new CorteDiarioService(new CorteDiarioRepository(P), new CierreDiaRepository(P, new TarifaVigenteRepository(P)), new ZonaRepository(P), OR, new TarifaZonaMensajeroRepository(P), { warn }, notificarCierreDiaVencidoReal)` | `ejecutarCorte(now: Date = new Date())` (`CorteDiarioService.ts:152`) dentro de `conEmpresa(<demo>)`. **Ver BLOQUEO B1 (§2).** |
+| Pago a mensajero (R18) | `lib/actions/liquidacion.ts:104` (`buildService`), `registrarPagoMensajeroAction` :131 | `new LiquidacionService(new LiquidacionPagoRepository(P), new WalletTiendaMovimientoRepository(P), new PagoMensajeroMovimientoRepository(P), (fn) => P.$transaction((tx) => fn(tx)), new CajaPagoTiendaFeedService(new WalletMovimientoRepository(P)), new LiquidacionRepartoRepository(P), undefined, undefined, buildComprobantes(P))` | `registrarPagoMensajero(registrarPagoMensajeroSchema.parse({ cierreId, claveIdempotencia: uuid, monto: "…", metodo, referencia? }), maestro)` (`LiquidacionService.ts:306`). Contra un cierre **aprobado**. Sin comprobante en esta action. `buildComprobantes` vive en `lib/actions/_shared/comprobante-lateral.ts:18`. |
+| Aporte de capital con comprobante (R18) | `lib/actions/aporte-capital.ts:30`, `registrarAporteCapitalAction` :78 | `new AporteCapitalService(new AporteCapitalRepository(P), new CajaAporteCapitalFeedService(caja), caja, new SupabaseFileStorage(undefined, COMP), new SupabaseSignedUrlProvider(undefined, COMP), (fn) => P.$transaction((tx) => fn(tx)))`, `caja = new WalletMovimientoRepository(P)` | `registrar({ claveIdempotencia, clase: "saldo_inicial" \| "aporte", monto: "…", fecha: "YYYY-MM-DD", motivo }, { contentType, bytes } \| null, maestro)` (`AporteCapitalService.ts:95`). Ojo: el comprobante es el **2.º** argumento y el actor el 3.º. |
+| Abono de tienda (R18) | `lib/actions/abono-tienda.ts:43`, `registrarAbonoTiendaAction` :108 | `new AbonoTiendaService(new AbonoTiendaRepository(P), new WalletTiendaMovimientoRepository(P), new LiquidacionPagoRepository(P), new UserRepository(P), new CajaAbonoTiendaFeedService(new WalletMovimientoRepository(P)), new SupabaseFileStorage(undefined, COMP), new SupabaseSignedUrlProvider(undefined, COMP), (fn) => P.$transaction((tx) => fn(tx)))` | `registrar({ claveIdempotencia, tiendaId, monto, metodo, referencia?, motivo… }, comprobante \| null, maestro)` (`AbonoTiendaService.ts:149`). |
+| Excepción de cobro (SL-40) | `lib/actions/cobro-plataforma.ts:22`, `fijarCobroEmpresaAction` :42 | `new CobroPlataformaService(new CobroPlataformaTarifaRepository(P))` | `fijarDeEmpresa(actor, { organizacionId, monto: "100" })` (`CobroPlataformaService.ts:43`; ojo: el actor es el **1.er** argumento). Exige `esPlataforma(actor.rol)` = `superadmin` (`lib/auth/plataforma.ts:17`). El repositorio ya abre su propio `comoPlataforma("SL-40")`; el `usuarioId` del actor no se escribe. **Tiene que ir antes de crear órdenes**: el cargo de SL-40 se calcula al nacer cada orden. |
+| Pago a la plataforma (SL-45) | `lib/actions/wallet-egresos.ts:67` (`buildService`), `registrarEgresoAdministrativoAction` :89 | `new WalletEgresoService(new WalletMovimientoRepository(P), P, buildComprobantes(P), new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(P), new PagoPlataformaRepository(P)))` | `registrarEgreso({ tipoEgreso: "pago_plataforma", monto: "…", descripcion, fecha?, claveIdempotencia }, maestro, comprobante \| null)` (`WalletEgresoService.ts:65`). El tope de SL-45 exige deuda ≥ monto. No es un servicio propio: es el egreso administrativo con tipo `pago_plataforma`. |
+
+Reprogramada con fecha corregida (si hiciera falta): `lib/actions/corregir-fecha-reprogramacion.ts`, `CorreccionFechaReprogramacionService.corregir` (:74), como `reparto.ts:570`.
+
+### 2. Los 20 estados de `ORDER_STATUS_SEED` (`lib/types/order-status.ts:62-97`)
+
+Aristas: `lib/types/order-status-transiciones.ts:14-156`. Origen: tienda **con** bodega (`fulfillment`) → `en_preparacion`; **sin** bodega → `por_recolectar_en_tienda` (con guía). «CA» = aprobar el cierre del mensajero (`CierresAdminService.aprobarCierre`); «llevarA» = `e2e/_escenarios/reparto.ts:443`.
+
+| # | Estado | Nace en | Llamadas de servicio | Notas |
+|---|---|---|---|---|
+| 1 | `en_preparacion` | `en_preparacion` | `cargarMasiva` con tienda `fulfillment` | — |
+| 2 | `en_bodega_central` | `en_preparacion` | `GuiaAsignacionService.generarGuia({ ordenIds }, maestro)` | — |
+| 3 | `en_ruta_bodega_satelite` | `en_preparacion` | 2 + `rutearABodegaSatelite({ ordenIds }, maestro)` | orden de la zona satélite |
+| 4 | `en_bodega_satelite` | `en_preparacion` | 3 + `RecepcionSateliteService.recibir(numGuia, adminSatelite)` | — |
+| 5 | `mensajero_recogiendo_en_bodega` | `en_preparacion` | central: 2 + `asignarDesdeBodega({ ordenIds, mensajeroId, dia: "hoy" }, maestro)`; satélite: 4 + `AsignacionSateliteService.asignar(…, adminSatelite)` | exige ubicada (D6.1) antes de asignar |
+| 6 | `en_reparto` | `en_preparacion` | 5 + `MisAsignacionesService.recogerAsignaciones({ ordenIds }, mensajero)` | ver restricciones R-a, R-b |
+| 7 | `entregado` | `en_preparacion` | 6 + `escogerParaGestion` + `gestionar(entregado)` + `solicitarCierre` + CA | — |
+| 8 | `reprogramado` | `en_preparacion` | 6 + `gestionar(reprogramado, fecha = mananaCalendarioCR())` + cierre + CA | con fecha de mañana, `liberarAlAprobarCierreCon` no la suelta |
+| 9 | `novedad` | `en_preparacion` | 6 + `gestionar(novedad, causa)` + cierre + CA (anclaje) | — |
+| 10 | `devolucion_a_origen_por_rechazo` | `en_preparacion` | 9 + `RechazoTiendaService.rechazar(ordenId, motivo, adminTiendaDueña)` | **No** se alcanza con `gestionar(rechazo)` + CA: la misma aprobación la dispara a `por_devolver_*` (`CierresAdminRepository.ts:2287-2345`). Queda en reposo hasta la **siguiente** aprobación de un cierre de ese mensajero (el disparo busca por `mensajero_asignado_id`). Alternativa: `CierresAdminService.corregirResultadoGestion` (:1535) `entregado → rechazada` (398). |
+| 11 | `por_devolver_a_bodega_central` | `en_preparacion` (satélite) | 6 + `gestionar(devolucion_a_origen_por_rechazo)` + cierre + CA por `adminSatelite` | — |
+| 12 | `devolviendo_a_bodega_central` | idem | 11 + `EnvioDevolucionCentralService.enviarACentral(ordenId, adminSatelite)` | — |
+| 13 | `por_devolver_a_tienda` | `en_preparacion` (central) | 6 + `gestionar(rechazo)` + cierre + CA por `maestro`; o 12 + `RecepcionBodegaCentralService.recibirEnBodegaCentral(numGuia, maestro)` | — |
+| 14 | `devolviendo_a_tienda` | idem | 13 + `DevolucionOrigenService.devolverATienda(ordenId, maestro)` | — |
+| 15 | `devuelta_a_tienda` | idem | 14 + `RecepcionOrigenService.recibirEnOrigen(numGuia, adminTienda)` o `DevolucionTiendaService.confirmarEntrega({ tiendaId, ordenIds, evidencias }, maestro)` | — |
+| 16 | `por_recolectar_en_tienda` | `por_recolectar_en_tienda` | `cargarMasiva` (o la API) con tienda **sin** `fulfillment` | — |
+| 17 | `recolectando` | `por_recolectar_en_tienda` | `GuiaAsignacionService.asignarRecoleccion({ ordenIds, mensajeroId }, maestro)` | ver R-c |
+| 18 | `en_ruta_bodega_central` | `por_recolectar_en_tienda` | 17 + `RecoleccionTiendaService.recolectarEnTienda(numGuia, mensajero)` | — |
+| 19 | `incidente` | `en_preparacion` | 2 (u otro de los 5 orígenes: `en_ruta_bodega_central`, `en_bodega_central`, `en_ruta_bodega_satelite`, `en_bodega_satelite`, `mensajero_recogiendo_en_bodega`) + `IncidenteAdminService.reportar(…, maestro)`; indemnización con `aprobar(incidenteId, monto, admin)` | alternativa: `gestionar(incidente)` + cierre + CA |
+| 20 | `novedad_interna` | `en_preparacion` | 6 + `CorteDiarioService.ejecutarCorte(now)` en `conEmpresa(<demo>)` | **BLOQUEO B1** |
+
+**BLOQUEO B1 — `novedad_interna` no se alcanza el mismo día con el reloj real.**
+- `ejecutarCorte` cierra «el día anterior»: `diaQueElCorteCierra(now) = startOfDayCR(now) − 1 día` (`CorteDiarioService.ts:117`).
+- Solo barre órdenes `en_reparto` con `fecha_reparto IS NULL OR fecha_reparto <= diaCerrado` (`CorteDiarioRepository.ts:127`, gemelo en `CierreDiaRepository.ts:1043-1048`).
+- Las dos asignaciones escriben `fecha_reparto = hoy` (`resolverFechaReparto("hoy")`, `lib/utils/dia-reparto.ts:29`; `GuiaAsignacionService.ts:573`, `AsignacionSateliteService.ts:321`). El corte de hoy no la ve.
+- El E2E nunca produjo este estado: usa el corte solo para el `vencido` por gestión pendiente (`e2e/cierre-vencido-modelo.spec.ts:55`).
+- Único camino por servicio sin escribir a mano: pasar el reloj del propio servicio, `ejecutarCorte(<mañana>)`. Es un parámetro público del método, no una escritura directa, pero simula que el día pasó. **Pregunta para Carlos:** ¿se acepta `ejecutarCorte(mañana)` (y entra en D5.3 con su motivo), o `novedad_interna` queda fuera de la demo?
+
+Restricciones de orden de la receta (salen del código, no del design):
+- **R-a (cierre con pendientes):** `solicitarCierre` devuelve `conflict` si el mensajero tiene órdenes pendientes de gestión (`CierreDiaService.ts` tras :645, `contarOrdenesPendientesGestion`). Las órdenes en reposo en `en_reparto` (y, a confirmar en T5, `mensajero_recogiendo_en_bodega`) tienen que ser de un mensajero que ya cerró o que no cierra.
+- **R-b (alcance del corte):** el corte barre **todos** los mensajeros de la empresa: los que tienen gestiones sin cierre (rama a, sin mirar fecha) y los que tienen `en_reparto` barribles (rama b). Quien tiene un cierre abierto queda fuera. Con B1 aceptada, hay que correr el corte **antes** de dejar en reposo las demás órdenes `en_reparto`, con un mensajero dedicado, que además queda bloqueado por su `vencido`.
+- **R-c (dedicación, 157):** `asignarRecoleccion` rechaza a un mensajero con reparto pendiente (`GuiaAsignacionService.ts:706-719`, `ESTADOS_REPARTO_PENDIENTE`), y quien recolecta no recibe órdenes de bodega (:145). Hace falta un mensajero recolector propio.
+- **R-d (estado 10):** después del rechazo de la tienda no se aprueba ningún otro cierre de ese mensajero.
+- **Consecuencia para D7:** con `mensajero-central` y `mensajero-satelite` no alcanza. Hacen falta al menos un recolector y uno para el corte, por empresa (perfiles extra, o mensajeros sin entrada en la tabla de acceso).
+
+### 3. Comprobantes, `geocode_precision`, módulos
+
+- **Comprobantes: admiten imagen.** `WALLET_COMPROBANTE_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"]` (`lib/config/wallet-comprobante.ts`), máx. 4 MB. Vale para el aporte de capital, el abono, el pago a la plataforma y el reparto o pago a la tienda (`buildComprobantes`). El pago a mensajero contra un cierre (`registrarPagoMensajeroAction`) no recibe comprobante. Las evidencias de gestión, incidente y devolución a tienda solo admiten imagen (`GESTION_ALLOWED_MIME`, `lib/config/gestion.ts:14`). `e2e/fixtures/evidencia.jpg` empieza por `FF D8 FF DB` (JPEG, 274 B) y sirve para todo. **No hace falta `jspdf`.**
+- **`geocode_precision`: la UI no lo pinta.** Ningún archivo de `app/` ni `components/` lo lee. Solo lo escriben `OrdenGeocodeRepository.guardarResultado` y `GeocodificacionService.ts:200`, que guarda la precisión que reporta Google, `APPROXIMATE` incluida (Q8). El gate solo mira `latitud`/`longitud` y `geocodeStatus` (`AsignabilidadCoordenadasService.ts:123-127`). `precision: "APPROXIMATE"` con `status: "OK"` (`STATUS_OK`, `GeocodificacionService.ts:26`) es coherente.
+- **Módulos por empresa: no existen.** No hay ningún modelo ni flag de módulo encendido o apagado por empresa (se buscó en `db/schema.prisma` y `lib/`). Las pantallas sí dependen de datos: el aviso «Confirmá el SINPE» si la zona no tiene el SINPE confirmado (ficha 429; se confirma con `SinpeBodegaService.confirmar`) y el rol `apiKey`, que no navega (`lib/auth/menu-visibility.ts:174`).
+
+### 4. Guardias que barren `scripts/` o `tests/`
+
+| Guardia | Raíces | Qué exige a `scripts/demo-qa*.ts` y a `tests/fabricas/escenarios/*` |
+|---|---|---|
+| `tests/unit/guards/plataforma-solo-en-lista.guardia.test.ts` (helper `_aislamiento-por-empresa.ts:119`, `CARPETAS_PLATAFORMA = ["lib","app","scripts"]`, recursivo) | lib, app, scripts | **Cada archivo** de `scripts/` (también `scripts/demo-qa/*.ts`) que llame a `comoPlataforma(` va en `EXCEPCIONES_DE_PLATAFORMA` (`lib/db/excepciones-aislamiento.ts:78`) con ficha y motivo, y la lista tiene que estar ordenada. `tests/fabricas/` no se barre: el alta en la fábrica no necesita entrada. |
+| `tests/unit/guards/sql-a-mano-por-empresa.guardia.test.ts` | **solo lib y app** (`CARPETAS_SQL_A_MANO`, `_aislamiento-por-empresa.ts:104`) | Nada para `scripts/` ni `tests/`. El SQL del borrado y de la marca no entra en `EXCEPCIONES_SQL_A_MANO`. |
+| `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts` (`CARPETAS = ["app","lib","scripts"]`) | app, lib, scripts | Prohíbe `createXClient().storage`, `.storage.from(`/`createBucket(`…, la desestructuración `{ storage } = createXClient()` y el alias `= x.storage`. Usar `new SupabaseFileStorage(...).remove()` y `new SupabaseAlmacenDescargas(...)` no casa. **`scripts/demo-qa/` no entra en `EXCEPCIONES_DE_STORAGE`** (`lib/db/excepciones-aislamiento.ts:193`). |
+| `pago-plataforma-inmutable-sl45.guardia.test.ts` | lib, app, scripts | Ni `walletMovimiento.update/delete…(` ni SQL literal `UPDATE`/`DELETE FROM`/`TRUNCATE` sobre `wallet_movimiento`. El borrado genérico por nombre de tabla sacado del catálogo no lo dispara, pero borra esas filas igual (D12). Que el reviewer lo vea a la luz: es el caso que la guardia quiere vigilar. |
+| `otp-debug-solo-en-pruebas.guardia.test.ts` | todo el repo salvo `e2e/`, `tests/`, `playwright.config.ts` y `gate.yml`; los `.md` no cuentan | **Ninguna línea de código** de `scripts/demo-qa*` puede tener `AUTH_OTP_DEBUG_LOG=…`, `: "1"` ni nada parecido, ni siquiera dentro de un texto de salida. Nombrarla en prosa o en un `.md` sí se puede. |
+| `sin-credenciales-de-entorno.guardia.test.ts` | app, lib, scripts | No leer ni nombrar como literal las variables retiradas (`GOOGLE_MAPS_API_KEY`, `WHATSAPP_*`, `ANTHROPIC_API_KEY`…). |
+| `prisma-client-sin-adaptador.guardia.test.ts` | lib, app, components, scripts… | `new PrismaClient()` sin argumentos prohibido. El cliente dueño lleva `adapter: new PrismaPg(...)`, como `abrirBaseE2E`. |
+| `fuera-datos-ordenex.guardia.test.ts` | `package.json`; texto de tests, scripts, lib y app | R2: ningún script de `package.json` puede nombrar `seed-maestro`, `seed-usuarios`, `superadmin` ni `crear-usuario`. `"demo:qa": "tsx scripts/demo-qa.ts"` y el `build` nuevo pasan. R3: toda mención `db:seed…` tiene que ser un script declarado. `SCRIPTS_QUE_CREAN_USUARIOS` (SL-32 R19) se compara por nombre: la demo crea usuarios sin entrar en esa lista. Es una decisión para el reviewer. |
+| `marcador-fallo-config-declaracion-unica`, `historial-accion-punto-unico`, `p2003-detector-unico`, `clave-remision-solo-lectura`, `caja-173-alcance`, `premio-ranking-alcance`, `sinpe-sin-variables-de-entorno`, `push-alta-punto-unico`, analítica (`cache-*`, `modulo-puro`, `alcance-fuente-unica`, `export-*`) | incluyen scripts | Solo disparan si la demo escribe sus literales: `[geocode:config]`, escritura directa a `historial_accion`, alta de push o caché de analítica. La receta no hace nada de eso. |
+| `ayuda-columna-retirada`, `gestion-aprobada-retirada`, `nota-privada-retirada`, `tablero-dia/buckets-estatus`, `cache-tags` | incluyen `tests/` (y `e2e/`) | Nombres retirados prohibidos también en `tests/fabricas/escenarios/*`. Lo que se mueve desde `e2e/_escenarios` ya los cumple, porque `e2e/` también se barre. |
+| `finales-de-linea-lf.guardia.test.ts` | `init.sh`, `scripts/*.sh`, `scripts/*.mjs` | No afecta a los `.ts`. |
+
+### 5. Datos de T0
+
+- **Última migración de `dev`:** `db/migrations/20261025150000_jobs_por_empresa`. En el árbol ya hay, sin commitear, `20261025160000_organizacion_es_demo` y `20261025160100_entorno_marca`, de otra tanda.
+- **`RUTAS_GUARDADAS`** (`scripts/migrar-storage-a-carpetas.ts:100`): `readonly RutaGuardada[]`, con `RutaGuardada = { readonly bucket: () => string; readonly columna: string; readonly leer: (db: LectorDeRutas, where: { organizacionId: { in: string[] } } | undefined) => Promise<{ organizacionId: string; ruta: string | null }[]> }` (:89-93).
+  - `LectorDeRutas` (:64) es un `Pick<Prisma.TransactionClient, …>` de 13 delegados.
+  - Son 12 entradas: `mensajero_documento`, `gestion_orden.evidencia_storage_path`, `gestion_orden_evidencia`, `orden_incidente_evidencia`, `devolucion_tienda_evidencia`, `orden.download_storage_path`, `carga.download_storage_path`, `wallet_comprobante`, `abono_tienda`, `aporte_capital`, `pago_por_cuenta_tienda` y `whatsapp_envio_ejecucion.pdf_ruta`.
+  - Importarlo no ejecuta nada: `main` solo corre como entrypoint (`esEntrypoint`, al final del archivo).
+- **`SupabaseAlmacenDescargas`** (`lib/storage/SupabaseAlmacenDescargas.ts:66`): `constructor(storage?: AlmacenStorageClientLike, bucket = descargaConfig.BUCKET, nuevoId = randomUUID)`. **`purgarAnterioresA(corte: Date, maximo: number): Promise<{ borrados: number; quedaPendiente: boolean }>`** (:116).
+  - **Desviación:** pide `maximo`, que el design no pone. La purga del cron usa `MAX_OBJETOS_POR_CORRIDA = 5000` (`lib/services/PurgaDescargasService.ts:6`).
+  - Hay que repetirla mientras `quedaPendiente`. Purga `<org>/tmp`.
+- **`SupabaseFileStorage`** (`lib/storage/SupabaseFileStorage.ts:33`): `constructor(storage?: StorageClientLike, bucket: string = postulacionConfig.BUCKET)`, con el cliente perezoso. `remove(paths: string[]): Promise<void>` (:65): no hace nada con `[]`, antepone `<org>/` a cada ruta y es de mejor esfuerzo (no mira el error). Necesita `conEmpresa`.
+- **`JobRepository.complete(id)` / `fail(id, error, runAfter: Date | null)`** (`lib/repositories/JobRepository.ts:195`, :203) son `$executeRaw` sobre `jobs`.
+  - Tras `20261025150000_jobs_por_empresa` (política `jobs_por_empresa` FOR ALL TO `servi_app`, `organizacion_id = current_setting('app.organizacion_id')`, sin `FORCE`), y como la extensión rechaza el SQL a mano sin contexto: **sí piden contexto**.
+  - Dentro de `conEmpresa(<demo>)` corren como `servi_app` y solo ven los jobs de la demo. En `comoPlataforma` correrían como el usuario de la conexión, sin filtro. Usar `conEmpresa`.
+  - Los jobs que encolan los servicios toman `organizacion_id` por el DEFAULT de la columna (`JobRepository.ts:91`).
+  - Buscar por clave exacta: `findByDedupeKeys(keys: string[])` (:188).
+- **Guardia de Storage de SL-19:** `tests/unit/guards/storage-solo-por-adaptador.guardia.test.ts`, lista `EXCEPCIONES_DE_STORAGE`. `scripts/demo-qa/` no necesita entrar en ella (§4).
+- **`OrdenGeocodeRepository`:** `constructor(prisma)` (:14). `guardarResultado(ordenId: string, data: { latitud: number | null; longitud: number | null; precision: string | null; status: string; geocodedAt: Date }): Promise<void>` (:38, tipo en `lib/interfaces/repositories/IOrdenGeocodeRepository.ts:15`). Usa `updateMany` sobre `orden`: modelo de negocio, va dentro de `conEmpresa`.
+- **`dedupeKeyGeocodificacion(ordenId: string, hash: string): string`** → `geocodificacion:<ordenId>:<hash[0..8]>` (`lib/services/jobs/geocodificacion-encolado.ts:35`). **`hashDireccion(query: string): string`** (`lib/geo/direccion-query.ts:67`), SHA-256 de la dirección normalizada. Se calcula sobre `orden.direccion` **libre**, no sobre la consulta completa (`geocodificacion-encolado.ts:65`).
+- **`handleCargaApi(req: Request, deps: CargaApiDeps = {}): Promise<NextResponse>`** (`app/api/ordenes/api-key/carga/route.ts:264`).
+- **`AsignabilidadCoordenadasService`:** `constructor(jobs: IJobRepository)`. `evaluar(ordenes: { id, direccion, latitud, longitud, geocodeStatus }[], autorizadasSinUbicacion: ReadonlySet<string> = new Set()): Promise<Map<string, EstadoAsignabilidad>>` (`lib/services/AsignabilidadCoordenadasService.ts:109`).
+- **`strongPasswordSchema`** (`lib/types/password-policy.ts:20`): zod string, `PASSWORD_MIN_LENGTH..PASSWORD_MAX_LENGTH`, con mayúscula, minúscula, dígito y símbolo.
+- **`hashPassword(plain: string): Promise<string>`** (`lib/utils/password.ts:6`).
+- **`fechaCalendarioCR(now: Date = new Date()): string`** (`YYYY-MM-DD`, `lib/utils/fecha-cr.ts:47`). `mananaCalendarioCR` está en :86.
+- `usuario.contrasena_definida_at` existe (`db/schema.prisma:101`). `crearEmpresaE2E` hoy no la escribe; D5.3 sí la pide.
+
+### 6. Qué separar para T4/T5
+
+| Archivo | `process.env` | Playwright | Otros efectos |
+|---|---|---|---|
+| `tests/fabricas/e2e.ts` | lee `DATABASE_URL` (`urlBaseE2E`, :66) y la exige local (:41-62) | `import type { Browser, Cookie }` (:3), solo tipo. `sesionDe` usa el `browser` recibido. | `abrirBaseE2E` (:73) crea `PrismaClient` + `PrismaPg`. `dueno()` es compartido. `comprobarBaseE2E` mira los catálogos. Correos y contraseñas aleatorios (:159-167). `TIPO_IDENTIFICACION_E2E = "cedula"`. `confiarDispositivo` escribe `trusted_device` (la demo no lo usa, D7). |
+| `e2e/_escenarios/reparto.ts` | **escribe** `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` al cargarse (:126-127) y lee `E2E_STORAGE_PUERTO` | `import type { Browser, BrowserContextOptions, Page }` (:5), solo tipo. `paginaDe` (:563) es lo único que usa un navegador. | Importa `drenarGeocodificacion` de `./crons` (cron por HTTP, :478). `baseReparto()` = `abrirBaseE2E` (:205). Lee la fixture con `fs` y `__dirname` (:129, :508-512). `dosDistritos` elige distritos del catálogo (:281); la demo los fija por `codigo_dta`, D22. |
+| `e2e/_escenarios/cierres.ts` | ninguno directo, **pero importa `./reparto`**: cargarlo pisa `SUPABASE_URL` | ninguno | Lee con `baseReparto()` (`aprobarCierre` :103-115, `rechazarCierre` :146). `fijarEmpresa` de `tests/fabricas/organizaciones.ts` solo para `anclarDevolucionHaceDias` (excepción R8 del E2E, se queda en `e2e/`). |
+| `e2e/_escenarios/crons.ts` | lee `CRON_SECRET` y `E2E_PUERTO` | ninguno | `fetch` al servidor local. Se queda en `e2e/` y la demo no lo usa. |
+
+Al núcleo: de `reparto.ts`, `servicios()`, `crearZona`, `crearEscenarioReparto` (con empresa y usuarios parametrizables), `crearMensajero`, `crearOrden` (con el lector dueño inyectado), `estadoDe`, `gestionesDe`, `llevarA` (con `prepararAsignacion(ordenIds)` inyectado en lugar de `drenarGeocodificacion`), `gestionar` (con los bytes de la evidencia inyectados) y `corregirFechaReprogramacion`. De `cierres.ts`, `cierreDia()`, `cierresAdmin()`, `solicitarCierre`, `aprobarCierre` y `rechazarCierre`.
+
+Se quedan en `e2e/`: `paginaDe`, la sustitución de `process.env`, `abrirBaseE2E` como lector, `cierresDe`, `anclarDevolucionHaceDias` e `importe`.
+
+### Desviaciones del design detectadas
+
+1. **No existe `OrdenService.crear`** (D5.1 «Orden por pantalla»). La pantalla crea por `BulkOrdenService.cargarMasiva` (route `carga-masiva/chunk`). Esa fila y la de carga masiva son el mismo camino.
+2. **`purgarAnterioresA(corte, maximo)`** pide un segundo argumento, y hay que repetirla mientras `quedaPendiente`.
+3. **El perfil `api` de D7** no puede tener `demo-qa-<x>-api@example.test` ni la contraseña de la demo. `ApiKeyService.generar` crea el usuario con `apikey+<slug>@apikey.invalid` y contraseña aleatoria, y el rol `apiKey` no navega. El slug sale de `identificador` y tiene que ser distinto entre A y B, porque el correo es único global.
+4. **Pago a la plataforma** = `WalletEgresoService.registrarEgreso` con `tipoEgreso: "pago_plataforma"`. **Excepción de cobro** = `CobroPlataformaService.fijarDeEmpresa(actor, input)`, con el actor primero y `rol: "superadmin"`.
+5. **D7 se queda corto de mensajeros** por R-a, R-b y R-c: hacen falta un recolector y un mensajero para el corte, además de los dos de reparto.
+6. **`devolucion_a_origen_por_rechazo`** necesita `RechazoTiendaService.rechazar` (240), que D5.1/D5.2 no listan.
+7. **`jspdf` no hace falta:** los comprobantes admiten JPEG.

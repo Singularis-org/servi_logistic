@@ -8,7 +8,7 @@
 
 ## Tanda 0 — Punto de partida
 
-- [ ] **T0. Traer `dev` con SL-19 mergeado.**
+- [x] **T0. Traer `dev` con SL-19 mergeado.**
   - Espera al merge del PR #16 (SL-19) en `dev` y trae `dev` a la rama
     (`git fetch && git merge origin/dev`). Sin ese merge no se empieza ninguna otra task.
   - Anota en `progress/impl_SL-43.md`:
@@ -26,7 +26,7 @@
   - _Hecho:_ la rama contiene el merge de SL-19, `./init.sh` en verde y los datos anotados. Si falta
     una variable de Preview, **para y avisa**: el design la da por existente.
 
-- [ ] **T1. Inventario de la receta** (depende de T0).
+- [x] **T1. Inventario de la receta** (depende de T0).
   - Para cada fila de `design.md > D5.1`, la action o el route que monta el servicio, con sus
     dependencias exactas. Completa los nombres que el design deja abiertos: crear orden por pantalla,
     pago a mensajeros, pago a la plataforma (SL-45), recolección en tienda (157), corte diario e
@@ -41,7 +41,7 @@
 
 ## Tanda A — La base y la guardia
 
-- [ ] **T2. Migración `es_demo`** (R6; depende de T0).
+- [x] **T2. Migración `es_demo`** (R6; depende de T0).
   - `db/migrations/<ts>_organizacion_es_demo/{migration,down}.sql` y `db/schema.prisma`
     (`design.md > D3.1`).
   - _Hecho:_
@@ -50,7 +50,7 @@
     - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde;
     - `pnpm run test:guardias` en verde.
 
-- [ ] **T2b. La marca de QA en Supabase, con su prueba** (R3, D21; depende de T0; **puerta humana**:
+- [ ] **T2b. La marca de QA en Supabase, con su prueba** _(2026-10-25: ALTER DATABASE y ALTER ROLE rechazadas con 42501 → opción 3 implementada, migración `20261025160100_entorno_marca`; falta que Carlos inserte la fila en QA tras el primer despliegue con la migración)_ (R3, D21; depende de T0; **puerta humana**:
   se hace con Carlos sobre la base de QA).
   - Prueba en el Supabase de QA, en este orden y con el rol `postgres` (`design.md > D2.2`):
     1. `ALTER DATABASE postgres SET servi.entorno = 'qa';`
@@ -65,7 +65,7 @@
     `progress/impl_SL-43.md`, y `comprobarMarcaDeQa` escrita para esa opción. Comprueba también que
     producción **no** tiene la marca (lectura, con Carlos).
 
-- [ ] **T3. La guardia y la decisión del build** `[P]` (R2, R4, R5, R25, R29, R30; depende de T0).
+- [x] **T3. La guardia y la decisión del build** `[P]` (R2, R4, R5, R25, R29, R30; depende de T0).
   - `scripts/demo-qa/guardia-entorno.ts` (`validarEntornoDemo`, `comprobarMarcaDeQa`) y
     `scripts/demo-qa/decision-build.ts` (`decidirDemo`), según `design.md > D2` y `D10.1`.
   - `tests/unit/scripts/demo-qa-guardia.test.ts` con los casos de D2.3, y los casos de `decidirDemo`
@@ -104,7 +104,7 @@
   - _Hecho:_ verde contra Postgres real. Un `skip` por falta de base no cuenta. La mutación 9 de D9.3
     da rojo.
 
-- [ ] **T7. Ubicar y cerrar jobs** `[P]` (R20–R23; depende de T0).
+- [x] **T7. Ubicar y cerrar jobs** `[P]` (R20–R23; depende de T0).
   - `scripts/demo-qa/ubicar-y-cerrar-jobs.ts` y `scripts/demo-qa/geografia.ts`, con los distritos y
     puntos fijos (`design.md > D6`, D22).
   - Su caso unitario en `tests/unit/scripts/demo-qa-jobs.test.ts`: tipos esperados, tipo nuevo → 1, y
