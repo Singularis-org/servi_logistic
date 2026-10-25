@@ -106,6 +106,18 @@ esta bien hecha, no solo si "funciona".
   contraseña?» sigue sirviendo de respaldo.
   La action `lib/actions/organizaciones.ts` exige superadmin a través de `lib/auth/exigir-superadmin.ts`,
   el punto de enganche con SL-32: hasta que exista `lib/auth/plataforma.ts`, rechaza a todos.
+- **Cola `jobs` (SL-19).** Política `jobs_por_empresa` (migración `20261025150000_jobs_por_empresa`):
+  con `servi_app`, cada empresa ve, escribe y encola solo sus jobs. Los jobs sin empresa (recurrentes)
+  solo los ve la plataforma, igual que el drenador, que reclama y cierra los de todas como dueño.
+  `dedupe_key` sigue global: toda clave que se encola desde una empresa lleva el id de una fila suya.
+  `Job` es la única tabla de empresa opcional (`MODELOS_CON_EMPRESA_OPCIONAL`), y
+  `rls-por-empresa.guardia` falla si una tabla comprobada conserva una política abierta.
+- **Storage (SL-19).** Los adaptadores de `lib/storage/` guardan cada archivo en
+  `<organizacion_id>/<ruta>` de su bucket, con la empresa del contexto (`lib/storage/carpeta-de-empresa.ts`).
+  La base guarda la ruta relativa de siempre. Sin empresa, o en plataforma, fallan con `EmpresaNoResuelta`
+  antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
+  (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
+  `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

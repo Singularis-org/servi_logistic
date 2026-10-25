@@ -1,4 +1,5 @@
 // Ficha 474 (design §5.3, R43/R44) — almacen PRIVADO de los PDFs de las ejecuciones.
+// SL-19: toda ruta es RELATIVA a la carpeta de la empresa en curso (`<organizacion_id>/`), que pone el adaptador.
 
 /**
  * El objeto YA existe en esa ruta (R43: nunca se sobrescribe). Pasa si una corrida guardo el PDF y

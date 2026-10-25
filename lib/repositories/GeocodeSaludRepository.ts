@@ -39,9 +39,10 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
     desde: Date,
     excluirJobId: string,
   ): Promise<number> {
-    // SL-36 (R43) — `"organizacion_id" = $empresa`: la politica de `jobs` esta abierta hasta SL-19,
-    // asi que sin este filtro el umbral y el «afectados» sumarian fallos de TODAS las empresas. La
-    // igualdad ya excluye las filas con `organizacion_id` NULL.
+    // SL-36 (R43) — `"organizacion_id" = $empresa`: el umbral y el «afectados» cuentan solo los fallos
+    // de esta empresa. Desde SL-19 la politica de `jobs` ya es por empresa (`jobs_por_empresa`), y
+    // este filtro queda como segunda barrera: no depende de que el contexto este puesto. La igualdad
+    // ya excluye las filas con `organizacion_id` NULL.
     //
     // R2/R3/R5 — se cuentan JOBS DISTINTOS (una fila = un job), no intentos.
     //
@@ -72,8 +73,9 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
   async revivirFallosConfig(opts: RevivirFallosConfigOpts): Promise<number> {
     const { organizacionId, ahora, limite, espaciadoMs, tocadoAntesDe } = opts;
     // SL-36 (R42) — `"organizacion_id" = $empresa` en `elegibles`: el exito de una empresa solo
-    // revive SUS jobs (la politica de `jobs` esta abierta hasta SL-19; la RLS no separa nada). La
-    // igualdad deja fuera los jobs con `organizacion_id` NULL: no los revive ninguna empresa.
+    // revive SUS jobs. Desde SL-19 la politica de `jobs` ya es por empresa (`jobs_por_empresa`), y
+    // este filtro queda como segunda barrera. La igualdad deja fuera los jobs con `organizacion_id`
+    // NULL: no los revive ninguna empresa.
     // R13/R15/R16/R19/R21/R22/R23/R24 — UNA sola sentencia atomica.
     //
     // ⚠️ TRES CTEs Y NO DOS, Y NO ES ESTETICA. `design.md` §5.1 escribe `row_number()` y

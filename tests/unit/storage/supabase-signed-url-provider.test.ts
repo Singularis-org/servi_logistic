@@ -4,9 +4,17 @@ import {
   type SignedUrlClientLike,
 } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { postulacionConfig } from "@/lib/config/postulacion";
+import { conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
+import { RutaDeAlmacenInvalida } from "@/lib/storage/carpeta-de-empresa";
 
 // Feature 22 / R8/R9: firma URLs temporales del bucket privado. Cliente falso
 // para verificar path/ttl y manejo de error sin red.
+// SL-19 (R16–R19): cada caso corre en la empresa ORG; el cliente recibe `ORG/<ruta>` y el mapa del
+// lote vuelve indexado por la ruta relativa que se pidio.
+
+const ORG = "11111111-1111-4111-8111-111111111111";
+const OTRA = "22222222-2222-4222-8222-222222222222";
+const enOrg = <T>(fn: () => Promise<T>) => conEmpresa(ORG, fn);
 
 function buildClient() {
   const createSignedUrl = vi
@@ -26,27 +34,58 @@ describe("SupabaseSignedUrlProvider (R8/R9)", () => {
     const { client, from, createSignedUrl } = buildClient();
     const provider = new SupabaseSignedUrlProvider(client);
 
-    const url = await provider.createSignedUrl("usr-1/cedula_anverso.jpg", 300);
+    const url = await enOrg(() => provider.createSignedUrl("usr-1/cedula_anverso.jpg", 300));
 
     expect(url).toBe("https://signed/one");
     expect(from).toHaveBeenCalledWith(postulacionConfig.BUCKET);
-    expect(createSignedUrl).toHaveBeenCalledWith("usr-1/cedula_anverso.jpg", 300);
+    expect(createSignedUrl).toHaveBeenCalledWith(`${ORG}/usr-1/cedula_anverso.jpg`, 300);
   });
 
-  it("firma varias URLs en batch y devuelve mapa path->url con el ttl", async () => {
+  it("firma varias URLs en batch y devuelve mapa path relativo->url con el ttl (SL-19 R19)", async () => {
     const { client, createSignedUrls } = buildClient();
     const provider = new SupabaseSignedUrlProvider(client);
 
-    const map = await provider.createSignedUrls(["a.jpg", "b.jpg"], 120);
+    const map = await enOrg(() => provider.createSignedUrls(["a.jpg", "b.jpg"], 120));
 
-    expect(createSignedUrls).toHaveBeenCalledWith(["a.jpg", "b.jpg"], 120);
-    expect(map).toEqual({ "a.jpg": "https://signed/a.jpg", "b.jpg": "https://signed/b.jpg" });
+    expect(createSignedUrls).toHaveBeenCalledWith([`${ORG}/a.jpg`, `${ORG}/b.jpg`], 120);
+    expect(map).toEqual({ "a.jpg": `https://signed/${ORG}/a.jpg`, "b.jpg": `https://signed/${ORG}/b.jpg` });
+  });
+
+  it("SL-19 R19: una entrada que Storage devuelve fuera de la carpeta se descarta", async () => {
+    const { client, from } = buildClient();
+    from.mockReturnValue({
+      createSignedUrl: vi.fn(),
+      createSignedUrls: vi.fn().mockResolvedValue({
+        data: [
+          { path: `${OTRA}/a.jpg`, signedUrl: "https://signed/ajena", error: null },
+          { path: "a.jpg", signedUrl: "https://signed/raiz", error: null },
+          { path: `${ORG}/b.jpg`, signedUrl: "https://signed/b", error: null },
+        ],
+        error: null,
+      }),
+    });
+    const provider = new SupabaseSignedUrlProvider(client);
+
+    expect(await enOrg(() => provider.createSignedUrls(["a.jpg", "b.jpg"], 300))).toEqual({ "b.jpg": "https://signed/b" });
+  });
+
+  it("SL-19 R17/R18: ruta invalida o sin empresa ⇒ falla sin llamar a Storage", async () => {
+    const { client, createSignedUrl, createSignedUrls } = buildClient();
+    const provider = new SupabaseSignedUrlProvider(client);
+    await expect(enOrg(() => provider.createSignedUrl(`../${OTRA}/a.jpg`, 60))).rejects.toBeInstanceOf(RutaDeAlmacenInvalida);
+    await expect(enOrg(() => provider.createSignedUrls(["a.jpg", "b//c.jpg"], 60))).rejects.toBeInstanceOf(
+      RutaDeAlmacenInvalida,
+    );
+    await expect(provider.createSignedUrl("a.jpg", 60)).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    await expect(provider.createSignedUrls(["a.jpg"], 60)).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+    expect(createSignedUrls).not.toHaveBeenCalled();
   });
 
   it("batch vacio no llama al backend", async () => {
     const { client, createSignedUrls } = buildClient();
     const provider = new SupabaseSignedUrlProvider(client);
-    const map = await provider.createSignedUrls([], 300);
+    const map = await enOrg(() => provider.createSignedUrls([], 300));
     expect(map).toEqual({});
     expect(createSignedUrls).not.toHaveBeenCalled();
   });
@@ -58,7 +97,7 @@ describe("SupabaseSignedUrlProvider (R8/R9)", () => {
       createSignedUrls: vi.fn(),
     });
     const provider = new SupabaseSignedUrlProvider(client);
-    await expect(provider.createSignedUrl("x", 300)).rejects.toThrow(/fallo al firmar/);
+    await expect(enOrg(() => provider.createSignedUrl("x", 300))).rejects.toThrow(/fallo al firmar/);
   });
 
   // El batch devuelve un resultado PARCIAL: la entrada que el storage no pudo firmar se
@@ -72,15 +111,15 @@ describe("SupabaseSignedUrlProvider (R8/R9)", () => {
       createSignedUrl: vi.fn(),
       createSignedUrls: vi.fn().mockResolvedValue({
         data: [
-          { path: "a.jpg", signedUrl: "", error: "not found" },
-          { path: "b.jpg", signedUrl: "https://signed/b.jpg", error: null },
+          { path: `${ORG}/a.jpg`, signedUrl: "", error: "not found" },
+          { path: `${ORG}/b.jpg`, signedUrl: "https://signed/b.jpg", error: null },
         ],
         error: null,
       }),
     });
     const provider = new SupabaseSignedUrlProvider(client);
 
-    const map = await provider.createSignedUrls(["a.jpg", "b.jpg"], 300);
+    const map = await enOrg(() => provider.createSignedUrls(["a.jpg", "b.jpg"], 300));
 
     expect(map).toEqual({ "b.jpg": "https://signed/b.jpg" });
   });
@@ -90,13 +129,13 @@ describe("SupabaseSignedUrlProvider (R8/R9)", () => {
     from.mockReturnValue({
       createSignedUrl: vi.fn(),
       createSignedUrls: vi.fn().mockResolvedValue({
-        data: [{ path: "a.jpg", signedUrl: "", error: "not found" }],
+        data: [{ path: `${ORG}/a.jpg`, signedUrl: "", error: "not found" }],
         error: null,
       }),
     });
     const provider = new SupabaseSignedUrlProvider(client);
 
-    expect(await provider.createSignedUrls(["a.jpg"], 300)).toEqual({});
+    expect(await enOrg(() => provider.createSignedUrls(["a.jpg"], 300))).toEqual({});
   });
 
   // El error GLOBAL (credencial ausente, storage caido) sigue lanzando: no es "falta este
@@ -111,6 +150,6 @@ describe("SupabaseSignedUrlProvider (R8/R9)", () => {
     });
     const provider = new SupabaseSignedUrlProvider(client);
 
-    await expect(provider.createSignedUrls(["a.jpg"], 300)).rejects.toThrow(/fallo al firmar/);
+    await expect(enOrg(() => provider.createSignedUrls(["a.jpg"], 300))).rejects.toThrow(/fallo al firmar/);
   });
 });

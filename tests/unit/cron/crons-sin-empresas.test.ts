@@ -9,6 +9,7 @@ import { handleLiberarReprogramadas } from "@/app/api/cron/liberar-reprogramadas
 import { handleProcesarDevueltasSla } from "@/app/api/cron/procesar-devueltas-sla/route";
 import { handleSnapshotRanking } from "@/app/api/cron/snapshot-ranking/route";
 import { handlePurgaPdfCargas } from "@/app/api/cron/purga-pdf-cargas/route";
+import { handlePurgaDescargas } from "@/app/api/cron/purga-descargas/route";
 import { handlePurgaPostulacionesRecurso } from "@/app/api/cron/purga-postulaciones-recurso/route";
 import { handleAvisoRepartoManana } from "@/app/api/cron/aviso-reparto-manana/route";
 import { handleAvisosDiarios } from "@/app/api/cron/avisos-diarios/route";
@@ -115,6 +116,14 @@ const CASOS: CasoCron[] = [
     metodo: "ejecutar",
     corrida: { cargasPurgadas: 1, ordenesAfectadas: 1, objetosBorrados: 1, quedaPendiente: false },
     vacio: { cargasPurgadas: 0, ordenesAfectadas: 0, objetosBorrados: 0, quedaPendiente: false },
+  },
+  {
+    // SL-19 (R21): el almacen de descargas solo alcanza la carpeta de la empresa en curso.
+    nombre: "purga-descargas",
+    handle: (r, d) => handlePurgaDescargas(r, d as never),
+    metodo: "ejecutar",
+    corrida: { objetosBorrados: 1, quedaPendiente: false },
+    vacio: { objetosBorrados: 0, quedaPendiente: false },
   },
   {
     nombre: "purga-postulaciones-recurso",
