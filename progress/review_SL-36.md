@@ -140,3 +140,31 @@ Todo se corrió contra `servi_logistic_sl36`. La URL se reescribió sin imprimir
 Revisar solo:
 - la evidencia de B1;
 - lo que se toque por m1-m4, si se toca.
+
+## Vuelta 2 (acotada a `e5e759a..abececa`)
+
+**Veredicto: OK.** B1 está resuelto, y m1, m2 y m4 también. m3 sigue abierto y no bloquea: quitar
+las dependencias lo decide el humano. No hay regresiones en el diff.
+
+### Verificación
+
+- **B1.** `progress/impl_SL-36.md > Vuelta 2 > B1` registra lo siguiente:
+  - dos corridas de `e2e/dos-empresas-humo.spec.ts --project=aislamiento --no-deps`, las dos 6/6 passed, con 0 skipped y 0 flaky, `PW_EXIT=0`;
+  - una base desechable recreada y un `next build` nuevo (`BUILD_EXIT=0`), hecho después de m2;
+  - el recorrido del menú incluye `/configuracion/integraciones` con estado 200 y `fugas: []` para los dos maestros;
+  - `integraciones-por-empresa` repetido en 4/4 con ese build.
+
+  `--no-deps` se justifica porque el spec asegura su propio superadmin en `beforeAll`. La evidencia es concreta y coherente, así que no repetí la corrida.
+- **m1.** Ahora `design.md` §5 y la guía `integracion-optimizacion-rutas.md` describen la conducta real ante un 403. Lo contrasté con el código:
+  - `FallbackRouteOptimizationClient` solo cae a Haversine con `RutaNoConfiguradoError` y `sin_solucion` (`lib/clients/fallback-route-optimization.ts:70,85`);
+  - `OptimizacionRutaService` ante `config_invalida` conserva el orden, marca `desactualizada` y lanza `RutaIntentoFallidoError` (`lib/services/OptimizacionRutaService.ts:401-414,369`).
+
+  El porqué queda escrito en el design.
+- **m2.** `lib/clients/whatsapp-app-id.ts:125-131`: la entrada solo vale si coinciden empresa, integración y huella sha256 del token, y el token no se guarda en claro. Lo maté con una mutación propia: `enCache.huellaToken === huellaToken` → `enCache.huellaToken.length > 0`. Salió ROJO en «un token editado en la misma integración no reutiliza el app id cacheado» (`1 failed | 13 passed`). Restaurado: 14/14.
+- **m4.** `tests/integration/db/integracion-dos-empresas.test.ts:235-237` lleva ahora la forma completa, en base64 estándar y anclada. Es equivalente a la regex del CHECK y de la bóveda. Contra `servi_logistic_sl36`: 12/12.
+- Rojo de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts` (4): está en `tests/baseline-rojos.json` y no es de esta feature, así que no es hallazgo.
+- `git status --porcelain` quedó vacío al terminar.
+
+### Hallazgos
+
+Ninguno nuevo. Queda abierto m3 (`package.json:36,43`), para que el humano decida, y T8.2, la revisión humana de las guías, antes de `done`.
