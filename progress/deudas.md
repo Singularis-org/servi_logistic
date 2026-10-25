@@ -48,10 +48,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** decidir con SL-27 si se reescriben como «la app de origen» o se archivan.
 - **Dueño:** quien tome SL-27.
 
-### D10 — Excepciones de plataforma que absorbe SL-36
+### D10 — Excepciones de plataforma que absorbe SL-36 — RESUELTA (2026-10-25)
 - **Origen:** SL-17 (2026-10-23). El webhook de WhatsApp (`app/api/webhooks/whatsapp/route.ts`) corre en `comoPlataforma("SL-36", …)` y la sincronización de plantillas usa credenciales globales: dos empresas comparten número y plantillas de Meta.
-- **Qué falta:** credenciales de API por empresa y quitar la excepción de `lib/db/excepciones-aislamiento.ts`.
-- **Dueño:** quien tome SL-36.
+- **Resolución:** SL-36. Las credenciales de WhatsApp, Maps, rutas y asistente son por empresa, cifradas en `integracion` (`lib/crypto/boveda-integraciones.ts`, recifrado con `pnpm integraciones:recifrar`). El route del webhook salió de `EXCEPCIONES_DE_PLATAFORMA`; en su lugar queda `lib/repositories/IntegracionEnrutadoRepository.ts`, que solo lee `id` y `organizacion_id` para enrutar (R22). Detalle en `docs/architecture.md > Multi-empresa`.
+- **Dueño:** cerrada.
 
 ### D11 — Revisión fina del SQL a mano
 - **Origen:** SL-17, decisión D7. `EXCEPCIONES_SQL_A_MANO` (`lib/db/excepciones-aislamiento.ts`) arranca con 47 archivos que no filtran por `organizacion_id`; hoy solo los cubre la RLS.

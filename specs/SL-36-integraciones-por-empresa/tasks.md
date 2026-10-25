@@ -136,7 +136,7 @@
 
 ## T10. Cierre
 
-- [ ] **T10.1** Quitar D10 de `progress/deudas.md` y actualizar `docs/architecture.md`
+- [x] **T10.1** Quitar D10 de `progress/deudas.md` y actualizar `docs/architecture.md`
   (sección Multi-empresa: excepciones y bóveda).
 - [ ] **T10.2** `progress/impl_SL-36.md` con el mapa `R<n> → test` de la tabla de abajo, verificado.
 

@@ -74,6 +74,21 @@ esta bien hecha, no solo si "funciona".
 - **Excepciones con ficha** (`lib/db/excepciones-aislamiento.ts`): `EXCEPCIONES_DE_PLATAFORMA` (quién
   puede llamar a `comoPlataforma`) y `EXCEPCIONES_SQL_A_MANO` (SQL a mano que aún no filtra y que la RLS
   cubre). Las dos solo pueden bajar; las vigilan `plataforma-solo-en-lista` y `sql-a-mano-por-empresa`.
+  Desde SL-36 el route del webhook de WhatsApp ya no es excepción: delega en `WebhookWhatsappService`, que
+  abre la empresa del mensaje. Lo único que queda en plataforma para ese borde es
+  `lib/repositories/IntegracionEnrutadoRepository.ts`: traduce un número o un resumen de token a su
+  empresa, sin sesión, y solo selecciona `id` y `organizacion_id` (R22).
+- **Credenciales de proveedores por empresa (SL-36).** WhatsApp, Google Maps, la optimización de rutas
+  y el asistente usan la credencial de la empresa, guardada en la tabla `integracion`. La plataforma no
+  presta claves: la guardia `sin-credenciales-de-entorno` (R41) falla si algo en `app/`, `lib/` o
+  `scripts/` lee de `process.env` una de las variables retiradas.
+  - **Bóveda** (`lib/crypto/boveda-integraciones.ts`): AES-256-GCM de `node:crypto`, con datos asociados
+    que atan el valor a su fila y a su campo. Usa un anillo de claves versionado
+    (`INTEGRACIONES_CLAVES_CIFRADO`, con la versión activa en `INTEGRACIONES_CLAVE_ACTIVA`).
+    `pnpm integraciones:recifrar [--solo-contar]` recifra con la clave activa lo guardado con una versión
+    anterior.
+  - **Lectura:** los consumidores leen con `CredencialesIntegracionService` dentro de `conEmpresa`. Nada
+    derivado de una credencial (cliente, token, resultado) se cachea entre empresas (R28).
 - **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migración
   `20261023090000_unicos_por_empresa`). Siguen globales a propósito `usuario.email`, `usuario.cedula`,
   `orden.num_guia` (rastreo público), `api_key.key_hash` y los ids externos. Las secuencias por empresa
