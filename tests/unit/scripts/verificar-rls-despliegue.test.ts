@@ -23,9 +23,10 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     });
   });
 
-  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 75 tablas (SL-38 y SL-40)", () => {
-    expect(MODELOS_DE_NEGOCIO).toHaveLength(75);
-    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 75, triggersMismaEmpresa: 151, triggersSinCambio: 75 });
+  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 77 tablas (SL-38, SL-40 y las dos de SL-36)", () => {
+    expect(MODELOS_DE_NEGOCIO).toHaveLength(77);
+    // SL-36 no suma triggers de misma empresa: sus dos tablas no tienen FK a otra tabla de negocio.
+    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 77, triggersMismaEmpresa: 151, triggersSinCambio: 77 });
   });
 
   it("el punto 6 da OK con lo que pide el contrato y FALLA con una tabla de mas o de menos", () => {

@@ -4471,6 +4471,15 @@ enum HistorialAccionTipo {
   /// y a la ganancia. Tipo PROPIO: `wallet_movimiento_manual_anulado` dice «corrección de caja».
   /// Entidad: `wallet_movimiento` (el egreso original).
   egreso_caja_anulado
+  /// SL-36 (design §13, R33): el rastro de las integraciones de la empresa. Un tipo por operacion
+  /// (la guardia del censo mide por metodo). Entidad: `integracion`; etiqueta: el servicio. En
+  /// `integracion_probada`, `valor_nuevo` es `ok` o el codigo del catalogo. NUNCA la credencial, su
+  /// valor cifrado ni el mensaje del proveedor.
+  integracion_conectada
+  integracion_actualizada
+  integracion_probada
+  integracion_token_regenerado
+  integracion_desconectada
 
   @@map("historial_accion_tipo")
 }
@@ -4513,6 +4522,9 @@ enum HistorialAccionEntidad {
   aporte_capital
   /// FICHA 457 (design §9): el documento del pago de una tienda a la empresa, 1:1 con su tabla.
   abono_tienda
+  /// SL-36 (design §13): la integracion de un servicio, 1:1 con su tabla. La fila sobrevive al
+  /// borrado fisico de la integracion (`entidad_id` sin FK).
+  integracion
 
   @@map("historial_accion_entidad")
 }
@@ -5246,6 +5258,8 @@ model Organizacion {
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
+  integraciones Integracion[] // SL-36
+  integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
 
   // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
@@ -5312,4 +5326,71 @@ model CobroPlataformaMovimiento {
   @@index([organizacionId])
   @@index([ordenId])
   @@map("cobro_plataforma_movimiento")
+}
+
+// SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
+enum ServicioIntegracion {
+  whatsapp
+  google_maps
+  optimizacion_rutas
+  asistente
+
+  @@map("servicio_integracion")
+}
+
+// SL-36 — «sin configurar» no es un estado guardado: es que no hay fila (borrado fisico, D7).
+enum EstadoIntegracion {
+  conectada
+  error
+
+  @@map("estado_integracion")
+}
+
+// SL-36 (design §2.1, D6) — UNA tabla para los cuatro servicios. De NEGOCIO.
+// Viven solo en el SQL de 20261025120000, porque Prisma no los expresa:
+//   · los CHECK de las columnas de WhatsApp (solo en su servicio, y en el siempre);
+//   · el CHECK de `secretos`: cada valor tiene la forma `v<n>:<iv>:<tag>:<cifrado>` de la boveda (R5);
+//   · el CHECK del resumen (hex de 64) y el de `datos_publicos` (objeto);
+//   · la politica `integracion_por_empresa` y el trigger que impide cambiar de empresa.
+model Integracion {
+  /// SIN default (QC inv. 3): el service lo genera antes de cifrar, porque va en los datos asociados.
+  id                          String              @id
+  organizacionId              String              @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion                Organizacion        @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  servicio                    ServicioIntegracion
+  estado                      EstadoIntegracion
+  /// Lo no secreto del servicio; el repositorio lo valida con el zod de cada servicio (design §8).
+  datosPublicos               Json                @default("{}") @map("datos_publicos")
+  /// `{ campo: "v<n>:..." }`. Nunca un valor en claro: lo impide el CHECK de la migracion.
+  secretos                    Json
+  /// R11: unico ENTRE empresas, a proposito: el webhook enruta por el numero (R20).
+  whatsappNumeroId            String?             @unique @map("whatsapp_numero_id")
+  /// R18/R19: SHA-256 hex del token de verificacion; el token nunca se guarda.
+  whatsappResumenVerificacion String?             @unique @map("whatsapp_resumen_verificacion") @db.Char(64)
+  /// Codigo del catalogo, nunca texto del proveedor (D3).
+  ultimoErrorCodigo           String?             @map("ultimo_error_codigo")
+  ultimaPruebaAt              DateTime?           @map("ultima_prueba_at")
+  ultimoWebhookAt             DateTime?           @map("ultimo_webhook_at")
+  createdAt                   DateTime            @default(now()) @map("created_at")
+  updatedAt                   DateTime            @default(now()) @updatedAt @map("updated_at")
+
+  /// R10: una por empresa y servicio, tambien con dos altas a la vez.
+  @@unique([organizacionId, servicio], map: "integracion_organizacion_id_servicio_key")
+  @@index([organizacionId])
+  @@map("integracion")
+}
+
+// SL-36 (design §2.3, §6) — cuantas pruebas lleva una empresa en un minuto (D4). De NEGOCIO.
+// Patron de `asistente_uso_diario`: se incrementa ANTES de llamar al proveedor.
+model IntegracionPruebaMinuto {
+  id             String       @id @default(uuid())
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  /// `date_trunc('minute', now())`.
+  minuto         DateTime     @db.Timestamptz(0)
+  intentos       Int          @default(0)
+
+  @@unique([organizacionId, minuto], map: "integracion_prueba_minuto_organizacion_id_minuto_key")
+  @@index([organizacionId])
+  @@map("integracion_prueba_minuto")
 }

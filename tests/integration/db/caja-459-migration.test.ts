@@ -101,17 +101,25 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // `wallet_movimiento_manual_anulado`).
     // Ficha 457: DOS tipos y UNA entidad detras de los de la 461.
     // Ficha 458-B: DOS tipos mas detras de los de la 457 (ninguna entidad).
-    expect(tipos.slice(-10, -6)).toEqual([
+    // SL-36: CINCO tipos y UNA entidad detras de todo lo anterior (`integracion_*`).
+    expect(tipos.slice(-15, -11)).toEqual([
       "pago_por_cuenta_tienda_registrado",
       "pago_por_cuenta_tienda_anulado",
       "aporte_capital_registrado",
       "aporte_capital_anulado",
     ]);
-    expect(tipos.slice(-6, -4)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
-    expect(tipos.slice(-4, -2)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
-    expect(tipos.slice(-2)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
-    expect(entidades.slice(-3, -1)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-1)).toEqual(["abono_tienda"]);
+    expect(tipos.slice(-11, -9)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
+    expect(tipos.slice(-9, -7)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
+    expect(tipos.slice(-7, -5)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
+    expect(tipos.slice(-5)).toEqual([
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
+    ]);
+    expect(entidades.slice(-4, -2)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidades.slice(-2)).toEqual(["abono_tienda", "integracion"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

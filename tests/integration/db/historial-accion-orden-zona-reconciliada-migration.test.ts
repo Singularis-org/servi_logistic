@@ -135,6 +135,13 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       // caja (D13). Su migracion: `20260928120000_wallet_458_enums`.
       "cobro_rechazo_tienda_anulado",
       "egreso_caja_anulado",
+      // SL-36 (2026-10-25): el rastro de las integraciones. Su migracion:
+      // `20261025120100_historial_accion_integraciones`.
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),
