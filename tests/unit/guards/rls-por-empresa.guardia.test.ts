@@ -46,6 +46,20 @@ type EstadoRls = {
 };
 
 /**
+ * Si una política aplica a `servi_app`: la nombra en su `TO`, o su `TO` es `PUBLIC`, o no lleva `TO`
+ * (en Postgres, sin `TO` la política es para `PUBLIC`, y `PUBLIC` incluye a `servi_app`; m2 de la
+ * revisión de SL-19). Solo se mira la cabecera, antes de `USING`/`WITH CHECK`, para no leer un `TO`
+ * de la expresión.
+ */
+function aplicaAServiApp(cuerpo: string): boolean {
+  const cabecera = cuerpo.split(/\b(?:USING|WITH\s+CHECK)\b/i)[0];
+  const to = /\bTO\s+([\s\S]+)$/i.exec(cabecera);
+  if (!to) return true;
+  const roles = to[1].split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase());
+  return roles.includes("servi_app") || roles.includes("public");
+}
+
+/**
  * Recorre las migraciones y deja, por tabla, TODAS las políticas vivas para `servi_app` (no solo
  * las de empresa): SL-19 necesita ver también las abiertas, porque las permisivas se suman con OR.
  */
@@ -64,7 +78,7 @@ function estadoRls(migraciones: readonly Migracion[]): EstadoRls {
         const politica = s[1] ?? s[2];
         const tabla = s[3] ?? s[4];
         const cuerpo = s[5];
-        const paraApp = /\bTO\s+(?:[\w"]+\s*,\s*)*"?servi_app"?\b/i.test(cuerpo);
+        const paraApp = aplicaAServiApp(cuerpo);
         const porEmpresa = /current_setting\(\s*'app\.organizacion_id'/.test(cuerpo);
         if (paraApp) {
           if (!vivas.has(tabla)) vivas.set(tabla, new Map());
@@ -204,6 +218,32 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
         { nombre: "2", sql: `CREATE POLICY "orden_abierta" ON "orden" FOR ALL TO servi_app USING (true);` },
         { nombre: "3", sql: `DROP POLICY IF EXISTS "orden_abierta" ON "orden";` },
       ];
+      expect(politicasAbiertas(m, ["orden"])).toEqual([]);
+    });
+
+    it("m2 — autocomprobación inventada: una USING (true) sin TO aplica a servi_app (PUBLIC) y falla", () => {
+      const m = [
+        { nombre: "1", sql: politica("orden") },
+        { nombre: "2", sql: `CREATE POLICY "orden_sin_to" ON "orden" FOR ALL USING (true);` },
+      ];
+      expect(politicasAbiertas(m, ["orden"])).toEqual([
+        `"orden": la política "orden_sin_to" para servi_app no compara con app.organizacion_id`,
+      ]);
+    });
+
+    it("m2 — autocomprobación inventada: una USING (true) TO PUBLIC aplica a servi_app y falla", () => {
+      const m = [
+        { nombre: "1", sql: politica("orden") },
+        { nombre: "2", sql: `CREATE POLICY "orden_publica" ON "orden" AS PERMISSIVE FOR SELECT TO PUBLIC USING (true);` },
+      ];
+      expect(politicasAbiertas(m, ["orden"])).toEqual([
+        `"orden": la política "orden_publica" para servi_app no compara con app.organizacion_id`,
+      ]);
+    });
+
+    it("m2 — una política por empresa sin TO también cubre la tabla", () => {
+      const m = [{ nombre: "1", sql: politica("orden").replace(" TO servi_app", "") }];
+      expect(tablasSinPoliticaPorEmpresa(m, ["orden"])).toEqual([]);
       expect(politicasAbiertas(m, ["orden"])).toEqual([]);
     });
 
