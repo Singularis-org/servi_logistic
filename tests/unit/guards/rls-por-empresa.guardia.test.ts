@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { MODELOS_DE_NEGOCIO } from "@/lib/db/modelos-de-negocio";
+import { MODELOS_CON_EMPRESA_OPCIONAL, MODELOS_DE_NEGOCIO } from "@/lib/db/modelos-de-negocio";
 
 import { leer, RAIZ } from "./_aislamiento-por-empresa";
 
@@ -38,16 +38,19 @@ function sinComentariosSql(sql: string): string {
 const IDENT = String.raw`(?:"([^"]+)"|(\w+))`;
 const TABLA = String.raw`(?:"?public"?\.)?${IDENT}`;
 
+type EstadoRls = {
+  /** tabla -> política viva para `servi_app` -> si compara con `app.organizacion_id`. */
+  vivas: Map<string, Map<string, boolean>>;
+  /** tabla -> migración que le desactivó la RLS (si sigue desactivada). */
+  desactivada: Map<string, string>;
+};
+
 /**
- * Tablas de `tablas` que, tras aplicar todas las migraciones, quedan sin política por empresa
- * para `servi_app`. Devuelve el motivo de cada una.
+ * Recorre las migraciones y deja, por tabla, TODAS las políticas vivas para `servi_app` (no solo
+ * las de empresa): SL-19 necesita ver también las abiertas, porque las permisivas se suman con OR.
  */
-function tablasSinPoliticaPorEmpresa(
-  migraciones: readonly Migracion[],
-  tablas: readonly string[],
-): string[] {
-  // tabla -> nombres de políticas por empresa vivas
-  const vivas = new Map<string, Set<string>>();
+function estadoRls(migraciones: readonly Migracion[]): EstadoRls {
+  const vivas = new Map<string, Map<string, boolean>>();
   const desactivada = new Map<string, string>();
   const sentencia = new RegExp(
     String.raw`CREATE\s+POLICY\s+${IDENT}\s+ON\s+${TABLA}([^;]*);` +
@@ -63,9 +66,9 @@ function tablasSinPoliticaPorEmpresa(
         const cuerpo = s[5];
         const paraApp = /\bTO\s+(?:[\w"]+\s*,\s*)*"?servi_app"?\b/i.test(cuerpo);
         const porEmpresa = /current_setting\(\s*'app\.organizacion_id'/.test(cuerpo);
-        if (paraApp && porEmpresa) {
-          if (!vivas.has(tabla)) vivas.set(tabla, new Set());
-          vivas.get(tabla)!.add(politica);
+        if (paraApp) {
+          if (!vivas.has(tabla)) vivas.set(tabla, new Map());
+          vivas.get(tabla)!.set(politica, porEmpresa);
         }
       } else if (s[0].toUpperCase().startsWith("DROP")) {
         vivas.get(s[8] ?? s[9])?.delete(s[6] ?? s[7]);
@@ -76,15 +79,46 @@ function tablasSinPoliticaPorEmpresa(
       }
     }
   }
+  return { vivas, desactivada };
+}
+
+/**
+ * Tablas de `tablas` que, tras aplicar todas las migraciones, quedan sin política por empresa
+ * para `servi_app`. Devuelve el motivo de cada una.
+ */
+function tablasSinPoliticaPorEmpresa(
+  migraciones: readonly Migracion[],
+  tablas: readonly string[],
+): string[] {
+  const { vivas, desactivada } = estadoRls(migraciones);
   const problemas: string[] = [];
   for (const t of tablas) {
-    if ((vivas.get(t)?.size ?? 0) === 0) {
+    const porEmpresa = [...(vivas.get(t) ?? new Map<string, boolean>()).values()].filter(Boolean);
+    if (porEmpresa.length === 0) {
       problemas.push(
         `"${t}": sin CREATE POLICY … TO servi_app con current_setting('app.organizacion_id') vigente`,
       );
     }
     const donde = desactivada.get(t);
     if (donde) problemas.push(`"${t}": RLS desactivada en ${donde}`);
+  }
+  return problemas;
+}
+
+/**
+ * SL-19 · R9, R12 — políticas vivas para `servi_app` en `tablas` que NO comparan con
+ * `app.organizacion_id` (p. ej. `USING (true)`). Las permisivas se suman con OR: una abierta junto a
+ * la de empresa la anula. Nombra la tabla y la política.
+ */
+function politicasAbiertas(migraciones: readonly Migracion[], tablas: readonly string[]): string[] {
+  const { vivas } = estadoRls(migraciones);
+  const problemas: string[] = [];
+  for (const t of tablas) {
+    for (const [nombre, porEmpresa] of vivas.get(t) ?? []) {
+      if (!porEmpresa) {
+        problemas.push(`"${t}": la política "${nombre}" para servi_app no compara con app.organizacion_id`);
+      }
+    }
   }
   return problemas;
 }
@@ -109,6 +143,77 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
 
   it("cada tabla de negocio tiene su política vigente", () => {
     expect(tablasSinPoliticaPorEmpresa(migraciones, tablas)).toEqual([]);
+  });
+
+  describe("SL-19 · las tablas de empresa opcional y las políticas abiertas (R9, R12, R13)", () => {
+    const opcionales = MODELOS_CON_EMPRESA_OPCIONAL.map((m) => m.tabla);
+    const comprobadas = [...tablas, ...opcionales];
+    const migracionSl19 = "20261025150000_jobs_por_empresa";
+
+    it("control positivo: jobs se comprueba y la migración de SL-19 está entre las reales", () => {
+      expect(opcionales).toEqual(["jobs"]);
+      expect(migraciones.some((m) => m.nombre === migracionSl19)).toBe(true);
+    });
+
+    it("R13 — jobs y cada tabla de negocio tienen su política por empresa vigente", () => {
+      expect(tablasSinPoliticaPorEmpresa(migraciones, comprobadas)).toEqual([]);
+    });
+
+    it("R9, R12 — ninguna tabla comprobada conserva una política abierta para servi_app", () => {
+      expect(politicasAbiertas(migraciones, comprobadas)).toEqual([]);
+    });
+
+    it("R13 — autocomprobación: sin la migración de SL-19, jobs queda sin política por empresa y con jobs_abierta viva", () => {
+      const sinSl19 = migraciones.filter((m) => m.nombre !== migracionSl19);
+      expect(sinSl19).toHaveLength(migraciones.length - 1);
+      expect(tablasSinPoliticaPorEmpresa(sinSl19, comprobadas)).toEqual([
+        expect.stringMatching(/^"jobs": sin CREATE POLICY/),
+      ]);
+      expect(politicasAbiertas(sinSl19, comprobadas)).toEqual([
+        `"jobs": la política "jobs_abierta" para servi_app no compara con app.organizacion_id`,
+      ]);
+    });
+
+    it("R12 — autocomprobación: quitar el DROP POLICY jobs_abierta de la migración real la pone en rojo", () => {
+      const mutadas = migraciones.map((m) =>
+        m.nombre === migracionSl19 ? { ...m, sql: m.sql.replace(/DROP\s+POLICY\s+"jobs_abierta"\s+ON\s+"jobs"\s*;/, "") } : m,
+      );
+      expect(mutadas.find((m) => m.nombre === migracionSl19)?.sql).not.toBe(
+        migraciones.find((m) => m.nombre === migracionSl19)?.sql,
+      );
+      expect(tablasSinPoliticaPorEmpresa(mutadas, comprobadas)).toEqual([]);
+      expect(politicasAbiertas(mutadas, comprobadas)).toEqual([
+        `"jobs": la política "jobs_abierta" para servi_app no compara con app.organizacion_id`,
+      ]);
+    });
+
+    it("R12 — autocomprobación inventada: una USING (true) junto a la de empresa falla nombrando tabla y política", () => {
+      const m = [
+        { nombre: "1", sql: politica("orden") },
+        { nombre: "2", sql: `CREATE POLICY "orden_abierta" ON "orden" FOR ALL TO servi_app USING (true) WITH CHECK (true);` },
+      ];
+      expect(tablasSinPoliticaPorEmpresa(m, ["orden"])).toEqual([]);
+      expect(politicasAbiertas(m, ["orden"])).toEqual([
+        `"orden": la política "orden_abierta" para servi_app no compara con app.organizacion_id`,
+      ]);
+    });
+
+    it("R12 — autocomprobación inventada: un DROP posterior de la abierta la deja en verde", () => {
+      const m = [
+        { nombre: "1", sql: politica("orden") },
+        { nombre: "2", sql: `CREATE POLICY "orden_abierta" ON "orden" FOR ALL TO servi_app USING (true);` },
+        { nombre: "3", sql: `DROP POLICY IF EXISTS "orden_abierta" ON "orden";` },
+      ];
+      expect(politicasAbiertas(m, ["orden"])).toEqual([]);
+    });
+
+    it("una política abierta para otro rol no es de la app y no cuenta", () => {
+      const m = [
+        { nombre: "1", sql: politica("orden") },
+        { nombre: "2", sql: `CREATE POLICY "orden_dueno" ON "orden" FOR ALL TO postgres USING (true);` },
+      ];
+      expect(politicasAbiertas(m, ["orden"])).toEqual([]);
+    });
   });
 
   it("autocomprobación sobre las migraciones reales: un DROP añadido al final deja «orden» sin cubrir", () => {
