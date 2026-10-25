@@ -31,9 +31,19 @@ const CARPETA_DE_ADAPTADORES = "lib/storage/";
  * Acceso a Storage sobre un cliente de Supabase (design §5.3): `createServerClient().storage`,
  * `.storage.from(` y las operaciones de buckets (`.storage.createBucket(` y sus hermanas). No casa
  * con `this.storage.upload(`, que es un `IFileStorage` inyectado y ya pasa por un adaptador.
+ *
+ * Tambien las dos formas de sacar `storage` a una variable y usarla despues sin `.storage.` (m1 de la
+ * revision): la desestructuracion del cliente (`const { storage } = createServerClient()`) y el alias
+ * (`const s = supabase.storage;`). El alias no casa con `this.storage` ni con `this.deps.storage`.
  */
-const ACCESO_A_STORAGE =
-  /\bcreate\w*Client\s*\([^)]*\)\s*\.\s*storage\b|\.storage\s*\.\s*(?:from|createBucket|getBucket|listBuckets|updateBucket|emptyBucket|deleteBucket)\s*\(/;
+const ACCESO_A_STORAGE = new RegExp(
+  [
+    /\bcreate\w*Client\s*\([^)]*\)\s*\.\s*storage\b/.source,
+    /\.storage\s*\.\s*(?:from|createBucket|getBucket|listBuckets|updateBucket|emptyBucket|deleteBucket)\s*\(/.source,
+    /\{[^}]*\bstorage\b[^}]*\}\s*=\s*(?:await\s+)?create\w*Client\s*\(/.source,
+    /=\s*(?!this\b)\w+\s*\.\s*storage\b(?!\s*\.)/.source,
+  ].join("|"),
+);
 
 function accedeAStorage(texto: string): boolean {
   return ACCESO_A_STORAGE.test(sinComentarios(texto));
@@ -83,11 +93,24 @@ describe("SL-19 · Storage solo por los adaptadores de lib/storage (R20)", () =>
       expect(accedeAStorage('await cliente.storage.createBucket("b", { public: false });')).toBe(true);
     });
 
+    it("detecta la desestructuracion del cliente (m1)", () => {
+      expect(accedeAStorage('const { storage } = createServerClient();\nawait storage.from("b").remove([p]);')).toBe(true);
+      expect(accedeAStorage("const { auth, storage: st } = await createBrowserClient(url, clave);")).toBe(true);
+    });
+
+    it("detecta el alias de .storage (m1)", () => {
+      expect(accedeAStorage('const s = supabase.storage;\nawait s.from("b").download(p);')).toBe(true);
+      expect(accedeAStorage("const s = cliente.storage as unknown as StorageClientLike;")).toBe(true);
+    });
+
     it("no confunde un IFileStorage inyectado, un comentario ni otro nombre", () => {
       expect(accedeAStorage("await this.storage.upload({ path, bytes, contentType });")).toBe(false);
       expect(accedeAStorage("await this.deps.storage.remove(paths);")).toBe(false);
       expect(accedeAStorage('// antes: supabase.storage.from("b")\nconst a = 1;')).toBe(false);
       expect(accedeAStorage('const x = almacen.storageFrom("b");')).toBe(false);
+      expect(accedeAStorage("const s = this.storage;")).toBe(false);
+      expect(accedeAStorage("const s = this.deps.storage;")).toBe(false);
+      expect(accedeAStorage("const { storage } = deps;")).toBe(false);
     });
 
     describe("el barrido de un árbol inventado", () => {
@@ -105,7 +128,11 @@ describe("SL-19 · Storage solo por los adaptadores de lib/storage (R20)", () =>
         escribir("scripts/tarea.ts", 'await cliente.storage.from("b").list("");\n');
         escribir("app/y/route.test.ts", acceso);
         escribir("lib/services/limpio.ts", "await this.storage.upload(input);\n");
-        expect(fueraDeLosAdaptadores(archivosQueAccedenAStorage(raiz))).toEqual([
+        escribir("lib/services/desestructura.ts", 'const { storage } = createServerClient();\nawait storage.from("b").list("");\n');
+        escribir("app/z/alias.ts", 'const s = supabase.storage;\nawait s.from("b").remove(["x"]);\n');
+        expect(fueraDeLosAdaptadores(archivosQueAccedenAStorage(raiz)).sort()).toEqual([
+          "app/z/alias.ts",
+          "lib/services/desestructura.ts",
           "lib/services/intruso.ts",
           "scripts/tarea.ts",
         ]);
