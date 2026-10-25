@@ -191,3 +191,73 @@ export async function enlacesDelMenu(page: Page): Promise<string[]> {
 
 /** Lo que pinta `app/(app)/not-found.tsx`: el 404 que ve el usuario dentro del portal. */
 export const NO_ENCONTRADO = "No encontramos esta página";
+
+/* -------------------------------------------------------------------------- */
+/* Alta por «Empresas» y primer acceso del maestro (SL-44 D16)                 */
+/* -------------------------------------------------------------------------- */
+
+/** Lo que el superadmin teclea en el formulario «Crear empresa». */
+export interface AltaPorPantalla {
+  nombre: string;
+  slug: string;
+  maestroNombre: string;
+  email: string;
+  telefono: string;
+  documento: string;
+}
+
+/**
+ * El aviso del alta en el E2E. Desde SL-41 el alta envía la bienvenida; sin `SMTP_*` sale por
+ * consola y la action responde `sin_correo`, así que el aviso es la advertencia (`role="alert"`) y
+ * no el de éxito (SL-41 R26; el mismo literal que `superadmin-empresas.spec.ts`).
+ */
+export const AVISO_EMPRESA_CREADA =
+  "Empresa creada, pero el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.";
+
+/**
+ * Da de alta una empresa desde `/plataforma/empresas` como lo haría el superadmin, y espera el
+ * aviso del alta y la fila en el listado. `page` ya tiene la sesión del superadmin.
+ */
+export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): Promise<void> {
+  await page.goto("/plataforma/empresas");
+  const form = page.getByRole("form", { name: "Crear empresa" });
+  const empresa = form.getByRole("group", { name: "Empresa", exact: true });
+  const maestro = form.getByRole("group", { name: "Primer maestro", exact: true });
+  await empresa.getByLabel("Nombre", { exact: true }).fill(d.nombre);
+  await empresa.getByLabel("Slug", { exact: true }).fill(d.slug);
+  await maestro.getByLabel("Nombre", { exact: true }).fill(d.maestroNombre);
+  await maestro.getByLabel("Email", { exact: true }).fill(d.email);
+  await maestro.getByLabel("Teléfono", { exact: true }).fill(d.telefono);
+  await maestro.getByRole("combobox", { name: "Tipo de documento" }).click();
+  await page.getByRole("option", { name: "cedula", exact: true }).click();
+  await maestro.getByLabel("Documento", { exact: true }).fill(d.documento);
+  await form.getByRole("button", { name: "Crear empresa" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: AVISO_EMPRESA_CREADA })).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByRole("table").locator("tbody tr").filter({ hasText: d.slug })).toHaveCount(1);
+}
+
+/**
+ * Primer acceso de un maestro recién dado de alta: «¿Olvidaste tu contraseña?» desde `/login`, el
+ * código que el emisor de consola «envió» a su correo (leído del log, SL-44 R15) y la contraseña
+ * nueva. Devuelve ese código: es la prueba de que el correo de recuperación salió hacia él (R17).
+ */
+export async function recuperarContrasena(page: Page, email: string, password: string): Promise<string> {
+  await page.goto("/login");
+  await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
+  await page.waitForURL("**/recuperar-contrasena");
+
+  const log = LogDelServidor.desdeEntorno();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByRole("button", { name: "Enviar código" }).click();
+  const campoCodigo = page.getByLabel("Código de verificación");
+  await expect(campoCodigo).toBeVisible({ timeout: 60_000 });
+  const codigo = await codigoEnviadoA(log, email);
+  await campoCodigo.fill(codigo);
+  await page.getByRole("button", { name: "Verificar código" }).click();
+
+  await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
+  await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Restablecer contraseña" }).click();
+  await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
+  return codigo;
+}

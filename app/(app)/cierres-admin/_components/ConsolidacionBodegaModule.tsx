@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/shared/Modal";
@@ -200,6 +200,7 @@ export function ConsolidacionBodegaModule({
 }: ConsolidacionBodegaModuleProps) {
   const router = useRouter();
   const toast = useToast();
+  const { mutate } = useSWRConfig();
 
   // Confirmación de "Solicitar cierre de bodega"; true = modal abierto.
   const [confirmar, setConfirmar] = useState(false);
@@ -256,6 +257,17 @@ export function ConsolidacionBodegaModule({
     if (result.status === "ok") {
       toast.success("Cierre de bodega solicitado correctamente.");
       setConfirmar(false);
+      // SL-44 (destapado por el E2E `cierre-bodega-satelite`): `router.refresh()` a secas no
+      // basta. Las dos listas son `useSWR` con la página del Server Component como
+      // `fallbackData`, que SWR usa una sola vez: con datos ya en caché, la consolidación recién
+      // creada no salía en «Solicitados» y los cierres consolidados seguían en «A consolidar»
+      // hasta recargar. Mismo arreglo que `CierreDiaModule` y `CierresAdminModule`: revalidar
+      // todas las páginas de las dos listas.
+      void mutate(
+        (clave) =>
+          Array.isArray(clave) &&
+          (clave[0] === "cierre-bodega:consolidables" || clave[0] === "cierres-bodega:solicitados"),
+      );
       router.refresh();
       return;
     }

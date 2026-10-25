@@ -7,43 +7,22 @@ import { PrismaClient, type RolValue } from "@prisma/client";
 import { itemsVisibles, SIDEBAR_ITEMS } from "../lib/auth/menu-visibility";
 import { comoPlataforma } from "../lib/db/contexto-empresa";
 import { getPrismaClient } from "../lib/db/prisma-client";
-import type {
-  EmailMessage,
-  EmailSendResult,
-  IEmailSender,
-} from "../lib/interfaces/external/IEmailSender";
-import { EmailOtpChallengeRepository } from "../lib/repositories/EmailOtpChallengeRepository";
 import { OrganizacionRepository } from "../lib/repositories/OrganizacionRepository";
-import { UserRepository } from "../lib/repositories/UserRepository";
-import { NodemailerEmailSender } from "../lib/services/email/NodemailerEmailSender";
-import { crearEmailSender, EmailNotificacionProvider } from "../lib/services/EmailProvider";
 import { OrganizacionService } from "../lib/services/OrganizacionService";
-import { OtpChallengeIssuer } from "../lib/services/OtpChallengeIssuer";
-import { PasswordResetService } from "../lib/services/PasswordResetService";
 import type { AltaEmpresaResultado } from "../lib/types/organizacion";
 import { computeDeviceHash } from "../lib/utils/device";
 import { hashPassword } from "../lib/utils/password";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
-// SL-17 T4.2 (design §9.3, D19, R47) — lo que el humo de dos empresas necesita antes de abrir el
-// navegador: la base local, el alta de A y B por el servicio, el primer acceso por «recuperar
-// contraseña», los datos marcados de cada empresa y la lista de rutas del menú del maestro.
+// SL-17 T4.2 (design §9.3, D19, R47) — lo que los E2E de dos empresas necesitan antes de abrir el
+// navegador: la base local, el alta de A y B por el servicio (la usan SL-38, SL-39 y SL-40; el
+// humo da de alta por la pantalla desde SL-44 D16), los datos marcados de cada empresa, la lista
+// de rutas del menú del maestro y el log del servidor. El correo real del maestro, el SMTP y la
+// recuperación por el servicio se retiraron con D16 (SL-44): el primer acceso del humo va por la
+// pantalla con el OTP del log.
 
 /** Proyectos remotos que este spec nunca debe tocar: aborta antes de escribir (como `marca.spec.ts`). */
 const BASES_PROHIBIDAS = { literal: ["supabase"], sha256DeRef: ["5a90bb618312dada235c0abc72c00d6df493b266880f9531c1688ea1d39f2d87", "ff8fbc8104b321044f1c597d4cb267c53a9ee99aa68f6835dd04aaec24a75d82"] }; // SL-34: los dos ids, por sha256 de 20 caracteres
-
-/**
- * El correo del maestro de cada empresa. Llega por entorno (`SL17_HUMO_MAESTRO_A`/`_B`) porque es un
- * buzón real, solo de local y QA, y el correo de recuperación se le envía de verdad: el árbol no
- * lleva emails reales (`tests/unit/guards/recursos-origen-fuera.guardia.test.ts`). Sin él, FALLA.
- */
-export function correoDelMaestro(letra: Letra): string {
-  const email = process.env[`SL17_HUMO_MAESTRO_${letra}`]?.trim();
-  if (!email) {
-    throw new Error(`SL-17 T4.2: falta SL17_HUMO_MAESTRO_${letra} (el correo real del maestro de ${letra}, solo local y QA).`);
-  }
-  return email;
-}
 
 /** El teléfono SINPE de la zona sembrada: un número de prueba válido para el `CHECK` de `zona`. */
 export const SINPE_DE_PRUEBA = "80000000";
@@ -108,23 +87,6 @@ function sufijo(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
 }
 
-/**
- * Los correos de los maestros son fijos y `usuario.email` es único global: una corrida anterior
- * los deja ocupados. Se le cambia el correo a ese maestro viejo (su empresa queda, sin acceso) para
- * que el alta de esta corrida sea un alta de verdad y no un conflicto.
- */
-export async function liberarCorreos(dueno: PrismaClient): Promise<void> {
-  for (const email of [correoDelMaestro("A"), correoDelMaestro("B")]) {
-    const viejo = await dueno.usuario.findUnique({ where: { email }, select: { id: true } });
-    if (viejo) {
-      await dueno.usuario.update({
-        where: { id: viejo.id },
-        data: { email: `retirado-${sufijo()}@example.test` },
-      });
-    }
-  }
-}
-
 function servicioDeAlta(): OrganizacionService {
   return new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
 }
@@ -165,55 +127,10 @@ export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDe
   };
 }
 
-/** Un envío de correo tal como lo devolvió el SMTP real. Sin destinatario ni cuerpo. */
-export interface EnvioRegistrado {
-  messageId: string | null;
-  error: string | null;
-}
-
-/** El emisor real de la app, con un registro de lo que el proveedor aceptó o rechazó. */
-class EmisorRegistrado implements IEmailSender {
-  readonly envios: EnvioRegistrado[] = [];
-  constructor(private readonly real: IEmailSender) {}
-
-  async enviar(mensaje: EmailMessage): Promise<EmailSendResult> {
-    try {
-      const r = await this.real.enviar(mensaje);
-      this.envios.push({ messageId: r.messageId, error: null });
-      return r;
-    } catch (e) {
-      this.envios.push({ messageId: null, error: e instanceof Error ? e.name : "error" });
-      throw e;
-    }
-  }
-}
-
 /**
- * «Recuperar contraseña» por el servicio real (`PasswordResetService.solicitar`) con el proveedor
- * de correo de la app. Exige el SMTP de verdad: con el emisor de consola el envío no prueba nada.
- */
-export async function solicitarRecuperacion(email: string, userAgent: string): Promise<EnvioRegistrado[]> {
-  const real = crearEmailSender();
-  if (!(real instanceof NodemailerEmailSender)) {
-    throw new Error("SL-17 T4.2: no hay SMTP configurado (SMTP_USER/SMTP_PASSWORD): el correo de recuperación no saldría.");
-  }
-  const emisor = new EmisorRegistrado(real);
-  const prisma = getPrismaClient();
-  const otpRepo = new EmailOtpChallengeRepository(prisma);
-  const servicio = new PasswordResetService(
-    new UserRepository(prisma),
-    otpRepo,
-    new OtpChallengeIssuer(otpRepo, new EmailNotificacionProvider(emisor)),
-  );
-  await comoPlataforma("SL-17", "humo de dos empresas: recuperar contraseña", () =>
-    servicio.solicitar({ email, deviceHash: computeDeviceHash(userAgent), ipAddress: "127.0.0.1" }),
-  );
-  return emisor.envios;
-}
-
-/**
- * El humo no lee el buzón (design §9.3): la contraseña la fija aquí, con el hasher del login, y el
- * dispositivo del navegador queda confiado para que el login no pida OTP (técnica de `marca.spec.ts`).
+ * Para los E2E que no prueban el primer acceso (SL-38, SL-39, SL-40): la contraseña la fija aquí,
+ * con el hasher del login, y el dispositivo del navegador queda confiado para que el login no pida
+ * OTP (técnica de `marca.spec.ts`). El humo entra por la pantalla (SL-44 D16).
  */
 export async function prepararAcceso(dueno: PrismaClient, e: Empresa, userAgent: string): Promise<void> {
   await dueno.usuario.update({
@@ -416,18 +333,19 @@ export async function sembrarDatos(dueno: PrismaClient, e: Empresa): Promise<Dat
 /* -------------------------------------------------------------------------- */
 
 /**
- * El stdout/stderr del dev server, que se levanta aparte con su salida a un archivo
- * (`SL17_HUMO_LOG_SERVIDOR`). Sin él no se puede afirmar que no hubo `EmpresaNoResuelta`: FALLA.
+ * El stdout/stderr del servidor de la app, que `e2e/_servidor-app.mjs` escribe en el archivo de
+ * `E2E_LOG_SERVIDOR` (SL-44 D3; lo fija `playwright.config.ts`). De ahí salen los OTP (R15) y la
+ * prueba de que no hubo `EmpresaNoResuelta`. Sin él, FALLA.
  */
 export class LogDelServidor {
   private desde = 0;
   constructor(private readonly ruta: string) {}
 
   static desdeEntorno(): LogDelServidor {
-    const ruta = process.env.SL17_HUMO_LOG_SERVIDOR;
+    const ruta = process.env.E2E_LOG_SERVIDOR;
     if (!ruta || !fs.existsSync(ruta)) {
       throw new Error(
-        "SL-17 T4.2: falta SL17_HUMO_LOG_SERVIDOR (archivo con el stdout/stderr del dev server). Sin él no se ve EmpresaNoResuelta.",
+        "SL-44 D3: falta el log del servidor (E2E_LOG_SERVIDOR sin definir o sin archivo). Lo crea e2e/_servidor-app.mjs al arrancar desde el webServer de Playwright; sin él no hay OTP ni se ve EmpresaNoResuelta.",
       );
     }
     const log = new LogDelServidor(ruta);

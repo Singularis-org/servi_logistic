@@ -140,6 +140,16 @@ un archivo que no está en `design.md > Choque de archivos`, PARA y avisa al lea
 
 ### Tanda 7 — E2E con datos propios
 
+> **Pasa a SL-44 (2026-10-24, decisión de Carlos).** T10, T11a y T11b, y con ellas R19–R23, salen de
+> SL-31 y las hace SL-44 «E2E en verde en CI» (`specs/SL-44-e2e-verde-ci/`). Queda anulada la
+> decisión P3 / la segunda frase de R23 (`test.fixme` con ficha): ningún E2E se queda en `fixme` ni
+> en skip. **Motivo:**
+> - un spec heredado no sale verde sin reescribirlo contra la UI actual;
+> - para correr en CI necesita cambios fuera de `tests/`: la guarda del OTP y el almacén de CI.
+>   R24 de SL-31 los prohíbe.
+>
+> SL-31 se cierra sin esta tanda. Su T12 deja de depender de T11.
+
 - [ ] **T10 — `tests/fabricas/e2e.ts`** (D6; R19, R21, R22). Depende de T2.
   - `abrirBaseE2E`, `crearUsuarioConSesion`, `limpiarE2E`.
   - Test de unidad del guardián de host: `tests/unit/fabricas/e2e-host.test.ts`.

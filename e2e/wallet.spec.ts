@@ -1,129 +1,155 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+import { crearEscenarioCaja, importe, movimientosCajaDe, type CajaE2E } from "./_escenarios/caja";
+import { paginaDe } from "./_escenarios/reparto";
 
 /**
- * E2E tests for "/wallet" — the PRINCIPAL cash box of the company (Feature 42, T11–T13 /
- * R18–R21). The wallet is an append-only LEDGER of immutable movements; the general
- * BALANCE is DERIVED (Σingreso − Σegreso) and never stored. The page is a role-aware
- * Server Component: only the `maestro` (owner of the central cash box) may see it; any
- * other role (or no session) is denied and NO movement or balance is exposed (R19).
+ * E2E — `/wallet`, la caja principal de la empresa (features 42, 173, 231, 334, 459, 467; SL-44 T6.3,
+ * R18).
  *
- * Covers the two flows the review required:
- *  1. Acceso del rol `maestro` (R18/R20/R21): the maestro logs in → /wallet → sees the
- *     derived BALANCE card and the movements LEDGER (table) → filters the book by tipo
- *     (the balance shown reflects the filtered set, R20) → registers a MANUAL adjustment
- *     movement (ingreso/egreso) whose `descripcion` is OBLIGATORY (R15): confirming with
- *     an empty description is blocked with a validation error, and with a description the
- *     movement is registered (success toast).
- *  2. Bloqueo de rol NO autorizado (R19): a non-maestro user (here a `mensajero`) navigates
- *     to /wallet and is denied (Next `notFound()` → no wallet UI): they see NEITHER the
- *     balance card NOR the ledger table (both absent), so no financial data leaks.
+ * Recorre lo que declara D5: la caja del maestro, el filtro del libro, el registro manual y el
+ * bloqueo de otro rol.
+ *  1. El maestro ve las cifras de la caja (flujo, «Entró», «Salió», el conteo, la ganancia y lo que la
+ *     empresa les debe a las tiendas) y el libro con los tres movimientos que dejó aprobar el cierre.
+ *  2. Filtra el libro por «Entra/Sale» = «Sale»: queda solo el pago al mensajero y las cifras de arriba
+ *     no se mueven (el filtro del libro no relee la caja, ficha 467 R13). «Limpiar todo» lo devuelve.
+ *  3. Registra a mano una «Corrección de caja (resta)»: sin motivo, el diálogo lo bloquea; con motivo,
+ *     queda en el libro y las cifras se releen solas.
+ *  4. Un mensajero y una tienda piden `/wallet`: 404 y ninguna cifra ni libro.
  *
- * PRECONDITION (seed):
- * - A seeded `maestro` M whose /wallet scope has at least one `wallet_movimiento` (e.g. an
- *   `ingreso_flete` fed by an approved `cierre_dia`, R5/R10) so the ledger is non-empty and
- *   the derived balance is a known amount (set BALANCE_ESPERADO below to the seeded value).
- * - A seeded non-maestro user (a `mensajero` here; any of mensajero/adminSatelite/adminTienda
- *   works for R19) with valid credentials, used to exercise the forbidden path.
+ * DATOS (R7, R8): `crearEscenarioCaja` (empresa nueva, dos entregas en la zona central, cierre
+ * solicitado por `CierreDiaService` y aprobado por `CierresAdminService`). Ninguna fila de caja se
+ * escribe a mano.
  *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres, the feature 42 `wallet_movimiento` table +
- *   enums (WalletMovimientoTipo/Categoria/OrigenTipo) and the `orden.cobra_comision` column
- *   migration applied, plus at least one seeded movement within the maestro's wallet
- * - A seeded `maestro` (with movements) and a seeded non-maestro user, per PRECONDITION
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but NOT
- * EXECUTED. Execution is deferred until the test environment is fully set up (same deferral
- * as e2e/cierres-admin.spec.ts, e2e/reglas-bloqueos-cierre.spec.ts, e2e/cierre-dia.spec.ts
- * and e2e/recepcion-satelite.spec.ts). They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed a `maestro` with at least one wallet movement and a non-maestro user; set the
- *    seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * CIFRAS, escritas a mano a partir del escenario (flete 2.000 por entrega, pago al mensajero 1.500 por
+ * entrega, una entrega cobra 8.000 y la otra nada):
+ *   - libro: flete cobrado a la tienda 2 × 2.000 = 4.000 (entra, de la empresa) · contra-entrega 8.000
+ *     (entra, de la tienda) · pago al mensajero 2 × 1.500 = 3.000 (sale) → 3 movimientos;
+ *   - «Entró» 8.000: solo el contra-entrega es dinero que entra; el flete es un CARGO a la tienda, se
+ *     toma de ese mismo dinero (ficha 459, `LIQUIDEZ_POR_CATEGORIA`);
+ *   - «Salió» 3.000 · flujo 8.000 − 3.000 = 5.000 · ganancia 4.000 − 3.000 = 1.000 · a las tiendas
+ *     8.000 − 4.000 = 4.000;
+ *   - tras la corrección de 500: «Salió» 3.500 · flujo 4.500 · 4 movimientos.
+ * La deuda con la plataforma (SL-40) no entra en ninguna de estas cifras y no se afirma: depende del
+ * cobro por orden, que es un ajuste global.
  */
 
-// Seeded maestro (owner of the central cash box; only role authorized for /wallet).
-const MAESTRO_EMAIL = "maestro@example.com";
-const MAESTRO_PASSWORD = "correct-password";
+const MOTIVO = "Faltante del arqueo E2E";
 
-// Seeded non-maestro user (mensajero) used for the forbidden path (R19).
-const MENSAJERO_EMAIL = "mensajero@example.com";
-const MENSAJERO_PASSWORD = "correct-password";
+let c: CajaE2E;
 
-// Derived balance of the seeded wallet (₡ prefix + STRING amount added by the UI, R17/R21).
-const BALANCE_ESPERADO = "₡1500.00";
-
-/** Logs in with the given credentials and lands on the app. */
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
+/** El dato secundario de la tarjeta («Entró», «Salió», «Movimientos»): su rótulo y su valor. */
+function dato(resumen: Locator, rotulo: string): Locator {
+  return resumen.getByText(rotulo, { exact: true }).locator("xpath=..");
 }
 
-test.describe("Wallet — acceso del maestro (libro + balance + manual)", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page, MAESTRO_EMAIL, MAESTRO_PASSWORD);
-    await page.goto("/wallet");
+async function abrirWallet(page: Page) {
+  const res = await page.goto("/wallet");
+  expect(res?.status()).toBe(200);
+  const libro = page.getByRole("table", { name: "Libro de movimientos" });
+  await expect(libro).toBeVisible();
+  return {
+    resumen: page.getByRole("region", { name: "Resumen de la caja y acciones" }),
+    flujo: page.getByRole("region", { name: "Flujo de dinero registrado" }),
+    libro,
+    filas: libro.locator("tbody tr"),
+  };
+}
+
+test.describe.serial("Wallet — caja del maestro, filtro, registro manual y bloqueo", () => {
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    c = await crearEscenarioCaja("wallet");
   });
 
-  test("ve el balance derivado y el libro → filtra por tipo → registra un movimiento manual con descripción obligatoria", async ({
-    page,
-  }) => {
-    // R18/R21: the derived general balance is pre-fetched server-side and rendered as a
-    // STRING amount (the client never receives Prisma.Decimal nor recomputes it).
-    const balance = page.getByRole("region", { name: "Balance general" });
-    await expect(balance).toBeVisible();
-    await expect(balance.getByText(BALANCE_ESPERADO)).toBeVisible();
+  test("el maestro ve las cifras de la caja y los tres movimientos del cierre", async ({ browser }) => {
+    const page = await paginaDe(browser, c.r.empresa.maestro);
+    const { resumen, flujo, filas } = await abrirWallet(page);
 
-    // R18: the movements LEDGER (more recent first) is shown as an accessible table.
-    const libro = page.getByRole("table", { name: "Libro de movimientos" });
-    await expect(libro).toBeVisible();
+    await expect(flujo).toContainText(importe(5000));
+    await expect(dato(resumen, "Entró")).toContainText(importe(8000));
+    await expect(dato(resumen, "Salió")).toContainText(importe(3000));
+    await expect(dato(resumen, "Movimientos")).toContainText(/(?<!\d)3(?!\d)/);
+    await expect(page.getByRole("region", { name: "Ganancia de la empresa", exact: true })).toContainText(importe(1000));
+    await expect(page.getByRole("region", { name: "Lo que la empresa les debe a las tiendas" })).toContainText(importe(4000));
 
-    // R20: filter the book by tipo (ingreso). The reload re-fetches ledger + balance via a
-    // Server Action (internal read, NOT a fetch to /api); the shown balance reflects the
-    // filtered set. The filter control is the accessible combobox "Filtrar por tipo".
-    await page.getByRole("combobox", { name: "Filtrar por tipo" }).click();
-    await page.getByRole("option", { name: "Ingreso" }).click();
-    await page.getByRole("button", { name: "Aplicar" }).click();
-    await expect(libro).toBeVisible();
+    await expect(filas).toHaveCount(3);
+    await expect(filas.filter({ hasText: "Flete cobrado a la tienda" })).toContainText(importe(4000));
+    await expect(filas.filter({ hasText: "Contra-entrega cobrado a los clientes de la tienda" })).toContainText(importe(8000));
+    const pago = filas.filter({ hasText: "La empresa le paga a un mensajero" });
+    await expect(pago).toContainText(importe(3000));
+    await expect(pago).toContainText(c.mensajero.nombre);
 
-    // R15: open the manual adjustment dialog (only maestro; the page already gated the role).
-    await page.getByRole("button", { name: "Registrar movimiento" }).click();
-    const dialog = page.getByRole("dialog", { name: "Registrar movimiento manual" });
-    await expect(dialog).toBeVisible();
-
-    // Fill an amount but leave the description empty → confirming is blocked and the
-    // "descripción obligatoria" validation error is shown (R15).
-    await dialog.getByLabel("Monto").fill("100.00");
-    await dialog.getByRole("button", { name: "Registrar" }).click();
-    await expect(dialog.getByText("La descripción es obligatoria.")).toBeVisible();
-
-    // With a description, the manual movement is registered (append-only, immutable, R3/R15).
-    await dialog.getByLabel("Descripción").fill("Ajuste de caja por conciliación");
-    await dialog.getByRole("button", { name: "Registrar" }).click();
-
-    // Success feedback confirms the movement entered the ledger.
-    await expect(page.getByText(/Movimiento registrado correctamente/i)).toBeVisible();
+    // El desglose de la fila del flete: las dos órdenes del cierre.
+    await page.getByRole("button", { name: /^Ver las órdenes que componen «Flete cobrado a la tienda»/ }).click();
+    await expect(page.getByText(c.conCod.destinatario)).toBeVisible();
+    await expect(page.getByText(c.sinCod.destinatario)).toBeVisible();
   });
-});
 
-test.describe("Wallet — bloqueo de rol NO autorizado", () => {
-  test("un mensajero es rechazado en /wallet y NO ve movimientos ni balance (R19)", async ({
-    page,
-  }) => {
-    // A non-maestro role hits the role-aware Server Component, which calls `notFound()`
-    // (forbidden). No wallet UI is rendered.
-    await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
-    await page.goto("/wallet");
+  test("filtrar el libro por «Sale» deja solo el pago al mensajero y no mueve las cifras", async ({ browser }) => {
+    const page = await paginaDe(browser, c.r.empresa.maestro);
+    const { resumen, flujo, filas } = await abrirWallet(page);
+    await expect(filas).toHaveCount(3);
 
-    // R19: NEITHER the derived balance NOR the movements ledger are exposed to this role.
-    await expect(page.getByRole("region", { name: "Balance general" })).toHaveCount(0);
-    await expect(page.getByRole("table", { name: "Libro de movimientos" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Filtros" }).click();
+    await page.getByRole("option", { name: "Entra/Sale" }).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("combobox", { name: "Entra/Sale" }).click();
+    await page.getByRole("option", { name: "Sale", exact: true }).click();
+
+    await expect(filas).toHaveCount(1);
+    await expect(filas.first()).toContainText("La empresa le paga a un mensajero");
+    await expect(filas.first()).toContainText(importe(3000));
+    // El filtro es del libro: la caja sigue diciendo lo mismo.
+    await expect(flujo).toContainText(importe(5000));
+    await expect(dato(resumen, "Entró")).toContainText(importe(8000));
+
+    await page.getByRole("button", { name: "Limpiar todo" }).click();
+    await expect(filas).toHaveCount(3);
+  });
+
+  test("la corrección de caja exige el motivo y, con él, entra en el libro y en las cifras", async ({ browser }) => {
+    const page = await paginaDe(browser, c.r.empresa.maestro);
+    const { resumen, flujo, filas } = await abrirWallet(page);
+
+    await page.getByRole("button", { name: "Registrar un movimiento" }).click();
+    const dialogo = page.getByRole("dialog", { name: "Registrar movimiento en la caja" });
+    await expect(dialogo).toBeVisible();
+    await dialogo.getByRole("radio", { name: "Corrección de caja (resta)" }).click();
+    await dialogo.getByRole("textbox", { name: "Monto" }).fill("500");
+
+    // Sin motivo no se registra nada.
+    await dialogo.getByRole("button", { name: "Registrar", exact: true }).click();
+    await expect(dialogo.getByRole("alert").filter({ hasText: "La descripción es obligatoria." })).toBeVisible();
+    expect((await movimientosCajaDe(c.r)).filter((m) => m.origenTipo === "manual")).toHaveLength(0);
+
+    await dialogo.getByRole("textbox", { name: "Motivo de la corrección" }).fill(MOTIVO);
+    await dialogo.getByRole("button", { name: "Registrar", exact: true }).click();
+    await expect(page.getByText("Movimiento registrado correctamente.").first()).toBeVisible();
+    await expect(dialogo).toBeHidden();
+
+    // Las cifras se releen solas: sale 500 más.
+    await expect(dato(resumen, "Salió")).toContainText(importe(3500));
+    await expect(flujo).toContainText(importe(4500));
+    await expect(dato(resumen, "Movimientos")).toContainText(/(?<!\d)4(?!\d)/);
+    await expect(filas).toHaveCount(4);
+    const correccion = filas.filter({ hasText: MOTIVO });
+    await expect(correccion).toContainText("Sale");
+    await expect(correccion).toContainText(importe(500));
+
+    const manuales = (await movimientosCajaDe(c.r)).filter((m) => m.origenTipo === "manual");
+    expect(manuales.map((m) => [m.tipo, m.categoria, m.monto.toString()])).toEqual([["egreso", "egreso_ajuste", "500"]]);
+  });
+
+  test("un mensajero y una tienda reciben 404 en /wallet y no ven cifras ni libro (R19)", async ({ browser }) => {
+    for (const u of [c.mensajero, c.r.tienda]) {
+      const page = await paginaDe(browser, u);
+      const res = await page.goto("/wallet");
+      expect(res?.status(), `/wallet para ${u.email}`).toBe(404);
+      await expect(page.getByRole("region", { name: "Flujo de dinero registrado" })).toHaveCount(0);
+      await expect(page.getByRole("table", { name: "Libro de movimientos" })).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "Ganancia de la empresa", exact: true })).toHaveCount(0);
+      await page.context().close();
+    }
   });
 });

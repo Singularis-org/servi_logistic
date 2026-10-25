@@ -1,245 +1,229 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+
+import { confiarDispositivo, correoE2E, crearEmpresaE2E, crearUsuarioE2E, type EmpresaE2E, type UsuarioE2E } from "../tests/fabricas/e2e";
+
+import { LogDelServidor } from "./_dos-empresas-fixture";
+import { codigoEnviadoA } from "./_superadmin-fixture";
 
 /**
- * E2E tests for login flow (T017 — closes T021 of specs/login/tasks.md)
+ * E2E del login (T017 — cierra T021 de specs/login/tasks.md; reescrito por SL-44 T4.3).
  *
- * These tests cover the 4 critical paths:
- * (a) Successful login: valid credentials, no challenge, redirects out of /login
- * (b) Invalid credentials: generic error message, remains on /login
- * (c) Account locked: error message with retry wait time
- * (d) Logout: using the "Salir" button in the topbar of the shared PageHeader (feature 57);
- *     after logout, accessing a protected route redirects back to /login
+ * Los caminos críticos:
+ * (a) login correcto con el dispositivo confiado: sin reto, sale de `/login` a `/dashboard`
+ *     (feature 86, R14), o al `redirect` que se le pida;
+ * (b) credenciales inválidas: mensaje genérico, sigue en `/login`, conserva el correo. Con un
+ *     usuario que EXISTE y la contraseña mal (es el caso que importa: un correo inexistente
+ *     no prueba que se compruebe la contraseña) y con un correo que no existe;
+ * (c) cuenta bloqueada: N intentos fallidos desde la UI la bloquean, y el siguiente, aun con la
+ *     contraseña buena, dice «Cuenta bloqueada» con los minutos de espera;
+ * (d) logout con «Salir» del topbar (feature 57): vuelve a `/`, y `/dashboard` lleva a `/login`;
+ * OTP: un dispositivo nuevo pide el código; uno inventado se rechaza y el real, leído del log del
+ *     servidor (SL-44 R15), entra;
+ * accesibilidad: orden de tabulación, foco al primer error y errores enlazados al campo.
  *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres
- * - A seeded user for login (e.g., user@example.com / password)
- * - Control over login attempt count or a way to trigger account lock
+ * DATOS (SL-44; R7, R10). Cada usuario lo crea la fábrica del E2E por el servicio de la app
+ * (`crearEmpresaE2E`, `crearUsuarioE2E`), con correo `@example.test` por corrida. Cada caso que
+ * cuenta intentos usa SU usuario: el bloqueo es por usuario y no debe contaminar a otro caso.
  *
- * If the environment lacks .env or a real database, these tests are
- * WRITTEN but NOT EXECUTED. Execution is deferred until the test environment
- * is fully set up (same deferral as T020 of specs/login/tasks.md).
+ * LOCALIZADORES DE ERROR. Next monta su anunciador de rutas (`#__next-route-announcer__`) con
+ * `role="alert"` en toda página: un `getByRole("alert")` de página lo casa también (lo vio el run
+ * 40020120423). Aquí los `alert` se buscan dentro de la tarjeta del formulario.
  *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed test user: (via seed script or manual insert)
- * 4. Run tests: pnpm run test:e2e
+ * CÓMO SE CORRE: `pnpm exec playwright test --project=aislamiento` (Playwright levanta el
+ * servidor con `AUTH_OTP_DEBUG_LOG=1` y su log en `E2E_LOG_SERVIDOR`). Sin base, FALLA.
  */
 
-// Helper function to generate a unique email per test run
-function generateTestEmail() {
-  return `test-${Date.now()}@example.com`;
+/**
+ * `AUTH_MAX_FAILED_ATTEMPTS` por defecto (`lib/config/auth.ts`); el servidor del E2E no la fija.
+ * Escrito a mano: es el contrato que el caso (c) comprueba.
+ */
+const INTENTOS_HASTA_EL_BLOQUEO = 5;
+
+const ERROR_GENERICO = "Correo o contraseña inválidos";
+
+let empresa: EmpresaE2E | null = null;
+
+function laEmpresa(): EmpresaE2E {
+  if (!empresa) throw new Error("no hay empresa: falló el beforeAll");
+  return empresa;
+}
+
+test.beforeAll(async () => {
+  test.setTimeout(120_000);
+  empresa = await crearEmpresaE2E("auth");
+});
+
+/** Un usuario nuevo de la empresa, solo para un caso. */
+function usuarioNuevo(): Promise<UsuarioE2E> {
+  return crearUsuarioE2E(laEmpresa(), "adminTienda");
+}
+
+/**
+ * El maestro de una empresa nueva, solo para un caso. Para los casos que miran a dónde se
+ * aterriza: `/dashboard` es la home del maestro y se queda ahí, mientras que a un `adminTienda`
+ * `/dashboard` lo redirige al primer ítem de su menú. Con él, «llegó a `/dashboard`» es un
+ * instante de paso, y pulsar «Salir» en ese instante cruza el logout con esa redirección.
+ */
+async function maestroNuevo(): Promise<UsuarioE2E> {
+  return (await crearEmpresaE2E("auth")).maestro;
+}
+
+/** La tarjeta del formulario de login: fuera queda el anunciador de rutas de Next. */
+function tarjeta(page: Page): Locator {
+  return page.locator('[data-slot="card"]');
+}
+
+async function enviarCredenciales(page: Page, email: string, password: string): Promise<void> {
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
+  await page.click('button[type="submit"]');
+}
+
+/** Login sin OTP: confía el dispositivo de este navegador y entra. */
+async function entrar(page: Page, u: UsuarioE2E, ruta = "/login"): Promise<void> {
+  await confiarDispositivo(u, await page.evaluate(() => navigator.userAgent));
+  await page.goto(ruta);
+  await enviarCredenciales(page, u.email, u.password);
 }
 
 test.describe("Auth E2E Flow", () => {
   test.describe("(a) Successful login without challenge", () => {
-    test("should login and redirect to home", async ({ page }) => {
-      // Navigate to login page
-      await page.goto("/login");
+    test("should login and land on /dashboard", async ({ page }) => {
+      test.setTimeout(90_000);
+      const u = await maestroNuevo();
+      await entrar(page, u);
 
-      // Fill credentials (assuming a seeded user exists)
-      // In a real test, these would come from test config or a test user factory
-      const testEmail = "valid-user@example.com";
-      const testPassword = "correct-password";
+      // Feature 86, R14: la home autenticada es `/dashboard`.
+      await page.waitForURL(/\/dashboard$/, { timeout: 60_000 });
+      await expect(page.getByLabel("Código de verificación")).toHaveCount(0);
 
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', testPassword);
-
-      // Submit form
-      await page.click('button[type="submit"]');
-
-      // Wait for redirect and verify we're on the home page
-      await page.waitForURL("/", { timeout: 5000 });
-      expect(page.url()).toBe("http://localhost:3000/");
-
-      // Verify logout button is visible in the PageHeader topbar (feature 57, R1/R2)
-      const logoutButton = page.getByRole("button", { name: "Salir" });
-      await expect(logoutButton).toBeVisible();
+      // El botón «Salir» del topbar del PageHeader (feature 57, R1/R2).
+      await expect(page.getByRole("button", { name: "Salir" })).toBeVisible();
     });
 
     test("should respect redirect query parameter", async ({ page }) => {
-      // Navigate to login with redirect param
-      await page.goto("/login?redirect=/dashboard");
+      const u = await usuarioNuevo();
+      await entrar(page, u, "/login?redirect=/ordenes");
 
-      const testEmail = "valid-user@example.com";
-      const testPassword = "correct-password";
-
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', testPassword);
-      await page.click('button[type="submit"]');
-
-      // Should redirect to /dashboard, not /
-      await page.waitForURL("/dashboard", { timeout: 5000 });
-      expect(page.url()).toContain("/dashboard");
+      // Por el `pathname`: la URL de partida (`/login?redirect=/ordenes`) ya termina en `/ordenes`.
+      await page.waitForURL((url) => url.pathname === "/ordenes", { timeout: 60_000 });
+      expect(new URL(page.url()).pathname).toBe("/ordenes");
     });
   });
 
   test.describe("(b) Invalid credentials", () => {
-    test("should show generic error message and remain on /login", async ({ page }) => {
+    test("an existing user with the wrong password sees the generic error and stays on /login", async ({ page }) => {
+      const u = await usuarioNuevo();
+      await confiarDispositivo(u, await page.evaluate(() => navigator.userAgent));
       await page.goto("/login");
+      await enviarCredenciales(page, u.email, `${u.password}-mal`);
 
-      const testEmail = generateTestEmail();
-      const wrongPassword = "wrong-password-that-does-not-exist";
+      await expect(tarjeta(page).getByRole("alert")).toHaveText(ERROR_GENERICO);
+      expect(new URL(page.url()).pathname).toBe("/login");
+      // R8: el correo se conserva.
+      await expect(page.locator('input[type="email"]')).toHaveValue(u.email);
+    });
 
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', wrongPassword);
-      await page.click('button[type="submit"]');
+    test("an unknown email sees the same generic error", async ({ page }) => {
+      await page.goto("/login");
+      const email = correoE2E("inexistente");
+      await enviarCredenciales(page, email, "Una-Contrasena-9!");
 
-      // Wait for error to appear
-      const errorMessage = page.getByRole("alert");
-      await expect(errorMessage).toContainText("Correo o contraseña inválidos");
-
-      // Should remain on /login
-      expect(page.url()).toContain("/login");
-
-      // Email value should be preserved (R8)
-      const emailInput = page.locator('input[type="email"]');
-      await expect(emailInput).toHaveValue(testEmail);
+      await expect(tarjeta(page).getByRole("alert")).toHaveText(ERROR_GENERICO);
+      expect(new URL(page.url()).pathname).toBe("/login");
+      await expect(page.locator('input[type="email"]')).toHaveValue(email);
     });
 
     test("should show validation errors for empty fields", async ({ page }) => {
       await page.goto("/login");
-
-      // Try to submit empty form
       await page.click('button[type="submit"]');
 
-      // Check for validation errors (should appear without server call)
-      const errors = page.getByRole("alert");
-      await expect(errors).toHaveCount(2); // email and password errors
+      // Validación de cliente, sin llamar al servidor: un error por campo.
+      await expect(tarjeta(page).getByRole("alert")).toHaveCount(2);
     });
   });
 
   test.describe("(c) Account locked", () => {
-    test("should show account locked error with retry time", async ({ page }) => {
-      // This test requires a user account that's been locked
-      // (after MAX_FAILED_ATTEMPTS failed login attempts)
-      // In a real scenario, this would be triggered by:
-      // - Making N failed login attempts in sequence
-      // - Using test fixtures to set up a locked account
-      // - Mocking time/system to trigger the lock
-
+    test("N failed attempts from the UI lock the account, even for the right password", async ({ page }) => {
+      test.setTimeout(120_000);
+      const u = await usuarioNuevo();
+      await confiarDispositivo(u, await page.evaluate(() => navigator.userAgent));
       await page.goto("/login");
 
-      // Attempt login with a locked account
-      const lockedUserEmail = "locked-user@example.com";
-      const anyPassword = "password";
+      const alerta = tarjeta(page).getByRole("alert");
+      for (let i = 1; i <= INTENTOS_HASTA_EL_BLOQUEO; i += 1) {
+        await enviarCredenciales(page, u.email, `Mala-${i}-contrasena!`);
+        await expect(alerta, `intento fallido ${i}`).toHaveText(ERROR_GENERICO);
+        // El siguiente envío tiene que dejar ver su propio mensaje, no el de este.
+        await page.reload();
+      }
 
-      await page.fill('input[type="email"]', lockedUserEmail);
-      await page.fill('input[type="password"]', anyPassword);
-      await page.click('button[type="submit"]');
-
-      // Check for locked account message with retry time
-      const errorMessage = page.getByRole("alert");
-      await expect(errorMessage).toContainText("Cuenta bloqueada");
-      await expect(errorMessage).toContainText("minuto");
-
-      // Verify the error message includes a number (retryAfterMinutes)
-      const alertText = await errorMessage.textContent();
-      expect(alertText).toMatch(/\d+/); // Contains at least one digit
+      await enviarCredenciales(page, u.email, u.password);
+      await expect(alerta).toContainText("Cuenta bloqueada");
+      await expect(alerta).toHaveText(/Intenta de nuevo en \d+ minutos?$/);
+      expect(new URL(page.url()).pathname).toBe("/login");
     });
   });
 
   test.describe("(d) Logout using PageHeader topbar button", () => {
     test("should logout and redirect to the public home (/)", async ({ page }) => {
-      // First, login
-      await page.goto("/login");
+      test.setTimeout(90_000);
+      const u = await maestroNuevo();
+      await entrar(page, u);
+      await page.waitForURL(/\/dashboard$/, { timeout: 60_000 });
 
-      const testEmail = "valid-user@example.com";
-      const testPassword = "correct-password";
-
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', testPassword);
-      await page.click('button[type="submit"]');
-
-      // Wait to land on home
-      await page.waitForURL("/", { timeout: 5000 });
-
-      // Find and click the logout button in the PageHeader topbar (feature 57, R4/R7)
       const logoutButton = page.getByRole("button", { name: "Salir" });
       await expect(logoutButton).toBeVisible();
       await logoutButton.click();
 
-      // Should redirect to the public home (/)
-      await page.waitForURL("/", { timeout: 5000 });
-
-      // Verify logout button is no longer visible: sin sesión, / renderiza la
-      // landing pública y el shell autenticado (PageHeader topbar) no se monta (R3).
-      const shellLogoutButton = page.getByRole("button", {
-        name: "Salir",
-      });
-      await expect(shellLogoutButton).not.toBeVisible();
+      // R7: la home pública.
+      await page.waitForURL((url) => url.pathname === "/", { timeout: 60_000 });
+      // Sin sesión, / pinta la landing pública y el shell autenticado no se monta (R3).
+      await expect(page.getByRole("button", { name: "Salir" })).toHaveCount(0);
     });
 
-    test("after logout, accessing protected route should redirect to /login", async ({
-      page,
-    }) => {
-      // Login first
-      await page.goto("/login");
+    test("after logout, accessing protected route should redirect to /login", async ({ page }) => {
+      test.setTimeout(90_000);
+      const u = await maestroNuevo();
+      await entrar(page, u);
+      await page.waitForURL(/\/dashboard$/, { timeout: 60_000 });
 
-      const testEmail = "valid-user@example.com";
-      const testPassword = "correct-password";
+      await page.getByRole("button", { name: "Salir" }).click();
+      await page.waitForURL((url) => url.pathname === "/", { timeout: 60_000 });
 
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', testPassword);
-      await page.click('button[type="submit"]');
-      await page.waitForURL("/", { timeout: 5000 });
-
-      // Logout via the PageHeader topbar control (feature 57)
-      const logoutButton = page.getByRole("button", { name: "Salir" });
-      await logoutButton.click();
-      await page.waitForURL("/", { timeout: 5000 });
-
-      // Try to access a protected route (/ ya es pública tras el logout)
       await page.goto("/dashboard");
-
-      // Should be redirected to /login (middleware catches this)
-      await page.waitForURL(/\/login/, { timeout: 5000 });
-      expect(page.url()).toContain("/login");
+      await page.waitForURL(/\/login/, { timeout: 60_000 });
+      expect(new URL(page.url()).pathname).toBe("/login");
     });
   });
 
   test.describe("OTP Challenge Flow", () => {
-    test("should transition to challenge phase and verify OTP code", async ({
+    test("a new device gets the challenge; a made-up code is rejected and the real one from the server log gets in", async ({
       page,
     }) => {
-      // This test requires a user account that requires OTP verification
-      // (e.g., 2FA enabled or risk engine flags it as needing challenge)
-
+      test.setTimeout(120_000);
+      // Usuario sin dispositivo confiado ni login previo: dispositivo e IP nuevos, el RiskEngine
+      // pide el código.
+      const u = await maestroNuevo();
+      const log = LogDelServidor.desdeEntorno();
       await page.goto("/login");
+      await enviarCredenciales(page, u.email, u.password);
 
-      const testEmail = "otp-required-user@example.com";
-      const testPassword = "correct-password";
-
-      await page.fill('input[type="email"]', testEmail);
-      await page.fill('input[type="password"]', testPassword);
-      await page.click('button[type="submit"]');
-
-      // Should transition to challenge phase
       const codeInput = page.locator('input[id="code"]');
+      await expect(codeInput).toBeVisible({ timeout: 60_000 });
+      const codigo = await codigoEnviadoA(log, u.email);
+
+      // Un código que no es el enviado.
+      const inventado = codigo === "000000" ? "111111" : "000000";
+      await codeInput.fill(inventado);
+      await page.click('button:has-text("Verificar código")');
+      await expect(tarjeta(page).getByRole("alert")).toHaveText("El código es inválido o ha expirado");
       await expect(codeInput).toBeVisible();
 
-      // Try invalid code
-      await page.fill('input[id="code"]', "000000");
+      await codeInput.fill(codigo);
       await page.click('button:has-text("Verificar código")');
-
-      // Should show OTP invalid error
-      const errorMessage = page.getByRole("alert");
-      await expect(errorMessage).toContainText("inválido");
-
-      // Code input should still be visible (remain on challenge phase)
-      await expect(codeInput).toBeVisible();
-
-      // Submit correct code (from email or test fixture)
-      // This would require access to the OTP or a test seeding mechanism
-      const correctCode = "123456"; // Placeholder; would come from test config
-      await page.fill('input[id="code"]', correctCode);
-      await page.click('button:has-text("Verificar código")');
-
-      // Should redirect to home
-      await page.waitForURL("/", { timeout: 5000 });
-      expect(page.url()).toBe("http://localhost:3000/");
+      await page.waitForURL(/\/dashboard$/, { timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Salir" })).toBeVisible();
     });
   });
 
@@ -247,48 +231,42 @@ test.describe("Auth E2E Flow", () => {
     test("login form should be keyboard navigable", async ({ page }) => {
       await page.goto("/login");
 
-      // Tab to email field
-      await page.keyboard.press("Tab");
+      // R21: el correo tiene el foco al cargar.
       await expect(page.locator('input[type="email"]')).toBeFocused();
 
-      // Tab to password field
       await page.keyboard.press("Tab");
       await expect(page.locator('input[type="password"]')).toBeFocused();
 
-      // Tab to submit button
+      // El botón de mostrar/ocultar la contraseña es un control de teclado (PasswordInput).
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: /^Contraseña: oculta\. Mostrar\.$/ })).toBeFocused();
+
       await page.keyboard.press("Tab");
       await expect(page.locator('button[type="submit"]')).toBeFocused();
     });
 
-    test("should move focus to first error field after invalid submission", async ({
-      page,
-    }) => {
+    test("should move focus to first error field after invalid submission", async ({ page }) => {
       await page.goto("/login");
-
-      // Try to submit empty form
       await page.click('button[type="submit"]');
 
-      // Focus should be on the email field (first field with error)
-      const emailInput = page.locator('input[type="email"]');
-      await expect(emailInput).toBeFocused();
+      await expect(page.locator('input[type="email"]')).toBeFocused();
     });
 
-    test("error messages should have aria-live and aria-describedby", async ({
-      page,
-    }) => {
+    test("error messages are alerts linked to their field by aria-describedby", async ({ page }) => {
       await page.goto("/login");
-
-      // Submit empty form to trigger validation error
       await page.click('button[type="submit"]');
 
-      // Check that error container has role="alert" or aria-live
-      const errorAlert = page.getByRole("alert");
-      await expect(errorAlert).toHaveAttribute("role", "alert");
+      const errores = tarjeta(page).getByRole("alert");
+      await expect(errores).toHaveCount(2);
 
-      // Check that input has aria-describedby pointing to error
       const emailInput = page.locator('input[type="email"]');
+      await expect(emailInput).toHaveAttribute("aria-invalid", "true");
       const describedById = await emailInput.getAttribute("aria-describedby");
       expect(describedById).toBeTruthy();
+      // El id que nombra el campo es el de su `alert`.
+      const ids = (describedById ?? "").split(/\s+/);
+      const idsDeAlertas = await errores.evaluateAll((els) => els.map((el) => el.id));
+      expect(ids.some((id) => idsDeAlertas.includes(id))).toBe(true);
     });
   });
 });

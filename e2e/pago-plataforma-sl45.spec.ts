@@ -35,12 +35,13 @@ import { CAJA_A, CAJA_B, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 // Los textos y los importes esperados van escritos a mano: son lo que pinta `money` (omite los «,00»).
 // Derivarlos de `wallet-labels.ts` o de `money` los compararía contra su propia fuente.
 //
-// SOLO CORRE CON `SL45_UI=1`, como los de SL-39 y SL-40: necesita una base local desechable migrada y
-// con `pnpm run db:seed`, sin `SMTP_*`, y el dev server con `AUTH_OTP_DEBUG_LOG=1` y su log en
-// `SL17_HUMO_LOG_SERVIDOR` (el OTP del superadmin sale de ahí). `SL45_CAPTURAS` es la carpeta de las
-// capturas; sin ella van a la salida del test.
+// Corre en el proyecto `aislamiento` (SL-44), en serie detrás del de SL-40 (`workers: 1`): los dos
+// tocan el valor GLOBAL del cobro. Playwright levanta el servidor sin SMTP, con `AUTH_OTP_DEBUG_LOG=1`
+// y su log en `E2E_LOG_SERVIDOR` (el OTP del superadmin sale de ahí), sobre una base local migrada y
+// con `pnpm run db:seed`. El `afterAll` devuelve el global a lo que había, para que otro spec o una
+// segunda corrida no hereden el 500,00 (excepción de R8 de SL-44, `design.md > D4`, como en SL-40).
+// `SL45_CAPTURAS` es la carpeta de las capturas; sin ella van a la salida del test.
 
-test.skip(process.env.SL45_UI !== "1", "SL-45: recorrido local, solo con SL45_UI=1 y su base desechable");
 test.describe.configure({ mode: "serial" });
 
 const TEXTO = {
@@ -86,6 +87,9 @@ let contextoB: BrowserContext | undefined;
 let paginaB: Page | undefined;
 let ordenes: string[] = [];
 let cajaInicialB: Cifras | undefined;
+/** El valor global del cobro al empezar (`null`: sin configurar), para devolverlo en el `afterAll`. */
+let globalAntes: Prisma.Decimal | null = null;
+let globalGuardado = false;
 
 function base(): PrismaClient {
   if (!dueno) throw new Error("no hay cliente dueño: falló el beforeAll");
@@ -222,7 +226,9 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(300_000);
   dueno = clienteDueno();
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(base()));
-  // El global en 500,00. La base es desechable.
+  // El global en 500,00; el `afterAll` devuelve el que había.
+  globalAntes = (await base().cobroPlataformaTarifa.findUnique({ where: { id: true }, select: { monto: true } }))?.monto ?? null;
+  globalGuardado = true;
   await base().cobroPlataformaTarifa.upsert({
     where: { id: true },
     create: { id: true, monto: new Prisma.Decimal("500.00") },
@@ -254,10 +260,21 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  // La base es desechable: no se borra nada.
   await contextoSa?.close();
   await contextoA?.close();
   await contextoB?.close();
+  // El valor global, como estaba antes de este spec. Lo demás es de las empresas de esta corrida.
+  if (dueno && globalGuardado) {
+    if (globalAntes === null) {
+      await dueno.cobroPlataformaTarifa.deleteMany({});
+    } else {
+      await dueno.cobroPlataformaTarifa.upsert({
+        where: { id: true },
+        create: { id: true, monto: globalAntes },
+        update: { monto: globalAntes },
+      });
+    }
+  }
   await dueno?.$disconnect();
 });
 

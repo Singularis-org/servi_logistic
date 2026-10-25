@@ -1,6 +1,6 @@
 # Gate de CI del arnes (diseno v2, seccion 6).
 #
-#   PR hacia `dev`            -> gate-completo                (check informativo: ver abajo)
+#   PR hacia `dev`            -> gate-completo + e2e          (los dos, informativos: ver abajo)
 #   PR hacia `prod`           -> gate-completo + e2e          (los dos, informativos)
 #   workflow_dispatch         -> los dos, a mano, sobre la rama elegida
 #
@@ -290,15 +290,27 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  e2e:
-    name: e2e
-    # Solo en el PR de despliegue (base `prod`), fuera de borrador, y a mano.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.base_ref == 'prod' && github.event.pull_request.draft == false)
+  # EL E2E VA EN GRUPOS (SL-44 D6; R20-R25, R28). Dos jobs para un solo check, como la suite:
+  # `e2e-grupo` corre un proyecto de Playwright por grupo, cada uno con su base propia y SIN
+  # veredicto, y `e2e` mira el resultado de la matriz y da el veredicto UNA vez.
+  #
+  # Los grupos viven en DOS sitios y tienen que coincidir: la matriz de `e2e-grupo` y los
+  # `projects` de playwright.config.ts (`aislamiento` arrastra `plataforma-vacia` por
+  # `dependencies`). Un grupo que no exista en el config hace caer `playwright test --project=`.
+  e2e-grupo:
+    name: e2e (${{ matrix.grupo }})
+    # Mismo disparo que `gate-completo`: cada PR a `dev` o a `prod` fuera de borrador, y a mano (R20).
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # R28: cada grupo cabe en 30 min (install, build y Playwright incluidos).
+    timeout-minutes: 30
+    strategy:
+      # Sin fail-fast: un grupo que cae no cancela a los otros; `e2e` los juzga a todos.
+      fail-fast: false
+      matrix:
+        grupo: [aislamiento, reparto, dinero]
 
+    # R21: cada grupo, su Postgres de servicio. Ningun grupo ve los datos de otro.
     services:
       postgres:
         image: postgres:17
@@ -337,7 +349,9 @@ jobs:
           pnpm exec prisma generate
           pnpm exec next typegen
 
-      - name: Credenciales efimeras (solo para la base de servicio de este job)
+      # R23: generadas en cada corrida, nunca secretos del repositorio. `CRON_SECRET` lo leen la
+      # app (rutas de cron) y los specs que las llaman; playwright.config.ts respeta el del entorno.
+      - name: Credenciales efimeras (solo para la base de servicio de este grupo)
         shell: bash
         run: |
           # Cada valor se enmascara (por stdout, que es donde el runner lee los comandos) ANTES de
@@ -345,22 +359,40 @@ jobs:
           gen() { node -e "process.stdout.write(require('node:crypto').randomBytes(18).toString('base64url'))"; }
           S1=$(gen)$(gen)
           echo "::add-mask::$S1"
+          C1=$(gen)$(gen)
+          echo "::add-mask::$C1"
           {
             echo "SESSION_SECRET=$S1"
+            echo "CRON_SECRET=$C1"
             echo "APP_BASE_URL=http://localhost:3000"
+            # SL-41 (R40): sin ella no hay enlace de bienvenida. Next la incrusta al compilar, asi
+            # que tiene que estar antes de `next build`.
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
+            # Fuera del checkout: lo sube el artefacto si el grupo cae (R25).
+            echo "E2E_LOG_SERVIDOR=$RUNNER_TEMP/servidor-e2e.log"
           } >> "$GITHUB_ENV"
 
-      # SL-31 (R17): la base se migra y se siembra SOLO con los catalogos del sistema. La app nace
-      # vacia: cada spec crea su usuario y sus datos dentro de la prueba.
-      - name: Base del E2E (migrada + catalogos)
+      # SL-31 (R17) y SL-44 (R21): la base se migra y se siembra SOLO con los catalogos del sistema.
+      # La app nace vacia: cada spec crea su usuario y sus datos dentro de la prueba. `set -e`: si
+      # migrar o sembrar falla, el grupo sale en rojo ANTES de correr Playwright.
+      - name: Base del grupo (migrada + catalogos)
         shell: bash
         run: |
           set -euo pipefail
           pnpm exec prisma migrate deploy
           pnpm run db:seed
 
-      # playwright.config.ts declara solo el proyecto por defecto (chromium). Para ahorrar minutos
-      # se cachean los binarios por version de Playwright; las dependencias del sistema se
+      # `next build` y no `pnpm build`: el script de package.json migraria otra vez por su cuenta.
+      # Playwright sirve este `.next` con `next start` (e2e/_servidor-app.mjs).
+      # 4 GB no le bastan: en el run 40112266371 el grupo `dinero` murio por falta de memoria en el
+      # build (los otros dos pasaron con el mismo codigo). El runner tiene 16 GB.
+      - name: Build de la app
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: pnpm exec next build
+
+      # Se cachean los binarios por version de Playwright; las dependencias del sistema se
       # instalan siempre.
       - name: Version de Playwright
         id: pw
@@ -384,15 +416,40 @@ jobs:
         shell: bash
         run: pnpm exec playwright install-deps chromium
 
-      - name: Playwright
+      # `CI=true` lo pone Actions: `forbidOnly`, un reintento y `failOnFlakyTests` (R24).
+      - name: Playwright (${{ matrix.grupo }})
         shell: bash
-        run: pnpm run test:e2e
+        run: pnpm exec playwright test --project=${{ matrix.grupo }}
 
-      - name: Trazas de Playwright
+      # R25: trazas, informe y log del servidor. Todo es dato de prueba efimero (correos
+      # `@example.test`, contrasenas y secretos generados en esta corrida).
+      - name: Trazas del grupo
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results
-          path: test-results/
+          name: e2e-${{ matrix.grupo }}
+          path: |
+            test-results/
+            playwright-report/
+            ${{ runner.temp }}/servidor-e2e.log
           if-no-files-found: ignore
           retention-days: 14
+
+  e2e:
+    name: e2e
+    needs: [e2e-grupo]
+    # `always()`: tiene que correr AUNQUE un grupo haya fallado, para decir por que. Sin el, un
+    # grupo caido dejaria `e2e` en «skipped», y un check saltado no es un rojo.
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # R22: verde solo si TODOS los grupos salieron `success`; rojo, cancelado o saltado, rojo.
+      - name: Los grupos del E2E salieron en verde
+        shell: bash
+        env:
+          GRUPOS: ${{ needs.e2e-grupo.result }}
+        run: |
+          [ "$GRUPOS" = "success" ] || { echo "los grupos del E2E (e2e-grupo) salieron '$GRUPOS': mira el job de cada grupo y su artefacto e2e-<grupo>"; exit 1; }
+          echo "los grupos del E2E salieron 'success'"

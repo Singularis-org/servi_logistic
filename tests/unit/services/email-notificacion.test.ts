@@ -175,9 +175,17 @@ describe("EmailNotificacionProvider", () => {
 
 describe("ConsoleEmailSender", () => {
   const ORIG = process.env.AUTH_OTP_DEBUG_LOG;
+  const ORIG_VERCEL_ENV = process.env.VERCEL_ENV;
+  // Los casos de aqui suponen que no se corre en produccion de Vercel (SL-44 R1); los de SL-44
+  // fijan VERCEL_ENV a mano.
+  beforeEach(() => {
+    delete process.env.VERCEL_ENV;
+  });
   afterEach(() => {
     if (ORIG === undefined) delete process.env.AUTH_OTP_DEBUG_LOG;
     else process.env.AUTH_OTP_DEBUG_LOG = ORIG;
+    if (ORIG_VERCEL_ENV === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = ORIG_VERCEL_ENV;
     vi.restoreAllMocks();
   });
 
@@ -241,6 +249,47 @@ describe("ConsoleEmailSender", () => {
     // El formato que leen los E2E (bitacora SL-32, «Review vuelta 1 — B1 y m4»): es contrato.
     expect(linea).toMatch(new RegExp(`^\\[email\\]\\[debug\\] to=ana@example\\.com cuerpo="[^"]*\\\\n${CODIGO}\\\\n`));
   });
+
+  // SL-44 (R1, R2; design.md > D1) — con el OTP real y todos los canales de consola espiados.
+  const espiarConsola = () =>
+    (["info", "warn", "log", "error", "debug"] as const).map((n) =>
+      vi.spyOn(console, n).mockImplementation(() => {}),
+    );
+  const lineasDeDebug = (...espias: { mock: { calls: unknown[][] } }[]) =>
+    espias
+      .flatMap((e) => e.mock.calls.map((c) => String(c[0])))
+      .filter((l) => l.startsWith("[email][debug]"));
+
+  it.each(["1", "true"])(
+    "SL-44 R1 — VERCEL_ENV=production y AUTH_OTP_DEBUG_LOG=%s: sin linea de debug y el codigo en ningun canal",
+    async (valor) => {
+      process.env.VERCEL_ENV = "production";
+      process.env.AUTH_OTP_DEBUG_LOG = valor;
+      const espias = espiarConsola();
+      await new ConsoleEmailSender().enviar(otpReal());
+      expect(lineasDeDebug(...espias)).toEqual([]);
+      expect(todoLoEscrito(...espias)).toContain("ana@example.com");
+      expect(todoLoEscrito(...espias)).not.toContain(CODIGO);
+    },
+  );
+
+  it.each([
+    ["preview", "preview"],
+    ["sin definir", undefined],
+  ])(
+    "SL-44 R2 — VERCEL_ENV %s y AUTH_OTP_DEBUG_LOG=1: una linea de debug con destinatario y codigo",
+    async (_nombre, vercelEnv) => {
+      if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = vercelEnv;
+      process.env.AUTH_OTP_DEBUG_LOG = "1";
+      const espias = espiarConsola();
+      await new ConsoleEmailSender().enviar(otpReal());
+      const debug = lineasDeDebug(...espias);
+      expect(debug).toHaveLength(1);
+      expect(debug[0]).toContain("to=ana@example.com");
+      expect(debug[0]).toContain(CODIGO);
+    },
+  );
 
   /**
    * SL-41 (T5) — el patrón con el que `e2e/_superadmin-fixture.ts > codigoEnviadoA` saca el código

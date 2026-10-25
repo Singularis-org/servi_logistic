@@ -375,9 +375,9 @@ describe("findLiberadasHoy (R15/R16)", () => {
       deletedAt: null,
       estatus: { value: "en_bodega_central" },
     });
-    // ventana [hoyCR, hoyCR + 24h).
-    expect(arg.where.liberadaReprogramadaAt.gte).toEqual(HOY);
-    expect(arg.where.liberadaReprogramadaAt.lt).toEqual(new Date("2026-07-16T00:00:00.000Z"));
+    // SL-44: `timestamp` -> el dia de pared de CR, [00:00 CR, 00:00 CR del siguiente) = [T06:00Z, +1 dia).
+    expect(arg.where.liberadaReprogramadaAt.gte).toEqual(new Date("2026-07-15T06:00:00.000Z"));
+    expect(arg.where.liberadaReprogramadaAt.lt).toEqual(new Date("2026-07-16T06:00:00.000Z"));
     expect(rows).toEqual([
       {
         id: "o1",

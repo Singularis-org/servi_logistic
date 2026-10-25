@@ -33,12 +33,16 @@ import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 // Los importes esperados van escritos a mano: son lo que pinta `money` (omite los «,00»). Derivarlos
 // con la función de producción los compararía contra su propia fuente.
 //
-// SOLO CORRE CON `SL40_UI=1`, como el de SL-39: necesita una base local desechable migrada y con
-// `pnpm run db:seed`, sin `SMTP_*`, y el dev server con `AUTH_OTP_DEBUG_LOG=1` y su log en
-// `SL17_HUMO_LOG_SERVIDOR` (el OTP del superadmin sale de ahí). `SL40_CAPTURAS` es la carpeta de las
-// capturas; sin ella van a la salida del test.
+// Corre en el proyecto `aislamiento` (SL-44): Playwright levanta el servidor sin SMTP, con
+// `AUTH_OTP_DEBUG_LOG=1` y su log en `E2E_LOG_SERVIDOR` (el OTP del superadmin sale de ahí), sobre
+// una base local migrada y con `pnpm run db:seed`. `SL40_CAPTURAS` es la carpeta de las capturas;
+// sin ella van a la salida del test.
+//
+// El valor GLOBAL del cobro es de toda la plataforma: el `beforeAll` lo guarda y lo deja «sin
+// configurar» (el paso 1 parte de ahí), y el `afterAll` lo devuelve a lo que había, para que otro
+// spec o una segunda corrida sobre la misma base no hereden el 500,00 de este. Quitarlo no tiene
+// pantalla (la de «Empresas» solo fija un valor): es una excepción de R8 de SL-44 (`design.md > D4`).
 
-test.skip(process.env.SL40_UI !== "1", "SL-40: recorrido local, solo con SL40_UI=1 y su base desechable");
 test.describe.configure({ mode: "serial" });
 
 const EMPRESA_EN_FRASE = "la empresa";
@@ -66,6 +70,9 @@ let sa: Page | undefined;
 let contextoA: BrowserContext | undefined;
 let paginaA: Page | undefined;
 let ordenes: string[] = [];
+/** El valor global del cobro al empezar (`null`: sin configurar), para devolverlo en el `afterAll`. */
+let globalAntes: Prisma.Decimal | null = null;
+let globalGuardado = false;
 
 function base(): PrismaClient {
   if (!dueno) throw new Error("no hay cliente dueño: falló el beforeAll");
@@ -187,7 +194,9 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(300_000);
   dueno = clienteDueno();
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(base()));
-  // El paso 1 parte del valor global sin configurar. La base es desechable.
+  // El paso 1 parte del valor global sin configurar; el `afterAll` devuelve el que había.
+  globalAntes = (await base().cobroPlataformaTarifa.findUnique({ where: { id: true }, select: { monto: true } }))?.monto ?? null;
+  globalGuardado = true;
   await base().cobroPlataformaTarifa.deleteMany({});
 
   const ctx0 = await browser.newContext();
@@ -220,9 +229,20 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  // La base es desechable: no se borra nada.
   await contextoSa?.close();
   await contextoA?.close();
+  // El valor global, como estaba antes de este spec. Lo demás es de la empresa A de esta corrida.
+  if (dueno && globalGuardado) {
+    if (globalAntes === null) {
+      await dueno.cobroPlataformaTarifa.deleteMany({});
+    } else {
+      await dueno.cobroPlataformaTarifa.upsert({
+        where: { id: true },
+        create: { id: true, monto: globalAntes },
+        update: { monto: globalAntes },
+      });
+    }
+  }
   await dueno?.$disconnect();
 });
 
@@ -268,7 +288,8 @@ test("T8: el superadmin fija el global, fija y quita la excepción de A, y ve ca
   const editor = fila.getByRole("form", { name: `${TEXTO.regionCobro} · ${nombreA}`, exact: true });
   await editor.getByRole("textbox").fill("750.00");
   await editor.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(fila.getByRole("status")).toHaveText(TEXTO.guardado);
+  // El aviso del cobro, no la región `role="status"` de «Reenviar bienvenida» (SL-41) de la misma fila.
+  await expect(fila.locator('[data-slot="alert"][role="status"]')).toHaveText(TEXTO.guardado);
   await expect(fila).toContainText(PINTADO.excepcion);
   await expect(fila.getByText("propio", { exact: true })).toBeVisible();
   const conExcepcion = await base().organizacion.findUniqueOrThrow({
