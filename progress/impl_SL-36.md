@@ -319,3 +319,18 @@ relacionados: Test Files  665 passed (665) · Tests  9514 passed | 26 skipped (9
 guardias:     Test Files  307 passed (307) · Tests  4198 passed | 1 skipped (4199)
 INIT_EXIT=0
 ```
+
+### Vuelta 1 de la review (m5, m6; m7 no se hace)
+
+- **m5** (29c5a4b): `registrarFalloConfig` con empresa `null` vuelve antes de consultar, avisar o
+  loguear, con cualquier umbral (`notificacion.organizacion_id` es NOT NULL). El test unit pasa a
+  «R43: sin empresa no consulta ni avisa NI con umbral 1 (no hay empresa a la que avisar)».
+- **m6** (342ea05): T11 y filas R42/R43 en `tasks.md`, fila en `requirements.md > Cobertura`, nota en
+  `design.md` §7.1.
+
+```
+geocode-salud-service:                 Tests  40 passed (40)
+mutación (sin el return temprano):     Tests  2 failed | 38 passed (40)   (× los dos R43 «sin empresa»)
+restaurado:                            Tests  40 passed (40)
+gate: relacionados 665/665 archivos (9514 passed | 26 skipped) · guardias 307/307 (4198 passed | 1 skipped) · INIT_EXIT=0
+```
