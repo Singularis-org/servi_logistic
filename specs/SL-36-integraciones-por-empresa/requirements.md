@@ -238,6 +238,7 @@ Vocabulario de este archivo:
 | Cifrado en la app (D8) | R1, R2, R3, R4 |
 | Webhook por número | R19, R20, R21, R22 |
 | Aislamiento (RLS, español) | R8, R10, R11 |
+| Aislamiento de la salud de la geocodificación (`jobs` sin RLS efectiva hasta SL-19) | R42, R43 |
 | Forma de la tabla y borrado (D6, D7) | R32 (borrado), R10 (forma); design §2 |
 | E2E | R6, R12, R13, R18, R32, R36 (los recorre el E2E, tasks T9) |
 | Sin librerías nuevas | R1 |

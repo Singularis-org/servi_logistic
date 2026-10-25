@@ -342,6 +342,11 @@ Evidencia:
   pregunta abierta 2 de `requirements.md`, y mientras tanto no se cambia.
 - La salud de la geocodificación (ficha 401) sigue avisando al maestro de una caída por
   configuración. Con SL-36, ese aviso es justo «configura Google Maps».
+- Esa salud va **por empresa** (R42, R43): la política de `jobs` está abierta hasta SL-19, así que
+  `contarFallosConfigDesde` y `revivirFallosConfig` (`lib/repositories/GeocodeSaludRepository.ts`)
+  filtran por la `organizacion_id` del job en curso, sacada del propio job (`empresaDelJob`). Un job
+  sin empresa no se revive, no se cuenta y no avisa (`notificacion.organizacion_id` es NOT NULL).
+  Sin índice nuevo: las dos consultas van por `jobs_geocodificacion_estado_updated_idx`.
 
 Texto de «qué deja de funcionar» (catálogo, R31): «Las órdenes nuevas se quedan sin ubicación. Se
 pueden asignar igual, pero no aparecen en el mapa y la ruta del mensajero no las ordena por

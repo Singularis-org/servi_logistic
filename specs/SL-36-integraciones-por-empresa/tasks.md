@@ -140,6 +140,20 @@
   (sección Multi-empresa: excepciones y bóveda).
 - [x] **T10.2** `progress/impl_SL-36.md` con el mapa `R<n> → test` de la tabla de abajo, verificado.
 
+## T11. Salud de la geocodificación por empresa (R42, R43)
+
+- [x] **T11.1** `contarFallosConfigDesde` y `revivirFallosConfig` filtran por la `organizacion_id`
+  del job en curso; un job sin empresa no se revive, no se cuenta y no avisa (sin consultar la base).
+  Archivos: `lib/repositories/GeocodeSaludRepository.ts`,
+  `lib/interfaces/repositories/IGeocodeSaludRepository.ts`,
+  `lib/interfaces/services/IGeocodeSaludService.ts`, `lib/services/GeocodeSaludService.ts`,
+  `lib/services/GeocodificacionService.ts`, `lib/interfaces/repositories/IJobRepository.ts`
+  (`empresaDelJob`), `lib/repositories/JobRepository.ts` (la reexporta).
+  Tests: `tests/integration/db/geocode-recuperacion.test.ts`,
+  `tests/unit/services/geocode-salud-service.test.ts`,
+  `tests/unit/services/geocodificacion-service.test.ts`.
+  - Hecho cuando: quitar cada filtro pone en rojo su test de base real.
+
 ## Trazabilidad R<n> → test
 
 Base real = Postgres de test, sin dobles. Unit = dobles de interfaz.
@@ -187,6 +201,8 @@ Base real = Postgres de test, sin dobles. Unit = dobles de interfaz.
 | R39 | `tests/integration/db/recifrado-integraciones.test.ts` › «recifra a la activa en dos empresas; conteo por versión e ilegibles; no imprime valores» | base real |
 | R40 | `tests/integration/db/recifrado-integraciones.test.ts` › «--solo-contar no escribe» | base real |
 | R41 | `tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts` | guardia |
+| R42 | `tests/integration/db/geocode-recuperacion.test.ts` › «R42: el éxito de la empresa A revive SOLO jobs de A…» y «R42: y al revés, el éxito de B revive SOLO los de B» (+ unit «R42: …» en `geocode-salud-service` y `geocodificacion-service`) | base real + unit |
+| R43 | `tests/integration/db/geocode-recuperacion.test.ts` › «R43: el conteo para un fallo de A cuenta SOLO los de A, y el de B SOLO los de B (el sin empresa, ninguno)» (+ unit «R43: …» en `geocode-salud-service` y `geocodificacion-service`) | base real + unit |
 
 Flujo crítico E2E (decisión cerrada «E2E»): `e2e/integraciones-por-empresa.spec.ts` (T9.1), que
 recorre R6, R12, R13, R18, R32 y R36.
