@@ -141,7 +141,7 @@
   - el mapa `R<n> → test`, con los 28 requisitos;
   - las mutaciones y su resultado;
   - las mediciones de T1.1 y los conteos de T10.3.
-- [ ] **T12.3** `./init.sh` en verde.
+- [x] **T12.3** `./init.sh` en verde.
 
 ## Archivos esperados
 
