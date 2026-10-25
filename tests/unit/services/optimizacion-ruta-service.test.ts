@@ -23,15 +23,6 @@ const MENSAJERO = "m-1";
 const T0 = new Date("2026-07-20T12:00:00.000Z");
 
 const CONFIG: RouteOptimizationConfig = {
-  GOOGLE_ROUTE_OPT_PROJECT_ID: "p",
-  GOOGLE_ROUTE_OPT_SA_EMAIL: "sa@x",
-  GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: "pem",
-  // El service NO elige modo de autenticacion (eso es del selector); estas piezas estan
-  // aqui solo para satisfacer el tipo.
-  GOOGLE_WIF_PROJECT_NUMBER: null,
-  GOOGLE_WIF_POOL_ID: null,
-  GOOGLE_WIF_PROVIDER_ID: null,
-  GOOGLE_ROUTE_OPT_USE_ADC: false,
   ROUTE_OPT_TIMEOUT_MS: 20_000,
   RUTA_DEBOUNCE_S: 60,
   RUTA_ORIGEN_TTL_MIN: 120,
@@ -490,12 +481,9 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
   it("`construirTokenProvider` lanza RutaNoConfiguradoError y el fallo NO tumba la cola", async () => {
     // El error viaja como excepcion del handler; `JobQueueService.drenar` la captura job a
     // job, asi que `liberar_reprogramadas` y `geocodificacion` siguen drenando.
+    // SL-36: la credencial es la clave de la empresa; sin email (clave a medio pegar) se corta igual.
     const getToken = async () => {
-      construirTokenProvider({
-        GOOGLE_ROUTE_OPT_PROJECT_ID: null,
-        GOOGLE_ROUTE_OPT_SA_EMAIL: "sa@x",
-        GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: "pem",
-      });
+      construirTokenProvider({ email: "", privateKey: "pem" });
       return "";
     };
     await expect(getToken()).rejects.toThrow(RutaNoConfiguradoError);
@@ -525,7 +513,7 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
     };
     const client: IRouteOptimizationClient = {
       optimizar: async () => {
-        throw new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_SA_EMAIL");
+        throw new RutaNoConfiguradoError("sin_configurar");
       },
     };
     const service = new OptimizacionRutaService(
@@ -546,8 +534,11 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
     // que alimenta el aviso de la UI; antes, con una excepcion, no pasaba ni eso.
     expect(rutas.marcarDesactualizada).toHaveBeenCalledTimes(1);
     const motivo = (rutas.marcarDesactualizada.mock.calls[0] as unknown[])[1] as string;
-    expect(motivo).toContain("credencial incompleta");
-    expect(motivo).toContain("GOOGLE_ROUTE_OPT_SA_EMAIL");
+    // SL-36: el motivo dice que falta la integracion de la empresa, y ya no nombra una variable de
+    // entorno que el maestro no puede tocar.
+    expect(motivo).toContain("la empresa no tiene la integracion de rutas lista");
+    expect(motivo).toContain("sin_configurar");
+    expect(motivo).not.toMatch(/GOOGLE_/);
   });
 });
 

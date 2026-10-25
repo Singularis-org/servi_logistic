@@ -60,7 +60,7 @@ describe("T5 — la configuración del asistente nunca lanza y cae a sus default
     vi.unstubAllEnvs();
   });
 
-  it("sin ninguna variable: credencial `null` y los tres defaults", () => {
+  it("sin ninguna variable: los tres defaults", () => {
     // `undefined` BORRA la variable en vez de ponerla a "": es importante distinguirlo, porque en
     // Vercel una variable declarada y vacía es un caso real y distinto de una ausente.
     vi.stubEnv("ANTHROPIC_API_KEY", undefined);
@@ -69,7 +69,6 @@ describe("T5 — la configuración del asistente nunca lanza y cae a sus default
     vi.stubEnv("ASISTENTE_TIMEOUT_MS", undefined);
 
     expect(loadAsistenteConfig()).toEqual({
-      ANTHROPIC_API_KEY: null,
       ASISTENTE_MODELO: "claude-sonnet-5",
       ASISTENTE_MAX_CONSULTAS_DIA: 30,
       ASISTENTE_TIMEOUT_MS: 60_000,
@@ -89,9 +88,16 @@ describe("T5 — la configuración del asistente nunca lanza y cae a sus default
 
   it("un valor válido SÍ manda (si no, los dos casos de arriba serían vacuos)", () => {
     vi.stubEnv("ASISTENTE_MAX_CONSULTAS_DIA", "5");
-    vi.stubEnv("ANTHROPIC_API_KEY", "sk-de-mentira");
     const config = loadAsistenteConfig();
     expect(config.ASISTENTE_MAX_CONSULTAS_DIA).toBe(5);
-    expect(config.ANTHROPIC_API_KEY).toBe("sk-de-mentira");
+  });
+
+  it("SL-36/R23: la clave de Anthropic ya no sale del entorno, aunque la variable siga puesta", () => {
+    // Antes este caso afirmaba que la variable SÍ mandaba. Desde SL-36 la clave es de cada empresa
+    // (`asistente-de-la-empresa.ts`): la config no la expone ni con la variable retirada presente.
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-de-mentira");
+    const config = loadAsistenteConfig();
+    expect(Object.keys(config)).not.toContain("ANTHROPIC_API_KEY");
+    expect(JSON.stringify(config)).not.toContain("sk-de-mentira");
   });
 });

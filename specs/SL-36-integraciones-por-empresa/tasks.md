@@ -88,13 +88,13 @@
   - `lib/types/whatsapp-webhook.ts` conserva `metadata.phone_number_id`;
   - se borra `repartirPorEmpresa`;
   - sale la entrada del route en `EXCEPCIONES_DE_PLATAFORMA`.
-- [ ] **T6.3** Maps: `lib/config/geocode.ts`, `GeocodificacionService.ts` y
+- [x] **T6.3** Maps: `lib/config/geocode.ts`, `GeocodificacionService.ts` y
   `geocodificacion-handler.ts`.
-- [ ] **T6.4** Rutas:
+- [x] **T6.4** Rutas:
   - `lib/config/route-optimization.ts`, `google-sa-token.ts` y `google-token-shared.ts`;
   - borrar `google-wif-token.ts` y `google-adc-token.ts` con sus tests;
   - `optimizacion-ruta-handler.ts`, con el token por empresa (R28).
-- [ ] **T6.5** Asistente: `lib/config/asistente.ts` y `app/api/asistente/route.ts`, con el texto nuevo
+- [x] **T6.5** Asistente: `lib/config/asistente.ts` y `app/api/asistente/route.ts`, con el texto nuevo
   de R27.
 - [ ] **T6.6** `app/api/cron/procesar-jobs/route.ts` (builders), `e2e/_escenarios/crons.ts`,
   `.env.example` y `README.md`.

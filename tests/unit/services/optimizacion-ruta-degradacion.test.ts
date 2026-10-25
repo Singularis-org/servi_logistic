@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { OptimizacionRutaService, type ParadasRepo } from "@/lib/services/OptimizacionRutaService";
 import {
   buildOptimizacionRutaService as _noUsado,
+  buildOptimizacionRutaService,
   crearOptimizacionRutaHandler,
 } from "@/lib/services/jobs/optimizacion-ruta-handler";
 import { GoogleRouteOptimizationClient } from "@/lib/clients/google-route-optimization";
@@ -11,6 +12,8 @@ import type { IRutaOptimizadaRepository } from "@/lib/interfaces/repositories/IR
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 
 // Feature 265 (R9, R10, R13, R35, R48, R49) — LA CADENA ENTERA, DESDE LA RESPUESTA DEL
 // PROVEEDOR HASTA LA FILA Y EL JOB.
@@ -26,17 +29,30 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 // archivo se pone rojo en vez de quedarse verde apuntando a un modulo que ya no existe.
 void _noUsado;
 
+// SL-36 (R26) — la fabrica REAL del handler se arma con sus repositorios de base; aqui se doblan esos
+// dos modulos (y nada mas) para poder correr el composition root de produccion sin base. Los demas
+// casos de este archivo construyen el service a mano y no los usan.
+const REPOS = vi.hoisted(() => ({ rutas: {} as object, paradas: {} as object }));
+vi.mock("@/lib/repositories/RutaOptimizadaRepository", () => ({
+  RutaOptimizadaRepository: class {
+    constructor() {
+      return REPOS.rutas;
+    }
+  },
+}));
+vi.mock("@/lib/repositories/OrdenRepository", () => ({
+  OrdenRepository: class {
+    constructor() {
+      return REPOS.paradas;
+    }
+  },
+}));
+vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
+
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-08-22T12:00:00.000Z");
 
 const CONFIG: RouteOptimizationConfig = {
-  GOOGLE_ROUTE_OPT_PROJECT_ID: "p",
-  GOOGLE_ROUTE_OPT_SA_EMAIL: "sa@x",
-  GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: "pem",
-  GOOGLE_WIF_PROJECT_NUMBER: null,
-  GOOGLE_WIF_POOL_ID: null,
-  GOOGLE_WIF_PROVIDER_ID: null,
-  GOOGLE_ROUTE_OPT_USE_ADC: false,
   ROUTE_OPT_TIMEOUT_MS: 20_000,
   RUTA_DEBOUNCE_S: 60,
   RUTA_ORIGEN_TTL_MIN: 120,
@@ -328,5 +344,34 @@ describe("400/R9 (92/R37, R28) — una orden SIN coordenadas no aborta la optimi
     const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
 
     expect(r.status).toBe("omitida");
+  });
+});
+
+describe("SL-36/R26 — la empresa sin optimizacion de rutas: se ordena en local y el job termina", () => {
+  it("⭑ sin integración: orden local, sin red, job no muere", async () => {
+    // EL COMPOSITION ROOT DE PRODUCCION (`buildOptimizacionRutaService`), con la credencial de la
+    // empresa del job doblada a «sin configurar». Solo la base y la red son dobles.
+    const { rutas, findParadasEnReparto } = armarCadena({});
+    REPOS.rutas = rutas;
+    REPOS.paradas = { findParadasEnReparto };
+    const leer = vi.fn(async () => ({ estado: "sin_configurar" as const }));
+    const credenciales = { leer, marcarRechazo: vi.fn(async () => {}) } as unknown as ICredencialesIntegracion;
+    const red = vi.fn();
+    const handler = crearOptimizacionRutaHandler(
+      buildOptimizacionRutaService(() => T0, { credenciales, fetchImpl: red as unknown as typeof fetch }),
+    );
+
+    // El job NO muere: el handler resuelve y la cola lo completa.
+    await expect(conEmpresa("org-a", () => handler(job()))).resolves.toBeUndefined();
+
+    // Orden local, con TODAS las paradas.
+    const persistida = rutas.reemplazarSecuencia.mock.calls[0][1] as string[];
+    expect([...persistida].sort()).toEqual(["o1", "o2", "o3"]);
+    expect(metaDe(rutas).secuenciaFuente).toBe("local");
+    expect(rutas.marcarDesactualizada).not.toHaveBeenCalled();
+    // Sin red: ni token, ni optimizeTours, ni trazado de Routes.
+    expect(red).not.toHaveBeenCalled();
+    // Y se pregunto a la empresa del job, no a otra cosa.
+    expect(leer).toHaveBeenCalledWith("optimizacion_rutas");
   });
 });

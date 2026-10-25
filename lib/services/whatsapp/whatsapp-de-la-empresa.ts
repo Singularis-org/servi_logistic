@@ -6,15 +6,18 @@
 // action o un route con sesion, de la cookie, igual que hace la extension del cliente. La lectura y
 // la marca de rechazo se hacen en `conEmpresa` de ESA empresa: la credencial que se descifra y la
 // fila que se marca no pueden ser de otra.
-import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
 import { fetchQueVigilaRechazo } from "@/lib/clients/whatsapp-rechazo-credencial";
 import { whatsappConfigDe, WhatsappNoConfiguradoError, type WhatsappConfig } from "@/lib/config/whatsapp";
-import { BovedaIntegraciones } from "@/lib/crypto/boveda-integraciones";
-import { conEmpresa, contextoActual, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
-import { getPrismaClient } from "@/lib/db/prisma-client";
+import { conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
-import { IntegracionRepository } from "@/lib/repositories/IntegracionRepository";
-import { CredencialesIntegracionService } from "@/lib/services/CredencialesIntegracionService";
+import {
+  credencialesIntegracionReales,
+  empresaEnCurso as empresaEnCursoDe,
+} from "@/lib/services/integraciones/credencial-de-la-empresa";
+
+// Las piezas comunes viven en `credencial-de-la-empresa.ts` desde que Maps, rutas y el asistente
+// tambien las usan; se re-exportan para no mover a quien ya las importaba de aqui.
+export { credencialesIntegracionReales };
 
 /** Todo lo que un cliente de Meta necesita de la empresa. */
 export interface WhatsappDeLaEmpresa {
@@ -37,25 +40,9 @@ export interface WhatsappDeLaEmpresaDeps {
   log?: { warn(mensaje: string): void };
 }
 
-/** El lector real de credenciales. Sin cache a proposito (R28): cada uso va a la base. */
-export function credencialesIntegracionReales(): ICredencialesIntegracion {
-  return new CredencialesIntegracionService({
-    repo: new IntegracionRepository(getPrismaClient()),
-    cifrador: new BovedaIntegraciones(),
-  });
-}
-
-/**
- * La empresa en curso. En plataforma no hay empresa a la que pedirle la credencial, y prestar la de
- * otra es justo lo que SL-36 prohibe: falla cerrado, como cualquier operacion de negocio.
- */
-export async function empresaEnCurso(empresaDeLaSesion: () => Promise<string | null> = empresaDeLaPeticion): Promise<string> {
-  const contexto = contextoActual();
-  if (contexto?.tipo === "empresa") return contexto.organizacionId;
-  if (contexto?.tipo === "plataforma") throw new EmpresaNoResuelta("Integracion", "whatsapp");
-  const organizacionId = await empresaDeLaSesion();
-  if (organizacionId === null) throw new EmpresaNoResuelta("Integracion", "whatsapp");
-  return organizacionId;
+/** La empresa en curso para WhatsApp: la regla comun de `credencial-de-la-empresa.ts`. */
+export function empresaEnCurso(empresaDeLaSesion?: () => Promise<string | null>): Promise<string> {
+  return empresaEnCursoDe("whatsapp", empresaDeLaSesion);
 }
 
 /**

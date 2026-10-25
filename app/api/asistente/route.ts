@@ -15,6 +15,10 @@ import { leerCatalogoAyuda } from "@/lib/ayuda/catalogo";
 import { AnthropicAsistenteClient } from "@/lib/clients/anthropic-asistente";
 import { AsistenteUsoRepository } from "@/lib/repositories/AsistenteUsoRepository";
 import { AsistenteService } from "@/lib/services/AsistenteService";
+import {
+  asistenteDeLaEmpresa,
+  type AsistenteDeLaEmpresa,
+} from "@/lib/services/integraciones/asistente-de-la-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import {
   loadAsistenteConfig,
@@ -29,6 +33,8 @@ import {
 import { CONTENT_TYPE_NDJSON, serializarEvento } from "@/lib/asistente/protocolo";
 import type { EventoAsistente } from "@/lib/asistente/protocolo";
 import type { ActorAsistente, IAsistenteService } from "@/lib/interfaces/services/IAsistenteService";
+import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsistenteUsoRepository";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 /**
@@ -117,18 +123,41 @@ function imagenesDeLaPeticion(mensajes: readonly { imagenes?: readonly unknown[]
 export interface AsistenteRouteDeps {
   getActor?: () => Promise<Actor | null>;
   service?: IAsistenteService;
+  /**
+   * SL-36: las piezas del servicio REAL que un test puede doblar sin doblar el servicio entero, para
+   * medir la composición de verdad (de qué empresa sale la clave, con qué `fetch` se llama, si se
+   * cuenta el uso). `fetchImpl` es el `fetch` base del proveedor: con él, el test no sale a la red.
+   */
+  credenciales?: ICredencialesIntegracion;
+  empresaDeLaSesion?: () => Promise<string | null>;
+  fetchImpl?: typeof fetch;
+  usoRepo?: IAsistenteUsoRepository;
 }
 
-/** Compone el servicio real. Es el ÚNICO sitio donde se decide de dónde salen los documentos. */
-function construirServicio(): IAsistenteService {
+/**
+ * Compone el servicio real. Es el ÚNICO sitio donde se decide de dónde salen los documentos y, desde
+ * SL-36 (R23), de qué empresa sale la clave: la de la sesión, nunca una variable de entorno. Sin
+ * asistente en la empresa el servicio recibe `null` y responde `sin_credencial` sin contar la
+ * consulta (R27).
+ */
+async function construirServicio(deps: AsistenteRouteDeps): Promise<IAsistenteService> {
   const config = loadAsistenteConfig();
+  const asistente: AsistenteDeLaEmpresa | null = await asistenteDeLaEmpresa({
+    credenciales: deps.credenciales,
+    empresaDeLaSesion: deps.empresaDeLaSesion,
+    fetchBase: deps.fetchImpl,
+  });
   return new AsistenteService({
-    proveedor: new AnthropicAsistenteClient({
-      apiKey: config.ANTHROPIC_API_KEY,
-      modelo: config.ASISTENTE_MODELO,
-      timeoutMs: config.ASISTENTE_TIMEOUT_MS,
-    }),
-    usoRepo: new AsistenteUsoRepository(getPrismaClient()),
+    proveedor:
+      asistente === null
+        ? null
+        : new AnthropicAsistenteClient({
+            apiKey: asistente.claveApi,
+            modelo: config.ASISTENTE_MODELO,
+            timeoutMs: config.ASISTENTE_TIMEOUT_MS,
+            fetchImpl: asistente.fetchImpl,
+          }),
+    usoRepo: deps.usoRepo ?? new AsistenteUsoRepository(getPrismaClient()),
     leerCatalogo: leerCatalogoAyuda,
     maxConsultasDia: config.ASISTENTE_MAX_CONSULTAS_DIA,
   });
@@ -139,8 +168,10 @@ function construirServicio(): IAsistenteService {
  * proveedor ni su error crudo** (R21), y ninguno es un 500 mudo (R20): los dos dicen qué pasó y
  * qué puede hacer la persona.
  */
+// SL-36 (R27): la clave es de cada empresa; el texto dice que fue la EMPRESA la que no lo configuró,
+// no «este entorno», que la persona no puede arreglar ni pedir a nadie que arregle.
 const MSG_SIN_CREDENCIAL =
-  "El asistente todavía no está configurado en este entorno. Avisá a la oficina; mientras tanto podés abrir la ayuda de la pantalla.";
+  "Tu empresa todavía no configuró el asistente. Avisá a la oficina; mientras tanto podés abrir la ayuda de la pantalla.";
 const MSG_PROVEEDOR_CAIDO =
   "El asistente no está disponible en este momento. Probá de nuevo en un minuto; la ayuda de la pantalla sigue abierta.";
 
@@ -180,7 +211,7 @@ export async function handleAsistente(
     // cookie y resuelve el rol contra la base. En este archivo no hay ninguna otra asignación de
     // `rol`, y no puede haberla: el cuerpo ya se rechazó si traía uno.
     const quien: ActorAsistente = { usuarioId: actor.usuarioId, rol: actor.rol };
-    const servicio = deps.service ?? construirServicio();
+    const servicio = deps.service ?? (await construirServicio(deps));
     const resultado = await servicio.responder({
       actor: quien,
       mensajes: leido.data.mensajes,

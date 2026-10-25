@@ -330,7 +330,7 @@ describe("credencial y saneo de mensajes", () => {
     const cliente = new GoogleRoutesClient({
       fetchImpl,
       getToken: async () => {
-        throw new RutaNoConfiguradoError("GOOGLE_WIF_POOL_ID");
+        throw new RutaNoConfiguradoError("sin_configurar");
       },
     });
     await expect(

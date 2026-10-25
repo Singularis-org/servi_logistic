@@ -7,11 +7,10 @@ import { ANALITICA_CACHE_TTL_SEGUNDOS } from "@/lib/config/analitica-cache";
 // Feature 128 / T4.1 — GUARDIA DE R17 (D4): el TTL vive en UNA sola constante.
 //
 // ⚠ EL CENSO ES **POR AMBITO**, NO GLOBAL, Y ESO SE COMPROBO ANTES DE FIJAR EL VALOR. El
-// literal `3600` ya aparece cuatro veces en `lib/` por motivos completamente ajenos a esta
-// feature:
+// literal `3600` ya aparece en `lib/` por motivos completamente ajenos a esta feature (eran
+// cuatro; SL-36 borro `lib/auth/google-adc-token.ts` con el modo ADC):
 //
 //   lib/auth/google-sa-token.ts:42   ASSERTION_TTL_S (vida del JWT de assertion de Google)
-//   lib/auth/google-adc-token.ts:28  IMPERSONATION_LIFETIME_S
 //   lib/config/etiquetas.ts:52       comentario del default del TTL de URL firmada
 //   lib/config/etiquetas.ts:69       readPositiveInt("ETIQUETAS_SIGNED_URL_TTL_SECONDS", 3600)
 //
@@ -82,12 +81,11 @@ describe("R17 · el TTL vive en una sola constante dentro del ambito de la anali
     expect(AMBITO.flatMap((d) => archivos(d)).length).toBeGreaterThan(30);
   });
 
-  it("el censo NO se sale de su ambito: los cuatro `3600` ajenos siguen ahi y no le importan", () => {
+  it("el censo NO se sale de su ambito: los `3600` ajenos siguen ahi y no le importan", () => {
     // Escrito a proposito como asercion y no como comentario: si alguien «arregla» el guardia
     // ampliandolo a todo `lib/`, esto documenta exactamente lo que se rompe.
     const ajenas = [
       "lib/auth/google-sa-token.ts",
-      "lib/auth/google-adc-token.ts",
       "lib/config/etiquetas.ts",
     ];
     for (const rel of ajenas) {
