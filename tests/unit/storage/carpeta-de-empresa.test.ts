@@ -24,6 +24,8 @@ describe("R17 — una ruta invalida se rechaza con RutaDeAlmacenInvalida", () =>
     ["segmento .", "orden-1/./foto.jpg"],
     ["segmento ..", "../" + ORG_A + "/foto.jpg"],
     ["solo ..", ".."],
+    ["segmento .. en medio", "orden-1/../../" + ORG_A + "/foto.jpg"],
+    ["segmento .. al final", "orden-1/.."],
   ])("%s", (_caso, ruta) => {
     expect(() => rutaEnCarpeta(ORG_B, ruta)).toThrow(RutaDeAlmacenInvalida);
   });

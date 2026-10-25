@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { arrancarStorageFalso } from "@/e2e/_storage-falso/servidor.mjs";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { RutaDeAlmacenInvalida } from "@/lib/storage/carpeta-de-empresa";
 import { SupabaseAlmacenDescargas, type AlmacenStorageClientLike } from "@/lib/storage/SupabaseAlmacenDescargas";
 import { SupabaseAlmacenEnviosWhatsapp, type EnviosStorageClientLike } from "@/lib/storage/SupabaseAlmacenEnviosWhatsapp";
 import { SupabaseFileStorage, type StorageClientLike } from "@/lib/storage/SupabaseFileStorage";
@@ -137,6 +138,33 @@ describe("R16 — desde B, la ruta de un objeto de A se comporta como inexistent
       conEmpresa(B, () => archivos(EVIDENCIAS).upload({ path: `../${A}/${ruta}`, bytes: texto("pisado"), contentType: "image/jpeg" })),
     ).rejects.toThrow(/Ruta de almacen invalida/);
     expect(await bytesEnBucket(EVIDENCIAS, `${A}/${ruta}`)).toBe("de A");
+  });
+
+  it("firmar desde B `x/../../<A>/<ruta>` (el .. en medio) se rechaza sin llamar a Storage, y el de A queda intacto", async () => {
+    const ruta = nuevaRuta();
+    await conEmpresa(A, () => archivos(EVIDENCIAS).upload({ path: ruta, bytes: texto("de A, en medio"), contentType: "image/jpeg" }));
+
+    // El mismo SDK real, con un contador de las operaciones de firma (`from` solo arma el cliente del
+    // bucket y no habla con Storage): si la ruta llegara a Storage, subiria.
+    let llamadas = 0;
+    const espiado = {
+      from: (bucket: string) => {
+        const api = cliente.storage.from(bucket);
+        return {
+          createSignedUrl: (clave: string, segundos: number) => {
+            llamadas++;
+            return api.createSignedUrl(clave, segundos);
+          },
+        };
+      },
+    };
+    const firmadorEspiado = new SupabaseSignedUrlProvider(espiado as unknown as SignedUrlClientLike, EVIDENCIAS);
+
+    await expect(conEmpresa(B, () => firmadorEspiado.createSignedUrl(`x/../../${A}/${ruta}`, 60))).rejects.toThrow(
+      RutaDeAlmacenInvalida,
+    );
+    expect(llamadas).toBe(0);
+    expect(await bytesEnBucket(EVIDENCIAS, `${A}/${ruta}`)).toBe("de A, en medio");
   });
 });
 
