@@ -63,13 +63,13 @@
 
 ## T5. Services
 
-- [ ] **T5.1** `IntegracionesService`: las seis operaciones de design §4 y el límite de design §6.
+- [x] **T5.1** `IntegracionesService`: las seis operaciones de design §4 y el límite de design §6.
   - R6 va en la primera línea de cada operación.
   - Hecho cuando: los tests de autorización y de cada operación están en verde.
   - Se comprueba que una mutación que borra la línea de R6 deja en rojo el test de autorización.
-- [ ] **T5.2** `CredencialesIntegracionService`: `leer` y `marcarRechazo` (design §4).
-- [ ] **T5.3** `WebhookWhatsappService`: GET y POST (design §10).
-- [ ] **T5.4** `RecifradoIntegracionesService` + `scripts/recifrar-integraciones.ts` + el script
+- [x] **T5.2** `CredencialesIntegracionService`: `leer` y `marcarRechazo` (design §4).
+- [x] **T5.3** `WebhookWhatsappService`: GET y POST (design §10).
+- [x] **T5.4** `RecifradoIntegracionesService` + `scripts/recifrar-integraciones.ts` + el script
   `integraciones:recifrar` en `package.json` (design §12).
 - [x] **T5.5** Catálogo de servicios `lib/types/integraciones.ts` (design §7, §8), con la marca
   propuesta.
@@ -118,7 +118,7 @@
 
 ## T8. Guías
 
-- [ ] **T8.1** [P] Los cinco documentos de `docs/ayuda/oficina/` (design §14), con `fuentes` que
+- [x] **T8.1** [P] Los cinco documentos de `docs/ayuda/oficina/` (design §14), con `fuentes` que
   citan el código y la documentación oficial de cada proveedor.
 - [ ] **T8.2** [P] Revisión humana de los pasos de las consolas de terceros.
   - Hecho cuando: el humano da el OK escrito en `progress/features/SL-36.md`.
