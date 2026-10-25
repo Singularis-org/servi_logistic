@@ -4,6 +4,8 @@ import path from "node:path";
 
 import type { PurgaDescargasResultado } from "@/lib/interfaces/services/IPurgaDescargasService";
 import type { IAlmacenDescargas } from "@/lib/interfaces/external/IAlmacenDescargas";
+import type { ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
+import type { AlmacenStorageClientLike, ObjetoListado } from "@/lib/storage/SupabaseAlmacenDescargas";
 
 // Ficha 470 (T2.3, R17–R20) — el cron de purga de las descargas temporales. Los dobles del composition
 // root impiden que ningun camino construya el Storage real (el `.env` local apunta a PRODUCCION).
@@ -11,7 +13,12 @@ const infra = vi.hoisted(() => ({
   almacenCtor: vi.fn<(...args: unknown[]) => void>(),
   serviceCtor: vi.fn<(...args: unknown[]) => void>(),
   ejecutar: vi.fn<(now: Date) => Promise<PurgaDescargasResultado>>(async () => ({ objetosBorrados: 0, quedaPendiente: false })),
+  // SL-19 (R21): el GET real recorre las empresas con `paraCadaEmpresa`, que las lista con este
+  // cliente. Una sola empresa: el composition root se sigue construyendo una vez.
+  prisma: vi.fn<() => unknown>(() => ({ organizacion: { findMany: async () => [{ id: "org-doble" }] } })),
 }));
+
+vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: infra.prisma }));
 
 vi.mock("@/lib/storage/SupabaseAlmacenDescargas", () => ({
   SupabaseAlmacenDescargas: class {
@@ -110,6 +117,7 @@ describe("R17 — el corte es now − RETENCION_MINUTOS exacto", () => {
       expect(infra.almacenCtor).toHaveBeenCalledWith(undefined, "descargas");
       expect(infra.ejecutar).toHaveBeenCalledTimes(1);
       expect(infra.ejecutar.mock.calls[0][0]).toBeInstanceOf(Date);
+      expect(await res.json()).toEqual({ objetosBorrados: 0, quedaPendiente: false, empresas: { procesadas: 1, fallidas: [] } });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -132,5 +140,121 @@ describe("R18 — vercel.json la programa al menos cada 15 minutos", () => {
     expect(m, `cadencia no reconocida: ${entradas[0].schedule}`).not.toBeNull();
     const cada = m![1] === "*" ? 1 : Number(m![1]);
     expect(cada).toBeLessThanOrEqual(15);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SL-19 · R21 — una purga por empresa, con el almacen y el servicio reales    */
+/* -------------------------------------------------------------------------- */
+
+const ORG_A = "11111111-1111-4111-8111-111111111111";
+const ORG_B = "22222222-2222-4222-8222-222222222222";
+const AHORA = new Date("2026-10-25T12:00:00.000Z");
+const VIEJO = "2026-10-25T09:00:00.000Z"; // fuera de la retencion de 60 min
+const RECIENTE = "2026-10-25T11:50:00.000Z"; // dentro
+
+/**
+ * Bucket en memoria con rutas completas. `list` devuelve los hijos directos del prefijo, como
+ * Storage; `listaFalla` hace fallar el listado de la carpeta de esa empresa.
+ */
+function bucketDoble(inicial: Record<string, string>, listaFalla?: string) {
+  const objetos = new Map(Object.entries(inicial));
+  const list = vi.fn(async (prefijo: string) => {
+    if (listaFalla !== undefined && prefijo.startsWith(`${listaFalla}/`)) {
+      return { data: null, error: { message: "timeout", statusCode: "500" } };
+    }
+    const data: ObjetoListado[] = [...objetos.entries()]
+      .filter(([k]) => k.startsWith(`${prefijo}/`) && !k.slice(prefijo.length + 1).includes("/"))
+      .map(([k, creado]) => ({ name: k.slice(prefijo.length + 1), id: k, created_at: creado }))
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+    return { data, error: null };
+  });
+  const remove = vi.fn(async (paths: string[]) => {
+    for (const p of paths) objetos.delete(p);
+    return { data: [], error: null };
+  });
+  const cliente = {
+    from: () => ({ list, remove, upload: vi.fn(), createSignedUrl: vi.fn() }),
+    createBucket: vi.fn(),
+  } as unknown as AlmacenStorageClientLike;
+  return { cliente, list, remove, restantes: () => [...objetos.keys()].sort() };
+}
+
+async function serviceReal(cliente: AlmacenStorageClientLike) {
+  const { SupabaseAlmacenDescargas } = await vi.importActual<typeof import("@/lib/storage/SupabaseAlmacenDescargas")>(
+    "@/lib/storage/SupabaseAlmacenDescargas",
+  );
+  const { PurgaDescargasService } = await vi.importActual<typeof import("@/lib/services/PurgaDescargasService")>(
+    "@/lib/services/PurgaDescargasService",
+  );
+  return new PurgaDescargasService(new SupabaseAlmacenDescargas(cliente, "descargas"), () => ({ RETENCION_MINUTOS: 60 }));
+}
+
+const empresasDoble = (ids: string[]): ClienteDeOrganizaciones => ({
+  organizacion: { findMany: vi.fn(async () => ids.map((id) => ({ id }))) },
+});
+
+describe("SL-19 · R21 — la purga corre en la carpeta de cada empresa", () => {
+  const SEMBRADO = {
+    [`${ORG_A}/tmp/a1.json.gz`]: VIEJO,
+    [`${ORG_A}/tmp/a2.json.gz`]: VIEJO,
+    [`${ORG_B}/tmp/b1.json.gz`]: VIEJO,
+    [`${ORG_B}/tmp/b2.json.gz`]: RECIENTE,
+    // Lo de antes de SL-19, fuera de toda carpeta: no es de ninguna empresa y la purga no lo alcanza.
+    "tmp/raiz.json.gz": VIEJO,
+  };
+
+  it("dos empresas: purga lo vencido de cada carpeta y responde con los conteos sumados", async () => {
+    const b = bucketDoble(SEMBRADO);
+    const res = await handlePurgaDescargas(conAuth(SECRETO), {
+      getSecret: () => SECRETO,
+      now: () => AHORA,
+      service: await serviceReal(b.cliente),
+      empresas: empresasDoble([ORG_A, ORG_B]),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ objetosBorrados: 3, quedaPendiente: false, empresas: { procesadas: 2, fallidas: [] } });
+    expect(b.restantes()).toEqual([`${ORG_B}/tmp/b2.json.gz`, "tmp/raiz.json.gz"]);
+    expect(b.list.mock.calls.map((c) => c[0])).toEqual([`${ORG_A}/tmp`, `${ORG_B}/tmp`]);
+  });
+
+  it("el fallo de una empresa no frena a la otra: 200, la otra purgada y la fallida en el resumen", async () => {
+    const consola = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const b = bucketDoble(SEMBRADO, ORG_A);
+      const res = await handlePurgaDescargas(conAuth(SECRETO), {
+        getSecret: () => SECRETO,
+        now: () => AHORA,
+        service: await serviceReal(b.cliente),
+        empresas: empresasDoble([ORG_A, ORG_B]),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ objetosBorrados: 1, quedaPendiente: false, empresas: { procesadas: 1, fallidas: [ORG_A] } });
+      expect(b.restantes()).toEqual([
+        `${ORG_A}/tmp/a1.json.gz`,
+        `${ORG_A}/tmp/a2.json.gz`,
+        `${ORG_B}/tmp/b2.json.gz`,
+        "tmp/raiz.json.gz",
+      ]);
+    } finally {
+      consola.mockRestore();
+    }
+  });
+
+  it("sin empresas: 200 en cero, sin tocar Storage", async () => {
+    const b = bucketDoble(SEMBRADO);
+    const res = await handlePurgaDescargas(conAuth(SECRETO), {
+      getSecret: () => SECRETO,
+      now: () => AHORA,
+      service: await serviceReal(b.cliente),
+      empresas: empresasDoble([]),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ objetosBorrados: 0, quedaPendiente: false, empresas: { procesadas: 0, fallidas: [] } });
+    expect(b.list).not.toHaveBeenCalled();
+    expect(b.remove).not.toHaveBeenCalled();
   });
 });

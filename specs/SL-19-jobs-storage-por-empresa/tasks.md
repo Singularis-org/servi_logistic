@@ -84,9 +84,9 @@
 
 ## T7. Purga de descargas por empresa (depende de T6) [P]
 
-- [ ] **T7.1** `app/api/cron/purga-descargas/route.ts` con `paraCadaEmpresa` y `deps.empresas`
+- [x] **T7.1** `app/api/cron/purga-descargas/route.ts` con `paraCadaEmpresa` y `deps.empresas`
   (`design.md > §3.4`).
-- [ ] **T7.2** `tests/unit/api/cron-purga-descargas.test.ts` ampliado y `purga-descargas` añadido a
+- [x] **T7.2** `tests/unit/api/cron-purga-descargas.test.ts` ampliado y `purga-descargas` añadido a
   `tests/unit/cron/crons-sin-empresas.test.ts`: dos empresas, una que falla, ninguna (R21).
   - Hecho cuando: está verde, y en rojo si se quita `paraCadaEmpresa`.
 
