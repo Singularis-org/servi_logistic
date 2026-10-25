@@ -137,7 +137,6 @@ async function ejecutar<R extends { status: string }>(
 /**
  * R5, R34: los cuatro servicios de la empresa del maestro, en el orden de la pantalla. La usa el
  * Server Component de la página; nunca trae secretos ni el token (los quita el service).
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function listarIntegraciones(deps: IntegracionesActionDeps = {}): Promise<ListarIntegracionesAccion> {
   return ejecutar("listar", deps, (s, actor) => s.listar(actor));
@@ -145,7 +144,6 @@ export async function listarIntegraciones(deps: IntegracionesActionDeps = {}): P
 
 /**
  * R12, R13, R16, R18: alta con prueba previa. Entrada `{ servicio, campos }`.
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function altaIntegracion(input: unknown, deps: IntegracionesActionDeps = {}): Promise<AltaIntegracionAccion> {
   const r = entradaAlta.safeParse(input);
@@ -161,7 +159,6 @@ export async function altaIntegracion(input: unknown, deps: IntegracionesActionD
 
 /**
  * R13, R14, R16: edición; un secreto vacío conserva el guardado. Entrada `{ id, campos }`.
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function editarIntegracion(input: unknown, deps: IntegracionesActionDeps = {}): Promise<EditarIntegracionAccion> {
   const r = entradaEdicion.safeParse(input);
@@ -177,7 +174,6 @@ export async function editarIntegracion(input: unknown, deps: IntegracionesActio
 
 /**
  * R15, R16: «Probar conexión». Revalida también si sale mal: la prueba escribe el estado (design §4).
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function probarIntegracion(input: unknown, deps: IntegracionesActionDeps = {}): Promise<ProbarIntegracionAccion> {
   const id = idDe(input);
@@ -191,7 +187,6 @@ export async function probarIntegracion(input: unknown, deps: IntegracionesActio
 
 /**
  * R18: token nuevo, devuelto una sola vez con la URL del webhook. Sin revalidar (ver cabecera).
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function regenerarTokenIntegracion(
   input: unknown,
@@ -203,7 +198,6 @@ export async function regenerarTokenIntegracion(
 
 /**
  * R32: borra la integración y sus credenciales. La confirmación con el aviso de R31 es de la UI.
- * @sin-superficie SL-36: la pagina /configuracion/integraciones que la monta llega en T7.2 (frontend_dev); se quita al montarla.
  */
 export async function desconectarIntegracion(
   input: unknown,

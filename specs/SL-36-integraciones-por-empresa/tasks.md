@@ -112,7 +112,7 @@
   existentes de `app/(app)/configuracion/` (p. ej. `configuracion/api`, `configuracion/geografia`).
   Carlos la revisa en el PR; un rediseño posterior es otra ficha.
 - [x] **T7.1** `lib/actions/integraciones.ts`, con las Server Actions y el composition root.
-- [ ] **T7.2** Página, tarjetas, formularios, diálogo de desconexión, revelado único del token y menú
+- [x] **T7.2** Página, tarjetas, formularios, diálogo de desconexión, revelado único del token y menú
   (`lib/auth/menu-visibility.ts`), siguiendo los patrones de `app/(app)/configuracion/` (T7.0 dispensada).
   - Hecho cuando: los tests de componentes de R18 (token una vez), R31, R34, R35 y R36 están en verde.
 
