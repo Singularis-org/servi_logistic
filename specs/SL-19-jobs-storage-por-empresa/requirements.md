@@ -161,6 +161,11 @@ tablas, sin RLS.
 
 Ninguna bloquea el spec: cada una trae la opción por la que va el diseño mientras no haya respuesta.
 
+> **Cerradas el 2026-10-25.** Spec aprobado por Carlos.
+> - (1) La `dedupe_key` queda **global**: es técnica, el leader la cierra con la recomendación del design §2.4.
+> - (2) Carlos: los archivos de QA y dev **se mueven** con el comando. Correrlo contra QA sigue siendo puerta humana (T10.4).
+> - (3) Queda abierta como comprobación: si en el panel de Supabase aparece un bucket que no está en la lista, se reporta.
+
 1. **¿La clave de deduplicación de la cola pasa a ser por empresa?** SL-17 apuntó «`dedupe_key` por
    empresa» entre lo que le quedaba a SL-19. Propongo **no cambiarla**. Hoy toda clave que se encola
    desde una empresa lleva el id de una fila suya (orden, envío, mensajero, notificación…), y esos ids
