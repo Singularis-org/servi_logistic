@@ -279,8 +279,8 @@ este diseño.
 - **C. Compatibilidad de lectura: si el objeto no está en la carpeta, buscarlo en la raíz.**
   **Descartada.** Reabre exactamente el agujero. Desde B, una ruta `x` que no exista en `B/x` caería
   en el `x` de la raíz, que puede ser un archivo antiguo de A. Por eso lo guardado se mueve (§4), y
-  durante la ventana entre el despliegue y el comando un archivo antiguo da «no encontrado» en vez
-  de servirse a quien no debe.
+  durante la ventana entre el despliegue y el comando un archivo antiguo no se sirve a nadie: falla,
+  como se detalla en §4, en vez de servirse a quien no debe.
 - **D. Políticas de Supabase sobre `storage.objects`** (RLS por la primera carpeta del nombre).
   **Descartada.** La app firma y sube con el service role, que se salta esas políticas. Usarlas
   exigiría un JWT de Supabase por usuario, que es otro modelo de autenticación. Los buckets siguen
@@ -329,7 +329,21 @@ este diseño.
 3. con `--aplicar`;
 4. otra vez sin `--aplicar`: todo en 0 salvo los huérfanos.
 
-Entre el paso 1 y el 3, los archivos antiguos dan «no encontrado» (alternativa C). En producción
+Entre el paso 1 y el 3, un archivo antiguo sigue en la raíz y la app ya no lo alcanza (alternativa
+C). No siempre da «no encontrado»; según quién lo pide (leído del código en la revisión, no ejecutado
+contra QA):
+
+- **firma en lote** (evidencias de cierres, incidentes, mis asignaciones, devoluciones, API de
+  órdenes): la ruta se omite y la fila sale sin imagen ni enlace, sin error;
+- **firma de un objeto** (comprobantes de wallet, abono, aporte y pago por cuenta; documentos de
+  postulación; PDF de envíos por WhatsApp): el adaptador lanza y el usuario recibe el error genérico
+  controlado (`withErrorHandler`/`ejecutar`), sin caída del proceso;
+- **API de PDF de etiquetas** (`ApiPdfEtiquetaService.porOrden`/`porCarga`): con la ruta ya guardada
+  re-firma, falla y responde error; no regenera el PDF;
+- **envíos de WhatsApp con PDF guardado y sin `mediaId`**: la lectura falla y el job se reintenta con
+  backoff; si la ventana dura más que sus reintentos, acaba en dead-letter.
+
+Por eso el comando se corre justo después del despliegue. En producción
 debería salir todo en 0 en el paso 2; si no, se para y se avisa. **Correr el comando contra QA o
 producción es una puerta humana** (tasks T10.4): el agente no lo hace sin un OK explícito.
 
