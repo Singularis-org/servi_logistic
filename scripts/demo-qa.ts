@@ -123,6 +123,25 @@ function urlDelDueno(env: EntornoDemoQa): string | undefined {
   return env.DIRECT_URL?.trim() ? env.DIRECT_URL : env.DATABASE_URL;
 }
 
+/**
+ * Los pasos reales de la demo. Exportados para que el test los envuelva (cada paso que escribe
+ * usuarios y empresas, bajo el lock de escritura de los tests) sin copiarlos.
+ */
+export async function cargarPasosReales(): Promise<PasosDemo> {
+  const borrar = await import("./demo-qa/borrar");
+  const receta = await import("./demo-qa/receta");
+  return {
+    comprobarMarca: (dueno) => comprobarMarcaDeQa(dueno),
+    comprobarSlugs: (dueno) => borrar.comprobarSlugs(dueno),
+    borrar: (dueno) => borrar.borrarEmpresasDemo(dueno),
+    crearEmpresa: (dueno, clave, contrasena) => receta.crearEmpresaDemo({ dueno }, clave, { contrasena }),
+    comprobarEmpresa: (dueno, organizacionId, estadosPorDecision) =>
+      receta.comprobarEmpresaDemo({ dueno }, organizacionId, { estadosPorDecision }),
+    empresasDemo: (dueno) => borrar.empresasDemo(dueno),
+    novedadInternaConCorteDeManana: receta.NOVEDAD_INTERNA_CON_CORTE_DE_MANANA,
+  };
+}
+
 function efectosReales(): EfectosDemo {
   return {
     argumentos: process.argv.slice(2),
@@ -160,20 +179,7 @@ function efectosReales(): EfectosDemo {
         },
       };
     },
-    cargarPasos: async () => {
-      const borrar = await import("./demo-qa/borrar");
-      const receta = await import("./demo-qa/receta");
-      return {
-        comprobarMarca: (dueno) => comprobarMarcaDeQa(dueno),
-        comprobarSlugs: (dueno) => borrar.comprobarSlugs(dueno),
-        borrar: (dueno) => borrar.borrarEmpresasDemo(dueno),
-        crearEmpresa: (dueno, clave, contrasena) => receta.crearEmpresaDemo({ dueno }, clave, { contrasena }),
-        comprobarEmpresa: (dueno, organizacionId, estadosPorDecision) =>
-          receta.comprobarEmpresaDemo({ dueno }, organizacionId, { estadosPorDecision }),
-        empresasDemo: (dueno) => borrar.empresasDemo(dueno),
-        novedadInternaConCorteDeManana: receta.NOVEDAD_INTERNA_CON_CORTE_DE_MANANA,
-      };
-    },
+    cargarPasos: cargarPasosReales,
     candado: CANDADO_DE_POSTGRES,
     salida: { log: (l) => console.log(l), error: (l) => console.error(l) },
     salir: (codigo) => {

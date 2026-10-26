@@ -9,6 +9,11 @@
 // con el código que se prueba. Sin base, el describe se salta; con base, nada retorna temprano y
 // cada «no cambió» va precedido de su control de no vacuidad.
 //
+// LOCK DE ESCRITURA REAL: cada ventana que commitea usuarios o empresas (sembrar, borrar, limpiar, la
+// tabla sintética de R8) lo toma, como pide `_postgres-real.ts`; los archivos que cuentan la base
+// entera bajo él (`arranque-superadmin`) caían si se commiteaba a mitad de su caso. Por ventana, no
+// por archivo (ver `demo-qa.test.ts`). Orden: turno de la demo → escritura real.
+//
 // Mutaciones medidas (progress/impl_SL-43.md): D9.3 (1) quitar el filtro `es_demo` de
 // `empresasDemo`; (2) borrar la base antes que Storage; (9) sacar `orden` de la pasada.
 
@@ -33,7 +38,8 @@ import {
 
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -110,6 +116,10 @@ async function temporalesEnDoble(organizacionId: string): Promise<number> {
  * colgados de `usuario`), y dos objetos en el doble: la guía que nombra la orden y un temporal.
  */
 async function sembrar(etiqueta: string, demo: boolean): Promise<Sembrada> {
+  return bajoLockDeEscrituraReal(() => sembrarSinLock(etiqueta, demo));
+}
+
+async function sembrarSinLock(etiqueta: string, demo: boolean): Promise<Sembrada> {
   const organizacionId = (await crearOrganizacion(base, { nombre: `SL-43 borrado ${etiqueta}` })).id;
   creadas.push(organizacionId);
   if (demo) await base.organizacion.update({ where: { id: organizacionId }, data: { esDemo: true } });
@@ -182,6 +192,10 @@ async function sembrar(etiqueta: string, demo: boolean): Promise<Sembrada> {
  */
 async function limpiar(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
+  await bajoLockDeEscrituraReal(() => limpiarSinLock(ids));
+}
+
+async function limpiarSinLock(ids: string[]): Promise<void> {
   await base.$transaction(
     async (tx) => {
       const usuarios = (await tx.usuario.findMany({ where: { organizacionId: { in: ids } }, select: { id: true } })).map(
@@ -231,7 +245,13 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
       archivos: (bucket) => new SupabaseFileStorage(cliente.storage as unknown as StorageClientLike, bucket),
       descargas: () => new SupabaseAlmacenDescargas(cliente.storage as unknown as AlmacenStorageClientLike, DESCARGAS),
     };
-    // La base de este test no puede traer empresas demo de otro: se borrarían con las de aquí.
+    // La base de este test no puede traer empresas demo de otro: se borrarían con las de aquí. Con el
+    // turno exclusivo tomado, las que haya son restos de una corrida que ya cayó (roja en su archivo):
+    // se quitan por el camino de emergencia, que no es el que se prueba (run 40271163801).
+    const restos = await borrarEmpresasDemoDeEmergencia();
+    // A stdout: el reporter de vitest no enseña el `console` de un archivo que pasa.
+    if (restos > 0) process.stdout.write(`[demo-qa-borrado] beforeAll: quité ${restos} empresas demo que dejó otra corrida
+`);
     expect(await base.organizacion.count({ where: { esDemo: true } })).toBe(0);
   }, 660_000);
 
@@ -240,7 +260,14 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
       const quedan = (await base.organizacion.findMany({ where: { id: { in: creadas } }, select: { id: true } })).map(
         (o) => o.id,
       );
-      await limpiar(quedan);
+      try {
+        await limpiar(quedan);
+      } finally {
+        // Ninguna empresa demo sobrevive al archivo, aunque `limpiar` o un caso hayan caído a mitad.
+        await borrarEmpresasDemoDeEmergencia();
+      }
+      const quedanDemo = await base.organizacion.count({ where: { esDemo: true } });
+      if (quedanDemo > 0) throw new Error(`SL-43: quedan ${quedanDemo} empresas demo vivas: tumbarían otros archivos`);
     } finally {
       await doble?.cerrar();
       await base?.$disconnect();
@@ -257,7 +284,7 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     exigirFamilias(huellaDemo);
     for (const o of [...real.objetos, ...demo.objetos]) expect(await existeEnDoble(o.bucket, o.clave)).toBe(true);
 
-    const r = await borrarEmpresasDemo(base, { almacenes });
+    const r = await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
 
     expect(r.empresas).toEqual([demo.organizacionId]);
     // La demo: ninguna fila en ninguna tabla, ni sus usuarios, ni lo que cuelga de ellos.
@@ -274,31 +301,37 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     for (const o of real.objetos) expect(await existeEnDoble(o.bucket, o.clave)).toBe(true);
   }, 120_000);
 
-  it("R8: una FK que bloquea deja todo como estaba y el error nombra la tabla", async () => {
-    const demo = await sembrar("bloqueada", true);
+  // Las dos acciones, porque llegan con SQLSTATE distinto: `RESTRICT` es 23001 en Postgres 18 y 23503
+  // en 17 (CI); `NO ACTION` es 23503 en los dos, y el adapter deja ese código solo en `originalCode`.
+  // Sin el caso `NO ACTION`, en una base 18 local nadie ve el rojo del run 40271163801.
+  it.each(["RESTRICT", "NO ACTION"])("R8: una FK (%s) que bloquea deja todo como estaba y el error nombra la tabla", async (accion) => {
+    const demo = await sembrar(`bloqueada-${accion === "RESTRICT" ? "r" : "na"}`, true);
     const antes = await huella(demo.organizacionId);
     exigirFamilias(antes);
     const sintetica = `sl43_bloqueo_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    await base.$executeRawUnsafe(
-      `CREATE TABLE "${sintetica}" ("id" text PRIMARY KEY, "orden_id" text NOT NULL REFERENCES "orden"("id") ON DELETE RESTRICT)`,
-    );
-    try {
-      await base.$executeRawUnsafe(`INSERT INTO "${sintetica}" ("id", "orden_id") VALUES ('x', $1)`, demo.ordenId);
-
-      const error = await borrarEmpresasDemo(base, { almacenes }).then(
-        () => null,
-        (e: unknown) => e,
+    // La tabla sintética (DDL), su fila y el borrado bloqueado, en una sola ventana del lock.
+    await bajoLockDeEscrituraReal(async () => {
+      await base.$executeRawUnsafe(
+        `CREATE TABLE "${sintetica}" ("id" text PRIMARY KEY, "orden_id" text NOT NULL REFERENCES "orden"("id") ON DELETE ${accion})`,
       );
-      expect(error).toBeInstanceOf(BorradoDemoBloqueado);
-      expect((error as BorradoDemoBloqueado).tablas).toContain("orden");
-      expect((error as Error).message).toMatch(/\borden\b/);
-      // Nada borrado: ni la organización, ni una fila de ninguna tabla.
-      expect(await huella(demo.organizacionId)).toEqual(antes);
-    } finally {
-      await base.$executeRawUnsafe(`DROP TABLE IF EXISTS "${sintetica}"`);
-    }
+      try {
+        await base.$executeRawUnsafe(`INSERT INTO "${sintetica}" ("id", "orden_id") VALUES ('x', $1)`, demo.ordenId);
+
+        const error = await borrarEmpresasDemo(base, { almacenes }).then(
+          () => null,
+          (e: unknown) => e,
+        );
+        expect(error).toBeInstanceOf(BorradoDemoBloqueado);
+        expect((error as BorradoDemoBloqueado).tablas).toContain("orden");
+        expect((error as Error).message).toMatch(/\borden\b/);
+        // Nada borrado: ni la organización, ni una fila de ninguna tabla.
+        expect(await huella(demo.organizacionId)).toEqual(antes);
+      } finally {
+        await base.$executeRawUnsafe(`DROP TABLE IF EXISTS "${sintetica}"`);
+      }
+    });
     // Sin el bloqueo, la siguiente ejecución la borra (R28: sigue marcada).
-    await borrarEmpresasDemo(base, { almacenes });
+    await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
     expect(await base.organizacion.count({ where: { id: demo.organizacionId } })).toBe(0);
   }, 120_000);
 
@@ -313,7 +346,9 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
       exigirFamilias(antesReal);
       exigirFamilias(antesDemo);
 
-      await expect(borrarEmpresasDemo(base, { almacenes })).rejects.toBeInstanceOf(SlugDemoEnEmpresaReal);
+      await expect(bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }))).rejects.toBeInstanceOf(
+        SlugDemoEnEmpresaReal,
+      );
 
       expect(await huella(real.organizacionId)).toEqual(antesReal);
       expect(await huella(demo.organizacionId)).toEqual(antesDemo);

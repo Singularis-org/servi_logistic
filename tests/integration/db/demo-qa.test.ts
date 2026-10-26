@@ -31,6 +31,16 @@
 // con ese lock tomado 80 s, 6 archivos pequeños que serializan con él caen enteros por timeout de
 // 20 s (9 de 10 casos; sin el lock, solo 2, por la base sin usuarios).
 //
+// PERO SÍ CADA VENTANA QUE CREA O BORRA USUARIOS Y EMPRESAS. Los archivos que cuentan la base
+// entera bajo ese lock (`arranque-superadmin`: «no escribe nada» = mismo `count(*)` de `usuario`)
+// caían si la demo commiteaba a mitad de su caso. Se toma, por una conexión propia, alrededor de
+// cada paso que escribe (`borrar`, `crearEmpresa` de A y de B: `envolverPasos`), de la empresa
+// real del `beforeAll` y del borrado del `afterAll`; el de emergencia lo toma dentro de su
+// transacción. Ventanas de pocos segundos, no de 80 (cada una queda en el log: `ventanas`).
+// ORDEN DE ADQUISICIÓN: turno de la demo (`_exclusion-demo-qa`) → tarifa global (SL-40) → candado
+// de la demo (`servi_logistic:demo-qa`, dentro de `ejecutarDemo`) → escritura real. Nunca al revés:
+// nada pide el turno, la tarifa ni el candado con el de escritura tomado.
+//
 // Mutaciones medidas (design §9.3): 1–8 y 12, anotadas en `progress/impl_SL-43.md`.
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -53,10 +63,9 @@ import { AuthService } from "@/lib/services/AuthService";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { NodemailerEmailSender } from "@/lib/services/email/NodemailerEmailSender";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
-import { ejecutarDemo, type EfectosDemo, type EntornoDemoQa, type PasosDemo } from "@/scripts/demo-qa";
+import { cargarPasosReales, ejecutarDemo, type EfectosDemo, type EntornoDemoQa, type PasosDemo } from "@/scripts/demo-qa";
 import { borrarEmpresasDemo } from "@/scripts/demo-qa/borrar";
 import { DISTRITOS_DEMO, puntoDeOrden } from "@/scripts/demo-qa/geografia";
-import { comprobarMarcaDeQa } from "@/scripts/demo-qa/guardia-entorno";
 import { MOTIVO_CIERRE_SIN_EJECUTAR } from "@/scripts/demo-qa/ubicar-y-cerrar-jobs";
 import { RUTAS_GUARDADAS } from "@/scripts/migrar-storage-a-carpetas";
 
@@ -64,8 +73,9 @@ import { crearEmpresaE2E, crearUsuarioE2E } from "../../fabricas/e2e";
 import { comoApp } from "../../fabricas/organizaciones";
 import { escenarioReparto, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
 import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
 // R23: un job de un tipo que nadie espera, metido justo antes de que la receta cierre la cola de la
 // empresa. `cerrarJobsSinEjecutar` sigue siendo la real; solo se le antepone la inserción cuando un
@@ -217,6 +227,35 @@ interface Corrida {
   texto: string;
 }
 
+/** Lo que duró cada ventana con el lock de escritura real tomado (cabecera). */
+const ventanas: { etiqueta: string; ms: number }[] = [];
+
+/** `fn` con el lock de escritura real tomado, y anota cuánto lo sostuvo. */
+async function bajoLockMedido<T>(etiqueta: string, fn: () => Promise<T>): Promise<T> {
+  return bajoLockDeEscrituraReal(async () => {
+    const inicio = Date.now();
+    try {
+      return await fn();
+    } finally {
+      ventanas.push({ etiqueta, ms: Date.now() - inicio });
+    }
+  });
+}
+
+/**
+ * Los pasos de la demo con los que escriben usuarios y empresas bajo el lock de escritura real, uno
+ * por paso (cabecera). Los de solo lectura y el candado de la demo quedan fuera: la segunda de dos
+ * ejecuciones a la vez (R32) espera el candado SIN el lock de escritura tomado.
+ */
+async function envolverPasos(cargar: () => Promise<PasosDemo>, etiqueta: string): Promise<PasosDemo> {
+  const pasos = await cargar();
+  return {
+    ...pasos,
+    borrar: (dueno) => bajoLockMedido(`${etiqueta}/borrar`, () => pasos.borrar(dueno)),
+    crearEmpresa: (dueno, clave, c) => bajoLockMedido(`${etiqueta}/${clave}`, () => pasos.crearEmpresa(dueno, clave, c)),
+  };
+}
+
 /** Una ejecución de la demo, a mano, con la salida capturada. */
 async function correr(etiqueta: string, extra: Partial<EfectosDemo> = {}): Promise<Corrida> {
   const lineas: { t: number; l: string }[] = [];
@@ -231,27 +270,12 @@ async function correr(etiqueta: string, extra: Partial<EfectosDemo> = {}): Promi
     salida: { log: anotar, error: anotar },
     salir: () => undefined,
     ...extra,
+    cargarPasos: () => envolverPasos(extra.cargarPasos ?? cargarPasosReales, etiqueta),
   });
   const ms = Date.now() - inicio;
   duraciones.push({ etiqueta, ms, codigo: r.codigo });
   anotarEnLog(`${PREFIJO_LOG} ${etiqueta}: código ${r.codigo} en ${(ms / 1000).toFixed(1)} s`);
   return { codigo: r.codigo, lineas, ms, texto: lineas.map((x) => x.l).join("\n") };
-}
-
-/** Los pasos reales, como los arma `scripts/demo-qa.ts`, para envolver uno (R28). */
-async function pasosReales(): Promise<PasosDemo> {
-  const borrar = await import("@/scripts/demo-qa/borrar");
-  const receta = await import("@/scripts/demo-qa/receta");
-  return {
-    comprobarMarca: (dueno) => comprobarMarcaDeQa(dueno),
-    comprobarSlugs: (dueno) => borrar.comprobarSlugs(dueno),
-    borrar: (dueno) => borrar.borrarEmpresasDemo(dueno),
-    crearEmpresa: (dueno, clave, c) => receta.crearEmpresaDemo({ dueno }, clave, { contrasena: c }),
-    comprobarEmpresa: (dueno, organizacionId, estadosPorDecision) =>
-      receta.comprobarEmpresaDemo({ dueno }, organizacionId, { estadosPorDecision }),
-    empresasDemo: (dueno) => borrar.empresasDemo(dueno),
-    novedadInternaConCorteDeManana: receta.NOVEDAD_INTERNA_CON_CORTE_DE_MANANA,
-  };
 }
 
 async function fksHacia(tabla: string): Promise<{ tabla: string; columna: string }[]> {
@@ -532,12 +556,16 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     fksAUsuario = await fksHacia("usuario");
     fksAOrden = await fksHacia("orden");
 
-    // Esta base no puede traer empresas demo ni la marca de otro: se borrarían o mentirían.
+    // Esta base no puede traer empresas demo ni la marca de otro: se borrarían o mentirían. Con el
+    // turno exclusivo tomado, una empresa demo es el resto de una corrida que ya cayó (y fue roja en
+    // su archivo): se quita por el camino de emergencia, que no es el que se prueba aquí.
+    const restos = await borrarEmpresasDemoDeEmergencia();
+    if (restos > 0) anotarEnLog(`${PREFIJO_LOG} beforeAll: quité ${restos} empresas demo que dejó otra corrida`);
     expect(await base.organizacion.count({ where: { esDemo: true } })).toBe(0);
     await ponerMarca();
     await sembrarCentinelas();
 
-    const r = await crearEmpresaReal();
+    const r = await bajoLockMedido("empresa real", () => crearEmpresaReal());
     const h = await huella(r.escenario.empresa.organizacionId);
     // Control de no vacuidad: sin órdenes ni objetos, «la huella no cambió» no prueba nada.
     expect(filasDe(h, "orden")).toBeGreaterThanOrEqual(1);
@@ -546,6 +574,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 600_000);
 
   afterAll(async () => {
+    const fallos: string[] = [];
     const pasos: [string, () => Promise<unknown>][] = [
       // La real también se va: se marca y la borra el mismo borrado (por catálogo, con sus usuarios).
       [
@@ -554,7 +583,27 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
           if (real) await base.organizacion.update({ where: { id: real.escenario.empresa.organizacionId }, data: { esDemo: true } });
         },
       ],
-      ["borrar las demo", () => borrarEmpresasDemo(base)],
+      [
+        "borrar las demo",
+        async () => {
+          try {
+            await bajoLockMedido("afterAll/borrar", () => borrarEmpresasDemo(base));
+          } catch (e) {
+            fallos.push(`borrar las demo: ${e instanceof Error ? e.message : String(e)}`);
+            throw e;
+          }
+        },
+      ],
+      // Si el borrado de verdad cayó, sus empresas no pueden seguir vivas: tumbarían otros archivos
+      // (run 40271163801). Va por otro camino (`_limpieza-demo-qa.ts`) y el archivo sale rojo abajo.
+      [
+        "limpieza de emergencia",
+        async () => {
+          if (!base || (await base.organizacion.count({ where: { esDemo: true } })) === 0) return;
+          const n = await borrarEmpresasDemoDeEmergencia();
+          anotarEnLog(`${PREFIJO_LOG} afterAll: limpieza de emergencia de ${n} empresas demo`);
+        },
+      ],
       ["quitar la marca", () => quitarMarca()],
       ["quitar los centinelas", () => quitarCentinelas()],
     ];
@@ -573,9 +622,13 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
           (await contar(`SELECT count(*)::int AS n FROM jobs WHERE id = $1`, CENTINELA_JOB)) +
           (await contar(`SELECT count(*)::int AS n FROM geocode_cache WHERE id = $1`, CENTINELA_GEOCODE));
         anotarEnLog(`${PREFIJO_LOG} afterAll: empresas demo=${quedan} filas entorno_marca=${marca} centinelas=${centinelas}`);
+        if (quedan > 0) fallos.push(`quedan ${quedan} empresas demo vivas: tumbarían otros archivos`);
       }
       anotarEnLog(
         `${PREFIJO_LOG} duraciones: ${duraciones.map((d) => `${d.etiqueta}=${(d.ms / 1000).toFixed(1)}s(${d.codigo})`).join(", ")}`,
+      );
+      anotarEnLog(
+        `${PREFIJO_LOG} ventanas con el lock de escritura: ${ventanas.map((v) => `${v.etiqueta}=${(v.ms / 1000).toFixed(1)}s`).join(", ")}`,
       );
     } finally {
       await doble?.cerrar().catch(() => undefined);
@@ -583,6 +636,8 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       await exclusion?.soltar().catch(() => undefined);
       vi.restoreAllMocks();
     }
+    // La limpieza de emergencia no tapa nada: si el borrado de verdad cayó, el archivo es rojo.
+    if (fallos.length > 0) throw new Error(`${PREFIJO_LOG} afterAll: ${fallos.join("; ")}`);
   }, 600_000);
 
   it("la primera ejecución deja dos empresas demo completas (R1, R11–R19, R26)", async () => {
@@ -1073,7 +1128,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 300_000);
 
   it("una ejecución cortada a mitad de la receta: la siguiente borra lo que quedó (R28)", async () => {
-    const reales = await pasosReales();
+    const reales = await cargarPasosReales();
     const receta = await import("@/scripts/demo-qa/receta");
     const c = await correr("cortada en B", {
       cargarPasos: async () => ({

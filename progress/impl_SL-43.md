@@ -304,6 +304,83 @@ Desviaciones:
   - sin ningún usuario en la base caen 5, como en HEAD (`SELECT id FROM usuario LIMIT 1`).
 - `demo-qa.test.ts`, solo: 11/11 en 90 s.
 
+## Rojo de CI en el PR #18 (run 40271163801, HEAD `0b38312`) — 2026-10-26
+
+**Causa raíz.** El detector de FK `esViolacionDeClaveForanea` solo leía `cause.code`, y en Postgres 17
+`@prisma/adapter-pg` deja el SQLSTATE en otro campo, así que `borrar.ts` no reconocía la FK.
+- **Postgres 17 (CI):** `orden_carga_id_fkey` (`ON DELETE RESTRICT`) da SQLSTATE `23503`, y el adaptador lo
+  traduce a `{ kind: "ForeignKeyConstraintViolation", originalCode: "23503" }`, sin `code`.
+- **Postgres 18 (local):** la misma FK da `23001`, con `code`. Por eso en local no se veía.
+- **Efecto:** cuando una pasada intentaba `carga` antes que `orden`, `borrar.ts` tomaba la FK por otro
+  error y abortaba con `BorradoDemoFallido` (P2010). Quedaban 3 empresas demo vivas, y esas empresas
+  tumbaban `demo-qa-borrado` y `notificacion-evento-gasto-fijo-migration`.
+
+**Reproducción.**
+- Entorno: contenedor `postgres:17`, el mismo motor que el job de CI, migrado y con `db:seed`.
+- Comando: `pnpm exec vitest run --maxWorkers=3 tests/integration/db/demo-qa.test.ts tests/integration/db/demo-qa-borrado.test.ts tests/integration/db/notificacion-evento-gasto-fijo-migration.test.ts`.
+- **Antes:** el mismo mensaje que en CI (`tabla carga … P2010`) y 3 empresas demo vivas. En la
+  segunda corrida caen los tres archivos, igual que el shard 2.
+- **Después:** 35/35 y la base limpia.
+- **Shard 2, sus 186 archivos de `tests/integration/db/` en Postgres 17:** solo quedan en rojo 82
+  archivos, todos del baseline.
+
+**Arreglo.**
+- **Detector (`lib/repositories/_shared/prisma-fk.ts`):** `esViolacionDeClaveForanea` lee `code` y,
+  si falta, `originalCode`. Lo prueba `tests/unit/repositories/prisma-fk.test.ts`, con las formas
+  medidas en 17.11 y 18.2.
+  - **Para el reviewer y el leader:** el helper es compartido. `ZonaRepository`, `TarifaRepository`,
+    `DistritoZonaEspecialRepository` y `ApiKeyRepository` reconocen ahora también una FK RESTRICT en
+    Postgres 17.
+- **`borrar.ts`:** `BorradoDemoFallido` incluye el SQLSTATE, nunca el mensaje ni el `detail`. Las
+  4 condiciones `es_demo` que exige la guardia de SL-40/SL-45 siguen intactas.
+- **Limpieza robusta (`tests/integration/db/_limpieza-demo-qa.ts`):** una limpieza de emergencia que
+  no usa el código que se prueba.
+  - Borra las empresas `es_demo` en una transacción con `session_replication_role = replica`, para lo
+    que necesita superusuario (lo es en CI y en local).
+  - Los dos archivos de la demo la usan en `beforeAll` para quitar restos ajenos, y en `afterAll`
+    cuando el borrado real falla.
+  - Aun así, el archivo sale rojo si el borrado falló o si queda una empresa demo viva.
+- **R8** se prueba ahora con `RESTRICT` y con `NO ACTION`.
+
+**Mutaciones.**
+- **A, sin `originalCode`:**
+  - en Postgres 17 vuelve el rojo de CI (6 fallos, con el mensaje de `carga`);
+  - en Postgres 18 caen R8 con `NO ACTION` y 2 casos unitarios.
+- **B, limpieza de emergencia vacía (junto con A):** el `afterAll` falla con «quedan 3 empresas demo
+  vivas».
+
+**Choque latente con `arranque-superadmin`, visto en el gate local.**
+- **Síntoma:** corridos juntos, `arranque-superadmin.test.ts` caía 2/10 («expected 3 to be 5»). Solo
+  pasa 10/10.
+- **Causa:** los archivos de la demo commitean altas y bajas de usuarios sin el lock de escritura
+  real, y R14 de `arranque-superadmin` leía `count(*)` de `usuario` entre dos tramos sueltos del lock.
+- **Por qué no se vio en CI:** hoy caen en shards distintos (3 y 2), pero el reparto cambia al añadir
+  archivos.
+- **Arreglo:** la demo toma `bajoLockDeEscrituraReal` solo en cada ventana que escribe usuarios o
+  empresas, no todo el archivo:
+  - cada `borrar` y `crearEmpresa` de `correr`;
+  - la preparación y la limpieza;
+  - en `demo-qa-borrado`: siembra, limpieza, borrados y la FK sintética de R8;
+  - en `_limpieza-demo-qa`, `serializarEscriturasReales(tx)`.
+  - La ventana más larga mide 6,9 s, frente a los 80 s descartados en la vuelta 1.
+- **Otros cambios:**
+  - R14 de `arranque-superadmin` pone sus dos ejecuciones y sus lecturas en un solo tramo del lock,
+    sin cambiar las aserciones.
+  - `scripts/demo-qa.ts` exporta `cargarPasosReales`, sin cambio de comportamiento.
+- **Orden de locks:** turno de la demo → tarifa global → candado de la demo → escritura real. Nadie
+  pide uno anterior teniendo el de escritura.
+- **Corridas:**
+  - los 5 archivos juntos: 41/41 tres veces seguidas;
+  - los 203 archivos que usan el lock, con la demo: 0 timeouts (los rojos son todos del baseline);
+  - los 13 archivos de la vuelta 1: 246/246.
+- **Mutación:** quitar la protección del lado de la demo da rojo en 2 de 3 corridas. Es probabilístico,
+  como el original.
+- **Riesgo fuera de alcance:** R7 de `empresas-plataforma-cobro.test.ts` cuenta las empresas con
+  tarifa propia sin tomar el lock. Su ventana es de milisegundos y no se ha visto caer.
+
+**Aviso:** `tarifa-zona-borrado-fk-real.test.ts:371` espera `23001`, y en 17 daría `23503`. Ya está en
+el baseline por otro motivo y no se toca.
+
 ## Mapa `R<n> → test`
 
 | R | Test | Estado |

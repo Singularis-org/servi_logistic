@@ -4,7 +4,7 @@ import { loadEtiquetasConfig } from "@/lib/config/etiquetas";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IAlmacenDescargas } from "@/lib/interfaces/external/IAlmacenDescargas";
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
-import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
+import { esViolacionDeClaveForanea, sqlStateDe } from "@/lib/repositories/_shared/prisma-fk";
 import { MAX_OBJETOS_POR_CORRIDA } from "@/lib/services/PurgaDescargasService";
 import { SupabaseAlmacenDescargas } from "@/lib/storage/SupabaseAlmacenDescargas";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
@@ -63,11 +63,13 @@ export class BorradoDemoBloqueado extends Error {
 export class BorradoDemoFallido extends Error {
   constructor(
     readonly tabla: string,
-    readonly causa: { nombre: string; codigo: string | null },
+    readonly causa: Causa,
   ) {
     super(
       `[demo-qa] el borrado falló en la tabla ${tabla} (${causa.nombre}` +
-        `${causa.codigo === null ? "" : `, código ${causa.codigo}`}); no se borró nada.`,
+        `${causa.codigo === null ? "" : `, código ${causa.codigo}`}` +
+        `${causa.sqlstate === null || causa.sqlstate === causa.codigo ? "" : `, SQLSTATE ${causa.sqlstate}`}); ` +
+        "no se borró nada.",
     );
     this.name = "BorradoDemoFallido";
   }
@@ -81,14 +83,21 @@ export class EmpresaNoDemo extends Error {
   }
 }
 
-/** Nombre y código de un error, sin su mensaje. El código es el SQLSTATE o el de Prisma, si lo hay. */
-function causaDe(error: unknown): { nombre: string; codigo: string | null } {
-  if (error === null || typeof error !== "object") return { nombre: typeof error, codigo: null };
+/** Nombre, código y SQLSTATE de un error, sin su mensaje ni su `detail` (llevan datos). */
+type Causa = { nombre: string; codigo: string | null; sqlstate: string | null };
+
+/**
+ * El código es el SQLSTATE o el de Prisma, si lo hay. El SQLSTATE aparte porque bajo el adapter un
+ * `$executeRawUnsafe` fallido llega como `P2010` y el SQLSTATE va colgado (`sqlStateDe`): sin él,
+ * el rojo de CI del run 40271163801 decía solo «P2010» y no se podía saber qué falló.
+ */
+function causaDe(error: unknown): Causa {
+  if (error === null || typeof error !== "object") return { nombre: typeof error, codigo: null, sqlstate: null };
   const e = error as { name?: unknown; code?: unknown; cause?: { code?: unknown } };
   const nombre = typeof e.name === "string" ? e.name : "Error";
   const codigo =
     typeof e.cause?.code === "string" ? e.cause.code : typeof e.code === "string" ? e.code : null;
-  return { nombre, codigo };
+  return { nombre, codigo, sqlstate: sqlStateDe(error) };
 }
 
 /** Los ids de las empresas demo, como dueño. */
