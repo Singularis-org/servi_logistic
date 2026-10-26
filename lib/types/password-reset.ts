@@ -1,47 +1,15 @@
 import { z } from "zod";
-import { OTP_CODE_LENGTH } from "@/lib/types/auth";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
 
-// Contratos I/O del flujo de recuperacion de contrasena (Feature 20).
-// Validacion zod en el borde de las Server Actions. No expone `challengeId`
-// (design.md decision 2): el cliente conserva email + codigo entre fases.
+// Contratos I/O del flujo de recuperacion de contrasena (Feature 20; SL-18 §4).
+// Validacion zod en el borde de las Server Actions. Desde SL-18 (R20) no hay paso
+// de codigo: el correo lleva un enlace por cuenta y se canjea con `crearConEnlaceSchema`.
 
 /** Paso 1: solicitud por email (R1). */
 export const requestResetSchema = z.object({
   email: z.string().email(),
 });
 export type RequestResetInput = z.infer<typeof requestResetSchema>;
-
-/** Codigo OTP: exactamente OTP_CODE_LENGTH digitos (reusa la constante del login). */
-const otpCodeSchema = z
-  .string()
-  .regex(/^\d+$/, "solo numeros")
-  .length(OTP_CODE_LENGTH);
-
-/** Paso 2: verificacion del codigo (R5/R6). */
-export const verifyResetCodeSchema = z.object({
-  email: z.string().email(),
-  code: otpCodeSchema,
-});
-export type VerifyResetCodeInput = z.infer<typeof verifyResetCodeSchema>;
-
-/**
- * Paso 3: nueva contrasena. Compone la politica fuerte (R8) y exige que
- * `password` y `confirmPassword` coincidan (R7). El error de coincidencia se
- * adjunta al campo `confirmPassword`.
- */
-export const resetPasswordSchema = z
-  .object({
-    email: z.string().email(),
-    code: otpCodeSchema,
-    password: strongPasswordSchema,
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Las contrasenas no coinciden",
-    path: ["confirmPassword"],
-  });
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 /**
  * SL-41 (design §7.3): el enlace de bienvenida es `<challengeId>.<secreto>`, un UUID y 43
@@ -50,7 +18,7 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
  */
 export const ENLACE_BIENVENIDA_REGEX = /^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/;
 
-/** SL-41: crear la contrasena con el enlace. La politica y la coincidencia, como en el paso 3. */
+/** SL-41: crear la contrasena con el enlace. Politica fuerte y coincidencia de las dos claves. */
 export const crearConEnlaceSchema = z
   .object({
     enlace: z.string().regex(ENLACE_BIENVENIDA_REGEX),
@@ -71,13 +39,16 @@ export type PasswordResetRequestResult =
   | { status: "ok" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 
-/** verificarCodigoRecuperacion (R5/R6). */
+/**
+ * TRANSICION (SL-18 R20): solo lo usa el envoltorio `verificarCodigoRecuperacion`, que responde
+ * siempre `invalid_or_expired`. T7.2 lo borra junto al paso del codigo de la pantalla.
+ */
 export type VerifyResetCodeResult =
   | { status: "ok" }
   | { status: "invalid_or_expired" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 
-/** restablecerContrasena (R7/R9/R10/R11). */
+/** crearContrasenaConEnlace (y, hasta T7.2, el envoltorio `restablecerContrasena`). */
 export type ResetPasswordResult =
   | { status: "ok" }
   | { status: "invalid_or_expired" }
