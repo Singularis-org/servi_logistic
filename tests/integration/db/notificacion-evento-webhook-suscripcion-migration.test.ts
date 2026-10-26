@@ -14,6 +14,7 @@ import {
   soltarDependientesPosterioresDelEnumDeEventos,
   type TxDeTest,
 } from "./_postgres-real";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 // FICHA 403 (T2, design §1.2/§4) — la migracion que anade el aviso a los DOS enums de
 // `notificacion`, MAS **R12 medido contra Postgres**: una racha, un aviso; una racha nueva, otro.
@@ -228,6 +229,16 @@ describe("403/T2 — los CINCO `down.sql` anteriores NO se tocan, y esta es la c
 });
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+// SL-43 (T10): las filas de la demo de QA (`demo-qa.test.ts`, misma base en CI) hacen caer este
+// archivo. Turno compartido: espera a que la demo termine y no la deja empezar mientras corre.
+let turnoDemoQa: ExclusionDemoQa | undefined;
+beforeAll(async () => {
+  if (HAY_BASE_DE_DATOS) turnoDemoQa = await tomarExclusionDemoQa({ compartida: true });
+}, 660_000);
+afterAll(async () => {
+  await turnoDemoQa?.soltar();
+});
 
 describeSiHayBase("403/T2 — la base aplicada, y el DOWN ejercitado de verdad", () => {
   let prisma: PrismaClient;

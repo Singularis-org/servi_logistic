@@ -10,6 +10,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 // FICHA 412 (T2.4, R24/R25) — la migración que añade el aviso de «tu cierre fue rechazado» a los
 // DOS enums de `notificacion`, y las propiedades que dependen de ella.
@@ -318,6 +319,16 @@ describe("412/T2.3 — los OCHO `down.sql` anteriores NO se tocan, y ésta es la
 });
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+// SL-43 (T10): las filas de la demo de QA (`demo-qa.test.ts`, misma base en CI) hacen caer este
+// archivo. Turno compartido: espera a que la demo termine y no la deja empezar mientras corre.
+let turnoDemoQa: ExclusionDemoQa | undefined;
+beforeAll(async () => {
+  if (HAY_BASE_DE_DATOS) turnoDemoQa = await tomarExclusionDemoQa({ compartida: true });
+}, 660_000);
+afterAll(async () => {
+  await turnoDemoQa?.soltar();
+});
 
 describeSiHayBase("412/T2.5 — la base aplicada, y los DOS índices que la ficha necesita", () => {
   let prisma: PrismaClient;

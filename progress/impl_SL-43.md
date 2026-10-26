@@ -203,6 +203,91 @@ Tests: `pnpm exec vitest run tests/unit/scripts/` da 11 archivos y 154 passed (`
   - en «El OTP», la excepción de Carlos del 2026-10-25;
   - en «Base de datos de test», la marca del test de la demo y su limpieza en `afterAll`.
 
+## T10 — Test de integración de dos corridas (2026-10-25)
+
+`tests/integration/db/demo-qa.test.ts` corre contra Postgres real (sl43) y el doble de Storage: 11/11
+passed, sin skips, en tres corridas seguidas. El archivo tarda unos 80 s.
+- Las 20 cifras de estado van como literal: `entregado` 3, `en_reparto` 4, el resto 2.
+- El caso R26 entra con `AuthService.login` real y lleva su control con una contraseña mala.
+
+| Corrida | s | Código |
+|---|---|---|
+| corrida 1 | 14,5 | 0 |
+| corrida 2 | 11,4 | 0 |
+| sin marca | 0,1 | 1 |
+| slug en una real | 0,2 | 1 |
+| tipo no esperado | 6,2 | 1 |
+| cortada en B | 7,7 | 1 |
+| tras el corte | 11,5 | 0 |
+| simultánea 1 | 11,2 | 0 |
+| simultánea 2 (esperó el candado) | 26,6 | 0 |
+
+| # (D9.3) | Mutación | Caso que cae | Error |
+|---|---|---|---|
+| 1 | sin filtro `es_demo` | segunda ejecución | la huella de la real cambia |
+| 2 | la base antes que Storage | segunda ejecución | `expected [ …(50) ] to deeply equal []` |
+| 3 | sin `guardarResultado` | primera ejecución y casi todos | sale 1: la receta cae al asignar |
+| 4 | no cerrar `optimizacion_ruta` | primera ejecución | «jobs pendientes: optimizacion_ruta 27» |
+| 5 | `optimizacion_ruta` fuera de los esperados | primera ejecución | «encoló jobs de un tipo no esperado: optimizacion_ruta» |
+| 6 | corte con `paraCadaEmpresa` | primera ejecución | «la empresa real cambió»: `cierre_dia` 0→1, historial 8→9 |
+| 7 (D2.3-4) | marca leída después del borrado | R3 | las organizaciones pasan de 3 a 1 |
+| 8 | `GRANT UPDATE (es_demo)` a `servi_app` | R6 | `expected null to be '42501'` |
+| 12 | candado que no bloquea | R32 | una de las dos sale 1 |
+
+Cambios fuera del test, **para el reviewer**:
+- **Fallo real de R9 arreglado.**
+  - El PDF de etiquetas de la carga por API solo deja su URL firmada en `carga.download_url`, que no
+    está en `RUTAS_GUARDADAS`.
+  - Quedaba un PDF huérfano por empresa en cada corrida.
+  - `borrar.ts > rutaDeUrlFirmada` lee `carga.download_url` y `orden.download_url`, y solo acepta rutas
+    `<demo>/` del bucket de etiquetas. Lo prueba `tests/unit/scripts/demo-qa-url-firmada.test.ts`
+    (3/3). Es un cambio a D4.1.
+- **Turno entre archivos de test** (`tests/integration/db/_exclusion-demo-qa.ts`, un advisory lock):
+  - Mientras la demo tiene datos en la base, caen 14 tests de 8 archivos ajenos (medido):
+    `caja-backfill` y 7 `notificacion-evento-*-migration`.
+  - Los dos archivos de la demo toman el turno en exclusivo, y esos 8 en compartido: cada uno añade
+    `beforeAll`/`afterAll`, nada más.
+  - Los 13 archivos juntos: 245/245.
+
+Desviaciones:
+- R23 inyecta el job con un `vi.mock` que envuelve `cerrarJobsSinEjecutar`.
+- R11 admite `ajuste_estado` (lo escriben los servicios reales de devolución) y prohíbe
+  `creacion_manual` y `recuperacion_manual`.
+- R14 distingue la pantalla de la carga masiva por la tienda.
+- **Riesgo de CI:** `jobs` sin empresa, `geocode_cache` y `cobro_plataforma_tarifa` se comparan por
+  igualdad estricta. Un test concurrente que commitee en esas tablas lo haría fallar.
+
+## Mapa `R<n> → test`
+
+| R | Test | Estado |
+|---|---|---|
+| R1 | `tests/integration/db/demo-qa.test.ts` «la primera ejecución deja dos empresas demo completas» | verde |
+| R2 | `tests/unit/scripts/demo-qa-guardia.test.ts` (production → rechaza, sin conectar); `demo-qa-build.test.ts` (omitida en `--build`) | verde |
+| R3 | `demo-qa.test.ts` «sin la marca de QA no escribe nada»; `demo-qa-guardia.test.ts > comprobarMarcaDeQa`; `demo-qa-build.test.ts` (sin marca → 1) | verde |
+| R4 | `demo-qa-guardia.test.ts` (refs distintos, local+remoto, host sin ref; sin conectar) | verde |
+| R5 | `demo-qa-guardia.test.ts` (ningún motivo ni salida con URL/clave/contraseña); `demo-qa.test.ts` «R5 — ninguna salida…» | verde |
+| R6 | `demo-qa.test.ts` «`servi_app` no puede cambiar `es_demo`» y «el alta normal nace sin marca» | verde |
+| R7 | `demo-qa.test.ts` «la segunda ejecución recrea y no toca la empresa real»; `demo-qa-borrado.test.ts` (R7+R9) | verde |
+| R8 | `tests/integration/db/demo-qa-borrado.test.ts` (FK sintética) | verde |
+| R9 | `demo-qa.test.ts` «la segunda ejecución…»; `demo-qa-borrado.test.ts`; `tests/unit/scripts/demo-qa-url-firmada.test.ts` | verde |
+| R10 | `demo-qa.test.ts` «slug demo en una empresa real: aborta sin cambios»; `demo-qa-borrado.test.ts` | verde |
+| R11 | `demo-qa.test.ts` «la primera ejecución…» (origen de historial y cargo SL-40 por orden) + revisión del diff contra D5.3 | verde |
+| R12–R19 | `demo-qa.test.ts` «la primera ejecución…» | verde (R12 con la excepción del usuario `api`; R14 con pantalla = carga por chunks) |
+| R20, R21, R22, R24 | `demo-qa.test.ts` «órdenes ubicadas y asignables, cola sin pendientes, sin integraciones ni correo»; `demo-qa-jobs.test.ts` | verde |
+| R23 | `demo-qa.test.ts` «un job de un tipo no esperado: sale 1 y lo nombra»; `demo-qa-jobs.test.ts`; `demo-qa-build.test.ts` | verde |
+| R25 | `demo-qa-guardia.test.ts` (contraseña ausente/débil, sin conectar) | verde |
+| R26 | `demo-qa.test.ts` «la primera ejecución…» (`AuthService.login` real); `demo-qa-build.test.ts` (tabla de usuarios en la salida) | verde |
+| R27 | `demo-qa.test.ts` «la segunda ejecución…» | verde |
+| R28 | `demo-qa.test.ts` «una ejecución cortada a mitad de la receta»; reintento de `demo-qa-borrado.test.ts` | verde |
+| R29 | `tests/unit/scripts/demo-qa-build.test.ts` (`decidirDemo` y orden de `build` en `package.json`) | verde |
+| R30 | `demo-qa-build.test.ts` (omitida sin conectar, cada motivo) + build local medido (T9) | verde |
+| R31 | `demo-qa-build.test.ts` (fallo → `salir(1)`) | verde |
+| R32 | `demo-qa.test.ts` «dos ejecuciones a la vez»; `tests/unit/scripts/demo-qa-candado.test.ts` | verde |
+| R33 | `demo-qa-build.test.ts` (tope vencido en la receta y esperando el candado) | verde |
+
+Pendiente fuera de los tests: **T12** (puerta humana, primer despliegue de QA) y la fila de
+`entorno_marca` en QA (T2b).
+
 ## T1 — Inventario de la receta
 
 > Solo lectura. Leído con Grep/Read: el MCP del grafo no tiene proyecto para este worktree (lo dice

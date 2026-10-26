@@ -136,7 +136,7 @@
 
 ## Tanda D — Verificación
 
-- [ ] **T10. Test de integración de dos corridas** (R1–R33; depende de T9).
+- [x] **T10. Test de integración de dos corridas** (R1–R33; depende de T9).
   - `tests/integration/db/demo-qa.test.ts` según `design.md > D9.2`, con su control de no vacuidad y el
     caso de R32 (dos ejecuciones a la vez).
   - _Hecho:_

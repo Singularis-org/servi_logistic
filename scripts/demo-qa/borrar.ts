@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { loadEtiquetasConfig } from "@/lib/config/etiquetas";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IAlmacenDescargas } from "@/lib/interfaces/external/IAlmacenDescargas";
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
@@ -137,6 +138,25 @@ const UN_DIA_MS = 24 * 60 * 60 * 1000;
 export type ResumenStorage = { rutas: number; temporales: number };
 
 /**
+ * La ruta dentro de la carpeta de la empresa que nombra una URL firmada de Storage
+ * (`…/object/sign/<bucket>/<organizacion_id>/<ruta>?token=…`). `null` si la URL es de otro bucket,
+ * de otra carpeta o no se puede leer: nunca se borra lo que no se reconoce.
+ */
+export function rutaDeUrlFirmada(url: string, bucket: string, organizacionId: string): string | null {
+  let camino: string;
+  try {
+    camino = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    return null;
+  }
+  const marca = `/object/sign/${bucket}/${organizacionId}/`;
+  const i = camino.indexOf(marca);
+  if (i === -1) return null;
+  const ruta = camino.slice(i + marca.length);
+  return ruta === "" || ruta.split("/").includes("..") ? null : ruta;
+}
+
+/**
  * R9: borra los archivos de UNA empresa demo: los que nombran sus filas (`RUTAS_GUARDADAS`, por
  * bucket) y sus temporales de descarga. Dentro de `conEmpresa(<demo>)`: el adaptador solo puede
  * expresar `<demo>/<ruta>`, así que un archivo de otra empresa es inalcanzable por construcción.
@@ -157,6 +177,20 @@ export async function borrarArchivosDeEmpresa(
     }
     porBucket.set(bucket, rutas);
   }
+  // El PDF de etiquetas de una carga por API (features 136/141) no deja su ruta en ninguna columna
+  // de `RUTAS_GUARDADAS`: solo su URL firmada, en `carga.download_url` u `orden.download_url`. Sin
+  // esto quedaba en Storage tras el borrado (lo midió T10).
+  const etiquetas = loadEtiquetasConfig().ETIQUETAS_BUCKET;
+  const rutasEtiquetas = porBucket.get(etiquetas) ?? new Set<string>();
+  const firmadas = [
+    ...(await dueno.carga.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } })),
+    ...(await dueno.orden.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } })),
+  ];
+  for (const { downloadUrl } of firmadas) {
+    const ruta = downloadUrl === null ? null : rutaDeUrlFirmada(downloadUrl, etiquetas, organizacionId);
+    if (ruta !== null) rutasEtiquetas.add(ruta);
+  }
+  porBucket.set(etiquetas, rutasEtiquetas);
 
   return conEmpresa(organizacionId, async () => {
     let total = 0;

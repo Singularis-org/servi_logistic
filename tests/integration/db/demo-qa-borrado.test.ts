@@ -32,6 +32,7 @@ import {
 } from "@/scripts/demo-qa/borrar";
 
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
@@ -46,6 +47,8 @@ let doble: Awaited<ReturnType<typeof arrancarStorageFalso>>;
 let cliente: SupabaseClient;
 let almacenes: AlmacenesDemo;
 let tablas: string[];
+/** Turno frente a `demo-qa.test.ts`: los dos crean y borran empresas demo en la misma base. */
+let exclusion: ExclusionDemoQa | undefined;
 /** Toda organización que crea el archivo, para el `afterAll`. */
 const creadas: string[] = [];
 
@@ -219,6 +222,7 @@ function exigirFamilias(h: Record<string, number>): void {
 
 describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
   beforeAll(async () => {
+    exclusion = await tomarExclusionDemoQa();
     base = crearPrismaDeTest();
     tablas = await tablasConEmpresa();
     doble = await arrancarStorageFalso({ puerto: 0 });
@@ -229,7 +233,7 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     };
     // La base de este test no puede traer empresas demo de otro: se borrarían con las de aquí.
     expect(await base.organizacion.count({ where: { esDemo: true } })).toBe(0);
-  }, 60_000);
+  }, 660_000);
 
   afterAll(async () => {
     try {
@@ -240,6 +244,7 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     } finally {
       await doble?.cerrar();
       await base?.$disconnect();
+      await exclusion?.soltar();
     }
   }, 120_000);
 
