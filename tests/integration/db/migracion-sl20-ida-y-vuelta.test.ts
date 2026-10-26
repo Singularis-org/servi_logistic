@@ -191,13 +191,16 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     expect(diferencias(await fotoCompleta(), antes), "tras los cinco downs").toEqual([]);
     expect(diferencias({ g: await geografia() }, { g: geografiaAntes }), "la geografía cambió").toEqual([]);
     // Nombrados aparte: si la foto dejara de mirarlos, este caso lo diría igual.
-    expect(await uno(`SELECT count(*)::int FROM pg_class WHERE relname IN ('pais', 'historial_plataforma')`)).toBe(0);
+    expect(
+      await uno(`SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname IN ('pais', 'historial_plataforma') AND n.nspname = 'public'`),
+    ).toBe(0);
     expect(
       await uno(`SELECT count(*)::int FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'pais_id'`),
     ).toBe(0);
     expect(
       await uno(`SELECT string_agg(policyname, ',' ORDER BY policyname) FROM pg_policies
-        WHERE tablename IN ('provincia', 'canton', 'distrito')`),
+        WHERE schemaname = 'public' AND tablename IN ('provincia', 'canton', 'distrito')`),
     ).toBe("canton_lectura,distrito_lectura,provincia_lectura");
   }, 120_000);
 

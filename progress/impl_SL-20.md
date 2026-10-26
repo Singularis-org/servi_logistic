@@ -159,3 +159,5 @@ geografía que quedan son de T4.1 o ajenos.
   `dependencias-declaradas-presentes.guardia` (en `tests/baseline-rojos.json`).
 - T1 sin commitear (BLOQUEADO): T1.1 hecha en el worktree; T1.2–T1.7 esperan decision sobre el
   orden de migraciones (ver arriba). `db/schema.prisma` ya trae T1.2/T1.3/T1.5 sin sus migraciones.
+
+- Arreglo ficha 421 (catalogo-postgres-acota-esquema): `tests/integration/db/migracion-sl20-ida-y-vuelta.test.ts` acota `pg_class` con `JOIN pg_namespace ... n.nspname = 'public'` y `pg_policies` con `schemaname = 'public'`; los demas tests SL-20 de `tests/integration/db/` no tenian consultas sin acotar. Guardia: 7/7 passed; `migracion-sl20-ida-y-vuelta` contra `servi_logistic_sl20`: 5/5 passed (10.19s).
