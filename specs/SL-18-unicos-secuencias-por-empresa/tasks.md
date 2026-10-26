@@ -39,11 +39,11 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 2: login (R6–R15)
 
-- [ ] **T2.1** `lib/types/auth.ts`: `loginInputSchema` suma `organizacionId` (uuid, nullable,
+- [x] **T2.1** `lib/types/auth.ts`: `loginInputSchema` suma `organizacionId` (uuid, nullable,
   opcional, `.strict()`); `LoginResult` suma `elegir_empresa`. `IAuthService`: `LoginCommandInput`
   y `LoginCommandResult` (design §3.4).
   **Hecho:** typecheck en verde.
-- [ ] **T2.2** `AuthService.login` según design §3.2, pasos 1–8. El predicado de habilitada va en
+- [x] **T2.2** `AuthService.login` según design §3.2, pasos 1–8. El predicado de habilitada va en
   una sola función (`puedeIniciarSesion` si SLT-32 ya mergeó; si no, inline con el comentario de
   §9). Dep. T1.3, T2.1.
   **Hecho:** `tests/unit/services/auth-service-empresas.test.ts` cubre:
@@ -57,7 +57,7 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   - R15: sin empresa y no superadmin → nunca opción.
 
   `tests/unit/services/auth-service.test.ts` ajustado al repositorio nuevo y en verde.
-- [ ] **T2.3** `lib/actions/auth.ts`: pasa `organizacionId` al servicio y devuelve
+- [x] **T2.3** `lib/actions/auth.ts`: pasa `organizacionId` al servicio y devuelve
   `elegir_empresa` tal cual. Dep. T2.2.
   **Hecho:** `tests/integration/actions/login-varias-empresas.test.ts`, con base real y dos
   empresas, cubre:

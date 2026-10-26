@@ -137,3 +137,115 @@ Todo contra `servi_logistic_sl18`:
 (el superadmin es la cuenta sin empresa, R3). Grep multilínea sin más `findUnique`/`upsert`/`update`/
 `delete` por email o cédula en `lib`, `app`, `tests`, `e2e`, `scripts`, `db`.
 `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0, 0 `error TS`. El E2E no se corrió.
+
+## Tanda 2: login (R6–R15)
+
+2026-10-26, backend_dev. Base `servi_logistic_sl18` (local, `localhost:5432`). La URL se exporta por
+comando, sin `.env` en el worktree. SLT-32 no está en `dev` (`puedeIniciarSesion` no existe en
+`lib/`), así que el predicado va inline en una sola función con el comentario de design §9.
+
+### Archivos
+
+Creados:
+- `tests/unit/services/auth-service-empresas.test.ts`
+- `tests/integration/actions/login-varias-empresas.test.ts`
+
+Modificados:
+- `lib/types/auth.ts` (T2.1): `loginInputSchema` suma `organizacionId` (uuid, nullable, opcional) y
+  pasa a `.strict()`. Nuevos `EmpresaParaElegir` y `NOMBRE_EMPRESA_PLATAFORMA = "Plataforma"`.
+  `LoginResult` suma `elegir_empresa`.
+- `lib/interfaces/services/IAuthService.ts` (T2.1): `LoginCommandInput.organizacionId?: string | null`;
+  `LoginCommandResult` suma `elegir_empresa`.
+- `lib/services/AuthService.ts` (T2.2): `login` según design §3.2, pasos 1–8. Se quita la marca
+  PROVISIONAL. El predicado `puedeIniciarSesion` es una función del módulo, no exportada, con
+  `// SLT-32: puedeIniciarSesion`, y usa `esPlataforma` de `lib/auth/plataforma.ts`.
+  `verifyChallenge` y `logout` no cambian.
+- `lib/actions/auth.ts` (T2.3): `case "elegir_empresa"` devuelve las empresas tal cual, sin cookie.
+  `organizacionId` llega al servicio por el spread de `parsed.data`. Se corrige el comentario de
+  SL-17, que ya no dice «único global».
+- `tests/unit/services/auth-service.test.ts`: solo el comentario de cabecera. Los dobles ya usaban
+  `findCuentasPorEmailConHash` desde T1.3, y todos los casos (una cuenta) siguen en verde.
+- `tests/unit/types/auth-schemas.test.ts`: 2 casos nuevos (uuid, null o texto; `.strict()`).
+- `tests/integration/actions/auth-action.test.ts`: 1 caso nuevo (pasa `organizacionId` y propaga
+  `elegir_empresa` sin cookie).
+
+`app/`: no se tocó. `LoginForm.tsx` compila porque su `switch` no es exhaustivo. Hoy `elegir_empresa`
+no hace nada en la pantalla (ni mensaje ni redirección) hasta T7.1/SLT-41.
+
+Llamadores revisados (grep en `app`, `components`, `lib`, `tests`, `e2e`, `scripts` y `db`):
+`LoginForm.tsx`, `LogoutButton.tsx`, `auth-action.test.ts`, `empresa-de-la-peticion.test.ts`,
+`auth-schemas.test.ts`, `LoginForm.test.tsx` y los `vi.mock("@/lib/actions/auth")` de componentes.
+Ninguno necesitó cambios para tipar.
+
+### Mapa R → test
+
+| R | Archivo | Caso |
+|---|---|---|
+| R6 | `tests/unit/services/auth-service-empresas.test.ts` | «R6: la contrasena vale en una sola cuenta habilitada → sesion de esa cuenta; con riesgo alto, OTP de esa cuenta» |
+| R7 | `auth-service-empresas.test.ts` | «R7: la contrasena vale en dos o mas cuentas → elegir_empresa en el orden del repositorio, «Plataforma» con null, sin escrituras» |
+| R7 | `tests/integration/actions/login-varias-empresas.test.ts` | «R7: sin elegir, la respuesta es elegir_empresa con A y B por nombre, y no se escribe nada» |
+| R8 | `auth-service-empresas.test.ts` | «R8: la lista excluye la cuenta con otra contrasena, la inactiva y la bloqueada» |
+| R9 | `auth-service-empresas.test.ts` | «R9: sin cuentas, o sin ninguna contrasena valida → invalid_credentials igual en los dos casos; un fallo por cuenta no bloqueada, o uno sin cuenta» |
+| R10 | `auth-service-empresas.test.ts` | «R10: la contrasena vale en A → ningun fallo registrado en B, donde no vale» |
+| R11 | `auth-service-empresas.test.ts` | «R11: con empresa elegida se evalua solo esa cuenta; con una empresa sin cuenta del email → invalid_credentials» |
+| R11 | `login-varias-empresas.test.ts` | «R11: con B elegida, la cookie es de una sesion de la cuenta de B; con una empresa sin cuenta del email, invalid_credentials» |
+| R11 | `tests/unit/types/auth-schemas.test.ts` | «SL-18 R11: organizacionId acepta un uuid o null (plataforma) y rechaza otro texto» |
+| R12 | `auth-service-empresas.test.ts` | «R12: todas las cuentas bloqueadas → account_locked; la contrasena solo vale en cuentas no habilitadas → account_unavailable» |
+| R13 | `login-varias-empresas.test.ts` | «R13: con la cookie de esa sesion, empresaDeLaPeticion() es B y el listado de usuarios no trae los de A» |
+| R14 | `login-varias-empresas.test.ts` | «R14: con riesgo alto y B elegida, el OTP del desafio abre la sesion de la cuenta de B, no la de A» |
+| R15 | `auth-service-empresas.test.ts` | «R15: una cuenta sin empresa que no es la de plataforma nunca es opcion ni abre sesion» |
+| R7, R11 (action) | `tests/integration/actions/auth-action.test.ts` | «SL-18 R7, R11: pasa organizacionId al servicio y devuelve elegir_empresa tal cual, sin cookie» |
+
+El test de integración usa la action real con `AuthService`, los repositorios reales sobre
+`getPrismaClient()` (cliente extendido con el resolutor `empresaDeLaPeticion`) y el `RiskEngine`
+real. Solo hay dobles en `next/headers` (la cookie) y en `IEmailProvider` (para leer el OTP).
+- R11, con riesgo bajo, siembra un `trusted_device` y un intento exitoso de la cuenta de B.
+- R14 entra con otro UA y otra IP (40 + 30 ≥ 50).
+
+Los datos se commitean con sufijo y se borran en `afterAll`, bajo `bajoLockDeEscrituraReal`.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0, 0 `error TS`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run lint` → exit 0, `✖ 231 problems (0 errors, 231
+  warnings)`, igual que en Tanda 1. Ninguno está en archivos de esta tanda.
+- Tests tocados, en serie (`--no-file-parallelism`) contra `servi_logistic_sl18`:
+  `auth-service-empresas`, `auth-service`, `auth-action`, `auth-schemas`, `empresa-de-la-peticion` y
+  `login-varias-empresas` → `Test Files 6 passed (6)`, `Tests 65 passed (65)`, 0 skipped.
+- `pnpm exec vitest related --run lib/services/AuthService.ts lib/types/auth.ts
+  lib/interfaces/services/IAuthService.ts lib/actions/auth.ts` (sin `DATABASE_URL`) → `Test Files 76
+  passed | 2 skipped (78)`, `Tests 849 passed | 41 skipped (890)`. Los 2 archivos skipped necesitan
+  base; el de esta tanda se corrió aparte con base (punto anterior).
+- `pnpm run test:guardias` → `Test Files 1 failed | 310 passed | 2 skipped (313)`, `Tests 4 failed |
+  4323 passed | 20 skipped`. El único rojo es `dependencias-declaradas-presentes.guardia.test.ts`, el
+  mismo de Tanda 1, que está en `tests/baseline-rojos.json`.
+
+### Mutación (T2.2)
+
+- **M1 (R10).** Antes de `if (validas.length === 0)`, se registra `password_incorrecta` en cada cuenta
+  no bloqueada donde la contraseña no vale. `auth-service-empresas.test.ts` → `Tests 6 failed | 2
+  passed (8)`. Cae `× R10: la contrasena vale en A → ningun fallo registrado en B…`, y también R6, R8,
+  R9, R11 y R12, que cuentan intentos.
+- **M2 (R8).** `elegibles` se calcula desde `noBloqueadas` en vez de `validas`, es decir, se ofrecen
+  empresas sin validar la contraseña. → `Tests 4 failed | 4 passed (8)`. Cae `× R8: la lista excluye
+  la cuenta con otra contrasena…`, y también R6, R10 y R12.
+- Restaurado: el `diff` contra la copia sale idéntico, y los 6 archivos vuelven a `Tests 65 passed (65)`.
+
+### Desviaciones y puntos abiertos
+
+- **`riskReason` en R15.** El paso 6 de design §3.2 registra `estado_no_activo:<estado>` en la primera
+  cuenta válida. Si una cuenta sin empresa y sin rol de superadmin está `activo` (R15, defensivo,
+  porque el CHECK `usuario_empresa_o_superadmin` lo impide en la base), el texto queda
+  `estado_no_activo:activo`. Se dejó como dice el design. Si se quiere otro motivo (p. ej.
+  `sin_empresa`), lo deciden spec o leader.
+- **Cuentas bloqueadas solo en parte.** Si hay cuentas bloqueadas y en las demás la contraseña no
+  vale, la respuesta es `invalid_credentials`, porque R9 habla de «cuentas no bloqueadas». Solo con
+  TODAS bloqueadas sale `account_locked` (R12). Así lo dicen R9, R12 y design §3.2.
+- **`NOMBRE_EMPRESA_PLATAFORMA`** vive en `lib/types/auth.ts` para que T3.1 (la plantilla de
+  recuperación) reutilice el mismo texto.
+- `LoginForm` no se tocó: `elegir_empresa` no muestra nada hasta T7.1.
+
+### Veredicto
+
+Tanda 2 implementada: R6–R15 tienen test (unit e integración contra Postgres real), las mutaciones dan
+rojo y se restauraron, y typecheck y lint están en verde.
