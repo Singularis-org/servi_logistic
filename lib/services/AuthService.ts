@@ -57,7 +57,10 @@ export class AuthService implements IAuthService {
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
     };
-    const usuario = await this.userRepo.findByEmailWithHash(input.email);
+    // PROVISIONAL (SL-18 T1.3) hasta T2.2: el email ya puede repetirse entre empresas y el
+    // repositorio devuelve todas sus cuentas. Hasta que el login sepa elegir empresa
+    // (design §3.2), se toma la PRIMERA en su orden: con una sola cuenta, el comportamiento de hoy.
+    const [usuario = null] = await this.userRepo.findCuentasPorEmailConHash(input.email);
 
     if (!usuario) {
       // R12: no revelar si fue el email o la contrasena lo que fallo.

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import type { IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
+import type { CuentaPublica, IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
 import type { IEmailOtpChallengeRepository } from "@/lib/interfaces/repositories/IEmailOtpChallengeRepository";
 import type { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import type { AuthConfig } from "@/lib/config/auth";
@@ -20,7 +20,7 @@ import type {
 } from "@/lib/interfaces/services/IPasswordResetService";
 
 /** Dependencias del servicio, todas inyectables para test. */
-type ResetUserRepo = Pick<IUserRepository, "findByEmail" | "updatePasswordHash">;
+type ResetUserRepo = Pick<IUserRepository, "findCuentasPorEmail" | "updatePasswordHash">;
 type ResetOtpRepo = Pick<
   IEmailOtpChallengeRepository,
   | "findLatestActiveByUsuarioId"
@@ -71,7 +71,7 @@ export class PasswordResetService implements IPasswordResetService {
    * misma respuesta generica.
    */
   async solicitar(input: SolicitarResetInput): Promise<SolicitarResetResult> {
-    const usuario = await this.userRepo.findByEmail(input.email);
+    const usuario = await this.cuentaProvisional(input.email);
     if (usuario) {
       const recientes = await this.otpRepo.contarRecientesPorUsuario(
         usuario.id,
@@ -114,7 +114,7 @@ export class PasswordResetService implements IPasswordResetService {
     }
     this.registrarIntento(input.email, input.ipAddress);
 
-    const usuario = await this.userRepo.findByEmail(input.email);
+    const usuario = await this.cuentaProvisional(input.email);
     if (!usuario) return { status: "invalid_or_expired" };
 
     const challenge = await this.otpRepo.findLatestActiveByUsuarioId(usuario.id);
@@ -202,6 +202,16 @@ export class PasswordResetService implements IPasswordResetService {
     );
   }
 
+  /**
+   * PROVISIONAL (SL-18 T1.3) hasta T3.2: el email ya puede repetirse entre empresas y el
+   * repositorio devuelve todas sus cuentas. Hasta que la recuperacion mande un enlace por cuenta
+   * (design §4.1), se toma la PRIMERA en su orden: con una sola cuenta, el comportamiento de hoy.
+   */
+  private async cuentaProvisional(email: string): Promise<CuentaPublica | null> {
+    const [cuenta = null] = await this.userRepo.findCuentasPorEmail(email);
+    return cuenta;
+  }
+
   private registrarIntento(sujeto: string, ip: string): void {
     this.verifyLimiter.registrar(buildResetRateKey(sujeto, ip));
   }
@@ -210,7 +220,7 @@ export class PasswordResetService implements IPasswordResetService {
     email: string,
     code: string,
   ): Promise<boolean> {
-    const usuario = await this.userRepo.findByEmail(email);
+    const usuario = await this.cuentaProvisional(email);
     if (!usuario) return false;
     const challenge = await this.otpRepo.findLatestActiveByUsuarioId(usuario.id);
     if (!challenge) return false;

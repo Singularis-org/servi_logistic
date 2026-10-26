@@ -12,6 +12,8 @@ import {
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
   type CreateUsuarioInput,
+  type CuentaConHash,
+  type CuentaPublica,
   type CuentaTiendaValidacion,
   type IUserRepository,
   type ListUsuariosParams,
@@ -19,7 +21,6 @@ import {
   type RolItem,
   type TipoIdentificacionItem,
   type UpdateUsuarioData,
-  type UsuarioConHash,
   type UsuarioListItem,
   type UsuarioPublico,
 } from "@/lib/interfaces/repositories/IUserRepository";
@@ -70,19 +71,61 @@ const SORT_COLUMN: Record<string, "createdAt" | "nombre" | "email" | "estado"> =
   estado: "estado",
 };
 
+// SL-18 (design §3.1): lo que el login y la recuperacion necesitan de cada cuenta del email. El
+// hash NO va aqui: solo lo suma `findCuentasPorEmailConHash`.
+const CUENTA_SELECT = {
+  id: true,
+  email: true,
+  estado: true,
+  organizacionId: true,
+  rol: { select: { value: true } },
+  organizacion: { select: { nombre: true } },
+} as const;
+
+type FilaCuenta = Prisma.UsuarioGetPayload<{ select: typeof CUENTA_SELECT }>;
+
+function aCuentaPublica(fila: FilaCuenta): CuentaPublica {
+  return {
+    id: fila.id,
+    email: fila.email,
+    estado: fila.estado,
+    organizacionId: fila.organizacionId,
+    rol: fila.rol.value,
+    empresaNombre: fila.organizacion?.nombre ?? null,
+  };
+}
+
+/**
+ * SL-18 (design §3.1): por nombre de empresa y la de plataforma (sin empresa) al final. Se ordena
+ * aqui y no en el `orderBy`: el lugar de los NULL al ordenar por una relacion no lo fija Prisma, y
+ * el orden es el que ve la persona al elegir empresa. Son 1 o 2 filas.
+ */
+function ordenarCuentas<T extends CuentaPublica>(cuentas: T[]): T[] {
+  return [...cuentas].sort((a, b) => {
+    if (a.empresaNombre === null) return b.empresaNombre === null ? 0 : 1;
+    if (b.empresaNombre === null) return -1;
+    return a.empresaNombre.localeCompare(b.empresaNombre, "es");
+  });
+}
+
 export class UserRepository implements IUserRepository {
   constructor(private readonly prisma: UserPrismaClient) {}
 
-  async findByEmailWithHash(email: string): Promise<UsuarioConHash | null> {
-    return this.prisma.usuario.findUnique({ where: { email } });
+  async findCuentasPorEmailConHash(email: string): Promise<CuentaConHash[]> {
+    const filas = await this.prisma.usuario.findMany({
+      where: { email },
+      select: { ...CUENTA_SELECT, passwordHash: true },
+    });
+    return ordenarCuentas(filas.map((f) => ({ ...aCuentaPublica(f), passwordHash: f.passwordHash })));
   }
 
   async findById(id: string): Promise<UsuarioPublico | null> {
     return this.prisma.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
   }
 
-  async findByEmail(email: string): Promise<UsuarioPublico | null> {
-    return this.prisma.usuario.findUnique({ where: { email }, select: PUBLIC_SELECT });
+  async findCuentasPorEmail(email: string): Promise<CuentaPublica[]> {
+    const filas = await this.prisma.usuario.findMany({ where: { email }, select: CUENTA_SELECT });
+    return ordenarCuentas(filas.map(aCuentaPublica));
   }
 
   async create(
