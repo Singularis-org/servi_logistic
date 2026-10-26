@@ -3,14 +3,16 @@
 > **Zona** backend · **Complejidad** high · **depends_on** SL-17 · **Rama** `feature/SL-18-unicos-secuencias-por-empresa`
 >
 > **Alcance.** Cierra lo que SL-17 dejó a esta ficha. `usuario.email` y `usuario.cedula` pasan a
-> ser únicos por empresa, y login, OTP y recuperar contraseña aprenden a resolver la empresa. Entra
+> ser únicos por empresa, y login, OTP y recuperar contraseña aprenden a resolver la empresa:
+> cuando la contraseña vale en varias empresas, el backend devuelve esas empresas para que el
+> usuario elija. Entra
 > también una guardia que impide un único de negocio nuevo sin `organizacion_id`, los índices
 > compuestos de las rutas calientes y el registro push «el último gana» entre empresas.
 > `num_guia` y su secuencia siguen globales, y queda escrito por qué.
 >
 > **Lo que NO entra.**
-> - Las pantallas de entrada por empresa (`/e/<slug>/login` y su recuperar contraseña): SLT-41
->   «Entrada por empresa: login y recuperar contraseña», bloqueada por SL-18.
+> - La pantalla del selector de empresa en `/login` y la de recuperar contraseña: SLT-41
+>   «Selector de empresa en el login y recuperar contraseña», bloqueada por SL-18.
 > - Landing pública por empresa: SL-35.
 > - Partir `num_guia` o `orden_num_guia_seq` por empresa: decidido que no (ver Decisiones).
 > - Los 18 únicos que SL-17 T3.9 ya hizo por empresa y los 52 anclados por FK: no se rehacen.
@@ -40,11 +42,10 @@ _Pendiente: los escribe spec_author (F1.2)._
 |---|---|---|
 | 2026-10-26 | ¿Dos empresas pueden tener el mismo número de guía? | No. `num_guia` sigue único global y `orden_num_guia_seq` sigue global, con `siguiente_num_guia()` y su permutación. La etiqueta, el QR, el rastreo `/paquete/[numGuia]` y la API por `numGuia` no cambian. SL-18 lo documenta en `docs/architecture.md`. |
 | 2026-10-26 | ¿Una persona puede tener cuenta en dos empresas con el mismo email o cédula? | Sí. `usuario.email` y `usuario.cedula` pasan a ser únicos compuestos con `organizacion_id` primero, el patrón heredado de SL-17 T3.9. |
-| 2026-10-26 | ¿Cómo entra a cada empresa alguien con el email repetido? | Por una entrada propia de cada empresa (`organizacion.slug`, SL-17 D13). SL-18 deja el backend listo (login, OTP y recuperar reciben la empresa). Las pantallas van a SLT-41. |
-| 2026-10-26 | ¿Qué pasa con `/login`? | Sigue funcionando si el email existe en una sola empresa. Si existe en varias, no entra y pide usar la entrada de su empresa, sin decir en cuáles está. |
+| 2026-10-26 (revisada) | ¿Cómo entra alguien registrado en varias empresas? | Por `/login`, la única entrada. Escribe email y contraseña. Si la contraseña vale en una sola empresa, entra directo. Si vale en varias, elige entre esas. Quien no sabe la contraseña nunca ve en qué empresas está el email. No hay páginas de entrada por empresa. SL-18 hace el backend; la pantalla del selector va en SLT-41. |
 | 2026-10-26 | Recuperar contraseña con email repetido | Llega un correo con un enlace por cada empresa donde existe el email. Cada enlace cambia solo la cuenta de esa empresa. |
 | 2026-10-26 | Push: un navegador pasa de una cuenta de A a una de B | El último gana. La suscripción queda solo con B (cierra la deuda D14 de `progress/deudas.md`). |
 | 2026-10-26 | ¿Guardia de únicos? | Sí. Una guardia estática falla si una migración nueva crea un único de negocio sin `organizacion_id` (m6 de `progress/review_SL-17.md`). |
 | 2026-10-26 | ¿Índices de rutas calientes? | Sí, los compuestos (`organizacion_id`, …) que SL-17 design §3 dejó a SL-18. |
 | 2026-10-26 | Datos existentes | Sin backfill. Se hereda de SL-17 D9/D10 (app vacía). El `down.sql` aborta nombrando el índice si hay duplicados entre empresas (patrón SL-17 T3.9). |
-| 2026-10-26 | ¿E2E? | Sí. Login es un flujo crítico (`docs/checkpoints-proyecto.md`): el E2E de `/login` sigue en verde y suma el caso «email en varias empresas». |
+| 2026-10-26 | ¿E2E? | Sí. Login es un flujo crítico (`docs/checkpoints-proyecto.md`): el E2E de `/login` sigue en verde y suma el caso «email en varias empresas, elige una y entra en esa». |
