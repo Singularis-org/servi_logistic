@@ -1,13 +1,16 @@
 {
   "$comment": "Perfil del arnes de servi_logistic. Montado con /arnes-init el 2026-10-21. docs/equipo.md explica cada campo.",
-  "arnes_version": "2.7.0",
+  "arnes_version": "2.8.0",
   "plantilla": {
     "url": "https://github.com/singularis-co/harness_config.git",
     "ref": "main"
   },
-  "jira": {
-    "site": "singularboard.atlassian.net",
-    "project": "SL",
+  "tracker": {
+    "$comment": "Migrado de Jira (singularboard.atlassian.net, proyecto SL) a Trello el 2026-10-23: las features vivas conservan su key SL-n (docs/trello.md > Migrar desde Jira).",
+    "tipo": "trello",
+    "board": "6ad9304b02ebee0690758089",
+    "prefijo": "SLT",
+    "prefijos_historicos": ["SL"],
     "estados": {
       "Por hacer": "pending",
       "En revisión": "spec_ready",

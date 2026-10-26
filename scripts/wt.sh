@@ -232,7 +232,7 @@ cmd_new() {
   if git -C "$REPO" rev-parse --verify -q "$branch" >/dev/null 2>&1; then
     git -C "$REPO" worktree add "$path" "$branch"          # la rama ya existia en local: es mia
   elif [ "$RETOMAR" = 1 ]; then
-    # Mi propia rama, publicada desde otra maquina. Quien la tiene lo dice Jira (assignee):
+    # Mi propia rama, publicada desde otra maquina. Quien la tiene lo dice el tracker (assignee):
     # el leader lo comprueba ANTES de llamar con --retomar.
     git -C "$REPO" fetch --quiet origin "refs/heads/$branch:refs/remotes/origin/$branch"       || fail "no existe origin/$branch: no hay nada que retomar"
     git -C "$REPO" worktree add -b "$branch" "$path" "origin/$branch"
@@ -253,7 +253,7 @@ cmd_new() {
       if ! git -C "$REPO" push --quiet --force-with-lease="refs/heads/$branch:" origin "$sha:refs/heads/$branch" 2>/dev/null; then
         if git -C "$REPO" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
           echo "${RED}✗ TOMADA: la rama $branch ya existe en origin. Otra persona tomo esta feature.${NC}" >&2
-          echo "  Suelta el assignee en Jira si lo pusiste y elige otra feature." >&2
+          echo "  Suelta el assignee en el tracker si lo pusiste y elige otra feature." >&2
           echo "  Si la tomaste TU desde otra maquina: ./scripts/wt.sh --retomar new $id $slug" >&2
           exit 4
         fi
