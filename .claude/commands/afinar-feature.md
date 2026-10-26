@@ -149,7 +149,8 @@ ninguna aplica, salta al paso 6.
    alcance, esa ficha ya no describe trabajo real.
 
 Para cualquiera de las tres: redacta el valor nuevo, muéstralo, y **con un sí explícito
-escríbelo en el issue** con las herramientas MCP de `atlassian`. Recién entonces siembras.
+escríbelo en el issue** con las herramientas MCP de `atlassian` (con Trello,
+`node scripts/trello.mjs editar|crear|mover`: `docs/trello.md > Quién sincroniza y cuándo`). Recién entonces siembras.
 
 - **Antes de crear una ficha, búscala** en el board con la JQL de `docs/specs.md > Antes de
   especificar: lo que ya existe`. Si ya existe, no se crea: «Lo que NO entra» cita la existente.
@@ -160,13 +161,13 @@ escríbelo en el issue** con las herramientas MCP de `atlassian`. Recién entonc
   (`sdd`, `slug:<kebab-case>`, `zone:<...>`, más `complexity:<...>` **solo si la acotación ya
   lo sabe**; si no, se deja fuera y lo asigna el leader en F1.0). Una ficha a medias es peor
   que ninguna: F0 la importa igual y aterriza en el backlog sin slug ni zona.
-  **No la siembras.** Nace en el estado de `pending` (según `jira.estados`) y se acota cuando le toque, con su propia
+  **No la siembras.** Nace en el estado de `pending` (según `tracker.estados` o `jira.estados`) y se acota cuando le toque, con su propia
   corrida de este comando.
-- **Una ficha huérfana se mueve al estado de `cancelled`** (según `jira.estados`), con un comentario en el
+- **Una ficha huérfana se mueve al estado de `cancelled`** (según `tracker.estados` o `jira.estados`), con un comentario en el
   issue que diga por qué y qué ficha la absorbe. **Nunca se borra.**
 - **Si el humano dice que no: no siembres.** Un spec construido sobre un alcance que la tarjeta
   contradice es la divergencia que `docs/jira.md` existe para evitar. Para y dilo.
-- **Si el MCP de `atlassian` no responde**, no tires el trabajo: siembra igual, pero mete el
+- **Si el tracker no responde** (el MCP de `atlassian` o `scripts/trello.mjs`), no tires el trabajo: siembra igual, pero mete el
   marcador como **primera línea** del archivo —
   `<!-- board-pendiente: <key> · <qué quedó sin escribir> · <motivo> -->`. Sirve para las tres
   formas: campos sin editar, ficha nueva sin crear, ficha huérfana sin cancelar. El bloque 5 de
@@ -212,7 +213,7 @@ Después, en este orden:
 - Si alguna respuesta cerró una de las cuatro preguntas abiertas del dominio, actualiza
   `docs/architecture.md > Preguntas abiertas del dominio`.
 - **No muevas de estado la ficha que estás acotando.** Sigue `pending` y su `status`
-  no cambia: quien lo mueve es el leader en F1.3. Los únicos empujones a Jira de este comando son
+  no cambia: quien lo mueve es el leader en F1.3. Los únicos empujones al tracker de este comando son
   los tres del paso 5: editar los cuatro campos, crear la ficha que falta y cancelar la huérfana.
 - Corre `./init.sh` (rápido por defecto) en el worktree de la feature y haz `git push`.
 

@@ -6,10 +6,16 @@ el cupo y qué estado es de quién.
 
 ## Quién soy: `.arnes.local.json`
 
-Archivo personal en la raíz del worktree principal, **fuera de git**. Lo escribe `/jira-connect`:
+Archivo personal en la raíz del worktree principal, **fuera de git**. Lo escribe `/tracker-connect`. Con Jira:
 
 ```json
 { "jira_account_id": "712020:…", "nombre": "Ana Pérez" }
+```
+
+Con Trello, el campo es `trello_member_id`:
+
+```json
+{ "trello_member_id": "5f2a…", "nombre": "Ana Pérez" }
 ```
 
 Sin él, el validador no sabe cuáles son tus features: cuenta el cupo sobre todo el equipo y avisa.
@@ -22,7 +28,8 @@ Dos cerrojos, en este orden. El primero es visible para el equipo y el segundo e
 2. **Solo si el assignee es nadie o soy yo.** Si es otra persona, la feature no está disponible:
    se salta y se evalúa la siguiente.
 3. **Asignármela** (`editJiraIssue`, campo `assignee` con mi `jira_account_id`) y **releer** para
-   confirmar que quedó a mi nombre.
+   confirmar que quedó a mi nombre. En Trello, los pasos 1 a 3 los hace
+   `node scripts/trello.mjs tomar <key>` (`docs/trello.md > El assignee: el candado visible del equipo`).
 4. **`./scripts/wt.sh new <key> <slug>`**. Crea un commit propio («feature tomada por …») y publica la
    rama con `git push --force-with-lease=refs/heads/<rama>:`, que **solo funciona si la rama no
    existe en el remoto**. El servidor lo comprueba de forma atómica, así que de dos personas en el
@@ -32,13 +39,13 @@ Dos cerrojos, en este orden. El primero es visible para el equipo y el segundo e
    - Si la rama es **tuya** y viene de otra máquina: `./scripts/wt.sh --retomar new <key> <slug>`.
    - `--sin-publicar` desactiva el candado. Úsalo solo si trabajas sin equipo o sin red.
 
-Jira no ofrece una operación atómica de "asignar si nadie la tiene". Por eso el assignee es el
+El tracker no ofrece una operación atómica de "asignar si nadie la tiene". Por eso el assignee es el
 aviso para las personas y la rama publicada es el cerrojo de verdad.
 
 ## Soltar una feature
 
 Si abandonas una feature sin terminarla:
-1. Quita tu assignee en Jira y devuelve la tarjeta a su estado anterior.
+1. Quita tu assignee en el tracker y devuelve la tarjeta a su estado anterior.
 2. Anota en `progress/features/<key>.md` hasta dónde llegaste y haz push.
 3. La rama queda publicada. Quien la retome debe asignársela y correr `wt.sh --retomar new`.
 
@@ -46,7 +53,7 @@ Si abandonas una feature sin terminarla:
 
 `arnes.config.json > cupos_por_persona` (por defecto: 2 `frontend`, 3 `backend`, 3 `fullstack`)
 es **tuyo**, no del equipo. `scripts/validate-features.mjs` cuenta solo las `in_progress` cuyo
-assignee es tu `jira_account_id`. Además, **toda feature en vuelo** (`spec_ready` o
+assignee es tu `jira_account_id` (o tu `trello_member_id`). Además, **toda feature en vuelo** (`spec_ready` o
 `in_progress`) **debe tener assignee**: si no, el gate se pone en rojo.
 
 ## Conflicto de archivos entre personas

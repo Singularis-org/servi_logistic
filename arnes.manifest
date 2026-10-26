@@ -15,6 +15,7 @@ init.sh
 .claude/settings.json
 docs/specs.md
 docs/jira.md
+docs/trello.md
 docs/worktrees.md
 docs/gate.md
 docs/lectura.md
@@ -22,6 +23,8 @@ docs/guia-de-uso.md
 docs/equipo.md
 docs/grafo-de-codigo.md
 scripts/validate-features.mjs
+scripts/tracker.mjs
+scripts/trello.mjs
 scripts/wt.sh
 scripts/test-rapido.mjs
 scripts/tests-de-arbol.mjs
@@ -47,3 +50,6 @@ tests/guards/guard-unir-informes-vitest.test.ts
 tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts
 tests/guards/guard-hooks-anclados.test.ts
 tests/guards/guard-init-node-modules-enlazado.test.ts
+tests/guards/guard-validador-tracker.test.ts
+tests/guards/guard-trello-cliente.test.ts
+tests/guards/guard-trello-red.test.ts

@@ -15,9 +15,9 @@ Alcance: **solo el arnes y el perfil del proyecto**:
 
 Si lo que te pidieron es un requisito de producto
 (una pantalla, un endpoint, un flujo de negocio), **no uses este comando**: eso entra por el
-board de Jira → F0 → `spec_author` (`docs/specs.md`). Dilo y para — y di a donde: si la ficha ya
+board del tracker → F0 → `spec_author` (`docs/specs.md`). Dilo y para — y di a donde: si la ficha ya
 esta en el board, se acota con **`/afinar-feature`** antes del spec; si todavia no existe, se crea
-primero en Jira.
+primero en el tracker.
 
 ## Paso 1 — Encuadre
 
