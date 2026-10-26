@@ -474,3 +474,51 @@ producción. Conviene mencionarlo en el PR.
 **OK.** No hay bloqueantes y queda un menor nuevo (m10). La corrección del detector de FK es acotada y
 la mata la mutación. La limpieza de emergencia solo alcanza `es_demo`. Las ventanas de lock no crean
 ciclos. El SQLSTATE no filtra datos.
+
+## Vuelta 3 (acotada a e50ae78..9736e19)
+
+Commit `9736e19` «perf(SL-43): la demo de QA por debajo de 3 min en el build» (22 archivos).
+
+### Checklist
+- [x] Paralelismo sin compartir cliente `pg` entre consultas concurrentes: dentro de una transacción,
+  `lib/db/consultas-en-serie.ts` encola `queryRaw`/`executeRaw` FIFO (cada trabajo es una sola
+  consulta, sin anidamiento: no hay interbloqueo de la cola); fuera de transacción cada consulta va
+  por su conexión del pool. A y B van por `lector` (pool 4, serializado) y el cliente de la app (pool 12).
+  El contexto de empresa es `AsyncLocalStorage` (`lib/db/contexto-empresa.ts`): A y B no se pisan.
+- [x] Candado: sigue en `dueno` (`max: 1`, `idleTimeoutMillis: 0`), se toma antes de marca, slugs,
+  borrado y empresas; la conexión del candado no se usa para A/B, así que el lock de sesión vive
+  hasta `cerrar()`.
+- [x] `enParalelo` espera a todos antes de lanzar (allSettled): no quedan escrituras en vuelo al cerrar.
+- [x] Borrado: la pasada rápida en orden de FK va bajo `SAVEPOINT demo_qa_en_orden`; si falla, rollback
+  al savepoint y vuelta al camino por pasadas de antes (R8). Todo en la transacción del `dueno`. El
+  lector solo lee rutas de Storage, antes de borrar filas. Sin huérfanos nuevos respecto a la vuelta 2.
+- [x] Guardia anti-producción intacta: `validarEntornoDemo` antes de `conectar`, y `comprobarMarca`
+  (entorno_marca) lo primero tras el candado, antes de cualquier lectura de negocio o escritura. El
+  diff no toca `guardia-entorno.ts` ni `decision-build.ts`. `es_demo` lo pone el mismo rol del dueño
+  (el lector usa `urlDelDueno`).
+- [x] `lib/db/prisma-client.ts` en producción: `transactionOptions` es `undefined` sin `DB_TX_*`
+  (test `prisma-transaccion.test.ts`, asierta el argumento del constructor). La demo corre en su propio
+  proceso `tsx` (`package.json > build`), así que sus `process.env` no llegan a la app. La serialización
+  SÍ aplica a toda la app, pero reproduce la cola FIFO que `pg@8` ya hacía: mismo orden, mismo resultado.
+- [x] Tests no vacíos: `consultas-en-serie.test.ts` lleva control positivo (sin serializar, máximo 2);
+  integración `demo-qa.test.ts` comprueba solape real A‖B y cero avisos de `pg`; la bitácora registra
+  mutaciones M1–M9 en rojo.
+- [x] Typecheck (`tsc --noEmit`) 0; eslint sobre los archivos tocados: sin problemas.
+- [x] Unit nuevos: 7 archivos, 69/69 verdes.
+- [~] Integración `demo-qa.test.ts` y `demo-qa-borrado.test.ts`: 16 SKIPPED en local (no hay base);
+  los verifica el CI del PR. Todavía no hay corrida de CI sobre `9736e19`.
+- [x] Reglas del proyecto (perfil reviewer): sin tablas/migraciones nuevas, sin literales de país, sin
+  Ordenex, sin dependencias nuevas.
+
+### Hallazgos
+1. menor — `design.md:91` sigue diciendo «A y después B»; ahora van a la vez. El design no recoge la
+   serialización por transacción en el cliente de la app ni `DB_TX_*`. Actualizar el design.
+2. menor — `lib/db/consultas-en-serie.ts` cambia infraestructura compartida de toda la app (fuera del
+   alcance nominal de SL-43). Equivalente a la cola de `pg@8`, pero merece una línea en el PR y en
+   `progress/features/SL-43.md` para quien toque el cliente después.
+3. menor — durante ~3-4 min el build abre hasta 12 + 4 + 1 conexiones contra QA; el tamaño del pooler
+   de QA es desconocido (la bitácora lo marca como riesgo). Vigilar el primer build.
+4. menor — integración no ejecutada en local (sin base): el camino rápido del borrado y el adaptador
+   real serializado solo los verifica el CI. No mergear sin `gate-completo` verde.
+
+### Veredicto vuelta 3: OK
