@@ -1,8 +1,7 @@
 # SL-23 — catalogo-modulos · tasks.md
 
-> Requisitos R1–R29 en `requirements.md`; el cómo, en `design.md`. **El reparto de `design.md > §3`
-> es una propuesta.** Si el humano la cambia al aprobar, se corrige `lib/modulos/reparto.ts` (T3)
-> antes de T8–T11, y la guardia de T4 dice qué falta.
+> Requisitos R1–R33 en `requirements.md`; el cómo, en `design.md`. El reparto de `design.md > §3`
+> lo aprobó el humano el 2026-10-26, con los cierres en el núcleo y el módulo «Wallet» (`wallet`).
 >
 > `[P]` = puede ir en paralelo con las otras `[P]` de su tanda. Cada task cierra con
 > `pnpm run typecheck`, `pnpm run lint` y `pnpm exec vitest related --run <archivos tocados>` en
@@ -40,10 +39,10 @@
 ## Tanda 2 — Catálogo, reparto y puertas (depende de T1)
 
 - [ ] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2).
-  - `lib/modulos/catalogo.ts` y `lib/modulos/reparto.ts`, con las tablas de §3 tal cual y
-    `CONSUMOS_ENTRE_MODULOS`.
-  - `tests/unit/modulos/catalogo.test.ts`: exactamente 9 claves, iguales al enum, y el núcleo
-    con sus 6 nombres.
+  - `lib/modulos/catalogo.ts` y `lib/modulos/reparto.ts`, con las tablas de §3 tal cual
+    (incluidas las compartidas de §3.7 y `CALCULO_CONTINUO` de §3.8) y `CONSUMOS_ENTRE_MODULOS`.
+  - `tests/unit/modulos/catalogo.test.ts`: exactamente 9 claves, iguales al enum (con `wallet`,
+    sin `wallet_cierres`), y el núcleo con sus 7 nombres (incluye «Cierres»).
   - *Hecho:* test en verde; `MODULO_POR_JOB` es un `Record<JobTipo, …>` que compila.
 - [ ] **T4 [P] — Guardias** (design §8; R3, R28).
   - `tests/unit/guards/modulos-reparto.guardia.test.ts`, casos (a)–(f), cada uno con su
@@ -59,6 +58,7 @@
   - `tests/unit/modulos/exigir-modulo.test.ts`:
     - apagado → `notFound` / `ModuloInactivoError` con `details.codigo = "modulo_inactivo"`;
     - encendido → pasa;
+    - dos claves (R33): apagada si falta cualquiera; `details.modulo` nombra la apagada;
     - superadmin → conjunto vacío sin consulta;
     - sin memo entre peticiones.
   - *Hecho:* tests en verde.
@@ -93,42 +93,59 @@
 
 ## Tanda 4 — Aplicar las puertas (depende de T3, T5; T8–T11 en paralelo entre sí)
 
-- [ ] **T8 [P] — Menú** (design §6; R15).
+- [ ] **T8 [P] — Menú** (design §6; R15, R32).
   - `modulo` en `MenuItem`/`MenuChild` y la tabla de §3.6.
   - `filtrarPorModulos` y `menuDeLaEmpresa`.
   - Los tres consumidores de `app/` (layout, dashboard y not-found).
-  - `ChatFlotante` solo con WhatsApp encendido, con el flag desde
-    `app/(app)/mis-asignaciones/reparto/page.tsx` y `recoger/page.tsx`.
+  - Consumos entre módulos (§6.3), con el flag desde el Server Component anfitrión:
+    - `ChatFlotante` solo con WhatsApp encendido (`app/(app)/mis-asignaciones/reparto/page.tsx`
+      y `recoger/page.tsx`);
+    - en `/cierres-admin`, «Pago al mensajero» y la oferta de pago al aprobar solo con Wallet
+      encendido (`app/(app)/cierres-admin/page.tsx` → `CierresAdminModule`);
+    - en `/wallet/mensajeros`, `PremiosRankingPanel` solo con Ranking encendido.
   - `tests/unit/auth/menu-modulos.test.ts`: oculta ítems y subítems; un desplegable vacío
     desaparece (Histórico del `admin` con WhatsApp apagado); `primerDestino` sobre lo filtrado;
-    superadmin sin cambios; identidad conservada.
+    «Cierre del día» y «Cierres del día» visibles con los 9 apagados; `adminSatelite` con Bodegas
+    satélite apagado aterriza en su primer destino o en Inicio (R32); superadmin sin cambios;
+    identidad conservada.
   - *Hecho:* tests en verde; los 140 usos existentes de `itemsVisibles`/`puedeVer` siguen en verde
     sin tocarlos; caso (f) de la guardia en verde.
 - [ ] **T9 [P] — Páginas** (design §5.3; R16).
-  - `await exigirModuloEnRuta("<clave>")` como primera línea de las 28 páginas de un módulo.
+  - `await exigirModuloEnRuta("<clave>")` como primera línea de las 26 páginas de un módulo.
   - Los tests de esas páginas ganan `puertasAbiertas()`.
   - *Hecho:* caso (b) de la guardia en verde; los tests de página listados abajo en verde.
-- [ ] **T10 [P] — Actions** (design §5.3; R17).
+- [ ] **T10 [P] — Actions** (design §5.3, §3.7; R17, R31, R33).
   - `await exigirModuloActivo("<clave>")` como primera sentencia de cada función exportada de
-    los 58 archivos de un módulo.
+    los 55 archivos de un módulo; `premio-ranking-devengo` con `("wallet", "ranking")`.
   - Los tests de esas actions ganan `puertasAbiertas()`.
   - `tests/integration/db/modulo-apagado-action.test.ts`: con Ranking apagado, una action de
     ranking devuelve `forbidden` y la base no cambia; con Wallet apagado, igual con una action de
-    wallet; encendido, funciona.
+    wallet; con Ranking apagado y Wallet encendido, `premio-ranking-devengo` devuelve `forbidden`;
+    encendido, funciona.
+  - `tests/integration/db/nucleo-sin-modulos.test.ts` (R31): empresa sin ningún módulo
+    encendido; el corte diario crea el cierre `vencido`, el bloqueo por cierre pendiente aplica y
+    la action de cierre del día funciona.
   - *Hecho:* casos (c) y (e) de la guardia en verde; tests en verde.
-- [ ] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6; R18–R21, R24).
-  - `conSuEmpresa` con `modulo`, `JobDescartado`, `JobQueueService` (`descartados`) y
-    `JobRepository.descartar`.
-  - `paraCadaEmpresa({ modulo })` con `saltadas`, y los tres crons de un módulo.
-  - `conEmpresaDeLaKey` con la puerta de la API, `chat/media` y `WebhookWhatsappService`.
+- [ ] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6, §3.7, §3.8; R18–R21, R24, R30, R33).
+  - `conSuEmpresa` con `modulo` (los de `CALCULO_CONTINUO` reciben `"nucleo"`), `JobDescartado`,
+    `JobQueueService` (`descartados`) y `JobRepository.descartar`.
+  - `paraCadaEmpresa({ modulo })` con `saltadas`, en los dos crons que se saltan empresas
+    (`generar-gastos-fijos`, `sync-plantillas-whatsapp`). `snapshot-ranking` no cambia.
+  - `conEmpresaDeLaKey` con la puerta de la API, `exigirModuloActivo("analitica")` en
+    `ordenes/api-key/analitica`, `chat/media` y `WebhookWhatsappService`.
   - Tests:
     - `tests/unit/services/job-queue-service-descartado.test.ts`;
     - `tests/unit/cron/procesar-jobs-modulos.test.ts`: `webhook_estado`, `webhook_evento` y un
       `whatsapp_*` descartados sin handler; uno del núcleo corre; un recurrente re-agenda;
+      `analitica_rollup_diario` y `analitica_invalidacion_cache` corren con Analítica apagada (R30);
+    - `tests/unit/cron/snapshot-ranking-modulo-apagado.test.ts` (R30): la foto incluye a la
+      empresa con Ranking apagado;
     - `tests/unit/db/para-cada-empresa-modulo.test.ts` y
       `tests/integration/db/para-cada-empresa-modulo.test.ts`;
     - `tests/unit/api/api-key-modulo-inactivo.test.ts`: 403 con
-      `details.codigo = "modulo_inactivo"` y cuerpo no ejecutado, en las 9 rutas con un fake;
+      `details.codigo = "modulo_inactivo"` y cuerpo no ejecutado, en las 9 rutas con un fake; y
+      `ordenes/api-key/analitica` con la API encendida y Analítica apagada → 403 con
+      `details.modulo = "analitica"` (R33);
     - `tests/unit/services/webhook-whatsapp-service-modulo.test.ts`.
   - Se ajustan los tests existentes del drenador y de `paraCadaEmpresa` (campo nuevo del resumen).
   - *Hecho:* caso (d) de la guardia en verde; tests en verde.
@@ -149,7 +166,7 @@
 - [ ] **T14 — Cierre.**
   - Las guardias (a)–(f) y la de seed, en verde.
   - `./init.sh` en verde en el worktree.
-  - Mapa `R1…R29 → test` y salida real de los tests en `progress/impl_SL-23.md`.
+  - Mapa `R1…R33 → test` y salida real de los tests en `progress/impl_SL-23.md`.
   - `package.json` sin dependencias nuevas (R29).
   - `docs/architecture.md > Multi-empresa` gana una viñeta SL-23: tabla, puertas y guardia.
   - *Hecho:* checklist de `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md` recorrido, sin rojos
@@ -205,8 +222,13 @@
 - `app/(app)/mis-asignaciones/reparto/page.tsx`
 - `app/(app)/mis-asignaciones/recoger/page.tsx`
 - `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx`
+- `app/(app)/cierres-admin/page.tsx`
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`
+- `app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx`
+- `app/(app)/wallet/mensajeros/_components/WalletMensajerosTabs.tsx`
+- `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx`
 
-### App: páginas de un módulo (28)
+### App: páginas de un módulo (26)
 - `app/(app)/analitica/page.tsx`
 - `app/(app)/monitoreo/page.tsx`
 - `app/(app)/recoleccion/page.tsx`
@@ -222,8 +244,6 @@
 - `app/(app)/wallet/satelites/page.tsx`
 - `app/(app)/wallet/satelites/[zonaId]/page.tsx`
 - `app/(app)/mi-wallet/page.tsx`
-- `app/(app)/cierre-dia/page.tsx`
-- `app/(app)/cierres-admin/page.tsx`
 - `app/(app)/ranking/page.tsx`
 - `app/(app)/ranking/historico/page.tsx`
 - `app/(app)/incidentes/page.tsx`
@@ -236,7 +256,7 @@
 - `app/(app)/historico/conversaciones/page.tsx`
 - `app/(app)/configuracion/api/page.tsx`
 
-### Actions de un módulo (58)
+### Actions de un módulo (55)
 - `lib/actions/analitica-financiera.ts`
 - `lib/actions/analitica-operativa.ts`
 - `lib/actions/analitica-refrescar.ts`
@@ -256,9 +276,6 @@
 - `lib/actions/envio-devolucion-central.ts`
 - `lib/actions/abono-tienda.ts`
 - `lib/actions/aporte-capital.ts`
-- `lib/actions/cierre-bodega.ts`
-- `lib/actions/cierre-dia.ts`
-- `lib/actions/cierres-admin.ts`
 - `lib/actions/como-quedo.ts`
 - `lib/actions/conciliacion-satelites.ts`
 - `lib/actions/deuda-plataforma.ts`
@@ -299,9 +316,9 @@
 ### Crons, jobs y API
 - `app/api/cron/procesar-jobs/route.ts`
 - `app/api/cron/generar-gastos-fijos/route.ts`
-- `app/api/cron/snapshot-ranking/route.ts`
 - `app/api/cron/sync-plantillas-whatsapp/route.ts`
 - `app/api/chat/media/[mensajeId]/route.ts`
+- `app/api/ordenes/api-key/analitica/route.ts`
 
 ### Fábricas y E2E
 - `tests/fabricas/modulos.ts`
@@ -321,6 +338,7 @@
 - `tests/unit/actions/modulos-empresa.composition-root.test.ts`
 - `tests/unit/auth/menu-modulos.test.ts`
 - `tests/unit/cron/procesar-jobs-modulos.test.ts`
+- `tests/unit/cron/snapshot-ranking-modulo-apagado.test.ts`
 - `tests/unit/db/para-cada-empresa-modulo.test.ts`
 - `tests/unit/api/api-key-modulo-inactivo.test.ts`
 - `tests/components/ModulosEmpresa.test.tsx`
@@ -328,6 +346,7 @@
 - `tests/integration/db/organizacion-modulo.test.ts`
 - `tests/integration/db/modulos-empresa-historial.test.ts`
 - `tests/integration/db/modulo-apagado-action.test.ts`
+- `tests/integration/db/nucleo-sin-modulos.test.ts`
 - `tests/integration/db/para-cada-empresa-modulo.test.ts`
 - `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts`
 
@@ -350,8 +369,7 @@
 - `tests/components/RecoleccionPage.test.tsx`
 - `tests/components/RecepcionSatelitePage.test.tsx`
 - `tests/components/RecepcionSateliteIncidente.test.tsx`
-- `tests/components/CierresAdminPage.test.tsx`
-- `tests/components/CierreDiaPage.test.tsx`
+- `tests/components/CierresAdminPage.test.tsx` (flag de Wallet para «Pago al mensajero»)
 - `tests/components/EstadoCuentaSatelite.test.tsx`
 - `tests/components/WalletDeudaPlataformaSL40.test.tsx`
 - `tests/components/WalletDeudaPlataformaSL45.test.tsx`

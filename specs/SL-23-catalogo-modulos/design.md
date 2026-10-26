@@ -1,7 +1,7 @@
 # SL-23 — catalogo-modulos · design.md
 
-> Requisitos en `requirements.md` (R1–R29). Lo que este documento llama **propuesta** espera la
-> aprobación humana del spec: sobre todo el reparto de §3.
+> Requisitos en `requirements.md` (R1–R33). Aprobado por el humano el 2026-10-26, con el cambio
+> de catálogo de esa fecha (cierres al núcleo) y las respuestas a P1–P6 aplicadas aquí.
 
 ## Lo que ya existe
 
@@ -58,7 +58,7 @@ que el `Sidebar` cliente pueda importarlo.
 | `monitoreo` | Monitoreo |
 | `recoleccion` | Recolección |
 | `bodegas_satelite` | Bodegas satélite |
-| `wallet_cierres` | Wallet y cierres |
+| `wallet` | Wallet |
 | `ranking` | Ranking |
 | `incidentes_novedades` | Incidentes y novedades |
 | `whatsapp` | WhatsApp |
@@ -66,33 +66,43 @@ que el `Sidebar` cliente pueda importarlo.
 
 - `MODULOS_APAGABLES: Record<ModuloApagable, { nombre: string; descripcion: string }>`. El
   orden de pantalla es una tupla aparte, `ORDEN_MODULOS`.
-- `NUCLEO = ["Inicio", "Órdenes", "Entregas", "Usuarios", "Tarifas", "Ayuda"] as const`. Solo
-  sirve para mostrarlo; no es una clave de base.
+- `NUCLEO = ["Inicio", "Órdenes", "Entregas", "Cierres", "Usuarios", "Tarifas", "Ayuda"] as
+  const`. Solo sirve para mostrarlo; no es una clave de base. «Cierres» entró al aprobar el spec
+  (2026-10-26).
 - «Recolección» es la **recolección en tienda** del mensajero (`/recoleccion`, ficha 167).
   «Recoger en bodega» (`/mis-asignaciones/recoger`) es parte de Entregas, o sea del núcleo.
 
-## 3. Reparto de piezas — PROPUESTA PENDIENTE DE APROBACIÓN
+## 3. Reparto de piezas (aprobado el 2026-10-26)
 
-Vive en `lib/modulos/reparto.ts` como datos:
+Vive en `lib/modulos/reparto.ts` como datos. El tipo del destino es
+`Destino = ModuloApagable | "nucleo" | readonly [ModuloApagable, ModuloApagable]`; la tupla solo
+se usa para las piezas compartidas de §3.7 (P5, R33).
 
 - `MODULO_POR_RUTA`, `MODULO_POR_ACTION`, `MODULO_POR_CRON` y `MODULO_POR_API`: claves de texto
-  hacia `ModuloApagable | "nucleo"`;
-- `MODULO_POR_JOB: Record<JobTipo, ModuloApagable | "nucleo">`. Un `JobTipo` nuevo sin clasificar
-  no compila.
+  hacia `Destino`;
+- `MODULO_POR_JOB: Record<JobTipo, Destino>`. Un `JobTipo` nuevo sin clasificar no compila;
+- `CALCULO_CONTINUO`: los jobs y crons de un módulo que siguen corriendo con el módulo apagado
+  (P2, R30), §3.8.
 
 La guardia de R3 lista el disco y exige que cada pieza esté exactamente una vez. Lo marcado con
-**(P<n>)** remite a la pregunta abierta de `requirements.md`.
+**(P<n>)** remite a la decisión fechada de `requirements.md`.
+
+**Cambio del 2026-10-26.** El humano sacó los cierres del módulo «Wallet y cierres», que pasa a
+llamarse «Wallet» (clave `wallet`). Al núcleo van `/cierre-dia`, `/cierres-admin`, las actions
+`cierre-dia`, `cierres-admin` y `cierre-bodega`, el cron `corte-diario`, el cierre `vencido` y el
+bloqueo por cierre pendiente (R31). Las piezas que mezclan wallet y cierres se repartieron así;
+las **dudosas** van con nota en §3.9.
 
 ### 3.1 Rutas de `app/(app)/` (43 páginas)
 
 | Módulo | Rutas |
 |---|---|
-| núcleo | `/dashboard`, `/ordenes`, `/mis-asignaciones/reparto`, `/mis-asignaciones/recoger`, `/configuracion` (Usuarios), `/configuracion/tarifas`, `/ayuda`, `/ayuda/[...slug]`, `/historico/acciones` (P3), `/configuracion/integraciones` (P3), `/configuracion/sinpe` (P3), `/configuracion/vehiculos` (P3), `/configuracion/geografia` (plataforma), `/plataforma/empresas` (plataforma) y `/plataforma/empresas/[organizacionId]` (nueva, plataforma) |
+| núcleo | `/dashboard`, `/ordenes`, `/mis-asignaciones/reparto`, `/mis-asignaciones/recoger`, `/cierre-dia`, `/cierres-admin`, `/configuracion` (Usuarios), `/configuracion/tarifas`, `/ayuda`, `/ayuda/[...slug]`, `/historico/acciones` (P3), `/configuracion/integraciones` (P3), `/configuracion/sinpe` (P3), `/configuracion/vehiculos` (P3), `/configuracion/geografia` (plataforma), `/plataforma/empresas` (plataforma) y `/plataforma/empresas/[organizacionId]` (nueva, plataforma) |
 | analitica | `/analitica` |
 | monitoreo | `/monitoreo` |
 | recoleccion | `/recoleccion` |
 | bodegas_satelite | `/recepcion-satelite`, `/recepcion-satelite/por-recibir`, `/recepcion-satelite/en-bodega`, `/mi-bodega` |
-| wallet_cierres | `/wallet`, `/wallet/tiendas`, `/wallet/tiendas/[tiendaId]`, `/wallet/mensajeros`, `/wallet/mensajeros/[mensajeroId]`, `/wallet/satelites`, `/wallet/satelites/[zonaId]`, `/mi-wallet`, `/cierre-dia`, `/cierres-admin` |
+| wallet | `/wallet`, `/wallet/tiendas`, `/wallet/tiendas/[tiendaId]`, `/wallet/mensajeros`, `/wallet/mensajeros/[mensajeroId]`, `/wallet/satelites`, `/wallet/satelites/[zonaId]`, `/mi-wallet` |
 | ranking | `/ranking`, `/ranking/historico` |
 | incidentes_novedades | `/incidentes`, `/novedades` |
 | whatsapp | `/configuracion/plantillas`, `/configuracion/envios-whatsapp`, `/configuracion/envios-whatsapp/nuevo`, `/configuracion/envios-whatsapp/[id]`, `/configuracion/envios-whatsapp/historial`, `/historico/conversaciones` |
@@ -111,12 +121,13 @@ módulo o del núcleo falla, salvo que esté en `CONSUMOS_ENTRE_MODULOS` (§6.3)
 | monitoreo (1) | `tablero-dia` |
 | recoleccion (1) | `recoleccion-tienda` |
 | bodegas_satelite (2) | `recepcion-satelite`, `envio-devolucion-central` |
-| wallet_cierres (24) | `abono-tienda`, `aporte-capital`, `cierre-bodega`, `cierre-dia`, `cierres-admin`, `como-quedo`, `conciliacion-satelites`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `liquidacion`, `pago-por-cuenta-tienda`, `premio-ranking-devengo` (P5), `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
+| wallet (20) | `abono-tienda`, `aporte-capital`, `como-quedo`, `conciliacion-satelites`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `liquidacion` (dudosa, §3.9), `pago-por-cuenta-tienda`, `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
+| wallet + ranking (1) | `premio-ranking-devengo` (P5, §3.7) |
 | ranking (2) | `ranking`, `ranking-historico` |
 | incidentes_novedades (5) | `incidentes`, `novedades`, `habilitar-novedad`, `rechazos-sla-tienda`, `gestion-desde-ayuda` |
 | whatsapp (8) | `chat-whatsapp`, `envios-whatsapp`, `historico-conversaciones`, `plantillas`, `plantillas-sync`, `whatsapp-envio`, `informe-picking`, `informe-transito` |
 | api_integraciones (2) | `api-keys`, `webhooks` |
-| núcleo (50) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
+| núcleo (53) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cierre-bodega` (Cierres), `cierre-dia` (Cierres; también la usan `/mis-asignaciones/*` y `/recoleccion`), `cierres-admin` (Cierres), `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
 
 `lib/actions/modulos-empresa.ts` (nuevo, §7) es de plataforma, así que va al núcleo. Con él son
 109.
@@ -126,7 +137,7 @@ módulo o del núcleo falla, salvo que esté en `CONSUMOS_ENTRE_MODULOS` (§6.3)
 | Módulo | Tipos |
 |---|---|
 | núcleo | `liberar_reprogramadas`, `geocodificacion`, `optimizacion_ruta`, `push_web` |
-| analitica | `analitica_rollup_diario` (recurrente, P2), `analitica_invalidacion_cache` |
+| analitica | `analitica_rollup_diario` (recurrente; cálculo continuo, P2), `analitica_invalidacion_cache` (cálculo continuo, dudosa §3.9) |
 | whatsapp | `whatsapp_template_sync`, `whatsapp_chat_envio`, `whatsapp_bienvenida`, `whatsapp_envio_programado`, `whatsapp_envio_evento`, `whatsapp_envio_ejecucion`, `whatsapp_envio_reintento`, `whatsapp_envio_mantenimiento` (recurrente) |
 | api_integraciones | `webhook_estado`, `webhook_evento` (R19) |
 
@@ -138,9 +149,9 @@ que corre de nuevo para la empresa.
 
 | Módulo | Crons |
 |---|---|
-| núcleo | `procesar-jobs` (el descarte es por job, §5.4), `corte-diario` (P1), `liberar-reprogramadas`, `procesar-devueltas-sla` (devoluciones de órdenes), `avisos-diarios` (P3), `aviso-reparto-manana` (P3), `purga-descargas`, `purga-pdf-cargas`, `purga-postulaciones-recurso` |
-| wallet_cierres | `generar-gastos-fijos` |
-| ranking | `snapshot-ranking` (P2) |
+| núcleo | `procesar-jobs` (el descarte es por job, §5.4), `corte-diario` (Cierres, P1: barre las órdenes, crea el cierre `vencido` y dispara el bloqueo siempre), `liberar-reprogramadas`, `procesar-devueltas-sla` (devoluciones de órdenes), `avisos-diarios` (P3), `aviso-reparto-manana` (P3), `purga-descargas`, `purga-pdf-cargas`, `purga-postulaciones-recurso` |
+| wallet | `generar-gastos-fijos` |
+| ranking | `snapshot-ranking` (cálculo continuo, P2: no pasa `modulo` a `paraCadaEmpresa`) |
 | whatsapp | `sync-plantillas-whatsapp` |
 
 ### 3.5 Endpoints de `app/api/` que no son cron (14)
@@ -149,7 +160,8 @@ que corre de nuevo para la empresa.
 |---|---|
 | núcleo | `asistente` (Ayuda), `ordenes/carga-masiva/chunk` (carga por pantalla, Órdenes), `docs/openapi` (público, sin empresa) |
 | whatsapp | `chat/media/[mensajeId]` (con sesión: 403 `modulo_inactivo`), `webhooks/whatsapp` (entrante: R24, P6) |
-| api_integraciones | las 9 de `ordenes/api-key/**`: `route`, `[numGuia]/cancelar`, `analitica` (P5), `carga`, `carga/[cargaId]/generate`, `cotizacion`, `habilitar`, `orden/[id]` y `orden/[id]/generate` |
+| api_integraciones + analitica | `ordenes/api-key/analitica` (P5, §3.7) |
+| api_integraciones | las otras 8 de `ordenes/api-key/**`: `route`, `[numGuia]/cancelar`, `carga`, `carga/[cargaId]/generate`, `cotizacion`, `habilitar`, `orden/[id]` y `orden/[id]/generate` |
 
 ### 3.6 Menú (`SIDEBAR_ITEMS`)
 
@@ -162,10 +174,60 @@ que corre de nuevo para la empresa.
 | Mi bodega | `bodegas_satelite` |
 | Novedades, Incidentes | `incidentes_novedades` |
 | Ranking | `ranking` |
-| Wallet, Mi wallet, Cierre del día, Cierres del día | `wallet_cierres` |
+| Wallet, Mi wallet | `wallet` |
 | Configuración › API | `api_integraciones` |
 | Configuración › Plantillas, Configuración › Envíos automáticos, Histórico › Conversaciones | `whatsapp` |
-| Inicio, Órdenes, Entregas, Configuración › Usuarios/Tarifas/Integraciones/Vehículos/SINPE, Histórico › Acciones, Empresas, Ayuda | sin `modulo` (núcleo) |
+| Inicio, Órdenes, Entregas, Cierre del día, Cierres del día, Configuración › Usuarios/Tarifas/Integraciones/Vehículos/SINPE, Histórico › Acciones, Empresas, Ayuda | sin `modulo` (núcleo) |
+
+### 3.7 Piezas compartidas entre dos módulos (P5, R33)
+
+Exigen los dos módulos encendidos. La puerta acepta varias claves:
+`exigirModuloActivo("wallet", "ranking")` y `exigirModuloEnRuta(...)` igual; está apagada si
+falta cualquiera, y el error nombra el primer módulo apagado en `details.modulo`.
+
+| Pieza | Módulos | Cómo se aplica |
+|---|---|---|
+| `lib/actions/premio-ranking-devengo.ts` | wallet + ranking | Cada función exportada abre con `exigirModuloActivo("wallet", "ranking")`. Su panel (`PremiosRankingPanel`, en la pestaña de `/wallet/mensajeros`) entra en `CONSUMOS_ENTRE_MODULOS` y no se pinta con Ranking apagado. `wallet-anulacion` la importa para anular un premio: esa rama devuelve `forbidden` con Ranking apagado, sin tocar las demás anulaciones |
+| `app/api/ordenes/api-key/analitica/route.ts` | api_integraciones + analitica | `conEmpresaDeLaKey` ya exige `api_integraciones` (§5.5); la ruta añade `exigirModuloActivo("analitica")` antes de leer. Sale 403 `modulo_inactivo` con `details.modulo = "analitica"` |
+
+### 3.8 Cálculo continuo (P2, R30)
+
+`CALCULO_CONTINUO` en `reparto.ts` lista `analitica_rollup_diario`, `analitica_invalidacion_cache`
+y `snapshot-ranking`. Siguen clasificados en su módulo (para el menú, la guardia y la trazabilidad),
+pero:
+
+- el drenador no los descarta con el módulo apagado (`conSuEmpresa` recibe `modulo` solo si el tipo
+  no es de cálculo continuo);
+- `snapshot-ranking` y el recurrente `analitica_rollup_diario` llaman a `paraCadaEmpresa` **sin**
+  `modulo`: corren para todas las empresas;
+- la guardia de §8 (caso d) exige que un cron de cálculo continuo **no** pase `modulo`, y que
+  cualquier otro cron de un módulo sí lo pase.
+
+Al reencender, la pantalla encuentra los días apagados ya calculados (R30).
+
+### 3.9 Notas sobre piezas dudosas
+
+- **`liquidacion` (pagos al mensajero y a la tienda) → wallet.** Es dinero de cuentas por pagar y
+  lo usan `/wallet/tiendas` y `/wallet/mensajeros`, pero `/cierres-admin` (núcleo) también la usa
+  en la sección «Pago al mensajero» de un cierre aprobado (`PagoMensajeroSeccion`,
+  `RegistrarPagoMensajeroDialog`, y la oferta de pago al aprobar en `CierresAdminModule`). Se deja
+  en wallet y esa sección entra en `CONSUMOS_ENTRE_MODULOS`: con Wallet apagado, `/cierres-admin`
+  aprueba, rechaza y corrige cierres igual, pero no ofrece ni lista pagos. Alternativa si el humano
+  lo prefiere: `liquidacion` al núcleo como mixto; cambia una fila de `reparto.ts`.
+- **Aprobar un cierre escribe movimientos de caja.** La action `cierres-admin` (núcleo) sigue
+  escribiéndolos con Wallet apagado; solo no se ven hasta reencender (R22). No se corta, porque
+  cortarlo dejaría la caja incompleta al reencender.
+- **`cierre-dia` la usan `/mis-asignaciones/*` y `/recoleccion`.** Antes era un consumo cruzado;
+  ahora es núcleo y deja de serlo.
+- **`analitica_invalidacion_cache` en cálculo continuo.** P2 nombra el rollup y la foto; la
+  invalidación de caché se añade porque, si se descartara, al reencender la analítica podría
+  servir caché vieja de días ya recalculados. Es barata.
+- **KPIs financieros de `/analitica`** (`app/(app)/analitica/_components/finanzas/cargar-kpis.ts`)
+  llaman a actions de wallet (`wallet`, `wallet-tienda`, `wallet-mensajero`). Hoy la sección está
+  comentada en `analitica/page.tsx` (2026-08-18). Se registra en `CONSUMOS_ENTRE_MODULOS` para que,
+  si vuelve, no se pinte con Wallet apagado; la guardia (e) lo exige.
+- **`adminSatelite` con Bodegas satélite apagado (P4, R32).** Le quedan «Cierres del día»
+  (núcleo) y lo que su rol vea; si no le queda nada, aterriza en Inicio.
 
 ## 4. Modelo de datos
 
@@ -233,7 +295,7 @@ Ninguno. El catálogo no tiene moneda, geografía, impuestos ni métodos de pago
 | Archivo | Papel |
 |---|---|
 | `lib/interfaces/repositories/IModulosActivosRepository.ts`, `lib/repositories/ModulosActivosRepository.ts` | `activos(): Promise<ModuloApagable[]>`. Un `findMany` sin `where` de empresa: lo pone la extensión y lo respalda la RLS (R7, R25). Sin empresa, falla con `EmpresaNoResuelta` |
-| `lib/modulos/exigir-modulo.ts` | `modulosActivos()`: la lista de la empresa en curso, envuelta en `cache()` de React, una consulta por petición. **No hay memo entre peticiones** (R9): a diferencia de `empresaDeLaPeticion`, este dato cambia. `moduloActivo(m)`. `exigirModuloActivo(m)`: lanza `ModuloInactivoError` si está apagado. `exigirModuloEnRuta(m)`: llama a `notFound()` si está apagado. `modulosDelMenu(actor)`: un conjunto vacío para el superadmin o sin sesión, sin consulta |
+| `lib/modulos/exigir-modulo.ts` | `modulosActivos()`: la lista de la empresa en curso, envuelta en `cache()` de React, una consulta por petición. **No hay memo entre peticiones** (R9): a diferencia de `empresaDeLaPeticion`, este dato cambia. `moduloActivo(m)`. `exigirModuloActivo(...ms)`: lanza `ModuloInactivoError` si alguno está apagado (una clave, o dos para §3.7). `exigirModuloEnRuta(...ms)`: llama a `notFound()` si alguno está apagado. `modulosDelMenu(actor)`: un conjunto vacío para el superadmin o sin sesión, sin consulta |
 | `lib/modulos/modulo-inactivo-error.ts` | `class ModuloInactivoError extends ForbiddenError`, con `details: { codigo: "modulo_inactivo", modulo }` y el mensaje «El módulo <nombre> no está activo para esta empresa.» |
 
 ### 5.2 Escritura por el superadmin
@@ -271,7 +333,8 @@ Ninguno. El catálogo no tiene moneda, geografía, impuestos ni métodos de pago
 ### 5.4 Jobs y crons (R19, R20, R21)
 
 - **`conSuEmpresa(handler, recurrente, opciones, modulo)`.** `modulo` sale de `MODULO_POR_JOB`, en
-  `buildHandlers`.
+  `buildHandlers`; para los tipos de `CALCULO_CONTINUO` (§3.8) se pasa `"nucleo"`, así que corren
+  con el módulo apagado (R30).
   - **Con empresa:** dentro del `conEmpresa`, si `modulo !== "nucleo"` y está apagado, lanza
     `JobDescartado(motivo)` sin llamar al handler.
   - **Sin empresa y recurrente:** `paraCadaEmpresa(…, { modulo })`.
@@ -288,8 +351,9 @@ Ninguno. El catálogo no tiene moneda, geografía, impuestos ni métodos de pago
   - Las demás empresas se devuelven en `resumen.saltadas` y se registran en una línea
     `console.info` con los ids, que no son datos personales.
   - `ClienteDeOrganizaciones` se ensancha para aceptar el `where`.
-- **Los tres crons de un módulo** pasan `{ modulo }`: `generar-gastos-fijos`, `snapshot-ranking` y
-  `sync-plantillas-whatsapp`. Sus resúmenes JSON ganan `saltadas: number`.
+- **Los dos crons de un módulo que se saltan empresas** pasan `{ modulo }`: `generar-gastos-fijos`
+  y `sync-plantillas-whatsapp`. Sus resúmenes JSON ganan `saltadas: number`. `snapshot-ranking` es
+  de cálculo continuo (§3.8) y no cambia: no pasa `modulo`.
 
 ### 5.5 API por key (R18)
 
@@ -308,11 +372,10 @@ HTTP 403
 - **Por qué en `details.codigo` y no en `code`.** `code` es el `AppErrorCode` cerrado en
   MAYÚSCULAS de la feature 10. Ampliarlo cambiaría el `switch` exhaustivo de `toActionError` y el
   mapa HTTP para todo el repo. El código `modulo_inactivo` viaja literal, y el 403 es el de
-  `FORBIDDEN`. **Propuesta:** si el humano quiere `code: "modulo_inactivo"` en la raíz, se cambia
-  aquí antes de implementar.
+  `FORBIDDEN`. Aprobado por el humano el 2026-10-26.
 - **`chat/media/[mensajeId]`.** Llama a `exigirModuloActivo("whatsapp")` con la misma salida.
 
-### 5.6 Webhook entrante de WhatsApp (R24, propuesta P6)
+### 5.6 Webhook entrante de WhatsApp (R24, P6 aprobada)
 
 `WebhookWhatsappService` ya abre la empresa del mensaje con `conEmpresa`. Ahí, si `whatsapp` está
 apagado, anota una línea de log sin datos personales y no guarda ni encola nada. El route sigue
@@ -355,6 +418,9 @@ el flag por props desde su Server Component. Lista inicial:
 | Pieza | Pantalla anfitriona | Módulo de la pieza |
 |---|---|---|
 | `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx` (y `ChatConversacion.tsx`) | `/mis-asignaciones/*` (núcleo) | whatsapp |
+| `app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx`, `RegistrarPagoMensajeroDialog.tsx` y la oferta de pago al aprobar en `CierresAdminModule.tsx` | `/cierres-admin` (núcleo) | wallet (`liquidacion`, §3.9) |
+| `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx` | `/wallet/mensajeros` (wallet) | wallet + ranking (§3.7) |
+| `app/(app)/analitica/_components/finanzas/cargar-kpis.ts` (hoy sin montar) | `/analitica` | wallet (§3.9) |
 
 ## 7. Pantalla del superadmin (R8, R14)
 
@@ -376,7 +442,7 @@ el flag por props desde su Server Component. Lista inicial:
 
 | Guardia | Qué falla | R |
 |---|---|---|
-| `tests/unit/guards/modulos-reparto.guardia.test.ts` | (a) Una `page.tsx` de `app/(app)/`, un `lib/actions/*.ts`, una carpeta de `app/api/cron/` o un `route.ts` de `app/api/` sin entrada en `reparto.ts`, o una entrada sin archivo. (b) Una página de un módulo sin `exigirModuloEnRuta("<su clave>")`, o con otra clave. (c) Una función exportada de una action de un módulo sin `exigirModuloActivo("<su clave>")` como primera sentencia. (d) Un cron de un módulo que llama a `paraCadaEmpresa` sin `modulo: "<su clave>"`. (e) Un import de una action de un módulo desde una ruta de otro módulo o del núcleo que no esté en `CONSUMOS_ENTRE_MODULOS`. (f) Un `itemsVisibles(` en `app/` | R3, R15, R16, R17, R21 |
+| `tests/unit/guards/modulos-reparto.guardia.test.ts` | (a) Una `page.tsx` de `app/(app)/`, un `lib/actions/*.ts`, una carpeta de `app/api/cron/` o un `route.ts` de `app/api/` sin entrada en `reparto.ts`, o una entrada sin archivo. (b) Una página de un módulo sin `exigirModuloEnRuta(<sus claves>)`, o con otras claves. (c) Una función exportada de una action de un módulo (o compartida, §3.7) sin `exigirModuloActivo(<sus claves>)` como primera sentencia. (d) Un cron de un módulo que no es de cálculo continuo y llama a `paraCadaEmpresa` sin `modulo: "<su clave>"`, o uno de cálculo continuo (§3.8) que sí lo pasa. (e) Un import de una action de un módulo desde una ruta o componente de otro módulo o del núcleo que no esté en `CONSUMOS_ENTRE_MODULOS`. (f) Un `itemsVisibles(` en `app/` | R3, R15, R16, R17, R21, R30, R33 |
 | `tests/unit/guards/modulos-sin-seed.guardia.test.ts` | `scripts/seed-catalogos.ts` (el `db:seed`) nombra `organizacionModulo` u `organizacion_modulo` | R28 |
 
 Las guardias existentes que esta feature hace cumplir son `organizacion-en-modelos`,
@@ -460,8 +526,11 @@ instalado.
 
 ## 13. Riesgos
 
-- **Volumen de puertas.** Son 28 páginas y 58 archivos de actions. La guardia de §8 es la red: sin
+- **Volumen de puertas.** Son 26 páginas y 55 archivos de actions (tras sacar los cierres al
+  núcleo). La guardia de §8 es la red: sin
   ella, una puerta olvidada es una fuga silenciosa.
 - **Una consulta más por página o action de un módulo**, cubierta por el único
   `(organizacion_id, modulo)` y memorizada por petición. El layout la hace una vez por carga.
-- **Roles que se quedan sin pantalla de trabajo** (P4) y piezas mixtas (P5). No se resuelven aquí.
+- **Roles que se quedan sin pantalla de trabajo** (P4, aceptado: R32). No se bloquea en esta feature.
+- **Cálculo continuo** (§3.8): con Analítica o Ranking apagados se sigue pagando su cómputo
+  diario. Es lo decidido (P2); el coste es el de hoy con todo encendido.
