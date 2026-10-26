@@ -238,6 +238,9 @@ Los datos se commitean con sufijo y se borran en `afterAll`, bajo `bajoLockDeEsc
   porque el CHECK `usuario_empresa_o_superadmin` lo impide en la base), el texto queda
   `estado_no_activo:activo`. Se dejó como dice el design. Si se quiere otro motivo (p. ej.
   `sin_empresa`), lo deciden spec o leader.
+  **Resuelto el 2026-10-26** (Camilo): el motivo es `sin_empresa`. Design §3.2 paso 6 revisado y
+  aserción en el caso R15 de `auth-service-empresas.test.ts` (`b0bf091`). Mutación (volver a
+  `estado_no_activo:` siempre) → R15 en rojo, 1 de 8; restaurado → 20/20 con `auth-service.test.ts`.
 - **Cuentas bloqueadas solo en parte.** Si hay cuentas bloqueadas y en las demás la contraseña no
   vale, la respuesta es `invalid_credentials`, porque R9 habla de «cuentas no bloqueadas». Solo con
   TODAS bloqueadas sale `account_locked` (R12). Así lo dicen R9, R12 y design §3.2.
@@ -249,3 +252,182 @@ Los datos se commitean con sufijo y se borran en `afterAll`, bajo `bajoLockDeEsc
 
 Tanda 2 implementada: R6–R15 tienen test (unit e integración contra Postgres real), las mutaciones dan
 rojo y se restauraron, y typecheck y lint están en verde.
+
+## Tanda 3: recuperar contraseña (R16–R21)
+
+2026-10-26, backend_dev. Base `servi_logistic_sl18` (local, `localhost:5432`). Restricción del leader:
+no se toca `app/` (las pantallas son T7.2).
+
+### Archivos
+
+Creados:
+- `lib/services/email/plantillas/recuperar-contrasena.ts` (T3.1). Usa `componerCorreo` y pone un botón
+  por cuenta con el nombre de su empresa. La cuenta sin empresa sale como `NOMBRE_EMPRESA_PLATAFORMA`
+  (importado de `lib/types/auth.ts`, sin copiarlo). El asunto es «Recupera tu acceso a Servi Logistic»:
+  no lleva «contraseña» ni enlaces, porque lo prohíbe SL-41 R11.
+- `tests/unit/services/email/recuperar-contrasena.test.ts`
+- `tests/unit/password-reset-por-empresa.test.ts`
+- `tests/integration/actions/recuperar-por-empresa.test.ts`
+
+Modificados:
+- `lib/services/PasswordResetService.ts` (T3.2), según design §4.1:
+  - Se quitan la marca PROVISIONAL (`cuentaProvisional`), `verificarCodigo`, `restablecer` y
+    `codigoCoincideConDesafioActivo`.
+  - `solicitar` recorre todas las cuentas de `findCuentasPorEmail`. Para cada una que esté bajo el
+    límite emite un enlace con `DEVICE_HASH_RECUPERACION` y TTL `OTP_TTL_MINUTES`. Después envía un
+    solo correo, o ninguno si no hubo enlaces.
+  - Sin URL base no emite nada y avisa sin el email. Si el envío falla, anula los enlaces emitidos
+    (`consumirSiActivo`), registra solo `causa=<nombre del error>` y responde `ok`.
+  - `emitirEnlace(usuarioId, marca, ttlMs, ip)` es privado. `emitirEnlaceBienvenida` y
+    `anularEnlaceBienvenida` quedan como envoltorios con la misma firma.
+  - El canje acepta las dos marcas, bienvenida y recuperación (`MARCAS_DE_ENLACE`). Los pasos 5 y 8
+    no cambian.
+  - El constructor cambia: el 3.er argumento era `OtpChallengeIssuer` y ahora es `CorreoDeRecuperacion`
+    (`{ sender, baseUrl, contacto? }`). `ResetOtpRepo` ya no pide `markConsumed`.
+- `lib/interfaces/services/IPasswordResetService.ts`: se quitan `verificarCodigo`, `restablecer`,
+  `VerificarCodigoInput` y `RestablecerInput`. `SolicitarResetInput.deviceHash` se queda, porque es la
+  firma de design §4.1, pero la fila ya no lo guarda.
+- `lib/types/password-reset.ts`: se quitan `verifyResetCodeSchema`, `resetPasswordSchema`, sus tipos de
+  entrada y el import de `OTP_CODE_LENGTH`. Se quedan `VerifyResetCodeResult` (lo usa el envoltorio, y
+  el `switch` del formulario necesita sus tres casos para compilar) y `ResetPasswordResult`.
+- `lib/actions/password-reset.ts` (T3.3): `verificarCodigoRecuperacion` y `restablecerContrasena`
+  quedan como **envoltorios de transición** `(...ignorados: unknown[])`. No tocan servicio ni base,
+  responden siempre `{ status: "invalid_or_expired" }` y llevan un comentario: «T7.2 los borra junto al
+  paso del código».
+- `lib/actions/_shared/contexto-peticion.ts` (T3.3): `buildPasswordResetService` inyecta
+  `{ sender: crearEmailSender(), baseUrl: baseUrlDeLaApp(), contacto: emailContacto() }`. Se quitan
+  `OtpChallengeIssuer` y `crearEmailProvider` de aquí. El emisor sigue vivo para el OTP del login
+  (`lib/actions/auth.ts`).
+- Tests ajustados (T3.2): se borran los casos del código por email y se conservan los del enlace.
+  - `password-reset-service.test.ts`: quedan R1/R3, R2 y R19 de la solicitud.
+  - `password-reset-actions.test.ts`: los casos del código pasan a ser R20 (envoltorios sin servicio).
+  - `password-reset-schemas.test.ts`: R7/R8 sobre `crearConEnlaceSchema`.
+  - `password-reset-enlace.test.ts`: cambia el doble del 3.er argumento.
+  - `password-reset-enlace-action.test.ts`: se quitan dos claves del doble.
+  - `password-reset-degrada-a-consola.test.ts`: fija `NEXT_PUBLIC_APP_URL`, porque sin URL base no se
+    envía.
+  - `correos-sin-secretos.test.ts`: el correo capturado de recuperación es el de enlaces; sus secretos
+    del asunto pasan a ser la URL, el id, el secreto y `#enlace=`.
+  - `otp-challenge-issuer.test.ts`: se borra el bloque SL-41 R9, «login y recuperación mandan el mismo
+    correo», que SL-18 R16 deja obsoleto.
+  - `empresa-de-la-peticion.test.ts`: el caso de recuperación prueba solo `solicitar`.
+  - `organizacion-alta.test.ts` (R44, primer acceso): se recupera con el enlace del correo en vez del
+    código.
+  - `enlace-bienvenida.test.ts`: cambia el doble del 3.er argumento.
+
+`app/` no se tocó. `BienvenidaMaestroService` no cambió.
+
+### Llamadores revisados
+
+Grep en `lib`, `app`, `components`, `tests`, `e2e`, `scripts` y `db` de lo que cambia o se borra:
+`verificarCodigo`, `restablecer`, `verificarCodigoRecuperacion`, `restablecerContrasena`,
+`verifyResetCodeSchema`, `resetPasswordSchema`, `VerifyResetCode*`, `ResetPassword*`,
+`VerificarCodigoInput`, `RestablecerInput`, `new PasswordResetService` y `buildPasswordResetService`.
+- `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx` y
+  `tests/integration/recuperar-contrasena-{form,enlace,page}.test.tsx`: compilan sin cambios y los
+  tests siguen en verde (3 archivos, 22 tests; mockean las actions).
+- `lib/actions/organizaciones.ts`: usa `buildPasswordResetService` para la bienvenida; sin cambios.
+- `lib/db/excepciones-aislamiento.ts`: la excepción de `password-reset.ts` sigue siendo cierta.
+- `e2e/_superadmin-fixture.ts > recuperarContrasena`: **compila** (typecheck incluye `e2e/`), pero en
+  ejecución ya no puede pasar, porque el correo no lleva código y «Verificar código» responde siempre
+  el genérico. Es T7.3 y no se cambió. Lo usan los E2E que la llamen (solo CI del PR a producción).
+- Homónimo `restablecerContrasena` de `lib/actions/usuarios.ts` / `UsuarioService`: no se tocó.
+- `scripts/` y `db/`: sin referencias.
+
+### Mapa R → test
+
+| R | Archivo | Caso |
+|---|---|---|
+| R16 | `tests/unit/password-reset-por-empresa.test.ts` | «R16: dos cuentas → un solo correo al email con dos enlaces, cada uno con su empresa («Plataforma» la de plataforma)» |
+| R16 | `password-reset-por-empresa.test.ts` | «R16: la cuenta que superó AUTH_RESET_MAX_REQUESTS se omite; las demás reciben su enlace» |
+| R16 | `password-reset-por-empresa.test.ts` | «R16: el enlace vence a los AUTH_OTP_TTL_MINUTES» |
+| R16 | `tests/unit/services/email/recuperar-contrasena.test.ts` | «R16: N cuentas → N líneas «<empresa>: <url>»…» y «R16: la cuenta sin empresa sale como «Plataforma»…» |
+| R17 | `password-reset-por-empresa.test.ts` | «R17: un email sin cuentas no emite ni envía, y responde igual que uno con cuentas» |
+| R17 | `password-reset-por-empresa.test.ts` | «R17: con todas las cuentas al límite no emite ni envía, y responde lo mismo» |
+| R18 | `tests/integration/actions/recuperar-por-empresa.test.ts` | «R18: el enlace de B cambia solo la contraseña de B; la de A sigue entrando con la vieja» |
+| R19 | `password-reset-por-empresa.test.ts` | «R19: vencido / ya usado / sustituido por otro enlace de recuperación / sustituido por uno de bienvenida / no es de recuperación ni de bienvenida → invalid_or_expired sin cambiar ninguna contraseña» (5 casos) y el control «un enlace de recuperación vigente se canjea…» |
+| R20 | `recuperar-por-empresa.test.ts` | «R20: con un desafío real activo, «verificar código» y «restablecer con código» no cambian ninguna contraseña ni consumen el desafío» (comprueba además que el servicio no tiene `verificarCodigo` ni `restablecer`) |
+| R20 | `tests/unit/password-reset-actions.test.ts` | «SL-18 R20 — los envoltorios de transicion…»: los dos responden `invalid_or_expired` sin llamar a ningún método del servicio |
+| R21 | `password-reset-por-empresa.test.ts` | «R21: a create solo llega el hash del secreto que viaja en el enlace» y «R21: ni la solicitud, ni un envío fallido, ni un canje bueno o malo escriben el secreto en console» |
+| R21 | `recuperar-contrasena.test.ts` | «R21: cada secreto aparece solo detrás de `#enlace=<id>.`, y nunca en el asunto» |
+
+El doble de desafíos de `password-reset-por-empresa` es un repositorio en memoria que imita al real:
+una fila está activa si no se consumió y no venció, y «último» es la activa más reciente. Así los
+enlaces salen del correo y se canjean de verdad. R18 y R20 corren con las actions reales, los
+repositorios sobre `getPrismaClient()` y el `comoPlataforma` de cada action. Solo el transporte del
+correo es doble.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → 0 `error TS`. Incluye `e2e/` y `app/`
+  sin tocar.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec eslint <los 20 archivos tocados>` → `No issues
+  found`, exit 0.
+- Unit tocados y vecinos: 14 archivos, `Tests 114 passed (114)`. Son `password-reset-*` (6),
+  `recuperar-contrasena`, `correos-sin-secretos`, `otp-challenge-issuer`, `empresa-de-la-peticion`,
+  `password-reset-degrada-a-consola`, `bienvenida-maestro-service`, `bienvenida-maestro` y
+  `organizaciones-action.composition-root`.
+- Pantalla (mockean las actions): `recuperar-contrasena-{form,enlace,page}` → `Tests 22 passed (22)`.
+- Integración en serie (`--no-file-parallelism`) contra `servi_logistic_sl18`: `recuperar-por-empresa`,
+  `organizacion-alta` y `enlace-bienvenida` → `Test Files 3 passed (3)`, `Tests 20 passed (20)`, 0
+  skipped.
+- `pnpm exec vitest related --run` de los 6 archivos de `lib/` tocados, sin `DATABASE_URL` →
+  `Test Files 18 passed | 3 skipped (21)`, `Tests 173 passed | 20 skipped (193)`, 0 rojos. Los 3
+  skipped son los de base, corridos aparte en el punto anterior.
+- `pnpm run test:guardias` → `Test Files 1 failed | 310 passed | 2 skipped (313)`, `Tests 4 failed |
+  4323 passed`. El único rojo es `dependencias-declaradas-presentes.guardia.test.ts`, que está en
+  `tests/baseline-rojos.json`, igual que en las Tandas 1 y 2.
+- Nota del comando: en `.env` el valor de `DATABASE_URL` va entre comillas simples. Con
+  `tr -d '"'` el host salía mal (`ENOTFOUND base`), así que se usó `tr -d "\"'"`. Se comprobó solo el
+  nombre de la base (`servi_logistic_sl18`) y el host (`localhost:5432`).
+
+### Mutación (T3.2/T3.3)
+
+- **M1 (R18/R19).** `MARCAS_DE_ENLACE = [DEVICE_HASH_BIENVENIDA]`: el canje deja de aceptar la marca de
+  recuperación. → `Tests 4 failed | 14 passed (18)`. Caen:
+  - `× control: un enlace de recuperación vigente se canjea…`;
+  - `× R19: ya usado…`, porque el primer canje ya no da `ok`;
+  - `× R21: ni la solicitud… escriben el secreto` (su control de camino entero);
+  - `× R18: el enlace de B cambia solo la contraseña de B…`, con base real.
+- **M2 (R16/R18).** `solicitar` emite todos los enlaces para `cuentas[0].id`, así que el enlace de B
+  cambia la de A. → `Tests 5 failed | 13 passed (18)`. Caen `× R16: dos cuentas…`, `× R16: la cuenta
+  que superó…`, `× R19: ya usado`, `× R21 …console` y `× R18: el enlace de B…` (base real).
+- Restaurado tras cada mutación: el `diff` contra la copia sale vacío.
+
+### Desviaciones y puntos abiertos
+
+- **Las acciones del código siguen exportadas** como envoltorios de transición, por la restricción de
+  no tocar `app/`. Así lo indicó el leader, aunque design §4.1 y T3.3 dicen «fuera». Por eso R20 se
+  prueba por comportamiento (no cambian nada ni consumen el desafío) y no con «el módulo ya no las
+  exporta». T7.2 las borra, con `VerifyResetCodeResult`.
+- **Mientras tanto, la pantalla de recuperar no funciona.** El paso 1 sigue diciendo «Enviar código»
+  y pasa al campo del código, pero el correo ya trae enlaces. El enlace sí funciona: lo canjea el modo
+  `#enlace=` de la misma pantalla, con el texto de SL-41 («Crea tu contraseña»). El paso del código
+  responde siempre el genérico. Se arregla en T7.2.
+- **E2E en riesgo hasta T7.3.** `e2e/_superadmin-fixture.ts > recuperarContrasena` compila, pero en
+  ejecución falla: espera un código en el log. Afecta solo al CI del PR a producción.
+- **Texto de la bienvenida.** `plantillaBienvenidaMaestro` (SL-41) todavía dice «…entra en
+  …/recuperar-contrasena y pide un código con tu correo». Desde SL-18 es un enlace. No se cambió: el
+  leader pidió no tocar la bienvenida, y `bienvenida-maestro.test.ts` fija ese texto. Lo decide el
+  leader (¿T7.2?).
+- **Constructor de `PasswordResetService`.** El 3.er argumento pasa de emisor de OTP a
+  `CorreoDeRecuperacion`. El contacto del pie entra por ahí (`emailContacto()` en el composition root),
+  así la plantilla sigue siendo pura, como la de bienvenida.
+- **Qué cuentas reciben enlace.** Todas las del email, sin filtrar por `estado`, como dice design §4.1
+  y como hacía el flujo anterior. El canje no mira el estado, pero el login sí. Una cuenta sin empresa
+  que no es de plataforma (R15, defensivo, imposible por el CHECK) también saldría como «Plataforma».
+- `findCuentasPorEmail` devuelve las cuentas por nombre de empresa y la de plataforma al final. El
+  correo respeta ese orden.
+
+### Veredicto
+
+Tanda 3 implementada: R16–R21 tienen test (unit e integración contra Postgres real), las dos mutaciones
+dan rojo y se restauraron, typecheck y lint en verde, y `app/` y `BienvenidaMaestroService` sin tocar.
+
+### Re-verificación del implementer (2026-10-26)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0.
+- En serie contra `servi_logistic_sl18`: `password-reset-por-empresa`, `recuperar-contrasena`
+  (plantilla), `recuperar-por-empresa`, `enlace-bienvenida`, `organizacion-alta`,
+  `password-reset-actions` y `auth-service-empresas` → `Test Files 7 passed (7)`, `Tests 52 passed (52)`.
+- Sin marca PROVISIONAL en `PasswordResetService`. «Plataforma» sale de `NOMBRE_EMPRESA_PLATAFORMA`.

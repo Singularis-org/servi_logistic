@@ -69,11 +69,11 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 3: recuperar contraseña (R16–R21)
 
-- [ ] **T3.1** Plantilla `lib/services/email/plantillas/recuperar-contrasena.ts`: una línea por
+- [x] **T3.1** Plantilla `lib/services/email/plantillas/recuperar-contrasena.ts`: una línea por
   cuenta con el nombre de la empresa y la URL (texto y HTML, sobre `plantilla-marca.ts`).
   **Hecho:** test de la plantilla: N enlaces, «Plataforma» para la de plataforma, sin el secreto
   fuera del `#enlace=`.
-- [ ] **T3.2** `PasswordResetService` según design §4.1:
+- [x] **T3.2** `PasswordResetService` según design §4.1:
   - `solicitar` con enlaces y un solo correo;
   - `emitirEnlace` privado;
   - el canje acepta `DEVICE_HASH_RECUPERACION`;
@@ -90,7 +90,9 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   `password-reset-actions.test.ts`, `password-reset-degrada-a-consola.test.ts`,
   `correos-sin-secretos.test.ts` y `otp-challenge-issuer.test.ts`: se borran los casos del código
   por email y se conservan los del enlace.
-- [ ] **T3.3** `lib/actions/password-reset.ts`: fuera `verificarCodigoRecuperacion` y
+- [x] **T3.3** (2026-10-26: las dos acciones quedan como envoltorios que siempre fallan hasta
+  T7.2, porque `app/` no se toca en esta tanda; R20 se prueba por comportamiento.
+  Ver `progress/impl_SL-18.md > Tanda 3`.) `lib/actions/password-reset.ts`: fuera `verificarCodigoRecuperacion` y
   `restablecerContrasena`. `lib/actions/_shared/contexto-peticion.ts` inyecta el emisor y la URL
   base. Dep. T3.2.
   **Hecho:** R20: test de que el módulo ya no exporta esas acciones.
