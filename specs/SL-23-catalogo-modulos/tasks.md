@@ -9,7 +9,7 @@
 
 ## Tanda 0 — Preparación
 
-- [ ] **T0 — Orden de migraciones y base de pruebas.**
+- [x] **T0 — Orden de migraciones y base de pruebas.**
   - Comprobar contra `origin/dev` que `20261025160100_entorno_marca` sigue siendo la última
     migración. Si no lo es, renumerar las tres de T1 antes de aplicarlas en ninguna base
     compartida.
