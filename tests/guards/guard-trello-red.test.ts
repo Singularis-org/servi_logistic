@@ -179,7 +179,7 @@ function cliente(board: ReturnType<typeof boardFalso>, { env = ENV, previa }: { 
     esperar: async (ms: number) => {
       esperas.push(ms)
     },
-    env,
+    env: env as NodeJS.ProcessEnv, // el default de `crearCliente` es `process.env`: tsc infiere ProcessEnv
     log: (s: string) => salida.push(s),
   })
   return { c, raiz, esperas, salida }
