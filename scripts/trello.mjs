@@ -283,7 +283,7 @@ function raizDelRepo() {
  */
 export function crearCliente({
   raiz = raizDelRepo(),
-  rutaConfig = undefined, // con default para que tsc lo cuente entre las opciones
+  rutaConfig = /** @type {string | undefined} */ (undefined), // tipado para que tsc la cuente entre las opciones
   fetch: hacerFetch = globalThis.fetch,
   esperar = dormir,
   env = process.env,
