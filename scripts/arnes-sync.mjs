@@ -132,7 +132,9 @@ if (MODO === 'subir') {
   }
   if (grupos.local.length === 0) { console.log('no hay mejoras locales del arnes que subir'); process.exit(0); }
 
-  const proyecto = config.jira?.project ?? path.basename(process.cwd());
+  // Misma precedencia que `scripts/tracker.mjs`, escrita aqui a proposito: el sync no importa nada
+  // del arnes, porque es el script que lo trae y tiene que correr aunque falte un archivo.
+  const proyecto = (config.tracker ? config.tracker.prefijo : config.jira?.project) ?? path.basename(process.cwd());
   const slug = mensaje.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
   // Fecha y hora UTC: dos subidas el mismo dia con el mismo titulo no chocan en el nombre de rama.
   const sello = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');

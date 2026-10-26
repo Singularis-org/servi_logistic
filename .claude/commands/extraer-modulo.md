@@ -191,7 +191,8 @@ Después:
 - **No corras `./init.sh`.** Este comando no toca código ni `feature_list.json`: escribe tres
   markdown en una carpeta que nada valida. Un verde garantizado que no significa nada es justo el
   agujero que el gate vino a cerrar.
-- **No toques Jira.** Ninguno de los empujones de `docs/jira.md > Quién sincroniza y cuándo` es
+- **No toques el tracker.** Ninguno de los empujones de `docs/jira.md > Quién sincroniza y cuándo`
+  (ni de `docs/trello.md`) es
   de este comando.
 
 Termina listando las tres rutas y una línea de veredicto. No pegues el contenido en el chat.

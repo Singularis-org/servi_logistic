@@ -6,8 +6,10 @@
  * convenciones, dependencias) vive en los docs que lista `arnes.config.json > perfil.docs`.
  * Esos docs envejecen en silencio: nadie los relee porque nada lo pide. Este check lo pide.
  *
- *   - FALLA si `arnes.config.json` falta o no declara `jira.project`: sin eso el arnes no sabe
- *     a que proyecto pertenece (lo genera `/arnes-init`).
+ *   - FALLA si `arnes.config.json` falta o no declara el prefijo del tracker (`tracker.prefijo`,
+ *     o `jira.project` en un perfil sin `tracker`): sin eso el arnes no sabe a que proyecto
+ *     pertenece (lo genera `/arnes-init`). Con `tracker`, el bloque `jira` no se lee
+ *     (`scripts/tracker.mjs`).
  *   - AVISA si un doc del perfil no existe, no lleva el marcador
  *     `<!-- perfil: revisado=AAAA-MM-DD ... -->` en su primera linea, o lo lleva vencido
  *     (`perfil.max_dias_sin_revisar`, 60 por defecto). Avisa y no falla: bloquear un PR porque
@@ -27,6 +29,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
+import { resolverTracker } from './tracker.mjs';
+
 const CONFIG = 'arnes.config.json';
 const MARCADOR = /<!--\s*perfil:\s*revisado=(\d{4}-\d{2}-\d{2})/;
 
@@ -41,8 +45,11 @@ try {
   console.error(`${CONFIG} no es JSON valido: ${err.message}`);
   process.exit(1);
 }
-if (!config.jira?.project) {
-  console.error(`${CONFIG} no declara "jira.project". Corre /arnes-init.`);
+const tracker = resolverTracker(config);
+const proyecto = tracker.prefijo;
+if (!proyecto) {
+  const campo = tracker.etiqueta === 'tracker' ? 'tracker.prefijo' : 'jira.project';
+  console.error(`${CONFIG} no declara "${campo}". Corre /arnes-init.`);
   process.exit(1);
 }
 
@@ -102,4 +109,4 @@ for (const doc of docs) {
   }
 }
 
-console.log(`perfil del proyecto ${config.jira.project}: ${docs.length - vencidos}/${docs.length} docs revisados en los ultimos ${maxDias} dias`);
+console.log(`perfil del proyecto ${proyecto}: ${docs.length - vencidos}/${docs.length} docs revisados en los ultimos ${maxDias} dias`);

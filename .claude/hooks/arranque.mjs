@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const salida = [];
 try {
@@ -25,8 +26,15 @@ try {
 
   const ident = path.join(raiz, '.arnes.local.json');
   const lista = path.join(raiz, 'feature_list.json');
-  const yo = existsSync(ident) ? JSON.parse(readFileSync(ident, 'utf8')).jira_account_id : null;
-  if (!yo) salida.push('AVISO: sin .arnes.local.json — corre /jira-connect para fijar tu identidad de Jira.');
+  // El campo de identidad depende del tracker (`scripts/tracker.mjs`). Config contra la raiz, no
+  // contra el cwd (`tests/guards/guard-hooks-anclados.test.ts`).
+  // Import dinamico dentro del try: si falta el script, el hook avisa y no rompe el arranque.
+  const { campoIdentidad, nombreTracker, resolverTracker } = await import(pathToFileURL(path.join(raiz, 'scripts', 'tracker.mjs')).href);
+  const configPath = path.join(raiz, 'arnes.config.json');
+  const tracker = resolverTracker(existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : undefined);
+  const campo = campoIdentidad(tracker.tipo);
+  const yo = existsSync(ident) ? JSON.parse(readFileSync(ident, 'utf8'))[campo] : null;
+  if (!yo) salida.push(`AVISO: sin ${campo} en .arnes.local.json — corre /tracker-connect para fijar tu identidad de ${nombreTracker(tracker.tipo)}.`);
   if (existsSync(lista)) {
     const { features } = JSON.parse(readFileSync(lista, 'utf8'));
     const mias = features.filter((f) => ['spec_ready', 'in_progress'].includes(f.status) && (!yo || f.assignee?.accountId === yo));
