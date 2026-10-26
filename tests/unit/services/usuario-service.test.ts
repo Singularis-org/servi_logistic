@@ -43,9 +43,9 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
 
 function buildRepo(overrides: Partial<IUserRepository> = {}): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn().mockResolvedValue(usuario()),
     updatePasswordHash: vi.fn(),
     listMensajeros: vi.fn(),

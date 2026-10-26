@@ -190,7 +190,7 @@ describe("OtpChallengeIssuer (SL-41 R9)", () => {
     const otpRepo = otpRepoDoble();
     const servicio = new PasswordResetService(
       {
-        findByEmail: vi.fn().mockResolvedValue({ id: "usr-1", email: "ana@example.com" }),
+        findCuentasPorEmail: vi.fn().mockResolvedValue([{ id: "usr-1", email: "ana@example.com" }]),
         updatePasswordHash: vi.fn(),
       },
       otpRepo,

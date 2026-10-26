@@ -50,9 +50,9 @@ const SUPERADMIN = usuario({ id: "usr-super", rolId: "rol-superadmin" });
 /** Todos los métodos son espías, para contar escrituras. */
 function repoDoble(objetivo: UsuarioPublico | null = SUPERADMIN): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(objetivo),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn().mockResolvedValue(usuario()),
     restablecerContrasena: vi.fn(),
     updatePasswordHash: vi.fn(),

@@ -85,7 +85,7 @@ beforeAll(async () => {
   const otpRepo = otpRepoDoble(hashesRecuperacion);
   await new PasswordResetService(
     {
-      findByEmail: vi.fn().mockResolvedValue({ id: "usr-1", email: "ana@example.com", passwordHash: passwordHashDelUsuario }),
+      findCuentasPorEmail: vi.fn().mockResolvedValue([{ id: "usr-1", email: "ana@example.com", passwordHash: passwordHashDelUsuario }]),
       updatePasswordHash: vi.fn(),
     },
     otpRepo,

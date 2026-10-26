@@ -6,20 +6,20 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 1: únicos de `usuario` (R1–R5)
 
-- [ ] **T1.1** Migración `20261026090000_usuario_unico_por_empresa`: `migration.sql` y `down.sql`
+- [x] **T1.1** Migración `20261026090000_usuario_unico_por_empresa`: `migration.sql` y `down.sql`
   (design §2 M1).
   **Hecho:** `pnpm run db:reset` aplica; el `down.sql` aborta con repetidos y, sin ellos, deja los
   globales.
-- [ ] **T1.2** `db/schema.prisma` (`Usuario`): fuera `@unique` de `email` y `cedula`; dentro los dos
+- [x] **T1.2** `db/schema.prisma` (`Usuario`): fuera `@unique` de `email` y `cedula`; dentro los dos
   `@@unique` con `map` y `@@index([email])`. Dep. T1.1.
   **Hecho:** `prisma migrate diff` sin drift; `pnpm run typecheck` en verde tras T1.3.
-- [ ] **T1.3** `UserRepository` / `IUserRepository`: sustituir `findByEmail` y
+- [x] **T1.3** `UserRepository` / `IUserRepository`: sustituir `findByEmail` y
   `findByEmailWithHash` por `findCuentasPorEmail` y `findCuentasPorEmailConHash` (design §3.1).
   `PostulacionRepository` pasa a `findFirst`. Ajustar los dobles de los tests unitarios que
   declaran los métodos viejos. Dep. T1.2.
   **Hecho:** typecheck en verde; `user-repository.test.ts` cubre orden, select sin hash y
   plataforma al final.
-- [ ] **T1.4** Tests de integración. Dep. T1.3.
+- [x] **T1.4** Tests de integración. Dep. T1.3.
   - `tests/integration/db/usuario-unico-por-empresa.test.ts`:
     - R1: el mismo email y la misma cédula en A y en B;
     - R2: repetido en la misma empresa da `UsuarioDuplicadoError` con su campo;
@@ -33,7 +33,7 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   - Ajustar `organizacion-alta.test.ts` si algún caso daba por hecho el email global.
   **Hecho:** los tres archivos en verde; mutación anotada en `impl` (quitar `organizacion_id` del
   índice → R1 en rojo).
-- [ ] **T1.5** [P] R5: test en `tests/integration/db/usuario-unico-por-empresa.test.ts`: la key
+- [x] **T1.5** [P] R5: test en `tests/integration/db/usuario-unico-por-empresa.test.ts`: la key
   «tienda-x» se crea en A y en B; repetida en A da `conflict`. Dep. T1.3.
   **Hecho:** verde.
 

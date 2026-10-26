@@ -49,7 +49,7 @@ function buildChallenge(codeHash: string, overrides: Partial<{ id: string }> = {
 
 function buildDeps() {
   const userRepo = {
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     updatePasswordHash: vi.fn().mockResolvedValue(undefined),
   };
   const otpRepo = {
@@ -80,7 +80,7 @@ const CTX = { deviceHash: "dh", ipAddress: "1.2.3.4" };
 describe("PasswordResetService", () => {
   it("R1/R3: email inexistente devuelve respuesta generica y no emite OTP", async () => {
     const deps = buildDeps();
-    deps.userRepo.findByEmail.mockResolvedValue(null);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([]);
     const service = buildService(deps);
 
     const result = await service.solicitar({ email: "no@existe.test", ...CTX });
@@ -91,7 +91,7 @@ describe("PasswordResetService", () => {
 
   it("R2/R4: email existente emite OTP (el hash lo maneja el issuer)", async () => {
     const deps = buildDeps();
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     const service = buildService(deps);
 
     const result = await service.solicitar({ email: USUARIO.email, ...CTX });
@@ -104,7 +104,7 @@ describe("PasswordResetService", () => {
 
   it("R5/R6: verificar codigo incorrecto o expirado devuelve error generico", async () => {
     const deps = buildDeps();
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(null); // sin desafio activo
     const service = buildService(deps);
 
@@ -120,7 +120,7 @@ describe("PasswordResetService", () => {
   it("R5: verificar codigo correcto devuelve ok sin consumir el desafio", async () => {
     const deps = buildDeps();
     const codeHash = await hashPassword("123456");
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(buildChallenge(codeHash));
     const service = buildService(deps);
 
@@ -137,7 +137,7 @@ describe("PasswordResetService", () => {
   it("R9/R10: restablecer con codigo valido hashea, persiste y marca consumido", async () => {
     const deps = buildDeps();
     const codeHash = await hashPassword("123456");
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(buildChallenge(codeHash));
     const service = buildService(deps);
 
@@ -157,7 +157,7 @@ describe("PasswordResetService", () => {
 
   it("R11: restablecer con desafio ya consumido/expirado no modifica la contrasena", async () => {
     const deps = buildDeps();
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(null);
     const service = buildService(deps);
 
@@ -176,7 +176,7 @@ describe("PasswordResetService", () => {
   it("R13: un OTP con codigo de otro no restablece (codigo no coincide)", async () => {
     const deps = buildDeps();
     const codeHash = await hashPassword("111111"); // desafio real del usuario
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(buildChallenge(codeHash));
     const service = buildService(deps);
 
@@ -194,7 +194,7 @@ describe("PasswordResetService", () => {
   it("R14: no registra el codigo ni la contrasena en claro", async () => {
     const deps = buildDeps();
     const codeHash = await hashPassword("123456");
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(buildChallenge(codeHash));
     const service = buildService(deps);
 
@@ -224,7 +224,7 @@ describe("PasswordResetService", () => {
 
   it("R19: supera RESET_MAX_REQUESTS -> no emite OTP pero responde generico", async () => {
     const deps = buildDeps();
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.contarRecientesPorUsuario.mockResolvedValue(3); // == RESET_MAX_REQUESTS
     const service = buildService(deps);
 
@@ -237,7 +237,7 @@ describe("PasswordResetService", () => {
   it("R20: supera RESET_MAX_VERIFY_ATTEMPTS -> invalid_or_expired sin tocar repos", async () => {
     const deps = buildDeps();
     const codeHash = await hashPassword("123456");
-    deps.userRepo.findByEmail.mockResolvedValue(USUARIO);
+    deps.userRepo.findCuentasPorEmail.mockResolvedValue([USUARIO]);
     deps.otpRepo.findLatestActiveByUsuarioId.mockResolvedValue(buildChallenge(codeHash));
     const service = buildService(deps);
 

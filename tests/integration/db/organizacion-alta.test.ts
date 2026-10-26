@@ -190,33 +190,44 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(await alta(entrada(slugB, emailA, `doc-ajena-c-${RUN}`))).toEqual({ estado: "conflicto", campo: "slug" });
   });
 
-  it("R46/R36: un email ya usado da conflicto de email y revierte todo, también la organización", async () => {
+  // SL-18 R1: estos dos casos decían «conflicto y revierte todo» porque email y documento eran
+  // únicos GLOBALES (SL-17 R36). Ahora son por empresa: la empresa nueva no tiene a nadie, así que
+  // el maestro con el email o el documento de otra empresa se crea. El P2002 de esos índices ya no
+  // puede darse en un alta (la traducción en `OrganizacionRepository.campoDuplicado` queda como
+  // defensa), y el duplicado dentro de una empresa lo cubre `usuario-unico-por-empresa.test.ts`.
+  it("SL-18 R1 (antes R46/R36): un email ya usado en OTRA empresa no impide el alta: se crea con su maestro", async () => {
     const email = `dup-${RUN}@ejemplo.test`;
-    expect((await alta(entrada(conSufijo("dup-a"), email, `doc-dup-a-${RUN}`))).estado).toBe("creada");
+    const a = await alta(entrada(conSufijo("dup-a"), email, `doc-dup-a-${RUN}`));
+    expect(a.estado).toBe("creada");
     const antes = await filas();
-    const slugB = conSufijo("dup-b");
 
-    const r = await alta(entrada(slugB, email, `doc-dup-b-${RUN}`));
+    const b = await alta(entrada(conSufijo("dup-b"), email, `doc-dup-b-${RUN}`));
 
-    expect(r).toEqual({ estado: "conflicto", campo: "email" });
-    // SL-17 T3.9: `filas()` cuenta también el podio, que el alta escribe ANTES del maestro: el
-    // choque del email se lo lleva con el rollback.
-    expect(await filas()).toEqual(antes);
-    expect(antes.podio).toBeGreaterThan(0);
-    expect(await base.organizacion.findUnique({ where: { slug: slugB } })).toBeNull();
+    expect(b.estado).toBe("creada");
+    if (a.estado !== "creada" || b.estado !== "creada") return;
+    expect(await filas()).toEqual({
+      organizaciones: antes.organizaciones + 1,
+      usuarios: antes.usuarios + 1,
+      podio: antes.podio + 3,
+    });
+    const maestros = await base.usuario.findMany({ where: { email }, select: { organizacionId: true } });
+    expect(new Set(maestros.map((m) => m.organizacionId))).toEqual(new Set([a.organizacionId, b.organizacionId]));
   });
 
-  it("R46/R36: un documento ya usado da conflicto de documento y revierte todo", async () => {
+  it("SL-18 R1 (antes R46/R36): un documento ya usado en OTRA empresa no impide el alta", async () => {
     const documento = `doc-dupdoc-${RUN}`;
     expect((await alta(entrada(conSufijo("dupdoc-a"), `dupdoc-a-${RUN}@ejemplo.test`, documento))).estado).toBe("creada");
     const antes = await filas();
-    const slugB = conSufijo("dupdoc-b");
 
-    const r = await alta(entrada(slugB, `dupdoc-b-${RUN}@ejemplo.test`, documento));
+    const r = await alta(entrada(conSufijo("dupdoc-b"), `dupdoc-b-${RUN}@ejemplo.test`, documento));
 
-    expect(r).toEqual({ estado: "conflicto", campo: "documento" });
-    expect(await filas()).toEqual(antes);
-    expect(await base.organizacion.findUnique({ where: { slug: slugB } })).toBeNull();
+    expect(r.estado).toBe("creada");
+    expect(await filas()).toEqual({
+      organizaciones: antes.organizaciones + 1,
+      usuarios: antes.usuarios + 1,
+      podio: antes.podio + 3,
+    });
+    expect(await base.usuario.count({ where: { cedula: documento } })).toBe(2);
   });
 
   it("R46: la entrada inválida no escribe nada", async () => {

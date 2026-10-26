@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Sin base: Prisma y los dos repositorios son dobles. Credenciales FALSAS, dominio `example.test`.
 
 const dobles = vi.hoisted(() => ({
-  findByEmail: vi.fn(async (email: string) => ({ id: "u-ficticio", email })),
+  findCuentasPorEmail: vi.fn(async (email: string) => [{ id: "u-ficticio", email }]),
   contarRecientes: vi.fn(async () => 0),
   crearDesafio: vi.fn(async () => ({ id: "desafio-ficticio" })),
   createTransport: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("@/lib/db/prisma-client", () => ({
 
 vi.mock("@/lib/repositories/UserRepository", () => ({
   UserRepository: class {
-    findByEmail = dobles.findByEmail;
+    findCuentasPorEmail = dobles.findCuentasPorEmail;
   },
 }));
 
@@ -82,7 +82,7 @@ afterEach(() => {
     else process.env[v] = original[v];
   }
   vi.restoreAllMocks();
-  dobles.findByEmail.mockClear();
+  dobles.findCuentasPorEmail.mockClear();
   dobles.contarRecientes.mockClear();
   dobles.crearDesafio.mockClear();
   dobles.createTransport.mockClear();
@@ -96,7 +96,7 @@ describe("T19 — sin SMTP, «recuperar contraseña» envia por consola y no lan
 
     expect(resultado).toEqual({ status: "ok" });
     // Anti-vacuidad: el flujo llego de verdad al envio, con el usuario del doble.
-    expect(dobles.findByEmail).toHaveBeenCalledWith(EMAIL);
+    expect(dobles.findCuentasPorEmail).toHaveBeenCalledWith(EMAIL);
     expect(dobles.crearDesafio).toHaveBeenCalledTimes(1);
     expect(enviar).toHaveBeenCalledTimes(1);
     expect(enviar.mock.calls[0][0].to).toBe(EMAIL);

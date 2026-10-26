@@ -36,7 +36,7 @@ function fila(over: Partial<EmailOtpChallengeRecord> & { codeHash: string }): Em
 function buildDeps() {
   const orden: string[] = [];
   const userRepo = {
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     updatePasswordHash: vi.fn(async () => {
       orden.push("updatePasswordHash");
     }),
