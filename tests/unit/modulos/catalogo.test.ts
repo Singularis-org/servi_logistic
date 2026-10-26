@@ -21,15 +21,14 @@ const CLAVES = [
   "bodegas_satelite",
   "wallet",
   "ranking",
-  "incidentes_novedades",
   "whatsapp",
   "api_integraciones",
 ];
 
 describe("SL-23 · catálogo de módulos (R1, R2)", () => {
-  it("R1 — exactamente 9 claves, las mismas que el enum `modulo_apagable`", () => {
+  it("R1 — exactamente 8 claves, las mismas que el enum `modulo_apagable`", () => {
     const enCatalogo = Object.keys(MODULOS_APAGABLES).sort();
-    expect(enCatalogo).toHaveLength(9);
+    expect(enCatalogo).toHaveLength(8);
     expect(enCatalogo).toEqual(Object.values(ModuloApagablePrisma).sort());
     expect(enCatalogo).toEqual([...CLAVES].sort());
   });
@@ -41,6 +40,12 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     expect(Object.values(ModuloApagablePrisma)).not.toContain("wallet_cierres");
   });
 
+  it("R1, R2 — `incidentes_novedades` no existe: Incidentes y novedades es núcleo", () => {
+    expect(esModuloApagable("incidentes_novedades")).toBe(false);
+    expect(Object.values(ModuloApagablePrisma)).not.toContain("incidentes_novedades");
+    expect(NUCLEO).toContain("Incidentes y novedades");
+  });
+
   it("R1 — los nombres en pantalla son los de la decisión cerrada", () => {
     expect(ORDEN_MODULOS.map(nombreDelModulo)).toEqual([
       "Analítica",
@@ -49,7 +54,6 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
       "Bodegas satélite",
       "Wallet",
       "Ranking",
-      "Incidentes y novedades",
       "WhatsApp",
       "API e integraciones",
     ]);
@@ -64,8 +68,17 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     for (const clave of ORDEN_MODULOS) expect(MODULOS_APAGABLES[clave].descripcion.trim()).not.toBe("");
   });
 
-  it("R2 — el núcleo son sus 7 nombres, Cierres incluido", () => {
-    expect([...NUCLEO]).toEqual(["Inicio", "Órdenes", "Entregas", "Cierres", "Usuarios", "Tarifas", "Ayuda"]);
+  it("R2 — el núcleo son sus 8 nombres, Cierres e Incidentes y novedades incluidos", () => {
+    expect([...NUCLEO]).toEqual([
+      "Inicio",
+      "Órdenes",
+      "Entregas",
+      "Cierres",
+      "Incidentes y novedades",
+      "Usuarios",
+      "Tarifas",
+      "Ayuda",
+    ]);
   });
 
   it("R2 — nada del núcleo es una clave apagable, ni por su nombre ni en minúsculas", () => {

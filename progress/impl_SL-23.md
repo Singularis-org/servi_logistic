@@ -241,3 +241,87 @@ Modificados:
   archivos nuevos y el tocado.
 
 Veredicto: T3, T4 y T5 hechos y en verde; quedan tres hallazgos abiertos para T8–T11 (import cruzado de `/ordenes`, puerta sin empresa, `components/shared`).
+
+## Tanda 2b — ajustes (2026-10-26, backend_dev)
+
+Por la decisión humana del commit `250f685`: Incidentes y novedades pasa al núcleo (quedan 8 módulos),
+R34 (sin empresa, la puerta no aplica), `components/` y `hooks/` se clasifican por la ruta que los
+monta, y `liquidacion` y `conciliacion-satelites` van al núcleo. Cierra los tres hallazgos de la Tanda 2.
+
+### Archivos
+
+- T1: `db/migrations/20261026120000_organizacion_modulo/migration.sql` (sin `'incidentes_novedades'`
+  en el `CREATE TYPE`, en sitio) y `db/schema.prisma` (`enum ModuloApagable`, 8 valores);
+  `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts` (`CLAVES` con 8, «los 8 módulos», 16 filas
+  para dos empresas, `toHaveLength(8)`); `tests/integration/db/organizacion-modulo.test.ts` (el orden
+  del enum, sin la clave).
+- T3: `lib/modulos/catalogo.ts` (8 módulos; `NUCLEO` con 8 nombres, con «Incidentes y novedades»);
+  `lib/modulos/reparto.ts` (`/incidentes`, `/novedades` y las 5 actions de incidentes al núcleo;
+  `liquidacion` y `conciliacion-satelites` al núcleo, con nota; `EnviarPlantillaWhatsappButton` en
+  `CONSUMOS_ENTRE_MODULOS`); `tests/unit/modulos/catalogo.test.ts`.
+- T4: `tests/unit/guards/_modulos-reparto.ts`: `GrafoDeConsumos` sustituye a `consumosNoDeclarados`.
+  Sigue los imports de valor de cada archivo de `app/` hacia `components/**` y `hooks/**` (alias `@/` y
+  relativos, `index`), con memo por archivo y protección de ciclos. Los `import type` no cuentan. Una
+  pieza de `CONSUMOS_ENTRE_MODULOS` en cualquier punto de la cadena la cubre. El fallo nombra la cadena
+  (`ruta → componente → … → lib/actions/x (módulo)`).
+  `tests/unit/guards/modulos-reparto.guardia.test.ts`: (e) usa el grafo, con una prueba de no-vacuidad
+  (sin §6.3, el barrido ve `…/EnviarPlantillaWhatsappButton.tsx → lib/actions/whatsapp-envio`). Las
+  autocomprobaciones de (e) usan un árbol inventado: la mutación pedida (un componente de `components/`
+  montado en `/ordenes` que llega por un hook a una action de wallet), su declaración en §6.3, la
+  declaración con otro módulo, un ciclo y los imports directos. Cifras: 24 páginas y 48 actions de un
+  módulo.
+- T5: `lib/modulos/exigir-modulo.ts`: `modulosActivos()` da `ReadonlySet | null`. Captura solo
+  `EmpresaNoResuelta` y la convierte en `null`, que el `cache()` también memoriza. Con `null` las dos
+  puertas vuelven sin lanzar ni `notFound()`, `moduloActivo` da `false` y `modulosDelMenu` da el
+  conjunto vacío. `tests/unit/modulos/exigir-modulo.test.ts`: `cache` de React sustituido por uno que
+  memoriza hasta `nuevaPeticion()` (el contrato de Next). Casos nuevos (R34): `EmpresaNoResuelta` → ninguna
+  puerta lanza ni llama a `notFound`; otro error se propaga; el `null` se lee una sola vez por petición.
+  También «una sola lectura dentro de una petición», y R9 sigue con una lectura por petición.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T1, T3, T4 y T5 `[x]`.
+
+### Estado de la guardia (e)
+
+Está en **verde normal**, sin `.fails`: el único cruce real (`EnviarPlantillaWhatsappButton`, montado
+en `/novedades` y en `/mis-asignaciones/reparto`) está declarado en §6.3. T8 sigue debiendo el flag en
+sus anfitrionas. Siguen con `.fails` (b), (c), la mitad «de un módulo» de (d) y (f).
+
+### Base
+
+`prisma migrate reset --force` sobre `logistic_sl23` no se ejecutó: Prisma 7 bloquea el reset pedido
+por un agente sin el consentimiento explícito del humano (`PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`),
+y el mensaje del leader no cuenta como tal. Para no borrar nada, se creó una base **nueva y vacía**,
+`logistic_sl23b`, con `CREATE DATABASE`, y su `db-env-b.sh` en el scratchpad del leader, con el mismo
+`.env` y otro nombre de base: `prisma migrate deploy` (todas las migraciones, la de SL-23 con 8
+valores), `prisma generate`, `pnpm run db:seed` y `prisma migrate diff --from-config-datasource
+--to-schema db/schema.prisma --script` → `-- This is an empty migration.`; `migrate status` → «Database
+schema is up to date!». **`logistic_sl23` sigue con el checksum viejo**: o el humano autoriza el reset,
+o se la abandona y se apunta `db-env.sh` a `logistic_sl23b`.
+
+### Mapa R → test (cambios)
+
+| R | Test |
+|---|---|
+| R1, R2 | `catalogo.test.ts`: «exactamente 8 claves…», «`incidentes_novedades` no existe: Incidentes y novedades es núcleo», «el núcleo son sus 8 nombres…» |
+| R5 | `migracion-sl23-ida-y-vuelta.test.ts`: «cada empresa previa queda con los 8 módulos encendidos» (16 filas para A y B) |
+| R3 | guardia (a) con 24/48; (e) transitiva y su mutación en `components/` |
+| R9 | `exigir-modulo.test.ts`: «apagar entre dos peticiones…» (3 peticiones, 3 lecturas), «dentro de una misma petición hay una sola lectura» |
+| R34 | `exigir-modulo.test.ts` › «sin empresa la puerta no aplica»: los tres casos |
+
+### Mutaciones probadas en el árbol real (revertidas y comprobadas con `git status`)
+
+- `import "@/lib/actions/wallet"` añadido a `components/shared/NotificationsBell.tsx` → (e) rojo, con
+  cadenas como `app/(app)/cierre-dia/page.tsx → components/shared/AppPage.tsx →
+  components/shared/PageHeader.tsx → components/shared/NotificationsBell.tsx → lib/actions/wallet (wallet)`.
+
+### Salida
+
+- `vitest run tests/unit/modulos tests/unit/guards/modulos-reparto.guardia.test.ts tests/unit/guards/modulos-sin-seed.guardia.test.ts`:
+  `Test Files 4 passed (4) · Tests 67 passed | 4 expected fail (71)`.
+- `vitest run tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts tests/integration/db/organizacion-modulo.test.ts`
+  (con `DATABASE_URL` a `logistic_sl23b`): `Test Files 2 passed (2) · Tests 17 passed (17)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `0 errors, 231 warnings` (preexistentes); `eslint` de los archivos tocados: «No issues found».
+- `pnpm run test:guardias`: `Test Files 2 failed | 308 passed | 2 skipped (312) · Tests 6 failed | 4297 passed | 4 expected fail | 20 skipped`.
+  Rojos: solo `dependencias-declaradas-presentes` (4, baseline) e `historial-accion-escrituras-cubiertas` (2, hasta T6).
+
+Veredicto: los ajustes de T1, T3, T4 y T5 están hechos y en verde sobre `logistic_sl23b`; el reset de `logistic_sl23` espera la autorización del humano.

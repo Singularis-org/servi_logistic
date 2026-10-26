@@ -29,6 +29,8 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/mis-asignaciones/recoger": "nucleo",
   "/cierre-dia": "nucleo",
   "/cierres-admin": "nucleo",
+  "/incidentes": "nucleo",
+  "/novedades": "nucleo",
   "/configuracion": "nucleo",
   "/configuracion/tarifas": "nucleo",
   "/ayuda": "nucleo",
@@ -61,9 +63,6 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // ranking
   "/ranking": "ranking",
   "/ranking/historico": "ranking",
-  // incidentes_novedades
-  "/incidentes": "incidentes_novedades",
-  "/novedades": "incidentes_novedades",
   // whatsapp
   "/configuracion/plantillas": "whatsapp",
   "/configuracion/envios-whatsapp": "whatsapp",
@@ -101,11 +100,10 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   // bodegas_satelite
   "recepcion-satelite": "bodegas_satelite",
   "envio-devolucion-central": "bodegas_satelite",
-  // wallet (19)
+  // wallet (18)
   "abono-tienda": "wallet",
   "aporte-capital": "wallet",
   "como-quedo": "wallet",
-  "conciliacion-satelites": "wallet",
   "deuda-plataforma": "wallet",
   "efecto-movimiento": "wallet",
   "estado-cuenta": "wallet",
@@ -126,12 +124,6 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   // ranking
   ranking: "ranking",
   "ranking-historico": "ranking",
-  // incidentes_novedades
-  incidentes: "incidentes_novedades",
-  novedades: "incidentes_novedades",
-  "habilitar-novedad": "incidentes_novedades",
-  "rechazos-sla-tienda": "incidentes_novedades",
-  "gestion-desde-ayuda": "incidentes_novedades",
   // whatsapp
   "chat-whatsapp": "whatsapp",
   "envios-whatsapp": "whatsapp",
@@ -144,7 +136,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   // api_integraciones
   "api-keys": "api_integraciones",
   webhooks: "api_integraciones",
-  // núcleo (54 + `modulos-empresa`, de plataforma)
+  // núcleo (60 + `modulos-empresa`, de plataforma)
   auth: "nucleo",
   "aprobacion-postulaciones": "nucleo",
   "atencion-postulaciones-recurso": "nucleo",
@@ -152,6 +144,14 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "cierre-bodega": "nucleo",
   "cierre-dia": "nucleo",
   "cierres-admin": "nucleo",
+  // Cierres, mixto: `/cierres-admin` y `/wallet/satelites` (§3.9, a confirmar por el humano).
+  "conciliacion-satelites": "nucleo",
+  // Incidentes y novedades (núcleo desde el 2026-10-26).
+  "gestion-desde-ayuda": "nucleo",
+  "habilitar-novedad": "nucleo",
+  incidentes: "nucleo",
+  novedades: "nucleo",
+  "rechazos-sla-tienda": "nucleo",
   cobertura: "nucleo",
   "cobro-plataforma": "nucleo",
   "corregir-datos-cliente": "nucleo",
@@ -168,6 +168,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "historial-acciones": "nucleo",
   integraciones: "nucleo",
   "liberacion-reprogramada": "nucleo",
+  // Cierres, mixto: pagos desde `/cierres-admin`, también usada por `/wallet/tiendas` y `/wallet/mensajeros` (§3.9).
   liquidacion: "nucleo",
   manifiesto: "nucleo",
   "mis-asignaciones": "nucleo",
@@ -282,7 +283,8 @@ export interface ConsumoEntreModulos {
 /**
  * §6.3 — piezas de un módulo que se pintan en una pantalla de otro (o del núcleo). La anfitriona
  * solo las pinta con su módulo encendido, con el flag por props desde su Server Component. La
- * guardia (caso e) exige que todo import cruzado de una action de un módulo esté aquí.
+ * guardia (caso e) exige que todo import cruzado de una action de un módulo, directo o a través de
+ * `components/` y `hooks/`, esté aquí. Una pieza puede ser un componente compartido de `components/`.
  */
 export const CONSUMOS_ENTRE_MODULOS: readonly ConsumoEntreModulos[] = [
   {
@@ -306,5 +308,12 @@ export const CONSUMOS_ENTRE_MODULOS: readonly ConsumoEntreModulos[] = [
     pieza: "app/(app)/analitica/_components/finanzas/cargar-kpis.ts",
     anfitrionas: ["/analitica"],
     modulo: "wallet",
+  },
+  {
+    // Lo montan `NovedadAcciones` (`/novedades`) y `GestionarOrdenPanel` (`/mis-asignaciones/reparto`,
+    // vía `RepartoModule`), los dos del núcleo (§3.9).
+    pieza: "components/shared/EnviarPlantillaWhatsappButton.tsx",
+    anfitrionas: ["/novedades", "/mis-asignaciones/reparto"],
+    modulo: "whatsapp",
   },
 ];

@@ -36,10 +36,6 @@ export const MODULOS_APAGABLES: Readonly<Record<ModuloApagable, FichaModulo>> = 
     nombre: "Ranking",
     descripcion: "Ranking de mensajeros y su histórico.",
   },
-  incidentes_novedades: {
-    nombre: "Incidentes y novedades",
-    descripcion: "Gestión de incidentes y novedades de las órdenes.",
-  },
   whatsapp: {
     nombre: "WhatsApp",
     descripcion: "Chat, plantillas, envíos automáticos e histórico de conversaciones.",
@@ -58,16 +54,25 @@ export const ORDEN_MODULOS = [
   "bodegas_satelite",
   "wallet",
   "ranking",
-  "incidentes_novedades",
   "whatsapp",
   "api_integraciones",
 ] as const satisfies readonly ModuloApagable[];
 
 /**
  * Lo que nunca se apaga, solo para mostrarlo («Núcleo (siempre activo)»). No es una clave de base:
- * no hay fila que encender ni petición que lo acepte (R2). «Cierres» entró al aprobar el spec.
+ * no hay fila que encender ni petición que lo acepte (R2). «Cierres» e «Incidentes y novedades»
+ * entraron por decisión del humano del 2026-10-26.
  */
-export const NUCLEO = ["Inicio", "Órdenes", "Entregas", "Cierres", "Usuarios", "Tarifas", "Ayuda"] as const;
+export const NUCLEO = [
+  "Inicio",
+  "Órdenes",
+  "Entregas",
+  "Cierres",
+  "Incidentes y novedades",
+  "Usuarios",
+  "Tarifas",
+  "Ayuda",
+] as const;
 
 export function esModuloApagable(valor: string): valor is ModuloApagable {
   return Object.hasOwn(MODULOS_APAGABLES, valor);

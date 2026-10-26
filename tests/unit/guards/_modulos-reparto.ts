@@ -303,14 +303,28 @@ export function problemaDeCron(llamadas: readonly (string | null)[], clave: stri
 }
 
 // ---------------------------------------------------------------------------------------------
-// Caso (e): imports cruzados de actions
+// Caso (e): imports cruzados de actions, directos o a través de `components/` y `hooks/` (§3.9)
 
-const IMPORT_DE_ACTION =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']@\/lib\/actions\/([a-z0-9][a-z0-9-]*)["']/g;
+const ESPECIFICADOR = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;
+// `import type` / `export type … from` no ejecutan nada: un tipo de una action no la consume.
+const SOLO_TIPOS = /\b(?:import|export)\s+type\s+[^;]*?\bfrom\s*["'][^"']+["']/g;
+const ACTION = /^lib\/actions\/([a-z0-9][a-z0-9-]*)(?:\.ts)?$/;
+/** Por dónde se siguen los imports desde una ruta: los componentes y hooks compartidos. */
+const CARPETAS_TRANSITIVAS = ["components/", "hooks/"] as const;
+const EXTENSIONES_RESOLUBLES = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"] as const;
 
-/** Los archivos de `lib/actions/` que importa un fuente (sin contar comentarios). */
+/** Los especificadores de los imports de valor de un fuente (sin comentarios ni imports de tipo). */
+export function especificadores(fuente: string): string[] {
+  const codigo = quitarComentarios(fuente).replace(SOLO_TIPOS, "");
+  return [...new Set([...codigo.matchAll(ESPECIFICADOR)].map((m) => m[1]))];
+}
+
+/** Los archivos de `lib/actions/` que importa un fuente (sin comentarios ni imports de tipo). */
 export function actionsImportadas(fuente: string): string[] {
-  return [...new Set([...quitarComentarios(fuente).matchAll(IMPORT_DE_ACTION)].map((m) => m[1]))];
+  return especificadores(fuente).flatMap((e) => {
+    const m = /^@\/lib\/actions\/([a-z0-9][a-z0-9-]*)$/.exec(e);
+    return m ? [m[1]] : [];
+  });
 }
 
 function prefijoMasLargo(rel: string, carpetas: readonly [string, Destino][]): Destino | undefined {
@@ -348,26 +362,81 @@ function cubre(quien: Destino, loQueExige: Destino): boolean {
   return modulosDe(loQueExige).every((m) => tiene.has(m));
 }
 
+/** Una action alcanzada y el camino de archivos que lleva a ella (sin el de partida). */
+interface Alcance {
+  action: string;
+  camino: readonly string[];
+}
+
 /**
- * Los imports de una action de un módulo desde un archivo de `app/` cuyo módulo no la cubre, y que no
- * están declarados en `CONSUMOS_ENTRE_MODULOS`. Una action del núcleo nunca es un consumo cruzado.
+ * El grafo de imports de un árbol, para el caso (e). Desde un archivo de `app/` sigue los imports que
+ * entran en `components/**` o `hooks/**` y recoge las actions que alcanza, con el camino. Memoriza
+ * por archivo: los componentes compartidos se recorren una vez para todas las rutas.
  */
-export function consumosNoDeclarados(
-  rel: string,
-  fuente: string,
-  consumos: readonly ConsumoEntreModulos[] = CONSUMOS_ENTRE_MODULOS,
-): string[] {
-  const propio = destinoDeArchivoDeApp(rel);
-  const declarado = consumos.find((c) => c.pieza === rel);
-  const fallos: string[] = [];
-  for (const action of actionsImportadas(fuente)) {
-    const destino = MODULO_POR_ACTION[action];
-    if (destino === undefined) continue; // sin clasificar: lo dice el caso (a)
-    if (cubre(propio, destino)) continue;
-    if (declarado && cubre(declarado.modulo, destino)) continue;
-    fallos.push(`${rel} importa lib/actions/${action} (${modulosDe(destino).join(" + ")})`);
+export class GrafoDeConsumos {
+  private readonly memo = new Map<string, readonly Alcance[]>();
+
+  constructor(
+    private readonly raiz: string = RAIZ,
+    private readonly consumos: readonly ConsumoEntreModulos[] = CONSUMOS_ENTRE_MODULOS,
+  ) {}
+
+  private resolver(desde: string, especificador: string): string | null {
+    let base: string;
+    if (especificador.startsWith("@/")) base = especificador.slice(2);
+    else if (especificador.startsWith(".")) base = path.posix.join(path.posix.dirname(desde), especificador);
+    else return null;
+    if (ACTION.test(base)) return base.replace(/\.ts$/, "");
+    for (const ext of EXTENSIONES_RESOLUBLES) {
+      const c = base + ext;
+      if (/\.tsx?$/.test(c) && existsSync(path.join(this.raiz, c))) return c;
+    }
+    return null;
   }
-  return fallos;
+
+  /** Las actions que alcanza `rel`: las que importa y las de los componentes y hooks que importa. */
+  private alcances(rel: string, enCurso: Set<string>): readonly Alcance[] {
+    const guardado = this.memo.get(rel);
+    if (guardado) return guardado;
+    if (enCurso.has(rel)) return []; // ciclo: lo que alcanza ya lo cuenta quien lo abrió
+    enCurso.add(rel);
+    const salida: Alcance[] = [];
+    for (const e of especificadores(leer(rel, this.raiz))) {
+      const destino = this.resolver(rel, e);
+      if (!destino) continue;
+      const m = ACTION.exec(destino);
+      if (m) salida.push({ action: m[1], camino: [] });
+      else if (CARPETAS_TRANSITIVAS.some((c) => destino.startsWith(c))) {
+        for (const a of this.alcances(destino, enCurso)) salida.push({ action: a.action, camino: [destino, ...a.camino] });
+      }
+    }
+    enCurso.delete(rel);
+    this.memo.set(rel, salida);
+    return salida;
+  }
+
+  /**
+   * Los cruces sin declarar desde un archivo de `app/`: una action de un módulo que su ruta no cubre,
+   * alcanzada sin pasar por una pieza de `CONSUMOS_ENTRE_MODULOS` que la cubra. Una action del núcleo
+   * nunca es cruce. Cada fallo nombra la cadena `archivo → componente → action`.
+   */
+  cruces(rel: string): string[] {
+    const propio = destinoDeArchivoDeApp(rel);
+    const fallos = new Set<string>();
+    for (const { action, camino } of this.alcances(rel, new Set())) {
+      const destino = MODULO_POR_ACTION[action];
+      if (destino === undefined) continue; // sin clasificar: lo dice el caso (a)
+      if (cubre(propio, destino)) continue;
+      const declarada = [rel, ...camino].some((f) =>
+        this.consumos.some((c) => c.pieza === f && cubre(c.modulo, destino)),
+      );
+      if (declarada) continue;
+      fallos.add(
+        [rel, ...camino, `lib/actions/${action}`].join(" → ") + ` (${modulosDe(destino).join(" + ")})`,
+      );
+    }
+    return [...fallos];
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

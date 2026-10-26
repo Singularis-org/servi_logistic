@@ -115,7 +115,7 @@ async function loQueVeLaApp(tx: TxDeTest): Promise<string[]> {
 }
 
 const enOrdenDelEnum = (ms: readonly string[]) => {
-  const orden = ["analitica", "monitoreo", "recoleccion", "bodegas_satelite", "wallet", "ranking", "incidentes_novedades", "whatsapp", "api_integraciones"];
+  const orden = ["analitica", "monitoreo", "recoleccion", "bodegas_satelite", "wallet", "ranking", "whatsapp", "api_integraciones"];
   return [...ms].sort((a, b) => orden.indexOf(a) - orden.indexOf(b));
 };
 

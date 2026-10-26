@@ -23,7 +23,7 @@
 
 ## Tanda 1 — Datos (depende de T0)
 
-- [ ] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27). *Reabierta.*
+- [x] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27). *Reabierta.*
   - **Ajuste 2026-10-26.** Quitar `incidentes_novedades` del `CREATE TYPE modulo_apagable` **en
     sitio**, en `20261026120000_organizacion_modulo/migration.sql`, y del `enum ModuloApagable` de
     `db/schema.prisma`. No se crea migración nueva: la migración no está mergeada. Hay que resetear
@@ -48,7 +48,7 @@
 
 ## Tanda 2 — Catálogo, reparto y puertas (depende de T1)
 
-- [ ] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2). *Reabierta.*
+- [x] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2). *Reabierta.*
   - **Ajuste 2026-10-26.**
     - `catalogo.ts`: sin `incidentes_novedades` en `MODULOS_APAGABLES` ni en `ORDEN_MODULOS`;
       «Incidentes y novedades» va en `NUCLEO` (8 nombres).
@@ -65,7 +65,7 @@
     sin `wallet_cierres` ni `incidentes_novedades`), y el núcleo con sus 8 nombres (incluye
     «Cierres» e «Incidentes y novedades»).
   - *Hecho:* test en verde; `MODULO_POR_JOB` es un `Record<JobTipo, …>` que compila.
-- [ ] **T4 [P] — Guardias** (design §8, §3.9; R3, R28). *Reabierta.*
+- [x] **T4 [P] — Guardias** (design §8, §3.9; R3, R28). *Reabierta.*
   - **Ajuste 2026-10-26.** El caso (e) sigue los imports de forma transitiva desde
     `app/(app)/<ruta>/**`, a través de `components/**` y `hooks/**`, hasta `lib/actions/*`.
     Al fallar, nombra la cadena. Una entrada de `CONSUMOS_ENTRE_MODULOS` puede nombrar un
@@ -79,7 +79,7 @@
   - En esta tanda (b)–(f) **fallan a propósito**: se marcan y se ponen en verde al final de T8–T11.
     No se mergea ningún rojo.
   - *Hecho:* (a) y la de seed están en verde, y cada caso tiene su mutación probada.
-- [ ] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17, R34). *Reabierta.*
+- [x] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17, R34). *Reabierta.*
   - **Ajuste 2026-10-26 (R34).**
     - `modulosActivos()` captura solo `EmpresaNoResuelta` y devuelve `null`, memorizado en el
       `cache()`.

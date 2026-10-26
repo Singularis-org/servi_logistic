@@ -4,16 +4,36 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError, ForbiddenError } from "@/lib/errors/app-error";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
-// SL-23 · T5 (design §5.1; R9, R16, R17, R33) — las puertas de lectura. El repositorio se sustituye
-// por uno en memoria cuya lista cambia entre llamadas: así se ve que la puerta pregunta a la fuente
-// cada vez (sin memo entre peticiones, R9) y que el superadmin no la consulta.
+// SL-23 · T5 (design §5.1; R9, R16, R17, R33, R34) — las puertas de lectura. El repositorio se
+// sustituye por uno en memoria cuya lista cambia entre llamadas, o que falla como se le pida.
+//
+// `cache()` de React solo memoriza dentro de una petición de un Server Component; fuera de ella (como
+// en vitest) llama siempre. Se sustituye por uno que memoriza hasta `nuevaPeticion()`, que es el
+// contrato que da Next: así se ve a la vez que dentro de una petición hay una sola lectura (también
+// del `null` sin empresa, R34) y que entre peticiones no hay memo (R9).
 
-const estado = vi.hoisted(() => ({ activos: [] as string[], consultas: 0 }));
+type Fallo = "sin-empresa" | "otro" | null;
+const estado = vi.hoisted(() => ({ activos: [] as string[], consultas: 0, peticion: 0, fallo: null as Fallo }));
+
+vi.mock("react", () => ({
+  cache: <A extends unknown[], R>(fn: (...a: A) => R) => {
+    let memo: { peticion: number; valor: R } | undefined;
+    return (...a: A): R => {
+      if (memo?.peticion !== estado.peticion) memo = { peticion: estado.peticion, valor: fn(...a) };
+      return memo.valor;
+    };
+  },
+}));
 
 vi.mock("@/lib/repositories/ModulosActivosRepository", () => ({
   ModulosActivosRepository: class {
     async activos() {
       estado.consultas++;
+      if (estado.fallo === "sin-empresa") {
+        const { EmpresaNoResuelta } = await import("@/lib/db/contexto-empresa");
+        throw new EmpresaNoResuelta("organizacionModulo", "findMany");
+      }
+      if (estado.fallo === "otro") throw new Error("conexión perdida");
       return [...estado.activos];
     }
   },
@@ -32,13 +52,19 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-const { exigirModuloActivo, exigirModuloEnRuta, moduloActivo, modulosDelMenu } = await import(
+const { exigirModuloActivo, exigirModuloEnRuta, moduloActivo, modulosActivos, modulosDelMenu } = await import(
   "@/lib/modulos/exigir-modulo"
 );
 const { ModuloInactivoError } = await import("@/lib/modulos/modulo-inactivo-error");
 
+/** Cada cambio de estado del test es otra petición: la anterior ya terminó. */
+function nuevaPeticion(): void {
+  estado.peticion++;
+}
+
 function encender(...ms: ModuloApagable[]): void {
   estado.activos = ms;
+  nuevaPeticion();
 }
 
 async function errorDe(p: Promise<unknown>): Promise<unknown> {
@@ -56,6 +82,8 @@ const superadmin: Actor = { usuarioId: "u-2", rol: "superadmin" };
 beforeEach(() => {
   estado.activos = [];
   estado.consultas = 0;
+  estado.fallo = null;
+  nuevaPeticion();
 });
 
 describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
@@ -163,6 +191,46 @@ describe("SL-23 · sin memo entre peticiones (R9)", () => {
     await expect(exigirModuloEnRuta("ranking")).rejects.toBeInstanceOf(NotFoundSenal);
     encender("ranking");
     await expect(exigirModuloActivo("ranking")).resolves.toBeUndefined();
-    expect(estado.consultas).toBe(4);
+    // Tres peticiones, tres lecturas: dentro de la segunda, la action y la página comparten una.
+    expect(estado.consultas).toBe(3);
+  });
+
+  it("dentro de una misma petición hay una sola lectura", async () => {
+    encender("wallet");
+    await exigirModuloActivo("wallet");
+    await exigirModuloEnRuta("wallet");
+    await moduloActivo("ranking");
+    expect(estado.consultas).toBe(1);
+  });
+});
+
+describe("SL-23 · sin empresa la puerta no aplica (R34)", () => {
+  it("la lectura lanza EmpresaNoResuelta → ninguna puerta lanza ni llama a notFound", async () => {
+    estado.fallo = "sin-empresa";
+    await expect(modulosActivos()).resolves.toBeNull();
+    await expect(exigirModuloActivo("wallet")).resolves.toBeUndefined();
+    await expect(exigirModuloActivo("wallet", "ranking")).resolves.toBeUndefined();
+    await expect(exigirModuloEnRuta("ranking")).resolves.toBeUndefined();
+    await expect(moduloActivo("wallet")).resolves.toBe(false);
+    // Un rol de empresa sin empresa resuelta (sesión a medias) tampoco ve módulos en el menú.
+    expect([...(await modulosDelMenu(maestro))]).toEqual([]);
+  });
+
+  it("otro error de la lectura se propaga: no abre la puerta", async () => {
+    estado.fallo = "otro";
+    await expect(exigirModuloActivo("wallet")).rejects.toThrow("conexión perdida");
+    nuevaPeticion();
+    await expect(exigirModuloEnRuta("wallet")).rejects.toThrow("conexión perdida");
+    nuevaPeticion();
+    await expect(moduloActivo("wallet")).rejects.toThrow("conexión perdida");
+  });
+
+  it("el null se memoriza en la petición: una sola lectura", async () => {
+    estado.fallo = "sin-empresa";
+    await exigirModuloActivo("wallet");
+    await exigirModuloEnRuta("wallet");
+    await moduloActivo("ranking");
+    await modulosActivos();
+    expect(estado.consultas).toBe(1);
   });
 });

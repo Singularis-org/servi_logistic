@@ -26,7 +26,6 @@ CREATE TYPE "modulo_apagable" AS ENUM (
   'bodegas_satelite',
   'wallet',
   'ranking',
-  'incidentes_novedades',
   'whatsapp',
   'api_integraciones'
 );

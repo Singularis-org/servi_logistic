@@ -19,10 +19,10 @@ import {
   archivoDeCron,
   archivoDeRuta,
   archivosDeApp,
-  consumosNoDeclarados,
   destinoDeArchivoDeApp,
   diferenciasDeReparto,
   funcionesSinPuerta,
+  GrafoDeConsumos,
   leer,
   llamaAItemsVisibles,
   modulosPasadosAParaCadaEmpresa,
@@ -48,12 +48,13 @@ import {
  *      claves>)`, directa o como primera sentencia de su `withErrorHandler` (R17, R33);
  *  (d) un cron de un módulo pasa `modulo: "<su clave>"` a `paraCadaEmpresa` (R21), y uno de cálculo
  *      continuo NO lo pasa (R30);
- *  (e) un archivo de `app/` solo importa actions de su módulo o del núcleo, salvo lo declarado en
- *      `CONSUMOS_ENTRE_MODULOS` (§6.3);
+ *  (e) un archivo de `app/` solo alcanza actions de su módulo o del núcleo, directo o a través de
+ *      `components/**` y `hooks/**` (un componente compartido toma el módulo de la ruta que lo monta,
+ *      §3.9), salvo lo declarado en `CONSUMOS_ENTRE_MODULOS` (§6.3); el fallo nombra la cadena;
  *  (f) nadie en `app/` llama a `itemsVisibles(`: el menú pasa por `menuDeLaEmpresa` (R15).
  *
- * ESTADO EN LA TANDA 2 (tasks.md > T4). (b), (c), la mitad «de un módulo» de (d), la mitad de
- * imports de (e) y (f) describen puertas que todavía no existen: las ponen T8–T11. Van con `it.fails`, que está VERDE mientras el
+ * ESTADO EN LA TANDA 2 (tasks.md > T4). (b), (c), la mitad «de un módulo» de (d) y (f) describen
+ * puertas que todavía no existen: las ponen T8–T11. Van con `it.fails`, que está VERDE mientras el
  * árbol incumple y se pone ROJO en cuanto lo cumple. Ese rojo es el aviso para quitar el `.fails`: no
  * se puede olvidar. Lo que ya se cumple hoy va con `it` normal. Las autocomprobaciones de cada caso
  * (una fuente buena que pasa y su mutación que falla) son `it` normales desde ya.
@@ -106,7 +107,8 @@ function problemasDeCrons(continuos: boolean): string[] {
 }
 
 function consumosCruzados(): string[] {
-  return archivosDeApp().flatMap((rel) => consumosNoDeclarados(rel, leer(rel)));
+  const grafo = new GrafoDeConsumos();
+  return archivosDeApp().flatMap((rel) => grafo.cruces(rel));
 }
 
 function llamadasAItemsVisibles(): string[] {
@@ -145,9 +147,9 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       });
     });
 
-    it("§3.1/§3.2: el reparto tiene 26 páginas y 54 archivos de actions de un módulo", () => {
-      expect(PAGINAS_DE_MODULO).toHaveLength(26);
-      expect(ACTIONS_DE_MODULO).toHaveLength(54);
+    it("§3.1/§3.2: el reparto tiene 24 páginas y 48 archivos de actions de un módulo", () => {
+      expect(PAGINAS_DE_MODULO).toHaveLength(24);
+      expect(ACTIONS_DE_MODULO).toHaveLength(48);
     });
   });
 
@@ -178,17 +180,26 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
   });
 
   describe("(e) consumos entre módulos declarados (§6.3)", () => {
-    it("cada consumo declarado apunta a un archivo y a rutas que existen", () => {
+    it("cada consumo declarado apunta a un archivo (de app/ o de components/) y a rutas que existen", () => {
       for (const c of CONSUMOS_ENTRE_MODULOS) {
         expect(existsSync(path.join(RAIZ, c.pieza)), c.pieza).toBe(true);
         for (const ruta of c.anfitrionas) expect(disco.ruta, `${c.pieza} › ${ruta}`).toContain(ruta);
       }
     });
 
-    // T10 la pone en verde: entonces se quita el `.fails`. Hoy la incumple
-    // `app/(app)/ordenes/_components/ReportarIncidenteModal.tsx` (núcleo), que importa
-    // `reportarIncidente` de `lib/actions/incidentes` (incidentes_novedades) y no está en §6.3.
-    it.fails("ningún archivo de app/ importa una action de otro módulo sin declararlo", () => {
+    it("no-vacuidad: el barrido transitivo llega a actions a través de components/", () => {
+      // `RepartoModule` → `GestionarOrdenPanel` → `components/shared/EnviarPlantillaWhatsappButton` →
+      // `whatsapp-envio`: sin la entrada de §6.3 sería un cruce. Si el grafo no lo viera, (e) estaría ciego.
+      const sinDeclarar = new GrafoDeConsumos(RAIZ, []);
+      const cruces = archivosDeApp()
+        .filter((r) => r.startsWith("app/(app)/mis-asignaciones/"))
+        .flatMap((r) => sinDeclarar.cruces(r));
+      expect(
+        cruces.some((c) => c.includes("components/shared/EnviarPlantillaWhatsappButton.tsx → lib/actions/whatsapp-envio")),
+      ).toBe(true);
+    });
+
+    it("ningún archivo de app/ alcanza (directo o por components/ y hooks/) una action de otro módulo sin declararlo", () => {
       expect(consumosCruzados()).toEqual([]);
     });
   });
@@ -373,35 +384,79 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toEqual(["api_integraciones", "analitica"]);
         expect(destinoDeArchivoDeApp("app/api/cron/snapshot-ranking/route.ts")).toBe("ranking");
       });
-      it("lee imports estáticos y dinámicos, no los citados en comentarios", () => {
+      it("lee imports estáticos y dinámicos; no los de tipo ni los citados en comentarios", () => {
         const fuente = `
           import { a } from "@/lib/actions/ranking";
           import type { T } from "@/lib/actions/wallet";
           // import { b } from "@/lib/actions/incidentes";
           const m = await import("@/lib/actions/plantillas");
           import { c } from "@/lib/actions/_shared/algo";`;
-        expect(actionsImportadas(fuente).sort()).toEqual(["plantillas", "ranking", "wallet"]);
+        expect(actionsImportadas(fuente).sort()).toEqual(["plantillas", "ranking"]);
       });
-      it("propio módulo o núcleo: pasa; otro módulo: falla; declarado: pasa", () => {
-        const deWallet = "app/(app)/wallet/_components/X.tsx";
-        expect(consumosNoDeclarados(deWallet, `import { a } from "@/lib/actions/wallet";`, [])).toEqual([]);
-        expect(consumosNoDeclarados(deWallet, `import { a } from "@/lib/actions/liquidacion";`, [])).toEqual([]);
-        expect(consumosNoDeclarados(deWallet, `import { a } from "@/lib/actions/ranking";`, [])).toEqual([
-          "app/(app)/wallet/_components/X.tsx importa lib/actions/ranking (ranking)",
-        ]);
-        // Desde wallet, la pieza compartida wallet + ranking es cruzada: le falta ranking.
-        expect(
-          consumosNoDeclarados(deWallet, `import { a } from "@/lib/actions/premio-ranking-devengo";`, []),
-        ).toHaveLength(1);
-        expect(
-          consumosNoDeclarados(deWallet, `import { a } from "@/lib/actions/premio-ranking-devengo";`, [
-            { pieza: deWallet, anfitrionas: ["/wallet"], modulo: ["wallet", "ranking"] },
-          ]),
-        ).toEqual([]);
-        // Desde el núcleo, cualquier action de un módulo es cruzada.
-        expect(
-          consumosNoDeclarados("app/(app)/mis-asignaciones/_components/chat/Y.tsx", `import { a } from "@/lib/actions/chat-whatsapp";`, []),
-        ).toHaveLength(1);
+
+      describe("sobre un árbol inventado (transitivo por components/ y hooks/)", () => {
+        const raiz = mkdtempSync(path.join(tmpdir(), "sl23-consumos-"));
+        afterAll(() => rmSync(raiz, { recursive: true, force: true }));
+        const escribir = (rel: string, texto: string) => {
+          mkdirSync(path.dirname(path.join(raiz, rel)), { recursive: true });
+          writeFileSync(path.join(raiz, rel), texto);
+        };
+        const usa = (desde: string) => `import { x } from "${desde}";\n`;
+        // Ruta del núcleo (`/ordenes`) que monta un componente compartido.
+        escribir("app/(app)/ordenes/_components/Tabla.tsx", usa("@/components/shared/Boton"));
+        // El componente llega a una action de wallet por un hook, y a una del núcleo directamente.
+        escribir("components/shared/Boton.tsx", usa("./interno/Pieza") + usa("@/lib/actions/liquidacion"));
+        escribir("components/shared/interno/Pieza.tsx", usa("@/hooks/useSaldo"));
+        escribir("hooks/useSaldo.ts", usa("@/lib/actions/wallet"));
+        // El mismo componente montado solo en una ruta de wallet: sin cruce.
+        escribir("app/(app)/wallet/_components/Panel.tsx", usa("@/components/shared/Boton"));
+        // Ciclo entre componentes: no cuelga.
+        escribir("components/a.tsx", usa("@/components/b") + usa("@/lib/actions/ranking"));
+        escribir("components/b.tsx", usa("@/components/a"));
+        escribir("app/(app)/ranking/_components/R.tsx", usa("@/components/a"));
+
+        it("mutación: un componente de components/ montado en una ruta del núcleo que llega a una action de wallet → rojo, con la cadena", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([
+            "app/(app)/ordenes/_components/Tabla.tsx → components/shared/Boton.tsx → components/shared/interno/Pieza.tsx → hooks/useSaldo.ts → lib/actions/wallet (wallet)",
+          ]);
+        });
+
+        it("montado en una ruta de su mismo módulo, o con la action del núcleo, no es cruce", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/wallet/_components/Panel.tsx")).toEqual([]);
+        });
+
+        it("declarar el componente en CONSUMOS_ENTRE_MODULOS lo pone verde; declararlo con otro módulo, no", () => {
+          const declarado = { pieza: "components/shared/Boton.tsx", anfitrionas: ["/ordenes"], modulo: "wallet" } as const;
+          expect(new GrafoDeConsumos(raiz, [declarado]).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([]);
+          expect(
+            new GrafoDeConsumos(raiz, [{ ...declarado, modulo: "ranking" }]).cruces("app/(app)/ordenes/_components/Tabla.tsx"),
+          ).toHaveLength(1);
+        });
+
+        it("un ciclo entre componentes no cuelga", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/ranking/_components/R.tsx")).toEqual([]);
+        });
+      });
+
+      it("directo desde app/: propio módulo o núcleo pasa; otro módulo falla; pieza compartida exige las dos", () => {
+        const raiz = mkdtempSync(path.join(tmpdir(), "sl23-directo-"));
+        try {
+          const deWallet = "app/(app)/wallet/_components/X.tsx";
+          const probar = (accion: string, consumos: ConstructorParameters<typeof GrafoDeConsumos>[1] = []) => {
+            mkdirSync(path.dirname(path.join(raiz, deWallet)), { recursive: true });
+            writeFileSync(path.join(raiz, deWallet), `import { a } from "@/lib/actions/${accion}";\n`);
+            return new GrafoDeConsumos(raiz, consumos).cruces(deWallet);
+          };
+          expect(probar("wallet")).toEqual([]);
+          expect(probar("liquidacion")).toEqual([]);
+          expect(probar("ranking")).toEqual(["app/(app)/wallet/_components/X.tsx → lib/actions/ranking (ranking)"]);
+          expect(probar("premio-ranking-devengo")).toHaveLength(1);
+          expect(
+            probar("premio-ranking-devengo", [{ pieza: deWallet, anfitrionas: ["/wallet"], modulo: ["wallet", "ranking"] }]),
+          ).toEqual([]);
+        } finally {
+          rmSync(raiz, { recursive: true, force: true });
+        }
       });
     });
 

@@ -23,7 +23,7 @@ import {
  * SL-23 / T1 (design §4, §9; R5, R27) — las tres migraciones de los módulos, de ida y vuelta.
  *
  * 1. Se aplican sobre una base con dos empresas previas.
- * 2. R5: cada empresa previa queda con los 9 módulos encendidos; una empresa creada después, con
+ * 2. R5: cada empresa previa queda con los 8 módulos encendidos; una empresa creada después, con
  *    ninguno (nada en la base enciende módulos al dar de alta).
  * 3. R27: los nombres nuevos (tabla, columnas, tipo, valores, índices, política, trigger) son los del
  *    design, en español, leídos de `information_schema`, `pg_enum` y los catálogos.
@@ -56,7 +56,6 @@ const CLAVES = [
   "bodegas_satelite",
   "wallet",
   "ranking",
-  "incidentes_novedades",
   "whatsapp",
   "api_integraciones",
 ];
@@ -178,7 +177,7 @@ describeSiHayBase("SL-23 — organizacion_modulo, historial y job descartado de 
     }
   }, 60_000);
 
-  it("R5 — cada empresa previa queda con los 9 módulos encendidos, una fila por módulo", async () => {
+  it("R5 — cada empresa previa queda con los 8 módulos encendidos, una fila por módulo", async () => {
     // `ORDER BY modulo` ordena por el enum, que es el orden de CLAVES.
     expect(await modulosDe(empresaA)).toEqual(CLAVES);
     expect(await modulosDe(empresaB)).toEqual(CLAVES);
@@ -187,7 +186,7 @@ describeSiHayBase("SL-23 — organizacion_modulo, historial y job descartado de 
         WHERE "organizacion_id" = ANY($1::text[])`,
       [[empresaA, empresaB]],
     );
-    expect(rows[0]).toEqual({ n: 18, ids: 18 });
+    expect(rows[0]).toEqual({ n: 16, ids: 16 });
   });
 
   it("R5, R6 — una empresa creada después de la migración nace sin ningún módulo", async () => {
@@ -311,7 +310,7 @@ describeSiHayBase("SL-23 — organizacion_modulo, historial y job descartado de 
       await ejecutar(db, sqlDe(carpeta, "migration.sql"), `${carpeta}/migration.sql (otra vez)`);
     }
     expect(diferencias(await fotoSinFilas(), con), "tras reaplicar").toEqual([]);
-    expect(await modulosDe(empresaA)).toHaveLength(9);
-    expect(await modulosDe(empresaB)).toHaveLength(9);
+    expect(await modulosDe(empresaA)).toHaveLength(8);
+    expect(await modulosDe(empresaB)).toHaveLength(8);
   }, 120_000);
 });
