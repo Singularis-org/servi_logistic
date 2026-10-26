@@ -5267,6 +5267,10 @@ model Organizacion {
   // `CHECK (… IS NULL OR … >= 0)` vive solo en el SQL de 20261023130000 (Prisma no expresa CHECK).
   cobroPlataformaPorOrden Decimal? @map("cobro_plataforma_por_orden") @db.Decimal(12, 2)
 
+  // SL-43 (design §3.1): la creó la demo de QA, que borra solo estas. Por la marca y no por el slug,
+  // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
+  esDemo Boolean @default(false) @map("es_demo")
+
   @@map("organizacion")
 }
 
@@ -5297,6 +5301,17 @@ model CobroPlataformaTarifa {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("cobro_plataforma_tarifa")
+}
+
+// SL-43 (design §2.2, opción 3) — la marca de entorno de la base. De PLATAFORMA: sin
+// `organizacion_id`. Nace vacía; la fila `("entorno", "qa")` la pone una persona solo en QA, y la demo
+// no escribe sin ella. Viven solo en el SQL de 20261025160100, porque Prisma no los expresa: la RLS sin
+// políticas y el `REVOKE ALL … FROM servi_app`.
+model EntornoMarca {
+  clave String @id
+  valor String
+
+  @@map("entorno_marca")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.

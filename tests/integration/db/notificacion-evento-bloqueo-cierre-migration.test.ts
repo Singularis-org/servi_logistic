@@ -11,6 +11,7 @@ import {
   serializarEscriturasReales,
   soltarDependientesPosterioresDelEnumDeEventos,
 } from "./_postgres-real";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 // FEATURE 271 (T10.4, §3.2 — Q4 resuelta por el humano el 2026-08-23) — la migracion que anade los
 // DOS avisos del bloqueo por cierres a `notificacion_evento`.
@@ -170,6 +171,16 @@ describe("271 / §3.2 — los `down.sql` ANTERIORES no se tocan, y esta es la co
 });
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+// SL-43 (T10): las filas de la demo de QA (`demo-qa.test.ts`, misma base en CI) hacen caer este
+// archivo. Turno compartido: espera a que la demo termine y no la deja empezar mientras corre.
+let turnoDemoQa: ExclusionDemoQa | undefined;
+beforeAll(async () => {
+  if (HAY_BASE_DE_DATOS) turnoDemoQa = await tomarExclusionDemoQa({ compartida: true });
+}, 660_000);
+afterAll(async () => {
+  await turnoDemoQa?.soltar();
+});
 
 describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de verdad", () => {
   let prisma: PrismaClient;

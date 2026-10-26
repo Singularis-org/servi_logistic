@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && tsx scripts/migrate-deploy.ts && next build",
+    "build": "prisma generate && tsx scripts/migrate-deploy.ts && tsx scripts/demo-qa.ts --build && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "test:cambiados": "vitest run --changed origin/dev --passWithNoTests",
     "test:guardias": "vitest run guard",
+    "demo:qa": "tsx scripts/demo-qa.ts",
     "test:rapido": "node scripts/test-rapido.mjs",
     "test:e2e": "playwright test",
     "db:generate": "prisma generate",

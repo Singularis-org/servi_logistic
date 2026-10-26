@@ -2,8 +2,8 @@
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
 //   · negocio    (77): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (15): catalogos, geografia, autenticacion previa a la empresa, cache tecnica y el
-//                      valor global del cobro por orden (SL-40).
+//   · plataforma (16): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
+//                      valor global del cobro por orden (SL-40) y la marca de entorno (SL-43).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
 //                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
 //   · diferidos   (0): tienen ficha propia que decide su aislamiento.
@@ -141,6 +141,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "GeocodeCache", tabla: "geocode_cache" },
   // Valor global del cobro por orden (SL-40): sin acceso para `servi_app`; lo edita el superadmin
   { modelo: "CobroPlataformaTarifa", tabla: "cobro_plataforma_tarifa" },
+  // Marca de entorno de la base (SL-43): sin acceso para `servi_app`; la lee solo la demo de QA
+  { modelo: "EntornoMarca", tabla: "entorno_marca" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

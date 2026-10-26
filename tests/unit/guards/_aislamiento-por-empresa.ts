@@ -116,7 +116,9 @@ export function archivosConSqlSinFiltro(
 // ---------------------------------------------------------------------------------------------
 // Contexto de plataforma (R27)
 
-export const CARPETAS_PLATAFORMA = ["lib", "app", "scripts"] as const;
+// `tests/fabricas/` también (review SL-43, m6): sus fábricas las importa el build (`scripts/demo-qa/`),
+// así que una llamada ahí corre en QA igual que una de `scripts/`. Los `*.test.ts` siguen fuera.
+export const CARPETAS_PLATAFORMA = ["lib", "app", "scripts", "tests/fabricas"] as const;
 
 /** Donde se define: no es un uso. */
 export const DEFINICION_DE_COMO_PLATAFORMA = "lib/db/contexto-empresa.ts";

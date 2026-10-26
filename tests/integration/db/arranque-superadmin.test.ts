@@ -209,20 +209,30 @@ describeSiHayBase("SL-32 — el comando de arranque del superadmin contra Postgr
   });
 
   it("repetida, da ya_existe y no escribe nada: ni la contrasena, ni el nombre, ni ningun otro campo (R14)", async () => {
-    await bajoLockDeEscrituraReal(() => servicio(app).arrancar(entorno()));
-    const antes = await superadmins(base);
-    const usuariosAntes = await contarUsuarios(base);
+    // Un solo tramo del lock de escritura real, de la primera ejecucion a la ultima lectura: el
+    // recuento es de la base ENTERA, y entre dos tramos sueltos otro archivo que respeta el lock
+    // (la demo de SL-43 crea y borra usuarios) podia commitear y moverlo sin que el comando escribiera.
+    const { r, antes, usuariosAntes, despues, usuariosDespues } = await bajoLockDeEscrituraReal(async () => {
+      await servicio(app).arrancar(entorno());
+      const filasAntes = await superadmins(base);
+      const totalAntes = await contarUsuarios(base);
 
-    const r = await bajoLockDeEscrituraReal(() =>
-      servicio(app).arrancar(
+      const repetida = await servicio(app).arrancar(
         entorno({ SUPERADMIN_PASSWORD: "OtraPrueba#2026x", SUPERADMIN_NOMBRE: "Otro nombre", SUPERADMIN_TELEFONO: "77770000" }),
-      ),
-    );
+      );
+      return {
+        r: repetida,
+        antes: filasAntes,
+        usuariosAntes: totalAntes,
+        despues: await superadmins(base),
+        usuariosDespues: await contarUsuarios(base),
+      };
+    });
 
     expect(r).toEqual({ status: "ya_existe" });
     expect(antes).toHaveLength(1);
-    expect(await superadmins(base)).toEqual(antes);
-    expect(await contarUsuarios(base)).toBe(usuariosAntes);
+    expect(despues).toEqual(antes);
+    expect(usuariosDespues).toBe(usuariosAntes);
   });
 
   it.each(["email", "documento"] as const)(
