@@ -287,6 +287,9 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     const r = await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
 
     expect(r.empresas).toEqual([demo.organizacionId]);
+    // Una sola pasada, en el orden de las FK y sin un SAVEPOINT por tabla (medición del build,
+    // 2026-10-26): las pasadas son el camino de cuando algo choca (R8, el caso de abajo).
+    expect(r.base.pasadas).toBe(1);
     // La demo: ninguna fila en ninguna tabla, ni sus usuarios, ni lo que cuelga de ellos.
     const despues = await huella(demo.organizacionId);
     expect(Object.entries(despues).filter(([, n]) => n > 0)).toEqual([]);
