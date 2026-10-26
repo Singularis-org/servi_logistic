@@ -13,7 +13,7 @@ valida contra las dos listas, punto por punto.
       (`docs/specs.md > Antes de especificar: lo que ya existe`).
 
 ## Equipo
-- [ ] La feature tiene assignee en Jira y su rama se publico con `wt.sh new` (candado).
+- [ ] La feature tiene assignee en el tracker y su rama se publico con `wt.sh new` (candado).
 
 ## Trazabilidad
 - [ ] Cada `R<n>` de requirements.md mapea a al menos un test concreto.

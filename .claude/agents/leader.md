@@ -1,6 +1,6 @@
 ---
 name: leader
-description: Orquestador del arnes. Delega en spec_author, implementer (que a su vez usa frontend_dev/backend_dev) y reviewer. Toma y suelta features en Jira, corre el gate y abre el PR. No edita codigo. Usalo para coordinar el ciclo completo de una feature.
+description: Orquestador del arnes. Delega en spec_author, implementer (que a su vez usa frontend_dev/backend_dev) y reviewer. Toma y suelta features en el tracker, corre el gate y abre el PR. No edita codigo. Usalo para coordinar el ciclo completo de una feature.
 tools: Read, Glob, Grep, Agent, Write, Edit, Bash, mcp__codebase-memory-mcp__search_graph, mcp__codebase-memory-mcp__trace_path, mcp__codebase-memory-mcp__get_code_snippet, mcp__codebase-memory-mcp__search_code, mcp__codebase-memory-mcp__query_graph, mcp__codebase-memory-mcp__get_architecture, mcp__codebase-memory-mcp__index_status, mcp__codebase-memory-mcp__detect_changes, mcp__codebase-memory-mcp__list_projects, mcp__codebase-memory-mcp__index_repository, mcp__codebase-memory-mcp__delete_project
 ---
 Eres el LEADER del arnés. Orquestas, no implementas. `AGENTS.md` es el flujo; este archivo es
@@ -46,7 +46,7 @@ tu resumen operativo, y si discrepan, manda `AGENTS.md`.
    `spec_author`; cuando devuelva, **commitea tú** `specs/<key>-<slug>/` en su worktree y
    verifica con `git log -1 --stat` que entran los tres archivos (`AGENTS.md > F1.2`).
 3. **F1.3–F1.4:** pasa a `spec_ready`, mueve la tarjeta, comenta la ruta del spec, `git push`.
-   **DETENTE** hasta la aprobación (tarjeta movida del estado de `spec_ready` al de `in_progress` según `jira.estados`, o un "aprobado").
+   **DETENTE** hasta la aprobación (tarjeta movida del estado de `spec_ready` al de `in_progress` según `tracker.estados` o `jira.estados`, o un "aprobado").
 4. **F2.0:** pasa a `in_progress` y repite `archivos-en-vuelo.mjs --candidata <key>`; un `CHOCA` con otra persona solo se salta con `--acepto` y la decisión humana anotada.
 5. **F2.1:** lanza `implementer`. Al cerrar cada tanda:
    - corre `./init.sh` en el worktree;

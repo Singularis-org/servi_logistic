@@ -13,11 +13,11 @@ Los dos caminos dejan el mismo estado. Puedes mezclarlos.
 | Paso | Con el agente | A mano |
 | --- | --- | --- |
 | Dependencias y `.env` | «prepara el entorno» | `cp .env.example .env` (rellena los valores) · `pnpm install` |
-| Tu identidad de Jira | `/jira-connect` | crea `.arnes.local.json` en la raíz del worktree principal: `{"jira_account_id": "<tu accountId>", "nombre": "<tu nombre>"}`. El accountId sale de tu perfil de Jira (la URL de tu perfil lo termina) |
-| Copia del board | «importa el board» (paso F0) | no hay atajo manual práctico: F0 consulta Jira por MCP. Sin él, trabaja con la copia que haya y avísalo |
+| Tu identidad en el tracker | `/tracker-connect` | crea `.arnes.local.json` en la raíz del worktree principal: `{"jira_account_id": "<tu accountId>", "nombre": "<tu nombre>"}` (con Trello, `trello_member_id` con el `id` de `node scripts/trello.mjs yo`). El accountId sale de tu perfil de Jira (la URL de tu perfil lo termina) |
+| Copia del board | «importa el board» (paso F0) | no hay atajo manual práctico: F0 consulta el tracker (Jira por MCP, Trello con `node scripts/trello.mjs importar`). Sin él, trabaja con la copia que haya y avísalo |
 | Comprobar que todo está bien | «corre el gate» | `./init.sh` → debe terminar en `== init OK ==` |
 
-Si ya tenías features en curso **antes** del arnés v2: asígnatelas en Jira (campo *Responsable*).
+Si ya tenías features en curso **antes** del arnés v2: asígnatelas en el tracker (en Jira, campo *Responsable*; en Trello, *Miembros*).
 Si no, el gate se pone en rojo con «features en vuelo sin assignee».
 
 ## 2. Empezar el día
@@ -47,7 +47,7 @@ en curso a la vez).
 | --- | --- | --- |
 | Acotar antes del spec (opcional) | `/afinar-feature QC-123` | escribe `specs/QC-123-<slug>/requirements.md` con alcance, decisiones y preguntas abiertas |
 | Spec | «escribe el spec» (lanza `spec_author`) | crea `requirements.md` (EARS `R1…`), `design.md` (+ una alternativa descartada) y `tasks.md` (con `## Archivos esperados`) — `docs/specs.md` |
-| **Aprobar el spec** | — (lo decides tú) | mueve la tarjeta del estado de `spec_ready` al de `in_progress` (según `arnes.config.json > jira.estados`), o escribe «aprobado» al agente |
+| **Aprobar el spec** | — (lo decides tú) | mueve la tarjeta del estado de `spec_ready` al de `in_progress` (según `arnes.config.json > tracker.estados` o `jira.estados`), o escribe «aprobado» al agente |
 | Implementar | «implementa» (lanza `implementer`) | trabaja dentro de `.worktrees/QC-123-<slug>/`, marca `[x]` en `tasks.md` |
 | Cerrar una tanda | lo hace solo | `./init.sh` en el worktree + `git push` (**siempre**: así el equipo ve lo que tocas) |
 | Revisión | «revisa» (lanza `reviewer`) | recorre `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md`; cada `R<n>` con su test |
@@ -60,7 +60,7 @@ en curso a la vez).
 
 | Paso | Con el agente | A mano |
 | --- | --- | --- |
-| Estado y tarjeta | «cierra QC-123» | tarjeta al estado de `done` (según `jira.estados`) + comentario con la URL del PR |
+| Estado y tarjeta | «cierra QC-123» | tarjeta al estado de `done` (según `tracker.estados` o `jira.estados`) + comentario con la URL del PR |
 | Desmontar el worktree | lo hace solo | `./scripts/wt.sh done QC-123-<slug>` (añade `--assume-merged` si fue *squash*). Si dice `HOLD`, anótalo en `progress/deudas.md` |
 | Registro | lo hace solo | completa `progress/features/QC-123.md > Cierre` |
 | Poda del baseline | lo hace solo | en el resumen del run de CI, las entradas de `tests/baseline-rojos.json` que ya pasan: bórralas |
