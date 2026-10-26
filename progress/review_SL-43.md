@@ -384,3 +384,93 @@ cron», detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA`). También está en
 m1–m8 están cerrados, y m5 y m6 los maté con mutaciones propias. Queda 1 menor nuevo (m9) que no
 bloquea. Siguen pendientes, fuera de esta revisión, `gate-completo` en el PR y las puertas humanas T2b
 y T12.
+
+## Arreglo CI (3570117)
+
+Acotada a `0b38312..3570117`, un commit: el rojo del run 40271163801. El CI del PR #18 está en verde
+en `3570117`, según el leader.
+
+### Verificación ejecutada por el reviewer
+
+| Qué | Resultado |
+|---|---|
+| `demo-qa-borrado`, `demo-qa`, `arranque-superadmin` y `prisma-fk.test.ts`, juntos contra sl43 | 29/29, `EXIT=0`. sl43 queda con 0 empresas demo y 0 filas en `entorno_marca` |
+| `vitest related --run lib/repositories/_shared/prisma-fk.ts` | 311 archivos en verde y 1 rojo: `tests/components/FiltrosOperativos.test.tsx` («al cambiar de zona…», 24,9 s, timeout por la carga de la corrida). Solo: 23/23. El diff no toca `components/`, así que no es un hallazgo |
+| Mutación: `codigoDe` sin el respaldo de `originalCode` (`prisma-fk.ts:83`) | **rojo**: 2 de 4 en `prisma-fk.test.ts` («reconoce el 23503 traducido…» y «la forma suelta del adapter») |
+| Mutación: ignorar `code === "23001"` | verde. Es equivalente: la forma de Postgres 18 trae el mismo valor en `originalCode`, así que no prueba nada |
+| `git status --porcelain` | vacío; todo restaurado |
+
+### 1. `esViolacionDeClaveForanea` (código compartido de producción)
+
+**Quién la usa:**
+- `ApiKeyRepository.ts:519` → `bloqueada`;
+- `DistritoZonaEspecialRepository.ts:45` → `distrito_inexistente`;
+- `TarifaRepository.ts:300` → `referenced`;
+- `ZonaRepository.ts:711` → `referenced`;
+- `scripts/demo-qa/borrar.ts`.
+
+**Qué cambia:** solo cuando el error no trae `cause.code` y sí trae `cause.originalCode` igual a
+`23503` o `23001`.
+- Esa es justo la forma que da el adapter en Postgres 17 para una FK (`ForeignKeyConstraintViolation`).
+- `code` sigue teniendo prioridad, y los códigos que se aceptan siguen siendo solo los dos de FK.
+- Antes, esos cuatro repositorios relanzaban un error genérico en Postgres 17 ante una FK RESTRICT.
+  Ahora devuelven su estado de negocio («en uso», «distrito inexistente»), que es lo que su contrato
+  ya prometía.
+- Es una corrección, no un `true` nuevo en un caso que no sea FK: ninguna migración lanza a mano
+  `23001` ni `23503` (`grep ERRCODE`).
+- El test nuevo cubre el caso negativo: un `23505` o un `P0001` en `originalCode` o en `code` dan
+  `false`.
+- `sqlStateDe` pasa a exportarse, sin cambio de comportamiento.
+
+**Para el leader:** es un cambio de comportamiento observable en esos cuatro repositorios, aunque sea
+para bien. Los cuatro sufrían el mismo fallo mudo en Postgres 17, y no sé qué versión corre en
+producción. Conviene mencionarlo en el PR.
+
+### 2. `_limpieza-demo-qa.ts` y las ventanas de lock
+
+**Alcance de la limpieza:**
+- Lee solo `organizacion WHERE "es_demo"`.
+- Todos los `DELETE` van filtrados por esos ids, o por los usuarios de esas empresas.
+- El `DELETE organizacion` final lleva `AND "es_demo"`.
+- Corre siempre con el turno exclusivo de `_exclusion-demo-qa.ts` tomado (`beforeAll` y `afterAll`
+  de los dos archivos), y toma `serializarEscriturasReales` dentro de su transacción.
+- El modo `replica` (sin FK ni triggers) solo vale dentro de esa transacción (`SET LOCAL`).
+- Ningún otro archivo de la suite crea empresas `es_demo`.
+- **No puede borrar nada que no sea `es_demo`.**
+- No tapa fallos: el `afterAll` sigue rojo si el borrado real cayó o si queda una empresa demo viva.
+
+**Intermitencia:**
+- Cada ventana de `bajoLockDeEscrituraReal` es un `borrar` o un `crearEmpresa`. La más larga, medida
+  por el implementer, es de 6,9 s. Los archivos que esperan ese lock tienen 20 s de margen.
+- La espera del candado (R32) queda fuera de esas ventanas.
+- El orden de adquisición es siempre el mismo (turno → tarifa → candado → escritura real). Ningún
+  archivo que sostenga el lock de escritura toda su vida (`aislamiento-cierres`,
+  `dos-empresas-entradas`, `enlace-bienvenida`, `whatsapp-envio-puente-aviso`) pide la tarifa ni el
+  turno, así que no hay ciclo de locks.
+- `arranque-superadmin` R14 junta sus dos ejecuciones y sus lecturas en un solo tramo del lock, sin
+  tocar las aserciones.
+- No veo intermitencia nueva. Lo que queda es el riesgo probabilístico ya documentado: una ventana de
+  más de 20 s en un runner muy cargado.
+
+### 3. `BorradoDemoFallido` con el SQLSTATE
+
+- El mensaje lleva la tabla (que sale del catálogo), `error.name`, el código y el SQLSTATE, que es un
+  código de 5 caracteres o el `code` del error del driver.
+- Nunca lleva `message` ni `detail`, que son los que podrían llevar valores de fila o el host.
+- `lineaDeError` lo imprime porque empieza por `[demo-qa]`.
+- No filtra datos sensibles.
+
+### Hallazgos
+
+- **m10 (menor).** Ningún test fija el alcance de `borrarEmpresasDemoDeEmergencia`. Si alguien quita
+  `WHERE "es_demo"` del `SELECT` inicial (`_limpieza-demo-qa.ts:47`), los tests de la demo seguirían
+  verdes en una base sin otras empresas, y en CI borraría las de los archivos vecinos.
+  - Hoy es correcto: lo comprobé leyendo el código.
+  - Conviene un caso que siembre una empresa no demo y compruebe que sobrevive a la limpieza.
+  - No bloquea: es un helper de test y está bien escrito.
+
+### Veredicto
+
+**OK.** No hay bloqueantes y queda un menor nuevo (m10). La corrección del detector de FK es acotada y
+la mata la mutación. La limpieza de emergencia solo alcanza `es_demo`. Las ventanas de lock no crean
+ciclos. El SQLSTATE no filtra datos.
