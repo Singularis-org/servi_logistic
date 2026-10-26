@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
+import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import { ModulosActivosRepository } from "@/lib/repositories/ModulosActivosRepository";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
 import { comoApp, datosDeOrganizacionDePrueba } from "@/tests/fabricas/organizaciones";
@@ -232,6 +233,14 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
       conEmpresa(A, () => app.organizacionModulo.deleteMany({ where: { modulo: "ranking" } })),
     ).rejects.toThrow(rechazo);
     expect(await modulosComoDueno(base, A)).toEqual(enOrdenDelEnum(DE_A));
+  });
+
+  it("R9, R25 — ModulosActivosRepository (la lectura de las puertas) da los de la empresa en curso; sin empresa no consulta", async () => {
+    const repo = new ModulosActivosRepository(app);
+    expect(enOrdenDelEnum(await conEmpresa(A, () => repo.activos()))).toEqual(enOrdenDelEnum(DE_A));
+    expect(enOrdenDelEnum(await conEmpresa(B, () => repo.activos()))).toEqual(enOrdenDelEnum(DE_B));
+    // Sin contexto ni sesión (el resolutor del cliente de la app devuelve null): falla cerrado.
+    await expect(repo.activos()).rejects.toBeInstanceOf(EmpresaNoResuelta);
   });
 
   it("R25 — quitar `ranking` a A no cambia nada en B", async () => {

@@ -38,20 +38,20 @@
 
 ## Tanda 2 — Catálogo, reparto y puertas (depende de T1)
 
-- [ ] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2).
+- [x] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2).
   - `lib/modulos/catalogo.ts` y `lib/modulos/reparto.ts`, con las tablas de §3 tal cual
     (incluidas las compartidas de §3.7 y `CALCULO_CONTINUO` de §3.8) y `CONSUMOS_ENTRE_MODULOS`.
   - `tests/unit/modulos/catalogo.test.ts`: exactamente 9 claves, iguales al enum (con `wallet`,
     sin `wallet_cierres`), y el núcleo con sus 7 nombres (incluye «Cierres»).
   - *Hecho:* test en verde; `MODULO_POR_JOB` es un `Record<JobTipo, …>` que compila.
-- [ ] **T4 [P] — Guardias** (design §8; R3, R28).
+- [x] **T4 [P] — Guardias** (design §8; R3, R28).
   - `tests/unit/guards/modulos-reparto.guardia.test.ts`, casos (a)–(f), cada uno con su
     fixture que lo pone en rojo.
   - `tests/unit/guards/modulos-sin-seed.guardia.test.ts`.
   - En esta tanda (b)–(f) **fallan a propósito**: se marcan y se ponen en verde al final de T8–T11.
     No se mergea ningún rojo.
   - *Hecho:* (a) y la de seed están en verde, y cada caso tiene su mutación probada.
-- [ ] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17).
+- [x] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17).
   - `ModulosActivosRepository` y su interfaz, `lib/modulos/exigir-modulo.ts` y
     `lib/modulos/modulo-inactivo-error.ts`.
   - `tests/fabricas/modulos.ts > puertasAbiertas()`.
@@ -329,6 +329,7 @@
 - `tests/unit/modulos/exigir-modulo.test.ts`
 - `tests/unit/guards/modulos-reparto.guardia.test.ts`
 - `tests/unit/guards/modulos-sin-seed.guardia.test.ts`
+- `tests/unit/guards/_modulos-reparto.ts` (detectores de la guardia del reparto)
 - `tests/unit/services/modulos-empresa-service.test.ts`
 - `tests/unit/services/job-queue-service-descartado.test.ts`
 - `tests/unit/services/webhook-whatsapp-service-modulo.test.ts`

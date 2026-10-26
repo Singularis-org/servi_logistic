@@ -140,3 +140,104 @@ de historial para que el typecheck cierre. No se adelanta servicio, repositorio,
   está en T6, así que no se toca aquí.
 
 Veredicto: typecheck verde; queda solo `historial-accion-escrituras-cubiertas` en rojo, esperado hasta que T6 escriba el productor.
+
+## Tanda 2 — T3, T4, T5 (2026-10-26, backend_dev)
+
+### Archivos
+
+Creados:
+- `lib/modulos/catalogo.ts` (T3): `MODULOS_APAGABLES: Record<ModuloApagable, {nombre, descripcion}>`,
+  `ORDEN_MODULOS`, `NUCLEO` (7 nombres, con «Cierres»), `esModuloApagable`, `nombreDelModulo`. Solo
+  `import type`. Las descripciones salen de la fila 1 de decisiones y de §3.1; son texto de pantalla
+  revisable en T7.
+- `lib/modulos/reparto.ts` (T3): `Destino`, `modulosDe`, `MODULO_POR_RUTA` (44), `MODULO_POR_ACTION`
+  (109), `MODULO_POR_JOB: Record<JobTipo, Destino>` (16), `MODULO_POR_CRON` (12), `MODULO_POR_API` (14),
+  `CALCULO_CONTINUO` (`{ jobs, crons }`), `esCalculoContinuo`, `CONSUMOS_ENTRE_MODULOS` (§6.3, con
+  `anfitrionas: string[]`: el chat se pinta en `/reparto` y en `/recoger`).
+- `lib/modulos/modulo-inactivo-error.ts` (T5): `ModuloInactivoError extends ForbiddenError`, `details =
+  { codigo: "modulo_inactivo", modulo }`, mensaje «El módulo <nombre> no está activo para esta empresa.».
+- `lib/interfaces/repositories/IModulosActivosRepository.ts`, `lib/repositories/ModulosActivosRepository.ts` (T5).
+- `lib/modulos/exigir-modulo.ts` (T5): `modulosActivos` (`cache()` de React), `moduloActivo`,
+  `exigirModuloActivo(...claves)`, `exigirModuloEnRuta(...claves)`, `modulosDelMenu(actor)`.
+- `tests/fabricas/modulos.ts > puertasAbiertas()` (T5): devuelve el módulo entero, tipado como el real.
+- `tests/unit/modulos/catalogo.test.ts`, `tests/unit/modulos/exigir-modulo.test.ts`.
+- `tests/unit/guards/_modulos-reparto.ts` (detectores, sobre el AST de TypeScript),
+  `tests/unit/guards/modulos-reparto.guardia.test.ts`, `tests/unit/guards/modulos-sin-seed.guardia.test.ts` (T4).
+
+Modificados:
+- `tests/integration/db/organizacion-modulo.test.ts`: caso nuevo «ModulosActivosRepository da los de la
+  empresa en curso; sin empresa no consulta» (`EmpresaNoResuelta`), contra Postgres.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T3–T5 `[x]`; `_modulos-reparto.ts` en «Tests nuevos».
+
+### Decisiones de implementación (sin reabrir el spec)
+
+- **`/mis-asignaciones` → núcleo.** La página existe en el disco y §3.1 no la lista: es un `redirect` a
+  `/mis-asignaciones/reparto` (Entregas, núcleo por la fila 1 de decisiones). §3.1 dice «43 páginas»
+  contando la nueva de T7; con esta son 44 entradas.
+- **Piezas anunciadas en el caso (a).** `/plataforma/empresas/[organizacionId]` (T7) y la action
+  `modulos-empresa` (T6) están en `reparto.ts` tal cual §3, pero su archivo aún no existe. La guardia las
+  exime de «entrada sin archivo» con la lista `ANUNCIADAS` y un cable por cada una que falla en cuanto
+  el archivo aparece: T6 y T7 borran su línea al crearlo.
+- **Marcado de (b)–(f).** Los casos que el árbol aún incumple van con `it.fails` (verde mientras
+  incumple, rojo en cuanto cumple: obliga a quitar el `.fails`). Un `it` aparte comprueba que esos
+  barridos corren sin lanzar, para que el verde de `.fails` no tape un detector roto.
+  Estado medido hoy: (b) 26 páginas sin puerta; (c) 185 funciones en 54 archivos; (d)
+  `generar-gastos-fijos` y `sync-plantillas-whatsapp` sin `modulo`; (e) 1 import cruzado; (f)
+  `dashboard/page.tsx`, `layout.tsx`, `not-found.tsx`. En verde normal ya: (a) entera, (d) «cálculo
+  continuo no pasa `modulo`» y (e) «cada consumo declarado existe».
+- **Puerta en action.** (c) acepta la puerta como primera sentencia del cuerpo o como primera
+  sentencia del `withErrorHandler` que abre el cuerpo (design §5.3), con las claves exactas y en orden.
+
+### Hallazgos para T8–T11 (abiertos, no resueltos aquí)
+
+1. **Import cruzado no previsto en §6.3:** `app/(app)/ordenes/_components/ReportarIncidenteModal.tsx`
+   (`/ordenes`, núcleo) importa `reportarIncidente` de `lib/actions/incidentes` (incidentes_novedades).
+   Con el módulo apagado, «Reportar incidente» desde Órdenes recibiría `forbidden`. T10 tiene que
+   decidir (con el humano): añadirlo a `CONSUMOS_ENTRE_MODULOS` con el flag en `/ordenes`, u otra
+   clasificación. Hasta entonces (e) va con `.fails`.
+2. **Puerta sin empresa.** `exigirModuloActivo`/`exigirModuloEnRuta` leen por la extensión: sin sesión
+   o con el superadmin (sin empresa) la lectura lanza `EmpresaNoResuelta` (design §5.1), no `forbidden` ni
+   `notFound`. Como T9/T10 ponen la puerta como PRIMERA sentencia, antes de `resolveActor`, una action
+   sin sesión pasaría de `unauthorized` a un error interno, y un superadmin que abra `/wallet` vería un
+   error en vez del 404. El spec no fija este caso; hay que decidirlo antes de T9/T10.
+3. **(e) solo mira `app/`.** `components/shared/**` también importa actions de módulos (wallet,
+   conciliación, plantillas). El design no asigna módulo a `components/`, así que la guardia no los
+   clasifica.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/modulos/catalogo.test.ts`: «exactamente 9 claves, las mismas que el enum», «`wallet`… `wallet_cierres` no existe», «los nombres en pantalla…», «el orden de pantalla nombra cada módulo una vez» |
+| R2 | `catalogo.test.ts`: «el núcleo son sus 7 nombres, Cierres incluido», «nada del núcleo es una clave apagable» (el rechazo en la petición es T6) |
+| R3 | `modulos-reparto.guardia.test.ts` (a): «ninguna pieza del disco sin entrada», «ninguna entrada sin su archivo», «solo las piezas de §3.7 tienen dos módulos»; mutaciones con árbol inventado y en el árbol real |
+| R9 | `exigir-modulo.test.ts`: «apagar entre dos peticiones se ve en la segunda»; `organizacion-modulo.test.ts`: «ModulosActivosRepository…» |
+| R16 | `exigir-modulo.test.ts`: «apagado: notFound()», «encendido: pasa»; guardia (b) (`.fails` hasta T9) |
+| R17 | `exigir-modulo.test.ts`: «apagado: lanza ModuloInactivoError, un 403 con details.codigo = modulo_inactivo», «encendido: pasa»; guardia (c) (`.fails` hasta T10) |
+| R21, R30 | guardia (d): «un cron de cálculo continuo no pasa modulo» (verde), «un cron de un módulo pasa modulo» (`.fails` hasta T11) |
+| R28 | `modulos-sin-seed.guardia.test.ts` |
+| R33 | `exigir-modulo.test.ts` «dos claves»: falta la primera, la segunda o las dos, en action y en ruta; guardia (a) tuplas y (c) mutación «una sola clave en una pieza compartida» |
+
+### Mutaciones probadas en el árbol real (revertidas y comprobadas con `git status`)
+
+- `app/(app)/premios-mut/page.tsx` nuevo → (a) rojo: `ruta /premios-mut`.
+- `lib/actions/ranking-historico.ts` movido → (a) rojo: `action ranking-historico` (y la no-vacuidad).
+- `modulo: "ranking"` en el `paraCadaEmpresa` de `snapshot-ranking` → (d) rojo: «es de cálculo continuo y pasa `modulo`».
+- `getPrismaClient().organizacionModulo` en `scripts/seed-catalogos.ts` → la de seed roja.
+- (b), (c), (e), (f): mutación con fuentes inventadas en la autocomprobación (la buena pasa, la mutada falla).
+
+### Salida
+
+- `pnpm exec vitest run tests/unit/modulos tests/unit/guards/modulos-reparto.guardia.test.ts tests/unit/guards/modulos-sin-seed.guardia.test.ts`:
+  `Test Files 4 passed (4) · Tests 56 passed | 5 expected fail (61)`.
+- `vitest run tests/integration/db/organizacion-modulo.test.ts` (con `DATABASE_URL` a `logistic_sl23`):
+  `Test Files 1 passed (1) · Tests 9 passed (9)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `0 errors, 231 warnings` (preexistentes); `eslint` de los archivos de la tanda: «No issues found».
+- `pnpm run test:guardias`: `Test Files 2 failed | 308 passed | 2 skipped (312) · Tests 6 failed | 4291 passed | 5 expected fail | 20 skipped`.
+  Rojos: `dependencias-declaradas-presentes` (4, baseline) y `historial-accion-escrituras-cubiertas` (2,
+  esperado hasta T6). `modulos-reparto` y `modulos-sin-seed` en verde.
+- No se corrió `vitest related` del árbol (memoria de la máquina): se corrieron directamente los
+  archivos nuevos y el tocado.
+
+Veredicto: T3, T4 y T5 hechos y en verde; quedan tres hallazgos abiertos para T8–T11 (import cruzado de `/ordenes`, puerta sin empresa, `components/shared`).
