@@ -292,3 +292,95 @@ En los dos casos, la mutación que prueba R7 sobre esas tablas tiene que seguir 
   - sin efectos externos ni secretos en la salida;
   - la trazabilidad R1–R33, con tres mutaciones propias que caen.
 - La vuelta 2 se acota a B1 y a las notas de m2, m3 y m4.
+
+## Vuelta 2 (acotada a 05eb66e..10be881)
+
+Es un commit, `10be881`, con 13 archivos. Lo revisé contra B1 y m1–m8 de la vuelta 1, y además miré
+si traía regresiones.
+
+### Verificación ejecutada por el reviewer
+
+| Qué | Resultado |
+|---|---|
+| `pnpm run typecheck` | exit 0 |
+| Las 3 guardias tocadas (`plataforma-solo-en-lista`, `pago-plataforma-inmutable-sl45`, `cobro-plataforma-solo-por-trigger`) | 34/34 |
+| `demo-qa.test.ts` contra sl43, archivo entero | 11/11 (con la mutación B, abajo) |
+| Estado final | sl43 queda con 0 empresas demo, 0 filas en `entorno_marca`, `cobro_plataforma_tarifa` como estaba (sin fila) y 0 jobs de mis mutantes. `git status --porcelain` vacío |
+| Gate | El leader corrió `./init.sh` en `10be881` con `INIT_EXIT=0`, así que no lo repetí |
+
+### Mutaciones propias (cada una sola y revertida)
+
+| # | Mutación | Esperado | Resultado |
+|---|---|---|---|
+| A | `borrar.ts` borra además `jobs` con `organizacion_id IS NULL` | rojo | **rojo**. Caen «la segunda ejecución…» (`expected { jobsSinEmpresa: {} …} to deeply equal { jobsSinEmpresa: { …(1) } …}`) y R3 («centinela de jobs: expected undefined to be defined») |
+| B | `borrar.ts` commitea en cada borrado un job sin empresa con `payload {}`. Simula a `dos-empresas-entradas` escribiendo a la vez | verde | **verde**, 11/11, con 7 intrusos commiteados a mitad de las corridas |
+| m5-a | `lib/repositories/IntrusoRevSl43.ts` con un `DELETE FROM ${tabla}` | rojo | **rojo** en SL-45 y SL-40 (2 de 27) |
+| m5-b | `borrar.ts` sin `AND "es_demo"` en el `DELETE organizacion` | rojo | **rojo**. Caen «cada excepción … conserva lo que la hace segura» y el censo de SL-40 |
+| m6-a | `tests/fabricas/intruso-rev.ts` que llama a `comoPlataforma` | rojo | **rojo**: «todo archivo que llama a comoPlataforma está en EXCEPCIONES_DE_PLATAFORMA» |
+| m6-b | Sin la entrada `tests/fabricas/empresa-y-usuarios.ts` en `EXCEPCIONES_DE_PLATAFORMA` | rojo | **rojo**, el mismo caso |
+
+### Estado de los hallazgos de la vuelta 1
+
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| **B1** | **cerrado** | Ver la nota de B1, debajo de la tabla. |
+| m1 | cerrado (aceptado) | `_exclusion-demo-qa.ts` se queda, y su cabecera da el motivo medido: sostener `tomarLockDeEscrituraReal` durante 80 s tumba por timeout de 20 s a 6 archivos. Deja escrito el límite de la lista a mano. Es razonable: lo que pedía era el porqué. |
+| m2 | cerrado | `impl_SL-43.md`: `dos-empresas-humo` 6 passed (56.8 s). |
+| m3 | cerrado | T2b y T12 están marcadas «PUERTA HUMANA TRAS EL MERGE» (`tasks.md:53`, `:164`). Sus pasos, numerados, están en `progress/features/SL-43.md > Cierre`. |
+| m4 | cerrado | La nota está corregida en `impl_SL-43.md` y en `progress/features/SL-43.md`, con la evidencia de la ficha 431. |
+| m5 | cerrado | Ver la nota de m5, debajo de la tabla. |
+| m6 | cerrado | Ver la nota de m6, debajo de la tabla. |
+| m7 | cerrado | `describe.sequential`, la cabecera declara el orden, y los casos dependientes llaman a `exigirCorrida1()`, que suelto falla con «córrelo entero». |
+| m8 | cerrado | R12 está enmendado en `requirements.md`, con D28 como origen. D28 es del leader y es un hecho técnico del servicio. |
+
+**B1.** Las fotos de las tablas de plataforma ya no dependen de que nadie más escriba en la base:
+- `jobs` sin empresa se acota a un centinela propio (`done`, sin `dedupe_key`) y a los jobs cuyo
+  `payload` nombra ids de la demo. Un job como el de `dos-empresas-entradas.test.ts:502` (payload
+  `{}`) queda fuera. Lo prueba la mutación B, y la mutación A prueba que la foto sigue mordiendo.
+- `geocode_cache` va entera más un centinela. Comprobé que ningún test de integración la commitea:
+  los dos `*-rollback` solo leen el texto del `down.sql`.
+- `cobro_plataforma_tarifa` se lee con `tomarTarifaGlobal()` (`_fixtures/cobro-plataforma-40.ts:37`)
+  y un valor de control, que se restaura al soltar.
+  - Sus otros 6 usuarios tienen 120–180 s de timeout en el hook que espera el lock, y la demo lo
+    sostiene ~15 s (la corrida 2, o R3). El caso de la demo tiene 480 s para esperarlos.
+  - No hay ciclo de locks: ninguno de esos 6 archivos pide el turno de `_exclusion-demo-qa.ts`.
+- R3 y R10 ya no comparan `organizacion` entera, sino `empresasAlAlcanceDeLaDemo()`.
+
+**m5.** `tests/unit/guards/_mutaciones-sql-dinamicas.ts` detecta un `DELETE`/`UPDATE`/`TRUNCATE` con
+la tabla dinámica, y lo usan las guardias de SL-45 y SL-40 (la de SL-40 mira ahora también
+`scripts/`).
+- La única excepción es `scripts/demo-qa/borrar.ts`, y vale solo mientras conserve los 4 patrones
+  que la hacen segura.
+- Las mutaciones m5-a y m5-b caen.
+
+**m6.**
+- `CARPETAS_PLATAFORMA` incluye `tests/fabricas` (`tests/unit/guards/_aislamiento-por-empresa.ts:121`),
+  y el control positivo exige verla.
+- `tests/fabricas/empresa-y-usuarios.ts` entra en `EXCEPCIONES_DE_PLATAFORMA`
+  (`lib/db/excepciones-aislamiento.ts:186-192`). La justificación es buena: el build la importa, así
+  que cuenta como código de producción.
+- Las mutaciones m6-a y m6-b caen.
+
+**Decisión de Carlos sobre el corte de mañana:** está en `requirements.md > Decisiones cerradas`
+como **D27** («solo sobre las empresas demo, dentro de `conEmpresa(<demo>)` y nunca por la ruta del
+cron», detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA`). También está en
+`progress/features/SL-43.md > Decisiones`.
+
+### Hallazgos nuevos
+
+- **m9 (menor).** `10be881` edita `progress/features/SL-19.md` (`:35-36`, una entrada de Cierre sobre
+  la T10.4 de SL-19 en QA).
+  - La cabecera de esos archivos dice «Solo lo edita la rama de esta feature».
+  - Es una nota de estado, no código, y SL-19 ya está mergeada. El leader decide si se queda aquí o se
+    mueve.
+  - No bloquea.
+
+### Veredicto de la vuelta 2
+
+**OK.** B1 está cerrado y verificado con dos mutaciones propias:
+- una que borra jobs de plataforma cae;
+- un escritor concurrente simulado no tumba el test.
+
+m1–m8 están cerrados, y m5 y m6 los maté con mutaciones propias. Queda 1 menor nuevo (m9) que no
+bloquea. Siguen pendientes, fuera de esta revisión, `gate-completo` en el PR y las puertas humanas T2b
+y T12.
