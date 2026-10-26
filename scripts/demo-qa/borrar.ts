@@ -10,6 +10,8 @@ import { SupabaseAlmacenDescargas } from "@/lib/storage/SupabaseAlmacenDescargas
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { RUTAS_GUARDADAS } from "@/scripts/migrar-storage-a-carpetas";
 
+import { enParalelo } from "./paralelo";
+
 // SL-43 (design §3.2 y §4; R7, R8, R9, R10, R28) — el borrado de las empresas demo de QA.
 //
 // Una empresa es demo por `organizacion.es_demo`, que solo pone la demo como dueño (D11). Nunca por
@@ -177,8 +179,10 @@ export async function borrarArchivosDeEmpresa(
   ahora: Date,
 ): Promise<ResumenStorage> {
   const porBucket = new Map<string, Set<string>>();
-  for (const entrada of RUTAS_GUARDADAS) {
-    const filas = await entrada.leer(dueno, { organizacionId: { in: [organizacionId] } });
+  // Las lecturas a la vez: con el lector de la demo (varias conexiones) son una ida y vuelta, no 23.
+  const leidas = await enParalelo(RUTAS_GUARDADAS.map((entrada) => entrada.leer(dueno, { organizacionId: { in: [organizacionId] } })));
+  for (const [i, entrada] of RUTAS_GUARDADAS.entries()) {
+    const filas = leidas[i];
     const bucket = entrada.bucket();
     const rutas = porBucket.get(bucket) ?? new Set<string>();
     for (const f of filas) {
@@ -191,10 +195,12 @@ export async function borrarArchivosDeEmpresa(
   // esto quedaba en Storage tras el borrado (lo midió T10).
   const etiquetas = loadEtiquetasConfig().ETIQUETAS_BUCKET;
   const rutasEtiquetas = porBucket.get(etiquetas) ?? new Set<string>();
-  const firmadas = [
-    ...(await dueno.carga.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } })),
-    ...(await dueno.orden.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } })),
-  ];
+  const firmadas = (
+    await enParalelo([
+      dueno.carga.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } }),
+      dueno.orden.findMany({ where: { organizacionId, downloadUrl: { not: null } }, select: { downloadUrl: true } }),
+    ])
+  ).flat();
   for (const { downloadUrl } of firmadas) {
     const ruta = downloadUrl === null ? null : rutaDeUrlFirmada(downloadUrl, etiquetas, organizacionId);
     if (ruta !== null) rutasEtiquetas.add(ruta);
@@ -232,7 +238,7 @@ export async function borrarArchivosDeEmpresa(
 type Tx = Prisma.TransactionClient;
 
 /** Un `DELETE` de la pasada: una tabla y la columna por la que cuelga de la demo. */
-type Paso = { tabla: string; columna: string; ids: "empresas" | "usuarios" };
+export type Paso = { tabla: string; columna: string; ids: "empresas" | "usuarios" };
 
 /**
  * Tablas de plataforma con un usuario pero SIN FK hacia `usuario`: `pg_constraint` no las ve.
@@ -289,6 +295,78 @@ async function columnasHaciaUsuario(tx: Tx): Promise<{ tabla: string; columna: s
   return [...porFk, ...sinFk];
 }
 
+/**
+ * El `DELETE` de un paso. Es el único SQL de tabla dinámica del borrado, y lo usan las dos formas de
+ * borrar (la pasada en orden y las pasadas con SAVEPOINT): la guardia de SL-45 lo cuenta.
+ */
+function borrarPaso(tx: Tx, paso: Paso, valores: string[]): Promise<number> {
+  return tx.$executeRawUnsafe(`DELETE FROM ${id(paso.tabla)} WHERE ${id(paso.columna)} = ANY($1::text[])`, valores);
+}
+
+/** Las FK entre las tablas de los pasos (sin las de una tabla a sí misma): `hija` va antes que `madre`. */
+async function fksEntre(tx: Tx, pasos: readonly Paso[]): Promise<{ hija: string; madre: string }[]> {
+  const tablas = [...new Set(pasos.map((p) => p.tabla))];
+  return tx.$queryRaw<{ hija: string; madre: string }[]>(Prisma.sql`
+    SELECT DISTINCT h.relname::text AS "hija", m.relname::text AS "madre"
+      FROM pg_constraint co
+      JOIN pg_class h ON h.oid = co.conrelid
+      JOIN pg_class m ON m.oid = co.confrelid
+      JOIN pg_namespace n ON n.oid = h.relnamespace
+     WHERE co.contype = 'f'
+       AND n.nspname = 'public'
+       AND h.oid <> m.oid
+       AND h.relname = ANY(${tablas}::text[])
+       AND m.relname = ANY(${tablas}::text[])`);
+}
+
+/**
+ * Los pasos con cada tabla antes que aquellas a las que apunta (orden topológico, estable). Lo que
+ * queda en un ciclo va al final en su orden: esa pasada fallará y el borrado seguirá por pasadas.
+ */
+export function ordenarPorFk(pasos: readonly Paso[], aristas: readonly { hija: string; madre: string }[]): Paso[] {
+  const tablas = [...new Set(pasos.map((p) => p.tabla))];
+  const hijasPendientes = new Map(tablas.map((t) => [t, new Set<string>()]));
+  for (const { hija, madre } of aristas) if (hijasPendientes.has(hija)) hijasPendientes.get(madre)?.add(hija);
+  const orden: string[] = [];
+  const restantes = new Set(tablas);
+  while (restantes.size > 0) {
+    const lista = tablas.find((t) => restantes.has(t) && (hijasPendientes.get(t)?.size ?? 0) === 0);
+    if (lista === undefined) break;
+    orden.push(lista);
+    restantes.delete(lista);
+    for (const hijas of hijasPendientes.values()) hijas.delete(lista);
+  }
+  orden.push(...tablas.filter((t) => restantes.has(t)));
+  return orden.flatMap((t) => pasos.filter((p) => p.tabla === t));
+}
+
+/**
+ * Una pasada sin SAVEPOINT por tabla, dentro de uno solo. Devuelve las filas borradas, o `null` si
+ * algo falló: entonces la pasada se deshace entera y no queda nada a medias.
+ */
+async function borrarEnOrdenDeFk(
+  tx: Tx,
+  pasos: readonly Paso[],
+  empresas: string[],
+  usuarios: string[],
+): Promise<number | null> {
+  await tx.$executeRawUnsafe(`SAVEPOINT demo_qa_en_orden`);
+  try {
+    let filas = 0;
+    for (const paso of pasos) {
+      const valores = paso.ids === "empresas" ? empresas : usuarios;
+      if (valores.length === 0) continue;
+      filas += await borrarPaso(tx, paso, valores);
+    }
+    await tx.$executeRawUnsafe(`RELEASE SAVEPOINT demo_qa_en_orden`);
+    return filas;
+  } catch {
+    // El error no se pierde: la pasada por tablas lo vuelve a encontrar y lo nombra (R8).
+    await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT demo_qa_en_orden`);
+    return null;
+  }
+}
+
 export type ResumenBase = { filas: number; pasadas: number; usuarios: number; organizaciones: number };
 
 /**
@@ -317,9 +395,14 @@ export async function borrarFilasDeEmpresas(
         ...(await tablasConEmpresa(tx)).map((tabla) => ({ tabla, columna: "organizacion_id", ids: "empresas" as const })),
       ];
 
-      let filas = 0;
-      let pasadas = 0;
-      let pendientes = pasos;
+      // Primero, una sola pasada en el orden de las FK, sin un SAVEPOINT por tabla: en el build de QA
+      // cada ida y vuelta son ~90 ms, y el borrado por pasadas hacía tres por tabla. Si algo choca
+      // (un ciclo, una FK que el orden no ve), se deshace entera y se sigue por pasadas, que es el
+      // camino que decide qué tabla lo impide (R8).
+      const rapido = await borrarEnOrdenDeFk(tx, ordenarPorFk(pasos, await fksEntre(tx, pasos)), empresas, usuarios);
+      let filas = rapido ?? 0;
+      let pasadas = rapido === null ? 0 : 1;
+      let pendientes = rapido === null ? pasos : [];
       while (pendientes.length > 0) {
         pasadas++;
         const bloqueados: Paso[] = [];
@@ -328,10 +411,7 @@ export async function borrarFilasDeEmpresas(
           if (valores.length === 0) continue;
           await tx.$executeRawUnsafe(`SAVEPOINT demo_qa_paso`);
           try {
-            filas += await tx.$executeRawUnsafe(
-              `DELETE FROM ${id(paso.tabla)} WHERE ${id(paso.columna)} = ANY($1::text[])`,
-              valores,
-            );
+            filas += await borrarPaso(tx, paso, valores);
             await tx.$executeRawUnsafe(`RELEASE SAVEPOINT demo_qa_paso`);
           } catch (error) {
             await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT demo_qa_paso`);
@@ -378,6 +458,11 @@ async function borrarFinal(tx: Tx, tabla: string, sql: string, empresas: string[
 export interface OpcionesBorrado {
   almacenes?: AlmacenesDemo;
   ahora?: Date;
+  /**
+   * El dueño con varias conexiones (`ConexionDemo.lector`), para leer a la vez las rutas de Storage.
+   * Sin él, se leen con el cliente del borrado. La transacción va siempre por el del borrado.
+   */
+  lector?: ClienteDuenoDemo;
 }
 
 export type ResultadoBorrado = { empresas: string[]; storage: ResumenStorage; base: ResumenBase };
@@ -401,8 +486,11 @@ export async function borrarEmpresasDemo(
   }
   await exigirSoloDemo(dueno, empresas);
 
-  for (const organizacionId of empresas) {
-    const r = await borrarArchivosDeEmpresa(dueno, organizacionId, almacenes, ahora);
+  // Los archivos de cada empresa, a la vez: carpetas distintas (`<organizacion_id>/…`).
+  const porEmpresa = await enParalelo(
+    empresas.map((organizacionId) => borrarArchivosDeEmpresa(opciones.lector ?? dueno, organizacionId, almacenes, ahora)),
+  );
+  for (const r of porEmpresa) {
     storage.rutas += r.rutas;
     storage.temporales += r.temporales;
   }

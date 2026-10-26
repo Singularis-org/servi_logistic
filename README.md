@@ -49,6 +49,7 @@ El código lee exactamente estas:
 | `INTEGRACIONES_PRUEBAS_POR_MINUTO` | Opcional. Pruebas de conexión por minuto y empresa (default 5). |
 | `INTEGRACIONES_PROBADOR_DOBLE` | Solo E2E: `1` cambia los probadores reales por un doble. Ignorada con `VERCEL_ENV=production`. |
 | `DB_POOL_MAX` | Opcional. Conexiones `pg` por instancia (default 3). |
+| `DB_TX_MAX_WAIT_MS` / `DB_TX_TIMEOUT_MS` | No se ponen en la app (quedan los de Prisma: 2 s y 5 s). Los fija la demo de QA en su propio proceso (`scripts/demo-qa.ts`). |
 
 #### Credenciales de WhatsApp, Google Maps, optimización de rutas y asistente
 

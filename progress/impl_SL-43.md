@@ -381,6 +381,91 @@ Desviaciones:
 **Aviso:** `tarifa-zona-borrado-fk-real.test.ts:371` espera `23001`, y en 17 daría `23503`. Ya está en
 el baseline por otro motivo y no se toca.
 
+## Tiempo de la demo en el build de QA (2026-10-26, tras el merge del PR #18)
+
+**El problema:** en Vercel, A tardó ~457 s y B no terminó, así que se venció el tope de 15 min. El
+build corre en Cleveland y Supabase de QA está en us-west-2, a ~70–90 ms por ida y vuelta, y la demo
+hace miles de consultas en serie. El log trae además un `DeprecationWarning` de `pg` por consultas
+solapadas en un mismo cliente. Carlos dejó `DEMO_ON_PREVIEW=false` para desbloquear `dev`.
+
+**Idas y vueltas a la base**, contadas a nivel de `pg` en el dueño y en la app, incluidos `BEGIN`,
+`set_config` y `COMMIT`:
+
+| Fase | Antes (`e50ae78`) | Ronda 1 | Ronda 2 |
+|---|---|---|---|
+| inicio + preparación | 48 | 4 | 4 |
+| borrado (2 empresas) | 304 (+8 Storage) | 124 (1 pasada) | 124 |
+| A | 8.991 (+45 Storage) | 5.402 | 6.248 |
+| B | 8.990 (+45 Storage) | 5.416 | 6.250 |
+| comprobación final | 23 | 23 | 23 |
+| suma × 90 ms (en serie) | **1.661 s** | 996 s | ~1.140 s, pero A y B van en paralelo, repartidas en 12 conexiones |
+
+- El envoltorio de empresa (`BEGIN` + `set_config` + `COMMIT`) se lleva unas 5.000 de las ~9.000 idas
+  y vueltas de cada empresa.
+- La ronda 2 sube el número de consultas al repartir las gestiones entre más mensajeros, pero baja el
+  tiempo porque acorta la ruta crítica.
+
+**Tiempos medidos**, con un proxy local de latencia; el último con el pool limitado a 8, como el pooler:
+
+| Medición | Total | A | B |
+|---|---|---|---|
+| antes, 90 ms | ~854 s A, B abortada por el tope a los 905 s | | |
+| ronda 1, 90 ms | 214,2 s | 199,2 s | 199,1 s |
+| ronda 1, 160 ms | P2028 a los 55 s | | |
+| ronda 2, 90 ms | **167,6 s** | 153,0 s | 152,2 s |
+| ronda 2, 160 ms | 305,1 s | 280,3 s | 280,4 s |
+| ronda 2, 160 ms, 8 conexiones | 348,4 s | | |
+
+**Medición real contra QA desde el PC del implementer**, con el OK de Carlos:
+- Cómo se corrió: `--build` simulado y una contraseña de usar y tirar que no se imprime.
+- Ida y vuelta medida: p50 163 ms por `DIRECT_URL` y 150 ms por `DATABASE_URL`, casi el doble que el
+  build.
+
+| Corrida | Resultado |
+|---|---|
+| 1, ronda 1 | **falló a los 72 s con P2028** (timeout de la transacción de `cargarMasiva`: 46 consultas, ~8,8 s a 160 ms, frente a los 5 s por defecto) |
+| 2, ronda 2 | **`EXIT=0` en 278,3 s** (A 252,7 s, B 246,7 s; borrado de las 2 anteriores en 1 pasada). Los 20 estados en las dos empresas, 0 avisos de `pg`, y en la salida ni la contraseña ni ninguna URL |
+
+- **Lo que queda en QA:** las dos empresas demo, con la contraseña de usar y tirar. El próximo build
+  con la variable real las recrea.
+- **Estimación para el build:** a 90 ms se midieron 167,6 s con el proxy, así que la demo debería
+  quedar por debajo de 3 min. Solo el primer build con `DEMO_ON_PREVIEW=true` lo confirma.
+
+**Cambios:**
+- **`scripts/demo-qa.ts`:**
+  - A y B en paralelo (`enParalelo`: si una falla, espera a la otra, suelta el candado y cierra);
+  - un lector del dueño de 4 conexiones;
+  - `DB_POOL_MAX=12` para la app, solo en este proceso;
+  - `conectarDemo` fija las opciones de transacción de la demo (`maxWait` 30 s, `timeout` 60 s).
+- **`scripts/demo-qa/receta.ts`:**
+  - una carga masiva y servicios por lotes de 4;
+  - altas, ubicación y tramos en paralelo;
+  - gestiones repartidas en 5 mensajeros, 3 perfiles más por empresa (`mensajero-novedades`,
+    `mensajero-rechazos`, `mensajero-satelite-2`);
+  - las cifras por estado del contrato no cambian.
+- **`scripts/demo-qa/borrar.ts`:** una pasada en orden de FK dentro de un `SAVEPOINT`. Si choca, vuelve
+  a las pasadas de antes, así que R8 no cambia.
+- **`scripts/demo-qa/paso.ts`:** los errores nombran el paso de la receta y, en un P2028, qué tiempo
+  venció. No incluyen el mensaje de la base.
+- **`lib/db/consultas-en-serie.ts`** (nuevo) y **`lib/db/prisma-client.ts`**:
+  - **Para el reviewer: afectan a toda la app.**
+  - Las consultas que Prisma 7.8 lanza a la vez dentro de una transacción (un `include` con varios
+    hijos) se encolan en orden. Eso quita el `DeprecationWarning`: 626 solapes antes, 0 después.
+  - `opcionesDeTransaccion()` lee `DB_TX_MAX_WAIT_MS` y `DB_TX_TIMEOUT_MS`. Sin ellas, la app sigue
+    con 2 s y 5 s.
+- **`RECORTE_DE_B`:** no se enciende. A 90 ms solo baja de 167,6 a 161,2 s, porque la ruta crítica es
+  la de A.
+- **Riesgo:** con 12 conexiones de la app más 4 del dueño, durante unos 3 min la demo deja poco margen
+  en el pooler de QA si tiene unos 15 slots (no se conoce el tamaño).
+
+**Tests:**
+- Los 5 archivos de integración juntos, dos veces: 42/42.
+- `tests/unit/scripts/` y `tests/unit/db/`: 369/369.
+- E2E: reparto 15/15 y dinero 28/28.
+- Mutaciones M1–M9 en rojo: A‖B en serie, sin serializar, orden de FK, sin vuelta a las pasadas, y las
+  opciones de transacción del cliente, del dueño y del lector, la ruta del paso y la clasificación del
+  P2028.
+
 ## Mapa `R<n> → test`
 
 | R | Test | Estado |

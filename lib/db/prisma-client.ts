@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { conConsultasEnSeriePorTransaccion } from "./consultas-en-serie";
 import { conAislamientoPorEmpresa } from "./extension-empresa";
 
 // Singleton perezoso de PrismaClient: se construye recien cuando algo lo pide
@@ -26,6 +27,33 @@ function resolvePoolMax(): number {
   if (!raw) return DEFAULT_POOL_MAX;
   const parsed = Number.parseInt(raw, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_POOL_MAX;
+}
+
+/** Variables de entorno de los tiempos de transacción del cliente (SL-43). */
+export const ENV_TX_MAX_WAIT_MS = "DB_TX_MAX_WAIT_MS";
+export const ENV_TX_TIMEOUT_MS = "DB_TX_TIMEOUT_MS";
+
+/**
+ * SL-43 — `transactionOptions` del cliente, solo si el entorno los pide. Sin las variables (la app,
+ * siempre) devuelve `undefined` y quedan los de Prisma: `maxWait` 2 s y `timeout` 5 s. Los pone la
+ * demo de QA en su propio proceso (`scripts/demo-qa.ts`): contra una base a ~150 ms por ida y vuelta,
+ * la carga masiva de la tienda con bodega es una transacción de ~28 consultas y pasa de 5 s (P2028).
+ * Las opciones de una llamada (`$transaction(fn, { timeout })`) siguen ganando sobre estas. Función
+ * PURA (recibe el entorno) para comprobarla sin abrir una conexión.
+ */
+export function opcionesDeTransaccion(
+  env: NodeJS.ProcessEnv = process.env,
+): { maxWait?: number; timeout?: number } | undefined {
+  const leer = (clave: string): number | undefined => {
+    const raw = env[clave]?.trim();
+    if (!raw) return undefined;
+    const n = Number.parseInt(raw, 10);
+    return Number.isInteger(n) && n > 0 && String(n) === raw ? n : undefined;
+  };
+  const maxWait = leer(ENV_TX_MAX_WAIT_MS);
+  const timeout = leer(ENV_TX_TIMEOUT_MS);
+  if (maxWait === undefined && timeout === undefined) return undefined;
+  return { ...(maxWait !== undefined && { maxWait }), ...(timeout !== undefined && { timeout }) };
 }
 
 /**
@@ -105,13 +133,16 @@ export function modoLogQueries(env: NodeJS.ProcessEnv = process.env): ModoLogQue
 /** Cliente con el log de consultas ya enchufado, si el entorno lo pide. */
 function construirCliente(adapter: PrismaPg): PrismaClient {
   const modo = modoLogQueries();
+  // Sin las variables, `undefined`: el constructor recibe lo mismo que antes de SL-43.
+  const transactionOptions = opcionesDeTransaccion();
   if (modo === "off") {
-    return new PrismaClient({ adapter, omit: PRISMA_OMIT }) as unknown as PrismaClient;
+    return new PrismaClient({ adapter, omit: PRISMA_OMIT, transactionOptions }) as unknown as PrismaClient;
   }
 
   const cliente = new PrismaClient({
     adapter,
     omit: PRISMA_OMIT,
+    transactionOptions,
     // `emit: "event"` y no `"stdout"`: así el formato lo decide esta función —incluido
     // el recorte de los parámetros— en vez de imprimirlo Prisma por su cuenta.
     log: [{ emit: "event", level: "query" }],
@@ -127,15 +158,18 @@ function construirCliente(adapter: PrismaPg): PrismaClient {
 
 export function getPrismaClient(): PrismaClient {
   if (!globalThis.__prisma__) {
-    const adapter = new PrismaPg({
-      connectionString: process.env.DATABASE_URL,
-      max: resolvePoolMax(),
-      // Suelta conexiones ociosas rapido: cuando Vercel escala hacia abajo, una
-      // instancia dormida no debe seguir ocupando slots del pooler.
-      idleTimeoutMillis: 10_000,
-      // Falla rapido en vez de dejar la request colgada si el pooler esta saturado.
-      connectionTimeoutMillis: 10_000,
-    });
+    // SL-43: una consulta a la vez dentro de cada transacción (`consultas-en-serie.ts`).
+    const adapter = conConsultasEnSeriePorTransaccion(
+      new PrismaPg({
+        connectionString: process.env.DATABASE_URL,
+        max: resolvePoolMax(),
+        // Suelta conexiones ociosas rapido: cuando Vercel escala hacia abajo, una
+        // instancia dormida no debe seguir ocupando slots del pooler.
+        idleTimeoutMillis: 10_000,
+        // Falla rapido en vez de dejar la request colgada si el pooler esta saturado.
+        connectionTimeoutMillis: 10_000,
+      }),
+    );
     // El `omit` cambia el TIPO del cliente (`PrismaClient<{ omit: … }>`): sus payloads de
     // `orden` dejan de tener `busquedaTexto`, y ese tipo NO es asignable al `PrismaClient`
     // ancho contra el que estan tipados los ~25 repositorios del repo. Ensanchar el tipo en

@@ -3,9 +3,13 @@ import { pathToFileURL } from "node:url";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
+import { conConsultasEnSeriePorTransaccion } from "@/lib/db/consultas-en-serie";
+
 import type { ResultadoBorrado } from "./demo-qa/borrar";
 import { CANDADO_DE_POSTGRES, type CandadoDemo } from "./demo-qa/candado";
 import { decidirDemo } from "./demo-qa/decision-build";
+import { enParalelo } from "./demo-qa/paralelo";
+import { enPaso } from "./demo-qa/paso";
 import { comprobarMarcaDeQa, validarEntornoDemo, type ResultadoMarca } from "./demo-qa/guardia-entorno";
 import type { ClaveEmpresaDemo, ComprobacionEmpresaDemo, ResumenEmpresaDemo } from "./demo-qa/receta";
 import {
@@ -27,7 +31,7 @@ import {
 //   1. solo en `--build`: `decidirDemo`. Omitida → una línea y 0, SIN abrir ninguna conexión (R30);
 //   2. la guardia sin conexión (producción, mismo proyecto, contraseña): R2, R4, R25;
 //   3. conexión del dueño, candado (R32) y marca de QA de la base (R3);
-//   4. slugs (R10); 5. borrado (R7–R9); 6. A y después B (R11–R24);
+//   4. slugs (R10); 5. borrado (R7–R9); 6. A y B a la vez (R11–R24);
 //   7. comprobación final y resumen sin secretos (R5, R26).
 // El tope de 15 min envuelve los pasos 3 a 7 (R33).
 //
@@ -37,6 +41,28 @@ import {
 
 /** Tope duro de la demo (design §10.4). El objetivo son 5 min; 15 queda lejos de los 45 de Vercel. */
 export const TOPE_MS = 15 * 60 * 1000;
+
+/**
+ * Conexiones del cliente de la app (`DB_POOL_MAX`) en el proceso de la demo. El build de QA va contra
+ * una base a ~90 ms por ida y vuelta: A y B, y sus tramos, van a la vez, y con el pool de la app por
+ * defecto (3) harían cola. Solo en este proceso: el de la app no lo ve.
+ */
+export const CONEXIONES_DE_LA_APP = 12;
+/** Conexiones del lector (el dueño de la receta): sus consultas son de una ida y vuelta. */
+const CONEXIONES_DEL_LECTOR = 4;
+
+/**
+ * Tiempos de transacción de los clientes de la demo (el de la app, por `DB_TX_*`, y el dueño y el
+ * lector). Los de Prisma por defecto son 2 s esperando conexión (`maxWait`) y 5 s de vida (`timeout`):
+ * con 160 ms por ida y vuelta (QA desde fuera de Vercel) la carga masiva de la tienda con bodega, una
+ * transacción de 28 consultas, tardó 5,3 s y cayó con P2028 (medido en local con latencia simulada).
+ * La transacción más larga de la receta tarda ~6 s a 160 ms: 60 s le dejan diez veces de margen, y
+ * una que se cuelga de verdad la sigue cortando el tope de la demo (R33). Solo en este proceso.
+ */
+export const TRANSACCION_DE_LA_DEMO = { maxWait: 30_000, timeout: 60_000 } as const;
+
+/** Las empresas que crea la demo, a la vez (cada una en su `crearEmpresa`). */
+export const CLAVES_DEMO = ["A", "B"] as const;
 
 /** Lo que tarda como mucho, una vez vencido el tope, soltar el candado y cerrar las conexiones. */
 const ESPERA_DE_LIMPIEZA_MS = 10_000;
@@ -53,10 +79,16 @@ export interface EntornoDemoQa {
   DEMO_QA_CONTRASENA?: string;
 }
 
-/** La conexión única del dueño, más el cierre de todo lo que la demo abrió. */
+/** La conexión única del dueño, el lector de la receta y el cierre de todo lo que la demo abrió. */
 export interface ConexionDemo {
+  /** Una sola conexión: lleva el candado (de sesión) y el borrado. */
   dueno: PrismaClient;
-  /** `$disconnect` del dueño y del cliente de la app. No lanza. */
+  /**
+   * El dueño con varias conexiones, para lo que hacen A y B a la vez: leer lo que dejan los servicios
+   * y las escrituras de D5.3. En la conexión única del candado, sus lecturas harían cola.
+   */
+  lector: PrismaClient;
+  /** `$disconnect` del dueño, del lector y del cliente de la app. No lanza. */
   cerrar(): Promise<void>;
 }
 
@@ -68,7 +100,8 @@ export interface PasosDemo {
   comprobarMarca(dueno: PrismaClient): Promise<ResultadoMarca>;
   /** R10: lanza si una empresa real usa un slug de la demo. */
   comprobarSlugs(dueno: PrismaClient): Promise<void>;
-  borrar(dueno: PrismaClient): Promise<ResultadoBorrado>;
+  /** `lector` solo lee (las rutas de Storage); el borrado de filas va por `dueno`. */
+  borrar(dueno: PrismaClient, lector?: PrismaClient): Promise<ResultadoBorrado>;
   crearEmpresa(dueno: PrismaClient, clave: ClaveEmpresaDemo, contrasena: string): Promise<ResumenEmpresaDemo>;
   comprobarEmpresa(
     dueno: PrismaClient,
@@ -133,12 +166,54 @@ export async function cargarPasosReales(): Promise<PasosDemo> {
   return {
     comprobarMarca: (dueno) => comprobarMarcaDeQa(dueno),
     comprobarSlugs: (dueno) => borrar.comprobarSlugs(dueno),
-    borrar: (dueno) => borrar.borrarEmpresasDemo(dueno),
+    borrar: (dueno, lector) => borrar.borrarEmpresasDemo(dueno, { lector }),
     crearEmpresa: (dueno, clave, contrasena) => receta.crearEmpresaDemo({ dueno }, clave, { contrasena }),
     comprobarEmpresa: (dueno, organizacionId, estadosPorDecision) =>
       receta.comprobarEmpresaDemo({ dueno }, organizacionId, { estadosPorDecision }),
     empresasDemo: (dueno) => borrar.empresasDemo(dueno),
     novedadInternaConCorteDeManana: receta.NOVEDAD_INTERNA_CON_CORTE_DE_MANANA,
+  };
+}
+
+/**
+ * La conexión real de la demo: el dueño (una conexión, el candado), el lector y los ajustes del cliente
+ * de la app para este proceso (pool y tiempos de transacción). Exportada para que un test compruebe
+ * esos ajustes sin abrir ninguna conexión: Prisma no conecta hasta la primera consulta.
+ */
+export async function conectarDemo(env: EntornoDemoQa): Promise<ConexionDemo> {
+  // El cliente de la app (`getPrismaClient`) lee DATABASE_URL. En local puede faltar y la guardia
+  // lo admite: se cae a la del dueño, como la siembra de `migrate-deploy.ts`.
+  if (!process.env.DATABASE_URL?.trim() && env.DIRECT_URL) process.env.DATABASE_URL = env.DIRECT_URL;
+  // Antes del primer `getPrismaClient()`: el pool y los tiempos de transacción se fijan al construirse.
+  process.env.DB_POOL_MAX = String(CONEXIONES_DE_LA_APP);
+  const { ENV_TX_MAX_WAIT_MS, ENV_TX_TIMEOUT_MS } = await import("@/lib/db/prisma-client");
+  process.env[ENV_TX_MAX_WAIT_MS] = String(TRANSACCION_DE_LA_DEMO.maxWait);
+  process.env[ENV_TX_TIMEOUT_MS] = String(TRANSACCION_DE_LA_DEMO.timeout);
+  const dueno = new PrismaClient({
+    transactionOptions: TRANSACCION_DE_LA_DEMO,
+    adapter: new PrismaPg({
+      connectionString: urlDelDueno(env),
+      // Una sola conexión: el candado es de sesión y el borrado corre en ella (design §4.2).
+      max: 1,
+      // 0 = nunca se cierra por ociosa. Si el pool la cerrara a mitad de la receta, el
+      // candado se soltaría en silencio y otro build podría entrar.
+      idleTimeoutMillis: 0,
+      connectionTimeoutMillis: 30_000,
+    }),
+  });
+  const lector = new PrismaClient({
+    transactionOptions: TRANSACCION_DE_LA_DEMO,
+    adapter: conConsultasEnSeriePorTransaccion(
+      new PrismaPg({ connectionString: urlDelDueno(env), max: CONEXIONES_DEL_LECTOR, connectionTimeoutMillis: 30_000 }),
+    ),
+  });
+  return {
+    dueno,
+    lector,
+    cerrar: async () => {
+      const { getPrismaClient } = await import("@/lib/db/prisma-client");
+      await Promise.allSettled([dueno.$disconnect(), lector.$disconnect(), getPrismaClient().$disconnect()]);
+    },
   };
 }
 
@@ -156,29 +231,7 @@ function efectosReales(): EfectosDemo {
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       DEMO_QA_CONTRASENA: process.env.DEMO_QA_CONTRASENA,
     },
-    conectar: async (env) => {
-      // El cliente de la app (`getPrismaClient`) lee DATABASE_URL. En local puede faltar y la guardia
-      // lo admite: se cae a la del dueño, como la siembra de `migrate-deploy.ts`.
-      if (!process.env.DATABASE_URL?.trim() && env.DIRECT_URL) process.env.DATABASE_URL = env.DIRECT_URL;
-      const dueno = new PrismaClient({
-        adapter: new PrismaPg({
-          connectionString: urlDelDueno(env),
-          // Una sola conexión: el candado es de sesión y el borrado corre en ella (design §4.2).
-          max: 1,
-          // 0 = nunca se cierra por ociosa. Si el pool la cerrara a mitad de la receta, el
-          // candado se soltaría en silencio y otro build podría entrar.
-          idleTimeoutMillis: 0,
-          connectionTimeoutMillis: 30_000,
-        }),
-      });
-      return {
-        dueno,
-        cerrar: async () => {
-          const { getPrismaClient } = await import("@/lib/db/prisma-client");
-          await Promise.allSettled([dueno.$disconnect(), getPrismaClient().$disconnect()]);
-        },
-      };
-    },
+    conectar: conectarDemo,
     cargarPasos: cargarPasosReales,
     candado: CANDADO_DE_POSTGRES,
     salida: { log: (l) => console.log(l), error: (l) => console.error(l) },
@@ -234,26 +287,30 @@ async function pasosConConexion(
 
   // 5. Storage y después la base, de las empresas demo anteriores (R7–R9).
   salida.log(`${PREFIJO} borrando las empresas demo anteriores…`);
-  const borrado = await pasos.borrar(dueno);
+  const borrado = await enPaso("borrado", () => pasos.borrar(dueno, conexion.lector));
 
-  // 6. A y después B. Un tipo de job que nadie esperaba corta aquí (R23): la receta ya lo cerró sin
+  // 6. A y B a la vez, cada una por su lado: el candado es de la ejecución, no de la empresa. Si una
+  //    falla, se espera a la otra antes de seguir: nada queda escribiendo mientras se cierran las
+  //    conexiones. Un tipo de job que nadie esperaba corta aquí (R23): la receta ya lo cerró sin
   //    ejecutarlo, pero alguien tiene que decidir qué hace la demo con él.
-  const empresas: ResumenEmpresaDemo[] = [];
-  for (const clave of ["A", "B"] as const) {
-    salida.log(`${PREFIJO} creando la empresa demo ${clave}…`);
-    const resumen = await pasos.crearEmpresa(dueno, clave, contrasena);
+  salida.log(`${PREFIJO} creando las empresas demo ${CLAVES_DEMO.join(" y ")} a la vez…`);
+  const empresas: ResumenEmpresaDemo[] = await enParalelo(
+    CLAVES_DEMO.map((clave) => enPaso(`empresa ${clave}`, () => pasos.crearEmpresa(conexion.lector, clave, contrasena))),
+  );
+  for (const resumen of empresas) {
     if (resumen.tiposNoEsperados.length > 0) {
       throw new FalloDeComprobacion(
         `${resumen.slug} encoló jobs de un tipo no esperado: ${resumen.tiposNoEsperados.join(", ")}. ` +
           "Se cerraron sin ejecutar; añádelos a TIPOS_DE_JOB_ESPERADOS solo si no llaman a un proveedor.",
       );
     }
-    empresas.push(resumen);
   }
 
   // 7. Comprobación final, ya con las dos creadas: la de B no puede haber estropeado la de A.
   for (const e of empresas) {
-    const comprobacion = await pasos.comprobarEmpresa(dueno, e.organizacionId, e.comprobacion.estadosFaltantesPorDecision);
+    const comprobacion = await enPaso(`comprobación final de ${e.slug}`, () =>
+      pasos.comprobarEmpresa(conexion.lector, e.organizacionId, e.comprobacion.estadosFaltantesPorDecision),
+    );
     const problemas = problemasDeComprobacion(comprobacion);
     if (problemas.length > 0) throw new FalloDeComprobacion(`${e.slug} no quedó lista: ${problemas.join("; ")}`);
     e.comprobacion = comprobacion;
