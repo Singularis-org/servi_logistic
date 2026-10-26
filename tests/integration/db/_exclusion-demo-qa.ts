@@ -19,6 +19,16 @@ import { urlDeBaseDeDatos } from "./_postgres-real";
 // Es un advisory lock de SESIÓN, en una conexión propia (`max: 1`, sin cierre por ociosa), con una
 // clave distinta de la del candado de la demo (`servi_logistic:demo-qa`): la demo que corre dentro
 // del test tiene que poder tomar el suyo.
+//
+// POR QUÉ NO `tomarLockDeEscrituraReal` (review SL-43, m1). Ese lock lo piden ~200 archivos para
+// cada escritura real (`serializarEscriturasReales`, `bajoLockDeEscrituraReal`), con 20 s de
+// `testTimeout`/`hookTimeout`. Sostenerlo los ~80 s de `demo-qa.test.ts` los tumba: medido el
+// 2026-10-25, con ese lock tomado 80 s, 6 archivos pequeños que lo usan cayeron enteros por timeout
+// (9 de 10 casos; sin el lock, 2, por la base sin usuarios). Esta clave solo la piden los 8 archivos
+// de abajo, y con 660 s de hook.
+//
+// LÍMITE CONOCIDO: la lista es a mano. Un test nuevo que recorra la base entera y caiga con filas de
+// la demo vivas tiene que pedir aquí el turno compartido; si no, es un rojo intermitente en CI.
 
 const CLAVE = "servi_logistic:demo-qa:tests";
 const REINTENTO_MS = 2_000;

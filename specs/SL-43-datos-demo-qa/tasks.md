@@ -50,7 +50,7 @@
     - `tests/integration/db/schema-drift-saneamiento.test.ts` en verde;
     - `pnpm run test:guardias` en verde.
 
-- [ ] **T2b. La marca de QA en Supabase, con su prueba** _(2026-10-25: ALTER DATABASE y ALTER ROLE rechazadas con 42501 → opción 3 implementada, migración `20261025160100_entorno_marca`; falta que Carlos inserte la fila en QA tras el primer despliegue con la migración)_ (R3, D21; depende de T0; **puerta humana**:
+- [ ] **T2b. La marca de QA en Supabase, con su prueba** — **PUERTA HUMANA TRAS EL MERGE** (parte técnica hecha: opción 3, `comprobarMarcaDeQa` y su test; queda la fila en QA. Pasos en `progress/features/SL-43.md > Cierre`) _(2026-10-25: ALTER DATABASE y ALTER ROLE rechazadas con 42501 → opción 3 implementada, migración `20261025160100_entorno_marca`; falta que Carlos inserte la fila en QA tras el primer despliegue con la migración)_ (R3, D21; depende de T0; **puerta humana**:
   se hace con Carlos sobre la base de QA).
   - Prueba en el Supabase de QA, en este orden y con el rol `postgres` (`design.md > D2.2`):
     1. `ALTER DATABASE postgres SET servi.entorno = 'qa';`
@@ -161,7 +161,7 @@
 
 ## Tanda E — QA (puerta humana)
 
-- [ ] **T12. Primer despliegue de QA con la demo** (depende de T2b, T10 y de las variables de
+- [ ] **T12. Primer despliegue de QA con la demo** — **PUERTA HUMANA TRAS EL MERGE** (pasos en `progress/features/SL-43.md > Cierre`) (depende de T2b, T10 y de las variables de
   `design.md > D10.5`, que crea Carlos antes del merge).
   - Los pasos de `design.md > D9.4`. Se pegan en `progress/impl_SL-43.md` las líneas `[demo-qa]` del
     log del build (sin secretos) y la duración de la demo y del build entero.

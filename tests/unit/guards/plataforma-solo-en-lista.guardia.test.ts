@@ -30,10 +30,12 @@ describe("SL-17 · comoPlataforma solo en la lista (R27, R26)", () => {
   const llaman = archivosQueLlamanAComoPlataforma();
   const enLista = new Set(EXCEPCIONES_DE_PLATAFORMA.map((e) => e.archivo));
 
-  it("control positivo: el barrido recorre lib/, app/ y scripts/ y encuentra llamadas", () => {
+  it("control positivo: el barrido recorre lib/, app/, scripts/ y tests/fabricas/ y encuentra llamadas", () => {
     expect(archivosDeCodigo(CARPETAS_PLATAFORMA).length).toBeGreaterThan(200);
     // `lib/db/para-cada-empresa.ts` llama desde la tanda 1: si el barrido no lo ve, está ciego.
     expect(llaman).toContain("lib/db/para-cada-empresa.ts");
+    // m6 de SL-43: la fábrica que importa el build de la demo de QA tampoco queda fuera.
+    expect(llaman).toContain("tests/fabricas/empresa-y-usuarios.ts");
   });
 
   it("todo archivo que llama a comoPlataforma está en EXCEPCIONES_DE_PLATAFORMA", () => {
@@ -74,9 +76,12 @@ describe("SL-17 · comoPlataforma solo en la lista (R27, R26)", () => {
         escribir("lib/db/contexto-empresa.ts", `export function comoPlataforma(f, m, fn) {}\n${llamada}`);
         escribir("lib/x/intruso.ts", llamada);
         escribir("scripts/tarea.ts", llamada);
+        escribir("tests/fabricas/alta.ts", llamada);
+        escribir("tests/fabricas/alta.test.ts", llamada);
+        escribir("tests/otra/ayuda.ts", llamada);
         escribir("app/y/page.test.tsx", llamada);
         escribir("app/y/page.tsx", "export default function P() { return null; }\n");
-        expect(archivosQueLlamanAComoPlataforma(raiz)).toEqual(["lib/x/intruso.ts", "scripts/tarea.ts"]);
+        expect(archivosQueLlamanAComoPlataforma(raiz)).toEqual(["lib/x/intruso.ts", "scripts/tarea.ts", "tests/fabricas/alta.ts"]);
       });
     });
 

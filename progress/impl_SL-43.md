@@ -126,7 +126,7 @@ borró la primera, y las dos salieron con exit 0:
 | recorte de B (prueba) | — | — | 3,3 s | — |
 
 **Decisiones y desviaciones de T8:**
-- **B1 `novedad_interna`: pendiente de confirmar por Carlos.**
+- **B1 `novedad_interna`: confirmado por Carlos el 2026-10-25 (D27).**
   - Se llama a `CorteDiarioService.ejecutarCorte(ahora + 24 h)` montado como en su route y dentro de
     `conEmpresa(<demo>)`, nunca a la ruta del cron.
   - Va detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA = true`.
@@ -138,8 +138,12 @@ borró la primera, y las dos salieron con exit 0:
 - **R12:** el usuario `api` no termina en `@example.test` porque `ApiKeyService.generar` crea el suyo.
   Su secreto solo vive en memoria: 0 coincidencias en los logs.
 - **R17, cierre de bodega:** `CierresBodegaAdminService.aprobarCierreBodega` choca con el CHECK
-  `cierre_bodega_conciliacion_coherente`. **Posible bug de la app, para el leader.** La receta usa
-  `ConciliacionSatelitesService.marcarRecibida`, el camino de la UI actual (ficha 431).
+  `cierre_bodega_conciliacion_coherente`. **No es un bug** (corregido en la review vuelta 1, m4): la
+  ficha 431 retiró a propósito la aprobación de nivel 2.
+  - La evidencia está en `lib/actions/cierre-bodega.ts:389` (`@sin-superficie`), en la migración
+    `20260919120100_cierre_bodega_conciliacion` y en `cierre-bodega-conciliacion.int.test.ts`, caso (d).
+  - La receta usa `ConciliacionSatelitesService.marcarRecibida`, el camino actual, que deja el cierre
+    en `aprobado` («Recibido»).
 - **Montos:** solo cobran la entrega mixta (8.000), la satélite, los incidentes y las órdenes por API.
   El abono necesita deuda de la tienda, y el pago al mensajero es `min(P, E)`: por eso quedó en 500.
 - El pago mixto usa transferencia en vez del método local, para no meter un literal de país.
@@ -256,6 +260,49 @@ Desviaciones:
 - R14 distingue la pantalla de la carga masiva por la tienda.
 - **Riesgo de CI:** `jobs` sin empresa, `geocode_cache` y `cobro_plataforma_tarifa` se comparan por
   igualdad estricta. Un test concurrente que commitee en esas tablas lo haría fallar.
+
+## Review vuelta 1 → correcciones (2026-10-25)
+
+- **B1 (rojo intermitente en CI):** se aplicó la opción 2 de la review, acotar las fotos, en vez de
+  tomar `tomarLockDeEscrituraReal`.
+  - **Por qué no el lock:** el implementer midió que sostenerlo 80 s hacía caer 9 de 10 casos de 6
+    archivos pequeños que lo usan, por sus timeouts de 20 s.
+  - **Fotos acotadas:**
+    - `jobs` sin empresa: un centinela propio más los jobs cuyo `payload` nombra ids de la demo.
+    - `geocode_cache`: la tabla entera más un centinela.
+    - `cobro_plataforma_tarifa`: se lee bajo el lock de SL-40 (`tomarTarifaGlobal`), con un valor de
+      control que se restaura.
+  - R3 y R10 ya no comparan `organizacion` entera: miran las demo, los slugs `demo-qa%` y la real.
+  - **Mutaciones:** cada una de las 4 cae en «la segunda ejecución» (borrar jobs `done` sin empresa,
+    borrar `geocode_cache`, insertar un job sin empresa con un id demo, cambiar la tarifa global).
+  - **Robustez:** un escritor concurrente de jobs sin empresa (98 jobs) no tumba la corrida 1, la 2
+    ni R3: 3/3 en verde.
+- **m1:** se mantiene `_exclusion-demo-qa.ts`, con otra clave que el lock de escritura real (por la
+  medición de B1). Su cabecera documenta el motivo y que la lista de 8 archivos se mantiene a mano.
+- **m2:** `e2e/dos-empresas-humo.spec.ts --no-deps` contra `servi_logistic_sl43_e2e`:
+  **6 passed (56.8s)**, `E2E_EXIT=0`.
+- **m3:** T2b y T12 quedan como «puerta humana tras el merge», con sus pasos en
+  `progress/features/SL-43.md > Cierre`.
+- **m4:** la nota de «posible bug» de `aprobarCierreBodega` está corregida: es el diseño de la ficha
+  431.
+- **m5:** las guardias de SL-45 y SL-40 detectan ahora un `DELETE`/`UPDATE`/`TRUNCATE` con la tabla
+  dinámica (`tests/unit/guards/_mutaciones-sql-dinamicas.ts`). La de SL-40 mira también `scripts/`.
+  - La única excepción es `scripts/demo-qa/borrar.ts` (SL-43, D12), y solo mientras conserve sus 4
+    filtros `es_demo`.
+  - **Mutaciones:** un `DELETE` dinámico en `WalletMovimientoRepository` hace caer las dos guardias;
+    quitar `AND "es_demo"` de `borrar.ts` hace caer la excepción.
+- **m6:** `plataforma-solo-en-lista` recorre ahora `tests/fabricas/`, y
+  `tests/fabricas/empresa-y-usuarios.ts` entra en `EXCEPCIONES_DE_PLATAFORMA`. Quitar esa entrada la
+  pone roja.
+- **m7:** `demo-qa.test.ts` usa `describe.sequential` y la cabecera declara el orden. Cada caso que
+  depende de la corrida 1 llama a `exigirCorrida1()` y, suelto, falla con «córrelo entero».
+- **m8:** R12 está enmendado en `requirements.md`, como D28 (decisión del leader).
+- **B1 de la implementación:** confirmado por Carlos (D27).
+- **Corrida conjunta de 13 archivos** (los dos de la demo, `caja-backfill` y los 10
+  `notificacion-evento-*`):
+  - 245/245 en 92 s, con un superadmin temporal;
+  - sin ningún usuario en la base caen 5, como en HEAD (`SELECT id FROM usuario LIMIT 1`).
+- `demo-qa.test.ts`, solo: 11/11 en 90 s.
 
 ## Mapa `R<n> → test`
 

@@ -2,6 +2,13 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 
+import {
+  EXCEPCIONES_SQL_DINAMICO,
+  fallosDeExcepcion,
+  hallazgosSqlDinamico,
+  mutacionesSqlDinamicas,
+} from "./_mutaciones-sql-dinamicas";
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SL-45 R17 — un pago a la plataforma registrado NO se edita ni se borra por ningún camino de la app.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -17,6 +24,12 @@ import { describe, it, expect } from "vitest";
 // fila del libro en `lib/`, `app/` o `scripts/`, y ningún contrato del libro ni del pago ofrece hacerlo.
 // La corrección de un pago es «Anular…» (contra-asiento) y uno nuevo; que la anulación no toca la fila
 // lo mide `tests/integration/db/descarga-pago-plataforma-sl45.test.ts` contra Postgres.
+//
+// EL `DELETE` CON TABLA DINÁMICA (review SL-43, m5). Un `DELETE FROM ${tabla}` no nombra el libro y el
+// detector de SQL no lo veía. Ahora sale rojo, salvo las excepciones de `_mutaciones-sql-dinamicas.ts`:
+// hoy solo el borrado de las empresas demo (`scripts/demo-qa/borrar.ts`, SL-43 D12), que borra filas
+// del libro como dueño y solo de empresas con `es_demo`. Es un camino de QA, no de la app: el REVOKE de
+// `servi_app` sigue valiendo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 
@@ -90,6 +103,45 @@ describe("SL-45 R17 — el libro de la caja, y con él el pago a la plataforma, 
   it("ningún módulo de lib/, app/ o scripts/ actualiza ni borra filas de `wallet_movimiento` con SQL crudo", () => {
     const hallazgos = FUENTES.flatMap((ruta) => mutacionesSql(codigoSinComentarios(ruta)).map((m) => `${ruta}: ${m}`));
     expect(hallazgos).toEqual([]);
+  });
+
+  it("contraprueba: el detector de tabla dinámica la ve, y la excepción de la demo es la única salida", () => {
+    expect(mutacionesSqlDinamicas("await tx.$executeRawUnsafe(`DELETE FROM ${id(paso.tabla)} WHERE x = $1`, v)")).toHaveLength(1);
+    expect(mutacionesSqlDinamicas('`DELETE FROM "${esquema}"."wallet_movimiento"`')).toHaveLength(1);
+    expect(mutacionesSqlDinamicas("tx.$executeRaw`UPDATE ${Prisma.raw(t)} SET monto = 0`")).toHaveLength(1);
+    expect(mutacionesSqlDinamicas("`TRUNCATE TABLE ${t}`")).toHaveLength(1);
+    expect(mutacionesSqlDinamicas("`SELECT * FROM ${t}`")).toEqual([]);
+    expect(mutacionesSqlDinamicas('`DELETE FROM "orden" WHERE "id" = ${id}`')).toEqual([]);
+
+    // El mismo DELETE de la demo en otro archivo sale rojo; en el de la demo pasa solo por la excepción.
+    const demo = "scripts/demo-qa/borrar.ts";
+    const fuentes = [
+      { ruta: "lib/repositories/OtroRepository.ts", codigo: "await tx.$executeRawUnsafe(`DELETE FROM ${id(paso.tabla)} WHERE ${id(paso.columna)} = ANY($1::text[])`, v)" },
+      { ruta: demo, codigo: codigoSinComentarios(demo) },
+    ];
+    expect(hallazgosSqlDinamico(fuentes)).toEqual(["lib/repositories/OtroRepository.ts: DELETE FROM ${"]);
+    expect(hallazgosSqlDinamico(fuentes, [])).toEqual([
+      "lib/repositories/OtroRepository.ts: DELETE FROM ${",
+      `${demo}: DELETE FROM \${`,
+    ]);
+    // Y la excepción se cae si el borrado pierde su filtro `es_demo`.
+    const sinFiltro = codigoSinComentarios(demo).replace(/ AND "es_demo"/g, "");
+    expect(fallosDeExcepcion(EXCEPCIONES_SQL_DINAMICO[0], sinFiltro)).toHaveLength(1);
+  });
+
+  it("ningún módulo de lib/, app/ o scripts/ cambia o borra filas con SQL de tabla dinámica, salvo las excepciones", () => {
+    const hallazgos = hallazgosSqlDinamico(FUENTES.map((ruta) => ({ ruta, codigo: codigoSinComentarios(ruta) })));
+    expect(hallazgos).toEqual([]);
+  });
+
+  it("cada excepción de tabla dinámica sigue haciendo falta y conserva lo que la hace segura", () => {
+    expect(EXCEPCIONES_SQL_DINAMICO.length).toBeGreaterThan(0);
+    for (const e of EXCEPCIONES_SQL_DINAMICO) {
+      expect(FUENTES, e.archivo).toContain(e.archivo);
+      expect(e.ficha).toMatch(/^SL-\d+$/);
+      expect(e.motivo.length).toBeGreaterThan(40);
+      expect(fallosDeExcepcion(e, codigoSinComentarios(e.archivo))).toEqual([]);
+    }
   });
 
   it("los contratos del libro y del pago no ofrecen editar ni borrar un movimiento", () => {

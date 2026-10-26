@@ -183,6 +183,13 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-19",
     motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
   },
+  {
+    // Vive en `tests/fabricas/` porque la comparten el E2E y la demo de QA; la importa el build
+    // (`scripts/demo-qa/receta.ts`), así que se cuenta como código de producción.
+    archivo: "tests/fabricas/empresa-y-usuarios.ts",
+    ficha: "SL-43",
+    motivo: "alta de una empresa (demo de QA y E2E) por el servicio del superadmin, que no tiene empresa (R11)",
+  },
 ];
 
 /**

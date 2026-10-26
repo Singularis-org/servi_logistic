@@ -14,6 +14,23 @@
 // el archivo creó (también la empresa real) y quita la marca: los tests de `down` de migraciones que
 // comparten la base caen si quedan filas de la demo.
 //
+// LOS CASOS SON SECUENCIALES Y DEPENDEN DEL ORDEN: la corrida 1 deja las dos empresas demo que usan
+// la corrida 2, R3, R6, R10 y R5. Rehacerlas en cada caso costaría ~25 s por caso. El `describe` es
+// `sequential` y cada caso dependiente lo comprueba con `exigirCorrida1`: suelto con `-t` sale rojo
+// con ese mensaje, no con una aserción que despiste. Para depurar uno, corre el archivo entero.
+//
+// LA FOTO DE PLATAFORMA (R7) NO DEPENDE DE QUE NADIE MÁS ESCRIBA EN LA BASE (review B1). En CI otros
+// archivos commitean en paralelo `jobs` sin empresa (`dos-empresas-entradas`, los escenarios 419/454)
+// y fijan la tarifa global (los de SL-40/SL-45). Por eso:
+// - `jobs` sin empresa se acota a lo que la demo podría tocar: un centinela propio y los que nombran
+//   en su `payload` algo de la demo (empresa, usuario, orden, aviso);
+// - `geocode_cache` va entera (ningún test de integración la commitea) más un centinela propio;
+// - `cobro_plataforma_tarifa` (una sola fila global) se lee con el lock de SL-40 tomado durante la
+//   ventana y con un valor de control fijado, que se restaura al soltarlo.
+// NO se sostiene `tomarLockDeEscrituraReal` toda la vida del archivo (~80 s): medido el 2026-10-25,
+// con ese lock tomado 80 s, 6 archivos pequeños que serializan con él caen enteros por timeout de
+// 20 s (9 de 10 casos; sin el lock, solo 2, por la base sin usuarios).
+//
 // Mutaciones medidas (design §9.3): 1–8 y 12, anotadas en `progress/impl_SL-43.md`.
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -47,6 +64,7 @@ import { crearEmpresaE2E, crearUsuarioE2E } from "../../fabricas/e2e";
 import { comoApp } from "../../fabricas/organizaciones";
 import { escenarioReparto, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 
 // R23: un job de un tipo que nadie espera, metido justo antes de que la receta cierre la cola de la
@@ -68,12 +86,24 @@ vi.mock("@/scripts/demo-qa/ubicar-y-cerrar-jobs", async (original) => {
   };
 });
 
-const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+// `sequential`: los casos dependen del orden (cabecera). Que nadie lo vuelva concurrente.
+const describeSiHayBase = HAY_BASE_DE_DATOS ? describe.sequential : describe.skip;
 
 const PREFIJO_LOG = "[demo-qa-test]";
 const SLUGS = ["demo-qa-a", "demo-qa-b"] as const;
 /** El tipo que el caso de R23 mete en la cola: existe en el enum y no está en los esperados. */
 const TIPO_NO_ESPERADO = "whatsapp_bienvenida";
+
+/**
+ * B1 — centinelas propios de las tablas de plataforma, commiteados en el `beforeAll` y borrados en
+ * el `afterAll`. Son el control de no vacuidad de R7: con la base vacía de CI, un borrado que se
+ * llevara `jobs` sin empresa o la caché no cambiaría ninguna foto. El job es de un tipo del enum
+ * original (ningún `down` lo quita), `done` (ningún drenaje lo toma) y sin `dedupe_key`.
+ */
+const CENTINELA_JOB = randomUUID();
+const CENTINELA_GEOCODE = randomUUID();
+/** El valor global que se fija mientras dura una foto: las dos demo tienen su excepción (R19). */
+const TARIFA_GLOBAL_DE_CONTROL = "7.00";
 
 /**
  * R15, EL CONTRATO: órdenes vivas por estado en cada empresa demo, escritas a mano. Medidas en la
@@ -300,17 +330,99 @@ function filasDe(h: Record<string, string>, tabla: string): number {
 }
 
 /** md5 por fila de una tabla de plataforma (o de su parte sin empresa): «no cambió» es igualdad. */
-async function fotoDe(sql: string): Promise<Record<string, string>> {
-  const filas = await base.$queryRawUnsafe<{ id: string; m: string }[]>(sql);
+async function fotoDe(sql: string, ...params: unknown[]): Promise<Record<string, string>> {
+  const filas = await base.$queryRawUnsafe<{ id: string; m: string }[]>(sql, ...params);
   return Object.fromEntries(filas.map((f) => [f.id, f.m]));
 }
 
-async function fotoPlataforma(): Promise<Record<string, Record<string, string>>> {
+/**
+ * Los ids que un job de la demo llevaría en su `payload` (`ordenId`, `mensajeroId`,
+ * `notificacionId`…): las empresas dadas, sus usuarios, sus órdenes y sus avisos.
+ */
+async function idsDeLaDemo(organizaciones: string[]): Promise<string[]> {
+  if (organizaciones.length === 0) return [];
+  const filas = await base.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT unnest($1::text[]) AS id
+     UNION SELECT id FROM usuario WHERE organizacion_id = ANY($1::text[])
+     UNION SELECT id FROM orden WHERE organizacion_id = ANY($1::text[])
+     UNION SELECT id FROM notificacion WHERE organizacion_id = ANY($1::text[])`,
+    organizaciones,
+  );
+  return filas.map((f) => f.id);
+}
+
+/**
+ * md5 por fila de lo que la demo podría tocar en las tablas de plataforma (cabecera, B1). La tarifa
+ * global solo es estable dentro de `conTarifaGlobalDeControl`.
+ */
+async function fotoPlataforma(referencias: string[]): Promise<Record<string, Record<string, string>>> {
   return {
-    jobsSinEmpresa: await fotoDe(`SELECT id, md5(x::text) AS m FROM jobs x WHERE organizacion_id IS NULL`),
+    jobsSinEmpresa: await fotoDe(
+      `SELECT id, md5(x::text) AS m FROM jobs x
+        WHERE organizacion_id IS NULL AND (id = $1 OR payload::text LIKE ANY($2::text[]))`,
+      CENTINELA_JOB,
+      referencias.map((r) => `%${r}%`),
+    ),
     geocodeCache: await fotoDe(`SELECT id, md5(x::text) AS m FROM geocode_cache x`),
-    cobroPlataformaTarifa: await fotoDe(`SELECT id, md5(x::text) AS m FROM cobro_plataforma_tarifa x`),
+    cobroPlataformaTarifa: await fotoDe(`SELECT id::text AS id, md5(x::text) AS m FROM cobro_plataforma_tarifa x`),
   };
+}
+
+/** Control de no vacuidad de una foto: los dos centinelas y la tarifa de control están. */
+function exigirCentinelas(foto: Record<string, Record<string, string>>): void {
+  expect(foto.jobsSinEmpresa[CENTINELA_JOB], "centinela de jobs").toBeDefined();
+  expect(foto.geocodeCache[CENTINELA_GEOCODE], "centinela de geocode_cache").toBeDefined();
+  expect(Object.keys(foto.cobroPlataformaTarifa), "tarifa global de control").toEqual(["true"]);
+}
+
+/**
+ * Corre `fn` con el lock de la tarifa global de SL-40 (el mismo que toman los archivos que la fijan)
+ * y con un valor de control puesto; al soltar, la deja como estaba. Solo dura la ventana entre dos
+ * fotos: sostenerlo los ~80 s del archivo retrasaría a esos archivos lo mismo.
+ */
+async function conTarifaGlobalDeControl<T>(fn: () => Promise<T>): Promise<T> {
+  const tarifa = await tomarTarifaGlobal();
+  try {
+    await tarifa.fijar(TARIFA_GLOBAL_DE_CONTROL);
+    return await fn();
+  } finally {
+    await tarifa.soltar();
+  }
+}
+
+/**
+ * Las empresas que la demo podría crear o borrar: las demo, las de sus slugs y la real. No la tabla
+ * entera: otros archivos crean y borran empresas a la vez en CI (B1).
+ */
+async function empresasAlAlcanceDeLaDemo(): Promise<string[]> {
+  const filas = await base.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT id FROM organizacion WHERE es_demo OR slug LIKE 'demo-qa%' OR id = $1 ORDER BY id`,
+    real.escenario.empresa.organizacionId,
+  );
+  return filas.map((f) => f.id);
+}
+
+/** m7 — los casos que necesitan las empresas de la corrida 1 lo dicen, en vez de fallar raro. */
+function exigirCorrida1(): void {
+  expect(corrida1, "depende de la corrida 1: el archivo es secuencial; córrelo entero, no con -t").toBeDefined();
+}
+
+async function sembrarCentinelas(): Promise<void> {
+  await base.$executeRawUnsafe(
+    `INSERT INTO jobs (id, tipo, payload, estado, max_intentos, organizacion_id)
+     VALUES ($1, 'liberar_reprogramadas'::job_tipo, '{"centinela":"SL-43 demo-qa"}'::jsonb, 'done', 1, NULL)`,
+    CENTINELA_JOB,
+  );
+  await base.$executeRawUnsafe(
+    `INSERT INTO geocode_cache (id, direccion_hash, latitud, longitud, precision)
+     VALUES ($1, 'sl43-centinela-' || $1, 9.9, -84.1, 'centinela')`,
+    CENTINELA_GEOCODE,
+  );
+}
+
+async function quitarCentinelas(): Promise<void> {
+  await base.$executeRawUnsafe(`DELETE FROM jobs WHERE id = $1`, CENTINELA_JOB);
+  await base.$executeRawUnsafe(`DELETE FROM geocode_cache WHERE id = $1`, CENTINELA_GEOCODE);
 }
 
 async function empresasDemo(): Promise<{ id: string; slug: string }[]> {
@@ -423,6 +535,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     // Esta base no puede traer empresas demo ni la marca de otro: se borrarían o mentirían.
     expect(await base.organizacion.count({ where: { esDemo: true } })).toBe(0);
     await ponerMarca();
+    await sembrarCentinelas();
 
     const r = await crearEmpresaReal();
     const h = await huella(r.escenario.empresa.organizacionId);
@@ -443,6 +556,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       ],
       ["borrar las demo", () => borrarEmpresasDemo(base)],
       ["quitar la marca", () => quitarMarca()],
+      ["quitar los centinelas", () => quitarCentinelas()],
     ];
     try {
       for (const [nombre, paso] of pasos) {
@@ -455,7 +569,10 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       if (base) {
         const quedan = await base.organizacion.count({ where: { esDemo: true } });
         const marca = await contar(`SELECT count(*)::int AS n FROM entorno_marca`);
-        anotarEnLog(`${PREFIJO_LOG} afterAll: empresas demo=${quedan} filas entorno_marca=${marca}`);
+        const centinelas =
+          (await contar(`SELECT count(*)::int AS n FROM jobs WHERE id = $1`, CENTINELA_JOB)) +
+          (await contar(`SELECT count(*)::int AS n FROM geocode_cache WHERE id = $1`, CENTINELA_GEOCODE));
+        anotarEnLog(`${PREFIJO_LOG} afterAll: empresas demo=${quedan} filas entorno_marca=${marca} centinelas=${centinelas}`);
       }
       anotarEnLog(
         `${PREFIJO_LOG} duraciones: ${duraciones.map((d) => `${d.etiqueta}=${(d.ms / 1000).toFixed(1)}s(${d.codigo})`).join(", ")}`,
@@ -701,7 +818,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 300_000);
 
   it("órdenes ubicadas y asignables, cola sin pendientes, sin integraciones ni correo (R20–R24)", async () => {
-    expect(corrida1, "depende de la corrida 1").toBeDefined();
+    exigirCorrida1();
     for (const org of corrida1.organizaciones) {
       // R20: ubicadas y con su geocodificación cerrada como hecha.
       expect(
@@ -771,16 +888,23 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 120_000);
 
   it("la segunda ejecución recrea y no toca la empresa real (R7, R9, R27)", async () => {
-    expect(corrida1, "depende de la corrida 1").toBeDefined();
+    exigirCorrida1();
     // Controles de no vacuidad: la corrida 1 dejó filas y objetos que la 2 tiene que borrar.
     expect(corrida1.ordenes.length).toBeGreaterThan(0);
     expect(corrida1.usuarios.length).toBeGreaterThan(0);
     const objetosViejos = (await Promise.all(corrida1.organizaciones.map(objetosBajo))).flat();
     expect(objetosViejos.length).toBeGreaterThan(0);
-    const plataformaAntes = await fotoPlataforma();
-    expect(Object.keys(plataformaAntes.cobroPlataformaTarifa).length, "tarifa global").toBeGreaterThanOrEqual(0);
+    // Los ids de la corrida 1 se leen antes de que la 2 los borre (sus avisos no están en `corrida1`).
+    const referenciasViejas = await idsDeLaDemo(corrida1.organizaciones);
 
-    const c = await correr("corrida 2");
+    const { c, plataformaAntes, plataformaDespues } = await conTarifaGlobalDeControl(async () => {
+      const antes = await fotoPlataforma(referenciasViejas);
+      exigirCentinelas(antes);
+      const corrida = await correr("corrida 2");
+      const nuevas = (await empresasDemo()).map((d) => d.id);
+      const despues = await fotoPlataforma([...referenciasViejas, ...(await idsDeLaDemo(nuevas))]);
+      return { c: corrida, plataformaAntes: antes, plataformaDespues: despues };
+    });
     expect(c.codigo, c.texto).toBe(0);
 
     // R27: otra vez exactamente dos, nuevas.
@@ -814,7 +938,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
 
     // R7: la empresa real, idéntica (filas, usuarios y objetos), y la plataforma sin cambios.
     expect(await huella(real.escenario.empresa.organizacionId)).toEqual(real.huella);
-    expect(await fotoPlataforma()).toEqual(plataformaAntes);
+    expect(plataformaDespues).toEqual(plataformaAntes);
 
     // R12: los mismos correos en cada ejecución.
     const correos = (
@@ -827,27 +951,33 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     // R24: tampoco en la segunda.
     expect(espiaConsola).not.toHaveBeenCalled();
     expect(espiaSmtp).not.toHaveBeenCalled();
-  }, 300_000);
+  }, 480_000);
 
   it("sin la marca de QA no escribe nada (R3)", async () => {
+    exigirCorrida1();
     const demo = await empresasDemo();
     // Control: hay empresas demo que un borrado prematuro se llevaría.
     expect(demo).toHaveLength(2);
-    const orgsAntes = (await base.organizacion.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((o) => o.id);
+    const orgsAntes = await empresasAlAlcanceDeLaDemo();
     const huellas = await Promise.all(demo.map((d) => huella(d.id)));
-    const plataformaAntes = await fotoPlataforma();
-    await quitarMarca();
-    try {
-      const c = await correr("sin marca");
-      expect(c.codigo).toBe(1);
-      expect(c.texto).toContain("la base no es la de QA");
-    } finally {
-      await ponerMarca();
-    }
-    expect((await base.organizacion.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((o) => o.id)).toEqual(orgsAntes);
+    const referencias = await idsDeLaDemo(demo.map((d) => d.id));
+    const { plataformaAntes, plataformaDespues } = await conTarifaGlobalDeControl(async () => {
+      const antes = await fotoPlataforma(referencias);
+      exigirCentinelas(antes);
+      await quitarMarca();
+      try {
+        const c = await correr("sin marca");
+        expect(c.codigo).toBe(1);
+        expect(c.texto).toContain("la base no es la de QA");
+      } finally {
+        await ponerMarca();
+      }
+      return { plataformaAntes: antes, plataformaDespues: await fotoPlataforma(referencias) };
+    });
+    expect(await empresasAlAlcanceDeLaDemo()).toEqual(orgsAntes);
     expect(await Promise.all(demo.map((d) => huella(d.id)))).toEqual(huellas);
-    expect(await fotoPlataforma()).toEqual(plataformaAntes);
-  }, 120_000);
+    expect(plataformaDespues).toEqual(plataformaAntes);
+  }, 300_000);
 
   it("`servi_app` no puede cambiar `es_demo` (R6)", async () => {
     const realId = real.escenario.empresa.organizacionId;
@@ -875,6 +1005,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 60_000);
 
   it("el alta normal nace sin marca (R6)", async () => {
+    exigirCorrida1();
     // La real nació por `altaEmpresa` (crearEmpresaE2E): sin marca. Solo las de la demo la tienen.
     const realId = real.escenario.empresa.organizacionId;
     expect((await base.organizacion.findUniqueOrThrow({ where: { id: realId }, select: { esDemo: true } })).esDemo).toBe(false);
@@ -883,6 +1014,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 60_000);
 
   it("slug demo en una empresa real: aborta sin cambios (R10)", async () => {
+    exigirCorrida1();
     const realId = real.escenario.empresa.organizacionId;
     const slugReal = real.escenario.empresa.slug;
     const demo = await empresasDemo();
@@ -892,7 +1024,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     await base.organizacion.update({ where: { id: idA }, data: { slug: "demo-qa-a-cedido" } });
     await base.organizacion.update({ where: { id: realId }, data: { slug: "demo-qa-a" } });
     try {
-      const orgsAntes = (await base.organizacion.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((o) => o.id);
+      const orgsAntes = await empresasAlAlcanceDeLaDemo();
       const huellas = await Promise.all([realId, ...demo.map((d) => d.id)].map(huella));
       expect(filasDe(huellas[1], "orden")).toBeGreaterThan(0);
 
@@ -900,7 +1032,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       expect(c.codigo).toBe(1);
       expect(c.texto).toMatch(/demo-qa-a/);
 
-      expect((await base.organizacion.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((o) => o.id)).toEqual(orgsAntes);
+      expect(await empresasAlAlcanceDeLaDemo()).toEqual(orgsAntes);
       expect(await Promise.all([realId, ...demo.map((d) => d.id)].map(huella))).toEqual(huellas);
     } finally {
       await base.organizacion.update({ where: { id: realId }, data: { slug: slugReal } });
@@ -998,6 +1130,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
   }, 600_000);
 
   it("ninguna salida lleva la contraseña, la URL de la base ni la clave (R5)", () => {
+    exigirCorrida1();
     // Control: hubo salida que mirar.
     expect(salidas.length).toBeGreaterThan(50);
     const todo = [...salidas, ...consola].join("\n");

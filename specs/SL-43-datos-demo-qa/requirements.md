@@ -82,6 +82,8 @@ Carlos Restrepo, 2026-10-25:
 | D24 | **P6. Importes redondos** de `design.md > D5.2`. | Carlos, 2026-10-25 | R13, R19 |
 | D25 | **Variables que Carlos crea en Vercel antes del merge** (Preview, rama `dev`): `DEMO_ON_PREVIEW`, `DEMO_QA_CONTRASENA` y `AUTH_OTP_DEBUG_LOG`. | Carlos, 2026-10-25 | R29, R25, R26 |
 | D26 | Dos builds de QA a la vez **no recrean la demo a la vez**: el segundo espera al primero. | `spec_author` (`design.md > D10.2`) | R32 |
+| D27 | **`novedad_interna` con el corte de mañana.** El corte diario solo cierra el día anterior, así que la demo llama a `CorteDiarioService.ejecutarCorte(<mañana>)` **solo sobre las empresas demo**, dentro de `conEmpresa(<demo>)` y nunca por la ruta del cron. Va detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA = true` (`scripts/demo-qa/receta.ts`). | Carlos, 2026-10-25 (B1 de la implementación) | R15 |
+| D28 | **Excepción de R12 para el perfil `api`.** `ApiKeyService.generar` crea su propio usuario, con el correo `apikey+<slug>@apikey.invalid` y una contraseña aleatoria, y ese rol no navega. La demo usa el servicio tal cual y no fuerza el correo. | leader, 2026-10-25 (review vuelta 1, m8: hecho técnico del servicio) | R12 |
 
 ## Glosario
 
@@ -145,8 +147,9 @@ Carlos Restrepo, 2026-10-25:
 - **R12.** CUANDO la demo termina, cada empresa demo DEBE tener un usuario de cada uno de estos
   perfiles: maestro, admin, tienda con bodega propia, tienda sin bodega propia, adminSatelite,
   mensajero de la zona central, mensajero de la zona satélite y la cuenta de una API key. Todos los
-  correos DEBEN terminar en `@example.test` y DEBEN ser los mismos en cada ejecución para la misma
-  empresa demo y el mismo perfil.
+  correos, salvo el de la cuenta de la API key, DEBEN terminar en `@example.test`. Ese lo pone
+  `ApiKeyService.generar` (`apikey+<slug>@apikey.invalid`, D28). Todos DEBEN ser los mismos en cada
+  ejecución para la misma empresa demo y el mismo perfil.
 - **R13.** CUANDO la demo termina, cada empresa demo DEBE tener una zona central y una satélite con su
   distrito, su tarifa de pago al mensajero y su SINPE confirmado; una tarifa por tienda; y al menos un
   distrito de sus zonas marcado como zona especial.
