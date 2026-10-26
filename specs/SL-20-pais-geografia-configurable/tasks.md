@@ -27,30 +27,30 @@ para y avisa al leader.
 
 ## T1 — Base de datos (`backend_dev`)
 
-- [ ] T1.1 Migración `20261026120000_pais` + `down.sql` (design §2.1, §3).
+- [x] T1.1 Migración `20261026120000_pais` + `down.sql` (design §2.1, §3).
   **Hecho:** tras `pnpm run db:migrate`, `SELECT * FROM pais` devuelve solo `CR` con 1/3/5, y
   `servi_app` no puede insertar (R1, R3).
-- [ ] T1.2 Migración `20261026120100_geografia_por_pais` + `down.sql` y cambios de `Provincia`,
+- [x] T1.2 Migración `20261026120100_geografia_por_pais` + `down.sql` y cambios de `Provincia`,
   `Canton` y `Distrito` en `db/schema.prisma` (§2.3, §2.4). Dep.: T1.1.
   **Hecho:** `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` vacío (si no
   sale, se aplica el plan B de §2.3 y se anota en `progress/impl_SL-20.md`); los 585 nodos tienen
   `pais_id = 'CR'` y sus `id` sin cambio (R2); un cantón con `pais_id` distinto del de su provincia
   falla (R11).
-- [ ] T1.3 Migración `20261026120200_organizacion_pais` + `down.sql` y `Organizacion.paisId` en el
+- [x] T1.3 Migración `20261026120200_organizacion_pais` + `down.sql` y `Organizacion.paisId` en el
   esquema (§2.2). Dep.: T1.1. [P] con T1.2.
   **Hecho:** las empresas existentes quedan en `CR` (R5); un `UPDATE organizacion SET pais_id` a
   otro país falla con `SL020`, también como dueño (R7).
-- [ ] T1.4 Migración `20261026120300_geografia_del_pais_de_la_empresa` + `down.sql` (§2.5) y
+- [x] T1.4 Migración `20261026120300_geografia_del_pais_de_la_empresa` + `down.sql` (§2.5) y
   `lib/db/errores-pais.ts`. Dep.: T1.2, T1.3.
   **Hecho:** una orden, una `zona_distrito` o una `distrito_zona_especial` con un nodo de otro país
   falla con `SL021` (R13).
-- [ ] T1.5 Migración `20261026120400_historial_plataforma` + `down.sql`, `model HistorialPlataforma`
+- [x] T1.5 Migración `20261026120400_historial_plataforma` + `down.sql`, `model HistorialPlataforma`
   y `lib/repositories/registrar-accion-plataforma.ts` (§2.6). Dep.: T1.3. [P] con T1.4.
   **Hecho:** como `servi_app`, `SELECT` da 0 filas y el `INSERT` falla (R34).
-- [ ] T1.6 Clasificar `Pais` y `HistorialPlataforma` en `lib/db/modelos-de-negocio.ts` (§2.7).
+- [x] T1.6 Clasificar `Pais` y `HistorialPlataforma` en `lib/db/modelos-de-negocio.ts` (§2.7).
   Dep.: T1.1, T1.5.
   **Hecho:** `organizacion-en-modelos.guardia` en verde.
-- [ ] T1.7 `tests/fabricas/paises.ts` (`crearPaisDePrueba(tx, "XA")`) y tests de
+- [x] T1.7 `tests/fabricas/paises.ts` (`crearPaisDePrueba(tx, "XA")`) y tests de
   `pais-tabla`, `geografia-por-pais`, `organizacion-pais-inmutable`, `historial-plataforma-rls` y
   `migracion-sl20-ida-y-vuelta`. Dep.: T1.1–T1.6.
   **Hecho:** cubren R1–R5, R7, R10, R11, R16 y R34, y la ida y vuelta (up → down → up) pasa.

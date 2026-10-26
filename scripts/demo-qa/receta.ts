@@ -264,10 +264,15 @@ function evidenciaPorDefecto(): Uint8Array {
 
 /** El distrito del catálogo, por su `codigo_dta` (D22), en la forma que piden las plantillas de carga. */
 async function geoDe(dueno: PrismaClient, distrito: DistritoDemo): Promise<Geo> {
-  const fila = await dueno.distrito.findUnique({
+  // SL-20: el código ya no es único global sino por país. Dos filas = dos países con el mismo
+  // código, y elegir una a ciegas pondría la demo en otro país: se aborta en vez de adivinar.
+  const filas = await dueno.distrito.findMany({
     where: { codigoDta: distrito.codigoDta },
     select: { id: true, nombre: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
+    take: 2,
   });
+  if (filas.length > 1) throw new Error(`[demo-qa] el código ${distrito.codigoDta} existe en más de un país`);
+  const fila = filas[0];
   if (!fila) throw new Error(`[demo-qa] el catálogo no tiene el distrito ${distrito.codigoDta} (¿base sin migrar?)`);
   return { distritoId: fila.id, provincia: fila.canton.provincia.nombre, canton: fila.canton.nombre, distrito: fila.nombre };
 }
