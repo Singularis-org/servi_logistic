@@ -19,14 +19,118 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+> Escritos por `spec_author` (F1.2, 2026-10-26). «Superadmin» es todo rol de `ROLES_PLATAFORMA`
+> (`lib/auth/plataforma.ts`). «Nodo» es una provincia, un cantón o un distrito. «Nivel 1/2/3» son
+> provincia/cantón/distrito. La columna «Decisión» dice qué fila de la tabla de decisiones cubre.
+
+### País
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R1 | El sistema DEBE guardar una tabla de países de plataforma en la que cada país tiene un código ISO 3166-1 alfa-2 único, un nombre único y el nombre en singular y en plural de cada uno de sus tres niveles. | Niveles; Alta de país |
+| R2 | CUANDO se aplican las migraciones de SL-20, el sistema DEBE dejar cargado el país Costa Rica (código `CR`, niveles «Provincia/Provincias», «Cantón/Cantones», «Distrito/Distritos») y DEBE colgar de él todas las provincias, cantones y distritos que la base ya tenía, sin cambiar sus `id`, nombres, estado ni código oficial. | Qué países funcionan |
+| R3 | SI una operación en el contexto de una empresa intenta crear, modificar o borrar un país, ENTONCES el sistema DEBE rechazarla sin escribir nada. | Precedentes (SL-17) |
+
+### Empresa y país
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R4 | El sistema DEBE asociar cada empresa a exactamente un país. | Empresa y país |
+| R5 | CUANDO se aplican las migraciones de SL-20, el sistema DEBE dejar en Costa Rica a toda empresa que ya existía. | Empresa y país |
+| R6 | CUANDO el superadmin da de alta una empresa, el sistema DEBE exigir el país; SI falta o no existe, ENTONCES DEBE responder `invalida` con el campo `paisId` sin crear la empresa ni su maestro. | Empresa y país |
+| R7 | SI cualquier escritura, de la app o de SQL a mano, intenta cambiar el país de una empresa existente, ENTONCES la base DEBE rechazarla y el país DEBE quedar como estaba. | Empresa y país |
+| R8 | SI se repite el alta de una empresa existente (mismo slug y mismo maestro) con otro país, ENTONCES el sistema DEBE responder `conflicto` con el campo `paisId` sin cambiar nada. | Empresa y país |
+| R9 | La pantalla «Empresas» del superadmin DEBE mostrar el país de cada empresa y, en el alta, DEBE ofrecer la lista de países sin ninguno preseleccionado. | Empresa y país |
+| R10 | DONDE un test crea una empresa sin indicar país (fábricas de `tests/fabricas/` o SQL a mano), el sistema DEBE dejarla en Costa Rica. | Empresa y país |
+
+### Geografía por país
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R11 | El sistema DEBE hacer que toda provincia pertenezca a un país, y que todo cantón y todo distrito pertenezcan al país de su padre; SI una escritura deja un nodo en un país distinto del de su padre, ENTONCES la base DEBE rechazarla. | Niveles |
+| R12 | MIENTRAS una operación corre en el contexto de una empresa, el sistema DEBE devolver solo provincias, cantones y distritos del país de esa empresa, en toda lectura: árbol de Tarifas, listas de filtros, resolución de la carga masiva y de la API, cotización y corrección de datos de la orden. | Empresa y país; Precedentes (SL-17) |
+| R13 | SI una orden, una asociación zona–distrito o una marca de zona especial de una empresa apunta a una provincia, un cantón o un distrito de otro país, ENTONCES la base DEBE rechazar la escritura sin guardar nada. | Empresa y país; Precedentes (SL-38) |
+| R14 | El sistema DEBE aceptar una orden sin distrito en cualquier país, igual que hoy en Costa Rica. | Niveles |
+| R15 | SI una escritura del superadmin intenta dar a un nodo un nombre que, normalizado (sin mayúsculas, acentos ni espacios repetidos), ya usa otro nodo con el mismo padre —o, para una provincia, otra provincia del mismo país—, ENTONCES el sistema DEBE responder `conflict` sin escribir nada. | Precedentes (374) |
+| R16 | El sistema DEBE admitir nodos sin código oficial y DEBE rechazar dos nodos del mismo nivel y del mismo país con el mismo código; dos países distintos PUEDEN repetir un código. | Código oficial |
+| R17 | DONDE el país tiene regla de código (solo Costa Rica: 1, 3 y 5 dígitos, y el código del padre como prefijo del hijo), el sistema DEBE rechazar un código que no la cumpla; DONDE el país no la tiene, el sistema DEBE aceptar como código cualquier texto de 1 a 20 caracteres sin espacios. | Código oficial |
+| R18 | Los campos de la API pública, las columnas de la base y los nombres del código DEBEN seguir siendo `provincia`, `canton` y `distrito` en todos los países. | Nombres internos |
+
+### Nombres visibles de los niveles
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R19 | MIENTRAS una persona de una empresa usa la app, el sistema DEBE nombrar cada nivel con el nombre que le da el país de su empresa en las pantallas, filtros, columnas, descargas y formularios que hoy dicen «Provincia», «Cantón» o «Distrito» (lista cerrada en `design.md > §7`). | Niveles; Nombres internos |
+| R20 | MIENTRAS el superadmin trabaja la geografía de un país, la pantalla DEBE nombrar los niveles con los nombres de ese país. | Niveles |
+
+### Pantalla de geografía del superadmin
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R21 | El sistema DEBE ofrecer la pantalla `/plataforma/geografia` y su ítem de menú solo al superadmin; SI la pide cualquier otro rol, ENTONCES DEBE responder 404 antes de leer la base. | Quién da de alta un país; Precedentes (SL-17) |
+| R22 | El sistema DEBE dejar de servir `/configuracion/geografia`: responde 404 a todo rol. | Quién da de alta un país (D15) |
+| R23 | CUANDO el superadmin da de alta un país con código, nombre y los seis nombres de nivel válidos, el sistema DEBE crearlo sin geografía; SI el código o el nombre (normalizado) ya existen, ENTONCES DEBE responder `conflict` sin crear nada. | Quién da de alta un país |
+| R24 | CUANDO el superadmin carga para un país un CSV válido (formato en `design.md > §6`), el sistema DEBE crear las provincias, cantones y distritos que falten, en una sola transacción, y DEBE devolver cuántos creó por nivel, cuántos ya existían y cuántos códigos completó. | Quién da de alta un país |
+| R25 | SI el CSV tiene una o más filas inválidas, ENTONCES el sistema NO DEBE escribir nada y DEBE devolver cada error con su número de línea y su motivo. | Quién da de alta un país |
+| R26 | CUANDO una fila del CSV nombra un nodo que ya existe, el sistema NO DEBE cambiar su nombre, su estado (activo o retirado) ni su código, salvo poner el código de la fila si el nodo no tenía ninguno. | Quién da de alta un país; Precedentes (374) |
+| R27 | SI el CSV repite una fila, ENTONCES el sistema DEBE contarla una sola vez; SI dos filas dan datos contradictorios del mismo nodo (mismo código con distinto nombre, o mismo nombre con distinto código), ENTONCES DEBE tratarlas como inválidas (R25). | Quién da de alta un país |
+| R28 | SI el archivo no es CSV en UTF-8, pesa más de 5 MB, tiene más de 10 000 filas de datos o le falta una columna obligatoria, ENTONCES el sistema DEBE rechazarlo entero sin escribir nada. | Quién da de alta un país |
+| R29 | CUANDO el superadmin da de alta un nodo a mano (una provincia en un país, un cantón bajo una provincia o un distrito bajo un cantón), con código opcional, el sistema DEBE crearlo activo aplicando R15, R16 y R17. | Quién da de alta un país; Código oficial |
+| R30 | CUANDO el superadmin renombra, retira o reactiva un nodo, el sistema DEBE hacerlo como hoy (ficha 374/375): el retiro no borra la fila ni toca a sus descendientes, y pedir el estado que el nodo ya tiene es éxito sin escribir. | Quién da de alta un país; Precedentes (374) |
+| R31 | CUANDO el superadmin pide confirmar el retiro de un nodo, el sistema DEBE mostrar cuántas órdenes sin entregar, de todas las empresas, cuelgan de ese nodo; SI el conteo falla, ENTONCES la pantalla DEBE decirlo y NO DEBE impedir el retiro. | D15: retiro |
+| R32 | Las operaciones de R23–R31 DEBEN completarse con un superadmin que no pertenece a ninguna empresa, sin fallar con `EmpresaNoResuelta`. | D15: historial; D15: retiro |
+
+### Historial de plataforma (D15)
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R33 | CUANDO el superadmin crea un país, carga un CSV que escribe algo, da de alta, renombra, retira o reactiva un nodo, el sistema DEBE guardar, en la misma transacción que el cambio, una fila en el historial de plataforma con la acción, la entidad, el país, el actor (id y nombre congelado), la fecha y, en el renombre, el nombre anterior y el nuevo. | D15: historial |
+| R34 | SI una operación en el contexto de una empresa intenta leer o escribir el historial de plataforma, ENTONCES el sistema DEBE devolverle cero filas o rechazar la escritura. | D15: historial |
+| R35 | Las escrituras de geografía del superadmin NO DEBEN escribir en `historial_accion`. | D15: historial |
+
+### Errores honestos y lectura de la empresa (D12)
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R36 | SI el alta o el renombre de un nodo falla por un motivo que no es el nombre o el código repetido, ENTONCES la acción NO DEBE responder `conflict`: DEBE responder `error` y registrar la causa en el log del servidor. | Precedentes (374); D12 |
+| R37 | SI un rol de empresa invoca cualquier escritura de geografía o de país, ENTONCES el sistema DEBE responder `forbidden` sin tocar la base; el `maestro` DEBE seguir leyendo el árbol de su país en Tarifas. | Precedentes (SL-17, SL-32) |
+| R38 | La marca de zona especial DEBE seguir siendo de cada empresa y solo DEBE poder ponerse sobre distritos del país de esa empresa. | Precedentes (SL-38) |
+
+### Verificación
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R39 | Con dos empresas en dos países de prueba, una suite de integración DEBE demostrar R12, R13 y R38 sobre la base real (rol `servi_app` y RLS), sin E2E nuevo. | E2E |
 
 ## Preguntas abiertas
 
 - Formato exacto del CSV de carga (columnas, codificación, qué pasa con filas repetidas o con nodos
   ya existentes). Lo propone `spec_author` en `design.md` y lo aprueba el humano en F1.4.
+  **Propuesta escrita** en `design.md > §6` (columnas, UTF-8, coma, una transacción, todo o nada,
+  repetidas y existentes) y reflejada en R24–R28. Pendiente de aprobación en F1.4.
 - D15 tenía como dueño a Carlos Restrepo («quien tome SL-26»). La decisión la tomó Camilo el
   2026-10-26 al traer la pantalla a SL-20; Carlos debe confirmarla en la aprobación del spec (F1.4).
+
+Nuevas (spec_author, F1.2). Cada una lleva la propuesta del spec; el humano la confirma o la cambia
+en F1.4:
+
+- **Carga masiva de órdenes y mensajes de `resolveGeo`.** Las cabeceras de la plantilla de carga
+  (`provincia`, `canton`, `distrito`), sus mensajes de error («provincia no encontrada»…) y el
+  catálogo de variables de `lib/types/plantilla-datos.ts` son contrato con tiendas y con la API
+  (`lib/services/geo-resolucion.ts`). Propuesta: **no cambian en SL-20** (con solo Costa Rica cargado
+  dicen lo mismo); los adapta la ficha que cargue el segundo país real. Si el humano quiere lo
+  contrario, entra en R19 y crece `## Archivos esperados`.
+- **¿Quién lee el historial de plataforma?** El alcance no trae pantalla. Propuesta: SL-20 solo lo
+  escribe (R33) y lo prueba en integración; la pantalla de lectura va a SL-26 «Panel de superadmin».
+- **Plural de cada nivel.** La UI dice hoy «Cantones», «Distritos». Propuesta: el país guarda
+  singular y plural (R1), porque el plural en español no se deriva bien a mano («Cantón» → «Cantones»).
+- **Identidad del país.** Propuesta: la clave del país es su código ISO 3166-1 alfa-2 (`CR`), y los
+  países de prueba usan el rango reservado `XA`–`XZ` (`design.md > §2.1`).
+- **Cotas del CSV y del código.** 5 MB (el `bodySizeLimit` de las Server Actions en
+  `next.config.ts`), 10 000 filas y código de 1 a 20 caracteres son propuestas, no datos del repo:
+  Costa Rica son 585 nodos y su código más largo tiene 5 caracteres.
+- **Costo del trigger en `orden`.** R13 añade una consulta por `INSERT`/`UPDATE` de la geografía de
+  una orden (precedente medido: D13, ~0,27 ms por FK). Propuesta: aceptarlo y medirlo en T6.3.
 
 ## Decisiones cerradas (no reabrir)
 
