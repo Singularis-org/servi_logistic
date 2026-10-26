@@ -127,11 +127,15 @@ export class AuthService implements IAuthService {
     const elegibles = validas.filter(puedeIniciarSesion);
     if (elegibles.length === 0) {
       const primera = validas[0];
+      // SL-18 R15 (design §3.2 paso 6): una cuenta activa sin empresa fallaria con
+      // `estado_no_activo:activo`, que no dice por que se rechazo; el motivo debe nombrar la causa.
+      const riskReason =
+        primera.estado !== "activo" ? `estado_no_activo:${primera.estado}` : "sin_empresa";
       await this.registrarIntento(contexto, {
         usuarioId: primera.id,
         exitoso: false,
         riskScore: 0,
-        riskReason: `estado_no_activo:${primera.estado}`,
+        riskReason,
       });
       return { status: "account_unavailable" }; // R13 (feature de login) / SL-18 R12, R15
     }

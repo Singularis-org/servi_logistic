@@ -131,8 +131,13 @@ eligió, y `null` que eligió la plataforma.
    (R10). Así una persona que siempre entra en A no bloquea su cuenta de B.
 6. `elegibles` son las válidas que cumplen `puedeIniciarSesion(cuenta)`: `estado === "activo"` y
    (`organizacionId !== null` o `esPlataforma(rol)`). Es el predicado de SLT-32 (§9). Si quedan 0,
-   se registra el intento `estado_no_activo:<estado>` en la primera válida, como hoy, y se responde
-   `account_unavailable` (R12, R15).
+   se registra un intento en la primera válida, como hoy, y se responde `account_unavailable`
+   (R12, R15). El motivo es `estado_no_activo:<estado>` si esa cuenta no está `activo`, y
+   `sin_empresa` si está `activo` pero no tiene empresa ni es la de plataforma (R15).
+
+   > Revisión 2026-10-26 (Camilo): antes este paso registraba siempre `estado_no_activo:<estado>`,
+   > y en R15 el texto quedaba `estado_no_activo:activo`, que no dice por qué se rechazó. Camilo
+   > decidió que en ese caso el motivo sea `sin_empresa`.
 7. Con 1 elegible, el flujo sigue igual que hoy con esa cuenta: riesgo, dispositivo confiado,
    sesión u OTP (R6, R11, R14).
 8. Con 2 o más, se responde `{ status: "elegir_empresa", empresas }`. Las empresas van en el orden

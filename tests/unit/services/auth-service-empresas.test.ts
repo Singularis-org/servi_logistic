@@ -285,12 +285,15 @@ describe("SL-18 — AuthService.login con el email en varias empresas", () => {
     const r2 = await sola.servicio.login({ email: EMAIL, password: CLAVE, ...CTX });
     expect(r2).toEqual({ status: "account_unavailable" });
     expect(sola.sessionRepo.create).not.toHaveBeenCalled();
+    // Activa pero sin empresa: el motivo nombra la causa, no `estado_no_activo:activo`.
+    expect(intentos(sola)).toEqual([["usr-x", false, "sin_empresa"]]);
 
     // Elegida con `null` (R11): tampoco.
     const elegida = montar({ cuentas: [deA(), huerfana()] });
     const r3 = await elegida.servicio.login({ email: EMAIL, password: CLAVE, organizacionId: null, ...CTX });
     expect(r3).toEqual({ status: "account_unavailable" });
     expect(elegida.sessionRepo.create).not.toHaveBeenCalled();
+    expect(intentos(elegida)).toEqual([["usr-x", false, "sin_empresa"]]);
 
     // Con otras dos validas: la lista no la nombra.
     const tres = montar({ cuentas: [deA(), deB(), huerfana()] });
