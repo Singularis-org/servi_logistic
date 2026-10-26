@@ -129,3 +129,11 @@ Todo contra `servi_logistic_sl18`:
   `× R1: el mismo email y la misma cedula se crean en A y en B…` (también R3, R5, control y R4 del
   clon, que comparan contra la forma del índice). Restaurado: `Tests 11 passed (11)`, drift vacío.
 - No corridos aquí (los corre el leader): `./init.sh`, guardias, `vitest related` completo.
+
+### Fix tras el gate (2026-10-26)
+
+`pnpm run typecheck` del gate incluye `e2e/`: `e2e/superadmin-arranque.spec.ts(63,5) TS2322` por un
+`usuario.findUnique({ where: { email } })`. Pasa a `findFirst` con `{ email, organizacionId: null }`
+(el superadmin es la cuenta sin empresa, R3). Grep multilínea sin más `findUnique`/`upsert`/`update`/
+`delete` por email o cédula en `lib`, `app`, `tests`, `e2e`, `scripts`, `db`.
+`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0, 0 `error TS`. El E2E no se corrió.
