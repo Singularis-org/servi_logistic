@@ -14,6 +14,7 @@ import {
   rutasDeDocumento,
 } from "@/lib/ayuda/documento";
 import { ARCHIVO_EXCLUIDO } from "@/lib/ayuda/catalogo";
+import { CATALOGO_INTEGRACIONES } from "@/lib/types/integraciones";
 
 // ⭑ FICHA 433 — LA GUARDIA QUE MANTIENE HONESTO EL MAPEO PANTALLA↔DOCUMENTO.
 //
@@ -103,6 +104,24 @@ const COMO_RESUMEN = DOCUMENTOS.map((doc) => ({
 }));
 const ROLES_VALIDOS = new Set<string>([...ROLES_AYUDA, ...PSEUDO_ROLES_AYUDA]);
 
+/**
+ * ⭑ SL-36 — LAS GUÍAS QUE SE ALCANZAN POR UN ENLACE, NO POR EL «?».
+ *
+ * Las cuatro guías de integraciones explican cada una un FORMULARIO de la misma pantalla
+ * (`/configuracion/integraciones`), cuyo «?» ya es `oficina/configuracion-integraciones.md`.
+ * No pueden declarar esa `pantalla:`: le darían al maestro cinco candidatos para una ruta (el
+ * caso de los empates, más abajo). Se alcanzan por el enlace «guía paso a paso» del formulario
+ * (R35), que sale de `CATALOGO_INTEGRACIONES[s].guia`.
+ *
+ * Por eso quedan exentas SOLO de la `pantalla:`, y SOLO las que el catálogo enlaza: el
+ * conjunto se deriva del catálogo de verdad, así que una guía que nadie enlace vuelve a ser
+ * huérfana. Que cada enlace del catálogo tenga su archivo lo afirma
+ * `tests/unit/ayuda/guias-integraciones.test.ts`.
+ */
+const GUIAS_ENLAZADAS = new Set<string>(
+  Object.values(CATALOGO_INTEGRACIONES).map((entrada) => `${entrada.guia.replace(/^\/ayuda\//, "")}.md`),
+);
+
 describe("ayuda · el frontmatter no puede apuntar al vacío", () => {
   it("hay documentos que vigilar (si esto falla, la guardia se quedó mirando una carpeta vacía)", () => {
     // Sin este caso, borrar `docs/ayuda/**` dejaría TODOS los demás en verde sobre cero
@@ -131,12 +150,25 @@ describe("ayuda · el frontmatter no puede apuntar al vacío", () => {
   it("ningún documento queda huérfano: todos declaran pantalla, roles, título y fecha", () => {
     const incompletos = DOCUMENTOS.filter(
       (doc) =>
-        doc.rutas.length === 0 ||
+        (doc.rutas.length === 0 && !GUIAS_ENLAZADAS.has(doc.relativo)) ||
         (doc.datos.roles ?? []).length === 0 ||
         !doc.datos.titulo ||
         !doc.datos.actualizado,
     ).map((doc) => doc.relativo);
     expect(incompletos).toEqual([]);
+  });
+
+  it("SL-36: la exención de `pantalla:` cubre exactamente las cuatro guías enlazadas, y existen", () => {
+    // Sin este anclaje, un catálogo que enlazara rutas inexistentes dejaría la exención
+    // apuntando a nada; y una exención más ancha se vería aquí como un número distinto.
+    expect([...GUIAS_ENLAZADAS].sort()).toEqual([
+      "oficina/integracion-asistente.md",
+      "oficina/integracion-google-maps.md",
+      "oficina/integracion-optimizacion-rutas.md",
+      "oficina/integracion-whatsapp.md",
+    ]);
+    const relativos = new Set(DOCUMENTOS.map((doc) => doc.relativo));
+    expect([...GUIAS_ENLAZADAS].filter((guia) => !relativos.has(guia))).toEqual([]);
   });
 
   it("los roles declarados son roles reales o los dos pseudo-roles admitidos", () => {

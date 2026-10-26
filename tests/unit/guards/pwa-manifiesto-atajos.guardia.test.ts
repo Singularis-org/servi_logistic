@@ -297,8 +297,11 @@ describe("pwa · los atajos del manifiesto", () => {
     // único destino es «Empresas» (`/plataforma/empresas`, `ROLES_PLATAFORMA`), y `rolesConMenu`
     // lo recoge solo porque se deriva de los ítems. Si subiera de 1, el superadmin estaría viendo
     // algo de empresa (R6); si se moviera otro rol, «Empresas» se habría abierto de más.
+    // ⭑ SL-36 (R6, design §14) — `maestro` 22 -> 23 y NADIE más: entra el subítem «Integraciones»
+    // (`/configuracion/integraciones`), que hereda el `maestro`-only de «Configuración», igual que
+    // la página. Si subiera `superadmin`, vería la integración de una empresa (R6). CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
-      maestro: 22,
+      maestro: 23,
       admin: 14,
       adminSatelite: 8,
       mensajero: 7,

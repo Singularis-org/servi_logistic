@@ -410,6 +410,13 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("380/T3 (b) — el down recrea la lista PREV
       // caja (D13). Su migracion: `20260928120000_wallet_458_enums`.
       "cobro_rechazo_tienda_anulado",
       "egreso_caja_anulado",
+      // SL-36 (2026-10-25): el rastro de las integraciones. Su migracion:
+      // `20261025120100_historial_accion_integraciones`.
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

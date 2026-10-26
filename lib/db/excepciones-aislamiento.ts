@@ -117,9 +117,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "rastreo publico por numero de guia: sin sesion, la guia lleva a su empresa",
   },
   {
-    archivo: "app/api/webhooks/whatsapp/route.ts",
+    // SL-36 T6.2: el route del webhook ya no está en la lista (delega en `WebhookWhatsappService`);
+    // lo único que queda en plataforma es esta traducción, que solo selecciona los dos ids (R22).
+    archivo: "lib/repositories/IntegracionEnrutadoRepository.ts",
     ficha: "SL-36",
-    motivo: "webhook entrante de WhatsApp: llega sin sesion; su aislamiento lo decide SL-36",
+    motivo: "webhook de WhatsApp: traducir un numero o un resumen de token a su empresa, sin sesion (R22)",
   },
   {
     archivo: "app/api/cron/procesar-jobs/route.ts",
@@ -175,5 +177,23 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     archivo: "lib/repositories/CobroPlataformaTarifaRepository.ts",
     ficha: "SL-40",
     motivo: "valor global y excepción por empresa del cobro por orden: los edita el superadmin, que no tiene empresa (R1, R2)",
+  },
+  {
+    archivo: "scripts/migrar-storage-a-carpetas.ts",
+    ficha: "SL-19",
+    motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
+  },
+];
+
+/**
+ * SL-19 (R20): archivos de produccion (`app/`, `lib/`, `scripts/`) fuera de `lib/storage/` que tocan
+ * Storage con el cliente de Supabase. Solo los adaptadores ponen la carpeta de la empresa en curso:
+ * quien llama a `.storage` por su cuenta puede leer o borrar la carpeta de otra empresa.
+ */
+export const EXCEPCIONES_DE_STORAGE: readonly ExcepcionDeAislamiento[] = [
+  {
+    archivo: "scripts/migrar-storage-a-carpetas.ts",
+    ficha: "SL-19",
+    motivo: "comando de consola: mueve lo guardado antes de SL-19 entre la raiz y la carpeta de cada empresa (R23–R28)",
   },
 ];

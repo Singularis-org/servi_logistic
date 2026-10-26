@@ -1,198 +1,148 @@
 import { createHmac } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import * as route from "@/app/api/webhooks/whatsapp/route";
 import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
-import type { WebhookEventos, WebhookMensajeEntrante, WebhookStatus } from "@/lib/types/whatsapp-webhook";
+import type { DestinoWebhook } from "@/lib/interfaces/repositories/IIntegracionEnrutadoRepository";
+import type { IWebhookWhatsappService } from "@/lib/interfaces/services/IWebhookWhatsappService";
+import { WebhookWhatsappService } from "@/lib/services/WebhookWhatsappService";
+import type { WebhookEventos } from "@/lib/types/whatsapp-webhook";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 
-// SL-17 · R15 (D14) — el webhook de WhatsApp averigua en plataforma la empresa de cada evento y
-// lo ingiere dentro de `conEmpresa(esa)`. Sin empresa no escribe nada y responde 200.
+// SL-17 · R15 (D14) repartia en plataforma los eventos por empresa (`repartirPorEmpresa`), leyendo
+// ordenes, hilos y entregas de TODAS. SL-36 (design §10; R20-R22) lo retira: la empresa sale del
+// numero del evento y el route solo traduce HTTP. Aqui se fija lo que es del ROUTE:
+//   - ya no abre el contexto de plataforma ni exporta `repartirPorEmpresa` (R22);
+//   - delega en el service con el cuerpo CRUDO y la cabecera, y traduce su resultado;
+//   - con el service real (dobles en sus bordes), cada empresa ingiere SOLO sus eventos y en SU
+//     contexto, firmados con SU App Secret (R20).
+// El resto de R19-R21 vive en tests/unit/services/webhook-whatsapp-service.test.ts y la parte de
+// base real en tests/integration/api/webhook-whatsapp.route.test.ts.
 
-const DOBLE = vi.hoisted(() => {
-  const contextos: { op: string; contexto: unknown }[] = [];
-  return {
-    contextos,
-    // telefono normalizado -> orden; orden -> empresa
-    ordenPorTelefono: new Map<string, string>(),
-    empresaDeOrden: new Map<string, string>(),
-    hilosPorTelefono: new Map<string, string[]>(),
-    chatPorWamid: new Map<string, string>(),
-    entregaPorWamid: new Map<string, string>(),
-  };
-});
+const RAIZ = path.resolve(__dirname, "..", "..", "..");
 
-vi.mock("@/lib/db/prisma-client", async () => {
-  const { contextoActual: ctx } = await import("@/lib/db/contexto-empresa");
-  const anotar = (op: string) => DOBLE.contextos.push({ op, contexto: ctx() });
-  return {
-    getPrismaClient: () => ({
-      $queryRaw: vi.fn(async (sql: { values: unknown[] }) => {
-        anotar("orden-por-telefono");
-        const telefono = String(sql.values[sql.values.length - 1]);
-        const orden = DOBLE.ordenPorTelefono.get(telefono);
-        return orden ? [{ id: orden, mensajero_asignado_id: "m-1", telefono_dest: telefono }] : [];
-      }),
-      orden: {
-        findUnique: vi.fn(async (a: { where: { id: string } }) => {
-          anotar("empresa-de-orden");
-          const org = DOBLE.empresaDeOrden.get(a.where.id);
-          return org ? { organizacionId: org } : null;
-        }),
-      },
-      chatConversacion: {
-        findMany: vi.fn(async (a: { where: { telefonoE164: string } }) => {
-          anotar("hilos-por-telefono");
-          return (DOBLE.hilosPorTelefono.get(a.where.telefonoE164) ?? []).map((o) => ({ organizacionId: o }));
-        }),
-      },
-      chatMensaje: {
-        findFirst: vi.fn(async (a: { where: { waMessageId: string } }) => {
-          anotar("chat-por-wamid");
-          const org = DOBLE.chatPorWamid.get(a.where.waMessageId);
-          return org ? { organizacionId: org } : null;
-        }),
-      },
-      whatsappEnvioEntrega: {
-        findFirst: vi.fn(async (a: { where: { waMessageId: string } }) => {
-          anotar("entrega-por-wamid");
-          const org = DOBLE.entregaPorWamid.get(a.where.waMessageId);
-          return org ? { organizacionId: org } : null;
-        }),
-      },
-    }),
-  };
-});
-
-const { handlePost, repartirPorEmpresa } = await import("@/app/api/webhooks/whatsapp/route");
-const { normalizarTelefonoWa } = await import("@/lib/utils/whatsapp-telefono");
-
-function entrante(waMessageId: string, telefono: string, extra: Partial<WebhookMensajeEntrante> = {}): WebhookMensajeEntrante {
-  return {
-    waMessageId,
-    telefonoE164: telefono,
-    tipo: "texto",
-    cuerpo: "hola",
-    ocurridoAt: new Date("2026-10-22T10:00:00Z"),
-    ...extra,
-  } as WebhookMensajeEntrante;
+function firmar(raw: string, secreto: string): string {
+  return "sha256=" + createHmac("sha256", secreto).update(raw, "utf8").digest("hex");
 }
 
-function status(waMessageId: string): WebhookStatus {
-  return { waMessageId, estado: "delivered", ocurridoAt: new Date("2026-10-22T10:00:00Z"), error: null } as WebhookStatus;
+function cambio(numeroId: string, waMessageId: string, telefono: string) {
+  return {
+    field: "messages",
+    value: {
+      messaging_product: "whatsapp",
+      metadata: { display_phone_number: "1", phone_number_id: numeroId },
+      messages: [{ from: telefono, id: waMessageId, timestamp: "1700000000", type: "text", text: { body: "hola" } }],
+    },
+  };
 }
 
-const TEL_A = "50688880001";
-const TEL_B = "50688880002";
-const TEL_NADIE = "50688889999";
-
-beforeEach(() => {
-  DOBLE.contextos.length = 0;
-  for (const m of [DOBLE.ordenPorTelefono, DOBLE.empresaDeOrden, DOBLE.hilosPorTelefono, DOBLE.chatPorWamid, DOBLE.entregaPorWamid]) m.clear();
-  DOBLE.ordenPorTelefono.set(normalizarTelefonoWa(TEL_A), "orden-a");
-  DOBLE.ordenPorTelefono.set(normalizarTelefonoWa(TEL_B), "orden-b");
-  DOBLE.empresaDeOrden.set("orden-a", "org-a");
-  DOBLE.empresaDeOrden.set("orden-b", "org-b");
-  DOBLE.chatPorWamid.set("wamid-sal-a", "org-a");
-  DOBLE.entregaPorWamid.set("wamid-ent-b", "org-b");
-});
-
-describe("SL-17 · R15 — repartirPorEmpresa", () => {
-  it("agrupa entrantes y estados por la empresa de su orden o de su fila", async () => {
-    const eventos: WebhookEventos = {
-      mensajes: [entrante("w1", TEL_A), entrante("w2", TEL_B), entrante("w3", TEL_NADIE)],
-      statuses: [status("wamid-sal-a"), status("wamid-ent-b"), status("wamid-de-nadie")],
-    };
-
-    const reparto = await repartirPorEmpresa(eventos);
-
-    const porOrg = Object.fromEntries(reparto.lotes.map((l) => [l.organizacionId, l.eventos]));
-    expect(Object.keys(porOrg).sort()).toEqual(["org-a", "org-b"]);
-    expect(porOrg["org-a"].mensajes.map((m) => m.waMessageId)).toEqual(["w1"]);
-    expect(porOrg["org-a"].statuses.map((s) => s.waMessageId)).toEqual(["wamid-sal-a"]);
-    expect(porOrg["org-b"].mensajes.map((m) => m.waMessageId)).toEqual(["w2"]);
-    expect(porOrg["org-b"].statuses.map((s) => s.waMessageId)).toEqual(["wamid-ent-b"]);
-    expect(reparto.mensajesSinEmpresa).toBe(1);
+function post(raw: string, firma: string | null): Request {
+  return new Request("https://x/api/webhooks/whatsapp", {
+    method: "POST",
+    body: raw,
+    headers: firma === null ? {} : { "x-hub-signature-256": firma },
   });
+}
 
-  it("todas sus lecturas van en plataforma con la ficha SL-36", async () => {
-    await repartirPorEmpresa({ mensajes: [entrante("w1", TEL_A)], statuses: [status("wamid-sal-a")] });
-
-    expect(DOBLE.contextos.length).toBeGreaterThan(0);
-    for (const { contexto } of DOBLE.contextos) {
-      expect(contexto).toMatchObject({ tipo: "plataforma", ficha: "SL-36" });
-    }
-  });
-
-  it("un cambio de número sin orden viva va a las empresas que tienen hilos con el número anterior", async () => {
-    const anterior = "50677770000";
-    DOBLE.hilosPorTelefono.set(normalizarTelefonoWa(anterior), ["org-c"]);
-
-    const reparto = await repartirPorEmpresa({
-      mensajes: [entrante("w9", anterior, { sistema: { telefonoAnterior: anterior, telefonoNuevo: "50677771111" } })],
-      statuses: [],
-    });
-
-    expect(reparto.lotes.map((l) => l.organizacionId)).toEqual(["org-c"]);
-    expect(reparto.mensajesSinEmpresa).toBe(0);
+describe("SL-36/R22 — el route ya no opera en plataforma", () => {
+  it("⭑ sin comoPlataforma ni repartirPorEmpresa en el fuente, y ninguna lectura de la base", () => {
+    const fuente = quitarComentarios(fs.readFileSync(path.join(RAIZ, "app/api/webhooks/whatsapp/route.ts"), "utf8"));
+    expect(fuente.length).toBeGreaterThan(1000); // autocomprobacion: se leyo el archivo
+    expect(fuente).not.toContain("comoPlataforma");
+    expect(fuente).not.toContain("repartirPorEmpresa");
+    expect(fuente).not.toMatch(/prisma\.\w+\.find/);
+    expect("repartirPorEmpresa" in route).toBe(false);
   });
 });
 
-describe("SL-17 · R15 — handlePost ingiere cada lote en su empresa", () => {
-  const CONFIG = { verifyToken: "t", appSecret: "secreto" };
-  function firmado(cuerpo: unknown): Request {
-    const raw = JSON.stringify(cuerpo);
-    const firma = createHmac("sha256", CONFIG.appSecret).update(raw, "utf8").digest("hex");
-    return new Request("https://x/api/webhooks/whatsapp", {
-      method: "POST",
-      body: raw,
-      headers: { "x-hub-signature-256": `sha256=${firma}` },
-    });
+describe("SL-36 — el route traduce el resultado del service", () => {
+  function doble(r: Awaited<ReturnType<IWebhookWhatsappService["recibir"]>>) {
+    const recibir = vi.fn(async () => r);
+    const verificar = vi.fn(async () => ({ status: "ok" as const, challenge: "C123" }));
+    return { service: { recibir, verificar } as IWebhookWhatsappService, recibir, verificar };
   }
 
-  it("cada ingesta y cada aplicación de estados ve SOLO su empresa; sin empresa no se escribe y hay 200", async () => {
-    const vistosIngesta: (ContextoDatos | undefined)[] = [];
-    const vistosEntregas: (ContextoDatos | undefined)[] = [];
-    const ingerirEventos = vi.fn(async (e: WebhookEventos) => {
-      vistosIngesta.push(contextoActual());
-      return { mensajesRegistrados: e.mensajes.length, statusesAplicados: e.statuses.length, sinResolver: 0, hilosMigrados: 0 };
-    });
-    const res = await handlePost(firmado({ object: "whatsapp_business_account", entry: [] }), {
-      getConfig: () => CONFIG,
-      buildService: () => ({ ingerirEventos }) as never,
-      buildEntregaEstado: () => ({
-        aplicar: vi.fn(async () => {
-          vistosEntregas.push(contextoActual());
-          return 0;
-        }),
-      }),
-      repartir: async () => ({
-        lotes: [
-          { organizacionId: "org-a", eventos: { mensajes: [entrante("w1", TEL_A)], statuses: [status("s1")] } },
-          { organizacionId: "org-b", eventos: { mensajes: [entrante("w2", TEL_B)], statuses: [] } },
-        ],
-        mensajesSinEmpresa: 2,
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(vistosIngesta).toEqual([
-      { tipo: "empresa", organizacionId: "org-a" },
-      { tipo: "empresa", organizacionId: "org-b" },
-    ]);
-    expect(vistosEntregas).toEqual([{ tipo: "empresa", organizacionId: "org-a" }]);
-    expect(await res.json()).toMatchObject({ ok: true, mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 2 });
+  it("POST: pasa el cuerpo CRUDO y la cabecera de firma tal como llegan", async () => {
+    const { service, recibir } = doble({ status: "unauthorized" });
+    const raw = '{"entry":[ ]}'; // con espacios: lo firmado es el texto, no su JSON reserializado
+    await route.handlePost(post(raw, "sha256=abc"), { service });
+    expect(recibir).toHaveBeenCalledWith({ cuerpoCrudo: raw, firma: "sha256=abc" });
   });
 
-  it("sin ningún evento con empresa: 200 y la ingesta no se llama", async () => {
-    const ingerirEventos = vi.fn();
-    const res = await handlePost(firmado({ object: "whatsapp_business_account", entry: [] }), {
-      getConfig: () => CONFIG,
-      buildService: () => ({ ingerirEventos }) as never,
-      repartir: async () => ({ lotes: [], mensajesSinEmpresa: 1 }),
-    });
+  it("POST: unauthorized -> 401; ok -> 200 con los conteos", async () => {
+    const no = doble({ status: "unauthorized" });
+    expect((await route.handlePost(post("{}", null), { service: no.service })).status).toBe(401);
 
+    const si = doble({ status: "ok", resumen: { mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 } });
+    const res = await route.handlePost(post("{}", "sha256=x"), { service: si.service });
     expect(res.status).toBe(200);
-    expect(ingerirEventos).not.toHaveBeenCalled();
-    expect(await res.json()).toMatchObject({ ok: true, sinResolver: 1 });
+    expect(await res.json()).toEqual({ ok: true, mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 });
+  });
+
+  it("GET: ok -> 200 text/plain con el challenge; forbidden -> 403 sin challenge", async () => {
+    const { service, verificar } = doble({ status: "unauthorized" });
+    const url = "https://x/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=tok&hub.challenge=C123";
+    const ok = await route.handleGet(new Request(url), { service });
+    expect(verificar).toHaveBeenCalledWith({ mode: "subscribe", token: "tok", challenge: "C123" });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toContain("text/plain");
+    expect(await ok.text()).toBe("C123");
+
+    verificar.mockResolvedValueOnce({ status: "forbidden" } as never);
+    const no = await route.handleGet(new Request(url), { service });
+    expect(no.status).toBe(403);
+    expect(await no.text()).not.toContain("C123");
+  });
+});
+
+describe("SL-36/R20 — con el service real, cada empresa ingiere lo suyo en su contexto", () => {
+  const DESTINOS = new Map<string, DestinoWebhook>([
+    ["num-a", { organizacionId: "org-a", integracionId: "int-a" }],
+    ["num-b", { organizacionId: "org-b", integracionId: "int-b" }],
+  ]);
+  const SECRETOS: Record<string, string> = { "int-a": "secreto-a", "int-b": "secreto-b" };
+
+  function montar() {
+    const vistos: { contexto: ContextoDatos | undefined; ids: string[] }[] = [];
+    const service = new WebhookWhatsappService({
+      enrutado: {
+        porNumeros: async (numeros) => new Map([...DESTINOS].filter(([n]) => numeros.includes(n))),
+        porResumenVerificacion: async () => null,
+      },
+      resumidor: { resumen: (t) => `r:${t}` },
+      leerAppSecret: async (id) => SECRETOS[id] ?? null,
+      anotarWebhook: async () => {},
+      ingesta: {
+        ingerirEventos: vi.fn(async (e: WebhookEventos) => {
+          vistos.push({ contexto: contextoActual(), ids: e.mensajes.map((m) => m.waMessageId) });
+          return { mensajesRegistrados: e.mensajes.length, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0 };
+        }),
+      },
+      entregaEstado: () => ({ aplicar: async () => 0 }),
+      logger: { warn: () => {} },
+    });
+    return { service, vistos };
+  }
+
+  it("dos números de dos empresas en un POST firmado por A: solo A ingiere, y solo su evento", async () => {
+    const raw = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [{ id: "w", changes: [cambio("num-a", "wamid.A", "50688880001"), cambio("num-b", "wamid.B", "50688880002")] }],
+    });
+    const { service, vistos } = montar();
+    const res = await route.handlePost(post(raw, firmar(raw, "secreto-a")), { service });
+    expect(res.status).toBe(200);
+    expect(vistos).toEqual([{ contexto: { tipo: "empresa", organizacionId: "org-a" }, ids: ["wamid.A"] }]);
+  });
+
+  it("firmado con el App Secret de OTRA empresa: 401 y nadie ingiere", async () => {
+    const raw = JSON.stringify({ entry: [{ id: "w", changes: [cambio("num-a", "wamid.A", "50688880001")] }] });
+    const { service, vistos } = montar();
+    const res = await route.handlePost(post(raw, firmar(raw, "secreto-b")), { service });
+    expect(res.status).toBe(401);
+    expect(vistos).toEqual([]);
   });
 });

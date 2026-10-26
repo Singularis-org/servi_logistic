@@ -5,8 +5,8 @@
 // recurrente: no se registra en `buildRecurrencias()`. Un fallo se RELANZA para que
 // `JobQueueService` aplique el backoff y, agotados los intentos, el dead-letter.
 //
-// Las deps se construyen PEREZOSAMENTE dentro del handler: `loadWhatsappConfig` lanza si falta
-// un env de WhatsApp, y ese fallo debe quedar acotado a ESTE job (recuperable, job a job), sin
+// Las deps se construyen PEREZOSAMENTE dentro del handler: `whatsappDeLaEmpresa` lanza si la empresa
+// del job no tiene WhatsApp (SL-36, R24), y ese fallo debe quedar acotado a ESTE job (recuperable, job a job), sin
 // tumbar el drenado que comparte cron con los demas tipos.
 import { z } from "zod";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
@@ -17,7 +17,7 @@ import { aplicarUpsertTemplate } from "@/lib/services/whatsapp/plantilla-whatsap
 import { construirWhatsappTemplatePort } from "@/lib/services/whatsapp/construir-template-port";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 
 const payloadSchema = z.object({
   plantillaId: z.string().min(1),
@@ -30,13 +30,13 @@ export interface WhatsappTemplateSyncDeps {
   repo: IPlantillaMensajeRepository;
 }
 
-/** Construye las deps reales. `loadWhatsappConfig` lanza si falta un env (recuperable job a job). */
-export function buildWhatsappTemplateSyncDeps(): WhatsappTemplateSyncDeps {
+/** Construye las deps reales con la credencial de la empresa del job; sin ella, lanza (recuperable job a job). */
+export async function buildWhatsappTemplateSyncDeps(): Promise<WhatsappTemplateSyncDeps> {
   const prisma = getPrismaClient();
-  const config = loadWhatsappConfig();
+  const wa = await whatsappDeLaEmpresa();
   return {
     // Ficha 474: la MISMA fabrica que la propagacion en linea (cabecera documento incluida).
-    port: construirWhatsappTemplatePort(config),
+    port: construirWhatsappTemplatePort(wa),
     repo: new PlantillaMensajeRepository(prisma),
   };
 }
@@ -47,11 +47,11 @@ export function buildWhatsappTemplateSyncDeps(): WhatsappTemplateSyncDeps {
  * no se traga en silencio).
  */
 export function crearWhatsappTemplateSyncHandler(
-  buildDeps: () => WhatsappTemplateSyncDeps = buildWhatsappTemplateSyncDeps,
+  buildDeps: () => WhatsappTemplateSyncDeps | Promise<WhatsappTemplateSyncDeps> = buildWhatsappTemplateSyncDeps,
 ): JobHandler {
   return async (job: JobDTO) => {
     const payload = payloadSchema.parse(job.payload);
-    const { port, repo } = buildDeps();
+    const { port, repo } = await buildDeps();
 
     if (payload.operacion === "eliminar") {
       // Sin nombre no hay nada que borrar en Meta (el job se da por hecho).

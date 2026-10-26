@@ -8,6 +8,11 @@ import {
 import { hashDireccion } from "@/lib/geo/direccion-query";
 import { dedupeKeyGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
 import type { GeocodeOutcome } from "@/lib/interfaces/external/IGeocodeClient";
+import type {
+  ICredencialesIntegracion,
+  LecturaCredencial,
+} from "@/lib/interfaces/services/ICredencialesIntegracion";
+import type { ServicioIntegracion } from "@/lib/types/integraciones";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { IGeocodeCacheRepository } from "@/lib/interfaces/repositories/IGeocodeCacheRepository";
 import type {
@@ -76,14 +81,20 @@ function emisor(opts: { outcome?: GeocodeOutcome; apiKey?: string | null } = {})
     if (opts.outcome === undefined) throw new GeocodeRespuestaInvalidaError("cuerpo no es JSON");
     return opts.outcome;
   });
+  // SL-36: la clave sale de la integracion de la empresa del job; `apiKey: null` = sin Google Maps.
+  const clave = opts.apiKey === undefined ? "clave-de-prueba" : opts.apiKey;
+  const credenciales: ICredencialesIntegracion = {
+    leer: async <S extends ServicioIntegracion>() =>
+      (clave === null
+        ? { estado: "sin_configurar" }
+        : { estado: "lista", integracionId: "int-maps", credencial: { clave_api: clave }, datosPublicos: {} }) as LecturaCredencial<S>,
+    marcarRechazo: async () => {},
+  };
   return new GeocodificacionService(
     ordenes,
     cache,
-    { geocodificar },
-    {
-      GOOGLE_MAPS_API_KEY: opts.apiKey === undefined ? "clave-de-prueba" : opts.apiKey,
-      GEOCODE_TIMEOUT_MS: 10_000,
-    },
+    credenciales,
+    () => ({ geocodificar }),
     () => AHORA,
     { warn: () => {} },
   );
@@ -168,7 +179,7 @@ describe("400/R11 — las DOS causas propias recorren el camino entero y abren l
   );
 
   it.each(["failed", "pending", "processing"] as const)(
-    "falta la credencial (`GOOGLE_MAPS_API_KEY` ausente), job %s -> asignable_sin_ubicacion",
+    "falta la credencial (la empresa sin Google Maps, SL-36), job %s -> asignable_sin_ubicacion",
     async (estadoDelJob) => {
       const lastError = await lastErrorTrasFallar(emisor({ apiKey: null }));
 

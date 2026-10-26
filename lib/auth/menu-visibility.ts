@@ -552,6 +552,11 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       { label: "Usuarios", href: "/configuracion" },
       { label: "Tarifas", href: "/configuracion/tarifas" },
       { label: "API", href: "/configuracion/api" },
+      // SL-36 (design §14): las cuentas de los servicios externos de la empresa, junto a «API»
+      // porque las dos son conexiones con terceros. No es el primer hijo, así que no mueve el
+      // aterrizaje post-login, y hereda la visibilidad `maestro`-only del padre, igual que la
+      // página (R6): ni el admin, ni el mensajero, ni el superadmin la ven.
+      { label: "Integraciones", href: "/configuracion/integraciones" },
       // Feature 107: CRUD de plantillas de mensaje. Hereda la visibilidad
       // maestro-only del ítem padre (R1/R2).
       { label: "Plantillas", href: "/configuracion/plantillas" },

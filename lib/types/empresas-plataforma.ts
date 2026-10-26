@@ -1,6 +1,7 @@
 // SL-32 — tipos del listado de la pantalla «Empresas» del superadmin (R29, R35).
 
 import type { DeudaPlataformaDTO } from "@/lib/types/cobro-plataforma";
+import type { EstadoVisibleIntegracion, ServicioIntegracion } from "@/lib/types/integraciones";
 
 /**
  * Una empresa del listado. Solo lo que pinta la tabla: ni `password_hash`, ni telefono, ni
@@ -34,4 +35,19 @@ export type EmpresaListada = {
 /** `forbidden`: el actor no es de la plataforma (R35). No lleva datos de ninguna empresa. */
 export type ListarEmpresasResultado =
   | { status: "ok"; empresas: EmpresaListada[] }
+  | { status: "forbidden" };
+
+/**
+ * SL-36 (design §11, R37) — el estado de UNA integración de UNA empresa, para el panel de SL-26.
+ * Solo el estado: ni credenciales, ni datos públicos, ni el texto del último error.
+ */
+export type EstadoIntegracionDeEmpresa = {
+  organizacionId: string;
+  servicio: ServicioIntegracion;
+  estado: EstadoVisibleIntegracion;
+};
+
+/** `forbidden`: el actor no es de la plataforma (R37, R6). No lleva datos de ninguna empresa. */
+export type EstadoIntegracionesResultado =
+  | { status: "ok"; estados: EstadoIntegracionDeEmpresa[] }
   | { status: "forbidden" };

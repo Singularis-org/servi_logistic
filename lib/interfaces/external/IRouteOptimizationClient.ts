@@ -1,7 +1,7 @@
 // Feature 92 (design §3) — contrato del proveedor de optimizacion de ruta. La interfaz es
 // el punto de AISLAMIENTO deliberado de la decision de proveedor (design §9.A): si el SKU
 // de Route Optimization resultara inasumible (Q9), volver a `computeRoutes` con
-// `optimizeWaypointOrder` (que si reusa `GOOGLE_MAPS_API_KEY`) queda contenido en
+// `optimizeWaypointOrder` (que si reusa la clave de API de Google Maps) queda contenido en
 // `lib/clients/` + `lib/config/` + `lib/auth/google-sa-token.ts`. El resto del diseno
 // —persistencia, debounce, reordenado, gate— es identico para ambas APIs.
 

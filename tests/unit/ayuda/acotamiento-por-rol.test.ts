@@ -133,13 +133,15 @@ describe("R3 — /ordenes es la única ruta con dos documentos, y cada rol recib
 // derivados del catálogo: derivarlos los dejaría verdes pase lo que pase.
 
 describe("R21 — maestro y admin pasan a leer el catálogo ENTERO", () => {
-  it("los dos leen los 33 documentos, y el catálogo tiene 33", () => {
+  it("los dos leen los 38 documentos, y el catálogo tiene 38", () => {
     // Si alguien añade un documento, este número se mueve a mano —igual que el recuento de
     // `AyudaLayout.test.tsx`— y eso es lo que se quiere: que la cuenta se decida, no que se
     // recalcule sola.
-    expect(docs.length).toBe(33);
-    expect(legibles("maestro")).toHaveLength(33);
-    expect(legibles("admin")).toHaveLength(33);
+    //
+    // SL-36: 33→38 por las cinco guías de integraciones (`roles: [maestro]`).
+    expect(docs.length).toBe(38);
+    expect(legibles("maestro")).toHaveLength(38);
+    expect(legibles("admin")).toHaveLength(38);
   });
 
   it("⭑ y eso incluye, uno a uno, los DIEZ que antes le daban 404 al maestro", () => {
@@ -166,8 +168,9 @@ describe("R21 — maestro y admin pasan a leer el catálogo ENTERO", () => {
       expect(puedeLeerDocumento(doc!, "maestro"), slug).toBe(true);
       expect(puedeLeerDocumento(doc!, "admin"), slug).toBe(true);
     }
-    // Y la cuenta cierra: 33 menos esos diez son los 23 que el maestro veía.
-    expect(slugs("maestro")).toHaveLength(33 - antesProhibidos.length);
+    // Y la cuenta cierra: 38 menos esos diez son los 28 que el maestro ve como suyos (23 de la
+    // 435 más las cinco guías de integraciones de SL-36).
+    expect(slugs("maestro")).toHaveLength(38 - antesProhibidos.length);
   });
 
   it("el admin suma además el histórico de acciones, que es sólo del maestro", () => {

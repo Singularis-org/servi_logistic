@@ -21,9 +21,10 @@ const docs = await leerCatalogoAyuda();
 const contexto = contextoPara(docs, "maestro");
 
 describe("R1 — la única fuente son los documentos del catálogo", () => {
-  it("CONTROL DE NO-VACUIDAD: el catálogo trae los 33 documentos y el contexto del maestro también", () => {
-    expect(docs.length).toBe(33);
-    expect(contexto.length).toBe(33);
+  it("CONTROL DE NO-VACUIDAD: el catálogo trae los 38 documentos y el contexto del maestro también", () => {
+    // SL-36: 33→38 por las cinco guías de integraciones.
+    expect(docs.length).toBe(38);
+    expect(contexto.length).toBe(38);
   });
 
   it("⭑ cada cuerpo enviado es IDÉNTICO al del archivo en disco, sin su frontmatter", () => {

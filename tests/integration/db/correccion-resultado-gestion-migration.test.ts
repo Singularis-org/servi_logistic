@@ -452,6 +452,13 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       // caja (D13). Su migracion: `20260928120000_wallet_458_enums`.
       "cobro_rechazo_tienda_anulado",
       "egreso_caja_anulado",
+      // SL-36 (2026-10-25): el rastro de las integraciones. Su migracion:
+      // `20261025120100_historial_accion_integraciones`.
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

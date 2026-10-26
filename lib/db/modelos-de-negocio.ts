@@ -1,13 +1,15 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (75): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (77): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (15): catalogos, geografia, autenticacion previa a la empresa, cache tecnica y el
 //                      valor global del cobro por orden (SL-40).
-//   · diferidos   (1): tienen ficha propia que decide su aislamiento.
+//   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
+//                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
+//   · diferidos   (0): tienen ficha propia que decide su aislamiento.
 //
 // Modulo puro: sin Prisma ni next, para que lo importen la extension, los scripts y los tests.
-// Un modelo nuevo en el esquema tiene que entrar en una de las tres listas (R5, guardia R23).
+// Un modelo nuevo en el esquema tiene que entrar en una de las cuatro listas (R5, guardia R23).
 
 export type ModeloClasificado = {
   /** Nombre del modelo en Prisma, tal cual llega a `$allOperations` (p. ej. "Orden"). */
@@ -20,6 +22,9 @@ export type ModeloDiferido = ModeloClasificado & {
   readonly ficha: `SL-${number}`;
   readonly motivo: string;
 };
+
+/** Misma forma que un diferido: la ficha que lo decidio y por que su empresa es opcional. */
+export type ModeloConEmpresaOpcional = ModeloDiferido;
 
 // §2.1. Orden por area, como en el design.
 export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
@@ -34,6 +39,9 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "ApiKey", tabla: "api_key" },
   { modelo: "WebhookSuscripcion", tabla: "webhook_suscripcion" },
   { modelo: "PostulacionRecurso", tabla: "postulacion_recurso" },
+  // Credenciales de cada empresa (SL-36): el limite de pruebas tambien es de la empresa
+  { modelo: "Integracion", tabla: "integracion" },
+  { modelo: "IntegracionPruebaMinuto", tabla: "integracion_prueba_minuto" },
   // Zonas y tarifas
   { modelo: "Zona", tabla: "zona" },
   { modelo: "ZonaDistrito", tabla: "zona_distrito" },
@@ -135,16 +143,20 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaTarifa", tabla: "cobro_plataforma_tarifa" },
 ];
 
-// §2.3.
-export const MODELOS_DIFERIDOS: readonly ModeloDiferido[] = [
+// SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica
+// nulable de negocio es `usuario`, con su regla propia en la extension, y el detector de SQL a mano
+// pediria filtrar en el texto el reclamo del drenador, que es de plataforma a proposito.
+export const MODELOS_CON_EMPRESA_OPCIONAL: readonly ModeloConEmpresaOpcional[] = [
   {
     modelo: "Job",
     tabla: "jobs",
     ficha: "SL-19",
-    motivo:
-      "outbox compartido: encola dentro de transacciones de empresa y el drenador corre cada job con su empresa",
+    motivo: "outbox: nace con la empresa que encola; sin empresa solo la ve la plataforma (recurrentes)",
   },
 ];
+
+// SL-17 §2.3. Vacia desde SL-19; el tipo se conserva para la proxima ficha que lo necesite.
+export const MODELOS_DIFERIDOS: readonly ModeloDiferido[] = [];
 
 /** R3: la unica tabla de negocio con `organizacion_id` nulable (el superadmin). */
 export const MODELO_NEGOCIO_NULABLE = "Usuario";

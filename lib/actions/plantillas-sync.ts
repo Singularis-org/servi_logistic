@@ -11,7 +11,10 @@ import {
   SincronizarPlantillasWhatsappService,
   type SincronizarPlantillasResult,
 } from "@/lib/services/SincronizarPlantillasWhatsappService";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import {
+  whatsappDeLaEmpresaOpcional,
+  type WhatsappDeLaEmpresa,
+} from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { defaultLogger } from "@/lib/errors";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
@@ -21,11 +24,13 @@ export type SincronizarPlantillasActionResult =
   | ({ status: "ok" } & SincronizarPlantillasResult)
   | { status: "unauthenticated" }
   | { status: "forbidden" }
-  | { status: "no_configurado" } // faltan credenciales de WhatsApp
+  | { status: "no_configurado" } // la empresa no tiene WhatsApp (SL-36, R24)
   | { status: "error"; detalle: string }; // Meta rechazo o no respondio
 
 export interface SincronizarPlantillasDeps {
   getActor?: () => Promise<Actor | null>;
+  /** La credencial de la empresa de la sesion; `null` si no tiene WhatsApp. Inyectable en tests. */
+  whatsapp?: () => Promise<WhatsappDeLaEmpresa | null>;
 }
 
 export async function sincronizarPlantillasWhatsapp(
@@ -35,15 +40,12 @@ export async function sincronizarPlantillasWhatsapp(
   if (!actor) return { status: "unauthenticated" };
   if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // solo maestro
 
-  let config;
-  try {
-    config = loadWhatsappConfig();
-  } catch {
-    return { status: "no_configurado" };
-  }
+  // SL-36 (R23, R24): la credencial de la empresa de la sesion; sin ella, sin red.
+  const wa = await (deps.whatsapp ?? whatsappDeLaEmpresaOpcional)();
+  if (wa === null) return { status: "no_configurado" };
 
   const service = new SincronizarPlantillasWhatsappService(
-    new WhatsappPlantillasClient({ config }),
+    new WhatsappPlantillasClient({ config: wa.config, fetchImpl: wa.fetchImpl }),
     new PlantillaMensajeRepository(getPrismaClient()),
   );
 

@@ -15,8 +15,8 @@
  *
  * R17 — vive SOLO aqui. El censo del literal esta acotado al ambito de la analitica
  * (`lib/analytics/`, `lib/cache/` y los archivos de la feature) a proposito: `3600` ya aparece
- * cuatro veces en `lib/` por motivos ajenos a esta feature —`lib/auth/google-sa-token.ts:42`,
- * `lib/auth/google-adc-token.ts:28`, `lib/config/etiquetas.ts:52` y `:69`— y un censo global
+ * en `lib/` por motivos ajenos a esta feature —`lib/auth/google-sa-token.ts:42` y
+ * `lib/config/etiquetas.ts:52` y `:69`— y un censo global
  * naceria rojo por literales ajenos y se desarmaria a la primera, dejando de proteger nada
  * (leccion de la 125).
  */

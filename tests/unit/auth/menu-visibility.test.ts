@@ -341,6 +341,8 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
       "/configuracion",
       "/configuracion/tarifas",
       "/configuracion/api",
+      // SL-36 (design §14): «Integraciones» junto a «API»; no es el primer hijo.
+      "/configuracion/integraciones",
       "/configuracion/plantillas",
       // ⭑ Ficha 474 (R2): «Envíos automáticos» JUSTO DESPUÉS de «Plantillas», como la maqueta
       // aprobada. No es el primer hijo, así que no mueve el aterrizaje (lo afirma
@@ -367,6 +369,18 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
     expect(hrefs).not.toContain("/configuracion/geografia");
     expect(visibles.flatMap((i) => i.children ?? []).some((c) => c.label === "Geografía")).toBe(false);
     expect(primerDestino(visibles)).toBe("/dashboard");
+  });
+
+  // SL-36 (R6, design §14): el subítem se busca por `href` en TODO el menú visible de cada rol, no
+  // solo bajo «Configuración»: moverlo a otro padre se lo enseñaría a quien no debe verlo.
+  it("SL-36 (R6): solo el maestro ve «Integraciones»; admin, mensajero y superadmin no", () => {
+    const hrefsDe = (rol: RolValue) =>
+      itemsVisibles(SIDEBAR_ITEMS, actor(rol)).flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+    expect(hrefsDe("maestro")).toContain("/configuracion/integraciones");
+    for (const rol of ["admin", "mensajero", "superadmin"] as const) {
+      expect(hrefsDe(rol)).not.toContain("/configuracion/integraciones");
+    }
+    expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor("maestro")))).toBe("/dashboard");
   });
 
   it("Feature 107 (R1): el maestro ve el subítem Plantillas en Configuración", () => {

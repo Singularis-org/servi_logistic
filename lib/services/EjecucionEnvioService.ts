@@ -36,7 +36,7 @@ import type { ProbarEnvioResultado } from "@/lib/types/envios-whatsapp";
 import { ROLES_DESTINATARIO } from "@/lib/types/envios-whatsapp";
 import type { WhatsappEnvioOutcome } from "@/lib/clients/whatsapp-cloud";
 import type { WhatsappMediaSubidor } from "@/lib/clients/whatsapp-media-upload";
-import { WhatsappNoConfiguradoError } from "@/lib/config/whatsapp";
+import { TEXTO_WHATSAPP_NO_CONFIGURADO, WhatsappNoConfiguradoError } from "@/lib/config/whatsapp";
 import type { InformeWhatsapp } from "@/lib/whatsapp-envios/informes/tipos";
 import { CLAVE_DESTINATARIO_NOMBRE, informePorClave } from "@/lib/whatsapp-envios/informes/catalogo";
 import { sanearValor } from "@/lib/whatsapp-envios/sanear-valor";
@@ -65,7 +65,8 @@ export const MOTIVOS = {
   adminTienda: "No se envió: este informe no es apto para Admin Tienda y el destinatario tiene ese rol.",
   todosAdminTienda: "Todos los destinatarios son Admin Tienda y este informe no es apto para ellos: no se envió nada.",
   desconocido: "Resultado desconocido: Meta respondió algo inesperado. No se reenvía para no duplicar.",
-  noConfigurado: (pieza: string) => `WhatsApp no está configurado (falta ${pieza}).`,
+  // SL-36 (R24): ya no hay variable que nombrar; la credencial es de la empresa.
+  noConfigurado: `${TEXTO_WHATSAPP_NO_CONFIGURADO} Configúralo en Configuración › Integraciones.`,
   faltaVariable: (clave: string) => `Falta el valor de la variable «${clave}».`,
   pdfRechazado: (codigo: number | null) => `Meta rechazó el PDF: ${motivoMeta(codigo)}`,
 } as const;
@@ -88,8 +89,11 @@ export interface EjecucionEnvioServiceDeps {
   plantillas: ILectorPlantillaDeInforme;
   almacen: IAlmacenEnviosWhatsapp;
   cola: Pick<IJobRepository, "enqueue">;
-  /** Lanza `WhatsappNoConfiguradoError` si falta una credencial. */
-  meta: () => MetaEnvios;
+  /**
+   * Lanza (o rechaza con) `WhatsappNoConfiguradoError` si la empresa no tiene WhatsApp. Asincrono
+   * desde SL-36: la credencial se lee de la base de la empresa en curso.
+   */
+  meta: () => MetaEnvios | Promise<MetaEnvios>;
   now?: () => Date;
   informe?: (clave: string) => InformeWhatsapp<unknown> | null;
   logger?: LoggerEnvios;
@@ -227,11 +231,10 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     // Meta (perezoso): sin credencial la ejecucion queda `error` visible y el job registra el motivo.
     let meta: MetaEnvios;
     try {
-      meta = this.deps.meta();
+      meta = await this.deps.meta();
     } catch (error) {
       if (error instanceof WhatsappNoConfiguradoError) {
-        const pieza = /falta ([A-Z_]+)/.exec(error.message)?.[1] ?? "credencial";
-        await this.terminar(e.id, "error", MOTIVOS.noConfigurado(pieza));
+        await this.terminar(e.id, "error", MOTIVOS.noConfigurado);
         if (e.origen === "prueba") return this.resultado(e.id);
       }
       throw error;
@@ -302,9 +305,9 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     }
     let meta: MetaEnvios;
     try {
-      meta = this.deps.meta();
+      meta = await this.deps.meta();
     } catch (error) {
-      await this.deps.ejecuciones.resolverEntrega(entregaId, { estado: "pendiente", motivo: "WhatsApp no está configurado." });
+      await this.deps.ejecuciones.resolverEntrega(entregaId, { estado: "pendiente", motivo: TEXTO_WHATSAPP_NO_CONFIGURADO });
       throw error;
     }
     const documento =

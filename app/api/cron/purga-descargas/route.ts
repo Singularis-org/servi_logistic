@@ -3,6 +3,9 @@
 // Capa Controller: solo HTTP + autorizacion por `CRON_SECRET`; delega en `PurgaDescargasService`.
 // Clon estructural de `app/api/cron/purga-pdf-cargas/route.ts`, con el MISMO secreto via
 // `loadCronConfig()`: esta ficha NO añade env de secreto nueva. NUNCA loguea el secreto ni rutas.
+//
+// SL-19 (design §3.4, R21): cada empresa tiene su carpeta `tmp/` en el bucket y el almacen solo
+// alcanza la de la empresa en curso. La purga corre una vez por empresa, como `purga-pdf-cargas`.
 import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import type { IPurgaDescargasService } from "@/lib/interfaces/services/IPurgaDescargasService";
@@ -10,12 +13,13 @@ import { PurgaDescargasService } from "@/lib/services/PurgaDescargasService";
 import { SupabaseAlmacenDescargas } from "@/lib/storage/SupabaseAlmacenDescargas";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadDescargaConfig } from "@/lib/config/descarga";
+import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 
 export const runtime = "nodejs";
 
 /**
- * Presupuesto de la corrida: hasta 5.000 objetos, en lotes de 1.000 (un `list` + un `remove` por lote).
- * Mismo techo que `purga-pdf-cargas`.
+ * Presupuesto de la corrida: hasta 5.000 objetos POR EMPRESA, en lotes de 1.000 (un `list` + un
+ * `remove` por lote). Mismo techo que `purga-pdf-cargas`.
  */
 export const maxDuration = 60;
 
@@ -25,6 +29,20 @@ export interface PurgaDescargasDeps {
   service?: IPurgaDescargasService;
   /** Reloj inyectable (tests). El corte es `now − RETENCION_MINUTOS` en milisegundos exactos. */
   now?: () => Date;
+  /** SL-19 (R21): fuente de las empresas que se recorren (un doble en tests). */
+  empresas?: ClienteDeOrganizaciones;
+}
+
+type ResumenPurgaDescargas = { objetosBorrados: number; quedaPendiente: boolean };
+
+function sumar(corridas: ResumenPurgaDescargas[]): ResumenPurgaDescargas {
+  return corridas.reduce<ResumenPurgaDescargas>(
+    (t, r) => ({
+      objetosBorrados: t.objetosBorrados + r.objetosBorrados,
+      quedaPendiente: t.quedaPendiente || r.quedaPendiente,
+    }),
+    { objetosBorrados: 0, quedaPendiente: false },
+  );
 }
 
 /**
@@ -46,7 +64,8 @@ function bearerToken(req: Request): string | null {
 
 /**
  * R19: sin secreto / incorrecto / no configurado ⇒ 401 SIN efectos (ni se construye el service ni se
- * toca Storage). R20: `200` con SOLO conteos; cualquier fallo sale con codigo de error.
+ * toca Storage). R20: `200` con SOLO conteos (y, desde SL-19, cuantas empresas se procesaron y los
+ * ids de las que fallaron); cualquier fallo sale con codigo de error.
  */
 export async function handlePurgaDescargas(req: Request, deps: PurgaDescargasDeps = {}): Promise<NextResponse> {
   const expected = (deps.getSecret ?? (() => loadCronConfig().CORTE_DIARIO_SECRET))();
@@ -58,8 +77,26 @@ export async function handlePurgaDescargas(req: Request, deps: PurgaDescargasDep
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
     const now = (deps.now ?? (() => new Date()))();
-    const resumen = await service.ejecutar(now);
-    return { objetosBorrados: resumen.objetosBorrados, quedaPendiente: resumen.quedaPendiente };
+    const corrida = async (): Promise<ResumenPurgaDescargas> => {
+      const resumen = await service.ejecutar(now);
+      return { objetosBorrados: resumen.objetosBorrados, quedaPendiente: resumen.quedaPendiente };
+    };
+    // R21: el almacen solo alcanza la carpeta de la empresa en curso; sin empresa falla cerrado. Una
+    // corrida por empresa, y el fallo de una no frena a las demas: queda en `empresas`.
+    const corridas: ResumenPurgaDescargas[] = [];
+    const empresas = await paraCadaEmpresa(
+      async () => {
+        corridas.push(await corrida());
+      },
+      { cliente: deps.empresas },
+    );
+    return {
+      ...sumar(corridas),
+      empresas: {
+        procesadas: empresas.ok.length,
+        fallidas: empresas.fallidas.map((f) => f.organizacionId),
+      },
+    };
   });
 
   if (isAppErrorShape(result)) return appErrorToResponse(result);

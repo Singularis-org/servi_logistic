@@ -74,6 +74,21 @@ esta bien hecha, no solo si "funciona".
 - **Excepciones con ficha** (`lib/db/excepciones-aislamiento.ts`): `EXCEPCIONES_DE_PLATAFORMA` (quién
   puede llamar a `comoPlataforma`) y `EXCEPCIONES_SQL_A_MANO` (SQL a mano que aún no filtra y que la RLS
   cubre). Las dos solo pueden bajar; las vigilan `plataforma-solo-en-lista` y `sql-a-mano-por-empresa`.
+  Desde SL-36 el route del webhook de WhatsApp ya no es excepción: delega en `WebhookWhatsappService`, que
+  abre la empresa del mensaje. Lo único que queda en plataforma para ese borde es
+  `lib/repositories/IntegracionEnrutadoRepository.ts`: traduce un número o un resumen de token a su
+  empresa, sin sesión, y solo selecciona `id` y `organizacion_id` (R22).
+- **Credenciales de proveedores por empresa (SL-36).** WhatsApp, Google Maps, la optimización de rutas
+  y el asistente usan la credencial de la empresa, guardada en la tabla `integracion`. La plataforma no
+  presta claves: la guardia `sin-credenciales-de-entorno` (R41) falla si algo en `app/`, `lib/` o
+  `scripts/` lee de `process.env` una de las variables retiradas.
+  - **Bóveda** (`lib/crypto/boveda-integraciones.ts`): AES-256-GCM de `node:crypto`, con datos asociados
+    que atan el valor a su fila y a su campo. Usa un anillo de claves versionado
+    (`INTEGRACIONES_CLAVES_CIFRADO`, con la versión activa en `INTEGRACIONES_CLAVE_ACTIVA`).
+    `pnpm integraciones:recifrar [--solo-contar]` recifra con la clave activa lo guardado con una versión
+    anterior.
+  - **Lectura:** los consumidores leen con `CredencialesIntegracionService` dentro de `conEmpresa`. Nada
+    derivado de una credencial (cliente, token, resultado) se cachea entre empresas (R28).
 - **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migración
   `20261023090000_unicos_por_empresa`). Siguen globales a propósito `usuario.email`, `usuario.cedula`,
   `orden.num_guia` (rastreo público), `api_key.key_hash` y los ids externos. Las secuencias por empresa
@@ -91,6 +106,18 @@ esta bien hecha, no solo si "funciona".
   contraseña?» sigue sirviendo de respaldo.
   La action `lib/actions/organizaciones.ts` exige superadmin a través de `lib/auth/exigir-superadmin.ts`,
   el punto de enganche con SL-32: hasta que exista `lib/auth/plataforma.ts`, rechaza a todos.
+- **Cola `jobs` (SL-19).** Política `jobs_por_empresa` (migración `20261025150000_jobs_por_empresa`):
+  con `servi_app`, cada empresa ve, escribe y encola solo sus jobs. Los jobs sin empresa (recurrentes)
+  solo los ve la plataforma, igual que el drenador, que reclama y cierra los de todas como dueño.
+  `dedupe_key` sigue global: toda clave que se encola desde una empresa lleva el id de una fila suya.
+  `Job` es la única tabla de empresa opcional (`MODELOS_CON_EMPRESA_OPCIONAL`), y
+  `rls-por-empresa.guardia` falla si una tabla comprobada conserva una política abierta.
+- **Storage (SL-19).** Los adaptadores de `lib/storage/` guardan cada archivo en
+  `<organizacion_id>/<ruta>` de su bucket, con la empresa del contexto (`lib/storage/carpeta-de-empresa.ts`).
+  La base guarda la ruta relativa de siempre. Sin empresa, o en plataforma, fallan con `EmpresaNoResuelta`
+  antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
+  (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
+  `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
