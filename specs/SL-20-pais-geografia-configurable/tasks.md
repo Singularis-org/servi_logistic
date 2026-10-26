@@ -71,14 +71,14 @@ para y avisa al leader.
 
 ## T3 — Carga CSV (`backend_dev`)
 
-- [ ] T3.1 Opción `textoLiteral` en `lib/parsers/spreadsheet.ts` (§5). Va primero: es el riesgo de
+- [x] T3.1 Opción `textoLiteral` en `lib/parsers/spreadsheet.ts` (§5). Va primero: es el riesgo de
   §12.
   **Hecho:** test con `"01"` y `"10101"` que llegan como texto; la carga masiva de órdenes no cambia
   (sus tests siguen verdes).
-- [ ] T3.2 [P] `lib/utils/codigo-geografico.ts` (R17).
+- [x] T3.2 [P] `lib/utils/codigo-geografico.ts` (R17).
   **Hecho:** `tests/unit/utils/codigo-geografico.test.ts`, con CR (longitud y prefijo) y con un país
   sin regla (1–20 caracteres, sin espacios).
-- [ ] T3.3 `lib/types/division-csv.ts` y `lib/utils/division-csv.ts` (`planificarDivision`, §6).
+- [x] T3.3 `lib/types/division-csv.ts` y `lib/utils/division-csv.ts` (`planificarDivision`, §6).
   Dep.: T3.2.
   **Hecho:** `tests/unit/utils/division-csv.test.ts` cubre filas repetidas, contradictorias, nodo
   existente, código completado, nodo retirado, `nivel_3` vacío, padre nuevo en el mismo archivo y
@@ -134,7 +134,7 @@ para y avisa al leader.
   **Hecho:** `geografia-plataforma-page.test.tsx` cubre el 404 a un rol de empresa antes de leer
   (R21), los nombres de nivel del país elegido (R20), el alta de país, los errores de CSV con su
   línea y el conteo que no bloquea (R31). `/configuracion/geografia` da 404 (R22).
-- [ ] T5.4 [P] Menú «Geografía» del superadmin (`lib/auth/menu-visibility.ts`). Dep.: ninguna.
+- [x] T5.4 [P] Menú «Geografía» del superadmin (`lib/auth/menu-visibility.ts`). Dep.: ninguna.
   **Hecho:** `menu-visibility.test.ts` y `superadmin-fuera-de-empresa.guardia` verdes; ningún rol
   de empresa ve el ítem.
 - [ ] T5.5 [P] «Empresas»: `Select` de país en el alta y columna «País» (§8), y el ajuste de los E2E
@@ -153,7 +153,7 @@ para y avisa al leader.
   (R12, R13, R14, R38, R39), más la pasada de todas las suites `geografia-*`, `zona-*`,
   `cobertura-*` y `*-dos-empresas*` de `tests/integration/db/`. Dep.: T1–T4.
   **Hecho:** todo verde contra Postgres local con `servi_app`.
-- [ ] T6.2 [P] `tests/unit/api/openapi-geografia-sin-cambios.test.ts` (R18). Dep.: ninguna.
+- [x] T6.2 [P] `tests/unit/api/openapi-geografia-sin-cambios.test.ts` (R18). Dep.: ninguna.
   **Hecho:** los campos `provincia`, `canton` y `distrito` del contrato siguen iguales.
 - [ ] T6.3 Medir el trigger de `orden` (mediana de `INSERT` antes y después, como D13) y anotarlo en
   `progress/impl_SL-20.md`. Dep.: T1.4.

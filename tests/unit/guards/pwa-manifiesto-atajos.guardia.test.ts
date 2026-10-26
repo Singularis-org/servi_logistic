@@ -300,13 +300,16 @@ describe("pwa · los atajos del manifiesto", () => {
     // ⭑ SL-36 (R6, design §14) — `maestro` 22 -> 23 y NADIE más: entra el subítem «Integraciones»
     // (`/configuracion/integraciones`), que hereda el `maestro`-only de «Configuración», igual que
     // la página. Si subiera `superadmin`, vería la integración de una empresa (R6). CERO atajos.
+    // ⭑ SL-20 (R21, design §8) — `superadmin` 1 -> 2 y NADIE más: entra «Geografía»
+    // (`/plataforma/geografia`), pantalla de PLATAFORMA (no de empresa), solo para `superadmin`.
+    // Si se moviera otro rol, se habría abierto de más. La intersección sigue vacía: CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
       maestro: 23,
       admin: 14,
       adminSatelite: 8,
       mensajero: 7,
       adminTienda: 5,
-      superadmin: 1,
+      superadmin: 2,
     });
 
     const interseccion = [...porRol.values()].reduce((acc, destinos) =>
