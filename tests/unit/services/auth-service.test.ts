@@ -12,6 +12,8 @@ import type { IEmailProvider } from "@/lib/interfaces/external/IEmailProvider";
 const REQUEST_CONTEXT = { ipAddress: "1.2.3.4", userAgent: "vitest-agent" };
 
 // SL-18 T1.3: la cuenta que devuelve `findCuentasPorEmailConHash` y, en `findById`, su forma publica.
+// Aqui el email tiene UNA cuenta (el login de siempre); con varias empresas, ver
+// `auth-service-empresas.test.ts` (SL-18 T2.2).
 type UsuarioDeTest = UsuarioPublico & CuentaConHash;
 
 async function buildUsuario(overrides: Partial<UsuarioDeTest> = {}): Promise<UsuarioDeTest> {
