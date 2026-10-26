@@ -100,8 +100,6 @@
   - Consumos entre módulos (§6.3), con el flag desde el Server Component anfitrión:
     - `ChatFlotante` solo con WhatsApp encendido (`app/(app)/mis-asignaciones/reparto/page.tsx`
       y `recoger/page.tsx`);
-    - en `/cierres-admin`, «Pago al mensajero» y la oferta de pago al aprobar solo con Wallet
-      encendido (`app/(app)/cierres-admin/page.tsx` → `CierresAdminModule`);
     - en `/wallet/mensajeros`, `PremiosRankingPanel` solo con Ranking encendido.
   - `tests/unit/auth/menu-modulos.test.ts`: oculta ítems y subítems; un desplegable vacío
     desaparece (Histórico del `admin` con WhatsApp apagado); `primerDestino` sobre lo filtrado;
@@ -116,15 +114,18 @@
   - *Hecho:* caso (b) de la guardia en verde; los tests de página listados abajo en verde.
 - [ ] **T10 [P] — Actions** (design §5.3, §3.7; R17, R31, R33).
   - `await exigirModuloActivo("<clave>")` como primera sentencia de cada función exportada de
-    los 55 archivos de un módulo; `premio-ranking-devengo` con `("wallet", "ranking")`.
+    los 54 archivos de un módulo (`liquidacion` es núcleo y no lleva puerta); `premio-ranking-devengo` con `("wallet", "ranking")`.
   - Los tests de esas actions ganan `puertasAbiertas()`.
   - `tests/integration/db/modulo-apagado-action.test.ts`: con Ranking apagado, una action de
     ranking devuelve `forbidden` y la base no cambia; con Wallet apagado, igual con una action de
     wallet; con Ranking apagado y Wallet encendido, `premio-ranking-devengo` devuelve `forbidden`;
     encendido, funciona.
   - `tests/integration/db/nucleo-sin-modulos.test.ts` (R31): empresa sin ningún módulo
-    encendido; el corte diario crea el cierre `vencido`, el bloqueo por cierre pendiente aplica y
-    la action de cierre del día funciona.
+    encendido; el corte diario crea el cierre `vencido`, el bloqueo por cierre pendiente aplica,
+    la action de cierre del día funciona, aprobar un cierre escribe sus movimientos de caja y
+    `registrarPagoMensajeroAction` registra el pago.
+  - `tests/components/CierresAdminPage.test.tsx` (R31): con Wallet apagado, «Pago al mensajero» y
+    la oferta de pago al aprobar siguen visibles.
   - *Hecho:* casos (c) y (e) de la guardia en verde; tests en verde.
 - [ ] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6, §3.7, §3.8; R18–R21, R24, R30, R33).
   - `conSuEmpresa` con `modulo` (los de `CALCULO_CONTINUO` reciben `"nucleo"`), `JobDescartado`,
@@ -222,9 +223,6 @@
 - `app/(app)/mis-asignaciones/reparto/page.tsx`
 - `app/(app)/mis-asignaciones/recoger/page.tsx`
 - `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx`
-- `app/(app)/cierres-admin/page.tsx`
-- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`
-- `app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx`
 - `app/(app)/wallet/mensajeros/_components/WalletMensajerosTabs.tsx`
 - `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx`
 
@@ -256,7 +254,7 @@
 - `app/(app)/historico/conversaciones/page.tsx`
 - `app/(app)/configuracion/api/page.tsx`
 
-### Actions de un módulo (55)
+### Actions de un módulo (54)
 - `lib/actions/analitica-financiera.ts`
 - `lib/actions/analitica-operativa.ts`
 - `lib/actions/analitica-refrescar.ts`
@@ -284,7 +282,6 @@
 - `lib/actions/gasto-fijo-cobro.ts`
 - `lib/actions/gasto-fijo-plantilla.ts`
 - `lib/actions/libro-caja-autoria.ts`
-- `lib/actions/liquidacion.ts`
 - `lib/actions/pago-por-cuenta-tienda.ts`
 - `lib/actions/premio-ranking-devengo.ts`
 - `lib/actions/rechazo-tienda-cobro.ts`
@@ -369,7 +366,7 @@
 - `tests/components/RecoleccionPage.test.tsx`
 - `tests/components/RecepcionSatelitePage.test.tsx`
 - `tests/components/RecepcionSateliteIncidente.test.tsx`
-- `tests/components/CierresAdminPage.test.tsx` (flag de Wallet para «Pago al mensajero»)
+- `tests/components/CierresAdminPage.test.tsx` (caso R31: pago visible con Wallet apagado)
 - `tests/components/EstadoCuentaSatelite.test.tsx`
 - `tests/components/WalletDeudaPlataformaSL40.test.tsx`
 - `tests/components/WalletDeudaPlataformaSL45.test.tsx`

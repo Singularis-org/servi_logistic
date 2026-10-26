@@ -89,7 +89,7 @@ La guardia de R3 lista el disco y exige que cada pieza esté exactamente una vez
 
 **Cambio del 2026-10-26.** El humano sacó los cierres del módulo «Wallet y cierres», que pasa a
 llamarse «Wallet» (clave `wallet`). Al núcleo van `/cierre-dia`, `/cierres-admin`, las actions
-`cierre-dia`, `cierres-admin` y `cierre-bodega`, el cron `corte-diario`, el cierre `vencido` y el
+`cierre-dia`, `cierres-admin`, `cierre-bodega` y `liquidacion` (pagos, decisión del 2026-10-26), el cron `corte-diario`, el cierre `vencido` y el
 bloqueo por cierre pendiente (R31). Las piezas que mezclan wallet y cierres se repartieron así;
 las **dudosas** van con nota en §3.9.
 
@@ -121,13 +121,13 @@ módulo o del núcleo falla, salvo que esté en `CONSUMOS_ENTRE_MODULOS` (§6.3)
 | monitoreo (1) | `tablero-dia` |
 | recoleccion (1) | `recoleccion-tienda` |
 | bodegas_satelite (2) | `recepcion-satelite`, `envio-devolucion-central` |
-| wallet (20) | `abono-tienda`, `aporte-capital`, `como-quedo`, `conciliacion-satelites`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `liquidacion` (dudosa, §3.9), `pago-por-cuenta-tienda`, `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
+| wallet (19) | `abono-tienda`, `aporte-capital`, `como-quedo`, `conciliacion-satelites`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `pago-por-cuenta-tienda`, `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
 | wallet + ranking (1) | `premio-ranking-devengo` (P5, §3.7) |
 | ranking (2) | `ranking`, `ranking-historico` |
 | incidentes_novedades (5) | `incidentes`, `novedades`, `habilitar-novedad`, `rechazos-sla-tienda`, `gestion-desde-ayuda` |
 | whatsapp (8) | `chat-whatsapp`, `envios-whatsapp`, `historico-conversaciones`, `plantillas`, `plantillas-sync`, `whatsapp-envio`, `informe-picking`, `informe-transito` |
 | api_integraciones (2) | `api-keys`, `webhooks` |
-| núcleo (53) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cierre-bodega` (Cierres), `cierre-dia` (Cierres; también la usan `/mis-asignaciones/*` y `/recoleccion`), `cierres-admin` (Cierres), `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
+| núcleo (54) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cierre-bodega` (Cierres), `cierre-dia` (Cierres; también la usan `/mis-asignaciones/*` y `/recoleccion`), `cierres-admin` (Cierres), `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `liquidacion` (Cierres, mixto: `/cierres-admin`, `/wallet/tiendas`, `/wallet/mensajeros`; decisión humana 2026-10-26, §3.9), `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
 
 `lib/actions/modulos-empresa.ts` (nuevo, §7) es de plataforma, así que va al núcleo. Con él son
 109.
@@ -207,16 +207,16 @@ Al reencender, la pantalla encuentra los días apagados ya calculados (R30).
 
 ### 3.9 Notas sobre piezas dudosas
 
-- **`liquidacion` (pagos al mensajero y a la tienda) → wallet.** Es dinero de cuentas por pagar y
-  lo usan `/wallet/tiendas` y `/wallet/mensajeros`, pero `/cierres-admin` (núcleo) también la usa
-  en la sección «Pago al mensajero» de un cierre aprobado (`PagoMensajeroSeccion`,
-  `RegistrarPagoMensajeroDialog`, y la oferta de pago al aprobar en `CierresAdminModule`). Se deja
-  en wallet y esa sección entra en `CONSUMOS_ENTRE_MODULOS`: con Wallet apagado, `/cierres-admin`
-  aprueba, rechaza y corrige cierres igual, pero no ofrece ni lista pagos. Alternativa si el humano
-  lo prefiere: `liquidacion` al núcleo como mixto; cambia una fila de `reparto.ts`.
+- **`liquidacion` (pagos al mensajero y a la tienda) → núcleo.** Decidido por el humano el
+  2026-10-26. La usan `/cierres-admin` («Pago al mensajero» de un cierre aprobado y la oferta de
+  pago al aprobar) y `/wallet/tiendas` y `/wallet/mensajeros`. Es una pieza mixta del núcleo: pagar
+  desde `/cierres-admin` está siempre disponible, con Wallet encendido o apagado (R31). Las pantallas
+  de wallet la siguen usando; las protege la puerta de su ruta. `wallet-anulacion` la importa
+  para anular un pago, y una action de wallet que importa una del núcleo no es un consumo cruzado.
 - **Aprobar un cierre escribe movimientos de caja.** La action `cierres-admin` (núcleo) sigue
-  escribiéndolos con Wallet apagado; solo no se ven hasta reencender (R22). No se corta, porque
-  cortarlo dejaría la caja incompleta al reencender.
+  escribiéndolos con Wallet apagado, igual que el pago de `liquidacion`; solo no se ven en
+  `/wallet` hasta reencender (R22). Confirmado por el humano el 2026-10-26. Wallet apagado solo
+  oculta `/wallet`, `/mi-wallet` y sus actions propias.
 - **`cierre-dia` la usan `/mis-asignaciones/*` y `/recoleccion`.** Antes era un consumo cruzado;
   ahora es núcleo y deja de serlo.
 - **`analitica_invalidacion_cache` en cálculo continuo.** P2 nombra el rollup y la foto; la
@@ -418,7 +418,6 @@ el flag por props desde su Server Component. Lista inicial:
 | Pieza | Pantalla anfitriona | Módulo de la pieza |
 |---|---|---|
 | `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx` (y `ChatConversacion.tsx`) | `/mis-asignaciones/*` (núcleo) | whatsapp |
-| `app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx`, `RegistrarPagoMensajeroDialog.tsx` y la oferta de pago al aprobar en `CierresAdminModule.tsx` | `/cierres-admin` (núcleo) | wallet (`liquidacion`, §3.9) |
 | `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx` | `/wallet/mensajeros` (wallet) | wallet + ranking (§3.7) |
 | `app/(app)/analitica/_components/finanzas/cargar-kpis.ts` (hoy sin montar) | `/analitica` | wallet (§3.9) |
 
@@ -526,7 +525,7 @@ instalado.
 
 ## 13. Riesgos
 
-- **Volumen de puertas.** Son 26 páginas y 55 archivos de actions (tras sacar los cierres al
+- **Volumen de puertas.** Son 26 páginas y 54 archivos de actions (tras sacar los cierres al
   núcleo). La guardia de §8 es la red: sin
   ella, una puerta olvidada es una fuga silenciosa.
 - **Una consulta más por página o action de un módulo**, cubierta por el único
