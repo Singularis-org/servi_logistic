@@ -102,7 +102,7 @@
 
 ## Tanda 3 — Escritura del superadmin (depende de T3, T5)
 
-- [ ] **T6 — Servicio, repositorio y action** (design §5.2; R9–R13).
+- [x] **T6 — Servicio, repositorio y action** (design §5.2; R9–R13).
   - `EntradaAccion.organizacionId?` en `appendAccion`.
   - `lib/types/modulos-empresa.ts`, `ModulosEmpresaRepository` / `ModulosEmpresaService` con sus
     interfaces, `lib/actions/modulos-empresa.ts` y `lib/actions/_shared/modulos-empresa.ts`.

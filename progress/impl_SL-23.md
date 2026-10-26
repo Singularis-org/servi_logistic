@@ -325,3 +325,85 @@ o se la abandona y se apunta `db-env.sh` a `logistic_sl23b`.
   Rojos: solo `dependencias-declaradas-presentes` (4, baseline) e `historial-accion-escrituras-cubiertas` (2, hasta T6).
 
 Veredicto: los ajustes de T1, T3, T4 y T5 están hechos y en verde sobre `logistic_sl23b`; el reset de `logistic_sl23` espera la autorización del humano.
+
+## Tanda 3 — T6 (2026-10-26, backend_dev)
+
+Base de la feature desde aquí: `logistic_sl23b` (`db-env-b.sh`).
+
+### Archivos
+
+Creados:
+- `lib/types/modulos-empresa.ts`: `verModulosEmpresaSchema`, `fijarModuloEmpresaSchema` (`organizacionId`
+  `z.uuid()`, `modulo` en `z.enum(ORDEN_MODULOS)`, `activo` booleano), los DTO `ModulosDeEmpresa` /
+  `ModuloDeEmpresa` y los resultados `{ estado: "ok", … } | forbidden | validation_error | not_found`.
+- `lib/interfaces/repositories/IModulosEmpresaRepository.ts`, `lib/repositories/ModulosEmpresaRepository.ts`:
+  `empresa`, `activos`, `encender` y `apagar`, todo en `comoPlataforma("SL-23", …)`.
+  - `encender`: `createMany … skipDuplicates` con id propio, contado.
+  - `apagar`: `findFirst` y luego `deleteMany` por id, contado.
+  - Los dos abren su `$transaction`, congelan al actor con `resolverActorCongelado` y llaman a
+    `appendAccion(tx, …)` solo si la fila cambió.
+  - La fila del historial lleva `entidad_id` = la fila creada o borrada, `entidad_etiqueta` = el nombre
+    del módulo, `valor_nuevo` = la clave y `organizacion_id` explícito.
+- `lib/interfaces/services/IModulosEmpresaService.ts`, `lib/services/ModulosEmpresaService.ts`: `ver` y
+  `fijar`, en este orden: `esPlataforma`, zod, la empresa existe y, al final, el repositorio.
+- `lib/actions/_shared/modulos-empresa.ts`: `construirModulosEmpresaService` (el composition root) y
+  `verModulosEmpresa` (la lectura para la página de T7). No es `use server`.
+- `lib/actions/modulos-empresa.ts`: `'use server'`, `fijarModuloEmpresaAction(input, deps)`. Monta el
+  servicio con el root de `_shared`.
+  - Lleva `@sin-superficie` temporal: su único llamador es el switch de T7.
+  - Sin esa marca, `superficie-de-uso` se ponía roja. T7 la borra al montarlo, y la guardia avisa si sobrevive.
+- Tests: `tests/unit/services/modulos-empresa-service.test.ts`, `tests/unit/actions/modulos-empresa.composition-root.test.ts`
+  y `tests/integration/db/modulos-empresa-historial.test.ts`.
+
+Modificados:
+- `lib/interfaces/repositories/IHistorialAccionRepository.ts` + `lib/repositories/registrar-accion.ts`:
+  `EntradaAccion.organizacionId?`. Se vuelca a la fila solo si viene; ningún llamador previo lo pasa.
+  `registrar-accion.ts` sigue siendo el único que nombra `tx.historialAccion`.
+- `lib/db/excepciones-aislamiento.ts`: `ModulosEmpresaRepository.ts` en `EXCEPCIONES_DE_PLATAFORMA`
+  (SL-23, motivo de design §5.2).
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: el `CENSO` gana
+  `encender` → `modulo_activado` (`tx.organizacionModulo.createMany`) y `apagar` → `modulo_desactivado`
+  (`tx.organizacionModulo.deleteMany`), los dos `abre_tx`. La cuenta fija pasa de 70 a 72.
+- `tests/unit/guards/modulos-reparto.guardia.test.ts`: se quita `modulos-empresa` de `ANUNCIADAS`. Queda
+  solo la ruta de T7.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T6 `[x]`.
+
+La categoría `cambia_modulos` ya estaba desde la Tanda 1 (adelanto del typecheck): no se toca.
+
+### Mapa R → test (T6)
+
+| R | Test |
+|---|---|
+| R2 | `modulos-empresa-service.test.ts`: «módulo fuera del catálogo» con `incidentes_novedades`, `cierres`, `Cierres`, `Inicio`, `nucleo` y `wallet_cierres` → `validation_error` sin tocar el repositorio |
+| R8 | `modulos-empresa-service.test.ts`: «los 8 módulos en el orden de pantalla, con su nombre y su estado» |
+| R9 | `modulos-empresa-service.test.ts`: «el cambio se ve en la siguiente lectura»; `modulos-empresa-historial.test.ts`: «por el servicio, el cambio se ve en la lectura siguiente» |
+| R10 | `modulos-empresa-service.test.ts`: `it.each` con los roles de empresa (todos menos `superadmin`) → `forbidden` al fijar y al ver, con el repositorio intacto; el maestro de esa empresa; sin sesión; «quién antes que qué»; `composition-root`: el maestro → `forbidden` sin tocar el cliente |
+| R11 | `modulos-empresa-service.test.ts`: «organizacionId que no es un uuid…» y «empresa inexistente → not_found, sin escribir» |
+| R12 | `modulos-empresa-historial.test.ts`: «encender deja… UNA acción… con el superadmin como actor», «apagar… con el id de la fila borrada» y «si el registro falla al encender / al apagar» (savepoint real y `createMany` del historial roto, con control sano); guardia `escrituras-cubiertas` (misma tx) |
+| R13 | `modulos-empresa-service.test.ts`: «encender lo encendido o apagar lo apagado responde ok sin cambio»; `modulos-empresa-historial.test.ts`: los dos «… no escribe ni registra nada» |
+
+### Mutación probada
+
+Se borró el `appendAccion` de `encender` y se restauró el archivo después:
+- `escrituras-cubiertas` rojo: «ModulosEmpresaRepository.ts#encender registra su accion en la misma
+  transaccion»;
+- `modulos-empresa-historial.test.ts`: 7 de 7 rojos.
+
+### Salida
+
+- `vitest run tests/unit/services/modulos-empresa-service.test.ts tests/unit/actions/modulos-empresa.composition-root.test.ts tests/unit/guards/superficie-de-uso.guardia.test.ts`:
+  `Test Files 3 passed (3) · Tests 45 passed (45)`.
+- `vitest run tests/unit/services/modulos-empresa-service.test.ts tests/unit/actions/modulos-empresa.composition-root.test.ts tests/unit/historial-accion`
+  (incluye el choke point de `appendAccion`): `Test Files 4 passed (4) · Tests 117 passed (117)`.
+- `vitest run` de los guardias `escrituras-cubiertas`, `punto-unico`, `plataforma-solo-en-lista` y `modulos-reparto`:
+  `Test Files 4 passed (4) · Tests 126 passed | 4 expected fail (130)`.
+- Integración sobre `logistic_sl23b`: `modulos-empresa-historial.test.ts` 7/7 y `organizacion-modulo.test.ts`
+  9/9. `historial-accion-atomicidad.test.ts` sale rojo por datos («la tabla `orden` esta vacia», pide
+  `seed-zonas`), no por este cambio, y ya estaba en `tests/baseline-rojos.json`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `0 errors, 231 warnings` (los de antes); eslint de los archivos de T6: sin avisos.
+- `pnpm run test:guardias`: `Test Files 1 failed | 309 passed | 2 skipped (312) · Tests 4 failed | 4300 passed | 4 expected fail | 20 skipped`.
+  El único rojo es `dependencias-declaradas-presentes` (baseline). `historial-accion-escrituras-cubiertas`
+  ya está en verde.
+
+Veredicto: T6 hecho y en verde; queda un `@sin-superficie` temporal en `fijarModuloEmpresaAction`, que T7 retira.

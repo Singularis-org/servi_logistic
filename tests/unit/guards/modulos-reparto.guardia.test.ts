@@ -67,7 +67,6 @@ import {
  */
 const ANUNCIADAS: readonly PiezaAnunciada[] = [
   { tabla: "ruta", clave: "/plataforma/empresas/[organizacionId]", task: "T7" },
-  { tabla: "action", clave: "modulos-empresa", task: "T6" },
 ];
 
 const disco = piezasDelDisco();
