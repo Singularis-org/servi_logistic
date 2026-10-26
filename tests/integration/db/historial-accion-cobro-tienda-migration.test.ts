@@ -424,6 +424,10 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "integracion_probada",
       "integracion_token_regenerado",
       "integracion_desconectada",
+      // SL-23 (2026-10-26): el rastro de los modulos de una empresa. Su migracion:
+      // `20261026120100_historial_accion_modulos`.
+      "modulo_activado",
+      "modulo_desactivado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -432,11 +436,11 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
     );
     expect([...entidadesAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_ENTIDADES]
-        // ficha 459: las dos entidades de sus documentos, apendidas despues; 457 y SL-36, una cada una.
+        // ficha 459: las dos entidades de sus documentos, apendidas despues; 457, SL-36 y SL-23, una cada una.
         .filter(
           (e) =>
             e !== ENTIDAD_NUEVA &&
-            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion"].includes(e),
+            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo"].includes(e),
         )
         .sort(),
     );

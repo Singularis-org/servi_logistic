@@ -18,7 +18,7 @@
 
 ## Tanda 1 — Datos (depende de T0)
 
-- [ ] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27).
+- [x] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27).
   - Las tres carpetas, cada una con su `migration.sql` y su `down.sql`.
   - `db/schema.prisma`: `OrganizacionModulo`, `ModuloApagable`, `Organizacion.modulos`,
     `JobEstado.descartado`, y los dos `HistorialAccionTipo` y el `HistorialAccionEntidad` nuevos.
@@ -28,7 +28,7 @@
     - `migracion-sl23-ida-y-vuelta.test.ts` está en verde: backfill sobre dos empresas previas,
       nombres en español, descarte y vuelta atrás;
     - `organizacion-en-modelos`, `rls-por-empresa` y `fk-misma-empresa` están en verde.
-- [ ] **T2 — RLS y aislamiento de la tabla** (R4, R6, R7, R25).
+- [x] **T2 — RLS y aislamiento de la tabla** (R4, R6, R7, R25).
   - `tests/integration/db/organizacion-modulo.test.ts`, con dos empresas:
     - cada una ve solo sus filas;
     - `INSERT` y `DELETE` con `servi_app` dan `42501`;
