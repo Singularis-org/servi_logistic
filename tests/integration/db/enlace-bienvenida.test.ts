@@ -61,7 +61,7 @@ function servicio(cliente: PrismaClient): PasswordResetService {
   return new PasswordResetService(
     new UserRepository(cliente),
     new EmailOtpChallengeRepository(cliente),
-    { emitir: vi.fn() },
+    { sender: { enviar: vi.fn() }, baseUrl: null },
     new ResetRateLimiter(),
     loadAuthConfig(),
   );

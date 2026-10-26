@@ -9,10 +9,9 @@ import { PremioRankingRepository } from "@/lib/repositories/PremioRankingReposit
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
-import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import { PasswordResetService } from "@/lib/services/PasswordResetService";
 import { verifyPassword } from "@/lib/utils/password";
-import type { IEmailProvider, SendOtpCodeParams } from "@/lib/interfaces/external/IEmailProvider";
+import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
@@ -259,10 +258,14 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(r.estado).toBe("creada");
     if (r.estado !== "creada") return;
 
-    const enviados: SendOtpCodeParams[] = [];
-    const correo: IEmailProvider = { sendOtpCode: async (p) => void enviados.push(p) };
+    // SL-18 (R20): la recuperación ya no va por código, sino por un enlace por cuenta (design §4.1).
+    const enviados: EmailMessage[] = [];
+    const correo = {
+      sender: { enviar: async (m: EmailMessage) => (enviados.push(m), { messageId: null }) },
+      baseUrl: "https://app.example.test",
+    };
     const otpRepo = new EmailOtpChallengeRepository(app);
-    const reset = new PasswordResetService(new UserRepository(app), otpRepo, new OtpChallengeIssuer(otpRepo, correo));
+    const reset = new PasswordResetService(new UserRepository(app), otpRepo, correo);
     const nueva = `Nueva-${RUN}-Clave!9`;
 
     // Recuperar contraseña corre sin sesión y sin empresa: en plataforma, igual que T2.1.
@@ -270,7 +273,8 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
       await reset.solicitar({ email, deviceHash: "dispositivo-test", ipAddress: "127.0.0.1" });
       expect(enviados).toHaveLength(1);
       expect(enviados[0].to).toBe(email);
-      return reset.restablecer({ email, code: enviados[0].code, newPassword: nueva, ipAddress: "127.0.0.1" });
+      const enlace = /#enlace=([^\s"<]+)/.exec(enviados[0].text)![1];
+      return reset.crearContrasenaConEnlace({ enlace, newPassword: nueva, ipAddress: "127.0.0.1" });
     });
 
     expect(resultado).toEqual({ status: "ok" });

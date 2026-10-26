@@ -59,6 +59,8 @@ const VARIABLES = [
   "SMTP_PASSWORD",
   "SMTP_FROM",
   "AUTH_OTP_DEBUG_LOG",
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
 ] as const;
 
 const EMAIL = "maestro-ficticio@example.test";
@@ -72,6 +74,8 @@ beforeEach(() => {
     original[v] = process.env[v];
     delete process.env[v];
   }
+  // SL-18 (design §4.1): sin URL base la recuperacion no emite enlaces ni envia; aqui hay una.
+  process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });

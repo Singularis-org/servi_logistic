@@ -48,11 +48,7 @@ import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { isSessionActive } from "@/lib/auth/session-guard";
 import { login, verifyChallenge } from "@/lib/actions/auth";
-import {
-  restablecerContrasena,
-  solicitarRecuperacion,
-  verificarCodigoRecuperacion,
-} from "@/lib/actions/password-reset";
+import { solicitarRecuperacion } from "@/lib/actions/password-reset";
 import type { IAuthService } from "@/lib/interfaces/services/IAuthService";
 import type { IPasswordResetService } from "@/lib/interfaces/services/IPasswordResetService";
 
@@ -285,34 +281,22 @@ describe("login, OTP y recuperacion en plataforma (R15, R36)", () => {
     expect(vistos).toEqual([LOGIN, LOGIN]);
   });
 
-  it("los tres pasos de recuperacion llaman al servicio dentro de comoPlataforma", async () => {
+  // SL-18 (R20): los pasos del código ya no llegan al servicio; el canje del enlace prueba su
+  // contexto de plataforma en `tests/unit/password-reset-enlace-action.test.ts`.
+  it("la solicitud de recuperacion llama al servicio dentro de comoPlataforma", async () => {
     const vistos: Array<ContextoDatos | undefined> = [];
     const service: IPasswordResetService = {
       solicitar: vi.fn(async () => {
         vistos.push(contextoActual());
         return { status: "ok" as const };
       }),
-      verificarCodigo: vi.fn(async () => {
-        vistos.push(contextoActual());
-        return { status: "invalid_or_expired" as const };
-      }),
-      restablecer: vi.fn(async () => {
-        vistos.push(contextoActual());
-        return { status: "invalid_or_expired" as const };
-      }),
       emitirEnlaceBienvenida: vi.fn(),
       anularEnlaceBienvenida: vi.fn(),
       crearContrasenaConEnlace: vi.fn(),
     };
-    const deps = { service, getContext: async () => CONTEXTO };
 
-    await solicitarRecuperacion({ email: "ana@example.com" }, deps);
-    await verificarCodigoRecuperacion({ email: "ana@example.com", code: "123456" }, deps);
-    await restablecerContrasena(
-      { email: "ana@example.com", code: "123456", password: "Clave-Fuerte-2026!", confirmPassword: "Clave-Fuerte-2026!" },
-      deps,
-    );
+    await solicitarRecuperacion({ email: "ana@example.com" }, { service, getContext: async () => CONTEXTO });
 
-    expect(vistos).toEqual([LOGIN, LOGIN, LOGIN]);
+    expect(vistos).toEqual([LOGIN]);
   });
 });

@@ -20,8 +20,6 @@ function servicio(outcome: ResetOutcome = { status: "ok" }) {
   });
   const service: IPasswordResetService = {
     solicitar: vi.fn(),
-    verificarCodigo: vi.fn(),
-    restablecer: vi.fn(),
     emitirEnlaceBienvenida: vi.fn(),
     anularEnlaceBienvenida: vi.fn(),
     crearContrasenaConEnlace: crear,

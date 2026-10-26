@@ -11,8 +11,9 @@ import { NOMBRE_HEREDADO } from "@/tests/fixtures/nombre-heredado";
 
 // SL-41 (R7, R11, R35) — lo que NO puede llevar ningún correo de la app, comprobado sobre los tres
 // mensajes ya renderizados: el OTP del login, el de «recuperar contraseña» y la bienvenida. Los dos
-// OTP se capturan en el transporte, al final de su camino real (emisor de OTP y servicio de
+// primeros se capturan en el transporte, al final de su camino real (emisor de OTP y servicio de
 // recuperación), y no llamando a la plantilla: así cuenta todo lo que se añada por el camino.
+// SL-18 (R16, R20): «recuperar contraseña» ya no manda un código, sino un enlace por cuenta.
 
 const SMTP_PASSWORD_DE_PRUEBA = "clave-smtp-de-prueba-9f3k2q";
 const SECRETO_ENLACE = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE";
@@ -79,22 +80,25 @@ beforeAll(async () => {
     hashes: [...hashesLogin, passwordHashDelUsuario],
   });
 
-  // 2. OTP de «recuperar contraseña», por `PasswordResetService.solicitar`.
+  // 2. «Recuperar contraseña», por `PasswordResetService.solicitar`: un enlace por cuenta (SL-18).
   const recuperacion: EmailMessage[] = [];
   const hashesRecuperacion: string[] = [];
-  const otpRepo = otpRepoDoble(hashesRecuperacion);
   await new PasswordResetService(
     {
-      findCuentasPorEmail: vi.fn().mockResolvedValue([{ id: "usr-1", email: "ana@example.com", passwordHash: passwordHashDelUsuario }]),
+      findCuentasPorEmail: vi.fn().mockResolvedValue([
+        { id: "usr-1", email: "ana@example.com", organizacionId: "org-1", empresaNombre: "Mensajería Rápida", passwordHash: passwordHashDelUsuario },
+      ]),
       updatePasswordHash: vi.fn(),
     },
-    otpRepo,
-    new OtpChallengeIssuer(otpRepo, new EmailNotificacionProvider(transporteEspia(recuperacion))),
+    otpRepoDoble(hashesRecuperacion),
+    { sender: transporteEspia(recuperacion), baseUrl: "https://app.example.com" },
   ).solicitar({ email: "ana@example.com", deviceHash: "hash-device", ipAddress: "1.2.3.4" });
+  const urlRecuperacion = /(https:\S+#enlace=\S+)/.exec(recuperacion[0].text)![1];
+  const [idRecuperacion, secretoRecuperacion] = urlRecuperacion.split("#enlace=")[1].split(".");
   capturados.push({
-    nombre: "OTP de recuperar contraseña",
+    nombre: "recuperar contraseña",
     mensaje: recuperacion[0],
-    secretosDelAsunto: [codigoDe(recuperacion[0])],
+    secretosDelAsunto: [urlRecuperacion, secretoRecuperacion, idRecuperacion, "#enlace="],
     hashes: [...hashesRecuperacion, passwordHashDelUsuario],
   });
 
@@ -127,7 +131,7 @@ describe("correos sin secretos", () => {
   it("se capturaron los tres correos", () => {
     expect(capturados.map((c) => c.nombre)).toEqual([
       "OTP del login",
-      "OTP de recuperar contraseña",
+      "recuperar contraseña",
       "bienvenida del maestro",
     ]);
     for (const c of capturados) expect(c.mensaje.html?.length ?? 0).toBeGreaterThan(0);
