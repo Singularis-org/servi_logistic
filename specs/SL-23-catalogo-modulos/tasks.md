@@ -1,7 +1,12 @@
 # SL-23 — catalogo-modulos · tasks.md
 
-> Requisitos R1–R33 en `requirements.md`; el cómo, en `design.md`. El reparto de `design.md > §3`
+> Requisitos R1–R34 en `requirements.md`; el cómo, en `design.md`. El reparto de `design.md > §3`
 > lo aprobó el humano el 2026-10-26, con los cierres en el núcleo y el módulo «Wallet» (`wallet`).
+>
+> **Reapertura del 2026-10-26 (durante la implementación).** El humano pasó «Incidentes y
+> novedades» al núcleo (quedan 8 módulos) y fijó que sin empresa la puerta no aplica (R34). Se
+> reabren T1, T3, T4 y T5, ya commiteadas, con el ajuste marcado «Ajuste 2026-10-26» en cada una.
+> Van antes de T6–T11.
 >
 > `[P]` = puede ir en paralelo con las otras `[P]` de su tanda. Cada task cierra con
 > `pnpm run typecheck`, `pnpm run lint` y `pnpm exec vitest related --run <archivos tocados>` en
@@ -18,7 +23,12 @@
 
 ## Tanda 1 — Datos (depende de T0)
 
-- [x] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27).
+- [ ] **T1 — Migraciones y esquema** (design §4, §9; R4, R5, R7, R20, R27). *Reabierta.*
+  - **Ajuste 2026-10-26.** Quitar `incidentes_novedades` del `CREATE TYPE modulo_apagable` **en
+    sitio**, en `20261026120000_organizacion_modulo/migration.sql`, y del `enum ModuloApagable` de
+    `db/schema.prisma`. No se crea migración nueva: la migración no está mergeada. Hay que resetear
+    la base local (`logistic_sl23`) donde ya se aplicó, porque cambia su checksum. El backfill da
+    8 filas por empresa en `migracion-sl23-ida-y-vuelta.test.ts`.
   - Las tres carpetas, cada una con su `migration.sql` y su `down.sql`.
   - `db/schema.prisma`: `OrganizacionModulo`, `ModuloApagable`, `Organizacion.modulos`,
     `JobEstado.descartado`, y los dos `HistorialAccionTipo` y el `HistorialAccionEntidad` nuevos.
@@ -38,20 +48,47 @@
 
 ## Tanda 2 — Catálogo, reparto y puertas (depende de T1)
 
-- [x] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2).
+- [ ] **T3 [P] — Catálogo y reparto** (design §2, §3, §6.3; R1, R2). *Reabierta.*
+  - **Ajuste 2026-10-26.**
+    - `catalogo.ts`: sin `incidentes_novedades` en `MODULOS_APAGABLES` ni en `ORDEN_MODULOS`;
+      «Incidentes y novedades» va en `NUCLEO` (8 nombres).
+    - `reparto.ts`:
+      - `/incidentes`, `/novedades` y las actions `incidentes`, `novedades`, `habilitar-novedad`,
+        `rechazos-sla-tienda` y `gestion-desde-ayuda` pasan a `"nucleo"`;
+      - `liquidacion` y `conciliacion-satelites` también pasan a `"nucleo"` (§3.9);
+      - `CONSUMOS_ENTRE_MODULOS` gana `EnviarPlantillaWhatsappButton` (§6.3) y no lleva
+        `ReportarIncidenteModal`.
+    - `catalogo.test.ts`: 8 claves y 8 nombres de núcleo, e `incidentes_novedades` no existe.
   - `lib/modulos/catalogo.ts` y `lib/modulos/reparto.ts`, con las tablas de §3 tal cual
     (incluidas las compartidas de §3.7 y `CALCULO_CONTINUO` de §3.8) y `CONSUMOS_ENTRE_MODULOS`.
-  - `tests/unit/modulos/catalogo.test.ts`: exactamente 9 claves, iguales al enum (con `wallet`,
-    sin `wallet_cierres`), y el núcleo con sus 7 nombres (incluye «Cierres»).
+  - `tests/unit/modulos/catalogo.test.ts`: exactamente 8 claves, iguales al enum (con `wallet`,
+    sin `wallet_cierres` ni `incidentes_novedades`), y el núcleo con sus 8 nombres (incluye
+    «Cierres» e «Incidentes y novedades»).
   - *Hecho:* test en verde; `MODULO_POR_JOB` es un `Record<JobTipo, …>` que compila.
-- [x] **T4 [P] — Guardias** (design §8; R3, R28).
+- [ ] **T4 [P] — Guardias** (design §8, §3.9; R3, R28). *Reabierta.*
+  - **Ajuste 2026-10-26.** El caso (e) sigue los imports de forma transitiva desde
+    `app/(app)/<ruta>/**`, a través de `components/**` y `hooks/**`, hasta `lib/actions/*`.
+    Al fallar, nombra la cadena. Una entrada de `CONSUMOS_ENTRE_MODULOS` puede nombrar un
+    componente de `components/`. Con el reparto nuevo, el único cruce que queda por resolver en T8
+    es `EnviarPlantillaWhatsappButton`. `ReportarIncidenteModal` deja de serlo. Mutación nueva: un
+    componente de `components/` montado en una ruta del núcleo que importa una action de wallet →
+    rojo.
   - `tests/unit/guards/modulos-reparto.guardia.test.ts`, casos (a)–(f), cada uno con su
     fixture que lo pone en rojo.
   - `tests/unit/guards/modulos-sin-seed.guardia.test.ts`.
   - En esta tanda (b)–(f) **fallan a propósito**: se marcan y se ponen en verde al final de T8–T11.
     No se mergea ningún rojo.
   - *Hecho:* (a) y la de seed están en verde, y cada caso tiene su mutación probada.
-- [x] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17).
+- [ ] **T5 [P] — Puertas de lectura** (design §5.1; R9, R16, R17, R34). *Reabierta.*
+  - **Ajuste 2026-10-26 (R34).**
+    - `modulosActivos()` captura solo `EmpresaNoResuelta` y devuelve `null`, memorizado en el
+      `cache()`.
+    - Con `null`, `exigirModuloActivo` y `exigirModuloEnRuta` vuelven sin lanzar y sin
+      `notFound()`, y `moduloActivo` da `false`.
+    - Casos nuevos en `exigir-modulo.test.ts`:
+      - la lectura lanza `EmpresaNoResuelta` → ninguna puerta lanza ni llama a `notFound`;
+      - otro error → se propaga;
+      - `null` se memoriza (una sola lectura).
   - `ModulosActivosRepository` y su interfaz, `lib/modulos/exigir-modulo.ts` y
     `lib/modulos/modulo-inactivo-error.ts`.
   - `tests/fabricas/modulos.ts > puertasAbiertas()`.
@@ -84,8 +121,8 @@
   - `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` y
     `_components/ModulosEmpresa.tsx`.
   - El enlace «Módulos» en `EmpresasModule.tsx`.
-  - `tests/integration/plataforma-empresa-detalle-page.test.tsx`: superadmin ve 9 controles y el
-    núcleo sin control; los 6 roles de empresa reciben `notFound` antes de leer; empresa
+  - `tests/integration/plataforma-empresa-detalle-page.test.tsx`: superadmin ve 8 controles y el
+    núcleo (8 nombres) sin control; los 6 roles de empresa reciben `notFound` antes de leer; empresa
     inexistente → `notFound`.
   - `tests/components/ModulosEmpresa.test.tsx`: el switch llama a la action, se revierte si falla
     y se deshabilita mientras espera.
@@ -100,21 +137,30 @@
   - Consumos entre módulos (§6.3), con el flag desde el Server Component anfitrión:
     - `ChatFlotante` solo con WhatsApp encendido (`app/(app)/mis-asignaciones/reparto/page.tsx`
       y `recoger/page.tsx`);
-    - en `/wallet/mensajeros`, `PremiosRankingPanel` solo con Ranking encendido.
+    - en `/wallet/mensajeros`, `PremiosRankingPanel` solo con Ranking encendido;
+    - `EnviarPlantillaWhatsappButton` solo con WhatsApp encendido: en `/novedades`
+      (`page.tsx` → `NovedadesModule` → `NovedadAcciones`) y en `/mis-asignaciones/reparto`
+      (`RepartoModule` → `GestionarOrdenPanel`).
   - `tests/unit/auth/menu-modulos.test.ts`: oculta ítems y subítems; un desplegable vacío
     desaparece (Histórico del `admin` con WhatsApp apagado); `primerDestino` sobre lo filtrado;
-    «Cierre del día» y «Cierres del día» visibles con los 9 apagados; `adminSatelite` con Bodegas
+    «Cierre del día», «Cierres del día», «Novedades» e «Incidentes» visibles con los 8 apagados; `adminSatelite` con Bodegas
     satélite apagado aterriza en su primer destino o en Inicio (R32); superadmin sin cambios;
     identidad conservada.
+  - `tests/components/NovedadesPage.test.tsx`: con WhatsApp apagado, la acción de plantilla no se
+    pinta y el resto de `/novedades` sí.
   - *Hecho:* tests en verde; los 140 usos existentes de `itemsVisibles`/`puedeVer` siguen en verde
     sin tocarlos; caso (f) de la guardia en verde.
 - [ ] **T9 [P] — Páginas** (design §5.3; R16).
-  - `await exigirModuloEnRuta("<clave>")` como primera línea de las 26 páginas de un módulo.
+  - `await exigirModuloEnRuta("<clave>")` como primera línea de las 24 páginas de un módulo.
   - Los tests de esas páginas ganan `puertasAbiertas()`.
   - *Hecho:* caso (b) de la guardia en verde; los tests de página listados abajo en verde.
-- [ ] **T10 [P] — Actions** (design §5.3, §3.7; R17, R31, R33).
+- [ ] **T10 [P] — Actions** (design §5.1, §5.3, §3.7; R17, R31, R33, R34).
   - `await exigirModuloActivo("<clave>")` como primera sentencia de cada función exportada de
-    los 54 archivos de un módulo (`liquidacion` es núcleo y no lleva puerta); `premio-ranking-devengo` con `("wallet", "ranking")`.
+    los 48 archivos de un módulo. `liquidacion`, `conciliacion-satelites` y las 5 de Incidentes
+    y novedades son núcleo y no llevan puerta. `premio-ranking-devengo` va con
+    `("wallet", "ranking")`.
+  - R34 en `tests/integration/db/modulo-apagado-action.test.ts`: una action de wallet sin sesión
+    → `unauthorized`; con el superadmin → `forbidden`; ninguna da error interno.
   - Los tests de esas actions ganan `puertasAbiertas()`.
   - `tests/integration/db/modulo-apagado-action.test.ts`: con Ranking apagado, una action de
     ranking devuelve `forbidden` y la base no cambia; con Wallet apagado, igual con una action de
@@ -159,7 +205,7 @@
   - *Hecho:* `tests/integration/db/demo-qa.test.ts` en verde; un E2E de `reparto` y otro de
     `dinero` en verde en local.
 - [ ] **T13 — Humo de dos empresas** (design §10; R15, R16, R23, R25, R26).
-  - El superadmin enciende por la pantalla los 9 módulos de A y 8 de B (sin Ranking).
+  - El superadmin enciende por la pantalla los 8 módulos de A y 7 de B (sin Ranking).
   - `rutasDelMenuDelMaestro(apagados)`.
   - El caso de B sin Ranking y A con Ranking.
   - *Hecho:* `pnpm exec playwright test --project=aislamiento`, dos corridas seguidas sobre la
@@ -167,7 +213,7 @@
 - [ ] **T14 — Cierre.**
   - Las guardias (a)–(f) y la de seed, en verde.
   - `./init.sh` en verde en el worktree.
-  - Mapa `R1…R33 → test` y salida real de los tests en `progress/impl_SL-23.md`.
+  - Mapa `R1…R34 → test` y salida real de los tests en `progress/impl_SL-23.md`.
   - `package.json` sin dependencias nuevas (R29).
   - `docs/architecture.md > Multi-empresa` gana una viñeta SL-23: tabla, puertas y guardia.
   - *Hecho:* checklist de `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md` recorrido, sin rojos
@@ -225,8 +271,13 @@
 - `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx`
 - `app/(app)/wallet/mensajeros/_components/WalletMensajerosTabs.tsx`
 - `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx`
+- `app/(app)/novedades/page.tsx`
+- `app/(app)/novedades/_components/NovedadesModule.tsx`
+- `app/(app)/novedades/_components/NovedadAcciones.tsx`
+- `app/(app)/mis-asignaciones/_components/RepartoModule.tsx`
+- `app/(app)/mis-asignaciones/_components/GestionarOrdenPanel.tsx`
 
-### App: páginas de un módulo (26)
+### App: páginas de un módulo (24)
 - `app/(app)/analitica/page.tsx`
 - `app/(app)/monitoreo/page.tsx`
 - `app/(app)/recoleccion/page.tsx`
@@ -244,8 +295,6 @@
 - `app/(app)/mi-wallet/page.tsx`
 - `app/(app)/ranking/page.tsx`
 - `app/(app)/ranking/historico/page.tsx`
-- `app/(app)/incidentes/page.tsx`
-- `app/(app)/novedades/page.tsx`
 - `app/(app)/configuracion/plantillas/page.tsx`
 - `app/(app)/configuracion/envios-whatsapp/page.tsx`
 - `app/(app)/configuracion/envios-whatsapp/nuevo/page.tsx`
@@ -254,7 +303,7 @@
 - `app/(app)/historico/conversaciones/page.tsx`
 - `app/(app)/configuracion/api/page.tsx`
 
-### Actions de un módulo (54)
+### Actions de un módulo (48)
 - `lib/actions/analitica-financiera.ts`
 - `lib/actions/analitica-operativa.ts`
 - `lib/actions/analitica-refrescar.ts`
@@ -275,7 +324,6 @@
 - `lib/actions/abono-tienda.ts`
 - `lib/actions/aporte-capital.ts`
 - `lib/actions/como-quedo.ts`
-- `lib/actions/conciliacion-satelites.ts`
 - `lib/actions/deuda-plataforma.ts`
 - `lib/actions/efecto-movimiento.ts`
 - `lib/actions/estado-cuenta.ts`
@@ -294,11 +342,6 @@
 - `lib/actions/wallet-tienda.ts`
 - `lib/actions/ranking.ts`
 - `lib/actions/ranking-historico.ts`
-- `lib/actions/incidentes.ts`
-- `lib/actions/novedades.ts`
-- `lib/actions/habilitar-novedad.ts`
-- `lib/actions/rechazos-sla-tienda.ts`
-- `lib/actions/gestion-desde-ayuda.ts`
 - `lib/actions/chat-whatsapp.ts`
 - `lib/actions/envios-whatsapp.ts`
 - `lib/actions/historico-conversaciones.ts`
@@ -373,8 +416,7 @@
 - `tests/components/WalletDeudaPlataformaSL45.test.tsx`
 - `tests/components/RankingPage.test.tsx`
 - `tests/components/RankingHistoricoPage.test.tsx`
-- `tests/components/IncidentesPage.test.tsx`
-- `tests/components/NovedadesPage.test.tsx`
+- `tests/components/NovedadesPage.test.tsx` (flag de WhatsApp para la acción de plantilla)
 - `tests/components/ConfiguracionApiPage.test.tsx`
 - `tests/components/ConfiguracionPlantillasPage.test.tsx`
 - `tests/components/ConfiguracionEnviosWhatsappPage.test.tsx`
@@ -386,6 +428,5 @@
 - `tests/integration/wallet-mensajeros-estado-page.test.tsx`
 - `tests/integration/wallet-satelites.test.tsx`
 - `tests/integration/mi-wallet-page.test.tsx`
-- `tests/integration/actions/novedades-pestana-por-url.test.ts`
 - `tests/unit/components/wallet-page-cobros-pendientes.test.tsx`
 - `tests/unit/actions/deuda-plataforma.composition-root.test.ts`

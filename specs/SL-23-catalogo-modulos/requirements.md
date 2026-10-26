@@ -19,7 +19,7 @@
 
 ## Requisitos (EARS)
 
-> Vocabulario. **Módulo**: uno de los 9 apagables de la primera fila de decisiones. **Núcleo**: lo
+> Vocabulario. **Módulo**: uno de los 8 apagables de la primera fila de decisiones. **Núcleo**: lo
 > que nunca se apaga. **Pieza**: una ruta de `app/(app)/`, un archivo de `lib/actions/`, un tipo de
 > job (`JobTipo`), un cron de `app/api/cron/` o un endpoint de `app/api/`. **Encendido**: hay
 > registro de activación de ese módulo para esa empresa. El reparto de cada pieza es la tabla de
@@ -31,16 +31,16 @@
 
 | R | Requisito | Test previsto |
 |---|---|---|
-| R1 | El sistema DEBE ofrecer un catálogo cerrado de exactamente 9 módulos apagables: Analítica, Monitoreo, Recolección, Bodegas satélite, Wallet, Ranking, Incidentes y novedades, WhatsApp y API e integraciones. Ese catálogo vive en el código y ninguna pantalla ni petición puede añadir, quitar ni renombrar un módulo. | `tests/unit/modulos/catalogo.test.ts` |
-| R2 | El sistema DEBE tratar Inicio, Órdenes, Entregas, Cierres, Usuarios, Tarifas y Ayuda como núcleo: están disponibles para toda empresa y no hay forma de apagarlos (no aparecen como apagables ni se aceptan en una petición de apagado). | `tests/unit/modulos/catalogo.test.ts`; `tests/unit/services/modulos-empresa-service.test.ts` |
-| R3 | El sistema DEBE asignar cada pieza al núcleo, a exactamente uno de los 9 módulos o, solo para las piezas listadas como compartidas en `design.md > §3.7`, a exactamente los dos módulos que allí se nombran. SI existe una pieza sin asignar, o una asignación que nombra una pieza inexistente, ENTONCES la verificación del gate DEBE fallar nombrando la pieza. | `tests/unit/guards/modulos-reparto.guardia.test.ts` |
+| R1 | El sistema DEBE ofrecer un catálogo cerrado de exactamente 8 módulos apagables: Analítica, Monitoreo, Recolección, Bodegas satélite, Wallet, Ranking, WhatsApp y API e integraciones. Ese catálogo vive en el código y ninguna pantalla ni petición puede añadir, quitar ni renombrar un módulo. | `tests/unit/modulos/catalogo.test.ts` |
+| R2 | El sistema DEBE tratar Inicio, Órdenes, Entregas, Cierres, Incidentes y novedades, Usuarios, Tarifas y Ayuda como núcleo: están disponibles para toda empresa y no hay forma de apagarlos (no aparecen como apagables ni se aceptan en una petición de apagado). | `tests/unit/modulos/catalogo.test.ts`; `tests/unit/services/modulos-empresa-service.test.ts` (`incidentes_novedades` rechazado como fuera del catálogo) |
+| R3 | El sistema DEBE asignar cada pieza al núcleo, a exactamente uno de los 8 módulos o, solo para las piezas listadas como compartidas en `design.md > §3.7`, a exactamente los dos módulos que allí se nombran. SI existe una pieza sin asignar, o una asignación que nombra una pieza inexistente, ENTONCES la verificación del gate DEBE fallar nombrando la pieza. | `tests/unit/guards/modulos-reparto.guardia.test.ts` |
 
 ### Estado por empresa
 
 | R | Requisito | Test previsto |
 |---|---|---|
 | R4 | El sistema DEBE considerar un módulo encendido para una empresa si y solo si existe su registro de activación para esa empresa. Sin registro, el módulo está apagado. | `tests/integration/db/organizacion-modulo.test.ts` |
-| R5 | CUANDO se aplica la migración de esta feature, el sistema DEBE dejar encendidos los 9 módulos para cada empresa que exista en ese momento. | `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts` |
+| R5 | CUANDO se aplica la migración de esta feature, el sistema DEBE dejar encendidos los 8 módulos para cada empresa que exista en ese momento. | `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts` |
 | R6 | CUANDO se da de alta una empresa después de la migración, el sistema DEBE crearla sin ningún módulo encendido: solo con el núcleo. | `tests/integration/db/organizacion-modulo.test.ts` (alta por `OrganizacionService`) |
 | R7 | El sistema DEBE impedir que una empresa lea la activación de otra y que escriba cualquier activación, incluida la suya, por cualquier vía. Eso incluye el SQL a mano con el rol de la app. | `tests/integration/db/organizacion-modulo.test.ts` (dos empresas; `INSERT`/`DELETE` con `servi_app` → `42501`) |
 
@@ -48,7 +48,7 @@
 
 | R | Requisito | Test previsto |
 |---|---|---|
-| R8 | CUANDO el superadmin abre el detalle de una empresa desde `/plataforma/empresas`, el sistema DEBE mostrar los 9 módulos con su estado (encendido o apagado), cada uno con su control, y el núcleo como siempre encendido y sin control. | `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
+| R8 | CUANDO el superadmin abre el detalle de una empresa desde `/plataforma/empresas`, el sistema DEBE mostrar los 8 módulos con su estado (encendido o apagado), cada uno con su control, y el núcleo como siempre encendido y sin control. | `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
 | R9 | CUANDO el superadmin enciende o apaga un módulo de una empresa, el sistema DEBE guardar el nuevo estado y aplicarlo desde la siguiente petición de esa empresa, sin esperar a que caduque ninguna caché. | `tests/unit/services/modulos-empresa-service.test.ts`; `tests/integration/db/organizacion-modulo.test.ts` |
 | R10 | SI quien pide ver, encender o apagar los módulos de una empresa no es el superadmin (incluido el `maestro` de esa misma empresa), ENTONCES el sistema DEBE responder `forbidden` sin leer ni escribir nada. La comprobación vive en el servicio. | `tests/unit/services/modulos-empresa-service.test.ts` |
 | R11 | SI la petición nombra una empresa que no existe o un módulo que no está en el catálogo, ENTONCES el sistema DEBE rechazarla sin escribir nada. | `tests/unit/services/modulos-empresa-service.test.ts` |
@@ -75,6 +75,7 @@
 | R31 | El sistema DEBE ejecutar el corte diario, crear el cierre `vencido`, aplicar el bloqueo por cierre pendiente y ofrecer «Cierre del día» y «Cierres del día» a toda empresa, sea cual sea el estado de sus módulos. Desde «Cierres del día», el sistema DEBE permitir registrar y anular el pago al mensajero y a la tienda, y al aprobar un cierre DEBE registrar sus movimientos de caja, aunque «Wallet» esté apagado. | `tests/integration/db/nucleo-sin-modulos.test.ts` (empresa sin ningún módulo encendido: el corte crea el `vencido`, el bloqueo aplica, la action de cierre del día funciona, aprobar un cierre escribe sus movimientos de caja y `registrarPagoMensajeroAction` registra el pago); `tests/components/CierresAdminPage.test.tsx` («Pago al mensajero» y la oferta de pago visibles con Wallet apagado) |
 | R32 | MIENTRAS «Bodegas satélite» esté apagado para una empresa, CUANDO un `adminSatelite` de esa empresa inicia sesión, el sistema DEBE llevarlo al primer destino que le quede visible, o a Inicio si no le queda ninguno, sin error. El sistema NO DEBE impedir que esa empresa tenga usuarios `adminSatelite`. | `tests/unit/auth/menu-modulos.test.ts` |
 | R33 | MIENTRAS alguno de los dos módulos de una pieza compartida (`design.md > §3.7`) esté apagado para una empresa, el sistema DEBE tratar esa pieza como apagada: su action responde `forbidden`, su endpoint responde 403 `modulo_inactivo` y la pantalla anfitriona no la pinta. | `tests/unit/modulos/exigir-modulo.test.ts`; `tests/unit/api/api-key-modulo-inactivo.test.ts` (`/api/ordenes/api-key/analitica` con Analítica apagada); `tests/unit/guards/modulos-reparto.guardia.test.ts` (caso c con dos claves) |
+| R34 | SI una página o una action de un módulo se invoca sin empresa resuelta para la petición (sin sesión, o con el superadmin, que no tiene empresa), ENTONCES la puerta de módulo NO DEBE intervenir: el sistema DEBE responder exactamente lo que respondía antes de esta feature (la action sin sesión, `unauthorized`; la página sin sesión, lo que ya hacía; el superadmin, el 404 o el `forbidden` de su rol) y NUNCA un error interno. | `tests/unit/modulos/exigir-modulo.test.ts` (lectura que lanza `EmpresaNoResuelta` → ninguna puerta lanza ni llama a `notFound`; cualquier otro error se propaga); `tests/integration/db/modulo-apagado-action.test.ts` (action de wallet sin sesión → `unauthorized`; con el superadmin → `forbidden`; ninguna da error interno) |
 
 ### Verificación y forma
 
@@ -89,7 +90,9 @@
 
 | Decisión (fila) | Requisitos |
 |---|---|
-| ¿Qué se puede apagar? (revisada 2026-10-26: cierres al núcleo) | R1, R2, R3, R31 |
+| ¿Qué se puede apagar? (revisada 2026-10-26: cierres e incidentes y novedades al núcleo) | R1, R2, R3, R31 |
+| ¿«Incidentes y novedades» es apagable? | R1, R2, R27 (el enum de la base tiene 8 valores) |
+| Puerta de módulo sin empresa | R34 |
 | ¿El catálogo crece sin desarrollo? | R1, R4 |
 | ¿Quién enciende y apaga? | R10, R14 |
 | ¿Con qué módulos nace una empresa? | R5, R6 |
@@ -115,14 +118,21 @@
 
 ## Preguntas abiertas
 
-Ninguna. P1–P6 y el reparto de `design.md > §3` los resolvió el humano al aprobar el spec el
-2026-10-26 (filas fechadas abajo).
+P1–P6 y el reparto de `design.md > §3` los resolvió el humano al aprobar el spec el 2026-10-26
+(filas fechadas abajo).
+
+- **P7 — `conciliacion-satelites` al núcleo (a confirmar).** `/cierres-admin` monta sus acciones
+  (marcar, corregir y revertir la consolidación recibida de un cierre de bodega satélite).
+  Siguiendo la decisión sobre `liquidacion`, `spec_author` la pasó al núcleo como pieza mixta
+  (`design.md > §3.9`): sigue disponible desde Cierres con Wallet apagado. Si el humano prefiere
+  ocultarla, cambia una fila de `reparto.ts` y una entrada de `CONSUMOS_ENTRE_MODULOS`. No
+  bloquea T6–T11.
 
 ## Decisiones cerradas (no reabrir)
 
 | Fecha | Pregunta | Decisión |
 |---|---|---|
-| 2026-10-26 | ¿Qué se puede apagar? | 9 módulos apagables: Analítica; Monitoreo; Recolección; Bodegas satélite (`/recepcion-satelite`, `/mi-bodega`); Wallet (`/wallet`, `/mi-wallet`); Ranking; Incidentes y novedades; WhatsApp (chat, plantillas, envíos automáticos, histórico de conversaciones); API e integraciones (API keys, webhooks, carga por API). El núcleo nunca se apaga: Inicio, Órdenes, Entregas, Cierres (`/cierre-dia`, `/cierres-admin`, sus actions, el `corte-diario`, el cierre `vencido` y el bloqueo por cierre pendiente), Usuarios, Tarifas y Ayuda. **Revisada por el humano al aprobar el spec (2026-10-26):** el módulo era «Wallet y cierres»; «los cierres son parte del núcleo». |
+| 2026-10-26 | ¿Qué se puede apagar? | 8 módulos apagables: Analítica; Monitoreo; Recolección; Bodegas satélite (`/recepcion-satelite`, `/mi-bodega`); Wallet (`/wallet`, `/mi-wallet`); Ranking; WhatsApp (chat, plantillas, envíos automáticos, histórico de conversaciones); API e integraciones (API keys, webhooks, carga por API). El núcleo nunca se apaga: Inicio, Órdenes, Entregas, Cierres (`/cierre-dia`, `/cierres-admin`, sus actions, el `corte-diario`, el cierre `vencido` y el bloqueo por cierre pendiente), Incidentes y novedades (`/incidentes`, `/novedades`, reportar incidente desde Órdenes, y sus actions, jobs y crons), Usuarios, Tarifas y Ayuda. **Revisada dos veces por el humano el 2026-10-26:** al aprobar el spec, el módulo «Wallet y cierres» pasó a «Wallet» («los cierres son parte del núcleo»); durante la implementación, «Incidentes y novedades» pasó entero al núcleo y quedaron 8 módulos. |
 | 2026-10-26 | ¿El catálogo crece sin desarrollo? | No. Un módulo nuevo exige código, así que el catálogo es cerrado y vive en el código. Solo la activación por empresa va a la base. |
 | 2026-10-26 | ¿Quién enciende y apaga? | Solo el superadmin, validado en el service con test. El maestro no puede. Se hereda de SL-40: la excepción por empresa la escribe solo el superadmin. |
 | 2026-10-26 | ¿Con qué módulos nace una empresa? | Las empresas que existen al desplegar quedan con todo encendido (lo hace la migración). Las que se creen después nacen solo con el núcleo. |
@@ -142,6 +152,8 @@ Ninguna. P1–P6 y el reparto de `design.md > §3` los resolvió el humano al ap
 | 2026-10-26 | P5 — ¿Piezas de dos módulos? | Exigen los dos módulos encendidos. |
 | 2026-10-26 | P6 — ¿Webhook entrante de WhatsApp con el módulo apagado? | Responde 200 a Meta sin guardar ni encolar. |
 | 2026-10-26 | Reparto de piezas (`design.md > §3`) | Aprobado con los cambios de esta fecha. |
-| 2026-10-26 | Decisiones de diseño | Se aprueban tal cual: 403 con `code: "FORBIDDEN"` y `details.codigo = "modulo_inactivo"`; FK de `organizacion_modulo` con `ON DELETE CASCADE`; las fábricas de empresa encienden los 9 módulos por defecto. |
+| 2026-10-26 | Decisiones de diseño | Se aprueban tal cual: 403 con `code: "FORBIDDEN"` y `details.codigo = "modulo_inactivo"`; FK de `organizacion_modulo` con `ON DELETE CASCADE`; las fábricas de empresa encienden todos los módulos del catálogo por defecto (8 desde la revisión del catálogo del 2026-10-26). |
 | 2026-10-26 | Choque de archivos con SL-43 (Carlos Restrepo) | Aceptado por el humano. |
 | 2026-10-26 | ¿Dónde va la liquidación (pagos al mensajero y a la tienda)? | Al núcleo. Pagar desde `/cierres-admin` está siempre disponible, con Wallet apagado o no, y aprobar un cierre registra sus movimientos de caja igual. Wallet apagado solo oculta `/wallet`, `/mi-wallet` y sus actions propias. |
+| 2026-10-26 | ¿«Incidentes y novedades» es apagable? | No: pasa entero al núcleo (ver fila 1). El enum `modulo_apagable` se corrige en su propia migración, que aún no está mergeada; no hay migración nueva. |
+| 2026-10-26 | ¿Qué hace la puerta de módulo sin empresa (sin sesión, superadmin)? | No aplica, «como hoy»: la action sin sesión sigue respondiendo `unauthorized` y la página hace lo que ya hacía; el superadmin recibe lo que ya recibía por su rol (404 o `forbidden`). Nunca un error interno por `EmpresaNoResuelta`. |

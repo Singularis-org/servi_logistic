@@ -1,7 +1,8 @@
 # SL-23 — catalogo-modulos · design.md
 
-> Requisitos en `requirements.md` (R1–R33). Aprobado por el humano el 2026-10-26, con el cambio
-> de catálogo de esa fecha (cierres al núcleo) y las respuestas a P1–P6 aplicadas aquí.
+> Requisitos en `requirements.md` (R1–R34). Aprobado por el humano el 2026-10-26, con los cambios
+> de catálogo de esa fecha (cierres e Incidentes y novedades al núcleo: 8 módulos), las respuestas
+> a P1–P6 y la puerta sin empresa (§5.1) aplicados aquí.
 
 ## Lo que ya existe
 
@@ -26,12 +27,12 @@ Grep/Read.
 | Tabla «una fila = sí, sin fila = no» por empresa | `distrito_zona_especial` (SL-38) | Se copia su forma (§4.1) |
 | Escritura solo por el superadmin con `REVOKE` a `servi_app` | `cobro_plataforma_movimiento` (SL-40 §3.3–3.4) | Se copia el `REVOKE` (R7) |
 | Pantalla «Empresas» del superadmin (listado con acciones por fila; no hay página de detalle) | `app/(app)/plataforma/empresas/page.tsx`, `_components/EmpresasModule.tsx` | Se añade la página de detalle y un enlace desde la fila (§7) |
-| Fábricas de empresa por el servicio de alta | `tests/fabricas/empresa-y-usuarios.ts > crearEmpresa`, `tests/fabricas/e2e.ts > crearEmpresaE2E` | Encienden los 9 módulos por defecto, para que E2E y demo sigan como hoy (§9) |
+| Fábricas de empresa por el servicio de alta | `tests/fabricas/empresa-y-usuarios.ts > crearEmpresa`, `tests/fabricas/e2e.ts > crearEmpresaE2E` | Encienden todos los módulos (8) por defecto, para que E2E y demo sigan como hoy (§10) |
 | Borrado de la demo de QA, genérico por `organizacion_id` | `scripts/demo-qa/borrar.ts` (vía `information_schema`) | No hay que tocarlo: la tabla nueva tiene `organizacion_id` |
 
 ## 1. Resumen
 
-- **Catálogo:** un enum de Postgres `modulo_apagable` con los 9 valores, más un catálogo en TS
+- **Catálogo:** un enum de Postgres `modulo_apagable` con los 8 valores, más un catálogo en TS
   (`lib/modulos/catalogo.ts`) tipado como `Record<ModuloApagable, …>`. El typecheck impide que
   diverjan.
 - **Estado:** la tabla de negocio `organizacion_modulo`, con una fila por empresa y módulo
@@ -60,15 +61,17 @@ que el `Sidebar` cliente pueda importarlo.
 | `bodegas_satelite` | Bodegas satélite |
 | `wallet` | Wallet |
 | `ranking` | Ranking |
-| `incidentes_novedades` | Incidentes y novedades |
 | `whatsapp` | WhatsApp |
 | `api_integraciones` | API e integraciones |
 
 - `MODULOS_APAGABLES: Record<ModuloApagable, { nombre: string; descripcion: string }>`. El
   orden de pantalla es una tupla aparte, `ORDEN_MODULOS`.
-- `NUCLEO = ["Inicio", "Órdenes", "Entregas", "Cierres", "Usuarios", "Tarifas", "Ayuda"] as
-  const`. Solo sirve para mostrarlo; no es una clave de base. «Cierres» entró al aprobar el spec
-  (2026-10-26).
+- `NUCLEO = ["Inicio", "Órdenes", "Entregas", "Cierres", "Incidentes y novedades", "Usuarios",
+  "Tarifas", "Ayuda"] as const`. Solo sirve para mostrarlo; no es una clave de base. «Cierres»
+  entró al aprobar el spec y «Incidentes y novedades» durante la implementación, los dos por
+  decisión del humano del 2026-10-26.
+- **`incidentes_novedades` no existe como valor.** Se quitó del enum en la propia migración
+  `20261026120000_organizacion_modulo`, que aún no está mergeada: no hay migración nueva (§9).
 - «Recolección» es la **recolección en tienda** del mensajero (`/recoleccion`, ficha 167).
   «Recoger en bodega» (`/mis-asignaciones/recoger`) es parte de Entregas, o sea del núcleo.
 
@@ -93,18 +96,22 @@ llamarse «Wallet» (clave `wallet`). Al núcleo van `/cierre-dia`, `/cierres-ad
 bloqueo por cierre pendiente (R31). Las piezas que mezclan wallet y cierres se repartieron así;
 las **dudosas** van con nota en §3.9.
 
-### 3.1 Rutas de `app/(app)/` (43 páginas)
+**Segundo cambio del 2026-10-26 (durante la implementación).** El humano pasó «Incidentes y
+novedades» entero al núcleo: `/incidentes`, `/novedades`, las actions `incidentes`, `novedades`,
+`habilitar-novedad`, `rechazos-sla-tienda` y `gestion-desde-ayuda`, y reportar incidente desde
+Órdenes. No tenía jobs ni crons propios. Quedan 8 módulos.
+
+### 3.1 Rutas de `app/(app)/` (44 páginas, contando la nueva de §7 y el `redirect` `/mis-asignaciones`, núcleo, que añadió T3)
 
 | Módulo | Rutas |
 |---|---|
-| núcleo | `/dashboard`, `/ordenes`, `/mis-asignaciones/reparto`, `/mis-asignaciones/recoger`, `/cierre-dia`, `/cierres-admin`, `/configuracion` (Usuarios), `/configuracion/tarifas`, `/ayuda`, `/ayuda/[...slug]`, `/historico/acciones` (P3), `/configuracion/integraciones` (P3), `/configuracion/sinpe` (P3), `/configuracion/vehiculos` (P3), `/configuracion/geografia` (plataforma), `/plataforma/empresas` (plataforma) y `/plataforma/empresas/[organizacionId]` (nueva, plataforma) |
+| núcleo | `/dashboard`, `/ordenes`, `/mis-asignaciones/reparto`, `/mis-asignaciones/recoger`, `/cierre-dia`, `/cierres-admin`, `/incidentes`, `/novedades`, `/configuracion` (Usuarios), `/configuracion/tarifas`, `/ayuda`, `/ayuda/[...slug]`, `/historico/acciones` (P3), `/configuracion/integraciones` (P3), `/configuracion/sinpe` (P3), `/configuracion/vehiculos` (P3), `/configuracion/geografia` (plataforma), `/plataforma/empresas` (plataforma) y `/plataforma/empresas/[organizacionId]` (nueva, plataforma) |
 | analitica | `/analitica` |
 | monitoreo | `/monitoreo` |
 | recoleccion | `/recoleccion` |
 | bodegas_satelite | `/recepcion-satelite`, `/recepcion-satelite/por-recibir`, `/recepcion-satelite/en-bodega`, `/mi-bodega` |
 | wallet | `/wallet`, `/wallet/tiendas`, `/wallet/tiendas/[tiendaId]`, `/wallet/mensajeros`, `/wallet/mensajeros/[mensajeroId]`, `/wallet/satelites`, `/wallet/satelites/[zonaId]`, `/mi-wallet` |
 | ranking | `/ranking`, `/ranking/historico` |
-| incidentes_novedades | `/incidentes`, `/novedades` |
 | whatsapp | `/configuracion/plantillas`, `/configuracion/envios-whatsapp`, `/configuracion/envios-whatsapp/nuevo`, `/configuracion/envios-whatsapp/[id]`, `/configuracion/envios-whatsapp/historial`, `/historico/conversaciones` |
 | api_integraciones | `/configuracion/api` |
 
@@ -121,13 +128,12 @@ módulo o del núcleo falla, salvo que esté en `CONSUMOS_ENTRE_MODULOS` (§6.3)
 | monitoreo (1) | `tablero-dia` |
 | recoleccion (1) | `recoleccion-tienda` |
 | bodegas_satelite (2) | `recepcion-satelite`, `envio-devolucion-central` |
-| wallet (19) | `abono-tienda`, `aporte-capital`, `como-quedo`, `conciliacion-satelites`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `pago-por-cuenta-tienda`, `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
+| wallet (18) | `abono-tienda`, `aporte-capital`, `como-quedo`, `deuda-plataforma`, `efecto-movimiento`, `estado-cuenta`, `gasto-fijo-cobro`, `gasto-fijo-plantilla`, `libro-caja-autoria`, `pago-por-cuenta-tienda`, `rechazo-tienda-cobro`, `wallet`, `wallet-anulacion`, `wallet-comprobante`, `wallet-egresos`, `wallet-filtros`, `wallet-mensajero`, `wallet-tienda` |
 | wallet + ranking (1) | `premio-ranking-devengo` (P5, §3.7) |
 | ranking (2) | `ranking`, `ranking-historico` |
-| incidentes_novedades (5) | `incidentes`, `novedades`, `habilitar-novedad`, `rechazos-sla-tienda`, `gestion-desde-ayuda` |
 | whatsapp (8) | `chat-whatsapp`, `envios-whatsapp`, `historico-conversaciones`, `plantillas`, `plantillas-sync`, `whatsapp-envio`, `informe-picking`, `informe-transito` |
 | api_integraciones (2) | `api-keys`, `webhooks` |
-| núcleo (54) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cierre-bodega` (Cierres), `cierre-dia` (Cierres; también la usan `/mis-asignaciones/*` y `/recoleccion`), `cierres-admin` (Cierres), `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `liquidacion` (Cierres, mixto: `/cierres-admin`, `/wallet/tiendas`, `/wallet/mensajeros`; decisión humana 2026-10-26, §3.9), `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
+| núcleo (60) | `auth`, `aprobacion-postulaciones`, `atencion-postulaciones-recurso`, `carga-masiva-resumen`, `cierre-bodega` (Cierres), `cierre-dia` (Cierres; también la usan `/mis-asignaciones/*` y `/recoleccion`), `cierres-admin` (Cierres), `conciliacion-satelites` (Cierres, mixto: `/cierres-admin` y `/wallet/satelites`; §3.9), `gestion-desde-ayuda` (Incidentes y novedades), `habilitar-novedad` (Incidentes y novedades), `incidentes` (Incidentes y novedades; también `/ordenes` por `ReportarIncidenteModal`), `novedades` (Incidentes y novedades), `rechazos-sla-tienda` (Incidentes y novedades), `cobertura`, `cobro-plataforma` (plataforma), `corregir-datos-cliente`, `corregir-dia-reparto`, `corregir-fecha-reprogramacion`, `descargas`, `deshacer-asignacion`, `devolucion-origen`, `devolucion-tienda` (se usa en `/ordenes`), `eliminar-orden`, `etiquetas-guia`, `filtros-ordenes`, `geografia` (plataforma), `historial-acciones`, `integraciones` (P3), `liberacion-reprogramada`, `liquidacion` (Cierres, mixto: `/cierres-admin`, `/wallet/tiendas`, `/wallet/mensajeros`; decisión humana 2026-10-26, §3.9), `manifiesto`, `mis-asignaciones`, `notificaciones`, `orden-ayuda` (mixto: `mis-asignaciones` y `novedades`), `orden-historial`, `orden-mensajero-meta`, `orden-notas`, `ordenes`, `ordenes-guia`, `order-status`, `organizaciones` (plataforma), `password-reset`, `postulacion-mensajero`, `postulacion-recurso`, `push`, `rastreo-publico` (público), `recepcion-bodega-central` (se usa en `/ordenes`), `recepcion-origen`, `recuperar-orden`, `reprogramadas-retenidas`, `resolver-novedad` (mixto: `/ordenes` y `/novedades`), `ruta-mensajero`, `sinpe-bodega` (mixto: `/mi-bodega`, `/configuracion/sinpe` y el aviso del layout), `tarifas`, `traspasar-mensajero`, `usuarios`, `usuarios-por-rol`, `vehiculos`, `vistas-filtro`, `zonas` |
 
 `lib/actions/modulos-empresa.ts` (nuevo, §7) es de plataforma, así que va al núcleo. Con él son
 109.
@@ -172,12 +178,11 @@ que corre de nuevo para la empresa.
 | Recolección | `recoleccion` |
 | Órdenes del `adminSatelite` (`/recepcion-satelite`) | `bodegas_satelite` |
 | Mi bodega | `bodegas_satelite` |
-| Novedades, Incidentes | `incidentes_novedades` |
 | Ranking | `ranking` |
 | Wallet, Mi wallet | `wallet` |
 | Configuración › API | `api_integraciones` |
 | Configuración › Plantillas, Configuración › Envíos automáticos, Histórico › Conversaciones | `whatsapp` |
-| Inicio, Órdenes, Entregas, Cierre del día, Cierres del día, Configuración › Usuarios/Tarifas/Integraciones/Vehículos/SINPE, Histórico › Acciones, Empresas, Ayuda | sin `modulo` (núcleo) |
+| Inicio, Órdenes, Entregas, Cierre del día, Cierres del día, Novedades, Incidentes, Configuración › Usuarios/Tarifas/Integraciones/Vehículos/SINPE, Histórico › Acciones, Empresas, Ayuda | sin `modulo` (núcleo) |
 
 ### 3.7 Piezas compartidas entre dos módulos (P5, R33)
 
@@ -226,8 +231,41 @@ Al reencender, la pantalla encuentra los días apagados ya calculados (R30).
   llaman a actions de wallet (`wallet`, `wallet-tienda`, `wallet-mensajero`). Hoy la sección está
   comentada en `analitica/page.tsx` (2026-08-18). Se registra en `CONSUMOS_ENTRE_MODULOS` para que,
   si vuelve, no se pinte con Wallet apagado; la guardia (e) lo exige.
-- **`adminSatelite` con Bodegas satélite apagado (P4, R32).** Le quedan «Cierres del día»
-  (núcleo) y lo que su rol vea; si no le queda nada, aterriza en Inicio.
+- **`adminSatelite` con Bodegas satélite apagado (P4, R32).** Le quedan «Cierres del día» e
+  «Incidentes» (núcleo) y lo que su rol vea; si no le queda nada, aterriza en Inicio.
+- **`ReportarIncidenteModal` en `/ordenes`.** Importa `lib/actions/incidentes`. Con Incidentes y
+  novedades en el núcleo deja de ser un consumo cruzado (era el hallazgo 1 de la Tanda 2).
+- **`conciliacion-satelites` → núcleo (mixto).** Decisión técnica derivada de la de `liquidacion`:
+  `/cierres-admin` monta `components/shared/conciliacion/ConciliacionAcciones` (marcar, corregir y
+  revertir la consolidación recibida de un cierre de bodega satélite) y `/wallet/satelites` la usa
+  para sus saldos. Igual que el pago, es parte del cierre y debe seguir disponible con Wallet
+  apagado; las lecturas de saldos de `/wallet/satelites` las sigue protegiendo la puerta de su
+  ruta. **A confirmar por el humano**; si prefiere ocultarla, va a wallet y la sección entra en
+  `CONSUMOS_ENTRE_MODULOS` con anfitriona `/cierres-admin`: cambia una fila de `reparto.ts`.
+- **Componentes de `components/` (hallazgo 3 de la Tanda 2).** No tienen módulo propio y **no van
+  en `reparto.ts`**: un componente compartido toma el módulo de la ruta que lo monta. La guardia
+  (e) sigue los imports de forma transitiva desde cada archivo de `app/(app)/<ruta>/**`, a través
+  de `components/**` (y de `hooks/**`), hasta `lib/actions/*`. Si una ruta del núcleo o de un
+  módulo X llega así a una action de un módulo Y ≠ X sin entrada en `CONSUMOS_ENTRE_MODULOS`, la
+  guardia falla y nombra la cadena (`ruta → componente → action`). Una entrada de
+  `CONSUMOS_ENTRE_MODULOS` puede nombrar un componente de `components/` como pieza. Lo que
+  aparece hoy:
+  - `components/shared/wallet/*` y `components/shared/estado-cuenta/EstadoCuenta.tsx`: solo los
+    montan `/wallet/**` y `/mi-wallet` (wallet). Sin cruce. `RegistrarMovimientoDialog` importa
+    `liquidacion` y `usuarios-por-rol`, que son núcleo: tampoco es cruce.
+  - `components/shared/conciliacion/*`: con `conciliacion-satelites` en el núcleo, sin cruce.
+  - `components/shared/EnviarPlantillaWhatsappButton.tsx` → `whatsapp-envio` (whatsapp). Lo
+    montan `/novedades` (`NovedadAcciones`) y `/mis-asignaciones/reparto` (`GestionarOrdenPanel`,
+    vía `RepartoModule`), los dos núcleo. **Es cruce**: entra en `CONSUMOS_ENTRE_MODULOS` (§6.3)
+    y no se pinta con WhatsApp apagado.
+  - Los demás (`descargas`, `manifiesto`, `notificaciones`, `push`, `sinpe-bodega`,
+    `vistas-filtro`) llaman a actions del núcleo.
+  - `lib/actions/_shared/registro-descargas.ts` (núcleo) despacha a `wallet-mensajero` y
+    `estado-cuenta` (wallet). No es UI y la guardia (e) no lo mira: esas actions llevan su propia
+    puerta, así que una descarga de datos de wallet con el módulo apagado responde `forbidden`.
+  - Alternativa descartada: asignar un módulo a cada componente en `reparto.ts`. Serían decenas de
+    filas que se desincronizan con quien los monta, y un componente montado por dos rutas de
+    módulos distintos no tendría una clasificación correcta.
 
 ## 4. Modelo de datos
 
@@ -295,8 +333,29 @@ Ninguno. El catálogo no tiene moneda, geografía, impuestos ni métodos de pago
 | Archivo | Papel |
 |---|---|
 | `lib/interfaces/repositories/IModulosActivosRepository.ts`, `lib/repositories/ModulosActivosRepository.ts` | `activos(): Promise<ModuloApagable[]>`. Un `findMany` sin `where` de empresa: lo pone la extensión y lo respalda la RLS (R7, R25). Sin empresa, falla con `EmpresaNoResuelta` |
-| `lib/modulos/exigir-modulo.ts` | `modulosActivos()`: la lista de la empresa en curso, envuelta en `cache()` de React, una consulta por petición. **No hay memo entre peticiones** (R9): a diferencia de `empresaDeLaPeticion`, este dato cambia. `moduloActivo(m)`. `exigirModuloActivo(...ms)`: lanza `ModuloInactivoError` si alguno está apagado (una clave, o dos para §3.7). `exigirModuloEnRuta(...ms)`: llama a `notFound()` si alguno está apagado. `modulosDelMenu(actor)`: un conjunto vacío para el superadmin o sin sesión, sin consulta |
+| `lib/modulos/exigir-modulo.ts` | `modulosActivos()`: la lista de la empresa en curso, envuelta en `cache()` de React, una consulta por petición. **No hay memo entre peticiones** (R9): a diferencia de `empresaDeLaPeticion`, este dato cambia. `moduloActivo(m)`. `exigirModuloActivo(...ms)`: lanza `ModuloInactivoError` si alguno está apagado (una clave, o dos para §3.7). `exigirModuloEnRuta(...ms)`: llama a `notFound()` si alguno está apagado. `modulosDelMenu(actor)`: un conjunto vacío para el superadmin o sin sesión, sin consulta. **Sin empresa (R34)**: ver la nota bajo esta tabla |
 | `lib/modulos/modulo-inactivo-error.ts` | `class ModuloInactivoError extends ForbiddenError`, con `details: { codigo: "modulo_inactivo", modulo }` y el mensaje «El módulo <nombre> no está activo para esta empresa.» |
+
+**Sin empresa, la puerta no aplica (R34; decisión del humano del 2026-10-26).**
+
+- **Problema.** Las puertas van como primera sentencia, antes de `resolveActor`. Sin sesión, o con
+  el superadmin (que no tiene empresa), `ModulosActivosRepository.activos()` lanza
+  `EmpresaNoResuelta`. La action respondería un error interno en vez de `unauthorized`, y el
+  superadmin vería un error en `/wallet` en vez de su 404.
+- **Solución.** `modulosActivos()` devuelve `ReadonlySet<ModuloApagable> | null`. Captura **solo**
+  `EmpresaNoResuelta` de la lectura y devuelve `null`, que significa «sin empresa». El `cache()`
+  memoriza también el `null`. Cualquier otro error se propaga.
+- **Efecto en las puertas.** Con `null`, `exigirModuloActivo` y `exigirModuloEnRuta` vuelven sin
+  lanzar y sin llamar a `notFound()`. La siguiente sentencia de la página o de la action
+  (`resolveActor`, la comprobación de rol) responde lo que ya respondía: `unauthorized` sin
+  sesión, y el 404 o el `forbidden` del rol para el superadmin. `moduloActivo(m)` devuelve
+  `false` con `null`.
+- **Por qué es seguro.** Sin empresa no se puede leer ni escribir ningún dato de negocio: la
+  extensión lanza `EmpresaNoResuelta` y la RLS lo respalda. La puerta no abre nada que la
+  empresa no tuviera ya cerrado.
+- **Alternativa descartada.** Resolver el actor dentro de la puerta y responder `unauthorized`
+  desde ella. Duplicaría la autenticación de cada action, cambiaría el orden de los errores que
+  hoy prueban sus tests, y la decisión pide «como hoy».
 
 ### 5.2 Escritura por el superadmin
 
@@ -420,13 +479,17 @@ el flag por props desde su Server Component. Lista inicial:
 | `app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx` (y `ChatConversacion.tsx`) | `/mis-asignaciones/*` (núcleo) | whatsapp |
 | `app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx` | `/wallet/mensajeros` (wallet) | wallet + ranking (§3.7) |
 | `app/(app)/analitica/_components/finanzas/cargar-kpis.ts` (hoy sin montar) | `/analitica` | wallet (§3.9) |
+| `components/shared/EnviarPlantillaWhatsappButton.tsx` | `/novedades` (`NovedadAcciones`) y `/mis-asignaciones/reparto` (`GestionarOrdenPanel`), núcleo | whatsapp (§3.9) |
+
+`ReportarIncidenteModal` (`/ordenes` → `lib/actions/incidentes`) **no** está en la lista: desde
+el segundo cambio del 2026-10-26 las dos piezas son núcleo.
 
 ## 7. Pantalla del superadmin (R8, R14)
 
 - **`app/(app)/plataforma/empresas/[organizacionId]/page.tsx`** (Server Component).
   - Hace `notFound()` si el actor no es `esPlataforma`, antes de leer (R14).
   - Lee `ModulosDeEmpresa` con el composition root de §5.2. Si la empresa no existe, `notFound()`.
-  - Pinta el nombre de la empresa, «Núcleo (siempre activo)» con los seis nombres, y el bloque
+  - Pinta el nombre de la empresa, «Núcleo (siempre activo)» con los nombres de `NUCLEO` (8), y el bloque
     «Módulos».
 - **`app/(app)/plataforma/empresas/[organizacionId]/_components/ModulosEmpresa.tsx`** (cliente).
   - Una fila por módulo con nombre, descripción y el `Switch` de shadcn (ya está en
@@ -441,7 +504,7 @@ el flag por props desde su Server Component. Lista inicial:
 
 | Guardia | Qué falla | R |
 |---|---|---|
-| `tests/unit/guards/modulos-reparto.guardia.test.ts` | (a) Una `page.tsx` de `app/(app)/`, un `lib/actions/*.ts`, una carpeta de `app/api/cron/` o un `route.ts` de `app/api/` sin entrada en `reparto.ts`, o una entrada sin archivo. (b) Una página de un módulo sin `exigirModuloEnRuta(<sus claves>)`, o con otras claves. (c) Una función exportada de una action de un módulo (o compartida, §3.7) sin `exigirModuloActivo(<sus claves>)` como primera sentencia. (d) Un cron de un módulo que no es de cálculo continuo y llama a `paraCadaEmpresa` sin `modulo: "<su clave>"`, o uno de cálculo continuo (§3.8) que sí lo pasa. (e) Un import de una action de un módulo desde una ruta o componente de otro módulo o del núcleo que no esté en `CONSUMOS_ENTRE_MODULOS`. (f) Un `itemsVisibles(` en `app/` | R3, R15, R16, R17, R21, R30, R33 |
+| `tests/unit/guards/modulos-reparto.guardia.test.ts` | (a) Una `page.tsx` de `app/(app)/`, un `lib/actions/*.ts`, una carpeta de `app/api/cron/` o un `route.ts` de `app/api/` sin entrada en `reparto.ts`, o una entrada sin archivo. (b) Una página de un módulo sin `exigirModuloEnRuta(<sus claves>)`, o con otras claves. (c) Una función exportada de una action de un módulo (o compartida, §3.7) sin `exigirModuloActivo(<sus claves>)` como primera sentencia. (d) Un cron de un módulo que no es de cálculo continuo y llama a `paraCadaEmpresa` sin `modulo: "<su clave>"`, o uno de cálculo continuo (§3.8) que sí lo pasa. (e) Un import, directo o transitivo a través de `components/**` y `hooks/**` (§3.9), de una action de un módulo desde una ruta de otro módulo o del núcleo que no esté en `CONSUMOS_ENTRE_MODULOS`. (f) Un `itemsVisibles(` en `app/` | R3, R15, R16, R17, R21, R30, R33 |
 | `tests/unit/guards/modulos-sin-seed.guardia.test.ts` | `scripts/seed-catalogos.ts` (el `db:seed`) nombra `organizacionModulo` u `organizacion_modulo` | R28 |
 
 Las guardias existentes que esta feature hace cumplir son `organizacion-en-modelos`,
@@ -456,7 +519,7 @@ compartida, la T0 comprueba que siguen siendo las últimas.
 
 | Carpeta | `migration.sql` | `down.sql` |
 |---|---|---|
-| `20261026120000_organizacion_modulo` | `CREATE TYPE modulo_apagable` (9 valores), la tabla, índices, FK `CASCADE`, RLS, política, `GRANT SELECT` y `REVOKE INSERT, UPDATE, DELETE` a `servi_app`, y el trigger sin cambio de empresa. Backfill (R5): `INSERT INTO organizacion_modulo (id, organizacion_id, modulo) SELECT gen_random_uuid()::text, o.id, m FROM organizacion o CROSS JOIN unnest(enum_range(NULL::modulo_apagable)) m` | `DROP TABLE organizacion_modulo; DROP TYPE modulo_apagable;` |
+| `20261026120000_organizacion_modulo` | `CREATE TYPE modulo_apagable` (8 valores, sin `incidentes_novedades`: se corrigió en esta misma migración, no mergeada, el 2026-10-26), la tabla, índices, FK `CASCADE`, RLS, política, `GRANT SELECT` y `REVOKE INSERT, UPDATE, DELETE` a `servi_app`, y el trigger sin cambio de empresa. Backfill (R5): `INSERT INTO organizacion_modulo (id, organizacion_id, modulo) SELECT gen_random_uuid()::text, o.id, m FROM organizacion o CROSS JOIN unnest(enum_range(NULL::modulo_apagable)) m` | `DROP TABLE organizacion_modulo; DROP TYPE modulo_apagable;` |
 | `20261026120100_historial_accion_modulos` | `ALTER TYPE historial_accion_tipo ADD VALUE` ×2 y `ALTER TYPE historial_accion_entidad ADD VALUE 'organizacion_modulo'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20260904120000_historial_accion_api_key_eliminada/down.sql` |
 | `20261026120200_job_estado_descartado` | `ALTER TYPE job_estado ADD VALUE 'descartado'` | Pasa los `descartado` a `done` (con `last_error` intacto) y recrea `job_estado` sin el valor. Antes borra y después vuelve a crear los índices parciales que lo nombran (los de `20260717120000_jobs_cola`) |
 
@@ -483,8 +546,8 @@ compartida, la T0 comprueba que siguen siendo las últimas.
   se añaden allí al tocarlos.
 - **`e2e/dos-empresas-humo.spec.ts`, `e2e/_dos-empresas-fixture.ts` y
   `e2e/_superadmin-fixture.ts`** (R26):
-  - tras el alta, el superadmin abre `/plataforma/empresas/<id>` y enciende por la pantalla los 9
-    módulos de A y 8 de B, todos menos `ranking`;
+  - tras el alta, el superadmin abre `/plataforma/empresas/<id>` y enciende por la pantalla los 8
+    módulos de A y 7 de B, todos menos `ranking`;
   - `rutasDelMenuDelMaestro(apagados)` excluye las rutas apagadas de B;
   - el caso nuevo: el menú de B no tiene «Ranking», `/ranking` y `/ranking/historico` muestran «No
     encontramos esta página», y A ve «Ranking» y abre `/ranking` sin error.
@@ -525,8 +588,8 @@ instalado.
 
 ## 13. Riesgos
 
-- **Volumen de puertas.** Son 26 páginas y 54 archivos de actions (tras sacar los cierres al
-  núcleo). La guardia de §8 es la red: sin
+- **Volumen de puertas.** Son 24 páginas y 48 archivos de actions (tras sacar al núcleo los
+  cierres, `liquidacion`, `conciliacion-satelites` e Incidentes y novedades). La guardia de §8 es la red: sin
   ella, una puerta olvidada es una fuga silenciosa.
 - **Una consulta más por página o action de un módulo**, cubierta por el único
   `(organizacion_id, modulo)` y memorizada por petición. El layout la hace una vez por carga.
