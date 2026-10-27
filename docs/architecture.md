@@ -89,10 +89,22 @@ esta bien hecha, no solo si "funciona".
     anterior.
   - **Lectura:** los consumidores leen con `CredencialesIntegracionService` dentro de `conEmpresa`. Nada
     derivado de una credencial (cliente, token, resultado) se cachea entre empresas (R28).
-- **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migración
-  `20261023090000_unicos_por_empresa`). Siguen globales a propósito `usuario.email`, `usuario.cedula`,
-  `orden.num_guia` (rastreo público), `api_key.key_hash` y los ids externos. Las secuencias por empresa
-  son de SL-18.
+- **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migraciones
+  `20261023090000_unicos_por_empresa` y, para `usuario`, `20261026090000_usuario_unico_por_empresa`).
+  `orden.num_guia` y `orden_num_guia_seq` siguen globales a propósito (SL-18, 2026-10-26). La guía sale
+  en la etiqueta y el QR y se rastrea sin sesión por `/paquete/[numGuia]` y por la API. Una guía
+  repetida entre empresas obligaría a pedir la empresa en el rastreo público, y la permutación de
+  `siguiente_num_guia()` ya evita que la guía revele el volumen de nadie. `usuario.email` y
+  `usuario.cedula` son únicos por empresa: una persona puede tener cuenta en varias.
+  - **Globales a propósito** (tipo `global` de `UNICOS_SIN_EMPRESA` en `lib/db/excepciones-aislamiento.ts`):
+    `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint`, `chat_mensaje.wa_message_id` y
+    `whatsapp_envio_entrega.wa_message_id`. Después de SL-17 se sumaron
+    `integracion.whatsapp_numero_id` e `integracion.whatsapp_resumen_verificacion` (SL-36: el webhook
+    de WhatsApp lleva a una sola empresa) y `usuario_un_solo_superadmin` (SL-32: un solo superadmin).
+  - El resto de los únicos sin `organizacion_id` son **anclados**: llevan una FK NOT NULL a una fila de
+    negocio, que ya es de una empresa. La guardia `unicos-por-empresa` lee las migraciones y falla si
+    un único de negocio nuevo no empieza por `organizacion_id` y no está en la lista, si una entrada
+    de la lista no existe, o si este párrafo deja de nombrar un global.
 - **Alta de empresa:** `OrganizacionService.altaEmpresa` (`lib/services/OrganizacionService.ts`, con
   `lib/repositories/OrganizacionRepository.ts`) crea, en una transacción, la organización, su podio del
   ranking y el primer maestro sin contraseña utilizable.
