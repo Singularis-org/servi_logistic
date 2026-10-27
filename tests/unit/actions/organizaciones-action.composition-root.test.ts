@@ -45,6 +45,8 @@ const tx = {
       return { id: "org-nueva" };
     }),
   },
+  // SL-20 (R6): el alta comprueba que el país existe antes de escribir.
+  pais: { findUnique: vi.fn(async () => ({ id: "CR" })) },
   tipoIdentificacion: { findUnique: vi.fn(async () => ({ id: "ti-1" })) },
   rol: { findUnique: vi.fn(async () => ({ id: "rol-maestro" })) },
   usuario: {
@@ -108,6 +110,7 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
       {
         nombre: "Envíos del Sur",
         slug: "envios-del-sur",
+        paisId: "CR",
         maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "8888", documento: "1122", tipoDocumento: "cedula" },
       },
       {
@@ -125,6 +128,10 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
     for (const c of contextos) {
       expect(c).toEqual({ tipo: "plataforma", ficha: "SL-17", motivo: "alta de empresa por el superadmin" });
     }
+    // SL-20 (R6): la organización nace en el país de la entrada, no en el DEFAULT de la columna.
+    expect(tx.organizacion.create.mock.calls[0]).toEqual([
+      { data: { nombre: "Envíos del Sur", slug: "envios-del-sur", paisId: "CR" }, select: { id: true } },
+    ]);
     expect(tx.usuario.create.mock.calls[0][0]).toMatchObject({
       data: { organizacionId: "org-nueva", rolId: "rol-maestro", estado: "activo", email: "lucia@ejemplo.test" },
     });

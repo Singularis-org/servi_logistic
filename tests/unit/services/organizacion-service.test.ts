@@ -26,6 +26,7 @@ function entradaValida() {
   return {
     nombre: "Envíos del Sur",
     slug: "envios-del-sur",
+    paisId: "CR",
     maestro: {
       nombre: "Lucía Mora",
       email: "lucia@ejemplo.test",
@@ -60,7 +61,13 @@ describe("R46 — la entrada inválida nombra el campo y no llega al repositorio
     ["teléfono vacío", (e) => ({ ...e, maestro: { ...e.maestro, telefono: "" } }), "maestro.telefono"],
     ["documento vacío", (e) => ({ ...e, maestro: { ...e.maestro, documento: " " } }), "maestro.documento"],
     ["tipo de documento vacío", (e) => ({ ...e, maestro: { ...e.maestro, tipoDocumento: "" } }), "maestro.tipoDocumento"],
-    ["sin maestro", (e) => ({ nombre: e.nombre, slug: e.slug }), "maestro"],
+    ["sin maestro", (e) => ({ nombre: e.nombre, slug: e.slug, paisId: e.paisId }), "maestro"],
+    // SL-20 (R6): el país es obligatorio y con forma de código ISO; sin él no se llega a la base.
+    ["sin país", (e) => ({ nombre: e.nombre, slug: e.slug, maestro: e.maestro }), "paisId"],
+    ["país vacío", (e) => ({ ...e, paisId: "" }), "paisId"],
+    ["país en minúsculas", (e) => ({ ...e, paisId: "cr" }), "paisId"],
+    ["país de tres letras", (e) => ({ ...e, paisId: "CRI" }), "paisId"],
+    ["país que no es texto", (e) => ({ ...e, paisId: 506 }), "paisId"],
     ["campo de más", (e) => ({ ...e, organizacionId: "otra" }), "organizacionId"],
     ["campo de más en el maestro", (e) => ({ ...e, maestro: { ...e.maestro, passwordHash: "x" } }), "maestro.passwordHash"],
   ];
@@ -137,6 +144,14 @@ describe("R44 — el maestro nace sin contraseña utilizable", () => {
   });
 });
 
+describe("SL-20 R6 — el país validado llega al repositorio", () => {
+  it("el repositorio recibe el `paisId` de la entrada, sin cambiarlo", async () => {
+    const { repo, altaEmpresa } = repoDoble();
+    await new OrganizacionService(repo).altaEmpresa({ ...entradaValida(), paisId: "XA" });
+    expect(altaEmpresa.mock.calls[0][0].paisId).toBe("XA");
+  });
+});
+
 describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cual", () => {
   const desenlaces: AltaEmpresaResultado[] = [
     { estado: "creada", organizacionId: "org-1", maestroId: "u-1" },
@@ -145,6 +160,9 @@ describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cu
     { estado: "conflicto", campo: "email" },
     { estado: "conflicto", campo: "documento" },
     { estado: "invalida", campo: "maestro.tipoDocumento" },
+    // SL-20: R8 (misma alta en otro país) y R6 (país con buena forma que no existe).
+    { estado: "conflicto", campo: "paisId" },
+    { estado: "invalida", campo: "paisId" },
   ];
 
   it.each(desenlaces)("%o", async (desenlace) => {

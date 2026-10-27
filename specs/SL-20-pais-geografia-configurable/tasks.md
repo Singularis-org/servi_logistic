@@ -57,16 +57,16 @@ para y avisa al leader.
 
 ## T2 — País y empresa (`backend_dev`)
 
-- [ ] T2.1 [P] `lib/types/pais.ts`, `IPaisRepository`, `PaisRepository`, `IPaisService`,
+- [x] T2.1 [P] `lib/types/pais.ts`, `IPaisRepository`, `PaisRepository`, `IPaisService`,
   `PaisService` (§5). Dep.: T1.6.
   **Hecho:** `tests/unit/services/pais-service.test.ts` cubre R23 (alta, `conflict` por código y
   por nombre normalizado) y R37 (`forbidden` a un rol de empresa).
-- [ ] T2.2 [P] Alta de empresa con país: `lib/types/organizacion.ts`, `OrganizacionService`,
+- [x] T2.2 [P] Alta de empresa con país: `lib/types/organizacion.ts`, `OrganizacionService`,
   `OrganizacionRepository`, `EmpresasPlataformaRepository` y `lib/types/empresas-plataforma.ts`.
   Dep.: T1.3.
   **Hecho:** sin `paisId` o con uno inexistente → `invalida` `paisId` sin crear nada (R6); repetida
   con otro país → `conflicto` `paisId` (R8); el listado trae el país (R9, datos).
-- [ ] T2.3 `etiquetasDeEmpresa` y `ETIQUETAS_NEUTRAS`. Dep.: T2.1.
+- [x] T2.3 `etiquetasDeEmpresa` y `ETIQUETAS_NEUTRAS`. Dep.: T2.1.
   **Hecho:** test unitario con una empresa en `XA` y otra en `CR`.
 
 ## T3 — Carga CSV (`backend_dev`)
@@ -83,7 +83,7 @@ para y avisa al leader.
   **Hecho:** `tests/unit/utils/division-csv.test.ts` cubre filas repetidas, contradictorias, nodo
   existente, código completado, nodo retirado, `nivel_3` vacío, padre nuevo en el mismo archivo y
   número de línea (R25–R27).
-- [ ] T3.4 `GeoRepository.importarDivision` + interfaz y `CargaDivisionService` + interfaz.
+- [x] T3.4 `GeoRepository.importarDivision` + interfaz y `CargaDivisionService` + interfaz.
   Dep.: T1.5, T3.1, T3.3.
   **Hecho:** `tests/unit/services/carga-division-service.test.ts` cubre R28 (extensión, 5 MB, UTF-8
   inválido, columnas que faltan, 10 000 filas); `tests/integration/db/carga-division.test.ts` carga en
@@ -92,12 +92,12 @@ para y avisa al leader.
 
 ## T4 — Geografía del superadmin (`backend_dev`)
 
-- [ ] T4.1 `GeoRepository`: `listArbolDePais`, hermanos de provincia por país, `crear` con
+- [x] T4.1 `GeoRepository`: `listArbolDePais`, hermanos de provincia por país, `crear` con
   `paisId`/código/actor y escrituras al historial de plataforma (§5). Dep.: T1.5, T3.2.
   **Hecho:** `geo-repository.escrituras.test.ts`, `geografia-alta`, `geografia-renombrado`,
   `geografia-cascada-reversible` y `geografia-registro-accion` adaptados y verdes (R15, R29, R30,
   R33, R35).
-- [ ] T4.2 `GeografiaService` + `IGeografiaService`: `listarArbolDePais` y validación del código en
+- [x] T4.2 `GeografiaService` + `IGeografiaService`: `listarArbolDePais` y validación del código en
   el alta. Dep.: T4.1.
   **Hecho:** `geografia-service.test.ts` cubre R15, R17 en el alta y R37.
 - [ ] T4.3 `lib/actions/geografia-plataforma.ts` (todas las actions de §5, `comoPlataforma`), su
@@ -113,7 +113,7 @@ para y avisa al leader.
   **Hecho:** un superadmin real sin empresa crea un país, carga un CSV, da de alta, renombra, retira
   y reactiva sin `EmpresaNoResuelta`. El conteo suma las órdenes sin entregar de dos empresas del
   mismo país (R31, R32).
-- [ ] T4.5 [P] Guardia `historial-accion-escrituras-cubiertas`: los `nodo_geografico_*` quedan sin
+- [x] T4.5 [P] Guardia `historial-accion-escrituras-cubiertas`: los `nodo_geografico_*` quedan sin
   escritor desde SL-20 (§2.6). Dep.: T4.1.
   **Hecho:** guardia verde, y su contraprueba sigue fallando cuando debe.
 

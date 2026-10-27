@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
@@ -565,37 +565,9 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.apiKey\.delete\(/,
   },
-  {
-    // FICHA 374 — retirar y devolver un nodo del catalogo geografico. Un solo metodo produce los
-    // DOS tipos: el flag es el mismo y la transaccion es la misma; lo que cambia es cual de los
-    // dos valores se escribe.
-    //
-    // La mutacion que se exige es el `update` del flag —la unica escritura del metodo (R8)—, y se
-    // acepta cualquiera de los tres niveles porque el nivel viaja como dato: no hay tres metodos,
-    // hay uno con tres delegados.
-    //
-    // ⚠️ ES EL METODO DONDE MAS FACIL SERIA SACAR EL `appendAccion` FUERA DE LA `$transaction`,
-    // porque la tx ya hace cinco cosas. Ahi esta el valor de esta entrada.
-    tipos: ["nodo_geografico_desactivado", "nodo_geografico_activado"],
-    archivo: "lib/repositories/GeoRepository.ts",
-    metodo: "cambiarActivacion",
-    forma: "abre_tx",
-    mutacion: /tx\.(provincia|canton|distrito)\.update\(/,
-  },
-  {
-    // ⭑ FICHA 375 — renombrar un nodo del catalogo geografico. Metodo APARTE de
-    // `cambiarActivacion` y no una rama suya: son dos mutaciones distintas sobre dos columnas
-    // distintas, y el censo mide UNA mutacion por entrada.
-    //
-    // ⚠️ ES LA UNICA ENTRADA DEL CENSO QUE ESCRIBE `valor_anterior`/`valor_nuevo` con algo que no
-    // es un valor de enum: los dos NOMBRES del nodo. Son etiquetas de la DTA del IGN —catalogo
-    // publico— y por eso `historial-accion-sin-datos-cliente` sigue verde sobre este bloque.
-    tipos: ["nodo_geografico_renombrado"],
-    archivo: "lib/repositories/GeoRepository.ts",
-    metodo: "renombrar",
-    forma: "abre_tx",
-    mutacion: /tx\.(provincia|canton|distrito)\.update\(/,
-  },
+  // FICHA 374/375 — `GeoRepository.cambiarActivacion` y `GeoRepository.renombrar` estaban aqui como
+  // productores de los tres `nodo_geografico_*`. Desde SL-20 registran en el historial de
+  // PLATAFORMA (`appendAccionPlataforma`, R33/R35) y salen del censo: ver `SIN_ESCRITOR_DESDE`.
   // --- SL-36 (design §13, R33) · cambia integraciones ---
   //
   // UN METODO POR TIPO, a proposito y como en la 431: si `registrarPrueba` y `regenerarToken`
@@ -640,6 +612,50 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.integracion\.delete\(/,
   },
 ];
+
+/**
+ * SL-20 (design §2.6; R35) — los tipos del catalogo que YA NO TIENEN ESCRITOR, con la ficha que se lo
+ * quito. Siguen en el enum porque hay filas viejas que los usan y la pantalla del historial las
+ * etiqueta; lo que no puede pasar es que alguien los vuelva a escribir en `historial_accion`.
+ *
+ * Es una lista CERRADA, como el censo: un tipo no puede estar en los dos sitios, y uno de aqui no
+ * puede aparecer en ningun archivo de `lib/` que llame a `appendAccion`.
+ */
+interface TiposSinEscritor {
+  tipos: string[];
+  desde: string;
+  motivo: string;
+}
+
+const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
+  {
+    tipos: ["nodo_geografico_desactivado", "nodo_geografico_activado", "nodo_geografico_renombrado"],
+    desde: "SL-20",
+    motivo:
+      "la geografia es del superadmin, que no tiene empresa: sus acciones van a " +
+      "`historial_plataforma` por `appendAccionPlataforma` (D15)",
+  },
+];
+
+/** Los archivos `.ts` de `lib/`, relativos a la raiz. */
+function archivosDeLib(dir = "lib"): string[] {
+  return readdirSync(path.join(RAIZ, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) return archivosDeLib(rel);
+    return /\.tsx?$/.test(e.name) ? [rel] : [];
+  });
+}
+
+/**
+ * Los tipos SIN ESCRITOR que un codigo escribe por `appendAccion` (el de empresa). Mira el archivo
+ * entero y no solo el bloque de la llamada: un archivo que llama a `appendAccion` y nombra uno de
+ * estos tipos lo esta escribiendo, o esta a un `accion: x` de hacerlo. `appendAccionPlataforma` no
+ * cuenta: el `\b` despues del nombre la deja fuera.
+ */
+export function sinEscritorEscritos(codigo: string, sinEscritor: readonly string[]): string[] {
+  if (!/\bappendAccion\s*\(/.test(codigo)) return [];
+  return sinEscritor.filter((t) => new RegExp(`["'\`]${t}["'\`]`).test(codigo));
+}
 
 // ---------------------------------------------------------------------------------------------
 // El recortador — tecnica de `corregir-datos-sin-rastro.guardia.test.ts`
@@ -994,19 +1010,25 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     expect(CENSO.length).toBeGreaterThan(20);
   });
 
-  it("TODO valor del enum tiene productor declarado, y ninguno sobra", () => {
+  it("TODO valor del enum tiene productor declarado (o esta SIN ESCRITOR con su ficha), y ninguno sobra", () => {
     const producidos = new Set(CENSO.flatMap((e) => e.tipos));
+    const sinEscritor = new Set(SIN_ESCRITOR_DESDE.flatMap((e) => e.tipos));
     const delCatalogo = new Set<string>(HISTORIAL_ACCION_TIPOS);
 
-    const sinProductor = [...delCatalogo].filter((t) => !producidos.has(t)).sort();
+    const sinProductor = [...delCatalogo]
+      .filter((t) => !producidos.has(t) && !sinEscritor.has(t))
+      .sort();
     expect(
       sinProductor,
       "un tipo declarado y nunca escrito convierte el modulo en un mentiroso silencioso: la " +
         "pantalla ofrece el filtro y siempre sale vacio",
     ).toEqual([]);
 
-    const inventados = [...producidos].filter((t) => !delCatalogo.has(t)).sort();
+    const inventados = [...producidos, ...sinEscritor].filter((t) => !delCatalogo.has(t)).sort();
     expect(inventados, "el censo nombra un tipo que el catalogo no declara").toEqual([]);
+
+    const enLosDos = [...sinEscritor].filter((t) => producidos.has(t)).sort();
+    expect(enLosDos, "un tipo no puede tener productor y estar a la vez «sin escritor»").toEqual([]);
   });
 
   it("los 55 tipos del Anexo A (+ Q1, Q2, la 366, la 371, la 373, la 374, la 375, la 376, la 380, la 381, la 398, la 429 y la 431) siguen siendo 55", () => {
@@ -1027,7 +1049,55 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 65 desde la ficha 458-B (`cobro_rechazo_tienda_anulado` y `egreso_caja_anulado`, cada uno con
     // su metodo propio).
     // 70 desde SL-36 (los cinco `integracion_*`, un metodo de `IntegracionRepository` por tipo).
+    // SL-20 no cambia el numero: los tres `nodo_geografico_*` se quedan en el enum, sin escritor.
     expect(HISTORIAL_ACCION_TIPOS).toHaveLength(70);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 1b — SL-20 (R35): los tipos sin escritor no se vuelven a escribir en `historial_accion`
+// ---------------------------------------------------------------------------------------------
+
+describe("SL-20/R35 — los `nodo_geografico_*` quedan SIN escritor en `historial_accion`", () => {
+  const SIN_ESCRITOR = SIN_ESCRITOR_DESDE.flatMap((e) => e.tipos);
+
+  it("ningun archivo de `lib/` que llame a `appendAccion` nombra un tipo sin escritor", () => {
+    const archivos = archivosDeLib();
+    // Anti-vacuidad: el barrido ve `lib/` entero y encuentra escritores de verdad.
+    expect(archivos.length).toBeGreaterThan(200);
+    const escritores = archivos.filter((rel) => /\bappendAccion\s*\(/.test(codigoSinComentarios(rel)));
+    expect(escritores.length).toBeGreaterThan(15);
+
+    const hallazgos = escritores.flatMap((rel) =>
+      sinEscritorEscritos(codigoSinComentarios(rel), SIN_ESCRITOR).map((t) => `${rel}: ${t}`),
+    );
+    expect(
+      hallazgos,
+      "la geografia del superadmin se registra en `historial_plataforma` (D15); una fila nueva de " +
+        "`nodo_geografico_*` en `historial_accion` mezclaria la plataforma con una empresa",
+    ).toEqual([]);
+  });
+
+  it("`GeoRepository` sigue escribiendo esas acciones, pero por `appendAccionPlataforma`", () => {
+    const codigo = codigoSinComentarios("lib/repositories/GeoRepository.ts");
+    expect(codigo).toMatch(/appendAccionPlataforma\s*\(\s*tx\b/);
+    for (const t of SIN_ESCRITOR) expect(codigo, `${t} sin productor de plataforma`).toContain(`"${t}"`);
+  });
+
+  it("CONTRAPRUEBA: volver a llamar a `appendAccion` con uno de ellos en `GeoRepository` se detecta", () => {
+    const real = codigoSinComentarios("lib/repositories/GeoRepository.ts");
+    expect(sinEscritorEscritos(real, SIN_ESCRITOR)).toEqual([]);
+    const mutado = `${real}\nawait appendAccion(tx, [{ accion: "nodo_geografico_renombrado" }]);`;
+    expect(sinEscritorEscritos(mutado, SIN_ESCRITOR)).toEqual([
+      "nodo_geografico_desactivado",
+      "nodo_geografico_activado",
+      "nodo_geografico_renombrado",
+    ]);
+  });
+
+  it("CONTRAPRUEBA: `appendAccionPlataforma` no se confunde con `appendAccion`", () => {
+    const codigo = `await appendAccionPlataforma(tx, [{ accion: "nodo_geografico_activado" }]);`;
+    expect(sinEscritorEscritos(codigo, SIN_ESCRITOR)).toEqual([]);
   });
 });
 

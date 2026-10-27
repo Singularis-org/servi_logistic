@@ -70,6 +70,20 @@ const EXCEPCIONES_DE_LISTA: readonly {
     soloPlataforma: false,
     motivo: "`listarArbol`: la plataforma y la lectura operativa de Tarifas del maestro (R25)",
   },
+  // SL-20 (design §4; R23, R37): los países son de la plataforma; ningún rol de empresa los gestiona.
+  {
+    archivo: "lib/services/PaisService.ts",
+    constante: "GESTION_ROLES",
+    soloPlataforma: true,
+    motivo: "el alta y el listado de países son de la plataforma (SL-20, R37)",
+  },
+  // SL-20 (design §4; R24, R37): la carga de la división por CSV es gestión de geografía.
+  {
+    archivo: "lib/services/CargaDivisionService.ts",
+    constante: "GESTION_ROLES",
+    soloPlataforma: true,
+    motivo: "la carga de la división de un país es de la plataforma (SL-20, R37)",
+  },
 ];
 
 /** El ítem «Empresas» del menú (R36), que llega con T16. */

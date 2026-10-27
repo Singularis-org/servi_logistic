@@ -7,6 +7,9 @@ export interface IOrganizacionRepository {
    * podio del ranking (SL-17 T3.9), o, si el slug ya
    * existe, decide entre idempotencia y conflicto sin escribir. Un email o documento ya usados
    * revierten todo: no queda ni la organización.
+   *
+   * SL-20: la organización nace en `datos.paisId`. Un país inexistente es `invalida` `paisId`
+   * (R6); repetir el alta (mismo slug y maestro) con otro país es `conflicto` `paisId` (R8).
    */
   altaEmpresa(datos: AltaEmpresaDatos): Promise<AltaEmpresaResultado>;
 }

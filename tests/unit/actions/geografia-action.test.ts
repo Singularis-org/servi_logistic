@@ -380,7 +380,7 @@ function conServicioReal() {
 describe("SL-32 (R24) — el `maestro` recibe `forbidden` en el borde, sin tocar el repositorio", () => {
   it("crearNodoGeografico: `forbidden`, no el `conflict` del `catch`", async () => {
     const { repo, deps } = conServicioReal();
-    expect(await crearNodoGeografico({ nivel: "provincia", nombre: "Nueva" }, deps)).toEqual({
+    expect(await crearNodoGeografico({ nivel: "provincia", nombre: "Nueva", paisId: "CR" }, deps)).toEqual({
       status: "forbidden",
     });
     expect(repo.findHermanos).not.toHaveBeenCalled();

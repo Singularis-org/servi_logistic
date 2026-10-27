@@ -20,6 +20,7 @@ import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
 const ENTRADA = {
   nombre: "Envíos del Sur",
   slug: "envios-del-sur",
+  paisId: "CR",
   maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "88887777", documento: "112223333", tipoDocumento: "cedula" },
 };
 
@@ -195,6 +196,9 @@ describe("SL-41 R27 — sin creada, ni enlace ni correo", () => {
     { estado: "ya_existe", organizacionId: ORG_NUEVA },
     { estado: "conflicto", campo: "slug" },
     { estado: "invalida", campo: "maestro.email" },
+    // SL-20: R8 (misma alta en otro país) y R6 (país inexistente) tampoco crean maestro.
+    { estado: "conflicto", campo: "paisId" },
+    { estado: "invalida", campo: "paisId" },
   ])("$estado: devuelve el resultado tal cual y no llama a la bienvenida", async (resultado) => {
     const { service } = altaQueDevuelve(resultado);
     const { bienvenida, enviar } = bienvenidaDoble();

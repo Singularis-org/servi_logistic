@@ -47,6 +47,7 @@ describe("374/R16 — el nombre se persiste recortado y colapsado, sin tocar may
     const r = crearNodoGeograficoSchema.safeParse({
       nivel: "provincia",
       nombre: "  San   José  ",
+      paisId: "CR",
     });
     expect(r.success).toBe(true);
     if (!r.success) throw new Error("el schema rechazo un alta valida");
@@ -56,9 +57,50 @@ describe("374/R16 — el nombre se persiste recortado y colapsado, sin tocar may
 
 describe("374/R25 — el borde del alta es una union DISCRIMINADA y estricta", () => {
   it("provincia no exige padre", () => {
+    expect(
+      crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: "Puntarenas", paisId: "CR" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("SL-20/R29: la provincia exige su pais, en ISO alfa-2", () => {
     expect(crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: "Puntarenas" }).success).toBe(
-      true,
+      false,
     );
+    for (const paisId of ["cr", "CRI", "", "C1"]) {
+      expect(
+        crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: "Puntarenas", paisId }).success,
+        paisId,
+      ).toBe(false);
+    }
+    // Canton y distrito heredan el pais del padre: un `paisId` ahi es una clave de mas.
+    expect(
+      crearNodoGeograficoSchema.safeParse({
+        nivel: "canton",
+        nombre: "Buenos Aires",
+        provinciaId: "p1",
+        paisId: "CR",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("SL-20/R29: el codigo es opcional en los tres niveles, se recorta y vacio es «sin codigo»", () => {
+    const con = crearNodoGeograficoSchema.safeParse({
+      nivel: "distrito",
+      nombre: "Cabagra",
+      cantonId: "c1",
+      codigo: "  60301  ",
+    });
+    expect(con.success && con.data.codigo).toBe("60301");
+
+    const vacio = crearNodoGeograficoSchema.safeParse({
+      nivel: "provincia",
+      nombre: "Puntarenas",
+      paisId: "CR",
+      codigo: "   ",
+    });
+    expect(vacio.success).toBe(true);
+    expect(vacio.success && vacio.data.codigo).toBeUndefined();
   });
 
   it("canton exige `provinciaId` y distrito exige `cantonId`", () => {
@@ -90,6 +132,7 @@ describe("374/R25 — el borde del alta es una union DISCRIMINADA y estricta", (
     const r = crearNodoGeograficoSchema.safeParse({
       nivel: "provincia",
       nombre: "Puntarenas",
+      paisId: "CR",
       cantonId: "c1",
     });
     expect(r.success).toBe(false);
@@ -104,15 +147,15 @@ describe("374/R25 — el borde del alta es una union DISCRIMINADA y estricta", (
   it("un nombre demasiado corto o demasiado largo no entra", () => {
     const corto = "a".repeat(GEO_NOMBRE_MIN - 1);
     const largo = "a".repeat(GEO_NOMBRE_MAX + 1);
-    expect(crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: corto }).success).toBe(
+    expect(crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: corto, paisId: "CR" }).success).toBe(
       false,
     );
-    expect(crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: largo }).success).toBe(
+    expect(crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: largo, paisId: "CR" }).success).toBe(
       false,
     );
     // Y la cota se mide DESPUES de recortar: «  ab  » son dos caracteres, no seis.
     expect(
-      crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: "   a   " }).success,
+      crearNodoGeograficoSchema.safeParse({ nivel: "provincia", nombre: "   a   ", paisId: "CR" }).success,
     ).toBe(false);
   });
 });
@@ -164,7 +207,7 @@ describe("374 — el vocabulario del nivel", () => {
   });
 
   it("`padreDeAlta` devuelve el padre de cada nivel y `null` para provincia", () => {
-    expect(padreDeAlta({ nivel: "provincia", nombre: "Puntarenas" })).toBeNull();
+    expect(padreDeAlta({ nivel: "provincia", nombre: "Puntarenas", paisId: "CR" })).toBeNull();
     expect(padreDeAlta({ nivel: "canton", nombre: "Buenos Aires", provinciaId: "p1" })).toBe("p1");
     expect(padreDeAlta({ nivel: "distrito", nombre: "Cabagra", cantonId: "c1" })).toBe("c1");
   });

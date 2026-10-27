@@ -18,6 +18,15 @@ export const COLUMNAS_DIVISION = [
 export type ColumnaDivision = (typeof COLUMNAS_DIVISION)[number];
 
 /**
+ * Cotas del archivo (R28, design §6). 5 MB es el `bodySizeLimit` de las Server Actions en
+ * `next.config.ts`; las filas son de datos, sin la cabecera.
+ */
+export const DIVISION_MAX_BYTES = 5 * 1024 * 1024;
+export const DIVISION_MAX_FILAS = 10_000;
+/** Cuantos errores de linea devuelve la respuesta como mucho; `total` dice cuantos hubo. */
+export const DIVISION_MAX_ERRORES = 200;
+
+/**
  * Una fila de datos del CSV, tal cual se leyo (texto literal, recortado; `""` si vacia).
  * `linea` es la del archivo: la que cita cada error (R25).
  */

@@ -1,17 +1,28 @@
+import { randomUUID } from "node:crypto";
+
 import type { PrismaClient } from "@prisma/client";
-import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
+import type {
+  ContextoDeAlta,
+  DivisionDePais,
+  IGeoRepository,
+  OpcionesDeAlta,
+} from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
   GeografiaFiltrosDTO,
   OpcionCatalogo,
   OpcionGeografica,
   OpcionGeograficaConPadre,
 } from "@/lib/types/filtros-ordenes";
-import type {
-  CantonArbolDTO,
-  DistritoArbolDTO,
-  NivelGeografico,
-  ProvinciaArbolDTO,
+import {
+  GEO_NOMBRE_MAX,
+  type CantonArbolDTO,
+  type DistritoArbolDTO,
+  type NivelGeografico,
+  type ProvinciaArbolDTO,
+  type ProvinciaPlataformaDTO,
 } from "@/lib/types/geografia-nodo";
+import type { PlanDivision, RefNodo, ResumenCarga } from "@/lib/types/division-csv";
+import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
 import {
   SELECT_CADENA_CANTON,
   SELECT_CADENA_DISTRITO,
@@ -24,16 +35,165 @@ import {
   esZonaEspecialDeLaEmpresa,
   SELECT_MARCA_ZONA_ESPECIAL,
 } from "@/lib/repositories/_shared/zona-especial";
-import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad, valorDeCatalogo } from "@/lib/types/historial-accion-etiquetas";
+import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import {
+  appendAccionPlataforma,
+  type ActorPlataformaCongelado,
+} from "@/lib/repositories/registrar-accion-plataforma";
+import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 
-// FICHA 374: el `Pick` gana `$transaction`, `historialAccion` y `usuario` porque
-// `cambiarActivacion` registra su accion en la MISMA transaccion del `update` — igual que lo hizo
-// `VehiculoPrismaClient` en la ficha 362.
+// FICHA 374: el `Pick` gana `$transaction` y `usuario` porque las escrituras registran su accion en
+// la MISMA transaccion del cambio — igual que `VehiculoPrismaClient` en la ficha 362.
+// SL-20: el registro pasa de `historialAccion` a `historialPlataforma` (R33, R35; D15), y entra
+// `pais` por la regla de codigo y el nombre del pais.
 type GeoPrismaClient = Pick<
   PrismaClient,
-  "provincia" | "canton" | "distrito" | "$transaction" | "historialAccion" | "usuario"
+  "provincia" | "canton" | "distrito" | "pais" | "$transaction" | "historialPlataforma" | "usuario"
 >;
+
+/** La regla de codigo, tal como se selecciona de la fila del pais. */
+const SELECT_REGLA = {
+  digitosCodigoNivel1: true,
+  digitosCodigoNivel2: true,
+  digitosCodigoNivel3: true,
+} as const;
+
+// Una carga de 10 000 filas son hasta 30 000 nodos en tres `createMany` mas los codigos a completar:
+// el limite por defecto de 5 s de una transaccion interactiva no da margen.
+const TIMEOUT_IMPORTACION_MS = 120_000;
+
+// SL-20 — ayudantes de las escrituras nuevas. Van ENCIMA de la clase a proposito: la guardia
+// `geografia-renombrado-punto-unico` lee desde `async renombrar(` hasta el final del archivo y
+// exige que ahi no aparezca `codigoDta`; el alta y la carga si lo escriben.
+
+/**
+ * SL-20 — inserta la fila del alta y devuelve su id y su etiqueta congelada. La provincia cuelga de
+ * `opciones.paisId`; cantón y distrito, de su padre, que se lee aqui para la etiqueta y para
+ * comprobar que el pais que el llamador va a registrar es el suyo.
+ */
+async function crearFila(
+  tx: GeoTx,
+  nivel: NivelGeografico,
+  nombre: string,
+  padreId: string | null,
+  opciones: OpcionesDeAlta,
+): Promise<{ id: string; etiqueta: string }> {
+  const codigoDta = opciones.codigo;
+
+  if (nivel === "provincia") {
+    const fila = await tx.provincia.create({
+      data: { nombre, codigoDta, paisId: opciones.paisId },
+      select: { id: true },
+    });
+    return { id: fila.id, etiqueta: etiquetaDelNodo(nivel, { nombre, ...SIN_CADENA }) };
+  }
+  if (padreId === null) throw new Error(`falta el padre para crear un ${nivel}`);
+
+  if (nivel === "canton") {
+    const padre = await tx.provincia.findUnique({
+      where: { id: padreId },
+      select: { nombre: true, paisId: true },
+    });
+    exigirPadre(padre, nivel, padreId, opciones.paisId);
+    const fila = await tx.canton.create({
+      data: { nombre, codigoDta, provinciaId: padreId },
+      select: { id: true },
+    });
+    return {
+      id: fila.id,
+      etiqueta: etiquetaDelNodo(nivel, { nombre, cantonNombre: null, provinciaNombre: padre.nombre }),
+    };
+  }
+
+  const padre = await tx.canton.findUnique({
+    where: { id: padreId },
+    select: { nombre: true, paisId: true, provincia: { select: { nombre: true } } },
+  });
+  exigirPadre(padre, nivel, padreId, opciones.paisId);
+  const fila = await tx.distrito.create({
+    data: { nombre, codigoDta, cantonId: padreId },
+    select: { id: true },
+  });
+  return {
+    id: fila.id,
+    etiqueta: etiquetaDelNodo(nivel, {
+      nombre,
+      cantonNombre: padre.nombre,
+      provinciaNombre: padre.provincia.nombre,
+    }),
+  };
+}
+
+const SIN_CADENA = { cantonNombre: null, provinciaNombre: null } as const;
+
+/**
+ * El padre que el alta acaba de leer. `null` no es alcanzable desde el service, que comprueba el
+ * padre antes: es una carrera o un defecto del llamador, y se lanza en vez de crear un huerfano. Un
+ * pais distinto del que el llamador registraria es un defecto: el hijo quedaria en el del padre.
+ */
+function exigirPadre<T extends { paisId: string }>(
+  padre: T | null,
+  nivel: NivelGeografico,
+  padreId: string,
+  paisId: string,
+): asserts padre is T {
+  if (padre === null) throw new Error(`crear ${nivel}: el padre ${padreId} no existe`);
+  if (padre.paisId !== paisId) {
+    throw new Error(`crear ${nivel}: el padre es de ${padre.paisId}, no de ${paisId}`);
+  }
+}
+
+/** El actor congelado, sin el rol: el historial de plataforma no lo guarda (design §2.6). */
+async function actorDePlataforma(
+  tx: Pick<GeoPrismaClient, "usuario">,
+  actorUsuarioId: string | null,
+): Promise<ActorPlataformaCongelado> {
+  const { actorUsuarioId: id, actorNombre } = await resolverActorCongelado(tx, actorUsuarioId);
+  return { actorUsuarioId: id, actorNombre };
+}
+
+function reglaDe(pais: ReglaDeCodigoDePais): ReglaDeCodigoDePais {
+  return {
+    digitosCodigoNivel1: pais.digitosCodigoNivel1,
+    digitosCodigoNivel2: pais.digitosCodigoNivel2,
+    digitosCodigoNivel3: pais.digitosCodigoNivel3,
+  };
+}
+
+interface FilaDeNodo {
+  id: string;
+  nombre: string;
+  codigoDta: string | null;
+  activo: boolean;
+}
+
+function nodoPlataforma(n: FilaDeNodo) {
+  return { id: n.id, nombre: n.nombre, codigo: n.codigoDta, activo: n.activo };
+}
+
+function nodoExistente(n: FilaDeNodo, padreId: string | null) {
+  return { id: n.id, nombre: n.nombre, codigo: n.codigoDta, activo: n.activo, padreId };
+}
+
+/** Las claves del plan traducidas a los ids que se generan al escribir. */
+class IdsDelPlan {
+  private readonly ids = new Map<string, string>();
+
+  nuevo(clave: string): string {
+    const id = randomUUID();
+    this.ids.set(clave, id);
+    return id;
+  }
+
+  de(ref: RefNodo | null): string {
+    if (ref === null) throw new Error("importarDivision: un canton o distrito sin padre");
+    if (ref.tipo === "existente") return ref.id;
+    const id = this.ids.get(ref.clave);
+    if (id === undefined) throw new Error(`importarDivision: el padre ${ref.clave} no se creo antes`);
+    return id;
+  }
+}
+
 
 // El catalogo geografico global. Solo queries Prisma; sin logica de negocio.
 //
@@ -252,71 +412,244 @@ export class GeoRepository implements IGeoRepository {
   }
 
   /**
-   * Los hermanos del nivel bajo `padreId`, o `null` si el padre no existe. UNA consulta resuelve
-   * las dos preguntas del alta (R14 y R17).
-   *
-   * Trae ACTIVOS E INACTIVOS: un nombre ocupado por un hermano retirado sigue ocupado, porque el
-   * UNIQUE de la base no distingue estados y porque reactivarlo despues chocaria con el nuevo.
+   * SL-20 — el arbol de UN pais para el superadmin. Mismo recorrido que `listArbol`, sin zonas ni
+   * marca de zona especial (son de cada empresa) y con el codigo. El `where` por pais es explicito:
+   * en plataforma no hay RLS que acote.
    */
-  async findHermanos(
-    nivel: NivelGeografico,
-    padreId: string | null,
-  ): Promise<{ id: string; nombre: string }[] | null> {
-    if (nivel === "provincia") {
-      // La provincia no tiene padre: no hay nada que comprobar y nunca devuelve `null`.
-      return this.prisma.provincia.findMany({ select: { id: true, nombre: true } });
-    }
-    if (padreId === null) return null;
-
-    if (nivel === "canton") {
-      const padre = await this.prisma.provincia.findUnique({
-        where: { id: padreId },
-        select: {
-          cantones: { select: { id: true, nombre: true } },
-        },
-      });
-      return padre === null ? null : padre.cantones;
-    }
-
-    const padre = await this.prisma.canton.findUnique({
-      where: { id: padreId },
+  async listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]> {
+    const nodo = { id: true, nombre: true, codigoDta: true, ...SELECT_FLAG_PROPIO } as const;
+    const provincias = await this.prisma.provincia.findMany({
+      where: { paisId },
+      orderBy: { nombre: "asc" },
       select: {
-        distritos: { select: { id: true, nombre: true } },
+        ...nodo,
+        cantones: {
+          orderBy: { nombre: "asc" },
+          select: { ...nodo, distritos: { orderBy: { nombre: "asc" }, select: nodo } },
+        },
       },
     });
-    return padre === null ? null : padre.distritos;
+    return provincias.map((p) => ({
+      ...nodoPlataforma(p),
+      cantones: p.cantones.map((c) => ({
+        ...nodoPlataforma(c),
+        distritos: c.distritos.map(nodoPlataforma),
+      })),
+    }));
   }
 
   /**
-   * Crea el nodo y devuelve su id. Nace ACTIVO por el default de la columna (R13), tambien si su
-   * padre esta retirado: el flag es suyo y la cascada se evalua aparte (R15).
+   * El contexto del alta, o `null` si el contenedor no existe. UNA consulta por nivel resuelve las
+   * preguntas del alta: el contenedor (R14), los hermanos (R15) y la regla de codigo (R17).
    *
-   * DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict` (R18). La base es la
-   * ultima palabra ante una carrera.
+   * Trae hermanos ACTIVOS E INACTIVOS: un nombre ocupado por un hermano retirado sigue ocupado,
+   * porque el UNIQUE de la base no distingue estados y porque reactivarlo despues chocaria con el
+   * nuevo.
+   *
+   * SL-20: el contenedor de una provincia es su PAIS. Antes eran todas las provincias de la tabla;
+   * con dos paises, «Central» en uno no ocupa el nombre en el otro.
    */
-  async crear(nivel: NivelGeografico, nombre: string, padreId: string | null): Promise<string> {
+  async findHermanos(
+    nivel: NivelGeografico,
+    contenedorId: string,
+  ): Promise<ContextoDeAlta | null> {
+    const hermanos = { select: { id: true, nombre: true } } as const;
+
     if (nivel === "provincia") {
-      const fila = await this.prisma.provincia.create({ data: { nombre }, select: { id: true } });
-      return fila.id;
-    }
-    if (padreId === null) {
-      // No es alcanzable desde el service (comprueba el padre antes) ni desde el borde (el schema
-      // lo exige). Se lanza en vez de crear una fila huerfana: un `null` aqui seria un defecto de
-      // programacion, no una entrada de usuario.
-      throw new Error(`falta el padre para crear un ${nivel}`);
-    }
-    if (nivel === "canton") {
-      const fila = await this.prisma.canton.create({
-        data: { nombre, provinciaId: padreId },
-        select: { id: true },
+      const pais = await this.prisma.pais.findUnique({
+        where: { id: contenedorId },
+        select: { id: true, ...SELECT_REGLA, provincias: hermanos },
       });
-      return fila.id;
+      if (pais === null) return null;
+      return { paisId: pais.id, regla: reglaDe(pais), codigoPadre: null, hermanos: pais.provincias };
     }
-    const fila = await this.prisma.distrito.create({
-      data: { nombre, cantonId: padreId },
-      select: { id: true },
+
+    if (nivel === "canton") {
+      const padre = await this.prisma.provincia.findUnique({
+        where: { id: contenedorId },
+        select: { paisId: true, codigoDta: true, pais: { select: SELECT_REGLA }, cantones: hermanos },
+      });
+      if (padre === null) return null;
+      return {
+        paisId: padre.paisId,
+        regla: reglaDe(padre.pais),
+        codigoPadre: padre.codigoDta,
+        hermanos: padre.cantones,
+      };
+    }
+
+    const padre = await this.prisma.canton.findUnique({
+      where: { id: contenedorId },
+      select: {
+        paisId: true,
+        codigoDta: true,
+        provincia: { select: { pais: { select: SELECT_REGLA } } },
+        distritos: hermanos,
+      },
     });
-    return fila.id;
+    if (padre === null) return null;
+    return {
+      paisId: padre.paisId,
+      regla: reglaDe(padre.provincia.pais),
+      codigoPadre: padre.codigoDta,
+      hermanos: padre.distritos,
+    };
+  }
+
+  /**
+   * Crea el nodo, devuelve su id y registra `nodo_geografico_creado` en el historial de plataforma
+   * en la MISMA transaccion (SL-20, R33). Nace ACTIVO por el default de la columna (R13), tambien si
+   * su padre esta retirado: el flag es suyo y la cascada se evalua aparte (R15).
+   *
+   * El padre se lee DENTRO de la tx por dos motivos: la etiqueta congelada es la cadena de nombres
+   * hasta la raiz, y el pais del registro tiene que ser el del padre, que es el que el trigger
+   * `geografia_pais_del_padre` le pone al hijo. Si no coincide con `opciones.paisId`, el llamador
+   * se equivoco de pais y se lanza en vez de registrar un pais que no es.
+   *
+   * DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict`. La base es la ultima
+   * palabra ante una carrera.
+   */
+  async crear(
+    nivel: NivelGeografico,
+    nombre: string,
+    padreId: string | null,
+    opciones: OpcionesDeAlta,
+    actorUsuarioId: string | null,
+  ): Promise<string> {
+    return this.prisma.$transaction(async (tx) => {
+      const { id, etiqueta } = await crearFila(tx, nivel, nombre, padreId, opciones);
+      const actor = await actorDePlataforma(tx, actorUsuarioId);
+      await appendAccionPlataforma(tx, [
+        {
+          accion: "nodo_geografico_creado",
+          entidadTipo: nivel,
+          entidadId: id,
+          entidadEtiqueta: etiqueta,
+          paisId: opciones.paisId,
+          ...actor,
+        },
+      ]);
+      return id;
+    });
+  }
+
+  /** SL-20 — la geografia del pais en listas planas, para `planificarDivision`. */
+  async leerDivisionDePais(paisId: string): Promise<DivisionDePais | null> {
+    const pais = await this.prisma.pais.findUnique({ where: { id: paisId }, select: SELECT_REGLA });
+    if (pais === null) return null;
+
+    // Orden estable: `planificarDivision` se queda con el PRIMERO de dos homonimos normalizados
+    // bajo el mismo padre (decision 4 de SL-20), y «el primero» tiene que ser siempre el mismo.
+    const nodo = { id: true, nombre: true, codigoDta: true, ...SELECT_FLAG_PROPIO } as const;
+    const [provincias, cantones, distritos] = await Promise.all([
+      this.prisma.provincia.findMany({ where: { paisId }, select: nodo, orderBy: { id: "asc" } }),
+      this.prisma.canton.findMany({
+        where: { paisId },
+        select: { ...nodo, provinciaId: true },
+        orderBy: { id: "asc" },
+      }),
+      this.prisma.distrito.findMany({
+        where: { paisId },
+        select: { ...nodo, cantonId: true },
+        orderBy: { id: "asc" },
+      }),
+    ]);
+
+    return {
+      regla: reglaDe(pais),
+      arbol: {
+        provincia: provincias.map((p) => nodoExistente(p, null)),
+        canton: cantones.map((c) => nodoExistente(c, c.provinciaId)),
+        distrito: distritos.map((d) => nodoExistente(d, d.cantonId)),
+      },
+    };
+  }
+
+  /**
+   * SL-20 (R24, R26, R33) — escribe el plan de una carga CSV en UNA transaccion.
+   *
+   *   1. las altas por nivel, de arriba abajo, con un `createMany` por nivel. Los ids se generan
+   *      AQUI porque el plan es puro y nombra a sus altas por una clave: un hijo cuyo padre es un
+   *      alta del mismo archivo necesita el id del padre antes de que el padre exista;
+   *   2. el codigo de los existentes, SOLO `WHERE codigo_dta IS NULL` (R26): si entre el plan y la
+   *      escritura alguien le puso uno a mano, gana el suyo y no se cuenta como completado;
+   *   3. una fila `division_cargada` si se escribio algo; si no, ninguna.
+   *
+   * No escribe `nombre` sobre nodos existentes ni toca `activo`: la carga solo crea (alternativa 6
+   * del design). Cualquier error de la base deshace todo y se propaga.
+   */
+  async importarDivision(
+    paisId: string,
+    plan: PlanDivision,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCarga> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const pais = await tx.pais.findUnique({ where: { id: paisId }, select: { nombre: true } });
+        if (pais === null) throw new Error(`importarDivision: el pais ${paisId} no existe`);
+
+        const ids = new IdsDelPlan();
+        await tx.provincia.createMany({
+          data: plan.altas.provincia.map((a) => ({
+            id: ids.nuevo(a.clave),
+            nombre: a.nombre,
+            codigoDta: a.codigo,
+            paisId,
+          })),
+        });
+        await tx.canton.createMany({
+          data: plan.altas.canton.map((a) => ({
+            id: ids.nuevo(a.clave),
+            nombre: a.nombre,
+            codigoDta: a.codigo,
+            provinciaId: ids.de(a.padre),
+          })),
+        });
+        await tx.distrito.createMany({
+          data: plan.altas.distrito.map((a) => ({
+            id: ids.nuevo(a.clave),
+            nombre: a.nombre,
+            codigoDta: a.codigo,
+            cantonId: ids.de(a.padre),
+          })),
+        });
+
+        let codigosCompletados = 0;
+        for (const { nivel, id, codigo } of plan.codigosACompletar) {
+          const donde = { where: { id, codigoDta: null }, data: { codigoDta: codigo } };
+          const { count } =
+            nivel === "provincia"
+              ? await tx.provincia.updateMany(donde)
+              : nivel === "canton"
+                ? await tx.canton.updateMany(donde)
+                : await tx.distrito.updateMany(donde);
+          codigosCompletados += count;
+        }
+
+        const resumen: ResumenCarga = { ...plan.resumen, codigosCompletados };
+        const { provincia, canton, distrito } = resumen.creados;
+        if (provincia + canton + distrito + codigosCompletados > 0) {
+          const actor = await actorDePlataforma(tx, actorUsuarioId);
+          await appendAccionPlataforma(tx, [
+            {
+              accion: "division_cargada",
+              entidadTipo: "pais",
+              entidadId: paisId,
+              entidadEtiqueta: pais.nombre,
+              paisId,
+              ...actor,
+              detalle: {
+                creados: { provincia, canton, distrito },
+                existentes: resumen.existentes,
+                codigosCompletados,
+              },
+            },
+          ]);
+        }
+        return resumen;
+      },
+      { timeout: TIMEOUT_IMPORTACION_MS },
+    );
   }
 
   /**
@@ -358,17 +691,17 @@ export class GeoRepository implements IGeoRepository {
         await tx.distrito.update({ where: { id }, data: { activo } });
       }
 
-      const actor = await resolverActorCongelado(tx, actorUsuarioId);
-      await appendAccion(tx, [
+      // SL-20 (R33, R35): al historial de PLATAFORMA. El superadmin no tiene empresa, y una fila en
+      // `historial_accion` con un actor de otra empresa la rechaza la base (SL017).
+      const actor = await actorDePlataforma(tx, actorUsuarioId);
+      await appendAccionPlataforma(tx, [
         {
           accion: activo ? "nodo_geografico_activado" : "nodo_geografico_desactivado",
           entidadTipo: nivel,
           entidadId: id,
           entidadEtiqueta: etiquetaDelNodo(nivel, previo),
+          paisId: previo.paisId,
           ...actor,
-          monto: null,
-          valorAnterior: null,
-          valorNuevo: null,
         },
       ]);
       return "cambiado";
@@ -388,12 +721,12 @@ export class GeoRepository implements IGeoRepository {
     id: string,
   ): Promise<{ id: string; nombre: string }[] | null> {
     if (nivel === "provincia") {
-      // La provincia no tiene padre: sus hermanas son TODAS las provincias. Aun asi hay que
-      // comprobar que existe, o un id inventado devolveria la lista entera y el renombrado
-      // contestaria `conflict`/`ok` sobre un nodo que no esta.
-      const existe = await this.prisma.provincia.findUnique({ where: { id }, select: { id: true } });
-      if (existe === null) return null;
-      return this.prisma.provincia.findMany({ select: { id: true, nombre: true } });
+      // SL-20 (R15): las hermanas de una provincia son las de SU pais, que hace de padre.
+      const fila = await this.prisma.provincia.findUnique({
+        where: { id },
+        select: { pais: { select: { provincias: { select: { id: true, nombre: true } } } } },
+      });
+      return fila === null ? null : fila.pais.provincias;
     }
 
     if (nivel === "canton") {
@@ -455,17 +788,19 @@ export class GeoRepository implements IGeoRepository {
         await tx.distrito.update({ where: { id }, data: { nombre } });
       }
 
-      const actor = await resolverActorCongelado(tx, actorUsuarioId);
-      await appendAccion(tx, [
+      const actor = await actorDePlataforma(tx, actorUsuarioId);
+      await appendAccionPlataforma(tx, [
         {
           accion: "nodo_geografico_renombrado",
           entidadTipo: nivel,
           entidadId: id,
           entidadEtiqueta: etiquetaDelNodo(nivel, { ...previo, nombre }),
+          paisId: previo.paisId,
           ...actor,
-          monto: null,
-          valorAnterior: valorDeCatalogo(previo.nombre),
-          valorNuevo: valorDeCatalogo(nombre),
+          // Las columnas miden GEO_NOMBRE_MAX; el recorte solo alcanza a un nombre heredado de antes
+          // de esa cota, y Postgres no trunca: aborta.
+          valorAnterior: previo.nombre.slice(0, GEO_NOMBRE_MAX),
+          valorNuevo: nombre.slice(0, GEO_NOMBRE_MAX),
         },
       ]);
       return "renombrado";
@@ -477,6 +812,8 @@ export class GeoRepository implements IGeoRepository {
 interface NodoPrevio {
   activo: boolean;
   nombre: string;
+  /** SL-20: el pais del nodo, que va en la fila del historial de plataforma. */
+  paisId: string;
   cantonNombre: string | null;
   provinciaNombre: string | null;
 }
@@ -491,7 +828,7 @@ async function leerNodoParaActivacion(
   if (nivel === "provincia") {
     const fila = await tx.provincia.findUnique({
       where: { id },
-      select: { ...SELECT_FLAG_PROPIO, nombre: true },
+      select: { ...SELECT_FLAG_PROPIO, nombre: true, paisId: true },
     });
     return fila === null
       ? null
@@ -500,13 +837,19 @@ async function leerNodoParaActivacion(
   if (nivel === "canton") {
     const fila = await tx.canton.findUnique({
       where: { id },
-      select: { ...SELECT_FLAG_PROPIO, nombre: true, provincia: { select: { nombre: true } } },
+      select: {
+        ...SELECT_FLAG_PROPIO,
+        nombre: true,
+        paisId: true,
+        provincia: { select: { nombre: true } },
+      },
     });
     return fila === null
       ? null
       : {
           activo: fila.activo,
           nombre: fila.nombre,
+          paisId: fila.paisId,
           cantonNombre: null,
           provinciaNombre: fila.provincia.nombre,
         };
@@ -516,6 +859,7 @@ async function leerNodoParaActivacion(
     select: {
       ...SELECT_FLAG_PROPIO,
       nombre: true,
+      paisId: true,
       canton: { select: { nombre: true, provincia: { select: { nombre: true } } } },
     },
   });
@@ -524,6 +868,7 @@ async function leerNodoParaActivacion(
     : {
         activo: fila.activo,
         nombre: fila.nombre,
+        paisId: fila.paisId,
         cantonNombre: fila.canton.nombre,
         provinciaNombre: fila.canton.provincia.nombre,
       };
@@ -536,7 +881,10 @@ async function leerNodoParaActivacion(
  * de la fuente sea el de ESE nivel; un `etiquetaDeEntidad(nivel, …)` generico aceptaria una fuente
  * que no le corresponde.
  */
-function etiquetaDelNodo(nivel: NivelGeografico, fila: NodoPrevio): string {
+function etiquetaDelNodo(
+  nivel: NivelGeografico,
+  fila: Pick<NodoPrevio, "nombre" | "cantonNombre" | "provinciaNombre">,
+): string {
   if (nivel === "provincia") return etiquetaDeEntidad("provincia", { nombre: fila.nombre });
   if (nivel === "canton") {
     return etiquetaDeEntidad("canton", {

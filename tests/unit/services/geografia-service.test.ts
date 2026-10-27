@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { GeografiaService } from "@/lib/services/GeografiaService";
-import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
+import type {
+  ContextoDeAlta,
+  IGeoRepository,
+} from "@/lib/interfaces/repositories/IGeoRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
-import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type { ProvinciaArbolDTO, ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
 
 // FICHA 374 (R14/R17/R21/R22/R24) — la regla del servicio, con dobles.
 //
@@ -51,6 +54,19 @@ const ARBOL: ProvinciaArbolDTO[] = [
   },
 ];
 
+// SL-20: lo que `findHermanos` devuelve ahora es el CONTEXTO del alta (pais, regla, codigo del
+// padre y hermanos). Por defecto, un pais SIN regla de codigo y sin hermanos.
+const SIN_REGLA = { digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null };
+const REGLA_CR = { digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 };
+
+function contexto(o: Partial<ContextoDeAlta> = {}): ContextoDeAlta {
+  return { paisId: "XA", regla: SIN_REGLA, codigoPadre: null, hermanos: [], ...o };
+}
+
+const ARBOL_PAIS: ProvinciaPlataformaDTO[] = [
+  { id: "p1", nombre: "Región", codigo: null, activo: true, cantones: [] },
+];
+
 function repoDoble(overrides: Partial<IGeoRepository> = {}) {
   const repo = {
     listProvinciasLite: vi.fn(async () => []),
@@ -62,8 +78,12 @@ function repoDoble(overrides: Partial<IGeoRepository> = {}) {
       distritos: [],
     })),
     listArbol: vi.fn(async () => ARBOL),
-    findHermanos: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
+    findHermanos: vi.fn(async () => contexto() as ContextoDeAlta | null),
     crear: vi.fn(async () => "id-nuevo"),
+    // SL-20
+    listArbolDePais: vi.fn(async () => ARBOL_PAIS),
+    leerDivisionDePais: vi.fn(async () => null),
+    importarDivision: vi.fn(),
     cambiarActivacion: vi.fn(async () => "cambiado" as const),
     // FICHA 375
     findHermanosDeNodo: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
@@ -98,7 +118,7 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
 
   it.each(SIN_GESTION)("crear con rol $rol", async (actor) => {
     const { service, repo } = build();
-    const r = await service.crear({ nivel: "provincia", nombre: "Nueva" }, actor);
+    const r = await service.crear({ nivel: "provincia", nombre: "Nueva", paisId: "XA" }, actor);
     expect(r).toEqual({ status: "forbidden" });
     expect(repo.findHermanos).not.toHaveBeenCalled();
     expect(repo.crear).not.toHaveBeenCalled();
@@ -126,6 +146,14 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
     expect(repo.renombrar).not.toHaveBeenCalled();
   });
 
+  // SL-20 (R37): el arbol de plataforma es solo del superadmin; el `maestro` lee el de su pais
+  // con `listarArbol`.
+  it.each(SIN_GESTION)("SL-20 listarArbolDePais con rol $rol", async (actor) => {
+    const { service, repo } = build();
+    expect(await service.listarArbolDePais("CR", actor)).toEqual({ status: "forbidden" });
+    expect(repo.listArbolDePais).not.toHaveBeenCalled();
+  });
+
   it.each(SIN_GESTION)("contarOrdenesSinEntregar con rol $rol", async (actor) => {
     const { service, ordenes } = build();
     const r = await service.contarOrdenesSinEntregar({ nivel: "distrito", id: "d1" }, actor);
@@ -145,7 +173,7 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
     // empresa para el superadmin (P7, D15), y ningun test afirma su exito contra la base.
     const { service, repo, ordenes } = build({}, 3);
     expect(await service.listarArbol(SUPERADMIN)).toEqual({ status: "ok", provincias: ARBOL });
-    expect(await service.crear({ nivel: "provincia", nombre: "Nueva" }, SUPERADMIN)).toEqual({
+    expect(await service.crear({ nivel: "provincia", nombre: "Nueva", paisId: "XA" }, SUPERADMIN)).toEqual({
       status: "ok",
       id: "id-nuevo",
       nivel: "provincia",
@@ -162,7 +190,12 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
     expect(
       await service.contarOrdenesSinEntregar({ nivel: "distrito", id: "d1" }, SUPERADMIN),
     ).toEqual({ status: "ok", ordenes: 3 });
+    expect(await service.listarArbolDePais("XA", SUPERADMIN)).toEqual({
+      status: "ok",
+      provincias: ARBOL_PAIS,
+    });
     expect(repo.listArbol).toHaveBeenCalledTimes(1);
+    expect(repo.listArbolDePais).toHaveBeenCalledWith("XA");
     expect(repo.findHermanos).toHaveBeenCalledTimes(1);
     expect(repo.crear).toHaveBeenCalledTimes(1);
     expect(repo.renombrar).toHaveBeenCalledWith("distrito", "d1", "Otro", "u-superadmin");
@@ -214,7 +247,7 @@ describe("374/R17 — `conflict` por forma normalizada, no por literal", () => {
   it.each(["san jose", "SAN JOSE", "San  José", "  san josé  ", "SaN jOsE"])(
     "«%s» choca con «San José» y NO crea fila",
     async (nombre) => {
-      const { service, repo } = build({ findHermanos: vi.fn(async () => HERMANOS) });
+      const { service, repo } = build({ findHermanos: vi.fn(async () => contexto({ hermanos: HERMANOS })) });
       const r = await service.crear({ nivel: "distrito", nombre, cantonId: "c1" }, SUPERADMIN);
       expect(r).toEqual({ status: "conflict" });
       expect(repo.crear).not.toHaveBeenCalled();
@@ -225,7 +258,9 @@ describe("374/R17 — `conflict` por forma normalizada, no por literal", () => {
     // `findHermanos` trae activos e inactivos a proposito: el UNIQUE de la base no distingue
     // estados, y reactivar el viejo despues chocaria con el nuevo.
     const { service, repo } = build({
-      findHermanos: vi.fn(async () => [{ id: "d-retirado", nombre: "Cabagra" }]),
+      findHermanos: vi.fn(async () =>
+        contexto({ hermanos: [{ id: "d-retirado", nombre: "Cabagra" }] }),
+      ),
     });
     const r = await service.crear({ nivel: "distrito", nombre: "cabagra", cantonId: "c1" }, SUPERADMIN);
     expect(r).toEqual({ status: "conflict" });
@@ -233,19 +268,31 @@ describe("374/R17 — `conflict` por forma normalizada, no por literal", () => {
   });
 
   it("CONTRAPRUEBA: un nombre que NO choca entra, con su forma de guardar", async () => {
-    const { service, repo } = build({ findHermanos: vi.fn(async () => HERMANOS) });
+    const { service, repo } = build({ findHermanos: vi.fn(async () => contexto({ hermanos: HERMANOS })) });
     const r = await service.crear(
       { nivel: "distrito", nombre: "Cabagra", cantonId: "c1" },
       SUPERADMIN,
     );
     expect(r).toEqual({ status: "ok", id: "id-nuevo", nivel: "distrito" });
-    expect(repo.crear).toHaveBeenCalledWith("distrito", "Cabagra", "c1");
+    expect(repo.crear).toHaveBeenCalledWith(
+      "distrito",
+      "Cabagra",
+      "c1",
+      { paisId: "XA", codigo: null },
+      "u-superadmin",
+    );
   });
 
   it("el nombre que se pasa al repositorio conserva mayusculas y acentos", async () => {
     const { service, repo } = build();
-    await service.crear({ nivel: "provincia", nombre: "San José" }, SUPERADMIN);
-    expect(repo.crear).toHaveBeenCalledWith("provincia", "San José", null);
+    await service.crear({ nivel: "provincia", nombre: "San José", paisId: "XA" }, SUPERADMIN);
+    expect(repo.crear).toHaveBeenCalledWith(
+      "provincia",
+      "San José",
+      null,
+      { paisId: "XA", codigo: null },
+      "u-superadmin",
+    );
   });
 });
 
@@ -412,5 +459,145 @@ describe("375 — renombrar: el nodo que no existe", () => {
     expect(
       await service.renombrar({ nivel: "distrito", id: "d1", nombre: "Cabagra" }, SUPERADMIN),
     ).toEqual({ status: "ok", nivel: "distrito", id: "d1", nombre: "Cabagra" });
+  });
+});
+
+// =================================================================================================
+// SL-20 (R15, R29) — el alta por pais
+// =================================================================================================
+
+describe("SL-20/R15, R29 — la provincia cuelga de un pais y compite solo con las de ese pais", () => {
+  it("las hermanas se piden por el PAIS de la provincia, no por la tabla entera", async () => {
+    const { service, repo } = build();
+    await service.crear({ nivel: "provincia", nombre: "Central", paisId: "XA" }, SUPERADMIN);
+    expect(repo.findHermanos).toHaveBeenCalledWith("provincia", "XA");
+  });
+
+  it("«central» choca con «Central» del MISMO pais: `conflict` sin escribir", async () => {
+    const { service, repo } = build({
+      findHermanos: vi.fn(async () => contexto({ hermanos: [{ id: "p1", nombre: "Central" }] })),
+    });
+    const r = await service.crear({ nivel: "provincia", nombre: "central", paisId: "XA" }, SUPERADMIN);
+    expect(r).toEqual({ status: "conflict" });
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it("un pais que no existe es `not_found` y no crea nada", async () => {
+    const { service, repo } = build({ findHermanos: vi.fn(async () => null) });
+    const r = await service.crear({ nivel: "provincia", nombre: "Central", paisId: "XZ" }, SUPERADMIN);
+    expect(r).toEqual({ status: "not_found" });
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it("el pais que se registra es el del CONTEXTO (el del padre), con el actor", async () => {
+    const { service, repo } = build({
+      findHermanos: vi.fn(async () => contexto({ paisId: "XB" })),
+    });
+    await service.crear({ nivel: "canton", nombre: "Comuna", provinciaId: "p1" }, SUPERADMIN);
+    expect(repo.crear).toHaveBeenCalledWith(
+      "canton",
+      "Comuna",
+      "p1",
+      { paisId: "XB", codigo: null },
+      "u-superadmin",
+    );
+  });
+});
+
+// =================================================================================================
+// SL-20 (R17) — el codigo del alta sigue la regla del pais
+// =================================================================================================
+
+describe("SL-20/R17 — el codigo del alta a mano", () => {
+  it.each([
+    { nivel: "provincia", codigo: "12", motivo: /exactamente 1 dígito/ },
+    { nivel: "canton", codigo: "2001", motivo: /exactamente 3 dígitos/ },
+    { nivel: "canton", codigo: "201", motivo: /empezar por el código de su padre/ },
+  ] as const)(
+    "CR: «$codigo» en $nivel es `validation_error` en `codigo` y NO crea",
+    async ({ nivel, codigo, motivo }) => {
+      const { service, repo } = build({
+        findHermanos: vi.fn(async () =>
+          contexto({ paisId: "CR", regla: REGLA_CR, codigoPadre: nivel === "canton" ? "1" : null }),
+        ),
+      });
+      const input =
+        nivel === "provincia"
+          ? { nivel, nombre: "Nueva", paisId: "CR", codigo }
+          : { nivel, nombre: "Nueva", provinciaId: "p1", codigo };
+      const r = await service.crear(input, SUPERADMIN);
+      expect(r.status).toBe("validation_error");
+      if (r.status !== "validation_error") throw new Error("no fue validation_error");
+      expect(r.fieldErrors.codigo?.[0]).toMatch(motivo);
+      expect(repo.crear).not.toHaveBeenCalled();
+    },
+  );
+
+  it("CR: un hijo con codigo bajo un padre SIN codigo es `validation_error`", async () => {
+    const { service, repo } = build({
+      findHermanos: vi.fn(async () => contexto({ paisId: "CR", regla: REGLA_CR, codigoPadre: null })),
+    });
+    const r = await service.crear(
+      { nivel: "distrito", nombre: "Nuevo", cantonId: "c1", codigo: "10101" },
+      SUPERADMIN,
+    );
+    expect(r.status).toBe("validation_error");
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it("CR: un codigo con el prefijo del padre entra y llega al repositorio", async () => {
+    const { service, repo } = build({
+      findHermanos: vi.fn(async () => contexto({ paisId: "CR", regla: REGLA_CR, codigoPadre: "101" })),
+    });
+    const r = await service.crear(
+      { nivel: "distrito", nombre: "Nuevo", cantonId: "c1", codigo: "10199" },
+      SUPERADMIN,
+    );
+    expect(r).toEqual({ status: "ok", id: "id-nuevo", nivel: "distrito" });
+    expect(repo.crear).toHaveBeenCalledWith(
+      "distrito",
+      "Nuevo",
+      "c1",
+      { paisId: "CR", codigo: "10199" },
+      "u-superadmin",
+    );
+  });
+
+  it("un pais SIN regla acepta texto libre de 1 a 20 caracteres sin espacios", async () => {
+    const { service, repo } = build();
+    const ok = await service.crear(
+      { nivel: "provincia", nombre: "Nueva", paisId: "XA", codigo: "RM-13" },
+      SUPERADMIN,
+    );
+    expect(ok.status).toBe("ok");
+    expect(repo.crear).toHaveBeenCalledTimes(1);
+
+    const mal = await service.crear(
+      { nivel: "provincia", nombre: "Otra", paisId: "XA", codigo: "con espacio" },
+      SUPERADMIN,
+    );
+    expect(mal.status).toBe("validation_error");
+    expect(repo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin codigo no se valida nada: un hijo SIN codigo bajo un padre sin codigo entra en CR", async () => {
+    const { service } = build({
+      findHermanos: vi.fn(async () => contexto({ paisId: "CR", regla: REGLA_CR, codigoPadre: null })),
+    });
+    const r = await service.crear({ nivel: "distrito", nombre: "Nuevo", cantonId: "c1" }, SUPERADMIN);
+    expect(r.status).toBe("ok");
+  });
+
+  it("el nombre repetido gana al codigo invalido: `conflict` antes que la regla", async () => {
+    const { service } = build({
+      findHermanos: vi.fn(async () =>
+        contexto({ regla: REGLA_CR, hermanos: [{ id: "p1", nombre: "Nueva" }] }),
+      ),
+    });
+    const r = await service.crear(
+      { nivel: "provincia", nombre: "Nueva", paisId: "CR", codigo: "99" },
+      SUPERADMIN,
+    );
+    expect(r).toEqual({ status: "conflict" });
   });
 });
