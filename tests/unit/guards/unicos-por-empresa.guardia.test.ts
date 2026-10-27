@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { UNICOS_SIN_EMPRESA, type UnicoSinEmpresa } from "@/lib/db/excepciones-aislamiento";
 import { MODELOS_DE_NEGOCIO } from "@/lib/db/modelos-de-negocio";
 
 import {
@@ -19,6 +18,7 @@ import {
   unicosFinales,
   unicosSinEmpresaFueraDeLista,
 } from "./_unicos-por-empresa";
+import { UNICOS_SIN_EMPRESA, type UnicoSinEmpresa } from "./_unicos-sin-empresa";
 
 /**
  * SL-18 · R22, R23, R30 (design §5) — GUARDIA: LOS ÚNICOS DE NEGOCIO EMPIEZAN POR `organizacion_id`

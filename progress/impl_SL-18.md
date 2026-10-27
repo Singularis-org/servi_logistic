@@ -502,3 +502,35 @@ la viñeta de `architecture.md`.
 ### Veredicto
 
 Tanda 4 hecha; sin bloqueos ni dependencias nuevas. Sin push (lo hace el leader).
+
+### Fix tras el gate (2026-10-26)
+
+- **Rojo:** `test:rapido` dio rojo, fuera del baseline, en `analytics-daily-guards` («solo los
+  modulos declarados… nombran la tabla»), en `financiera-fuente` («ningun archivo de la feature
+  nombra una tabla fuera de TablaDinero») y en `pagos-frontera` («ningún camino de
+  `LiquidacionPago` nombra el desglose [D1]» y «CIERRE: los ÚNICOS módulos de `lib/`…»).
+- **Causa confirmada:** `UNICOS_SIN_EMPRESA`, en `lib/db/excepciones-aislamiento.ts`, nombra
+  `analytics_daily` y `gestion_orden_pago`. Esas guardias censan qué archivos de `lib/` nombran esas
+  tablas. `analytics-daily-guards` y `pagos-frontera` buscan subcadenas, así que también caza el
+  nombre del índice (`analytics_daily_grano_key`, `gestion_orden_pago_gestion_id_metodo_key`): no
+  basta con quitar el campo `tabla`. `financiera-fuente` mete el archivo en su censo porque ya
+  nombraba los repositorios de analítica en `porRls(...)`.
+- **Arreglo, sin tocar esas guardias:** ningún código de producción lee la lista, así que pasa
+  entera, sin cambios (8 `global` y 52 `anclado`), a `tests/unit/guards/_unicos-sin-empresa.ts`,
+  junto al detector. `lib/db/excepciones-aislamiento.ts` queda igual que en `60f426d` (diff vacío).
+  Las guardias censan `app`, `lib`, `scripts`, `components`, `hooks`, `providers` y `e2e`, y no
+  `tests/`. Se descartó ampliar sus listas blancas: habría que debilitar tres guardias de otras
+  features.
+- **Spec (revisión 2026-10-26):**
+  - design §2, §5 y §8 y tasks T4.1 y T6.3: los globales a propósito son 8, no 5;
+  - nueva ubicación de la lista en design §5, T4.1 y la lista de archivos de tasks;
+  - `docs/architecture.md` apunta a la ruta nueva.
+- **Verificación:**
+  - typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`) → exit 0;
+  - lint con el mismo NODE_OPTIONS → exit 0, 0 errores y 231 warnings, ninguno de la tanda;
+  - vitest de `unicos-por-empresa`, `financiera-fuente`, `pagos-frontera` y
+    `analytics-daily-guards` → `Test Files 4 passed (4)`, `Tests 70 passed (70)`;
+  - backend_dev corrió además `sql-a-mano-por-empresa`, `plataforma-solo-en-lista` y
+    `storage-solo-por-adaptador`: 7 archivos, 105 passed.
+- **Nota:** donde la sección de arriba dice que la lista vive en `lib/db/excepciones-aislamiento.ts`,
+  ahora vive en `tests/unit/guards/_unicos-sin-empresa.ts`.

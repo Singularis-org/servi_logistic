@@ -102,9 +102,13 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 ## Tanda 4: guardia de únicos (R22, R23, R30)
 
 - [x] **T4.1** [P] Detector `tests/unit/guards/_unicos-por-empresa.ts` y lista
-  `UNICOS_SIN_EMPRESA` en `lib/db/excepciones-aislamiento.ts`, sembrada como dice design §5.
+  `UNICOS_SIN_EMPRESA` en `tests/unit/guards/_unicos-sin-empresa.ts`, sembrada como dice design §5.
   Dep. T1.1.
   **Hecho:** el detector lista los únicos finales; la lista cuadra con ellos.
+
+  > Revisión 2026-10-26: la lista iba a ir en `lib/db/excepciones-aislamiento.ts`. Ahí pone en
+  > rojo las guardias `analytics-daily-guards`, `financiera-fuente` y `pagos-frontera`, así que se
+  > movió a `tests/unit/guards/` (design §5). Los globales son 8, no 5.
 - [x] **T4.2** `tests/unit/guards/unicos-por-empresa.guardia.test.ts`, con los casos (a)–(d) de
   design §5. Dep. T4.1, T6.3.
   **Hecho:** verde; la autoprueba (d) demuestra el rojo con SQL de muestra y con la mutación M4b.
@@ -139,9 +143,14 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   `organizacion_id`. Dep. —.
   **Hecho:** verde.
 - [ ] **T6.3** [P] `docs/architecture.md > Multi-empresa > Únicos`: el párrafo de design §8 y la
-  lista de los 5 globales a propósito. `progress/deudas.md > D14`: el punto del push queda resuelto
+  lista de los 8 globales a propósito. `progress/deudas.md > D14`: el punto del push queda resuelto
   por SL-18. Dep. —.
   **Hecho:** R30 lo verifica la guardia de T4.2 (c).
+
+  > Revisión 2026-10-26: decía 5. Se suman `integracion_whatsapp_numero_id_key` e
+  > `integracion_whatsapp_resumen_verificacion_key` (SL-36, identificadores externos) y
+  > `usuario_un_solo_superadmin` (SL-32). La parte de `docs/architecture.md` ya entró en la Tanda 4;
+  > falta D14.
 
 ## Tanda 7: pantallas mínimas y E2E (R31, R32). Solo con la Propuesta A de P4
 
@@ -244,6 +253,7 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 - `tests/unit/guards/379-maestro-sin-bloqueo.guardia.test.ts`
 - `tests/unit/repositories/postulacion-repository.test.ts`
 - `tests/unit/guards/_unicos-por-empresa.ts`
+- `tests/unit/guards/_unicos-sin-empresa.ts`
 - `tests/unit/guards/unicos-por-empresa.guardia.test.ts`
 - `tests/components/LoginForm.test.tsx`
 - `e2e/_superadmin-fixture.ts`

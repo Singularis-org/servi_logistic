@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { UnicoSinEmpresa } from "@/lib/db/excepciones-aislamiento";
+import type { UnicoSinEmpresa } from "./_unicos-sin-empresa";
 
 /**
  * SL-18 (design §5) — detector de la guardia de únicos por empresa.

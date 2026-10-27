@@ -93,7 +93,13 @@ restaura los índices borrados y borra los nuevos. No hay datos que perder, así
 - `orden.num_guia` sigue `@unique` global, y `orden_num_guia_seq` y `siguiente_num_guia()` siguen
   como están (R29, decisión 1). Las 7 entradas «global a propósito» de T3.9 quedan en 5:
   `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint` y los dos `wa_message_id`.
-  `usuario.email` y `usuario.cedula` pasan a ser por empresa.
+  `usuario.email` y `usuario.cedula` pasan a ser por empresa. A esas 5 se suman 3 posteriores a
+  SL-17, y los globales a propósito quedan en 8: `integracion_whatsapp_numero_id_key` e
+  `integracion_whatsapp_resumen_verificacion_key` (SL-36, identificadores externos) y
+  `usuario_un_solo_superadmin` (SL-32).
+
+  > Revisión 2026-10-26 (T4.1): el detector de §5 encontró esos 3 únicos de negocio posteriores
+  > a `20261023090000` sin `organizacion_id` y sin FK que los ancle. Este spec decía «5».
 - No hay tablas nuevas.
 
 ## 3. Login (R6–R15)
@@ -220,14 +226,23 @@ hasta SLT-41.
 
 ## 5. Guardia de únicos (R22, R23)
 
-- **Lista:** `UNICOS_SIN_EMPRESA` en `lib/db/excepciones-aislamiento.ts`, con entradas
+- **Lista:** `UNICOS_SIN_EMPRESA` en `tests/unit/guards/_unicos-sin-empresa.ts`, con entradas
   `{ indice, tabla, tipo: "global" | "anclado", motivo }`. Se siembra de la tabla de T3.9:
-  - las 5 globales a propósito;
+  - las 5 globales a propósito de T3.9;
   - los 52 anclados, con el motivo «FK NOT NULL a `<tabla>`»;
   - los únicos de negocio creados por migraciones posteriores a `20261023090000` que tampoco
-    lleven la columna, que T4.1 calcula con el propio detector.
+    lleven la columna, que T4.1 calcula con el propio detector. Son 3, todos globales, y los
+    globales quedan en 8 (§2 «Lo que no cambia»).
 
   Como las otras listas, solo puede bajar.
+
+  > Revisión 2026-10-26 (T4.1, tras el gate): la lista iba a vivir en
+  > `lib/db/excepciones-aislamiento.ts`. Allí nombra `analytics_daily` y `gestion_orden_pago`
+  > (también dentro del nombre de sus índices), y eso pone en rojo tres guardias de otras
+  > features que censan qué archivos de `lib/` nombran esas tablas: `analytics-daily-guards`,
+  > `financiera-fuente` y `pagos-frontera`. Ningún código de producción lee la lista, así que pasa a
+  > `tests/unit/guards/`, junto al detector, y esas guardias no se tocan. Además, los «5
+  > globales» de este spec pasan a ser 8.
 - **Detector:** `tests/unit/guards/_unicos-por-empresa.ts`. Lee las `migration.sql` desde
   `20261023090000_unicos_por_empresa` (incluida) y aplica cada `CREATE UNIQUE INDEX`,
   `DROP INDEX` y `ADD CONSTRAINT … UNIQUE` en orden. Así obtiene el estado final de cada índice
@@ -315,6 +330,12 @@ No cambia el código. Va a `docs/architecture.md > Multi-empresa > Únicos`:
 > permutación de `siguiente_num_guia()` ya evita que la guía revele el volumen de nadie.
 > `usuario.email` y `usuario.cedula` son únicos por empresa: una persona puede tener cuenta en
 > varias.»
+
+Junto al párrafo va la lista de los 8 globales a propósito (§2 «Lo que no cambia»).
+
+> Revisión 2026-10-26 (T4.1): antes decía 5. Se suman `integracion_whatsapp_numero_id_key` e
+> `integracion_whatsapp_resumen_verificacion_key` (SL-36, identificadores externos) y
+> `usuario_un_solo_superadmin` (SL-32).
 
 El test de R29 crea órdenes en A y en B con `siguiente_num_guia()` y comprueba que las guías no se
 repiten y que `orden_num_guia_key` sigue sin `organizacion_id`.

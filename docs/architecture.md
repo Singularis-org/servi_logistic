@@ -96,8 +96,8 @@ esta bien hecha, no solo si "funciona".
   repetida entre empresas obligaría a pedir la empresa en el rastreo público, y la permutación de
   `siguiente_num_guia()` ya evita que la guía revele el volumen de nadie. `usuario.email` y
   `usuario.cedula` son únicos por empresa: una persona puede tener cuenta en varias.
-  - **Globales a propósito** (tipo `global` de `UNICOS_SIN_EMPRESA` en `lib/db/excepciones-aislamiento.ts`):
-    `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint`, `chat_mensaje.wa_message_id` y
+  - **Globales a propósito** (tipo `global` de `UNICOS_SIN_EMPRESA`, en
+    `tests/unit/guards/_unicos-sin-empresa.ts`): `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint`, `chat_mensaje.wa_message_id` y
     `whatsapp_envio_entrega.wa_message_id`. Después de SL-17 se sumaron
     `integracion.whatsapp_numero_id` e `integracion.whatsapp_resumen_verificacion` (SL-36: el webhook
     de WhatsApp lleva a una sola empresa) y `usuario_un_solo_superadmin` (SL-32: un solo superadmin).
