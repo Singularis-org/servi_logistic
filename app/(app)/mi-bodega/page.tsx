@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -46,8 +45,6 @@ import { MiBodegaSinpeModule } from "./_components/MiBodegaSinpeModule";
 const PLANTILLA_CON_SINPE = "listo_para_entrega_mensajero";
 
 export default async function MiBodegaPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("bodegas_satelite");
   const actor = await resolveActorFromSession();
   if (actor === null || !(ROLES_MI_BODEGA as readonly string[]).includes(actor.rol)) {
     notFound();

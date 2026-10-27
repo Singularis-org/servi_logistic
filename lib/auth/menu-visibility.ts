@@ -435,7 +435,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // la defensa real es el `notFound` de `/recoleccion` (resuelve el rol server-side).
     label: "Recolección",
     href: "/recoleccion",
-    modulo: "recoleccion",
     iconKey: "store",
     roles: ["mensajero"],
   },
@@ -463,7 +462,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // relativa). Es el patrón literal de "Entregas".
     label: "Órdenes",
     href: "/recepcion-satelite",
-    modulo: "bodegas_satelite",
     iconKey: "package",
     roles: ["adminSatelite"],
     children: [
@@ -568,7 +566,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     children: [
       { label: "Usuarios", href: "/configuracion" },
       { label: "Tarifas", href: "/configuracion/tarifas" },
-      { label: "API", href: "/configuracion/api", modulo: "api_integraciones" },
+      { label: "API", href: "/configuracion/api" },
       // SL-36 (design §14): las cuentas de los servicios externos de la empresa, junto a «API»
       // porque las dos son conexiones con terceros. No es el primer hijo, así que no mueve el
       // aterrizaje post-login, y hereda la visibilidad `maestro`-only del padre, igual que la
@@ -711,7 +709,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // `notFound()` de la página.
     label: "Mi bodega",
     href: "/mi-bodega",
-    modulo: "bodegas_satelite",
     iconKey: "warehouse",
     roles: ROLES_MI_BODEGA,
   },

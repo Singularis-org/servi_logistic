@@ -5,7 +5,7 @@ import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 
 type PuertasDeModulo = typeof import("@/lib/modulos/exigir-modulo");
 
-// SL-23 (design §10) — las puertas de módulo con los 9 encendidos, para los tests de páginas y
+// SL-23 (design §10) — las puertas de módulo con todos encendidos, para los tests de páginas y
 // actions que ya simulan la sesión y no van contra la base. Se usa así:
 //
 //   vi.mock("@/lib/modulos/exigir-modulo", async () =>

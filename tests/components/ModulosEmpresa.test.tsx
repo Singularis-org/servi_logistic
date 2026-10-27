@@ -43,7 +43,7 @@ function diferido<T>() {
 afterEach(() => cleanup());
 
 describe("SL-23 (R8) — una fila por módulo con su interruptor", () => {
-  it("pinta los 8 módulos en el orden del catálogo, con su descripción y su estado", () => {
+  it("pinta los 5 módulos en el orden del catálogo, con su descripción y su estado", () => {
     montar(vi.fn(), ["wallet"]);
 
     const switches = screen.getAllByRole("switch");
@@ -125,13 +125,13 @@ describe("SL-23 (R8) — si falla, vuelve atrás y avisa", () => {
   it("si la action lanza, también vuelve atrás y avisa", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const fijar = vi.fn().mockRejectedValue(new Error("red caída"));
-    montar(fijar, ["recoleccion"]);
+    montar(fijar, ["analitica"]);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("switch", { name: "Recolección" }));
+    await user.click(screen.getByRole("switch", { name: "Analítica" }));
 
-    expect((await screen.findAllByText("No se pudo cambiar «Recolección». Inténtalo de nuevo.")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("switch", { name: "Recolección" })).toHaveAttribute("aria-checked", "true");
+    expect((await screen.findAllByText("No se pudo cambiar «Analítica». Inténtalo de nuevo.")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("switch", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
     error.mockRestore();
   });
 });

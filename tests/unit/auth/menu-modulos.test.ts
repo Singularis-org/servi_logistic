@@ -47,11 +47,12 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
   });
 
   it("poda los subítems de un módulo apagado y deja el resto del desplegable", () => {
-    const menu = menuDeLaEmpresa(actor("maestro"), todosMenos("whatsapp", "api_integraciones"));
+    const menu = menuDeLaEmpresa(actor("maestro"), todosMenos("whatsapp"));
     const config = menu.find((i) => i.href === "/configuracion");
     expect(config?.children?.map((c) => c.href)).toEqual([
       "/configuracion",
       "/configuracion/tarifas",
+      "/configuracion/api",
       "/configuracion/integraciones",
       "/configuracion/vehiculos",
       "/configuracion/sinpe",
@@ -70,7 +71,7 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     expect(sinWhatsapp.map((i) => i.href)).not.toContain("/historico");
   });
 
-  it("los ítems del núcleo siguen visibles con los 8 módulos apagados", () => {
+  it("los ítems del núcleo siguen visibles con los 5 módulos apagados", () => {
     const etiquetas = (rol: RolValue) => menuDeLaEmpresa(actor(rol), NINGUNO).map((i) => i.label);
     expect(etiquetas("mensajero")).toContain("Cierre del día");
     expect(etiquetas("maestro")).toContain("Cierres del día");
@@ -83,14 +84,10 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     );
   });
 
-  it("con los 8 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
+  it("con los 5 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
     const deModulo = [
       "/analitica",
       "/monitoreo",
-      "/recoleccion",
-      "/recepcion-satelite/por-recibir",
-      "/recepcion-satelite/en-bodega",
-      "/mi-bodega",
       "/ranking",
       "/ranking/historico",
       "/wallet",
@@ -98,7 +95,6 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
       "/wallet/mensajeros",
       "/wallet/satelites",
       "/mi-wallet",
-      "/configuracion/api",
       "/configuracion/plantillas",
       "/configuracion/envios-whatsapp",
       "/historico/conversaciones",
@@ -108,6 +104,19 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
       const visibles = rutas(menuDeLaEmpresa(actor(rol), NINGUNO));
       expect(visibles.filter((r) => deModulo.includes(r)), rol).toEqual([]);
     }
+  });
+
+  it("Recolección, Bodegas satélite y API son núcleo (2026-10-27): siguen en el menú con los 5 apagados", () => {
+    expect(rutas(menuDeLaEmpresa(actor("mensajero"), NINGUNO))).toContain("/recoleccion");
+    expect(rutas(menuDeLaEmpresa(actor("maestro"), NINGUNO))).toContain("/configuracion/api");
+    expect(rutas(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toEqual(
+      expect.arrayContaining(["/recepcion-satelite/por-recibir", "/recepcion-satelite/en-bodega", "/mi-bodega"]),
+    );
+    const marcados = SIDEBAR_ITEMS.flatMap((i) => [i, ...(i.children ?? [])]).filter((i) =>
+      ["/recoleccion", "/recepcion-satelite", "/mi-bodega", "/configuracion/api"].includes(i.href),
+    );
+    expect(marcados).toHaveLength(4);
+    for (const item of marcados) expect(item.modulo, item.href).toBeUndefined();
   });
 
   it("con todo encendido es exactamente `itemsVisibles`, y conserva la identidad de cada ítem", () => {
@@ -125,7 +134,7 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
 
   it("conserva la identidad de los ítems que no poda, y crea uno nuevo solo para el podado", () => {
     const base = itemsVisibles(SIDEBAR_ITEMS, actor("maestro"));
-    const filtrado = filtrarPorModulos(base, todosMenos("api_integraciones"));
+    const filtrado = filtrarPorModulos(base, todosMenos("whatsapp"));
     const configBase = base.find((i) => i.href === "/configuracion");
     const configFiltrada = filtrado.find((i) => i.href === "/configuracion");
     expect(configFiltrada).not.toBe(configBase);
@@ -156,21 +165,25 @@ describe("SL-23 · primerDestino sobre el menú filtrado (R15, R32)", () => {
     expect(destino("adminSatelite")).toBe("/recepcion-satelite/por-recibir");
   });
 
-  it("R32: adminSatelite con Bodegas satélite apagado aterriza en su primer destino que queda", () => {
-    const menu = menuDeLaEmpresa(actor("adminSatelite"), todosMenos("bodegas_satelite"));
-    expect(menu.map((i) => i.href)).not.toContain("/recepcion-satelite");
-    expect(menu.map((i) => i.href)).not.toContain("/mi-bodega");
-    expect(primerDestino(menu)).toBe("/cierres-admin");
+  it("R32: con el primer destino en un módulo apagado, aterriza en el primero que queda", () => {
+    // Bodegas satélite pasó al núcleo (2026-10-27) y ningún rol real aterriza hoy en un módulo:
+    // el caso se mide sobre un menú armado, con Wallet como el módulo apagado.
+    const menu: MenuItem[] = [
+      { label: "W", href: "/w", iconKey: "wallet", roles: ["adminSatelite"], modulo: "wallet" },
+      { label: "N", href: "/n", iconKey: "warehouse", roles: ["adminSatelite"] },
+    ];
+    expect(primerDestino(filtrarPorModulos(menu, TODOS))).toBe("/w");
+    expect(primerDestino(filtrarPorModulos(menu, todosMenos("wallet")))).toBe("/n");
   });
 
-  it("R32: con los 8 apagados el adminSatelite sigue teniendo destino, del núcleo", () => {
-    expect(primerDestino(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toBe("/cierres-admin");
+  it("R32: con los 5 apagados el adminSatelite sigue aterrizando en Recepción satélite (núcleo)", () => {
+    expect(primerDestino(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toBe("/recepcion-satelite/por-recibir");
   });
 
   it("R32: si no queda ningún destino, `primerDestino` da null (y `/dashboard` pinta su Inicio)", () => {
     // Un menú hecho solo de ítems de módulo: con todo apagado no queda nada a donde ir.
     const soloModulos: MenuItem[] = [
-      { label: "B", href: "/b", iconKey: "warehouse", roles: ["adminSatelite"], modulo: "bodegas_satelite" },
+      { label: "B", href: "/b", iconKey: "warehouse", roles: ["adminSatelite"], modulo: "wallet" },
       {
         label: "C",
         href: "/c",
@@ -183,7 +196,7 @@ describe("SL-23 · primerDestino sobre el menú filtrado (R15, R32)", () => {
   });
 
   it("los ítems apagados no son destino aunque fueran los primeros elegibles", () => {
-    // El mensajero aterriza en «Entregas» (núcleo); con Recolección apagada no cambia.
+    // El mensajero aterriza en «Entregas» (núcleo); con todos los módulos apagados no cambia.
     expect(primerDestino(menuDeLaEmpresa(actor("mensajero"), NINGUNO))).toBe(
       "/mis-asignaciones/reparto",
     );

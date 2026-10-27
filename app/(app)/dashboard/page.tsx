@@ -38,8 +38,8 @@ export default async function Home() {
   // donde empieza su trabajo. Se deriva del mismo menú que pinta la barra, así que un
   // reordenamiento del sidebar mueve el aterrizaje con él, sin una segunda lista que mantener.
   //
-  // SL-23 (R15, R32): sobre el menú YA filtrado por los módulos de la empresa. Un `adminSatelite`
-  // con «Bodegas satélite» apagado aterriza en el primer destino que le queda, o en el placeholder.
+  // SL-23 (R15, R32): sobre el menú YA filtrado por los módulos de la empresa. Un rol cuyo primer
+  // ítem es de un módulo apagado aterriza en el primer destino que le queda, o en el placeholder.
   const destino = primerDestino(menuDeLaEmpresa(actor, await modulosDelMenu(actor)));
   if (destino !== null) redirect(destino);
 

@@ -147,13 +147,14 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     it("R33: solo las piezas de §3.7 tienen dos módulos, y son los suyos", () => {
       expect(piezasCompartidas()).toEqual({
         "action premio-ranking-devengo": ["wallet", "ranking"],
-        "api ordenes/api-key/analitica": ["api_integraciones", "analitica"],
       });
     });
 
-    it("§3.1/§3.2: el reparto tiene 24 páginas y 48 archivos de actions de un módulo", () => {
-      expect(PAGINAS_DE_MODULO).toHaveLength(24);
-      expect(ACTIONS_DE_MODULO).toHaveLength(48);
+    // 2026-10-27: Recolección, Bodegas satélite y API e integraciones pasaron al núcleo (6 páginas y
+    // 5 actions menos).
+    it("§3.1/§3.2: el reparto tiene 18 páginas y 43 archivos de actions de un módulo", () => {
+      expect(PAGINAS_DE_MODULO).toHaveLength(18);
+      expect(ACTIONS_DE_MODULO).toHaveLength(43);
     });
   });
 
@@ -247,7 +248,7 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         ruta: { "/wallet": "wallet", "/wallet/tiendas/[tiendaId]": "wallet" },
         action: { wallet: "wallet" },
         cron: { "generar-gastos-fijos": "wallet" },
-        api: { "ordenes/api-key": "api_integraciones", "ordenes/api-key/orden/[id]": "api_integraciones" },
+        api: { "ordenes/api-key": "analitica", "ordenes/api-key/orden/[id]": "analitica" },
       } as const;
 
       it("lee el disco con la forma de clave del reparto (sin grupos, sin tests ni _shared)", () => {
@@ -442,10 +443,10 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     describe("(e) consumos cruzados", () => {
       it("ubica cada archivo de app/ en su ruta, cron o endpoint más cercano", () => {
         expect(destinoDeArchivoDeApp("app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx")).toBe("wallet");
-        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("api_integraciones");
+        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/configuracion/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/layout.tsx")).toBe("nucleo");
-        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toEqual(["api_integraciones", "analitica"]);
+        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toBe("analitica");
         expect(destinoDeArchivoDeApp("app/api/cron/snapshot-ranking/route.ts")).toBe("ranking");
       });
       it("lee imports estáticos y dinámicos; no los de tipo ni los citados en comentarios", () => {

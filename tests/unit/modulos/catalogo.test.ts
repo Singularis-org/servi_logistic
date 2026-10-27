@@ -17,18 +17,15 @@ import { CALCULO_CONTINUO, MODULO_POR_JOB, modulosDe } from "@/lib/modulos/repar
 const CLAVES = [
   "analitica",
   "monitoreo",
-  "recoleccion",
-  "bodegas_satelite",
   "wallet",
   "ranking",
   "whatsapp",
-  "api_integraciones",
 ];
 
 describe("SL-23 · catálogo de módulos (R1, R2)", () => {
-  it("R1 — exactamente 8 claves, las mismas que el enum `modulo_apagable`", () => {
+  it("R1 — exactamente 5 claves, las mismas que el enum `modulo_apagable`", () => {
     const enCatalogo = Object.keys(MODULOS_APAGABLES).sort();
-    expect(enCatalogo).toHaveLength(8);
+    expect(enCatalogo).toHaveLength(5);
     expect(enCatalogo).toEqual(Object.values(ModuloApagablePrisma).sort());
     expect(enCatalogo).toEqual([...CLAVES].sort());
   });
@@ -50,12 +47,9 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     expect(ORDEN_MODULOS.map(nombreDelModulo)).toEqual([
       "Analítica",
       "Monitoreo",
-      "Recolección",
-      "Bodegas satélite",
       "Wallet",
       "Ranking",
       "WhatsApp",
-      "API e integraciones",
     ]);
   });
 
@@ -68,15 +62,28 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     for (const clave of ORDEN_MODULOS) expect(MODULOS_APAGABLES[clave].descripcion.trim()).not.toBe("");
   });
 
-  it("R2 — el núcleo son sus 8 nombres, Cierres e Incidentes y novedades incluidos", () => {
+  it("R1, R2 — `recoleccion`, `bodegas_satelite` y `api_integraciones` no existen: son núcleo desde el 2026-10-27", () => {
+    for (const clave of ["recoleccion", "bodegas_satelite", "api_integraciones"]) {
+      expect(esModuloApagable(clave)).toBe(false);
+      expect(Object.values(ModuloApagablePrisma)).not.toContain(clave);
+    }
+    expect(NUCLEO).toContain("Recolección");
+    expect(NUCLEO).toContain("Bodegas satélite");
+    expect(NUCLEO).toContain("API e integraciones");
+  });
+
+  it("R2 — el núcleo son sus 11 nombres: Cierres, Incidentes y novedades, Recolección, Bodegas satélite y API e integraciones incluidos", () => {
     expect([...NUCLEO]).toEqual([
       "Inicio",
       "Órdenes",
       "Entregas",
+      "Recolección",
+      "Bodegas satélite",
       "Cierres",
       "Incidentes y novedades",
       "Usuarios",
       "Tarifas",
+      "API e integraciones",
       "Ayuda",
     ]);
   });

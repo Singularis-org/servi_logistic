@@ -150,8 +150,8 @@ describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
     });
 
     it("faltan las dos: nombra la primera en el orden pedido", async () => {
-      const e = await errorDe(exigirModuloActivo("api_integraciones", "analitica"));
-      expect((e as AppError).details).toMatchObject({ modulo: "api_integraciones" });
+      const e = await errorDe(exigirModuloActivo("monitoreo", "analitica"));
+      expect((e as AppError).details).toMatchObject({ modulo: "monitoreo" });
     });
   });
 });

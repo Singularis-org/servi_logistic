@@ -98,27 +98,24 @@ describe("SL-23 · qué módulo exige cada tipo de job (§3.3, §3.8)", () => {
     for (const tipo of Object.values(JobTipoPrisma)) expect(moduloDeEjecucion(tipo)).toBeDefined();
     expect(moduloDeEjecucion("analitica_rollup_diario")).toBe("nucleo");
     expect(moduloDeEjecucion("analitica_invalidacion_cache")).toBe("nucleo");
-    expect(moduloDeEjecucion("webhook_estado")).toBe("api_integraciones");
-    expect(moduloDeEjecucion("webhook_evento")).toBe("api_integraciones");
+    // API e integraciones es núcleo desde el 2026-10-27.
+    expect(moduloDeEjecucion("webhook_estado")).toBe("nucleo");
+    expect(moduloDeEjecucion("webhook_evento")).toBe("nucleo");
     expect(moduloDeEjecucion("whatsapp_chat_envio")).toBe("whatsapp");
     expect(moduloDeEjecucion("push_web")).toBe("nucleo");
   });
 });
 
 describe("SL-23 · el drenador con módulos apagados (R19, R20, R30)", () => {
-  it("R19 — con API e integraciones apagado, webhook_estado y webhook_evento se descartan sin llamar al handler", async () => {
-    estado.porEmpresa = { [A]: ["whatsapp"] };
+  it("R19 — webhook_estado y webhook_evento son núcleo (2026-10-27): corren con todos los módulos apagados", async () => {
+    estado.porEmpresa = { [A]: [] };
     const r = await drenar([job("j-e", "webhook_estado"), job("j-v", "webhook_evento")]);
-    expect(r.corridos).toEqual([]);
-    expect(r.descartados).toEqual([
-      { id: "j-e", motivo: "modulo_inactivo:api_integraciones" },
-      { id: "j-v", motivo: "modulo_inactivo:api_integraciones" },
-    ]);
-    expect(r.resultado).toMatchObject({ ok: 0, fallidos: 0, descartados: 2 });
+    expect(r.corridos).toEqual(["j-e", "j-v"]);
+    expect(r.descartados).toEqual([]);
   });
 
   it("R20 — un whatsapp_* con WhatsApp apagado se descarta; uno del núcleo corre", async () => {
-    estado.porEmpresa = { [A]: ["api_integraciones"] };
+    estado.porEmpresa = { [A]: ["analitica"] };
     const r = await drenar([job("j-w", "whatsapp_chat_envio"), job("j-p", "push_web")]);
     expect(r.corridos).toEqual(["j-p"]);
     expect(r.descartados).toEqual([{ id: "j-w", motivo: "modulo_inactivo:whatsapp" }]);
@@ -126,8 +123,8 @@ describe("SL-23 · el drenador con módulos apagados (R19, R20, R30)", () => {
   });
 
   it("encendido, el mismo job corre", async () => {
-    estado.porEmpresa = { [A]: ["api_integraciones"] };
-    const r = await drenar([job("j-e", "webhook_evento")]);
+    estado.porEmpresa = { [A]: ["whatsapp"] };
+    const r = await drenar([job("j-e", "whatsapp_chat_envio")]);
     expect(r.corridos).toEqual(["j-e"]);
     expect(r.descartados).toEqual([]);
   });
