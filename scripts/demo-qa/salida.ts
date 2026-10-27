@@ -112,7 +112,22 @@ export function rastroDelError(error: unknown): string {
   if (!(error instanceof Error)) return "error desconocido";
   const e = error as { code?: unknown; cause?: { code?: unknown } };
   const codigo = [e.code, e.cause?.code].find((c): c is string => typeof c === "string" && /^[A-Z0-9_]{1,12}$/.test(c));
-  return codigo === undefined ? error.name : `${error.name} ${codigo}`;
+  const tiempo = codigo === "P2028" ? tiempoVencido(error) : undefined;
+  return `${error.name}${codigo === undefined ? "" : ` ${codigo}`}${tiempo === undefined ? "" : `, ${tiempo}`}`;
+}
+
+/**
+ * De un P2028 (error de transacción de Prisma), cuál de sus dos tiempos venció. Se lee del mensaje,
+ * que no se imprime: solo se busca en él una de dos frases fijas del runtime de Prisma 7. Medido en
+ * el build de QA: sin esto, «P2028» no distingue una base lenta (`timeout`) de un pool lleno (`maxWait`).
+ */
+export function tiempoVencido(error: Error): string | undefined {
+  const mensajes = [error.message, error.cause instanceof Error ? error.cause.message : ""].join("\n");
+  if (/Unable to start a transaction in the given time/.test(mensajes)) {
+    return "maxWait de la transacción (esperando conexión)";
+  }
+  if (/cannot be executed on an expired transaction/.test(mensajes)) return "timeout de la transacción";
+  return undefined;
 }
 
 /**
@@ -122,6 +137,8 @@ export function rastroDelError(error: unknown): string {
  */
 export function lineaDeError(error: unknown): string {
   if (error instanceof Error && error.message.startsWith(PREFIJO)) {
+    // El de un paso (`paso.ts`) ya trae en su texto la ruta y el rastro de la causa.
+    if (error.name === "FalloDePaso") return error.message;
     return `${error.message} (${rastroDelError(error)})`;
   }
   return `${PREFIJO} FALLÓ la demo (${rastroDelError(error)}). El detalle no se imprime: puede llevar datos de la base.`;

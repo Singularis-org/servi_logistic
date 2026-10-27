@@ -89,15 +89,21 @@ import {
   actorDe,
   escenarioReparto,
   servicios,
+  type DestinoReparto,
   type EscenarioReparto,
+  type GestionEscenario,
   type Geo,
   type MensajeroEscenario,
+  type NuevaOrden,
   type OrdenEscenario,
   type ZonaTipo,
 } from "@/tests/fabricas/escenarios/reparto";
 
 import { EMPRESAS_DEMO } from "./borrar";
+import { PERFILES_DEMO, correoDemo, correosDemoDe } from "./correos";
 import { DISTRITOS_DEMO, type DistritoDemo } from "./geografia";
+import { enParalelo, enTandas } from "./paralelo";
+import { enPaso } from "./paso";
 import {
   cerrarJobsSinEjecutar,
   crearDepsJobsDemo,
@@ -126,6 +132,19 @@ import {
 //     rechazado, el rechazo de la tienda, las órdenes en reposo en reparto) va DESPUÉS: el corte
 //     mira a todos los mensajeros de la empresa (R-b), no solo al suyo;
 //   - el rechazo de la tienda va después de la última aprobación de ese mensajero (R-d).
+//
+// LO QUE VA A LA VEZ (medición del build, 2026-10-26). El build de QA va contra una base a ~50–90 ms
+// por ida y vuelta, y cada consulta de la app en contexto de empresa son cuatro (BEGIN, `set_config`,
+// la consulta, COMMIT: `extension-empresa.ts`). En serie, una empresa eran ~9.000 idas y vueltas y
+// el build pasaba del tope. Por eso, sin cambiar ningún servicio ni ningún dato:
+//   - los servicios de varias órdenes reciben varias (por lotes de `LOTE_POR_LLAMADA`), como la
+//     pantalla con varias seleccionadas; la carga de la tienda con bodega es UNA carga masiva;
+//   - lo que no depende entre sí va a la vez (`enParalelo`, `enTandas`): las altas de usuarios, las
+//     tres vías de carga, la ubicación, y después los tramos de cada mensajero (central, satélite,
+//     incidente, recolección, el reparto del corte). Lo de un mismo mensajero sigue de una en una;
+//   - las barreras de arriba se respetan: los tramos terminan (cierres aprobados) antes del corte y
+//     del dinero; el corte no comparte su ventana con nada que mueva órdenes; lo de después del
+//     corte espera al corte.
 
 // ─── Decisiones abiertas, detrás de constantes ───────────────────────────────────────────────────
 
@@ -157,6 +176,15 @@ export const ESTADOS_RECORTADOS_DE_B: readonly string[] = [
   "devuelta_a_tienda",
   "incidente",
 ];
+
+/**
+ * Órdenes por llamada a un servicio de varias (`generarGuia`, asignar, recoger…). Cada uno trabaja en
+ * una transacción con el tiempo máximo por defecto de Prisma (5 s), unas ~6 idas y vueltas por orden:
+ * con 90 ms por ida y vuelta (el build de QA), 33 órdenes en una sola llamada cayeron con P2028.
+ * La demo ya corre con un `timeout` holgado (`TRANSACCION_DE_LA_DEMO` en `demo-qa.ts`), pero el lote
+ * sigue: es también el tope de gestiones de cada mensajero (ver «Los tramos»).
+ */
+const LOTE_POR_LLAMADA = 4;
 
 /** Estados desde los que se asigna a un mensajero y que por eso pasan por el gate (R21). */
 export const ESTADOS_ASIGNABLES: readonly string[] = ["en_bodega_central", "en_bodega_satelite"];
@@ -254,8 +282,12 @@ function exigir<T extends { status: string }>(paso: string, r: T): T {
   return r;
 }
 
-function correoDemo(clave: ClaveEmpresaDemo, perfil: string): string {
-  return `demo-qa-${clave.toLowerCase()}-${perfil}@example.test`;
+/**
+ * Un servicio como paso con nombre (`paso.ts`): si lanza o no es `ok`, la salida dice cuál fue y en
+ * qué tramo. Es el que diagnostica un P2028 del build de QA.
+ */
+function llamar<T extends { status: string }>(paso: string, trabajo: () => Promise<T>): Promise<T> {
+  return enPaso(paso, async () => exigir(paso, await trabajo()));
 }
 
 function evidenciaPorDefecto(): Uint8Array {
@@ -299,6 +331,9 @@ export async function crearEmpresaDemo(
   const datos = EMPRESAS_DEMO.find((e) => e.clave === clave);
   if (!datos) throw new Error(`[demo-qa] empresa demo desconocida: ${clave}`);
   const nombreEmpresa = datos.nombre;
+  const slugEmpresa = datos.slug;
+  // R12: un correo que pasa del tope de 64 para aquí, antes de dar de alta a nadie.
+  correosDemoDe(slugEmpresa);
 
   const app = getPrismaClient();
   const jobs: DepsJobsDemo = crearDepsJobsDemo(app);
@@ -343,7 +378,7 @@ export async function crearEmpresaDemo(
           {
             nombre: datos.nombre,
             slug: datos.slug,
-            correoMaestro: correoDemo(clave, "maestro"),
+            correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
             documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,
             marcarContrasenaDefinida: true,
@@ -368,7 +403,7 @@ export async function crearEmpresaDemo(
     rol: RolValue,
     extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
   ): Promise<UsuarioCreado> {
-    const correo = correoDemo(clave, perfil);
+    const correo = correoDemo(slugEmpresa, perfil);
     const u = await crearUsuario(dueno, empresa, rol, {
       correo,
       contrasena: opciones.contrasena,
@@ -385,47 +420,62 @@ export async function crearEmpresaDemo(
     geoDe(dueno, DISTRITOS_DEMO.especial),
   ]);
 
-  const escenario: EscenarioReparto = await nucleo.crearEscenarioReparto(datos.slug, {
-    tarifa: TARIFA_TIENDA,
-    tarifaMensajero: PAGO_MENSAJERO,
-    distritos: { central: geoCentral, satelite: geoSatelite },
-    nombresZona: { central: `Central ${datos.nombre}`, satelite: `Satelite ${datos.nombre}` },
-    // R13: un distrito de la zona central marcado como zona especial (SL-38). Sin órdenes en él.
-    distritosExtra: { central: [geoEspecial.distritoId] },
-  });
+  const escenario: EscenarioReparto = await enPaso("alta de la empresa, sus zonas y la tienda con bodega", () =>
+    nucleo.crearEscenarioReparto(datos.slug, {
+      tarifa: TARIFA_TIENDA,
+      tarifaMensajero: PAGO_MENSAJERO,
+      distritos: { central: geoCentral, satelite: geoSatelite },
+      nombresZona: { central: `Central ${datos.nombre}`, satelite: `Satelite ${datos.nombre}` },
+      // R13: un distrito de la zona central marcado como zona especial (SL-38). Sin órdenes en él.
+      distritosExtra: { central: [geoEspecial.distritoId] },
+    }),
+  );
   const org = escenario.empresa.organizacionId;
   const { maestro, tienda: tiendaBodega, adminSatelite } = escenario.actores;
   const s = servicios();
 
-  // R19: la excepción de cobro va ANTES de la primera orden, porque el cargo se calcula al nacer.
-  exigir(
-    "CobroPlataformaService.fijarDeEmpresa",
-    await new CobroPlataformaService(new CobroPlataformaTarifaRepository(app)).fijarDeEmpresa(
-      ACTOR_PLATAFORMA,
-      fijarCobroEmpresaSchema.parse({ organizacionId: org, monto: COBRO_PLATAFORMA_POR_ORDEN }),
+  // R12: los demás perfiles, por tandas a la vez (`enTandas`), los primeros con la excepción de
+  // cobro. Mensajeros de más por las reglas de T1 §2: recolector (R-c), corte (R-b), un cierre
+  // rechazado, un cierre pendiente y las órdenes en reposo (R-a). Y por tiempo: las gestiones de la
+  // central y de la satélite se reparten entre varios (novedades, rechazos, satélite 2), porque las
+  // de un mismo mensajero van de una en una (ver «Los tramos»).
+  const mensajero = (zona: ZonaTipo, perfil: string): Promise<MensajeroEscenario> =>
+    enPaso(`alta de ${perfil}`, () => nucleo.crearMensajero(escenario, zona, { perfil }));
+  const [, admin, tiendaSinBodegaUsuario] = await enParalelo([
+    // R19: la excepción de cobro va ANTES de la primera orden, porque el cargo se calcula al nacer.
+    llamar("CobroPlataformaService.fijarDeEmpresa", () =>
+      new CobroPlataformaService(new CobroPlataformaTarifaRepository(app)).fijarDeEmpresa(
+        ACTOR_PLATAFORMA,
+        fijarCobroEmpresaSchema.parse({ organizacionId: org, monto: COBRO_PLATAFORMA_POR_ORDEN }),
+      ),
     ),
-  );
-
-  // R12: los demás perfiles. Mensajeros de más por las reglas de T1 §2: recolector (R-c), corte
-  // (R-b), un cierre rechazado, un cierre pendiente y las órdenes en reposo (R-a).
-  const admin = await altaUsuario(escenario.empresa, "admin", "admin");
-  const tiendaSinBodegaUsuario = await altaUsuario(escenario.empresa, "tienda", "adminTienda", { fulfillment: false });
+    enPaso("alta de admin", () => altaUsuario(escenario.empresa, "admin", "admin")),
+    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { fulfillment: false })),
+  ]);
+  const perfilesDeMensajero: [ZonaTipo, string][] = [
+    ["central", "mensajero-central"],
+    ["central", "mensajero-novedades"],
+    ["central", "mensajero-rechazos"],
+    ["satelite", "mensajero-satelite"],
+    ["satelite", "mensajero-satelite-2"],
+    ["central", "mensajero-recolector"],
+    ...(NOVEDAD_INTERNA_CON_CORTE_DE_MANANA ? ([["central", "mensajero-corte"]] as [ZonaTipo, string][]) : []),
+    ["central", "mensajero-cierre-rechazado"],
+    ["central", "mensajero-cierre-pendiente"],
+    ["central", "mensajero-reposo"],
+  ];
+  // Los mensajeros no hacen falta hasta los tramos: se dan de alta mientras nacen las órdenes.
+  const altaDeMensajeros = async () =>
+    new Map(await enTandas(perfilesDeMensajero, async ([zona, perfil]) => [perfil, await mensajero(zona, perfil)] as const, 2));
   const tiendaSinBodega = actorDe(escenario.empresa, tiendaSinBodegaUsuario, "adminTienda", null);
   const actorAdmin = actorDe(escenario.empresa, admin, "admin", null);
-  const mensajero = (zona: ZonaTipo, perfil: string): Promise<MensajeroEscenario> =>
-    nucleo.crearMensajero(escenario, zona, { perfil });
-  const mCentral = await mensajero("central", "mensajero-central");
-  const mSatelite = await mensajero("satelite", "mensajero-satelite");
-  const mRecolector = await mensajero("central", "mensajero-recolector");
-  const mCorte = NOVEDAD_INTERNA_CON_CORTE_DE_MANANA ? await mensajero("central", "mensajero-corte") : null;
-  const mRechazado = await mensajero("central", "mensajero-cierre-rechazado");
-  const mPendiente = await mensajero("central", "mensajero-cierre-pendiente");
-  const mReposo = await mensajero("central", "mensajero-reposo");
 
-  // R13: la tarifa de la segunda tienda y la zona especial.
-  exigir(
-    "TarifaService.crear",
-    await conEmpresa(org, () =>
+  // R13: la tarifa de la segunda tienda y la zona especial; R12, R14: la API key, por su servicio.
+  // La key crea su propio usuario `apiKey` (correo sintético y contraseña aleatoria que nadie
+  // conoce) y carga a nombre de la tienda sin bodega (feature 302), que tiene tarifa. El secreto
+  // vive solo en esta función.
+  const [, , apiKey] = await enParalelo([
+    llamar("TarifaService.crear", () => conEmpresa(org, () =>
       s.tarifa.crear(
         crearTarifaSchema.parse({
           tiendaId: tiendaSinBodegaUsuario.id,
@@ -438,24 +488,14 @@ export async function crearEmpresaDemo(
         }),
         maestro,
       ),
-    ),
-  );
-  exigir(
-    "DistritoZonaEspecialService.actualizar",
-    await conEmpresa(org, () =>
+    )),
+    llamar("DistritoZonaEspecialService.actualizar", () => conEmpresa(org, () =>
       new DistritoZonaEspecialService(new DistritoZonaEspecialRepository(app)).actualizar(
         distritosEspecialesSchema.parse({ marcar: [geoEspecial.distritoId], desmarcar: [] }),
         maestro,
       ),
-    ),
-  );
-
-  // R12, R14: la API key, por su servicio. Crea su propio usuario `apiKey` (correo sintético y
-  // contraseña aleatoria que nadie conoce). Carga a nombre de la tienda sin bodega (feature 302),
-  // que tiene tarifa. El secreto vive solo en esta función.
-  const apiKey = exigir(
-    "ApiKeyService.generar",
-    await conEmpresa(org, () =>
+    )),
+    llamar("ApiKeyService.generar", () => conEmpresa(org, () =>
       new ApiKeyService(new ApiKeyRepository(app)).generar(
         generarApiKeySchema.parse({
           identificador: `Demo QA ${clave} API`,
@@ -463,8 +503,8 @@ export async function crearEmpresaDemo(
         }),
         maestro,
       ),
-    ),
-  );
+    )),
+  ]);
   if (apiKey.status !== "ok") throw new Error("inalcanzable");
   const usuarioApi = await dueno.usuario.findUniqueOrThrow({ where: { id: apiKey.apiKey.usuarioId }, select: { email: true } });
   usuarios.push({ perfil: "api", correo: usuarioApi.email });
@@ -472,54 +512,60 @@ export async function crearEmpresaDemo(
   // ── Órdenes (R14) ───────────────────────────────────────────────────────────────────────────
   let correlativo = 0;
   const siguienteRemision = () => `DEMO-${clave}-${String(++correlativo).padStart(3, "0")}`;
-  const distritoDe = (zona: ZonaTipo) => (zona === "central" ? DISTRITOS_DEMO.central : DISTRITOS_DEMO.satelite);
 
   /**
-   * Órdenes de la tienda con bodega propia: nacen `en_preparacion`. Una carga por orden con
-   * `BulkOrdenService.cargarMasiva`, montado como en `app/api/ordenes/carga-masiva/chunk/route.ts`.
+   * Las órdenes de la tienda con bodega propia, por grupo: nacen `en_preparacion`. Se piden todas
+   * antes de crear ninguna, en el orden de este objeto (el de las remisiones), y nacen en UNA carga
+   * de `BulkOrdenService.cargarMasiva`, montado como en `app/api/ordenes/carga-masiva/chunk/route.ts`.
    */
-  async function ordenesDeBodega(zona: ZonaTipo, cantidad: number, montoCobrar = 0): Promise<OrdenEscenario[]> {
-    const creadas: OrdenEscenario[] = [];
-    for (let i = 0; i < cantidad; i++) {
+  const plan = (zona: ZonaTipo, cantidad: number, montoCobrar = 0): NuevaOrden[] =>
+    Array.from({ length: cantidad }, () => {
       const numRemision = siguienteRemision();
-      const o = await nucleo.crearOrden(escenario, {
-        zona,
-        numRemision,
-        destinatario: `Cliente ${numRemision}`,
-        montoCobrar,
-      });
-      distritoDeOrden.set(o.id, distritoDe(zona));
-      creadas.push(o);
-    }
-    await ubicar(org, creadas.map((o) => o.id));
-    return creadas;
-  }
-
+      return { zona, numRemision, destinatario: `Cliente ${numRemision}`, montoCobrar };
+    });
   const n = porEstado;
-  await ordenesDeBodega("central", n); // se quedan en `en_preparacion`, donde nacen
-  const aBodegaCentral = await ordenesDeBodega("central", n);
-  const aRutaSatelite = await ordenesDeBodega("satelite", n);
-  const aBodegaSatelite = await ordenesDeBodega("satelite", n);
-  // Con monto: la indemnización no puede pasar de lo que vale la orden.
-  const aIncidente = recortada ? [] : await ordenesDeBodega("central", n, MONTO_A_COBRAR);
-  // Solo la primera entrega cobra: la tienda tiene que terminar DEBIENDO a la empresa (fletes y
-  // devoluciones por encima de lo cobrado) para que su abono de R18 tenga deuda que saldar. Sin
-  // las devoluciones del recorte, esa deuda la ponen fletes de entregas sin cobro.
-  const entregas = [
-    ...(await ordenesDeBodega("central", 1, MONTO_A_COBRAR)),
-    ...(await ordenesDeBodega("central", recortada ? ENTREGAS_SIN_COBRO_CON_RECORTE : n - 1)),
-  ];
-  const reprogramadas = await ordenesDeBodega("central", n);
-  const novedades = await ordenesDeBodega("central", recortada ? n : 2 * n);
-  const rechazosCentral = recortada ? [] : await ordenesDeBodega("central", 2 * n);
-  const rechazosSatelite = recortada ? [] : await ordenesDeBodega("satelite", 3 * n);
-  // Con monto: la bodega satélite recibe ese efectivo al cerrar (ficha 431 exige un importe > 0).
-  const entregaSatelite = await ordenesDeBodega("satelite", 1, MONTO_ENTREGA_SATELITE);
-  const aCorte = mCorte ? await ordenesDeBodega("central", n) : [];
-  const aCierreRechazado = await ordenesDeBodega("central", 1);
-  const aCierrePendiente = await ordenesDeBodega("central", 1);
-  const aRecoger = await ordenesDeBodega("central", n);
-  const enReparto = await ordenesDeBodega("central", n);
+  const pedidas = {
+    enPreparacion: plan("central", n), // se quedan en `en_preparacion`, donde nacen
+    aBodegaCentral: plan("central", n),
+    aRutaSatelite: plan("satelite", n),
+    aBodegaSatelite: plan("satelite", n),
+    // Con monto: la indemnización no puede pasar de lo que vale la orden.
+    aIncidente: recortada ? [] : plan("central", n, MONTO_A_COBRAR),
+    // Solo la primera entrega cobra: la tienda tiene que terminar DEBIENDO a la empresa (fletes y
+    // devoluciones por encima de lo cobrado) para que su abono de R18 tenga deuda que saldar. Sin
+    // las devoluciones del recorte, esa deuda la ponen fletes de entregas sin cobro.
+    entregas: [
+      ...plan("central", 1, MONTO_A_COBRAR),
+      ...plan("central", recortada ? ENTREGAS_SIN_COBRO_CON_RECORTE : n - 1),
+    ],
+    reprogramadas: plan("central", n),
+    novedades: plan("central", recortada ? n : 2 * n),
+    rechazosCentral: recortada ? [] : plan("central", 2 * n),
+    rechazosSatelite: recortada ? [] : plan("satelite", 3 * n),
+    // Con monto: la bodega satélite recibe ese efectivo al cerrar (ficha 431 exige un importe > 0).
+    entregaSatelite: plan("satelite", 1, MONTO_ENTREGA_SATELITE),
+    aCorte: NOVEDAD_INTERNA_CON_CORTE_DE_MANANA ? plan("central", n) : [],
+    aCierreRechazado: plan("central", 1),
+    aCierrePendiente: plan("central", 1),
+    aRecoger: plan("central", n),
+    enReparto: plan("central", n),
+  };
+
+  /** Las órdenes de la tienda con bodega, por remisión. Las llena `ordenesDeBodega`. */
+  const deBodega = new Map<string, OrdenEscenario>();
+  async function ordenesDeBodega(): Promise<void> {
+    const creadas = await nucleo.crearOrdenes(escenario, Object.values(pedidas).flat());
+    for (const o of creadas) {
+      distritoDeOrden.set(o.id, o.zona === "central" ? DISTRITOS_DEMO.central : DISTRITOS_DEMO.satelite);
+      deBodega.set(o.numRemision, o);
+    }
+  }
+  const creadas = (pedidasDeUnGrupo: readonly NuevaOrden[]): OrdenEscenario[] =>
+    pedidasDeUnGrupo.map((p) => {
+      const o = deBodega.get(p.numRemision ?? "");
+      if (!o) throw new Error("[demo-qa] una orden pedida no aparece entre las creadas");
+      return o;
+    });
 
   /**
    * La pantalla de órdenes: el archivo se parsea en el navegador y sus filas viajan por
@@ -608,144 +654,305 @@ export async function crearEmpresaDemo(
     });
   }
 
-  const porPantalla = await ordenesPorPantalla(2 * n); // recolectando y en ruta a la central
-  await ordenesPorApi(n); // se quedan por recolectar en la tienda
+  /**
+   * Las tres vías a la vez (son tiendas y caminos distintos; las remisiones de las dos últimas se
+   * toman al empezar cada una, antes de su primer `await`, en el orden de este arreglo). Después,
+   * a la vez, se ubican las de la bodega (D6.1) y las de la bodega central y la satélite llegan a su
+   * sitio: llevarlas hasta la bodega no asigna, y el gate solo mira al asignar.
+   */
+  async function ordenesYBodegas(): Promise<{ id: string; numGuia: number }[]> {
+    const [, porPantalla] = await enParalelo([
+      enPaso("carga masiva de la tienda con bodega", ordenesDeBodega),
+      enPaso("carga por pantalla de la tienda sin bodega", () => ordenesPorPantalla(2 * n)),
+      enPaso("carga por API", () => ordenesPorApi(n)),
+    ]);
+    const aRutaSatelite = creadas(pedidas.aRutaSatelite);
+    const aBodegaSatelite = creadas(pedidas.aBodegaSatelite);
+    await enParalelo([
+      enPaso("ubicar las órdenes de la tienda con bodega", () => ubicar(org, [...deBodega.values()].map((o) => o.id))),
+      // Con las de la bodega central van las que se asignan después del corte: en la bodega, sin
+      // mensajero, el corte no las mira (como las que se quedan allí).
+      llevarA(
+        creadas([...pedidas.aBodegaCentral, ...pedidas.aCierreRechazado, ...pedidas.aCierrePendiente, ...pedidas.aRecoger, ...pedidas.enReparto]),
+        "en_bodega_central",
+      ),
+      (async () => {
+        await llevarA([...aRutaSatelite, ...aBodegaSatelite], "en_ruta_bodega_satelite");
+        await llevarA(aBodegaSatelite, "en_bodega_satelite");
+      })(),
+    ]);
+    return porPantalla;
+  }
 
-  // ── Bodega central y satélite ───────────────────────────────────────────────────────────────
-  for (const o of aBodegaCentral) await nucleo.llevarA(escenario, o, "en_bodega_central");
-  for (const o of aRutaSatelite) await nucleo.llevarA(escenario, o, "en_ruta_bodega_satelite");
-  for (const o of aBodegaSatelite) await nucleo.llevarA(escenario, o, "en_bodega_satelite");
+  /** `llevarVariasA` del núcleo como paso con nombre, por lotes (`LOTE_POR_LLAMADA`). */
+  const llevarA = (ordenes: OrdenEscenario[], destino: DestinoReparto, m?: MensajeroEscenario) =>
+    enPaso(`llevar a ${destino}`, () => nucleo.llevarVariasA(escenario, ordenes, destino, { mensajero: m, lote: LOTE_POR_LLAMADA }));
 
-  // ── Incidente (ficha 158): lo reporta el maestro y lo aprueba el admin (R51: no el mismo) ──
-  const incidentes = new IncidenteAdminService(
-    new IncidenteAdminRepository(app, new WalletMovimientoRepository(app), new WalletIndemnizacionIncidenteFeedService()),
-    new OrdenRepository(app),
-    new OrdenHistorialRepository(app),
-    new SupabaseFileStorage(undefined, gestionConfig.EVIDENCIA_BUCKET),
-    new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+  const [mensajeros, porPantalla] = await enPaso("órdenes y altas de mensajeros", () =>
+    enParalelo([altaDeMensajeros(), ordenesYBodegas()]),
   );
-  const incidenteIds: string[] = [];
-  for (const o of aIncidente) {
-    await nucleo.llevarA(escenario, o, "en_bodega_central");
-    const datosReporte = reportarIncidenteSchema.pick({ ordenId: true, causa: true, motivo: true }).parse({
-      ordenId: o.id,
-      causa: "danado",
-      motivo: "Caja golpeada en bodega",
-    });
-    const r = exigir(
-      "IncidenteAdminService.reportar",
-      await conEmpresa(org, () => incidentes.reportar({ ...datosReporte, evidencias: evidencias() }, maestro)),
-    );
-    if (r.status === "ok") incidenteIds.push(r.incidenteId);
-  }
-  if (incidenteIds.length > 0) {
-    const a = aprobarIncidenteSchema.parse({ incidenteId: incidenteIds[0], monto: INDEMNIZACION });
-    exigir("IncidenteAdminService.aprobar", await conEmpresa(org, () => incidentes.aprobar(a.incidenteId, a.monto, actorAdmin)));
-  }
-
-  // ── Mensajero central: entregas (una con pago mixto), reprogramadas, novedades y rechazos ──
-  const cierres = escenarioCierres({ lector: () => dueno });
-  const alReparto = async (ordenes: OrdenEscenario[], m: MensajeroEscenario) => {
-    for (const o of ordenes) await nucleo.llevarA(escenario, o, "en_reparto", { mensajero: m });
+  const elMensajero = (perfil: string): MensajeroEscenario => {
+    const m = mensajeros.get(perfil);
+    if (!m) throw new Error(`[demo-qa] falta el ${perfil}`);
+    return m;
   };
-  await alReparto([...entregas, ...reprogramadas, ...novedades, ...rechazosCentral], mCentral);
-  for (const [i, o] of entregas.entries()) {
-    // R16: la que cobra, con pago mixto. Casi todo electrónico a propósito: el pago al mensajero de
-    // R18 es lo que su cierre le debe MENOS el efectivo que ya tiene en la mano (`min(P, E)`); con
-    // la entrega en efectivo no quedaría nada que pagarle.
-    const pagos =
-      i === 0
-        ? [
-            { metodo: "efectivo" as const, monto: EFECTIVO_DEL_PAGO_MIXTO },
-            { metodo: "transferencia" as const, monto: MONTO_A_COBRAR - EFECTIVO_DEL_PAGO_MIXTO },
-          ]
-        : [];
-    await nucleo.gestionar(escenario, o, mCentral, { resultado: "entregado", pagos });
-  }
-  for (const o of reprogramadas) await nucleo.gestionar(escenario, o, mCentral, { resultado: "reprogramado" });
-  for (const o of novedades) await nucleo.gestionar(escenario, o, mCentral, { resultado: "novedad" });
-  for (const o of rechazosCentral) {
-    await nucleo.gestionar(escenario, o, mCentral, { resultado: "devolucion_a_origen_por_rechazo" });
-  }
-  const cierreCentral = await solicitarCierre(escenario, mCentral);
-  await cierres.aprobarCierre(escenario, cierreCentral); // lo aprueba el maestro (zona central)
+  const mCentral = elMensajero("mensajero-central");
+  const mNovedades = elMensajero("mensajero-novedades");
+  const mRechazos = elMensajero("mensajero-rechazos");
+  const mSatelite = elMensajero("mensajero-satelite");
+  const mSatelite2 = elMensajero("mensajero-satelite-2");
+  const mRecolector = elMensajero("mensajero-recolector");
+  const mCorte = NOVEDAD_INTERNA_CON_CORTE_DE_MANANA ? elMensajero("mensajero-corte") : null;
+  const mRechazado = elMensajero("mensajero-cierre-rechazado");
+  const mPendiente = elMensajero("mensajero-cierre-pendiente");
+  const mReposo = elMensajero("mensajero-reposo");
 
-  // ── Mensajero satélite: rechazos y una entrega; aprueba el adminSatelite y se cierra la bodega ──
-  await alReparto([...rechazosSatelite, ...entregaSatelite], mSatelite);
-  for (const o of rechazosSatelite) {
-    await nucleo.gestionar(escenario, o, mSatelite, { resultado: "devolucion_a_origen_por_rechazo" });
+  const aIncidente = creadas(pedidas.aIncidente);
+  const entregas = creadas(pedidas.entregas);
+  const reprogramadas = creadas(pedidas.reprogramadas);
+  const novedades = creadas(pedidas.novedades);
+  const rechazosCentral = creadas(pedidas.rechazosCentral);
+  const rechazosSatelite = creadas(pedidas.rechazosSatelite);
+  const entregaSatelite = creadas(pedidas.entregaSatelite);
+  const aCorte = creadas(pedidas.aCorte);
+  const aCierreRechazado = creadas(pedidas.aCierreRechazado);
+  const aCierrePendiente = creadas(pedidas.aCierrePendiente);
+  const aRecoger = creadas(pedidas.aRecoger);
+  const enReparto = creadas(pedidas.enReparto);
+
+  const cierres = escenarioCierres({ lector: () => dueno });
+  /** Lleva las órdenes hasta el reparto del mensajero: cada servicio, por lotes (`LOTE_POR_LLAMADA`). */
+  const alReparto = (ordenes: OrdenEscenario[], m: MensajeroEscenario) => llevarA(ordenes, "en_reparto", m);
+  const ordenRepo = new OrdenRepository(app);
+
+  /** El cierre del día del mensajero, solicitado por él (`solicitarCierre` de la fábrica). */
+  const solicitar = (m: MensajeroEscenario) => enPaso("solicitar el cierre", () => solicitarCierre(escenario, m));
+  /** Lo aprueba quien lo haría en `/cierres-admin`: el maestro en la central, el adminSatelite en la satélite. */
+  const aprobar = (cierreId: string) => enPaso("aprobar el cierre", () => cierres.aprobarCierre(escenario, cierreId));
+
+  /**
+   * Las órdenes de un mensajero, de la bodega al reparto y gestionadas, por lotes y encadenando:
+   * mientras el mensajero recoge y gestiona un lote, la central ya guía y le asigna el siguiente. Lo
+   * del mensajero va en orden y de una en una, como en su portal (solo puede tener una en gestión).
+   */
+  async function repartirYGestionar(
+    ordenes: OrdenEscenario[],
+    m: MensajeroEscenario,
+    gestion: (o: OrdenEscenario) => GestionEscenario,
+  ): Promise<void> {
+    const lotes: OrdenEscenario[][] = [];
+    for (let i = 0; i < ordenes.length; i += LOTE_POR_LLAMADA) lotes.push(ordenes.slice(i, i + LOTE_POR_LLAMADA));
+    const asignados: Promise<unknown>[] = [];
+    for (const lote of lotes) {
+      const anterior = asignados[asignados.length - 1] ?? Promise.resolve();
+      asignados.push(anterior.then(() => llevarA(lote, "mensajero_recogiendo_en_bodega", m)));
+    }
+    const delMensajero = (async () => {
+      for (const [k, lote] of lotes.entries()) {
+        await asignados[k];
+        await llevarA(lote, "en_reparto", m);
+        for (const o of lote) {
+          const g = gestion(o);
+          await enPaso(`gestionar(${g.resultado})`, () => nucleo.gestionar(escenario, o, m, g));
+        }
+      }
+    })();
+    await enParalelo([...asignados, delMensajero]);
   }
-  for (const o of entregaSatelite) await nucleo.gestionar(escenario, o, mSatelite, { resultado: "entregado" });
-  const cierreSatelite = await solicitarCierre(escenario, mSatelite);
-  await cierres.aprobarCierre(escenario, cierreSatelite); // lo aprueba el adminSatelite
 
-  // R17: el cierre de la bodega satélite consolida el cierre aprobado de su zona. Lo «aprueba» el
-  // maestro marcándolo recibido con el efectivo que trae (ficha 431): es lo que monta
-  // `/cierres-admin` en lugar del «Aprobar» retirado. `aprobarCierreBodega` ya no deja la fila
-  // coherente con `cierre_bodega_conciliacion_coherente` y la base lo rechaza.
-  const cierreBodega = exigir(
-    "CierreBodegaService.solicitarCierreBodega",
-    await conEmpresa(org, () =>
-      new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app)).solicitarCierreBodega(adminSatelite),
-    ),
-  );
-  if (cierreBodega.status !== "ok") throw new Error("inalcanzable");
-  const recibida = marcarConsolidacionRecibidaSchema.parse({
-    cierreBodegaId: cierreBodega.cierreBodegaId,
-    montoRecibido: cierreBodega.totales.efectivo,
-  });
-  exigir(
-    "ConciliacionSatelitesService.marcarRecibida",
-    await conEmpresa(org, () =>
-      new ConciliacionSatelitesService(
-        new SaldosSatelitesRepository(app),
-        new CierresBodegaAdminRepository(app),
-      ).marcarRecibida(recibida, maestro),
-    ),
-  );
+  /**
+   * Un mensajero que reparte, gestiona y cierra con el cierre aprobado. Devuelve el cierre. Sin
+   * órdenes (B recortada) no hay nada que cerrar: la app no deja pedir un cierre sin gestiones.
+   */
+  async function repartoConCierreAprobado(
+    ordenes: OrdenEscenario[],
+    m: MensajeroEscenario,
+    gestion: (o: OrdenEscenario) => GestionEscenario,
+  ): Promise<string | null> {
+    if (ordenes.length === 0) return null;
+    await repartirYGestionar(ordenes, m, gestion);
+    const cierreId = await solicitar(m);
+    await aprobar(cierreId);
+    return cierreId;
+  }
 
-  // ── Devoluciones (fichas 139, 48 y 419) ─────────────────────────────────────────────────────
-  if (!recortada) {
-    const ordenRepo = new OrdenRepository(app);
-    // Satélite: 1/3 se queda por devolver a la central, 2/3 salen hacia ella y la mitad de esas llega.
-    const haciaCentral = rechazosSatelite.slice(n);
-    for (const o of haciaCentral) {
-      exigir(
-        "EnvioDevolucionCentralService.enviarACentral",
-        await conEmpresa(org, () => new EnvioDevolucionCentralService(ordenRepo).enviarACentral(o.id, adminSatelite)),
+  // ── Los tramos, a la vez: cada uno con sus órdenes y su mensajero. Las gestiones de un mismo
+  //    mensajero van de una en una (la app solo le deja una orden en gestión), así que el tramo más
+  //    largo es el del mensajero con más gestiones: se reparten entre varios, ninguno con más de
+  //    `LOTE_POR_LLAMADA` (medición del build, 2026-10-26: con las 12 de la central en un solo
+  //    mensajero, su tramo era la ruta crítica de la demo) ───────────────────────────────────────
+
+  /** Incidente (ficha 158): lo reporta el maestro y lo aprueba el admin (R51: no el mismo). */
+  async function tramoIncidente(): Promise<void> {
+    const incidentes = new IncidenteAdminService(
+      new IncidenteAdminRepository(app, new WalletMovimientoRepository(app), new WalletIndemnizacionIncidenteFeedService()),
+      new OrdenRepository(app),
+      new OrdenHistorialRepository(app),
+      new SupabaseFileStorage(undefined, gestionConfig.EVIDENCIA_BUCKET),
+      new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+    );
+    await llevarA(aIncidente, "en_bodega_central");
+    // Cada reporte es de una orden distinta: van a la vez.
+    const reportados = await enParalelo(
+      aIncidente.map((o) => {
+        const datosReporte = reportarIncidenteSchema.pick({ ordenId: true, causa: true, motivo: true }).parse({
+          ordenId: o.id,
+          causa: "danado",
+          motivo: "Caja golpeada en bodega",
+        });
+        return llamar("IncidenteAdminService.reportar", () =>
+          conEmpresa(org, () => incidentes.reportar({ ...datosReporte, evidencias: evidencias() }, maestro)),
+        );
+      }),
+    );
+    const incidenteIds = reportados.flatMap((r) => (r.status === "ok" ? [r.incidenteId] : []));
+    if (incidenteIds.length > 0) {
+      const a = aprobarIncidenteSchema.parse({ incidenteId: incidenteIds[0], monto: INDEMNIZACION });
+      await llamar("IncidenteAdminService.aprobar", () =>
+        conEmpresa(org, () => incidentes.aprobar(a.incidenteId, a.monto, actorAdmin)),
       );
     }
-    for (const o of haciaCentral.slice(n)) {
-      exigir(
-        "RecepcionBodegaCentralService.recibirEnBodegaCentral",
-        await conEmpresa(org, async () =>
-          new RecepcionBodegaCentralService(ordenRepo).recibirEnBodegaCentral(await guiaDe(o), maestro),
+  }
+
+  /**
+   * Mensajero central: las entregas (una con pago mixto) y las reprogramadas; lo aprueba el maestro.
+   * Devuelve el cierre aprobado: el pago al mensajero de R18 va contra él.
+   */
+  async function tramoCentral(): Promise<string> {
+    const cierreId = await repartoConCierreAprobado([...entregas, ...reprogramadas], mCentral, (o) => {
+      if (reprogramadas.includes(o)) return { resultado: "reprogramado" };
+      // R16: la que cobra, con pago mixto. Casi todo electrónico a propósito: el pago al mensajero
+      // de R18 es lo que su cierre le debe MENOS el efectivo que ya tiene en la mano (`min(P, E)`);
+      // con la entrega en efectivo no quedaría nada que pagarle.
+      return o === entregas[0]
+        ? {
+            resultado: "entregado",
+            pagos: [
+              { metodo: "efectivo", monto: EFECTIVO_DEL_PAGO_MIXTO },
+              { metodo: "transferencia", monto: MONTO_A_COBRAR - EFECTIVO_DEL_PAGO_MIXTO },
+            ],
+          }
+        : { resultado: "entregado", pagos: [] };
+    });
+    if (cierreId === null) throw new Error("[demo-qa] el mensajero central no tiene entregas");
+    return cierreId;
+  }
+
+  /** Las novedades, con su mensajero; lo aprueba el maestro. La tienda rechaza la mitad después del corte. */
+  async function tramoNovedades(): Promise<void> {
+    await repartoConCierreAprobado(novedades, mNovedades, () => ({ resultado: "novedad" }));
+  }
+
+  /**
+   * Los rechazos de la central, con su mensajero; lo aprueba el maestro. Después, sus devoluciones
+   * (fichas 48 y 419): todas salen hacia la tienda y la mitad llega (una por escáner de la tienda y
+   * otra confirmada por la central con su comprobante).
+   */
+  async function tramoRechazosCentral(): Promise<void> {
+    if (rechazosCentral.length === 0) return;
+    await repartoConCierreAprobado(rechazosCentral, mRechazos, () => ({ resultado: "devolucion_a_origen_por_rechazo" }));
+    // Cada devolución es de una orden distinta: van a la vez.
+    await enParalelo(
+      rechazosCentral.map((o) =>
+        llamar("DevolucionOrigenService.devolverATienda", () =>
+          conEmpresa(org, () => new DevolucionOrigenService(ordenRepo).devolverATienda(o.id, maestro)),
+        ),
+      ),
+    );
+    const [porEscaner, porComprobante] = rechazosCentral.slice(n);
+    await enParalelo([
+      llamar("RecepcionOrigenService.recibirEnOrigen", () =>
+        conEmpresa(org, async () => new RecepcionOrigenService(ordenRepo).recibirEnOrigen(await guiaDe(porEscaner), tiendaBodega)),
+      ),
+      llamar("DevolucionTiendaService.confirmarEntrega", () =>
+        conEmpresa(org, () =>
+          new DevolucionTiendaService(
+            new DevolucionTiendaRepository(app),
+            new SupabaseFileStorage(undefined, gestionConfig.EVIDENCIA_BUCKET),
+            new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+          ).confirmarEntrega({ tiendaId: escenario.tienda.id, ordenIds: [porComprobante.id], evidencias: evidencias() }, maestro),
+        ),
+      ),
+    ]);
+  }
+
+  /**
+   * La satélite: dos mensajeros con los rechazos y una entrega; aprueba el adminSatelite y, con los
+   * dos cierres aprobados, se cierra la bodega. Después, las devoluciones de la satélite (ficha 139):
+   * 1/3 se queda por devolver a la central, 2/3 salen hacia ella y la mitad de esas llega.
+   */
+  async function tramoSatelite(): Promise<void> {
+    const rechazadas = new Set(rechazosSatelite.map((o) => o.id));
+    const gestion = (o: OrdenEscenario): GestionEscenario =>
+      rechazadas.has(o.id) ? { resultado: "devolucion_a_origen_por_rechazo" } : { resultado: "entregado" };
+    const mitad = Math.ceil(rechazosSatelite.length / 2);
+    await enParalelo([
+      enPaso("mensajero-satelite", () =>
+        repartoConCierreAprobado([...rechazosSatelite.slice(0, mitad), ...entregaSatelite], mSatelite, gestion),
+      ),
+      enPaso("mensajero-satelite-2", () => repartoConCierreAprobado(rechazosSatelite.slice(mitad), mSatelite2, gestion)),
+    ]);
+
+    // R17: el cierre de la bodega satélite consolida los cierres aprobados de su zona. Lo «aprueba» el
+    // maestro marcándolo recibido con el efectivo que trae (ficha 431): es lo que monta
+    // `/cierres-admin` en lugar del «Aprobar» retirado. `aprobarCierreBodega` ya no deja la fila
+    // coherente con `cierre_bodega_conciliacion_coherente` y la base lo rechaza.
+    const cierreBodega = await llamar("CierreBodegaService.solicitarCierreBodega", () =>
+      conEmpresa(org, () =>
+        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app)).solicitarCierreBodega(adminSatelite),
+      ),
+    );
+    if (cierreBodega.status !== "ok") throw new Error("inalcanzable");
+    const recibida = marcarConsolidacionRecibidaSchema.parse({
+      cierreBodegaId: cierreBodega.cierreBodegaId,
+      montoRecibido: cierreBodega.totales.efectivo,
+    });
+    await llamar("ConciliacionSatelitesService.marcarRecibida", () =>
+      conEmpresa(org, () =>
+        new ConciliacionSatelitesService(new SaldosSatelitesRepository(app), new CierresBodegaAdminRepository(app)).marcarRecibida(
+          recibida,
+          maestro,
+        ),
+      ),
+    );
+
+    if (!recortada) {
+      // Cada envío y cada recepción son de una orden distinta: van a la vez.
+      const haciaCentral = rechazosSatelite.slice(n);
+      await enParalelo(
+        haciaCentral.map((o) =>
+          llamar("EnvioDevolucionCentralService.enviarACentral", () =>
+            conEmpresa(org, () => new EnvioDevolucionCentralService(ordenRepo).enviarACentral(o.id, adminSatelite)),
+          ),
+        ),
+      );
+      await enParalelo(
+        haciaCentral.slice(n).map((o) =>
+          llamar("RecepcionBodegaCentralService.recibirEnBodegaCentral", () =>
+            conEmpresa(org, async () => new RecepcionBodegaCentralService(ordenRepo).recibirEnBodegaCentral(await guiaDe(o), maestro)),
+          ),
         ),
       );
     }
-    // Central: todas salen hacia la tienda; la mitad llega (una por escáner de la tienda y otra
-    // confirmada por la central con su comprobante).
-    for (const o of rechazosCentral) {
-      exigir(
-        "DevolucionOrigenService.devolverATienda",
-        await conEmpresa(org, () => new DevolucionOrigenService(ordenRepo).devolverATienda(o.id, maestro)),
-      );
-    }
-    const [porEscaner, porComprobante] = rechazosCentral.slice(n);
-    exigir(
-      "RecepcionOrigenService.recibirEnOrigen",
-      await conEmpresa(org, async () => new RecepcionOrigenService(ordenRepo).recibirEnOrigen(await guiaDe(porEscaner), tiendaBodega)),
-    );
-    exigir(
-      "DevolucionTiendaService.confirmarEntrega",
-      await conEmpresa(org, () =>
-        new DevolucionTiendaService(
-          new DevolucionTiendaRepository(app),
-          new SupabaseFileStorage(undefined, gestionConfig.EVIDENCIA_BUCKET),
-          new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
-        ).confirmarEntrega({ tiendaId: escenario.tienda.id, ordenIds: [porComprobante.id], evidencias: evidencias() }, maestro),
+  }
+
+  /** Recolección en tienda (ficha 157), con su mensajero propio (R-c). */
+  async function tramoRecoleccion(): Promise<void> {
+    await llamar("GuiaAsignacionService.asignarRecoleccion", () =>
+      conEmpresa(org, () =>
+        s.guia.asignarRecoleccion({ ordenIds: porPantalla.map((o) => o.id), mensajeroId: mRecolector.id }, maestro),
       ),
     );
+    const recoleccion = new RecoleccionTiendaService(
+      new OrdenRepository(app),
+      new GestionOrdenRepository(app),
+      new OrdenHistorialRepository(app),
+    );
+    for (const o of porPantalla.slice(n)) {
+      await llamar("RecoleccionTiendaService.recolectarEnTienda", () =>
+        conEmpresa(org, () => recoleccion.recolectarEnTienda(o.numGuia, mRecolector.actor)),
+      );
+    }
   }
 
   async function guiaDe(o: { id: string }): Promise<number> {
@@ -754,8 +961,41 @@ export async function crearEmpresaDemo(
     return f.numGuia;
   }
 
-  // ── Dinero (R18, R19) ───────────────────────────────────────────────────────────────────────
-  await registrarDinero();
+  /**
+   * R17: el cierre que queda solicitado sin decidir, y el que se rechaza, se piden ANTES del corte: un
+   * mensajero con el cierre abierto queda fuera del corte (R-b), y así sus órdenes no esperan a que
+   * pase. Lo que sí espera al corte es el RECHAZO: con el cierre rechazado, sus gestiones vuelven a
+   * estar sin cierre y el corte las barrería. Devuelve el cierre a rechazar.
+   */
+  async function cierreSinDecidir(ordenes: OrdenEscenario[], m: MensajeroEscenario): Promise<string> {
+    await alReparto(ordenes, m);
+    for (const o of ordenes) {
+      await enPaso("gestionar(entregado)", () => nucleo.gestionar(escenario, o, m, { resultado: "entregado" }));
+    }
+    return solicitar(m);
+  }
+
+  // Las del corte se dejan en reparto con los tramos: el corte solo las mira cuando corre.
+  const alRepartoDelCorte = async () => {
+    if (mCorte) await alReparto(aCorte, mCorte);
+  };
+  const [cierreCentral, , , , , , , , cierreARechazar] = await enPaso("tramos", () =>
+    enParalelo([
+      enPaso("mensajero-central", tramoCentral),
+      enPaso("mensajero-novedades", tramoNovedades),
+      enPaso("mensajero-rechazos", tramoRechazosCentral),
+      enPaso("satélite", tramoSatelite),
+      enPaso("incidente", tramoIncidente),
+      enPaso("recolección", tramoRecoleccion),
+      enPaso("mensajero-corte", alRepartoDelCorte),
+      enPaso("mensajero-cierre-pendiente", () => cierreSinDecidir(aCierrePendiente, mPendiente)),
+      enPaso("mensajero-cierre-rechazado", () => cierreSinDecidir(aCierreRechazado, mRechazado)),
+    ]),
+  );
+
+  // ── Dinero (R18, R19), con todos los cierres de arriba aprobados, a la vez con el corte: el dinero
+  //    no cambia el estado de ninguna orden, que es lo único que el corte compara ─────────────
+  await enParalelo([enPaso("dinero", registrarDinero), enPaso("corte de mañana", corteDeLaDemo)]);
 
   async function registrarDinero(): Promise<void> {
     const caja = new WalletMovimientoRepository(app);
@@ -773,9 +1013,9 @@ export async function crearEmpresaDemo(
     });
     const { comprobante: _sinArchivoAporte, ...entradaAporte } = aporte;
     void _sinArchivoAporte;
-    exigir(
+    await llamar(
       "AporteCapitalService.registrar",
-      await conEmpresa(org, () =>
+      () => conEmpresa(org, () =>
         new AporteCapitalService(
           new AporteCapitalRepository(app),
           new CajaAporteCapitalFeedService(caja),
@@ -788,9 +1028,9 @@ export async function crearEmpresaDemo(
     );
 
     // Pago al mensajero central, contra su cierre aprobado.
-    exigir(
+    await llamar(
       "LiquidacionService.registrarPagoMensajero",
-      await conEmpresa(org, () =>
+      () => conEmpresa(org, () =>
         new LiquidacionService(
           new LiquidacionPagoRepository(app),
           new WalletTiendaMovimientoRepository(app),
@@ -825,9 +1065,9 @@ export async function crearEmpresaDemo(
     });
     const { comprobante: _sinArchivoAbono, ...entradaAbono } = abono;
     void _sinArchivoAbono;
-    exigir(
+    await llamar(
       "AbonoTiendaService.registrar",
-      await conEmpresa(org, () =>
+      () => conEmpresa(org, () =>
         new AbonoTiendaService(
           new AbonoTiendaRepository(app),
           new WalletTiendaMovimientoRepository(app),
@@ -842,9 +1082,9 @@ export async function crearEmpresaDemo(
     );
 
     // Pago a la plataforma (SL-45): el tope exige que la deuda de cargos ya cubra el monto.
-    exigir(
+    await llamar(
       "WalletEgresoService.registrarEgreso(pago_plataforma)",
-      await conEmpresa(org, () =>
+      () => conEmpresa(org, () =>
         new WalletEgresoService(
           caja,
           app,
@@ -863,29 +1103,10 @@ export async function crearEmpresaDemo(
     );
   }
 
-  // ── Recolección en tienda (ficha 157), con su mensajero propio (R-c) ────────────────────────
-  exigir(
-    "GuiaAsignacionService.asignarRecoleccion",
-    await conEmpresa(org, () =>
-      s.guia.asignarRecoleccion({ ordenIds: porPantalla.map((o) => o.id), mensajeroId: mRecolector.id }, maestro),
-    ),
-  );
-  const recoleccion = new RecoleccionTiendaService(
-    new OrdenRepository(app),
-    new GestionOrdenRepository(app),
-    new OrdenHistorialRepository(app),
-  );
-  for (const o of porPantalla.slice(n)) {
-    exigir(
-      "RecoleccionTiendaService.recolectarEnTienda",
-      await conEmpresa(org, () => recoleccion.recolectarEnTienda(o.numGuia, mRecolector.actor)),
-    );
-  }
-
-  // ── Novedad interna (B1): el corte de mañana, solo para esta empresa ───────────────────────
-  if (mCorte) {
-    await alReparto(aCorte, mCorte);
-    await corteDeManana(aCorte.map((o) => o.id));
+  // ── Novedad interna (B1): el corte de mañana, solo para esta empresa. Ningún tramo que mueva
+  //    órdenes corre a la vez: compara los estados de toda la empresa antes y después ───────────
+  async function corteDeLaDemo(): Promise<void> {
+    if (mCorte) await corteDeManana(aCorte.map((o) => o.id));
   }
 
   async function corteDeManana(esperadas: string[]): Promise<void> {
@@ -925,8 +1146,10 @@ export async function crearEmpresaDemo(
     return new Map(filas.map((f) => [f.id, f.estatus.value]));
   }
 
-  // ── Después del corte: el rechazo de la tienda, los cierres sin aprobar y lo que queda en reposo ──
-  if (!recortada) {
+  // ── Después del corte, a la vez: el rechazo de la tienda, el rechazo del cierre pedido antes del
+  //    corte y lo que queda en reposo. Cada uno con su mensajero y sus órdenes ──────────────────
+  async function rechazoDeLaTienda(): Promise<void> {
+    if (recortada) return;
     // Ficha 240: la tienda dueña rechaza una novedad; la orden queda devolviéndose a origen.
     const rechazo = new RechazoTiendaService(
       new OrdenRepository(app),
@@ -936,41 +1159,52 @@ export async function crearEmpresaDemo(
     );
     for (const o of novedades.slice(n)) {
       const r = rechazarNovedadSchema.parse({ ordenId: o.id, motivo: "La tienda no la reintenta" });
-      exigir("RechazoTiendaService.rechazar", await conEmpresa(org, () => rechazo.rechazar(r.ordenId, r.motivo, tiendaBodega)));
+      await llamar("RechazoTiendaService.rechazar", () => conEmpresa(org, () => rechazo.rechazar(r.ordenId, r.motivo, tiendaBodega)));
     }
   }
 
-  // R17: un cierre rechazado y uno solicitado sin decidir. Sus órdenes quedan en reparto.
-  await alReparto(aCierreRechazado, mRechazado);
-  for (const o of aCierreRechazado) await nucleo.gestionar(escenario, o, mRechazado, { resultado: "entregado" });
-  await cierres.rechazarCierre(escenario, await solicitarCierre(escenario, mRechazado), "Falta el efectivo de una entrega");
-  await alReparto(aCierrePendiente, mPendiente);
-  for (const o of aCierrePendiente) await nucleo.gestionar(escenario, o, mPendiente, { resultado: "entregado" });
-  await solicitarCierre(escenario, mPendiente);
-
   // Órdenes en reposo: recogiendo en bodega y en reparto (su mensajero no cierra: R-a).
-  for (const o of aRecoger) await nucleo.llevarA(escenario, o, "mensajero_recogiendo_en_bodega", { mensajero: mReposo });
-  await alReparto(enReparto, mReposo);
+  async function enReposo(): Promise<void> {
+    await llevarA(aRecoger, "mensajero_recogiendo_en_bodega", mReposo);
+    await alReparto(enReparto, mReposo);
+  }
+
+  await enPaso("después del corte", () =>
+    enParalelo([
+      enPaso("rechazo de la tienda", rechazoDeLaTienda),
+      enPaso("mensajero-cierre-rechazado › rechazar el cierre", () =>
+        cierres.rechazarCierre(escenario, cierreARechazar, "Falta el efectivo de una entrega"),
+      ),
+      enPaso("mensajero-reposo", enReposo),
+    ]),
+  );
 
   // ── Cola y comprobación final ───────────────────────────────────────────────────────────────
-  const cierre = await cerrarJobsSinEjecutar(jobs, org);
+  const cierre = await enPaso("cerrar la cola de jobs", () => cerrarJobsSinEjecutar(jobs, org));
   const porDecision = [
     ...(recortada ? ESTADOS_RECORTADOS_DE_B : []),
     ...(NOVEDAD_INTERNA_CON_CORTE_DE_MANANA ? [] : ["novedad_interna"]),
   ];
-  const comprobacion = await comprobarEmpresaDemo(ctx, org, { estadosPorDecision: porDecision });
+  const comprobacion = await enPaso("comprobación", () => comprobarEmpresaDemo(ctx, org, { estadosPorDecision: porDecision }));
 
   return {
     clave,
     slug: datos.slug,
     organizacionId: org,
     recortada,
-    usuarios,
+    // Las altas corren a la vez: la tabla de la salida (R26) va en un orden fijo, no en el de llegada.
+    usuarios: [...usuarios].sort((a, b) => posicionDePerfil(a.perfil) - posicionDePerfil(b.perfil)),
     jobsCerrados: { completados, sinEjecutar: cierre.cerradosPorTipo },
     tiposNoEsperados: cierre.tiposNoEsperados,
     comprobacion,
     duracionMs: Date.now() - inicio,
   };
+}
+
+/** El orden de los perfiles en la tabla de usuarios de la salida (`PERFILES_DEMO`). */
+function posicionDePerfil(perfil: string): number {
+  const i = (PERFILES_DEMO as readonly string[]).indexOf(perfil);
+  return i === -1 ? PERFILES_DEMO.length : i;
 }
 
 /** D3.2: la marca de la demo, como dueño, sobre la empresa recién creada y solo esa. */
@@ -1034,12 +1268,16 @@ export async function comprobarEmpresaDemo(
   const jobsAbiertos = await jobsAbiertosPorTipo(crearDepsJobsDemo(app), organizacionId);
 
   const tablasConFilas: Record<string, number> = {};
-  for (const tabla of TABLAS_SIN_FILAS) {
-    // El nombre sale de una lista fija de este archivo, nunca de una entrada.
-    const [fila] = await dueno.$queryRaw<{ n: bigint }[]>(
-      Prisma.sql`SELECT count(*) AS n FROM ${Prisma.raw(`"${tabla}"`)} WHERE "organizacion_id" = ${organizacionId}`,
-    );
-    const filas = Number(fila?.n ?? 0);
+  const recuentos = await enParalelo(
+    TABLAS_SIN_FILAS.map((tabla) =>
+      // El nombre sale de una lista fija de este archivo, nunca de una entrada.
+      dueno.$queryRaw<{ n: bigint }[]>(
+        Prisma.sql`SELECT count(*) AS n FROM ${Prisma.raw(`"${tabla}"`)} WHERE "organizacion_id" = ${organizacionId}`,
+      ),
+    ),
+  );
+  for (const [i, tabla] of TABLAS_SIN_FILAS.entries()) {
+    const filas = Number(recuentos[i][0]?.n ?? 0);
     if (filas > 0) tablasConFilas[tabla] = filas;
   }
 

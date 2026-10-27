@@ -2,6 +2,10 @@
 description: Conecta tu cuenta de Jira al arnes, verifica que la conexion es real, lista los proyectos a los que tienes acceso y fija tu identidad en .arnes.local.json
 ---
 
+> Solo para Jira. Si `arnes.config.json > tracker.tipo` es `trello`, usa `/tracker-connect`.
+> `jira.site` y `jira.project` valen tambien como `tracker.site` y `tracker.prefijo`
+> (`docs/jira.md`, cabecera).
+
 Vas a dejar a quien corre este comando conectado al board de Jira con **su propia cuenta**, a
 demostrarselo listando los proyectos que ve, y a dejar escrita su identidad en
 `.arnes.local.json`. No es un tutorial: cada paso termina en una comprobacion, y el comando no

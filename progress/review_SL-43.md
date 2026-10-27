@@ -474,3 +474,104 @@ producción. Conviene mencionarlo en el PR.
 **OK.** No hay bloqueantes y queda un menor nuevo (m10). La corrección del detector de FK es acotada y
 la mata la mutación. La limpieza de emergencia solo alcanza `es_demo`. Las ventanas de lock no crean
 ciclos. El SQLSTATE no filtra datos.
+
+## Vuelta 3 (acotada a e50ae78..9736e19)
+
+Commit `9736e19` «perf(SL-43): la demo de QA por debajo de 3 min en el build» (22 archivos).
+
+### Checklist
+- [x] Paralelismo sin compartir cliente `pg` entre consultas concurrentes: dentro de una transacción,
+  `lib/db/consultas-en-serie.ts` encola `queryRaw`/`executeRaw` FIFO (cada trabajo es una sola
+  consulta, sin anidamiento: no hay interbloqueo de la cola); fuera de transacción cada consulta va
+  por su conexión del pool. A y B van por `lector` (pool 4, serializado) y el cliente de la app (pool 12).
+  El contexto de empresa es `AsyncLocalStorage` (`lib/db/contexto-empresa.ts`): A y B no se pisan.
+- [x] Candado: sigue en `dueno` (`max: 1`, `idleTimeoutMillis: 0`), se toma antes de marca, slugs,
+  borrado y empresas; la conexión del candado no se usa para A/B, así que el lock de sesión vive
+  hasta `cerrar()`.
+- [x] `enParalelo` espera a todos antes de lanzar (allSettled): no quedan escrituras en vuelo al cerrar.
+- [x] Borrado: la pasada rápida en orden de FK va bajo `SAVEPOINT demo_qa_en_orden`; si falla, rollback
+  al savepoint y vuelta al camino por pasadas de antes (R8). Todo en la transacción del `dueno`. El
+  lector solo lee rutas de Storage, antes de borrar filas. Sin huérfanos nuevos respecto a la vuelta 2.
+- [x] Guardia anti-producción intacta: `validarEntornoDemo` antes de `conectar`, y `comprobarMarca`
+  (entorno_marca) lo primero tras el candado, antes de cualquier lectura de negocio o escritura. El
+  diff no toca `guardia-entorno.ts` ni `decision-build.ts`. `es_demo` lo pone el mismo rol del dueño
+  (el lector usa `urlDelDueno`).
+- [x] `lib/db/prisma-client.ts` en producción: `transactionOptions` es `undefined` sin `DB_TX_*`
+  (test `prisma-transaccion.test.ts`, asierta el argumento del constructor). La demo corre en su propio
+  proceso `tsx` (`package.json > build`), así que sus `process.env` no llegan a la app. La serialización
+  SÍ aplica a toda la app, pero reproduce la cola FIFO que `pg@8` ya hacía: mismo orden, mismo resultado.
+- [x] Tests no vacíos: `consultas-en-serie.test.ts` lleva control positivo (sin serializar, máximo 2);
+  integración `demo-qa.test.ts` comprueba solape real A‖B y cero avisos de `pg`; la bitácora registra
+  mutaciones M1–M9 en rojo.
+- [x] Typecheck (`tsc --noEmit`) 0; eslint sobre los archivos tocados: sin problemas.
+- [x] Unit nuevos: 7 archivos, 69/69 verdes.
+- [~] Integración `demo-qa.test.ts` y `demo-qa-borrado.test.ts`: 16 SKIPPED en local (no hay base);
+  los verifica el CI del PR. Todavía no hay corrida de CI sobre `9736e19`.
+- [x] Reglas del proyecto (perfil reviewer): sin tablas/migraciones nuevas, sin literales de país, sin
+  Ordenex, sin dependencias nuevas.
+
+### Hallazgos
+1. menor — `design.md:91` sigue diciendo «A y después B»; ahora van a la vez. El design no recoge la
+   serialización por transacción en el cliente de la app ni `DB_TX_*`. Actualizar el design.
+2. menor — `lib/db/consultas-en-serie.ts` cambia infraestructura compartida de toda la app (fuera del
+   alcance nominal de SL-43). Equivalente a la cola de `pg@8`, pero merece una línea en el PR y en
+   `progress/features/SL-43.md` para quien toque el cliente después.
+3. menor — durante ~3-4 min el build abre hasta 12 + 4 + 1 conexiones contra QA; el tamaño del pooler
+   de QA es desconocido (la bitácora lo marca como riesgo). Vigilar el primer build.
+4. menor — integración no ejecutada en local (sin base): el camino rápido del borrado y el adaptador
+   real serializado solo los verifica el CI. No mergear sin `gate-completo` verde.
+
+### Veredicto vuelta 3: OK
+
+## Vuelta 4 (acotada a 8e30c24..5496b39)
+
+Commit revisado: `5496b39` «fix(SL-43): OTP de dominios reservados por consola y correos demo en yopmail».
+
+### Checklist
+
+- [x] (a) Enrutador sobre TODOS los correos (`crearEmailSender`): solo desvía si la ÚLTIMA etiqueta
+  DNS es `test|invalid|example|localhost` (no `includes`). Un dominio real de producción no puede
+  terminar en esos TLD (RFC 2606/6761: no delegables), así que ningún correo entregable se desvía.
+  Un usuario de producción con dominio reservado ya rebotaba por SMTP: no hay regresión.
+  Formato `Nombre <x@y>`: `lastIndexOf("@")` + quitar `>` final, cubierto por `  a@example.test.  `
+  (espacios/punto). Todos los llamadores pasan una sola dirección (`maestro.email`, OTP,
+  recuperación); el contrato `IEmailSender.to` es `string` única.
+- [x] (b) Producción: `ConsoleEmailSender` y `otpDebugLogHabilitado` intactos en el diff
+  (`VERCEL_ENV=production` → `false`). Un reservado desviado en producción solo escribe la línea
+  de metadata (`to`, asunto), nunca el cuerpo. Guardia `otp-debug-solo-en-pruebas` verde.
+- [x] (c) Borrado: `scripts/demo-qa/borrar.ts` no cambia y no referencia email/correo; identifica
+  por `organizacion.es_demo`. Test nuevo «R7, D29: un usuario @yopmail.com de una empresa real
+  sobrevive» usa el correo EXACTO que daría la demo, con control de no vacuidad (`count = 1` antes)
+  y comparación de huella; mutación Y1 (filtro `LIKE` por correo) registrada en ROJO en la bitácora.
+- [x] (d) Tests no vacíos: el enrutador se prueba en los dos sentidos (reservados → consola y nunca
+  SMTP; normales incl. `testing.example.com`, `test.example.org`, `mytest` → SMTP y nunca consola)
+  y por composición real (`crearEmailSender` con prototipos espiados). Esperados de correos escritos
+  a mano; tope de 64 probado en el borde (64 vale, 65 lanza; slug 31 vale, 32 lanza).
+- [x] R12/D29 actualizados en requirements/design; `docs/verification.md` documenta el enrutador.
+
+### Verificación ejecutada
+
+- `vitest run` de `tests/unit/services/email`, `email-notificacion`, `demo-qa-correos`,
+  `demo-qa-build`, `password-reset-degrada-a-consola` y guardias `otp-debug-solo-en-pruebas` y
+  `recursos-origen-fuera`: 11 archivos, 184 passed, 1 skipped (preexistente), 0 failed.
+- `tsc --noEmit`: 0. `eslint` sobre los `.ts` del diff: 0.
+- Integración (`demo-qa.test.ts`, `demo-qa-borrado.test.ts`): no ejecutada aquí (sin base en el
+  worktree); la bitácora reporta 17 passed contra base local. La cubre `gate-completo`.
+
+### Hallazgos
+
+1. menor — `ConsoleEmailSender` sigue escribiendo «sin SMTP configurado; no se envia» también
+   cuando hay SMTP y el desvío es por dominio reservado. Texto engañoso en el log de QA; no afecta
+   al comportamiento.
+2. menor — una lista mixta (`<correo-real>, demo@example.test`) va entera a consola y el destinatario
+   real no la recibe. Hoy es teórico (el contrato es una sola dirección y ningún llamador pasa
+   lista), y es la elección segura documentada; si algún día se admiten listas, partirlas.
+3. menor — los tests separan `"yopmail.com"` en una constante para que la guardia de SL-34
+   (`recursos-origen-fuera`) no lea el literal. El valor no es un recurso de origen, así que no se
+   viola la intención de la guardia, pero el patrón de «esquivar la regex» no debería extenderse;
+   si aparecen más casos, mejor una excepción explícita en la guardia.
+4. menor — con D29 los usuarios demo reciben correos reales por Brevo (OTP, cada login). La receta
+   no envía bienvenidas (`marcarContrasenaDefinida`), así que el build no dispara envíos; el volumen
+   lo marca el uso de QA. Decisión de Carlos, se anota solo para vigilar cuota/reputación.
+
+### Veredicto vuelta 4: OK

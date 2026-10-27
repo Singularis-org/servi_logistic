@@ -72,7 +72,7 @@ las 57 carpetas hermanas del inventario de arriba.
 
 | Opción | Para qué |
 |---|---|
-| `--retomar` | solo `new`: monta el worktree desde `origin/<rama>`. Para **tu** feature, tomada desde otra máquina o soltada por otra persona y reasignada a ti en Jira. |
+| `--retomar` | solo `new`: monta el worktree desde `origin/<rama>`. Para **tu** feature, tomada desde otra máquina o soltada por otra persona y reasignada a ti en el tracker. |
 | `--sin-publicar` | solo `new`: no publica la rama, así que **no hay candado**. Solo si trabajas sin equipo o sin red. |
 | `--assume-merged` | solo `done`: salta la guarda de merge (caso squash, abajo) y mantiene las otras tres. |
 | `--base <ref>` | ref contra la que se mide "mergeado" (por defecto se autodetecta `origin/dev`). |
@@ -94,7 +94,7 @@ crear el worktree, con `git push --force-with-lease=refs/heads/<rama>:`. El leas
 la rama **no exista** en el remoto, y el servidor lo comprueba de forma atómica: de dos personas
 que toman la misma feature a la vez, solo una gana; la otra recibe el código 4.
 
-Es la mitad atómica del candado. La mitad visible es el assignee de Jira, que el leader pone
+Es la mitad atómica del candado. La mitad visible es el assignee del tracker, que el leader pone
 **antes** de llamar a `wt.sh new`. El orden completo (releer, asignar, releer, publicar) y qué
 hacer al soltar una feature: `docs/equipo.md > Tomar una feature` y
 `docs/equipo.md > Soltar una feature`.

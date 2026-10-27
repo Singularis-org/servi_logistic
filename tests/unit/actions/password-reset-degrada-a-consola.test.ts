@@ -50,6 +50,7 @@ const { crearEmailSender } = await import("@/lib/services/EmailProvider");
 const { loadEmailConfig } = await import("@/lib/config/email");
 const { ConsoleEmailSender } = await import("@/lib/services/email/ConsoleEmailSender");
 const { NodemailerEmailSender } = await import("@/lib/services/email/NodemailerEmailSender");
+const { EnrutadorEmailSender } = await import("@/lib/services/email/EnrutadorEmailSender");
 
 const VARIABLES = [
   "SMTP_HOST",
@@ -116,13 +117,16 @@ describe("T19 — sin SMTP, «recuperar contraseña» envia por consola y no lan
 });
 
 describe("T19 — con la configuracion de Brevo, nodemailer por STARTTLS", () => {
-  it("crearEmailSender devuelve el emisor de nodemailer y no abre conexion", () => {
+  it("crearEmailSender devuelve el enrutador sobre nodemailer y no abre conexion", () => {
     process.env.SMTP_HOST = "smtp-relay.brevo.com";
     process.env.SMTP_PORT = "587";
     process.env.SMTP_USER = "usuario-falso@example.test";
     process.env.SMTP_PASSWORD = "credencial-falsa-de-test";
 
-    expect(crearEmailSender()).toBeInstanceOf(NodemailerEmailSender);
+    // SL-43: con SMTP el emisor enruta por destinatario; el SMTP de dentro es nodemailer.
+    const emisor = crearEmailSender();
+    expect(emisor).toBeInstanceOf(EnrutadorEmailSender);
+    expect((emisor as unknown as { smtp: unknown }).smtp).toBeInstanceOf(NodemailerEmailSender);
     expect(dobles.createTransport).not.toHaveBeenCalled();
   });
 
