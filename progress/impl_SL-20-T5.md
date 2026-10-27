@@ -115,3 +115,32 @@ E2E: `e2e/superadmin-empresas.spec.ts`, `e2e/_dos-empresas-fixture.ts` y el come
 
 Veredicto: UI de T5.5 y borrado de T5.3 hechos, tests verdes y typecheck en 0. Queda en rojo la
 guardia de ayuda, que espera la decisión de T5.6.
+
+## T5.6
+
+Decisión 9: se retira `docs/ayuda/oficina/configuracion-geografia.md` (`roles: [maestro, admin]`;
+ya borrado con `git rm` por el leader). Ningún código de la app (`AyudaLayout`, `lib/ayuda/`) ni
+doc de ayuda afirma las cifras o nombra el documento: solo los tests las fijan a mano. Se
+actualizan los literales, con comentario «SL-20 (decisión 9)»:
+
+- `tests/components/AyudaLayout.test.tsx`: maestro/admin 38→37 (7.º rojo, no listado en el encargo).
+- `tests/unit/asistente/acotamiento-por-rol.test.ts`: R10 «37 / 37 / 10 / 8 / 7»; R11 carpeta oficina 23→22.
+- `tests/unit/asistente/contexto-documental.test.ts`: R1 catálogo y contexto 38→37.
+- `tests/unit/ayuda/acotamiento-por-rol.test.ts`: R21 catálogo 38→37; «los DIEZ» sin tocar la lista
+  (el documento no estaba entre ellos) y la cuenta 37−10=27; admin propios 22→21.
+
+Comandos:
+
+```
+NODE_OPTIONS=--max-old-space-size=6144 pnpm exec vitest run tests/unit/ayuda tests/unit/asistente tests/components/Ayuda* tests/components/AppLayout.test.tsx tests/unit/guards/ayuda-*
+ Test Files  26 passed (26)
+      Tests  373 passed (373)
+(antes del cambio: 4 failed | 22 passed; 7 failed | 366 passed)
+
+pnpm exec eslint <los 4 tests>
+ESLint: No issues found
+```
+
+Typecheck no aplica: no se tocó código TS de la app.
+
+Veredicto: T5.6 hecha; ayuda y asistente en verde con el catálogo en 37.

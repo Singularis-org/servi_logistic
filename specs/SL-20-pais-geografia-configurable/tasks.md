@@ -186,7 +186,7 @@ para y avisa al leader.
   bloqueada sin país) y R45 (un país apagado no aparece en el `Select`, pero la columna «País» sí
   muestra el de una empresa que ya está en él); `e2e/_dos-empresas-fixture.ts` y
   `e2e/superadmin-empresas.spec.ts` eligen `CR`.
-- [ ] T5.6 [P] Ayuda: `docs/ayuda/oficina/configuracion-geografia.md` pasa a describir la pantalla
+- [x] T5.6 [P] Ayuda: `docs/ayuda/oficina/configuracion-geografia.md` pasa a describir la pantalla
   del superadmin, o se retira si la ayuda es solo de empresa (lo decide quien la mantiene; se anota).
   Dep.: T5.3.
   **Hecho:** ninguna ayuda enlaza a `/configuracion/geografia`.
