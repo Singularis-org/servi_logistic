@@ -898,7 +898,7 @@ grafo no se usó: los cambios son de `e2e/` y de docs, y bastó Grep/Read.
 | R19 | `tests/unit/cron/procesar-jobs-modulos.test.ts` (`webhook_estado` y `webhook_evento` descartados sin llamar al handler) |
 | R20 | `tests/unit/services/job-queue-service-descartado.test.ts`; `tests/unit/cron/procesar-jobs-modulos.test.ts` |
 | R21 | `tests/unit/db/para-cada-empresa-modulo.test.ts`; `tests/integration/db/para-cada-empresa-modulo.test.ts` |
-| R22 | `tests/integration/db/organizacion-modulo.test.ts` (apagar y encender Ranking con datos: mismo recuento y mismas filas) |
+| R22 | `tests/integration/db/modulo-apagado-datos-intactos.test.ts` («R22 — apagar Ranking deja el mismo recuento y las mismas filas; al reencenderlo la app lee las mismas filas»; vuelta 2, B1 de la revisión) |
 | R23 | suites existentes de esas piezas en verde, más `e2e/dos-empresas-humo.spec.ts` (empresa A con todo encendido recorre todo el menú del maestro) (Tanda 7: A recorre 23 rutas del menú, B 21, sin error ni fugas); E2E `reparto/mis-asignaciones`, `dinero/wallet`, `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40` y `pago-plataforma-sl45` en verde con los módulos encendidos por la fábrica |
 | R24 | `tests/unit/services/webhook-whatsapp-service-modulo.test.ts` |
 | R25 | `tests/integration/db/organizacion-modulo.test.ts`; `e2e/dos-empresas-humo.spec.ts` (Tanda 7: filas de `organizacion_modulo` de A = 8, de B = 7 sin `ranking`) |
@@ -960,3 +960,25 @@ grafo no se usó: los cambios son de `e2e/` y de docs, y bastó Grep/Read.
   - Sin `DATABASE_URL`, 2 archivos y 20 tests quedan en `skipped`.
 
 Veredicto: T12 y T13 cerradas. El humo pasó dos veces seguidas, y también los 3 E2E de wallet, cobro y pago, uno de `reparto` y otro de `dinero`. T14 está completa salvo `./init.sh`, que queda para el leader.
+
+## Vuelta 2 — B1 de la revisión: test de R22
+
+**Archivo creado:** `tests/integration/db/modulo-apagado-datos-intactos.test.ts`. Archivo propio y no
+`organizacion-modulo.test.ts`, porque apagar y encender por el repositorio necesitan un superadmin
+commiteado como actor, y eso exige los locks de superadmin y de la 227 durante todo el archivo, como en
+`modulos-empresa-historial.test.ts`.
+- Siembra comprobada: «Ranking» encendido, 3 filas de `premio_ranking` (una con monto nulo, otra con
+  descripción nula) y una foto `ranking_snapshot_dia` con una fila.
+- `ModulosEmpresaRepository.apagar`: el módulo queda apagado según `ModulosActivosRepository`. El
+  recuento y las filas completas, leídos como dueño, no cambian.
+- `ModulosEmpresaRepository.encender`: las mismas filas. `PremioRankingRepository.listar` y
+  `RankingSnapshotRepository.obtenerPorFecha`, leídos por el cliente de la app en contexto de empresa,
+  devuelven lo mismo que antes de apagar.
+
+**Salida** (`DATABASE_URL` a `logistic_sl23_rev`; `prisma migrate deploy` → «No pending migrations to apply.»):
+- `vitest run tests/integration/db/modulo-apagado-datos-intactos.test.ts`: `1 passed (1)`.
+- Los 6 archivos de integración de SL-23 más el nuevo: `Test Files 7 passed (7) · Tests 43 passed (43)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p .`: exit 0.
+- `pnpm run -s lint`: exit 0, sin errores. `eslint` del archivo nuevo: sin problemas.
+
+Veredicto: R22 ya tiene test; B1 queda resuelto.
