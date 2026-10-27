@@ -84,3 +84,57 @@ Estado final comprobado con `psql`: `servi_logistic_sl20`, los tres triggers con
 Conclusión: los tres tests de R13/R38 dependen de los triggers (caen sin ellos y pasan con ellos); R14 también
 cae, porque su caso «con distrito de otro país, no» pasa por el trigger de `orden`. R12 no depende de ellos
 (lo cubren las políticas `*_del_pais`), como se espera. No se tocó ninguna otra base.
+
+## 4. Decisión 12: E2E en local contra `servi_logistic_sl20`
+
+Preparación:
+- `pnpm run db:seed` → «Seed de catalogos completado (tipo_identificacion, rol, order_status, vehiculos).»
+- `prisma migrate status` → «Database schema is up to date!» (257 migraciones).
+- `next build` (con `prisma generate`) en el worktree: exit 0. `next start` lo exige.
+- Entorno: el `.env` del checkout principal se carga en el shell (`set -a; . ../../.env`) y se pisa solo
+  `DATABASE_URL` con el nombre de base `servi_logistic_sl20` (`DIRECT_URL` está vacío y cae a `DATABASE_URL`).
+  `E2E_PUERTO=3044` (en 3000 escucha otra sesión), `E2E_STORAGE_PUERTO=54344`, log del servidor en el
+  scratchpad. Un spec cada vez, `--workers=1`. El `.env` compartido no se tocó.
+
+`pnpm exec playwright test e2e/superadmin-empresas.spec.ts --project=plataforma-vacia --workers=1`:
+```
+  ✓  1 … 1. «Empresas» abre con el formulario de alta y sin aviso (R29) (376ms)
+  ✓  2 … 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29) (2.0s)
+  ✓  3 … 3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33) (3.0s)
+  ✓  4 … 4. un slug inválido marca el campo sin crear nada (R34) (775ms)
+  ✓  5 … 5-6. el maestro de A crea su contraseña con el enlace de bienvenida, «Empresas» le da 404 y no la ve (1.8s)
+  ✓  6 … 5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?», … (2.0s)
+  ✓  7 … 7. con las dos contraseñas creadas, ni la fila de A ni la de B ofrecen «Reenviar bienvenida» (R38) (134ms)
+  7 passed (21.8s)
+```
+
+`pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --project=aislamiento --no-deps --workers=1`
+(`--no-deps`: el proyecto depende de `plataforma-vacia`, que ya corrió arriba):
+
+- Primera corrida, ROJO de SL-20: `1 failed, 5 did not run`. El alta por pantalla del humo
+  (`altaDeEmpresaPorPantalla` en `e2e/_superadmin-fixture.ts`) no elegía país; desde R9 el alta no lo
+  preselecciona, el formulario marcaba «País: Revisa este campo.» y no salía el aviso del alta
+  (`expect(locator).toHaveCount(1)` sobre `AVISO_EMPRESA_CREADA`, 0 tras 60 s). `superadmin-empresas` ya lo
+  elegía en su propio formulario; el fixture compartido se quedó atrás.
+- Arreglo: el fixture elige «Costa Rica» en el combobox «País», igual que `superadmin-empresas.spec.ts`
+  (CR disponible tras la migración, R44). eslint limpio, `tsc --noEmit` exit 0.
+- Segunda corrida:
+```
+  ✓  1 … alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)
+  ✓  2 … el maestro de A recorre todas las rutas de su menú sin error ni datos de B (23.8s)
+  ✓  3 … el maestro de B recorre todas las rutas de su menú sin error ni datos de A (20.8s)
+  ✓  4 … cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (2.6s)
+  ✓  5 … B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (3.7s)
+  ✓  6 … vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26) (3.4s)
+  6 passed (1.2m)
+```
+
+Nota: `superadmin-empresas` corrió antes del arreglo del fixture; no usa `altaDeEmpresaPorPantalla`, así que
+su resultado no cambia.
+
+## Abierto
+
+- Vocabulario de retiro mezclado en `/plataforma/geografia` («Desactivar»/«Inactivo» frente a «Retirar del
+  catálogo»): decisión de un humano (auditoría de diseño, punto 7).
+- D15: confirmación de Carlos (F1.4), sin cambios.
+- `./init.sh` no corrido (lo corre el leader).
