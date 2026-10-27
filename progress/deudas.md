@@ -122,3 +122,16 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-40, review m2 (2026-10-24). `e2e/cobro-plataforma-sl40.spec.ts` se salta sin `SL40_UI=1`, así que en el job `e2e` de CI no protege nada. Lo mismo pasa con `e2e/wallet.spec.ts`, en rojo heredado (D8).
 - **Resolución:** SL-44 (R13; T4). El spec pierde la bandera, corre en el grupo `aislamiento` con su base y el log del servidor, y un `afterAll` deja el cobro global como estaba. `wallet.spec.ts` se rehízo con datos propios (T6.3). La guardia `e2e-sin-saltos` impide que vuelva un skip.
 - **Dueño:** cerrada.
+
+### D20 — Comentarios desfasados tras SL-18
+- **Origen:** review de SL-18 (m1 y m2, 2026-10-27).
+- **Qué falta:** reescribir los comentarios que describen el comportamiento anterior a SL-18:
+  - `PushEndpointPlataformaRepository.ts:10` y `push.ts:125`, que hablan del push de antes del «gana el último»;
+  - `recuperar-contrasena.ts:28`, que habla del paso del código.
+  Son solo comentarios; el código es correcto.
+- **Dueño:** Camilo (la próxima ficha que toque push o recuperar).
+
+### D21 — El arranque del superadmin rechaza un email que ya usa una cuenta de empresa
+- **Origen:** review de SL-18 (m3, 2026-10-27).
+- **Qué falta:** `ArranqueSuperadminRepository.ts:76-81` busca el email sin filtrar por `organizacion_id IS NULL`. Según R3 de SL-18, el superadmin puede compartir email con una cuenta de empresa. Hoy no ocurre, porque el superadmin se crea con la base vacía.
+- **Dueño:** Camilo (decidir si va a ficha).
