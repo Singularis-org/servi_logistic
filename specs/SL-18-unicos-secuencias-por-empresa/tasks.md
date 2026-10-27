@@ -125,6 +125,22 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   existe con `organizacion_id` primero y el `EXPLAIN` de su consulta lo nombra) y R25
   (`usuario_email_idx` en el plan de la búsqueda del login). Dep. T5.2.
   **Hecho:** verde.
+- [x] **T5.4** Ampliación (design §2 M3 y §6). La migración
+  `20261026090200_indices_ordenes_gestiones_historial` (`migration.sql` y `down.sql`) y sus
+  `@@index` crean tres índices:
+  - `orden (organizacion_id, prioridad DESC, created_at DESC, id) WHERE deleted_at IS NULL`;
+  - `gestion_orden (organizacion_id, created_at)`, que sustituye a `gestion_orden_created_at_idx`;
+  - `historial_accion (organizacion_id, created_at DESC, id)`, que sustituye a
+    `historial_accion_created_at_id_idx`.
+
+  Se amplía `indices-rutas-calientes.test.ts` y se reescriben
+  `analitica-operativa-indices.test.ts` (126 R25) y `historial-accion-migration.test.ts` (362 R40)
+  para que fijen la forma nueva. Dep. T5.3.
+  > Revisión 2026-10-26: ampliación decidida por Camilo; el índice de órdenes no sigue la forma
+  > literal `organizacion_id + columnas de antes`.
+
+  **Hecho:** medición antes/después, ida y vuelta del `down.sql`, sin drift, test verde y mutación
+  anotada en `progress/impl_SL-18.md > Tanda 5 — ampliación`.
 
 ## Tanda 6: push y número de guía (R26–R30)
 
@@ -197,6 +213,8 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 - `db/migrations/20261026090000_usuario_unico_por_empresa/down.sql`
 - `db/migrations/20261026090100_indices_rutas_calientes/migration.sql`
 - `db/migrations/20261026090100_indices_rutas_calientes/down.sql`
+- `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`
+- `db/migrations/20261026090200_indices_ordenes_gestiones_historial/down.sql`
 - `db/schema.prisma`
 - `lib/interfaces/repositories/IUserRepository.ts`
 - `lib/repositories/UserRepository.ts`
@@ -224,6 +242,10 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 - `tests/integration/db/unicos-por-empresa.test.ts`
 - `tests/integration/db/organizacion-alta.test.ts`
 - `tests/integration/db/indices-rutas-calientes.test.ts`
+- `tests/integration/db/analitica-operativa-indices.test.ts`
+- `tests/integration/db/historial-accion-migration.test.ts`
+- `tests/unit/guards/organizacion-en-modelos.guardia.test.ts`
+- `lib/repositories/AnaliticaOperativaVivaRepository.ts`
 - `tests/integration/db/push-ultimo-gana.test.ts`
 - `tests/integration/db/num-guia-global.test.ts`
 - `tests/integration/actions/login-varias-empresas.test.ts`

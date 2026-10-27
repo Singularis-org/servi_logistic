@@ -88,6 +88,27 @@ Por cada consulta que elige T5.1 (§6):
 índice nuevo deja sin uso al viejo, el viejo se borra en la misma migración. El `down.sql`
 restaura los índices borrados y borra los nuevos. No hay datos que perder, así que nunca aborta.
 
+### M3: `20261026090200_indices_ordenes_gestiones_historial` (R24)
+
+> Revisión 2026-10-26: ampliación decidida por Camilo; el índice de órdenes no sigue la forma
+> literal `organizacion_id + columnas de antes`. Recoge los tres candidatos que T5.1 dejó fuera
+> (§6):
+>
+> - `orden_organizacion_id_prioridad_created_at_id_idx` sobre
+>   `(organizacion_id, prioridad DESC, created_at DESC, id) WHERE deleted_at IS NULL`. Copia el
+>   `ORDER BY` por defecto de `OrdenRepository.list` y su predicado de borrado lógico.
+>   `orden_created_at_idx` se queda: lo usa la ventana de la cohorte (411 R36).
+> - `gestion_orden_organizacion_id_created_at_idx` sustituye a `gestion_orden_created_at_idx`
+>   (126 R25).
+> - `historial_accion_organizacion_id_created_at_id_idx` sustituye a
+>   `historial_accion_created_at_id_idx` (362 R40).
+>
+> Los viejos se borran porque, mientras existen, el planificador los sigue eligiendo. Los tests
+> de la 126 y la 362 que los fijaban pasan a fijar la forma nueva. El parcial de `orden` no se
+> puede escribir en `db/schema.prisma`: el `@@index` va sin `WHERE`, igual que
+> `orden_prioridad_clave_remision_idx`, y el predicado vive en el SQL. El `down.sql` restaura
+> los dos viejos y borra los tres nuevos.
+
 ### Lo que no cambia
 
 - `orden.num_guia` sigue `@unique` global, y `orden_num_guia_seq` y `siguiente_num_guia()` siguen
@@ -293,6 +314,17 @@ La tabla de la medición (consulta, plan antes y después, decisión) va a `prog
 El test de R24 comprueba en `pg_indexes` que cada índice elegido existe con `organizacion_id`
 primero, y que el `EXPLAIN` de su consulta, con dos empresas sembradas, lo nombra. El de R25 hace
 lo mismo con `usuario_email_idx` y la consulta de 3.1.
+
+> Revisión 2026-10-26: ampliación decidida por Camilo; el índice de órdenes no sigue la forma
+> literal `organizacion_id + columnas de antes`. T5.1 midió y descartó `orden`, `gestion_orden` e
+> `historial_accion`. Con la decisión, entran en M3 (§2):
+>
+> - para `orden`, el índice sigue el `ORDER BY` real del listado (`prioridad DESC, created_at
+>   DESC, id`) y es parcial, en lugar de `(organizacion_id, created_at)`;
+> - en `gestion_orden` y en `historial_accion` se borra el índice viejo por fecha.
+>
+> T5.4 amplía el test de R24 con los tres. En `gestion_orden` la empresa la pone la RLS, así que el
+> test busca la condición de la policy en el `Index Cond`.
 
 ## 7. Push: el último gana (R26–R28)
 

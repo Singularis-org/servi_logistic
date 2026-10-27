@@ -725,3 +725,198 @@ candidatos para decisión humana.
 - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --exit-code` → exit 0,
   «No difference detected».
 - No corrí `./init.sh` ni la suite completa; no hay push (lo pidió el leader).
+
+## Tanda 5 — ampliación: órdenes, gestiones e historial (R24) — 2026-10-26, backend_dev
+
+La amplió Camilo el 2026-10-26. Base `servi_logistic_sl18` (local, `localhost:5432`). La URL se
+exporta por comando, sin `.env` en el worktree. El grafo de código no se consultó: la exploración
+fue con Grep/Read.
+
+### Archivos
+
+- `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql` (nuevo)
+- `db/migrations/20261026090200_indices_ordenes_gestiones_historial/down.sql` (nuevo)
+- `db/schema.prisma`, tres `@@index` nuevos:
+  - `Orden`: `[organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id]`, sin `WHERE`
+    (ver Desviaciones);
+  - `GestionOrden`: `[organizacionId, createdAt]`, en lugar de `[createdAt]` con
+    `map: "gestion_orden_created_at_idx"`;
+  - `HistorialAccion`: `[organizacionId, createdAt(sort: Desc), id]`, en lugar de
+    `[createdAt(sort: Desc), id]`.
+- `lib/repositories/AnaliticaOperativaVivaRepository.ts`: solo cambia el comentario que nombraba
+  el índice viejo.
+- `tests/integration/db/indices-rutas-calientes.test.ts`: tres rutas más y la comprobación del
+  predicado parcial.
+- `tests/integration/db/analitica-operativa-indices.test.ts` y
+  `tests/integration/db/historial-accion-migration.test.ts`, reescritos (ver abajo).
+- `tests/unit/guards/organizacion-en-modelos.guardia.test.ts`, una línea (ver Desviaciones).
+- `specs/SL-18-unicos-secuencias-por-empresa/design.md` (§2 M3 y §6) y `tasks.md` (T5.4), con su
+  revisión.
+
+### Medición antes/después
+
+Mismo método que T5.1:
+- dos empresas de 20.000 filas en `orden`, `gestion_orden` e `historial_accion`, intercaladas
+  por fecha, más `orden_historial_estado`;
+- una transacción revertida y modo `replica`;
+- `EXPLAIN (ANALYZE, BUFFERS)` como `servi_app` con A fijada.
+
+El script se corrió desde el scratchpad y no se dejó en el worktree.
+
+| Consulta | Antes | Después (nuevo, sin el viejo) |
+|---|---|---|
+| `OrdenRepository.list` por defecto (`deleted_at IS NULL AND organizacion_id=$1 ORDER BY prioridad DESC, created_at DESC, id ASC LIMIT 25`) | `Seq Scan on orden`: 19.200 filas, 20.800 descartadas, top-N heapsort, 1.064 buffers, 27,5 ms | `Index Scan using orden_organizacion_id_prioridad_created_at_id_idx`, `Index Cond: organizacion_id`, sin sort: 25 filas, 28 buffers, 0,10–0,15 ms |
+| `count` del mismo listado | `Seq Scan`: 1.064 buffers, 17 ms | Sin cambio (`Seq Scan`). Con el mapa de visibilidad recién creado, el planificador no hace `Index Only Scan`. El índice no buscaba esto |
+| `contarGestionesVigentes`, ventana de un día (empresa por RLS) | `Index Scan using gestion_orden_created_at_idx`: 192 leídas, **96 descartadas** (las de B) | Con el viejo vivo, el plan **seguía con el viejo**. Sin él: `Bitmap Index Scan on gestion_orden_organizacion_id_created_at_idx`, `Index Cond: organizacion_id = NULLIF(current_setting(...)) AND created_at >= … AND created_at < …`, 96 filas, 0 descartadas |
+| `HistorialAccionRepository.list` (`organizacion_id=$1 ORDER BY created_at DESC, id ASC LIMIT 25`) | `Index Scan using historial_accion_created_at_id_idx`: 24 descartadas | `Index Scan using historial_accion_organizacion_id_created_at_id_idx`, `Index Cond: organizacion_id`: 0 descartadas, 5 buffers |
+
+### Índices
+
+- **Creados:**
+  - `orden_organizacion_id_prioridad_created_at_id_idx`, **parcial** `WHERE deleted_at IS NULL`;
+  - `gestion_orden_organizacion_id_created_at_idx`;
+  - `historial_accion_organizacion_id_created_at_id_idx`.
+
+  Los nombres son los que deriva Prisma, sin `map:`.
+- **Borrados:** `gestion_orden_created_at_idx` y `historial_accion_created_at_id_idx`.
+- **Se quedan:**
+  - `orden_created_at_idx`: lo usa la ventana de carga de la cohorte (`CohorteCargaRepository`,
+    411 R36). Con datos, el plan de esa ventana lo sigue eligiendo, como dueño y como `servi_app`;
+  - `orden_prioridad_clave_remision_idx`: orden por remisión, 423;
+  - `orden_organizacion_id_idx`: el nuevo es parcial y no lo sustituye.
+- **Lo que el índice de `orden` no cubre:** el sentido no por defecto (`created_at ASC`), el orden por
+  guía o remisión y la vista «Eliminadas». Esos casos ordenan en memoria, como antes.
+
+### Llamadores revisados de los índices borrados
+
+- **`gestion_orden` por `created_at`.** Las lecturas son:
+  - `AnaliticaOperativaVivaRepository` (Q3/Q4) y `AnaliticaRollupRepository` (job
+    `analitica_rollup_diario`);
+  - `TableroDiaRepository`, `ConteoDevolucionesRepository`, `ConteoProductosRepository` y
+    `ConteoPorStatusRepository`.
+
+  Todas son SQL a mano por el cliente de la app. Sin contexto, la extensión lo rechaza
+  (`EmpresaNoResuelta`, `lib/db/extension-empresa.ts`). Los jobs recurrentes corren una vez por
+  empresa con `conEmpresa` (`conSuEmpresa`, `app/api/cron/procesar-jobs/route.ts`).
+  `scripts/rollup-analitica-manual.ts` usa el mismo cliente. Los `comoPlataforma` del repo (login,
+  sesión, rastreo por guía, empresas, cobro, jobs, storage) no leen `gestion_orden` por fecha.
+  `scripts/contraste-454.sql` y `scripts/medir-462-retenidas.sql` son consultas de consola de
+  diagnóstico, no rutas de la app.
+- **`historial_accion` por `created_at`.** El único lector es `HistorialAccionRepository`
+  (`list` y `listAll`, con empresa). La otra escritura es `registrar-accion.ts`, un
+  `createMany`. No hay retención, cron ni script que lea la tabla.
+- **Tests que nombraban los viejos.** Solo los dos reescritos. `orden-clave-remision.guardia`
+  vigila que nadie recree `orden_prioridad_clave_remision_idx` sin `WHERE`. M3 no lo toca.
+
+### Tests ajenos reescritos y qué siguen protegiendo
+
+- **`analitica-operativa-indices.test.ts` (126 R25).** Sigue fijando las tres afirmaciones de R25.
+  1. Una migración crea el índice y su `down.sql` lo revierte. Las aserciones sobre la migración de
+     la 126 se conservan (es historia aplicada). Se suman las de M3: borra el viejo y crea
+     `(organizacion_id, created_at)`; el down restaura `("created_at")`.
+  2. `schema.prisma` declara el índice. La aserción lee el bloque `model GestionOrden`, porque
+     `Tarifa` tiene el mismo `@@index`, y exige que no vuelva `@@index([createdAt]`.
+  3. El plan intradía con `enable_seqscan = off` nombra el índice y no hace `Seq Scan`. Ahora corre
+     como `servi_app` con una empresa (`comoApp`), como en la app, y exige el **rango de
+     `created_at` dentro del `Index Cond`**: la ventana sigue teniendo índice. El caso
+     discriminante no cambia.
+- **`historial-accion-migration.test.ts` (362 R40).**
+  - **Las tres consultas siguen sin `Seq Scan` y con su índice.** Llevan
+    `organizacion_id = $n`, como las emite el repositorio. La primera página exige
+    `historial_accion_organizacion_id_created_at_id_idx`; actor y entidad conservan los suyos.
+  - **El corpus se siembra en modo `replica`.** Lleva un actor sintético y dos empresas de 3.000
+    filas, intercaladas. Antes leía un usuario existente y caía por el trigger de misma empresa:
+    esos 4 casos estaban rojos (archivo en `baseline-rojos.json`) y ahora pasan.
+  - **Índices en la base.** El caso de los índices exige el nuevo y la ausencia del viejo.
+  - **Siguen rojos (baseline, de SL-17, ajenos a esta tanda):** «R8: y NO tiene policies» y «la FK
+    del actor es RESTRICT».
+
+### Mapa R → test
+
+| R | Caso |
+|---|---|
+| R24 | `indices-rutas-calientes.test.ts`, «R24: cada índice elegido existe con `organizacion_id` primero». Son 6 casos, 3 nuevos. Comprueban las columnas exactas y, si el índice es parcial, el predicado |
+| R24 | `indices-rutas-calientes.test.ts`, «R24: con dos empresas sembradas, el plan de la consulta real nombra su índice». Son 6 casos, 3 nuevos: `OrdenRepository.list`, `AnaliticaOperativaVivaRepository.contarGestionesVigentes` (vía `cubosDelDiaEnCurso`; la empresa la pone la RLS y el test busca la policy en el `Index Cond`) y `HistorialAccionRepository.list` |
+| R24 (126 R25, 362 R40) | `analitica-operativa-indices.test.ts` y `historial-accion-migration.test.ts`, reescritos |
+| R25 | sin cambio (`usuario_email_idx`) |
+
+### Ida y vuelta, drift y salidas
+
+- **Ida y vuelta del down y drift.**
+  1. `prisma migrate deploy` aplicó M3. `pg_indexes` de las 3 tablas pasó a +3 y −2, y
+     `migrate diff --from-config-datasource --to-schema db/schema.prisma --exit-code` dio
+     «No difference detected» (exit 0).
+  2. `prisma db execute --file down.sql` dejó `pg_indexes` **idéntico** al de antes. El diff contra
+     el `schema.prisma` de HEAD salió con exit 0.
+  3. Reaplicado `migration.sql`, `pg_indexes` quedó idéntico al de tras el deploy y el diff salió
+     con exit 0. `migrate status` dio «Database schema is up to date!».
+- **Typecheck:** `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0, 0 `error TS`.
+- **Lint:** `NODE_OPTIONS=--max-old-space-size=8192 pnpm run lint` → exit 0, `231 problems (0 errors,
+  231 warnings)`. Son las mismas cifras de antes.
+- **`indices-rutas-calientes.test.ts`:** 5 corridas seguidas con `Tests 13 passed (13)`.
+- **Ajenos reescritos:**
+  - `analitica-operativa-indices.test.ts` → `Tests 7 passed (7)`;
+  - `historial-accion-migration.test.ts` → `Tests 2 failed | 10 passed (12)`. Los 2 rojos son los de
+    baseline de arriba; antes eran 6.
+- **Integración en serie** (`--no-file-parallelism`, con `DATABASE_URL` y sin skips de base):
+  - archivos: `indices-rutas-calientes`, `analitica-operativa-indices`, `historial-accion-migration`,
+    `orden-indices-filtros-migracion`, `orden-busqueda-trgm-migration`, `orden-orden-remision-natural`,
+    `gestion-orden-anulacion-migration`, `cohorte-carga-indices.int`, `schema-drift-saneamiento`,
+    `historial-accion-lectura`, `historial-accion-orden-total` y `tests/unit/db`;
+  - resultado: `Test Files 3 failed | 20 passed (23)`, `Tests 19 failed | 307 passed | 2 skipped`;
+  - los 3 archivos rojos están en `baseline-rojos.json`:
+    - `historial-accion-lectura`, 16 rojos: pide `db:seed` y el actor de otra empresa;
+    - `historial-accion-migration`, los 2 de SL-17;
+    - `cohorte-carga-indices`, 1 rojo. **Lo causa M3**: ver puntos abiertos.
+- **Guardias y unitarios:** `pnpm exec vitest run tests/unit/guards tests/unit/analytics
+  tests/unit/db` (sin `DATABASE_URL`) → `Test Files 1 failed | 407 passed (408)`,
+  `Tests 4 failed | 5478 passed | 1 skipped`.
+  - El único rojo es `dependencias-declaradas-presentes.guardia` (baseline).
+  - `unicos-por-empresa.guardia` pasa.
+  - Antes del arreglo de la autocomprobación de `organizacion-en-modelos.guardia` eran
+    `2 failed | 406 passed`.
+
+### Mutación
+
+Cada mutación se hizo con `DROP INDEX` en `servi_logistic_sl18` y se restauró después.
+
+| Mutación | Resultado |
+|---|---|
+| M6: `DROP INDEX orden_organizacion_id_prioridad_created_at_id_idx` | **Rojo**, `2 failed | 11 passed`: pg_indexes y plan. El plan pasa a `Seq Scan on orden` |
+| M7: `DROP INDEX gestion_orden_organizacion_id_created_at_idx` | **Rojo**, `2 failed`: el plan pasa a `Seq Scan on gestion_orden g`. En `analitica-operativa-indices`: `2 failed | 5 passed` |
+| M8: `DROP INDEX historial_accion_organizacion_id_created_at_id_idx` | **Rojo**, `2 failed`: el plan pasa a `Seq Scan on historial_accion`. En `historial-accion-migration`, además de los 2 de baseline, caen «los TRES índices existen» y «(1/3) la PRIMERA PÁGINA» |
+| M9: el de `orden` recreado **sin** `WHERE` | **Rojo**, `1 failed`: el caso de `pg_indexes` caza el predicado perdido |
+| M10: `gestion_orden_created_at_idx` de vuelta, junto al nuevo | **Rojo**, `1 failed`: el plan de `contarGestionesVigentes` vuelve al viejo. Confirma por qué se borra |
+
+Restaurado: `pg_indexes` idéntico al de tras el deploy, drift con exit 0 y `13 passed`.
+
+### Desviaciones y puntos abiertos
+
+- **Parcial que Prisma no expresa.** El `WHERE deleted_at IS NULL` vive solo en el SQL, como
+  `orden_prioridad_clave_remision_idx`. `migrate diff` no lo ve, así que no hay drift. Lo protege
+  el caso de `pg_indexes` (mutación M9).
+- **`organizacion-en-modelos.guardia.test.ts` (SL-17), una línea.** Su autocomprobación quitaba
+  solo el primer `@@index([organizacionId…])` de `Orden`. Con dos índices, el otro seguía cumpliendo
+  R2 y el caso caía. Ahora quita todos (`/gm`). La protección es la misma: `Orden` sin índice por
+  empresa → la guardia lo nombra.
+- **PUNTO ABIERTO: `cohorte-carga-indices.int.test.ts` (411 R36), caso «y también el de la ventana
+  de carga sobre `orden(created_at)`».**
+  - **Qué pasa.** Pasaba antes de M3 (6/6) y ahora cae (1 rojo). En la base de test, `orden` está
+    vacía (SL-11), y con `enable_seqscan = off` el planificador elige el compuesto nuevo
+    (`Index Only Scan`, `created_at` como filtro de índice) en lugar de `orden_created_at_idx`.
+    Probado también sin `id` en el índice: cae igual.
+  - **Con datos no pasa.** Con 40.000 órdenes sembradas, la misma ventana va por
+    `orden_created_at_idx`, como dueño y como `servi_app` con empresa. Es un artefacto de la tabla
+    vacía.
+  - **Por qué no se tapa.** El archivo está entero en `baseline-rojos.json`, así que el gate no se
+    pone rojo. No se tocó: no estaba entre los tests que se podían reescribir, y su protección
+    nombra el índice concreto.
+  - **Necesita decisión:** que acepte cualquier índice con `created_at` en el `Index Cond`, o que
+    siembre volumen como el de SL-18.
+- **`count` del listado de órdenes.** Sigue en `Seq Scan`. El índice sirve la página, no el total.
+
+### Veredicto
+
+Ampliación implementada. Entran 3 índices y salen 2 viejos. R24 queda verde en sus 13 casos y en 5
+corridas, la mutación caza cada índice, `down.sql` hace la ida y vuelta y el drift está vacío. Queda
+abierto un caso de la 411 (cohorte), que el baseline enmascara y que necesita decisión.
