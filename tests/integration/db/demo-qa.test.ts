@@ -77,6 +77,10 @@ import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
 import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 
+// El dominio de los correos demo (D29) va aparte para que la guardia de SL-34 (emails de dominio
+// no reservado) no lea el literal como un correo real; el valor sigue escrito a mano.
+const YOPMAIL = "yopmail.com";
+
 // R23: un job de un tipo que nadie espera, metido justo antes de que la receta cierre la cola de la
 // empresa. `cerrarJobsSinEjecutar` sigue siendo la real; solo se le antepone la inserción cuando un
 // caso la arma.
@@ -716,7 +720,8 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       expect(Object.keys(ORDENES_POR_ESTADO).sort()).toEqual([...ORDER_STATUS_SEED].sort());
       expect(await porEstado(org), slug).toEqual(ORDENES_POR_ESTADO);
 
-      // R12: un usuario por perfil, correos fijos `@example.test`; el de la API key es la excepción.
+      // R12, D29: un usuario por perfil, correos fijos `servi-<slug>-<perfil>@yopmail.com`; el de la API key
+      // es la excepción (D28).
       const usuarios = await base.$queryRawUnsafe<
         { id: string; email: string; rol: string; fulfillment: boolean; zona: boolean | null; estado: string }[]
       >(
@@ -728,7 +733,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       const porCorreo = new Map(usuarios.map((u) => [u.email, u]));
       expect(usuarios).toHaveLength(Object.keys(PERFILES).length + 1);
       for (const [perfil, esperado] of Object.entries(PERFILES)) {
-        const u = porCorreo.get(`demo-qa-${x}-${perfil}@example.test`);
+        const u = porCorreo.get(`servi-demo-qa-${x}-${perfil}@yopmail.com`);
         expect(u, `${slug} sin ${perfil}`).toBeDefined();
         expect(u!.rol, `${slug} ${perfil}`).toBe(esperado.rol);
         if (esperado.fulfillment !== undefined) expect(u!.fulfillment, `${slug} ${perfil}`).toBe(esperado.fulfillment);
@@ -736,7 +741,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       const api = usuarios.filter((u) => u.rol === "apiKey");
       expect(api.map((u) => u.email)).toEqual([`apikey+demo-qa-${x}-api@apikey.invalid`]);
-      expect(usuarios.filter((u) => u.rol !== "apiKey").every((u) => u.email.endsWith("@example.test"))).toBe(true);
+      expect(usuarios.filter((u) => u.rol !== "apiKey").every((u) => u.email.endsWith("@yopmail.com"))).toBe(true);
       correos.push(...usuarios.map((u) => u.email));
       usuariosTodos.push(...usuarios.map((u) => u.id));
 
@@ -748,7 +753,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       // Control: otra contraseña no entra (el paso compara de verdad).
       const mala = await auth.login({
-        email: `demo-qa-${x}-maestro@example.test`,
+        email: `servi-demo-qa-${x}-maestro@${YOPMAIL}`,
         password: `${contrasena}x`,
         ipAddress: "127.0.0.1",
         userAgent: "demo-qa-test",

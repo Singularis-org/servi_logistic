@@ -167,7 +167,8 @@ que solo pone la demo, no por su nombre.
 
 **Cómo entrar:**
 - El log del build lista, por empresa, el perfil y el correo de cada usuario demo
-  (`demo-qa-<a|b>-<perfil>@example.test`). La contraseña es la de `DEMO_QA_CONTRASENA`.
+  (`servi-demo-qa-<a|b>-<perfil>@yopmail.com`). La contraseña es la de `DEMO_QA_CONTRASENA`. El buzón
+  de yopmail es público: no uses esos correos para nada que no sea la demo.
 - El código de acceso se lee en los logs de la función de Vercel, gracias a `AUTH_OTP_DEBUG_LOG=1`.
 - El usuario de la API key lo crea `ApiKeyService` con su propio correo y no navega. Para probar la
   API, crea tu propia key desde la pantalla.

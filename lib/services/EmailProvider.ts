@@ -3,6 +3,7 @@ import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import { emailSmtpConfigurado, loadEmailConfig } from "@/lib/config/email";
 import { NodemailerEmailSender } from "@/lib/services/email/NodemailerEmailSender";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
+import { EnrutadorEmailSender } from "@/lib/services/email/EnrutadorEmailSender";
 import { plantillaOtpCodigo } from "@/lib/services/email/plantillas/otp-codigo";
 
 /**
@@ -41,10 +42,13 @@ export class StubEmailProvider implements IEmailProvider {
  * envia de verdad; sin el —dev o CI— se degrada al emisor de consola en vez de
  * reventar. La decision se toma aqui, en un unico sitio, y no en cada Server
  * Action.
+ *
+ * Con SMTP, los destinatarios de dominios reservados (`*.test`, `*.invalid`, `*.example`,
+ * `*.localhost`: los usuarios demo de QA) se desvian a la consola: por SMTP rebotarian siempre.
  */
 export function crearEmailSender(): IEmailSender {
   return emailSmtpConfigurado()
-    ? new NodemailerEmailSender(loadEmailConfig())
+    ? new EnrutadorEmailSender(new NodemailerEmailSender(loadEmailConfig()), new ConsoleEmailSender())
     : new ConsoleEmailSender();
 }
 

@@ -57,7 +57,7 @@ Carlos Restrepo, 2026-10-25:
 | # | Decisión | Origen | Requisitos |
 |---|---|---|---|
 | D1 | Se crean **dos empresas de demo en QA**, sin tocar las creadas a mano. | Carlos, 2026-10-23 (Jira) | R1, R6, R7, R10 |
-| D2 | **Usuarios de cada rol** con correo `@example.test`, **zonas, tarifas y zona especial**. | Carlos, 2026-10-23 (Jira) | R12, R13 |
+| D2 | **Usuarios de cada rol** con correo `@example.test` (el dominio lo cambia D29), **zonas, tarifas y zona especial**. | Carlos, 2026-10-23 (Jira) | R12, R13 |
 | D3 | **Órdenes en todos los estados**, entradas **por pantalla, por carga masiva y por API**, con **gestiones, rechazos, devoluciones e incidentes**. | Carlos, 2026-10-23 (Jira) | R14, R15, R16 |
 | D4 | **Cierres de día y de bodega, wallet, tesorería y cobro de plataforma.** | Carlos, 2026-10-23 (Jira) | R17, R18, R19 |
 | D5 | **Usa los servicios reales.** | Carlos, 2026-10-23 (Jira) | R11 |
@@ -84,6 +84,7 @@ Carlos Restrepo, 2026-10-25:
 | D26 | Dos builds de QA a la vez **no recrean la demo a la vez**: el segundo espera al primero. | `spec_author` (`design.md > D10.2`) | R32 |
 | D27 | **`novedad_interna` con el corte de mañana.** El corte diario solo cierra el día anterior, así que la demo llama a `CorteDiarioService.ejecutarCorte(<mañana>)` **solo sobre las empresas demo**, dentro de `conEmpresa(<demo>)` y nunca por la ruta del cron. Va detrás de `NOVEDAD_INTERNA_CON_CORTE_DE_MANANA = true` (`scripts/demo-qa/receta.ts`). | Carlos, 2026-10-25 (B1 de la implementación) | R15 |
 | D28 | **Excepción de R12 para el perfil `api`.** `ApiKeyService.generar` crea su propio usuario, con el correo `apikey+<slug>@apikey.invalid` y una contraseña aleatoria, y ese rol no navega. La demo usa el servicio tal cual y no fuerza el correo. | leader, 2026-10-25 (review vuelta 1, m8: hecho técnico del servicio) | R12 |
+| D29 | **Correos demo en `yopmail.com`**: `servi-<slug de la empresa>-<perfil>@yopmail.com` (p. ej. el del maestro de la demo A: `servi-` + `demo-qa-a` + `-maestro` + `@yopmail.com`). El buzón es público; se acepta porque solo son datos demo de QA y además hace falta `DEMO_QA_CONTRASENA`. El usuario de la API key no cambia (D28). El borrado identifica a los usuarios demo por su empresa (`es_demo`), nunca por el dominio. | Carlos, 2026-10-26 | R12, R7 |
 
 ## Glosario
 
@@ -147,9 +148,10 @@ Carlos Restrepo, 2026-10-25:
 - **R12.** CUANDO la demo termina, cada empresa demo DEBE tener un usuario de cada uno de estos
   perfiles: maestro, admin, tienda con bodega propia, tienda sin bodega propia, adminSatelite,
   mensajero de la zona central, mensajero de la zona satélite y la cuenta de una API key. Todos los
-  correos, salvo el de la cuenta de la API key, DEBEN terminar en `@example.test`. Ese lo pone
-  `ApiKeyService.generar` (`apikey+<slug>@apikey.invalid`, D28). Todos DEBEN ser los mismos en cada
-  ejecución para la misma empresa demo y el mismo perfil.
+  correos, salvo el de la cuenta de la API key, DEBEN tener la forma
+  `servi-<slug de la empresa>-<perfil>@yopmail.com` (D29), con 64 caracteres o menos antes de la `@`.
+  Ese lo pone `ApiKeyService.generar` (`apikey+<slug>@apikey.invalid`, D28). Todos DEBEN ser los
+  mismos en cada ejecución para la misma empresa demo y el mismo perfil.
 - **R13.** CUANDO la demo termina, cada empresa demo DEBE tener una zona central y una satélite con su
   distrito, su tarifa de pago al mensajero y su SINPE confirmado; una tarifa por tienda; y al menos un
   distrito de sus zonas marcado como zona especial.

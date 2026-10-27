@@ -100,6 +100,7 @@ import {
 } from "@/tests/fabricas/escenarios/reparto";
 
 import { EMPRESAS_DEMO } from "./borrar";
+import { PERFILES_DEMO, correoDemo, correosDemoDe } from "./correos";
 import { DISTRITOS_DEMO, type DistritoDemo } from "./geografia";
 import { enParalelo, enTandas } from "./paralelo";
 import { enPaso } from "./paso";
@@ -289,10 +290,6 @@ function llamar<T extends { status: string }>(paso: string, trabajo: () => Promi
   return enPaso(paso, async () => exigir(paso, await trabajo()));
 }
 
-function correoDemo(clave: ClaveEmpresaDemo, perfil: string): string {
-  return `demo-qa-${clave.toLowerCase()}-${perfil}@example.test`;
-}
-
 function evidenciaPorDefecto(): Uint8Array {
   return new Uint8Array(readFileSync(fileURLToPath(new URL("../../e2e/fixtures/evidencia.jpg", import.meta.url))));
 }
@@ -334,6 +331,9 @@ export async function crearEmpresaDemo(
   const datos = EMPRESAS_DEMO.find((e) => e.clave === clave);
   if (!datos) throw new Error(`[demo-qa] empresa demo desconocida: ${clave}`);
   const nombreEmpresa = datos.nombre;
+  const slugEmpresa = datos.slug;
+  // R12: un correo que pasa del tope de 64 para aquí, antes de dar de alta a nadie.
+  correosDemoDe(slugEmpresa);
 
   const app = getPrismaClient();
   const jobs: DepsJobsDemo = crearDepsJobsDemo(app);
@@ -378,7 +378,7 @@ export async function crearEmpresaDemo(
           {
             nombre: datos.nombre,
             slug: datos.slug,
-            correoMaestro: correoDemo(clave, "maestro"),
+            correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
             documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,
             marcarContrasenaDefinida: true,
@@ -403,7 +403,7 @@ export async function crearEmpresaDemo(
     rol: RolValue,
     extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
   ): Promise<UsuarioCreado> {
-    const correo = correoDemo(clave, perfil);
+    const correo = correoDemo(slugEmpresa, perfil);
     const u = await crearUsuario(dueno, empresa, rol, {
       correo,
       contrasena: opciones.contrasena,
@@ -1201,29 +1201,10 @@ export async function crearEmpresaDemo(
   };
 }
 
-/** El orden de los perfiles en la tabla de usuarios de la salida. */
-const ORDEN_DE_PERFILES = [
-  "maestro",
-  "admin",
-  "tienda-bodega",
-  "tienda",
-  "satelite",
-  "mensajero-central",
-  "mensajero-novedades",
-  "mensajero-rechazos",
-  "mensajero-satelite",
-  "mensajero-satelite-2",
-  "mensajero-recolector",
-  "mensajero-corte",
-  "mensajero-cierre-rechazado",
-  "mensajero-cierre-pendiente",
-  "mensajero-reposo",
-  "api",
-];
-
+/** El orden de los perfiles en la tabla de usuarios de la salida (`PERFILES_DEMO`). */
 function posicionDePerfil(perfil: string): number {
-  const i = ORDEN_DE_PERFILES.indexOf(perfil);
-  return i === -1 ? ORDEN_DE_PERFILES.length : i;
+  const i = (PERFILES_DEMO as readonly string[]).indexOf(perfil);
+  return i === -1 ? PERFILES_DEMO.length : i;
 }
 
 /** D3.2: la marca de la demo, como dueño, sobre la empresa recién creada y solo esa. */
