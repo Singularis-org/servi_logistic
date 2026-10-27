@@ -139,3 +139,39 @@ con «Llamar». Está bien que el leader lo pregunte al humano antes del PR, per
 **RECHAZADO**, por B1: R22 sin test. B2 es de proceso y lo resuelve el leader. Lo demás (aislamiento,
 RLS, caché por empresa, puertas, migraciones con `down.sql` y toggle solo superadmin) está bien
 resuelto y verificado. La vuelta 2 debería limitarse al test de R22, al mapa y a la marca de T14.
+
+## Vuelta 2 (acotada a 715dc40..bdedf74: merge de dev 14ec5df, test R22 7f6babd, cierre T14 bdedf74)
+
+### Verificación ejecutada
+
+| Qué | Resultado |
+|---|---|
+| `prisma migrate deploy` sobre `logistic_sl23_rev` | sin migraciones pendientes |
+| `vitest run tests/integration/db/modulo-apagado-datos-intactos.test.ts` (DATABASE_URL a `logistic_sl23_rev`, `timeout 300`) | 1/1 archivo, 1/1 test en verde (no skip) |
+| `NODE_OPTIONS=--max-old-space-size=8192 pnpm run -s typecheck` | exit 0 |
+| `pnpm run -s test:guardias` | 314/315 archivos; 4 tests rojos, todos en `dependencias-declaradas-presentes` (baseline, permitido) |
+| `vitest related` completo | no corrido, por decisión del humano: lo cubre `gate-completo` en el PR |
+
+### Checklist
+
+- [x] **B1 — R22 tiene test real.** Siembra 3 premios y una foto de ranking con su fila; apaga por
+  `ModulosEmpresaRepository.apagar`, comprueba que Ranking queda apagado y que recuento y filas
+  completas (como dueño, sin RLS, con los Decimal normalizados) son iguales a los de antes; reenciende y
+  comprueba lo mismo, y además que los repositorios de lectura de la app (extensión + contexto de
+  empresa) devuelven lo mismo que antes de apagar. Tiene un control para que no compare un vacío con
+  otro vacío (`toHaveLength(3)` y `toHaveLength(1)`). Usa los locks de superadmin y de escritura real.
+- [x] **B1 — mapa.** `progress/impl_SL-23.md:901` apunta R22 a este archivo y a este `it`.
+- [x] **B2 — T14 `[x]`** en `tasks.md`, con nota de que el `vitest related` completo queda al
+  `gate-completo` de CI. Ninguna tarea `[ ]` en `tasks.md`.
+- [x] **Merge de dev:** typecheck y guardias sin regresiones.
+
+### Hallazgos
+
+- **menor** — `specs/SL-23-catalogo-modulos/requirements.md:70`: la columna de verificación de R22
+  sigue apuntando a `tests/integration/db/organizacion-modulo.test.ts`, que no tiene ningún test de
+  R22. El mapa que manda (`impl_SL-23.md`) está bien; conviene alinear la tabla del spec con
+  `modulo-apagado-datos-intactos.test.ts`. No bloquea.
+
+### Veredicto
+
+**OK.** B1 y B2 resueltos; el merge de dev no rompe typecheck ni guardias.
