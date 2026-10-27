@@ -47,7 +47,8 @@ import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 type ErrorDeBorde =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  | { status: "forbidden" };
 
 function toEstadoCuentaActionError(shape: AppErrorShape): ErrorDeBorde {
   switch (shape.code) {
@@ -58,6 +59,9 @@ function toEstadoCuentaActionError(shape: AppErrorShape): ErrorDeBorde {
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`estado-cuenta: AppErrorCode inesperado ${shape.code}`);
   }

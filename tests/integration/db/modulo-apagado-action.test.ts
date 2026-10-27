@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
+import { consultarMetricaFinanciera } from "@/lib/actions/analitica-financiera";
+import { listarPlantillas } from "@/lib/actions/plantillas";
 import { listarPremiosDelDiaAction, registrarPremioAction } from "@/lib/actions/premio-ranking-devengo";
 import { editarPremioAction, obtenerRankingAction } from "@/lib/actions/ranking";
+import { leerTableroDia } from "@/lib/actions/tablero-dia";
 import { registrarMovimientoManualAction, verResumenCajaAction } from "@/lib/actions/wallet";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { ModuloInactivoError } from "@/lib/modulos/modulo-inactivo-error";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
@@ -19,10 +21,14 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "
 // escritura real es del superadmin, T6). Cada caso comprueba lo que la empresa tiene encendido antes
 // de llamar: ninguno pasa «porque no había nada».
 //
-// LO QUE ESTE ARCHIVO AFIRMA DE LA FORMA DEL RECHAZO (ver progress/impl_SL-23.md, Tanda 4): las
-// actions de ranking no tienen `withErrorHandler` y la puerta LANZA `ModuloInactivoError` (403); las
-// de wallet y `premio-ranking-devengo` sí lo tienen, pero su traductor local no conoce `FORBIDDEN` y
-// relanza. En los dos casos la action se rechaza antes de leer o escribir, que es lo que se mide aquí.
+// LA FORMA DEL RECHAZO (decisión del 2026-10-26, design §5.3): `{ status: "forbidden" }`, nunca una
+// excepción. Hay un caso por cada camino del rechazo:
+// - puerta envuelta solo en `withErrorHandler` + `rechazoDeModulo` (ranking, analítica, monitoreo);
+// - puerta dentro del `withErrorHandler` del cuerpo con traductor LOCAL (wallet, premio-ranking-devengo);
+// - puerta dentro del `withErrorHandler` del cuerpo con el `toActionError` compartido (plantillas).
+// Los contratos que ya tenían su propio «prohibido» lo conservan: la analítica financiera lleva
+// `code: "FORBIDDEN"` y el tablero del día, sin `status`, responde `denegado` con motivo `modulo_inactivo`.
+// La guardia (c) impide que una action con puerta vuelva a lanzar.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -66,17 +72,15 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
     }
   }, 60_000);
 
-  it("R17 — con Ranking apagado, las actions de ranking se rechazan (403 modulo_inactivo) y la base no cambia", async () => {
+  it("R17 — con Ranking apagado, las actions de ranking devuelven forbidden y la base no cambia", async () => {
     await encender("wallet");
     const antes = await cuentaDeNegocio();
     const getActor = async () => maestro;
 
-    await expect(enEmpresa(() => obtenerRankingAction({ getActor }))).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      details: { codigo: "modulo_inactivo", modulo: "ranking" },
+    expect(await enEmpresa(() => obtenerRankingAction({ getActor }))).toEqual({ status: "forbidden" });
+    expect(await enEmpresa(() => editarPremioAction({ posicion: 1, monto: "1000" }, { getActor }))).toEqual({
+      status: "forbidden",
     });
-    const e = await enEmpresa(() => editarPremioAction({ posicion: 1, monto: "1000" }, { getActor })).catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(ModuloInactivoError);
     expect(await cuentaDeNegocio()).toEqual(antes);
   });
 
@@ -90,19 +94,37 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
       descripcion: "ajuste de prueba",
       claveIdempotencia: "sl23-ajuste-1",
     };
-    await expect(enEmpresa(() => registrarMovimientoManualAction(entrada, { getActor: async () => maestro }))).rejects.toThrow(
-      /FORBIDDEN/,
-    );
+    expect(await enEmpresa(() => registrarMovimientoManualAction(entrada, { getActor: async () => maestro }))).toEqual({
+      status: "forbidden",
+    });
+    expect(await enEmpresa(() => verResumenCajaAction({}, { getActor: async () => maestro }))).toEqual({
+      status: "forbidden",
+    });
     expect(await cuentaDeNegocio()).toEqual(antes);
   });
 
   it("R33 — con Ranking apagado y Wallet encendido, premio-ranking-devengo se rechaza", async () => {
     await encender("wallet");
     const antes = await cuentaDeNegocio();
-    await expect(
-      enEmpresa(() => registrarPremioAction({ filaId: "fila-inexistente" }, { getActor: async () => maestro })),
-    ).rejects.toThrow(/FORBIDDEN/);
+    expect(
+      await enEmpresa(() => registrarPremioAction({ filaId: "fila-inexistente" }, { getActor: async () => maestro })),
+    ).toEqual({ status: "forbidden" });
     expect(await cuentaDeNegocio()).toEqual(antes);
+  });
+
+  it("R17 — con WhatsApp apagado, una action con el toActionError compartido devuelve forbidden", async () => {
+    await encender("wallet", "ranking");
+    expect(await enEmpresa(() => listarPlantillas({}, { getActor: async () => maestro }))).toEqual({ status: "forbidden" });
+  });
+
+  it("R17 — con Analítica y Monitoreo apagados, cada contrato responde su propio «prohibido»", async () => {
+    await encender("wallet");
+    const getActor = async () => maestro;
+    expect(await enEmpresa(() => consultarMetricaFinanciera("x", {}, { getActor }))).toEqual({
+      status: "forbidden",
+      code: "FORBIDDEN",
+    });
+    expect(await enEmpresa(() => leerTableroDia({ getActor }))).toEqual({ estado: "denegado", motivo: "modulo_inactivo" });
   });
 
   it("R33 — con los dos encendidos, premio-ranking-devengo funciona", async () => {
@@ -116,7 +138,7 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
   it("R17 — encendido, la misma action de ranking pasa la puerta", async () => {
     await encender("ranking");
     const r = await enEmpresa(() => obtenerRankingAction({ getActor: async () => maestro })).catch((x: unknown) => x);
-    expect(r).not.toBeInstanceOf(ModuloInactivoError);
+    expect(r).not.toEqual({ status: "forbidden" });
   });
 
   describe("R34 — sin empresa la puerta no aplica: responde lo de siempre, nunca un error interno", () => {

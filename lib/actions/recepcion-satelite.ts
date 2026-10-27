@@ -51,7 +51,10 @@ import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 // `toMisAsignacionesActionError`.
 function toRecepcionSateliteActionError(
   shape: AppErrorShape,
-): { status: "validation_error"; fieldErrors: Record<string, string[]> } | { status: "unauthenticated" } {
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -60,6 +63,9 @@ function toRecepcionSateliteActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`recepcion-satelite: AppErrorCode inesperado ${shape.code}`);
   }

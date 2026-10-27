@@ -12,6 +12,8 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IRankingService } from "@/lib/interfaces/services/IRankingService";
 import type { RankingData } from "@/lib/types/ranking";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // Feature 76 (design §6) — Server Actions del ranking DIARIO (controller interno; NO route
 // handler porque es mutacion del mismo proyecto sin CORS/API publica). Resuelve el actor por
@@ -73,7 +75,10 @@ export interface RankingActionDeps {
 export async function obtenerRankingAction(
   deps: RankingActionDeps = {},
 ): Promise<ObtenerRankingActionResult> {
-  await exigirModuloActivo("ranking");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("ranking");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" }; // R18: sin sesion, sin datos
   const service = deps.service ?? buildService();
@@ -85,7 +90,10 @@ export async function editarPremioAction(
   input: unknown,
   deps: RankingActionDeps = {},
 ): Promise<EditarPremioActionResult> {
-  await exigirModuloActivo("ranking");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("ranking");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" }; // R18
 

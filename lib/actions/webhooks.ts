@@ -27,6 +27,8 @@ import {
   type ObtenerWebhookActionResult,
 } from "@/lib/types/webhook";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /** Solo `maestro` opera las suscripciones (patron `ApiKeyService.ALLOWED_ROLES`). */
 const ROL_MAESTRO = "maestro";
@@ -82,7 +84,10 @@ export async function registrarWebhook(
   input: unknown,
   deps: WebhookActionDeps = {},
 ): Promise<RegistrarWebhookActionResult> {
-  await exigirModuloActivo("api_integraciones");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("api_integraciones");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (actor.rol !== ROL_MAESTRO) return { status: "forbidden" };
@@ -121,7 +126,10 @@ export async function desactivarWebhook(
   input: unknown,
   deps: WebhookActionDeps = {},
 ): Promise<DesactivarWebhookActionResult> {
-  await exigirModuloActivo("api_integraciones");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("api_integraciones");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (actor.rol !== ROL_MAESTRO) return { status: "forbidden" };
@@ -153,7 +161,10 @@ export async function rotarSecretoWebhook(
   input: unknown,
   deps: WebhookActionDeps = {},
 ): Promise<RotarSecretoWebhookActionResult> {
-  await exigirModuloActivo("api_integraciones");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("api_integraciones");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (actor.rol !== ROL_MAESTRO) return { status: "forbidden" };
@@ -189,7 +200,10 @@ export async function obtenerWebhook(
   input: unknown,
   deps: WebhookActionDeps = {},
 ): Promise<ObtenerWebhookActionResult> {
-  await exigirModuloActivo("api_integraciones");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("api_integraciones");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (actor.rol !== ROL_MAESTRO) return { status: "forbidden" };

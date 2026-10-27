@@ -15,6 +15,8 @@ import { PickingRepository } from "@/lib/repositories/PickingRepository";
 import { diasAtrasoSchema } from "@/lib/whatsapp-envios/informes/picking/parametros";
 import { resumenTiendasPicking } from "@/lib/whatsapp-envios/informes/picking/informe";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /** Dependencias inyectables (tests). En produccion: sesion, repo real (perezoso) y reloj. */
 export interface ListarTiendasPickingDeps {
@@ -35,7 +37,10 @@ export async function listarTiendasPicking(
   input: unknown,
   deps: ListarTiendasPickingDeps = {},
 ): Promise<ListarTiendasPickingResult> {
-  await exigirModuloActivo("whatsapp");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ROLES_PERMITIDOS.has(actor.rol)) return { status: "forbidden" };

@@ -694,3 +694,128 @@ El MCP del grafo no se usó: bastó Grep/Read sobre archivos ya identificados po
 - El E2E de R15/R16 (`e2e/dos-empresas-humo.spec.ts`) es de T12 y no se tocó.
 
 Veredicto: T8 y T9 hechos y en verde. Las guardias (b) y (f) están en verde y sin `it.fails`.
+
+## Tanda 6 — cierre T10, T12 (2026-10-26, backend_dev)
+
+Base: `logistic_sl23b`. T10 `[x]`. **T12 queda `[ ]`**: el código está, `demo-qa.test.ts` pasa, pero
+su *Hecho* pide un E2E de `reparto` y otro de `dinero` en verde en local, y no se corrieron porque la
+máquina no tiene memoria para ellos. El MCP del grafo no se usó: bastó Grep/Read y un script sobre el AST.
+
+### T10 — la forma del rechazo (decisión del 2026-10-26: `{ status: "forbidden" }`, nunca una excepción)
+
+- **21 traductores locales** (los 21 archivos con `withErrorHandler`): ganan `case "FORBIDDEN"` →
+  `{ status: "forbidden" }` y `forbidden` en su tipo de retorno.
+  - `recoleccion-tienda` tiene dos traductores y los dos lo ganan.
+  - `wallet.ts › registrarMovimientoManualConComprobanteAction` deja pasar `forbidden` donde antes
+    solo dejaba pasar `unauthenticated`.
+- **53 funciones sin `withErrorHandler`, en 25 archivos.** Se usa el mecanismo existente
+  (`withErrorHandler` más el `toActionError` compartido), pero solo alrededor de la puerta:
+  ```ts
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("<clave>");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
+  ```
+  - `rechazoDeModulo` es nuevo y está en `lib/actions/_shared/to-action-error.ts`. Pasa el error por
+    `toActionError`: con FORBIDDEN devuelve `{ status: "forbidden" }`, y cualquier otra cosa (un
+    INTERNAL si se cae la lectura) se relanza.
+  - Por qué no se envuelve el cuerpo entero: cambiaría lo que estas actions hacen hoy con sus demás
+    errores (ZodError, `UnauthenticatedError`) en 53 funciones que no lo pedían.
+  - La guardia (c) ya reconocía esta forma: la puerta es la primera sentencia de un `withErrorHandler`.
+- **Tipos de resultado que ganan `{ status: "forbidden" }`:**
+  - `ResumenNoLeidosChatResult` (`lib/types/chat-whatsapp.ts`);
+  - `ListarPlantillasTextoResult` (`lib/types/whatsapp-envio.ts`);
+  - los demás ya lo tenían.
+  - El typecheck no marcó ningún `switch` exhaustivo de UI, así que no se tocó ningún componente.
+- **Dos contratos que ya tenían su propio «prohibido» y lo conservan (desviación menor, a revisar
+  por el reviewer):**
+  - `consultarMetricaFinanciera` devuelve `{ status: "forbidden", code: "FORBIDDEN" }`: su
+    `RespuestaFinanciera` exige el `code`.
+  - `leerTableroDia` y `leerDetalleMensajeroDia` no tienen `status`. Su «prohibido» es
+    `{ estado: "denegado", motivo: "modulo_inactivo" }`:
+    - `MotivoTableroDia` gana el literal `modulo_inactivo`;
+    - la pantalla lo pinta con su `AvisoDenegado` de siempre;
+    - ningún componente hace `switch` sobre el motivo.
+- **Guardia (c) ampliada** (`_modulos-reparto.ts › puertasQueLanzan`, caso nuevo «ninguna action de un
+  módulo lanza por la puerta»). Falla en dos casos:
+  - una función exportada con la puerta fuera de `withErrorHandler`;
+  - un traductor local (una función con parámetro `AppErrorShape`) que no conoce `"FORBIDDEN"` ni
+    delega en `toActionError` o en `rechazoDeModulo`. Los comentarios no cuentan.
+  - Tiene autocomprobación: la forma buena, la puerta directa y un traductor sin FORBIDDEN.
+  - **Mutación probada sobre el árbol real:** `ranking.ts` a su versión de HEAD y `case "FORBIDDEN"`
+    quitado de `wallet.ts`. El caso nuevo da rojo y nombra `obtenerRankingAction`, `editarPremioAction`
+    y `toWalletActionError`. Después se restauraron los dos archivos.
+- **`modulo-apagado-action.test.ts`** (de 7 a 9 casos) comprueba ahora `toEqual({ status: "forbidden" })`.
+  Hay un caso por cada mecanismo:
+  - solo la puerta envuelta: ranking (`obtenerRankingAction`, `editarPremioAction`);
+  - traductor local: wallet (`registrarMovimientoManualAction`, `verResumenCajaAction`) y
+    `premio-ranking-devengo`;
+  - `toActionError` compartido: `listarPlantillas`;
+  - los contratos propios: analítica financiera y tablero del día.
+- **`tests/integration/db/nucleo-sin-modulos.test.ts`** (nuevo, R31, 6 casos, commitea y limpia por
+  organización). La empresa se crea con `crearOrganizacion` y tiene cero filas en
+  `organizacion_modulo`; `modulosActivos()` lo confirma en contexto. Con ella:
+  - el corte diario crea el `vencido`. Se monta como en su route, pero sin el notificador real. Barre
+    la orden en reparto y se lleva la entrega del día;
+  - el bloqueo aplica: `estadoBloqueoMensajero` → `bloqueado: true, N=1, V=1`;
+  - `solicitarCierre` (la action de «Cierre del día») re-solicita el `vencido` y el bloqueo se levanta;
+  - `aprobarCierre`, por el admin de la zona satélite, escribe en caja `ingreso|ingreso_cod_recaudado|1000.00`;
+  - `registrarPagoMensajeroAction`, por el maestro, devuelve `ok` y escribe 1 `liquidacion_pago`.
+- **Arreglo de paso:** `tests/unit/services/whatsapp-sin-integracion.test.ts` esperaba el resumen de
+  `sync-plantillas-whatsapp` sin `saltadas`, el campo que añadió T11. Se le añade `saltadas: 0`.
+  Estaba rojo desde la Tanda 4.
+
+### T12 — Fábricas
+
+- `tests/fabricas/empresa-y-usuarios.ts › crearEmpresa`: `DatosEmpresa.modulos?: "todos" | readonly ModuloApagable[]`,
+  por defecto `"todos"` (los 8 de `ORDEN_MODULOS`). La fábrica los escribe como dueño con `createMany`,
+  sin historial; con `[]`, la empresa queda como la crea la app.
+- `tests/integration/db/demo-qa.test.ts`: `11 passed (11)`. La demo usa `crearEmpresa`.
+- **E2E `reparto` y `dinero` (revisión estática, sin correrlos):** sus 16 specs crean la empresa con
+  `crearEscenarioReparto` (o `crearEscenarioCaja`, que lo usa), que llama a `crearEmpresaE2E` →
+  `crearEmpresa` sin `modulos`. Así que nacen con los 8 encendidos.
+- **Aviso para T13 (proyecto `aislamiento`, fuera de esta tanda).** Estos specs crean sus empresas
+  con `altaDeEmpresa` de `e2e/_dos-empresas-fixture.ts`. Esa función llama a `altaEmpresa` directamente
+  y no enciende ningún módulo, y los specs abren rutas de módulo:
+  - `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40` y `pago-plataforma-sl45` abren `/wallet`;
+  - `dos-empresas-humo` abre `/configuracion/api`.
+  - Darán 404 hasta que T13 encienda los módulos en esa fixture, como pide design §10.
+
+### Archivos
+
+- `lib/actions/_shared/to-action-error.ts` (`rechazoDeModulo`).
+- Las 46 actions de `git status` en `lib/actions/` (21 con traductor y 25 con la puerta envuelta).
+- `lib/types/chat-whatsapp.ts`, `lib/types/whatsapp-envio.ts` y `lib/types/tablero-dia.ts`.
+- `tests/fabricas/empresa-y-usuarios.ts`.
+- `tests/unit/guards/_modulos-reparto.ts` y `tests/unit/guards/modulos-reparto.guardia.test.ts`.
+- `tests/integration/db/modulo-apagado-action.test.ts` y `tests/integration/db/nucleo-sin-modulos.test.ts` (nuevo).
+- `tests/unit/services/whatsapp-sin-integracion.test.ts`.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T10 `[x]` y archivos esperados.
+
+### Mapa R → test (Tanda 6)
+
+| R | Test |
+|---|---|
+| R17 | `modulo-apagado-action.test.ts` (`{ status: "forbidden" }` por los tres mecanismos y los dos contratos propios; base sin cambios); guardia (c), caso «ninguna action de un módulo lanza por la puerta» |
+| R31 | `nucleo-sin-modulos.test.ts` (corte → `vencido`, bloqueo, «Cierre del día», aprobar con caja, pago al mensajero, con 0 módulos); `CierresAdminPage.test.tsx` (Tanda 4) |
+| R33 | `modulo-apagado-action.test.ts` (`premio-ranking-devengo` → `forbidden` con Ranking apagado y Wallet encendido; `ok` con los dos) |
+| R34 | `modulo-apagado-action.test.ts` (sin sesión → `unauthenticated`; superadmin → `forbidden` del rol) |
+
+### Salida
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run -s typecheck`: exit 0.
+- `pnpm run -s lint`: `✖ 231 problems (0 errors, 231 warnings)`, los de antes.
+- `pnpm run -s test:guardias`: `Test Files 1 failed | 311 passed (312) · Tests 4 failed | 4327 passed | 1 skipped`.
+  Los 4 rojos son de `dependencias-declaradas-presentes` (baseline).
+- Tests tocados, juntos (`nucleo-sin-modulos`, `modulo-apagado-action`, guardia `modulos-reparto`,
+  `whatsapp-sin-integracion`, `exigir-modulo`): `Test Files 5 passed (5) · Tests 87 passed (87)`.
+- `demo-qa.test.ts`: `Test Files 1 passed (1) · Tests 11 passed (11)` (153 s).
+- Barrido de los tests que importan algún `lib/` cambiado (por archivo, sin `vitest related`):
+  - **241 unitarios y de componente**, en 5 lotes: `786+851+816+906+8` passed y 1 rojo, el de
+    `whatsapp-sin-integracion` ya arreglado (pasa solo: `11 passed`);
+  - **55 de integración**, en 3 lotes. Los 25 archivos rojos están todos en
+    `tests/baseline-rojos.json` y fallan por datos de la base: «hay DATABASE_URL pero falta…»,
+    «la base de test…» o un INTERNAL de Prisma. Ninguno falla por la puerta ni por la forma
+    `forbidden`.
+
+Veredicto: T10 cerrada y en verde (forma `forbidden` uniforme, guardia que impide volver a lanzar, R31 contra Postgres). T12 hecha en código, con `demo-qa` en verde; solo le faltan los E2E locales, que no se corrieron por memoria.

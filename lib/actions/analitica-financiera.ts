@@ -14,6 +14,8 @@ import { RecaudoAnaliticaRepository } from "@/lib/repositories/RecaudoAnaliticaR
 import { AnaliticaFinancieraService } from "@/lib/services/AnaliticaFinancieraService";
 import type { RespuestaFinanciera } from "@/lib/types/analitica-financiera";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // Feature 127 (T E.1-E.5) — EL BORDE de la analitica financiera. Server Action, no route
 // handler: no hay consumidor externo, ni webhook, ni cron (design.md §7 alternativa 6).
@@ -86,7 +88,11 @@ export async function consultarMetricaFinanciera(
   filtroRaw: unknown,
   deps: AnaliticaFinancieraActionDeps = {},
 ): Promise<RespuestaFinanciera> {
-  await exigirModuloActivo("analitica");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("analitica");
+  });
+  // El `forbidden` de este contrato lleva su `code` (R42): el módulo apagado usa la misma forma.
+  if (puerta) return { ...rechazoDeModulo(puerta), code: "FORBIDDEN" };
   const logger = deps.logger ?? defaultLogger;
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 

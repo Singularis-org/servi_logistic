@@ -154,7 +154,7 @@
   - `await exigirModuloEnRuta("<clave>")` como primera línea de las 24 páginas de un módulo.
   - Los tests de esas páginas ganan `puertasAbiertas()`.
   - *Hecho:* caso (b) de la guardia en verde; los tests de página listados abajo en verde.
-- [ ] **T10 [P] — Actions** (design §5.1, §5.3, §3.7; R17, R31, R33, R34).
+- [x] **T10 [P] — Actions** (design §5.1, §5.3, §3.7; R17, R31, R33, R34).
   - `await exigirModuloActivo("<clave>")` como primera sentencia de cada función exportada de
     los 48 archivos de un módulo. `liquidacion`, `conciliacion-satelites` y las 5 de Incidentes
     y novedades son núcleo y no llevan puerta. `premio-ranking-devengo` va con
@@ -172,6 +172,10 @@
     `registrarPagoMensajeroAction` registra el pago.
   - `tests/components/CierresAdminPage.test.tsx` (R31): con Wallet apagado, «Pago al mensajero» y
     la oferta de pago al aprobar siguen visibles.
+  - Forma del rechazo (decisión del 2026-10-26): `{ status: "forbidden" }`, nunca una excepción.
+    Los traductores locales ganan `FORBIDDEN`; las actions sin `withErrorHandler` propio envuelven
+    solo la puerta y traducen con `rechazoDeModulo` (`lib/actions/_shared/to-action-error.ts`). La
+    guardia (c) gana «ninguna action de un módulo lanza por la puerta».
   - *Hecho:* casos (c) y (e) de la guardia en verde; tests en verde.
 - [x] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6, §3.7, §3.8; R18–R21, R24, R30, R33).
   - `conSuEmpresa` con `modulo` (los de `CALCULO_CONTINUO` reciben `"nucleo"`), `JobDescartado`,
@@ -304,6 +308,8 @@
 - `app/(app)/configuracion/api/page.tsx`
 
 ### Actions de un módulo (48)
+- `lib/actions/_shared/to-action-error.ts` (`rechazoDeModulo`)
+- `lib/types/chat-whatsapp.ts`, `lib/types/whatsapp-envio.ts`, `lib/types/tablero-dia.ts` (el `forbidden` de módulo en sus resultados)
 - `lib/actions/analitica-financiera.ts`
 - `lib/actions/analitica-operativa.ts`
 - `lib/actions/analitica-refrescar.ts`

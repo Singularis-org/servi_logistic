@@ -35,6 +35,8 @@ import {
   type ResultadoDetalleDineroProducto,
 } from "@/lib/types/dinero-productos";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. PROPIO y distinto al de la tabla: si
@@ -68,7 +70,10 @@ export async function consultarDetalleDineroProducto(
   raw: unknown,
   deps: DetalleDineroProductoDeps = {},
 ): Promise<ResultadoDetalleDineroProducto> {
-  await exigirModuloActivo("analitica");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("analitica");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
 

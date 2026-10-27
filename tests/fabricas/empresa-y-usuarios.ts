@@ -1,7 +1,8 @@
-import type { PrismaClient, RolValue } from "@prisma/client";
+import type { ModuloApagable, PrismaClient, RolValue } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "../../lib/db/contexto-empresa";
 import { getPrismaClient } from "../../lib/db/prisma-client";
+import { ORDEN_MODULOS } from "../../lib/modulos/catalogo";
 import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
 import { OrganizacionRepository } from "../../lib/repositories/OrganizacionRepository";
 import { SessionRepository } from "../../lib/repositories/SessionRepository";
@@ -58,6 +59,12 @@ export interface DatosEmpresa {
    * bienvenida pendiente en la pantalla del superadmin. Por defecto no, como hacía el E2E.
    */
   marcarContrasenaDefinida?: boolean;
+  /**
+   * SL-23 (design §10) — los módulos que nacen encendidos. Por defecto `"todos"`: el alta de la app
+   * deja la empresa solo con el núcleo, y los E2E y la demo de QA recorren pantallas de módulos.
+   * `[]` deja la empresa como la crea la app.
+   */
+  modulos?: "todos" | readonly ModuloApagable[];
 }
 
 /** Con qué ficha y motivo corre el alta en `comoPlataforma`. */
@@ -89,6 +96,13 @@ export async function crearEmpresa(
   );
   if (resultado.estado !== "creada") {
     throw new Error(`fábrica: el alta de la empresa «${datos.slug}» no la creó: ${JSON.stringify(resultado)}`);
+  }
+  // SL-23 (design §10): como dueño y sin historial. Es una fábrica, no el superadmin encendiendo.
+  const modulos = datos.modulos === undefined || datos.modulos === "todos" ? ORDEN_MODULOS : datos.modulos;
+  if (modulos.length > 0) {
+    await base.organizacionModulo.createMany({
+      data: modulos.map((modulo) => ({ organizacionId: resultado.organizacionId, modulo })),
+    });
   }
   // La escritura directa de D5.3 (cabecera).
   await base.usuario.update({

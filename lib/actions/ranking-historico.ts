@@ -15,6 +15,8 @@ import type {
   ObtenerSnapshotResult,
 } from "@/lib/interfaces/services/IRankingSnapshotService";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // Feature 196 (design §6, T4.1) — Server Action de LECTURA del ranking historico congelado.
 // Es Server Action y no route handler por coherencia con `lib/actions/ranking.ts`: consumo
@@ -74,7 +76,10 @@ export async function obtenerRankingHistoricoAction(
   input: unknown,
   deps: RankingHistoricoActionDeps = {},
 ): Promise<ObtenerRankingHistoricoActionResult> {
-  await exigirModuloActivo("ranking");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("ranking");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

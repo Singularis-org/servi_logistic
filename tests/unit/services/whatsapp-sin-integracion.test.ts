@@ -203,7 +203,8 @@ describe("SL-36/R24 — actions, jobs y cron sin integración", () => {
         actualizadas: 0,
         sinCambios: 0,
         ignoradas: 0,
-        empresas: { procesadas: 0, fallidas: [], sinWhatsapp: 2 },
+        // SL-23 (R21): el resumen cuenta también las empresas con WhatsApp apagado (aquí, ninguna).
+        empresas: { procesadas: 0, fallidas: [], sinWhatsapp: 2, saltadas: 0 },
       });
       // Cada empresa pregunto por SU credencial, en su contexto.
       expect(DOBLE.lecturas.map((l) => l.contexto)).toEqual([

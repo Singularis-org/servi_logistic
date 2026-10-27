@@ -31,6 +31,7 @@ import {
   piezasDelDisco,
   problemaDeCron,
   puertaDePagina,
+  puertasQueLanzan,
   RAIZ,
 } from "./_modulos-reparto";
 
@@ -90,6 +91,14 @@ function actionsSinPuerta(): string[] {
     const archivo = archivoDeAction(nombre);
     if (!existsSync(path.join(RAIZ, archivo))) return [];
     return funcionesSinPuerta(leer(archivo), modulosDe(destino), archivo).map((f) => `${archivo} › ${f}`);
+  });
+}
+
+function actionsQueLanzan(): string[] {
+  return ACTIONS_DE_MODULO.flatMap(([nombre]) => {
+    const archivo = archivoDeAction(nombre);
+    if (!existsSync(path.join(RAIZ, archivo))) return [];
+    return puertasQueLanzan(leer(archivo), archivo).map((f) => `${archivo} › ${f}`);
   });
 }
 
@@ -158,6 +167,10 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     it("toda función exportada de una action de un módulo abre con exigirModuloActivo(<sus claves>)", () => {
       expect(actionsSinPuerta()).toEqual([]);
     });
+
+    it("ninguna action de un módulo lanza por la puerta: el rechazo es { status: \"forbidden\" }", () => {
+      expect(actionsQueLanzan()).toEqual([]);
+    });
   });
 
   describe("(d) los crons de un módulo se saltan empresas; los de cálculo continuo no (R21, R30)", () => {
@@ -207,6 +220,7 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     // leer el árbol. Se conserva: un detector que lanza no es un detector que aprueba.
     expect(() => paginasSinPuerta()).not.toThrow();
     expect(() => actionsSinPuerta()).not.toThrow();
+    expect(() => actionsQueLanzan()).not.toThrow();
     expect(() => problemasDeCrons(false)).not.toThrow();
     expect(() => consumosCruzados()).not.toThrow();
     expect(() => llamadasAItemsVisibles()).not.toThrow();
@@ -356,6 +370,51 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       });
       it("también ve `export const f = async () => {}`", () => {
         expect(funcionesSinPuerta(`export const f = async () => { return 1; };`, ["wallet"])).toHaveLength(1);
+      });
+
+      describe("forma del rechazo: forbidden, nunca excepción", () => {
+        const sinLanzar = `
+          function traducir(shape: AppErrorShape) {
+            switch (shape.code) {
+              case "UNAUTHORIZED": return { status: "unauthenticated" };
+              case "FORBIDDEN": return { status: "forbidden" };
+              default: throw new Error("inesperado");
+            }
+          }
+          function delega(shape: AppErrorShape) { return toActionError(shape); }
+          function noEsTraductor(n: number) { return n; }
+          export async function listar() {
+            const r = await withErrorHandler(async () => {
+              await exigirModuloActivo("wallet");
+              return 1;
+            });
+            return isAppErrorShape(r) ? traducir(r) : r;
+          }
+          export async function leer() {
+            const puerta = await withErrorHandler(async () => {
+              await exigirModuloActivo("wallet");
+            });
+            if (puerta) return rechazoDeModulo(puerta);
+            return 1;
+          }`;
+        it("acepta la puerta envuelta y los traductores que conocen FORBIDDEN o delegan", () => {
+          expect(funcionesSinPuerta(sinLanzar, ["wallet"])).toEqual([]);
+          expect(puertasQueLanzan(sinLanzar)).toEqual([]);
+        });
+        it("mutación: la puerta directa sale nombrada", () => {
+          expect(puertasQueLanzan(buena)).toEqual([
+            "anular: la puerta va fuera de withErrorHandler y lanzaría ModuloInactivoError",
+          ]);
+        });
+        it("mutación: un traductor sin FORBIDDEN sale nombrado, aunque lo diga un comentario", () => {
+          const sinForbidden = sinLanzar.replace(
+            `case "FORBIDDEN": return { status: "forbidden" };`,
+            `// case "FORBIDDEN"`,
+          );
+          expect(puertasQueLanzan(sinForbidden)).toEqual([
+            "traducir: traductor sin FORBIDDEN; relanzaría el rechazo del módulo",
+          ]);
+        });
       });
     });
 

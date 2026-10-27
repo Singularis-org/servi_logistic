@@ -267,6 +267,35 @@ export function funcionesSinPuerta(fuente: string, claves: readonly string[], ar
 }
 
 /**
+ * Caso (c), la forma del rechazo (decisión del 2026-10-26, design §5.3): un módulo apagado llega a la
+ * pantalla como `{ status: "forbidden" }`, nunca como excepción. Falla por dos caminos:
+ * - una función exportada con la puerta DIRECTA, fuera de `withErrorHandler`: `ModuloInactivoError`
+ *   saldría lanzado de la action;
+ * - un traductor local (una función que recibe un `AppErrorShape`) que no conoce `FORBIDDEN` ni
+ *   delega en el compartido (`toActionError`, `rechazoDeModulo`): relanzaría
+ *   «AppErrorCode inesperado FORBIDDEN».
+ */
+export function puertasQueLanzan(fuente: string, archivo = "x.ts"): string[] {
+  const sf = arbol(fuente, archivo);
+  const fallos: string[] = [];
+  for (const { nombre, cuerpo } of funcionesExportadas(sf)) {
+    if (clavesDePuerta(cuerpo?.statements[0], "exigirModuloActivo")) {
+      fallos.push(`${nombre}: la puerta va fuera de withErrorHandler y lanzaría ModuloInactivoError`);
+    }
+  }
+  for (const s of sf.statements) {
+    if (!ts.isFunctionDeclaration(s) || !s.body || !s.name) continue;
+    const recibeShape = s.parameters.some((p) => p.type?.getText(sf) === "AppErrorShape");
+    if (!recibeShape) continue;
+    const codigo = quitarComentarios(s.body.getText(sf));
+    if (!/"FORBIDDEN"|\btoActionError\(|\brechazoDeModulo\(/.test(codigo)) {
+      fallos.push(`${s.name.text}: traductor sin FORBIDDEN; relanzaría el rechazo del módulo`);
+    }
+  }
+  return fallos;
+}
+
+/**
  * Caso (d): por cada llamada a `paraCadaEmpresa`, el `modulo` de sus opciones: la clave literal,
  * `null` si no lo pasa, o `"?"` si las opciones no son un objeto literal que se pueda leer.
  */

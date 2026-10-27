@@ -26,6 +26,8 @@ import { ConteoDevolucionesRepository } from "@/lib/repositories/ConteoDevolucio
 import { ConteoDevolucionesService } from "@/lib/services/ConteoDevolucionesService";
 import type { ResultadoConteoDevoluciones } from "@/lib/types/conteo-devoluciones";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo, pero
@@ -69,7 +71,10 @@ export async function consultarConteoDevoluciones(
   raw: unknown,
   deps: ConteoDevolucionesDeps = {},
 ): Promise<ResultadoConteoDevoluciones> {
-  await exigirModuloActivo("analitica");
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("analitica");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
