@@ -220,8 +220,10 @@
     proyecto entero (memoria de la máquina): `dos-empresas-humo` dos veces seguidas, 7 passed las dos;
     `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40` y `pago-plataforma-sl45` en verde. El resto del
     proyecto `aislamiento` queda para el check `e2e` de CI.
-- [ ] **T14 — Cierre.** *Tanda 7: todo hecho menos `./init.sh`, que no se corrió por indicación del
-  leader (su paso de `vitest related` completo); queda para el leader o el reviewer.*
+- [x] **T14 — Cierre.** *2026-10-27, tras traer dev: `./init.sh` en verde en fichas, cupo, specs, perfil,
+  typecheck y lint; su paso de `vitest related` (diff inflado por el merge de dev) lo cubre el
+  `gate-completo` de CI en el PR, por decisión del humano. Guardias y los 7 archivos de integración
+  de SL-23 en verde por separado.*
   - Las guardias (a)–(f) y la de seed, en verde.
   - `./init.sh` en verde en el worktree.
   - Mapa `R1…R34 → test` y salida real de los tests en `progress/impl_SL-23.md`.
