@@ -522,3 +522,56 @@ Commit `9736e19` «perf(SL-43): la demo de QA por debajo de 3 min en el build» 
    real serializado solo los verifica el CI. No mergear sin `gate-completo` verde.
 
 ### Veredicto vuelta 3: OK
+
+## Vuelta 4 (acotada a 8e30c24..5496b39)
+
+Commit revisado: `5496b39` «fix(SL-43): OTP de dominios reservados por consola y correos demo en yopmail».
+
+### Checklist
+
+- [x] (a) Enrutador sobre TODOS los correos (`crearEmailSender`): solo desvía si la ÚLTIMA etiqueta
+  DNS es `test|invalid|example|localhost` (no `includes`). Un dominio real de producción no puede
+  terminar en esos TLD (RFC 2606/6761: no delegables), así que ningún correo entregable se desvía.
+  Un usuario de producción con dominio reservado ya rebotaba por SMTP: no hay regresión.
+  Formato `Nombre <x@y>`: `lastIndexOf("@")` + quitar `>` final, cubierto por `  a@example.test.  `
+  (espacios/punto). Todos los llamadores pasan una sola dirección (`maestro.email`, OTP,
+  recuperación); el contrato `IEmailSender.to` es `string` única.
+- [x] (b) Producción: `ConsoleEmailSender` y `otpDebugLogHabilitado` intactos en el diff
+  (`VERCEL_ENV=production` → `false`). Un reservado desviado en producción solo escribe la línea
+  de metadata (`to`, asunto), nunca el cuerpo. Guardia `otp-debug-solo-en-pruebas` verde.
+- [x] (c) Borrado: `scripts/demo-qa/borrar.ts` no cambia y no referencia email/correo; identifica
+  por `organizacion.es_demo`. Test nuevo «R7, D29: un usuario @yopmail.com de una empresa real
+  sobrevive» usa el correo EXACTO que daría la demo, con control de no vacuidad (`count = 1` antes)
+  y comparación de huella; mutación Y1 (filtro `LIKE` por correo) registrada en ROJO en la bitácora.
+- [x] (d) Tests no vacíos: el enrutador se prueba en los dos sentidos (reservados → consola y nunca
+  SMTP; normales incl. `testing.example.com`, `test.example.org`, `mytest` → SMTP y nunca consola)
+  y por composición real (`crearEmailSender` con prototipos espiados). Esperados de correos escritos
+  a mano; tope de 64 probado en el borde (64 vale, 65 lanza; slug 31 vale, 32 lanza).
+- [x] R12/D29 actualizados en requirements/design; `docs/verification.md` documenta el enrutador.
+
+### Verificación ejecutada
+
+- `vitest run` de `tests/unit/services/email`, `email-notificacion`, `demo-qa-correos`,
+  `demo-qa-build`, `password-reset-degrada-a-consola` y guardias `otp-debug-solo-en-pruebas` y
+  `recursos-origen-fuera`: 11 archivos, 184 passed, 1 skipped (preexistente), 0 failed.
+- `tsc --noEmit`: 0. `eslint` sobre los `.ts` del diff: 0.
+- Integración (`demo-qa.test.ts`, `demo-qa-borrado.test.ts`): no ejecutada aquí (sin base en el
+  worktree); la bitácora reporta 17 passed contra base local. La cubre `gate-completo`.
+
+### Hallazgos
+
+1. menor — `ConsoleEmailSender` sigue escribiendo «sin SMTP configurado; no se envia» también
+   cuando hay SMTP y el desvío es por dominio reservado. Texto engañoso en el log de QA; no afecta
+   al comportamiento.
+2. menor — una lista mixta (`real@x.com, demo@example.test`) va entera a consola y el destinatario
+   real no la recibe. Hoy es teórico (el contrato es una sola dirección y ningún llamador pasa
+   lista), y es la elección segura documentada; si algún día se admiten listas, partirlas.
+3. menor — los tests separan `"yopmail.com"` en una constante para que la guardia de SL-34
+   (`recursos-origen-fuera`) no lea el literal. El valor no es un recurso de origen, así que no se
+   viola la intención de la guardia, pero el patrón de «esquivar la regex» no debería extenderse;
+   si aparecen más casos, mejor una excepción explícita en la guardia.
+4. menor — con D29 los usuarios demo reciben correos reales por Brevo (OTP, cada login). La receta
+   no envía bienvenidas (`marcarContrasenaDefinida`), así que el build no dispara envíos; el volumen
+   lo marca el uso de QA. Decisión de Carlos, se anota solo para vigilar cuota/reputación.
+
+### Veredicto vuelta 4: OK
