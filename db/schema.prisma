@@ -1709,7 +1709,7 @@ model Tarifa {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt])
+  @@index([organizacionId, createdAt]) // SL-18/R24: listado por empresa
   @@index([tiendaId])
   @@index([zonaId])
   @@unique([organizacionId, zonaId, tiendaId], map: "tarifas_zona_id_tienda_id_key") // SL-17 T3.9: unico por empresa
@@ -3836,6 +3836,7 @@ model AnalyticsDaily {
   @@index([tiendaId, fecha], map: "analytics_daily_tienda_fecha_idx") // recorte de adminTienda (122)
   @@index([mensajeroId, fecha], map: "analytics_daily_mensajero_fecha_idx") // recorte de mensajero; cubre el cubo sin_asignar
   @@index([zonaId, fecha], map: "analytics_daily_zona_fecha_idx") // recorte de adminSatelite, por zona DE LA ORDEN
+  @@index([organizacionId, fecha]) // SL-18/R24: rango de fechas de una empresa (sin `map:`: la 123 fija esa lista)
   @@index([organizacionId])
   @@map("analytics_daily")
 }
@@ -5073,7 +5074,7 @@ model WhatsappEnvioEjecucion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc)])
+  @@index([organizacionId, createdAt(sort: Desc)]) // SL-18/R24: historial por empresa
   @@index([envioId, createdAt(sort: Desc)])
   @@index([organizacionId])
   @@map("whatsapp_envio_ejecucion")
