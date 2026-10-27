@@ -360,6 +360,8 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
   1. el setup corre el comando con credenciales de prueba;
   2. el superadmin entra por `/login` y pasa el OTP por el emisor de consola;
   3. aterriza en `/plataforma/empresas`, y el menú tiene exactamente el ítem «Empresas»;
+     *(SL-20, 2026-10-27: R21 de SL-20 suma «Geografía» justo después; el E2E espera ahora
+     `["Empresas", "Geografía"]`.)*
   4. `/configuracion` le devuelve 404.
 
   **Desviación del paso 4 (decisión del implementer, 2026-10-23):** `/configuracion` no da 404 al
