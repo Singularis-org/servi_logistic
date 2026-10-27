@@ -144,7 +144,7 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 6: push y número de guía (R26–R30)
 
-- [ ] **T6.1** [P] `lib/repositories/PushEndpointPlataformaRepository.ts` (design §7) y su entrada
+- [x] **T6.1** [P] `lib/repositories/PushEndpointPlataformaRepository.ts` (design §7) y su entrada
   en `EXCEPCIONES_DE_PLATAFORMA`. `registrarSuscripcionPush` lo llama antes de `registrar`.
   Dep. —.
   **Hecho:** `tests/integration/db/push-ultimo-gana.test.ts`, con base real, cubre:
@@ -154,11 +154,11 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   - R28: los otros endpoints de A y de B no cambian.
 
   `push-action.test.ts` está ajustado y pasa la guardia `plataforma-solo-en-lista`.
-- [ ] **T6.2** [P] `tests/integration/db/num-guia-global.test.ts`: R29. Las guías de órdenes de A y
+- [x] **T6.2** [P] `tests/integration/db/num-guia-global.test.ts`: R29. Las guías de órdenes de A y
   de B salen de `siguiente_num_guia()` sin repetirse, y `orden_num_guia_key` sigue sin
   `organizacion_id`. Dep. —.
   **Hecho:** verde.
-- [ ] **T6.3** [P] `docs/architecture.md > Multi-empresa > Únicos`: el párrafo de design §8 y la
+- [x] **T6.3** [P] `docs/architecture.md > Multi-empresa > Únicos`: el párrafo de design §8 y la
   lista de los 8 globales a propósito. `progress/deudas.md > D14`: el punto del push queda resuelto
   por SL-18. Dep. —.
   **Hecho:** R30 lo verifica la guardia de T4.2 (c).

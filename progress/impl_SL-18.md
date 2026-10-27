@@ -920,3 +920,86 @@ Restaurado: `pg_indexes` idéntico al de tras el deploy, drift con exit 0 y `13 
 Ampliación implementada. Entran 3 índices y salen 2 viejos. R24 queda verde en sus 13 casos y en 5
 corridas, la mutación caza cada índice, `down.sql` hace la ida y vuelta y el drift está vacío. Queda
 abierto un caso de la 411 (cohorte), que el baseline enmascara y que necesita decisión.
+
+## Test de la cohorte (411 R36): siembra volumen — 2026-10-26, backend_dev
+
+Lo decidió Camilo el 2026-10-26: el test siembra volumen y sigue exigiendo `orden_created_at_idx`, sin aflojarlo. Commit `055dc40`.
+
+- **Archivos:** `tests/integration/db/cohorte-carga-indices.int.test.ts` y `tests/baseline-rojos.json` (sale la entrada del archivo).
+- **Siembra:**
+  - 40.000 órdenes con el prefijo `sl18-coh411`, una cada 15 minutos. La ventana D..D+2 es más o menos el 0,5 % de la tabla.
+  - Una fila de `orden_historial_estado` por orden, todo en una organización propia del test.
+  - Usa el patrón de `indices-rutas-calientes`: lock, `session_replication_role = replica` y `ANALYZE`.
+  - El plan se mide una sola vez en el `beforeAll`, con `enable_seqscan = off`, dentro de una transacción que siempre se revierte. Por eso no hay `afterAll`: después de las corridas quedan 0 filas con el prefijo.
+  - Las aserciones no cambian.
+- **Salidas** (en serie, `servi_logistic_sl18`):
+  - el archivo, 3 corridas seguidas: `Tests 6 passed (6)` en cada una;
+  - `indices-rutas-calientes` después: `13 passed (13)`;
+  - `guard-test-rapido-rojos-heredados`: `6 passed`.
+- **Mutación:** con `DROP INDEX orden_created_at_idx` caen 2 de 6: el caso de la ventana («el plan no nombra orden_created_at_idx») y «los dos índices están aplicados». Se restauró con la definición de `pg_indexes`, el archivo volvió a `6 passed` y el drift salió vacío.
+- **Typecheck y lint:** 0 errores (lint: 231 warnings, las mismas de antes).
+- **Nota:** `ANALYZE` dentro de una transacción revertida puede dejar actualizado `reltuples` de `orden`. Ya pasaba con `indices-rutas-calientes`.
+- **Resultado:** el archivo queda en verde entero y **sale del baseline**.
+
+## Tanda 6: push y número de guía (R26–R30) — 2026-10-26, backend_dev
+
+Base `servi_logistic_sl18`. Commits: `8eaaa17` (feat), `e18d2f9` (test) y `55192a3` (chore, D14).
+
+### Archivos
+- Nuevos:
+  - `lib/interfaces/repositories/IPushEndpointPlataformaRepository.ts`;
+  - `lib/repositories/PushEndpointPlataformaRepository.ts`. `liberarDeOtrasEmpresas` hace `deleteMany({ endpoint, organizacionId: { not } })` en `comoPlataforma("SL-18", "push: el último gana")` y rechaza un id de empresa vacío antes de entrar en plataforma.
+- `lib/actions/push.ts`: nueva dependencia `plataformaRepo`. El orden es actor, validación, salida del superadmin, `liberarDeOtrasEmpresas` y `registrar`.
+- `lib/db/excepciones-aislamiento.ts`: entrada nueva en `EXCEPCIONES_DE_PLATAFORMA`, ficha `SL-18`.
+- `tests/unit/actions/push-action.test.ts`: `ACTOR` con empresa, un doble de plataforma y 4 casos nuevos.
+- Tests nuevos: `tests/integration/db/push-ultimo-gana.test.ts` y `tests/integration/db/num-guia-global.test.ts`.
+- `progress/deudas.md > D14`: el punto del push queda marcado como resuelto por SL-18.
+- `docs/architecture.md` no cambia: el párrafo de §8 y los 8 globales ya entraron en la Tanda 4. Sin migración.
+
+### Llamadores revisados
+- `registrarSuscripcionPush` lo llaman `lib/pwa/alta-push.ts` y `components/shared/PushReactivacion.tsx`. Ninguno pasa `deps`, así que no cambian.
+- `PushSuscripcionRepository` se usa en `notificadores.ts`, `push-web-handler.ts`, `PushWebService.ts` y `notificacion-repo-con-push.ts`. No cambian.
+- Dobles: se ajustó `push-action.test.ts`. `marco-superadmin-sin-empresa.test.ts` pasa sin tocarlo, porque el superadmin sale antes. Los dobles de `tests/components`, `tests/unit/pwa`, `usePushSuscripcion` y `push-web-service` no inyectan `deps`.
+- Sin llamadores en `e2e/`, `scripts/` ni `db/`.
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R26 | `push-ultimo-gana.test.ts` «⭑ R26 + R28: el navegador de A registrado en B queda solo en B, A deja de enviarle y nada más cambia» (los destinatarios se leen con `listarPorUsuarios`, la consulta de `PushWebService.entregarA`); unit en `push-action.test.ts` «⭑ R26: libera ESE endpoint con la empresa de la SESION, y luego registra», «⭑ si liberar falla, NO se registra…» |
+| R27 | `push-ultimo-gana.test.ts` «⭑ R27: el mismo navegador cambia de cuenta dentro de A y el dueño se reescribe» (misma fila, mismo id) |
+| R28 | el caso R26 + R28 (otros endpoints de A y B iguales antes y después) y «R28: el paso de plataforma, llamado a secas, no borra la fila de la propia empresa ni otro endpoint» |
+| R29 | `num-guia-global.test.ts`: «⭑ R29: órdenes de A y de B numeradas con `siguiente_num_guia()` no repiten guía, y B no puede reutilizar la de A» (23505), y «⭑ R29: `orden_num_guia_key` es único sobre `num_guia` sin `organizacion_id`, y la función usa `orden_num_guia_seq`» |
+| R30 | `docs/architecture.md`, que vigila `unicos-por-empresa.guardia` (T4.2 c) |
+
+### Verificación
+- **Integración** en serie: push-ultimo-gana, num-guia-global, push-migration, unicos-por-empresa, push-action y marco-superadmin-sin-empresa dan `Test Files 6 passed (6)`, `Tests 86 passed (86)`. `push-cupo-carrera` da 5 passed.
+- **Rojos de baseline, no de esta tanda.** Faltan datos de `db:seed`. Los tres archivos están en `baseline-rojos.json`:
+  - `push-canal-restricciones`: 6 de 7 en rojo;
+  - `push-destinatarios-equivalencia`: 4 de 4;
+  - `usuario-preferencia`: 12 de 14.
+- **`vitest related --run`** de los 4 archivos de `lib/`: `Test Files 64 passed | 2 skipped (66)`, `Tests 796 passed | 31 skipped`.
+- **Guardias** (`tests/unit/guards`, `analytics` y `db`): `Test Files 1 failed | 407 passed (408)`, `Tests 4 failed | 5478 passed | 1 skipped`.
+  - El único rojo es `dependencias-declaradas-presentes.guardia` (baseline).
+  - Pasan `plataforma-solo-en-lista`, `push-alta-punto-unico`, `push-cableado-unico` y `unicos-por-empresa`.
+- **Typecheck:** 0 errores. **Lint:** 0 errores, 231 warnings. **Drift:** `migrate diff --exit-code` da «No difference detected.».
+
+### Mutación
+| Mutación | Cae |
+|---|---|
+| M1: sin la llamada a `liberarDeOtrasEmpresas` | R26 + R28 de integración y 2 unit (3 failed / 27 passed) |
+| M2: `where` sin endpoint | R26 + R28 y R28 a secas (2 failed) |
+| M3: `where` sin filtro de empresa | R27 y R28 a secas (2 failed) |
+
+Las tres están restauradas.
+
+### Desviaciones y puntos abiertos
+- **El fallo de hoy es silencioso, no un P2002.**
+  - Qué se vio: con M1, el alta en B devolvió `ok`, la fila siguió siendo de A y A siguió enviando. Design §7 y D14 decían «choca con P2002».
+  - Límite: el test se conecta como dueño, sin RLS. Con `servi_app` el síntoma podría ser otro.
+  - El arreglo cubre los dos casos.
+  - **Pendiente:** corregir la frase de design §7.
+- **Si falla el paso de plataforma**, la action relanza `internal`, `alta-push` deshace la suscripción y no se anota la preferencia. Lo fija un test unit.
+- **`push-canal-restricciones`, «no tienen policies»:** espera 0 policies y hay 2. Parece un test de la 410 que se quedó viejo con la RLS de SL-17. Está en el baseline y no es de SL-18.
+
+### Veredicto
+La Tanda 6 está implementada. R26–R29 en verde con base real, R30 ya documentado, las mutaciones caen y no hay drift.
