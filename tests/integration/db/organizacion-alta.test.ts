@@ -9,10 +9,9 @@ import { PremioRankingRepository } from "@/lib/repositories/PremioRankingReposit
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
-import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import { PasswordResetService } from "@/lib/services/PasswordResetService";
 import { verifyPassword } from "@/lib/utils/password";
-import type { IEmailProvider, SendOtpCodeParams } from "@/lib/interfaces/external/IEmailProvider";
+import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
 import { crearPaisDePrueba } from "@/tests/fabricas/paises";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, clienteConTransaccionAnidada, crearPrismaDeTest } from "./_postgres-real";
@@ -197,33 +196,44 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(await alta(entrada(slugB, emailA, `doc-ajena-c-${RUN}`))).toEqual({ estado: "conflicto", campo: "slug" });
   });
 
-  it("R46/R36: un email ya usado da conflicto de email y revierte todo, también la organización", async () => {
+  // SL-18 R1: estos dos casos decían «conflicto y revierte todo» porque email y documento eran
+  // únicos GLOBALES (SL-17 R36). Ahora son por empresa: la empresa nueva no tiene a nadie, así que
+  // el maestro con el email o el documento de otra empresa se crea. El P2002 de esos índices ya no
+  // puede darse en un alta (la traducción en `OrganizacionRepository.campoDuplicado` queda como
+  // defensa), y el duplicado dentro de una empresa lo cubre `usuario-unico-por-empresa.test.ts`.
+  it("SL-18 R1 (antes R46/R36): un email ya usado en OTRA empresa no impide el alta: se crea con su maestro", async () => {
     const email = `dup-${RUN}@ejemplo.test`;
-    expect((await alta(entrada(conSufijo("dup-a"), email, `doc-dup-a-${RUN}`))).estado).toBe("creada");
+    const a = await alta(entrada(conSufijo("dup-a"), email, `doc-dup-a-${RUN}`));
+    expect(a.estado).toBe("creada");
     const antes = await filas();
-    const slugB = conSufijo("dup-b");
 
-    const r = await alta(entrada(slugB, email, `doc-dup-b-${RUN}`));
+    const b = await alta(entrada(conSufijo("dup-b"), email, `doc-dup-b-${RUN}`));
 
-    expect(r).toEqual({ estado: "conflicto", campo: "email" });
-    // SL-17 T3.9: `filas()` cuenta también el podio, que el alta escribe ANTES del maestro: el
-    // choque del email se lo lleva con el rollback.
-    expect(await filas()).toEqual(antes);
-    expect(antes.podio).toBeGreaterThan(0);
-    expect(await base.organizacion.findUnique({ where: { slug: slugB } })).toBeNull();
+    expect(b.estado).toBe("creada");
+    if (a.estado !== "creada" || b.estado !== "creada") return;
+    expect(await filas()).toEqual({
+      organizaciones: antes.organizaciones + 1,
+      usuarios: antes.usuarios + 1,
+      podio: antes.podio + 3,
+    });
+    const maestros = await base.usuario.findMany({ where: { email }, select: { organizacionId: true } });
+    expect(new Set(maestros.map((m) => m.organizacionId))).toEqual(new Set([a.organizacionId, b.organizacionId]));
   });
 
-  it("R46/R36: un documento ya usado da conflicto de documento y revierte todo", async () => {
+  it("SL-18 R1 (antes R46/R36): un documento ya usado en OTRA empresa no impide el alta", async () => {
     const documento = `doc-dupdoc-${RUN}`;
     expect((await alta(entrada(conSufijo("dupdoc-a"), `dupdoc-a-${RUN}@ejemplo.test`, documento))).estado).toBe("creada");
     const antes = await filas();
-    const slugB = conSufijo("dupdoc-b");
 
-    const r = await alta(entrada(slugB, `dupdoc-b-${RUN}@ejemplo.test`, documento));
+    const r = await alta(entrada(conSufijo("dupdoc-b"), `dupdoc-b-${RUN}@ejemplo.test`, documento));
 
-    expect(r).toEqual({ estado: "conflicto", campo: "documento" });
-    expect(await filas()).toEqual(antes);
-    expect(await base.organizacion.findUnique({ where: { slug: slugB } })).toBeNull();
+    expect(r.estado).toBe("creada");
+    expect(await filas()).toEqual({
+      organizaciones: antes.organizaciones + 1,
+      usuarios: antes.usuarios + 1,
+      podio: antes.podio + 3,
+    });
+    expect(await base.usuario.count({ where: { cedula: documento } })).toBe(2);
   });
 
   it("R46: la entrada inválida no escribe nada", async () => {
@@ -337,10 +347,14 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(r.estado).toBe("creada");
     if (r.estado !== "creada") return;
 
-    const enviados: SendOtpCodeParams[] = [];
-    const correo: IEmailProvider = { sendOtpCode: async (p) => void enviados.push(p) };
+    // SL-18 (R20): la recuperación ya no va por código, sino por un enlace por cuenta (design §4.1).
+    const enviados: EmailMessage[] = [];
+    const correo = {
+      sender: { enviar: async (m: EmailMessage) => (enviados.push(m), { messageId: null }) },
+      baseUrl: "https://app.example.test",
+    };
     const otpRepo = new EmailOtpChallengeRepository(app);
-    const reset = new PasswordResetService(new UserRepository(app), otpRepo, new OtpChallengeIssuer(otpRepo, correo));
+    const reset = new PasswordResetService(new UserRepository(app), otpRepo, correo);
     const nueva = `Nueva-${RUN}-Clave!9`;
 
     // Recuperar contraseña corre sin sesión y sin empresa: en plataforma, igual que T2.1.
@@ -348,7 +362,8 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
       await reset.solicitar({ email, deviceHash: "dispositivo-test", ipAddress: "127.0.0.1" });
       expect(enviados).toHaveLength(1);
       expect(enviados[0].to).toBe(email);
-      return reset.restablecer({ email, code: enviados[0].code, newPassword: nueva, ipAddress: "127.0.0.1" });
+      const enlace = /#enlace=([^\s"<]+)/.exec(enviados[0].text)![1];
+      return reset.crearContrasenaConEnlace({ enlace, newPassword: nueva, ipAddress: "127.0.0.1" });
     });
 
     expect(resultado).toEqual({ status: "ok" });

@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextoDatos } from "@/lib/db/contexto-empresa";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-36 (design §9.1; R23, R24, R29) — una empresa SIN WhatsApp, por los composition roots REALES de
 // cada consumidor (nada de servicios inyectados): actions, jobs y cron.
 //
@@ -199,7 +203,8 @@ describe("SL-36/R24 — actions, jobs y cron sin integración", () => {
         actualizadas: 0,
         sinCambios: 0,
         ignoradas: 0,
-        empresas: { procesadas: 0, fallidas: [], sinWhatsapp: 2 },
+        // SL-23 (R21): el resumen cuenta también las empresas con WhatsApp apagado (aquí, ninguna).
+        empresas: { procesadas: 0, fallidas: [], sinWhatsapp: 2, saltadas: 0 },
       });
       // Cada empresa pregunto por SU credencial, en su contexto.
       expect(DOBLE.lecturas.map((l) => l.contexto)).toEqual([

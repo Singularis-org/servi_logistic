@@ -10,6 +10,8 @@ import {
   listarNovedadesAction,
 } from "@/lib/actions/novedades";
 import { listarRechazosSlaTiendaAction } from "@/lib/actions/rechazos-sla-tienda";
+import { NovedadAcciones } from "@/app/(app)/novedades/_components/NovedadAcciones";
+import type { NovedadDTO } from "@/lib/types/novedad";
 
 // Feature 87 (T15) + Feature 102 (T12) + Feature 236 (T4.1/T4.4) — la page resuelve el rol SOLO
 // server-side. Cubre R18 (rol != adminTienda / sin sesion -> notFound) y R19 (action principal !=
@@ -23,6 +25,26 @@ vi.mock("@/lib/auth/resolve-actor", () => ({
 vi.mock("@/lib/actions/novedades", () => ({
   listarNovedadesAction: vi.fn(),
   listarAyudaTiendaAction: vi.fn(),
+}));
+// SL-23 (design §6.3): las puertas de módulo, abiertas salvo WhatsApp, que cada caso fija.
+const { whatsapp } = vi.hoisted(() => ({ whatsapp: { activo: true } }));
+vi.mock("@/lib/modulos/exigir-modulo", async () => {
+  const abiertas = (await import("@/tests/fabricas/modulos")).puertasAbiertas();
+  return {
+    ...abiertas,
+    moduloActivo: async (m: string) => (m === "whatsapp" ? whatsapp.activo : true),
+  };
+});
+// `NovedadAcciones` se monta de verdad en el bloque de SL-23: sus actions no se llaman, pero se
+// importan, y no pueden arrastrar el servidor a jsdom.
+vi.mock("@/lib/actions/whatsapp-envio", () => ({
+  listarPlantillasParaEnvio: vi.fn(),
+  listarPlantillasParaEnvioTienda: vi.fn(),
+}));
+vi.mock("@/lib/actions/orden-ayuda", () => ({
+  solicitarAyudaOrden: vi.fn(),
+  recuperarOrdenAyuda: vi.fn(),
+  registrarIntentoContactoOrden: vi.fn(),
 }));
 vi.mock("@/lib/actions/rechazos-sla-tienda", () => ({
   listarRechazosSlaTiendaAction: vi.fn(),
@@ -82,6 +104,7 @@ function tabsProps(): {
 beforeEach(() => {
   vi.clearAllMocks();
   propsRecibidas.valor = null;
+  whatsapp.activo = true;
   listarMock.mockResolvedValue({
     status: "ok",
     items: [],
@@ -214,5 +237,90 @@ describe("NovedadesPage — la superficie de AYUDA (236)", () => {
         pageSize: 10,
       });
     }
+  });
+});
+
+// =================================================================================================
+// SL-23 (T8, design §6.3) — LA ACCIÓN DE PLANTILLA ES DEL MÓDULO WHATSAPP; `/novedades` ES NÚCLEO.
+// =================================================================================================
+describe("NovedadesPage — con el módulo WhatsApp apagado (SL-23)", () => {
+  const DESTINATARIO = "Ana Cliente";
+  const novedad = {
+    id: "o1",
+    numGuia: 12345,
+    numRemision: "REM-001",
+    estatusValue: "novedad",
+    intentosContacto: 0,
+    mensajeroNombre: "Marta Mensajera",
+    destinatario: DESTINATARIO,
+    telefonoDest: "88887777",
+    direccion: "Av. Central 120",
+    producto: "Zapatos",
+    peso: 1.5,
+    montoCobrar: 24500,
+    latitud: 9.9281,
+    longitud: -84.0907,
+    notas: null,
+    tiendaNombre: "Tienda Demo",
+    zonaNombre: "GAM Oeste",
+    provinciaNombre: "San José",
+    cantonNombre: "Escazú",
+    distritoNombre: "San Rafael",
+    sinpeNumero: "80000000",
+    sinpeNombre: "Titular de Prueba",
+    secuenciaRuta: null,
+    causa: "not_found",
+    intentosEntrega: 2,
+  } satisfies NovedadDTO;
+  const handlers = {
+    onReprogramar: vi.fn(),
+    onHabilitar: vi.fn(),
+    onRechazar: vi.fn(),
+    onConversacion: vi.fn(),
+    onGestionarDesdeAyuda: vi.fn(),
+    onCorregirDatos: vi.fn(),
+  };
+
+  beforeEach(() => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "adminTienda" });
+  });
+
+  it("la página baja a las pestañas si WhatsApp está encendido o no", async () => {
+    whatsapp.activo = false;
+    render(await NovedadesPage());
+    expect((propsRecibidas.valor as { whatsappActivo: boolean }).whatsappActivo).toBe(false);
+    // El resto de la pantalla sigue: encabezado y pestañas con sus listados.
+    expect(screen.getByRole("heading", { level: 1, name: "Novedades" })).toBeInTheDocument();
+    expect(screen.getByTestId("novedades-module")).toBeInTheDocument();
+    expect(listarMock).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    whatsapp.activo = true;
+    render(await NovedadesPage());
+    expect((propsRecibidas.valor as { whatsappActivo: boolean }).whatsappActivo).toBe(true);
+  });
+
+  it("con WhatsApp apagado la acción de plantilla no se pinta y el resto de la fila sí", () => {
+    render(
+      <NovedadAcciones
+        whatsappActivo={false}
+        novedad={novedad}
+        grupoListado="devolucion"
+        {...handlers}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: `WhatsApp a ${DESTINATARIO}` })).toBeNull();
+    expect(screen.getByRole("button", { name: `Llamar a ${DESTINATARIO}` })).toBeInTheDocument();
+    // Las acciones del núcleo de esta fila siguen ahí.
+    expect(screen.getAllByRole("button").length).toBeGreaterThan(1);
+  });
+
+  it("con WhatsApp encendido la acción de plantilla se pinta", () => {
+    render(
+      <NovedadAcciones whatsappActivo novedad={novedad} grupoListado="devolucion" {...handlers} />,
+    );
+    expect(
+      screen.getByRole("button", { name: `WhatsApp a ${DESTINATARIO}` }),
+    ).toBeInTheDocument();
   });
 });

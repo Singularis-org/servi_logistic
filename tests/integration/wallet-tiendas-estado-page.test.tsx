@@ -20,6 +20,10 @@ import { FORMA_UUID, UUID_TIENDA, estado } from "@/tests/fixtures/estado-cuenta"
 // en lo que decían del listado (rol, props, desplegar).
 // =================================================================================================
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({ resolveActorFromSession: vi.fn() }));
 vi.mock("@/lib/actions/estado-cuenta", () => ({ verEstadoCuentaAction: vi.fn() }));
 vi.mock("@/lib/actions/wallet-tienda", () => ({

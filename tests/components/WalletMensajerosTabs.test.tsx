@@ -104,13 +104,18 @@ function podio(filas: PremioPodioDTO[]) {
  * lectura de otro test no se cuele en éste, y con el proveedor de avisos que la app pone encima
  * (`app/(app)/layout.tsx`): la tabla monta el control de descarga y el panel usa `useToast`.
  */
-function montar() {
+function montar(
+  premios: { fechaInicial: string; fechaMaxima: string } | null = {
+    fechaInicial: FECHA,
+    fechaMaxima: HOY,
+  },
+) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <ToastProvider>
         <WalletMensajerosTabs
           cuentas={{ initialData: { items: [ANTES], total: 1, pageSize: 25 } }}
-          premios={{ fechaInicial: FECHA, fechaMaxima: HOY }}
+          premios={premios}
         />
       </ToastProvider>
     </SWRConfig>,
@@ -243,5 +248,24 @@ describe("298 — el refresco cruzado SOBREVIVE a las pestañas (293, design §9
       expect(within(tabla).getByText("₡7.000")).toBeInTheDocument(),
     );
     expect(within(tabla).queryByText("₡2.000")).toBeNull();
+  });
+});
+
+// SL-23 (T8, design §3.7 y §6.3) — los premios del ranking exigen Wallet Y Ranking. La pantalla es de
+// Wallet (su puerta ya lo exigió); con Ranking apagado la página baja `premios = null`.
+describe("SL-23 — con el módulo Ranking apagado", () => {
+  it("no hay pestaña de premios ni se lee el podio; las cuentas por pagar siguen", async () => {
+    montar(null);
+
+    const lista = screen.getByRole("tablist", { name: "Secciones de mensajeros" });
+    const tabs = within(lista).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Cuentas por pagar"]);
+    await waitFor(() =>
+      expect(
+        within(panelActivo()).getByRole("table", { name: "Cuentas por pagar a mensajeros" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("region", { name: "Premios del ranking" })).toBeNull();
+    expect(listarPremiosMock).not.toHaveBeenCalled();
   });
 });

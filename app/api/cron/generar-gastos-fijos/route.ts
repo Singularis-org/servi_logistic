@@ -140,13 +140,15 @@ export async function handleGenerarGastosFijos(
       async () => {
         corridas.push(await corrida());
       },
-      { cliente: deps.empresas },
+      // SL-23 (R21): las empresas con el módulo apagado no corren; quedan en `saltadas`.
+      { cliente: deps.empresas, modulo: "wallet" },
     );
     return {
       ...sumar(corridas),
       empresas: {
         procesadas: empresas.ok.length,
         fallidas: empresas.fallidas.map((f) => f.organizacionId),
+        saltadas: empresas.saltadas.length,
       },
     };
   });

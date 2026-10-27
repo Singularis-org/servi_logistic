@@ -93,7 +93,7 @@ const handlers = {
 function renderAcciones(over: Partial<NovedadDTO> = {}, grupoListado?: GrupoNovedad) {
   const fila = novedad(over);
   const grupo = grupoListado ?? (fila.estatusValue === "novedad" ? "devolucion" : "ayuda");
-  return render(<NovedadAcciones novedad={fila} grupoListado={grupo} {...handlers} />);
+  return render(<NovedadAcciones whatsappActivo novedad={fila} grupoListado={grupo} {...handlers} />);
 }
 
 /** Los nombres accesibles de TODOS los controles de la fila, en el orden en que se pintan. */

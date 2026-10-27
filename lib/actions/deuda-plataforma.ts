@@ -10,6 +10,9 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
 import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
 import { DeudaPlataformaService } from "@/lib/services/DeudaPlataformaService";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // SL-40 (design §5, §9.2) — el borde de la deuda con la plataforma que pinta la wallet. Es una
 // lectura propia, al lado de `verResumenCajaAction`, y no un campo más del resumen de la caja: la
@@ -35,6 +38,10 @@ function construirServicio(): IDeudaPlataformaService {
  * de la empresa (R23). El actor y su empresa salen de la sesión.
  */
 export async function verDeudaPlataformaAction(deps: DeudaPlataformaDeps = {}): Promise<VerDeudaPlataformaResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   const service = deps.service ?? construirServicio();
   return service.verDeuda(actor);

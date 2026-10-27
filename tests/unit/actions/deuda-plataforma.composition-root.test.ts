@@ -3,6 +3,10 @@ import { Prisma, RolValue } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-40 (design §5, §11.3) — EL COMPOSITION ROOT DE LA DEUDA, EJERCITADO DE VERDAD (memoria «el
 // composition root que no inyecta»). Que `lib/actions/deuda-plataforma.ts` importe el repositorio no
 // prueba que lo PASE: aquí se llama sin servicio inyectado y se exige que la lectura llegue al

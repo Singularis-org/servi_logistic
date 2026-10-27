@@ -1,11 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import {
-  itemsVisibles,
-  primerDestino,
-  SIDEBAR_ITEMS,
-} from "@/lib/auth/menu-visibility";
+import { menuDeLaEmpresa, primerDestino } from "@/lib/auth/menu-visibility";
+import { modulosDelMenu } from "@/lib/modulos/exigir-modulo";
 import { AdminMaestroDashboard } from "@/app/(app)/_components/AdminMaestroDashboard";
 import { AppPage } from "@/components/shared/AppPage";
 
@@ -40,7 +37,10 @@ export default async function Home() {
   // (`middleware.ts`). En vez de dejarlos ahí, entran al PRIMER ítem de su sidebar, que es
   // donde empieza su trabajo. Se deriva del mismo menú que pinta la barra, así que un
   // reordenamiento del sidebar mueve el aterrizaje con él, sin una segunda lista que mantener.
-  const destino = primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor));
+  //
+  // SL-23 (R15, R32): sobre el menú YA filtrado por los módulos de la empresa. Un `adminSatelite`
+  // con «Bodegas satélite» apagado aterriza en el primer destino que le queda, o en el placeholder.
+  const destino = primerDestino(menuDeLaEmpresa(actor, await modulosDelMenu(actor)));
   if (destino !== null) redirect(destino);
 
   // Sin sesión (o sin ningún ítem visible) no hay a dónde mandar a nadie: se conserva el

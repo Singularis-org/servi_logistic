@@ -58,7 +58,7 @@ La UI de la empresa lee los nombres de nivel de su país mediante un provider.
 | `nivel_2_singular`, `nivel_2_plural` | `TEXT NOT NULL` | «Cantón», «Cantones». |
 | `nivel_3_singular`, `nivel_3_plural` | `TEXT NOT NULL` | «Distrito», «Distritos». |
 | `digitos_codigo_nivel_1/2/3` | `INT NULL` | Regla de código (R17). `CHECK` de los tres nulos o los tres no nulos. CR: 1/3/5. El alta por pantalla no la ofrece: solo la pone la migración de CR. |
-| `disponible` | `BOOLEAN NOT NULL DEFAULT true` | **(enmienda 2026-10-26, decisión 6)** Hay cobertura en el país (R44). Con `false` no se ofrece ni se acepta en el alta de empresa (R45); no toca a las empresas que ya están (R46). La añade la migración `20261026120500_pais_disponible` (§3). |
+| `disponible` | `BOOLEAN NOT NULL DEFAULT true` | **(enmienda 2026-10-26, decisión 6)** Hay cobertura en el país (R44). Con `false` no se ofrece ni se acepta en el alta de empresa (R45); no toca a las empresas que ya están (R46). La añade la migración `20261026130500_pais_disponible` (§3). |
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT now()` | |
 
 **Catálogo ISO 3166-1 (enmienda 2026-10-26, decisión 5; R40–R43).** La lista de países del mundo no
@@ -204,7 +204,7 @@ espera el `42501` en la lectura y en la escritura.
 
 **(enmienda 2026-10-26, decisión 6; R47)** El enum `historial_plataforma_accion` gana
 `pais_disponibilidad_activada` y `pais_disponibilidad_desactivada` (propuesta, pregunta abierta), con
-`entidad_tipo = 'pais'`. Los añade la migración `20261026120500_pais_disponible` (§3).
+`entidad_tipo = 'pais'`. Los añade la migración `20261026130500_pais_disponible` (§3).
 
 El único escritor es `appendAccionPlataforma(tx, filas)`, en
 `lib/repositories/registrar-accion-plataforma.ts`, y se llama dentro de la transacción del cambio
@@ -224,17 +224,17 @@ de 16 a 18. Sin esto, `organizacion-en-modelos.guardia` pone el gate en rojo.
 
 **(enmienda 2026-10-26, decisión 1: orden A)** `organizacion_pais` corre antes que
 `geografia_por_pais`, porque las políticas `*_del_pais` leen `organizacion.pais_id`. Es el orden de
-las carpetas que ya están en `db/migrations/`. Las migraciones 120100–120500 y sus `down.sql` van
+las carpetas que ya están en `db/migrations/`. Las migraciones 130100–130500 y sus `down.sql` van
 entre `BEGIN`/`COMMIT`.
 
 | Carpeta | Hace | `down.sql` |
 |---|---|---|
-| `20261026120000_pais` | Crea `pais` y sus `CHECK`, siembra `CR` (1/3/5), activa la RLS, crea `pais_lectura` y aplica el `REVOKE`. | `DROP TABLE pais` |
-| `20261026120100_organizacion_pais` | Añade `organizacion.pais_id` con `DEFAULT 'CR'`, la FK, el índice y el trigger `organizacion_pais_inmutable`. | Borra el trigger y la columna. |
-| `20261026120200_geografia_por_pais` | Añade `pais_id` a las tres tablas (la provincia con `DEFAULT 'CR'`; cantón y distrito por backfill desde el padre y después `NOT NULL`). Cambia los únicos de §2.3, crea las FK compuestas (`ON UPDATE RESTRICT`, decisión 2), el trigger `geografia_pais_del_padre` y las políticas `*_del_pais`, y borra las `*_lectura`. | Deshace todo en orden inverso y vuelve a crear los únicos globales y `*_lectura`. **Aborta con `RAISE` (P0001), antes de tocar nada, si hay nombres de provincia o códigos repetidos entre países** (el único global no cabe): queda escrito en la cabecera. |
-| `20261026120300_geografia_del_pais_de_la_empresa` | Crea la función y los tres triggers de §2.5. | Los borra. |
-| `20261026120400_historial_plataforma` | Crea los dos enums, la tabla, los índices, la RLS sin políticas y el `REVOKE`. | Borra la tabla y los enums. |
-| `20261026120500_pais_disponible` **(enmienda 2026-10-26, decisión 6)** | Añade `pais.disponible BOOLEAN NOT NULL DEFAULT true` (CR queda disponible, R44) y los dos valores `pais_disponibilidad_*` de `historial_plataforma_accion` (§2.6). No toca la RLS ni el `REVOKE` de `pais` (R3 sigue cubriendo la escritura desde una empresa). | Aborta con `RAISE` si hay filas del historial con `pais_disponibilidad_*` (no se borra evidencia); si no, vuelve a crear el enum sin esos valores y borra la columna. |
+| `20261026130000_pais` | Crea `pais` y sus `CHECK`, siembra `CR` (1/3/5), activa la RLS, crea `pais_lectura` y aplica el `REVOKE`. | `DROP TABLE pais` |
+| `20261026130100_organizacion_pais` | Añade `organizacion.pais_id` con `DEFAULT 'CR'`, la FK, el índice y el trigger `organizacion_pais_inmutable`. | Borra el trigger y la columna. |
+| `20261026130200_geografia_por_pais` | Añade `pais_id` a las tres tablas (la provincia con `DEFAULT 'CR'`; cantón y distrito por backfill desde el padre y después `NOT NULL`). Cambia los únicos de §2.3, crea las FK compuestas (`ON UPDATE RESTRICT`, decisión 2), el trigger `geografia_pais_del_padre` y las políticas `*_del_pais`, y borra las `*_lectura`. | Deshace todo en orden inverso y vuelve a crear los únicos globales y `*_lectura`. **Aborta con `RAISE` (P0001), antes de tocar nada, si hay nombres de provincia o códigos repetidos entre países** (el único global no cabe): queda escrito en la cabecera. |
+| `20261026130300_geografia_del_pais_de_la_empresa` | Crea la función y los tres triggers de §2.5. | Los borra. |
+| `20261026130400_historial_plataforma` | Crea los dos enums, la tabla, los índices, la RLS sin políticas y el `REVOKE`. | Borra la tabla y los enums. |
+| `20261026130500_pais_disponible` **(enmienda 2026-10-26, decisión 6)** | Añade `pais.disponible BOOLEAN NOT NULL DEFAULT true` (CR queda disponible, R44) y los dos valores `pais_disponibilidad_*` de `historial_plataforma_accion` (§2.6). No toca la RLS ni el `REVOKE` de `pais` (R3 sigue cubriendo la escritura desde una empresa). | Aborta con `RAISE` si hay filas del historial con `pais_disponibilidad_*` (no se borra evidencia); si no, vuelve a crear el enum sin esos valores y borra la columna. |
 
 Se crean con `pnpm run db:migrate:create` y se comprueban con
 `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma`: el diff tiene que salir

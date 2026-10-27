@@ -58,6 +58,7 @@ class ColaEnMemoria implements IJobRepository {
   }
   async complete(): Promise<void> {}
   async fail(): Promise<void> {}
+  async descartar(): Promise<void> {}
   async findByDedupeKeys(): Promise<JobDTO[]> {
     return [];
   }

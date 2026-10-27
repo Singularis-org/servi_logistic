@@ -77,7 +77,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - `getPrismaClient().$extends(...)` deja fuera el `Proxy` de `$transaction`;
   - lecturas de `organizacion_id` directas a Prisma en `lib/api/api-key-request.ts`, `lib/actions/rastreo-publico.ts` y el webhook de WhatsApp, que deberían ir a sus repositorios;
   - ~20 suites inyectan dobles de `autenticar` sin `organizacionId` (rama sin contexto que falla cerrado);
-  - `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra choca (P2002) y la primera sigue enviándole push;
+  - ~~`PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra no cambia de dueño y la primera sigue enviándole push~~ (revisado 2026-10-27: decía «choca (P2002)»; el fallo real es silencioso, el alta en la otra empresa responde `ok` sin tocar la fila) — **RESUELTO por SL-18 (2026-10-26, R26–R28):** `registrarSuscripcionPush` llama antes a `PushEndpointPlataformaRepository.liberarDeOtrasEmpresas` (en plataforma, ficha SL-18), que borra la fila de ese endpoint exacto si es de otra empresa; el último que se registra gana. Lo prueba `tests/integration/db/push-ultimo-gana.test.ts`;
   - código que quedó sin uso tras retirar los conteos públicos: `WHERE_*_DISPONIBLE` (`lib/repositories/_shared/geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts`.
 - **Dueño:** SL-18/SL-19 (push y únicos), Carlos Restrepo (el resto, ficha propia).
 
@@ -124,3 +124,26 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-40, review m2 (2026-10-24). `e2e/cobro-plataforma-sl40.spec.ts` se salta sin `SL40_UI=1`, así que en el job `e2e` de CI no protege nada. Lo mismo pasa con `e2e/wallet.spec.ts`, en rojo heredado (D8).
 - **Resolución:** SL-44 (R13; T4). El spec pierde la bandera, corre en el grupo `aislamiento` con su base y el log del servidor, y un `afterAll` deja el cobro global como estaba. `wallet.spec.ts` se rehízo con datos propios (T6.3). La guardia `e2e-sin-saltos` impide que vuelva un skip.
 - **Dueño:** cerrada.
+
+### D20 — Comentarios desfasados tras SL-18
+- **Origen:** review de SL-18 (m1 y m2, 2026-10-27).
+- **Qué falta:** reescribir los comentarios que describen el comportamiento anterior a SL-18:
+  - `PushEndpointPlataformaRepository.ts:10` y `push.ts:125`, que hablan del push de antes del «gana el último»;
+  - `recuperar-contrasena.ts:28`, que habla del paso del código.
+  Son solo comentarios; el código es correcto.
+- **Dueño:** Camilo (la próxima ficha que toque push o recuperar).
+
+### D21 — El arranque del superadmin rechaza un email que ya usa una cuenta de empresa
+- **Origen:** review de SL-18 (m3, 2026-10-27).
+- **Qué falta:** `ArranqueSuperadminRepository.ts:76-81` busca el email sin filtrar por `organizacion_id IS NULL`. Según R3 de SL-18, el superadmin puede compartir email con una cuenta de empresa. Hoy no ocurre, porque el superadmin se crea con la base vacía.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D22 — `/novedades` con WhatsApp apagado queda solo con «Llamar»
+- **Origen:** SL-23 (pregunta abierta y menor m4 del review, 2026-10-27).
+- **Qué falta:** decidir si, con el módulo WhatsApp apagado, `/novedades` debe ofrecer otro canal o quedarse solo con «Llamar», sin enlace `wa.me`. El spec no lo pedía.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D23 — `/plataforma/empresas/[organizacionId]` no consta como pasada por `/design`
+- **Origen:** review de SL-23 (m2, 2026-10-27). `docs/perfil-agentes.md > frontend_dev` pide pasar toda pantalla nueva por `/design`.
+- **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
+- **Dueño:** Camilo.

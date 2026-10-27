@@ -45,8 +45,8 @@ const tx = {
       return { id: "org-nueva" };
     }),
   },
-  // SL-20 (R6): el alta comprueba que el país existe antes de escribir.
-  pais: { findUnique: vi.fn(async () => ({ id: "CR" })) },
+  // SL-20 (R6, R45): el alta comprueba que el país existe y está disponible antes de escribir.
+  pais: { findUnique: vi.fn(async () => ({ id: "CR", disponible: true })) },
   tipoIdentificacion: { findUnique: vi.fn(async () => ({ id: "ti-1" })) },
   rol: { findUnique: vi.fn(async () => ({ id: "rol-maestro" })) },
   usuario: {

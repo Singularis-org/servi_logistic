@@ -39,6 +39,9 @@ import type {
   MarcarChatLeidoResult,
   ResumenNoLeidosChatResult,
 } from "@/lib/types/chat-whatsapp";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 const idSchema = z.string().min(1);
 const textoSchema = z.string().trim().min(1).max(4096);
@@ -89,6 +92,10 @@ export async function enviarMensajeChat(
   texto: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarMensajeChatResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -173,6 +180,10 @@ export async function enviarMediaChat(
   formData: FormData,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarMediaChatResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" }; // R26
 
@@ -255,6 +266,10 @@ export async function enviarPlantillaChat(
   plantillaId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarPlantillaChatResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -310,6 +325,10 @@ export async function listarHiloChat(
   ordenId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<ListarHiloChatResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -416,6 +435,10 @@ export async function listarHiloChat(
 export async function resumenNoLeidosChat(
   deps: ChatWhatsappDeps = {},
 ): Promise<ResumenNoLeidosChatResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -440,6 +463,10 @@ export async function marcarChatLeido(
   ordenId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<MarcarChatLeidoResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

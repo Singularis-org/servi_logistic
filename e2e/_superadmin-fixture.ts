@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect, type Page } from "@playwright/test";
-import type { PrismaClient } from "@prisma/client";
+import type { ModuloApagable, PrismaClient } from "@prisma/client";
+
+import { nombreDelModulo, ORDEN_MODULOS } from "../lib/modulos/catalogo";
 
 import { LogDelServidor } from "./_dos-empresas-fixture";
 
@@ -92,11 +94,16 @@ export async function codigoEnviadoA(log: LogDelServidor, email: string, timeout
 }
 
 /**
- * SL-41 T12 — espera el enlace de bienvenida que el `ConsoleEmailSender` acaba de «enviar» a
- * `email` y devuelve lo que va detrás de `#enlace=` (`<challengeId>.<secreto>`). Sale de la misma
- * línea de depuración que el código: el texto plano lleva la URL completa (R5), y sus caracteres
- * (base64url, guion y punto) no se escapan en el JSON. Se devuelve el valor y no la URL porque la
- * base de la URL es `NEXT_PUBLIC_APP_URL` del servidor, que puede no ser la `baseURL` de Playwright.
+ * SL-41 T12 — espera el enlace que el `ConsoleEmailSender` acaba de «enviar» a `email` y devuelve
+ * lo que va detrás de `#enlace=` (`<challengeId>.<secreto>`). Sirve para la bienvenida (SL-41) y
+ * para «recuperar contraseña» (SL-18 R16): los dos correos llevan en su texto plano la URL completa
+ * (`<rótulo>: <url>`), y sus caracteres (base64url, guion y punto) no se escapan en el JSON. Se
+ * devuelve el valor y no la URL porque la base de la URL es `NEXT_PUBLIC_APP_URL` del servidor,
+ * que puede no ser la `baseURL` de Playwright.
+ *
+ * Con un correo de recuperación de varias cuentas (el mismo email en varias empresas, R16), este
+ * patrón toma el PRIMER enlace de esa línea, que es el de la primera cuenta que lista el servicio.
+ * Los E2E que lo usan para recuperar tienen el email en una sola empresa, así que hay uno solo.
  */
 export async function enlaceEnviadoA(log: LogDelServidor, email: string, timeoutMs = 60_000): Promise<string> {
   const patron = new RegExp(
@@ -109,7 +116,7 @@ export async function enlaceEnviadoA(log: LogDelServidor, email: string, timeout
     log,
     patron,
     timeoutMs,
-    `ningún enlace de bienvenida para ${email} (¿falta NEXT_PUBLIC_APP_URL en el dev server?)`,
+    `ningún enlace (bienvenida o recuperación) para ${email} (¿falta NEXT_PUBLIC_APP_URL en el build?)`,
   );
 }
 
@@ -241,8 +248,12 @@ export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): 
 
 /**
  * Primer acceso de un maestro recién dado de alta: «¿Olvidaste tu contraseña?» desde `/login`, el
- * código que el emisor de consola «envió» a su correo (leído del log, SL-44 R15) y la contraseña
- * nueva. Devuelve ese código: es la prueba de que el correo de recuperación salió hacia él (R17).
+ * enlace que el emisor de consola «envió» a su correo (leído del log, SL-44 R15) y la contraseña
+ * nueva. SL-18 (R16, R20, R32): ya no hay código; el paso 1 acaba en «Revisa tu correo» y la
+ * contraseña se crea abriendo `/recuperar-contrasena#enlace=…`, como lo haría el maestro desde su
+ * correo. Devuelve el valor del enlace: es la prueba de que el correo de recuperación salió hacia
+ * él (SL-44 R17). El email tiene que estar en UNA sola empresa: con varias, el correo lleva un
+ * enlace por cuenta y aquí se usaría el primero (ver `enlaceEnviadoA`).
  */
 export async function recuperarContrasena(page: Page, email: string, password: string): Promise<string> {
   await page.goto("/login");
@@ -251,16 +262,63 @@ export async function recuperarContrasena(page: Page, email: string, password: s
 
   const log = LogDelServidor.desdeEntorno();
   await page.getByLabel("Correo electrónico").fill(email);
-  await page.getByRole("button", { name: "Enviar código" }).click();
-  const campoCodigo = page.getByLabel("Código de verificación");
-  await expect(campoCodigo).toBeVisible({ timeout: 60_000 });
-  const codigo = await codigoEnviadoA(log, email);
-  await campoCodigo.fill(codigo);
-  await page.getByRole("button", { name: "Verificar código" }).click();
+  await page.getByRole("button", { name: "Enviar enlace" }).click();
+  await expect(page.getByRole("heading", { name: "Revisa tu correo" })).toBeVisible({ timeout: 60_000 });
+  const enlace = await enlaceEnviadoA(log, email);
 
+  // Desde otra ruta: un `goto` que solo cambia el fragmento no vuelve a montar el formulario.
+  await page.goto("/login");
+  await page.goto(`/recuperar-contrasena#enlace=${enlace}`);
+  // El formulario rotula el modo enlace como «Crea tu contraseña» (lo comparte con la bienvenida).
+  await expect(page.getByRole("heading", { name: "Crea tu contraseña" })).toBeVisible({ timeout: 60_000 });
+  // SL-41 R21: el secreto sale de la barra en cuanto se lee.
+  expect(new URL(page.url()).hash).toBe("");
   await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
   await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Restablecer contraseña" }).click();
-  await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
-  return codigo;
+  await page.getByRole("button", { name: "Crear contraseña" }).click();
+  await expect(page.getByText("Contraseña creada")).toBeVisible({ timeout: 60_000 });
+  return enlace;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Módulos de una empresa (SL-23)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * SL-23 (design §7, §10; R8, R26) — el superadmin abre el detalle de una empresa desde su enlace
+ * «Módulos» en `/plataforma/empresas` y deja encendidos EXACTAMENTE `encendidos`: pulsa los
+ * interruptores que no estén como se piden y espera a que cada uno vuelva a estar habilitado (la
+ * action respondió) sin revertirse. Después recarga y comprueba que la base guardó lo mismo: un
+ * interruptor optimista que no llegó a la base se vería al recargar. `page` ya tiene la sesión del
+ * superadmin.
+ */
+export async function fijarModulosPorPantalla(
+  page: Page,
+  nombreEmpresa: string,
+  encendidos: readonly ModuloApagable[],
+): Promise<void> {
+  await page.goto("/plataforma/empresas");
+  await page.getByRole("link", { name: `Módulos de ${nombreEmpresa}`, exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Módulos", exact: true })).toBeVisible({ timeout: 60_000 });
+
+  for (const clave of ORDEN_MODULOS) {
+    const interruptor = page.getByRole("switch", { name: nombreDelModulo(clave), exact: true });
+    const quiero = encendidos.includes(clave);
+    if ((await interruptor.getAttribute("aria-checked")) !== String(quiero)) {
+      await interruptor.click();
+      await expect(interruptor).toBeEnabled({ timeout: 60_000 });
+    }
+    await expect(interruptor, `${nombreEmpresa}: «${nombreDelModulo(clave)}»`).toHaveAttribute(
+      "aria-checked",
+      String(quiero),
+    );
+  }
+
+  await page.reload();
+  for (const clave of ORDEN_MODULOS) {
+    await expect(
+      page.getByRole("switch", { name: nombreDelModulo(clave), exact: true }),
+      `${nombreEmpresa}: «${nombreDelModulo(clave)}» tras recargar`,
+    ).toHaveAttribute("aria-checked", String(encendidos.includes(clave)), { timeout: 60_000 });
+  }
 }

@@ -10,6 +10,10 @@ import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
 
 // El layout monta el <Sidebar /> (Client Component) que usa usePathname; se
 // mockea next/navigation y next/link igual que en Sidebar.test.tsx.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/",

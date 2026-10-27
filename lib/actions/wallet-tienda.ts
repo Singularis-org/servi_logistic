@@ -57,6 +57,7 @@ import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_share
 import { buildBusquedaPorGuia } from "@/lib/actions/_shared/busqueda-por-guia";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 43 (T13) — Server Actions del ledger POR TIENDA (lecturas internas del mismo
 // proyecto -> Server Action, no Route API, patron wallet.ts). Resuelve el actor por sesion,
@@ -110,7 +111,8 @@ function toWalletTiendaActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -119,6 +121,9 @@ function toWalletTiendaActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`wallet-tienda: AppErrorCode inesperado ${shape.code}`);
   }
@@ -256,6 +261,7 @@ export async function listarSaldosTiendasAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarSaldosTiendasActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const service = deps.service ?? buildService();
@@ -285,6 +291,7 @@ export async function listarMisCierresAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarMisCierresActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4: antes de tocar el service
     const service = deps.service ?? buildService();
@@ -305,6 +312,7 @@ export async function listarSaldosTiendasPaginadoAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarSaldosTiendasPaginadoActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarSaldosTiendasPaginadoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -334,6 +342,7 @@ export async function listarSaldosTiendasCompletoAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarSaldosTiendasCompletoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
     const data = listarSaldosTiendasCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -362,6 +371,7 @@ export async function listarMovimientosDeTiendaAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarMovimientosDeTiendaActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R29: antes del schema y del service
     const data = listarMovimientosDeTiendaSchema.parse(input); // R25: ZodError -> VALIDATION_ERROR
@@ -385,6 +395,7 @@ export async function listarMovimientosDeTiendaCompletoAction(
   deps: WalletTiendaDeps = {},
 ): Promise<ListarMovimientosDeTiendaCompletoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R29: antes de tocar el service
     const data = listarMovimientosDeTiendaCompletoSchema.parse(input); // R25
@@ -414,6 +425,7 @@ export async function verDetalleDeMiMovimientoAction(
   deps: DetalleMiMovimientoDeps = {},
 ): Promise<VerDetalleDeMiMovimientoActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes del schema y del service
     const data = verDetalleDeMovimientoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -436,6 +448,7 @@ export async function verDetalleDeMiMovimientoCompletoAction(
   deps: DetalleMiMovimientoDeps = {},
 ): Promise<VerDetalleDeMiMovimientoCompletoActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = verDetalleDeMovimientoCompletoSchema.parse(input); // R29
@@ -479,6 +492,7 @@ export async function registrarCobroTiendaAction(
   deps: CobroTiendaDeps = {},
 ): Promise<RegistrarCobroTiendaConComprobanteActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R13: antes del schema y del service
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459); el `.strict()`
@@ -510,6 +524,7 @@ export async function anularCobroTiendaAction(
   deps: CobroTiendaDeps = {},
 ): Promise<AnularCobroTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R18: antes del schema y del service
     const data = anularCobroTiendaSchema.parse(input); // R13/R14: ZodError -> VALIDATION_ERROR

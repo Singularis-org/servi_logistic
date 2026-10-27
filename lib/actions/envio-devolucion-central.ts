@@ -12,6 +12,7 @@ import type {
 } from "@/lib/interfaces/services/IEnvioDevolucionCentralService";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 139 — Server Action del ENVIO satelite -> bodega CENTRAL (mutacion interna del mismo
 // proyecto -> Server Action, no Route API; espejo de `lib/actions/devolucion-origen.ts`). Resuelve
@@ -50,7 +51,8 @@ function toEnvioDevolucionCentralActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -59,6 +61,9 @@ function toEnvioDevolucionCentralActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`envio-devolucion-central: AppErrorCode inesperado ${shape.code}`);
   }
@@ -75,6 +80,7 @@ export async function enviarACentral(
   deps: EnvioDevolucionCentralDeps = {},
 ): Promise<EnviarACentralActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = enviarACentralSchema.parse(input); // ZodError -> VALIDATION_ERROR

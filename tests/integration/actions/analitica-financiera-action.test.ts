@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { consultarMetricaFinanciera } from "@/lib/actions/analitica-financiera";
 import type { AnaliticaFinancieraActionDeps } from "@/lib/actions/analitica-financiera";
@@ -24,6 +24,10 @@ import {
   enTransaccionRevertida,
   HAY_BASE_DE_DATOS,
 } from "../db/_postgres-real";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // Feature 127 / T F.1-F.6 — INTEGRACION CONTRA POSTGRES DE VERDAD, sin un solo mock de Prisma.
 //

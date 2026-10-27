@@ -17,6 +17,10 @@ import type { RolValue } from "@prisma/client";
 
 // Ramificación de app/(app)/page.tsx por rol (feature 26, R1/R3/R4/R5). El rol se
 // resuelve SOLO server-side vía resolveActorFromSession (R5): aquí se mockea.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

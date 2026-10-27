@@ -105,13 +105,15 @@ export async function handleSyncPlantillas(
         }
         corridas.push(await service.sincronizar());
       },
-      { cliente: deps.empresas },
+      // SL-23 (R21): las empresas con el módulo apagado no corren; quedan en `saltadas`.
+      { cliente: deps.empresas, modulo: "whatsapp" },
     );
     return {
       ...sumar(corridas),
       empresas: {
         procesadas: empresas.ok.length - sinWhatsapp,
         fallidas: empresas.fallidas.map((f) => f.organizacionId),
+        saltadas: empresas.saltadas.length,
         sinWhatsapp,
       },
     };

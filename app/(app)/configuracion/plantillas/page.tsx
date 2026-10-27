@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarPlantillas } from "@/lib/actions/plantillas";
@@ -18,6 +19,8 @@ import {
  * listado vacío en vez de fallar.
  */
 export default async function PlantillasPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("whatsapp");
   const actor = await resolveActorFromSession();
 
   if (actor?.rol !== "maestro") {

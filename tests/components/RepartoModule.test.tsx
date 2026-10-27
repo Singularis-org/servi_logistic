@@ -212,7 +212,7 @@ const RUTA_VIGENTE: RutaResumenDTO = {
 
 function renderModule(props?: Partial<Parameters<typeof RepartoModule>[0]>) {
   return render(
-    <RepartoModule
+    <RepartoModule whatsappActivo
       porGestionar={props?.porGestionar ?? []}
       // Feature 235 (R18): el tercer grupo llega ya separado del servidor. Los escenarios de este
       // archivo no tienen ordenes en ayuda; los que si, viven en `RepartoAyuda.test.tsx`.
@@ -1575,7 +1575,7 @@ describe("RepartoModule", () => {
       makeAsignacion({ id: "g2", numRemision: "REM-G2", secuenciaRuta: 2 }),
     ];
     const { rerender } = render(
-      <RepartoModule
+      <RepartoModule whatsappActivo
         porGestionar={porGestionar}
         conAyuda={[]}
         porRecoger={[]}
@@ -1593,7 +1593,7 @@ describe("RepartoModule", () => {
 
     // Puntero liberado (gestión finalizada/cancelada) → vuelve la vista completa.
     rerender(
-      <RepartoModule
+      <RepartoModule whatsappActivo
         porGestionar={porGestionar}
         conAyuda={[]}
         porRecoger={[]}

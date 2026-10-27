@@ -138,7 +138,7 @@ const CONJUNTO_AYUDA: NovedadDTO[] = [
 
 function renderModulo() {
   return render(
-    <NovedadesModule
+    <NovedadesModule whatsappActivo
       grupo="devolucion"
       items={PAGINA}
       total={CONJUNTO.length}
@@ -150,7 +150,7 @@ function renderModulo() {
 
 function renderModuloAyuda() {
   return render(
-    <NovedadesModule
+    <NovedadesModule whatsappActivo
       grupo="ayuda"
       items={[CONJUNTO_AYUDA[0]]}
       total={CONJUNTO_AYUDA.length}

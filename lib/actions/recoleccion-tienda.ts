@@ -15,6 +15,7 @@ import {
 } from "@/lib/types/recoleccion-tienda";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 157 — Server Action de la RECOLECCION EN TIENDA (mutacion interna: Server Action, no
 // Route API). Resuelve el actor por sesion, valida en el borde con zod y delega en el servicio,
@@ -30,7 +31,8 @@ function toRecoleccionTiendaActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -40,6 +42,9 @@ function toRecoleccionTiendaActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`recoleccion-tienda: AppErrorCode inesperado ${shape.code}`);
   }
@@ -53,8 +58,12 @@ function toRecoleccionTiendaActionError(
  * cayo fue Postgres es exactamente el tipo de mensaje impreciso que el humano ya rechazo
  * (commit `8428498a`, "cada rechazo dice su causa real y que hacer").
  */
-function toListarRecoleccionActionError(shape: AppErrorShape): { status: "unauthenticated" } {
+function toListarRecoleccionActionError(
+  shape: AppErrorShape,
+): { status: "unauthenticated" } | { status: "forbidden" } {
   if (shape.code === "UNAUTHORIZED") return { status: "unauthenticated" };
+  // SL-23 (design §5.3): el módulo Recolección apagado para la empresa (`ModuloInactivoError`).
+  if (shape.code === "FORBIDDEN") return { status: "forbidden" };
   throw new Error(`recoleccion-tienda (listar): AppErrorCode inesperado ${shape.code}`);
 }
 
@@ -89,6 +98,7 @@ export async function recolectarEnTiendaPorQr(
   deps: RecoleccionTiendaDeps = {},
 ): Promise<RecolectarEnTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("recoleccion");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = recolectarEnTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -114,6 +124,7 @@ export async function listarRecoleccion(
   deps: RecoleccionTiendaDeps = {},
 ): Promise<ListarRecoleccionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("recoleccion");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const service = deps.service ?? buildService();

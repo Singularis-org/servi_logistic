@@ -95,6 +95,7 @@ class ColaEspia implements IJobRepository {
   }
   async complete(): Promise<void> {}
   async fail(): Promise<void> {}
+  async descartar(): Promise<void> {}
 }
 
 describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgres real", () => {

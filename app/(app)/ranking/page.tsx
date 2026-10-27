@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -25,6 +26,8 @@ const LIMITE_RANKING_MENSAJERO = 10;
  * (forbidden/unauthenticated) → `notFound` (defensa en profundidad, patrón /wallet).
  */
 export default async function RankingPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("ranking");
   const actor = await resolveActorFromSession();
   // Feature 94 (paridad adm↔maestro): roles de ACCESO TOTAL (`maestro`/`admin`) ven y
   // editan; `mensajero` ve en solo-lectura; cualquier otro rol (o sin sesión) → notFound.

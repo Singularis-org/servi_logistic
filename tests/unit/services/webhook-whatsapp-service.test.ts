@@ -11,6 +11,10 @@ import { WebhookWhatsappService, type WebhookWhatsappDeps } from "@/lib/services
 import type { IngestaResumen } from "@/lib/services/ChatWhatsappService";
 import type { WebhookEventos } from "@/lib/types/whatsapp-webhook";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-36 T5.3 (design §10; R19-R21) — `WebhookWhatsappService` con dobles: dos empresas, cada una con
 // su numero, su App Secret y su token de verificacion.
 //

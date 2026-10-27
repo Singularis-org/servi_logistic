@@ -4,6 +4,10 @@ import { render, cleanup } from "@testing-library/react";
 import type { RolValue } from "@prisma/client";
 
 // El topbar monta el botón de salir (cliente): se stubbea para aislar el pre-fetch y las props.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));

@@ -25,6 +25,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { datosDeOrganizacionDePrueba, fijarEmpresa } from "../../fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal, type TxDeTest } from "./_postgres-real";
+import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 
 // SL-17 / T3.8 (design §7.9, D20; R16, R42, R13) — las entradas SIN sesión TRABAJAN con dos
 // empresas con datos, cada una en la suya. «B no ve A» no basta: un cron que solo corriera en la
@@ -108,6 +109,11 @@ async function sembrarEmpresa(etiqueta: string, distritoNombre: string): Promise
   const org = await base.organizacion.create({
     data: datosDeOrganizacionDePrueba(`T38 ${etiqueta} ${RUN}`),
     select: { id: true },
+  });
+  // SL-23 (R6, R28): una empresa nueva nace sin módulos, y este archivo recorre las entradas de todos
+  // (crons de wallet y WhatsApp incluidos). Se encienden los 8 como dueño, como haría el superadmin.
+  await base.organizacionModulo.createMany({
+    data: ORDEN_MODULOS.map((modulo) => ({ organizacionId: org.id, modulo })),
   });
   return enEmpresa(org.id, async (tx) => {
     const fks = await crearFksDeOrden(tx);
@@ -383,7 +389,8 @@ describeSiHayBase("SL-17 — entradas sin sesion con dos empresas con datos (Pos
 
     expect(res.status).toBe(200);
     const cuerpo = await res.json();
-    expect(cuerpo.empresas).toEqual({ procesadas: 1, fallidas: [A.id] });
+    // SL-23 (R21): `saltadas` cuenta las empresas con Wallet apagado; las dos lo tienen encendido.
+    expect(cuerpo.empresas).toEqual({ procesadas: 1, fallidas: [A.id], saltadas: 0 });
     expect(cuerpo.egresosGenerados).toBe(1);
     const delDia = await base.walletMovimiento.findMany({
       where: { categoria: "egreso_gasto_fijo", origenId: { endsWith: `:${fecha}` }, organizacionId: { in: [A.id, B.id] } },

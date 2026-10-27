@@ -157,6 +157,7 @@ function repoFiltrado(
     enqueue: base.enqueue.bind(base),
     complete: base.complete.bind(base),
     fail: base.fail.bind(base),
+    descartar: base.descartar.bind(base),
     findByDedupeKeys: base.findByDedupeKeys.bind(base),
     async claimBatch(limit: number, opts: ClaimOpts): Promise<JobDTO[]> {
       const { now, visibilityCutoff } = opts;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
@@ -24,6 +24,10 @@ import { comoApp } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, urlDeBaseDeDatos } from "./_postgres-real";
 import { conectar, type Conexion } from "./_fixtures/ida-y-vuelta-32";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SL-45 (review B1 y B2) — la deuda con la plataforma no se baja con SQL a mano como `servi_app`, y

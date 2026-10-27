@@ -154,6 +154,11 @@ export interface FuentesEtiqueta {
    * la credencial, su valor cifrado, el numero de WhatsApp ni el mensaje del proveedor (R33).
    */
   integracion: { servicioNombre: string };
+  /**
+   * SL-23 (design §4.3) — el modulo encendido de una empresa se etiqueta por el NOMBRE del modulo,
+   * que es vocabulario del catalogo: ni texto libre ni dato de cliente.
+   */
+  organizacion_modulo: { moduloNombre: string };
 }
 
 /**
@@ -235,6 +240,7 @@ const CONSTRUCTORES: {
   canton: (f) => unir(f?.nombre, f?.provinciaNombre),
   distrito: (f) => unir(f?.nombre, f?.cantonNombre, f?.provinciaNombre),
   integracion: (f) => limpiar(f?.servicioNombre),
+  organizacion_modulo: (f) => limpiar(f?.moduloNombre),
 };
 
 /**

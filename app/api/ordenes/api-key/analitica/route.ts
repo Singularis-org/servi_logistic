@@ -52,6 +52,7 @@ import {
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
 import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 import {
   consultarAnaliticaIntegrador,
   type AnaliticaIntegradorDeps,
@@ -137,6 +138,9 @@ export async function handleAnaliticaApiKey(
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
+      // SL-23 (§3.7, R33): pieza compartida. `conEmpresaDeLaKey` ya exigio «API e integraciones»;
+      // esta ruta lee la analitica, asi que tambien exige Analitica, antes de leer nada.
+      await exigirModuloActivo("analitica");
       // 2. 267/R9/R27 — LECTURA CLAVE POR CLAVE, igual que `app/api/ordenes/api-key/route.ts`.
       // Volcar `Object.fromEntries(sp)` convertiria cualquier clave futura en entrada del schema,
       // que es justo lo que 106/R8 impide. Y aqui compra algo mas: `tienda_id`, `zona_id` y

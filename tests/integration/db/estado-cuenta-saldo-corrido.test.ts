@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { verEstadoCuentaAction } from "@/lib/actions/estado-cuenta";
@@ -7,6 +7,10 @@ import type { EstadoCuentaDTO, VerEstadoCuentaResult } from "@/lib/types/estado-
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459 } from "./_fixtures/caja-459";
 import { leerEstadoCuenta, lineaDe, montarEstadoCuenta, sembrarEscenario458 } from "./_fixtures/wallet-458";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.6 — EL ESTADO DE CUENTA contra Postgres: lo que la fotografia no cubre

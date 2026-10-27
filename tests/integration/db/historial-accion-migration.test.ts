@@ -11,6 +11,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T0.3 + T8.2 (R8/R40) — LA MIGRACION, LEIDA DE LA BASE APLICADA.
@@ -26,7 +27,7 @@ import {
 //   - R2: las columnas de mutacion NO existen en la tabla real;
 //   - R40: las tres consultas del modulo resuelven por INDICE y no por `Seq Scan`, sobre un
 //     corpus lo bastante grande para que el planificador prefiera el indice — y la cifra va
-//     escrita;
+//     escrita (SL-18 T5.4: la primera pagina, con la empresa delante; ver el bloque de R40);
 //   - el `down.sql` existe y revierte lo que el `migration.sql` crea.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -196,7 +197,10 @@ describeSiHayBase("362/T0.3 — la migracion del historial de acciones, contra P
         ORDER BY indexname`,
     );
     const nombres = filas.map((f) => f.indexname);
-    expect(nombres).toContain("historial_accion_created_at_id_idx");
+    // SL-18 (T5.4): el del listado por fecha lleva la empresa delante y sustituye a
+    // `historial_accion_created_at_id_idx`, que ya no debe estar (con el vivo el plan alternaba).
+    expect(nombres).toContain("historial_accion_organizacion_id_created_at_id_idx");
+    expect(nombres).not.toContain("historial_accion_created_at_id_idx");
     expect(nombres).toContain("historial_accion_actor_usuario_id_created_at_idx");
     expect(nombres).toContain("historial_accion_entidad_tipo_entidad_id_idx");
     // `orden_historial_estado` ya se comio un truncamiento silencioso: aqui se comprueba.
@@ -207,6 +211,15 @@ describeSiHayBase("362/T0.3 — la migracion del historial de acciones, contra P
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // R40 — las tres consultas del modulo resuelven por INDICE
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// SL-18 (T5.4, R24; decision de Camilo, 2026-10-26). Desde SL-17 las tres consultas llevan la
+// empresa (`organizacion_id = $n`, lo pone la extension), y la migracion
+// `20261026090200_indices_ordenes_gestiones_historial` sustituyo `historial_accion_created_at_id_idx`
+// por `(organizacion_id, created_at DESC, id)`: con el viejo vivo el plan alternaba entre los dos.
+// Lo que R40 protege no cambia —ninguna de las tres recorre la tabla—; cambian la forma de la
+// primera consulta (con su empresa, como la emite `HistorialAccionRepository.list`) y el nombre
+// del indice que la sirve. El corpus lleva DOS empresas intercaladas por fecha, como escribe
+// produccion, para que el indice elegido sea el que acota por empresa.
 
 describeSiHayBase("362/T8.2 (R40) — el listado no recorre la tabla entera", () => {
   let prisma: PrismaClient;
@@ -219,35 +232,63 @@ describeSiHayBase("362/T8.2 (R40) — el listado no recorre la tabla entera", ()
     await prisma.$disconnect();
   });
 
-  /** Siembra el corpus dentro de la tx y deja las estadisticas al dia para el planificador. */
-  async function sembrarCorpus(tx: TxDeTest, actorId: string): Promise<string> {
-    const entidadObjetivo = randomUUID();
+  interface Corpus {
+    /** La empresa de la transaccion: la que consultan los tres casos. */
+    empresa: string;
+    actorId: string;
+    entidadId: string;
+  }
+
+  /**
+   * Siembra el corpus dentro de la tx y deja las estadisticas al dia para el planificador.
+   *
+   * `FILAS_DEL_CORPUS` por empresa, la de la transaccion y otra, intercaladas. En modo `replica`:
+   * el actor es un id sintetico y la FK y el trigger de misma empresa no lo verian, que es lo que
+   * permite no depender de un usuario sembrado (la base de test nace vacia, SL-11). Ni la FK ni el
+   * trigger cambian el plan.
+   */
+  async function sembrarCorpus(tx: TxDeTest): Promise<Corpus> {
+    const [{ empresa }] = await tx.$queryRawUnsafe<{ empresa: string }[]>(
+      `SELECT current_setting('app.organizacion_id') AS empresa`,
+    );
+    const otra = (await crearOrganizacion(tx)).id;
+    const actorId = randomUUID();
+    const entidadId = randomUUID();
+    await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`);
     const lote = 500;
     for (let desde = 0; desde < FILAS_DEL_CORPUS; desde += lote) {
       await tx.historialAccion.createMany({
-        data: Array.from({ length: Math.min(lote, FILAS_DEL_CORPUS - desde) }, (_, i) => ({
-          id: randomUUID(),
-          accion: "orden_eliminada" as const,
-          entidadTipo: "orden" as const,
-          // Una sola entidad objetivo, para que «que le paso a ESTA» sea selectivo.
-          entidadId: desde + i === 0 ? entidadObjetivo : randomUUID(),
-          entidadEtiqueta: `corpus-${desde + i}`,
-          actorUsuarioId: desde + i < 5 ? actorId : null,
-          actorNombre: desde + i < 5 ? "Actor Corpus" : null,
-          actorRol: desde + i < 5 ? ("maestro" as const) : null,
-          monto: null,
-          valorAnterior: null,
-          valorNuevo: null,
-          loteId: randomUUID(),
-          createdAt: new Date(Date.UTC(2026, 0, 1) + (desde + i) * 60_000),
-        })),
+        data: Array.from({ length: Math.min(lote, FILAS_DEL_CORPUS - desde) }, (_, i) =>
+          [empresa, otra].map((organizacionId) => {
+            const propia = organizacionId === empresa;
+            const n = desde + i;
+            return {
+              id: randomUUID(),
+              organizacionId,
+              accion: "orden_eliminada" as const,
+              entidadTipo: "orden" as const,
+              // Una sola entidad objetivo, para que «que le paso a ESTA» sea selectivo.
+              entidadId: propia && n === 0 ? entidadId : randomUUID(),
+              entidadEtiqueta: `corpus-${n}`,
+              actorUsuarioId: propia && n < 5 ? actorId : null,
+              actorNombre: propia && n < 5 ? "Actor Corpus" : null,
+              actorRol: propia && n < 5 ? ("maestro" as const) : null,
+              monto: null,
+              valorAnterior: null,
+              valorNuevo: null,
+              loteId: randomUUID(),
+              createdAt: new Date(Date.UTC(2026, 0, 1) + n * 60_000),
+            };
+          }),
+        ).flat(),
       });
     }
+    await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = origin`);
     // ⚠️ SIN `ANALYZE` el planificador usa estadisticas VIEJAS (o ninguna) y puede elegir el plan
     // equivocado por un motivo que no tiene nada que ver con los indices. Se corre dentro de la
     // transaccion, sobre las filas recien insertadas.
     await tx.$executeRawUnsafe(`ANALYZE "historial_accion"`);
-    return entidadObjetivo;
+    return { empresa, actorId, entidadId };
   }
 
   async function plan(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<string> {
@@ -261,9 +302,8 @@ describeSiHayBase("362/T8.2 (R40) — el listado no recorre la tabla entera", ()
     // indice existiera, y los tres casos de abajo pasarian sin probar nada.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actor = await tx.usuario.findFirstOrThrow({ select: { id: true } });
-      await sembrarCorpus(tx, actor.id);
-      const total = await tx.historialAccion.count();
+      const { empresa } = await sembrarCorpus(tx);
+      const total = await tx.historialAccion.count({ where: { organizacionId: empresa } });
       // Un `WHERE` que NINGUN indice sirve: si esto NO fuera `Seq Scan`, el detector estaria roto.
       const sinIndice = await plan(
         tx,
@@ -279,30 +319,32 @@ describeSiHayBase("362/T8.2 (R40) — el listado no recorre la tabla entera", ()
   it("⭑ (1/3) la PRIMERA PAGINA por fecha resuelve por indice, no por `Seq Scan`", async () => {
     const plan1 = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actor = await tx.usuario.findFirstOrThrow({ select: { id: true } });
-      await sembrarCorpus(tx, actor.id);
+      const { empresa } = await sembrarCorpus(tx);
       return plan(
         tx,
-        `SELECT * FROM "historial_accion" ORDER BY "created_at" DESC, "id" ASC LIMIT 25`,
+        `SELECT * FROM "historial_accion" WHERE "organizacion_id" = $1
+          ORDER BY "created_at" DESC, "id" ASC LIMIT 25`,
+        empresa,
       );
     });
 
     expect(plan1, `el 90 % de las visitas recorreria la tabla entera:\n${plan1}`).not.toContain(
       "Seq Scan",
     );
-    expect(plan1).toContain("historial_accion_created_at_id_idx");
+    // SL-18: el indice con la empresa delante, que recorre solo las filas de esta empresa.
+    expect(plan1).toContain("historial_accion_organizacion_id_created_at_id_idx");
   });
 
   it("⭑ (2/3) «que hizo Fulano» resuelve por su indice", async () => {
     const plan2 = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actor = await tx.usuario.findFirstOrThrow({ select: { id: true } });
-      await sembrarCorpus(tx, actor.id);
+      const { empresa, actorId } = await sembrarCorpus(tx);
       return plan(
         tx,
-        `SELECT * FROM "historial_accion" WHERE "actor_usuario_id" = $1
+        `SELECT * FROM "historial_accion" WHERE "actor_usuario_id" = $1 AND "organizacion_id" = $2
           ORDER BY "created_at" DESC, "id" ASC LIMIT 25`,
-        actor.id,
+        actorId,
+        empresa,
       );
     });
 
@@ -315,13 +357,13 @@ describeSiHayBase("362/T8.2 (R40) — el listado no recorre la tabla entera", ()
   it("⭑ (3/3) «que le paso a esta entidad» resuelve por su indice", async () => {
     const plan3 = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actor = await tx.usuario.findFirstOrThrow({ select: { id: true } });
-      const entidadId = await sembrarCorpus(tx, actor.id);
+      const { empresa, entidadId } = await sembrarCorpus(tx);
       return plan(
         tx,
         `SELECT * FROM "historial_accion" WHERE "entidad_tipo" = 'orden'::"historial_accion_entidad"
-           AND "entidad_id" = $1`,
+           AND "entidad_id" = $1 AND "organizacion_id" = $2`,
         entidadId,
+        empresa,
       );
     });
 

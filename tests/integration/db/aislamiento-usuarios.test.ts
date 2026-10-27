@@ -318,31 +318,37 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
   });
 
   /* ------------------------------------------------------------------------ */
-  /* R36 — email y cédula, únicos GLOBALES                                     */
+  /* R36 — email y cédula: desde SL-18 (R1) únicos POR EMPRESA                 */
   /* ------------------------------------------------------------------------ */
+  // SL-17 R36 los dejó globales; SL-18 M1 los pasa a `(organizacion_id, email|cedula)`. Estos dos
+  // casos decían «falla con P2002»; ahora la cuenta de B se crea, y dentro de B el repetido sigue
+  // chocando con el error de dominio de siempre (SL-18 R2).
 
-  it("R36: un usuario de B con el email de un usuario de A falla con P2002 y no se escribe", async () => {
+  it("SL-18 R1 (antes R36): un usuario de B con el email de un usuario de A se crea en B", async () => {
     const emailDeA = (await filaEnBase(ids.a1)).email;
     const datos = { ...datosDeUsuario("r36-email"), email: emailDeA };
 
-    const directo = comoB(() => app.usuario.create({ data: datos }));
-    await expect(directo).rejects.toMatchObject({ code: "P2002" });
-    // Por el repositorio de la pantalla, el mismo choque llega como error de dominio.
-    await expect(comoB(() => repo.create(datos, ids.maestroB))).rejects.toEqual(new UsuarioDuplicadoError("email"));
+    const creado = await comoB(() => repo.create(datos, ids.maestroB));
 
-    expect(await base.usuario.count({ where: { cedula: datos.cedula } })).toBe(0);
-    expect(await base.usuario.count({ where: { email: emailDeA } })).toBe(1);
+    expect(await filaEnBase(creado.id)).toMatchObject({ email: emailDeA, organizacionId: orgB });
+    expect(await base.usuario.count({ where: { email: emailDeA } })).toBe(2);
+    // Repetido en la MISMA empresa (B), el choque sigue llegando como error de dominio.
+    const otraVez = { ...datosDeUsuario("r36-email-2"), email: emailDeA };
+    await expect(comoB(() => repo.create(otraVez, ids.maestroB))).rejects.toEqual(new UsuarioDuplicadoError("email"));
+    expect(await base.usuario.count({ where: { email: emailDeA } })).toBe(2);
   });
 
-  it("R36: un usuario de B con la cédula de un usuario de A falla con P2002 y no se escribe", async () => {
+  it("SL-18 R1 (antes R36): un usuario de B con la cédula de un usuario de A se crea en B", async () => {
     const cedulaDeA = (await filaEnBase(ids.a1)).cedula;
     const datos = { ...datosDeUsuario("r36-cedula"), cedula: cedulaDeA };
 
-    await expect(comoB(() => app.usuario.create({ data: datos }))).rejects.toMatchObject({ code: "P2002" });
-    await expect(comoB(() => repo.create(datos, ids.maestroB))).rejects.toEqual(new UsuarioDuplicadoError("cedula"));
+    const creado = await comoB(() => repo.create(datos, ids.maestroB));
 
-    expect(await base.usuario.count({ where: { email: datos.email } })).toBe(0);
-    expect(await base.usuario.count({ where: { cedula: cedulaDeA } })).toBe(1);
+    expect(await filaEnBase(creado.id)).toMatchObject({ cedula: cedulaDeA, organizacionId: orgB });
+    expect(await base.usuario.count({ where: { cedula: cedulaDeA } })).toBe(2);
+    const otraVez = { ...datosDeUsuario("r36-cedula-2"), cedula: cedulaDeA };
+    await expect(comoB(() => repo.create(otraVez, ids.maestroB))).rejects.toEqual(new UsuarioDuplicadoError("cedula"));
+    expect(await base.usuario.count({ where: { cedula: cedulaDeA } })).toBe(2);
   });
 
   /* ------------------------------------------------------------------------ */

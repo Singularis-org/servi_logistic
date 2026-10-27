@@ -44,7 +44,7 @@ export interface EntradaAccionPlataforma extends ActorPlataformaCongelado {
   detalle?: Prisma.InputJsonValue | null;
 }
 
-// Anchuras de las columnas (migración 20261026120400). Recortar aquí y no fallar: una etiqueta larga
+// Anchuras de las columnas (migración 20261026130400). Recortar aquí y no fallar: una etiqueta larga
 // no puede tumbar la acción que registra.
 const ANCHO_ETIQUETA = 120;
 const ANCHO_ACTOR = 120;

@@ -74,6 +74,8 @@ export async function appendAccion(
       // parametro: generarlo aqui dentro del `map` daria un uuid POR FILA y el lote dejaria de
       // distinguir «79 borrados de un acto» de «79 actos».
       loteId,
+      // SL-23: solo si viene. Ningun llamador de empresa la pasa; su DEFAULT sigue mandando.
+      ...(e.organizacionId !== undefined ? { organizacionId: e.organizacionId } : {}),
     })),
   });
 }

@@ -5,6 +5,7 @@ import {
   olvidarPreferenciaDeAvisos,
   registrarSuscripcionPush,
 } from "@/lib/actions/push";
+import type { IPushEndpointPlataformaRepository } from "@/lib/interfaces/repositories/IPushEndpointPlataformaRepository";
 import type { IPushSuscripcionRepository } from "@/lib/interfaces/repositories/IPushSuscripcionRepository";
 import type { IUsuarioPreferenciaRepository } from "@/lib/interfaces/repositories/IUsuarioPreferenciaRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -17,7 +18,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // (R3), `olvidarPreferenciaDeAvisos` la borra (R7), y sin sesion no se escribe NINGUNA de las dos
 // (R24). El doble de abajo apunta el VALOR de cada escritura, no solo que hubo una.
 
-const ACTOR: Actor = { usuarioId: "u-real", rol: "mensajero", zonaId: null };
+const ACTOR: Actor = { usuarioId: "u-real", rol: "mensajero", zonaId: null, organizacionId: "org-a" };
 
 const ENTRADA_BUENA = {
   endpoint: "https://fcm.googleapis.com/fcm/send/abc123",
@@ -76,7 +77,27 @@ function preferenciaDoble(): IUsuarioPreferenciaRepository & {
   };
 }
 
-const conActor = (actor: Actor | null) => ({ getActor: async () => actor });
+/**
+ * SL-18 — el doble del paso de plataforma («el último gana»). Apunta cada liberación con su
+ * endpoint y su empresa, y el orden respecto del alta lo mide el caso que lo necesita.
+ */
+function plataformaDoble(): IPushEndpointPlataformaRepository & {
+  liberados: { endpoint: string; organizacionId: string }[];
+} {
+  const liberados: { endpoint: string; organizacionId: string }[] = [];
+  return {
+    liberados,
+    liberarDeOtrasEmpresas: vi.fn(async (endpoint: string, organizacionId: string) => {
+      liberados.push({ endpoint, organizacionId });
+      return 0;
+    }),
+  };
+}
+
+const conActor = (actor: Actor | null, plataformaRepo = plataformaDoble()) => ({
+  getActor: async () => actor,
+  plataformaRepo,
+});
 
 describe("410/R50 — sin sesion NO se escribe nada", () => {
   it("⭑ registrar sin sesion: `unauthenticated` y el repositorio NI SE TOCA", async () => {
@@ -338,6 +359,74 @@ describe("422/R24 — sin sesion no se escribe NI la suscripcion NI la preferenc
 
     expect(repo.registrar).toHaveBeenCalledTimes(1);
     expect(preferenciaRepo.fijarAvisosPush).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SL-18/R26–R28 — el último gana: se libera el endpoint de otra empresa ANTES del alta", () => {
+  it("⭑ R26: libera ESE endpoint con la empresa de la SESION, y luego registra", async () => {
+    const orden: string[] = [];
+    const plataforma = plataformaDoble();
+    plataforma.liberarDeOtrasEmpresas = vi.fn(async (endpoint: string, organizacionId: string) => {
+      plataforma.liberados.push({ endpoint, organizacionId });
+      orden.push("liberar");
+      return 1;
+    });
+    const repo = repoDoble();
+    repo.registrar = vi.fn(async () => {
+      orden.push("registrar");
+    });
+
+    const r = await registrarSuscripcionPush(ENTRADA_BUENA, {
+      repo,
+      preferenciaRepo: preferenciaDoble(),
+      ...conActor(ACTOR, plataforma),
+    });
+
+    expect(r).toEqual({ status: "ok" });
+    expect(plataforma.liberados).toEqual([{ endpoint: ENTRADA_BUENA.endpoint, organizacionId: "org-a" }]);
+    expect(orden).toEqual(["liberar", "registrar"]);
+  });
+
+  it("⭑ si liberar falla, NO se registra ni se anota la preferencia: el alta no queda a medias", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const plataforma = plataformaDoble();
+    plataforma.liberarDeOtrasEmpresas = vi.fn(async () => {
+      throw new Error("la base no contesto");
+    });
+    const repo = repoDoble();
+    const preferenciaRepo = preferenciaDoble();
+
+    // Un fallo de base es INTERNAL: la accion relanza (el 500 de siempre) y `alta-push` deshace.
+    await expect(
+      registrarSuscripcionPush(ENTRADA_BUENA, { repo, preferenciaRepo, ...conActor(ACTOR, plataforma) }),
+    ).rejects.toThrow("internal");
+
+    expect(repo.registrar).not.toHaveBeenCalled();
+    expect(preferenciaRepo.escrituras).toEqual([]);
+    error.mockRestore();
+  });
+
+  it("sin sesion o con entrada invalida, la plataforma NI SE TOCA", async () => {
+    const plataforma = plataformaDoble();
+    await registrarSuscripcionPush(ENTRADA_BUENA, {
+      repo: repoDoble(),
+      preferenciaRepo: preferenciaDoble(),
+      ...conActor(null, plataforma),
+    });
+    await registrarSuscripcionPush(
+      { ...ENTRADA_BUENA, endpoint: "no-es-url" },
+      { repo: repoDoble(), preferenciaRepo: preferenciaDoble(), ...conActor(ACTOR, plataforma) },
+    );
+    expect(plataforma.liberarDeOtrasEmpresas).not.toHaveBeenCalled();
+  });
+
+  it("la baja NO libera nada: solo el alta reasigna un endpoint", async () => {
+    const plataforma = plataformaDoble();
+    await eliminarSuscripcionPush(
+      { endpoint: ENTRADA_BUENA.endpoint },
+      { repo: repoDoble(), preferenciaRepo: preferenciaDoble(), ...conActor(ACTOR, plataforma) },
+    );
+    expect(plataforma.liberarDeOtrasEmpresas).not.toHaveBeenCalled();
   });
 });
 

@@ -21,6 +21,7 @@ import {
   type RegistrarAporteCapitalResult,
 } from "@/lib/types/aporte-capital";
 import type { ObtenerComprobanteResult } from "@/lib/types/pago-por-cuenta-tienda";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 459 (design §7.2) — el BORDE del saldo inicial o aporte de capital. Mismo orden que el
 // pago por cuenta: sesion → zod `.strict()` → servicio. R27: ninguna action devuelve, propone ni
@@ -49,7 +50,8 @@ function toActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -58,6 +60,9 @@ function toActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`aporte-capital: AppErrorCode inesperado ${shape.code}`);
   }
@@ -80,6 +85,7 @@ export async function registrarAporteCapitalAction(
   deps: AporteCapitalDeps = {},
 ): Promise<RegistrarAporteCapitalResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R76
     const { comprobante, ...input } = registrarAporteCapitalSchema.parse(
@@ -103,6 +109,7 @@ export async function anularAporteCapitalAction(
   deps: AporteCapitalDeps = {},
 ): Promise<AnularAporteCapitalResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularAporteCapitalSchema.parse(input);
@@ -122,6 +129,7 @@ export async function obtenerComprobanteAporteCapitalAction(
   deps: AporteCapitalDeps = {},
 ): Promise<ObtenerComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = obtenerComprobanteAporteCapitalSchema.parse(input);

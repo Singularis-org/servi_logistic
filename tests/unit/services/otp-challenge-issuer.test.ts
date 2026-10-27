@@ -2,9 +2,6 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import type { IEmailOtpChallengeRepository } from "@/lib/interfaces/repositories/IEmailOtpChallengeRepository";
 import type { IEmailProvider } from "@/lib/interfaces/external/IEmailProvider";
-import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmailSender";
-import { EmailNotificacionProvider } from "@/lib/services/EmailProvider";
-import { PasswordResetService } from "@/lib/services/PasswordResetService";
 
 describe("OtpChallengeIssuer", () => {
   it("nunca persiste el codigo en claro, solo codeHash", async () => {
@@ -130,77 +127,7 @@ describe("OtpChallengeIssuer (feature 80)", () => {
   });
 });
 
-// SL-41 (R9) — login y «recuperar contraseña» mandan EL MISMO correo. Se recorre el camino real de
-// cada uno hasta el transporte: el login llama a `OtpChallengeIssuer.emitir` (AuthService) y la
-// recuperación entra por `PasswordResetService.solicitar`. Con la plantilla real detrás, los dos
-// mensajes solo pueden diferir en el código.
-describe("OtpChallengeIssuer (SL-41 R9)", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  function otpRepoDoble(): IEmailOtpChallengeRepository {
-    return {
-      create: vi.fn().mockResolvedValue({
-        id: "otp-1",
-        usuarioId: "usr-1",
-        codeHash: "hash",
-        deviceHash: "hash-device",
-        ipAddress: "1.2.3.4",
-        expiresAt: new Date(Date.now() + 600_000),
-        consumedAt: null,
-        createdAt: new Date(),
-      }),
-      findActiveById: vi.fn(),
-      markConsumed: vi.fn(),
-      consumirSiActivo: vi.fn(),
-      findLatestActiveByUsuarioId: vi.fn(),
-      contarRecientesPorUsuario: vi.fn().mockResolvedValue(0),
-    };
-  }
-
-  function emisorConPlantillaReal() {
-    const enviados: EmailMessage[] = [];
-    const sender: IEmailSender = {
-      enviar: async (m) => {
-        enviados.push(m);
-        return { messageId: "id" };
-      },
-    };
-    vi.spyOn(console, "info").mockImplementation(() => {});
-    return { enviados, provider: new EmailNotificacionProvider(sender) };
-  }
-
-  /** El código es aleatorio: se sustituye por un marcador para comparar lo demás. */
-  function sinCodigo(m: EmailMessage): EmailMessage {
-    const code = /\n(\d{6})\n/.exec(m.text)?.[1];
-    expect(code, "el texto plano no lleva un código de 6 dígitos en su línea").toBeDefined();
-    const fuera = (s: string | undefined) => s?.split(code!).join("<CODIGO>");
-    return { to: m.to, subject: m.subject, text: fuera(m.text)!, html: fuera(m.html) };
-  }
-
-  it("el login y la recuperación envían el mismo correo, con el asunto del OTP", async () => {
-    const login = emisorConPlantillaReal();
-    await new OtpChallengeIssuer(otpRepoDoble(), login.provider).emitir({
-      usuarioId: "usr-1",
-      email: "ana@example.com",
-      deviceHash: "hash-device",
-      ipAddress: "1.2.3.4",
-    });
-
-    const recuperacion = emisorConPlantillaReal();
-    const otpRepo = otpRepoDoble();
-    const servicio = new PasswordResetService(
-      {
-        findByEmail: vi.fn().mockResolvedValue({ id: "usr-1", email: "ana@example.com" }),
-        updatePasswordHash: vi.fn(),
-      },
-      otpRepo,
-      new OtpChallengeIssuer(otpRepo, recuperacion.provider),
-    );
-    await servicio.solicitar({ email: "ana@example.com", deviceHash: "hash-device", ipAddress: "1.2.3.4" });
-
-    expect(login.enviados).toHaveLength(1);
-    expect(recuperacion.enviados).toHaveLength(1);
-    expect(login.enviados[0].subject).toBe("Tu código de verificación de Servi Logistic");
-    expect(sinCodigo(recuperacion.enviados[0])).toEqual(sinCodigo(login.enviados[0]));
-  });
-});
+// SL-41 (R9) decía que login y «recuperar contraseña» mandaban EL MISMO correo de código. Desde
+// SL-18 (R16, R20) la recuperación manda un enlace por cuenta y no pasa por este emisor; su correo
+// se prueba en `tests/unit/password-reset-por-empresa.test.ts`. El emisor sigue vivo: es el del OTP
+// del login.

@@ -130,6 +130,12 @@ export interface NovedadAccionesProps {
    * ⚠️ Corregir NO deja rastro (D4, 2026-08-28): no publica nota en el hilo ni avisa a nadie.
    */
   onCorregirDatos: (novedad: NovedadDTO) => void;
+  /**
+   * SL-23 (design §6.3) — si el módulo WhatsApp está encendido para la empresa. Lo decide la página
+   * (Server Component). Con `false` no se pinta la acción de plantilla de WhatsApp; el resto de
+   * `/novedades` es del núcleo y no cambia. Requerido, sin `?`: un montaje que lo olvide no compila.
+   */
+  whatsappActivo: boolean;
 }
 
 /** Cómo se pinta una acción de icono: su etiqueta visible, su icono y cómo se nombra a sí misma. */
@@ -278,13 +284,15 @@ export function NovedadAcciones(props: NovedadAccionesProps) {
                 nombre={novedad.destinatario}
                 mostrarWhatsapp={false}
               />
-              <EnviarPlantillaWhatsappButton
-                orden={novedad}
-                size="sm"
-                disparador="whatsapp"
-                // ESTA es la superficie de las plantillas de tienda, y la unica.
-                incluirPlantillasDeTienda
-              />
+              {props.whatsappActivo ? (
+                <EnviarPlantillaWhatsappButton
+                  orden={novedad}
+                  size="sm"
+                  disparador="whatsapp"
+                  // ESTA es la superficie de las plantillas de tienda, y la unica.
+                  incluirPlantillasDeTienda
+                />
+              ) : null}
             </div>
           );
         }

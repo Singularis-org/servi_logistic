@@ -59,8 +59,9 @@ test("el comando de arranque deja un superadmin sin empresa y no imprime sus dat
   ]) {
     expect(arranque?.salida).not.toContain(valor);
   }
-  const fila = await dueno!.usuario.findUnique({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL },
+  // SL-18: email unico por empresa; el superadmin es la cuenta sin empresa (R3)
+  const fila = await dueno!.usuario.findFirst({
+    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, organizacionId: null },
     select: { organizacionId: true, estado: true, rol: { select: { value: true } } },
   });
   expect(fila).toEqual({ organizacionId: null, estado: "activo", rol: { value: "superadmin" } });

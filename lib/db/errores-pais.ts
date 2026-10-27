@@ -1,8 +1,8 @@
 // SL-20 (design §2.2, §2.5) — los dos errores de país que lanza la base y su traducción.
 //
-//   · SL020 — el trigger `organizacion_pais_inmutable` (20261026120100): una escritura intentó cambiar
+//   · SL020 — el trigger `organizacion_pais_inmutable` (20261026130100): una escritura intentó cambiar
 //     el país de una empresa (R7).
-//   · SL021 — el trigger `geografia_del_pais_de_la_empresa` (20261026120300): una orden, una zona o una
+//   · SL021 — el trigger `geografia_del_pais_de_la_empresa` (20261026130300): una orden, una zona o una
 //     marca de zona especial apuntó a geografía de otro país (R13, R38).
 //
 // Con la geografía filtrada por la RLS del país, la app normal no llega a mandar un id de otro país:

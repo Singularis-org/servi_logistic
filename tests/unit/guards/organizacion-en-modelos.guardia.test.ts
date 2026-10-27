@@ -187,7 +187,9 @@ describe("SL-17 · organizacion_id en los modelos (R2, R4, R5, R23)", () => {
 
   it("autocomprobación sobre el esquema real: sin el índice de Orden, falla nombrándola", () => {
     const orden = modelosDelEsquema(esquema).find((m) => m.modelo === "Orden")!;
-    const sinIndice = orden.cuerpo.replace(/^\s*@@index\(\s*\[\s*organizacionId\b[^\n]*\n/m, "");
+    // Se quitan TODOS los que empiezan por la empresa: desde SL-18 (M3) Orden tiene dos, y con
+    // quitar uno el otro seguiria cumpliendo R2 y la autocomprobacion no veria nada.
+    const sinIndice = orden.cuerpo.replace(/^\s*@@index\(\s*\[\s*organizacionId\b[^\n]*\n/gm, "");
     expect(sinIndice).not.toBe(orden.cuerpo);
     const mutado = esquema.replace(orden.cuerpo, sinIndice);
     expect(problemasDeClasificacion(mutado, CLASIFICACION_REAL)).toEqual([

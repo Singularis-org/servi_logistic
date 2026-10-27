@@ -68,9 +68,9 @@ function usuarioDTO(): UsuarioPublico {
 
 function repoUsuarios(): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuarioDTO()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn().mockResolvedValue(usuarioDTO()),
     updatePasswordHash: vi.fn(),
     listMensajeros: vi.fn(),

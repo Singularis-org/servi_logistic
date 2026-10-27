@@ -139,7 +139,7 @@ const novedad = (over: Partial<NovedadDTO> = {}): NovedadDTO => ({
 
 function montar(grupo: "devolucion" | "ayuda", over: Partial<NovedadDTO> = {}) {
   return render(
-    <NovedadesModule
+    <NovedadesModule whatsappActivo
       grupo={grupo}
       items={[novedad(over)]}
       total={1}

@@ -22,6 +22,9 @@ import { z } from "zod";
 import type { RolValue } from "@prisma/client";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { appErrorToResponse } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { ModuloInactivoError } from "@/lib/modulos/modulo-inactivo-error";
 import { ROLES_HISTORICO_CONVERSACIONES } from "@/lib/auth/menu-visibility";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { WhatsappMediaClient } from "@/lib/clients/whatsapp-media";
@@ -99,6 +102,15 @@ export async function GET(
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (actor === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  // SL-23 (design §5.5, R17): con WhatsApp apagado para la empresa de la sesion, 403
+  // `modulo_inactivo`, sin tocar la base ni la Graph API.
+  try {
+    await exigirModuloActivo("whatsapp");
+  } catch (error) {
+    if (error instanceof ModuloInactivoError) return appErrorToResponse(error.toShape());
+    throw error;
   }
 
   const { mensajeId } = await ctx.params;

@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import Link from "next/link";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -17,6 +18,8 @@ export default async function HistorialEnviosWhatsappPage({
 }: {
   searchParams: Promise<{ envio?: string | string[] }>;
 }) {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("whatsapp");
   const actor = await resolveActorFromSession();
   if (actor?.rol !== "maestro") {
     return (

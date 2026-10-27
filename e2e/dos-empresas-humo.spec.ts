@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import type { PrismaClient } from "@prisma/client";
+import type { ModuloApagable, PrismaClient } from "@prisma/client";
+
+import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
 
 import {
   clienteDueno,
@@ -18,6 +20,7 @@ import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
   entrarConOtp,
+  fijarModulosPorPantalla,
   olvidarDispositivos,
   recuperarContrasena,
   SUPERADMIN_DE_PRUEBA,
@@ -32,9 +35,10 @@ import {
  *    OTP y da de alta A y B desde `/plataforma/empresas`. Que repetir el alta no cree otra la
  *    cubren `superadmin-empresas.spec.ts` (por la pantalla) y
  *    `tests/integration/db/organizacion-alta.test.ts` (`ya_existe`, R45).
- * 2. Primer acceso: cada maestro entra por «¿Olvidaste tu contraseña?» con el código que el
- *    emisor de consola escribió en el log del servidor para SU correo (SL-44 R15), fija su
- *    contraseña y después entra por `/login` con el OTP de dispositivo nuevo. No se exige SMTP
+ * 2. Primer acceso: cada maestro entra por «¿Olvidaste tu contraseña?» con el enlace que el
+ *    emisor de consola escribió en el log del servidor para SU correo (SL-44 R15; desde SL-18 R32,
+ *    un enlace y no un código), fija su contraseña y después entra por `/login` con el OTP de
+ *    dispositivo nuevo. No se exige SMTP
  *    ni `messageId`: el correo consta en el log como enviado a ese maestro (R17).
  * 3. Datos: en cada empresa, con `fijarEmpresa`, lo mínimo de cada pantalla, con marcadores
  *    `A-<uuid>` / `B-<uuid>` en sus textos visibles (excepción de R8 de SL-44, `design.md > D4`:
@@ -46,7 +50,12 @@ import {
  * 5. B abriendo los detalles de A (estado de cuenta de su tienda y de su mensajero) ve «no
  *    encontrado»; A abriendo los mismos ve su marcador (el control que hace falsable el anterior).
  *    La app no tiene una URL de detalle de orden: el detalle de la orden se abre dentro de `/ordenes`.
- * 6. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
+ * 6. Módulos (SL-23, design §10; R15, R16, R23, R25, R26): tras el alta, el superadmin abre el
+ *    detalle de cada empresa y enciende por la pantalla los 8 módulos de A y todos menos «Ranking»
+ *    de B. Cada maestro recorre solo las rutas de SU menú (`rutasDelMenuDelMaestro(apagados)`): A
+ *    las recorre todas, como antes de SL-23 (R23). Y B no ve «Ranking» en el menú y recibe «No
+ *    encontramos esta página» en `/ranking` y `/ranking/historico`, mientras A lo ve y lo abre.
+ * 7. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
  *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
  *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
  *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
@@ -65,11 +74,21 @@ const NO_ENCONTRADO = "No encontramos esta página";
 let dueno: PrismaClient | null = null;
 let log: LogDelServidor | null = null;
 const empresas: Partial<Record<Letra, Empresa>> = {};
-/** El código de recuperación que el log del servidor recibió para cada maestro (R17). */
-const codigosDeRecuperacion: Partial<Record<Letra, string>> = {};
+/** El enlace de recuperación que el log del servidor recibió para cada maestro (R17; SL-18 R32). */
+const enlacesDeRecuperacion: Partial<Record<Letra, string>> = {};
 const datos: Partial<Record<Letra, DatosSembrados>> = {};
 const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
-const rutas = rutasDelMenuDelMaestro();
+/** SL-23 (R26): A con los 8 módulos encendidos; B con todos menos uno, «Ranking». */
+const APAGADOS: Record<Letra, readonly ModuloApagable[]> = { A: [], B: ["ranking"] };
+const rutas: Record<Letra, string[]> = {
+  A: rutasDelMenuDelMaestro(APAGADOS.A),
+  B: rutasDelMenuDelMaestro(APAGADOS.B),
+};
+const RUTAS_DE_RANKING = ["/ranking", "/ranking/historico"] as const;
+
+function encendidosDe(letra: Letra): ModuloApagable[] {
+  return ORDEN_MODULOS.filter((m) => !APAGADOS[letra].includes(m));
+}
 
 function otra(letra: Letra): Letra {
   return letra === "A" ? "B" : "A";
@@ -118,6 +137,12 @@ test.beforeAll(async ({ browser }) => {
       await altaDeEmpresaPorPantalla(sa, d);
       altas[letra] = d;
     }
+    // SL-23 (R26): el alta deja solo el núcleo; los módulos se encienden desde el detalle.
+    for (const letra of ["A", "B"] as const) {
+      const d = altas[letra];
+      if (!d) throw new Error(`no hay alta de ${letra}`);
+      await fijarModulosPorPantalla(sa, d.nombre, encendidosDe(letra));
+    }
   });
   await ctxSa.close();
 
@@ -135,7 +160,7 @@ test.beforeAll(async ({ browser }) => {
     const password = `Aa1!${randomBytes(12).toString("base64url")}`;
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
-    codigosDeRecuperacion[letra] = await recuperarContrasena(p, d.email, password);
+    enlacesDeRecuperacion[letra] = await recuperarContrasena(p, d.email, password);
     await entrarConOtp(p, d.email, password);
     cookies[letra] = await ctx.cookies();
     await ctx.close();
@@ -185,8 +210,9 @@ test("alta de A y B desde «Empresas» por el superadmin, y el correo de recuper
     const maestros = org.usuarios.filter((u) => u.rol.value === "maestro").map((u) => u.email);
     expect(maestros, `${letra}: el alta deja un solo maestro, el del formulario`).toEqual([e.email]);
     // `recuperarContrasena` lo leyó de la línea `[email][debug] to=<correo del maestro>`.
-    expect(codigosDeRecuperacion[letra], `${letra}: el log no recibió el correo de recuperación de su maestro`).toMatch(
-      /^\d{6}$/,
+    // El valor de `#enlace=`: `<challengeId>.<secreto>` (SL-18 R32).
+    expect(enlacesDeRecuperacion[letra], `${letra}: el log no recibió el correo de recuperación de su maestro`).toMatch(
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
     );
     expect(cookies[letra]?.some((c) => c.name === "session"), `${letra}: el maestro no quedó con sesión`).toBe(true);
     console.log(`[humo] correo de recuperación de ${letra}: en el log, enviado a su maestro`);
@@ -197,14 +223,14 @@ test("alta de A y B desde «Empresas» por el superadmin, y el correo de recuper
 for (const letra of ["A", "B"] as const) {
   test(`el maestro de ${letra} recorre todas las rutas de su menú sin error ni datos de ${otra(letra)}`, async ({ page }) => {
     test.setTimeout(30 * 60_000);
-    expect(rutas.length, "el menú del maestro no dio rutas").toBeGreaterThan(0);
+    expect(rutas[letra].length, "el menú del maestro no dio rutas").toBeGreaterThan(0);
     const errores5xx = await abrirComo(letra, page);
     const ajenos = patronDeMarcador(otra(letra));
     const propios = datosDe(letra).marcadores;
     const vistos = new Set<string>();
     log?.nuevo();
 
-    for (const ruta of rutas) {
+    for (const ruta of rutas[letra]) {
       const antes = errores5xx.length;
       const { texto, html, estado } = await visitar(page, ruta);
       const delServidor = log?.nuevo() ?? "";
@@ -285,6 +311,59 @@ test("B abriendo los detalles de A ve «no encontrado», y A los ve con su marca
       expect.soft(texto.includes(PANTALLA_DE_ERROR), `${letra} en ${ruta}: pantalla de error`).toBe(false);
     }
     expect.soft(errores5xx, `${letra}: respuestas 5xx en los detalles`).toEqual([]);
+    await ctx.close();
+  }
+});
+
+test("SL-23: el superadmin dejó A con los 8 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)", async ({ browser }) => {
+  test.setTimeout(10 * 60_000);
+  const db = dueno;
+  if (!db) throw new Error("sin cliente de base: falló el beforeAll");
+
+  // Lo que la pantalla del superadmin escribió, empresa por empresa (R25: lo de B no toca A).
+  for (const letra of ["A", "B"] as const) {
+    const filas = await db.organizacionModulo.findMany({
+      where: { organizacionId: empresa(letra).organizacionId },
+      select: { modulo: true },
+    });
+    expect(filas.map((f) => f.modulo).sort(), `${letra}: módulos encendidos en la base`).toEqual(
+      [...encendidosDe(letra)].sort(),
+    );
+  }
+  expect(rutas.A, "A: el menú recorrido incluye el ranking").toEqual(expect.arrayContaining([...RUTAS_DE_RANKING]));
+  for (const ruta of RUTAS_DE_RANKING) {
+    expect(rutas.B, `B: ${ruta} no está entre las rutas de su menú`).not.toContain(ruta);
+  }
+
+  for (const letra of ["A", "B"] as const) {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const errores5xx = await abrirComo(letra, page);
+
+    // R15: el desplegable «Ranking» del menú (un botón, no un enlace) solo está en A.
+    await visitar(page, "/dashboard");
+    const nav = page.getByRole("navigation", { name: "Navegación principal" });
+    await expect(nav, `${letra}: no se pintó el menú`).toBeVisible({ timeout: 60_000 });
+    const ranking = nav.getByRole("button", { name: "Ranking", exact: true });
+    const enMenu = await ranking.count();
+    console.log(`[humo módulos ${letra}] «Ranking» en el menú: ${enMenu}`);
+    expect.soft(enMenu, `${letra}: «Ranking» en el menú`).toBe(letra === "A" ? 1 : 0);
+
+    // R16: por URL, B recibe el 404 de la app; A abre las dos pantallas sin error.
+    for (const ruta of RUTAS_DE_RANKING) {
+      const { texto, estado } = await visitar(page, ruta);
+      const noEncontrado = texto.includes(NO_ENCONTRADO);
+      console.log(`[humo módulos ${letra}] ${ruta}: estado=${estado} noEncontrado=${noEncontrado}`);
+      if (letra === "A") {
+        expect.soft(estado, `A en ${ruta}: estado HTTP`).toBeLessThan(400);
+        expect.soft(noEncontrado, `A en ${ruta}: «no encontrado»`).toBe(false);
+      } else {
+        expect.soft(estado, `B en ${ruta}: estado HTTP`).toBe(404);
+        expect.soft(noEncontrado, `B en ${ruta}: no ve «no encontrado»`).toBe(true);
+      }
+      expect.soft(texto.includes(PANTALLA_DE_ERROR), `${letra} en ${ruta}: pantalla de error`).toBe(false);
+    }
+    expect.soft(errores5xx, `${letra}: respuestas 5xx en el ranking`).toEqual([]);
     await ctx.close();
   }
 });

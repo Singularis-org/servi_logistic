@@ -41,14 +41,14 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `dev` antes de SL-20 (T0). */
-const PREVIA = "20261025160100_entorno_marca";
-const M_PAIS = "20261026120000_pais";
-const M_ORGANIZACION = "20261026120100_organizacion_pais";
-const M_GEOGRAFIA = "20261026120200_geografia_por_pais";
-const M_TRIGGER = "20261026120300_geografia_del_pais_de_la_empresa";
-const M_HISTORIAL = "20261026120400_historial_plataforma";
-const M_DISPONIBLE = "20261026120500_pais_disponible";
+/** La última de `dev` antes de SL-20 (tras el merge F2.3 con SL-18 y SL-23). */
+const PREVIA = "20261026120200_job_estado_descartado";
+const M_PAIS = "20261026130000_pais";
+const M_ORGANIZACION = "20261026130100_organizacion_pais";
+const M_GEOGRAFIA = "20261026130200_geografia_por_pais";
+const M_TRIGGER = "20261026130300_geografia_del_pais_de_la_empresa";
+const M_HISTORIAL = "20261026130400_historial_plataforma";
+const M_DISPONIBLE = "20261026130500_pais_disponible";
 const DE_SL20 = [M_PAIS, M_ORGANIZACION, M_GEOGRAFIA, M_TRIGGER, M_HISTORIAL, M_DISPONIBLE];
 
 const BASE = `sl20_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

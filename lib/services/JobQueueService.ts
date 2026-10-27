@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobsConfig } from "@/lib/config/jobs";
 import type { JobTipo } from "@prisma/client";
+import { JobDescartado } from "@/lib/services/jobs/job-descartado";
 
 // Log de aviso inyectable (patron `LiberacionLogger`): por defecto console.warn. NUNCA
 // registra PII ni secretos (R18/R19): solo mensajes agregados sin datos de dominio.
@@ -101,6 +102,7 @@ export class JobQueueService implements IJobQueueService {
       fallidos: 0,
       reintentados: 0,
       muertos: 0,
+      descartados: 0,
     };
 
     for (const job of jobs) {
@@ -117,6 +119,14 @@ export class JobQueueService implements IJobQueueService {
         result.ok += 1;
         await this.reagendarRecurrente(job, now); // R23: recurrencia tras exito
       } catch (err) {
+        if (err instanceof JobDescartado) {
+          // SL-23 (R20): el módulo está apagado para la empresa del job. No es un fallo: sin backoff
+          // ni dead-letter. Un recurrente agenda igual su siguiente ocurrencia, como tras un éxito.
+          await this.repo.descartar(job.id, err.motivo);
+          result.descartados += 1;
+          await this.reagendarRecurrente(job, now);
+          continue;
+        }
         // R14 (fallo): un fallo por job no aborta la corrida; se contabiliza y se continua.
         // FICHA 403: del `err` ya no sale solo el texto — tambien la sugerencia de espera, si la
         // trae. Es el UNICO punto donde el error del handler llega entero; hasta hoy se convertia

@@ -36,7 +36,7 @@ function fila(over: Partial<EmailOtpChallengeRecord> & { codeHash: string }): Em
 function buildDeps() {
   const orden: string[] = [];
   const userRepo = {
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     updatePasswordHash: vi.fn(async () => {
       orden.push("updatePasswordHash");
     }),
@@ -57,15 +57,15 @@ function buildDeps() {
       return true;
     }),
   };
-  const otpIssuer = { emitir: vi.fn() };
-  return { userRepo, otpRepo, otpIssuer, orden };
+  const correo = { sender: { enviar: vi.fn() }, baseUrl: "https://app.example.test" };
+  return { userRepo, otpRepo, correo, orden };
 }
 
 function buildService(deps: ReturnType<typeof buildDeps>, config: AuthConfig = CONFIG) {
   return new PasswordResetService(
     deps.userRepo,
     deps.otpRepo,
-    deps.otpIssuer,
+    deps.correo,
     new ResetRateLimiter(() => 1000),
     config,
   );
@@ -185,7 +185,7 @@ describe("SL-41 — crearContrasenaConEnlace (R18, R19, R20, R22)", () => {
       },
     },
     {
-      caso: "R19: un desafio de login o recuperacion (otro deviceHash) no se canjea por enlace",
+      caso: "R19: un desafio de login (otro deviceHash) no se canjea por enlace",
       preparar: async (d) => conFilaVigente(d, { deviceHash: "a3f1c2e4b5d6" }),
     },
     {

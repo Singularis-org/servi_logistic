@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -25,6 +26,8 @@ import type { CierresDeLaTienda } from "./_components/mi-wallet-cierres";
  * sin ninguna clave de cuenta en la entrada), con su selector de cierre de siempre (335).
  */
 export default async function MiWalletPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   // Ficha 335 (R33): CERO literales de rol en este archivo. El gate y el item de menu leen la
   // MISMA constante, asi que la puerta que se ve y la puerta que cierra no pueden divergir.
