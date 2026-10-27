@@ -563,7 +563,7 @@ Commit revisado: `5496b39` «fix(SL-43): OTP de dominios reservados por consola 
 1. menor — `ConsoleEmailSender` sigue escribiendo «sin SMTP configurado; no se envia» también
    cuando hay SMTP y el desvío es por dominio reservado. Texto engañoso en el log de QA; no afecta
    al comportamiento.
-2. menor — una lista mixta (`real@x.com, demo@example.test`) va entera a consola y el destinatario
+2. menor — una lista mixta (`<correo-real>, demo@example.test`) va entera a consola y el destinatario
    real no la recibe. Hoy es teórico (el contrato es una sola dirección y ningún llamador pasa
    lista), y es la elección segura documentada; si algún día se admiten listas, partirlas.
 3. menor — los tests separan `"yopmail.com"` en una constante para que la guardia de SL-34
