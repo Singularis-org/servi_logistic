@@ -41,6 +41,7 @@ import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepository";
 import { CohorteCargaService } from "@/lib/services/CohorteCargaService";
 import type { ResultadoCohorteCarga } from "@/lib/types/cohorte-carga";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo —esta
@@ -93,6 +94,7 @@ export async function consultarCohorteCarga(
   raw: unknown,
   deps: CohorteCargaDeps = {},
 ): Promise<ResultadoCohorteCarga> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

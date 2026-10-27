@@ -28,6 +28,7 @@ import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import { ConteoHoyGestionRepository } from "@/lib/repositories/ConteoHoyGestionRepository";
 import { ConteoHoyGestionService } from "@/lib/services/ConteoHoyGestionService";
 import type { ResultadoConteoHoyGestion } from "@/lib/types/conteo-hoy-gestion";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo, pero
@@ -70,6 +71,7 @@ export async function consultarConteoHoyGestion(
   raw: unknown,
   deps: ConteoHoyGestionDeps = {},
 ): Promise<ResultadoConteoHoyGestion> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

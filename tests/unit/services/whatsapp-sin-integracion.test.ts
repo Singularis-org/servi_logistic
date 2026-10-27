@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextoDatos } from "@/lib/db/contexto-empresa";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-36 (design §9.1; R23, R24, R29) — una empresa SIN WhatsApp, por los composition roots REALES de
 // cada consumidor (nada de servicios inyectados): actions, jobs y cron.
 //

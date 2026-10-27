@@ -13,6 +13,7 @@ import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnalitic
 import { RecaudoAnaliticaRepository } from "@/lib/repositories/RecaudoAnaliticaRepository";
 import { AnaliticaFinancieraService } from "@/lib/services/AnaliticaFinancieraService";
 import type { RespuestaFinanciera } from "@/lib/types/analitica-financiera";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 127 (T E.1-E.5) — EL BORDE de la analitica financiera. Server Action, no route
 // handler: no hay consumidor externo, ni webhook, ni cron (design.md §7 alternativa 6).
@@ -85,6 +86,7 @@ export async function consultarMetricaFinanciera(
   filtroRaw: unknown,
   deps: AnaliticaFinancieraActionDeps = {},
 ): Promise<RespuestaFinanciera> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 

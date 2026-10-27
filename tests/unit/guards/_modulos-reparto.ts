@@ -208,7 +208,8 @@ function funcionesExportadas(sf: ts.SourceFile): { nombre: string; cuerpo: Cuerp
   const salida: { nombre: string; cuerpo: CuerpoDeFuncion }[] = [];
   for (const s of sf.statements) {
     if (!tieneModificador(s, ts.SyntaxKind.ExportKeyword)) continue;
-    if (ts.isFunctionDeclaration(s) && s.name) salida.push({ nombre: s.name.text, cuerpo: cuerpoDe(s) });
+    // Una firma de sobrecarga no tiene cuerpo ni se ejecuta: la puerta va en la implementación.
+    if (ts.isFunctionDeclaration(s) && s.name && s.body) salida.push({ nombre: s.name.text, cuerpo: cuerpoDe(s) });
     if (ts.isVariableStatement(s)) {
       for (const d of s.declarationList.declarations) {
         const init = d.initializer;

@@ -9,6 +9,7 @@ import type { ILibroCajaAutoriaService } from "@/lib/interfaces/services/ILibroC
 import { LibroCajaAutoriaRepository } from "@/lib/repositories/LibroCajaAutoriaRepository";
 import { LibroCajaAutoriaService } from "@/lib/services/LibroCajaAutoriaService";
 import { autoriaLibroCajaSchema, type AutoriaLibroCajaResult } from "@/lib/types/libro-caja-autoria";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §3.4, R56/R57) — el borde de «A quien» y «Registro» del libro de la caja.
 // Sesion primero, forma despues (`.strict()`, lista de uuids con tope), rol en el servicio.
@@ -47,6 +48,7 @@ export async function autoriaDelLibroCajaAction(
   deps: LibroCajaAutoriaDeps = {},
 ): Promise<AutoriaLibroCajaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = autoriaLibroCajaSchema.parse(input);

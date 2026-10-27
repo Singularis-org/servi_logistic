@@ -42,6 +42,7 @@ import {
 } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
 import { TTL_FIRMA_PDF_SEGUNDOS } from "@/lib/config/whatsapp-envios";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /** Dependencias inyectables (tests). En produccion, el composition root del motor. */
 export interface EnviosWhatsappActionDeps {
@@ -82,10 +83,12 @@ async function ejecutar<T>(fn: () => Promise<T>): Promise<T | EnviosActionError>
 }
 
 export async function listarEnvios(deps: EnviosWhatsappActionDeps = {}): Promise<ListarEnviosResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => configuracion(deps).listar(await actorOError(deps)));
 }
 
 export async function obtenerEnvio(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ObtenerEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     return configuracion(deps).obtener(idValido(id), actor);
@@ -96,6 +99,7 @@ export async function obtenerEnvio(id: unknown, deps: EnviosWhatsappActionDeps =
  * R11-R16. Nace apagado (R15).
  */
 export async function crearEnvio(input: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<GuardarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const data = guardarEnvioSchema.parse(input); // ZodError -> validation_error
@@ -112,6 +116,7 @@ export async function actualizarEnvio(
   input: unknown,
   deps: EnviosWhatsappActionDeps = {},
 ): Promise<GuardarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const envioId = idValido(id);
@@ -124,6 +129,7 @@ export async function actualizarEnvio(
  * R18/R22.
  */
 export async function encenderEnvio(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<EncenderEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     return configuracion(deps).encender(idValido(id), actor);
@@ -134,6 +140,7 @@ export async function encenderEnvio(id: unknown, deps: EnviosWhatsappActionDeps 
  * R19.
  */
 export async function apagarEnvio(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ApagarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     return configuracion(deps).apagar(idValido(id), actor);
@@ -144,6 +151,7 @@ export async function apagarEnvio(id: unknown, deps: EnviosWhatsappActionDeps = 
  * R25: «Reprogramar» cuando falta la proxima ejecucion.
  */
 export async function reprogramarEnvio(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ReprogramarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     return configuracion(deps).reprogramar(idValido(id), actor);
@@ -154,6 +162,7 @@ export async function reprogramarEnvio(id: unknown, deps: EnviosWhatsappActionDe
  * R21.
  */
 export async function borrarEnvio(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<BorrarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     return configuracion(deps).borrar(idValido(id), actor);
@@ -167,6 +176,7 @@ export async function previsualizarDestinatarios(
   seleccion: unknown,
   deps: EnviosWhatsappActionDeps = {},
 ): Promise<PrevisualizarDestinatariosResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const sel = seleccionDestinatariosSchema.parse(seleccion);
@@ -180,6 +190,7 @@ export async function previsualizarDestinatarios(
 export async function listarEventosDisponibles(
   deps: EnviosWhatsappActionDeps = {},
 ): Promise<ListarEventosDisponiblesResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => configuracion(deps).listarEventosDisponibles(await actorOError(deps)));
 }
 
@@ -187,6 +198,7 @@ export async function listarEventosDisponibles(
  * El catalogo de informes para el formulario (defaults R13, eventos R14, descriptores).
  */
 export async function listarInformesWhatsapp(deps: EnviosWhatsappActionDeps = {}): Promise<ListarInformesResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => configuracion(deps).listarInformes(await actorOError(deps)));
 }
 
@@ -194,6 +206,7 @@ export async function listarInformesWhatsapp(deps: EnviosWhatsappActionDeps = {}
  * R39-R41/R52: «Probar ahora», solo a quien pulsa, con el resultado en la misma respuesta.
  */
 export async function probarEnvioWhatsapp(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ProbarEnvioResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const envioId = idValido(id);
@@ -206,6 +219,7 @@ export async function probarEnvioWhatsapp(id: unknown, deps: EnviosWhatsappActio
  * R42: historial paginado, mas reciente primero, filtrable por envio.
  */
 export async function listarEjecuciones(input: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ListarEjecucionesResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const f = listarEjecucionesSchema.parse(input ?? {});
@@ -220,6 +234,7 @@ export async function listarEjecuciones(input: unknown, deps: EnviosWhatsappActi
  * R42: detalle de una ejecucion con sus entregas (telefono enmascarado).
  */
 export async function obtenerEjecucion(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<ObtenerEjecucionResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const ejecucionId = idValido(id);
@@ -235,6 +250,7 @@ export async function obtenerEjecucion(id: unknown, deps: EnviosWhatsappActionDe
  * R43/R44: enlace firmado de corta duracion; `caducado` si ya se purgo. Solo maestro.
  */
 export async function firmarPdfEjecucion(id: unknown, deps: EnviosWhatsappActionDeps = {}): Promise<FirmarPdfEjecucionResult> {
+  await exigirModuloActivo("whatsapp");
   return ejecutar(async () => {
     const actor = await actorOError(deps);
     const ejecucionId = idValido(id);

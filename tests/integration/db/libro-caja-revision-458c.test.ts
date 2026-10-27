@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { anularEgresoCajaAction, anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
@@ -19,6 +19,10 @@ import {
   montarServicios459,
   sembrarEscenario459,
 } from "./_fixtures/caja-459";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-C — REVISIÓN (B3 y M1), contra Postgres, sobre el escenario de la fase 0 de la 459 (todos

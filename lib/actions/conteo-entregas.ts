@@ -33,6 +33,7 @@ import { ConteoEntregasRepository } from "@/lib/repositories/ConteoEntregasRepos
 import { ConteoPorStatusRepository } from "@/lib/repositories/ConteoPorStatusRepository";
 import { ConteoEntregasService } from "@/lib/services/ConteoEntregasService";
 import type { ResultadoConteoEntregas } from "@/lib/types/conteo-entregas";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Identificador con el que esta lectura aparece en la auditoria. NO es un `metricaId` del
@@ -73,6 +74,7 @@ export async function consultarConteoEntregas(
   raw: unknown,
   deps: ConteoEntregasDeps = {},
 ): Promise<ResultadoConteoEntregas> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

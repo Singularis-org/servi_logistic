@@ -18,6 +18,7 @@ import {
   parametrosTransitoSchema,
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import { seleccionarTransito } from "@/lib/whatsapp-envios/informes/transito/informe";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /** Dependencias inyectables (tests). En produccion: sesion, repo real y reloj. */
 export interface PrevisualizarTransitoDeps {
@@ -38,6 +39,7 @@ export async function previsualizarInformeTransito(
   parametros: unknown,
   deps: PrevisualizarTransitoDeps = {},
 ): Promise<PrevisualizarTransitoResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ROLES_PERMITIDOS.has(actor.rol)) return { status: "forbidden" };

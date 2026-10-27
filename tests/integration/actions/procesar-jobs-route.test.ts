@@ -17,6 +17,7 @@ const CONTEOS: DrenarResult = {
   fallidos: 1,
   reintentados: 1,
   muertos: 0,
+  descartados: 0,
 };
 
 function fakeService(spy = vi.fn(async () => CONTEOS)): {
@@ -74,7 +75,8 @@ describe("handleProcesarJobs — drenado (R18)", () => {
     const text = JSON.stringify(body);
     expect(text).not.toContain(SECRET);
     expect(Object.keys(body).sort()).toEqual(
-      ["fallidos", "muertos", "ok", "procesados", "reintentados"],
+      // SL-23 (R20): `descartados`, los jobs de un módulo apagado para su empresa.
+      ["descartados", "fallidos", "muertos", "ok", "procesados", "reintentados"],
     );
   });
 });

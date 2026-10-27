@@ -39,6 +39,7 @@ import type {
   MarcarChatLeidoResult,
   ResumenNoLeidosChatResult,
 } from "@/lib/types/chat-whatsapp";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 const idSchema = z.string().min(1);
 const textoSchema = z.string().trim().min(1).max(4096);
@@ -89,6 +90,7 @@ export async function enviarMensajeChat(
   texto: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarMensajeChatResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -173,6 +175,7 @@ export async function enviarMediaChat(
   formData: FormData,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarMediaChatResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" }; // R26
 
@@ -255,6 +258,7 @@ export async function enviarPlantillaChat(
   plantillaId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<EnviarPlantillaChatResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -310,6 +314,7 @@ export async function listarHiloChat(
   ordenId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<ListarHiloChatResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -416,6 +421,7 @@ export async function listarHiloChat(
 export async function resumenNoLeidosChat(
   deps: ChatWhatsappDeps = {},
 ): Promise<ResumenNoLeidosChatResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -440,6 +446,7 @@ export async function marcarChatLeido(
   ordenId: unknown,
   deps: ChatWhatsappDeps = {},
 ): Promise<MarcarChatLeidoResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

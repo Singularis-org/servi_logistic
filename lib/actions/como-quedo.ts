@@ -11,6 +11,7 @@ import { ComoQuedoRepository } from "@/lib/repositories/ComoQuedoRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { ComoQuedoService } from "@/lib/services/ComoQuedoService";
 import { comoQuedoSchema, type ComoQuedoResult } from "@/lib/types/como-quedo";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §3.7, R58, R82) — el borde de «Cómo quedó». Sesion primero, forma despues
 // (`.strict()`), rol en el servicio (antes de leer). Solo lectura.
@@ -50,6 +51,7 @@ export interface ComoQuedoDeps {
  */
 export async function comoQuedoAction(input: unknown, deps: ComoQuedoDeps = {}): Promise<ComoQuedoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = comoQuedoSchema.parse(input);

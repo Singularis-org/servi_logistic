@@ -13,14 +13,25 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // del `null` sin empresa, R34) y que entre peticiones no hay memo (R9).
 
 type Fallo = "sin-empresa" | "otro" | null;
-const estado = vi.hoisted(() => ({ activos: [] as string[], consultas: 0, peticion: 0, fallo: null as Fallo }));
+const estado = vi.hoisted(() => ({
+  activos: [] as string[],
+  porEmpresa: {} as Record<string, string[]>,
+  consultas: 0,
+  peticion: 0,
+  fallo: null as Fallo,
+}));
 
 vi.mock("react", () => ({
   cache: <A extends unknown[], R>(fn: (...a: A) => R) => {
-    let memo: { peticion: number; valor: R } | undefined;
+    // Como el de React: por argumentos, y solo dentro de la petición en curso.
+    const memo = new Map<string, { peticion: number; valor: R }>();
     return (...a: A): R => {
-      if (memo?.peticion !== estado.peticion) memo = { peticion: estado.peticion, valor: fn(...a) };
-      return memo.valor;
+      const clave = JSON.stringify(a);
+      const previo = memo.get(clave);
+      if (previo?.peticion === estado.peticion) return previo.valor;
+      const valor = fn(...a);
+      memo.set(clave, { peticion: estado.peticion, valor });
+      return valor;
     };
   },
 }));
@@ -34,6 +45,9 @@ vi.mock("@/lib/repositories/ModulosActivosRepository", () => ({
         throw new EmpresaNoResuelta("organizacionModulo", "findMany");
       }
       if (estado.fallo === "otro") throw new Error("conexión perdida");
+      const { contextoActual } = await import("@/lib/db/contexto-empresa");
+      const ctx = contextoActual();
+      if (ctx?.tipo === "empresa" && estado.porEmpresa[ctx.organizacionId]) return [...estado.porEmpresa[ctx.organizacionId]];
       return [...estado.activos];
     }
   },
@@ -83,6 +97,7 @@ beforeEach(() => {
   estado.activos = [];
   estado.consultas = 0;
   estado.fallo = null;
+  estado.porEmpresa = {};
   nuevaPeticion();
 });
 
@@ -232,5 +247,23 @@ describe("SL-23 · sin empresa la puerta no aplica (R34)", () => {
     await moduloActivo("ranking");
     await modulosActivos();
     expect(estado.consultas).toBe(1);
+  });
+});
+
+describe("SL-23 · la memoria va por empresa (crons y jobs recorren varias en una petición)", () => {
+  it("dos empresas en la misma petición: cada una con su lista, una lectura por empresa", async () => {
+    const { conEmpresa } = await import("@/lib/db/contexto-empresa");
+    estado.porEmpresa = { "org-a": ["wallet"], "org-b": [] };
+    await expect(conEmpresa("org-a", () => exigirModuloActivo("wallet"))).resolves.toBeUndefined();
+    await expect(conEmpresa("org-b", () => exigirModuloActivo("wallet"))).rejects.toBeInstanceOf(ModuloInactivoError);
+    await expect(conEmpresa("org-a", () => moduloActivo("wallet"))).resolves.toBe(true);
+    expect(estado.consultas).toBe(2);
+  });
+
+  it("en plataforma no hay empresa: null sin consultar, y la puerta no aplica", async () => {
+    const { comoPlataforma } = await import("@/lib/db/contexto-empresa");
+    await expect(comoPlataforma("SL-23", "test", () => modulosActivos())).resolves.toBeNull();
+    await expect(comoPlataforma("SL-23", "test", () => exigirModuloActivo("wallet"))).resolves.toBeUndefined();
+    expect(estado.consultas).toBe(0);
   });
 });

@@ -14,6 +14,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { PickingRepository } from "@/lib/repositories/PickingRepository";
 import { diasAtrasoSchema } from "@/lib/whatsapp-envios/informes/picking/parametros";
 import { resumenTiendasPicking } from "@/lib/whatsapp-envios/informes/picking/informe";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /** Dependencias inyectables (tests). En produccion: sesion, repo real (perezoso) y reloj. */
 export interface ListarTiendasPickingDeps {
@@ -34,6 +35,7 @@ export async function listarTiendasPicking(
   input: unknown,
   deps: ListarTiendasPickingDeps = {},
 ): Promise<ListarTiendasPickingResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ROLES_PERMITIDOS.has(actor.rol)) return { status: "forbidden" };

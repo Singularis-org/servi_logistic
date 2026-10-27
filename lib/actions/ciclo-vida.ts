@@ -26,6 +26,7 @@ import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import { CicloVidaRepository } from "@/lib/repositories/CicloVidaRepository";
 import { CicloVidaService } from "@/lib/services/CicloVidaService";
 import type { ResultadoCicloVida } from "@/lib/types/conteo-ciclo-vida";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo —hay
@@ -69,6 +70,7 @@ export async function consultarCicloVida(
   raw: unknown,
   deps: CicloVidaDeps = {},
 ): Promise<ResultadoCicloVida> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

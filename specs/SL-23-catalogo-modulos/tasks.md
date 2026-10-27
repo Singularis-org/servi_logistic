@@ -173,7 +173,7 @@
   - `tests/components/CierresAdminPage.test.tsx` (R31): con Wallet apagado, «Pago al mensajero» y
     la oferta de pago al aprobar siguen visibles.
   - *Hecho:* casos (c) y (e) de la guardia en verde; tests en verde.
-- [ ] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6, §3.7, §3.8; R18–R21, R24, R30, R33).
+- [x] **T11 [P] — Jobs, crons, API y webhook** (design §5.4–§5.6, §3.7, §3.8; R18–R21, R24, R30, R33).
   - `conSuEmpresa` con `modulo` (los de `CALCULO_CONTINUO` reciben `"nucleo"`), `JobDescartado`,
     `JobQueueService` (`descartados`) y `JobRepository.descartar`.
   - `paraCadaEmpresa({ modulo })` con `saltadas`, en los dos crons que se saltan empresas
@@ -430,3 +430,13 @@
 - `tests/integration/mi-wallet-page.test.tsx`
 - `tests/unit/components/wallet-page-cobros-pendientes.test.tsx`
 - `tests/unit/actions/deuda-plataforma.composition-root.test.ts`
+- Ajustados en T10/T11 (puertasAbiertas, `descartados`, `saltadas`, módulos encendidos o contrato de la cola):
+  `tests/unit/actions/busqueda-por-guia-469-roots.test.ts`, `libro-kardex-468.action.test.ts`,
+  `wallet-egresos.composition-root.test.ts`, `wallet-tienda-cobro-action.test.ts`,
+  `tests/unit/services/whatsapp-sin-integracion.test.ts`, `webhook-whatsapp-service.test.ts`,
+  `tests/unit/api/webhook-whatsapp-entregas.test.ts`, `webhook-whatsapp-por-empresa.test.ts`,
+  `api-key-empresa.test.ts`, `tests/unit/cron/crons-sin-empresas.test.ts`,
+  `tests/unit/guards/geocode-salud-sin-prosa.guardia.test.ts`, `tests/integration/api/webhook-whatsapp.route.test.ts`,
+  `tests/integration/db/dos-empresas-entradas.test.ts`, los dobles de `IJobRepository` de
+  `corregir-ubicacion-geocode`, `optimizacion-ruta-enqueue` y `orden-geocode-enqueue`, `scripts/drenar-jobs.ts`
+  y 38 de integración de wallet/analítica (lista en `progress/impl_SL-23.md`, Tanda 4)

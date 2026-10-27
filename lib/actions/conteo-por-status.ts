@@ -22,6 +22,7 @@ import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import { ConteoPorStatusRepository } from "@/lib/repositories/ConteoPorStatusRepository";
 import { ConteoPorStatusService } from "@/lib/services/ConteoPorStatusService";
 import type { ResultadoConteoPorStatus } from "@/lib/types/conteo-por-status";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo
@@ -59,6 +60,7 @@ export async function consultarConteoPorStatus(
   raw: unknown,
   deps: ConteoPorStatusDeps = {},
 ): Promise<ResultadoConteoPorStatus> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

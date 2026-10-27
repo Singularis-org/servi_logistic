@@ -33,6 +33,7 @@ import {
   type ListarHilosHistoricoResult,
   type ListarMensajesHistoricoResult,
 } from "@/lib/types/historico-conversaciones";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Dobles inyectables. Viajan por el SEGUNDO parametro, que el cliente nunca manda: desde el
@@ -65,6 +66,7 @@ export async function listarHilosHistorico(
   input: unknown,
   deps: HistoricoConversacionesActionDeps = {},
 ): Promise<ListarHilosHistoricoResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -87,6 +89,7 @@ export async function listarMensajesHistorico(
   input: unknown,
   deps: HistoricoConversacionesActionDeps = {},
 ): Promise<ListarMensajesHistoricoResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

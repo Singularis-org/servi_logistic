@@ -19,6 +19,7 @@ import {
   type AdjuntarComprobanteResult,
   type VerComprobanteResult,
 } from "@/lib/types/wallet-comprobante-lateral";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §4.1, D6/D12, R74–R80) — el borde del comprobante LATERAL: adjuntarlo despues
 // (una vez, acceso total) y verlo por enlace temporal (acceso total o la tienda duena). Sesion primero,
@@ -80,6 +81,7 @@ export async function adjuntarComprobanteAction(
   deps: WalletComprobanteDeps = {},
 ): Promise<AdjuntarComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de mirar la entrada
     const { destino, comprobante } = adjuntarComprobanteSchema.parse(crudoDelFormData(formData));
@@ -100,6 +102,7 @@ export async function verComprobanteAction(
   deps: WalletComprobanteDeps = {},
 ): Promise<VerComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const { destino } = verComprobanteSchema.parse(input);

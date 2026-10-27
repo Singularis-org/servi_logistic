@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { moduloActivo } from "@/lib/modulos/exigir-modulo";
 import type { IResumenSecreto } from "@/lib/interfaces/external/IResumenSecreto";
 import type {
   DestinoWebhook,
@@ -76,6 +77,11 @@ export interface WebhookWhatsappDeps {
   /** Volcado de depuracion de los tipos no soportados (ver `volcarTiposNoSoportados`). */
   depuracion?: (mensaje: string, detalle: string) => void;
   reloj?: () => Date;
+  /**
+   * SL-23 (design §5.6, R24): si la empresa EN CURSO tiene WhatsApp encendido. Por defecto, la puerta
+   * de modulos; los tests la sustituyen.
+   */
+  whatsappActivo?: () => Promise<boolean>;
 }
 
 /**
@@ -227,6 +233,14 @@ export class WebhookWhatsappService implements IWebhookWhatsappService {
     const appSecret = await this.deps.leerAppSecret(lote.destino.integracionId);
     // La firma cubre el cuerpo ENTERO: es lo que Meta firmo con el App Secret de su app.
     if (appSecret === null || !firmaValida(cuerpoCrudo, firma, appSecret)) return false;
+
+    // SL-23 (design §5.6, R24): con WhatsApp apagado para esta empresa no se guarda ni se encola nada.
+    // La firma vale, asi que el lote cuenta como valido y el route responde 200: Meta reintenta todo
+    // lo que no sea 2xx. Una linea de log sin datos personales (ni numero ni contenido).
+    if (!(await (this.deps.whatsappActivo ?? (() => moduloActivo("whatsapp")))())) {
+      this.deps.logger.warn("[webhook-whatsapp] modulo WhatsApp apagado: lote descartado sin guardar ni encolar");
+      return true;
+    }
 
     let eventos: WebhookEventos;
     try {

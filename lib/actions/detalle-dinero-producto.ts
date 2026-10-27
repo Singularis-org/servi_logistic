@@ -34,6 +34,7 @@ import {
   detalleDineroProductoSchema,
   type ResultadoDetalleDineroProducto,
 } from "@/lib/types/dinero-productos";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. PROPIO y distinto al de la tabla: si
@@ -67,6 +68,7 @@ export async function consultarDetalleDineroProducto(
   raw: unknown,
   deps: DetalleDineroProductoDeps = {},
 ): Promise<ResultadoDetalleDineroProducto> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
 

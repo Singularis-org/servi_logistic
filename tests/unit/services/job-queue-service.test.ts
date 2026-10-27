@@ -50,6 +50,7 @@ function fakeRepo(claimed: JobDTO[]) {
     claim: [] as { limit: number; opts: ClaimOpts }[],
     complete: [] as string[],
     fail: [] as FailCall[],
+    descartar: [] as { id: string; motivo: string }[],
     enqueue: [] as { tipo: JobTipo; payload: Record<string, unknown>; opts?: EnqueueOpts }[],
   };
   const repo: IJobRepository = {
@@ -67,6 +68,10 @@ function fakeRepo(claimed: JobDTO[]) {
     },
     async fail(id, error, runAfter) {
       calls.fail.push({ id, error, runAfter });
+    },
+    // SL-23 (R20): el descarte por módulo apagado. Se prueba en job-queue-service-descartado.test.ts.
+    async descartar(id, motivo) {
+      calls.descartar.push({ id, motivo });
     },
     async enqueue(tipo, payload, opts) {
       calls.enqueue.push({ tipo, payload, opts });
@@ -131,7 +136,7 @@ describe("JobQueueService.drenar — exito (R14)", () => {
     const res = await svc.drenar(10);
     expect(calls.complete).toEqual(["job-1"]);
     expect(calls.fail).toHaveLength(0);
-    expect(res).toEqual({ procesados: 1, ok: 1, fallidos: 0, reintentados: 0, muertos: 0 });
+    expect(res).toEqual({ procesados: 1, ok: 1, fallidos: 0, reintentados: 0, muertos: 0, descartados: 0 });
   });
 });
 
@@ -167,7 +172,7 @@ describe("JobQueueService.drenar — dead-letter (R16)", () => {
     const res = await svc.drenar(10);
     expect(calls.fail).toHaveLength(1);
     expect(calls.fail[0].runAfter).toBeNull();
-    expect(res).toEqual({ procesados: 1, ok: 0, fallidos: 1, reintentados: 0, muertos: 1 });
+    expect(res).toEqual({ procesados: 1, ok: 0, fallidos: 1, reintentados: 0, muertos: 1, descartados: 0 });
   });
 });
 

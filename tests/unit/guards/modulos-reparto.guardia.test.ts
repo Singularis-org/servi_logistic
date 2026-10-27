@@ -53,8 +53,8 @@ import {
  *      §3.9), salvo lo declarado en `CONSUMOS_ENTRE_MODULOS` (§6.3); el fallo nombra la cadena;
  *  (f) nadie en `app/` llama a `itemsVisibles(`: el menú pasa por `menuDeLaEmpresa` (R15).
  *
- * ESTADO EN LA TANDA 2 (tasks.md > T4). (b), (c), la mitad «de un módulo» de (d) y (f) describen
- * puertas que todavía no existen: las ponen T8–T11. Van con `it.fails`, que está VERDE mientras el
+ * ESTADO DESDE LA TANDA 4 (T10, T11): (a), (c), (d) y (e) en verde. (b) y (f) describen puertas que
+ * todavía no existen: las ponen T9 y T8. Van con `it.fails`, que está VERDE mientras el
  * árbol incumple y se pone ROJO en cuanto lo cumple. Ese rojo es el aviso para quitar el `.fails`: no
  * se puede olvidar. Lo que ya se cumple hoy va con `it` normal. Las autocomprobaciones de cada caso
  * (una fuente buena que pasa y su mutación que falla) son `it` normales desde ya.
@@ -158,15 +158,13 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
   });
 
   describe("(c) cada action exportada de un módulo abre con su puerta (R17, R33)", () => {
-    // T10 la pone en verde: entonces se quita el `.fails`.
-    it.fails("toda función exportada de una action de un módulo abre con exigirModuloActivo(<sus claves>)", () => {
+    it("toda función exportada de una action de un módulo abre con exigirModuloActivo(<sus claves>)", () => {
       expect(actionsSinPuerta()).toEqual([]);
     });
   });
 
   describe("(d) los crons de un módulo se saltan empresas; los de cálculo continuo no (R21, R30)", () => {
-    // T11 la pone en verde: entonces se quita el `.fails`.
-    it.fails("un cron de un módulo (no continuo) pasa modulo: <su clave> a paraCadaEmpresa", () => {
+    it("un cron de un módulo (no continuo) pasa modulo: <su clave> a paraCadaEmpresa", () => {
       expect(problemasDeCrons(false)).toEqual([]);
     });
 
@@ -344,6 +342,19 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         expect(funcionesSinPuerta(unaClave, ["wallet", "ranking"])).toEqual([
           "listar: exige (wallet) y le toca (wallet, ranking)",
           "anular: exige (wallet) y le toca (wallet, ranking)",
+        ]);
+      });
+      it("las firmas de sobrecarga no cuentan; la implementación sí", () => {
+        const sobrecargada = `
+          export async function f(a: FormData): Promise<1>;
+          export async function f(a: unknown): Promise<2>;
+          export async function f(a: unknown) {
+            await exigirModuloActivo("wallet");
+            return a;
+          }`;
+        expect(funcionesSinPuerta(sobrecargada, ["wallet"])).toEqual([]);
+        expect(funcionesSinPuerta(sobrecargada.replace(`await exigirModuloActivo("wallet");`, ""), ["wallet"])).toEqual([
+          "f: sin exigirModuloActivo(wallet) como primera sentencia",
         ]);
       });
       it("también ve `export const f = async () => {}`", () => {

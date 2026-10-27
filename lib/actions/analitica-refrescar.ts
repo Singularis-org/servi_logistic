@@ -42,6 +42,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { crearAnaliticaCacheDeNext } from "@/lib/cache/next-analitica-cache";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 import type { RefrescoAnaliticaResult } from "@/lib/types/analitica-refresco";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * TODOS los tags que cubre el botón: las OCHO verticales de entregas —cada una con espacio
@@ -90,6 +91,7 @@ export interface RefrescarAnaliticaDeps {
 export async function refrescarCacheAnalitica(
   deps: RefrescarAnaliticaDeps = {},
 ): Promise<RefrescoAnaliticaResult> {
+  await exigirModuloActivo("analitica");
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 

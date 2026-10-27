@@ -16,6 +16,7 @@ import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { TableroDiaService } from "@/lib/services/TableroDiaService";
 import type { ResultadoDetalleDia, ResultadoTableroDia } from "@/lib/types/tablero-dia";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 192 (B4.1/B7.6, design.md §3.4 y §6) — EL BORDE DEL TABLERO DEL DIA.
 //
@@ -83,6 +84,7 @@ function construirServicio(): ITableroDiaService {
  * ceros: la pantalla tiene que poder distinguir "prohibido" de "no hay nada hoy" (R33).
  */
 export async function leerTableroDia(deps: TableroDiaDeps = {}): Promise<ResultadoTableroDia> {
+  await exigirModuloActivo("monitoreo");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   const now = (deps.now ?? (() => new Date()))();
   const service = deps.service ?? construirServicio();
@@ -104,6 +106,7 @@ export async function leerDetalleMensajeroDia(
   entrada: unknown,
   deps: TableroDiaDeps = {},
 ): Promise<ResultadoDetalleDia> {
+  await exigirModuloActivo("monitoreo");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   const now = (deps.now ?? (() => new Date()))();
   const service = deps.service ?? construirServicio();

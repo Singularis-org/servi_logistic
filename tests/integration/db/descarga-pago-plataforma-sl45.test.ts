@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
@@ -20,6 +20,10 @@ import type { DescargaFila } from "@/lib/types/descarga";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SL-45 R26 y R17 — el pago a la plataforma en la DESCARGA del libro de la caja, contra Postgres.

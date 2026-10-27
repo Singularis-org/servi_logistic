@@ -22,6 +22,7 @@ export function puertasAbiertas(): PuertasDeModulo {
     moduloActivo: async () => true,
     exigirModuloActivo: async () => undefined,
     exigirModuloEnRuta: async () => undefined,
+    primerModuloApagado: async () => null,
     modulosDelMenu: async (actor) => (!actor || esPlataforma(actor.rol) ? ninguno : todos),
   };
 }

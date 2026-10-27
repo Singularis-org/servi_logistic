@@ -455,3 +455,150 @@ Descripciones de `lib/modulos/catalogo.ts`: revisadas contra `DESIGN.md`, `docs/
   verde (un test menos que en T6: el cable de `ANUNCIADAS` ya no tiene filas).
 
 Veredicto: T7 hecho y en verde; el interruptor está montado y la action ya no lleva `@sin-superficie`.
+
+## Tanda 4 — T10, T11 (2026-10-26, backend_dev)
+
+Base: `logistic_sl23b`. T11 `[x]`; **T10 queda abierta** (ver «Pendiente» al final).
+
+### T10 — Actions
+
+- **Puertas:** 154 inserciones de `await exigirModuloActivo(<claves>)` en las 48 actions de un módulo,
+  hechas con un script sobre el AST (`scratchpad/insertar-puertas.mjs`).
+  - **Posición:** primera sentencia del cuerpo, o del `withErrorHandler` que lo abre (design §5.3).
+  - **Pieza compartida:** `premio-ranking-devengo` lleva `("wallet", "ranking")`.
+  - **Núcleo sin puerta:** `liquidacion`, `conciliacion-satelites` y las 5 de Incidentes y novedades.
+- **Guardia:** el caso (c) pasa en verde y pierde su `it.fails`.
+  - El detector ya no cuenta las firmas de sobrecarga, que no tienen cuerpo: `registrarMovimientoManualAction`,
+    `registrarEgresoAdministrativoAction` y `registrarCobroTiendaAction` salían dos veces.
+  - Tiene autocomprobación propia.
+- **`lib/modulos/exigir-modulo.ts`:** la memoria de `cache()` va **por empresa**
+  (`leerActivos(organizacionId)`).
+  - Por qué: un cron o un job recorre varias empresas en la misma petición, y la lista de una no
+    puede servir para otra.
+  - En `comoPlataforma` responde `null` sin consultar: sin filtro, la lectura vería las filas de todas.
+  - Gana `primerModuloApagado`, que usa el drenador, y `puertasAbiertas()` gana su doble.
+  - Tests nuevos en `exigir-modulo.test.ts`: «dos empresas en la misma petición» y «en plataforma, null sin consultar».
+- **Tests con `puertasAbiertas()` (design §10):** 6 unitarios (busqueda-por-guia-469-roots,
+  deuda-plataforma y wallet-egresos composition-root, libro-kardex-468, wallet-tienda-cobro,
+  whatsapp-sin-integracion) y 38 de integración de wallet y analítica (la lista va en `tasks.md`).
+  - Todos los integración que fallaron por la puerta estaban marcados NEW.
+  - Los que siguen rojos están todos en `tests/baseline-rojos.json` y fallan por datos: base sin zonas ni órdenes.
+- **`tests/integration/db/modulo-apagado-action.test.ts`** (nuevo, 7 casos): la puerta es real y lee
+  `organizacion_modulo` por el cliente de la app dentro de `conEmpresa`.
+  - Ranking apagado: rechazo con 403 `modulo_inactivo` y la base no cambia.
+  - Wallet apagado: rechazo y la base no cambia.
+  - Ranking apagado y Wallet encendido: `premio-ranking-devengo` se rechaza.
+  - Las dos encendidas: `listarPremiosDelDiaAction` responde `ok`.
+  - R34: sin sesión → `unauthenticated`; superadmin → `forbidden` del rol; ninguno da error interno.
+- **`tests/components/CierresAdminPage.test.tsx`** (R31): el archivo entero corre con las 8 puertas
+  cerradas, así que los 10 casos que ya había lo prueban sin módulos. Caso nuevo: «con Wallet apagado,
+  el maestro aprueba y SÍ recibe la oferta de Pago al mensajero».
+
+### T11 — Jobs, crons, API y webhook
+
+- `lib/services/jobs/job-descartado.ts` (`JobDescartado`, motivo `modulo_inactivo:<clave>`).
+- `IJobRepository.descartar` y `JobRepository.descartar` (`estado = 'descartado'`, `last_error`).
+- `DrenarResult.descartados`. `JobQueueService.drenar`: un `JobDescartado` va a `descartar`, sin
+  backoff ni dead-letter, y re-agenda si es recurrente.
+- `procesar-jobs/route.ts`:
+  - `conSuEmpresa(handler, recurrente, opciones, modulo)`; `moduloDeEjecucion(tipo)` devuelve `"nucleo"`
+    para `CALCULO_CONTINUO` y `MODULO_POR_JOB` para los demás.
+  - Con empresa y el módulo apagado lanza `JobDescartado` sin llamar al handler.
+  - Recurrente sin empresa: `paraCadaEmpresa({ modulo })`.
+- `paraCadaEmpresa({ cliente, modulo })`:
+  - dos listados en plataforma, todas y las que tienen `modulos: { some: { modulo } }`;
+  - `resumen.saltadas`, más una línea `console.info` con los ids.
+- `generar-gastos-fijos` (`modulo: "wallet"`) y `sync-plantillas-whatsapp` (`modulo: "whatsapp"`):
+  `empresas.saltadas: number`. `snapshot-ranking` no cambia. El caso (d) de la guardia pasa en verde
+  y pierde su `it.fails`.
+- `conEmpresaDeLaKey`: `exigirModuloActivo("api_integraciones")` dentro del `conEmpresa`, antes del
+  cuerpo. `ordenes/api-key/analitica` añade `exigirModuloActivo("analitica")`.
+- `chat/media/[mensajeId]`: tras el 401 de sesión, `exigirModuloActivo("whatsapp")` → 403 con
+  `toShape()`.
+- `WebhookWhatsappService`: dep `whatsappActivo?`, que por defecto es `moduloActivo("whatsapp")`.
+  - Va **después de validar la firma**: una firma mala sigue dando 401.
+  - Con el módulo apagado: una línea de log sin datos personales, sin ingesta ni anotación, y el lote
+    cuenta como válido (200).
+- Tests nuevos:
+  - `tests/unit/services/job-queue-service-descartado.test.ts` (4);
+  - `tests/unit/cron/procesar-jobs-modulos.test.ts` (9);
+  - `tests/unit/cron/snapshot-ranking-modulo-apagado.test.ts` (1);
+  - `tests/unit/db/para-cada-empresa-modulo.test.ts` (3);
+  - `tests/integration/db/para-cada-empresa-modulo.test.ts` (3);
+  - `tests/unit/api/api-key-modulo-inactivo.test.ts` (14: 10 manejadores de las 9 rutas, con un Prisma
+    espía que demuestra que el cuerpo no corre, más el control y R33);
+  - `tests/unit/services/webhook-whatsapp-service-modulo.test.ts` (4).
+- Ajustados:
+  - por `descartados`, `saltadas` y `descartar`: `job-queue-service.test.ts`, `para-cada-empresa.test.ts`,
+    `crons-sin-empresas.test.ts`, `procesar-jobs-route.test.ts`, los 3 dobles de `IJobRepository` y
+    `scripts/drenar-jobs.ts`;
+  - `geocode-salud-sin-prosa.guardia` (lista literal del contrato de la cola, ahora con `descartar`);
+  - con `puertasAbiertas`: los 3 de webhook y `api-key-empresa.test.ts`; también
+    `tests/integration/api/webhook-whatsapp.route.test.ts`;
+  - `dos-empresas-entradas.test.ts` enciende los 8 módulos de sus empresas (R6, R28) y acepta `saltadas: 0`.
+
+### Mutaciones probadas (restauradas después)
+
+Se quitaron a la vez la puerta de `conEmpresaDeLaKey`, el `throw new JobDescartado` de `conSuEmpresa`
+y la comprobación del webhook: 15 rojos en los 3 archivos nuevos. Al restaurarlos, 27 de 27.
+
+### Mapa R → test (Tanda 4)
+
+| R | Test |
+|---|---|
+| R17 | guardia (c) (las 154 puertas); `modulo-apagado-action.test.ts` (ranking y wallet apagados) |
+| R18 | `api-key-modulo-inactivo.test.ts` (10 manejadores → 403 `modulo_inactivo`, cuerpo no ejecutado) |
+| R19 | `procesar-jobs-modulos.test.ts`: webhook_estado y webhook_evento descartados sin handler |
+| R20 | `job-queue-service-descartado.test.ts`; `procesar-jobs-modulos.test.ts` (whatsapp_* descartado, recurrente re-agenda) |
+| R21 | `para-cada-empresa-modulo` (unit e integration); `procesar-jobs-modulos.test.ts` (recurrente sin empresa); guardia (d) |
+| R24 | `webhook-whatsapp-service-modulo.test.ts` |
+| R25 | `para-cada-empresa-modulo` (integration, «el módulo de una empresa no decide por otra»); webhook R25 |
+| R30 | `procesar-jobs-modulos.test.ts` (rollup e invalidación con Analítica apagada; rollup recurrente sin filtro); `snapshot-ranking-modulo-apagado.test.ts`; guardia (d) |
+| R31 | `CierresAdminPage.test.tsx` (archivo entero con las puertas cerradas, más la oferta de pago) — **parcial**: falta `nucleo-sin-modulos.test.ts` |
+| R33 | `modulo-apagado-action.test.ts` (premio-ranking-devengo); `api-key-modulo-inactivo.test.ts` (analítica) |
+| R34 | `modulo-apagado-action.test.ts` (sin sesión → unauthenticated; superadmin → forbidden); `exigir-modulo.test.ts` (plataforma) |
+
+### Salida
+
+- Archivos nuevos y tocados, unitarios y de componente: `Test Files 15 passed (15) · Tests 218 passed | 2 expected fail (220)`.
+- Integración en `logistic_sl23b` (modulo-apagado-action, para-cada-empresa-modulo, dos-empresas-entradas,
+  webhook-whatsapp.route, procesar-jobs-route, modulos-empresa-historial, organizacion-modulo):
+  `Test Files 7 passed (7) · Tests 51 passed (51)`.
+- Barrido de regresión, tests que tocan las actions de módulo o la infraestructura cambiada:
+  - 235 unitarios que importan las actions de módulo y 500 de componente, página o infraestructura: tras los ajustes, ningún rojo nuevo.
+    `DescargarDataset.test.tsx` falló una vez en lote y pasa solo: es un fallo intermitente de tiempo.
+  - 95 de integración: los rojos que quedan están todos en el baseline. La excepción es `demo-qa.test.ts`
+    (ver «Pendiente»).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `0 errors, 231 warnings` (los de antes).
+- `pnpm run test:guardias`: solo `dependencias-declaradas-presentes` (4, baseline) en rojo.
+  `modulos-reparto`: (a), (c), (d) y (e) en verde; (b) y (f) siguen con `it.fails` (T9, T8).
+
+### Pendiente y bloqueos
+
+1. **BLOQUEO (el spec contradice el código): la forma del rechazo de una action.**
+   - Design §5.3 dice que `toActionError` traduce el 403 a `{ status: "forbidden" }` sin tocar el
+     contrato de la UI, y T10 pide que la action «devuelve `forbidden`».
+   - En el código:
+     - 101 de las 154 puertas van dentro de un `withErrorHandler`, pero sus 21 archivos traducen con
+       un traductor **local** que no conoce `FORBIDDEN` y relanza
+       `Error("<archivo>: AppErrorCode inesperado FORBIDDEN")`. Solo `envios-whatsapp`, `plantillas` y
+       `api-keys` usan el `toActionError` compartido.
+     - Las otras 53 puertas, en 25 archivos, no tienen `withErrorHandler`: lanzan `ModuloInactivoError`.
+   - En los dos casos la action se rechaza antes de leer o escribir, que es lo que mide
+     `modulo-apagado-action.test.ts`. Pero el cliente recibe una excepción, no `{ status: "forbidden" }`.
+   - Normalizarlo exige añadir `FORBIDDEN` a 21 traductores y a sus tipos de resultado, y envolver o
+     traducir 53 funciones. Es un cambio de contrato de UI que el design daba por hecho y no está
+     hecho: decisión del leader o del humano.
+2. **Falta `tests/integration/db/nucleo-sin-modulos.test.ts` (R31).**
+   - Pide corte diario con cierre `vencido`, bloqueo, cierre del día, aprobar con movimientos de caja y
+     `registrarPagoMensajeroAction` sobre una empresa sin módulos.
+   - No se escribió por margen. Todas esas piezas son núcleo y no llevan puerta (la guardia (c) lo
+     confirma), pero falta la evidencia contra Postgres.
+3. **`tests/integration/db/demo-qa.test.ts` rojo por diseño hasta T12.**
+   - La demo crea sus empresas con `crearEmpresa`, que hoy no enciende módulos.
+   - La carga por API responde 403 `modulo_inactivo`, cuando debería pasar. T12 (`crearEmpresa` con
+     `modulos: "todos"` por defecto) lo cierra.
+   - Los E2E de `reparto` y `dinero` dependen de lo mismo.
+
+Veredicto: T11 hecho y en verde. T10 tiene las puertas y su guardia en verde, pero queda abierta por el bloqueo 1 (forma del rechazo) y por `nucleo-sin-modulos.test.ts`.

@@ -9,6 +9,10 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459 } from "./_fixtures/caja-459";
 import { T4, lineaDe, montarEstadoCuenta, sembrarEscenario458 } from "./_fixtures/wallet-458";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 463 / T3 — el BUSCADOR y el ORDEN del libro de los ESTADOS DE CUENTA, contra Postgres.
 // ═════════════════════════════════════════════════════════════════════════════════════════════

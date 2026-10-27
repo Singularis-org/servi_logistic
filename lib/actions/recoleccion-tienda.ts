@@ -15,6 +15,7 @@ import {
 } from "@/lib/types/recoleccion-tienda";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 157 — Server Action de la RECOLECCION EN TIENDA (mutacion interna: Server Action, no
 // Route API). Resuelve el actor por sesion, valida en el borde con zod y delega en el servicio,
@@ -89,6 +90,7 @@ export async function recolectarEnTiendaPorQr(
   deps: RecoleccionTiendaDeps = {},
 ): Promise<RecolectarEnTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("recoleccion");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = recolectarEnTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -114,6 +116,7 @@ export async function listarRecoleccion(
   deps: RecoleccionTiendaDeps = {},
 ): Promise<ListarRecoleccionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("recoleccion");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const service = deps.service ?? buildService();

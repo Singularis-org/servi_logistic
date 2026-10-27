@@ -22,6 +22,7 @@ import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import { ConteoCargadasPorDiaRepository } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
 import { ConteoCargadasPorDiaService } from "@/lib/services/ConteoCargadasPorDiaService";
 import type { ResultadoConteoCargadasPorDia } from "@/lib/types/conteo-cargadas";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 /**
  * Con que nombre aparece esta lectura en la auditoria. NO es un `metricaId` del catalogo
@@ -61,6 +62,7 @@ export async function consultarConteoCargadasPorDia(
   raw: unknown,
   deps: ConteoCargadasPorDiaDeps = {},
 ): Promise<ResultadoConteoCargadasPorDia> {
+  await exigirModuloActivo("analitica");
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

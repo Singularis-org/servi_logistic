@@ -23,6 +23,7 @@ import {
 } from "@/lib/types/wallet-anulacion";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // 💰 FICHA 337 (segunda mitad) — las TRES Server Actions de los COBROS POR RECHAZO DESDE
 // NOVEDADES: ver la cola, APROBAR y RECHAZAR.
@@ -113,6 +114,7 @@ export async function listarCobrosRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<ListarCobrosRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     listarCobrosRechazoTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -136,6 +138,7 @@ export async function aprobarCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<AprobarCobroRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = decidirCobroRechazoTiendaSchema.parse(input); // `.strict()`: nada de importes
@@ -157,6 +160,7 @@ export async function rechazarCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<RechazarCobroRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = decidirCobroRechazoTiendaSchema.parse(input);
@@ -181,6 +185,7 @@ export async function anularCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<AnularCobroRechazoTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularCobroRechazoTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR

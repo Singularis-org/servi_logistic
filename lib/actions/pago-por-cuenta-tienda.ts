@@ -28,6 +28,7 @@ import {
   type ObtenerComprobanteResult,
   type RegistrarPagoPorCuentaTiendaResult,
 } from "@/lib/types/pago-por-cuenta-tienda";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 459 (design §7.1) — el BORDE del pago por cuenta de una tienda. Archivo NUEVO a proposito:
 // `wallet-tienda.ts` y `liquidacion.ts` tienen tests de lista exacta de exportaciones.
@@ -109,6 +110,7 @@ export async function registrarPagoPorCuentaTiendaAction(
   deps: PagoPorCuentaTiendaDeps = {},
 ): Promise<RegistrarPagoPorCuentaTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R38: antes de mirar la entrada
     const { comprobante, ...input } = registrarPagoPorCuentaTiendaSchema.parse(
@@ -129,6 +131,7 @@ export async function anularPagoPorCuentaTiendaAction(
   deps: PagoPorCuentaTiendaDeps = {},
 ): Promise<AnularPagoPorCuentaTiendaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularPagoPorCuentaTiendaSchema.parse(input);
@@ -148,6 +151,7 @@ export async function obtenerComprobantePagoPorCuentaAction(
   deps: PagoPorCuentaTiendaDeps = {},
 ): Promise<ObtenerComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = obtenerComprobantePagoPorCuentaSchema.parse(input);

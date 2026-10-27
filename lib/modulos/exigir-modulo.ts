@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import { esPlataforma } from "@/lib/auth/plataforma";
-import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
+import { contextoActual, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { ModuloInactivoError } from "@/lib/modulos/modulo-inactivo-error";
@@ -27,8 +27,11 @@ export type ClavesDeModulo = readonly [ModuloApagable, ...ModuloApagable[]];
 
 const SIN_MODULOS: ReadonlySet<ModuloApagable> = new Set();
 
-/** Los módulos encendidos de la empresa en curso, o `null` sin empresa (R34). El `null` también se memoriza. */
-export const modulosActivos = cache(async (): Promise<ReadonlySet<ModuloApagable> | null> => {
+// La memoria va POR EMPRESA (la clave es el argumento de `cache`): un cron o un job recorre varias
+// empresas en la misma petición con `conEmpresa`, y la lista de una no puede servir para otra. La
+// clave vacía es «la empresa de la sesión», que en una petición es una sola.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- solo es la clave de la memoria
+const leerActivos = cache(async (_empresa: string): Promise<ReadonlySet<ModuloApagable> | null> => {
   try {
     const activos = await new ModulosActivosRepository(getPrismaClient()).activos();
     return new Set(activos);
@@ -39,6 +42,17 @@ export const modulosActivos = cache(async (): Promise<ReadonlySet<ModuloApagable
   }
 });
 
+/**
+ * Los módulos encendidos de la empresa en curso, o `null` sin empresa (R34). El `null` también se
+ * memoriza. En plataforma no hay empresa: sin filtro, la lectura vería las filas de todas, así que
+ * se responde `null` sin consultar.
+ */
+export async function modulosActivos(): Promise<ReadonlySet<ModuloApagable> | null> {
+  const contexto = contextoActual();
+  if (contexto?.tipo === "plataforma") return null;
+  return leerActivos(contexto?.tipo === "empresa" ? contexto.organizacionId : "");
+}
+
 export async function moduloActivo(modulo: ModuloApagable): Promise<boolean> {
   return (await modulosActivos())?.has(modulo) ?? false;
 }
@@ -47,7 +61,7 @@ export async function moduloActivo(modulo: ModuloApagable): Promise<boolean> {
  * La primera clave apagada, en el orden pedido, o `null` si están todas encendidas o si no hay
  * empresa (R34).
  */
-async function primeraApagada(modulos: ClavesDeModulo): Promise<ModuloApagable | null> {
+export async function primerModuloApagado(modulos: ClavesDeModulo): Promise<ModuloApagable | null> {
   const activos = await modulosActivos();
   if (activos === null) return null;
   return modulos.find((m) => !activos.has(m)) ?? null;
@@ -58,13 +72,13 @@ async function primeraApagada(modulos: ClavesDeModulo): Promise<ModuloApagable |
  * `details.codigo = "modulo_inactivo"`, `details.modulo` = la primera apagada).
  */
 export async function exigirModuloActivo(...modulos: ClavesDeModulo): Promise<void> {
-  const apagado = await primeraApagada(modulos);
+  const apagado = await primerModuloApagado(modulos);
   if (apagado) throw new ModuloInactivoError(apagado);
 }
 
 /** Para páginas: con alguna clave apagada responde la pantalla de no encontrado (R16). */
 export async function exigirModuloEnRuta(...modulos: ClavesDeModulo): Promise<void> {
-  if (await primeraApagada(modulos)) notFound();
+  if (await primerModuloApagado(modulos)) notFound();
 }
 
 /**

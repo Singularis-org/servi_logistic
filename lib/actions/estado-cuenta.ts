@@ -33,6 +33,7 @@ import {
   type VerEstadoCuentaCompletoResult,
   type VerEstadoCuentaResult,
 } from "@/lib/types/estado-cuenta";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §3.2/§6, R16–R25, R81) — el borde del ESTADO DE CUENTA. Lectura interna del
 // mismo proyecto: Server Action (`docs/architecture.md`). Sesion primero, forma despues (`.strict()`:
@@ -157,6 +158,7 @@ export async function verEstadoCuentaAction(
   deps: EstadoCuentaDeps = {},
 ): Promise<VerEstadoCuentaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = estadoCuentaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -178,6 +180,7 @@ export async function verEstadoCuentaCompletoAction(
   deps: EstadoCuentaDeps = {},
 ): Promise<VerEstadoCuentaCompletoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = estadoCuentaCompletoSchema.parse(input);
@@ -200,6 +203,7 @@ export async function verMiEstadoCuentaAction(
   deps: EstadoCuentaDeps = {},
 ): Promise<VerEstadoCuentaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = miEstadoCuentaSchema.parse(input ?? {});
@@ -219,6 +223,7 @@ export async function verMiEstadoCuentaCompletoAction(
   deps: EstadoCuentaDeps = {},
 ): Promise<VerEstadoCuentaCompletoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = miEstadoCuentaCompletoSchema.parse(input ?? {});
@@ -250,6 +255,7 @@ export async function verOrdenesDeFilaAction(
   deps: OrdenesDeFilaDeps = {},
 ): Promise<VerOrdenesDeFilaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = ordenesDeFilaSchema.parse(input);
@@ -275,6 +281,7 @@ export async function estadoCuentaKardexAction(
   deps: CuentaKardexDeps = {},
 ): Promise<CuentaKardexActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = estadoCuentaCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -298,6 +305,7 @@ export async function estadoCuentaKardexConDetalleAction(
   deps: CuentaKardexDeps = {},
 ): Promise<CuentaKardexConDetalleActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = estadoCuentaConGuiasCompletoSchema.parse(input); // bodega -> VALIDATION_ERROR (R25)
@@ -319,6 +327,7 @@ export async function miEstadoCuentaKardexAction(
   deps: CuentaKardexDeps = {},
 ): Promise<CuentaKardexActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = miEstadoCuentaCompletoSchema.parse(input ?? {});
@@ -340,6 +349,7 @@ export async function miEstadoCuentaKardexConDetalleAction(
   deps: CuentaKardexDeps = {},
 ): Promise<CuentaKardexConDetalleActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = miEstadoCuentaCompletoSchema.parse(input ?? {});

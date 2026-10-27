@@ -13,6 +13,7 @@ import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoR
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovimientoService";
 import { previsualizarMovimientoSchema, type PrevisualizarMovimientoResult } from "@/lib/types/efecto-movimiento";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §4.4, R44–R47, R82) — el borde de «Así queda». Sesion primero, forma despues
 // (`.strict()`, monto positivo), rol en el servicio (antes de leer). Solo lectura.
@@ -62,6 +63,7 @@ export async function previsualizarMovimientoAction(
   deps: EfectoMovimientoDeps = {},
 ): Promise<PrevisualizarMovimientoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = previsualizarMovimientoSchema.parse(input);

@@ -17,6 +17,7 @@ import {
 } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { defaultLogger } from "@/lib/errors";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 const ALLOWED_ROLES = new Set<string>(["maestro"]);
 
@@ -36,6 +37,7 @@ export interface SincronizarPlantillasDeps {
 export async function sincronizarPlantillasWhatsapp(
   deps: SincronizarPlantillasDeps = {},
 ): Promise<SincronizarPlantillasActionResult> {
+  await exigirModuloActivo("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // solo maestro

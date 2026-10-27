@@ -26,6 +26,8 @@ export interface DrenarResult {
   fallidos: number;
   reintentados: number;
   muertos: number;
+  /** SL-23 (R20): jobs de un módulo apagado para su empresa; ni ok ni fallidos. */
+  descartados: number;
 }
 
 export interface IJobQueueService {

@@ -23,6 +23,7 @@ import { FinanzasDiarioRepository } from "@/lib/repositories/FinanzasDiarioRepos
 import { FinanzasDiarioService } from "@/lib/services/FinanzasDiarioService";
 import type { ResultadoFinanzasDiario } from "@/lib/types/finanzas-diario";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 export interface FinanzasDiarioDeps {
   readonly service?: Pick<FinanzasDiarioService, "consultar">;
@@ -48,6 +49,7 @@ export interface FinanzasDiarioDeps {
 export async function consultarFinanzasDiario(
   deps: FinanzasDiarioDeps = {},
 ): Promise<ResultadoFinanzasDiario> {
+  await exigirModuloActivo("analitica");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
   // «No sabemos quien eres» y «no puedes» piden cosas distintas del usuario —una se arregla
