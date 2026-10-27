@@ -17,8 +17,10 @@ import {
   type SuscripcionPushResult,
 } from "@/lib/types/push";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IPushEndpointPlataformaRepository } from "@/lib/interfaces/repositories/IPushEndpointPlataformaRepository";
 import type { IPushSuscripcionRepository } from "@/lib/interfaces/repositories/IPushSuscripcionRepository";
 import type { IUsuarioPreferenciaRepository } from "@/lib/interfaces/repositories/IUsuarioPreferenciaRepository";
+import { PushEndpointPlataformaRepository } from "@/lib/repositories/PushEndpointPlataformaRepository";
 import { PushSuscripcionRepository } from "@/lib/repositories/PushSuscripcionRepository";
 import { UsuarioPreferenciaRepository } from "@/lib/repositories/UsuarioPreferenciaRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -30,6 +32,8 @@ import { toActionError } from "@/lib/actions/_shared/to-action-error";
 
 export interface PushActionDeps {
   repo?: IPushSuscripcionRepository;
+  /** SL-18 (R26) — suelta el endpoint de otra empresa antes del alta. Inyectable para test. */
+  plataformaRepo?: IPushEndpointPlataformaRepository;
   /** FICHA 422 — el repositorio de la preferencia de LA PERSONA (R3/R7). Inyectable para test. */
   preferenciaRepo?: IUsuarioPreferenciaRepository;
   getActor?: () => Promise<Actor | null>;
@@ -39,6 +43,10 @@ export interface PushActionDeps {
 
 function buildRepo(): IPushSuscripcionRepository {
   return new PushSuscripcionRepository(getPrismaClient());
+}
+
+function buildPlataformaRepo(): IPushEndpointPlataformaRepository {
+  return new PushEndpointPlataformaRepository(getPrismaClient());
 }
 
 function buildPreferenciaRepo(): IUsuarioPreferenciaRepository {
@@ -112,6 +120,17 @@ export async function registrarSuscripcionPush(
     // Un `ok` aquí haría creer al navegador que quedó registrado; con el rechazo, `alta-push`
     // deshace su suscripción, que es lo correcto para quien no tiene avisos que recibir.
     if (sinCanalDeEmpresa(actor)) throw new ForbiddenError();
+    // SL-18 (design §7, R26–R28) — EL ÚLTIMO GANA. Si este navegador estaba suscrito con una cuenta
+    // de OTRA empresa, esa fila se borra primero (en plataforma: desde aquí no se ve) y luego se
+    // registra en la empresa de la sesión. Sin el primer paso, el upsert no vería la fila ajena,
+    // chocaría con el único global del endpoint y la otra empresa seguiría enviando aquí. Son dos
+    // contextos distintos y no comparten transacción: si el alta falla, el navegador se queda sin
+    // suscripción y `alta-push` la deshace, pero nunca quedan dos dueños. Un actor sin empresa no
+    // llega aquí (el superadmin sale arriba); si llegara, el repositorio rechaza el id vacío.
+    await (deps.plataformaRepo ?? buildPlataformaRepo()).liberarDeOtrasEmpresas(
+      data.endpoint,
+      actor.organizacionId ?? "",
+    );
     await (deps.repo ?? buildRepo()).registrar(actor.usuarioId, data);
 
     // ⚠️ LA SUSCRIPCION PRIMERO Y LA PREFERENCIA DESPUES, Y EL FALLO DE LA SEGUNDA NO SE PROPAGA.
