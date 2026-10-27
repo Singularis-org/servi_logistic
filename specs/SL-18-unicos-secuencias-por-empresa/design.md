@@ -329,8 +329,13 @@ lo mismo con `usuario_email_idx` y la consulta de 3.1.
 ## 7. Push: el último gana (R26–R28)
 
 **Hoy.** `push_suscripcion` es de negocio y `endpoint` es único global. En el contexto de B, el
-upsert por endpoint no ve la fila de A (lo impiden el filtro de la extensión y la RLS), intenta
-crear y choca con P2002. La fila de A sigue y A sigue enviando.
+upsert por endpoint no ve la fila de A (lo impiden el filtro de la extensión y la RLS). El fallo
+es silencioso: el alta en B devuelve `ok`, la fila sigue siendo de A y A sigue enviando.
+
+> Revisión 2026-10-27: decía «intenta crear y choca con P2002». La mutación M1 de la Tanda 6
+> (`progress/impl_SL-18.md > Tanda 6`) mostró que no hay P2002: el alta en B responde `ok` sin
+> cambiar la fila. Ese test se conecta como dueño, sin RLS; con `servi_app` el síntoma podría ser
+> otro, y el arreglo cubre los dos casos.
 
 **Cambio.** El endpoint sigue único global: un navegador tiene un solo dueño en toda la
 plataforma. `registrarSuscripcionPush` (`lib/actions/push.ts`) hace dos pasos:
