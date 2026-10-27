@@ -25,6 +25,10 @@ import type { RolValue } from "@prisma/client";
 // dashboard maestro (R1); adminTienda conserva su Panel de tienda (R2, feature 26
 // intacta); mensajero/adminSatelite/sin sesión ven el placeholder (R3). El rol se
 // resuelve SOLO server-side vía resolveActorFromSession (R4): aquí se mockea.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

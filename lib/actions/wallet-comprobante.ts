@@ -19,6 +19,7 @@ import {
   type AdjuntarComprobanteResult,
   type VerComprobanteResult,
 } from "@/lib/types/wallet-comprobante-lateral";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §4.1, D6/D12, R74–R80) — el borde del comprobante LATERAL: adjuntarlo despues
 // (una vez, acceso total) y verlo por enlace temporal (acceso total o la tienda duena). Sesion primero,
@@ -43,7 +44,8 @@ function toComprobanteActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -52,6 +54,9 @@ function toComprobanteActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`wallet-comprobante: AppErrorCode inesperado ${shape.code}`);
   }
@@ -80,6 +85,7 @@ export async function adjuntarComprobanteAction(
   deps: WalletComprobanteDeps = {},
 ): Promise<AdjuntarComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de mirar la entrada
     const { destino, comprobante } = adjuntarComprobanteSchema.parse(crudoDelFormData(formData));
@@ -100,6 +106,7 @@ export async function verComprobanteAction(
   deps: WalletComprobanteDeps = {},
 ): Promise<VerComprobanteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const { destino } = verComprobanteSchema.parse(input);

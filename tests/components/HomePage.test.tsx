@@ -13,6 +13,10 @@ import Home from "@/app/(app)/dashboard/page";
 // renderiza un botón de logout ad-hoc propio: el único control lo aporta el
 // PageHeader. Se stubbea el LogoutButton (client: useRouter/useToast) para
 // aislar la home; su comportamiento se cubre en LogoutButton.test.tsx.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));

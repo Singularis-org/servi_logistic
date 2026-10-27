@@ -163,7 +163,9 @@ export interface ChatNoLeidosVista {
  */
 export type ResumenNoLeidosChatResult =
   | { status: "ok"; conversaciones: ChatNoLeidosVista[] }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  // SL-23 (design §5.3): WhatsApp apagado para la empresa.
+  | { status: "forbidden" };
 
 /** Resultado de sellar un hilo como leido. `forbidden` = la orden no es de este mensajero. */
 export type MarcarChatLeidoResult =

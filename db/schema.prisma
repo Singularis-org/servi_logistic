@@ -744,6 +744,40 @@ model DistritoZonaEspecial {
   @@map("distrito_zona_especial")
 }
 
+/// SL-23 (design §2) — los 9 módulos apagables. El catálogo es cerrado y vive en el código
+/// (`lib/modulos/catalogo.ts`, tipado contra este enum); la base solo guarda la activación.
+enum ModuloApagable {
+  analitica
+  monitoreo
+  recoleccion
+  bodegas_satelite
+  wallet
+  ranking
+  whatsapp
+  api_integraciones
+
+  @@map("modulo_apagable")
+}
+
+/// SL-23 (design §4.1) — un módulo encendido para una empresa. Una fila = encendido; sin fila =
+/// apagado (R4). Viven solo en el SQL de 20261026120000, porque Prisma no los expresa: la política
+/// `organizacion_modulo_por_empresa`, el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (la empresa
+/// lee sus módulos y no los escribe, R7) y el trigger de «sin cambio de empresa». CASCADE con la
+/// empresa: es configuración y no vale nada sin ella; el rastro queda en `historial_accion`.
+model OrganizacionModulo {
+  id     String         @id @default(uuid())
+  modulo ModuloApagable
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([organizacionId, modulo], map: "organizacion_modulo_organizacion_id_modulo_key")
+  @@index([organizacionId])
+  @@map("organizacion_modulo")
+}
+
 // Orden de negocio (R7-R14a). Borrado logico via deleted_at (soft delete).
 model Orden {
   id                     String    @id @default(uuid())
@@ -3287,6 +3321,9 @@ enum JobEstado {
   processing
   done
   failed
+  /// SL-23 (R20): el job de un módulo apagado para su empresa. No se ejecuta ni se reintenta; el
+  /// motivo va en `last_error` (`modulo_inactivo:<clave>`).
+  descartado
 
   @@map("job_estado")
 }
@@ -4495,6 +4532,10 @@ enum HistorialAccionTipo {
   integracion_probada
   integracion_token_regenerado
   integracion_desconectada
+  /// SL-23 (design §4.3): el superadmin enciende o apaga un módulo de la empresa. Entidad:
+  /// `organizacion_modulo`; etiqueta: el nombre del módulo; `valor_nuevo`: su clave.
+  modulo_activado
+  modulo_desactivado
 
   @@map("historial_accion_tipo")
 }
@@ -4540,6 +4581,9 @@ enum HistorialAccionEntidad {
   /// SL-36 (design §13): la integracion de un servicio, 1:1 con su tabla. La fila sobrevive al
   /// borrado fisico de la integracion (`entidad_id` sin FK).
   integracion
+  /// SL-23 (design §4.3): la activación de un módulo, 1:1 con su tabla. `entidad_id` es el id de la
+  /// fila creada o borrada; sin FK, sobrevive al apagado.
+  organizacion_modulo
 
   @@map("historial_accion_entidad")
 }
@@ -5278,6 +5322,7 @@ model Organizacion {
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
+  modulos OrganizacionModulo[] // SL-23
 
   // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
   // global. Solo la escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El

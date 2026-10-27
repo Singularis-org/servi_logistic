@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -25,6 +26,8 @@ import { PorRecibirModule } from "../_components/PorRecibirModule";
  * sus acciones de lote, ni sus modales.
  */
 export default async function RecepcionSatelitePorRecibirPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("bodegas_satelite");
   const actor = await resolveActorFromSession();
   if (!actor || actor.rol !== "adminSatelite") notFound(); // R19
 

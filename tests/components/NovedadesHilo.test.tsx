@@ -127,7 +127,7 @@ function renderConSWR(ui: ReactElement) {
 
 function renderAyuda(items: NovedadDTO[] = [novedad()]) {
   return renderConSWR(
-    <NovedadesModule grupo="ayuda" items={items} total={items.length} page={1} pageSize={10} />,
+    <NovedadesModule whatsappActivo grupo="ayuda" items={items} total={items.length} page={1} pageSize={10} />,
   );
 }
 

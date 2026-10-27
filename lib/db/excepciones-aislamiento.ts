@@ -195,6 +195,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-43",
     motivo: "alta de una empresa (demo de QA y E2E) por el servicio del superadmin, que no tiene empresa (R11)",
   },
+  {
+    archivo: "lib/repositories/ModulosEmpresaRepository.ts",
+    ficha: "SL-23",
+    motivo: "encender y apagar módulos de una empresa: lo hace el superadmin, que no tiene empresa (R10)",
+  },
 ];
 
 /**

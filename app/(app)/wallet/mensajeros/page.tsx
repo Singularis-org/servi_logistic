@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta, moduloActivo } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -23,6 +24,8 @@ import { WalletMensajerosTabs } from "./_components/WalletMensajerosTabs";
  * `Prisma.Decimal`. Si la action no responde `ok` → `notFound` (defensa en profundidad).
  */
 export default async function WalletMensajerosPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   // Feature 94 (paridad adm↔maestro): las cuentas por pagar las ven los roles de
   // ACCESO TOTAL (`maestro`/`admin`); cualquier otro rol (o sin sesion) → notFound (R19).
@@ -48,6 +51,10 @@ export default async function WalletMensajerosPage() {
   const ahora = new Date();
   const fechaInicialPremios = fechaObjetivo(ahora);
   const fechaMaximaPremios = fechaCalendarioCR(ahora);
+
+  // SL-23 (design §3.7, §6.3): los premios del ranking exigen Wallet Y Ranking. Wallet ya lo exigió
+  // la puerta de la ruta; con Ranking apagado la pestaña de premios no se pinta.
+  const rankingActivo = await moduloActivo("ranking");
 
   return (
     <AppPage
@@ -76,10 +83,11 @@ export default async function WalletMensajerosPage() {
               pageSize: cuentasResult.pageSize,
             },
           }}
-          premios={{
-            fechaInicial: fechaInicialPremios,
-            fechaMaxima: fechaMaximaPremios,
-          }}
+          premios={
+            rankingActivo
+              ? { fechaInicial: fechaInicialPremios, fechaMaxima: fechaMaximaPremios }
+              : null
+          }
         />
       </section>
     </AppPage>

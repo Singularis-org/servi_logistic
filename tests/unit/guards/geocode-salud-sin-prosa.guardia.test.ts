@@ -162,6 +162,9 @@ describe("401/T14 — R35: el contrato GENÉRICO de la cola no gana miembros por
       "claimBatch",
       "complete",
       "fail",
+      // SL-23 (design §5.4, aprobado): el descarte de un job de un módulo apagado (R20). Es del
+      // contrato de la cola, no de la salud de la geocodificación.
+      "descartar",
       "findByDedupeKeys",
     ]);
   });

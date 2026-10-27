@@ -31,7 +31,9 @@ export interface PlantillaTextoDTO {
 /** Resultado del listado de plantillas para el flujo wa.me. */
 export type ListarPlantillasTextoResult =
   | { status: "ok"; items: PlantillaTextoDTO[] }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  // SL-23 (design §5.3): WhatsApp apagado para la empresa.
+  | { status: "forbidden" };
 
 // Aqui vivian `EnviarPlantillaResult`, `ListarEnviablesResult` y `PlantillaEnviableDTO`, los
 // tipos del envio server-side por Meta. Se borraron el 2026-08-07 con el resto de esa isla

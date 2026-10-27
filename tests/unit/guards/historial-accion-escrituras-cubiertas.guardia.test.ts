@@ -639,6 +639,26 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.integracion\.delete\(/,
   },
+  // --- SL-23 (design §5.2, R12, R13) · cambia módulos ---
+  //
+  // Un metodo por tipo. Los dos corren en `comoPlataforma` (el superadmin no tiene empresa) y abren
+  // su `$transaction` ahi dentro. Que la fila caiga en la empresa correcta, con el superadmin como
+  // actor, y que un cambio repetido no deje ninguna, lo prueba
+  // `tests/integration/db/modulos-empresa-historial.test.ts`.
+  {
+    tipos: ["modulo_activado"],
+    archivo: "lib/repositories/ModulosEmpresaRepository.ts",
+    metodo: "encender",
+    forma: "abre_tx",
+    mutacion: /tx\.organizacionModulo\.createMany\(/,
+  },
+  {
+    tipos: ["modulo_desactivado"],
+    archivo: "lib/repositories/ModulosEmpresaRepository.ts",
+    metodo: "apagar",
+    forma: "abre_tx",
+    mutacion: /tx\.organizacionModulo\.deleteMany\(/,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -1027,7 +1047,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 65 desde la ficha 458-B (`cobro_rechazo_tienda_anulado` y `egreso_caja_anulado`, cada uno con
     // su metodo propio).
     // 70 desde SL-36 (los cinco `integracion_*`, un metodo de `IntegracionRepository` por tipo).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(70);
+    // 72 desde SL-23 (`modulo_activado` y `modulo_desactivado`, un metodo de
+    // `ModulosEmpresaRepository` por tipo).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(72);
   });
 });
 

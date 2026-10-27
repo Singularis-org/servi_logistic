@@ -18,6 +18,7 @@ import { registrarEgresoConLateralesSchema, separarComprobante } from "@/lib/typ
 import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_shared/comprobante-lateral";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 45 (T5) — Server Actions de EGRESOS administrativos (mutaciones/lecturas internas
 // del mismo proyecto -> Server Action, no Route API, patron lib/actions/wallet.ts). Resuelve
@@ -50,7 +51,8 @@ function toEgresoActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -59,6 +61,9 @@ function toEgresoActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`wallet-egresos: AppErrorCode inesperado ${shape.code}`);
   }
@@ -99,6 +104,7 @@ export async function registrarEgresoAdministrativoAction(
   deps: WalletEgresoDeps = {},
 ): Promise<RegistrarEgresoConComprobanteActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R18: antes de tocar el service
     // FICHA 458-B (R42/R74): el objeto de hoy o un FormData con «a quien», referencia y comprobante.
@@ -126,6 +132,7 @@ export async function verDesgloseEgresosAction(
   deps: WalletEgresoDeps = {},
 ): Promise<VerDesgloseEgresosActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarMovimientosSchema.parse(input); // mismos filtros que el libro

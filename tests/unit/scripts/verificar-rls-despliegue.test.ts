@@ -23,12 +23,13 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     });
   });
 
-  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 77 tablas (SL-38, SL-40 y las dos de SL-36)", () => {
-    expect(MODELOS_DE_NEGOCIO).toHaveLength(77);
+  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 78 tablas (SL-38, SL-40, las dos de SL-36 y SL-23)", () => {
+    expect(MODELOS_DE_NEGOCIO).toHaveLength(78);
+    // SL-23: `organizacion_modulo` tampoco suma triggers de misma empresa: su unica FK es a `organizacion`.
     // SL-36 no suma triggers de misma empresa: sus dos tablas no tienen FK a otra tabla de negocio.
     // SL-19: `jobs` (empresa opcional) suma su `jobs_por_empresa`, pero no tiene trigger sin cambio.
     expect(MODELOS_CON_EMPRESA_OPCIONAL.map((m) => m.tabla)).toEqual(["jobs"]);
-    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 78, triggersMismaEmpresa: 151, triggersSinCambio: 77 });
+    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 79, triggersMismaEmpresa: 151, triggersSinCambio: 78 });
   });
 
   it("SL-19 — una tabla de empresa opcional suma una politica y ningun trigger sin cambio de empresa", () => {

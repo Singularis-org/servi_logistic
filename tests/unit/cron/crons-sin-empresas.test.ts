@@ -88,6 +88,8 @@ const CASOS: CasoCron[] = [
       cobrosPendientesCreados: 0,
       cobrosPendientesTotales: 0,
     },
+    // SL-23 (R21): `saltadas`, las empresas con Wallet apagado (el doble no filtra: 0).
+    empresasExtra: { saltadas: 0 },
   },
   {
     nombre: "liberar-reprogramadas",
@@ -188,7 +190,8 @@ const CASOS: CasoCron[] = [
     metodo: "sincronizar",
     corrida: { leidas: 1, actualizadas: 1, sinCambios: 1, ignoradas: 1 },
     vacio: { leidas: 0, actualizadas: 0, sinCambios: 0, ignoradas: 0 },
-    empresasExtra: { sinWhatsapp: 0 },
+    // SL-23 (R21): `saltadas`, las empresas con WhatsApp apagado (el doble no filtra: 0).
+    empresasExtra: { sinWhatsapp: 0, saltadas: 0 },
   },
 ];
 
@@ -349,7 +352,7 @@ describe("drenador: cada job con su empresa (R42)", () => {
     const service: IJobQueueService = {
       drenar: vi.fn(async () => {
         ctx = contextoActual();
-        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0 };
+        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0, descartados: 0 };
       }),
     };
     const res = await handleProcesarJobs(req(), { getSecret: () => SECRET, service, now: () => AHORA });

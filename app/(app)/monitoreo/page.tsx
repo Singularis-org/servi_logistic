@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import type { RolValue } from "@prisma/client";
 import { notFound } from "next/navigation";
 
@@ -37,6 +38,8 @@ const DESCRIPCION =
 const ROLES_CON_ACCESO: readonly RolValue[] = ["admin", "maestro", "adminSatelite"];
 
 export default async function MonitoreoPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("monitoreo");
   const actor = await resolveActorFromSession();
   if (!actor || !ROLES_CON_ACCESO.includes(actor.rol)) {
     notFound(); // R11

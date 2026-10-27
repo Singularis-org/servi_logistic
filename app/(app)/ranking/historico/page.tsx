@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -46,6 +47,8 @@ function fechaSolicitada(valor: string | string[] | undefined): string {
 export default async function RankingHistoricoPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("ranking");
   const actor = await resolveActorFromSession();
   // Paridad exacta con `/ranking` (feature 94, adm↔maestro): acceso total + `mensajero`.
   if (!actor || (!esAccesoTotal(actor.rol) && actor.rol !== "mensajero")) {

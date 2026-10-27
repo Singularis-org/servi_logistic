@@ -13,6 +13,10 @@ import {
   type TxDeTest,
 } from "@/tests/integration/db/_postgres-real";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // Feature 109 (R1-R4, R9, R11) + SL-36 (design §10; R19, R20, R21) — el route del webhook contra
 // Postgres real, con el composition root de produccion (`buildWebhookWhatsappService`) montado
 // sobre la transaccion del caso: enrutado por numero, App Secret descifrado de la integracion de

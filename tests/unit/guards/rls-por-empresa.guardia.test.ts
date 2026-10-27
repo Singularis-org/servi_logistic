@@ -151,8 +151,9 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
     const conPolitica = migraciones.filter((m) => /current_setting\('app\.organizacion_id'/.test(m.sql));
     expect(conPolitica.length).toBeGreaterThan(0);
     // 73 de SL-17 + `distrito_zona_especial` (SL-38) + `cobro_plataforma_movimiento` (SL-40, 20261023130100)
-    // + `integracion` e `integracion_prueba_minuto` (SL-36, 20261025120000).
-    expect(tablas.length).toBe(77);
+    // + `integracion` e `integracion_prueba_minuto` (SL-36, 20261025120000)
+    // + `organizacion_modulo` (SL-23, 20261026120000).
+    expect(tablas.length).toBe(78);
   });
 
   it("cada tabla de negocio tiene su política vigente", () => {

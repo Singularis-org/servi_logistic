@@ -5,6 +5,10 @@ import type { ICajaKardexService } from "@/lib/interfaces/services/ICajaKardexSe
 import type { ICuentaKardexService } from "@/lib/interfaces/services/ICuentaKardexService";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // FICHA 468 / T9 — el BORDE de las seis acciones del kardex y sus COMPOSITION ROOTS, ejercitados de
 // verdad (memoria «el composition root que no inyecta»: se llama a cada accion SIN `deps.service`, se
 // construye por su root, y se exige que cada orquestador reciba sus dependencias REALES —el repositorio

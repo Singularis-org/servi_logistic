@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (77): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (16): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40) y la marca de entorno (SL-43).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
@@ -42,6 +42,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Credenciales de cada empresa (SL-36): el limite de pruebas tambien es de la empresa
   { modelo: "Integracion", tabla: "integracion" },
   { modelo: "IntegracionPruebaMinuto", tabla: "integracion_prueba_minuto" },
+  // Módulos encendidos de cada empresa (SL-23): la empresa los lee y solo el superadmin los escribe
+  { modelo: "OrganizacionModulo", tabla: "organizacion_modulo" },
   // Zonas y tarifas
   { modelo: "Zona", tabla: "zona" },
   { modelo: "ZonaDistrito", tabla: "zona_distrito" },

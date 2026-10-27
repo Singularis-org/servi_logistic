@@ -130,6 +130,25 @@ esta bien hecha, no solo si "funciona".
   antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
   (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
   `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
+- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 8
+  módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`).
+  - **Tabla:** `organizacion_modulo(organizacion_id, modulo)`, una fila por módulo encendido, con RLS
+    por empresa. `servi_app` solo la lee; la escribe únicamente el superadmin, como dueño y en
+    `comoPlataforma`, por `lib/repositories/ModulosEmpresaRepository.ts`. Cada cambio deja su fila
+    en `historial_accion`. El alta de una empresa nace solo con el núcleo; el seed no la toca.
+  - **Reparto:** `lib/modulos/reparto.ts` dice de qué módulo es cada ruta, action, job, cron y route
+    de API (o si es núcleo), y qué piezas de un módulo se pintan en pantallas de otro
+    (`CONSUMOS_ENTRE_MODULOS`).
+  - **Puertas** (`lib/modulos/exigir-modulo.ts`, una consulta por petición y sin caché entre
+    peticiones): una página de un módulo apagado da 404 (`exigirModuloEnRuta`); una action responde
+    `{ status: "forbidden" }` (`exigirModuloActivo` dentro de `withErrorHandler`); el menú lo filtra
+    `menuDeLaEmpresa`; los crons pasan `modulo` a `paraCadaEmpresa`; el drenador marca `descartado`
+    el job de un módulo apagado, salvo los de cálculo continuo (`CALCULO_CONTINUO`); la API por key
+    responde 403 con `details.codigo = "modulo_inactivo"`, y el webhook entrante de WhatsApp responde
+    200 sin procesar el mensaje. Sin empresa (sin sesión o
+    superadmin), la puerta no aplica y decide la autorización de siempre.
+  - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
+    un módulo con su puerta) y `modulos-sin-seed.guardia`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

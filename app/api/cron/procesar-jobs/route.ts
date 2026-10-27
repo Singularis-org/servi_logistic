@@ -16,6 +16,9 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadJobsConfig } from "@/lib/config/jobs";
 import type { JobTipo } from "@prisma/client";
+import { primerModuloApagado } from "@/lib/modulos/exigir-modulo";
+import { type Destino, MODULO_POR_JOB, esCalculoContinuo, modulosDe } from "@/lib/modulos/reparto";
+import { JobDescartado } from "@/lib/services/jobs/job-descartado";
 import {
   buildLiberarReprogramadasService,
   crearLiberarReprogramadasHandler,
@@ -83,28 +86,47 @@ export interface OpcionesDeEmpresa {
  *    bien no duplica nada.
  *  - Sin empresa y por evento (filas previas a M4, o encoladas desde un script en plataforma):
  *    en plataforma, como dice R42.
+ *
+ * SL-23 (design §5.4; R19–R21, R30) — `modulo` es el del tipo (`MODULO_POR_JOB`). Con empresa y el
+ * módulo apagado, lanza `JobDescartado` sin llamar al handler; sin empresa y recurrente, se salta
+ * las empresas que lo tienen apagado. `"nucleo"` (y los de cálculo continuo, que lo reciben) corre
+ * siempre. Sin empresa y por evento corre como hoy: no hay empresa contra la que comprobar.
  */
 export function conSuEmpresa(
   handler: JobHandler,
   recurrente: boolean,
   opciones: OpcionesDeEmpresa = {},
+  modulo: Destino = "nucleo",
 ): JobHandler {
+  const claves = modulosDe(modulo);
   return async (job) => {
     const empresa = empresaDelJob(job);
     if (empresa !== null) {
-      await conEmpresa(empresa, () => handler(job));
+      await conEmpresa(empresa, async () => {
+        const apagado = claves.length > 0 ? await primerModuloApagado([claves[0], ...claves.slice(1)]) : null;
+        if (apagado !== null) throw new JobDescartado(apagado);
+        await handler(job);
+      });
       return;
     }
     if (!recurrente) {
       await comoPlataforma("SL-17", "job sin empresa", () => handler(job));
       return;
     }
-    const resumen = await paraCadaEmpresa(() => handler(job), { cliente: opciones.empresas });
+    const resumen = await paraCadaEmpresa(() => handler(job), { cliente: opciones.empresas, modulo: claves[0] });
     if (resumen.fallidas.length > 0) {
       const ids = resumen.fallidas.map((f) => f.organizacionId).join(", ");
       throw new Error(`fallo en ${resumen.fallidas.length} empresa(s): ${ids}`);
     }
   };
+}
+
+/**
+ * SL-23 (design §5.4, §3.8; R19, R30) — el módulo que `conSuEmpresa` exige a un tipo de job. Los de
+ * cálculo continuo siguen clasificados en su módulo, pero corren con él apagado: reciben `"nucleo"`.
+ */
+export function moduloDeEjecucion(tipo: JobTipo): Destino {
+  return esCalculoContinuo(tipo) ? "nucleo" : MODULO_POR_JOB[tipo];
 }
 
 /**
@@ -218,7 +240,10 @@ export function buildHandlers(
   handlers.set("whatsapp_envio_reintento", crearWhatsappEnvioReintentoHandler());
   handlers.set("whatsapp_envio_mantenimiento", crearWhatsappEnvioMantenimientoHandler());
   return new Map(
-    [...handlers].map(([tipo, h]) => [tipo, conSuEmpresa(h, recurrentes.has(tipo), opciones)]),
+    [...handlers].map(([tipo, h]) => [
+      tipo,
+      conSuEmpresa(h, recurrentes.has(tipo), opciones, moduloDeEjecucion(tipo)),
+    ]),
   );
 }
 

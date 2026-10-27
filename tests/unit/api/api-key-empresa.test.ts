@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
 import { hashApiKey } from "@/lib/utils/api-key-hash";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-17 · R13 — la empresa de una peticion por API key es la de la key.
 //
 // El cliente de Prisma es un doble que reconoce dos lecturas de `api_key` —la del autenticador

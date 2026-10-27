@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 
@@ -112,6 +113,9 @@ const TEXTOS = {
   columnaAlta: "Alta",
   columnaMaestros: "Maestros",
   columnaBienvenida: "Bienvenida",
+  columnaModulos: "Módulos",
+  enlaceModulos: "Módulos",
+  enlaceModulosNombre: (empresa: string) => `Módulos de ${empresa}`,
   sinMaestros: "—",
   vacio: "Aún no hay empresas. Crea la primera con el formulario.",
 } as const;
@@ -426,6 +430,7 @@ function ListadoEmpresas({
       <TableHeader>
         <TableRow>
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
+          <TableHead>{TEXTOS.columnaModulos}</TableHead>
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
           <TableHead>{TEXTOS_COBRO.titulo}</TableHead>
@@ -438,6 +443,16 @@ function ListadoEmpresas({
         {empresas.map((empresa) => (
           <TableRow key={empresa.id}>
             <TableCell className="font-medium">{empresa.nombre}</TableCell>
+            <TableCell>
+              {/* SL-23 (design §7; R8): el detalle de la empresa, donde se encienden sus módulos. */}
+              <Link
+                href={`/plataforma/empresas/${empresa.id}`}
+                aria-label={TEXTOS.enlaceModulosNombre(empresa.nombre)}
+                className="rounded-sm text-sm text-primary-strong underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {TEXTOS.enlaceModulos}
+              </Link>
+            </TableCell>
             <TableCell>{empresa.slug}</TableCell>
             <TableCell>{FECHA_CORTA.format(empresa.creadaEn)}</TableCell>
             <TableCell>

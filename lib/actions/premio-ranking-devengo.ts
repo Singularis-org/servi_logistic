@@ -23,6 +23,7 @@ import {
 } from "@/lib/types/premio-ranking-devengo";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 293 (T4.3, design §7.3) — Server Actions del PREMIO DEL RANKING.
 //
@@ -59,7 +60,8 @@ function toPremioActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -68,6 +70,9 @@ function toPremioActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`premio-ranking: AppErrorCode inesperado ${shape.code}`);
   }
@@ -115,6 +120,7 @@ export async function listarPremiosDelDiaAction(
   deps: PremioRankingDeps = {},
 ): Promise<ListarPremiosDelDiaActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet", "ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes de tocar el service
     const data = listarPremiosDelDiaSchema.parse(input); // R8: ZodError -> VALIDATION_ERROR
@@ -137,6 +143,7 @@ export async function registrarPremioAction(
   deps: PremioRankingDeps = {},
 ): Promise<RegistrarPremioActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet", "ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = registrarPremioSchema.parse(input);
@@ -152,6 +159,7 @@ export async function anularPremioAction(
   deps: PremioRankingDeps = {},
 ): Promise<AnularPremioActionResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("wallet", "ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularPremioSchema.parse(input); // R30: motivo obligatorio, ya recortado

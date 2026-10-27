@@ -67,6 +67,7 @@ class ColaEnMemoria implements IJobRepository {
   }
   async complete(): Promise<void> {}
   async fail(): Promise<void> {}
+  async descartar(): Promise<void> {}
 
   /** Filas de geocodificacion encoladas. */
   get geo() {

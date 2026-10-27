@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
 import { crearOrden, crearTienda, repoDeTest, sembrarEscenario } from "./_picking-476";
 import { listarTiendasPicking } from "@/lib/actions/informe-picking";
 import { crearInformePicking } from "@/lib/whatsapp-envios/informes/picking/informe";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // Ficha 476 (T3.3, design §7) — R3 contra Postgres: el selector de tienda ofrece SOLO las tiendas
 // `adminTienda` con fulfillment, por nombre, con sus ordenes en preparacion y atrasadas para dos N; y

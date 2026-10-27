@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { redirect } from "next/navigation";
 
 /**
@@ -22,6 +23,8 @@ import { redirect } from "next/navigation";
  * server-side, como siempre. Este archivo no importa ninguna Server Action ni el
  * resolvedor de actor a propósito.
  */
-export default function RecepcionSatelitePage() {
+export default async function RecepcionSatelitePage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("bodegas_satelite");
   redirect("/recepcion-satelite/por-recibir");
 }

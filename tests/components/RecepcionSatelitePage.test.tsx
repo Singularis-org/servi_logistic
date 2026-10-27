@@ -33,6 +33,10 @@ import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
 //   (3) `/recepcion-satelite/en-bodega`     → el listado y los avisos de bodega.
 // Ningún caso de acceso por rol se pierde: los cuatro que tenía la pantalla única se
 // ejecutan AHORA CONTRA LAS DOS páginas, con la misma tabla de roles.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));
@@ -134,16 +138,18 @@ afterEach(() => {
 
 // ===================== (1) La ruta vieja: redirige y nada más =====================
 describe("/recepcion-satelite — redirect a «Por recibir» (R13/R14)", () => {
-  it("R13: redirige a /recepcion-satelite/por-recibir", () => {
+  // SL-23 (R16): la página abre con la puerta de Bodegas satélite, así que es `async` y el redirect
+  // llega como rechazo de la promesa.
+  it("R13: redirige a /recepcion-satelite/por-recibir", async () => {
     // No se borra la ruta: vive en enlaces viejos, en el historial de los navegadores de
     // la calle y en la PWA ya instalada. Borrarla daría 404 a quien la tuviera guardada.
-    expect(() => RecepcionSatelitePage()).toThrow(
+    await expect(RecepcionSatelitePage()).rejects.toThrow(
       "NEXT_REDIRECT:/recepcion-satelite/por-recibir",
     );
   });
 
-  it("R13: no renderiza contenido, no resuelve la sesión y no consulta NINGÚN dato", () => {
-    expect(() => RecepcionSatelitePage()).toThrow();
+  it("R13: no renderiza contenido, no resuelve la sesión y no consulta NINGÚN dato", async () => {
+    await expect(RecepcionSatelitePage()).rejects.toThrow();
     // El gate de rol lo aplica la página de destino; repetirlo aquí sería una segunda
     // fuente de verdad que puede divergir — y una consulta por cada enlace viejo.
     expect(resolveActorMock).not.toHaveBeenCalled();
@@ -157,13 +163,13 @@ describe("/recepcion-satelite — redirect a «Por recibir» (R13/R14)", () => {
   // R14 — LA PUERTA ÚNICA. El destino del redirect y el aterrizaje post-login del
   // `adminSatelite` tienen que ser LA MISMA pantalla; si divergen, el rol entra en un
   // sitio al iniciar sesión y en otro desde un enlace guardado, y nada se pone rojo.
-  it("R14: el destino del redirect coincide con el aterrizaje post-login del adminSatelite", () => {
+  it("R14: el destino del redirect coincide con el aterrizaje post-login del adminSatelite", async () => {
     const aterrizaje = primerDestino(
       itemsVisibles(SIDEBAR_ITEMS, { usuarioId: "u1", rol: "adminSatelite" }),
     );
     // Positivo: el aterrizaje existe y es el literal firmado (no se deriva del redirect).
     expect(aterrizaje).toBe("/recepcion-satelite/por-recibir");
-    expect(() => RecepcionSatelitePage()).toThrow(`NEXT_REDIRECT:${aterrizaje}`);
+    await expect(RecepcionSatelitePage()).rejects.toThrow(`NEXT_REDIRECT:${aterrizaje}`);
   });
 });
 

@@ -34,6 +34,7 @@ import {
 } from "@/lib/types/recepcion-satelite";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 33 — Server Actions de la bodega satelite (mutaciones internas del mismo
 // proyecto; van como Server Action, no como Route API, patron feature 36). Resuelve
@@ -50,7 +51,10 @@ import type { AppErrorShape } from "@/lib/errors";
 // `toMisAsignacionesActionError`.
 function toRecepcionSateliteActionError(
   shape: AppErrorShape,
-): { status: "validation_error"; fieldErrors: Record<string, string[]> } | { status: "unauthenticated" } {
+):
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -59,6 +63,9 @@ function toRecepcionSateliteActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    case "FORBIDDEN":
+      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
+      return { status: "forbidden" };
     default:
       throw new Error(`recepcion-satelite: AppErrorCode inesperado ${shape.code}`);
   }
@@ -159,6 +166,7 @@ export async function listarRecepcionSatelite(
   deps: RecepcionSateliteDeps = {},
 ): Promise<ListarRecepcionSateliteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de tocar el service
     const service = deps.service ?? buildService();
@@ -185,6 +193,7 @@ export async function listarOrdenesBodegaPaginado(
   deps: RecepcionSateliteDeps = {},
 ): Promise<ListarOrdenesBodegaPaginadoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de tocar el service
     const data = listarOrdenesBodegaPaginadoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -211,6 +220,7 @@ export async function listarOrdenesBodegaCompleto(
   deps: RecepcionSateliteDeps = {},
 ): Promise<ListarOrdenesBodegaCompletoResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de tocar el service
     const data = listarOrdenesBodegaCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -234,6 +244,7 @@ export async function listarIdsVigentesBodega(
   deps: RecepcionSateliteDeps = {},
 ): Promise<ListarIdsVigentesBodegaResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de tocar el service
     const data = listarIdsVigentesBodegaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -249,6 +260,7 @@ export async function recibirPorQr(
   deps: RecepcionSateliteDeps = {},
 ): Promise<RecibirResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = recibirSchema.parse(input); // R16: ZodError -> VALIDATION_ERROR
@@ -270,6 +282,7 @@ export async function asignarDesdeSatelite(
   deps: AsignacionSateliteDeps = {},
 ): Promise<AsignarSateliteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1/R15: antes de tocar el service
     const data = asignarSateliteSchema.parse(input); // R19: ZodError -> VALIDATION_ERROR
@@ -296,6 +309,7 @@ export async function listarMensajerosSatelite(
   deps: ListarMensajerosSateliteDeps = {},
 ): Promise<ListarMensajerosSateliteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     if (actor.rol !== "adminSatelite") return { status: "forbidden" as const }; // R1/R13
@@ -334,6 +348,7 @@ export async function estadoBloqueoBodegaSatelite(
   deps: EstadoBloqueoBodegaSateliteDeps = {},
 ): Promise<EstadoBloqueoBodegaSateliteResult> {
   const r = await withErrorHandler(async () => {
+    await exigirModuloActivo("bodegas_satelite");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     if (actor.rol !== "adminSatelite") return { status: "forbidden" as const };

@@ -189,6 +189,23 @@ describe("SL-32 (R29, R35) — con el superadmin, la página pinta el listado", 
     }
   });
 
+  // SL-23 (design §7; R8): cada fila enlaza al detalle de su empresa, donde se encienden sus módulos.
+  it("SL-23 R8: cada fila lleva el enlace «Módulos» al detalle de su empresa", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+
+    render(await EmpresasPage());
+
+    const filas = screen.getAllByRole("row").slice(1);
+    expect(within(filas[0]).getByRole("link", { name: "Módulos de Envíos Norte" })).toHaveAttribute(
+      "href",
+      "/plataforma/empresas/org-b",
+    );
+    expect(within(filas[1]).getByRole("link", { name: "Módulos de Reparto Sur" })).toHaveAttribute(
+      "href",
+      "/plataforma/empresas/org-a",
+    );
+  });
+
   it("si el listado no llega, lo dice y no inventa empresas", async () => {
     actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
     listarMock.mockResolvedValue({ status: "forbidden" });

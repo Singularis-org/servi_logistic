@@ -7,6 +7,10 @@ import type { RolValue } from "@prisma/client";
 // servidor: otro rol (o sin sesión) ve «sin permiso» en vez del módulo y NO se llama a ninguna
 // acción que lea envíos. El maestro sí recibe el módulo con sus datos.
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));

@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import type { RolValue } from "@prisma/client";
 import { notFound } from "next/navigation";
 
@@ -57,6 +58,8 @@ export default async function HistoricoConversacionesPage(
   _props?: Record<string, unknown>,
   deps: HistoricoConversacionesPageDeps = {},
 ) {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("whatsapp");
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   // `ROLES_HISTORICO_CONVERSACIONES` es una tupla de literales de rol y su `.includes`
   // sólo acepta esos literales, no cualquier `RolValue`. Se ensancha el tipo del ARRAY

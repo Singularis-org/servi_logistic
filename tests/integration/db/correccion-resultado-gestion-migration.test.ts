@@ -459,6 +459,10 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       "integracion_probada",
       "integracion_token_regenerado",
       "integracion_desconectada",
+      // SL-23 (2026-10-26): el rastro de los modulos de una empresa. Su migracion:
+      // `20261026120100_historial_accion_modulos`.
+      "modulo_activado",
+      "modulo_desactivado",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

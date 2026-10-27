@@ -97,12 +97,16 @@ const escribeUnRol = (fuente: string): boolean =>
 
 const escribeUnaRuta = (fuente: string): boolean => /["'`]\/[a-zA-Z]/.test(fuente);
 
-/** ¿El destino sale de la fuente compartida del menú? */
+/**
+ * ¿El destino sale de la fuente compartida del menú? SL-23 (R15): la forma vigente es
+ * `primerDestino(menuDeLaEmpresa(actor, …))`, que compone `itemsVisibles(SIDEBAR_ITEMS, actor)` con
+ * los módulos de la empresa; la forma directa es la misma fuente y también vale.
+ */
 const usaElMenuCompartido = (fuente: string): boolean =>
   /from\s+["']@\/lib\/auth\/menu-visibility["']/.test(fuente) &&
   /\bprimerDestino\b/.test(fuente) &&
-  /\bitemsVisibles\b/.test(fuente) &&
-  /\bSIDEBAR_ITEMS\b/.test(fuente);
+  (/\bmenuDeLaEmpresa\b/.test(fuente) ||
+    (/\bitemsVisibles\b/.test(fuente) && /\bSIDEBAR_ITEMS\b/.test(fuente)));
 
 /** ¿Monta el armazón del portal (`AppPage` -> `PageHeader`)? */
 const montaElArmazon = (fuente: string): boolean => /\bAppPage\b/.test(fuente);
@@ -203,7 +207,7 @@ describe("el armazón: la del portal lo conserva, la de fuera no puede", () => {
 });
 
 describe("la salida sale del menú compartido, no de una segunda lista de roles", () => {
-  it("la del portal deriva el destino de SIDEBAR_ITEMS", () => {
+  it("la del portal deriva el destino de SIDEBAR_ITEMS (por menuDeLaEmpresa desde SL-23)", () => {
     expect(usaElMenuCompartido(codigo(PANTALLA_DEL_PORTAL))).toBe(true);
   });
 
@@ -245,6 +249,9 @@ describe("los detectores muerden (si no, este guardia sería decorado)", () => {
     const bueno = `import { itemsVisibles, primerDestino, SIDEBAR_ITEMS } from "@/lib/auth/menu-visibility";
       const inicio = primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor));`;
     expect(usaElMenuCompartido(bueno)).toBe(true);
+    const deLaEmpresa = `import { menuDeLaEmpresa, primerDestino } from "@/lib/auth/menu-visibility";
+      const inicio = primerDestino(menuDeLaEmpresa(actor, await modulosDelMenu(actor)));`;
+    expect(usaElMenuCompartido(deLaEmpresa)).toBe(true);
     expect(usaElMenuCompartido('const inicio = DESTINOS_POR_ROL[rol];')).toBe(false);
   });
 

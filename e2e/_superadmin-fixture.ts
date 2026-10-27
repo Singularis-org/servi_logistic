@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect, type Page } from "@playwright/test";
-import type { PrismaClient } from "@prisma/client";
+import type { ModuloApagable, PrismaClient } from "@prisma/client";
+
+import { nombreDelModulo, ORDEN_MODULOS } from "../lib/modulos/catalogo";
 
 import { LogDelServidor } from "./_dos-empresas-fixture";
 
@@ -273,4 +275,47 @@ export async function recuperarContrasena(page: Page, email: string, password: s
   await page.getByRole("button", { name: "Crear contraseña" }).click();
   await expect(page.getByText("Contraseña creada")).toBeVisible({ timeout: 60_000 });
   return enlace;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Módulos de una empresa (SL-23)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * SL-23 (design §7, §10; R8, R26) — el superadmin abre el detalle de una empresa desde su enlace
+ * «Módulos» en `/plataforma/empresas` y deja encendidos EXACTAMENTE `encendidos`: pulsa los
+ * interruptores que no estén como se piden y espera a que cada uno vuelva a estar habilitado (la
+ * action respondió) sin revertirse. Después recarga y comprueba que la base guardó lo mismo: un
+ * interruptor optimista que no llegó a la base se vería al recargar. `page` ya tiene la sesión del
+ * superadmin.
+ */
+export async function fijarModulosPorPantalla(
+  page: Page,
+  nombreEmpresa: string,
+  encendidos: readonly ModuloApagable[],
+): Promise<void> {
+  await page.goto("/plataforma/empresas");
+  await page.getByRole("link", { name: `Módulos de ${nombreEmpresa}`, exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Módulos", exact: true })).toBeVisible({ timeout: 60_000 });
+
+  for (const clave of ORDEN_MODULOS) {
+    const interruptor = page.getByRole("switch", { name: nombreDelModulo(clave), exact: true });
+    const quiero = encendidos.includes(clave);
+    if ((await interruptor.getAttribute("aria-checked")) !== String(quiero)) {
+      await interruptor.click();
+      await expect(interruptor).toBeEnabled({ timeout: 60_000 });
+    }
+    await expect(interruptor, `${nombreEmpresa}: «${nombreDelModulo(clave)}»`).toHaveAttribute(
+      "aria-checked",
+      String(quiero),
+    );
+  }
+
+  await page.reload();
+  for (const clave of ORDEN_MODULOS) {
+    await expect(
+      page.getByRole("switch", { name: nombreDelModulo(clave), exact: true }),
+      `${nombreEmpresa}: «${nombreDelModulo(clave)}» tras recargar`,
+    ).toHaveAttribute("aria-checked", String(encendidos.includes(clave)), { timeout: 60_000 });
+  }
 }

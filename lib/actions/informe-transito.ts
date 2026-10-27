@@ -18,6 +18,9 @@ import {
   parametrosTransitoSchema,
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import { seleccionarTransito } from "@/lib/whatsapp-envios/informes/transito/informe";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /** Dependencias inyectables (tests). En produccion: sesion, repo real y reloj. */
 export interface PrevisualizarTransitoDeps {
@@ -38,6 +41,10 @@ export async function previsualizarInformeTransito(
   parametros: unknown,
   deps: PrevisualizarTransitoDeps = {},
 ): Promise<PrevisualizarTransitoResult> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("whatsapp");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ROLES_PERMITIDOS.has(actor.rol)) return { status: "forbidden" };

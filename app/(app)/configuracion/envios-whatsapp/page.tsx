@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarEnvios } from "@/lib/actions/envios-whatsapp";
@@ -18,6 +19,8 @@ const SIN_PERMISO_ENVIOS = "No tienes permiso para acceder a esta sección.";
  * Configuración, y con la lista vacía no aparece (allí manda «+ Crear el primero»).
  */
 export default async function EnviosWhatsappPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("whatsapp");
   const actor = await resolveActorFromSession();
   if (actor?.rol !== "maestro") {
     return (

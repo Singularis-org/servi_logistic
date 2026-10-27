@@ -1,3 +1,5 @@
+import type { ModuloApagable } from "@prisma/client";
+
 import { comoPlataforma, conEmpresa } from "./contexto-empresa";
 import { getPrismaClient } from "./prisma-client";
 
@@ -11,6 +13,8 @@ export type ClienteDeOrganizaciones = {
     findMany(args: {
       select: { id: true };
       orderBy: { createdAt: "asc" };
+      /** SL-23 (R21): solo las empresas con el módulo encendido. */
+      where?: { modulos: { some: { modulo: ModuloApagable } } };
     }): Promise<{ id: string }[]>;
   };
 };
@@ -18,20 +22,55 @@ export type ClienteDeOrganizaciones = {
 export type ResumenPorEmpresa = {
   ok: string[];
   fallidas: { organizacionId: string; error: unknown }[];
+  /** SL-23 (R21): las que tienen apagado el módulo del cron; no corrieron. Vacío sin `modulo`. */
+  saltadas: string[];
 };
+
+export type OpcionesParaCadaEmpresa = {
+  cliente?: ClienteDeOrganizaciones;
+  /**
+   * SL-23 (design §5.4, R21): el módulo del cron o job. Se salta las empresas que lo tienen apagado.
+   * Los de cálculo continuo (§3.8, R30) no lo pasan: corren para todas.
+   */
+  modulo?: ModuloApagable;
+};
+
+async function listar(
+  cliente: ClienteDeOrganizaciones,
+  modulo: ModuloApagable | undefined,
+): Promise<{ organizaciones: { id: string }[]; saltadas: string[] }> {
+  const todas = await cliente.organizacion.findMany({ select: { id: true }, orderBy: { createdAt: "asc" } });
+  if (modulo === undefined) return { organizaciones: todas, saltadas: [] };
+  const con = await cliente.organizacion.findMany({
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+    where: { modulos: { some: { modulo } } },
+  });
+  const encendidas = new Set(con.map((o) => o.id));
+  return {
+    organizaciones: con,
+    saltadas: todas.filter((o) => !encendidas.has(o.id)).map((o) => o.id),
+  };
+}
 
 export async function paraCadaEmpresa(
   fn: (organizacionId: string) => Promise<void>,
-  opciones: { cliente?: ClienteDeOrganizaciones } = {},
+  opciones: OpcionesParaCadaEmpresa = {},
 ): Promise<ResumenPorEmpresa> {
   // El tipo ancho de `getPrismaClient()` no conoce el modelo hasta regenerar el cliente con el
   // esquema de SL-17; la forma se fija en `ClienteDeOrganizaciones`.
   const cliente = opciones.cliente ?? (getPrismaClient() as unknown as ClienteDeOrganizaciones);
-  const organizaciones = await comoPlataforma("SL-17", "listar empresas para un job por empresa", () =>
-    cliente.organizacion.findMany({ select: { id: true }, orderBy: { createdAt: "asc" } }),
+  const { organizaciones, saltadas } = await comoPlataforma(
+    "SL-17",
+    "listar empresas para un job por empresa",
+    () => listar(cliente, opciones.modulo),
   );
+  if (saltadas.length > 0) {
+    // Ids de empresa, no datos personales: para ver en el log a quién no le corrió y por qué.
+    console.info(`[paraCadaEmpresa] módulo ${opciones.modulo} apagado, se saltan: ${saltadas.join(", ")}`);
+  }
 
-  const resumen: ResumenPorEmpresa = { ok: [], fallidas: [] };
+  const resumen: ResumenPorEmpresa = { ok: [], fallidas: [], saltadas };
   // En serie, no en paralelo: el pool por instancia es de 3 conexiones (prisma-client.ts) y un
   // job por empresa en paralelo lo agotaria con pocas empresas.
   for (const { id } of organizaciones) {

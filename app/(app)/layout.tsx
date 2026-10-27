@@ -18,7 +18,8 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { resolverRevisionSinpePendiente } from "@/lib/auth/revision-sinpe-pendiente";
 import { puedeEditarAlgunSinpe } from "@/lib/types/sinpe-bodega";
-import { itemsVisibles, SIDEBAR_ITEMS } from "@/lib/auth/menu-visibility";
+import { menuDeLaEmpresa } from "@/lib/auth/menu-visibility";
+import { modulosDelMenu } from "@/lib/modulos/exigir-modulo";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { UsuarioPreferenciaRepository } from "@/lib/repositories/UsuarioPreferenciaRepository";
@@ -37,7 +38,9 @@ export default async function AppLayout({
   children: ReactNode;
 }>) {
   const actor = await resolveActorFromSession();
-  const items = itemsVisibles(SIDEBAR_ITEMS, actor);
+  // SL-23 (R15): lo que el rol ve, menos los módulos apagados para su empresa. El superadmin y quien
+  // no tiene sesión no pagan la consulta (`modulosDelMenu`).
+  const items = menuDeLaEmpresa(actor, await modulosDelMenu(actor));
 
   // Feature 211 — el tema se resuelve EN EL SERVIDOR, aquí y no en el layout raíz.
   // Aquí ya se estaba leyendo la sesión, así que este layout ya era dinámico y la cookie
