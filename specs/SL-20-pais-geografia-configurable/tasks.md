@@ -201,16 +201,16 @@ para y avisa al leader.
 
 ## T6 — Verificación y cierre
 
-- [ ] T6.1 `tests/integration/db/geografia-dos-paises.test.ts`: dos empresas en `XA` y `XB`
+- [x] T6.1 `tests/integration/db/geografia-dos-paises.test.ts`: dos empresas en `XA` y `XB`
   (R12, R13, R14, R38, R39), más la pasada de todas las suites `geografia-*`, `zona-*`,
   `cobertura-*` y `*-dos-empresas*` de `tests/integration/db/`. Dep.: T1–T4.
   **Hecho:** todo verde contra Postgres local con `servi_app`.
 - [x] T6.2 [P] `tests/unit/api/openapi-geografia-sin-cambios.test.ts` (R18). Dep.: ninguna.
   **Hecho:** los campos `provincia`, `canton` y `distrito` del contrato siguen iguales.
-- [ ] T6.3 Medir el trigger de `orden` (mediana de `INSERT` antes y después, como D13) y anotarlo en
+- [x] T6.3 Medir el trigger de `orden` (mediana de `INSERT` antes y después, como D13) y anotarlo en
   `progress/impl_SL-20.md`. Dep.: T1.4.
   **Hecho:** cifra escrita; si pasa de 1 ms, aviso al leader.
-- [ ] T6.4 Demo de QA: `scripts/demo-qa/receta.ts` busca el distrito por `codigoDta` **y** país
+- [x] T6.4 Demo de QA: `scripts/demo-qa/receta.ts` busca el distrito por `codigoDta` **y** país
   `CR` (el código deja de ser único global) y da de alta sus empresas con `paisId: "CR"`
   **(enmienda 2026-10-26, decisión 3: cerrado en `CR`)**.
   Dep.: T1.2, T2.2.
