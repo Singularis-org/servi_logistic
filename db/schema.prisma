@@ -999,6 +999,11 @@ model Orden {
   // `work_mem` de 4 MB). El gemelo DESC se añade si `orden` supera las ~200.000 filas vivas; el
   // SQL exacto esta en la cabecera de la migracion.
   @@index([prioridad(sort: Desc), claveRemision, id], map: "orden_prioridad_clave_remision_idx")
+  // SL-18/R24 (M3): el listado por defecto de `/ordenes` de una empresa (`OrdenRepository.list`:
+  // `prioridad DESC, created_at DESC, id`). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS
+  // NULL`, el predicado de la consulta— y eso no se puede escribir aqui: vive en
+  // `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`.
+  @@index([organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id])
   @@index([organizacionId])
   @@map("orden")
 }
@@ -1356,11 +1361,14 @@ model GestionOrden {
   // Feature 126/R25 (T0-Q1 = B): la ruta caliente INTRADIA (cubos del dia en curso, D6/D13)
   // filtra por `created_at` SIN `orden_id` ni `mensajero_id` por delante, y ninguno de los
   // cuatro indices de arriba la cubre. Se DECLARA aqui, y no solo en el `.sql`: si el
-  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. Columna
-  // unica a proposito — `anulada_at` detras de un predicado de RANGO no filtraria, y el
-  // parcial `(created_at) WHERE anulada_at IS NULL` no es expresable en Prisma (misma
-  // limitacion que documenta el bloque de abajo).
-  @@index([createdAt], map: "gestion_orden_created_at_idx")
+  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. `anulada_at`
+  // no entra — detras de un predicado de RANGO no filtraria, y el parcial
+  // `WHERE anulada_at IS NULL` no es expresable en Prisma (misma limitacion que documenta el
+  // bloque de abajo).
+  // SL-18/R24 (M3): la empresa va DELANTE del rango. La consulta corre con la empresa fijada (la
+  // pone la RLS) y con `(created_at)` a secas recorria las gestiones de todas las empresas del
+  // dia; sustituye a `gestion_orden_created_at_idx`.
+  @@index([organizacionId, createdAt])
   // Feature 67 (F1.4-d): el indice PARCIAL de la ruta caliente
   // `(mensajero_id) WHERE cierre_id IS NULL AND anulada_at IS NULL` (/cierre-dia + corte
   // diario) NO se expresa aqui: Prisma no soporta indices parciales -> vive en el SQL de la
@@ -4622,7 +4630,9 @@ model HistorialAccion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc), id])
+  /// SL-18/R24 (M3): con la empresa delante, que el listado siempre lleva; sustituye a
+  /// `historial_accion_created_at_id_idx`, con el que vivo el plan alternaba entre los dos.
+  @@index([organizacionId, createdAt(sort: Desc), id])
   /// «Que hizo Fulano»: igualdad -> rango, el unico orden que un btree recorre sin filtro residual.
   @@index([actorUsuarioId, createdAt(sort: Desc)])
   /// «Que le paso a esta entidad».
