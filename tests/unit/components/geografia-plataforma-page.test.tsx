@@ -322,11 +322,13 @@ describe("R23, R42 — alta de país eligiéndolo del catálogo", () => {
     expect(acciones.crearPaisAction).not.toHaveBeenCalled();
   });
 
-  it("un país ya dado de alta se dice junto al buscador", async () => {
+  // Los dados de alta ya no se ofrecen (decisión 11): el `conflict` llega si otra sesión da de alta
+  // el mismo país mientras el diálogo está abierto. Por eso se elige uno que aquí no está.
+  it("un país que otra sesión acaba de dar de alta se dice junto al buscador", async () => {
     acciones.crearPaisAction.mockResolvedValue({ status: "conflict", campo: "id" });
     const { user, dialogo } = await abrirAlta();
-    await user.type(within(dialogo).getByRole("combobox", { name: /^País/ }), "GT");
-    await user.click(await screen.findByRole("option", { name: "Guatemala (GT)" }));
+    await user.type(within(dialogo).getByRole("combobox", { name: /^País/ }), "sv");
+    await user.click(await screen.findByRole("option", { name: "El Salvador (SV)" }));
     for (const campo of [
       "Nivel 1, en singular",
       "Nivel 1, en plural",

@@ -103,6 +103,7 @@ export function GeografiaPlataformaModule({
       </section>
 
       <NuevoPaisDialog
+        idsDadosDeAlta={paises.map((p) => p.id)}
         open={altaAbierta}
         onOpenChange={setAltaAbierta}
         onCreado={(id) => router.push(`${RUTA}?pais=${encodeURIComponent(id)}`)}
@@ -220,12 +221,28 @@ function etiquetaDePais(pais: PaisDelCatalogo): string {
   return `${pais.nombre} (${pais.id})`;
 }
 
+/**
+ * Decisión 11 (tras la review 1): el catálogo sin los países ya dados de alta. Ofrecerlos solo
+ * llevaría a un `conflict` del servidor al guardar.
+ */
+function paisesPorDarDeAlta(idsDadosDeAlta: readonly string[]): PaisDelCatalogo[] {
+  const dados = new Set(idsDadosDeAlta);
+  return PAISES_ISO_3166_1.filter((p) => !dados.has(p.id));
+}
+
 function NuevoPaisDialog({
+  idsDadosDeAlta,
   open,
   onOpenChange,
   onCreado,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; onCreado: (id: string) => void }>) {
+}: Readonly<{
+  idsDadosDeAlta: readonly string[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreado: (id: string) => void;
+}>) {
   const toast = useToast();
+  const opciones = paisesPorDarDeAlta(idsDadosDeAlta);
   const [pais, setPais] = useState<PaisDelCatalogo | null>(null);
   const [niveles, setNiveles] = useState<NombresDeNivelesDePais>(NIVELES_VACIOS);
   const [errores, setErrores] = useState<Record<string, string[]>>({});
@@ -296,14 +313,18 @@ function NuevoPaisDialog({
           {(control) => (
             <Combobox<PaisDelCatalogo>
               {...control}
-              items={PAISES_ISO_3166_1}
+              items={opciones}
               value={pais}
               onValueChange={setPais}
               itemToLabel={etiquetaDePais}
               itemKey={(p) => p.id}
               filter={casaPais}
               placeholder="Busca por nombre o por código"
-              emptyText="Ningún país casa con lo escrito."
+              emptyText={
+                opciones.length === 0
+                  ? "Todos los países del catálogo ya están dados de alta."
+                  : "Ningún país casa con lo escrito."
+              }
             />
           )}
         </FormField>
