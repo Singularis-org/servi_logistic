@@ -3,22 +3,17 @@
 //
 // El maestro llega desde el correo de bienvenida con el secreto en el fragmento. Se mide lo que
 // ve y lo que queda en la barra de direcciones: el secreto sale de ahí al montar, el formulario es
-// «Crea tu contraseña», guarda con el enlace (no con email y código), y un enlace muerto lleva al
+// «Crea tu contraseña», guarda con el enlace (SL-18: ya no hay email y código), y un enlace muerto lleva al
 // paso 1 del flujo normal.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RecuperarContrasenaForm } from "@/app/recuperar-contrasena/_components/RecuperarContrasenaForm";
-import {
-  crearContrasenaConEnlace,
-  restablecerContrasena,
-} from "@/lib/actions/password-reset";
+import { crearContrasenaConEnlace } from "@/lib/actions/password-reset";
 
 // Mismo patrón que `recuperar-contrasena-form.test.tsx`: se reemplazan las Server Actions.
 vi.mock("@/lib/actions/password-reset", () => ({
   solicitarRecuperacion: vi.fn(),
-  verificarCodigoRecuperacion: vi.fn(),
-  restablecerContrasena: vi.fn(),
   crearContrasenaConEnlace: vi.fn(),
 }));
 
@@ -31,7 +26,6 @@ vi.mock("next/link", () => ({
 }));
 
 const mockedCrear = vi.mocked(crearContrasenaConEnlace);
-const mockedRestablecer = vi.mocked(restablecerContrasena);
 
 const RUTA = "/recuperar-contrasena";
 const ENLACE = "c0ffee00-0000-4000-8000-000000000001.SeCrEtO_de_43_caracteres-xxxxxxxxxxxxxxxxxx";
@@ -110,7 +104,6 @@ describe("SL-41 (R18) — crear la contraseña con el enlace", () => {
         confirmPassword: CONTRASENA,
       }),
     );
-    expect(mockedRestablecer).not.toHaveBeenCalled();
     // El texto sigue al flujo: con el enlace de bienvenida la contraseña se CREA, no se
     // restablece (el texto de recuperación lo fija `recuperar-contrasena-form.test.tsx`).
     expect(
@@ -144,7 +137,7 @@ describe("SL-41 (R18) — crear la contraseña con el enlace", () => {
 });
 
 describe("SL-41 (R19) — el enlace que ya no sirve", () => {
-  it("con invalid_or_expired muestra el genérico y «Pedir un código por correo» vuelve al paso 1", async () => {
+  it("con invalid_or_expired muestra el genérico y «Pedir un enlace nuevo por correo» vuelve al paso 1", async () => {
     const user = userEvent.setup();
     abrirCon(`#enlace=${ENLACE}`);
     mockedCrear.mockResolvedValue({ status: "invalid_or_expired" });
@@ -158,14 +151,14 @@ describe("SL-41 (R19) — el enlace que ya no sirve", () => {
     // Un enlace muerto no se reintenta: el formulario desaparece.
     expect(screen.queryByLabelText("Nueva contraseña")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Pedir un código por correo" }));
+    await user.click(screen.getByRole("button", { name: "Pedir un enlace nuevo por correo" }));
 
     expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
     expect(screen.queryByText("El enlace no es válido o ya venció.")).toBeNull();
   });
 
-  it("con validation_error del ENLACE (mal formado) muestra el genérico y «Pedir un código por correo»", async () => {
+  it("con validation_error del ENLACE (mal formado) muestra el genérico y «Pedir un enlace nuevo por correo»", async () => {
     // El borde valida la forma con zod y devuelve `fieldErrors.enlace`. La pantalla no tiene campo
     // para el enlace: si ese error se tratara como de campo, el maestro pulsaría y no vería nada.
     const user = userEvent.setup();
@@ -184,7 +177,7 @@ describe("SL-41 (R19) — el enlace que ya no sirve", () => {
     expect(screen.queryByLabelText("Nueva contraseña")).toBeNull();
     expect(screen.queryByText("Enlace no válido")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Pedir un código por correo" }));
+    await user.click(screen.getByRole("button", { name: "Pedir un enlace nuevo por correo" }));
 
     expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
@@ -197,7 +190,7 @@ describe("SL-41 (R19) — el enlace que ya no sirve", () => {
 
     expect(window.location.hash).toBe("");
     expect(screen.getByRole("alert")).toHaveTextContent("El enlace no es válido o ya venció.");
-    expect(screen.getByRole("button", { name: "Pedir un código por correo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pedir un enlace nuevo por correo" })).toBeInTheDocument();
     expect(mockedCrear).not.toHaveBeenCalled();
   });
 });

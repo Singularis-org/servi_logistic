@@ -39,16 +39,7 @@ export type PasswordResetRequestResult =
   | { status: "ok" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 
-/**
- * TRANSICION (SL-18 R20): solo lo usa el envoltorio `verificarCodigoRecuperacion`, que responde
- * siempre `invalid_or_expired`. T7.2 lo borra junto al paso del codigo de la pantalla.
- */
-export type VerifyResetCodeResult =
-  | { status: "ok" }
-  | { status: "invalid_or_expired" }
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
-
-/** crearContrasenaConEnlace (y, hasta T7.2, el envoltorio `restablecerContrasena`). */
+/** crearContrasenaConEnlace. */
 export type ResetPasswordResult =
   | { status: "ok" }
   | { status: "invalid_or_expired" }

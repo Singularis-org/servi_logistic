@@ -47,7 +47,7 @@ export function plantillaBienvenidaMaestro(p: BienvenidaMaestroParams): EmailMes
         texto:
           `El enlace vence en ${p.ttlHoras} horas y sirve una sola vez. Si venció, pide al equipo ` +
           `de ${MARCA.nombre} que te lo reenvíe, o entra en ${p.baseUrl}/recuperar-contrasena y ` +
-          "pide un código con tu correo.",
+          "pide un enlace nuevo con tu correo.",
       },
       {
         tipo: "nota",

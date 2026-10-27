@@ -3,12 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import * as accionesRecuperacion from "@/lib/actions/password-reset";
-import {
-  crearContrasenaConEnlace,
-  restablecerContrasena,
-  solicitarRecuperacion,
-  verificarCodigoRecuperacion,
-} from "@/lib/actions/password-reset";
+import { crearContrasenaConEnlace, solicitarRecuperacion } from "@/lib/actions/password-reset";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { SendOtpCodeParams } from "@/lib/interfaces/external/IEmailProvider";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
@@ -23,8 +18,8 @@ import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from ".
 // SL-18 T3.3 (design §4) — «recuperar contraseña» con el MISMO email y la MISMA contraseña en dos
 // empresas, contra Postgres real, por las Server Actions:
 //   R18: el enlace de B cambia solo la contraseña de B; la de A sigue entrando con la vieja.
-//   R20: los pasos «verificar código» y «restablecer con código» ya no cambian nada, ni con un
-//        desafío real activo, y el servicio ya no los tiene.
+//   R20: los pasos «verificar código» y «restablecer con código» ya no existen: el módulo de
+//        actions no los exporta, el servicio no los tiene, y un desafío real activo no se toca.
 //
 // Todo es real (repositorios sobre `getPrismaClient()`, el cliente extendido de la app, dentro del
 // `comoPlataforma` de cada action) salvo el transporte del correo, que aquí se captura para leer los
@@ -112,7 +107,19 @@ describeSiHayBase("SL-18 — recuperar contraseña con el email en dos empresas 
     await getPrismaClient().$disconnect();
   }, 120_000);
 
-  it("R20: con un desafío real activo, «verificar código» y «restablecer con código» no cambian ninguna contraseña ni consumen el desafío", async () => {
+  it("R20: el módulo ya no exporta «verificar código» ni «restablecer con código», y el servicio tampoco los tiene", () => {
+    expect("verificarCodigoRecuperacion" in accionesRecuperacion).toBe(false);
+    expect("restablecerContrasena" in accionesRecuperacion).toBe(false);
+    expect(Object.keys(accionesRecuperacion).sort()).toEqual([
+      "crearContrasenaConEnlace",
+      "solicitarRecuperacion",
+    ]);
+    const s = servicio() as unknown as Record<string, unknown>;
+    expect(s.verificarCodigo).toBeUndefined();
+    expect(s.restablecer).toBeUndefined();
+  });
+
+  it("R20: con un desafío real activo, ninguna action pública canjea el código: no cambia ninguna contraseña ni consume el desafío", async () => {
     // Un código real y vigente para la cuenta de A, emitido por el mismo emisor que el OTP del login.
     const codigos: SendOtpCodeParams[] = [];
     const { challengeId } = await new OtpChallengeIssuer(new EmailOtpChallengeRepository(base), {
@@ -121,29 +128,17 @@ describeSiHayBase("SL-18 — recuperar contraseña con el email en dos empresas 
     expect(codigos).toHaveLength(1);
     const code = codigos[0].code;
 
-    const verificado = await verificarCodigoRecuperacion({ email: EMAIL, code }, deps());
-    const restablecido = await restablecerContrasena(
-      { email: EMAIL, code, password: NUEVA, confirmPassword: NUEVA },
+    // El código de 6 dígitos tampoco pasa por la única action que canjea: exige el enlace.
+    const conCodigo = await crearContrasenaConEnlace(
+      { enlace: code, password: NUEVA, confirmPassword: NUEVA },
       deps(),
     );
 
-    expect(verificado).toEqual({ status: "invalid_or_expired" });
-    expect(restablecido).toEqual({ status: "invalid_or_expired" });
+    expect(conCodigo.status).toBe("validation_error");
     expect(await verifyPassword(VIEJA, await hashDe(ids.a))).toBe(true);
     expect(await verifyPassword(VIEJA, await hashDe(ids.b))).toBe(true);
     const desafio = await base.emailOtpChallenge.findUniqueOrThrow({ where: { id: challengeId } });
     expect(desafio.consumedAt).toBeNull();
-
-    // Y el servicio ya no tiene los pasos del código.
-    const s = servicio() as unknown as Record<string, unknown>;
-    expect(s.verificarCodigo).toBeUndefined();
-    expect(s.restablecer).toBeUndefined();
-    expect(Object.keys(accionesRecuperacion).sort()).toEqual([
-      "crearContrasenaConEnlace",
-      "restablecerContrasena",
-      "solicitarRecuperacion",
-      "verificarCodigoRecuperacion",
-    ]);
   });
 
   it("R18: el enlace de B cambia solo la contraseña de B; la de A sigue entrando con la vieja", async () => {

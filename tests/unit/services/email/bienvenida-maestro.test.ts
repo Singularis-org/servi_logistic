@@ -43,7 +43,7 @@ describe("plantillaBienvenidaMaestro (R13)", () => {
         "",
         `Crear mi contraseña: ${URL_ENLACE}`,
         "",
-        "El enlace vence en 72 horas y sirve una sola vez. Si venció, pide al equipo de Servi Logistic que te lo reenvíe, o entra en https://app.example.com/recuperar-contrasena y pide un código con tu correo.",
+        "El enlace vence en 72 horas y sirve una sola vez. Si venció, pide al equipo de Servi Logistic que te lo reenvíe, o entra en https://app.example.com/recuperar-contrasena y pide un enlace nuevo con tu correo.",
         "",
         "Si no esperabas este correo, ignóralo: sin la contraseña nadie puede entrar a tu cuenta.",
         "",
@@ -69,7 +69,7 @@ describe("plantillaBienvenidaMaestro (R13)", () => {
   it("el HTML dice cuántas horas dura, que sirve una vez y qué hacer si venció", () => {
     const h = bienvenida().html!;
     expect(h).toContain(
-      ">El enlace vence en 72 horas y sirve una sola vez. Si venció, pide al equipo de Servi Logistic que te lo reenvíe, o entra en https://app.example.com/recuperar-contrasena y pide un código con tu correo.</td>",
+      ">El enlace vence en 72 horas y sirve una sola vez. Si venció, pide al equipo de Servi Logistic que te lo reenvíe, o entra en https://app.example.com/recuperar-contrasena y pide un enlace nuevo con tu correo.</td>",
     );
   });
 

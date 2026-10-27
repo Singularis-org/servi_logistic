@@ -4,7 +4,6 @@ import {
   requestResetSchema,
   crearConEnlaceSchema,
   type PasswordResetRequestResult,
-  type VerifyResetCodeResult,
   type ResetPasswordResult,
 } from "@/lib/types/password-reset";
 import type { IPasswordResetService } from "@/lib/interfaces/services/IPasswordResetService";
@@ -60,32 +59,6 @@ export async function solicitarRecuperacion(
     }),
   );
   return { status: "ok" };
-}
-
-/**
- * TRANSICION (SL-18 R20): el paso «verificar codigo» ya no existe. El correo lleva un enlace por
- * cuenta, y el servicio no tiene `verificarCodigo`. Este envoltorio sigue exportado solo para que
- * `RecuperarContrasenaForm` compile sin tocar `app/` en la Tanda 3: no toca servicio ni base y
- * responde siempre el generico. T7.2 lo borra junto al paso del codigo de la pantalla.
- */
-export async function verificarCodigoRecuperacion(
-  ...ignorados: unknown[]
-): Promise<VerifyResetCodeResult> {
-  void ignorados;
-  return { status: "invalid_or_expired" };
-}
-
-/**
- * TRANSICION (SL-18 R20): el paso «restablecer con codigo» ya no existe; el servicio no tiene
- * `restablecer`. No toca servicio ni base y responde siempre el generico. T7.2 lo borra junto al
- * paso del codigo. No confundir con `restablecerContrasena` de `lib/actions/usuarios.ts`, que es el
- * restablecimiento que hace el maestro.
- */
-export async function restablecerContrasena(
-  ...ignorados: unknown[]
-): Promise<ResetPasswordResult> {
-  void ignorados;
-  return { status: "invalid_or_expired" };
 }
 
 /**
