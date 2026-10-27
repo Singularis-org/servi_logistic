@@ -115,13 +115,13 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 5: índices de rutas calientes (R24, R25)
 
-- [ ] **T5.1** Medición (design §6): `EXPLAIN (ANALYZE, BUFFERS)` de cada candidato con dos
+- [x] **T5.1** Medición (design §6): `EXPLAIN (ANALYZE, BUFFERS)` de cada candidato con dos
   empresas, antes y después. La tabla va a `progress/impl_SL-18.md`. Dep. T1.1.
   **Hecho:** tabla con consulta, plan antes y después y decisión por candidato.
-- [ ] **T5.2** Migración `20261026090100_indices_rutas_calientes` (`migration.sql` y `down.sql`) y
+- [x] **T5.2** Migración `20261026090100_indices_rutas_calientes` (`migration.sql` y `down.sql`) y
   los `@@index` en `db/schema.prisma`, solo con lo que eligió T5.1. Dep. T5.1.
   **Hecho:** sin drift; ida y vuelta del `down.sql`.
-- [ ] **T5.3** `tests/integration/db/indices-rutas-calientes.test.ts`: R24 (cada índice elegido
+- [x] **T5.3** `tests/integration/db/indices-rutas-calientes.test.ts`: R24 (cada índice elegido
   existe con `organizacion_id` primero y el `EXPLAIN` de su consulta lo nombra) y R25
   (`usuario_email_idx` en el plan de la búsqueda del login). Dep. T5.2.
   **Hecho:** verde.

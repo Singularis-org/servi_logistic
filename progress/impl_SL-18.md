@@ -534,3 +534,194 @@ Tanda 4 hecha; sin bloqueos ni dependencias nuevas. Sin push (lo hace el leader)
     `storage-solo-por-adaptador`: 7 archivos, 105 passed.
 - **Nota:** donde la sección de arriba dice que la lista vive en `lib/db/excepciones-aislamiento.ts`,
   ahora vive en `tests/unit/guards/_unicos-sin-empresa.ts`.
+
+## Tanda 5: índices de rutas calientes (R24, R25) — 2026-10-26, backend_dev
+
+Base `servi_logistic_sl18` (local, `localhost:5432`, Postgres 16.1). La URL se exporta por comando,
+sin `.env` en el worktree. Grafo de código no consultado: la exploración fue con Grep/Read.
+
+### Archivos
+
+- `db/migrations/20261026090100_indices_rutas_calientes/migration.sql` (nuevo)
+- `db/migrations/20261026090100_indices_rutas_calientes/down.sql` (nuevo)
+- `db/schema.prisma`: tres `@@index` (`Tarifa`, `WhatsappEnvioEjecucion`, `AnalyticsDaily`). Salen
+  `@@index([createdAt])` de `Tarifa` y `@@index([createdAt(sort: Desc)])` de `WhatsappEnvioEjecucion`.
+- `tests/integration/db/indices-rutas-calientes.test.ts` (nuevo)
+
+### Medición (T5.1)
+
+**Datos.** La base de la feature solo tenía una organización y ninguna fila de negocio. `scripts/demo-qa`
+pide los catálogos del seed (ver Tanda 1, `demo-qa.test.ts`) y no da volumen, así que se sembraron
+datos sintéticos de A y B en una transacción revertida, en modo `session_replication_role = replica`.
+El script estuvo en el worktree como `.tmp-medir.ts` y se borró. Hubo tres corridas:
+
+- (1) A 2.000 / B 40.000 órdenes, cada empresa en bloque y fechas al azar;
+- (2) 20.000 / 20.000, también en bloque;
+- (3) 20.000 / 20.000 **intercaladas** por fecha, que es como escribe producción. Es la que decide.
+
+`historial_accion` y `gestion_orden` llevan el mismo volumen que `orden`, `whatsapp_envio_ejecucion` la
+cuarta parte, `tarifas` la décima, `plantilla_mensaje` la centésima y `analytics_daily` 365 días × N
+cubos.
+
+**Método.** Cada SQL es el que emite el repositorio por el cliente de la app (extensión +
+`conEmpresa`), capturado con `crearPrismaDeTestConEspia`. Se pasa por `EXPLAIN (ANALYZE, BUFFERS)` con
+`comoApp`, es decir como `servi_app` y con la empresa fijada. Cada consulta se mide en tres estados:
+
+- antes;
+- con el índice de prueba `(organizacion_id, <cols>)`;
+- con el índice de prueba y sin el viejo, en un `SAVEPOINT`.
+
+| Consulta (origen) | Plan antes (corrida 3) | Plan después | Decisión |
+|---|---|---|---|
+| Listado de órdenes por defecto (`lib/repositories/OrdenRepository.ts:1963 list`; `WHERE deleted_at IS NULL AND organizacion_id=$1 ORDER BY prioridad DESC, created_at DESC, id`) | `Seq Scan on orden`: 20.000 filas leídas y 20.000 descartadas (`Rows Removed by Filter`, las de la otra empresa) + top-N sort. 55–68 ms | `(organizacion_id, created_at)`: **no se usa**, el plan no cambia, también sin `orden_created_at_idx` | **Descartado**: el `ORDER BY` empieza por `prioridad`. Ver puntos abiertos |
+| Listado filtrado por estado (`OrdenRepository.list` con `estatusId`) | `Bitmap Index Scan on orden_estatus_id_idx`: 5.000 filas, 2.500 ajenas. 7,4 ms | `(organizacion_id, estatus_id)`: no se elige mientras exista `orden_estatus_id_idx`. Sin él: 2.500 filas, 6,6–7 ms | **Descartado**: la ganancia es marginal y `orden_estatus_id_idx` no se puede borrar (otras rutas y la FK) |
+| Ventana intradía de gestiones (`lib/repositories/AnaliticaOperativaVivaRepository.ts:397 contarGestionesVigentes`, SQL a mano, empresa por RLS) | `Index Scan using gestion_orden_created_at_idx`: 92 filas, 46 ajenas. Consulta total 92–138 ms, dominada por el CTE de `orden_historial_estado` | Con el viejo presente, el planificador **sigue con el viejo**. Sin él: `Bitmap Index Scan` del compuesto, 46 filas, mismo tiempo total | **Descartado**: solo se usaría borrando el viejo, y el viejo lo fija `analitica-operativa-indices.test.ts` (R25 de la 126), que mide sin empresa. En las corridas 1 y 2 sí se elegía; ver puntos abiertos |
+| Listado de tarifas (`lib/repositories/TarifaRepository.ts:175 list`; `WHERE organizacion_id=$1 ORDER BY created_at DESC LIMIT`) | `Index Scan Backward using tarifas_created_at_idx`, `Rows Removed by Filter` 24–25 (filas de la otra empresa) | Con el viejo, sigue el viejo. Sin él: `Index Scan Backward` del compuesto, 0 descartadas | **Entra** `tarifas_organizacion_id_created_at_idx`; se borra `tarifas_created_at_idx` |
+| Historial de acciones (`lib/repositories/HistorialAccionRepository.ts:130 list`; `ORDER BY created_at DESC, id`) | `historial_accion_created_at_id_idx`, 24–28 descartadas. En la corrida 1, como la empresa chica: 470 descartadas y 506 buffers | Compuesto `(organizacion_id, created_at DESC, id)`: 25 filas y 28 buffers. Con el viejo presente, el plan **alterna**: en el test, 2 de 5 corridas eligieron el viejo, por el bloat que dejan las corridas revertidas | **Descartado**: el viejo lo fija `historial-accion-migration.test.ts`, que mide su plan sin empresa, y con él vivo el compuesto no es estable. Punto abierto |
+| Historial de envíos WhatsApp (`lib/repositories/WhatsappEjecucionRepository.ts:279 historial`; `ORDER BY created_at DESC, id DESC`) | `Index Scan using whatsapp_envio_ejecucion_created_at_idx`, 18–33 descartadas | Con el viejo, sigue el viejo. Sin él: el compuesto, 0 descartadas | **Entra** `whatsapp_envio_ejecucion_organizacion_id_created_at_idx`; se borra `whatsapp_envio_ejecucion_created_at_idx` |
+| Listado de plantillas (`lib/repositories/PlantillaMensajeRepository.ts:136 list`) | `Index Scan Backward using plantilla_mensaje_created_at_idx`, 21–32 descartadas con 200 por empresa | Sin el viejo usa el compuesto, pero en la corrida en serie con otras suites el plan fue `Seq Scan` + sort | **Descartado**: con el volumen real (decenas de plantillas por empresa) el plan correcto es `Seq Scan` y el índice no aporta. No es una ruta caliente |
+| Rollup de analítica (`lib/repositories/AnaliticaOperativaRollupRepository.ts:97 agregarCubos`; `WHERE fecha BETWEEN … AND organizacion_id=$3 GROUP BY fecha, zona_id`) | `Bitmap Index Scan on analytics_daily_grano_key`: 1.620 filas, 810 ajenas. 3,5–3,9 ms | `Bitmap Index Scan` del compuesto `(organizacion_id, fecha)`: 810 filas, 1,1 ms. Se elige aunque exista el único | **Entra** `analytics_daily_organizacion_id_fecha_idx`. `analytics_daily_grano_key` se queda: es el único del upsert |
+
+**Resultado:** en M2 entran 3 índices y se borran 2 viejos.
+
+### Llamadores revisados
+
+- **`tarifas_created_at_idx` (borrado).** Su única lectura por fecha es `TarifaRepository.list`, que
+  siempre lleva empresa.
+  - `CoberturaRepository`, `TarifaVigenteRepository` y `OrdenRepository:2113` no ordenan ni filtran
+    por `created_at`.
+  - No está en `comoPlataforma` ni en ningún job.
+  - Tests: `tests/unit/db/tarifas-rls.test.ts:93` solo lee el texto de la migración de 2026-07, que
+    no cambia.
+- **`whatsapp_envio_ejecucion_created_at_idx` (borrado).** Su única lectura por fecha es `historial`,
+  que lleva empresa. Las demás lecturas de la tabla no lo usan:
+  - `ultimaPruebaDe` va por `(envio_id, created_at DESC)`;
+  - `ultimaPorEnvio` filtra por `envio_id`;
+  - la purga filtra por `pdf_caduca_at`;
+  - `scripts/migrar-storage-a-carpetas.ts:196` filtra por `organizacionId`, sin orden.
+
+  Los jobs corren por empresa con `conEmpresa` (`app/api/cron/procesar-jobs/route.ts:95`). Ningún test
+  nombra el índice viejo.
+- **Se quedan:**
+  - `gestion_orden_created_at_idx`: lo fija `tests/integration/db/analitica-operativa-indices.test.ts`;
+  - `historial_accion_created_at_id_idx`: lo fija `tests/integration/db/historial-accion-migration.test.ts:199,293`;
+  - `plantilla_mensaje_created_at_idx` (aparece en `plantillas.int.test.ts:85`, solo como texto de la
+    migración vieja);
+  - `orden_created_at_idx`: lo fija `cohorte-carga-indices.int.test.ts:85`;
+  - `orden_estatus_id_idx`;
+  - `analytics_daily_grano_key`.
+- **Creados.** Sin `map:` y con el nombre que deriva Prisma: `tarifas_organizacion_id_created_at_idx`,
+  `whatsapp_envio_ejecucion_organizacion_id_created_at_idx` y
+  `analytics_daily_organizacion_id_fecha_idx`.
+- **`usuario_email_idx` (R25).** Ya existía (M1, Tanda 1). Solo se le añade el test.
+
+### Mapa R → test
+
+Todos los casos están en `tests/integration/db/indices-rutas-calientes.test.ts`.
+
+| R | Caso |
+|---|---|
+| R24 | «R24: cada índice elegido existe con `organizacion_id` primero». Hay un caso por índice (3): comprueba `pg_indexes` y las columnas exactas |
+| R24 | «R24: con dos empresas sembradas, el plan de la consulta real nombra su índice». Hay 3 casos: `TarifaRepository.list`, `WhatsappEjecucionRepository.historial` y `AnaliticaOperativaRollupRepository.agregarCubos`. El SQL es el que emite el repositorio por la extensión. Antes del `EXPLAIN` se siembran A y B intercaladas y se hace `ANALYZE`; el `EXPLAIN` corre como `servi_app` con A |
+| R25 | «R25: … va por `usuario_email_idx` y no recorre la tabla». La consulta es `findCuentasPorEmailConHash` en `comoPlataforma`, sin empresa y como dueño, sobre 500 cuentas por empresa con los mismos emails |
+
+Todo corre en una transacción revertida, con el lock `CLAVE_LOCK_ESCRITURA_REAL`. Sin
+`enable_seqscan = off`.
+
+### Ida y vuelta de `down.sql` y `migrate diff`
+
+1. Antes de M2 se guardó `pg_indexes` de las 6 tablas candidatas (41 índices).
+2. `prisma migrate deploy` aplicó M2. `pg_indexes` mostró +3 y −2, y
+   `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` dio
+   `-- This is an empty migration.`
+3. `prisma db execute --file down.sql` devolvió `pg_indexes` **idéntico** al de antes (41). El diff
+   contra el `schema.prisma` de `HEAD` (el anterior) salió vacío.
+4. `prisma db execute --file migration.sql` dejó `pg_indexes` idéntico al de tras el deploy, y el diff
+   contra el `schema.prisma` nuevo salió vacío.
+5. `prisma migrate status`: `Database schema is up to date!`
+
+La migración se reescribió dos veces durante la medición, cuando salieron `gestion_orden`,
+`historial_accion` y `plantilla_mensaje`. Cada vez se aplicó `down.sql`, se borró su fila de
+`_prisma_migrations` en la base local y se volvió a desplegar. La ida y vuelta de arriba es la de la
+versión final.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0, 0 `error TS`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run lint` → exit 0: `231 problems (0 errors, 231
+  warnings)`, las mismas cifras que en la Tanda 1. Ninguno es de esta tanda.
+- Test nuevo contra `servi_logistic_sl18`:
+  - versión final: 5 corridas seguidas con `Tests 7 passed (7)`;
+  - restaurada la mutación: otra corrida verde.
+- Integración en serie (`--no-file-parallelism`). Son los tests que tocan las tablas o los índices
+  cambiados, más el nuevo:
+  - `analytics-daily-migration`, `tarifa-zona-is-default-migration`, `whatsapp-envios-migration`,
+    `whatsapp-envio-historial`, `purga-pdf-indices-migration`, `whatsapp-envio-purga-seleccion`,
+    `indices-rutas-calientes`, `usuario-unico-por-empresa` y `plantillas/plantillas.int`;
+  - además, los unitarios `analytics-daily-contrato` y `db/tarifas-rls`.
+
+  Resultado: `Test Files 11 passed (11)`, `Tests 178 passed (178)`, 0 skipped.
+- `pnpm exec vitest run tests/unit/guards tests/unit/analytics` → `Test Files 1 failed | 395 passed
+  (396)`, `Tests 4 failed | 5302 passed | 1 skipped (5307)`. El único rojo es
+  `dependencias-declaradas-presentes.guardia.test.ts` (marcador de `init.sh`). Está en
+  `tests/baseline-rojos.json` y no es de esta tanda. `unicos-por-empresa.guardia.test.ts` pasa: M2 no
+  crea ningún único.
+- **Visto de paso.** En una corrida intermedia, `historial-accion-migration.test.ts` dio 7 rojos, entre
+  ellos «R8: y NO tiene policies» y `referencia a otra empresa: historial_accion.actor_usuario_id ->
+  usuario`. Está en `tests/baseline-rojos.json` y M2 final no toca esa tabla.
+
+### Mutación (20:53–20:54)
+
+Cada mutación se hizo sobre `servi_logistic_sl18` y se restauró después.
+
+| Mutación | Resultado |
+|---|---|
+| M1: `DROP INDEX tarifas_organizacion_id_created_at_idx` | **Rojo**, `2 failed`: «… no esta en pg_indexes» y «el plan de TarifaRepository.list no usa …». El plan pasa a `Seq Scan on tarifas` |
+| M2: el mismo índice con las columnas invertidas `(created_at, organizacion_id)` | **Rojo**, `1 failed`: «tarifas_organizacion_id_created_at_idx no lleva organizacion_id primero». El caso del plan sigue verde, porque el índice invertido se sigue nombrando: lo caza solo `pg_indexes` |
+| M3: `DROP INDEX whatsapp_envio_ejecucion_organizacion_id_created_at_idx` | **Rojo**, `2 failed`. El plan pasa a `Seq Scan on whatsapp_envio_ejecucion` |
+| M4: `DROP INDEX analytics_daily_organizacion_id_fecha_idx` | **Rojo**, `2 failed`. El plan pasa a `Index Scan using analytics_daily_grano_key` |
+| M5: `DROP INDEX usuario_email_idx` | **Rojo**, `1 failed`: «el login no usa usuario_email_idx». El plan pasa a `Seq Scan on usuario` |
+
+Restaurado: `Tests 7 passed (7)`, drift vacío y `pg_indexes` igual que tras el deploy.
+
+### Desviaciones y puntos abiertos
+
+- **Nombres.** Design M2 pedía `<tabla>_org_<cols>_idx`. Se usó el nombre que deriva Prisma
+  (`<tabla>_organizacion_id_<cols>_idx`), sin `map:`. El motivo es que
+  `analytics-daily-migration.test.ts:217` fija la lista exacta de `map:` del modelo `AnalyticsDaily`:
+  con `map:` ese test de la 123 caía.
+- **Datos sintéticos.** Se sembraron en modo réplica en vez de usar `scripts/demo-qa`, porque la base
+  no tiene seed ni volumen. Las FK y los triggers no cambian el plan.
+- **Siembra intercalada en el test.** El test siembra las dos empresas intercaladas por fecha. Con la
+  siembra en bloque, el rollup salió una vez por `analytics_daily_organizacion_id_idx`.
+- **No hizo falta `enable_seqscan = off`.**
+- **Tres candidatos fuera (decisión humana).**
+  - `gestion_orden` e `historial_accion`: el compuesto solo se usa de forma estable si se borra el
+    índice viejo por fecha. A ese índice lo fijan tests de otras features que miden sin empresa
+    (126 R25 y 362 R40). En producción no se encontró ninguna lectura sin empresa. Borrarlos obliga a
+    reescribir esos tests.
+  - `plantilla_mensaje` no es ruta caliente.
+- **El listado de órdenes queda sin índice, punto abierto.** Lo que lo resuelve es
+  `(organizacion_id, prioridad DESC, created_at DESC, id)`: pasa de un `Seq Scan` de 40.000 filas a
+  un `Index Scan` de 25 filas (0,1 ms frente a 55–68 ms). No es «`organizacion_id` + las columnas de
+  antes» (design M2), y `orden` es la tabla con más escrituras. Necesita decisión.
+- **Grafo de código.** No se consultó el MCP; la exploración fue con Grep/Read.
+
+### Veredicto
+
+Tanda 5 implementada. Entran 3 índices y salen 2 viejos. R24 y R25 tienen test verde contra Postgres
+real, la mutación está anotada, `down.sql` hace la ida y vuelta y el drift está vacío. Quedan 4
+candidatos para decisión humana.
+
+### Re-verificación del implementer (2026-10-26, 21:02–21:10)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run lint` → exit 0, `231 problems (0 errors, 231 warnings)`.
+- `indices-rutas-calientes.test.ts` contra `servi_logistic_sl18` → `Tests 7 passed (7)`.
+  Ojo: sin `DATABASE_URL` el archivo se salta (7 skipped) y no falla; una URL con comillas
+  sobrantes dio «Unable to start a transaction in the given time».
+- Mutación propia, 21:03: `DROP INDEX analytics_daily_organizacion_id_fecha_idx` → `2 failed | 5 passed`
+  (pg_indexes y plan de `AnaliticaOperativaRollupRepository.agregarCubos`). Restaurado → 7/7.
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --exit-code` → exit 0,
+  «No difference detected».
+- No corrí `./init.sh` ni la suite completa; no hay push (lo pidió el leader).
