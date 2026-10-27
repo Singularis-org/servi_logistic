@@ -61,7 +61,14 @@ function entradaValida() {
   };
 }
 
-function repoDoble(o: { paises?: PaisDTO[]; crear?: CrearPaisRepoResultado; deLaEmpresa?: PaisDTO | null } = {}) {
+function repoDoble(
+  o: {
+    paises?: PaisDTO[];
+    crear?: CrearPaisRepoResultado;
+    deLaEmpresa?: PaisDTO | null;
+    cambiarDisponible?: "no_existe" | "sin_cambio" | "cambiado";
+  } = {},
+) {
   const paises = o.paises ?? [COSTA_RICA];
   const repo = {
     listar: vi.fn(async () => paises),
@@ -71,6 +78,7 @@ function repoDoble(o: { paises?: PaisDTO[]; crear?: CrearPaisRepoResultado; deLa
       o.crear ?? { estado: "creado", pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true } },
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
+    cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
   } satisfies IPaisRepository;
   return repo;
 }
@@ -201,6 +209,42 @@ describe("R9/R45 — los países que ofrece el alta de empresa", () => {
     expect(repo.listarDisponibles).toHaveBeenCalledTimes(1);
     expect(repo.listar).not.toHaveBeenCalled();
   });
+});
+
+describe("R47 (T4.6) — encender o apagar la disponibilidad de un país", () => {
+  it("la plataforma la cambia: el repositorio recibe el país, el estado deseado y el actor", async () => {
+    const repo = repoDoble({ cambiarDisponible: "cambiado" });
+    const r = await new PaisService(repo).cambiarDisponible({ id: "XA", disponible: false }, SUPERADMIN);
+    expect(r).toEqual({ status: "ok", id: "XA", disponible: false });
+    expect(repo.cambiarDisponible).toHaveBeenCalledWith("XA", false, { usuarioId: SUPERADMIN.usuarioId });
+  });
+
+  it("pedir el estado que ya tiene es `ok` (el repositorio no escribió nada)", async () => {
+    const repo = repoDoble({ cambiarDisponible: "sin_cambio" });
+    expect(await new PaisService(repo).cambiarDisponible({ id: "CR", disponible: true }, SUPERADMIN)).toEqual({
+      status: "ok",
+      id: "CR",
+      disponible: true,
+    });
+  });
+
+  it("un país que no existe es `not_found`", async () => {
+    const repo = repoDoble({ cambiarDisponible: "no_existe" });
+    expect(await new PaisService(repo).cambiarDisponible({ id: "XZ", disponible: false }, SUPERADMIN)).toEqual({
+      status: "not_found",
+    });
+  });
+
+  it.each(Object.values(RolValue).filter((r) => !(ROLES_PLATAFORMA as readonly string[]).includes(r)))(
+    "R37: el rol de empresa %s recibe `forbidden` sin tocar la base",
+    async (rol) => {
+      const repo = repoDoble();
+      expect(await new PaisService(repo).cambiarDisponible({ id: "CR", disponible: false }, { usuarioId: "u", rol })).toEqual({
+        status: "forbidden",
+      });
+      expect(repo.cambiarDisponible).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("T2.3 — etiquetas de nivel de la empresa (R19)", () => {

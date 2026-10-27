@@ -36,6 +36,9 @@ describe("SL-17 · comoPlataforma solo en la lista (R27, R26)", () => {
     expect(llaman).toContain("lib/db/para-cada-empresa.ts");
     // m6 de SL-43: la fábrica que importa el build de la demo de QA tampoco queda fuera.
     expect(llaman).toContain("tests/fabricas/empresa-y-usuarios.ts");
+    // SL-20 (design §4): el borde de la geografía del superadmin abre plataforma y está en la lista.
+    expect(llaman).toContain("lib/actions/geografia-plataforma.ts");
+    expect(EXCEPCIONES_DE_PLATAFORMA.find((e) => e.archivo === "lib/actions/geografia-plataforma.ts")?.ficha).toBe("SL-20");
   });
 
   it("todo archivo que llama a comoPlataforma está en EXCEPCIONES_DE_PLATAFORMA", () => {

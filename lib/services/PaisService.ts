@@ -1,13 +1,19 @@
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type {
+  CambiarDisponibilidadPaisServiceResult,
   CrearPaisServiceResult,
   IPaisService,
   ListarPaisesDisponiblesServiceResult,
   ListarPaisesServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
-import { crearPaisSchema, etiquetasDePais, type EtiquetasGeograficas } from "@/lib/types/pais";
+import {
+  crearPaisSchema,
+  etiquetasDePais,
+  type CambiarDisponibilidadPaisInput,
+  type EtiquetasGeograficas,
+} from "@/lib/types/pais";
 import { normalizeName } from "@/lib/utils/normalize";
 
 // SL-20 (design §4, §5; R23, R37) — los países son de la plataforma, y solo ella los gestiona. El
@@ -61,6 +67,17 @@ export class PaisService implements IPaisService {
     const r = await this.repo.crear(datos, { usuarioId: actor.usuarioId });
     if (r.estado === "duplicado") return { status: "conflict", campo: r.campo };
     return { status: "ok", pais: r.pais };
+  }
+
+  /** R47. El historial lo escribe el repositorio, solo si la fila cambió. */
+  async cambiarDisponible(
+    input: CambiarDisponibilidadPaisInput,
+    actor: Actor,
+  ): Promise<CambiarDisponibilidadPaisServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const r = await this.repo.cambiarDisponible(input.id, input.disponible, { usuarioId: actor.usuarioId });
+    if (r === "no_existe") return { status: "not_found" };
+    return { status: "ok", id: input.id, disponible: input.disponible };
   }
 
   async etiquetasDeEmpresa(organizacionId: string): Promise<EtiquetasGeograficas> {

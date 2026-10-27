@@ -46,6 +46,19 @@ export const crearPaisSchema = z
 
 export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
 
+/**
+ * Enmienda 2026-10-26, decisión 6 (R47): encender o apagar la cobertura de un país. `disponible` es
+ * el estado DESEADO, no un interruptor: pedir el que ya tiene es éxito sin escribir.
+ */
+export const cambiarDisponibilidadPaisSchema = z
+  .object({
+    id: z.string().regex(CODIGO_PAIS, "El código son dos letras mayúsculas (ISO 3166-1 alfa-2)."),
+    disponible: z.boolean(),
+  })
+  .strict();
+
+export type CambiarDisponibilidadPaisInput = z.infer<typeof cambiarDisponibilidadPaisSchema>;
+
 /** Un país tal como sale de la base. Cumple `ReglaDeCodigoDePais`, la entrada de `validarCodigo`. */
 export interface PaisDTO extends ReglaDeCodigoDePais {
   id: string;

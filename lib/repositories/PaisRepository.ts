@@ -85,6 +85,41 @@ export class PaisRepository implements IPaisRepository {
     }
   }
 
+  /**
+   * R47. El `updateMany` con `disponible <> $2` es el «IS DISTINCT FROM» de §5 (la columna es NOT
+   * NULL): decide en una sola sentencia si hubo cambio, así que dos peticiones iguales a la vez dejan
+   * una sola fila en el historial. Solo con cero filas se mira si el país existe.
+   */
+  async cambiarDisponible(
+    id: string,
+    disponible: boolean,
+    actor: ActorDeAltaDePais,
+  ): Promise<"no_existe" | "sin_cambio" | "cambiado"> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.pais.updateMany({
+        where: { id, disponible: { not: disponible } },
+        data: { disponible },
+      });
+      const pais = await tx.pais.findUnique({ where: { id }, select: { nombre: true } });
+      if (pais === null) return "no_existe";
+      if (count === 0) return "sin_cambio";
+
+      const congelado = await resolverActorCongelado(tx, actor.usuarioId);
+      await appendAccionPlataforma(tx, [
+        {
+          accion: disponible ? "pais_disponibilidad_activada" : "pais_disponibilidad_desactivada",
+          entidadTipo: "pais",
+          entidadId: id,
+          entidadEtiqueta: pais.nombre,
+          paisId: id,
+          actorUsuarioId: congelado.actorUsuarioId,
+          actorNombre: congelado.actorNombre,
+        },
+      ]);
+      return "cambiado";
+    });
+  }
+
   async deLaEmpresa(organizacionId: string): Promise<PaisDTO | null> {
     const fila = await this.prisma.organizacion.findUnique({
       where: { id: organizacionId },

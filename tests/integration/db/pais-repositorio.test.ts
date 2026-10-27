@@ -16,6 +16,8 @@ import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTes
 //     empresa; `etiquetasDeEmpresa` da sus nombres de nivel.
 //   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` trae `{ id, nombre }` solo de los países con
 //     `disponible = true`, por nombre; `listar` sigue trayéndolos todos, con su `disponible`.
+//   · R47 (T4.6): `cambiarDisponible` escribe su fila `pais_disponibilidad_*` en la misma transacción,
+//     y pedir el estado que ya tiene no escribe nada.
 //
 // Todo en una transacción del dueño que se revierte. El repositorio abre su propia transacción: va
 // sobre `clienteConSavepoint`, que abre un SAVEPOINT real, para que un único violado no aborte el caso.
@@ -135,6 +137,62 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(
       r.todos.filter((p) => ["CR", "XA", "XB"].includes(p.id)).map((p) => `${p.id}=${p.disponible}`),
     ).toEqual(["CR=true", "XA=true", "XB=false"]);
+  });
+
+  it("R47 (T4.6): apagar y encender un país deja UNA fila `pais_disponibilidad_*` por cambio; pedir el mismo estado no escribe nada", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      await crearPaisDePrueba(tx, "XA");
+      const repo = new PaisRepository(clienteConSavepoint(tx));
+      const actor = { usuarioId: actorId };
+      const pasos = [
+        await repo.cambiarDisponible("XA", false, actor),
+        await repo.cambiarDisponible("XA", false, actor),
+        await repo.cambiarDisponible("XA", true, actor),
+        await repo.cambiarDisponible("XA", true, actor),
+        await repo.cambiarDisponible("XZ", false, actor),
+      ];
+      const disponible = (await tx.pais.findUnique({ where: { id: "XA" }, select: { disponible: true } }))?.disponible;
+      const historial = await tx.historialPlataforma.findMany({
+        where: { paisId: { in: ["XA", "XZ"] } },
+        orderBy: { createdAt: "asc" },
+        select: { accion: true, entidadTipo: true, entidadId: true, entidadEtiqueta: true, actorUsuarioId: true, actorNombre: true },
+      });
+      return { actorId, pasos, disponible, historial };
+    });
+
+    expect(r.pasos).toEqual(["cambiado", "sin_cambio", "cambiado", "sin_cambio", "no_existe"]);
+    expect(r.disponible).toBe(true);
+    const fila = (accion: string) => ({
+      accion,
+      entidadTipo: "pais",
+      entidadId: "XA",
+      entidadEtiqueta: "País de prueba XA",
+      actorUsuarioId: r.actorId,
+      actorNombre: expect.any(String),
+    });
+    // `created_at` es el de la transacción del test: el orden de las dos filas no se puede fijar por fecha.
+    expect(r.historial).toHaveLength(2);
+    expect(r.historial).toEqual(
+      expect.arrayContaining([fila("pais_disponibilidad_desactivada"), fila("pais_disponibilidad_activada")]),
+    );
+  });
+
+  it("R47: si el registro en el historial falla, la disponibilidad tampoco cambia (misma transacción)", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      await crearPaisDePrueba(tx, "XA");
+      const repo = new PaisRepository(clienteConSavepoint(tx, "plataforma"));
+      const fallo = await repo.cambiarDisponible("XA", false, { usuarioId: actorId }).then(
+        () => null,
+        (e: unknown) => (e instanceof Error ? e.name : String(e)),
+      );
+      const disponible = (await tx.pais.findUnique({ where: { id: "XA" }, select: { disponible: true } }))?.disponible;
+      // Contraprueba del mismo camino sin romper el registro: sí cambia.
+      const sano = await new PaisRepository(clienteConSavepoint(tx)).cambiarDisponible("XA", false, { usuarioId: actorId });
+      return { fallo, disponible, sano };
+    });
+    expect(r).toEqual({ fallo: "RegistroCaido", disponible: true, sano: "cambiado" });
   });
 
   it("R19/T2.3: en el contexto de una empresa (RLS), sus etiquetas son las de su país: XA y CR", async () => {

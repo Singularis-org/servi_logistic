@@ -133,7 +133,7 @@ para y avisa al leader.
 - [x] T4.2 `GeografiaService` + `IGeografiaService`: `listarArbolDePais` y validación del código en
   el alta. Dep.: T4.1.
   **Hecho:** `geografia-service.test.ts` cubre R15, R17 en el alta y R37.
-- [ ] T4.3 `lib/actions/geografia-plataforma.ts` (todas las actions de §5, `comoPlataforma`), su
+- [x] T4.3 `lib/actions/geografia-plataforma.ts` (todas las actions de §5, `comoPlataforma`), su
   entrada en `EXCEPCIONES_DE_PLATAFORMA` y la limpieza de `lib/actions/geografia.ts` (§4).
   Dep.: T2.1, T3.4, T4.2.
   **Hecho:**
@@ -145,14 +145,14 @@ para y avisa al leader.
   - **(enmienda 2026-10-26)** `cargarDivisionAction` pasa tal cual el contrato de §6 (`ok`,
     `invalido`, `archivo_rechazado`, `not_found`, `forbidden`, con `avisos`) y responde `error` ante
     un fallo de la base (R51); `crearNodoAction` responde `conflict` ante el único del código (R52).
-- [ ] T4.4 `tests/integration/db/geografia-superadmin-sin-empresa.test.ts`. Dep.: T4.3.
+- [x] T4.4 `tests/integration/db/geografia-superadmin-sin-empresa.test.ts`. Dep.: T4.3.
   **Hecho:** un superadmin real sin empresa crea un país, carga un CSV, da de alta, renombra, retira
   y reactiva sin `EmpresaNoResuelta`. El conteo suma las órdenes sin entregar de dos empresas del
   mismo país (R31, R32).
 - [x] T4.5 [P] Guardia `historial-accion-escrituras-cubiertas`: los `nodo_geografico_*` quedan sin
   escritor desde SL-20 (§2.6). Dep.: T4.1.
   **Hecho:** guardia verde, y su contraprueba sigue fallando cuando debe.
-- [ ] T4.6 **(enmienda 2026-10-26, decisión 6)** `cambiarDisponibilidadPaisAction` en
+- [x] T4.6 **(enmienda 2026-10-26, decisión 6)** `cambiarDisponibilidadPaisAction` en
   `lib/actions/geografia-plataforma.ts` (§5), con `comoPlataforma` como el resto. Dep.: T4.3, T2.5.
   **Hecho:** `geografia-plataforma-action.test.ts` cubre `unauthenticated`, `forbidden`, validación y
   el éxito sin escritura cuando el estado no cambia (R47); el test de composition root la incluye.

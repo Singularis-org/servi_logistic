@@ -30,6 +30,17 @@ export interface IPaisRepository {
    */
   crear(datos: CrearPaisInput, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado>;
 
+  /**
+   * R47: fija `disponible` y, solo si la fila cambió, escribe `pais_disponibilidad_activada` o
+   * `_desactivada` en `historial_plataforma` en la misma transacción. Pedir el estado que ya tiene
+   * no escribe nada (`sin_cambio`).
+   */
+  cambiarDisponible(
+    id: string,
+    disponible: boolean,
+    actor: ActorDeAltaDePais,
+  ): Promise<"no_existe" | "sin_cambio" | "cambiado">;
+
   /** El país de la empresa, o `null` si la empresa no existe o no es visible en este contexto. */
   deLaEmpresa(organizacionId: string): Promise<PaisDTO | null>;
 }
