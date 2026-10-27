@@ -2,6 +2,7 @@ import type { Column } from "@/components/shared/DataTable";
 import { columnaIntentos } from "@/components/shared/intentos-entrega";
 import { PriceLabel } from "@/components/shared/PriceLabel";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { EstatusBadge } from "./EstatusBadge";
 import { NotaGestionPendiente } from "./NotaGestionPendiente";
 import { toValidNumber } from "@/lib/utils/number";
@@ -78,161 +79,180 @@ function tiempoTranscurrido(value: Date | string): string {
  * SIEMPRE el valor final legible, nunca el id crudo. Se cae a los escalares
  * `*Nombre`/`*Value` de nivel superior o a `SIN_DATO` cuando una relación opcional
  * no resolvió (defensivo).
+ *
+ * SL-20 (design §7; R19): los encabezados de provincia, cantón y distrito son los nombres de nivel
+ * del país de la empresa, así que el conjunto se construye con sus `etiquetas` (las da
+ * `useEtiquetasGeograficas`). Se memoriza por objeto de etiquetas: el mismo objeto devuelve EL MISMO
+ * arreglo, con las mismas columnas, y así las que derivan de aquí (`detalle-columnas.ts`,
+ * `recibidas-columns.tsx`) siguen montando los mismos objetos y la tabla no ve columnas nuevas en
+ * cada render.
  */
-export const ordenesColumns: Column<OrdenListItemDTO>[] = [
-  {
-    id: "numGuia",
-    value: "Nº Guía",
-    // La guía se asigna en "Generar guía", no al crear la orden: sin guía → "Pendiente".
-    // El valor va resaltado: es el identificador con el que se rastrea el paquete y
-    // el ancla visual de la fila cuando la tabla desborda a scroll horizontal.
-    render: (row) => (
-      <span className="font-semibold">
-        {row.numGuia === null ? "Pendiente" : row.numGuia}
-      </span>
-    ),
-  },
-  {
-    id: "numRemision",
-    value: "Nº Remisión",
-    render: "numRemision",
-    minWidth: "120px",
-  },
-  {
-    id: "estatus",
-    value: "Estado",
-    // FICHA 454 (T2.2/T2.6, R29) — junto al chip, la NOTA de la gestión pendiente de confirmar
-    // («Entregada · pendiente de confirmación») o de la ayuda abierta («Ayuda solicitada a la
-    // tienda»). El chip sigue diciendo el estado real («En reparto»): la nota no lo sustituye.
-    // Las dos señales las decide el SERVIDOR (`gestionPendiente`/`ayudaAbierta` del DTO, predicado
-    // único en `lib/repositories/gestion-pendiente.ts`); aquí solo se leen. Esta columna la
-    // comparten `/ordenes` y la bodega satélite (`recibidas-columns`), así que las dos pantallas
-    // la pintan por el mismo sitio. Un DTO sin los campos (lector que no los anota) no pinta nota.
-    render: (row) => (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        {/* FICHA 455 (R2): el chip es el nombre exacto, sin la zona interpolada (columna propia);
-            sin estado, `nombreDeEstado("")` pinta «—». */}
-        <EstatusBadge value={row.relaciones?.estatus?.value ?? row.estatusValue ?? ""} />
-        <NotaGestionPendiente
-          resultadoPendiente={row.gestionPendiente?.resultado ?? null}
-          ayudaAbierta={row.ayudaAbierta === true}
-        />
-      </span>
-    ),
-  },
-  // Feature 160 (D6/R17/R21): intentos de entrega como COLUMNA propia, insertada
-  // INMEDIATAMENTE despues de `estatus` (design §5.2) y no al final. El conteo
-  // califica al estado (`devuelta`/`reprogramada`): pegados se leen como una sola
-  // idea. Ademas, con 18 columnas y scroll horizontal, una columna al final
-  // quedaria permanentemente fuera del viewport. Insertar aqui deja intactos los
-  // ids, encabezados y orden relativo de las preexistentes (R21).
-  columnaIntentos<OrdenListItemDTO>(),
-  { id: "destinatario", value: "Destinatario" },
-  { id: "producto", value: "Producto", render: "producto", minWidth: "300px" },
-  {
-    id: "direccion",
-    value: "Dirección",
-    // Escalar opcional de la orden (carga masiva); ausente → SIN_DATO.
-    render: (row) => row.direccion ?? SIN_DATO,
-    minWidth: "200px",
-  },
-  {
-    id: "tienda",
-    value: "Tienda",
-    // Nombre legible de la tienda, no el uuid `tiendaId`.
-    render: (row) => row.relaciones?.tienda?.nombre ?? row.tiendaNombre,
-  },
-  {
-    id: "zona",
-    value: "Zona",
-    // Nombre legible de la zona; cae al escalar `zonaNombre` (misma estrategia que
-    // `tienda`) y a `SIN_DATO` cuando la relación opcional no resolvió.
-    render: (row) => row.relaciones?.zona?.nombre ?? row.zonaNombre ?? SIN_DATO,
-  },
-  {
-    id: "provincia",
-    value: "Provincia",
-    render: (row) => row.relaciones?.provincia?.nombre ?? SIN_DATO,
-  },
-  {
-    id: "canton",
-    value: "Cantón",
-    render: (row) => row.relaciones?.canton?.nombre ?? SIN_DATO,
-  },
-  {
-    id: "distrito",
-    value: "Distrito",
-    // Relación opcional: la orden puede no tener distrito.
-    render: (row) => row.relaciones?.distrito?.nombre ?? SIN_DATO,
-  },
-  {
-    id: "montoCobrar",
-    value: "Monto a cobrar",
-    // Valor COD a recaudar de la orden (escalar de la orden; ausente → ₡0).
-    render: (row) => <PriceLabel value={toValidNumber(row.montoCobrar)} />,
-  },
-  {
-    id: "flete",
-    value: "Flete + IVA",
-    // STRING ya derivado por el servidor (monto pactado del distrito especial, o flete GAM /
-    // estándar según la zona, + su IVA). Sin tarifa activa el servidor manda "0.00", y un DTO
-    // viejo sin el campo cae al ₡0,00 de PriceLabel: la misma degradación segura de siempre (R9).
-    //
-    // El marcador de al lado NO es decorativo. `especial_sin_pacto` significa que el distrito
-    // está marcado como zona especial pero la tarifa que le toca no tiene monto pactado, así
-    // que se cobró la tarifa NORMAL: el importe es idéntico al de una orden corriente y sin
-    // esta marca el hueco de configuración sería invisible justo en la pantalla donde alguien
-    // podría notarlo. `especial` (se cobró el pacto) no se señala: ahí el sistema hizo lo
-    // que se le pidió.
-    render: (row) => (
-      <span className="inline-flex items-center gap-1.5">
-        <PriceLabel value={row.fleteConIva} />
-        {row.fleteOrigen === "especial_sin_pacto" ? (
-          <span
-            className="text-amber-600 dark:text-amber-500"
-            title="Distrito marcado como zona especial, pero la tarifa no tiene tarifa especial pactada: se cobró la tarifa normal."
-            aria-label="Zona especial sin tarifa especial pactada"
-          >
-            ⚠
-          </span>
-        ) : null}
-      </span>
-    ),
-  },
-  {
-    id: "fulfillment",
-    value: "Fulfillment",
-    // Monto fijo de fulfillment de la tarifa activa de la tienda (sin tarifa → ₡0).
-    render: (row) => (
-      <PriceLabel value={toValidNumber(row.relaciones?.tienda?.tarifa?.fulfillment)} />
-    ),
-  },
-  {
-    id: "comision",
-    value: "Comisión + IVA",
-    // STRING ya derivado por el servidor (comisión COD sobre el valor de cobro + su IVA).
-    // Sin tarifa, o si la orden NO cobra comisión, el servidor manda "0.00".
-    render: (row) => <PriceLabel value={row.comisionConIva} />,
-  },
-  {
-    id: "mensajero",
-    value: "Mensajero",
-    // Nombre del mensajero asignado; no el id.
-    render: (row) => row.relaciones?.mensajeroAsignado?.nombre ?? SIN_DATO,
-  },
-  {
-    id: "fechaCreacion",
-    value: "Fecha de creación",
-    render: (row) => formatFechaCreacion(row.createdAt),
-    minWidth: "120px",
-  },
-  {
-    id: "tiempo",
-    value: "Tiempo",
-    // Tiempo transcurrido desde la creación (días+h, o h+min si < 1 día).
-    render: (row) => tiempoTranscurrido(row.createdAt),
-  },
-];
+const MEMO_COLUMNAS = new WeakMap<EtiquetasGeograficas, Column<OrdenListItemDTO>[]>();
+
+export function ordenesColumnsDe(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
+  const memo = MEMO_COLUMNAS.get(etiquetas);
+  if (memo) return memo;
+  const columnas = construirOrdenesColumns(etiquetas);
+  MEMO_COLUMNAS.set(etiquetas, columnas);
+  return columnas;
+}
+
+function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
+  return [
+    {
+      id: "numGuia",
+      value: "Nº Guía",
+      // La guía se asigna en "Generar guía", no al crear la orden: sin guía → "Pendiente".
+      // El valor va resaltado: es el identificador con el que se rastrea el paquete y
+      // el ancla visual de la fila cuando la tabla desborda a scroll horizontal.
+      render: (row) => (
+        <span className="font-semibold">
+          {row.numGuia === null ? "Pendiente" : row.numGuia}
+        </span>
+      ),
+    },
+    {
+      id: "numRemision",
+      value: "Nº Remisión",
+      render: "numRemision",
+      minWidth: "120px",
+    },
+    {
+      id: "estatus",
+      value: "Estado",
+      // FICHA 454 (T2.2/T2.6, R29) — junto al chip, la NOTA de la gestión pendiente de confirmar
+      // («Entregada · pendiente de confirmación») o de la ayuda abierta («Ayuda solicitada a la
+      // tienda»). El chip sigue diciendo el estado real («En reparto»): la nota no lo sustituye.
+      // Las dos señales las decide el SERVIDOR (`gestionPendiente`/`ayudaAbierta` del DTO, predicado
+      // único en `lib/repositories/gestion-pendiente.ts`); aquí solo se leen. Esta columna la
+      // comparten `/ordenes` y la bodega satélite (`recibidas-columns`), así que las dos pantallas
+      // la pintan por el mismo sitio. Un DTO sin los campos (lector que no los anota) no pinta nota.
+      render: (row) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {/* FICHA 455 (R2): el chip es el nombre exacto, sin la zona interpolada (columna propia);
+              sin estado, `nombreDeEstado("")` pinta «—». */}
+          <EstatusBadge value={row.relaciones?.estatus?.value ?? row.estatusValue ?? ""} />
+          <NotaGestionPendiente
+            resultadoPendiente={row.gestionPendiente?.resultado ?? null}
+            ayudaAbierta={row.ayudaAbierta === true}
+          />
+        </span>
+      ),
+    },
+    // Feature 160 (D6/R17/R21): intentos de entrega como COLUMNA propia, insertada
+    // INMEDIATAMENTE despues de `estatus` (design §5.2) y no al final. El conteo
+    // califica al estado (`devuelta`/`reprogramada`): pegados se leen como una sola
+    // idea. Ademas, con 18 columnas y scroll horizontal, una columna al final
+    // quedaria permanentemente fuera del viewport. Insertar aqui deja intactos los
+    // ids, encabezados y orden relativo de las preexistentes (R21).
+    columnaIntentos<OrdenListItemDTO>(),
+    { id: "destinatario", value: "Destinatario" },
+    { id: "producto", value: "Producto", render: "producto", minWidth: "300px" },
+    {
+      id: "direccion",
+      value: "Dirección",
+      // Escalar opcional de la orden (carga masiva); ausente → SIN_DATO.
+      render: (row) => row.direccion ?? SIN_DATO,
+      minWidth: "200px",
+    },
+    {
+      id: "tienda",
+      value: "Tienda",
+      // Nombre legible de la tienda, no el uuid `tiendaId`.
+      render: (row) => row.relaciones?.tienda?.nombre ?? row.tiendaNombre,
+    },
+    {
+      id: "zona",
+      value: "Zona",
+      // Nombre legible de la zona; cae al escalar `zonaNombre` (misma estrategia que
+      // `tienda`) y a `SIN_DATO` cuando la relación opcional no resolvió.
+      render: (row) => row.relaciones?.zona?.nombre ?? row.zonaNombre ?? SIN_DATO,
+    },
+    {
+      id: "provincia",
+      value: etiquetas.provincia.singular,
+      render: (row) => row.relaciones?.provincia?.nombre ?? SIN_DATO,
+    },
+    {
+      id: "canton",
+      value: etiquetas.canton.singular,
+      render: (row) => row.relaciones?.canton?.nombre ?? SIN_DATO,
+    },
+    {
+      id: "distrito",
+      value: etiquetas.distrito.singular,
+      // Relación opcional: la orden puede no tener distrito.
+      render: (row) => row.relaciones?.distrito?.nombre ?? SIN_DATO,
+    },
+    {
+      id: "montoCobrar",
+      value: "Monto a cobrar",
+      // Valor COD a recaudar de la orden (escalar de la orden; ausente → ₡0).
+      render: (row) => <PriceLabel value={toValidNumber(row.montoCobrar)} />,
+    },
+    {
+      id: "flete",
+      value: "Flete + IVA",
+      // STRING ya derivado por el servidor (monto pactado del distrito especial, o flete GAM /
+      // estándar según la zona, + su IVA). Sin tarifa activa el servidor manda "0.00", y un DTO
+      // viejo sin el campo cae al ₡0,00 de PriceLabel: la misma degradación segura de siempre (R9).
+      //
+      // El marcador de al lado NO es decorativo. `especial_sin_pacto` significa que el distrito
+      // está marcado como zona especial pero la tarifa que le toca no tiene monto pactado, así
+      // que se cobró la tarifa NORMAL: el importe es idéntico al de una orden corriente y sin
+      // esta marca el hueco de configuración sería invisible justo en la pantalla donde alguien
+      // podría notarlo. `especial` (se cobró el pacto) no se señala: ahí el sistema hizo lo
+      // que se le pidió.
+      render: (row) => (
+        <span className="inline-flex items-center gap-1.5">
+          <PriceLabel value={row.fleteConIva} />
+          {row.fleteOrigen === "especial_sin_pacto" ? (
+            <span
+              className="text-amber-600 dark:text-amber-500"
+              title={`${etiquetas.distrito.singular} marcado como zona especial, pero la tarifa no tiene tarifa especial pactada: se cobró la tarifa normal.`}
+              aria-label="Zona especial sin tarifa especial pactada"
+            >
+              ⚠
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      id: "fulfillment",
+      value: "Fulfillment",
+      // Monto fijo de fulfillment de la tarifa activa de la tienda (sin tarifa → ₡0).
+      render: (row) => (
+        <PriceLabel value={toValidNumber(row.relaciones?.tienda?.tarifa?.fulfillment)} />
+      ),
+    },
+    {
+      id: "comision",
+      value: "Comisión + IVA",
+      // STRING ya derivado por el servidor (comisión COD sobre el valor de cobro + su IVA).
+      // Sin tarifa, o si la orden NO cobra comisión, el servidor manda "0.00".
+      render: (row) => <PriceLabel value={row.comisionConIva} />,
+    },
+    {
+      id: "mensajero",
+      value: "Mensajero",
+      // Nombre del mensajero asignado; no el id.
+      render: (row) => row.relaciones?.mensajeroAsignado?.nombre ?? SIN_DATO,
+    },
+    {
+      id: "fechaCreacion",
+      value: "Fecha de creación",
+      render: (row) => formatFechaCreacion(row.createdAt),
+      minWidth: "120px",
+    },
+    {
+      id: "tiempo",
+      value: "Tiempo",
+      // Tiempo transcurrido desde la creación (días+h, o h+min si < 1 día).
+      render: (row) => tiempoTranscurrido(row.createdAt),
+    },
+  ];
+}
 
 /**
  * Columna "Reprogramado para" (ficha 367): la fecha PARA LA QUE quedó reprogramada
@@ -264,7 +284,12 @@ const liberadaColumn: Column<OrdenListItemDTO> = {
  * usan esta variante a propósito (ver sus propios comentarios): siguen derivando de
  * `ordenesColumns`, que no cambia.
  */
-export const ordenesColumnsReprogramada: Column<OrdenListItemDTO>[] = [
-  ...ordenesColumns,
-  liberadaColumn,
-];
+const MEMO_REPROGRAMADA = new WeakMap<EtiquetasGeograficas, Column<OrdenListItemDTO>[]>();
+
+export function ordenesColumnsReprogramadaDe(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
+  const memo = MEMO_REPROGRAMADA.get(etiquetas);
+  if (memo) return memo;
+  const columnas = [...ordenesColumnsDe(etiquetas), liberadaColumn];
+  MEMO_REPROGRAMADA.set(etiquetas, columnas);
+  return columnas;
+}

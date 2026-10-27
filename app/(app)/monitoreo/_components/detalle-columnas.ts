@@ -53,9 +53,10 @@
 
 import { createElement } from "react";
 
-import { ordenesColumns } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
 import type { Column } from "@/components/shared/DataTable";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { AlcanceTableroDia, OrdenDetalleDia } from "@/lib/types/tablero-dia";
 
 /** Id de la UNICA columna propia del detalle (R22). La declara este modulo y nadie mas. */
@@ -130,10 +131,14 @@ function columnaResultadoDelDia(): Column<OrdenDetalleDia> {
  * cumplirlo, esta linea deja de compilar — que es exactamente lo que se quiere: un cast aqui
  * seria la costura por la que las dos pantallas divergirian sin que el compilador dijera nada.
  */
-export function columnasDetalle(alcance: AlcanceTableroDia): Column<OrdenDetalleDia>[] {
+export function columnasDetalle(
+  alcance: AlcanceTableroDia,
+  etiquetas: EtiquetasGeograficas,
+): Column<OrdenDetalleDia>[] {
   // 1. las 19 del listado, tal cual, sin copiar ni una definicion   (R20/R26/R45)
   // 2. + la unica propia                                            (R22)
-  const montadas: Column<OrdenDetalleDia>[] = [...ordenesColumns, columnaResultadoDelDia()];
+  //    SL-20 (R19): con los nombres de nivel del país de la empresa (`etiquetas`).
+  const montadas: Column<OrdenDetalleDia>[] = [...ordenesColumnsDe(etiquetas), columnaResultadoDelDia()];
 
   // 3. − las que leen un dato que este alcance no recibe            (R14)
   const permitidas =

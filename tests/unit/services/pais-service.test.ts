@@ -8,8 +8,10 @@ import { PaisService } from "@/lib/services/PaisService";
 import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pais";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisService` con el repositorio doble.
-//   · R23: el alta crea el país; un código o un nombre (normalizado) que ya están son `conflict` sin
-//     llamar a `crear`; la entrada inválida no llega al repositorio.
+//   · R23: el alta crea el país del catálogo con el nombre del catálogo; un código o un nombre
+//     (normalizado) que ya están son `conflict` sin llamar a `crear`; la entrada inválida no llega al
+//     repositorio.
+//   · R41 (enmienda 2026-10-26): un código fuera del catálogo es `validation_error` en `id`.
 //   · R37: un rol de empresa recibe `forbidden` sin tocar la base (ni para leer).
 //   · T2.3: `etiquetasDeEmpresa` da los nombres de nivel del país de la empresa (XA y CR).
 //   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` da `{ id, nombre }` de los países con
@@ -48,10 +50,10 @@ const PAIS_XA: PaisDTO = {
   disponible: true,
 };
 
+/** El alta elige el país del catálogo por su código (R41) y teclea los seis nombres de nivel. */
 function entradaValida() {
   return {
-    id: "XB",
-    nombre: "Perú",
+    id: "PE",
     nivel1Singular: "Departamento",
     nivel1Plural: "Departamentos",
     nivel2Singular: "Provincia",
@@ -83,13 +85,10 @@ function repoDoble(
   return repo;
 }
 
-describe("R23 — alta de un país", () => {
-  it("crea el país con los datos normalizados y el actor de la sesión", async () => {
+describe("R23 — alta de un país del catálogo", () => {
+  it("crea el país con el nombre DEL CATÁLOGO, los nombres de nivel normalizados y el actor de la sesión", async () => {
     const repo = repoDoble();
-    const r = await new PaisService(repo).crear(
-      { ...entradaValida(), nombre: "  Perú  ", nivel1Singular: "Depar   tamento" },
-      SUPERADMIN,
-    );
+    const r = await new PaisService(repo).crear({ ...entradaValida(), nivel1Singular: "  Depar   tamento " }, SUPERADMIN);
 
     expect(r.status).toBe("ok");
     expect(repo.crear).toHaveBeenCalledTimes(1);
@@ -97,6 +96,14 @@ describe("R23 — alta de un país", () => {
       { ...entradaValida(), nombre: "Perú", nivel1Singular: "Depar tamento" },
       { usuarioId: "u-super" },
     ]);
+  });
+
+  it("el nombre no se teclea: una entrada con `nombre` es `validation_error` y no toca la base", async () => {
+    const repo = repoDoble();
+    const r = await new PaisService(repo).crear({ ...entradaValida(), nombre: "Perusalem" }, SUPERADMIN);
+    expect(r.status).toBe("validation_error");
+    expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("un código que ya existe es `conflict` por `id` y no crea nada", async () => {
@@ -107,18 +114,11 @@ describe("R23 — alta de un país", () => {
   });
 
   it.each([
-    ["con otras mayúsculas", "COSTA RICA"],
-    ["sin acento y con espacios de más", "  costa   rica "],
-  ])("un nombre que ya existe %s es `conflict` por `nombre` y no crea nada", async (_titulo, nombre) => {
-    const repo = repoDoble();
-    const r = await new PaisService(repo).crear({ ...entradaValida(), nombre }, SUPERADMIN);
-    expect(r).toEqual({ status: "conflict", campo: "nombre" });
-    expect(repo.crear).not.toHaveBeenCalled();
-  });
-
-  it("los acentos no distinguen: «Peru» choca con «Perú»", async () => {
-    const repo = repoDoble({ paises: [COSTA_RICA, { ...PAIS_XA, id: "PE", nombre: "Perú" }] });
-    const r = await new PaisService(repo).crear({ ...entradaValida(), nombre: "Peru" }, SUPERADMIN);
+    ["con otras mayúsculas", "PERÚ"],
+    ["sin acento y con espacios de más", "  peru  "],
+  ])("si el nombre del catálogo ya está dado de alta %s, es `conflict` por `nombre` y no crea nada", async (_t, nombre) => {
+    const repo = repoDoble({ paises: [COSTA_RICA, { ...PAIS_XA, nombre }] });
+    const r = await new PaisService(repo).crear(entradaValida(), SUPERADMIN);
     expect(r).toEqual({ status: "conflict", campo: "nombre" });
     expect(repo.crear).not.toHaveBeenCalled();
   });
@@ -138,11 +138,8 @@ describe("R23 — alta de un país", () => {
   });
 
   const invalidas: Array<[string, Record<string, unknown>, string]> = [
-    ["código en minúsculas", { id: "xb" }, "id"],
-    ["código de tres letras", { id: "PER" }, "id"],
-    ["código con dígitos", { id: "X1" }, "id"],
-    ["nombre de 1 carácter", { nombre: " P " }, "nombre"],
-    ["nombre de 41 caracteres", { nombre: "a".repeat(41) }, "nombre"],
+    ["nombre de nivel de 1 carácter", { nivel1Plural: " P " }, "nivel1Plural"],
+    ["nombre de nivel de 41 caracteres", { nivel2Singular: "a".repeat(41) }, "nivel2Singular"],
     ["nombre de nivel vacío", { nivel2Plural: "   " }, "nivel2Plural"],
     ["falta un nombre de nivel", { nivel3Singular: undefined }, "nivel3Singular"],
   ];
@@ -164,11 +161,39 @@ describe("R23 — alta de un país", () => {
     expect(repo.crear).not.toHaveBeenCalled();
   });
 
-  it("los bordes del nombre valen: 2 y 40 caracteres", async () => {
-    for (const nombre of ["Ab", "a".repeat(40)]) {
+  it("los bordes de un nombre de nivel valen: 2 y 40 caracteres", async () => {
+    for (const nivel1Singular of ["Ab", "a".repeat(40)]) {
       const repo = repoDoble();
-      expect((await new PaisService(repo).crear({ ...entradaValida(), nombre }, SUPERADMIN)).status).toBe("ok");
+      expect((await new PaisService(repo).crear({ ...entradaValida(), nivel1Singular }, SUPERADMIN)).status).toBe("ok");
     }
+  });
+});
+
+describe("R41 — un código fuera del catálogo es `validation_error` en `id`, sin tocar la base", () => {
+  it.each([
+    ["en minúsculas", "pe"],
+    ["de tres letras", "PER"],
+    ["con dígitos", "X1"],
+    ["vacío", ""],
+    ["de usuario (XA), el de los tests", "XA"],
+    ["reservado (ZZ)", "ZZ"],
+    ["retirado de ISO 3166-1 (AN, Antillas Neerlandesas)", "AN"],
+    ["de usuario (QQ, rango QM–QZ)", "QQ"],
+  ])("%s: %j", async (_titulo, id) => {
+    const repo = repoDoble();
+    const r = await new PaisService(repo).crear({ ...entradaValida(), id }, SUPERADMIN);
+    expect(r.status).toBe("validation_error");
+    if (r.status !== "validation_error") return;
+    expect(Object.keys(r.fieldErrors)).toEqual(["id"]);
+    expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it("un código que no es texto también es `validation_error` en `id`", async () => {
+    const repo = repoDoble();
+    const r = await new PaisService(repo).crear({ ...entradaValida(), id: 506 }, SUPERADMIN);
+    expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 });
 

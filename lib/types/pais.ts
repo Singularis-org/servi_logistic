@@ -1,13 +1,14 @@
 import { z } from "zod";
 
+import { paisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import { normalizarNombreGeografico, type NivelGeografico } from "@/lib/types/geografia-nodo";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
 
-// SL-20 (design §2.1, §5, §7; R1, R19, R20, R23) — el país: su schema de alta, su DTO y los nombres
-// de sus tres niveles.
+// SL-20 (design §2.1, §5, §7; R1, R19, R20, R23, R41) — el país: su schema de alta, su DTO y los
+// nombres de sus tres niveles.
 //
-// Modulo PURO: solo zod y tipos. Lo importan el servicio, el repositorio, el layout y, por los
-// tipos, la pantalla.
+// Modulo PURO: solo zod, tipos y el catálogo estático `lib/constants/paises-iso-3166-1.ts`. Lo
+// importan el servicio, el repositorio, el layout y, por los tipos, la pantalla.
 
 /** ISO 3166-1 alfa-2, igual que el `CHECK (id ~ '^[A-Z]{2}$')` de la tabla `pais`. */
 export const CODIGO_PAIS = /^[A-Z]{2}$/;
@@ -27,14 +28,24 @@ const nombrePaisSchema = z
       .max(PAIS_NOMBRE_MAX, `No puede superar los ${PAIS_NOMBRE_MAX} caracteres.`),
   );
 
+/** R41: el mensaje de un código que no está en el catálogo. */
+export const PAIS_FUERA_DEL_CATALOGO = "Elige un país de la lista (ISO 3166-1).";
+
 /**
- * El alta de un país (R23). Sin regla de código: la pantalla no la ofrece y el país nuevo acepta
- * códigos de texto libre (R17); solo Costa Rica la tiene, puesta por su migración.
+ * El alta de un país (R23, R41; enmienda 2026-10-26, decisión 5). El país se ELIGE del catálogo
+ * ISO 3166-1: la entrada trae solo su código (`id`) y los seis nombres de nivel, que sí se teclean.
+ * El nombre no viaja: lo pone el servicio desde el catálogo (`DatosDeAltaDePais`). Sin regla de
+ * código: la pantalla no la ofrece y el país nuevo acepta códigos de texto libre (R17); solo Costa
+ * Rica la tiene, puesta por su migración.
  */
 export const crearPaisSchema = z
   .object({
-    id: z.string().trim().regex(CODIGO_PAIS, "El código son dos letras mayúsculas (ISO 3166-1 alfa-2)."),
-    nombre: nombrePaisSchema,
+    // R41: un código fuera del catálogo (también `XA`–`XZ`, que solo crea la fábrica de tests) es
+    // `validation_error` en `id`. Estar en el catálogo implica cumplir `CODIGO_PAIS`.
+    id: z
+      .string()
+      .trim()
+      .refine((id) => paisDelCatalogo(id) !== null, PAIS_FUERA_DEL_CATALOGO),
     nivel1Singular: nombrePaisSchema,
     nivel1Plural: nombrePaisSchema,
     nivel2Singular: nombrePaisSchema,
@@ -45,6 +56,9 @@ export const crearPaisSchema = z
   .strict();
 
 export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
+
+/** Lo que el repositorio escribe en `pais`: la entrada validada más el nombre del catálogo (R23). */
+export type DatosDeAltaDePais = CrearPaisInput & { nombre: string };
 
 /**
  * Enmienda 2026-10-26, decisión 6 (R47): encender o apagar la cobertura de un país. `disponible` es

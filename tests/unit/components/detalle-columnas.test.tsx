@@ -31,12 +31,16 @@ import {
   PRIMERAS,
   columnasDetalle,
 } from "@/app/(app)/monitoreo/_components/detalle-columnas";
-import { ordenesColumns } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
 import { DataTable } from "@/components/shared/DataTable";
 import { formatMonto } from "@/lib/config/moneda";
 import { recortarPorAlcance, type AlcanceTableroDia } from "@/lib/types/tablero-dia";
 import { CENTINELAS, ordenDelDetalle } from "@/tests/fixtures/orden-detalle-dia";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): los encabezados de nivel son los del país de la empresa; estos casos son de Costa Rica.
+const ordenesColumns = ordenesColumnsDe(ETIQUETAS_CR);
 
 afterEach(() => {
   cleanup();
@@ -57,14 +61,14 @@ function idsEsperados(alcance: AlcanceTableroDia): string[] {
 }
 
 function idsMontados(alcance: AlcanceTableroDia): string[] {
-  return columnasDetalle(alcance).map((columna) => columna.id);
+  return columnasDetalle(alcance, ETIQUETAS_CR).map((columna) => columna.id);
 }
 
 /** La tabla del detalle, renderizada con una fila. Devuelve sus cabeceras y sus celdas. */
 function pintar(alcance: AlcanceTableroDia, fila = ordenDelDetalle({ id: "o1" })) {
   render(
     <DataTable
-      columns={columnasDetalle(alcance)}
+      columns={columnasDetalle(alcance, ETIQUETAS_CR)}
       data={[fila]}
       rowKey="id"
       ariaLabel="Órdenes del día"
@@ -122,9 +126,10 @@ describe("columnasDetalle — «Liberada el» no entra (R45)", () => {
   });
 
   it("la clausula NO es vacia: la variante del listado SI la trae", async () => {
-    const { ordenesColumnsReprogramada } = await import(
+    const { ordenesColumnsReprogramadaDe } = await import(
       "@/app/(app)/ordenes/_components/ordenes-columns"
     );
+    const ordenesColumnsReprogramada = ordenesColumnsReprogramadaDe(ETIQUETAS_CR);
     const propias = ordenesColumnsReprogramada
       .map((c) => c.id)
       .filter((id) => !ordenesColumns.some((c) => c.id === id));

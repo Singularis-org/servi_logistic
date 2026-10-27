@@ -83,13 +83,13 @@ para y avisa al leader.
   con otro país → `conflicto` `paisId` (R8); el listado trae el país (R9, datos).
 - [x] T2.3 `etiquetasDeEmpresa` y `ETIQUETAS_NEUTRAS`. Dep.: T2.1.
   **Hecho:** test unitario con una empresa en `XA` y otra en `CR`.
-- [ ] T2.4 [P] **(enmienda 2026-10-26, decisión 5)** Catálogo `lib/constants/paises-iso-3166-1.ts`
+- [x] T2.4 [P] **(enmienda 2026-10-26, decisión 5)** Catálogo `lib/constants/paises-iso-3166-1.ts`
   (§2.1, R40). **Bloqueada** hasta que el humano diga la fuente de la lista (pregunta abierta de
   `requirements.md`); sin ella no se escribe ni una fila. Dep.: ninguna.
   **Hecho:** `tests/unit/constants/paises-iso-3166-1.test.ts` verde (alfa-2 válidos, sin códigos ni
   nombres normalizados repetidos, `CR` = «Costa Rica», ningún `XA`–`XZ`) y la fuente anotada en la
   cabecera del archivo.
-- [ ] T2.5 **(enmienda 2026-10-26, decisiones 5 y 6)** País con catálogo y disponibilidad:
+- [x] T2.5 **(enmienda 2026-10-26, decisiones 5 y 6)** País con catálogo y disponibilidad:
   `lib/types/pais.ts` (`crearPaisSchema` sin `nombre`, `PaisDTO.disponible`,
   `cambiarDisponibilidadPaisSchema`), `PaisRepository`/`IPaisRepository` (`cambiarDisponible`, `listar`
   con `disponible`), `PaisService`/`IPaisService` (`crear` con catálogo, `cambiarDisponible`) y el alta
@@ -159,11 +159,11 @@ para y avisa al leader.
 
 ## T5 — Interfaz (`frontend_dev`)
 
-- [ ] T5.1 Provider y hook de nombres de nivel, y su enganche en `app/(app)/layout.tsx` (§7).
+- [x] T5.1 Provider y hook de nombres de nivel, y su enganche en `app/(app)/layout.tsx` (§7).
   Dep.: T2.3.
   **Hecho:** `tests/components/etiquetas-geograficas.test.tsx` pinta «Departamento» con una empresa
   de un país de prueba y «Provincia» con una de `CR`.
-- [ ] T5.2 [P] Lista cerrada de R19 (§7): las constantes pasan a funciones y los consumidores usan
+- [x] T5.2 [P] Lista cerrada de R19 (§7): las constantes pasan a funciones y los consumidores usan
   el hook. Dep.: T5.1.
   **Hecho:** la guardia `etiquetas-geograficas-sin-literal` está verde, con su contraprueba; los
   tests de componentes de órdenes, novedades, satélite, tarifas, mis asignaciones y cierres siguen

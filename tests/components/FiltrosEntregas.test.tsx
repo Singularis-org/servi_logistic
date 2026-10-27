@@ -23,6 +23,14 @@ import {
 } from "@/app/(app)/_components/filtro-entregas";
 import { construirFiltrosOrdenes } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
 
 vi.mock("@/lib/actions/filtros-ordenes", () => ({
   obtenerCatalogoFiltrosOrdenes: vi.fn(async () => ({
@@ -73,7 +81,7 @@ afterEach(cleanup);
 
 describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", () => {
   it("declara fecha, zona, la cadena geográfica, tienda y mensajero, y nada más", () => {
-    const defs = construirFiltrosEntregas(CATALOGO, { ahora: AHORA });
+    const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
 
     expect(defs.map((f) => f.key)).toEqual([
       CLAVE_CREACION,
@@ -102,7 +110,7 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
   // FUENTE: el conteo se lee de la tabla `orden`, que sí tiene esas tres columnas. El motivo
   // por el que no estaban desapareció.
   it("ofrece la cadena geográfica, ahora que la fuente sabe recortarla", () => {
-    const defs = construirFiltrosEntregas(CATALOGO, { ahora: AHORA });
+    const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
     const claves = defs.map((f) => f.key);
 
     expect(claves).toContain("provincia_id");
@@ -114,7 +122,7 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
   // igual que en la barra de órdenes. Sin `dependsOn`, el selector de distrito ofrecería los
   // de todo el país aunque el usuario ya hubiera elegido un cantón.
   it("encadena provincia -> cantón -> distrito con `dependsOn` y `parentValue`", () => {
-    const defs = construirFiltrosEntregas(CATALOGO, { ahora: AHORA });
+    const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
     const canton = defs.find((f) => f.key === "canton_id");
     const distrito = defs.find((f) => f.key === "distrito_id");
 
@@ -137,7 +145,7 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
    * fuente que ya trae el recorte de estado hecho en el `WHERE`.
    */
   it("ficha 351: el filtro de mensajero se llena con el CATÁLOGO, no con la lista de asignación", () => {
-    const defs = construirFiltrosEntregas(CATALOGO, { ahora: AHORA });
+    const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
     const mensajero = defs.find((f) => f.key === CLAVE_MENSAJERO);
 
     expect(mensajero?.kind).toBe("multi");
@@ -152,7 +160,7 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
   it("con el catálogo sin mensajeros, el desplegable no ofrece ninguno", () => {
     const defs = construirFiltrosEntregas(
       { ...CATALOGO, mensajeros: [] },
-      { ahora: AHORA },
+      { etiquetas: ETIQUETAS_CR, ahora: AHORA },
     );
     const mensajero = defs.find((f) => f.key === CLAVE_MENSAJERO);
 
@@ -168,8 +176,9 @@ describe("Barra de entregas — los SIETE filtros que la cifra sabe aplicar", ()
 // cambiar aquí un `dias` dejaría los mismos cuatro nombres ofreciendo otras fechas.
 describe("Barra de entregas — la fecha usa los MISMOS rangos que órdenes", () => {
   it("el filtro de fecha ofrece atajo por atajo el mismo rango que la barra de órdenes", () => {
-    const entregas = construirFiltrosEntregas(CATALOGO, { ahora: AHORA });
+    const entregas = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, ahora: AHORA });
     const ordenes = construirFiltrosOrdenes(CATALOGO, {
+      etiquetas: ETIQUETAS_CR,
       incluirTienda: false,
       ahora: AHORA,
     });
@@ -504,7 +513,7 @@ describe("Ficha 351 — la opción de tienda no lleva sufijo", () => {
           { id: "t2", nombre: "Tienda Cerrada", esApiKey: false, activa: false },
         ],
       },
-      { ahora: AHORA },
+      { etiquetas: ETIQUETAS_CR, ahora: AHORA },
     );
     const tienda = defs.find((f) => f.key === CLAVE_TIENDA);
 

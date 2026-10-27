@@ -26,7 +26,7 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { ordenesColumns } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
 import { ORDER_STATUS_LABELS } from "@/app/(app)/ordenes/_components/EstatusBadge";
 import {
   COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA,
@@ -40,6 +40,10 @@ import { recortarPorAlcance } from "@/lib/types/recorte-alcance-orden";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import { ordenDeListado } from "@/tests/fixtures/orden-detalle-dia";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): los encabezados de nivel son los del país de la empresa; estos casos son de Costa Rica.
+const ordenesColumns = ordenesColumnsDe(ETIQUETAS_CR);
 
 afterEach(() => {
   cleanup();
@@ -100,7 +104,7 @@ function filaDeLaBodega(
 function pintar(fila: RecepcionSateliteDTO = filaDeLaBodega({ id: "o1" })) {
   render(
     <DataTable
-      columns={recibidasColumns()}
+      columns={recibidasColumns(ETIQUETAS_CR)}
       data={[fila]}
       rowKey="id"
       ariaLabel="Órdenes de la bodega"
@@ -144,7 +148,7 @@ describe("recibidasColumns — deriva del listado de órdenes, no lo espeja", ()
     // ÉSTA es la aserción de la ficha. No compara ids ni encabezados —que se podrían
     // reproducir a mano y seguir en verde—: compara IDENTIDAD. Volver a escribir las columnas
     // aquí produciría objetos nuevos, iguales de lejos, y este caso se pondría rojo.
-    for (const columna of recibidasColumns()) {
+    for (const columna of recibidasColumns(ETIQUETAS_CR)) {
       expect(
         ordenesColumns,
         `la columna \`${columna.id}\` NO sale de \`ordenesColumns\`: se declaró aparte`,
@@ -156,11 +160,11 @@ describe("recibidasColumns — deriva del listado de órdenes, no lo espeja", ()
     const esperados = ordenesColumns
       .map((c) => c.id)
       .filter((id) => !COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA.includes(id));
-    expect(recibidasColumns().map((c) => c.id)).toEqual(esperados);
+    expect(recibidasColumns(ETIQUETAS_CR).map((c) => c.id)).toEqual(esperados);
   });
 
   it("no monta ninguna columna dos veces", () => {
-    const ids = recibidasColumns().map((c) => c.id);
+    const ids = recibidasColumns(ETIQUETAS_CR).map((c) => c.id);
     expect(new Set(ids).size, `hay ids repetidos en ${ids.join(", ")}`).toBe(ids.length);
   });
 
@@ -274,7 +278,7 @@ describe("recibidasColumns — el estado se pinta como badge, igual que en `/ord
 
   it("el chip sale de la MISMA columna que `/ordenes`, no de una copia", () => {
     // Cierra el hueco del caso de arriba: un badge escrito a mano aquí también sería un chip.
-    const columnaEstado = recibidasColumns().find((c) => c.id === "estatus");
+    const columnaEstado = recibidasColumns(ETIQUETAS_CR).find((c) => c.id === "estatus");
     expect(columnaEstado).toBe(ordenesColumns.find((c) => c.id === "estatus"));
   });
 
@@ -347,7 +351,7 @@ describe("recibidasColumns — «Liberada el» no entra (y su premisa CAMBIÓ co
   it("no monta la columna de la variante `reprogramada`", () => {
     // Lo que este listado monta HOY. Ver el caso siguiente: la razón por la que se decidió así
     // dejó de ser cierta, y eso es una decisión de pantalla que queda ABIERTA, no un hecho.
-    expect(recibidasColumns().map((c) => c.id)).not.toContain("liberada");
+    expect(recibidasColumns(ETIQUETAS_CR).map((c) => c.id)).not.toContain("liberada");
   });
 
   it("FICHA 357: `reprogramada` YA ESTÁ entre los estados del listado — la decisión se reabre", () => {
@@ -365,9 +369,10 @@ describe("recibidasColumns — «Liberada el» no entra (y su premisa CAMBIÓ co
   });
 
   it("la cláusula NO es vacía: la variante del listado SÍ la trae", async () => {
-    const { ordenesColumnsReprogramada } = await import(
+    const { ordenesColumnsReprogramadaDe } = await import(
       "@/app/(app)/ordenes/_components/ordenes-columns"
     );
+    const ordenesColumnsReprogramada = ordenesColumnsReprogramadaDe(ETIQUETAS_CR);
     const propias = ordenesColumnsReprogramada
       .map((c) => c.id)
       .filter((id) => !ordenesColumns.some((c) => c.id === id));

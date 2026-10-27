@@ -25,6 +25,7 @@
  */
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
+import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { estatusLabel } from "./estatus-label";
 
@@ -65,9 +66,9 @@ export const COLUMNAS_DESCARGA_ORDENES: DescargaColumna[] = [
   { clave: "direccion", encabezado: "Dirección" },
   { clave: "tienda", encabezado: "Tienda" },
   { clave: "zona", encabezado: "Zona" },
-  { clave: "provincia", encabezado: "Provincia" },
-  { clave: "canton", encabezado: "Cantón" },
-  { clave: "distrito", encabezado: "Distrito" },
+  { clave: "provincia", encabezado: ETIQUETAS_NEUTRAS.provincia.singular },
+  { clave: "canton", encabezado: ETIQUETAS_NEUTRAS.canton.singular },
+  { clave: "distrito", encabezado: ETIQUETAS_NEUTRAS.distrito.singular },
   { clave: "montoCobrar", encabezado: "Monto a cobrar" },
   { clave: "fleteConIva", encabezado: "Flete + IVA" },
   { clave: "comisionConIva", encabezado: "Comisión + IVA" },
@@ -78,6 +79,20 @@ export const COLUMNAS_DESCARGA_ORDENES: DescargaColumna[] = [
   { clave: "fechaReprogramacion", encabezado: "Fecha de reprogramación" },
   { clave: "notas", encabezado: "Notas de la tienda" },
 ];
+
+/**
+ * SL-20 (design §7; R19) — las columnas del archivo con los encabezados de nivel del país de la
+ * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
+ * `COLUMNAS_DESCARGA_ORDENES` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
+ * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ */
+export function columnasDescargaOrdenes(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
+  return COLUMNAS_DESCARGA_ORDENES.map((columna) =>
+    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
+      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
+      : columna,
+  );
+}
 
 /**
  * Fecha de creación como `YYYY-MM-DD` en el calendario de Costa Rica. El DTO tipa

@@ -47,9 +47,13 @@ import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 //
 // Los servicios vuelven a mirar `GESTION_ROLES`: la puerta de aquí es la primera, no la única (R37).
 //
-// Pendiente (T2.4 bloqueada, fuente del catálogo ISO): `crearPaisAction` pasa la entrada tal cual al
-// servicio, que hoy valida el alta de T2.1 (código y nombre tecleados). Cuando el servicio tome el
-// nombre del catálogo (R23, R41), esta action no cambia.
+// `crearPaisAction` pasa la entrada tal cual al servicio: `crearPaisSchema` exige que el código esté
+// en el catálogo ISO 3166-1 (R41) y el servicio pone el nombre del catálogo (R23).
+//
+// Errores (R36; decisión del humano en la tanda 4): las actions que escriben (altas, renombre,
+// retiro, disponibilidad, carga) y el conteo de la confirmación responden `error` y dejan el log
+// cuando la base falla. Solo el único violado de un alta o un renombre es `conflict`. El árbol y el
+// listado de países no lo llevan: son la carga de la pantalla, y su fallo sube a la página.
 
 const FICHA = "SL-20";
 const MOTIVO =
@@ -257,11 +261,12 @@ export async function renombrarNodoAction(
 export type CambiarActivacionNodoActionResult =
   | CambiarActivacionGeograficaServiceResult
   | ErrorDeValidacion
-  | SinPermiso;
+  | SinPermiso
+  | ErrorInterno;
 
 /**
  * R30: retira o reactiva UN nodo sin tocar a sus descendientes; pedir el estado que ya tiene es `ok`
- * sin escribir. Sin `catch`: aquí no hay único que violar, y un fallo no se disfraza de respuesta.
+ * sin escribir. Aquí no hay único que violar: un fallo de la base es `error` con log, como el alta (R36).
  * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function cambiarActivacionNodoAction(
@@ -273,17 +278,22 @@ export async function cambiarActivacionNodoAction(
   const parsed = cambiarActivacionGeograficaSchema.safeParse(input);
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
-  return enPlataforma(() => servicio.cambiarActivacion(parsed.data, p.actor));
+  try {
+    return await enPlataforma(() => servicio.cambiarActivacion(parsed.data, p.actor));
+  } catch (error) {
+    return registrarFallo(parsed.data.activo ? "reactivacion de nodo" : "retiro de nodo", `nivel=${parsed.data.nivel}`, error);
+  }
 }
 
 export type ContarOrdenesSinEntregarActionResult =
   | ContarOrdenesSinEntregarServiceResult
   | ErrorDeValidacion
-  | SinPermiso;
+  | SinPermiso
+  | ErrorInterno;
 
 /**
  * R31: las órdenes sin entregar de TODAS las empresas que cuelgan del nodo. Solo lectura; si falla,
- * la pantalla lo dice y no bloquea el retiro.
+ * responde `error` con log (R36) y la pantalla lo dice sin bloquear el retiro.
  * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function contarOrdenesSinEntregarAction(
@@ -295,7 +305,11 @@ export async function contarOrdenesSinEntregarAction(
   const parsed = nodoGeograficoSchema.safeParse(input);
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
-  return enPlataforma(() => servicio.contarOrdenesSinEntregar(parsed.data, p.actor));
+  try {
+    return await enPlataforma(() => servicio.contarOrdenesSinEntregar(parsed.data, p.actor));
+  } catch (error) {
+    return registrarFallo("conteo de ordenes", `nivel=${parsed.data.nivel}`, error);
+  }
 }
 
 // ── Carga CSV ────────────────────────────────────────────────────────────────────────────────────

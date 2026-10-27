@@ -1,4 +1,5 @@
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
+import { paisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type {
   CambiarDisponibilidadPaisServiceResult,
@@ -11,6 +12,7 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import {
   crearPaisSchema,
   etiquetasDePais,
+  PAIS_FUERA_DEL_CATALOGO,
   type CambiarDisponibilidadPaisInput,
   type EtiquetasGeograficas,
 } from "@/lib/types/pais";
@@ -36,9 +38,11 @@ export class PaisService implements IPaisService {
   }
 
   /**
-   * R23. El nombre se compara con `normalizeName` (sin mayúsculas, acentos ni espacios de más)
-   * contra los países que ya hay: el único de la base compara literales, y «Perú» y «Peru» serían
-   * dos filas para ella y un mismo país para una persona. La base sigue decidiendo ante una carrera.
+   * R23, R41. El país se elige del catálogo ISO 3166-1: el schema rechaza un código que no está
+   * (R41) y el nombre que se guarda es el del catálogo, no uno tecleado (R23). Ese nombre se compara
+   * con `normalizeName` (sin mayúsculas, acentos ni espacios de más) contra los países que ya hay:
+   * el único de la base compara literales, y «Perú» y «Peru» serían dos filas para ella y un mismo
+   * país para una persona. La base sigue decidiendo ante una carrera.
    */
   async crear(input: unknown, actor: Actor): Promise<CrearPaisServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
@@ -55,7 +59,10 @@ export class PaisService implements IPaisService {
         },
       };
     }
-    const datos = validada.data;
+    const delCatalogo = paisDelCatalogo(validada.data.id);
+    // El schema ya lo exige (R41); esta rama solo existe para que el tipo no mienta.
+    if (!delCatalogo) return { status: "validation_error", fieldErrors: { id: [PAIS_FUERA_DEL_CATALOGO] } };
+    const datos = { ...validada.data, nombre: delCatalogo.nombre };
 
     const existentes = await this.repo.listar();
     if (existentes.some((p) => p.id === datos.id)) return { status: "conflict", campo: "id" };

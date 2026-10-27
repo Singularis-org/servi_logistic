@@ -43,7 +43,7 @@ import {
 // resolutor de sesión que devuelve `null` (el superadmin no tiene empresa): es el mismo camino que en
 // producción. Un modelo de negocio (`orden`, en el conteo) sin contexto cae en `EmpresaNoResuelta`;
 // por eso la cadena tiene que correr dentro de `comoPlataforma`, y la contraprueba lo demuestra.
-// Las actions abren sus propias transacciones, así que esta parte ESCRIBE de verdad en el país `XS`
+// Las actions abren sus propias transacciones, así que esta parte ESCRIBE de verdad en el país `BV`
 // (bajo el lock de escrituras reales) y lo borra antes y después.
 //
 // Parte 2 (R31). El conteo suma las órdenes sin entregar de DOS empresas del mismo país. Va en una
@@ -52,7 +52,10 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const PAIS = "XS";
+// El alta de país solo acepta códigos del catálogo ISO 3166-1 (R41), así que la suite no puede usar
+// `XA`–`XZ`: usa `BV` (Isla Bouvet, deshabitada, sin cobertura posible), que ningún entorno va a dar
+// de alta de verdad. `limpiarPais` lo borra antes y después.
+const PAIS = "BV";
 const CSV = [
   "nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3",
   "Región Norte,N1,Comuna Alta,N1A,Barrio Uno,N1A1",
@@ -129,7 +132,6 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
       const pais = await crearPaisAction(
         {
           id: PAIS,
-          nombre: "País de prueba XS superadmin",
           nivel1Singular: "Región",
           nivel1Plural: "Regiones",
           nivel2Singular: "Comuna",
@@ -150,10 +152,11 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
       const retiro = await cambiarActivacionNodoAction({ nivel: "distrito", id: alta.id, activo: false }, deps);
       const reactivacion = await cambiarActivacionNodoAction({ nivel: "distrito", id: alta.id, activo: true }, deps);
       const apagado = await cambiarDisponibilidadPaisAction({ id: PAIS, disponible: false }, deps);
-      return { pais: pais.status, carga, comuna: comuna.nombre, alta, renombrado, conteo, retiro, reactivacion, apagado, distritoId: alta.id };
+      return { pais: { status: pais.status, nombre: pais.status === "ok" ? pais.pais.nombre : null }, carga, comuna: comuna.nombre, alta, renombrado, conteo, retiro, reactivacion, apagado, distritoId: alta.id };
     });
 
-    expect(r.pais).toBe("ok");
+    // R23: el nombre sale del catálogo, no de la entrada.
+    expect(r.pais).toEqual({ status: "ok", nombre: "Isla Bouvet" });
     expect(r.carga).toEqual({
       status: "ok",
       creados: { provincia: 1, canton: 1, distrito: 2 },

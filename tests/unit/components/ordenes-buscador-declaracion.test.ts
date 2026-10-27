@@ -8,6 +8,7 @@ import {
 import { seleccionAFilter } from "@/app/(app)/ordenes/_components/seleccion-a-filter";
 import { BUSQUEDA_MIN_CHARS, ordenFilterSchema } from "@/lib/types/orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // Feature 169 / T3.2 + T3.3 (R32, R36) — declaracion del buscador en la barra de
 // ordenes y su traduccion al `filter` de `listarOrdenes`.
@@ -26,6 +27,7 @@ function declarados(opts: {
   incluirReasignables?: boolean;
 } = {}) {
   return construirFiltrosOrdenes(CATALOGO, {
+    etiquetas: ETIQUETAS_CR,
     incluirTienda: opts.incluirTienda ?? true,
     incluirReasignables: opts.incluirReasignables,
   });
@@ -75,7 +77,7 @@ describe("construirFiltrosOrdenes — el buscador va PRIMERO (R32)", () => {
   it("R32: se declara aunque el catalogo geografico venga vacio (no sale de el)", () => {
     const sinCatalogo = construirFiltrosOrdenes(
       { zonas: [], tiendas: [], mensajeros: [], provincias: [], cantones: [], distritos: [] },
-      { incluirTienda: true },
+      { incluirTienda: true, etiquetas: ETIQUETAS_CR },
     );
     expect(sinCatalogo[0]?.key).toBe(CLAVE_BUSQUEDA);
   });

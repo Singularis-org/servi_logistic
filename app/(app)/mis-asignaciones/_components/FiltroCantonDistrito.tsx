@@ -4,6 +4,7 @@ import { useId } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import type { OpcionFiltro } from "@/lib/utils/filtro-canton-distrito";
 
 // Feature 117 — control de filtro por cantón y distrito (dos selects encadenados +
@@ -16,12 +17,10 @@ import type { OpcionFiltro } from "@/lib/utils/filtro-canton-distrito";
 // antepone una opción con este valor centinela, que el handler traduce a `""`.
 const TODOS = "__todos__";
 
-const REGION_LABEL = "Filtrar por cantón y distrito";
-const CANTON_CAPTION = "Cantón";
-const DISTRITO_CAPTION = "Distrito";
-// Nombre accesible (rol combobox) de cada select — contiene su etiqueta visible.
-const CANTON_ARIA = "Filtrar por cantón";
-const DISTRITO_ARIA = "Filtrar por distrito";
+// SL-20 (design §7; R19): rótulo de la región, rótulos visibles y nombres accesibles nombran los
+// niveles con los nombres del país de la empresa (`useEtiquetasGeograficas`). El nombre accesible
+// (rol combobox) de cada select contiene su etiqueta visible.
+const PREFIJO_FILTRAR = "Filtrar por";
 const CANTON_PLACEHOLDER = "Todos los cantones";
 const DISTRITO_PLACEHOLDER = "Todos los distritos";
 const CANTON_TODOS = "Todos los cantones";
@@ -65,19 +64,25 @@ export function FiltroCantonDistrito({
   const cantonId = useId();
   const distritoId = useId();
   const sinCanton = canton === "";
+  const etiquetas = useEtiquetasGeograficas();
+  const cantonCaption = etiquetas.canton.singular;
+  const distritoCaption = etiquetas.distrito.singular;
+  const regionLabel = `${PREFIJO_FILTRAR} ${cantonCaption.toLowerCase()} y ${distritoCaption.toLowerCase()}`;
+  const cantonAria = `${PREFIJO_FILTRAR} ${cantonCaption.toLowerCase()}`;
+  const distritoAria = `${PREFIJO_FILTRAR} ${distritoCaption.toLowerCase()}`;
 
   return (
     <section
-      aria-label={REGION_LABEL}
+      aria-label={regionLabel}
       className="flex flex-wrap items-end gap-3"
     >
       <div className="flex min-w-52 flex-col gap-1">
         <label htmlFor={cantonId} className="text-sm font-medium">
-          {CANTON_CAPTION}
+          {cantonCaption}
         </label>
         <Select
           id={cantonId}
-          aria-label={CANTON_ARIA}
+          aria-label={cantonAria}
           value={canton}
           options={conTodos(cantones, CANTON_TODOS)}
           placeholder={CANTON_PLACEHOLDER}
@@ -87,11 +92,11 @@ export function FiltroCantonDistrito({
 
       <div className="flex min-w-52 flex-col gap-1">
         <label htmlFor={distritoId} className="text-sm font-medium">
-          {DISTRITO_CAPTION}
+          {distritoCaption}
         </label>
         <Select
           id={distritoId}
-          aria-label={DISTRITO_ARIA}
+          aria-label={distritoAria}
           value={distrito}
           options={conTodos(distritos, DISTRITO_TODOS)}
           placeholder={DISTRITO_PLACEHOLDER}

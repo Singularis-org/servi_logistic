@@ -303,12 +303,46 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
     expect(log).toHaveBeenCalledTimes(2);
   });
 
-  it("el retiro NO lleva `catch`: un fallo ahí sube tal cual (no hay único que violar)", async () => {
+  it.each([
+    ["retiro", false, "retiro de nodo"],
+    ["reactivación", true, "reactivacion de nodo"],
+  ])("R36 (decisión de la tanda 4): un fallo de la base en el %s es `error` con log, sin datos de la fila", async (_t, activo, operacion) => {
+    const log = silenciarLog();
     const cambiarActivacion = vi.fn(async () => {
-      throw new Error("la base se cayó");
+      throw otro();
     });
     const deps = { getActor: async () => SUPERADMIN, geografiaService: geografiaDoble({ cambiarActivacion }) as unknown as IGeografiaService };
-    await expect(cambiarActivacionNodoAction({ nivel: "distrito", id: "d1", activo: false }, deps)).rejects.toThrow("la base se cayó");
+    expect(await cambiarActivacionNodoAction({ nivel: "distrito", id: "d1", activo }, deps)).toEqual({ status: "error" });
+    expect(log).toHaveBeenCalledTimes(1);
+    const linea = String(log.mock.calls[0][0]);
+    expect(linea).toContain(operacion);
+    expect(linea).toContain("nivel=distrito");
+    expect(linea).not.toContain("Juan");
+  });
+
+  it("R36 (decisión de la tanda 4): un fallo de la base en el conteo es `error` con log, sin datos de la fila", async () => {
+    const log = silenciarLog();
+    const contarOrdenesSinEntregar = vi.fn(async () => {
+      throw otro();
+    });
+    const deps = {
+      getActor: async () => SUPERADMIN,
+      geografiaService: geografiaDoble({ contarOrdenesSinEntregar }) as unknown as IGeografiaService,
+    };
+    expect(await contarOrdenesSinEntregarAction({ nivel: "canton", id: "c1" }, deps)).toEqual({ status: "error" });
+    expect(log).toHaveBeenCalledTimes(1);
+    const linea = String(log.mock.calls[0][0]);
+    expect(linea).toContain("conteo de ordenes");
+    expect(linea).toContain("nivel=canton");
+    expect(linea).not.toContain("Juan");
+  });
+
+  it("el retiro y el conteo que salen bien no escriben en el log", async () => {
+    const log = silenciarLog();
+    const { deps } = todosLosDobles(SUPERADMIN);
+    expect((await cambiarActivacionNodoAction({ nivel: "distrito", id: "d1", activo: false }, deps)).status).toBe("ok");
+    expect(await contarOrdenesSinEntregarAction({ nivel: "distrito", id: "d1" }, deps)).toEqual({ status: "ok", ordenes: 3 });
+    expect(log).not.toHaveBeenCalled();
   });
 });
 
@@ -385,5 +419,47 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
   it("un país que no existe es `not_found`", async () => {
     const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repoDoble("no_existe") as unknown as IPaisRepository) };
     expect(await cambiarDisponibilidadPaisAction({ id: "XZ", disponible: false }, deps)).toEqual({ status: "not_found" });
+  });
+});
+
+describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el servicio REAL", () => {
+  function repoDoble() {
+    return {
+      listar: vi.fn(async () => []),
+      listarDisponibles: vi.fn(),
+      porId: vi.fn(),
+      crear: vi.fn(async (datos: Record<string, unknown>) => ({
+        estado: "creado" as const,
+        pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
+      })),
+      deLaEmpresa: vi.fn(),
+      cambiarDisponible: vi.fn(),
+    } satisfies Record<keyof IPaisRepository, Espia>;
+  }
+
+  const NIVELES = {
+    nivel1Singular: "Departamento",
+    nivel1Plural: "Departamentos",
+    nivel2Singular: "Municipio",
+    nivel2Plural: "Municipios",
+    nivel3Singular: "Aldea",
+    nivel3Plural: "Aldeas",
+  };
+
+  it("R23: el país se crea con el nombre del catálogo", async () => {
+    const repo = repoDoble();
+    const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
+    const r = await crearPaisAction({ id: "GT", ...NIVELES }, deps);
+    expect(r.status === "ok" && r.pais.nombre).toBe("Guatemala");
+    expect(repo.crear).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
+  });
+
+  it("R41: un código fuera del catálogo es `validation_error` en `id` y no toca la base", async () => {
+    const repo = repoDoble();
+    const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
+    const r = await crearPaisAction({ id: "XA", ...NIVELES }, deps);
+    expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
+    expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
   });
 });

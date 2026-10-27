@@ -10,8 +10,8 @@ import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisRepository` contra Postgres real.
-//   · R23: el alta crea el país sin geografía y deja su fila `pais_creado` (R33) en la misma
-//     transacción; un código o un nombre que ya están los rechaza la base como `duplicado`.
+//   · R23/R41: el alta crea el país del catálogo sin geografía, con el nombre del catálogo, y deja su
+//     fila `pais_creado` (R33) en la misma transacción; un código o un nombre que ya están los rechaza la base como `duplicado`.
 //   · R19 (datos): `deLaEmpresa`, en el contexto de la empresa (`servi_app`, RLS), lee el país de esa
 //     empresa; `etiquetasDeEmpresa` da sus nombres de nivel.
 //   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` trae `{ id, nombre }` solo de los países con
@@ -37,6 +37,17 @@ const DATOS_XA = {
   nivel3Plural: "Barrios",
 };
 
+/** La entrada del alta por el servicio (R23, R41): el código del catálogo y los seis nombres de nivel. */
+const NIVELES_PE = {
+  id: "PE",
+  nivel1Singular: "Departamento",
+  nivel1Plural: "Departamentos",
+  nivel2Singular: "Provincia",
+  nivel2Plural: "Provincias",
+  nivel3Singular: "Distrito",
+  nivel3Plural: "Distritos",
+};
+
 /** Un usuario real para el actor: `historial_plataforma.actor_usuario_id` tiene FK a `usuario`. */
 async function actorDePrueba(tx: TxDeTest): Promise<string> {
   const org = await crearOrganizacion(tx);
@@ -53,33 +64,36 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     await base?.$disconnect();
   });
 
-  it("R23/R33: crea el país sin geografía y su fila `pais_creado` con el actor congelado", async () => {
+  it("R23/R33/R41: crea el país del catálogo sin geografía, con el nombre del catálogo, y su fila `pais_creado` con el actor congelado", async () => {
+    // El alta por el servicio solo acepta códigos del catálogo (R41): `PE`, que en la base no está
+    // (R43: solo `CR`). La transacción se revierte.
     const r = await revertida(base, async (tx) => {
       const actorId = await actorDePrueba(tx);
       const servicio = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
-      const alta = await servicio.crear(DATOS_XA, { usuarioId: actorId, rol: "superadmin" });
-      const fila = await tx.pais.findUnique({ where: { id: "XA" } });
-      const provincias = await tx.provincia.count({ where: { paisId: "XA" } });
+      const alta = await servicio.crear(NIVELES_PE, { usuarioId: actorId, rol: "superadmin" });
+      const fila = await tx.pais.findUnique({ where: { id: "PE" } });
+      const provincias = await tx.provincia.count({ where: { paisId: "PE" } });
       const historial = await tx.historialPlataforma.findMany({
-        where: { paisId: "XA" },
+        where: { paisId: "PE" },
         select: { accion: true, entidadTipo: true, entidadId: true, entidadEtiqueta: true, actorUsuarioId: true, actorNombre: true },
       });
       return { actorId, alta, fila, provincias, historial };
     });
 
+    const esperado = { ...NIVELES_PE, nombre: "Perú" };
     expect(r.alta).toEqual({
       status: "ok",
       // R44: nace disponible por el `DEFAULT true` de 20261026120500.
-      pais: { ...DATOS_XA, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
+      pais: { ...esperado, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
     });
-    expect(r.fila).toMatchObject(DATOS_XA);
+    expect(r.fila).toMatchObject(esperado);
     expect(r.provincias).toBe(0);
     expect(r.historial).toEqual([
       {
         accion: "pais_creado",
         entidadTipo: "pais",
-        entidadId: "XA",
-        entidadEtiqueta: DATOS_XA.nombre,
+        entidadId: "PE",
+        entidadEtiqueta: "Perú",
         actorUsuarioId: r.actorId,
         actorNombre: expect.any(String),
       },

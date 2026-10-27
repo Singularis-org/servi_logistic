@@ -8,7 +8,7 @@ import type {
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { appendAccionPlataforma } from "@/lib/repositories/registrar-accion-plataforma";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { CrearPaisInput, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
 
 /**
  * SL-20 (design §2.1, §5; R23, R33) — la tabla `pais`, de plataforma.
@@ -60,7 +60,7 @@ export class PaisRepository implements IPaisRepository {
    * queda. Un único violado (otra alta igual que ganó la carrera) es `duplicado`; cualquier otro
    * error sube tal cual, para que la action lo registre y responda `error` (R36).
    */
-  async crear(datos: CrearPaisInput, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
+  async crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const pais = await tx.pais.create({ data: datos, select: SELECT_PAIS });

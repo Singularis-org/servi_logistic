@@ -1,4 +1,4 @@
-import type { CrearPaisInput, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
 
 // SL-20 (design §5) — persistencia de los países. La tabla es de plataforma: `listar`, `porId` y
 // `crear` corren como dueño (`comoPlataforma`, lo pone la action); `deLaEmpresa` corre en el
@@ -26,9 +26,10 @@ export interface IPaisRepository {
 
   /**
    * Crea el país sin geografía y escribe `pais_creado` en `historial_plataforma`, en la misma
-   * transacción (R23, R33). Los datos llegan ya validados y normalizados por el servicio.
+   * transacción (R23, R33). Los datos llegan ya validados y normalizados por el servicio, con el
+   * nombre del catálogo ISO 3166-1 (R23).
    */
-  crear(datos: CrearPaisInput, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado>;
+  crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado>;
 
   /**
    * R47: fija `disponible` y, solo si la fila cambió, escribe `pais_disponibilidad_activada` o
