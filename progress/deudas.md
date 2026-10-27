@@ -135,3 +135,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SL-18 (m3, 2026-10-27).
 - **Qué falta:** `ArranqueSuperadminRepository.ts:76-81` busca el email sin filtrar por `organizacion_id IS NULL`. Según R3 de SL-18, el superadmin puede compartir email con una cuenta de empresa. Hoy no ocurre, porque el superadmin se crea con la base vacía.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D22 — `/novedades` con WhatsApp apagado queda solo con «Llamar»
+- **Origen:** SL-23 (pregunta abierta y menor m4 del review, 2026-10-27).
+- **Qué falta:** decidir si, con el módulo WhatsApp apagado, `/novedades` debe ofrecer otro canal o quedarse solo con «Llamar», sin enlace `wa.me`. El spec no lo pedía.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D23 — `/plataforma/empresas/[organizacionId]` no consta como pasada por `/design`
+- **Origen:** review de SL-23 (m2, 2026-10-27). `docs/perfil-agentes.md > frontend_dev` pide pasar toda pantalla nueva por `/design`.
+- **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
+- **Dueño:** Camilo.
