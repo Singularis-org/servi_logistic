@@ -602,3 +602,95 @@ y la comprobación del webhook: 15 rojos en los 3 archivos nuevos. Al restaurarl
    - Los E2E de `reparto` y `dinero` dependen de lo mismo.
 
 Veredicto: T11 hecho y en verde. T10 tiene las puertas y su guardia en verde, pero queda abierta por el bloqueo 1 (forma del rechazo) y por `nucleo-sin-modulos.test.ts`.
+
+## Tanda 5 — T8, T9 (2026-10-26, frontend_dev)
+
+El MCP del grafo no se usó: bastó Grep/Read sobre archivos ya identificados por el spec.
+
+### Archivos
+
+- **Menú (T8):**
+  - `lib/auth/menu-visibility.ts`: `modulo?: ModuloApagable` en `MenuItem`/`MenuChild`, la tabla de §3.6
+    marcada en `SIDEBAR_ITEMS`, `filtrarPorModulos` y `menuDeLaEmpresa`. `itemsVisibles`/`puedeVer`
+    no cambian de firma.
+  - Consumidores: `app/(app)/layout.tsx`, `app/(app)/dashboard/page.tsx` y `app/(app)/not-found.tsx`
+    pasan a `menuDeLaEmpresa(actor, await modulosDelMenu(actor))`.
+- **Consumos entre módulos (§6.3), con el flag desde el Server Component:**
+  - WhatsApp en `/mis-asignaciones/reparto`: `reparto/page.tsx` lee `moduloActivo("whatsapp")`.
+    `RepartoModule` gana `whatsappActivo: boolean`, requerido. Con `false` no monta `ChatFlotante` y
+    pasa `onAbrirChat = null`. `GestionarOrdenPanel` admite `onAbrirChat: (() => void) | null` y con
+    `null` no pinta «Mensaje».
+    - `EnviarPlantillaWhatsappButton` sigue comentado en el panel, como ya estaba.
+  - WhatsApp en `/mis-asignaciones/recoger`: `recoger/page.tsx` no monta `ChatDelMensajero`.
+  - WhatsApp en `/novedades`:
+    - `page.tsx` lee el flag en el mismo `Promise.all`;
+    - `NovedadesTabs`, `NovedadesModule` y `NovedadAcciones` ganan `whatsappActivo: boolean`, requerido;
+    - con `false`, `NovedadAcciones` no pinta `EnviarPlantillaWhatsappButton` («Llamar» y las demás
+      acciones siguen).
+  - Ranking en `/wallet/mensajeros`: `page.tsx` lee `moduloActivo("ranking")` y baja `premios = null`
+    con Ranking apagado. `WalletMensajerosTabs` (`premios: … | null`) omite entonces la pestaña de premios.
+- **Páginas (T9):** `await exigirModuloEnRuta("<clave>")` como primera sentencia de las 24 páginas de
+  §3.1, con su import.
+  - `recepcion-satelite/page.tsx` (solo `redirect`) pasa a `async`.
+- **Guardias:**
+  - `modulos-reparto.guardia.test.ts`: fuera los `it.fails` de (b) y (f); los seis casos con `it`.
+  - `no-encontrado-no-delata.guardia.test.ts`: `usaElMenuCompartido` acepta `menuDeLaEmpresa`, la
+    composición de `itemsVisibles(SIDEBAR_ITEMS)`, y su autocomprobación gana el caso.
+- **Tests nuevos:**
+  - `tests/unit/auth/menu-modulos.test.ts` (14).
+- **Casos añadidos a tests existentes:**
+  - `NovedadesPage.test.tsx` (3);
+  - `WalletMensajerosTabs.test.tsx` (1);
+  - `ChatContactoAntesDeRecoger.test.tsx` (2);
+  - `MisAsignacionesPage.test.tsx` (4).
+- **Tests ajustados:**
+  - Ganan `puertasAbiertas()`:
+    - 21 tests de página: `AnaliticaPage`, `ConfiguracionApiPage`, `ConfiguracionEnviosWhatsappPage`,
+      `ConfiguracionPlantillasPage`, `EstadoCuentaSatelite`, `HistoricoConversacionesPage`,
+      `RankingHistoricoPage`, `RankingPage`, `RecepcionSatelitePage`, `RecoleccionPage`, `TableroDiaPage`,
+      `WalletDeudaPlataformaSL40/SL45`, `wallet-page-cobros-pendientes` y los 7 de integración de wallet/mi-wallet;
+    - los consumidores del menú: `AppLayout`, `HomePage`, `HomePageMaestro`, `HomePageRol`,
+      `MisAsignacionesPage`, `PantallaNoEncontrada` y `app-layout-superadmin`.
+  - Ganan `whatsappActivo` en el montaje: `ChatContactoAntesDeRecoger`, `CorregirDatosCliente.novedades`,
+    `NovedadesDescarga`, `GestionarOrdenPanelHilo`, `MarcarLuegoToggle`, `NovedadAcciones`, `NovedadesBuscador`,
+    `NovedadesHilo`, `NovedadesModule`, `NovedadesTabs`, `NovedadPlantillaWhatsapp`, `RechazarNovedad`,
+    `RepartoAyuda`, `RepartoAyudaResueltaPorLaTienda`, `RepartoModule` y `RepartoModule477Correccion`.
+  - Los literales de subítem ganan `modulo: "whatsapp"`: `menu-visibility.test.ts` (Plantillas),
+    `menu-historico.test.ts` (Conversaciones) y `menu-visibility-envios-whatsapp.test.ts`.
+  - `RecepcionSatelitePage.test.tsx`: los 3 casos del redirect esperan el rechazo de la promesa.
+
+### Mapa R → test (Tanda 5)
+
+| R | Test |
+|---|---|
+| R15 | `menu-modulos.test.ts`, que cubre: ítems y subítems ocultos; el desplegable vacío desaparece (Histórico del `admin` sin WhatsApp); el núcleo visible con los 8 apagados; ninguna ruta de módulo con todo apagado; `primerDestino` sobre lo filtrado; superadmin sin cambios; identidad conservada. Además, la guardia (f) y `no-encontrado-no-delata` (el 404 deriva del menú de la empresa) |
+| R16 | guardia (b): las 24 páginas abren con su puerta; `exigir-modulo.test.ts` (ya existente) |
+| R32 | `menu-modulos.test.ts`: el `adminSatelite` con Bodegas satélite apagado aterriza en `/cierres-admin`; con los 8 apagados, también; sin destino, `null` → placeholder de `/dashboard` |
+| §6.3 | `NovedadesPage.test.tsx` (flag a las pestañas; sin plantilla con WhatsApp apagado, el resto sí); `ChatContactoAntesDeRecoger.test.tsx` y `MisAsignacionesPage.test.tsx` (chat y «Mensaje» solo con WhatsApp); `WalletMensajerosTabs.test.tsx` (sin pestaña de premios ni lectura del podio con Ranking apagado) |
+
+### Salida
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run -s typecheck`: exit 0.
+- `pnpm run -s lint`: `✖ 231 problems (0 errors, 231 warnings)` (los de antes).
+- `pnpm run -s test:guardias`: `Test Files 1 failed | 309 passed | 2 skipped (312) · Tests 4 failed | 4304
+  passed | 20 skipped`. Los 4 rojos son `dependencias-declaradas-presentes` (baseline).
+  `modulos-reparto`: `37 passed (37)`, sin `it.fails`.
+- Tests tocados (por archivo, sin `vitest related`):
+  - 21 de página + `app-layout-superadmin` + `novedades-pestana-por-url` + `NovedadesPage`
+    (con `DATABASE_URL` a `logistic_sl23b`): `24 passed`, tras arreglar `RecepcionSatelitePage`
+    (`15 passed`);
+  - consumidores del menú + `tests/unit/auth` + Sidebar + HistorialAcciones: `Test Files 26 passed ·
+    Tests 353 passed`;
+  - 16 de montaje con `whatsappActivo`: `Test Files 16 passed · Tests 332 passed`;
+  - los nuevos y los ampliados (`menu-modulos`, guardia, `NovedadesPage`, `WalletMensajerosTabs`,
+    `ChatContactoAntesDeRecoger`, `MisAsignacionesPage`, `RecepcionSatelitePage`, `chat-contactos`):
+    `Test Files 8 passed · Tests 137 passed`.
+
+### Pendiente y notas
+
+- Con WhatsApp apagado, la fila de `/novedades` queda con «Llamar» y sin ningún globo de WhatsApp. No se
+  repuso el enlace `wa.me` sin plantilla de `ContactoButtons`, porque el spec no lo pide. Si se quiere, es
+  una decisión de producto.
+- El E2E de R15/R16 (`e2e/dos-empresas-humo.spec.ts`) es de T12 y no se tocó.
+
+Veredicto: T8 y T9 hechos y en verde. Las guardias (b) y (f) están en verde y sin `it.fails`.

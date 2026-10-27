@@ -118,15 +118,9 @@
 
 ## Preguntas abiertas
 
-P1–P6 y el reparto de `design.md > §3` los resolvió el humano al aprobar el spec el 2026-10-26
+P1–P7 y el reparto de `design.md > §3` los resolvió el humano al aprobar el spec el 2026-10-26
 (filas fechadas abajo).
 
-- **P7 — `conciliacion-satelites` al núcleo (a confirmar).** `/cierres-admin` monta sus acciones
-  (marcar, corregir y revertir la consolidación recibida de un cierre de bodega satélite).
-  Siguiendo la decisión sobre `liquidacion`, `spec_author` la pasó al núcleo como pieza mixta
-  (`design.md > §3.9`): sigue disponible desde Cierres con Wallet apagado. Si el humano prefiere
-  ocultarla, cambia una fila de `reparto.ts` y una entrada de `CONSUMOS_ENTRE_MODULOS`. No
-  bloquea T6–T11.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -157,3 +151,5 @@ P1–P6 y el reparto de `design.md > §3` los resolvió el humano al aprobar el 
 | 2026-10-26 | ¿Dónde va la liquidación (pagos al mensajero y a la tienda)? | Al núcleo. Pagar desde `/cierres-admin` está siempre disponible, con Wallet apagado o no, y aprobar un cierre registra sus movimientos de caja igual. Wallet apagado solo oculta `/wallet`, `/mi-wallet` y sus actions propias. |
 | 2026-10-26 | ¿«Incidentes y novedades» es apagable? | No: pasa entero al núcleo (ver fila 1). El enum `modulo_apagable` se corrige en su propia migración, que aún no está mergeada; no hay migración nueva. |
 | 2026-10-26 | ¿Qué hace la puerta de módulo sin empresa (sin sesión, superadmin)? | No aplica, «como hoy»: la action sin sesión sigue respondiendo `unauthorized` y la página hace lo que ya hacía; el superadmin recibe lo que ya recibía por su rol (404 o `forbidden`). Nunca un error interno por `EmpresaNoResuelta`. |
+| 2026-10-26 | P7 — ¿`conciliacion-satelites` al núcleo? | Sí, al núcleo como pieza mixta (`design.md > §3.9`): sigue disponible desde Cierres con Wallet apagado. |
+| 2026-10-26 | ¿Qué recibe la pantalla al ejecutar una action de un módulo apagado? | Lo que dice `design.md > §5.3`: `{ status: "forbidden" }` y su aviso normal, nunca una excepción. Se aplica a todas las actions con gate. |

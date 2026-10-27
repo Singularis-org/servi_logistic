@@ -130,7 +130,7 @@
 
 ## Tanda 4 — Aplicar las puertas (depende de T3, T5; T8–T11 en paralelo entre sí)
 
-- [ ] **T8 [P] — Menú** (design §6; R15, R32).
+- [x] **T8 [P] — Menú** (design §6; R15, R32).
   - `modulo` en `MenuItem`/`MenuChild` y la tabla de §3.6.
   - `filtrarPorModulos` y `menuDeLaEmpresa`.
   - Los tres consumidores de `app/` (layout, dashboard y not-found).
@@ -150,7 +150,7 @@
     pinta y el resto de `/novedades` sí.
   - *Hecho:* tests en verde; los 140 usos existentes de `itemsVisibles`/`puedeVer` siguen en verde
     sin tocarlos; caso (f) de la guardia en verde.
-- [ ] **T9 [P] — Páginas** (design §5.3; R16).
+- [x] **T9 [P] — Páginas** (design §5.3; R16).
   - `await exigirModuloEnRuta("<clave>")` como primera línea de las 24 páginas de un módulo.
   - Los tests de esas páginas ganan `puertasAbiertas()`.
   - *Hecho:* caso (b) de la guardia en verde; los tests de página listados abajo en verde.
@@ -440,3 +440,5 @@
   `tests/integration/db/dos-empresas-entradas.test.ts`, los dobles de `IJobRepository` de
   `corregir-ubicacion-geocode`, `optimizacion-ruta-enqueue` y `orden-geocode-enqueue`, `scripts/drenar-jobs.ts`
   y 38 de integración de wallet/analítica (lista en `progress/impl_SL-23.md`, Tanda 4)
+- Ajustados en T8/T9 (puertasAbiertas, flag `whatsappActivo` en los montajes, literales del menú con `modulo`,
+  página async): lista en `progress/impl_SL-23.md`, Tanda 5

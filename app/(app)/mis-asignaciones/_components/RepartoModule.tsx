@@ -123,6 +123,12 @@ export interface RepartoModuleProps {
    * controles de escoger y gestionar. Defensa SUAVE; el backend (R25) es la defensa real.
    */
   bloqueo: BloqueoDetalle;
+  /**
+   * SL-23 (design §6.3) — si el módulo WhatsApp está encendido para la empresa. Lo decide el Server
+   * Component. Con `false` no se monta el chat (`ChatFlotante`) ni la acción «Mensaje» del panel.
+   * Requerido, sin `?`: una pantalla que lo olvide no compila (mismo criterio que `porRecoger`).
+   */
+  whatsappActivo: boolean;
 }
 
 // Feature 114: textos del buscador (separados para i18n futura, lenguaje claro). La
@@ -169,6 +175,7 @@ export function RepartoModule({
   ordenEnGestionId,
   ruta,
   bloqueo,
+  whatsappActivo,
 }: RepartoModuleProps) {
   const router = useRouter();
   const toast = useToast();
@@ -219,6 +226,8 @@ export function RepartoModule({
   // Rediseño ux: apertura del CHAT (el modal del botón flotante). Vive aquí porque tiene
   // DOS disparadores: el propio botón flotante y la acción "Mensaje" del panel de detalle.
   const [chatAbierto, setChatAbierto] = useState(false);
+  // SL-23: sin WhatsApp no hay chat que abrir, y el panel no pinta «Mensaje» (recibe `null`).
+  const abrirChat = whatsappActivo ? () => setChatAbierto(true) : null;
 
   // Rama ux (pedido humano): presentación de las cards de "En reparto / por gestionar".
   // Estado de UI EFÍMERO de un solo consumidor (no sube a URL ni a contexto) y puramente
@@ -679,7 +688,7 @@ export function RepartoModule({
           onCancelarGestion={cancelarGestion}
           onSuccess={handleGestionSuccess}
           count={1}
-          onAbrirChat={() => setChatAbierto(true)}
+          onAbrirChat={abrirChat}
         />
       ) : (
         /* ---------- VISTA COMPLETA (fuera de foco) ---------- */
@@ -829,7 +838,7 @@ export function RepartoModule({
                 onCancelarGestion={cancelarGestion}
                 onSuccess={handleGestionSuccess}
                 count={porGestionar.length}
-                onAbrirChat={() => setChatAbierto(true)}
+                onAbrirChat={abrirChat}
               />
             ) : null}
 
@@ -970,12 +979,14 @@ export function RepartoModule({
         />
       ) : null}
 
-      <ChatFlotante
-        contactos={contactosChat}
-        ordenEnDetalleId={detalleOrden?.id ?? null}
-        abierto={chatAbierto}
-        onAbiertoChange={setChatAbierto}
-      />
+      {whatsappActivo ? (
+        <ChatFlotante
+          contactos={contactosChat}
+          ordenEnDetalleId={detalleOrden?.id ?? null}
+          abierto={chatAbierto}
+          onAbiertoChange={setChatAbierto}
+        />
+      ) : null}
     </div>
   );
 }

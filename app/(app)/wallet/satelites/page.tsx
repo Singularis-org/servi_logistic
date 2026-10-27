@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -38,6 +39,8 @@ import { SATELITES_PAGINA } from "./_components/satelites-labels";
  * que ya viajó.
  */
 export default async function WalletSatelitesPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   if (!actor || !esAccesoTotal(actor.rol)) {
     notFound(); // R27: rol sin acceso total o sin sesión → sin exponer datos

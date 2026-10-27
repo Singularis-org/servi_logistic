@@ -15,6 +15,10 @@ import { bloqueoConVencido } from "@/tests/fixtures/bloqueo-cierre";
 // los datos lleguen al módulo de cliente POR PROPS, pre-fetch por la Server Action, sin que
 // el componente fetchee por su cuenta (R6).
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

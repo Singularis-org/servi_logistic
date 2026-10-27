@@ -49,7 +49,7 @@ export interface NovedadesTabsProps {
    * grupo nuevo en `GRUPOS_NOVEDAD` deja de compilar aquí hasta que la página traiga su lectura,
    * en vez de pintar una pestaña vacía sin que nadie se entere.
    */
-  novedades: Record<GrupoNovedad, Omit<NovedadesModuleProps, "grupo">>;
+  novedades: Record<GrupoNovedad, Omit<NovedadesModuleProps, "grupo" | "whatsappActivo">>;
   rechazosSla: RechazosSlaModuleProps;
   /**
    * ⚠️ FICHA 409 (T6.5, R7) — QUE PESTAÑA QUEDA ABIERTA AL ENTRAR, cuando la URL lo pide.
@@ -66,12 +66,19 @@ export interface NovedadesTabsProps {
    * pantalla en blanco (R66).
    */
   superficieInicial?: GrupoNovedad;
+  /**
+   * SL-23 (design §6.3) — si el módulo WhatsApp está encendido para la empresa. Lo decide la página
+   * (Server Component). Con `false` no se pinta la acción de plantilla de WhatsApp; el resto de
+   * `/novedades` es del núcleo y no cambia. Requerido, sin `?`: un montaje que lo olvide no compila.
+   */
+  whatsappActivo: boolean;
 }
 
 export function NovedadesTabs({
   novedades,
   rechazosSla,
   superficieInicial,
+  whatsappActivo,
 }: NovedadesTabsProps) {
   return (
     <TabsGroup
@@ -82,7 +89,13 @@ export function NovedadesTabs({
         ...GRUPOS_NOVEDAD.map((grupo) => ({
           value: grupo,
           label: TEXTOS_POR_GRUPO[grupo].pestana,
-          content: <NovedadesModule grupo={grupo} {...novedades[grupo]} />,
+          content: (
+            <NovedadesModule
+              grupo={grupo}
+              {...novedades[grupo]}
+              whatsappActivo={whatsappActivo}
+            />
+          ),
         })),
         {
           value: "rechazos-sla",

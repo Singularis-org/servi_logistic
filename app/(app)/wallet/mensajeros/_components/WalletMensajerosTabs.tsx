@@ -60,8 +60,11 @@ import { PESTANAS_MENSAJEROS } from "./wallet-mensajeros-labels";
 export interface WalletMensajerosTabsProps {
   /** Props de la tabla de cuentas por pagar, tal cual las resolvió el Server Component. */
   cuentas: CuentasPorPagarTableProps;
-  /** Props del panel de premios del ranking (los dos días, resueltos en el servidor). */
-  premios: PremiosRankingPanelProps;
+  /**
+   * Props del panel de premios del ranking (los dos días, resueltos en el servidor). SL-23 (design
+   * §6.3): `null` con el módulo Ranking apagado; entonces no hay pestaña de premios.
+   */
+  premios: PremiosRankingPanelProps | null;
 }
 
 export function WalletMensajerosTabs({
@@ -78,11 +81,17 @@ export function WalletMensajerosTabs({
           label: PESTANAS_MENSAJEROS.cuentas,
           content: <CuentasPorPagarTable {...cuentas} />,
         },
-        {
-          value: "premios",
-          label: PESTANAS_MENSAJEROS.premios,
-          content: <PremiosRankingPanel {...premios} />,
-        },
+        // SL-23: sin Ranking no hay pestaña de premios (y un grupo de una sola pestaña sigue siendo
+        // válido: la de cuentas es la de entrada).
+        ...(premios
+          ? [
+              {
+                value: "premios",
+                label: PESTANAS_MENSAJEROS.premios,
+                content: <PremiosRankingPanel {...premios} />,
+              },
+            ]
+          : []),
       ]}
     />
   );

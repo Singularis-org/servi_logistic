@@ -53,11 +53,9 @@ import {
  *      §3.9), salvo lo declarado en `CONSUMOS_ENTRE_MODULOS` (§6.3); el fallo nombra la cadena;
  *  (f) nadie en `app/` llama a `itemsVisibles(`: el menú pasa por `menuDeLaEmpresa` (R15).
  *
- * ESTADO DESDE LA TANDA 4 (T10, T11): (a), (c), (d) y (e) en verde. (b) y (f) describen puertas que
- * todavía no existen: las ponen T9 y T8. Van con `it.fails`, que está VERDE mientras el
- * árbol incumple y se pone ROJO en cuanto lo cumple. Ese rojo es el aviso para quitar el `.fails`: no
- * se puede olvidar. Lo que ya se cumple hoy va con `it` normal. Las autocomprobaciones de cada caso
- * (una fuente buena que pasa y su mutación que falla) son `it` normales desde ya.
+ * ESTADO DESDE LA TANDA 5 (T8, T9): los seis casos (a)–(f) en verde, todos con `it` normal. Hasta
+ * entonces (b) y (f) iban con `it.fails` mientras sus puertas no existían. Las autocomprobaciones de
+ * cada caso (una fuente buena que pasa y su mutación que falla) son `it` normales.
  */
 
 /**
@@ -151,8 +149,7 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
   });
 
   describe("(b) cada página de un módulo abre con su puerta (R16)", () => {
-    // T9 la pone en verde: entonces se quita el `.fails`.
-    it.fails("toda página de un módulo abre con exigirModuloEnRuta(<sus claves>)", () => {
+    it("toda página de un módulo abre con exigirModuloEnRuta(<sus claves>)", () => {
       expect(paginasSinPuerta()).toEqual([]);
     });
   });
@@ -200,14 +197,14 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
   });
 
   describe("(f) el menú de app/ pasa por menuDeLaEmpresa (R15)", () => {
-    // T8 la pone en verde: entonces se quita el `.fails`.
-    it.fails("ningún archivo de app/ llama a itemsVisibles(", () => {
+    it("ningún archivo de app/ llama a itemsVisibles(", () => {
       expect(llamadasAItemsVisibles()).toEqual([]);
     });
   });
 
-  it("los barridos marcados con `.fails` corren sin lanzar: su verde es «el árbol incumple», no un error", () => {
-    // Sin esto, un `it.fails` también estaría verde si el detector reventara al leer el árbol.
+  it("los barridos corren sin lanzar sobre el árbol real", () => {
+    // Nació para los `it.fails` de (b) y (f), que habrían estado verdes si el detector reventara al
+    // leer el árbol. Se conserva: un detector que lanza no es un detector que aprueba.
     expect(() => paginasSinPuerta()).not.toThrow();
     expect(() => actionsSinPuerta()).not.toThrow();
     expect(() => problemasDeCrons(false)).not.toThrow();

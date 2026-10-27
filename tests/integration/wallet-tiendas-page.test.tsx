@@ -15,6 +15,10 @@ import type { SaldosTiendasTableProps } from "@/app/(app)/wallet/tiendas/_compon
 // los saldos de todas las tiendas salgan siquiera de la base. La tabla cliente se stubbea
 // para capturar sus props; el `page.tsx` (Server Component real) se importa sin mockear.
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

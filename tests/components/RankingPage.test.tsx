@@ -12,6 +12,10 @@ import type { RankingData } from "@/lib/types/ranking";
 // `maestro` (edita) y `mensajero` (solo-lectura); cualquier otro rol o sin sesión →
 // `notFound`. Se mockean el resolver, la action de lectura, next/navigation (notFound
 // lanza; useRouter lo consume el módulo cliente) y el toast.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

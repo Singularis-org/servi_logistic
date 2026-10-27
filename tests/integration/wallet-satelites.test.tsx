@@ -39,6 +39,10 @@ const marcarMock = vi.fn();
 const revertirMock = vi.fn();
 const corregirMock = vi.fn();
 const resumenMock = vi.fn();
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/actions/conciliacion-satelites", () => ({
   corregirConsolidacionRecibidaAction: (...a: unknown[]) => corregirMock(...a),
   listarSaldosSatelitesAction: (...a: unknown[]) => listarSaldosMock(...a),

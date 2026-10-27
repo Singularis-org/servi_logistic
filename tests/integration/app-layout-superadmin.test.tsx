@@ -13,6 +13,10 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/plataforma/empresas",

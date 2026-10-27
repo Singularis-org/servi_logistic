@@ -15,6 +15,10 @@ import type { ObtenerCatalogoFiltrosOrdenesResult } from "@/lib/types/filtros-or
  * **no fue invocado ni una vez**.
  */
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));
