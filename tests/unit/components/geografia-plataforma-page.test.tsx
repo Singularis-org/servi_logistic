@@ -211,7 +211,7 @@ describe("R31 — el conteo de la confirmación no bloquea el retiro", () => {
     expect(acciones.contarOrdenesSinEntregarAction).toHaveBeenCalledWith({ nivel: "provincia", id: "p-gua" });
   });
 
-  it("si el conteo falla, lo dice y deja retirar", async () => {
+  it("si el conteo falla, lo dice y deja desactivar", async () => {
     const user = userEvent.setup();
     acciones.contarOrdenesSinEntregarAction.mockResolvedValue({ status: "error" });
     acciones.cambiarActivacionNodoAction.mockResolvedValue({
@@ -226,13 +226,13 @@ describe("R31 — el conteo de la confirmación no bloquea el retiro", () => {
     const dialogo = await screen.findByRole("dialog");
     expect(
       await within(dialogo).findByText(
-        "No se pudo contar las órdenes sin entregar de este nodo. Puedes retirarlo igual.",
+        "No se pudo contar las órdenes sin entregar de este nodo. Puedes desactivarlo igual.",
       ),
     ).toBeInTheDocument();
 
-    const retirar = within(dialogo).getByRole("button", { name: "Retirar" });
-    expect(retirar).toBeEnabled();
-    await user.click(retirar);
+    const desactivar = within(dialogo).getByRole("button", { name: "Desactivar" });
+    expect(desactivar).toBeEnabled();
+    await user.click(desactivar);
     await waitFor(() =>
       expect(acciones.cambiarActivacionNodoAction).toHaveBeenCalledWith({
         nivel: "provincia",

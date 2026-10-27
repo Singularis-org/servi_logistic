@@ -72,7 +72,7 @@ type EstadoConteo = { estado: "cargando" } | { estado: "ok"; ordenes: number } |
 const OPCIONES_ESTADO: readonly { valor: FiltroEstadoGeografico; etiqueta: string }[] = [
   { valor: "todos", etiqueta: "Todos" },
   { valor: "activos", etiqueta: "Activos" },
-  { valor: "retirados", etiqueta: "Retirados" },
+  { valor: "retirados", etiqueta: "Inactivos" },
 ];
 
 const HIJO: Record<NivelGeografico, NivelGeografico | null> = {
@@ -316,7 +316,7 @@ export function GeografiaAdminModule({
     setAlternando(nodo.id);
     try {
       const res = await cambiarActivacionNodoAction({ nivel: nodo.nivel, id: nodo.id, activo: true });
-      if (res.status === "ok") toast.success(`Se devolvió «${nodo.nombre}» al catálogo.`);
+      if (res.status === "ok") toast.success(`Se activó «${nodo.nombre}».`);
       else toast.error(mensajeDeDesenlace(res.status));
       await refetch();
     } catch {
@@ -330,7 +330,7 @@ export function GeografiaAdminModule({
     if (objetivo === null) return;
     const res = await cambiarActivacionNodoAction({ nivel: objetivo.nivel, id: objetivo.id, activo: false });
     if (res.status === "ok") {
-      toast.success(`Se retiró «${objetivo.nombre}» del catálogo.`);
+      toast.success(`Se desactivó «${objetivo.nombre}».`);
       cerrarConfirmacion();
     } else {
       toast.error(mensajeDeDesenlace(res.status));
@@ -372,7 +372,7 @@ export function GeografiaAdminModule({
     const ascendiente = enFrase(singular(e.ascendiente));
     return {
       insignia: `Inactivo por su ${ascendiente}`,
-      motivo: `Primero hay que devolver al catálogo su ${ascendiente}.`,
+      motivo: `Primero hay que activar su ${ascendiente}.`,
     };
   }
 
@@ -386,8 +386,8 @@ export function GeografiaAdminModule({
             {`División de ${paisNombre}`}
           </h2>
           <p className="max-w-prose text-sm text-muted-foreground">
-            Los tres niveles que la app ofrece al cargar y al corregir órdenes. Retirar un nodo no lo
-            borra: deja de ofrecerse y se puede devolver cuando haga falta.
+            Los tres niveles que la app ofrece al cargar y al corregir órdenes. Desactivar un nodo no
+            lo borra: deja de ofrecerse y se puede volver a activar cuando haga falta.
           </p>
         </div>
         <Button type="button" onClick={() => abrirAlta("provincia", null)}>
@@ -464,7 +464,7 @@ export function GeografiaAdminModule({
         >
           <h3 id="geografia-renombrar-titulo" className="text-sm font-semibold">{`Renombrar: ${singular(renombrado.nivel)}`}</h3>
           <p className="text-sm text-muted-foreground">
-            {`Se llama «${renombrado.nombre}». Cambiar el nombre no lo mueve, no lo retira ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.`}
+            {`Se llama «${renombrado.nombre}». Cambiar el nombre no lo mueve, no lo desactiva ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.`}
           </p>
 
           <FormField id="geografia-nombre-nuevo" label="Nombre" error={erroresRenombrado.nombre} required>
@@ -595,8 +595,8 @@ export function GeografiaAdminModule({
         onOpenChange={(abierta) => {
           if (!abierta) cerrarConfirmacion();
         }}
-        title="Retirar del catálogo"
-        confirmLabel="Retirar"
+        title="Desactivar"
+        confirmLabel="Desactivar"
         cancelLabel="Cancelar"
         confirmVariant="destructive"
         closeOnConfirm={false}
@@ -606,7 +606,7 @@ export function GeografiaAdminModule({
         onError={() => toast.error(mensajeDeDesenlace("error"))}
       >
         <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
-          <li>{objetivo === null ? "" : `Vas a retirar «${objetivo.nombre}» (${singular(objetivo.nivel)}).`}</li>
+          <li>{objetivo === null ? "" : `Vas a desactivar «${objetivo.nombre}» (${singular(objetivo.nivel)}).`}</li>
           <li>{textoDelConteo(conteo)}</li>
         </ul>
       </Modal>
@@ -738,7 +738,7 @@ function FilaNodo({
 function textoDelConteo(conteo: EstadoConteo): string {
   if (conteo.estado === "cargando") return "Contando las órdenes sin entregar de este nodo, de todas las empresas…";
   if (conteo.estado === "error") {
-    return "No se pudo contar las órdenes sin entregar de este nodo. Puedes retirarlo igual.";
+    return "No se pudo contar las órdenes sin entregar de este nodo. Puedes desactivarlo igual.";
   }
   return `Órdenes sin entregar en este nodo, de todas las empresas: ${conteo.ordenes}.`;
 }
