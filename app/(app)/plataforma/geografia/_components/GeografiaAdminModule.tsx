@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 
+import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
@@ -86,6 +87,8 @@ export interface GeografiaAdminModuleProps {
   /** Los nombres de nivel DEL PAÍS (R20). */
   etiquetas: EtiquetasGeograficas;
   initialProvincias: ProvinciaPlataformaDTO[];
+  /** La primera lectura del árbol falló: `initialProvincias` viene vacío por el fallo, no por el país. */
+  cargaErrorInicial?: boolean;
 }
 
 /** Minúscula para el interior de una frase: «Añadir departamento». */
@@ -98,12 +101,17 @@ export function GeografiaAdminModule({
   paisNombre,
   etiquetas,
   initialProvincias,
+  cargaErrorInicial = false,
 }: Readonly<GeografiaAdminModuleProps>) {
   const toast = useToast();
   const singular = (nivel: NivelGeografico) => etiquetas[nivel].singular;
 
   const [provincias, setProvincias] = useState<ProvinciaPlataformaDTO[]>(initialProvincias);
-  const [cargaError, setCargaError] = useState(false);
+  const [cargaError, setCargaError] = useState(cargaErrorInicial);
+  // El formulario de alta o de renombrado se abre lejos de la fila (arriba de la sección): el foco
+  // salta a él y, al cerrarlo, vuelve al botón que lo abrió. Sin esto, con teclado o lector de
+  // pantalla, el formulario aparecía sin aviso y al cerrarlo el foco caía al `body`.
+  const origenDelFoco = useRef<HTMLElement | null>(null);
 
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<FiltroEstadoGeografico>("todos");
@@ -184,7 +192,28 @@ export function GeografiaAdminModule({
     setObjetivo(null);
   }
 
+  function recordarOrigenDelFoco() {
+    origenDelFoco.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+
+  function devolverFoco() {
+    const origen = origenDelFoco.current;
+    origenDelFoco.current = null;
+    if (origen?.isConnected) origen.focus();
+  }
+
+  function cerrarAlta() {
+    setAlta(null);
+    devolverFoco();
+  }
+
+  function cerrarRenombrado() {
+    setRenombrado(null);
+    devolverFoco();
+  }
+
   function abrirAlta(nivel: NivelGeografico, padre: { id: string; nombre: string } | null) {
+    recordarOrigenDelFoco();
     setAlta({ nivel, padreId: padre?.id ?? null, padreNombre: padre?.nombre ?? null });
     setNombre("");
     setCodigo("");
@@ -193,6 +222,7 @@ export function GeografiaAdminModule({
   }
 
   function abrirRenombrado(nodo: NodoObjetivo) {
+    recordarOrigenDelFoco();
     setRenombrado(nodo);
     setNombreNuevo(nodo.nombre);
     setErroresRenombrado({});
@@ -223,8 +253,9 @@ export function GeografiaAdminModule({
     try {
       const res = await crearNodoAction(cuerpoDelAlta(alta, limpio));
       if (res.status === "ok") {
-        toast.success(`«${limpio}» dado de alta (${singular(alta.nivel)}).`);
-        setAlta(null);
+        // Decisión 15: forma neutra. «dado de alta» concordaba con el nodo, y una aldea no es «dado».
+        toast.success(`Se dio de alta «${limpio}» (${singular(alta.nivel)}).`);
+        cerrarAlta();
         await refetch();
         return;
       }
@@ -259,7 +290,7 @@ export function GeografiaAdminModule({
       const res = await renombrarNodoAction({ nivel: renombrado.nivel, id: renombrado.id, nombre: limpio });
       if (res.status === "ok") {
         toast.success(`«${renombrado.nombre}» ahora es «${limpio}».`);
-        setRenombrado(null);
+        cerrarRenombrado();
         await refetch();
         return;
       }
@@ -285,7 +316,7 @@ export function GeografiaAdminModule({
     setAlternando(nodo.id);
     try {
       const res = await cambiarActivacionNodoAction({ nivel: nodo.nivel, id: nodo.id, activo: true });
-      if (res.status === "ok") toast.success(`«${nodo.nombre}» devuelto al catálogo.`);
+      if (res.status === "ok") toast.success(`Se devolvió «${nodo.nombre}» al catálogo.`);
       else toast.error(mensajeDeDesenlace(res.status));
       await refetch();
     } catch {
@@ -299,7 +330,7 @@ export function GeografiaAdminModule({
     if (objetivo === null) return;
     const res = await cambiarActivacionNodoAction({ nivel: objetivo.nivel, id: objetivo.id, activo: false });
     if (res.status === "ok") {
-      toast.success(`«${objetivo.nombre}» retirado del catálogo.`);
+      toast.success(`Se retiró «${objetivo.nombre}» del catálogo.`);
       cerrarConfirmacion();
     } else {
       toast.error(mensajeDeDesenlace(res.status));
@@ -371,15 +402,33 @@ export function GeografiaAdminModule({
         </Alert>
       ) : null}
 
+      {/* Un `<form>` con nombre: Enter guarda y el lector de pantalla lo anuncia como región. La
+          `key` lo vuelve a montar al abrirlo desde otra fila, para que el foco salte otra vez. */}
       {alta !== null ? (
-        <div className="flex flex-col gap-4 rounded-md border border-border p-4">
-          <h3 className="text-sm font-semibold">{`Alta: ${singular(alta.nivel)}`}</h3>
+        <form
+          key={`alta-${alta.nivel}-${alta.padreId ?? paisId}`}
+          aria-labelledby="geografia-alta-titulo"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void guardarAlta();
+          }}
+          className="flex flex-col gap-4 rounded-md border border-border p-4"
+        >
+          <h3 id="geografia-alta-titulo" className="text-sm font-semibold">{`Alta: ${singular(alta.nivel)}`}</h3>
           <p className="text-sm text-muted-foreground">
             {alta.padreNombre !== null ? `Dentro de ${alta.padreNombre}.` : `En ${paisNombre}.`}
           </p>
 
           <FormField id="geografia-nombre" label="Nombre" error={errors.nombre} required>
-            <Input value={nombre} maxLength={GEO_NOMBRE_MAX} onChange={(e) => setNombre(e.target.value)} />
+            <Input
+              // Lo abre un gesto del usuario, lejos de la fila: sin foco aquí el formulario no se
+              // encuentra con teclado.
+              autoFocus
+              value={nombre}
+              maxLength={GEO_NOMBRE_MAX}
+              onChange={(e) => setNombre(e.target.value)}
+            />
           </FormField>
 
           <FormField
@@ -392,54 +441,83 @@ export function GeografiaAdminModule({
           </FormField>
 
           <div className="flex items-center gap-2">
-            <Button type="button" onClick={() => void guardarAlta()} loading={guardando}>
+            <Button type="submit" loading={guardando}>
               {guardando ? "Guardando…" : "Guardar"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setAlta(null)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={cerrarAlta} disabled={guardando}>
               Cancelar
             </Button>
           </div>
-        </div>
+        </form>
       ) : null}
 
       {renombrado !== null ? (
-        <div className="flex flex-col gap-4 rounded-md border border-border p-4">
-          <h3 className="text-sm font-semibold">{`Renombrar: ${singular(renombrado.nivel)}`}</h3>
+        <form
+          key={`renombrar-${renombrado.id}`}
+          aria-labelledby="geografia-renombrar-titulo"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void guardarRenombrado();
+          }}
+          className="flex flex-col gap-4 rounded-md border border-border p-4"
+        >
+          <h3 id="geografia-renombrar-titulo" className="text-sm font-semibold">{`Renombrar: ${singular(renombrado.nivel)}`}</h3>
           <p className="text-sm text-muted-foreground">
             {`Se llama «${renombrado.nombre}». Cambiar el nombre no lo mueve, no lo retira ni cambia su código: las órdenes que ya lo tienen siguen apuntando al mismo lugar.`}
           </p>
 
           <FormField id="geografia-nombre-nuevo" label="Nombre" error={erroresRenombrado.nombre} required>
-            <Input value={nombreNuevo} maxLength={GEO_NOMBRE_MAX} onChange={(e) => setNombreNuevo(e.target.value)} />
+            <Input
+              // Mismo motivo que en el alta.
+              autoFocus
+              value={nombreNuevo}
+              maxLength={GEO_NOMBRE_MAX}
+              onChange={(e) => setNombreNuevo(e.target.value)}
+            />
           </FormField>
 
           <div className="flex items-center gap-2">
-            <Button type="button" onClick={() => void guardarRenombrado()} loading={renombrando}>
+            <Button type="submit" loading={renombrando}>
               {renombrando ? "Guardando…" : "Guardar"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setRenombrado(null)} disabled={renombrando}>
+            <Button type="button" variant="outline" onClick={cerrarRenombrado} disabled={renombrando}>
               Cancelar
             </Button>
           </div>
+        </form>
+      ) : null}
+
+      {/* Sin división no hay nada que buscar ni filtrar: la barra solo sale con algo debajo. */}
+      {provincias.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            type="search"
+            className="max-w-xs"
+            placeholder="Buscar por nombre…"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            aria-label={`Buscar en la división de ${paisNombre}`}
+          />
+          <SegmentedToggle options={OPCIONES_ESTADO} valor={estado} onChange={setEstado} ariaLabel="Filtrar por estado" />
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          type="search"
-          className="max-w-xs"
-          placeholder="Buscar por nombre…"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          aria-label={`Buscar en la división de ${paisNombre}`}
-        />
-        <SegmentedToggle options={OPCIONES_ESTADO} valor={estado} onChange={setEstado} ariaLabel="Filtrar por estado" />
-      </div>
-
-      {filtradas.length === 0 ? (
-        <p className="rounded-md border border-border p-4 text-sm text-muted-foreground">
-          {provincias.length === 0 ? "Este país aún no tiene división cargada." : "Sin resultados."}
-        </p>
+      {/* Si la lectura falló y no hay nada leído, solo queda el aviso de arriba: pintar además
+          «aún no tiene división» sería disfrazar el fallo de estado vacío. */}
+      {cargaError && provincias.length === 0 ? null : filtradas.length === 0 ? (
+        <div className="rounded-md border border-border">
+          {provincias.length === 0 ? (
+            <EmptyState
+              title="Este país aún no tiene división cargada."
+              // El botón por su rótulo, y no «el primer <nivel>»: el nombre del nivel puede ser
+              // femenino y la frase no se concuerda (decisión 15).
+              description={`Carga un CSV con toda la división o usa «Añadir ${nivel1}» para ir a mano.`}
+            />
+          ) : (
+            <EmptyState title="Sin resultados." description="Prueba con otro nombre o cambia el filtro de estado." />
+          )}
+        </div>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
           {filtradas.map((provincia) => {
@@ -588,7 +666,10 @@ function FilaNodo({
           aria-label={`${expandido ? "Contraer" : "Expandir"} ${nombre}`}
           onClick={onExpandir}
         >
-          <ChevronRight aria-hidden="true" className={expandido ? "rotate-90 transition-transform" : "transition-transform"} />
+          <ChevronRight
+            aria-hidden="true"
+            className={`transition-transform motion-reduce:transition-none ${expandido ? "rotate-90" : ""}`}
+          />
         </Button>
       )}
 
@@ -634,9 +715,11 @@ function FilaNodo({
           </Button>
         ) : (
           // En el heredado, «Activar» va apagado con el motivo en el nombre accesible y en el `title`.
+          // `outline` y no `default`: con varios nodos retirados la lista se llenaba de botones
+          // primarios que competían con el único primario de la sección, «Añadir <nivel 1>».
           <Button
             type="button"
-            variant="default"
+            variant="outline"
             size="xs"
             aria-label={motivo === null ? `Activar ${nombre}` : `Activar ${nombre}. ${motivo}`}
             title={motivo ?? undefined}

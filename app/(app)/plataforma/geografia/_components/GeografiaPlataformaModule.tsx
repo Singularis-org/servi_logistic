@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
+import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -60,16 +61,29 @@ export interface GeografiaPlataformaModuleProps {
   paisElegido: PaisDTO | null;
   /** El árbol del país elegido, sin zonas. */
   provincias: ProvinciaPlataformaDTO[];
+  /** No se pudo leer la lista de países: `paises` llega vacío, pero NO porque no haya ninguno. */
+  paisesError?: boolean;
+  /** No se pudo leer la división del país elegido: `provincias` llega vacío por el fallo. */
+  divisionError?: boolean;
 }
 
 export function GeografiaPlataformaModule({
   paises,
   paisElegido,
   provincias,
+  paisesError = false,
+  divisionError = false,
 }: Readonly<GeografiaPlataformaModuleProps>) {
   const router = useRouter();
   const [altaAbierta, setAltaAbierta] = useState(false);
   const etiquetas = paisElegido === null ? null : etiquetasDePais(paisElegido);
+
+  const botonNuevoPais = (
+    <Button type="button" variant="outline" onClick={() => setAltaAbierta(true)}>
+      <Plus aria-hidden="true" />
+      Nuevo país
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,8 +91,8 @@ export function GeografiaPlataformaModule({
         <h2 id="geografia-pais-titulo" className="text-base font-semibold">
           País
         </h2>
-        <div className="flex flex-wrap items-center gap-3">
-          {paises.length > 0 && paisElegido !== null ? (
+        {paises.length > 0 && paisElegido !== null ? (
+          <div className="flex flex-wrap items-center gap-3">
             <Select
               className="max-w-xs"
               aria-label="País"
@@ -88,14 +102,25 @@ export function GeografiaPlataformaModule({
               }}
               options={paises.map((p) => ({ value: p.id, label: `${p.nombre} (${p.id})` }))}
             />
-          ) : (
-            <p className="text-sm text-muted-foreground">Aún no hay ningún país dado de alta.</p>
-          )}
-          <Button type="button" variant="outline" onClick={() => setAltaAbierta(true)}>
-            <Plus aria-hidden="true" />
-            Nuevo país
-          </Button>
-        </div>
+            {botonNuevoPais}
+          </div>
+        ) : paisesError ? (
+          // Un fallo no se pinta como «aún no hay ninguno»: lo dice, y el alta sigue a mano.
+          <>
+            <Alert variant="destructive">
+              <AlertDescription>No se pudo cargar la lista de países.</AlertDescription>
+            </Alert>
+            <div>{botonNuevoPais}</div>
+          </>
+        ) : (
+          <div className="rounded-md border border-border">
+            <EmptyState
+              title="Aún no hay ningún país dado de alta."
+              description="Da de alta el primero; después podrás cargar su división."
+              action={botonNuevoPais}
+            />
+          </div>
+        )}
 
         {paisElegido !== null ? (
           <InterruptorDisponible key={paisElegido.id} pais={paisElegido} onCambio={() => router.refresh()} />
@@ -123,6 +148,7 @@ export function GeografiaPlataformaModule({
             paisNombre={paisElegido.nombre}
             etiquetas={etiquetas}
             initialProvincias={provincias}
+            cargaErrorInicial={divisionError}
           />
         </>
       ) : null}

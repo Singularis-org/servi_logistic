@@ -422,3 +422,81 @@ describe("R24, R25, R28, R48 — la carga CSV", () => {
     expect(await screen.findByText("Archivo rechazado: Falta la columna nivel_3.")).toBeInTheDocument();
   });
 });
+
+// Decisión 13 (revisión de diseño de la pantalla): los estados de carga fallida y vacía, y el foco
+// del formulario de alta, que se abre lejos de la fila que lo pide.
+describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
+  it("si la lista de países falla, lo dice y no lo disfraza de «aún no hay ninguno»", async () => {
+    acciones.listarPaisesAction.mockResolvedValue({ status: "error" });
+    await montar();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar la lista de países.");
+    expect(screen.queryByText("Aún no hay ningún país dado de alta.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Nuevo país" })).toBeInTheDocument();
+  });
+
+  it("sin ningún país dado de alta, el estado vacío explica el siguiente paso y ofrece el alta", async () => {
+    acciones.listarPaisesAction.mockResolvedValue({ status: "ok", paises: [] });
+    await montar();
+
+    expect(screen.getByText("Aún no hay ningún país dado de alta.")).toBeInTheDocument();
+    expect(screen.getByText("Da de alta el primero; después podrás cargar su división.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuevo país" })).toBeInTheDocument();
+    expect(acciones.arbolDePaisAction).not.toHaveBeenCalled();
+  });
+
+  it("si la división falla, un solo aviso y nada de «aún no tiene división»", async () => {
+    acciones.arbolDePaisAction.mockResolvedValue({ status: "error" });
+    await montar("GT");
+
+    expect(screen.getAllByText("No se pudo cargar la división del país.")).toHaveLength(1);
+    expect(screen.queryByText("Este país aún no tiene división cargada.")).toBeNull();
+  });
+
+  it("un país sin división muestra el estado vacío con los nombres del país y sin barra de búsqueda", async () => {
+    acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", provincias: [] });
+    await montar("GT");
+
+    expect(screen.getByText("Este país aún no tiene división cargada.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Carga un CSV con toda la división o usa «Añadir departamento» para ir a mano."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  it("un filtro sin coincidencias lo dice y sugiere qué cambiar", async () => {
+    const user = userEvent.setup();
+    await montar("GT");
+
+    await user.type(screen.getByRole("searchbox", { name: "Buscar en la división de Guatemala" }), "zzz");
+    expect(screen.getByText("Sin resultados.")).toBeInTheDocument();
+    expect(screen.getByText("Prueba con otro nombre o cambia el filtro de estado.")).toBeInTheDocument();
+  });
+
+  it("el alta lleva el foco al nombre, guarda con Enter y al cancelar el foco vuelve al botón que la abrió", async () => {
+    const user = userEvent.setup();
+    acciones.crearNodoAction.mockResolvedValue({ status: "ok", id: "c-new", nivel: "canton" });
+    await montar("GT");
+
+    const abrir = screen.getByRole("button", { name: "Añadir municipio a Escuintla" });
+    await user.click(abrir);
+    const formulario = screen.getByRole("form", { name: "Alta: Municipio" });
+    expect(within(formulario).getByLabelText(/^Nombre/)).toHaveFocus();
+
+    await user.click(within(formulario).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("form", { name: "Alta: Municipio" })).toBeNull();
+    expect(abrir).toHaveFocus();
+
+    await user.click(abrir);
+    await user.keyboard("Palín{Enter}");
+    await waitFor(() =>
+      expect(acciones.crearNodoAction).toHaveBeenCalledWith({
+        nivel: "canton",
+        nombre: "Palín",
+        provinciaId: "p-gua",
+      }),
+    );
+    // Decisión 15: el aviso no concuerda en género con el nodo.
+    expect(toastMock.success).toHaveBeenCalledWith("Se dio de alta «Palín» (Municipio).");
+  });
+});

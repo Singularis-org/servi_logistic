@@ -16,6 +16,10 @@ import { GeografiaPlataformaModule } from "./_components/GeografiaPlataformaModu
  *
  * El país elegido sale de `?pais=<id>`; sin él, o con uno que no está dado de alta, el primero por
  * nombre. El árbol se lee solo para ese país.
+ *
+ * Los fallos de lectura bajan como banderas y los pinta el módulo en su sitio (revisión de diseño,
+ * decisión 13): pintados aquí, el módulo recibía `[]` y debajo del error decía además «aún no hay
+ * ningún país» o «aún no tiene división», o sea un fallo disfrazado de estado vacío.
  */
 export default async function GeografiaPlataformaPage({
   searchParams,
@@ -39,21 +43,12 @@ export default async function GeografiaPlataformaPage({
 
   return (
     <AppPage title="Geografía">
-      {listado.status !== "ok" ? (
-        <p role="alert" className="text-sm text-muted-foreground">
-          No se pudo cargar la lista de países.
-        </p>
-      ) : null}
-      {arbol !== null && arbol.status !== "ok" ? (
-        <p role="alert" className="text-sm text-muted-foreground">
-          No se pudo cargar la división del país.
-        </p>
-      ) : null}
-
       <GeografiaPlataformaModule
         paises={paises}
         paisElegido={elegido}
         provincias={arbol?.status === "ok" ? arbol.provincias : []}
+        paisesError={listado.status !== "ok"}
+        divisionError={arbol !== null && arbol.status !== "ok"}
       />
     </AppPage>
   );

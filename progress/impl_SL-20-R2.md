@@ -29,6 +29,23 @@ pnpm exec vitest run tests/components/GeografiaPlataformaAltaPais.test.tsx \
   -> Test Files 3 passed (3) · Tests 33 passed (33)
 ```
 
+## 2. Decisión 13: revisión de diseño de `/plataforma/geografia`
+
+Auditoría completa (frontend_dev, skill `design-taste-frontend`) en `progress/impl_SL-20-design.md`. Resumen:
+- Aplicado: errores de carga de países y división como `Alert` (ya no se ven como pantalla vacía ni se
+  duplican); estados vacíos con `EmptyState` en recuadro, como Empresas, con el siguiente paso; barra de
+  búsqueda solo con división; alta/renombrado de nodo como `<form>` con nombre accesible, Enter guarda, foco al
+  abrir y vuelta al botón de origen al cerrar; avisos en forma neutra (decisión 15: «Se dio de alta «X»
+  (Municipio).», «Se retiró…», «Se devolvió…»); «Activar» en `outline` para no competir con el primario;
+  `motion-reduce:transition-none` en la flecha.
+- No aplicado (queda abierto para el humano): vocabulario mezclado «Desactivar/Inactivo» frente a «Retirar del
+  catálogo» (heredado, lo buscan los tests de R31); orden CSV antes del árbol (design §8); buscador solo con
+  placeholder (`aria-label` basta); sin `loading.tsx` (ninguna página de `app/(app)` lo tiene).
+- Archivos: `page.tsx`, `GeografiaPlataformaModule.tsx` (`paisesError`, `divisionError`),
+  `GeografiaAdminModule.tsx` (`cargaErrorInicial`), `tests/unit/components/geografia-plataforma-page.test.tsx`
+  (bloque «Decisión 13», 6 tests).
+- Verificación: `tsc --noEmit` exit 0; eslint 0 problemas; vitest de los 2 archivos de la pantalla 30/30.
+
 ## 3. Decisión 14: medición de los triggers SL021 en `servi_logistic_sl20`
 
 Triggers de la función `geografia_del_pais_de_la_empresa()` (migración
