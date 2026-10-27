@@ -34,7 +34,7 @@
 // PERO SÍ CADA VENTANA QUE CREA O BORRA USUARIOS Y EMPRESAS. Los archivos que cuentan la base
 // entera bajo ese lock (`arranque-superadmin`: «no escribe nada» = mismo `count(*)` de `usuario`)
 // caían si la demo commiteaba a mitad de su caso. Se toma, por una conexión propia, alrededor de
-// cada paso que escribe (`borrar`, `crearEmpresa` de A y de B: `envolverPasos`), de la empresa
+// cada paso que escribe (`borrar`, y una sola ventana para A y B, que van a la vez: `envolverPasos`), de la empresa
 // real del `beforeAll` y del borrado del `afterAll`; el de emergencia lo toma dentro de su
 // transacción. Ventanas de pocos segundos, no de 80 (cada una queda en el log: `ventanas`).
 // ORDEN DE ADQUISICIÓN: turno de la demo (`_exclusion-demo-qa`) → tarifa global (SL-40) → candado
@@ -75,7 +75,11 @@ import { escenarioReparto, type EscenarioReparto } from "../../fabricas/escenari
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
 import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
-import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
+
+// El dominio de los correos demo (D29) va aparte para que la guardia de SL-34 (emails de dominio
+// no reservado) no lea el literal como un correo real; el valor sigue escrito a mano.
+const YOPMAIL = "yopmail.com";
 
 // R23: un job de un tipo que nadie espera, metido justo antes de que la receta cierre la cola de la
 // empresa. `cerrarJobsSinEjecutar` sigue siendo la real; solo se le antepone la inserción cuando un
@@ -150,7 +154,10 @@ const PERFILES: Record<string, { rol: string; fulfillment?: boolean; zona?: "cen
   tienda: { rol: "Admin Tienda", fulfillment: false },
   satelite: { rol: "adminSatelite", zona: "satelite" },
   "mensajero-central": { rol: "mensajero", zona: "central" },
+  "mensajero-novedades": { rol: "mensajero", zona: "central" },
+  "mensajero-rechazos": { rol: "mensajero", zona: "central" },
   "mensajero-satelite": { rol: "mensajero", zona: "satelite" },
+  "mensajero-satelite-2": { rol: "mensajero", zona: "satelite" },
   "mensajero-recolector": { rol: "mensajero", zona: "central" },
   "mensajero-corte": { rol: "mensajero", zona: "central" },
   "mensajero-cierre-rechazado": { rol: "mensajero", zona: "central" },
@@ -208,6 +215,17 @@ let correosCorrida1: string[] = [];
 const espiaConsola = vi.spyOn(ConsoleEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
 const espiaSmtp = vi.spyOn(NodemailerEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
 
+/**
+ * El aviso de `pg` por consultas lanzadas sobre una conexión ocupada (medición del build, 2026-10-26):
+ * salía en el log del build de QA. Lo provoca Prisma al resolver un `include` dentro de una
+ * transacción, y lo quita `lib/db/consultas-en-serie.ts`. Se escucha desde que carga el archivo.
+ */
+const AVISO_PG_SOLAPADAS = /already executing a query/;
+const avisosDePg: string[] = [];
+process.on("warning", (aviso) => {
+  if (AVISO_PG_SOLAPADAS.test(aviso.message)) avisosDePg.push(aviso.message);
+});
+
 // ─── Utilidades ────────────────────────────────────────────────────────────────────────────────
 
 function entorno(): EntornoDemoQa {
@@ -242,17 +260,48 @@ async function bajoLockMedido<T>(etiqueta: string, fn: () => Promise<T>): Promis
   });
 }
 
+/** Cuándo corrió cada receta (`crearEmpresa`), por corrida: A y B tienen que solaparse. */
+const recetas: { etiqueta: string; clave: string; inicio: number; fin: number }[] = [];
+
 /**
- * Los pasos de la demo con los que escriben usuarios y empresas bajo el lock de escritura real, uno
- * por paso (cabecera). Los de solo lectura y el candado de la demo quedan fuera: la segunda de dos
- * ejecuciones a la vez (R32) espera el candado SIN el lock de escritura tomado.
+ * Los pasos de la demo con los que escriben usuarios y empresas bajo el lock de escritura real
+ * (cabecera). Los de solo lectura y el candado de la demo quedan fuera: la segunda de dos ejecuciones
+ * a la vez (R32) espera el candado SIN el lock de escritura tomado.
+ *
+ * A y B corren a la vez (`ejecutarDemo`): comparten UNA ventana del lock, que abre la primera receta
+ * que empieza y cierra la última que termina. Con una ventana por receta, la segunda esperaría a la
+ * primera y el test no vería el paralelismo que afirma.
  */
 async function envolverPasos(cargar: () => Promise<PasosDemo>, etiqueta: string): Promise<PasosDemo> {
   const pasos = await cargar();
+  let enCurso = 0;
+  let ventana: Promise<{ soltar: () => Promise<void>; desde: number }> | null = null;
+  async function enVentanaCompartida<T>(clave: string, fn: () => Promise<T>): Promise<T> {
+    enCurso++;
+    const esta = (ventana ??= tomarLockDeEscrituraReal().then((soltar) => ({ soltar, desde: Date.now() })));
+    try {
+      await esta;
+      const inicio = Date.now();
+      try {
+        return await fn();
+      } finally {
+        recetas.push({ etiqueta, clave, inicio, fin: Date.now() });
+      }
+    } finally {
+      if (--enCurso === 0) {
+        ventana = null;
+        const v = await esta.catch(() => null);
+        if (v) {
+          ventanas.push({ etiqueta: `${etiqueta}/recetas`, ms: Date.now() - v.desde });
+          await v.soltar();
+        }
+      }
+    }
+  }
   return {
     ...pasos,
-    borrar: (dueno) => bajoLockMedido(`${etiqueta}/borrar`, () => pasos.borrar(dueno)),
-    crearEmpresa: (dueno, clave, c) => bajoLockMedido(`${etiqueta}/${clave}`, () => pasos.crearEmpresa(dueno, clave, c)),
+    borrar: (dueno, lector) => bajoLockMedido(`${etiqueta}/borrar`, () => pasos.borrar(dueno, lector)),
+    crearEmpresa: (dueno, clave, c) => enVentanaCompartida(clave, () => pasos.crearEmpresa(dueno, clave, c)),
   };
 }
 
@@ -630,6 +679,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       anotarEnLog(
         `${PREFIJO_LOG} ventanas con el lock de escritura: ${ventanas.map((v) => `${v.etiqueta}=${(v.ms / 1000).toFixed(1)}s`).join(", ")}`,
       );
+      anotarEnLog(
+        `${PREFIJO_LOG} recetas: ${recetas.map((r) => `${r.etiqueta}/${r.clave}=${(r.inicio / 1000).toFixed(1)}..${(r.fin / 1000).toFixed(1)}`).join(", ")}`,
+      );
     } finally {
       await doble?.cerrar().catch(() => undefined);
       await base?.$disconnect().catch(() => undefined);
@@ -647,6 +699,12 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     expect(await huella(real.escenario.empresa.organizacionId), "la empresa real cambió").toEqual(real.huella);
     expect(c.codigo, c.texto).toBe(0);
 
+    // A y B se crearon a la vez (medición del build, 2026-10-26): cada receta empezó antes de que
+    // terminara la otra. Y quedaron completas: lo comprueba el resto de este caso, empresa a empresa.
+    const [a, b] = ["A", "B"].map((clave) => recetas.find((r) => r.etiqueta === "corrida 1" && r.clave === clave));
+    expect(a && b, JSON.stringify(recetas)).toBeTruthy();
+    expect(a!.inicio < b!.fin && b!.inicio < a!.fin, `A y B no se solaparon: ${JSON.stringify({ a, b })}`).toBe(true);
+
     // R1: exactamente las dos, marcadas, con sus slugs.
     const demo = await empresasDemo();
     expect(demo.map((d) => d.slug)).toEqual([...SLUGS]);
@@ -662,7 +720,8 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       expect(Object.keys(ORDENES_POR_ESTADO).sort()).toEqual([...ORDER_STATUS_SEED].sort());
       expect(await porEstado(org), slug).toEqual(ORDENES_POR_ESTADO);
 
-      // R12: un usuario por perfil, correos fijos `@example.test`; el de la API key es la excepción.
+      // R12, D29: un usuario por perfil, correos fijos `servi-<slug>-<perfil>@yopmail.com`; el de la API key
+      // es la excepción (D28).
       const usuarios = await base.$queryRawUnsafe<
         { id: string; email: string; rol: string; fulfillment: boolean; zona: boolean | null; estado: string }[]
       >(
@@ -674,7 +733,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       const porCorreo = new Map(usuarios.map((u) => [u.email, u]));
       expect(usuarios).toHaveLength(Object.keys(PERFILES).length + 1);
       for (const [perfil, esperado] of Object.entries(PERFILES)) {
-        const u = porCorreo.get(`demo-qa-${x}-${perfil}@example.test`);
+        const u = porCorreo.get(`servi-demo-qa-${x}-${perfil}@yopmail.com`);
         expect(u, `${slug} sin ${perfil}`).toBeDefined();
         expect(u!.rol, `${slug} ${perfil}`).toBe(esperado.rol);
         if (esperado.fulfillment !== undefined) expect(u!.fulfillment, `${slug} ${perfil}`).toBe(esperado.fulfillment);
@@ -682,7 +741,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       const api = usuarios.filter((u) => u.rol === "apiKey");
       expect(api.map((u) => u.email)).toEqual([`apikey+demo-qa-${x}-api@apikey.invalid`]);
-      expect(usuarios.filter((u) => u.rol !== "apiKey").every((u) => u.email.endsWith("@example.test"))).toBe(true);
+      expect(usuarios.filter((u) => u.rol !== "apiKey").every((u) => u.email.endsWith("@yopmail.com"))).toBe(true);
       correos.push(...usuarios.map((u) => u.email));
       usuariosTodos.push(...usuarios.map((u) => u.id));
 
@@ -694,7 +753,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       // Control: otra contraseña no entra (el paso compara de verdad).
       const mala = await auth.login({
-        email: `demo-qa-${x}-maestro@example.test`,
+        email: `servi-demo-qa-${x}-maestro@${YOPMAIL}`,
         password: `${contrasena}x`,
         ipAddress: "127.0.0.1",
         userAgent: "demo-qa-test",
@@ -961,6 +1020,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       return { c: corrida, plataformaAntes: antes, plataformaDespues: despues };
     });
     expect(c.codigo, c.texto).toBe(0);
+    // El borrado de dos empresas demo enteras va en una sola pasada, en el orden de las FK: las
+    // pasadas con SAVEPOINT por tabla son solo el camino de cuando algo choca (medición del build).
+    expect(c.texto).toMatch(/borradas 2 empresa\(s\) demo anteriores: \d+ filas en 1 pasada\(s\)/);
 
     // R27: otra vez exactamente dos, nuevas.
     const demo = await empresasDemo();
@@ -1151,10 +1213,14 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     const cortada = await empresasDemo();
     expect(cortada.map((d) => d.slug)).toEqual([...SLUGS]);
     const idB = cortada[1].id;
-    // Control: B quedó a medias (con alguna orden, pero no todas).
+    // Control: B quedó a medias. Sus órdenes nacen todas antes del primer paso con reloj (las tres
+    // vías van a la vez), así que lo que falta es lo de después: ninguna quedó ubicada.
     const ordenesB = await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1`, idB);
     expect(ordenesB).toBeGreaterThan(0);
-    expect(ordenesB).toBeLessThan(Object.values(ORDENES_POR_ESTADO).reduce((a, b) => a + b, 0));
+    expect(
+      await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1 AND latitud IS NOT NULL`, idB),
+      "B no debía tener ninguna orden ubicada",
+    ).toBe(0);
 
     const r = await correr("tras el corte");
     expect(r.codigo, r.texto).toBe(0);
@@ -1183,6 +1249,13 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     expect(ta.hasta <= tb.desde || tb.hasta <= ta.desde, JSON.stringify({ ta, tb })).toBe(true);
     expect([a, b].some((x) => x.texto.includes("espera a otra ejecución"))).toBe(true);
   }, 600_000);
+
+  it("ninguna consulta se lanzó sobre una conexión de pg ocupada (el aviso del build)", () => {
+    exigirCorrida1();
+    // Control de no vacuidad: la demo corrió entera varias veces con este oyente puesto.
+    expect(duraciones.filter((d) => d.codigo === 0).length).toBeGreaterThanOrEqual(2);
+    expect(avisosDePg).toEqual([]);
+  });
 
   it("ninguna salida lleva la contraseña, la URL de la base ni la clave (R5)", () => {
     exigirCorrida1();

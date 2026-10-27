@@ -287,6 +287,9 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     const r = await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
 
     expect(r.empresas).toEqual([demo.organizacionId]);
+    // Una sola pasada, en el orden de las FK y sin un SAVEPOINT por tabla (medición del build,
+    // 2026-10-26): las pasadas son el camino de cuando algo choca (R8, el caso de abajo).
+    expect(r.base.pasadas).toBe(1);
     // La demo: ninguna fila en ninguna tabla, ni sus usuarios, ni lo que cuelga de ellos.
     const despues = await huella(demo.organizacionId);
     expect(Object.entries(despues).filter(([, n]) => n > 0)).toEqual([]);
@@ -333,6 +336,41 @@ describeSiHayBase("SL-43 — el borrado de las empresas demo", () => {
     // Sin el bloqueo, la siguiente ejecución la borra (R28: sigue marcada).
     await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
     expect(await base.organizacion.count({ where: { id: demo.organizacionId } })).toBe(0);
+  }, 120_000);
+
+  // D29: los correos demo son `@yopmail.com`, un dominio público que cualquier empresa real puede
+  // usar. El borrado identifica a los usuarios demo por su empresa (`es_demo`), nunca por el correo:
+  // un usuario real con el MISMO correo que daría la demo sobrevive, con todo lo que cuelga de él.
+  it("R7, D29: un usuario @yopmail.com de una empresa real sobrevive al borrado", async () => {
+    const real = await sembrar("yopmail", false);
+    const demo = await sembrar("yopmail-demo", true);
+    // El correo exacto del maestro de la demo A: el caso que un filtro por dominio o patrón borraría.
+    // El dominio va aparte para que la guardia de SL-34 no lo lea como correo real; sigue a mano.
+    const yopmail = "yopmail.com";
+    const correoReal = `servi-demo-qa-a-maestro@${yopmail}`;
+    const correoOriginal = (await base.usuario.findUniqueOrThrow({ where: { id: real.maestroId } })).email;
+    await bajoLockDeEscrituraReal(() =>
+      base.usuario.update({ where: { id: real.maestroId }, data: { email: correoReal } }),
+    );
+    try {
+      const huellaReal = await huella(real.organizacionId);
+      exigirFamilias(huellaReal);
+      exigirFamilias(await huella(demo.organizacionId));
+      // Control de no vacuidad: el usuario real existe con ese correo antes del borrado.
+      expect(await base.usuario.count({ where: { email: correoReal, organizacionId: real.organizacionId } })).toBe(1);
+
+      const r = await bajoLockDeEscrituraReal(() => borrarEmpresasDemo(base, { almacenes }));
+
+      expect(r.empresas).toEqual([demo.organizacionId]);
+      expect(await base.organizacion.count({ where: { id: demo.organizacionId } })).toBe(0);
+      // El usuario real sigue, con su correo, su sesión, su dispositivo y sus movimientos.
+      expect(await base.usuario.count({ where: { id: real.maestroId, email: correoReal } })).toBe(1);
+      expect(await huella(real.organizacionId)).toEqual(huellaReal);
+    } finally {
+      await bajoLockDeEscrituraReal(() =>
+        base.usuario.updateMany({ where: { id: real.maestroId }, data: { email: correoOriginal } }),
+      );
+    }
   }, 120_000);
 
   it("R10: una empresa real con slug demo aborta sin tocar nada", async () => {

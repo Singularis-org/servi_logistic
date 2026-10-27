@@ -451,10 +451,16 @@ despliegue.
 
 ## D7 — Credenciales y acceso (R5, R25, R26)
 
-- **Correos fijos:** `demo-qa-<a|b>-<perfil>@example.test`. Los perfiles son `maestro`, `admin`,
-  `tienda-bodega`, `tienda`, `satelite`, `mensajero-central`, `mensajero-satelite` y `api`. Son únicos
-  globalmente (`usuario.email`) y no chocan entre ejecuciones porque el borrado va antes. Los
-  documentos de identidad siguen el mismo patrón (`demo-qa-a-…`).
+- **Correos fijos (D29, Carlos, 2026-10-26):** `servi-<slug>-<perfil>@yopmail.com`, p. ej.
+  el del maestro de la demo A (`servi-` + `demo-qa-a` + `-maestro` + `@yopmail.com`). Los construye `scripts/demo-qa/correos.ts > correoDemo`; la
+  lista de perfiles es `PERFILES_DEMO` (la del orden de la salida), y el de `api` no lleva correo
+  demo (D28). El local-part tiene un tope de 64 (RFC 5321): `correosDemoDe(slug)` los comprueba todos
+  al empezar la receta, antes de dar de alta a nadie, y lanza `CorreoDemoDemasiadoLargo` si alguno
+  pasa. Son únicos globalmente (`usuario.email`) y no chocan entre ejecuciones porque el borrado va
+  antes. El buzón de yopmail es público: se acepta porque son datos demo de QA y entrar exige además
+  `DEMO_QA_CONTRASENA`. El borrado NO identifica a los usuarios demo por el dominio sino por su
+  empresa (`es_demo`, D4): un usuario `@yopmail.com` de una empresa real no se toca. Los documentos
+  de identidad no cambian (`demo-qa-a-…`).
 - **Contraseña (D13):** la de `DEMO_QA_CONTRASENA` para todos. Es una variable *sensitive* de Preview
   para la rama `dev`: Vercel no la vuelve a mostrar, y la demo no la imprime nunca. La valida con
   `strongPasswordSchema` antes de conectar (R25).
@@ -463,6 +469,14 @@ despliegue.
   log de la función de Vercel, donde lo lee quien prueba. `otpDebugLogHabilitado()` lo sigue apagando
   con `VERCEL_ENV=production` (SL-44 D1). Carlos acepta que se vean los códigos de todos los usuarios
   de QA. **No hay dispositivos confiados** ni escritura en `trusted_device`.
+  - **Enmienda 2026-10-26 (vista en QA):** este punto suponía que no había SMTP. Con SMTP
+    configurado, `crearEmailSender()` elegía `NodemailerEmailSender` y el código no salía nunca en
+    el log. Ahora `crearEmailSender()` compone `EnrutadorEmailSender`
+    (`lib/services/email/EnrutadorEmailSender.ts`), que manda por consola todo correo a un dominio
+    reservado (`.test`, `.invalid`, `.example`, `.localhost`, RFC 2606/6761), aunque haya SMTP.
+    Así no rebota en el SMTP y el código sale en la línea de debug. Con D29, los usuarios demo
+    reciben el código por correo real en yopmail.com; por consola solo va lo reservado (p. ej. el
+    usuario `@apikey.invalid` de D28). `otpDebugLogHabilitado()` no cambia.
 - **Secreto de la API key:** se usa en memoria para llamar a `handleCargaApi` y no se imprime. Quien
   quiera probar la API crea su propia key desde la pantalla.
 - **Salida (en el log del build):**

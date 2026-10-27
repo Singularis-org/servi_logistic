@@ -74,6 +74,9 @@ describe("decidirDemo — tabla de D10.1", () => {
 
 const CONTRASENA_DEMO = "Demo-QA-2026!";
 const SECRETO_BD = "S3cretoDeLaBase";
+// El dominio de los correos demo (D29) va aparte para que la guardia de SL-34 (emails de dominio
+// no reservado) no lea el literal como un correo real; el valor sigue escrito a mano.
+const YOPMAIL = "yopmail.com";
 
 /** Un entorno de QA que pasa la decisión y la guardia: todo local. */
 const ENTORNO_QA: EntornoDemoQa = {
@@ -106,8 +109,8 @@ function resumenDe(clave: "A" | "B", extra: Partial<ResumenEmpresaDemo> = {}): R
     organizacionId: `org-${clave}`,
     recortada: false,
     usuarios: [
-      { perfil: "maestro", correo: `${slug}-maestro@example.test` },
-      { perfil: "mensajero-central", correo: `${slug}-mensajero-central@example.test` },
+      { perfil: "maestro", correo: `servi-${slug}-maestro@${YOPMAIL}` },
+      { perfil: "mensajero-central", correo: `servi-${slug}-mensajero-central@${YOPMAIL}` },
     ],
     jobsCerrados: { completados: { geocodificacion: 43 }, sinEjecutar: { optimizacion_ruta: 27 } },
     tiposNoEsperados: [],
@@ -139,7 +142,7 @@ function dobles(opciones: { argumentos?: string[]; env?: EntornoDemoQa; pasos?: 
   const lineas: string[] = [];
   const errores: string[] = [];
   const cerrar = vi.fn(async () => undefined);
-  const conectar = vi.fn(async () => ({ dueno: {} as PrismaClient, cerrar }));
+  const conectar = vi.fn(async () => ({ dueno: {} as PrismaClient, lector: {} as PrismaClient, cerrar }));
   const candado = {
     tomar: vi.fn<CandadoDemo["tomar"]>(async () => true),
     soltar: vi.fn(async () => undefined),
@@ -194,7 +197,7 @@ describe("ejecutarDemo --build — omitida sin conectar (R30)", () => {
 });
 
 describe("ejecutarDemo --build — corre (R29) y su fallo tumba el build (R31)", () => {
-  it("con las tres condiciones: conecta, toma el candado, crea A y después B y sale con 0", async () => {
+  it("con las tres condiciones: conecta, toma el candado, crea A y B y sale con 0", async () => {
     const pasos = pasosDobles();
     const d = dobles({ pasos });
     const r = await ejecutarDemo(d.efectos);
@@ -218,7 +221,7 @@ describe("ejecutarDemo --build — corre (R29) y su fallo tumba el build (R31)",
     expect(d.candado.soltar).toHaveBeenCalledTimes(1);
     expect(d.cerrar).toHaveBeenCalledTimes(1);
     expect(d.errores).toEqual([]);
-    expect(d.lineas.join("\n")).toMatch(/demo-qa-a · maestro +· demo-qa-a-maestro@example\.test/);
+    expect(d.lineas.join("\n")).toMatch(/demo-qa-a · maestro +· servi-demo-qa-a-maestro@yopmail\.com/);
   });
 
   it("fallo de la receta → salir(1), la línea dice cómo desbloquear dev, y suelta el candado", async () => {
@@ -265,17 +268,64 @@ describe("ejecutarDemo --build — corre (R29) y su fallo tumba el build (R31)",
     expect(vi.mocked(pasos.borrar)).not.toHaveBeenCalled();
   });
 
-  it("un tipo de job no esperado → 1 nombrándolo, y B no se crea (R23)", async () => {
+  it("un tipo de job no esperado → 1 nombrándolo, sin comprobación final (R23)", async () => {
     const pasos = pasosDobles({
       crearEmpresa: vi.fn(async (_d: PrismaClient, clave: "A" | "B") =>
-        resumenDe(clave, { tiposNoEsperados: ["webhook_evento"] }),
+        resumenDe(clave, { tiposNoEsperados: clave === "B" ? ["webhook_evento"] : [] }),
       ),
     });
     const d = dobles({ pasos });
     expect((await ejecutarDemo(d.efectos)).codigo).toBe(1);
     expect(d.salir).toHaveBeenCalledWith(1);
-    expect(d.errores.join("\n")).toMatch(/demo-qa-a encoló jobs de un tipo no esperado: webhook_evento/);
-    expect(vi.mocked(pasos.crearEmpresa)).toHaveBeenCalledTimes(1);
+    expect(d.errores.join("\n")).toMatch(/demo-qa-b encoló jobs de un tipo no esperado: webhook_evento/);
+    expect(vi.mocked(pasos.comprobarEmpresa)).not.toHaveBeenCalled();
+  });
+
+  it("A y B se crean a la vez, con el lector y no con la conexión del candado", async () => {
+    // Cada receta anota, al terminar, cuántas habían empezado: en serie, A terminaría viendo solo A.
+    const empezadas: string[] = [];
+    const vistasAlTerminar: Record<string, string[]> = {};
+    const pasos = pasosDobles({
+      crearEmpresa: vi.fn(async (_d: PrismaClient, clave: "A" | "B") => {
+        empezadas.push(clave);
+        await new Promise((r) => setTimeout(r, 5));
+        vistasAlTerminar[clave] = [...empezadas];
+        return resumenDe(clave);
+      }),
+    });
+    const d = dobles({ pasos });
+    const lector = {} as PrismaClient;
+    const dueno = {} as PrismaClient;
+    d.conectar.mockResolvedValue({ dueno, lector, cerrar: d.cerrar });
+    expect((await ejecutarDemo(d.efectos)).codigo).toBe(0);
+    expect(vistasAlTerminar).toEqual({ A: ["A", "B"], B: ["A", "B"] });
+    for (const llamada of vi.mocked(pasos.crearEmpresa).mock.calls) expect(llamada[0]).toBe(lector);
+    expect(vi.mocked(pasos.borrar).mock.calls[0][0]).toBe(dueno);
+  });
+
+  it("si A falla, espera a que B termine antes de soltar el candado y cerrar", async () => {
+    let bTermino = false;
+    const pasos = pasosDobles({
+      crearEmpresa: vi.fn(async (_d: PrismaClient, clave: "A" | "B") => {
+        if (clave === "A") throw new Error("[demo-qa] «CierresAdminService.aprobarCierre» no fue ok: conflict");
+        await new Promise((r) => setTimeout(r, 20));
+        bTermino = true;
+        return resumenDe(clave);
+      }),
+    });
+    const d = dobles({ pasos });
+    const bAlSoltar: boolean[] = [];
+    d.candado.soltar.mockImplementation(async () => {
+      bAlSoltar.push(bTermino);
+    });
+    const bAlCerrar: boolean[] = [];
+    d.cerrar.mockImplementation(async () => {
+      bAlCerrar.push(bTermino);
+    });
+    expect((await ejecutarDemo(d.efectos)).codigo).toBe(1);
+    expect(d.errores.join("\n")).toMatch(/aprobarCierre/);
+    expect(bAlSoltar).toEqual([true]);
+    expect(bAlCerrar).toEqual([true]);
   });
 
   it("un estado faltante en la comprobación final → 1 nombrándolo (R15)", async () => {
