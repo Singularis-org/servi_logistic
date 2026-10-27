@@ -39,8 +39,12 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `dev` antes de SL-23 (T0). */
-const PREVIA = "20261025160100_entorno_marca";
+/**
+ * La última de `dev` antes de SL-23. En T0 era `20261025160100_entorno_marca`; SL-18 entró en `dev`
+ * antes que SL-23 (PR #24 antes que el #25) con sus tres `20261026090x00`, que ordenan delante de
+ * las de SL-23, así que la previa real en `dev` es la última de SL-18.
+ */
+const PREVIA = "20261026090200_indices_ordenes_gestiones_historial";
 const M_TABLA = "20261026120000_organizacion_modulo";
 const M_HISTORIAL = "20261026120100_historial_accion_modulos";
 const M_JOB = "20261026120200_job_estado_descartado";
