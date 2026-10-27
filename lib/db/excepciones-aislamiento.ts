@@ -184,6 +184,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
   },
   {
+    archivo: "lib/repositories/PushEndpointPlataformaRepository.ts",
+    ficha: "SL-18",
+    motivo: "push, el último gana: borrar la suscripción de ese endpoint exacto si es de otra empresa (R26, R28)",
+  },
+  {
     // Vive en `tests/fabricas/` porque la comparten el E2E y la demo de QA; la importa el build
     // (`scripts/demo-qa/receta.ts`), así que se cuenta como código de producción.
     archivo: "tests/fabricas/empresa-y-usuarios.ts",

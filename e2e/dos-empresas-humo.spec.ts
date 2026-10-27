@@ -32,9 +32,10 @@ import {
  *    OTP y da de alta A y B desde `/plataforma/empresas`. Que repetir el alta no cree otra la
  *    cubren `superadmin-empresas.spec.ts` (por la pantalla) y
  *    `tests/integration/db/organizacion-alta.test.ts` (`ya_existe`, R45).
- * 2. Primer acceso: cada maestro entra por «¿Olvidaste tu contraseña?» con el código que el
- *    emisor de consola escribió en el log del servidor para SU correo (SL-44 R15), fija su
- *    contraseña y después entra por `/login` con el OTP de dispositivo nuevo. No se exige SMTP
+ * 2. Primer acceso: cada maestro entra por «¿Olvidaste tu contraseña?» con el enlace que el
+ *    emisor de consola escribió en el log del servidor para SU correo (SL-44 R15; desde SL-18 R32,
+ *    un enlace y no un código), fija su contraseña y después entra por `/login` con el OTP de
+ *    dispositivo nuevo. No se exige SMTP
  *    ni `messageId`: el correo consta en el log como enviado a ese maestro (R17).
  * 3. Datos: en cada empresa, con `fijarEmpresa`, lo mínimo de cada pantalla, con marcadores
  *    `A-<uuid>` / `B-<uuid>` en sus textos visibles (excepción de R8 de SL-44, `design.md > D4`:
@@ -65,8 +66,8 @@ const NO_ENCONTRADO = "No encontramos esta página";
 let dueno: PrismaClient | null = null;
 let log: LogDelServidor | null = null;
 const empresas: Partial<Record<Letra, Empresa>> = {};
-/** El código de recuperación que el log del servidor recibió para cada maestro (R17). */
-const codigosDeRecuperacion: Partial<Record<Letra, string>> = {};
+/** El enlace de recuperación que el log del servidor recibió para cada maestro (R17; SL-18 R32). */
+const enlacesDeRecuperacion: Partial<Record<Letra, string>> = {};
 const datos: Partial<Record<Letra, DatosSembrados>> = {};
 const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
 const rutas = rutasDelMenuDelMaestro();
@@ -135,7 +136,7 @@ test.beforeAll(async ({ browser }) => {
     const password = `Aa1!${randomBytes(12).toString("base64url")}`;
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
-    codigosDeRecuperacion[letra] = await recuperarContrasena(p, d.email, password);
+    enlacesDeRecuperacion[letra] = await recuperarContrasena(p, d.email, password);
     await entrarConOtp(p, d.email, password);
     cookies[letra] = await ctx.cookies();
     await ctx.close();
@@ -185,8 +186,9 @@ test("alta de A y B desde «Empresas» por el superadmin, y el correo de recuper
     const maestros = org.usuarios.filter((u) => u.rol.value === "maestro").map((u) => u.email);
     expect(maestros, `${letra}: el alta deja un solo maestro, el del formulario`).toEqual([e.email]);
     // `recuperarContrasena` lo leyó de la línea `[email][debug] to=<correo del maestro>`.
-    expect(codigosDeRecuperacion[letra], `${letra}: el log no recibió el correo de recuperación de su maestro`).toMatch(
-      /^\d{6}$/,
+    // El valor de `#enlace=`: `<challengeId>.<secreto>` (SL-18 R32).
+    expect(enlacesDeRecuperacion[letra], `${letra}: el log no recibió el correo de recuperación de su maestro`).toMatch(
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
     );
     expect(cookies[letra]?.some((c) => c.name === "session"), `${letra}: el maestro no quedó con sesión`).toBe(true);
     console.log(`[humo] correo de recuperación de ${letra}: en el log, enviado a su maestro`);

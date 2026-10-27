@@ -6,13 +6,13 @@ import type { PrismaClient } from "@prisma/client";
 import { clienteDueno, LogDelServidor } from "./_dos-empresas-fixture";
 import {
   asegurarSuperadmin,
-  codigoEnviadoA,
   conCandadoDelSuperadmin,
   enlaceEnviadoA,
   enlacesDelMenu,
   entrarConOtp,
   NO_ENCONTRADO,
   olvidarDispositivos,
+  recuperarContrasena,
   SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
 
@@ -23,12 +23,16 @@ import {
  *    formulario y sin aviso.
  * 2. Crea la empresa A y la B desde el formulario, con slugs, emails y documentos aleatorios. Las
  *    dos aparecen en el listado con su maestro.
- * 3. Repetir el slug de A, el email de su maestro y su documento muestra cada error junto a su
- *    campo, y de lo que intentó esta corrida solo existen A y B.
+ * 3. Repetir el slug de A muestra el error junto a su campo, y de lo que intentó esta corrida solo
+ *    existen A y B. SL-18 (R1): el email y el documento del maestro ya no son únicos entre
+ *    empresas, así que repetirlos en una empresa NUEVA la crea; ya no hay caso de error que
+ *    probar por esta pantalla (el alta solo crea al maestro de una empresa vacía). El duplicado
+ *    dentro de la misma empresa (R2) lo cubre `tests/integration/db/usuario-unico-por-empresa.test.ts`.
  * 4. Un slug inválido muestra el error sin crear nada.
  * 5. SL-41 T12: el maestro de A crea su contraseña con el enlace de bienvenida, leído de la línea
  *    de depuración del emisor de consola. Un segundo uso del enlace muestra el genérico (R18, R19,
- *    R21). El de B entra por «¿Olvidaste tu contraseña?» con el código, que sigue vivo (SL-32 R38).
+ *    R21). El de B entra por «¿Olvidaste tu contraseña?» con el enlace de recuperación (SL-32 R38;
+ *    desde SL-18 R32, enlace y no código: `recuperarContrasena`).
  *    Los dos entran después por `/login` con OTP. «Empresas» les da 404 (R35).
  * 6. Ningún maestro ve el ítem «Empresas».
  * 7. SL-41 (R38): con los dos maestros ya con contraseña, ninguna fila lleva «Reenviar bienvenida».
@@ -59,8 +63,6 @@ const TEXTO = {
   enlaceInvalido: "El enlace no es válido o ya venció.",
   vacio: "Aún no hay empresas. Crea la primera con el formulario.",
   errorSlug: "Ya hay una empresa con ese slug.",
-  errorEmail: "Ese email ya pertenece a otro usuario.",
-  errorDocumento: "Ese documento ya pertenece a otro usuario.",
   errorCampo: "Revisa este campo.",
 } as const;
 
@@ -243,15 +245,13 @@ test("2. crea A y B desde el formulario y las dos salen en el listado con su mae
   }
 });
 
-test("3. repetir el slug, el email o el documento de A marca su campo y no crea nada (R31, R32, R33)", async () => {
+// SL-18 (R1): el email y el documento repetidos de A ya no son error en una empresa nueva (ver la
+// cabecera, punto 3); de los tres casos de SL-32 queda el slug.
+test("3. repetir el slug de A marca su campo y no crea nada (R31)", async () => {
   test.setTimeout(120_000);
   const page = superadmin();
   const a = alta("A");
-  const casos = [
-    { repetido: { slug: a.slug }, campo: "slug", texto: TEXTO.errorSlug },
-    { repetido: { email: a.email }, campo: "email", texto: TEXTO.errorEmail },
-    { repetido: { documento: a.documento }, campo: "documento", texto: TEXTO.errorDocumento },
-  ] as const;
+  const casos = [{ repetido: { slug: a.slug }, campo: "slug", texto: TEXTO.errorSlug }] as const;
 
   for (const caso of casos) {
     await page.reload();
@@ -310,27 +310,7 @@ async function contrasenaPorEnlace(page: Page, password: string): Promise<void> 
   await expect(page.getByRole("alert").filter({ hasText: TEXTO.enlaceInvalido })).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByRole("button", { name: "Pedir un código por correo" })).toBeVisible();
-}
-
-/** SL-32 (R38): B la crea por «¿Olvidaste tu contraseña?» con el código del emisor de consola. */
-async function contrasenaPorCodigo(page: Page, d: DatosDeAlta, password: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
-  await page.waitForURL("**/recuperar-contrasena");
-
-  const log = LogDelServidor.desdeEntorno();
-  await page.getByLabel("Correo electrónico").fill(d.email);
-  await page.getByRole("button", { name: "Enviar código" }).click();
-  const campoCodigo = page.getByLabel("Código de verificación");
-  await expect(campoCodigo).toBeVisible({ timeout: 60_000 });
-  await campoCodigo.fill(await codigoEnviadoA(log, d.email));
-  await page.getByRole("button", { name: "Verificar código" }).click();
-
-  await page.getByLabel("Nueva contraseña", { exact: true }).fill(password);
-  await page.getByLabel("Confirmar contraseña", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Restablecer contraseña" }).click();
-  await expect(page.getByText("Contraseña actualizada")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Pedir un enlace nuevo por correo" })).toBeVisible();
 }
 
 for (const letra of ["A", "B"] as const) {
@@ -345,7 +325,8 @@ for (const letra of ["A", "B"] as const) {
     if (letra === "A") {
       await contrasenaPorEnlace(page, password);
     } else {
-      await contrasenaPorCodigo(page, d, password);
+      // SL-32 (R38) con SL-18 (R32): «¿Olvidaste tu contraseña?» y el enlace del correo.
+      await recuperarContrasena(page, d.email, password);
     }
 
     await entrarConOtp(page, d.email, password);

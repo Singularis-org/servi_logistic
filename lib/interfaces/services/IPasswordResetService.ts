@@ -1,30 +1,21 @@
-// Contrato del servicio de recuperacion de contrasena (Feature 20). La capa
-// Service no conoce Next.js: recibe contexto ya resuelto (deviceHash/ip) y
+// Contrato del servicio de recuperacion de contrasena (Feature 20; SL-18 §4: un enlace por cuenta).
+// La capa Service no conoce Next.js: recibe contexto ya resuelto (deviceHash/ip) y
 // devuelve resultados de dominio genericos (no enumeracion de usuarios).
 
 export interface SolicitarResetInput {
   email: string;
+  /**
+   * El del navegador que pide. Desde SL-18 la fila no lo guarda (lleva la marca
+   * `DEVICE_HASH_RECUPERACION`); se conserva porque es la firma de design §4.1.
+   */
   deviceHash: string;
-  ipAddress: string;
-}
-
-export interface VerificarCodigoInput {
-  email: string;
-  code: string;
-  ipAddress: string;
-}
-
-export interface RestablecerInput {
-  email: string;
-  code: string;
-  newPassword: string;
   ipAddress: string;
 }
 
 /** Respuesta generica de solicitud: nunca revela si la cuenta existe (R1/R3). */
 export type SolicitarResetResult = { status: "ok" };
 
-/** Resultado de verificacion/restablecimiento (R5/R6/R9/R10/R11). */
+/** Resultado del canje de un enlace (SL-41 R18-R20; SL-18 R18, R19). */
 export type ResetOutcome = { status: "ok" } | { status: "invalid_or_expired" };
 
 /** SL-41 (design §6.1): emision del enlace de bienvenida del primer maestro. */
@@ -51,9 +42,11 @@ export interface CrearContrasenaConEnlaceInput {
 }
 
 export interface IPasswordResetService {
+  /**
+   * SL-18 (R16, R17): un correo con un enlace por cada cuenta del email que no supero el limite.
+   * No hay `verificarCodigo` ni `restablecer` por email y codigo (SL-18 R20).
+   */
   solicitar(input: SolicitarResetInput): Promise<SolicitarResetResult>;
-  verificarCodigo(input: VerificarCodigoInput): Promise<ResetOutcome>;
-  restablecer(input: RestablecerInput): Promise<ResetOutcome>;
   /** SL-41 (R15, R17): crea el desafio de bienvenida y devuelve el enlace. Solo el hash se guarda. */
   emitirEnlaceBienvenida(input: EmitirEnlaceBienvenidaInput): Promise<EnlaceBienvenidaEmitido>;
   /**
@@ -62,6 +55,9 @@ export interface IPasswordResetService {
    * anterior: un «Reenviar» que falla no rompe la bienvenida que ya había salido.
    */
   anularEnlaceBienvenida(enlace: string): Promise<void>;
-  /** SL-41 (R18-R20, R22): canjea el enlace por una contrasena. No abre sesion. */
+  /**
+   * SL-41 (R18-R20, R22) y SL-18 (R18, R19): canjea un enlace de bienvenida o de recuperacion por
+   * una contrasena, solo la de la cuenta del enlace. No abre sesion.
+   */
   crearContrasenaConEnlace(input: CrearContrasenaConEnlaceInput): Promise<ResetOutcome>;
 }

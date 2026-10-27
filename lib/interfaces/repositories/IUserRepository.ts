@@ -40,8 +40,24 @@ export interface CuentaTiendaValidacion {
   estado: EstadoUsuario;
 }
 
+/**
+ * SL-18 (design §3.1) — una de las cuentas que comparten un email: una por empresa, mas la de
+ * plataforma (sin empresa). Lo minimo para elegir entre ellas en el login y en la recuperacion;
+ * nada de PII aparte del email ni el hash.
+ */
+export interface CuentaPublica {
+  id: string;
+  email: string;
+  estado: EstadoUsuario;
+  /** `null` = la cuenta de plataforma. */
+  organizacionId: string | null;
+  rol: RolValue;
+  /** Nombre de la empresa de la cuenta; `null` en la de plataforma. */
+  empresaNombre: string | null;
+}
+
 /** Solo para el flujo interno de verificacion de credenciales (AuthService). */
-export interface UsuarioConHash extends UsuarioPublico {
+export interface CuentaConHash extends CuentaPublica {
   passwordHash: string;
 }
 
@@ -184,12 +200,15 @@ export interface RolItem {
 
 export interface IUserRepository {
   /**
-   * Unico metodo que expone el hash de contrasena. Solo debe usarse desde
-   * AuthService para verificar credenciales (R7).
+   * SL-18 (design §3.1): TODAS las cuentas con ese email, una por empresa mas la de plataforma,
+   * ordenadas por nombre de empresa con la de plataforma al final. Unico metodo que expone el
+   * hash de contrasena: solo debe usarse desde AuthService para verificar credenciales (R7).
+   * Lee entre empresas: se llama dentro de `comoPlataforma("SL-17", "login")`.
    */
-  findByEmailWithHash(email: string): Promise<UsuarioConHash | null>;
+  findCuentasPorEmailConHash(email: string): Promise<CuentaConHash[]>;
   findById(id: string): Promise<UsuarioPublico | null>;
-  findByEmail(email: string): Promise<UsuarioPublico | null>;
+  /** SL-18 (design §3.1): la misma consulta sin el hash, para la recuperacion de contrasena. */
+  findCuentasPorEmail(email: string): Promise<CuentaPublica[]>;
   /** FICHA 362 (R3/R9): `actorUsuarioId` congela QUIEN dio de alta la cuenta. */
   create(input: CreateUsuarioInput, actorUsuarioId: string | null): Promise<UsuarioPublico>;
   /**

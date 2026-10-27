@@ -4,8 +4,9 @@ import type { IPasswordResetService } from "@/lib/interfaces/services/IPasswordR
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
-import { crearEmailProvider } from "@/lib/services/EmailProvider";
-import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
+import { baseUrlDeLaApp } from "@/lib/config/app-url";
+import { emailContacto } from "@/lib/config/email";
+import { crearEmailSender } from "@/lib/services/EmailProvider";
 import { PasswordResetService } from "@/lib/services/PasswordResetService";
 import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
 
@@ -19,8 +20,8 @@ export interface RequestContext {
 }
 
 // Limitador de intentos de verificacion (R20 de la Feature 20): unico por proceso para que la
-// ventana deslizante persista entre invocaciones de las Server Actions. Lo usan el canje del codigo
-// y el del enlace de bienvenida.
+// ventana deslizante persista entre invocaciones de las Server Actions. Lo usa el canje del enlace,
+// de bienvenida o de recuperacion (SL-18).
 const verifyLimiter = new ResetRateLimiter();
 
 /** El composition root de la recuperacion de contrasena, tambien el del enlace de bienvenida. */
@@ -28,12 +29,12 @@ export function buildPasswordResetService(): IPasswordResetService {
   const prisma = getPrismaClient();
   const userRepo = new UserRepository(prisma);
   const otpRepo = new EmailOtpChallengeRepository(prisma);
-  // El proveedor de correo se elige por entorno (feature 80): con SMTP configurado se envia de
-  // verdad por nodemailer; sin el —dev o CI— se degrada a consola. Ver lib/services/EmailProvider.ts
-  // y lib/config/email.ts.
-  const emailProvider = crearEmailProvider();
-  const otpIssuer = new OtpChallengeIssuer(otpRepo, emailProvider);
-  return new PasswordResetService(userRepo, otpRepo, otpIssuer, verifyLimiter);
+  // El emisor de correo se elige por entorno (feature 80): con SMTP configurado se envia de verdad
+  // por nodemailer; sin el —dev o CI— se degrada a consola. Ver lib/services/EmailProvider.ts y
+  // lib/config/email.ts. SL-18 (design §4.2): el correo de recuperacion lleva enlaces, asi que el
+  // servicio recibe el emisor y la URL base, leidos aqui en cada llamada, como en la bienvenida.
+  const correo = { sender: crearEmailSender(), baseUrl: baseUrlDeLaApp(), contacto: emailContacto() };
+  return new PasswordResetService(userRepo, otpRepo, correo, verifyLimiter);
 }
 
 /** La IP y el agente de la peticion en curso, desde las cabeceras que pone el proxy. */

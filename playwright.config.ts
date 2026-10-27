@@ -83,13 +83,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["plataforma-vacia"],
       // `pago-plataforma-sl45` va detrás de `cobro-plataforma-sl40`: los dos tocan el valor global del
-      // cobro (workers: 1, en orden).
+      // cobro (workers: 1, en orden). `login-varias-empresas` (SL-18 R31): el mismo email y la misma
+      // contraseña en dos empresas.
       testMatch: specs(
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",
+        "login-varias-empresas",
         "rastreo-publico",
         "analitica-roles",
         "cobro-plataforma-sl40",

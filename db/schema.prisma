@@ -86,11 +86,11 @@ model Usuario {
   nombre               String
   primerApellido       String?       @map("primer_apellido") // feature 21: identidad; requerido en postulacion via servicio, nullable en DB
   segundoApellido      String?       @map("segundo_apellido") // feature 21: opcional
-  email                String        @unique
+  email                String // SL-18/R1: unico POR EMPRESA (@@unique de abajo), ya no global
   telefono             String
   passwordHash         String        @map("password_hash")
   estado               EstadoUsuario @default(pendiente)
-  cedula               String        @unique
+  cedula               String // SL-18/R1: unica POR EMPRESA (@@unique de abajo), ya no global
   tipoIdentificacionId String        @map("tipo_identificacion_id")
   rolId                String        @map("rol_id")
   vehiculoId           String?       @map("vehiculo_id") // feature 21: solo mensajeros; FK -> vehiculos
@@ -203,6 +203,12 @@ model Usuario {
   @@index([zonaId]) // feature 24/R6
   @@index([ordenEnGestionId]) // feature 36
   @@index([organizacionId])
+  // SL-18/R1-R3: email y cedula unicos por empresa, con el nombre de antes (la traduccion de P2002
+  // lo busca). En la base van con NULLS NOT DISTINCT (dos cuentas sin empresa chocan), que Prisma
+  // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
+  @@unique([organizacionId, email], map: "usuario_email_key")
+  @@unique([organizacionId, cedula], map: "usuario_cedula_key")
+  @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
 }
 
@@ -993,6 +999,11 @@ model Orden {
   // `work_mem` de 4 MB). El gemelo DESC se añade si `orden` supera las ~200.000 filas vivas; el
   // SQL exacto esta en la cabecera de la migracion.
   @@index([prioridad(sort: Desc), claveRemision, id], map: "orden_prioridad_clave_remision_idx")
+  // SL-18/R24 (M3): el listado por defecto de `/ordenes` de una empresa (`OrdenRepository.list`:
+  // `prioridad DESC, created_at DESC, id`). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS
+  // NULL`, el predicado de la consulta— y eso no se puede escribir aqui: vive en
+  // `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`.
+  @@index([organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id])
   @@index([organizacionId])
   @@map("orden")
 }
@@ -1350,11 +1361,14 @@ model GestionOrden {
   // Feature 126/R25 (T0-Q1 = B): la ruta caliente INTRADIA (cubos del dia en curso, D6/D13)
   // filtra por `created_at` SIN `orden_id` ni `mensajero_id` por delante, y ninguno de los
   // cuatro indices de arriba la cubre. Se DECLARA aqui, y no solo en el `.sql`: si el
-  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. Columna
-  // unica a proposito — `anulada_at` detras de un predicado de RANGO no filtraria, y el
-  // parcial `(created_at) WHERE anulada_at IS NULL` no es expresable en Prisma (misma
-  // limitacion que documenta el bloque de abajo).
-  @@index([createdAt], map: "gestion_orden_created_at_idx")
+  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. `anulada_at`
+  // no entra — detras de un predicado de RANGO no filtraria, y el parcial
+  // `WHERE anulada_at IS NULL` no es expresable en Prisma (misma limitacion que documenta el
+  // bloque de abajo).
+  // SL-18/R24 (M3): la empresa va DELANTE del rango. La consulta corre con la empresa fijada (la
+  // pone la RLS) y con `(created_at)` a secas recorria las gestiones de todas las empresas del
+  // dia; sustituye a `gestion_orden_created_at_idx`.
+  @@index([organizacionId, createdAt])
   // Feature 67 (F1.4-d): el indice PARCIAL de la ruta caliente
   // `(mensajero_id) WHERE cierre_id IS NULL AND anulada_at IS NULL` (/cierre-dia + corte
   // diario) NO se expresa aqui: Prisma no soporta indices parciales -> vive en el SQL de la
@@ -1703,7 +1717,7 @@ model Tarifa {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt])
+  @@index([organizacionId, createdAt]) // SL-18/R24: listado por empresa
   @@index([tiendaId])
   @@index([zonaId])
   @@unique([organizacionId, zonaId, tiendaId], map: "tarifas_zona_id_tienda_id_key") // SL-17 T3.9: unico por empresa
@@ -3830,6 +3844,7 @@ model AnalyticsDaily {
   @@index([tiendaId, fecha], map: "analytics_daily_tienda_fecha_idx") // recorte de adminTienda (122)
   @@index([mensajeroId, fecha], map: "analytics_daily_mensajero_fecha_idx") // recorte de mensajero; cubre el cubo sin_asignar
   @@index([zonaId, fecha], map: "analytics_daily_zona_fecha_idx") // recorte de adminSatelite, por zona DE LA ORDEN
+  @@index([organizacionId, fecha]) // SL-18/R24: rango de fechas de una empresa (sin `map:`: la 123 fija esa lista)
   @@index([organizacionId])
   @@map("analytics_daily")
 }
@@ -4615,7 +4630,9 @@ model HistorialAccion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc), id])
+  /// SL-18/R24 (M3): con la empresa delante, que el listado siempre lleva; sustituye a
+  /// `historial_accion_created_at_id_idx`, con el que vivo el plan alternaba entre los dos.
+  @@index([organizacionId, createdAt(sort: Desc), id])
   /// «Que hizo Fulano»: igualdad -> rango, el unico orden que un btree recorre sin filtro residual.
   @@index([actorUsuarioId, createdAt(sort: Desc)])
   /// «Que le paso a esta entidad».
@@ -5067,7 +5084,7 @@ model WhatsappEnvioEjecucion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc)])
+  @@index([organizacionId, createdAt(sort: Desc)]) // SL-18/R24: historial por empresa
   @@index([envioId, createdAt(sort: Desc)])
   @@index([organizacionId])
   @@map("whatsapp_envio_ejecucion")

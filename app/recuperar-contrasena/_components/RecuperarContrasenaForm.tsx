@@ -12,11 +12,8 @@ import Link from "next/link";
 import { z } from "zod";
 import {
   solicitarRecuperacion,
-  verificarCodigoRecuperacion,
-  restablecerContrasena,
   crearContrasenaConEnlace,
 } from "@/lib/actions/password-reset";
-import { OTP_CODE_LENGTH } from "@/lib/types/auth";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,27 +23,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FormField } from "@/components/shared/FormField";
 import { PasswordInput } from "@/components/shared/PasswordInput";
 
-// Fases del flujo (R16/R17): email -> code -> password -> done.
-type Phase = "email" | "code" | "password" | "done";
+// Fases del flujo. SL-18 (R16, R20): el paso 1 acaba en «Revisa tu correo» (`sent`); la contraseña
+// solo se crea con el enlace del correo (`password`), y ya no hay paso de código.
+type Phase = "email" | "sent" | "password" | "done";
 
-// Validaciones de cliente: feedback temprano. La validacion fuerte real la hace
-// el backend; aqui se reutilizan los mismos schemas para no duplicar reglas.
+// Validación de cliente: feedback temprano. La validación fuerte real la hace el backend.
 const emailSchema = z.object({
   email: z.string().email("Correo electrónico inválido"),
 });
-
-const codeSchema = z.object({
-  code: z
-    .string()
-    .regex(
-      new RegExp(`^\\d{${OTP_CODE_LENGTH}}$`),
-      `El código debe ser exactamente ${OTP_CODE_LENGTH} dígitos numéricos`,
-    ),
-});
-
-// Mensaje generico para el paso 2/3: nunca distingue la causa ni revela
-// existencia de la cuenta (R6/R11 + seguridad).
-const GENERIC_INVALID_MESSAGE = "El código es inválido o ha expirado. Verifica e intenta de nuevo";
 
 // SL-41: el enlace del correo de bienvenida trae su secreto en el fragmento, nunca en la ruta ni
 // en la query (R16), para que no llegue al servidor ni a sus registros.
@@ -71,37 +55,33 @@ function hashDelServidor(): string {
 }
 
 /**
- * Flujo de recuperacion en 3 pasos (email -> codigo -> nueva contrasena). Lo monta
- * `app/recuperar-contrasena/page.tsx`. Desmontado el 2026-09-04 (el OTP no llegaba) y vuelto a
- * montar el 2026-10-22 por SL-32 (R38).
+ * Recuperación de contraseña. Lo monta `app/recuperar-contrasena/page.tsx`. Desmontado el
+ * 2026-09-04 (el OTP no llegaba) y vuelto a montar el 2026-10-22 por SL-32 (R38).
  *
- * SL-41 añade el modo enlace: con `#enlace=` en la URL arranca en el paso 3 («Crea tu
- * contraseña»), con los mismos dos campos, y guarda con el enlace en vez de con email y código.
+ * SL-41 añade el modo enlace: con `#enlace=` en la URL arranca en «Crea tu contraseña» y guarda con
+ * el enlace. SL-18 (R16, R20): el paso 1 solo pide el correo y avisa de que llega un enlace por cada
+ * cuenta; el canje es siempre por enlace (SLT-41 pule estas pantallas).
  */
 export function RecuperarContrasenaForm() {
   const [isPending, startTransition] = useTransition();
 
   const [phase, setPhase] = useState<Phase>("email");
 
-  // Estado conservado entre fases (email + codigo).
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   // Errores por fase.
   const [emailFieldErrors, setEmailFieldErrors] = useState<Record<string, string[]>>({});
-  const [codeFieldErrors, setCodeFieldErrors] = useState<Record<string, string[]>>({});
   const [passwordFieldErrors, setPasswordFieldErrors] = useState<Record<string, string[]>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
 
   // Modo enlace (SL-41). `enlaceInvalido` sustituye el formulario: un enlace muerto no se
-  // reintenta, se pide un código.
+  // reintenta, se piden enlaces nuevos.
   const [enlace, setEnlace] = useState<string | null>(null);
   const [enlaceInvalido, setEnlaceInvalido] = useState(false);
 
   const emailRef = useRef<HTMLInputElement>(null);
-  const codeRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   // El fragmento de la URL, leído como fuente externa: el servidor no lo tiene (ve "") y el
@@ -140,12 +120,11 @@ export function RecuperarContrasenaForm() {
   // `setTimeout`: la fase nueva llega con la transición, que puede pintarse después del temporizador.
   useEffect(() => {
     if (phase === "email") emailRef.current?.focus();
-    else if (phase === "code") codeRef.current?.focus();
     else if (phase === "password") passwordRef.current?.focus();
   }, [phase]);
 
   // R19: del enlace muerto se vuelve al paso 1 del flujo normal, sin rastro del enlace.
-  const pedirCodigo = () => {
+  const pedirEnlaceNuevo = () => {
     setEnlace(null);
     setEnlaceInvalido(false);
     setGeneralError(null);
@@ -153,8 +132,8 @@ export function RecuperarContrasenaForm() {
     setTimeout(() => emailRef.current?.focus(), 0);
   };
 
-  // Paso 1 (R1/R12): solicitar recuperacion. Respuesta siempre generica: se
-  // avanza a la fase de codigo tanto si el email existe como si no.
+  // Paso 1 (R1/R12; SL-18 R16): solicitar recuperación. Respuesta siempre genérica: se acaba en
+  // «Revisa tu correo» tanto si el email existe como si no.
   const handleSubmitEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneralError(null);
@@ -177,9 +156,7 @@ export function RecuperarContrasenaForm() {
       startTransition(() => {
         switch (res.status) {
           case "ok":
-            setPhase("code");
-            setCode("");
-            setCodeFieldErrors({});
+            setPhase("sent");
             break;
           case "validation_error":
             setEmailFieldErrors(res.fieldErrors);
@@ -190,45 +167,7 @@ export function RecuperarContrasenaForm() {
     });
   };
 
-  // Paso 2 (R5/R6): verificar codigo. Error generico ante cualquier fallo.
-  const handleSubmitCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setGeneralError(null);
-    setCodeFieldErrors({});
-
-    const result = codeSchema.safeParse({ code });
-    if (!result.success) {
-      const errors = result.error.flatten().fieldErrors as Record<string, string[]>;
-      setCodeFieldErrors(errors);
-      codeRef.current?.focus();
-      return;
-    }
-
-    startTransition(async () => {
-      const res = await verificarCodigoRecuperacion({ email, code });
-
-      // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
-      startTransition(() => {
-        switch (res.status) {
-          case "ok":
-            setPhase("password");
-            setPassword("");
-            setConfirmPassword("");
-            setPasswordFieldErrors({});
-            break;
-          case "invalid_or_expired":
-            setGeneralError(GENERIC_INVALID_MESSAGE);
-            break;
-          case "validation_error":
-            setCodeFieldErrors(res.fieldErrors);
-            codeRef.current?.focus();
-            break;
-        }
-      });
-    });
-  };
-
-  // Paso 3 (R7/R8/R9/R10/R11): definir nueva contrasena + confirmacion.
+  // Paso de la contraseña (R7/R8/R9/R10/R11), solo con el enlace del correo (SL-41, SL-18 R20).
   const handleSubmitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneralError(null);
@@ -251,15 +190,14 @@ export function RecuperarContrasenaForm() {
       return;
     }
 
+    // Sin enlace no hay con qué guardar: el paso de la contraseña solo se alcanza desde él.
+    if (!enlace) {
+      setEnlaceInvalido(true);
+      return;
+    }
+
     startTransition(async () => {
-      const res = enlace
-        ? await crearContrasenaConEnlace({ enlace, password, confirmPassword })
-        : await restablecerContrasena({
-            email,
-            code,
-            password,
-            confirmPassword,
-          });
+      const res = await crearContrasenaConEnlace({ enlace, password, confirmPassword });
 
       // Tras el `await`, de nuevo en la transición: ver `handleSubmitEmail`.
       startTransition(() => {
@@ -268,18 +206,14 @@ export function RecuperarContrasenaForm() {
             setPhase("done");
             break;
           case "invalid_or_expired":
-            // El desafio dejo de estar activo: mensaje generico, sin tocar la contrasena.
-            if (enlace) {
-              setEnlaceInvalido(true);
-            } else {
-              setGeneralError(GENERIC_INVALID_MESSAGE);
-            }
+            // El enlace dejó de servir: mensaje genérico, sin tocar la contraseña.
+            setEnlaceInvalido(true);
             break;
           case "validation_error":
             // R19: un enlace mal formado (truncado, con un carácter de más) es un enlace que no
             // sirve. La pantalla no tiene campo para `enlace`, así que su error iría a ningún
             // sitio: se trata igual que el caducado o ya usado.
-            if (enlace && res.fieldErrors.enlace) {
+            if (res.fieldErrors.enlace) {
               setEnlaceInvalido(true);
               break;
             }
@@ -320,7 +254,7 @@ export function RecuperarContrasenaForm() {
     );
   }
 
-  // SL-41 (R19): el enlace ya no sirve. Sin formulario: se ofrece pedir un código por correo.
+  // SL-41 (R19): el enlace ya no sirve. Sin formulario: se ofrece pedir enlaces nuevos por correo.
   if (enlaceInvalido) {
     return (
       <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
@@ -332,8 +266,8 @@ export function RecuperarContrasenaForm() {
           <AlertDescription>{ENLACE_INVALIDO_MESSAGE}</AlertDescription>
         </Alert>
 
-        <Button type="button" onClick={pedirCodigo} className="w-full">
-          Pedir un código por correo
+        <Button type="button" onClick={pedirEnlaceNuevo} className="w-full">
+          Pedir un enlace nuevo por correo
         </Button>
       </Card>
     );
@@ -348,8 +282,8 @@ export function RecuperarContrasenaForm() {
             Recuperar contraseña
           </h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
-            Ingresa tu correo y, si existe una cuenta, te enviaremos un código de
-            verificación.
+            Ingresa tu correo y, si existe una cuenta, te enviaremos un enlace para
+            crear una contraseña nueva.
           </p>
         </div>
 
@@ -379,7 +313,7 @@ export function RecuperarContrasenaForm() {
           </FormField>
 
           <Button type="submit" loading={isPending} className="w-full">
-            {isPending ? "Enviando..." : "Enviar código"}
+            {isPending ? "Enviando..." : "Enviar enlace"}
           </Button>
         </form>
 
@@ -395,66 +329,28 @@ export function RecuperarContrasenaForm() {
     );
   }
 
-  // Fase 2: codigo.
-  if (phase === "code") {
+  // SL-18 (R16): el paso 1 acaba aquí. Sin formulario: el canje es con el enlace del correo, y llega
+  // uno por cada empresa en la que esté ese correo.
+  if (phase === "sent") {
     return (
       <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
-        <div>
+        <div role="status" aria-live="polite">
           <h1 className="text-2xl font-semibold text-center text-foreground">
-            Verificar código
+            Revisa tu correo
           </h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
-            Si el correo corresponde a una cuenta, recibirás un código de{" "}
-            {OTP_CODE_LENGTH} dígitos.
+            Si el correo existe, te enviamos un enlace para cada cuenta. Revisa tu correo.
           </p>
         </div>
 
-        {generalError && (
-          <Alert variant="destructive" role="alert" aria-live="assertive">
-            <AlertDescription>{generalError}</AlertDescription>
-          </Alert>
-        )}
-
-        <form onSubmit={handleSubmitCode} noValidate className="space-y-4">
-          <FormField
-            id="reset-code"
-            label="Código de verificación"
-            error={codeFieldErrors.code}
+        <div className="text-center">
+          <Link
+            href="/login"
+            className="text-sm text-muted-foreground hover:text-foreground underline"
           >
-            {(control) => (
-              <Input
-                {...control}
-                ref={codeRef}
-                type="text"
-                inputMode="numeric"
-                placeholder="000000"
-                maxLength={OTP_CODE_LENGTH}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                disabled={isPending}
-              />
-            )}
-          </FormField>
-
-          <Button type="submit" loading={isPending} className="w-full">
-            {isPending ? "Verificando..." : "Verificar código"}
-          </Button>
-        </form>
-
-        <button
-          type="button"
-          onClick={() => {
-            setPhase("email");
-            setCode("");
-            setGeneralError(null);
-            setCodeFieldErrors({});
-            setTimeout(() => emailRef.current?.focus(), 0);
-          }}
-          disabled={isPending}
-          className="w-full text-sm text-muted-foreground hover:text-foreground underline disabled:opacity-50"
-        >
-          Volver a ingresar el correo
-        </button>
+            Volver a iniciar sesión
+          </Link>
+        </div>
       </Card>
     );
   }

@@ -56,9 +56,9 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
  */
 function repoUsuarios(overrides: Partial<IUserRepository> = {}): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn(),
     // FICHA 362: el reset POR UN ADMINISTRADOR pasa por `restablecerContrasena`, que escribe la
     // fila del registro en la misma transaccion. `updatePasswordHash` sigue existiendo y es el

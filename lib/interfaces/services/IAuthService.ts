@@ -1,6 +1,13 @@
+import type { EmpresaParaElegir } from "@/lib/types/auth";
+
 export interface LoginCommandInput {
   email: string;
   password: string;
+  /**
+   * SL-18 (design §3.2): `undefined` = la persona no eligio empresa; `null` = eligio la cuenta de
+   * plataforma; un id = la cuenta del email en esa empresa.
+   */
+  organizacionId?: string | null;
   ipAddress: string;
   userAgent: string;
 }
@@ -8,6 +15,7 @@ export interface LoginCommandInput {
 export type LoginCommandResult =
   | { status: "ok"; sessionId: string; expiresAt: Date }
   | { status: "challenge_required"; challengeId: string }
+  | { status: "elegir_empresa"; empresas: EmpresaParaElegir[] }
   | { status: "invalid_credentials" }
   | { status: "account_unavailable" }
   | { status: "account_locked"; retryAfterMinutes: number };
