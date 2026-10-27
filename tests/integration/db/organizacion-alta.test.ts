@@ -294,6 +294,43 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(r.despues).toEqual([{ id: r.primera.organizacionId, paisId: "XA" }]);
   });
 
+  // Enmienda 2026-10-26, decisión 6. La repetición de la empresa que ya existía sigue la propuesta de
+  // la pregunta abierta de `requirements.md` («R45 solo frena altas nuevas»), que es lo que hace el
+  // orden de `altaEnTransaccion` (design §13): si el humano decide otra cosa, este caso cambia.
+  it("SL-20 R45/R46: con XA apagado, un alta nueva en XA es `invalida` `paisId` sin escribir nada; la empresa que ya estaba sigue en XA", async () => {
+    const slugVieja = conSufijo("xa-vieja");
+    const emailVieja = `xa-vieja-${RUN}@ejemplo.test`;
+    const slugNueva = conSufijo("xa-nueva");
+    const emailNueva = `xa-nueva-${RUN}@ejemplo.test`;
+    const r = await revertida(base, async (tx) => {
+      await crearPaisDePrueba(tx, "XA");
+      const servicio = new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx)));
+      const vieja = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, "XA"));
+
+      await tx.pais.update({ where: { id: "XA" }, data: { disponible: false } });
+
+      const nueva = await servicio.altaEmpresa(entrada(slugNueva, emailNueva, `doc-xa-nueva-${RUN}`, "XA"));
+      const repetida = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, "XA"));
+      return {
+        vieja,
+        nueva,
+        repetida,
+        escritoDeLaNueva: {
+          organizaciones: await tx.organizacion.count({ where: { slug: slugNueva } }),
+          usuarios: await tx.usuario.count({ where: { email: emailNueva } }),
+        },
+        organizacionesEnXA: await tx.organizacion.findMany({ where: { paisId: "XA" }, select: { slug: true } }),
+      };
+    });
+
+    expect(r.vieja.estado).toBe("creada");
+    if (r.vieja.estado !== "creada") return;
+    expect(r.nueva).toEqual({ estado: "invalida", campo: "paisId" });
+    expect(r.escritoDeLaNueva).toEqual({ organizaciones: 0, usuarios: 0 });
+    expect(r.repetida).toEqual({ estado: "ya_existe", organizacionId: r.vieja.organizacionId });
+    expect(r.organizacionesEnXA).toEqual([{ slug: slugVieja }]);
+  });
+
   it("R44: primer acceso — tras «recuperar contraseña» la nueva contraseña vale", async () => {
     const email = `primer-${RUN}@ejemplo.test`;
     const r = await alta(entrada(conSufijo("primer"), email, `doc-primer-${RUN}`));

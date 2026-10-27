@@ -20,15 +20,17 @@ import {
 } from "./_fixtures/ida-y-vuelta-32";
 
 /**
- * SL-20 (T1.7; design §3) — las cinco migraciones del país, de ida y vuelta, contra Postgres.
+ * SL-20 (T1.7, T1.8; design §3) — las seis migraciones del país, de ida y vuelta, contra Postgres.
  *
  * - Van en el orden de la decisión F2.1 (opción A: `organizacion_pais` antes que `geografia_por_pais`)
  *   y cada una trae su `down.sql`.
- * - Con las cinco, la geografía que ya había queda en CR con sus `id`, nombres, estado y código sin
- *   cambio (R2), y la empresa que ya existía queda en CR (R5).
+ * - Con las seis, la geografía que ya había queda en CR con sus `id`, nombres, estado y código sin
+ *   cambio (R2), la empresa que ya existía queda en CR (R5) y CR queda disponible (R44).
+ * - Con una fila `pais_disponibilidad_*` en el historial, el down de `120500` aborta sin tocar nada
+ *   (enmienda 2026-10-26, decisión 6).
  * - Con un segundo país cuyos nombres chocarían con el único global, el down de la geografía aborta
  *   sin tocar nada.
- * - Los cinco `down.sql`, en orden inverso, dejan el esquema como antes de SL-20: columnas,
+ * - Los seis `down.sql`, en orden inverso, dejan el esquema como antes de SL-20: columnas,
  *   constraints, índices, tipos, funciones, triggers, políticas, RLS y privilegios de `servi_app`.
  * - Reaplicadas, todo vuelve igual que la primera vez.
  *
@@ -46,11 +48,12 @@ const M_ORGANIZACION = "20261026120100_organizacion_pais";
 const M_GEOGRAFIA = "20261026120200_geografia_por_pais";
 const M_TRIGGER = "20261026120300_geografia_del_pais_de_la_empresa";
 const M_HISTORIAL = "20261026120400_historial_plataforma";
-const DE_SL20 = [M_PAIS, M_ORGANIZACION, M_GEOGRAFIA, M_TRIGGER, M_HISTORIAL];
+const M_DISPONIBLE = "20261026120500_pais_disponible";
+const DE_SL20 = [M_PAIS, M_ORGANIZACION, M_GEOGRAFIA, M_TRIGGER, M_HISTORIAL, M_DISPONIBLE];
 
 const BASE = `sl20_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
-describe("SL-20 — las cinco migraciones en disco", () => {
+describe("SL-20 — las seis migraciones en disco", () => {
   it("cada una trae su down.sql y van en orden detrás de la última de dev, organizacion_pais antes que la geografía", () => {
     const carpetas = carpetasDeMigracion();
     const posiciones = [PREVIA, ...DE_SL20].map((c) => carpetas.indexOf(c));
@@ -142,7 +145,7 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     for (const carpeta of DE_SL20) await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
     con = await fotoCompleta();
     // Sin esto el ciclo sería verde con migraciones vacías o mal leídas.
-    expect(diferencias(con, antes).length, "las cinco migraciones no cambiaron nada").toBeGreaterThan(0);
+    expect(diferencias(con, antes).length, "las seis migraciones no cambiaron nada").toBeGreaterThan(0);
   }, 600_000);
 
   afterAll(async () => {
@@ -153,7 +156,7 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     }
   }, 60_000);
 
-  it("R2/R5: con las cinco, la geografía queda en CR sin cambiar id, nombre, estado ni código, y la empresa en CR", async () => {
+  it("R2/R5/R44: con las seis, la geografía queda en CR sin cambiar id, nombre, estado ni código, la empresa en CR y CR disponible", async () => {
     expect(diferencias({ g: await geografia() }, { g: geografiaAntes }), "la geografía cambió").toEqual([]);
     const fueraDeCR = await uno(
       `SELECT (SELECT count(*) FROM provincia WHERE pais_id <> 'CR') + (SELECT count(*) FROM canton WHERE pais_id <> 'CR')
@@ -161,10 +164,31 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     );
     expect(Number(fueraDeCR)).toBe(0);
     expect(await uno(`SELECT pais_id FROM organizacion WHERE id = $1`, [organizacionId])).toBe("CR");
+    expect(await uno(`SELECT string_agg(id || '=' || disponible, ',' ORDER BY id) FROM pais`)).toBe("CR=true");
   });
 
+  it("con una fila pais_disponibilidad_* en el historial, el down de pais_disponible aborta sin tocar nada", async () => {
+    const filaId = randomUUID();
+    await db.query(`INSERT INTO historial_plataforma (id, accion, entidad_tipo, entidad_id, entidad_etiqueta, pais_id)
+      VALUES ($1, 'pais_disponibilidad_desactivada', 'pais', 'CR', 'Costa Rica', 'CR')`, [filaId]);
+    const previo = await fotoCompleta();
+
+    const fallo = await ejecutar(db, sqlDe(M_DISPONIBLE, "down.sql"), `${M_DISPONIBLE}/down.sql`).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(fallo, "el down de pais_disponible no abortó").toBeInstanceOf(ErrorDeScript);
+    expect((fallo as ErrorDeScript).sqlstate).toBe("P0001");
+    expect((fallo as ErrorDeScript).message).toContain("historial_plataforma");
+    expect(diferencias(await fotoCompleta(), previo), "tras el down abortado").toEqual([]);
+    expect(await uno(`SELECT accion::text FROM historial_plataforma WHERE id = $1`, [filaId])).toBe("pais_disponibilidad_desactivada");
+
+    await db.query(`DELETE FROM historial_plataforma WHERE id = $1`, [filaId]);
+    expect(diferencias(await fotoCompleta(), con), "tras borrar la fila").toEqual([]);
+  }, 120_000);
+
   it("con un segundo país que repite el nombre de una provincia, el down de la geografía aborta sin tocar nada", async () => {
-    for (const carpeta of [M_HISTORIAL, M_TRIGGER]) await ejecutar(db, sqlDe(carpeta, "down.sql"), `${carpeta}/down.sql`);
+    for (const carpeta of [M_DISPONIBLE, M_HISTORIAL, M_TRIGGER]) await ejecutar(db, sqlDe(carpeta, "down.sql"), `${carpeta}/down.sql`);
     await db.query(`INSERT INTO pais (id, nombre, nivel_1_singular, nivel_1_plural, nivel_2_singular, nivel_2_plural,
       nivel_3_singular, nivel_3_plural) VALUES ('XA', 'País XA', 'a', 'b', 'c', 'd', 'e', 'f')`);
     await db.query(`INSERT INTO provincia (id, nombre, pais_id) VALUES ($1, 'Cartago', 'XA')`, [randomUUID()]);
@@ -181,14 +205,14 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
 
     await db.query(`DELETE FROM provincia WHERE pais_id = 'XA'`);
     await db.query(`DELETE FROM pais WHERE id = 'XA'`);
-    for (const carpeta of [M_TRIGGER, M_HISTORIAL]) await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
-    expect(diferencias(await fotoCompleta(), con), "tras reponer las dos").toEqual([]);
+    for (const carpeta of [M_TRIGGER, M_HISTORIAL, M_DISPONIBLE]) await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
+    expect(diferencias(await fotoCompleta(), con), "tras reponer las tres").toEqual([]);
   }, 120_000);
 
-  it("los cinco down.sql, en orden inverso, dejan el esquema como antes de SL-20", async () => {
+  it("los seis down.sql, en orden inverso, dejan el esquema como antes de SL-20", async () => {
     for (const carpeta of [...DE_SL20].reverse()) await ejecutar(db, sqlDe(carpeta, "down.sql"), `${carpeta}/down.sql`);
 
-    expect(diferencias(await fotoCompleta(), antes), "tras los cinco downs").toEqual([]);
+    expect(diferencias(await fotoCompleta(), antes), "tras los seis downs").toEqual([]);
     expect(diferencias({ g: await geografia() }, { g: geografiaAntes }), "la geografía cambió").toEqual([]);
     // Nombrados aparte: si la foto dejara de mirarlos, este caso lo diría igual.
     expect(
@@ -204,7 +228,7 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     ).toBe("canton_lectura,distrito_lectura,provincia_lectura");
   }, 120_000);
 
-  it("reaplicadas las cinco, todo vuelve igual que la primera vez", async () => {
+  it("reaplicadas las seis, todo vuelve igual que la primera vez", async () => {
     for (const carpeta of DE_SL20) await ejecutar(db, sqlDe(carpeta, "migration.sql"), `${carpeta}/migration.sql (otra vez)`);
     expect(diferencias(await fotoCompleta(), con), "tras reaplicar").toEqual([]);
     expect(diferencias({ g: await geografia() }, { g: geografiaAntes }), "la geografía cambió").toEqual([]);

@@ -2,7 +2,8 @@
 //
 // Modulo PURO, sin React: por eso este archivo no monta nada y puede recorrer el arbol entero caso
 // a caso. Lo que la pantalla añade encima —que mover el conmutador no dispare ninguna llamada al
-// servidor— lo mide `tests/unit/components/geografia-admin.ui.test.tsx`.
+// servidor— lo medía `tests/unit/components/geografia-admin.ui.test.tsx`, borrado con
+// `/configuracion/geografia` (SL-20 R22); vuelve con la pantalla de `/plataforma/geografia` (T5.3).
 //
 // EL ARBOL DE PRUEBA TIENE CUATRO PROVINCIAS y las cuatro combinaciones que importan: una rama
 // entera sana, un canton retirado con un distrito ACTIVO POR SU CUENTA debajo (el estado que R10

@@ -52,6 +52,12 @@ vi.mock("@/lib/actions/cobro-plataforma", () => ({
   fijarCobroEmpresaAction: vi.fn(),
 }));
 
+// SL-20 (R9, R45): los países del `Select` del alta, solo los disponibles.
+const { paisesMock } = vi.hoisted(() => ({ paisesMock: vi.fn() }));
+vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
+  listarPaisesDisponibles: (...a: unknown[]) => paisesMock(...a),
+}));
+
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import EmpresasPage from "@/app/(app)/plataforma/empresas/page";
 
@@ -66,6 +72,7 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pais: { id: "CR", nombre: "Costa Rica" },
   },
   {
     id: "org-a",
@@ -77,6 +84,8 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    // SL-20 (R9, R46): un país ya apagado sigue saliendo en la columna.
+    pais: { id: "XA", nombre: "País Apagado" },
   },
 ];
 
@@ -97,6 +106,7 @@ beforeEach(() => {
   tiposMock.mockResolvedValue([{ id: "t-1", value: "cedula" }]);
   pendientesMock.mockResolvedValue({ estado: "ok", organizacionIds: ["org-b"] });
   verCobroMock.mockResolvedValue({ status: "ok", cobroGlobal: { monto: null } });
+  paisesMock.mockResolvedValue({ status: "ok", paises: [{ id: "CR", nombre: "Costa Rica" }] });
 });
 
 afterEach(() => cleanup());
@@ -110,6 +120,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     expect(tiposMock).not.toHaveBeenCalled();
     expect(pendientesMock).not.toHaveBeenCalled();
     expect(verCobroMock).not.toHaveBeenCalled();
+    expect(paisesMock).not.toHaveBeenCalled();
   });
 
   it("sin sesión → notFound(), sin leer nada", async () => {
@@ -120,6 +131,7 @@ describe("SL-32 (R35) — /plataforma/empresas solo para la plataforma", () => {
     expect(tiposMock).not.toHaveBeenCalled();
     expect(pendientesMock).not.toHaveBeenCalled();
     expect(verCobroMock).not.toHaveBeenCalled();
+    expect(paisesMock).not.toHaveBeenCalled();
   });
 });
 
@@ -220,5 +232,48 @@ describe("SL-40 (R9) — la página baja el valor global al bloque «Cobro por o
     const bloque = screen.getByRole("region", { name: "Cobro por orden" });
     expect(bloque).toHaveTextContent("No se pudo leer el valor global.");
     expect(bloque).not.toHaveTextContent("Sin configurar (0,00)");
+  });
+});
+
+describe("SL-20 (R9, R45) — la página baja los países disponibles al alta", () => {
+  it("pide los países con su actor y el `Select` ofrece solo esos, sin preselección", async () => {
+    const actor = { usuarioId: "sa-1", rol: "superadmin" as const };
+    actorMock.mockResolvedValue(actor);
+    paisesMock.mockResolvedValue({
+      status: "ok",
+      paises: [
+        { id: "CR", nombre: "Costa Rica" },
+        { id: "EC", nombre: "Ecuador" },
+      ],
+    });
+
+    render(await EmpresasPage());
+
+    expect(paisesMock).toHaveBeenCalledWith(actor);
+    const pais = screen.getByRole("combobox", { name: "País" });
+    expect(pais).toHaveTextContent("Elige el país");
+    pais.click();
+    const opciones = await screen.findAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["Costa Rica", "Ecuador"]);
+  });
+
+  it("R9/R46: la columna «País» pinta el de cada empresa, también el de un país apagado", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+
+    render(await EmpresasPage());
+
+    const filas = screen.getAllByRole("row").slice(1);
+    expect(within(filas[0]).getByText("Costa Rica")).toBeInTheDocument();
+    expect(within(filas[1]).getByText("País Apagado")).toBeInTheDocument();
+  });
+
+  it("con `forbidden`, el `Select` queda sin opciones en vez de inventar países", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "sa-1", rol: "superadmin" });
+    paisesMock.mockResolvedValue({ status: "forbidden" });
+
+    render(await EmpresasPage());
+
+    screen.getByRole("combobox", { name: "País" }).click();
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
 });

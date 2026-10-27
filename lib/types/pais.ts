@@ -56,6 +56,17 @@ export interface PaisDTO extends ReglaDeCodigoDePais {
   nivel2Plural: string;
   nivel3Singular: string;
   nivel3Plural: string;
+  /** Enmienda 2026-10-26, decisión 6 (R44): hay cobertura. Con `false` no se acepta en un alta nueva de empresa (R45). */
+  disponible: boolean;
+}
+
+/**
+ * Un país que se puede elegir en el alta de empresa (R9, R45): solo los `disponible = true`. Lo que
+ * necesita el `Select` y nada más: el valor (`id`, el código) y la etiqueta (`nombre`).
+ */
+export interface PaisDisponibleDTO {
+  id: string;
+  nombre: string;
 }
 
 export interface EtiquetaDeNivel {

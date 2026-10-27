@@ -5325,6 +5325,9 @@ model Pais {
   digitosCodigoNivel2 Int?     @map("digitos_codigo_nivel_2")
   digitosCodigoNivel3 Int?     @map("digitos_codigo_nivel_3")
   createdAt           DateTime @default(now()) @map("created_at")
+  /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026120500): hay cobertura en el país (R44). Con
+  /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
+  disponible          Boolean  @default(true)
 
   provincias          Provincia[]
   organizaciones      Organizacion[]
@@ -5344,6 +5347,9 @@ enum HistorialPlataformaAccion {
   nodo_geografico_renombrado
   nodo_geografico_desactivado
   nodo_geografico_activado
+  // Enmienda 2026-10-26, decisión 6 (R47; 20261026120500): el superadmin enciende o apaga un país.
+  pais_disponibilidad_activada
+  pais_disponibilidad_desactivada
 
   @@map("historial_plataforma_accion")
 }

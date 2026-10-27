@@ -160,7 +160,8 @@ describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cu
     { estado: "conflicto", campo: "email" },
     { estado: "conflicto", campo: "documento" },
     { estado: "invalida", campo: "maestro.tipoDocumento" },
-    // SL-20: R8 (misma alta en otro país) y R6 (país con buena forma que no existe).
+    // SL-20: R8 (misma alta en otro país), y R6 (país con buena forma que no existe) o R45 (país
+    // apagado en un alta nueva): el servicio no mira la base, el repositorio decide y se devuelve tal cual.
     { estado: "conflicto", campo: "paisId" },
     { estado: "invalida", campo: "paisId" },
   ];

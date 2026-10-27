@@ -329,6 +329,7 @@ test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geograf
 
   const provinciasAntes = await db.provincia.count();
   // SL-32 R26: la página no tiene formulario para el maestro, así que no hay provincia que intentar crear.
+  // SL-20 R22: desde SL-20 la ruta ya no existe; el 404 vale para todo rol.
   const g = await visitar(page, "/configuracion/geografia");
   expect.soft(g.estado, "geografía: el maestro no recibe 404").toBe(404);
   expect.soft(g.texto.includes(NO_ENCONTRADO), "geografía: el maestro no ve «no encontrado»").toBe(true);

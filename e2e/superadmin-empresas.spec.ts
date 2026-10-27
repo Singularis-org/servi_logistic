@@ -142,6 +142,7 @@ function formulario(page: Page) {
     form,
     nombre: empresa.getByLabel("Nombre", { exact: true }),
     slug: empresa.getByLabel("Slug", { exact: true }),
+    pais: empresa.getByRole("combobox", { name: "País" }),
     maestroNombre: maestro.getByLabel("Nombre", { exact: true }),
     email: maestro.getByLabel("Email", { exact: true }),
     telefono: maestro.getByLabel("Teléfono", { exact: true }),
@@ -156,6 +157,9 @@ async function enviarAlta(page: Page, d: DatosDeAlta): Promise<void> {
   const f = formulario(page);
   await f.nombre.fill(d.nombre);
   await f.slug.fill(d.slug);
+  // SL-20 (R9): sin país preseleccionado; se elige CR («Costa Rica»), disponible tras la migración (R44).
+  await f.pais.click();
+  await page.getByRole("option", { name: "Costa Rica", exact: true }).click();
   await f.maestroNombre.fill(d.maestroNombre);
   await f.email.fill(d.email);
   await f.telefono.fill(d.telefono);

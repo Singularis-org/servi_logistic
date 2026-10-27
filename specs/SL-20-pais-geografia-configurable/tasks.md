@@ -57,7 +57,7 @@ para y avisa al leader.
   `pais-tabla`, `geografia-por-pais`, `organizacion-pais-inmutable`, `historial-plataforma-rls` y
   `migracion-sl20-ida-y-vuelta`. Dep.: T1.1–T1.6.
   **Hecho:** cubren R1–R5, R7, R10, R11, R16 y R34, y la ida y vuelta (up → down → up) pasa.
-- [ ] T1.8 **(enmienda 2026-10-26, decisión 6)** Migración `20261026120500_pais_disponible` +
+- [x] T1.8 **(enmienda 2026-10-26, decisión 6)** Migración `20261026120500_pais_disponible` +
   `down.sql` (§2.1, §2.6, §3): `pais.disponible BOOLEAN NOT NULL DEFAULT true` y los valores
   `pais_disponibilidad_activada`/`_desactivada` del enum; `Pais.disponible` y el enum en
   `db/schema.prisma`. Test nuevo `tests/integration/db/pais-disponible.test.ts` y caso de `120500` en

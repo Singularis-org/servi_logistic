@@ -3,6 +3,7 @@ import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisReposit
 import type {
   CrearPaisServiceResult,
   IPaisService,
+  ListarPaisesDisponiblesServiceResult,
   ListarPaisesServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
@@ -20,6 +21,12 @@ export class PaisService implements IPaisService {
   async listar(actor: Actor): Promise<ListarPaisesServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
     return { status: "ok", paises: await this.repo.listar() };
+  }
+
+  /** R9/R45: las opciones del alta de empresa. El servidor vuelve a mirarlo en el alta (R45). */
+  async listarDisponibles(actor: Actor): Promise<ListarPaisesDisponiblesServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+    return { status: "ok", paises: await this.repo.listarDisponibles() };
   }
 
   /**

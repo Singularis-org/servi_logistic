@@ -8,7 +8,7 @@ import type {
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { appendAccionPlataforma } from "@/lib/repositories/registrar-accion-plataforma";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { CrearPaisInput, PaisDTO } from "@/lib/types/pais";
+import type { CrearPaisInput, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
 
 /**
  * SL-20 (design §2.1, §5; R23, R33) — la tabla `pais`, de plataforma.
@@ -32,6 +32,7 @@ const SELECT_PAIS = {
   digitosCodigoNivel1: true,
   digitosCodigoNivel2: true,
   digitosCodigoNivel3: true,
+  disponible: true,
 } as const;
 
 export class PaisRepository implements IPaisRepository {
@@ -39,6 +40,15 @@ export class PaisRepository implements IPaisRepository {
 
   listar(): Promise<PaisDTO[]> {
     return this.prisma.pais.findMany({ orderBy: [{ nombre: "asc" }], select: SELECT_PAIS });
+  }
+
+  /** R9/R45: el filtro va en el SQL, no en la pantalla; un país apagado no sale de la base. */
+  listarDisponibles(): Promise<PaisDisponibleDTO[]> {
+    return this.prisma.pais.findMany({
+      where: { disponible: true },
+      orderBy: [{ nombre: "asc" }],
+      select: { id: true, nombre: true },
+    });
   }
 
   porId(id: string): Promise<PaisDTO | null> {

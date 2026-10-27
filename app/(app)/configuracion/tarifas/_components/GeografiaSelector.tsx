@@ -330,7 +330,7 @@ export function GeografiaSelector({
  * marcado desde `initialSelected`— perderia su fila en el siguiente guardado de la zona, y a
  * partir de ahi toda alta que lo nombre moriria con «no tiene zona asignada» sin poner rojo nada.
  *
- * Quien administra el catalogo lo hace en /configuracion/geografia, no aqui.
+ * Quien administra el catalogo es el superadmin, en /plataforma/geografia (SL-20 R21), no aqui.
  */
 function MarcaRetirado({
   estado,

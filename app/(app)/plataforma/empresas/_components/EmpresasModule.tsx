@@ -43,6 +43,12 @@ export interface EmpresasModuleProps {
   /** El catálogo de tipos de documento (`ListarTiposIdentificacionResult`). */
   tiposDocumento: { id: string; value: string }[];
   /**
+   * SL-20 (R9, R45): los países que ofrece el alta, solo los `disponible = true` y ya ordenados por
+   * nombre (`listarPaisesDisponibles`). `id` es el ISO alfa-2 que viaja como `paisId`. La puerta de
+   * verdad es el alta en el servidor: esta lista es comodidad.
+   */
+  paises: { id: string; nombre: string }[];
+  /**
    * La action de alta de SL-17 (`altaEmpresaAction`), inyectada para poder probarla. Su
    * `no_autorizado` cae en el genérico, como cualquier respuesta que no sea de un campo.
    */
@@ -65,6 +71,7 @@ export interface EmpresasModuleProps {
 type Campo =
   | "nombre"
   | "slug"
+  | "paisId"
   | "maestroNombre"
   | "email"
   | "telefono"
@@ -77,6 +84,8 @@ type Errores = Partial<Record<Campo, string>>;
 const VACIO: Formulario = {
   nombre: "",
   slug: "",
+  // SL-20 (R9): sin país preseleccionado; el schema rechaza el vacío y el alta no sale.
+  paisId: "",
   maestroNombre: "",
   email: "",
   telefono: "",
@@ -97,6 +106,8 @@ const TEXTOS = {
   nombre: "Nombre",
   slug: "Slug",
   slugAyuda: "minúsculas, números y guiones",
+  pais: "País",
+  paisPlaceholder: "Elige el país",
   email: "Email",
   telefono: "Teléfono",
   tipoDocumento: "Tipo de documento",
@@ -106,9 +117,11 @@ const TEXTOS = {
   errorSlug: "Ya hay una empresa con ese slug.",
   errorEmail: "Ese email ya pertenece a otro usuario.",
   errorDocumento: "Ese documento ya pertenece a otro usuario.",
+  errorPaisConflicto: "Esa empresa ya existe en otro país.",
   errorCampo: "Revisa este campo.",
   columnaNombre: "Nombre",
   columnaSlug: "Slug",
+  columnaPais: "País",
   columnaAlta: "Alta",
   columnaMaestros: "Maestros",
   columnaBienvenida: "Bienvenida",
@@ -120,6 +133,7 @@ const TEXTOS = {
 const CAMPO_DE_LA_ACTION: Record<string, Campo> = {
   nombre: "nombre",
   slug: "slug",
+  paisId: "paisId",
   "maestro.nombre": "maestroNombre",
   "maestro.email": "email",
   "maestro.telefono": "telefono",
@@ -152,6 +166,10 @@ function desenlaceDe(respuesta: unknown): Desenlace {
     if (r.campo === "email") return { tipo: "campo", campo: "email", mensaje: TEXTOS.errorEmail };
     if (r.campo === "documento") {
       return { tipo: "campo", campo: "documento", mensaje: TEXTOS.errorDocumento };
+    }
+    // SL-20 (R8): la misma empresa ya existe con otro país.
+    if (r.campo === "paisId") {
+      return { tipo: "campo", campo: "paisId", mensaje: TEXTOS.errorPaisConflicto };
     }
     return { tipo: "generico" };
   }
@@ -207,6 +225,7 @@ const FECHA_CORTA = new Intl.DateTimeFormat("es", { dateStyle: "short" });
 export function EmpresasModule({
   empresas,
   tiposDocumento,
+  paises,
   altaEmpresa,
   reenviarBienvenida,
   bienvenidaPendiente,
@@ -227,6 +246,8 @@ export function EmpresasModule({
     label: t.value,
   }));
 
+  const opcionesPais: SelectOption[] = paises.map((p) => ({ value: p.id, label: p.nombre }));
+
   const idDe = (campo: Campo) => `${base}-${campo}`;
 
   function cambiar(campo: Campo, valor: string) {
@@ -245,6 +266,7 @@ export function EmpresasModule({
     const entrada: AltaEmpresaInput = {
       nombre: form.nombre,
       slug: form.slug,
+      paisId: form.paisId,
       maestro: {
         nombre: form.maestroNombre,
         email: form.email,
@@ -312,6 +334,20 @@ export function EmpresasModule({
           <div className="grid gap-4 md:grid-cols-2">
             {campoTexto("nombre", TEXTOS.nombre)}
             {campoTexto("slug", TEXTOS.slug, { hint: TEXTOS.slugAyuda })}
+            <FormField id={idDe("paisId")} label={TEXTOS.pais} error={errores.paisId}>
+              {({ id, "aria-invalid": ariaInvalid, "aria-describedby": ariaDescribedBy }) => (
+                <Select
+                  id={id}
+                  aria-label={TEXTOS.pais}
+                  value={form.paisId}
+                  options={opcionesPais}
+                  placeholder={TEXTOS.paisPlaceholder}
+                  onValueChange={(v) => cambiar("paisId", v)}
+                  aria-invalid={ariaInvalid}
+                  aria-describedby={ariaDescribedBy}
+                />
+              )}
+            </FormField>
           </div>
         </fieldset>
 
@@ -427,6 +463,7 @@ function ListadoEmpresas({
         <TableRow>
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
+          <TableHead>{TEXTOS.columnaPais}</TableHead>
           <TableHead>{TEXTOS.columnaAlta}</TableHead>
           <TableHead>{TEXTOS_COBRO.titulo}</TableHead>
           <TableHead>{TEXTOS_PLATAFORMA.columna}</TableHead>
@@ -439,6 +476,8 @@ function ListadoEmpresas({
           <TableRow key={empresa.id}>
             <TableCell className="font-medium">{empresa.nombre}</TableCell>
             <TableCell>{empresa.slug}</TableCell>
+            {/* SL-20 (R9, R46): el país de la empresa aunque ya no esté disponible para altas. */}
+            <TableCell>{empresa.pais.nombre}</TableCell>
             <TableCell>{FECHA_CORTA.format(empresa.creadaEn)}</TableCell>
             <TableCell>
               <CeldaCobroEmpresa

@@ -46,8 +46,10 @@ async function altaEnTransaccion(
 
   // SL-20 (R6): el país tiene que existir. Se mira antes de escribir nada para no depender del
   // rechazo de la FK, que llegaría con la transacción ya abortada.
-  const pais = await tx.pais.findUnique({ where: { id: datos.paisId }, select: { id: true } });
-  if (!pais) return { estado: "invalida", campo: "paisId" };
+  // Enmienda 2026-10-26, decisión 6 (R45): y tener cobertura. Solo frena el alta NUEVA: la repetición
+  // de una empresa que ya existe se decidió arriba, antes de mirar el país (R46, design §13).
+  const pais = await tx.pais.findUnique({ where: { id: datos.paisId }, select: { disponible: true } });
+  if (!pais || !pais.disponible) return { estado: "invalida", campo: "paisId" };
 
   const tipoIdentificacion = await tx.tipoIdentificacion.findUnique({
     where: { value: datos.maestro.tipoDocumento },

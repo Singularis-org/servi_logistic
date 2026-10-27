@@ -14,6 +14,8 @@ import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTes
 //     transacción; un código o un nombre que ya están los rechaza la base como `duplicado`.
 //   · R19 (datos): `deLaEmpresa`, en el contexto de la empresa (`servi_app`, RLS), lee el país de esa
 //     empresa; `etiquetasDeEmpresa` da sus nombres de nivel.
+//   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` trae `{ id, nombre }` solo de los países con
+//     `disponible = true`, por nombre; `listar` sigue trayéndolos todos, con su `disponible`.
 //
 // Todo en una transacción del dueño que se revierte. El repositorio abre su propia transacción: va
 // sobre `clienteConSavepoint`, que abre un SAVEPOINT real, para que un único violado no aborte el caso.
@@ -65,7 +67,8 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
 
     expect(r.alta).toEqual({
       status: "ok",
-      pais: { ...DATOS_XA, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null },
+      // R44: nace disponible por el `DEFAULT true` de 20261026120500.
+      pais: { ...DATOS_XA, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
     });
     expect(r.fila).toMatchObject(DATOS_XA);
     expect(r.provincias).toBe(0);
@@ -114,6 +117,24 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(r.cr).toMatchObject({ digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 });
     expect(r.xa).toMatchObject({ digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null });
     expect(r.nada).toBeNull();
+  });
+
+  it("R9/R45: listarDisponibles trae solo los países disponibles, por nombre; listar los trae todos con su disponibilidad", async () => {
+    const r = await revertida(base, async (tx) => {
+      await crearPaisDePrueba(tx, "XA");
+      await crearPaisDePrueba(tx, "XB");
+      await tx.pais.update({ where: { id: "XB" }, data: { disponible: false } });
+      const repo = new PaisRepository(clienteConSavepoint(tx));
+      return { disponibles: await repo.listarDisponibles(), todos: await repo.listar() };
+    });
+
+    const deLaPrueba = (ids: string[]) => ids.filter((id) => ["CR", "XA", "XB"].includes(id));
+    expect(deLaPrueba(r.disponibles.map((p) => p.id))).toEqual(["CR", "XA"]);
+    expect(r.disponibles.find((p) => p.id === "XA")).toEqual({ id: "XA", nombre: "País de prueba XA" });
+    expect(Object.keys(r.disponibles[0]).sort()).toEqual(["id", "nombre"]);
+    expect(
+      r.todos.filter((p) => ["CR", "XA", "XB"].includes(p.id)).map((p) => `${p.id}=${p.disponible}`),
+    ).toEqual(["CR=true", "XA=true", "XB=false"]);
   });
 
   it("R19/T2.3: en el contexto de una empresa (RLS), sus etiquetas son las de su país: XA y CR", async () => {

@@ -12,6 +12,8 @@ import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pa
 //     llamar a `crear`; la entrada inválida no llega al repositorio.
 //   · R37: un rol de empresa recibe `forbidden` sin tocar la base (ni para leer).
 //   · T2.3: `etiquetasDeEmpresa` da los nombres de nivel del país de la empresa (XA y CR).
+//   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` da `{ id, nombre }` de los países con
+//     cobertura, solo a la plataforma.
 // El SQL (único, historial, RLS) lo mide `tests/integration/db/pais-repositorio.test.ts`.
 
 const SUPERADMIN: Actor = { usuarioId: "u-super", rol: ROLES_PLATAFORMA[0] };
@@ -28,6 +30,7 @@ const COSTA_RICA: PaisDTO = {
   digitosCodigoNivel1: 1,
   digitosCodigoNivel2: 3,
   digitosCodigoNivel3: 5,
+  disponible: true,
 };
 
 const PAIS_XA: PaisDTO = {
@@ -42,6 +45,7 @@ const PAIS_XA: PaisDTO = {
   digitosCodigoNivel1: null,
   digitosCodigoNivel2: null,
   digitosCodigoNivel3: null,
+  disponible: true,
 };
 
 function entradaValida() {
@@ -61,9 +65,10 @@ function repoDoble(o: { paises?: PaisDTO[]; crear?: CrearPaisRepoResultado; deLa
   const paises = o.paises ?? [COSTA_RICA];
   const repo = {
     listar: vi.fn(async () => paises),
+    listarDisponibles: vi.fn(async () => paises.filter((p) => p.disponible).map(({ id, nombre }) => ({ id, nombre }))),
     porId: vi.fn(async (id: string) => paises.find((p) => p.id === id) ?? null),
     crear: vi.fn<IPaisRepository["crear"]>(async (datos) =>
-      o.crear ?? { estado: "creado", pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null } },
+      o.crear ?? { estado: "creado", pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true } },
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
   } satisfies IPaisRepository;
@@ -174,13 +179,27 @@ describe("R37 — un rol de empresa no gestiona países", () => {
 
     expect(await servicio.crear(entradaValida(), actor)).toEqual({ status: "forbidden" });
     expect(await servicio.listar(actor)).toEqual({ status: "forbidden" });
+    expect(await servicio.listarDisponibles(actor)).toEqual({ status: "forbidden" });
     expect(repo.listar).not.toHaveBeenCalled();
+    expect(repo.listarDisponibles).not.toHaveBeenCalled();
     expect(repo.crear).not.toHaveBeenCalled();
   });
 
   it("la plataforma sí lista", async () => {
     const repo = repoDoble({ paises: [COSTA_RICA, PAIS_XA] });
     expect(await new PaisService(repo).listar(SUPERADMIN)).toEqual({ status: "ok", paises: [COSTA_RICA, PAIS_XA] });
+  });
+});
+
+describe("R9/R45 — los países que ofrece el alta de empresa", () => {
+  it("la plataforma recibe solo los disponibles, con su código y su nombre, tal como los da el repositorio", async () => {
+    const repo = repoDoble({ paises: [COSTA_RICA, { ...PAIS_XA, disponible: false }] });
+    expect(await new PaisService(repo).listarDisponibles(SUPERADMIN)).toEqual({
+      status: "ok",
+      paises: [{ id: "CR", nombre: "Costa Rica" }],
+    });
+    expect(repo.listarDisponibles).toHaveBeenCalledTimes(1);
+    expect(repo.listar).not.toHaveBeenCalled();
   });
 });
 
