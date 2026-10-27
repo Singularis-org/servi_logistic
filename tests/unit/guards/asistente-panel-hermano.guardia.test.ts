@@ -75,10 +75,16 @@ describe("436/R22 — el panel es HERMANO de `{children}`, jamás envolviéndolo
   it("⭑ CONTRAPRUEBA — un panel convertido en envoltorio pone la guardia roja", () => {
     // Sin esto, el caso de arriba podría estar verde porque el detector no detecta.
     const envuelve = /<AsistentePanel[^/>]*>[\s\S]*\{children\}/;
-    const mutado = leer(LAYOUT).replace(
-      "<AyudaProvider mapa={mapaAyuda}>{children}</AyudaProvider>",
-      "<AsistentePanel><AyudaProvider mapa={mapaAyuda}>{children}</AyudaProvider></AsistentePanel>",
-    );
+    // SL-20 (T5.1): `{children}` ya no va directo en `AyudaProvider`, sino dentro de
+    // `EtiquetasGeograficasProvider`; la mutación apunta al nodo real que hoy lo pinta.
+    const original = leer(LAYOUT);
+    const objetivo =
+      "<EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>";
+    // Si el layout cambia y el texto ya no existe, la contraprueba debe fallar en ruidoso, no
+    // quedarse sin mutar en silencio.
+    expect(original, "la contraprueba no encuentra el nodo a mutar en el layout").toContain(objetivo);
+    const mutado = original.replace(objetivo, `<AsistentePanel>${objetivo}</AsistentePanel>`);
+    expect(mutado).not.toBe(original);
     expect(envuelve.test(mutado)).toBe(true);
   });
 

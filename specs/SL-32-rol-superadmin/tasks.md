@@ -435,7 +435,7 @@ paralelo: T12 y T13 ya, y P8 resuelta antes de dar de alta la primera empresa re
 | R21 | `tests/integration/db/migracion-sl32-ida-y-vuelta.test.ts` y su parte estática (añadido el 2026-10-23, review B1), además de la verificación manual de T3 |
 | R22, R23 | `tests/unit/guards/docs-marca-heredada.guardia.test.ts` |
 | R24, R25 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/actions/geografia-action.test.ts`, `tests/integration/db/geografia-registro-accion.test.ts`, `tests/integration/db/geografia-cascada-reversible.test.ts` y `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`. La rama del `superadmin`, solo con dobles hasta P7 |
-| R26 | `tests/unit/components/geografia-admin-page.test.tsx` (`notFound()` al `maestro`), `tests/unit/auth/menu-visibility.test.ts` y la revisión del diff de la ayuda (T1b) |
+| R26 | `tests/unit/components/geografia-plataforma-page.test.tsx` (`notFound()` al `maestro`; *repuntado el 2026-10-27, SL-20 R22: `/configuracion/geografia` y el test de su página se borraron en T5.3 (commit 78b0ab3), y la gestión vive en `/plataforma/geografia`, cuyo caso «R21 — la puerta, antes de leer» responde 404 al `maestro` sin leer países ni árbol; la ayuda `configuracion-geografia.md` se retiró en SL-20, decisión 9*), `tests/unit/auth/menu-visibility.test.ts` y la revisión del diff de la ayuda (T1b) |
 | R27 | `tests/integration/db/un-solo-superadmin.test.ts`, `tests/integration/db/arranque-superadmin.test.ts` (ejecuciones en paralelo) y `tests/unit/services/usuario-service-superadmin.test.ts` (R9) |
 | R28 | `tests/integration/db/usuario-empresa-o-superadmin.test.ts` |
 | R29 | `tests/components/empresas-module.test.tsx`, `tests/integration/db/empresas-plataforma.test.ts` y `e2e/superadmin-empresas.spec.ts` |

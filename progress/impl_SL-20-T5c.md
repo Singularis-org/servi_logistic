@@ -87,3 +87,30 @@ Modificados:
 
 ## Veredicto
 T5.3 y T5.7 hechas: typecheck, lint, test nuevo (20/20), guardias y T5.5 en verde; sin dependencias nuevas.
+
+## Guardias rojas tras T5
+
+Tres guardias en rojo, todas por cambios de SL-20. Arregladas sin debilitarlas.
+
+### Archivos
+- `tests/unit/guards/asistente-panel-hermano.guardia.test.ts`: la contraprueba muta el nodo real de hoy. T5.1 metió `EtiquetasGeograficasProvider` dentro de `AyudaProvider`, así que el `.replace` viejo no encontraba nada y no mutaba. Ahora envuelve `<EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>` y antes de mutar afirma dos cosas: que ese texto existe en el layout y que `mutado !== original`. Si el layout vuelve a cambiar, el test falla de forma visible en vez de quedar verde en silencio. La guardia principal no se toca.
+- `tests/unit/guards/asistente-sin-frontmatter.guardia.test.ts`: el recuento baja de 38 a 37 (`docs.length` y `conFuentes.length`) con el comentario «SL-20 (decisión 9): 38→37, se retira configuracion-geografia».
+- `tests/integration/asistente-route.test.ts`: el mismo recuento a 38 para el `maestro` (37 reales), con el mismo comentario. Lo encontró el grep; f93f45c no lo había ajustado.
+- `specs/SL-32-rol-superadmin/tasks.md` (R26), salida (1): la cita se repunta a `tests/unit/components/geografia-plataforma-page.test.tsx`. Verificado antes de repuntar: el caso `R21 — la puerta, antes de leer` usa `it.each(["maestro", ...])`, que responde `NEXT_NOT_FOUND` sin llamar a `listarPaisesAction` ni a `arbolDePaisAction`. La ruta pasa a ser `/plataforma/geografia`, porque `/configuracion/geografia` ya no existe (SL-20 R22). La nota en la celda dice por qué. `specs/374-catalogo-geografico-admin/tasks.md` no salía en la guardia y no se tocó.
+
+### Grep de recuentos a 38 en tests de ayuda/asistente
+Después del cambio no queda ninguno: `toBe(38)` y `toHaveLength(38)` no aparecen en `tests/`. `AyudaLayout.test.tsx` y los dos `acotamiento-por-rol` ya tenían 37 desde f93f45c.
+
+### Salida real
+```
+pnpm exec vitest run <3 guardias> tests/integration/asistente-route.test.ts tests/components/AyudaLayout.test.tsx tests/unit/asistente/acotamiento-por-rol.test.ts tests/unit/asistente/contexto-documental.test.ts tests/unit/ayuda/acotamiento-por-rol.test.ts tests/unit/components/geografia-plataforma-page.test.tsx
+ Test Files  9 passed (9)
+      Tests  134 passed (134)
+
+pnpm exec eslint <los 3 .ts tocados>
+ESLint: No issues found
+```
+Nota: en el primer intento de repunte, el nombre del test borrado seguía en la nota de la celda y la guardia lo volvió a detectar como cita. Lo quité del texto.
+
+### Veredicto
+Las tres guardias en verde, más el recuento de `asistente-route` que tampoco cuadraba. No se debilitó ninguna aserción.
