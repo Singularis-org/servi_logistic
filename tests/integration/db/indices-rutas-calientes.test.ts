@@ -5,6 +5,9 @@ import { prepararConsultaAnalitica, type ConsultaAnalitica } from "@/lib/analyti
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { AnaliticaOperativaRollupRepository } from "@/lib/repositories/AnaliticaOperativaRollupRepository";
+import { AnaliticaOperativaVivaRepository } from "@/lib/repositories/AnaliticaOperativaVivaRepository";
+import { HistorialAccionRepository } from "@/lib/repositories/HistorialAccionRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaRepository } from "@/lib/repositories/TarifaRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { WhatsappEjecucionRepository } from "@/lib/repositories/WhatsappEjecucionRepository";
@@ -19,7 +22,9 @@ import {
 } from "./_postgres-real";
 
 // SL-18 T5.3 — los indices de rutas calientes (migracion `20261026090100_indices_rutas_calientes`)
-// contra Postgres real: R24 y R25.
+// contra Postgres real: R24 y R25. T5.4 suma los de la ampliacion
+// (`20261026090200_indices_ordenes_gestiones_historial`): el listado de ordenes, la ventana
+// intradia de gestiones y el listado del historial de acciones.
 //
 // QUE SE MIDE. La consulta es la REAL: se captura el SQL que emite cada repositorio por el cliente
 // de la app (la extension pone `organizacion_id = $n`) y se le hace `EXPLAIN` tal cual. Si el test
@@ -46,11 +51,18 @@ const EJECUCIONES = 2000;
 const TARIFAS = 1000;
 const CUBOS_POR_DIA = 10;
 const USUARIOS = 500;
+/** Ordenes, gestiones y filas del historial por empresa (una gestion por orden). */
+const ORDENES = 4000;
 
 /** Fechas fuera de lo que tiene cualquier base de desarrollo: el corpus es lo unico en rango. */
 const DESDE_ROLLUP = "2000-06-01";
 const HASTA_ROLLUP = "2000-06-30";
 const AHORA = new Date("2000-07-01T12:00:00Z");
+/** Un dia de la ventana intradia, dentro del corpus de gestiones (una cada 15 min por empresa). */
+const VENTANA_INTRADIA = {
+  desde: new Date("2000-01-20T06:00:00Z"),
+  hasta: new Date("2000-01-21T06:00:00Z"),
+};
 
 interface Ruta {
   /** Nombre del indice que la migracion crea. */
@@ -58,6 +70,13 @@ interface Ruta {
   tabla: string;
   /** Columnas tal como las devuelve `pg_indexes.indexdef`. */
   columnas: string;
+  /** Predicado del indice parcial, tal como lo devuelve `pg_indexes.indexdef`; `null` si no es parcial. */
+  predicado?: string;
+  /**
+   * Quien pone la empresa en la consulta: la extension (`organizacion_id = $n` en el SQL) o la RLS
+   * (SQL a mano: la condicion la añade la policy de `servi_app` y solo se ve en el plan).
+   */
+  empresaPor?: "extension" | "rls";
   /** De donde sale la consulta (archivo y metodo). */
   origen: string;
   capturar: (app: PrismaClient) => Promise<unknown>;
@@ -107,6 +126,47 @@ const RUTAS: readonly Ruta[] = [
       ),
     esLaConsulta: (sql) => sql.includes("GROUP BY"),
   },
+  // T5.4 — la ampliacion (decision de Camilo, 2026-10-26).
+  {
+    // El orden por defecto de `/ordenes`: `prioridad DESC, created_at DESC, id`. El indice es
+    // parcial con el mismo `deleted_at IS NULL` de la consulta.
+    indice: "orden_organizacion_id_prioridad_created_at_id_idx",
+    tabla: "orden",
+    columnas: "organizacion_id, prioridad DESC, created_at DESC, id",
+    predicado: "deleted_at IS NULL",
+    origen: "OrdenRepository.list",
+    capturar: (app) =>
+      new OrdenRepository(app).list({ where: {}, sortBy: "created_at", sortDir: "desc", skip: 0, take: 25 }),
+    esLaConsulta: (sql) => conPagina(sql) && sql.includes('"prioridad" DESC'),
+  },
+  {
+    // SQL a mano: la empresa la pone la RLS, no la extension.
+    indice: "gestion_orden_organizacion_id_created_at_idx",
+    tabla: "gestion_orden",
+    columnas: "organizacion_id, created_at",
+    empresaPor: "rls",
+    origen: "AnaliticaOperativaVivaRepository.contarGestionesVigentes",
+    capturar: (app) =>
+      new AnaliticaOperativaVivaRepository(app).cubosDelDiaEnCurso(
+        consultaDelMaestro(DESDE_ROLLUP, HASTA_ROLLUP),
+        VENTANA_INTRADIA,
+      ),
+    esLaConsulta: (sql) => sql.includes("AS entregas"),
+  },
+  {
+    indice: "historial_accion_organizacion_id_created_at_id_idx",
+    tabla: "historial_accion",
+    columnas: "organizacion_id, created_at DESC, id",
+    origen: "HistorialAccionRepository.list",
+    capturar: (app) =>
+      new HistorialAccionRepository(app).list({
+        filtro: { q: null, actorId: null, accion: null, entidadTipo: null, desde: null, hasta: null },
+        orden: { sortBy: "created_at", sortDir: "desc" },
+        page: 1,
+        pageSize: 25,
+      }),
+    esLaConsulta: conPagina,
+  },
 ];
 
 /**
@@ -152,11 +212,50 @@ async function sembrarDosEmpresas(tx: TxDeTest, a: string, b: string): Promise<v
      FROM generate_series(1, $2::int) g, unnest($1::text[]) e(org) ORDER BY g, e.org`,
     USUARIOS,
   );
+  // T5.4: ordenes con prioritarias (1 de cada 20) y borradas (1 de cada 25), como en el listado
+  // real; la tienda va por empresa para no chocar con el unico `(tienda_id, num_remision)`.
+  await sembrar(
+    `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, tienda_id, zona_id, provincia_id,
+       canton_id, producto, updated_at, created_at, prioridad, deleted_at, organizacion_id)
+     SELECT 'sl18-o-' || e.org || '-' || g, 'r' || g, 'e', 'd', '8', 't-' || e.org || '-' || (g % 50),
+       'z-' || e.org || '-' || (g % 30), 'p', 'c', 'x', now(), timestamp '2000-01-01' + g * interval '15 minutes',
+       g % 20 = 0, CASE WHEN g % 25 = 0 THEN now() END, e.org
+     FROM generate_series(1, $2::int) g, unnest($1::text[]) e(org) ORDER BY g, e.org`,
+    ORDENES,
+  );
+  // La consulta intradia cruza la gestion con el estado de su orden al corte.
+  await tx.$executeRawUnsafe(
+    `INSERT INTO orden_historial_estado (id, orden_id, estatus_destino_id, origen_tipo, created_at, organizacion_id)
+     SELECT 'h-' || o.id, o.id, o.estatus_id, (enum_range(NULL::orden_historial_origen_tipo))[1], o.created_at,
+       o.organizacion_id
+     FROM orden o WHERE o.organizacion_id = ANY($1::text[])`,
+    empresas,
+  );
+  await sembrar(
+    `INSERT INTO gestion_orden (id, orden_id, mensajero_id, resultado, created_at, organizacion_id)
+     SELECT 'sl18-g-' || e.org || '-' || g, 'sl18-o-' || e.org || '-' || g, 'm' || (g % 20),
+       (CASE WHEN g % 3 = 0 THEN 'novedad' ELSE 'entregado' END)::gestion_resultado,
+       timestamp '2000-01-01' + g * interval '15 minutes' + interval '1 hour', e.org
+     FROM generate_series(1, $2::int) g, unnest($1::text[]) e(org) ORDER BY g, e.org`,
+    ORDENES,
+  );
+  await sembrar(
+    `INSERT INTO historial_accion (id, accion, entidad_tipo, entidad_id, entidad_etiqueta, lote_id, created_at,
+       organizacion_id)
+     SELECT 'sl18-ha-' || e.org || '-' || g, 'orden_eliminada', 'orden', 'ent' || g, 'et', 'l' || g,
+       timestamp '2000-01-01' + g * interval '15 minutes', e.org
+     FROM generate_series(1, $2::int) g, unnest($1::text[]) e(org) ORDER BY g, e.org`,
+    ORDENES,
+  );
   for (const tabla of [
     "whatsapp_envio_ejecucion",
     "tarifas",
     "analytics_daily",
     "usuario",
+    "orden",
+    "orden_historial_estado",
+    "gestion_orden",
+    "historial_accion",
   ]) {
     // Sin estadisticas frescas el planificador cree que la tabla tiene el tamano de antes.
     await tx.$executeRawUnsafe(`ANALYZE ${tabla}`);
@@ -238,8 +337,10 @@ describeSiHayBase("SL-18 R24/R25 — indices de rutas calientes, contra Postgres
       const fila = indices.find((i) => i.indexname === ruta.indice);
       expect(fila, `${ruta.indice} no esta en pg_indexes: corre las migraciones`).toBeDefined();
       expect(fila!.tablename).toBe(ruta.tabla);
-      const columnas = /USING btree \((.*)\)$/.exec(fila!.indexdef)?.[1];
-      expect(columnas, `${ruta.indice} no lleva organizacion_id primero: ${fila!.indexdef}`).toBe(ruta.columnas);
+      const forma = /USING btree \((.*?)\)(?: WHERE \((.*)\))?$/.exec(fila!.indexdef);
+      expect(forma?.[1], `${ruta.indice} no lleva organizacion_id primero: ${fila!.indexdef}`).toBe(ruta.columnas);
+      // Un parcial que pierde su `WHERE` (p. ej. recreado desde el datamodel) deja de ser el de la consulta.
+      expect(forma?.[2] ?? null, `predicado de ${ruta.indice}: ${fila!.indexdef}`).toBe(ruta.predicado ?? null);
     });
   });
 
@@ -248,7 +349,13 @@ describeSiHayBase("SL-18 R24/R25 — indices de rutas calientes, contra Postgres
       expect(sqlDe.get(ruta.indice), `no se capturo el SQL de ${ruta.origen}`).toBeDefined();
       const plan = planDe.get(ruta.indice) ?? "";
       // La consulta real lleva la empresa: si no, el indice compuesto no tendria por donde entrar.
-      expect(sqlDe.get(ruta.indice)!.query).toContain('"organizacion_id" = $');
+      if (ruta.empresaPor === "rls") {
+        // SQL a mano: la empresa no esta en el texto, la pone la policy y entra al indice.
+        expect(sqlDe.get(ruta.indice)!.query).not.toContain('"organizacion_id" = $');
+        expect(plan, plan).toMatch(/Index Cond: \(\(organizacion_id = NULLIF\(current_setting\('app\.organizacion_id'/);
+      } else {
+        expect(sqlDe.get(ruta.indice)!.query).toContain('"organizacion_id" = $');
+      }
       expect(plan, `el plan de ${ruta.origen} no usa ${ruta.indice}:\n${plan}`).toContain(ruta.indice);
     });
   });
