@@ -168,7 +168,7 @@ para y avisa al leader.
   **Hecho:** la guardia `etiquetas-geograficas-sin-literal` está verde, con su contraprueba; los
   tests de componentes de órdenes, novedades, satélite, tarifas, mis asignaciones y cierres siguen
   verdes.
-- [ ] T5.3 [P] `/plataforma/geografia`: `page.tsx`, `GeografiaPlataformaModule.tsx` y
+- [x] T5.3 [P] `/plataforma/geografia`: `page.tsx`, `GeografiaPlataformaModule.tsx` y
   `GeografiaAdminModule.tsx` movido sin zonas (§8). Borrar `app/(app)/configuracion/geografia/`,
   `zonas-sin-distritos.ts` y su test. Dep.: T4.3, T5.1.
   **Hecho:** `geografia-plataforma-page.test.tsx` cubre el 404 a un rol de empresa antes de leer
@@ -179,7 +179,7 @@ para y avisa al leader.
 - [x] T5.4 [P] Menú «Geografía» del superadmin (`lib/auth/menu-visibility.ts`). Dep.: ninguna.
   **Hecho:** `menu-visibility.test.ts` y `superadmin-fuera-de-empresa.guardia` verdes; ningún rol
   de empresa ve el ítem.
-- [ ] T5.5 [P] «Empresas»: `Select` de país en el alta y columna «País» (§8), y el ajuste de los E2E
+- [x] T5.5 [P] «Empresas»: `Select` de país en el alta y columna «País» (§8), y el ajuste de los E2E
   existentes que rellenan el alta. Dep.: T2.2, T2.5 **(enmienda 2026-10-26: el `Select` lista solo
   los países disponibles, decisión 6)**.
   **Hecho:** `tests/components/empresas-module.test.tsx` cubre R9 (sin país preseleccionado y alta
@@ -190,7 +190,7 @@ para y avisa al leader.
   del superadmin, o se retira si la ayuda es solo de empresa (lo decide quien la mantiene; se anota).
   Dep.: T5.3.
   **Hecho:** ninguna ayuda enlaza a `/configuracion/geografia`.
-- [ ] T5.7 **(enmienda 2026-10-26, decisiones 5 y 6)** En `GeografiaPlataformaModule.tsx`: alta de
+- [x] T5.7 **(enmienda 2026-10-26, decisiones 5 y 6)** En `GeografiaPlataformaModule.tsx`: alta de
   país con autocompletado sobre el catálogo (sin campo de código ni de nombre; los seis nombres de
   nivel a mano) y `Switch` «Disponible» del país elegido (§8). Primero se verifica si `@base-ui/react`
   `^1.6.0` trae `Combobox` para `components/ui/combobox.tsx`; si no, `Popover` + `Input` + lista, sin

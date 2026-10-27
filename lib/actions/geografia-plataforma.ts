@@ -124,7 +124,6 @@ export type ListarPaisesActionResult = ListarPaisesServiceResult | SinPermiso;
 
 /**
  * Todos los países dados de alta, disponibles o no (design §8: el selector los muestra todos).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function listarPaisesAction(deps: GeografiaPlataformaDeps = {}): Promise<ListarPaisesActionResult> {
   const p = await puerta(deps);
@@ -138,7 +137,6 @@ export type CrearPaisActionResult = CrearPaisServiceResult | SinPermiso | ErrorI
 /**
  * R23. La validación vive en el servicio (`crearPaisSchema`); un único violado en carrera ya vuelve
  * del repositorio como `conflict`. Cualquier otro fallo es `error` (R36).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function crearPaisAction(
   input: unknown,
@@ -162,7 +160,6 @@ export type CambiarDisponibilidadPaisActionResult =
 
 /**
  * R47. Pedir el estado que el país ya tiene es `ok` sin escribir; apagarlo no toca a sus empresas (R46).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function cambiarDisponibilidadPaisAction(
   input: unknown,
@@ -188,7 +185,6 @@ export type ArbolDePaisActionResult = ListarArbolDePaisServiceResult | ErrorDeVa
 
 /**
  * R20, R29, R30: el árbol de un país, activos e inactivos, sin zonas.
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function arbolDePaisAction(
   input: unknown,
@@ -212,7 +208,6 @@ export type CrearNodoActionResult =
  * Alta de un nodo en cualquiera de los tres niveles (R29). Un nombre o un código repetido que el
  * servicio no vio (carrera, o el código, que solo frena el único de la base: R16, R52) es `conflict`;
  * cualquier otro fallo es `error` y queda en el log (R36).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function crearNodoAction(
   input: unknown,
@@ -239,7 +234,6 @@ export type RenombrarNodoActionResult =
 
 /**
  * R30 (ficha 375): renombrar a su propio nombre es `ok`; al de un hermano, `conflict`. Mismo `catch` que el alta.
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function renombrarNodoAction(
   input: unknown,
@@ -267,7 +261,6 @@ export type CambiarActivacionNodoActionResult =
 /**
  * R30: retira o reactiva UN nodo sin tocar a sus descendientes; pedir el estado que ya tiene es `ok`
  * sin escribir. Aquí no hay único que violar: un fallo de la base es `error` con log, como el alta (R36).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function cambiarActivacionNodoAction(
   input: unknown,
@@ -294,7 +287,6 @@ export type ContarOrdenesSinEntregarActionResult =
 /**
  * R31: las órdenes sin entregar de TODAS las empresas que cuelgan del nodo. Solo lectura; si falla,
  * responde `error` con log (R36) y la pantalla lo dice sin bloquear el retiro.
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function contarOrdenesSinEntregarAction(
   input: unknown,
@@ -334,7 +326,6 @@ function esArchivo(valor: FormDataEntryValue | null): valor is FormDataEntryValu
  * R24–R28, R48–R51. El contrato del servicio pasa tal cual (`ok`, `invalido`, `archivo_rechazado`,
  * `not_found`, `forbidden`, con `avisos`); un fallo de la base al escribir es `error`, y la carga ya
  * se deshizo entera (R51). El tamaño, la extensión y la codificación los decide el servicio (R28).
- * @sin-superficie SL-20 (tasks T5.3/T5.7, frontend): la pantalla `/plataforma/geografia` que la llama aún no existe; esta tanda es solo el servidor.
  */
 export async function cargarDivisionAction(
   formData: FormData,
