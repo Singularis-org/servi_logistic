@@ -819,3 +819,144 @@ máquina no tiene memoria para ellos. El MCP del grafo no se usó: bastó Grep/R
     `forbidden`.
 
 Veredicto: T10 cerrada y en verde (forma `forbidden` uniforme, guardia que impide volver a lanzar, R31 contra Postgres). T12 hecha en código, con `demo-qa` en verde; solo le faltan los E2E locales, que no se corrieron por memoria.
+
+## Tanda 7 — T13, T14 (2026-10-26, backend_dev)
+
+Base: `logistic_sl23b`. T12 `[x]` (le faltaban sus dos E2E) y T13 `[x]`. **T14 queda `[ ]` solo por
+`./init.sh`**, que no se corrió porque el leader pidió no correr `vitest related` completo. El MCP del
+grafo no se usó: los cambios son de `e2e/` y de docs, y bastó Grep/Read.
+
+### T13 — Humo de dos empresas
+
+- `e2e/_dos-empresas-fixture.ts`:
+  - `altaDeEmpresa(letra, email, modulos = "todos")` enciende los módulos con `encenderModulos`
+    (nueva). Escribe como dueño con `createMany`, sin historial, igual que `crearEmpresa` de la fábrica.
+    La usan `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40`, `pago-plataforma-sl45` y
+    `_zona-especial-fixture`. Con `[]`, la empresa queda como la crea la app.
+  - `rutasDelMenuDelMaestro(apagados = [])` pasa por `menuDeLaEmpresa` en vez de por `itemsVisibles`.
+- `e2e/_superadmin-fixture.ts › fijarModulosPorPantalla(page, nombreEmpresa, encendidos)` (nueva):
+  - entra por el enlace «Módulos de <empresa>» de `/plataforma/empresas`;
+  - pulsa los interruptores que no estén como se piden y espera a que vuelvan a estar habilitados;
+  - recarga y comprueba `aria-checked` de los 8, para pillar un cambio optimista que no llegó a la base.
+- `e2e/dos-empresas-humo.spec.ts`:
+  - en el `beforeAll`, tras las altas, el superadmin deja A con los 8 módulos y B con todos menos `ranking`;
+  - cada maestro recorre `rutasDelMenuDelMaestro(APAGADOS[letra])`;
+  - caso nuevo (R15, R16, R25, R26):
+    - la base tiene 8 filas en A y 7 en B, sin `ranking`;
+    - el botón «Ranking» del menú aparece 1 vez en A y 0 en B;
+    - B recibe 404 con «No encontramos esta página» en `/ranking` y `/ranking/historico`;
+    - A abre las dos con 200, sin error ni 5xx.
+
+### T14 — Cierre
+
+- `docs/architecture.md > Multi-empresa` gana una viñeta SL-23 con la tabla, el reparto, las puertas
+  y las guardias.
+- `package.json` y `pnpm-lock.yaml` sin diff contra `dev` (R29). `tests/baseline-rojos.json`, sin diff.
+- Las guardias (a)–(f) (`modulos-reparto`) y la de seed (`modulos-sin-seed`), en verde dentro de
+  `test:guardias`.
+- Recorrido de `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md` desde el backend:
+  - el spec tiene sus tres archivos;
+  - el mapa R está completo (abajo);
+  - typecheck y lint, sin errores;
+  - no hay dependencias nuevas;
+  - la tabla nueva tiene RLS y `organizacion_id`, y las migraciones traen `down.sql` (Tanda 1);
+  - el módulo apagado se rechaza en la action y en el job, no solo en la UI (T10, T11).
+- Pendiente, fuera del backend_dev:
+  - `./init.sh`;
+  - el `gate-completo` y el `e2e` de CI;
+  - `progress/review_SL-23.md`;
+  - el cierre de la feature.
+
+### Archivos
+
+- `e2e/_dos-empresas-fixture.ts`, `e2e/_superadmin-fixture.ts` y `e2e/dos-empresas-humo.spec.ts`.
+- `docs/architecture.md`.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T12 y T13 `[x]`, con su nota de cierre; T14, con la nota de `init.sh`.
+
+### Mapa R → test (completo, R1–R34)
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/modulos/catalogo.test.ts` |
+| R2 | `tests/unit/modulos/catalogo.test.ts`; `tests/unit/services/modulos-empresa-service.test.ts` (`incidentes_novedades` rechazado como fuera del catálogo) |
+| R3 | `tests/unit/guards/modulos-reparto.guardia.test.ts` |
+| R4 | `tests/integration/db/organizacion-modulo.test.ts` |
+| R5 | `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts` |
+| R6 | `tests/integration/db/organizacion-modulo.test.ts` (alta por `OrganizacionService`) |
+| R7 | `tests/integration/db/organizacion-modulo.test.ts` (dos empresas; `INSERT`/`DELETE` con `servi_app` → `42501`) |
+| R8 | `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
+| R9 | `tests/unit/services/modulos-empresa-service.test.ts`; `tests/integration/db/organizacion-modulo.test.ts` |
+| R10 | `tests/unit/services/modulos-empresa-service.test.ts` |
+| R11 | `tests/unit/services/modulos-empresa-service.test.ts` |
+| R12 | `tests/integration/db/modulos-empresa-historial.test.ts` |
+| R13 | `tests/unit/services/modulos-empresa-service.test.ts`; `tests/integration/db/modulos-empresa-historial.test.ts` |
+| R14 | `tests/integration/plataforma-empresa-detalle-page.test.tsx` |
+| R15 | `tests/unit/auth/menu-modulos.test.ts`; `e2e/dos-empresas-humo.spec.ts` (Tanda 7: «Ranking» en el menú de A 1, de B 0) |
+| R16 | `tests/unit/modulos/exigir-modulo.test.ts`; `tests/unit/guards/modulos-reparto.guardia.test.ts` (toda página de un módulo pasa por la puerta); `e2e/dos-empresas-humo.spec.ts` (Tanda 7: B en `/ranking` y `/ranking/historico` → 404 con «No encontramos esta página») |
+| R17 | `tests/unit/modulos/exigir-modulo.test.ts`; `tests/unit/guards/modulos-reparto.guardia.test.ts` (toda action exportada de un módulo llama a la puerta primero); `tests/integration/db/modulo-apagado-action.test.ts` |
+| R18 | `tests/unit/api/api-key-modulo-inactivo.test.ts` |
+| R19 | `tests/unit/cron/procesar-jobs-modulos.test.ts` (`webhook_estado` y `webhook_evento` descartados sin llamar al handler) |
+| R20 | `tests/unit/services/job-queue-service-descartado.test.ts`; `tests/unit/cron/procesar-jobs-modulos.test.ts` |
+| R21 | `tests/unit/db/para-cada-empresa-modulo.test.ts`; `tests/integration/db/para-cada-empresa-modulo.test.ts` |
+| R22 | `tests/integration/db/organizacion-modulo.test.ts` (apagar y encender Ranking con datos: mismo recuento y mismas filas) |
+| R23 | suites existentes de esas piezas en verde, más `e2e/dos-empresas-humo.spec.ts` (empresa A con todo encendido recorre todo el menú del maestro) (Tanda 7: A recorre 23 rutas del menú, B 21, sin error ni fugas); E2E `reparto/mis-asignaciones`, `dinero/wallet`, `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40` y `pago-plataforma-sl45` en verde con los módulos encendidos por la fábrica |
+| R24 | `tests/unit/services/webhook-whatsapp-service-modulo.test.ts` |
+| R25 | `tests/integration/db/organizacion-modulo.test.ts`; `e2e/dos-empresas-humo.spec.ts` (Tanda 7: filas de `organizacion_modulo` de A = 8, de B = 7 sin `ranking`) |
+| R26 | `e2e/dos-empresas-humo.spec.ts` (Tanda 7: el superadmin enciende por la pantalla los 8 de A y 7 de B; B sin Ranking, A con él) |
+| R27 | `tests/integration/db/migracion-sl23-ida-y-vuelta.test.ts` (lee `information_schema` y `pg_enum`) |
+| R28 | `tests/unit/guards/modulos-sin-seed.guardia.test.ts` |
+| R29 | `tests/guards/guard-dependencias-aprobadas.test.ts` (existente) y diff de `package.json` vacío en dependencias |
+| R30 | `tests/unit/cron/procesar-jobs-modulos.test.ts` (`analitica_rollup_diario` y `analitica_invalidacion_cache` corren con Analítica apagada); `tests/unit/cron/snapshot-ranking-modulo-apagado.test.ts`; `tests/unit/guards/modulos-reparto.guardia.test.ts` (caso d: esos crons no pasan `modulo`) |
+| R31 | `tests/integration/db/nucleo-sin-modulos.test.ts` (empresa sin ningún módulo encendido: el corte crea el `vencido`, el bloqueo aplica, la action de cierre del día funciona, aprobar un cierre escribe sus movimientos de caja y `registrarPagoMensajeroAction` registra el pago); `tests/components/CierresAdminPage.test.tsx` («Pago al mensajero» y la oferta de pago visibles con Wallet apagado) |
+| R32 | `tests/unit/auth/menu-modulos.test.ts` |
+| R33 | `tests/unit/modulos/exigir-modulo.test.ts`; `tests/unit/api/api-key-modulo-inactivo.test.ts` (`/api/ordenes/api-key/analitica` con Analítica apagada); `tests/unit/guards/modulos-reparto.guardia.test.ts` (caso c con dos claves) |
+| R34 | `tests/unit/modulos/exigir-modulo.test.ts` (lectura que lanza `EmpresaNoResuelta` → ninguna puerta lanza ni llama a `notFound`; cualquier otro error se propaga); `tests/integration/db/modulo-apagado-action.test.ts` (action de wallet sin sesión → `unauthorized`; con el superadmin → `forbidden`; ninguna da error interno) |
+
+### Salida
+
+**Entorno de los E2E.**
+- No hay `.env` en el worktree. Se exportó el `.env` del checkout principal con `DATABASE_URL` a
+  `logistic_sl23b`, sin `SUPABASE_URL` ni su clave (las pone Playwright).
+- `E2E_PUERTO=3044` (el 3000 lo ocupa otra sesión) y `--workers=1`.
+- Cada spec se corrió por separado; los de `aislamiento`, con `--no-deps`.
+
+**Primer intento, con `E2E_SERVIDOR=dev`.** El servidor de dev murió al compilar `/cierres-admin`.
+- Salida: `Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3044/cierres-admin`,
+  `1 failed · 1 passed (4.1m)`.
+- Antes había pasado el `beforeAll`, con los interruptores incluidos.
+- El log no trae mensaje de muerte. No es un rojo de SL-23: es la memoria de `next dev`.
+- En ese mismo log hay dos avisos que no son de SL-23:
+  - `Transaction API error: Unable to start a transaction in the given time` en `cierreDia.groupBy`,
+    tras `/dashboard`, que respondió 200;
+  - un *hydration mismatch* de la fecha en `/configuracion/sinpe`.
+
+**Después, con `next start`.** Antes, `NODE_OPTIONS=--max-old-space-size=6144 pnpm exec next build`
+→ exit 0.
+- `aislamiento/dos-empresas-humo`, primera corrida: `7 passed (1.5m)`.
+- `aislamiento/dos-empresas-humo`, segunda corrida seguida sobre la misma base: `7 passed (1.5m)`.
+- En las dos, 0 failed, 0 skipped y 0 flaky. Las líneas del caso nuevo:
+  ```
+  [humo módulos A] «Ranking» en el menú: 1
+  [humo módulos A] /ranking: estado=200 noEncontrado=false
+  [humo módulos A] /ranking/historico: estado=200 noEncontrado=false
+  [humo módulos B] «Ranking» en el menú: 0
+  [humo módulos B] /ranking: estado=404 noEncontrado=true
+  [humo módulos B] /ranking/historico: estado=404 noEncontrado=true
+  ```
+- `aislamiento/wallet-iva-aparte-sl39`: `4 passed (14.8s)`.
+- `aislamiento/cobro-plataforma-sl40`: `2 passed (16.7s)`.
+- `aislamiento/pago-plataforma-sl45`: `6 passed (23.5s)`.
+- `reparto/mis-asignaciones`: `4 passed (35.7s)`.
+- `dinero/wallet`: `4 passed (22.3s)`.
+- Al terminar, Playwright paró la app y el doble de Storage: los puertos 3044 y 54329 quedaron libres.
+
+**Typecheck, lint y guardias.**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run -s typecheck`: exit 0, después de los cambios de `e2e/`.
+- `pnpm run -s lint`: `✖ 231 problems (0 errors, 231 warnings)`, los de antes. `eslint` de los tres
+  archivos de `e2e/`: sin problemas.
+- `pnpm run -s test:guardias`, con `DATABASE_URL` a `logistic_sl23b`:
+  `Test Files 1 failed | 311 passed (312) · Tests 4 failed | 4327 passed | 1 skipped`.
+  - Los 4 rojos son de `dependencias-declaradas-presentes` (baseline).
+  - Sin `DATABASE_URL`, 2 archivos y 20 tests quedan en `skipped`.
+
+Veredicto: T12 y T13 cerradas. El humo pasó dos veces seguidas, y también los 3 E2E de wallet, cobro y pago, uno de `reparto` y otro de `dinero`. T14 está completa salvo `./init.sh`, que queda para el leader.

@@ -203,18 +203,25 @@
 
 ## Tanda 5 — Fábricas, E2E y cierre (depende de T6–T11)
 
-- [ ] **T12 — Fábricas** (design §10).
+- [x] **T12 — Fábricas** (design §10).
   - `crearEmpresa` con `modulos` (por defecto `"todos"`), lo que también cubre `crearEmpresaE2E`
     y la demo de QA.
   - *Hecho:* `tests/integration/db/demo-qa.test.ts` en verde; un E2E de `reparto` y otro de
     `dinero` en verde en local.
-- [ ] **T13 — Humo de dos empresas** (design §10; R15, R16, R23, R25, R26).
+  - *Cierre (Tanda 7):* `reparto/mis-asignaciones` 4 passed y `dinero/wallet` 4 passed, en local sobre
+    `logistic_sl23b` (`progress/impl_SL-23.md`).
+- [x] **T13 — Humo de dos empresas** (design §10; R15, R16, R23, R25, R26).
   - El superadmin enciende por la pantalla los 8 módulos de A y 7 de B (sin Ranking).
   - `rutasDelMenuDelMaestro(apagados)`.
   - El caso de B sin Ranking y A con Ranking.
   - *Hecho:* `pnpm exec playwright test --project=aislamiento`, dos corridas seguidas sobre la
     misma base, 0 failed, 0 skipped y 0 flaky (`docs/verification.md > El E2E`).
-- [ ] **T14 — Cierre.**
+  - *Cierre (Tanda 7):* `altaDeEmpresa` enciende los 8 módulos por defecto. Corrido por archivo, no el
+    proyecto entero (memoria de la máquina): `dos-empresas-humo` dos veces seguidas, 7 passed las dos;
+    `wallet-iva-aparte-sl39`, `cobro-plataforma-sl40` y `pago-plataforma-sl45` en verde. El resto del
+    proyecto `aislamiento` queda para el check `e2e` de CI.
+- [ ] **T14 — Cierre.** *Tanda 7: todo hecho menos `./init.sh`, que no se corrió por indicación del
+  leader (su paso de `vitest related` completo); queda para el leader o el reviewer.*
   - Las guardias (a)–(f) y la de seed, en verde.
   - `./init.sh` en verde en el worktree.
   - Mapa `R1…R34 → test` y salida real de los tests en `progress/impl_SL-23.md`.
