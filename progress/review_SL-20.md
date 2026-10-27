@@ -170,3 +170,108 @@ Para la vuelta 2 bastan:
 2. La salida local de `e2e/dos-empresas-humo.spec.ts` y `e2e/superadmin-empresas.spec.ts` en
    `progress/impl_SL-20.md`, o la decisión escrita del humano de diferirlo (M2).
 3. Recomendado: m1 y m2 (cambios pequeños).
+
+## Review 2
+
+Acotada a `370e34d..2609a25`: `497688e`, `2a478aa`, `33dbb24`, `ab81b55`, `7195370`, `f0cacac`,
+`98255c0` y `2609a25`. Bitácoras: `progress/impl_SL-20-R1.md`, `progress/impl_SL-20-R2.md` y
+`progress/impl_SL-20-design.md`. No usé el MCP del grafo: el diff es pequeño y Grep/Read bastaron.
+
+### Verificación ejecutada (por el reviewer)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit`: exit 0.
+- `pnpm exec eslint` sobre los archivos tocados: `app/(app)/plataforma/geografia/**`,
+  `e2e/_superadmin-fixture.ts`, `lib/types/geografia-nodo.ts` y los 5 tests del diff. Exit 0, sin salida.
+- `pnpm exec vitest run` de 4 archivos, todos en verde, 67/67:
+  - `tests/components/GeografiaPlataformaAltaPais.test.tsx`
+  - `tests/unit/components/geografia-plataforma-page.test.tsx`
+  - `tests/unit/services/carga-division-service.test.ts`
+  - `tests/unit/constants/paises-iso-3166-1.test.ts`
+- Integración, en serie, contra `servi_logistic_sl20`: `carga-division.test.ts` y
+  `geografia-superadmin-sin-empresa.test.ts` caen en `beforeAll` con «la base ya tiene un superadmin
+  que no es de este test (SL-32 R27)». La causa es el entorno, no el código:
+  - la corrida E2E de la decisión 12 dejó en esa base `superadmin-e2e@example.test`, 10 usuarios de
+    empresa y 4 organizaciones `e2e-*`/`humo-*`;
+  - la precondición `exigirSinSuperadmin` es la misma que ya exigen las suites de SL-32
+    (`aislamiento-usuarios`, `arranque-superadmin`, …);
+  - en CI la base de los shards de vitest es efímera: solo `migrate deploy` + `db:seed`, sin usuarios
+    (`.github/workflows/gate.yml`, líneas 179–187);
+  - la corrida verde 16/16 y 4/4 de `impl_SL-20-R1.md` es anterior al E2E (0 usuarios antes y después).
+
+  Intenté reproducirla en un clon temporal de la base sin ese superadmin, pero la sandbox me impidió
+  borrarlo (FK de `trusted_device`). El clon ya está borrado y `servi_logistic_sl20` no se tocó. Leí
+  el código de la suite y casa con la bitácora (ver M1). Queda como menor n1.
+
+### Cierre de los hallazgos de la review 1
+
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| **M1** | **Cerrado** | `carga-division.test.ts` ya no lee usuarios sembrados. En `beforeAll` hace `tomarLockDeSuperadmin` → `exigirSinSuperadmin` → `insertarUsuario(..., superadmin, null)` (líneas 90–98). En `afterAll` hace `DELETE` de su id y suelta el lock en un `finally` (116–119). Tiene un control de que el actor es el de la suite (124). R49 (286), R50 (270) y R35 tienen caso propio en esta suite: R35 con la carga (211) y con alta, renombre y retiro del superadmin (435). No hay entrada nueva en `baseline-rojos.json`. `geografia-superadmin-sin-empresa.test.ts` toma el mismo lock (lo pide el índice global `usuario_un_solo_superadmin`), así que las dos suites no chocan entre shards. |
+| **M2** | **Cerrado** | Decisión 12 en `progress/features/SL-20.md`. La salida está en `impl_SL-20-R2.md §4`: `superadmin-empresas` 7/7 y `dos-empresas-humo` 6/6. El humo encontró un rojo real de SL-20: `altaDeEmpresaPorPantalla` no elegía país tras R9. Se arregló en `98255c0` (ver abajo) y la segunda corrida salió verde. |
+| m1 | Cerrado | `NIVEL_LABELS` se borró de `lib/types/geografia-nodo.ts`. `tsc` en verde, sin imports colgando. |
+| m2 | Cerrado | `carga-division-service.test.ts`: nuevo caso de una columna de más con una fila inválida que da `invalido` con el aviso y no llama a `importarDivision`. En verde. |
+| m3 | Cerrado | Decisión 13. Auditoría en `impl_SL-20-design.md` y bloque «Decisión 13» (6 tests) en `geografia-plataforma-page.test.tsx`, en verde. |
+| m4 | Cerrado en lo que toca al código | La pregunta 2 (R13/R38 sin triggers) la cierra la decisión 14: con los triggers apagados caen 4/5 y con ellos encendidos pasan 5/5 (`impl_SL-20-R2.md §3`), y la bitácora deja constancia de que se reencendieron. D15 sigue esperando a Carlos y, como pidió el leader, no cuenta como hallazgo de código. |
+| m5 | Cerrado | La cabecera de `progress/features/SL-20.md` dice `in_progress` y `## Estado` dice F2.2. |
+| m6 | Cerrado | `describe` «SL-20/R30» en `carga-division.test.ts` (463, 485). Mide el `ctid` sin cambios y cero filas de historial, con su contraprueba. Corre en una suite fuera del baseline. |
+
+### Cambios nuevos: ¿rompen algo?
+
+- **`e2e/_superadmin-fixture.ts`.** Elige «Costa Rica» en el combobox «País», igual que
+  `superadmin-empresas.spec.ts`. Lo usa solo `dos-empresas-humo.spec.ts`. CR está disponible tras la
+  migración (R44), así que el cambio es correcto y necesario.
+- **Decisión 11.** `paisesPorDarDeAlta` filtra el catálogo por los ids de `paises`. El aviso de lista
+  vacía distingue dos casos: todo el catálogo ya está dado de alta, o ningún país casa con lo escrito.
+  - Test nuevo con 4 casos (búsqueda por nombre, por código, positivo y catálogo completo). La bitácora
+    dice que, con el cambio deshecho, fallan 3 de 4.
+  - El test del `conflict` se cambió a El Salvador. Sigue probando el `conflict` del servidor con dos
+    sesiones a la vez, así que R42 no pierde cobertura.
+- **Decisión 13.**
+  - Los errores de lectura bajan como banderas (`paisesError`, `divisionError` →
+    `cargaErrorInicial`). Ya no se pintan a la vez un error y un estado vacío.
+  - Los formularios de alta y renombrado son `<form>` con `aria-labelledby`. El foco va al campo al
+    abrir y vuelve al origen al cerrar, con `isConnected` como guardia.
+  - La barra de búsqueda solo sale cuando hay división. El botón «Activar» pasa a `outline`.
+  - Nada de esto cambia la lógica de servidor ni las actions.
+  - Los tests de R20, R23/R42, R24/R25/R28/R48, R31 y R47 del mismo archivo siguen en verde.
+- **Decisión 15.** Toasts en forma neutra: «Se dio de alta…», «Se retiró…», «Se devolvió…». No
+  dejan ningún nombre de nivel fijo en el código.
+- **Trazabilidad R1–R52.** Ningún `R<n>` pierde test:
+  - el diff solo añade casos (R30, R35, R48, R42/D11, D13) y renombra uno (el `conflict`, R42);
+  - el mapa de `progress/impl_SL-20.md`, completado con el de `impl_SL-20-R1.md`, sigue apuntando a
+    archivos y casos que existen;
+  - `tasks.md` no tiene ninguna casilla `[ ]`.
+- **Dependencias.** No entra ninguna.
+
+### Hallazgos
+
+#### Mayores
+
+Ninguno.
+
+#### Menores
+
+**n1 — `servi_logistic_sl20` quedó con los datos del E2E y la verificación de integración ya no se
+puede repetir en esa base.**
+- **Qué quedó.** `superadmin-e2e@example.test`, 10 usuarios de empresa y 4 organizaciones.
+- **Por qué importa.** Las suites con `exigirSinSuperadmin` (las dos de SL-20 y las de SL-32) caen en
+  `beforeAll` en esa base. En CI no afecta, porque la base es efímera y no comparte job con el E2E.
+- **Qué falta en la bitácora.** `impl_SL-20-R2.md` no avisa de que el orden integración → E2E deja la
+  base inservible para otra pasada de integración.
+- **Qué se pide.** Antes de otra ronda de integración en local, limpiar la base o recrearla con
+  `migrate reset` + `db:seed`, y dejar anotado en la bitácora que el E2E la ensucia.
+
+**n2 — En `/plataforma/geografia` conviven dos vocabularios para el retiro.**
+- **Dónde.** El botón de la fila es «Desactivar» (`aria-label`, `GeografiaAdminModule.tsx:710`) y la
+  insignia dice «Inactivo» (371–374). La confirmación dice «Retirar del catálogo» / «Retirar»
+  (598–599), y los toasts «Se retiró… / Se devolvió… al catálogo».
+- **Estado.** La auditoría de diseño (punto 7) lo deja abierto. Los tests de R31 buscan el rótulo
+  actual.
+- **Qué se pide.** Lo decide el humano. No bloquea.
+
+### Veredicto (review 2)
+
+**APROBADO**: 0 mayores y 2 menores (n1, n2). M1 y M2 están cerrados con evidencia, y los seis
+menores de la review 1 están cerrados o cubiertos por una decisión humana (m4/D15 depende de Carlos).
+Antes del merge, el check `gate-completo` del PR tiene que salir verde en CI: este veredicto no lo
+sustituye.
