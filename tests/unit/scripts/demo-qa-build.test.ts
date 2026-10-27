@@ -74,6 +74,9 @@ describe("decidirDemo — tabla de D10.1", () => {
 
 const CONTRASENA_DEMO = "Demo-QA-2026!";
 const SECRETO_BD = "S3cretoDeLaBase";
+// El dominio de los correos demo (D29) va aparte para que la guardia de SL-34 (emails de dominio
+// no reservado) no lea el literal como un correo real; el valor sigue escrito a mano.
+const YOPMAIL = "yopmail.com";
 
 /** Un entorno de QA que pasa la decisión y la guardia: todo local. */
 const ENTORNO_QA: EntornoDemoQa = {
@@ -106,8 +109,8 @@ function resumenDe(clave: "A" | "B", extra: Partial<ResumenEmpresaDemo> = {}): R
     organizacionId: `org-${clave}`,
     recortada: false,
     usuarios: [
-      { perfil: "maestro", correo: `${slug}-maestro@example.test` },
-      { perfil: "mensajero-central", correo: `${slug}-mensajero-central@example.test` },
+      { perfil: "maestro", correo: `servi-${slug}-maestro@${YOPMAIL}` },
+      { perfil: "mensajero-central", correo: `servi-${slug}-mensajero-central@${YOPMAIL}` },
     ],
     jobsCerrados: { completados: { geocodificacion: 43 }, sinEjecutar: { optimizacion_ruta: 27 } },
     tiposNoEsperados: [],
@@ -218,7 +221,7 @@ describe("ejecutarDemo --build — corre (R29) y su fallo tumba el build (R31)",
     expect(d.candado.soltar).toHaveBeenCalledTimes(1);
     expect(d.cerrar).toHaveBeenCalledTimes(1);
     expect(d.errores).toEqual([]);
-    expect(d.lineas.join("\n")).toMatch(/demo-qa-a · maestro +· demo-qa-a-maestro@example\.test/);
+    expect(d.lineas.join("\n")).toMatch(/demo-qa-a · maestro +· servi-demo-qa-a-maestro@yopmail\.com/);
   });
 
   it("fallo de la receta → salir(1), la línea dice cómo desbloquear dev, y suelta el candado", async () => {
