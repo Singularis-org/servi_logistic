@@ -19,13 +19,6 @@ import { z } from "zod";
 export const NIVELES_GEOGRAFICOS = ["provincia", "canton", "distrito"] as const;
 export type NivelGeografico = (typeof NIVELES_GEOGRAFICOS)[number];
 
-/** Etiqueta legible del nivel, para los mensajes de la pantalla. */
-export const NIVEL_LABELS: Record<NivelGeografico, string> = {
-  provincia: "Provincia",
-  canton: "Cantón",
-  distrito: "Distrito",
-};
-
 /** El nivel del PADRE de cada nivel; `null` para provincia, que no tiene. */
 export const NIVEL_PADRE: Record<NivelGeografico, NivelGeografico | null> = {
   provincia: null,

@@ -1,14 +1,23 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { CargaDivisionService } from "@/lib/services/CargaDivisionService";
+import { GeografiaService } from "@/lib/services/GeografiaService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { planificarDivision } from "@/lib/utils/division-csv";
 
 import { crearPaisDePrueba } from "../../fabricas/paises";
-import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
+  clienteConSavepoint,
+  crearPrismaDeTest,
+  type TxDeTest,
+} from "./_postgres-real";
 import { errorEnSavepoint, revertida } from "./_fixtures/pais-20";
+import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 /**
  * SL-20 (design §6; R24, R25, R26, R33, R35) — LA CARGA DE LA DIVISION DE UN PAIS, CONTRA POSTGRES.
@@ -20,6 +29,14 @@ import { errorEnSavepoint, revertida } from "./_fixtures/pais-20";
  *
  * Todo en `XA` (fabrica `paises.ts`), dentro de una transaccion del dueño que siempre se revierte:
  * es el camino del superadmin, que corre como dueño (`comoPlataforma`). SIN `DATABASE_URL` se SALTA.
+ *
+ * El actor es SU PROPIO superadmin (review SL-20 M1): la base de CI solo recibe `migrate deploy` +
+ * `db:seed`, que no siembra usuarios, así que la suite no lee ningún usuario ajeno. Lo crea y lo
+ * commitea en `beforeAll` (la FK del actor en `historial_plataforma` y el congelado de R33 lo
+ * necesitan visible) y lo borra en `afterAll`. El índice `usuario_un_solo_superadmin` es GLOBAL:
+ * el archivo sostiene `tomarLockDeSuperadmin` desde antes de crearlo hasta después de borrarlo, y
+ * el de la 227 va por dentro (orden de locks de `superadmin-32.ts`). Todo lo que cuelga del usuario
+ * (las filas de historial) se escribe dentro de `revertida` y se va con el rollback.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -69,17 +86,48 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
   let prisma: PrismaClient;
   let actor: Actor;
   let actorNombre: string;
+  let superadminId: string | null = null;
+  let soltarSuperadmin: () => Promise<void> = async () => {};
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({
-      select: { id: true, nombre: true, primerApellido: true },
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+    await exigirSinSuperadmin(prisma);
+    superadminId = await bajoLockDeEscrituraReal(() =>
+      prisma.$transaction(async (tx) => {
+        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+        return u.id;
+      }),
+    );
+    // Se lee SOLO el usuario recién creado, por su id: el nombre congelado esperado (R33).
+    const usuario = await prisma.usuario.findUniqueOrThrow({
+      where: { id: superadminId },
+      select: { nombre: true, primerApellido: true },
     });
-    if (!usuario) {
-      throw new Error("hay DATABASE_URL pero `usuario` esta vacia: sin actor no se mide su congelado (R33)");
-    }
-    actor = { usuarioId: usuario.id, rol: "superadmin" };
+    actor = { usuarioId: superadminId, rol: "superadmin" };
     actorNombre = [usuario.nombre, usuario.primerApellido].filter((p) => p != null && p !== "").join(" ");
+  }, 60_000);
+
+  afterAll(async () => {
+    try {
+      if (prisma !== undefined && superadminId !== null) {
+        const id = superadminId;
+        await bajoLockDeEscrituraReal(() => prisma.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
+      }
+    } finally {
+      await soltarSuperadmin();
+      await prisma?.$disconnect();
+    }
+  }, 60_000);
+
+  it("control: el actor es el superadmin de la suite, sin empresa (no un usuario sembrado)", async () => {
+    const u = await prisma.usuario.findUnique({
+      where: { id: actor.usuarioId },
+      select: { organizacionId: true, email: true },
+    });
+    expect(u?.organizacionId).toBeNull();
+    expect(u?.email).toMatch(/^sl32-[0-9a-f]{12}@example\.com$/);
   });
 
   async function conPais<T>(
@@ -360,6 +408,91 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
     await conPais(async ({ service }) => {
       const r = await service.cargar("XA", archivo("San José,,San José,,Carmen,"), actor);
       expect(r).toMatchObject({ status: "ok", creados: { provincia: 1, canton: 1, distrito: 1 }, existentes: 0 });
+    });
+  });
+
+  // ===============================================================================================
+  // R35 y R30 — las escrituras de nodo del superadmin (GeografiaService real sobre la misma tx)
+  // ===============================================================================================
+
+  function geografia(tx: TxDeTest): GeografiaService {
+    const cliente = clienteConSavepoint(tx);
+    return new GeografiaService(new GeoRepository(cliente), new OrdenRepository(cliente));
+  }
+
+  /**
+   * La version fisica de la fila. Todo pasa en UNA transaccion, asi que `xmin` no distinguiria una
+   * fila escrita de una actualizada; `ctid` si: un UPDATE (tambien uno HOT) deja una tupla nueva.
+   */
+  async function ctidDe(tx: TxDeTest, id: string): Promise<string> {
+    const [fila] = await tx.$queryRawUnsafe<{ ctid: string }[]>(
+      `SELECT ctid::text AS ctid FROM "provincia" WHERE "id" = $1`,
+      id,
+    );
+    return fila.ctid;
+  }
+
+  describe("SL-20/R35 — alta, renombre y retiro de nodo del superadmin no escriben en `historial_accion`", () => {
+    it("tres escrituras: cero filas nuevas en `historial_accion` y tres en `historial_plataforma`", async () => {
+      await conPais(async ({ tx }) => {
+        const servicio = geografia(tx);
+        const antes = await tx.historialAccion.count();
+
+        const alta = await servicio.crear({ nivel: "provincia", nombre: "Región Nueva", paisId: "XA" }, actor);
+        if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
+        const renombre = await servicio.renombrar({ nivel: "provincia", id: alta.id, nombre: "Región Renombrada" }, actor);
+        const retiro = await servicio.cambiarActivacion({ nivel: "provincia", id: alta.id, activo: false }, actor);
+
+        expect(renombre.status).toBe("ok");
+        expect(retiro.status).toBe("ok");
+        expect(await tx.historialAccion.count()).toBe(antes);
+        // Contraprueba: las tres SI se registraron, en el historial de plataforma y con este actor.
+        const filas = await historialDe(tx, "XA");
+        // Ordenadas: en una sola transaccion `created_at` empata y el desempate por `id` es azar.
+        expect(filas.map((f) => f.accion).sort()).toEqual([
+          "nodo_geografico_creado",
+          "nodo_geografico_desactivado",
+          "nodo_geografico_renombrado",
+        ]);
+        expect(new Set(filas.map((f) => f.actor_usuario_id))).toEqual(new Set([actor.usuarioId]));
+      });
+    });
+  });
+
+  describe("SL-20/R30 — pedir el estado que el nodo ya tiene es éxito sin escribir", () => {
+    it("retirar uno ya retirado y reactivar uno activo: `ok`, misma tupla y cero filas de historial", async () => {
+      await conPais(async ({ tx }) => {
+        const servicio = geografia(tx);
+        const retirada = await tx.provincia.create({ data: { nombre: "Retirada", paisId: "XA", activo: false }, select: { id: true } });
+        const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
+        const ctidRetirada = await ctidDe(tx, retirada.id);
+        const ctidActiva = await ctidDe(tx, activa.id);
+        const accionAntes = await tx.historialAccion.count();
+
+        const otraVezRetiro = await servicio.cambiarActivacion({ nivel: "provincia", id: retirada.id, activo: false }, actor);
+        const otraVezActiva = await servicio.cambiarActivacion({ nivel: "provincia", id: activa.id, activo: true }, actor);
+
+        expect(otraVezRetiro).toEqual({ status: "ok", nivel: "provincia", id: retirada.id, activo: false });
+        expect(otraVezActiva).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: true });
+        // Ni UPDATE (la tupla es la misma) ni fila de registro en ninguno de los dos historiales.
+        expect(await ctidDe(tx, retirada.id)).toBe(ctidRetirada);
+        expect(await ctidDe(tx, activa.id)).toBe(ctidActiva);
+        expect(await historialDe(tx, "XA")).toEqual([]);
+        expect(await tx.historialAccion.count()).toBe(accionAntes);
+      });
+    });
+
+    it("CONTRAPRUEBA de la medida: un cambio de verdad SI cambia la tupla y deja su fila", async () => {
+      await conPais(async ({ tx }) => {
+        const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
+        const ctid = await ctidDe(tx, activa.id);
+
+        const r = await geografia(tx).cambiarActivacion({ nivel: "provincia", id: activa.id, activo: false }, actor);
+
+        expect(r).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: false });
+        expect(await ctidDe(tx, activa.id)).not.toBe(ctid);
+        expect((await historialDe(tx, "XA")).map((f) => f.accion)).toEqual(["nodo_geografico_desactivado"]);
+      });
     });
   });
 });

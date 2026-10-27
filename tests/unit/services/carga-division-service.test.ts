@@ -176,6 +176,19 @@ describe("SL-20 (decision 4) — las columnas de mas se ignoran y se avisan en `
     const r = await service.cargar("XA", { nombre: "d.csv", bytes: csv("Aa,,Bb,,,") }, SUPERADMIN);
     expect(r).toMatchObject({ status: "ok", avisos: [] });
   });
+
+  it("R48: con una columna de mas Y una fila invalida, el `invalido` tambien trae el aviso", async () => {
+    const bytes = utf8([`${CABECERA},poblacion`, ",,Bb,,,,350000"].join("\n"));
+    const { service, repo } = build();
+    const r = await service.cargar("XA", { nombre: "d.csv", bytes }, SUPERADMIN);
+    expect(repo.importarDivision).not.toHaveBeenCalled();
+    expect(r).toEqual({
+      status: "invalido",
+      errores: [{ linea: 2, mensaje: "nivel_1: es obligatorio." }],
+      total: 1,
+      avisos: ["La columna «poblacion» no es del formato y se ignoró."],
+    });
+  });
 });
 
 // =================================================================================================

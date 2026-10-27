@@ -27,7 +27,7 @@ import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearGeografiaDePrueba, crearOrganizacionEnPais, crearPaisDePrueba } from "@/tests/fabricas/paises";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
-import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 import {
   HAY_BASE_DE_DATOS,
   bajoLockDeEscrituraReal,
@@ -66,6 +66,10 @@ const CSV = [
 let base: PrismaClient;
 let app: PrismaClient;
 let superadminId: string | null = null;
+// El índice `usuario_un_solo_superadmin` es GLOBAL: este archivo y `carga-division.test.ts` commitean
+// cada uno su superadmin, y en paralelo el segundo moriría con 23505. Se sostiene el lock de SL-32
+// desde antes de crearlo hasta después de borrarlo; el de la 227 va por dentro.
+let soltarSuperadmin: () => Promise<void> = async () => {};
 
 /** Borra todo lo del país de esta suite, en el orden de las FK. El historial primero: apunta al país. */
 async function limpiarPais(): Promise<void> {
@@ -100,6 +104,8 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
     base = crearPrismaDeTest();
     // Sin sesión de empresa: la del superadmin no resuelve ninguna.
     app = conAislamientoPorEmpresa(crearPrismaDeTest(), async () => null);
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+    await exigirSinSuperadmin(base);
     await limpiarPais();
     superadminId = await bajoLockDeEscrituraReal(() =>
       base.$transaction(async (tx) => {
@@ -111,14 +117,18 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
   }, 60_000);
 
   afterAll(async () => {
-    if (base === undefined) return;
-    await limpiarPais();
-    if (superadminId !== null) {
-      const id = superadminId;
-      await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
+    try {
+      if (base === undefined) return;
+      await limpiarPais();
+      if (superadminId !== null) {
+        const id = superadminId;
+        await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
+      }
+      await app?.$disconnect();
+      await base.$disconnect();
+    } finally {
+      await soltarSuperadmin();
     }
-    await app?.$disconnect();
-    await base.$disconnect();
   }, 60_000);
 
   it("control: el superadmin de la suite existe y no tiene empresa", async () => {
