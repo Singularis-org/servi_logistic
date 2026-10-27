@@ -28,7 +28,7 @@ Código:
   - el alta de provincia lleva `paisId` (ISO alfa-2) y las tres llevan `codigo?`;
   - nuevo `contenedorDeAlta`;
   - nuevos DTO `NodoPlataformaDTO`, `CantonPlataformaDTO` y `ProvinciaPlataformaDTO`.
-- `lib/types/division-csv.ts`: `DIVISION_MAX_BYTES`, `DIVISION_MAX_FILAS` y `DIVISION_MAX_ERRORES`.
+- `lib/types/division-csv.ts`: `DIVISION_MAX_BYTES`, `DIVISION_TOPE_DE_FILAS_CSV` y `DIVISION_MAX_ERRORES`.
 
 Tests:
 - Nuevos: `tests/unit/services/carga-division-service.test.ts` y `tests/integration/db/carga-division.test.ts`.

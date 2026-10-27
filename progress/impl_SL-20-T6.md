@@ -162,3 +162,33 @@ completa sobre una base sembrada.
    para cerrar la evidencia de R13/R38? El clasificador la bloqueó.
 3. Los 3 rojos de guardia fuera del baseline (test citado de SL-32, 37/38 documentos de ayuda y el
    panel hermano) son de T5. ¿Los toma el frontend_dev o el implementer?
+
+## Cierre del implementer (2026-10-27)
+
+Commits: `7860de8` (T5.3, T5.7, cierra T5.5), `f928db4` (T6.1, T6.3, T6.4), `08afb75` (guardias rojas tras
+T5: contraprueba del panel, recuento de ayuda 38→37, R26 de SL-32 repuntado), `6d3a8e7` (T6.5),
+`bc48a89` (F2.3, merge de `origin/dev`: 7 commits de SL-43, un conflicto trivial en
+`scripts/demo-qa/receta.ts`, sin migraciones nuevas) y el renombre `DIVISION_MAX_FILAS` →
+`DIVISION_TOPE_DE_FILAS_CSV` (falso positivo de `rollup-guards` (d), su regex caza `MAX…FILAS`).
+
+Verificación tras el merge (sin `./init.sh`, va en CI):
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): 0 errores.
+- lint: `0 errors, 230 warnings`.
+- `tests/unit/scripts` (demo-qa, lo que tocó el merge): `17 passed (17) · 184 passed (184)`.
+- `pnpm run test:guardias`: `2 failed | 310 passed | 2 skipped`; rojos: `dependencias-declaradas-presentes`
+  (en `tests/baseline-rojos.json`) y `rollup-guards` (d), arreglado con el renombre:
+  `rollup-guards` + `carga-division-service` 48/48.
+
+Trazabilidad R1–R52: `progress/impl_SL-20.md > T6.5`.
+
+Preguntas abiertas:
+1. La base `servi_logistic_sl20` no existía y se recreó (migrada, sin `db:seed`): 6 suites de la pasada
+   de T6.1 abortan en `beforeAll` por falta de datos sembrados (todas en `tests/baseline-rojos.json`).
+   ¿Se siembra la base o se acepta así? ¿Quién la borró?
+2. La mutación de los 3 triggers SL021 (apagarlos para ver caer R13/R38) la bloqueó el clasificador de
+   permisos; la caída está razonada, no medida. ¿Se autoriza en local?
+3. La pantalla `/plataforma/geografia` no pasó por `/design` (perfil de frontend).
+4. El autocompletado ofrece también países ya dados de alta (el servidor responde `conflict` y la UI lo
+   dice); ¿se ocultan? El spec no lo decide.
+5. Textos con nombre de nivel en forma neutra («Alta: Departamento») por no conocer el género del nombre.
+6. D15: falta la confirmación escrita de Carlos (F1.4).

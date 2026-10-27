@@ -11,7 +11,7 @@ import {
   COLUMNAS_DIVISION,
   DIVISION_MAX_BYTES,
   DIVISION_MAX_ERRORES,
-  DIVISION_MAX_FILAS,
+  DIVISION_TOPE_DE_FILAS_CSV,
   type FilaDivision,
 } from "@/lib/types/division-csv";
 import { planificarDivision } from "@/lib/utils/division-csv";
@@ -85,8 +85,8 @@ async function leerArchivo(
   if (faltan.length > 0) {
     return rechazo(`Faltan columnas obligatorias: ${faltan.join(", ")}.`);
   }
-  if (hoja.rows.length > DIVISION_MAX_FILAS) {
-    return rechazo(`El archivo tiene más de ${DIVISION_MAX_FILAS} filas de datos.`);
+  if (hoja.rows.length > DIVISION_TOPE_DE_FILAS_CSV) {
+    return rechazo(`El archivo tiene más de ${DIVISION_TOPE_DE_FILAS_CSV} filas de datos.`);
   }
 
   // Decision 4 de SL-20: las columnas de mas no son un error; se ignoran y se dice.

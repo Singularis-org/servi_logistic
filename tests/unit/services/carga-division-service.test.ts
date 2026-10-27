@@ -6,7 +6,7 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import {
   DIVISION_MAX_BYTES,
   DIVISION_MAX_ERRORES,
-  DIVISION_MAX_FILAS,
+  DIVISION_TOPE_DE_FILAS_CSV,
   type ResumenCarga,
 } from "@/lib/types/division-csv";
 
@@ -133,13 +133,13 @@ describe("SL-20/R28 — el archivo se rechaza entero, sin leer ni escribir la ba
     expect(await rechazoDe("d.csv", new Uint8Array())).toMatch(/nivel_1.*codigo_nivel_3/);
   });
 
-  it(`mas de ${DIVISION_MAX_FILAS} filas de datos`, async () => {
-    const filas = Array.from({ length: DIVISION_MAX_FILAS + 1 }, (_, i) => `P${i},,C${i},,,`);
+  it(`mas de ${DIVISION_TOPE_DE_FILAS_CSV} filas de datos`, async () => {
+    const filas = Array.from({ length: DIVISION_TOPE_DE_FILAS_CSV + 1 }, (_, i) => `P${i},,C${i},,,`);
     expect(await rechazoDe("d.csv", csv(...filas))).toMatch(/10000 filas/);
   });
 
-  it(`CONTRAPRUEBA: exactamente ${DIVISION_MAX_FILAS} filas pasan a planificarse`, async () => {
-    const filas = Array.from({ length: DIVISION_MAX_FILAS }, () => `Pp,,Cc,,,`);
+  it(`CONTRAPRUEBA: exactamente ${DIVISION_TOPE_DE_FILAS_CSV} filas pasan a planificarse`, async () => {
+    const filas = Array.from({ length: DIVISION_TOPE_DE_FILAS_CSV }, () => `Pp,,Cc,,,`);
     const { service, repo } = build();
     const r = await service.cargar("XA", { nombre: "d.csv", bytes: csv(...filas) }, SUPERADMIN);
     expect(r.status).toBe("ok");

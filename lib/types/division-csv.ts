@@ -22,7 +22,7 @@ export type ColumnaDivision = (typeof COLUMNAS_DIVISION)[number];
  * `next.config.ts`; las filas son de datos, sin la cabecera.
  */
 export const DIVISION_MAX_BYTES = 5 * 1024 * 1024;
-export const DIVISION_MAX_FILAS = 10_000;
+export const DIVISION_TOPE_DE_FILAS_CSV = 10_000;
 /** Cuantos errores de linea devuelve la respuesta como mucho; `total` dice cuantos hubo. */
 export const DIVISION_MAX_ERRORES = 200;
 
