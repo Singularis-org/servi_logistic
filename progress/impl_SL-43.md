@@ -381,6 +381,91 @@ Desviaciones:
 **Aviso:** `tarifa-zona-borrado-fk-real.test.ts:371` espera `23001`, y en 17 daría `23503`. Ya está en
 el baseline por otro motivo y no se toca.
 
+## Tiempo de la demo en el build de QA (2026-10-26, tras el merge del PR #18)
+
+**El problema:** en Vercel, A tardó ~457 s y B no terminó, así que se venció el tope de 15 min. El
+build corre en Cleveland y Supabase de QA está en us-west-2, a ~70–90 ms por ida y vuelta, y la demo
+hace miles de consultas en serie. El log trae además un `DeprecationWarning` de `pg` por consultas
+solapadas en un mismo cliente. Carlos dejó `DEMO_ON_PREVIEW=false` para desbloquear `dev`.
+
+**Idas y vueltas a la base**, contadas a nivel de `pg` en el dueño y en la app, incluidos `BEGIN`,
+`set_config` y `COMMIT`:
+
+| Fase | Antes (`e50ae78`) | Ronda 1 | Ronda 2 |
+|---|---|---|---|
+| inicio + preparación | 48 | 4 | 4 |
+| borrado (2 empresas) | 304 (+8 Storage) | 124 (1 pasada) | 124 |
+| A | 8.991 (+45 Storage) | 5.402 | 6.248 |
+| B | 8.990 (+45 Storage) | 5.416 | 6.250 |
+| comprobación final | 23 | 23 | 23 |
+| suma × 90 ms (en serie) | **1.661 s** | 996 s | ~1.140 s, pero A y B van en paralelo, repartidas en 12 conexiones |
+
+- El envoltorio de empresa (`BEGIN` + `set_config` + `COMMIT`) se lleva unas 5.000 de las ~9.000 idas
+  y vueltas de cada empresa.
+- La ronda 2 sube el número de consultas al repartir las gestiones entre más mensajeros, pero baja el
+  tiempo porque acorta la ruta crítica.
+
+**Tiempos medidos**, con un proxy local de latencia; el último con el pool limitado a 8, como el pooler:
+
+| Medición | Total | A | B |
+|---|---|---|---|
+| antes, 90 ms | ~854 s A, B abortada por el tope a los 905 s | | |
+| ronda 1, 90 ms | 214,2 s | 199,2 s | 199,1 s |
+| ronda 1, 160 ms | P2028 a los 55 s | | |
+| ronda 2, 90 ms | **167,6 s** | 153,0 s | 152,2 s |
+| ronda 2, 160 ms | 305,1 s | 280,3 s | 280,4 s |
+| ronda 2, 160 ms, 8 conexiones | 348,4 s | | |
+
+**Medición real contra QA desde el PC del implementer**, con el OK de Carlos:
+- Cómo se corrió: `--build` simulado y una contraseña de usar y tirar que no se imprime.
+- Ida y vuelta medida: p50 163 ms por `DIRECT_URL` y 150 ms por `DATABASE_URL`, casi el doble que el
+  build.
+
+| Corrida | Resultado |
+|---|---|
+| 1, ronda 1 | **falló a los 72 s con P2028** (timeout de la transacción de `cargarMasiva`: 46 consultas, ~8,8 s a 160 ms, frente a los 5 s por defecto) |
+| 2, ronda 2 | **`EXIT=0` en 278,3 s** (A 252,7 s, B 246,7 s; borrado de las 2 anteriores en 1 pasada). Los 20 estados en las dos empresas, 0 avisos de `pg`, y en la salida ni la contraseña ni ninguna URL |
+
+- **Lo que queda en QA:** las dos empresas demo, con la contraseña de usar y tirar. El próximo build
+  con la variable real las recrea.
+- **Estimación para el build:** a 90 ms se midieron 167,6 s con el proxy, así que la demo debería
+  quedar por debajo de 3 min. Solo el primer build con `DEMO_ON_PREVIEW=true` lo confirma.
+
+**Cambios:**
+- **`scripts/demo-qa.ts`:**
+  - A y B en paralelo (`enParalelo`: si una falla, espera a la otra, suelta el candado y cierra);
+  - un lector del dueño de 4 conexiones;
+  - `DB_POOL_MAX=12` para la app, solo en este proceso;
+  - `conectarDemo` fija las opciones de transacción de la demo (`maxWait` 30 s, `timeout` 60 s).
+- **`scripts/demo-qa/receta.ts`:**
+  - una carga masiva y servicios por lotes de 4;
+  - altas, ubicación y tramos en paralelo;
+  - gestiones repartidas en 5 mensajeros, 3 perfiles más por empresa (`mensajero-novedades`,
+    `mensajero-rechazos`, `mensajero-satelite-2`);
+  - las cifras por estado del contrato no cambian.
+- **`scripts/demo-qa/borrar.ts`:** una pasada en orden de FK dentro de un `SAVEPOINT`. Si choca, vuelve
+  a las pasadas de antes, así que R8 no cambia.
+- **`scripts/demo-qa/paso.ts`:** los errores nombran el paso de la receta y, en un P2028, qué tiempo
+  venció. No incluyen el mensaje de la base.
+- **`lib/db/consultas-en-serie.ts`** (nuevo) y **`lib/db/prisma-client.ts`**:
+  - **Para el reviewer: afectan a toda la app.**
+  - Las consultas que Prisma 7.8 lanza a la vez dentro de una transacción (un `include` con varios
+    hijos) se encolan en orden. Eso quita el `DeprecationWarning`: 626 solapes antes, 0 después.
+  - `opcionesDeTransaccion()` lee `DB_TX_MAX_WAIT_MS` y `DB_TX_TIMEOUT_MS`. Sin ellas, la app sigue
+    con 2 s y 5 s.
+- **`RECORTE_DE_B`:** no se enciende. A 90 ms solo baja de 167,6 a 161,2 s, porque la ruta crítica es
+  la de A.
+- **Riesgo:** con 12 conexiones de la app más 4 del dueño, durante unos 3 min la demo deja poco margen
+  en el pooler de QA si tiene unos 15 slots (no se conoce el tamaño).
+
+**Tests:**
+- Los 5 archivos de integración juntos, dos veces: 42/42.
+- `tests/unit/scripts/` y `tests/unit/db/`: 369/369.
+- E2E: reparto 15/15 y dinero 28/28.
+- Mutaciones M1–M9 en rojo: A‖B en serie, sin serializar, orden de FK, sin vuelta a las pasadas, y las
+  opciones de transacción del cliente, del dueño y del lector, la ruta del paso y la clasificación del
+  P2028.
+
 ## Mapa `R<n> → test`
 
 | R | Test | Estado |
@@ -576,3 +661,108 @@ Se quedan en `e2e/`: `paginaDe`, la sustitución de `process.env`, `abrirBaseE2E
 5. **D7 se queda corto de mensajeros** por R-a, R-b y R-c: hacen falta un recolector y un mensajero para el corte, además de los dos de reparto.
 6. **`devolucion_a_origen_por_rechazo`** necesita `RechazoTiendaService.rechazar` (240), que D5.1/D5.2 no listan.
 7. **`jspdf` no hace falta:** los comprobantes admiten JPEG.
+
+## Cambio de alcance — correos demo en yopmail.com (D29, 2026-10-26)
+
+Decisión de Carlos: los usuarios demo pasan de `demo-qa-<a|b>-<perfil>@example.test` a
+`servi-<slug>-<perfil>@yopmail.com` (p. ej. el maestro de la demo A: slug `demo-qa-a`, perfil `maestro`). El de la API key
+(`apikey+…@apikey.invalid`, D28) no cambia. Hecho en el worktree, sin commitear (commitea el leader).
+
+### Archivos
+
+- Nuevo `scripts/demo-qa/correos.ts`: `DOMINIO_CORREO_DEMO`, `MAXIMO_LOCAL_PART = 64`,
+  `PERFILES_DEMO` (antes `ORDEN_DE_PERFILES` en `receta.ts`), `correoDemo(slug, perfil)`,
+  `correosDemoDe(slug)` y `CorreoDemoDemasiadoLargo`.
+- `scripts/demo-qa/receta.ts`: usa `correoDemo(slugEmpresa, …)`; comprueba los 15 correos con
+  `correosDemoDe` al empezar `crearEmpresaDemo`, antes de dar de alta a nadie.
+- Nuevo `tests/unit/scripts/demo-qa-correos.test.ts` (R12, D29: formato, tope de 64, `api` sin correo).
+- `tests/unit/scripts/demo-qa-build.test.ts`: los correos de los dobles y la línea de la tabla de
+  salida, con el formato nuevo.
+- `tests/integration/db/demo-qa.test.ts`: R12 espera `servi-demo-qa-<x>-<perfil>@yopmail.com`
+  (literales escritos a mano, no `correoDemo`).
+- `tests/integration/db/demo-qa-borrado.test.ts`: caso nuevo «R7, D29: un usuario @yopmail.com de una
+  empresa real sobrevive al borrado» (el maestro de una empresa real con el correo EXACTO
+  que la demo daría al maestro de `demo-qa-a`; la huella de su empresa queda idéntica).
+- `specs/SL-43-datos-demo-qa/requirements.md` (R12 enmendado, D2 anotado, D29 nueva),
+  `design.md > D7` (correos fijos), `README.md` y `docs/verification.md`.
+- `scripts/demo-qa/borrar.ts` y `salida.ts` NO cambian: el borrado ya identificaba a los usuarios por
+  `organizacion_id` de empresas `es_demo` (`exigirSoloDemo`), nunca por el correo; la tabla de salida
+  imprime el correo que le llega.
+
+### Decisión: fábricas de tests y E2E siguen con `@example.test`
+
+`tests/fabricas/e2e.ts` y los fixtures de `tests/integration/` no cambian. La demo no las usa para
+generar sus correos: los pone `correoDemo` y se pasan a `crearEmpresa`/`crearUsuario` del núcleo
+(`tests/fabricas/escenarios/reparto`), que no fabrica el correo. Motivo: `example.test` es un dominio
+reservado (RFC 2606/6761) que nunca entrega; pasar las fábricas a un buzón público solo añadiría
+riesgo sin que D29 lo pida.
+
+### Mutaciones (cada una revertida; `git diff` sin `borrar.ts`, `salida.ts` ni `correos.ts` mutados)
+
+| # | Mutación | Test | Resultado real |
+|---|---|---|---|
+| Y1 | `borrar.ts`: `SELECT` y `DELETE` de `usuario` con `OR "email" LIKE` el patrón `servi-<cualquiera>@yopmail.com` | `demo-qa-borrado` «R7, D29 …» | ROJO: `expected +0 to be 1` (1 failed, 4 passed) |
+| Y2 | `DOMINIO_CORREO_DEMO = "example.test"` | `demo-qa-correos` | ROJO: 2 failed (formato, todos los correos) |
+| Y3 | sin la comprobación del tope en `correoDemo` | `demo-qa-correos` | ROJO: 2 failed (64/65, slug largo) |
+| Y4 | `>` → `>=` en el tope | `demo-qa-correos` | ROJO: 2 failed (64/65, slug largo) |
+| Y5 | `correosDemoDe` sin filtrar `api` | `demo-qa-correos` | ROJO: 2 failed (30 correos, api sin correo) |
+| Y6 | local-part sin el prefijo `servi-` | `demo-qa-correos` | ROJO: 3 failed |
+| Y7 | `salida.ts`: la tabla imprime `correo.split("@")[0]` | `demo-qa-build` «con las tres condiciones…» | ROJO: 1 failed, 34 passed |
+| Y8 | `DOMINIO_CORREO_DEMO = "example.test"` | `demo-qa.test.ts` (Postgres real) | ROJO: `demo-qa-a sin maestro` en R12; 8 failed, 4 passed |
+
+No cubierto por un test: quitar la llamada `correosDemoDe(slugEmpresa)` del inicio de la receta. Es
+defensa en profundidad: `correoDemo` lanza igual en cada alta; solo cambia que pare antes.
+
+### Mapa R → test (lo que toca este cambio)
+
+- R12 → `tests/unit/scripts/demo-qa-correos.test.ts` (5 casos) y
+  `tests/integration/db/demo-qa.test.ts` «la primera ejecución deja dos empresas demo completas».
+- R7 + D29 → `tests/integration/db/demo-qa-borrado.test.ts` «R7, D29: un usuario @yopmail.com de una
+  empresa real sobrevive al borrado».
+- R26 (tabla de salida) → `tests/unit/scripts/demo-qa-build.test.ts` «con las tres condiciones…».
+
+### Salida
+
+- `pnpm exec vitest run tests/unit/scripts/demo-qa-correos.test.ts tests/unit/scripts/demo-qa-build.test.ts`
+  → 2 files, 40 passed.
+- `vitest run tests/integration/db/demo-qa.test.ts tests/integration/db/demo-qa-borrado.test.ts` contra
+  `servi_logistic_sl43` (local) → 2 files, 17 passed, ninguno saltado (12 + 5).
+- `pnpm run typecheck` → exit 0. `pnpm run lint` → 0 errors (231 warnings preexistentes);
+  `eslint` sobre los archivos tocados → sin salida.
+- No corrí las guardias ni el gate (otro backend_dev trabaja en el mismo worktree en
+  `lib/services/EmailProvider.ts` y `lib/services/email/`).
+
+Veredicto: correos demo en `servi-<slug>-<perfil>@yopmail.com` con tope de 64 probado; el borrado
+sigue por `es_demo` y un `@yopmail.com` de empresa real sobrevive (probado y mutado).
+
+## OTP en QA con SMTP: dominios reservados por consola (2026-10-26)
+
+Visto en QA: con SMTP (Brevo) configurado, `crearEmailSender()` elegía `NodemailerEmailSender`, el
+código del OTP nunca salía en la línea `[email][debug]` y se intentaba enviar a `.test`, que rebota.
+
+- Nuevo `lib/services/email/EnrutadorEmailSender.ts`: `esDestinoReservado(to)` mira la última
+  etiqueta del dominio (minúsculas, sin espacios ni punto final) contra `test`, `invalid`, `example`
+  y `localhost` (RFC 2606/6761). Si llega una lista y alguna dirección es reservada, todo va a consola.
+- `lib/services/EmailProvider.ts > crearEmailSender`: con SMTP compone
+  `EnrutadorEmailSender(Nodemailer, Console)`; sin SMTP, `ConsoleEmailSender` como antes. No se
+  tocan las actions, `otpDebugLogHabilitado` ni `ConsoleEmailSender`; en producción el código sigue
+  apagado.
+- Tests: `tests/unit/services/email/enrutador-email-sender.test.ts` (17). Se ajustaron
+  `tests/unit/services/email-notificacion.test.ts` y
+  `tests/unit/actions/password-reset-degrada-a-consola.test.ts`, que exigían `NodemailerEmailSender`
+  a secas.
+- `example.com/.net/.org` siguen saliendo por SMTP (fuera de lo pedido; un test lo fija).
+
+Mutaciones, todas en rojo y revertidas: M1 quitar `test` (7 fallan), M2 `invalid` (1), M3 `example`
+(1), M4 `localhost` (2), M5 `includes` en vez de la última etiqueta (4), M6 sin `toLowerCase` (1),
+M7 enrutar al revés (17), M8 sin quitar el punto final (1), M9 sin `trim` (1), M10 sin dividir la
+lista (1), M11 `crearEmailSender` sin componer (3), M12 consola en ambos lados (3).
+
+Salida: 5 archivos de email y guardia (`otp-debug-solo-en-pruebas` incluida), 63/63; typecheck exit 0;
+lint 0 errores.
+
+Gate rápido, primera corrida: `INIT_EXIT=1` por `recursos-origen-fuera.guardia.test.ts` (SL-34): 18
+correos con dominio no reservado. Arreglo sin tocar la guardia: los tests del enrutador usan
+dominios de RFC 2606 cuya última etiqueta no es reservada (`…example.com/.net/.org`), y los literales
+yopmail de los tests de la demo van escritos a mano con `${YOPMAIL}`. Re-mutado: M5 (7 fallan) e Y2
+(2 fallan). Integración de la demo 17/17. Segunda corrida del gate: `INIT_EXIT=0`.

@@ -124,6 +124,14 @@ export interface OpcionesReparto {
   distritosExtra?: { central?: string[]; satelite?: string[] };
 }
 
+/** Una orden por crear (`crearOrden`, `crearOrdenes`). Sin remisión ni destinatario, se inventan. */
+export interface NuevaOrden {
+  zona: ZonaTipo;
+  montoCobrar?: number;
+  destinatario?: string;
+  numRemision?: string;
+}
+
 /** Datos extra del alta de un usuario (los que pide `crearUsuario`). */
 export interface ExtraUsuario {
   zonaId?: string;
@@ -336,26 +344,13 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
       ? [opts.distritos.central, opts.distritos.satelite]
       : await dosDistritos(deps.lector());
     const tarifaMensajero = opts.tarifaMensajero ?? TARIFA_MENSAJERO_POR_DEFECTO;
-    const zonaCentral = await crearZona(
-      empresa,
-      maestro,
-      geoCentral,
-      true,
-      tarifaMensajero,
-      opts.nombresZona?.central,
-      opts.distritosExtra?.central,
-    );
-    const zonaSatelite = await crearZona(
-      empresa,
-      maestro,
-      geoSatelite,
-      false,
-      tarifaMensajero,
-      opts.nombresZona?.satelite,
-      opts.distritosExtra?.satelite,
-    );
-
-    const tienda = await deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true });
+    // Las dos zonas y la tienda a la vez: no dependen entre sí (la demo de QA va contra una base
+    // lejana y cada ida y vuelta cuenta). El adminSatelite espera a su zona.
+    const [zonaCentral, zonaSatelite, tienda] = await Promise.all([
+      crearZona(empresa, maestro, geoCentral, true, tarifaMensajero, opts.nombresZona?.central, opts.distritosExtra?.central),
+      crearZona(empresa, maestro, geoSatelite, false, tarifaMensajero, opts.nombresZona?.satelite, opts.distritosExtra?.satelite),
+      deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true }),
+    ]);
     const adminSatelite = await deps.altas.usuario(empresa, "admin-satelite", "adminSatelite", { zonaId: zonaSatelite.id });
 
     const tarifa = crearTarifaSchema.parse({ tiendaId: tienda.id, ...TARIFA_POR_DEFECTO, ...opts.tarifa });
@@ -387,21 +382,31 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     return { ...u, zona, zonaId, actor: actorDe(r.empresa, u, "mensajero", zonaId) };
   }
 
-  async function crearOrden(
-    r: EscenarioReparto,
-    o: { zona: ZonaTipo; montoCobrar?: number; destinatario?: string; numRemision?: string },
-  ): Promise<OrdenEscenario> {
-    const geo = o.zona === "central" ? r.zonaCentral.geo : r.zonaSatelite.geo;
-    const numRemision = o.numRemision ?? `E2E-${sufijo()}`;
-    const destinatario = o.destinatario ?? `Destinatario E2E ${sufijo()}`;
-    const montoCobrar = o.montoCobrar ?? 0;
+  async function crearOrden(r: EscenarioReparto, o: NuevaOrden): Promise<OrdenEscenario> {
+    const [orden] = await crearOrdenes(r, [o]);
+    return orden;
+  }
+
+  /**
+   * Varias órdenes de la tienda en UNA carga (`BulkOrdenService.cargarMasiva` con una fila por
+   * orden), como la carga masiva de la app. Devuelve las órdenes en el orden en que se pidieron.
+   */
+  async function crearOrdenes(r: EscenarioReparto, nuevas: readonly NuevaOrden[]): Promise<OrdenEscenario[]> {
+    if (nuevas.length === 0) return [];
+    const pedidas = nuevas.map((o) => ({
+      zona: o.zona,
+      numRemision: o.numRemision ?? `E2E-${sufijo()}`,
+      destinatario: o.destinatario ?? `Destinatario E2E ${sufijo()}`,
+      montoCobrar: o.montoCobrar ?? 0,
+    }));
     const s = servicios();
     const res = await conEmpresa(r.empresa.organizacionId, () =>
       s.carga.cargarMasiva(
-        [
-          {
-            num_remision: numRemision,
-            destinatario,
+        pedidas.map((o) => {
+          const geo = o.zona === "central" ? r.zonaCentral.geo : r.zonaSatelite.geo;
+          return {
+            num_remision: o.numRemision,
+            destinatario: o.destinatario,
             telefono: "88880000",
             producto: "Caja E2E",
             provincia: geo.provincia,
@@ -409,21 +414,25 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
             // Con dirección: la carga encola su geocodificación, que es lo que la asignación mira.
             direccion: "100 m norte de la iglesia",
             notas: "",
-            monto_cobrar: montoCobrar > 0 ? String(montoCobrar) : "",
-          },
-        ],
+            monto_cobrar: o.montoCobrar > 0 ? String(o.montoCobrar) : "",
+          };
+        }),
         r.actores.tienda,
       ),
     );
-    if (res.status !== "ok" || res.summary.creadas !== 1) {
-      throw new Error(`escenario reparto: la carga no creó la orden: ${JSON.stringify(res)}`);
+    if (res.status !== "ok" || res.summary.creadas !== pedidas.length) {
+      throw new Error(`escenario reparto: la carga no creó las ${pedidas.length} órdenes: ${JSON.stringify(res)}`);
     }
-    const fila = await deps.lector().orden.findFirst({
-      where: { numRemision, organizacionId: r.empresa.organizacionId },
-      select: { id: true, numGuia: true },
+    const filas = await deps.lector().orden.findMany({
+      where: { numRemision: { in: pedidas.map((o) => o.numRemision) }, organizacionId: r.empresa.organizacionId },
+      select: { id: true, numGuia: true, numRemision: true },
     });
-    if (!fila) throw new Error("escenario reparto: la orden cargada no aparece.");
-    return { id: fila.id, numRemision, destinatario, montoCobrar, zona: o.zona, numGuia: fila.numGuia };
+    const porRemision = new Map(filas.map((f) => [f.numRemision, f]));
+    return pedidas.map((o) => {
+      const fila = porRemision.get(o.numRemision);
+      if (!fila) throw new Error("escenario reparto: la orden cargada no aparece.");
+      return { id: fila.id, numRemision: o.numRemision, destinatario: o.destinatario, montoCobrar: o.montoCobrar, zona: o.zona, numGuia: fila.numGuia };
+    });
   }
 
   async function estadoDe(orden: { id: string }): Promise<string> {
@@ -454,6 +463,52 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     return m;
   }
 
+  /**
+   * Un tramo del camino para un lote de órdenes de la misma zona: UNA llamada al servicio con todos
+   * sus ids, como la pantalla con varias seleccionadas. La recepción en la satélite es por guía (el
+   * escáner): una llamada por orden.
+   */
+  async function avanzar(
+    r: EscenarioReparto,
+    lote: readonly OrdenEscenario[],
+    siguiente: DestinoReparto,
+    mensajero: MensajeroEscenario | undefined,
+  ): Promise<void> {
+    const s = servicios();
+    const org = r.empresa.organizacionId;
+    const { maestro, adminSatelite } = r.actores;
+    const ordenIds = lote.map((o) => o.id);
+    switch (siguiente) {
+      case "en_bodega_central":
+        exigirOk("generarGuia", await conEmpresa(org, () => s.guia.generarGuia({ ordenIds }, maestro)));
+        break;
+      case "en_ruta_bodega_satelite":
+        exigirOk("rutearABodegaSatelite", await conEmpresa(org, () => s.guia.rutearABodegaSatelite({ ordenIds }, maestro)));
+        break;
+      case "en_bodega_satelite":
+        for (const orden of lote) {
+          const numGuia = await guiaDe(orden);
+          exigirOk("RecepcionSateliteService.recibir", await conEmpresa(org, () => s.recepcion.recibir(numGuia, adminSatelite)));
+        }
+        break;
+      case "mensajero_recogiendo_en_bodega": {
+        const m = lote.map((o) => exigirMensajero(o, mensajero))[0];
+        await deps.prepararAsignacion(ordenIds);
+        const res =
+          m.zona === "satelite"
+            ? await conEmpresa(org, () => s.asignacion.asignar({ ordenIds, mensajeroId: m.id, dia: "hoy" }, adminSatelite))
+            : await conEmpresa(org, () => s.guia.asignarDesdeBodega({ ordenIds, mensajeroId: m.id, dia: "hoy" }, maestro));
+        exigirOk("asignar", res);
+        break;
+      }
+      case "en_reparto": {
+        const m = lote.map((o) => exigirMensajero(o, mensajero))[0];
+        exigirOk("recogerAsignaciones", await conEmpresa(org, () => s.misAsignaciones.recogerAsignaciones({ ordenIds }, m.actor)));
+        break;
+      }
+    }
+  }
+
   async function llevarA(
     r: EscenarioReparto,
     orden: OrdenEscenario,
@@ -463,9 +518,6 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     const camino = CAMINO[orden.zona];
     const meta = camino.indexOf(destino);
     if (meta < 0) throw new Error(`escenario reparto: «${destino}» no está en el camino de una orden ${orden.zona}.`);
-    const s = servicios();
-    const org = r.empresa.organizacionId;
-    const { maestro, adminSatelite } = r.actores;
 
     for (;;) {
       const actual = await estadoDe(orden);
@@ -474,37 +526,64 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
       if (pos < -1 || pos > meta) {
         throw new Error(`escenario reparto: la orden ${orden.numRemision} está en «${actual}», no se puede llevar a «${destino}».`);
       }
-      const siguiente = camino[pos + 1];
-      switch (siguiente) {
-        case "en_bodega_central":
-          exigirOk("generarGuia", await conEmpresa(org, () => s.guia.generarGuia({ ordenIds: [orden.id] }, maestro)));
-          break;
-        case "en_ruta_bodega_satelite":
-          exigirOk("rutearABodegaSatelite", await conEmpresa(org, () => s.guia.rutearABodegaSatelite({ ordenIds: [orden.id] }, maestro)));
-          break;
-        case "en_bodega_satelite": {
-          const numGuia = await guiaDe(orden);
-          exigirOk("RecepcionSateliteService.recibir", await conEmpresa(org, () => s.recepcion.recibir(numGuia, adminSatelite)));
-          break;
-        }
-        case "mensajero_recogiendo_en_bodega": {
-          const m = exigirMensajero(orden, opts.mensajero);
-          await deps.prepararAsignacion([orden.id]);
-          const res =
-            orden.zona === "satelite"
-              ? await conEmpresa(org, () => s.asignacion.asignar({ ordenIds: [orden.id], mensajeroId: m.id, dia: "hoy" }, adminSatelite))
-              : await conEmpresa(org, () => s.guia.asignarDesdeBodega({ ordenIds: [orden.id], mensajeroId: m.id, dia: "hoy" }, maestro));
-          exigirOk("asignar", res);
-          break;
-        }
-        case "en_reparto": {
-          const m = exigirMensajero(orden, opts.mensajero);
-          exigirOk("recogerAsignaciones", await conEmpresa(org, () => s.misAsignaciones.recogerAsignaciones({ ordenIds: [orden.id] }, m.actor)));
-          break;
-        }
-      }
+      await avanzar(r, [orden], camino[pos + 1], opts.mensajero);
     }
     return { ...orden, numGuia: await guiaDe(orden).catch(() => null) };
+  }
+
+  /**
+   * `llevarA` para varias órdenes de una zona a la vez: en cada vuelta avanza un tramo, con una
+   * llamada al servicio por cada `lote` órdenes (por defecto, todas en una), las que van más atrás.
+   * Las que ya están en el destino no se tocan. `lote` existe porque cada servicio hace su trabajo en
+   * una transacción con el tiempo máximo por defecto de Prisma (5 s): contra una base lejana, muchas
+   * órdenes en una sola llamada no caben.
+   */
+  async function llevarVariasA(
+    r: EscenarioReparto,
+    ordenes: readonly OrdenEscenario[],
+    destino: DestinoReparto,
+    opts: { mensajero?: MensajeroEscenario; lote?: number } = {},
+  ): Promise<OrdenEscenario[]> {
+    if (ordenes.length === 0) return [];
+    const zona = ordenes[0].zona;
+    if (ordenes.some((o) => o.zona !== zona)) throw new Error("escenario reparto: llevarVariasA exige órdenes de una sola zona.");
+    const camino = CAMINO[zona];
+    const meta = camino.indexOf(destino);
+    if (meta < 0) throw new Error(`escenario reparto: «${destino}» no está en el camino de una orden ${zona}.`);
+
+    for (;;) {
+      const estados = await estadosDe(ordenes);
+      const posiciones = ordenes.map((o) => {
+        const actual = estados.get(o.id);
+        const pos = actual === "en_preparacion" ? -1 : camino.indexOf(actual as DestinoReparto);
+        if ((pos === -1 && actual !== "en_preparacion") || pos > meta) {
+          throw new Error(`escenario reparto: la orden ${o.numRemision} está en «${actual}», no se puede llevar a «${destino}».`);
+        }
+        return pos;
+      });
+      const atrasadas = posiciones.filter((p) => p < meta);
+      if (atrasadas.length === 0) break;
+      const desde = Math.min(...atrasadas);
+      const tramo = ordenes.filter((_, i) => posiciones[i] === desde);
+      const lote = opts.lote ?? tramo.length;
+      for (let i = 0; i < tramo.length; i += lote) {
+        await avanzar(r, tramo.slice(i, i + lote), camino[desde + 1], opts.mensajero);
+      }
+    }
+    const guias = await deps.lector().orden.findMany({
+      where: { id: { in: ordenes.map((o) => o.id) } },
+      select: { id: true, numGuia: true },
+    });
+    const guiaPorId = new Map(guias.map((g) => [g.id, g.numGuia]));
+    return ordenes.map((o) => ({ ...o, numGuia: guiaPorId.get(o.id) ?? null }));
+  }
+
+  async function estadosDe(ordenes: readonly { id: string }[]): Promise<Map<string, string>> {
+    const filas = await deps.lector().orden.findMany({
+      where: { id: { in: ordenes.map((o) => o.id) } },
+      select: { id: true, estatus: { select: { value: true } } },
+    });
+    return new Map(filas.map((f) => [f.id, f.estatus.value]));
   }
 
   function evidencia(): EvidenciaArchivo[] {
@@ -564,9 +643,11 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     crearEscenarioReparto,
     crearMensajero,
     crearOrden,
+    crearOrdenes,
     estadoDe,
     gestionesDe,
     llevarA,
+    llevarVariasA,
     gestionar,
     corregirFechaReprogramacion,
   };

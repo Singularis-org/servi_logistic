@@ -9,6 +9,7 @@ import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepositor
 import { dedupeKeyGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
 
 import { puntoDeOrden, type DistritoDemo } from "./geografia";
+import { enTandas } from "./paralelo";
 
 // SL-43 (design §6; R20, R22, R23) — los datos de la demo, listos en un QA que no procesa la cola.
 //
@@ -32,6 +33,12 @@ export const TIPOS_DE_JOB_ESPERADOS: readonly string[] = ["geocodificacion", "op
 
 /** `last_error` de los jobs cerrados sin ejecutar: dice quién los cerró y por qué. */
 export const MOTIVO_CIERRE_SIN_EJECUTAR = "[demo-qa] cerrado sin ejecutar: QA no procesa la cola";
+
+/**
+ * Escrituras a la vez al ubicar y al cerrar jobs: cada una es una sola sentencia (su conexión, ~4 idas
+ * y vueltas con la envoltura de empresa), así que la tanda puede ser más ancha que la de `TANDA`.
+ */
+const TANDA_DE_ESCRITURAS_CORTAS = 5;
 
 /** Lo que escribe `GeocodificacionService` cuando el proveedor contesta. La UI no pinta la precisión. */
 const PRECISION_DEMO = "APPROXIMATE";
@@ -103,17 +110,23 @@ export async function ubicarOrdenes(
   ordenes: readonly OrdenAUbicar[],
   ahora: Date,
 ): Promise<ResultadoUbicar> {
+  // Cada orden y cada job son filas distintas: van por tandas a la vez, cada escritura por su
+  // conexión del pool (`enTandas`).
   return conEmpresa(organizacionId, async () => {
-    for (const orden of ordenes) {
-      const punto = puntoDeOrden(orden.distrito, orden.indice);
-      await deps.geocode.guardarResultado(orden.id, {
-        latitud: punto.latitud,
-        longitud: punto.longitud,
-        precision: PRECISION_DEMO,
-        status: STATUS_DEMO,
-        geocodedAt: ahora,
-      });
-    }
+    await enTandas(
+      ordenes,
+      (orden) => {
+        const punto = puntoDeOrden(orden.distrito, orden.indice);
+        return deps.geocode.guardarResultado(orden.id, {
+          latitud: punto.latitud,
+          longitud: punto.longitud,
+          precision: PRECISION_DEMO,
+          status: STATUS_DEMO,
+          geocodedAt: ahora,
+        });
+      },
+      TANDA_DE_ESCRITURAS_CORTAS,
+    );
 
     const claves = ordenes.flatMap((o) => {
       const clave = claveDeGeocodificacion(o);
@@ -126,13 +139,9 @@ export async function ubicarOrdenes(
       throw new Error(`[demo-qa] ${sinJob} orden(es) con dirección sin su job de geocodificación`);
     }
 
-    let cerrados = 0;
-    for (const job of jobs) {
-      if (job.estado !== "pending" && job.estado !== "processing") continue;
-      await deps.jobs.complete(job.id);
-      cerrados++;
-    }
-    return { ubicadas: ordenes.length, jobsGeocodificacionCerrados: cerrados };
+    const abiertos = jobs.filter((job) => job.estado === "pending" || job.estado === "processing");
+    await enTandas(abiertos, (job) => deps.jobs.complete(job.id), TANDA_DE_ESCRITURAS_CORTAS);
+    return { ubicadas: ordenes.length, jobsGeocodificacionCerrados: abiertos.length };
   });
 }
 
@@ -152,10 +161,8 @@ export async function cerrarJobsSinEjecutar(deps: DepsJobsDemo, organizacionId: 
   return conEmpresa(organizacionId, async () => {
     const abiertos = await deps.jobsAbiertos(organizacionId);
     const cerradosPorTipo: Record<string, number> = {};
-    for (const job of abiertos) {
-      await deps.jobs.fail(job.id, MOTIVO_CIERRE_SIN_EJECUTAR, null);
-      cerradosPorTipo[job.tipo] = (cerradosPorTipo[job.tipo] ?? 0) + 1;
-    }
+    await enTandas(abiertos, (job) => deps.jobs.fail(job.id, MOTIVO_CIERRE_SIN_EJECUTAR, null), TANDA_DE_ESCRITURAS_CORTAS);
+    for (const job of abiertos) cerradosPorTipo[job.tipo] = (cerradosPorTipo[job.tipo] ?? 0) + 1;
     const tiposNoEsperados = Object.keys(cerradosPorTipo)
       .filter((t) => !TIPOS_DE_JOB_ESPERADOS.includes(t))
       .sort();

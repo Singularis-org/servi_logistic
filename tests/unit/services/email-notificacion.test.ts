@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/external/IEmailSender";
 import { EmailNotificacionProvider, crearEmailSender } from "@/lib/services/EmailProvider";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
+import { EnrutadorEmailSender } from "@/lib/services/email/EnrutadorEmailSender";
 import { NodemailerEmailSender } from "@/lib/services/email/NodemailerEmailSender";
 import { plantillaOtpCodigo } from "@/lib/services/email/plantillas/otp-codigo";
 
@@ -337,9 +338,16 @@ describe("crearEmailSender", () => {
     expect(crearEmailSender()).toBeInstanceOf(ConsoleEmailSender);
   });
 
-  it("con credencial SMTP devuelve el emisor de nodemailer", () => {
+  it("con credencial SMTP devuelve el enrutador, que envia por nodemailer a un dominio normal", async () => {
     process.env.SMTP_USER = "no-reply@example.com";
     process.env.SMTP_PASSWORD = "abcdefghijklmnop";
-    expect(crearEmailSender()).toBeInstanceOf(NodemailerEmailSender);
+    // SL-43: con SMTP, el emisor enruta por destinatario (los `*.test` van a consola; ver
+    // tests/unit/services/email/enrutador-email-sender.test.ts). Un dominio normal sigue por SMTP.
+    const smtp = vi.spyOn(NodemailerEmailSender.prototype, "enviar").mockResolvedValue({ messageId: "x" });
+    const emisor = crearEmailSender();
+    expect(emisor).toBeInstanceOf(EnrutadorEmailSender);
+    await emisor.enviar({ to: "ana@empresa.example.com", subject: "s", text: "t" });
+    expect(smtp).toHaveBeenCalledTimes(1);
+    smtp.mockRestore();
   });
 });
