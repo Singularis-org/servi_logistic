@@ -170,11 +170,11 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 7: pantallas mínimas y E2E (R31, R32). Solo con la Propuesta A de P4
 
-- [ ] **T7.1** `app/login/_components/LoginForm.tsx`: la variante `elegir_empresa` muestra una
+- [x] **T7.1** `app/login/_components/LoginForm.tsx`: la variante `elegir_empresa` muestra una
   lista de botones, uno por empresa con su nombre. Al pulsar uno, vuelve a llamar a `login` con
   ese `organizacionId`. Sin diseño nuevo. Dep. T2.3.
   **Hecho:** `tests/components/LoginForm.test.tsx` cubre la lista y la segunda llamada.
-- [ ] **T7.2** `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx`: el paso 1 acaba
+- [x] **T7.2** `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx`: el paso 1 acaba
   en «Revisa tu correo»; fuera el paso del código. Dep. T3.3.
   **Hecho:** `recuperar-contrasena-form.test.tsx` y `recuperar-contrasena-page.test.tsx` en verde.
 - [ ] **T7.3** E2E. Dep. T7.1, T7.2.
@@ -186,6 +186,10 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
   - `e2e/auth.spec.ts` sigue en verde.
 
   **Hecho:** los cuatro archivos en verde con `pnpm exec playwright test`.
+
+  > 2026-10-27: el código está escrito (`282a52d`), con typecheck, lint y las guardias de e2e en
+  > verde. Sigue sin marcar porque Playwright no ha corrido: el disco C: estaba lleno y no cabía
+  > `next build`. Ver `progress/impl_SL-18.md > Tanda 7`.
 
 ## Cierre
 

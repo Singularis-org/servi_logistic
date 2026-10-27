@@ -1003,3 +1003,121 @@ Las tres están restauradas.
 
 ### Veredicto
 La Tanda 6 está implementada. R26–R29 en verde con base real, R30 ya documentado, las mutaciones caen y no hay drift.
+
+## Tanda 7: pantallas mínimas y E2E (R31, R32; cierra R7 y R20 en pantalla) — 2026-10-27, implementer
+
+Propuesta A (P4): lo mínimo, sin diseño; SLT-41 pule las pantallas. Los subagentes `frontend_dev` y
+`backend_dev` de T7.1 y T7.2 murieron por un 502 de la API cuando ya estaban verificando. Su trabajo
+estaba en disco y lo verificó el implementer. T7.3 la hizo un `backend_dev` nuevo.
+
+Commits: `414fbcb` (T7.1), `bc4d6d5` (T7.2), `9a20086` (design §7 y D14), `282a52d` (T7.3, E2E).
+
+### Archivos
+- `app/login/_components/LoginForm.tsx` (T7.1). Nueva fase `elegir_empresa`: título «Elige la
+  empresa», un botón por empresa con su nombre (incluida «Plataforma», `organizacionId` null) y
+  «Volver a correo y contraseña». Pulsar un botón vuelve a llamar a `login` con las mismas
+  credenciales y ese `organizacionId`. El `switch` sobre `LoginResult` es exhaustivo
+  (`default` → `never`); por eso pinta también `otp_invalid`, que `login` no devuelve pero el tipo
+  admite.
+- `app/recuperar-contrasena/_components/RecuperarContrasenaForm.tsx` (T7.2). El paso 1 pide solo el
+  correo («Enviar enlace») y acaba en «Revisa tu correo», que avisa de que llega un enlace por cada
+  cuenta. Sin paso de código. El canje por `#enlace=` (SL-41) no cambia.
+- `lib/actions/password-reset.ts`: fuera los envoltorios `verificarCodigoRecuperacion` y
+  `restablecerContrasena`. `lib/types/password-reset.ts`: fuera `VerifyResetCodeResult`.
+- `lib/services/email/plantillas/bienvenida-maestro.ts`: «pide un código con tu correo» pasa a «pide
+  un enlace nuevo con tu correo» (decisión de Camilo). Su test es `bienvenida-maestro.test.ts`.
+- Tests: `tests/components/LoginForm.test.tsx`, `tests/integration/recuperar-contrasena-{form,page,enlace}.test.tsx`,
+  `tests/unit/password-reset-actions.test.ts`, `tests/integration/actions/recuperar-por-empresa.test.ts`
+  y `tests/unit/services/email/bienvenida-maestro.test.ts`.
+- E2E (T7.3): `e2e/_superadmin-fixture.ts` (`recuperarContrasena` pide el enlace, lo lee con
+  `enlaceEnviadoA` y canjea `/recuperar-contrasena#enlace=…`; devuelve el enlace),
+  `e2e/superadmin-empresas.spec.ts`, `e2e/dos-empresas-humo.spec.ts`, `e2e/login-varias-empresas.spec.ts`
+  (nuevo) y `playwright.config.ts` (el nuevo spec, en el proyecto `aislamiento`).
+- Docs: `specs/.../design.md §7` y `progress/deudas.md > D14`. El fallo de hoy en el push es
+  silencioso, no un P2002; lo vio la mutación M1 de la Tanda 6.
+
+### Llamadores de lo borrado
+- `verificarCodigoRecuperacion` y `restablecerContrasena` de `lib/actions/password-reset.ts`:
+  `RecuperarContrasenaForm` y 5 tests (`recuperar-contrasena-{form,page,enlace}`,
+  `password-reset-actions` y `recuperar-por-empresa`). No hay usos en `e2e/`, `scripts/` ni `db/`. El
+  fixture E2E usaba el flujo de código por la UI, sin importarlas.
+- `VerifyResetCodeResult`: ningún uso fuera del envoltorio.
+- Homónimo `restablecerContrasena` (`lib/actions/usuarios.ts`, `UsuarioService`, `UserRepository`):
+  es el reset que hace un admin y no se tocó.
+
+### Verificación
+- **Typecheck** (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`, incluye `e2e/`): 0
+  errores, antes y después de T7.3. **Lint** de los 17 archivos tocados: 0 errores.
+- **Componentes y unit** (LoginForm, recuperar-contrasena form/page/enlace, password-reset-actions y
+  bienvenida-maestro): `Test Files 6 passed (6)`, `Tests 68 passed (68)`.
+- **Integración** en serie (`--no-file-parallelism`) contra `servi_logistic_sl18`
+  (host `localhost:5432`): `recuperar-por-empresa` y `login-varias-empresas` dan
+  `Test Files 2 passed (2)`, `Tests 7 passed (7)`.
+- **`vitest related --run`** de los 5 archivos de `lib/` y `app/`:
+  `Test Files 23 passed | 3 skipped (26)`, `Tests 241 passed | 21 skipped`. Los omitidos son de base
+  y no tenían `DATABASE_URL`; los de esta tanda corrieron arriba.
+- **Guardias** (`tests/unit/guards`, `analytics` y `db`): `Test Files 1 failed | 407 passed (408)`,
+  `Tests 4 failed | 5478 passed | 1 skipped`.
+  - El único rojo es `dependencias-declaradas-presentes.guardia` (baseline), igual que en la Tanda 6.
+  - Una primera corrida dio decenas de archivos de `analytics` rojos al cargar. Coincidió con el
+    disco lleno: `actor.test.ts`, corrido solo, pasa 6/6, y la segunda corrida da lo de arriba.
+- **Guardias de e2e** (`e2e-sin-saltos` y `otp-debug-solo-en-pruebas`): 41/41.
+- **E2E: NO EJECUTADO.** El disco `C:` estaba al 100% (`df`: 476G usados, entre 3,8 MB y 150 MB
+  libres; un `rtk` falló con «Espacio en disco insuficiente (os error 112)»).
+  - No cabe un `next build`.
+  - Llenar el disco con Postgres escribiendo podría tumbar el clúster local, con la base de
+    integración y la de desarrollo dentro.
+  - No se creó `servi_logistic_sl18_e2e`, ni se migró, ni se sembró. No hay cifras de Playwright.
+  - Comprobado: el `.env` principal apunta `DATABASE_URL` a localhost (base `logistic`).
+  - Pendiente con espacio: la receta de `docs/verification.md > En local`, dos corridas seguidas
+    sobre `servi_logistic_sl18_e2e`, de `--project=plataforma-vacia --project=aislamiento` con
+    `superadmin-arranque`, `superadmin-empresas`, `dos-empresas-humo`, `auth` y
+    `login-varias-empresas`.
+
+### Mutación
+| Mutación | Cae |
+|---|---|
+| M1: el botón de empresa llama a `login` sin `organizacionId` | 2 de 34 en `LoginForm.test.tsx` («SL-18 R31: al pulsar una empresa vuelve a llamar…», «SL-18 R7: elegir «Plataforma» manda organizacionId null») |
+| M2: `elegir_empresa` no pinta la lista (muestra el error genérico) | 5 de 34 (los 5 casos de `LoginForm — elegir empresa`) |
+| M3: `password-reset.ts` vuelve a exportar `verificarCodigoRecuperacion` | 1 de 3 en `password-reset-actions.test.ts` («el modulo ya no exporta…») |
+
+Las tres están restauradas. Después de restaurar: `LoginForm.test.tsx` 34/34 y la cuenta de
+`verificarCodigoRecuperacion` en `password-reset.ts` es 0.
+
+### Desviaciones y puntos abiertos
+- **T7.3 queda sin marcar.** El código está, pero su «Hecho» pide Playwright en verde y no corrió.
+- **Base del E2E.** El leader pidió `servi_logistic_sl18`. Se planeó `servi_logistic_sl18_e2e`:
+  `docs/verification.md` pide una base desechable con `DROP`/`CREATE` y `db:seed`, y el superadmin es
+  único por base. Así la base de integración no recibe datos del E2E. Aún no existe.
+- **`superadmin-empresas` caso 3.** Esperaba error al repetir el email o el documento de A en una
+  empresa nueva. Con R1 eso crea la empresa, así que queda solo el slug repetido. No hay E2E de «el
+  alta con email repetido crea la empresa»; lo cubre la integración de R1–R5.
+- **Textos del canje por enlace.** Son «Crea tu contraseña», «Crear contraseña» y «Contraseña creada»
+  (SL-41), no «Restablecer…». El fixture afirma esos.
+- **`recuperarContrasena` con varias empresas.** Usa el primer enlace del correo. Sus llamadores
+  tienen el email en una sola empresa.
+- **El spec R31** crea las dos cuentas con `crearEmpresa` de `tests/fabricas/empresa-y-usuarios.ts`,
+  porque `crearEmpresaE2E` sortea el correo. Antes valida la base con `abrirBaseE2E`.
+
+### Mapa R1–R32 → test (completo)
+| R | Test |
+|---|---|
+| R1–R5 | `tests/integration/db/usuario-unico-por-empresa.test.ts` (Tanda 1) |
+| R6, R8–R10, R12, R15 | `tests/unit/services/auth-service-empresas.test.ts` (Tanda 2) |
+| R7 | `auth-service-empresas.test.ts` y `tests/integration/actions/login-varias-empresas.test.ts`; en pantalla, `tests/components/LoginForm.test.tsx > LoginForm — elegir empresa (SL-18 R7, R31)` (5 casos) |
+| R11, R13, R14 | `tests/integration/actions/login-varias-empresas.test.ts` (y R11 también en `auth-service-empresas`) |
+| R16, R17, R19, R21 | `tests/unit/password-reset-por-empresa.test.ts` (Tanda 3); R16 en pantalla: `recuperar-contrasena-form.test.tsx` «SL-18 R20: tras solicitar, muestra «Revisa tu correo»…» |
+| R18 | `tests/integration/actions/recuperar-por-empresa.test.ts` «R18: el enlace de B cambia solo la contraseña de B…» |
+| R20 | `recuperar-por-empresa.test.ts` «R20: el módulo ya no exporta «verificar código» ni «restablecer con código»…» y «R20: con un desafío real activo, ninguna action pública canjea el código…»; `tests/unit/password-reset-actions.test.ts` «el modulo ya no exporta verificarCodigoRecuperacion ni restablecerContrasena»; `recuperar-contrasena-form.test.tsx` «SL-18 R20: el paso 1 no menciona ningún código» |
+| R22, R23, R30 | `tests/unit/guards/unicos-por-empresa.guardia.test.ts` (Tanda 4; R30 con `docs/architecture.md`) |
+| R24, R25 | `tests/integration/db/indices-rutas-calientes.test.ts` (Tanda 5), y `analitica-operativa-indices` / `historial-accion-migration` para la ampliación de T5.4 |
+| R26–R28 | `tests/integration/db/push-ultimo-gana.test.ts` y `tests/unit/actions/push-action.test.ts` (Tanda 6) |
+| R29 | `tests/integration/db/num-guia-global.test.ts` (Tanda 6) |
+| R31 | `e2e/login-varias-empresas.spec.ts` «con el mismo email y la misma contraseña en A y en B, /login ofrece las dos empresas (R31)» y «eligiendo B entra en B y no ve datos de A (R31)»; `e2e/auth.spec.ts` sin cambios; en componente, `LoginForm.test.tsx` «SL-18 R31: al pulsar una empresa vuelve a llamar a login con las mismas credenciales y su organizacionId». **E2E escrito, sin ejecutar.** |
+| R32 | `e2e/dos-empresas-humo.spec.ts` «alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)»; `e2e/superadmin-empresas.spec.ts` «5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?»…» y «5-6. el maestro de A…», vía `_superadmin-fixture > recuperarContrasena` (enlace). **E2E escrito, sin ejecutar.** |
+
+Todos los R tienen test. R31 y R32 dependen de E2E que todavía no se han ejecutado.
+
+### Veredicto
+T7.1 y T7.2 implementadas y verificadas; design §7 y D14 corregidos. El E2E de T7.3 está escrito
+y compila, pero no se ha ejecutado porque el disco está lleno. T8.1 es del leader.
