@@ -537,7 +537,8 @@ Requisitos de la enmienda 2026-10-26:
 | R45 | `tests/unit/services/organizacion-service.test.ts`, `tests/integration/db/organizacion-alta.test.ts`, `tests/components/empresas-module.test.tsx` (el `Select` no lista el país apagado) |
 | R46 | `tests/integration/db/pais-disponible.test.ts` (con `XA` apagado, su empresa lee su geografía y crea una orden como `servi_app`) |
 | R47 | `tests/unit/services/pais-service.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts`, `tests/integration/db/pais-disponible.test.ts` (fila `pais_disponibilidad_*`; mismo estado sin escribir) |
-| R48, R49, R50 | `tests/unit/utils/division-csv.test.ts`, `tests/integration/db/carga-division.test.ts` |
+| R48 | `tests/unit/services/carga-division-service.test.ts` (columnas de más: se ignoran y van en `avisos`) |
+| R49, R50 | `tests/integration/db/carga-division.test.ts` (homónimos: gana el primero por `id`; alta bajo un padre retirado: el hijo nace activo) |
 | R51 | `tests/unit/services/carga-division-service.test.ts` (`not_found`), `tests/unit/actions/geografia-plataforma-action.test.ts` (fallo de base → `error`) |
 | R52 | `tests/integration/db/geografia-alta.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts` |
 

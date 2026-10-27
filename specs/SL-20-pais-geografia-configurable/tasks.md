@@ -215,7 +215,7 @@ para y avisa al leader.
   **(enmienda 2026-10-26, decisión 3: cerrado en `CR`)**.
   Dep.: T1.2, T2.2.
   **Hecho:** sus tests unitarios verdes.
-- [ ] T6.5 Docs y deudas:
+- [x] T6.5 Docs y deudas:
   - `docs/architecture.md > Multi-empresa`: país por empresa, RLS por país, triggers `SL020`/`SL021`
     e historial de plataforma;
   - `progress/deudas.md`: D15 cerrada y la parte de geografía de D12 cerrada (la de vehículos sigue

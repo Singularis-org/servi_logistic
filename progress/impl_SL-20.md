@@ -161,3 +161,51 @@ geografía que quedan son de T4.1 o ajenos.
   orden de migraciones (ver arriba). `db/schema.prisma` ya trae T1.2/T1.3/T1.5 sin sus migraciones.
 
 - Arreglo ficha 421 (catalogo-postgres-acota-esquema): `tests/integration/db/migracion-sl20-ida-y-vuelta.test.ts` acota `pg_class` con `JOIN pg_namespace ... n.nspname = 'public'` y `pg_policies` con `schemaname = 'public'`; los demas tests SL-20 de `tests/integration/db/` no tenian consultas sin acotar. Guardia: 7/7 passed; `migracion-sl20-ida-y-vuelta` contra `servi_logistic_sl20`: 5/5 passed (10.19s).
+
+## T6.3 — Coste del trigger `geografia_del_pais_de_la_empresa` en `orden` (2026-10-27)
+
++0,25 ms de mediana por `INSERT` de `orden` (p95 0,60 ms; ≈ +9 %), por debajo de 1 ms: no hay aviso.
+Se midió con `EXPLAIN ANALYZE` (tiempo por trigger), no apagando el trigger como en D13. Detalle y
+cifras crudas en `progress/impl_SL-20-T6.md > T6.3`.
+
+## T6.5 — Mapa R<n> -> test (R1–R52, cierre)
+
+La tabla vigente es `design.md > §11` (corregida el 2026-10-27: R49 y R50 apuntan a
+`tests/integration/db/carga-division.test.ts`, y R48 a `tests/unit/services/carga-division-service.test.ts`;
+`division-csv.test.ts` no tiene esos casos). Los casos concretos por tanda están en
+`impl_SL-20-T2*.md`, `-T3.md`, `-T4*.md`, `-T5*.md` y `-T6.md`. Resumen:
+
+| R | Test |
+|---|---|
+| R1, R3, R10, R43 | `tests/integration/db/pais-tabla.test.ts` (R43 también `migracion-sl20-ida-y-vuelta.test.ts`) |
+| R2, R5 | `tests/integration/db/migracion-sl20-ida-y-vuelta.test.ts` |
+| R4, R7 | `tests/integration/db/organizacion-pais-inmutable.test.ts` |
+| R6, R8, R45 | `tests/unit/services/organizacion-service.test.ts`, `tests/integration/db/organizacion-alta.test.ts` (R45 también `tests/components/empresas-module.test.tsx`) |
+| R9 | `tests/components/empresas-module.test.tsx`, `tests/integration/db/empresas-plataforma.test.ts` (datos) |
+| R11, R16 | `tests/integration/db/geografia-por-pais.test.ts` |
+| R12, R13, R14, R38, R39 | `tests/integration/db/geografia-dos-paises.test.ts` |
+| R15, R29 | `tests/unit/services/geografia-service.test.ts`, `tests/integration/db/geografia-alta.test.ts` |
+| R17 | `tests/unit/utils/codigo-geografico.test.ts` |
+| R18 | `tests/unit/api/openapi-geografia-sin-cambios.test.ts` |
+| R19 | `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`, `tests/components/etiquetas-geograficas.test.tsx` |
+| R20, R21, R22 | `tests/unit/components/geografia-plataforma-page.test.tsx`, `tests/unit/auth/menu-visibility.test.ts` |
+| R23 | `tests/unit/services/pais-service.test.ts`, `tests/integration/db/pais-repositorio.test.ts` |
+| R24–R28 | `tests/unit/utils/division-csv.test.ts`, `tests/unit/services/carga-division-service.test.ts`, `tests/integration/db/carga-division.test.ts` |
+| R30 | `tests/integration/db/geografia-renombrado.test.ts`, `geografia-cascada-reversible.test.ts` |
+| R31, R32 | `tests/integration/db/geografia-superadmin-sin-empresa.test.ts` (R31 en UI: `geografia-plataforma-page.test.tsx`) |
+| R33, R35 | `tests/integration/db/geografia-registro-accion.test.ts`, `carga-division.test.ts` |
+| R34 | `tests/integration/db/historial-plataforma-rls.test.ts` |
+| R36 | `tests/unit/actions/geografia-plataforma-action.test.ts` |
+| R37 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/services/pais-service.test.ts` |
+| R40 | `tests/unit/constants/paises-iso-3166-1.test.ts` |
+| R41 | `tests/unit/services/pais-service.test.ts` |
+| R42 | `tests/unit/components/geografia-plataforma-page.test.tsx` |
+| R44, R46 | `tests/integration/db/pais-disponible.test.ts` (R44 también `migracion-sl20-ida-y-vuelta.test.ts`) |
+| R47 | `pais-service.test.ts`, `geografia-plataforma-action.test.ts`, `pais-disponible.test.ts`, `pais-repositorio.test.ts`, `geografia-plataforma-page.test.tsx` (UI) |
+| R48 | `tests/unit/services/carga-division-service.test.ts` |
+| R49, R50 | `tests/integration/db/carga-division.test.ts` |
+| R51 | `tests/unit/services/carga-division-service.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts` |
+| R52 | `tests/integration/db/geografia-alta.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts` |
+
+Comprobado el 2026-10-27: los 29 archivos citados existen, y cada R1–R52 aparece citado al menos en
+uno de ellos.
