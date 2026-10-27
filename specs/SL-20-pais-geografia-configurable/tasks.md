@@ -1,6 +1,7 @@
 # SL-20 — pais-geografia-configurable · tasks.md
 
-> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R39). `[P]` = puede ir en paralelo con las
+> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R52; R40–R52 y las tareas T1.8, T2.4,
+> T2.5, T4.6 y T5.7 son de la enmienda 2026-10-26). `[P]` = puede ir en paralelo con las
 > demás `[P]` de su tanda una vez cumplidas sus dependencias. Cada task cierra con
 > `pnpm exec vitest related --run <archivos>` en verde, y cada tanda con `./init.sh`.
 > Reparto (`docs/perfil-agentes.md > implementer`): T1–T4 `backend_dev`; T5 `frontend_dev`; T6 los dos.
@@ -30,14 +31,16 @@ para y avisa al leader.
 - [x] T1.1 Migración `20261026120000_pais` + `down.sql` (design §2.1, §3).
   **Hecho:** tras `pnpm run db:migrate`, `SELECT * FROM pais` devuelve solo `CR` con 1/3/5, y
   `servi_app` no puede insertar (R1, R3).
-- [x] T1.2 Migración `20261026120100_geografia_por_pais` + `down.sql` y cambios de `Provincia`,
-  `Canton` y `Distrito` en `db/schema.prisma` (§2.3, §2.4). Dep.: T1.1.
+- [x] T1.2 Migración `20261026120200_geografia_por_pais` + `down.sql` y cambios de `Provincia`,
+  `Canton` y `Distrito` en `db/schema.prisma` (§2.3, §2.4). Dep.: T1.1, T1.3 **(enmienda 2026-10-26,
+  decisión 1: orden A; era `120100` y sin dependencia de T1.3)**.
   **Hecho:** `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` vacío (si no
   sale, se aplica el plan B de §2.3 y se anota en `progress/impl_SL-20.md`); los 585 nodos tienen
   `pais_id = 'CR'` y sus `id` sin cambio (R2); un cantón con `pais_id` distinto del de su provincia
   falla (R11).
-- [x] T1.3 Migración `20261026120200_organizacion_pais` + `down.sql` y `Organizacion.paisId` en el
-  esquema (§2.2). Dep.: T1.1. [P] con T1.2.
+- [x] T1.3 Migración `20261026120100_organizacion_pais` + `down.sql` y `Organizacion.paisId` en el
+  esquema (§2.2). Dep.: T1.1. **(enmienda 2026-10-26, decisión 1: orden A; era `120200` y [P] con
+  T1.2)**.
   **Hecho:** las empresas existentes quedan en `CR` (R5); un `UPDATE organizacion SET pais_id` a
   otro país falla con `SL020`, también como dueño (R7).
 - [x] T1.4 Migración `20261026120300_geografia_del_pais_de_la_empresa` + `down.sql` (§2.5) y
@@ -54,6 +57,18 @@ para y avisa al leader.
   `pais-tabla`, `geografia-por-pais`, `organizacion-pais-inmutable`, `historial-plataforma-rls` y
   `migracion-sl20-ida-y-vuelta`. Dep.: T1.1–T1.6.
   **Hecho:** cubren R1–R5, R7, R10, R11, R16 y R34, y la ida y vuelta (up → down → up) pasa.
+- [ ] T1.8 **(enmienda 2026-10-26, decisión 6)** Migración `20261026120500_pais_disponible` +
+  `down.sql` (§2.1, §2.6, §3): `pais.disponible BOOLEAN NOT NULL DEFAULT true` y los valores
+  `pais_disponibilidad_activada`/`_desactivada` del enum; `Pais.disponible` y el enum en
+  `db/schema.prisma`. Test nuevo `tests/integration/db/pais-disponible.test.ts` y caso de `120500` en
+  `migracion-sl20-ida-y-vuelta`. Dep.: T1.5, T1.7.
+  **Hecho:**
+  - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` vacío;
+  - tras migrar, `CR` tiene `disponible = true` y un `INSERT` sin la columna nace `true` (R44);
+  - con `XA` apagado, su empresa (como `servi_app`) sigue leyendo su geografía y creando una orden
+    (R46); `servi_app` no puede cambiar `disponible` (R3);
+  - el `down.sql` aborta si hay filas `pais_disponibilidad_*` y, sin ellas, la ida y vuelta pasa;
+  - la guardia `organizacion-en-modelos` sigue verde.
 
 ## T2 — País y empresa (`backend_dev`)
 
@@ -68,6 +83,24 @@ para y avisa al leader.
   con otro país → `conflicto` `paisId` (R8); el listado trae el país (R9, datos).
 - [x] T2.3 `etiquetasDeEmpresa` y `ETIQUETAS_NEUTRAS`. Dep.: T2.1.
   **Hecho:** test unitario con una empresa en `XA` y otra en `CR`.
+- [ ] T2.4 [P] **(enmienda 2026-10-26, decisión 5)** Catálogo `lib/constants/paises-iso-3166-1.ts`
+  (§2.1, R40). **Bloqueada** hasta que el humano diga la fuente de la lista (pregunta abierta de
+  `requirements.md`); sin ella no se escribe ni una fila. Dep.: ninguna.
+  **Hecho:** `tests/unit/constants/paises-iso-3166-1.test.ts` verde (alfa-2 válidos, sin códigos ni
+  nombres normalizados repetidos, `CR` = «Costa Rica», ningún `XA`–`XZ`) y la fuente anotada en la
+  cabecera del archivo.
+- [ ] T2.5 **(enmienda 2026-10-26, decisiones 5 y 6)** País con catálogo y disponibilidad:
+  `lib/types/pais.ts` (`crearPaisSchema` sin `nombre`, `PaisDTO.disponible`,
+  `cambiarDisponibilidadPaisSchema`), `PaisRepository`/`IPaisRepository` (`cambiarDisponible`, `listar`
+  con `disponible`), `PaisService`/`IPaisService` (`crear` con catálogo, `cambiarDisponible`) y el alta
+  de empresa (`OrganizacionService`, `OrganizacionRepository`) que rechaza un país apagado (§5).
+  Dep.: T1.8, T2.4.
+  **Hecho:**
+  - `pais-service.test.ts` cubre R23 (nombre del catálogo), R41 (código fuera del catálogo →
+    `validation_error` en `id`) y R47 (`forbidden`, `not_found`, mismo estado sin escribir);
+  - `pais-repositorio.test.ts` cubre la fila `pais_disponibilidad_*` en la misma transacción (R47);
+  - `organizacion-service.test.ts` y `organizacion-alta.test.ts` cubren R45 (alta nueva con país
+    apagado → `invalida` `paisId` sin crear nada).
 
 ## T3 — Carga CSV (`backend_dev`)
 
@@ -108,7 +141,10 @@ para y avisa al leader.
     (un error que no es de único → `error`, no `conflict`);
   - hay un test de composition root;
   - `plataforma-solo-en-lista` y `geografia-renombrado-punto-unico` verdes, con su tabla de puntos
-    actualizada.
+    actualizada;
+  - **(enmienda 2026-10-26)** `cargarDivisionAction` pasa tal cual el contrato de §6 (`ok`,
+    `invalido`, `archivo_rechazado`, `not_found`, `forbidden`, con `avisos`) y responde `error` ante
+    un fallo de la base (R51); `crearNodoAction` responde `conflict` ante el único del código (R52).
 - [ ] T4.4 `tests/integration/db/geografia-superadmin-sin-empresa.test.ts`. Dep.: T4.3.
   **Hecho:** un superadmin real sin empresa crea un país, carga un CSV, da de alta, renombra, retira
   y reactiva sin `EmpresaNoResuelta`. El conteo suma las órdenes sin entregar de dos empresas del
@@ -116,6 +152,10 @@ para y avisa al leader.
 - [x] T4.5 [P] Guardia `historial-accion-escrituras-cubiertas`: los `nodo_geografico_*` quedan sin
   escritor desde SL-20 (§2.6). Dep.: T4.1.
   **Hecho:** guardia verde, y su contraprueba sigue fallando cuando debe.
+- [ ] T4.6 **(enmienda 2026-10-26, decisión 6)** `cambiarDisponibilidadPaisAction` en
+  `lib/actions/geografia-plataforma.ts` (§5), con `comoPlataforma` como el resto. Dep.: T4.3, T2.5.
+  **Hecho:** `geografia-plataforma-action.test.ts` cubre `unauthenticated`, `forbidden`, validación y
+  el éxito sin escritura cuando el estado no cambia (R47); el test de composition root la incluye.
 
 ## T5 — Interfaz (`frontend_dev`)
 
@@ -134,18 +174,30 @@ para y avisa al leader.
   **Hecho:** `geografia-plataforma-page.test.tsx` cubre el 404 a un rol de empresa antes de leer
   (R21), los nombres de nivel del país elegido (R20), el alta de país, los errores de CSV con su
   línea y el conteo que no bloquea (R31). `/configuracion/geografia` da 404 (R22).
+  **(enmienda 2026-10-26)** El `Dialog` de alta de país con autocompletado y el interruptor
+  «Disponible» van en T5.7; T5.3 puede dejar el alta con el formulario actual hasta entonces.
 - [x] T5.4 [P] Menú «Geografía» del superadmin (`lib/auth/menu-visibility.ts`). Dep.: ninguna.
   **Hecho:** `menu-visibility.test.ts` y `superadmin-fuera-de-empresa.guardia` verdes; ningún rol
   de empresa ve el ítem.
 - [ ] T5.5 [P] «Empresas»: `Select` de país en el alta y columna «País» (§8), y el ajuste de los E2E
-  existentes que rellenan el alta. Dep.: T2.2.
+  existentes que rellenan el alta. Dep.: T2.2, T2.5 **(enmienda 2026-10-26: el `Select` lista solo
+  los países disponibles, decisión 6)**.
   **Hecho:** `tests/components/empresas-module.test.tsx` cubre R9 (sin país preseleccionado y alta
-  bloqueada sin país); `e2e/_dos-empresas-fixture.ts` y `e2e/superadmin-empresas.spec.ts` eligen
-  `CR`.
+  bloqueada sin país) y R45 (un país apagado no aparece en el `Select`, pero la columna «País» sí
+  muestra el de una empresa que ya está en él); `e2e/_dos-empresas-fixture.ts` y
+  `e2e/superadmin-empresas.spec.ts` eligen `CR`.
 - [ ] T5.6 [P] Ayuda: `docs/ayuda/oficina/configuracion-geografia.md` pasa a describir la pantalla
   del superadmin, o se retira si la ayuda es solo de empresa (lo decide quien la mantiene; se anota).
   Dep.: T5.3.
   **Hecho:** ninguna ayuda enlaza a `/configuracion/geografia`.
+- [ ] T5.7 **(enmienda 2026-10-26, decisiones 5 y 6)** En `GeografiaPlataformaModule.tsx`: alta de
+  país con autocompletado sobre el catálogo (sin campo de código ni de nombre; los seis nombres de
+  nivel a mano) y `Switch` «Disponible» del país elegido (§8). Primero se verifica si `@base-ui/react`
+  `^1.6.0` trae `Combobox` para `components/ui/combobox.tsx`; si no, `Popover` + `Input` + lista, sin
+  dependencia nueva (se anota en `progress/impl_SL-20.md`). Dep.: T5.3, T2.4, T4.6.
+  **Hecho:** `geografia-plataforma-page.test.tsx` cubre R42 (busca por nombre y por código, no hay
+  campo de código, el envío lleva el `id` elegido) y R47 en la UI (el interruptor llama a la action y
+  muestra el aviso de que no afecta a las empresas existentes).
 
 ## T6 — Verificación y cierre
 
@@ -159,7 +211,8 @@ para y avisa al leader.
   `progress/impl_SL-20.md`. Dep.: T1.4.
   **Hecho:** cifra escrita; si pasa de 1 ms, aviso al leader.
 - [ ] T6.4 Demo de QA: `scripts/demo-qa/receta.ts` busca el distrito por `codigoDta` **y** país
-  `CR` (el código deja de ser único global) y da de alta sus empresas con `paisId: "CR"`.
+  `CR` (el código deja de ser único global) y da de alta sus empresas con `paisId: "CR"`
+  **(enmienda 2026-10-26, decisión 3: cerrado en `CR`)**.
   Dep.: T1.2, T2.2.
   **Hecho:** sus tests unitarios verdes.
 - [ ] T6.5 Docs y deudas:
@@ -184,19 +237,22 @@ Raíz, docs y estado:
 - `specs/SL-20-pais-geografia-configurable/design.md`
 - `specs/SL-20-pais-geografia-configurable/tasks.md`
 
-Migraciones:
+Migraciones (orden A, enmienda 2026-10-26):
 - `db/migrations/20261026120000_pais/migration.sql`
 - `db/migrations/20261026120000_pais/down.sql`
-- `db/migrations/20261026120100_geografia_por_pais/migration.sql`
-- `db/migrations/20261026120100_geografia_por_pais/down.sql`
-- `db/migrations/20261026120200_organizacion_pais/migration.sql`
-- `db/migrations/20261026120200_organizacion_pais/down.sql`
+- `db/migrations/20261026120100_organizacion_pais/migration.sql`
+- `db/migrations/20261026120100_organizacion_pais/down.sql`
+- `db/migrations/20261026120200_geografia_por_pais/migration.sql`
+- `db/migrations/20261026120200_geografia_por_pais/down.sql`
 - `db/migrations/20261026120300_geografia_del_pais_de_la_empresa/migration.sql`
 - `db/migrations/20261026120300_geografia_del_pais_de_la_empresa/down.sql`
 - `db/migrations/20261026120400_historial_plataforma/migration.sql`
 - `db/migrations/20261026120400_historial_plataforma/down.sql`
+- `db/migrations/20261026120500_pais_disponible/migration.sql`
+- `db/migrations/20261026120500_pais_disponible/down.sql`
 
 `lib/`:
+- `lib/constants/paises-iso-3166-1.ts`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/db/errores-pais.ts`
@@ -269,6 +325,8 @@ Migraciones:
 - `app/(app)/configuracion/tarifas/_components/cobertura-descarga-columnas.ts`
 - `app/(app)/configuracion/tarifas/_components/DescargarCoberturaButton.tsx`
 - `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`
+- `app/(app)/_components/Sidebar.tsx`
+- `components/ui/combobox.tsx`
 - `providers/EtiquetasGeograficasProvider.tsx`
 - `hooks/use-etiquetas-geograficas.ts`
 
@@ -299,6 +357,11 @@ Tests nuevos:
 - `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`
 - `tests/unit/api/openapi-geografia-sin-cambios.test.ts`
 - `tests/components/etiquetas-geograficas.test.tsx`
+- `tests/integration/db/_fixtures/pais-20.ts`
+- `tests/integration/db/pais-repositorio.test.ts`
+- `tests/integration/db/pais-disponible.test.ts`
+- `tests/unit/db/errores-pais.test.ts`
+- `tests/unit/constants/paises-iso-3166-1.test.ts`
 
 Tests existentes que se adaptan o se borran:
 - `tests/fabricas/organizaciones.ts`
@@ -325,3 +388,5 @@ Tests existentes que se adaptan o se borran:
 - `tests/integration/db/geografia-cascada-reversible.test.ts`
 - `tests/integration/db/geografia-ordenes-sin-entregar.test.ts`
 - `tests/integration/db/zona-especial-dos-empresas.test.ts`
+- `tests/components/Sidebar.test.tsx`
+- `tests/fixtures/api-key-dependencias-usuario.ts`

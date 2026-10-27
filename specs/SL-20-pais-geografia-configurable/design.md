@@ -1,7 +1,10 @@
 # SL-20 — pais-geografia-configurable · design.md
 
-> Requisitos: `requirements.md` (R1–R39). Alcance y decisiones cerradas: el bloque de cabecera y la
+> Requisitos: `requirements.md` (R1–R52). Alcance y decisiones cerradas: el bloque de cabecera y la
 > tabla de `requirements.md`; aquí no se reabren.
+>
+> **(enmienda 2026-10-26)** Aplica las decisiones 1–7 de `progress/features/SL-20.md > Decisiones`
+> y recoge en §13 las decisiones de implementación ya hechas en T1–T4. Cada cambio lleva la marca.
 
 ## Lo que ya existe
 
@@ -55,7 +58,17 @@ La UI de la empresa lee los nombres de nivel de su país mediante un provider.
 | `nivel_2_singular`, `nivel_2_plural` | `TEXT NOT NULL` | «Cantón», «Cantones». |
 | `nivel_3_singular`, `nivel_3_plural` | `TEXT NOT NULL` | «Distrito», «Distritos». |
 | `digitos_codigo_nivel_1/2/3` | `INT NULL` | Regla de código (R17). `CHECK` de los tres nulos o los tres no nulos. CR: 1/3/5. El alta por pantalla no la ofrece: solo la pone la migración de CR. |
+| `disponible` | `BOOLEAN NOT NULL DEFAULT true` | **(enmienda 2026-10-26, decisión 6)** Hay cobertura en el país (R44). Con `false` no se ofrece ni se acepta en el alta de empresa (R45); no toca a las empresas que ya están (R46). La añade la migración `20261026120500_pais_disponible` (§3). |
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT now()` | |
+
+**Catálogo ISO 3166-1 (enmienda 2026-10-26, decisión 5; R40–R43).** La lista de países del mundo no
+vive en la base: es un archivo del repo, `lib/constants/paises-iso-3166-1.ts`, con
+`PAISES_ISO_3166_1: readonly { id: string; nombre: string }[]` (alfa-2 y nombre en español) y
+`paisDelCatalogo(id)`. La tabla `pais` guarda solo los países dados de alta (R43): la migración sigue
+sembrando únicamente `CR`. Sin dependencia nueva: la lista son ~250 filas estáticas que cambian muy
+rara vez. **La fuente de la lista es una pregunta abierta** (`requirements.md`); T2.4 no empieza sin
+ella. Los países de prueba `XA`–`XZ` no están en el catálogo a propósito: los crea la fábrica
+directamente en la base, nunca el alta por pantalla.
 
 Prisma: `model Pais` con `@@map("pais")` y back-relations `provincias` y `organizaciones`.
 Se clasifica en `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`).
@@ -88,6 +101,9 @@ el alta a mano y la carga CSV. La regla de CR sale de la fila del país y no de 
   `OLD.pais_id IS DISTINCT FROM NEW.pais_id` (R7). Corre también como dueño, así que cubre al
   superadmin y al SQL a mano.
 - Prisma: `paisId String @default("CR") @map("pais_id")` y `pais Pais @relation(...)`.
+- **(enmienda 2026-10-26, decisión 3)** La demo de QA (SL-43, `scripts/demo-qa/`) da de alta sus
+  empresas en `CR`. Hoy ya nacen allí por la fábrica `crearEmpresa` (`paisId` por defecto `"CR"`, §13);
+  T6.4 lo hace explícito.
 
 ### 2.3 Geografía colgada del país
 
@@ -108,6 +124,9 @@ el alta a mano y la carga CSV. La regla de CR sale de la fila del país y no de 
 - FK compuesta `(provincia_id, pais_id) → provincia(id, pais_id)` (o `(canton_id, pais_id) →
   canton(id, pais_id)`), que sustituye a la FK simple. Hace imposible un hijo en otro país que su
   padre (R11), aunque alguien escriba `pais_id` a mano.
+  **(enmienda 2026-10-26, decisión 2)** Las dos FK compuestas son `ON UPDATE RESTRICT` (no
+  `CASCADE`) y `ON DELETE RESTRICT`, como las simples de antes: mover de país una provincia con
+  cantones, o un cantón con distritos, falla con `23503` en vez de arrastrar a los hijos.
 - `@@unique([id, paisId])` (solo en `canton`, como destino de la de `distrito`) y
   `@@unique([paisId, codigoDta])`, que sustituye al único global (R16).
 - Índice en `pais_id`: lo usa la política RLS.
@@ -179,6 +198,14 @@ app normal no le llega un id de otro país, así que este error solo aparece ant
 políticas** y `REVOKE ALL ON historial_plataforma FROM servi_app` (R34; patrón `entorno_marca`). Se
 clasifica en `MODELOS_DE_PLATAFORMA`.
 
+**(enmienda 2026-10-26, decisión 7)** Por el `REVOKE ALL`, un `SELECT` de `servi_app` no devuelve
+cero filas: la base lo rechaza con `42501` antes de llegar a la RLS. R34 se redacta así y su test
+espera el `42501` en la lectura y en la escritura.
+
+**(enmienda 2026-10-26, decisión 6; R47)** El enum `historial_plataforma_accion` gana
+`pais_disponibilidad_activada` y `pais_disponibilidad_desactivada` (propuesta, pregunta abierta), con
+`entidad_tipo = 'pais'`. Los añade la migración `20261026120500_pais_disponible` (§3).
+
 El único escritor es `appendAccionPlataforma(tx, filas)`, en
 `lib/repositories/registrar-accion-plataforma.ts`, y se llama dentro de la transacción del cambio
 (R33).
@@ -195,13 +222,19 @@ de 16 a 18. Sin esto, `organizacion-en-modelos.guardia` pone el gate en rojo.
 
 ## 3. Migraciones (todas con `down.sql`)
 
+**(enmienda 2026-10-26, decisión 1: orden A)** `organizacion_pais` corre antes que
+`geografia_por_pais`, porque las políticas `*_del_pais` leen `organizacion.pais_id`. Es el orden de
+las carpetas que ya están en `db/migrations/`. Las migraciones 120100–120500 y sus `down.sql` van
+entre `BEGIN`/`COMMIT`.
+
 | Carpeta | Hace | `down.sql` |
 |---|---|---|
 | `20261026120000_pais` | Crea `pais` y sus `CHECK`, siembra `CR` (1/3/5), activa la RLS, crea `pais_lectura` y aplica el `REVOKE`. | `DROP TABLE pais` |
-| `20261026120100_geografia_por_pais` | Añade `pais_id` a las tres tablas (la provincia con `DEFAULT 'CR'`; cantón y distrito por backfill desde el padre y después `NOT NULL`). Cambia los únicos de §2.3, crea las FK compuestas, el trigger `geografia_pais_del_padre` y las políticas `*_del_pais`, y borra las `*_lectura`. | Deshace todo en orden inverso y vuelve a crear los únicos globales y `*_lectura`. **Aborta si ya hay datos de un segundo país con nombres o códigos repetidos** (el único global no cabe): queda escrito en la cabecera. |
-| `20261026120200_organizacion_pais` | Añade `organizacion.pais_id` con `DEFAULT 'CR'`, la FK, el índice y el trigger `organizacion_pais_inmutable`. | Borra el trigger y la columna. |
+| `20261026120100_organizacion_pais` | Añade `organizacion.pais_id` con `DEFAULT 'CR'`, la FK, el índice y el trigger `organizacion_pais_inmutable`. | Borra el trigger y la columna. |
+| `20261026120200_geografia_por_pais` | Añade `pais_id` a las tres tablas (la provincia con `DEFAULT 'CR'`; cantón y distrito por backfill desde el padre y después `NOT NULL`). Cambia los únicos de §2.3, crea las FK compuestas (`ON UPDATE RESTRICT`, decisión 2), el trigger `geografia_pais_del_padre` y las políticas `*_del_pais`, y borra las `*_lectura`. | Deshace todo en orden inverso y vuelve a crear los únicos globales y `*_lectura`. **Aborta con `RAISE` (P0001), antes de tocar nada, si hay nombres de provincia o códigos repetidos entre países** (el único global no cabe): queda escrito en la cabecera. |
 | `20261026120300_geografia_del_pais_de_la_empresa` | Crea la función y los tres triggers de §2.5. | Los borra. |
 | `20261026120400_historial_plataforma` | Crea los dos enums, la tabla, los índices, la RLS sin políticas y el `REVOKE`. | Borra la tabla y los enums. |
+| `20261026120500_pais_disponible` **(enmienda 2026-10-26, decisión 6)** | Añade `pais.disponible BOOLEAN NOT NULL DEFAULT true` (CR queda disponible, R44) y los dos valores `pais_disponibilidad_*` de `historial_plataforma_accion` (§2.6). No toca la RLS ni el `REVOKE` de `pais` (R3 sigue cubriendo la escritura desde una empresa). | Aborta con `RAISE` si hay filas del historial con `pais_disponibilidad_*` (no se borra evidencia); si no, vuelve a crear el enum sin esos valores y borra la columna. |
 
 Se crean con `pnpm run db:migrate:create` y se comprueban con
 `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma`: el diff tiene que salir
@@ -259,6 +292,12 @@ vacío. La ida y vuelta (up → down → up) se prueba en
 | Actions | `lib/actions/geografia-plataforma.ts` (nuevo, `"use server"`) | `listarPaisesAction`, `crearPaisAction`, `arbolDePaisAction`, `crearNodoAction`, `renombrarNodoAction`, `cambiarActivacionNodoAction`, `contarOrdenesSinEntregarAction`, `cargarDivisionAction(formData)`. Composition root único (test de composición como el de 374). |
 | Actions | `lib/actions/geografia.ts` | Pierde las escrituras (§4). |
 | DB | `lib/db/errores-pais.ts` (nuevo) | §2.5. |
+| Constantes | `lib/constants/paises-iso-3166-1.ts` (nuevo) **(enmienda 2026-10-26)** | Catálogo de §2.1 (R40). Lo importan `crearPaisSchema`/`PaisService` (servidor) y el autocompletado (cliente): es un dato estático, sin action. |
+| Tipos | `lib/types/pais.ts` **(enmienda 2026-10-26)** | `crearPaisSchema` deja de recibir `nombre`: recibe `id` (que tiene que estar en el catálogo, R41) y los seis nombres de nivel; el nombre lo pone el service desde el catálogo (R23). `PaisDTO` gana `disponible`. Nuevo `cambiarDisponibilidadPaisSchema` (`{ id, disponible }`). |
+| Repos | `PaisRepository` + interfaz **(enmienda 2026-10-26)** | `cambiarDisponible(id, disponible, actor)`: un `UPDATE ... WHERE disponible IS DISTINCT FROM $2` y, si cambió una fila, su entrada `pais_disponibilidad_*` en la misma transacción (R47); si no cambió, éxito sin escribir. `listar()` devuelve también `disponible`. |
+| Services | `PaisService` + interfaz **(enmienda 2026-10-26)** | `crear`: R41 (`validation_error` en `id`) y el nombre del catálogo (R23). `cambiarDisponible(input, actor)`: `forbidden` a un rol de empresa, `not_found` si el país no existe (R47). |
+| Services | `OrganizacionService` / `OrganizacionRepository` **(enmienda 2026-10-26)** | En el alta nueva, un país con `disponible = false` → `invalida` `paisId` (R45), en la misma consulta previa a `pais` de §13. La repetición de una empresa existente sigue el orden de §13 (pregunta abierta). |
+| Actions | `lib/actions/geografia-plataforma.ts` **(enmienda 2026-10-26)** | Más `cambiarDisponibilidadPaisAction`. |
 
 ## 6. Formato del CSV de carga (propuesta; Pregunta abierta 1)
 
@@ -293,13 +332,31 @@ vacío. La ida y vuelta (up → down → up) se prueba en
      - si lo hay con el mismo código, o la fila no trae código, **existe**.
   3. Si no hay ninguno, es un **alta**. El padre puede ser un alta del mismo archivo.
   4. Un nodo existente retirado sigue retirado y se cuenta en «existentes»: la carga no reactiva.
-- **Todo o nada:** con un solo error no se escribe nada (R25). La respuesta es
-  `{ status: "invalido", errores: [{ linea, mensaje }], total }` y muestra hasta 200 errores.
+- **Casos cerrados (enmienda 2026-10-26, decisión 4):**
+  - **Columnas de más** (R48): se ignoran y cada una deja un aviso en `avisos` («La columna «x» no es
+    del formato y se ignoró.»), tanto en `ok` como en `invalido`.
+  - **Homónimos en la base** (R49): si bajo el mismo padre hay dos nodos con el mismo nombre
+    normalizado, la fila se cruza con el primero. «Primero» es estable porque la lectura de la
+    división del país ordena por `id`.
+  - **Alta bajo un padre retirado** (R50): se permite; el hijo nace activo y el padre sigue retirado.
+- **Todo o nada:** con un solo error no se escribe nada (R25).
   - Si valida, todo se escribe en una sola transacción (R24). Un fallo de la base a mitad (por
-    ejemplo, una carrera con un alta a mano que choca con el único) deshace todo y responde
-    `{ status: "error" }`.
-- **Resultado bueno:** `{ status: "ok", creados: { provincia, canton, distrito }, existentes,
-  codigosCompletados }`. Si `creados` y `codigosCompletados` son 0, no se escribe historial.
+    ejemplo, una carrera con un alta a mano que choca con el único) deshace todo.
+- **Contrato de la carga (enmienda 2026-10-26: es el ya implementado en T3.4).** El service devuelve,
+  y la action de T4.3 pasa tal cual salvo el último caso:
+
+  | `status` | Cuándo | Lleva |
+  |---|---|---|
+  | `ok` | La carga valida y se escribe (R24). Si `creados` y `codigosCompletados` son 0, no se escribe historial. | `creados: { provincia, canton, distrito }`, `existentes`, `codigosCompletados` (lo que de verdad completó el `updateMany ... WHERE codigo_dta IS NULL`, §13) y `avisos` |
+  | `invalido` | Una o más filas inválidas (R25, R27). | `errores: [{ linea, mensaje }]` (como máximo 200), `total` y `avisos` |
+  | `archivo_rechazado` | Extensión, tamaño, UTF-8, filas o columna obligatoria (R28). | `motivo` |
+  | `not_found` | El país no existe (R51). | — |
+  | `forbidden` | Rol de empresa (R37). | — |
+  | `error` | La base falla al escribir: el service propaga el error y la action responde `error` y lo registra en el log (R36, R51). | — |
+
+- **Código repetido en altas a mano (R16, R52):** el service no lo comprueba antes; lo frena el único
+  `(pais_id, codigo_dta)` de la base (`23505`/`P2002`) y la action lo traduce a `conflict`, igual que
+  la carrera por nombre. Cualquier otro fallo es `error` (R36).
 
 Ejemplo (Costa Rica):
 
@@ -348,8 +405,17 @@ Alajuela,2,Río Cuarto,216,,
 - Hace la puerta de R21, lee los países con `listarPaisesAction` y el país elegido de `?pais=<id>`
   (por defecto, el primero por nombre), y carga su árbol con `arbolDePaisAction`.
 - `GeografiaPlataformaModule.tsx` (cliente) junta:
-  - el selector de país;
-  - «Nuevo país», en un `Dialog` con código, nombre y los seis nombres de nivel (R23);
+  - el selector de país (muestra todos los dados de alta, estén o no disponibles);
+  - «Nuevo país», en un `Dialog` con código, nombre y los seis nombres de nivel (R23).
+    **(enmienda 2026-10-26, decisión 5; R42)** El país se elige con un autocompletado sobre el
+    catálogo (busca por nombre o por código) y no hay campo para teclear el código ni el nombre; los
+    seis nombres de nivel se escriben a mano. `components/ui/` no tiene hoy combobox ni autocompletado
+    (Grep del 2026-10-26: solo `popover.tsx` y `switch.tsx`). Se añade `components/ui/combobox.tsx`
+    desde el registro de shadcn sobre `@base-ui/react`, que ya es dependencia: **a verificar en T5.7**
+    que la versión instalada (`^1.6.0`) trae el `Combobox`; si no, se arma con `Popover` + `Input` +
+    lista, sin dependencia nueva;
+  - **(enmienda 2026-10-26, decisión 6; R47)** un `Switch` «Disponible» del país elegido, que llama
+    a `cambiarDisponibilidadPaisAction` y dice que apagarlo no afecta a sus empresas (R46);
   - «Cargar CSV», con un `input type=file accept=".csv"`, la tabla de equivalencias de §6, y el
     resumen o la lista de errores con su línea (R24–R28);
   - el árbol editable.
@@ -374,6 +440,9 @@ del superadmin».
 
 **«Empresas»** (`EmpresasModule.tsx`): un `Select` de país obligatorio en el alta, sin
 preseleccionar, con los países que le pasa `page.tsx`, y una columna «País» en la tabla (R9).
+**(enmienda 2026-10-26, decisión 6)** `page.tsx` le pasa solo los países con `disponible = true`
+(R45); la columna «País» muestra el de cada empresa aunque ya no esté disponible (R9, R46). La
+puerta de verdad es el servidor (R45): el `Select` es solo comodidad.
 `e2e/_dos-empresas-fixture.ts` y `e2e/superadmin-empresas.spec.ts` tienen que elegir el país:
 hoy rellenan el formulario de alta. No es un E2E nuevo, es el ajuste de uno que ya existe.
 
@@ -384,6 +453,8 @@ hoy rellenan el formulario de alta. No es un E2E nuevo, es el ajuste de uno que 
 | Geografía (provincias, cantones, distritos) | `provincia.pais_id` = `organizacion.pais_id`, por la RLS (§2.4) |
 | Nombres de nivel | `pais.nivel_n_singular/plural`, por el provider (§7) |
 | Regla de código oficial | `pais.digitos_codigo_nivel_n` (§2.1) |
+| Si el país se ofrece a empresas nuevas **(enmienda 2026-10-26)** | `pais.disponible` (§2.1) |
+| Código y nombre del país **(enmienda 2026-10-26)** | catálogo `lib/constants/paises-iso-3166-1.ts`, copiado a `pais` en el alta (§2.1) |
 | Moneda, impuestos, métodos de pago, teléfono, documento, hora | **no en SL-20**: SL-21, SL-22 y SLT-42 leerán `organizacion.pais_id` |
 
 ## 10. Alternativas descartadas
@@ -412,6 +483,17 @@ hoy rellenan el formulario de alta. No es un E2E nuevo, es el ajuste de uno que 
 6. **Que la carga CSV renombre o reactive nodos existentes.** Rompería el punto único de renombrado
    (guardia de la 375) y haría que un CSV viejo deshiciera ediciones a mano. La edición nodo a nodo
    es el único camino para cambiar un nodo que ya existe.
+7. **(enmienda 2026-10-26)** **El catálogo ISO como tabla sembrada en la base** (todos los países,
+   con `disponible = false`). Se descarta porque la decisión 5 pide que `pais` guarde solo los dados
+   de alta, y porque mezclaría «existe en el mundo» con «lo dimos de alta» (la geografía y las
+   empresas colgarían de filas sin nombres de nivel).
+8. **(enmienda 2026-10-26)** **Una librería de países** (p. ej. `i18n-iso-countries`). Se descarta
+   por la decisión 5 («sin dependencia nueva»): ahorraría unas 250 líneas de datos estáticos a cambio
+   de los cuatro checks y la aprobación de `docs/architecture.md > Dependencias de terceros`, y la
+   lista cambia muy rara vez.
+9. **(enmienda 2026-10-26)** **Apagar un país quitándole el país a sus empresas o impidiéndoles
+   operar.** Se descarta por la decisión 6 («sus empresas existentes siguen igual») y por R7 (el país
+   de una empresa no cambia).
 
 ## 11. Pruebas y trazabilidad
 
@@ -434,14 +516,30 @@ Unit e integración, sin E2E nuevo (decisión «E2E»). La integración corre co
 | R18 | `tests/unit/api/openapi-geografia-sin-cambios.test.ts` |
 | R19 | `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`, `tests/components/etiquetas-geograficas.test.tsx` |
 | R20, R21, R22 | `tests/unit/components/geografia-plataforma-page.test.tsx`, `tests/unit/auth/menu-visibility.test.ts` |
-| R23 | `tests/unit/services/pais-service.test.ts` |
+| R23 | `tests/unit/services/pais-service.test.ts`, `tests/integration/db/pais-repositorio.test.ts` (enmienda 2026-10-26: más el nombre tomado del catálogo) |
 | R24–R28 | `tests/unit/utils/division-csv.test.ts`, `tests/unit/services/carga-division-service.test.ts`, `tests/integration/db/carga-division.test.ts` |
 | R30 | `tests/integration/db/geografia-renombrado.test.ts`, `geografia-cascada-reversible.test.ts` (adaptados) |
 | R31, R32 | `tests/integration/db/geografia-superadmin-sin-empresa.test.ts` |
 | R33, R35 | `tests/integration/db/geografia-registro-accion.test.ts` (reescrito: ahora a plataforma) |
-| R34 | `tests/integration/db/historial-plataforma-rls.test.ts` |
+| R34 | `tests/integration/db/historial-plataforma-rls.test.ts` (enmienda 2026-10-26: espera `42501` en la lectura y en la escritura) |
 | R36 | `tests/unit/actions/geografia-plataforma-action.test.ts` |
 | R37 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/services/pais-service.test.ts` |
+
+Requisitos de la enmienda 2026-10-26:
+
+| R | Test |
+|---|---|
+| R40 | `tests/unit/constants/paises-iso-3166-1.test.ts` (alfa-2 válidos, sin códigos ni nombres normalizados repetidos, `CR` = «Costa Rica», ningún `XA`–`XZ`) |
+| R41 | `tests/unit/services/pais-service.test.ts` (código fuera del catálogo → `validation_error` en `id`, sin llamar al repo) |
+| R42 | `tests/unit/components/geografia-plataforma-page.test.tsx` (autocompletado por nombre y por código, sin campo de código) |
+| R43 | `tests/integration/db/pais-tabla.test.ts`, `tests/integration/db/migracion-sl20-ida-y-vuelta.test.ts` (tras las migraciones, `pais` solo tiene `CR`) |
+| R44 | `tests/integration/db/pais-disponible.test.ts`, `tests/integration/db/migracion-sl20-ida-y-vuelta.test.ts` (CR disponible tras la ida; la vuelta de `120500` borra la columna) |
+| R45 | `tests/unit/services/organizacion-service.test.ts`, `tests/integration/db/organizacion-alta.test.ts`, `tests/components/empresas-module.test.tsx` (el `Select` no lista el país apagado) |
+| R46 | `tests/integration/db/pais-disponible.test.ts` (con `XA` apagado, su empresa lee su geografía y crea una orden como `servi_app`) |
+| R47 | `tests/unit/services/pais-service.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts`, `tests/integration/db/pais-disponible.test.ts` (fila `pais_disponibilidad_*`; mismo estado sin escribir) |
+| R48, R49, R50 | `tests/unit/utils/division-csv.test.ts`, `tests/integration/db/carga-division.test.ts` |
+| R51 | `tests/unit/services/carga-division-service.test.ts` (`not_found`), `tests/unit/actions/geografia-plataforma-action.test.ts` (fallo de base → `error`) |
+| R52 | `tests/integration/db/geografia-alta.test.ts`, `tests/unit/actions/geografia-plataforma-action.test.ts` |
 
 ## 12. Riesgos
 
@@ -454,3 +552,35 @@ Unit e integración, sin E2E nuevo (decisión «E2E»). La integración corre co
   T6.1 corre todas las de `geografia-*`, `zona-*` y `cobertura-*`.
 - **`exceljs` y los códigos con cero inicial.** Sin la opción de §5, `"01"` se lee como `1`. T3.1 lo
   prueba primero.
+
+## 13. Decisiones de implementación ya hechas (enmienda 2026-10-26)
+
+Las tomaron los implementers en T1–T5.4 (`progress/impl_SL-20*.md`) dentro del design. Se recogen
+aquí sin cambiarlas, para que el spec diga lo que hace el código:
+
+- **Trigger `geografia_pais_del_padre`** (§2.3): pisa siempre `NEW.pais_id` con el país del padre. Un
+  `INSERT` de cantón con `pais_id` de otro país no falla: queda en el país del padre (R11 se cumple).
+  Con un padre inexistente lanza `23503` con la FK compuesta como `CONSTRAINT`, para que el llamador
+  vea la misma violación de FK (P2003) que antes y no un `23502`.
+- **`lib/db/errores-pais.ts`** (§2.5): `PaisInmutable` (`SL020`), `GeografiaDeOtroPais` (`SL021`) y
+  `traducirErrorDePais`, que recorre el mismo grafo `cause`/`meta`/`driverAdapterError` que
+  `traducirErrorDeEmpresa`. El detector se copió en vez de exportarlo de `contexto-empresa.ts`, para
+  no tocar SL-17.
+- **`numerosDeFila` en `ParsedSpreadsheet`** (`lib/parsers/spreadsheet.ts`): array paralelo con el
+  `rowNumber` de `exceljs` (cabecera = 1) para que R25 cite la línea. Es aditivo: la carga masiva de
+  órdenes no lo lee. Con un valor entre comillas que trae un salto de línea, cuenta registros, no
+  líneas físicas.
+- **Icono del menú «Geografía»**: clave `map` en `IconKey` y `map: MapIcon` (lucide `Map`, renombrado
+  para no tapar el `Map` global) en `ICON_BY_KEY` de `app/(app)/_components/Sidebar.tsx`.
+- **Código de país como `id`** en `crearPaisSchema`, igual que la columna y `paisId`.
+- **`conflict` del alta de país con el campo**: `{ status: "conflict", campo: "id" | "nombre" }` (R23).
+- **`ETIQUETAS_NEUTRAS`** lleva singular y plural («Nivel 1»/«Nivel 1»…), con la forma de
+  `EtiquetasGeograficas`.
+- **`etiquetasDeEmpresa` lanza** si la empresa no tiene país visible, con su id: no inventa
+  etiquetas sobre un dato roto. El layout (T5.1) decide qué hace con el error.
+- **`crearEmpresa`** (`tests/fabricas/empresa-y-usuarios.ts`) acepta `paisId?` con `"CR"` por defecto
+  (R10); por eso la demo de QA ya nace en `CR` (decisión 3).
+- **Alta de empresa**: R6 se resuelve con una consulta previa a `pais` dentro de la transacción del
+  alta (sin traducir P2003), y R8 se decide antes de mirar si el país existe.
+- **`codigosCompletados`** cuenta lo que de verdad completó el `updateMany ... WHERE codigo_dta IS
+  NULL`; si alguien puso un código a mano entre medias, gana el suyo.

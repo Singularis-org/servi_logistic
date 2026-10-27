@@ -22,6 +22,10 @@
 > Escritos por `spec_author` (F1.2, 2026-10-26). «Superadmin» es todo rol de `ROLES_PLATAFORMA`
 > (`lib/auth/plataforma.ts`). «Nodo» es una provincia, un cantón o un distrito. «Nivel 1/2/3» son
 > provincia/cantón/distrito. La columna «Decisión» dice qué fila de la tabla de decisiones cubre.
+>
+> **(enmienda 2026-10-26)** Decisiones 1–7 de `progress/features/SL-20.md > Decisiones` (Camilo,
+> F2.1). Cambian R9, R23 y R34; entran R40–R51. «Disponible» es un país con cobertura
+> (`pais.disponible`). «Catálogo» es el catálogo ISO 3166-1 del repo (R40).
 
 ### País
 
@@ -40,7 +44,7 @@
 | R6 | CUANDO el superadmin da de alta una empresa, el sistema DEBE exigir el país; SI falta o no existe, ENTONCES DEBE responder `invalida` con el campo `paisId` sin crear la empresa ni su maestro. | Empresa y país |
 | R7 | SI cualquier escritura, de la app o de SQL a mano, intenta cambiar el país de una empresa existente, ENTONCES la base DEBE rechazarla y el país DEBE quedar como estaba. | Empresa y país |
 | R8 | SI se repite el alta de una empresa existente (mismo slug y mismo maestro) con otro país, ENTONCES el sistema DEBE responder `conflicto` con el campo `paisId` sin cambiar nada. | Empresa y país |
-| R9 | La pantalla «Empresas» del superadmin DEBE mostrar el país de cada empresa y, en el alta, DEBE ofrecer la lista de países sin ninguno preseleccionado. | Empresa y país |
+| R9 | La pantalla «Empresas» del superadmin DEBE mostrar el país de cada empresa (esté o no disponible) y, en el alta, DEBE ofrecer la lista de países **disponibles** sin ninguno preseleccionado. **(enmienda 2026-10-26: «disponibles», decisión 6)** | Empresa y país; Enmienda 6 |
 | R10 | DONDE un test crea una empresa sin indicar país (fábricas de `tests/fabricas/` o SQL a mano), el sistema DEBE dejarla en Costa Rica. | Empresa y país |
 
 ### Geografía por país
@@ -69,7 +73,7 @@
 |---|---|---|
 | R21 | El sistema DEBE ofrecer la pantalla `/plataforma/geografia` y su ítem de menú solo al superadmin; SI la pide cualquier otro rol, ENTONCES DEBE responder 404 antes de leer la base. | Quién da de alta un país; Precedentes (SL-17) |
 | R22 | El sistema DEBE dejar de servir `/configuracion/geografia`: responde 404 a todo rol. | Quién da de alta un país (D15) |
-| R23 | CUANDO el superadmin da de alta un país con código, nombre y los seis nombres de nivel válidos, el sistema DEBE crearlo sin geografía; SI el código o el nombre (normalizado) ya existen, ENTONCES DEBE responder `conflict` sin crear nada. | Quién da de alta un país |
+| R23 | CUANDO el superadmin da de alta un país eligiéndolo del catálogo (R40) y con los seis nombres de nivel válidos, el sistema DEBE crearlo sin geografía, con el código y el nombre que da el catálogo para ese país; SI el código o el nombre (normalizado) ya están dados de alta, ENTONCES DEBE responder `conflict` con el campo (`id` o `nombre`) sin crear nada. **(enmienda 2026-10-26: el código y el nombre salen del catálogo, decisión 5)** | Quién da de alta un país; Enmienda 5 |
 | R24 | CUANDO el superadmin carga para un país un CSV válido (formato en `design.md > §6`), el sistema DEBE crear las provincias, cantones y distritos que falten, en una sola transacción, y DEBE devolver cuántos creó por nivel, cuántos ya existían y cuántos códigos completó. | Quién da de alta un país |
 | R25 | SI el CSV tiene una o más filas inválidas, ENTONCES el sistema NO DEBE escribir nada y DEBE devolver cada error con su número de línea y su motivo. | Quién da de alta un país |
 | R26 | CUANDO una fila del CSV nombra un nodo que ya existe, el sistema NO DEBE cambiar su nombre, su estado (activo o retirado) ni su código, salvo poner el código de la fila si el nodo no tenía ninguno. | Quién da de alta un país; Precedentes (374) |
@@ -85,7 +89,7 @@
 | R | Requisito | Decisión |
 |---|---|---|
 | R33 | CUANDO el superadmin crea un país, carga un CSV que escribe algo, da de alta, renombra, retira o reactiva un nodo, el sistema DEBE guardar, en la misma transacción que el cambio, una fila en el historial de plataforma con la acción, la entidad, el país, el actor (id y nombre congelado), la fecha y, en el renombre, el nombre anterior y el nuevo. | D15: historial |
-| R34 | SI una operación en el contexto de una empresa intenta leer o escribir el historial de plataforma, ENTONCES el sistema DEBE devolverle cero filas o rechazar la escritura. | D15: historial |
+| R34 | SI una operación en el contexto de una empresa intenta leer o escribir el historial de plataforma, ENTONCES la base DEBE rechazar la lectura y la escritura (permiso denegado, `42501`) sin devolver ni escribir ninguna fila. **(enmienda 2026-10-26: «la base rechaza la lectura», decisión 7)** | D15: historial; Enmienda 7 |
 | R35 | Las escrituras de geografía del superadmin NO DEBEN escribir en `historial_accion`. | D15: historial |
 
 ### Errores honestos y lectura de la empresa (D12)
@@ -101,6 +105,50 @@
 | R | Requisito | Decisión |
 |---|---|---|
 | R39 | Con dos empresas en dos países de prueba, una suite de integración DEBE demostrar R12, R13 y R38 sobre la base real (rol `servi_app` y RLS), sin E2E nuevo. | E2E |
+
+### Catálogo ISO y alta de país (enmienda 2026-10-26)
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R40 | El sistema DEBE llevar en un archivo del repo, sin dependencia de terceros, un catálogo de países ISO 3166-1 con el código alfa-2 y el nombre en español de cada uno, sin códigos repetidos ni nombres (normalizados) repetidos. | Enmienda 5 |
+| R41 | SI el alta de país trae un código que no está en el catálogo, ENTONCES el sistema DEBE responder `validation_error` sobre el campo `id` sin crear nada. | Enmienda 5 |
+| R42 | La pantalla de alta de país DEBE elegir el país con un autocompletado sobre el catálogo, sin campo para teclear el código, y DEBE pedir a mano los seis nombres de nivel. | Enmienda 5 |
+| R43 | La tabla de países DEBE guardar solo los países dados de alta: las migraciones de SL-20 NO DEBEN volcar el catálogo en la base, y tras aplicarlas el único país es Costa Rica. | Enmienda 5; Qué países funcionan |
+
+### Disponibilidad de un país (enmienda 2026-10-26)
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R44 | El sistema DEBE guardar por país si está disponible (hay cobertura). CUANDO se aplican las migraciones, todo país que ya existía DEBE quedar disponible, y un país nuevo DEBE nacer disponible salvo que se diga lo contrario. | Enmienda 6 |
+| R45 | MIENTRAS un país no está disponible, el alta de empresa NO DEBE ofrecerlo; SI un alta de empresa nueva llega con ese país, ENTONCES el sistema DEBE responder `invalida` con el campo `paisId` sin crear la empresa ni su maestro. | Enmienda 6; Empresa y país |
+| R46 | CUANDO un país deja de estar disponible, sus empresas existentes DEBEN seguir en ese país y seguir leyendo y usando su geografía igual que antes. | Enmienda 6; Empresa y país |
+| R47 | CUANDO el superadmin enciende o apaga la disponibilidad de un país, el sistema DEBE guardarla y, en la misma transacción, una fila en el historial de plataforma (como R33); pedir el estado que el país ya tiene DEBE ser éxito sin escribir; SI lo pide un rol de empresa, ENTONCES DEBE responder `forbidden` sin tocar la base. | Enmienda 6; D15: historial |
+
+### Casos del CSV y contrato de la carga (enmienda 2026-10-26)
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R48 | SI la cabecera del CSV trae columnas que no son del formato, ENTONCES el sistema DEBE ignorarlas y DEBE devolver un aviso por cada una en `avisos`, tanto con la carga buena como con la inválida. | Enmienda 4 |
+| R49 | SI bajo un mismo padre la base tiene dos nodos con el mismo nombre normalizado y una fila del CSV nombra ese nodo, ENTONCES el sistema DEBE cruzarla con el primero de ellos (orden por `id`) sin dar error. | Enmienda 4 |
+| R50 | CUANDO una fila del CSV da de alta un nodo bajo un padre retirado, el sistema DEBE crearlo activo y DEBE dejar al padre retirado. | Enmienda 4; Precedentes (374) |
+| R51 | SI la carga CSV pide un país que no existe, ENTONCES el sistema DEBE responder `not_found` sin escribir nada; SI la base falla al escribir, ENTONCES DEBE responder `error` sin dejar nada escrito. | Enmienda 4; D12 |
+| R52 | SI el alta a mano de un nodo trae un código que ya usa otro nodo del mismo nivel y país, ENTONCES el sistema DEBE responder `conflict` sin escribir nada (la base lo frena por su único, R16). | Código oficial; Enmienda 4 |
+
+### Decisiones de la enmienda (2026-10-26)
+
+Las tomó Camilo en F2.1; el texto fuente está en `progress/features/SL-20.md > Decisiones`. La columna
+«Decisión» las cita como «Enmienda N». Las 1–3 son de diseño y no generan requisito propio: van en
+`design.md §2.3`, `§3` y `§9`.
+
+| N | Decisión |
+|---|---|
+| 1 | Orden de migraciones A: `organizacion_pais` antes que `geografia_por_pais`. |
+| 2 | FK compuestas de cantón y distrito hacia el país del padre con `ON UPDATE RESTRICT`. |
+| 3 | La demo de QA (SL-43) da de alta sus empresas en Costa Rica (`CR`). |
+| 4 | CSV: columnas de más → `avisos`; homónimos en base → gana el primero; alta bajo padre retirado permitida (el hijo nace activo). |
+| 5 | Catálogo ISO 3166-1 (alfa-2 + nombre en español) en un archivo del repo, sin dependencia; autocompletado en el alta de país; nombres de nivel a mano; `pais` guarda solo los dados de alta. |
+| 6 | `pais.disponible` (booleano, `true` por defecto) = hay cobertura. Con `false` no se ofrece en el alta de empresa; las empresas existentes siguen igual; el superadmin lo enciende y apaga. |
+| 7 | R34 acepta el `42501` del `REVOKE ALL`: «la base rechaza la lectura». |
 
 ## Preguntas abiertas
 
@@ -131,6 +179,22 @@ en F1.4:
   Costa Rica son 585 nodos y su código más largo tiene 5 caracteres.
 - **Costo del trigger en `orden`.** R13 añade una consulta por `INSERT`/`UPDATE` de la geografía de
   una orden (precedente medido: D13, ~0,27 ms por FK). Propuesta: aceptarlo y medirlo en T6.3.
+
+Nuevas (spec_author, enmienda 2026-10-26). Bloquean solo las tareas que se citan:
+
+- **Fuente de la lista ISO 3166-1 en español (R40).** El repo no tiene ningún catálogo de países
+  (Grep del 2026-10-26: solo `lib/config/pais.ts` nombra la norma, sin lista). El spec no inventa la
+  lista ni su fuente: el humano tiene que decir de dónde sale (y su fecha de corte) antes de T2.4.
+- **¿Un país recién dado de alta nace disponible?** La decisión 6 dice `true` por defecto, y R44 la
+  aplica tal cual: un país sin geografía cargada se ofrecería en el alta de empresa desde el primer
+  minuto. Propuesta: el alta de país lo deja como manda el `DEFAULT` y el superadmin lo apaga si hace
+  falta. Si el humano prefiere que nazca apagado, cambia R44 y la action de alta (T2.5), no la columna.
+- **Repetir el alta de una empresa existente cuyo país ya no está disponible.** R8 ya trata la
+  repetición con otro país. Propuesta: con el mismo país, la repetición se comporta como hoy (la
+  empresa existente «sigue igual», R46) y R45 solo frena altas nuevas.
+- **Historial del cambio de disponibilidad (R47).** D15 manda que toda acción del superadmin vaya al
+  historial de plataforma. Propuesta: dos valores nuevos del enum, `pais_disponibilidad_activada` y
+  `pais_disponibilidad_desactivada` (`design.md §2.6`), con el patrón de `nodo_geografico_*`.
 
 ## Decisiones cerradas (no reabrir)
 
