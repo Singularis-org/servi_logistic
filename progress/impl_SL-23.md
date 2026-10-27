@@ -407,3 +407,51 @@ Se borró el `appendAccion` de `encender` y se restauró el archivo después:
   ya está en verde.
 
 Veredicto: T6 hecho y en verde; queda un `@sin-superficie` temporal en `fijarModuloEmpresaAction`, que T7 retira.
+
+## Tanda 3b — T7
+
+Agente: frontend_dev. Grafo de código no consultado (la tanda solo toca piezas leídas directamente con Read/Grep).
+
+### Archivos
+
+- Creado `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`: Server Component. `notFound()` sin
+  actor o sin `esPlataforma` antes de leer (R14); lee con `verModulosEmpresa` (composition root §5.2);
+  cualquier resultado que no sea `ok` (`not_found`, `validation_error`, `forbidden`) → `notFound()`.
+  Pinta el nombre (h1), «Volver a Empresas», «Núcleo (siempre activo)» con los 8 nombres de `NUCLEO`
+  sin control, y el bloque «Módulos».
+- Creado `app/(app)/plataforma/empresas/[organizacionId]/_components/ModulosEmpresa.tsx`: cliente. Una
+  fila por módulo (nombre, descripción del catálogo como `aria-describedby`, `Switch` de `components/ui`).
+  Optimista: deshabilitado mientras espera; si no es `ok` o lanza, vuelve atrás y avisa con `useToast`.
+  Sin modal (design §7).
+- Modificado `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`: columna «Módulos», segunda
+  (junto al nombre), con un enlace «Módulos» (nombre accesible «Módulos de <empresa>») a
+  `/plataforma/empresas/<id>`. Va segunda y no última porque `empresas-module.test.tsx` (SL-41) fija
+  «Bienvenida» como columna final; así no se toca el test de otra ficha.
+- Modificado `lib/actions/modulos-empresa.ts`: fuera el `@sin-superficie` temporal de T6.
+- Modificado `tests/unit/guards/modulos-reparto.guardia.test.ts`: `ANUNCIADAS` queda vacía.
+- Modificado `tests/integration/empresas-page.test.tsx`: caso del enlace «Módulos».
+- Creados `tests/components/ModulosEmpresa.test.tsx` y `tests/integration/plataforma-empresa-detalle-page.test.tsx`.
+- `specs/SL-23-catalogo-modulos/tasks.md`: T7 marcada.
+
+Descripciones de `lib/modulos/catalogo.ts`: revisadas contra `DESIGN.md`, `docs/conventions.md`, el menú
+(`menu-visibility.ts`) y `reparto.ts`. No chocan con nada ni prometen alcance que el reparto no tenga
+(«financieras» de Analítica corresponde al `TableroFinanciero` montado). Sin cambios.
+
+### R → test
+
+| R | Test |
+|---|---|
+| R8 | `tests/integration/plataforma-empresa-detalle-page.test.tsx`: «lee con su actor y la empresa de la URL; 8 interruptores con su estado y el núcleo sin control» y «empresa inexistente o id inválido → notFound()»; `tests/components/ModulosEmpresa.test.tsx` (8 filas en orden con descripción; llamada a la action al encender/apagar; deshabilitado mientras espera; vuelve atrás y avisa si no es `ok` o lanza); `tests/integration/empresas-page.test.tsx`: «SL-23 R8: cada fila lleva el enlace «Módulos»…» |
+| R14 | `tests/integration/plataforma-empresa-detalle-page.test.tsx`: `it.each` de los 6 roles de empresa y «sin sesión» → `notFound()` sin llamar a `verModulosEmpresa` |
+
+### Salida
+
+- `vitest run tests/components/ModulosEmpresa.test.tsx tests/integration/plataforma-empresa-detalle-page.test.tsx tests/integration/empresas-page.test.tsx tests/components/empresas-module.test.tsx tests/components/EmpresasModuleCobro.test.tsx tests/unit/actions/modulos-empresa.composition-root.test.ts`:
+  `Test Files 6 passed (6) · Tests 95 passed (95)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: sin errores.
+- `pnpm run lint`: `0 errors, 231 warnings` (los de antes); eslint de los archivos de T7: sin avisos.
+- `pnpm run test:guardias`: `Test Files 1 failed | 309 passed | 2 skipped (312) · Tests 4 failed | 4299 passed | 4 expected fail | 20 skipped`.
+  Único rojo: `dependencias-declaradas-presentes` (baseline). `superficie-de-uso` y `modulos-reparto` en
+  verde (un test menos que en T6: el cable de `ANUNCIADAS` ya no tiene filas).
+
+Veredicto: T7 hecho y en verde; el interruptor está montado y la action ya no lleva `@sin-superficie`.

@@ -65,9 +65,7 @@ import {
  * les exige archivo todavía; el cable de abajo falla en cuanto el archivo aparece, para que la
  * excepción se borre en la misma task que lo crea.
  */
-const ANUNCIADAS: readonly PiezaAnunciada[] = [
-  { tabla: "ruta", clave: "/plataforma/empresas/[organizacionId]", task: "T7" },
-];
+const ANUNCIADAS: readonly PiezaAnunciada[] = [];
 
 const disco = piezasDelDisco();
 

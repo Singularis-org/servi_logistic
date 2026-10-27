@@ -117,7 +117,7 @@
     - `tests/unit/actions/modulos-empresa.composition-root.test.ts`.
   - *Hecho:* tests en verde; `historial-accion-punto-unico`, `historial-accion-escrituras-cubiertas`
     y `plataforma-solo-en-lista` en verde.
-- [ ] **T7 — Pantalla de detalle** (design §7; R8, R14).
+- [x] **T7 — Pantalla de detalle** (design §7; R8, R14).
   - `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` y
     `_components/ModulosEmpresa.tsx`.
   - El enlace «Módulos» en `EmpresasModule.tsx`.
