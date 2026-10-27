@@ -101,11 +101,11 @@ el humano apruebe la Propuesta A de P4. Con la B, pasan a SLT-41.
 
 ## Tanda 4: guardia de únicos (R22, R23, R30)
 
-- [ ] **T4.1** [P] Detector `tests/unit/guards/_unicos-por-empresa.ts` y lista
+- [x] **T4.1** [P] Detector `tests/unit/guards/_unicos-por-empresa.ts` y lista
   `UNICOS_SIN_EMPRESA` en `lib/db/excepciones-aislamiento.ts`, sembrada como dice design §5.
   Dep. T1.1.
   **Hecho:** el detector lista los únicos finales; la lista cuadra con ellos.
-- [ ] **T4.2** `tests/unit/guards/unicos-por-empresa.guardia.test.ts`, con los casos (a)–(d) de
+- [x] **T4.2** `tests/unit/guards/unicos-por-empresa.guardia.test.ts`, con los casos (a)–(d) de
   design §5. Dep. T4.1, T6.3.
   **Hecho:** verde; la autoprueba (d) demuestra el rojo con SQL de muestra y con la mutación M4b.
 

@@ -431,3 +431,74 @@ dan rojo y se restauraron, typecheck y lint en verde, y `app/` y `BienvenidaMaes
   (plantilla), `recuperar-por-empresa`, `enlace-bienvenida`, `organizacion-alta`,
   `password-reset-actions` y `auth-service-empresas` → `Test Files 7 passed (7)`, `Tests 52 passed (52)`.
 - Sin marca PROVISIONAL en `PasswordResetService`. «Plataforma» sale de `NOMBRE_EMPRESA_PLATAFORMA`.
+
+## Tanda 4: guardia de únicos (R22, R23, R30) — 2026-10-26, backend_dev
+
+### Archivos
+
+- `lib/db/excepciones-aislamiento.ts` (mod.): tipo `UnicoSinEmpresa` y `UNICOS_SIN_EMPRESA`,
+  60 entradas: 8 `global` y 52 `anclado` (motivo «FK NOT NULL a `<tabla>`»).
+- `tests/unit/guards/_unicos-por-empresa.ts` (nuevo): detector. Recorre TODO el historial de
+  `db/migrations` (no solo desde `20261023090000`: los 52 anclados son anteriores y (b) necesita
+  verlos) y aplica en orden `CREATE UNIQUE INDEX`, `DROP INDEX`, `ADD/DROP CONSTRAINT … UNIQUE`,
+  renombres de índice/restricción/columna/tabla, `DROP COLUMN`, `DROP TABLE` y el `EXECUTE '…'` de
+  tarifas. Si una migración tiene más `UNIQUE` escritos que reconocidos, lanza error con su nombre.
+  Tablas de negocio: `MODELOS_DE_NEGOCIO.tabla` (la guardia `organizacion-en-modelos` ya ata
+  `tabla` al `@@map`).
+- `tests/unit/guards/unicos-por-empresa.guardia.test.ts` (nuevo): casos (a)–(d) de design §5.
+- `docs/architecture.md` (mod.): viñeta «Únicos» de Multi-empresa con el párrafo de design §8 y la
+  lista de globales. Es la parte de T6.3 que (c) necesita; D14 de `progress/deudas.md` sigue para
+  la Tanda 6.
+
+### Llamadores revisados
+
+`excepciones-aislamiento.ts`: las guardias `sql-a-mano-por-empresa`, `plataforma-solo-en-lista`,
+`storage-solo-por-adaptador` e `integracion-enrutado.test.ts` (solo `EXCEPCIONES_DE_PLATAFORMA`,
+sin cambio); en `scripts/` solo comentarios; nada en `e2e/` ni `db/`. Ningún test ni script leía
+la viñeta de `architecture.md`.
+
+### Mapa R → test (`tests/unit/guards/unicos-por-empresa.guardia.test.ts`)
+
+| R | Test |
+|---|---|
+| R22 | «R22 (a): todo único final de negocio empieza por organizacion_id o está en UNICOS_SIN_EMPRESA»; autoprueba «R22 (d): un único nuevo sin organizacion_id…» y «R22 (d): mutación M4b…» |
+| R23 | «R23 (b): toda entrada de UNICOS_SIN_EMPRESA existe en las migraciones y sigue sin la columna»; «R23: cada entrada trae motivo, no se repite…»; «R23 (d): una entrada que no existe, o cuyo índice ya empieza por organizacion_id, hace fallar (b)» |
+| R30 | «R23, R30 (c): docs/architecture.md > Multi-empresa nombra cada único global a propósito»; «R30: docs/architecture.md dice que usuario.email y usuario.cedula son por empresa y por qué num_guia sigue global»; «R23, R30 (d): si la sección Multi-empresa deja de nombrar un global, (c) falla» |
+
+### Verificación (implementer)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run lint` → exit 0, 0 errors, 231 warnings (ninguna en
+  los archivos de la tanda).
+- `vitest run tests/unit/guards/unicos-por-empresa.guardia.test.ts` → `Tests 15 passed (15)`.
+- backend_dev corrió además las guardias que leen las listas o la doc: 14 archivos, 214 passed,
+  0 failed, 1 skipped (ya marcado así en `recursos-origen-fuera`). Sin base de datos: la tanda no
+  la toca.
+
+### Mutación
+
+- 19:24:47 M4b real: `zona_nombre_key` en `20261023090000_unicos_por_empresa/migration.sql` sin
+  `organizacion_id` → 6 rojos, entre ellos «R22 (a)» (las autopruebas (d) también caen porque
+  parten del historial real). Restaurado con `git checkout`.
+- 19:24:51 quitar `push_suscripcion.endpoint` de la lista de globales de `docs/architecture.md` →
+  2 rojos, «R23, R30 (c)» y su (d), nombrando `push_suscripcion.push_suscripcion_endpoint_key`.
+  Restaurado; 15/15 de nuevo.
+- La guardia es `*.guardia.test.ts` bajo `tests/unit/guards/`, el patrón que `./init.sh` corre
+  entero; no corrí init.sh.
+
+### Desviaciones y puntos abiertos
+
+- **8 globales, no 5.** El detector encontró 3 únicos posteriores a SL-17 sin `organizacion_id` ni
+  FK que los ancle: `integracion_whatsapp_numero_id_key` e
+  `integracion_whatsapp_resumen_verificacion_key` (SL-36) y `usuario_un_solo_superadmin` (SL-32,
+  índice sobre `((true))`). Van como `global` y la doc los nombra. Design §2/§5/§8 y T6.3 dicen
+  «5»: a decidir si se ajusta el texto del spec.
+- La guardia también exige sacar de la lista una entrada cuyo índice ya empiece por
+  `organizacion_id` (más estricto que R23, coherente con «solo puede bajar»). No hay techo numérico:
+  sobrar ya pone la guardia en rojo, como en `sql-a-mano`.
+- (a) se aplica a todo único final de negocio, no solo a los creados desde `20261023090000`:
+  superconjunto de R22, necesario para sembrar y validar los 52 anclados.
+
+### Veredicto
+
+Tanda 4 hecha; sin bloqueos ni dependencias nuevas. Sin push (lo hace el leader).
