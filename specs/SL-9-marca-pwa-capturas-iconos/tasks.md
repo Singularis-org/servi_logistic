@@ -69,7 +69,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
 
   Si las fracciones no dejan hueco entre viejas y nuevas, la tarea se para y se avisa al leader (D2).
 
-- [ ] **T5 — Guardia** (R3, R4, R13; D2). Depende de T3 y T4.
+- [x] **T5 — Guardia** (R3, R4, R13; D2). Depende de T3 y T4.
   - Crear `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` con las huellas de T1, los
     umbrales fijados entre las medidas de T1 y T4, y los dos casos de R13 con su anti-vacuidad.
   - Borrar `public/icons/icono_envios.png`, `public/icons/icono_entregadas.png`,
@@ -79,7 +79,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
   en una copia, R3 y R4 salen rojos, y con un `icono_wallet` escrito en un comentario de `app/`, R13
   sale rojo.
 
-- [ ] **T6 [P] — `docs/marca.md`** (D6). Depende de T4.
+- [x] **T6 [P] — `docs/marca.md`** (D6). Depende de T4.
   «Pendiente (SL-9…)» pasa a «Hecho en SL-9», con los tres puntos de D6.
   **Hecho:** `grep -i ordenex docs/marca.md` da vacío, y la guardia de SL-8 `marca-texto-amarillo`
   (parte 7, que parsea la tabla de tema oscuro) sigue verde.

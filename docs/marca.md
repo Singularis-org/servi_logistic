@@ -95,8 +95,15 @@ No cambian con la marca: `--destructive`, los `--chart-*` y los `*-strong`.
   texto amarillo sobre blanco.
 - La interfaz usa la fuente Archivo (`next/font/google`).
 
-## Pendiente (SL-9, fase 7 de `docs/plan-saas.md`)
+## Hecho en SL-9
 
-- `public/screenshots/` de la PWA: son capturas de la marca anterior. Se rehacen con la marca nueva.
-- `public/icons/icono_*.png` (envíos, entregadas, wallet, transacciones): iconos de UI de la marca
-  anterior. Hay que revisarlos.
+- Las capturas de `public/screenshots/` las genera `node scripts/capturas-pwa.mjs`, con la app
+  servida en local y su URL en `CAPTURAS_URL`. Hay que volver a generarlas cuando cambien `/` o
+  `/login`.
+- Los indicadores del mensajero usan iconos de `lucide-react` sobre `--accent`. Los
+  `public/icons/icono_*.png` se borraron.
+- El brillo de esas tarjetas es `brand-soft` en tema claro.
+- El título de servicios de la landing (`TituloSeccion`, `text-asfalto-9` = `#0d2444`) sigue cerca
+  del navy de la marca anterior. Lo corrige SL-33, y cuando SL-33 cierre hay que volver a correr el
+  script de capturas. Mientras tanto, la guardia de capturas admite hasta un 1.8 % de píxeles de la
+  marca anterior.
