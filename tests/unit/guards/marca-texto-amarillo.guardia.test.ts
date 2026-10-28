@@ -183,13 +183,14 @@ interface FilaCenso {
 }
 
 // Medido el 2026-10-22. `primitivas.tsx` se usa sobre `navy-deep` (12.84) y sobre `asfalto-9`; se
-// censa el peor caso.
+// censa el peor caso. SL-33, re-medido el 2026-10-28: `asfalto-9` pasa de `#0d2444` a `stone-900`
+// (`#1c1917`) y el amarillo sobre ella sube de 10.55 a 11.89; sigue siendo el peor caso.
 const CENSO_AMARILLO: readonly FilaCenso[] = [
   { archivo: "app/_landing/LandingBanda.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
   { archivo: "app/_landing/LandingFooter.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
   { archivo: "app/_landing/LandingHero.tsx", clase: "text-brand-light", superficie: "navy-deep", medido: 12.84, apariciones: 1 },
-  { archivo: "app/_landing/LandingPoliticas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 10.55, apariciones: 1 },
-  { archivo: "app/_landing/primitivas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 10.55, apariciones: 2 },
+  { archivo: "app/_landing/LandingPoliticas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 11.89, apariciones: 1 },
+  { archivo: "app/_landing/primitivas.tsx", clase: "text-brand-light", superficie: "asfalto-9", medido: 11.89, apariciones: 2 },
 ];
 
 /** Cuenta, por archivo y clase, las clases de texto sin `dark:` que cumplen `cumple`. */

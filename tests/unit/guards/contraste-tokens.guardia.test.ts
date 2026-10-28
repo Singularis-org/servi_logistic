@@ -70,15 +70,17 @@ const SUELO: Record<string, number> = {
   "oscuro:warning": 7.7, // antes 7.59
   "oscuro:danger": 5.27, // antes 5.20
   "oscuro:info": 7.39, // antes 6.97
-  // Feature 292 — los cuatro pares de `--chart-*`, medidos al crearlos.
-  "claro:chart-6": 5.98,
-  "claro:chart-11": 6.38,
-  "claro:chart-12": 9.45,
-  "claro:chart-13": 8.49,
-  "oscuro:chart-6": 7.24, // antes 6.91
-  "oscuro:chart-11": 7.21, // antes 7.02
-  "oscuro:chart-12": 8.92, // antes 8.45
-  "oscuro:chart-13": 6.89, // antes 6.48
+  // Feature 292 — los cuatro pares de `--chart-*`. SL-33 los reasigna a `chart-5/7/11/12` con la
+  // paleta de gráficas aprobada (`specs/SL-33-paleta-secundaria/design.md > D3, D4`): son pares
+  // NUEVOS, no los de la 292 con otro valor, y su suelo es lo medido con el fixture.
+  "claro:chart-5": 5.28,
+  "claro:chart-7": 5.44,
+  "claro:chart-11": 6.06,
+  "claro:chart-12": 5.46,
+  "oscuro:chart-5": 5.2,
+  "oscuro:chart-7": 5.04,
+  "oscuro:chart-11": 7.98,
+  "oscuro:chart-12": 7.88,
 };
 
 /** Tolerancia del suelo: absorbe el redondeo a dos decimales, nada más. */
@@ -191,17 +193,18 @@ describe("Feature 210 — contraste de los tokens semánticos (guardia)", () => 
  * ── POR QUÉ NO ENTRAN EN EL `it.each` DE ARRIBA, aunque midan lo mismo
  * En tema oscuro, el fondo del `Badge` es `<base>/15` compuesto sobre la tarjeta, y ahí está la
  * diferencia: la base de los semánticos (`--color-success`) es un hex FIJO —vive en `@theme
- * inline` y no gira—, mientras que un `--chart-N` SÍ gira con el tema (`#8b5cf6` claro,
- * `#a78bfa` oscuro). Medir estos cuatro con `paleta()` sería medir el violeta claro sobre el
+ * inline` y no gira—, mientras que un `--chart-N` SÍ gira con el tema (`#7e22ce` claro,
+ * `#c084fc` oscuro, el `chart-7`). Medir estos cuatro con `paleta()` sería medir el violeta claro sobre el
  * fondo oscuro: números plausibles del par equivocado. Se leen con `token(tema, …)`, que es lo
  * que respeta esa vuelta.
  *
- * El par es AA por decisión, no por suerte: donde el propio color del segmento no llegaba sobre
- * su `-soft` —`chart-6` daba 3.57 y `chart-12` 4.34— la tinta baja dos escalones de LA MISMA
- * rampa en vez de estrenar un tono nuevo.
+ * El par es AA por decisión, no por suerte. Con la paleta de la 292, donde el propio color del
+ * segmento no llegaba sobre su `-soft` la tinta bajaba dos escalones de LA MISMA rampa. Con la
+ * paleta aprobada de SL-33 el `-strong` es el propio color del segmento en los ocho casos, porque
+ * los ocho pasan AA con margen: el más justo es `chart-7` en oscuro, 5.04.
  */
 describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)", () => {
-  const PARES_CHART = ["chart-6", "chart-11", "chart-12", "chart-13"] as const;
+  const PARES_CHART = ["chart-5", "chart-7", "chart-11", "chart-12"] as const;
   const ALPHA_SOFT_BADGE_OSCURO = 0.15;
 
   it.each(PARES_CHART)(
@@ -236,7 +239,7 @@ describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)
     const badge = quitarComentarios(
       readFileSync(path.join(RAIZ, "components", "ui", "badge.tsx"), "utf8"),
     );
-    const variante = familia.replace("-", ""); // `chart-6` -> `chart6`
+    const variante = familia.replace("-", ""); // `chart-7` -> `chart7`
     const linea = badge.match(new RegExp(`\\b${variante}:\\s*"([^"]*)"`));
     expect(linea, `la variante \`${variante}\` no existe en el Badge`).not.toBeNull();
 
@@ -615,7 +618,8 @@ describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover
  * arreglo» y «`--ring` en claro ya no es el de marca») se escribieron para caer si la paleta
  * cambiaba, cayeron, y se reescriben al contrato que queda: `--ring` mide 3:1 o más contra las
  * seis superficies, en los dos temas (SL-8, R19). Re-medido el 2026-10-22: 16.70 en claro (sobre
- * `--secondary`) y 10.68 en oscuro (sobre `--muted`/`--secondary`). Dato, no contrato: con la
+ * `--secondary`; 17.31 sobre `stone-100` desde SL-33) y 10.68 en oscuro (sobre
+ * `--muted`/`--secondary`). Dato, no contrato: con la
  * paleta nueva `ring-ring/50` llegaría a 3.44 / 3.74; los anillos siguen opacos porque un alfa
  * depende de la superficie de debajo (`components/ui/button.tsx`).
  *
@@ -659,7 +663,8 @@ function temasDe(utilidad: string): ("claro" | "oscuro")[] {
  * suelo falla y se sube A MANO.
  */
 const SUELO_ANILLO: Record<string, number> = {
-  claro: 3.33, // `focus-visible:ring-destructive` sobre `--secondary` (#eef1f8); SL-8 no lo mueve
+  // SL-33, re-medido el 2026-10-28: `--muted`/`--secondary` claro pasa a `stone-100`. Antes 3.33.
+  claro: 3.45, // `focus-visible:ring-destructive` sobre `--muted`/`--secondary` (#f5f5f4)
   // SL-8, re-medido el 2026-10-22: `--muted`/`--secondary` oscuro pasa de `#16294a` a `#232323`.
   oscuro: 5.68, // `focus-visible:ring-destructive` sobre `--muted`/`--secondary`; antes 5.24
 };
@@ -736,7 +741,7 @@ describe("Feature 226 — el anillo de foco del Button cumple 1.4.11 en los dos 
    * dos sale del CSS que se está midiendo.
    */
   const SUELO_RING: Record<"claro" | "oscuro", number> = {
-    claro: 16.7, // `#111111` sobre `--secondary` (#eef1f8)
+    claro: 17.31, // `#111111` sobre `--muted`/`--secondary` (#f5f5f4); antes 16.70 (#eef1f8), SL-33
     oscuro: 10.68, // `#FFD000` sobre `--muted`/`--secondary` (#232323)
   };
 
@@ -779,14 +784,18 @@ describe("Feature 226 — el anillo de foco del Button cumple 1.4.11 en los dos 
  * `asfalto-5` no cambian). El icono oscuro sube con `--muted-foreground` `#B2B2B1`, y los tres
  * anillos suben porque `--ring` pasa a `#111111` en claro y `#FFD000` en oscuro. El número de
  * antes, a la derecha.
+ *
+ * SL-33, re-medido el 2026-10-28: `--muted-foreground` y `asfalto-5` pasan a `stone-700`
+ * (`#44403c`) y `--muted`/`--secondary`/`kraft-inset` a `stone-100` (`#f5f5f4`). Suben los cuatro
+ * suelos claros y de la landing; los oscuros no se mueven (R12).
  */
 const SUELO_456: Record<string, number> = {
-  "claro:icono": 6.8,
+  "claro:icono": 9.42, // antes 6.80
   "oscuro:icono": 7.41, // antes 6.40
-  "claro:anillo": 16.7, // antes 3.68
+  "claro:anillo": 17.31, // antes 16.70 (SL-8) y 3.68
   "oscuro:anillo": 10.68, // antes 5.57
-  "landing:icono": 6.99,
-  "landing:anillo": 17.15, // antes 3.78
+  "landing:icono": 9.42, // antes 6.99
+  "landing:anillo": 17.31, // antes 17.15 (SL-8) y 3.78
 };
 
 describe("Ficha 456 — el botón de información cumple 1.4.11 (guardia)", () => {

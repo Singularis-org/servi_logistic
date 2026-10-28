@@ -33,7 +33,7 @@
   **Hecho:** los sintéticos en verde y los casos reales en rojo, por el valor y no por un error de
   lectura. Se pega la salida en `progress/impl_SL-33.md`.
 
-- [ ] **T2 — Los 20 `--chart-N`** (R1, R2, R3; D1, D2). Depende de T1. En `app/globals.css`, la
+- [x] **T2 — Los 20 `--chart-N`** (R1, R2, R3; D1, D2). Depende de T1. En `app/globals.css`, la
   columna «Claro» va a tres bloques:
   - `:root, .tema-claro`;
   - `.papel-al-imprimir`;
@@ -43,7 +43,7 @@
   **Hecho:** los casos R1–R3 de la guardia nueva en verde, y `tema-encendido.guardia`,
   `impresion-tokens.guardia` y `analytics-paleta.test.ts` en verde.
 
-- [ ] **T3 — Pares del monitoreo** (R4, R5, R6; D3, D4). Depende de T2.
+- [x] **T3 — Pares del monitoreo** (R4, R5, R6; D3, D4). Depende de T2.
   - `app/globals.css`:
     - `--color-chart-{6,11,12,13}-soft` pasan a `--color-chart-{5,7,11,12}-soft`, con los HEX de D4;
     - los `--color-chart-N-strong` de `@theme` cambian de índice igual;
@@ -57,7 +57,7 @@
   **Hecho:** los casos R4–R6 de la guardia nueva en verde, y también las dos guardias de arriba y
   `contraste-tokens.guardia`, con `PARES_CHART` y sus ocho cifras pasadas a D4.
 
-- [ ] **T4 — Grises a `stone`** (R7, R8, R9, R10, R11; D5, D7). Depende de T1. `asfalto-2` pasa a
+- [x] **T4 — Grises a `stone`** (R7, R8, R9, R10, R11; D5, D7). Depende de T1. `asfalto-2` pasa a
   `stone-200` (P1).
   - En `app/globals.css`:
     - `--secondary`, `--muted`, `--muted-foreground`, `--border` e `--input`, en los tres bloques
@@ -76,23 +76,23 @@
   **Hecho:** guardias en verde, R12 en verde y un diff de tests que solo cambia literales medidos y
   nombres de índice: ningún `toBeGreaterThanOrEqual` con un número menor y ningún `it` borrado.
 
-- [ ] **T6 [P] — `docs/marca.md`** (R13, R16; D10). Depende de T2, T3 y T4. Tablas de D2 y D5, con
+- [x] **T6 [P] — `docs/marca.md`** (R13, R16; D10). Depende de T2, T3 y T4. Tablas de D2 y D5, con
   las cifras del fixture. Se quita la línea «No cambian con la marca: … los `--chart-*` …».
   **Hecho:** el caso R13 de la guardia nueva en verde.
 
-- [ ] **T6a [P] — `offline.html` y `global-error`** (R17, R18; D13, D14). Depende de T1.
+- [x] **T6a [P] — `offline.html` y `global-error`** (R17, R18; D13, D14). Depende de T1.
   - Sustituir los HEX de las tablas D13 y D14.
   - Reescribir el comentario de `global-error.tsx` l. 22-26 con los valores nuevos.
 
   **Hecho:** los casos R17 y R18 de la guardia nueva en verde, y también `RedDeErrores.test.tsx`,
   `html-lang.guardia`, `marca-estaticos.guardia` y `pwa-servida-sin-sesion.guardia`.
 
-- [ ] **T6b [P] — Pin y tramo del mapa** (R19; D15). Depende de T1. `#111111` en
+- [x] **T6b [P] — Pin y tramo del mapa** (R19; D15). Depende de T1. `#111111` en
   `UbicacionMapaInner.tsx` y `RutaMapaInner.tsx`, y los comentarios «naranja» reescritos.
   **Hecho:** el caso R19 en verde, y también `RutaMapaInner.test.tsx`, `UbicacionMapa.test.tsx`,
   `primitivas.guardia` y `sin-integrador-de-ordenex.guardia`.
 
-- [ ] **T6c [P] — Comentarios, `DESIGN.md` y maquetas** (R20; D12). Depende de T1.
+- [x] **T6c [P] — Comentarios, `DESIGN.md` y maquetas** (R20; D12). Depende de T1.
   - Reescribir sin HEX los cuatro comentarios de D12: `tabs.tsx`, `EstatusBadge.tsx`,
     `ProductosTabla.tsx` y `KpisMensajero.tsx`.
   - Corregir `DESIGN.md:14`.

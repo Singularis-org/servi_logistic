@@ -68,7 +68,7 @@ en `docs/marca.md`.
 | `--chart-9` | `#0369a1` | 5.53 | 5.93 | `#38bdf8` | 8.81 | 7.97 |
 | `--chart-10` | `#4d7c0f` | 4.66 | 4.99 | `#a3e635` | 12.52 | 11.32 |
 | `--chart-11` | `#57534e` | 7.11 | 7.63 | `#d6d3d1` | 12.68 | 11.46 |
-| `--chart-12` | `#854d0e` | 6.39 | 6.85 | `#facc15` | 12.33 | 11.14 |
+| `--chart-12` | `#854d0e` | 6.39 | 6.85 | `#facc15` | 12.33 | 11.15 |
 | `--chart-13` | `#0d9488` | 3.49 | 3.74 | `#99f6e4` | 14.98 | 13.54 |
 | `--chart-14` | `#dc2626` | 4.50 | 4.83 | `#fecaca` | 13.05 | 11.80 |
 | `--chart-15` | `#2563eb` | 4.82 | 5.17 | `#bfdbfe` | 13.29 | 12.01 |
@@ -79,6 +79,10 @@ en `docs/marca.md`.
 | `--chart-20` | `#78716c` | 4.47 | 4.80 | `#a8a29e` | 7.49 | 6.77 |
 
 Las 40 llegan a 3:1. La más justa es `--chart-16` sobre el fondo claro: 3.07.
+
+Corregido con el fixture (T1, T2): `--chart-12` oscuro sobre la tarjeta daba 11.14 en este
+cálculo a mano y el fixture da 11.15. Es la única diferencia de las 80 cifras. Se corrige aquí y en
+D4.
 
 ## D3 — Pares del monitoreo: se reasignan los índices (R5, R6)
 
@@ -136,7 +140,7 @@ las de `chart-5`.
 | `chart-5` | `#dde4f9` | `#1d4ed8` | 6.70 · 6.25 · 5.28 | `#60a5fa` | 7.43 · 6.71 · 5.20 (`#26313c`) |
 | `chart-7` | `#ecdef8` | `#7e22ce` | 6.98 · 6.51 · 5.44 | `#c084fc` | 7.15 · 6.46 · 5.04 (`#352c3c`) |
 | `chart-11` | `#e6e5e4` | `#57534e` | 7.63 · 7.11 · 6.06 | `#d6d3d1` | 12.68 · 11.46 · 7.98 (`#383735`) |
-| `chart-12` | `#ede4db` | `#854d0e` | 6.85 · 6.39 · 5.46 | `#facc15` | 12.33 · 11.14 · 7.88 (`#3d3619`) |
+| `chart-12` | `#ede4db` | `#854d0e` | 6.85 · 6.39 · 5.46 | `#facc15` | 12.33 · 11.15 · 7.88 (`#3d3619`) |
 
 El más justo es `chart-7` en oscuro: 5.04. Está por encima del borde de 4.5 que la 292 consideró
 insuficiente (4.69 y 4.89).
@@ -223,10 +227,10 @@ Se actualiza la cifra o el nombre. Ningún umbral se relaja y no se retira ning�
 
 | Archivo | Qué cambia |
 |---|---|
-| `tests/unit/guards/contraste-tokens.guardia.test.ts` | `PARES_CHART` y las ocho cifras de l. 74–81 pasan a D4. También el anillo sobre `--secondary` (l. 662 y 739) y el caso de la landing `asfalto-5`/`kraft-inset` (l. 818). |
-| `tests/unit/guards/impresion-tokens.guardia.test.ts` | Las claves `--chart-N` y `--chart-N-strong` de la clasificación (l. 613–647). P3 y P4 pasan a `despues: 1.26`. |
-| `tests/unit/guards/impresion-sin-dark.guardia.test.ts` | F4: 11.39 → 15.17. |
-| `tests/unit/guards/factura-contraste.guardia.test.ts` | P2, P5–P8, P24 y P25 (tinta `--muted-foreground` y superficies `--muted`/`--secondary`, y sus composiciones). |
+| `tests/unit/guards/contraste-tokens.guardia.test.ts` | `PARES_CHART` y las ocho cifras de l. 74–81 pasan a D4. También el anillo sobre `--secondary` (l. 662 y 739) y el caso de la landing `asfalto-5`/`kraft-inset` (l. 818). Aparecidos en T5: los suelos `claro:icono` y `claro:anillo` de la ficha 456 (6.80 → 9.42 y 16.70 → 17.31), que suben. |
+| `tests/unit/guards/impresion-tokens.guardia.test.ts` | Las claves `--chart-N` y `--chart-N-strong` de la clasificación (l. 613–647). P3 y P4 pasan a `despues: 1.26`. Aparecidos en T5: T6 `despues` 7.70 → 10.27 (`--muted-foreground` en papel) y la expresión que busca «13.79 → 1.23 … 12.10 → 1.23» en el comentario de `globals.css`, que pasa a 1.26. |
+| `tests/unit/guards/impresion-sin-dark.guardia.test.ts` | F4: 11.39 → 15.17. Aparecido en T5: P23 `antes` 17.78 → 17.66 (`--input` claro al 30 % sobre la tarjeta; es un literal medido, no un suelo). |
+| `tests/unit/guards/factura-contraste.guardia.test.ts` | P2, P5–P8, P24 y P25 (tinta `--muted-foreground` y superficies `--muted`/`--secondary`, y sus composiciones). Aparecidos en T5: P3 y P4 (`#111111` sobre `--muted` al 40 % y al 50 %), que también suben. |
 | `tests/unit/guards/marca-texto-amarillo.guardia.test.ts` | `CENSO_AMARILLO` sobre `asfalto-9`: 10.55 → 11.89. |
 | `tests/unit/tablero-dia/color-contador.guardia.test.tsx` | Los nombres de familia del caso sintético (l. 125–142) y la concordancia real. |
 | `tests/components/TableroDiaComposicion.test.tsx` | `chart-13` → `chart-5` y sus cifras (D3). |
@@ -319,6 +323,7 @@ y los `.json` de la raíz no apareció nada. Esto es lo que apareció:
 | `app/(app)/ordenes/_components/EstatusBadge.tsx:83` | Comentario | `#12233f`, `#0b2545` | Igual |
 | `app/(app)/analitica/_components/entregas/ProductosTabla.tsx:639` | Comentario | `#0d2444` | Igual |
 | `app/(app)/mis-asignaciones/_components/KpisMensajero.tsx:69` | Comentario | `#10203a` | Igual: «la tarjeta oscura de la marca anterior» |
+| `docs/marca.md:106` | Nota «Hecho en SL-9» sobre `TituloSeccion` (añadida por SL-9 después de este inventario; la detectó R20 en T1) | `#0d2444` | Se reescribe sin HEX en T6: «el navy de la marca anterior», y `asfalto-9` pasa a `stone-900` |
 | `DESIGN.md:14` | Doc de diseño: dice que `--primary` es naranja | `#f26419` | Se corrige a la marca de `docs/marca.md`: `--primary` `#111111` en claro y `#FFD000` en oscuro; `--sidebar` `#1C1C1A` |
 | `design-whatsapp/*.dc.html` (11) y `design-notificaciones/*.dc.html` (4) | Maquetas HTML del contrato visual | 133 apariciones de `#f26419`, `#d4530d`, `#fff0e8`, `#12233f`, `#0d2444`, `#14294a`, `#aab6d2` y `#17233b` | Sustitución mecánica con la tabla de abajo |
 
