@@ -418,3 +418,152 @@ forbidden…». La guardia `modulos-reparto` está en verde.
 typecheck y eslint, los de T4.
 
 Veredicto T5: hecho y verde.
+
+## T7a (2026-10-28) — usuarios y API keys: servicios
+
+### Escritores de `usuario.estado = 'activo'` (design §15)
+
+Ninguno desbloquea solo. Todos son una acción humana explícita o un alta:
+
+- `lib/services/UsuarioService.ts:186` (crear, nace `activo`), vía `UserRepository.create` (`:152`).
+- `lib/repositories/UserRepository.ts:613` `setEstado`: lo llama solo `UsuarioService.cambiarEstado` ←
+  `lib/actions/usuarios.ts:185` (el maestro pulsa activar o inactivar). El schema del borde solo admite
+  `activo | inactivo`.
+- `lib/repositories/AprobacionPostulacionRepository.ts:99`: aprobar una postulación (maestro o admin, a mano).
+- `lib/repositories/PostulacionRepository.ts:75`: la postulación pública crea al mensajero (`estado: "activo"`).
+- `lib/repositories/OrganizacionRepository.ts:79`: el maestro de una empresa nueva (alta por el superadmin).
+- `lib/repositories/ArranqueSuperadminRepository.ts:92`: el superadmin (sin empresa; el trigger no actúa).
+- La cuenta dedicada de `ApiKeyRepository.createConUsuario` (`:194`).
+- Ningún cron (`app/api/cron/*`), job, trigger ni migración escribe `estado` en `usuario`. Los demás `updateMany`
+  sobre `usuario` (`CierreDiaRepository:1152`, `CierresAdminRepository:2107/2156`,
+  `GestionOrdenRepository:635/661/813`, `OrdenRepository:4943`) solo tocan `ordenEnGestionId`, y
+  `updatePasswordHash`/`restablecerContrasena` solo la clave. `AuthService` y `session-guard` solo leen `estado`.
+  No hay bloqueo temporal ni desbloqueo por login. El «bloqueo» de `lib/constants/bloqueo-mensajero.ts` es por
+  cierres, no un estado de la cuenta.
+
+### Confirmaciones
+
+- **Clave del campo de rol en `UsuarioForm`:** `rolId` (`app/(app)/configuracion/_components/UsuarioForm.tsx:105`,
+  `:284`, `:310`). El form pinta `fieldErrors` de `validation_error` (`:339`, `:351`, `:384`).
+- **`mapDuplicadoError`** (`UserRepository.ts:679` y `ApiKeyRepository.ts:542`) solo convierte P2002 de
+  email/cédula. `textoConstraintP2002` devuelve `null` si no es un P2002, así que un SL024 sale como `return error`.
+  `UserRepository.update` y `setEstado` no tienen `catch`, y `AprobacionPostulacionRepository` tampoco.
+- **El `catch` de `ApiKeyService.generar`** (el «crear» del spec) solo capturaba `UsuarioDuplicadoError`; lo demás se
+  relanzaba. Ahora traduce el tope antes de relanzar. `ApiKeyRepository.setEstado` solo captura P2025.
+- `UserRepository.ts` y `ApiKeyRepository.ts`: sin cambios en el diff.
+- Las actions (`lib/actions/usuarios.ts`, `aprobacion-postulaciones.ts`, `api-keys.ts`) no necesitan código: devuelven
+  el resultado del servicio tal cual. Solo cambian los tipos que importan.
+
+### Archivos
+
+- `lib/types/planes.ts`: `ResultadoTopePlan = { status: "tope_plan"; mensaje: string }`.
+- `lib/services/UsuarioService.ts`: crear y actualizar devuelven `validation_error` con `fieldErrors.rolId`;
+  cambiarEstado devuelve `tope_plan`.
+- `lib/services/AprobacionPostulacionService.ts`: aprobar devuelve `tope_plan`.
+- `lib/services/ApiKeyService.ts`: generar y activar devuelven `tope_plan`.
+- `lib/interfaces/services/IUsuarioService.ts`: `CambiarEstadoUsuarioServiceResult` gana la variante `tope_plan`.
+- `lib/interfaces/services/IAprobacionPostulacionService.ts`: `DecisionServiceResult` gana la variante `tope_plan`.
+- `lib/types/usuario.ts`: `CambiarEstadoUsuarioResult` gana la variante `tope_plan`.
+- `lib/types/aprobacion-postulacion.ts`: `DecisionResult` gana la variante `tope_plan`.
+- `lib/types/api-key.ts`: `GenerarApiKeyResult` y `ActivarApiKeyResult` ganan la variante `tope_plan`.
+  `DesactivarApiKeyResult` no cambia.
+- Nuevos: `tests/unit/services/usuario-service-tope-plan.test.ts`,
+  `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts` y
+  `tests/unit/services/api-key-service-tope-plan.test.ts`.
+
+### R<n> → test (T7a)
+
+- R27 → `usuario-service-tope-plan`: crear, actualizar el rol, activar desde `inactivo` y desde `bloqueado`, la
+  forma P2010 y los errores ajenos que pasan tal cual.
+- R27 → `aprobacion-postulacion-tope-plan`: aprobar.
+- R35 → `api-key-service-tope-plan`: generar (adaptador y P2010) y activar.
+- R28 y R36, la parte del servidor → los `describe` de action de esos tres archivos: la action entrega
+  `{ status: "tope_plan", mensaje }` sin transformarlo. La pantalla queda para T7b.
+
+### Salida real
+
+- Tests nuevos: 3 archivos, 22/22 en verde.
+- Tests existentes, 16 archivos y 262/262 en verde: `usuario-service`, `usuario-service-superadmin`,
+  `aprobacion-postulacion-service`, `api-key-service` (con `.tienda-destino`, `.eliminar` y `.listar`),
+  `actions/usuarios`, `usuarios-composition`, `actions/api-keys` (con `-eliminar` y `-listar`),
+  `planes/tope-error` y las guardias 379.
+- Guardias que nombran los archivos tocados: 9 archivos, 196/196 en verde.
+- Integración contra la base SL-24: `plan-topes-usuarios` y `plan-topes-api-keys`, 15/15 en verde.
+- `eslint` sobre los 12 archivos: «No issues found». `pnpm run typecheck` (`tsc --noEmit`): exit 0.
+
+Veredicto T7a: hecho y verde. No hay desbloqueo automático y los repositorios no cambian.
+
+## T7b — las cuatro pantallas existentes (frontend_dev, 2026-10-28)
+
+Archivos modificados:
+- `app/(app)/configuracion/_components/UsuariosModule.tsx`: al activar, `tope_plan` lanza `toast.error(res.mensaje)`.
+- `app/(app)/_components/PostulacionesPendientesPanel.tsx`: el guard incluye `ResultadoTopePlan`, y `handleError` muestra `mensaje` con `tope_plan`.
+- `app/(app)/configuracion/api/_components/ApiKeysModule.tsx`: al crear, `tope_plan` lanza `toast.error(keyResult.mensaje)` y el modal sigue abierto.
+- `app/(app)/configuracion/api/_components/ApiKeyAccionCell.tsx`: al activar, `tope_plan` muestra `res.mensaje`.
+- `UsuarioForm` no cambia: ya pinta `fieldErrors.rolId` bajo «Rol» (`FormField id="rolId" error={errors.rolId}`). Lo prueba el test.
+
+Archivos creados:
+- `tests/components/UsuariosTopePlan.test.tsx`: cubre activar, editar y crear.
+- `tests/components/PostulacionesTopePlan.test.tsx`: cubre aprobar.
+- `tests/components/ApiKeysTopePlan.test.tsx`: cubre crear (`ApiKeysModule`) y activar (`ApiKeyAccionCell`).
+
+R<n> → test:
+- R28 → `tests/components/UsuariosTopePlan.test.tsx` (activar: aviso; crear y editar: bajo el campo de rol, con `aria-describedby`) y `tests/components/PostulacionesTopePlan.test.tsx` (aviso al aprobar).
+- R36 → `tests/components/ApiKeysTopePlan.test.tsx` (aviso al crear y al activar).
+
+Salida real:
+- `npx vitest run` sobre los 3 tests nuevos: «Test Files 3 passed (3) · Tests 6 passed (6)».
+- `npx vitest run` sobre los existentes (`usuarios-module`, `usuarios-aviso-zona`, `usuarios-nombre-no-imprimible`, `usuarios-restablecer`, `PostulacionesPendientesPanel`, `ApiKeysModule`, `ApiKeyAccionCell`): «Test Files 7 passed (7) · Tests 115 passed (115)».
+- `npx eslint` sobre los 7 archivos tocados: sin salida, exit 0.
+- No corrí `typecheck`: lo corre el implementer al final, por memoria.
+
+Veredicto T7b: hecho. Tests y lint en verde; falta el typecheck del implementer.
+
+## T6 (2026-10-28) — órdenes: `CupoPlanRepository` + `BulkOrdenService` + los dos routes
+
+Archivos creados:
+- `lib/interfaces/repositories/ICupoPlanRepository.ts`: `ICupoPlanRepository.cupoOrdenes()`, el tipo `CupoOrdenes` y `SIN_CUPO` (devuelve `null`).
+- `lib/repositories/CupoPlanRepository.ts`: `SELECT "maximo", "usados" FROM plan_cupo_ordenes(current_setting('app.organizacion_id', true))`.
+- `tests/unit/services/bulk-orden-service.tope-plan.test.ts` (15 casos), `tests/unit/api/api-key-carga-tope-plan.test.ts` (3) y `tests/unit/api/carga-composition-root-cupo.test.ts` (3).
+
+Archivos modificados:
+- `lib/services/BulkOrdenService.ts`:
+  - 4º parámetro opcional `cupoPlan = SIN_CUPO`;
+  - `topeExcedido(pedidas)`, `filasAErrorDeTope` y `reclasificarTrasTope`;
+  - en `cargarMasiva`, la comprobación va después de clasificar y antes del `dryRun`, y la persistencia queda en `try/catch` con `traducirErrorDeTope`;
+  - en `cargarViaApi`, la comprobación va sobre `conTarifa` y antes de persistir, y el bucle de grupos queda en `try/catch`.
+- `app/api/ordenes/carga-masiva/chunk/route.ts`: pasa `notificadorNoOp` (el default de siempre) y `new CupoPlanRepository(prisma)`.
+- `app/api/ordenes/api-key/carga/route.ts`: pasa `new CupoPlanRepository(prisma)`.
+- `tests/integration/db/plan-topes-ordenes.test.ts`: un caso nuevo, «T6: CupoPlanRepository…».
+- `IBulkOrdenService.ts`, `lib/db/excepciones-aislamiento.ts` y `tests/fabricas/*` no cambian. El SQL nuevo no nombra ninguna tabla de negocio y no llama a `comoPlataforma`.
+
+Decisiones que el spec no fija (para el reviewer):
+1. **La empresa sale de `current_setting('app.organizacion_id')` y no de `contextoActual()`.** design §6.1 dice «la empresa del contexto (`contextoActual`)». En la carga por sesión no hay `conEmpresa` explícito: la empresa la resuelve la extensión desde la sesión, así que `contextoActual()` vendría `undefined`. El valor que fija la envoltura es la misma empresa. La función, además, rechaza con `42501` cualquier otra. El precedente es `PagoPlataformaRepository`.
+2. **En la API, `pedidas` es `conTarifa.length`, no `toCreate.length`.** Son las órdenes que la petición insertaría de verdad: las filas sin tarifa ya salieron (feature 274). Coincide con lo que contaría el trigger.
+3. **Tras el trigger en la vía sesión**, `cargaId` es el token que trajo el cliente, o `null`. Si este chunk creó el lote y confirmó un lote anterior, el id no vuelve. Es parte del residuo aceptado de §6.1.
+4. **Tras el trigger en la API**, una fila que entró en un lote ya confirmado del grupo que falló sigue `creada`, con su estado real, pero sin `numGuia` y fuera de `ordenes[]`. También es el residuo de §6.1: el resumen dice qué entró.
+
+R<n> → test:
+- R21 → `bulk-orden-service.tope-plan` (sesión: pasa el tope, justo en el tope, tope 0, sin cupo; API: pasa el tope, justo en el tope, solo cuenta `conTarifa`) y `plan-topes-ordenes` (ya existía; nuevo caso T6 del repositorio real).
+- R22 → `bulk-orden-service.tope-plan` (vista previa y carga real: filas `creada` → `error` con `errores.plan`; duplicada y error intactas; `cargaId: null`; reclasificación tras el trigger por las dos rutas de lote).
+- R23 → `api-key-carga-tope-plan` (409, cuerpo exacto de design §6.1, sin `createManyOrdenesConGuia` ni PDF ni manifiesto; 409 también si salta el trigger y no entró ninguna).
+- R14 (sin plan, sin límite, en el servicio) → `bulk-orden-service.tope-plan` («cupo null») y `carga-composition-root-cupo` («devuelve null»).
+- Composition root → `carga-composition-root-cupo`: los dos routes, sin `deps.bulkService`, construyen `BulkOrdenService` con un `CupoPlanRepository` que lee del cliente de la app.
+
+Salida real:
+- `vitest run` de los 3 tests nuevos: «Test Files 3 passed (3) · Tests 21 passed (21)».
+- `vitest run tests/integration/db/plan-topes-ordenes.test.ts` contra la base SL-24: «Tests 14 passed (14)», 0 saltados.
+- Suites existentes y guardias que nombran los archivos tocados, 42 archivos en una corrida: «Test Files 42 passed (42) · Tests 703 passed (703)». Incluye:
+  - las 5 suites `bulk-orden-service.*`;
+  - las de los dos routes en `tests/integration/api/` (`ordenes-api-key-*` y `ordenes-carga-masiva-chunk`);
+  - `api-key-empresa`, `api-key-modulo-inactivo` y las `openapi-carga-*`;
+  - `carga-api-key-sin-tarifa`, `carga-api-etiquetas`, `asimetria-sin-tarifa`, `aislamiento-ordenes` y `dos-empresas-entradas`;
+  - las guardias `sql-a-mano-por-empresa`, `plataforma-solo-en-lista`, `api-sin-redirect-sin-sesion`, `etiqueta-fuente-diferida`, `monto-cobrar-entero` y `openapi-canal-rutas-reales`.
+- Después del último cambio: las 5 `bulk-orden-service.*` más los 2 tests de route nuevos, «Test Files 8 passed (8) · Tests 190 passed (190)».
+- `eslint` sobre los 9 archivos tocados: sin errores, exit 0.
+- `pnpm run typecheck`:
+  - 1ª corrida: un `TS2352` en el genérico de `filasAErrorDeTope`. Se quitó el genérico.
+  - 2ª corrida: exit 0, sin salida. Cubre todo el árbol, también lo de T7b.
+- `git status tests/fabricas`: sin cambios.
+
+Veredicto T6: hecho y en verde. Hay cuatro decisiones de implementación anotadas arriba para el reviewer.

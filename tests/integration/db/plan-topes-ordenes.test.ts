@@ -7,6 +7,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { CreateOrdenData } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
+import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type FksDeOrden, type TxDeTest } from "./_postgres-real";
@@ -394,5 +395,31 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
     // Las funciones de conteo no se exponen: solo el dueño y los triggers las llaman.
     expect(r.conteoDirecto).toBe("42501");
     expect(r.vacio).toEqual([]);
+  });
+  it("T6: CupoPlanRepository lee el cupo de la empresa fijada en app.organizacion_id; sin plan, null", async () => {
+    // El SQL real del repositorio (`current_setting('app.organizacion_id', true)`), como servi_app y
+    // con la empresa que fija la envoltura de la extensión.
+    const r = await revertida(base, async (tx) => {
+      const a = await empresa(tx);
+      const b = await empresa(tx);
+      const sinPlan = await empresa(tx);
+      const plan = await crearPlan(tx, { ordenes: 5 });
+      await asignarPlan(tx, a.id, plan);
+      await asignarPlan(tx, b.id, plan);
+      await controles(tx, a.id, plan);
+      ids(await alta(tx, a, 2));
+      ids(await alta(tx, b, 1));
+
+      await comoApp(tx, a.id);
+      const deA = await new CupoPlanRepository(tx).cupoOrdenes();
+      await comoApp(tx, b.id);
+      const deB = await new CupoPlanRepository(tx).cupoOrdenes();
+      await comoApp(tx, sinPlan.id);
+      const vacio = await new CupoPlanRepository(tx).cupoOrdenes();
+      return { deA, deB, vacio };
+    });
+    expect(r.deA).toEqual({ maximo: 5, usados: 2 });
+    expect(r.deB).toEqual({ maximo: 5, usados: 1 });
+    expect(r.vacio).toBeNull();
   });
 });

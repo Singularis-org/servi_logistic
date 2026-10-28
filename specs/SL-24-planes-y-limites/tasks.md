@@ -101,7 +101,7 @@
 
 ## Tanda C — las vías de alta
 
-- [ ] **T6. Órdenes: `CupoPlanRepository` + `BulkOrdenService` + los dos routes** [P con T7a] (depende de T3).
+- [x] **T6. Órdenes: `CupoPlanRepository` + `BulkOrdenService` + los dos routes** [P con T7a] (depende de T3).
   - El 4º parámetro opcional del constructor y la comprobación previa en `cargarMasiva` (también
     en la vista previa) y en `cargarViaApi`.
   - La reclasificación tras el trigger.
@@ -111,7 +111,7 @@
       `carga-composition-root-cupo` en verde;
     - las suites existentes de `BulkOrdenService` en verde **sin tocar ningún archivo de
       `tests/fabricas/`**.
-- [ ] **T7a. Usuarios y API keys: servicios** [P con T6] (depende de T3).
+- [x] **T7a. Usuarios y API keys: servicios** [P con T6] (depende de T3).
   - `UsuarioService` (crear, actualizar, cambiarEstado) y `AprobacionPostulacionService` traducen
     el tope a su resultado (`design.md > §6.3`).
   - `ApiKeyService` (crear, activar) hace lo mismo (`design.md > §6.5`).
@@ -125,7 +125,7 @@
     - `usuario-service-tope-plan`, `aprobacion-postulacion-tope-plan` y
       `api-key-service-tope-plan` en verde;
     - `UserRepository.ts` y `ApiKeyRepository.ts` sin cambios en el diff.
-- [ ] **T7b. Las cuatro pantallas existentes** (depende de T7a).
+- [x] **T7b. Las cuatro pantallas existentes** (depende de T7a).
   - `UsuariosModule`, `PostulacionesPendientesPanel`, `ApiKeysModule` y `ApiKeyAccionCell`
     muestran `mensaje` con `tope_plan` (`design.md > §8`).
   - **Hecho:** `UsuariosTopePlan`, `PostulacionesTopePlan` y `ApiKeysTopePlan` (componentes) en

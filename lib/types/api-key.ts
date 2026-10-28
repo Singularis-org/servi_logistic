@@ -4,6 +4,7 @@ import { apiKeysConfig } from "@/lib/config/api-keys";
 import type { ApiKeyListItem } from "@/lib/interfaces/repositories/IApiKeyRepository";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 
 // Feature 81 (design §3): contratos de I/O de la generacion de API keys.
 // Feature 82 (design §2.3): contratos de I/O del listado.
@@ -68,7 +69,8 @@ export type GenerarApiKeyResult =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R4/R6
   | { status: "conflict"; campo: "email" | "cedula" } // R11
   | { status: "forbidden" } // R2
-  | { status: "unauthenticated" }; // R1
+  | { status: "unauthenticated" } // R1
+  | ResultadoTopePlan; // SL-24 (R35, R36): el tope de API keys del plan, ya lleno
 
 // ---------------------------------------------------------------------------
 // Feature 82 — listado
@@ -191,8 +193,12 @@ export type CambiarEstadoApiKeyResult =
   | { status: "not_found" } // R3
   | ApiKeyActionErrorResult;
 
-/** Alias de intencion para la firma de las actions (misma forma que `CambiarEstadoApiKeyResult`). */
-export type ActivarApiKeyResult = CambiarEstadoApiKeyResult;
+/**
+ * Alias de intencion para la firma de las actions. Activar es un alta (SL-24, R35): con el tope de
+ * API keys lleno devuelve `tope_plan`. Desactivar nunca se rechaza por tope (design §6.5), así que
+ * conserva la forma de `CambiarEstadoApiKeyResult`.
+ */
+export type ActivarApiKeyResult = CambiarEstadoApiKeyResult | ResultadoTopePlan;
 export type DesactivarApiKeyResult = CambiarEstadoApiKeyResult;
 
 // ---------------------------------------------------------------------------

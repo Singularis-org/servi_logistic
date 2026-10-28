@@ -165,6 +165,14 @@ export type PlanResult =
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
   | { estado: "sin_cambio_programado" };
 
+/**
+ * SL-24 (design §6.3, §6.5): el rechazo de un alta por el tope del plan, en el resultado de las
+ * vías de usuarios y de API keys que no tienen un campo donde ponerlo (activar una cuenta, aprobar
+ * una postulación, crear o activar una key). `mensaje` es el texto ya redactado de
+ * `lib/planes/mensajes.ts`; la pantalla lo muestra tal cual en su aviso.
+ */
+export type ResultadoTopePlan = { status: "tope_plan"; mensaje: string };
+
 export type ListarPlanesAsignablesResult =
   | { estado: "ok"; planes: PlanDTO[] }
   | { estado: "forbidden" }

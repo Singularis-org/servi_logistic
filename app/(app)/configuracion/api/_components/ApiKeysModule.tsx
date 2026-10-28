@@ -108,7 +108,11 @@ export function ApiKeysModule({ initialData }: ApiKeysModuleProps) {
     const { keyResult, webhookUrl } = out;
 
     if (keyResult.status !== "ok") {
-      if (
+      if (keyResult.status === "tope_plan") {
+        // SL-24 (R36): el servidor redacta cuántas permite el plan y qué hacer; el genérico
+        // mandaría a revisar unos datos que están bien. El modal sigue abierto.
+        toast.error(keyResult.mensaje);
+      } else if (
         keyResult.status !== "validation_error" &&
         keyResult.status !== "conflict"
       ) {
