@@ -2003,7 +2003,7 @@ export const openApiSpec = {
           "ambiguo, distrito sin zona asignada, algún nivel de la terna RETIRADO del catálogo, o",
           "`monto_cobrar` con formato inválido.",
           "",
-          `RETIRADO DEL CATÁLOGO (desde 2026-09-06). ${EMPRESA.alInicio} puede retirar una provincia, un cantón`,
+          `RETIRADO DEL CATÁLOGO (desde 2026-09-06). ${MARCA.nombre} puede retirar una provincia, un cantón`,
           "o un distrito sin borrarlo: deja de admitirse en cargas y cotizaciones nuevas, y las",
           "órdenes que ya lo referencian no se tocan. La fila sale con `resultado: \"error\"` y un",
           "mensaje PROPIO, distinto de «no encontrado» y de «ambiguo», para que no lo confundas con",

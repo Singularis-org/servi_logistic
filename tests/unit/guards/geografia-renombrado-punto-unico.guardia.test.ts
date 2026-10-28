@@ -212,7 +212,8 @@ describe("375 — el renombrado esta declarado en las tres capas y en ninguna ma
       ["lib/interfaces/repositories/IGeoRepository.ts", /\brenombrar\(/],
       ["lib/interfaces/services/IGeografiaService.ts", /\brenombrar\(/],
       ["lib/services/GeografiaService.ts", /async renombrar\(/],
-      ["lib/actions/geografia.ts", /export async function renombrarNodoGeografico\(/],
+      // SL-20 (design §4): la accion se mudo al borde del superadmin, dentro de `comoPlataforma`.
+      ["lib/actions/geografia-plataforma.ts", /export async function renombrarNodoAction\(/],
       ["lib/repositories/GeoRepository.ts", /async renombrar\(/],
     ];
     for (const [rel, patron] of esperado) {
@@ -220,6 +221,12 @@ describe("375 — el renombrado esta declarado en las tres capas y en ninguna ma
       expect(codigo.length, `${rel} se leyo vacio`).toBeGreaterThan(200);
       expect(codigo, `${rel} no declara el renombrado`).toMatch(patron);
     }
+  });
+
+  it("SL-20: el borde viejo de la empresa (`lib/actions/geografia.ts`) ya no renombra", () => {
+    const codigo = codigoSinComentarios("lib/actions/geografia.ts");
+    expect(codigo.length, "lib/actions/geografia.ts se leyo vacio").toBeGreaterThan(200);
+    expect(codigo).not.toMatch(/\brenombrar\w*\s*\(/);
   });
 
   it("el renombrado NO toca `codigo_dta`: la clave estable no se reescribe al cambiar la etiqueta", () => {

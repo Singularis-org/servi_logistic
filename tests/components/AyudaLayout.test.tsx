@@ -161,9 +161,17 @@ describe("R17 (mitad positiva) — el armazón pinta el índice YA ACOTADO y el 
     // vigila de verdad: si `adminSatelite`, `mensajero` o `adminTienda` cambiaran un solo
     // número, el ensanche se fue por donde no debía y son cuentas de gente ajena a la empresa.
     // Medido a mano el 2026-09-16 sobre el `roles:` de los 33 archivos.
+    //
+    // ⭑ SL-36 — +5 a `maestro` y `admin` por las cinco guías de integraciones
+    // (`oficina/configuracion-integraciones.md` y las cuatro `oficina/integracion-*.md`, todas
+    // `roles: [maestro]`): el admin las LEE por la regla de lectura total de la 435, aunque la
+    // pantalla sea solo del maestro. Los otros tres no se mueven. 33→38.
+    //
+    // ⭑ SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
+    // Los otros tres no la declaraban y no se mueven.
     const esperado: Record<string, number> = {
-      maestro: 33,
-      admin: 33,
+      maestro: 37,
+      admin: 37,
       adminSatelite: 10,
       mensajero: 8,
       adminTienda: 7,

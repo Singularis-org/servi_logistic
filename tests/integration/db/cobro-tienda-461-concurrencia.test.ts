@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
@@ -6,6 +6,10 @@ import { anularCobroTiendaAction, registrarCobroTiendaAction } from "@/lib/actio
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { acreditar459, conCandado459, conEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 461 / T B.8 — CONCURRENCIA del cobro (R15, R68), contra Postgres, con filas COMMITEADAS.

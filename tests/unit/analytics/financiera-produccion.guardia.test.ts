@@ -93,10 +93,12 @@ describe("R41 · el catalogo y la produccion real no se desincronizan", () => {
     const egresos = listarMetricas({ dominio: "financiera" }).find((m) => m.id === "egresos");
     const categorias = egresos?.definicion.categorias ?? [];
     // FICHA 459 (P13): DIEZ — mas `egreso_pago_por_cuenta_tienda`, que sale de la caja.
-    expect(categorias).toHaveLength(10);
+    // SL-45 (review B2, decision de Carlos 2026-10-24): ONCE — mas `egreso_pago_plataforma`.
+    expect(categorias).toHaveLength(11);
+    expect(categorias).toContain("egreso_pago_plataforma");
     // Las ocho historicas siguen enteras: sustituir una por la nueva encogeria la cifra igual
     // que recortarla, que es justo lo que este caso existe para impedir.
-    expect(categorias.filter((c) => c.startsWith("egreso_"))).toHaveLength(9);
+    expect(categorias.filter((c) => c.startsWith("egreso_"))).toHaveLength(10);
     expect(categorias.filter((c) => !c.startsWith("egreso_"))).toEqual(["ingreso_ajuste"]);
   });
 

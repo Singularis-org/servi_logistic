@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { GeocodeSaludRepository } from "@/lib/repositories/GeocodeSaludRepository";
 import { marcarFalloConfigGeocode } from "@/lib/geo/fallo-config-geocode";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -48,6 +49,11 @@ interface Semilla {
   intentos?: number;
   lockedAt?: Date | null;
   etiqueta: string;
+  /**
+   * SL-36 (R42/R43) — la empresa del job. Sin indicarlo, la empresa del test (el argumento `org` de
+   * `sembrar`); `null` siembra un job SIN empresa.
+   */
+  organizacionId?: string | null;
 }
 
 /** El `last_error` que la 400 escribe hoy. Se PRODUCE con su función; el literal no se copia. */
@@ -58,7 +64,21 @@ function conMarcador(detalle: string): string {
 /** La prosa LEGADA, anterior a la 400: mismo texto, SIN marcador. Nunca debe recuperarse (Q4). */
 const PROSA_LEGADA = "geocodificacion: el proveedor rechazo la peticion (REQUEST_DENIED)";
 
-async function sembrar(tx: TxDeTest, prefijo: string, semillas: Semilla[]): Promise<FilaSembrada[]> {
+/**
+ * SL-36 (R42/R43) — una empresa NUEVA por test, dentro de la transaccion revertida. Las dos
+ * consultas filtran por `organizacion_id`, asi que una fila sin empresa ya no la alcanza nadie; y
+ * con una empresa recien creada los conteos son de las semillas y de nada mas.
+ */
+async function empresaNueva(tx: TxDeTest): Promise<string> {
+  return (await crearOrganizacion(tx)).id;
+}
+
+async function sembrar(
+  tx: TxDeTest,
+  org: string,
+  prefijo: string,
+  semillas: Semilla[],
+): Promise<FilaSembrada[]> {
   const filas: FilaSembrada[] = [];
   let i = 0;
   for (const s of semillas) {
@@ -67,9 +87,9 @@ async function sembrar(tx: TxDeTest, prefijo: string, semillas: Semilla[]): Prom
     await tx.$executeRawUnsafe(
       `INSERT INTO "jobs"
          ("id","tipo","payload","estado","intentos","max_intentos","run_after","locked_at",
-          "last_error","dedupe_key","created_at","updated_at")
+          "last_error","dedupe_key","created_at","updated_at","organizacion_id")
        VALUES ($1, $2::"job_tipo", '{"ordenId":"orden-de-prueba"}'::jsonb, $3::"job_estado",
-               $4, 8, $5, $6, $7, $8, $5, $5)`,
+               $4, 8, $5, $6, $7, $8, $5, $5, $9)`,
       id,
       s.tipo ?? "geocodificacion",
       s.estado ?? "failed",
@@ -78,6 +98,7 @@ async function sembrar(tx: TxDeTest, prefijo: string, semillas: Semilla[]): Prom
       s.lockedAt ?? null,
       s.lastError,
       `${prefijo}:${i}`,
+      s.organizacionId === undefined ? org : s.organizacionId,
     );
     // El `updated_at` va aparte: el INSERT de arriba lo pone igual que `created_at`, y lo que esta
     // ficha ancla es el instante del ÚLTIMO FALLO.
@@ -116,8 +137,9 @@ function repoDe(tx: TxDeTest): GeocodeSaludRepository {
 }
 
 /** La llamada tal cual la hace `GeocodeSaludService.registrarExitoProveedor`. */
-function opciones(ahora: Date = AHORA) {
+function opciones(organizacionId: string, ahora: Date = AHORA) {
   return {
+    organizacionId,
     ahora,
     limite: LOTE,
     espaciadoMs: ESPACIADO_MS,
@@ -137,9 +159,11 @@ describeSiHayBase("401/T7 — R18: el incidente del 2026-09-08, reproducido y re
   it("⭑ 25 jobs muertos con marcador + una respuesta satisfactoria → vuelven a la cola sin tocar la base a mano", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const org = await empresaNueva(tx);
       // Los 25 del incidente, con `updated_at` escalonado: el más viejo primero.
       const muertos = await sembrar(
         tx,
+        org,
         prefijo,
         Array.from({ length: 25 }, (_, k) => ({
           antiguedadMin: 300 - k * 5, // de 300 a 180 minutos: todos fuera del enfriamiento
@@ -155,7 +179,7 @@ describeSiHayBase("401/T7 — R18: el incidente del 2026-09-08, reproducido y re
       expect(antes.size).toBe(25);
       expect([...antes.values()].every((f) => f.estado === "failed")).toBe(true);
 
-      const revividos = await repoDe(tx).revivirFallosConfig(opciones());
+      const revividos = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, muertos.map((m) => m.id));
 
       return {
@@ -190,7 +214,8 @@ describeSiHayBase("401/T7 — R15: el job vuelve en condiciones de ejecutarse, y
   it("⭑ `pending`, `intentos = 0`, `last_error` NULO, `locked_at` NULO", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const [muerto] = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const [muerto] = await sembrar(tx, org, prefijo, [
         {
           antiguedadMin: 200,
           lastError: conMarcador("REQUEST_DENIED"),
@@ -204,7 +229,7 @@ describeSiHayBase("401/T7 — R15: el job vuelve en condiciones de ejecutarse, y
       expect(antes!.intentos).toBe(8);
       expect(antes!.locked_at).not.toBeNull();
 
-      const n = await repoDe(tx).revivirFallosConfig(opciones());
+      const n = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = (await leer(tx, [muerto.id])).get(muerto.id);
       return { n, antes: antes!, despues: despues! };
     });
@@ -219,11 +244,12 @@ describeSiHayBase("401/T7 — R15: el job vuelve en condiciones de ejecutarse, y
   it("⭑ `tipo`, `payload` y `dedupe_key` quedan IDÉNTICOS: la recuperación no cambia de identidad", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const [muerto] = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const [muerto] = await sembrar(tx, org, prefijo, [
         { antiguedadMin: 200, lastError: conMarcador("REQUEST_DENIED"), etiqueta: "muerto" },
       ]);
       const antes = (await leer(tx, [muerto.id])).get(muerto.id)!;
-      await repoDe(tx).revivirFallosConfig(opciones());
+      await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = (await leer(tx, [muerto.id])).get(muerto.id)!;
       return { antes, despues };
     });
@@ -250,7 +276,8 @@ describeSiHayBase("401/T7 — R16: SÓLO los que llevan el marcador. Nadie más,
     // 400, no ampliar el predicado de esta ficha — que es exactamente lo que R1 prohíbe.
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const filas = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const filas = await sembrar(tx, org, prefijo, [
         { antiguedadMin: 200, lastError: "geocodificacion: fallo de red", etiqueta: "sin-marcador" },
         { antiguedadMin: 210, lastError: PROSA_LEGADA, etiqueta: "prosa-legada" },
         { antiguedadMin: 220, lastError: null, etiqueta: "sin-error" },
@@ -259,7 +286,7 @@ describeSiHayBase("401/T7 — R16: SÓLO los que llevan el marcador. Nadie más,
       const antes = await leer(tx, filas.map((f) => f.id));
       expect(antes.size, "faltan filas sembradas").toBe(4);
 
-      const n = await repoDe(tx).revivirFallosConfig(opciones());
+      const n = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, filas.map((f) => f.id));
       return {
         n,
@@ -300,7 +327,8 @@ describeSiHayBase("401/T7 — R23: ninguna fila de otro tipo, ni ninguna que no 
   it("⭑ filas testigo comparadas ANTES y DESPUÉS: ninguna cambia", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const filas = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const filas = await sembrar(tx, org, prefijo, [
         // Otro TIPO de job, muerto y con marcador: el `WHERE` no puede alcanzarlo.
         {
           tipo: "liberar_reprogramadas",
@@ -336,7 +364,7 @@ describeSiHayBase("401/T7 — R23: ninguna fila de otro tipo, ni ninguna que no 
       const antes = await leer(tx, filas.map((f) => f.id));
       expect(antes.size, "faltan filas sembradas").toBe(5);
 
-      const n = await repoDe(tx).revivirFallosConfig(opciones());
+      const n = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, filas.map((f) => f.id));
       return {
         n,
@@ -365,8 +393,10 @@ describeSiHayBase("401/T7 — R21/R22: ni tormenta de reintentos, ni todos de go
   it("⭑ R21: con 25 candidatos y máximo 5, se recuperan EXACTAMENTE 5", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const org = await empresaNueva(tx);
       const muertos = await sembrar(
         tx,
+        org,
         prefijo,
         Array.from({ length: 25 }, (_, k) => ({
           antiguedadMin: 300 - k * 2,
@@ -376,7 +406,7 @@ describeSiHayBase("401/T7 — R21/R22: ni tormenta de reintentos, ni todos de go
       );
       expect((await leer(tx, muertos.map((m) => m.id))).size).toBe(25);
 
-      const n = await repoDe(tx).revivirFallosConfig(opciones());
+      const n = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, muertos.map((m) => m.id));
       return {
         n,
@@ -397,8 +427,10 @@ describeSiHayBase("401/T7 — R21/R22: ni tormenta de reintentos, ni todos de go
     // corrida de 10 — y eso se mide sobre los `run_after` generados, no se espera.
     const prefijo = `test-401-${randomUUID()}`;
     const runAfters = await enTransaccionRevertida(prisma, async (tx) => {
+      const org = await empresaNueva(tx);
       const muertos = await sembrar(
         tx,
+        org,
         prefijo,
         Array.from({ length: 8 }, (_, k) => ({
           antiguedadMin: 300 - k * 2,
@@ -407,7 +439,7 @@ describeSiHayBase("401/T7 — R21/R22: ni tormenta de reintentos, ni todos de go
         })),
       );
       expect((await leer(tx, muertos.map((m) => m.id))).size).toBe(8);
-      await repoDe(tx).revivirFallosConfig(opciones());
+      await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, muertos.map((m) => m.id));
       return [...despues.values()]
         .filter((f) => f.estado === "pending")
@@ -427,12 +459,13 @@ describeSiHayBase("401/T7 — R21/R22: ni tormenta de reintentos, ni todos de go
   it("⭑ un espaciado configurado distinto viaja al SQL de verdad", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const runAfters = await enTransaccionRevertida(prisma, async (tx) => {
-      const muertos = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const muertos = await sembrar(tx, org, prefijo, [
         { antiguedadMin: 300, lastError: conMarcador("a"), etiqueta: "a" },
         { antiguedadMin: 290, lastError: conMarcador("b"), etiqueta: "b" },
       ]);
       expect((await leer(tx, muertos.map((m) => m.id))).size).toBe(2);
-      await repoDe(tx).revivirFallosConfig({ ...opciones(), espaciadoMs: 90_000 });
+      await repoDe(tx).revivirFallosConfig({ ...opciones(org), espaciadoMs: 90_000 });
       const despues = await leer(tx, muertos.map((m) => m.id));
       return [...despues.values()].map((f) => f.run_after.getTime()).sort((a, b) => a - b);
     });
@@ -453,7 +486,8 @@ describeSiHayBase("401/T7 — R24: el enfriamiento, la red contra un proveedor q
   it("⭑ un job tocado hace un instante NO entra; uno anterior al enfriamiento SÍ", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const filas = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const filas = await sembrar(tx, org, prefijo, [
         // Dentro del enfriamiento (hace 10 min): NO.
         { antiguedadMin: 10, lastError: conMarcador("reciente"), etiqueta: "reciente" },
         // Justo dentro (hace 59 min): NO.
@@ -463,7 +497,7 @@ describeSiHayBase("401/T7 — R24: el enfriamiento, la red contra un proveedor q
       ]);
       expect((await leer(tx, filas.map((f) => f.id))).size).toBe(3);
 
-      const n = await repoDe(tx).revivirFallosConfig(opciones());
+      const n = await repoDe(tx).revivirFallosConfig(opciones(org));
       const despues = await leer(tx, filas.map((f) => f.id));
       return {
         n,
@@ -481,8 +515,10 @@ describeSiHayBase("401/T7 — R24: el enfriamiento, la red contra un proveedor q
     // que ni el `estado` ni el enfriamiento lo dejan volver a entrar.
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const org = await empresaNueva(tx);
       const muertos = await sembrar(
         tx,
+        org,
         prefijo,
         Array.from({ length: 12 }, (_, k) => ({
           antiguedadMin: 300 - k * 2,
@@ -493,14 +529,14 @@ describeSiHayBase("401/T7 — R24: el enfriamiento, la red contra un proveedor q
       expect((await leer(tx, muertos.map((m) => m.id))).size).toBe(12);
       const repo = repoDe(tx);
 
-      const primera = await repo.revivirFallosConfig(opciones());
+      const primera = await repo.revivirFallosConfig(opciones(org));
       const trasPrimera = await leer(tx, muertos.map((m) => m.id));
       const idsPrimera = [...trasPrimera.values()]
         .filter((f) => f.estado === "pending")
         .map((f) => f.id)
         .sort();
 
-      const segunda = await repo.revivirFallosConfig(opciones());
+      const segunda = await repo.revivirFallosConfig(opciones(org));
       const trasSegunda = await leer(tx, muertos.map((m) => m.id));
       const idsTotal = [...trasSegunda.values()]
         .filter((f) => f.estado === "pending")
@@ -531,7 +567,8 @@ describeSiHayBase("401/T7 — R2/R3: el conteo de evidencia, medido sobre el mis
   it("⭑ cuenta jobs NO completados con marcador dentro de la ventana, y excluye el job en curso", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const filas = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const filas = await sembrar(tx, org, prefijo, [
         { estado: "failed", antiguedadMin: 10, lastError: conMarcador("a"), etiqueta: "failed-dentro" },
         { estado: "pending", antiguedadMin: 20, lastError: conMarcador("b"), etiqueta: "pending-dentro" },
         { estado: "processing", antiguedadMin: 30, lastError: conMarcador("c"), etiqueta: "processing-dentro" },
@@ -559,9 +596,9 @@ describeSiHayBase("401/T7 — R2/R3: el conteo de evidencia, medido sobre el mis
       const repo = repoDe(tx);
       return {
         // Con el job en curso excluido: los tres «dentro» y nada más.
-        excluyendoElEnCurso: await repo.contarFallosConfigDesde(desde, enCurso.id),
+        excluyendoElEnCurso: await repo.contarFallosConfigDesde(org, desde, enCurso.id),
         // Y sin excluirlo (usando un id que no existe): entra también él.
-        sinExcluirNada: await repo.contarFallosConfigDesde(desde, randomUUID()),
+        sinExcluirNada: await repo.contarFallosConfigDesde(org, desde, randomUUID()),
       };
     });
 
@@ -575,7 +612,8 @@ describeSiHayBase("401/T7 — R2/R3: el conteo de evidencia, medido sobre el mis
     // Sin este control, el caso de arriba pasaría aunque el `updated_at >= desde` no existiera.
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      const filas = await sembrar(tx, prefijo, [
+      const org = await empresaNueva(tx);
+      const filas = await sembrar(tx, org, prefijo, [
         { estado: "failed", antiguedadMin: 30, lastError: conMarcador("a"), etiqueta: "a" },
         { estado: "failed", antiguedadMin: 40, lastError: conMarcador("b"), etiqueta: "b" },
       ]);
@@ -584,10 +622,12 @@ describeSiHayBase("401/T7 — R2/R3: el conteo de evidencia, medido sobre el mis
       const ajeno = randomUUID();
       return {
         conVentanaAmplia: await repo.contarFallosConfigDesde(
+          org,
           new Date(AHORA.getTime() - 60 * UN_MINUTO),
           ajeno,
         ),
         conVentanaEstrecha: await repo.contarFallosConfigDesde(
+          org,
           new Date(AHORA.getTime() - 5 * UN_MINUTO),
           ajeno,
         ),
@@ -595,5 +635,105 @@ describeSiHayBase("401/T7 — R2/R3: el conteo de evidencia, medido sobre el mis
     });
 
     expect(r.conVentanaAmplia - r.conVentanaEstrecha).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describeSiHayBase("SL-36 — R42/R43: la salud de la geocodificación no cruza empresas", () => {
+  // La tabla `jobs` tiene política ABIERTA hasta SL-19 (`USING (true)`): la RLS no separa nada y
+  // el único muro entre empresas es el `"organizacion_id" = $1` de cada consulta. Estos casos
+  // siembran DOS empresas recién creadas (más un job sin empresa) con jobs muertos por
+  // configuración, y miden que lo que hace una no alcanza a la otra.
+  //
+  // El límite del lote va alto a propósito: si el filtro desapareciera, el `UPDATE` alcanzaría
+  // también los jobs de B y el SIN EMPRESA (que se siembran MÁS VIEJOS, para ir primero), y la
+  // cuenta de revividos dejaría de ser exactamente la de A.
+  let prisma: PrismaClient;
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  const LIMITE_ALTO = 1000;
+
+  async function sembrarDosEmpresas(tx: TxDeTest) {
+    const a = await empresaNueva(tx);
+    const b = await empresaNueva(tx);
+    const prefijo = `test-sl36-${randomUUID()}`;
+    const filas = await sembrar(tx, a, prefijo, [
+      // Los de B y el sin empresa, MÁS VIEJOS que los de A: con el filtro quitado irían primero.
+      { organizacionId: b, antiguedadMin: 400, lastError: conMarcador("b1"), etiqueta: "b1" },
+      { organizacionId: b, antiguedadMin: 390, lastError: conMarcador("b2"), etiqueta: "b2" },
+      { organizacionId: null, antiguedadMin: 410, lastError: conMarcador("n"), etiqueta: "nula" },
+      { antiguedadMin: 300, lastError: conMarcador("a1"), etiqueta: "a1" },
+      { antiguedadMin: 290, lastError: conMarcador("a2"), etiqueta: "a2" },
+      { antiguedadMin: 280, lastError: conMarcador("a3"), etiqueta: "a3" },
+    ]);
+    const leidas = await leer(tx, filas.map((f) => f.id));
+    // Falla ruidosamente si las semillas no entraron (memoria: «test de integración verde sin datos»).
+    expect(leidas.size, "faltan filas sembradas").toBe(6);
+    expect([...leidas.values()].every((f) => f.estado === "failed")).toBe(true);
+    return { a, b, filas };
+  }
+
+  function estados(filas: FilaSembrada[], leidas: Map<string, FilaLeida>): Record<string, string> {
+    return Object.fromEntries(filas.map((f) => [f.etiqueta, leidas.get(f.id)!.estado]));
+  }
+
+  it("R42: el éxito de la empresa A revive SOLO jobs de A; los de B y el sin empresa siguen `failed`", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const { a, filas } = await sembrarDosEmpresas(tx);
+      const n = await repoDe(tx).revivirFallosConfig({ ...opciones(a), limite: LIMITE_ALTO });
+      return { n, estados: estados(filas, await leer(tx, filas.map((f) => f.id))) };
+    });
+
+    expect(r.n).toBe(3);
+    expect(r.estados).toEqual({
+      a1: "pending",
+      a2: "pending",
+      a3: "pending",
+      b1: "failed",
+      b2: "failed",
+      nula: "failed",
+    });
+  });
+
+  it("R42: y al revés, el éxito de B revive SOLO los de B", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const { b, filas } = await sembrarDosEmpresas(tx);
+      const n = await repoDe(tx).revivirFallosConfig({ ...opciones(b), limite: LIMITE_ALTO });
+      return { n, estados: estados(filas, await leer(tx, filas.map((f) => f.id))) };
+    });
+
+    expect(r.n).toBe(2);
+    expect(r.estados).toEqual({
+      a1: "failed",
+      a2: "failed",
+      a3: "failed",
+      b1: "pending",
+      b2: "pending",
+      nula: "failed",
+    });
+  });
+
+  it("R43: el conteo para un fallo de A cuenta SOLO los de A, y el de B SOLO los de B (el sin empresa, ninguno)", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const { a, b, filas } = await sembrarDosEmpresas(tx);
+      const desde = new Date(AHORA.getTime() - 500 * UN_MINUTO);
+      const repo = repoDe(tx);
+      const a1 = filas.find((f) => f.etiqueta === "a1")!;
+      const b1 = filas.find((f) => f.etiqueta === "b1")!;
+      return {
+        // Empresas recién creadas: el conteo es ABSOLUTO, solo de las semillas.
+        paraA: await repo.contarFallosConfigDesde(a, desde, randomUUID()),
+        paraB: await repo.contarFallosConfigDesde(b, desde, randomUUID()),
+        // Con el job en curso excluido (el off-by-one de design §5.3), dentro de su empresa.
+        paraAExcluyendoA1: await repo.contarFallosConfigDesde(a, desde, a1.id),
+        paraBExcluyendoB1: await repo.contarFallosConfigDesde(b, desde, b1.id),
+      };
+    });
+
+    expect(r).toEqual({ paraA: 3, paraB: 2, paraAExcluyendoA1: 2, paraBExcluyendoB1: 1 });
   });
 });

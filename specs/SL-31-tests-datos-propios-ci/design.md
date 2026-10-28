@@ -211,7 +211,7 @@ Specs en alcance: los 19 de `e2e/` con «PRECONDITION (seed)»: `analitica-roles
 `cierres-admin`, `cierres-admin-rechazos-sla`, `devolucion-origen`, `historial-orden`, `mi-wallet`,
 `mis-asignaciones`, `rastreo-publico`, `recepcion-satelite`, `reglas-bloqueos-cierre`,
 `reintentos-escalado`, `reprogramacion-liberacion`, `wallet`, `wallet-mensajeros`. Fuera:
-`marca.spec.ts` (ya crea los suyos) y `home.spec.ts` (no declara datos).
+`marca.spec.ts` (ya crea los suyos) y `home.spec.ts` (no declara datos; lo retiró SL-44 en T7.1).
 
 `tests/fabricas/e2e.ts`:
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MODELO_NEGOCIO_NULABLE,
+  MODELOS_CON_EMPRESA_OPCIONAL,
   MODELOS_DE_NEGOCIO,
   MODELOS_DE_PLATAFORMA,
   MODELOS_DIFERIDOS,
@@ -19,8 +20,13 @@ import { leer } from "./_aislamiento-por-empresa";
  * (R5). Si un modelo de negocio pierde la columna o el índice, el filtro deja de servir (R2).
  * Si uno de plataforma la gana, se está aislando algo que es de todos (R4).
  *
- * `Organizacion` es la raíz: la tabla de las empresas. No es negocio, plataforma ni diferida;
- * por eso queda fuera de la suma (88 clasificados + la raíz = modelos del esquema).
+ * `Organizacion` es la raíz: la tabla de las empresas. No es negocio, plataforma, de empresa
+ * opcional ni diferida; por eso queda fuera de la suma (93 clasificados + la raíz = modelos del
+ * esquema).
+ *
+ * SL-19 · R13, R14 — la clase «empresa opcional» (`jobs`): `organizacion_id` NULABLE a propósito y
+ * un índice que empiece por esa columna. Si pierde la nulabilidad, los jobs recurrentes de la
+ * plataforma no caben; si pierde el índice, la política por empresa recorre la tabla entera.
  */
 
 const MODELO_RAIZ = "Organizacion";
@@ -41,6 +47,7 @@ type Clasificacion = {
   negocio: readonly ModeloClasificado[];
   plataforma: readonly ModeloClasificado[];
   diferidos: readonly ModeloClasificado[];
+  conEmpresaOpcional: readonly ModeloClasificado[];
   nulable: string;
 };
 
@@ -49,7 +56,7 @@ function problemasDeClasificacion(esquema: string, c: Clasificacion): string[] {
   const problemas: string[] = [];
   const modelos = modelosDelEsquema(esquema);
   const porNombre = new Map(modelos.map((m) => [m.modelo, m]));
-  const clasificados = [...c.negocio, ...c.plataforma, ...c.diferidos];
+  const clasificados = [...c.negocio, ...c.plataforma, ...c.conEmpresaOpcional, ...c.diferidos];
 
   const vistos = new Set<string>();
   for (const e of clasificados) {
@@ -70,7 +77,7 @@ function problemasDeClasificacion(esquema: string, c: Clasificacion): string[] {
   const sinRaiz = modelos.filter((m) => m.modelo !== MODELO_RAIZ).length;
   if (clasificados.length !== sinRaiz) {
     problemas.push(
-      `negocio + plataforma + diferidos = ${clasificados.length}, el esquema tiene ${sinRaiz} (sin ${MODELO_RAIZ})`,
+      `negocio + plataforma + empresa opcional + diferidos = ${clasificados.length}, el esquema tiene ${sinRaiz} (sin ${MODELO_RAIZ})`,
     );
   }
 
@@ -96,6 +103,20 @@ function problemasDeClasificacion(esquema: string, c: Clasificacion): string[] {
     }
   }
 
+  for (const e of c.conEmpresaOpcional) {
+    const real = porNombre.get(e.modelo);
+    if (!real) continue;
+    const campo = /^\s*organizacionId\s+String(\?)?\s[^\n]*@map\(\s*"organizacion_id"\s*\)/m.exec(real.cuerpo);
+    if (!campo) {
+      problemas.push(`${e.modelo}: sin \`organizacionId … @map("organizacion_id")\` (R13)`);
+    } else if (campo[1] !== "?") {
+      problemas.push(`${e.modelo}: es de empresa opcional y su organizacionId no es nulable (R14)`);
+    }
+    if (!/@@index\(\s*\[\s*organizacionId\b/.test(real.cuerpo)) {
+      problemas.push(`${e.modelo}: sin \`@@index([organizacionId…])\` (R13)`);
+    }
+  }
+
   for (const e of c.plataforma) {
     const real = porNombre.get(e.modelo);
     if (!real) continue;
@@ -110,6 +131,7 @@ const CLASIFICACION_REAL: Clasificacion = {
   negocio: MODELOS_DE_NEGOCIO,
   plataforma: MODELOS_DE_PLATAFORMA,
   diferidos: MODELOS_DIFERIDOS,
+  conEmpresaOpcional: MODELOS_CON_EMPRESA_OPCIONAL,
   nulable: MODELO_NEGOCIO_NULABLE,
 };
 
@@ -121,9 +143,42 @@ describe("SL-17 · organizacion_id en los modelos (R2, R4, R5, R23)", () => {
     // Si el parser dejara de ver modelos, todas las comprobaciones de abajo pasarían en vacío.
     expect(modelos.length).toBeGreaterThanOrEqual(89);
     expect(modelos.some((m) => m.modelo === MODELO_RAIZ)).toBe(true);
-    expect(MODELOS_DE_NEGOCIO.length + MODELOS_DE_PLATAFORMA.length + MODELOS_DIFERIDOS.length).toBe(
-      modelos.length - 1,
-    );
+    expect(
+      MODELOS_DE_NEGOCIO.length +
+        MODELOS_DE_PLATAFORMA.length +
+        MODELOS_CON_EMPRESA_OPCIONAL.length +
+        MODELOS_DIFERIDOS.length,
+    ).toBe(modelos.length - 1);
+  });
+
+  it("R14 — Job ya no es diferido: es de empresa opcional, con su ficha", () => {
+    expect(MODELOS_DIFERIDOS.map((m) => m.modelo)).not.toContain("Job");
+    expect(MODELOS_CON_EMPRESA_OPCIONAL).toEqual([
+      expect.objectContaining({ modelo: "Job", tabla: "jobs", ficha: "SL-19" }),
+    ]);
+  });
+
+  it("R13, R14 — autocomprobación sobre el esquema real: Job sin nulabilidad o sin el índice falla nombrándolo", () => {
+    const job = modelosDelEsquema(esquema).find((m) => m.modelo === "Job")!;
+    const sinNulable = job.cuerpo.replace(/(organizacionId\s+)String\?/, "$1String");
+    const sinIndice = job.cuerpo.replace(/^\s*@@index\(\s*\[\s*organizacionId\b[^\n]*\n/m, "");
+    expect(sinNulable).not.toBe(job.cuerpo);
+    expect(sinIndice).not.toBe(job.cuerpo);
+    expect(problemasDeClasificacion(esquema.replace(job.cuerpo, sinNulable), CLASIFICACION_REAL)).toEqual([
+      expect.stringMatching(/^Job: es de empresa opcional y su organizacionId no es nulable/),
+    ]);
+    expect(problemasDeClasificacion(esquema.replace(job.cuerpo, sinIndice), CLASIFICACION_REAL)).toEqual([
+      expect.stringMatching(/^Job: sin `@@index/),
+    ]);
+  });
+
+  it("R14 — autocomprobación: como diferido, a Job nadie le exige la nulabilidad (por eso tiene su clase)", () => {
+    const job = MODELOS_CON_EMPRESA_OPCIONAL[0];
+    const comoDiferido: Clasificacion = { ...CLASIFICACION_REAL, conEmpresaOpcional: [], diferidos: [job] };
+    const sinNulable = esquema.replace(/(model Job \{[\s\S]*?organizacionId\s+)String\?/, "$1String");
+    expect(sinNulable).not.toBe(esquema);
+    // Como diferido nadie exige la nulabilidad: por eso R14 pide la clase propia.
+    expect(problemasDeClasificacion(sinNulable, comoDiferido)).toEqual([]);
   });
 
   it("el esquema real cumple la clasificación", () => {
@@ -132,7 +187,9 @@ describe("SL-17 · organizacion_id en los modelos (R2, R4, R5, R23)", () => {
 
   it("autocomprobación sobre el esquema real: sin el índice de Orden, falla nombrándola", () => {
     const orden = modelosDelEsquema(esquema).find((m) => m.modelo === "Orden")!;
-    const sinIndice = orden.cuerpo.replace(/^\s*@@index\(\s*\[\s*organizacionId\b[^\n]*\n/m, "");
+    // Se quitan TODOS los que empiezan por la empresa: desde SL-18 (M3) Orden tiene dos, y con
+    // quitar uno el otro seguiria cumpliendo R2 y la autocomprobacion no veria nada.
+    const sinIndice = orden.cuerpo.replace(/^\s*@@index\(\s*\[\s*organizacionId\b[^\n]*\n/gm, "");
     expect(sinIndice).not.toBe(orden.cuerpo);
     const mutado = esquema.replace(orden.cuerpo, sinIndice);
     expect(problemasDeClasificacion(mutado, CLASIFICACION_REAL)).toEqual([
@@ -168,7 +225,7 @@ ${extra}`;
   organizacionId String @default(dbgenerated()) @map("organizacion_id")
   @@index([organizacionId, id])
   @@map("orden")`;
-    const c: Clasificacion = { negocio, plataforma, diferidos: [], nulable: "Usuario" };
+    const c: Clasificacion = { negocio, plataforma, diferidos: [], conEmpresaOpcional: [], nulable: "Usuario" };
 
     it("el esquema inventado correcto no da problemas (si diera, los casos rojos no valdrían)", () => {
       expect(problemasDeClasificacion(base(ordenBien), c)).toEqual([]);

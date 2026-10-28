@@ -25,6 +25,10 @@ import { importeConNeto } from "@/tests/fixtures/importe-analitico";
 
 // Feature 129 (R1-R6, R24) — la PÁGINA de analítica resuelve el rol SOLO
 // server-side. La entrada del menú decide qué se MUESTRA; ESTA es la defensa real.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

@@ -2,51 +2,31 @@ import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type RolValue } from "@prisma/client";
+import { PrismaClient, type ModuloApagable, type RolValue } from "@prisma/client";
 
-import { itemsVisibles, SIDEBAR_ITEMS } from "../lib/auth/menu-visibility";
+import { menuDeLaEmpresa } from "../lib/auth/menu-visibility";
 import { comoPlataforma } from "../lib/db/contexto-empresa";
 import { getPrismaClient } from "../lib/db/prisma-client";
-import type {
-  EmailMessage,
-  EmailSendResult,
-  IEmailSender,
-} from "../lib/interfaces/external/IEmailSender";
-import { EmailOtpChallengeRepository } from "../lib/repositories/EmailOtpChallengeRepository";
+import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
 import { OrganizacionRepository } from "../lib/repositories/OrganizacionRepository";
-import { UserRepository } from "../lib/repositories/UserRepository";
-import { NodemailerEmailSender } from "../lib/services/email/NodemailerEmailSender";
-import { crearEmailSender, EmailNotificacionProvider } from "../lib/services/EmailProvider";
 import { OrganizacionService } from "../lib/services/OrganizacionService";
-import { OtpChallengeIssuer } from "../lib/services/OtpChallengeIssuer";
-import { PasswordResetService } from "../lib/services/PasswordResetService";
 import type { AltaEmpresaResultado } from "../lib/types/organizacion";
 import { computeDeviceHash } from "../lib/utils/device";
 import { hashPassword } from "../lib/utils/password";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
-// SL-17 T4.2 (design §9.3, D19, R47) — lo que el humo de dos empresas necesita antes de abrir el
-// navegador: la base local, el alta de A y B por el servicio, el primer acceso por «recuperar
-// contraseña», los datos marcados de cada empresa y la lista de rutas del menú del maestro.
+// SL-17 T4.2 (design §9.3, D19, R47) — lo que los E2E de dos empresas necesitan antes de abrir el
+// navegador: la base local, el alta de A y B por el servicio (la usan SL-38, SL-39 y SL-40; el
+// humo da de alta por la pantalla desde SL-44 D16), los datos marcados de cada empresa, la lista
+// de rutas del menú del maestro y el log del servidor. El correo real del maestro, el SMTP y la
+// recuperación por el servicio se retiraron con D16 (SL-44): el primer acceso del humo va por la
+// pantalla con el OTP del log.
 
 /** Proyectos remotos que este spec nunca debe tocar: aborta antes de escribir (como `marca.spec.ts`). */
 const BASES_PROHIBIDAS = { literal: ["supabase"], sha256DeRef: ["5a90bb618312dada235c0abc72c00d6df493b266880f9531c1688ea1d39f2d87", "ff8fbc8104b321044f1c597d4cb267c53a9ee99aa68f6835dd04aaec24a75d82"] }; // SL-34: los dos ids, por sha256 de 20 caracteres
 
-/**
- * El correo del maestro de cada empresa. Llega por entorno (`SL17_HUMO_MAESTRO_A`/`_B`) porque es un
- * buzón real, solo de local y QA, y el correo de recuperación se le envía de verdad: el árbol no
- * lleva emails reales (`tests/unit/guards/recursos-origen-fuera.guardia.test.ts`). Sin él, FALLA.
- */
-export function correoDelMaestro(letra: Letra): string {
-  const email = process.env[`SL17_HUMO_MAESTRO_${letra}`]?.trim();
-  if (!email) {
-    throw new Error(`SL-17 T4.2: falta SL17_HUMO_MAESTRO_${letra} (el correo real del maestro de ${letra}, solo local y QA).`);
-  }
-  return email;
-}
-
 /** El teléfono SINPE de la zona sembrada: un número de prueba válido para el `CHECK` de `zona`. */
-const SINPE_DE_PRUEBA = "80000000";
+export const SINPE_DE_PRUEBA = "80000000";
 
 export type Letra = "A" | "B";
 
@@ -73,12 +53,16 @@ export function clienteDueno(): PrismaClient {
 }
 
 /**
- * Las rutas del menú REAL del maestro: lo que `itemsVisibles` le deja ver, con los subítems de
- * cada desplegable (un padre con hijos no navega). Nada escrito a mano: si SL-32 quita una ruta
- * del menú, el humo deja de visitarla.
+ * Las rutas del menú REAL del maestro: lo que `menuDeLaEmpresa` le deja ver con los módulos de su
+ * empresa, con los subítems de cada desplegable (un padre con hijos no navega). Nada escrito a mano:
+ * si SL-32 quita una ruta del menú, el humo deja de visitarla.
+ *
+ * SL-23 (design §10; R15, R26): `apagados` son los módulos que la empresa NO tiene encendidos; sus
+ * rutas salen de la lista, igual que salen del menú que pinta la app. Por defecto, ninguno.
  */
-export function rutasDelMenuDelMaestro(): string[] {
-  const visibles = itemsVisibles(SIDEBAR_ITEMS, { usuarioId: "humo-dos-empresas", rol: "maestro" });
+export function rutasDelMenuDelMaestro(apagados: readonly ModuloApagable[] = []): string[] {
+  const activos = new Set<ModuloApagable>(ORDEN_MODULOS.filter((m) => !apagados.includes(m)));
+  const visibles = menuDeLaEmpresa({ usuarioId: "humo-dos-empresas", rol: "maestro" }, activos);
   const rutas = visibles.flatMap((item) =>
     item.children && item.children.length > 0 ? item.children.map((c) => c.href) : [item.href],
   );
@@ -108,33 +92,46 @@ function sufijo(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
 }
 
-/**
- * Los correos de los maestros son fijos y `usuario.email` es único global: una corrida anterior
- * los deja ocupados. Se le cambia el correo a ese maestro viejo (su empresa queda, sin acceso) para
- * que el alta de esta corrida sea un alta de verdad y no un conflicto.
- */
-export async function liberarCorreos(dueno: PrismaClient): Promise<void> {
-  for (const email of [correoDelMaestro("A"), correoDelMaestro("B")]) {
-    const viejo = await dueno.usuario.findUnique({ where: { email }, select: { id: true } });
-    if (viejo) {
-      await dueno.usuario.update({
-        where: { id: viejo.id },
-        data: { email: `retirado-${sufijo()}@example.test` },
-      });
-    }
-  }
-}
-
 function servicioDeAlta(): OrganizacionService {
   return new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
 }
 
-/** Alta por el servicio, como lo hará la action del superadmin, y la repetición idempotente (R45). */
-export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDeEmpresa> {
+/**
+ * Enciende módulos de una empresa como dueño, sin historial, igual que `crearEmpresa` de
+ * `tests/fabricas/empresa-y-usuarios.ts` (SL-23, design §10). Es para los E2E que no prueban el
+ * superadmin: el humo los enciende por la pantalla.
+ */
+export async function encenderModulos(organizacionId: string, modulos: readonly ModuloApagable[]): Promise<void> {
+  if (modulos.length === 0) return;
+  const dueno = clienteDueno();
+  try {
+    await dueno.organizacionModulo.createMany({
+      data: modulos.map((modulo) => ({ organizacionId, modulo })),
+      skipDuplicates: true,
+    });
+  } finally {
+    await dueno.$disconnect();
+  }
+}
+
+/**
+ * Alta por el servicio, como lo hará la action del superadmin, y la repetición idempotente (R45).
+ *
+ * SL-23 (design §10): el alta de la app deja la empresa solo con el núcleo, y los E2E que la usan
+ * (SL-38, SL-39, SL-40, SL-45) abren pantallas de módulos (`/wallet`). Por eso `modulos` nace en
+ * `"todos"`, como en `crearEmpresa`; `[]` la deja como la crea la app.
+ */
+export async function altaDeEmpresa(
+  letra: Letra,
+  email: string,
+  modulos: "todos" | readonly ModuloApagable[] = "todos",
+): Promise<AltaDeEmpresa> {
   const s = sufijo();
   const input = {
     nombre: `Empresa humo ${letra} ${s}`,
     slug: `humo-${letra.toLowerCase()}-${s}`,
+    // SL-20 (R6): el país es obligatorio en el alta; el humo vive en Costa Rica.
+    paisId: "CR",
     maestro: {
       nombre: `Maestro ${letra} humo`,
       email,
@@ -151,6 +148,7 @@ export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDe
   if (resultado.estado !== "creada") {
     throw new Error(`SL-17 T4.2: el alta de ${letra} no creó la empresa: ${JSON.stringify(resultado)}`);
   }
+  await encenderModulos(resultado.organizacionId, modulos === "todos" ? ORDEN_MODULOS : modulos);
   return {
     empresa: {
       letra,
@@ -165,55 +163,10 @@ export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDe
   };
 }
 
-/** Un envío de correo tal como lo devolvió el SMTP real. Sin destinatario ni cuerpo. */
-export interface EnvioRegistrado {
-  messageId: string | null;
-  error: string | null;
-}
-
-/** El emisor real de la app, con un registro de lo que el proveedor aceptó o rechazó. */
-class EmisorRegistrado implements IEmailSender {
-  readonly envios: EnvioRegistrado[] = [];
-  constructor(private readonly real: IEmailSender) {}
-
-  async enviar(mensaje: EmailMessage): Promise<EmailSendResult> {
-    try {
-      const r = await this.real.enviar(mensaje);
-      this.envios.push({ messageId: r.messageId, error: null });
-      return r;
-    } catch (e) {
-      this.envios.push({ messageId: null, error: e instanceof Error ? e.name : "error" });
-      throw e;
-    }
-  }
-}
-
 /**
- * «Recuperar contraseña» por el servicio real (`PasswordResetService.solicitar`) con el proveedor
- * de correo de la app. Exige el SMTP de verdad: con el emisor de consola el envío no prueba nada.
- */
-export async function solicitarRecuperacion(email: string, userAgent: string): Promise<EnvioRegistrado[]> {
-  const real = crearEmailSender();
-  if (!(real instanceof NodemailerEmailSender)) {
-    throw new Error("SL-17 T4.2: no hay SMTP configurado (SMTP_USER/SMTP_PASSWORD): el correo de recuperación no saldría.");
-  }
-  const emisor = new EmisorRegistrado(real);
-  const prisma = getPrismaClient();
-  const otpRepo = new EmailOtpChallengeRepository(prisma);
-  const servicio = new PasswordResetService(
-    new UserRepository(prisma),
-    otpRepo,
-    new OtpChallengeIssuer(otpRepo, new EmailNotificacionProvider(emisor)),
-  );
-  await comoPlataforma("SL-17", "humo de dos empresas: recuperar contraseña", () =>
-    servicio.solicitar({ email, deviceHash: computeDeviceHash(userAgent), ipAddress: "127.0.0.1" }),
-  );
-  return emisor.envios;
-}
-
-/**
- * El humo no lee el buzón (design §9.3): la contraseña la fija aquí, con el hasher del login, y el
- * dispositivo del navegador queda confiado para que el login no pida OTP (técnica de `marca.spec.ts`).
+ * Para los E2E que no prueban el primer acceso (SL-38, SL-39, SL-40): la contraseña la fija aquí,
+ * con el hasher del login, y el dispositivo del navegador queda confiado para que el login no pida
+ * OTP (técnica de `marca.spec.ts`). El humo entra por la pantalla (SL-44 D16).
  */
 export async function prepararAcceso(dueno: PrismaClient, e: Empresa, userAgent: string): Promise<void> {
   await dueno.usuario.update({
@@ -416,18 +369,19 @@ export async function sembrarDatos(dueno: PrismaClient, e: Empresa): Promise<Dat
 /* -------------------------------------------------------------------------- */
 
 /**
- * El stdout/stderr del dev server, que se levanta aparte con su salida a un archivo
- * (`SL17_HUMO_LOG_SERVIDOR`). Sin él no se puede afirmar que no hubo `EmpresaNoResuelta`: FALLA.
+ * El stdout/stderr del servidor de la app, que `e2e/_servidor-app.mjs` escribe en el archivo de
+ * `E2E_LOG_SERVIDOR` (SL-44 D3; lo fija `playwright.config.ts`). De ahí salen los OTP (R15) y la
+ * prueba de que no hubo `EmpresaNoResuelta`. Sin él, FALLA.
  */
 export class LogDelServidor {
   private desde = 0;
   constructor(private readonly ruta: string) {}
 
   static desdeEntorno(): LogDelServidor {
-    const ruta = process.env.SL17_HUMO_LOG_SERVIDOR;
+    const ruta = process.env.E2E_LOG_SERVIDOR;
     if (!ruta || !fs.existsSync(ruta)) {
       throw new Error(
-        "SL-17 T4.2: falta SL17_HUMO_LOG_SERVIDOR (archivo con el stdout/stderr del dev server). Sin él no se ve EmpresaNoResuelta.",
+        "SL-44 D3: falta el log del servidor (E2E_LOG_SERVIDOR sin definir o sin archivo). Lo crea e2e/_servidor-app.mjs al arrancar desde el webServer de Playwright; sin él no hay OTP ni se ve EmpresaNoResuelta.",
       );
     }
     const log = new LogDelServidor(ruta);

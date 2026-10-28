@@ -5,9 +5,10 @@
 // por EVENTO (creacion o correccion de la direccion de una orden), no por reloj.
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
-import type { IGeocodeClient } from "@/lib/interfaces/external/IGeocodeClient";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import {
   GeocodificacionService,
+  type FabricaClienteGeocode,
   type GeocodeLogger,
 } from "@/lib/services/GeocodificacionService";
 import { GoogleGeocodeClient } from "@/lib/clients/google-geocode";
@@ -15,6 +16,7 @@ import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepositor
 import { GeocodeCacheRepository } from "@/lib/repositories/GeocodeCacheRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadGeocodeConfig } from "@/lib/config/geocode";
+import { credencialesIntegracionReales } from "@/lib/services/integraciones/credencial-de-la-empresa";
 // FICHA 401 (T13, R12) — EL COMPOSITION ROOT DEL AVISO. Estos cuatro imports no cablean nada por
 // si solos: lo que cumple el requisito son las lineas de `buildGeocodificacionService` que los
 // PASAN. Ver el aviso ⚠️ de ahi abajo.
@@ -53,23 +55,35 @@ export function crearGeocodificacionHandler(service: GeocodificacionService): Jo
   };
 }
 
+/** Lo que el composition root deja cambiar a un test: de donde sale la credencial y el `fetch`. */
+export interface GeocodificacionDeps {
+  credenciales?: ICredencialesIntegracion;
+  fetchImpl?: typeof fetch;
+}
+
 /**
  * Construye el service real con sus repos y el cliente HTTP (patron
  * `buildLiberarReprogramadasService`).
  *
- * OJO: la config se carga aqui y NUNCA lanza si falta la credencial (design §2). Sin
- * credencial se construye igualmente un cliente (que no llegara a usarse, porque el
- * service corta antes con `GeocodeNoConfiguradoError`, R25). Esto es lo que garantiza que
- * un despliegue sin `GOOGLE_MAPS_API_KEY` NO tumbe el drenado de la cola, que comparte
- * cron con `liberar_reprogramadas` (feature 46, ya en produccion).
+ * SL-36 (design §9.1, R23, R28): aqui NO se lee ninguna clave. Se construye una sola vez por
+ * corrida del drenador, que sirve jobs de varias empresas; por eso el service recibe el lector de
+ * credenciales y una FABRICA del cliente, y arma el cliente job a job con la clave de la empresa del
+ * job. Un cliente armado aqui le prestaria la clave de una empresa a las demas. Construir esto NUNCA
+ * lanza por falta de credencial: el service corta antes de la red con `GeocodeNoConfiguradoError`
+ * (R25), asi que una empresa sin Google Maps no tumba el drenado de la cola.
  */
-export function buildGeocodificacionService(now: () => Date = () => new Date()) {
+export function buildGeocodificacionService(
+  now: () => Date = () => new Date(),
+  deps: GeocodificacionDeps = {},
+) {
   const prisma = getPrismaClient();
   const config = loadGeocodeConfig();
-  const client: IGeocodeClient = new GoogleGeocodeClient({
-    apiKey: config.GOOGLE_MAPS_API_KEY ?? "",
-    timeoutMs: config.GEOCODE_TIMEOUT_MS,
-  });
+  const crearCliente: FabricaClienteGeocode = (claveApi) =>
+    new GoogleGeocodeClient({
+      apiKey: claveApi,
+      timeoutMs: config.GEOCODE_TIMEOUT_MS,
+      fetchImpl: deps.fetchImpl,
+    });
   // FICHA 401 (T13, R12) — SALUD DE LA GEOCODIFICACION: reconoce la caida por configuracion
   // NUESTRA, avisa al `maestro` y a los `admin`, y devuelve a la cola los jobs que murieron por
   // esa causa. Se construye AQUI porque este es el unico sitio del arbol donde el service de
@@ -92,8 +106,9 @@ export function buildGeocodificacionService(now: () => Date = () => new Date()) 
   return new GeocodificacionService(
     new OrdenGeocodeRepository(prisma),
     new GeocodeCacheRepository(prisma),
-    client,
-    config,
+    // ⚠️ ESTAS DOS LINEAS SON R23: sin ellas no hay de donde sacar la clave de la empresa del job.
+    deps.credenciales ?? credencialesIntegracionReales(),
+    crearCliente,
     now,
     // El MISMO logger real (m-6): es quien registra el fallo best-effort de las tres llamadas a la
     // salud, y sin el ese `catch` con contexto no se ve en ningun sitio.

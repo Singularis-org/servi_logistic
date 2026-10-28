@@ -401,6 +401,10 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "warehouse",
     // Ficha 433: «Ayuda», el índice del módulo de documentación.
     "circleHelp",
+    // SL-32 (R36): «Empresas», el listado de empresas del superadmin.
+    "building",
+    // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin.
+    "map",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de

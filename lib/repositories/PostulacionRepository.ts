@@ -17,13 +17,16 @@ type PostulacionPrismaClient = Pick<
 export class PostulacionRepository implements IPostulacionRepository {
   constructor(private readonly prisma: PostulacionPrismaClient) {}
 
+  // SL-18 (design §2 M1): email y cedula ya son unicos POR EMPRESA, asi que no hay `findUnique`
+  // por ellos solos. `findFirst` y la extension de empresa pone el `organizacion_id`: la
+  // postulacion sigue fallando cerrada sin empresa hasta SL-35 (SL-17 R41).
   async emailExiste(email: string): Promise<boolean> {
-    const row = await this.prisma.usuario.findUnique({ where: { email }, select: { id: true } });
+    const row = await this.prisma.usuario.findFirst({ where: { email }, select: { id: true } });
     return row !== null;
   }
 
   async cedulaExiste(cedula: string): Promise<boolean> {
-    const row = await this.prisma.usuario.findUnique({ where: { cedula }, select: { id: true } });
+    const row = await this.prisma.usuario.findFirst({ where: { cedula }, select: { id: true } });
     return row !== null;
   }
 

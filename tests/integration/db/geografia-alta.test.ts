@@ -7,6 +7,8 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { disponibleDesdeCadena } from "@/lib/repositories/_shared/geografia-activa";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 
+import { crearPaisDePrueba } from "../../fabricas/paises";
+
 import {
   HAY_BASE_DE_DATOS,
   clienteConSavepoint,
@@ -31,7 +33,11 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUFIJO = `f374a${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
-const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
+// SL-32 (R24): el alta es de la plataforma. SL-20 (R33): `crear` registra en el historial de
+// PLATAFORMA; un actor que no existe se congela como «sistema», asi que no hace falta sembrarlo.
+const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
+// SL-20: el corpus nace en CR por el DEFAULT (R10).
+const ALTA_CR = { paisId: "CR", codigo: null };
 
 interface Sembrado {
   provincia: string;
@@ -93,20 +99,23 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
   describe("374/R12/R13 — el alta crea la fila bajo su padre, y nace ACTIVA", () => {
     it("provincia, canton y distrito: las tres filas existen bajo su padre", async () => {
       await conCorpus(async ({ s, service, tx }) => {
-        const p = await service.crear({ nivel: "provincia", nombre: `Nueva prov ${SUFIJO}` }, MAESTRO);
+        const p = await service.crear(
+          { nivel: "provincia", nombre: `Nueva prov ${SUFIJO}`, paisId: "CR" },
+          SUPERADMIN,
+        );
         expect(p.status).toBe("ok");
         if (p.status !== "ok") throw new Error("el alta de provincia no fue ok");
 
         const c = await service.crear(
           { nivel: "canton", nombre: `Nuevo canton ${SUFIJO}`, provinciaId: p.id },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(c.status).toBe("ok");
         if (c.status !== "ok") throw new Error("el alta de canton no fue ok");
 
         const d = await service.crear(
           { nivel: "distrito", nombre: `Nuevo distrito ${SUFIJO}`, cantonId: c.id },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(d.status).toBe("ok");
         if (d.status !== "ok") throw new Error("el alta de distrito no fue ok");
@@ -143,7 +152,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ s, service, tx }) => {
         const r = await service.crear(
           { nivel: "distrito", nombre: `Bajo canton retirado ${SUFIJO}`, cantonId: s.cantonOff },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r.status).toBe("ok");
         if (r.status !== "ok") throw new Error("el alta bajo un canton retirado se bloqueo");
@@ -174,7 +183,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ s, geo, tx }) => {
         // El recorte lo hace el schema del borde; aqui se comprueba que lo que llega a la COLUMNA
         // es exactamente eso, sin que el motor ni el ORM lo toquen.
-        const id = await geo.crear("distrito", `San José ${SUFIJO}`, s.canton);
+        const id = await geo.crear("distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
         const fila = await tx.distrito.findUnique({ where: { id }, select: { nombre: true } });
         expect(fila?.nombre).toBe(`San José ${SUFIJO}`);
         // Ni minusculas ni plegado de acentos: es lo que se lee en toda la app.
@@ -190,12 +199,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
   describe("374/R17 — el service rechaza el duplicado por forma normalizada", () => {
     it("«san jose» choca con «San José» ya existente, y NO crea fila", async () => {
       await conCorpus(async ({ s, geo, service, tx }) => {
-        await geo.crear("distrito", `San José ${SUFIJO}`, s.canton);
+        await geo.crear("distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
         const antes = await tx.distrito.count({ where: { cantonId: s.canton } });
 
         const r = await service.crear(
           { nivel: "distrito", nombre: `san jose ${SUFIJO}`, cantonId: s.canton },
-          MAESTRO,
+          SUPERADMIN,
         );
 
         expect(r).toEqual({ status: "conflict" });
@@ -205,12 +214,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("un hermano RETIRADO tambien ocupa el nombre", async () => {
       await conCorpus(async ({ s, geo, service, tx }) => {
-        const id = await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton);
+        const id = await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
         await tx.distrito.update({ where: { id }, data: { activo: false } });
 
         const r = await service.crear(
           { nivel: "distrito", nombre: `CABAGRA ${SUFIJO}`, cantonId: s.canton },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r).toEqual({ status: "conflict" });
       });
@@ -218,10 +227,10 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("CONTRAPRUEBA: el MISMO nombre bajo OTRO padre entra (R19)", async () => {
       await conCorpus(async ({ s, geo, service }) => {
-        await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton);
+        await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
         const r = await service.crear(
           { nivel: "distrito", nombre: `Cabagra ${SUFIJO}`, cantonId: s.cantonOff },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r.status).toBe("ok");
       });
@@ -242,12 +251,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       // moriria con «transaccion abortada» y este caso no podria afirmar nada. Es la misma
       // propiedad que hace que R55 salga gratis.
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton);
+        await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
 
         await tx.$executeRawUnsafe("SAVEPOINT sp_dup");
         let capturado: unknown = null;
         try {
-          await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton);
+          await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
         } catch (error) {
           capturado = error;
           await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_dup");
@@ -268,12 +277,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("lo mismo con un canton repetido dentro de su provincia", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia);
+        await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
 
         await tx.$executeRawUnsafe("SAVEPOINT sp_dup_canton");
         let capturado: unknown = null;
         try {
-          await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia);
+          await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
         } catch (error) {
           capturado = error;
           await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_dup_canton");
@@ -300,10 +309,147 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
             nombre: `Huerfano ${SUFIJO}`,
             cantonId: "00000000-0000-0000-0000-000000000000",
           },
-          MAESTRO,
+          SUPERADMIN,
         );
         expect(r).toEqual({ status: "not_found" });
         expect(await tx.distrito.count()).toBe(antes);
+      });
+    });
+  });
+
+  // ===============================================================================================
+  // SL-20 (R15, R16, R17, R29) — el alta por pais y con codigo
+  // ===============================================================================================
+
+  describe("SL-20/R15, R29 — la provincia se da de alta en un pais y compite solo con las de ese pais", () => {
+    it("el mismo nombre de provincia en OTRO pais entra; en el mismo pais es `conflict`", async () => {
+      await conCorpus(async ({ service, tx }) => {
+        await crearPaisDePrueba(tx, "XA");
+        const enCR = await service.crear(
+          { nivel: "provincia", nombre: `Central ${SUFIJO}`, paisId: "CR" },
+          SUPERADMIN,
+        );
+        expect(enCR.status).toBe("ok");
+
+        const enXA = await service.crear(
+          { nivel: "provincia", nombre: `CENTRAL ${SUFIJO}`, paisId: "XA" },
+          SUPERADMIN,
+        );
+        expect(enXA.status).toBe("ok");
+        if (enXA.status !== "ok") throw new Error("el alta en XA no fue ok");
+        const fila = await tx.provincia.findUnique({ where: { id: enXA.id }, select: { paisId: true } });
+        expect(fila?.paisId).toBe("XA");
+
+        expect(
+          await service.crear(
+            { nivel: "provincia", nombre: `central ${SUFIJO}`, paisId: "XA" },
+            SUPERADMIN,
+          ),
+        ).toEqual({ status: "conflict" });
+      });
+    });
+
+    it("un pais inexistente es `not_found` y no crea nada", async () => {
+      await conCorpus(async ({ service, tx }) => {
+        const antes = await tx.provincia.count();
+        const r = await service.crear(
+          { nivel: "provincia", nombre: `Huerfana ${SUFIJO}`, paisId: "XZ" },
+          SUPERADMIN,
+        );
+        expect(r).toEqual({ status: "not_found" });
+        expect(await tx.provincia.count()).toBe(antes);
+      });
+    });
+
+    it("un cantón dado de alta bajo una provincia de XA queda en XA (trigger) y registra XA", async () => {
+      await conCorpus(async ({ service, tx }) => {
+        await crearPaisDePrueba(tx, "XA");
+        const p = await tx.provincia.create({
+          data: { nombre: `Región ${SUFIJO}`, paisId: "XA" },
+          select: { id: true },
+        });
+        const r = await service.crear(
+          { nivel: "canton", nombre: `Comuna ${SUFIJO}`, provinciaId: p.id },
+          SUPERADMIN,
+        );
+        if (r.status !== "ok") throw new Error(`el alta no fue ok: ${r.status}`);
+        const fila = await tx.canton.findUnique({ where: { id: r.id }, select: { paisId: true } });
+        expect(fila?.paisId).toBe("XA");
+        const [registro] = await tx.historialPlataforma.findMany({
+          where: { entidadId: r.id },
+          select: { accion: true, paisId: true },
+        });
+        expect(registro).toEqual({ accion: "nodo_geografico_creado", paisId: "XA" });
+      });
+    });
+  });
+
+  /** Un digito que ninguna provincia de CR usa como codigo: CR tiene 1 digito por provincia (R17). */
+  async function codigoLibreDeProvincia(
+    tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
+  ): Promise<string> {
+    const usados = new Set(
+      (await tx.provincia.findMany({ where: { paisId: "CR" }, select: { codigoDta: true } })).map(
+        (p) => p.codigoDta,
+      ),
+    );
+    const libre = "0123456789".split("").find((d) => !usados.has(d));
+    if (libre === undefined) throw new Error("CR ya usa los diez digitos de provincia");
+    return libre;
+  }
+
+  describe("SL-20/R16, R17, R29 — el codigo del alta a mano", () => {
+    it("CR: un codigo que cumple la regla (prefijo del padre) se guarda", async () => {
+      await conCorpus(async ({ service, tx }) => {
+        const p = await tx.provincia.create({
+          data: { nombre: `Prov cod ${SUFIJO}`, codigoDta: null },
+          select: { id: true },
+        });
+        // Un padre sin codigo no admite hijos con codigo (R17): se le pone uno libre de la base.
+        const libre = await codigoLibreDeProvincia(tx);
+        await tx.provincia.update({ where: { id: p.id }, data: { codigoDta: libre } });
+
+        const r = await service.crear(
+          { nivel: "canton", nombre: `Canton cod ${SUFIJO}`, provinciaId: p.id, codigo: `${libre}01` },
+          SUPERADMIN,
+        );
+        if (r.status !== "ok") throw new Error(`el alta no fue ok: ${r.status}`);
+        const fila = await tx.canton.findUnique({ where: { id: r.id }, select: { codigoDta: true } });
+        expect(fila?.codigoDta).toBe(`${libre}01`);
+      });
+    });
+
+    it("CR: un codigo que no cumple la regla es `validation_error` y no crea nada", async () => {
+      await conCorpus(async ({ s, service, tx }) => {
+        const r = await service.crear(
+          { nivel: "distrito", nombre: `Mal codigo ${SUFIJO}`, cantonId: s.canton, codigo: "123" },
+          SUPERADMIN,
+        );
+        expect(r.status).toBe("validation_error");
+        expect(
+          await tx.distrito.count({ where: { cantonId: s.canton, nombre: `Mal codigo ${SUFIJO}` } }),
+        ).toBe(0);
+      });
+    });
+
+    it("R16: el mismo codigo en el mismo nivel y pais lo rechaza la base; en otro pais entra", async () => {
+      await conCorpus(async ({ geo, tx }) => {
+        await crearPaisDePrueba(tx, "XA");
+        await crearPaisDePrueba(tx, "XB");
+        await geo.crear("provincia", `Uno ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
+
+        await tx.$executeRawUnsafe("SAVEPOINT sp_codigo");
+        let capturado: unknown = null;
+        try {
+          await geo.crear("provincia", `Dos ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
+        } catch (error) {
+          capturado = error;
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_codigo");
+        }
+        expect(capturado, "la base dejo entrar un codigo repetido en el mismo pais").not.toBeNull();
+
+        const enXB = await geo.crear("provincia", `Tres ${SUFIJO}`, null, { paisId: "XB", codigo: "R-1" }, null);
+        expect(enXB).toBeTruthy();
       });
     });
   });

@@ -56,9 +56,10 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
  */
 function repoUsuarios(overrides: Partial<IUserRepository> = {}): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn(),
     // FICHA 362: el reset POR UN ADMINISTRADOR pasa por `restablecerContrasena`, que escribe la
     // fila del registro en la misma transaccion. `updatePasswordHash` sigue existiendo y es el
@@ -76,7 +77,9 @@ function repoUsuarios(overrides: Partial<IUserRepository> = {}): IUserRepository
     update: vi.fn(),
     setEstado: vi.fn(),
     listTiposIdentificacion: vi.fn(),
-    listRoles: vi.fn(),
+    // SL-32 (R11): el servicio mira el rol del objetivo antes de restablecer; sin roles de
+    // plataforma en el catalogo del doble, el objetivo es de empresa.
+    listRoles: vi.fn().mockResolvedValue([]),
     contarAdminSatelitesActivos: vi.fn().mockResolvedValue(0), // ficha 379: exigido por IUserRepository
     ...overrides,
   };

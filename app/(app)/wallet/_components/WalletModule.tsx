@@ -26,6 +26,7 @@ import {
 } from "@/lib/actions/wallet";
 import type { DetallePorGuiaDTO, KardexDTO } from "@/lib/types/libro-kardex";
 import { verDesgloseEgresosAction } from "@/lib/actions/wallet-egresos";
+import { verDeudaPlataformaAction } from "@/lib/actions/deuda-plataforma";
 import { autoriaDelLibroCajaAction } from "@/lib/actions/libro-caja-autoria";
 import { messageFromActionError } from "@/lib/utils/action-error-message";
 import type { AutoriaDeFilaDTO } from "@/lib/types/libro-caja-autoria";
@@ -35,6 +36,7 @@ import type {
   DesgloseEgresosDTO,
   WalletMovimientoDTO,
 } from "@/lib/types/wallet";
+import type { DeudaPlataformaDTO } from "@/lib/interfaces/services/IDeudaPlataformaService";
 
 import { CajaResumenCard } from "./CajaResumenCard";
 import {
@@ -49,7 +51,7 @@ import { WalletLedger, type AutoriaDelLibro } from "./WalletLedger";
 import { resultadosTexto } from "./detalle-movimiento-labels";
 import { conceptoDeCaja, detalleDeCaja, fechaDeCaja } from "./libro-caja-kardex";
 import { filaBaseCaja, filaCabeceraGuiaCaja } from "./wallet-ledger-descarga-columnas";
-import { LECTURA_CAJA_FALLO } from "./wallet-labels";
+import { CAJA_RESUMEN_LABEL, LECTURA_CAJA_FALLO } from "./wallet-labels";
 import {
   FILTROS_LIBRO_INICIALES,
   FILTROS_WALLET_VACIOS,
@@ -153,6 +155,14 @@ export interface WalletModuleProps {
    * garantiza el compilador, no la buena voluntad de quien monte el módulo mañana.
    */
   ahoraIso: string;
+  /**
+   * SL-40 (R21, R23): lo que la empresa debe a la plataforma, leído en el servidor. Es de toda la
+   * historia de la empresa y no depende de los filtros del libro, así que el módulo no lo vuelve a
+   * pedir al cambiarlos: solo lo transporta a la tarjeta. Opcional porque los tests de fichas
+   * anteriores montan el módulo sin él; ausente o `null`, la región no se pinta. Que la página lo
+   * pase lo mide `WalletDeudaPlataformaSL40.test.tsx`, montando la página.
+   */
+  deudaPlataforma?: DeudaPlataformaDTO | null;
 }
 
 /**
@@ -304,6 +314,7 @@ export function WalletModule({
   puedeDecidirCobros,
   puedeDecidirCobrosRechazo,
   ahoraIso,
+  deudaPlataforma: initialDeudaPlataforma = null,
 }: WalletModuleProps) {
   const toast = useToast();
 
@@ -313,6 +324,9 @@ export function WalletModule({
   const [resumen, setResumen] = useState(initialResumen);
   const [desglose, setDesglose] = useState(initialDesglose);
   const [composicion, setComposicion] = useState(initialComposicion);
+  // SL-45 (R5, design §7.2) — la deuda con la plataforma es ESTADO: un pago o su anulación la cambian, y
+  // la región tiene que decirlo sin recargar. Los filtros no la tocan (es de toda la historia, SL-40 R23).
+  const [deudaPlataforma, setDeudaPlataforma] = useState(initialDeudaPlataforma);
   // FICHA 463 (design §5.2) — los filtros APLICADOS, partidos en sus dos zonas. Solo cambian cuando la
   // lectura llegó bien (R49): si falla, la pantalla sigue diciendo lo que de verdad está pintado.
   const [filtrosWallet, setFiltrosWallet] = useState<FiltrosWallet>(FILTROS_WALLET_VACIOS);
@@ -602,15 +616,40 @@ export function WalletModule({
     pedirLibro(pedidoLibro.current, nextPage);
   }
 
+  /**
+   * SL-45 (R5) — relee la deuda con la plataforma. `forbidden` deja la región sin pintar, como en la
+   * página. Si la lectura lanza, la región se queda con la última deuda leída y se avisa.
+   */
+  async function recargarDeuda() {
+    try {
+      const res = await verDeudaPlataformaAction();
+      setDeudaPlataforma(res.status === "ok" ? res.deudaPlataforma : null);
+    } catch {
+      toast.error(LECTURA_CAJA_FALLO);
+    }
+  }
+
   /** R60 — tras registrar, anular o adjuntar: relee todo con los filtros vigentes Y la autoría. */
   async function recargarTrasCambio() {
     // Con un cambio aún en vuelo se relee lo PEDIDO (página 1); si no, lo aplicado en su página.
     const fw = pedidoWallet.current;
     const fl = pedidoLibro.current;
     const sinPendientes = fw === aplicadoWallet.current && fl === aplicadoLibro.current;
-    await recargarTodo(fw, fl, sinPendientes ? page : 1);
+    // SL-45 (R5): la deuda también, porque un pago o su anulación la mueven.
+    await Promise.all([recargarTodo(fw, fl, sinPendientes ? page : 1), recargarDeuda()]);
     setVersionAutoria((v) => v + 1);
   }
+
+  // SL-45 (R1–R4, R14): el botón de la región, SOLO cuando el servidor dice «debe». Abre el registro único
+  // con el pago ya elegido; ninguna comparación de importes en el cliente.
+  const accionDeudaPlataforma =
+    deudaPlataforma?.estado === "debe" ? (
+      <RegistrarMovimientoDialog
+        conceptoInicial="pago_plataforma"
+        etiquetaBoton={CAJA_RESUMEN_LABEL.registrarPagoPlataforma}
+        onRegistrado={() => void recargarTrasCambio()}
+      />
+    ) : undefined;
 
   const loading = cargando !== null;
   // FICHA 469 (R21/R23/R28) — el término APLICADO, solo si su lectura volvió en modo guía.
@@ -642,7 +681,12 @@ export function WalletModule({
 
         {/* FICHA 467 (R1) — la tarjeta de filtros de la 463 ya no está aquí: Periodo y «A quién» viven en
             la barra única del libro y siguen moviendo estas cifras (R12). */}
-        <CajaResumenCard resumen={resumen} movimientos={totalWallet} />
+        <CajaResumenCard
+          resumen={resumen}
+          movimientos={totalWallet}
+          deudaPlataforma={deudaPlataforma}
+          accionDeudaPlataforma={accionDeudaPlataforma}
+        />
       </section>
 
       {/* Ficha 333 (G2, design §7 · R37/R38/R42) — LA COLA DE COBROS DE GASTO FIJO POR APROBAR,

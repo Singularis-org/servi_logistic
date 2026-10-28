@@ -13,6 +13,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { filtrarArbolGeografico } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
 import {
@@ -43,21 +44,25 @@ export function GeografiaSelector({
   onSelectedChange?: (distritoIds: string[]) => void;
   /**
    * Reporta al padre los distritos marcados como zona especial. Va aparte de
-   * `onSelectedChange` a propósito: la marca es del DISTRITO y es independiente
-   * de que el distrito pertenezca o no a la zona que se está editando.
+   * `onSelectedChange` a propósito: la marca es de la EMPRESA sobre el distrito
+   * (no de la zona), así que es independiente de que el distrito pertenezca o
+   * no a la zona que se está editando.
    */
   onEspecialesChange?: (distritoIds: string[]) => void;
   /** Distritos pre-seleccionados (edición de zona). Se lee al montar. */
   initialSelected?: string[];
 }>) {
   const [query, setQuery] = useState("");
+  // SL-20 (design §7; R19): los niveles se nombran con los nombres del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   // Fuente de verdad UNICA: distritos (hojas) seleccionados. Provincia y canton
   // derivan su estado (marcado / indeterminado / vacio) de estos.
   const [selDist, setSelDist] = useState<Set<string>>(
     () => new Set(initialSelected ?? []),
   );
-  // Distritos marcados como zona especial. Se siembra del árbol (el servidor ya
-  // normalizó `zona_especial IS TRUE`) y NO se re-siembra: mientras el formulario
+  // Distritos marcados como zona especial. Se siembra del árbol, que ya trae
+  // solo las marcas de la empresa de la sesión (la RLS filtra
+  // `distrito_zona_especial`), y NO se re-siembra: mientras el formulario
   // esté abierto manda lo que el usuario tocó, hasta que Guardar lo persista.
   const [especiales, setEspeciales] = useState<Set<string>>(() => {
     const ids = new Set<string>();
@@ -165,7 +170,7 @@ export function GeografiaSelector({
     <div className="flex flex-col gap-4">
       <Input
         type="search"
-        placeholder="Buscar provincia, cantón o distrito…"
+        placeholder={`Buscar ${etiquetas.provincia.singular.toLowerCase()}, ${etiquetas.canton.singular.toLowerCase()} o ${etiquetas.distrito.singular.toLowerCase()}…`}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Buscar en el catálogo geográfico"
@@ -173,7 +178,7 @@ export function GeografiaSelector({
 
       <p className="text-sm text-muted-foreground">
         {selDist.size > 0
-          ? `Distritos seleccionados: ${selDist.size}.`
+          ? `${etiquetas.distrito.plural} seleccionados: ${selDist.size}.`
           : "Selecciona una provincia o cantón para marcar todos sus distritos, o marca distritos sueltos."}
       </p>
 
@@ -328,7 +333,7 @@ export function GeografiaSelector({
  * marcado desde `initialSelected`— perderia su fila en el siguiente guardado de la zona, y a
  * partir de ahi toda alta que lo nombre moriria con «no tiene zona asignada» sin poner rojo nada.
  *
- * Quien administra el catalogo lo hace en /configuracion/geografia, no aqui.
+ * Quien administra el catalogo es el superadmin, en /plataforma/geografia (SL-20 R21), no aqui.
  */
 function MarcaRetirado({
   estado,

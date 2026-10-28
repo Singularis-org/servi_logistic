@@ -51,9 +51,10 @@
 // que comprueba las dos mitades: que cada columna montada es EL MISMO OBJETO que declaró
 // `ordenesColumns`, y que la fuente de este módulo no contiene ni un `value:`.
 
-import { ordenesColumns } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
 import type { Column } from "@/components/shared/DataTable";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 
 /**
  * Los ids de `ordenesColumns` que leen un campo que `recortarPorAlcance(fila, "zona")` RETIRA
@@ -90,8 +91,9 @@ export const COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA: readonly string[] = [
  * (`SateliteOrdenesListado`), que es la fuente de verdad de la selección y de la regla de
  * disponibilidad del incidente — igual que `OrdenesModule` antepone su checkbox en `/ordenes`.
  */
-export function recibidasColumns(): Column<RecepcionSateliteDTO>[] {
-  return ordenesColumns.filter(
+export function recibidasColumns(etiquetas: EtiquetasGeograficas): Column<RecepcionSateliteDTO>[] {
+  // SL-20 (R19): los encabezados de nivel son los del país de la empresa (`etiquetas`).
+  return ordenesColumnsDe(etiquetas).filter(
     (columna) => !COLUMNAS_SIN_DATO_EN_ALCANCE_ZONA.includes(columna.id),
   );
 }

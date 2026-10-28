@@ -16,6 +16,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import type { RolValue } from "@prisma/client";
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     refresh: vi.fn(),

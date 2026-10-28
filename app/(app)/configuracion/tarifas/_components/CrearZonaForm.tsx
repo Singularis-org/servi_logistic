@@ -269,9 +269,10 @@ export function CrearZonaForm({
   }
 
   /**
-   * Persiste la marca `distrito.zona_especial` de los distritos que cambiaron.
-   * Como la marca vive en el distrito y no en la zona, al refrescar queda
-   * resaltada en TODAS las zonas que contengan ese distrito.
+   * Persiste la marca de zona especial de los distritos que cambiaron.
+   * La marca es de la EMPRESA (`distrito_zona_especial`), no del distrito ni de
+   * la zona: otra empresa no la ve, y dentro de esta queda resaltada en TODAS
+   * sus zonas que contengan ese distrito.
    *
    * Devuelve `true` si no había nada que guardar o si se guardó bien. Un fallo
    * aquí NO tumba el guardado de la zona: avisa y sigue.

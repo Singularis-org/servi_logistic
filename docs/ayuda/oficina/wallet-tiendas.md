@@ -3,7 +3,7 @@ titulo: Wallet · Tiendas
 modulo: wallet
 pantalla: /wallet/tiendas, /wallet/tiendas/[tiendaId]
 roles: [maestro, admin]
-actualizado: 2026-10-22
+actualizado: 2026-10-23
 fuentes:
   - app/(app)/wallet/tiendas/_components/SaldosTiendasTable.tsx
   - app/(app)/wallet/tiendas/[tiendaId]/page.tsx
@@ -172,7 +172,8 @@ adelantó.
 | En el estado de cuenta dice | Qué es | ¿Salió dinero de la caja? |
 | --- | --- | --- |
 | **Contra-entrega cobrado a los clientes de la tienda** | Lo que el mensajero cobró a los clientes en nombre de la tienda | No: entró, y es de la tienda |
-| **Flete cobrado a la tienda**, **Comisión de contra-entrega cobrada a la tienda**, **IVA del flete cobrado a la tienda**… | El servicio de la empresa, al aprobarse un cierre | No: se descuenta del saldo y es ganancia de la empresa |
+| **Flete cobrado a la tienda**, **Comisión de contra-entrega cobrada a la tienda**… | El servicio de la empresa, al aprobarse un cierre | No: se descuenta del saldo y es ganancia de la empresa |
+| **IVA del flete cobrado a la tienda**, **IVA de la comisión cobrado a la tienda**… | El IVA de ese servicio, al aprobarse un cierre | No: se descuenta del saldo, pero **no es ganancia**: en **Wallet · Caja** va en **IVA cobrado** |
 | **La empresa le cobra a la tienda** | Un cobro de la empresa a la tienda hecho a mano: no se le pagó nada a nadie. Se descuenta de su saldo y **es ganancia de la empresa** | **No**: el dinero pasa del saldo de la tienda a la ganancia |
 | **Cobro de la empresa a la tienda anulado** | La anulación de ese cobro: el saldo vuelve a subir | No |
 | **La empresa paga un gasto de la tienda** | La empresa le pagó a un tercero en nombre de la tienda (su proveedor, su publicidad, su personal). La descripción dice a quién, el motivo, el método y la referencia | **Sí** |

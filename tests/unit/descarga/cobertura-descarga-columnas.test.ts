@@ -5,9 +5,15 @@ import { describe, it, expect } from "vitest";
 import {
   AMBITO_DESCARGA_COBERTURA,
   COLUMNAS_DESCARGA_COBERTURA,
-  filaCobertura,
+  columnasDescargaCobertura,
+  filaCobertura as filaCoberturaDe,
 } from "@/app/(app)/configuracion/tarifas/_components/cobertura-descarga-columnas";
 import type { CoberturaDistritoDTO } from "@/lib/types/cobertura";
+import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): encabezados y motivos nombran los niveles con los del país de la empresa. Los casos de
+// abajo son de Costa Rica; el de `ETIQUETAS_XA` afirma que el nombre sale del país.
+const filaCobertura = filaCoberturaDe(ETIQUETAS_CR);
 
 function dto(parcial: Partial<CoberturaDistritoDTO> = {}): CoberturaDistritoDTO {
   return {
@@ -41,7 +47,7 @@ describe("465/R5 — columnas del archivo, en su orden por defecto", () => {
   });
 
   it("claves y encabezados exactos, en el orden de R5", () => {
-    expect(COLUMNAS_DESCARGA_COBERTURA).toEqual([
+    expect(columnasDescargaCobertura(ETIQUETAS_CR)).toEqual([
       { clave: "provincia", encabezado: "Provincia" },
       { clave: "canton", encabezado: "Cantón" },
       { clave: "distrito", encabezado: "Distrito" },
@@ -169,11 +175,38 @@ describe("465/R7-R14 — textos de cada celda", () => {
     expect(fila.zona).toBe("Central");
   });
 
+  // SL-38 (R15, P1 aprobada): la marca es de la empresa —hay fila o no la hay—, asi que solo hay
+  // dos textos. «Sin definir» deja de existir.
   it.each([
     [true, "Sí"],
     [false, "No"],
-    [null, "Sin definir"],
-  ] as const)("R13 — zona especial %s → «%s»", (valor, texto) => {
+  ] as const)("SL-38/R15 — zona especial %s → «%s»", (valor, texto) => {
     expect(filaCobertura(dto({ zonaEspecial: valor })).zona_especial).toBe(texto);
+  });
+
+  it("SL-38/R15 — ningun distrito sale como «Sin definir»", () => {
+    const textos = [true, false].map((v) => filaCobertura(dto({ zonaEspecial: v })).zona_especial);
+    expect(textos).toEqual(["Sí", "No"]);
+    expect(textos).not.toContain("Sin definir");
+  });
+});
+
+describe("SL-20/R19 — la descarga de cobertura nombra los niveles con los del país de la empresa", () => {
+  it("con un país de prueba, encabezados y motivo dicen «Departamento», no «Provincia»", () => {
+    expect(columnasDescargaCobertura(ETIQUETAS_XA).slice(0, 3).map((c) => c.encabezado)).toEqual([
+      "Departamento",
+      "Municipio",
+      "Aldea",
+    ]);
+    // El contrato de claves y orden no cambia con el país.
+    expect(columnasDescargaCobertura(ETIQUETAS_XA).map((c) => c.clave)).toEqual(
+      COLUMNAS_DESCARGA_COBERTURA.map((c) => c.clave),
+    );
+    const fila = filaCoberturaDe(ETIQUETAS_XA)({
+      ...dto(),
+      cobertura: false,
+      motivo: "provincia_retirada",
+    });
+    expect(fila.motivo).toBe("Departamento retirada del catálogo");
   });
 });

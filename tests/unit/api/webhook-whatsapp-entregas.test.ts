@@ -1,15 +1,22 @@
 import { createHmac } from "node:crypto";
 import { describe, it, expect, vi } from "vitest";
 import { handlePost } from "@/app/api/webhooks/whatsapp/route";
-import type { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
+import type { IEntregaEstadoService } from "@/lib/services/EntregaEstadoService";
+import { WebhookWhatsappService } from "@/lib/services/WebhookWhatsappService";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // Ficha 474 (T8.3, R38) — el webhook aplica los estados a las ENTREGAS de los envios DESPUES de la
 // ingesta del chat; un fallo suyo NO cambia el 200 ni la ingesta.
+// SL-36: la regla vive en `WebhookWhatsappService`; se ejerce por el route con el service real y
+// dobles en sus bordes (el numero `2` es de `org-a` y su App Secret es `secreto`).
 
-const CONFIG = { verifyToken: "v", appSecret: "secreto" };
+const APP_SECRET = "secreto";
 
 function firmar(raw: string): string {
-  return "sha256=" + createHmac("sha256", CONFIG.appSecret).update(raw, "utf8").digest("hex");
+  return "sha256=" + createHmac("sha256", APP_SECRET).update(raw, "utf8").digest("hex");
 }
 
 const CUERPO = JSON.stringify({
@@ -39,21 +46,28 @@ function req(): Request {
   });
 }
 
-function servicio() {
-  const ingerirEventos = vi.fn(async () => ({ mensajes: 0, statuses: 1 }));
-  return { ingerirEventos, service: { ingerirEventos } as unknown as ChatWhatsappService };
+function servicio(entregaEstado: () => IEntregaEstadoService) {
+  const ingerirEventos = vi.fn(async () => ({ mensajesRegistrados: 0, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 }));
+  const service = new WebhookWhatsappService({
+    enrutado: {
+      porNumeros: async () => new Map([["2", { organizacionId: "org-a", integracionId: "int-a" }]]),
+      porResumenVerificacion: async () => null,
+    },
+    resumidor: { resumen: (t) => t },
+    leerAppSecret: async () => APP_SECRET,
+    anotarWebhook: async () => {},
+    ingesta: { ingerirEventos },
+    entregaEstado,
+    logger: { warn: () => {} },
+  });
+  return { ingerirEventos, service };
 }
 
 describe("474/R38 — webhook -> entregas", () => {
   it("aplica los statuses a las entregas DESPUES de la ingesta del chat", async () => {
-    const { service, ingerirEventos } = servicio();
     const aplicar = vi.fn(async () => 1);
-    const res = await handlePost(req(), {
-      getConfig: () => CONFIG,
-      buildService: () => service,
-      logger: { warn: () => {} },
-      buildEntregaEstado: () => ({ aplicar }),
-    });
+    const { service, ingerirEventos } = servicio(() => ({ aplicar }));
+    const res = await handlePost(req(), { service });
     expect(res.status).toBe(200);
     expect(aplicar).toHaveBeenCalledTimes(1);
     const statuses = (aplicar.mock.calls[0] as unknown as [{ waMessageId: string; estado: string }[]])[0];
@@ -62,15 +76,10 @@ describe("474/R38 — webhook -> entregas", () => {
   });
 
   it("⭑ un fallo al construir o aplicar NO cambia el 200 ni la ingesta", async () => {
-    const { service, ingerirEventos } = servicio();
-    const res = await handlePost(req(), {
-      getConfig: () => CONFIG,
-      buildService: () => service,
-      logger: { warn: () => {} },
-      buildEntregaEstado: () => {
-        throw new Error("sin base");
-      },
+    const { service, ingerirEventos } = servicio(() => {
+      throw new Error("sin base");
     });
+    const res = await handlePost(req(), { service });
     expect(res.status).toBe(200);
     expect(ingerirEventos).toHaveBeenCalledTimes(1);
   });

@@ -1,0 +1,545 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterAll, describe, expect, it } from "vitest";
+
+import {
+  CALCULO_CONTINUO,
+  CONSUMOS_ENTRE_MODULOS,
+  MODULO_POR_ACTION,
+  MODULO_POR_CRON,
+  MODULO_POR_RUTA,
+  modulosDe,
+} from "@/lib/modulos/reparto";
+
+import {
+  actionsImportadas,
+  archivoDeAction,
+  archivoDeCron,
+  archivoDeRuta,
+  archivosDeApp,
+  destinoDeArchivoDeApp,
+  diferenciasDeReparto,
+  funcionesSinPuerta,
+  GrafoDeConsumos,
+  leer,
+  llamaAItemsVisibles,
+  modulosPasadosAParaCadaEmpresa,
+  type PiezaAnunciada,
+  piezasCompartidas,
+  piezasDelDisco,
+  problemaDeCron,
+  puertaDePagina,
+  puertasQueLanzan,
+  RAIZ,
+} from "./_modulos-reparto";
+
+/**
+ * SL-23 · T4 (design §8; R3, R15, R16, R17, R21, R30, R33) — GUARDIA DEL REPARTO DE MÓDULOS.
+ *
+ * Un módulo apagado solo está apagado si TODAS sus piezas tienen puerta. Una puerta olvidada no falla:
+ * deja pasar en silencio. Esta guardia es la red (design §13):
+ *
+ *  (a) cada página de `app/(app)/`, archivo de `lib/actions/`, cron y endpoint de `app/api/` tiene
+ *      entrada en `lib/modulos/reparto.ts`, y cada entrada tiene archivo (R3); solo las piezas de §3.7
+ *      tienen dos módulos;
+ *  (b) cada página de un módulo abre con `await exigirModuloEnRuta(<sus claves>)` (R16);
+ *  (c) cada función exportada de una action de un módulo abre con `await exigirModuloActivo(<sus
+ *      claves>)`, directa o como primera sentencia de su `withErrorHandler` (R17, R33);
+ *  (d) un cron de un módulo pasa `modulo: "<su clave>"` a `paraCadaEmpresa` (R21), y uno de cálculo
+ *      continuo NO lo pasa (R30);
+ *  (e) un archivo de `app/` solo alcanza actions de su módulo o del núcleo, directo o a través de
+ *      `components/**` y `hooks/**` (un componente compartido toma el módulo de la ruta que lo monta,
+ *      §3.9), salvo lo declarado en `CONSUMOS_ENTRE_MODULOS` (§6.3); el fallo nombra la cadena;
+ *  (f) nadie en `app/` llama a `itemsVisibles(`: el menú pasa por `menuDeLaEmpresa` (R15).
+ *
+ * ESTADO DESDE LA TANDA 5 (T8, T9): los seis casos (a)–(f) en verde, todos con `it` normal. Hasta
+ * entonces (b) y (f) iban con `it.fails` mientras sus puertas no existían. Las autocomprobaciones de
+ * cada caso (una fuente buena que pasa y su mutación que falla) son `it` normales.
+ */
+
+/**
+ * Entradas de `reparto.ts` cuyo archivo crea una task posterior de esta misma ficha. El caso (a) no
+ * les exige archivo todavía; el cable de abajo falla en cuanto el archivo aparece, para que la
+ * excepción se borre en la misma task que lo crea.
+ */
+const ANUNCIADAS: readonly PiezaAnunciada[] = [];
+
+const disco = piezasDelDisco();
+
+const PAGINAS_DE_MODULO = Object.entries(MODULO_POR_RUTA).filter(([, d]) => d !== "nucleo");
+const ACTIONS_DE_MODULO = Object.entries(MODULO_POR_ACTION).filter(([, d]) => d !== "nucleo");
+const CRONS_DE_MODULO = Object.entries(MODULO_POR_CRON).filter(([, d]) => d !== "nucleo");
+const CRONS_CONTINUOS = new Set<string>(CALCULO_CONTINUO.crons);
+
+function paginasSinPuerta(): string[] {
+  return PAGINAS_DE_MODULO.flatMap(([ruta, destino]) => {
+    const archivo = archivoDeRuta(ruta);
+    if (!existsSync(path.join(RAIZ, archivo))) return [];
+    const claves = puertaDePagina(leer(archivo));
+    const esperado = modulosDe(destino);
+    if (!claves) return [`${ruta}: sin exigirModuloEnRuta(${esperado.join(", ")}) como primera sentencia`];
+    return JSON.stringify(claves) === JSON.stringify(esperado)
+      ? []
+      : [`${ruta}: exige (${claves.join(", ")}) y le toca (${esperado.join(", ")})`];
+  });
+}
+
+function actionsSinPuerta(): string[] {
+  return ACTIONS_DE_MODULO.flatMap(([nombre, destino]) => {
+    const archivo = archivoDeAction(nombre);
+    if (!existsSync(path.join(RAIZ, archivo))) return [];
+    return funcionesSinPuerta(leer(archivo), modulosDe(destino), archivo).map((f) => `${archivo} › ${f}`);
+  });
+}
+
+function actionsQueLanzan(): string[] {
+  return ACTIONS_DE_MODULO.flatMap(([nombre]) => {
+    const archivo = archivoDeAction(nombre);
+    if (!existsSync(path.join(RAIZ, archivo))) return [];
+    return puertasQueLanzan(leer(archivo), archivo).map((f) => `${archivo} › ${f}`);
+  });
+}
+
+function problemasDeCrons(continuos: boolean): string[] {
+  return CRONS_DE_MODULO.filter(([nombre]) => CRONS_CONTINUOS.has(nombre) === continuos).flatMap(([nombre, destino]) => {
+    const [clave] = modulosDe(destino);
+    const problema = problemaDeCron(modulosPasadosAParaCadaEmpresa(leer(archivoDeCron(nombre))), clave, continuos);
+    return problema ? [`${nombre}: ${problema}`] : [];
+  });
+}
+
+function consumosCruzados(): string[] {
+  const grafo = new GrafoDeConsumos();
+  return archivosDeApp().flatMap((rel) => grafo.cruces(rel));
+}
+
+function llamadasAItemsVisibles(): string[] {
+  return archivosDeApp().filter((rel) => llamaAItemsVisibles(leer(rel)));
+}
+
+describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
+  describe("(a) cada pieza está en el reparto, y cada entrada tiene su pieza (R3)", () => {
+    it("no-vacuidad: el barrido ve las páginas, actions, crons y endpoints del árbol", () => {
+      expect(disco.ruta.length).toBeGreaterThanOrEqual(43);
+      expect(disco.action.length).toBeGreaterThanOrEqual(108);
+      expect(disco.cron.length).toBeGreaterThanOrEqual(12);
+      expect(disco.api.length).toBeGreaterThanOrEqual(14);
+      expect(disco.ruta).toContain("/wallet/tiendas/[tiendaId]");
+      expect(disco.action).toContain("premio-ranking-devengo");
+      expect(disco.cron).toContain("snapshot-ranking");
+      expect(disco.api).toContain("ordenes/api-key/analitica");
+    });
+
+    it("ninguna pieza del disco sin entrada en reparto.ts", () => {
+      expect(diferenciasDeReparto(disco, undefined, ANUNCIADAS).sinEntrada).toEqual([]);
+    });
+
+    it("ninguna entrada de reparto.ts sin su archivo", () => {
+      expect(diferenciasDeReparto(disco, undefined, ANUNCIADAS).sinArchivo).toEqual([]);
+    });
+
+    it.each(ANUNCIADAS)("cable: $tabla $clave aún no existe (al crearlo en $task, se borra de ANUNCIADAS)", (a) => {
+      expect(disco[a.tabla]).not.toContain(a.clave);
+    });
+
+    it("R33: hoy ninguna pieza tiene dos módulos (la última, premio-ranking-devengo, quedó en Ranking al pasar Wallet al núcleo el 2026-10-28)", () => {
+      expect(piezasCompartidas()).toEqual({});
+    });
+
+    // 2026-10-27/28: Recolección, Bodegas satélite, API e integraciones, WhatsApp y Wallet pasaron al
+    // núcleo (20 páginas y 31 actions menos).
+    it("§3.1/§3.2: el reparto tiene 4 páginas y 17 archivos de actions de un módulo", () => {
+      expect(PAGINAS_DE_MODULO).toHaveLength(4);
+      expect(ACTIONS_DE_MODULO).toHaveLength(17);
+    });
+  });
+
+  describe("(b) cada página de un módulo abre con su puerta (R16)", () => {
+    it("toda página de un módulo abre con exigirModuloEnRuta(<sus claves>)", () => {
+      expect(paginasSinPuerta()).toEqual([]);
+    });
+  });
+
+  describe("(c) cada action exportada de un módulo abre con su puerta (R17, R33)", () => {
+    it("toda función exportada de una action de un módulo abre con exigirModuloActivo(<sus claves>)", () => {
+      expect(actionsSinPuerta()).toEqual([]);
+    });
+
+    it("ninguna action de un módulo lanza por la puerta: el rechazo es { status: \"forbidden\" }", () => {
+      expect(actionsQueLanzan()).toEqual([]);
+    });
+  });
+
+  describe("(d) los crons de un módulo se saltan empresas; los de cálculo continuo no (R21, R30)", () => {
+    it("un cron de un módulo (no continuo) pasa modulo: <su clave> a paraCadaEmpresa", () => {
+      expect(problemasDeCrons(false)).toEqual([]);
+    });
+
+    it("un cron de cálculo continuo no pasa modulo a paraCadaEmpresa", () => {
+      expect([...CRONS_CONTINUOS].every((c) => Object.hasOwn(MODULO_POR_CRON, c))).toBe(true);
+      expect(problemasDeCrons(true)).toEqual([]);
+    });
+  });
+
+  describe("(e) consumos entre módulos declarados (§6.3)", () => {
+    it("cada consumo declarado apunta a un archivo (de app/ o de components/) y a rutas que existen", () => {
+      for (const c of CONSUMOS_ENTRE_MODULOS) {
+        expect(existsSync(path.join(RAIZ, c.pieza)), c.pieza).toBe(true);
+        for (const ruta of c.anfitrionas) expect(disco.ruta, `${c.pieza} › ${ruta}`).toContain(ruta);
+      }
+    });
+
+    it("no-vacuidad: sobre el árbol real, el barrido ve un cruce sin declarar", () => {
+      // `/wallet/mensajeros` (núcleo desde el 2026-10-28) monta `PremiosRankingPanel`, que llama a
+      // `lib/actions/premio-ranking-devengo` (Ranking): sin la entrada de §6.3 sería un cruce. Si el
+      // grafo no lo viera, (e) estaría ciego. Antes se medía con el botón de plantilla de WhatsApp
+      // (por components/) y luego con `cargar-kpis.ts` → wallet; los dos dejaron de cruzar al pasar
+      // WhatsApp y Wallet al núcleo. El recorrido transitivo por components/ y hooks/ lo cubre el
+      // árbol inventado de la autocomprobación.
+      const sinDeclarar = new GrafoDeConsumos(RAIZ, []);
+      const cruces = archivosDeApp()
+        .filter((r) => r.startsWith("app/(app)/wallet/mensajeros/"))
+        .flatMap((r) => sinDeclarar.cruces(r));
+      expect(cruces.some((c) => c.includes("PremiosRankingPanel.tsx → lib/actions/premio-ranking-devengo"))).toBe(true);
+      // Y declarado, el mismo árbol queda limpio: la entrada de §6.3 es la que lo pone verde.
+      expect(consumosCruzados()).toEqual([]);
+    });
+
+    it("ningún archivo de app/ alcanza (directo o por components/ y hooks/) una action de otro módulo sin declararlo", () => {
+      expect(consumosCruzados()).toEqual([]);
+    });
+  });
+
+  describe("(f) el menú de app/ pasa por menuDeLaEmpresa (R15)", () => {
+    it("ningún archivo de app/ llama a itemsVisibles(", () => {
+      expect(llamadasAItemsVisibles()).toEqual([]);
+    });
+  });
+
+  it("los barridos corren sin lanzar sobre el árbol real", () => {
+    // Nació para los `it.fails` de (b) y (f), que habrían estado verdes si el detector reventara al
+    // leer el árbol. Se conserva: un detector que lanza no es un detector que aprueba.
+    expect(() => paginasSinPuerta()).not.toThrow();
+    expect(() => actionsSinPuerta()).not.toThrow();
+    expect(() => actionsQueLanzan()).not.toThrow();
+    expect(() => problemasDeCrons(false)).not.toThrow();
+    expect(() => consumosCruzados()).not.toThrow();
+    expect(() => llamadasAItemsVisibles()).not.toThrow();
+  });
+
+  describe("autocomprobación: cada caso con una fuente buena y su mutación", () => {
+    describe("(a) sobre un árbol inventado", () => {
+      const raiz = mkdtempSync(path.join(tmpdir(), "sl23-reparto-"));
+      afterAll(() => rmSync(raiz, { recursive: true, force: true }));
+      const escribir = (rel: string, texto = "export {};\n") => {
+        mkdirSync(path.dirname(path.join(raiz, rel)), { recursive: true });
+        writeFileSync(path.join(raiz, rel), texto);
+      };
+      escribir("app/(app)/wallet/page.tsx");
+      escribir("app/(app)/wallet/(grupo)/tiendas/[tiendaId]/page.tsx");
+      escribir("app/(app)/wallet/_components/Tabla.tsx");
+      escribir("lib/actions/wallet.ts");
+      escribir("lib/actions/wallet.test.ts");
+      escribir("lib/actions/_shared/ayuda.ts");
+      escribir("app/api/cron/generar-gastos-fijos/route.ts");
+      escribir("app/api/ordenes/api-key/route.ts");
+      escribir("app/api/ordenes/api-key/orden/[id]/route.ts");
+      const tablas = {
+        ruta: { "/wallet": "monitoreo", "/wallet/tiendas/[tiendaId]": "monitoreo" },
+        action: { wallet: "monitoreo" },
+        cron: { "generar-gastos-fijos": "monitoreo" },
+        api: { "ordenes/api-key": "analitica", "ordenes/api-key/orden/[id]": "analitica" },
+      } as const;
+
+      it("lee el disco con la forma de clave del reparto (sin grupos, sin tests ni _shared)", () => {
+        expect(piezasDelDisco(raiz)).toEqual({
+          ruta: ["/wallet", "/wallet/tiendas/[tiendaId]"],
+          action: ["wallet"],
+          cron: ["generar-gastos-fijos"],
+          api: ["ordenes/api-key", "ordenes/api-key/orden/[id]"],
+        });
+        expect(diferenciasDeReparto(piezasDelDisco(raiz), tablas)).toEqual({ sinEntrada: [], sinArchivo: [] });
+      });
+
+      it("mutación: una página nueva sin entrada, y una entrada sin archivo, salen nombradas", () => {
+        const conPaginaNueva = { ...piezasDelDisco(raiz), ruta: [...piezasDelDisco(raiz).ruta, "/premios"] };
+        const conEntradaHuerfana = { ...tablas, action: { ...tablas.action, borrada: "monitoreo" } } as const;
+        expect(diferenciasDeReparto(conPaginaNueva, tablas).sinEntrada).toEqual(["ruta /premios"]);
+        expect(diferenciasDeReparto(piezasDelDisco(raiz), conEntradaHuerfana).sinArchivo).toEqual(["action borrada"]);
+        // Una anunciada no cuenta como huérfana; otra que no lo está, sí.
+        expect(
+          diferenciasDeReparto(piezasDelDisco(raiz), conEntradaHuerfana, [{ tabla: "action", clave: "borrada", task: "Tx" }])
+            .sinArchivo,
+        ).toEqual([]);
+      });
+
+      it("mutación: una tercera pieza con dos módulos sale en piezasCompartidas", () => {
+        const conTupla = { ...tablas, cron: { "generar-gastos-fijos": ["monitoreo", "ranking"] } } as const;
+        expect(piezasCompartidas(conTupla)).toEqual({ "cron generar-gastos-fijos": ["monitoreo", "ranking"] });
+      });
+    });
+
+    describe("(b) puerta de página", () => {
+      const buena = `
+        import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
+        export default async function WalletPage() {
+          await exigirModuloEnRuta("monitoreo");
+          const actor = await resolveActorFromSession();
+          return null;
+        }`;
+      it("la encuentra en `export default function` y en `export default X`", () => {
+        expect(puertaDePagina(buena)).toEqual(["monitoreo"]);
+        expect(
+          puertaDePagina(`async function P() { await exigirModuloEnRuta("monitoreo", "ranking"); }\nexport default P;`),
+        ).toEqual(["monitoreo", "ranking"]);
+        expect(puertaDePagina(`const P = async () => { await exigirModuloEnRuta("ranking"); };\nexport default P;`)).toEqual([
+          "ranking",
+        ]);
+      });
+      it("mutación: sin puerta, o no como primera sentencia → null", () => {
+        expect(puertaDePagina(buena.replace(`await exigirModuloEnRuta("monitoreo");`, ""))).toBeNull();
+        expect(
+          puertaDePagina(`export default async function P() { const a = await leer(); await exigirModuloEnRuta("monitoreo"); }`),
+        ).toBeNull();
+        // Sin `await` la puerta no frena nada: notFound() saldría tarde o nunca.
+        expect(puertaDePagina(`export default async function P() { exigirModuloEnRuta("monitoreo"); }`)).toBeNull();
+        // Citada en un comentario no cuenta.
+        expect(puertaDePagina(`export default async function P() { // await exigirModuloEnRuta("monitoreo");\n return 1; }`)).toBeNull();
+      });
+      it("mutación: otras claves se leen tal cual (el barrido las compara con las suyas)", () => {
+        expect(puertaDePagina(buena.replace(`("monitoreo")`, `("ranking")`))).toEqual(["ranking"]);
+      });
+    });
+
+    describe("(c) puerta de action", () => {
+      const buena = `
+        "use server";
+        export type R = { ok: true };
+        export interface Deps { x?: number }
+        export async function listar(input: unknown, deps: Deps = {}) {
+          const r = await withErrorHandler(async () => {
+            await exigirModuloActivo("monitoreo", "ranking");
+            const actor = await resolveActorFromSession();
+            return actor;
+          });
+          return r;
+        }
+        export async function anular(input: unknown) {
+          await exigirModuloActivo("monitoreo", "ranking");
+          return input;
+        }`;
+      it("la acepta directa o como primera sentencia de su withErrorHandler; ignora tipos", () => {
+        expect(funcionesSinPuerta(buena, ["monitoreo", "ranking"])).toEqual([]);
+      });
+      it("mutación: una función sin puerta sale nombrada", () => {
+        const sinPuerta = buena.replace(
+          `await exigirModuloActivo("monitoreo", "ranking");\n          return input;`,
+          "return input;",
+        );
+        expect(funcionesSinPuerta(sinPuerta, ["monitoreo", "ranking"])).toEqual([
+          "anular: sin exigirModuloActivo(monitoreo, ranking) como primera sentencia",
+        ]);
+      });
+      it("mutación: la puerta después de leer la sesión no cuenta", () => {
+        const tarde = `export async function f() {
+          return withErrorHandler(async () => {
+            const actor = await resolveActorFromSession();
+            await exigirModuloActivo("monitoreo");
+          });
+        }`;
+        expect(funcionesSinPuerta(tarde, ["monitoreo"])).toHaveLength(1);
+      });
+      it("mutación: una sola clave en una pieza compartida (R33) sale nombrada", () => {
+        const unaClave = buena.replaceAll(`("monitoreo", "ranking")`, `("monitoreo")`);
+        expect(funcionesSinPuerta(unaClave, ["monitoreo", "ranking"])).toEqual([
+          "listar: exige (monitoreo) y le toca (monitoreo, ranking)",
+          "anular: exige (monitoreo) y le toca (monitoreo, ranking)",
+        ]);
+      });
+      it("las firmas de sobrecarga no cuentan; la implementación sí", () => {
+        const sobrecargada = `
+          export async function f(a: FormData): Promise<1>;
+          export async function f(a: unknown): Promise<2>;
+          export async function f(a: unknown) {
+            await exigirModuloActivo("monitoreo");
+            return a;
+          }`;
+        expect(funcionesSinPuerta(sobrecargada, ["monitoreo"])).toEqual([]);
+        expect(funcionesSinPuerta(sobrecargada.replace(`await exigirModuloActivo("monitoreo");`, ""), ["monitoreo"])).toEqual([
+          "f: sin exigirModuloActivo(monitoreo) como primera sentencia",
+        ]);
+      });
+      it("también ve `export const f = async () => {}`", () => {
+        expect(funcionesSinPuerta(`export const f = async () => { return 1; };`, ["monitoreo"])).toHaveLength(1);
+      });
+
+      describe("forma del rechazo: forbidden, nunca excepción", () => {
+        const sinLanzar = `
+          function traducir(shape: AppErrorShape) {
+            switch (shape.code) {
+              case "UNAUTHORIZED": return { status: "unauthenticated" };
+              case "FORBIDDEN": return { status: "forbidden" };
+              default: throw new Error("inesperado");
+            }
+          }
+          function delega(shape: AppErrorShape) { return toActionError(shape); }
+          function noEsTraductor(n: number) { return n; }
+          export async function listar() {
+            const r = await withErrorHandler(async () => {
+              await exigirModuloActivo("monitoreo");
+              return 1;
+            });
+            return isAppErrorShape(r) ? traducir(r) : r;
+          }
+          export async function leer() {
+            const puerta = await withErrorHandler(async () => {
+              await exigirModuloActivo("monitoreo");
+            });
+            if (puerta) return rechazoDeModulo(puerta);
+            return 1;
+          }`;
+        it("acepta la puerta envuelta y los traductores que conocen FORBIDDEN o delegan", () => {
+          expect(funcionesSinPuerta(sinLanzar, ["monitoreo"])).toEqual([]);
+          expect(puertasQueLanzan(sinLanzar)).toEqual([]);
+        });
+        it("mutación: la puerta directa sale nombrada", () => {
+          expect(puertasQueLanzan(buena)).toEqual([
+            "anular: la puerta va fuera de withErrorHandler y lanzaría ModuloInactivoError",
+          ]);
+        });
+        it("mutación: un traductor sin FORBIDDEN sale nombrado, aunque lo diga un comentario", () => {
+          const sinForbidden = sinLanzar.replace(
+            `case "FORBIDDEN": return { status: "forbidden" };`,
+            `// case "FORBIDDEN"`,
+          );
+          expect(puertasQueLanzan(sinForbidden)).toEqual([
+            "traducir: traductor sin FORBIDDEN; relanzaría el rechazo del módulo",
+          ]);
+        });
+      });
+    });
+
+    describe("(d) crons", () => {
+      const conModulo = `const e = await paraCadaEmpresa(async () => {}, { cliente: deps.empresas, modulo: "monitoreo" });`;
+      const sinModulo = `const e = await paraCadaEmpresa(async () => {}, { cliente: deps.empresas });`;
+      it("lee el modulo de cada llamada", () => {
+        expect(modulosPasadosAParaCadaEmpresa(conModulo)).toEqual(["monitoreo"]);
+        expect(modulosPasadosAParaCadaEmpresa(sinModulo)).toEqual([null]);
+        expect(modulosPasadosAParaCadaEmpresa(`paraCadaEmpresa(fn, opciones);`)).toEqual(["?"]);
+        expect(modulosPasadosAParaCadaEmpresa(`paraCadaEmpresa(fn);`)).toEqual([null]);
+      });
+      it("cron de un módulo: con su clave pasa; sin ella, con otra o sin llamada, falla", () => {
+        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(conModulo), "monitoreo", false)).toBeNull();
+        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(sinModulo), "monitoreo", false)).not.toBeNull();
+        expect(problemaDeCron(["ranking"], "monitoreo", false)).not.toBeNull();
+        expect(problemaDeCron([], "monitoreo", false)).not.toBeNull();
+      });
+      it("cron de cálculo continuo: sin modulo pasa; con modulo falla (R30)", () => {
+        expect(problemaDeCron([null], "ranking", true)).toBeNull();
+        expect(problemaDeCron(["ranking"], "ranking", true)).not.toBeNull();
+      });
+    });
+
+    describe("(e) consumos cruzados", () => {
+      it("ubica cada archivo de app/ en su ruta, cron o endpoint más cercano", () => {
+        expect(destinoDeArchivoDeApp("app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx")).toBe("nucleo");
+        expect(destinoDeArchivoDeApp("app/(app)/analitica/_components/X.tsx")).toBe("analitica");
+        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("nucleo");
+        expect(destinoDeArchivoDeApp("app/(app)/configuracion/_components/X.tsx")).toBe("nucleo");
+        expect(destinoDeArchivoDeApp("app/(app)/layout.tsx")).toBe("nucleo");
+        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toBe("analitica");
+        expect(destinoDeArchivoDeApp("app/api/cron/snapshot-ranking/route.ts")).toBe("ranking");
+      });
+      it("lee imports estáticos y dinámicos; no los de tipo ni los citados en comentarios", () => {
+        const fuente = `
+          import { a } from "@/lib/actions/ranking";
+          import type { T } from "@/lib/actions/wallet";
+          // import { b } from "@/lib/actions/incidentes";
+          const m = await import("@/lib/actions/plantillas");
+          import { c } from "@/lib/actions/_shared/algo";`;
+        expect(actionsImportadas(fuente).sort()).toEqual(["plantillas", "ranking"]);
+      });
+
+      describe("sobre un árbol inventado (transitivo por components/ y hooks/)", () => {
+        const raiz = mkdtempSync(path.join(tmpdir(), "sl23-consumos-"));
+        afterAll(() => rmSync(raiz, { recursive: true, force: true }));
+        const escribir = (rel: string, texto: string) => {
+          mkdirSync(path.dirname(path.join(raiz, rel)), { recursive: true });
+          writeFileSync(path.join(raiz, rel), texto);
+        };
+        const usa = (desde: string) => `import { x } from "${desde}";\n`;
+        // Ruta del núcleo (`/ordenes`) que monta un componente compartido.
+        escribir("app/(app)/ordenes/_components/Tabla.tsx", usa("@/components/shared/Boton"));
+        // El componente llega a una action de Analítica por un hook, y a una del núcleo directamente.
+        escribir("components/shared/Boton.tsx", usa("./interno/Pieza") + usa("@/lib/actions/liquidacion"));
+        escribir("components/shared/interno/Pieza.tsx", usa("@/hooks/useSaldo"));
+        escribir("hooks/useSaldo.ts", usa("@/lib/actions/analitica-operativa"));
+        // El mismo componente montado solo en una ruta de Analítica: sin cruce.
+        escribir("app/(app)/analitica/_components/Panel.tsx", usa("@/components/shared/Boton"));
+        // Ciclo entre componentes: no cuelga.
+        escribir("components/a.tsx", usa("@/components/b") + usa("@/lib/actions/ranking"));
+        escribir("components/b.tsx", usa("@/components/a"));
+        escribir("app/(app)/ranking/_components/R.tsx", usa("@/components/a"));
+
+        it("mutación: un componente de components/ montado en una ruta del núcleo que llega a una action de Analítica → rojo, con la cadena", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([
+            "app/(app)/ordenes/_components/Tabla.tsx → components/shared/Boton.tsx → components/shared/interno/Pieza.tsx → hooks/useSaldo.ts → lib/actions/analitica-operativa (analitica)",
+          ]);
+        });
+
+        it("montado en una ruta de su mismo módulo, o con la action del núcleo, no es cruce", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/analitica/_components/Panel.tsx")).toEqual([]);
+        });
+
+        it("declarar el componente en CONSUMOS_ENTRE_MODULOS lo pone verde; declararlo con otro módulo, no", () => {
+          const declarado = { pieza: "components/shared/Boton.tsx", anfitrionas: ["/ordenes"], modulo: "analitica" } as const;
+          expect(new GrafoDeConsumos(raiz, [declarado]).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([]);
+          expect(
+            new GrafoDeConsumos(raiz, [{ ...declarado, modulo: "ranking" }]).cruces("app/(app)/ordenes/_components/Tabla.tsx"),
+          ).toHaveLength(1);
+        });
+
+        it("un ciclo entre componentes no cuelga", () => {
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/ranking/_components/R.tsx")).toEqual([]);
+        });
+      });
+
+      it("directo desde app/: propio módulo o núcleo pasa; otro módulo falla; declarado pasa", () => {
+        const raiz = mkdtempSync(path.join(tmpdir(), "sl23-directo-"));
+        try {
+          const deAnalitica = "app/(app)/analitica/_components/X.tsx";
+          const probar = (accion: string, consumos: ConstructorParameters<typeof GrafoDeConsumos>[1] = []) => {
+            mkdirSync(path.dirname(path.join(raiz, deAnalitica)), { recursive: true });
+            writeFileSync(path.join(raiz, deAnalitica), `import { a } from "@/lib/actions/${accion}";\n`);
+            return new GrafoDeConsumos(raiz, consumos).cruces(deAnalitica);
+          };
+          expect(probar("analitica-operativa")).toEqual([]);
+          expect(probar("liquidacion")).toEqual([]);
+          // Wallet es núcleo desde el 2026-10-28: llamarla desde Analítica no es cruce.
+          expect(probar("wallet")).toEqual([]);
+          expect(probar("ranking")).toEqual(["app/(app)/analitica/_components/X.tsx → lib/actions/ranking (ranking)"]);
+          expect(probar("premio-ranking-devengo")).toHaveLength(1);
+          expect(
+            probar("premio-ranking-devengo", [{ pieza: deAnalitica, anfitrionas: ["/analitica"], modulo: "ranking" }]),
+          ).toEqual([]);
+          expect(
+            probar("premio-ranking-devengo", [{ pieza: deAnalitica, anfitrionas: ["/analitica"], modulo: "monitoreo" }]),
+          ).toHaveLength(1);
+        } finally {
+          rmSync(raiz, { recursive: true, force: true });
+        }
+      });
+    });
+
+    describe("(f) itemsVisibles en app/", () => {
+      it("la llamada falla; la cita en un comentario o el import no", () => {
+        expect(llamaAItemsVisibles(`const items = itemsVisibles(SIDEBAR_ITEMS, actor);`)).toBe(true);
+        expect(llamaAItemsVisibles(`const d = primerDestino(itemsVisibles (SIDEBAR_ITEMS, a));`)).toBe(true);
+        expect(llamaAItemsVisibles(`// antes: itemsVisibles(SIDEBAR_ITEMS, actor)\nconst i = menuDeLaEmpresa(a, m);`)).toBe(false);
+        expect(llamaAItemsVisibles(`import { itemsVisibles } from "@/lib/auth/menu-visibility";`)).toBe(false);
+      });
+    });
+  });
+});

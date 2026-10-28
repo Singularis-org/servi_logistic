@@ -1,3 +1,5 @@
+import { HandCoins, PackageCheck, Truck, Wallet, type LucideIcon } from "lucide-react";
+
 import { Card, CardContent } from "@/components/ui/card";
 import type { MisAsignacionesKpis } from "@/lib/interfaces/services/IMisAsignacionesService";
 
@@ -17,31 +19,34 @@ export interface KpisMensajeroProps {
 
 interface Tile {
   label: string;
-  /** Icono en `public/icons/`. Se sirve con <img>: next/image falla aquí. */
-  icon: string;
+  /**
+   * Icono de línea de `lucide-react`, no un PNG: hereda el color del círculo por `currentColor`,
+   * así que gira con el tema sin una segunda versión del dibujo.
+   */
+  Icono: LucideIcon;
   render: (kpis: MisAsignacionesKpis) => React.ReactNode;
 }
 
 const TILES: Tile[] = [
   {
     label: "Pendientes",
-    icon: "/icons/icono_envios.png",
+    Icono: Truck,
     render: (k) => <KpiValorAnimado value={k.pendientes} />,
   },
   {
     // FICHA 455 (2026-09-24, R5): el KPI cuenta UN resultado, así que lleva su nombre exacto.
     label: NOMBRE_ESTADO.entregado,
-    icon: "/icons/icono_entregadas.png",
+    Icono: PackageCheck,
     render: (k) => <KpiValorAnimado value={k.entregadas} />,
   },
   {
     label: "Por cobrar",
-    icon: "/icons/icono_wallet.png",
+    Icono: HandCoins,
     render: (k) => <KpiValorAnimado value={k.porCobrar} moneda />,
   },
   {
     label: "Total a cobrar",
-    icon: "/icons/icono_transacciones.png",
+    Icono: Wallet,
     render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda />,
   },
 ];
@@ -55,32 +60,30 @@ export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
       {TILES.map((tile) => (
         <Card
           key={tile.label}
-          // Sombra permanente + degradado morado claro → blanco al pasar el
-          // cursor. background-image no interpola, así que el degradado vive
-          // siempre en un ::before y lo que se anima es su opacidad.
+          // Sombra permanente + degradado amarillo pálido de la marca (`brand-soft`) → blanco al
+          // pasar el cursor. background-image no interpola, así que el degradado vive siempre en
+          // un ::before y lo que se anima es su opacidad. `brand-soft` es un tono FIJO, el mismo
+          // en los dos temas: en claro el rótulo (`text-muted-foreground`) y la cifra
+          // (`text-foreground`) quedan por encima de 4.5:1 sobre él.
           //
-          // Feature 208 arregló la CIFRA de estas tarjetas (era `text-navy` fijo), pero midió
-          // pantallas ESTÁTICAS y este degradado solo existe con el cursor encima: `purple-200`
-          // y `white` son dos colores CLAROS a opacidad 100, así que en tema oscuro la lámina
-          // tapaba el texto —que ahí es claro— y la tarjeta se volvía ilegible al pasar por
-          // encima. En claro no se nota porque el texto ya es oscuro.
-          //
-          // El brillo se conserva en los dos temas cambiando de qué está hecho: en oscuro es
-          // blanco al 10% desvaneciéndose, que sobre la tarjeta (#10203a) compone #27364e y deja
-          // el `text-foreground` por encima de 7:1. La metáfora —un reflejo que cruza la
-          // tarjeta— es la misma; lo que cambia es que no blanquea el fondo.
-          className="relative overflow-hidden shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-purple-200 before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
+          // El tema oscuro NO cambia, y es a propósito. `brand-soft` y `white` son dos colores
+          // CLAROS a opacidad 100: si llegaran al oscuro, la lámina taparía el texto —que ahí es
+          // claro— y la tarjeta se volvería ilegible al pasar por encima. Es el defecto que la
+          // feature 208 ya arregló para el tono anterior, y por eso `dark:before:from-white/10
+          // dark:before:to-transparent` pisa el degradado claro: blanco al 10% desvaneciéndose,
+          // que sobre la tarjeta compone un reflejo sin blanquear el fondo y deja el
+          // `text-foreground` legible. La metáfora —un reflejo que cruza la tarjeta— es la misma.
+          className="relative overflow-hidden shadow-xl transition-shadow duration-300 hover:shadow-lg before:pointer-events-none before:absolute before:inset-0 before:bg-linear-to-br before:from-brand-soft before:to-white before:opacity-0 before:transition-opacity before:duration-300 before:content-[''] hover:before:opacity-100 dark:before:from-white/10 dark:before:to-transparent"
         >
           <CardContent className="relative flex items-center gap-3 py-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            {/* `size-14` conserva el hueco de 56 px del icono anterior: la tarjeta no cambia de alto.
+                Fondo y trazo son tokens que giran con el tema (`--accent` / `--accent-foreground`). */}
+            <span
               aria-hidden="true"
-              src={tile.icon}
-              alt=""
-              width={56}
-              height={56}
-              className="size-14 shrink-0 object-contain"
-            />
+              className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            >
+              <tile.Icono className="size-7" strokeWidth={1.75} aria-hidden="true" />
+            </span>
             <div className="flex flex-col">
               <span className="text-xs font-medium text-muted-foreground">
                 {tile.label}

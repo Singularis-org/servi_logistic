@@ -15,8 +15,13 @@ export interface IGeocodeSaludService {
    * design §5.3: su fallo todavia no esta persistido).
    *
    * NUNCA lanza (R11): el desenlace del job en curso no puede depender de que el aviso salga.
+   *
+   * SL-36 (R43) — `organizacionId` es la empresa DEL JOB en curso (`empresaDelJob(job)`), nunca
+   * contexto ambiental: solo se cuentan fallos de esa empresa. Con `null` (job sin empresa) vuelve
+   * de inmediato, con cualquier umbral: no consulta la base, no avisa y no loguea — no hay empresa
+   * a la que avisar (`notificacion.organizacion_id` es NOT NULL).
    */
-  registrarFalloConfig(jobId: string, ahora: Date): Promise<void>;
+  registrarFalloConfig(jobId: string, organizacionId: string | null, ahora: Date): Promise<void>;
 
   /**
    * R13 — el proveedor respondio bien DE VERDAD: devuelve a la cola hasta N jobs muertos por
@@ -24,8 +29,11 @@ export interface IGeocodeSaludService {
    *
    * ⚠️ Un acierto de la CACHE no llega aqui nunca (R14): la cache sigue funcionando durante un
    * corte de credencial, asi que no prueba absolutamente nada sobre el proveedor.
+   *
+   * SL-36 (R42) — `organizacionId` es la empresa DEL JOB que tuvo exito: solo se reviven jobs de
+   * esa empresa. Con `null` (job sin empresa) devuelve 0 sin tocar la base.
    */
-  registrarExitoProveedor(ahora: Date): Promise<number>;
+  registrarExitoProveedor(organizacionId: string | null, ahora: Date): Promise<number>;
 }
 
 /**

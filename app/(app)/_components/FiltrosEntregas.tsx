@@ -18,6 +18,7 @@ import {
   seleccionAFiltroAnalitica,
 } from "./entregas-filtro-analitica";
 import { construirFiltrosEntregas } from "./entregas-filtros-def";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { useFiltroEntregas } from "./filtro-entregas";
 import { coincideSeccion, useFiltroSecciones } from "./filtro-secciones";
 
@@ -134,6 +135,8 @@ export interface FiltrosEntregasProps {
 }
 
 export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}) {
+  // SL-20 (R19): los filtros geográficos con los nombres de nivel del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   // UNA sola lectura desde la ficha 351. Antes eran dos en la misma oleada —el catalogo y un
   // directorio de mensajeros aparte—; la segunda desaparecio con `mensajerosFetcher` (ver la
   // nota de arriba), y con ella el `ofreceMensajeros` que decidia si valia la pena pedirla: el
@@ -215,14 +218,14 @@ export function FiltrosEntregas({ facetas }: Readonly<FiltrosEntregasProps> = {}
   const [reset, setReset] = useState(0);
 
   const filtros = useMemo<FilterDef[]>(() => {
-    const declarados = construirFiltrosEntregas(catalogo ?? CATALOGO_VACIO, { facetas });
+    const declarados = construirFiltrosEntregas(catalogo ?? CATALOGO_VACIO, { facetas, etiquetas });
     // Sin catalogo, los filtros que dependen de el se deshabilitan en vez de
     // desaparecer: un filtro ausente parece que no existe, uno deshabilitado dice que
     // ahora mismo no hay opciones. El de fecha no depende del catalogo y sigue operativo.
     return catalogo === null
       ? declarados.map((f) => (f.kind === "dateRange" ? f : { ...f, disabled: true }))
       : declarados;
-  }, [catalogo, facetas]);
+  }, [catalogo, facetas, etiquetas]);
 
   const ofrecidos = useMemo(
     () => filtros.map((f) => ({ key: f.key, label: f.label })),

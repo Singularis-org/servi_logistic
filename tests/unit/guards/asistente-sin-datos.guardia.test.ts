@@ -18,7 +18,8 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
  * rojo ANTES de que exista la consulta.
  *
  * LA LISTA BLANCA TIENE DOS ENTRADAS, Y LAS DOS ESTÁN EN EL SPEC: el contador del tope (R16) y el
- * resolutor de sesión (R7). Las dos viven en el BORDE (`app/api/asistente/route.ts`), que es el
+ * resolutor de sesión (R7). SL-36 añade una tercera, también en su spec (design §9.1): la clave del
+ * asistente de la empresa de la sesión. Las dos viven en el BORDE (`app/api/asistente/route.ts`), que es el
  * único archivo que compone; ni `lib/asistente/**` ni el servicio pueden nombrarlas.
  */
 
@@ -45,6 +46,9 @@ const LISTA_BLANCA_DEL_BORDE = [
   "@/lib/services/AsistenteService", // el servicio de esta misma ficha
   "@/lib/db/prisma-client", // el cliente que el contador necesita
   "@/lib/auth/resolve-actor", // R7: el rol sale de la sesión
+  // SL-36 (R23, R27): la clave de Anthropic es de la empresa de la sesión. Lee SOLO su integración
+  // del asistente, y lo que lee es la credencial para llamar, nunca un dato que viaje al modelo.
+  "@/lib/services/integraciones/asistente-de-la-empresa",
 ];
 
 function listarTs(relativo: string): string[] {

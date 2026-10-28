@@ -94,11 +94,15 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 63 desde la ficha 457: `abono_tienda_registrado` y `abono_tienda_anulado` (un tipo por metodo); y
     // 24 entidades: `abono_tienda`, la TERCERA ampliacion del enum (1:1 con su tabla).
     // 65 desde la ficha 458-B: `cobro_rechazo_tienda_anulado` y `egreso_caja_anulado` (un tipo por metodo).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(65);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(65);
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
-    expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(24);
-    expect(CATEGORIAS_ACCION).toHaveLength(3);
+    // 70 desde SL-36: los cinco `integracion_*` (un tipo por metodo), la entidad `integracion` (25)
+    // y la cuarta categoria, `cambia_integraciones`.
+    // 72 desde SL-23: `modulo_activado` y `modulo_desactivado`, la entidad `organizacion_modulo`
+    // (26) y la quinta categoria, `cambia_modulos`.
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(72);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(72);
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
+    expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(26);
+    expect(CATEGORIAS_ACCION).toHaveLength(5);
   });
 
   it("los DOS tipos que abren Q1 y Q2 estan en el catalogo y son de DINERO", () => {
@@ -253,7 +257,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     ).toBe(false);
     // La 375 NO amplia el enum de entidades: los tres niveles ya entraron con la 374. (El total es
     // 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 
   it("⭑ FICHA 376: `zona_central_cambiada` es DINERO, y su entidad `zona` ya existia", () => {
@@ -279,7 +283,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // La 376 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     // (El total es 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 
   it("⭑ FICHA 380: `zona_pago_mensajero_cambiado` es DINERO, y NO se reutilizo ningun `tarifa_*`", () => {
@@ -317,7 +321,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // La 380 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     // (El total es 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 
   it("⭑ FICHA 429 (R22): `zona_sinpe_cambiado` es DINERO, y no se reutilizo ninguna accion de zona", () => {
@@ -353,7 +357,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(HISTORIAL_ACCION_TIPOS).not.toContain("zona_sinpe_confirmado");
     // La 429 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 
   it("⭑ FICHA 381: `cobro_tienda_registrado` es DINERO, con entidad NUEVA y sin reusar la caja", () => {
@@ -454,6 +458,47 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(accionesDeCategoria("mueve_dinero")).toHaveLength(43);
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(10);
     expect(accionesDeCategoria("cambia_permisos")).toHaveLength(12);
+    // 5 desde SL-36: la categoria nueva, solo con los cinco `integracion_*`.
+    expect(accionesDeCategoria("cambia_integraciones")).toHaveLength(5);
+    // 2 desde SL-23: la quinta categoria, solo con `modulo_activado` y `modulo_desactivado`.
+    expect(accionesDeCategoria("cambia_modulos")).toEqual(["modulo_activado", "modulo_desactivado"]);
+  });
+
+  it("⭑ SL-36 (design §13, R33): los cinco `integracion_*` son CAMBIA INTEGRACIONES, con entidad y textos propios", () => {
+    const deIntegracion = HISTORIAL_ACCION_TIPOS.filter((t) => t.startsWith("integracion_"));
+    // Literal a proposito: los cinco nombres son el contrato del design §13 y de la migracion.
+    expect(deIntegracion).toEqual([
+      "integracion_conectada",
+      "integracion_actualizada",
+      "integracion_probada",
+      "integracion_token_regenerado",
+      "integracion_desconectada",
+    ]);
+    expect(new Set(deIntegracion.map((t) => CATEGORIA_POR_ACCION[t]))).toEqual(
+      new Set(["cambia_integraciones"]),
+    );
+    // Y la categoria no se mezcla con la de las API keys: son credenciales que la empresa RECIBE,
+    // no las que la empresa DA a un tercero.
+    expect(accionesDeCategoria("cambia_integraciones")).toEqual(deIntegracion);
+    expect(CATEGORIA_LABELS.cambia_integraciones).toBe("Cambia integraciones");
+    // Literales a proposito: el texto ES el contrato de la pantalla del historial.
+    expect(ACCION_LABELS.integracion_conectada).toBe("Conectó una integración");
+    expect(ACCION_LABELS.integracion_actualizada).toBe("Actualizó una integración");
+    expect(ACCION_LABELS.integracion_probada).toBe("Probó la conexión de una integración");
+    expect(ACCION_LABELS.integracion_token_regenerado).toBe("Regeneró el token del webhook de WhatsApp");
+    expect(ACCION_LABELS.integracion_desconectada).toBe("Desconectó una integración");
+    expect(new Set(deIntegracion.map((t) => ACCION_LABELS[t])).size).toBe(5);
+    expect(HISTORIAL_ACCION_ENTIDADES).toContain("integracion");
+    expect(ENTIDAD_LABELS.integracion).toBe("Integración");
+    // Se admiten como filtro (tipo, categoria y entidad), y un inventado NO.
+    expect(
+      filtroHistorialAccionSchema.safeParse({
+        accion: deIntegracion,
+        categoria: ["cambia_integraciones"],
+        entidadTipo: ["integracion"],
+      }).success,
+    ).toBe(true);
+    expect(filtroHistorialAccionSchema.safeParse({ accion: ["integracion_borrada"] }).success).toBe(false);
   });
 
   it("⭑ FICHA 461 (R51/R55): `cobro_tienda_anulado` es DINERO, con los textos de design §7.7 y sin entidad nueva", () => {
@@ -481,7 +526,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(filtroHistorialAccionSchema.safeParse({ accion: ["cobro_tienda_anulada"] }).success).toBe(false);
     // Sin entidad nueva: el cobro ES la fila del libro de la tienda (381/D2).
     expect(HISTORIAL_ACCION_ENTIDADES).not.toContain("cobro_tienda");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(24); // 24 desde la ficha 457
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 });
 
@@ -742,6 +787,12 @@ describe("362/T0.5 (R4/R5) — `etiquetaDeEntidad`, un caso por entidad", () => 
 
   it("api key: el identificador VISIBLE, nunca el prefijo ni el hash", () => {
     expect(etiquetaDeEntidad("api_key", { identificador: "Tienda Uno" })).toBe("Tienda Uno");
+  });
+
+  it("SL-36: integracion se etiqueta por el nombre del servicio y nada mas", () => {
+    expect(etiquetaDeEntidad("integracion", { servicioNombre: " WhatsApp  Business " })).toBe(
+      "WhatsApp Business",
+    );
   });
 
   it("TRUNCA a la anchura de la columna y colapsa los espacios", () => {

@@ -6,9 +6,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import AppLayout from "@/app/(app)/layout";
+import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
 
 // El layout monta el <Sidebar /> (Client Component) que usa usePathname; se
 // mockea next/navigation y next/link igual que en Sidebar.test.tsx.
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/",
@@ -154,6 +159,23 @@ vi.mock("@/lib/ayuda/catalogo", async (importOriginal) => {
     },
   };
 });
+
+// ⭑ SL-20 (design §7; R19) — los nombres de nivel del país de la empresa. Se doblan las dos piezas:
+//   · el servicio, para saber CON QUÉ empresa se preguntó (y que el superadmin no pregunta);
+//   · el proveedor, para AFIRMAR QUE ALGUIEN LE PASA LAS ETIQUETAS, no que se importa.
+const { etiquetasDeEmpresaMock, propsDelProveedorEtiquetas } = vi.hoisted(() => ({
+  etiquetasDeEmpresaMock: vi.fn(),
+  propsDelProveedorEtiquetas: [] as { etiquetas: unknown }[],
+}));
+vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
+  construirPaisService: () => ({ etiquetasDeEmpresa: etiquetasDeEmpresaMock }),
+}));
+vi.mock("@/providers/EtiquetasGeograficasProvider", () => ({
+  EtiquetasGeograficasProvider: ({ etiquetas, children }: { etiquetas: unknown; children: ReactNode }) => {
+    propsDelProveedorEtiquetas.push({ etiquetas });
+    return <>{children}</>;
+  },
+}));
 
 // Por defecto, alguien que no ha decidido nada: la preferencia «no puesta» (422/R2).
 avisosPushDeMock.mockResolvedValue(false);
@@ -585,6 +607,61 @@ describe("433/R20 — el mapa del «?» baja acotado, y la ayuda se degrada sin 
     catalogo.falla = false;
     await renderLayout(<div>Contenido</div>);
     expect(propsDelProveedorAyuda[1].mapa["/wallet"]).toBe("oficina/wallet-caja");
+    enLosLogs.mockRestore();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SL-20 / T5.1 (design §7; R19) — LOS NOMBRES DE NIVEL BAJAN DESDE AQUÍ
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Con empresa: los de su país (`PaisService.etiquetasDeEmpresa`). Sin empresa (el superadmin): las
+// neutras, sin consulta. Si la lectura falla, el portal se pinta igual con las neutras y queda en los
+// logs: este layout se pinta en todas las páginas.
+
+describe("SL-20/T5.1 — el layout baja los nombres de nivel del país de la empresa", () => {
+  const DEPARTAMENTO = {
+    provincia: { singular: "Departamento", plural: "Departamentos" },
+    canton: { singular: "Municipio", plural: "Municipios" },
+    distrito: { singular: "Aldea", plural: "Aldeas" },
+  };
+
+  beforeEach(() => {
+    propsDelProveedorEtiquetas.length = 0;
+    etiquetasDeEmpresaMock.mockReset();
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  it("⭑ con una empresa, ALGUIEN le pasa al proveedor las etiquetas de SU país", async () => {
+    etiquetasDeEmpresaMock.mockResolvedValue(DEPARTAMENTO);
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-xa" });
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(etiquetasDeEmpresaMock).toHaveBeenCalledWith("org-xa");
+    expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: DEPARTAMENTO }]);
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+  });
+
+  it("el superadmin (sin empresa) recibe las neutras y no se pregunta por ningún país", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "s1", rol: "superadmin", organizacionId: null });
+
+    await renderLayout(<div>Contenido</div>);
+
+    expect(etiquetasDeEmpresaMock).not.toHaveBeenCalled();
+    expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
+  });
+
+  it("si la lectura del país falla, el portal se pinta con las neutras y lo dice en los logs", async () => {
+    const enLosLogs = vi.spyOn(console, "error").mockImplementation(() => {});
+    etiquetasDeEmpresaMock.mockRejectedValue(new Error("sin país"));
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-rota" });
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
+    expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
+    expect(enLosLogs).toHaveBeenCalled();
     enLosLogs.mockRestore();
   });
 });

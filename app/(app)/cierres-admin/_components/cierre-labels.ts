@@ -18,6 +18,10 @@ import { EMPRESA } from "@/lib/config/marca";
 // etiquetas desde `mis-asignaciones/_components` está escrito en `cierre-detalle-shared.tsx`
 // (`CAUSA_INCIDENTE_LABEL`), y el vocabulario es el aprobado el 2026-07-15 (feature 73).
 import { CAUSA_DEVOLUCION_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-devolucion-options";
+// SL-39 (menor 6 de la revisión) — el nombre del impuesto vive en UN sitio, el mismo que lee la
+// wallet. El módulo no tiene dependencias, así que este archivo sigue siendo puro y el bundle del
+// panel no arrastra el cliente de Prisma que trae `wallet-labels` (`pagos-captura.guardia`, R19).
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
 import { nombreDeResultado } from "@/lib/types/gestion-resultado";
 
@@ -331,9 +335,25 @@ export const GANA_LA_TIENDA_NEGATIVO_NOTA =
 export const COBRADO_SOBRE_RECAUDADO_NOTA =
   "Flete + IVA y comisión + IVA de lo que sí se entregó: sale del dinero que el mensajero recaudó.";
 
-/** FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace. */
+/**
+ * FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace.
+ * SL-39 (R23/R24) — dice «sin el IVA»: el IVA facturado tiene su propia línea en la cascada y no es
+ * de la empresa.
+ */
 export const NETO_EMPRESA_NOTA =
-  `Lo que ${EMPRESA.enFrase} facturó menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+
+/**
+ * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
+ * de «Lo que la empresa facturó». El importe llega derivado del servidor (`ivaFacturado`, R21).
+ * También es el renglón del IVA en el bloque «Liquidación» del detalle (menor 1 de la revisión).
+ * La palabra del impuesto se compone desde `IMPUESTO_ROTULO`: SL-21 la cambia en un solo sitio.
+ */
+export const IVA_FACTURADO_LABEL = `${IMPUESTO_ROTULO} facturado`;
+
+/** SL-39 (R24) — de quién es ese IVA. */
+export const IVA_FACTURADO_NOTA =
+  `El IVA que se le cobró a la tienda en este cierre. No es de ${EMPRESA.enFrase}.`;
 
 /** FICHA 395 — qué significa un neto NEGATIVO: no es un fallo, es una pérdida del cierre. */
 export const NETO_EMPRESA_NEGATIVO_NOTA =

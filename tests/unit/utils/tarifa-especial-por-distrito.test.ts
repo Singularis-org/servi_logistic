@@ -310,7 +310,9 @@ describe("el resolver del DINERO trae las dos columnas del pacto", () => {
 });
 
 describe("el LISTADO cobra el pacto y senala el hueco", () => {
-  function ordenListRow(zonaEspecial: boolean | null) {
+  // SL-38: la marca es de la EMPRESA. `marcas` es lo que trae la relacion `zonasEspeciales` (ya
+  // acotada por la RLS); `null` = la orden no tiene distrito.
+  function ordenListRow(marcas: { id: string }[] | null) {
     return {
       id: "ord-1",
       numGuia: 10,
@@ -336,7 +338,7 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
       zona: { id: "z1", nombre: "Limon", esCentral: false },
       provincia: { id: "p1", nombre: "Limon" },
       canton: { id: "c1", nombre: "Central" },
-      distrito: { id: "d1", nombre: "Matama", zonaEspecial },
+      distrito: marcas === null ? null : { id: "d1", nombre: "Matama", zonasEspeciales: marcas },
       mensajeroAsignado: null,
       gestiones: [],
       montoCobrar: new Prisma.Decimal("25000.00"),
@@ -344,12 +346,15 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
     };
   }
 
-  async function listar(zonaEspecial: boolean | null, tarifaEspecial: Prisma.Decimal | null) {
+  const SIN_MARCA: { id: string }[] = [];
+  const CON_MARCA = [{ id: "marca-1" }];
+
+  async function listar(marcas: { id: string }[] | null, tarifaEspecial: Prisma.Decimal | null) {
     const prisma = {
       // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); vacias.
       $queryRaw: vi.fn(async () => []),
       orden: {
-        findMany: vi.fn(async () => [ordenListRow(zonaEspecial)]),
+        findMany: vi.fn(async () => [ordenListRow(marcas)]),
         count: vi.fn(async () => 1),
       },
       tarifa: {
@@ -387,8 +392,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
 
   it("distrito especial con pacto: la columna de dinero SI se mueve", async () => {
     await sembrarCatalogoEstados();
-    const normal = await listar(false, new Prisma.Decimal("2500.00"));
-    const especial = await listar(true, new Prisma.Decimal("2500.00"));
+    const normal = await listar(SIN_MARCA, new Prisma.Decimal("2500.00"));
+    const especial = await listar(CON_MARCA, new Prisma.Decimal("2500.00"));
 
     expect(normal.fleteConIva).toBe("1130.00");
     expect(normal.fleteOrigen).toBe("normal");
@@ -398,11 +403,11 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
     expect(especial.comisionConIva).toBe(normal.comisionConIva);
   });
 
-  it("zona_especial NULL no es especial: la columna es tri-valuada", async () => {
+  it("una orden sin distrito no es especial: no hay marca que aplicar", async () => {
     await sembrarCatalogoEstados();
-    // `null` = "nadie lo decidio", que NO es lo mismo que "es especial". Si el codigo leyera
-    // la columna con un `!!` o un `!== false`, este caso cobraria el pacto sin que nadie lo
-    // haya marcado.
+    // SL-38: la columna tri-valuada ya no existe; lo que queda sin decidir es la orden SIN
+    // distrito (el unico FK nullable de `orden`). Si el codigo la leyera como especial, este caso
+    // cobraria el pacto sin que nadie lo haya marcado.
     const sinDecidir = await listar(null, new Prisma.Decimal("2500.00"));
     expect(sinDecidir.fleteConIva).toBe("1130.00");
     expect(sinDecidir.fleteOrigen).toBe("normal");
@@ -410,7 +415,7 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
 
   it("distrito especial sin pacto: mismo importe, pero marcado", async () => {
     await sembrarCatalogoEstados();
-    const fila = await listar(true, null);
+    const fila = await listar(CON_MARCA, null);
     expect(fila.fleteConIva).toBe("1130.00");
     expect(fila.fleteOrigen).toBe("especial_sin_pacto");
   });

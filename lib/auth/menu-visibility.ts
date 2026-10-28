@@ -1,4 +1,4 @@
-import type { RolValue } from "@prisma/client";
+import type { ModuloApagable, RolValue } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // Feature 133 (T2.1): `ROLES_ACCESO_ANALITICA` DERIVA de esta constante. Import de
 // VALOR (no `import type`) porque el valor se reexporta. `lib/analytics/types.ts` es
@@ -13,6 +13,8 @@ import { ROLES_ANALITICA, type RolAnalitica } from "@/lib/analytics/types";
 // imports de TIPO (`RolValue`, `FrontmatterAyuda`), así que no lleva Prisma ni `node:fs` detrás
 // — el que toca `fs` es `lib/ayuda/catalogo.ts`, que este archivo no importa.
 import { ROLES_AYUDA } from "@/lib/ayuda/documento";
+// SL-32: solo importa un tipo de Prisma, así que tampoco arrastra servidor al Sidebar cliente.
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 
 /**
  * Clave string del icono de un item. El icono real (componente de lucide) NO
@@ -65,7 +67,13 @@ export type IconKey =
   // `IconKey` es una unión cerrada y compartir icono con otra sección invitaría a leer la ayuda
   // como parte de esa sección. Mismo criterio escrito para `shieldAlert` (158), `chartColumn`
   // (129), `store` (167), `gauge` (192), `history` (321) y `warehouse` (429).
-  | "circleHelp";
+  | "circleHelp"
+  // SL-32 (R36): «Empresas», la pantalla de plataforma del superadmin. Icono propio por el mismo
+  // criterio de unión cerrada que los anteriores.
+  | "building"
+  // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin. Icono propio por el
+  // mismo criterio.
+  | "map";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -97,6 +105,11 @@ export interface MenuChild {
    * `tests/unit/auth/menu-historial-acciones.test.ts`.
    */
   roles?: readonly RolValue[];
+  /**
+   * SL-23 (design §3.6; R15) — el módulo apagable al que pertenece. Sin él, es del núcleo y se ve
+   * siempre. Con el módulo apagado para la empresa, `filtrarPorModulos` lo quita del menú.
+   */
+  modulo?: ModuloApagable;
 }
 
 /**
@@ -134,6 +147,11 @@ export interface MenuItem {
    * la marca ya es elegible.
    */
   destinoInicial?: false;
+  /**
+   * SL-23 (design §3.6; R15) — el módulo apagable al que pertenece. Sin él, es del núcleo y se ve
+   * siempre. Con el módulo apagado para la empresa, `filtrarPorModulos` lo quita del menú.
+   */
+  modulo?: ModuloApagable;
 }
 
 /**
@@ -341,6 +359,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // y `adminSatelite` lo siguen viendo en primera posición de su barra.
     label: "Analítica",
     href: "/analitica",
+    modulo: "analitica",
     iconKey: "chartColumn",
     roles: ROLES_ACCESO_ANALITICA,
     destinoInicial: false,
@@ -360,6 +379,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // exactamente el incidente que ya documenta el campo `destinoInicial` con "Analítica".
     label: "Monitoreo",
     href: "/monitoreo",
+    modulo: "monitoreo",
     iconKey: "gauge",
     roles: ["admin", "maestro", "adminSatelite"],
     destinoInicial: false,
@@ -481,6 +501,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // Los subítems heredan los roles del padre: no hay una segunda lista que pueda divergir.
     label: "Ranking",
     href: "/ranking",
+    modulo: "ranking",
     iconKey: "trophy",
     roles: ["maestro", "admin", "mensajero"],
     children: [
@@ -547,6 +568,11 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       { label: "Usuarios", href: "/configuracion" },
       { label: "Tarifas", href: "/configuracion/tarifas" },
       { label: "API", href: "/configuracion/api" },
+      // SL-36 (design §14): las cuentas de los servicios externos de la empresa, junto a «API»
+      // porque las dos son conexiones con terceros. No es el primer hijo, así que no mueve el
+      // aterrizaje post-login, y hereda la visibilidad `maestro`-only del padre, igual que la
+      // página (R6): ni el admin, ni el mensajero, ni el superadmin la ven.
+      { label: "Integraciones", href: "/configuracion/integraciones" },
       // Feature 107: CRUD de plantillas de mensaje. Hereda la visibilidad
       // maestro-only del ítem padre (R1/R2).
       { label: "Plantillas", href: "/configuracion/plantillas" },
@@ -554,18 +580,18 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       // aprobada (`design-whatsapp/Main.dc.html`). Design §7 lo permite si no mueve el primer
       // hijo: `primerDestino` solo mira el PRIMERO («Usuarios»), y este entra el quinto. Hereda la
       // visibilidad `maestro`-only del padre, igual que la página (R1).
-      { label: "Envíos automáticos", href: "/configuracion/envios-whatsapp" },
+      {
+        label: "Envíos automáticos",
+        href: "/configuracion/envios-whatsapp",
+      },
       // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
       // del ítem padre: quien ve el catálogo es quien lo administra.
       { label: "Vehículos", href: "/configuracion/vehiculos" },
-      // Ficha 374: administración del catálogo geográfico (alta y retirada de
-      // provincias, cantones y distritos). AL FINAL del array, y verificado:
-      // `primerDestino` devuelve el `href` del PRIMER hijo del PRIMER ítem
-      // visible, así que un hijo añadido al final no puede mover el aterrizaje
-      // post-login de ningún rol (R46).
-      { label: "Geografía", href: "/configuracion/geografia" },
-      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array, por el mismo
-      // motivo que «Geografía» (R46 de la 374): `primerDestino` devuelve el `href` del PRIMER
+      // SL-32 (R26): aquí iba «Geografía» (ficha 374). Gestionar la geografía es de la plataforma,
+      // y la página responde `notFound()` al `maestro`. Era un hijo del final, así que quitarlo no
+      // mueve `primerDestino`.
+      // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. AL FINAL del array (R46 de la
+      // 374): `primerDestino` devuelve el `href` del PRIMER
       // hijo del PRIMER ítem visible, así que un hijo añadido al final no puede mover el
       // aterrizaje post-login de ningún rol.
       //
@@ -644,6 +670,38 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
         roles: ROLES_HISTORIAL_ACCIONES,
       },
     ],
+  },
+  {
+    // SL-32 (R6, R36) — «Empresas»: el primero de los dos ítems del superadmin (el otro es
+    // «Geografía», SL-20), que no ve nada de empresa.
+    //
+    // Va JUSTO ANTES de «Mi bodega», no el último: que la barra cierre con «Mi bodega» y
+    // «Ayuda», en ese orden, es un contrato previo (lo afirman `menu-mi-bodega.test.ts` y
+    // `menu-ayuda.test.ts`). Aquí basta con eso porque solo lo ve el superadmin: ningún
+    // aterrizaje de los seis roles de empresa puede moverse, y para el superadmin es el primero
+    // (y único) de su lista, de modo que `primerDestino` le manda aquí sin marca. Por eso no
+    // lleva `destinoInicial: false`.
+    //
+    // `roles` ES `ROLES_PLATAFORMA`, por identidad y no copiado: la guardia
+    // `superadmin-fuera-de-empresa` solo admite el rol de plataforma en este ítem si lo lee así.
+    label: "Empresas",
+    href: "/plataforma/empresas",
+    iconKey: "building",
+    roles: ROLES_PLATAFORMA,
+  },
+  {
+    // SL-20 (R21) — «Geografía»: el árbol geográfico de cada país, solo para el superadmin.
+    //
+    // Va JUSTO DESPUÉS de «Empresas» y antes de «Mi bodega» y «Ayuda», que siguen cerrando la
+    // barra (contrato de la 429 y la 433). Como solo lo ve el superadmin, ningún aterrizaje de
+    // los roles de empresa se mueve, y el del superadmin sigue siendo «Empresas», que va antes.
+    //
+    // `roles` ES `ROLES_PLATAFORMA`, por identidad, igual que «Empresas»: la guardia
+    // `superadmin-fuera-de-empresa` lo lee así.
+    label: "Geografía",
+    href: "/plataforma/geografia",
+    iconKey: "map",
+    roles: ROLES_PLATAFORMA,
   },
   {
     // ⭑ FICHA 429 (T23, Q3) — «Mi bodega»: el SINPE al que cobran los clientes de ESTA bodega.
@@ -796,4 +854,52 @@ export function primerDestino(items: readonly MenuItem[]): string | null {
   const primero = items.find((item) => item.destinoInicial !== false);
   if (!primero) return null;
   return primero.children?.[0]?.href ?? primero.href;
+}
+
+/** SL-23 — sin `modulo` es del núcleo y se ve siempre; con él, solo si está encendido. */
+function moduloEncendido(
+  modulo: ModuloApagable | undefined,
+  activos: ReadonlySet<ModuloApagable>,
+): boolean {
+  return modulo === undefined || activos.has(modulo);
+}
+
+/**
+ * SL-23 (design §6.2; R15) — quita del menú lo de los módulos apagados para la empresa.
+ *
+ * Es pura y va DESPUÉS de `itemsVisibles` (el rol ya decidió): quita los ítems con `modulo` apagado
+ * y poda los subítems apagados. Un desplegable que se queda sin subítems desaparece, con la misma
+ * regla que `puedeVer` (ficha 362): un disparador que despliega el vacío no se pinta.
+ *
+ * La IDENTIDAD del ítem se conserva cuando no hay nada que podar, igual que en `itemsVisibles`.
+ */
+export function filtrarPorModulos<T extends MenuItem>(
+  items: readonly T[],
+  activos: ReadonlySet<ModuloApagable>,
+): T[] {
+  return items.flatMap((item) => {
+    if (!moduloEncendido(item.modulo, activos)) return [];
+    if (!item.children) return [item];
+    const podados = item.children.filter((child) => moduloEncendido(child.modulo, activos));
+    if (podados.length === item.children.length) return [item];
+    if (podados.length === 0) return [];
+    // Mismo aserto que `itemsVisibles`: `T` no se puede construir genéricamente.
+    return [{ ...item, children: podados } as T];
+  });
+}
+
+/**
+ * SL-23 (design §6.2; R15, R32) — el menú de la persona en su empresa: lo que su rol ve, menos lo de
+ * los módulos apagados. Es lo que leen los tres consumidores de `app/` (la barra, el aterrizaje de
+ * `/dashboard` y el «volver al inicio» del 404); ninguno llama a `itemsVisibles` directamente (lo
+ * vigila el caso (f) de `modulos-reparto.guardia.test.ts`).
+ *
+ * `activos` sale de `modulosDelMenu(actor)`: el superadmin y quien no tiene sesión reciben un
+ * conjunto vacío, y «Empresas», que no tiene módulo, le sigue apareciendo al superadmin.
+ */
+export function menuDeLaEmpresa(
+  actor: Actor | null,
+  activos: ReadonlySet<ModuloApagable>,
+): MenuItem[] {
+  return filtrarPorModulos(itemsVisibles(SIDEBAR_ITEMS, actor), activos);
 }

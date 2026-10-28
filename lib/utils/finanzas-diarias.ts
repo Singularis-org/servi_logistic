@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 
-import { LIQUIDEZ_POR_CATEGORIA, NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
+import {
+  LIQUIDEZ_POR_CATEGORIA,
+  NATURALEZA_POR_CATEGORIA,
+  esCategoriaIva,
+} from "@/lib/utils/caja-tesoreria";
 import { derivarBalance } from "@/lib/utils/wallet-balance";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import type { FinanzasDeUnDia } from "@/lib/types/finanzas-diario";
@@ -81,7 +85,11 @@ export function derivarFinanzasDiarias(
     const monto = new Prisma.Decimal(fila.total);
     // El signo lo da el TIPO; la cubeta, la CATEGORIA. Que las dos cosas casen lo garantiza el
     // CHECK categoria↔tipo de la base, no este archivo.
-    const esPropio = NATURALEZA_POR_CATEGORIA[fila.categoria] === "propio";
+    // SL-39 (design §2.4, R12): «propio y no IVA», con el MISMO predicado que `derivarCaja`. El IVA
+    // es de la empresa pero no es ganancia; si aqui se contara, la suma de los dias dejaria de ser
+    // la ganancia de la caja.
+    const esPropio =
+      NATURALEZA_POR_CATEGORIA[fila.categoria] === "propio" && !esCategoriaIva(fila.categoria);
 
     if (fila.tipo === "ingreso") {
       // Ficha 459 (R13): los ingresos del dia son las ENTRADAS DE EFECTIVO, como el «Entro» de la

@@ -1,3 +1,4 @@
+import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
@@ -6,6 +7,7 @@ import type {
   ContarOrdenesSinEntregarServiceResult,
   CrearNodoGeograficoServiceResult,
   IGeografiaService,
+  ListarArbolDePaisServiceResult,
   ListarArbolGeograficoServiceResult,
   RenombrarNodoGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
@@ -15,18 +17,23 @@ import type {
   NodoGeograficoInput,
   RenombrarNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
-import { padreDeAlta } from "@/lib/types/geografia-nodo";
+import { contenedorDeAlta, padreDeAlta } from "@/lib/types/geografia-nodo";
+import { validarCodigo } from "@/lib/utils/codigo-geografico";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { normalizeName } from "@/lib/utils/normalize";
 
 // FICHA 374 (design §5.2) — la administracion del catalogo geografico.
 //
-// Autz: SOLO `maestro`, la misma puerta que el resto de /configuracion. Lectura y escritura
-// comparten conjunto: quien ve el catalogo es quien lo administra, y abrir la lectura a mas roles
-// seria una decision de producto aparte. La ausencia de sesion (`unauthenticated`) se resuelve
-// antes, en la Server Action (R23).
-const READ_ROLES = new Set<string>(["maestro"]);
-const WRITE_ROLES = new Set<string>(["maestro"]);
+// Autz (SL-32, R24/R25): el catalogo es de la plataforma, y lo gestiona ella. El `maestro` solo
+// conserva `listarArbol`, porque Tarifas lo lee para armar zonas, y quitarselo le romperia esa
+// pantalla. El conteo de ordenes va con la gestion: solo lo pide la confirmacion de un retiro.
+// Desde SL-17 la geografia es de solo lectura para una empresa, asi que dejar al `maestro` en la
+// gestion no le daria nada: su escritura fallaria en la base con un error crudo, en vez de con
+// este `forbidden`. Los dos conjuntos leen `ROLES_PLATAFORMA` por import: la guardia
+// `superadmin-fuera-de-empresa` rechaza el literal. La ausencia de sesion (`unauthenticated`) se
+// resuelve antes, en la Server Action.
+const READ_ROLES = new Set<string>(["maestro", ...ROLES_PLATAFORMA]);
+const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 
 /**
  * El SEGUNDO repositorio, por `Pick` de la interfaz de ordenes — patron de
@@ -52,19 +59,30 @@ export class GeografiaService implements IGeografiaService {
     return { status: "ok", provincias: await this.repo.listArbol() };
   }
 
+  /** SL-20 — el arbol de un pais para el superadmin. La empresa lee el suyo con `listarArbol`. */
+  async listarArbolDePais(paisId: string, actor: Actor): Promise<ListarArbolDePaisServiceResult> {
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
+    return { status: "ok", provincias: await this.repo.listArbolDePais(paisId) };
+  }
+
   /**
-   * El alta, en los cuatro pasos donde vive TODA la regla:
+   * El alta, en los pasos donde vive TODA la regla:
    *
    *   1. el rol, ANTES de tocar la base (R24);
-   *   2. `findHermanos` — UNA consulta que resuelve las DOS preguntas: `null` significa «el padre
-   *      no existe» (R14), y la lista es contra la que se compara el nombre;
+   *   2. `findHermanos` — UNA consulta que resuelve las preguntas: `null` significa «el padre (o el
+   *      pais, en una provincia) no existe» (R14), y trae los hermanos contra los que se compara
+   *      el nombre, la regla de codigo del pais y el codigo del padre;
    *   3. la comparacion por `normalizeName` (R17). ⚠️ AQUI ESTA LA DIFERENCIA CON VEHICULOS: alli
    *      basta el `trim` + colapso porque el UNIQUE compara literales. Aqui el UNIQUE literal NO
    *      BASTA, porque `resolveGeo` indexa por `normalizeName` —minusculas Y sin acentos—, asi que
    *      «San José» y «San Jose» serian dos filas legales para la base y UNA SOLA COSA AMBIGUA
    *      para la carga masiva: a partir de ahi toda fila que las mencione muere con «distrito
    *      ambiguo en el canton». La base sigue siendo la ultima palabra ante una carrera (R18);
-   *   4. el alta, con el nombre recortado y colapsado (R16) pero con SUS mayusculas y SUS acentos.
+   *   4. SL-20 (R17): el codigo, si lo trae, con la regla del pais —que sale de su fila, no de un
+   *      literal «CR»— y el codigo del padre como prefijo. La MISMA funcion que la carga CSV;
+   *   5. el alta, con el nombre recortado y colapsado (R16) pero con SUS mayusculas y SUS acentos.
+   *      La unicidad del codigo dentro del pais (R16) es del UNIQUE de la base, como la carrera
+   *      del nombre: el borde la traduce a `conflict`.
    *
    * Se comparan los hermanos EN MEMORIA —como mucho 123 filas, el canton mas grande del pais— en
    * vez de con un `findFirst({ where: { nombre } })`, que compararia literales y dejaria pasar
@@ -77,7 +95,7 @@ export class GeografiaService implements IGeografiaService {
     input: CrearNodoGeograficoInput,
     actor: Actor,
   ): Promise<CrearNodoGeograficoServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     // ⭑ FICHA 392 — el nombre de este nodo SE IMPRIME en la etiqueta (`geografiaLegible` lo une
     // en el dato `ubicacion`), asi que uno que la fuente no cubra tumba el LOTE ENTERO de un
@@ -86,16 +104,27 @@ export class GeografiaService implements IGeografiaService {
     const rechazo = rechazoDeNombreDeEtiqueta(input.nombre);
     if (rechazo) return { status: "validation_error", fieldErrors: rechazo };
 
-    const padreId = padreDeAlta(input);
-    const hermanos = await this.repo.findHermanos(input.nivel, padreId);
-    if (hermanos === null) return { status: "not_found" }; // R14: el padre no existe
+    const contexto = await this.repo.findHermanos(input.nivel, contenedorDeAlta(input));
+    if (contexto === null) return { status: "not_found" }; // R14: el padre (o el pais) no existe
 
     const clave = normalizeName(input.nombre);
-    if (hermanos.some((h) => normalizeName(h.nombre) === clave)) {
-      return { status: "conflict" }; // R17
+    if (contexto.hermanos.some((h) => normalizeName(h.nombre) === clave)) {
+      return { status: "conflict" }; // 374/R17, SL-20/R15
     }
 
-    const id = await this.repo.crear(input.nivel, input.nombre, padreId);
+    const codigo = input.codigo ?? null;
+    if (codigo !== null) {
+      const motivo = validarCodigo(contexto.regla, input.nivel, codigo, contexto.codigoPadre);
+      if (motivo !== null) return { status: "validation_error", fieldErrors: { codigo: [motivo] } };
+    }
+
+    const id = await this.repo.crear(
+      input.nivel,
+      input.nombre,
+      padreDeAlta(input),
+      { paisId: contexto.paisId, codigo },
+      actor.usuarioId,
+    );
     return { status: "ok", id, nivel: input.nivel };
   }
 
@@ -111,7 +140,7 @@ export class GeografiaService implements IGeografiaService {
     input: CambiarActivacionGeograficaInput,
     actor: Actor,
   ): Promise<CambiarActivacionGeograficaServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     const desenlace = await this.repo.cambiarActivacion(
       input.nivel,
@@ -148,7 +177,7 @@ export class GeografiaService implements IGeografiaService {
     input: RenombrarNodoGeograficoInput,
     actor: Actor,
   ): Promise<RenombrarNodoGeograficoServiceResult> {
-    if (!WRITE_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     // ⭑ FICHA 392 — el renombrado es LA puerta que abrio la 375, y por aqui entra el mismo
     // caracter que la 383 cerro por el lado de la orden. Se comprueba ANTES de leer los hermanos:
@@ -186,7 +215,7 @@ export class GeografiaService implements IGeografiaService {
     input: NodoGeograficoInput,
     actor: Actor,
   ): Promise<ContarOrdenesSinEntregarServiceResult> {
-    if (!READ_ROLES.has(actor.rol)) return { status: "forbidden" };
+    if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
     const ordenes = await this.ordenes.contarSinEntregarPorNodoGeografico(input.nivel, input.id);
     return { status: "ok", ordenes };
   }

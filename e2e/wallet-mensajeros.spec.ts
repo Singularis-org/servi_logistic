@@ -1,145 +1,92 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { crearEscenarioCaja, importe, type CajaE2E } from "./_escenarios/caja";
+import { paginaDe } from "./_escenarios/reparto";
 
 /**
- * E2E tests for "/wallet/mensajeros" — the PAGO A MENSAJEROS y CUENTAS POR PAGAR (Feature 44,
- * T14–T16 / R18/R19/R21/R22).
+ * E2E — `/wallet/mensajeros`, las cuentas por pagar a mensajeros (features 44, 458-D; SL-44 T6.3,
+ * R18).
  *
- * Ficha 336 (2026-08-30): this file also covered "/mis-pagos" (R20/R21), with two describes —
- * the mensajero's access and the maestro's block. That route was deleted by human decision, so
- * both describes are gone. The two describes for "/wallet/mensajeros" survive untouched. When a `CierreDia` is approved, the pay owed to the
- * mensajero (`total_pago_mensajero`, snapshot 39) and the cash he collected
- * (`total_efectivo`, snapshot 37) are frozen into an append-only LEDGER per mensajero:
- * `pago_devengado = P` and `pago_efectivo = min(P,E)`. The CUENTA POR PAGAR (what the company
- * still owes) is DERIVED (Σdevengo − Σpago) and never stored; it is positive or zero, never
- * negative in the normal flow (R16).
+ * Recorre lo que declara D5: las cuentas por pagar, el desglose y el bloqueo de otro rol.
+ *  1. El maestro ve la fila del mensajero con lo devengado, lo pagado del efectivo y la cuenta por
+ *     pagar; el buscador por nombre la esconde con un nombre que no casa y la devuelve con el suyo.
+ *  2. Abre su estado de cuenta: el saldo, la frase de quién le debe a quién, los dos movimientos del
+ *     cierre y, en el desglose del devengo, las dos órdenes que lo pagan.
+ *  3. Un mensajero y una tienda piden `/wallet/mensajeros` (y el estado de cuenta): 404, sin cifras.
  *
- * Two role-aware Server Components:
- *  - `/wallet/mensajeros` (R18/R19): only the `maestro` (owner of the central cash box) sees
- *    the cuentas por pagar of ALL mensajeros. The pay to mensajeros is an egreso of the
- *    maestro's CENTRAL cash box (F1.4-Qe/A2: adminSatelite does NOT see it). Any other role
- *    (or no session) is denied and NO amount is exposed (R19).
+ * DATOS (R7, R8): `crearEscenarioCaja`. El libro del mensajero lo alimenta la APROBACIÓN del cierre
+ * (`CierresAdminService`, feature 44); nada se escribe a mano.
  *
- * Covers the flows the review requires (parallel to e2e/wallet.spec.ts and e2e/mi-wallet.spec.ts):
- *  1. Acceso del `maestro` a /wallet/mensajeros (R18/R21/R22): logs in → sees the CUENTAS POR
- *     PAGAR table (amounts rendered as STRING, never Prisma.Decimal) → expands a mensajero's
- *     DESGLOSE POR CIERRE (paginated, most recent first, loaded client-side via
- *     `listarPagosDeMensajeroAction`) → filters that desglose server-side by date range / cierre
- *     (the shown saldo reflects the filtered set) → also filters the summary table by mensajero
- *     name (client-side over the pre-fetched set).
- *  2. Bloqueo de rol NO autorizado en /wallet/mensajeros (R19): a non-maestro user (here a
- *     `mensajero`) navigates there and is denied (Next `notFound()` → no UI): the cuentas por
- *     pagar table is absent, so no financial data leaks.
- *
- * PRECONDITION (seed):
- * - A seeded `maestro` M (owner of the central cash box; only role for /wallet/mensajeros).
- * - A seeded `mensajero` MZ whose ledger has at least one approved-cierre feed (a
- *   `pago_devengado` + a `pago_efectivo`, R5/R10) so his cuenta por pagar is a known amount
- *   (set CUENTA_ESPERADA below) and his name is known (set MENSAJERO_NOMBRE below). His
- *   credentials are still needed: he is the non-maestro role used to prove R19's block.
- *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres, the feature 44 `pago_mensajero_movimiento` table +
- *   enums (PagoMensajeroMovimientoTipo/Categoria) and the feature 42/43 tables/migrations
- *   applied, plus at least one seeded movement fed from an approved `cierre_dia`
- * - A seeded `maestro` and a seeded `mensajero` (with movements), per PRECONDITION
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but NOT
- * EXECUTED. Execution is deferred until the test environment is fully set up (same deferral
- * as e2e/wallet.spec.ts and e2e/mi-wallet.spec.ts). They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed a `maestro` and a `mensajero` with at least one pago_mensajero_movimiento fed by an
- *    approved cierre_dia; set the seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * CIFRAS, escritas a mano a partir del escenario (pago al mensajero 1.500 por entrega; de lo cobrado,
+ * 1.000 en efectivo y 7.000 por transferencia):
+ *   - devengado P = 2 × 1.500 = 3.000;
+ *   - efectivo recaudado E = 1.000 (la transferencia no es efectivo) → pagado = mín(P, E) = 1.000;
+ *   - cuenta por pagar = 3.000 − 1.000 = 2.000 → «La empresa le debe 2.000 a <mensajero>».
  */
 
-// Seeded maestro (owner of the central cash box; only role authorized for /wallet/mensajeros).
-const MAESTRO_EMAIL = "maestro@example.com";
-const MAESTRO_PASSWORD = "correct-password";
+let c: CajaE2E;
 
-// Seeded mensajero: the non-maestro role used to prove the R19 block on /wallet/mensajeros.
-const MENSAJERO_EMAIL = "mensajero@example.com";
-const MENSAJERO_PASSWORD = "correct-password";
-
-// Display name of the seeded mensajero (shown in the maestro's cuentas por pagar table).
-const MENSAJERO_NOMBRE = "Ana Mensajera";
-
-// Derived cuenta por pagar of the seeded mensajero (₡ prefix + STRING amount added by the UI, R16/R21).
-const CUENTA_ESPERADA = "₡2000.00";
-
-/** Logs in with the given credentials and lands on the app. */
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
-}
-
-test.describe("Cuentas por pagar — acceso del maestro (/wallet/mensajeros)", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page, MAESTRO_EMAIL, MAESTRO_PASSWORD);
-    await page.goto("/wallet/mensajeros");
+test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloqueo", () => {
+  test.beforeAll(async () => {
+    test.setTimeout(240_000);
+    c = await crearEscenarioCaja("wallet-mensajeros");
   });
 
-  test("ve las cuentas por pagar → expande el desglose por cierre → filtra por fecha/cierre y por mensajero", async ({
-    page,
-  }) => {
-    // R18/R21: the cuentas por pagar table is pre-fetched server-side; amounts are rendered as
-    // STRING (the client never receives Prisma.Decimal nor recomputes them).
+  test("el maestro ve la cuenta por pagar del mensajero y la busca por su nombre", async ({ browser }) => {
+    const page = await paginaDe(browser, c.r.empresa.maestro);
+    const res = await page.goto("/wallet/mensajeros");
+    expect(res?.status()).toBe(200);
+
     const tabla = page.getByRole("table", { name: "Cuentas por pagar a mensajeros" });
-    await expect(tabla).toBeVisible();
-    await expect(tabla.getByText(MENSAJERO_NOMBRE)).toBeVisible();
-    await expect(tabla.getByText(CUENTA_ESPERADA)).toBeVisible();
+    const fila = tabla.getByRole("row").filter({ hasText: c.mensajero.nombre });
+    await expect(fila).toHaveCount(1);
+    // Columnas: Mensajero · Devengado · Pagado · Cuenta por pagar · Estado · Estado de cuenta.
+    const celdas = fila.getByRole("cell");
+    await expect(celdas.nth(1)).toHaveText(importe(3000));
+    await expect(celdas.nth(2)).toHaveText(importe(1000));
+    await expect(celdas.nth(3)).toHaveText(importe(2000));
+    await expect(celdas.nth(4)).toHaveText("Pendiente");
 
-    // R18: expand the mensajero → its DESGLOSE POR CIERRE loads client-side (paginated, most
-    // recent first) inside the expanded region.
-    await page
-      .getByRole("button", { name: `Ver desglose de ${MENSAJERO_NOMBRE}` })
-      .click();
-    const desglose = page.getByRole("region", {
-      name: `Desglose de ${MENSAJERO_NOMBRE}`,
-    });
-    await expect(desglose).toBeVisible();
-
-    // R18: the per-cierre movements are shown as an accessible table (más reciente primero).
-    const detalle = page.getByRole("table", {
-      name: `Desglose por cierre de ${MENSAJERO_NOMBRE}`,
-    });
-    await expect(detalle).toBeVisible();
-    // The expanded saldo initially matches the aggregate cuenta por pagar (R22 baseline).
-    await expect(desglose.getByText(CUENTA_ESPERADA)).toBeVisible();
-
-    // R22: filter the desglose server-side by date range + cierre. Applying re-fetches from the
-    // maestro Server Action; the shown saldo then reflects the FILTERED set.
-    await desglose.getByLabel("Desde").fill("2026-07-01");
-    await desglose.getByLabel("Hasta").fill("2026-07-31");
-    await desglose.getByRole("button", { name: "Aplicar" }).click();
-    await expect(detalle).toBeVisible();
-
-    // R22: filter the SUMMARY table by mensajero name (client-side over the pre-fetched set; no
-    // fetch, no arithmetic on amounts). The row stays visible when the name matches the query.
-    await page.getByRole("searchbox", { name: "Buscar por mensajero" }).fill(MENSAJERO_NOMBRE);
-    await expect(tabla.getByText(MENSAJERO_NOMBRE)).toBeVisible();
+    const buscador = page.getByRole("searchbox", { name: "Buscar por mensajero" });
+    await buscador.fill(`nadie-${c.mensajero.id.slice(0, 8)}`);
+    await expect(fila).toHaveCount(0);
+    await buscador.fill(c.mensajero.nombre);
+    await expect(fila).toHaveCount(1);
   });
-});
 
-test.describe("Cuentas por pagar — bloqueo de rol NO autorizado (/wallet/mensajeros)", () => {
-  test("un mensajero es rechazado en /wallet/mensajeros y NO ve cuentas por pagar (R19)", async ({
-    page,
-  }) => {
-    // A non-maestro role hits the role-aware Server Component, which calls `notFound()`
-    // (forbidden). No cuentas por pagar UI is rendered.
-    await login(page, MENSAJERO_EMAIL, MENSAJERO_PASSWORD);
+  test("el estado de cuenta del mensajero desglosa el devengo y el pago del cierre", async ({ browser }) => {
+    const page = await paginaDe(browser, c.r.empresa.maestro);
     await page.goto("/wallet/mensajeros");
+    await page.getByRole("link", { name: `Ver estado de cuenta de ${c.mensajero.nombre}` }).click();
+    await expect(page).toHaveURL(new RegExp(`/wallet/mensajeros/${c.mensajero.id}$`));
 
-    // R19: the cuentas por pagar table is NOT exposed to this role.
-    await expect(
-      page.getByRole("table", { name: "Cuentas por pagar a mensajeros" }),
-    ).toHaveCount(0);
+    const tarjeta = page.getByRole("region", { name: `Saldo de ${c.mensajero.nombre}` });
+    await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(importe(2000));
+    await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(c.mensajero.nombre);
+
+    const libro = page.getByRole("table", { name: `Estado de cuenta de ${c.mensajero.nombre}` });
+    const devengo = libro.getByRole("row").filter({ hasText: "Pago devengado" });
+    const pago = libro.getByRole("row").filter({ hasText: "Pago del efectivo" });
+    await expect(devengo).toHaveCount(1);
+    await expect(pago).toHaveCount(1);
+    await expect(devengo).toContainText(importe(3000));
+    await expect(pago).toContainText(importe(1000));
+
+    await page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }).click();
+    await expect(page.getByText(c.conCod.destinatario)).toBeVisible();
+    await expect(page.getByText(c.sinCod.destinatario)).toBeVisible();
+  });
+
+  test("un mensajero y una tienda reciben 404 en las cuentas por pagar y no ven cifras (R19)", async ({ browser }) => {
+    for (const u of [c.mensajero, c.r.tienda]) {
+      const page = await paginaDe(browser, u);
+      for (const ruta of ["/wallet/mensajeros", `/wallet/mensajeros/${c.mensajero.id}`]) {
+        const res = await page.goto(ruta);
+        expect(res?.status(), `${ruta} para ${u.email}`).toBe(404);
+        await expect(page.getByRole("table", { name: "Cuentas por pagar a mensajeros" })).toHaveCount(0);
+        await expect(page.getByRole("region", { name: `Saldo de ${c.mensajero.nombre}` })).toHaveCount(0);
+      }
+      await page.context().close();
+    }
   });
 });

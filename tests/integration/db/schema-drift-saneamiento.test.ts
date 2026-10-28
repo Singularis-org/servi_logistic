@@ -100,7 +100,7 @@ function tablasConDefaultEnUpdatedAt(): string[] {
 }
 
 describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
-  it("el censo encuentra las TRECE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
+  it("el censo encuentra las QUINCE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
     // Contrapeso: si el parser se rompiera y devolviera [], el caso de abajo pasaria por vacio
     // en vez de por limpio. Esta lista es la que devuelve la BASE viva consultando
     // `information_schema.columns` (evidencia en progress/chore_saneamiento-deudas.md).
@@ -119,6 +119,11 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // `@default(now()) @updatedAt` y por eso el caso de abajo sigue en verde y `migrate dev` no
       // propondra un `DROP DEFAULT` sobre ella.
       "asistente_uso_diario",
+      // SL-40 (2026-10-23) - el valor global del cobro de la plataforma por orden. Su `CREATE TABLE`
+      // (`20261023130000_cobro_plataforma_tarifa/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo
+      // `CobroPlataformaTarifa` lo declara con `@default(now()) @updatedAt`.
+      "cobro_plataforma_tarifa",
       // FICHA 333 (2026-08-29) - la cola de cobros de gasto fijo por autorizar. Su
       // `CREATE TABLE` (`20260829120000_gasto_fijo_cobro/migration.sql`) escribe
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`, asi que cae sola en el
@@ -126,6 +131,12 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // abajo sigue en verde y `migrate dev` no propondra un `DROP DEFAULT` sobre ella.
       "gasto_fijo_cobro",
       "gasto_fijo_plantilla",
+      // SL-36 (2026-10-25) - la integracion de un servicio por empresa. Su `CREATE TABLE`
+      // (`20261025120000_integracion/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Integracion` lo
+      // declara con `@default(now()) @updatedAt`.
+      // (`integracion_prueba_minuto` NO entra: no tiene `updated_at` — es un contador por minuto.)
+      "integracion",
       "jobs",
       // SL-17 M1 (`20261022130000_organizacion_y_rol_app`): la empresa nace con `updated_at DEFAULT CURRENT_TIMESTAMP`.
       "organizacion",

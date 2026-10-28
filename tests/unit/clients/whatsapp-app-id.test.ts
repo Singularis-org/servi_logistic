@@ -3,33 +3,39 @@ import {
   ResolutorAppIdMeta,
   mensajeAppIdNoResuelto,
   type CacheAppId,
+  type CredencialAppId,
 } from "@/lib/clients/whatsapp-app-id";
-import { WhatsappNoConfiguradoError, type WhatsappConfig } from "@/lib/config/whatsapp";
+import { WhatsappNoConfiguradoError } from "@/lib/config/whatsapp";
 
 // Ficha 474 (T4.3, R48) — el ID de la app se obtiene del token con GET /<apiVersion>/app, token en
-// la CABECERA; anulacion por env sin red; cache solo del exito.
+// la CABECERA; cache solo del exito.
+// SL-36 (design §9.1, §9.2; R28) — el token es de cada empresa: la cache es por empresa y ya no hay
+// anulacion por entorno (`WHATSAPP_APP_ID`).
 
 const TOKEN = "EAAG-token-secreto-123";
-const CONFIG: WhatsappConfig = {
-  token: TOKEN,
-  numeroId: "111",
-  wabaId: "222",
-  apiVersion: "v21.0",
-  templateCategoria: "UTILITY",
-  templateIdioma: "es",
-};
+
+function credencial(organizacionId = "org-a", extra: Partial<CredencialAppId> = {}): CredencialAppId {
+  return {
+    organizacionId,
+    integracionId: `int-${organizacionId}`,
+    config: { token: TOKEN, apiVersion: "v21.0" },
+    ...extra,
+  };
+}
 
 function respuesta(status: number, cuerpo: unknown): Response {
   return new Response(typeof cuerpo === "string" ? cuerpo : JSON.stringify(cuerpo), { status });
 }
 
-function crear(fetchImpl: typeof fetch, extra: { anulacion?: string; cache?: CacheAppId; leerConfig?: () => WhatsappConfig } = {}) {
+function crear(
+  fetchImpl: typeof fetch,
+  extra: { cache?: CacheAppId; leerWhatsapp?: () => Promise<CredencialAppId> } = {},
+) {
   const logs: string[] = [];
   const r = new ResolutorAppIdMeta({
     fetchImpl,
-    leerConfig: extra.leerConfig ?? (() => CONFIG),
-    leerAnulacion: () => extra.anulacion,
-    cache: extra.cache ?? { appId: null },
+    leerWhatsapp: extra.leerWhatsapp ?? (async () => credencial()),
+    cache: extra.cache ?? new Map(),
     logger: { warn: (m) => logs.push(m) },
   });
   return { r, logs };
@@ -48,43 +54,113 @@ describe("474/R48 — exito", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
   });
 
-  it("la segunda llamada NO vuelve a la red (cache de proceso)", async () => {
+  it("la segunda llamada de la MISMA empresa NO vuelve a la red", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, { id: "987" }));
-    const cache = { appId: null };
+    const cache: CacheAppId = new Map();
     const a = crear(fetchImpl as unknown as typeof fetch, { cache });
     await a.r.resolver();
     const b = crear(fetchImpl as unknown as typeof fetch, { cache }); // otro resolutor, mismo proceso
     expect(await b.r.resolver()).toEqual({ ok: true, appId: "987", origen: "meta" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
+
+  it("sin fetch inyectado usa el de la credencial (el que marca el rechazo, R30)", async () => {
+    const deLaEmpresa = vi.fn(async () => respuesta(200, { id: "42" }));
+    const r = new ResolutorAppIdMeta({
+      leerWhatsapp: async () => credencial("org-a", { fetchImpl: deLaEmpresa as unknown as typeof fetch }),
+      cache: new Map(),
+    });
+    expect(await r.resolver()).toEqual({ ok: true, appId: "42", origen: "meta" });
+    expect(deLaEmpresa).toHaveBeenCalledTimes(1);
+  });
 });
 
-describe("474/R48 — anulacion por WHATSAPP_APP_ID", () => {
-  it("con valor: cero llamadas a fetch y origen env", async () => {
-    const fetchImpl = vi.fn();
-    const { r } = crear(fetchImpl as unknown as typeof fetch, { anulacion: " 555 " });
-    expect(await r.resolver()).toEqual({ ok: true, appId: "555", origen: "env" });
-    expect(fetchImpl).not.toHaveBeenCalled();
+describe("SL-36/R28 — la cache es por empresa", () => {
+  it("⭑ la caché de A no responde a B", async () => {
+    // A y B con el MISMO id de integracion a proposito: asi lo unico que las separa es la empresa
+    // de la clave. Con una clave sin empresa (la cache de proceso de antes), B leeria la app de A.
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).Authorization;
+      return respuesta(200, { id: auth === "Bearer token-de-b" ? "222" : "111" });
+    });
+    const cache: CacheAppId = new Map();
+    const deA = crear(fetchImpl as unknown as typeof fetch, {
+      cache,
+      leerWhatsapp: async () => ({ organizacionId: "org-a", integracionId: "int-1", config: { token: "token-de-a", apiVersion: "v21.0" } }),
+    });
+    const deB = crear(fetchImpl as unknown as typeof fetch, {
+      cache,
+      leerWhatsapp: async () => ({ organizacionId: "org-b", integracionId: "int-1", config: { token: "token-de-b", apiVersion: "v21.0" } }),
+    });
+
+    expect(await deA.r.resolver()).toEqual({ ok: true, appId: "111", origen: "meta" });
+    expect(await deB.r.resolver()).toEqual({ ok: true, appId: "222", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // Y la de A sigue siendo la suya.
+    expect(await deA.r.resolver()).toEqual({ ok: true, appId: "111", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it("vacia: se ignora y se consulta a Meta", async () => {
-    const fetchImpl = vi.fn(async () => respuesta(200, { id: "1" }));
-    const { r } = crear(fetchImpl as unknown as typeof fetch, { anulacion: "  " });
-    expect((await r.resolver()).ok).toBe(true);
+  it("si la empresa conecta OTRA integracion, la app vieja no se reutiliza", async () => {
+    const fetchImpl = vi.fn(async () => respuesta(200, { id: "333" }));
+    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-vieja", huellaToken: "h", appId: "111" }]]);
+    const { r } = crear(fetchImpl as unknown as typeof fetch, { cache });
+    expect(await r.resolver()).toEqual({ ok: true, appId: "333", origen: "meta" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("un token editado en la misma integración no reutiliza el app id cacheado", async () => {
+    // Review SL-36 m2: misma empresa y misma integracion; lo unico que cambia es el token, que el
+    // maestro edito y que puede ser de otra app de Meta. Cada token responde con su app.
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).Authorization;
+      return respuesta(200, { id: auth === "Bearer token-nuevo" ? "555" : "444" });
+    });
+    const cache: CacheAppId = new Map();
+    let token = "token-viejo";
+    const { r } = crear(fetchImpl as unknown as typeof fetch, {
+      cache,
+      leerWhatsapp: async () => ({ organizacionId: "org-a", integracionId: "int-1", config: { token, apiVersion: "v21.0" } }),
+    });
+
+    expect(await r.resolver()).toEqual({ ok: true, appId: "444", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    token = "token-nuevo";
+    expect(await r.resolver()).toEqual({ ok: true, appId: "555", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    // Mismo token: la cache si sirve, sin volver a la red.
+    expect(await r.resolver()).toEqual({ ok: true, appId: "555", origen: "meta" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // La cache no guarda el token en claro.
+    expect(JSON.stringify([...cache.values()])).not.toContain("token-nuevo");
+  });
+
+  it("sin WhatsApp no responde la cache aunque la empresa tuviera app antes", async () => {
+    const fetchImpl = vi.fn();
+    const cache: CacheAppId = new Map([["org-a", { integracionId: "int-org-a", huellaToken: "h", appId: "111" }]]);
+    const { r } = crear(fetchImpl as unknown as typeof fetch, {
+      cache,
+      leerWhatsapp: async () => {
+        throw new WhatsappNoConfiguradoError();
+      },
+    });
+    expect(await r.resolver()).toEqual({ ok: false, motivo: "sin_credencial" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
 describe("474/R48 — fallos (no se cachean)", () => {
   it("HTTP 400 con codigo de Meta -> ok:false http + codigo; la siguiente vuelve a pedir", async () => {
     const fetchImpl = vi.fn(async () => respuesta(400, { error: { code: 190, message: `token ${TOKEN} invalido` } }));
-    const cache = { appId: null };
+    const cache: CacheAppId = new Map();
     const { r, logs } = crear(fetchImpl as unknown as typeof fetch, { cache });
     const out = await r.resolver();
     expect(out).toEqual({ ok: false, motivo: "http", codigo: 190 });
     await r.resolver();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(cache.appId).toBeNull();
+    expect(cache.size).toBe(0);
     expect(JSON.stringify(out) + logs.join("|")).not.toContain(TOKEN);
   });
 
@@ -108,24 +184,35 @@ describe("474/R48 — fallos (no se cachean)", () => {
 
   it("id no numerico -> respuesta_invalida", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, { id: "abc" }));
-    const cache = { appId: null };
+    const cache: CacheAppId = new Map();
     const { r } = crear(fetchImpl as unknown as typeof fetch, { cache });
     expect(await r.resolver()).toEqual({ ok: false, motivo: "respuesta_invalida" });
-    expect(cache.appId).toBeNull();
+    expect(cache.size).toBe(0);
   });
 
-  it("sin credencial -> sin_credencial con el NOMBRE de la variable, sin red", async () => {
+  it("SL-36/R24: la empresa sin WhatsApp -> sin_credencial, sin red y sin nombrar variables", async () => {
     const fetchImpl = vi.fn();
     const { r } = crear(fetchImpl as unknown as typeof fetch, {
-      leerConfig: () => {
-        throw new WhatsappNoConfiguradoError("WHATSAPP_CLOUD_TOKEN");
+      leerWhatsapp: async () => {
+        throw new WhatsappNoConfiguradoError("sin_configurar");
       },
     });
     const out = await r.resolver();
-    expect(out).toEqual({ ok: false, motivo: "sin_credencial", variableFaltante: "WHATSAPP_CLOUD_TOKEN" });
+    expect(out).toEqual({ ok: false, motivo: "sin_credencial" });
     expect(fetchImpl).not.toHaveBeenCalled();
     if (out.ok) throw new Error("imposible");
-    expect(mensajeAppIdNoResuelto(out)).toContain("falta WHATSAPP_CLOUD_TOKEN");
+    const mensaje = mensajeAppIdNoResuelto(out);
+    expect(mensaje).toContain("WhatsApp no está configurado en tu empresa");
+    expect(mensaje).not.toMatch(/WHATSAPP_[A-Z_]+/);
+  });
+
+  it("un error que no es «no configurado» (base caida) se propaga: no se disfraza de sin credencial", async () => {
+    const { r } = crear(vi.fn() as unknown as typeof fetch, {
+      leerWhatsapp: async () => {
+        throw new Error("base caida");
+      },
+    });
+    await expect(r.resolver()).rejects.toThrow("base caida");
   });
 
   it("el mensaje de fallo nombra el codigo y no lleva secretos", () => {

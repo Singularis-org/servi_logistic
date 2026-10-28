@@ -94,6 +94,7 @@ import {
   INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
   INGRESO_BRUTO_LABEL,
   INGRESO_BRUTO_NOTA,
+  IVA_FACTURADO_LABEL,
   GANANCIA_DEBE_LABEL,
   GANANCIA_NOTA,
   PAGO_TIENDA_LABEL,
@@ -1306,6 +1307,12 @@ export interface CierreFacturaDetalleProps {
    */
   desgloseIngresoBodegaRechazos?: { sla?: string; manual?: string; total: string };
   ganancia?: string;
+  /**
+   * SL-39 (menor 1 de la revisión) — el IVA facturado del cierre, derivado en el servidor (R21).
+   * Es el renglón que resta entre «Ingreso bruto» (con IVA) y «Debe» (sin IVA) en «Liquidación».
+   * Ausente = el renglón no se pinta.
+   */
+  ivaFacturado?: string;
   pagoTienda?: string;
   audiencia?: CierreFacturaAudiencia;
   /** Abre el visor con la URL FIRMADA de la evidencia (nunca el storage_path). */
@@ -2478,6 +2485,7 @@ export function CierreFacturaDetalle({
   totalesIngreso,
   desgloseIngresoBodegaRechazos,
   ganancia,
+  ivaFacturado,
   pagoTienda,
   audiencia = "admin",
   onVerEvidencia,
@@ -2673,6 +2681,15 @@ export function CierreFacturaDetalle({
           nota={INGRESO_BRUTO_NOTA}
           value={money(totalesIngreso.total)}
         />
+        {/* SL-39 (menor 1 de la revisión) — el IVA resta entre el bruto (con IVA) y el «Debe» (sin
+            IVA), para que la lectura cuadre con el pago al mensajero del bloque de abajo:
+            bruto − IVA − pago al mensajero = ganancia. */}
+        {ivaFacturado === undefined ? null : (
+          <Renglon
+            label={IVA_FACTURADO_LABEL}
+            value={conOperador(ivaFacturado, true)}
+          />
+        )}
         {/* La ganancia solo aparece cuando es NEGATIVA: ahí la empresa pagó al mensajero
             más de lo que facturó, así que es una DEUDA ("Debe") y va en rojo. Si es ≥ 0
             no se pinta (misma regla que tenían las cards a las que reemplazó). El pago a

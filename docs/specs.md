@@ -12,10 +12,12 @@ existe. Es **bloqueante**: si aparece algo, para y pregunta al humano.
 
 Se busca siempre en los tres sitios:
 
-1. **El board**, en todos sus estados, incluidos los de `done` y `cancelled` (según `arnes.config.json > jira.estados`): `feature_list.json`
+1. **El board**, en todos sus estados, incluidos los de `done` y `cancelled` (según `arnes.config.json > tracker.estados` o `jira.estados`): `feature_list.json`
    (F0 las importa todas), por `name` y `description`. Quien tiene el MCP de `atlassian`
    (`/afinar-feature`) lo confirma en vivo con
    `project = <arnes.config.json > jira.project> AND issuetype != Epic AND text ~ "<término>"`.
+   Con Trello, cualquiera lo confirma con `node scripts/trello.mjs buscar "<término>"`, que mira
+   también las tarjetas archivadas.
 2. **Los specs** ya escritos: `grep -ril "<término>" specs/`.
 3. **El código**: el grafo (`search_graph`, `search_code`) con los nombres del dominio
    (`docs/grafo-de-codigo.md`).
@@ -101,7 +103,7 @@ Conflicto de archivos entre personas`).
 ## La puerta de aprobación humana (`spec_ready`)
 
 Cuando los tres archivos están listos, el leader pasa la feature a `spec_ready`, mueve la
-tarjeta al estado de `spec_ready` (según `jira.estados`), comenta la ruta del spec en el issue y hace `git push`
+tarjeta al estado de `spec_ready` (según `tracker.estados` o `jira.estados`), comenta la ruta del spec en la tarjeta y hace `git push`
 (`AGENTS.md > F1.3`). El proceso **se detiene**. El humano lee los tres archivos y responde:
 
 - **aprobado** → la forma canónica es mover la tarjeta del estado de `spec_ready` al de `in_progress`

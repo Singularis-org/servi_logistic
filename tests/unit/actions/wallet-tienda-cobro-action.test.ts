@@ -4,6 +4,10 @@ import { Prisma } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ICobroTiendaService } from "@/lib/interfaces/services/ICobroTiendaService";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 381 → 461 / T B.9 — el BORDE del cobro y de su anulacion, y su COMPOSITION ROOT.
 // ═════════════════════════════════════════════════════════════════════════════════════════════

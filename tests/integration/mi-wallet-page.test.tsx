@@ -41,6 +41,10 @@ import { ROTULOS_MI_WALLET } from "@/app/(app)/mi-wallet/_components/MiEstadoCue
 //    nombre propio.
 // =================================================================================================
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

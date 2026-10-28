@@ -48,11 +48,7 @@ import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { isSessionActive } from "@/lib/auth/session-guard";
 import { login, verifyChallenge } from "@/lib/actions/auth";
-import {
-  restablecerContrasena,
-  solicitarRecuperacion,
-  verificarCodigoRecuperacion,
-} from "@/lib/actions/password-reset";
+import { solicitarRecuperacion } from "@/lib/actions/password-reset";
 import type { IAuthService } from "@/lib/interfaces/services/IAuthService";
 import type { IPasswordResetService } from "@/lib/interfaces/services/IPasswordResetService";
 
@@ -236,11 +232,22 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     for (const l of lecturas) expect(l.ctx).toEqual(VALIDAR);
   });
 
-  // SLT-32 (decision humana 2026-10-23): mientras el rol superadmin no exista en `dev`, un usuario
-  // sin empresa no tiene actor (`puedeIniciarSesion`). Cuando SL-32 amplie el predicado con
-  // `esPlataforma(rol)`, este caso vuelve a esperar el actor con `organizacionId: null` (R14).
-  it("SLT-32: un usuario sin empresa no obtiene actor mientras el superadmin no exista", async () => {
+  it("R14: el actor superadmin lleva organizacionId null", async () => {
     conCookies({ session: sesionDe(usuarioDe(null)) });
+
+    expect(await resolveActorFromSession()).toMatchObject({ rol: "superadmin", organizacionId: null });
+  });
+
+  // SLT-32 (decision humana 2026-10-23): sin empresa solo pasa la cuenta de plataforma
+  // (`puedeIniciarSesion`, SL-18 design §9). Una cuenta de empresa que perdio la suya no tiene actor.
+  it("SLT-32: un usuario de rol de empresa sin empresa no obtiene actor", async () => {
+    conCookies({ session: sesionDe({ ...usuarioDe(null), rol: { value: "admin" } }) });
+
+    expect(await resolveActorFromSession()).toBeNull();
+  });
+
+  it("SLT-32: un usuario inactivo no obtiene actor aunque tenga empresa", async () => {
+    conCookies({ session: sesionDe({ ...usuarioDe(EMPRESA_A), estado: "inactivo" }) });
 
     expect(await resolveActorFromSession()).toBeNull();
   });
@@ -256,24 +263,29 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     for (const l of lecturas) expect(l.ctx).toEqual(VALIDAR);
   });
 
-  // SLT-32 (decision humana 2026-10-23, m1 de la review): una sesion abierta de un usuario sin
-  // empresa se trata como caducada. Mismo comentario que el caso de resolveActorFromSession: cuando
-  // SL-32 amplie el predicado con `esPlataforma(rol)`, el superadmin vuelve a pasar.
-  it("SLT-32: isSessionActive rechaza la sesion de un usuario activo sin empresa (null o vacia)", async () => {
-    const sinEmpresa = sesionDe(usuarioDe(null));
+  // SLT-32 (decision humana 2026-10-23, m1 de la review): una sesion abierta de un usuario de
+  // empresa sin empresa se trata como caducada. La de plataforma (superadmin, SL-32) sigue viva.
+  it("SLT-32: isSessionActive rechaza la sesion de un usuario de empresa sin empresa (null o vacia)", async () => {
+    const sinEmpresa = sesionDe({ ...usuarioDe(null), rol: { value: "admin" } });
     const empresaVacia = sesionDe({ ...usuarioDe(EMPRESA_A), organizacionId: "" });
     const conEmpresa = sesionDe(usuarioDe(EMPRESA_A));
+    const plataforma = sesionDe(usuarioDe(null));
 
     expect(await isSessionActive(sinEmpresa)).toBe(false);
     expect(await isSessionActive(empresaVacia)).toBe(false);
     expect(await isSessionActive(conEmpresa)).toBe(true);
+    expect(await isSessionActive(plataforma)).toBe(true);
 
-    // La empresa sale de la MISMA lectura que el estado: una consulta de usuario por validacion.
-    expect(usuarioFindUnique).toHaveBeenCalledTimes(3);
+    // Empresa y rol salen de la MISMA lectura que el estado: una consulta de usuario por validacion.
+    expect(usuarioFindUnique).toHaveBeenCalledTimes(4);
     for (const [args] of usuarioFindUnique.mock.calls) {
-      expect(args).toMatchObject({ select: { estado: true, organizacionId: true } });
+      expect(args).toMatchObject({
+        select: { estado: true, organizacionId: true, rol: { select: { value: true } } },
+      });
     }
-    expect(lecturas.map((l) => l.modelo)).toEqual(["Session", "Usuario", "Session", "Usuario", "Session", "Usuario"]);
+    expect(lecturas.map((l) => l.modelo)).toEqual([
+      "Session", "Usuario", "Session", "Usuario", "Session", "Usuario", "Session", "Usuario",
+    ]);
   });
 });
 
@@ -308,31 +320,22 @@ describe("login, OTP y recuperacion en plataforma (R15, R36)", () => {
     expect(vistos).toEqual([LOGIN, LOGIN]);
   });
 
-  it("los tres pasos de recuperacion llaman al servicio dentro de comoPlataforma", async () => {
+  // SL-18 (R20): los pasos del código ya no llegan al servicio; el canje del enlace prueba su
+  // contexto de plataforma en `tests/unit/password-reset-enlace-action.test.ts`.
+  it("la solicitud de recuperacion llama al servicio dentro de comoPlataforma", async () => {
     const vistos: Array<ContextoDatos | undefined> = [];
     const service: IPasswordResetService = {
       solicitar: vi.fn(async () => {
         vistos.push(contextoActual());
         return { status: "ok" as const };
       }),
-      verificarCodigo: vi.fn(async () => {
-        vistos.push(contextoActual());
-        return { status: "invalid_or_expired" as const };
-      }),
-      restablecer: vi.fn(async () => {
-        vistos.push(contextoActual());
-        return { status: "invalid_or_expired" as const };
-      }),
+      emitirEnlaceBienvenida: vi.fn(),
+      anularEnlaceBienvenida: vi.fn(),
+      crearContrasenaConEnlace: vi.fn(),
     };
-    const deps = { service, getContext: async () => CONTEXTO };
 
-    await solicitarRecuperacion({ email: "ana@example.com" }, deps);
-    await verificarCodigoRecuperacion({ email: "ana@example.com", code: "123456" }, deps);
-    await restablecerContrasena(
-      { email: "ana@example.com", code: "123456", password: "Clave-Fuerte-2026!", confirmPassword: "Clave-Fuerte-2026!" },
-      deps,
-    );
+    await solicitarRecuperacion({ email: "ana@example.com" }, { service, getContext: async () => CONTEXTO });
 
-    expect(vistos).toEqual([LOGIN, LOGIN, LOGIN]);
+    expect(vistos).toEqual([LOGIN]);
   });
 });

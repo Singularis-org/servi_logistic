@@ -2,6 +2,7 @@
 // Se separa de IFileStorage (que es de escritura: upload/remove) para no mezclar
 // responsabilidades; la implementacion usa
 // supabase.storage.from(bucket).createSignedUrl(s).
+// SL-19: toda ruta es RELATIVA a la carpeta de la empresa en curso (`<organizacion_id>/`), que pone el adaptador.
 
 export interface ISignedUrlProvider {
   /** URL firmada de un objeto privado, valida por `expiresInSeconds` (R9). */

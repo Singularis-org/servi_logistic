@@ -133,7 +133,7 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
   it("findDistritosByCantonIds filtra por cantonId in y deriva zonaId de la N:M zona_distrito", async () => {
     const prisma = buildPrisma();
     prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "San Rafael", cantonId: "c1", activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: false } }] },
+      { id: "d1", nombre: "San Rafael", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: false } }] },
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
@@ -155,7 +155,7 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
   it("findDistritosByCantonIds: distrito sin zonas -> zonaId null (no se inventa zona)", async () => {
     const prisma = buildPrisma();
     prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "San Rafael", cantonId: "c1", activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [] },
+      { id: "d1", nombre: "San Rafael", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [] },
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
@@ -174,6 +174,7 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
         id: "d1",
         nombre: "San Rafael",
         cantonId: "c1",
+        zonasEspeciales: [],
         activo: true,
         canton: { activo: true, provincia: { activo: true } },
         zonas: [
@@ -196,7 +197,7 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
   it("findDistritosByCantonIds: distrito en zona CENTRAL -> esCentral true", async () => {
     const prisma = buildPrisma();
     prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "Centro", cantonId: "c1", activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: true } }] },
+      { id: "d1", nombre: "Centro", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: true } }] },
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { CODIGO_PAIS } from "@/lib/types/pais";
+
 // SL-17 (design §7.7, D18 revisada) — la entrada y los desenlaces del alta de empresa.
 //
 // `maestro` lleva `telefono`, `documento` y `tipoDocumento` además de `nombre` y `email` porque
@@ -18,6 +20,9 @@ export const altaEmpresaInputSchema = z
   .object({
     nombre: obligatorio,
     slug: z.string().min(SLUG_MIN).max(SLUG_MAX).regex(SLUG_ORGANIZACION),
+    // SL-20 (R6): obligatorio. La app nunca se apoya en el `DEFAULT 'CR'` de la columna, que es
+    // solo para los tests y el SQL a mano (R10). Que exista lo comprueba el repositorio.
+    paisId: z.string().regex(CODIGO_PAIS),
     maestro: z
       .object({
         nombre: obligatorio,
@@ -38,7 +43,8 @@ export type AltaEmpresaDatos = Omit<AltaEmpresaInput, "maestro"> & {
   maestro: AltaEmpresaInput["maestro"] & { passwordHash: string };
 };
 
-export type CampoEnConflicto = "slug" | "email" | "documento";
+/** SL-20 (R8): `paisId` = la empresa ya existe (mismo slug y maestro) en otro país. */
+export type CampoEnConflicto = "slug" | "email" | "documento" | "paisId";
 
 export type AltaEmpresaResultado =
   | { estado: "creada"; organizacionId: string; maestroId: string }

@@ -36,7 +36,11 @@ import {
 } from "@/lib/clients/whatsapp-app-id";
 import { PlantillaWhatsappPropagator } from "@/lib/services/whatsapp/plantilla-whatsapp-sync";
 import { crearEncolarWhatsappTemplateSync } from "@/lib/services/jobs/whatsapp-template-sync-encolado";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import {
+  whatsappDeLaEmpresa,
+  whatsappDeLaEmpresaOpcional,
+  type WhatsappDeLaEmpresa,
+} from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import type { PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -63,36 +67,35 @@ function toPlantillaActionError(shape: AppErrorShape): ActionError {
   return err;
 }
 
-function buildPlantillaService(): IPlantillaMensajeService {
+async function buildPlantillaService(): Promise<IPlantillaMensajeService> {
   const prisma = getPrismaClient();
   const repo = new PlantillaMensajeRepository(prisma);
+  // SL-36 (R23): UNA lectura de la credencial de la empresa de la sesion, y la misma para el
+  // propagador y para el resolutor del app id: la app que se identifica es la del token que propaga.
+  const wa = await whatsappDeLaEmpresaOpcional();
   // Ficha 474: el tercer argumento NO es opcional aqui aunque lo sea en el constructor. Sin
   // `envios`, R10 dejaria desactivar una plantilla que usa un envio encendido; sin
   // `resolutorAppId`, R9 diria siempre «falta configurar WhatsApp» para una plantilla con
   // documento. Lo vigila `tests/unit/actions/plantillas-composition-root-474.test.ts`.
-  return new PlantillaMensajeService(repo, buildWhatsappPropagator(prisma, repo), {
+  return new PlantillaMensajeService(repo, buildWhatsappPropagator(wa, prisma, repo), {
     envios: new WhatsappEnvioRepository(prisma),
-    resolutorAppId: new ResolutorAppIdMeta(),
+    resolutorAppId: new ResolutorAppIdMeta({ leerWhatsapp: async () => wa ?? whatsappDeLaEmpresa() }),
   });
 }
 
 /**
- * Propagador local -> Meta. Si WhatsApp NO esta configurado todavia (faltan envs), degrada a
- * `undefined`: el CRUD local sigue funcionando y simplemente no propaga a Meta hasta que se
- * llenen las credenciales. Asi el modulo es usable sin la integracion activa.
+ * Propagador local -> Meta. Si la empresa NO tiene WhatsApp (R24), degrada a `undefined`: el CRUD
+ * local sigue funcionando y simplemente no propaga a Meta hasta que el maestro configure la
+ * integracion. Asi el modulo es usable sin la integracion activa.
  */
 function buildWhatsappPropagator(
+  wa: WhatsappDeLaEmpresa | null,
   prisma: PrismaClient,
   repo: PlantillaMensajeRepository,
 ): PlantillaWhatsappPropagator | undefined {
-  let config;
-  try {
-    config = loadWhatsappConfig();
-  } catch {
-    return undefined; // WhatsApp no configurado -> sin propagacion
-  }
+  if (wa === null) return undefined; // WhatsApp no configurado -> sin propagacion
   // Ficha 474: la fabrica compartida con el job de reintento (cabecera documento incluida).
-  const port = construirWhatsappTemplatePort(config);
+  const port = construirWhatsappTemplatePort(wa);
   const encolar = crearEncolarWhatsappTemplateSync(new JobRepository(prisma));
   return new PlantillaWhatsappPropagator(port, repo, encolar);
 }
@@ -113,7 +116,7 @@ export async function crearPlantilla(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4: antes de tocar el service
     const data = crearPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R9/R11)
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.crear(data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -128,7 +131,7 @@ export async function listarPlantillas(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const data = listarPlantillasSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.listar(data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -148,7 +151,7 @@ export async function listarPlantillasCompleto(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     const data = listarPlantillasCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.listarCompleto(data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -176,7 +179,7 @@ export async function actualizarPlantilla(
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
     const data = actualizarPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R22)
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.actualizar(parsedId.data, data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -196,7 +199,7 @@ export async function cambiarEstadoPlantilla(
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
     const data = cambiarEstadoPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R25)
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.cambiarEstado(parsedId.data, data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -214,7 +217,7 @@ export async function eliminarPlantilla(
     if (!parsedId.success) {
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.eliminar(parsedId.data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -237,7 +240,7 @@ export async function enviarPlantillaAprobacion(
     if (!parsedId.success) {
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.enviarAprobacion(parsedId.data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -262,7 +265,7 @@ export async function marcarPlantillaBienvenida(
     if (!parsedId.success) {
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.marcarMensajeBienvenida(parsedId.data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;
@@ -278,7 +281,7 @@ export async function estadoAppMeta(deps: PlantillaActionDeps = {}): Promise<Est
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     if (actor.rol !== "maestro") return { status: "forbidden" };
-    const resultado = await (deps.resolutorAppId ?? new ResolutorAppIdMeta()).resolver();
+    const resultado = await (deps.resolutorAppId ?? new ResolutorAppIdMeta({ leerWhatsapp: () => whatsappDeLaEmpresa() })).resolver();
     if (resultado.ok) return { status: "ok", estado: "identificada" };
     return { status: "ok", estado: "no_identificada", mensaje: mensajeAppIdNoResuelto(resultado) };
   });
@@ -297,7 +300,7 @@ export async function previewPlantilla(
     if (!parsed.success) {
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { cuerpo: ["cuerpo invalido"] } });
     }
-    const service = deps.plantillaService ?? buildPlantillaService();
+    const service = deps.plantillaService ?? (await buildPlantillaService());
     return service.preview(parsed.data, actor);
   });
   return isAppErrorShape(r) ? toPlantillaActionError(r) : r;

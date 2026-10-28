@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
@@ -18,6 +18,10 @@ import {
 import { cargarCatalogo459, leerCajaEntera, montarServicios459 } from "./_fixtures/caja-459";
 import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / R69, R70, R71 (auditoria de la wallet, D3) — ANULAR UNA CORRECCION DE CAJA, contra Postgres.
@@ -125,9 +129,9 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
     expect(m.despues.ganancia).toBe(m.antes.ganancia);
     expect(m.despues.enCaja).toBe(m.antes.enCaja);
     expect(m.despues.deTerceros).toBe(m.antes.deTerceros);
-    // R7 en los tres momentos.
+    // R7 en los tres momentos. SL-39 (R4): con el IVA aparte, como cuarto sumando.
     for (const r of [m.antes, m.conCorreccion, m.despues]) {
-      expect(suma([r.ganancia, r.deTerceros, r.capital])).toBe(r.enCaja);
+      expect(suma([r.ganancia, r.iva, r.deTerceros, r.capital])).toBe(r.enCaja);
     }
 
     // R71: el libro marca la ORIGINAL como documento `ajuste_caja` (antes sin anular, despues anulada) y

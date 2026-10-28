@@ -226,11 +226,18 @@ const POR_EMPRESA: Caso[] = [
   { tabla: "premio_ranking", indice: "premio_ranking_posicion_key", valores: { posicion: 1 } },
 ];
 
-/** Los que siguen globales a proposito: el mismo valor en dos empresas sigue fallando. */
-const GLOBALES: Caso[] = [
-  // R36: una persona, una cuenta, en toda la plataforma.
+/**
+ * SL-18 M1 (R1): email y cedula de `usuario` salen de «global a proposito» y pasan a ser por
+ * empresa. No van en `POR_EMPRESA`: esa lista es tambien la de la ida y vuelta de T3.9, cuyo
+ * `down.sql` no los toca. Su ida y vuelta vive en `usuario-unico-por-empresa.test.ts`.
+ */
+const POR_EMPRESA_DESDE_SL18: Caso[] = [
   { tabla: "usuario", indice: "usuario_email_key", valores: { email: "misma@ejemplo.test" } },
   { tabla: "usuario", indice: "usuario_cedula_key", valores: { cedula: "1-0000-0001" } },
+];
+
+/** Los que siguen globales a proposito: el mismo valor en dos empresas sigue fallando. */
+const GLOBALES: Caso[] = [
   // El rastreo publico busca por guia sin empresa (design §7).
   { tabla: "orden", indice: "orden_num_guia_key", valores: { num_guia: 4242 } },
   // La key identifica la empresa: dos empresas no pueden compartir el hash.
@@ -271,7 +278,7 @@ describeSiHayBase("SL-17 T3.9 — unicos por empresa y globales a proposito", ()
 
   beforeAll(async () => {
     c = await conectar();
-    const casos = [...POR_EMPRESA, ...GLOBALES];
+    const casos = [...POR_EMPRESA, ...POR_EMPRESA_DESDE_SL18, ...GLOBALES];
     await tomarLock(c);
     try {
       await clonar(c, esquema, [...new Set(casos.map((x) => x.tabla))], casos.map((x) => x.indice));
@@ -297,17 +304,17 @@ describeSiHayBase("SL-17 T3.9 — unicos por empresa y globales a proposito", ()
   it("control: el clon tiene EXACTAMENTE los indices de la lista, copiados de public", async () => {
     const enPublic = await c.query(
       `SELECT replace(indexdef, 'public.', 'S.') AS l FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1::text[])`,
-      [[...POR_EMPRESA, ...GLOBALES].map((x) => x.indice)],
+      [[...POR_EMPRESA, ...POR_EMPRESA_DESDE_SL18, ...GLOBALES].map((x) => x.indice)],
     );
     expect(await fotoDeIndices(c, esquema)).toEqual(enPublic.rows.map((r) => String(r.l)).sort());
     // Y todos los compuestos empiezan por la empresa.
-    for (const caso of POR_EMPRESA) {
+    for (const caso of [...POR_EMPRESA, ...POR_EMPRESA_DESDE_SL18]) {
       const fila = enPublic.rows.find((r) => String(r.l).includes(` ${caso.indice} `));
       expect(String(fila?.l), caso.indice).toMatch(/USING btree \(organizacion_id, /);
     }
   });
 
-  for (const caso of POR_EMPRESA) {
+  for (const caso of [...POR_EMPRESA, ...POR_EMPRESA_DESDE_SL18]) {
     it(`por empresa — ${caso.indice}: dos empresas conviven con el mismo valor; en la misma, 23505`, async () => {
       const en = (org: string) => () => insertar(c, esquema, caso.tabla, { ...caso.valores, organizacion_id: org });
       expect(await sqlstateDe(c, en(ORG_A))).toBeNull();

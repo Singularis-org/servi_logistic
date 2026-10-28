@@ -289,12 +289,27 @@ describe("pwa · los atajos del manifiesto", () => {
     // (`/configuracion/envios-whatsapp`) hereda el `maestro`-only de «Configuración», que es
     // exactamente quien deja entrar la página (R1). Si se hubiera movido otro rol, el menú y la
     // página discreparían. La CONCLUSIÓN no cambia: lo ve UN rol de cinco, CERO atajos.
+    // ⭑ SL-32 (R26) — `maestro` 23 -> 22 y NADIE más: sale el subítem «Geografía»
+    // (`/configuracion/geografia`) que trajo la 374. Gestionar la geografía es de la plataforma,
+    // y la página responde `notFound()` al `maestro`. Si se moviera otro rol, el subítem no era
+    // `maestro`-only. La CONCLUSIÓN no cambia: CERO atajos.
+    // ⭑ SL-32 (R6, R36) — ENTRA UN SEXTO ROL CON MENÚ, `superadmin: 1`, y nadie más se mueve. Su
+    // único destino es «Empresas» (`/plataforma/empresas`, `ROLES_PLATAFORMA`), y `rolesConMenu`
+    // lo recoge solo porque se deriva de los ítems. Si subiera de 1, el superadmin estaría viendo
+    // algo de empresa (R6); si se moviera otro rol, «Empresas» se habría abierto de más.
+    // ⭑ SL-36 (R6, design §14) — `maestro` 22 -> 23 y NADIE más: entra el subítem «Integraciones»
+    // (`/configuracion/integraciones`), que hereda el `maestro`-only de «Configuración», igual que
+    // la página. Si subiera `superadmin`, vería la integración de una empresa (R6). CERO atajos.
+    // ⭑ SL-20 (R21, design §8) — `superadmin` 1 -> 2 y NADIE más: entra «Geografía»
+    // (`/plataforma/geografia`), pantalla de PLATAFORMA (no de empresa), solo para `superadmin`.
+    // Si se moviera otro rol, se habría abierto de más. La intersección sigue vacía: CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
       maestro: 23,
       admin: 14,
       adminSatelite: 8,
       mensajero: 7,
       adminTienda: 5,
+      superadmin: 2,
     });
 
     const interseccion = [...porRol.values()].reduce((acc, destinos) =>
@@ -306,7 +321,11 @@ describe("pwa · los atajos del manifiesto", () => {
     // publicar ningun atajo: un atajo del manifiesto es global a la app —lo ve quien instale
     // la PWA, sea cual sea su rol—, asi que solo puede salir de la interseccion. Ahora hay UN
     // candidato legitimo.
-    expect([...interseccion]).toEqual(["/ayuda"]);
+    // ⭑ SL-32 — Y VUELVE A ESTAR VACÍA. El superadmin tiene menú pero no ve «Ayuda»
+    // (`ROLES_AYUDA` son los cinco de empresa), así que `/ayuda` deja de ser universal: un atajo
+    // a `/ayuda` le llevaría a una ruta que no tiene en su menú. El candidato de la 433 deja de
+    // serlo mientras el superadmin no tenga ayuda; la decisión de CERO atajos se sostiene sola.
+    expect([...interseccion]).toEqual([]);
 
     // ⚠️ Y AUN ASI NO SE PUBLICA NINGUNO. Que un atajo sea POSIBLE no lo hace DECIDIDO: cuales
     // son los atajos de la aplicacion instalada es una decision de producto del humano, y la

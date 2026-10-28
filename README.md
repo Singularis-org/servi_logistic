@@ -33,8 +33,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ### Variables de entorno
 
-El código lee exactamente estas (`GOOGLE_MAPS_API_KEY` es opcional: sin ella se
-desactiva la geocodificación):
+El código lee exactamente estas:
 
 | Variable | Notas |
 | --- | --- |
@@ -45,8 +44,28 @@ desactiva la geocodificación):
 | `NEXT_PUBLIC_APP_URL` | Origin de los QR de etiqueta. Ver aviso abajo. |
 | `NEXT_PUBLIC_SITE_URL` | Origin para metadatos (`app/layout.tsx`). |
 | `CRON_SECRET` | Autoriza los endpoints de `/api/cron/*`. |
-| `GOOGLE_MAPS_API_KEY` | Geocodificación. |
+| `INTEGRACIONES_CLAVES_CIFRADO` | Anillo de claves maestras de la bóveda de integraciones: `v1:<base64 de 32 bytes>,v2:...`. Secreto. Ver `lib/config/integraciones.ts`. |
+| `INTEGRACIONES_CLAVE_ACTIVA` | Versión del anillo con la que se cifra todo valor nuevo (`v2`). |
+| `INTEGRACIONES_PRUEBAS_POR_MINUTO` | Opcional. Pruebas de conexión por minuto y empresa (default 5). |
+| `INTEGRACIONES_PROBADOR_DOBLE` | Solo E2E: `1` cambia los probadores reales por un doble. Ignorada con `VERCEL_ENV=production`. |
 | `DB_POOL_MAX` | Opcional. Conexiones `pg` por instancia (default 3). |
+| `DB_TX_MAX_WAIT_MS` / `DB_TX_TIMEOUT_MS` | No se ponen en la app (quedan los de Prisma: 2 s y 5 s). Los fija la demo de QA en su propio proceso (`scripts/demo-qa.ts`). |
+
+#### Credenciales de WhatsApp, Google Maps, optimización de rutas y asistente
+
+**No van en el entorno** (SL-36). Son de cada empresa: su maestro las configura en
+`/configuracion/integraciones` y se guardan cifradas con el anillo de arriba. La plataforma no
+presta claves: una empresa sin una integración se queda sin ese servicio (la geocodificación y
+las rutas se degradan, WhatsApp y el asistente avisan de que falta configurarlo).
+
+Las cuatro `INTEGRACIONES_*` son las únicas variables de plataforma de esta parte. Las antiguas
+variables de credenciales de Meta, Google y Anthropic (la lista está en el design de SL-36, §9.3)
+ya no las lee nadie, y la guardia `tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts`
+impide que vuelvan. Si siguen en el panel de Vercel, retirarlas es un paso manual.
+
+Orden del despliegue: primero `INTEGRACIONES_CLAVES_CIFRADO` e `INTEGRACIONES_CLAVE_ACTIVA` en
+Vercel, luego las migraciones y luego el código. Sin ellas la app arranca, pero guardar una
+integración responde con error.
 
 > **`NEXT_PUBLIC_*` se inlinea en build time.** Cambiarlas exige un redeploy.
 > `NEXT_PUBLIC_APP_URL` queda impresa en los QR de las etiquetas físicas: si el
@@ -90,6 +109,140 @@ El script aborta además si la URL de migraciones apunta al pooler
 advisory lock para siempre — y le pone un tope de 120 s para que un cuelgue se
 vea como un build rojo con mensaje, no como un build eterno.
 
+#### Datos de demostración en QA (SL-43)
+
+Después de migrar y antes de `next build`, el `build` corre `tsx scripts/demo-qa.ts --build`, que
+recrea dos empresas de demostración completas: «Demo QA A» (`demo-qa-a`) y «Demo QA B»
+(`demo-qa-b`).
+- **Contenido:** usuarios de cada rol, zonas, tarifas, órdenes en los 20 estados, cierres, caja y
+  cobro de la plataforma.
+- **Cómo se crean:** con los servicios reales de la app. Las órdenes nacen ya ubicadas y la cola no
+  queda con trabajo pendiente: QA no procesa jobs.
+
+**Cuándo corre:**
+
+| Entorno | ¿Recrea la demo? |
+| --- | --- |
+| `VERCEL_ENV=production` | **Nunca** |
+| `VERCEL_ENV=preview` | Solo con `MIGRATE_ON_PREVIEW=true` **y** `DEMO_ON_PREVIEW=true` |
+| build local | No: usa `pnpm demo:qa` |
+
+Cuando se omite, el log dice `[demo-qa] OMITIDA — <motivo>` y el paso no abre ninguna conexión.
+
+**Variables (Preview, solo para la rama `dev`):**
+
+| Variable | Valor | Para qué |
+| --- | --- | --- |
+| `DEMO_ON_PREVIEW` | `true` | Enciende el paso. |
+| `DEMO_QA_CONTRASENA` | contraseña que cumpla la política (sensitive) | La de todos los usuarios demo. Nunca se imprime. |
+| `AUTH_OTP_DEBUG_LOG` | `1` | El código de acceso sale en los logs de Vercel. |
+
+También usa las que ya tiene el build: `DIRECT_URL`, `DATABASE_URL`, `SUPABASE_URL` y
+`SUPABASE_SERVICE_ROLE_KEY`.
+
+**La guardia anti-producción** tiene tres capas, y cualquiera de ellas detiene la demo con el build
+en rojo:
+1. `VERCEL_ENV` no puede ser `production`.
+2. `DIRECT_URL`, `DATABASE_URL` y `SUPABASE_URL` tienen que ser del mismo proyecto.
+3. La base tiene que estar marcada como QA.
+
+Supabase no admite `ALTER DATABASE … SET` ni `ALTER ROLE … SET` con un parámetro propio: los dos
+devuelven `42501`. Por eso la marca es una fila en una tabla de plataforma que las migraciones crean
+vacía. Se pone una sola vez y **solo en la base de QA**, con:
+
+```sql
+INSERT INTO entorno_marca (clave, valor) VALUES ('entorno', 'qa');
+```
+
+Para que la demo no tumbe el primer despliegue:
+1. Despliega una vez con la migración `20261025160100_entorno_marca` y sin `DEMO_ON_PREVIEW`.
+2. Inserta la fila.
+3. Crea `DEMO_ON_PREVIEW`.
+
+**Qué se pierde:** cada despliegue borra las empresas demo con todo lo que tengan, incluidos sus
+archivos de Storage, y las crea de nuevo. **Lo que alguien cree a mano dentro de una empresa demo se
+pierde en el siguiente despliegue.** Para probar algo que deba durar, usa una empresa real de QA. Las
+empresas que no son demo nunca se tocan: una empresa es demo por la columna `organizacion.es_demo`,
+que solo pone la demo, no por su nombre.
+
+**Cómo entrar:**
+- El log del build lista, por empresa, el perfil y el correo de cada usuario demo
+  (`servi-demo-qa-<a|b>-<perfil>@yopmail.com`). La contraseña es la de `DEMO_QA_CONTRASENA`. El buzón
+  de yopmail es público: no uses esos correos para nada que no sea la demo.
+- El código de acceso se lee en los logs de la función de Vercel, gracias a `AUTH_OTP_DEBUG_LOG=1`.
+- El usuario de la API key lo crea `ApiKeyService` con su propio correo y no navega. Para probar la
+  API, crea tu propia key desde la pantalla.
+
+**Si la demo falla, el build falla**, como una migración, y `dev` deja de desplegarse a QA.
+- Para desbloquearlo, **quita `DEMO_ON_PREVIEW`** de Preview en Vercel: el siguiente build omite la
+  demo y despliega.
+- QA sigue sirviendo la versión anterior mientras tanto.
+- La demo tiene un tope propio de 15 minutos.
+
+**En local:** `pnpm demo:qa` corre la demo a mano con la misma guardia. La base local tiene que tener
+la fila de `entorno_marca`, y las tres URLs tienen que ser locales.
+
 ### Usuarios
 
-La app nace sin ningún usuario; el primero, el superadmin, llega con SL-32.
+La app nace sin ningún usuario. El primero es el **superadmin** de la plataforma, que no
+pertenece a ninguna empresa. Lo crea un comando, y desde su pantalla «Empresas» se da de alta
+cada empresa con su primer maestro.
+
+```bash
+pnpm arranque:superadmin
+```
+
+- **Cuándo:** a mano, **una vez por entorno**, después de `prisma migrate deploy` y de
+  `pnpm db:seed`. No forma parte del `build` ni de CI. La única excepción es el E2E, que lo corre
+  con credenciales de prueba.
+- **Qué lee:** seis variables de entorno obligatorias, sin valor por defecto, declaradas vacías en
+  `.env.example`: `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, `SUPERADMIN_NOMBRE`,
+  `SUPERADMIN_TELEFONO`, `SUPERADMIN_DOCUMENTO` y `SUPERADMIN_TIPO_DOCUMENTO`. La contraseña
+  cumple la política de contraseñas nuevas y solo se guarda su hash. El tipo de documento es un
+  valor del catálogo `tipo_identificacion`. Los valores no se commitean ni se pegan en ningún
+  sitio, y después de correrlo no hace falta dejarlas en el entorno.
+- **Qué responde:**
+
+  | Salida | Código |
+  | --- | --- |
+  | Superadmin creado | 0 |
+  | Ya existe un superadmin: no cambia nada, tampoco la contraseña | 0 |
+  | Una variable falta o no es válida: nombra la variable y la regla | 1 |
+  | El email o el documento ya son de otro usuario | 1 |
+  | Falta el rol o el tipo de documento en el catálogo: pide `pnpm db:seed` | 1 |
+
+  Ningún mensaje lleva la contraseña, el email ni el documento. Dos ejecuciones a la vez dejan un
+  solo superadmin, y las dos terminan en 0: la base solo admite uno.
+- **La contraseña** se cambia con «¿Olvidaste tu contraseña?», no volviendo a correr el comando.
+
+#### El correo, sin el cual nadie entra
+
+El superadmin entra por `/login`. En un dispositivo nuevo, el login pide un código por correo. El
+maestro de cada empresa nueva recibe al darse de alta un correo de bienvenida con un enlace para
+crear su contraseña; vale una sola vez y caduca. Si no le llega o se le vence, el superadmin lo
+reenvía con «Reenviar bienvenida» en la fila de la empresa, en «Empresas», o el maestro pide un
+código con «¿Olvidaste tu contraseña?», que queda de respaldo. Así que, antes de dar de alta la
+primera empresa real, cada entorno necesita el correo configurado (por entorno en Vercel:
+Production y Preview por separado):
+
+- **Con SMTP:** el relay de Brevo. `SMTP_HOST=smtp-relay.brevo.com` y `SMTP_PORT=587`, con
+  `SMTP_USER` y `SMTP_PASSWORD`, que son el usuario y la clave SMTP de la cuenta de Brevo.
+  `SMTP_FROM` es el remitente, y tiene que ser uno verificado en Brevo: si falta, se usa
+  `SMTP_USER`, que en Brevo es un login y no una dirección desde la que se pueda enviar. Con
+  `SMTP_USER` y `SMTP_PASSWORD` puestas, el correo sale de verdad.
+- **Sin SMTP** (desarrollo y CI): si falta `SMTP_USER` o `SMTP_PASSWORD`, el correo cae a
+  `ConsoleEmailSender` y no sale ninguno. El log recoge el destinatario y el asunto, que no lleva
+  el código. El código solo se imprime con `AUTH_OTP_DEBUG_LOG=1`,
+  que en producción se deja vacío porque deja un secreto en los logs.
+
+- **`NEXT_PUBLIC_APP_URL`**: la URL pública de la app, sin barra final. Sin ella la bienvenida no
+  sale (el alta termina igual, la pantalla avisa de que el correo no salió y el servidor registra un
+  aviso que nombra la variable), y la cabecera de los correos lleva el nombre en texto en vez del
+  logo.
+- **`AUTH_BIENVENIDA_TTL_HORAS`** (opcional): las horas que vale el enlace de bienvenida. Por
+  defecto, 72.
+- **`EMAIL_CONTACTO`** (opcional): un email de contacto para el pie de todos los correos. Vacía o
+  con un valor que no es un email, el pie no muestra ninguna dirección.
+
+Comprueba que llega un código real en cada entorno antes de dar de alta la primera empresa, y que
+la bienvenida de la primera empresa llega con el enlace bien formado.

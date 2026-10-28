@@ -1,3 +1,4 @@
+import { moduloActivo } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -49,6 +50,10 @@ export default async function WalletMensajerosPage() {
   const fechaInicialPremios = fechaObjetivo(ahora);
   const fechaMaximaPremios = fechaCalendarioCR(ahora);
 
+  // SL-23 (design §6.3): los premios del ranking exigen Ranking (Wallet es núcleo desde el
+  // 2026-10-28); con Ranking apagado la pestaña de premios no se pinta.
+  const rankingActivo = await moduloActivo("ranking");
+
   return (
     <AppPage
       title="Cuentas por pagar a mensajeros"
@@ -76,10 +81,11 @@ export default async function WalletMensajerosPage() {
               pageSize: cuentasResult.pageSize,
             },
           }}
-          premios={{
-            fechaInicial: fechaInicialPremios,
-            fechaMaxima: fechaMaximaPremios,
-          }}
+          premios={
+            rankingActivo
+              ? { fechaInicial: fechaInicialPremios, fechaMaxima: fechaMaximaPremios }
+              : null
+          }
         />
       </section>
     </AppPage>

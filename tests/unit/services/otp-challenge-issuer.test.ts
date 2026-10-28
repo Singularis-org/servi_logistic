@@ -19,6 +19,7 @@ describe("OtpChallengeIssuer", () => {
       create,
       findActiveById: vi.fn(),
       markConsumed: vi.fn(),
+      consumirSiActivo: vi.fn(),
       findLatestActiveByUsuarioId: vi.fn(),
       contarRecientesPorUsuario: vi.fn(),
     };
@@ -54,6 +55,7 @@ describe("OtpChallengeIssuer", () => {
       create,
       findActiveById: vi.fn(),
       markConsumed: vi.fn(),
+      consumirSiActivo: vi.fn(),
       findLatestActiveByUsuarioId: vi.fn(),
       contarRecientesPorUsuario: vi.fn(),
     };
@@ -101,6 +103,7 @@ describe("OtpChallengeIssuer (feature 80)", () => {
       }),
       findActiveById: vi.fn(),
       markConsumed: vi.fn(),
+      consumirSiActivo: vi.fn(),
       findLatestActiveByUsuarioId: vi.fn(),
       contarRecientesPorUsuario: vi.fn(),
     };
@@ -123,3 +126,8 @@ describe("OtpChallengeIssuer (feature 80)", () => {
     expect(escrito).not.toContain(code);
   });
 });
+
+// SL-41 (R9) decía que login y «recuperar contraseña» mandaban EL MISMO correo de código. Desde
+// SL-18 (R16, R20) la recuperación manda un enlace por cuenta y no pasa por este emisor; su correo
+// se prueba en `tests/unit/password-reset-por-empresa.test.ts`. El emisor sigue vivo: es el del OTP
+// del login.

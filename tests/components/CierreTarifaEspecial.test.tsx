@@ -11,7 +11,7 @@
 //                              no traía pacto, así que se cobró la tarifa normal. El importe es
 //                              idéntico al de una orden corriente y el hueco de configuración
 //                              sólo se ve por esta marca.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -21,7 +21,7 @@ import {
   ESPECIAL_BADGE_LABEL,
   ESPECIAL_BADGE_NOTA,
   ESPECIAL_SIN_PACTO_BADGE_LABEL,
-  ESPECIAL_SIN_PACTO_BADGE_NOTA,
+  especialSinPactoBadgeNota,
   TARIFA_ESPECIAL_LABEL,
   TARIFA_ESPECIAL_DEV_LABEL,
   COBROS_TITULO,
@@ -36,6 +36,18 @@ import type {
   IngresoEmpresaDTO,
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
+
+import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
+// SL-20 (R19): la nota nombra el nivel 3 con el nombre del país (aquí, Costa Rica).
+const NOTA_SIN_PACTO = especialSinPactoBadgeNota(ETIQUETAS_CR);
 
 function tarifa(over: Partial<TarifaSnapshotDTO> = {}): TarifaSnapshotDTO {
   return {
@@ -181,7 +193,7 @@ describe("Marca del origen del flete en la fila del detalle", () => {
       ingreso({ esZonaEspecial: true, fleteOrigen: "especial_sin_pacto" }),
     );
     const badge = within(celda).getByText(ESPECIAL_SIN_PACTO_BADGE_LABEL);
-    expect(badge).toHaveAttribute("aria-label", ESPECIAL_SIN_PACTO_BADGE_NOTA);
+    expect(badge).toHaveAttribute("aria-label", NOTA_SIN_PACTO);
     // Y NO se confunde con el caso en que sí se cobró el pacto.
     expect(within(celda).queryByText(ESPECIAL_BADGE_LABEL)).toBeNull();
   });
@@ -249,7 +261,7 @@ describe("Desglose auditable de una orden con tarifa especial", () => {
         g={gestion(ingreso({ esZonaEspecial: true, fleteOrigen: "especial_sin_pacto" }))}
       />,
     );
-    expect(screen.getByRole("note")).toHaveTextContent(ESPECIAL_SIN_PACTO_BADGE_NOTA);
+    expect(screen.getByRole("note")).toHaveTextContent(NOTA_SIN_PACTO);
     // El flete SÍ salió de la columna normal, así que ahí es donde tiene que aparecer el importe.
     // ⏳ FICHA 337: y en EXACTAMENTE UNA fila. Antes se marcaban dos —la entrega y una devolución
     // que no existia—, y un `> 0` no distinguia una cosa de la otra.

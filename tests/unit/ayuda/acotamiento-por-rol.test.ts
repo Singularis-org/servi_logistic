@@ -133,13 +133,16 @@ describe("R3 — /ordenes es la única ruta con dos documentos, y cada rol recib
 // derivados del catálogo: derivarlos los dejaría verdes pase lo que pase.
 
 describe("R21 — maestro y admin pasan a leer el catálogo ENTERO", () => {
-  it("los dos leen los 33 documentos, y el catálogo tiene 33", () => {
+  it("los dos leen los 37 documentos, y el catálogo tiene 37", () => {
     // Si alguien añade un documento, este número se mueve a mano —igual que el recuento de
     // `AyudaLayout.test.tsx`— y eso es lo que se quiere: que la cuenta se decida, no que se
     // recalcule sola.
-    expect(docs.length).toBe(33);
-    expect(legibles("maestro")).toHaveLength(33);
-    expect(legibles("admin")).toHaveLength(33);
+    //
+    // SL-36: 33→38 por las cinco guías de integraciones (`roles: [maestro]`).
+    // SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
+    expect(docs.length).toBe(37);
+    expect(legibles("maestro")).toHaveLength(37);
+    expect(legibles("admin")).toHaveLength(37);
   });
 
   it("⭑ y eso incluye, uno a uno, los DIEZ que antes le daban 404 al maestro", () => {
@@ -166,8 +169,10 @@ describe("R21 — maestro y admin pasan a leer el catálogo ENTERO", () => {
       expect(puedeLeerDocumento(doc!, "maestro"), slug).toBe(true);
       expect(puedeLeerDocumento(doc!, "admin"), slug).toBe(true);
     }
-    // Y la cuenta cierra: 33 menos esos diez son los 23 que el maestro veía.
-    expect(slugs("maestro")).toHaveLength(33 - antesProhibidos.length);
+    // Y la cuenta cierra: 37 menos esos diez son los 27 que el maestro ve como suyos (23 de la
+    // 435 más las cinco guías de integraciones de SL-36, menos `oficina/configuracion-geografia`
+    // que SL-20 retira en su decisión 9; no estaba entre los diez: era `roles: [maestro, admin]`).
+    expect(slugs("maestro")).toHaveLength(37 - antesProhibidos.length);
   });
 
   it("el admin suma además el histórico de acciones, que es sólo del maestro", () => {
@@ -176,7 +181,9 @@ describe("R21 — maestro y admin pasan a leer el catálogo ENTERO", () => {
     expect(acciones).toBeDefined();
     expect(documentoVisiblePara(acciones!, "admin")).toBe(false);
     expect(puedeLeerDocumento(acciones!, "admin")).toBe(true);
-    expect(slugs("admin")).toHaveLength(22);
+    // SL-20 (decisión 9): 22→21 al retirar `oficina/configuracion-geografia.md`, que el admin
+    // veía como suya (`roles: [maestro, admin]`).
+    expect(slugs("admin")).toHaveLength(21);
   });
 
   it("las dos puertas duras siguen cerradas: sin sesión y `apiKey` no leen NADA", () => {

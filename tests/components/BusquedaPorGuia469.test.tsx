@@ -405,18 +405,26 @@ describe("469 T12/T13 — la caja (`/wallet`)", () => {
     egresosPropios: "0.00", ganancia: "0.00", signoGanancia: "cero" as const, deTerceros: "0.00", periodoFiltrado: false,
     porcentajeTiendas: "0.00", modoComposicion: "dos_bolsillos" as const, capital: "0.00", signoCapital: "cero" as const,
     deEmpresa: "0.00", signoDeTerceros: "cero" as const, deTercerosAbsoluto: "0.00", estado: "flujo" as const, flujoDesde: "2026-08-25",
+    iva: "0.00", signoIva: "cero" as const, // SL-39
   };
   const COMPOSICION = {
     ingresos: {
-      ingreso_flete: "0.00", ingreso_flete_devolucion: "0.00", ingreso_comision_cod: "0.00", ingreso_iva_flete: "0.00",
-      ingreso_iva_flete_devolucion: "0.00", ingreso_iva_comision_cod: "0.00", ingreso_ajuste: "0.00", ingreso_cobro_tienda: "0.00",
+      ingreso_flete: "0.00", ingreso_flete_devolucion: "0.00", ingreso_comision_cod: "0.00",
+      ingreso_ajuste: "0.00", ingreso_cobro_tienda: "0.00",
     },
     totalIngresos: "0.00",
     egresos: {
       egreso_pago_mensajero: "0.00", egreso_ajuste: "0.00", egreso_reverso_cobro_tienda: "0.00",
-      egreso_reverso_flete_devolucion: "0.00", egreso_reverso_iva_flete_devolucion: "0.00",
+      egreso_reverso_flete_devolucion: "0.00",
+      egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
     },
     otrosEgresos: "0.00", hayOtrosEgresos: false, totalEgresos: "0.00",
+    // SL-39: el IVA va en su bloque, fuera de las dos columnas de la ganancia.
+    iva: {
+      ingreso_iva_flete: "0.00", ingreso_iva_flete_devolucion: "0.00", ingreso_iva_comision_cod: "0.00",
+      egreso_reverso_iva_flete_devolucion: "0.00",
+    },
+    totalIva: "0.00",
   };
   const DESGLOSE = { gastoFijo: "0.00", gastoVariable: "0.00", sueldo: "0.00", indemnizacion: "0.00", total: "0.00" };
 

@@ -25,12 +25,24 @@ import {
 } from "@/app/(app)/ordenes/_components/CorregirDatosClienteAccion";
 import {
   CORREGIR_TITULO,
-  CORREGIR_PROVINCIA_LABEL,
-  CORREGIR_CANTON_LABEL,
-  CORREGIR_DISTRITO_LABEL,
   CORREGIR_UBICACION_CARGANDO,
 } from "@/app/(app)/ordenes/_components/CorregirDatosClienteModal";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
+
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
+// SL-20 (R19): los rótulos de los tres desplegables son los nombres de nivel del país de la empresa
+// (antes `CORREGIR_PROVINCIA_LABEL` y sus hermanas). Estos casos son de Costa Rica.
+const CORREGIR_PROVINCIA_LABEL = ETIQUETAS_CR.provincia.singular;
+const CORREGIR_CANTON_LABEL = ETIQUETAS_CR.canton.singular;
+const CORREGIR_DISTRITO_LABEL = ETIQUETAS_CR.distrito.singular;
 
 const corregirDatosClienteMock = vi.fn();
 const obtenerUbicacionOrdenMock = vi.fn();

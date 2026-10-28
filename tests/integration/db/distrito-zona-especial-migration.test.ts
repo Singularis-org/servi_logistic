@@ -13,6 +13,10 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 // en `false` (el DEFAULT rellena hacia atras, NO deja NULL), una insertada despues sin decir nada
 // tambien cae en `false`, y `NULL` solo aparece si alguien lo escribe a proposito—. Un
 // `toMatch(/DEFAULT false/)` se satisface reescribiendo la linea; esto no.
+//
+// SL-38: la columna la retira `20261023120100_retirar_distrito_zona_especial` (la marca pasa a
+// `distrito_zona_especial`, por empresa). Esta migracion sigue en la historia y su SQL se sigue
+// midiendo en un esquema desechable; lo que cambia es que el schema de Prisma ya no declara el campo.
 
 const DIR = path.join(process.cwd(), "db", "migrations", "20260824180000_distrito_zona_especial");
 
@@ -27,12 +31,19 @@ describe("migracion distrito_zona_especial — forma en disco", () => {
     expect(down).toMatch(/DROP COLUMN IF EXISTS "zona_especial"/);
   });
 
-  it("el schema de Prisma declara el campo opcional, mapeado y con default false", () => {
+  it("SL-38 (R6): el modelo Distrito de Prisma ya no declara el campo: la marca es de la empresa", () => {
     const schema = fs.readFileSync(path.join(process.cwd(), "db", "schema.prisma"), "utf8");
-    // `Boolean?` (opcional) + `@default(false)` + el `@map` a snake_case de la columna real.
-    expect(schema).toMatch(
-      /zonaEspecial\s+Boolean\?\s+@default\(false\)\s+@map\("zona_especial"\)/,
-    );
+    // El bloque del modelo, sin comentarios: un comentario que cite la columna vieja no cuenta.
+    const distrito = /\nmodel Distrito \{([\s\S]*?)\n\}/.exec(schema)?.[1];
+    expect(distrito, "no se encontro `model Distrito` en el schema").toBeDefined();
+    const codigo = distrito!
+      .split("\n")
+      .map((l) => l.replace(/\/\/.*$/, ""))
+      .join("\n");
+    // Anti-vacuidad: el bloque es el de verdad (trae la relacion nueva de SL-38).
+    expect(codigo).toMatch(/\bzonasEspeciales\s+DistritoZonaEspecial\[\]/);
+    expect(codigo).not.toMatch(/\bzonaEspecial\b/);
+    expect(codigo).not.toMatch(/"zona_especial"/);
   });
 });
 

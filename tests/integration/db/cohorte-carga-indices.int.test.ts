@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 import type { PrismaClient } from "@prisma/client";
 
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 import {
+  CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   crearPrismaDeTestConEspia,
@@ -92,14 +94,82 @@ describe("R36 · los dos indices estan DECLARADOS en el datamodel", () => {
   });
 });
 
+/**
+ * ─── VOLUMEN PROPIO (SL-18, decision humana 2026-10-26) ───────────────────────────────────
+ *
+ * La app nace vacia (SL-11): en la base de test `orden` no tiene filas. Con la tabla vacia y el
+ * seq scan desactivado, el planificador elige por coste el compuesto por empresa de SL-18
+ * (`Index Only Scan`, `created_at` como filtro) en vez de `orden_created_at_idx`: mide el tamano
+ * de la base, no el indice. Con volumen, la ventana va por `orden_created_at_idx` (medido en
+ * `progress/impl_SL-18.md`, Tanda 5).
+ *
+ * Por eso el plan se calcula con ordenes propias, sembradas en una transaccion que SIEMPRE se
+ * revierte (patron de `indices-rutas-calientes.test.ts`): nada queda en la base aunque el proceso
+ * muera. Las filas son sinteticas y van en modo replica (sin FK ni triggers, que no cambian el
+ * plan). Las fechas cubren de 2000-06 a 2001-07, a 15 minutos: la ventana D..D+2 es ~0,5 % de la
+ * tabla. Despues `ANALYZE`, que tambien se revierte.
+ */
+const ORDENES_SEMBRADAS = 40_000;
+const PREFIJO = "sl18-coh411";
+
+class Revertir extends Error {
+  constructor() {
+    super("rollback deliberado del test");
+  }
+}
+
+async function sembrarOrdenes(tx: TxDeTest, empresa: string): Promise<void> {
+  await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`);
+  await tx.$executeRawUnsafe(
+    `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, tienda_id, zona_id, provincia_id,
+       canton_id, producto, updated_at, created_at, prioridad, deleted_at, organizacion_id)
+     SELECT '${PREFIJO}-o-' || g, 'r' || g, 'e', 'd', '8', '${PREFIJO}-t-' || (g % 50), '${PREFIJO}-z-' || (g % 30),
+       'p', 'c', 'x', now(), timestamp '2000-06-01' + g * interval '15 minutes', g % 20 = 0,
+       CASE WHEN g % 25 = 0 THEN now() END, $1
+     FROM generate_series(1, $2::int) g`,
+    empresa,
+    ORDENES_SEMBRADAS,
+  );
+  // Una transicion por orden: el CTE `cierre` tiene historial que recorrer.
+  await tx.$executeRawUnsafe(
+    `INSERT INTO orden_historial_estado (id, orden_id, estatus_destino_id, origen_tipo, created_at, organizacion_id)
+     SELECT '${PREFIJO}-h-' || o.id, o.id, o.estatus_id, (enum_range(NULL::orden_historial_origen_tipo))[1],
+       o.created_at, o.organizacion_id
+     FROM orden o WHERE o.organizacion_id = $1`,
+    empresa,
+  );
+  await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = origin`);
+  // Sin estadisticas frescas el planificador cree que la tabla tiene el tamano de antes.
+  await tx.$executeRawUnsafe(`ANALYZE orden`);
+  await tx.$executeRawUnsafe(`ANALYZE orden_historial_estado`);
+}
+
 describe.skipIf(!HAY_BASE_DE_DATOS)("R36 · el plan de la consulta REAL de la cohorte", () => {
   let prisma: PrismaClient;
   let espia: { prisma: PrismaClient; eventos: EventoSqlDeTest[] };
+  /** El plan de la consulta real, medido con el volumen sembrado y ya revertido. */
+  let planConVolumen = "";
 
-  beforeAll(() => {
+  beforeAll(async () => {
     prisma = crearPrismaDeTest();
     espia = crearPrismaDeTestConEspia();
-  });
+
+    const { sql, params } = await consultaEmitida();
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+          const empresa = (await crearOrganizacion(tx)).id;
+          await sembrarOrdenes(tx, empresa);
+          planConVolumen = await planEn(tx, sql, params);
+          throw new Revertir();
+        },
+        { timeout: 120_000, maxWait: 30_000 },
+      );
+    } catch (e) {
+      if (!(e instanceof Revertir)) throw e;
+    }
+  }, 180_000);
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -123,15 +193,10 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("R36 · el plan de la consulta REAL de la co
     return { sql: evento.query, params: parametrosDe(evento) };
   }
 
-  async function planDe(sql: string, params: unknown[]): Promise<string> {
-    return prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
-      const plan = await tx.$queryRawUnsafe<{ "QUERY PLAN": string }[]>(
-        `EXPLAIN ${sql}`,
-        ...params,
-      );
-      return plan.map((f) => f["QUERY PLAN"]).join("\n");
-    });
+  async function planEn(tx: TxDeTest, sql: string, params: unknown[]): Promise<string> {
+    await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
+    const plan = await tx.$queryRawUnsafe<{ "QUERY PLAN": string }[]>(`EXPLAIN ${sql}`, ...params);
+    return plan.map((f) => f["QUERY PLAN"]).join("\n");
   }
 
   it("los dos indices estan aplicados en esta base (si no, no hay nada que medir)", async () => {
@@ -146,9 +211,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("R36 · el plan de la consulta REAL de la co
     ).toEqual([INDICE_ORDEN, INDICE_HISTORIAL].sort());
   });
 
-  it("el plan entra a `orden_historial_estado` POR INDICE, y no por un Seq Scan", async () => {
-    const { sql, params } = await consultaEmitida();
-    const texto = await planDe(sql, params);
+  it("el plan entra a `orden_historial_estado` POR INDICE, y no por un Seq Scan", () => {
+    const texto = planConVolumen;
+    expect(texto, "no se midio el plan").not.toBe("");
 
     // Lo que R36 exige, literal: nada de recorrido secuencial teniendo alternativa.
     expect(/Seq Scan on orden_historial_estado/i.test(texto), texto).toBe(false);
@@ -162,9 +227,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("R36 · el plan de la consulta REAL de la co
     ).not.toEqual([]);
   });
 
-  it("y tambien el de la ventana de carga sobre `orden(created_at)`", async () => {
-    const { sql, params } = await consultaEmitida();
-    const texto = await planDe(sql, params);
+  it("y tambien el de la ventana de carga sobre `orden(created_at)`", () => {
+    const texto = planConVolumen;
+    expect(texto, "no se midio el plan").not.toBe("");
 
     expect(texto, `el plan no nombra ${INDICE_ORDEN}:\n${texto}`).toContain(INDICE_ORDEN);
   });

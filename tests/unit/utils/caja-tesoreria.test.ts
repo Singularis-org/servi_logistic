@@ -231,6 +231,9 @@ describe("derivarCaja — las dos cifras (R1/R4/R5)", () => {
       deTercerosAbsoluto: "0.00",
       estado: "flujo",
       flujoDesde: null,
+      // SL-39 (R2): el IVA de la caja, en cero y con su signo.
+      iva: "0.00",
+      signoIva: "cero",
     });
   });
 
@@ -248,10 +251,12 @@ describe("derivarCaja — las dos cifras (R1/R4/R5)", () => {
     // Ficha 459 (reescrito): los tres ingresos propios (489) son CARGOS a la tienda.
     expect(r.entradas).toBe("5000.00"); // solo el contra-entrega es efectivo
     expect(r.salidas).toBe("1250.00"); // 200 + 50 + 1000
-    expect(r.ingresosPropios).toBe("489.00"); // 300 + 150 + 39 (para la ganancia siguen contando)
+    // SL-39 (R1/R3): el IVA del flete (39) no es ganancia: va aparte. Antes 489 y 239.
+    expect(r.ingresosPropios).toBe("450.00"); // 300 + 150
     expect(r.egresosPropios).toBe("250.00"); // 200 + 50 (el pago a tienda es de terceros)
     expect(r.enCaja).toBe("3750.00"); // 5000 − 1250
-    expect(r.ganancia).toBe("239.00");
+    expect(r.ganancia).toBe("200.00"); // 450 − 250
+    expect(r.iva).toBe("39.00");
     expect(r.deTerceros).toBe("3511.00"); // 5000 − 1000 − 489
   });
 
@@ -435,5 +440,32 @@ describe("derivarCaja — money-safe y frontera (R7/R10)", () => {
     expect(conFiltros.periodoFiltrado).toBe(true);
     // El rotulo cambia; el numero NO.
     expect({ ...conFiltros, periodoFiltrado: false }).toEqual(sinFiltros);
+  });
+});
+
+describe("SL-45 — el pago a la plataforma en la caja (R8, D9)", () => {
+  // Los importes van escritos a mano: son R8 dicho con números. Un pago de 1.000,00 desde una caja que
+  // tenía 5.000,00 de una corrección (propia y en efectivo): la cifra principal baja 1.000, «Salió» sube
+  // 1.000, la ganancia baja 1.000, y «De las tiendas», el capital y el IVA no se mueven.
+  it("R8: un pago de 1.000,00 es un egreso propio en efectivo", () => {
+    const antes = derivarCaja([fila("ingreso_ajuste", "5000.00")]);
+    const despues = derivarCaja([fila("ingreso_ajuste", "5000.00"), fila("egreso_pago_plataforma", "1000.00")]);
+
+    expect(antes).toMatchObject({ enCaja: "5000.00", salidas: "0.00", ganancia: "5000.00" });
+    expect(despues).toMatchObject({
+      enCaja: "4000.00",
+      entradas: "5000.00",
+      salidas: "1000.00",
+      ganancia: "4000.00",
+      egresosPropios: "1000.00",
+      deTerceros: "0.00",
+      capital: "0.00",
+      iva: "0.00",
+    });
+  });
+
+  it("D9: se clasifica como el sueldo, propio y en efectivo", () => {
+    expect(NATURALEZA_POR_CATEGORIA.egreso_pago_plataforma).toBe("propio");
+    expect(LIQUIDEZ_POR_CATEGORIA.egreso_pago_plataforma).toBe("efectivo");
   });
 });

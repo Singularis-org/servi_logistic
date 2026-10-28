@@ -21,6 +21,10 @@ import { obtenerRankingHistoricoAction } from "@/lib/actions/ranking-historico";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { RankingSnapshotData } from "@/lib/types/ranking-snapshot";
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

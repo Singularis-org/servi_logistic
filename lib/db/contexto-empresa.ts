@@ -11,7 +11,16 @@ export type ContextoDatos =
   | { tipo: "empresa"; organizacionId: string; enTransaccion?: boolean }
   | { tipo: "plataforma"; ficha: FichaJira; motivo: string };
 
-const almacen = new AsyncLocalStorage<ContextoDatos>();
+// El almacen vive en `globalThis`, como el cliente (`__prisma__` en `prisma-client.ts`), y no en
+// una constante de modulo. En `next dev`/`next start` el middleware y la app cargan copias
+// distintas de este modulo en el mismo proceso: el cliente singleton lo crea la primera copia que
+// llega y su extension lee el almacen de ESA copia, asi que el `comoPlataforma` de la otra
+// escribia en un almacen que nadie leia y el login caia en `EmpresaNoResuelta`. Con una sola
+// instancia por proceso, todas las copias leen y escriben el mismo contexto. `Symbol.for` da la
+// misma clave en todas las copias sin ensuciar el espacio de nombres global.
+const CLAVE_ALMACEN = Symbol.for("servi-logistic.contexto-datos");
+type ConAlmacen = { [CLAVE_ALMACEN]?: AsyncLocalStorage<ContextoDatos> };
+const almacen = ((globalThis as ConAlmacen)[CLAVE_ALMACEN] ??= new AsyncLocalStorage<ContextoDatos>());
 
 export function contextoActual(): ContextoDatos | undefined {
   return almacen.getStore();

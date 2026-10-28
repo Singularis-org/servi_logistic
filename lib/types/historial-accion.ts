@@ -50,8 +50,9 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 55 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
- * permisos) y es el que consume el selector de filtros: no se reordena por gusto.
+ * Los 72 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) mas las integraciones de SL-36 y los modulos de SL-23, y es el que consume el selector de filtros: no se
+ * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
   // --- A.1 · mueve dinero (31) ---
@@ -335,12 +336,33 @@ export const HISTORIAL_ACCION_TIPOS = [
   // Y la fila SOBREVIVE a la key: `entidad_id` es opaco y sin FK, y `entidad_etiqueta` va
   // denormalizada (R26).
   "api_key_eliminada", // api-keys.eliminarApiKey -> ApiKeyRepository.eliminar
+
+  // --- A.4 · cambia las integraciones (5) ---
+  // ⭑ SL-36 (design §13, R33): categoria PROPIA y no «cambia permisos». Lo que estas filas
+  // documentan es con que cuenta de un tercero habla la empresa (WhatsApp, Google, Anthropic), no
+  // quien puede hacer que dentro de la app; meterlas con las API keys mezclaria en el filtro las
+  // credenciales que la empresa da con las que la empresa recibe. Un tipo por metodo del
+  // repositorio (la guardia del censo mide por metodo). NUNCA la credencial ni el mensaje del
+  // proveedor: en `integracion_probada`, `valor_nuevo` es `ok` o el codigo del catalogo.
+  "integracion_conectada", // IntegracionRepository (alta)
+  "integracion_actualizada", // IntegracionRepository (edicion)
+  "integracion_probada", // IntegracionRepository (probar)
+  "integracion_token_regenerado", // IntegracionRepository (regenerar token)
+  "integracion_desconectada", // IntegracionRepository (desconectar)
+
+  // --- A.5 · cambia los modulos de una empresa (2) ---
+  // SL-23 (design §4.3): el superadmin enciende o apaga un modulo de una empresa. Categoria
+  // propia: no mueve dinero, no borra un documento de negocio y no cambia quien puede hacer que,
+  // sino QUE PARTES de la app tiene la empresa. `entidad_etiqueta` es el nombre del modulo y
+  // `valor_nuevo` su clave, ambos del catalogo.
+  "modulo_activado",
+  "modulo_desactivado",
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
 
 /**
- * Los 21 tipos de entidad que una accion del catalogo puede afectar.
+ * Los 26 tipos de entidad que una accion del catalogo puede afectar.
  *
  * ⭑ FICHA 374 — `provincia`, `canton` y `distrito` son la PRIMERA ampliacion de este enum: nacio
  * con 17 valores en `20260902120000_historial_accion` y ninguna migracion posterior lo habia
@@ -379,18 +401,33 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   "aporte_capital",
   // ⭑ FICHA 457 — el documento del pago de una tienda a la empresa, 1:1 con su tabla.
   "abono_tienda",
+  // ⭑ SL-36 — la integracion de un servicio, 1:1 con su tabla. Sobrevive a la desconexion (borrado
+  // fisico de la fila): `entidad_id` es opaco y sin FK.
+  "integracion",
+  // ⭑ SL-23 — el modulo encendido de una empresa, 1:1 con su tabla. `entidad_id` es el id de la
+  // fila creada o borrada: opaco y sin FK, sobrevive al borrado de la fila al apagar.
+  "organizacion_modulo",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
 
 /**
  * Las TRES categorias del criterio que fijo el humano: entra lo que mueve dinero, lo que hace
- * desaparecer algo y lo que cambia quien puede hacer que.
+ * desaparecer algo y lo que cambia quien puede hacer que. SL-36 añade la cuarta (design §13): lo
+ * que cambia las integraciones de la empresa con terceros.
  *
  * NO es una columna de la tabla (R17): se DERIVA con `CATEGORIA_POR_ACCION`. Guardarla seria una
  * segunda fuente de verdad capaz de divergir de la lista de tipos que la define.
  */
-export const CATEGORIAS_ACCION = ["mueve_dinero", "hace_desaparecer", "cambia_permisos"] as const;
+export const CATEGORIAS_ACCION = [
+  "mueve_dinero",
+  "hace_desaparecer",
+  "cambia_permisos",
+  // SL-36 (design §13): la cuarta, para las integraciones de la empresa con terceros.
+  "cambia_integraciones",
+  // SL-23 (design §4.3): la quinta, para los modulos encendidos de una empresa.
+  "cambia_modulos",
+] as const;
 
 export type CategoriaAccion = (typeof CATEGORIAS_ACCION)[number];
 
@@ -486,6 +523,13 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   api_key_activada: "cambia_permisos",
   api_key_desactivada: "cambia_permisos",
   api_key_eliminada: "cambia_permisos",
+  integracion_conectada: "cambia_integraciones",
+  integracion_actualizada: "cambia_integraciones",
+  integracion_probada: "cambia_integraciones",
+  integracion_token_regenerado: "cambia_integraciones",
+  integracion_desconectada: "cambia_integraciones",
+  modulo_activado: "cambia_modulos",
+  modulo_desactivado: "cambia_modulos",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -560,6 +604,13 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   api_key_activada: "Activó una API key",
   api_key_desactivada: "Desactivó una API key",
   api_key_eliminada: "Eliminó una API key",
+  integracion_conectada: "Conectó una integración",
+  integracion_actualizada: "Actualizó una integración",
+  integracion_probada: "Probó la conexión de una integración",
+  integracion_token_regenerado: "Regeneró el token del webhook de WhatsApp",
+  integracion_desconectada: "Desconectó una integración",
+  modulo_activado: "Activó un módulo de una empresa",
+  modulo_desactivado: "Desactivó un módulo de una empresa",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */
@@ -567,6 +618,8 @@ export const CATEGORIA_LABELS: Record<CategoriaAccion, string> = {
   mueve_dinero: "Mueve dinero",
   hace_desaparecer: "Hace desaparecer algo",
   cambia_permisos: "Cambia permisos",
+  cambia_integraciones: "Cambia integraciones",
+  cambia_modulos: "Cambia módulos",
 };
 
 /** Etiqueta legible de cada tipo de entidad. */
@@ -597,6 +650,8 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   aporte_capital: "Aporte de dinero a la caja",
   // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+  integracion: "Integración",
+  organizacion_modulo: "Módulo",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */

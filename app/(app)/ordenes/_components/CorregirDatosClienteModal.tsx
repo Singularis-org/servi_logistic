@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import type { CorregirDatosClienteActionResult } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerUbicacionOrden } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
@@ -152,9 +153,6 @@ export const CORREGIR_NOTAS_AYUDA = "Se puede dejar vacío.";
 // --- Ficha 327 — la ubicacion --------------------------------------------------------------------
 
 export const CORREGIR_DIRECCION_LABEL = "Dirección";
-export const CORREGIR_PROVINCIA_LABEL = "Provincia";
-export const CORREGIR_CANTON_LABEL = "Cantón";
-export const CORREGIR_DISTRITO_LABEL = "Distrito";
 export const CORREGIR_PESO_LABEL = "Peso (kg)";
 
 export const CORREGIR_PROVINCIA_PLACEHOLDER = "Elige una provincia";
@@ -321,6 +319,9 @@ export function CorregirDatosClienteModal({
   onSuccess,
 }: Readonly<CorregirDatosClienteModalProps>) {
   const toast = useToast();
+  // SL-20 (design §7; R19): los rótulos de los tres desplegables son los nombres de nivel del país
+  // de la empresa. Antes eran `CORREGIR_PROVINCIA_LABEL` y sus dos hermanas, con los de Costa Rica.
+  const etiquetas = useEtiquetasGeograficas();
   const destinatarioId = useId();
   const telefonoId = useId();
   const productoId = useId();
@@ -698,10 +699,10 @@ export function CorregirDatosClienteModal({
             otra provincia produciria justo la geografia incoherente que el servidor rechaza (R6). */}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={provinciaSelectId}>{CORREGIR_PROVINCIA_LABEL}</Label>
+            <Label htmlFor={provinciaSelectId}>{etiquetas.provincia.singular}</Label>
             <Select
               id={provinciaSelectId}
-              aria-label={CORREGIR_PROVINCIA_LABEL}
+              aria-label={etiquetas.provincia.singular}
               value={provincia}
               options={provincias}
               placeholder={CORREGIR_PROVINCIA_PLACEHOLDER}
@@ -717,10 +718,10 @@ export function CorregirDatosClienteModal({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={cantonSelectId}>{CORREGIR_CANTON_LABEL}</Label>
+            <Label htmlFor={cantonSelectId}>{etiquetas.canton.singular}</Label>
             <Select
               id={cantonSelectId}
-              aria-label={CORREGIR_CANTON_LABEL}
+              aria-label={etiquetas.canton.singular}
               value={canton}
               options={cantones}
               placeholder={CORREGIR_CANTON_PLACEHOLDER}
@@ -735,10 +736,10 @@ export function CorregirDatosClienteModal({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={distritoSelectId}>{CORREGIR_DISTRITO_LABEL}</Label>
+            <Label htmlFor={distritoSelectId}>{etiquetas.distrito.singular}</Label>
             <Select
               id={distritoSelectId}
-              aria-label={CORREGIR_DISTRITO_LABEL}
+              aria-label={etiquetas.distrito.singular}
               value={distrito}
               options={distritos}
               placeholder={CORREGIR_DISTRITO_PLACEHOLDER}

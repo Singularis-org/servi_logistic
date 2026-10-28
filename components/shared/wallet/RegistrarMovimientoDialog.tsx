@@ -197,8 +197,12 @@ export function RegistrarMovimientoDialog({
   const pideMetodo = esPagoPorCuenta || esAbono || esPagoTienda || esPagoMensajero;
   /** R43 — la referencia obligatoria solo donde hoy lo es (método distinto de efectivo). */
   const referenciaObligatoria = pideMetodo && metodo !== "" && metodo !== "efectivo";
-  /** R42/R43 — la referencia OPCIONAL de los registros de caja a mano (458-B, TB.11). */
-  const referenciaOpcional = aQuienPide !== null;
+  /**
+   * R42/R43 — la referencia OPCIONAL de los registros de caja a mano (458-B, TB.11). Va por la clase y
+   * no por «a quién»: el pago a la plataforma (SL-45, R6) no pide «a quién» y conserva la del sueldo.
+   */
+  const registroDeCaja = clase_ === "egreso_administrativo" || clase_ === "ajuste_manual";
+  const referenciaOpcional = registroDeCaja;
   /** Los conceptos cuya fecha es la del pago: no tiene ventana hacia atrás (solo no futura). */
   const fechaSinVentana = esAporte || esAbono || esPagoTienda || esPagoMensajero;
 
@@ -286,7 +290,7 @@ export function RegistrarMovimientoDialog({
       if (problemaFecha !== null) nuevos.fecha = problemaFecha;
     }
     if (descripcion.trim().length === 0) {
-      nuevos.descripcion = aQuienPide === null ? CAMPO_TEXTO.motivoVacio : CAMPO_TEXTO.descripcionVacia;
+      nuevos.descripcion = registroDeCaja ? CAMPO_TEXTO.descripcionVacia : CAMPO_TEXTO.motivoVacio;
     }
     if (cuenta !== null && cuentaId === null) {
       nuevos.cuenta = cuenta === "tienda" ? CUENTA_TEXTO.tienda.sinElegir : CUENTA_TEXTO.mensajero.sinElegir;

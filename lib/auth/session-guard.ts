@@ -12,7 +12,8 @@ import { puedeIniciarSesion } from "@/lib/auth/puede-iniciar-sesion";
  * "Utilizable" son tres condiciones, no una:
  *  1. la sesion existe en la DB y no expiro (`findValidById`, R23a feature 6);
  *  2. el usuario dueno sigue en estado `activo`;
- *  3. el usuario dueno puede tener sesion (`puedeIniciarSesion`, SLT-32): hoy, que tenga empresa.
+ *  3. el usuario dueno puede tener sesion (`puedeIniciarSesion`, SLT-32): que tenga empresa o
+ *     sea de plataforma (SL-32).
  *
  * Los puntos 2 y 3 no son redundantes: `AuthService.login` ya los exige para EMITIR
  * la sesion, pero un usuario desactivado/bloqueado o que perdio su empresa DESPUES
@@ -32,12 +33,13 @@ export async function isSessionActive(sessionId: string): Promise<boolean> {
     const session = await new SessionRepository(prisma).findValidById(sessionId);
     if (!session) return false;
 
-    // La empresa viaja en la misma lectura que el estado: el chequeo SLT-32 no cuesta otra ida a la DB.
+    // Empresa y rol viajan en la misma lectura que el estado: el chequeo SLT-32 no cuesta otra ida
+    // a la DB. `puedeIniciarSesion` exige tambien `activo` (punto 2).
     const usuario = await prisma.usuario.findUnique({
       where: { id: session.userId },
-      select: { estado: true, organizacionId: true },
+      select: { estado: true, organizacionId: true, rol: { select: { value: true } } },
     });
 
-    return usuario?.estado === "activo" && puedeIniciarSesion(usuario);
+    return usuario !== null && puedeIniciarSesion({ ...usuario, rol: usuario.rol.value });
   });
 }

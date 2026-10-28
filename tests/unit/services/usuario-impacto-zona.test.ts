@@ -51,9 +51,10 @@ function usuario(over: Partial<UsuarioPublico> = {}): UsuarioPublico {
 
 function buildRepo(over: Partial<IUserRepository> = {}): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn(),
     updatePasswordHash: vi.fn(),
     restablecerContrasena: vi.fn(),

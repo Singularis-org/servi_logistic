@@ -52,6 +52,25 @@ describe("458-B/TB.12 — un caso por concepto (R44, R45 «no cambia»)", () => 
     }
   });
 
+  it("SL-45 (R8): el pago a la plataforma baja la cifra y la ganancia en M; las tiendas y el capital no cambian", () => {
+    // Cifras escritas a mano: un pago de 600 sobre la caja de 7 500,00 con ganancia de 1 000,00.
+    expect(efecto("pago_plataforma", "600").lineas).toEqual({
+      cuenta: null,
+      cifraPrincipal: { ...SI("7500.00", "6900.00"), rotulo: "flujo" },
+      ganancia: SI("1000.00", "400.00"),
+      deTiendas: NO("6000.00"),
+      capital: NO("500.00"),
+    });
+    expect(efecto("pago_plataforma", "600")).toMatchObject({ saldoEnContra: false });
+    expect(efecto("pago_plataforma", "600")).not.toHaveProperty("superaDisponible");
+    // Su fila de la tabla, literal: SOLO la caja, con su categoría; ninguna cuenta.
+    expect(EFECTO_POR_TIPO.pago_plataforma).toEqual({
+      cuenta: null,
+      caja: [{ tipo: "egreso", categoria: "egreso_pago_plataforma" }],
+      enCuenta: null,
+    });
+  });
+
   it("correccion: resta y suma mueven la cifra y la ganancia", () => {
     expect(efecto("correccion_resta", "100").lineas.cifraPrincipal).toMatchObject(SI("7500.00", "7400.00"));
     expect(efecto("correccion_resta", "100").lineas.ganancia).toEqual(SI("1000.00", "900.00"));

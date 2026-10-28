@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { cierresDeLaCuentaAction } from "@/lib/actions/wallet-filtros";
 import { listarPagosDeMensajeroAction } from "@/lib/actions/wallet-mensajero";
@@ -19,6 +19,10 @@ import {
   enTransaccionRevertida,
   type TxDeTest,
 } from "./_postgres-real";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // =================================================================================================
 // FICHA 458-A (TA.4, R10–R12) — el selector de cierre y el WHERE con la cuenta, contra Postgres

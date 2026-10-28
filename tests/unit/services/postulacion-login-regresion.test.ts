@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { AuthService } from "@/lib/services/AuthService";
 import { hashPassword } from "@/lib/utils/password";
-import type { IUserRepository, UsuarioConHash } from "@/lib/interfaces/repositories/IUserRepository";
+import type { CuentaConHash, IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
 import type { ILoginAttemptRepository } from "@/lib/interfaces/repositories/ILoginAttemptRepository";
 import type { ITrustedDeviceRepository } from "@/lib/interfaces/repositories/ITrustedDeviceRepository";
 import type { IEmailOtpChallengeRepository } from "@/lib/interfaces/repositories/IEmailOtpChallengeRepository";
@@ -13,20 +13,15 @@ import type { IEmailProvider } from "@/lib/interfaces/external/IEmailProvider";
 // queda en estado `pendiente` y el login existente la rechaza como
 // `account_unavailable` (no puede iniciar sesion hasta ser aprobada en la f22).
 
-async function buildPendiente(): Promise<UsuarioConHash> {
+async function buildPendiente(): Promise<CuentaConHash> {
   return {
     id: "usr-pend",
-    nombre: "Nuevo",
     email: "nuevo@example.com",
-    telefono: "0991234567",
     passwordHash: await hashPassword("Abcdef1!"),
     estado: "pendiente",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
-    rolId: "rol-mensajero",
-    fulfillment: false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    organizacionId: "org-1",
+    rol: "mensajero",
+    empresaNombre: "Empresa A",
   };
 }
 
@@ -34,9 +29,10 @@ describe("R23: login de cuenta pendiente", () => {
   it("devuelve account_unavailable y no concede sesion", async () => {
     const usuario = await buildPendiente();
     const userRepo: IUserRepository = {
-      findByEmailWithHash: vi.fn().mockResolvedValue(usuario),
+      findCuentasPorEmailConHash: vi.fn().mockResolvedValue([usuario]),
       findById: vi.fn(),
-      findByEmail: vi.fn(),
+      findCuentasPorEmail: vi.fn(),
+      findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
       create: vi.fn(),
       listMensajeros: vi.fn().mockResolvedValue([]),
       listMensajerosParaFiltro: vi.fn().mockResolvedValue([]),
@@ -68,6 +64,7 @@ describe("R23: login de cuenta pendiente", () => {
       markConsumed: vi.fn(),
       findLatestActiveByUsuarioId: vi.fn(),
       contarRecientesPorUsuario: vi.fn().mockResolvedValue(0),
+      consumirSiActivo: vi.fn(),
     };
     const sessionRepo: ISessionRepository = {
       create: vi.fn(),

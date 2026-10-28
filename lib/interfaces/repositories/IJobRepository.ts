@@ -22,6 +22,23 @@ export interface JobDTO {
   updatedAt: Date;
 }
 
+/**
+ * SL-17 (D16, R42) — el job con la empresa que lo encolo. NO entra en `JobDTO` para no tocar los
+ * dobles de la cola de las otras fichas: el campo es un anadido estructural que `JobRepository`
+ * rellena desde la fila y que se lee con `empresaDelJob`.
+ *
+ * Vive en este modulo de contratos (y `JobRepository` lo reexporta) para que un SERVICE pueda
+ * leer la empresa del job sin importar el repositorio concreto, que arrastra Prisma
+ * (SL-36 R42/R43: `GeocodificacionService` filtra la salud de la geocodificacion por empresa).
+ */
+export type JobConEmpresa = JobDTO & { organizacionId: string | null };
+
+/** La empresa del job, o `null` si no la tiene (o si viene de un doble sin el campo). */
+export function empresaDelJob(job: JobDTO): string | null {
+  const id = (job as Partial<JobConEmpresa>).organizacionId;
+  return typeof id === "string" && id.trim() !== "" ? id : null;
+}
+
 /** Opciones del encolado (R7/R8). Todo opcional: `enqueue` rellena los defaults. */
 export interface EnqueueOpts {
   /** Cuando puede reclamarse el job. Default `now()` de la DB (encolado inmediato). */
@@ -83,6 +100,12 @@ export interface IJobRepository {
    * terminal) la toma el service; el repo solo persiste.
    */
   fail(id: string, error: string, runAfter: Date | null): Promise<void>;
+
+  /**
+   * SL-23 (design §4.2, R20): el job es de un módulo apagado para su empresa. `estado = 'descartado'`
+   * y `last_error = motivo`. No vuelve a reclamarse: el reclamo solo toma `pending`.
+   */
+  descartar(id: string, motivo: string): Promise<void>;
 
   /**
    * Feature 92 (design §8, R4): devuelve los jobs cuya `dedupe_key` esta en `keys`. UNA

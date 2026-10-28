@@ -11,6 +11,7 @@ import {
   serializarEscriturasReales,
   soltarDependientesPosterioresDelEnumDeEventos,
 } from "./_postgres-real";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 // FICHA 333 (A8, design §4.1/§10) — la migracion que anade el aviso de la campana a los DOS enums
 // de `notificacion`, mas la propiedad ADITIVA de la migracion de la tabla (R53) y la precondicion
@@ -257,6 +258,16 @@ describe("333/A8 — los CUATRO `down.sql` anteriores NO se tocan, y esta es la 
 });
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+// SL-43 (T10): las filas de la demo de QA (`demo-qa.test.ts`, misma base en CI) hacen caer este
+// archivo. Turno compartido: espera a que la demo termine y no la deja empezar mientras corre.
+let turnoDemoQa: ExclusionDemoQa | undefined;
+beforeAll(async () => {
+  if (HAY_BASE_DE_DATOS) turnoDemoQa = await tomarExclusionDemoQa({ compartida: true });
+}, 660_000);
+afterAll(async () => {
+  await turnoDemoQa?.soltar();
+});
 
 describeSiHayBase("333/A8 — la base aplicada, y el DOWN ejercitado de verdad", () => {
   let prisma: PrismaClient;

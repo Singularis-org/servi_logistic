@@ -5,7 +5,8 @@ import {
   COMPOSICION_FILA_OTROS,
   WALLET_EGRESO_CON_FILA_SEED,
   WALLET_EGRESO_NOMBRADO_SEED,
-  WALLET_INGRESO_PROPIO_SEED,
+  WALLET_INGRESO_GANANCIA_SEED,
+  WALLET_IVA_SEED,
   WALLET_MOVIMIENTO_CATEGORIA_SEED,
   type AgregadoCajaRow,
   type CajaResumenDTO,
@@ -13,8 +14,10 @@ import {
   type ComposicionGananciaDTO,
   type ModoComposicionCaja,
   type NaturalezaMovimiento,
+  type WalletBalanceDTO,
+  type WalletCategoriaIva,
   type WalletEgresoNombrado,
-  type WalletIngresoPropio,
+  type WalletIngresoGanancia,
   type WalletMovimientoCategoria,
 } from "@/lib/types/wallet";
 
@@ -102,6 +105,10 @@ export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, Natural
   // reverso del cobro de la 461.
   egreso_reverso_flete_devolucion: "propio",
   egreso_reverso_iva_flete_devolucion: "propio",
+  // SL-45 (design §2, D9): el pago a la plataforma es dinero de la empresa que paga un servicio que
+  // ella usa, como un sueldo. Como `terceros` no bajaria la ganancia y bajaria «De las tiendas», que
+  // no tienen nada que ver con la plataforma.
+  egreso_pago_plataforma: "propio",
 };
 
 /**
@@ -165,7 +172,21 @@ export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezM
   // el dinero entro: rompe R7/R8 en cuanto la tienda paga (A6 descartada).
   ingreso_abono_tienda: "efectivo",
   egreso_reverso_abono_tienda: "efectivo",
+  // SL-45 (R8): el pago sale de la caja de verdad, asi que sube «Salió» y baja la cifra principal.
+  egreso_pago_plataforma: "efectivo",
 };
+
+const CATEGORIAS_DE_IVA: ReadonlySet<string> = new Set(WALLET_IVA_SEED);
+
+/**
+ * SL-39 (design §2.1, R1/R2) — si una categoria mueve IVA. Es la segunda clasificacion, ortogonal a
+ * la naturaleza: el IVA es `propio` (es dinero de la empresa en la caja, no de la tienda) pero no es
+ * ganancia. La usan `acumular`, la composicion y la serie diaria (`finanzas-diarias.ts`), para que
+ * las tres saquen de la ganancia exactamente el mismo conjunto.
+ */
+export function esCategoriaIva(categoria: WalletMovimientoCategoria): categoria is WalletCategoriaIva {
+  return CATEGORIAS_DE_IVA.has(categoria);
+}
 
 /**
  * Las sumas que hacen falta, por cubeta. Ficha 459 (design §2.2): SOLO se suma; ninguna resta.
@@ -178,6 +199,9 @@ export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezM
  *    un cobro—. NO suman a `salidas` (no sale dinero, R22): le devuelven saldo a la tienda, asi que
  *    entran en «De las tiendas» como un ingreso (R23). Tambien suman a `egresosPropios`.
  *  - propio / terceros / capital: por dueño y tipo.
+ *  - `ingresosIva` / `egresosIva` (SL-39, design §2.2): lo propio que es IVA va AQUI en lugar de a
+ *    `ingresosPropios` / `egresosPropios`. A «Entro», «Salio», los cargos y sus reversos sigue
+ *    sumando igual, porque eso lo decide la liquidez, que no cambia.
  */
 type Acumulado = {
   entradasEfectivo: Prisma.Decimal;
@@ -186,6 +210,8 @@ type Acumulado = {
   reversosDeCargos: Prisma.Decimal;
   ingresosPropios: Prisma.Decimal;
   egresosPropios: Prisma.Decimal;
+  ingresosIva: Prisma.Decimal;
+  egresosIva: Prisma.Decimal;
   ingresosTerceros: Prisma.Decimal;
   egresosTerceros: Prisma.Decimal;
   ingresosCapital: Prisma.Decimal;
@@ -200,6 +226,8 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
     reversosDeCargos: new Prisma.Decimal(0),
     ingresosPropios: new Prisma.Decimal(0),
     egresosPropios: new Prisma.Decimal(0),
+    ingresosIva: new Prisma.Decimal(0),
+    egresosIva: new Prisma.Decimal(0),
     ingresosTerceros: new Prisma.Decimal(0),
     egresosTerceros: new Prisma.Decimal(0),
     ingresosCapital: new Prisma.Decimal(0),
@@ -213,18 +241,21 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
     const esIngreso = fila.tipo === "ingreso";
     const dueno = NATURALEZA_POR_CATEGORIA[fila.categoria];
     const esCargo = LIQUIDEZ_POR_CATEGORIA[fila.categoria] === "cargo_a_tienda";
+    const esIva = esCategoriaIva(fila.categoria);
 
     if (esIngreso) {
       if (esCargo) acc.cargosATiendas = acc.cargosATiendas.add(monto);
       else acc.entradasEfectivo = acc.entradasEfectivo.add(monto);
-      if (dueno === "propio") acc.ingresosPropios = acc.ingresosPropios.add(monto);
+      if (dueno === "propio" && esIva) acc.ingresosIva = acc.ingresosIva.add(monto);
+      else if (dueno === "propio") acc.ingresosPropios = acc.ingresosPropios.add(monto);
       else if (dueno === "terceros") acc.ingresosTerceros = acc.ingresosTerceros.add(monto);
       else acc.ingresosCapital = acc.ingresosCapital.add(monto);
     } else {
       // Ficha 461 (R22): un egreso «cargo» es el reverso de un cargo: no es dinero que salga.
       if (esCargo) acc.reversosDeCargos = acc.reversosDeCargos.add(monto);
       else acc.salidas = acc.salidas.add(monto);
-      if (dueno === "propio") acc.egresosPropios = acc.egresosPropios.add(monto);
+      if (dueno === "propio" && esIva) acc.egresosIva = acc.egresosIva.add(monto);
+      else if (dueno === "propio") acc.egresosPropios = acc.egresosPropios.add(monto);
       else if (dueno === "terceros") acc.egresosTerceros = acc.egresosTerceros.add(monto);
       else acc.egresosCapital = acc.egresosCapital.add(monto);
     }
@@ -233,12 +264,21 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
   return acc;
 }
 
+/**
+ * SL-39 (R2) — el IVA de la caja: ingresos de IVA menos su reverso, con signo. Es UNA funcion para
+ * que el resumen (`derivarCaja`) y el total del bloque de la composicion salgan de la misma resta y
+ * no puedan discrepar.
+ */
+function derivarIva(acc: Acumulado): WalletBalanceDTO {
+  return derivarBalance(acc.ingresosIva, acc.egresosIva);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════════════════
 // Feature 231 (design §3.1) — la caja partida en DOS BOLSILLOS.
 //
 // Todo lo que sigue son SUMAS POR CUBETA y UNA DIVISION sobre importes que `derivarBalance`
 // ya derivo. Ninguna resta con signo nueva: la guardia `caja-derivaciones.guardia.test.ts`
-// exige que este modulo llame a `derivarBalance` exactamente CUATRO veces (ficha 459) y que no
+// exige que este modulo llame a `derivarBalance` exactamente CINCO veces (cuatro de la ficha 459 y la del IVA de SL-39) y que no
 // declare por su cuenta ni el signo ni la resta.
 // ═════════════════════════════════════════════════════════════════════════════════════════
 
@@ -323,7 +363,7 @@ export function derivarCaja(
 ): CajaResumenDTO {
   const acc = acumular(filas);
 
-  // Ficha 459 (design §2.2) — CUATRO restas con signo, todas de `derivarBalance`:
+  // Ficha 459 (design §2.2) — CUATRO restas con signo, todas de `derivarBalance` (SL-39 anade la quinta, la del IVA, abajo):
   //  · la cifra principal: Entro (sin los cargos, que no son efectivo: F2) − Salio (sin los
   //    reversos de cargos, que tampoco lo son: ficha 461, R22);
   //  · la ganancia, IDENTICA a la de antes: los cargos siguen siendo ingresos propios (R4);
@@ -341,9 +381,16 @@ export function derivarCaja(
     acc.egresosTerceros.add(acc.cargosATiendas),
   );
   const capital = derivarBalance(acc.ingresosCapital, acc.egresosCapital);
+  // SL-39 (design §2.2, R1/R2): la quinta resta. `propio` ya no lleva el IVA (es la ganancia sin
+  // IVA) y el IVA tiene la suya. Identidad R4: G + I + T + C = Entro − Salio, porque G + I es
+  // exactamente la ganancia de antes de la ficha.
+  const iva = derivarIva(acc);
 
-  // «De la empresa» (R11, P2) = ganancia + capital. Una SUMA, no una resta.
-  const deEmpresa = new Prisma.Decimal(propio.balance).add(new Prisma.Decimal(capital.balance));
+  // «De la empresa» (R11, P2) = ganancia + IVA + capital. Una SUMA, no una resta. SL-39 (R5): con el
+  // IVA dentro vale lo mismo que antes, y la barra no se mueve.
+  const deEmpresa = new Prisma.Decimal(propio.balance)
+    .add(new Prisma.Decimal(iva.balance))
+    .add(new Prisma.Decimal(capital.balance));
   const deTerceros = new Prisma.Decimal(terceros.balance);
 
   const reparto = derivarReparto(new Prisma.Decimal(caja.balance), deEmpresa, deTerceros);
@@ -368,18 +415,30 @@ export function derivarCaja(
     deTercerosAbsoluto: montoEscala2(deTerceros.abs()),
     estado: opciones.haySaldoInicialVigente === true ? "saldo" : "flujo",
     flujoDesde: opciones.primerDia ?? null,
+    iva: iva.balance,
+    signoIva: iva.signo,
   };
 }
 
-/** Las siete cubetas del desglose de ingresos, todas a cero: un `Record` sin huecos (R23). */
-function cubetasDeIngreso(): Record<WalletIngresoPropio, Prisma.Decimal> {
+/**
+ * Las cubetas del desglose de ingresos, todas a cero: un `Record` sin huecos (R23). SL-39 (R8):
+ * solo los ingresos que son ganancia; los de IVA tienen sus propias cubetas.
+ */
+function cubetasDeIngreso(): Record<WalletIngresoGanancia, Prisma.Decimal> {
   // El `Object.fromEntries` pierde el tipo de las claves (devuelve `Record<string, …>`), asi
   // que la afirmacion va aqui, en UNA linea y sobre el seed que la produce. No es un `any`:
   // el union de claves sale del propio seed, y una categoria de mas o de menos la caza la
   // guardia de exhaustividad en runtime.
   return Object.fromEntries(
-    WALLET_INGRESO_PROPIO_SEED.map((categoria) => [categoria, new Prisma.Decimal(0)]),
-  ) as Record<WalletIngresoPropio, Prisma.Decimal>;
+    WALLET_INGRESO_GANANCIA_SEED.map((categoria) => [categoria, new Prisma.Decimal(0)]),
+  ) as Record<WalletIngresoGanancia, Prisma.Decimal>;
+}
+
+/** SL-39 (R7) — las cubetas del bloque del IVA, todas a cero. Mismo motivo del `as` que arriba. */
+function cubetasDeIva(): Record<WalletCategoriaIva, Prisma.Decimal> {
+  return Object.fromEntries(
+    WALLET_IVA_SEED.map((categoria) => [categoria, new Prisma.Decimal(0)]),
+  ) as Record<WalletCategoriaIva, Prisma.Decimal>;
 }
 
 /** Las cubetas de los egresos con nombre propio, todas a cero: un `Record` sin huecos (R4). */
@@ -390,7 +449,7 @@ function cubetasDeEgresoNombrado(): Record<WalletEgresoNombrado, Prisma.Decimal>
   ) as Record<WalletEgresoNombrado, Prisma.Decimal>;
 }
 
-const CATEGORIAS_DE_INGRESO_PROPIO: ReadonlySet<string> = new Set(WALLET_INGRESO_PROPIO_SEED);
+const CATEGORIAS_DE_INGRESO_GANANCIA: ReadonlySet<string> = new Set(WALLET_INGRESO_GANANCIA_SEED);
 const CATEGORIAS_DE_EGRESO_NOMBRADO: ReadonlySet<string> = new Set(WALLET_EGRESO_NOMBRADO_SEED);
 
 /**
@@ -401,8 +460,10 @@ const CATEGORIAS_DE_EGRESO_NOMBRADO: ReadonlySet<string> = new Set(WALLET_EGRESO
  */
 const CATEGORIAS_DE_EGRESO_CON_FILA: ReadonlySet<string> = new Set(WALLET_EGRESO_CON_FILA_SEED);
 
-function esIngresoPropio(categoria: WalletMovimientoCategoria): categoria is WalletIngresoPropio {
-  return CATEGORIAS_DE_INGRESO_PROPIO.has(categoria);
+function esIngresoDeGanancia(
+  categoria: WalletMovimientoCategoria,
+): categoria is WalletIngresoGanancia {
+  return CATEGORIAS_DE_INGRESO_GANANCIA.has(categoria);
 }
 
 function esEgresoNombrado(categoria: WalletMovimientoCategoria): categoria is WalletEgresoNombrado {
@@ -479,12 +540,17 @@ export function categoriasDeFilaComposicion(
  * El desglose se teclea POR CATEGORIA (`ingreso_comision_cod`), nunca con las claves camelCase
  * de las formulas de ingreso: `caja-173-alcance.guardia.test.ts` prohibe que este modulo
  * nombre un insumo de formula, y con razon — no es quien las calcula.
+ *
+ * SL-39 (design §2.3, R7/R8): una fila de IVA va a `iva[categoria]` y NO suma a `totalIngresos`
+ * ni a `totalEgresos`; asi las dos columnas valen `ingresosPropios` y `egresosPropios`, ya sin
+ * IVA. `totalIva` sale de la MISMA resta que el `iva` del resumen (`derivarIva`).
  */
 export function derivarComposicionGanancia(
   filas: readonly AgregadoCajaRow[],
 ): ComposicionGananciaDTO {
   const ingresos = cubetasDeIngreso();
   const egresos = cubetasDeEgresoNombrado();
+  const iva = cubetasDeIva();
   let totalIngresos = new Prisma.Decimal(0);
   let totalEgresos = new Prisma.Decimal(0);
   let otrosEgresos = new Prisma.Decimal(0);
@@ -493,8 +559,13 @@ export function derivarComposicionGanancia(
     if (NATURALEZA_POR_CATEGORIA[fila.categoria] !== "propio") continue;
     const monto = new Prisma.Decimal(fila.total);
 
+    if (esCategoriaIva(fila.categoria)) {
+      iva[fila.categoria] = iva[fila.categoria].add(monto);
+      continue;
+    }
+
     if (fila.tipo === "ingreso") {
-      if (!esIngresoPropio(fila.categoria)) continue;
+      if (!esIngresoDeGanancia(fila.categoria)) continue;
       ingresos[fila.categoria] = ingresos[fila.categoria].add(monto);
       totalIngresos = totalIngresos.add(monto);
       continue;
@@ -513,8 +584,8 @@ export function derivarComposicionGanancia(
 
   return {
     ingresos: Object.fromEntries(
-      WALLET_INGRESO_PROPIO_SEED.map((categoria) => [categoria, montoEscala2(ingresos[categoria])]),
-    ) as Record<WalletIngresoPropio, string>,
+      WALLET_INGRESO_GANANCIA_SEED.map((categoria) => [categoria, montoEscala2(ingresos[categoria])]),
+    ) as Record<WalletIngresoGanancia, string>,
     totalIngresos: montoEscala2(totalIngresos),
     egresos: Object.fromEntries(
       WALLET_EGRESO_NOMBRADO_SEED.map((categoria) => [categoria, montoEscala2(egresos[categoria])]),
@@ -524,5 +595,9 @@ export function derivarComposicionGanancia(
     // R9: la decision de pintar «Otros» la toma el SERVIDOR. `isZero()` y no `.gt(0)`: un
     // importe negativo es justo lo que mas falta haria ver, y `.gt(0)` lo esconderia.
     hayOtrosEgresos: !otrosEgresos.isZero(),
+    iva: Object.fromEntries(
+      WALLET_IVA_SEED.map((categoria) => [categoria, montoEscala2(iva[categoria])]),
+    ) as Record<WalletCategoriaIva, string>,
+    totalIva: derivarIva(acumular(filas)).balance,
   };
 }

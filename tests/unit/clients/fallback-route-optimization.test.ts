@@ -7,7 +7,8 @@ import {
 import { RutaPeticionRechazadaError } from "@/lib/clients/google-route-optimization";
 import { HaversineRouteOptimizationClient } from "@/lib/clients/haversine-route-optimization";
 import { construirTokenProvider } from "@/lib/auth/google-sa-token";
-import { construirTokenProviderWif } from "@/lib/auth/google-wif-token";
+import { RutasPorEmpresa } from "@/lib/services/integraciones/rutas-de-la-empresa";
+import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import type {
   IRouteOptimizationClient,
   OptimizarInput,
@@ -60,7 +61,7 @@ describe("FallbackRouteOptimizationClient", () => {
   });
 
   it("SIN credencial (RutaNoConfiguradoError): delega en el fallback local", async () => {
-    const primary = stub({ throws: new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_SA_EMAIL") });
+    const primary = stub({ throws: new RutaNoConfiguradoError("sin_configurar") });
     const fallback = stub({ outcome: OK_FALLBACK });
     const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
 
@@ -70,7 +71,7 @@ describe("FallbackRouteOptimizationClient", () => {
 
   it("avisa (sin PII) cuando cae al fallback", async () => {
     const warn = vi.fn();
-    const primary = stub({ throws: new RutaNoConfiguradoError("GOOGLE_WIF_POOL_ID") });
+    const primary = stub({ throws: new RutaNoConfiguradoError("ilegible") });
     const fallback = stub({ outcome: OK_FALLBACK });
     await new FallbackRouteOptimizationClient(primary, fallback, { warn }).optimizar(INPUT);
 
@@ -105,31 +106,33 @@ describe("FallbackRouteOptimizationClient", () => {
   // este compuesto compara con `instanceof`. Todos los tests de arriba pasaban —construyen el
   // error a mano desde `google-token-shared`— mientras en produccion el error escapaba y un
   // despliegue sin credencial reventaba con INTERNAL en vez de ordenar en local. Estos dos
-  // casos usan el error REAL de cada fabrica de token, que es lo unico que detecta el fallo.
+  // casos usan el error REAL de cada sitio que lo lanza, que es lo unico que detecta el fallo.
+  // SL-36: el segundo sitio ya no es WIF (retirado) sino la lectura de la credencial de la empresa,
+  // que es el que de verdad lanza cuando una empresa no tiene la integracion (R26).
+  const sinIntegracion: ICredencialesIntegracion = {
+    leer: async () => ({ estado: "sin_configurar" }),
+    marcarRechazo: async () => {},
+  };
   it.each([
     [
-      "SA (construirTokenProvider)",
-      () =>
-        construirTokenProvider({
-          GOOGLE_ROUTE_OPT_PROJECT_ID: null,
-          GOOGLE_ROUTE_OPT_SA_EMAIL: null,
-          GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: null,
-        }),
+      "SA (construirTokenProvider con la clave vacia)",
+      async () => {
+        construirTokenProvider({ email: "", privateKey: "" });
+      },
     ],
     [
-      "WIF (construirTokenProviderWif)",
-      () =>
-        construirTokenProviderWif({
-          GOOGLE_WIF_PROJECT_NUMBER: null,
-          GOOGLE_WIF_POOL_ID: null,
-          GOOGLE_WIF_PROVIDER_ID: null,
-          GOOGLE_ROUTE_OPT_SA_EMAIL: null,
-        }),
+      "la empresa sin integracion (RutasPorEmpresa)",
+      async () => {
+        await new RutasPorEmpresa({
+          credenciales: sinIntegracion,
+          empresaDeLaSesion: async () => "org-a",
+        }).deLaEmpresa();
+      },
     ],
   ])("el error REAL de %s cae al fallback local (identidad de clase)", async (_n, construir) => {
     let real: unknown;
     try {
-      construir();
+      await construir();
     } catch (e) {
       real = e;
     }
@@ -243,7 +246,7 @@ describe("265/R35, R44 — la procedencia la pone quien ordena, y el compuesto l
   it.each([
     [
       "por credencial AUSENTE (R44: hoy se degrada en silencio)",
-      { throws: new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_SA_EMAIL") } as const,
+      { throws: new RutaNoConfiguradoError("sin_configurar") } as const,
     ],
     ["por `sin_solucion`", { outcome: sinSolucion(0, 2) } as const],
   ])("los DOS caminos de degradacion marcan `local`: %s", async (_caso, comportamiento) => {

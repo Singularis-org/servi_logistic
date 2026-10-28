@@ -719,10 +719,10 @@ export interface DistritoRow {
   // columna del flete (`valorFleteGam` si central) al tarifar la carga por API SIN N+1. `false`
   // cuando el distrito no resuelve UNA zona (0 o >1 zonas -> `zonaId` null -> no se tarifa).
   esCentral: boolean;
-  // Marca `zona_especial` del DISTRITO (2026-08-25). Viaja junto a `esCentral` y por el mismo
-  // motivo: las dos deciden QUE MONTO es el flete al tarifar la carga y la cotizacion, sin
-  // N+1. Ya normalizada a dos valores (`zona_especial IS TRUE`); la columna de origen es
-  // nullable y `null` NO es especial.
+  // Marca de zona especial del distrito PARA LA EMPRESA (2026-08-25; por empresa desde SL-38,
+  // `distrito_zona_especial`). Viaja junto a `esCentral` y por el mismo motivo: las dos deciden
+  // QUE MONTO es el flete al tarifar la carga y la cotizacion, sin N+1. Se resuelve en el
+  // repositorio con `esZonaEspecialDeLaEmpresa`.
   esZonaEspecial: boolean;
 }
 
@@ -1109,9 +1109,9 @@ export interface ApiOrdenCosteoRow {
   /** `zona.es_central` VIVO (R20): elige la columna de flete GAM vs estandar. */
   esCentral: boolean;
   /**
-   * `distrito.zona_especial IS TRUE` VIVO (R20/R21). Ya resuelto a DOS valores: la columna es
-   * tri-valuada (`null` = «nadie lo decidio») y esa duda se cierra en el borde que lee la fila,
-   * con `=== true`. Una orden SIN distrito —el unico FK nullable de `orden`— entra como `false`.
+   * La marca de zona especial VIVA de la empresa de la orden (R20/R21; por empresa desde SL-38).
+   * Se resuelve en el borde que lee la fila, con `esZonaEspecialDeLaEmpresa`. Una orden SIN
+   * distrito —el unico FK nullable de `orden`— entra como `false`.
    */
   esZonaEspecial: boolean;
   /**
@@ -1136,7 +1136,7 @@ export interface ApiOrdenCosteoRow {
  * ⛔ NO PUBLICABLE.
  *
  * ⚠️ Estas entradas son las CONGELADAS y NO las vivas, y es el punto de la ficha: `zona.es_central`
- * y `distrito.zona_especial` son columnas MUTABLES, y la ficha 366 puede corregir `orden.zona_id`
+ * y la marca de zona especial de la empresa (SL-38) son datos MUTABLES, y la ficha 366 puede corregir `orden.zona_id`
  * hacia adelante sin re-tarifar hacia atras. El `costoReal` describe lo que se congelo, no lo que
  * se veria hoy.
  */

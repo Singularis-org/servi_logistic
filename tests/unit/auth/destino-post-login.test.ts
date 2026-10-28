@@ -92,6 +92,12 @@ describe("R5 — destino post-login por rol (valores escritos a mano, NO derivad
     }
   });
 
+  // SL-32 (R6, R36): el superadmin no tiene Inicio ni nada de empresa; su primer ítem es
+  // «Empresas» (el otro es «Geografía», SL-20 R21), y `/dashboard` le manda ahí. Literal escrito a mano, como los cinco de arriba.
+  it("superadmin aterriza en /plataforma/empresas (su primer ítem)", () => {
+    expect(destinoDe("superadmin")).toBe("/plataforma/empresas");
+  });
+
   it("apiKey no ve ningún ítem, así que no tiene destino (sigue sin navegar la UI)", () => {
     expect(destinoDe("apiKey")).toBeNull();
   });

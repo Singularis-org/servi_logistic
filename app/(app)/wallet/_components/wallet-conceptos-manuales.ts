@@ -59,7 +59,7 @@ import {
 // Módulo PURO: sin React y sin leer ningún reloj. La fecha del movimiento la pone el diálogo.
 
 /**
- * Los DIEZ conceptos (ficha 458-C), en el orden en que se ofrecen: tres tramos CONSECUTIVOS, uno por
+ * Los ONCE conceptos (ficha 458-C; SL-45 suma el pago a la plataforma), en el orden en que se ofrecen: tres tramos CONSECUTIVOS, uno por
  * grupo. `gasto_fijo` NO está: lo emite el cron desde su plantilla (R38). El primero sigue siendo el
  * gasto de la empresa: quien abre y registra sin tocar el catálogo registra lo mismo que antes.
  */
@@ -70,6 +70,7 @@ export const CONCEPTO_MANUAL_IDS = [
   "ajuste_egreso",
   "pago_a_tienda",
   "pago_a_mensajero",
+  "pago_plataforma",
   "aporte_capital",
   "abono_tienda",
   "ajuste_ingreso",
@@ -256,6 +257,21 @@ export const CONCEPTOS_MANUALES: readonly ConceptoManual[] = [
     grupo: "sale",
   },
   {
+    // ⭑ SL-45 (design §7.1, R6) — la empresa deja dicho que le pagó a la plataforma. Es un egreso
+    // manual más (sale de la caja, baja la ganancia) y baja la deuda con la plataforma; el tope
+    // (no pagar más de lo que se debe) lo decide el servidor dentro de la transacción.
+    id: "pago_plataforma",
+    label: "Pago a la plataforma",
+    descripcionLabel: DESCRIPCION_EGRESO_LABEL.pago_plataforma,
+    descripcionPlaceholder: DESCRIPCION_EGRESO_PLACEHOLDER.pago_plataforma,
+    destino: {
+      clase: "egreso_administrativo",
+      tipoEgreso: "pago_plataforma",
+      categoria: TIPO_EGRESO_MANUAL_A_CATEGORIA.pago_plataforma,
+    },
+    grupo: "sale",
+  },
+  {
     // ⭑ FICHA 459 (R68, R27) — dinero de la empresa que entra a la caja y NO es ganancia. El importe
     // lo teclea una persona: la app nunca propone ni calcula uno. La clase (saldo inicial o
     // aporte) se sigue eligiendo dentro (P6 de la 461).
@@ -341,6 +357,9 @@ export const FRASE_DEL_EFECTO: Record<ConceptoManualId, string> = {
     `Sale dinero de ${EMPRESA.enFrase} hacia la tienda y baja lo que ${EMPRESA.enFrase} le debe; la ganancia no cambia.`,
   pago_a_mensajero:
     `${EMPRESA.alInicio} le paga al mensajero lo que le debe por sus cierres y baja su cuenta por pagar; la ganancia no cambia.`,
+  // SL-45 (design §7.1, R6): literal.
+  pago_plataforma:
+    `Sale dinero de ${EMPRESA.enFrase} hacia la plataforma y baja lo que ${EMPRESA.enFrase} le debe; baja la ganancia.`,
   aporte_capital: `Llega dinero de ${EMPRESA.enFrase} a la caja; no es ganancia, la ganancia no cambia.`,
   // Ficha 457 (design §8.2, R55): literal.
   abono_tienda:
@@ -482,7 +501,7 @@ export function cabeceraDelConcepto(concepto: ConceptoManual): {
 
 /**
  * FICHA 458-C (design §4.4, R44) — con qué clave del catálogo del SERVIDOR se pide el «Así queda» de
- * cada concepto. `Record` TOTAL sobre los diez: es la MISMA tabla que `EFECTO_POR_TIPO` (TB.12), y
+ * cada concepto. `Record` TOTAL sobre los once: es la MISMA tabla que `EFECTO_POR_TIPO` (TB.12), y
  * un concepto nuevo no compila sin decir cuál es su efecto.
  */
 export const CONCEPTO_REGISTRO_DE: Record<ConceptoManualId, ConceptoRegistro> = {
@@ -492,6 +511,7 @@ export const CONCEPTO_REGISTRO_DE: Record<ConceptoManualId, ConceptoRegistro> = 
   ajuste_egreso: "correccion_resta",
   pago_a_tienda: "pago_a_tienda",
   pago_a_mensajero: "pago_a_mensajero",
+  pago_plataforma: "pago_plataforma",
   aporte_capital: "aporte",
   abono_tienda: "tienda_paga_a_empresa",
   ajuste_ingreso: "correccion_suma",
@@ -529,9 +549,14 @@ export function cuentaDelConcepto(concepto: ConceptoManual): CuentaDelConcepto {
  * FICHA 458-C (R42, D5) — «a quién» se le paga: OBLIGATORIO en sueldo y gasto de la empresa, OPCIONAL
  * en la corrección de caja, y no se pide en los demás (el pago de un gasto de una tienda conserva su
  * beneficiario de la 459; los pagos y cobros nombran su cuenta).
+ *
+ * SL-45 (design §6, R6): el pago a la plataforma es un egreso administrativo, pero NO pide «a quién»:
+ * la contraparte es siempre la plataforma, y el servidor lo admite sin `contraparteNombre`.
  */
 export function aQuienDelConcepto(concepto: ConceptoManual): "obligatorio" | "opcional" | null {
-  if (concepto.destino.clase === "egreso_administrativo") return "obligatorio";
+  if (concepto.destino.clase === "egreso_administrativo") {
+    return concepto.destino.tipoEgreso === "pago_plataforma" ? null : "obligatorio";
+  }
   if (concepto.destino.clase === "ajuste_manual") return "opcional";
   return null;
 }

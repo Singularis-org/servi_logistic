@@ -39,6 +39,7 @@ enum RolValue {
   adminTienda   @map("Admin Tienda")
   adminSatelite // feature 19: label literal en la DB 'adminSatelite' (slug camelCase, SIN @map)
   apiKey // feature 81 [D1]: cuenta dedicada a una API key. SIN filas en `rol_permiso` (fallo seguro: la key no puede nada hasta que el humano conceda permisos explicitos)
+  superadmin // SL-32: rol de la plataforma, sin empresa y sin filas en `rol_permiso`. Uno solo en toda la base (indice `usuario_un_solo_superadmin`); su `rol.id` es fijo y lo usa el CHECK `usuario_empresa_o_superadmin`
 
   @@map("rol_value")
 }
@@ -85,11 +86,11 @@ model Usuario {
   nombre               String
   primerApellido       String?       @map("primer_apellido") // feature 21: identidad; requerido en postulacion via servicio, nullable en DB
   segundoApellido      String?       @map("segundo_apellido") // feature 21: opcional
-  email                String        @unique
+  email                String // SL-18/R1: unico POR EMPRESA (@@unique de abajo), ya no global
   telefono             String
   passwordHash         String        @map("password_hash")
   estado               EstadoUsuario @default(pendiente)
-  cedula               String        @unique
+  cedula               String // SL-18/R1: unica POR EMPRESA (@@unique de abajo), ya no global
   tipoIdentificacionId String        @map("tipo_identificacion_id")
   rolId                String        @map("rol_id")
   vehiculoId           String?       @map("vehiculo_id") // feature 21: solo mensajeros; FK -> vehiculos
@@ -97,6 +98,7 @@ model Usuario {
   fulfillment          Boolean       @default(false) // feature 27: tienda con fulfillment (rol adminTienda); default false
   zonaId               String?       @map("zona_id") // feature 24/R6: nullable; solo mensajero/adminSatelite lo llevan
   ordenEnGestionId     String?       @map("orden_en_gestion_id") // feature 36/R19-R21: orden activa 1-a-1 en gestion; NULL = ninguna
+  contrasenaDefinidaAt DateTime?     @map("contrasena_definida_at") // SL-41/R38: la pone updatePasswordHash cuando el usuario fija SU contrasena; NULL = nunca (o fila anterior a SL-41)
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
@@ -176,6 +178,7 @@ model Usuario {
   cobrosRechazoTiendaDecididos        RechazoTiendaCobro[]               @relation("RechazoTiendaCobroDecisor") // ficha 337: cobros por rechazo de tienda que ESTE usuario aprobo o rechazo. FK RESTRICT por el mismo motivo que la linea de arriba: quien autorizo un cobro es evidencia y no se pierde al dar de baja al usuario.
   cobrosRechazoTiendaComoTienda       RechazoTiendaCobro[]               @relation("RechazoTiendaCobroTienda") // ficha 337: cobros por rechazo emitidos CONTRA esta tienda. `tienda_id` va CONGELADO en la fila (leccion 69/R13), asi que esta relacion es historia y no una consulta viva sobre `orden.tienda_id`.
   historialAcciones                   HistorialAccion[]                  @relation("HistorialAccionActor") // ficha 362/R3: acciones (dinero / desaparicion / permisos) que ESTE usuario ejecuto. La FK es RESTRICT: quien borro 79 ordenes o aprobo un cierre es evidencia y no se pierde al dar de baja al usuario. `actor_nombre` y `actor_rol` van CONGELADOS en la fila, asi que esta relacion NO es la que pinta el listado.
+  historialPlataforma                 HistorialPlataforma[]              @relation("HistorialPlataformaActor") // SL-20: acciones del superadmin sobre paises y geografia (D15)
   pushSuscripciones                   PushSuscripcion[]                  @relation("PushSuscripcionUsuario") // ficha 410/R16/R22: suscripciones push de los DISPOSITIVOS de este usuario. La FK es CASCADE: una credencial de entrega no es evidencia, y dejarla huerfana seria mandar push a nombre de nadie
   pushEnviosDia                       PushEnvioDia[]                     @relation("PushEnvioDiaUsuario") // ficha 410/R6/R22: cupo diario de push consumido por este usuario. CASCADE por el mismo motivo: es un contador del canal, no historia
   preferencia                         UsuarioPreferencia?                @relation("UsuarioPreferenciaUsuario") // ficha 422/R1/R4: LA DECISION DE ESTA PERSONA sobre los avisos, aparte de sus dispositivos. 1:1. La FK es CASCADE: una preferencia no es evidencia (criterio de `push_suscripcion`, no el de `historial_accion`). Tabla propia y no columna aqui a proposito: ver el comentario del modelo `UsuarioPreferencia`.
@@ -201,6 +204,12 @@ model Usuario {
   @@index([zonaId]) // feature 24/R6
   @@index([ordenEnGestionId]) // feature 36
   @@index([organizacionId])
+  // SL-18/R1-R3: email y cedula unicos por empresa, con el nombre de antes (la traduccion de P2002
+  // lo busca). En la base van con NULLS NOT DISTINCT (dos cuentas sin empresa chocan), que Prisma
+  // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
+  @@unique([organizacionId, email], map: "usuario_email_key")
+  @@unique([organizacionId, cedula], map: "usuario_cedula_key")
+  @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
 }
 
@@ -618,9 +627,8 @@ model Provincia {
   nombre String
   // feature 55 (F1.4-C): `provincia.zona_id` fue ELIMINADO en la DB (la zona ya no
   // cuelga de la provincia; la asignacion vive en distrito.zona_id + N:M ZonaDistrito).
-  /// FICHA 374 — retirar sin borrar. `NOT NULL` con default `true`, a diferencia de
-  /// `Distrito.zonaEspecial`, que es `Boolean?` porque alli `null` SIGNIFICA algo («nadie lo
-  /// decidio»). Aqui no significa nada y la columna es de dos valores: NO homogeneizar las dos.
+  /// FICHA 374 — retirar sin borrar. `NOT NULL` con default `true`: todo nodo esta operativo o
+  /// retirado, `null` no significaria nada y la columna es de dos valores.
   ///
   /// LA CASCADA NO SE MATERIALIZA: la disponibilidad efectiva es la conjuncion con los
   /// ascendientes y se EVALUA al leer, en `lib/repositories/_shared/geografia-activa.ts`. Un
@@ -642,19 +650,27 @@ model Provincia {
   /// lectura a escribir `activo IS NOT FALSE`. Aqui SI significa algo: «este nodo no tiene codigo
   /// oficial todavia». Un nodo dado de alta a mano desde /configuracion/geografia no lo tiene hasta
   /// que el IGN se lo asigne, y un `NOT NULL` obligaria a INVENTARLO — que es peor que no tenerlo,
-  /// porque un codigo inventado colisiona con el real el dia que llegue. Es el mismo razonamiento
-  /// que sostiene `Distrito.zonaEspecial`.
+  /// porque un codigo inventado colisiona con el real el dia que llegue.
   ///
   /// EL NOMBRE PASA A SER UNA ETIQUETA MUTABLE: el cruce del seed (`scripts/seed-zonas.ts`) va por
   /// este codigo, y por eso renombrar dejo de crear duplicados.
-  codigoDta String? @unique @map("codigo_dta")
+  codigoDta String? @map("codigo_dta")
+
+  /// SL-20 (design §2.3): el país del nodo. El `DEFAULT 'CR'` es solo para los tests y el SQL a mano
+  /// que crean provincias sin conocer el país; `GeoRepository` siempre lo pasa.
+  paisId String @default("CR") @map("pais_id")
+  pais   Pais   @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   cantones Canton[]
   ordenes  Orden[]
 
-  /// FICHA 374: la administracion por pantalla lo necesita y hasta hoy no existia. 0 duplicados
-  /// medidos en produccion y en local el 2026-09-05.
-  @@unique([nombre])
+  /// FICHA 374 + SL-20 (R15): el nombre es unico DENTRO DEL PAIS. Dos paises pueden tener una
+  /// provincia con el mismo nombre.
+  @@unique([paisId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel; los `NULL` no compiten entre si.
+  @@unique([paisId, codigoDta])
+  /// SL-20: destino de la FK compuesta de `canton`, que impide un canton en otro pais (R11).
+  @@unique([id, paisId])
   @@map("provincia")
 }
 
@@ -665,16 +681,26 @@ model Canton {
   /// FICHA 374 — ver `Provincia.activo`: mismo contrato, misma cascada evaluada al leer.
   activo      Boolean @default(true)
   /// FICHA 375 — ver `Provincia.codigoDta`. Tres digitos: el de su provincia + dos.
-  codigoDta   String? @unique @map("codigo_dta")
+  codigoDta   String? @map("codigo_dta")
+  /// SL-20 (design §2.3): copia del pais de su provincia. Lo pone el trigger `geografia_pais_del_padre`
+  /// y la FK compuesta impide que diverja (R11). Sin DEFAULT en la base: `dbgenerated()` vacio, el
+  /// patron de `organizacionId`, para que nadie tenga que conocerlo al crear.
+  paisId      String  @default(dbgenerated()) @map("pais_id")
 
-  provincia Provincia  @relation(fields: [provinciaId], references: [id])
+  provincia Provincia  @relation(fields: [provinciaId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
   distritos Distrito[]
   ordenes   Orden[]
 
   /// FICHA 374: la unicidad es POR PADRE y no global, porque los homonimos entre padres son
   /// normales en la DTA (hay cantones homonimos en provincias distintas).
   @@unique([provinciaId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel.
+  @@unique([paisId, codigoDta])
+  /// SL-20: destino de la FK compuesta de `distrito`.
+  @@unique([id, paisId])
   @@index([provinciaId])
+  /// SL-20: lo usa la politica RLS `canton_del_pais`.
+  @@index([paisId])
   @@map("canton")
 }
 
@@ -682,25 +708,29 @@ model Distrito {
   id           String   @id @default(uuid())
   nombre       String
   cantonId     String   @map("canton_id")
-  // Distrito que no se cobra/despacha como el resto de su zona. OPCIONAL a proposito: `false` =
-  // se decidio que no es especial (lo que recibe toda fila que no diga nada, por el default);
-  // `null` = nadie lo decidio todavia. Al leerla NO vale `NOT zonaEspecial`: con null eso no es
-  // false. Ver la migracion 20260824180000_distrito_zona_especial.
-  zonaEspecial Boolean? @default(false) @map("zona_especial")
-  /// FICHA 374 — ver `Provincia.activo`. ⚠️ NO se homogeneiza con `zonaEspecial`, que esta justo
-  /// encima: aquella es `Boolean?` PORQUE `null` significa «nadie lo decidio»; esta es de dos
-  /// valores y `null` no significaria nada.
+  /// FICHA 374 — ver `Provincia.activo`: de dos valores, `null` no significaria nada.
+  /// SL-38: la marca de zona especial ya no es una columna de aqui (era `zona_especial`); es de la
+  /// empresa, en `zonasEspeciales` (`distrito_zona_especial`).
   activo       Boolean  @default(true)
   /// FICHA 375 — ver `Provincia.codigoDta`. Cinco digitos: el de su canton + dos.
-  codigoDta    String?  @unique @map("codigo_dta")
+  codigoDta    String?  @map("codigo_dta")
+  /// SL-20 (design §2.3): copia del pais de su canton; ver `Canton.paisId`.
+  paisId       String   @default(dbgenerated()) @map("pais_id")
 
-  canton  Canton         @relation(fields: [cantonId], references: [id])
+  canton  Canton         @relation(fields: [cantonId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
   ordenes Orden[]
   zonas   ZonaDistrito[] // feature 24: relacion N:M con zona (unica fuente de verdad; la columna escalar zona_id se elimino en 20260713000000)
+  /// SL-38 — la marca de zona especial de cada empresa. La RLS deja solo la de la empresa de la
+  /// transaccion. Se lee SOLO por `lib/repositories/_shared/zona-especial.ts`.
+  zonasEspeciales DistritoZonaEspecial[]
 
   /// FICHA 374: por PADRE. "Buenos Aires" es canton de Puntarenas Y distrito de Palmares.
   @@unique([cantonId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel.
+  @@unique([paisId, codigoDta])
   @@index([cantonId])
+  /// SL-20: lo usa la politica RLS `distrito_del_pais`.
+  @@index([paisId])
   @@map("distrito")
 }
 
@@ -722,6 +752,53 @@ model ZonaDistrito {
   @@index([distritoId])
   @@index([organizacionId])
   @@map("zona_distrito")
+}
+
+/// SL-38 — La marca de zona especial ES DE LA EMPRESA, no del distrito. Una fila = «este distrito es
+/// especial para esta empresa». Sin fila = no lo es. Se lee SOLO por `_shared/zona-especial.ts`.
+model DistritoZonaEspecial {
+  id         String   @id @default(uuid())
+  distritoId String   @map("distrito_id")
+  distrito   Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizacionId, distritoId], map: "distrito_zona_especial_organizacion_id_distrito_id_key")
+  @@index([organizacionId])
+  @@index([distritoId])
+  @@map("distrito_zona_especial")
+}
+
+/// SL-23 (design §2) — los 3 módulos apagables. El catálogo es cerrado y vive en el código
+/// (`lib/modulos/catalogo.ts`, tipado contra este enum); la base solo guarda la activación.
+/// `recoleccion`, `bodegas_satelite`, `api_integraciones` y `whatsapp` pasaron al núcleo el 2026-10-27,
+/// (20261027120000_modulos_nucleo), y `wallet` el 2026-10-28 (20261028120000_modulo_wallet_nucleo).
+enum ModuloApagable {
+  analitica
+  monitoreo
+  ranking
+
+  @@map("modulo_apagable")
+}
+
+/// SL-23 (design §4.1) — un módulo encendido para una empresa. Una fila = encendido; sin fila =
+/// apagado (R4). Viven solo en el SQL de 20261026120000, porque Prisma no los expresa: la política
+/// `organizacion_modulo_por_empresa`, el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (la empresa
+/// lee sus módulos y no los escribe, R7) y el trigger de «sin cambio de empresa». CASCADE con la
+/// empresa: es configuración y no vale nada sin ella; el rastro queda en `historial_accion`.
+model OrganizacionModulo {
+  id     String         @id @default(uuid())
+  modulo ModuloApagable
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([organizacionId, modulo], map: "organizacion_modulo_organizacion_id_modulo_key")
+  @@index([organizacionId])
+  @@map("organizacion_modulo")
 }
 
 // Orden de negocio (R7-R14a). Borrado logico via deleted_at (soft delete).
@@ -875,6 +952,9 @@ model Orden {
   // no 1-1: la unicidad es por GESTION, y una orden podria acumular mas de un rechazo a lo
   // largo de su vida (cada uno con su gestion sintetica y su cobro).
   cobrosRechazoTienda        RechazoTiendaCobro[]
+  // SL-40: lo que la plataforma cobra a la empresa por ESTA orden (cargo, reverso, cargo…). Lo escribe
+  // solo el trigger de la base; la FK es CASCADE (la app nunca borra una orden de verdad).
+  cobrosPlataforma           CobroPlataformaMovimiento[]
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -976,6 +1056,11 @@ model Orden {
   // `work_mem` de 4 MB). El gemelo DESC se añade si `orden` supera las ~200.000 filas vivas; el
   // SQL exacto esta en la cabecera de la migracion.
   @@index([prioridad(sort: Desc), claveRemision, id], map: "orden_prioridad_clave_remision_idx")
+  // SL-18/R24 (M3): el listado por defecto de `/ordenes` de una empresa (`OrdenRepository.list`:
+  // `prioridad DESC, created_at DESC, id`). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS
+  // NULL`, el predicado de la consulta— y eso no se puede escribir aqui: vive en
+  // `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`.
+  @@index([organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id])
   @@index([organizacionId])
   @@map("orden")
 }
@@ -1333,11 +1418,14 @@ model GestionOrden {
   // Feature 126/R25 (T0-Q1 = B): la ruta caliente INTRADIA (cubos del dia en curso, D6/D13)
   // filtra por `created_at` SIN `orden_id` ni `mensajero_id` por delante, y ninguno de los
   // cuatro indices de arriba la cubre. Se DECLARA aqui, y no solo en el `.sql`: si el
-  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. Columna
-  // unica a proposito — `anulada_at` detras de un predicado de RANGO no filtraria, y el
-  // parcial `(created_at) WHERE anulada_at IS NULL` no es expresable en Prisma (misma
-  // limitacion que documenta el bloque de abajo).
-  @@index([createdAt], map: "gestion_orden_created_at_idx")
+  // datamodel no lo declara, el siguiente `prisma migrate dev` propone BORRARLO. `anulada_at`
+  // no entra — detras de un predicado de RANGO no filtraria, y el parcial
+  // `WHERE anulada_at IS NULL` no es expresable en Prisma (misma limitacion que documenta el
+  // bloque de abajo).
+  // SL-18/R24 (M3): la empresa va DELANTE del rango. La consulta corre con la empresa fijada (la
+  // pone la RLS) y con `(created_at)` a secas recorria las gestiones de todas las empresas del
+  // dia; sustituye a `gestion_orden_created_at_idx`.
+  @@index([organizacionId, createdAt])
   // Feature 67 (F1.4-d): el indice PARCIAL de la ruta caliente
   // `(mensajero_id) WHERE cierre_id IS NULL AND anulada_at IS NULL` (/cierre-dia + corte
   // diario) NO se expresa aqui: Prisma no soporta indices parciales -> vive en el SQL de la
@@ -1686,7 +1774,7 @@ model Tarifa {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt])
+  @@index([organizacionId, createdAt]) // SL-18/R24: listado por empresa
   @@index([tiendaId])
   @@index([zonaId])
   @@unique([organizacionId, zonaId, tiendaId], map: "tarifas_zona_id_tienda_id_key") // SL-17 T3.9: unico por empresa
@@ -1814,6 +1902,12 @@ enum WalletMovimientoCategoria {
   // Migracion `20260928120000_wallet_458_enums`.
   egreso_reverso_flete_devolucion
   egreso_reverso_iva_flete_devolucion
+  // SL-45 (design §2): el pago de la empresa a la plataforma, registrado a mano. Egreso PROPIO en
+  // EFECTIVO, como el sueldo: baja la cifra principal y la ganancia, y descuenta la deuda de SL-40
+  // mientras no tenga contra-asiento. Categoría propia porque la deuda la cuenta por categoría:
+  // `egreso_gasto` (reservada) o `egreso_gasto_variable` mezclarían pagos con gastos.
+  // Migración `20261024130000_pago_plataforma_categoria`.
+  egreso_pago_plataforma
 
   @@map("wallet_movimiento_categoria")
 }
@@ -2946,9 +3040,10 @@ model CierreDetail {
   zonaId         String   @map("zona_id") // `orden.zona_id`
   tiendaId       String   @map("tienda_id") // `orden.tienda_id`: a quien se acredita (43), CONGELADO
   esCentral      Boolean  @map("es_central") // `zona.es_central` EN ESE INSTANTE (elige columna GAM, R21)
-  // `distrito.zona_especial IS TRUE` EN ESE INSTANTE: es lo que decide si el flete sale del
-  // pacto especial o de la columna normal. NOT NULL a proposito (a diferencia del origen, que
-  // es tri-valuado): al congelar, "¿se cobro como especial?" ya no admite "nadie lo decidio".
+  // La marca de zona especial de la EMPRESA de la orden EN ESE INSTANTE (SL-38:
+  // `distrito_zona_especial`): es lo que decide si el flete sale del pacto especial o de la columna
+  // normal. Marcar o desmarcar despues no la mueve: es el congelado. NOT NULL: «¿se cobro como
+  // especial?» solo admite si o no.
   esZonaEspecial Boolean  @default(false) @map("es_zona_especial")
 
   // --- tarifa congelada (R8): todas o ninguna. NULL = la tienda no tenia tarifa vigente al
@@ -3249,6 +3344,9 @@ enum JobEstado {
   processing
   done
   failed
+  /// SL-23 (R20): el job de un módulo apagado para su empresa. No se ejecuta ni se reintenta; el
+  /// motivo va en `last_error` (`modulo_inactivo:<clave>`).
+  descartado
 
   @@map("job_estado")
 }
@@ -3806,6 +3904,7 @@ model AnalyticsDaily {
   @@index([tiendaId, fecha], map: "analytics_daily_tienda_fecha_idx") // recorte de adminTienda (122)
   @@index([mensajeroId, fecha], map: "analytics_daily_mensajero_fecha_idx") // recorte de mensajero; cubre el cubo sin_asignar
   @@index([zonaId, fecha], map: "analytics_daily_zona_fecha_idx") // recorte de adminSatelite, por zona DE LA ORDEN
+  @@index([organizacionId, fecha]) // SL-18/R24: rango de fechas de una empresa (sin `map:`: la 123 fija esa lista)
   @@index([organizacionId])
   @@map("analytics_daily")
 }
@@ -4447,6 +4546,19 @@ enum HistorialAccionTipo {
   /// y a la ganancia. Tipo PROPIO: `wallet_movimiento_manual_anulado` dice «corrección de caja».
   /// Entidad: `wallet_movimiento` (el egreso original).
   egreso_caja_anulado
+  /// SL-36 (design §13, R33): el rastro de las integraciones de la empresa. Un tipo por operacion
+  /// (la guardia del censo mide por metodo). Entidad: `integracion`; etiqueta: el servicio. En
+  /// `integracion_probada`, `valor_nuevo` es `ok` o el codigo del catalogo. NUNCA la credencial, su
+  /// valor cifrado ni el mensaje del proveedor.
+  integracion_conectada
+  integracion_actualizada
+  integracion_probada
+  integracion_token_regenerado
+  integracion_desconectada
+  /// SL-23 (design §4.3): el superadmin enciende o apaga un módulo de la empresa. Entidad:
+  /// `organizacion_modulo`; etiqueta: el nombre del módulo; `valor_nuevo`: su clave.
+  modulo_activado
+  modulo_desactivado
 
   @@map("historial_accion_tipo")
 }
@@ -4489,6 +4601,12 @@ enum HistorialAccionEntidad {
   aporte_capital
   /// FICHA 457 (design §9): el documento del pago de una tienda a la empresa, 1:1 con su tabla.
   abono_tienda
+  /// SL-36 (design §13): la integracion de un servicio, 1:1 con su tabla. La fila sobrevive al
+  /// borrado fisico de la integracion (`entidad_id` sin FK).
+  integracion
+  /// SL-23 (design §4.3): la activación de un módulo, 1:1 con su tabla. `entidad_id` es el id de la
+  /// fila creada o borrada; sin FK, sobrevive al apagado.
+  organizacion_modulo
 
   @@map("historial_accion_entidad")
 }
@@ -4579,7 +4697,9 @@ model HistorialAccion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc), id])
+  /// SL-18/R24 (M3): con la empresa delante, que el listado siempre lleva; sustituye a
+  /// `historial_accion_created_at_id_idx`, con el que vivo el plan alternaba entre los dos.
+  @@index([organizacionId, createdAt(sort: Desc), id])
   /// «Que hizo Fulano»: igualdad -> rango, el unico orden que un btree recorre sin filtro residual.
   @@index([actorUsuarioId, createdAt(sort: Desc)])
   /// «Que le paso a esta entidad».
@@ -5031,7 +5151,7 @@ model WhatsappEnvioEjecucion {
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
-  @@index([createdAt(sort: Desc)])
+  @@index([organizacionId, createdAt(sort: Desc)]) // SL-18/R24: historial por empresa
   @@index([envioId, createdAt(sort: Desc)])
   @@index([organizacionId])
   @@map("whatsapp_envio_ejecucion")
@@ -5159,6 +5279,7 @@ model Organizacion {
   postulacionRecursos PostulacionRecurso[]
   zonas Zona[]
   zonaDistritos ZonaDistrito[]
+  distritoZonasEspeciales DistritoZonaEspecial[] // SL-38
   tarifas Tarifa[]
   tarifaZonaMensajeros TarifaZonaMensajero[]
   premioRankinges PremioRanking[]
@@ -5220,7 +5341,247 @@ model Organizacion {
   analyticsDailys AnalyticsDaily[]
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
+  cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
+  integraciones Integracion[] // SL-36
+  integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
+  modulos OrganizacionModulo[] // SL-23
 
+  // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
+  // global. Solo la escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // `CHECK (… IS NULL OR … >= 0)` vive solo en el SQL de 20261023130000 (Prisma no expresa CHECK).
+  cobroPlataformaPorOrden Decimal? @map("cobro_plataforma_por_orden") @db.Decimal(12, 2)
+
+  // SL-43 (design §3.1): la creó la demo de QA, que borra solo estas. Por la marca y no por el slug,
+  // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
+  esDemo Boolean @default(false) @map("es_demo")
+
+  // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
+  // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
+  // tests y el SQL a mano (R10); el alta de la app lo exige por zod (R6).
+  paisId String @default("CR") @map("pais_id")
+  pais   Pais   @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([paisId])
   @@map("organizacion")
+}
+
+// SL-20 (design §2.1) — un país de la plataforma. Sin `organizacion_id`. La clave es el código ISO
+// 3166-1 alfa-2 (`CR`; los tests usan `XA`–`XZ`). Viven solo en el SQL de 20261026130000, porque
+// Prisma no los expresa: `CHECK (id ~ '^[A-Z]{2}$')`, el `CHECK` de «las tres reglas de código o
+// ninguna», la política `pais_lectura` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R3).
+model Pais {
+  id                  String   @id
+  nombre              String   @unique
+  nivel1Singular      String   @map("nivel_1_singular")
+  nivel1Plural        String   @map("nivel_1_plural")
+  nivel2Singular      String   @map("nivel_2_singular")
+  nivel2Plural        String   @map("nivel_2_plural")
+  nivel3Singular      String   @map("nivel_3_singular")
+  nivel3Plural        String   @map("nivel_3_plural")
+  /// R17: los tres a la vez o ninguno. Solo los pone la migración de Costa Rica.
+  digitosCodigoNivel1 Int?     @map("digitos_codigo_nivel_1")
+  digitosCodigoNivel2 Int?     @map("digitos_codigo_nivel_2")
+  digitosCodigoNivel3 Int?     @map("digitos_codigo_nivel_3")
+  createdAt           DateTime @default(now()) @map("created_at")
+  /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
+  /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
+  disponible          Boolean  @default(true)
+
+  provincias          Provincia[]
+  organizaciones      Organizacion[]
+  historialPlataforma HistorialPlataforma[]
+
+  @@map("pais")
+}
+
+// SL-20 (design §2.6) — qué hizo el superadmin sobre países y geografía (D15). De PLATAFORMA: sin
+// `organizacion_id` y aparte de `historial_accion`, que es por empresa. Ninguna empresa lo ve: viven
+// solo en el SQL de 20261026130400 la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R34).
+// Único escritor: `appendAccionPlataforma` (`lib/repositories/registrar-accion-plataforma.ts`).
+enum HistorialPlataformaAccion {
+  pais_creado
+  division_cargada
+  nodo_geografico_creado
+  nodo_geografico_renombrado
+  nodo_geografico_desactivado
+  nodo_geografico_activado
+  // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
+  pais_disponibilidad_activada
+  pais_disponibilidad_desactivada
+
+  @@map("historial_plataforma_accion")
+}
+
+enum HistorialPlataformaEntidad {
+  pais
+  provincia
+  canton
+  distrito
+
+  @@map("historial_plataforma_entidad")
+}
+
+model HistorialPlataforma {
+  id          String                     @id @default(uuid())
+  accion      HistorialPlataformaAccion
+  entidadTipo HistorialPlataformaEntidad @map("entidad_tipo")
+  /// Sin FK, por la misma razón que `historial_accion.entidad_id`: la fila sobrevive a su sujeto.
+  entidadId       String  @map("entidad_id")
+  /// Nombre congelado; se recorta en origen.
+  entidadEtiqueta String  @map("entidad_etiqueta") @db.VarChar(120)
+  paisId          String  @map("pais_id")
+  /// NULL = sistema o script. `Restrict`: la autoría es evidencia y no se pierde al dar de baja al usuario.
+  actorUsuarioId  String? @map("actor_usuario_id")
+  actorNombre     String? @map("actor_nombre") @db.VarChar(120)
+  /// Solo en el renombre. 80 = `GEO_NOMBRE_MAX`: no hay recorte.
+  valorAnterior   String? @map("valor_anterior") @db.VarChar(80)
+  valorNuevo      String? @map("valor_nuevo") @db.VarChar(80)
+  /// Solo `division_cargada`, y solo cifras.
+  detalle         Json?
+  /// Inmutable: sin `updated_at`.
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  pais  Pais     @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor Usuario? @relation("HistorialPlataformaActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([createdAt(sort: Desc), id])
+  @@index([paisId, createdAt(sort: Desc)])
+  @@map("historial_plataforma")
+}
+
+// SL-40 (design §3.3): un movimiento del cobro de la plataforma.
+enum CobroPlataformaTipo {
+  cargo
+  reverso
+
+  @@map("cobro_plataforma_tipo")
+}
+
+// SL-40: de dónde salió el importe congelado del cargo.
+enum CobroPlataformaFuente {
+  empresa
+  global
+  sin_configurar
+
+  @@map("cobro_plataforma_fuente")
+}
+
+// SL-40 (design §3.1) — el valor global del cobro por orden. Es de PLATAFORMA: sin `organizacion_id`.
+// Una sola fila (`id = true`); si no hay fila, la tarifa es «sin configurar» (0,00). Viven solo en el
+// SQL de 20261023130000, porque Prisma no los expresa: `CHECK ("id")`, `CHECK ("monto" >= 0)`, la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app`.
+model CobroPlataformaTarifa {
+  id        Boolean  @id @default(true)
+  monto     Decimal  @db.Decimal(12, 2)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("cobro_plataforma_tarifa")
+}
+
+// SL-43 (design §2.2, opción 3) — la marca de entorno de la base. De PLATAFORMA: sin
+// `organizacion_id`. Nace vacía; la fila `("entorno", "qa")` la pone una persona solo en QA, y la demo
+// no escribe sin ella. Viven solo en el SQL de 20261025160100, porque Prisma no los expresa: la RLS sin
+// políticas y el `REVOKE ALL … FROM servi_app`.
+model EntornoMarca {
+  clave String @id
+  valor String
+
+  @@map("entorno_marca")
+}
+
+// SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.
+// Los escriben SOLO los triggers sobre `orden` de 20261023130200 (SECURITY DEFINER). Viven solo en el
+// SQL de 20261023130100, porque Prisma no los expresa:
+//   · `CHECK ("secuencia" >= 1)` y `CHECK ("monto" >= 0)`;
+//   · la política `cobro_plataforma_movimiento_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee sus cargos y no los toca (R8);
+//   · los triggers de misma empresa de SL-17.
+// El `id` no tiene default en Prisma porque ningún código de la app crea filas: lo pone el trigger.
+model CobroPlataformaMovimiento {
+  id         String                @id
+  ordenId    String                @map("orden_id")
+  secuencia  Int
+  tipo       CobroPlataformaTipo
+  fuente     CobroPlataformaFuente
+  monto      Decimal               @db.Decimal(12, 2)
+  ocurridoAt DateTime              @map("ocurrido_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+
+  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId, secuencia], map: "cobro_plataforma_movimiento_orden_secuencia_key")
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@map("cobro_plataforma_movimiento")
+}
+
+// SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
+enum ServicioIntegracion {
+  whatsapp
+  google_maps
+  optimizacion_rutas
+  asistente
+
+  @@map("servicio_integracion")
+}
+
+// SL-36 — «sin configurar» no es un estado guardado: es que no hay fila (borrado fisico, D7).
+enum EstadoIntegracion {
+  conectada
+  error
+
+  @@map("estado_integracion")
+}
+
+// SL-36 (design §2.1, D6) — UNA tabla para los cuatro servicios. De NEGOCIO.
+// Viven solo en el SQL de 20261025120000, porque Prisma no los expresa:
+//   · los CHECK de las columnas de WhatsApp (solo en su servicio, y en el siempre);
+//   · el CHECK de `secretos`: cada valor tiene la forma `v<n>:<iv>:<tag>:<cifrado>` de la boveda (R5);
+//   · el CHECK del resumen (hex de 64) y el de `datos_publicos` (objeto);
+//   · la politica `integracion_por_empresa` y el trigger que impide cambiar de empresa.
+model Integracion {
+  /// SIN default (QC inv. 3): el service lo genera antes de cifrar, porque va en los datos asociados.
+  id                          String              @id
+  organizacionId              String              @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion                Organizacion        @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  servicio                    ServicioIntegracion
+  estado                      EstadoIntegracion
+  /// Lo no secreto del servicio; el repositorio lo valida con el zod de cada servicio (design §8).
+  datosPublicos               Json                @default("{}") @map("datos_publicos")
+  /// `{ campo: "v<n>:..." }`. Nunca un valor en claro: lo impide el CHECK de la migracion.
+  secretos                    Json
+  /// R11: unico ENTRE empresas, a proposito: el webhook enruta por el numero (R20).
+  whatsappNumeroId            String?             @unique @map("whatsapp_numero_id")
+  /// R18/R19: SHA-256 hex del token de verificacion; el token nunca se guarda.
+  whatsappResumenVerificacion String?             @unique @map("whatsapp_resumen_verificacion") @db.Char(64)
+  /// Codigo del catalogo, nunca texto del proveedor (D3).
+  ultimoErrorCodigo           String?             @map("ultimo_error_codigo")
+  ultimaPruebaAt              DateTime?           @map("ultima_prueba_at")
+  ultimoWebhookAt             DateTime?           @map("ultimo_webhook_at")
+  createdAt                   DateTime            @default(now()) @map("created_at")
+  updatedAt                   DateTime            @default(now()) @updatedAt @map("updated_at")
+
+  /// R10: una por empresa y servicio, tambien con dos altas a la vez.
+  @@unique([organizacionId, servicio], map: "integracion_organizacion_id_servicio_key")
+  @@index([organizacionId])
+  @@map("integracion")
+}
+
+// SL-36 (design §2.3, §6) — cuantas pruebas lleva una empresa en un minuto (D4). De NEGOCIO.
+// Patron de `asistente_uso_diario`: se incrementa ANTES de llamar al proveedor.
+model IntegracionPruebaMinuto {
+  id             String       @id @default(uuid())
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  /// `date_trunc('minute', now())`.
+  minuto         DateTime     @db.Timestamptz(0)
+  intentos       Int          @default(0)
+
+  @@unique([organizacionId, minuto], map: "integracion_prueba_minuto_organizacion_id_minuto_key")
+  @@index([organizacionId])
+  @@map("integracion_prueba_minuto")
 }

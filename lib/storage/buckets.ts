@@ -1,6 +1,7 @@
 // Nombres de los buckets de Supabase Storage. Todos son PRIVADOS: nunca se
 // exponen URLs publicas, la lectura siempre pasa por una URL firmada temporal
-// (ver `getFile` en lib/storage/getFile.ts).
+// (`SupabaseSignedUrlProvider`). Dentro de cada bucket, cada empresa tiene su carpeta (SL-19,
+// `lib/storage/carpeta-de-empresa.ts`).
 //
 // Los modulos que ya resuelven su bucket por env (lib/config/postulacion.ts,
 // lib/config/gestion.ts, lib/config/etiquetas.ts) siguen siendo la fuente de

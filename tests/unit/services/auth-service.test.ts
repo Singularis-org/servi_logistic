@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthService } from "@/lib/services/AuthService";
 import { hashPassword } from "@/lib/utils/password";
-import type { IUserRepository, UsuarioConHash } from "@/lib/interfaces/repositories/IUserRepository";
+import type { CuentaConHash, IUserRepository, UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { ILoginAttemptRepository } from "@/lib/interfaces/repositories/ILoginAttemptRepository";
 import type { ITrustedDeviceRepository } from "@/lib/interfaces/repositories/ITrustedDeviceRepository";
 import type { IEmailOtpChallengeRepository } from "@/lib/interfaces/repositories/IEmailOtpChallengeRepository";
@@ -11,7 +11,13 @@ import type { IEmailProvider } from "@/lib/interfaces/external/IEmailProvider";
 
 const REQUEST_CONTEXT = { ipAddress: "1.2.3.4", userAgent: "vitest-agent" };
 
-async function buildUsuario(overrides: Partial<UsuarioConHash> = {}): Promise<UsuarioConHash> {
+// SL-18 T1.3: la cuenta que devuelve `findCuentasPorEmailConHash` y, en `findCuentaPorId` (SLT-32),
+// la del desafio OTP.
+// Aqui el email tiene UNA cuenta (el login de siempre); con varias empresas, ver
+// `auth-service-empresas.test.ts` (SL-18 T2.2).
+type UsuarioDeTest = UsuarioPublico & CuentaConHash;
+
+async function buildUsuario(overrides: Partial<UsuarioDeTest> = {}): Promise<UsuarioDeTest> {
   return {
     id: "usr-1",
     nombre: "Ana",
@@ -23,8 +29,9 @@ async function buildUsuario(overrides: Partial<UsuarioConHash> = {}): Promise<Us
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-1",
     fulfillment: false,
-    // SLT-32: sin empresa no hay sesion; el usuario base la trae para no cambiar los casos previos.
     organizacionId: "org-1",
+    rol: "maestro",
+    empresaNombre: "Empresa A",
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -33,9 +40,10 @@ async function buildUsuario(overrides: Partial<UsuarioConHash> = {}): Promise<Us
 
 function buildMocks() {
   const userRepo: IUserRepository = {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn(),
-    findByEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: la cuenta del desafio OTP, con estado, empresa y rol
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn(),
     listMensajeros: vi.fn().mockResolvedValue([]),
     listMensajerosParaFiltro: vi.fn().mockResolvedValue([]),
@@ -76,6 +84,7 @@ function buildMocks() {
     markConsumed: vi.fn(),
     findLatestActiveByUsuarioId: vi.fn(),
     contarRecientesPorUsuario: vi.fn().mockResolvedValue(0),
+    consumirSiActivo: vi.fn(),
   };
   const sessionRepo: ISessionRepository = {
     create: vi.fn().mockResolvedValue({
@@ -123,7 +132,7 @@ describe("AuthService.login", () => {
 
   it("R12: devuelve invalid_credentials si el email no existe, sin revelar el motivo", async () => {
     const mocks = buildMocks();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
     const result = await mocks.authService.login({
       email: "no-existe@example.com",
@@ -140,7 +149,7 @@ describe("AuthService.login", () => {
   it("R11, R12: devuelve invalid_credentials si la contrasena no coincide", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
 
     const result = await mocks.authService.login({
       email: usuario.email,
@@ -154,7 +163,7 @@ describe("AuthService.login", () => {
   it("R13: rechaza con account_unavailable si el estado no es activo aunque la contrasena sea correcta", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario({ estado: "inactivo" });
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
 
     const result = await mocks.authService.login({
       email: usuario.email,
@@ -168,7 +177,7 @@ describe("AuthService.login", () => {
   it("R14, R16: concede sesion directa cuando el riesgo es bajo", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
     (mocks.riskEngine.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue({
       score: 0,
       reasons: [],
@@ -190,7 +199,7 @@ describe("AuthService.login", () => {
   it("R17: exige challenge_required cuando el riesgo es alto", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
     (mocks.riskEngine.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue({
       score: 90,
       reasons: ["dispositivo_no_reconocido"],
@@ -212,7 +221,7 @@ describe("AuthService.login", () => {
   it("R21, R21a: el 6to intento dentro de la ventana devuelve account_locked aun con credenciales correctas", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
     (mocks.loginAttemptRepo.contarFallosConsecutivosRecientes as ReturnType<typeof vi.fn>).mockResolvedValue(5);
 
     const result = await mocks.authService.login({
@@ -228,7 +237,7 @@ describe("AuthService.login", () => {
   it("R21: el bloqueo caduca pasados 15 minutos (ventana ya no reporta 5 fallos)", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
     // Simula que, tiempo despues, la ventana de 15 min ya no contiene los fallos.
     (mocks.loginAttemptRepo.contarFallosConsecutivosRecientes as ReturnType<typeof vi.fn>).mockResolvedValue(0);
 
@@ -244,7 +253,7 @@ describe("AuthService.login", () => {
   it("R22: un intento exitoso registra el intento como exitoso (base del reinicio de contador)", async () => {
     const mocks = buildMocks();
     const usuario = await buildUsuario();
-    (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+    (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
 
     await mocks.authService.login({
       email: usuario.email,
@@ -266,7 +275,7 @@ describe("AuthService.login", () => {
       async (_caso, organizacionId) => {
         const mocks = buildMocks();
         const usuario = await buildUsuario({ organizacionId });
-        (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+        (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
 
         const result = await mocks.authService.login({
           email: usuario.email,
@@ -294,7 +303,7 @@ describe("AuthService.login", () => {
     it("no emite OTP a un usuario sin empresa aunque el riesgo sea alto", async () => {
       const mocks = buildMocks();
       const usuario = await buildUsuario({ organizacionId: null });
-      (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
       (mocks.riskEngine.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue({
         score: 90,
         reasons: ["dispositivo_no_reconocido"],
@@ -312,10 +321,32 @@ describe("AuthService.login", () => {
       expect(mocks.emailProvider.sendOtpCode).not.toHaveBeenCalled();
     });
 
+    it("SL-32: la cuenta de plataforma (superadmin, sin empresa) SI inicia sesion", async () => {
+      const mocks = buildMocks();
+      const usuario = await buildUsuario({
+        organizacionId: null,
+        rol: "superadmin",
+        empresaNombre: null,
+      });
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
+
+      const result = await mocks.authService.login({
+        email: usuario.email,
+        password: "clave-correcta",
+        ...REQUEST_CONTEXT,
+      });
+
+      expect(result).toEqual({ status: "ok", sessionId: "sess-1", expiresAt: expect.any(Date) });
+      expect(mocks.sessionRepo.create).toHaveBeenCalledWith({ userId: usuario.id, ttlHours: 24 });
+      expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+        expect.objectContaining({ riskReason: "sin_empresa" }),
+      );
+    });
+
     it("con empresa concede la sesion igual que antes y no registra sin_empresa", async () => {
       const mocks = buildMocks();
       const usuario = await buildUsuario({ organizacionId: "org-1" });
-      (mocks.userRepo.findByEmailWithHash as ReturnType<typeof vi.fn>).mockResolvedValue(usuario);
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
 
       const result = await mocks.authService.login({
         email: usuario.email,
@@ -357,7 +388,7 @@ describe("AuthService.verifyChallenge", () => {
       consumedAt: null,
       createdAt: new Date(),
     });
-    (mocks.userRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(await buildUsuario());
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(await buildUsuario());
 
     const result = await mocks.authService.verifyChallenge({
       challengeId: "challenge-1",
@@ -428,7 +459,7 @@ describe("AuthService.verifyChallenge", () => {
       consumedAt: null,
       createdAt: new Date(),
     });
-    (mocks.userRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
       await buildUsuario({ organizacionId: null }),
     );
 
@@ -449,6 +480,62 @@ describe("AuthService.verifyChallenge", () => {
     );
   });
 
+  it("SLT-32: OTP valido de una cuenta que dejo de estar activa registra estado_no_activo", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-1",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      await buildUsuario({ estado: "bloqueado" }),
+    );
+
+    const result = await mocks.authService.verifyChallenge({ challengeId: "challenge-1", code, ...REQUEST_CONTEXT });
+
+    expect(result).toEqual({ status: "invalid_or_expired" });
+    expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-1", exitoso: false, riskReason: "estado_no_activo:bloqueado" }),
+    );
+  });
+
+  it("SL-32: OTP valido de la cuenta de plataforma (superadmin, sin empresa) concede sesion", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-1",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      await buildUsuario({ organizacionId: null, rol: "superadmin", empresaNombre: null }),
+    );
+
+    const result = await mocks.authService.verifyChallenge({ challengeId: "challenge-1", code, ...REQUEST_CONTEXT });
+
+    expect(result.status).toBe("ok");
+    expect(mocks.sessionRepo.create).toHaveBeenCalledWith({ userId: "usr-1", ttlHours: 24 });
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-1", exitoso: true, riskReason: "otp_verificado" }),
+    );
+  });
+
   it("SLT-32: OTP valido cuyo usuario ya no existe no concede sesion y registra usuario_no_encontrado", async () => {
     const mocks = buildMocks();
     const code = "654321";
@@ -464,7 +551,7 @@ describe("AuthService.verifyChallenge", () => {
       consumedAt: null,
       createdAt: new Date(),
     });
-    (mocks.userRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     const result = await mocks.authService.verifyChallenge({
       challengeId: "challenge-1",

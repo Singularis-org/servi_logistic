@@ -4,12 +4,11 @@ import { render, screen } from "@testing-library/react";
 
 // Mocks de las dependencias server-side de app/recuperar-contrasena/page.tsx.
 // El page.tsx (Server Component real) se importa sin mockear: se ejercita su
-// logica real de R12 (publico; redirige si hay sesion valida).
+// logica real de R12 (publico; redirige si hay sesion valida). El formulario se renderiza
+// de verdad, sin stub; solo se mockean sus Server Actions.
 //
-// 2026-09-04 — LA PAGINA YA NO MONTA EL FORMULARIO. Monta `RecuperacionDesactivadaAviso`
-// porque el envio del OTP falla siempre (SMTP de Gmail, `535 Username and Password not
-// accepted`) y lo hace en silencio. Aqui el aviso se renderiza DE VERDAD, sin stub: lo que se
-// comprueba es el texto que la persona lee, no que la pagina importe un modulo.
+// Historia: la pagina monto un aviso en lugar del formulario desde el 2026-09-04 (el correo
+// no salia) hasta el 2026-10-22, cuando SL-32 (R38) la reactivo.
 const cookieGetMock = vi.fn();
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({ get: cookieGetMock })),
@@ -35,6 +34,10 @@ vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: vi.fn(() => ({})),
 }));
 
+vi.mock("@/lib/actions/password-reset", () => ({
+  solicitarRecuperacion: vi.fn(),
+}));
+
 vi.mock("next/link", () => ({
   default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...props}>
@@ -42,11 +45,6 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
-
-/** El texto acordado con el humano, escrito LITERAL. No se deriva del componente: comparar el
- *  mensaje con la constante que lo genera estaria verde siempre, incluso con la pantalla vacia. */
-const MENSAJE =
-  "Para recuperar tu contraseña, pídele a un administrador que te la restablezca.";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,7 +69,7 @@ describe("app/recuperar-contrasena/page.tsx — sesion activa (R12)", () => {
     expect(findValidByIdMock).toHaveBeenCalledWith("session-abc");
   });
 
-  it("sin cookie de sesion dice a quien acudir en vez de pedir un correo", async () => {
+  it("sin cookie de sesion monta el formulario de recuperacion (R38)", async () => {
     const { default: RecuperarContrasenaPage } = await import(
       "@/app/recuperar-contrasena/page"
     );
@@ -81,25 +79,19 @@ describe("app/recuperar-contrasena/page.tsx — sesion activa (R12)", () => {
     render(element);
 
     expect(redirectMock).not.toHaveBeenCalled();
-    expect(screen.getByText(MENSAJE)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar enlace" })).toBeInTheDocument();
+    expect(screen.getByText("Recupera el acceso a tu cuenta de forma segura")).toBeInTheDocument();
 
-    // NO es un callejon sin salida: hay camino de vuelta al login (R12 sigue siendo una
-    // pagina publica alcanzable sin sesion).
+    // Sigue sin ser un callejon sin salida: hay camino de vuelta al login.
     expect(screen.getByRole("link", { name: "Volver a iniciar sesión" })).toHaveAttribute(
       "href",
       "/login",
     );
-
-    // Y NO queda ni un campo del flujo viejo: si el formulario volviera a montarse aqui, la
-    // persona escribiria su correo, no le llegaria nada y no se enteraria de por que.
-    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
-    expect(
-      screen.queryByRole("heading", { name: "Recuperar contraseña" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Enviar|Verificar/ })).not.toBeInTheDocument();
   });
 
-  it("con la sesion de la cookie expirada/invalida muestra el mismo aviso, no el formulario", async () => {
+  it("con la sesion de la cookie expirada/invalida tambien monta el formulario", async () => {
     const { default: RecuperarContrasenaPage } = await import(
       "@/app/recuperar-contrasena/page"
     );
@@ -110,7 +102,7 @@ describe("app/recuperar-contrasena/page.tsx — sesion activa (R12)", () => {
     render(element);
 
     expect(redirectMock).not.toHaveBeenCalled();
-    expect(screen.getByText(MENSAJE)).toBeInTheDocument();
-    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
   });
 });

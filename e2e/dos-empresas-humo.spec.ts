@@ -1,37 +1,48 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import type { PrismaClient } from "@prisma/client";
+import type { ModuloApagable, PrismaClient } from "@prisma/client";
+
+import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
 
 import {
-  altaDeEmpresa,
   clienteDueno,
-  correoDelMaestro,
-  liberarCorreos,
   LogDelServidor,
   patronDeMarcador,
-  prepararAcceso,
   rutasDelMenuDelMaestro,
   sembrarDatos,
-  solicitarRecuperacion,
-  type AltaDeEmpresa,
   type DatosSembrados,
   type Empresa,
-  type EnvioRegistrado,
   type Letra,
 } from "./_dos-empresas-fixture";
+import {
+  altaDeEmpresaPorPantalla,
+  asegurarSuperadmin,
+  conCandadoDelSuperadmin,
+  entrarConOtp,
+  fijarModulosPorPantalla,
+  olvidarDispositivos,
+  recuperarContrasena,
+  SUPERADMIN_DE_PRUEBA,
+  type AltaPorPantalla,
+} from "./_superadmin-fixture";
 
 /**
- * SL-17 T4.2 — humo de aceptación de dos empresas (D19, R47; design §9.3).
+ * SL-17 T4.2 — humo de aceptación de dos empresas (D19, R47; design §9.3). Desde SL-44 (D16;
+ * R16, R17) el alta y el primer acceso van por la pantalla, sin SMTP.
  *
- * 1. Alta: A y B nacen por `OrganizacionService.altaEmpresa` dentro de `comoPlataforma`; repetir la
- *    de A da `ya_existe` (R45). Cuando exista la pantalla «Empresas» de SL-32, este paso se hace
- *    desde ella como superadmin.
- * 2. Primer acceso: «recuperar contraseña» por `PasswordResetService.solicitar` con el SMTP REAL
- *    (se exige que el proveedor acepte el envío). El humo no lee el buzón: la contraseña la fija la
- *    fixture con el hasher del login, y el dispositivo del navegador queda confiado (sin OTP).
+ * 1. Alta: el superadmin de prueba (`asegurarSuperadmin`, el mismo de los E2E de SL-32) entra con
+ *    OTP y da de alta A y B desde `/plataforma/empresas`. Que repetir el alta no cree otra la
+ *    cubren `superadmin-empresas.spec.ts` (por la pantalla) y
+ *    `tests/integration/db/organizacion-alta.test.ts` (`ya_existe`, R45).
+ * 2. Primer acceso: cada maestro entra por «¿Olvidaste tu contraseña?» con el enlace que el
+ *    emisor de consola escribió en el log del servidor para SU correo (SL-44 R15; desde SL-18 R32,
+ *    un enlace y no un código), fija su contraseña y después entra por `/login` con el OTP de
+ *    dispositivo nuevo. No se exige SMTP
+ *    ni `messageId`: el correo consta en el log como enviado a ese maestro (R17).
  * 3. Datos: en cada empresa, con `fijarEmpresa`, lo mínimo de cada pantalla, con marcadores
- *    `A-<uuid>` / `B-<uuid>` en sus textos visibles.
+ *    `A-<uuid>` / `B-<uuid>` en sus textos visibles (excepción de R8 de SL-44, `design.md > D4`:
+ *    son marcadores para buscar fugas, y las pantallas que los crean no son lo que prueba el humo).
  * 4. Recorrido: cada maestro visita TODAS las rutas del menú del maestro según
  *    `lib/auth/menu-visibility.ts`. En cada una: ni la pantalla de error de `app/(app)/error.tsx`, ni
  *    «no encontrado», ni un 5xx, ni `EmpresaNoResuelta` en el log del servidor; y ningún marcador de
@@ -39,14 +50,20 @@ import {
  * 5. B abriendo los detalles de A (estado de cuenta de su tienda y de su mensajero) ve «no
  *    encontrado»; A abriendo los mismos ve su marcador (el control que hace falsable el anterior).
  *    La app no tiene una URL de detalle de orden: el detalle de la orden se abre dentro de `/ordenes`.
- * 6. Vehículos y geografía (R40): cargan, y crear un vehículo o una provincia desde la pantalla
- *    falla cerrado: sin pantalla de error ni 5xx, y la base no cambia.
+ * 6. Módulos (SL-23, design §10; R15, R16, R23, R25, R26): tras el alta, el superadmin abre el
+ *    detalle de cada empresa y enciende por la pantalla los 3 módulos de A y todos menos «Ranking»
+ *    de B. Cada maestro recorre solo las rutas de SU menú (`rutasDelMenuDelMaestro(apagados)`): A
+ *    las recorre todas, como antes de SL-23 (R23). Y B no ve «Ranking» en el menú y recibe «No
+ *    encontramos esta página» en `/ranking` y `/ranking/historico`, mientras A lo ve y lo abre.
+ * 7. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
+ *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
+ *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
+ *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
  *
- * CÓMO SE CORRE (solo en local; una base remota lo aborta antes de escribir):
- * - `DATABASE_URL` a una base local migrada y con catálogos (`pnpm run db:seed`), las `SMTP_*` y
- *   `SL17_HUMO_MAESTRO_A`/`_B` con los buzones reales de prueba de los dos maestros (fuera del árbol).
- * - El dev server en `localhost:3000`, levantado aparte con su stdout/stderr en un archivo, y
- *   `SL17_HUMO_LOG_SERVIDOR` apuntando a ese archivo. Sin él, FALLA: no se salta.
+ * CÓMO SE CORRE: `pnpm exec playwright test --project=aislamiento`. Playwright levanta el servidor
+ * con `AUTH_OTP_DEBUG_LOG=1`, sin SMTP y con su log en `E2E_LOG_SERVIDOR`; la base es local,
+ * migrada y con `pnpm run db:seed` (una base remota lo aborta antes de escribir). Sin el log, FALLA:
+ * no se salta. Los correos son `@example.test` por corrida: una segunda corrida da de alta otras dos.
  */
 
 test.describe.configure({ mode: "serial" });
@@ -56,20 +73,31 @@ const NO_ENCONTRADO = "No encontramos esta página";
 
 let dueno: PrismaClient | null = null;
 let log: LogDelServidor | null = null;
-const altas: Partial<Record<Letra, AltaDeEmpresa>> = {};
-const envios: Partial<Record<Letra, EnvioRegistrado[]>> = {};
+const empresas: Partial<Record<Letra, Empresa>> = {};
+/** El enlace de recuperación que el log del servidor recibió para cada maestro (R17; SL-18 R32). */
+const enlacesDeRecuperacion: Partial<Record<Letra, string>> = {};
 const datos: Partial<Record<Letra, DatosSembrados>> = {};
 const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
-const rutas = rutasDelMenuDelMaestro();
+/** SL-23 (R26): A con los 3 módulos encendidos; B con todos menos uno, «Ranking». */
+const APAGADOS: Record<Letra, readonly ModuloApagable[]> = { A: [], B: ["ranking"] };
+const rutas: Record<Letra, string[]> = {
+  A: rutasDelMenuDelMaestro(APAGADOS.A),
+  B: rutasDelMenuDelMaestro(APAGADOS.B),
+};
+const RUTAS_DE_RANKING = ["/ranking", "/ranking/historico"] as const;
+
+function encendidosDe(letra: Letra): ModuloApagable[] {
+  return ORDEN_MODULOS.filter((m) => !APAGADOS[letra].includes(m));
+}
 
 function otra(letra: Letra): Letra {
   return letra === "A" ? "B" : "A";
 }
 
 function empresa(letra: Letra): Empresa {
-  const alta = altas[letra];
-  if (!alta) throw new Error(`no hay alta de ${letra}: falló el beforeAll`);
-  return alta.empresa;
+  const e = empresas[letra];
+  if (!e) throw new Error(`no hay alta de ${letra}: falló el beforeAll`);
+  return e;
 }
 
 function datosDe(letra: Letra): DatosSembrados {
@@ -78,41 +106,73 @@ function datosDe(letra: Letra): DatosSembrados {
   return d;
 }
 
+function altaNueva(letra: Letra): AltaPorPantalla {
+  const s = randomBytes(5).toString("hex");
+  return {
+    nombre: `Empresa humo ${letra} ${s}`,
+    slug: `humo-${letra.toLowerCase()}-${s}`,
+    maestroNombre: `Maestro ${letra} humo ${s}`,
+    email: `humo-maestro-${letra.toLowerCase()}-${s}@example.test`,
+    telefono: "88880000",
+    documento: `humo-${letra.toLowerCase()}-${s}`,
+  };
+}
+
 test.beforeAll(async ({ browser }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   log = LogDelServidor.desdeEntorno();
   dueno = clienteDueno();
-  await liberarCorreos(dueno);
+  const db = dueno;
 
-  const contexto = await browser.newContext();
-  const page = await contexto.newPage();
-  const userAgent = await page.evaluate(() => navigator.userAgent);
+  // 1. El superadmin da de alta A y B desde «Empresas».
+  await conCandadoDelSuperadmin(() => asegurarSuperadmin(db));
+  const ctxSa = await browser.newContext();
+  const sa = await ctxSa.newPage();
+  const altas: Partial<Record<Letra, AltaPorPantalla>> = {};
+  await conCandadoDelSuperadmin(async () => {
+    await olvidarDispositivos(db, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
+    await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    for (const letra of ["A", "B"] as const) {
+      const d = altaNueva(letra);
+      await altaDeEmpresaPorPantalla(sa, d);
+      altas[letra] = d;
+    }
+    // SL-23 (R26): el alta deja solo el núcleo; los módulos se encienden desde el detalle.
+    for (const letra of ["A", "B"] as const) {
+      const d = altas[letra];
+      if (!d) throw new Error(`no hay alta de ${letra}`);
+      await fijarModulosPorPantalla(sa, d.nombre, encendidosDe(letra));
+    }
+  });
+  await ctxSa.close();
 
   for (const letra of ["A", "B"] as const) {
-    const email = correoDelMaestro(letra);
-    altas[letra] = await altaDeEmpresa(letra, email);
-    envios[letra] = await solicitarRecuperacion(email, userAgent);
-    await prepararAcceso(dueno, empresa(letra), userAgent);
-    datos[letra] = await sembrarDatos(dueno, empresa(letra));
-  }
-  await contexto.close();
+    const d = altas[letra];
+    if (!d) throw new Error(`no hay alta de ${letra}`);
+    const org = await db.organizacion.findUniqueOrThrow({
+      where: { slug: d.slug },
+      select: { id: true, usuarios: { select: { id: true, email: true, rol: { select: { value: true } } } } },
+    });
+    const maestro = org.usuarios.find((u) => u.email === d.email && u.rol.value === "maestro");
+    if (!maestro) throw new Error(`la empresa ${letra} no tiene el maestro del formulario`);
 
-  for (const letra of ["A", "B"] as const) {
-    const ctx = await browser.newContext({ userAgent });
+    // 2. Primer acceso por «¿Olvidaste tu contraseña?» y login con OTP, en su propio navegador.
+    const password = `Aa1!${randomBytes(12).toString("base64url")}`;
+    const ctx = await browser.newContext();
     const p = await ctx.newPage();
-    await p.goto("/login");
-    await p.fill('input[type="email"]', empresa(letra).email);
-    await p.fill('input[type="password"]', empresa(letra).password);
-    await p.click('button[type="submit"]');
-    await p.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 90_000 });
+    enlacesDeRecuperacion[letra] = await recuperarContrasena(p, d.email, password);
+    await entrarConOtp(p, d.email, password);
     cookies[letra] = await ctx.cookies();
     await ctx.close();
+
+    empresas[letra] = { letra, organizacionId: org.id, maestroId: maestro.id, email: d.email, password, slug: d.slug };
+    // 3. Los datos marcados.
+    datos[letra] = await sembrarDatos(db, empresa(letra));
   }
 });
 
 test.afterAll(async () => {
-  // La base es desechable; solo se liberan los correos fijos para la corrida siguiente.
-  if (dueno) await liberarCorreos(dueno);
+  // La base es desechable: no se borra nada.
   await dueno?.$disconnect();
 });
 
@@ -136,19 +196,26 @@ async function visitar(page: Page, ruta: string): Promise<{ texto: string; html:
   return { texto, html, estado: respuesta?.status() ?? null };
 }
 
-test("alta de A y B por el servicio, repetición idempotente y correo de recuperación aceptado por el SMTP", () => {
+test("alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)", async () => {
+  const db = dueno;
+  if (!db) throw new Error("sin cliente de base: falló el beforeAll");
   for (const letra of ["A", "B"] as const) {
-    const alta = altas[letra];
-    expect(alta?.resultado.estado, `alta de ${letra}`).toBe("creada");
-    expect(alta?.repeticion, `repetir el alta de ${letra} (R45)`).toEqual({
-      estado: "ya_existe",
-      organizacionId: alta?.empresa.organizacionId,
+    const e = empresa(letra);
+    const org = await db.organizacion.findUniqueOrThrow({
+      where: { id: e.organizacionId },
+      select: { slug: true, usuarios: { select: { email: true, rol: { select: { value: true } } } } },
     });
-    const e = envios[letra] ?? [];
-    expect(e, `envíos del correo de recuperación de ${letra}`).toHaveLength(1);
-    expect(e[0]?.error, `el SMTP rechazó el correo de ${letra}`).toBeNull();
-    expect(e[0]?.messageId, `el SMTP no devolvió id de mensaje para ${letra}`).toBeTruthy();
-    console.log(`[humo] correo de recuperación de ${letra}: aceptado, messageId=${e[0]?.messageId}`);
+    expect(org.slug, `slug de ${letra}`).toBe(e.slug);
+    // Los demás usuarios son los de `sembrarDatos`; maestro hay uno, el del formulario.
+    const maestros = org.usuarios.filter((u) => u.rol.value === "maestro").map((u) => u.email);
+    expect(maestros, `${letra}: el alta deja un solo maestro, el del formulario`).toEqual([e.email]);
+    // `recuperarContrasena` lo leyó de la línea `[email][debug] to=<correo del maestro>`.
+    // El valor de `#enlace=`: `<challengeId>.<secreto>` (SL-18 R32).
+    expect(enlacesDeRecuperacion[letra], `${letra}: el log no recibió el correo de recuperación de su maestro`).toMatch(
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
+    );
+    expect(cookies[letra]?.some((c) => c.name === "session"), `${letra}: el maestro no quedó con sesión`).toBe(true);
+    console.log(`[humo] correo de recuperación de ${letra}: en el log, enviado a su maestro`);
   }
   expect(empresa("A").organizacionId).not.toBe(empresa("B").organizacionId);
 });
@@ -156,14 +223,14 @@ test("alta de A y B por el servicio, repetición idempotente y correo de recuper
 for (const letra of ["A", "B"] as const) {
   test(`el maestro de ${letra} recorre todas las rutas de su menú sin error ni datos de ${otra(letra)}`, async ({ page }) => {
     test.setTimeout(30 * 60_000);
-    expect(rutas.length, "el menú del maestro no dio rutas").toBeGreaterThan(0);
+    expect(rutas[letra].length, "el menú del maestro no dio rutas").toBeGreaterThan(0);
     const errores5xx = await abrirComo(letra, page);
     const ajenos = patronDeMarcador(otra(letra));
     const propios = datosDe(letra).marcadores;
     const vistos = new Set<string>();
     log?.nuevo();
 
-    for (const ruta of rutas) {
+    for (const ruta of rutas[letra]) {
       const antes = errores5xx.length;
       const { texto, html, estado } = await visitar(page, ruta);
       const delServidor = log?.nuevo() ?? "";
@@ -248,6 +315,59 @@ test("B abriendo los detalles de A ve «no encontrado», y A los ve con su marca
   }
 });
 
+test("SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)", async ({ browser }) => {
+  test.setTimeout(10 * 60_000);
+  const db = dueno;
+  if (!db) throw new Error("sin cliente de base: falló el beforeAll");
+
+  // Lo que la pantalla del superadmin escribió, empresa por empresa (R25: lo de B no toca A).
+  for (const letra of ["A", "B"] as const) {
+    const filas = await db.organizacionModulo.findMany({
+      where: { organizacionId: empresa(letra).organizacionId },
+      select: { modulo: true },
+    });
+    expect(filas.map((f) => f.modulo).sort(), `${letra}: módulos encendidos en la base`).toEqual(
+      [...encendidosDe(letra)].sort(),
+    );
+  }
+  expect(rutas.A, "A: el menú recorrido incluye el ranking").toEqual(expect.arrayContaining([...RUTAS_DE_RANKING]));
+  for (const ruta of RUTAS_DE_RANKING) {
+    expect(rutas.B, `B: ${ruta} no está entre las rutas de su menú`).not.toContain(ruta);
+  }
+
+  for (const letra of ["A", "B"] as const) {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const errores5xx = await abrirComo(letra, page);
+
+    // R15: el desplegable «Ranking» del menú (un botón, no un enlace) solo está en A.
+    await visitar(page, "/dashboard");
+    const nav = page.getByRole("navigation", { name: "Navegación principal" });
+    await expect(nav, `${letra}: no se pintó el menú`).toBeVisible({ timeout: 60_000 });
+    const ranking = nav.getByRole("button", { name: "Ranking", exact: true });
+    const enMenu = await ranking.count();
+    console.log(`[humo módulos ${letra}] «Ranking» en el menú: ${enMenu}`);
+    expect.soft(enMenu, `${letra}: «Ranking» en el menú`).toBe(letra === "A" ? 1 : 0);
+
+    // R16: por URL, B recibe el 404 de la app; A abre las dos pantallas sin error.
+    for (const ruta of RUTAS_DE_RANKING) {
+      const { texto, estado } = await visitar(page, ruta);
+      const noEncontrado = texto.includes(NO_ENCONTRADO);
+      console.log(`[humo módulos ${letra}] ${ruta}: estado=${estado} noEncontrado=${noEncontrado}`);
+      if (letra === "A") {
+        expect.soft(estado, `A en ${ruta}: estado HTTP`).toBeLessThan(400);
+        expect.soft(noEncontrado, `A en ${ruta}: «no encontrado»`).toBe(false);
+      } else {
+        expect.soft(estado, `B en ${ruta}: estado HTTP`).toBe(404);
+        expect.soft(noEncontrado, `B en ${ruta}: no ve «no encontrado»`).toBe(true);
+      }
+      expect.soft(texto.includes(PANTALLA_DE_ERROR), `${letra} en ${ruta}: pantalla de error`).toBe(false);
+    }
+    expect.soft(errores5xx, `${letra}: respuestas 5xx en el ranking`).toEqual([]);
+    await ctx.close();
+  }
+});
+
 /**
  * Pulsa «Guardar» y espera la Server Action (un POST a la página): sin ella, «la base no cambió»
  * pasaría aunque el clic no hubiera enviado nada. Devuelve el texto de la página después y anota
@@ -267,7 +387,7 @@ async function guardarYLeer(page: Page, boton: Locator, que: string): Promise<st
   return despues;
 }
 
-test("vehículos y geografía cargan para la empresa y escribir desde la pantalla falla cerrado (R40)", async ({ page }) => {
+test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)", async ({ page }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");
@@ -287,16 +407,13 @@ test("vehículos y geografía cargan para la empresa y escribir desde la pantall
   expect.soft(await db.vehiculo.count({ where: { name: nombre } }), "vehículos: quedó la fila").toBe(0);
 
   const provinciasAntes = await db.provincia.count();
+  // SL-32 R26: la página no tiene formulario para el maestro, así que no hay provincia que intentar crear.
+  // SL-20 R22: desde SL-20 la ruta ya no existe; el 404 vale para todo rol.
   const g = await visitar(page, "/configuracion/geografia");
-  expect(g.texto.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al cargar").toBe(false);
-  expect(g.texto, "geografía: no carga el catálogo").toContain("Catálogo geográfico");
-  await page.getByRole("button", { name: "Crear provincia" }).click();
-  await page.getByPlaceholder("Cabagra, Buenos Aires, Puntarenas…").first().fill(nombre);
-  const trasProvincia = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }).first(), "provincia");
-  expect.soft(trasProvincia.includes(PANTALLA_DE_ERROR), "geografía: pantalla de error al guardar").toBe(false);
-  expect.soft(trasProvincia.includes("dado de alta"), "geografía: la pantalla dice que creó").toBe(false);
+  expect.soft(g.estado, "geografía: el maestro no recibe 404").toBe(404);
+  expect.soft(g.texto.includes(NO_ENCONTRADO), "geografía: el maestro no ve «no encontrado»").toBe(true);
+  expect.soft(g.texto.includes("Catálogo geográfico"), "geografía: el maestro ve el catálogo").toBe(false);
   expect.soft(await db.provincia.count(), "geografía: cambió el catálogo").toBe(provinciasAntes);
-  expect.soft(await db.provincia.count({ where: { nombre } }), "geografía: quedó la fila").toBe(0);
 
   expect(errores5xx, "vehículos/geografía: respuestas 5xx").toEqual([]);
 });

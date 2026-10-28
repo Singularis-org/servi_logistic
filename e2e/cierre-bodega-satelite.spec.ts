@@ -1,251 +1,151 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import { aprobarCierre, importe, solicitarCierre } from "./_escenarios/cierres";
+import {
+  baseReparto,
+  crearEscenarioReparto,
+  crearMensajero,
+  crearOrden,
+  gestionar,
+  llevarA,
+  paginaDe,
+  type MensajeroE2E,
+  type OrdenE2E,
+  type RepartoE2E,
+} from "./_escenarios/reparto";
 
 /**
- * E2E tests for "Cierre de bodega satélite → bodega principal" — the second closing
- * level (Feature 40, T10 / R1-R2, R11-R13, R15-R17, F1.4 decisions e/h/i/l).
+ * E2E — Cierre de bodega satélite → bodega central (features 40 y 431; SL-44 T6.2, R18).
  *
- * The module `/cierres-admin` is role-aware: it extends the feature-38 courier
- * closings with the feature-40 warehouse (bodega) closings. Two roles participate:
- *  - adminSatelite (SOLICITA): consolidates their zone's already-`aprobado`
- *    `cierre_dia` and requests the warehouse closing to the central bodega.
- *  - maestro (APRUEBA/RECHAZA): reviews the aggregated detail of each requested
- *    warehouse closing and approves or rejects it.
+ * El segundo nivel de cierre, contra la UI ACTUAL:
+ *  1. El adminSatelite (pestaña «Bodega») ve los totales a consolidar y los cierres del día
+ *     aprobados de su zona, pulsa «Solicitar cierre de bodega», confirma, y la consolidación queda
+ *     en «Solicitados».
+ *  2. El maestro abre la consolidación pendiente: totales agregados, el cierre del día de cada
+ *     mensajero con sus gestiones y la evidencia firmada de la rechazada; la «Marca recibido» por
+ *     lo declarado y pasa a «Resueltos».
+ *  3. El maestro la «Desmarca» y vuelve a «Pendientes».
  *
- * Covers the critical money flow of the warehouse closing end-to-end:
- *  1) adminSatelite path (request): logs in → /cierres-admin → the "Cierre de bodega"
- *     region shows the aggregated totals + the `cierre_dia` to consolidate →
- *     "Solicitar cierre de bodega" is enabled (no pending courier closings, R6/R7) →
- *     confirms in the modal → a success toast is shown and the new warehouse closing
- *     appears in "Cierres de bodega solicitados" as "Solicitado".
- *  2) maestro path (approve): logs in → /cierres-admin → the "Cierres de bodega
- *     satélite" region shows the requested closing in "Cierres de bodega pendientes"
- *     → clicks "Ver / decidir" → the aggregated detail modal shows the snapshot
- *     totals (R11/R13), the per-`cierre_dia` sub-detail with its 4 result sections
- *     and the signed evidence viewer for a rejected order (R12) → clicks "Aprobar" →
- *     a success toast is shown and the closing moves to "Cierres de bodega resueltos"
- *     as "Aprobado".
- *  3) maestro path (reject): same up to the detail modal → clicks "Rechazar" → a
- *     sub-modal requires a non-empty reason (R17) → typing a reason and confirming
- *     moves the closing to the history as "Rechazado" with the reason persisted.
+ * ⚠️ Desde la ficha 431 la central ya no APRUEBA ni RECHAZA una consolidación: marca si el efectivo
+ * llegó (y cuánto), y la marca se deshace con «Desmarcar». El «aprobar / rechazar con motivo» que
+ * describía esta cabecera ya no existe en la pantalla; los pasos 2 y 3 recorren su sustituto.
  *
- * PRECONDITION (seed):
- * - An `adminSatelite` user WITH a `zona` (satélite), and within that zone at least
- *   one `cierre_dia` in state `aprobado`, `destino_tipo = bodega_satelite`,
- *   `destino_zona_id = the admin's zona` and `cierre_bodega_id IS NULL` (consolidable,
- *   R5), each with its snapshot totals and gestiones (at least one `entregada` with a
- *   known amount+method, and at least one `rechazada` with a stored evidence so the
- *   signed-URL viewer can be exercised, R12). NO `cierre_dia` in state `solicitado`
- *   left in that zone (otherwise the request is blocked, R6). No pre-existing
- *   `solicitado` warehouse closing for that zone (R8).
- * - A `maestro` user (central bodega) whose scope is ALL warehouse closings (no zone
- *   filter). After the adminSatelite requests, the maestro must see it in the queue.
- * - The expected cash total (₡ prefix added by the UI) injected below.
- *
- * EXECUTION NOTE:
- * These tests require:
- * - A running Next.js dev server (pnpm dev)
- * - A test database with Supabase/Postgres, the `cierre_bodega` table + the
- *   `cierre_dia.cierre_bodega_id` FK (feature 40 migration), the feature 37/38
- *   `cierre_dia` table/enums/audit columns, and the gestion/order catalog values
- *   seeded
- * - A seeded `adminSatelite` (WITH a zona) with consolidable `cierre_dia` and no
- *   pending courier closings, plus a seeded `maestro`; the expected cash total below
- *
- * If the environment lacks .env or a real database, these tests are WRITTEN but
- * NOT EXECUTED. Execution is deferred until the test environment is fully set up
- * (same deferral as e2e/cierres-admin.spec.ts and e2e/cierre-dia.spec.ts).
- * They do NOT run under `pnpm test`.
- *
- * To run:
- * 1. Copy .env.example to .env and fill database credentials
- * 2. Run migrations: pnpm run db:migrate
- * 3. Seed an adminSatelite (with zona) with consolidable `cierre_dia` (no pending
- *    courier closings) and a maestro; set the seed constants below
- * 4. Run tests: pnpm run test:e2e
+ * DATOS (R7, R8): empresa nueva; un mensajero de la zona satélite con una entrega de 9.000 en
+ * efectivo y un rechazo (foto al doble de Storage), por `MisAsignacionesService`; su cierre del día
+ * solicitado (`CierreDiaService`) y aprobado por el adminSatelite (`CierresAdminService`, con la
+ * guía del rechazo confirmada). Cifras a mano: efectivo 9.000 = total general 9.000.
  */
 
-// Seeded credentials (would come from test config / a user factory).
-const ADMIN_SATELITE_EMAIL = "adminsatelite@example.com";
-const ADMIN_SATELITE_PASSWORD = "correct-password";
-const MAESTRO_EMAIL = "maestro@example.com";
-const MAESTRO_PASSWORD = "correct-password";
+let r: RepartoE2E;
+let m: MensajeroE2E;
+let rechazada: OrdenE2E;
 
-// Expected aggregated cash total (₡ prefix added by the UI) of the seeded snapshot.
-const TOTAL_EFECTIVO = "₡150.00";
-
-/** Logs in with the given credentials and lands on the app. */
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 5000 });
+async function pestanaBodega(page: Page) {
+  await page.goto("/cierres-admin");
+  await page.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
 }
 
-test.describe("Cierre de bodega — adminSatelite consolida y solicita", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page, ADMIN_SATELITE_EMAIL, ADMIN_SATELITE_PASSWORD);
-    await page.goto("/cierres-admin");
+async function consolidacionDeLaZona() {
+  return baseReparto().cierreBodega.findMany({
+    where: { zonaId: r.zonaSatelite.id },
+    select: { id: true, estado: true, totalEfectivo: true, totalGeneral: true, conciliadoAt: true, montoRecibido: true },
+  });
+}
+
+test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido y desmarcar", () => {
+  test.beforeAll(async () => {
+    r = await crearEscenarioReparto("cierre-bodega", { tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 } });
+    m = await crearMensajero(r, "satelite");
+    const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m });
+    await gestionar(r, entrega, m, { resultado: "entregado" });
+    rechazada = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
+    await gestionar(r, rechazada, m, { resultado: "devolucion_a_origen_por_rechazo" });
+    await aprobarCierre(r, await solicitarCierre(r, m));
   });
 
-  test("ve consolidables + totales → Solicitar cierre de bodega → aparece 'Solicitado' en el histórico", async ({
-    page,
-  }) => {
-    // The warehouse closing region is visible for the adminSatelite (R1/F1.4-l).
+  test("1 — el adminSatelite ve lo consolidable y solicita el cierre de bodega", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await pestanaBodega(page);
     const bodega = page.getByRole("region", { name: "Cierre de bodega" });
-    await expect(bodega).toBeVisible();
-
-    // Aggregated snapshot totals to consolidate (R10/R13).
     const totales = bodega.getByRole("region", { name: "Totales a consolidar" });
-    await expect(totales).toBeVisible();
-    await expect(totales.getByText(TOTAL_EFECTIVO)).toBeVisible();
+    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(9000));
+    await expect(bodega.getByRole("region", { name: "Cierres del día a consolidar" })).toContainText(m.nombre);
 
-    // The `cierre_dia` to consolidate are listed (R5).
-    await expect(
-      bodega.getByRole("region", { name: "Cierres del día a consolidar" }),
-    ).toBeVisible();
-
-    // "Solicitar cierre de bodega" is enabled because there are consolidables and
-    // no pending courier closings in the zone (R6/R7).
-    const solicitar = bodega
-      .getByRole("region", { name: "Solicitar cierre de bodega" })
-      .getByRole("button", { name: "Solicitar cierre de bodega" });
+    const solicitar = bodega.getByRole("region", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" });
     await expect(solicitar).toBeEnabled();
-
-    // Confirm in the modal (R9/R10).
     await solicitar.click();
-    const dialog = page.getByRole("dialog", {
-      name: "Solicitar cierre de bodega",
-    });
-    await dialog
-      .getByRole("button", { name: "Solicitar cierre de bodega" })
-      .click();
+    await page.getByRole("dialog", { name: "Solicitar cierre de bodega" }).getByRole("button", { name: "Solicitar cierre de bodega" }).click();
+    await expect(page.getByText("Cierre de bodega solicitado correctamente.")).toBeVisible();
 
-    // Success feedback (toast) confirms the warehouse closing was created.
-    await expect(page.getByText(/Cierre de bodega solicitado/i)).toBeVisible();
-
-    // After router.refresh(), the new closing appears in the history as "Solicitado".
-    const historico = page.getByRole("region", {
-      name: "Cierres de bodega solicitados",
-    });
-    await expect(historico.getByText("Solicitado")).toBeVisible();
-  });
-});
-
-test.describe("Cierre de bodega — maestro aprueba/rechaza", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page, MAESTRO_EMAIL, MAESTRO_PASSWORD);
-    await page.goto("/cierres-admin");
+    await bodega.getByRole("group", { name: "Cierre de bodega por etapa" }).getByRole("button", { name: /^Solicitados/ }).click();
+    // Sin recargar: la lista se revalida al solicitar (defecto arreglado en SL-44, ver bitácora).
+    const solicitados = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
+    await expect(solicitados.getByText("Pendiente de conciliar", { exact: true })).toBeVisible();
+    await expect(solicitados.getByText(importe(9000, { solo: true }))).toBeVisible();
+    const consolidaciones = await consolidacionDeLaZona();
+    expect(consolidaciones.map((c) => [c.estado, String(c.totalEfectivo), String(c.totalGeneral), c.conciliadoAt])).toEqual([
+      ["solicitado", "9000", "9000", null],
+    ]);
   });
 
-  test("ve la cola → abre el detalle agregado (totales+sub-detalle+evidencia) → aprueba → pasa a histórico", async ({
-    page,
-  }) => {
-    // The warehouse-closing queue is visible for the maestro (R2/R15).
-    const modulo = page.getByRole("region", {
-      name: "Cierres de bodega satélite",
-    });
-    await expect(modulo).toBeVisible();
-
-    const pendientes = modulo.getByRole("region", {
-      name: "Cierres de bodega pendientes",
-    });
-    await expect(pendientes).toBeVisible();
-
-    // Open the aggregated detail of the first pending warehouse closing.
-    await pendientes
-      .getByRole("button", { name: "Ver / decidir" })
-      .first()
+  test("2 — el maestro abre el detalle agregado, ve la evidencia y la marca recibida", async ({ browser }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await pestanaBodega(page);
+    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
+    await modulo
+      .getByRole("region", { name: "Cierres de bodega pendientes" })
+      .getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` })
       .click();
-    const dialog = page.getByRole("dialog", {
-      name: "Detalle del cierre de bodega",
-    });
-    await expect(dialog).toBeVisible();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre de bodega" });
+    const totales = detalle.getByRole("region", { name: "Totales del cierre de bodega" });
+    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(9000));
 
-    // Aggregated snapshot totals panel (R11/R13).
-    const totales = dialog.getByRole("region", {
-      name: "Totales del cierre de bodega",
-    });
-    await expect(totales).toBeVisible();
-    await expect(totales.getByText(TOTAL_EFECTIVO)).toBeVisible();
-
-    // Per-`cierre_dia` sub-detail: at least one rejected order with signed evidence
-    // (R11/R12). The evidence opens via a signed URL in the viewer.
-    const rechazadas = dialog
-      .getByRole("region", { name: "Rechazadas" })
-      .first();
-    await rechazadas
-      .getByRole("button", { name: "Ver evidencia" })
-      .first()
-      .click();
+    const delDia = detalle.getByRole("region", { name: `Cierre del día · ${m.nombre}` });
+    const ordenes = delDia.getByRole("region", { name: `Órdenes del cierre · ${m.nombre}` });
+    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await ordenes.getByRole("button", { name: new RegExp(rechazada.numRemision), expanded: false }).click();
+    await ordenes.getByRole("button", { name: `Ver evidencia de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` }).click();
     const visor = page.getByRole("dialog", { name: "Evidencia de la gestión" });
+    const foto = visor.getByRole("img");
+    await expect(foto).toBeVisible();
+    await expect.poll(() => foto.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    await visor.getByRole("button", { name: "Cerrar" }).first().click();
+
+    await detalle.getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
+    const marcar = page.getByRole("dialog", { name: "Marcar recibido" });
+    await expect(marcar.getByLabel("Monto recibido")).toHaveValue(/^9000(\.00)?$/);
+    await marcar.getByRole("button", { name: "Marcar recibido" }).click();
+    await expect(page.getByText(/^Marcada como recibida por /)).toContainText(importe(9000));
+
+    const [c] = await consolidacionDeLaZona();
+    // Ficha 431 (D2): la marca guarda `aprobado` (se lee «Recibido») con lo contado.
+    expect([c.estado, String(c.montoRecibido)]).toEqual(["aprobado", "9000"]);
+    expect(c.conciliadoAt).not.toBeNull();
+
+    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
     await expect(
-      visor.getByRole("img", { name: "Evidencia fotográfica de la gestión" }),
+      modulo.getByRole("region", { name: "Cierres de bodega resueltos" }).getByRole("button", {
+        name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}`,
+      }),
     ).toBeVisible();
-    await visor.getByRole("button", { name: "Cerrar" }).click();
-
-    // Approve the warehouse closing (R16).
-    await dialog.getByRole("button", { name: "Aprobar" }).click();
-
-    // Success feedback (toast) confirms the decision.
-    await expect(page.getByText(/Cierre de bodega aprobado/i)).toBeVisible();
-
-    // After router.refresh(), it appears in the history as "Aprobado" (R15).
-    const historico = modulo.getByRole("region", {
-      name: "Cierres de bodega resueltos",
-    });
-    await expect(historico.getByText("Aprobado")).toBeVisible();
   });
 
-  test("rechazar exige motivo → con motivo pasa a histórico como Rechazado", async ({
-    page,
-  }) => {
-    const modulo = page.getByRole("region", {
-      name: "Cierres de bodega satélite",
-    });
-    const pendientes = modulo.getByRole("region", {
-      name: "Cierres de bodega pendientes",
-    });
-    await pendientes
-      .getByRole("button", { name: "Ver / decidir" })
-      .first()
-      .click();
-    const dialog = page.getByRole("dialog", {
-      name: "Detalle del cierre de bodega",
-    });
-    await expect(dialog).toBeVisible();
+  test("3 — el maestro la desmarca y vuelve a pendientes", async ({ browser }) => {
+    const page = await paginaDe(browser, r.empresa.maestro);
+    await pestanaBodega(page);
+    const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
+    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
+    await modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }).click();
+    const detalle = page.getByRole("dialog", { name: "Detalle del cierre de bodega" });
+    await detalle.getByRole("button", { name: /^Desmarcar la consolidación de / }).click();
+    await page.getByRole("dialog", { name: "Desmarcar" }).getByRole("button", { name: "Desmarcar" }).click();
+    await expect(page.getByText("Marca deshecha. La consolidación vuelve a estar pendiente de conciliar.")).toBeVisible();
 
-    // Open the reject sub-modal (R17).
-    await dialog.getByRole("button", { name: "Rechazar" }).click();
-    const rechazo = page.getByRole("dialog", {
-      name: "Rechazar cierre de bodega",
-    });
-    await expect(rechazo).toBeVisible();
-
-    // Confirming with an empty reason is blocked and shows the validation error (R17).
-    await rechazo
-      .getByRole("button", { name: "Rechazar cierre de bodega" })
-      .click();
+    const [c] = await consolidacionDeLaZona();
+    expect([c.estado, c.conciliadoAt, c.montoRecibido]).toEqual(["solicitado", null, null]);
+    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Pendientes/ }).click();
     await expect(
-      rechazo.getByText("El motivo de rechazo es obligatorio."),
-    ).toBeVisible();
-
-    // With a reason, the rejection goes through (R17).
-    await rechazo
-      .getByLabel("Motivo del rechazo")
-      .fill("Los montos agregados no cuadran");
-    await rechazo
-      .getByRole("button", { name: "Rechazar cierre de bodega" })
-      .click();
-
-    await expect(page.getByText(/Cierre de bodega rechazado/i)).toBeVisible();
-
-    const historico = modulo.getByRole("region", {
-      name: "Cierres de bodega resueltos",
-    });
-    await expect(historico.getByText("Rechazado")).toBeVisible();
-    await expect(
-      historico.getByText("Los montos agregados no cuadran"),
+      modulo.getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` }),
     ).toBeVisible();
   });
 });

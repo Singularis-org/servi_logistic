@@ -17,18 +17,23 @@ import {
   type SuscripcionPushResult,
 } from "@/lib/types/push";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IPushEndpointPlataformaRepository } from "@/lib/interfaces/repositories/IPushEndpointPlataformaRepository";
 import type { IPushSuscripcionRepository } from "@/lib/interfaces/repositories/IPushSuscripcionRepository";
 import type { IUsuarioPreferenciaRepository } from "@/lib/interfaces/repositories/IUsuarioPreferenciaRepository";
+import { PushEndpointPlataformaRepository } from "@/lib/repositories/PushEndpointPlataformaRepository";
 import { PushSuscripcionRepository } from "@/lib/repositories/PushSuscripcionRepository";
 import { UsuarioPreferenciaRepository } from "@/lib/repositories/UsuarioPreferenciaRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { clavePublicaPush } from "@/lib/config/push";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
+import { esPlataforma } from "@/lib/auth/plataforma";
+import { withErrorHandler, isAppErrorShape, ForbiddenError, UnauthenticatedError } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
 
 export interface PushActionDeps {
   repo?: IPushSuscripcionRepository;
+  /** SL-18 (R26) — suelta el endpoint de otra empresa antes del alta. Inyectable para test. */
+  plataformaRepo?: IPushEndpointPlataformaRepository;
   /** FICHA 422 — el repositorio de la preferencia de LA PERSONA (R3/R7). Inyectable para test. */
   preferenciaRepo?: IUsuarioPreferenciaRepository;
   getActor?: () => Promise<Actor | null>;
@@ -40,6 +45,10 @@ function buildRepo(): IPushSuscripcionRepository {
   return new PushSuscripcionRepository(getPrismaClient());
 }
 
+function buildPlataformaRepo(): IPushEndpointPlataformaRepository {
+  return new PushEndpointPlataformaRepository(getPrismaClient());
+}
+
 function buildPreferenciaRepo(): IUsuarioPreferenciaRepository {
   return new UsuarioPreferenciaRepository(getPrismaClient());
 }
@@ -49,6 +58,17 @@ async function actorRequerido(deps: PushActionDeps): Promise<Actor> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) throw new UnauthenticatedError();
   return actor;
+}
+
+/**
+ * SL-32 (R6) — EL SUPERADMIN NO TIENE CANAL DE AVISOS. `push_suscripcion` y `usuario_preferencia`
+ * son tablas de negocio: sin empresa en contexto, la extensión de SL-17 lanza `EmpresaNoResuelta` y
+ * el control de la campana, la reactivación del portal y el cierre de sesión darían un 500. No se
+ * abre `comoPlataforma`: el superadmin no recibe avisos de empresa, así que no hay nada que leer ni
+ * escribir. Es lo mismo que el layout ya hace al no consultar `avisosPushDe` para él.
+ */
+function sinCanalDeEmpresa(actor: Actor): boolean {
+  return esPlataforma(actor.rol);
 }
 
 /**
@@ -67,7 +87,9 @@ export async function obtenerClavePublicaPush(
   deps: PushActionDeps = {},
 ): Promise<ClavePublicaPushResult> {
   const r = await withErrorHandler(async () => {
-    await actorRequerido(deps);
+    const actor = await actorRequerido(deps);
+    // `null` es «aquí no hay canal»: el interruptor no se ofrece y nadie llega a registrar.
+    if (sinCanalDeEmpresa(actor)) return { status: "ok" as const, clavePublica: null };
     return { status: "ok" as const, clavePublica: (deps.clavePublica ?? clavePublicaPush)() };
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
@@ -95,6 +117,20 @@ export async function registrarSuscripcionPush(
     // El actor PRIMERO: sin sesion no se valida ni se escribe nada.
     const actor = await actorRequerido(deps);
     const data = registrarSuscripcionSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // Un `ok` aquí haría creer al navegador que quedó registrado; con el rechazo, `alta-push`
+    // deshace su suscripción, que es lo correcto para quien no tiene avisos que recibir.
+    if (sinCanalDeEmpresa(actor)) throw new ForbiddenError();
+    // SL-18 (design §7, R26–R28) — EL ÚLTIMO GANA. Si este navegador estaba suscrito con una cuenta
+    // de OTRA empresa, esa fila se borra primero (en plataforma: desde aquí no se ve) y luego se
+    // registra en la empresa de la sesión. Sin el primer paso, el upsert no vería la fila ajena,
+    // chocaría con el único global del endpoint y la otra empresa seguiría enviando aquí. Son dos
+    // contextos distintos y no comparten transacción: si el alta falla, el navegador se queda sin
+    // suscripción y `alta-push` la deshace, pero nunca quedan dos dueños. Un actor sin empresa no
+    // llega aquí (el superadmin sale arriba); si llegara, el repositorio rechaza el id vacío.
+    await (deps.plataformaRepo ?? buildPlataformaRepo()).liberarDeOtrasEmpresas(
+      data.endpoint,
+      actor.organizacionId ?? "",
+    );
     await (deps.repo ?? buildRepo()).registrar(actor.usuarioId, data);
 
     // ⚠️ LA SUSCRIPCION PRIMERO Y LA PREFERENCIA DESPUES, Y EL FALLO DE LA SEGUNDA NO SE PROPAGA.
@@ -136,6 +172,8 @@ export async function olvidarPreferenciaDeAvisos(
 ): Promise<SuscripcionPushResult> {
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
+    // No tiene preferencia guardada: «no» ya es su estado, y no hay nada que borrar.
+    if (sinCanalDeEmpresa(actor)) return { status: "ok" as const };
     await (deps.preferenciaRepo ?? buildPreferenciaRepo()).fijarAvisosPush(actor.usuarioId, false);
     return { status: "ok" as const };
   });
@@ -160,6 +198,8 @@ export async function eliminarSuscripcionPush(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const data = eliminarSuscripcionSchema.parse(input);
+    // Ninguna suscripción es suya, y «nada que borrar» ya es `ok` (lo necesita el cierre de sesión).
+    if (sinCanalDeEmpresa(actor)) return { status: "ok" as const };
     await (deps.repo ?? buildRepo()).eliminarDeUsuario(actor.usuarioId, data.endpoint);
     return { status: "ok" as const };
   });

@@ -72,6 +72,8 @@ const RESUMEN: CajaResumenDTO = {
   deTercerosAbsoluto: "5000.00",
   estado: "flujo",
   flujoDesde: "2026-08-25",
+  iva: "0.00", // SL-39
+  signoIva: "cero" as const,
 };
 
 /**
@@ -83,9 +85,6 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete: "1000.00",
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "0.00",
-    ingreso_iva_flete: "0.00",
-    ingreso_iva_flete_devolucion: "0.00",
-    ingreso_iva_comision_cod: "0.00",
     ingreso_ajuste: "0.00",
     ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
   },
@@ -97,11 +96,19 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_reverso_iva_flete_devolucion: "0.00", // ficha 458-B
+    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
   },
   otrosEgresos: "300.00",
   totalEgresos: "300.00",
   hayOtrosEgresos: true, // 300,00 sin clasificar ⇒ el servidor manda pintar la fila
+  // SL-39: el IVA va en su bloque, fuera de las dos columnas de la ganancia.
+  iva: {
+    ingreso_iva_flete: "0.00",
+    ingreso_iva_flete_devolucion: "0.00",
+    ingreso_iva_comision_cod: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00",
+  },
+  totalIva: "0.00",
 };
 
 function fakeService(overrides: Partial<IWalletService> = {}): IWalletService {

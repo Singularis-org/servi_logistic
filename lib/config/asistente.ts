@@ -5,6 +5,10 @@
  * NUNCA LANZA. Es deliberado: la ruta del asistente cuelga del layout del portal, y una excepción
  * al CARGAR la configuración convertiría «falta una variable» en «la pantalla no se pinta».
  * La ausencia de credencial la decide quien llama (R20), no este archivo.
+ *
+ * SL-36 (design §9.1, R23): la clave de Anthropic ya NO vive aqui. Es de cada empresa, cifrada en su
+ * integracion, y la lee el borde (`app/api/asistente/route.ts`) con la empresa de la sesion. Aqui
+ * quedan el modelo, el tope y el timeout: son de producto, no credenciales.
  */
 
 /** Lee un entero POSITIVO de `process.env`; ausente/vacío/inválido -> `fallback`. */
@@ -33,8 +37,6 @@ export const ASISTENTE_MODELO_DEFAULT = "claude-sonnet-5";
 export const ASISTENTE_MAX_CONSULTAS_DIA_DEFAULT = 30;
 
 export interface AsistenteConfig {
-  /** La credencial del proveedor. `null` si no está configurada: NO se lanza aquí (R20). */
-  ANTHROPIC_API_KEY: string | null;
   /** El modelo al que se pregunta (D7). */
   ASISTENTE_MODELO: string;
   /** Consultas por persona y día calendario de Costa Rica (R14-R16). */
@@ -47,10 +49,8 @@ export interface AsistenteConfig {
 }
 
 export function loadAsistenteConfig(): AsistenteConfig {
-  const clave = process.env.ANTHROPIC_API_KEY;
   const modelo = process.env.ASISTENTE_MODELO;
   return {
-    ANTHROPIC_API_KEY: clave !== undefined && clave !== "" ? clave : null,
     ASISTENTE_MODELO: modelo !== undefined && modelo !== "" ? modelo : ASISTENTE_MODELO_DEFAULT,
     ASISTENTE_MAX_CONSULTAS_DIA: leerEnteroPositivo(
       "ASISTENTE_MAX_CONSULTAS_DIA",

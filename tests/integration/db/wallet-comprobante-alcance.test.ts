@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
@@ -18,6 +18,10 @@ import type { AdjuntarComprobanteResult, VerComprobanteResult } from "@/lib/type
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.10 (R74–R80) — el comprobante LATERAL contra Postgres: adjuntar despues (una vez,

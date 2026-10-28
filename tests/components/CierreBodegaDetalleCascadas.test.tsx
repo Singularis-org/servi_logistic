@@ -21,6 +21,7 @@ import {
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   GANA_BODEGA_SATELITE_NOTA,
+  IVA_FACTURADO_LABEL,
   NETO_EMPRESA_LABEL,
   PARA_LA_CENTRAL_LABEL,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
@@ -219,6 +220,7 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
     fleteDevolucionConIva: "500.75",
     total: "18001.10",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de esta fixtura no llevan IVA
   ganancia: "9000.80",
   pagoTienda: "62499.75",
   cobradoSobreRecaudado: "17500.35",
@@ -255,6 +257,7 @@ const DIA_BETO: CierreBodegaDetalleCierre = {
     fleteDevolucionConIva: "0.00",
     total: "9634.48",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de esta fixtura no llevan IVA
   ganancia: "4634.23",
   pagoTienda: "36454.59",
   cobradoSobreRecaudado: "9634.48",
@@ -278,6 +281,7 @@ const DETALLE_OK = {
     fleteDevolucionConIva: "500.75",
     total: "27635.58",
   }),
+  ivaFacturado: "0.00", // SL-39: los conceptos de esta fixtura no llevan IVA
   ganancia: "13635.03",
   pagoTienda: "98954.34",
   cobradoSobreRecaudado: "27134.83",
@@ -415,10 +419,11 @@ describe("393 · F6 — las dos cascadas del detalle", () => {
       "cascada A · para la tienda",
     );
 
-    // R8 — lo facturado − mensajeros − bodega = neto de la empresa.
+    // R8 — lo facturado − IVA (SL-39) − mensajeros − bodega = neto de la empresa.
     laCuentaCierra(
       [
         importeTras(dueno(), FACTURADO_EMPRESA_LABEL),
+        importeTras(dueno(), IVA_FACTURADO_LABEL),
         importeTras(dueno(), PAGO_MENSAJERO_LABEL),
         importeTras(dueno(), GANA_BODEGA_SATELITE_LABEL),
       ],
@@ -651,6 +656,207 @@ describe("393 · F6 — el caso raro, dicho en la pantalla", () => {
 });
 
 /**
+ * SL-39 (R24) — EL IVA FACTURADO TIENE SU LÍNEA en la cascada «de quién es el dinero», en el
+ * agregado y en cada `cierre_dia`, justo después de «Lo que la empresa facturó».
+ *
+ * Los dos días son los cierres A y B de `design.md > 12.4`:
+ *   - A (Ana): 3.616,00 facturados con 416,00 de IVA, 1.500,00 al mensajero → 1.700,00;
+ *   - B (Beto): un rechazo, 2.260,00 facturados con 260,00 de IVA, 2.100,00 al mensajero → −100,00.
+ * El agregado es su suma: 5.876,00 − 676,00 − 3.600,00 − 0,00 = 1.600,00. Que cada nivel enseñe
+ * SU IVA —y no el del agregado— es lo que obliga a cablear `ivaFacturado` por día. El recaudado de
+ * A (20.000,00) es de la fixtura: el diseño no lo fija.
+ */
+describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R26)", () => {
+  const INGRESO_A: TotalesIngresoEmpresa = {
+    montoCobrar: "20000.00",
+    flete: "3200.00",
+    ivaFlete: "416.00",
+    fleteDevolucion: "0.00",
+    ivaFleteDevolucion: "0.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "3616.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "0.00",
+    total: "3616.00",
+  };
+  const INGRESO_B: TotalesIngresoEmpresa = {
+    montoCobrar: "0.00",
+    flete: "0.00",
+    ivaFlete: "0.00",
+    fleteDevolucion: "2000.00",
+    ivaFleteDevolucion: "260.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "0.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "2260.00",
+    total: "2260.00",
+  };
+  const INGRESO_AGREGADO: TotalesIngresoEmpresa = {
+    montoCobrar: "20000.00",
+    flete: "3200.00",
+    ivaFlete: "416.00",
+    fleteDevolucion: "2000.00",
+    ivaFleteDevolucion: "260.00",
+    comisionCod: "0.00",
+    ivaComisionCod: "0.00",
+    fleteConIva: "3616.00",
+    comisionConIva: "0.00",
+    fleteDevolucionConIva: "2260.00",
+    total: "5876.00",
+  };
+  const TOTALES_A = {
+    efectivo: "20000.00",
+    simpe: "0.00",
+    transferencia: "0.00",
+    general: "20000.00",
+  };
+  const DIA_A: CierreBodegaDetalleCierre = {
+    ...DIA_ANA,
+    totales: TOTALES_A,
+    totalPagoMensajero: "1500.00",
+    totalIngresoBodegaRechazos: "0.00",
+    totalesIngreso: INGRESO_A,
+    ivaFacturado: "416.00",
+    ganancia: "1700.00",
+    pagoTienda: "16384.00",
+    cobradoSobreRecaudado: "3616.00",
+    netoEmpresa: "1700.00",
+    ganaLaTienda: "16384.00",
+    paraLaCentral: "18500.00",
+    ...marcaSinConciliar("20000.00"),
+  };
+  const DIA_B: CierreBodegaDetalleCierre = {
+    ...DIA_BETO,
+    totales: { efectivo: "0.00", simpe: "0.00", transferencia: "0.00", general: "0.00" },
+    totalPagoMensajero: "2100.00",
+    totalIngresoBodegaRechazos: "0.00",
+    totalesIngreso: INGRESO_B,
+    ivaFacturado: "260.00",
+    ganancia: "-100.00",
+    pagoTienda: "0.00",
+    cobradoSobreRecaudado: "0.00",
+    netoEmpresa: "-100.00",
+    ganaLaTienda: "-2260.00",
+    paraLaCentral: "-2100.00",
+    efectivoCubreDescuentos: false,
+    ...marcaSinConciliar("0.00"),
+  };
+  const DETALLE_AB: DetalleOk = {
+    ...DETALLE_OK,
+    cierre: {
+      ...CABECERA,
+      totales: TOTALES_A,
+      totalPagoMensajero: "3600.00",
+      totalIngresoBodegaRechazos: "0.00",
+      cantidadCierres: 2,
+      paraLaCentral: "16400.00",
+      ...marcaSinConciliar("20000.00"),
+    },
+    cierres: [DIA_A, DIA_B],
+    totalesIngreso: INGRESO_AGREGADO,
+    ivaFacturado: "676.00",
+    ganancia: "1600.00",
+    pagoTienda: "16384.00",
+    cobradoSobreRecaudado: "3616.00",
+    netoEmpresa: "1600.00",
+    ganaLaTienda: "14124.00",
+    paraLaCentral: "16400.00",
+    ...marcaSinConciliar("20000.00"),
+  };
+
+  /** La LÍNEA de cascada de un rótulo: su hoja, el envoltorio (rótulo + notas) y la línea. */
+  function filaDe(region: HTMLElement, rotulo: string): HTMLElement {
+    const hojas = within(region)
+      .getAllByText(rotulo)
+      .filter((el) => el.children.length === 0);
+    expect(hojas.length, `«${rotulo}» aparece ${hojas.length} veces en esta región`).toBe(1);
+    const fila = hojas[0].parentElement?.parentElement ?? null;
+    expect(fila, `«${rotulo}» no está dentro de una línea de cascada`).not.toBeNull();
+    return fila!;
+  }
+
+  const duenoDe = (mensajero: string) =>
+    screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · ${mensajero}` });
+
+  /** Cada nivel con lo que se LEE en su cascada, escrito a mano (design §12.4). */
+  const NIVELES = [
+    {
+      nivel: "agregado",
+      region: () => dueno(),
+      lineas: ["₡5.876", "-₡676", "-₡3.600", "-₡0", "₡1.600"],
+      tienda: "₡16.384",
+      cobrado: "₡3.616",
+    },
+    {
+      nivel: "cierre A (Ana)",
+      region: () => duenoDe("Ana Mensajera"),
+      lineas: ["₡3.616", "-₡416", "-₡1.500", "-₡0", "₡1.700"],
+      tienda: "₡16.384",
+      cobrado: "₡3.616",
+    },
+    {
+      nivel: "cierre B (Beto)",
+      region: () => duenoDe("Beto Mensajero"),
+      lineas: ["₡2.260", "-₡260", "-₡2.100", "-₡0", "-₡100"],
+      tienda: "₡0",
+      cobrado: "₡0",
+    },
+  ] as const;
+
+  it("en el agregado y en cada día, la línea va JUSTO después de lo facturado, resta y lleva su nota", async () => {
+    await abrirDetalle(DETALLE_AB);
+
+    for (const { nivel, region: deNivel, lineas } of NIVELES) {
+      const region = deNivel();
+      const filaIva = filaDe(region, IVA_FACTURADO_LABEL);
+      expect(
+        filaIva.previousElementSibling,
+        `${nivel}: «IVA facturado» no va justo después de «Lo que la empresa facturó»`,
+      ).toBe(filaDe(region, FACTURADO_EMPRESA_LABEL));
+      expect(filaIva.nextElementSibling, `${nivel}: tras el IVA va el pago`).toBe(
+        filaDe(region, PAGO_MENSAJERO_LABEL),
+      );
+      expect(importeTras(region, IVA_FACTURADO_LABEL), nivel).toBe(lineas[1]);
+      // La nota, A MANO: compararla con su constante estaría siempre verde.
+      expect(
+        within(filaIva).getByText(
+          "El IVA que se le cobró a la tienda en este cierre. No es de la empresa.",
+        ),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("facturado − IVA − mensajeros − bodega = neto se lee y cuadra en cada nivel (design §12.4)", async () => {
+    await abrirDetalle(DETALLE_AB);
+
+    for (const { nivel, region: deNivel, lineas } of NIVELES) {
+      const region = deNivel();
+      const facturado = importeTras(region, FACTURADO_EMPRESA_LABEL);
+      const iva = importeTras(region, IVA_FACTURADO_LABEL);
+      const mensajero = importeTras(region, PAGO_MENSAJERO_LABEL);
+      const bodega = importeTras(region, GANA_BODEGA_SATELITE_LABEL);
+      const resultado = importeTras(region, NETO_EMPRESA_LABEL);
+      expect([facturado, iva, mensajero, bodega, resultado], nivel).toEqual([...lineas]);
+      laCuentaCierra([facturado, iva, mensajero, bodega], resultado, `neto · ${nivel}`);
+    }
+  });
+
+  it("R26: lo de la tienda y lo de la central no cambian, y el IVA no entra en la cascada de la central", async () => {
+    await abrirDetalle(DETALLE_AB);
+
+    for (const { nivel, region: deNivel, tienda, cobrado } of NIVELES) {
+      const region = deNivel();
+      expect(importeTras(region, PARA_LA_TIENDA_LABEL), nivel).toBe(tienda);
+      expect(importeTras(region, COBRADO_SOBRE_RECAUDADO_LABEL), nivel).toBe(cobrado);
+    }
+    expect(importeTras(central(), PARA_LA_CENTRAL_LABEL)).toBe("₡16.400");
+    expect(within(central()).queryByText(IVA_FACTURADO_LABEL)).toBeNull();
+  });
+});
+
+/**
  * SL-15 R4 — los rótulos del detalle nombran a la empresa leyendo `EMPRESA` de
  * `lib/config/marca.ts`, no escribiéndola a mano. Con otro nombre en el módulo, la pantalla lo
  * dice en cada rótulo y no queda ni un «la empresa» escrito a mano.
@@ -704,6 +910,12 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     expect(within(dueno()).getByText("Neto de Acme Envíos")).toBeInTheDocument();
     expect(within(dueno()).getByText("Lo que Acme Envíos facturó")).toBeInTheDocument();
     expect(importeTras(dueno(), "Neto de Acme Envíos")).toBe(money("13384.78"));
+    // SL-39: la nota del IVA también nombra a la empresa por el módulo de marca.
+    expect(
+      within(dueno()).getByText(
+        "El IVA que se le cobró a la tienda en este cierre. No es de Acme Envíos.",
+      ),
+    ).toBeInTheDocument();
     // Los nombres accesibles de los paneles del ingreso: el agregado y el de cada día.
     expect(
       screen.getByRole("region", { name: "Ingreso de Acme Envíos del cierre de bodega" }),

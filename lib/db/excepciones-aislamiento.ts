@@ -117,9 +117,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "rastreo publico por numero de guia: sin sesion, la guia lleva a su empresa",
   },
   {
-    archivo: "app/api/webhooks/whatsapp/route.ts",
+    // SL-36 T6.2: el route del webhook ya no está en la lista (delega en `WebhookWhatsappService`);
+    // lo único que queda en plataforma es esta traducción, que solo selecciona los dos ids (R22).
+    archivo: "lib/repositories/IntegracionEnrutadoRepository.ts",
     ficha: "SL-36",
-    motivo: "webhook entrante de WhatsApp: llega sin sesion; su aislamiento lo decide SL-36",
+    motivo: "webhook de WhatsApp: traducir un numero o un resumen de token a su empresa, sin sesion (R22)",
   },
   {
     archivo: "app/api/cron/procesar-jobs/route.ts",
@@ -132,8 +134,89 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "drenador por consola: reclama jobs de todas las empresas (R42)",
   },
   {
+    archivo: "scripts/siembra-jobs-recurrentes.ts",
+    ficha: "SL-17",
+    motivo: "siembra de jobs recurrentes en el build: sin sesion; la fila nace sin empresa (R16)",
+  },
+  {
+    archivo: "scripts/seed-jobs-analitica-rollup-diario.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
+    archivo: "scripts/seed-jobs-liberar-reprogramadas.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
+    archivo: "scripts/seed-jobs-whatsapp-envio-mantenimiento.ts",
+    ficha: "SL-17",
+    motivo: "siembra manual por consola de un job recurrente: sin sesion; la fila nace sin empresa",
+  },
+  {
     archivo: "lib/actions/organizaciones.ts",
     ficha: "SL-17",
     motivo: "alta de empresa por el superadmin: crea la organizacion fuera de toda empresa (R44)",
+  },
+  {
+    archivo: "lib/repositories/ArranqueSuperadminRepository.ts",
+    ficha: "SL-32",
+    motivo: "comando de arranque: crea el superadmin, que no tiene empresa, y comprueba email y documento en toda la base (R12, R15)",
+  },
+  {
+    archivo: "lib/repositories/EmpresasPlataformaRepository.ts",
+    ficha: "SL-32",
+    motivo: "pantalla «Empresas» del superadmin: lista todas las organizaciones y sus maestros (R29)",
+  },
+  {
+    archivo: "app/(app)/layout.tsx",
+    ficha: "SL-32",
+    motivo: "marco del portal: leer el nombre del superadmin, que no tiene empresa, para el pie (R6)",
+  },
+  {
+    archivo: "lib/repositories/CobroPlataformaTarifaRepository.ts",
+    ficha: "SL-40",
+    motivo: "valor global y excepción por empresa del cobro por orden: los edita el superadmin, que no tiene empresa (R1, R2)",
+  },
+  {
+    archivo: "scripts/migrar-storage-a-carpetas.ts",
+    ficha: "SL-19",
+    motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
+  },
+  {
+    archivo: "lib/actions/geografia-plataforma.ts",
+    ficha: "SL-20",
+    motivo:
+      "gestión de países y geografía por el superadmin, que no tiene empresa; conteo de órdenes de todas las empresas (D15)",
+  },
+  {
+    archivo: "lib/repositories/PushEndpointPlataformaRepository.ts",
+    ficha: "SL-18",
+    motivo: "push, el último gana: borrar la suscripción de ese endpoint exacto si es de otra empresa (R26, R28)",
+  },
+  {
+    // Vive en `tests/fabricas/` porque la comparten el E2E y la demo de QA; la importa el build
+    // (`scripts/demo-qa/receta.ts`), así que se cuenta como código de producción.
+    archivo: "tests/fabricas/empresa-y-usuarios.ts",
+    ficha: "SL-43",
+    motivo: "alta de una empresa (demo de QA y E2E) por el servicio del superadmin, que no tiene empresa (R11)",
+  },
+  {
+    archivo: "lib/repositories/ModulosEmpresaRepository.ts",
+    ficha: "SL-23",
+    motivo: "encender y apagar módulos de una empresa: lo hace el superadmin, que no tiene empresa (R10)",
+  },
+];
+
+/**
+ * SL-19 (R20): archivos de produccion (`app/`, `lib/`, `scripts/`) fuera de `lib/storage/` que tocan
+ * Storage con el cliente de Supabase. Solo los adaptadores ponen la carpeta de la empresa en curso:
+ * quien llama a `.storage` por su cuenta puede leer o borrar la carpeta de otra empresa.
+ */
+export const EXCEPCIONES_DE_STORAGE: readonly ExcepcionDeAislamiento[] = [
+  {
+    archivo: "scripts/migrar-storage-a-carpetas.ts",
+    ficha: "SL-19",
+    motivo: "comando de consola: mueve lo guardado antes de SL-19 entre la raiz y la carpeta de cada empresa (R23–R28)",
   },
 ];

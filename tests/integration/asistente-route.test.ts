@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { handleAsistente } from "@/app/api/asistente/route";
 import { leerCatalogoAyuda } from "@/lib/ayuda/catalogo";
@@ -12,6 +12,9 @@ import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsi
 import type { IAsistenteService } from "@/lib/interfaces/services/IAsistenteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { DobleProveedor, compuerta } from "../unit/asistente/_doble-proveedor";
+import { contextoActual } from "@/lib/db/contexto-empresa";
+import type { ICredencialesIntegracion, LecturaCredencial } from "@/lib/interfaces/services/ICredencialesIntegracion";
+import type { ServicioIntegracion } from "@/lib/types/integraciones";
 
 /**
  * ⭑ FICHA 436 · R7, R8, R12, R13, R18, R19 — EL BORDE HTTP, CON EL SERVICIO REAL.
@@ -92,11 +95,13 @@ describe("R7 — el rol sale de la SESIÓN", () => {
     expect(proveedor.textoEnviado).not.toContain("Wallet · Caja");
   });
 
-  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 33", async () => {
+  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 37", async () => {
     // Las dos mitades del mismo hecho: lo único que cambia entre esta llamada y la de arriba es
     // quién devuelve `getActor`. Si el rol saliera del cuerpo, las dos darían lo mismo.
     const { proveedor } = await llamar(MAESTRO, CUERPO_VALIDO);
-    expect(proveedor.llamadas[0].documentos).toHaveLength(33);
+    // SL-36: 33→38 por las cinco guías de integraciones.
+    // SL-20 (decisión 9): 38→37, se retira configuracion-geografia.
+    expect(proveedor.llamadas[0].documentos).toHaveLength(37);
     expect(proveedor.textoEnviado).toContain("oficina/wallet-caja");
   });
 
@@ -344,7 +349,8 @@ describe("R20 / R21 en el borde — el usuario no ve un 500 mudo ni nada del pro
 
     expect(res.status).toBe(500);
     const cuerpo = await res.json();
-    expect(cuerpo.message).toContain("todavía no está configurado");
+    // SL-36 (R27): el texto dice que fue la EMPRESA la que no lo configuró.
+    expect(cuerpo.message).toContain("Tu empresa todavía no configuró el asistente");
     // NO es el mensaje genérico: un 500 mudo es exactamente lo que R20 prohíbe.
     expect(cuerpo.message).not.toBe("Error interno del servidor.");
   });
@@ -357,5 +363,164 @@ describe("R20 / R21 en el borde — el usuario no ve un 500 mudo ni nada del pro
     const texto = await res.text();
     expect(texto).not.toContain("doble: caido");
     expect(texto).toContain("no está disponible en este momento");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SL-36 (design §5, §9.1; R23, R27, R29, R30) — LA CLAVE ES DE LA EMPRESA DE LA SESIÓN
+//
+// Aquí NO se inyecta `service`: se corre el composition root REAL del borde (`construirServicio`) con
+// el servicio, el adaptador de Anthropic y el contador de verdad. Lo único doblado es lo que está
+// fuera del proceso: la integración guardada (`credenciales`), la red (`fetchImpl`) y la base del
+// contador (`usoRepo`).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** LITERAL de R27 en el borde: es el contrato, no se compara contra su propia constante. */
+const TEXTO_R27 =
+  "Tu empresa todavía no configuró el asistente. Avisá a la oficina; mientras tanto podés abrir la ayuda de la pantalla.";
+
+/** La integración del asistente, guardada por empresa. Lee y marca en la empresa del CONTEXTO. */
+function integracionesDelAsistente(porEmpresa: Record<string, string>) {
+  const leidasEn: (string | undefined)[] = [];
+  const marcas: { organizacionId: string | undefined; codigo: string }[] = [];
+  const empresa = () => {
+    const c = contextoActual();
+    return c?.tipo === "empresa" ? c.organizacionId : undefined;
+  };
+  const credenciales: ICredencialesIntegracion = {
+    async leer<S extends ServicioIntegracion>(servicio: S): Promise<LecturaCredencial<S>> {
+      expect(servicio).toBe("asistente");
+      const org = empresa();
+      leidasEn.push(org);
+      const guardada = org === undefined ? undefined : porEmpresa[org];
+      if (guardada === undefined) return { estado: "sin_configurar" };
+      if (guardada === "ilegible") return { estado: "ilegible" };
+      return {
+        estado: "lista",
+        integracionId: "int-asis",
+        credencial: { clave_api: guardada },
+        datosPublicos: {},
+      } as unknown as LecturaCredencial<S>;
+    },
+    async marcarRechazo(_servicio, codigo) {
+      marcas.push({ organizacionId: empresa(), codigo });
+    },
+  };
+  return { credenciales, leidasEn, marcas };
+}
+
+function contadorEspia() {
+  const consumir = vi.fn(async () => 1);
+  const usoRepo: IAsistenteUsoRepository = {
+    consumirUnaConsulta: consumir,
+    contarNoLoSe: async () => undefined,
+  };
+  return { usoRepo, consumir };
+}
+
+describe("SL-36/R27 — la empresa sin asistente: lo dice, sin red y sin contar la consulta", () => {
+  it("⭑ sin integración: texto de R27, sin red, sin contar uso", async () => {
+    const { credenciales, leidasEn } = integracionesDelAsistente({});
+    const { usoRepo, consumir } = contadorEspia();
+    const red = vi.fn();
+
+    const res = await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MENSAJERO,
+      credenciales,
+      empresaDeLaSesion: async () => "org-a",
+      fetchImpl: red as unknown as typeof fetch,
+      usoRepo,
+    });
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).message).toBe(TEXTO_R27);
+    expect(red).not.toHaveBeenCalled();
+    expect(consumir).not.toHaveBeenCalled();
+    // Se preguntó a la empresa de la sesión, en su contexto.
+    expect(leidasEn).toEqual(["org-a"]);
+  });
+
+  it.each([
+    ["credencial ilegible (R29)", { "org-a": "ilegible" }, "org-a"],
+    ["sesión sin empresa", { "org-a": "sk-a" }, null],
+  ] as const)("%s: el mismo desenlace de R27", async (_caso, guardadas, empresa) => {
+    const { credenciales } = integracionesDelAsistente({ ...guardadas });
+    const { usoRepo, consumir } = contadorEspia();
+    const red = vi.fn();
+
+    const res = await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MAESTRO,
+      credenciales,
+      empresaDeLaSesion: async () => empresa,
+      fetchImpl: red as unknown as typeof fetch,
+      usoRepo,
+    });
+
+    expect((await res.json()).message).toBe(TEXTO_R27);
+    expect(red).not.toHaveBeenCalled();
+    expect(consumir).not.toHaveBeenCalled();
+  });
+
+  it("un rol sin ayuda sigue siendo 403 aunque la empresa no tenga asistente (el rol va primero)", async () => {
+    const { credenciales } = integracionesDelAsistente({});
+    const res = await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MAQUINA,
+      credenciales,
+      empresaDeLaSesion: async () => "org-a",
+      fetchImpl: vi.fn() as unknown as typeof fetch,
+      usoRepo: contadorEspia().usoRepo,
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("SL-36/R23 y R30 — con la clave de la empresa, y su rechazo queda en ESA empresa", () => {
+  it("⭑ la llamada a Anthropic lleva la clave de la empresa de la sesión", async () => {
+    const { credenciales, leidasEn } = integracionesDelAsistente({ "org-a": "sk-de-a", "org-b": "sk-de-b" });
+    const red = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response("caido", { status: 503 }));
+
+    await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MENSAJERO,
+      credenciales,
+      empresaDeLaSesion: async () => "org-b",
+      fetchImpl: red as unknown as typeof fetch,
+      usoRepo: contadorEspia().usoRepo,
+    });
+
+    expect(leidasEn).toEqual(["org-b"]);
+    expect(red).toHaveBeenCalledTimes(1);
+    const cabeceras = red.mock.calls[0][1]?.headers as Record<string, string>;
+    expect(cabeceras["x-api-key"]).toBe("sk-de-b");
+  });
+
+  it("⭑ Anthropic responde 401: marcarRechazo('asistente.credencial_rechazada') en la empresa de la sesión", async () => {
+    const { credenciales, marcas } = integracionesDelAsistente({ "org-a": "sk-revocada" });
+    const red = vi.fn(async () => new Response("{}", { status: 401 }));
+
+    const res = await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MENSAJERO,
+      credenciales,
+      empresaDeLaSesion: async () => "org-a",
+      fetchImpl: red as unknown as typeof fetch,
+      usoRepo: contadorEspia().usoRepo,
+    });
+
+    expect(marcas).toEqual([{ organizacionId: "org-a", codigo: "asistente.credencial_rechazada" }]);
+    // La persona ve el mensaje propio de proveedor caído, nunca la clave ni el 401 crudo.
+    const texto = await res.text();
+    expect(texto).toContain("no está disponible en este momento");
+    expect(texto).not.toContain("sk-revocada");
+  });
+
+  it.each([403, 429, 500])("un %s de Anthropic no es la señal de rechazo: no se marca", async (status) => {
+    const { credenciales, marcas } = integracionesDelAsistente({ "org-a": "sk-a" });
+    await handleAsistente(peticion(CUERPO_VALIDO), {
+      getActor: async () => MENSAJERO,
+      credenciales,
+      empresaDeLaSesion: async () => "org-a",
+      fetchImpl: vi.fn(async () => new Response("{}", { status })) as unknown as typeof fetch,
+      usoRepo: contadorEspia().usoRepo,
+    });
+    expect(marcas).toEqual([]);
   });
 });

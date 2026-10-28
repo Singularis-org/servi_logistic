@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties } from "rea
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Building2,
   ChartColumn,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   Gauge,
   History,
   Home,
+  MapIcon,
   Megaphone,
   Package,
   Settings,
@@ -188,6 +190,14 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   // MISMO signo que el botón «?» del `PageHeader`, para que las dos puertas a la ayuda se
   // reconozcan como la misma cosa.
   circleHelp: CircleHelp,
+  // SL-32 (R36): «Empresas», el listado de empresas del superadmin. Icono PROPIO, distinto del
+  // `store` de "Recoleccion" y del `warehouse` de «Mi bodega»: una empresa cliente de la
+  // plataforma no es la tienda a la que va el mensajero ni la bodega en la que se cobra.
+  building: Building2,
+  // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin. Icono PROPIO, distinto
+  // del `building` de «Empresas»: un país y su división no son una empresa. Se importa como
+  // `MapIcon` para no tapar el `Map` global.
+  map: MapIcon,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item

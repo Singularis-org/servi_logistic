@@ -14,4 +14,7 @@ export const ROL_LABELS: Record<RolValue, string> = {
   // Feature 81 [D1]: cuenta dedicada a una API key (no es una persona). El Record es
   // exhaustivo sobre RolValue, asi que el valor nuevo del enum obliga a esta etiqueta.
   apiKey: "API key",
+  // SL-32 (R4): una de las tablas exhaustivas que nombran el rol a la fuerza. Quién es plataforma
+  // lo dice `lib/auth/plataforma.ts`; aquí solo está su texto.
+  superadmin: "Superadmin",
 };

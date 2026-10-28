@@ -40,6 +40,7 @@ describe("resolveActorFromSession", () => {
     findValidByIdMock.mockResolvedValue({ userId: "u-1" });
     findUniqueMock.mockResolvedValue({
       id: "u-1",
+      estado: "activo",
       zonaId: "zona-9",
       organizacionId: "org-1",
       rol: { value: "adminSatelite" },
@@ -60,6 +61,7 @@ describe("resolveActorFromSession", () => {
     findValidByIdMock.mockResolvedValue({ userId: "u-2" });
     findUniqueMock.mockResolvedValue({
       id: "u-2",
+      estado: "activo",
       zonaId: null,
       organizacionId: "org-1",
       rol: { value: "admin" },
@@ -80,6 +82,7 @@ describe("resolveActorFromSession", () => {
       findValidByIdMock.mockResolvedValue({ userId: "u-3" });
       findUniqueMock.mockResolvedValue({
         id: "u-3",
+        estado: "activo",
         zonaId: null,
         organizacionId,
         rol: { value: "admin" },
@@ -88,6 +91,39 @@ describe("resolveActorFromSession", () => {
       expect(await resolveActorFromSession()).toBeNull();
     },
   );
+
+  it("SL-32: la cuenta de plataforma (superadmin, sin empresa) conserva su actor", async () => {
+    conCookieDeSesion("sess-1");
+    findValidByIdMock.mockResolvedValue({ userId: "u-4" });
+    findUniqueMock.mockResolvedValue({
+      id: "u-4",
+      estado: "activo",
+      zonaId: null,
+      organizacionId: null,
+      rol: { value: "superadmin" },
+    });
+
+    expect(await resolveActorFromSession()).toEqual({
+      usuarioId: "u-4",
+      rol: "superadmin",
+      zonaId: null,
+      organizacionId: null,
+    });
+  });
+
+  it("SLT-32: devuelve null cuando el usuario ya no esta activo", async () => {
+    conCookieDeSesion("sess-1");
+    findValidByIdMock.mockResolvedValue({ userId: "u-5" });
+    findUniqueMock.mockResolvedValue({
+      id: "u-5",
+      estado: "bloqueado",
+      zonaId: null,
+      organizacionId: "org-1",
+      rol: { value: "admin" },
+    });
+
+    expect(await resolveActorFromSession()).toBeNull();
+  });
 
   it("devuelve null cuando no hay cookie de sesion", async () => {
     conCookieDeSesion(undefined);

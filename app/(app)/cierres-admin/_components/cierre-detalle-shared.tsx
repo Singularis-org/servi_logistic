@@ -17,6 +17,8 @@ import type {
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreEstado } from "@/lib/types/cierre";
 import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 // Feature 158 (T2.3): las etiquetas visibles de la causa del incidente viven donde nacieron
 // (junto al panel que las captura), no se duplican aquí. Importar un módulo de etiquetas de
 // otra ruta tiene precedente EXACTO en este repo: `GestionarOrdenPanel` (mis-asignaciones)
@@ -71,6 +73,9 @@ import {
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
   CASCADA_FACTURA_TIENDA_TITULO,
   CASCADA_NETO_EMPRESA_TITULO,
+  // SL-39 (R24) — la línea «IVA facturado» de las cascadas «Lo que le queda a la empresa».
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   // FICHA 408 — el traductor del motivo de un rechazo automatico. Vive en el modulo PURO
   // porque lo leen tambien las tres descargas, que no pueden arrastrar `Card`/`Badge`.
   MOTIVO_RECHAZO_AUTOMATICO_COLA,
@@ -149,6 +154,9 @@ export {
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
   CASCADA_FACTURA_TIENDA_TITULO,
   CASCADA_NETO_EMPRESA_TITULO,
+  // SL-39 (R24) — por el mismo camino: las dos cascadas que lo pintan lo piden por esta puerta.
+  IVA_FACTURADO_LABEL,
+  IVA_FACTURADO_NOTA,
   // FICHA 408 — por el mismo camino y por el mismo motivo: el traductor del motivo vive en el
   // modulo PURO (lo necesitan las tres descargas) y las pantallas lo piden por esta puerta,
   // que es donde ya piden el resto. `cierre-factura` es quien lo lee de aqui.
@@ -353,8 +361,9 @@ export const PAGO_TIENDA_LABEL = "Pago a tienda";
  */
 export const PAGO_TIENDA_NOTA =
   "Total general menos flete + IVA y comisión + IVA. No descuenta el flete por devolución a origen: una devolución a origen no recauda contra entrega, así que ese dinero nunca entró en el total general.";
-export const GANANCIA_NOTA = "Ingreso bruto menos el pago al mensajero.";
-export const GANANCIA_NOTA_BODEGA = "Ingreso bruto menos el pago a los mensajeros.";
+// SL-39 (R27) — la ganancia del cierre sale sin IVA (R22): la nota lo dice.
+export const GANANCIA_NOTA = "Ingreso sin IVA menos el pago al mensajero.";
+export const GANANCIA_NOTA_BODEGA = "Ingreso sin IVA menos el pago a los mensajeros.";
 export const DESGLOSE_TITULO = "Desglose de ingreso";
 /**
  * ⏳ FICHA 338 (2026-08-31) — EL PANEL DE LA DERECHA DEJA DE SER UNA LISTA DE PRECIOS.
@@ -412,10 +421,23 @@ export const ESPECIAL_BADGE_NOTA =
  * así que se cobró la tarifa normal. El importe es idéntico al de una orden corriente: sin esta
  * marca el hueco de configuración sería invisible justo donde se audita el dinero. Misma señal
  * que en el listado de órdenes.
+ *
+ * SL-20 (design §7; R19): la nota nombra el nivel con el nombre del país de la empresa.
  */
 export const ESPECIAL_SIN_PACTO_BADGE_LABEL = "Especial sin pacto";
-export const ESPECIAL_SIN_PACTO_BADGE_NOTA =
-  "Distrito marcado como zona especial, pero la tarifa congelada no tenía tarifa especial pactada: se cobró la tarifa normal.";
+export function especialSinPactoBadgeNota(etiquetas: EtiquetasGeograficas): string {
+  return `${etiquetas.distrito.singular} marcado como zona especial, pero la tarifa congelada no tenía tarifa especial pactada: se cobró la tarifa normal.`;
+}
+
+/** La marca «Especial sin pacto»: un componente para poder leer los nombres de nivel (R19). */
+function MarcaEspecialSinPacto() {
+  const nota = especialSinPactoBadgeNota(useEtiquetasGeograficas());
+  return (
+    <Badge variant="warning" title={nota} aria-label={nota}>
+      {ESPECIAL_SIN_PACTO_BADGE_LABEL}
+    </Badge>
+  );
+}
 /**
  * Etiquetas de las dos filas del pacto especial. Se conservan TAL CUAL —incluido el «devuelta»
  * de la segunda— por la misma decisión de negocio que ya está escrita en
@@ -845,15 +867,7 @@ export function renderFleteOrigen(origen: OrigenFlete): ReactNode {
     );
   }
   if (origen === "especial_sin_pacto") {
-    return (
-      <Badge
-        variant="warning"
-        title={ESPECIAL_SIN_PACTO_BADGE_NOTA}
-        aria-label={ESPECIAL_SIN_PACTO_BADGE_NOTA}
-      >
-        {ESPECIAL_SIN_PACTO_BADGE_LABEL}
-      </Badge>
-    );
+    return <MarcaEspecialSinPacto />;
   }
   return null;
 }
@@ -901,6 +915,8 @@ function pct(value: string): string {
  * aritmética de dinero, solo se muestran y se etiquetan.
  */
 export function DesgloseIngresoEmpresa({ g }: { g: CierreDetalleGestion }) {
+  // SL-20 (R19): la nota de «especial sin pacto» nombra el nivel con el nombre del país.
+  const etiquetas = useEtiquetasGeograficas();
   const ing = g.ingresoEmpresa;
   if (!ing) return null;
 
@@ -1053,7 +1069,7 @@ export function DesgloseIngresoEmpresa({ g }: { g: CierreDetalleGestion }) {
             dato que el admin tiene que poder leer con un lector de pantalla. */}
         {faltaPacto ? (
           <p role="note" className="pt-1 text-xs text-warning-strong">
-            {ESPECIAL_SIN_PACTO_BADGE_NOTA}
+            {especialSinPactoBadgeNota(etiquetas)}
           </p>
         ) : null}
         <div className="mt-1 border-t pt-1">

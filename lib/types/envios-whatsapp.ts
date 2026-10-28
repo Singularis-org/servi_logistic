@@ -47,6 +47,19 @@ const rolSchema = z.enum(["maestro", "admin", "mensajero", "adminTienda", "admin
   error: MENSAJES_ENVIO.rol,
 });
 
+/** Los roles que el borde acepta en una seleccion de destinatarios. */
+export type RolDeSeleccion = z.infer<typeof rolSchema>;
+
+/**
+ * SL-32 (R5) — el estrechamiento de `RolValue` a lo que el borde acepta. Los roles de plataforma
+ * (`lib/auth/plataforma.ts`) quedan fuera: un envio automatico es de una empresa, y el superadmin
+ * no pertenece a ninguna, asi que ni recibe ni se le ofrece como destinatario. Se deriva del
+ * schema para no escribir una segunda lista de roles.
+ */
+export function esRolDeSeleccion(rol: RolValue): rol is RolDeSeleccion {
+  return (rolSchema.options as readonly string[]).includes(rol);
+}
+
 export const seleccionDestinatariosSchema = z
   .object({
     roles: z.array(rolSchema).max(10, MENSAJES_ENVIO.roles).default([]),

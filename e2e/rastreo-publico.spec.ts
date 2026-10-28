@@ -1,4 +1,10 @@
+import { randomInt } from "node:crypto";
+
 import { test, expect } from "@playwright/test";
+
+import { abrirBaseE2E, crearEmpresaE2E, crearUsuarioE2E } from "../tests/fabricas/e2e";
+
+import { crearOrdenE2E, crearZonaE2E } from "./_aislamiento-datos";
 
 /**
  * E2E — Rastreo público del envío desde la landing (Feature 229, T5.1).
@@ -27,41 +33,47 @@ import { test, expect } from "@playwright/test";
  *  - El resultado es una `<ol>` de hitos públicos (`role="listitem"` por hito) con la guía
  *    consultada arriba. El rechazo es un `role="alert"` con texto único.
  *
- * PRECONDITION (seed):
- *  - Una orden VIVA (`deleted_at` nulo) con `num_guia` = GUIA_SEMBRADA y `telefono_dest` cuyos
- *    últimos 4 dígitos sean FACTOR_SEMBRADO, y con AL MENOS una fila en
- *    `orden_historial_estado` (si no tiene ninguna, no hay nada OCURRIDO que contar y el
- *    servidor responde igual que «no encontrado», G10/R14).
- *  - Una guía que NO exista en la base: GUIA_INEXISTENTE.
- *  - El limitador de intentos es 8 en 10 minutos por IP (G4): esta suite hace 3 consultas, así
- *    que cabe de sobra. Si se añaden casos, ojo con el techo — un `demasiados_intentos`
- *    aparecería como un fallo raro y difícil de leer.
+ * DATOS (SL-44 T4.3; R7, R8). El `beforeAll` crea su empresa (`crearEmpresaE2E`), una tienda
+ * (`crearUsuarioE2E`), una zona (`ZonaService`) y una orden con guía por la carga masiva de la
+ * tienda (`BulkOrdenService.cargarMasiva`), que deja su primera fila de `orden_historial_estado`
+ * (sin ninguna, no hay nada OCURRIDO que contar y el servidor responde igual que «no
+ * encontrado», G10/R14). El factor son los últimos 4 dígitos del teléfono que el spec le pone a
+ * esa orden. La guía inexistente se comprueba ausente en la base antes de usarla.
  *
- * EXECUTION NOTE (misma deferral que el resto de `e2e/` en este repo):
- * Estos tests requieren un servidor Next levantado (`pnpm dev`, lo hace el `webServer` de
- * `playwright.config.ts`) y una base con el seed de arriba. Sin `.env` ni base real están
- * ESCRITOS pero NO EJECUTADOS. No corren bajo `pnpm test` (vitest solo incluye `tests/**`).
+ * El limitador de intentos es 8 en 10 minutos por IP (G4) y vive en la memoria del servidor: esta
+ * suite hace 3 consultas, y cada corrida de Playwright arranca su servidor. Si se añaden casos,
+ * ojo con el techo: un `demasiados_intentos` aparecería como un fallo raro y difícil de leer.
  *
- * Para correrlos:
- *  1. `.env` con credenciales de base y migraciones aplicadas (`pnpm run db:migrate`).
- *  2. Sembrar la orden de la PRECONDITION y ajustar las constantes de abajo (o pasarlas por
- *     `E2E_RASTREO_GUIA` / `E2E_RASTREO_FACTOR` / `E2E_RASTREO_GUIA_INEXISTENTE`).
- *  3. `pnpm run test:e2e`.
- *
- * EJECUTADOS UNA VEZ, y conviene decir contra qué: el 2026-08-15, contra un `next dev` de este
- * worktree y la base local, pasando la guía real por entorno
- * (`E2E_RASTREO_GUIA` / `E2E_RASTREO_FACTOR`) porque las constantes de abajo son un seed
- * genérico que esa base no tiene. Los dos casos pasaron. NO se corrieron con el `webServer` de
- * `playwright.config.ts`: ese reutiliza el servidor que ya esté en `localhost:3000`, que puede
- * ser el de otro checkout — si estos tests fallan con «el botón sigue deshabilitado», es eso.
+ * CÓMO SE CORRE: `pnpm exec playwright test --project=aislamiento` (Playwright levanta el
+ * servidor; base local migrada y con `pnpm run db:seed`). Sin base, el `beforeAll` FALLA.
  */
 
-/** Guía sembrada, viva y con historial. */
-const GUIA_SEMBRADA = process.env.E2E_RASTREO_GUIA ?? "1001";
+/** Guía creada por el `beforeAll`, viva y con historial. */
+let GUIA_SEMBRADA = "";
 /** Últimos 4 dígitos del teléfono del destinatario de esa orden (segundo factor, G1). */
-const FACTOR_SEMBRADO = process.env.E2E_RASTREO_FACTOR ?? "8899";
+let FACTOR_SEMBRADO = "";
 /** Una guía que no existe en la base. */
-const GUIA_INEXISTENTE = process.env.E2E_RASTREO_GUIA_INEXISTENTE ?? "99999999";
+let GUIA_INEXISTENTE = "";
+
+test.beforeAll(async () => {
+  test.setTimeout(120_000);
+  const db = abrirBaseE2E();
+  try {
+    const e = await crearEmpresaE2E("rastreo");
+    const tienda = await crearUsuarioE2E(e, "adminTienda");
+    const zona = await crearZonaE2E(db, e);
+    // Teléfono propio de la corrida: el factor no puede ser el de otra orden de la base.
+    const factor = String(randomInt(1000, 10_000));
+    const orden = await crearOrdenE2E(db, e, tienda, zona, `8877${factor}`);
+    GUIA_SEMBRADA = String(orden.numGuia);
+    FACTOR_SEMBRADO = factor;
+    const inexistente = orden.numGuia + 900_000;
+    expect(await db.orden.count({ where: { numGuia: inexistente } }), "la guía «inexistente» existe").toBe(0);
+    GUIA_INEXISTENTE = String(inexistente);
+  } finally {
+    await db.$disconnect();
+  }
+});
 
 /** El texto ÚNICO de rechazo (R28). Se escribe aquí una vez y se compara consigo mismo. */
 const RECHAZO_UNICO =

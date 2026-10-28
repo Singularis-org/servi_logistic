@@ -4,7 +4,7 @@
 //
 // POR QUE EXISTE ESTE ARCHIVO: Route Optimization (`routeoptimization.googleapis.com`) NO
 // acepta API key. Exige `Authorization: Bearer <token>` obtenido de una service account.
-// La `GOOGLE_MAPS_API_KEY` de la feature 91 no sirve (design §9.A, override consciente).
+// La clave de API de Google Maps no sirve (design §9.A de la 92, override consciente).
 //
 // TRES INVARIANTES DE ESTE ARCHIVO:
 //
@@ -17,10 +17,9 @@
 // 3. Sin dependencia nueva: se firma con `node:crypto` (`createSign("RSA-SHA256")`). NO se
 //    anade `google-auth-library` por un flujo de 40 lineas.
 //
-// ADEMAS este archivo hospeda el SELECTOR de los tres modos de autenticacion
-// (`construirTokenProvider`, al final): ADC en local, WIF keyless en produccion y este
-// JWT-bearer como fallback. Vive aqui —y no en un archivo aparte— porque es donde los
-// llamadores ya lo importaban y donde `credenciales-google.md` dice que esta.
+// SL-36 (design §7.2, §9.2): es el UNICO modo. Los modos ADC y WIF eran identidades de la
+// PLATAFORMA (la de quien desarrolla, la del despliegue de Vercel) y se retiraron: la credencial es
+// la clave JSON de la cuenta de servicio de cada empresa, guardada cifrada en su integracion.
 import { createSign } from "node:crypto";
 import { z } from "zod";
 // ⚠️ LAS CLASES DE ERROR VIVEN EN UN SOLO SITIO (`google-token-shared.ts`) Y SE RE-EXPORTAN.
@@ -35,14 +34,6 @@ import {
   SCOPE_CLOUD_PLATFORM,
   type TokenProvider,
 } from "@/lib/auth/google-token-shared";
-import {
-  construirTokenProviderWif,
-  type WifTokenProviderOpts,
-} from "@/lib/auth/google-wif-token";
-import {
-  construirTokenProviderAdc,
-  type AdcTokenProviderOpts,
-} from "@/lib/auth/google-adc-token";
 import { optlog, opterror, describirToken, cronometro } from "@/lib/logging/optimizer-log";
 
 export { RutaNoConfiguradoError, RutaTokenError, SCOPE_CLOUD_PLATFORM };
@@ -224,142 +215,18 @@ export class GoogleServiceAccountToken {
 }
 
 /**
- * R12: valida las TRES piezas de la credencial JWT-bearer y construye el proveedor. Lanza
- * `RutaNoConfiguradoError` ANTES de firmar nada y ANTES de cualquier llamada de red.
- * El `projectId` se valida aqui aunque no lo use el token: es la pieza que la URL de
- * `optimizeTours` necesita, y fallar entero y temprano es mas barato que fallar a mitad.
+ * SL-36 (R12/R23) — el proveedor de token de la clave de la cuenta de servicio de UNA empresa.
+ * Lanza `RutaNoConfiguradoError("clave_mal_formada")` ANTES de firmar nada y ANTES de la red si
+ * falta el email o la clave privada: `FallbackRouteOptimizationClient` lo traduce en el orden local.
  *
- * Este es el modo FALLBACK. El punto de entrada normal es `construirTokenProvider`, que
- * elige entre los tres modos.
- */
-export function construirTokenProviderJwt(
-  config: {
-    GOOGLE_ROUTE_OPT_PROJECT_ID: string | null;
-    GOOGLE_ROUTE_OPT_SA_EMAIL: string | null;
-    GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: string | null;
-  },
-  opts: GoogleServiceAccountTokenOpts = {},
-): GoogleServiceAccountToken {
-  if (config.GOOGLE_ROUTE_OPT_PROJECT_ID === null) {
-    throw new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_PROJECT_ID");
-  }
-  if (config.GOOGLE_ROUTE_OPT_SA_EMAIL === null) {
-    throw new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_SA_EMAIL");
-  }
-  if (config.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY === null) {
-    throw new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY");
-  }
-  return new GoogleServiceAccountToken(
-    {
-      email: config.GOOGLE_ROUTE_OPT_SA_EMAIL,
-      privateKey: config.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY,
-    },
-    opts,
-  );
-}
-
-/**
- * Config que consume el SELECTOR. Las piezas de WIF y el flag de ADC son OPCIONALES a
- * proposito: un llamador que solo conozca la credencial JWT-bearer (los tests del modo
- * fallback, por ejemplo) sigue compilando y sigue cayendo al modo fallback.
- */
-export interface TokenProviderConfig {
-  GOOGLE_ROUTE_OPT_PROJECT_ID: string | null;
-  GOOGLE_ROUTE_OPT_SA_EMAIL: string | null;
-  GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY: string | null;
-  GOOGLE_WIF_PROJECT_NUMBER?: string | null;
-  GOOGLE_WIF_POOL_ID?: string | null;
-  GOOGLE_WIF_PROVIDER_ID?: string | null;
-  GOOGLE_ROUTE_OPT_USE_ADC?: boolean;
-}
-
-/**
- * Opts del selector. Las del modo JWT-bearer van PLANAS (compatibilidad: los llamadores que
- * ya existian pasaban `{ fetchImpl, now }` directamente); las de los otros dos modos van
- * anidadas, porque sus fabricas inyectables no tienen nada que ver entre si.
- */
-export type TokenProviderOpts = GoogleServiceAccountTokenOpts & {
-  wif?: WifTokenProviderOpts;
-  adc?: AdcTokenProviderOpts;
-};
-
-/** Las tres piezas que activan el modo WIF. Si falta UNA, el modo no se considera presente. */
-const PIEZAS_WIF = [
-  "GOOGLE_WIF_PROJECT_NUMBER",
-  "GOOGLE_WIF_POOL_ID",
-  "GOOGLE_WIF_PROVIDER_ID",
-] as const;
-
-/**
- * SELECTOR de modo de autenticacion (R11/R12). Precedencia, documentada en
- * `specs/92-optimizacion-ruta-mensajero/credenciales-google.md`:
- *
- *   1. `GOOGLE_ROUTE_OPT_USE_ADC=true` -> ADC (SOLO desarrollo local).
- *   2. Las tres piezas `GOOGLE_WIF_*` presentes -> WIF keyless (produccion, recomendado).
- *   3. Si no -> JWT-bearer con clave privada de larga vida (fallback).
- *
- * POR QUE ESTE ORDEN: el flag de ADC es EXPLICITO (alguien lo escribio a mano en un
- * `.env.local`), mientras que las piezas WIF pueden quedar heredadas en el entorno; lo
- * explicito gana. Y WIF va antes que JWT porque si el humano se molesto en configurar el
- * pool federado, tener ademas una clave privada colgada no debe silenciarlo.
- *
- * INVARIANTE COMPARTIDA: `GOOGLE_ROUTE_OPT_PROJECT_ID` se exige en los TRES modos —lo
- * consume la URL de `optimizeTours`, no el token— y se valida ANTES de elegir, para que el
- * mensaje de error no dependa del modo. Como todas las validaciones, lanza
- * `RutaNoConfiguradoError` SIN tocar la red, y el llamador (`getToken`, perezoso) lo traduce
- * en una caida al orden local (Haversine) en vez de en un job muerto.
+ * Una instancia por empresa: el token que cachea es de esa cuenta de servicio y no se presta (R28).
  */
 export function construirTokenProvider(
-  config: TokenProviderConfig,
-  opts: TokenProviderOpts = {},
+  credencial: ServiceAccountCredential,
+  opts: GoogleServiceAccountTokenOpts = {},
 ): TokenProvider {
-  // Se traza QUE piezas hay, en booleanos: presencia si, valores no. Es justo lo que hace
-  // falta para entender por que se eligio un modo y no otro.
-  optlog("auth/selector — evaluando modo", {
-    projectId: config.GOOGLE_ROUTE_OPT_PROJECT_ID ?? "AUSENTE",
-    useAdc: config.GOOGLE_ROUTE_OPT_USE_ADC === true,
-    hayWifProjectNumber: (config.GOOGLE_WIF_PROJECT_NUMBER ?? null) !== null,
-    hayWifPoolId: (config.GOOGLE_WIF_POOL_ID ?? null) !== null,
-    hayWifProviderId: (config.GOOGLE_WIF_PROVIDER_ID ?? null) !== null,
-    haySaEmail: config.GOOGLE_ROUTE_OPT_SA_EMAIL !== null,
-    hayPrivateKey: config.GOOGLE_ROUTE_OPT_SA_PRIVATE_KEY !== null,
-  });
-
-  if (config.GOOGLE_ROUTE_OPT_PROJECT_ID === null) {
-    optlog("auth/selector — SIN project id; se aborta antes de elegir modo");
-    throw new RutaNoConfiguradoError("GOOGLE_ROUTE_OPT_PROJECT_ID");
+  if (credencial.email.trim() === "" || credencial.privateKey.trim() === "") {
+    throw new RutaNoConfiguradoError("clave_mal_formada");
   }
-
-  if (config.GOOGLE_ROUTE_OPT_USE_ADC === true) {
-    optlog("auth/selector — modo elegido: ADC (solo desarrollo local)", {
-      impersonaSa: false,
-    });
-    return construirTokenProviderAdc(
-      { GOOGLE_ROUTE_OPT_SA_EMAIL: config.GOOGLE_ROUTE_OPT_SA_EMAIL },
-      opts.adc,
-    );
-  }
-
-  const hayWif = PIEZAS_WIF.every(
-    (pieza) => config[pieza] !== undefined && config[pieza] !== null,
-  );
-  if (hayWif) {
-    optlog("auth/selector — modo elegido: WIF keyless", {
-      poolId: config.GOOGLE_WIF_POOL_ID,
-      providerId: config.GOOGLE_WIF_PROVIDER_ID,
-      projectNumber: config.GOOGLE_WIF_PROJECT_NUMBER,
-    });
-    return construirTokenProviderWif(
-      {
-        GOOGLE_WIF_PROJECT_NUMBER: config.GOOGLE_WIF_PROJECT_NUMBER ?? null,
-        GOOGLE_WIF_POOL_ID: config.GOOGLE_WIF_POOL_ID ?? null,
-        GOOGLE_WIF_PROVIDER_ID: config.GOOGLE_WIF_PROVIDER_ID ?? null,
-        GOOGLE_ROUTE_OPT_SA_EMAIL: config.GOOGLE_ROUTE_OPT_SA_EMAIL,
-      },
-      opts.wif,
-    );
-  }
-
-  optlog("auth/selector — modo elegido: JWT-bearer (fallback, clave de larga vida)");
-  return construirTokenProviderJwt(config, opts);
+  return new GoogleServiceAccountToken(credencial, opts);
 }

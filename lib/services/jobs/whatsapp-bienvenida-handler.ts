@@ -3,7 +3,8 @@
 //
 // Envia al cliente la plantilla marcada como bienvenida cuando su paquete fue recogido. NO es
 // recurrente: se encola por EVENTO (la transicion `recoleccion -> en_reparto`), nunca por reloj.
-// Las deps (config de WhatsApp) se cargan PEREZOSAMENTE: un env ausente falla ESTE job
+// Las deps (credencial de WhatsApp de la empresa del job, SL-36) se cargan PEREZOSAMENTE: una
+// empresa sin WhatsApp falla ESTE job
 // —recuperable y con su motivo en `last_error`—, no el drenado de los demas tipos.
 //
 // Reutiliza la MISMA cadena de resolucion que `enviarPlantillaChat` (`lib/actions/chat-whatsapp.ts`):
@@ -19,7 +20,7 @@ import { OrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { crearEncolarReintentoChatEnvio } from "@/lib/services/jobs/whatsapp-chat-envio-encolado";
 import { WhatsappCloudClient } from "@/lib/clients/whatsapp-cloud";
-import { loadWhatsappConfig } from "@/lib/config/whatsapp";
+import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
@@ -47,20 +48,21 @@ export interface WhatsappBienvenidaDeps {
 }
 
 /**
- * Construye las deps reales. `loadWhatsappConfig` LANZA si falta un env, y eso es deliberado:
+ * Construye las deps reales. `whatsappDeLaEmpresa` LANZA si la empresa del job no tiene WhatsApp
+ * (`WhatsappNoConfiguradoError`, R24), y eso es deliberado:
  * a diferencia de `buildEnvioService()` de la Server Action —que devuelve `null` para responder
  * `no_configurado` a una UI— aqui el fallo tiene que acabar en `last_error`, no convertirse en
  * un `return` silencioso. Un envio que no sale sin dejar rastro es justo lo que esta feature
  * existe para evitar.
  */
-export function buildWhatsappBienvenidaDeps(): WhatsappBienvenidaDeps {
+export async function buildWhatsappBienvenidaDeps(): Promise<WhatsappBienvenidaDeps> {
   const prisma = getPrismaClient();
-  const config = loadWhatsappConfig();
+  const { config, fetchImpl } = await whatsappDeLaEmpresa();
   return {
     service: new ChatWhatsappService({
       conversacionRepo: new ChatConversacionRepository(prisma),
       mensajeRepo: new ChatMensajeRepository(prisma),
-      client: new WhatsappCloudClient({ config, logger: consoleLogger }),
+      client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
       // ⚠️ ESTA LINEA ES LA QUE SEPARA LOS FALLOS DE META DE LOS DE ESTE JOB, y por eso NO se
       // copia `buildWhatsappChatEnvioService`, que la omite a proposito (alli seria recursivo:
       // es el service DEL job de reintento).
@@ -99,11 +101,11 @@ export function buildWhatsappBienvenidaDeps(): WhatsappBienvenidaDeps {
  *   aqui duplicaria el rastro y enterraria el job por algo que ya esta gestionado.
  */
 export function crearWhatsappBienvenidaHandler(
-  buildDeps: () => WhatsappBienvenidaDeps = buildWhatsappBienvenidaDeps,
+  buildDeps: () => WhatsappBienvenidaDeps | Promise<WhatsappBienvenidaDeps> = buildWhatsappBienvenidaDeps,
 ): JobHandler {
   return async (job: JobDTO) => {
     const payload = payloadSchema.parse(job.payload);
-    const deps = buildDeps();
+    const deps = await buildDeps();
     const log = deps.logger;
 
     // La marca se relee AL ENVIAR, no viaja en el payload: quien es la bienvenida es

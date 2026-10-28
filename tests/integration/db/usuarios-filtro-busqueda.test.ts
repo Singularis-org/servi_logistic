@@ -129,7 +129,9 @@ describeSiHayBase("285/T3.1 — filtro por rol y buscador contra Postgres real",
       await serializarEscriturasReales(tx);
 
       const base = {
-        total: await tx.usuario.count(),
+        // SL-32 (R10): el listado nunca cuenta al superadmin, y otro archivo puede tener el suyo
+        // commiteado mientras este corre. El total de partida es el de los usuarios de empresa.
+        total: await tx.usuario.count({ where: { rol: { value: { not: "superadmin" } } } }),
         mensajeros: await tx.usuario.count({ where: { rol: { value: "mensajero" } } }),
         admins: await tx.usuario.count({ where: { rol: { value: "admin" } } }),
       };

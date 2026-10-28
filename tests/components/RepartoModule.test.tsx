@@ -29,6 +29,13 @@ import {
   bloqueoTodosPorEnviar,
 } from "@/tests/fixtures/bloqueo-cierre";
 
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
 // Feature 36 (T15-T17) / rediseño 63 (pedido humano) — pantalla de REPARTO del mensajero.
 // Se mockean las Server Actions (escoger / gestionar / liberar), el toast y el router
 // (refresh) para afirmar la composición y los envíos sin DB ni sesión. "En reparto" ya NO

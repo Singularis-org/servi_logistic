@@ -54,10 +54,15 @@ máximo 4 preguntas por tanda, y pon siempre como primera opción lo que el repo
    - qué servicios externos se doblan en tests.
 5. **Dependencias:** ¿las actuales están aprobadas? ¿Quién aprueba las nuevas?
 6. **Equipo y board:**
-   - sitio y proyecto de Jira;
-   - estados del board: el nombre de cada uno en Jira y a qué estado del arnés traduce
-     (`pending`, `spec_ready`, `in_progress`, `done`, `cancelled`). Se leen del board, no se
-     suponen (`docs/jira.md > Los estados del board`);
+   - tracker: `jira` o `trello`. Primera opción, el que sugiera el repo (`.mcp.json` con
+     `atlassian`, o el `arnes.config.json` actual); si nada lo sugiere, pregúntalo sin
+     recomendar;
+   - con Jira, sitio y proyecto; con Trello, id del board y prefijo de las keys nuevas (y
+     `prefijos_historicos` si el proyecto viene de otro tracker: `docs/trello.md > Migrar desde
+     Jira`);
+   - estados del board: el nombre de cada uno (en Trello, cada lista) y a qué estado del arnés
+     traduce (`pending`, `spec_ready`, `in_progress`, `done`, `cancelled`). Se leen del board, no
+     se suponen (`docs/jira.md > Los estados del board`, `docs/trello.md > Los estados del board`);
    - ramas de integración y producción: pregúntalas **siempre**, una por una, con las ramas de
      `git branch -r` como opciones. Nunca supongas `main`, `master` ni `dev`;
    - cupo por persona y zona (por defecto 2/3/3).
@@ -73,7 +78,8 @@ En modo revisión, por cada doc del perfil:
 ## 3. Escribe
 
 - **`arnes.config.json`:** `arnes_version` (la de `arnes.config.example.json` si existe),
-  `jira` (`site`, `project`, `estados`), `ramas`, `cupos_por_persona`, `gate` (`siempre`, con `"guard"` como mínimo) y `perfil` (`max_dias_sin_revisar`, `docs`).
+  `tracker` (`tipo`; `site` con Jira o `board` con Trello; `prefijo`, `prefijos_historicos` si
+  aplica, `estados`), `ramas`, `cupos_por_persona`, `gate` (`siempre`, con `"guard"` como mínimo) y `perfil` (`max_dias_sin_revisar`, `docs`).
 - **`.github/workflows/gate.yml`:** pon las dos `ramas` en `on.pull_request.branches` y la de
   producción en el `github.base_ref == '<rama>'` del job E2E. GitHub no lee el JSON;
   `scripts/check-perfil.mjs` hace fallar `./init.sh` si difieren.
@@ -92,7 +98,7 @@ En modo revisión, por cada doc del perfil:
 
 ## 4. Verifica y entrega
 
-1. Si falta `.arnes.local.json`, corre `/jira-connect`.
+1. Si falta `.arnes.local.json`, corre `/tracker-connect`.
 2. `./init.sh`: debe salir en verde, y el perfil en `N/N docs revisados`.
 3. Muestra al humano el diff del perfil (`git diff --stat` y lo esencial de cada doc). **No
    hagas commit sin su visto bueno.**

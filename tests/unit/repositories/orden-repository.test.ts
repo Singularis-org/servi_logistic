@@ -356,7 +356,7 @@ describe("OrdenRepository.list (R30/R31/R34)", () => {
     const prisma = buildPrisma();
     prisma.orden.findMany.mockResolvedValue([
       ordenListRow({
-        distrito: { id: "d1", nombre: "Carmen" },
+        distrito: { id: "d1", nombre: "Carmen", zonasEspeciales: [] },
         mensajeroAsignado: { id: "msj-1", nombre: "Luis" },
       }),
     ]);

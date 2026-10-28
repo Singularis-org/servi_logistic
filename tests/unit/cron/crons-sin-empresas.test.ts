@@ -9,6 +9,7 @@ import { handleLiberarReprogramadas } from "@/app/api/cron/liberar-reprogramadas
 import { handleProcesarDevueltasSla } from "@/app/api/cron/procesar-devueltas-sla/route";
 import { handleSnapshotRanking } from "@/app/api/cron/snapshot-ranking/route";
 import { handlePurgaPdfCargas } from "@/app/api/cron/purga-pdf-cargas/route";
+import { handlePurgaDescargas } from "@/app/api/cron/purga-descargas/route";
 import { handlePurgaPostulacionesRecurso } from "@/app/api/cron/purga-postulaciones-recurso/route";
 import { handleAvisoRepartoManana } from "@/app/api/cron/aviso-reparto-manana/route";
 import { handleAvisosDiarios } from "@/app/api/cron/avisos-diarios/route";
@@ -52,6 +53,11 @@ interface CasoCron {
   corrida: Record<string, unknown>;
   /** Cuerpo esperado sin empresas (sin la clave `empresas`). */
   vacio: Record<string, unknown>;
+  /**
+   * SL-36: claves de mas en `empresas` propias de un cron. El de plantillas cuenta las empresas sin
+   * WhatsApp (saltadas sin red); con el servicio doble inyectado no hay ninguna.
+   */
+  empresasExtra?: Record<string, unknown>;
 }
 
 const CASOS: CasoCron[] = [
@@ -82,6 +88,7 @@ const CASOS: CasoCron[] = [
       cobrosPendientesCreados: 0,
       cobrosPendientesTotales: 0,
     },
+    empresasExtra: {},
   },
   {
     nombre: "liberar-reprogramadas",
@@ -110,6 +117,14 @@ const CASOS: CasoCron[] = [
     metodo: "ejecutar",
     corrida: { cargasPurgadas: 1, ordenesAfectadas: 1, objetosBorrados: 1, quedaPendiente: false },
     vacio: { cargasPurgadas: 0, ordenesAfectadas: 0, objetosBorrados: 0, quedaPendiente: false },
+  },
+  {
+    // SL-19 (R21): el almacen de descargas solo alcanza la carpeta de la empresa en curso.
+    nombre: "purga-descargas",
+    handle: (r, d) => handlePurgaDescargas(r, d as never),
+    metodo: "ejecutar",
+    corrida: { objetosBorrados: 1, quedaPendiente: false },
+    vacio: { objetosBorrados: 0, quedaPendiente: false },
   },
   {
     nombre: "purga-postulaciones-recurso",
@@ -174,6 +189,7 @@ const CASOS: CasoCron[] = [
     metodo: "sincronizar",
     corrida: { leidas: 1, actualizadas: 1, sinCambios: 1, ignoradas: 1 },
     vacio: { leidas: 0, actualizadas: 0, sinCambios: 0, ignoradas: 0 },
+    empresasExtra: { sinWhatsapp: 0 },
   },
 ];
 
@@ -213,7 +229,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
 
     expect(res.status).toBe(200);
     expect(fn).not.toHaveBeenCalled();
-    expect(await res.json()).toEqual({ ...caso.vacio, empresas: { procesadas: 0, fallidas: [] } });
+    expect(await res.json()).toEqual({ ...caso.vacio, empresas: { procesadas: 0, fallidas: [], ...caso.empresasExtra } });
   });
 
   it("dos empresas: una corrida por empresa, cada una con la suya en contexto, y el resumen suma", async () => {
@@ -227,7 +243,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
       { tipo: "empresa", organizacionId: "org-b" },
     ]);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.empresas).toEqual({ procesadas: 2, fallidas: [] });
+    expect(body.empresas).toEqual({ procesadas: 2, fallidas: [], ...caso.empresasExtra });
     for (const [k, v] of Object.entries(caso.vacio)) {
       if (typeof v === "number") expect(body[k], k).toBe(2);
     }
@@ -241,7 +257,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
     expect(res.status).toBe(200);
     expect(contextos).toHaveLength(2);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.empresas).toEqual({ procesadas: 1, fallidas: ["org-a"] });
+    expect(body.empresas).toEqual({ procesadas: 1, fallidas: ["org-a"], ...caso.empresasExtra });
     for (const [k, v] of Object.entries(caso.vacio)) {
       if (typeof v === "number") expect(body[k], k).toBe(1);
     }
@@ -334,7 +350,7 @@ describe("drenador: cada job con su empresa (R42)", () => {
     const service: IJobQueueService = {
       drenar: vi.fn(async () => {
         ctx = contextoActual();
-        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0 };
+        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0, descartados: 0 };
       }),
     };
     const res = await handleProcesarJobs(req(), { getSecret: () => SECRET, service, now: () => AHORA });

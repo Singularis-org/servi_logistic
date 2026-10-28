@@ -87,12 +87,12 @@ const PUNTOS_DE_ESCRITURA = [
   "lib/repositories/GastoFijoCobroRepository.ts",
   "lib/repositories/RechazoTiendaCobroRepository.ts",
   "lib/repositories/RankingSnapshotRepository.ts",
-  // ⭑ FICHA 374. Su bloque `appendAccion` lleva la CADENA DE NOMBRES del nodo geografico
-  // (`Cabagra · Buenos Aires · Puntarenas`). Son nombres de un catalogo PUBLICO —la DTA del IGN—,
-  // del mismo genero que el nombre de una zona: ni un dato de destinatario, ni texto libre. Entra
-  // en la lista aunque esta guardia no sea obligatoria, porque un punto de escritura FUERA de la
-  // lista es un punto sin vigilar.
-  "lib/repositories/GeoRepository.ts",
+  // FICHA 374 — `GeoRepository` estuvo aqui hasta SL-20, que mudo su registro al historial de
+  // PLATAFORMA (`appendAccionPlataforma`, R35): ya no llama a `appendAccion`. Lo vigila
+  // `historial-accion-escrituras-cubiertas` («sin escritor desde SL-20»).
+  // SL-36 (R33). Sus cinco bloques llevan el NOMBRE del servicio y, en la prueba, el codigo del
+  // catalogo: ni la credencial, ni su cifrado, ni el numero de WhatsApp, ni el texto del proveedor.
+  "lib/repositories/IntegracionRepository.ts",
 ] as const;
 
 const FUENTE_ETIQUETAS = "lib/types/historial-accion-etiquetas.ts";

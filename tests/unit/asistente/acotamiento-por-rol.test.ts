@@ -102,14 +102,17 @@ describe("R9 — el conjunto sale del catálogo y del predicado IMPORTADO, nunca
 });
 
 describe("R10 — los cinco roles, con los conteos que mide el módulo de ayuda", () => {
-  it("⭑ 33 / 33 / 10 / 8 / 7, los mismos números que afirma AyudaLayout", async () => {
+  it("⭑ 37 / 37 / 10 / 8 / 7, los mismos números que afirma AyudaLayout", async () => {
     // ⚠️ LITERALES A MANO, medidos sobre el `roles:` de los 33 archivos, igual que
     // `tests/components/AyudaLayout.test.tsx`. Derivarlos del catálogo los dejaría verdes pase lo
     // que pase — incluido el caso que de verdad importa: un acotamiento apagado que mande 33 a
     // todo el mundo.
+    //
+    // SL-36: maestro y admin 33→38 por las cinco guías de integraciones; los otros tres no se mueven.
+    // SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
     const esperado: Record<string, number> = {
-      maestro: 33,
-      admin: 33,
+      maestro: 37,
+      admin: 37,
       adminSatelite: 10,
       mensajero: 8,
       adminTienda: 7,
@@ -168,9 +171,11 @@ describe("R11 — un mensajero no recibe NI UNA LÍNEA de la ayuda de la oficina
   /** Los 18 `.md` de `docs/ayuda/oficina/`, leídos de la carpeta y no de una lista escrita aquí. */
   const archivosOficina = readdirSync(DIR_OFICINA).filter((f) => f.endsWith(".md"));
 
-  it("CONTROL DE NO-VACUIDAD: la carpeta de oficina tiene los 18 documentos medidos", () => {
+  it("CONTROL DE NO-VACUIDAD: la carpeta de oficina tiene los 22 documentos medidos", () => {
     // Sin esto, borrar la carpeta dejaría todo lo de abajo verde por vacío.
-    expect(archivosOficina.length).toBe(18);
+    // SL-36: 18→23 por las cinco guías de integraciones.
+    // SL-20 (decisión 9): 23→22 al retirar `oficina/configuracion-geografia.md`.
+    expect(archivosOficina.length).toBe(22);
   });
 
   it("⭑ el texto que se le manda a un mensajero no contiene ningún slug de oficina", async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LoginForm } from "@/app/login/_components/LoginForm";
 import { login, verifyChallenge } from "@/lib/actions/auth";
@@ -491,53 +491,134 @@ describe("LoginForm — distinguibilidad de mensajes de error (R27)", () => {
   });
 });
 
-describe("LoginForm — la salida escrita para quien olvidó su contraseña (feature 373)", () => {
-  /**
-   * PAR CON `tests/integration/login-form-reset-link.test.tsx`. Aquel exige que NO haya enlace
-   * a `/recuperar-contrasena`; este exige que, en su lugar, SÍ haya una salida escrita. Los dos
-   * juntos son la afirmación completa —«el enlace se fue Y la pista se quedó»—, y separados
-   * dejan cada uno un agujero: sin este, borrar la línea deja el login mudo y todo verde.
-   *
-   * Cuando el correo de recuperación vuelva a funcionar, ESTE bloque se borra y aquel se
-   * revierte a su caso original: o el enlace, o esta línea, nunca las dos.
-   */
-  it("muestra a quién acudir, en texto plano y sin enlace a ninguna parte", () => {
+// ─────────────────────────────────────────────────────────────────────────────────────
+// SL-18 (R7, R31) — el mismo email y la misma contraseña en varias empresas
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+const ORG_A = "11111111-1111-4111-8111-111111111111";
+const ORG_B = "22222222-2222-4222-8222-222222222222";
+
+async function enviarCredenciales(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("Correo electrónico"), "ana@example.com");
+  await user.type(screen.getByLabelText("Contraseña"), "clave123");
+  await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+}
+
+describe("LoginForm — elegir empresa (SL-18 R7, R31)", () => {
+  it("SL-18 R7: elegir_empresa pinta un botón por empresa, incluida «Plataforma»", async () => {
+    mockedLogin.mockResolvedValue({
+      status: "elegir_empresa",
+      empresas: [
+        { organizacionId: ORG_A, nombre: "Empresa A" },
+        { organizacionId: ORG_B, nombre: "Empresa B" },
+        { organizacionId: null, nombre: "Plataforma" },
+      ],
+    });
+    const user = userEvent.setup();
     render(<LoginForm redirectParam={null} />);
 
-    // NO-VACUIDAD: si el componente no montara, los `queryBy...` de abajo saldrían todos
-    // negativos y el test pasaría con la pantalla de login caída.
-    expect(screen.getByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
+    await enviarCredenciales(user);
 
-    const aviso = screen.getByText(
-      "¿Olvidaste tu contraseña? Pídele a un administrador que te la restablezca.",
-    );
-    expect(aviso).toBeInTheDocument();
-
-    // Y es TEXTO, no una afordancia que prometa un destino: ni es un enlace ni cuelga de uno.
-    // Esta aserción no depende del `href`, así que caza también un enlace a cualquier OTRA ruta,
-    // que el guard de `/recuperar-contrasena` dejaría pasar.
-    expect(aviso.closest("a")).toBeNull();
-    expect(
-      screen.queryByRole("link", { name: /Olvidaste tu contraseña/ }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Elige la empresa" })).toBeInTheDocument();
+    const lista = screen.getByRole("list");
+    const botones = within(lista).getAllByRole("button");
+    expect(botones.map((b) => b.textContent)).toEqual(["Empresa A", "Empresa B", "Plataforma"]);
+    expect(pushMock).not.toHaveBeenCalled();
+    // La contraseña no se queda a la vista en este paso.
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
   });
 
-  it("tiene peso visual de ayuda: ni es un error ni estrena una región viva", () => {
+  it("SL-18 R31: al pulsar una empresa vuelve a llamar a login con las mismas credenciales y su organizacionId", async () => {
+    mockedLogin
+      .mockResolvedValueOnce({
+        status: "elegir_empresa",
+        empresas: [
+          { organizacionId: ORG_A, nombre: "Empresa A" },
+          { organizacionId: ORG_B, nombre: "Empresa B" },
+        ],
+      })
+      .mockResolvedValueOnce({ status: "ok" });
+    const user = userEvent.setup();
+    render(<LoginForm redirectParam="/envios" />);
+
+    await enviarCredenciales(user);
+    await user.click(await screen.findByRole("button", { name: "Empresa B" }));
+
+    await waitFor(() => expect(mockedLogin).toHaveBeenCalledTimes(2));
+    expect(mockedLogin).toHaveBeenNthCalledWith(1, {
+      email: "ana@example.com",
+      password: "clave123",
+    });
+    expect(mockedLogin).toHaveBeenNthCalledWith(2, {
+      email: "ana@example.com",
+      password: "clave123",
+      organizacionId: ORG_B,
+    });
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/envios"));
+  });
+
+  it("SL-18 R7: elegir «Plataforma» manda organizacionId null", async () => {
+    mockedLogin
+      .mockResolvedValueOnce({
+        status: "elegir_empresa",
+        empresas: [
+          { organizacionId: ORG_A, nombre: "Empresa A" },
+          { organizacionId: null, nombre: "Plataforma" },
+        ],
+      })
+      .mockResolvedValueOnce({ status: "ok" });
+    const user = userEvent.setup();
     render(<LoginForm redirectParam={null} />);
 
-    const aviso = screen.getByText(
-      "¿Olvidaste tu contraseña? Pídele a un administrador que te la restablezca.",
+    await enviarCredenciales(user);
+    await user.click(await screen.findByRole("button", { name: "Plataforma" }));
+
+    await waitFor(() => expect(mockedLogin).toHaveBeenCalledTimes(2));
+    expect(mockedLogin).toHaveBeenLastCalledWith({
+      email: "ana@example.com",
+      password: "clave123",
+      organizacionId: null,
+    });
+  });
+
+  it("SL-18 R7: un error en la segunda llamada se anuncia sin salir de la elección", async () => {
+    mockedLogin
+      .mockResolvedValueOnce({
+        status: "elegir_empresa",
+        empresas: [
+          { organizacionId: ORG_A, nombre: "Empresa A" },
+          { organizacionId: ORG_B, nombre: "Empresa B" },
+        ],
+      })
+      .mockResolvedValueOnce({ status: "account_unavailable" });
+    const user = userEvent.setup();
+    render(<LoginForm redirectParam={null} />);
+
+    await enviarCredenciales(user);
+    await user.click(await screen.findByRole("button", { name: "Empresa A" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Esta cuenta no está disponible para iniciar sesión",
     );
+    expect(screen.getByRole("button", { name: "Empresa B" })).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
 
-    // Un `<Alert>` (role="alert") aquí sería mentir sobre la gravedad Y rompería el
-    // `findByRole("alert")` en singular de la suite de errores de más arriba.
-    expect(aviso.closest("[role='alert']")).toBeNull();
-    expect(aviso.closest("[role='status']")).toBeNull();
-    expect(screen.queryAllByRole("alert")).toHaveLength(0);
-    expect(screen.queryAllByRole("status")).toHaveLength(0);
+  it("SL-18 R7: «Volver a correo y contraseña» regresa al formulario con el correo conservado", async () => {
+    mockedLogin.mockResolvedValue({
+      status: "elegir_empresa",
+      empresas: [
+        { organizacionId: ORG_A, nombre: "Empresa A" },
+        { organizacionId: ORG_B, nombre: "Empresa B" },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<LoginForm redirectParam={null} />);
 
-    // Tono secundario, el mismo que el resto de textos de apoyo de esta tarjeta.
-    expect(aviso.className).toContain("text-muted-foreground");
-    expect(aviso.className).toContain("text-sm");
+    await enviarCredenciales(user);
+    await user.click(await screen.findByRole("button", { name: "Volver a correo y contraseña" }));
+
+    expect(screen.getByLabelText("Correo electrónico")).toHaveValue("ana@example.com");
+    expect(screen.queryByRole("heading", { name: "Elige la empresa" })).not.toBeInTheDocument();
   });
 });
