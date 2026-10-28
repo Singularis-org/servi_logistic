@@ -207,3 +207,36 @@ no de producción.
 tocados: «No issues found»). `pnpm run typecheck` → exit 0.
 
 **Veredicto:** T8 hecha; R3 cubierto por E2E con la descarga `.pdf` afirmada, y `dos-empresas-humo` verde.
+
+## T9 — Mapa consolidado R → test (implementer, 2026-10-28)
+
+U = `tests/unit/services/etiqueta-guia-service.test.ts`, A = `tests/unit/services/alcance-etiquetas-orden.test.ts`,
+I = `tests/integration/db/etiquetas-frontera-tienda.test.ts` (Postgres real, 6 passed / 0 skipped),
+L = `tests/components/OrdenesListado.etiquetas-tienda.test.tsx`, P = `tests/components/OrdenesPage.test.tsx`,
+C = `tests/components/OrdenesListadoEtiquetasChain.test.tsx` (sin cambios), E = `e2e/etiquetas-lote-tienda.spec.ts`.
+
+| R | Test |
+|---|---|
+| R1 | L «R1 — la tienda puede marcar sus órdenes con guía en los 3 estados de recogida» |
+| R2 | L «R2 — … sin conteo» y «R2 — … «Imprimir etiquetas (1)»» |
+| R3 | E (descarga `.pdf` afirmada) + L «R3 (parcial, componente)» |
+| R4 | L «R4 — la barra de la tienda no trae ninguna otra acción de flujo; «Eliminar» sí …» |
+| R5 | L «R5 — una orden de recogida SIN guía no se marca y el «!» dice «Sin guía todavía» …» |
+| R6 | L «R6 — si ninguna marcada está en recogida con guía …» y «R6/R5 — …» |
+| R7 | I «R7 (c)» + U «R7: lote mixto …» |
+| R8 | I «R8 (d)» + U «R8: lote de uno …» |
+| R9 | I «R9 (e)» + U «R9: por guia ajena …» |
+| R10 | I «R10 (a)» y «R10 (b)» (repo saltándose el service) + U «R10: el repo se llama con el usuarioId …» |
+| R11 | I «R11 (f)» + U «R11/R12 …» + A «R11: maestro/admin -> todas» |
+| R12 | A «R12: mensajero/adminSatelite -> todas» + U «R11/R12 … NO se filtran por dueño» |
+| R13 | A «R13: apiKey -> propias» + U casos feature 136 y «R13 segunda capa» |
+| R14 | A (tabla rol → alcance) + P «R14 — adminTienda true», «R14 — maestro y admin false», «R14 — si la regla dijera `todas` … false» |
+| R15 | L «R15 — el maestro (con `accionesLote`) …» + C sin cambios |
+
+Contrapruebas: 4 de backend (design §5.3) + 2 de frontend, todas en ROJO y revertidas (detalle arriba).
+
+Nota para el reviewer (R5): si la página entera son órdenes de recogida sin guía y ninguna es
+eliminable, la columna de casillas no se monta (regla previa: sin casillas que no lleven a botón) y el
+motivo «Sin guía todavía» no se ve. Fijado por L «R6/R5»; el spec no pide más.
+
+Gate final (T9): `./init.sh` rápido → `Test Files 314 passed | 2 skipped`, `Tests 4380 passed | 20 skipped`, `INIT_EXIT=0`.

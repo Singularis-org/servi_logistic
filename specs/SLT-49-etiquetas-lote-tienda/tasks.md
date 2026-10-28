@@ -87,7 +87,7 @@
     de datos de negocio).
   - **Hecho:** los dos verdes en local, salida en `progress/impl_SLT-49.md`.
 
-- [ ] **T9 — Trazabilidad y gate** · depende de T1–T8
+- [x] **T9 — Trazabilidad y gate** · depende de T1–T8
   - `progress/impl_SLT-49.md`: mapa `R1…R15 -> test` (de `design.md §5.2`), contrapruebas de T4 y
     salida de T8.
   - `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde en el worktree.

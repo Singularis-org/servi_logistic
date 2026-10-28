@@ -8,7 +8,9 @@
 
 ## Estado
 F1.0 hecho (2026-10-28): tomada en Trello (member + En curso), worktree desde origin/dev.
-Afinada con /afinar-feature (2026-10-28). Siguiente: F1.2, spec_author.
+Afinada con /afinar-feature (2026-10-28). Spec aprobado por Carlos (2026-10-28; P1 y P2 por defecto).
+F2 hecha (2026-10-28): T1–T9 [x], gate local INIT_EXIT=0, E2E local verde. Bitácora: progress/impl_SLT-49.md.
+Siguiente: reviewer.
 
 ## Evaluación
 zone fullstack / complexity medium. Cupo fullstack: 1/3. Sin choque de archivos con lo en vuelo de Camilo (SL-20, SLT-32) a primera vista: toca `/ordenes` (listado, page) y `EtiquetaGuiaService`.
