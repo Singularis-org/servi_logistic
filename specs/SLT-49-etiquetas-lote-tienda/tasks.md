@@ -40,7 +40,7 @@
     `etiquetas-lote-pdf-service.test.ts` y `api-pdf-etiqueta-service.test.ts` (si alguno rompe por
     la firma, se ajusta su doble sin cambiar lo que afirma).
 
-- [ ] **T4 — Integración contra Postgres: la orden ajena** (R7, R8, R9, R10, R11) · depende de T3
+- [x] **T4 — Integración contra Postgres: la orden ajena** (R7, R8, R9, R10, R11) · depende de T3
   - `tests/integration/db/etiquetas-frontera-tienda.test.ts`, patrón
     `tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts` (`_postgres-real`,
     `describe.skip` sin base, `beforeAll` ruidoso sin catálogo, nada de `return` silencioso).
