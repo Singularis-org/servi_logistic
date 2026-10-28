@@ -70,7 +70,10 @@ export type IconKey =
   | "circleHelp"
   // SL-32 (R36): «Empresas», la pantalla de plataforma del superadmin. Icono propio por el mismo
   // criterio de unión cerrada que los anteriores.
-  | "building";
+  | "building"
+  // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin. Icono propio por el
+  // mismo criterio.
+  | "map";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -669,7 +672,8 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     ],
   },
   {
-    // SL-32 (R6, R36) — «Empresas»: el único ítem del superadmin, que no ve nada de empresa.
+    // SL-32 (R6, R36) — «Empresas»: el primero de los dos ítems del superadmin (el otro es
+    // «Geografía», SL-20), que no ve nada de empresa.
     //
     // Va JUSTO ANTES de «Mi bodega», no el último: que la barra cierre con «Mi bodega» y
     // «Ayuda», en ese orden, es un contrato previo (lo afirman `menu-mi-bodega.test.ts` y
@@ -683,6 +687,20 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     label: "Empresas",
     href: "/plataforma/empresas",
     iconKey: "building",
+    roles: ROLES_PLATAFORMA,
+  },
+  {
+    // SL-20 (R21) — «Geografía»: el árbol geográfico de cada país, solo para el superadmin.
+    //
+    // Va JUSTO DESPUÉS de «Empresas» y antes de «Mi bodega» y «Ayuda», que siguen cerrando la
+    // barra (contrato de la 429 y la 433). Como solo lo ve el superadmin, ningún aterrizaje de
+    // los roles de empresa se mueve, y el del superadmin sigue siendo «Empresas», que va antes.
+    //
+    // `roles` ES `ROLES_PLATAFORMA`, por identidad, igual que «Empresas»: la guardia
+    // `superadmin-fuera-de-empresa` lo lee así.
+    label: "Geografía",
+    href: "/plataforma/geografia",
+    iconKey: "map",
     roles: ROLES_PLATAFORMA,
   },
   {

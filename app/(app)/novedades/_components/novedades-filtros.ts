@@ -2,6 +2,7 @@ import { CAUSA_DEVOLUCION_LABEL } from "@/app/(app)/mis-asignaciones/_components
 import type { FilterDef, FilterSelection } from "@/components/shared/FilterComponent";
 import { stripDiacritics } from "@/lib/geo/normalize";
 import type { NovedadDTO } from "@/lib/types/novedad";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 import { soloDigitosSiPareceNumero } from "@/lib/utils/busqueda-orden";
 
@@ -88,15 +89,22 @@ export const PLACEHOLDER_BUSQUEDA_NOVEDADES =
  */
 export const BUSQUEDA_MIN_CHARS_NOVEDADES = 0;
 
-/** Rotulos de los controles. Aparte del JSX para que un dia se puedan traducir en un solo sitio. */
-export const ETIQUETAS_FILTRO: Record<ClaveFiltroNovedad, string> = {
-  mensajero: "Mensajero",
-  zona: "Zona",
-  provincia: "Provincia",
-  canton: "Cantón",
-  causa: "Causa de devolución",
-  sin_contacto: "Sin intentos de contacto",
-};
+/**
+ * Rotulos de los controles. Aparte del JSX para que un dia se puedan traducir en un solo sitio.
+ * SL-20 (design §7; R19): provincia y cantón con los nombres de nivel del país de la empresa.
+ */
+export function etiquetasFiltroNovedades(
+  etiquetas: EtiquetasGeograficas,
+): Record<ClaveFiltroNovedad, string> {
+  return {
+    mensajero: "Mensajero",
+    zona: "Zona",
+    provincia: etiquetas.provincia.singular,
+    canton: etiquetas.canton.singular,
+    causa: "Causa de devolución",
+    sin_contacto: "Sin intentos de contacto",
+  };
+}
 
 /** Normalizacion de comparacion: sin acentos y en minusculas. */
 function normalizar(texto: string): string {
@@ -304,7 +312,9 @@ function opcionesCausa(items: readonly NovedadDTO[]): Opcion[] {
 export function construirFiltrosNovedades(
   grupo: GrupoNovedad,
   conjunto: readonly NovedadDTO[] | null,
+  etiquetas: EtiquetasGeograficas,
 ): FilterDef[] {
+  const rotulos = etiquetasFiltroNovedades(etiquetas);
   const items = conjunto ?? [];
   const cargando = conjunto === null;
 
@@ -313,7 +323,7 @@ export function construirFiltrosNovedades(
       ? [
           {
             key: CLAVE_CAUSA,
-            label: ETIQUETAS_FILTRO.causa,
+            label: rotulos.causa,
             kind: "multi",
             placeholder: "Todas",
             searchPlaceholder: "Buscar causa…",
@@ -324,7 +334,7 @@ export function construirFiltrosNovedades(
       : [
           {
             key: CLAVE_SIN_CONTACTO,
-            label: ETIQUETAS_FILTRO.sin_contacto,
+            label: rotulos.sin_contacto,
             kind: "boolean",
           },
         ];
@@ -332,7 +342,7 @@ export function construirFiltrosNovedades(
   const filtros: FilterDef[] = [
     {
       key: CLAVE_MENSAJERO,
-      label: ETIQUETAS_FILTRO.mensajero,
+      label: rotulos.mensajero,
       kind: "multi",
       placeholder: "Todos",
       searchPlaceholder: "Buscar mensajero…",
@@ -341,7 +351,7 @@ export function construirFiltrosNovedades(
     },
     {
       key: CLAVE_ZONA,
-      label: ETIQUETAS_FILTRO.zona,
+      label: rotulos.zona,
       kind: "multi",
       placeholder: "Todas",
       searchPlaceholder: "Buscar zona…",
@@ -350,22 +360,22 @@ export function construirFiltrosNovedades(
     },
     {
       key: CLAVE_PROVINCIA,
-      label: ETIQUETAS_FILTRO.provincia,
+      label: rotulos.provincia,
       kind: "multi",
       placeholder: "Todas",
-      searchPlaceholder: "Buscar provincia…",
+      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
       emptyMessage: "Ninguna provincia coincide",
       options: opcionesDe(items, (n) => n.provinciaNombre),
     },
     {
       key: CLAVE_CANTON,
-      label: ETIQUETAS_FILTRO.canton,
+      label: rotulos.canton,
       kind: "multi",
       // La cadena se DECLARA, no se programa: elegida una provincia, el control solo ofrece sus
       // cantones. Mismo encadenado que la barra de `/ordenes`.
       dependsOn: CLAVE_PROVINCIA,
       placeholder: "Todos",
-      searchPlaceholder: "Buscar cantón…",
+      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
       emptyMessage: "Ningún cantón coincide",
       options: opcionesCanton(items),
     },

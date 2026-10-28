@@ -1,9 +1,4 @@
 import { estaDisponible } from "@/lib/repositories/_shared/geografia-activa";
-import type {
-  CantonArbolDTO,
-  DistritoArbolDTO,
-  ProvinciaArbolDTO,
-} from "@/lib/types/geografia-nodo";
 import { normalizeName } from "@/lib/utils/normalize";
 
 // FICHA 374 (design §7.2 y §7.5) — EL FILTRO DEL ARBOL GEOGRAFICO, EN UN SOLO SITIO.
@@ -37,6 +32,27 @@ export interface FiltrosArbolGeografico {
   estado: FiltroEstadoGeografico;
 }
 
+/**
+ * SL-20 (design §8) — lo minimo que el filtro necesita de cada nodo. Generico para servir a los DOS
+ * arboles: el de Tarifas (`ProvinciaArbolDTO`, con zonas) y el del superadmin
+ * (`ProvinciaPlataformaDTO`, sin zonas y con codigo). Devuelve el MISMO tipo que recibe.
+ */
+export interface NodoFiltrable {
+  nombre: string;
+  activo: boolean;
+}
+
+export interface CantonFiltrable extends NodoFiltrable {
+  distritos: readonly NodoFiltrable[];
+}
+
+export interface ProvinciaFiltrable extends NodoFiltrable {
+  cantones: readonly CantonFiltrable[];
+}
+
+type CantonDe<P extends ProvinciaFiltrable> = P["cantones"][number];
+type DistritoDe<P extends ProvinciaFiltrable> = CantonDe<P>["distritos"][number];
+
 /** `true` si el nodo pasa el filtro de estado. `todos` no filtra nada. */
 function casaEstado(disponible: boolean, estado: FiltroEstadoGeografico): boolean {
   if (estado === "todos") return true;
@@ -57,10 +73,10 @@ function casaEstado(disponible: boolean, estado: FiltroEstadoGeografico): boolea
  * Con `{ texto: "", estado: "todos" }` devuelve el arbol tal cual: es el caso por defecto de la
  * pantalla y no debe costar ni una copia de mas.
  */
-export function filtrarArbolGeografico(
-  arbol: readonly ProvinciaArbolDTO[],
+export function filtrarArbolGeografico<P extends ProvinciaFiltrable>(
+  arbol: readonly P[],
   filtros: FiltrosArbolGeografico,
-): ProvinciaArbolDTO[] {
+): P[] {
   const consulta = normalizeName(filtros.texto);
   const { estado } = filtros;
   if (consulta === "" && estado === "todos") return [...arbol];
@@ -68,17 +84,17 @@ export function filtrarArbolGeografico(
   const casaTexto = (nombre: string): boolean =>
     consulta === "" || normalizeName(nombre).includes(consulta);
 
-  const provincias: ProvinciaArbolDTO[] = [];
+  const provincias: P[] = [];
 
   for (const provincia of arbol) {
     const textoProvincia = casaTexto(provincia.nombre);
-    const cantones: CantonArbolDTO[] = [];
+    const cantones: CantonDe<P>[] = [];
 
-    for (const canton of provincia.cantones) {
+    for (const canton of provincia.cantones as readonly CantonDe<P>[]) {
       // El texto se hereda hacia abajo (regla 1); el estado NO se hereda: cada nodo responde por
       // su propia disponibilidad efectiva.
       const textoCanton = textoProvincia || casaTexto(canton.nombre);
-      const distritos: DistritoArbolDTO[] = canton.distritos.filter(
+      const distritos: DistritoDe<P>[] = (canton.distritos as readonly DistritoDe<P>[]).filter(
         (distrito) =>
           (textoCanton || casaTexto(distrito.nombre)) &&
           casaEstado(
@@ -98,13 +114,13 @@ export function filtrarArbolGeografico(
           estado,
         );
 
-      if (cantonCasa || distritos.length > 0) cantones.push({ ...canton, distritos });
+      if (cantonCasa || distritos.length > 0) cantones.push({ ...canton, distritos } as CantonDe<P>);
     }
 
     const provinciaCasa =
       textoProvincia && casaEstado(estaDisponible({ provincia: provincia.activo }), estado);
 
-    if (provinciaCasa || cantones.length > 0) provincias.push({ ...provincia, cantones });
+    if (provinciaCasa || cantones.length > 0) provincias.push({ ...provincia, cantones } as P);
   }
 
   return provincias;

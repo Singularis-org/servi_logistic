@@ -264,6 +264,9 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
         servicio.altaEmpresa({
           nombre: `Empresa sl23 ${sufijo}`,
           slug: `sl23-alta-${sufijo}`,
+          // SL-20 R6 (decisión 6): el alta exige país; sin él responde `invalida` `paisId`.
+          // Costa Rica, como toda empresa de test (R10).
+          paisId: "CR",
           maestro: {
             nombre: "Maestra de prueba",
             email: `sl23-alta-${sufijo}@ejemplo.test`,

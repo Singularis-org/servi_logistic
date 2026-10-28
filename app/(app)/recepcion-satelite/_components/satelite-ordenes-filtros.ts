@@ -5,6 +5,7 @@ import {
 } from "@/lib/utils/estados-bodega-satelite";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
 import type { SalioARepartoValor } from "@/lib/types/orden";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import {
   CLAVE_BUSQUEDA,
@@ -134,9 +135,11 @@ export function etiquetaEstado(value: string): string {
  */
 export function construirFiltrosSatelite(
   catalogo: CatalogoFiltrosOrdenesDTO,
-  opts?: {
+  opts: {
     /** Catálogo `order_status` para el desplegable de estado (`listarOrderStatus`). */
     estatus?: readonly OrderStatusLiteRow[] | null;
+    /** SL-20 (R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
+    etiquetas: EtiquetasGeograficas;
     ahora?: Date;
   },
 ): FilterDef[] {
@@ -150,14 +153,15 @@ export function construirFiltrosSatelite(
     // que el adminSatelite ya puede ver —su bodega—, no lo ensancha, y el servicio la atiende
     // en los tres caminos del listado (página, descarga y vigencia de la selección).
     incluirSalioAReparto: true,
-    ahora: opts?.ahora,
+    etiquetas: opts.etiquetas,
+    ahora: opts.ahora,
   }).filter((f) => f.key !== CLAVE_BUSQUEDA);
 
   return [
     // FICHA 355: la MISMA declaración que monta `/ordenes`. Lo único propio es la clave y el
     // `valor: "value"` —lo que esta Server Action espera—; etiqueta, textos, orden y opciones
     // salen del módulo compartido y no pueden divergir de los de la central.
-    filtroEstado(opts?.estatus, { key: CLAVE_ESTADO, valor: "value" }),
+    filtroEstado(opts.estatus, { key: CLAVE_ESTADO, valor: "value" }),
     ...declarados,
   ];
 }

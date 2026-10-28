@@ -6,10 +6,12 @@ import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 
 import {
   AMBITO_DESCARGA_COBERTURA,
-  COLUMNAS_DESCARGA_COBERTURA,
+  columnasDescargaCobertura,
   filaCobertura,
 } from "./cobertura-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 
 /**
  * Ficha 465 (design §3.6, T8) — control «Descargar cobertura» de la página Tarifas.
@@ -37,12 +39,12 @@ export const MENSAJE_SESION_COBERTURA =
   "Tu sesión ya no es válida. Vuelve a iniciar sesión y descarga de nuevo.";
 
 /** Lee al pulsar (R4) y traduce el resultado a filas o a un mensaje accionable (R3, R18). */
-async function obtenerFilasCobertura(): Promise<DescargaFilasResult> {
+async function obtenerFilasCobertura(etiquetas: EtiquetasGeograficas): Promise<DescargaFilasResult> {
   const resultado = await descargarDatos("listarCoberturaDistritos", undefined);
   if (resultado.status === "unauthenticated") {
     return { status: "error", mensaje: MENSAJE_SESION_COBERTURA };
   }
-  return filasDesdeResultado(resultado, filaCobertura);
+  return filasDesdeResultado(resultado, filaCobertura(etiquetas));
 }
 
 export interface DescargarCoberturaButtonProps {
@@ -58,6 +60,8 @@ export function DescargarCoberturaButton({
   label = LABEL_DESCARGA_COBERTURA,
   ayuda = AYUDA_DESCARGA_COBERTURA,
 }: DescargarCoberturaButtonProps) {
+  // SL-20 (R19): encabezados y motivos con los nombres de nivel del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   return (
     <div
       role="group"
@@ -66,11 +70,11 @@ export function DescargarCoberturaButton({
     >
       <DescargarDatasetButton
         titulo={TITULO_DESCARGA_COBERTURA}
-        columnas={COLUMNAS_DESCARGA_COBERTURA}
+        columnas={columnasDescargaCobertura(etiquetas)}
         formatos={["xlsx"]}
         ambitoColumnas={AMBITO_DESCARGA_COBERTURA}
         label={label}
-        obtenerFilas={obtenerFilasCobertura}
+        obtenerFilas={() => obtenerFilasCobertura(etiquetas)}
       />
       <p id={ID_AYUDA} className="text-sm text-muted-foreground">
         {ayuda}

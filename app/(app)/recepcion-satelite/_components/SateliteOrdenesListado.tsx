@@ -47,7 +47,8 @@ import { HistorialOrdenSheet } from "@/app/(app)/ordenes/_components/HistorialOr
 import { CAMBIAR_DIA_ACCION } from "@/app/(app)/ordenes/_components/CambiarDiaRepartoModal";
 import { puedeReportarIncidenteSatelite } from "./incidente-satelite";
 import { recibidasColumns } from "./recibidas-columns";
-import { COLUMNAS_DESCARGA_SATELITE } from "./satelite-descarga-columnas";
+import { columnasDescargaSatelite } from "./satelite-descarga-columnas";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import {
   CLAVE_ESTADO,
   construirFiltrosSatelite,
@@ -257,6 +258,8 @@ export function SateliteOrdenesListado({
   sinZona = false,
   onIncidenteReportado,
 }: Readonly<SateliteOrdenesListadoProps>) {
+  // SL-20 (R19): columnas, filtros y descarga con los nombres de nivel del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
 
@@ -295,10 +298,11 @@ export function SateliteOrdenesListado({
     () =>
       construirFiltrosSatelite(catalogo ?? CATALOGO_FILTROS_VACIO, {
         estatus,
+        etiquetas,
       }).map((f) =>
         catalogo === null && f.key !== CLAVE_ESTADO ? { ...f, disabled: true } : f,
       ),
-    [catalogo, estatus],
+    [catalogo, estatus, etiquetas],
   );
 
   /** Lo que ofrece el selector de la barra: cada filtro declarado, por su clave y su etiqueta. */
@@ -548,7 +552,7 @@ export function SateliteOrdenesListado({
       // las columnas son las de `/ordenes` tal cual, y allí el chip de estado lee la zona DE
       // LA FILA (`relaciones.zona.nombre`), no la del actor. `zonaNombre` sigue haciendo falta
       // más abajo, para la regla de disponibilidad del incidente (R48).
-      ...conBadgePrioridad(recibidasColumns()),
+      ...conBadgePrioridad(recibidasColumns(etiquetas)),
       // FICHA 367 — la columna pasa de "Incidente" a "Acciones" y agrupa DOS disparadores,
       // igual que `/ordenes` (`OrdenesModule`, columna `acciones`):
       //
@@ -574,7 +578,7 @@ export function SateliteOrdenesListado({
         ),
       },
     ],
-    [seleccionados, zonaNombre, ordenes, sinZona, onIncidenteReportado],
+    [seleccionados, zonaNombre, ordenes, sinZona, onIncidenteReportado, etiquetas],
   );
 
   return (
@@ -733,7 +737,7 @@ export function SateliteOrdenesListado({
         // el módulo. Las columnas del archivo las declara esta tabla (T A.2).
         descarga={{
           titulo: TITULO_BODEGA,
-          columnas: COLUMNAS_DESCARGA_SATELITE,
+          columnas: columnasDescargaSatelite(etiquetas),
           obtenerFilas: obtenerFilasDescarga,
         }}
         isLoading={cargando}

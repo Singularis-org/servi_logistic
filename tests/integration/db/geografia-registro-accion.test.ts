@@ -19,6 +19,12 @@ import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
  * FICHA 374 (R51–R55) — **EL RASTRO DE RETIRAR Y DEVOLVER UN NODO DEL CATALOGO GEOGRAFICO.**
  * Contra Postgres.
  *
+ * ⚠️ SL-20 (R33, R35; D15) — REESCRITO: el rastro va al historial de PLATAFORMA
+ * (`historial_plataforma`), no a `historial_accion`. La geografia es del superadmin, que no tiene
+ * empresa, y una fila de `historial_accion` con un actor de otra empresa la rechaza la base (SL017).
+ * La fila de plataforma lleva el pais del nodo y no lleva ni `actor_rol` ni `monto`. Desde SL-20 el
+ * ALTA tambien deja fila (`nodo_geografico_creado`), que en la 374 no dejaba.
+ *
  * POR QUE SE AUDITA. El precedente de vehiculos audita `vehiculo_borrado` y no `vehiculo_creado`;
  * lo que decide no es el nombre de la operacion sino su PAPEL: en esta pantalla, desactivar ocupa
  * el lugar que el borrado ocupa en las demas. Y la asimetria del coste lo cierra: auditar de mas
@@ -53,10 +59,9 @@ interface FilaRegistro {
   entidad_tipo: string;
   entidad_id: string;
   entidad_etiqueta: string;
+  pais_id: string;
   actor_usuario_id: string | null;
   actor_nombre: string | null;
-  actor_rol: string | null;
-  monto: string | null;
   valor_anterior: string | null;
   valor_nuevo: string | null;
 }
@@ -118,18 +123,18 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
       const registro = async (entidadId: string): Promise<FilaRegistro[]> =>
         tx.$queryRawUnsafe<FilaRegistro[]>(
           `SELECT "accion"::text AS accion, "entidad_tipo"::text AS entidad_tipo, "entidad_id",
-                  "entidad_etiqueta", "actor_usuario_id", "actor_nombre", "actor_rol"::text AS actor_rol,
-                  "monto"::text AS monto, "valor_anterior", "valor_nuevo"
-             FROM "historial_accion"
+                  "entidad_etiqueta", "pais_id", "actor_usuario_id", "actor_nombre",
+                  "valor_anterior", "valor_nuevo"
+             FROM "historial_plataforma"
             WHERE "entidad_id" = $1
-            ORDER BY "created_at"`,
+            ORDER BY "created_at", "id"`,
           entidadId,
         );
 
       return fn({
         s: { provincia, canton, distrito },
         geo: new GeoRepository(clienteConSavepoint(tx)),
-        geoRoto: new GeoRepository(clienteConSavepoint(tx, true)),
+        geoRoto: new GeoRepository(clienteConSavepoint(tx, "plataforma")),
         tx,
         registro,
       });
@@ -165,17 +170,26 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
       });
     });
 
-    it("R54: el actor va CONGELADO y NO hay ni un dato de destinatario", async () => {
+    it("R54 + SL-20/R33: el actor va CONGELADO, con el pais del nodo y sin datos de destinatario", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
         await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.actor_usuario_id).toBe(actorUsuarioId);
         expect(fila.actor_nombre).toBe(actorNombreEsperado);
-        expect(fila.actor_rol).not.toBeNull();
+        // El corpus nace en CR por el DEFAULT (R10): el pais del registro es el del nodo.
+        expect(fila.pais_id).toBe("CR");
         // `valor_anterior`/`valor_nuevo` en NULL: el PAR de tipos ya dice la transicion.
         expect(fila.valor_anterior).toBeNull();
         expect(fila.valor_nuevo).toBeNull();
-        expect(fila.monto).toBeNull();
+      });
+    });
+
+    it("SL-20/R35: retirar NO escribe en `historial_accion`", async () => {
+      await conCorpus(async ({ s, geo, tx }) => {
+        const antes = await tx.historialAccion.count({ where: { entidadId: s.distrito } });
+        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion("distrito", s.distrito, true, actorUsuarioId);
+        expect(await tx.historialAccion.count({ where: { entidadId: s.distrito } })).toBe(antes);
       });
     });
 
@@ -220,11 +234,35 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   // R53 — lo que NO se registra
   // ===============================================================================================
 
-  describe("374/R53 — el alta no deja rastro, y pedir lo ya hecho tampoco", () => {
-    it("un alta NO escribe ninguna fila de registro", async () => {
+  describe("374/R53 + SL-20/R33 — el alta SI deja rastro; pedir lo ya hecho no", () => {
+    it("SL-20/R33: un alta escribe UNA fila `nodo_geografico_creado` con su cadena y su pais", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        const id = await geo.crear("distrito", `Nuevo ${SUFIJO}`, s.canton);
-        expect(await registro(id)).toEqual([]);
+        const id = await geo.crear(
+          "distrito",
+          `Nuevo ${SUFIJO}`,
+          s.canton,
+          { paisId: "CR", codigo: null },
+          actorUsuarioId,
+        );
+        const filas = await registro(id);
+        expect(filas).toHaveLength(1);
+        expect(filas[0]).toMatchObject({
+          accion: "nodo_geografico_creado",
+          entidad_tipo: "distrito",
+          entidad_etiqueta: `Nuevo ${SUFIJO} · ${CANTON} ${SUFIJO} · ${PROVINCIA} ${SUFIJO}`,
+          pais_id: "CR",
+          actor_usuario_id: actorUsuarioId,
+          actor_nombre: actorNombreEsperado,
+        });
+      });
+    });
+
+    it("SL-20/R33: si el registro falla, el alta tampoco persiste", async () => {
+      await conCorpus(async ({ s, geoRoto, tx }) => {
+        await expect(
+          geoRoto.crear("distrito", `Roto ${SUFIJO}`, s.canton, { paisId: "CR", codigo: null }, actorUsuarioId),
+        ).rejects.toBeInstanceOf(RegistroCaido);
+        expect(await tx.distrito.count({ where: { cantonId: s.canton, nombre: `Roto ${SUFIJO}` } })).toBe(0);
       });
     });
 
@@ -272,7 +310,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   // R55 — si el registro falla, el flag NO persiste
   // ===============================================================================================
 
-  describe("374/R55 — si `appendAccion` falla, el cambio del flag se deshace", () => {
+  describe("374/R55 — si el registro falla, el cambio del flag se deshace", () => {
     it("⭑ el flag sigue como estaba, y no queda fila de registro", async () => {
       await conCorpus(async ({ s, geo, geoRoto, tx, registro }) => {
         const antes = await tx.distrito.findUnique({
@@ -319,8 +357,8 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 // con el, y este caso se pondria rojo. La contraprueba lo demuestra por el repositorio, que no mira
 // el rol: con el mismo usuario, la fila aparece.
 //
-// La rama del `superadmin` no se prueba aqui: con SL-17 su registro de acciones no tiene empresa
-// (P7, D15 de `progress/deudas.md`). Va con dobles en `geografia-service.test.ts`.
+// SL-20: el registro es el historial de PLATAFORMA (D15 cerrada); el superadmin real sin empresa se
+// prueba de punta a punta en `geografia-superadmin-sin-empresa.test.ts` (T4.4).
 
 describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (Postgres real)", () => {
   let prisma: PrismaClient;
@@ -370,7 +408,7 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
       const geo = new GeoRepository(cliente);
       const filas = async (ids: string[]): Promise<number> => {
         const [{ n }] = await tx.$queryRawUnsafe<{ n: number }[]>(
-          `SELECT count(*)::int AS n FROM "historial_accion" WHERE "entidad_id" = ANY($1::text[])`,
+          `SELECT count(*)::int AS n FROM "historial_plataforma" WHERE "entidad_id" = ANY($1::text[])`,
           ids,
         );
         return n;

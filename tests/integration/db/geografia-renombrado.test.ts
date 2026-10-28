@@ -3,6 +3,8 @@ import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 
+import { crearPaisDePrueba } from "../../fabricas/paises";
+
 import {
   HAY_BASE_DE_DATOS,
   RegistroCaido,
@@ -14,6 +16,9 @@ import {
 
 /**
  * FICHA 375 — **RENOMBRAR UN NODO DEL CATALOGO GEOGRAFICO.** Contra Postgres.
+ *
+ * SL-20 (R33, R35): el rastro del renombrado va al historial de PLATAFORMA, con el pais del nodo y
+ * sin `actor_rol` ni `monto`; `historial_accion` no recibe nada.
  *
  * ⚠️ POR QUE CONTRA POSTGRES Y NO CON DOBLES, medido cuatro veces en este repo: lo que se afirma
  * aqui son propiedades del MOTOR y de la TRANSACCION —que el `update` toca `nombre` y NO
@@ -54,10 +59,9 @@ interface FilaRegistro {
   entidad_tipo: string;
   entidad_id: string;
   entidad_etiqueta: string;
+  pais_id: string;
   actor_usuario_id: string | null;
   actor_nombre: string | null;
-  actor_rol: string | null;
-  monto: string | null;
   valor_anterior: string | null;
   valor_nuevo: string | null;
 }
@@ -125,18 +129,18 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
       const registro = async (entidadId: string): Promise<FilaRegistro[]> =>
         tx.$queryRawUnsafe<FilaRegistro[]>(
           `SELECT "accion"::text AS accion, "entidad_tipo"::text AS entidad_tipo, "entidad_id",
-                  "entidad_etiqueta", "actor_usuario_id", "actor_nombre", "actor_rol"::text AS actor_rol,
-                  "monto"::text AS monto, "valor_anterior", "valor_nuevo"
-             FROM "historial_accion"
+                  "entidad_etiqueta", "pais_id", "actor_usuario_id", "actor_nombre",
+                  "valor_anterior", "valor_nuevo"
+             FROM "historial_plataforma"
             WHERE "entidad_id" = $1
-            ORDER BY "created_at"`,
+            ORDER BY "created_at", "id"`,
           entidadId,
         );
 
       return fn({
         s: { provincia, canton, distrito, hermano },
         geo: new GeoRepository(clienteConSavepoint(tx)),
-        geoRoto: new GeoRepository(clienteConSavepoint(tx, true)),
+        geoRoto: new GeoRepository(clienteConSavepoint(tx, "plataforma")),
         tx,
         registro,
       });
@@ -273,12 +277,20 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
         expect(fila.entidad_etiqueta).toBe(`Cabagrita ${SUFIJO} · ${CANTON} · ${PROVINCIA}`);
         expect(fila.actor_usuario_id).toBe(actorUsuarioId);
         expect(fila.actor_nombre).toBe(actorNombreEsperado);
-        expect(fila.actor_rol).not.toBeNull();
-        expect(fila.monto).toBeNull();
+        // SL-20: el pais del nodo (el corpus nace en CR por el DEFAULT, R10).
+        expect(fila.pais_id).toBe("CR");
       });
     });
 
-    it("⭑ si `appendAccion` FALLA, el nombre NO queda persistido", async () => {
+    it("SL-20/R35: el renombrado NO escribe en `historial_accion`", async () => {
+      await conCorpus(async ({ s, geo, tx }) => {
+        const antes = await tx.historialAccion.count({ where: { entidadId: s.distrito } });
+        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        expect(await tx.historialAccion.count({ where: { entidadId: s.distrito } })).toBe(antes);
+      });
+    });
+
+    it("⭑ si el registro FALLA, el nombre NO queda persistido", async () => {
       await conCorpus(async ({ s, geoRoto, tx }) => {
         await expect(
           geoRoto.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId),
@@ -377,6 +389,25 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
         const hermanos = await geo.findHermanosDeNodo("canton", s.canton);
         expect(hermanos!.map((h) => h.id)).toContain(s.canton);
         expect(hermanos!.map((h) => h.id)).not.toContain(cantonAjeno);
+      });
+    });
+
+    it("SL-20/R15: para una provincia devuelve las de SU pais, no las de otro", async () => {
+      await conCorpus(async ({ s, geo, tx }) => {
+        await crearPaisDePrueba(tx, "XA");
+        const ajena = (
+          await tx.provincia.create({
+            data: { nombre: `Región ${SUFIJO}`, paisId: "XA" },
+            select: { id: true },
+          })
+        ).id;
+
+        const deCR = (await geo.findHermanosDeNodo("provincia", s.provincia))!.map((h) => h.id);
+        expect(deCR).toContain(s.provincia);
+        expect(deCR).not.toContain(ajena);
+
+        const deXA = (await geo.findHermanosDeNodo("provincia", ajena))!.map((h) => h.id);
+        expect(deXA).toEqual([ajena]);
       });
     });
   });

@@ -41,9 +41,10 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/configuracion/api": "nucleo",
   "/configuracion/sinpe": "nucleo",
   "/configuracion/vehiculos": "nucleo",
-  "/configuracion/geografia": "nucleo",
   "/plataforma/empresas": "nucleo",
   "/plataforma/empresas/[organizacionId]": "nucleo",
+  // SL-20: la geografía se gestiona desde la plataforma (superadmin), ya no desde `/configuracion`.
+  "/plataforma/geografia": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "/recoleccion": "nucleo",
   "/recepcion-satelite": "nucleo",
@@ -129,8 +130,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "whatsapp-envio": "nucleo",
   "informe-picking": "nucleo",
   "informe-transito": "nucleo",
-  // núcleo (60 + `modulos-empresa`, de plataforma, + 5 de Recolección, Bodegas satélite y API e integraciones;
-  // las 8 de WhatsApp van arriba, en su bloque)
+  // núcleo (60 + `modulos-empresa` y `geografia-plataforma`, de plataforma, + 5 de Recolección,
+  // Bodegas satélite y API e integraciones; las 8 de WhatsApp van arriba, en su bloque)
   auth: "nucleo",
   // API e integraciones (núcleo desde el 2026-10-27).
   "api-keys": "nucleo",
@@ -164,6 +165,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "etiquetas-guia": "nucleo",
   "filtros-ordenes": "nucleo",
   geografia: "nucleo",
+  "geografia-plataforma": "nucleo",
   "historial-acciones": "nucleo",
   integraciones: "nucleo",
   "liberacion-reprogramada": "nucleo",

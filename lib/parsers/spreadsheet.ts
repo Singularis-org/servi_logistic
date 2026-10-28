@@ -17,6 +17,25 @@ export interface ParsedSpreadsheet {
   headers: string[];
   /** Filas de datos (excluye la cabecera); filas completamente vacias se descartan. */
   rows: RawRow[];
+  /**
+   * SL-20 — el numero de registro de origen de cada fila de `rows` (mismo indice; la cabecera es
+   * el 1). Existe porque las filas vacias se descartan: sin el, el indice de `rows` ya no dice en
+   * que linea del archivo estaba la fila, y la carga de la division tiene que citar la linea de cada
+   * error (R25). En un CSV es la linea del archivo mientras ningun valor lleve un salto de linea
+   * entre comillas; con uno, cuenta registros y no lineas fisicas.
+   */
+  numerosDeFila: number[];
+}
+
+/** Opciones de lectura. Sin ellas el comportamiento es el de siempre (la carga masiva de ordenes). */
+export interface OpcionesParseo {
+  /**
+   * SL-20 — lee el CSV TAL CUAL, sin que exceljs convierta tipos. Por defecto exceljs pasa cada
+   * valor CSV por `Number()` y por un detector de fechas, asi que el codigo oficial `"01"` llega
+   * como `1` y pierde el cero que lo distingue. No afecta a XLSX: alli el tipo lo guarda el propio
+   * archivo, no lo adivina el lector.
+   */
+  textoLiteral?: boolean;
 }
 
 const SUPPORTED_EXTENSIONS = new Set<SpreadsheetExt>(["csv", "xlsx"]);
@@ -62,10 +81,13 @@ function cellToString(value: ExcelJS.CellValue): string {
 }
 
 /** CUANDO el archivo sea CSV (R14): parsea respetando comillas/saltos internos. */
-async function readCsvWorksheet(buffer: Buffer): Promise<ExcelJS.Worksheet> {
+async function readCsvWorksheet(buffer: Buffer, textoLiteral: boolean): Promise<ExcelJS.Worksheet> {
   const workbook = new ExcelJS.Workbook();
   const stream = Readable.from(buffer);
-  return workbook.csv.read(stream);
+  if (!textoLiteral) return workbook.csv.read(stream);
+  // fast-csv entrega cada valor como string; la identidad evita el `map` por defecto de exceljs,
+  // que es el que convierte a numero y a fecha.
+  return workbook.csv.read(stream, { map: (valor: string) => valor });
 }
 
 /** CUANDO el archivo sea XLSX (R15): lee la primera hoja. */
@@ -95,6 +117,7 @@ function extractRows(worksheet: ExcelJS.Worksheet): ParsedSpreadsheet {
   });
 
   const rows: RawRow[] = [];
+  const numerosDeFila: number[] = [];
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // cabecera
     const record: RawRow = {};
@@ -104,10 +127,12 @@ function extractRows(worksheet: ExcelJS.Worksheet): ParsedSpreadsheet {
       record[header] = raw;
       if (raw !== "") hasValue = true;
     }
-    if (hasValue) rows.push(record); // descarta filas completamente vacias
+    if (!hasValue) return; // descarta filas completamente vacias
+    rows.push(record);
+    numerosDeFila.push(rowNumber);
   });
 
-  return { headers: [...headerByCol.values()], rows };
+  return { headers: [...headerByCol.values()], rows, numerosDeFila };
 }
 
 /**
@@ -117,12 +142,15 @@ function extractRows(worksheet: ExcelJS.Worksheet): ParsedSpreadsheet {
 export async function parseSpreadsheet(
   buffer: Buffer,
   ext: string,
+  opciones: OpcionesParseo = {},
 ): Promise<ParsedSpreadsheet> {
   const normalizedExt = ext.trim().toLowerCase().replace(/^\./, "");
   assertSupportedExt(normalizedExt);
 
   const worksheet =
-    normalizedExt === "csv" ? await readCsvWorksheet(buffer) : await readXlsxWorksheet(buffer);
+    normalizedExt === "csv"
+      ? await readCsvWorksheet(buffer, opciones.textoLiteral === true)
+      : await readXlsxWorksheet(buffer);
 
   return extractRows(worksheet);
 }

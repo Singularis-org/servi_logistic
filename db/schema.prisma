@@ -178,6 +178,7 @@ model Usuario {
   cobrosRechazoTiendaDecididos        RechazoTiendaCobro[]               @relation("RechazoTiendaCobroDecisor") // ficha 337: cobros por rechazo de tienda que ESTE usuario aprobo o rechazo. FK RESTRICT por el mismo motivo que la linea de arriba: quien autorizo un cobro es evidencia y no se pierde al dar de baja al usuario.
   cobrosRechazoTiendaComoTienda       RechazoTiendaCobro[]               @relation("RechazoTiendaCobroTienda") // ficha 337: cobros por rechazo emitidos CONTRA esta tienda. `tienda_id` va CONGELADO en la fila (leccion 69/R13), asi que esta relacion es historia y no una consulta viva sobre `orden.tienda_id`.
   historialAcciones                   HistorialAccion[]                  @relation("HistorialAccionActor") // ficha 362/R3: acciones (dinero / desaparicion / permisos) que ESTE usuario ejecuto. La FK es RESTRICT: quien borro 79 ordenes o aprobo un cierre es evidencia y no se pierde al dar de baja al usuario. `actor_nombre` y `actor_rol` van CONGELADOS en la fila, asi que esta relacion NO es la que pinta el listado.
+  historialPlataforma                 HistorialPlataforma[]              @relation("HistorialPlataformaActor") // SL-20: acciones del superadmin sobre paises y geografia (D15)
   pushSuscripciones                   PushSuscripcion[]                  @relation("PushSuscripcionUsuario") // ficha 410/R16/R22: suscripciones push de los DISPOSITIVOS de este usuario. La FK es CASCADE: una credencial de entrega no es evidencia, y dejarla huerfana seria mandar push a nombre de nadie
   pushEnviosDia                       PushEnvioDia[]                     @relation("PushEnvioDiaUsuario") // ficha 410/R6/R22: cupo diario de push consumido por este usuario. CASCADE por el mismo motivo: es un contador del canal, no historia
   preferencia                         UsuarioPreferencia?                @relation("UsuarioPreferenciaUsuario") // ficha 422/R1/R4: LA DECISION DE ESTA PERSONA sobre los avisos, aparte de sus dispositivos. 1:1. La FK es CASCADE: una preferencia no es evidencia (criterio de `push_suscripcion`, no el de `historial_accion`). Tabla propia y no columna aqui a proposito: ver el comentario del modelo `UsuarioPreferencia`.
@@ -653,14 +654,23 @@ model Provincia {
   ///
   /// EL NOMBRE PASA A SER UNA ETIQUETA MUTABLE: el cruce del seed (`scripts/seed-zonas.ts`) va por
   /// este codigo, y por eso renombrar dejo de crear duplicados.
-  codigoDta String? @unique @map("codigo_dta")
+  codigoDta String? @map("codigo_dta")
+
+  /// SL-20 (design §2.3): el país del nodo. El `DEFAULT 'CR'` es solo para los tests y el SQL a mano
+  /// que crean provincias sin conocer el país; `GeoRepository` siempre lo pasa.
+  paisId String @default("CR") @map("pais_id")
+  pais   Pais   @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   cantones Canton[]
   ordenes  Orden[]
 
-  /// FICHA 374: la administracion por pantalla lo necesita y hasta hoy no existia. 0 duplicados
-  /// medidos en produccion y en local el 2026-09-05.
-  @@unique([nombre])
+  /// FICHA 374 + SL-20 (R15): el nombre es unico DENTRO DEL PAIS. Dos paises pueden tener una
+  /// provincia con el mismo nombre.
+  @@unique([paisId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel; los `NULL` no compiten entre si.
+  @@unique([paisId, codigoDta])
+  /// SL-20: destino de la FK compuesta de `canton`, que impide un canton en otro pais (R11).
+  @@unique([id, paisId])
   @@map("provincia")
 }
 
@@ -671,16 +681,26 @@ model Canton {
   /// FICHA 374 — ver `Provincia.activo`: mismo contrato, misma cascada evaluada al leer.
   activo      Boolean @default(true)
   /// FICHA 375 — ver `Provincia.codigoDta`. Tres digitos: el de su provincia + dos.
-  codigoDta   String? @unique @map("codigo_dta")
+  codigoDta   String? @map("codigo_dta")
+  /// SL-20 (design §2.3): copia del pais de su provincia. Lo pone el trigger `geografia_pais_del_padre`
+  /// y la FK compuesta impide que diverja (R11). Sin DEFAULT en la base: `dbgenerated()` vacio, el
+  /// patron de `organizacionId`, para que nadie tenga que conocerlo al crear.
+  paisId      String  @default(dbgenerated()) @map("pais_id")
 
-  provincia Provincia  @relation(fields: [provinciaId], references: [id])
+  provincia Provincia  @relation(fields: [provinciaId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
   distritos Distrito[]
   ordenes   Orden[]
 
   /// FICHA 374: la unicidad es POR PADRE y no global, porque los homonimos entre padres son
   /// normales en la DTA (hay cantones homonimos en provincias distintas).
   @@unique([provinciaId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel.
+  @@unique([paisId, codigoDta])
+  /// SL-20: destino de la FK compuesta de `distrito`.
+  @@unique([id, paisId])
   @@index([provinciaId])
+  /// SL-20: lo usa la politica RLS `canton_del_pais`.
+  @@index([paisId])
   @@map("canton")
 }
 
@@ -693,9 +713,11 @@ model Distrito {
   /// empresa, en `zonasEspeciales` (`distrito_zona_especial`).
   activo       Boolean  @default(true)
   /// FICHA 375 — ver `Provincia.codigoDta`. Cinco digitos: el de su canton + dos.
-  codigoDta    String?  @unique @map("codigo_dta")
+  codigoDta    String?  @map("codigo_dta")
+  /// SL-20 (design §2.3): copia del pais de su canton; ver `Canton.paisId`.
+  paisId       String   @default(dbgenerated()) @map("pais_id")
 
-  canton  Canton         @relation(fields: [cantonId], references: [id])
+  canton  Canton         @relation(fields: [cantonId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
   ordenes Orden[]
   zonas   ZonaDistrito[] // feature 24: relacion N:M con zona (unica fuente de verdad; la columna escalar zona_id se elimino en 20260713000000)
   /// SL-38 — la marca de zona especial de cada empresa. La RLS deja solo la de la empresa de la
@@ -704,7 +726,11 @@ model Distrito {
 
   /// FICHA 374: por PADRE. "Buenos Aires" es canton de Puntarenas Y distrito de Palmares.
   @@unique([cantonId, nombre])
+  /// SL-20 (R16): el codigo es unico por pais y nivel.
+  @@unique([paisId, codigoDta])
   @@index([cantonId])
+  /// SL-20: lo usa la politica RLS `distrito_del_pais`.
+  @@index([paisId])
   @@map("distrito")
 }
 
@@ -5330,7 +5356,98 @@ model Organizacion {
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
 
+  // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
+  // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
+  // tests y el SQL a mano (R10); el alta de la app lo exige por zod (R6).
+  paisId String @default("CR") @map("pais_id")
+  pais   Pais   @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([paisId])
   @@map("organizacion")
+}
+
+// SL-20 (design §2.1) — un país de la plataforma. Sin `organizacion_id`. La clave es el código ISO
+// 3166-1 alfa-2 (`CR`; los tests usan `XA`–`XZ`). Viven solo en el SQL de 20261026130000, porque
+// Prisma no los expresa: `CHECK (id ~ '^[A-Z]{2}$')`, el `CHECK` de «las tres reglas de código o
+// ninguna», la política `pais_lectura` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R3).
+model Pais {
+  id                  String   @id
+  nombre              String   @unique
+  nivel1Singular      String   @map("nivel_1_singular")
+  nivel1Plural        String   @map("nivel_1_plural")
+  nivel2Singular      String   @map("nivel_2_singular")
+  nivel2Plural        String   @map("nivel_2_plural")
+  nivel3Singular      String   @map("nivel_3_singular")
+  nivel3Plural        String   @map("nivel_3_plural")
+  /// R17: los tres a la vez o ninguno. Solo los pone la migración de Costa Rica.
+  digitosCodigoNivel1 Int?     @map("digitos_codigo_nivel_1")
+  digitosCodigoNivel2 Int?     @map("digitos_codigo_nivel_2")
+  digitosCodigoNivel3 Int?     @map("digitos_codigo_nivel_3")
+  createdAt           DateTime @default(now()) @map("created_at")
+  /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
+  /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
+  disponible          Boolean  @default(true)
+
+  provincias          Provincia[]
+  organizaciones      Organizacion[]
+  historialPlataforma HistorialPlataforma[]
+
+  @@map("pais")
+}
+
+// SL-20 (design §2.6) — qué hizo el superadmin sobre países y geografía (D15). De PLATAFORMA: sin
+// `organizacion_id` y aparte de `historial_accion`, que es por empresa. Ninguna empresa lo ve: viven
+// solo en el SQL de 20261026130400 la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R34).
+// Único escritor: `appendAccionPlataforma` (`lib/repositories/registrar-accion-plataforma.ts`).
+enum HistorialPlataformaAccion {
+  pais_creado
+  division_cargada
+  nodo_geografico_creado
+  nodo_geografico_renombrado
+  nodo_geografico_desactivado
+  nodo_geografico_activado
+  // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
+  pais_disponibilidad_activada
+  pais_disponibilidad_desactivada
+
+  @@map("historial_plataforma_accion")
+}
+
+enum HistorialPlataformaEntidad {
+  pais
+  provincia
+  canton
+  distrito
+
+  @@map("historial_plataforma_entidad")
+}
+
+model HistorialPlataforma {
+  id          String                     @id @default(uuid())
+  accion      HistorialPlataformaAccion
+  entidadTipo HistorialPlataformaEntidad @map("entidad_tipo")
+  /// Sin FK, por la misma razón que `historial_accion.entidad_id`: la fila sobrevive a su sujeto.
+  entidadId       String  @map("entidad_id")
+  /// Nombre congelado; se recorta en origen.
+  entidadEtiqueta String  @map("entidad_etiqueta") @db.VarChar(120)
+  paisId          String  @map("pais_id")
+  /// NULL = sistema o script. `Restrict`: la autoría es evidencia y no se pierde al dar de baja al usuario.
+  actorUsuarioId  String? @map("actor_usuario_id")
+  actorNombre     String? @map("actor_nombre") @db.VarChar(120)
+  /// Solo en el renombre. 80 = `GEO_NOMBRE_MAX`: no hay recorte.
+  valorAnterior   String? @map("valor_anterior") @db.VarChar(80)
+  valorNuevo      String? @map("valor_nuevo") @db.VarChar(80)
+  /// Solo `division_cargada`, y solo cifras.
+  detalle         Json?
+  /// Inmutable: sin `updated_at`.
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  pais  Pais     @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor Usuario? @relation("HistorialPlataformaActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([createdAt(sort: Desc), id])
+  @@index([paisId, createdAt(sort: Desc)])
+  @@map("historial_plataforma")
 }
 
 // SL-40 (design §3.3): un movimiento del cobro de la plataforma.

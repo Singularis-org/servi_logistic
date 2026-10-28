@@ -8,6 +8,9 @@ import { PushReactivacion } from "@/components/shared/PushReactivacion";
 import { RevisionSinpeBodega } from "@/components/shared/RevisionSinpeBodega";
 import { TemaProvider } from "@/providers/TemaProvider";
 import { AyudaProvider } from "@/providers/AyudaProvider";
+import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
+import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { AsistenteProvider } from "@/providers/AsistenteProvider";
 import { AsistentePanel } from "@/components/shared/AsistentePanel";
 import { leerResumenesAyuda } from "@/lib/ayuda/catalogo";
@@ -84,8 +87,12 @@ export default async function AppLayout({
   // para él (`puedeEditarAlgunSinpe` no lo incluye).
   const deLaPlataforma = actor !== null && esPlataforma(actor.rol);
   const pideRevisionSinpe = actor !== null && puedeEditarAlgunSinpe(actor.rol);
-  const [usuarioRow, avisosRecordados, revisionSinpe] = !actor
-    ? ([null, false, null] as const)
+  //
+  // ⭑ SL-20 (design §7; R19) — LA CUARTA LECTURA: cómo llama el país de la empresa a cada nivel
+  // geográfico. Va en el mismo `Promise.all` por la razón de arriba. Sin empresa (el superadmin, o un
+  // actor sin `organizacionId`) no hay país del que leerlas: `ETIQUETAS_NEUTRAS`, sin consulta.
+  const [usuarioRow, avisosRecordados, revisionSinpe, etiquetas] = !actor
+    ? ([null, false, null, ETIQUETAS_NEUTRAS] as const)
     : deLaPlataforma
     ? await Promise.all([
         comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
@@ -93,6 +100,7 @@ export default async function AppLayout({
         ),
         false,
         null,
+        ETIQUETAS_NEUTRAS,
       ])
     : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
@@ -100,6 +108,7 @@ export default async function AppLayout({
         pideRevisionSinpe
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
+        etiquetasDelActor(actor.organizacionId ?? null),
       ]);
   const usuario =
     actor && usuarioRow
@@ -155,7 +164,12 @@ export default async function AppLayout({
               {/* ⭑ Ficha 433 — el proveedor envuelve SÓLO a `{children}` porque es ahí donde
                   vive el `PageHeader` que consume el mapa, y así el cambio no re-indenta el
                   resto del layout. No pinta ninguna caja: es un proveedor de contexto. */}
-              <AyudaProvider mapa={mapaAyuda}>{children}</AyudaProvider>
+              {/* SL-20 (design §7; R19) — los nombres de nivel del país de la empresa. Envuelve
+                  SÓLO a `{children}`, como el mapa de la ayuda: es ahí donde viven las pantallas
+                  que los pintan. No pinta ninguna caja. */}
+              <AyudaProvider mapa={mapaAyuda}>
+                <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+              </AyudaProvider>
             </SidebarInset>
           </SidebarProvider>
           {/* Feature 284 — aviso de version nueva del service worker. Va en el portal y no en el
@@ -228,5 +242,24 @@ async function mapaAyudaDelActor(rol: RolValue | null): Promise<Record<string, s
   } catch (error) {
     console.error("[ayuda] no se pudo leer docs/ayuda; el portal sigue sin «?»", error);
     return {};
+  }
+}
+
+/**
+ * SL-20 (design §7; R19) — los nombres de nivel del país de la empresa del actor.
+ *
+ * Mismo criterio que `mapaAyudaDelActor`: este layout se pinta en TODAS las páginas del portal, así que
+ * un fallo aquí no puede dar un 500 en todas. `etiquetasDeEmpresa` lanza si la empresa no tiene país
+ * visible (un dato roto, no un caso normal: `organizacion.pais_id` es NOT NULL); entonces se pintan las
+ * neutras («Nivel 1»…) y el error queda en `console.error`, que es lo que se lee en los logs. No se
+ * sustituyen por las de un país: eso escondería el fallo detrás de unos nombres que parecen buenos.
+ */
+async function etiquetasDelActor(organizacionId: string | null): Promise<EtiquetasGeograficas> {
+  if (!organizacionId) return ETIQUETAS_NEUTRAS;
+  try {
+    return await construirPaisService().etiquetasDeEmpresa(organizacionId);
+  } catch (error) {
+    console.error("[geografía] no se pudieron leer los nombres de nivel; se pintan los neutros", error);
+    return ETIQUETAS_NEUTRAS;
   }
 }

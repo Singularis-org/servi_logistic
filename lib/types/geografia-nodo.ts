@@ -19,13 +19,6 @@ import { z } from "zod";
 export const NIVELES_GEOGRAFICOS = ["provincia", "canton", "distrito"] as const;
 export type NivelGeografico = (typeof NIVELES_GEOGRAFICOS)[number];
 
-/** Etiqueta legible del nivel, para los mensajes de la pantalla. */
-export const NIVEL_LABELS: Record<NivelGeografico, string> = {
-  provincia: "Provincia",
-  canton: "Cantón",
-  distrito: "Distrito",
-};
-
 /** El nivel del PADRE de cada nivel; `null` para provincia, que no tiene. */
 export const NIVEL_PADRE: Record<NivelGeografico, NivelGeografico | null> = {
   provincia: null,
@@ -62,19 +55,41 @@ const nombreGeoSchema = z
   );
 
 /**
+ * SL-20 (R29) — el código oficial del alta, opcional. Solo se recorta: la regla (R17) depende del
+ * país y del código del padre, que el borde no conoce; la aplica el service con `validarCodigo`.
+ * Vacío equivale a no traerlo.
+ */
+const codigoGeoSchema = z
+  .string()
+  .trim()
+  .transform((v) => (v === "" ? undefined : v))
+  .optional();
+
+/**
  * El alta, como union DISCRIMINADA por el nivel (R25).
  *
  * La discriminada mantiene el borde igual de estricto que seis acciones separadas: un `cantonId`
  * en un alta de provincia es `validation_error`, NO un campo ignorado en silencio. `.strict()` no
  * es decorativo: una clave desconocida se rechaza, no se descarta.
+ *
+ * SL-20: la provincia cuelga de un país (`paisId`, ISO alfa-2); cantón y distrito heredan el de su
+ * padre, así que no lo llevan.
  */
 export const crearNodoGeograficoSchema = z.discriminatedUnion("nivel", [
-  z.object({ nivel: z.literal("provincia"), nombre: nombreGeoSchema }).strict(),
+  z
+    .object({
+      nivel: z.literal("provincia"),
+      nombre: nombreGeoSchema,
+      paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido."),
+      codigo: codigoGeoSchema,
+    })
+    .strict(),
   z
     .object({
       nivel: z.literal("canton"),
       nombre: nombreGeoSchema,
       provinciaId: z.string().min(1),
+      codigo: codigoGeoSchema,
     })
     .strict(),
   z
@@ -82,6 +97,7 @@ export const crearNodoGeograficoSchema = z.discriminatedUnion("nivel", [
       nivel: z.literal("distrito"),
       nombre: nombreGeoSchema,
       cantonId: z.string().min(1),
+      codigo: codigoGeoSchema,
     })
     .strict(),
 ]);
@@ -132,6 +148,14 @@ export function padreDeAlta(input: CrearNodoGeograficoInput): string | null {
   return null;
 }
 
+/**
+ * SL-20 — dónde cuelga el alta: el padre en cantón y distrito, el PAÍS en la provincia. Es la clave
+ * con la que `IGeoRepository.findHermanos` lee los hermanos y la regla de código.
+ */
+export function contenedorDeAlta(input: CrearNodoGeograficoInput): string {
+  return input.nivel === "provincia" ? input.paisId : (padreDeAlta(input) as string);
+}
+
 // ── Los DTO del arbol ────────────────────────────────────────────────────────────────────────
 //
 // VIVEN AQUI Y NO EN LA SERVER ACTION porque desde la ficha 374 los produce `GeoRepository`, y un
@@ -176,4 +200,25 @@ export interface ProvinciaArbolDTO {
   /** FICHA 374: el flag PROPIO de esta provincia. */
   activo: boolean;
   cantones: CantonArbolDTO[];
+}
+
+// ── SL-20: el árbol del superadmin (design §5, §8) ──────────────────────────────────────────
+//
+// SIN zona ni marca de zona especial: son de cada empresa, y en plataforma esa lectura mezclaría las
+// de todas. Con el código oficial, que es lo que el superadmin edita junto al nombre.
+
+export interface NodoPlataformaDTO {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  /** El flag PROPIO del nodo; la disponibilidad efectiva la deriva quien lee. */
+  activo: boolean;
+}
+
+export interface CantonPlataformaDTO extends NodoPlataformaDTO {
+  distritos: NodoPlataformaDTO[];
+}
+
+export interface ProvinciaPlataformaDTO extends NodoPlataformaDTO {
+  cantones: CantonPlataformaDTO[];
 }

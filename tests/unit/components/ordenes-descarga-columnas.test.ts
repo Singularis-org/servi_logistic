@@ -3,8 +3,10 @@ import { describe, it, expect } from "vitest";
 
 import {
   COLUMNAS_DESCARGA_ORDENES,
+  columnasDescargaOrdenes,
   filaDescargaOrden,
 } from "@/app/(app)/ordenes/_components/ordenes-descarga-columnas";
+import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
 function makeOrden(overrides: Partial<OrdenListItemDTO> = {}): OrdenListItemDTO {
@@ -177,8 +179,9 @@ describe("columnas de descarga del listado de órdenes", () => {
     }
 
     // Los 22 encabezados, en su orden y escritos a mano: son CONTRATO. Es lo que el usuario
-    // recibe por correo y lo que lee quien procesa la hoja.
-    expect(COLUMNAS_DESCARGA_ORDENES.map((c) => c.encabezado)).toEqual([
+    // recibe por correo y lo que lee quien procesa la hoja. SL-20 (R19): los de nivel son los del
+    // país de la empresa; éstos, los de Costa Rica.
+    expect(columnasDescargaOrdenes(ETIQUETAS_CR).map((c) => c.encabezado)).toEqual([
       "Nº Guía",
       "Nº Remisión",
       "Estado",
@@ -371,5 +374,19 @@ describe("columnas de descarga del listado de órdenes", () => {
     expect(fila.comisionConIva).toBe("89.10");
     expect(fila.fechaReparto).toBe("2026-08-30");
     expect(fila.fechaReprogramacion).toBe("2026-09-02");
+  });
+});
+
+describe("SL-20/R19 — la descarga de órdenes nombra los niveles con los del país de la empresa", () => {
+  it("con un país de prueba, los encabezados de nivel dicen «Departamento», «Municipio» y «Aldea»", () => {
+    const columnas = columnasDescargaOrdenes(ETIQUETAS_XA);
+    const porClave = Object.fromEntries(columnas.map((c) => [c.clave, c.encabezado]));
+    expect([porClave.provincia, porClave.canton, porClave.distrito]).toEqual([
+      "Departamento",
+      "Municipio",
+      "Aldea",
+    ]);
+    // Claves y orden, los del contrato: el país solo cambia el nombre.
+    expect(columnas.map((c) => c.clave)).toEqual(COLUMNAS_DESCARGA_ORDENES.map((c) => c.clave));
   });
 });

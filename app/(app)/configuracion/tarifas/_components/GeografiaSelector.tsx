@@ -13,6 +13,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 import { filtrarArbolGeografico } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
 import {
@@ -52,6 +53,8 @@ export function GeografiaSelector({
   initialSelected?: string[];
 }>) {
   const [query, setQuery] = useState("");
+  // SL-20 (design §7; R19): los niveles se nombran con los nombres del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   // Fuente de verdad UNICA: distritos (hojas) seleccionados. Provincia y canton
   // derivan su estado (marcado / indeterminado / vacio) de estos.
   const [selDist, setSelDist] = useState<Set<string>>(
@@ -167,7 +170,7 @@ export function GeografiaSelector({
     <div className="flex flex-col gap-4">
       <Input
         type="search"
-        placeholder="Buscar provincia, cantón o distrito…"
+        placeholder={`Buscar ${etiquetas.provincia.singular.toLowerCase()}, ${etiquetas.canton.singular.toLowerCase()} o ${etiquetas.distrito.singular.toLowerCase()}…`}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Buscar en el catálogo geográfico"
@@ -175,7 +178,7 @@ export function GeografiaSelector({
 
       <p className="text-sm text-muted-foreground">
         {selDist.size > 0
-          ? `Distritos seleccionados: ${selDist.size}.`
+          ? `${etiquetas.distrito.plural} seleccionados: ${selDist.size}.`
           : "Selecciona una provincia o cantón para marcar todos sus distritos, o marca distritos sueltos."}
       </p>
 
@@ -330,7 +333,7 @@ export function GeografiaSelector({
  * marcado desde `initialSelected`— perderia su fila en el siguiente guardado de la zona, y a
  * partir de ahi toda alta que lo nombre moriria con «no tiene zona asignada» sin poner rojo nada.
  *
- * Quien administra el catalogo lo hace en /configuracion/geografia, no aqui.
+ * Quien administra el catalogo es el superadmin, en /plataforma/geografia (SL-20 R21), no aqui.
  */
 function MarcaRetirado({
   estado,

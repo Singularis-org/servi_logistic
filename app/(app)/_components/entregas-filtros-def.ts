@@ -1,6 +1,7 @@
 import type { Faceta } from "@/lib/analytics/presentacion";
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Los filtros de la barra de ENTREGAS del panel maestro, declarados sobre el mismo
@@ -93,8 +94,14 @@ const TODAS_LAS_FACETAS: readonly Faceta[] = ["zona", "tienda", "mensajero"];
  */
 export function construirFiltrosEntregas(
   cat: CatalogoFiltrosOrdenesDTO,
-  opts: { ahora?: Date; facetas?: readonly Faceta[] } = {},
+  opts: {
+    ahora?: Date;
+    facetas?: readonly Faceta[];
+    /** SL-20 (design §7; R19): los nombres de nivel del país de la empresa (`useEtiquetasGeograficas`). */
+    etiquetas: EtiquetasGeograficas;
+  },
 ): FilterDef[] {
+  const { etiquetas } = opts;
   // `ahora` inyectable para poder fijar los rangos de los atajos en los tests, igual
   // que hace `construirFiltrosOrdenes`.
   const ahora = opts.ahora ?? new Date();
@@ -130,17 +137,17 @@ export function construirFiltrosEntregas(
     },
     {
       key: CLAVE_PROVINCIA,
-      label: "Provincia",
+      label: etiquetas.provincia.singular,
       kind: "multi",
-      searchPlaceholder: "Buscar provincia…",
+      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
       options: cat.provincias.map((p) => ({ value: p.id, label: p.nombre })),
     },
     {
       key: CLAVE_CANTON,
-      label: "Cantón",
+      label: etiquetas.canton.singular,
       kind: "multi",
       dependsOn: CLAVE_PROVINCIA, // la cadena se declara, no se programa (R56 de la 144)
-      searchPlaceholder: "Buscar cantón…",
+      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
       options: cat.cantones.map((c) => ({
         value: c.id,
         label: c.nombre,
@@ -149,10 +156,10 @@ export function construirFiltrosEntregas(
     },
     {
       key: CLAVE_DISTRITO,
-      label: "Distrito",
+      label: etiquetas.distrito.singular,
       kind: "multi",
       dependsOn: CLAVE_CANTON,
-      searchPlaceholder: "Buscar distrito…",
+      searchPlaceholder: `Buscar ${etiquetas.distrito.singular.toLowerCase()}…`,
       options: cat.distritos.map((d) => ({
         value: d.id,
         label: d.nombre,

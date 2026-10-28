@@ -1,3 +1,5 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { MapPin } from "lucide-react";
 
@@ -8,6 +10,7 @@ import {
 } from "@/components/shared/intentos-entrega";
 import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 
 // Feature 36 (R11) / rediseño 63: detalle de una orden asignada en TRES secciones
 // (Pedido, Entrega, Cobro), cada una como lista de definición accesible (<dt>/<dd>).
@@ -83,6 +86,8 @@ export interface AsignacionDetalleProps {
 
 /** Detalle de una orden en 3 secciones (R11 / 63), reutilizado por ambos apartados. */
 export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
+  // SL-20 (design §7; R19): los rótulos de la ubicación son los nombres de nivel del país.
+  const etiquetas = useEtiquetasGeograficas();
   return (
     <div className="flex flex-col gap-3">
       {/* Sección 1 — Pedido */}
@@ -116,9 +121,9 @@ export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
           </div>
         </div>
         <dl className="grid grid-cols-3 gap-x-3 gap-y-4">
-          <Campo label="Provincia">{orden.provinciaNombre}</Campo>
-          <Campo label="Cantón">{orden.cantonNombre}</Campo>
-          <Campo label="Distrito">{orden.distritoNombre ?? "—"}</Campo>
+          <Campo label={etiquetas.provincia.singular}>{orden.provinciaNombre}</Campo>
+          <Campo label={etiquetas.canton.singular}>{orden.cantonNombre}</Campo>
+          <Campo label={etiquetas.distrito.singular}>{orden.distritoNombre ?? "—"}</Campo>
         </dl>
         <dl className="mt-4 grid grid-cols-[1fr_auto] gap-x-4 border-t border-border pt-4">
           <Campo label="Notas">{orden.notas ?? "—"}</Campo>

@@ -4,11 +4,16 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 
 import { DataTable } from "@/components/shared/DataTable";
 import {
-  ordenesColumns,
-  ordenesColumnsReprogramada,
+  ordenesColumnsDe,
+  ordenesColumnsReprogramadaDe,
 } from "@/app/(app)/ordenes/_components/ordenes-columns";
 import { INTENTOS_COLUMN_ID } from "@/components/shared/intentos-entrega";
 import type { OrdenListItemDTO, OrdenListItemRelaciones } from "@/lib/types/orden";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): los encabezados de nivel son los del país de la empresa; estos casos son de Costa Rica.
+const ordenesColumns = ordenesColumnsDe(ETIQUETAS_CR);
+const ordenesColumnsReprogramada = ordenesColumnsReprogramadaDe(ETIQUETAS_CR);
 
 afterEach(() => {
   cleanup();

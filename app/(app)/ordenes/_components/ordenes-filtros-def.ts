@@ -1,5 +1,6 @@
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import {
   BUSQUEDA_MIN_CHARS,
   SALIO_A_REPARTO_VALORES,
@@ -203,9 +204,16 @@ export function construirFiltrosOrdenes(
      * `adminTienda`, que no despacha.
      */
     incluirSalioAReparto?: boolean;
+    /**
+     * SL-20 (design §7; R19): los nombres de nivel del país de la empresa, que rotulan los filtros
+     * de provincia, cantón y distrito. Los da `useEtiquetasGeograficas`. Obligatorio: un filtro
+     * geográfico sin nombre de su país no se puede declarar.
+     */
+    etiquetas: EtiquetasGeograficas;
     ahora?: Date;
   },
 ): FilterDef[] {
+  const { etiquetas } = opts;
   // `ahora` inyectable para poder fijar los rangos de los atajos en los tests.
   const ahora = opts.ahora ?? new Date();
 
@@ -348,17 +356,17 @@ export function construirFiltrosOrdenes(
     ...tienda,
     {
       key: "provincia_id",
-      label: "Provincia",
+      label: etiquetas.provincia.singular,
       kind: "multi",
-      searchPlaceholder: "Buscar provincia…",
+      searchPlaceholder: `Buscar ${etiquetas.provincia.singular.toLowerCase()}…`,
       options: cat.provincias.map((p) => ({ value: p.id, label: p.nombre })),
     },
     {
       key: "canton_id",
-      label: "Cantón",
+      label: etiquetas.canton.singular,
       kind: "multi",
       dependsOn: "provincia_id", // R56: la cadena se declara, no se programa
-      searchPlaceholder: "Buscar cantón…",
+      searchPlaceholder: `Buscar ${etiquetas.canton.singular.toLowerCase()}…`,
       options: cat.cantones.map((c) => ({
         value: c.id,
         label: c.nombre,
@@ -367,10 +375,10 @@ export function construirFiltrosOrdenes(
     },
     {
       key: "distrito_id",
-      label: "Distrito",
+      label: etiquetas.distrito.singular,
       kind: "multi",
       dependsOn: "canton_id",
-      searchPlaceholder: "Buscar distrito…",
+      searchPlaceholder: `Buscar ${etiquetas.distrito.singular.toLowerCase()}…`,
       options: cat.distritos.map((d) => ({
         value: d.id,
         label: d.nombre,

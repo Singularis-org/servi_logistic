@@ -130,6 +130,29 @@ esta bien hecha, no solo si "funciona".
   antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
   (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
   `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
+- **País por empresa (SL-20).** La tabla de plataforma `pais` (id ISO 3166-1 alfa-2, nombre, los seis
+  nombres de nivel, la regla de código opcional y `disponible`) guarda solo los países dados de alta;
+  el catálogo para elegirlos es fijo, en `lib/constants/paises-iso-3166-1.ts` (no se calcula en
+  runtime). Cada empresa tiene `organizacion.pais_id` (`DEFAULT 'CR'`), que no cambia: el trigger
+  `organizacion_pais_inmutable` lo rechaza con `SQLSTATE 'SL020'` (`PaisInmutable`). Provincia, cantón
+  y distrito llevan `pais_id`; el cantón y el distrito lo heredan de su padre (FK compuestas
+  `ON UPDATE RESTRICT`). Un país con `disponible = false` no se ofrece ni se acepta en el alta de
+  empresa, y sus empresas siguen igual.
+  - **RLS por país:** las políticas `provincia_del_pais`, `canton_del_pais` y `distrito_del_pais` dejan
+    a `servi_app` leer solo la geografía del país de su empresa. En plataforma no hay RLS y el
+    superadmin filtra por `paisId`.
+  - **Trigger `geografia_del_pais_de_la_empresa`** en `orden`, `zona_distrito` y
+    `distrito_zona_especial`: una fila no puede apuntar a geografía de otro país (`SQLSTATE 'SL021'`,
+    `GeografiaDeOtroPais`). Los dos errores se traducen en `lib/db/errores-pais.ts`.
+  - **Historial de plataforma:** las acciones del superadmin sobre países y geografía (alta de país,
+    disponibilidad, carga CSV, alta, renombre, retiro y reactivación de nodos) se registran en
+    `historial_plataforma` con `appendAccionPlataforma` (`lib/repositories/registrar-accion-plataforma.ts`),
+    dentro de la transacción del cambio, no en `historial_accion`. La tabla tiene RLS sin políticas y
+    `REVOKE ALL` para `servi_app`.
+  - **Gestión:** la pantalla `/plataforma/geografia` (solo superadmin) y `lib/actions/geografia-plataforma.ts`,
+    con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
+    `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
+    (`etiquetas-geograficas-sin-literal.guardia`).
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el

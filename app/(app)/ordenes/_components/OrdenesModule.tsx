@@ -28,10 +28,11 @@ import {
   notaAgrupacionPorSerie,
   notaPrioridad as textoNotaPrioridad,
 } from "./ordenamiento-ordenes";
-import { ordenesColumns } from "./ordenes-columns";
+import { ordenesColumnsDe } from "./ordenes-columns";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import {
   AMBITO_DESCARGA_ORDENES,
-  COLUMNAS_DESCARGA_ORDENES,
+  columnasDescargaOrdenes,
   filaDescargaOrden,
 } from "./ordenes-descarga-columnas";
 import { serializarFiltro, type OrdenesFilterUI } from "./serializar-filtro";
@@ -137,7 +138,7 @@ function vacioConBusqueda(termino: string): { title: string; description: string
  * `<OrdenesModule />` sin ninguna es válido.
  */
 export function OrdenesModule({
-  columns = ordenesColumns,
+  columns: columnsProp,
   puedeCargarMasiva = false,
   mostrarHistorial = false,
   filter,
@@ -272,6 +273,10 @@ export function OrdenesModule({
    */
   resetSeleccion?: number;
 }) {
+  // SL-20 (R19): sin `columns`, las del listado con los nombres de nivel del país de la empresa.
+  // `ordenesColumnsDe` memoriza por objeto de etiquetas: el mismo arreglo en cada render.
+  const etiquetas = useEtiquetasGeograficas();
+  const columns = columnsProp ?? ordenesColumnsDe(etiquetas);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(ordenesConfig.DEFAULT_PAGE_SIZE);
   /**
@@ -607,7 +612,7 @@ export function OrdenesModule({
   const descarga: DataTableDescarga | undefined = permitirDescarga
     ? {
         titulo: TITULO_DESCARGA,
-        columnas: COLUMNAS_DESCARGA_ORDENES,
+        columnas: columnasDescargaOrdenes(etiquetas),
         // Ficha 314: enciende el selector de columnas de esta descarga. Es un IDENTIFICADOR de
         // ámbito y nada más — aquí no se lee ni se escribe almacenamiento; de eso se encarga
         // el control común, que es quien conoce la clave.

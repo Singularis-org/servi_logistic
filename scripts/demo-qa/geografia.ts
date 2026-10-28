@@ -7,6 +7,12 @@
 //
 // Los tres existen en la geografía que siembran las migraciones (`20260713005000_seed_geografia_cr` y
 // el backfill de `20260907120000_geografia_codigo_dta`).
+//
+// SL-20 (decisión 3; T6.4): la demo vive en Costa Rica. Sus empresas nacen en `CR` y sus distritos se
+// buscan por país y código, porque el código ya no es único global sino por país.
+
+/** El país de la demo de QA (SL-20, decisión 3). */
+export const PAIS_DEMO = "CR";
 
 export type PapelDistritoDemo = "central" | "satelite" | "especial";
 
@@ -28,6 +34,16 @@ export const DISTRITOS_DEMO: Readonly<Record<PapelDistritoDemo, DistritoDemo>> =
   satelite: { papel: "satelite", codigoDta: "20101", latitud: 10.0162, longitud: -84.214 },
   especial: { papel: "especial", codigoDta: "10109", latitud: 9.948, longitud: -84.134 },
 };
+
+/**
+ * La clave única del distrito en el catálogo: país y código (`@@unique([paisId, codigoDta])`). Con
+ * solo el código, un país que repita `10101` pondría la demo fuera de Costa Rica.
+ */
+export function claveDeDistritoDemo(distrito: DistritoDemo): {
+  paisId_codigoDta: { paisId: typeof PAIS_DEMO; codigoDta: string };
+} {
+  return { paisId_codigoDta: { paisId: PAIS_DEMO, codigoDta: distrito.codigoDta } };
+}
 
 /** Metros por grado de latitud (y de longitud en el ecuador). Basta para desplazar unos cientos de metros. */
 const METROS_POR_GRADO = 111_320;

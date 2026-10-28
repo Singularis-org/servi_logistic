@@ -101,6 +101,13 @@ import { ORDER_STATUS_LABELS } from "@/app/(app)/ordenes/_components/EstatusBadg
 import { RecepcionSateliteModule } from "@/app/(app)/recepcion-satelite/_components/RecepcionSateliteModule";
 import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
 
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
 const ZONA_ACTOR = "Limón";
 
 function makeOrden(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 
 import { Button } from "@/components/ui/button";
 import { money } from "@/lib/config/moneda";
@@ -57,7 +58,6 @@ export const AVISO_COL_ACTUAL = "Ahora";
 export const AVISO_COL_PROPUESTA = "Con el cambio";
 
 export const AVISO_FILA_ZONA = "Zona";
-export const AVISO_FILA_DISTRITO = "Distrito";
 export const AVISO_FILA_FLETE = "Flete + IVA";
 export const AVISO_FILA_COMISION = "Comisión + IVA";
 
@@ -138,6 +138,9 @@ export function CorregirUbicacionAviso({
   onConfirmar,
 }: Readonly<CorregirUbicacionAvisoProps>) {
   const tituloId = useId();
+  // SL-20 (design §7; R19): la fila del nivel 3 se rotula con el nombre del país de la empresa
+  // (antes `AVISO_FILA_DISTRITO`, con el de Costa Rica).
+  const etiquetas = useEtiquetasGeograficas();
 
   return (
     <section
@@ -178,7 +181,7 @@ export function CorregirUbicacionAviso({
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {AVISO_FILA_DISTRITO}
+              {etiquetas.distrito.singular}
             </th>
             <td className="py-1">{distrito(aviso.actual)}</td>
             <td className="py-1 font-medium">{distrito(aviso.propuesta)}</td>

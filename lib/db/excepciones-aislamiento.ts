@@ -184,6 +184,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
   },
   {
+    archivo: "lib/actions/geografia-plataforma.ts",
+    ficha: "SL-20",
+    motivo:
+      "gestión de países y geografía por el superadmin, que no tiene empresa; conteo de órdenes de todas las empresas (D15)",
+  },
+  {
     archivo: "lib/repositories/PushEndpointPlataformaRepository.ts",
     ficha: "SL-18",
     motivo: "push, el último gana: borrar la suscripción de ese endpoint exacto si es de otra empresa (R26, R28)",

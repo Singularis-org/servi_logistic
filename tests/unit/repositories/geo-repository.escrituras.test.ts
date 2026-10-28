@@ -4,6 +4,8 @@ import type { PrismaClient } from "@prisma/client";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 
 // FICHA 374 (R8/R12/R20/R22/R51/R52) — las TRES escrituras del repositorio, con un doble.
+// SL-20 (R29, R33, R35): el registro va al historial de PLATAFORMA (`historialPlataforma`), no a
+// `historial_accion`; el alta tambien registra, y la provincia cuelga de un pais.
 //
 // ⚠️ LO QUE ESTE ARCHIVO PUEDE AFIRMAR Y LO QUE NO. Con dobles se mide el ORDEN de las llamadas y
 // CUANTAS son —que es justo lo que ningun test contra Postgres ve con claridad—: que el corte por
@@ -61,7 +63,12 @@ function prismaDoble(previo: Record<string, unknown> | null) {
         }),
       ),
     },
-    historialAccion: { createMany: vi.fn(apunta("historialAccion.createMany", { count: 1 })) },
+    pais: {
+      findUnique: vi.fn(apunta("pais.findUnique", previo)),
+    },
+    historialPlataforma: {
+      createMany: vi.fn(apunta("historialPlataforma.createMany", { count: 1 })),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
       log.push({ nombre: "$transaction", arg: undefined });
       return fn(cliente);
@@ -80,6 +87,7 @@ function distritoPrevio(activo: boolean) {
   return {
     activo,
     nombre: "Cabagra",
+    paisId: "CR",
     canton: { nombre: "Buenos Aires", provincia: { nombre: "Puntarenas" } },
   };
 }
@@ -112,7 +120,7 @@ describe("374/R21/R53 — `sin_cambio` NO escribe nada, y el corte va ANTES del 
     // distintas — precedente literal de `VehiculoRepository.delete`.
     expect(log.map((l) => l.nombre)).toEqual(["$transaction", "distrito.findUnique"]);
     expect(cliente.distrito.update).not.toHaveBeenCalled();
-    expect(cliente.historialAccion.createMany).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
     expect(cliente.usuario.findUnique).not.toHaveBeenCalled();
   });
 
@@ -120,7 +128,7 @@ describe("374/R21/R53 — `sin_cambio` NO escribe nada, y el corte va ANTES del 
     const { repo, cliente } = repoCon(distritoPrevio(true));
     expect(await repo.cambiarActivacion("distrito", "d1", true, "u-1")).toBe("sin_cambio");
     expect(cliente.distrito.update).not.toHaveBeenCalled();
-    expect(cliente.historialAccion.createMany).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -139,7 +147,7 @@ describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden",
       "distrito.findUnique",
       "distrito.update",
       "usuario.findUnique",
-      "historialAccion.createMany",
+      "historialPlataforma.createMany",
     ]);
   });
 
@@ -160,13 +168,13 @@ describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden",
   it("desactivar escribe `nodo_geografico_desactivado`; reactivar, `nodo_geografico_activado`", async () => {
     const off = repoCon(distritoPrevio(true));
     await off.repo.cambiarActivacion("distrito", "d1", false, "u-1");
-    const filaOff = (off.cliente.historialAccion.createMany.mock.calls[0]![0] as {
+    const filaOff = (off.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
       data: Record<string, unknown>[];
     }).data;
 
     const on = repoCon(distritoPrevio(false));
     await on.repo.cambiarActivacion("distrito", "d1", true, "u-1");
-    const filaOn = (on.cliente.historialAccion.createMany.mock.calls[0]![0] as {
+    const filaOn = (on.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
       data: Record<string, unknown>[];
     }).data;
 
@@ -181,7 +189,7 @@ describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden",
   it("la fila lleva la entidad del NIVEL, la cadena de nombres, y los dos `valor_*` en NULL (R54)", async () => {
     const { repo, cliente } = repoCon(distritoPrevio(true));
     await repo.cambiarActivacion("distrito", "d1", false, "u-1");
-    const [fila] = (cliente.historialAccion.createMany.mock.calls[0]![0] as {
+    const [fila] = (cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
       data: Record<string, unknown>[];
     }).data;
 
@@ -191,29 +199,32 @@ describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden",
     expect(fila.entidadEtiqueta).toBe("Cabagra · Buenos Aires · Puntarenas");
     expect(fila.valorAnterior).toBeNull();
     expect(fila.valorNuevo).toBeNull();
-    expect(fila.monto).toBeNull();
+    // SL-20: el pais del nodo, y sin `monto` ni `actorRol`, que el historial de plataforma no tiene.
+    expect(fila.paisId).toBe("CR");
+    expect(fila).not.toHaveProperty("monto");
+    expect(fila).not.toHaveProperty("actorRol");
     // El actor va CONGELADO, no resuelto al leer.
     expect(fila.actorUsuarioId).toBe("u-1");
     expect(fila.actorNombre).toBe("Maestra Uno");
-    expect(fila.actorRol).toBe("maestro");
   });
 
   it("la etiqueta de un CANTON es su cadena de dos, y la de una PROVINCIA solo su nombre", async () => {
     const canton = repoCon({
       activo: true,
       nombre: "Buenos Aires",
+      paisId: "CR",
       provincia: { nombre: "Puntarenas" },
     });
     await canton.repo.cambiarActivacion("canton", "c1", false, "u-1");
-    const filaCanton = (canton.cliente.historialAccion.createMany.mock.calls[0]![0] as {
+    const filaCanton = (canton.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
       data: Record<string, unknown>[];
     }).data[0];
     expect(filaCanton.entidadTipo).toBe("canton");
     expect(filaCanton.entidadEtiqueta).toBe("Buenos Aires · Puntarenas");
 
-    const provincia = repoCon({ activo: true, nombre: "Puntarenas" });
+    const provincia = repoCon({ activo: true, nombre: "Puntarenas", paisId: "CR" });
     await provincia.repo.cambiarActivacion("provincia", "p1", false, "u-1");
-    const filaProv = (provincia.cliente.historialAccion.createMany.mock.calls[0]![0] as {
+    const filaProv = (provincia.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
       data: Record<string, unknown>[];
     }).data[0];
     expect(filaProv.entidadTipo).toBe("provincia");
@@ -222,55 +233,102 @@ describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden",
 });
 
 // =================================================================================================
-// R12 — el alta
+// R12 + SL-20/R29/R33 — el alta
 // =================================================================================================
 
-describe("374/R12 — `crear` escribe en el nivel pedido y devuelve el id", () => {
-  it("provincia sin padre", async () => {
+const SIN_CODIGO = { paisId: "CR", codigo: null };
+
+describe("374/R12 + SL-20 — `crear` escribe en el nivel pedido, devuelve el id y registra", () => {
+  it("provincia: cuelga del pais que se le pasa, con su codigo", async () => {
     const { repo, cliente } = repoCon(null);
-    expect(await repo.crear("provincia", "Nueva", null)).toBe("p-nueva");
+    expect(await repo.crear("provincia", "Nueva", null, { paisId: "XA", codigo: "N1" }, "u-1")).toBe(
+      "p-nueva",
+    );
     expect(cliente.provincia.create).toHaveBeenCalledWith({
-      data: { nombre: "Nueva" },
+      data: { nombre: "Nueva", codigoDta: "N1", paisId: "XA" },
       select: { id: true },
     });
   });
 
-  it("canton bajo su provincia", async () => {
-    const { repo, cliente } = repoCon(null);
-    expect(await repo.crear("canton", "Buenos Aires", "p1")).toBe("c-nuevo");
+  it("canton bajo su provincia: el pais lo pone el trigger, no el `create`", async () => {
+    const { repo, cliente } = repoCon({ nombre: "Puntarenas", paisId: "CR" });
+    expect(await repo.crear("canton", "Buenos Aires", "p1", SIN_CODIGO, "u-1")).toBe("c-nuevo");
     expect(cliente.canton.create).toHaveBeenCalledWith({
-      data: { nombre: "Buenos Aires", provinciaId: "p1" },
+      data: { nombre: "Buenos Aires", codigoDta: null, provinciaId: "p1" },
       select: { id: true },
     });
   });
 
   it("distrito bajo su canton", async () => {
-    const { repo, cliente } = repoCon(null);
-    expect(await repo.crear("distrito", "Cabagra", "c1")).toBe("d-nuevo");
+    const { repo, cliente } = repoCon({
+      nombre: "Buenos Aires",
+      paisId: "CR",
+      provincia: { nombre: "Puntarenas" },
+    });
+    expect(await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1")).toBe("d-nuevo");
     expect(cliente.distrito.create).toHaveBeenCalledWith({
-      data: { nombre: "Cabagra", cantonId: "c1" },
+      data: { nombre: "Cabagra", codigoDta: null, cantonId: "c1" },
       select: { id: true },
     });
   });
 
-  it("⚠️ el alta NO escribe fila de registro (R53): es aditiva e inocua", async () => {
-    const { repo, cliente } = repoCon(null);
-    await repo.crear("distrito", "Cabagra", "c1");
-    expect(cliente.historialAccion.createMany).not.toHaveBeenCalled();
+  it("SL-20/R33: el alta escribe UNA fila `nodo_geografico_creado` en la MISMA transaccion", async () => {
+    const { repo, cliente, log } = repoCon({
+      nombre: "Buenos Aires",
+      paisId: "CR",
+      provincia: { nombre: "Puntarenas" },
+    });
+    await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1");
+
+    expect(log.map((l) => l.nombre)).toEqual([
+      "$transaction",
+      "canton.findUnique",
+      "distrito.create",
+      "usuario.findUnique",
+      "historialPlataforma.createMany",
+    ]);
+    const [fila] = (cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
+      data: Record<string, unknown>[];
+    }).data;
+    expect(fila).toMatchObject({
+      accion: "nodo_geografico_creado",
+      entidadTipo: "distrito",
+      entidadId: "d-nuevo",
+      entidadEtiqueta: "Cabagra · Buenos Aires · Puntarenas",
+      paisId: "CR",
+      actorUsuarioId: "u-1",
+      actorNombre: "Maestra Uno",
+    });
+  });
+
+  it("un padre de OTRO pais que el que se registraria LANZA sin crear ni registrar", async () => {
+    const { repo, cliente } = repoCon({ nombre: "Region", paisId: "XA" });
+    await expect(repo.crear("canton", "Comuna", "p1", SIN_CODIGO, "u-1")).rejects.toThrow(
+      /es de XA, no de CR/,
+    );
+    expect(cliente.canton.create).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
 
   it("un canton o un distrito sin padre LANZA en vez de crear una fila huerfana", async () => {
     const { repo, cliente } = repoCon(null);
-    await expect(repo.crear("canton", "Sin Padre", null)).rejects.toThrow(/falta el padre/);
+    await expect(repo.crear("canton", "Sin Padre", null, SIN_CODIGO, "u-1")).rejects.toThrow(
+      /falta el padre/,
+    );
+    await expect(repo.crear("canton", "Sin Padre", "p-fantasma", SIN_CODIGO, "u-1")).rejects.toThrow(
+      /no existe/,
+    );
     expect(cliente.canton.create).not.toHaveBeenCalled();
   });
 });
 
 // =================================================================================================
-// R14/R17 — `findHermanos`: el padre y los hermanos, de una vez
+// R14/R17 + SL-20 — `findHermanos`: el contenedor, los hermanos y la regla, de una vez
 // =================================================================================================
 
-describe("374/R14 — `findHermanos` devuelve `null` cuando el padre NO existe", () => {
+const REGLA_CR = { digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 };
+
+describe("374/R14 + SL-20 — `findHermanos` devuelve `null` cuando el contenedor NO existe", () => {
   it("canton bajo una provincia inexistente", async () => {
     const { repo } = repoCon(null); // `provincia.findUnique` devuelve null
     expect(await repo.findHermanos("canton", "no-existe")).toBeNull();
@@ -281,27 +339,57 @@ describe("374/R14 — `findHermanos` devuelve `null` cuando el padre NO existe",
     expect(await repo.findHermanos("distrito", "no-existe")).toBeNull();
   });
 
-  it("la provincia no tiene padre: NUNCA devuelve `null`, devuelve la lista", async () => {
-    const { repo, cliente } = repoCon(null);
-    expect(await repo.findHermanos("provincia", null)).toEqual([]);
-    expect(cliente.provincia.findMany).toHaveBeenCalledWith({
-      select: { id: true, nombre: true },
+  it("SL-20: una provincia en un pais inexistente", async () => {
+    const { repo } = repoCon(null);
+    expect(await repo.findHermanos("provincia", "XZ")).toBeNull();
+  });
+
+  it("SL-20/R15: las hermanas de una provincia son las de SU pais, y trae la regla", async () => {
+    const { repo, cliente } = repoCon({
+      id: "CR",
+      ...REGLA_CR,
+      provincias: [{ id: "p1", nombre: "San José" }],
+    });
+    expect(await repo.findHermanos("provincia", "CR")).toEqual({
+      paisId: "CR",
+      regla: REGLA_CR,
+      codigoPadre: null,
+      hermanos: [{ id: "p1", nombre: "San José" }],
+    });
+    const arg = cliente.pais.findUnique.mock.calls[0]![0] as { where: unknown };
+    expect(arg.where).toEqual({ id: "CR" });
+  });
+
+  it("un distrito trae el pais y el codigo de su canton, y la regla del pais", async () => {
+    const { repo } = repoCon({
+      paisId: "CR",
+      codigoDta: "101",
+      provincia: { pais: REGLA_CR },
+      distritos: [{ id: "d1", nombre: "Carmen" }],
+    });
+    expect(await repo.findHermanos("distrito", "c1")).toEqual({
+      paisId: "CR",
+      regla: REGLA_CR,
+      codigoPadre: "101",
+      hermanos: [{ id: "d1", nombre: "Carmen" }],
     });
   });
 
-  it("un canton sin `padreId` es `null` sin consultar nada", async () => {
-    const { repo, cliente } = repoCon(null);
-    expect(await repo.findHermanos("canton", null)).toBeNull();
-    expect(cliente.provincia.findUnique).not.toHaveBeenCalled();
-  });
-
   it("trae los hermanos por su nombre CRUDO: la normalizacion es del service, no del `WHERE`", async () => {
-    const { repo, cliente } = repoCon({ cantones: [{ id: "c1", nombre: "San José" }] });
-    expect(await repo.findHermanos("canton", "p1")).toEqual([{ id: "c1", nombre: "San José" }]);
-    const arg = cliente.provincia.findUnique.mock.calls[0]![0] as { select: unknown };
+    const { repo, cliente } = repoCon({
+      paisId: "CR",
+      codigoDta: null,
+      pais: REGLA_CR,
+      cantones: [{ id: "c1", nombre: "San José" }],
+    });
+    const contexto = await repo.findHermanos("canton", "p1");
+    expect(contexto?.hermanos).toEqual([{ id: "c1", nombre: "San José" }]);
+    const arg = cliente.provincia.findUnique.mock.calls[0]![0] as {
+      select: { cantones: unknown };
+    };
     // Sin `where` sobre el nombre: si se filtrara aqui, se compararian LITERALES y «San Jose»
     // entraria junto a «San José» — que para `resolveGeo` son una sola cosa AMBIGUA.
-    expect(arg.select).toEqual({ cantones: { select: { id: true, nombre: true } } });
+    expect(arg.select.cantones).toEqual({ select: { id: true, nombre: true } });
   });
 });
 
@@ -311,8 +399,8 @@ describe("374/R14 — `findHermanos` devuelve `null` cuando el padre NO existe",
 
 describe("374/R5 — ninguna escritura del repositorio borra en fisico", () => {
   it("ninguno de los tres metodos llama a `delete` ni a `deleteMany` en las tres tablas", async () => {
-    const { repo, cliente } = repoCon(distritoPrevio(true));
-    await repo.crear("distrito", "Cabagra", "c1");
+    const { repo, cliente } = repoCon({ ...distritoPrevio(true), provincia: { nombre: "P", pais: REGLA_CR } });
+    await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1");
     await repo.cambiarActivacion("distrito", "d1", false, "u-1");
     await repo.findHermanos("distrito", "c1");
 
