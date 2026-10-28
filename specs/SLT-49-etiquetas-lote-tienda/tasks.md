@@ -79,7 +79,7 @@
 
 ## Cierre
 
-- [ ] **T8 — E2E corto** (R3) · depende de T3, T6, T7
+- [x] **T8 — E2E corto** (R3) · depende de T3, T6, T7
   - `e2e/etiquetas-lote-tienda.spec.ts`: escenario de reparto, 2 órdenes centrales de `r.tienda`
     llevadas a `mensajero_recogiendo_en_bodega`; la tienda marca las 2, pulsa «Imprimir etiquetas»,
     ve 2 etiquetas y «Descargar etiquetas» descarga un `.pdf` (riesgo en `design.md §7`).

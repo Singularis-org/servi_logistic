@@ -156,3 +156,54 @@ recogida sin guía se bloquea con «Sin guía todavía» aunque sea eliminable) 
 
 **Veredicto:** T5–T7 hechas; la tienda ve «Imprimir etiquetas» solo en sus órdenes de recogida con
 guía, la prop sale de la regla única, y el modal se monta una sola vez para todos los roles.
+
+## T8 — E2E
+
+**Archivos:** `e2e/etiquetas-lote-tienda.spec.ts` (nuevo); `playwright.config.ts` (el spec entra en el
+proyecto `reparto`).
+
+**Mapa:** R3 → `e2e/etiquetas-lote-tienda.spec.ts` › «marca 2 órdenes, ve 2 etiquetas en la vista
+previa y descarga un PDF (R3)». Las 2 órdenes (centrales, de `r.tienda`) se llevan con `llevarA` a
+`mensajero_recogiendo_en_bodega`; se marcan por `Seleccionar orden <numRemision>`, la vista previa se
+afirma por `article` «Etiqueta de la orden <numRemision>» con su `numGuia` (y 2 artículos en el diálogo).
+
+**Descarga `.pdf`: AFIRMADA.** `page.waitForEvent("download")` recibe el evento al pulsar «Descargar
+etiquetas»; `suggestedFilename()` termina en `.pdf` y `failure()` es `null`. El riesgo de `design.md §7`
+no se materializó: no hizo falta el plan B.
+
+**Nota de selector:** con todas las órdenes marcadas elegibles, el botón se llama «Imprimir etiquetas»
+sin conteo (el «(N)» solo sale cuando hay marcadas no elegibles); el spec usa `exact: true`.
+
+**Cómo se corrió (local):** base desechable `servi_e2e_slt49` en el Postgres local (host local
+comprobado sin imprimir la URL): DROP/CREATE, `prisma migrate deploy` (exit 0), `db:seed` (exit 0).
+Entorno como el job de CI (`gate.yml`): `SESSION_SECRET` aleatorio, `APP_BASE_URL` y
+`NEXT_PUBLIC_APP_URL` = `http://localhost:3044`, sin el resto del `.env` de desarrollo.
+`next build` con `NODE_OPTIONS=--max-old-space-size=8192` (con 4 GB murió por memoria, como anota
+`gate.yml`). `E2E_STORAGE_PUERTO=55329`: el 54329 cae en un rango de puertos excluido por Windows
+(`54319-54418`, `EACCES`). `E2E_PUERTO=3044 pnpm exec playwright test e2e/etiquetas-lote-tienda.spec.ts
+e2e/dos-empresas-humo.spec.ts --reporter=list` (arrastra `plataforma-vacia` por `dependencies`).
+
+Corrida 1 (base recién creada) y corrida 2 (misma base), idénticas:
+```
+  ok 11 [reparto] › e2e\etiquetas-lote-tienda.spec.ts:41:7 › Etiquetas por lote — la tienda › marca 2 órdenes, ve 2 etiquetas en la vista previa y descarga un PDF (R3) (1.8s)
+  ok 12 [aislamiento] › e2e\dos-empresas-humo.spec.ts:199:5 › alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)
+  ok 13 [aislamiento] › e2e\dos-empresas-humo.spec.ts:224:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B
+  ok 14 [aislamiento] › e2e\dos-empresas-humo.spec.ts:224:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A
+  ok 15 [aislamiento] › e2e\dos-empresas-humo.spec.ts:269:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa
+  ok 16 [aislamiento] › e2e\dos-empresas-humo.spec.ts:290:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador
+  ok 17 [aislamiento] › e2e\dos-empresas-humo.spec.ts:318:5 › SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)
+  ok 18 [aislamiento] › e2e\dos-empresas-humo.spec.ts:390:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)
+  18 passed (1.3m)   # corrida 2: 18 passed (1.4m)
+```
+(1–10 son `superadmin-arranque` y `superadmin-empresas`, del proyecto `plataforma-vacia`, todos `ok`.)
+0 failed, 0 skipped, 0 flaky en las dos.
+
+El spec se vio en rojo antes de pasar: primero por el nombre del botón con «(2)» (no existe con todo
+elegible) y luego por `numGuia` repetido dentro de la etiqueta (strict mode); los dos eran del spec,
+no de producción.
+
+**Comandos:** `pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts` → `Tests 30 passed
+(30)`. `pnpm run lint` → exit 0 (0 errors, 230 warnings preexistentes; `eslint` sobre los 2 archivos
+tocados: «No issues found»). `pnpm run typecheck` → exit 0.
+
+**Veredicto:** T8 hecha; R3 cubierto por E2E con la descarga `.pdf` afirmada, y `dos-empresas-humo` verde.
