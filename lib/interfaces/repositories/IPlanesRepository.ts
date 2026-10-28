@@ -1,3 +1,5 @@
+import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
+import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import type { CrearPlanInput, PlanDTO, TopeExcedido, VersionPlan } from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el catálogo de planes y su asignación, vistos y escritos por el
@@ -51,6 +53,33 @@ export interface CambioPendiente {
   cambioId: string;
 }
 
+/**
+ * T12 (§16.4) — el payload de `plan_aviso_correo`: uno por empresa destino (su `organizacion_id` es
+ * el del trabajo). Sin datos personales: los maestros se leen al enviar. Las fechas, en ISO.
+ */
+export interface AvisoCorreoPlan {
+  /** La programación (programado, recordatorio, cancelado); `null` en la edición inmediata. */
+  cambioId: string | null;
+  planId: string;
+  /** El nombre que rige al encolar: el que conoce el maestro (el nuevo va en `cambios`). */
+  planNombre: string;
+  tipo: TipoCorreoCambioPlan;
+  cambios: CambiosDelPlan;
+  vigenteDesde: string | null;
+  /** §16.2: la fecha del pendiente al que reemplaza este cambio, o `null`. */
+  reemplazaA: string | null;
+  topesPasados: TopePasado[];
+}
+
+/** Lo que el envío de un aviso lee al correr: la empresa y sus maestros activos (P7). */
+export interface DestinatariosDelAviso {
+  empresaNombre: string;
+  maestros: { email: string; nombre: string }[];
+}
+
+/** El recordatorio repartido (§16.4), o nada porque la programación ya no está pendiente (R39). */
+export type ResultadoRecordatorio = { estado: "repartido"; empresas: number } | { estado: "sin_pendiente" };
+
 export interface IPlanesRepository {
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null>;
   plan(planId: string): Promise<PlanDTO | null>;
@@ -70,14 +99,28 @@ export interface IPlanesRepository {
   /**
    * Programa la versión para `vigenteDesde` (R37), reemplazando el pendiente si lo hay (R39), con sus
    * filas de `plan_rastro` (R43) y el trabajo que la aplicará, todo en una transacción (§16.2). No toca
-   * la versión vigente. Devuelve los avisos de R16 contra el uso de hoy, sin rechazar.
+   * la versión vigente. Devuelve los avisos de R16 contra el uso de hoy, sin rechazar. En la misma
+   * transacción encola los recordatorios que caen después de `ahora` y los correos de guardado (R41,
+   * R42; T12).
    */
   programarCambio(
     planId: string,
     version: VersionPlan,
     vigenteDesde: Date,
     actorUsuarioId: string,
+    ahora: Date,
   ): Promise<ResultadoProgramar>;
+  /**
+   * `plan_recordatorio_cambio` (§16.4): si ESA programación sigue pendiente, encola un
+   * `plan_aviso_correo` por empresa que tiene el plan AHORA, con sus topes pasados contra la versión
+   * pendiente. Una vez por empresa por `dedupe_key` (R42).
+   */
+  repartirRecordatorio(cambio: CambioPendiente, dias: 7 | 1): Promise<ResultadoRecordatorio>;
+  /**
+   * El envío de `plan_aviso_correo`: la empresa y sus maestros activos. Con `cambioPendiente`, `null`
+   * si esa programación ya no está pendiente (recordatorio de un cambio cancelado o reemplazado).
+   */
+  destinatariosDelAviso(organizacionId: string, cambioPendiente: string | null): Promise<DestinatariosDelAviso | null>;
   /**
    * Aplica ESA programación si sigue pendiente y ya rige en `ahora` (R38, §16.3). Idempotente: si fue
    * reemplazada, cancelada o ya aplicada, no hace nada (R39).

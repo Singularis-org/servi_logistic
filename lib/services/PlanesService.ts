@@ -81,7 +81,14 @@ export class PlanesService implements IPlanesService {
     if (vigenteDesde !== null) {
       // §16.2: programar o reemplazar el pendiente, sin tocar la versión vigente (R37, R39). R16: se
       // guarda aunque alguna empresa ya pase un tope nuevo, y se avisa.
-      const p = await this.repo.programarCambio(planId, version, inicioDelDiaPlataforma(vigenteDesde), actor.usuarioId);
+      // El mismo reloj decide qué recordatorios caen después de ahora (R42).
+      const p = await this.repo.programarCambio(
+        planId,
+        version,
+        inicioDelDiaPlataforma(vigenteDesde),
+        actor.usuarioId,
+        this.ahora(),
+      );
       if (p.estado !== "ok") return p;
       // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
       return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });

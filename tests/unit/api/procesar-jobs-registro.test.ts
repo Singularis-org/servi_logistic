@@ -46,9 +46,13 @@ describe("R21 — registro en el drenador", () => {
       "liberar_reprogramadas",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
-      // vencidos (RECURRENTE). Los dos de correo los añade T12.
+      // vencidos (RECURRENTE).
       "plan_aplicar_cambio",
+      // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
+      // el recordatorio que los reparte.
+      "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_recordatorio_cambio",
       // FICHA 410: entrega de UNA notificacion ya creada a las suscripciones push de sus
       // destinatarios. PUNTUAL —lo encola el decorador del repositorio de notificaciones—, asi que
       // tampoco va en `buildRecurrencias`. Este censo es LITERAL a proposito y se pone rojo cuando

@@ -3,7 +3,9 @@ import type { ModuloApagable, Prisma, PrismaClient, RolValue } from "@prisma/cli
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAccionRepository";
 import type {
+  AvisoCorreoPlan,
   CambioPendiente,
+  DestinatariosDelAviso,
   EmpresaDePlanes,
   IPlanesRepository,
   ResultadoAplicar,
@@ -12,6 +14,7 @@ import type {
   ResultadoCancelarCambio,
   ResultadoEdicion,
   ResultadoProgramar,
+  ResultadoRecordatorio,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
@@ -46,7 +49,10 @@ import {
 // archivar, y al programar, reemplazar, cancelar o aplicar un cambio (R43); `historial_accion` de la empresa al asignar y por cada módulo que se
 // enciende o apaga (R29). Si el rastro falla, nada persiste.
 
-export type PlanesPrismaClient = Pick<PrismaClient, "plan" | "organizacion" | "planCambioProgramado" | "$transaction">;
+export type PlanesPrismaClient = Pick<
+  PrismaClient,
+  "plan" | "organizacion" | "planCambioProgramado" | "usuario" | "$transaction"
+>;
 type Tx = Prisma.TransactionClient;
 
 const INCLUIR = {
@@ -312,9 +318,27 @@ async function cancelarPendienteEnTx(
   });
   if (pendiente === null) return false;
   await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
-  // T12 (R45, §16.2): el correo de cancelación se encola AQUÍ, en esta transacción: un
-  // `plan_aviso_correo` de tipo `cancelado` por cada empresa del plan. Sirve a cancelar a mano y a
-  // archivar (R40); reemplazar NO pasa por aquí (no lleva correo de cancelación aparte).
+  // R45 (§16.2): un `plan_aviso_correo` `cancelado` por cada empresa del plan, en esta transacción.
+  // Sirve a cancelar a mano y a archivar (R40); reemplazar NO pasa por aquí (no lleva correo de
+  // cancelación aparte). El envío va por la cola: un fallo del correo no deshace la cancelación.
+  const vigenteDesde = pendiente.vigenteDesde.toISOString();
+  await encolarAvisos(
+    tx,
+    (await empresasDelPlan(tx, plan.id)).map((e) => ({
+      organizacionId: e.id,
+      dedupeKey: dedupeAviso(pendiente.id, "cancelado", e.id),
+      payload: {
+        cambioId: pendiente.id,
+        planId: plan.id,
+        planNombre: plan.nombre,
+        tipo: "cancelado",
+        cambios: {},
+        vigenteDesde,
+        reemplazaA: null,
+        topesPasados: [],
+      },
+    })),
+  );
   await escribirRastro(
     tx,
     plan,
@@ -351,6 +375,61 @@ async function encolarAplicacion(tx: Tx, cambio: CambioPendiente, vigenteDesde: 
     { runAfter: vigenteDesde, dedupeKey: dedupeAplicarCambio(cambio.cambioId), maxIntentos: MAX_INTENTOS_APLICAR },
     tx,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Correos del cambio (T12; §16.2 paso 6, §16.4; R41, R42, R45)                */
+/* -------------------------------------------------------------------------- */
+
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+/** Los dos recordatorios: 7×24 h y 24 h antes de `vigente_desde` (§16.1). */
+const DIAS_DE_RECORDATORIO = [7, 1] as const;
+
+/** `dedupe_key` de un recordatorio de ESA programación: uno por días, aunque se encole dos veces. */
+export function dedupeRecordatorio(cambioId: string, dias: 7 | 1): string {
+  return `plan_recordatorio:${cambioId}:${dias}`;
+}
+
+/**
+ * `dedupe_key` de un aviso: `plan_aviso:<cambioId|editId>:<tipo>:<organizacionId>` (§16.4). Impide
+ * encolar dos veces el mismo aviso a la misma empresa (R42), aunque el recordatorio se repita.
+ */
+export function dedupeAviso(origenId: string, tipo: AvisoCorreoPlan["tipo"], organizacionId: string): string {
+  return `plan_aviso:${origenId}:${tipo}:${organizacionId}`;
+}
+
+/** Los topes pasados de UNA empresa, sin su id (el payload no lleva más de lo que pinta el correo). */
+function topesDeLaEmpresa(avisos: readonly TopeExcedido[], organizacionId: string): AvisoCorreoPlan["topesPasados"] {
+  return avisos
+    .filter((a) => a.organizacionId === organizacionId)
+    .map(({ empresa, tope, usados, maximo }) => ({ empresa, tope, usados, maximo }));
+}
+
+/**
+ * Outbox de los avisos: un `plan_aviso_correo` por empresa destino, en la transacción que llama. El
+ * `organizacion_id` del trabajo sale del DEFAULT de `jobs` (`app.organizacion_id`, SL-17 M4), así que
+ * se fija la empresa de cada aviso antes de encolarlo y se deja como estaba al final: el resto de la
+ * transacción de plataforma (y el `plan_aplicar_cambio`, sin empresa) no la ve. Es el patrón de
+ * `OrganizacionRepository` al dar de alta una empresa.
+ */
+async function encolarAvisos(
+  tx: Tx,
+  avisos: readonly { organizacionId: string; dedupeKey: string; payload: AvisoCorreoPlan }[],
+): Promise<void> {
+  if (avisos.length === 0) return;
+  const [{ previa }] = await tx.$queryRaw<{ previa: string | null }[]>`
+    SELECT current_setting('app.organizacion_id', true) AS "previa"`;
+  const jobs = new JobRepository(tx);
+  for (const a of avisos) {
+    await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${a.organizacionId}, true)`;
+    await jobs.enqueue("plan_aviso_correo", { ...a.payload }, { dedupeKey: a.dedupeKey }, tx);
+  }
+  await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${previa ?? ""}, true)`;
+}
+
+/** Las empresas que tienen el plan AHORA, en orden estable. */
+function empresasDelPlan(tx: Tx, planId: string): Promise<{ id: string; nombre: string }[]> {
+  return tx.organizacion.findMany({ where: { planId }, orderBy: { id: "asc" }, select: { id: true, nombre: true } });
 }
 
 /** «Sistema (programado por <nombre>)», cortado a los 120 de `actor_nombre` (§16.3, paso 4). */
@@ -425,16 +504,30 @@ export class PlanesRepository implements IPlanesRepository {
 
         // R16 (revisado el 2026-10-28): ya no se rechaza. Se guarda y se avisa de quién ya pasa un
         // tope; desde ahora sus altas que pasen el tope las rechazan los triggers.
-        const empresas = await tx.organizacion.findMany({
-          where: { planId },
-          orderBy: { id: "asc" },
-          select: { id: true, nombre: true },
-        });
+        const empresas = await empresasDelPlan(tx, planId);
         const avisos = await excedidosDe(tx, empresas, version.topes);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         await aplicarVersion(tx, antes, version, actor);
-        await escribirRastro(tx, { id: planId, nombre: version.nombre }, "editado", cambios, actorUsuarioId, actor);
-        // Los correos de la edición (R41, §16.4) los encola T12 aquí, en esta transacción.
+        const editId = await escribirRastro(tx, { id: planId, nombre: version.nombre }, "editado", cambios, actorUsuarioId, actor);
+        // R41 (§16.4): un correo de guardado por empresa del plan, en esta transacción. La clave lleva
+        // el id de la fila `editado` de `plan_rastro` (no hay programación).
+        await encolarAvisos(
+          tx,
+          empresas.map((e) => ({
+            organizacionId: e.id,
+            dedupeKey: dedupeAviso(editId, "guardado", e.id),
+            payload: {
+              cambioId: null,
+              planId,
+              planNombre: antes.nombre,
+              tipo: "guardado",
+              cambios,
+              vigenteDesde: null,
+              reemplazaA: null,
+              topesPasados: topesDeLaEmpresa(avisos, e.id),
+            },
+          })),
+        );
         return { estado: "ok", cambio: true, avisos };
       }),
     );
@@ -517,6 +610,7 @@ export class PlanesRepository implements IPlanesRepository {
     version: VersionPlan,
     vigenteDesde: Date,
     actorUsuarioId: string,
+    ahora: Date,
   ): Promise<ResultadoProgramar> {
     return comoPlataforma("SL-24", "programar un cambio de un plan del catálogo (superadmin)", () =>
       this.prisma.$transaction(async (tx): Promise<ResultadoProgramar> => {
@@ -533,11 +627,7 @@ export class PlanesRepository implements IPlanesRepository {
         if (!hayCambios(cambios) && pendiente === null) return { estado: "ok", cambio: false, avisos: [], cambioId: null };
 
         // 3. R16 (revisado): con el uso de HOY contra los topes nuevos; se avisa, no se rechaza.
-        const empresas = await tx.organizacion.findMany({
-          where: { planId },
-          orderBy: { id: "asc" },
-          select: { id: true, nombre: true },
-        });
+        const empresas = await empresasDelPlan(tx, planId);
         const avisos = await excedidosDe(tx, empresas, version.topes);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         const despues = vigenteDesde.toISOString();
@@ -579,12 +669,39 @@ export class PlanesRepository implements IPlanesRepository {
 
         // 6. Outbox, en esta misma transacción.
         await encolarAplicacion(tx, { planId, cambioId }, vigenteDesde);
-        // T12 (R41, R42, R45; §16.2 paso 6 y §16.4) encola AQUÍ, en esta transacción:
-        //   · `plan_recordatorio_cambio` con `{ cambioId, dias: 7 }` y `{ cambioId, dias: 1 }`, con
-        //     `run_after = vigenteDesde − 7×24 h` y `− 24 h`, solo los que caen después de ahora, y
-        //     `dedupe_key = plan_recordatorio:<cambioId>:<dias>`;
-        //   · un `plan_aviso_correo` de tipo `guardado` por cada empresa de `empresas`, con
-        //     `reemplazaA = pendiente?.vigenteDesde` (null si no reemplaza) y sus topes pasados.
+        // R42: los recordatorios, 7×24 h y 24 h antes; solo los que caen DESPUÉS de ahora. Sin empresa
+        // (`organizacion_id` NULL): reparten por empresa al correr, con las que tengan el plan entonces.
+        const jobs = new JobRepository(tx);
+        for (const dias of DIAS_DE_RECORDATORIO) {
+          const runAfter = new Date(vigenteDesde.getTime() - dias * UN_DIA_MS);
+          if (runAfter.getTime() <= ahora.getTime()) continue;
+          await jobs.enqueue(
+            "plan_recordatorio_cambio",
+            { planId, cambioId, dias },
+            { runAfter, dedupeKey: dedupeRecordatorio(cambioId, dias) },
+            tx,
+          );
+        }
+        // R41 y R45: un correo de guardado por empresa, con la fecha del pendiente al que reemplaza
+        // (no sale correo de cancelación aparte, §16.2).
+        const reemplazaA = pendiente === null ? null : pendiente.vigenteDesde.toISOString();
+        await encolarAvisos(
+          tx,
+          empresas.map((e) => ({
+            organizacionId: e.id,
+            dedupeKey: dedupeAviso(cambioId, "guardado", e.id),
+            payload: {
+              cambioId,
+              planId,
+              planNombre: vigente.nombre,
+              tipo: "guardado",
+              cambios,
+              vigenteDesde: despues,
+              reemplazaA,
+              topesPasados: topesDeLaEmpresa(avisos, e.id),
+            },
+          })),
+        );
         return { estado: "ok", cambio: true, avisos, cambioId };
       }),
     );
@@ -637,6 +754,67 @@ export class PlanesRepository implements IPlanesRepository {
         select: { id: true, planId: true },
       });
       return filas.map((f) => ({ planId: f.planId, cambioId: f.id }));
+    });
+  }
+
+  repartirRecordatorio(cambio: CambioPendiente, dias: 7 | 1): Promise<ResultadoRecordatorio> {
+    return comoPlataforma("SL-24", "repartir el recordatorio de un cambio programado (trabajo de la cola)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoRecordatorio> => {
+        // El plan primero (§4.4): espera a una cancelación, un reemplazo o un aplicador en vuelo.
+        if (!(await bloquearPlanParaEscribir(tx, cambio.planId))) return { estado: "sin_pendiente" };
+        // R39 (mutación 9): solo ESTA programación. Cancelada, reemplazada o ya aplicada no avisa.
+        const pendiente = await tx.planCambioProgramado.findUnique({
+          where: { planId: cambio.planId },
+          select: { id: true, vigenteDesde: true, version: true },
+        });
+        if (pendiente === null || pendiente.id !== cambio.cambioId) return { estado: "sin_pendiente" };
+
+        const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
+        const vigente = (await leerPlan(tx, cambio.planId)) as PlanDTO;
+        const cambios = diferenciasDelPlan(vigente, { ...vigente, ...version });
+        // R42: las empresas que tienen el plan AHORA y sus topes pasados contra la versión pendiente.
+        const empresas = await empresasDelPlan(tx, cambio.planId);
+        const excedidos = await excedidosDe(tx, empresas, version.topes);
+        const tipo = dias === 7 ? "recordatorio_7" : "recordatorio_1";
+        const vigenteDesde = pendiente.vigenteDesde.toISOString();
+        await encolarAvisos(
+          tx,
+          empresas.map((e) => ({
+            organizacionId: e.id,
+            dedupeKey: dedupeAviso(pendiente.id, tipo, e.id),
+            payload: {
+              cambioId: pendiente.id,
+              planId: cambio.planId,
+              planNombre: vigente.nombre,
+              tipo,
+              cambios,
+              vigenteDesde,
+              reemplazaA: null,
+              topesPasados: topesDeLaEmpresa(excedidos, e.id),
+            },
+          })),
+        );
+        return { estado: "repartido", empresas: empresas.length };
+      }),
+    );
+  }
+
+  destinatariosDelAviso(organizacionId: string, cambioPendiente: string | null): Promise<DestinatariosDelAviso | null> {
+    return comoPlataforma("SL-24", "leer los maestros activos a los que avisar de un cambio de plan (trabajo de la cola)", async () => {
+      // §16.4, paso 2: un recordatorio de una programación que ya no está pendiente no se envía.
+      if (cambioPendiente !== null) {
+        const sigue = await this.prisma.planCambioProgramado.findUnique({ where: { id: cambioPendiente }, select: { id: true } });
+        if (sigue === null) return null;
+      }
+      const empresa = await this.prisma.organizacion.findUnique({ where: { id: organizacionId }, select: { nombre: true } });
+      if (empresa === null) return null;
+      // P7: todos los maestros activos de la empresa, filtrados a mano (plataforma no filtra).
+      const maestros = await this.prisma.usuario.findMany({
+        where: { organizacionId, estado: "activo", rol: { value: "maestro" } },
+        orderBy: { id: "asc" },
+        select: { email: true, nombre: true },
+      });
+      return { empresaNombre: empresa.nombre, maestros };
     });
   }
 

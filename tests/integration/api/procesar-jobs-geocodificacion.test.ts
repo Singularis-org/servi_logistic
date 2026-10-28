@@ -55,7 +55,11 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
       "plan_aplicar_cambio",
+      // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
+      // el recordatorio que los reparte.
+      "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_recordatorio_cambio",
       // FICHA 410: entrega de un aviso ya creado a las suscripciones push de sus
       // destinatarios. PUNTUAL -lo encola el decorador del repositorio de notificaciones-,
       // asi que tampoco va en `buildRecurrencias`.

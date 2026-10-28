@@ -67,6 +67,8 @@ function doble() {
     })),
     aplicarCambioProgramado: vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "aplicado" })),
     cambiosVencidos: vi.fn<IPlanesRepository["cambiosVencidos"]>(async () => []),
+    repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
+    destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => [plan()]),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => [plan()]),
   };
@@ -205,7 +207,7 @@ describe("SL-24 — editar (R2, R6, R15, R16, R37)", () => {
       estado: "ok",
       vigenteDesde: "2026-10-28",
     });
-    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-10-28T06:00:00.000Z"), "u-sa");
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-10-28T06:00:00.000Z"), "u-sa", new Date("2026-10-28T05:59:00.000Z"));
     expect(repo.editar).not.toHaveBeenCalled();
   });
 
@@ -217,7 +219,7 @@ describe("SL-24 — editar (R2, R6, R15, R16, R37)", () => {
       avisos: [],
       vigenteDesde: "2026-11-15",
     });
-    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-11-15T06:00:00.000Z"), "u-sa");
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-11-15T06:00:00.000Z"), "u-sa", AHORA);
     expect(repo.editar).not.toHaveBeenCalled();
   });
 

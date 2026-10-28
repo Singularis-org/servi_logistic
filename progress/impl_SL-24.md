@@ -665,3 +665,128 @@ Veredicto T6: hecho y en verde. Hay cuatro decisiones de implementación anotada
 - MCP del grafo: no lo usé; exploré con Grep/Read.
 
 Veredicto T11: hecho y en verde, salvo la guardia `jobs-handler-por-tipo`, roja a la espera de los dos handlers de T12. Hay 8 decisiones anotadas para el reviewer; la 3 toca `scripts/siembra-jobs-recurrentes.ts`.
+
+## T12 (2026-10-28) — correos del cambio
+
+### Archivos
+- Nuevos:
+  - `lib/services/email/plantillas/cambio-plan.ts`: `plantillaCambioPlan`, sobre `componerCorreo` de `plantilla-marca.ts`, con los tipos `guardado` (y la línea `reemplazaA`), `recordatorio_7`, `recordatorio_1` y `cancelado`.
+  - `tests/unit/services/email/plantilla-cambio-plan.test.ts` (14 casos).
+  - `tests/integration/db/planes-cambio-correos.test.ts` (9 casos).
+- Modificados:
+  - `lib/planes/mensajes.ts`: SOLO se AÑADE la sección «Correos del cambio de plan». `mensajeDelTope`, `TopePasado` y `mensajeTopesPasados` no cambian.
+  - `lib/repositories/PlanesRepository.ts`:
+    - el encolado en la transacción: `editar` (inmediata), `programarCambio` (paso 6) y `cancelarPendienteEnTx` (cancelar a mano y archivar);
+    - `repartirRecordatorio` y `destinatariosDelAviso`;
+    - los helpers `encolarAvisos`, `dedupeAviso`, `dedupeRecordatorio`, `empresasDelPlan` y `topesDeLaEmpresa`;
+    - `PlanesPrismaClient` gana `usuario`.
+  - `lib/interfaces/repositories/IPlanesRepository.ts`: `AvisoCorreoPlan`, `DestinatariosDelAviso` y `ResultadoRecordatorio`; `programarCambio` recibe `ahora`; los dos métodos nuevos.
+  - `lib/services/PlanesService.ts`: pasa `this.ahora()` a `programarCambio`.
+  - `lib/planes/jobs-cambio-plan.ts`: `crearPlanRecordatorioCambioHandler`, `crearPlanAvisoCorreoHandler`, `avisoDelPayload` y el composition root del correo `buildDepsAvisoCorreo()`, que usa `crearEmailSender()` y `emailContacto()`.
+  - `app/api/cron/procesar-jobs/route.ts`: los dos handlers en `buildHandlers`. Ninguno es recurrente.
+  - Tests ampliados:
+    - `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`: de 12 a 26 casos;
+    - `tests/unit/services/planes-service.test.ts`: el doble gana los 2 métodos, y `programarCambio` se espera con `ahora`;
+    - censos literales de handlers con los 2 tipos: `tests/unit/api/procesar-jobs-registro.test.ts`, `tests/integration/api/procesar-jobs-geocodificacion.test.ts` y `tests/integration/api/procesar-jobs-webhook-estado.test.ts`.
+- Sin tocar:
+  - ningún archivo EXISTENTE de `lib/services/email/`: `git diff --name-only -- lib/services/email` sale vacío;
+  - `tests/fabricas/*`, `lib/auth/*`, `AuthService`, `UserRepository`, `ApiKeyRepository`, T6, migraciones, seeds y dependencias.
+
+### El formateador de fechas (lo pedía la task)
+- **Ningún correo existente pinta una fecha.** `otp-codigo`, `bienvenida-maestro` y `recuperar-contrasena` solo hablan de minutos u horas, así que no hay un «formateador de los correos» que reutilizar.
+- **Usé uno que ya existe; no escribí uno nuevo.** Es `fechaCortaCR` (`lib/whatsapp-envios/informes/formato.ts`), con la forma «7 nov 2026»:
+  - pinta el día calendario de la plataforma (−06:00): `vigente_desde` es las 00:00 CR y sale ese día, no el anterior (hay un test de frontera);
+  - lleva año, que hace falta en una fecha que puede estar a meses;
+  - funciona en mitad de una frase.
+- **Descartados:**
+  - `fechaLegible` (`lib/utils/dia-reparto-textos.ts`, la que usan los avisos de la app): no lleva año;
+  - `fechaLargaCR`: empieza en mayúscula («Lunes 5 de…»), y queda mal en mitad de una frase.
+- **Pendiente de aprobación humana:** qué formateador se usa. Cambiarlo es una línea en la plantilla y los textos esperados de los tests.
+
+### Decisiones que el spec no fija (para el reviewer)
+1. **El `organizacion_id` del aviso.**
+   - `JobRepository.enqueue` no recibe empresa: la toma del DEFAULT de `jobs` (`app.organizacion_id`).
+   - `encolarAvisos` fija la empresa de cada aviso con `set_config(..., true)` antes de encolarlo y al final deja el valor previo. Es el patrón de `OrganizacionRepository`.
+   - El resto de la transacción de plataforma no ve la empresa: `plan_aplicar_cambio` y los recordatorios nacen con `organizacion_id` NULL, y el test de T11 lo sigue comprobando.
+   - No toqué `JobRepository`.
+2. **El payload de `plan_aviso_correo`** es `{ cambioId|null, planId, planNombre, tipo, cambios, vigenteDesde, reemplazaA, topesPasados }`.
+   - Frente al §16.4 añade `planNombre`, el nombre que rige al encolar (el que conoce el maestro; si cambia, el nuevo va en `cambios`), y `reemplazaA` (§16.2).
+   - `topesPasados` lleva `{ empresa, tope, usados, maximo }`, sin el id. No hay datos personales: los maestros se leen al enviar.
+3. **El payload de `plan_recordatorio_cambio`** es `{ planId, cambioId, dias }`. Frente a `{ cambioId, dias }`, añade el plan para cerrarlo antes de leer el cambio (orden de §4.4), igual que la decisión 1 de T11.
+4. **Las lecturas del envío van en plataforma.** `destinatariosDelAviso` corre en `comoPlataforma`, dentro del `conEmpresa` del drenador.
+   - Motivo: `plan` y `plan_cambio_programado` tienen `REVOKE` para `servi_app` (R8), y el recordatorio necesita comprobar el pendiente.
+   - Los maestros se filtran a mano por `organizacionId`, `estado = activo` y rol `maestro`.
+   - `PlanesRepository` ya está en `EXCEPCIONES_DE_PLATAFORMA` y la guardia sigue verde. Su motivo dice «los escribe el superadmin», y ahora también lee los destinatarios: el reviewer puede querer ampliar el texto.
+5. **Mutación 9 en dos puntos.**
+   - `repartirRecordatorio` compara el pendiente del plan con ESE `cambioId`: uno reemplazado no reparte.
+   - `destinatariosDelAviso` vuelve a comprobar en los recordatorios: uno repartido y cancelado después no envía.
+6. **Reemplazar por la versión vigente.** Es el caso 6 de T11: sin diferencias, pero con pendiente.
+   - Sale el correo de guardado con «reemplaza al previsto para…» y la línea «El plan queda igual que el actual.».
+   - Los recordatorios se encolan igual.
+   - Sin pendiente y sin diferencias no sale nada (R41).
+7. **Fallo del emisor.** El aviso intenta con todos los maestros y después falla el trabajo con «fallaron N de M envío(s) a la empresa <id>», sin emails en `last_error`. El reintento reenvía también a los que ya recibieron: es el residuo «al menos una vez» de §16.4.
+8. **`programarCambio(…, ahora)`.** El reloj que decide qué recordatorios caen después de ahora es el del servicio (`PlanesService.ahora`), el mismo con el que valida la fecha. Por eso la interfaz gana un parámetro.
+
+### Textos (`lib/planes/mensajes.ts` y la plantilla)
+- **Literales del spec, sin cambiar:**
+  - R45: «El cambio del plan <nombre> previsto para <fecha> se canceló; tu plan sigue igual.»
+  - §16.2: «Este cambio reemplaza al previsto para <fecha anterior>.»
+  - Las líneas de topes pasados: `mensajeTopesPasados` de T3.
+- **PENDIENTES DE APROBACIÓN HUMANA (propuestos por T12):**
+  - Asuntos:
+    - `guardado`: «Cambios en el plan <plan>»
+    - `recordatorio_7`: «El plan <plan> cambia en 7 días»
+    - `recordatorio_1`: «El plan <plan> cambia mañana»
+    - `cancelado`: «Se canceló el cambio del plan <plan>»
+  - Saludo: «Hola, <nombre>:» (como `bienvenida-maestro`).
+  - Primera frase:
+    - `guardado` programado: «El plan <plan> de <empresa> cambia a partir del <fecha>.»
+    - `guardado` inmediato: «El plan <plan> de <empresa> cambió y los cambios ya rigen.»
+    - `recordatorio_7`: «Faltan 7 días: el plan <plan> de <empresa> cambia a partir del <fecha>.»
+    - `recordatorio_1`: «Mañana cambia el plan <plan> de <empresa>: rige a partir del <fecha>.»
+  - Títulos:
+    - «Esto es lo que cambia:»
+    - «Con el plan nuevo, tu empresa ya pasa estos topes:»
+    - sin líneas: «El plan queda igual que el actual.»
+  - Líneas de cambio (`<antes> → <después>`; «sin límite» = tope nulo):
+    - «Nombre del plan: <antes> → <después>»
+    - «Órdenes por ciclo: <antes> → <después>»
+    - «Usuarios activos con el rol <rol>: <antes> → <después>» (el rol de `ROL_LABELS`)
+    - «API keys activas: <antes> → <después>»
+    - «Se incluye el módulo <módulo>.» / «Deja de incluirse el módulo <módulo>.»
+    - «Precio: <antes> → <después>». El precio es «sin precio», «negociable», «<mensual> al mes», «<mensual> al mes, <anual> al año» o «<mensual> al mes, con <pct> % de descuento en el pago anual». Los importes van tal cual, sin símbolo de moneda.
+  - Fecha: la forma «7 nov 2026» de `fechaCortaCR` (ver arriba).
+
+### R<n> → test (T12)
+| R | Test |
+|---|---|
+| R41 | `planes-cambio-correos`: «la edición inmediata avisa…» (destinatarios: maestros activos de cada empresa del plan, no el inactivo, ni el admin, ni otra empresa; topes pasados por empresa; `dedupe_key` con la fila `editado`), «una edición sin cambios no encola…», «programar a 10 días avisa al guardar…» y «un fallo del emisor…» (la edición persiste). `plantilla-cambio-plan` (asunto, líneas, fecha, topes). `procesar-jobs-plan-cambio` («plan_aviso_correo…») |
+| R42 | `planes-cambio-correos`: «programar a 10 días… a 3 días, solo el de 1 día» (`run_after`, `dedupe_key`, sin empresa) y «el recordatorio va a las empresas que tienen el plan AL SALIR…» (empresa asignada después, topes de ese momento, doble ejecución → un correo por maestro). `plantilla-cambio-plan` («recordatorios») |
+| R39 (recordatorios) | `planes-cambio-correos` «R39 (mutación 9)…» (reemplazado y cancelado no reparten; repartido y cancelado después no envía) |
+| R45 | `planes-cambio-correos`: «cancelar a mano…», «archivar con un cambio pendiente…» y «reemplazar no envía correo de cancelación…» (un correo por maestro, con la línea) y «un fallo del emisor…» (la cancelación persiste). `plantilla-cambio-plan` («cancelado», «el reemplazo lleva la línea…») |
+| R44 | `procesar-jobs-plan-cambio` «R44: los dos de correo son de núcleo»; `modulos-reparto` (guardia) |
+
+### Mutación 9 (§16.7: «el recordatorio no comprueba que siga pendiente»)
+- **9a** — `repartirRecordatorio` sin `pendiente.id !== cambio.cambioId` (solo mira si el plan tiene algún pendiente):
+  - rojo en «R39 (mutación 9)…»: `expected [ { …(13) } ] to deeply equal []`, «Tests 1 failed | 8 passed (9)»;
+  - revertida.
+- **9b** — el envío no comprueba (`destinatariosDelAviso(org, null)` también en los recordatorios):
+  - rojo en «R39 (mutación 9)…»: `expected [ { …(5) }, { …(5) } ] to deeply equal []`, «Tests 1 failed | 8 passed (9)»;
+  - revertida.
+- Tras revertir las dos: 0 marcas `MUTACION` en los dos archivos y `planes-cambio-correos` en «Tests 9 passed (9)».
+
+### Salida real
+- Una corrida con 28 archivos: «Test Files 28 passed (28) · Tests 476 passed (476)».
+  - De SL-24, contra la base SL-24: `planes-cambio-correos`, `planes-cambio-programado`, `planes-historial`, `planes-edicion-en-uso` y `planes-asignacion`.
+  - Unit: `planes-service`, `procesar-jobs-plan-cambio`, `plantilla-cambio-plan`, `procesar-jobs-registro`, `jobs-registro` y todo `tests/unit/services/email/`.
+  - Integración: `procesar-jobs-geocodificacion` y `procesar-jobs-webhook-estado`.
+  - Guardias: `jobs-handler-por-tipo` (**verde**: ya no le falta ningún tipo), `jobs-recurrentes-con-siembra`, `modulos-reparto`, `plataforma-solo-en-lista`, `sql-a-mano-por-empresa`, `marca-estaticos`, `marca-texto-amarillo`, `docs-marca-heredada` y `lib-no-importa-app`.
+- Otras guardias: `credenciales-sin-consola-cruda`, `organizacion-en-modelos`, `superadmin-fuera-de-empresa`, `rls-por-empresa`, `historial-accion-escrituras-cubiertas`, `quitador-comentarios` y `guard-dependencias-aprobadas`. Resultado: «Test Files 7 passed (7) · Tests 183 passed (183)».
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`:
+  - primera corrida: 1 error en el test nuevo (`a.payload.tipo` es `unknown`), corregido;
+  - segunda: exit 0, sin salida.
+- `eslint` sobre los 14 archivos tocados o nuevos: exit 0, sin salida.
+- `planes-cambio-correos`, otra vez tras la corrección del tipo: «Tests 9 passed (9)».
+- MCP del grafo: no lo usé; exploré con Grep/Read.
+
+Veredicto T12: hecho y en verde, con la guardia `jobs-handler-por-tipo` ya verde. Quedan pendientes de aprobación humana los textos propuestos y el formateador de fecha.

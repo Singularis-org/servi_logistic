@@ -60,9 +60,12 @@ import {
   recurrenciaWhatsappEnvioMantenimiento,
 } from "@/lib/services/jobs/whatsapp-envio-mantenimiento-handler";
 import {
+  buildDepsAvisoCorreo,
   buildPlanesRepositoryDeJobs,
   crearPlanAplicarCambioHandler,
+  crearPlanAvisoCorreoHandler,
   crearPlanCambiosVencidosHandler,
+  crearPlanRecordatorioCambioHandler,
   recurrenciaPlanCambiosVencidos,
 } from "@/lib/planes/jobs-cambio-plan";
 
@@ -248,11 +251,15 @@ export function buildHandlers(
   // SL-24 (design §16.3, R38): el cambio programado de un plan. `plan_aplicar_cambio` es PUNTUAL:
   // lo encola la programación, en su transacción, para `vigente_desde`. `plan_cambios_vencidos` es
   // el barrido RECURRENTE (cada hora) de lo que siga pendiente y ya rija. Un solo repositorio para
-  // los dos; `getPrismaClient()` es perezoso. Los dos de correo (`plan_recordatorio_cambio`,
-  // `plan_aviso_correo`) los añade T12 aquí, desde `lib/planes/jobs-cambio-plan.ts`.
+  // los cuatro; `getPrismaClient()` es perezoso. Los dos de correo (T12, §16.4) son PUNTUALES:
+  // `plan_recordatorio_cambio` (sin empresa) reparte un `plan_aviso_correo` por empresa, y este corre
+  // en la empresa destino. El emisor real se construye perezosamente, al enviar: un SMTP mal
+  // configurado falla ESE trabajo, no el drenado de los demás tipos.
   const planes = buildPlanesRepositoryDeJobs();
   handlers.set("plan_aplicar_cambio", crearPlanAplicarCambioHandler(planes, now));
   handlers.set("plan_cambios_vencidos", crearPlanCambiosVencidosHandler(planes, now));
+  handlers.set("plan_recordatorio_cambio", crearPlanRecordatorioCambioHandler(planes));
+  handlers.set("plan_aviso_correo", crearPlanAvisoCorreoHandler(planes, buildDepsAvisoCorreo));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,

@@ -144,7 +144,7 @@
     - `planes-cambio-programado`, `procesar-jobs-plan-cambio` y `planes-historial` (ampliado) en
       verde;
     - las mutaciones 8 y 10 medidas.
-- [ ] **T12. Correos del cambio** [P con T11 en la plantilla] (nueva, 2026-10-28; depende de T11
+- [x] **T12. Correos del cambio** [P con T11 en la plantilla] (nueva, 2026-10-28; depende de T11
   para los recordatorios).
   - La plantilla `cambio-plan.ts` sobre `plantilla-marca.ts`, con los tipos `guardado` (con la
     línea `reemplazaA`), `recordatorio_7`, `recordatorio_1` y `cancelado` (R45). Los textos de
