@@ -8,8 +8,11 @@
  *   node scripts/trello.mjs tomar <key>              F1.0: relee, se asigna si esta libre, relee
  *   node scripts/trello.mjs soltar <key>             quita tu member de la tarjeta
  *   node scripts/trello.mjs mover <key> <estado>     mueve a la lista de ese estado del arnes
+ *   node scripts/trello.mjs mover <key> in_progress --aprobado-por-escrito "<cita>"
+ *                                 F1.4 escrita: comenta la marca con la cita y luego mueve
  *   node scripts/trello.mjs comentar <key> <texto>   comenta en la tarjeta
- *   node scripts/trello.mjs aprobacion <key>         quien movio la tarjeta a in_progress y cuando
+ *   node scripts/trello.mjs aprobacion <key>         quien movio la tarjeta a in_progress y cuando,
+ *                                                    y la cita si la aprobacion fue escrita
  *   node scripts/trello.mjs editar <key> [--labels-mas "a|b"] [--labels-menos "a|b"]
  *                                 [--nombre <titulo>] [--desc <texto>]
  *   node scripts/trello.mjs crear --nombre <titulo> --labels "a|b" [--key QC-n] [--depende QC-1,QC-2]
@@ -35,10 +38,14 @@
  * subcomandos contra un `fetch` simulado en `tests/guards/guard-trello-red.test.ts`
  * (`crearCliente` recibe `fetch`, `esperar`, `env` y `log`).
  *
- * Salida: 0 bien; 1 error; 2 uso incorrecto; 3 la tarjeta tiene otro member (no se toma);
- *         4 `mover <key> in_progress` con la tarjeta en la lista de `spec_ready`: esa es la
- *         aprobacion F1.4 y la hace el humano en Trello (el token es suyo: si la moviera el
- *         script, `aprobacion` la daria por aprobada).
+ * Salida: 0 bien; 1 error; 2 uso incorrecto (incluye `--aprobado-por-escrito` fuera del paso
+ *         spec_ready -> in_progress: asi no queda una marca falsa en la tarjeta);
+ *         3 la tarjeta tiene otro member (no se toma);
+ *         4 `mover <key> in_progress` con la tarjeta en la lista de `spec_ready` sin
+ *         `--aprobado-por-escrito "<cita>"` (o con la cita vacia): esa es la aprobacion F1.4 y
+ *         la hace el humano en Trello (el token es suyo: si la moviera el script sin marca,
+ *         `aprobacion` la daria por aprobada). Con la cita, el leader la registra: primero el
+ *         comentario-marca (`MARCA_APROBACION_ESCRITA`) y despues el movimiento.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -51,6 +58,9 @@ export const API = 'https://api.trello.com/1';
 export const CHECKLIST_DEPENDE = 'Depende de';
 export const SEPARADOR_LABELS = '|';
 export const INTENTOS = 5;
+/** Inicio del comentario que deja `mover ... --aprobado-por-escrito`; `aprobacion` lo busca. */
+export const MARCA_APROBACION_ESCRITA = 'APROBACION-ESCRITA F1.4';
+export const FLAG_APROBADO_POR_ESCRITO = '--aprobado-por-escrito';
 const ESPERA_MAXIMA_MS = 60_000;
 const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 const ESTADOS = ['pending', 'spec_ready', 'in_progress', 'done', 'cancelled'];
@@ -243,6 +253,20 @@ export function coincide(card, termino) {
 }
 
 /**
+ * Texto del comentario-marca de una aprobacion F1.4 escrita. El mismo texto lo publica el leader
+ * en Jira con el MCP de atlassian (`docs/jira.md > Los estados del board`).
+ */
+export function textoAprobacionEscrita(cita, fechaIso) {
+  return `${MARCA_APROBACION_ESCRITA} · ${fechaIso} · «${cita}» · la dio el humano en el chat; la registra el leader con su token.`;
+}
+
+/** `{ fecha, cita }` de un comentario-marca, o `null` si el texto no lo es. */
+export function leerAprobacionEscrita(texto) {
+  const m = /^APROBACION-ESCRITA F1\.4 · (\S+) · «([\s\S]*)» · la dio el humano en el chat/.exec(String(texto ?? ''));
+  return m ? { fecha: m[1], cita: m[2] } : null;
+}
+
+/**
  * Milisegundos antes de reintentar un 429. `Retry-After` manda (segundos o fecha HTTP); sin
  * ella, 1 s, 2 s, 4 s... Nunca mas de `ESPERA_MAXIMA_MS`: un valor absurdo no cuelga el comando.
  */
@@ -289,6 +313,7 @@ export function crearCliente({
   env = process.env,
   log = console.log,
   intentos = INTENTOS,
+  ahora = () => new Date(),
 } = {}) {
   function credenciales() {
     const key = env.TRELLO_KEY;
@@ -471,25 +496,44 @@ export function crearCliente({
     log(`${key}: ya no eres member. Devuelve la tarjeta a su estado anterior con "mover" si hace falta.`);
   }
 
-  async function mover(key, estado) {
+  /**
+   * `escrita` es la cita literal del humano (`--aprobado-por-escrito`), o `undefined` sin flag.
+   * Con flag solo vale el paso spec_ready -> in_progress: fuera de el sale con 2 sin escribir.
+   */
+  async function mover(key, estado, { escrita } = {}) {
     if (!ESTADOS.includes(estado)) throw new Error(`"${estado}" no es un estado del arnes (${ESTADOS.join(', ')})`);
+    const conFlag = escrita !== undefined;
+    if (conFlag && estado !== 'in_progress') {
+      throw new SalidaError(2, `${FLAG_APROBADO_POR_ESCRITO} solo vale para mover de spec_ready a in_progress (F1.4)`);
+    }
     const t = leerConfig();
     const listas = await listasDelBoard(t);
     const lista = listaParaEstado(estado, t.estados, listas.filter((l) => !l.closed));
     if (!lista) throw new Error(`ninguna lista abierta del board traduce a ${estado} en tracker.estados`);
     const card = await tarjetaPorKey(t, key);
     // De spec_ready a in_progress es la aprobacion F1.4 (`aprobacion` la lee del historial). El
-    // token es del humano: si este script la moviera, Trello la apuntaria a su nombre y la
-    // aprobacion quedaria falsificada. Desde otro estado (features sin sdd) si se mueve.
+    // token es del humano: si este script la moviera sin mas, Trello la apuntaria a su nombre y
+    // la aprobacion quedaria falsificada. Con la cita, la marca visible va ANTES del movimiento:
+    // si el PUT falla queda la marca sin movimiento (inofensiva), nunca un movimiento sin marca.
+    // Desde otro estado (features sin sdd) si se mueve.
     const actual = t.estados[listas.find((l) => l.id === card.idList)?.name];
-    if (estado === 'in_progress' && actual === 'spec_ready') {
-      throw new SalidaError(
-        4,
-        `${key} esta en spec_ready: no se mueve a in_progress, la aprobacion F1.4 la hace el humano moviendo la tarjeta en Trello. Confirmala con "aprobacion ${key}".`,
-      );
+    const esAprobacion = estado === 'in_progress' && actual === 'spec_ready';
+    if (conFlag && !esAprobacion) {
+      throw new SalidaError(2, `${key} no esta en spec_ready: ${FLAG_APROBADO_POR_ESCRITO} solo vale para la aprobacion F1.4`);
+    }
+    if (esAprobacion) {
+      const cita = String(escrita ?? '').trim();
+      if (!cita) {
+        throw new SalidaError(
+          4,
+          `${key} esta en spec_ready: no se mueve a in_progress, la aprobacion F1.4 la hace el humano moviendo la tarjeta en Trello. ` +
+          `Si la dio por escrito en el chat, usa ${FLAG_APROBADO_POR_ESCRITO} "<su frase literal>". Confirmala con "aprobacion ${key}".`,
+        );
+      }
+      await pedir('POST', `/cards/${card.id}/actions/comments`, { cuerpo: { text: textoAprobacionEscrita(cita, ahora().toISOString()) } });
     }
     await pedir('PUT', `/cards/${card.id}`, { cuerpo: { idList: lista.id } });
-    log(`${key} -> ${lista.name} (${estado})`);
+    log(`${key} -> ${lista.name} (${estado})${esAprobacion ? ', aprobacion escrita registrada en la tarjeta' : ''}`);
   }
 
   async function comentar(key, texto) {
@@ -504,13 +548,34 @@ export function crearCliente({
     const t = leerConfig();
     const nombres = new Map((await listasDelBoard(t)).map((l) => [l.id, l.name]));
     const card = await tarjetaPorKey(t, key);
-    const acciones = await pedir('GET', `/cards/${card.id}/actions`, { query: { filter: 'updateCard:idList' } });
+    // Movimientos y comentarios en una llamada (el filtro de Trello acepta varios con coma).
+    const acciones = await pedir('GET', `/cards/${card.id}/actions`, {
+      query: { filter: 'updateCard:idList,commentCard', limit: 1000 },
+    });
     exigir(Array.isArray(acciones), 'las acciones no son un array');
     const estadoDe = (lista) => t.estados[lista?.name ?? nombres.get(lista?.id)];
+    const fecha = (a) => String(a?.date ?? '');
+    const recientePrimero = (a, b) => fecha(b).localeCompare(fecha(a));
     const ap = acciones
       .filter((a) => estadoDe(a?.data?.listBefore) === 'spec_ready' && estadoDe(a?.data?.listAfter) === 'in_progress')
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      .sort(recientePrimero)[0];
     if (!ap) throw new SalidaError(1, `${key}: sin aprobacion por tarjeta (nadie la movio del estado de spec_ready al de in_progress)`);
+    // La marca cuenta solo si se dejo en la ultima estancia en spec_ready que acaba en `ap`: una
+    // marca de una vuelta anterior (spec devuelto a F1.2) no aprueba el spec nuevo.
+    const entrada = acciones
+      .filter((a) => estadoDe(a?.data?.listAfter) === 'spec_ready' && fecha(a) <= fecha(ap))
+      .sort(recientePrimero)[0];
+    const desde = entrada ? fecha(entrada) : '';
+    const marca = acciones
+      .filter((a) => a?.type === 'commentCard' && fecha(a) > desde && fecha(a) <= fecha(ap))
+      .map((a) => ({ a, m: leerAprobacionEscrita(a?.data?.text) }))
+      .filter((x) => x.m)
+      .sort((x, y) => recientePrimero(x.a, y.a))[0];
+    if (marca) {
+      const quien = marca.a.memberCreator?.fullName ?? marca.a.idMemberCreator;
+      log(`${key}: aprobada por escrito: «${marca.m.cita}» (registrada por ${quien} el ${marca.a.date})`);
+      return;
+    }
     const quien = ap.memberCreator?.fullName ?? ap.idMemberCreator;
     log(`${key}: aprobada por ${quien} (${ap.idMemberCreator}) el ${ap.date}`);
   }
@@ -621,7 +686,12 @@ export async function ejecutar([sub, ...args], cliente) {
     case 'importar': return cliente.importar();
     case 'tomar': return cliente.tomar(args[0]);
     case 'soltar': return cliente.soltar(args[0]);
-    case 'mover': return cliente.mover(args[0], args[1]);
+    case 'mover': {
+      const extra = args.slice(2);
+      if (extra.length > 0 && extra[0] !== FLAG_APROBADO_POR_ESCRITO) throw new SalidaError(2, `mover solo acepta ${FLAG_APROBADO_POR_ESCRITO} "<cita>". ${USO}`);
+      // Flag sin valor = cita vacia: `mover` sale con 4 sin publicar nada.
+      return cliente.mover(args[0], args[1], extra.length > 0 ? { escrita: extra.slice(1).join(' ') } : {});
+    }
     case 'comentar': return cliente.comentar(args[0], args.slice(1).join(' '));
     case 'aprobacion': return cliente.aprobacion(args[0]);
     case 'editar': return cliente.editar(args[0], leerOpciones(args.slice(1)));
