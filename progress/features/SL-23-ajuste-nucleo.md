@@ -5,10 +5,43 @@ Decisiones del humano del 2026-10-27 (Recolección + Satélite; luego API; luego
 La ampliación de Wallet va sin commit: lo hace el leader.
 Quedan 3 apagables: analitica, monitoreo, ranking.
 
+## Corrección: migración de Wallet aparte (2026-10-28)
+El PR #27 se mergeó a dev con `20261027120000_modulos_nucleo` en su versión de 7085171 (4 apagables).
+El commit cc985d5 la había editado para quitar `wallet`, y eso rompe el checksum de Prisma en todo
+entorno que ya la aplicó. Se corrige así:
+- **Migración ya mergeada:** `db/migrations/20261027120000_modulos_nucleo/{migration.sql,down.sql}` vuelve a
+  la versión de origin/dev (`git checkout origin/dev -- …`). `git diff origin/dev` sobre la carpeta queda
+  vacío: idéntica byte a byte.
+- **Migración nueva:** `db/migrations/20261028120000_modulo_wallet_nucleo/{migration.sql,down.sql}`.
+  - Ida: borra las filas `wallet` y recrea `modulo_apagable` con 3 claves (rename, create, ALTER COLUMN
+    … USING ::text, drop). La política, los grants, el trigger y la FK no dependen del tipo; el índice
+    único lo reconstruye el ALTER. No toca historial ni `jobs.last_error`.
+  - Down: recrea el enum con las 4 claves de 20261027120000 y enciende `wallet` para todas las
+    empresas.
+- **`db/schema.prisma`:** el enum ya tenía 3 claves (analitica, monitoreo, ranking). Su comentario,
+  `catalogo.ts` y `docs/architecture.md` nombran ahora las dos migraciones.
+- **Tests de ida y vuelta:**
+  - `migracion-sl23-nucleo-ida-y-vuelta.test.ts` vuelve a la versión de origin/dev: prueba
+    20261027120000 tal como está mergeada (8 → 4 claves).
+  - Nuevo `migracion-sl23-wallet-ida-y-vuelta.test.ts` para 20261028120000, en base propia
+    `sl23w_iv_*`. Aplica todo hasta 20261027120000 y prueba: 4 → 3 claves; la tabla conserva RLS,
+    política, grants, trigger, índices y restricciones; `wallet` se rechaza con 22P02; el historial y el job
+    que la nombran no se tocan; el down devuelve 4 claves con wallet encendido; la reaplicación es idéntica.
+  - Ninguna guardia valida nombres concretos de migraciones. Las que leen la carpeta lo hacen de forma
+    genérica y pasan.
+- **Verificación:**
+  - Typecheck (8 GB): **exit 0**. eslint en los archivos tocados: **0 problemas**.
+  - vitest con Postgres real (`tests/guards`, `tests/unit/guards`, `tests/unit/modulos`, las tres
+    pruebas de ida y vuelta de SL-23, organizacion-modulo, modulo-apagado-action y
+    para-cada-empresa-modulo): `3306 passed | 7 failed`.
+    - Las tres pruebas de ida y vuelta (sl23, sl23-nucleo, sl23-wallet) están todas en verde.
+    - Rojos: `dependencias-declaradas-presentes` (4, baseline), y 3 guardias de barrido de archivos que
+      agotaron sus 20 s bajo carga (`tarifa-status-retirado`, `catalogo-postgres-acota-esquema` y
+      `otp-debug-solo-en-pruebas`). Sueltas pasan 26/26.
+
 ## Ampliación Wallet (2026-10-28)
-- **Migración `20261027120000_modulos_nucleo`:** la ida borra también las filas `wallet` y deja el enum
-  en 3 claves. El down recrea las 8 y enciende las 5 del núcleo (recoleccion, bodegas_satelite,
-  wallet, whatsapp, api_integraciones) para todas las empresas. `schema.prisma` queda con el enum de 3.
+- **Migración:** SUSTITUIDO por la corrección de arriba. Esta ampliación editaba `20261027120000_modulos_nucleo`,
+  y ahora va en `20261028120000_modulo_wallet_nucleo`. `schema.prisma` queda con el enum de 3.
 - **Catálogo:** «Wallet» entra en NUCLEO (13 nombres) con la fecha 2026-10-28.
 - **Reparto:** las 8 rutas de wallet y mi-wallet, las 18 actions y el cron `generar-gastos-fijos` pasan a
   núcleo. `premio-ranking-devengo` deja de ser pieza compartida y queda en `"ranking"`.

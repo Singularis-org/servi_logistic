@@ -37,7 +37,8 @@ export const ORDEN_MODULOS = [
  * Lo que nunca se apaga, solo para mostrarlo («Núcleo (siempre activo)»). No es una clave de base:
  * no hay fila que encender ni petición que lo acepte (R2). «Cierres» e «Incidentes y novedades»
  * entraron por decisión del humano del 2026-10-26; «Recolección», «Bodegas satélite», «API e
- * integraciones» y «WhatsApp» (antes apagables) por las del 2026-10-27, y «Wallet» por la del 2026-10-28 (migración 20261027120000_modulos_nucleo).
+ * integraciones» y «WhatsApp» (antes apagables) por las del 2026-10-27, y «Wallet» por la del 2026-10-28 (migraciones 20261027120000_modulos_nucleo y
+ * 20261028120000_modulo_wallet_nucleo).
  */
 export const NUCLEO = [
   "Inicio",
