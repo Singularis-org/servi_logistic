@@ -69,7 +69,7 @@
   - **Hecho:** test nuevo verde y `tests/components/OrdenesListadoEtiquetasChain.test.tsx` verde sin
     tocarlo.
 
-- [ ] **T7 — Página: la prop derivada de la regla** (R14) · depende de T1, T6
+- [x] **T7 — Página: la prop derivada de la regla** (R14) · depende de T1, T6
   - `app/(app)/ordenes/page.tsx`: `puedeImprimirEtiquetasPropias` derivado de
     `resolverAlcanceEtiquetasOrden` (sin lista de roles), con comentario del porqué; se pasa a
     `OrdenesListado`.

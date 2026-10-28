@@ -95,3 +95,64 @@ los archivos tocados no añaden ninguno).
 
 **Veredicto:** T1–T4 hechas; frontera de tienda en el `where`, probada contra Postgres, con las 4
 contrapruebas en rojo.
+
+## Tanda frontend (T5–T7) — frontend_dev, 2026-10-28
+
+P1 y P2 resueltas por el humano en su opción por defecto: R5 tal cual (la casilla de una orden de
+recogida sin guía se bloquea con «Sin guía todavía» aunque sea eliminable) y R9 dentro.
+
+### Archivos
+
+| Archivo | Cambio | Task |
+|---|---|---|
+| `app/(app)/ordenes/estados-etiquetas-tienda.ts` | nuevo: `ESTADOS_ETIQUETAS_TIENDA` (los 3 de recogida) y `MOTIVO_SIN_GUIA` | T5 |
+| `app/(app)/ordenes/_components/OrdenesListado.tsx` | prop `puedeImprimirEtiquetasPropias` (default `false`); `haySeleccion` con la tercera condición; `elegibleEtiquetasTienda`; acción «Imprimir etiquetas» en `accionesPara` antes de «Eliminar», con `(N)`; `haySeleccionables`; `bloqueoSeleccion` con `MOTIVO_SIN_GUIA` antes de la regla de «Eliminar»; `EtiquetasGuiaModal` fuera del bloque `accionesLote`, montado una sola vez con `haySeleccion` (un solo `<EtiquetasGuiaModal` en el archivo). `accionesDe` sin cambios | T6 |
+| `tests/components/OrdenesListado.etiquetas-tienda.test.tsx` | nuevo (jsdom): R1, R2 (×2), R3 parcial, R4, R5, R6 (×2), R15 | T6 |
+| `app/(app)/ordenes/page.tsx` | `puedeImprimirEtiquetasPropias` derivado de `resolverAlcanceEtiquetasOrden(actor).alcance === "propias"`, sin lista de roles; se pasa a `OrdenesListado` | T7 |
+| `tests/components/OrdenesPage.test.tsx` | `vi.mock` de `alcance-etiquetas-orden` que delega en la función real; 3 casos R14 nuevos. Ninguna aserción previa tocada | T7 |
+
+`tests/components/OrdenesListadoEtiquetasChain.test.tsx`: sin tocar, verde (4/4).
+
+### Mapa R → test (lo de esta tanda)
+
+| R | Test |
+|---|---|
+| R1 | `OrdenesListado.etiquetas-tienda.test.tsx` › «R1 — la tienda puede marcar sus órdenes con guía en los 3 estados de recogida» |
+| R2 | idem › «R2 — con toda la selección elegible, la barra ofrece «Imprimir etiquetas» sin conteo»; «R2 — si no toda la selección es elegible, el botón dice cuántas: «Imprimir etiquetas (1)»» |
+| R3 | idem › «R3 (parcial, componente) — pulsar «Imprimir etiquetas (2)» abre la vista previa con SOLO esas órdenes» (el E2E de T8 sigue pendiente) |
+| R4 | idem › «R4 — la barra de la tienda no trae ninguna otra acción de flujo; «Eliminar» sí, si la orden es eliminable» |
+| R5 | idem › «R5 — una orden de recogida SIN guía no se marca y el «!» dice «Sin guía todavía», aunque sea eliminable» |
+| R6 | idem › «R6 — si ninguna marcada está en recogida con guía, «Imprimir etiquetas» no aparece»; «R6/R5 — una página solo con órdenes de recogida sin guía no monta casillas …» |
+| R14 (pantalla) | `OrdenesPage.test.tsx` › «R14 — adminTienda: la prop llega en `true` …»; «R14 — maestro y admin: la prop llega en `false` …»; «R14 — si la regla dijera `todas` para la tienda, la prop llega en `false` …» |
+| R15 | `OrdenesListado.etiquetas-tienda.test.tsx` › «R15 — el maestro (con `accionesLote`) sigue imprimiendo en `en_bodega_central` y el modal abre»; `OrdenesListadoEtiquetasChain.test.tsx` (sin tocar, 4/4) |
+
+### Contrapruebas (aplicar → ROJO → revertir)
+
+1. **Listado:** quitar `row.numGuia !== null` de `elegibleEtiquetasTienda` → ROJO:
+   `× R6/R5 — una página solo con órdenes de recogida sin guía no monta casillas: ninguna lleva a «Imprimir etiquetas»`
+   `AssertionError: expected <span data-disabled …(9)></span> to be null` (`OrdenesListado.etiquetas-tienda.test.tsx:289`).
+   `Tests 1 failed | 8 passed (9)`. R1 y R5 siguen verdes y es lo esperado: el bloqueo
+   «Sin guía todavía» se evalúa ANTES que la elegibilidad, así que la fila sin guía nunca llega a
+   marcarse; lo único que cambia la mutación es que la columna de casillas se monta sobre una página
+   en la que ninguna fila lleva a un botón. Revertido.
+2. **Página (regla):** `resolverAlcanceEtiquetasOrden` devolviendo `todas` para `adminTienda`
+   (`if (actor.rol === "apiKey")`) → ROJO:
+   `× R14 — adminTienda: la prop llega en `true` (marca su orden de recogida con guía e imprime)`
+   `TestingLibraryElementError: Unable to find role="checkbox" and name "Seleccionar orden REM-5001"` (`OrdenesPage.test.tsx:705`).
+   `Tests 1 failed | 17 passed (18)`. Revertido.
+
+`git diff` sin mutaciones al terminar.
+
+### Salida de los comandos
+
+`pnpm exec vitest run --reporter=verbose` sobre los 3 archivos de componente:
+`Test Files 3 passed (3)`, `Tests 31 passed (31)` (9 del test nuevo, 4 de la cadena, 18 de la página).
+
+`pnpm exec vitest related --run` sobre los 5 archivos cambiados de la tanda:
+`Test Files 25 passed (25)`, `Tests 299 passed (299)`, exit 0.
+
+`pnpm run typecheck` → exit 0. `pnpm run lint` → exit 0 (0 errors, 230 warnings preexistentes;
+`eslint` sobre los archivos tocados: «No issues found»).
+
+**Veredicto:** T5–T7 hechas; la tienda ve «Imprimir etiquetas» solo en sus órdenes de recogida con
+guía, la prop sale de la regla única, y el modal se monta una sola vez para todos los roles.
