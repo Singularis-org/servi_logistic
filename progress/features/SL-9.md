@@ -2,15 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SL-9 | marca-pwa-capturas-iconos | frontend | low | feature/SL-9-marca-pwa-capturas-iconos | Camilo | in_progress |
+| SL-9 | marca-pwa-capturas-iconos | frontend | low | feature/SL-9-marca-pwa-capturas-iconos | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.2 (review) desde el 2026-10-28; F2.1 hecha (T1–T7). Spec `specs/SL-9-marca-pwa-capturas-iconos/` (R1–R17, commit `eab96b1`)
-aprobado por escrito por Camilo («aprobado», 2026-10-28). La tarjeta sigue en «En revisión»:
-`trello.mjs mover` no mueve de spec_ready a in_progress; la mueve el humano.
-F2.0 (`archivos-en-vuelo.mjs --candidata SL-9`, 2026-10-28): sin conflicto con 4 features en vuelo.
+Cerrada el 2026-10-28 (F2.6). Ver «Cierre».
 
 ## Evaluación
 - zone `frontend`: solo toca `public/` (capturas, iconos) y su uso en UI; sin DB ni API.
@@ -45,3 +42,17 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- **Resumen:**
+  - Las tres capturas de la PWA están regeneradas con la marca nueva por `scripts/capturas-pwa.mjs`, que se puede volver a correr.
+  - Los cuatro `icono_*.png` de `KpisMensajero` se sustituyeron por iconos de `lucide-react` sobre `bg-accent`, y se borraron.
+  - El brillo morado de esas tarjetas pasó a `brand-soft`.
+  - La guardia `marca-pwa-capturas-iconos` vigila las capturas y que esos iconos no vuelvan.
+  - Revisión: vuelta 1 rechazada (R8 y R10 sin test) y vuelta 2 aprobada.
+- **PR:** https://github.com/Singularis-org/servi_logistic/pull/31, mergeado en `dev` el 2026-10-28 con merge normal (`05e0bd6`). `gate-completo` en verde en el run 40765387464, tras corregir el rojo de la guardia SL-34 (`0bfcc01`).
+- **Tarjeta:** movida a «Finalizado», con el enlace al PR comentado.
+- **Baseline de rojos:** el run final dio 246 rojos, todos en el baseline de 246. No había nada que podar.
+- **Worktree y grafo:** `wt.sh done` no pudo desmontar el worktree (archivo en uso en Windows). Se borró a mano, con `git worktree prune` y la rama local borrada. El proyecto se borró del grafo.
+- **Deudas que deja:**
+  - Volver a correr las capturas y bajar el umbral tras SL-33 (en curso: SL-33, T8).
+  - D24: el `.env` local apunta al Supabase de origen.
+  - D25: un id de recurso de origen quedó en el historial de `dev`.
