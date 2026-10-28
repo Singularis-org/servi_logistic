@@ -182,6 +182,27 @@ export function fallosDePantalla(o) {
 }
 
 /**
+ * R9. Devuelve `promesa` o, si no se resuelve en `ms`, la rechaza con `Error(motivo)`. Así una
+ * espera dentro de la página que nunca termina corta el script en vez de colgarlo.
+ * @template T
+ * @param {Promise<T>} promesa
+ * @param {number} ms
+ * @param {string} motivo
+ * @returns {Promise<T>}
+ */
+export function conTope(promesa, ms, motivo) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let reloj;
+  const tope = new Promise((_, rechazar) => {
+    reloj = setTimeout(() => rechazar(new Error(motivo)), ms);
+  });
+  return /** @type {Promise<T>} */ (Promise.race([promesa, tope])).finally(() => clearTimeout(reloj));
+}
+
+/** Tope de la espera de fuentes e imágenes de una pantalla. */
+const TOPE_ESPERA_MS = 30000;
+
+/**
  * Ancho y alto de la cabecera IHDR: lo que mide de verdad el PNG escrito (R10).
  * @param {Buffer} png
  */
@@ -228,14 +249,29 @@ async function prepararYObservar(page, url) {
   await page.goto(url, { waitUntil: "networkidle" });
   // Con `pnpm dev` Next pinta su indicador dentro de `nextjs-portal`; no es parte de la app.
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      Array.from(document.images)
-        .filter((img) => !img.complete)
-        .map((img) => new Promise((ok) => img.addEventListener("loadend", ok, { once: true }))),
-    );
-  });
+  // Las `img` con `loading="lazy"` fuera de pantalla no cargan nunca solas: se pasan a `eager`.
+  // Un `<img>` emite `load` o `error`, no `loadend`. El tope evita colgarse si alguna no termina.
+  await conTope(
+    page.evaluate(async () => {
+      await document.fonts.ready;
+      const imagenes = Array.from(document.images);
+      for (const img of imagenes) img.loading = "eager";
+      await Promise.all(
+        imagenes
+          .filter((img) => !img.complete)
+          .map(
+            (img) =>
+              new Promise((ok) => {
+                img.addEventListener("load", ok, { once: true });
+                img.addEventListener("error", ok, { once: true });
+                if (img.complete) ok(undefined);
+              }),
+          ),
+      );
+    }),
+    TOPE_ESPERA_MS,
+    `las fuentes o las imágenes no terminaron de cargar en ${TOPE_ESPERA_MS / 1000} s`,
+  );
   return page.evaluate(() => {
     const visible = (/** @type {Element} */ el) => {
       const r = el.getBoundingClientRect();
@@ -280,7 +316,15 @@ async function capturarEnMemoria(plan, base) {
         reducedMotion: "reduce",
       });
       const page = await contexto.newPage();
-      const observado = await prepararYObservar(page, `${base}${paso.ruta}`);
+      let observado;
+      try {
+        observado = await prepararYObservar(page, `${base}${paso.ruta}`);
+      } catch (err) {
+        // Un tope cumplido es un fallo de esa pantalla: entra en el todo o nada como los demás.
+        resultados.push({ paso, png: null, motivos: [err instanceof Error ? err.message : String(err)] });
+        await contexto.close();
+        continue;
+      }
       const png = await page.screenshot({ type: "png", animations: "disabled", caret: "hide" });
       resultados.push({ paso, png, motivos: fallosDePantalla(observado) });
       await contexto.close();
@@ -313,6 +357,7 @@ async function main() {
   // Paso 7 (R10): se relee lo escrito, no lo que se creía escribir.
   const malMedidas = [];
   for (const { paso, png } of resultados) {
+    if (png === null) continue; // inalcanzable: una pantalla sin captura ya salió arriba con código 1
     const destino = resolve(root, "public", paso.src.replace(/^\//, ""));
     writeFileSync(destino, png);
     const { ancho, alto } = dimensionesPng(readFileSync(destino));

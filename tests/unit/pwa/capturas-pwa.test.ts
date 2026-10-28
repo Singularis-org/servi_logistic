@@ -6,6 +6,7 @@ import {
   planDeCapturas,
   urlBaseLocal,
   fallosDePantalla,
+  conTope,
 } from "@/scripts/capturas-pwa.mjs";
 
 // SL-9 (D1) — partes puras del script de capturas de la PWA. Se importan sin abrir el navegador:
@@ -179,5 +180,22 @@ describe("fallosDePantalla da un motivo por cada problema (R9)", () => {
         indicadorVisible: true,
       }),
     ).toHaveLength(4);
+  });
+});
+
+describe("conTope corta una espera que no termina (R9)", () => {
+  it("rechaza con el motivo si la promesa no se resuelve a tiempo", async () => {
+    const nunca = new Promise<never>(() => {});
+    await expect(conTope(nunca, 20, "las imágenes no terminaron de cargar")).rejects.toThrow(
+      "las imágenes no terminaron de cargar",
+    );
+  });
+
+  it("devuelve el valor si la promesa se resuelve antes del tope", async () => {
+    await expect(conTope(Promise.resolve("listo"), 1000, "tope")).resolves.toBe("listo");
+  });
+
+  it("propaga el error propio de la promesa, no el del tope", async () => {
+    await expect(conTope(Promise.reject(new Error("propio")), 1000, "tope")).rejects.toThrow("propio");
   });
 });
