@@ -92,3 +92,23 @@ Archivos: `app/(app)/mis-asignaciones/_components/KpisMensajero.tsx` (modificado
 - `pnpm exec vitest related --run "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx" tests/components/KpisMensajero.test.tsx`: 3 archivos, 36/36 verdes (`KpisMensajero.test.tsx` 5/5, `textos-estado-455.test.tsx` 15/15 sin tocarlo, `MisAsignacionesPage.test.tsx` 16/16).
 - Muerde: con `before:from-purple-200` repuesto en el componente → R14 rojo (`expected 'group/card …' not to contain 'purple-'`), 4 verdes. Restaurado y verificado por sha1.
 - Typecheck 0; `pnpm run lint` 0 errores (231 avisos ajenos, 0 en estos archivos). LF; `grep -il ordenex` vacío.
+
+## T4 — BLOQUEADA (2026-10-28)
+
+- `pnpm build` sin `.env` (con `.next` borrado) falla en `prisma generate`:
+  `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL.` (log fuera de git:
+  `_trabajo/SL-9-T4-build.log`).
+- `../../.env` no se copió. Su `DATABASE_URL` apunta a un Postgres local, pero
+  `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` apuntan a un proyecto (`scfnwxqbsgkzwsdntdvd`) que no
+  sale en el repo. Sin la memoria del leader no se puede confirmar que no sea de la app de origen
+  (`docs/perfil-agentes.md > Todos los agentes`).
+- Correr `pnpm build` solo con la `DATABASE_URL` local: el clasificador de permisos lo denegó
+  («Production Deploy»; el script `build` encadena `migrate-deploy.ts` y `demo-qa.ts --build`). No
+  se intentó esquivar.
+- Sin cambios: `tests/unit/pwa/manifest.test.ts` y `tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts`
+  → 2 archivos, 32/32 verdes.
+- Para seguir hace falta una de estas dos cosas:
+  (a) que el humano permita `pnpm build` con `DATABASE_URL` local, o
+  (b) que el leader confirme que el proyecto Supabase del `.env` es de servi_logistic.
+  Otra vía que D1 admite, pendiente de decisión: `pnpm dev`.
+- T5 (umbrales y huellas), T6 y T7 dependen de T4 y no se empezaron.
