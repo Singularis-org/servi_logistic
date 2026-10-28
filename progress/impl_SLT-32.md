@@ -284,3 +284,47 @@ queda abierto.
 Veredicto vuelta 2 E2E: login sin empresa bloqueado y con empresa entra (mutacion la pone roja); m1 ROJO
 en E2E por un defecto preexistente de SL-17 en el middleware (500 en vez de /login); humo de dos
 empresas no ejecutable sin `SL17_HUMO_MAESTRO_A/_B`.
+
+## Vuelta 3 (2026-10-28) — merge de `origin/dev` y predicado unificado con SL-18 §9
+
+### Archivos
+- `lib/auth/puede-iniciar-sesion.ts`: `puedeIniciarSesion({ estado, organizacionId, rol })` =
+  `activo && (empresa no vacia || esPlataforma(rol))`. Un solo tipo de entrada para los cuatro
+  llamadores (sirve a `CuentaConHash`, `CuentaPublica` y a la fila Prisma con `rol` aplanado).
+- `lib/services/AuthService.ts`: conflicto resuelto con el flujo multiempresa de SL-18; se borra
+  la funcion provisional y se importa la unica. `verifyChallenge` usa `findCuentaPorId` y registra
+  `usuario_no_encontrado` / `estado_no_activo:<estado>` / `sin_empresa`; responde
+  `invalid_or_expired` (unico fallo del contrato del OTP).
+- `lib/interfaces/repositories/IUserRepository.ts`, `lib/repositories/UserRepository.ts`:
+  `findCuentaPorId(id): CuentaPublica | null` (reusa `CUENTA_SELECT`/`aCuentaPublica`). Se revierte
+  el `organizacionId` en `UsuarioPublico`/`PUBLIC_SELECT` de la vuelta 1.
+- `lib/auth/resolve-actor.ts`, `lib/auth/session-guard.ts`: pasan `{ ...usuario, rol: rol.value }`;
+  el guard pide `rol { value }` en la misma lectura. `resolveActorFromSession` exige ahora tambien
+  `activo` (antes solo el guard).
+- Borrado `e2e/login-sin-empresa.spec.ts` (no sembrable con el CHECK de SL-32; sin proyecto).
+- Tests: `auth-service.test.ts` (conflicto + mocks a `findCuentasPorEmailConHash`/`findCuentaPorId`
+  + plataforma en login y OTP + OTP de cuenta bloqueada), `puede-iniciar-sesion.test.ts` (reescrito),
+  `resolve-actor.test.ts` (estado + plataforma + no activo), `empresa-de-la-peticion.test.ts`
+  (restaurado R14 de SL-17: superadmin con actor `organizacionId: null`; guard con plataforma viva),
+  y `findCuentaPorId: vi.fn()` en 8 dobles completos de `IUserRepository`.
+
+### Alcance → test
+- Login sin empresa (rol de empresa) → `auth-service.test.ts > SLT-32: usuario sin empresa > rechaza con account_unavailable ... (null|vacia)` y `> no emite OTP ...`.
+- Login plataforma permitido → `> SL-32: la cuenta de plataforma (superadmin, sin empresa) SI inicia sesion`.
+- OTP sin empresa / no activa / inexistente / plataforma → `AuthService.verifyChallenge > SLT-32: OTP valido de un usuario sin empresa ...`, `> ... dejo de estar activa ...`, `> ... ya no existe ...`, `> SL-32: OTP valido de la cuenta de plataforma ... concede sesion`; real contra Postgres: `tests/integration/actions/login-varias-empresas.test.ts > R14` (camino OTP con `findCuentaPorId`).
+- Actor → `resolve-actor.test.ts > SLT-32: devuelve null ... (null|vacia)`, `> SL-32: la cuenta de plataforma ... conserva su actor`, `> SLT-32: ... ya no esta activo`; `empresa-de-la-peticion.test.ts > R14`, `> SLT-32: un usuario de rol de empresa sin empresa no obtiene actor`, `> SLT-32: un usuario inactivo no obtiene actor ...`.
+- Guard (m1) → `empresa-de-la-peticion.test.ts > SLT-32: isSessionActive rechaza la sesion de un usuario de empresa sin empresa (null o vacia)` (incluye plataforma viva) y `> isSessionActive ... sigue exigiendo usuario activo`.
+- Predicado → `puede-iniciar-sesion.test.ts` (empresa, null, blanco, superadmin, inactivo/bloqueado/pendiente).
+- Plataforma E2E (sin cambios): `superadmin-arranque`, `superadmin-empresas` (login + `/plataforma/empresas`).
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0 (tras `pnpm install --frozen-lockfile` y `prisma generate`: el worktree tenia node_modules y cliente Prisma de antes del merge).
+- `pnpm exec eslint <18 archivos tocados>`: exit 0.
+- Unit auth + usuario + actions (`tests/unit/auth tests/unit/actions` + 9 archivos de services): 139 files, 1849/1849.
+- Guardias `tests/unit/guards`: 222 passed, 3 failed → `dependencias-declaradas-presentes` (preexistente, en `tests/baseline-rojos.json`; `init.sh` igual a dev), `e2e-sin-saltos` (era `login-sin-empresa.spec.ts` sin proyecto: resuelto al borrarlo), `otp-debug-solo-en-pruebas` (timeout bajo carga, 27 s; verde al repetir).
+- Integracion de auth contra Postgres local (`auth-action`, `login-varias-empresas`, `recuperar-por-empresa`, middlewares, repositorios de usuario): 8 files, 32/32.
+- `vitest related --run` de los 5 archivos de `lib/` tocados: 645 files, 589 pasan / 56 fallan. Separado:
+  - 9 de componentes/unit: flakes bajo carga; repetidos solos, 9 files 171/171.
+  - 47 de integracion: entorno local. Base sin sembrar (31× «faltan la zona central, el tipo `cedula` o una orden», mas «tabla `orden` vacia», «no tiene ninguna zona»), superadmin previo en la base (`aislamiento-usuarios`, `usuario-empresa-o-superadmin`, `usuarios-sin-superadmin`: «la base ya tiene un superadmin»), y esquema/datos de la wallet (`wallet-458-migration` 23503≠23001, `wallet-tienda-cobro`, `aporte-capital`, `wallet-cierres-selector`, `premio-ranking-idempotencia`). Ninguno toca sesion, actor, OTP ni `findCuentaPorId` (grep: 0 referencias); siguen rojos repetidos solos.
+
+Veredicto vuelta 3: predicado unico con plataforma permitida, OTP revalidado; verde en lo que toca el cambio, rojos de integracion restantes son de la base local.

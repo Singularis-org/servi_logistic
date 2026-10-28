@@ -7,8 +7,10 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1: implementación. Ficha **sin SDD** (sin label `sdd`, decisión del humano): no hay `specs/`;
-el alcance es la descripción de la tarjeta, copiada abajo en «Alcance».
+F2.1 cerrada en la vuelta 3: rama al día con `dev` (merge de `origin/dev`, con SL-18 y SL-32) y
+predicado unificado con el contrato de SL-18 design §9. Lista para review/PR. Ficha **sin SDD**
+(sin label `sdd`, decisión del humano): no hay `specs/`; el alcance es la descripción de la
+tarjeta, copiada abajo en «Alcance».
 
 ## Evaluación
 - **zone: backend.** Toca `AuthService`, la action de login y `resolveActorFromSession`; la UI ya
@@ -43,11 +45,26 @@ empresa.
   `puedeIniciarSesion`: una sesión abierta de un usuario sin empresa se trata como caducada (se
   borra la cookie y se manda a `/login`).
 
+- 2026-10-28 — Vuelta 3 (backend_dev, encargo del leader): SLT-32 mergea segundo y engancha.
+  `puedeIniciarSesion({ estado, organizacionId, rol })` = `activo && (empresa || esPlataforma(rol))`
+  (contrato SL-18 design §9). Lo usan `AuthService.login` (cada cuenta candidata; sustituye la
+  función provisional de SL-18), `verifyChallenge`, `resolveActorFromSession` e `isSessionActive`.
+  Efecto nuevo: `resolveActorFromSession` también exige `activo` (antes solo lo hacía el guard).
+- 2026-10-28 — El OTP lee la cuenta con `IUserRepository.findCuentaPorId` (forma `CuentaPublica`:
+  estado, empresa, rol) en vez de ampliar `UsuarioPublico`; se revierte el `organizacionId` que la
+  vuelta 1 había añadido a `UsuarioPublico`/`PUBLIC_SELECT`.
+- 2026-10-28 — Se retira `e2e/login-sin-empresa.spec.ts`: con el CHECK `usuario_empresa_o_superadmin`
+  de SL-32 una cuenta de empresa sin empresa no se puede sembrar (ni existir), y el spec no estaba en
+  ningún proyecto de Playwright (`e2e-sin-saltos` rojo, `spec-sin-proyecto`). El camino permitido
+  (superadmin sin empresa entra y su sesión vive en `/plataforma`) ya lo cubren
+  `superadmin-arranque` y `superadmin-empresas`. El bloqueo queda defensivo y probado en unit.
+
 ## Preguntas abiertas
-- Coordinación con SL-32: cuando SL-32 mergee `lib/auth/plataforma.ts`, el predicado debe
-  aceptar `esPlataforma(rol)`. Quien mergee segundo lo engancha. Avisar a Carlos Restrepo en el PR.
+- (Cerrada 2026-10-28) Coordinación con SL-32: SL-32 ya está en `dev`; el predicado acepta
+  `esPlataforma(rol)`. En el PR basta mencionarlo a Carlos Restrepo como aviso, no hay trabajo suyo.
 
 ## Tandas
+- 2026-10-28 · vuelta 3: merge `origin/dev` + predicado SL-18 §9 + OTP/actor/guard con plataforma · `17ed8b7` · typecheck y eslint verdes; unit auth 1849/1849; integracion auth 32/32; guardias verdes salvo `dependencias-declaradas-presentes` (baseline); `vitest related` con 47 rojos de integracion de base local sin sembrar/superadmin previo (detalle en `progress/impl_SLT-32.md`).
 
 ## Modelos (overrides)
 
