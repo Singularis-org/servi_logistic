@@ -128,7 +128,7 @@ huella.
 **R4, píxeles.** Con `sharp` (`.raw()`, como hace `pwa-manifiesto-atajos` con las esquinas), por cada
 captura se cuenta la fracción de píxeles a distancia euclídea RGB ≤ 24 de cada color:
 - **marca anterior:** naranja `#f26419` y navy `#0b2545` (`specs/SL-8-marca-logo-paleta-fuente/design.md
-  > D5`). La suma tiene que ser **< 0.5 %**;
+  > D5`). La suma tiene que ser **< 1.8 %** (era < 0.5 %; ver «Umbral fijado» abajo);
 - **marca nueva:** negro `#111111` y amarillo `#FFD000`. La suma tiene que ser **≥ 1 %**.
 
 Los umbrales son de partida. T1 mide las fracciones en las capturas viejas y T4 en las nuevas, y las
@@ -136,6 +136,27 @@ dos medidas van a `progress/impl_SL-9.md`. Los umbrales se fijan entre las dos, 
 tiene que dar rojo con las capturas viejas: es su prueba de que muerde. Si las medidas no dejan un
 hueco claro (por ejemplo, por la foto del héroe), T4 se para y se avisa al leader, en vez de aflojar
 el umbral.
+
+**Umbral fijado (decisión del humano, 2026-10-28).** T4 se paró por este punto. Las medidas, con la
+marca anterior sumando naranja y navy:
+
+| Captura | Anterior, viejas (T1) | Anterior, nuevas (T4) | Nueva, viejas (T1) | Nueva, nuevas (T4) |
+|---|---|---|---|---|
+| inicio-narrow | 78.323 % | 1.289 % (todo navy) | 0 % | 18.509 % |
+| ingreso-narrow | 2.283 % | 0.015 % | 0 % | 4.197 % |
+| inicio-wide | 81.199 % | 0.836 % (todo navy) | 0 % | 23.020 % |
+
+Causa del navy que queda: el título de servicios de la landing (`TituloSeccion`,
+`app/_landing/primitivas.tsx:80`) usa `text-asfalto-9`, y `--color-asfalto-9` vale `#0d2444`
+(`app/globals.css:188`), a distancia ≤ 24 del navy `#0b2545`. Los tokens `asfalto-*` son de SL-33.
+
+El humano eligió la opción (b):
+- el umbral de la marca anterior queda en **< 1.8 %**, entre el máximo de las nuevas (1.289 %) y el
+  mínimo de las viejas (2.283 %);
+- el navy de `TituloSeccion` se queda para SL-33;
+- las capturas se regeneran con el script cuando SL-33 cierre.
+
+El umbral de la marca nueva sigue en ≥ 1 %.
 
 **R13, iconos borrados.** Dos casos:
 - los cuatro `public/icons/icono_*.png` no existen;

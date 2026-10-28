@@ -52,7 +52,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
   **Hecho:** test verde, y `tests/components/textos-estado-455.test.tsx` sigue verde sin tocarlo.
   Comprobado que muerde: con `purple-200` repuesto en una copia, el caso R14 sale rojo.
 
-- [ ] **T4 — Regenerar las capturas** (R1–R4, R9, R10; D1, D2). Depende de T2 y T3.
+- [x] **T4 — Regenerar las capturas** (R1–R4, R9, R10; D1, D2). Depende de T2 y T3.
   - Con un solo servidor y `.next` limpio (`docs/verification.md`), `pnpm build && pnpm start`, y
     luego `node scripts/capturas-pwa.mjs`.
   - Mirar las tres capturas, no solo el código de salida: el logo de la marca nueva, la fuente

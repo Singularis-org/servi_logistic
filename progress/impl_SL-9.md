@@ -192,3 +192,11 @@ SHA-256 nuevos:
   salida real del script; si se elige (a) o (c), se regeneran.
 
 Typecheck tras el arreglo (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): `tsc --noEmit` sin errores, exit 0.
+
+### T4 — Decisión del humano sobre D2 (2026-10-28, vía leader): opción (b)
+
+- El umbral de la marca anterior pasa a **< 1.8 %**. El de la marca nueva sigue en ≥ 1 %.
+- El navy de `TituloSeccion` (`asfalto-9` = `#0d2444`) se queda para SL-33.
+- Las capturas se regeneran cuando SL-33 cierre.
+- Queda anotado en `design.md > D2 > Umbral fijado` y en «Decisiones cerradas» de `requirements.md`.
+- T4 queda hecha con las capturas del commit `920b8e7`.

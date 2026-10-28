@@ -109,3 +109,4 @@ Ninguna.
 | 2026-10-28 | ¿Cómo se generan las capturas? | Con un script repetible con Playwright (ya en el proyecto). |
 | 2026-10-28 | Fuente de la marca | `docs/marca.md` y `public/brand/`; nunca recursos de Ordenex (heredada de SL-8, D6). |
 | 2026-10-28 | «Ordenex» en lo que se toca | Desaparece del todo (heredada de SL-8, D16). |
+| 2026-10-28 | Umbral de la marca anterior en las capturas (R4), tras la parada de T4 | Humano, 2026-10-28: < 1.8 % (antes < 0.5 %). El navy que queda viene de `TituloSeccion` (`asfalto-9` = `#0d2444`) y se deja para SL-33; las capturas se regeneran cuando SL-33 cierre. Medidas en `design.md > D2`. |
