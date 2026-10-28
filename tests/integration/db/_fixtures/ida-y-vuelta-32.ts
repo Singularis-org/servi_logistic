@@ -171,3 +171,40 @@ export async function ejecutar(db: Conexion, texto: string, etiqueta: string): P
     }
   }
 }
+
+// ── Construir la base propia: las migraciones anteriores al tope ────────────────────────────────
+
+/**
+ * Apaga el autovacuum en las tablas de `public` que aun lo tienen encendido. Solo esas: las que ya
+ * lo tienen apagado no se vuelven a alterar, y la consulta cuesta lo mismo con 0 que con 40 tablas.
+ * Las reloptions no entran en la foto.
+ */
+async function apagarAutovacuum(db: Conexion): Promise<void> {
+  const { rows } = await db.query(
+    `SELECT format('%I', c.relname) AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r'
+        AND NOT coalesce(c.reloptions @> ARRAY['autovacuum_enabled=false'], false)`,
+  );
+  for (const { t } of rows) await db.query(`ALTER TABLE ${String(t)} SET (autovacuum_enabled = false)`);
+}
+
+/**
+ * Aplica, en orden, cada migracion cuya carpeta va antes de `tope`, como `migrate deploy`. Antes de
+ * CADA una apaga el autovacuum de las tablas que ya existen, y al final el de las que creo la ultima.
+ *
+ * Por que antes de cada una y no al acabar: la base es nueva y cada migracion la llena de filas, asi
+ * que el autovacuum la visita mientras el bucle sigue. Es la carrera medida en SL-17
+ * (`migracion-sl17-ida-y-vuelta.test.ts`): `autovacuum: VACUUM ANALYZE public.distrito` esperaba a la
+ * transaccion de `20261022130000_organizacion_y_rol_app` (su GRANT ya habia tocado la fila de
+ * `distrito` en pg_class, que el ANALYZE reescribe) mientras ella pedia el AccessExclusiveLock de su
+ * CREATE POLICY: 40P01. SL-17 la esquiva porque su tope ES esa migracion; los tests que la aplican
+ * dentro de este bucle y apagaban el autovacuum solo despues caian igual (CI de SL-23, shard 3/3).
+ */
+export async function aplicarMigracionesHasta(db: Conexion, tope: string): Promise<void> {
+  for (const carpeta of carpetasDeMigracion()) {
+    if (carpeta >= tope) break;
+    await apagarAutovacuum(db);
+    await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
+  }
+  await apagarAutovacuum(db);
+}
