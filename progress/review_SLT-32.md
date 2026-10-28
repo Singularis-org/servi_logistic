@@ -109,3 +109,95 @@ la trazabilidad se mide contra las viñetas de «Alcance» de `progress/features
 ## Veredicto
 **RECHAZADO**: un bloqueante (B1, falta la evidencia E2E de los flujos críticos tocados). El código y la
 trazabilidad unitaria están bien y no hay bucle de redirecciones.
+
+## Vuelta 2 (diff completo `origin/dev...b58bd34`, tras el merge `17ed8b7`)
+
+Se revisa el estado tras las vueltas 2 y 3 del implementer: m1 incluido por decisión humana, E2E
+creado y luego retirado, merge de `origin/dev` (SL-18, SL-32) y predicado con plataforma. `origin/dev`
+avanzó a `3bc855f` después del merge, pero solo con archivos del arnés (`scripts/trello.mjs`, docs y
+una guardia de Trello). No toca auth.
+
+### Verificación ejecutada por el reviewer
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `eslint` sobre los `.ts` del diff: exit 0.
+- `vitest run tests/unit/auth` + `auth-service*.test.ts` + los tests de services y guardias del diff:
+  28 archivos, 411/411.
+- Integración contra el Postgres local (`.env` principal): `auth-action`, `login-varias-empresas` (R14,
+  camino OTP con `findCuentaPorId`) y `recuperar-por-empresa` pasan 20/20. `app-layout-superadmin` y
+  los middlewares de `chat-media` y `webhook-whatsapp` también pasan.
+- Guardias (`vitest run guard`): 4403 pasan y 4 fallan, todos en `dependencias-declaradas-presentes`.
+  Ese archivo está en `tests/baseline-rojos.json`, así que no es hallazgo. `e2e-sin-saltos` sale verde.
+- Mutación: `tieneEmpresa || esPlataforma(rol)` → sin la excepción de plataforma. Da 6 rojos, uno por
+  camino: predicado, login, OTP, actor, guard y R14 de SL-17. Revertida; `git status` limpio.
+
+### Checklist
+- [x] Trazabilidad por viñeta de alcance (ficha sin SDD). La mutación pone rojo cada camino:
+  - login sin empresa → `auth-service.test.ts > SLT-32: usuario sin empresa`, con null, cadena vacía y riesgo alto;
+  - OTP → `verifyChallenge > SLT-32: OTP valido…`, con los casos sin empresa, no activa e inexistente;
+  - actor → `resolve-actor.test.ts`, `empresa-de-la-peticion.test.ts`;
+  - guard (m1) → `empresa-de-la-peticion.test.ts > SLT-32: isSessionActive…`;
+  - predicado único → `puede-iniciar-sesion.test.ts`.
+- [x] E2E borrado: nació en esta rama (no existe en `origin/dev`) y no cubría ninguna viñeta que quede
+  sin test.
+  - Su escenario ya no se puede sembrar: el CHECK `usuario_empresa_o_superadmin` (migración
+    `20261023100200`) exige `organizacion_id IS NULL` ⇔ rol superadmin. Un usuario de empresa sin
+    empresa no puede existir en la base, así que el bloqueo es defensivo.
+  - El caso (b), un usuario con empresa que entra, lo siguen cubriendo `auth.spec.ts` (test 2) y la
+    integración `auth-action`.
+- [x] La plataforma no pierde la sesión en ningún camino. Hay un test con superadmin en cada uno:
+  - login: `SL-32: … SI inicia sesion`;
+  - OTP: `SL-32: OTP valido de la cuenta de plataforma…`;
+  - actor: `resolve-actor > SL-32…` y `R14: el actor superadmin lleva organizacionId null`, restaurado;
+  - guard: el caso `plataforma` dentro del test de `isSessionActive`.
+- [x] Exigir `activo` en `resolveActorFromSession` no rompe nada:
+  - solo hay dos sitios que crean sesión (`AuthService.login` y `verifyChallenge`), y los dos exigen `activo`;
+  - toda ruta que resuelve el actor pasa antes por el middleware, que ya exigía `activo`;
+  - las rutas fuera del guard (`/api/cron`, `/api/ordenes/api-key`, `/api/webhooks` y las públicas) no
+    llaman a `resolveActorFromSession`: `postulacion-recurso` lo evita a propósito y
+    `etiquetas-guia` se usa desde `/paquete`, que sí pasa por el guard;
+  - el cambio solo cierra la ventana entre la desactivación y el siguiente request.
+- [x] El OTP no filtra información. El fallo nuevo solo se alcanza con el código correcto, y responde
+  igual que el código inválido o el desafío vencido (`invalid_or_expired`). La causa (`sin_empresa`,
+  `estado_no_activo:<e>`, `usuario_no_encontrado`) solo va a `login_attempt`. No confía el dispositivo
+  ni crea sesión.
+- [x] El merge no perdió nada de dev en `AuthService.ts` ni en `auth-service.test.ts`:
+  - los nombres de todos los `it`/`describe` de dev siguen presentes (comparado con `origin/dev`);
+  - el diff de `AuthService.ts` respecto a dev solo cambia la función provisional por el import, un
+    comentario y el bloque de `verifyChallenge`;
+  - el flujo multiempresa de SL-18 queda intacto: `elegibles`, `riskReason` y `NOMBRE_EMPRESA_PLATAFORMA`.
+- [x] m4 de la vuelta 1 resuelto: `UsuarioPublico` y `PUBLIC_SELECT` quedan como en dev. El OTP usa
+  `findCuentaPorId`, que reutiliza `CUENTA_SELECT`.
+- [x] m2 resuelto: la rama `usuario_no_encontrado` tiene su test.
+- [x] Capas, RLS y Ordenex:
+  - no hay tablas, migraciones ni queries de negocio nuevas;
+  - `findCuentaPorId` lee `usuario` dentro de `comoPlataforma`, igual que el `findById` al que sustituye;
+  - sin literales de país ni moneda, sin Ordenex y sin dependencias nuevas;
+  - los comentarios explican el porqué.
+- [x] La regla vive en un solo sitio: el predicado provisional de SL-18 se borró y los cuatro llamadores
+  importan `lib/auth/puede-iniciar-sesion.ts`, que importa `esPlataforma` de `lib/auth/plataforma.ts`
+  sin repetir el literal.
+- [ ] `gate-completo` en CI: pendiente del PR.
+- [~] Flujos críticos E2E (B1 de la vuelta 1): ver mB1.
+
+### Hallazgos
+- **mB1 — menor (decisión humana en la puerta de merge).** B1 de la vuelta 1 queda resuelto en lo que
+  depende del agente.
+  - En la vuelta 2 se corrió `auth.spec.ts`. El login con empresa entra, y los rojos están explicados
+    como deuda del spec, no de SLT-32.
+  - `dos-empresas-humo.spec.ts` está montado como dice su cabecera, pero no se ejecutó. Faltan
+    `SL17_HUMO_MAESTRO_A/_B`, dos buzones reales que debe dar un humano.
+  - Nada de esto se repitió tras la vuelta 3. Ahora el guard lee `rol` en el middleware y el actor exige
+    `activo`.
+  - Antes del merge, recomendado: correr `e2e/superadmin-arranque.spec.ts`, el camino de plataforma
+    por el middleware, y que el humano decida si el humo de dos empresas se corre o queda abierto.
+  - No bloquea: está cubierto por unit, por integración real y por la mutación.
+- **m3 — menor (se mantiene).** Si un usuario pierde la empresa entre el login y el OTP, ve
+  «código inválido». Es aceptable: es el único fallo del contrato y no filtra información.
+- **m6 — menor.** `progress/impl_SLT-32.md` atribuye el rojo (c) de m1 en E2E (500 por
+  `EmpresaNoResuelta`) a dos instancias de `AsyncLocalStorage`. Dev ya lo corrigió en `c04da42`
+  (ALS en `globalThis`, entró con el merge). Con el E2E retirado no queda prueba de extremo a extremo
+  de la redirección a `/login`. Como el caso no se puede sembrar, es solo informativo.
+
+### Veredicto vuelta 2
+**OK**: sin bloqueantes. El merge conserva lo de dev, el predicado es único y respeta la plataforma, y
+los cuatro caminos tienen tests que fallan si se rompe la regla.
