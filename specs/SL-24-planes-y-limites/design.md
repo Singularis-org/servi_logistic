@@ -1,7 +1,11 @@
 # SL-24 — planes-y-limites · design.md
 
-> Requisitos en `requirements.md` (R1–R36). El humano cerró P1–P5 el 2026-10-27 y añadió el tope
+> Requisitos en `requirements.md` (R1–R44). El humano cerró P1–P5 el 2026-10-27 y añadió el tope
 > de API keys y el rastro de plataforma de los planes. Las filas fechadas están en `requirements.md`.
+>
+> **Enmienda del 2026-10-28** (edición programada, avisos por correo, editar ya no se rechaza):
+> §5.3 y §16. Llegó con la tanda A ya implementada (`8a37167`, migraciones `20261027130*`). Lo
+> nuevo va en migraciones posteriores (§16.6), sin tocar las de T1–T3.
 
 ## Lo que ya existe
 
@@ -367,7 +371,11 @@ export type CrearPlanInput = {
   topes: TopesPlan; modulos: ModuloApagable[]; precio: PrecioPlan;
 };
 // `.strict()`: traer `visibilidad` u `organizacionId` es validation_error (R2)
-export type EditarPlanInput = { planId: string; nombre: string; topes: TopesPlan; modulos: ModuloApagable[]; precio: PrecioPlan };
+export type EditarPlanInput = {
+  planId: string; nombre: string; topes: TopesPlan; modulos: ModuloApagable[]; precio: PrecioPlan;
+  vigenteDesde: string | null; // ISO 8601 con zona; null = de inmediato (R15); futuro = programado (R37)
+};
+export type CancelarCambioPlanInput = { planId: string };                // R39
 export type ArchivarPlanInput = { planId: string };
 export type AsignarPlanInput = { organizacionId: string; planId: string };
 
@@ -376,13 +384,16 @@ export type TopeExcedido = {
   tope: "ordenes" | "api_keys" | RolConTope; usados: number; maximo: number;
 };
 export type PlanResult =
-  | { estado: "ok"; planId: string; cambio: boolean }
+  | { estado: "ok"; planId: string; cambio: boolean;
+      // R16: empresas que ya pasan algún tope de la versión guardada; [] fuera de editar
+      avisos: TopeExcedido[]; vigenteDesde: string | null }
   | { estado: "forbidden" }                                              // R5
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> } // R2, R3
   | { estado: "not_found" }                                              // R13
   | { estado: "archivado" }                                              // R6
   | { estado: "custom_de_otra_empresa" }                                 // R13
-  | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }; // R12, R16
+  | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }  // R12: solo al ASIGNAR
+  | { estado: "sin_cambio_programado" };                                   // cancelar sin pendiente
 
 export type PlanDTO = {
   id: string; nombre: string; visibilidad: "publico" | "custom"; organizacionId: string | null;
@@ -418,21 +429,26 @@ export type PlanDTO = {
 
 ### 5.3 Editar (R15–R17) y archivar (R6)
 
-- **Editar.** Una transacción:
+- **Editar de inmediato** (`vigenteDesde: null`; revisado el 2026-10-28). Una transacción:
   1. Bloquea el plan (`FOR UPDATE`). Si no existe → `not_found`; si está archivado →
      `archivado`.
-  2. Para cada empresa con `plan_id = plan`, ordenadas por id, cuenta su uso contra los topes
-     nuevos. Si alguna los pasa → `tope_excedido` con todas las que se pasan (R16).
-  3. Calcula `diferenciasDelPlan(antes, despues)`. Si está vacía, responde `ok` con
+  2. Calcula `diferenciasDelPlan(antes, despues)`. Si está vacía, responde `ok` con
      `cambio: false` sin escribir.
-  4. Reemplaza las filas de `plan_tope_rol` y de `plan_modulo`, y actualiza las columnas.
-  5. Aplica la diferencia de módulos a cada empresa (§7.2).
-  6. Escribe la fila `editado` de `plan_rastro` con las diferencias (§9).
+  3. Para cada empresa con `plan_id = plan`, ordenadas por id, cuenta su uso contra los topes
+     nuevos y junta las que los pasan en `avisos`. **Ya no rechaza** (R16).
+  4. Ejecuta `aplicarVersion(tx, plan, version)` (§16.3): reemplaza `plan_tope_rol` y
+     `plan_modulo`, actualiza las columnas y aplica la diferencia de módulos a cada empresa
+     (§7.2).
+  5. Escribe la fila `editado` de `plan_rastro` con las diferencias (§9).
+  6. Encola los correos de §16.4. Es el outbox: van en la misma transacción.
+  7. Responde `ok` con `avisos`.
+- **Editar programado** (`vigenteDesde` futuro): §16.2.
 - **Crear.** Inserta el plan, sus topes y sus módulos, y la fila `creado` de `plan_rastro`, en una
   transacción.
 - **Topes.** No hay que propagar nada: los triggers leen los topes del plan en cada alta (R15).
 - **Archivar.** Pone `archivado_at` si no lo tiene y escribe la fila `archivado` de
-  `plan_rastro`. Si ya estaba archivado, responde `ok` con `cambio: false` sin escribir. Las
+  `plan_rastro`. Si hay un cambio programado pendiente, lo cancela en la misma transacción, con su
+  fila `cambio_cancelado` (R40, P9). Si ya estaba archivado, responde `ok` con `cambio: false` sin escribir. Las
   empresas lo conservan y los triggers no miran `archivado_at` (R6).
 
 ## 6. Las vías de alta
@@ -781,3 +797,202 @@ entre personas es solo con SL-43, y queda evitado si se respeta la tabla.
   desbloquea cuentas automáticamente (por ejemplo, tras los fallos de login), al tope ese
   desbloqueo fallaría. T7a busca los escritores de `estado = 'activo'` y lo anota. Si hay uno
   automático, se para y se pregunta.
+
+## 16. Cambio programado de un plan y avisos por correo (enmienda del 2026-10-28)
+
+Cubre R15–R17 revisados y R37–R44. Las propuestas para P6–P9 están marcadas en cada punto.
+
+### 16.1 Modelo: `plan_cambio_programado` (plataforma)
+
+| Columna | Tipo | Regla |
+|---|---|---|
+| `id` | `TEXT` PK | `@default(uuid())`. Identifica **esta** programación: los trabajos lo llevan en el payload y comparan con él (§16.3) |
+| `plan_id` | `TEXT NOT NULL UNIQUE`, FK `plan` `ON DELETE CASCADE` | El `UNIQUE` hace cumplir «un solo cambio por plan» (R39) |
+| `vigente_desde` | `TIMESTAMP(3) NOT NULL` | Instante desde el que rige. En la misma escala que `orden.created_at`; ver el riesgo de zona de `progress/impl_SL-24.md > T3` |
+| `version` | `JSONB NOT NULL` | La edición completa (`EditarPlanInput` sin `planId` ni `vigenteDesde`), ya validada por zod. Al aplicarla se vuelve a validar con el mismo esquema |
+| `avisos_al_programar` | `JSONB NOT NULL` | Los `TopeExcedido[]` calculados al guardar (solo informativo) |
+| `actor_usuario_id`, `actor_nombre` | `TEXT NOT NULL`, `VARCHAR(120) NOT NULL` | Quién lo programó; opaco y congelado, como en `plan_rastro` |
+| `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | |
+
+- **Plataforma:** sin `organizacion_id`, RLS sin políticas, `REVOKE ALL … FROM servi_app`, y
+  entra en `MODELOS_DE_PLATAFORMA` (R8).
+- **Reemplazar** es borrar la fila y crear otra con `id` nuevo, en la misma transacción. **Cancelar**
+  es borrarla.
+- **Por qué JSONB y no columnas gemelas** de `plan`/`plan_tope_rol`/`plan_modulo`: la versión
+  pendiente no la lee ningún trigger (§16.3), solo el aplicador y SL-26 para pintarla. Duplicar las
+  tablas duplicaría también sus `CHECK`, y una versión inválida se rechaza igual en dos sitios:
+  zod al guardar, y los `CHECK` de `plan` al aplicar.
+- **«La fecha» (P8, propuesta):** el servicio recibe un instante (`vigenteDesde`, ISO con zona).
+  - Debe ser estrictamente posterior a `now()`; si no, `validation_error` (R37).
+  - Convertir «el 1 de diciembre» en un instante es de SL-26: las 00:00 en la hora de la
+    plataforma (Costa Rica, UTC−6, como `vercel.json`), hasta que SL-21 traiga zona por empresa.
+
+### 16.2 Programar, reemplazar, cancelar (R37, R39, R43)
+
+`PlanesRepository.programarCambio` y `PlanesService.editar` con `vigenteDesde` futuro hacen todo
+en una transacción en `comoPlataforma`:
+
+1. `plan` `FOR UPDATE`. Si no existe → `not_found`; si está archivado → `archivado`.
+2. Calcula `diferenciasDelPlan(vigente, version)`. Si está vacía y no hay pendiente, responde `ok`
+   con `cambio: false`.
+3. Calcula los `avisos`, con el uso de hoy contra los topes nuevos (R16).
+4. Si hay pendiente: lo borra y escribe la fila `cambio_reemplazado`.
+5. Crea la fila de `plan_cambio_programado` y escribe la fila `cambio_programado` en `plan_rastro`,
+   con `cambios = diferencias` más `vigente_desde`.
+6. Encola en `jobs`, en la misma transacción (outbox):
+   - `plan_aplicar_cambio`, con `run_after = vigente_desde` y
+     `dedupe_key = plan_cambio:<id>`;
+   - `plan_recordatorio_cambio` con `{ cambioId, dias: 7 }` y con `{ cambioId, dias: 1 }`, con
+     `run_after = vigente_desde − 7×24 h` y `− 24 h`. Solo se encola el que cae después de ahora
+     (R42). `dedupe_key = plan_recordatorio:<id>:<dias>`;
+   - los correos de guardado (§16.4).
+7. Responde `ok` con `avisos` y `vigenteDesde`.
+
+**Cancelar** (`cancelarCambioPlanAction`, solo superadmin, R5):
+
+- plan `FOR UPDATE`;
+- sin pendiente → `sin_cambio_programado`;
+- si hay pendiente, lo borra y escribe la fila `cambio_cancelado`.
+
+Los trabajos ya encolados del cambio viejo no se borran: al correr no encuentran su `cambioId` y
+terminan sin hacer nada (§16.3). Por eso no hace falta tocar la cola al reemplazar o cancelar.
+
+**La cancelación no se avisa por correo.** La decisión pide correo al guardar y recordatorios; no
+dice nada de cancelar. Queda fuera, y se puede añadir sin cambiar el modelo.
+
+### 16.3 Aplicar al llegar la fecha (R38) — trabajo que aplica
+
+**Elegido: un trabajo de la cola que aplica.**
+
+- **Tipo de trabajo** `plan_aplicar_cambio`. Es puntual, sin empresa (`organizacion_id` NULL),
+  con payload `{ cambioId }` y `max_intentos` 5.
+- **Quién lo ejecuta.** Lo reclama el drenador `procesar-jobs`, que corre cada minuto
+  (`vercel.json`). El cambio rige, como tarde, en el minuto siguiente a `vigente_desde`.
+- **El handler** usa `PlanesRepository.aplicarCambioProgramado(cambioId)`, en `comoPlataforma`:
+  1. `plan` `FOR UPDATE`, por el `plan_id` del cambio;
+  2. lee `plan_cambio_programado` por `id = cambioId`. Si no existe (reemplazado, cancelado o ya
+     aplicado) → termina sin hacer nada. Si `vigente_desde > now()` (reloj adelantado) →
+     termina sin hacer nada; el barrido de abajo lo recoge;
+  3. aplica con `aplicarVersion(tx, plan, version)`, la misma función de la edición inmediata:
+     - topes, precio y nombre;
+     - `plan_tope_rol` y `plan_modulo`;
+     - la diferencia de módulos en cada empresa que tiene el plan **en ese momento**, con sus
+       filas de SL-23 en `historial_accion`;
+  4. escribe la fila `cambio_aplicado` en `plan_rastro`, con el actor «sistema»
+     (`actor_usuario_id` = el del programador, `actor_nombre` = «Sistema (programado por
+     <nombre>)»);
+  5. borra la fila de `plan_cambio_programado`.
+- **Es idempotente.** Una segunda ejecución ya no encuentra la fila. Los cerrojos son los de
+  §4.4, así que las altas en vuelo terminan contra la versión vieja y las siguientes cuentan
+  contra la nueva (R24).
+- **El ciclo no se toca** (R38): `plan_ciclo_ancla_at` de las empresas no cambia.
+- **Barrido de seguridad.** Un tipo recurrente `plan_cambios_vencidos` (sin empresa, cada hora,
+  con `buildRecurrencias`) aplica cualquier cambio con `vigente_desde <= now()` que siga
+  pendiente. Cubre un trabajo perdido: una base restaurada o un `dedupe_key` que chocó.
+- **Clasificación:** los cuatro tipos nuevos van en `MODULO_POR_JOB` como `"nucleo"` (R44).
+  Ninguno es de `CALCULO_CONTINUO`.
+
+**Descartada: la lectura por fecha.**
+
+- **Cómo sería.** Los triggers de T3 y `plan_cupo_ordenes` leerían «la versión que rige ahora»: la
+  pendiente si `vigente_desde <= now()`, y si no la vigente. Ganaría precisión al segundo para los
+  topes.
+- **Pero no cubre los módulos.** `organizacion_modulo` es estado y no puede leerse por fecha: las
+  puertas de SL-23 consultan filas. Habría que tener igualmente un trabajo, y dos fuentes de verdad
+  para el mismo plan durante la ventana entre la fecha y el trabajo.
+- **Y obliga a rehacer T3.** Habría que reescribir las ocho funciones y los cinco triggers ya
+  probados y con mutaciones medidas.
+
+Un minuto de retraso no lo pide ninguna decisión.
+
+### 16.4 Correos (R41, R42)
+
+- **Plantilla nueva** `lib/services/email/plantillas/cambio-plan.ts`, sobre `componerCorreo` de
+  `plantilla-marca.ts`, igual que `bienvenida-maestro.ts`.
+  - `plantillaCambioPlan({ to, nombre, empresaNombre, planNombre, cambios, vigenteDesde | null, topesPasados, tipo: "guardado" | "recordatorio_7" | "recordatorio_1", contacto })`.
+  - Las líneas de `cambios` salen de `diferenciasDelPlan` con textos en `lib/planes/mensajes.ts`.
+  - `topesPasados` usa `mensajeTopesPasados`, ya hecho en T3.
+  - La fecha se pinta con el formateador de fechas que ya usan los correos (T12 lo localiza; no se
+    inventa uno).
+  - No se toca ningún archivo existente de `lib/services/email/`.
+- **Envío por la cola, uno por empresa.**
+  - **Tipo nuevo `plan_aviso_correo`.** Puntual. Su `organizacion_id` es el de la empresa
+    destino, así que el drenador lo corre en `conEmpresa`. Payload
+    `{ cambioId | null, planId, tipo, cambios, vigenteDesde, topesPasados }`: sin datos
+    personales.
+  - **`dedupe_key`:** `plan_aviso:<cambioId|editId>:<tipo>:<organizacionId>`. Para la edición
+    inmediata, `editId` es el `id` de su fila de `plan_rastro`.
+  - **El handler:**
+    1. lee los maestros activos de la empresa (P7, propuesta: todos);
+    2. si es un recordatorio, comprueba que el cambio sigue pendiente; si no, termina;
+    3. envía un correo por maestro con el emisor de `lib/services/EmailProvider.ts > crearEmailSender()`
+       (que ya compone `EnrutadorEmailSender`).
+  - **Al guardar** (inmediato o programado), la transacción encola un `plan_aviso_correo` por cada
+    empresa con el plan.
+- **El recordatorio reparte por empresa.** `plan_recordatorio_cambio` corre sin empresa:
+  1. comprueba que `cambioId` siga pendiente; si no, termina (R39);
+  2. lista las empresas que tienen el plan **en ese momento**;
+  3. recalcula sus topes pasados contra la versión pendiente;
+  4. encola un `plan_aviso_correo` por empresa, con su `dedupe_key`.
+- **Una vez por empresa (R42).** El `dedupe_key` impide encolar dos veces el mismo aviso para la
+  misma empresa, aunque el recordatorio se reintente o corra dos veces.
+  - **Residuo:** si el envío SMTP sale y el trabajo falla antes de marcarse hecho, el reintento
+    reenvía ese correo. Es «al menos una vez», el mismo trato que `push_web` (ficha 410). Se
+    anota y no se añade una tabla de entregas.
+- **El correo nunca tumba la edición** (R41). Va fuera de la transacción, por la cola, igual que
+  la bienvenida de SL-41 va fuera del alta.
+
+### 16.5 Superficie nueva
+
+| Archivo | Papel |
+|---|---|
+| `lib/repositories/PlanesRepository.ts` | `programarCambio`, `cancelarCambio`, `aplicarCambioProgramado`, `cambiosVencidos`. Se extrae `aplicarVersion(tx, …)`, que comparten la edición inmediata y el aplicador |
+| `lib/services/PlanesService.ts` | `editar` con `vigenteDesde`, y `cancelarCambio(actor, input)` (R5) |
+| `lib/actions/planes.ts` | `cancelarCambioPlanAction`. `editarPlanAction` acepta `vigenteDesde` |
+| `lib/planes/jobs-cambio-plan.ts` | Los cuatro handlers (`plan_aplicar_cambio`, `plan_recordatorio_cambio`, `plan_aviso_correo` y el recurrente `plan_cambios_vencidos`) con su composition root |
+| `app/api/cron/procesar-jobs/route.ts` | `buildHandlers` y `buildRecurrencias` ganan los tipos nuevos |
+| `lib/modulos/reparto.ts` | Los cuatro tipos en `MODULO_POR_JOB` como `"nucleo"` |
+| `lib/services/email/plantillas/cambio-plan.ts` | La plantilla (§16.4) |
+| `lib/db/modelos-de-negocio.ts` | `PlanCambioProgramado` en `MODELOS_DE_PLATAFORMA` |
+
+### 16.6 Migraciones nuevas (después de `20261027130200_plan_topes_triggers`)
+
+T0 vuelve a comprobar el orden contra `dev` y contra el PR #27 antes de aplicarlas en ninguna base
+compartida.
+
+| Carpeta | `migration.sql` | `down.sql` |
+|---|---|---|
+| `20261028120000_plan_cambio_programado` | Tabla `plan_cambio_programado` con FK, `UNIQUE`, RLS sin políticas y `REVOKE ALL … FROM servi_app` | `DROP TABLE` |
+| `20261028120100_plan_cambio_enums` | `ALTER TYPE plan_rastro_accion ADD VALUE` ×4 (`cambio_programado`, `cambio_reemplazado`, `cambio_cancelado`, `cambio_aplicado`) y `ALTER TYPE job_tipo ADD VALUE` ×4 (`plan_aplicar_cambio`, `plan_recordatorio_cambio`, `plan_aviso_correo`, `plan_cambios_vencidos`) | Borra las filas de `plan_rastro` y de `jobs` con esos valores y recrea los dos tipos sin ellos. Es el patrón de `20261026120200_job_estado_descartado/down.sql`, que borra y recrea los índices parciales de `jobs` que nombran el tipo |
+
+- **Los enums van aparte:** un `ADD VALUE` no se puede usar en la misma transacción que lo crea.
+  Ninguna de las dos migraciones toca las funciones ni los triggers de `20261027130200`.
+- **`migracion-sl24-ida-y-vuelta`** gana el paso de estas dos.
+
+### 16.7 Tests nuevos
+
+| Archivo | Qué cubre |
+|---|---|
+| `tests/integration/db/planes-cambio-programado.test.ts` | R17 (al aplicar), R37 (hasta la fecha rige la vieja: alta que cabe solo en la vieja entra), R38 (aplicar con el reloj pasado; precio, nombre, topes y módulos; ancla y uso del ciclo intactos; segunda ejecución no hace nada; barrido de vencidos), R39 (reemplazar: el trabajo viejo no aplica nada; cancelar), R40 |
+| `tests/integration/db/planes-cambio-correos.test.ts` | R41 y R42, con un emisor doble que guarda lo enviado: destinatarios (maestros activos de cada empresa del plan), topes pasados, 10 días → dos recordatorios, 3 días → uno, doble ejecución → un correo por empresa, cambio cancelado → ninguno, fallo del emisor → la edición persiste |
+| `tests/unit/services/email/plantilla-cambio-plan.test.ts` | Asunto, líneas de cambio, fecha y topes pasados; sin marca ni país literal |
+| `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` | Los cuatro tipos tienen handler, el recurrente está en `buildRecurrencias`, y el composition root pasa el emisor real (memoria «el composition root que no inyecta») |
+| `tests/unit/services/planes-service.test.ts` (ampliado) | R5 para `cancelarCambio` y la edición programada; `vigenteDesde` pasado → `validation_error`; editar con empresa por encima → `ok` con `avisos` (R16) |
+| `tests/unit/types/planes-schema.test.ts` (ampliado) | `vigenteDesde`: ISO con zona, nulo o futuro |
+| `tests/integration/db/planes-historial.test.ts` (ampliado) | R43: las cuatro filas nuevas de `plan_rastro` |
+| `tests/integration/db/planes-edicion-en-uso.test.ts` (ampliado) | R16 revisado |
+
+**Mutaciones** (se suman a §11):
+
+8. el aplicador no compara `cambioId` (aplica uno reemplazado);
+9. el recordatorio no comprueba que siga pendiente;
+10. la edición vuelve a rechazar cuando una empresa pasa el tope.
+
+### 16.8 Choques de archivos (enmienda)
+
+| Archivo | Rama en vuelo | Cómo se resuelve |
+|---|---|---|
+| `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts` | Cualquier ficha que añada un `JobTipo`. El PR #27 (SL-23 núcleo) toca `reparto.ts` | Entradas distintas; quien mergea segundo rebasa |
+| `lib/services/email/plantillas/cambio-plan.ts` | — | Archivo nuevo. No se toca ningún archivo existente de `lib/services/email/` |
+| `lib/services/email/*` (lectura), `lib/auth/*`, `AuthService`, `UserRepository` | SLT-32 | No se modifican. **No pude correr `node scripts/archivos-en-vuelo.mjs`** (este agente no tiene shell): que el leader lo corra antes de la aprobación |
+| `tests/fabricas/*`, `scripts/demo-qa*` | SL-43 | No se tocan |

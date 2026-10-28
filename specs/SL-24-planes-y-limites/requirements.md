@@ -52,7 +52,7 @@
 | R2 | SI un plan custom no nombra exactamente una empresa existente, o un plan público nombra alguna, o una edición intenta cambiar la visibilidad de un plan o la empresa de un plan custom, ENTONCES el sistema DEBE rechazar la petición sin escribir nada. | `tests/unit/types/planes-schema.test.ts`; `tests/unit/services/planes-service.test.ts` |
 | R3 | El sistema DEBE aceptar como precio de un plan exactamente una de estas formas: sin precio; «negociable» (sin monto); un monto mensual solo; un monto mensual con un precio anual fijo; o un monto mensual con un porcentaje de descuento sobre el anual, mayor que 0 y como mucho 100. Los montos son ≥ 0, con dos decimales como máximo, y caben en `DECIMAL(12,2)`. SI la petición combina «negociable» con un monto, o un anual fijo con un porcentaje, o trae un anual sin mensual, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada. | `tests/unit/types/planes-schema.test.ts`; `tests/integration/db/planes-catalogo.test.ts` (los `CHECK` de la base rechazan las mismas combinaciones con SQL a mano como dueño) |
 | R4 | El sistema NO DEBE generar por el precio de un plan ningún cobro, movimiento de caja, cargo ni deuda. Lo guarda sin moneda propia. | `tests/integration/db/planes-asignacion.test.ts` (asignar un plan con precio no añade filas a `wallet_movimiento` ni a `cobro_plataforma_movimiento`) |
-| R5 | SI quien pide crear, editar, archivar o asignar planes, o listar los planes asignables a una empresa, no es el superadmin (incluido el `maestro` de la empresa afectada), ENTONCES el sistema DEBE responder `forbidden` sin leer ni escribir nada. La comprobación vive en el servicio. | `tests/unit/services/planes-service.test.ts` (cada rol de empresa, cero llamadas al repositorio) |
+| R5 | SI quien pide crear, editar (de inmediato o programado), archivar o asignar planes, cancelar un cambio programado, o listar los planes asignables a una empresa, no es el superadmin (incluido el `maestro` de la empresa afectada), ENTONCES el sistema DEBE responder `forbidden` sin leer ni escribir nada. La comprobación vive en el servicio. | `tests/unit/services/planes-service.test.ts` (cada rol de empresa, cero llamadas al repositorio) |
 | R6 | CUANDO el superadmin archiva un plan, el sistema DEBE conservarlo, mantenerlo asignado a las empresas que ya lo tienen, con sus topes vigentes para ellas, y dejar de ofrecerlo entre los planes asignables. SI se pide asignar o editar un plan archivado, ENTONCES el sistema DEBE rechazarlo sin escribir nada. No existe forma de borrar un plan. | `tests/unit/services/planes-service.test.ts`; `tests/integration/db/planes-catalogo.test.ts` (tras archivar, la empresa con el plan sigue topada); `tests/unit/guards/planes-sin-borrado.guardia.test.ts` |
 | R7 | CUANDO se piden los planes públicos (la lectura de servidor que expondrá SL-25; esta ficha no la publica en ninguna action ni ruta), el sistema DEBE devolver solo los públicos no archivados, nunca uno custom. CUANDO el superadmin pide los planes asignables a una empresa, el sistema DEBE devolver los públicos no archivados y los custom no archivados de esa empresa, nunca los custom de otra. | `tests/integration/db/planes-catalogo.test.ts` |
 | R8 | El sistema DEBE impedir que una empresa lea o escriba planes, sus topes, sus módulos incluidos y su rastro de plataforma, y que escriba su propia asignación de plan, por cualquier vía. Eso incluye el SQL a mano con el rol de la app. El sistema DEBE impedir también que una empresa lea el uso o el cupo de otra. | `tests/integration/db/planes-acceso-servi-app.test.ts` (`SELECT`/`INSERT`/`UPDATE` con `servi_app` → `42501`; `plan_cupo_ordenes` con otra empresa → error) |
@@ -72,9 +72,22 @@
 
 | R | Requisito | Test previsto |
 |---|---|---|
-| R15 | CUANDO el superadmin edita los topes de un plan, el sistema DEBE aplicarlos al momento a todas las empresas que lo tienen: la siguiente alta de cualquiera de ellas se cuenta contra el tope nuevo. | `tests/integration/db/planes-edicion-en-uso.test.ts` |
-| R16 | SI alguna de las empresas que tienen el plan ya usa más que alguno de los topes nuevos, ENTONCES el sistema DEBE rechazar la edición entera sin cambiar nada y nombrar cada empresa y cada tope que se pasa, con su uso y el tope nuevo. | `tests/unit/services/planes-service.test.ts`; `tests/integration/db/planes-edicion-en-uso.test.ts` |
-| R17 | CUANDO el superadmin cambia los módulos incluidos de un plan en uso, el sistema DEBE encender los añadidos y apagar los quitados en cada empresa que tiene el plan, en la misma transacción, y NO DEBE tocar los demás módulos de esas empresas, incluidas sus excepciones. | `tests/integration/db/planes-edicion-en-uso.test.ts` |
+| R15 | CUANDO el superadmin edita un plan para aplicar de inmediato, el sistema DEBE aplicar la versión nueva al momento a todas las empresas que lo tienen: la siguiente alta de cualquiera de ellas se cuenta contra el tope nuevo. (Revisado el 2026-10-28: la edición puede ser también programada, R37.) | `tests/integration/db/planes-edicion-en-uso.test.ts` |
+| R16 | SI alguna de las empresas que tienen el plan ya usa más que alguno de los topes nuevos, ENTONCES el sistema DEBE guardar la edición igual (inmediata o programada), devolver un aviso que nombre cada empresa y cada tope que se pasa, con su uso y el tope nuevo, y, desde el momento en que la versión nueva rige, rechazar las altas de esa empresa que pasen el tope hasta que su uso baje. (Revisado el 2026-10-28: antes la edición se rechazaba.) | `tests/unit/services/planes-service.test.ts`; `tests/integration/db/planes-edicion-en-uso.test.ts` (empresa con 3 `adminTienda` activos, tope nuevo 2: se guarda, aviso con 3 y 2, crear un `adminTienda` se rechaza, inactivar dos y crear uno entra) |
+| R17 | CUANDO cambian los módulos incluidos de un plan en uso, sea por una edición inmediata o al aplicarse un cambio programado, el sistema DEBE encender los añadidos y apagar los quitados en cada empresa que tiene el plan en ese momento, en la misma transacción, y NO DEBE tocar los demás módulos de esas empresas, incluidas sus excepciones. | `tests/integration/db/planes-edicion-en-uso.test.ts`; `tests/integration/db/planes-cambio-programado.test.ts` |
+
+### Cambio programado de un plan
+
+| R | Requisito | Test previsto |
+|---|---|---|
+| R37 | CUANDO el superadmin edita un plan con una fecha de vigencia (`vigente_desde`) futura, el sistema DEBE guardar la versión nueva completa (topes, módulos incluidos, precio y nombre, P6) como cambio programado, sin modificar la versión vigente. MIENTRAS no llegue esa fecha, el sistema DEBE contar las altas, mostrar el precio y mantener los módulos con la versión vigente. SI la fecha no es posterior al momento de guardar, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada. | `tests/unit/types/planes-schema.test.ts`; `tests/integration/db/planes-cambio-programado.test.ts` (programado a mañana: hoy el tope viejo sigue rigiendo) |
+| R38 | CUANDO llega la fecha de vigencia de un cambio programado, el sistema DEBE aplicarlo entero en una transacción: topes, precio y nombre del plan, y los módulos de cada empresa con R17. El sistema DEBE hacerlo, como tarde, en la siguiente pasada del drenador de trabajos. El cambio NO DEBE reiniciar el ciclo de órdenes de ninguna empresa: desde esa fecha, lo ya usado en el ciclo en curso se cuenta contra el tope nuevo. | `tests/integration/db/planes-cambio-programado.test.ts` (handler con el reloj pasado la fecha; ancla y uso del ciclo intactos); `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` |
+| R39 | El sistema DEBE guardar como mucho un cambio programado por plan: CUANDO el superadmin programa otro, el sistema DEBE reemplazar el pendiente. CUANDO el superadmin cancela el cambio pendiente, el sistema DEBE borrarlo. Un cambio reemplazado o cancelado NO DEBE aplicarse nunca, ni enviar recordatorios. | `tests/integration/db/planes-cambio-programado.test.ts` (los trabajos del cambio viejo corren y no hacen nada) |
+| R40 | SI se archiva un plan con un cambio programado pendiente, ENTONCES el sistema DEBE cancelar ese cambio en la misma transacción (P9). | `tests/integration/db/planes-cambio-programado.test.ts` |
+| R41 | CUANDO el superadmin guarda una edición, inmediata o programada, el sistema DEBE enviar a los maestros activos de cada empresa que tiene el plan (P7) un correo con qué cambia y desde cuándo, y, si la empresa ya pasa algún tope nuevo, cuál, con su uso y el tope. Un fallo del correo NO DEBE deshacer ni impedir la edición. Una edición sin cambios no envía nada. | `tests/integration/db/planes-cambio-correos.test.ts` (emisor de correo doble); `tests/unit/services/email/plantilla-cambio-plan.test.ts` |
+| R42 | MIENTRAS un cambio programado siga pendiente, el sistema DEBE enviar a esos mismos destinatarios un recordatorio 7 días antes y otro 1 día antes de la fecha de vigencia. Solo se envían los que caen después del momento de programar. Cada recordatorio sale como mucho una vez por empresa, aunque el trabajo se reintente o se ejecute dos veces. Va a las empresas que tienen el plan cuando sale el recordatorio, e indica los topes que ya pasan en ese momento. | `tests/integration/db/planes-cambio-correos.test.ts` (fecha a 10 días: dos recordatorios; a 3 días: solo el de 1 día; doble ejecución: un correo por empresa) |
+| R43 | CUANDO el superadmin programa, reemplaza o cancela un cambio, o el sistema lo aplica, el sistema DEBE dejar una fila en el rastro de plataforma con quién (el sistema, al aplicar), cuándo, qué plan, qué acción y qué cambia, en la misma transacción. | `tests/integration/db/planes-historial.test.ts` |
+| R44 | Los trabajos que aplican cambios y envían sus correos DEBEN ser parte del núcleo: corren sea cual sea el estado de los módulos de las empresas. | `tests/unit/guards/modulos-reparto.guardia.test.ts` (existente: los tipos nuevos están en `MODULO_POR_JOB` como `nucleo`) |
 
 ### Tope de órdenes
 
@@ -147,10 +160,36 @@
 | Tope de API keys | R1, R25, R35, R36, R12, R16 |
 | Mensaje del tope en «Usuarios» y postulaciones | R28 |
 | Carga de más de 500 filas parcial ante carrera | R24 (el tope nunca se pasa), R21 (sin carrera, se rechaza entera); `design.md > §6.1` |
+| 2026-10-28 — Edición programada con `vigente_desde` | R37, R38, R15 |
+| 2026-10-28 — Un solo cambio programado por plan; se puede cancelar | R39, R40, R5 |
+| 2026-10-28 — El cambio no reinicia ciclos | R38 |
+| 2026-10-28 — Empresa que ya pasa el tope nuevo | R16 |
+| 2026-10-28 — Correo al guardar y recordatorios | R41, R42, R44 |
+| 2026-10-28 — Rastro del cambio programado | R43 |
 
 ## Preguntas abiertas
 
-Ninguna. P1–P5 las cerró el humano el 2026-10-27 (filas fechadas abajo).
+P1–P5 las cerró el humano el 2026-10-27 (filas fechadas abajo). Quedan abiertas cuatro de la
+enmienda del 2026-10-28, que planteó spec_author. Cada una lleva su propuesta, y los requisitos
+están escritos con ella.
+
+6. **¿El nombre del plan también se programa?** La decisión dice «todo el plan: topes, módulos
+   incluidos y precio».
+   **Propuesta (R37):** sí. La versión programada es la edición entera, nombre incluido, para no
+   tener una edición a medias inmediata y a medias programada.
+7. **¿Quién recibe los correos de «el maestro de cada empresa»?** Una empresa puede tener varios
+   maestros.
+   **Propuesta (R41, R42):** todos los usuarios `maestro` activos de la empresa, uno por correo.
+8. **¿A qué hora empieza «la fecha»?**
+   - Sin zona horaria por empresa (eso llega con SL-21), «desde el 1 de diciembre» no dice a qué
+     instante.
+   - **Propuesta (`design.md > §16.1`):** el servicio recibe un instante. SL-26 enviará las 00:00
+     de esa fecha en la hora de la plataforma, la misma que usan los crons: Costa Rica, UTC−6
+     (`app/api/cron/avisos-diarios/route.ts`).
+   - Los recordatorios se cuentan en horas desde ese instante (7×24 y 24).
+9. **¿Archivar un plan cancela su cambio pendiente?**
+   **Propuesta (R40):** sí. Un plan archivado no se edita (R6), así que aplicar después un cambio
+   suyo contradiría esa regla.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -166,7 +205,7 @@ Ninguna. P1–P5 las cerró el humano el 2026-10-27 (filas fechadas abajo).
 | 2026-10-27 | Usuarios | Tope por rol, cada uno opcional: un rol sin tope no tiene límite. |
 | 2026-10-27 | Módulos y plan | El plan trae módulos incluidos. Al asignar o cambiar plan, los módulos se sincronizan solos (se encienden los incluidos y se apagan los no incluidos). El superadmin puede encender por excepción un módulo no incluido con el interruptor de SL-23. |
 | 2026-10-27 | Bajar de plan | No se permite si la empresa ya usa más que algún tope del plan nuevo: el cambio se rechaza diciendo qué tope se pasa. |
-| 2026-10-27 | Editar topes de un plan en uso | Aplica al momento a todas sus empresas. Si alguna ya pasa el nuevo tope, la edición se rechaza (misma regla que bajar de plan). |
+| 2026-10-27 | Editar topes de un plan en uso (**revisada el 2026-10-28**) | Aplica al momento a todas sus empresas. Si alguna ya pasa el nuevo tope, la edición se rechaza (misma regla que bajar de plan). **Revisión del 2026-10-28:** ya no se rechaza; se guarda y se avisa (fila «Empresa que ya pasa el tope nuevo» de abajo). La regla de bajar de plan al asignar no cambia. |
 | 2026-10-27 | Empresa sin plan | Sin límites: las empresas de hoy y las que cree el superadmin siguen igual hasta que se les asigne un plan. |
 | 2026-10-27 | Pantalla | Ninguna en esta ficha: solo backend. Las pantallas van en SL-26. |
 | 2026-10-27 | ¿Queda rastro? | Sí: crear, editar o archivar un plan y asignarlo a una empresa van a `historial_accion`. Se hereda de SL-23 y SL-36. |
@@ -183,3 +222,9 @@ Ninguna. P1–P5 las cerró el humano el 2026-10-27 (filas fechadas abajo).
 | 2026-10-27 | Tope de API keys | El plan tiene un tope opcional de API keys por empresa. Cuentan las keys vivas, no revocadas (definición en `design.md > §4.3`: estado `activa`). Crear una key al tope se rechaza. Las cuentas `apiKey` NO cuentan en el tope de usuarios por rol. |
 | 2026-10-27 | Mensaje del tope en «Usuarios» y postulaciones | Se queda el cambio mínimo de `design.md > §8` en las dos pantallas existentes. |
 | 2026-10-27 | Carga de más de 500 filas parcial ante una carrera | Aceptado tal como lo describe `design.md > §6.1`: el tope nunca se pasa y el resumen dice qué entró. |
+| 2026-10-28 | Edición programada del plan | Al editar un plan, el superadmin elige aplicar de inmediato o a partir de una fecha (`vigente_desde`, columna en la base). Hasta esa fecha rige la versión actual y desde ella, la nueva. Cubre todo el plan: topes, módulos incluidos y precio. Pedida después de aprobar, con la tanda A ya implementada (`8a37167`): entra como migración y tasks nuevas, sin rehacer T0–T3. |
+| 2026-10-28 | ¿Cuántos cambios programados por plan? | Uno solo. Programar otro reemplaza al pendiente, y se puede cancelar. |
+| 2026-10-28 | Ciclo de órdenes ante un cambio | El cambio no reinicia ciclos. Cada empresa sigue su ciclo y, desde la fecha, lo ya usado se cuenta contra el tope nuevo (coherente con P2a). |
+| 2026-10-28 | Empresa que ya pasa el tope nuevo | Se guarda igual (no se rechaza) y se avisa. Desde la fecha efectiva, esa empresa queda bloqueada para altas nuevas hasta bajar del tope. Aplica también a la edición inmediata y reemplaza la regla del 2026-10-27 de rechazar la edición. La regla de no bajar de plan al ASIGNAR un plan menor no cambia. |
+| 2026-10-28 | Correos del cambio | Al guardar el cambio, programado o inmediato, se envía un correo al maestro de cada empresa con ese plan: qué cambia, desde cuándo y, si ya pasa algún tope, cuál. Los cambios programados tienen recordatorios 7 días antes y 1 día antes. Usa `lib/services/email/*` y `plantilla-marca.ts`, sin dependencias nuevas. |
+| 2026-10-28 | Rastro del cambio programado | Programar, reemplazar, cancelar y aplicar un cambio van a `plan_rastro`. |

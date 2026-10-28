@@ -1,9 +1,17 @@
 # SL-24 — planes-y-limites · tasks.md
 
-> Requisitos en `requirements.md` (R1–R36) y diseño en `design.md`. P1–P5 están cerradas
-> (2026-10-27). **No se empieza ninguna task hasta que el humano apruebe el spec.**
+> Requisitos en `requirements.md` (R1–R44) y diseño en `design.md`. P1–P5 están cerradas
+> (2026-10-27).
 >
-> Reparto: `backend_dev` hace T0–T6, T7a, T8 y T9; `frontend_dev` hace T7b.
+> **Enmienda del 2026-10-28** (`design.md > §16`): T0–T3 ya están hechas en `8a37167` y no se
+> rehacen. Lo nuevo:
+> - **tasks nuevas:** T3b, T11 y T12;
+> - **tasks ampliadas:** T4, T5, T8, T9 y T10.
+>
+> P6–P9 siguen abiertas. Las tasks que dependen de ellas no se empiezan hasta que el humano las
+> cierre: T11 depende de P6, P8 y P9; T12, de P7.
+>
+> Reparto: `backend_dev` hace T0–T6, T3b, T7a, T8, T9, T11 y T12; `frontend_dev` hace T7b.
 > `[P]` = puede ir en paralelo con las otras `[P]` de la misma tanda.
 
 ## Tanda A — base
@@ -50,9 +58,27 @@
 
 ## Tanda B — gestión del superadmin
 
-- [ ] **T4. `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`** (depende de T2 y T3).
+- [ ] **T3b. Migraciones de la enmienda + Prisma** (nueva, 2026-10-28; depende de T3).
+  - Comprobar otra vez el orden contra `dev` y contra el PR #27.
+  - `20261028120000_plan_cambio_programado` y `20261028120100_plan_cambio_enums`, con sus
+    `down.sql` (`design.md > §16.1, §16.6`).
+  - En Prisma, `model PlanCambioProgramado` y los valores nuevos de `PlanRastroAccion` y `JobTipo`.
+  - `PlanCambioProgramado` en `MODELOS_DE_PLATAFORMA`.
+  - Los cuatro tipos en `MODULO_POR_JOB` como `"nucleo"`; si no, el typecheck no pasa.
+  - **Hecho:**
+    - `migrate deploy` y el diff de drift vacío;
+    - las guardias `organizacion-en-modelos` y `modulos-reparto` en verde;
+    - `planes-acceso-servi-app` ampliado con la tabla nueva (`42501`);
+    - las migraciones de T1–T3 sin cambios en el diff.
+
+- [ ] **T4. `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`** (depende de T2, T3 y T3b).
   - Crear, editar, archivar, asignar, asignables y públicos, con los cerrojos de
     `design.md > §4.4` y §5.
+  - **Ampliada el 2026-10-28.**
+    - La edición inmediata ya no rechaza: guarda y devuelve `avisos` (R16).
+    - Se extrae `aplicarVersion(tx, …)` (`design.md > §5.3, §16.3`).
+    - El esquema acepta `vigenteDesde`.
+    - Archivar cancela el pendiente (R40). La parte programada es T11.
   - `lib/planes/rastro.ts` (`diferenciasDelPlan`) y la escritura de `plan_rastro` en la misma
     transacción (`design.md > §2.8, §9`).
   - Extraer `lib/repositories/_shared/modulos-en-tx.ts` de `ModulosEmpresaRepository`, sin
@@ -68,6 +94,8 @@
       (`design.md > §15`).
 - [ ] **T5. `lib/actions/planes.ts`** (depende de T4).
   - Las cinco actions y su composition root.
+  - **Ampliada el 2026-10-28:** `editarPlanAction` acepta `vigenteDesde`, y se añade la sexta
+    action, `cancelarCambioPlanAction`.
   - `planes: "nucleo"` en `lib/modulos/reparto.ts`.
   - **Hecho:** `planes.composition-root` en verde y `modulos-reparto.guardia` en verde.
 
@@ -102,6 +130,29 @@
     muestran `mensaje` con `tope_plan` (`design.md > §8`).
   - **Hecho:** `UsuariosTopePlan`, `PostulacionesTopePlan` y `ApiKeysTopePlan` (componentes) en
     verde.
+- [ ] **T11. Cambio programado: programar, reemplazar, cancelar y aplicar** (nueva, 2026-10-28;
+  depende de T4 y T5; espera a P6, P8 y P9).
+  - `programarCambio`, `cancelarCambio`, `aplicarCambioProgramado` y `cambiosVencidos` en
+    `PlanesRepository`, con la edición programada del servicio (`design.md > §16.2, §16.3`).
+  - Los handlers `plan_aplicar_cambio` y el recurrente `plan_cambios_vencidos` en
+    `lib/planes/jobs-cambio-plan.ts`, cableados en `procesar-jobs` (`buildHandlers` y
+    `buildRecurrencias`).
+  - Las cuatro filas nuevas de `plan_rastro`.
+  - **Hecho:**
+    - `planes-cambio-programado`, `procesar-jobs-plan-cambio` y `planes-historial` (ampliado) en
+      verde;
+    - las mutaciones 8 y 10 medidas.
+- [ ] **T12. Correos del cambio** [P con T11 en la plantilla] (nueva, 2026-10-28; depende de T11
+  para los recordatorios; espera a P7).
+  - La plantilla `cambio-plan.ts` sobre `plantilla-marca.ts`, y los textos de cambio en
+    `lib/planes/mensajes.ts`.
+  - Los handlers `plan_recordatorio_cambio` y `plan_aviso_correo`, y el encolado de los avisos en
+    la transacción de guardar (`design.md > §16.4`).
+  - Localizar el formateador de fechas que ya usan los correos.
+  - **Hecho:**
+    - `planes-cambio-correos` y `plantilla-cambio-plan` en verde;
+    - ningún archivo existente de `lib/services/email/` en el diff;
+    - la mutación 9 medida.
 
 ## Tanda D — cierre
 
@@ -120,7 +171,10 @@
   - `docs/architecture.md > Multi-empresa` gana un párrafo «Planes y límites (SL-24)»: tablas,
     triggers, cerrojos y quién escribe.
   - Mapa `R<n> → test` completo en `progress/impl_SL-24.md`.
-  - **Hecho:** `./init.sh` en verde y cada R1–R36 con al menos un test que existe.
+  - **Ampliada el 2026-10-28:** el párrafo cubre también el cambio programado y los correos. T8
+    amplía `planes-sin-borrado` a `plan_cambio_programado`: solo `PlanesRepository` la escribe. T9
+    amplía `migracion-sl24-ida-y-vuelta` con las dos migraciones de T3b.
+  - **Hecho:** `./init.sh` en verde y cada R1–R44 con al menos un test que existe.
 
 ## No se tocan, a propósito
 
@@ -133,6 +187,17 @@ los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticaci
 
 ### Base de datos
 - `db/schema.prisma`
+- `db/migrations/20261028120000_plan_cambio_programado/migration.sql`
+- `db/migrations/20261028120000_plan_cambio_programado/down.sql`
+- `db/migrations/20261028120100_plan_cambio_enums/migration.sql`
+- `db/migrations/20261028120100_plan_cambio_enums/down.sql`
+- `lib/planes/jobs-cambio-plan.ts`
+- `lib/services/email/plantillas/cambio-plan.ts`
+- `app/api/cron/procesar-jobs/route.ts`
+- `tests/integration/db/planes-cambio-programado.test.ts`
+- `tests/integration/db/planes-cambio-correos.test.ts`
+- `tests/unit/services/email/plantilla-cambio-plan.test.ts`
+- `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`
 - `db/migrations/20261027130000_plan/migration.sql`
 - `db/migrations/20261027130000_plan/down.sql`
 - `db/migrations/20261027130100_historial_accion_planes/migration.sql`
