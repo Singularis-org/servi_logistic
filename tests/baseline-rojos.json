@@ -1031,6 +1031,10 @@
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
       "desde": "2026-10-22"
+    },
+    "tests/integration/db/analitica-operativa-indices.test.ts": {
+      "motivo": "Flake del planificador en CI: gestion_orden_organizacion_id_idx y gestion_orden_organizacion_id_created_at_idx cuestan casi lo mismo y el plan elige uno u otro segun los datos de cada shard. Rojo tambien en el CI de SL-20 (runs 40598912536 y 40600847590), sin la migracion de SL-23. La retira SL-20, que quita el indice simple dentro de la transaccion del test.",
+      "desde": "2026-10-27"
     }
   }
 }

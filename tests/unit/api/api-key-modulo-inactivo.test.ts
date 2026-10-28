@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// SL-23 · T11 (design §5.5, §3.7; R18, R33) — la API por key con «API e integraciones» apagado.
+// SL-23 · T11 (design §5.5, §3.7; R18, R33) — la API por key y la puerta de módulos.
 //
 // Las 9 rutas de `app/api/ordenes/api-key/**` (10 manejadores: `orden/[id]` tiene GET y DELETE) se
 // llaman con un autenticador falso que da una key válida de una empresa. La lectura de módulos se
 // sustituye por una lista en memoria. El cliente de Prisma es un espía: cualquier método de modelo
-// o SQL que el cuerpo de la ruta llegara a ejecutar queda anotado, y con el módulo apagado no puede
+// o SQL que el cuerpo de la ruta llegara a ejecutar queda anotado: con Analítica apagada, `/analitica` no puede
 // aparecer ninguno.
 
 const estado = vi.hoisted(() => ({ activos: [] as string[], llamadas: [] as string[] }));
@@ -80,34 +80,39 @@ beforeEach(() => {
   estado.llamadas = [];
 });
 
-describe("SL-23 · API por key con «API e integraciones» apagado (R18)", () => {
+/** El `details.codigo` de la respuesta, si es JSON; `undefined` si no lo es (p. ej. un PDF). */
+async function codigoDe(res: Response): Promise<string | undefined> {
+  try {
+    return ((await res.json()) as { details?: { codigo?: string } }).details?.codigo;
+  } catch {
+    return undefined;
+  }
+}
+
+// 2026-10-27 (decisión del humano): «API e integraciones» pasó al núcleo. La key ya no exige ningún
+// módulo; solo `/analitica` sigue exigiendo Analítica (R33).
+describe("SL-23 · API por key: núcleo desde el 2026-10-27 (R18)", () => {
   it("control: son las 9 rutas (10 manejadores)", () => {
     expect(RUTAS).toHaveLength(10);
   });
 
-  it.each(RUTAS)("%s → 403 modulo_inactivo y el cuerpo no se ejecuta", async (_nombre, llamar) => {
-    const res = await llamar();
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({
-      status: "error",
-      code: "FORBIDDEN",
-      message: "El módulo API e integraciones no está activo para esta empresa.",
-      details: { codigo: "modulo_inactivo", modulo: "api_integraciones" },
-    });
-    expect(estado.llamadas).toEqual([]);
-  });
+  it.each(RUTAS.filter(([n]) => n !== "GET /analitica"))(
+    "%s con TODOS los módulos apagados no responde modulo_inactivo",
+    async (_nombre, llamar) => {
+      const res = await llamar();
+      expect(await codigoDe(res)).not.toBe("modulo_inactivo");
+    },
+  );
 
-  it("con el módulo encendido, la puerta deja pasar (el cuerpo llega a la base)", async () => {
-    estado.activos = ["api_integraciones"];
+  it("con todos los módulos apagados, el cuerpo llega a la base", async () => {
     const res = await handleConsultaOrdenApi(peticion("GET", `/orden/${ID}`), ID, deps);
     expect(res.status).not.toBe(403);
     expect(estado.llamadas.length).toBeGreaterThan(0);
   });
 });
 
-describe("SL-23 · /api/ordenes/api-key/analitica es de dos módulos (R33)", () => {
-  it("con la API encendida y Analítica apagada → 403 con details.modulo = analitica, sin leer", async () => {
-    estado.activos = ["api_integraciones"];
+describe("SL-23 · /api/ordenes/api-key/analitica exige Analítica (R33)", () => {
+  it("con Analítica apagada → 403 con details.modulo = analitica, sin leer", async () => {
     const res = await handleAnaliticaApiKey(peticion("GET", "/analitica"), deps);
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({
@@ -117,11 +122,10 @@ describe("SL-23 · /api/ordenes/api-key/analitica es de dos módulos (R33)", () 
     expect(estado.llamadas).toEqual([]);
   });
 
-  it("con las dos encendidas, la puerta deja pasar", async () => {
-    estado.activos = ["api_integraciones", "analitica"];
+  it("con Analítica encendida, la puerta deja pasar", async () => {
+    estado.activos = ["analitica"];
     const res = await handleAnaliticaApiKey(peticion("GET", "/analitica"), deps);
     // Lo que responda despues (el rol de la key, la validacion) ya no es la puerta de modulos.
-    const cuerpo = (await res.json()) as { details?: { codigo?: string } };
-    expect(cuerpo.details?.codigo).not.toBe("modulo_inactivo");
+    expect(await codigoDe(res)).not.toBe("modulo_inactivo");
   });
 });

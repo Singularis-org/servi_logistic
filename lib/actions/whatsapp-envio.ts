@@ -14,9 +14,6 @@ import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeR
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ListarPlantillasTextoResult } from "@/lib/types/whatsapp-envio";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
-import { withErrorHandler } from "@/lib/errors";
-import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 export interface WhatsappEnvioDeps {
   getActor?: () => Promise<Actor | null>;
@@ -33,10 +30,6 @@ export interface WhatsappEnvioDeps {
 export async function listarPlantillasParaEnvio(
   deps: WhatsappEnvioDeps = {},
 ): Promise<ListarPlantillasTextoResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -56,10 +49,6 @@ export async function listarPlantillasParaEnvio(
 export async function listarPlantillasParaEnvioTienda(
   deps: WhatsappEnvioDeps = {},
 ): Promise<ListarPlantillasTextoResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -79,10 +68,6 @@ export async function listarPlantillasParaEnvioTienda(
 export async function listarPlantillasActivasParaEnvio(
   deps: WhatsappEnvioDeps = {},
 ): Promise<ListarPlantillasTextoResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

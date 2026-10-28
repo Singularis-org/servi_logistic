@@ -179,7 +179,7 @@ describe("GestionarOrdenPanel — hilo de notas", () => {
 
   it("la lista de asignaciones no pide el hilo de todas las órdenes", async () => {
     montar(
-      <RepartoModule whatsappActivo
+      <RepartoModule
         porGestionar={[
           orden({ id: "g1", numGuia: 1001, secuenciaRuta: 1 }),
           orden({ id: "g2", numGuia: 1002, destinatario: "Beto Ruiz", secuenciaRuta: 2 }),

@@ -43,7 +43,7 @@ function diferido<T>() {
 afterEach(() => cleanup());
 
 describe("SL-23 (R8) — una fila por módulo con su interruptor", () => {
-  it("pinta los 8 módulos en el orden del catálogo, con su descripción y su estado", () => {
+  it("pinta los 4 módulos en el orden del catálogo, con su descripción y su estado", () => {
     montar(vi.fn(), ["wallet"]);
 
     const switches = screen.getAllByRole("switch");
@@ -52,8 +52,8 @@ describe("SL-23 (R8) — una fila por módulo con su interruptor", () => {
     );
     expect(screen.getByRole("switch", { name: "Wallet" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: "Ranking" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("switch", { name: "WhatsApp" })).toHaveAccessibleDescription(
-      MODULOS_APAGABLES.whatsapp.descripcion,
+    expect(screen.getByRole("switch", { name: "Monitoreo" })).toHaveAccessibleDescription(
+      MODULOS_APAGABLES.monitoreo.descripcion,
     );
   });
 });
@@ -76,14 +76,14 @@ describe("SL-23 (R8, R9) — el switch llama a la action", () => {
 
   it("al apagar, llama con `activo: false`", async () => {
     const fijar = vi.fn().mockResolvedValue({ estado: "ok", cambio: true });
-    montar(fijar, ["whatsapp"]);
+    montar(fijar, ["ranking"]);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("switch", { name: "WhatsApp" }));
+    await user.click(screen.getByRole("switch", { name: "Ranking" }));
 
-    expect(fijar).toHaveBeenCalledWith({ organizacionId: ORG, modulo: "whatsapp", activo: false });
+    expect(fijar).toHaveBeenCalledWith({ organizacionId: ORG, modulo: "ranking", activo: false });
     await waitFor(() =>
-      expect(screen.getByRole("switch", { name: "WhatsApp" })).toHaveAttribute("aria-checked", "false"),
+      expect(screen.getByRole("switch", { name: "Ranking" })).toHaveAttribute("aria-checked", "false"),
     );
   });
 
@@ -125,13 +125,13 @@ describe("SL-23 (R8) — si falla, vuelve atrás y avisa", () => {
   it("si la action lanza, también vuelve atrás y avisa", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const fijar = vi.fn().mockRejectedValue(new Error("red caída"));
-    montar(fijar, ["recoleccion"]);
+    montar(fijar, ["analitica"]);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("switch", { name: "Recolección" }));
+    await user.click(screen.getByRole("switch", { name: "Analítica" }));
 
-    expect((await screen.findAllByText("No se pudo cambiar «Recolección». Inténtalo de nuevo.")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("switch", { name: "Recolección" })).toHaveAttribute("aria-checked", "true");
+    expect((await screen.findAllByText("No se pudo cambiar «Analítica». Inténtalo de nuevo.")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("switch", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
     error.mockRestore();
   });
 });

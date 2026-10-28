@@ -101,7 +101,7 @@ const RUTA_VIGENTE: RutaResumenDTO = {
 
 function renderModule(porGestionar: MiAsignacionDTO[]) {
   render(
-    <RepartoModule whatsappActivo
+    <RepartoModule
       porGestionar={porGestionar}
       conAyuda={[]}
       porRecoger={[]}

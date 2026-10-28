@@ -324,10 +324,8 @@ export interface GestionarOrdenPanelProps {
   /**
    * Rediseño ux: abre el CHAT del módulo (modal del botón flotante) en la conversación de
    * esta orden. El hilo ya no se lee dentro del panel: la acción "Mensaje" lleva a él.
-   *
-   * SL-23 (design §6.3): `null` con el módulo WhatsApp apagado; entonces «Mensaje» no se pinta.
    */
-  onAbrirChat: (() => void) | null;
+  onAbrirChat: () => void;
 }
 
 /** Primer mensaje de error de un campo (o undefined). */
@@ -902,17 +900,15 @@ export function GestionarOrdenPanel({
             <Phone className="size-5" aria-hidden="true" />
             Llamar
           </a>
-          {onAbrirChat ? (
-            <button
-              type="button"
-              onClick={onAbrirChat}
-              aria-label={`Abrir el chat con ${orden.destinatario}`}
-              className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-success-strong py-3.5 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              <MessageCircle className="size-5" aria-hidden="true" />
-              Mensaje
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={onAbrirChat}
+            aria-label={`Abrir el chat con ${orden.destinatario}`}
+            className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-success-strong py-3.5 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <MessageCircle className="size-5" aria-hidden="true" />
+            Mensaje
+          </button>
           <UbicacionTrigger
             orden={orden}
             ariaLabel={`Ver en el mapa la ruta hasta ${orden.destinatario}`}

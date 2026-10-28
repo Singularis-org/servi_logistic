@@ -27,7 +27,6 @@ import {
   type AppErrorShape,
 } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Mutacion interna (no CORS, no API publica) => Server Action, no route handler
 // (docs/architecture.md). El CONSUMO de la key por terceros es la feature 81a.
@@ -89,7 +88,6 @@ export async function generarApiKey(
   deps: ApiKeyActionDeps = {},
 ): Promise<GenerarApiKeyResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el service
     const data = generarApiKeySchema.parse(input); // ZodError -> VALIDATION_ERROR (R4)
@@ -114,7 +112,6 @@ export async function listarApiKeys(
   deps: ApiKeyActionDeps = {},
 ): Promise<ListarApiKeysResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el service
     const data = listarApiKeysSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR (R3)
@@ -135,7 +132,6 @@ export async function listarApiKeysCompleto(
   deps: ApiKeyActionDeps = {},
 ): Promise<ListarApiKeysCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     const data = listarApiKeysCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
@@ -155,7 +151,6 @@ export async function rotarApiKey(
   deps: ApiKeyActionDeps = {},
 ): Promise<RotarApiKeyResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1
     const data = apiKeyIdSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -174,7 +169,6 @@ export async function activarApiKey(
   deps: ApiKeyActionDeps = {},
 ): Promise<ActivarApiKeyResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1
     const data = apiKeyIdSchema.parse(input);
@@ -193,7 +187,6 @@ export async function desactivarApiKey(
   deps: ApiKeyActionDeps = {},
 ): Promise<DesactivarApiKeyResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1
     const data = apiKeyIdSchema.parse(input);
@@ -226,7 +219,6 @@ export async function eliminarApiKey(
   deps: ApiKeyActionDeps = {},
 ): Promise<EliminarApiKeyResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("api_integraciones");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R19: antes de instanciar el service
     const data = eliminarApiKeySchema.parse(input); // ZodError -> VALIDATION_ERROR (R20)

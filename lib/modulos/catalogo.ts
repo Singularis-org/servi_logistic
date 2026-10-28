@@ -20,14 +20,6 @@ export const MODULOS_APAGABLES: Readonly<Record<ModuloApagable, FichaModulo>> = 
     nombre: "Monitoreo",
     descripcion: "Tablero del día por mensajero.",
   },
-  recoleccion: {
-    nombre: "Recolección",
-    descripcion: "Recolección en tienda por el mensajero.",
-  },
-  bodegas_satelite: {
-    nombre: "Bodegas satélite",
-    descripcion: "Recepción en bodega satélite y Mi bodega.",
-  },
   wallet: {
     nombre: "Wallet",
     descripcion: "Caja, cuentas de tiendas, mensajeros y satélites, y Mi wallet.",
@@ -36,41 +28,34 @@ export const MODULOS_APAGABLES: Readonly<Record<ModuloApagable, FichaModulo>> = 
     nombre: "Ranking",
     descripcion: "Ranking de mensajeros y su histórico.",
   },
-  whatsapp: {
-    nombre: "WhatsApp",
-    descripcion: "Chat, plantillas, envíos automáticos e histórico de conversaciones.",
-  },
-  api_integraciones: {
-    nombre: "API e integraciones",
-    descripcion: "API keys, webhooks y carga de órdenes por API.",
-  },
 };
 
 /** El orden de pantalla. Es una tupla aparte para que reordenar no toque el enum ni la base. */
 export const ORDEN_MODULOS = [
   "analitica",
   "monitoreo",
-  "recoleccion",
-  "bodegas_satelite",
   "wallet",
   "ranking",
-  "whatsapp",
-  "api_integraciones",
 ] as const satisfies readonly ModuloApagable[];
 
 /**
  * Lo que nunca se apaga, solo para mostrarlo («Núcleo (siempre activo)»). No es una clave de base:
  * no hay fila que encender ni petición que lo acepte (R2). «Cierres» e «Incidentes y novedades»
- * entraron por decisión del humano del 2026-10-26.
+ * entraron por decisión del humano del 2026-10-26; «Recolección», «Bodegas satélite», «API e
+ * integraciones» y «WhatsApp» (antes apagables) por las del 2026-10-27 (migración 20261027120000_modulos_nucleo).
  */
 export const NUCLEO = [
   "Inicio",
   "Órdenes",
   "Entregas",
+  "Recolección",
+  "Bodegas satélite",
   "Cierres",
   "Incidentes y novedades",
   "Usuarios",
   "Tarifas",
+  "API e integraciones",
+  "WhatsApp",
   "Ayuda",
 ] as const;
 

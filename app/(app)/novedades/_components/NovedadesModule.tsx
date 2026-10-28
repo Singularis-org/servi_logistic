@@ -302,12 +302,6 @@ export interface NovedadesModuleProps {
   total: number;
   page: number;
   pageSize: number;
-  /**
-   * SL-23 (design §6.3) — si el módulo WhatsApp está encendido para la empresa. Lo decide la página
-   * (Server Component). Con `false` no se pinta la acción de plantilla de WhatsApp; el resto de
-   * `/novedades` es del núcleo y no cambia. Requerido, sin `?`: un montaje que lo olvide no compila.
-   */
-  whatsappActivo: boolean;
 }
 
 /** Etiqueta ES de la causa; NUNCA el slug crudo del enum (R11). `null` -> "Sin causa registrada" (R7). */
@@ -345,7 +339,6 @@ export function NovedadesModule({
   total: initialTotal,
   page: initialPage,
   pageSize,
-  whatsappActivo,
 }: NovedadesModuleProps) {
   const toast = useToast();
   const textos = TEXTOS_POR_GRUPO[grupo];
@@ -805,7 +798,6 @@ export function NovedadesModule({
                     setOrdenAGestionarDesdeAyuda({ orden, modo })
                   }
                   onCorregirDatos={setOrdenACorregir}
-                  whatsappActivo={whatsappActivo}
                 />
               }
             />

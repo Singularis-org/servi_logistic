@@ -138,8 +138,8 @@ export async function handleAnaliticaApiKey(
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
-      // SL-23 (§3.7, R33): pieza compartida. `conEmpresaDeLaKey` ya exigio «API e integraciones»;
-      // esta ruta lee la analitica, asi que tambien exige Analitica, antes de leer nada.
+      // SL-23 (R33): esta ruta lee la analitica, asi que exige Analitica antes de leer nada. «API e
+      // integraciones» es núcleo desde el 2026-10-27: la key sola no exige ningún módulo.
       await exigirModuloActivo("analitica");
       // 2. 267/R9/R27 — LECTURA CLAVE POR CLAVE, igual que `app/api/ordenes/api-key/route.ts`.
       // Volcar `Object.fromEntries(sp)` convertiria cualquier clave futura en entrada del schema,

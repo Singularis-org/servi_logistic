@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -14,8 +13,6 @@ import { cargarDatosFormulario } from "../_components/cargar-formulario";
  * (o ya borrado) responde «no encontrado».
  */
 export default async function EditarEnvioWhatsappPage({ params }: { params: Promise<{ id: string }> }) {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("whatsapp");
   const actor = await resolveActorFromSession();
   if (actor?.rol !== "maestro") {
     return (

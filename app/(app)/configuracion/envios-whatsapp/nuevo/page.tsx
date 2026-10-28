@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import Link from "next/link";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -12,8 +11,6 @@ import { cargarDatosFormulario } from "../_components/cargar-formulario";
  * insignia «Se guarda apagado» del formulario, como la maqueta).
  */
 export default async function NuevoEnvioWhatsappPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("whatsapp");
   const actor = await resolveActorFromSession();
   if (actor?.rol !== "maestro") {
     return (
