@@ -162,7 +162,7 @@ En cada token se elige el `stone-N` más cercano al valor anterior que no baja n
 | `--border`, `--input` | `#e3e8f2` | `stone-200` `#e7e5e4` | línea s/ tarjeta 1.23 → 1.26 · s/ fondo 1.15 → 1.17 |
 | `asfalto-0` | `#f2f5fb` | `stone-100` `#f5f5f4` | sin uso en el árbol · `#111111` encima 17.29 → 17.31 |
 | `asfalto-1` | `#e9edf6` | `stone-200` `#e7e5e4` | `asfalto-7` encima (podio 2.º) 9.71 → 12.08 · anillo `asfalto-4` 2.59 → 3.82 · línea s/ `kraft-inset` 1.07 → 1.15 · s/ blanco 1.17 → 1.26 |
-| `asfalto-2` | `#dde1ee` | `stone-200` `#e7e5e4` | texto s/ `#111111` (opaco) 14.46 → 15.04 · premio `asfalto-9` encima 11.88 → 13.93 · línea en oscuro s/ `#1C1C1A` 13.07 → 13.59 · **línea s/ blanco 1.31 → 1.26 y s/ fondo 1.22 → 1.17 (P1)** |
+| `asfalto-2` | `#dde1ee` | `stone-200` `#e7e5e4` | texto s/ `#111111` (opaco) 14.46 → 15.04 · premio `asfalto-9` encima 11.88 → 13.93 · línea en oscuro s/ `#1C1C1A` 13.07 → 13.59 · **línea s/ blanco 1.31 → 1.26 y s/ fondo 1.22 → 1.17: única excepción de R8, aceptada por el humano (P1, 2026-10-28)** |
 | `asfalto-4` | `#8a94ad` | `stone-500` `#78716c` | placeholder s/ blanco 3.03 → 4.80 · s/ fondo 2.83 → 4.47 · anillo s/ `asfalto-1` 2.59 → 3.82 |
 | `asfalto-5` | `#4a5368` | `stone-700` `#44403c` | s/ blanco 7.70 → 10.27 · s/ `kraft-inset` 6.99 → 9.42 · s/ fondo 7.18 → 9.58 |
 | `asfalto-7` | `#1f3a63` | `stone-800` `#292524` | s/ blanco (papel, F4) 11.39 → 15.17 · s/ `kraft-inset` 10.35 → 13.90 · s/ `asfalto-1` 9.71 → 12.08 |
@@ -188,7 +188,9 @@ Los vecinos que se descartaron, por el par que bajaba:
    `stone` es `stone-200`, que baja la tinta y R8 lo prohíbe.
 2. `--muted-foreground` sube de 7.70 a 10.27: el texto secundario queda más oscuro y se separa menos
    del principal (18.88). Lo fuerza R8 (ver `stone-600` arriba).
-3. `asfalto-2` (P1).
+3. `asfalto-2`: su línea de borde baja 0.05. El humano lo aceptó como única excepción (P1). La
+   alternativa, `stone-300`, bajaba el texto sobre oscuro de 14.46 a 12.68 y el premio de 11.88 a
+   11.74.
 
 **Por qué los HEX de Tailwind v3.** Tailwind 4 declara `stone` en `oklch()`. Este archivo declara
 todos los tokens en HEX y `contraste.ts` solo lee HEX. Además, la tabla aprobada ya usa `stone` en
@@ -248,8 +250,9 @@ Una sola guardia lleva la trazabilidad de la feature. Lee el CSS con `token()`, 
 - **R5:** `COLOR_SEGMENTO` y `VARIANTE_CONTADOR` dan la familia de D3 para los cuatro contadores.
 - **R6:** los segmentos `chart-*` sobre `--muted`, ≥ 3, en los dos temas.
 - **R7:** cada token gris vale el HEX `stone` de D5, también en papel.
-- **R8:** la tabla de pares de D5 como literal: antes, superficie y tinta. Exige `después >= antes`
-  salvo la fila marcada como P1.
+- **R8:** la tabla de pares de D5 como literal: antes, superficie y tinta. Exige `después >= antes`.
+  La línea de `asfalto-2` es la única fila marcada como excepción, y se fija a sus cifras exactas:
+  1.26 sobre blanco y 1.17 sobre el fondo, con `toBeCloseTo(…, 2)`.
 - **R9:** ningún HEX de la lista aparece como valor de token. Se lee sin comentarios, porque los
   comentarios citan los valores viejos a propósito.
 - **R10:** los ocho nombres siguen declarados en `@theme`.
@@ -260,6 +263,18 @@ Una sola guardia lleva la trazabilidad de la feature. Lee el CSS con `token()`, 
 - **R13:** cada HEX de las dos tablas nuevas de `docs/marca.md` es el del CSS.
 - **R16:** los archivos de producción y docs de `tasks.md > Archivos esperados` no contienen
   «Ordenex».
+- **R17:** lee `public/offline.html` y extrae `theme-color` y los colores del `<style>` y del `<svg>`.
+  Comprueba que coinciden con D13, que `theme-color` es el `theme_color` de `public/manifest.json`, y
+  mide cada par de D13 con su suelo («antes» y 4.5 o 3).
+- **R18:** lee `ESTILO_CUERPO` y `ESTILO_BOTON` de `app/global-error.tsx` como texto, sin
+  comentarios. Comprueba los HEX de D14 y mide los pares.
+- **R19:** el color del pin y del tramo en los dos archivos del mapa es `#111111`. Mide los pares de
+  D15 contra la tierra del mapa, usando la constante `TIERRA_OSM` comentada con su origen.
+- **R20:** recorre el árbol del repo sin `node_modules`, `.next`, `.git`, `.worktrees` ni las
+  carpetas que ignora `.gitignore` (`_trabajo/`, informes de test). Se queda fuera de
+  las exclusiones de R20. Lo hace con `readdirSync`, como las demás guardias, sin `git`. Busca
+  los HEX de D5, sin distinguir mayúsculas, y el `rgba` del naranja. Lleva caso sintético rojo y
+  verde, y un suelo de archivos recorridos para que no pase en vacío.
 
 Cada bloque lleva un caso sintético en rojo, como el resto de guardias del repo, para que no pase
 en vacío.
@@ -287,6 +302,101 @@ Procedimiento, con la decisión humana de SL-9:
 
 Va al final, cuando la paleta ya está cerrada: si la paleta cambia, las capturas se rehacen.
 
+## D12 — Inventario de restos de la marca anterior fuera de `globals.css` (P2, R20)
+
+Busqué con Grep, sin distinguir mayúsculas, los 21 HEX de
+`specs/SL-8-marca-logo-paleta-fuente/design.md > D5` y `rgba(242, 100, 25`. Recorrí todo el repo
+salvo `tests/`, `specs/`, `progress/`, `node_modules/` y `.next/`. En `docs/`, `scripts/`, `e2e/`
+y los `.json` de la raíz no apareció nada. Esto es lo que apareció:
+
+| Archivo | Qué es | HEX | Qué se hace |
+|---|---|---|---|
+| `public/offline.html` | Pantalla sin conexión, en tiempo de ejecución | `#0d2444`, `#12233f`, `#f26419`, más los grises viejos `#f7f8fc`, `#4a5368` y `#8a94ad` | D13 |
+| `app/global-error.tsx` | Error del layout raíz, en tiempo de ejecución | `#0d2444` y `#f26419` (estilos y comentario) | D14 |
+| `app/(app)/mis-asignaciones/_components/UbicacionMapaInner.tsx` | Pin del cliente | `#f26419` (y el comentario «Pin naranja») | D15 |
+| `app/(app)/mis-asignaciones/_components/RutaMapaInner.tsx` | Tramo a la siguiente parada | `#f26419` (y el comentario «en naranja») | D15 |
+| `components/ui/tabs.tsx:59-60` | Comentario | `#12233f`, `#0b2545` | Se reescribe sin HEX: «el azul de la marca anterior» |
+| `app/(app)/ordenes/_components/EstatusBadge.tsx:83` | Comentario | `#12233f`, `#0b2545` | Igual |
+| `app/(app)/analitica/_components/entregas/ProductosTabla.tsx:639` | Comentario | `#0d2444` | Igual |
+| `app/(app)/mis-asignaciones/_components/KpisMensajero.tsx:69` | Comentario | `#10203a` | Igual: «la tarjeta oscura de la marca anterior» |
+| `DESIGN.md:14` | Doc de diseño: dice que `--primary` es naranja | `#f26419` | Se corrige a la marca de `docs/marca.md`: `--primary` `#111111` en claro y `#FFD000` en oscuro; `--sidebar` `#1C1C1A` |
+| `design-whatsapp/*.dc.html` (11) y `design-notificaciones/*.dc.html` (4) | Maquetas HTML del contrato visual | 133 apariciones de `#f26419`, `#d4530d`, `#fff0e8`, `#12233f`, `#0d2444`, `#14294a`, `#aab6d2` y `#17233b` | Sustitución mecánica con la tabla de abajo |
+
+**Sustitución en las maquetas**. Cada HEX va a su equivalente de rol en SL-8, cuyos pares ya están
+medidos en `docs/marca.md`:
+
+| Anterior | Rol en la maqueta | Nuevo | Origen |
+|---|---|---|---|
+| `#f26419` | acción, acento, botón | `#111111` | `--primary` claro |
+| `#d4530d` | tinta de acento sobre chip claro | `#111111` | `--accent-foreground` claro |
+| `#fff0e8` | chip de acento | `#FFF8D9` | `--accent` / `brand-soft` |
+| `#12233f` | texto principal | `#111111` | `--foreground` claro |
+| `#17233b` | texto de insignia neutra | `#111111` | `--secondary-foreground` |
+| `#0d2444` | barra lateral | `#1C1C1A` | `--sidebar` |
+| `#14294a` | ítem activo de la barra | `#2E2E2C` | `--sidebar-accent` |
+| `#aab6d2` | texto de la barra | `#C0C0BE` | `--sidebar-foreground` |
+
+Solo cambian los HEX: textos, nombres y estructura de las maquetas no se tocan.
+`docs-marca-heredada.guardia` las recorre buscando frases y sigue en verde. Si un uso no encaja en
+su rol (por ejemplo, `#f26419` como texto sobre `#111111`), se elige el par de `docs/marca.md` que
+dé AA y se anota en `progress/impl_SL-33.md`.
+
+Los grises azulados que no son de D5 (`#eef1f8` y similares) **no** se tocan en las maquetas: el
+alcance de P2 es el naranja y el navy. En `offline.html` sí se cambian, porque es una pantalla real
+(D13).
+
+## D13 — `public/offline.html` (R17)
+
+Es HTML estático servido por el service worker: no carga `globals.css`, así que lleva HEX
+literales.
+
+| Elemento | Antes | Ahora | Par (antes → después) |
+|---|---|---|---|
+| `meta theme-color` | `#0d2444` | `#111111` | igual a `manifest.json > theme_color` |
+| `body` fondo | `#f7f8fc` | `#F7F7F5` | — |
+| `body` texto | `#12233f` | `#111111` | 14.79 → 17.60 |
+| `h1` | `#f26419` | `#111111` | 2.99 → 17.60 (antes no llegaba a AA) |
+| `p` | `#4a5368` | `#44403c` (`stone-700`) | 7.25 → 9.58 |
+| icono `svg` | `#8a94ad` | `#78716c` (`stone-500`) | 2.86 → 4.47 |
+| botón | `#ffffff` sobre `#f26419` | `#ffffff` sobre `#111111` | 3.18 → 18.88 |
+
+## D14 — `app/global-error.tsx` (R18)
+
+Sigue con estilos en línea: es la pantalla que no puede contar con `globals.css`. Los valores son los
+de `--color-navy-deep` (`#111111`) y `--color-brand-light` (`#FFD000`), y el comentario de la l. 26
+se reescribe así.
+
+| Elemento | Antes | Ahora | Par (antes → después) |
+|---|---|---|---|
+| fondo y texto | `#ffffff` sobre `#0d2444` | `#ffffff` sobre `#111111` | 15.52 → 18.88 |
+| botón | `#ffffff` sobre `#f26419` | `#111111` sobre `#FFD000` | 3.18 → 12.84 |
+| enlace | borde `rgba(255,255,255,0.4)`, texto blanco | sin cambio | texto 18.88 |
+
+No es texto amarillo sobre blanco: es tinta negra sobre bloque amarillo, encima de un fondo negro.
+Es el uso que `docs/marca.md` permite.
+
+## D15 — Pin y tramo del mapa (R19)
+
+Leaflet pinta el pin como HTML en línea dentro de un `divIcon`, y el tramo como el atributo `stroke`
+de un SVG. Un `var(--chart-1)` no sirve en ninguno de los dos casos:
+- en el `divIcon` resolvería, pero en oscuro valdría `#FFD000` sobre un mapa que sigue siendo claro;
+- en el atributo de presentación `stroke` no resuelve.
+
+Va el HEX literal `#111111`, que es Negro Servi y `--chart-1` claro. Las tiles de OpenStreetMap son
+claras en los dos temas.
+
+Fondo de referencia: la tierra del estilo estándar de OSM, `#f2efe9`. Lo tomo de OSM Carto; **T7
+lo comprueba** con el cuentagotas sobre una captura del mapa real y, si difiere, manda la captura.
+
+| Elemento | Antes | Ahora | Par (antes → después) |
+|---|---|---|---|
+| pin del cliente | `#f26419` | `#111111`, borde blanco 2 px sin cambio | s/ tierra 2.77 → 16.45 · s/ calle blanca 3.18 → 18.88 |
+| tramo a la siguiente parada | `#f26419`, 6 px | `#111111`, 6 px | s/ tierra 2.77 → 16.45 · contra la ruta azul `#2563eb` 1.63 → 3.65 |
+
+Los demás colores de los mapas no son de la marca anterior y no cambian:
+- las paradas y el repartidor son `#2563eb`, que coincide con `--chart-15` claro;
+- el origen es `#16a34a`, que coincide con `--chart-16` claro.
+
 ## Lo que no aplica (perfil `spec_author`)
 
 - Sin modelo de datos, sin `organizacion_id`, sin RLS, sin migraciones ni `down.sql`: solo CSS y
@@ -308,7 +418,11 @@ Va al final, cuando la paleta ya está cerrada: si la paleta cambia, las captura
   - `/analitica` (series);
   - `/monitoreo` (barra y tarjetas);
   - `/ranking` (podio);
-  - la landing `/`.
+  - la landing `/`;
+  - los dos mapas de `/mis-asignaciones` (pin y tramo, y el color real de la tierra para D15);
+  - `/offline.html`, abierto directamente;
+  - `global-error`, forzando un fallo del layout en local, por ejemplo con `NEXT_PUBLIC_SITE_URL`
+    mal formada.
 
   Las capturas van a `progress/impl_SL-33.md`.
 
@@ -324,3 +438,11 @@ Va al final, cuando la paleta ya está cerrada: si la paleta cambia, las captura
 4. **Renombrar `asfalto-*` a `stone-*` o `piedra-*`.** Es explícitamente «Lo que NO entra».
 5. **`-soft` como el `-100` de Tailwind de cada familia**, como hizo la 292. Mete cuatro HEX que no
    salen de la tabla aprobada. `componer()` los deriva y la guardia los recalcula.
+6. **El pin y el tramo del mapa en `--chart-4` rojo (`#b91c1c`)**, el color típico de un destino.
+   Mide bien (5.64 sobre la tierra), pero en la app el rojo es error (`danger`): el mensajero leería
+   el destino como un fallo. `#111111` mide más y es la marca.
+7. **El pin y el tramo con `var(--chart-1)`.** En oscuro saldría amarillo sobre tiles claras (≈ 1.3)
+   y, en el `stroke` de Leaflet, no resuelve (D15).
+8. **Retirar las maquetas `design-*` en vez de recolorearlas.** Son el contrato visual que citan
+   specs y guardias (`docs-marca-heredada`, `notifications-bell-tokens`). Retirarlas es una decisión
+   de SL-16 o SL-27, no de esta ficha.

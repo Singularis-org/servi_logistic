@@ -12,6 +12,16 @@
 >
 > Al final se regeneran las capturas de la PWA de SL-9 y se baja el umbral de su guardia.
 >
+> **Ampliado por el humano el 2026-10-28 (P2).** También se retiran el naranja y el navy de la marca
+> anterior fuera de `app/globals.css`:
+> - `public/offline.html`;
+> - `app/global-error.tsx`;
+> - el pin y el tramo de los mapas del mensajero (`UbicacionMapaInner.tsx`, `RutaMapaInner.tsx`);
+> - todo lo que aparezca al buscar los HEX de `specs/SL-8-marca-logo-paleta-fuente/design.md > D5`
+>   (inventario en `design.md > D12`).
+>
+> Los colores nuevos salen de `docs/marca.md`, de la paleta aprobada o de `stone`.
+>
 > **Lo que NO entra.**
 > - Renombrar `asfalto-*` ni `kraft-inset`: cambian los valores, no los nombres.
 > - Los colores de marca ya fijados por SL-8 (negro, amarillo, fondo, tema oscuro de `docs/marca.md`).
@@ -63,7 +73,9 @@ miden con `contraste()` y `componer()` de `tests/fixtures/contraste.ts`.
   mismos valores que el tema claro.
 - **R8.** Para cada par (tinta o línea, superficie) en el que se usa un token de R7, censado en
   `design.md > D5`, el sistema DEBE dar un contraste mayor o igual que el que daba con el valor
-  anterior. Única excepción pendiente: la de la pregunta abierta P1.
+  anterior. Única excepción, aceptada por el humano el 2026-10-28: la línea de borde de
+  `asfalto-2` (`stone-200`), que baja de 1.31 a 1.26 sobre blanco y de 1.22 a 1.17 sobre
+  `--background`. Ese par DEBE medir exactamente esas cifras: no puede bajar más.
 - **R9.** El sistema NO DEBE declarar en ningún token de `app/globals.css` ninguno de los HEX
   azulados anteriores: `#eef1f8`, `#f1f4fb`, `#4a5368`, `#e3e8f2`, `#f2f5fb`, `#e9edf6`, `#dde1ee`,
   `#8a94ad`, `#1f3a63` y `#0d2444`.
@@ -93,6 +105,27 @@ miden con `contraste()` y `componer()` de `tests/fixtures/contraste.ts`.
   modifique. Los valores de color DEBEN salir solo de `docs/marca.md`, de la tabla aprobada, de la
   escala `stone` o de `componer()` sobre ellos.
 
+### Restos de la marca anterior fuera de `globals.css` (P2)
+
+- **R17.** CUANDO el service worker sirve `public/offline.html`, la página DEBE usar solo los
+  colores de `design.md > D13`:
+  - `theme-color` igual al `theme_color` de `public/manifest.json`;
+  - fondo, texto, título, párrafo, icono y botón de `docs/marca.md` o `stone`.
+
+  Cada par DEBE medir lo mismo o más que antes. El texto DEBE llegar a 4.5:1 y el icono a 3:1.
+- **R18.** CUANDO se renderiza `app/global-error.tsx`, el sistema DEBE pintar el fondo, el texto y el
+  botón con colores de `docs/marca.md` (`design.md > D14`). El texto y la etiqueta del botón DEBEN
+  medir 4.5:1 o más sobre su fondo, y lo mismo o más que antes.
+- **R19.** CUANDO el mensajero ve un mapa, el sistema DEBE pintar el pin del cliente
+  (`UbicacionMapaInner.tsx`) y el tramo a la siguiente parada (`RutaMapaInner.tsx`) con `#111111`,
+  el Negro Servi y `--chart-1` claro. Los dos DEBEN medir 3:1 o más sobre la tierra del mapa
+  (`design.md > D15`). El tramo DEBE distinguirse de la línea de la ruta, que es azul.
+- **R20.** El sistema NO DEBE contener ningún HEX de `specs/SL-8-marca-logo-paleta-fuente/design.md >
+  D5`, ni `rgba(242, 100, 25, …)`, en ningún archivo versionado. Tampoco en comentarios, maquetas ni
+  `DESIGN.md`. Solo quedan fuera:
+  - `tests/`, `specs/` y `progress/`, que guardan historia;
+  - los comentarios de `app/globals.css`, cuyos tokens ya vigilan R1, R2 y R9.
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | Requisitos |
@@ -100,6 +133,8 @@ miden con `contraste()` y `componer()` de `tests/fixtures/contraste.ts`.
 | Paleta de gráficas: los 20 con la tabla aprobada | R1, R2, R4, R5 |
 | Contraste de las gráficas, 3:1 sobre fondo y tarjeta | R3, R6 |
 | Grises de `stone`, sin perder contraste y documentados | R7, R8, R9, R13 |
+| P1: `asfalto-2` a `stone-200`, con la línea como única excepción | R7, R8 |
+| P2: los restos fuera de `globals.css` entran | R17, R18, R19, R20 |
 | No se renombran `asfalto-*` ni `kraft-inset` | R10 |
 | Se regeneran las capturas de SL-9 y se baja el umbral | R15 |
 | Fuente de la marca | R13, R16 |
@@ -109,26 +144,7 @@ miden con `contraste()` y `componer()` de `tests/fixtures/contraste.ts`.
 
 ## Preguntas abiertas
 
-- **P1. `asfalto-2` no cabe en un solo `stone` sin perder algo.** Hoy hace tres papeles:
-  - texto claro con alfa sobre superficies oscuras (pie, hero, banda, políticas);
-  - superficie del premio del 2.º puesto, con `asfalto-9` encima;
-  - línea de borde sobre blanco (tarjetas de la landing, `DataTable`, `EstadoInfo`).
-
-  `stone-200` conserva o sube el texto y la superficie, pero la línea baja de 1.31 a 1.26 sobre
-  blanco y de 1.22 a 1.17 sobre el fondo. Es decorativa, no tiene mínimo WCAG y queda igual que
-  `--border`. `stone-300` conserva la línea, pero baja el texto sobre oscuro de 14.46 a 12.68 y el
-  premio de 11.88 a 11.74.
-
-  **Propuesta: `stone-200`**, con esa línea como única excepción de R8. ¿Se acepta, o se prefiere
-  `stone-300`, o separar los papeles cambiando clases?
-- **P2 (no bloquea; fuera del alcance).** Siguen quedando restos de la marca anterior fuera de
-  `app/globals.css`:
-  - `public/offline.html` (`#0d2444`, `#12233f`, `#f26419`);
-  - `app/global-error.tsx` (`#0d2444`, `#f26419`);
-  - el pin y la ruta de los mapas del mensajero (`#f26419` en `UbicacionMapaInner.tsx` y
-    `RutaMapaInner.tsx`).
-
-  Esta ficha no los toca. ¿Ficha aparte?
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -141,6 +157,8 @@ miden con `contraste()` y `componer()` de `tests/fixtures/contraste.ts`.
 | 2026-10-28 | ¿Se regeneran las capturas de SL-9? | Sí: SL-9 está en `dev` (PR #31). Se corre `scripts/capturas-pwa.mjs` y se baja el umbral de la marca anterior de su guardia a lo que dé la medida (`specs/SL-9-marca-pwa-capturas-iconos/design.md > D2`). |
 | 2026-10-28 | Fuente de la marca | `docs/marca.md` y `public/brand/`; nunca recursos de Ordenex (heredada de SL-8, D6). |
 | 2026-10-28 | «Ordenex» en lo que se toca | Desaparece del todo (heredada de SL-8, D16). |
+| 2026-10-28 | P1: `asfalto-2` no cabe en un solo `stone` sin perder algo | Humano, 2026-10-28: pasa a `stone-200`. La línea de borde, de 1.31 a 1.26 sobre blanco y de 1.22 a 1.17 sobre el fondo, es la única excepción aceptada de R8. |
+| 2026-10-28 | P2: restos de la marca anterior fuera de `globals.css` | Humano, 2026-10-28: entran en SL-33. Son `public/offline.html`, `app/global-error.tsx`, `UbicacionMapaInner.tsx`, `RutaMapaInner.tsx` y todo lo que aparezca al buscar los HEX de SL-8 D5. Los colores nuevos salen de `docs/marca.md`, de la paleta aprobada o de `stone`. El pin y el tramo del mapa usan un token de gráfica o de marca que se vea sobre el mapa, con su contraste medido. |
 
 ### Paleta de gráficas aprobada (2026-10-28)
 
