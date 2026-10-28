@@ -13,32 +13,40 @@ import type {
   IEtiquetaGuiaService,
 } from "@/lib/interfaces/services/IEtiquetaGuiaService";
 import type { EtiquetaGuiaDTO, EtiquetaOmitidaDTO } from "@/lib/types/etiqueta-guia";
+import {
+  resolverAlcanceEtiquetasOrden,
+  type AlcanceEtiquetasOrden,
+} from "@/lib/services/alcance-etiquetas-orden";
 
 function distinct(values: string[]): string[] {
   return [...new Set(values)];
 }
 
 /**
- * Feature 136 — ¿puede este actor ver la etiqueta de esta orden?
- *
- * El rol `apiKey` (canal de integracion de la carga por API) SOLO ve las ordenes
- * de su propia tienda: `actor.usuarioId` es el `tienda_id` con el que se crean sus
- * ordenes (`BulkOrdenService.cargarViaApi`). Desde la feature 302 ese id es el DUENO
- * resuelto por `ApiKeyAuthService` —la tienda real apuntada por la key, o su cuenta
- * dedicada si no apunta a ninguna—, no siempre la cuenta dedicada. La regla no cambia:
- * el actor ve las ordenes de UN solo dueno, el suyo.
- * Hasta ahora el aislamiento entre tiendas descansaba unicamente en el borde —los
- * `ordenIds` salen del summary de la propia carga—, asi que un futuro llamador que
- * pasara ids ajenos filtraria datos de otra tienda sin que nada lo impidiera. La
- * invariante se fija aqui, en el service, que es donde vive la autorizacion.
- *
- * Los roles de sesion (maestro/admin/adminTienda/mensajero/adminSatelite) mantienen
- * el comportamiento previo: la etiqueta es un READ derivado abierto a cualquier rol
- * autenticado (decision cerrada en la feature 32).
+ * Dueño que el repositorio pone en el `where` para este alcance: `ownerId` si el actor solo ve
+ * lo suyo, `null` si no hay frontera de tienda (SLT-49, design §3.2).
  */
-function esVisiblePara(row: EtiquetaRow, actor: Actor): boolean {
-  if (actor.rol !== "apiKey") return true;
-  return row.tiendaId === actor.usuarioId;
+function tiendaIdDelAlcance(alcance: AlcanceEtiquetasOrden): string | null {
+  return alcance.alcance === "propias" ? alcance.ownerId : null;
+}
+
+/**
+ * SEGUNDA CAPA (SLT-49): ¿puede este alcance ver la etiqueta de esta fila?
+ *
+ * La FRONTERA vive en el `where` del repositorio (`tiendaIdDelAlcance`): una orden de otra tienda
+ * no se lee de la base. Este `if` es la red: si una fila ajena llegara igual (un repo mal mutado,
+ * un doble que ignore el filtro), sigue saliendo como `no_encontrada`. Mismo doble cinturon que
+ * el borrado (FICHA 358).
+ *
+ * El alcance sale de `resolverAlcanceEtiquetasOrden`, la regla unica (R14): `adminTienda` y
+ * `apiKey` ven solo lo suyo (`actor.usuarioId` es el `tienda_id` de sus ordenes; para la key, el
+ * dueño resuelto por `ApiKeyAuthService`, features 136 y 302); maestro/admin ven todo (R11) y
+ * mensajero/adminSatelite conservan el comportamiento previo, sin filtro por dueño, hasta SLT-50
+ * (R12).
+ */
+function esVisiblePara(row: EtiquetaRow, alcance: AlcanceEtiquetasOrden): boolean {
+  if (alcance.alcance === "todas") return true;
+  return row.tiendaId === alcance.ownerId;
 }
 
 export class EtiquetaGuiaService implements IEtiquetaGuiaService {
@@ -48,18 +56,18 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
     input: GenerarEtiquetasInput,
     actor: Actor,
   ): Promise<GenerarEtiquetasServiceResult> {
-    // Autorizacion: la etiqueta es un READ derivado disponible para cualquier rol
-    // autenticado (decision del usuario). La sesion ya se exige en el borde
-    // (Server Action -> `unauthenticated` sin sesion); para los roles de sesion no
-    // se restringe por rol ni se filtra por visibilidad de la orden.
-    //
-    // EXCEPCION (feature 136): el rol `apiKey` SI se filtra por dueño (ver
-    // `esVisiblePara`). Es un canal de integracion externo, no una sesion humana.
+    // Autorizacion: la etiqueta es un READ derivado (feature 32) sin `forbidden` por rol; la
+    // sesion ya se exige en el borde (Server Action -> `unauthenticated`). Lo que SI se acota es
+    // el DUEÑO: `adminTienda` (SLT-49) y `apiKey` (feature 136) solo leen las etiquetas de su
+    // tienda; el resto segun `resolverAlcanceEtiquetasOrden` (R14). La orden ajena se reporta
+    // como `no_encontrada`, igual que una inexistente, y no aborta el lote (R7).
+    const alcance = resolverAlcanceEtiquetasOrden(actor);
     const ordenIds = distinct(input.ordenIds);
     if (ordenIds.length === 0) return { status: "ok", etiquetas: [], omitidas: [] };
 
-    // R1/R3: filas ya sin borradas (el repo filtra deletedAt: null).
-    const rows = await this.repo.findEtiquetasByIds(ordenIds);
+    // R1/R3: filas ya sin borradas (el repo filtra deletedAt: null). SLT-49/R10: con alcance
+    // `propias`, el dueño va en el `where`: la fila de otra tienda ni se lee.
+    const rows = await this.repo.findEtiquetasByIds(ordenIds, tiendaIdDelAlcance(alcance));
     const rowById = new Map<string, EtiquetaRow>(rows.map((r) => [r.id, r]));
 
     const etiquetas: EtiquetaGuiaDTO[] = [];
@@ -69,10 +77,11 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
     // que no vinieron de la query. Una orden invalida NO aborta el lote (R3).
     for (const ordenId of ordenIds) {
       const row = rowById.get(ordenId);
-      if (!row || !esVisiblePara(row, actor)) {
+      if (!row || !esVisiblePara(row, alcance)) {
         // No existe, esta borrada (el repo la excluyo por deletedAt) o es de otra
-        // tienda y el actor es una API key (feature 136). En los tres casos se
-        // reporta igual: `no_encontrada` NO revela la existencia de la orden ajena.
+        // tienda y el actor solo ve lo suyo (apiKey 136, adminTienda SLT-49; el repo
+        // ya la excluyo y la segunda capa lo repite). En todos los casos se reporta
+        // igual: `no_encontrada` NO revela la existencia de la orden ajena.
         omitidas.push({ ordenId, motivo: "no_encontrada" });
         continue;
       }
@@ -91,11 +100,13 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
     numGuia: number,
     actor: Actor,
   ): Promise<EtiquetaPorGuiaServiceResult> {
-    // Misma autorizacion que `generarEtiquetas`: READ derivado disponible para
-    // cualquier rol autenticado (la sesion se exige en el borde), salvo `apiKey`,
-    // que solo ve las ordenes de su propia tienda (feature 136).
-    const row = await this.repo.findEtiquetaByNumGuia(numGuia); // ya filtra borradas (R3)
-    if (!row || row.numGuia === null || !esVisiblePara(row, actor)) {
+    // Misma autorizacion que `generarEtiquetas`: sin `forbidden` por rol, con el dueño
+    // acotado por `resolverAlcanceEtiquetasOrden`. SLT-49/R9: la guia de otra tienda
+    // para un `adminTienda` sale `no_encontrada` (la pagina `/paquete` la mapea a 404).
+    const alcance = resolverAlcanceEtiquetasOrden(actor);
+    // Ya filtra borradas (R3) y, con alcance `propias`, el dueño en el `where` (R10).
+    const row = await this.repo.findEtiquetaByNumGuia(numGuia, tiendaIdDelAlcance(alcance));
+    if (!row || row.numGuia === null || !esVisiblePara(row, alcance)) {
       return { status: "no_encontrada" };
     }
     return { status: "ok", etiqueta: this.toEtiquetaDTO(row, row.numGuia) };

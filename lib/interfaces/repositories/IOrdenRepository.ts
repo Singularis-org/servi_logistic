@@ -1892,16 +1892,25 @@ export interface IOrdenRepository {
    * reporta como `no_encontrada`, R3). NO filtra por `num_guia`: devuelve filas
    * con `numGuia` posible null y el service decide `sin_guia` (R2). Solo query,
    * sin logica de negocio. Vacio si `ids` esta vacio.
+   *
+   * SLT-49/R10: `tiendaId` es el DUEÑO ya resuelto por el service
+   * (`resolverAlcanceEtiquetasOrden`): string -> `tienda_id` entra en el `where` (una orden de
+   * otra tienda ni se lee); `null` -> sin frontera de tienda. OBLIGATORIO a proposito: un
+   * parametro opcional que alguien olvida falla ABIERTO; asi cada llamador escribe `null` y lo
+   * decide.
    */
-  findEtiquetasByIds(ids: string[]): Promise<EtiquetaRow[]>;
+  findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]>;
   /**
    * Feature 32/R1/R3 (QR por guia): fila para la etiqueta resuelta por `num_guia`
    * (UNIQUE en `orden`), con los mismos nombres legibles y el mismo filtro
    * `deletedAt: null` que `findEtiquetasByIds` (R3: borrada/inexistente -> `null`).
    * La fila devuelta SIEMPRE tiene `numGuia` no nulo (se busca justamente por el).
    * Solo query, sin logica de negocio.
+   *
+   * SLT-49/R9/R10: `tiendaId` con la misma semantica que en `findEtiquetasByIds` (string ->
+   * frontera de tienda en el `where`; `null` -> sin ella). Obligatorio por el mismo motivo.
    */
-  findEtiquetaByNumGuia(numGuia: number): Promise<EtiquetaRow | null>;
+  findEtiquetaByNumGuia(numGuia: number, tiendaId: string | null): Promise<EtiquetaRow | null>;
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
 

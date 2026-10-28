@@ -7,6 +7,7 @@ const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
 const ADMIN_TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda" };
 const MENSAJERO: Actor = { usuarioId: "u-msg", rol: "mensajero" };
+const ADMIN_SATELITE: Actor = { usuarioId: "u-sat", rol: "adminSatelite" };
 
 // Fila de etiqueta con guia asignada por defecto (nombres resueltos). Los tests
 // sobreescriben lo que necesiten.
@@ -62,20 +63,44 @@ function fakeRepo(rows: EtiquetaRow[] = [etiquetaRow()]): IOrdenRepository {
     findMensajeroIdsValidosByZona: vi.fn(),
     rutearBodegaSateliteLote: vi.fn(),
     // Feature 32: filtra por ids solicitados (simula el `where id in` del repo).
+    // SLT-49: simula tambien el `tienda_id` del `where` (string -> solo esa tienda; null -> sin
+    // frontera). El `vi.fn` registra con que `tiendaId` se le llamo.
+    findEtiquetasByIds: vi.fn(async (ids: string[], tiendaId: string | null) =>
+      rows.filter((r) => ids.includes(r.id) && (tiendaId === null || r.tiendaId === tiendaId)),
+    ),
+    // QR por guia: simula el `where num_guia = ? and deleted_at is null` (UNIQUE) + SLT-49 dueño.
+    findEtiquetaByNumGuia: vi.fn(
+      async (numGuia: number, tiendaId: string | null) =>
+        rows.find(
+          (r) => r.numGuia === numGuia && (tiendaId === null || r.tiendaId === tiendaId),
+        ) ?? null,
+    ),
+  } as unknown as IOrdenRepository;
+}
+
+/**
+ * SLT-49 — doble que IGNORA el `tiendaId` (como un repo al que se le cayo el filtro del
+ * `where`). Sirve para probar la SEGUNDA capa del service (`esVisiblePara`).
+ */
+function repoQueIgnoraTienda(rows: EtiquetaRow[]): IOrdenRepository {
+  return {
     findEtiquetasByIds: vi.fn(async (ids: string[]) => rows.filter((r) => ids.includes(r.id))),
-    // QR por guia: simula el `where num_guia = ? and deleted_at is null` (UNIQUE).
     findEtiquetaByNumGuia: vi.fn(
       async (numGuia: number) => rows.find((r) => r.numGuia === numGuia) ?? null,
     ),
   } as unknown as IOrdenRepository;
 }
 
-describe("EtiquetaGuiaService — autorizacion (cualquier rol autenticado)", () => {
-  it("cualquier rol (admin/adminTienda/mensajero/maestro) genera etiqueta, sin forbidden", async () => {
+// SLT-49 — CAMBIO DE CONTRATO EXPLICITO. Hasta la SLT-49 este bloque afirmaba «cualquier rol
+// (admin/adminTienda/mensajero/maestro) genera etiqueta» con una orden de `tienda-1` y el actor
+// `u-tienda`. Desde la SLT-49 eso deja de ser cierto para `adminTienda`: solo ve lo suyo (bloque
+// propio, abajo). Aqui quedan maestro/admin (R11) y mensajero (R12).
+describe("EtiquetaGuiaService — autorizacion (roles sin frontera de tienda)", () => {
+  it("R11/R12: maestro/admin/mensajero generan la etiqueta de cualquier tienda, sin forbidden", async () => {
     const repo = fakeRepo();
     const service = new EtiquetaGuiaService(repo);
 
-    for (const actor of [ADMIN, ADMIN_TIENDA, MENSAJERO, MAESTRO]) {
+    for (const actor of [ADMIN, MENSAJERO, MAESTRO]) {
       const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, actor);
       expect(r.status).toBe("ok");
       if (r.status !== "ok") throw new Error("unreachable");
@@ -141,15 +166,116 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
     expect((await service.obtenerEtiquetaPorGuia(501, KEY_TIENDA_1)).status).toBe("ok");
   });
 
-  it("los roles de sesion NO se filtran por dueño (comportamiento de la feature 32)", async () => {
+  it("R13: el repo se llama con el dueño de la key como `tiendaId` (frontera en el where)", async () => {
+    const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "tienda-1", numGuia: 501 })]);
+    const service = new EtiquetaGuiaService(repo);
+
+    await service.generarEtiquetas({ ordenIds: ["o1"] }, KEY_TIENDA_1);
+    await service.obtenerEtiquetaPorGuia(501, KEY_TIENDA_1);
+
+    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["o1"], "tienda-1");
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, "tienda-1");
+  });
+
+  // SLT-49: antes incluia a ADMIN_TIENDA; ahora la tienda tiene frontera (bloque de abajo).
+  it("R11/R12: maestro/admin/mensajero/adminSatelite NO se filtran por dueño", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "otra-tienda" })]);
     const service = new EtiquetaGuiaService(repo);
 
-    for (const actor of [MAESTRO, ADMIN, ADMIN_TIENDA, MENSAJERO]) {
+    for (const actor of [MAESTRO, ADMIN, MENSAJERO, ADMIN_SATELITE]) {
       const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, actor);
       if (r.status !== "ok") throw new Error("unreachable");
       expect(r.etiquetas).toHaveLength(1);
     }
+  });
+});
+
+// SLT-49 — la tienda (`adminTienda`) solo lee las etiquetas de sus ordenes (R7, R8, R9, R10).
+// `ADMIN_TIENDA.usuarioId` ("u-tienda") es el `tienda_id` de sus ordenes.
+describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)", () => {
+  const PROPIA = etiquetaRow({ id: "propia", tiendaId: "u-tienda", numGuia: 11 });
+  const AJENA = etiquetaRow({ id: "ajena", tiendaId: "otra-tienda", numGuia: 22 });
+
+  it("R7: tienda propia -> recibe su etiqueta", async () => {
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+
+    const r = await service.generarEtiquetas({ ordenIds: ["propia"] }, ADMIN_TIENDA);
+
+    if (r.status !== "ok") throw new Error("unreachable");
+    expect(r.etiquetas.map((e) => e.ordenId)).toEqual(["propia"]);
+    expect(r.omitidas).toEqual([]);
+  });
+
+  it("R8: lote de uno con la orden de otra tienda -> sin etiqueta y `no_encontrada`", async () => {
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+
+    const r = await service.generarEtiquetas({ ordenIds: ["ajena"] }, ADMIN_TIENDA);
+
+    if (r.status !== "ok") throw new Error("unreachable");
+    expect(r.etiquetas).toEqual([]);
+    expect(r.omitidas).toEqual([{ ordenId: "ajena", motivo: "no_encontrada" }]);
+  });
+
+  it("R7: lote mixto -> la propia en `etiquetas`, la ajena en `omitidas` como `no_encontrada`", async () => {
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+
+    const r = await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
+
+    if (r.status !== "ok") throw new Error("unreachable");
+    expect(r.etiquetas.map((e) => e.ordenId)).toEqual(["propia"]);
+    expect(r.etiquetas.map((e) => e.numGuia)).not.toContain(22);
+    expect(r.omitidas).toEqual([{ ordenId: "ajena", motivo: "no_encontrada" }]);
+  });
+
+  it("R9: por guia ajena -> `no_encontrada`; por guia propia -> ok", async () => {
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+
+    expect((await service.obtenerEtiquetaPorGuia(22, ADMIN_TIENDA)).status).toBe("no_encontrada");
+    expect((await service.obtenerEtiquetaPorGuia(11, ADMIN_TIENDA)).status).toBe("ok");
+  });
+
+  it("R10: el repo se llama con el usuarioId de la tienda como `tiendaId` (lote y guia)", async () => {
+    const repo = fakeRepo([PROPIA, AJENA]);
+    const service = new EtiquetaGuiaService(repo);
+
+    await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
+    await service.obtenerEtiquetaPorGuia(22, ADMIN_TIENDA);
+
+    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["propia", "ajena"], "u-tienda");
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, "u-tienda");
+  });
+
+  it("R11/R12: maestro/admin/mensajero/adminSatelite -> repo llamado con `null` (sin frontera)", async () => {
+    for (const actor of [MAESTRO, ADMIN, MENSAJERO, ADMIN_SATELITE]) {
+      const repo = fakeRepo([PROPIA, AJENA]);
+      const service = new EtiquetaGuiaService(repo);
+
+      await service.generarEtiquetas({ ordenIds: ["ajena"] }, actor);
+      await service.obtenerEtiquetaPorGuia(22, actor);
+
+      expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["ajena"], null);
+      expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, null);
+    }
+  });
+
+  it("R7/R8/R9 segunda capa: un repo que IGNORA `tiendaId` y devuelve la ajena -> sigue `no_encontrada`", async () => {
+    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]));
+
+    const r = await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
+    if (r.status !== "ok") throw new Error("unreachable");
+    expect(r.etiquetas.map((e) => e.ordenId)).toEqual(["propia"]);
+    expect(r.omitidas).toEqual([{ ordenId: "ajena", motivo: "no_encontrada" }]);
+
+    expect((await service.obtenerEtiquetaPorGuia(22, ADMIN_TIENDA)).status).toBe("no_encontrada");
+  });
+
+  it("R13 segunda capa: tambien para una API key con un repo que ignora `tiendaId`", async () => {
+    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]));
+    const key: Actor = { usuarioId: "u-tienda", rol: "apiKey" };
+
+    const r = await service.generarEtiquetas({ ordenIds: ["ajena"] }, key);
+    if (r.status !== "ok") throw new Error("unreachable");
+    expect(r.omitidas).toEqual([{ ordenId: "ajena", motivo: "no_encontrada" }]);
   });
 });
 
@@ -335,7 +461,7 @@ describe("EtiquetaGuiaService — etiqueta por num_guia (ruta /paquete/<numGuia>
     expect(r.etiqueta.ordenId).toBe("o1");
     expect(r.etiqueta.numGuia).toBe(501);
     expect(r.etiqueta.qrValue).toBe("501");
-    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501);
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, null); // maestro: sin frontera
   });
 
   it("R3: sin orden viva con ese num_guia (inexistente o borrada) -> no_encontrada", async () => {
@@ -347,11 +473,13 @@ describe("EtiquetaGuiaService — etiqueta por num_guia (ruta /paquete/<numGuia>
     expect(r.status).toBe("no_encontrada");
   });
 
-  it("cualquier rol autenticado resuelve la etiqueta por guia (sin forbidden)", async () => {
+  // SLT-49: ADMIN_TIENDA sale de este bucle (la orden es de `tienda-1`, no suya); su caso por
+  // guia vive en el bloque «frontera por dueño del adminTienda».
+  it("R11/R12: maestro/admin/mensajero/adminSatelite resuelven la etiqueta por guia de cualquier tienda", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 501 })]);
     const service = new EtiquetaGuiaService(repo);
 
-    for (const actor of [ADMIN, ADMIN_TIENDA, MENSAJERO, MAESTRO]) {
+    for (const actor of [ADMIN, MENSAJERO, MAESTRO, ADMIN_SATELITE]) {
       const r = await service.obtenerEtiquetaPorGuia(501, actor);
       expect(r.status).toBe("ok");
     }

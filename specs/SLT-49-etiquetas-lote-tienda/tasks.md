@@ -14,7 +14,7 @@
     `adminTienda`, `apiKey`, `mensajero`, `adminSatelite`) → alcance y `ownerId` esperados.
   - **Hecho:** test verde; `pnpm run typecheck` verde.
 
-- [ ] **T2 [P] — Repositorio con dueño obligatorio** (R10)
+- [x] **T2 [P] — Repositorio con dueño obligatorio** (R10)
   - `lib/interfaces/repositories/IOrdenRepository.ts`: `findEtiquetasByIds(ids, tiendaId: string | null)`
     y `findEtiquetaByNumGuia(numGuia, tiendaId: string | null)`; JSDoc actualizado.
   - `lib/repositories/OrdenRepository.ts`: `tiendaId` no nulo entra en el `where` de las dos
@@ -22,7 +22,7 @@
   - **Hecho:** typecheck verde (rojo esperado en el service hasta T3, que va en el mismo commit si
     hace falta para dejar verde el gate).
 
-- [ ] **T3 — Service con frontera por dueño** (R7, R8, R9, R11, R12, R13) · depende de T1, T2
+- [x] **T3 — Service con frontera por dueño** (R7, R8, R9, R11, R12, R13) · depende de T1, T2
   - `lib/services/EtiquetaGuiaService.ts`: resuelve el alcance con T1, pasa `tiendaId` al repo en
     `generarEtiquetas` y `obtenerEtiquetaPorGuia`, reescribe `esVisiblePara` sobre el alcance
     (segunda capa). Contrato de salida igual (`no_encontrada` para la ajena). Comentarios de
