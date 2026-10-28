@@ -200,3 +200,112 @@ Typecheck tras el arreglo (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run type
 - Las capturas se regeneran cuando SL-33 cierre.
 - Queda anotado en `design.md > D2 > Umbral fijado` y en «Decisiones cerradas» de `requirements.md`.
 - T4 queda hecha con las capturas del commit `920b8e7`.
+
+## T5 — Guardia
+
+- Nuevo: `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts`. Tiene 12 casos:
+  - R3, 3 casos: las huellas de T1;
+  - R4, 6 casos: marca anterior < 1.8 % y marca nueva ≥ 1 %;
+  - R13, 3 casos: los PNG no existen, el recorrido no encuentra los nombres, y la anti-vacuidad
+    (> 100 archivos, incluye `KpisMensajero.tsx`).
+- Borrados con `git rm`: `public/icons/icono_{envios,entregadas,wallet,transacciones}.png`.
+- `pnpm exec vitest run tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts`: 12/12 verdes.
+- Comprobado que muerde:
+  - con las capturas de `dev` repuestas: 9 rojos (R3 ×3; R4 anterior ×3, con 78.323 %, 2.283 % y
+    81.199 %; R4 nueva ×3, con 0 %);
+  - con `// icono_wallet` en `app/layout.tsx`: R13 rojo (`app\layout.tsx: icono_wallet`).
+  - Restaurado y verificado por sha.
+- eslint 0, typecheck 0, LF, `grep -il ordenex` vacío.
+
+## T6 — `docs/marca.md`
+
+- «Pendiente (SL-9…)» pasa a «Hecho en SL-9», con cuatro puntos:
+  - script de capturas y cuándo regenerar;
+  - iconos lucide sobre `--accent` y PNG borrados;
+  - brillo `brand-soft`;
+  - `TituloSeccion`/`asfalto-9` queda para SL-33: tras SL-33 hay que volver a correr el script, y
+    mientras tanto la guardia admite < 1.8 %.
+- `grep -i ordenex docs/marca.md`: vacío.
+- `marca-texto-amarillo.guardia.test.ts`: 35/35 verdes.
+
+## T7 — Cierre
+
+Por decisión del humano (vía leader) no se corre `./init.sh`: el gate lo lleva CI (`gate-completo`).
+Se corren solo los tests tocados y la guardia nueva.
+
+**D5 (R17)**, tras el commit `17a634b`:
+
+```
+$ git diff --name-only --diff-filter=d dev...HEAD -- . ':!*.png' ':!specs/' ':!progress/'
+app/(app)/mis-asignaciones/_components/KpisMensajero.tsx
+docs/marca.md
+scripts/capturas-pwa.mjs
+tests/components/KpisMensajero.test.tsx
+tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts
+tests/unit/pwa/capturas-pwa.test.ts
+$ git diff --name-only --diff-filter=d dev...HEAD -- . ':!*.png' ':!specs/' ':!progress/' | xargs grep -il ordenex
+(salida vacía; GREP_EXIT=123 = ningún archivo con coincidencia)
+```
+
+**Tests tocados y guardia nueva** (log fuera de git: `_trabajo/SL-9-T7-tests.log`):
+
+```
+$ pnpm exec vitest run tests/unit/pwa/capturas-pwa.test.ts tests/components/KpisMensajero.test.tsx \
+    tests/components/textos-estado-455.test.tsx tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts \
+    tests/unit/pwa/manifest.test.ts tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts \
+    tests/unit/guards/marca-texto-amarillo.guardia.test.ts
+ Test Files  7 passed (7)
+      Tests  123 passed (123)
+TESTS_EXIT=0
+```
+
+Reparto: capturas-pwa 24, KpisMensajero 5, textos-estado-455 15, guardia nueva 12,
+manifest + pwa-manifiesto-atajos 32, marca-texto-amarillo 35.
+
+- **eslint** sobre los 5 archivos de código y tests tocados: `LINT_EXIT=0`.
+- **Typecheck** (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): exit 0 en T4. T5 y
+  T6 lo repitieron con exit 0.
+
+## Archivos creados, modificados y borrados
+
+- Nuevos:
+  - `scripts/capturas-pwa.mjs`
+  - `tests/unit/pwa/capturas-pwa.test.ts`
+  - `tests/components/KpisMensajero.test.tsx`
+  - `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts`
+  - `progress/impl_SL-9.md`
+- Modificados:
+  - `app/(app)/mis-asignaciones/_components/KpisMensajero.tsx`
+  - `public/screenshots/{inicio-narrow,ingreso-narrow,inicio-wide}.png`
+  - `docs/marca.md`
+  - `specs/SL-9-marca-pwa-capturas-iconos/{requirements,design,tasks}.md` (decisión del umbral y
+    tareas marcadas)
+- Borrados:
+  - `public/icons/icono_{envios,entregadas,wallet,transacciones}.png`
+
+## Mapa R<n> → test
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/pwa/manifest.test.ts`, `tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts` (sin tocar, verdes con las nuevas) |
+| R2 | `tests/unit/pwa/capturas-pwa.test.ts` (`PANTALLA_POR_CAPTURA` y plan real) + salida de T4 |
+| R3 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (huellas) |
+| R4 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (fracciones; umbral < 1.8 % por decisión humana) |
+| R5 | `tests/unit/pwa/capturas-pwa.test.ts` (plan real y manifiesto sintético) |
+| R6 | `tests/unit/pwa/capturas-pwa.test.ts` (una de más, una de menos, tabla = manifiesto) |
+| R7 | `tests/unit/pwa/capturas-pwa.test.ts` (`urlBaseLocal`) + corrida a mano en T2 |
+| R8 | `tests/unit/pwa/capturas-pwa.test.ts` (plan) + salida pegada de T2 (`EXIT=1`, «La app no responde en …») |
+| R9 | `tests/unit/pwa/capturas-pwa.test.ts` (`fallosDePantalla`, 4 motivos; `conTope`) + T4 sin fallos |
+| R10 | `tests/unit/pwa/capturas-pwa.test.ts` (plan) + salida pegada de T4 (tamaños IHDR, `EXIT=0`) |
+| R11 | `tests/components/KpisMensajero.test.tsx` (R11) |
+| R12 | `tests/components/KpisMensajero.test.tsx` (R12) |
+| R13 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (R13 ×3) |
+| R14 | `tests/components/KpisMensajero.test.tsx` (R14) |
+| R15 | `tests/components/KpisMensajero.test.tsx` (R15) |
+| R16 | `tests/components/KpisMensajero.test.tsx` (R16), `tests/components/textos-estado-455.test.tsx` |
+| R17 | salida vacía de D5 en T7, arriba |
+
+## Pendiente fuera de SL-9
+
+Cuando cierre SL-33 (`asfalto-9`), hay que regenerar las capturas con `node scripts/capturas-pwa.mjs`.
+Se puede volver a bajar el umbral de la marca anterior en la guardia.

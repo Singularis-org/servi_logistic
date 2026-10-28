@@ -84,7 +84,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
   **Hecho:** `grep -i ordenex docs/marca.md` da vacío, y la guardia de SL-8 `marca-texto-amarillo`
   (parte 7, que parsea la tabla de tema oscuro) sigue verde.
 
-- [ ] **T7 — Cierre** (R17; D5). Depende de todas.
+- [x] **T7 — Cierre** (R17; D5). Depende de todas.
   - Correr el comando de D5 (`git diff --name-only --diff-filter=d dev...HEAD …| xargs grep -il
     ordenex`), que tiene que dar vacío.
   - Correr `./init.sh`.
