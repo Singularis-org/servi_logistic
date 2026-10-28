@@ -160,7 +160,7 @@
 
 ## Tanda D — cierre
 
-- [ ] **T8. Guardias** [P con T9] (depende de T1).
+- [x] **T8. Guardias** [P con T9] (depende de T1).
   - `planes-sin-seed` y `planes-sin-borrado`, con contraprueba sintética.
   - **Hecho:** las dos en verde y en rojo con su contraprueba.
 - [ ] **T9. Migración de ida y vuelta + E2E** [P con T8] (depende de T5 y T6).
