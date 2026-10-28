@@ -165,3 +165,74 @@ mapa de `progress/impl_SL-9.md`. Las menores m1–m3 se pueden resolver en la mi
 El plan de trazabilidad de `tasks.md`, que el humano aprobó, ya preveía la salida pegada para R8 y
 R10. Si el humano decide aceptar esa evidencia manual en lugar de los tests, la decisión es suya; con
 la regla 4 de CLAUDE.md tal como está, no puedo dar OK.
+
+## Vuelta 2 (acotada a f03556c..d59de62)
+
+Un solo commit, `d59de62`, que toca 5 archivos:
+- `scripts/capturas-pwa.mjs`;
+- `tests/unit/pwa/capturas-pwa.test.ts`;
+- la guardia `marca-pwa-capturas-iconos`;
+- `design.md`;
+- `progress/impl_SL-9.md`.
+
+No toca piezas compartidas ni enmienda requisitos, así que la revisión no se amplía. m4 y m6 siguen
+aceptados por el humano y no se revisan de nuevo.
+
+### Qué corrí
+
+| Comando | Resultado |
+|---|---|
+| `vitest run tests/unit/pwa/capturas-pwa.test.ts tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` | 2 archivos, 41/41 verdes (29 + 12) |
+| `eslint` sobre el script, el test y la guardia | Sin avisos |
+| `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` | exit 0 |
+| `git ls-files --eol` de los 3 archivos | `i/lf w/lf` |
+| `grep -il ordenex` sobre lo tocado fuera de `specs/` y `progress/` | Vacío |
+
+### Hallazgos de la vuelta 1
+
+- [x] **M1 (R8), resuelto.**
+  - El test lanza el script con `spawnSync` contra un puerto de `127.0.0.1` que se abre y se cierra
+    justo antes, así que no responde nadie.
+  - Afirma cuatro cosas: código distinto de 0 y no nulo (un proceso matado por el tope no pasa);
+    `stderr` con «La app no responde en http://127.0.0.1:<puerto>»; ningún error de lanzamiento; y
+    el SHA de las tres capturas igual antes y después.
+  - Muerde: sin `comprobarQueResponde`, el script seguiría hacia Playwright y el mensaje sería otro,
+    así que el caso sale rojo. La bitácora lo confirma.
+  - No depende de la plataforma: usa `process.execPath` y un puerto efímero.
+  - De paso, el caso R7 con `https://example.com` cubre el «sin abrir el navegador» de punta a punta.
+- [x] **M2 (R10), resuelto.**
+  - `dimensionesPng` ahora valida la firma PNG y el bloque `IHDR`. `fallosDeTamano(png, paso)` es pura
+    y está exportada, y `main()` la usa.
+  - Tres casos con PNG reales hechos con `sharp({ create })`: el tamaño correcto da `null`; otro
+    tamaño da un error con el `src` y las dos medidas; un buffer que no es PNG da un error con el `src`.
+  - Una nota, sin hallazgo: que `main()` llame a `fallosDeTamano` no tiene test propio, pero es una
+    línea, y el resultado ya lo vigilan `manifest.test.ts` y `pwa-manifiesto-atajos` sobre los PNG
+    commiteados.
+- [x] **m1, resuelto.** El mapa de R17 cita `sin-nombre-heredado.guardia.test.ts`, más la salida de
+  D5 para `docs/marca.md`.
+- [x] **m2, resuelto.** `design.md > D1`, pasos 4 y 7, recoge la carga `eager`, la espera de
+  `load`/`error`, `conTope` con su tope de 30 s y que el tope es robustez, no R9. También anota los
+  tests de R8 y R10. El cambio es de diseño, no de requisitos.
+- [x] **m3, resuelto.** El filtro de `logos` exige `img.complete && img.naturalWidth > 0`, con un
+  comentario que explica por qué. D1, paso 5, también lo recoge.
+  - Esta parte corre dentro del navegador y no tiene test unitario, igual que la carga `eager` en la
+    vuelta 1. Es aceptable.
+- [x] **m5, resuelto.**
+  - R13 parte ahora de `git ls-files -z --cached --others --exclude-standard` sobre las cuatro
+    carpetas, el mismo patrón que `sin-nombre-heredado`. Descarta lo borrado sin commitear con
+    `existsSync`/`isFile`.
+  - El recorrido se hace en `beforeAll` y ya no al cargar el módulo.
+  - La anti-vacuidad (más de 100 archivos, incluido `KpisMensajero.tsx`) sigue verde.
+
+### Regresiones
+
+Ninguna. El mensaje de éxito de `main()` imprime ahora el tamaño declarado, que es el mismo valor
+porque solo se imprime cuando coincide. Todo o nada, R7 y la lectura del manifiesto no cambian.
+
+### Veredicto vuelta 2
+
+**APROBADO.** Quedan 0 mayores y 0 menores nuevos. Los 2 mayores y los menores m1, m2, m3 y m5 de la
+vuelta 1 están resueltos. m4 (margen de R4) y m6 (E2E de `/mis-asignaciones` en CI) siguen abiertos
+como aceptados por el humano.
+
+El check `gate-completo`, y el `e2e` del PR, los tiene que dar verdes CI antes del merge.
