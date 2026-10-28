@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
+import sharp from "sharp";
 import {
   PANTALLA_POR_CAPTURA,
   planDeCapturas,
   urlBaseLocal,
   fallosDePantalla,
   conTope,
+  dimensionesPng,
+  fallosDeTamano,
 } from "@/scripts/capturas-pwa.mjs";
 
 // SL-9 (D1) — partes puras del script de capturas de la PWA. Se importan sin abrir el navegador:
@@ -198,4 +204,94 @@ describe("conTope corta una espera que no termina (R9)", () => {
   it("propaga el error propio de la promesa, no el del tope", async () => {
     await expect(conTope(Promise.reject(new Error("propio")), 1000, "tope")).rejects.toThrow("propio");
   });
+});
+
+describe("fallosDeTamano compara la cabecera IHDR con el plan (R10)", () => {
+  const paso = { src: "/screenshots/inicio-narrow.png", ancho: 540, alto: 1170 };
+  const pngDe = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: { r: 17, g: 17, b: 17 } } })
+      .png()
+      .toBuffer();
+
+  it("un PNG del tamaño declarado no da fallo", async () => {
+    const png = await pngDe(540, 1170);
+    expect(dimensionesPng(png)).toEqual({ ancho: 540, alto: 1170 });
+    expect(fallosDeTamano(png, paso)).toBeNull();
+  });
+
+  it("un PNG de otro tamaño da un fallo que nombra la captura y las dos medidas", async () => {
+    const fallo = fallosDeTamano(await pngDe(360, 780), paso);
+    expect(fallo).toContain("/screenshots/inicio-narrow.png");
+    expect(fallo).toContain("360x780");
+    expect(fallo).toContain("540x1170");
+  });
+
+  it("un buffer que no es PNG da un fallo que nombra la captura", () => {
+    const fallo = fallosDeTamano(Buffer.from("esto no es un png, aunque mida lo suficiente"), paso);
+    expect(fallo).toMatch(/inicio-narrow\.png.*no es un PNG/);
+  });
+});
+
+// R7 y R8 de punta a punta: el script como proceso hijo. Los dos casos cortan antes de cargar
+// Playwright, así que no abren navegador.
+describe("el script corta sin tocar public/screenshots (R7, R8)", () => {
+  const RAIZ = process.cwd();
+  const SCRIPT = path.join(RAIZ, "scripts", "capturas-pwa.mjs");
+  const CAPTURAS = ["inicio-narrow.png", "ingreso-narrow.png", "inicio-wide.png"];
+  const TOPE_PROCESO_MS = 30_000;
+
+  const huellas = () =>
+    CAPTURAS.map((nombre) =>
+      createHash("sha256")
+        .update(readFileSync(path.join(RAIZ, "public", "screenshots", nombre)))
+        .digest("hex"),
+    );
+
+  /** Un puerto que estuvo libre y ya está cerrado: nadie responde ahí. */
+  const puertoCerrado = () =>
+    new Promise<number>((ok, mal) => {
+      const servidor = net.createServer();
+      servidor.once("error", mal);
+      servidor.listen(0, "127.0.0.1", () => {
+        const { port } = servidor.address() as net.AddressInfo;
+        servidor.close(() => ok(port));
+      });
+    });
+
+  const correr = (url: string) =>
+    spawnSync(process.execPath, [SCRIPT], {
+      cwd: RAIZ,
+      env: { ...process.env, CAPTURAS_URL: url },
+      encoding: "utf8",
+      timeout: TOPE_PROCESO_MS,
+    });
+
+  it(
+    "R8: con la app parada sale con error, avisa que no responde y no cambia ninguna captura",
+    async () => {
+      const puerto = await puertoCerrado();
+      const antes = huellas();
+      const r = correr(`http://127.0.0.1:${puerto}`);
+      expect(r.error).toBeUndefined();
+      expect(r.status).not.toBe(0);
+      expect(r.status).not.toBeNull();
+      expect(r.stderr).toContain(`La app no responde en http://127.0.0.1:${puerto}`);
+      expect(huellas()).toEqual(antes);
+    },
+    TOPE_PROCESO_MS + 5_000,
+  );
+
+  it(
+    "R7: con un host no local sale con error, lo nombra y no cambia ninguna captura",
+    () => {
+      const antes = huellas();
+      const r = correr("https://example.com");
+      expect(r.error).toBeUndefined();
+      expect(r.status).not.toBe(0);
+      expect(r.status).not.toBeNull();
+      expect(r.stderr).toMatch(/localhost o 127\.0\.0\.1, no a "example\.com"/);
+      expect(huellas()).toEqual(antes);
+    },
+    TOPE_PROCESO_MS + 5_000,
+  );
 });

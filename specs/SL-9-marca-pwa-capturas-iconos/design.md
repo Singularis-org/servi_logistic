@@ -100,16 +100,25 @@ export function fallosDePantalla(o) {}
 4. Lanza `chromium` y, por captura, crea un contexto con su viewport, su `deviceScaleFactor`,
    `colorScheme: "light"` y `reducedMotion: "reduce"`. Abre la ruta con `waitUntil: "networkidle"`,
    inyecta `nextjs-portal { display: none !important }`, espera a `document.fonts.ready` y a que
-   todas las `img` estén `complete`.
+   todas las `img` estén `complete`. *(Ajuste de T4, 2026-10-28.)* Antes de esperar, pone
+   `loading = "eager"` en todas las `img`. Si no, las `lazy` fuera de pantalla no cargan nunca. Luego
+   espera `load` o `error` de cada una (un `<img>` no emite `loadend`). La espera de fuentes e imágenes
+   va envuelta en `conTope(promesa, ms, motivo)`, exportada y probada, con
+   `TOPE_ESPERA_MS = 30000`. Si vence el tope, esa pantalla cuenta como fallida con su motivo y entra
+   en el todo o nada del paso 6. No es un requisito de R9, sino robustez: así el script nunca se queda
+   colgado.
 5. Observa en la página: `document.body.innerText`; los `src` de los `img` visibles cuyo `src`
-   contiene `/brand/`; `document.fonts.check("16px Archivo")`; y si hay un `nextjs-portal` con
-   `display` distinto de `none`. Pasa el resultado a `fallosDePantalla`.
+   contiene `/brand/` y que cargaron de verdad (`complete && naturalWidth > 0`, para que un 404 no
+   cuente como logo mostrado); `document.fonts.check("16px Archivo")`; y si hay un `nextjs-portal`
+   con `display` distinto de `none`. Pasa el resultado a `fallosDePantalla`.
 6. **Todo o nada.** Hace las tres capturas en memoria (`page.screenshot({ type: "png",
    animations: "disabled", caret: "hide" })`, solo el viewport) y solo escribe en
    `public/screenshots/` si las tres pasan el paso 5. Si una falla, sale con código 1, la pantalla y
    sus motivos, y no escribe ninguna (R9).
 7. Escribe los tres PNG, relee la cabecera IHDR de cada uno y compara con el `sizes` (R10). Imprime
-   una línea por captura: ruta, pantalla y tamaño.
+   una línea por captura: ruta, pantalla y tamaño. *(Tras la review 1.)* La comparación es una
+   función pura exportada y probada (`fallosDeTamano`), y la comprobación de que la app responde
+   (R8) se prueba lanzando el script contra un puerto local cerrado.
 
 Por qué todo o nada: si se escribiera una y fallara la siguiente, `public/screenshots/` quedaría con
 capturas de dos versiones de la app y nada se pondría rojo.

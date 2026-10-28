@@ -293,19 +293,70 @@ manifest + pwa-manifiesto-atajos 32, marca-texto-amarillo 35.
 | R4 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (fracciones; umbral < 1.8 % por decisión humana) |
 | R5 | `tests/unit/pwa/capturas-pwa.test.ts` (plan real y manifiesto sintético) |
 | R6 | `tests/unit/pwa/capturas-pwa.test.ts` (una de más, una de menos, tabla = manifiesto) |
-| R7 | `tests/unit/pwa/capturas-pwa.test.ts` (`urlBaseLocal`) + corrida a mano en T2 |
-| R8 | `tests/unit/pwa/capturas-pwa.test.ts` (plan) + salida pegada de T2 (`EXIT=1`, «La app no responde en …») |
-| R9 | `tests/unit/pwa/capturas-pwa.test.ts` (`fallosDePantalla`, 4 motivos; `conTope`) + T4 sin fallos |
-| R10 | `tests/unit/pwa/capturas-pwa.test.ts` (plan) + salida pegada de T4 (tamaños IHDR, `EXIT=0`) |
+| R7 | `tests/unit/pwa/capturas-pwa.test.ts` (`urlBaseLocal`, y el script lanzado con `CAPTURAS_URL=https://example.com`: código ≠ 0 y capturas intactas) |
+| R8 | `tests/unit/pwa/capturas-pwa.test.ts` (script lanzado con `spawnSync` contra un puerto local cerrado: código ≠ 0, «La app no responde en http://127.0.0.1:<puerto>» y SHA de las capturas sin cambios) |
+| R9 | `tests/unit/pwa/capturas-pwa.test.ts` (`fallosDePantalla`, 4 motivos) + T4 sin fallos; el logo cuenta solo si `naturalWidth > 0` |
+| R10 | `tests/unit/pwa/capturas-pwa.test.ts` (`fallosDeTamano`: tamaño correcto → `null`; otro tamaño y no-PNG → error con el `src`) |
 | R11 | `tests/components/KpisMensajero.test.tsx` (R11) |
 | R12 | `tests/components/KpisMensajero.test.tsx` (R12) |
-| R13 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (R13 ×3) |
+| R13 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (R13 ×3; recorrido por `git ls-files --cached --others --exclude-standard`) |
 | R14 | `tests/components/KpisMensajero.test.tsx` (R14) |
 | R15 | `tests/components/KpisMensajero.test.tsx` (R15) |
 | R16 | `tests/components/KpisMensajero.test.tsx` (R16), `tests/components/textos-estado-455.test.tsx` |
-| R17 | salida vacía de D5 en T7, arriba |
+| R17 | `tests/unit/guards/sin-nombre-heredado.guardia.test.ts` (permanente: código y tests sobre `git ls-files`) + salida vacía de D5 en T7 (cubre también `docs/marca.md`) |
 
 ## Pendiente fuera de SL-9
 
 Cuando cierre SL-33 (`asfalto-9`), hay que regenerar las capturas con `node scripts/capturas-pwa.mjs`.
 Se puede volver a bajar el umbral de la marca anterior en la guardia.
+
+## Vuelta 1 de review (rechazada) — arreglos
+
+`progress/review_SL-9.md`, commit `f03556c`.
+
+- **M1 (R8).** `tests/unit/pwa/capturas-pwa.test.ts` lanza `node scripts/capturas-pwa.mjs` con
+  `spawnSync`:
+  - contra `http://127.0.0.1:<puerto>`, un puerto cerrado de verdad (`net.Server` en el 0, se lee el
+    puerto y se cierra): código ≠ 0, stderr con «La app no responde en http://127.0.0.1:<puerto>» y
+    SHA-256 de las tres capturas sin cambios;
+  - el mismo caso con `https://example.com` (R7): código ≠ 0, mensaje de host no local y capturas
+    intactas.
+
+  Muerde: sin `await comprobarQueResponde(base)` en `main()`, el caso R8 sale rojo.
+- **M2 (R10).** El script exporta dos funciones puras:
+  - `dimensionesPng(png) → { ancho, alto } | null`;
+  - `fallosDeTamano(png, paso) → string | null`, que `main()` usa.
+
+  Tres casos, con PNG de `sharp({ create })`: 540×1170 → `null`; 360×780 → error con el `src` y las
+  dos medidas; un buffer que no es PNG → error con el `src`. Muerde: con `return null` forzado, los
+  dos casos de error salen rojos.
+- **m1.** El mapa de R17 cita ahora `sin-nombre-heredado.guardia.test.ts`.
+- **m2.** `design.md > D1`, pasos 4, 5 y 7, recoge la carga `eager`, `load`/`error`, `conTope`
+  (`TOPE_ESPERA_MS = 30000`) como robustez del todo o nada, `naturalWidth > 0` y `fallosDeTamano`.
+- **m3 (R9).** Un logo de `/brand/` solo cuenta si `img.complete && img.naturalWidth > 0`. Va dentro
+  del navegador y no tiene test unitario.
+- **m5 (R13).** El recorrido pasa a ser `git ls-files -z --cached --others --exclude-standard --
+  app components lib public`, en un `beforeAll` dentro del describe de R13. La anti-vacuidad se
+  mantiene. Muerde con `// icono_wallet` en `app/layout.tsx` y también con un archivo sin versionar
+  en `app/`.
+- **m4 y m6:** sin cambios. El humano aceptó m4, y el E2E de m6 lo corre CI.
+
+Tests tocados (log fuera de git: `_trabajo/SL-9-R1-tests.log`):
+
+```
+$ pnpm exec vitest run tests/unit/pwa/capturas-pwa.test.ts \
+    tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts tests/unit/guards/sin-nombre-heredado.guardia.test.ts
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+TESTS_EXIT=0
+```
+
+Reparto: capturas-pwa 29, guardia nueva 12, sin-nombre-heredado 14.
+
+- eslint sobre los tres archivos de código y tests: 0.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): 0.
+- LF en todos; `grep -il ordenex` vacío.
+- `public/screenshots` intacto.
+
+La primera corrida falló porque los workers de vitest no arrancaron (la máquina estuvo suspendida).
+Se repitió.

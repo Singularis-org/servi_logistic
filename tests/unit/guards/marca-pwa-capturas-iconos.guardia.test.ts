@@ -1,8 +1,9 @@
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 // SL-9 — GUARDIA DE LAS CAPTURAS DE LA PWA Y DE LOS ICONOS SUELTOS (R3, R4, R13; design D2).
 //
@@ -142,26 +143,35 @@ const EXTENSIONES_BINARIAS = new Set([
   ".zip",
 ]);
 
-/** Archivos de texto bajo `carpeta`, sin `node_modules` ni carpetas que empiecen por punto. */
-function archivosDeTexto(carpeta: string): string[] {
-  const salida: string[] = [];
-  for (const entrada of fs.readdirSync(carpeta, { withFileTypes: true })) {
-    const ruta = path.join(carpeta, entrada.name);
-    if (entrada.isDirectory()) {
-      if (entrada.name === "node_modules" || entrada.name.startsWith(".")) continue;
-      salida.push(...archivosDeTexto(ruta));
-    } else if (entrada.isFile() && !EXTENSIONES_BINARIAS.has(path.extname(entrada.name).toLowerCase())) {
-      salida.push(ruta);
-    }
-  }
-  return salida;
+/**
+ * Archivos de texto versionados, o nuevos sin ignorar, bajo `app/`, `components/`, `lib/` y
+ * `public/`. Parte de `git ls-files` (como `sin-nombre-heredado`) para que un archivo local
+ * ignorado no ponga roja la guardia en una maquina y no en otra; `--others --exclude-standard`
+ * mete lo nuevo sin commitear, para que no espere al commit para salir en rojo.
+ */
+function archivosRecorridos(): string[] {
+  const salida = execFileSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...CARPETAS_RECORRIDAS],
+    { cwd: RAIZ, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  return (
+    salida
+      .split("\0")
+      .filter((r) => r.length > 0 && !EXTENSIONES_BINARIAS.has(path.extname(r).toLowerCase()))
+      .map((r) => path.join(RAIZ, r))
+      // `ls-files` lista tambien lo borrado del arbol y aun no commiteado.
+      .filter((ruta) => fs.existsSync(ruta) && fs.statSync(ruta).isFile())
+  );
 }
 
-const ARCHIVOS_RECORRIDOS = CARPETAS_RECORRIDAS.flatMap((carpeta) =>
-  archivosDeTexto(path.join(RAIZ, carpeta)),
-);
-
 describe("marca · iconos sueltos borrados (R13)", () => {
+  // El recorrido corre aqui y no al cargar el modulo: si falla, sale en los casos con nombre.
+  let ARCHIVOS_RECORRIDOS: string[] = [];
+  beforeAll(() => {
+    ARCHIVOS_RECORRIDOS = archivosRecorridos();
+  });
+
   it("los cuatro png no existen", () => {
     for (const icono of ICONOS_BORRADOS) {
       const ruta = path.join(RAIZ, "public", "icons", `${icono}.png`);

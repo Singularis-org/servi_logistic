@@ -202,12 +202,36 @@ export function conTope(promesa, ms, motivo) {
 /** Tope de la espera de fuentes e imágenes de una pantalla. */
 const TOPE_ESPERA_MS = 30000;
 
+/** Firma de 8 bytes con la que empieza todo PNG. */
+const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
 /**
- * Ancho y alto de la cabecera IHDR: lo que mide de verdad el PNG escrito (R10).
+ * Ancho y alto de la cabecera IHDR: lo que mide de verdad el PNG escrito (R10). `null` si el
+ * buffer no empieza por la firma PNG seguida del bloque IHDR.
  * @param {Buffer} png
+ * @returns {{ ancho: number, alto: number } | null}
  */
-function dimensionesPng(png) {
+export function dimensionesPng(png) {
+  if (png.length < 24 || !png.subarray(0, 8).equals(FIRMA_PNG)) return null;
+  if (png.toString("ascii", 12, 16) !== "IHDR") return null;
   return { ancho: png.readUInt32BE(16), alto: png.readUInt32BE(20) };
+}
+
+/**
+ * R10. Compara lo que mide el PNG con lo que el plan (el manifiesto) declara para esa captura.
+ * Devuelve `null` si coinciden o el motivo del fallo, nombrando la captura.
+ * @param {Buffer} png
+ * @param {Pick<PasoDeCaptura, "src" | "ancho" | "alto">} paso
+ * @returns {string | null}
+ */
+export function fallosDeTamano(png, paso) {
+  const medidas = dimensionesPng(png);
+  if (medidas === null) return `${paso.src} no es un PNG válido`;
+  const { ancho, alto } = medidas;
+  if (ancho !== paso.ancho || alto !== paso.alto) {
+    return `${paso.src} mide ${ancho}x${alto} y el manifiesto declara ${paso.ancho}x${paso.alto}`;
+  }
+  return null;
 }
 
 /** @param {string} mensaje */
@@ -281,8 +305,12 @@ async function prepararYObservar(page, url) {
     const portal = document.querySelector("nextjs-portal");
     return {
       texto: document.body.innerText,
+      // `complete && naturalWidth > 0`: un logo de /brand/ que dio 404 no cuenta como mostrado.
       logos: Array.from(document.images)
-        .filter((img) => img.src.includes("/brand/") && visible(img))
+        .filter(
+          (img) =>
+            img.src.includes("/brand/") && img.complete && img.naturalWidth > 0 && visible(img),
+        )
         .map((img) => img.src),
       archivoCargada: document.fonts.check("16px Archivo"),
       indicadorVisible: portal !== null && getComputedStyle(portal).display !== "none",
@@ -360,12 +388,12 @@ async function main() {
     if (png === null) continue; // inalcanzable: una pantalla sin captura ya salió arriba con código 1
     const destino = resolve(root, "public", paso.src.replace(/^\//, ""));
     writeFileSync(destino, png);
-    const { ancho, alto } = dimensionesPng(readFileSync(destino));
-    if (ancho !== paso.ancho || alto !== paso.alto) {
-      malMedidas.push(`${paso.src} mide ${ancho}x${alto} y el manifiesto declara ${paso.ancho}x${paso.alto}`);
+    const fallo = fallosDeTamano(readFileSync(destino), paso);
+    if (fallo !== null) {
+      malMedidas.push(fallo);
       continue;
     }
-    console.log(`Generada ${paso.src} desde ${paso.ruta} (${ancho}x${alto})`);
+    console.log(`Generada ${paso.src} desde ${paso.ruta} (${paso.ancho}x${paso.alto})`);
   }
   if (malMedidas.length > 0) salirConError(malMedidas.join("\n"));
 }
