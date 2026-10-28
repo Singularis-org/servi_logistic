@@ -4,7 +4,7 @@ import { hashDireccion } from "@/lib/geo/direccion-query";
 import { dedupeKeyGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
 import { describe, expect, it } from "vitest";
 
-import { DISTRITOS_DEMO, puntoDeOrden } from "@/scripts/demo-qa/geografia";
+import { DISTRITOS_DEMO, PAIS_DEMO, claveDeDistritoDemo, puntoDeOrden } from "@/scripts/demo-qa/geografia";
 import {
   cerrarJobsSinEjecutar,
   jobsAbiertosPorTipo,
@@ -203,5 +203,17 @@ describe("puntoDeOrden (D22)", () => {
   it("los tres papeles tienen distritos distintos", () => {
     const codigos = Object.values(DISTRITOS_DEMO).map((d) => d.codigoDta);
     expect(new Set(codigos).size).toBe(3);
+  });
+});
+
+describe("país de la demo (SL-20, decisión 3; T6.4)", () => {
+  it("la demo vive en Costa Rica", () => {
+    expect(PAIS_DEMO).toBe("CR");
+  });
+
+  it("cada distrito se busca por país CR y código, la clave única del catálogo", () => {
+    for (const d of Object.values(DISTRITOS_DEMO)) {
+      expect(claveDeDistritoDemo(d)).toEqual({ paisId_codigoDta: { paisId: "CR", codigoDta: d.codigoDta } });
+    }
   });
 });

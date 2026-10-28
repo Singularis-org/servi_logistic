@@ -17,21 +17,19 @@ import { CALCULO_CONTINUO, MODULO_POR_JOB, modulosDe } from "@/lib/modulos/repar
 const CLAVES = [
   "analitica",
   "monitoreo",
-  "wallet",
   "ranking",
 ];
 
 describe("SL-23 · catálogo de módulos (R1, R2)", () => {
-  it("R1 — exactamente 4 claves, las mismas que el enum `modulo_apagable`", () => {
+  it("R1 — exactamente 3 claves, las mismas que el enum `modulo_apagable`", () => {
     const enCatalogo = Object.keys(MODULOS_APAGABLES).sort();
-    expect(enCatalogo).toHaveLength(4);
+    expect(enCatalogo).toHaveLength(3);
     expect(enCatalogo).toEqual(Object.values(ModuloApagablePrisma).sort());
     expect(enCatalogo).toEqual([...CLAVES].sort());
   });
 
-  it("R1 — `wallet` es la clave del módulo Wallet; `wallet_cierres` no existe (cierres al núcleo)", () => {
-    expect(MODULOS_APAGABLES.wallet.nombre).toBe("Wallet");
-    expect(esModuloApagable("wallet")).toBe(true);
+  it("R1 — ni `wallet` (núcleo desde el 2026-10-28) ni `wallet_cierres` (cierres al núcleo) son apagables", () => {
+    expect(esModuloApagable("wallet")).toBe(false);
     expect(esModuloApagable("wallet_cierres")).toBe(false);
     expect(Object.values(ModuloApagablePrisma)).not.toContain("wallet_cierres");
   });
@@ -46,7 +44,6 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     expect(ORDEN_MODULOS.map(nombreDelModulo)).toEqual([
       "Analítica",
       "Monitoreo",
-      "Wallet",
       "Ranking",
     ]);
   });
@@ -60,8 +57,8 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     for (const clave of ORDEN_MODULOS) expect(MODULOS_APAGABLES[clave].descripcion.trim()).not.toBe("");
   });
 
-  it("R1, R2 — `recoleccion`, `bodegas_satelite`, `api_integraciones` y `whatsapp` no existen: son núcleo desde el 2026-10-27", () => {
-    for (const clave of ["recoleccion", "bodegas_satelite", "api_integraciones", "whatsapp"]) {
+  it("R1, R2 — `recoleccion`, `bodegas_satelite`, `api_integraciones`, `whatsapp` y `wallet` no existen: son núcleo desde el 2026-10-27/28", () => {
+    for (const clave of ["recoleccion", "bodegas_satelite", "api_integraciones", "whatsapp", "wallet"]) {
       expect(esModuloApagable(clave)).toBe(false);
       expect(Object.values(ModuloApagablePrisma)).not.toContain(clave);
     }
@@ -69,9 +66,10 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     expect(NUCLEO).toContain("Bodegas satélite");
     expect(NUCLEO).toContain("API e integraciones");
     expect(NUCLEO).toContain("WhatsApp");
+    expect(NUCLEO).toContain("Wallet");
   });
 
-  it("R2 — el núcleo son sus 12 nombres: Cierres, Incidentes y novedades, Recolección, Bodegas satélite, API e integraciones y WhatsApp incluidos", () => {
+  it("R2 — el núcleo son sus 13 nombres: Cierres, Wallet, Incidentes y novedades, Recolección, Bodegas satélite, API e integraciones y WhatsApp incluidos", () => {
     expect([...NUCLEO]).toEqual([
       "Inicio",
       "Órdenes",
@@ -79,6 +77,7 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
       "Recolección",
       "Bodegas satélite",
       "Cierres",
+      "Wallet",
       "Incidentes y novedades",
       "Usuarios",
       "Tarifas",
@@ -117,6 +116,6 @@ describe("SL-23 · reparto de jobs (design §3.3, §3.8)", () => {
   it("`modulosDe`: el núcleo no exige nada, un módulo exige el suyo y una pieza compartida los dos", () => {
     expect(modulosDe("nucleo")).toEqual([]);
     expect(modulosDe("ranking")).toEqual(["ranking"]);
-    expect(modulosDe(["wallet", "ranking"])).toEqual(["wallet", "ranking"]);
+    expect(modulosDe(["monitoreo", "ranking"])).toEqual(["monitoreo", "ranking"]);
   });
 });

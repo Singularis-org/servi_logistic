@@ -35,6 +35,8 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUFIJO = `f374c${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+// SL-20: el corpus nace en CR (DEFAULT, R10); el alta registra en el historial de plataforma.
+const ALTA_CR = { paisId: "CR", codigo: null };
 
 interface Sembrado {
   provincia: string;
@@ -270,7 +272,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
         const antes = await filasPuente();
         expect(antes).toHaveLength(3); // anti-vacuidad: la puente tiene datos
 
-        await geo.crear("distrito", `D4 ${SUFIJO}`, s.canton);
+        await geo.crear("distrito", `D4 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
         await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
         await geo.cambiarActivacion("canton", s.canton, true, actorUsuarioId);
         await geo.cambiarActivacion("distrito", s.d1, false, actorUsuarioId);
@@ -281,7 +283,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
 
     it("el alta creo el distrito de verdad: la comprobacion de arriba no esta vacia", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        const id = await geo.crear("distrito", `D5 ${SUFIJO}`, s.canton);
+        const id = await geo.crear("distrito", `D5 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
         const fila = await tx.distrito.findUnique({
           where: { id },
           select: { nombre: true, activo: true },

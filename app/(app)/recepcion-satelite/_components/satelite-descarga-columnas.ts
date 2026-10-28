@@ -12,6 +12,7 @@
  */
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 
 /**
@@ -35,11 +36,25 @@ export const COLUMNAS_DESCARGA_SATELITE: DescargaColumna[] = [
   { clave: "direccion", encabezado: "Dirección" },
   { clave: "tienda", encabezado: "Tienda" },
   { clave: "zona", encabezado: "Zona" },
-  { clave: "provincia", encabezado: "Provincia" },
-  { clave: "canton", encabezado: "Cantón" },
-  { clave: "distrito", encabezado: "Distrito" },
+  { clave: "provincia", encabezado: ETIQUETAS_NEUTRAS.provincia.singular },
+  { clave: "canton", encabezado: ETIQUETAS_NEUTRAS.canton.singular },
+  { clave: "distrito", encabezado: ETIQUETAS_NEUTRAS.distrito.singular },
   { clave: "montoCobrar", encabezado: "Monto a cobrar" },
 ];
+
+/**
+ * SL-20 (design §7; R19) — las columnas del archivo con los encabezados de nivel del país de la
+ * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
+ * `COLUMNAS_DESCARGA_SATELITE` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
+ * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ */
+export function columnasDescargaSatelite(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
+  return COLUMNAS_DESCARGA_SATELITE.map((columna) =>
+    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
+      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
+      : columna,
+  );
+}
 
 /**
  * Proyecta una orden de la bodega a una fila de export con valores CRUDOS (R7): texto,

@@ -19,6 +19,7 @@ import { SALIO_A_REPARTO_VALORES } from "@/lib/types/orden";
 import { listarOrdenesSchema } from "@/lib/types/orden";
 import { seleccionDesdeUrl } from "@/lib/utils/filtros-url";
 import type { FilterDef } from "@/components/shared/FilterComponent";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FICHA 370 — el control «Salida a reparto» de la barra de ordenes (y de la del satelite).
 //
@@ -33,6 +34,7 @@ import type { FilterDef } from "@/components/shared/FilterComponent";
 /** El `FilterDef` del control, tal como lo declara la barra de la central. */
 function defSalidaAReparto(): FilterDef {
   const def = construirFiltrosOrdenes(CATALOGO_FILTROS_VACIO, {
+    etiquetas: ETIQUETAS_CR,
     incluirTienda: true,
     incluirSalioAReparto: true,
   }).find((f) => f.key === CLAVE_SALIO_A_REPARTO);
@@ -41,8 +43,8 @@ function defSalidaAReparto(): FilterDef {
 }
 
 /** Claves de la barra con las opciones que le monta la pagina a cada rol. */
-function claves(opts: Parameters<typeof construirFiltrosOrdenes>[1]): string[] {
-  return construirFiltrosOrdenes(CATALOGO_FILTROS_VACIO, opts).map((f) => f.key);
+function claves(opts: Omit<Parameters<typeof construirFiltrosOrdenes>[1], "etiquetas">): string[] {
+  return construirFiltrosOrdenes(CATALOGO_FILTROS_VACIO, { ...opts, etiquetas: ETIQUETAS_CR }).map((f) => f.key);
 }
 
 /** Un `URLSearchParams` con el param del control, para la siembra. */
@@ -90,7 +92,7 @@ describe("FICHA 370 — a quien se le ofrece el control", () => {
 
   it("la barra del SATELITE lo trae encendido (ahi estan casi todas las que no han salido)", () => {
     expect(
-      construirFiltrosSatelite(CATALOGO_FILTROS_VACIO).map((f) => f.key),
+      construirFiltrosSatelite(CATALOGO_FILTROS_VACIO, { etiquetas: ETIQUETAS_CR }).map((f) => f.key),
     ).toContain(CLAVE_SALIO_A_REPARTO);
   });
 });

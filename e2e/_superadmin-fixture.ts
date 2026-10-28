@@ -232,6 +232,9 @@ export async function altaDeEmpresaPorPantalla(page: Page, d: AltaPorPantalla): 
   const maestro = form.getByRole("group", { name: "Primer maestro", exact: true });
   await empresa.getByLabel("Nombre", { exact: true }).fill(d.nombre);
   await empresa.getByLabel("Slug", { exact: true }).fill(d.slug);
+  // SL-20 (R9): el alta no preselecciona país; se elige CR, como en `superadmin-empresas.spec.ts`.
+  await empresa.getByRole("combobox", { name: "País" }).click();
+  await page.getByRole("option", { name: "Costa Rica", exact: true }).click();
   await maestro.getByLabel("Nombre", { exact: true }).fill(d.maestroNombre);
   await maestro.getByLabel("Email", { exact: true }).fill(d.email);
   await maestro.getByLabel("Teléfono", { exact: true }).fill(d.telefono);

@@ -22,6 +22,12 @@ const TIPOS = [
   { id: "tipo-3", value: "pasaporte" },
 ];
 
+// SL-20 (R9, R45): lo que pasa `page.tsx`, solo los países disponibles y por nombre.
+const PAISES = [
+  { id: "CR", nombre: "Costa Rica" },
+  { id: "EC", nombre: "Ecuador" },
+];
+
 const EMPRESAS: EmpresaListada[] = [
   {
     id: "org-2",
@@ -36,6 +42,7 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pais: { id: "CR", nombre: "Costa Rica" },
   },
   {
     id: "org-1",
@@ -47,6 +54,8 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    // SL-20 (R45, R46): un país ya apagado, que el `Select` del alta no ofrece.
+    pais: { id: "XA", nombre: "País Apagado" },
   },
 ];
 
@@ -75,6 +84,7 @@ function montar(
     <EmpresasModule
       empresas={empresas}
       tiposDocumento={TIPOS}
+      paises={PAISES}
       altaEmpresa={altaEmpresa}
       reenviarBienvenida={reenviarBienvenida as unknown as Reenviar}
       bienvenidaPendiente={bienvenidaPendiente}
@@ -98,6 +108,7 @@ function campos() {
   return {
     nombre: empresa.getByLabelText("Nombre") as HTMLInputElement,
     slug: empresa.getByLabelText("Slug") as HTMLInputElement,
+    pais: empresa.getByRole("combobox", { name: "País" }),
     maestroNombre: maestro.getByLabelText("Nombre") as HTMLInputElement,
     email: maestro.getByLabelText("Email") as HTMLInputElement,
     telefono: maestro.getByLabelText("Teléfono") as HTMLInputElement,
@@ -110,6 +121,10 @@ async function rellenar(user: ReturnType<typeof userEvent.setup>) {
   const c = campos();
   await user.type(c.nombre, "Envíos Este");
   await user.type(c.slug, "envios-este");
+  await user.click(c.pais);
+  await user.click(
+    within(await screen.findByRole("listbox")).getByRole("option", { name: "Costa Rica" }),
+  );
   await user.type(c.maestroNombre, "Marta Ruiz");
   await user.type(c.email, "marta@este.test");
   await user.type(c.telefono, "0991234567");
@@ -128,6 +143,7 @@ function lo_escrito() {
     telefono: c.telefono.value,
     documento: c.documento.value,
     tipo: c.tipo.textContent,
+    pais: c.pais.textContent,
   };
 }
 
@@ -139,9 +155,18 @@ const ESCRITO = {
   telefono: "0991234567",
   documento: "1790012345001",
   tipo: "ruc",
+  pais: "Costa Rica",
 };
 
-type NombreCampo = "nombre" | "slug" | "maestroNombre" | "email" | "telefono" | "documento" | "tipo";
+type NombreCampo =
+  | "nombre"
+  | "slug"
+  | "pais"
+  | "maestroNombre"
+  | "email"
+  | "telefono"
+  | "documento"
+  | "tipo";
 
 /** El error está en ESE campo (por `aria-describedby`) y en ningún otro. */
 function soloEn(campo: NombreCampo, mensaje: string) {
@@ -207,6 +232,7 @@ describe("EmpresasModule — alta (R30, R37)", () => {
     expect(altaEmpresa).toHaveBeenCalledWith({
       nombre: "Envíos Este",
       slug: "envios-este",
+      paisId: "CR",
       maestro: {
         nombre: "Marta Ruiz",
         email: "marta@este.test",
@@ -223,6 +249,8 @@ describe("EmpresasModule — alta (R30, R37)", () => {
     expect(c.telefono).toHaveValue("");
     expect(c.documento).toHaveValue("");
     expect(c.tipo).not.toHaveTextContent("ruc");
+    // SL-20 (R9): tras el alta, el país vuelve a quedar sin elegir.
+    expect(c.pais).not.toHaveTextContent("Costa Rica");
   });
 
   it("tras el éxito avisa de la bienvenida enviada, y nunca hay campo de contraseña", async () => {
@@ -390,9 +418,17 @@ describe("EmpresasModule — errores de la action (R31–R34)", () => {
     sinCrear();
   });
 
+  it("SL-20 R8: conflicto de país pinta el error junto a «País»", async () => {
+    await enviarCon({ estado: "conflicto", campo: "paisId" });
+    soloEn("pais", "Esa empresa ya existe en otro país.");
+    sinCrear();
+  });
+
   it.each([
     ["nombre", "nombre"],
     ["slug", "slug"],
+    // SL-20 (R6, R45): un país que falta, no existe o se apagó entre la carga y el envío.
+    ["paisId", "pais"],
     ["maestro.nombre", "maestroNombre"],
     ["maestro.email", "email"],
     ["maestro.telefono", "telefono"],
@@ -461,9 +497,68 @@ describe("EmpresasModule — validación con el schema de la action (R34, T15)",
     await user.type(c.email, "marta@este.test");
     await user.type(c.telefono, "0991234567");
     await user.type(c.documento, "1790012345001");
+    await user.click(c.pais);
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "Costa Rica" }),
+    );
     await user.click(screen.getByRole("button", { name: "Crear empresa" }));
 
     expect(altaEmpresa).not.toHaveBeenCalled();
     soloEn("tipo", "Revisa este campo.");
+  });
+});
+
+describe("SL-20 — país de la empresa (R9, R45)", () => {
+  function filas() {
+    return screen.getAllByRole("row").slice(1);
+  }
+
+  it("R9: la tabla tiene la columna «País» con el país de cada empresa", () => {
+    montar();
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+    expect(cabeceras).toContain("País");
+    expect(within(filas()[0]).getByText("Costa Rica")).toBeInTheDocument();
+  });
+
+  it("R9/R45: la columna muestra el país de una empresa aunque ya no esté disponible", () => {
+    montar();
+    expect(within(filas()[1]).getByText("País Apagado")).toBeInTheDocument();
+  });
+
+  it("R9: el alta no trae ningún país preseleccionado", () => {
+    montar();
+    const pais = campos().pais;
+    expect(pais).toHaveTextContent("Elige el país");
+    for (const p of PAISES) expect(pais).not.toHaveTextContent(p.nombre);
+  });
+
+  it("R9/R45: el `Select` ofrece solo los países disponibles que le pasa la página", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(campos().pais);
+    const opciones = within(await screen.findByRole("listbox"))
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+    expect(opciones).toEqual(["Costa Rica", "Ecuador"]);
+    expect(opciones).not.toContain("País Apagado");
+  });
+
+  it("R9: sin país, el alta queda bloqueada: marca «País» y NO llama a la action", async () => {
+    const user = userEvent.setup();
+    const { altaEmpresa } = montar(vi.fn());
+    const c = campos();
+    await user.type(c.nombre, "Envíos Este");
+    await user.type(c.slug, "envios-este");
+    await user.type(c.maestroNombre, "Marta Ruiz");
+    await user.type(c.email, "marta@este.test");
+    await user.type(c.telefono, "0991234567");
+    await user.click(c.tipo);
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "ruc" }));
+    await user.type(c.documento, "1790012345001");
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+
+    expect(altaEmpresa).not.toHaveBeenCalled();
+    soloEn("pais", "Revisa este campo.");
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 });

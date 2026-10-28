@@ -101,7 +101,7 @@ import {
 
 import { EMPRESAS_DEMO } from "./borrar";
 import { PERFILES_DEMO, correoDemo, correosDemoDe } from "./correos";
-import { DISTRITOS_DEMO, type DistritoDemo } from "./geografia";
+import { DISTRITOS_DEMO, PAIS_DEMO, claveDeDistritoDemo, type DistritoDemo } from "./geografia";
 import { enParalelo, enTandas } from "./paralelo";
 import { enPaso } from "./paso";
 import {
@@ -294,13 +294,19 @@ function evidenciaPorDefecto(): Uint8Array {
   return new Uint8Array(readFileSync(fileURLToPath(new URL("../../e2e/fixtures/evidencia.jpg", import.meta.url))));
 }
 
-/** El distrito del catálogo, por su `codigo_dta` (D22), en la forma que piden las plantillas de carga. */
+/**
+ * El distrito del catálogo, por su `codigo_dta` (D22) en Costa Rica, en la forma que piden las
+ * plantillas de carga.
+ */
 async function geoDe(dueno: PrismaClient, distrito: DistritoDemo): Promise<Geo> {
+  // SL-20 (decisión 3): el código es único por país, no global. Se busca en el país de la demo.
   const fila = await dueno.distrito.findUnique({
-    where: { codigoDta: distrito.codigoDta },
+    where: claveDeDistritoDemo(distrito),
     select: { id: true, nombre: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
   });
-  if (!fila) throw new Error(`[demo-qa] el catálogo no tiene el distrito ${distrito.codigoDta} (¿base sin migrar?)`);
+  if (!fila) {
+    throw new Error(`[demo-qa] el catálogo no tiene el distrito ${distrito.codigoDta} en ${PAIS_DEMO} (¿base sin migrar?)`);
+  }
   return { distritoId: fila.id, provincia: fila.canton.provincia.nombre, canton: fila.canton.nombre, distrito: fila.nombre };
 }
 
@@ -378,6 +384,8 @@ export async function crearEmpresaDemo(
           {
             nombre: datos.nombre,
             slug: datos.slug,
+            // SL-20 (decisión 3): explícito, aunque la fábrica ya ponga `CR` por defecto.
+            paisId: PAIS_DEMO,
             correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
             documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,

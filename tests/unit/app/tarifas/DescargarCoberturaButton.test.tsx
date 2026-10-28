@@ -40,6 +40,13 @@ vi.mock("@/lib/actions/cobertura", () => ({
 
 import { DescargarCoberturaButton } from "@/app/(app)/configuracion/tarifas/_components/DescargarCoberturaButton";
 
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../../../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
 const CLAVE_PREFERENCIA = "servi-logistic:descarga-columnas:tarifas-cobertura";
 
 const ITEM: CoberturaDistritoDTO = {

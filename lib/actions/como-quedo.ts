@@ -11,7 +11,6 @@ import { ComoQuedoRepository } from "@/lib/repositories/ComoQuedoRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { ComoQuedoService } from "@/lib/services/ComoQuedoService";
 import { comoQuedoSchema, type ComoQuedoResult } from "@/lib/types/como-quedo";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §3.7, R58, R82) — el borde de «Cómo quedó». Sesion primero, forma despues
 // (`.strict()`), rol en el servicio (antes de leer). Solo lectura.
@@ -20,8 +19,7 @@ function toComoQuedoActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -30,9 +28,6 @@ function toComoQuedoActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`como-quedo: AppErrorCode inesperado ${shape.code}`);
   }
@@ -55,7 +50,6 @@ export interface ComoQuedoDeps {
  */
 export async function comoQuedoAction(input: unknown, deps: ComoQuedoDeps = {}): Promise<ComoQuedoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = comoQuedoSchema.parse(input);

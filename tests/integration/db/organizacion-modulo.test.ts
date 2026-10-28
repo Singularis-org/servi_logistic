@@ -39,7 +39,7 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 /** Lo que enciende cada empresa en la siembra. Distinto a propósito: «ve solo lo suyo» no es un vacío. */
-const DE_A = ["analitica", "wallet", "ranking"] as const;
+const DE_A = ["analitica", "ranking"] as const;
 const DE_B = ["ranking", "monitoreo"] as const;
 
 let base: PrismaClient;
@@ -115,7 +115,7 @@ async function loQueVeLaApp(tx: TxDeTest): Promise<string[]> {
 }
 
 const enOrdenDelEnum = (ms: readonly string[]) => {
-  const orden = ["analitica", "monitoreo", "wallet", "ranking"];
+  const orden = ["analitica", "monitoreo", "ranking"];
   return [...ms].sort((a, b) => orden.indexOf(a) - orden.indexOf(b));
 };
 
@@ -264,6 +264,9 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
         servicio.altaEmpresa({
           nombre: `Empresa sl23 ${sufijo}`,
           slug: `sl23-alta-${sufijo}`,
+          // SL-20 R6 (decisión 6): el alta exige país; sin él responde `invalida` `paisId`.
+          // Costa Rica, como toda empresa de test (R10).
+          paisId: "CR",
           maestro: {
             nombre: "Maestra de prueba",
             email: `sl23-alta-${sufijo}@ejemplo.test`,

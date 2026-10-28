@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
+import { listarPaisesDisponibles } from "@/lib/actions/_shared/paises-plataforma";
 import {
   fijarCobroEmpresaAction,
   fijarCobroGlobalAction,
@@ -33,17 +34,21 @@ import { EmpresasModule } from "./_components/EmpresasModule";
  *
  * SL-40 (R9–R11, design §9.1): el valor global del cobro por orden se lee en el mismo `Promise.all`,
  * y las dos actions de guardado bajan por props. Si no se pudo leer, el módulo lo dice en su bloque.
+ *
+ * SL-20 (R9, R45, design §8): los países del `Select` del alta, solo los disponibles, en el mismo
+ * `Promise.all`. Un `forbidden` deja la lista vacía: el alta no sale sin país, y el servidor manda.
  */
 export default async function EmpresasPage() {
   const actor = await resolveActorFromSession();
 
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
-  const [listado, tiposDocumento, pendientes, cobro] = await Promise.all([
+  const [listado, tiposDocumento, pendientes, cobro, paises] = await Promise.all([
     listarEmpresasPlataforma(actor),
     new UserRepository(getPrismaClient()).listTiposIdentificacion(),
     bienvenidasPendientesAction(),
     verCobroGlobalAction(),
+    listarPaisesDisponibles(actor),
   ]);
   // SL-41 (R38): si no se pudo saber qué bienvenidas siguen pendientes, `null`, y el módulo
   // vuelve a R29 (el botón en toda fila con maestros) en vez de esconderlo por error.
@@ -60,6 +65,7 @@ export default async function EmpresasPage() {
       <EmpresasModule
         empresas={listado.status === "ok" ? listado.empresas : []}
         tiposDocumento={tiposDocumento}
+        paises={paises.status === "ok" ? paises.paises : []}
         altaEmpresa={altaEmpresaAction}
         reenviarBienvenida={reenviarBienvenidaAction}
         bienvenidaPendiente={bienvenidaPendiente}

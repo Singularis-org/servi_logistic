@@ -7,6 +7,7 @@ import type { FilterDef, FilterSelection } from "@/components/shared/FilterCompo
 import type { ListarNovedadesCompletoActionResult } from "@/lib/actions/novedades";
 import type { NovedadDTO } from "@/lib/types/novedad";
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 
 import {
   construirFiltrosNovedades,
@@ -106,6 +107,8 @@ export function useNovedadesFiltro(
   grupo: GrupoNovedad,
   listarCompleto: () => Promise<ListarNovedadesCompletoActionResult>,
 ): NovedadesFiltro {
+  // SL-20 (R19): los filtros de provincia y cantón con los nombres de nivel del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   const [termino, setTermino] = useState("");
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
   const [activos, setActivos] = useState<string[]>([]);
@@ -212,8 +215,8 @@ export function useNovedadesFiltro(
   }
 
   const declarados = useMemo(
-    () => construirFiltrosNovedades(grupo, conjunto),
-    [grupo, conjunto],
+    () => construirFiltrosNovedades(grupo, conjunto, etiquetas),
+    [grupo, conjunto, etiquetas],
   );
   const ofrecidos = useMemo(
     () => declarados.map((f) => ({ key: f.key, label: f.label })),

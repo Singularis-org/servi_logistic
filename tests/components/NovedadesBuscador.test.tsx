@@ -17,6 +17,13 @@ import {
 } from "@/lib/actions/novedades";
 import type { NovedadDTO } from "@/lib/types/novedad";
 
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
+
 // FICHA 325 — EL BUSCADOR Y LOS FILTROS DE `/novedades`, ejercidos sobre el módulo real.
 //
 // Lo que estos casos protegen, y que ningún test de la mitad pura puede ver:

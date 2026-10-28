@@ -241,7 +241,7 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
     expect(bloqueo).toMatchObject({ status: "ok", bloqueo: { bloqueado: false } });
   });
 
-  it("«Cierres del día»: aprobar escribe sus movimientos de caja, con Wallet apagado", async () => {
+  it("«Cierres del día»: aprobar escribe sus movimientos de caja, con todos los módulos apagados", async () => {
     const r = await comoEmpresa(() => aprobarCierre({ cierreId: vencidoId }, como(s!.adminSatelite)));
     expect(r.status).toBe("ok");
 

@@ -30,6 +30,8 @@ export type EmpresaListada = {
    * de sus pagos vigentes (un pago anulado no cuenta), con dos decimales. "0.00" si no ha pagado.
    */
   pagadoPlataforma: string;
+  /** SL-20 (R9): el país de la empresa, fijado en el alta. Toda empresa tiene uno (NOT NULL). */
+  pais: { id: string; nombre: string };
 };
 
 /** `forbidden`: el actor no es de la plataforma (R35). No lleva datos de ninguna empresa. */

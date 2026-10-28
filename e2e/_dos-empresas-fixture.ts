@@ -130,6 +130,8 @@ export async function altaDeEmpresa(
   const input = {
     nombre: `Empresa humo ${letra} ${s}`,
     slug: `humo-${letra.toLowerCase()}-${s}`,
+    // SL-20 (R6): el país es obligatorio en el alta; el humo vive en Costa Rica.
+    paisId: "CR",
     maestro: {
       nombre: `Maestro ${letra} humo`,
       email,

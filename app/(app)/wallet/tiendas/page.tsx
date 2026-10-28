@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -19,8 +18,6 @@ import { SaldosTiendasTable } from "./_components/SaldosTiendasTable";
  * action no responde `ok` → `notFound` (defensa en profundidad).
  */
 export default async function WalletTiendasPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   // Feature 94 (paridad adm↔maestro): los saldos por tienda los ven los roles de
   // ACCESO TOTAL (`maestro`/`admin`); cualquier otro rol (o sin sesion) → notFound (R20).

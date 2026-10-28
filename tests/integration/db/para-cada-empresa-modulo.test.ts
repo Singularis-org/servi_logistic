@@ -15,26 +15,26 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
 let soltar: () => Promise<void> = async () => {};
-let conWallet: string;
-let sinWallet: string;
+let conMonitoreo: string;
+let sinMonitoreo: string;
 
 describeSiHayBase("SL-23 — paraCadaEmpresa se salta las empresas con el módulo apagado (R21)", () => {
   beforeAll(async () => {
     base = crearPrismaDeTest();
     soltar = await tomarLockDeEscrituraReal();
-    conWallet = (await crearOrganizacion(base, { nombre: "SL-23 con wallet" })).id;
-    sinWallet = (await crearOrganizacion(base, { nombre: "SL-23 sin wallet" })).id;
+    conMonitoreo = (await crearOrganizacion(base, { nombre: "SL-23 con monitoreo" })).id;
+    sinMonitoreo = (await crearOrganizacion(base, { nombre: "SL-23 sin monitoreo" })).id;
     await base.organizacionModulo.createMany({
       data: [
-        { organizacionId: conWallet, modulo: "wallet" },
-        { organizacionId: sinWallet, modulo: "ranking" },
+        { organizacionId: conMonitoreo, modulo: "monitoreo" },
+        { organizacionId: sinMonitoreo, modulo: "ranking" },
       ],
     });
   }, 60_000);
 
   afterAll(async () => {
     try {
-      if (base) await base.organizacion.deleteMany({ where: { id: { in: [conWallet, sinWallet].filter(Boolean) } } });
+      if (base) await base.organizacion.deleteMany({ where: { id: { in: [conMonitoreo, sinMonitoreo].filter(Boolean) } } });
     } finally {
       await soltar();
       await base?.$disconnect();
@@ -49,26 +49,26 @@ describeSiHayBase("SL-23 — paraCadaEmpresa se salta las empresas con el módul
         const ctx = contextoActual();
         contextos.set(id, ctx?.tipo === "empresa" ? ctx.organizacionId : undefined);
       },
-      { modulo: "wallet" },
+      { modulo: "monitoreo" },
     );
-    expect(r.ok).toContain(conWallet);
-    expect(r.ok).not.toContain(sinWallet);
-    expect(r.saltadas).toContain(sinWallet);
-    expect(r.saltadas).not.toContain(conWallet);
-    expect(contextos.get(conWallet)).toBe(conWallet);
-    expect(contextos.has(sinWallet)).toBe(false);
+    expect(r.ok).toContain(conMonitoreo);
+    expect(r.ok).not.toContain(sinMonitoreo);
+    expect(r.saltadas).toContain(sinMonitoreo);
+    expect(r.saltadas).not.toContain(conMonitoreo);
+    expect(contextos.get(conMonitoreo)).toBe(conMonitoreo);
+    expect(contextos.has(sinMonitoreo)).toBe(false);
   });
 
   it("R25 — el módulo de una empresa no decide por otra: con ranking, el resultado se invierte", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const r = await paraCadaEmpresa(async () => {}, { modulo: "ranking" });
-    expect(r.ok).toContain(sinWallet);
-    expect(r.saltadas).toContain(conWallet);
+    expect(r.ok).toContain(sinMonitoreo);
+    expect(r.saltadas).toContain(conMonitoreo);
   });
 
   it("sin modulo (cálculo continuo, R30): corren las dos y no hay saltadas", async () => {
     const r = await paraCadaEmpresa(async () => {});
-    expect(r.ok).toEqual(expect.arrayContaining([conWallet, sinWallet]));
+    expect(r.ok).toEqual(expect.arrayContaining([conMonitoreo, sinMonitoreo]));
     expect(r.saltadas).toEqual([]);
   });
 });
