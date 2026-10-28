@@ -21,7 +21,7 @@ const OTRA = randomUUID();
 class RepoEnMemoria implements IModulosEmpresaRepository {
   llamadas: string[] = [];
   empresas = new Map<string, EmpresaDeModulos>([[EMPRESA, { id: EMPRESA, nombre: "Mensajería Uno" }]]);
-  encendidos = new Map<string, Set<ModuloApagable>>([[EMPRESA, new Set<ModuloApagable>(["wallet"])]]);
+  encendidos = new Map<string, Set<ModuloApagable>>([[EMPRESA, new Set<ModuloApagable>(["monitoreo"])]]);
 
   async empresa(id: string) {
     this.llamadas.push(`empresa:${id}`);
@@ -73,10 +73,10 @@ describe("SL-23 · ModulosEmpresaService — autorización (R10)", () => {
 
   it("el maestro de ESA misma empresa tampoco puede", async () => {
     const maestro: Actor = { usuarioId: "u-m", rol: "maestro", organizacionId: EMPRESA };
-    expect(await servicio.fijar(maestro, { organizacionId: EMPRESA, modulo: "wallet", activo: false })).toEqual({
+    expect(await servicio.fijar(maestro, { organizacionId: EMPRESA, modulo: "monitoreo", activo: false })).toEqual({
       estado: "forbidden",
     });
-    expect(repo.encendidos.get(EMPRESA)?.has("wallet")).toBe(true);
+    expect(repo.encendidos.get(EMPRESA)?.has("monitoreo")).toBe(true);
   });
 
   it("sin sesión → forbidden", async () => {
@@ -94,7 +94,7 @@ describe("SL-23 · ModulosEmpresaService — autorización (R10)", () => {
 });
 
 describe("SL-23 · ModulosEmpresaService — validación y empresa (R2, R11)", () => {
-  it.each(["incidentes_novedades", "cierres", "Cierres", "Inicio", "nucleo", "wallet_cierres", ""])(
+  it.each(["incidentes_novedades", "cierres", "Cierres", "Inicio", "nucleo", "wallet_cierres", "wallet", "whatsapp", ""])(
     "módulo fuera del catálogo («%s») → validation_error sin tocar el repositorio",
     async (modulo) => {
       expect(await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo, activo: false })).toEqual({
@@ -134,15 +134,15 @@ describe("SL-23 · ModulosEmpresaService — escritura (R9, R13)", () => {
   });
 
   it("apagar: apaga con el superadmin como actor", async () => {
-    expect(await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo: "wallet", activo: false })).toEqual({
+    expect(await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo: "monitoreo", activo: false })).toEqual({
       estado: "ok",
       cambio: true,
     });
-    expect(repo.llamadas).toEqual([`empresa:${EMPRESA}`, `apagar:${EMPRESA}:wallet:u-sa`]);
+    expect(repo.llamadas).toEqual([`empresa:${EMPRESA}`, `apagar:${EMPRESA}:monitoreo:u-sa`]);
   });
 
   it("R13 — encender lo encendido o apagar lo apagado responde ok sin cambio", async () => {
-    expect(await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo: "wallet", activo: true })).toEqual({
+    expect(await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo: "monitoreo", activo: true })).toEqual({
       estado: "ok",
       cambio: false,
     });
@@ -156,12 +156,12 @@ describe("SL-23 · ModulosEmpresaService — escritura (R9, R13)", () => {
     await servicio.fijar(SUPERADMIN, { organizacionId: EMPRESA, modulo: "ranking", activo: true });
     const r = await servicio.ver(SUPERADMIN, { organizacionId: EMPRESA });
     if (r.estado !== "ok") throw new Error(`se esperaba ok: ${r.estado}`);
-    expect(r.empresa.modulos.filter((m) => m.activo).map((m) => m.clave)).toEqual(["wallet", "ranking"]);
+    expect(r.empresa.modulos.filter((m) => m.activo).map((m) => m.clave)).toEqual(["monitoreo", "ranking"]);
   });
 });
 
 describe("SL-23 · ModulosEmpresaService — ver (R8)", () => {
-  it("los 8 módulos en el orden de pantalla, con su nombre y su estado; ninguno del núcleo", async () => {
+  it("los 3 módulos en el orden de pantalla, con su nombre y su estado; ninguno del núcleo", async () => {
     const r = await servicio.ver(SUPERADMIN, { organizacionId: EMPRESA });
     expect(r).toEqual({
       estado: "ok",
@@ -170,13 +170,8 @@ describe("SL-23 · ModulosEmpresaService — ver (R8)", () => {
         nombre: "Mensajería Uno",
         modulos: [
           { clave: "analitica", nombre: "Analítica", activo: false },
-          { clave: "monitoreo", nombre: "Monitoreo", activo: false },
-          { clave: "recoleccion", nombre: "Recolección", activo: false },
-          { clave: "bodegas_satelite", nombre: "Bodegas satélite", activo: false },
-          { clave: "wallet", nombre: "Wallet", activo: true },
+          { clave: "monitoreo", nombre: "Monitoreo", activo: true },
           { clave: "ranking", nombre: "Ranking", activo: false },
-          { clave: "whatsapp", nombre: "WhatsApp", activo: false },
-          { clave: "api_integraciones", nombre: "API e integraciones", activo: false },
         ],
       },
     });

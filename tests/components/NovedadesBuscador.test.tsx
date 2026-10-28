@@ -173,7 +173,7 @@ describe("el buscador de /novedades acota sobre el conjunto ENTERO", () => {
     });
 
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[ana]} total={2} page={1} pageSize={1} />,
+      <NovedadesModule grupo="devolucion" items={[ana]} total={2} page={1} pageSize={1} />,
     );
 
     expect(pinta(DEVOLUCION.listaAriaLabel, "Benito")).toBe(false);
@@ -194,7 +194,7 @@ describe("el buscador de /novedades acota sobre el conjunto ENTERO", () => {
     completoDevolucionMock.mockResolvedValue({ status: "ok", items: [ana], total: 1 });
 
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[ana]} total={1} page={1} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[ana]} total={1} page={1} pageSize={10} />,
     );
 
     await user.type(buscador(DEVOLUCION.buscadorAriaLabel), "Pancracio");
@@ -213,7 +213,7 @@ describe("el buscador de /novedades acota sobre el conjunto ENTERO", () => {
     completoDevolucionMock.mockResolvedValue({ status: "ok", items: [ana], total: 1 });
 
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[ana]} total={1} page={1} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[ana]} total={1} page={1} pageSize={10} />,
     );
 
     await user.type(buscador(DEVOLUCION.buscadorAriaLabel), "Pancracio");
@@ -227,7 +227,7 @@ describe("el buscador de /novedades acota sobre el conjunto ENTERO", () => {
 
   it("sin tocar la barra NO se pide el listado completo: la visita cuesta lo de siempre", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "ana" })]}
         total={1}
@@ -248,7 +248,7 @@ describe("el buscador de /novedades acota sobre el conjunto ENTERO", () => {
     });
 
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "ana", destinatario: "Ana Cliente" })]}
         total={6000}
@@ -288,7 +288,7 @@ describe("los filtros de /novedades", () => {
       total: 2,
     });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[marta, pedro]}
         total={2}
@@ -343,7 +343,7 @@ describe("los filtros de /novedades", () => {
     const user = userEvent.setup();
     completoDevolucionMock.mockResolvedValue({ status: "ok", items: [marta], total: 1 });
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[marta]} total={1} page={1} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[marta]} total={1} page={1} pageSize={10} />,
     );
 
     const barra = screen.getByRole("region", { name: DEVOLUCION.filtrosAriaLabel });
@@ -373,7 +373,7 @@ describe("cambiar de pestaña no deja al usuario con una lista vacía sin explic
 
   function montarTabs() {
     return render(
-      <NovedadesTabs whatsappActivo
+      <NovedadesTabs
         novedades={{
           ayuda: { items: [enAyuda], total: 1, page: 1, pageSize: 10 },
           devolucion: { items: [enDevolucion], total: 1, page: 1, pageSize: 10 },

@@ -53,7 +53,6 @@ import {
   type AppErrorShape,
 } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 const idSchema = z.string().min(1);
 
@@ -114,7 +113,6 @@ export async function crearPlantilla(
   deps: PlantillaActionDeps = {},
 ): Promise<CrearPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4: antes de tocar el service
     const data = crearPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R9/R11)
@@ -130,7 +128,6 @@ export async function listarPlantillas(
   deps: PlantillaActionDeps = {},
 ): Promise<ListarPlantillasResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const data = listarPlantillasSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
@@ -151,7 +148,6 @@ export async function listarPlantillasCompleto(
   deps: PlantillaActionDeps = {},
 ): Promise<ListarPlantillasCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     const data = listarPlantillasCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
@@ -176,7 +172,6 @@ export async function actualizarPlantilla(
   deps: PlantillaActionDeps = {},
 ): Promise<ActualizarPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsedId = idSchema.safeParse(id);
@@ -197,7 +192,6 @@ export async function cambiarEstadoPlantilla(
   deps: PlantillaActionDeps = {},
 ): Promise<CambiarEstadoPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsedId = idSchema.safeParse(id);
@@ -217,7 +211,6 @@ export async function eliminarPlantilla(
   deps: PlantillaActionDeps = {},
 ): Promise<EliminarPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsedId = idSchema.safeParse(id);
@@ -241,7 +234,6 @@ export async function enviarPlantillaAprobacion(
   deps: PlantillaActionDeps = {},
 ): Promise<EnviarAprobacionPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsedId = idSchema.safeParse(id);
@@ -267,7 +259,6 @@ export async function marcarPlantillaBienvenida(
   deps: PlantillaActionDeps = {},
 ): Promise<MarcarBienvenidaPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsedId = idSchema.safeParse(id);
@@ -287,7 +278,6 @@ export async function marcarPlantillaBienvenida(
  */
 export async function estadoAppMeta(deps: PlantillaActionDeps = {}): Promise<EstadoAppMetaResult> {
   const r = await withErrorHandler(async (): Promise<EstadoAppMetaResult> => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     if (actor.rol !== "maestro") return { status: "forbidden" };
@@ -304,7 +294,6 @@ export async function previewPlantilla(
   deps: PlantillaActionDeps = {},
 ): Promise<PreviewPlantillaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R4
     const parsed = previewPlantillaSchema.safeParse(cuerpo);

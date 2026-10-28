@@ -13,7 +13,6 @@ import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoR
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovimientoService";
 import { previsualizarMovimientoSchema, type PrevisualizarMovimientoResult } from "@/lib/types/efecto-movimiento";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 458-B (design §4.4, R44–R47, R82) — el borde de «Así queda». Sesion primero, forma despues
 // (`.strict()`, monto positivo), rol en el servicio (antes de leer). Solo lectura.
@@ -22,8 +21,7 @@ function toEfectoActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -32,9 +30,6 @@ function toEfectoActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`efecto-movimiento: AppErrorCode inesperado ${shape.code}`);
   }
@@ -67,7 +62,6 @@ export async function previsualizarMovimientoAction(
   deps: EfectoMovimientoDeps = {},
 ): Promise<PrevisualizarMovimientoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = previsualizarMovimientoSchema.parse(input);

@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import type { ModuloApagable } from "@prisma/client";
 
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/useToast";
 import { MODULOS_APAGABLES } from "@/lib/modulos/catalogo";
@@ -10,7 +11,7 @@ import type { FijarModuloEmpresaResult, ModuloDeEmpresa } from "@/lib/types/modu
 
 export interface ModulosEmpresaProps {
   organizacionId: string;
-  /** Los 8 módulos apagables en el orden de pantalla, con su estado leído en el servidor. */
+  /** Los 3 módulos apagables en el orden de pantalla, con su estado leído en el servidor. */
   modulos: ModuloDeEmpresa[];
   /** `fijarModuloEmpresaAction`, inyectada desde la página para poder probarla. */
   fijarModulo: (input: {
@@ -26,6 +27,12 @@ const TEXTOS = {
   encendido: "Encendido",
   apagado: "Apagado",
   noSeCambio: (nombre: string) => `No se pudo cambiar «${nombre}». Inténtalo de nuevo.`,
+  encenderTodos: "Encender todos",
+  apagarTodos: "Apagar todos",
+  todosEncendidos: "Todos los módulos quedaron encendidos.",
+  todosApagados: "Todos los módulos quedaron apagados.",
+  noSeCambiaron: (nombres: readonly string[]) =>
+    `No se pudo cambiar ${nombres.map((n) => `«${n}»`).join(", ")}. Inténtalo de nuevo.`,
 } as const;
 
 /**
@@ -40,6 +47,8 @@ export function ModulosEmpresa({ organizacionId, modulos, fijarModulo }: Modulos
     Object.fromEntries(modulos.map((m) => [m.clave, m.activo])),
   );
   const [pendientes, setPendientes] = useState<ReadonlySet<ModuloApagable>>(new Set());
+  const [enLote, setEnLote] = useState(false);
+  const todosEncendidos = modulos.every((m) => activos[m.clave] ?? m.activo);
 
   function marcarPendiente(clave: ModuloApagable, pendiente: boolean) {
     setPendientes((prev) => {
@@ -50,39 +59,86 @@ export function ModulosEmpresa({ organizacionId, modulos, fijarModulo }: Modulos
     });
   }
 
+  /** Llama a la action y dice si respondió `ok`; un throw cuenta como rechazo. */
+  async function fijar(clave: ModuloApagable, activo: boolean): Promise<boolean> {
+    try {
+      const resultado = await fijarModulo({ organizacionId, modulo: clave, activo });
+      return resultado.estado === "ok";
+    } catch (error) {
+      // Un fallo de red o del servidor se trata como un rechazo: quien llama revierte y avisa.
+      console.error("[ModulosEmpresa] fijarModulo lanzó", error);
+      return false;
+    }
+  }
+
   async function alternar(modulo: ModuloDeEmpresa, activo: boolean) {
-    if (pendientes.has(modulo.clave)) return;
+    if (enLote || pendientes.has(modulo.clave)) return;
     const anterior = activos[modulo.clave];
     setActivos((prev) => ({ ...prev, [modulo.clave]: activo }));
     marcarPendiente(modulo.clave, true);
-    let ok = false;
-    try {
-      const resultado = await fijarModulo({ organizacionId, modulo: modulo.clave, activo });
-      ok = resultado.estado === "ok";
-    } catch (error) {
-      // Un fallo de red o del servidor se trata como un rechazo: se revierte y se avisa abajo.
-      console.error("[ModulosEmpresa] fijarModulo lanzó", error);
-    } finally {
-      marcarPendiente(modulo.clave, false);
-    }
+    const ok = await fijar(modulo.clave, activo);
+    marcarPendiente(modulo.clave, false);
     if (!ok) {
       setActivos((prev) => ({ ...prev, [modulo.clave]: anterior }));
       toast.error(TEXTOS.noSeCambio(modulo.nombre));
     }
   }
 
+  /**
+   * Lleva todos los módulos al mismo estado. Solo llama por los que difieren del objetivo, y cada
+   * llamada deja su propio historial, igual que el interruptor. Las llamadas van EN SECUENCIA y no
+   * con `Promise.allSettled`: son pocas, no se satura el servidor y el historial queda en el orden de
+   * pantalla. Optimista como `alternar`: solo vuelven atrás los que no respondieron `ok`.
+   */
+  async function fijarTodos() {
+    if (enLote || pendientes.size > 0) return;
+    const objetivo = !todosEncendidos;
+    const aCambiar = modulos.filter((m) => (activos[m.clave] ?? m.activo) !== objetivo);
+    if (aCambiar.length === 0) return;
+    setEnLote(true);
+    setActivos((prev) => ({
+      ...prev,
+      ...Object.fromEntries(aCambiar.map((m) => [m.clave, objetivo])),
+    }));
+    const fallidos: ModuloDeEmpresa[] = [];
+    for (const modulo of aCambiar) {
+      if (!(await fijar(modulo.clave, objetivo))) fallidos.push(modulo);
+    }
+    if (fallidos.length > 0) {
+      setActivos((prev) => ({
+        ...prev,
+        ...Object.fromEntries(fallidos.map((m) => [m.clave, !objetivo])),
+      }));
+      toast.error(TEXTOS.noSeCambiaron(fallidos.map((m) => m.nombre)));
+    } else {
+      toast.success(objetivo ? TEXTOS.todosEncendidos : TEXTOS.todosApagados);
+    }
+    setEnLote(false);
+  }
+
   return (
     <section aria-labelledby={tituloId} className="flex flex-col gap-3">
-      <h2 id={tituloId} className="text-base font-semibold">
-        {TEXTOS.titulo}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={tituloId} className="text-base font-semibold">
+          {TEXTOS.titulo}
+        </h2>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={enLote || pendientes.size > 0}
+          aria-busy={enLote || undefined}
+          onClick={() => void fijarTodos()}
+        >
+          {todosEncendidos ? TEXTOS.apagarTodos : TEXTOS.encenderTodos}
+        </Button>
+      </div>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {modulos.map((modulo) => (
           <FilaModulo
             key={modulo.clave}
             modulo={modulo}
             activo={activos[modulo.clave] ?? modulo.activo}
-            pendiente={pendientes.has(modulo.clave)}
+            pendiente={enLote || pendientes.has(modulo.clave)}
             onCambio={(activo) => void alternar(modulo, activo)}
           />
         ))}

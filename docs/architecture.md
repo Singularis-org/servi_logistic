@@ -153,8 +153,11 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
-- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 8
-  módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`).
+- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
+  módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
+  satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
+  2026-10-28, cuando pasaron al núcleo (migraciones `20261027120000_modulos_nucleo` y
+  `20261028120000_modulo_wallet_nucleo`).
   - **Tabla:** `organizacion_modulo(organizacion_id, modulo)`, una fila por módulo encendido, con RLS
     por empresa. `servi_app` solo la lee; la escribe únicamente el superadmin, como dueño y en
     `comoPlataforma`, por `lib/repositories/ModulosEmpresaRepository.ts`. Cada cambio deja su fila
@@ -167,8 +170,8 @@ esta bien hecha, no solo si "funciona".
     `{ status: "forbidden" }` (`exigirModuloActivo` dentro de `withErrorHandler`); el menú lo filtra
     `menuDeLaEmpresa`; los crons pasan `modulo` a `paraCadaEmpresa`; el drenador marca `descartado`
     el job de un módulo apagado, salvo los de cálculo continuo (`CALCULO_CONTINUO`); la API por key
-    responde 403 con `details.codigo = "modulo_inactivo"`, y el webhook entrante de WhatsApp responde
-    200 sin procesar el mensaje. Sin empresa (sin sesión o
+    es núcleo salvo `ordenes/api-key/analitica`, que con Analítica apagada responde 403 con
+    `details.codigo = "modulo_inactivo"`. Sin empresa (sin sesión o
     superadmin), la puerta no aplica y decide la autorización de siempre.
   - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
     un módulo con su puerta) y `modulos-sin-seed.guardia`.

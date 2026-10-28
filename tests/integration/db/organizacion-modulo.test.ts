@@ -39,8 +39,8 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 /** Lo que enciende cada empresa en la siembra. Distinto a propósito: «ve solo lo suyo» no es un vacío. */
-const DE_A = ["analitica", "wallet", "ranking"] as const;
-const DE_B = ["ranking", "whatsapp"] as const;
+const DE_A = ["analitica", "ranking"] as const;
+const DE_B = ["ranking", "monitoreo"] as const;
 
 let base: PrismaClient;
 let app: PrismaClient;
@@ -115,7 +115,7 @@ async function loQueVeLaApp(tx: TxDeTest): Promise<string[]> {
 }
 
 const enOrdenDelEnum = (ms: readonly string[]) => {
-  const orden = ["analitica", "monitoreo", "recoleccion", "bodegas_satelite", "wallet", "ranking", "whatsapp", "api_integraciones"];
+  const orden = ["analitica", "monitoreo", "ranking"];
   return [...ms].sort((a, b) => orden.indexOf(a) - orden.indexOf(b));
 };
 
@@ -164,12 +164,11 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
     expect(await leer(B)).toEqual(enOrdenDelEnum(DE_B).map((modulo) => ({ organizacionId: B, modulo })));
   });
 
-  it("R4 — sin fila, el módulo está apagado: A no tiene `whatsapp` aunque B sí, ni `monitoreo`", async () => {
-    const encendido = (id: string, modulo: "whatsapp" | "monitoreo" | "ranking") =>
+  it("R4 — sin fila, el módulo está apagado: A no tiene `monitoreo` aunque B sí", async () => {
+    const encendido = (id: string, modulo: "monitoreo" | "ranking") =>
       conEmpresa(id, async () => (await app.organizacionModulo.findFirst({ where: { modulo } })) !== null);
-    expect(await encendido(A, "whatsapp")).toBe(false);
-    expect(await encendido(B, "whatsapp")).toBe(true);
     expect(await encendido(A, "monitoreo")).toBe(false);
+    expect(await encendido(B, "monitoreo")).toBe(true);
     expect(await encendido(A, "ranking")).toBe(true);
   });
 
@@ -179,9 +178,9 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
         await intentar(tx, `INSERT INTO "organizacion_modulo" ("id", "organizacion_id", "modulo") VALUES ($1, $2, 'ranking')`, randomUUID(), A),
       ).toBe("23505");
       expect(
-        await intentar(tx, `INSERT INTO "organizacion_modulo" ("id", "organizacion_id", "modulo") VALUES ($1, $2, 'whatsapp')`, randomUUID(), A),
+        await intentar(tx, `INSERT INTO "organizacion_modulo" ("id", "organizacion_id", "modulo") VALUES ($1, $2, 'monitoreo')`, randomUUID(), A),
       ).toBeNull();
-      expect(await modulosComoDueno(tx, A)).toEqual(enOrdenDelEnum([...DE_A, "whatsapp"]));
+      expect(await modulosComoDueno(tx, A)).toEqual(enOrdenDelEnum([...DE_A, "monitoreo"]));
     });
     expect(await modulosComoDueno(base, A)).toEqual(enOrdenDelEnum(DE_A));
   });

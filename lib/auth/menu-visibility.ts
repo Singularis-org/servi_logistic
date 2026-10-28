@@ -438,7 +438,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // la defensa real es el `notFound` de `/recoleccion` (resuelve el rol server-side).
     label: "Recolección",
     href: "/recoleccion",
-    modulo: "recoleccion",
     iconKey: "store",
     roles: ["mensajero"],
   },
@@ -466,7 +465,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // relativa). Es el patrón literal de "Entregas".
     label: "Órdenes",
     href: "/recepcion-satelite",
-    modulo: "bodegas_satelite",
     iconKey: "package",
     roles: ["adminSatelite"],
     children: [
@@ -519,7 +517,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // contraparte (43/44) y heredan la visibilidad del padre.
     label: "Wallet",
     href: "/wallet",
-    modulo: "wallet",
     iconKey: "wallet",
     roles: ["maestro", "admin"],
     children: [
@@ -559,7 +556,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // marcados son EXACTAMENTE `["/analitica", "/monitoreo"]`.
     label: "Mi wallet",
     href: "/mi-wallet",
-    modulo: "wallet",
     iconKey: "wallet",
     roles: ROLES_MI_WALLET,
   },
@@ -571,7 +567,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     children: [
       { label: "Usuarios", href: "/configuracion" },
       { label: "Tarifas", href: "/configuracion/tarifas" },
-      { label: "API", href: "/configuracion/api", modulo: "api_integraciones" },
+      { label: "API", href: "/configuracion/api" },
       // SL-36 (design §14): las cuentas de los servicios externos de la empresa, junto a «API»
       // porque las dos son conexiones con terceros. No es el primer hijo, así que no mueve el
       // aterrizaje post-login, y hereda la visibilidad `maestro`-only del padre, igual que la
@@ -579,7 +575,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       { label: "Integraciones", href: "/configuracion/integraciones" },
       // Feature 107: CRUD de plantillas de mensaje. Hereda la visibilidad
       // maestro-only del ítem padre (R1/R2).
-      { label: "Plantillas", href: "/configuracion/plantillas", modulo: "whatsapp" },
+      { label: "Plantillas", href: "/configuracion/plantillas" },
       // Ficha 474 (R2): «Envíos automáticos» JUSTO DESPUÉS de «Plantillas», como la maqueta
       // aprobada (`design-whatsapp/Main.dc.html`). Design §7 lo permite si no mueve el primer
       // hijo: `primerDestino` solo mira el PRIMERO («Usuarios»), y este entra el quinto. Hereda la
@@ -587,7 +583,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       {
         label: "Envíos automáticos",
         href: "/configuracion/envios-whatsapp",
-        modulo: "whatsapp",
       },
       // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
       // del ítem padre: quien ve el catálogo es quien lo administra.
@@ -668,7 +663,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     iconKey: "history",
     roles: ROLES_HISTORICO_CONVERSACIONES,
     children: [
-      { label: "Conversaciones", href: "/historico/conversaciones", modulo: "whatsapp" },
+      { label: "Conversaciones", href: "/historico/conversaciones" },
       {
         label: "Acciones",
         href: "/historico/acciones",
@@ -729,7 +724,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // `notFound()` de la página.
     label: "Mi bodega",
     href: "/mi-bodega",
-    modulo: "bodegas_satelite",
     iconKey: "warehouse",
     roles: ROLES_MI_BODEGA,
   },

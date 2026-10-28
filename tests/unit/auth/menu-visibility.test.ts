@@ -389,11 +389,9 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
     const plantillas = visibleConfig.children?.find(
       (c) => c.label === "Plantillas",
     );
-    // SL-23 (design §3.6): el subítem es del módulo WhatsApp.
     expect(plantillas).toEqual({
       label: "Plantillas",
       href: "/configuracion/plantillas",
-      modulo: "whatsapp",
     });
   });
 

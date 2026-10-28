@@ -15,10 +15,8 @@ import {
   whatsappDeLaEmpresaOpcional,
   type WhatsappDeLaEmpresa,
 } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
-import { defaultLogger, withErrorHandler } from "@/lib/errors";
+import { defaultLogger } from "@/lib/errors";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
-import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 const ALLOWED_ROLES = new Set<string>(["maestro"]);
 
@@ -38,10 +36,6 @@ export interface SincronizarPlantillasDeps {
 export async function sincronizarPlantillasWhatsapp(
   deps: SincronizarPlantillasDeps = {},
 ): Promise<SincronizarPlantillasActionResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
   if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // solo maestro

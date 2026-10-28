@@ -144,16 +144,15 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       expect(disco[a.tabla]).not.toContain(a.clave);
     });
 
-    it("R33: solo las piezas de §3.7 tienen dos módulos, y son los suyos", () => {
-      expect(piezasCompartidas()).toEqual({
-        "action premio-ranking-devengo": ["wallet", "ranking"],
-        "api ordenes/api-key/analitica": ["api_integraciones", "analitica"],
-      });
+    it("R33: hoy ninguna pieza tiene dos módulos (la última, premio-ranking-devengo, quedó en Ranking al pasar Wallet al núcleo el 2026-10-28)", () => {
+      expect(piezasCompartidas()).toEqual({});
     });
 
-    it("§3.1/§3.2: el reparto tiene 24 páginas y 48 archivos de actions de un módulo", () => {
-      expect(PAGINAS_DE_MODULO).toHaveLength(24);
-      expect(ACTIONS_DE_MODULO).toHaveLength(48);
+    // 2026-10-27/28: Recolección, Bodegas satélite, API e integraciones, WhatsApp y Wallet pasaron al
+    // núcleo (20 páginas y 31 actions menos).
+    it("§3.1/§3.2: el reparto tiene 4 páginas y 17 archivos de actions de un módulo", () => {
+      expect(PAGINAS_DE_MODULO).toHaveLength(4);
+      expect(ACTIONS_DE_MODULO).toHaveLength(17);
     });
   });
 
@@ -192,16 +191,20 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       }
     });
 
-    it("no-vacuidad: el barrido transitivo llega a actions a través de components/", () => {
-      // `RepartoModule` → `GestionarOrdenPanel` → `components/shared/EnviarPlantillaWhatsappButton` →
-      // `whatsapp-envio`: sin la entrada de §6.3 sería un cruce. Si el grafo no lo viera, (e) estaría ciego.
+    it("no-vacuidad: sobre el árbol real, el barrido ve un cruce sin declarar", () => {
+      // `/wallet/mensajeros` (núcleo desde el 2026-10-28) monta `PremiosRankingPanel`, que llama a
+      // `lib/actions/premio-ranking-devengo` (Ranking): sin la entrada de §6.3 sería un cruce. Si el
+      // grafo no lo viera, (e) estaría ciego. Antes se medía con el botón de plantilla de WhatsApp
+      // (por components/) y luego con `cargar-kpis.ts` → wallet; los dos dejaron de cruzar al pasar
+      // WhatsApp y Wallet al núcleo. El recorrido transitivo por components/ y hooks/ lo cubre el
+      // árbol inventado de la autocomprobación.
       const sinDeclarar = new GrafoDeConsumos(RAIZ, []);
       const cruces = archivosDeApp()
-        .filter((r) => r.startsWith("app/(app)/mis-asignaciones/"))
+        .filter((r) => r.startsWith("app/(app)/wallet/mensajeros/"))
         .flatMap((r) => sinDeclarar.cruces(r));
-      expect(
-        cruces.some((c) => c.includes("components/shared/EnviarPlantillaWhatsappButton.tsx → lib/actions/whatsapp-envio")),
-      ).toBe(true);
+      expect(cruces.some((c) => c.includes("PremiosRankingPanel.tsx → lib/actions/premio-ranking-devengo"))).toBe(true);
+      // Y declarado, el mismo árbol queda limpio: la entrada de §6.3 es la que lo pone verde.
+      expect(consumosCruzados()).toEqual([]);
     });
 
     it("ningún archivo de app/ alcanza (directo o por components/ y hooks/) una action de otro módulo sin declararlo", () => {
@@ -244,10 +247,10 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       escribir("app/api/ordenes/api-key/route.ts");
       escribir("app/api/ordenes/api-key/orden/[id]/route.ts");
       const tablas = {
-        ruta: { "/wallet": "wallet", "/wallet/tiendas/[tiendaId]": "wallet" },
-        action: { wallet: "wallet" },
-        cron: { "generar-gastos-fijos": "wallet" },
-        api: { "ordenes/api-key": "api_integraciones", "ordenes/api-key/orden/[id]": "api_integraciones" },
+        ruta: { "/wallet": "monitoreo", "/wallet/tiendas/[tiendaId]": "monitoreo" },
+        action: { wallet: "monitoreo" },
+        cron: { "generar-gastos-fijos": "monitoreo" },
+        api: { "ordenes/api-key": "analitica", "ordenes/api-key/orden/[id]": "analitica" },
       } as const;
 
       it("lee el disco con la forma de clave del reparto (sin grupos, sin tests ni _shared)", () => {
@@ -262,7 +265,7 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
 
       it("mutación: una página nueva sin entrada, y una entrada sin archivo, salen nombradas", () => {
         const conPaginaNueva = { ...piezasDelDisco(raiz), ruta: [...piezasDelDisco(raiz).ruta, "/premios"] };
-        const conEntradaHuerfana = { ...tablas, action: { ...tablas.action, borrada: "wallet" } } as const;
+        const conEntradaHuerfana = { ...tablas, action: { ...tablas.action, borrada: "monitoreo" } } as const;
         expect(diferenciasDeReparto(conPaginaNueva, tablas).sinEntrada).toEqual(["ruta /premios"]);
         expect(diferenciasDeReparto(piezasDelDisco(raiz), conEntradaHuerfana).sinArchivo).toEqual(["action borrada"]);
         // Una anunciada no cuenta como huérfana; otra que no lo está, sí.
@@ -273,8 +276,8 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       });
 
       it("mutación: una tercera pieza con dos módulos sale en piezasCompartidas", () => {
-        const conTupla = { ...tablas, cron: { "generar-gastos-fijos": ["wallet", "ranking"] } } as const;
-        expect(piezasCompartidas(conTupla)).toEqual({ "cron generar-gastos-fijos": ["wallet", "ranking"] });
+        const conTupla = { ...tablas, cron: { "generar-gastos-fijos": ["monitoreo", "ranking"] } } as const;
+        expect(piezasCompartidas(conTupla)).toEqual({ "cron generar-gastos-fijos": ["monitoreo", "ranking"] });
       });
     });
 
@@ -282,31 +285,31 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       const buena = `
         import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
         export default async function WalletPage() {
-          await exigirModuloEnRuta("wallet");
+          await exigirModuloEnRuta("monitoreo");
           const actor = await resolveActorFromSession();
           return null;
         }`;
       it("la encuentra en `export default function` y en `export default X`", () => {
-        expect(puertaDePagina(buena)).toEqual(["wallet"]);
+        expect(puertaDePagina(buena)).toEqual(["monitoreo"]);
         expect(
-          puertaDePagina(`async function P() { await exigirModuloEnRuta("wallet", "ranking"); }\nexport default P;`),
-        ).toEqual(["wallet", "ranking"]);
+          puertaDePagina(`async function P() { await exigirModuloEnRuta("monitoreo", "ranking"); }\nexport default P;`),
+        ).toEqual(["monitoreo", "ranking"]);
         expect(puertaDePagina(`const P = async () => { await exigirModuloEnRuta("ranking"); };\nexport default P;`)).toEqual([
           "ranking",
         ]);
       });
       it("mutación: sin puerta, o no como primera sentencia → null", () => {
-        expect(puertaDePagina(buena.replace(`await exigirModuloEnRuta("wallet");`, ""))).toBeNull();
+        expect(puertaDePagina(buena.replace(`await exigirModuloEnRuta("monitoreo");`, ""))).toBeNull();
         expect(
-          puertaDePagina(`export default async function P() { const a = await leer(); await exigirModuloEnRuta("wallet"); }`),
+          puertaDePagina(`export default async function P() { const a = await leer(); await exigirModuloEnRuta("monitoreo"); }`),
         ).toBeNull();
         // Sin `await` la puerta no frena nada: notFound() saldría tarde o nunca.
-        expect(puertaDePagina(`export default async function P() { exigirModuloEnRuta("wallet"); }`)).toBeNull();
+        expect(puertaDePagina(`export default async function P() { exigirModuloEnRuta("monitoreo"); }`)).toBeNull();
         // Citada en un comentario no cuenta.
-        expect(puertaDePagina(`export default async function P() { // await exigirModuloEnRuta("wallet");\n return 1; }`)).toBeNull();
+        expect(puertaDePagina(`export default async function P() { // await exigirModuloEnRuta("monitoreo");\n return 1; }`)).toBeNull();
       });
       it("mutación: otras claves se leen tal cual (el barrido las compara con las suyas)", () => {
-        expect(puertaDePagina(buena.replace(`("wallet")`, `("ranking")`))).toEqual(["ranking"]);
+        expect(puertaDePagina(buena.replace(`("monitoreo")`, `("ranking")`))).toEqual(["ranking"]);
       });
     });
 
@@ -317,42 +320,42 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         export interface Deps { x?: number }
         export async function listar(input: unknown, deps: Deps = {}) {
           const r = await withErrorHandler(async () => {
-            await exigirModuloActivo("wallet", "ranking");
+            await exigirModuloActivo("monitoreo", "ranking");
             const actor = await resolveActorFromSession();
             return actor;
           });
           return r;
         }
         export async function anular(input: unknown) {
-          await exigirModuloActivo("wallet", "ranking");
+          await exigirModuloActivo("monitoreo", "ranking");
           return input;
         }`;
       it("la acepta directa o como primera sentencia de su withErrorHandler; ignora tipos", () => {
-        expect(funcionesSinPuerta(buena, ["wallet", "ranking"])).toEqual([]);
+        expect(funcionesSinPuerta(buena, ["monitoreo", "ranking"])).toEqual([]);
       });
       it("mutación: una función sin puerta sale nombrada", () => {
         const sinPuerta = buena.replace(
-          `await exigirModuloActivo("wallet", "ranking");\n          return input;`,
+          `await exigirModuloActivo("monitoreo", "ranking");\n          return input;`,
           "return input;",
         );
-        expect(funcionesSinPuerta(sinPuerta, ["wallet", "ranking"])).toEqual([
-          "anular: sin exigirModuloActivo(wallet, ranking) como primera sentencia",
+        expect(funcionesSinPuerta(sinPuerta, ["monitoreo", "ranking"])).toEqual([
+          "anular: sin exigirModuloActivo(monitoreo, ranking) como primera sentencia",
         ]);
       });
       it("mutación: la puerta después de leer la sesión no cuenta", () => {
         const tarde = `export async function f() {
           return withErrorHandler(async () => {
             const actor = await resolveActorFromSession();
-            await exigirModuloActivo("wallet");
+            await exigirModuloActivo("monitoreo");
           });
         }`;
-        expect(funcionesSinPuerta(tarde, ["wallet"])).toHaveLength(1);
+        expect(funcionesSinPuerta(tarde, ["monitoreo"])).toHaveLength(1);
       });
       it("mutación: una sola clave en una pieza compartida (R33) sale nombrada", () => {
-        const unaClave = buena.replaceAll(`("wallet", "ranking")`, `("wallet")`);
-        expect(funcionesSinPuerta(unaClave, ["wallet", "ranking"])).toEqual([
-          "listar: exige (wallet) y le toca (wallet, ranking)",
-          "anular: exige (wallet) y le toca (wallet, ranking)",
+        const unaClave = buena.replaceAll(`("monitoreo", "ranking")`, `("monitoreo")`);
+        expect(funcionesSinPuerta(unaClave, ["monitoreo", "ranking"])).toEqual([
+          "listar: exige (monitoreo) y le toca (monitoreo, ranking)",
+          "anular: exige (monitoreo) y le toca (monitoreo, ranking)",
         ]);
       });
       it("las firmas de sobrecarga no cuentan; la implementación sí", () => {
@@ -360,16 +363,16 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
           export async function f(a: FormData): Promise<1>;
           export async function f(a: unknown): Promise<2>;
           export async function f(a: unknown) {
-            await exigirModuloActivo("wallet");
+            await exigirModuloActivo("monitoreo");
             return a;
           }`;
-        expect(funcionesSinPuerta(sobrecargada, ["wallet"])).toEqual([]);
-        expect(funcionesSinPuerta(sobrecargada.replace(`await exigirModuloActivo("wallet");`, ""), ["wallet"])).toEqual([
-          "f: sin exigirModuloActivo(wallet) como primera sentencia",
+        expect(funcionesSinPuerta(sobrecargada, ["monitoreo"])).toEqual([]);
+        expect(funcionesSinPuerta(sobrecargada.replace(`await exigirModuloActivo("monitoreo");`, ""), ["monitoreo"])).toEqual([
+          "f: sin exigirModuloActivo(monitoreo) como primera sentencia",
         ]);
       });
       it("también ve `export const f = async () => {}`", () => {
-        expect(funcionesSinPuerta(`export const f = async () => { return 1; };`, ["wallet"])).toHaveLength(1);
+        expect(funcionesSinPuerta(`export const f = async () => { return 1; };`, ["monitoreo"])).toHaveLength(1);
       });
 
       describe("forma del rechazo: forbidden, nunca excepción", () => {
@@ -385,20 +388,20 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
           function noEsTraductor(n: number) { return n; }
           export async function listar() {
             const r = await withErrorHandler(async () => {
-              await exigirModuloActivo("wallet");
+              await exigirModuloActivo("monitoreo");
               return 1;
             });
             return isAppErrorShape(r) ? traducir(r) : r;
           }
           export async function leer() {
             const puerta = await withErrorHandler(async () => {
-              await exigirModuloActivo("wallet");
+              await exigirModuloActivo("monitoreo");
             });
             if (puerta) return rechazoDeModulo(puerta);
             return 1;
           }`;
         it("acepta la puerta envuelta y los traductores que conocen FORBIDDEN o delegan", () => {
-          expect(funcionesSinPuerta(sinLanzar, ["wallet"])).toEqual([]);
+          expect(funcionesSinPuerta(sinLanzar, ["monitoreo"])).toEqual([]);
           expect(puertasQueLanzan(sinLanzar)).toEqual([]);
         });
         it("mutación: la puerta directa sale nombrada", () => {
@@ -419,19 +422,19 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     });
 
     describe("(d) crons", () => {
-      const conModulo = `const e = await paraCadaEmpresa(async () => {}, { cliente: deps.empresas, modulo: "wallet" });`;
+      const conModulo = `const e = await paraCadaEmpresa(async () => {}, { cliente: deps.empresas, modulo: "monitoreo" });`;
       const sinModulo = `const e = await paraCadaEmpresa(async () => {}, { cliente: deps.empresas });`;
       it("lee el modulo de cada llamada", () => {
-        expect(modulosPasadosAParaCadaEmpresa(conModulo)).toEqual(["wallet"]);
+        expect(modulosPasadosAParaCadaEmpresa(conModulo)).toEqual(["monitoreo"]);
         expect(modulosPasadosAParaCadaEmpresa(sinModulo)).toEqual([null]);
         expect(modulosPasadosAParaCadaEmpresa(`paraCadaEmpresa(fn, opciones);`)).toEqual(["?"]);
         expect(modulosPasadosAParaCadaEmpresa(`paraCadaEmpresa(fn);`)).toEqual([null]);
       });
       it("cron de un módulo: con su clave pasa; sin ella, con otra o sin llamada, falla", () => {
-        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(conModulo), "wallet", false)).toBeNull();
-        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(sinModulo), "wallet", false)).not.toBeNull();
-        expect(problemaDeCron(["ranking"], "wallet", false)).not.toBeNull();
-        expect(problemaDeCron([], "wallet", false)).not.toBeNull();
+        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(conModulo), "monitoreo", false)).toBeNull();
+        expect(problemaDeCron(modulosPasadosAParaCadaEmpresa(sinModulo), "monitoreo", false)).not.toBeNull();
+        expect(problemaDeCron(["ranking"], "monitoreo", false)).not.toBeNull();
+        expect(problemaDeCron([], "monitoreo", false)).not.toBeNull();
       });
       it("cron de cálculo continuo: sin modulo pasa; con modulo falla (R30)", () => {
         expect(problemaDeCron([null], "ranking", true)).toBeNull();
@@ -441,11 +444,12 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
 
     describe("(e) consumos cruzados", () => {
       it("ubica cada archivo de app/ en su ruta, cron o endpoint más cercano", () => {
-        expect(destinoDeArchivoDeApp("app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx")).toBe("wallet");
-        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("api_integraciones");
+        expect(destinoDeArchivoDeApp("app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx")).toBe("nucleo");
+        expect(destinoDeArchivoDeApp("app/(app)/analitica/_components/X.tsx")).toBe("analitica");
+        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/configuracion/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/layout.tsx")).toBe("nucleo");
-        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toEqual(["api_integraciones", "analitica"]);
+        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toBe("analitica");
         expect(destinoDeArchivoDeApp("app/api/cron/snapshot-ranking/route.ts")).toBe("ranking");
       });
       it("lee imports estáticos y dinámicos; no los de tipo ni los citados en comentarios", () => {
@@ -468,29 +472,29 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         const usa = (desde: string) => `import { x } from "${desde}";\n`;
         // Ruta del núcleo (`/ordenes`) que monta un componente compartido.
         escribir("app/(app)/ordenes/_components/Tabla.tsx", usa("@/components/shared/Boton"));
-        // El componente llega a una action de wallet por un hook, y a una del núcleo directamente.
+        // El componente llega a una action de Analítica por un hook, y a una del núcleo directamente.
         escribir("components/shared/Boton.tsx", usa("./interno/Pieza") + usa("@/lib/actions/liquidacion"));
         escribir("components/shared/interno/Pieza.tsx", usa("@/hooks/useSaldo"));
-        escribir("hooks/useSaldo.ts", usa("@/lib/actions/wallet"));
-        // El mismo componente montado solo en una ruta de wallet: sin cruce.
-        escribir("app/(app)/wallet/_components/Panel.tsx", usa("@/components/shared/Boton"));
+        escribir("hooks/useSaldo.ts", usa("@/lib/actions/analitica-operativa"));
+        // El mismo componente montado solo en una ruta de Analítica: sin cruce.
+        escribir("app/(app)/analitica/_components/Panel.tsx", usa("@/components/shared/Boton"));
         // Ciclo entre componentes: no cuelga.
         escribir("components/a.tsx", usa("@/components/b") + usa("@/lib/actions/ranking"));
         escribir("components/b.tsx", usa("@/components/a"));
         escribir("app/(app)/ranking/_components/R.tsx", usa("@/components/a"));
 
-        it("mutación: un componente de components/ montado en una ruta del núcleo que llega a una action de wallet → rojo, con la cadena", () => {
+        it("mutación: un componente de components/ montado en una ruta del núcleo que llega a una action de Analítica → rojo, con la cadena", () => {
           expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([
-            "app/(app)/ordenes/_components/Tabla.tsx → components/shared/Boton.tsx → components/shared/interno/Pieza.tsx → hooks/useSaldo.ts → lib/actions/wallet (wallet)",
+            "app/(app)/ordenes/_components/Tabla.tsx → components/shared/Boton.tsx → components/shared/interno/Pieza.tsx → hooks/useSaldo.ts → lib/actions/analitica-operativa (analitica)",
           ]);
         });
 
         it("montado en una ruta de su mismo módulo, o con la action del núcleo, no es cruce", () => {
-          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/wallet/_components/Panel.tsx")).toEqual([]);
+          expect(new GrafoDeConsumos(raiz, []).cruces("app/(app)/analitica/_components/Panel.tsx")).toEqual([]);
         });
 
         it("declarar el componente en CONSUMOS_ENTRE_MODULOS lo pone verde; declararlo con otro módulo, no", () => {
-          const declarado = { pieza: "components/shared/Boton.tsx", anfitrionas: ["/ordenes"], modulo: "wallet" } as const;
+          const declarado = { pieza: "components/shared/Boton.tsx", anfitrionas: ["/ordenes"], modulo: "analitica" } as const;
           expect(new GrafoDeConsumos(raiz, [declarado]).cruces("app/(app)/ordenes/_components/Tabla.tsx")).toEqual([]);
           expect(
             new GrafoDeConsumos(raiz, [{ ...declarado, modulo: "ranking" }]).cruces("app/(app)/ordenes/_components/Tabla.tsx"),
@@ -502,22 +506,27 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         });
       });
 
-      it("directo desde app/: propio módulo o núcleo pasa; otro módulo falla; pieza compartida exige las dos", () => {
+      it("directo desde app/: propio módulo o núcleo pasa; otro módulo falla; declarado pasa", () => {
         const raiz = mkdtempSync(path.join(tmpdir(), "sl23-directo-"));
         try {
-          const deWallet = "app/(app)/wallet/_components/X.tsx";
+          const deAnalitica = "app/(app)/analitica/_components/X.tsx";
           const probar = (accion: string, consumos: ConstructorParameters<typeof GrafoDeConsumos>[1] = []) => {
-            mkdirSync(path.dirname(path.join(raiz, deWallet)), { recursive: true });
-            writeFileSync(path.join(raiz, deWallet), `import { a } from "@/lib/actions/${accion}";\n`);
-            return new GrafoDeConsumos(raiz, consumos).cruces(deWallet);
+            mkdirSync(path.dirname(path.join(raiz, deAnalitica)), { recursive: true });
+            writeFileSync(path.join(raiz, deAnalitica), `import { a } from "@/lib/actions/${accion}";\n`);
+            return new GrafoDeConsumos(raiz, consumos).cruces(deAnalitica);
           };
-          expect(probar("wallet")).toEqual([]);
+          expect(probar("analitica-operativa")).toEqual([]);
           expect(probar("liquidacion")).toEqual([]);
-          expect(probar("ranking")).toEqual(["app/(app)/wallet/_components/X.tsx → lib/actions/ranking (ranking)"]);
+          // Wallet es núcleo desde el 2026-10-28: llamarla desde Analítica no es cruce.
+          expect(probar("wallet")).toEqual([]);
+          expect(probar("ranking")).toEqual(["app/(app)/analitica/_components/X.tsx → lib/actions/ranking (ranking)"]);
           expect(probar("premio-ranking-devengo")).toHaveLength(1);
           expect(
-            probar("premio-ranking-devengo", [{ pieza: deWallet, anfitrionas: ["/wallet"], modulo: ["wallet", "ranking"] }]),
+            probar("premio-ranking-devengo", [{ pieza: deAnalitica, anfitrionas: ["/analitica"], modulo: "ranking" }]),
           ).toEqual([]);
+          expect(
+            probar("premio-ranking-devengo", [{ pieza: deAnalitica, anfitrionas: ["/analitica"], modulo: "monitoreo" }]),
+          ).toHaveLength(1);
         } finally {
           rmSync(raiz, { recursive: true, force: true });
         }

@@ -14,7 +14,6 @@ import { ApiKeyAuthService } from "@/lib/services/ApiKeyAuthService";
 import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 type AutenticacionOk = Extract<ApiKeyAuthResult, { status: "ok" }>;
 
@@ -71,18 +70,11 @@ export function buildAutenticar(): (rawKey: string | null) => Promise<Autenticac
  * Sin `organizacionId` solo puede llegar un doble inyectado de antes de SL-17 (el autenticador
  * real devuelve 401 en ese caso): el cuerpo corre sin contexto explicito y cualquier lectura de
  * negocio falla cerrado igual (R11), asi que no se abre nada.
- *
- * SL-23 (design §5.5, R18): con «API e integraciones» apagado para la empresa de la key, el cuerpo no
- * corre: `ModuloInactivoError`, que el `withErrorHandler` de cada ruta devuelve como 403 con
- * `details.codigo = "modulo_inactivo"`. Las 9 rutas por key pasan por aqui: es el punto unico.
  */
 export function conEmpresaDeLaKey<T>(
   auth: { organizacionId?: string },
   cuerpo: () => Promise<T>,
 ): Promise<T> {
   if (auth.organizacionId === undefined) return cuerpo();
-  return conEmpresa(auth.organizacionId, async () => {
-    await exigirModuloActivo("api_integraciones");
-    return cuerpo();
-  });
+  return conEmpresa(auth.organizacionId, cuerpo);
 }

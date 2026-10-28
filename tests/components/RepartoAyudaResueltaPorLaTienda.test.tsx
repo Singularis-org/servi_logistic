@@ -146,7 +146,7 @@ const OTRA = asignacion({
 
 function renderPortal(conAyuda: MiAsignacionDTO[]) {
   return render(
-    <RepartoModule whatsappActivo
+    <RepartoModule
       porGestionar={[OTRA]}
       conAyuda={conAyuda}
       porRecoger={[]}

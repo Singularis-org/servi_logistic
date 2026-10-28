@@ -189,13 +189,13 @@ describeSiHayBase("SL-23 — el superadmin cambia módulos con su rastro en hist
   it("R9 — por el servicio, el cambio se ve en la lectura siguiente", async () => {
     const servicio = new ModulosEmpresaService(new ModulosEmpresaRepository(app));
     const actor = { usuarioId: superadmin, rol: "superadmin" as const, organizacionId: null };
-    expect(await servicio.fijar(actor, { organizacionId: empresa, modulo: "whatsapp", activo: true })).toEqual({
+    expect(await servicio.fijar(actor, { organizacionId: empresa, modulo: "monitoreo", activo: true })).toEqual({
       estado: "ok",
       cambio: true,
     });
     const r = await servicio.ver(actor, { organizacionId: empresa });
     if (r.estado !== "ok") throw new Error(`se esperaba ok: ${r.estado}`);
-    expect(r.empresa.modulos.filter((m) => m.activo).map((m) => m.clave)).toEqual(["whatsapp"]);
+    expect(r.empresa.modulos.filter((m) => m.activo).map((m) => m.clave)).toEqual(["monitoreo"]);
     expect(await historialDe(empresa)).toHaveLength(3);
   });
 
@@ -203,19 +203,19 @@ describeSiHayBase("SL-23 — el superadmin cambia módulos con su rastro en hist
     await revertida(async (tx) => {
       const roto = new ModulosEmpresaRepository(clienteConSavepoint(tx, true));
       await expect(roto.encender(empresa, "analitica", superadmin)).rejects.toBeInstanceOf(RegistroCaido);
-      expect(await modulosDe(empresa, tx)).toEqual(["whatsapp"]);
+      expect(await modulosDe(empresa, tx)).toEqual(["monitoreo"]);
       // Control: con el registro sano, la misma llamada sí enciende (el rojo no era otra cosa).
       const sano = new ModulosEmpresaRepository(clienteConSavepoint(tx, false));
       expect(await sano.encender(empresa, "analitica", superadmin)).toBe(true);
-      expect((await modulosDe(empresa, tx)).sort()).toEqual(["analitica", "whatsapp"]);
+      expect((await modulosDe(empresa, tx)).sort()).toEqual(["analitica", "monitoreo"]);
     });
   });
 
   it("R12 — si el registro falla al apagar, el módulo sigue encendido", async () => {
     await revertida(async (tx) => {
       const roto = new ModulosEmpresaRepository(clienteConSavepoint(tx, true));
-      await expect(roto.apagar(empresa, "whatsapp", superadmin)).rejects.toBeInstanceOf(RegistroCaido);
-      expect(await modulosDe(empresa, tx)).toEqual(["whatsapp"]);
+      await expect(roto.apagar(empresa, "monitoreo", superadmin)).rejects.toBeInstanceOf(RegistroCaido);
+      expect(await modulosDe(empresa, tx)).toEqual(["monitoreo"]);
     });
     expect(await historialDe(empresa)).toHaveLength(3);
   });

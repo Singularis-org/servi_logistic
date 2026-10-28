@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
@@ -22,8 +21,6 @@ import { RecoleccionModule } from "./_components/RecoleccionModule";
  * permisos y el hijo no fetchea por su cuenta (R6).
  */
 export default async function RecoleccionPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("recoleccion");
   const actor = await resolveActorFromSession();
   if (actor?.rol !== "mensajero") notFound(); // R3
 
