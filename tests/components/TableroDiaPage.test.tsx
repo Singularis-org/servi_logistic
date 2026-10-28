@@ -21,6 +21,10 @@ import MonitoreoPage from "@/app/(app)/monitoreo/page";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { SIDEBAR_ITEMS } from "@/lib/auth/menu-visibility";
 
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));

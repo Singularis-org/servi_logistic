@@ -4,6 +4,10 @@ import { handlePost } from "@/app/api/webhooks/whatsapp/route";
 import type { IEntregaEstadoService } from "@/lib/services/EntregaEstadoService";
 import { WebhookWhatsappService } from "@/lib/services/WebhookWhatsappService";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // Ficha 474 (T8.3, R38) — el webhook aplica los estados a las ENTREGAS de los envios DESPUES de la
 // ingesta del chat; un fallo suyo NO cambia el 200 ni la ingesta.
 // SL-36: la regla vive en `WebhookWhatsappService`; se ejerce por el route con el service real y

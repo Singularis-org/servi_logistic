@@ -93,6 +93,13 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
       `${VIA_ORDEN} ⚠️ Ojo: la fila de auditoria de ESTA ficha lleva de actor al MAESTRO, no a la ` +
       "cuenta dedicada, asi que no se auto-bloquea.",
   },
+  "HistorialPlataforma.actor": {
+    categoria: "no_alcanzable",
+    motivo:
+      "SL-20 (D15): solo lo escribe el superadmin al tocar paises y geografia, en contexto de " +
+      "plataforma (`exigirSuperadmin`). Una cuenta dedicada (rol `apiKey`) es de una empresa y nunca " +
+      "llega a esas acciones, asi que no puede ser su actor.",
+  },
   "CierreDetail.tienda": {
     categoria: "bloquea",
     motivo:

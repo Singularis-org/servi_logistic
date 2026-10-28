@@ -36,3 +36,16 @@ export function toActionError(shape: AppErrorShape): ActionError {
     }
   }
 }
+
+/**
+ * SL-23 (design §5.3) — el rechazo de la puerta de módulo en una action SIN `withErrorHandler`
+ * propio, que envuelve solo `exigirModuloActivo`. Envolver el cuerpo entero cambiaría lo que esas
+ * actions hacen con sus demás errores. La puerta solo produce FORBIDDEN (`ModuloInactivoError`) o,
+ * si se cae la lectura, INTERNAL, que `toActionError` relanza: un módulo apagado llega a la UI como
+ * `{ status: "forbidden" }` y nunca como excepción.
+ */
+export function rechazoDeModulo(shape: AppErrorShape): { status: "forbidden" } {
+  const e = toActionError(shape);
+  if (e.status === "forbidden") return e;
+  throw new Error(`puerta de módulo: AppErrorCode inesperado ${shape.code}`);
+}

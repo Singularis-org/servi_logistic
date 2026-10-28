@@ -69,6 +69,12 @@ export interface EntradaAccion {
   /** Vocabulario CERRADO (valores de un enum del dominio). `null` en la mayoria de los tipos. */
   valorAnterior?: string | null;
   valorNuevo?: string | null;
+  /**
+   * SL-23 (design §5.2): la empresa de la fila, EXPLICITA. Solo la pasa quien escribe en
+   * `comoPlataforma` (el superadmin sobre una empresa), donde el DEFAULT de la columna sale NULL.
+   * Sin ella, la pone el DEFAULT desde la empresa de la transaccion, como hasta ahora.
+   */
+  organizacionId?: string;
 }
 
 // -------------------------------------------------------------------------------------------

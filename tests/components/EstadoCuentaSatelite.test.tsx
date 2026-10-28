@@ -20,6 +20,10 @@ import { FORMA_UUID, UUID_BODEGA, UUID_MOV, estado, fila } from "@/tests/fixture
 // =================================================================================================
 
 const verEstadoCuentaMock = vi.fn();
+// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+vi.mock("@/lib/modulos/exigir-modulo", async () =>
+  (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 vi.mock("@/lib/actions/estado-cuenta", () => ({
   verEstadoCuentaAction: (...a: unknown[]) => verEstadoCuentaMock(...a),
 }));

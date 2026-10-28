@@ -1,9 +1,10 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (77): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (15): catalogos, geografia, autenticacion previa a la empresa, cache tecnica y el
-//                      valor global del cobro por orden (SL-40).
+//   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · plataforma (18): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
+//                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
+//                      paises y el historial de plataforma (SL-20).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
 //                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
 //   · diferidos   (0): tienen ficha propia que decide su aislamiento.
@@ -42,6 +43,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Credenciales de cada empresa (SL-36): el limite de pruebas tambien es de la empresa
   { modelo: "Integracion", tabla: "integracion" },
   { modelo: "IntegracionPruebaMinuto", tabla: "integracion_prueba_minuto" },
+  // Módulos encendidos de cada empresa (SL-23): la empresa los lee y solo el superadmin los escribe
+  { modelo: "OrganizacionModulo", tabla: "organizacion_modulo" },
   // Zonas y tarifas
   { modelo: "Zona", tabla: "zona" },
   { modelo: "ZonaDistrito", tabla: "zona_distrito" },
@@ -141,6 +144,12 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "GeocodeCache", tabla: "geocode_cache" },
   // Valor global del cobro por orden (SL-40): sin acceso para `servi_app`; lo edita el superadmin
   { modelo: "CobroPlataformaTarifa", tabla: "cobro_plataforma_tarifa" },
+  // Marca de entorno de la base (SL-43): sin acceso para `servi_app`; la lee solo la demo de QA
+  { modelo: "EntornoMarca", tabla: "entorno_marca" },
+  // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
+  { modelo: "Pais", tabla: "pais" },
+  // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)
+  { modelo: "HistorialPlataforma", tabla: "historial_plataforma" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

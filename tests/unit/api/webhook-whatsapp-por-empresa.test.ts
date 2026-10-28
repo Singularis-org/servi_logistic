@@ -12,6 +12,10 @@ import { WebhookWhatsappService } from "@/lib/services/WebhookWhatsappService";
 import type { WebhookEventos } from "@/lib/types/whatsapp-webhook";
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-17 · R15 (D14) repartia en plataforma los eventos por empresa (`repartirPorEmpresa`), leyendo
 // ordenes, hilos y entregas de TODAS. SL-36 (design §10; R20-R22) lo retira: la empresa sale del
 // numero del evento y el route solo traduce HTTP. Aqui se fija lo que es del ROUTE:

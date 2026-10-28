@@ -41,7 +41,7 @@ describe("paraCadaEmpresa (R16)", () => {
       ["b", { tipo: "empresa", organizacionId: "b" }],
       ["c", { tipo: "empresa", organizacionId: "c" }],
     ]);
-    expect(resumen).toEqual({ ok: ["a", "b", "c"], fallidas: [] });
+    expect(resumen).toEqual({ ok: ["a", "b", "c"], fallidas: [], saltadas: [] });
     // Listar es lo unico que corre como plataforma, y declarado con su ficha.
     expect(contextoAlListar).toEqual([{ tipo: "plataforma", ficha: "SL-17", motivo: expect.any(String) }]);
     // Y fuera de la funcion no queda ningun contexto pegado.
@@ -62,14 +62,14 @@ describe("paraCadaEmpresa (R16)", () => {
     );
 
     expect(corridas).toEqual(["a", "b", "c"]);
-    expect(resumen).toEqual({ ok: ["a", "c"], fallidas: [{ organizacionId: "b", error: boom }] });
+    expect(resumen).toEqual({ ok: ["a", "c"], fallidas: [{ organizacionId: "b", error: boom }], saltadas: [] });
     expect(consola).toHaveBeenCalledWith(expect.stringContaining("b"), boom);
   });
 
   it("sin empresas: 0 ejecuciones y sin error", async () => {
     const { cliente } = clienteCon([]);
     const fn = vi.fn(async () => {});
-    await expect(paraCadaEmpresa(fn, { cliente })).resolves.toEqual({ ok: [], fallidas: [] });
+    await expect(paraCadaEmpresa(fn, { cliente })).resolves.toEqual({ ok: [], fallidas: [], saltadas: [] });
     expect(fn).not.toHaveBeenCalled();
   });
 });

@@ -89,10 +89,22 @@ esta bien hecha, no solo si "funciona".
     anterior.
   - **Lectura:** los consumidores leen con `CredencialesIntegracionService` dentro de `conEmpresa`. Nada
     derivado de una credencial (cliente, token, resultado) se cachea entre empresas (R28).
-- **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migración
-  `20261023090000_unicos_por_empresa`). Siguen globales a propósito `usuario.email`, `usuario.cedula`,
-  `orden.num_guia` (rastreo público), `api_key.key_hash` y los ids externos. Las secuencias por empresa
-  son de SL-18.
+- **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migraciones
+  `20261023090000_unicos_por_empresa` y, para `usuario`, `20261026090000_usuario_unico_por_empresa`).
+  `orden.num_guia` y `orden_num_guia_seq` siguen globales a propósito (SL-18, 2026-10-26). La guía sale
+  en la etiqueta y el QR y se rastrea sin sesión por `/paquete/[numGuia]` y por la API. Una guía
+  repetida entre empresas obligaría a pedir la empresa en el rastreo público, y la permutación de
+  `siguiente_num_guia()` ya evita que la guía revele el volumen de nadie. `usuario.email` y
+  `usuario.cedula` son únicos por empresa: una persona puede tener cuenta en varias.
+  - **Globales a propósito** (tipo `global` de `UNICOS_SIN_EMPRESA`, en
+    `tests/unit/guards/_unicos-sin-empresa.ts`): `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint`, `chat_mensaje.wa_message_id` y
+    `whatsapp_envio_entrega.wa_message_id`. Después de SL-17 se sumaron
+    `integracion.whatsapp_numero_id` e `integracion.whatsapp_resumen_verificacion` (SL-36: el webhook
+    de WhatsApp lleva a una sola empresa) y `usuario_un_solo_superadmin` (SL-32: un solo superadmin).
+  - El resto de los únicos sin `organizacion_id` son **anclados**: llevan una FK NOT NULL a una fila de
+    negocio, que ya es de una empresa. La guardia `unicos-por-empresa` lee las migraciones y falla si
+    un único de negocio nuevo no empieza por `organizacion_id` y no está en la lista, si una entrada
+    de la lista no existe, o si este párrafo deja de nombrar un global.
 - **Alta de empresa:** `OrganizacionService.altaEmpresa` (`lib/services/OrganizacionService.ts`, con
   `lib/repositories/OrganizacionRepository.ts`) crea, en una transacción, la organización, su podio del
   ranking y el primer maestro sin contraseña utilizable.
@@ -118,6 +130,51 @@ esta bien hecha, no solo si "funciona".
   antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
   (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
   `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
+- **País por empresa (SL-20).** La tabla de plataforma `pais` (id ISO 3166-1 alfa-2, nombre, los seis
+  nombres de nivel, la regla de código opcional y `disponible`) guarda solo los países dados de alta;
+  el catálogo para elegirlos es fijo, en `lib/constants/paises-iso-3166-1.ts` (no se calcula en
+  runtime). Cada empresa tiene `organizacion.pais_id` (`DEFAULT 'CR'`), que no cambia: el trigger
+  `organizacion_pais_inmutable` lo rechaza con `SQLSTATE 'SL020'` (`PaisInmutable`). Provincia, cantón
+  y distrito llevan `pais_id`; el cantón y el distrito lo heredan de su padre (FK compuestas
+  `ON UPDATE RESTRICT`). Un país con `disponible = false` no se ofrece ni se acepta en el alta de
+  empresa, y sus empresas siguen igual.
+  - **RLS por país:** las políticas `provincia_del_pais`, `canton_del_pais` y `distrito_del_pais` dejan
+    a `servi_app` leer solo la geografía del país de su empresa. En plataforma no hay RLS y el
+    superadmin filtra por `paisId`.
+  - **Trigger `geografia_del_pais_de_la_empresa`** en `orden`, `zona_distrito` y
+    `distrito_zona_especial`: una fila no puede apuntar a geografía de otro país (`SQLSTATE 'SL021'`,
+    `GeografiaDeOtroPais`). Los dos errores se traducen en `lib/db/errores-pais.ts`.
+  - **Historial de plataforma:** las acciones del superadmin sobre países y geografía (alta de país,
+    disponibilidad, carga CSV, alta, renombre, retiro y reactivación de nodos) se registran en
+    `historial_plataforma` con `appendAccionPlataforma` (`lib/repositories/registrar-accion-plataforma.ts`),
+    dentro de la transacción del cambio, no en `historial_accion`. La tabla tiene RLS sin políticas y
+    `REVOKE ALL` para `servi_app`.
+  - **Gestión:** la pantalla `/plataforma/geografia` (solo superadmin) y `lib/actions/geografia-plataforma.ts`,
+    con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
+    `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
+    (`etiquetas-geograficas-sin-literal.guardia`).
+- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
+  módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
+  satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
+  2026-10-28, cuando pasaron al núcleo (migraciones `20261027120000_modulos_nucleo` y
+  `20261028120000_modulo_wallet_nucleo`).
+  - **Tabla:** `organizacion_modulo(organizacion_id, modulo)`, una fila por módulo encendido, con RLS
+    por empresa. `servi_app` solo la lee; la escribe únicamente el superadmin, como dueño y en
+    `comoPlataforma`, por `lib/repositories/ModulosEmpresaRepository.ts`. Cada cambio deja su fila
+    en `historial_accion`. El alta de una empresa nace solo con el núcleo; el seed no la toca.
+  - **Reparto:** `lib/modulos/reparto.ts` dice de qué módulo es cada ruta, action, job, cron y route
+    de API (o si es núcleo), y qué piezas de un módulo se pintan en pantallas de otro
+    (`CONSUMOS_ENTRE_MODULOS`).
+  - **Puertas** (`lib/modulos/exigir-modulo.ts`, una consulta por petición y sin caché entre
+    peticiones): una página de un módulo apagado da 404 (`exigirModuloEnRuta`); una action responde
+    `{ status: "forbidden" }` (`exigirModuloActivo` dentro de `withErrorHandler`); el menú lo filtra
+    `menuDeLaEmpresa`; los crons pasan `modulo` a `paraCadaEmpresa`; el drenador marca `descartado`
+    el job de un módulo apagado, salvo los de cálculo continuo (`CALCULO_CONTINUO`); la API por key
+    es núcleo salvo `ordenes/api-key/analitica`, que con Analítica apagada responde 403 con
+    `details.codigo = "modulo_inactivo"`. Sin empresa (sin sesión o
+    superadmin), la puerta no aplica y decide la autorización de siempre.
+  - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
+    un módulo con su puerta) y `modulos-sin-seed.guardia`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por

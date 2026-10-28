@@ -22,6 +22,6 @@ import { redirect } from "next/navigation";
  * server-side, como siempre. Este archivo no importa ninguna Server Action ni el
  * resolvedor de actor a propósito.
  */
-export default function RecepcionSatelitePage() {
+export default async function RecepcionSatelitePage() {
   redirect("/recepcion-satelite/por-recibir");
 }

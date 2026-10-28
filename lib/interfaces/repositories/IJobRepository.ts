@@ -102,6 +102,12 @@ export interface IJobRepository {
   fail(id: string, error: string, runAfter: Date | null): Promise<void>;
 
   /**
+   * SL-23 (design §4.2, R20): el job es de un módulo apagado para su empresa. `estado = 'descartado'`
+   * y `last_error = motivo`. No vuelve a reclamarse: el reclamo solo toma `pending`.
+   */
+  descartar(id: string, motivo: string): Promise<void>;
+
+  /**
    * Feature 92 (design §8, R4): devuelve los jobs cuya `dedupe_key` esta en `keys`. UNA
    * sola consulta por lote; `keys` vacio -> `[]` SIN consultar.
    *

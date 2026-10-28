@@ -49,6 +49,7 @@ El código lee exactamente estas:
 | `INTEGRACIONES_PRUEBAS_POR_MINUTO` | Opcional. Pruebas de conexión por minuto y empresa (default 5). |
 | `INTEGRACIONES_PROBADOR_DOBLE` | Solo E2E: `1` cambia los probadores reales por un doble. Ignorada con `VERCEL_ENV=production`. |
 | `DB_POOL_MAX` | Opcional. Conexiones `pg` por instancia (default 3). |
+| `DB_TX_MAX_WAIT_MS` / `DB_TX_TIMEOUT_MS` | No se ponen en la app (quedan los de Prisma: 2 s y 5 s). Los fija la demo de QA en su propio proceso (`scripts/demo-qa.ts`). |
 
 #### Credenciales de WhatsApp, Google Maps, optimización de rutas y asistente
 
@@ -107,6 +108,79 @@ El script aborta además si la URL de migraciones apunta al pooler
 **transaccional** (`:6543` o `pgbouncer=true`) — ahí `migrate deploy` espera un
 advisory lock para siempre — y le pone un tope de 120 s para que un cuelgue se
 vea como un build rojo con mensaje, no como un build eterno.
+
+#### Datos de demostración en QA (SL-43)
+
+Después de migrar y antes de `next build`, el `build` corre `tsx scripts/demo-qa.ts --build`, que
+recrea dos empresas de demostración completas: «Demo QA A» (`demo-qa-a`) y «Demo QA B»
+(`demo-qa-b`).
+- **Contenido:** usuarios de cada rol, zonas, tarifas, órdenes en los 20 estados, cierres, caja y
+  cobro de la plataforma.
+- **Cómo se crean:** con los servicios reales de la app. Las órdenes nacen ya ubicadas y la cola no
+  queda con trabajo pendiente: QA no procesa jobs.
+
+**Cuándo corre:**
+
+| Entorno | ¿Recrea la demo? |
+| --- | --- |
+| `VERCEL_ENV=production` | **Nunca** |
+| `VERCEL_ENV=preview` | Solo con `MIGRATE_ON_PREVIEW=true` **y** `DEMO_ON_PREVIEW=true` |
+| build local | No: usa `pnpm demo:qa` |
+
+Cuando se omite, el log dice `[demo-qa] OMITIDA — <motivo>` y el paso no abre ninguna conexión.
+
+**Variables (Preview, solo para la rama `dev`):**
+
+| Variable | Valor | Para qué |
+| --- | --- | --- |
+| `DEMO_ON_PREVIEW` | `true` | Enciende el paso. |
+| `DEMO_QA_CONTRASENA` | contraseña que cumpla la política (sensitive) | La de todos los usuarios demo. Nunca se imprime. |
+| `AUTH_OTP_DEBUG_LOG` | `1` | El código de acceso sale en los logs de Vercel. |
+
+También usa las que ya tiene el build: `DIRECT_URL`, `DATABASE_URL`, `SUPABASE_URL` y
+`SUPABASE_SERVICE_ROLE_KEY`.
+
+**La guardia anti-producción** tiene tres capas, y cualquiera de ellas detiene la demo con el build
+en rojo:
+1. `VERCEL_ENV` no puede ser `production`.
+2. `DIRECT_URL`, `DATABASE_URL` y `SUPABASE_URL` tienen que ser del mismo proyecto.
+3. La base tiene que estar marcada como QA.
+
+Supabase no admite `ALTER DATABASE … SET` ni `ALTER ROLE … SET` con un parámetro propio: los dos
+devuelven `42501`. Por eso la marca es una fila en una tabla de plataforma que las migraciones crean
+vacía. Se pone una sola vez y **solo en la base de QA**, con:
+
+```sql
+INSERT INTO entorno_marca (clave, valor) VALUES ('entorno', 'qa');
+```
+
+Para que la demo no tumbe el primer despliegue:
+1. Despliega una vez con la migración `20261025160100_entorno_marca` y sin `DEMO_ON_PREVIEW`.
+2. Inserta la fila.
+3. Crea `DEMO_ON_PREVIEW`.
+
+**Qué se pierde:** cada despliegue borra las empresas demo con todo lo que tengan, incluidos sus
+archivos de Storage, y las crea de nuevo. **Lo que alguien cree a mano dentro de una empresa demo se
+pierde en el siguiente despliegue.** Para probar algo que deba durar, usa una empresa real de QA. Las
+empresas que no son demo nunca se tocan: una empresa es demo por la columna `organizacion.es_demo`,
+que solo pone la demo, no por su nombre.
+
+**Cómo entrar:**
+- El log del build lista, por empresa, el perfil y el correo de cada usuario demo
+  (`servi-demo-qa-<a|b>-<perfil>@yopmail.com`). La contraseña es la de `DEMO_QA_CONTRASENA`. El buzón
+  de yopmail es público: no uses esos correos para nada que no sea la demo.
+- El código de acceso se lee en los logs de la función de Vercel, gracias a `AUTH_OTP_DEBUG_LOG=1`.
+- El usuario de la API key lo crea `ApiKeyService` con su propio correo y no navega. Para probar la
+  API, crea tu propia key desde la pantalla.
+
+**Si la demo falla, el build falla**, como una migración, y `dev` deja de desplegarse a QA.
+- Para desbloquearlo, **quita `DEMO_ON_PREVIEW`** de Preview en Vercel: el siguiente build omite la
+  demo y despliega.
+- QA sigue sirviendo la versión anterior mientras tanto.
+- La demo tiene un tope propio de 15 minutos.
+
+**En local:** `pnpm demo:qa` corre la demo a mano con la misma guardia. La base local tiene que tener
+la fila de `entorno_marca`, y las tres URLs tienen que ser locales.
 
 ### Usuarios
 

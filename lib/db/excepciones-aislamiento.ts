@@ -183,6 +183,29 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-19",
     motivo: "comando de consola: lee las rutas guardadas de todas las empresas para mover sus archivos a su carpeta (R24)",
   },
+  {
+    archivo: "lib/actions/geografia-plataforma.ts",
+    ficha: "SL-20",
+    motivo:
+      "gestión de países y geografía por el superadmin, que no tiene empresa; conteo de órdenes de todas las empresas (D15)",
+  },
+  {
+    archivo: "lib/repositories/PushEndpointPlataformaRepository.ts",
+    ficha: "SL-18",
+    motivo: "push, el último gana: borrar la suscripción de ese endpoint exacto si es de otra empresa (R26, R28)",
+  },
+  {
+    // Vive en `tests/fabricas/` porque la comparten el E2E y la demo de QA; la importa el build
+    // (`scripts/demo-qa/receta.ts`), así que se cuenta como código de producción.
+    archivo: "tests/fabricas/empresa-y-usuarios.ts",
+    ficha: "SL-43",
+    motivo: "alta de una empresa (demo de QA y E2E) por el servicio del superadmin, que no tiene empresa (R11)",
+  },
+  {
+    archivo: "lib/repositories/ModulosEmpresaRepository.ts",
+    ficha: "SL-23",
+    motivo: "encender y apagar módulos de una empresa: lo hace el superadmin, que no tiene empresa (R10)",
+  },
 ];
 
 /**

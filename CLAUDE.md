@@ -22,7 +22,7 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
 1. **Cupo personal y candado de equipo.** Cada persona tiene hasta
    `arnes.config.json > cupos_por_persona` features `in_progress` por zona (por defecto 2 en
    `frontend`, 3 en `backend` y 3 en `fullstack`). Además:
-   - toda feature en vuelo tiene **assignee** en Jira;
+   - toda feature en vuelo tiene **assignee** en el tracker;
    - ninguna feature se toma sin pasar el candado (`docs/equipo.md > Tomar una feature`);
    - ninguna feature se toma si choca en archivos con otra en vuelo **de otra persona**, salvo
      que el humano acepte el choque (`docs/equipo.md > Conflicto de archivos entre personas`).
@@ -34,9 +34,10 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
    ya existe (`docs/specs.md > Antes de especificar: lo que ya existe`); si existe, para y pregunta.
 3. **Estado en disco, no en el chat.** Cada subagente escribe su resultado en `specs/` o
    `progress/` y solo devuelve una referencia corta.
-   - El board de Jira es la *entrada humana*: ahí nacen las features y ahí aprueba el humano.
+   - El board del tracker (Jira o Trello, `arnes.config.json > tracker.tipo`) es la *entrada
+     humana*: ahí nacen las features y ahí aprueba el humano.
    - Se importa a `feature_list.json`, una copia local que no se versiona, en el paso F0.
-   - A partir de ahí el arnés trabaja en disco. Contrato en `docs/jira.md`.
+   - A partir de ahí el arnés trabaja en disco. Contrato en `docs/jira.md` o `docs/trello.md`.
 4. **Trazabilidad.** Cada requisito `R<n>` termina mapeado a un test concreto. El reviewer
    rechaza si falta alguno.
 5. **Verificación ejecutable, en dos niveles** (`docs/gate.md`). "Compila" no es "funciona".
@@ -67,7 +68,7 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
 El hook `SessionStart` ya te muestra tu `progress/sesion.local.md` y tus features en vuelo.
 Después:
 
-1. Si no existe `.arnes.local.json`, corre `/jira-connect`: fija tu identidad de Jira.
+1. Si no existe `.arnes.local.json`, corre `/tracker-connect`: fija tu identidad en el tracker.
 2. Importa el board a `feature_list.json` (paso F0 de `AGENTS.md`).
 3. Corre `./init.sh`. Debe terminar en verde. Lee los avisos en amarillo: un perfil vencido se
    revisa con `/arnes-init`.
@@ -85,7 +86,7 @@ Después:
 - Trabajar en equipo: candado, cupo personal, conflictos → `docs/equipo.md`
 - El gate: dos niveles, CI, baseline de rojos → `docs/gate.md`
 - Proceso SDD (EARS, 3 archivos, aprobación) → `docs/specs.md`
-- El board manda, el disco trabaja: contrato con Jira → `docs/jira.md`
+- El board manda, el disco trabaja: contrato con Jira → `docs/jira.md`; con Trello → `docs/trello.md`
 - Un worktree por feature → `docs/worktrees.md`
 - Explorar código con el grafo → `docs/grafo-de-codigo.md`
 - **Perfil del proyecto:**
@@ -98,7 +99,7 @@ Después:
 - Criterios de estado final correcto → `CHECKPOINTS.md` (+ `docs/checkpoints-proyecto.md`)
 - **Comandos:**
   - montar el arnés o revisar el perfil → `/arnes-init`
-  - conectar tu cuenta de Jira → `/jira-connect`
+  - conectar tu cuenta del tracker → `/tracker-connect` (Jira o Trello)
   - afinar una feature antes del spec → `/afinar-feature`
   - afinar una mejora al arnés → `/afinar-regla`
   - extraer un módulo a prompt portable → `/extraer-modulo`

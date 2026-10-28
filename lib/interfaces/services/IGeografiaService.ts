@@ -5,6 +5,7 @@ import type {
   NivelGeografico,
   NodoGeograficoInput,
   ProvinciaArbolDTO,
+  ProvinciaPlataformaDTO,
   RenombrarNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
 
@@ -24,6 +25,11 @@ import type {
 
 export type ListarArbolGeograficoServiceResult =
   | { status: "ok"; provincias: ProvinciaArbolDTO[] }
+  | { status: "forbidden" };
+
+/** SL-20 — el arbol de un pais para el superadmin: sin zonas, con el codigo. */
+export type ListarArbolDePaisServiceResult =
+  | { status: "ok"; provincias: ProvinciaPlataformaDTO[] }
   | { status: "forbidden" };
 
 export type CrearNodoGeograficoServiceResult =
@@ -77,7 +83,14 @@ export interface IGeografiaService {
   listarArbol(actor: Actor): Promise<ListarArbolGeograficoServiceResult>;
 
   /**
-   * Alta de un nodo en cualquiera de los tres niveles (R12). El nodo nace ACTIVO (R13), incluso
+   * SL-20 (R20, R29, R30) — el arbol de UN pais, activos e inactivos, sin zonas. Solo plataforma.
+   */
+  listarArbolDePais(paisId: string, actor: Actor): Promise<ListarArbolDePaisServiceResult>;
+
+  /**
+   * Alta de un nodo en cualquiera de los tres niveles (R12). SL-20: la provincia en un pais, con
+   * codigo opcional que cumple la regla del pais (R17, R29); un codigo que no la cumple es
+   * `validation_error` en el campo `codigo`. El nodo nace ACTIVO (R13), incluso
    * si su padre esta retirado: en ese caso su flag propio es `true` y su disponibilidad efectiva
    * es falsa (R15). No es una inconsistencia, es la cascada evaluandose.
    */

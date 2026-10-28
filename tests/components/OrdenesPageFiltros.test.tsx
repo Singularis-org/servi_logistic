@@ -19,6 +19,8 @@ import { listarOrdenes } from "@/lib/actions/ordenes";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
 
+import { ConEtiquetasCR } from "../fabricas/etiquetas-geograficas";
+
 // Feature 144 / TB2.5 (R47, R64) — la PAGE resuelve el catálogo server-side y lo
 // baja por props; si no se puede resolver, pasa `null` y la página sigue viva.
 
@@ -72,12 +74,17 @@ const CATALOGO = {
 };
 
 async function renderPage() {
+  // SL-20 (R19): los nombres de nivel («Provincia», «Cantón», «Distrito») llegan del país de la
+  // empresa por `EtiquetasGeograficasProvider`, que monta `app/(app)/layout.tsx`. Aquí se pinta la
+  // page sin el layout, así que se envuelve con las de Costa Rica, como la app en producción.
   const ui = (
-    <ToastProvider>
-      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        {await OrdenesPage()}
-      </SWRConfig>
-    </ToastProvider>
+    <ConEtiquetasCR>
+      <ToastProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          {await OrdenesPage()}
+        </SWRConfig>
+      </ToastProvider>
+    </ConEtiquetasCR>
   );
   render(ui);
 }

@@ -70,10 +70,30 @@ const EXCEPCIONES_DE_LISTA: readonly {
     soloPlataforma: false,
     motivo: "`listarArbol`: la plataforma y la lectura operativa de Tarifas del maestro (R25)",
   },
+  // SL-20 (design §4; R23, R37): los países son de la plataforma; ningún rol de empresa los gestiona.
+  {
+    archivo: "lib/services/PaisService.ts",
+    constante: "GESTION_ROLES",
+    soloPlataforma: true,
+    motivo: "el alta y el listado de países son de la plataforma (SL-20, R37)",
+  },
+  // SL-20 (design §4; R24, R37): la carga de la división por CSV es gestión de geografía.
+  {
+    archivo: "lib/services/CargaDivisionService.ts",
+    constante: "GESTION_ROLES",
+    soloPlataforma: true,
+    motivo: "la carga de la división de un país es de la plataforma (SL-20, R37)",
+  },
 ];
 
-/** El ítem «Empresas» del menú (R36), que llega con T16. Es el único ítem de plataforma. */
+/** El ítem «Empresas» del menú (R36), que llega con T16. */
 const HREF_ITEM_PLATAFORMA = "/plataforma/empresas";
+
+/**
+ * Los ÚNICOS ítems de plataforma del menú: «Empresas» (SL-32, R36) y «Geografía» (SL-20, R21).
+ * Los dos leen `ROLES_PLATAFORMA` por identidad y no llevan subítems.
+ */
+const HREFS_ITEMS_PLATAFORMA = new Set<string>([HREF_ITEM_PLATAFORMA, "/plataforma/geografia"]);
 
 /**
  * Los archivos de `lib/` y `app/` donde el literal `superadmin` es legítimo: la fuente única y las
@@ -111,7 +131,7 @@ function listasConPlataforma(listas: Record<string, readonly string[]>): string[
 function faltasDelMenu(items: readonly MenuItem[], fuente: readonly string[] = ROLES_PLATAFORMA): string[] {
   const faltas: string[] = [];
   for (const item of items) {
-    if (item.href === HREF_ITEM_PLATAFORMA) {
+    if (HREFS_ITEMS_PLATAFORMA.has(item.href)) {
       // Por identidad: un literal `["superadmin"]` o el ítem compartido con un rol de empresa no
       // son la fuente única.
       if (item.roles !== fuente) faltas.push(`${item.label}: sus roles no son ROLES_PLATAFORMA por import`);
@@ -166,6 +186,17 @@ describe("(a) R3, R5 — las listas de roles de empresa no contienen la platafor
     expect(faltasDelMenu([empresasConMaestro])).toHaveLength(1);
     expect(faltasDelMenu([itemDeEmpresa])).toHaveLength(1);
     expect(faltasDelMenu([empresasBien])).toEqual([]);
+  });
+
+  it("contraprueba SL-20 (R21): «Geografía» con literal o con maestro sale rojo, y bien hecho no", () => {
+    const base = SIDEBAR_ITEMS[0];
+    const href = "/plataforma/geografia";
+    const literal: MenuItem = { ...base, label: "Geografía", href, roles: ["superadmin"], children: undefined };
+    const conMaestro: MenuItem = { ...base, label: "Geografía", href, roles: [...ROLES_PLATAFORMA, "maestro"], children: undefined };
+    const bien: MenuItem = { ...base, label: "Geografía", href, roles: ROLES_PLATAFORMA, children: undefined };
+    expect(faltasDelMenu([literal])).toHaveLength(1);
+    expect(faltasDelMenu([conMaestro])).toHaveLength(1);
+    expect(faltasDelMenu([bien])).toEqual([]);
   });
 });
 

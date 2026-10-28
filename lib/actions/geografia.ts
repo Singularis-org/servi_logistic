@@ -1,7 +1,5 @@
 "use server";
 
-import { z } from "zod";
-
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
@@ -16,19 +14,9 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import type {
-  CambiarActivacionGeograficaServiceResult,
-  ContarOrdenesSinEntregarServiceResult,
-  CrearNodoGeograficoServiceResult,
   IGeografiaService,
   ListarArbolGeograficoServiceResult,
-  RenombrarNodoGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
-import {
-  cambiarActivacionGeograficaSchema,
-  crearNodoGeograficoSchema,
-  nodoGeograficoSchema,
-  renombrarNodoGeograficoSchema,
-} from "@/lib/types/geografia-nodo";
 
 // Catalogo geografico global (provincia -> canton -> distrito).
 //
@@ -42,12 +30,10 @@ import {
 // la ultima escritura con Prisma directo, y pasa por `DistritoZonaEspecialService` ->
 // `DistritoZonaEspecialRepository` desde que la marca es de la empresa.
 //
-// ⚠️ NO HAY NINGUNA ACCION DE BORRADO (R5): quitar un nodo es DESACTIVARLO. Ver el porque en
-// `lib/interfaces/repositories/IGeoRepository.ts`.
-//
-// ⚠️ FICHA 375 — EL RENOMBRADO YA EXISTE (`renombrarNodoGeografico`), y solo porque el catalogo
-// gano una clave estable (`codigo_dta`). Mientras el nombre hacia de clave, renombrar duplicaba el
-// nodo en la siguiente corrida de `scripts/seed-zonas.ts`.
+// SL-20 (design §4) — LAS ESCRITURAS DE LA GEOGRAFIA YA NO VIVEN AQUI. El alta, el renombrado, el
+// retiro y el conteo de la confirmacion son del superadmin, que no tiene empresa, y estan en
+// `lib/actions/geografia-plataforma.ts`, dentro de `comoPlataforma`. Aqui quedan las lecturas y la
+// marca de zona especial, que son de la empresa.
 
 // Los DTO del arbol viven en `lib/types/geografia-nodo.ts` desde la ficha 374 —los produce
 // `GeoRepository`, y un repositorio no puede importar un modulo `"use server"`—. Se RE-EXPORTAN
@@ -59,8 +45,8 @@ export type {
 } from "@/lib/types/geografia-nodo";
 
 /**
- * Dependencias inyectables del borde (patron `VehiculoActionDeps`). Existen para poder probar las
- * cuatro acciones SIN base y sin sesion, no para cambiar el comportamiento en produccion.
+ * Dependencias inyectables del borde (patron `VehiculoActionDeps`). Existen para poder probar la
+ * lectura SIN base y sin sesion, no para cambiar el comportamiento en produccion.
  */
 export interface GeografiaActionDeps {
   geografiaService?: IGeografiaService;
@@ -68,29 +54,13 @@ export interface GeografiaActionDeps {
 }
 
 /**
- * EL COMPOSITION ROOT. Es el UNICO sitio del sistema que construye el servicio, y por tanto el
- * unico que le pasa sus DOS repositorios.
- *
- * ⚠️ EL SEGUNDO ARGUMENTO NO ES DECORATIVO: sin `OrdenRepository`, el conteo de ordenes sin
- * entregar de R60 reventaria en la primera confirmacion de desactivar, en produccion y no en
- * ningun test —los tests de servicio inyectan sus propios dobles—. Comprobar que el modulo lo
- * IMPORTA no basta; hay que comprobar que alguien lo PASA, y eso lo fija
- * `tests/unit/actions/geografia.composition-root.test.ts`.
+ * El composition root de la lectura del arbol. El servicio pide sus dos repositorios aunque
+ * `listarArbol` solo use el de geografia: el conteo, que necesita el de ordenes, se arma en
+ * `geografia-plataforma.ts` y lo fija su test de composition root.
  */
 function buildGeografiaService(): IGeografiaService {
   const prisma = getPrismaClient();
   return new GeografiaService(new GeoRepository(prisma), new OrdenRepository(prisma));
-}
-
-/** Traduce el ZodError del borde a `validation_error` con los errores por campo. */
-function errorDeValidacion(error: z.ZodError): {
-  status: "validation_error";
-  fieldErrors: Record<string, string[]>;
-} {
-  return {
-    status: "validation_error",
-    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
-  };
 }
 
 // ── Lectura del arbol ────────────────────────────────────────────────────────────────────────
@@ -114,139 +84,6 @@ export async function listarArbolGeografico(
   if (!actor) return { status: "unauthenticated" };
   const service = deps.geografiaService ?? buildGeografiaService();
   return service.listarArbol(actor);
-}
-
-// ── Alta ─────────────────────────────────────────────────────────────────────────────────────
-
-export type CrearNodoGeograficoResult =
-  | CrearNodoGeograficoServiceResult
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" };
-
-/**
- * Alta de una provincia, un canton o un distrito (solo la plataforma, R24 de SL-32).
- *
- * UNA accion para los tres niveles, no tres: el nivel viaja como dato de un vocabulario cerrado y
- * la `discriminatedUnion` mantiene el borde igual de estricto. Tres cuerpos identicos serian dos
- * sitios mas donde olvidar la comprobacion de rol.
- */
-export async function crearNodoGeografico(
-  input: unknown,
-  deps: GeografiaActionDeps = {},
-): Promise<CrearNodoGeograficoResult> {
-  const actor = await (deps.getActor ?? resolveActorFromSession)();
-  if (!actor) return { status: "unauthenticated" }; // R23
-
-  const parsed = crearNodoGeograficoSchema.safeParse(input);
-  if (!parsed.success) return errorDeValidacion(parsed.error); // R25
-
-  const service = deps.geografiaService ?? buildGeografiaService();
-  try {
-    return await service.crear(parsed.data, actor);
-  } catch {
-    // R18 — El UNIQUE de la base es la ultima palabra: si dos altas simultaneas pasan la
-    // comprobacion del service, una de las dos falla aqui y se cuenta como conflict en vez de
-    // escapar como error crudo de Postgres.
-    return { status: "conflict" };
-  }
-}
-
-// ── Activacion ───────────────────────────────────────────────────────────────────────────────
-
-export type CambiarActivacionGeograficaResult =
-  | CambiarActivacionGeograficaServiceResult
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" };
-
-/**
- * Desactiva o reactiva un nodo del catalogo (solo la plataforma, R24 de SL-32).
- *
- * `activo` es el estado DESEADO, no un toggle: pedir el estado en el que el nodo ya esta devuelve
- * `ok` sin escribir nada (R21). Esta escritura NO toca a ningun descendiente (R8) ni a
- * `zona_distrito` (R50).
- */
-export async function cambiarActivacionGeografica(
-  input: unknown,
-  deps: GeografiaActionDeps = {},
-): Promise<CambiarActivacionGeograficaResult> {
-  const actor = await (deps.getActor ?? resolveActorFromSession)();
-  if (!actor) return { status: "unauthenticated" };
-
-  const parsed = cambiarActivacionGeograficaSchema.safeParse(input);
-  if (!parsed.success) return errorDeValidacion(parsed.error);
-
-  const service = deps.geografiaService ?? buildGeografiaService();
-  return service.cambiarActivacion(parsed.data, actor);
-}
-
-// ── Renombrado (ficha 375) ───────────────────────────────────────────────────────────────────
-
-export type RenombrarNodoGeograficoResult =
-  | RenombrarNodoGeograficoServiceResult
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" };
-
-/**
- * FICHA 375 — cambia el NOMBRE de un nodo del catalogo (solo la plataforma, R24 de SL-32).
- *
- * POR QUE ESTA ACCION NO EXISTIA HASTA HOY, y no era una omision: la ficha 374 la dejo fuera porque
- * `scripts/seed-zonas.ts` resolvia la geografia por NOMBRE y creaba lo que no encontraba, asi que
- * renombrar habria hecho que la siguiente corrida del seed creara un duplicado ACTIVO con el nombre
- * viejo — y a partir de ahi toda carga masiva que lo mencionara moriria con «distrito ambiguo en el
- * canton». Lo que lo desbloquea es `codigo_dta`: con una clave estable el seed cruza por codigo y
- * el nombre pasa a ser una etiqueta mutable.
- *
- * Renombrar a SU PROPIO nombre devuelve `ok` —guardar sin cambios tiene que seguir funcionando—;
- * al de un HERMANO devuelve `conflict`.
- */
-export async function renombrarNodoGeografico(
-  input: unknown,
-  deps: GeografiaActionDeps = {},
-): Promise<RenombrarNodoGeograficoResult> {
-  const actor = await (deps.getActor ?? resolveActorFromSession)();
-  if (!actor) return { status: "unauthenticated" };
-
-  const parsed = renombrarNodoGeograficoSchema.safeParse(input);
-  if (!parsed.success) return errorDeValidacion(parsed.error);
-
-  const service = deps.geografiaService ?? buildGeografiaService();
-  try {
-    return await service.renombrar(parsed.data, actor);
-  } catch {
-    // El UNIQUE de la base es la ultima palabra: si dos renombrados simultaneos pasan la
-    // comprobacion del service, uno de los dos falla aqui y se cuenta como conflict en vez de
-    // escapar como error crudo de Postgres. Mismo `catch` que el alta.
-    return { status: "conflict" };
-  }
-}
-
-// ── El dato de la confirmacion (R60) ─────────────────────────────────────────────────────────
-
-export type ContarOrdenesSinEntregarDeNodoResult =
-  | ContarOrdenesSinEntregarServiceResult
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" };
-
-/**
- * SOLO LECTURA: cuantas ordenes sin entregar cuelgan del nodo. Alimenta la confirmacion de
- * desactivar y NUNCA escribe.
- *
- * Es informacion para decidir, no una condicion de la operacion: si esta llamada falla, la
- * pantalla lo dice y NO bloquea (R62). Un conteo caido que impidiera retirar un distrito
- * convertiria un dato de cortesia en un bloqueo.
- */
-export async function contarOrdenesSinEntregarDeNodo(
-  input: unknown,
-  deps: GeografiaActionDeps = {},
-): Promise<ContarOrdenesSinEntregarDeNodoResult> {
-  const actor = await (deps.getActor ?? resolveActorFromSession)();
-  if (!actor) return { status: "unauthenticated" };
-
-  const parsed = nodoGeograficoSchema.safeParse(input);
-  if (!parsed.success) return errorDeValidacion(parsed.error);
-
-  const service = deps.geografiaService ?? buildGeografiaService();
-  return service.contarOrdenesSinEntregar(parsed.data, actor);
 }
 
 // ── Marca de zona especial (SL-38) ───────────────────────────────────────────────────────────

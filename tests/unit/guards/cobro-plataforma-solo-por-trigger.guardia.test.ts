@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+import { EXCEPCIONES_SQL_DINAMICO, fallosDeExcepcion, hallazgosSqlDinamico } from "./_mutaciones-sql-dinamicas";
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SL-40 (design §2.2, §11.3) — LOS CARGOS DEL COBRO DE LA PLATAFORMA LOS ESCRIBE SOLO LA BASE.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -23,6 +25,13 @@ import path from "node:path";
 // ella, un detector roto que no encontrara nada dejaría la guardia verde para siempre.
 //
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
+//
+// EL `DELETE` CON TABLA DINÁMICA (review SL-43, m5). `DELETE FROM ${tabla}` no nombra la tabla de
+// cargos y el detector de arriba no lo ve. Se mira aparte, en `lib/`, `app/` y también `scripts/`:
+// sale rojo salvo las excepciones de `_mutaciones-sql-dinamicas.ts`. Hoy, solo el borrado de las
+// empresas demo (`scripts/demo-qa/borrar.ts`, SL-43 D12), que borra sus cargos como dueño y solo de
+// empresas con `es_demo`. No es una vía de escritura de cargos: no inserta ni cambia, solo borra
+// empresas demo enteras.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOLES = ["lib", "app"] as const;
@@ -99,5 +108,20 @@ describe("SL-40 — nadie escribe cargos desde la app (R8, D3)", () => {
       fallos,
       "Los cargos y reversos los escriben los triggers sobre `orden` (SL-40 design §2.2). Si hace falta otra vía, va en una migración, no en la app.",
     ).toEqual([]);
+  });
+
+  it("ningún archivo de lib/, app/ ni scripts/ borra o cambia con tabla dinámica, salvo las excepciones (m5 de SL-43)", () => {
+    const conScripts = [...ARCHIVOS, ...archivosDe(path.join(RAIZ, "scripts"))];
+    const fuentes = conScripts.map((a) => ({ ruta: relativa(a), codigo: readFileSync(a, "utf8") }));
+    // Control: el borrado de la demo está en el censo y lo ve el detector (sin la excepción, rojo).
+    const demo = fuentes.find((f) => f.ruta === "scripts/demo-qa/borrar.ts");
+    expect(demo).toBeDefined();
+    expect(hallazgosSqlDinamico([demo as (typeof fuentes)[number]], [])).not.toEqual([]);
+    expect(hallazgosSqlDinamico(fuentes)).toEqual([]);
+    for (const e of EXCEPCIONES_SQL_DINAMICO) {
+      const f = fuentes.find((x) => x.ruta === e.archivo);
+      expect(f, e.archivo).toBeDefined();
+      expect(fallosDeExcepcion(e, (f as (typeof fuentes)[number]).codigo)).toEqual([]);
+    }
   });
 });

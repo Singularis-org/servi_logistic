@@ -36,8 +36,6 @@ vi.mock("@/lib/db/prisma-client", () => ({
 
 vi.mock("@/lib/actions/password-reset", () => ({
   solicitarRecuperacion: vi.fn(),
-  verificarCodigoRecuperacion: vi.fn(),
-  restablecerContrasena: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -83,7 +81,7 @@ describe("app/recuperar-contrasena/page.tsx — sesion activa (R12)", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "Recuperar contraseña" })).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electrónico")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Enviar código" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar enlace" })).toBeInTheDocument();
     expect(screen.getByText("Recupera el acceso a tu cuenta de forma segura")).toBeInTheDocument();
 
     // Sigue sin ser un callejon sin salida: hay camino de vuelta al login.

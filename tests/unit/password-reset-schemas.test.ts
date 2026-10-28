@@ -1,17 +1,16 @@
 import { describe, it, expect } from "vitest";
-import {
-  requestResetSchema,
-  verifyResetCodeSchema,
-  resetPasswordSchema,
-} from "@/lib/types/password-reset";
+import { requestResetSchema, crearConEnlaceSchema } from "@/lib/types/password-reset";
 
-// Feature 20 / R7 (mas R8 via composicion).
+// Feature 20 / R7 (mas R8 via composicion). SL-18 (R20): el paso del codigo ya no existe, asi que
+// la coincidencia y la politica se prueban sobre el schema del canje del enlace, el unico que queda.
 
-describe("resetPasswordSchema (R7/R8)", () => {
-  const base = { email: "ana@example.com", code: "123456" };
+const ENLACE = "0b9d7c1e-2f3a-4b5c-8d6e-7f8091a2b3c4.Zq3_x-Kp9LmN2oPqRsTuVwXyZ0123456789abcdEFGH";
+
+describe("crearConEnlaceSchema (R7/R8)", () => {
+  const base = { enlace: ENLACE };
 
   it("acepta una entrada valida", () => {
-    const result = resetPasswordSchema.safeParse({
+    const result = crearConEnlaceSchema.safeParse({
       ...base,
       password: "Abcdef1!",
       confirmPassword: "Abcdef1!",
@@ -20,7 +19,7 @@ describe("resetPasswordSchema (R7/R8)", () => {
   });
 
   it("rechaza cuando password y confirmacion difieren (R7)", () => {
-    const result = resetPasswordSchema.safeParse({
+    const result = crearConEnlaceSchema.safeParse({
       ...base,
       password: "Abcdef1!",
       confirmPassword: "Otra1234!",
@@ -32,7 +31,7 @@ describe("resetPasswordSchema (R7/R8)", () => {
   });
 
   it("rechaza password que no cumple la politica (R8)", () => {
-    const result = resetPasswordSchema.safeParse({
+    const result = crearConEnlaceSchema.safeParse({
       ...base,
       password: "debil",
       confirmPassword: "debil",
@@ -41,17 +40,8 @@ describe("resetPasswordSchema (R7/R8)", () => {
   });
 });
 
-describe("requestResetSchema / verifyResetCodeSchema", () => {
-  it("requestResetSchema rechaza email invalido", () => {
+describe("requestResetSchema", () => {
+  it("rechaza email invalido", () => {
     expect(requestResetSchema.safeParse({ email: "no-email" }).success).toBe(false);
-  });
-
-  it("verifyResetCodeSchema exige 6 digitos", () => {
-    expect(
-      verifyResetCodeSchema.safeParse({ email: "ana@example.com", code: "12345" }).success,
-    ).toBe(false);
-    expect(
-      verifyResetCodeSchema.safeParse({ email: "ana@example.com", code: "123456" }).success,
-    ).toBe(true);
   });
 });

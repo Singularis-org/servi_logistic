@@ -13,6 +13,7 @@ import {
   Gauge,
   History,
   Home,
+  MapIcon,
   Megaphone,
   Package,
   Settings,
@@ -193,6 +194,10 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   // `store` de "Recoleccion" y del `warehouse` de «Mi bodega»: una empresa cliente de la
   // plataforma no es la tienda a la que va el mensajero ni la bodega en la que se cobra.
   building: Building2,
+  // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin. Icono PROPIO, distinto
+  // del `building` de «Empresas»: un país y su división no son una empresa. Se importa como
+  // `MapIcon` para no tapar el `Map` global.
+  map: MapIcon,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item

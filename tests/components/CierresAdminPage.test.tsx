@@ -64,6 +64,27 @@ const { CATALOGO_FILTROS } = vi.hoisted(() => {
 // {maestro, adminSatelite} (o sin sesión) → `notFound`. Se mockean el resolver, la
 // action de listado y next/navigation (notFound lanza; useRouter lo consume el
 // módulo cliente).
+// SL-23 (R31): TODO ESTE ARCHIVO corre con los 3 módulos apagados. Cierres (y Wallet, desde el
+// 2026-10-28) es núcleo:
+// la página, la aprobación y el pago (`liquidacion`, núcleo) no pueden depender de ninguna puerta. Si
+// algo de esta pantalla pasara por una, la puerta cerrada lanzaría y los casos caerían.
+vi.mock("@/lib/modulos/exigir-modulo", async () => {
+  const { ModuloInactivoError } = await import("@/lib/modulos/modulo-inactivo-error");
+  const ninguno = new Set<never>();
+  return {
+    modulosActivos: async () => ninguno,
+    moduloActivo: async () => false,
+    primerModuloApagado: async (m: readonly string[]) => m[0] ?? null,
+    exigirModuloActivo: async (m: "analitica" | "monitoreo" | "ranking") => {
+      throw new ModuloInactivoError(m);
+    },
+    exigirModuloEnRuta: async () => {
+      throw new Error("NEXT_NOT_FOUND (puerta de módulo cerrada)");
+    },
+    modulosDelMenu: async () => ninguno,
+  };
+});
+
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));
@@ -468,6 +489,15 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
     expect(screen.queryByRole("dialog", { name: DIALOGO_PAGO })).toBeNull();
     // Ni por accidente: no se llamó a ninguna acción de pago.
     expect(registrarPagoMock).not.toHaveBeenCalled();
+  });
+
+  it("SL-23 R31 — con todos los módulos apagados, el maestro aprueba y SÍ recibe la oferta de «Pago al mensajero»", async () => {
+    // Las puertas de este archivo están cerradas para los 3 módulos (mock de arriba).
+    const { moduloActivo } = await import("@/lib/modulos/exigir-modulo");
+    expect(await moduloActivo("ranking")).toBe(false);
+    await aprobarUnCierreComo("maestro");
+    const dialogo = await screen.findByRole("dialog", { name: DIALOGO_PAGO });
+    expect(within(dialogo).getByLabelText(/^Monto/)).toHaveValue(PENDIENTE);
   });
 
   it.each<RolValue>(["maestro", "admin"])(

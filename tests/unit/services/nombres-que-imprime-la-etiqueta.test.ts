@@ -68,9 +68,9 @@ function usuarioDTO(): UsuarioPublico {
 
 function repoUsuarios(): IUserRepository {
   return {
-    findByEmailWithHash: vi.fn(),
+    findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuarioDTO()),
-    findByEmail: vi.fn(),
+    findCuentasPorEmail: vi.fn(),
     create: vi.fn().mockResolvedValue(usuarioDTO()),
     updatePasswordHash: vi.fn(),
     listMensajeros: vi.fn(),
@@ -252,7 +252,13 @@ function repoGeo(): IGeoRepository {
     listDistritosLite: vi.fn(async () => []),
     listGeografiaLitePorZona: vi.fn(async () => ({ provincias: [], cantones: [], distritos: [] })),
     listArbol: vi.fn(async () => []),
-    findHermanos: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
+    // SL-20: el contexto del alta (pais sin regla de codigo, sin hermanos).
+    findHermanos: vi.fn(async () => ({
+      paisId: "XA",
+      regla: { digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null },
+      codigoPadre: null,
+      hermanos: [],
+    })),
     crear: vi.fn(async () => "id-nuevo"),
     cambiarActivacion: vi.fn(async () => "cambiado" as const),
     findHermanosDeNodo: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
@@ -275,7 +281,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("alta de PROVINCIA con un caracter irreparable: `validation_error`, sin leer ni escribir", async () => {
-    const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI }, SUPERADMIN);
+    const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI, paisId: "XA" }, SUPERADMIN);
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
     expect(repo.crear).not.toHaveBeenCalled();
@@ -331,7 +337,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("un nombre imprimible sigue dando de alta y renombrando igual que antes", async () => {
-    expect((await service.crear({ nivel: "provincia", nombre: "San José" }, SUPERADMIN)).status).toBe(
+    expect((await service.crear({ nivel: "provincia", nombre: "San José", paisId: "XA" }, SUPERADMIN)).status).toBe(
       "ok",
     );
     expect(
@@ -344,7 +350,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it.each(["adminTienda", "maestro"] as const)(
     "el rol manda ANTES que el nombre: `%s` con nombre malo recibe `forbidden`",
     async (rol) => {
-      const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI }, { usuarioId: "x", rol });
+      const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI, paisId: "XA" }, { usuarioId: "x", rol });
 
       expect(res).toEqual({ status: "forbidden" });
     },

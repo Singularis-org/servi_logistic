@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { listarMovimientosDeTiendaAction } from "@/lib/actions/wallet-tienda";
 import { OrigenLegibleRepository } from "@/lib/repositories/OrigenLegibleRepository";
@@ -14,6 +14,10 @@ import {
   enTransaccionRevertida,
   type TxDeTest,
 } from "./_postgres-real";
+
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
 
 // =================================================================================================
 // FICHA 458-A (TA.2, R5–R8) — el origen legible, contra Postgres real y POR LA ACTION

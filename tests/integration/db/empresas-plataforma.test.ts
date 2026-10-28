@@ -5,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { EmpresasPlataformaRepository } from "@/lib/repositories/EmpresasPlataformaRepository";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { crearOrganizacion, datosDeOrganizacionDePrueba } from "../../fabricas/organizaciones";
+import { crearOrganizacionEnPais, crearPaisDePrueba } from "../../fabricas/paises";
 import {
   HAY_BASE_DE_DATOS,
   bajoLockDeEscrituraReal,
@@ -36,6 +37,9 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 /** SL-45 (R28): una empresa sin cargos ni pagos está al día con la plataforma. */
 const AL_DIA = { deuda: "0.00", estado: "al_dia", importe: "0.00" } as const;
+
+/** SL-20 (R9, R10): una organización de la fábrica nace en Costa Rica. */
+const COSTA_RICA = { id: "CR", nombre: "Costa Rica" } as const;
 
 let prisma: PrismaClient;
 
@@ -135,7 +139,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     const mias = r.listado.filter((e) => e.id === r.s.a.id || e.id === r.s.b.id);
 
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00" },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
@@ -144,6 +148,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         maestros: [r.s.maestroA1, r.s.maestroA2],
         cobroPorOrden: null,
         deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00",
+        pais: COSTA_RICA,
       },
     ]);
     expect(JSON.stringify(r.listado)).not.toContain(r.s.admin.email);
@@ -172,12 +177,30 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         "maestros",
         "nombre",
         "pagadoPlataforma",
+        "pais",
         "slug",
       ]);
       for (const m of e.maestros) expect(Object.keys(m).sort()).toEqual(["email", "nombre"]);
+      // SL-20 (R9): del país, solo código y nombre.
+      expect(Object.keys(e.pais).sort()).toEqual(["id", "nombre"]);
     }
     const texto = JSON.stringify(mias);
     for (const valor of r.s.sensibles) expect(texto).not.toContain(valor);
+  });
+
+  it("SL-20 R9: cada empresa trae su país, código y nombre", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const xa = await crearPaisDePrueba(tx, "XA");
+      const enXa = await crearOrganizacionEnPais(tx, xa.id);
+      const enCr = await crearOrganizacion(tx);
+      const listado = await new EmpresasPlataformaRepository(clienteConTransaccionAnidada(tx)).listar();
+      return { xa, enXa, enCr, listado };
+    });
+
+    const paisDe = (id: string) => r.listado.find((e) => e.id === id)?.pais;
+    expect(paisDe(r.enXa.id)).toEqual({ id: "XA", nombre: r.xa.nombre });
+    expect(paisDe(r.enCr.id)).toEqual(COSTA_RICA);
   });
 
   it("sin organizaciones devuelve []", async () => {
@@ -191,6 +214,10 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       for (const tabla of ["rol", "organizacion", "usuario"]) {
         await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}" INCLUDING ALL)`);
       }
+      // SL-20 (R9): el listado trae el país de cada empresa. La organización de control nace en `CR`
+      // por el DEFAULT copiado, así que Costa Rica tiene que estar en la copia de `pais`.
+      await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."pais" (LIKE "public"."pais" INCLUDING ALL)`);
+      await prisma.$executeRawUnsafe(`INSERT INTO "${esquema}"."pais" SELECT * FROM "public"."pais" WHERE "id" = 'CR'`);
       // SL-45 (R28): el listado lee también los cargos y los pagos de cada empresa. Sin restricciones
       // (`LIKE` a secas): el CHECK tipo-categoría compara con el enum de `public` y no dejaría cambiar
       // el tipo de la columna. Vacías: aquí solo importa que existan.
@@ -231,8 +258,8 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       const datos = datosDeOrganizacionDePrueba();
       await enEsquema.organizacion.create({ data: datos });
       const control = await repo.listar();
-      expect(control.map((e) => ({ nombre: e.nombre, slug: e.slug, maestros: e.maestros }))).toEqual([
-        { ...datos, maestros: [] },
+      expect(control.map((e) => ({ nombre: e.nombre, slug: e.slug, maestros: e.maestros, pais: e.pais }))).toEqual([
+        { ...datos, maestros: [], pais: COSTA_RICA },
       ]);
     } finally {
       await enEsquema.$disconnect();

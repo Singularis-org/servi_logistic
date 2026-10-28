@@ -37,6 +37,12 @@ pnpm exec playwright test e2e/<archivo>.spec.ts   # un E2E concreto
   (sus proyectos Supabase: los ids están en la memoria local del leader, fuera del repo; si un `.env` o un MCP apunta a uno de ellos, PARA).
 - En CI, un contenedor `postgres:17` efímero por job.
 - `git worktree add` no copia el `.env`: exporta `DATABASE_URL` en la sesión del worktree.
+- El test de la demo de QA (`tests/integration/db/demo-qa.test.ts`, SL-43) pone la marca de QA en su
+  base (la fila `('entorno','qa')` de `entorno_marca`). En su `afterAll` quita esa fila y borra las
+  empresas demo, para que los tests de `down` de las migraciones encuentren la base sin ellas.
+- Los usuarios demo tienen correos fijos `servi-<slug>-<perfil>@yopmail.com` (SL-43 D29); el borrado
+  los identifica por su empresa (`organizacion.es_demo`), nunca por el dominio. Las fábricas de tests
+  y los E2E siguen con `@example.test` (abajo).
 
 > ABIERTO: la versión de Postgres objetivo (CI usa 17, de la plantilla) hasta crear el Supabase
 > de servi_logistic.
@@ -73,8 +79,14 @@ exactamente un proyecto y que cada flujo crítico de `docs/checkpoints-proyecto.
   pedirlo. No hace falta SMTP.
 - `AUTH_OTP_DEBUG_LOG=1` solo lo encienden las pruebas: `webServer.env` de Playwright y el job de
   CI. Lo vigila `tests/unit/guards/otp-debug-solo-en-pruebas.guardia.test.ts`.
+- **Excepción decidida por Carlos el 2026-10-25 (SL-43):** `AUTH_OTP_DEBUG_LOG=1` también está
+  encendida en Vercel, en Preview y solo para la rama `dev`, para entrar con los usuarios demo de QA.
+  Es una variable del panel, no un archivo del repo, así que la guardia no cambia.
 - Con `VERCEL_ENV=production`, el código no se escribe nunca, aunque la variable esté encendida
   (`lib/config/email.ts > otpDebugLogHabilitado`).
+- Aunque haya SMTP configurado, un correo a un dominio reservado (`.test`, `.invalid`, `.example`,
+  `.localhost`) sale siempre por el emisor de consola, sin rebotar en el SMTP
+  (`lib/services/email/EnrutadorEmailSender.ts`, compuesto en `crearEmailSender`).
 
 **Storage.** La app no habla con Supabase. Playwright arranca el doble `e2e/_storage-falso/servidor.mjs`,
 en `127.0.0.1:${E2E_STORAGE_PUERTO:-54329}`, y le da a la app `SUPABASE_URL` apuntando a él, con una

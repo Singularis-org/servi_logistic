@@ -26,6 +26,9 @@ import {
   type ResultadoOperativo,
 } from "@/lib/types/analitica-operativa";
 import { sondeaIdentidadDeMensajero } from "@/lib/analytics/oraculo-mensajero";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // Feature 126 (T9, design §5.3) — EL BORDE de la analitica operativa.
 //
@@ -110,6 +113,10 @@ export async function consultarAnaliticaOperativa(
   entrada: EntradaOperativa,
   deps: AnaliticaOperativaDeps = {},
 ): Promise<ResultadoOperativo> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("analitica");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
@@ -171,6 +178,10 @@ export async function consultarAgregadoOperativo(
   entrada: EntradaOperativa & { readonly grano?: GranoAgregado },
   deps: AnaliticaOperativaDeps = {},
 ): Promise<ResultadoAgregado> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("analitica");
+  });
+  if (puerta) return rechazoDeModulo(puerta);
   const logger = deps.logger ?? defaultLogger;
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();

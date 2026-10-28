@@ -107,6 +107,26 @@ describe("Server Action login", () => {
     expect(result).toEqual({ status: "challenge_required", challengeId: "challenge-1" });
     expect(setCookie).not.toHaveBeenCalled();
   });
+
+  it("SL-18 R7, R11: pasa organizacionId al servicio y devuelve elegir_empresa tal cual, sin cookie", async () => {
+    const empresas = [
+      { organizacionId: "6f1c2b9e-3d4a-4c5b-9e8f-0a1b2c3d4e5f", nombre: "Alfa" },
+      { organizacionId: null, nombre: "Plataforma" },
+    ];
+    const authService = buildFakeAuthService({
+      login: vi.fn().mockResolvedValue({ status: "elegir_empresa", empresas }),
+    });
+    const setCookie = vi.fn();
+
+    const result = await login(
+      { email: "ana@example.com", password: "clave123", organizacionId: null },
+      { authService, getContext: async () => CONTEXT, setCookie },
+    );
+
+    expect(result).toEqual({ status: "elegir_empresa", empresas });
+    expect(authService.login).toHaveBeenCalledWith(expect.objectContaining({ organizacionId: null }));
+    expect(setCookie).not.toHaveBeenCalled();
+  });
 });
 
 describe("Server Action verifyChallenge", () => {

@@ -63,3 +63,25 @@ function leerOriginalMessage(meta: Record<string, unknown>): string | null {
   const original = (cause as Record<string, unknown>).originalMessage;
   return typeof original === "string" ? original : null;
 }
+
+// SL-20 (design §4, R36) — el borde de la geografia del superadmin solo traduce a `conflict` la
+// violacion de unicidad; cualquier otro fallo es `error`. La de un modelo llega como P2002; la de un
+// SQL a mano (P2010) o la del driver, con el SQLSTATE `23505` en el mensaje o en algun `cause`.
+const SQLSTATE_UNICO = "23505";
+const CLAVES_ANIDADAS = ["cause", "meta", "driverAdapterError"] as const;
+
+function lleva23505(e: unknown, vistos: Set<unknown>, profundidad: number): boolean {
+  if (e === null || typeof e !== "object" || vistos.has(e) || profundidad > 6) return false;
+  vistos.add(e);
+  const o = e as Record<string, unknown>;
+  if (o.code === SQLSTATE_UNICO || o.originalCode === SQLSTATE_UNICO) return true;
+  if (o.code === "P2010" && typeof o.message === "string" && o.message.includes(`Code: \`${SQLSTATE_UNICO}\``)) {
+    return true;
+  }
+  return CLAVES_ANIDADAS.some((k) => lleva23505(o[k], vistos, profundidad + 1));
+}
+
+/** `true` si el error es una violacion de unicidad, por cualquiera de las formas en que llega. */
+export function esViolacionDeUnico(error: unknown): boolean {
+  return esP2002(error) || lleva23505(error, new Set(), 0);
+}

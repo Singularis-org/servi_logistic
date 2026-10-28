@@ -284,10 +284,6 @@
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/cohorte-carga-indices.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/como-quedo.test.ts": {
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"

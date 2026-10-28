@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // FICHA 469 / T8 — los COMPOSITION ROOTS del libro y del detalle PASAN el `BusquedaPorGuiaService` REAL
 // (memoria «el composition root que no inyecta»: 2 de 7 notificadores estuvieron muertos con la suite
 // verde). Se llama a cada accion SIN `deps.service`, se construye por su root y se exige la dependencia.

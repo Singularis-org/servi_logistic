@@ -4,30 +4,23 @@ import type { Browser, Cookie } from "@playwright/test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type RolValue } from "@prisma/client";
 
-import { comoPlataforma, conEmpresa } from "../../lib/db/contexto-empresa";
-import { getPrismaClient } from "../../lib/db/prisma-client";
-import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
-import { OrganizacionRepository } from "../../lib/repositories/OrganizacionRepository";
-import { SessionRepository } from "../../lib/repositories/SessionRepository";
-import { UserRepository } from "../../lib/repositories/UserRepository";
-import { VehiculoRepository } from "../../lib/repositories/VehiculoRepository";
-import { ZonaRepository } from "../../lib/repositories/ZonaRepository";
-import { OrganizacionService } from "../../lib/services/OrganizacionService";
-import { UsuarioService } from "../../lib/services/UsuarioService";
 import { ORDER_STATUS_SEED } from "../../lib/types/order-status";
 import { ROLES_SEED } from "../../lib/types/roles";
 import { VEHICULOS_SEED } from "../../lib/types/vehiculos";
 import { computeDeviceHash } from "../../lib/utils/device";
-import { hashPassword } from "../../lib/utils/password";
+
+import { crearEmpresa, crearUsuario, TIPO_IDENTIFICACION, type EmpresaCreada, type UsuarioCreado } from "./empresa-y-usuarios";
 
 // SL-44 T3.1 (design D4; R7, R10, R11, R12) — la fábrica de datos de los E2E. Cada spec crea su
 // empresa y sus usuarios aquí, por los mismos servicios que usa la app, y no depende de nada que no
 // siembre `pnpm run db:seed`. Sin `.test` en el nombre: lo importan los E2E y, después, SL-43.
+// SL-43 T4: el alta en sí vive en `./empresa-y-usuarios.ts`, que comparte con la demo de QA. Aquí
+// quedan lo propio del E2E: la base solo local, los correos y contraseñas aleatorios y el login.
 //
 // Excepciones de R8 (escritura directa, sin servicio), con su motivo:
 // - la contraseña del maestro: `altaEmpresa` le pone a propósito una que nadie conoce, y el único
-//   camino de la app para fijarla es «recuperar contraseña» con OTP por correo. Se fija con
-//   `hashPassword`, el hasher del login;
+//   camino de la app para fijarla es «recuperar contraseña» con OTP por correo. La fija
+//   `crearEmpresa` con `hashPassword`, el hasher del login;
 // - el dispositivo confiado: lo crea el login tras un OTP. Es la técnica de `prepararAcceso`.
 // Ninguna de las dos es un estado de negocio: son credenciales para entrar sin OTP.
 
@@ -91,7 +84,7 @@ export interface CatalogosPresentes {
 }
 
 /** El tipo de identificación con el que la fábrica da de alta a todos. */
-const TIPO_IDENTIFICACION_E2E = "cedula";
+const TIPO_IDENTIFICACION_E2E = TIPO_IDENTIFICACION;
 
 /** Qué catálogo de `db:seed` (o de la geografía migrada) falta. Vacío = la base sirve. */
 export function catalogosQueFaltan(p: CatalogosPresentes): string[] {
@@ -166,77 +159,31 @@ function contrasenaE2E(): string {
   return `E2e-${randomBytes(12).toString("base64url")}-9a`;
 }
 
-export interface UsuarioE2E {
-  id: string;
-  email: string;
-  password: string;
-  nombre: string;
-}
-
-export interface EmpresaE2E {
-  organizacionId: string;
-  maestro: UsuarioE2E;
-  slug: string;
-}
+export type UsuarioE2E = UsuarioCreado;
+export type EmpresaE2E = EmpresaCreada;
 
 /** Alta de una empresa nueva por el servicio del superadmin, y su maestro listo para entrar. */
 export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
   await comprobarBaseE2E();
   const s = sufijo();
   const slugEtiqueta = etiqueta.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
-  const slug = slugEtiqueta ? `e2e-${slugEtiqueta}-${s}` : `e2e-${s}`;
-  const email = correoE2E("maestro");
-  const nombreMaestro = `Maestro E2E ${s}`;
-  const servicio = new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
-  const resultado = await comoPlataforma("SL-44", "fábrica E2E: alta de empresa", () =>
-    servicio.altaEmpresa({
+  return crearEmpresa(
+    dueno(),
+    {
       nombre: `E2E ${etiqueta} ${s}`,
-      slug,
-      maestro: {
-        nombre: nombreMaestro,
-        email,
-        telefono: "88880000",
-        documento: `e2e-${s}`,
-        tipoDocumento: TIPO_IDENTIFICACION_E2E,
-      },
-    }),
-  );
-  if (resultado.estado !== "creada") {
-    throw new Error(`SL-44 E2E: el alta de la empresa «${etiqueta}» no la creó: ${JSON.stringify(resultado)}`);
-  }
-  // Excepción de R8 (cabecera): la contraseña del maestro.
-  const password = contrasenaE2E();
-  await dueno().usuario.update({
-    where: { id: resultado.maestroId },
-    data: { passwordHash: await hashPassword(password) },
-  });
-  return {
-    organizacionId: resultado.organizacionId,
-    slug,
-    maestro: { id: resultado.maestroId, email, password, nombre: nombreMaestro },
-  };
-}
-
-/** El mismo servicio que construye `lib/actions/usuarios.ts`. */
-function servicioDeUsuarios(): UsuarioService {
-  const prisma = getPrismaClient();
-  return new UsuarioService(
-    new UserRepository(prisma),
-    new ZonaRepository(prisma),
-    new VehiculoRepository(prisma),
-    new SessionRepository(prisma),
-    new CierreBodegaRepository(prisma),
+      slug: slugEtiqueta ? `e2e-${slugEtiqueta}-${s}` : `e2e-${s}`,
+      correoMaestro: correoE2E("maestro"),
+      contrasena: contrasenaE2E(),
+      nombreMaestro: `Maestro E2E ${s}`,
+      documentoMaestro: `e2e-${s}`,
+    },
+    { ficha: "SL-44", motivo: "fábrica E2E: alta de empresa" },
   );
 }
 
 /**
- * Un usuario de la empresa, dado de alta por su maestro con el servicio de la pantalla «Usuarios».
- * `zonaId` es obligatoria para `mensajero` y `adminSatelite` (la exige el servicio). No hay
- * `tiendaId`: el `adminTienda` ES la tienda (las órdenes y tarifas apuntan a su `usuario.id`).
- * El servicio exige vehículo al `mensajero`: sin `vehiculoId`, va el primero del catálogo sembrado.
- * `fulfillment` (solo `adminTienda`, lo restringe el servicio): la tienda con bodega propia, cuyas
- * órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin él, nacen en
- * `por_recolectar_en_tienda`, con guía.
+ * Un usuario de la empresa, dado de alta por su maestro (`crearUsuario`, que documenta `zonaId`,
+ * `vehiculoId` y `fulfillment`), con correo y contraseña aleatorios.
  */
 export async function crearUsuarioE2E(
   e: EmpresaE2E,
@@ -244,46 +191,14 @@ export async function crearUsuarioE2E(
   extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
 ): Promise<UsuarioE2E> {
   await comprobarBaseE2E();
-  const db = dueno();
-  const [rolFila, tipo, vehiculo] = await Promise.all([
-    db.rol.findUnique({ where: { value: rol }, select: { id: true } }),
-    db.tipoIdentificacion.findUnique({ where: { value: TIPO_IDENTIFICACION_E2E }, select: { id: true } }),
-    db.vehiculo.findUnique({ where: { name: VEHICULOS_SEED[0] }, select: { id: true } }),
-  ]);
-  if (!rolFila || !tipo || !vehiculo) {
-    throw new Error(
-      `SL-44 E2E: falta el rol «${rol}», el tipo de identificación o el vehículo (corre \`pnpm run db:seed\`).`,
-    );
-  }
-  const vehiculoId = extra.vehiculoId ?? (rol === "mensajero" ? vehiculo.id : undefined);
   const s = sufijo();
-  const email = correoE2E(rol);
-  const password = contrasenaE2E();
-  const nombre = `E2E ${rol} ${s}`;
-  const actor = { usuarioId: e.maestro.id, rol: "maestro" as const, zonaId: null, organizacionId: e.organizacionId };
-  // El servicio hashea la contraseña con `hashPassword`, el hasher del login.
-  const r = await conEmpresa(e.organizacionId, () =>
-    servicioDeUsuarios().crear(
-      {
-        nombre,
-        email,
-        telefono: "88880000",
-        tipoIdentificacionId: tipo.id,
-        cedula: `e2e-${s}`,
-        rolId: rolFila.id,
-        ...(extra.zonaId ? { zonaId: extra.zonaId } : {}),
-        ...(vehiculoId ? { vehiculoId } : {}),
-        ...(extra.fulfillment !== undefined ? { fulfillment: extra.fulfillment } : {}),
-        passwordMode: "manual",
-        password,
-      },
-      actor,
-    ),
-  );
-  if (r.status !== "ok") {
-    throw new Error(`SL-44 E2E: el alta del usuario «${rol}» falló: ${JSON.stringify(r)}`);
-  }
-  return { id: r.usuario.id, email, password, nombre };
+  return crearUsuario(dueno(), e, rol, {
+    correo: correoE2E(rol),
+    contrasena: contrasenaE2E(),
+    nombre: `E2E ${rol} ${s}`,
+    cedula: `e2e-${s}`,
+    ...extra,
+  });
 }
 
 /**

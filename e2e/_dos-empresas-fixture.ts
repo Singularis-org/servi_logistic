@@ -2,11 +2,12 @@ import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type RolValue } from "@prisma/client";
+import { PrismaClient, type ModuloApagable, type RolValue } from "@prisma/client";
 
-import { itemsVisibles, SIDEBAR_ITEMS } from "../lib/auth/menu-visibility";
+import { menuDeLaEmpresa } from "../lib/auth/menu-visibility";
 import { comoPlataforma } from "../lib/db/contexto-empresa";
 import { getPrismaClient } from "../lib/db/prisma-client";
+import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
 import { OrganizacionRepository } from "../lib/repositories/OrganizacionRepository";
 import { OrganizacionService } from "../lib/services/OrganizacionService";
 import type { AltaEmpresaResultado } from "../lib/types/organizacion";
@@ -52,12 +53,16 @@ export function clienteDueno(): PrismaClient {
 }
 
 /**
- * Las rutas del menú REAL del maestro: lo que `itemsVisibles` le deja ver, con los subítems de
- * cada desplegable (un padre con hijos no navega). Nada escrito a mano: si SL-32 quita una ruta
- * del menú, el humo deja de visitarla.
+ * Las rutas del menú REAL del maestro: lo que `menuDeLaEmpresa` le deja ver con los módulos de su
+ * empresa, con los subítems de cada desplegable (un padre con hijos no navega). Nada escrito a mano:
+ * si SL-32 quita una ruta del menú, el humo deja de visitarla.
+ *
+ * SL-23 (design §10; R15, R26): `apagados` son los módulos que la empresa NO tiene encendidos; sus
+ * rutas salen de la lista, igual que salen del menú que pinta la app. Por defecto, ninguno.
  */
-export function rutasDelMenuDelMaestro(): string[] {
-  const visibles = itemsVisibles(SIDEBAR_ITEMS, { usuarioId: "humo-dos-empresas", rol: "maestro" });
+export function rutasDelMenuDelMaestro(apagados: readonly ModuloApagable[] = []): string[] {
+  const activos = new Set<ModuloApagable>(ORDEN_MODULOS.filter((m) => !apagados.includes(m)));
+  const visibles = menuDeLaEmpresa({ usuarioId: "humo-dos-empresas", rol: "maestro" }, activos);
   const rutas = visibles.flatMap((item) =>
     item.children && item.children.length > 0 ? item.children.map((c) => c.href) : [item.href],
   );
@@ -91,12 +96,42 @@ function servicioDeAlta(): OrganizacionService {
   return new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
 }
 
-/** Alta por el servicio, como lo hará la action del superadmin, y la repetición idempotente (R45). */
-export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDeEmpresa> {
+/**
+ * Enciende módulos de una empresa como dueño, sin historial, igual que `crearEmpresa` de
+ * `tests/fabricas/empresa-y-usuarios.ts` (SL-23, design §10). Es para los E2E que no prueban el
+ * superadmin: el humo los enciende por la pantalla.
+ */
+export async function encenderModulos(organizacionId: string, modulos: readonly ModuloApagable[]): Promise<void> {
+  if (modulos.length === 0) return;
+  const dueno = clienteDueno();
+  try {
+    await dueno.organizacionModulo.createMany({
+      data: modulos.map((modulo) => ({ organizacionId, modulo })),
+      skipDuplicates: true,
+    });
+  } finally {
+    await dueno.$disconnect();
+  }
+}
+
+/**
+ * Alta por el servicio, como lo hará la action del superadmin, y la repetición idempotente (R45).
+ *
+ * SL-23 (design §10): el alta de la app deja la empresa solo con el núcleo, y los E2E que la usan
+ * (SL-38, SL-39, SL-40, SL-45) abren pantallas de módulos (`/wallet`). Por eso `modulos` nace en
+ * `"todos"`, como en `crearEmpresa`; `[]` la deja como la crea la app.
+ */
+export async function altaDeEmpresa(
+  letra: Letra,
+  email: string,
+  modulos: "todos" | readonly ModuloApagable[] = "todos",
+): Promise<AltaDeEmpresa> {
   const s = sufijo();
   const input = {
     nombre: `Empresa humo ${letra} ${s}`,
     slug: `humo-${letra.toLowerCase()}-${s}`,
+    // SL-20 (R6): el país es obligatorio en el alta; el humo vive en Costa Rica.
+    paisId: "CR",
     maestro: {
       nombre: `Maestro ${letra} humo`,
       email,
@@ -113,6 +148,7 @@ export async function altaDeEmpresa(letra: Letra, email: string): Promise<AltaDe
   if (resultado.estado !== "creada") {
     throw new Error(`SL-17 T4.2: el alta de ${letra} no creó la empresa: ${JSON.stringify(resultado)}`);
   }
+  await encenderModulos(resultado.organizacionId, modulos === "todos" ? ORDEN_MODULOS : modulos);
   return {
     empresa: {
       letra,

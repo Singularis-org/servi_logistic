@@ -334,8 +334,10 @@ export {
  * resolutor de alcance es el mismo, asi que sus motivos no se reescriben aqui (R8).
  * `rol_no_autorizado` es el unico motivo propio: lo produce la lista blanca de
  * `global|zona` cuando el alcance resuelto es `tienda` o `mensajero` (R3/R9).
+ * `modulo_inactivo` (SL-23, design §5.3) es el `forbidden` de Monitoreo apagado: este contrato no
+ * tiene `status`, y su forma de decir «prohibido» es el `denegado`.
  */
-export type MotivoTableroDia = MotivoDenegacion | "rol_no_autorizado";
+export type MotivoTableroDia = MotivoDenegacion | "rol_no_autorizado" | "modulo_inactivo";
 
 /** Una Server Action no puede responder 403: devuelve un resultado discriminado (R2/R3). */
 export type ResultadoTableroDia =

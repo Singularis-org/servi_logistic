@@ -7,6 +7,7 @@ import { CajaBackfillTesoreriaService } from "@/lib/services/CajaBackfillTesorer
 import { CajaCodFeedService } from "@/lib/services/CajaCodFeedService";
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 /**
  * Feature 173 / T E.3 (R39, y de paso R36/R37/R38/R41/R42 contra el motor) — la idempotencia
@@ -31,6 +32,16 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+// SL-43 (T10): las filas de la demo de QA (`demo-qa.test.ts`, misma base en CI) hacen caer este
+// archivo. Turno compartido: espera a que la demo termine y no la deja empezar mientras corre.
+let turnoDemoQa: ExclusionDemoQa | undefined;
+beforeAll(async () => {
+  if (HAY_BASE_DE_DATOS) turnoDemoQa = await tomarExclusionDemoQa({ compartida: true });
+}, 660_000);
+afterAll(async () => {
+  await turnoDemoQa?.soltar();
+});
 
 /** El reloj del backfill: **Navidad**, y ningun dato sembrado cae ese dia (R41). */
 const RELOJ = new Date("2026-12-25T18:30:00.000Z");

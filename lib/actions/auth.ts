@@ -77,7 +77,7 @@ export interface LoginDeps {
 }
 
 /**
- * Server Action de login (R8, R9, R11-R14, R16, R17, R21, R21a, R23).
+ * Server Action de login (R8, R9, R11-R14, R16, R17, R21, R21a, R23; SL-18 R6-R15).
  * Acepta `deps` opcional para inyeccion en tests; en produccion se llama sin
  * el segundo argumento y usa `headers()`/`cookies()`/Prisma reales.
  */
@@ -95,9 +95,10 @@ export async function login(input: unknown, deps: LoginDeps = {}): Promise<Login
   const authService = deps.authService ?? buildAuthService();
 
   const context = await getContext();
-  // SL-17 (design §7): antes de entrar no hay empresa; el usuario se busca por email, que es
-  // unico global (R36), y la empresa la dira despues su sesion. `Session`, `trusted_device`,
-  // `email_otp_challenge` y `login_attempt` son de plataforma: aqui no se escribe negocio.
+  // SL-17 (design §7): antes de entrar no hay empresa; las cuentas se buscan por email entre todas
+  // las empresas (SL-18: el email es unico por empresa) y la empresa la dira despues la sesion de
+  // la cuenta elegida. `Session`, `trusted_device`, `email_otp_challenge` y `login_attempt` son de
+  // plataforma: aqui no se escribe negocio.
   const result = await comoPlataforma("SL-17", "login", () =>
     authService.login({ ...parsed.data, ...context }),
   );
@@ -108,6 +109,9 @@ export async function login(input: unknown, deps: LoginDeps = {}): Promise<Login
       return { status: "ok" };
     case "challenge_required":
       return { status: "challenge_required", challengeId: result.challengeId };
+    case "elegir_empresa":
+      // SL-18 R7: sin cookie; la pantalla vuelve a llamar con el `organizacionId` elegido.
+      return { status: "elegir_empresa", empresas: result.empresas };
     case "invalid_credentials":
       return { status: "invalid_credentials" };
     case "account_unavailable":

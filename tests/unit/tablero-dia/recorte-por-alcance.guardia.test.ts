@@ -20,6 +20,7 @@ import {
 } from "@/tests/fixtures/orden-detalle-dia";
 
 import { HistorialDoble, OrdenesDoble, RepositorioDoble } from "../services/_doble-tablero-dia";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FEATURE 260 (V1) — LA GUARDIA QUE ATA LAS DOS MITADES DEL RECORTE POR ALCANCE. R44.
 //
@@ -101,7 +102,7 @@ function comoJson(valor: unknown): string {
 function marcadoDe(alcance: AlcanceTableroDia, fila: OrdenDetalleDia): string {
   const html = renderToStaticMarkup(
     createElement(DataTable<OrdenDetalleDia>, {
-      columns: columnasDetalle(alcance),
+      columns: columnasDetalle(alcance, ETIQUETAS_CR),
       data: [fila],
       rowKey: "id",
       ariaLabel: "Órdenes del día",
@@ -268,6 +269,6 @@ describe("(d) R44 · los detectores NO son decorado", () => {
 
   it("el censo mira algo: hay columnas restringidas que quitar y centinelas que buscar", () => {
     expect(TODOS_LOS_CENTINELAS.length).toBe(5);
-    expect(columnasDetalle(GLOBAL).length - columnasDetalle(ZONA).length).toBe(3);
+    expect(columnasDetalle(GLOBAL, ETIQUETAS_CR).length - columnasDetalle(ZONA, ETIQUETAS_CR).length).toBe(3);
   });
 });

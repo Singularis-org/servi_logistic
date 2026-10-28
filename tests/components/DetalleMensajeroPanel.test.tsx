@@ -42,6 +42,14 @@ import { iniciales } from "@/app/(app)/monitoreo/_components/filtrar-mensajeros"
 import { columnasDetalle } from "@/app/(app)/monitoreo/_components/detalle-columnas";
 import { ordenDelDetalle } from "@/tests/fixtures/orden-detalle-dia";
 import { quitarComentarios } from "../fixtures/sin-comentarios";
+import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
+
+// SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
+// Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
+  const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
+  return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
+});
 
 vi.mock("@/lib/actions/tablero-dia", () => ({
   leerTableroDia: vi.fn(),
@@ -301,7 +309,7 @@ describe("Feature 260 · R20/R21/R29 — el panel monta el módulo de columnas d
 
     // Derivado del módulo, nunca de una lista literal: el día que `/ordenes` gane o pierda una
     // columna, el detalle la gana o la pierde sin tocar nada (R26).
-    expect(cabeceras).toEqual(columnasDetalle("global").map((columna) => columna.value));
+    expect(cabeceras).toEqual(columnasDetalle("global", ETIQUETAS_CR).map((columna) => columna.value));
     expect(cabeceras.length).toBeGreaterThan(15);
   });
 
@@ -319,8 +327,8 @@ describe("Feature 260 · R20/R21/R29 — el panel monta el módulo de columnas d
       .getAllByRole("columnheader")
       .map((th) => th.textContent?.trim());
 
-    expect(cabeceras).toEqual(columnasDetalle("zona").map((columna) => columna.value));
-    expect(cabeceras.length).toBeLessThan(columnasDetalle("global").length);
+    expect(cabeceras).toEqual(columnasDetalle("zona", ETIQUETAS_CR).map((columna) => columna.value));
+    expect(cabeceras.length).toBeLessThan(columnasDetalle("global", ETIQUETAS_CR).length);
   });
 
   it("R21 — montar el módulo NO trajo ninguna acción: ni selección, ni acciones, ni descarga", async () => {

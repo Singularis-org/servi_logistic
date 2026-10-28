@@ -40,8 +40,9 @@ import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
 import { EscanerRecepcionOrigen } from "./EscanerRecepcionOrigen";
 import { EscanerRecepcionBodegaCentral } from "./EscanerRecepcionBodegaCentral";
 import {
-  ordenesColumnsReprogramada,
+  ordenesColumnsReprogramadaDe,
 } from "./ordenes-columns";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { GenerarGuiaModal } from "./GenerarGuiaModal";
 import { AsignarBodegaModal } from "./AsignarBodegaModal";
 import { AsignarRecoleccionModal } from "./AsignarRecoleccionModal";
@@ -414,6 +415,8 @@ export function OrdenesListado({
    */
   fechasDiaReparto?: FechasDiaReparto;
 }>) {
+  // SL-20 (R19): los nombres de nivel del país de la empresa, para columnas y filtros geográficos.
+  const etiquetas = useEtiquetasGeograficas();
   const { mutate } = useSWRConfig();
   const { data: catalogo, isLoading } = useSWR(
     "order-status:catalogo",
@@ -1060,6 +1063,7 @@ export function OrdenesListado({
         // «Reasignables»), y aquí sólo se reenvía. Va también en las dependencias del memo:
         // sin eso el control quedaría congelado en lo que valiera la prop al primer render.
         incluirSalioAReparto: incluirFiltroSalioAReparto,
+        etiquetas,
       },
     );
     // El BUSCADOR ya no es un control más del panel: lo posee `BuscadorFiltros`, que
@@ -1086,6 +1090,7 @@ export function OrdenesListado({
     incluirFiltroSalioAReparto,
     puedeVerEliminadas,
     declaracionEstado,
+    etiquetas,
   ]);
 
   /** Lo que ofrece el selector: cada filtro declarado, por su clave y su etiqueta. */
@@ -1169,7 +1174,7 @@ export function OrdenesListado({
   // `ordenesColumns` porque de ahí DERIVAN `detalle-columnas.ts` (monitoreo) y
   // `recibidas-columns.tsx` (recepción satélite), que documentan por qué NO quieren
   // esta columna; añadirla a la base se les colaría en silencio.
-  const columns: Column<OrdenListItemDTO>[] = ordenesColumnsReprogramada;
+  const columns: Column<OrdenListItemDTO>[] = ordenesColumnsReprogramadaDe(etiquetas);
 
   /**
    * FICHA 358 — ¿esta pantalla tiene selección por casilla, siquiera en principio?

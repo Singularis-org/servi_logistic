@@ -28,6 +28,25 @@ describe("loginInputSchema", () => {
     const result = loginInputSchema.safeParse({ email: "ana@example.com", password: "abc12345" });
     expect(result.success).toBe(true);
   });
+
+  it("SL-18 R11: organizacionId acepta un uuid o null (plataforma) y rechaza otro texto", () => {
+    const base = { email: "ana@example.com", password: "abc12345" };
+    const uuid = "6f1c2b9e-3d4a-4c5b-9e8f-0a1b2c3d4e5f";
+    expect(loginInputSchema.safeParse({ ...base, organizacionId: uuid })).toMatchObject({
+      success: true,
+      data: { organizacionId: uuid },
+    });
+    expect(loginInputSchema.safeParse({ ...base, organizacionId: null })).toMatchObject({
+      success: true,
+      data: { organizacionId: null },
+    });
+    expect(loginInputSchema.safeParse({ ...base, organizacionId: "empresa-a" }).success).toBe(false);
+  });
+
+  it("SL-18 (design §3.4): es estricto, un campo de mas se rechaza", () => {
+    const result = loginInputSchema.safeParse({ email: "ana@example.com", password: "abc12345", empresa: "x" });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("verifyChallengeInputSchema", () => {

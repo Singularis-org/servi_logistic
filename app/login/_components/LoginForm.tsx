@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { login, verifyChallenge } from "@/lib/actions/auth";
-import { OTP_CODE_LENGTH } from "@/lib/types/auth";
+import {
+  OTP_CODE_LENGTH,
+  type EmpresaParaElegir,
+  type LoginResult,
+} from "@/lib/types/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -50,8 +54,12 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // Estado de la fase actual
-  const [phase, setPhase] = useState<"credentials" | "challenge">("credentials");
+  // Estado de la fase actual. SL-18 (R7): con la misma contraseña en varias empresas, tras la
+  // contraseña se elige la empresa; email y contraseña se quedan en memoria para la segunda llamada.
+  const [phase, setPhase] = useState<"credentials" | "elegir_empresa" | "challenge">(
+    "credentials",
+  );
+  const [empresas, setEmpresas] = useState<EmpresaParaElegir[]>([]);
 
   // Estado de challenge OTP
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -68,6 +76,7 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+  const primeraEmpresaRef = useRef<HTMLButtonElement>(null);
 
   // Al montar, colocar el foco en el email (R21)
   useEffect(() => {
@@ -111,9 +120,23 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
     }
 
     // Invocar Server Action login (R5)
-    startTransition(async () => {
-      const loginResult = await login({ email, password });
+    enviarLogin(undefined);
+  };
 
+  // SL-18 (R7): `undefined` = aún sin elegir empresa; `null` = la cuenta de plataforma. La primera
+  // llamada va sin `organizacionId`, igual que antes de SL-18 (R5).
+  const enviarLogin = (organizacionId: string | null | undefined) => {
+    setGeneralError(null);
+    startTransition(async () => {
+      const loginResult = await login(
+        organizacionId === undefined ? { email, password } : { email, password, organizacionId },
+      );
+      aplicarResultadoLogin(loginResult);
+    });
+  };
+
+  // Switch exhaustivo: una variante nueva de `LoginResult` no compila hasta que se pinte aquí.
+  const aplicarResultadoLogin = (loginResult: LoginResult) => {
       switch (loginResult.status) {
         case "ok":
           // R7: redirigir con lógica de redirect param
@@ -128,6 +151,13 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
           setCodeFieldErrors({});
           // Mover el foco al campo de código tras la transición
           setTimeout(() => codeRef.current?.focus(), 0);
+          break;
+
+        case "elegir_empresa":
+          // SL-18 (R7): un botón por empresa; la de plataforma ya llega con su nombre.
+          setEmpresas(loginResult.empresas);
+          setPhase("elegir_empresa");
+          setTimeout(() => primeraEmpresaRef.current?.focus(), 0);
           break;
 
         case "invalid_credentials":
@@ -147,13 +177,23 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
           );
           break;
 
+        case "otp_invalid":
+          // `login` no la devuelve (es de `verifyChallenge`), pero el tipo la admite.
+          setGeneralError("El código es inválido o ha expirado");
+          break;
+
         case "validation_error":
           // R11: mostrar errores por campo
+          setPhase("credentials");
           setCredentialsFieldErrors(loginResult.fieldErrors);
           moveFocusToFirstError("credentials", loginResult.fieldErrors);
           break;
+
+        default: {
+          const _exhaustivo: never = loginResult;
+          void _exhaustivo;
+        }
       }
-    });
   };
 
   // Manejar el envío del código de verificación
@@ -287,6 +327,62 @@ export function LoginForm({ redirectParam }: LoginFormProps) {
             ¿Quieres ser mensajero? Postúlate aquí
           </Link>
         </div>
+      </Card>
+    );
+  }
+
+  // SL-18 (R7): elegir la empresa. Mínimo, sin diseño propio (SLT-41 pule esta pantalla).
+  if (phase === "elegir_empresa") {
+    return (
+      <Card className="w-full max-w-md border-t-4 border-t-brand p-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-center text-foreground">
+            Elige la empresa
+          </h1>
+          <p
+            id="elegir-empresa-ayuda"
+            className="text-sm text-muted-foreground text-center mt-2"
+          >
+            Tu correo tiene una cuenta en varias empresas. Elige con cuál quieres entrar.
+          </p>
+        </div>
+
+        {generalError && (
+          <Alert variant="destructive" role="alert" aria-live="assertive">
+            <AlertDescription>{generalError}</AlertDescription>
+          </Alert>
+        )}
+
+        <ul className="space-y-2" aria-describedby="elegir-empresa-ayuda">
+          {empresas.map((empresa, indice) => (
+            <li key={empresa.organizacionId ?? "plataforma"}>
+              <Button
+                type="button"
+                ref={indice === 0 ? primeraEmpresaRef : undefined}
+                variant="outline"
+                className="w-full"
+                disabled={isPending}
+                onClick={() => enviarLogin(empresa.organizacionId)}
+              >
+                {empresa.nombre}
+              </Button>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPhase("credentials");
+            setEmpresas([]);
+            setGeneralError(null);
+            setTimeout(() => emailRef.current?.focus(), 0);
+          }}
+          disabled={isPending}
+          className="w-full text-sm text-muted-foreground hover:text-foreground underline disabled:opacity-50"
+        >
+          Volver a correo y contraseña
+        </button>
       </Card>
     );
   }

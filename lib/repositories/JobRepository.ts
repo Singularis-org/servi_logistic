@@ -200,6 +200,14 @@ export class JobRepository implements IJobRepository {
       WHERE "id" = ${id}`;
   }
 
+  async descartar(id: string, motivo: string): Promise<void> {
+    // SL-23 (R20): ni reintento ni dead-letter; se ve como «no se hizo», con el módulo en el motivo.
+    await this.prisma.$executeRaw`
+      UPDATE "jobs"
+      SET "estado" = 'descartado', "last_error" = ${motivo}, "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}`;
+  }
+
   async fail(id: string, error: string, runAfter: Date | null): Promise<void> {
     if (runAfter !== null) {
       // R15: aun quedan intentos -> re-agenda pendiente con el `run_after` del backoff.

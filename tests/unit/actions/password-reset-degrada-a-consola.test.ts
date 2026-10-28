@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Sin base: Prisma y los dos repositorios son dobles. Credenciales FALSAS, dominio `example.test`.
 
 const dobles = vi.hoisted(() => ({
-  findByEmail: vi.fn(async (email: string) => ({ id: "u-ficticio", email })),
+  findCuentasPorEmail: vi.fn(async (email: string) => [{ id: "u-ficticio", email }]),
   contarRecientes: vi.fn(async () => 0),
   crearDesafio: vi.fn(async () => ({ id: "desafio-ficticio" })),
   createTransport: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("@/lib/db/prisma-client", () => ({
 
 vi.mock("@/lib/repositories/UserRepository", () => ({
   UserRepository: class {
-    findByEmail = dobles.findByEmail;
+    findCuentasPorEmail = dobles.findCuentasPorEmail;
   },
 }));
 
@@ -50,6 +50,7 @@ const { crearEmailSender } = await import("@/lib/services/EmailProvider");
 const { loadEmailConfig } = await import("@/lib/config/email");
 const { ConsoleEmailSender } = await import("@/lib/services/email/ConsoleEmailSender");
 const { NodemailerEmailSender } = await import("@/lib/services/email/NodemailerEmailSender");
+const { EnrutadorEmailSender } = await import("@/lib/services/email/EnrutadorEmailSender");
 
 const VARIABLES = [
   "SMTP_HOST",
@@ -59,6 +60,8 @@ const VARIABLES = [
   "SMTP_PASSWORD",
   "SMTP_FROM",
   "AUTH_OTP_DEBUG_LOG",
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
 ] as const;
 
 const EMAIL = "maestro-ficticio@example.test";
@@ -72,6 +75,8 @@ beforeEach(() => {
     original[v] = process.env[v];
     delete process.env[v];
   }
+  // SL-18 (design §4.1): sin URL base la recuperacion no emite enlaces ni envia; aqui hay una.
+  process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -82,7 +87,7 @@ afterEach(() => {
     else process.env[v] = original[v];
   }
   vi.restoreAllMocks();
-  dobles.findByEmail.mockClear();
+  dobles.findCuentasPorEmail.mockClear();
   dobles.contarRecientes.mockClear();
   dobles.crearDesafio.mockClear();
   dobles.createTransport.mockClear();
@@ -96,7 +101,7 @@ describe("T19 — sin SMTP, «recuperar contraseña» envia por consola y no lan
 
     expect(resultado).toEqual({ status: "ok" });
     // Anti-vacuidad: el flujo llego de verdad al envio, con el usuario del doble.
-    expect(dobles.findByEmail).toHaveBeenCalledWith(EMAIL);
+    expect(dobles.findCuentasPorEmail).toHaveBeenCalledWith(EMAIL);
     expect(dobles.crearDesafio).toHaveBeenCalledTimes(1);
     expect(enviar).toHaveBeenCalledTimes(1);
     expect(enviar.mock.calls[0][0].to).toBe(EMAIL);
@@ -116,13 +121,16 @@ describe("T19 — sin SMTP, «recuperar contraseña» envia por consola y no lan
 });
 
 describe("T19 — con la configuracion de Brevo, nodemailer por STARTTLS", () => {
-  it("crearEmailSender devuelve el emisor de nodemailer y no abre conexion", () => {
+  it("crearEmailSender devuelve el enrutador sobre nodemailer y no abre conexion", () => {
     process.env.SMTP_HOST = "smtp-relay.brevo.com";
     process.env.SMTP_PORT = "587";
     process.env.SMTP_USER = "usuario-falso@example.test";
     process.env.SMTP_PASSWORD = "credencial-falsa-de-test";
 
-    expect(crearEmailSender()).toBeInstanceOf(NodemailerEmailSender);
+    // SL-43: con SMTP el emisor enruta por destinatario; el SMTP de dentro es nodemailer.
+    const emisor = crearEmailSender();
+    expect(emisor).toBeInstanceOf(EnrutadorEmailSender);
+    expect((emisor as unknown as { smtp: unknown }).smtp).toBeInstanceOf(NodemailerEmailSender);
     expect(dobles.createTransport).not.toHaveBeenCalled();
   });
 

@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 const ENTRADA = {
   nombre: "Envíos del Norte",
   slug: "envios-del-norte",
+  paisId: "CR",
   maestro: {
     nombre: "Marta",
     email: "marta@ejemplo.test",

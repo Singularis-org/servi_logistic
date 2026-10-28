@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import type { IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
+import type { CuentaConHash, IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
 import type {
   ILoginAttemptRepository,
   RegistrarIntentoInput,
@@ -20,6 +20,18 @@ import { verifyPassword } from "@/lib/utils/password";
 import { computeDeviceHash } from "@/lib/utils/device";
 import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import { authConfig } from "@/lib/config/auth";
+import { esPlataforma } from "@/lib/auth/plataforma";
+import { NOMBRE_EMPRESA_PLATAFORMA } from "@/lib/types/auth";
+
+/**
+ * SL-18 R12, R15 (design §3.2 paso 6): una cuenta habilitada esta activa y tiene empresa, o es la
+ * de plataforma. Se aplica a CADA cuenta candidata del email, no a una sola.
+ */
+// SLT-32: puedeIniciarSesion. Cuando SLT-32 mergee su predicado, esta funcion se sustituye por el
+// suyo (contrato en design §9); hasta entonces vive aqui, en un solo sitio.
+function puedeIniciarSesion(cuenta: CuentaConHash): boolean {
+  return cuenta.estado === "activo" && (cuenta.organizacionId !== null || esPlataforma(cuenta.rol));
+}
 
 export class AuthService implements IAuthService {
   private readonly otpIssuer: OtpChallengeIssuer;
@@ -57,10 +69,18 @@ export class AuthService implements IAuthService {
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
     };
-    const usuario = await this.userRepo.findByEmailWithHash(input.email);
 
-    if (!usuario) {
-      // R12: no revelar si fue el email o la contrasena lo que fallo.
+    // SL-18 (design §3.2, paso 1): el email puede tener una cuenta por empresa mas la de
+    // plataforma. Si la persona ya eligio, solo cuenta la de esa empresa (`null` = plataforma).
+    const todas = await this.userRepo.findCuentasPorEmailConHash(input.email);
+    const cuentas =
+      input.organizacionId === undefined
+        ? todas
+        : todas.filter((c) => c.organizacionId === input.organizacionId);
+
+    if (cuentas.length === 0) {
+      // R12 (feature de login) / SL-18 R9, R11: la misma respuesta que una contrasena mala, para
+      // no revelar si el email existe ni en que empresas.
       await this.registrarIntento(contexto, {
         usuarioId: null,
         exitoso: false,
@@ -70,35 +90,70 @@ export class AuthService implements IAuthService {
       return { status: "invalid_credentials" };
     }
 
-    // R21/R21a: el bloqueo temporal duro se evalua antes que credenciales o riesgo.
-    const fallosConsecutivos = await this.loginAttemptRepo.contarFallosConsecutivosRecientes({
-      usuarioId: usuario.id,
-      ventanaMinutos: authConfig.LOCKOUT_MINUTES,
-    });
-    if (fallosConsecutivos >= authConfig.MAX_FAILED_ATTEMPTS) {
-      return { status: "account_locked", retryAfterMinutes: authConfig.LOCKOUT_MINUTES };
+    // R21/R21a: el bloqueo temporal duro se evalua antes que credenciales o riesgo, cuenta a cuenta.
+    const noBloqueadas: CuentaConHash[] = [];
+    for (const cuenta of cuentas) {
+      const fallos = await this.loginAttemptRepo.contarFallosConsecutivosRecientes({
+        usuarioId: cuenta.id,
+        ventanaMinutos: authConfig.LOCKOUT_MINUTES,
+      });
+      if (fallos < authConfig.MAX_FAILED_ATTEMPTS) noBloqueadas.push(cuenta);
+    }
+    if (noBloqueadas.length === 0) {
+      return { status: "account_locked", retryAfterMinutes: authConfig.LOCKOUT_MINUTES }; // SL-18 R12
     }
 
-    const passwordValida = await verifyPassword(input.password, usuario.passwordHash);
-    if (!passwordValida) {
-      await this.registrarIntento(contexto, {
-        usuarioId: usuario.id,
-        exitoso: false,
-        riskScore: 0,
-        riskReason: "password_incorrecta",
-      });
-      return { status: "invalid_credentials" }; // R12
+    // Un bcrypt por cuenta: N es el numero de empresas del email, en la practica 1 o 2 (design §12).
+    const validas: CuentaConHash[] = [];
+    for (const cuenta of noBloqueadas) {
+      if (await verifyPassword(input.password, cuenta.passwordHash)) validas.push(cuenta);
     }
 
-    if (usuario.estado !== "activo") {
+    if (validas.length === 0) {
+      // SL-18 R9: quien no sabe ninguna contrasena no dice a que cuenta apuntaba; el fallo cuenta
+      // en todas. Si vale en alguna, NO se registra nada en las demas (R10): quien siempre entra en
+      // A no debe acabar bloqueado en B.
+      for (const cuenta of noBloqueadas) {
+        await this.registrarIntento(contexto, {
+          usuarioId: cuenta.id,
+          exitoso: false,
+          riskScore: 0,
+          riskReason: "password_incorrecta",
+        });
+      }
+      return { status: "invalid_credentials" };
+    }
+
+    const elegibles = validas.filter(puedeIniciarSesion);
+    if (elegibles.length === 0) {
+      const primera = validas[0];
+      // SL-18 R15 (design §3.2 paso 6): una cuenta activa sin empresa fallaria con
+      // `estado_no_activo:activo`, que no dice por que se rechazo; el motivo debe nombrar la causa.
+      const riskReason =
+        primera.estado !== "activo" ? `estado_no_activo:${primera.estado}` : "sin_empresa";
       await this.registrarIntento(contexto, {
-        usuarioId: usuario.id,
+        usuarioId: primera.id,
         exitoso: false,
         riskScore: 0,
-        riskReason: `estado_no_activo:${usuario.estado}`,
+        riskReason,
       });
-      return { status: "account_unavailable" }; // R13
+      return { status: "account_unavailable" }; // R13 (feature de login) / SL-18 R12, R15
     }
+
+    if (elegibles.length > 1) {
+      // SL-18 R7, R8: la contrasena ya se comprobo, asi que ofrecer estas empresas no filtra nada a
+      // quien no la sabe. Nada se escribe aqui: el intento, el dispositivo, el OTP y la sesion
+      // llegan cuando la persona elige y se vuelve a comprobar la contrasena en esa cuenta.
+      return {
+        status: "elegir_empresa",
+        empresas: elegibles.map((c) => ({
+          organizacionId: c.organizacionId,
+          nombre: c.empresaNombre ?? NOMBRE_EMPRESA_PLATAFORMA,
+        })),
+      };
+    }
+
+    const usuario = elegibles[0];
 
     // R14: credenciales validas y cuenta activa -> evaluacion de riesgo (RBA).
     const risk = await this.riskEngine.evaluate({

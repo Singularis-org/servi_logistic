@@ -25,6 +25,16 @@ import { Prisma } from "@prisma/client";
 //   · `23503` foreign_key_violation   — lo que produce `NO ACTION` (la comprobacion diferida) y
 //                                       tambien un INSERT/UPDATE que apunta a una fila inexistente.
 // Ninguno de los dos significa «se cayo la base»: los dos significan «hay datos ahi».
+//
+// SL-43 — EL SQLSTATE NO SIEMPRE VA EN `code` (medido el 2026-10-26, Postgres 17 y 18). El adapter
+// TRADUCE algunos SQLSTATE a un `kind` con nombre y entonces el codigo solo queda en `originalCode`:
+//
+//   23503 → cause: { kind: "ForeignKeyConstraintViolation", originalCode: "23503", constraint }
+//   23001 → cause: { kind: "postgres", code: "23001", originalCode: "23001", ... }
+//
+// Y `ON DELETE RESTRICT` da 23001 en Postgres 18 pero 23503 en Postgres 17 (la version de CI):
+// leyendo solo `code`, en 17 una FK RESTRICT no se reconocia (rojo del run 40271163801:
+// `borrar.ts` aborto en `carga`, que `orden_carga_id_fkey` bloquea hasta la pasada siguiente).
 
 /** SQLSTATE de Postgres que significan «una FK impide esta operacion». */
 const SQLSTATE_FK = new Set(["23001", "23503"]);
@@ -34,7 +44,7 @@ const SQLSTATE_FK = new Set(["23001", "23503"]);
  * en que puede llegar:
  *   - la de Prisma: `PrismaClientKnownRequestError` con `code === "P2003"` (motor nativo, o si
  *     alguna version futura del adapter vuelve a traducirlo);
- *   - la del adapter: `DriverAdapterError` con `cause.code` en `SQLSTATE_FK`;
+ *   - la del adapter: `DriverAdapterError` con `cause.code` (o `cause.originalCode`) en `SQLSTATE_FK`;
  *   - la mixta: un error de Prisma que trae el del driver colgando de `meta.driverAdapterError`.
  *
  * Cualquier otro error devuelve `false` y quien llama DEBE re-lanzarlo: tragarse un fallo
@@ -47,8 +57,11 @@ export function esViolacionDeClaveForanea(error: unknown): boolean {
   return codigo !== null && SQLSTATE_FK.has(codigo);
 }
 
-/** Lee el SQLSTATE del error del driver, mire donde mire que este colgado. Acceso defensivo. */
-function sqlStateDe(error: unknown): string | null {
+/**
+ * El SQLSTATE del error del driver, mire donde mire que este colgado (`null` si no lo trae). Acceso
+ * defensivo. Es un codigo de cinco caracteres: no lleva datos ni la URL.
+ */
+export function sqlStateDe(error: unknown): string | null {
   if (error == null || typeof error !== "object") return null;
 
   // Forma adapter: el `DriverAdapterError` cuelga el error de `pg` de su `cause`.
@@ -65,6 +78,7 @@ function sqlStateDe(error: unknown): string | null {
 
 function codigoDe(cause: unknown): string | null {
   if (cause == null || typeof cause !== "object") return null;
-  const codigo = (cause as Record<string, unknown>).code;
-  return typeof codigo === "string" ? codigo : null;
+  const { code, originalCode } = cause as Record<string, unknown>;
+  if (typeof code === "string") return code;
+  return typeof originalCode === "string" ? originalCode : null;
 }

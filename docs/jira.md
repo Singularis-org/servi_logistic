@@ -1,5 +1,15 @@
 # docs/jira.md — El board manda, el disco trabaja
 
+Aplica cuando `arnes.config.json > tracker.tipo` es `jira`, o cuando no hay bloque `tracker`. Para
+Trello, `docs/trello.md`.
+
+**Las dos formas del perfil.** Desde la 2.8.0 el perfil declara `tracker: {tipo: "jira", site,
+prefijo, estados}`; el bloque `jira: {site, project, estados}` anterior sigue valiendo si no hay
+`tracker`. Equivalen campo a campo: `jira.site` = `tracker.site`, `jira.project` =
+`tracker.prefijo`, `jira.estados` = `tracker.estados`. En este doc y en los comandos,
+`jira.<campo>` nombra cualquiera de las dos. Si existen los dos bloques, manda `tracker` y
+`jira` no se lee (`scripts/tracker.mjs`).
+
 Las features se gestionan desde un board de Jira. El arnés **importa** ese board a
 `feature_list.json` y trabaja contra el disco; el gate nunca llama a Jira.
 

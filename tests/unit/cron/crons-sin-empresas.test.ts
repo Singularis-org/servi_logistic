@@ -88,6 +88,7 @@ const CASOS: CasoCron[] = [
       cobrosPendientesCreados: 0,
       cobrosPendientesTotales: 0,
     },
+    empresasExtra: {},
   },
   {
     nombre: "liberar-reprogramadas",
@@ -349,7 +350,7 @@ describe("drenador: cada job con su empresa (R42)", () => {
     const service: IJobQueueService = {
       drenar: vi.fn(async () => {
         ctx = contextoActual();
-        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0 };
+        return { procesados: 0, ok: 0, fallidos: 0, reintentados: 0, muertos: 0, descartados: 0 };
       }),
     };
     const res = await handleProcesarJobs(req(), { getSecret: () => SECRET, service, now: () => AHORA });

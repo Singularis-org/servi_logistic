@@ -1,3 +1,4 @@
+import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import type { RolValue } from "@prisma/client";
 import { notFound } from "next/navigation";
 
@@ -132,6 +133,8 @@ const DESCRIPCION_OPERATIVO =
   "Los paneles se calculan sobre el rango y los filtros seleccionados arriba.";
 
 export default async function AnaliticaPage() {
+  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
+  await exigirModuloEnRuta("analitica");
   const actor = await resolveActorFromSession();
   // `ROLES_ACCESO_ANALITICA` es un array de literales de rol —los del dominio de
   // analítica, del que deriva restando (D1 de la 133 + la decisión del 2026-08-12)—

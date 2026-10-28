@@ -40,9 +40,16 @@ async function altaEnTransaccion(
 
   const existente = await tx.organizacion.findUnique({
     where: { slug: datos.slug },
-    select: { id: true },
+    select: { id: true, paisId: true },
   });
-  if (existente) return decidirSobreExistente(tx, existente.id, datos.maestro.email);
+  if (existente) return decidirSobreExistente(tx, existente, datos);
+
+  // SL-20 (R6): el país tiene que existir. Se mira antes de escribir nada para no depender del
+  // rechazo de la FK, que llegaría con la transacción ya abortada.
+  // Enmienda 2026-10-26, decisión 6 (R45): y tener cobertura. Solo frena el alta NUEVA: la repetición
+  // de una empresa que ya existe se decidió arriba, antes de mirar el país (R46, design §13).
+  const pais = await tx.pais.findUnique({ where: { id: datos.paisId }, select: { disponible: true } });
+  if (!pais || !pais.disponible) return { estado: "invalida", campo: "paisId" };
 
   const tipoIdentificacion = await tx.tipoIdentificacion.findUnique({
     where: { value: datos.maestro.tipoDocumento },
@@ -54,7 +61,7 @@ async function altaEnTransaccion(
   if (!rol) throw new Error("alta de empresa: falta el rol 'maestro' en el catálogo `rol`");
 
   const organizacion = await tx.organizacion.create({
-    data: { nombre: datos.nombre, slug: datos.slug },
+    data: { nombre: datos.nombre, slug: datos.slug, paisId: datos.paisId },
     select: { id: true },
   });
   await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${organizacion.id}, true)`;
@@ -85,19 +92,23 @@ async function altaEnTransaccion(
   return { estado: "creada", organizacionId: organizacion.id, maestroId: maestro.id };
 }
 
-/** R45: el mismo slug con el mismo maestro es la misma alta; con otro, es otra empresa. */
+/**
+ * R45: el mismo slug con el mismo maestro es la misma alta; con otro, es otra empresa.
+ * SL-20 (R8): la misma alta con otro país no es idempotente: el país no cambia nunca (R7), así que
+ * responder `ya_existe` diría que quedó en un país en el que no está.
+ */
 async function decidirSobreExistente(
   tx: Prisma.TransactionClient,
-  organizacionId: string,
-  email: string,
+  existente: { id: string; paisId: string },
+  datos: AltaEmpresaDatos,
 ): Promise<AltaEmpresaResultado> {
   const mismoMaestro = await tx.usuario.findFirst({
-    where: { organizacionId, email, rol: { value: "maestro" } },
+    where: { organizacionId: existente.id, email: datos.maestro.email, rol: { value: "maestro" } },
     select: { id: true },
   });
-  return mismoMaestro
-    ? { estado: "ya_existe", organizacionId }
-    : { estado: "conflicto", campo: "slug" };
+  if (!mismoMaestro) return { estado: "conflicto", campo: "slug" };
+  if (existente.paisId !== datos.paisId) return { estado: "conflicto", campo: "paisId" };
+  return { estado: "ya_existe", organizacionId: existente.id };
 }
 
 /**

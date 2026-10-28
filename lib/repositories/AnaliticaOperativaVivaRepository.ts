@@ -392,7 +392,8 @@ export class AnaliticaOperativaVivaRepository implements IAnaliticaOperativaViva
    * `causa_devolucion` se informa SOLO en las filas que cuentan `devuelta`.
    *
    * Esta es la consulta que R25 sostiene: filtra `g."created_at"` sin `orden_id` ni
-   * `mensajero_id` por delante, y para eso existe `gestion_orden_created_at_idx`.
+   * `mensajero_id` por delante, y para eso existe `gestion_orden_organizacion_id_created_at_idx`
+   * (SL-18): la empresa, que pone la RLS, delante del rango.
    */
   private async contarGestionesVigentes(
     consulta: ConsultaAnalitica,

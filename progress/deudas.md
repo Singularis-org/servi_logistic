@@ -62,7 +62,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-17, D12 y R40. `vehiculos`, provincia, cantón y distrito son de plataforma: escribir desde una empresa falla cerrado. Las actions de `lib/actions/vehiculos.ts` y `crear/renombrarNodoGeografico` devuelven un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar. `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, una marca del flujo de Tarifas, que el maestro ya no puede cambiar.
 - **Qué falta:** pasar la edición al superadmin (SL-26) y dejar las pantallas del maestro en solo lectura con su mensaje.
 - **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
-- **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26.
+- **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26. **2026-10-26:** la parte de geografía pasa a SL-20 (`specs/SL-20-pais-geografia-configurable/requirements.md`); la de vehículos sigue aquí (SL-42).
+- **Parte de geografía cerrada en SL-20 (2026-10-27):** el alta, el renombre, el retiro y la reactivación de nodos salen de `lib/actions/geografia.ts` (el maestro solo conserva la lectura para Tarifas) y pasan al superadmin en `lib/actions/geografia-plataforma.ts`, con errores tipados (`conflict` solo por único; otra causa es `error`, R36, R51, R52). Queda abierta la parte de vehículos (SL-42).
 
 ### D13 — Coste medido de la envoltura y de los triggers
 - **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.
@@ -76,14 +77,15 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - `getPrismaClient().$extends(...)` deja fuera el `Proxy` de `$transaction`;
   - lecturas de `organizacion_id` directas a Prisma en `lib/api/api-key-request.ts`, `lib/actions/rastreo-publico.ts` y el webhook de WhatsApp, que deberían ir a sus repositorios;
   - ~20 suites inyectan dobles de `autenticar` sin `organizacionId` (rama sin contexto que falla cerrado);
-  - `PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra choca (P2002) y la primera sigue enviándole push;
+  - ~~`PushSuscripcionRepository.registrar` hace upsert por `endpoint` global: un dispositivo que pasa de una empresa a otra no cambia de dueño y la primera sigue enviándole push~~ (revisado 2026-10-27: decía «choca (P2002)»; el fallo real es silencioso, el alta en la otra empresa responde `ok` sin tocar la fila) — **RESUELTO por SL-18 (2026-10-26, R26–R28):** `registrarSuscripcionPush` llama antes a `PushEndpointPlataformaRepository.liberarDeOtrasEmpresas` (en plataforma, ficha SL-18), que borra la fila de ese endpoint exacto si es de otra empresa; el último que se registra gana. Lo prueba `tests/integration/db/push-ultimo-gana.test.ts`;
   - código que quedó sin uso tras retirar los conteos públicos: `WHERE_*_DISPONIBLE` (`lib/repositories/_shared/geografia-activa.ts`) y `lib/utils/cifra-aproximada.ts`.
 - **Dueño:** SL-18/SL-19 (push y únicos), Carlos Restrepo (el resto, ficha propia).
 
 ### D15 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
 - **Origen:** SL-32 (2026-10-22), P7. Con SL-17, `renombrar` y `cambiarActivacion` de `GeografiaService` escriben `historial_accion`, y `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene empresa: esas operaciones fallan con `EmpresaNoResuelta`.
 - **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles. Efectos medidos el 2026-10-23 (review de SL-32, m5): con el superadmin, `renombrar` responde un «ya existe» falso (el `catch` genérico de D12 se traga el `EmpresaNoResuelta`), y el superadmin llega por URL a `/configuracion/geografia` (la puerta es `esPlataforma`, sin ítem de menú), donde retirar, reactivar y el conteo dan 500.
-- **Dueño:** quien tome SL-26 (decide Carlos Restrepo).
+- **Dueño:** pasa a SL-20 (2026-10-26, `/afinar-feature SL-20`): historial propio de plataforma y conteo de todas las empresas del país; Carlos Restrepo la confirma en F1.4 de SL-20.
+- **Resolución (SL-20, 2026-10-27):** las acciones de geografía del superadmin se registran en `historial_plataforma` (`appendAccionPlataforma`, sin empresa, R33–R35) y el conteo de órdenes sin entregar cubre todas las empresas del país (R31, R32), por `lib/actions/geografia-plataforma.ts` con `comoPlataforma`. La pantalla es `/plataforma/geografia`; `/configuracion/geografia` ya no existe (R22). Lo prueba `tests/integration/db/geografia-superadmin-sin-empresa.test.ts`. Pendiente solo la confirmación escrita de Carlos (F1.4 de SL-20).
 
 ### D16 — El humo de dos empresas da de alta por fixture, no por la pantalla (D19 de SL-17) — RESUELTA (2026-10-24)
 - **Origen:** SL-17 D19 y SL-32 (2026-10-23), review B2. `e2e/dos-empresas-humo.spec.ts` crea las dos empresas por el servicio de SL-17. SL-32 trae la pantalla «Empresas», y D19 pedía que quien mergeara segundo cambiara el alta a la pantalla.
@@ -122,3 +124,26 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-40, review m2 (2026-10-24). `e2e/cobro-plataforma-sl40.spec.ts` se salta sin `SL40_UI=1`, así que en el job `e2e` de CI no protege nada. Lo mismo pasa con `e2e/wallet.spec.ts`, en rojo heredado (D8).
 - **Resolución:** SL-44 (R13; T4). El spec pierde la bandera, corre en el grupo `aislamiento` con su base y el log del servidor, y un `afterAll` deja el cobro global como estaba. `wallet.spec.ts` se rehízo con datos propios (T6.3). La guardia `e2e-sin-saltos` impide que vuelva un skip.
 - **Dueño:** cerrada.
+
+### D20 — Comentarios desfasados tras SL-18
+- **Origen:** review de SL-18 (m1 y m2, 2026-10-27).
+- **Qué falta:** reescribir los comentarios que describen el comportamiento anterior a SL-18:
+  - `PushEndpointPlataformaRepository.ts:10` y `push.ts:125`, que hablan del push de antes del «gana el último»;
+  - `recuperar-contrasena.ts:28`, que habla del paso del código.
+  Son solo comentarios; el código es correcto.
+- **Dueño:** Camilo (la próxima ficha que toque push o recuperar).
+
+### D21 — El arranque del superadmin rechaza un email que ya usa una cuenta de empresa
+- **Origen:** review de SL-18 (m3, 2026-10-27).
+- **Qué falta:** `ArranqueSuperadminRepository.ts:76-81` busca el email sin filtrar por `organizacion_id IS NULL`. Según R3 de SL-18, el superadmin puede compartir email con una cuenta de empresa. Hoy no ocurre, porque el superadmin se crea con la base vacía.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D22 — `/novedades` con WhatsApp apagado queda solo con «Llamar»
+- **Origen:** SL-23 (pregunta abierta y menor m4 del review, 2026-10-27).
+- **Qué falta:** decidir si, con el módulo WhatsApp apagado, `/novedades` debe ofrecer otro canal o quedarse solo con «Llamar», sin enlace `wa.me`. El spec no lo pedía.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D23 — `/plataforma/empresas/[organizacionId]` no consta como pasada por `/design`
+- **Origen:** review de SL-23 (m2, 2026-10-27). `docs/perfil-agentes.md > frontend_dev` pide pasar toda pantalla nueva por `/design`.
+- **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
+- **Dueño:** Camilo.

@@ -16,6 +16,9 @@ import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { TableroDiaService } from "@/lib/services/TableroDiaService";
 import type { ResultadoDetalleDia, ResultadoTableroDia } from "@/lib/types/tablero-dia";
+import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { withErrorHandler } from "@/lib/errors";
+import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 // Feature 192 (B4.1/B7.6, design.md §3.4 y §6) — EL BORDE DEL TABLERO DEL DIA.
 //
@@ -83,6 +86,14 @@ function construirServicio(): ITableroDiaService {
  * ceros: la pantalla tiene que poder distinguir "prohibido" de "no hay nada hoy" (R33).
  */
 export async function leerTableroDia(deps: TableroDiaDeps = {}): Promise<ResultadoTableroDia> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("monitoreo");
+  });
+  // El `forbidden` de este contrato es el `denegado` (sin `status`); lo pinta su aviso de siempre.
+  if (puerta) {
+    rechazoDeModulo(puerta); // relanza lo que no sea el módulo apagado (una caída de la lectura)
+    return { estado: "denegado", motivo: "modulo_inactivo" };
+  }
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   const now = (deps.now ?? (() => new Date()))();
   const service = deps.service ?? construirServicio();
@@ -104,6 +115,14 @@ export async function leerDetalleMensajeroDia(
   entrada: unknown,
   deps: TableroDiaDeps = {},
 ): Promise<ResultadoDetalleDia> {
+  const puerta = await withErrorHandler(async () => {
+    await exigirModuloActivo("monitoreo");
+  });
+  // El `forbidden` de este contrato es el `denegado` (sin `status`); lo pinta su aviso de siempre.
+  if (puerta) {
+    rechazoDeModulo(puerta); // relanza lo que no sea el módulo apagado (una caída de la lectura)
+    return { estado: "denegado", motivo: "modulo_inactivo" };
+  }
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   const now = (deps.now ?? (() => new Date()))();
   const service = deps.service ?? construirServicio();

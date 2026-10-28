@@ -1,8 +1,5 @@
-import {
-  itemsVisibles,
-  primerDestino,
-  SIDEBAR_ITEMS,
-} from "@/lib/auth/menu-visibility";
+import { menuDeLaEmpresa, primerDestino } from "@/lib/auth/menu-visibility";
+import { modulosDelMenu } from "@/lib/modulos/exigir-modulo";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { AppPage } from "@/components/shared/AppPage";
 import { NoEncontradoState } from "@/components/shared/NoEncontradoState";
@@ -71,7 +68,9 @@ export default async function NoEncontradoEnElPortal() {
   // cuentas de API no navegan la UI). Ahí no hay «su inicio» que calcular, así que la salida
   // es la raíz —el mismo criterio que `app/error.tsx`—: el middleware ya reparte desde ahí a
   // quien sí tiene sesión, y a quien no la tiene lo manda al login.
-  const inicio = primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor)) ?? "/";
+  // SL-23 (R15): sobre el menú filtrado por los módulos de la empresa, para no mandar a nadie a
+  // una ruta apagada (que sería otro 404).
+  const inicio = primerDestino(menuDeLaEmpresa(actor, await modulosDelMenu(actor))) ?? "/";
 
   return (
     <AppPage title="No encontramos esta página">

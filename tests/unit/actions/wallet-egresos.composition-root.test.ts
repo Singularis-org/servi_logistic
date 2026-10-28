@@ -4,6 +4,10 @@ import { Prisma, RolValue } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IWalletEgresoService } from "@/lib/interfaces/services/IWalletEgresoService";
 
+// SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
+
+
 // SL-45 (design §6, §12.3) — EL COMPOSITION ROOT DEL EGRESO PASA EL TOPE (memoria «el composition
 // root que no inyecta»). Que `lib/actions/wallet-egresos.ts` importe `TopePagoPlataformaService` no
 // prueba que lo PASE: aquí se llama a la action SIN servicio inyectado, sobre un cliente falso, y se
