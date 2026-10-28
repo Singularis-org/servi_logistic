@@ -1,11 +1,9 @@
 # SL-24 — planes-y-limites · tasks.md
 
-> Requisitos en `requirements.md` (R1–R34) y diseño en `design.md`. **No se empieza ninguna task
-> hasta que el humano apruebe el spec y cierre P1–P5.** Si cambia una propuesta, se reescriben
-> antes los requisitos y el diseño afectados.
+> Requisitos en `requirements.md` (R1–R36) y diseño en `design.md`. P1–P5 están cerradas
+> (2026-10-27). **No se empieza ninguna task hasta que el humano apruebe el spec.**
 >
-> Reparto: `backend_dev` hace T0–T6, T8 y T9; `frontend_dev` hace T7b. T7a (servicios de
-> usuarios) es de `backend_dev`.
+> Reparto: `backend_dev` hace T0–T6, T7a, T8 y T9; `frontend_dev` hace T7b.
 > `[P]` = puede ir en paralelo con las otras `[P]` de la misma tanda.
 
 ## Tanda A — base
@@ -20,10 +18,10 @@
 - [ ] **T1. Migración `20261027120000_plan` + Prisma** (depende de T0).
   - Las tablas, enum, `CHECK`, FK, RLS sin políticas y `REVOKE` de `design.md > §2`.
   - Las columnas de `organizacion` y el índice parcial de `orden`.
-  - En Prisma, los modelos `Plan`, `PlanTopeRol` y `PlanModulo` y el enum `PlanVisibilidad`; en
-    `Organizacion`, las dos columnas y las relaciones, con sus comentarios de lo que vive solo en
-    SQL.
-  - Clasificar los tres modelos en `MODELOS_DE_PLATAFORMA`.
+  - En Prisma, los modelos `Plan` (con `topeApiKeys`), `PlanTopeRol`, `PlanModulo` y
+    `PlanRastro` y los enums `PlanVisibilidad` y `PlanRastroAccion`; en `Organizacion`, las dos
+    columnas y las relaciones, con sus comentarios de lo que vive solo en SQL.
+  - Clasificar los cuatro modelos en `MODELOS_DE_PLATAFORMA`.
   - Escribir `down.sql`.
   - **Hecho:**
     - `pnpm run typecheck` y las guardias `organizacion-en-modelos`, `rls-por-empresa`,
@@ -33,31 +31,36 @@
     - `tests/integration/db/planes-acceso-servi-app.test.ts` da `42501` en cada escritura y
       lectura con `servi_app` (R8).
 - [ ] **T2. Migración `20261027120100_historial_accion_planes` + tipos** [P con T3] (depende de T1).
-  - Los 4 tipos, la entidad `plan`, la categoría `cambia_plan` y `etiquetaDeEntidad("plan", …)`.
+  - El tipo `plan_asignado`, la entidad `plan`, la categoría `cambia_plan` y
+    `etiquetaDeEntidad("plan", …)`.
   - `down.sql` con el patrón de `20261026120100`.
   - **Hecho:** las guardias `historial-accion-*` en verde.
 - [ ] **T3. Migración `20261027120200_plan_topes_triggers` + traducción** [P con T2] (depende de T1).
-  - Las funciones y los triggers de `design.md > §4`.
+  - Las funciones y los cinco triggers de `design.md > §4`, sobre `orden`, `usuario` y `api_key`.
   - `lib/db/sqlstate.ts`, extraído de `contexto-empresa.ts` sin cambiar su comportamiento.
   - `lib/planes/tope-error.ts`, `lib/planes/ciclo.ts` y `lib/planes/mensajes.ts`.
   - **Hecho:**
-    - `plan-topes-ordenes`, `plan-topes-usuarios`, `plan-topes-concurrencia` y `plan-ciclo`
-      (integración) y `ciclo-plan`, `sqlstate` y `tope-error` (unit) en verde contra Postgres;
+    - en verde contra Postgres:
+      - integración: `plan-topes-ordenes`, `plan-topes-usuarios`, `plan-topes-api-keys`,
+        `plan-topes-concurrencia` y `plan-ciclo`;
+      - unit: `ciclo-plan`, `sqlstate` y `tope-error`;
     - queda probado contra la base que el JSON viaja en `MESSAGE` por las dos formas de error de
       Prisma (`design.md > §4.1`);
-    - las mutaciones 1, 2, 3 y 5 de `design.md > §11` medidas y anotadas.
+    - las mutaciones 1, 2, 3, 5, 6 y 7 de `design.md > §11` medidas y anotadas.
 
 ## Tanda B — gestión del superadmin
 
 - [ ] **T4. `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`** (depende de T2 y T3).
   - Crear, editar, archivar, asignar, asignables y públicos, con los cerrojos de
     `design.md > §4.4` y §5.
+  - `lib/planes/rastro.ts` (`diferenciasDelPlan`) y la escritura de `plan_rastro` en la misma
+    transacción (`design.md > §2.8, §9`).
   - Extraer `lib/repositories/_shared/modulos-en-tx.ts` de `ModulosEmpresaRepository`, sin
     cambiar su comportamiento.
   - La excepción en `EXCEPCIONES_DE_PLATAFORMA`.
   - **Hecho:**
-    - `planes-schema`, `planes-service`, `planes-asignacion`, `planes-edicion-en-uso` y
-      `planes-historial` en verde;
+    - `planes-schema`, `planes-service`, `rastro`, `planes-asignacion`, `planes-edicion-en-uso`
+      y `planes-historial` en verde;
     - las suites de SL-23 (`modulos-empresa-service`, `organizacion-modulo`,
       `modulos-empresa-historial`) siguen en verde sin tocarlas;
     - la mutación 4 medida;
@@ -80,18 +83,25 @@
       `carga-composition-root-cupo` en verde;
     - las suites existentes de `BulkOrdenService` en verde **sin tocar ningún archivo de
       `tests/fabricas/`**.
-- [ ] **T7a. Usuarios: servicios** [P con T6] (depende de T3).
+- [ ] **T7a. Usuarios y API keys: servicios** [P con T6] (depende de T3).
   - `UsuarioService` (crear, actualizar, cambiarEstado) y `AprobacionPostulacionService` traducen
     el tope a su resultado (`design.md > §6.3`).
+  - `ApiKeyService` (crear, activar) hace lo mismo (`design.md > §6.5`).
   - Los tipos de resultado ganan la variante `tope_plan`.
   - Confirmar la clave del campo de rol en `UsuarioForm` (`rolId`).
-  - Confirmar que `mapDuplicadoError` deja pasar el error sin cambiarlo.
-  - **Hecho:** `usuario-service-tope-plan` y `aprobacion-postulacion-tope-plan` en verde;
-    `UserRepository.ts` sin cambios en el diff.
-- [ ] **T7b. Usuarios: las dos pantallas existentes** (depende de T7a).
-  - `UsuariosModule` y `PostulacionesPendientesPanel` muestran `mensaje` con `tope_plan`
-    (`design.md > §8`).
-  - **Hecho:** `UsuariosTopePlan` y `PostulacionesTopePlan` (componentes) en verde.
+  - Confirmar que `mapDuplicadoError` y el `catch` de `ApiKeyService.crear` dejan pasar el error
+    sin cambiarlo.
+  - Buscar los escritores de `usuario.estado = 'activo'`. Si alguno desbloquea cuentas solo,
+    parar y preguntar (`design.md > §15`).
+  - **Hecho:**
+    - `usuario-service-tope-plan`, `aprobacion-postulacion-tope-plan` y
+      `api-key-service-tope-plan` en verde;
+    - `UserRepository.ts` y `ApiKeyRepository.ts` sin cambios en el diff.
+- [ ] **T7b. Las cuatro pantallas existentes** (depende de T7a).
+  - `UsuariosModule`, `PostulacionesPendientesPanel`, `ApiKeysModule` y `ApiKeyAccionCell`
+    muestran `mensaje` con `tope_plan` (`design.md > §8`).
+  - **Hecho:** `UsuariosTopePlan`, `PostulacionesTopePlan` y `ApiKeysTopePlan` (componentes) en
+    verde.
 
 ## Tanda D — cierre
 
@@ -110,14 +120,14 @@
   - `docs/architecture.md > Multi-empresa` gana un párrafo «Planes y límites (SL-24)»: tablas,
     triggers, cerrojos y quién escribe.
   - Mapa `R<n> → test` completo en `progress/impl_SL-24.md`.
-  - **Hecho:** `./init.sh` en verde y cada R1–R34 con al menos un test que existe.
+  - **Hecho:** `./init.sh` en verde y cada R1–R36 con al menos un test que existe.
 
 ## No se tocan, a propósito
 
 Ver `design.md > §14`. Van aquí y no en «Archivos esperados», porque
 `scripts/archivos-en-vuelo.mjs` lee todas las rutas de esa sección. Son las fábricas de test y
 los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticación de `lib`,
-`AuthService` y `UserRepository`.
+`AuthService` y `UserRepository`. Tampoco se toca `ApiKeyRepository`.
 
 ## Archivos esperados
 
@@ -138,7 +148,12 @@ los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticaci
 - `lib/planes/tope-error.ts`
 - `lib/planes/ciclo.ts`
 - `lib/planes/mensajes.ts`
+- `lib/planes/rastro.ts`
 - `lib/types/planes.ts`
+- `lib/types/api-key.ts`
+- `lib/interfaces/services/IApiKeyService.ts`
+- `lib/services/ApiKeyService.ts`
+- `lib/actions/api-keys.ts`
 - `lib/types/historial-accion.ts`
 - `lib/types/historial-accion-etiquetas.ts`
 - `lib/types/usuario.ts`
@@ -167,12 +182,18 @@ los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticaci
 - `app/api/ordenes/api-key/carga/route.ts`
 - `app/(app)/configuracion/_components/UsuariosModule.tsx`
 - `app/(app)/_components/PostulacionesPendientesPanel.tsx`
+- `app/(app)/configuracion/api/_components/ApiKeysModule.tsx`
+- `app/(app)/configuracion/api/_components/ApiKeyAccionCell.tsx`
 
 ### tests
 - `tests/integration/db/_fixtures/planes.ts`
 - `tests/integration/db/plan-topes-ordenes.test.ts`
 - `tests/integration/db/plan-topes-concurrencia.test.ts`
 - `tests/integration/db/plan-topes-usuarios.test.ts`
+- `tests/integration/db/plan-topes-api-keys.test.ts`
+- `tests/unit/services/api-key-service-tope-plan.test.ts`
+- `tests/unit/planes/rastro.test.ts`
+- `tests/components/ApiKeysTopePlan.test.tsx`
 - `tests/integration/db/plan-ciclo.test.ts`
 - `tests/integration/db/planes-catalogo.test.ts`
 - `tests/integration/db/planes-asignacion.test.ts`

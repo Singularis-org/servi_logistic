@@ -1,7 +1,7 @@
 # SL-24 — planes-y-limites · design.md
 
-> Requisitos en `requirements.md` (R1–R34). Las propuestas marcadas **«a confirmar por el humano»**
-> responden a las preguntas abiertas P1–P5. Hasta que el humano las cierre no hay implementación.
+> Requisitos en `requirements.md` (R1–R36). El humano cerró P1–P5 el 2026-10-27 y añadió el tope
+> de API keys y el rastro de plataforma de los planes. Las filas fechadas están en `requirements.md`.
 
 ## Lo que ya existe
 
@@ -24,6 +24,8 @@ código se buscó con Grep/Read.
 | Vías de alta de usuarios: `UserRepository.create`, `UserRepository.update` (rol), `UserRepository.setEstado`, `AprobacionPostulacionRepository.actualizarEstadoSiPendiente`, `PostulacionRepository` (nace `pendiente`), `ApiKeyRepository` (rol `apiKey`), `OrganizacionRepository.altaEmpresa` (maestro de una empresa sin plan) | `lib/repositories/*` | El trigger sobre `usuario` las cubre todas. **No se toca `UserRepository`** (choque con SLT-32): la traducción del error va en los servicios (§6.3) |
 | Cerrojo consultivo por transacción | `OrganizacionRepository.altaEnTransaccion` (`pg_advisory_xact_lock(hashtext(slug))`) | Mismo mecanismo, con un espacio de claves propio (§4.4) |
 | Traducción de un SQLSTATE propio a error de dominio | `lib/db/contexto-empresa.ts > traducirErrorDeEmpresa` (`SL017`) | Se extrae su recorrido de la cadena `cause`/`meta` a `lib/db/sqlstate.ts` y se reutiliza para `SL024` (§4.5) |
+| API keys: `api_key.estado` (`activa`/`inactiva`, la «palanca de revocación» de la feature 88/R7); `ApiKeyRepository.createConUsuario` (nace `activa`), `setEstado` (activar o desactivar) y `eliminar` (borrado físico). `ApiKeyService.crear` y `activar` | `db/schema.prisma > ApiKey`, `lib/repositories/ApiKeyRepository.ts:175, :364, :458`, `lib/services/ApiKeyService.ts` | Tope de keys con un trigger sobre `api_key` (§4.3). `ApiKeyRepository` no se toca: la traducción va en `ApiKeyService` (§6.5) |
+| Rastro de cambios de un dato de plataforma | Ninguno: `historial_accion` es de negocio y exige empresa (SL-40 §3.1) | Tabla nueva `plan_rastro`, de plataforma (§2.8) |
 | Fábricas de empresa y escenario de reparto que construye `BulkOrdenService` | `tests/fabricas/empresa-y-usuarios.ts`, `tests/fabricas/escenarios/reparto.ts` (SL-43 en vuelo) | **No se tocan.** El parámetro nuevo de `BulkOrdenService` es opcional (§6.1) y los tests crean sus planes con ayudantes propios fuera de `tests/fabricas/` |
 
 ## 1. Resumen
@@ -33,12 +35,15 @@ código se buscó con Grep/Read.
   `PlanesService` → `PlanesRepository`.
 - **Asignación (por empresa):** dos columnas en `organizacion`: `plan_id` y
   `plan_ciclo_ancla_at`. `organizacion` ya es de solo lectura para `servi_app`.
-- **El tope lo hace cumplir la base**, con dos triggers `SECURITY DEFINER`:
-  - uno sobre `orden`, `AFTER INSERT … FOR EACH STATEMENT`;
-  - otro sobre `usuario`, `AFTER INSERT OR UPDATE OF rol_id, estado … FOR EACH ROW`.
+- **El tope lo hace cumplir la base**, con triggers `SECURITY DEFINER`:
+  - sobre `orden`, `AFTER INSERT … FOR EACH STATEMENT`;
+  - sobre `usuario`, `AFTER INSERT OR UPDATE OF rol_id, estado … FOR EACH ROW`;
+  - sobre `api_key`, `AFTER INSERT OR UPDATE OF estado … FOR EACH ROW`.
 
   Cuentan dentro de la transacción del alta. Si el uso pasa el tope, lanzan el SQLSTATE `SL024` y
-  la transacción entera se deshace (R18, R21, R24, R27).
+  la transacción entera se deshace (R18, R21, R24, R27, R35).
+- **Rastro:** crear, editar o archivar un plan escribe en `plan_rastro` (plataforma), en la misma
+  transacción. Asignarlo escribe en `historial_accion` de la empresa (R29).
 - **Sin carrera:** el alta bloquea en modo compartido la fila de la empresa y la del plan, y
   después toma un cerrojo consultivo por empresa para contar. Asignar o editar bloquean esas
   filas en modo exclusivo (§4.4).
@@ -58,12 +63,13 @@ código se buscó con Grep/Read.
 | `visibilidad` | enum `plan_visibilidad` (`publico`, `custom`) `NOT NULL` | Inmutable tras crear (R2) |
 | `organizacion_exclusiva_id` | `TEXT NULL`, FK `organizacion` `ON DELETE CASCADE` | La empresa de un custom. `CHECK` `plan_custom_con_empresa`: `("visibilidad" = 'custom') = ("organizacion_exclusiva_id" IS NOT NULL)`. Inmutable (R2) |
 | `tope_ordenes_ciclo` | `INTEGER NULL` | `CHECK (… IS NULL OR … >= 0)`. `NULL` = sin tope |
+| `tope_api_keys` | `INTEGER NULL` | `CHECK (… IS NULL OR … >= 0)`. `NULL` = sin tope (R35) |
 | `precio_negociable` | `BOOLEAN NOT NULL DEFAULT false` | |
 | `precio_mensual` | `DECIMAL(12,2) NULL` | `CHECK (… IS NULL OR … >= 0)` |
 | `precio_anual` | `DECIMAL(12,2) NULL` | `CHECK (… IS NULL OR … >= 0)` |
 | `descuento_anual_pct` | `DECIMAL(5,2) NULL` | `CHECK (… IS NULL OR (… > 0 AND … <= 100))` |
 | `archivado_at` | `TIMESTAMP(3) NULL` | `NULL` = vigente (R6) |
-| `created_at`, `updated_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | Único rastro de un plan público sin empresas (P5) |
+| `created_at`, `updated_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | El rastro completo va en `plan_rastro` (§2.8) |
 
 **`CHECK` `plan_precio_forma` (R3).** Fija las cinco formas válidas del precio:
 
@@ -88,7 +94,7 @@ CHECK (
 | Columna | Tipo | Regla |
 |---|---|---|
 | `plan_id` | `TEXT NOT NULL`, FK `plan` `ON DELETE CASCADE` | |
-| `rol` | `rol_value NOT NULL` | `CHECK ("rol" IN ('maestro', 'admin', 'mensajero', 'Admin Tienda', 'adminSatelite'))`: los roles con tope (R25, P4). `adminTienda` se guarda como `'Admin Tienda'` por el `@map` del enum |
+| `rol` | `rol_value NOT NULL` | `CHECK ("rol" IN ('maestro', 'admin', 'mensajero', 'Admin Tienda', 'adminSatelite'))`: los roles con tope (R25). `apiKey` queda fuera: las keys tienen su tope en `plan.tope_api_keys`. `adminTienda` se guarda como `'Admin Tienda'` por el `@map` del enum |
 | `maximo` | `INTEGER NOT NULL` | `CHECK ("maximo" >= 0)` |
 
 - PK `("plan_id", "rol")`. Sin fila = ese rol no tiene tope (decisión «Usuarios»).
@@ -119,7 +125,7 @@ CHECK (
 
 ### 2.5 Acceso (R8)
 
-- **`plan`, `plan_tope_rol` y `plan_modulo`:**
+- **`plan`, `plan_tope_rol`, `plan_modulo` y `plan_rastro`:**
   - RLS activada y sin ninguna política para `servi_app`, más `REVOKE ALL … FROM servi_app`;
   - entran en `MODELOS_DE_PLATAFORMA`;
   - se leen y escriben como dueño: el superadmin en `comoPlataforma`, y los triggers y las
@@ -142,8 +148,9 @@ CHECK (
 
 ### 2.7 Prisma
 
-- `model Plan`, `model PlanTopeRol` y `model PlanModulo`, con `@@map`, y `enum PlanVisibilidad`
-  con `@@map("plan_visibilidad")`.
+- `model Plan`, `model PlanTopeRol`, `model PlanModulo` y `model PlanRastro`, con `@@map`, y los
+  enums `PlanVisibilidad` (`@@map("plan_visibilidad")`) y `PlanRastroAccion`
+  (`@@map("plan_rastro_accion")`).
 - Relaciones nuevas:
   - `Organizacion.plan` (por `planId`);
   - `Organizacion.planesExclusivos` (por `organizacionExclusivaId`);
@@ -151,7 +158,31 @@ CHECK (
 - Los `CHECK`, el índice parcial, las funciones y los triggers no los expresa Prisma. Llevan un
   comentario en el modelo para que el diff de drift salga vacío.
 
-### 2.8 Datos que dependen del país
+### 2.8 `plan_rastro` (plataforma; R29, decisión P5)
+
+| Columna | Tipo | Regla |
+|---|---|---|
+| `id` | `TEXT` PK | `@default(uuid())` |
+| `plan_id` | `TEXT NOT NULL` | **Opaco y sin FK**, como `historial_accion.entidad_id`: el rastro sobrevive aunque el `CASCADE` de §2.1 borre un custom al borrar su empresa (solo pasa en limpiezas de tests) |
+| `plan_nombre` | `VARCHAR(80) NOT NULL` | Congelado al escribir |
+| `accion` | enum `plan_rastro_accion` (`creado`, `editado`, `archivado`) `NOT NULL` | |
+| `cambios` | `JSONB NOT NULL` | `{ "<campo>": { "antes": …, "despues": … } }`, solo con los campos que cambiaron. Al crear, `antes` es `null` en todos; al archivar, solo `archivado`. Los campos son los de `PlanDTO` (§5.1): `nombre`, `topes`, `modulos`, `precio` y `archivado`. Los importes van como texto con dos decimales, nunca como número |
+| `actor_usuario_id` | `TEXT NOT NULL` | El superadmin. Opaco, sin FK, por la misma razón que `plan_id` |
+| `actor_nombre` | `VARCHAR(120) NOT NULL` | Congelado, como en `historial_accion` |
+| `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` | Cuándo |
+
+- Índice `("plan_id", "created_at")`, para el rastro de un plan (SL-26 lo pintará).
+- **Plataforma:**
+  - sin `organizacion_id`;
+  - entra en `MODELOS_DE_PLATAFORMA`;
+  - RLS sin políticas y `REVOKE ALL … FROM servi_app` (R8).
+- **Solo se añade.** Ningún código hace `update` ni `delete` sobre ella; la guardia
+  `planes-sin-borrado` lo vigila (§11).
+- **La escribe solo `PlanesRepository`**, en la misma transacción que el cambio del plan, con un
+  `planRastro.create`. Si falla, el cambio se deshace (R29).
+- **Una edición sin cambios reales** (mismo contenido) no escribe fila ni toca `updated_at`.
+
+### 2.9 Datos que dependen del país
 
 - **Moneda del precio.** Se guarda sin moneda, como el cobro de SL-40 (§7 allí). Que el precio sea
   por moneda o por país lo decide SL-21; esta ficha no lo inventa.
@@ -172,17 +203,15 @@ CHECK (
   depender de una zona horaria que SL-21 todavía no configura por país, y respeta la regla del repo
   de no meter `AT TIME ZONE` en el SQL (`lib/repositories/FinanzasDiarioRepository.ts:17`). Si el
   humano prefiere la medianoche local, eso espera a SL-21 (§12, alternativa 4).
-- **Mensual o anual (P1, abierta; propuesta «a confirmar por el humano»).** Este diseño no guarda
-  la periodicidad de la suscripción y cuenta siempre por ciclo mensual, que es el ejemplo de la
-  decisión «Periodo de órdenes». La propuesta es que el anual sea solo una forma de precio
-  (informativa, R4) y que el tope siga contándose por mes. Si el humano decide que una empresa
-  anual cuenta por ciclo anual, el cambio está acotado:
-  - una columna `organizacion.plan_periodicidad` (enum `mensual`/`anual`), que fija el
-    superadmin al asignar;
-  - un tercer argumento de `plan_inicio_ciclo` con el paso en meses (1 o 12);
-  - R9, R20 y el test del ciclo se reescriben.
-- **Al cambiar de plan (P2a, «a confirmar por el humano»)**, el ancla se conserva (§5.2). Así el
-  ciclo es continuo, y la regla «bajar de plan» compara las órdenes del ciclo en curso.
+- **Siempre mensual (P1, cerrada el 2026-10-27).** El anual es solo una forma de precio
+  (informativa, R4). No se guarda ninguna periodicidad de suscripción.
+- **Al cambiar de plan, el ancla se conserva (P2a, cerrada)** (§5.2). Así el ciclo es continuo, y
+  la regla «bajar de plan» compara las órdenes del ciclo en curso.
+- **Una anulada de un ciclo pasado no libera cupo (P2b, cerrada).** Sale por construcción: el
+  conteo solo mira las creadas desde el inicio del ciclo en curso (§4.2).
+- **Recuperar no se bloquea (P2c, cerrada).** `restore` es un `UPDATE OF deleted_at`, y el
+  trigger de órdenes solo mira `INSERT`. El uso puede quedar por encima del tope; la siguiente
+  alta se rechaza hasta que vuelva a haber cupo.
 - **Dónde se calcula.** En la función SQL `plan_inicio_ciclo(ancla, ahora)` (`IMMUTABLE`), que
   usan los triggers y el superadmin. Su gemela en TS, `lib/planes/ciclo.ts > inicioDelCiclo`, es
   pura; solo la usan los textos y el test que compara las dos con la misma tabla de fechas
@@ -193,8 +222,9 @@ CHECK (
 ### 4.1 SQLSTATE y forma del error
 
 - Los triggers lanzan `RAISE EXCEPTION USING ERRCODE = 'SL024', MESSAGE = 'tope_plan ' || <json>`.
-- El JSON es `{"tope":"ordenes","maximo":100,"usados":99,"pedidas":2}` o
-  `{"tope":"rol","rol":"adminTienda","maximo":3,"usados":3,"pedidas":1}`:
+- El JSON es `{"tope":"ordenes","maximo":100,"usados":99,"pedidas":2}`,
+  `{"tope":"rol","rol":"adminTienda","maximo":3,"usados":3,"pedidas":1}` o
+  `{"tope":"api_keys","maximo":2,"usados":2,"pedidas":1}`:
   - `usados` es el uso **antes** del alta;
   - `pedidas` es lo que el alta añadía.
 - **El JSON va en `MESSAGE`, no en `DETAIL`.** El mensaje está verificado en las dos formas de
@@ -207,7 +237,8 @@ CHECK (
 |---|---|
 | `plan_inicio_ciclo(p_ancla timestamp, p_ahora timestamp) RETURNS timestamp` | §3. `IMMUTABLE`, sin `SECURITY DEFINER` (no lee tablas) |
 | `plan_uso_ordenes(p_organizacion_id text, p_desde timestamp) RETURNS integer` | `count(*)` de `orden` con `organizacion_id = p_organizacion_id AND created_at >= p_desde AND deleted_at IS NULL` (R19). Usa el índice de §2.6 |
-| `plan_uso_rol(p_organizacion_id text, p_rol rol_value) RETURNS integer` | `count(*)` de `usuario` de esa empresa con ese rol y `estado IN ('activo', 'bloqueado')` (R26, P4) |
+| `plan_uso_rol(p_organizacion_id text, p_rol rol_value) RETURNS integer` | `count(*)` de `usuario` de esa empresa con ese rol y `estado = 'activo'` (R26) |
+| `plan_uso_api_keys(p_organizacion_id text) RETURNS integer` | `count(*)` de `api_key` de esa empresa con `estado = 'activa'` (R35). Las eliminadas no existen: `eliminar` borra la fila |
 | `plan_cupo_ordenes(p_organizacion_id text) RETURNS TABLE (maximo integer, usados integer)` | Lectura previa de §6.1, **sin cerrojos**. Lanza `42501` si el argumento no es `app.organizacion_id`. Sin plan o sin tope de órdenes no devuelve filas. `GRANT EXECUTE … TO servi_app` |
 
 ### 4.3 Los triggers
@@ -225,23 +256,35 @@ CHECK (
 2. **Una sentencia, un conteo.** Un `createMany` de 500 filas hace un conteo, no 500. Por eso el
    trigger es de sentencia y no de fila.
 
-**`plan_tope_usuario_alta`**, en `AFTER INSERT ON "usuario" FOR EACH ROW WHEN (NEW.organizacion_id IS NOT NULL AND NEW.estado IN ('activo','bloqueado'))`.
+**`plan_tope_usuario_alta`**, en `AFTER INSERT ON "usuario" FOR EACH ROW WHEN (NEW.organizacion_id IS NOT NULL AND NEW.estado = 'activo')`.
 
 **`plan_tope_usuario_cambio`**, en `AFTER UPDATE OF "rol_id", "estado" ON "usuario" FOR EACH ROW`, con este `WHEN`:
 
 ```sql
 WHEN (
   NEW.organizacion_id IS NOT NULL
-  AND NEW.estado IN ('activo','bloqueado')
-  AND (OLD.rol_id IS DISTINCT FROM NEW.rol_id OR OLD.estado NOT IN ('activo','bloqueado'))
+  AND NEW.estado = 'activo'
+  AND (OLD.rol_id IS DISTINCT FROM NEW.rol_id OR OLD.estado <> 'activo')
 )
 ```
 
 - Los dos llaman a la misma función, con los mismos pasos de arriba. El tope es la fila de
-  `plan_tope_rol` para el `rol.value` de `NEW.rol_id`; sin fila, no hay nada que comprobar.
-- **El `WHEN` es la definición de «alta de usuario»** (R27): crear uno que cuenta, reactivarlo
-  (`inactivo` → `activo`), aprobar su postulación (`pendiente` → `activo`) o cambiarle el rol.
-  Pasar de `activo` a `bloqueado` y volver no es alta: los dos estados ya cuentan.
+  `plan_tope_rol` para el `rol.value` de `NEW.rol_id`; sin fila, no hay nada que comprobar. Un
+  usuario `apiKey` nunca tiene fila de tope: sale sin contar (R25).
+- **El `WHEN` es la definición de «alta de usuario»** (R27, decisión P4): crear uno activo,
+  activarlo desde `inactivo` o `bloqueado`, aprobar su postulación (`pendiente` → `activo`) o
+  cambiarle el rol. Bloquear o inactivar no es alta.
+
+**`plan_tope_api_key_alta`**, en `AFTER INSERT ON "api_key" FOR EACH ROW WHEN (NEW.estado = 'activa')`, y
+**`plan_tope_api_key_cambio`**, en `AFTER UPDATE OF "estado" ON "api_key" FOR EACH ROW WHEN (NEW.estado = 'activa' AND OLD.estado <> 'activa')`:
+
+- Los mismos pasos, con `plan.tope_api_keys` y `plan_uso_api_keys` (R35).
+- **«Viva, no revocada» = `estado = 'activa'`.** La feature 88/R7 llama a `estado` la palanca de
+  revocación: una key `inactiva` no autentica. `eliminar` borra la fila, así que la key deja de
+  existir y de contar. Por tanto activar una key `inactiva` es un alta, igual que reactivar un
+  usuario.
+- Crear una key inserta antes su cuenta dedicada en `usuario` (rol `apiKey`). El trigger de
+  usuario sale sin contar, porque `apiKey` no tiene tope de rol.
 - **Por qué fila y no sentencia.** Hoy no hay altas de usuarios en lote. Además, Postgres no
   permite tablas de transición en un trigger con lista de columnas (`UPDATE OF`).
 
@@ -283,7 +326,7 @@ WHEN (
   usarlo. `traducirErrorDeEmpresa` no cambia de comportamiento.
 - **`lib/planes/tope-error.ts` (nuevo):**
   - `class TopeDelPlanAlcanzado extends ConflictError`. Lleva
-    `details: { codigo: "tope_plan", tope: "ordenes" | "rol", rol?, maximo, usados, pedidas }` y un
+    `details: { codigo: "tope_plan", tope: "ordenes" | "rol" | "api_keys", rol?, maximo, usados, pedidas }` y un
     `message` ya redactado (§6.4).
   - `traducirErrorDeTope(e)` lee el JSON del mensaje. Cualquier otro error lo devuelve tal cual.
 - **Por qué `details.codigo` y no un `AppErrorCode` nuevo.** Es lo mismo que decidió SL-23 §5.5:
@@ -300,7 +343,8 @@ WHEN (
 | `lib/actions/planes.ts` | `'use server'`: `crearPlanAction`, `editarPlanAction`, `archivarPlanAction`, `asignarPlanAction` y `listarPlanesAsignablesAction`. Cada una resuelve el actor y monta el servicio en su composition root, con test de que lo **pasa** |
 | `lib/modulos/reparto.ts` | `planes: "nucleo"` en `MODULO_POR_ACTION`: es de plataforma, como `modulos-empresa` |
 | `lib/db/excepciones-aislamiento.ts` | `EXCEPCIONES_DE_PLATAFORMA` gana `{ archivo: "lib/repositories/PlanesRepository.ts", ficha: "SL-24", motivo: "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5)" }` |
-| `lib/db/modelos-de-negocio.ts` | `Plan`, `PlanTopeRol` y `PlanModulo` en `MODELOS_DE_PLATAFORMA` |
+| `lib/db/modelos-de-negocio.ts` | `Plan`, `PlanTopeRol`, `PlanModulo` y `PlanRastro` en `MODELOS_DE_PLATAFORMA` |
+| `lib/planes/rastro.ts` | `diferenciasDelPlan(antes: PlanDTO \| null, despues: PlanDTO)`: pura, produce el JSON de `cambios` de §2.8. Una diferencia vacía significa edición sin cambios (no se escribe nada) |
 
 ### 5.1 Contratos
 
@@ -312,7 +356,11 @@ export type PrecioPlan =
   | { tipo: "negociable" }
   | { tipo: "monto"; mensual: string;
       anual: null | { tipo: "fijo"; monto: string } | { tipo: "descuento"; porcentaje: string } };
-export type TopesPlan = { ordenesPorCiclo: number | null; porRol: Partial<Record<RolConTope, number>> };
+export type TopesPlan = {
+  ordenesPorCiclo: number | null;
+  porRol: Partial<Record<RolConTope, number>>;
+  apiKeys: number | null; // R35
+};
 
 export type CrearPlanInput = {
   nombre: string; visibilidad: "publico" | "custom"; organizacionId: string | null;
@@ -325,7 +373,7 @@ export type AsignarPlanInput = { organizacionId: string; planId: string };
 
 export type TopeExcedido = {
   organizacionId: string; empresa: string;
-  tope: "ordenes" | RolConTope; usados: number; maximo: number;
+  tope: "ordenes" | "api_keys" | RolConTope; usados: number; maximo: number;
 };
 export type PlanResult =
   | { estado: "ok"; planId: string; cambio: boolean }
@@ -356,10 +404,11 @@ export type PlanDTO = {
    - el plan es custom de otra empresa → `custom_de_otra_empresa`;
    - el plan es el mismo que ya tiene → `ok` con `cambio: false`, sin escribir (R13).
 3. Calcula el ancla: la que tiene la empresa o, si no tiene plan, `CURRENT_TIMESTAMP`.
-   **Al cambiar de plan se conserva** (P2a, «a confirmar por el humano»).
+   **Al cambiar de plan se conserva** (P2a, cerrada).
 4. Cuenta el uso:
    - órdenes: `plan_uso_ordenes(org, plan_inicio_ciclo(ancla, now()))`;
-   - cada rol con tope en el plan nuevo: `plan_uso_rol`.
+   - cada rol con tope en el plan nuevo: `plan_uso_rol`;
+   - API keys, si el plan nuevo las topa: `plan_uso_api_keys`.
 
    Si alguno pasa su tope → `tope_excedido` con la lista, sin escribir nada (R12).
 5. `UPDATE organizacion SET plan_id, plan_ciclo_ancla_at`.
@@ -374,12 +423,17 @@ export type PlanDTO = {
      `archivado`.
   2. Para cada empresa con `plan_id = plan`, ordenadas por id, cuenta su uso contra los topes
      nuevos. Si alguna los pasa → `tope_excedido` con todas las que se pasan (R16).
-  3. Reemplaza las filas de `plan_tope_rol` y de `plan_modulo`, y actualiza las columnas.
-  4. Aplica la diferencia de módulos a cada empresa (§7.2).
-  5. Escribe el historial.
+  3. Calcula `diferenciasDelPlan(antes, despues)`. Si está vacía, responde `ok` con
+     `cambio: false` sin escribir.
+  4. Reemplaza las filas de `plan_tope_rol` y de `plan_modulo`, y actualiza las columnas.
+  5. Aplica la diferencia de módulos a cada empresa (§7.2).
+  6. Escribe la fila `editado` de `plan_rastro` con las diferencias (§9).
+- **Crear.** Inserta el plan, sus topes y sus módulos, y la fila `creado` de `plan_rastro`, en una
+  transacción.
 - **Topes.** No hay que propagar nada: los triggers leen los topes del plan en cada alta (R15).
-- **Archivar.** Pone `archivado_at` si no lo tiene. Si ya estaba archivado, responde `ok` con
-  `cambio: false`. Las empresas lo conservan y los triggers no miran `archivado_at` (R6).
+- **Archivar.** Pone `archivado_at` si no lo tiene y escribe la fila `archivado` de
+  `plan_rastro`. Si ya estaba archivado, responde `ok` con `cambio: false` sin escribir. Las
+  empresas lo conservan y los triggers no miran `archivado_at` (R6).
 
 ## 6. Las vías de alta
 
@@ -419,7 +473,7 @@ HTTP 409
      pasa a `error` con el mensaje.
 
   En la API, si no entró ninguna, responde el 409; si entró alguna, el resumen lo dice fila a fila.
-- **Residuo aceptado.** Una petición de más de `BATCH_SIZE` (500) filas que pierde la carrera a
+- **Residuo aceptado por el humano el 2026-10-27.** Una petición de más de `BATCH_SIZE` (500) filas que pierde la carrera a
   mitad puede quedar creada en parte. El tope nunca se pasa (R24), y el resumen dice qué entró. El
   caso normal, sin carrera, rechaza la petición entera (R21). La alternativa de una transacción
   por petición está descartada (§12, alternativa 3).
@@ -439,14 +493,15 @@ En cada caso, el servicio envuelve la llamada al repositorio con `traducirErrorD
 |---|---|---|
 | `UsuarioService.crear` | crear desde «Usuarios» | `{ status: "validation_error", fieldErrors: { rolId: [mensaje] } }`. El formulario ya pinta los `fieldErrors` bajo el campo, sin cambios de UI (T7 confirma la clave del campo) |
 | `UsuarioService.actualizar` | cambiar el rol | Igual que crear |
-| `UsuarioService.cambiarEstado` | reactivar | `{ status: "tope_plan", mensaje }`, variante nueva de `CambiarEstadoUsuarioServiceResult` |
+| `UsuarioService.cambiarEstado` | activar desde `inactivo` o `bloqueado` | `{ status: "tope_plan", mensaje }`, variante nueva de `CambiarEstadoUsuarioServiceResult` |
 | `AprobacionPostulacionService` (aprobar) | aprobar postulación | `{ status: "tope_plan", mensaje }`, variante nueva de su resultado |
 
 - **`UserRepository` y `AprobacionPostulacionRepository` no cambian:** el error sale del trigger
   y atraviesa `mapDuplicadoError`, que devuelve tal cual lo que no es un duplicado (T7 lo
   comprueba).
-- **`apiKey` y `superadmin`.** `ApiKeyRepository` (rol `apiKey`) y `ArranqueSuperadminRepository`
-  (sin empresa) nunca disparan el trigger con efecto.
+- **`apiKey` y `superadmin`.** La cuenta dedicada que crea `ApiKeyRepository` (rol `apiKey`) y
+  `ArranqueSuperadminRepository` (sin empresa) nunca disparan el trigger de usuario con efecto. El
+  tope de las keys es el de §6.5.
 - **`OrganizacionRepository.altaEmpresa`.** Crea el maestro de una empresa sin plan: el trigger
   sale en el paso 1.
 
@@ -455,8 +510,26 @@ En cada caso, el servicio envuelve la llamada al repositorio con `traducirErrorD
 | Caso | Texto |
 |---|---|
 | Órdenes | «Tu plan permite {maximo} órdenes por ciclo. Llevas {usados} y esta carga trae {pedidas}. Anula órdenes que no vayas a enviar o pide un cambio de plan.» |
-| Rol | «Tu plan permite {maximo} usuarios con el rol {rol}. Ya tienes {usados}. Inactiva alguno o pide un cambio de plan.» |
+| Rol | «Tu plan permite {maximo} usuarios activos con el rol {rol}. Ya tienes {usados}. Inactiva alguno o pide un cambio de plan.» |
+| API keys | «Tu plan permite {maximo} API keys activas. Ya tienes {usados}. Desactiva o elimina alguna, o pide un cambio de plan.» |
 | Superadmin (`tope_excedido`) | «{empresa} ya tiene {usados} {cosa} y el plan permite {maximo}.», una línea por tope excedido |
+
+### 6.5 API keys (R35, R36)
+
+| Servicio | Vía | Resultado ante el tope |
+|---|---|---|
+| `ApiKeyService.crear` | crear desde «Configuración › API» | `{ status: "tope_plan", mensaje }`, variante nueva de su resultado |
+| `ApiKeyService.activar` | activar una key `inactiva` | `{ status: "tope_plan", mensaje }` |
+
+- **`ApiKeyRepository` no cambia.** El error sale del trigger de `api_key`, dentro de la
+  transacción de `createConUsuario` o de `setEstado`, y deshace también la cuenta dedicada
+  creada en esa transacción. `ApiKeyService` lo traduce con `traducirErrorDeTope`. T7a comprueba
+  que el `catch` de `crear` (hoy solo traduce duplicados a `conflict`) deja pasar el error para
+  traducirlo.
+- **Desactivar y eliminar** no son altas: nunca se rechazan por tope.
+- **La API por key no crea keys**, así que no hay otra vía que cubrir.
+
+### 6.6 Nombres de rol en los textos
 
 - `{rol}` sale de la etiqueta de rol que ya usa la pantalla de usuarios (fuente única que vigila
   `historial-acciones-roles-una-sola-fuente`).
@@ -487,7 +560,7 @@ En cada caso, el servicio envuelve la llamada al repositorio con `traducirErrorD
   obligaría a cambiar la tabla de SL-23 (§12, alternativa 5).
 - **Empresa sin plan:** SL-24 no toca sus módulos (R14).
 
-### 7.2 Al editar los módulos de un plan en uso (R17, P3, «a confirmar por el humano»)
+### 7.2 Al editar los módulos de un plan en uso (R17, P3 cerrada el 2026-10-27)
 
 - Se calculan `añadidos = nuevos − viejos` y `quitados = viejos − nuevos`.
 - En cada empresa del plan se encienden los `añadidos` y se apagan los `quitados`, en la misma
@@ -496,7 +569,7 @@ En cada caso, el servicio envuelve la llamada al repositorio con `traducirErrorD
 - La alternativa, resincronizar todo, borraría las excepciones de todas las empresas del plan con
   un cambio que quizá solo tocaba otro módulo.
 
-## 8. Pantallas que ya existen (R28)
+## 8. Pantallas que ya existen (R28, R36)
 
 No hay pantalla nueva: crear y asignar planes es SL-26. Dos pantallas existentes necesitan un
 cambio mínimo para que el mensaje del servidor llegue a quien lo provocó:
@@ -509,31 +582,42 @@ cambio mínimo para que el mensaje del servidor llegue a quien lo provocó:
 - **Lo que no cambia:** el formulario de usuario (`UsuarioForm`) y la carga masiva ya pintan
   `fieldErrors` y errores por fila.
 
-Sin ese cambio, la pantalla diría «Algo falló» ante un rechazo que la decisión pide explicar.
-Son dos ramas de un `if`, sin componentes nuevos, así que no pasa por `/design`.
+### 8.1 API keys (R36)
 
-## 9. Historial (R29, P5 «a confirmar por el humano»)
+- **`app/(app)/configuracion/api/_components/ApiKeysModule.tsx`.** Al crear, si
+  `res.status === "tope_plan"`, el aviso muestra `res.mensaje`. Hoy su `mensajeError` cae en
+  «Revisa los datos e inténtalo de nuevo.».
+- **`app/(app)/configuracion/api/_components/ApiKeyAccionCell.tsx`.** Lo mismo al activar.
 
-- **`HistorialAccionTipo`:** `plan_creado`, `plan_editado`, `plan_archivado` y `plan_asignado`.
-- **`HistorialAccionEntidad`:** `plan`.
-- **`entidad_id`** es el id del plan; **`entidad_etiqueta`**, `Plan «<nombre>»`, recortada a 120.
-- **`valor_anterior`/`valor_nuevo` van a `NULL`.** El nombre de un plan es texto libre, y esas
-  columnas son de vocabulario cerrado (comentario del modelo `HistorialAccion`).
-- **Categoría nueva** `cambia_plan` («Cambia el plan») en `lib/types/historial-accion.ts`, con su
-  etiqueta. `etiquetaDeEntidad("plan", { nombre })` va en
-  `lib/types/historial-accion-etiquetas.ts`.
-- **Dónde va cada fila:**
+Sin estos cambios, la pantalla diría «Algo falló» ante un rechazo que la decisión pide explicar.
+Son cuatro ramas de un `if` en pantallas que ya existen, sin componentes nuevos, así que no pasa
+por `/design`. El humano aceptó el cambio de usuarios y postulaciones el 2026-10-27; el de API
+keys sigue el mismo criterio para su tope nuevo.
 
-  | Acción | Empresas donde se registra |
-  |---|---|
-  | `plan_asignado` | La empresa asignada |
-  | `plan_creado` | La del custom. Un público no tiene empresas al crearse: no deja fila (P5) |
-  | `plan_editado`, `plan_archivado` | La del custom; para un público, cada empresa que lo tiene asignado en ese momento |
+## 9. Rastro (R29, P5 cerrada el 2026-10-27)
 
-- **Actor:** el superadmin, con `resolverActorCongelado` y `organizacionId` explícito en
-  `appendAccion`, como en SL-23 §5.2.
-- **Sincronización:** las filas `modulo_activado` y `modulo_desactivado` van en la misma llamada.
-- **Nada que registrar:** una asignación repetida o un archivado repetido no escriben nada (R13).
+| Qué | Dónde | Cómo |
+|---|---|---|
+| Crear, editar o archivar un plan | `plan_rastro` (plataforma, §2.8) | Una fila por cambio real, con quién, cuándo y el diff de `diferenciasDelPlan`, aunque ninguna empresa use el plan |
+| Asignar o cambiar el plan de una empresa | `historial_accion` de esa empresa | Una fila `plan_asignado` |
+| Módulos que enciende o apaga la sincronización (§7) | `historial_accion` de cada empresa | Las filas `modulo_activado` y `modulo_desactivado` de SL-23 |
+
+- **`historial_accion`:**
+  - `HistorialAccionTipo` gana `plan_asignado` y `HistorialAccionEntidad` gana `plan`;
+  - `entidad_id` es el id del plan nuevo y `entidad_etiqueta`, `Plan «<nombre>»`, recortada
+    a 120;
+  - `valor_anterior` y `valor_nuevo` van a `NULL`: el nombre de un plan es texto libre, y esas
+    columnas son de vocabulario cerrado (comentario del modelo `HistorialAccion`);
+  - categoría nueva `cambia_plan` («Cambia el plan») en `lib/types/historial-accion.ts`, y
+    `etiquetaDeEntidad("plan", { nombre })` en `lib/types/historial-accion-etiquetas.ts`;
+  - el actor es el superadmin, con `resolverActorCongelado` y `organizacionId` explícito en
+    `appendAccion` (SL-23 §5.2);
+  - `plan_asignado` y las filas de módulos de la misma asignación van en una sola llamada, así
+    que comparten `lote_id`.
+- **Editar los módulos de un plan en uso** (§7.2) deja, en cada empresa afectada, las filas de
+  módulos de SL-23, en el mismo `appendAccion` de esa empresa.
+- **Nada que registrar.** No escriben nada una asignación repetida, un archivado repetido ni una
+  edición sin cambios (R13).
 
 ## 10. Migraciones
 
@@ -543,9 +627,9 @@ porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen 
 
 | Carpeta | `migration.sql` | `down.sql` |
 |---|---|---|
-| `20261027120000_plan` | Enum `plan_visibilidad`; tablas `plan`, `plan_tope_rol` y `plan_modulo`, con sus `CHECK`, FK y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las tres; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×3 y `DROP TYPE` |
-| `20261027120100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE` ×4 y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
-| `20261027120200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los tres triggers | `DROP TRIGGER` ×3 y `DROP FUNCTION` ×6 |
+| `20261027120000_plan` | Enums `plan_visibilidad` y `plan_rastro_accion`; tablas `plan` (con `tope_api_keys`), `plan_tope_rol`, `plan_modulo` y `plan_rastro`, con sus `CHECK`, FK, índices y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las cuatro; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×4 y `DROP TYPE` ×2 |
+| `20261027120100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE 'plan_asignado'` y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
+| `20261027120200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los cinco triggers: uno sobre `orden`, dos sobre `usuario` y dos sobre `api_key` | `DROP TRIGGER` ×5 y `DROP FUNCTION` ×8 |
 
 - **Los triggers van en carpeta propia** (precedente SL-40 §4): se pueden quitar sin borrar el
   catálogo.
@@ -563,12 +647,16 @@ porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen 
 |---|---|
 | `tests/integration/db/plan-topes-ordenes.test.ts` | R14, R18, R19, R21, R30. Montaje: empresas A y B como `aislamiento-ordenes.test.ts`, con órdenes por `createManyOrdenes` y `createManyOrdenesConGuia` reales. Casos: al tope rechaza y no crea ninguna; igual al tope acepta; anular por pantalla y por API libera cupo; una orden con `created_at` del ciclo anterior (escrita como dueño) no cuenta; A al tope y B con el mismo plan crea; empresa sin plan sin límite; `INSERT` a mano con `servi_app` también rechaza. **Control de no vacuidad:** el trigger está en `pg_trigger` y la fila existe antes de afirmar |
 | `tests/integration/db/plan-topes-concurrencia.test.ts` | R24. Dos clientes con transacciones abiertas a la vez y cupo 1: exactamente una confirma. Un alta y una bajada de plan en paralelo: el estado final nunca pasa el tope. Afirma `READ COMMITTED` |
-| `tests/integration/db/plan-topes-usuarios.test.ts` | R14, R26, R27. Las cuatro vías (crear, reactivar, aprobar postulación y cambiar de rol) con los repositorios reales, más el `UPDATE` a mano. `pendiente` e `inactivo` no cuentan; un rol sin tope no tiene límite |
+| `tests/integration/db/plan-topes-usuarios.test.ts` | R14, R25, R26, R27. Las vías con los repositorios reales: crear, activar desde `inactivo`, activar desde `bloqueado`, aprobar postulación y cambiar de rol. Más el `UPDATE` a mano. `pendiente`, `inactivo` y `bloqueado` no cuentan; un rol sin tope no tiene límite; crear una API key no mueve ningún uso de rol |
+| `tests/integration/db/plan-topes-api-keys.test.ts` | R35. `createConUsuario` y `setEstado` reales y el SQL a mano. Al tope, crear y activar se rechazan y no queda ni la key ni su cuenta dedicada. Desactivar y eliminar liberan cupo. Sin tope no hay límite |
+| `tests/unit/services/api-key-service-tope-plan.test.ts` | R35: `crear` y `activar` traducen a `tope_plan` |
+| `tests/components/ApiKeysTopePlan.test.tsx` | R36 |
+| `tests/unit/planes/rastro.test.ts` | `diferenciasDelPlan`: alta, cada campo, sin cambios = vacío, importes como texto |
 | `tests/integration/db/plan-ciclo.test.ts` y `tests/unit/utils/ciclo-plan.test.ts` | R20 con la misma tabla: alta el 15; alta el 31 de enero en año normal y bisiesto; el instante exacto de la frontera; un ahora anterior al ancla |
 | `tests/integration/db/planes-catalogo.test.ts` | R1, R3 (los `CHECK`), R6, R7, R25 (el `CHECK` de rol) |
 | `tests/integration/db/planes-asignacion.test.ts` | R4, R9–R13 |
 | `tests/integration/db/planes-edicion-en-uso.test.ts` | R15–R17 |
-| `tests/integration/db/planes-historial.test.ts` | R29: filas, actor, `lote_id` compartido y reversión si falla el registro |
+| `tests/integration/db/planes-historial.test.ts` | R29: `plan_rastro` de un público sin empresas (crear, editar y archivar, con el diff exacto); `plan_asignado` en `historial_accion`, con actor y `lote_id` compartido con los módulos; reversión si falla el registro |
 | `tests/integration/db/planes-acceso-servi-app.test.ts` | R8, R30 |
 | `tests/integration/db/migracion-sl24-ida-y-vuelta.test.ts` | R14, R31 |
 | `tests/unit/types/planes-schema.test.ts` | R2, R3, R25 |
@@ -581,7 +669,7 @@ porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen 
 | `tests/unit/services/usuario-service-tope-plan.test.ts`, `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts` | R27: traducción a `validation_error` o `tope_plan` |
 | `tests/components/UsuariosTopePlan.test.tsx`, `tests/components/PostulacionesTopePlan.test.tsx` | R28 |
 | `tests/unit/guards/planes-sin-seed.guardia.test.ts` | R32: `scripts/seed-catalogos.ts` no nombra `plan`, `planTopeRol`, `planModulo` ni `plan_id` |
-| `tests/unit/guards/planes-sin-borrado.guardia.test.ts` | R6: ningún archivo de `lib/` ni de `app/` llama a `plan.delete` ni `plan.deleteMany`, ni escribe `DELETE FROM "plan"`. Con contraprueba sintética |
+| `tests/unit/guards/planes-sin-borrado.guardia.test.ts` | R6, R29: ningún archivo de `lib/` ni de `app/` llama a `plan.delete`, `plan.deleteMany`, `planRastro.update*` ni `planRastro.delete*`, ni escribe `DELETE FROM "plan"` o `"plan_rastro"`. Con contraprueba sintética |
 | `e2e/dos-empresas-humo.spec.ts` y `e2e/_planes-fixture.ts` | R33 (§11.1) |
 
 - **Ayudantes de test.** `tests/integration/db/_fixtures/planes.ts` crea planes y asignaciones con
@@ -592,7 +680,9 @@ porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen 
   2. el conteo olvida `deleted_at IS NULL`;
   3. se quita el cerrojo consultivo (el test de concurrencia debe ponerse en rojo);
   4. la asignación no cuenta usuarios;
-  5. el `WHEN` del trigger de usuario omite el cambio de rol.
+  5. el `WHEN` del trigger de usuario omite el cambio de rol;
+  6. el `WHEN` del trigger de usuario vuelve a aceptar `bloqueado` como estado que cuenta;
+  7. se quita el trigger de cambio de `api_key` (activar una inactiva al tope pasaría).
 
 ### 11.1 E2E (R33)
 
@@ -643,11 +733,13 @@ El caso nuevo del humo:
    resincronizar sin borrar excepciones, pero cambia la tabla y el repositorio de SL-23 y su
    `REVOKE`. Ninguna decisión necesita distinguirla: la regla es «al cambiar de plan se
    sincroniza».
-6. **Una tabla de rastro de plataforma** (`plan_cambio`) para registrar también los planes
-   públicos sin empresas. Es una tabla más, con su lectura y su pantalla, que la decisión no pide:
-   la decisión nombra `historial_accion`. Queda como la alternativa de P5 si el humano quiere el
-   rastro completo.
-7. **La asignación en una tabla de negocio `organizacion_plan`.** Habría que añadir RLS, política,
+6. **Registrar los cambios de un plan solo en `historial_accion` de cada empresa afectada.** Era
+   la propuesta inicial para P5. Un plan público sin empresas no dejaba rastro, y el humano pidió
+   que lo dejara. Por eso se usa `plan_rastro`.
+7. **Contar como API keys también las `inactivas`.** Desactivar una key no liberaría cupo, y la
+   empresa tendría que eliminarla —perdiendo su rastro operativo— para crear otra. La feature 88
+   trata `inactiva` como revocada: no autentica.
+8. **La asignación en una tabla de negocio `organizacion_plan`.** Habría que añadir RLS, política,
    `REVOKE`, trigger de «sin cambio de empresa» y su lugar en `MODELOS_DE_NEGOCIO`, para un dato 1
    a 1. La columna en `organizacion` hereda todo eso de SL-17 y SL-40 (§2.4).
 
@@ -665,6 +757,8 @@ y consultivos, tablas de transición).
 | `lib/auth/*` | SLT-32 (Camilo) | **No** | — |
 | `lib/services/AuthService.ts` | SLT-32 | **No** | — |
 | `lib/repositories/UserRepository.ts` | SLT-32 | **No** | La traducción va en `UsuarioService` (§6.3). El trigger sobre `usuario` no dispara en lo que toca SLT-32 (login), que no cambia rol ni estado |
+| `lib/repositories/ApiKeyRepository.ts` | — | **No** | El tope de keys lo pone el trigger sobre `api_key` (§4.3) |
+| `lib/services/ApiKeyService.ts`, `lib/interfaces/services/IApiKeyService.ts`, `lib/types/api-key.ts`, `lib/actions/api-keys.ts`, `app/(app)/configuracion/api/_components/ApiKeysModule.tsx`, `app/(app)/configuracion/api/_components/ApiKeyAccionCell.tsx` | ninguna en vuelo conocida | Sí (§6.5, §8.1) | Ni SL-43 ni SLT-32 declaran estos archivos. `archivos-en-vuelo.mjs` lo confirma al publicar el `tasks.md` |
 | `db/schema.prisma`, `lib/db/modelos-de-negocio.ts`, `lib/db/excepciones-aislamiento.ts`, `lib/modulos/reparto.ts`, `lib/types/historial-accion*.ts` | cualquier ficha con migración o action nueva | Sí | Entradas distintas; quien mergea segundo rebasa |
 | Orden de migraciones | — | — | T0 lo comprueba contra `dev` |
 
@@ -683,4 +777,7 @@ entre personas es solo con SL-43, y queda evitado si se respeta la tabla.
   validó. `plan_cupo_ordenes` exige que su argumento sea la empresa del contexto.
 - **Si `MESSAGE` no llegara entero** por el adaptador, la traducción no encontraría el JSON. T3 lo
   prueba contra la base antes de montar los servicios encima.
-- **P1–P5** pueden cambiar R11, R12, R17, R19, R20, R26 y R29. Se cierran antes de implementar.
+- **Activar un usuario `bloqueado` ahora es un alta** (decisión P4). Si hoy algún flujo
+  desbloquea cuentas automáticamente (por ejemplo, tras los fallos de login), al tope ese
+  desbloqueo fallaría. T7a busca los escritores de `estado = 'activo'` y lo anota. Si hay uno
+  automático, se para y se pregunta.
