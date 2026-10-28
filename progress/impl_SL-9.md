@@ -99,7 +99,7 @@ Archivos: `app/(app)/mis-asignaciones/_components/KpisMensajero.tsx` (modificado
   `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL.` (log fuera de git:
   `_trabajo/SL-9-T4-build.log`).
 - `../../.env` no se copió. Su `DATABASE_URL` apunta a un Postgres local, pero
-  `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` apuntan a un proyecto (`scfnwxqbsgkzwsdntdvd`) que no
+  `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` apuntan a un proyecto Supabase que no
   sale en el repo. Sin la memoria del leader no se puede confirmar que no sea de la app de origen
   (`docs/perfil-agentes.md > Todos los agentes`).
 - Correr `pnpm build` solo con la `DATABASE_URL` local: el clasificador de permisos lo denegó
