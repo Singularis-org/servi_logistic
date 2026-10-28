@@ -11,7 +11,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
 
 ## Tareas
 
-- [ ] **T1 — Línea base y medidas de la marca anterior** (R3, R4; D2). Antes de tocar nada:
+- [x] **T1 — Línea base y medidas de la marca anterior** (R3, R4; D2). Antes de tocar nada:
   - correr `pnpm run test:guardias` y
     `pnpm exec vitest related --run "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx"`, con
     los logs en `_trabajo/SL-9-antes-*.log`;
@@ -22,7 +22,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
   **Hecho:** `progress/impl_SL-9.md` tiene los archivos rojos de partida (y cuáles ya están en
   `tests/baseline-rojos.json`), las tres huellas y las seis fracciones.
 
-- [ ] **T2 [P] — Script de capturas** (R2, R5–R10; D1). Depende de T1.
+- [x] **T2 [P] — Script de capturas** (R2, R5–R10; D1). Depende de T1.
   - Crear `scripts/capturas-pwa.mjs` con `PANTALLA_POR_CAPTURA`, `planDeCapturas`, `urlBaseLocal`,
     `fallosDePantalla` y `main()`, según D1.
   - Crear `tests/unit/pwa/capturas-pwa.test.ts`, que importa el script sin abrir el navegador. Casos:
@@ -42,7 +42,7 @@ combinación de mayúsculas, comentarios incluidos. Las únicas excepciones son 
   **Hecho:** test verde, y comprobado que muerde: con una entrada de `PANTALLA_POR_CAPTURA` borrada
   en una copia, el caso R6 sale rojo. `node scripts/capturas-pwa.mjs` con la app parada da código 1.
 
-- [ ] **T3 [P] — `KpisMensajero`** (R11, R12, R14, R15, R16; D3, D4). Depende de T1.
+- [x] **T3 [P] — `KpisMensajero`** (R11, R12, R14, R15, R16; D3, D4). Depende de T1.
   - En `KpisMensajero.tsx`: `Tile.Icono: LucideIcon` con los cuatro iconos de D3, el círculo
     `bg-accent text-accent-foreground`, fuera el `<img>` y su `eslint-disable`;
     `before:from-purple-200` pasa a `before:from-brand-soft`, y el comentario de la tarjeta se
