@@ -88,8 +88,7 @@ const CASOS: CasoCron[] = [
       cobrosPendientesCreados: 0,
       cobrosPendientesTotales: 0,
     },
-    // SL-23 (R21): `saltadas`, las empresas con Wallet apagado (el doble no filtra: 0).
-    empresasExtra: { saltadas: 0 },
+    empresasExtra: {},
   },
   {
     nombre: "liberar-reprogramadas",

@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -21,8 +20,6 @@ import { ESTADO_CUENTA_TIENDA_PAGINA } from "../_components/estado-cuenta-tienda
  * La primera página del extracto se pre-obtiene aquí y baja por props (STRING, sin `Prisma.Decimal`).
  */
 export default async function EstadoCuentaTiendaPage({ params }: { params: Promise<{ tiendaId: string }> }) {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   if (!actor || !esAccesoTotal(actor.rol)) {
     notFound(); // R81

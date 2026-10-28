@@ -2,11 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import { consultarMetricaFinanciera } from "@/lib/actions/analitica-financiera";
-import { previsualizarMovimientoAction } from "@/lib/actions/efecto-movimiento";
 import { listarPremiosDelDiaAction, registrarPremioAction } from "@/lib/actions/premio-ranking-devengo";
 import { editarPremioAction, obtenerRankingAction } from "@/lib/actions/ranking";
 import { leerTableroDia } from "@/lib/actions/tablero-dia";
-import { registrarMovimientoManualAction, verResumenCajaAction } from "@/lib/actions/wallet";
+import { verResumenCajaAction } from "@/lib/actions/wallet";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -24,8 +23,10 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "
 // LA FORMA DEL RECHAZO (decisión del 2026-10-26, design §5.3): `{ status: "forbidden" }`, nunca una
 // excepción. Hay un caso por cada camino del rechazo:
 // - puerta envuelta solo en `withErrorHandler` + `rechazoDeModulo` (ranking, analítica, monitoreo);
-// - puerta dentro del `withErrorHandler` del cuerpo con traductor LOCAL (wallet, premio-ranking-devengo);
-// - puerta dentro del `withErrorHandler` del cuerpo con el `toActionError` compartido (plantillas).
+// - puerta dentro del `withErrorHandler` del cuerpo con traductor LOCAL (premio-ranking-devengo).
+// El camino del `toActionError` compartido ya no tiene ninguna action con puerta: lo usaban WhatsApp
+// y Wallet, que pasaron al núcleo el 2026-10-27 y el 2026-10-28. Las actions de Wallet se prueban
+// aquí al revés: con todo apagado, ya no responden «prohibido» por módulo.
 // Los contratos que ya tenían su propio «prohibido» lo conservan: la analítica financiera lleva
 // `code: "FORBIDDEN"` y el tablero del día, sin `status`, responde `denegado` con motivo `modulo_inactivo`.
 // La guardia (c) impide que una action con puerta vuelva a lanzar.
@@ -73,7 +74,7 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
   }, 60_000);
 
   it("R17 — con Ranking apagado, las actions de ranking devuelven forbidden y la base no cambia", async () => {
-    await encender("wallet");
+    await encender("monitoreo");
     const antes = await cuentaDeNegocio();
     const getActor = async () => maestro;
 
@@ -84,27 +85,15 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
     expect(await cuentaDeNegocio()).toEqual(antes);
   });
 
-  it("R17 — con Wallet apagado, una action de wallet se rechaza antes de leer o escribir y la base no cambia", async () => {
-    await encender("ranking");
-    const antes = await cuentaDeNegocio();
-    const entrada = {
-      tipo: "ingreso",
-      categoria: "ingreso_ajuste",
-      monto: "100.00",
-      descripcion: "ajuste de prueba",
-      claveIdempotencia: "sl23-ajuste-1",
-    };
-    expect(await enEmpresa(() => registrarMovimientoManualAction(entrada, { getActor: async () => maestro }))).toEqual({
-      status: "forbidden",
-    });
-    expect(await enEmpresa(() => verResumenCajaAction({}, { getActor: async () => maestro }))).toEqual({
-      status: "forbidden",
-    });
-    expect(await cuentaDeNegocio()).toEqual(antes);
+  it("Wallet es núcleo (2026-10-28): con todos los módulos apagados, la caja se lee", async () => {
+    await encender();
+    const r = await enEmpresa(() => verResumenCajaAction({}, { getActor: async () => maestro }));
+    expect(r).not.toEqual({ status: "forbidden" });
+    expect(r).toMatchObject({ status: "ok" });
   });
 
-  it("R33 — con Ranking apagado y Wallet encendido, premio-ranking-devengo se rechaza", async () => {
-    await encender("wallet");
+  it("R33 — con Ranking apagado, premio-ranking-devengo se rechaza (traductor local)", async () => {
+    await encender("monitoreo");
     const antes = await cuentaDeNegocio();
     expect(
       await enEmpresa(() => registrarPremioAction({ filaId: "fila-inexistente" }, { getActor: async () => maestro })),
@@ -112,16 +101,8 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
     expect(await cuentaDeNegocio()).toEqual(antes);
   });
 
-  it("R17 — con Wallet apagado, una action con el toActionError compartido devuelve forbidden", async () => {
-    // Era `listarPlantillas` (WhatsApp); WhatsApp pasó al núcleo el 2026-10-27.
-    await encender("ranking");
-    expect(await enEmpresa(() => previsualizarMovimientoAction({}, { getActor: async () => maestro }))).toEqual({
-      status: "forbidden",
-    });
-  });
-
   it("R17 — con Analítica y Monitoreo apagados, cada contrato responde su propio «prohibido»", async () => {
-    await encender("wallet");
+    await encender("ranking");
     const getActor = async () => maestro;
     expect(await enEmpresa(() => consultarMetricaFinanciera("x", {}, { getActor }))).toEqual({
       status: "forbidden",
@@ -130,8 +111,8 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
     expect(await enEmpresa(() => leerTableroDia({ getActor }))).toEqual({ estado: "denegado", motivo: "modulo_inactivo" });
   });
 
-  it("R33 — con los dos encendidos, premio-ranking-devengo funciona", async () => {
-    await encender("wallet", "ranking");
+  it("R33 — con Ranking encendido, premio-ranking-devengo funciona", async () => {
+    await encender("ranking");
     const r = await enEmpresa(() =>
       listarPremiosDelDiaAction({ fecha: fechaCalendarioCR() }, { getActor: async () => maestro }),
     );

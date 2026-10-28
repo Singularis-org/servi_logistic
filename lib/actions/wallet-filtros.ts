@@ -16,7 +16,6 @@ import {
   type ConceptosConMovimientosResult,
   type QuienesDelLibroCajaResult,
 } from "@/lib/types/wallet-filtros";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Ficha 458-A (TA.3/TA.4, design §3.5, R10–R15) — Server Actions de los FILTROS de la wallet.
 // Lecturas internas del mismo proyecto → Server Action. Orden del borde (y es parte del contrato):
@@ -36,8 +35,7 @@ function toError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -46,9 +44,6 @@ function toError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`wallet-filtros: AppErrorCode inesperado ${shape.code}`);
   }
@@ -73,7 +68,6 @@ export async function conceptosConMovimientosAction(
   deps: FiltrosWalletDeps = {},
 ): Promise<ConceptosConMovimientosResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = conceptosConMovimientosSchema.parse(input);
@@ -96,7 +90,6 @@ export async function cierresDeLaCuentaAction(
   deps: FiltrosWalletDeps = {},
 ): Promise<CierresDeLaCuentaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = cierresDeLaCuentaSchema.parse(input);
@@ -117,7 +110,6 @@ export async function quienesDelLibroCajaAction(
   deps: FiltrosWalletDeps = {},
 ): Promise<QuienesDelLibroCajaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = quienesDelLibroCajaSchema.parse(input ?? {});

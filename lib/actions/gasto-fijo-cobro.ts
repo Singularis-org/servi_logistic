@@ -18,7 +18,6 @@ import {
 } from "@/lib/types/gasto-fijo-cobro";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // FICHA 333 (F1, design §6.2) — las CUATRO Server Actions de los COBROS de gasto fijo: ver la
 // cola, APROBAR, RECHAZAR y contar los pendientes de una plantilla que se va a borrar.
@@ -56,8 +55,7 @@ function toCobroActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -66,9 +64,6 @@ function toCobroActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`gasto-fijo-cobro: AppErrorCode inesperado ${shape.code}`);
   }
@@ -109,7 +104,6 @@ export async function listarCobrosPendientesAction(
   deps: GastoFijoCobroDeps = {},
 ): Promise<ListarCobrosPendientesActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R26: antes de tocar el service
     listarCobrosPendientesSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -132,7 +126,6 @@ export async function aprobarCobroGastoFijoAction(
   deps: GastoFijoCobroDeps = {},
 ): Promise<AprobarCobroGastoFijoActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R26
     const data = decidirCobroGastoFijoSchema.parse(input); // `.strict()`: nada de montos del cliente
@@ -154,7 +147,6 @@ export async function rechazarCobroGastoFijoAction(
   deps: GastoFijoCobroDeps = {},
 ): Promise<RechazarCobroGastoFijoActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R26
     const data = decidirCobroGastoFijoSchema.parse(input);
@@ -180,7 +172,6 @@ export async function contarCobrosPendientesDePlantillaAction(
   deps: GastoFijoCobroDeps = {},
 ): Promise<ContarCobrosPendientesDePlantillaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R26
     const data = contarCobrosPendientesDePlantillaSchema.parse(input);

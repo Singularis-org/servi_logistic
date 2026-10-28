@@ -111,7 +111,7 @@ async function sembrarEmpresa(etiqueta: string, distritoNombre: string): Promise
     select: { id: true },
   });
   // SL-23 (R6, R28): una empresa nueva nace sin módulos, y este archivo recorre las entradas de todos
-  // (crons de wallet y WhatsApp incluidos). Se encienden los 8 como dueño, como haría el superadmin.
+  // (crons de Ranking incluidos). Se encienden todos los apagables como dueño, como haría el superadmin.
   await base.organizacionModulo.createMany({
     data: ORDEN_MODULOS.map((modulo) => ({ organizacionId: org.id, modulo })),
   });
@@ -389,8 +389,7 @@ describeSiHayBase("SL-17 — entradas sin sesion con dos empresas con datos (Pos
 
     expect(res.status).toBe(200);
     const cuerpo = await res.json();
-    // SL-23 (R21): `saltadas` cuenta las empresas con Wallet apagado; las dos lo tienen encendido.
-    expect(cuerpo.empresas).toEqual({ procesadas: 1, fallidas: [A.id], saltadas: 0 });
+    expect(cuerpo.empresas).toEqual({ procesadas: 1, fallidas: [A.id] });
     expect(cuerpo.egresosGenerados).toBe(1);
     const delDia = await base.walletMovimiento.findMany({
       where: { categoria: "egreso_gasto_fijo", origenId: { endsWith: `:${fecha}` }, organizacionId: { in: [A.id, B.id] } },

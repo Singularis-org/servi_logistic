@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { EMPRESA } from "@/lib/config/marca";
 import { notFound } from "next/navigation";
 import { RolValue } from "@prisma/client";
@@ -29,8 +28,6 @@ import { WalletModule } from "./_components/WalletModule";
  * siendo lo que impide que un rol sin acceso total vea ninguna de las dos (R65).
  */
 export default async function WalletPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   // Feature 94 (paridad adm↔maestro): la wallet la ven los roles de ACCESO TOTAL
   // (`maestro`/`admin`); cualquier otro rol (o sin sesión) → notFound (R19).

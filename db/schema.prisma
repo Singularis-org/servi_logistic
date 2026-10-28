@@ -744,14 +744,13 @@ model DistritoZonaEspecial {
   @@map("distrito_zona_especial")
 }
 
-/// SL-23 (design §2) — los 4 módulos apagables. El catálogo es cerrado y vive en el código
+/// SL-23 (design §2) — los 3 módulos apagables. El catálogo es cerrado y vive en el código
 /// (`lib/modulos/catalogo.ts`, tipado contra este enum); la base solo guarda la activación.
-/// `recoleccion`, `bodegas_satelite`, `api_integraciones` y `whatsapp` pasaron al núcleo el 2026-10-27
-/// (20261027120000_modulos_nucleo).
+/// `recoleccion`, `bodegas_satelite`, `api_integraciones` y `whatsapp` pasaron al núcleo el 2026-10-27,
+/// (20261027120000_modulos_nucleo), y `wallet` el 2026-10-28 (20261028120000_modulo_wallet_nucleo).
 enum ModuloApagable {
   analitica
   monitoreo
-  wallet
   ranking
 
   @@map("modulo_apagable")
