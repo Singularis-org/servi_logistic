@@ -103,7 +103,7 @@ beforeEach(() => {
 
 describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
   it("R17 — apagado: lanza ModuloInactivoError, un 403 con details.codigo = modulo_inactivo", async () => {
-    encender("wallet");
+    encender("monitoreo");
     const e = await errorDe(exigirModuloActivo("ranking"));
     expect(e).toBeInstanceOf(ModuloInactivoError);
     expect(e).toBeInstanceOf(ForbiddenError);
@@ -123,7 +123,7 @@ describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
     encender("ranking");
     await expect(exigirModuloActivo("ranking")).resolves.toBeUndefined();
     await expect(moduloActivo("ranking")).resolves.toBe(true);
-    await expect(moduloActivo("wallet")).resolves.toBe(false);
+    await expect(moduloActivo("monitoreo")).resolves.toBe(false);
   });
 
   it("R17 — sin ninguna fila (empresa nueva): todo módulo está apagado", async () => {
@@ -133,20 +133,20 @@ describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
 
   describe("R33 — dos claves (pieza compartida)", () => {
     it("las dos encendidas: pasa", async () => {
-      encender("wallet", "ranking");
-      await expect(exigirModuloActivo("wallet", "ranking")).resolves.toBeUndefined();
+      encender("monitoreo", "ranking");
+      await expect(exigirModuloActivo("monitoreo", "ranking")).resolves.toBeUndefined();
     });
 
     it("falta la segunda: apagada, y details.modulo nombra la apagada", async () => {
-      encender("wallet");
-      const e = await errorDe(exigirModuloActivo("wallet", "ranking"));
+      encender("monitoreo");
+      const e = await errorDe(exigirModuloActivo("monitoreo", "ranking"));
       expect((e as AppError).details).toEqual({ codigo: "modulo_inactivo", modulo: "ranking" });
     });
 
     it("falta la primera: apagada, y details.modulo nombra la apagada", async () => {
       encender("ranking");
-      const e = await errorDe(exigirModuloActivo("wallet", "ranking"));
-      expect((e as AppError).details).toEqual({ codigo: "modulo_inactivo", modulo: "wallet" });
+      const e = await errorDe(exigirModuloActivo("monitoreo", "ranking"));
+      expect((e as AppError).details).toEqual({ codigo: "modulo_inactivo", modulo: "monitoreo" });
     });
 
     it("faltan las dos: nombra la primera en el orden pedido", async () => {
@@ -158,7 +158,7 @@ describe("SL-23 · exigirModuloActivo (R17, R33)", () => {
 
 describe("SL-23 · exigirModuloEnRuta (R16, R33)", () => {
   it("R16 — apagado: notFound(), la misma pantalla que un rol sin acceso", async () => {
-    encender("wallet");
+    encender("monitoreo");
     await expect(exigirModuloEnRuta("ranking")).rejects.toBeInstanceOf(NotFoundSenal);
   });
 
@@ -168,31 +168,31 @@ describe("SL-23 · exigirModuloEnRuta (R16, R33)", () => {
   });
 
   it("R33 — dos claves: notFound() si falta cualquiera; pasa con las dos", async () => {
-    encender("wallet");
-    await expect(exigirModuloEnRuta("wallet", "ranking")).rejects.toBeInstanceOf(NotFoundSenal);
+    encender("monitoreo");
+    await expect(exigirModuloEnRuta("monitoreo", "ranking")).rejects.toBeInstanceOf(NotFoundSenal);
     encender("ranking");
-    await expect(exigirModuloEnRuta("wallet", "ranking")).rejects.toBeInstanceOf(NotFoundSenal);
-    encender("wallet", "ranking");
-    await expect(exigirModuloEnRuta("wallet", "ranking")).resolves.toBeUndefined();
+    await expect(exigirModuloEnRuta("monitoreo", "ranking")).rejects.toBeInstanceOf(NotFoundSenal);
+    encender("monitoreo", "ranking");
+    await expect(exigirModuloEnRuta("monitoreo", "ranking")).resolves.toBeUndefined();
   });
 });
 
 describe("SL-23 · modulosDelMenu", () => {
   it("superadmin: conjunto vacío sin consultar la base", async () => {
-    encender("wallet", "ranking");
+    encender("monitoreo", "ranking");
     expect([...(await modulosDelMenu(superadmin))]).toEqual([]);
     expect(estado.consultas).toBe(0);
   });
 
   it("sin sesión: conjunto vacío sin consultar la base", async () => {
-    encender("wallet");
+    encender("monitoreo");
     expect([...(await modulosDelMenu(null))]).toEqual([]);
     expect(estado.consultas).toBe(0);
   });
 
   it("un rol de empresa: los módulos encendidos de su empresa", async () => {
-    encender("wallet", "ranking");
-    expect([...(await modulosDelMenu(maestro))].sort()).toEqual(["ranking", "wallet"]);
+    encender("monitoreo", "ranking");
+    expect([...(await modulosDelMenu(maestro))].sort()).toEqual(["monitoreo", "ranking"]);
     expect(estado.consultas).toBe(1);
   });
 });
@@ -211,9 +211,9 @@ describe("SL-23 · sin memo entre peticiones (R9)", () => {
   });
 
   it("dentro de una misma petición hay una sola lectura", async () => {
-    encender("wallet");
-    await exigirModuloActivo("wallet");
-    await exigirModuloEnRuta("wallet");
+    encender("monitoreo");
+    await exigirModuloActivo("monitoreo");
+    await exigirModuloEnRuta("monitoreo");
     await moduloActivo("ranking");
     expect(estado.consultas).toBe(1);
   });
@@ -223,27 +223,27 @@ describe("SL-23 · sin empresa la puerta no aplica (R34)", () => {
   it("la lectura lanza EmpresaNoResuelta → ninguna puerta lanza ni llama a notFound", async () => {
     estado.fallo = "sin-empresa";
     await expect(modulosActivos()).resolves.toBeNull();
-    await expect(exigirModuloActivo("wallet")).resolves.toBeUndefined();
-    await expect(exigirModuloActivo("wallet", "ranking")).resolves.toBeUndefined();
+    await expect(exigirModuloActivo("monitoreo")).resolves.toBeUndefined();
+    await expect(exigirModuloActivo("monitoreo", "ranking")).resolves.toBeUndefined();
     await expect(exigirModuloEnRuta("ranking")).resolves.toBeUndefined();
-    await expect(moduloActivo("wallet")).resolves.toBe(false);
+    await expect(moduloActivo("monitoreo")).resolves.toBe(false);
     // Un rol de empresa sin empresa resuelta (sesión a medias) tampoco ve módulos en el menú.
     expect([...(await modulosDelMenu(maestro))]).toEqual([]);
   });
 
   it("otro error de la lectura se propaga: no abre la puerta", async () => {
     estado.fallo = "otro";
-    await expect(exigirModuloActivo("wallet")).rejects.toThrow("conexión perdida");
+    await expect(exigirModuloActivo("monitoreo")).rejects.toThrow("conexión perdida");
     nuevaPeticion();
-    await expect(exigirModuloEnRuta("wallet")).rejects.toThrow("conexión perdida");
+    await expect(exigirModuloEnRuta("monitoreo")).rejects.toThrow("conexión perdida");
     nuevaPeticion();
-    await expect(moduloActivo("wallet")).rejects.toThrow("conexión perdida");
+    await expect(moduloActivo("monitoreo")).rejects.toThrow("conexión perdida");
   });
 
   it("el null se memoriza en la petición: una sola lectura", async () => {
     estado.fallo = "sin-empresa";
-    await exigirModuloActivo("wallet");
-    await exigirModuloEnRuta("wallet");
+    await exigirModuloActivo("monitoreo");
+    await exigirModuloEnRuta("monitoreo");
     await moduloActivo("ranking");
     await modulosActivos();
     expect(estado.consultas).toBe(1);
@@ -253,17 +253,17 @@ describe("SL-23 · sin empresa la puerta no aplica (R34)", () => {
 describe("SL-23 · la memoria va por empresa (crons y jobs recorren varias en una petición)", () => {
   it("dos empresas en la misma petición: cada una con su lista, una lectura por empresa", async () => {
     const { conEmpresa } = await import("@/lib/db/contexto-empresa");
-    estado.porEmpresa = { "org-a": ["wallet"], "org-b": [] };
-    await expect(conEmpresa("org-a", () => exigirModuloActivo("wallet"))).resolves.toBeUndefined();
-    await expect(conEmpresa("org-b", () => exigirModuloActivo("wallet"))).rejects.toBeInstanceOf(ModuloInactivoError);
-    await expect(conEmpresa("org-a", () => moduloActivo("wallet"))).resolves.toBe(true);
+    estado.porEmpresa = { "org-a": ["monitoreo"], "org-b": [] };
+    await expect(conEmpresa("org-a", () => exigirModuloActivo("monitoreo"))).resolves.toBeUndefined();
+    await expect(conEmpresa("org-b", () => exigirModuloActivo("monitoreo"))).rejects.toBeInstanceOf(ModuloInactivoError);
+    await expect(conEmpresa("org-a", () => moduloActivo("monitoreo"))).resolves.toBe(true);
     expect(estado.consultas).toBe(2);
   });
 
   it("en plataforma no hay empresa: null sin consultar, y la puerta no aplica", async () => {
     const { comoPlataforma } = await import("@/lib/db/contexto-empresa");
     await expect(comoPlataforma("SL-23", "test", () => modulosActivos())).resolves.toBeNull();
-    await expect(comoPlataforma("SL-23", "test", () => exigirModuloActivo("wallet"))).resolves.toBeUndefined();
+    await expect(comoPlataforma("SL-23", "test", () => exigirModuloActivo("monitoreo"))).resolves.toBeUndefined();
     expect(estado.consultas).toBe(0);
   });
 });

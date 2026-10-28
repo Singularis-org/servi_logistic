@@ -8,9 +8,9 @@ import { paraCadaEmpresa } from "@/lib/db/para-cada-empresa";
 // Sin `modulo`, como antes: todas, `saltadas` vacío y un solo listado.
 
 const MODULOS: Record<string, string[]> = {
-  "org-1": ["wallet", "ranking"],
+  "org-1": ["monitoreo", "ranking"],
   "org-2": ["ranking"],
-  "org-3": ["wallet"],
+  "org-3": ["monitoreo"],
 };
 
 function cliente() {
@@ -40,12 +40,12 @@ describe("SL-23 · paraCadaEmpresa con módulo (R21)", () => {
         const ctx = contextoActual();
         vistas.push(`${id}:${ctx?.tipo === "empresa" ? ctx.organizacionId : "?"}`);
       },
-      { cliente: c, modulo: "wallet" },
+      { cliente: c, modulo: "monitoreo" },
     );
     expect(vistas).toEqual(["org-1:org-1", "org-3:org-3"]);
     expect(r).toEqual({ ok: ["org-1", "org-3"], fallidas: [], saltadas: ["org-2"] });
-    expect(c.listados).toEqual([null, { modulos: { some: { modulo: "wallet" } } }]);
-    expect(info).toHaveBeenCalledWith("[paraCadaEmpresa] módulo wallet apagado, se saltan: org-2");
+    expect(c.listados).toEqual([null, { modulos: { some: { modulo: "monitoreo" } } }]);
+    expect(info).toHaveBeenCalledWith("[paraCadaEmpresa] módulo monitoreo apagado, se saltan: org-2");
   });
 
   it("sin módulo, como antes: todas, saltadas vacío y un solo listado sin filtro", async () => {

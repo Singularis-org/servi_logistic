@@ -53,15 +53,15 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // analitica, monitoreo
   "/analitica": "analitica",
   "/monitoreo": "monitoreo",
-  // wallet
-  "/wallet": "wallet",
-  "/wallet/tiendas": "wallet",
-  "/wallet/tiendas/[tiendaId]": "wallet",
-  "/wallet/mensajeros": "wallet",
-  "/wallet/mensajeros/[mensajeroId]": "wallet",
-  "/wallet/satelites": "wallet",
-  "/wallet/satelites/[zonaId]": "wallet",
-  "/mi-wallet": "wallet",
+  // Wallet (núcleo desde el 2026-10-28).
+  "/wallet": "nucleo",
+  "/wallet/tiendas": "nucleo",
+  "/wallet/tiendas/[tiendaId]": "nucleo",
+  "/wallet/mensajeros": "nucleo",
+  "/wallet/mensajeros/[mensajeroId]": "nucleo",
+  "/wallet/satelites": "nucleo",
+  "/wallet/satelites/[zonaId]": "nucleo",
+  "/mi-wallet": "nucleo",
   // ranking
   "/ranking": "ranking",
   "/ranking/historico": "ranking",
@@ -96,27 +96,27 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "finanzas-diario": "analitica",
   // monitoreo
   "tablero-dia": "monitoreo",
-  // wallet (18)
-  "abono-tienda": "wallet",
-  "aporte-capital": "wallet",
-  "como-quedo": "wallet",
-  "deuda-plataforma": "wallet",
-  "efecto-movimiento": "wallet",
-  "estado-cuenta": "wallet",
-  "gasto-fijo-cobro": "wallet",
-  "gasto-fijo-plantilla": "wallet",
-  "libro-caja-autoria": "wallet",
-  "pago-por-cuenta-tienda": "wallet",
-  "rechazo-tienda-cobro": "wallet",
-  wallet: "wallet",
-  "wallet-anulacion": "wallet",
-  "wallet-comprobante": "wallet",
-  "wallet-egresos": "wallet",
-  "wallet-filtros": "wallet",
-  "wallet-mensajero": "wallet",
-  "wallet-tienda": "wallet",
-  // wallet + ranking (§3.7, P5)
-  "premio-ranking-devengo": ["wallet", "ranking"],
+  // Wallet (núcleo desde el 2026-10-28; 18)
+  "abono-tienda": "nucleo",
+  "aporte-capital": "nucleo",
+  "como-quedo": "nucleo",
+  "deuda-plataforma": "nucleo",
+  "efecto-movimiento": "nucleo",
+  "estado-cuenta": "nucleo",
+  "gasto-fijo-cobro": "nucleo",
+  "gasto-fijo-plantilla": "nucleo",
+  "libro-caja-autoria": "nucleo",
+  "pago-por-cuenta-tienda": "nucleo",
+  "rechazo-tienda-cobro": "nucleo",
+  wallet: "nucleo",
+  "wallet-anulacion": "nucleo",
+  "wallet-comprobante": "nucleo",
+  "wallet-egresos": "nucleo",
+  "wallet-filtros": "nucleo",
+  "wallet-mensajero": "nucleo",
+  "wallet-tienda": "nucleo",
+  // ranking (antes wallet + ranking, §3.7; Wallet es núcleo desde el 2026-10-28)
+  "premio-ranking-devengo": "ranking",
   // ranking
   ranking: "ranking",
   "ranking-historico": "ranking",
@@ -238,7 +238,8 @@ export const MODULO_POR_CRON: Readonly<Record<string, Destino>> = {
   "purga-descargas": "nucleo",
   "purga-pdf-cargas": "nucleo",
   "purga-postulaciones-recurso": "nucleo",
-  "generar-gastos-fijos": "wallet",
+  // Wallet (núcleo desde el 2026-10-28).
+  "generar-gastos-fijos": "nucleo",
   "snapshot-ranking": "ranking",
   // WhatsApp (núcleo desde el 2026-10-27).
   "sync-plantillas-whatsapp": "nucleo",
@@ -298,13 +299,6 @@ export const CONSUMOS_ENTRE_MODULOS: readonly ConsumoEntreModulos[] = [
   {
     pieza: "app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx",
     anfitrionas: ["/wallet/mensajeros"],
-    modulo: ["wallet", "ranking"],
-  },
-  {
-    // Hoy sin montar (la sección está comentada en `analitica/page.tsx`); si vuelve, no se pinta con
-    // Wallet apagado (§3.9).
-    pieza: "app/(app)/analitica/_components/finanzas/cargar-kpis.ts",
-    anfitrionas: ["/analitica"],
-    modulo: "wallet",
+    modulo: "ranking",
   },
 ];

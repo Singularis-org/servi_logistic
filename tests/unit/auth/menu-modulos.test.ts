@@ -78,7 +78,7 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     expect(menuDeLaEmpresa(actor("admin"), NINGUNO).map((i) => i.href)).toContain("/historico");
   });
 
-  it("los ítems del núcleo siguen visibles con los 4 módulos apagados", () => {
+  it("los ítems del núcleo siguen visibles con los 3 módulos apagados", () => {
     const etiquetas = (rol: RolValue) => menuDeLaEmpresa(actor(rol), NINGUNO).map((i) => i.label);
     expect(etiquetas("mensajero")).toContain("Cierre del día");
     expect(etiquetas("maestro")).toContain("Cierres del día");
@@ -91,17 +91,12 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     );
   });
 
-  it("con los 4 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
+  it("con los 3 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
     const deModulo = [
       "/analitica",
       "/monitoreo",
       "/ranking",
       "/ranking/historico",
-      "/wallet",
-      "/wallet/tiendas",
-      "/wallet/mensajeros",
-      "/wallet/satelites",
-      "/mi-wallet",
     ];
     const roles: RolValue[] = ["maestro", "admin", "adminTienda", "adminSatelite", "mensajero"];
     for (const rol of roles) {
@@ -110,7 +105,7 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     }
   });
 
-  it("Recolección, Bodegas satélite, API y WhatsApp son núcleo (2026-10-27): siguen en el menú con los 4 apagados", () => {
+  it("Recolección, Bodegas satélite, API, WhatsApp (2026-10-27) y Wallet (2026-10-28) son núcleo: siguen en el menú con los 3 apagados", () => {
     expect(rutas(menuDeLaEmpresa(actor("mensajero"), NINGUNO))).toContain("/recoleccion");
     expect(rutas(menuDeLaEmpresa(actor("maestro"), NINGUNO))).toEqual(
       expect.arrayContaining([
@@ -118,8 +113,10 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
         "/configuracion/plantillas",
         "/configuracion/envios-whatsapp",
         "/historico/conversaciones",
+        "/wallet",
       ]),
     );
+    expect(rutas(menuDeLaEmpresa(actor("adminTienda"), NINGUNO))).toContain("/mi-wallet");
     expect(rutas(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toEqual(
       expect.arrayContaining(["/recepcion-satelite/por-recibir", "/recepcion-satelite/en-bodega", "/mi-bodega"]),
     );
@@ -132,9 +129,12 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
         "/configuracion/plantillas",
         "/configuracion/envios-whatsapp",
         "/historico/conversaciones",
+        "/wallet",
+        "/mi-wallet",
       ].includes(i.href),
     );
-    expect(marcados).toHaveLength(7);
+    // 10: «Caja principal» repite el href `/wallet` de su padre.
+    expect(marcados).toHaveLength(10);
     for (const item of marcados) expect(item.modulo, item.href).toBeUndefined();
   });
 
@@ -184,23 +184,23 @@ describe("SL-23 · primerDestino sobre el menú filtrado (R15, R32)", () => {
 
   it("R32: con el primer destino en un módulo apagado, aterriza en el primero que queda", () => {
     // Bodegas satélite pasó al núcleo (2026-10-27) y ningún rol real aterriza hoy en un módulo:
-    // el caso se mide sobre un menú armado, con Wallet como el módulo apagado.
+    // el caso se mide sobre un menú armado, con Ranking como el módulo apagado.
     const menu: MenuItem[] = [
-      { label: "W", href: "/w", iconKey: "wallet", roles: ["adminSatelite"], modulo: "wallet" },
+      { label: "W", href: "/w", iconKey: "trophy", roles: ["adminSatelite"], modulo: "ranking" },
       { label: "N", href: "/n", iconKey: "warehouse", roles: ["adminSatelite"] },
     ];
     expect(primerDestino(filtrarPorModulos(menu, TODOS))).toBe("/w");
-    expect(primerDestino(filtrarPorModulos(menu, todosMenos("wallet")))).toBe("/n");
+    expect(primerDestino(filtrarPorModulos(menu, todosMenos("ranking")))).toBe("/n");
   });
 
-  it("R32: con los 4 apagados el adminSatelite sigue aterrizando en Recepción satélite (núcleo)", () => {
+  it("R32: con los 3 apagados el adminSatelite sigue aterrizando en Recepción satélite (núcleo)", () => {
     expect(primerDestino(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toBe("/recepcion-satelite/por-recibir");
   });
 
   it("R32: si no queda ningún destino, `primerDestino` da null (y `/dashboard` pinta su Inicio)", () => {
     // Un menú hecho solo de ítems de módulo: con todo apagado no queda nada a donde ir.
     const soloModulos: MenuItem[] = [
-      { label: "B", href: "/b", iconKey: "warehouse", roles: ["adminSatelite"], modulo: "wallet" },
+      { label: "B", href: "/b", iconKey: "warehouse", roles: ["adminSatelite"], modulo: "monitoreo" },
       {
         label: "C",
         href: "/c",

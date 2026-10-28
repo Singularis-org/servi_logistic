@@ -23,7 +23,6 @@ import {
 } from "@/lib/types/wallet-anulacion";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // 💰 FICHA 337 (segunda mitad) — las TRES Server Actions de los COBROS POR RECHAZO DESDE
 // NOVEDADES: ver la cola, APROBAR y RECHAZAR.
@@ -58,8 +57,7 @@ function toRechazoCobroActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -68,9 +66,6 @@ function toRechazoCobroActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`rechazo-tienda-cobro: AppErrorCode inesperado ${shape.code}`);
   }
@@ -118,7 +113,6 @@ export async function listarCobrosRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<ListarCobrosRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     listarCobrosRechazoTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -142,7 +136,6 @@ export async function aprobarCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<AprobarCobroRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = decidirCobroRechazoTiendaSchema.parse(input); // `.strict()`: nada de importes
@@ -164,7 +157,6 @@ export async function rechazarCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<RechazarCobroRechazoTiendaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = decidirCobroRechazoTiendaSchema.parse(input);
@@ -189,7 +181,6 @@ export async function anularCobroRechazoTiendaAction(
   deps: RechazoTiendaCobroDeps = {},
 ): Promise<AnularCobroRechazoTiendaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularCobroRechazoTiendaSchema.parse(input); // ZodError -> VALIDATION_ERROR

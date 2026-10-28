@@ -1,9 +1,72 @@
-# SL-23 ajuste — Recolección, Bodegas satélite, API e integraciones y WhatsApp al núcleo (sin SDD)
+# SL-23 ajuste — Recolección, Bodegas satélite, API e integraciones, WhatsApp y Wallet al núcleo (sin SDD)
 
-Decisiones del humano del 2026-10-27, en tres pasos (Recolección + Satélite; luego API; luego
-WhatsApp). Rama `feature/SL-23-nucleo-recoleccion-satelite` (commit d289252, PR #27). La ampliación
-de WhatsApp va sin commit: lo hace el leader.
-Quedan 4 apagables: analitica, monitoreo, wallet, ranking.
+Decisiones del humano del 2026-10-27 (Recolección + Satélite; luego API; luego WhatsApp) y del
+2026-10-28 (Wallet). Rama `feature/SL-23-nucleo-recoleccion-satelite` (d289252 y 7085171, PR #27).
+La ampliación de Wallet va sin commit: lo hace el leader.
+Quedan 3 apagables: analitica, monitoreo, ranking.
+
+## Ampliación Wallet (2026-10-28)
+- **Migración `20261027120000_modulos_nucleo`:** la ida borra también las filas `wallet` y deja el enum
+  en 3 claves. El down recrea las 8 y enciende las 5 del núcleo (recoleccion, bodegas_satelite,
+  wallet, whatsapp, api_integraciones) para todas las empresas. `schema.prisma` queda con el enum de 3.
+- **Catálogo:** «Wallet» entra en NUCLEO (13 nombres) con la fecha 2026-10-28.
+- **Reparto:** las 8 rutas de wallet y mi-wallet, las 18 actions y el cron `generar-gastos-fijos` pasan a
+  núcleo. `premio-ranking-devengo` deja de ser pieza compartida y queda en `"ranking"`.
+  `PremiosRankingPanel` (anfitriona `/wallet/mensajeros`, ahora núcleo) se declara con `"ranking"`.
+  `cargar-kpis.ts` sale de `CONSUMOS_ENTRE_MODULOS` (Wallet ya no es módulo).
+- **Puertas fuera:** comprobé antes que cada diff de SL-23 era solo puerta, traductor FORBIDDEN,
+  `rechazoDeModulo` o `modulo` del cron.
+  - Devueltos a e50ae78 (26 archivos): 7 páginas de wallet, `generar-gastos-fijos/route.ts` y 18 actions de wallet.
+  - Editados a mano: `premio-ranking-devengo.ts` (exige solo `ranking`) y `wallet/mensajeros/page.tsx`
+    (sin puerta de ruta; conserva `moduloActivo("ranking")` para la pestaña de premios).
+- **Menú:** fuera los 2 `modulo: "wallet"`; quedan analitica, monitoreo y ranking.
+- **Guardia `modulos-reparto`:**
+  - Conteos: 4 páginas y 17 actions de módulo.
+  - R33: hoy ninguna pieza es compartida (`{}`).
+  - No-vacío de (e): mide el cruce real `wallet/mensajeros/…/PremiosRankingPanel.tsx →
+    lib/actions/premio-ranking-devengo` (núcleo → Ranking) y que declarado queda limpio.
+  - Árbol inventado y casos directos: pasan a Analítica (`analitica-operativa`) en vez de wallet; un
+    caso nuevo comprueba que llamar a `wallet` desde Analítica ya no es cruce.
+  - Las fuentes sintéticas de las puertas usan `monitoreo`.
+- **Tests:**
+  - `wallet` como módulo genérico pasa a `monitoreo`, `analitica` o `ranking` en catalogo,
+    exigir-modulo, para-cada-empresa-modulo (unit e integración), modulos-empresa-service
+    (wallet y whatsapp, rechazados como clave), ModulosEmpresa, plataforma-empresa-detalle-page
+    (3 interruptores, NUCLEO de 13), organizacion-modulo, menu-modulos (/wallet y /mi-wallet ahora
+    núcleo), CierresAdminPage y nucleo-sin-modulos.
+  - **modulo-apagado-action:** el caso «Wallet apagado → forbidden» pasa a «Wallet es núcleo: con todo
+    apagado, la caja se lee (ok)». Se quita el caso del `toActionError` compartido porque ya no queda
+    ninguna action con puerta en ese camino (lo usaban WhatsApp y Wallet); queda dicho en la cabecera.
+  - **Migración de ida y vuelta:** 3 claves después, y `wallet` rechazada con 22P02.
+- **Docs:** `docs/architecture.md` (3 apagables) y los comentarios de ModulosEmpresa.tsx,
+  IModulosEmpresaService.ts, e2e/dos-empresas-humo.spec.ts y CierresAdminPage.test.tsx.
+- **Verificación Wallet:**
+  - **Typecheck** (8 GB): **exit 0**, también después de los últimos arreglos.
+  - **eslint** en los 48 archivos tocados: **0 problemas**.
+  - **vitest con la base real:** guardias, `tests/unit`, `tests/components`, las 8 páginas de wallet y 38
+    archivos de integración de módulos, migraciones y wallet. Resultado: `Tests 44 failed | 30948
+    passed`, en 24 archivos.
+  - **Nuestros (5 tests, en 3 archivos), arreglados:**
+    - `crons-sin-empresas` y `dos-empresas-entradas` esperaban `saltadas` en el cron
+      `generar-gastos-fijos`, que ya no filtra por módulo; vuelven a la forma de antes de SL-23.
+    - En `menu-modulos`, «Caja principal» repite el href `/wallet` (10 ítems, no 9).
+    - Al rerun salen 8/8 archivos y 158/158 tests verdes, junto con la guardia, la ida y vuelta,
+      modulo-apagado-action y organizacion-modulo.
+  - **Ajenos al cambio:** se probaron los mismos 18 archivos rojos de wallet/integración en HEAD 7085171,
+    con los cambios guardados en un stash temporal ya restaurado. Fallan igual: 17 archivos, 31 tests.
+    Las causas son de la base local:
+    - «faltan la zona central, el tipo `cedula` o una orden» (×8), «tabla `orden` esta vacia» y «base
+      sin sembrar»: la base local de desarrollo no tiene la siembra que piden esas suites.
+    - «la base ya tiene un superadmin»: superadmin sembrado (modulo-apagado-datos-intactos,
+      modulos-empresa-historial).
+    - Catálogos de `wallet-458/461-migration` y 23503 frente a 23001: base local con datos de demo-qa.
+  - **Flakes bajo carga:** `WalletCajaBarra467` es el único que pasa en HEAD y falló en el lote; suelto, con
+    los cambios, pasa. `DescargarDataset`: ya conocido.
+  - **Ya conocidos:** `whatsapp-webhook-config` (el `.env` local fija v25.0) y `dependencias-declaradas-presentes`
+    (en el baseline).
+
+---
+Historia de los pasos anteriores (2026-10-27):
 
 ## Migración
 - `db/migrations/20261027120000_modulos_nucleo/{migration.sql,down.sql}`, una sola migración, ampliada en

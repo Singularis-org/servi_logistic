@@ -66,7 +66,6 @@ import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_share
 import { buildBusquedaPorGuia } from "@/lib/actions/_shared/busqueda-por-guia";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 42 (T10) — Server Actions de la wallet (mutaciones/lecturas internas del mismo
 // proyecto -> Server Action, no Route API, patron cierres-admin). Resuelve el actor por
@@ -112,8 +111,7 @@ function toWalletActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -122,9 +120,6 @@ function toWalletActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`wallet: AppErrorCode inesperado ${shape.code}`);
   }
@@ -278,7 +273,6 @@ export async function listarMovimientosAction(
   deps: WalletDeps = {},
 ): Promise<ListarMovimientosActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R19: antes de tocar el service
     // Ficha 463 (R24/R33/R40): el borde DEL LIBRO — el de las cifras + termino y orden.
@@ -303,7 +297,6 @@ export async function listarMovimientosCompletoAction(
   deps: WalletDeps = {},
 ): Promise<ListarMovimientosCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     // Ficha 463 (R42): el borde de la descarga del libro, con termino y orden.
@@ -336,7 +329,6 @@ export async function libroCajaKardexAction(
   deps: CajaKardexDeps = {},
 ): Promise<LibroCajaKardexActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     const data = listarLibroCajaCompletoSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
@@ -361,7 +353,6 @@ export async function libroCajaKardexConDetalleAction(
   deps: CajaKardexDeps = {},
 ): Promise<LibroCajaKardexConDetalleActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarLibroCajaCompletoSchema.parse(input ?? {});
@@ -392,7 +383,6 @@ export async function listarMovimientosDeFilaAction(
   deps: WalletDeps = {},
 ): Promise<ListarMovimientosDeFilaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     const data = listarMovimientosDeFilaSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -423,7 +413,6 @@ export async function verResumenCajaAction(
   deps: WalletDeps = {},
 ): Promise<VerResumenCajaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarMovimientosSchema.parse(input); // los filtros de la WALLET; `.strict()`: termino u orden => validation_error (463/R14)
@@ -468,7 +457,6 @@ export async function verDetalleDeMovimientoAction(
   deps: DetalleMovimientoDeps = {},
 ): Promise<VerDetalleDeMovimientoActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     const data = verDetalleDeMovimientoSchema.parse(input); // ZodError -> VALIDATION_ERROR
@@ -491,7 +479,6 @@ export async function verDetalleDeMovimientoCompletoAction(
   deps: DetalleMovimientoDeps = {},
 ): Promise<VerDetalleDeMovimientoCompletoActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = verDetalleDeMovimientoCompletoSchema.parse(input); // R29: ZodError -> validation
@@ -519,7 +506,6 @@ export async function registrarMovimientoManualAction(
   deps: WalletDeps = {},
 ): Promise<RegistrarMovimientoManualConComprobanteActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const { crudo, comprobante } = separarComprobante(input);
@@ -534,7 +520,7 @@ export async function registrarMovimientoManualAction(
   // ZodError/UNAUTHORIZED.
   if (isAppErrorShape(r)) {
     const t = toWalletActionError(r);
-    if (t.status === "unauthenticated" || t.status === "forbidden") return t;
+    if (t.status === "unauthenticated") return t;
     return { status: "validation_error", fieldErrors: t.fieldErrors };
   }
   return r;
@@ -551,7 +537,6 @@ export async function anularAjusteCajaAction(
   deps: AjusteCajaDeps = {},
 ): Promise<AnularAjusteCajaResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularAjusteCajaSchema.parse(input); // R70: ZodError -> VALIDATION_ERROR

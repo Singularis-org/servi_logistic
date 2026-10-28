@@ -29,7 +29,6 @@ import {
 } from "@/lib/types/wallet-mensajero";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 44 (T13) — Server Actions del LIBRO del pago por mensajero (lecturas internas del
 // mismo proyecto -> Server Action, no Route API, patron wallet-tienda.ts). Resuelve el actor por
@@ -62,8 +61,7 @@ function toWalletMensajeroActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -72,9 +70,6 @@ function toWalletMensajeroActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`wallet-mensajero: AppErrorCode inesperado ${shape.code}`);
   }
@@ -107,7 +102,6 @@ export async function listarCuentasPorPagarAction(
   deps: WalletMensajeroDeps = {},
 ): Promise<ListarCuentasPorPagarActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const service = deps.service ?? buildService();
@@ -129,7 +123,6 @@ export async function listarCuentasPorPagarPaginadoAction(
   deps: WalletMensajeroDeps = {},
 ): Promise<ListarCuentasPorPagarPaginadoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
     const data = listarCuentasPorPagarPaginadoSchema.parse(input ?? {});
@@ -153,7 +146,6 @@ export async function listarCuentasPorPagarCompletoAction(
   deps: WalletMensajeroDeps = {},
 ): Promise<ListarCuentasPorPagarCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     const data = listarCuentasPorPagarCompletoSchema.parse(input ?? {}); // R18
@@ -178,7 +170,6 @@ export async function listarPagosDeMensajeroAction(
   deps: WalletMensajeroDeps = {},
 ): Promise<ListarPagosDeMensajeroActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarPagosDeMensajeroSchema.parse(input); // mensajeroId REQUERIDO -> ZodError si falta
@@ -202,7 +193,6 @@ export async function listarPagosDeMensajeroCompletoAction(
   deps: WalletMensajeroDeps = {},
 ): Promise<ListarPagosDeMensajeroCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     const data = listarPagosDeMensajeroCompletoSchema.parse(input); // R18: mensajeroId REQUERIDO

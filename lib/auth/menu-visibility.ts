@@ -514,7 +514,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // contraparte (43/44) y heredan la visibilidad del padre.
     label: "Wallet",
     href: "/wallet",
-    modulo: "wallet",
     iconKey: "wallet",
     roles: ["maestro", "admin"],
     children: [
@@ -554,7 +553,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     // marcados son EXACTAMENTE `["/analitica", "/monitoreo"]`.
     label: "Mi wallet",
     href: "/mi-wallet",
-    modulo: "wallet",
     iconKey: "wallet",
     roles: ROLES_MI_WALLET,
   },

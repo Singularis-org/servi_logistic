@@ -53,7 +53,7 @@ const OK: VerModulosEmpresaResult = {
     modulos: ORDEN_MODULOS.map((clave) => ({
       clave,
       nombre: MODULOS_APAGABLES[clave].nombre,
-      activo: clave === "wallet" || clave === "monitoreo",
+      activo: clave === "analitica" || clave === "monitoreo",
     })),
   },
 };
@@ -96,20 +96,20 @@ describe("SL-23 (R8) — con el superadmin, la página pinta los módulos", () =
 
     const modulos = screen.getByRole("region", { name: "Módulos" });
     const switches = within(modulos).getAllByRole("switch");
-    expect(switches).toHaveLength(4);
+    expect(switches).toHaveLength(3);
     expect(switches.map((s) => s.getAttribute("aria-label"))).toEqual(
       ORDEN_MODULOS.map((c) => MODULOS_APAGABLES[c].nombre),
     );
     expect(switches.map((s) => s.getAttribute("aria-checked"))).toEqual(
-      ORDEN_MODULOS.map((c) => String(c === "wallet" || c === "monitoreo")),
+      ORDEN_MODULOS.map((c) => String(c === "analitica" || c === "monitoreo")),
     );
 
     const nucleo = screen.getByRole("region", { name: "Núcleo (siempre activo)" });
     expect(within(nucleo).getAllByRole("listitem").map((li) => li.textContent)).toEqual([...NUCLEO]);
-    expect(NUCLEO).toHaveLength(12);
+    expect(NUCLEO).toHaveLength(13);
     expect(within(nucleo).queryByRole("switch")).toBeNull();
     expect(within(nucleo).queryByRole("button")).toBeNull();
-    expect(screen.getAllByRole("switch")).toHaveLength(4);
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
 
     expect(screen.getByRole("link", { name: "Volver a Empresas" })).toHaveAttribute(
       "href",

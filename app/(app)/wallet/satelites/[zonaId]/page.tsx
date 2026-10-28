@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -17,8 +16,6 @@ import { ESTADO_CUENTA_BODEGA_PAGINA } from "../_components/satelites-labels";
  * «no encontrado», sin distinguir.
  */
 export default async function EstadoCuentaSatelitePage({ params }: { params: Promise<{ zonaId: string }> }) {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("wallet");
   const actor = await resolveActorFromSession();
   if (!actor || !esAccesoTotal(actor.rol)) {
     notFound(); // R81
