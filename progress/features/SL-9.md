@@ -24,11 +24,12 @@ antes por las preguntas abiertas.
 - Cruce de archivos: pendiente de `archivos-en-vuelo.mjs` cuando exista `tasks.md`.
 
 ## Decisiones
+- 2026-10-28: acotada con `/afinar-feature`; decisiones en
+  `specs/SL-9-marca-pwa-capturas-iconos/requirements.md > Decisiones cerradas`. Descripción de la
+  tarjeta actualizada en Trello.
 
 ## Preguntas abiertas
-- Qué pantallas y con qué datos se capturan para `public/screenshots/` (humano).
-- Los `icono_*.png` de UI: ¿se redibujan con la marca nueva, se cambian por iconos de la librería
-  de iconos ya aprobada, o se entregan como assets de diseño? (humano).
+Ninguna.
 
 ## Tandas
 
