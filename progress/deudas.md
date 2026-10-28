@@ -147,3 +147,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SL-23 (m2, 2026-10-27). `docs/perfil-agentes.md > frontend_dev` pide pasar toda pantalla nueva por `/design`.
 - **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
 - **Dueño:** Camilo.
+
+### D24 — El soporte de Trello y la aprobación F1.4 escrita no están en la plantilla
+- **Origen:** `chore/arnes-aprobacion-escrita` (2026-10-28). El soporte de Trello (PR #19 del proyecto) y la regla `mover <key> in_progress --aprobado-por-escrito "<cita>"` viven solo aquí.
+- **Qué falta:** subirlos a `singularis-co/harness_config` con `./scripts/arnes-sync.sh --subir`. Antes, `./scripts/arnes-sync.sh --aplicar` de los 19 cambios pendientes, resolviendo 6 conflictos (`docs/trello.md`, `scripts/trello.mjs`, `scripts/validate-features.mjs`, `tests/guards/guard-trello-cliente.test.ts`, `guard-trello-red.test.ts`, `guard-validador-tracker.test.ts`), y decidir qué hacer con `.claude/commands/tracker-connect.md` y `scripts/tracker.mjs`, que la plantilla no trae.
+- **Dueño:** leader (con Carlos Restrepo para aprobar el PR en la plantilla).
