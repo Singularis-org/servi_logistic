@@ -6,7 +6,7 @@
 
 ## Backend
 
-- [ ] **T1 [P] — Regla única de alcance de etiquetas** (R12, R13, R14)
+- [x] **T1 [P] — Regla única de alcance de etiquetas** (R12, R13, R14)
   - Crear `lib/services/alcance-etiquetas-orden.ts`: `AlcanceEtiquetasOrden` y
     `resolverAlcanceEtiquetasOrden(actor)` según la tabla de `design.md §2`. Pura (sin Prisma, sin
     `next/`, sin entorno). JSDoc con el porqué del valor por defecto `todas` y el aviso a SLT-50.
