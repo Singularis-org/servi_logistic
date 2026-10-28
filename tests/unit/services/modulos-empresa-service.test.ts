@@ -161,7 +161,7 @@ describe("SL-23 · ModulosEmpresaService — escritura (R9, R13)", () => {
 });
 
 describe("SL-23 · ModulosEmpresaService — ver (R8)", () => {
-  it("los 8 módulos en el orden de pantalla, con su nombre y su estado; ninguno del núcleo", async () => {
+  it("los 4 módulos en el orden de pantalla, con su nombre y su estado; ninguno del núcleo", async () => {
     const r = await servicio.ver(SUPERADMIN, { organizacionId: EMPRESA });
     expect(r).toEqual({
       estado: "ok",
@@ -171,12 +171,8 @@ describe("SL-23 · ModulosEmpresaService — ver (R8)", () => {
         modulos: [
           { clave: "analitica", nombre: "Analítica", activo: false },
           { clave: "monitoreo", nombre: "Monitoreo", activo: false },
-          { clave: "recoleccion", nombre: "Recolección", activo: false },
-          { clave: "bodegas_satelite", nombre: "Bodegas satélite", activo: false },
           { clave: "wallet", nombre: "Wallet", activo: true },
           { clave: "ranking", nombre: "Ranking", activo: false },
-          { clave: "whatsapp", nombre: "WhatsApp", activo: false },
-          { clave: "api_integraciones", nombre: "API e integraciones", activo: false },
         ],
       },
     });

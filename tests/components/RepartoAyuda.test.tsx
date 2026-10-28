@@ -148,7 +148,7 @@ function renderModule(
   bloqueo: BloqueoDetalle = SIN_BLOQUEO,
 ) {
   return render(
-    <RepartoModule whatsappActivo
+    <RepartoModule
       porGestionar={porGestionar}
       conAyuda={conAyuda}
       porRecoger={[]}

@@ -198,7 +198,7 @@ async function abrirChat(): Promise<HTMLElement> {
 /** Monta Reparto con una orden ya recogida y las dos por recoger. Sin abrir el chat. */
 async function montarReparto(): Promise<void> {
   renderConSwr(
-    <RepartoModule whatsappActivo
+    <RepartoModule
       porGestionar={[EN_REPARTO]}
       conAyuda={[]}
       porRecoger={[POR_RECOGER_HOY, POR_RECOGER_MANANA]}
@@ -277,7 +277,7 @@ describe("(1) la orden asignada y sin recoger YA tiene conversación", () => {
 
   it("sin ninguna asignada, el vacío ya no habla de «reparto»", async () => {
     renderConSwr(
-      <RepartoModule whatsappActivo
+      <RepartoModule
         porGestionar={[]}
         conAyuda={[]}
         porRecoger={[]}
@@ -485,41 +485,5 @@ describe("(6) el distintivo de sin leer YA cuenta las asignadas sin recoger", ()
     expect(fila(modal, "Carlos Sin Recoger")).toBeInTheDocument();
     // La cifra no puede vivir solo en el color ni solo en el tamaño.
     expect(within(modal).getByText("2 mensajes sin leer")).toBeInTheDocument();
-  });
-});
-
-// SL-23 (T8, design §6.3) — el chat es del módulo WhatsApp y Reparto es del núcleo: con WhatsApp
-// apagado la pantalla se pinta sin el botón flotante ni la acción «Mensaje» del panel.
-describe("SL-23 — con el módulo WhatsApp apagado", () => {
-  it("Reparto no monta el chat ni ofrece «Mensaje», y el resto de la pantalla sigue", async () => {
-    renderConSwr(
-      <RepartoModule
-        whatsappActivo={false}
-        porGestionar={[EN_REPARTO]}
-        conAyuda={[]}
-        porRecoger={[POR_RECOGER_HOY]}
-        ordenEnGestionId={null}
-        ruta={RUTA_VIGENTE}
-        bloqueo={SIN_BLOQUEO}
-      />,
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByRole("button", { name: /^Abrir chat con clientes/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Abrir el chat con / })).toBeNull();
-    // El panel de la orden sigue: «Llamar» es del núcleo.
-    expect(
-      screen.getByRole("link", { name: `Llamar a ${EN_REPARTO.destinatario}` }),
-    ).toBeInTheDocument();
-  });
-
-  it("con WhatsApp encendido, los dos accesos al chat están", async () => {
-    await montarReparto();
-    expect(screen.getByRole("button", { name: /^Abrir chat con clientes/ })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: `Abrir el chat con ${EN_REPARTO.destinatario}` }),
-    ).toBeInTheDocument();
   });
 });

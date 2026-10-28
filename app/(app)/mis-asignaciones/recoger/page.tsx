@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarMisAsignaciones } from "@/lib/actions/mis-asignaciones";
-import { moduloActivo } from "@/lib/modulos/exigir-modulo";
 import { estadoBloqueoMensajero } from "@/lib/actions/cierre-dia";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 
@@ -41,9 +40,6 @@ export default async function RecogerPage() {
   const estado = await estadoBloqueoMensajero();
   const bloqueo = estado.status === "ok" ? estado.bloqueo : SIN_BLOQUEO;
 
-  // SL-23 (design §6.3): el chat es del módulo WhatsApp; con él apagado, esta pantalla no lo monta.
-  const whatsappActivo = await moduloActivo("whatsapp");
-
   return (
     <AppPage
       // FICHA 455 (2026-09-24, R6; design §2.1): el título es la ACCIÓN, no un estado («Por
@@ -63,13 +59,11 @@ export default async function RecogerPage() {
           aquí faltaran las que ya lleva encima, el distintivo de sin leer diría un número distinto
           en cada una y cada pantalla escondería los pendientes de la otra.
           ⛔ No añade ninguna acción sobre la orden: desde aquí se conversa, no se recoge. */}
-      {whatsappActivo ? (
-        <ChatDelMensajero
-          porGestionar={result.porGestionar}
-          conAyuda={result.conAyuda}
-          porRecoger={result.porRecoger}
-        />
-      ) : null}
+      <ChatDelMensajero
+        porGestionar={result.porGestionar}
+        conAyuda={result.conAyuda}
+        porRecoger={result.porRecoger}
+      />
     </AppPage>
   );
 }

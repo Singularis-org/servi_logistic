@@ -37,20 +37,22 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/ayuda/[...slug]": "nucleo",
   "/historico/acciones": "nucleo",
   "/configuracion/integraciones": "nucleo",
+  // API e integraciones (núcleo desde el 2026-10-27).
+  "/configuracion/api": "nucleo",
   "/configuracion/sinpe": "nucleo",
   "/configuracion/vehiculos": "nucleo",
   "/configuracion/geografia": "nucleo",
   "/plataforma/empresas": "nucleo",
   "/plataforma/empresas/[organizacionId]": "nucleo",
-  // analitica, monitoreo, recoleccion
+  // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
+  "/recoleccion": "nucleo",
+  "/recepcion-satelite": "nucleo",
+  "/recepcion-satelite/por-recibir": "nucleo",
+  "/recepcion-satelite/en-bodega": "nucleo",
+  "/mi-bodega": "nucleo",
+  // analitica, monitoreo
   "/analitica": "analitica",
   "/monitoreo": "monitoreo",
-  "/recoleccion": "recoleccion",
-  // bodegas_satelite
-  "/recepcion-satelite": "bodegas_satelite",
-  "/recepcion-satelite/por-recibir": "bodegas_satelite",
-  "/recepcion-satelite/en-bodega": "bodegas_satelite",
-  "/mi-bodega": "bodegas_satelite",
   // wallet
   "/wallet": "wallet",
   "/wallet/tiendas": "wallet",
@@ -63,15 +65,13 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // ranking
   "/ranking": "ranking",
   "/ranking/historico": "ranking",
-  // whatsapp
-  "/configuracion/plantillas": "whatsapp",
-  "/configuracion/envios-whatsapp": "whatsapp",
-  "/configuracion/envios-whatsapp/nuevo": "whatsapp",
-  "/configuracion/envios-whatsapp/[id]": "whatsapp",
-  "/configuracion/envios-whatsapp/historial": "whatsapp",
-  "/historico/conversaciones": "whatsapp",
-  // api_integraciones
-  "/configuracion/api": "api_integraciones",
+  // WhatsApp (núcleo desde el 2026-10-27).
+  "/configuracion/plantillas": "nucleo",
+  "/configuracion/envios-whatsapp": "nucleo",
+  "/configuracion/envios-whatsapp/nuevo": "nucleo",
+  "/configuracion/envios-whatsapp/[id]": "nucleo",
+  "/configuracion/envios-whatsapp/historial": "nucleo",
+  "/historico/conversaciones": "nucleo",
 };
 
 /**
@@ -94,12 +94,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "conteo-productos": "analitica",
   "detalle-dinero-producto": "analitica",
   "finanzas-diario": "analitica",
-  // monitoreo, recoleccion
+  // monitoreo
   "tablero-dia": "monitoreo",
-  "recoleccion-tienda": "recoleccion",
-  // bodegas_satelite
-  "recepcion-satelite": "bodegas_satelite",
-  "envio-devolucion-central": "bodegas_satelite",
   // wallet (18)
   "abono-tienda": "wallet",
   "aporte-capital": "wallet",
@@ -124,20 +120,21 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   // ranking
   ranking: "ranking",
   "ranking-historico": "ranking",
-  // whatsapp
-  "chat-whatsapp": "whatsapp",
-  "envios-whatsapp": "whatsapp",
-  "historico-conversaciones": "whatsapp",
-  plantillas: "whatsapp",
-  "plantillas-sync": "whatsapp",
-  "whatsapp-envio": "whatsapp",
-  "informe-picking": "whatsapp",
-  "informe-transito": "whatsapp",
-  // api_integraciones
-  "api-keys": "api_integraciones",
-  webhooks: "api_integraciones",
-  // núcleo (60 + `modulos-empresa`, de plataforma)
+  // WhatsApp (núcleo desde el 2026-10-27).
+  "chat-whatsapp": "nucleo",
+  "envios-whatsapp": "nucleo",
+  "historico-conversaciones": "nucleo",
+  plantillas: "nucleo",
+  "plantillas-sync": "nucleo",
+  "whatsapp-envio": "nucleo",
+  "informe-picking": "nucleo",
+  "informe-transito": "nucleo",
+  // núcleo (60 + `modulos-empresa`, de plataforma, + 5 de Recolección, Bodegas satélite y API e integraciones;
+  // las 8 de WhatsApp van arriba, en su bloque)
   auth: "nucleo",
+  // API e integraciones (núcleo desde el 2026-10-27).
+  "api-keys": "nucleo",
+  webhooks: "nucleo",
   "aprobacion-postulaciones": "nucleo",
   "atencion-postulaciones-recurso": "nucleo",
   "carga-masiva-resumen": "nucleo",
@@ -161,6 +158,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "deshacer-asignacion": "nucleo",
   "devolucion-origen": "nucleo",
   "devolucion-tienda": "nucleo",
+  // Bodegas satélite (núcleo desde el 2026-10-27).
+  "envio-devolucion-central": "nucleo",
   "eliminar-orden": "nucleo",
   "etiquetas-guia": "nucleo",
   "filtros-ordenes": "nucleo",
@@ -189,6 +188,9 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "rastreo-publico": "nucleo",
   "recepcion-bodega-central": "nucleo",
   "recepcion-origen": "nucleo",
+  // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
+  "recepcion-satelite": "nucleo",
+  "recoleccion-tienda": "nucleo",
   "recuperar-orden": "nucleo",
   "reprogramadas-retenidas": "nucleo",
   "resolver-novedad": "nucleo",
@@ -211,16 +213,18 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   push_web: "nucleo",
   analitica_rollup_diario: "analitica",
   analitica_invalidacion_cache: "analitica",
-  whatsapp_template_sync: "whatsapp",
-  whatsapp_chat_envio: "whatsapp",
-  whatsapp_bienvenida: "whatsapp",
-  whatsapp_envio_programado: "whatsapp",
-  whatsapp_envio_evento: "whatsapp",
-  whatsapp_envio_ejecucion: "whatsapp",
-  whatsapp_envio_reintento: "whatsapp",
-  whatsapp_envio_mantenimiento: "whatsapp",
-  webhook_estado: "api_integraciones",
-  webhook_evento: "api_integraciones",
+  // WhatsApp (núcleo desde el 2026-10-27).
+  whatsapp_template_sync: "nucleo",
+  whatsapp_chat_envio: "nucleo",
+  whatsapp_bienvenida: "nucleo",
+  whatsapp_envio_programado: "nucleo",
+  whatsapp_envio_evento: "nucleo",
+  whatsapp_envio_ejecucion: "nucleo",
+  whatsapp_envio_reintento: "nucleo",
+  whatsapp_envio_mantenimiento: "nucleo",
+  // API e integraciones (núcleo desde el 2026-10-27).
+  webhook_estado: "nucleo",
+  webhook_evento: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */
@@ -236,7 +240,8 @@ export const MODULO_POR_CRON: Readonly<Record<string, Destino>> = {
   "purga-postulaciones-recurso": "nucleo",
   "generar-gastos-fijos": "wallet",
   "snapshot-ranking": "ranking",
-  "sync-plantillas-whatsapp": "whatsapp",
+  // WhatsApp (núcleo desde el 2026-10-27).
+  "sync-plantillas-whatsapp": "nucleo",
 };
 
 /** §3.5 — endpoints de `app/api/` que no son cron, por su carpeta relativa a `app/api/`. */
@@ -244,17 +249,19 @@ export const MODULO_POR_API: Readonly<Record<string, Destino>> = {
   asistente: "nucleo",
   "ordenes/carga-masiva/chunk": "nucleo",
   "docs/openapi": "nucleo",
-  "chat/media/[mensajeId]": "whatsapp",
-  "webhooks/whatsapp": "whatsapp",
-  "ordenes/api-key/analitica": ["api_integraciones", "analitica"],
-  "ordenes/api-key": "api_integraciones",
-  "ordenes/api-key/[numGuia]/cancelar": "api_integraciones",
-  "ordenes/api-key/carga": "api_integraciones",
-  "ordenes/api-key/carga/[cargaId]/generate": "api_integraciones",
-  "ordenes/api-key/cotizacion": "api_integraciones",
-  "ordenes/api-key/habilitar": "api_integraciones",
-  "ordenes/api-key/orden/[id]": "api_integraciones",
-  "ordenes/api-key/orden/[id]/generate": "api_integraciones",
+  // WhatsApp (núcleo desde el 2026-10-27).
+  "chat/media/[mensajeId]": "nucleo",
+  "webhooks/whatsapp": "nucleo",
+  // API e integraciones (núcleo desde el 2026-10-27). La de analítica sigue exigiendo Analítica.
+  "ordenes/api-key/analitica": "analitica",
+  "ordenes/api-key": "nucleo",
+  "ordenes/api-key/[numGuia]/cancelar": "nucleo",
+  "ordenes/api-key/carga": "nucleo",
+  "ordenes/api-key/carga/[cargaId]/generate": "nucleo",
+  "ordenes/api-key/cotizacion": "nucleo",
+  "ordenes/api-key/habilitar": "nucleo",
+  "ordenes/api-key/orden/[id]": "nucleo",
+  "ordenes/api-key/orden/[id]/generate": "nucleo",
 };
 
 /**
@@ -285,18 +292,9 @@ export interface ConsumoEntreModulos {
  * solo las pinta con su módulo encendido, con el flag por props desde su Server Component. La
  * guardia (caso e) exige que todo import cruzado de una action de un módulo, directo o a través de
  * `components/` y `hooks/`, esté aquí. Una pieza puede ser un componente compartido de `components/`.
+ * El chat y el botón de plantilla de WhatsApp salieron de aquí el 2026-10-27, al pasar WhatsApp al núcleo.
  */
 export const CONSUMOS_ENTRE_MODULOS: readonly ConsumoEntreModulos[] = [
-  {
-    pieza: "app/(app)/mis-asignaciones/_components/chat/ChatFlotante.tsx",
-    anfitrionas: ["/mis-asignaciones/reparto", "/mis-asignaciones/recoger"],
-    modulo: "whatsapp",
-  },
-  {
-    pieza: "app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx",
-    anfitrionas: ["/mis-asignaciones/reparto", "/mis-asignaciones/recoger"],
-    modulo: "whatsapp",
-  },
   {
     pieza: "app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx",
     anfitrionas: ["/wallet/mensajeros"],
@@ -308,12 +306,5 @@ export const CONSUMOS_ENTRE_MODULOS: readonly ConsumoEntreModulos[] = [
     pieza: "app/(app)/analitica/_components/finanzas/cargar-kpis.ts",
     anfitrionas: ["/analitica"],
     modulo: "wallet",
-  },
-  {
-    // Lo montan `NovedadAcciones` (`/novedades`) y `GestionarOrdenPanel` (`/mis-asignaciones/reparto`,
-    // vía `RepartoModule`), los dos del núcleo (§3.9).
-    pieza: "components/shared/EnviarPlantillaWhatsappButton.tsx",
-    anfitrionas: ["/novedades", "/mis-asignaciones/reparto"],
-    modulo: "whatsapp",
   },
 ];

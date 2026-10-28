@@ -1,4 +1,3 @@
-import { exigirModuloEnRuta } from "@/lib/modulos/exigir-modulo";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarApiKeys } from "@/lib/actions/api-keys";
@@ -15,8 +14,6 @@ import { ApiKeysModule, type ApiKeysPageData } from "./_components/ApiKeysModule
  * `AppPage` de `/configuracion` [D7].
  */
 export default async function ApiPage() {
-  // SL-23 (R16): con el módulo apagado para la empresa, la ruta es un 404. Va antes de leer nada.
-  await exigirModuloEnRuta("api_integraciones");
   const actor = await resolveActorFromSession();
 
   if (actor?.rol !== "maestro") {

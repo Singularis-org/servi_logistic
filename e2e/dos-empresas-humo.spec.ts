@@ -51,7 +51,7 @@ import {
  *    encontrado»; A abriendo los mismos ve su marcador (el control que hace falsable el anterior).
  *    La app no tiene una URL de detalle de orden: el detalle de la orden se abre dentro de `/ordenes`.
  * 6. Módulos (SL-23, design §10; R15, R16, R23, R25, R26): tras el alta, el superadmin abre el
- *    detalle de cada empresa y enciende por la pantalla los 8 módulos de A y todos menos «Ranking»
+ *    detalle de cada empresa y enciende por la pantalla los 4 módulos de A y todos menos «Ranking»
  *    de B. Cada maestro recorre solo las rutas de SU menú (`rutasDelMenuDelMaestro(apagados)`): A
  *    las recorre todas, como antes de SL-23 (R23). Y B no ve «Ranking» en el menú y recibe «No
  *    encontramos esta página» en `/ranking` y `/ranking/historico`, mientras A lo ve y lo abre.
@@ -78,7 +78,7 @@ const empresas: Partial<Record<Letra, Empresa>> = {};
 const enlacesDeRecuperacion: Partial<Record<Letra, string>> = {};
 const datos: Partial<Record<Letra, DatosSembrados>> = {};
 const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
-/** SL-23 (R26): A con los 8 módulos encendidos; B con todos menos uno, «Ranking». */
+/** SL-23 (R26): A con los 4 módulos encendidos; B con todos menos uno, «Ranking». */
 const APAGADOS: Record<Letra, readonly ModuloApagable[]> = { A: [], B: ["ranking"] };
 const rutas: Record<Letra, string[]> = {
   A: rutasDelMenuDelMaestro(APAGADOS.A),
@@ -315,7 +315,7 @@ test("B abriendo los detalles de A ve «no encontrado», y A los ve con su marca
   }
 });
 
-test("SL-23: el superadmin dejó A con los 8 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)", async ({ browser }) => {
+test("SL-23: el superadmin dejó A con los 4 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)", async ({ browser }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");

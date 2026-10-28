@@ -147,13 +147,14 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     it("R33: solo las piezas de §3.7 tienen dos módulos, y son los suyos", () => {
       expect(piezasCompartidas()).toEqual({
         "action premio-ranking-devengo": ["wallet", "ranking"],
-        "api ordenes/api-key/analitica": ["api_integraciones", "analitica"],
       });
     });
 
-    it("§3.1/§3.2: el reparto tiene 24 páginas y 48 archivos de actions de un módulo", () => {
-      expect(PAGINAS_DE_MODULO).toHaveLength(24);
-      expect(ACTIONS_DE_MODULO).toHaveLength(48);
+    // 2026-10-27: Recolección, Bodegas satélite, API e integraciones y WhatsApp pasaron al núcleo
+    // (12 páginas y 13 actions menos).
+    it("§3.1/§3.2: el reparto tiene 12 páginas y 35 archivos de actions de un módulo", () => {
+      expect(PAGINAS_DE_MODULO).toHaveLength(12);
+      expect(ACTIONS_DE_MODULO).toHaveLength(35);
     });
   });
 
@@ -192,16 +193,17 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
       }
     });
 
-    it("no-vacuidad: el barrido transitivo llega a actions a través de components/", () => {
-      // `RepartoModule` → `GestionarOrdenPanel` → `components/shared/EnviarPlantillaWhatsappButton` →
-      // `whatsapp-envio`: sin la entrada de §6.3 sería un cruce. Si el grafo no lo viera, (e) estaría ciego.
+    it("no-vacuidad: sobre el árbol real, el barrido ve un cruce sin declarar", () => {
+      // `analitica/_components/finanzas/cargar-kpis.ts` → `lib/actions/wallet`: sin la entrada de §6.3
+      // sería un cruce. Si el grafo no lo viera, (e) estaría ciego. Hasta el 2026-10-27 esto se medía
+      // con el botón de plantilla de WhatsApp, que cruzaba por components/; con WhatsApp en el núcleo
+      // no queda un cruce real por components/, y el recorrido transitivo lo cubre el árbol inventado
+      // de la autocomprobación.
       const sinDeclarar = new GrafoDeConsumos(RAIZ, []);
       const cruces = archivosDeApp()
-        .filter((r) => r.startsWith("app/(app)/mis-asignaciones/"))
+        .filter((r) => r.startsWith("app/(app)/analitica/"))
         .flatMap((r) => sinDeclarar.cruces(r));
-      expect(
-        cruces.some((c) => c.includes("components/shared/EnviarPlantillaWhatsappButton.tsx → lib/actions/whatsapp-envio")),
-      ).toBe(true);
+      expect(cruces.some((c) => c.includes("cargar-kpis.ts → lib/actions/wallet"))).toBe(true);
     });
 
     it("ningún archivo de app/ alcanza (directo o por components/ y hooks/) una action de otro módulo sin declararlo", () => {
@@ -247,7 +249,7 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
         ruta: { "/wallet": "wallet", "/wallet/tiendas/[tiendaId]": "wallet" },
         action: { wallet: "wallet" },
         cron: { "generar-gastos-fijos": "wallet" },
-        api: { "ordenes/api-key": "api_integraciones", "ordenes/api-key/orden/[id]": "api_integraciones" },
+        api: { "ordenes/api-key": "analitica", "ordenes/api-key/orden/[id]": "analitica" },
       } as const;
 
       it("lee el disco con la forma de clave del reparto (sin grupos, sin tests ni _shared)", () => {
@@ -442,10 +444,10 @@ describe("SL-23 · guardia del reparto de módulos (design §8)", () => {
     describe("(e) consumos cruzados", () => {
       it("ubica cada archivo de app/ en su ruta, cron o endpoint más cercano", () => {
         expect(destinoDeArchivoDeApp("app/(app)/wallet/mensajeros/_components/PremiosRankingPanel.tsx")).toBe("wallet");
-        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("api_integraciones");
+        expect(destinoDeArchivoDeApp("app/(app)/configuracion/api/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/configuracion/_components/X.tsx")).toBe("nucleo");
         expect(destinoDeArchivoDeApp("app/(app)/layout.tsx")).toBe("nucleo");
-        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toEqual(["api_integraciones", "analitica"]);
+        expect(destinoDeArchivoDeApp("app/api/ordenes/api-key/analitica/route.ts")).toBe("analitica");
         expect(destinoDeArchivoDeApp("app/api/cron/snapshot-ranking/route.ts")).toBe("ranking");
       });
       it("lee imports estáticos y dinámicos; no los de tipo ni los citados en comentarios", () => {

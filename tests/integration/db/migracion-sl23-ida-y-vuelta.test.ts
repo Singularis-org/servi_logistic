@@ -39,7 +39,7 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `dev` antes de SL-23 (T0). */
+/** La última de `dev` antes de SL-23 (T0). La siguiente, 20261027120000_modulos_nucleo, la prueba su propio test. */
 const PREVIA = "20261025160100_entorno_marca";
 const M_TABLA = "20261026120000_organizacion_modulo";
 const M_HISTORIAL = "20261026120100_historial_accion_modulos";
@@ -127,11 +127,14 @@ async function lista(sql: string, valores: unknown[] = []): Promise<string[]> {
 }
 
 describe("SL-23 — las tres migraciones en disco", () => {
-  it("cada una trae su down.sql y van en orden justo detrás de la última de dev", () => {
+  it("cada una trae su down.sql y van seguidas, detrás de la última de dev de entonces", () => {
+    // Detrás y no «justo detrás»: las de SL-18 (20261026090000…) se mergearon antes y ordenan en medio.
     const carpetas = carpetasDeMigracion();
     const previa = carpetas.indexOf(PREVIA);
     expect(previa).toBeGreaterThanOrEqual(0);
-    expect(DE_SL23.map((c) => carpetas.indexOf(c))).toEqual([previa + 1, previa + 2, previa + 3]);
+    const primera = carpetas.indexOf(M_TABLA);
+    expect(primera).toBeGreaterThan(previa);
+    expect(DE_SL23.map((c) => carpetas.indexOf(c))).toEqual([primera, primera + 1, primera + 2]);
     for (const c of DE_SL23) {
       expect(existsSync(path.join(MIGRACIONES, c, "down.sql")), `${c} sin down.sql`).toBe(true);
     }

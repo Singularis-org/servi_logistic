@@ -111,7 +111,7 @@ function renderModule(props: {
   ordenEnGestionId?: string | null;
 }) {
   return render(
-    <RepartoModule whatsappActivo
+    <RepartoModule
       porGestionar={props.porGestionar}
       conAyuda={[]}
       porRecoger={[]}

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import { consultarMetricaFinanciera } from "@/lib/actions/analitica-financiera";
-import { listarPlantillas } from "@/lib/actions/plantillas";
+import { previsualizarMovimientoAction } from "@/lib/actions/efecto-movimiento";
 import { listarPremiosDelDiaAction, registrarPremioAction } from "@/lib/actions/premio-ranking-devengo";
 import { editarPremioAction, obtenerRankingAction } from "@/lib/actions/ranking";
 import { leerTableroDia } from "@/lib/actions/tablero-dia";
@@ -112,9 +112,12 @@ describeSiHayBase("SL-23 — una action de un módulo apagado se rechaza antes d
     expect(await cuentaDeNegocio()).toEqual(antes);
   });
 
-  it("R17 — con WhatsApp apagado, una action con el toActionError compartido devuelve forbidden", async () => {
-    await encender("wallet", "ranking");
-    expect(await enEmpresa(() => listarPlantillas({}, { getActor: async () => maestro }))).toEqual({ status: "forbidden" });
+  it("R17 — con Wallet apagado, una action con el toActionError compartido devuelve forbidden", async () => {
+    // Era `listarPlantillas` (WhatsApp); WhatsApp pasó al núcleo el 2026-10-27.
+    await encender("ranking");
+    expect(await enEmpresa(() => previsualizarMovimientoAction({}, { getActor: async () => maestro }))).toEqual({
+      status: "forbidden",
+    });
   });
 
   it("R17 — con Analítica y Monitoreo apagados, cada contrato responde su propio «prohibido»", async () => {

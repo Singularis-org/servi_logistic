@@ -33,9 +33,6 @@ import {
   type ListarHilosHistoricoResult,
   type ListarMensajesHistoricoResult,
 } from "@/lib/types/historico-conversaciones";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
-import { withErrorHandler } from "@/lib/errors";
-import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
 
 /**
  * Dobles inyectables. Viajan por el SEGUNDO parametro, que el cliente nunca manda: desde el
@@ -68,10 +65,6 @@ export async function listarHilosHistorico(
   input: unknown,
   deps: HistoricoConversacionesActionDeps = {},
 ): Promise<ListarHilosHistoricoResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 
@@ -94,10 +87,6 @@ export async function listarMensajesHistorico(
   input: unknown,
   deps: HistoricoConversacionesActionDeps = {},
 ): Promise<ListarMensajesHistoricoResult> {
-  const puerta = await withErrorHandler(async () => {
-    await exigirModuloActivo("whatsapp");
-  });
-  if (puerta) return rechazoDeModulo(puerta);
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   if (!actor) return { status: "unauthenticated" };
 

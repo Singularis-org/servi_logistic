@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobsConfig } from "@/lib/config/jobs";
 import type { IJobRepository, JobConEmpresa, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
+import type { Destino } from "@/lib/modulos/reparto";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 
 // SL-23 · T11 (design §5.4, §3.3, §3.8; R19, R20, R21, R30) — el drenador con módulos apagados.
@@ -11,6 +12,11 @@ import { JobQueueService } from "@/lib/services/JobQueueService";
 // Se ejercen las piezas REALES del route: `moduloDeEjecucion` (qué módulo exige cada tipo) y
 // `conSuEmpresa` (la puerta), con la puerta de módulos real sobre una lista en memoria por empresa.
 // El handler de cada tipo es un espía: un descartado no puede haberlo llamado.
+//
+// 2026-10-27: WhatsApp y API e integraciones pasaron al núcleo y los jobs de Analítica son de
+// cálculo continuo, así que hoy NINGÚN tipo de job exige un módulo. El mecanismo de descarte sigue
+// en el drenador para el día en que vuelva a haberlos: esos casos le pasan a `conSuEmpresa` un
+// módulo explícito (`ranking`) en vez del de `moduloDeEjecucion`.
 
 const estado = vi.hoisted(() => ({ porEmpresa: {} as Record<string, string[]> }));
 
@@ -55,8 +61,11 @@ function job(id: string, tipo: JobTipo, organizacionId: string | null = A): JobC
   };
 }
 
-/** Drena `jobs` con un espía por tipo, envuelto en el `conSuEmpresa` real con su módulo. */
-async function drenar(jobs: JobDTO[], recurrentes: JobTipo[] = []) {
+/**
+ * Drena `jobs` con un espía por tipo, envuelto en el `conSuEmpresa` real con su módulo (el de
+ * `moduloDeEjecucion`, o el que diga `destinos` para ejercer el descarte).
+ */
+async function drenar(jobs: JobDTO[], recurrentes: JobTipo[] = [], destinos: Partial<Record<JobTipo, Destino>> = {}) {
   const corridos: string[] = [];
   const descartados: { id: string; motivo: string }[] = [];
   const reagendados: JobTipo[] = [];
@@ -77,7 +86,12 @@ async function drenar(jobs: JobDTO[], recurrentes: JobTipo[] = []) {
   const handlers = new Map<JobTipo, JobHandler>(
     [...tipos].map((tipo) => [
       tipo,
-      conSuEmpresa(async (j) => void corridos.push(j.id), recurrentes.includes(tipo), {}, moduloDeEjecucion(tipo)),
+      conSuEmpresa(
+        async (j) => void corridos.push(j.id),
+        recurrentes.includes(tipo),
+        {},
+        destinos[tipo] ?? moduloDeEjecucion(tipo),
+      ),
     ]),
   );
   const recurrencias = new Map<JobTipo, RecurrenciaSpec>(
@@ -94,48 +108,46 @@ beforeEach(() => {
 });
 
 describe("SL-23 · qué módulo exige cada tipo de job (§3.3, §3.8)", () => {
-  it("todo JobTipo tiene uno; los de cálculo continuo corren como núcleo", () => {
-    for (const tipo of Object.values(JobTipoPrisma)) expect(moduloDeEjecucion(tipo)).toBeDefined();
-    expect(moduloDeEjecucion("analitica_rollup_diario")).toBe("nucleo");
-    expect(moduloDeEjecucion("analitica_invalidacion_cache")).toBe("nucleo");
-    expect(moduloDeEjecucion("webhook_estado")).toBe("api_integraciones");
-    expect(moduloDeEjecucion("webhook_evento")).toBe("api_integraciones");
-    expect(moduloDeEjecucion("whatsapp_chat_envio")).toBe("whatsapp");
-    expect(moduloDeEjecucion("push_web")).toBe("nucleo");
+  it("todo JobTipo corre hoy como núcleo: los de Analítica por cálculo continuo, el resto por reparto", () => {
+    for (const tipo of Object.values(JobTipoPrisma)) expect(moduloDeEjecucion(tipo), tipo).toBe("nucleo");
   });
 });
 
 describe("SL-23 · el drenador con módulos apagados (R19, R20, R30)", () => {
-  it("R19 — con API e integraciones apagado, webhook_estado y webhook_evento se descartan sin llamar al handler", async () => {
-    estado.porEmpresa = { [A]: ["whatsapp"] };
-    const r = await drenar([job("j-e", "webhook_estado"), job("j-v", "webhook_evento")]);
-    expect(r.corridos).toEqual([]);
-    expect(r.descartados).toEqual([
-      { id: "j-e", motivo: "modulo_inactivo:api_integraciones" },
-      { id: "j-v", motivo: "modulo_inactivo:api_integraciones" },
+  it("R19 — con todos los módulos apagados, webhooks y WhatsApp (núcleo desde el 2026-10-27) corren", async () => {
+    estado.porEmpresa = { [A]: [] };
+    const r = await drenar([
+      job("j-e", "webhook_estado"),
+      job("j-v", "webhook_evento"),
+      job("j-w", "whatsapp_chat_envio"),
     ]);
-    expect(r.resultado).toMatchObject({ ok: 0, fallidos: 0, descartados: 2 });
+    expect(r.corridos).toEqual(["j-e", "j-v", "j-w"]);
+    expect(r.descartados).toEqual([]);
   });
 
-  it("R20 — un whatsapp_* con WhatsApp apagado se descarta; uno del núcleo corre", async () => {
-    estado.porEmpresa = { [A]: ["api_integraciones"] };
-    const r = await drenar([job("j-w", "whatsapp_chat_envio"), job("j-p", "push_web")]);
+  it("R20 — un job de un módulo apagado se descarta; uno del núcleo corre", async () => {
+    estado.porEmpresa = { [A]: ["analitica"] };
+    const r = await drenar([job("j-w", "whatsapp_chat_envio"), job("j-p", "push_web")], [], {
+      whatsapp_chat_envio: "ranking",
+    });
     expect(r.corridos).toEqual(["j-p"]);
-    expect(r.descartados).toEqual([{ id: "j-w", motivo: "modulo_inactivo:whatsapp" }]);
+    expect(r.descartados).toEqual([{ id: "j-w", motivo: "modulo_inactivo:ranking" }]);
     expect(r.resultado).toMatchObject({ ok: 1, descartados: 1, fallidos: 0 });
   });
 
   it("encendido, el mismo job corre", async () => {
-    estado.porEmpresa = { [A]: ["api_integraciones"] };
-    const r = await drenar([job("j-e", "webhook_evento")]);
+    estado.porEmpresa = { [A]: ["ranking"] };
+    const r = await drenar([job("j-e", "whatsapp_chat_envio")], [], { whatsapp_chat_envio: "ranking" });
     expect(r.corridos).toEqual(["j-e"]);
     expect(r.descartados).toEqual([]);
   });
 
   it("R20 — un recurrente con empresa y su módulo apagado se descarta y re-agenda su siguiente ocurrencia", async () => {
-    const r = await drenar([job("j-m", "whatsapp_envio_mantenimiento")], ["whatsapp_envio_mantenimiento"]);
+    const r = await drenar([job("j-m", "whatsapp_envio_mantenimiento")], ["whatsapp_envio_mantenimiento"], {
+      whatsapp_envio_mantenimiento: "ranking",
+    });
     expect(r.corridos).toEqual([]);
-    expect(r.descartados).toEqual([{ id: "j-m", motivo: "modulo_inactivo:whatsapp" }]);
+    expect(r.descartados).toEqual([{ id: "j-m", motivo: "modulo_inactivo:ranking" }]);
     expect(r.reagendados).toEqual(["whatsapp_envio_mantenimiento"]);
   });
 
@@ -154,7 +166,7 @@ describe("SL-23 · el drenador con módulos apagados (R19, R20, R30)", () => {
 });
 
 describe("SL-23 · un recurrente sin empresa se salta las que tienen su módulo apagado (R21)", () => {
-  it("whatsapp_envio_mantenimiento corre solo en las empresas con WhatsApp", async () => {
+  it("un recurrente de un módulo corre solo en las empresas que lo tienen encendido", async () => {
     const corridas: string[] = [];
     const listados: unknown[] = [];
     const empresas = {
@@ -173,11 +185,11 @@ describe("SL-23 · un recurrente sin empresa se salta las que tienen su módulo 
       },
       true,
       { empresas },
-      moduloDeEjecucion("whatsapp_envio_mantenimiento"),
+      "ranking",
     );
     await h(job("j-m", "whatsapp_envio_mantenimiento", null));
     expect(corridas).toEqual(["org-con"]);
-    expect(listados).toEqual([null, { modulos: { some: { modulo: "whatsapp" } } }]);
+    expect(listados).toEqual([null, { modulos: { some: { modulo: "ranking" } } }]);
   });
 
   it("R30 — el recurrente de cálculo continuo (rollup) no filtra: corre en todas", async () => {

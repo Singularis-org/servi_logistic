@@ -101,7 +101,7 @@ function renderTabs(
   } = {},
 ) {
   return render(
-    <NovedadesTabs whatsappActivo
+    <NovedadesTabs
       novedades={{
         ayuda: over.ayuda ?? VACIO,
         devolucion: over.devolucion ?? VACIO,

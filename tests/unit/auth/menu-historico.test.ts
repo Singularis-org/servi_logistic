@@ -69,11 +69,9 @@ describe("R2/R3 — el ítem «Histórico» y su subítem (T1.3)", () => {
    */
   it("R3: «Conversaciones» es el PRIMER subítem y apunta a la ruta del histórico", () => {
     const hijos = itemHistorico().children ?? [];
-    // SL-23 (design §3.6): el subítem es del módulo WhatsApp.
     expect(hijos[0]).toEqual({
       label: "Conversaciones",
       href: "/historico/conversaciones",
-      modulo: "whatsapp",
     });
   });
 

@@ -190,8 +190,7 @@ const CASOS: CasoCron[] = [
     metodo: "sincronizar",
     corrida: { leidas: 1, actualizadas: 1, sinCambios: 1, ignoradas: 1 },
     vacio: { leidas: 0, actualizadas: 0, sinCambios: 0, ignoradas: 0 },
-    // SL-23 (R21): `saltadas`, las empresas con WhatsApp apagado (el doble no filtra: 0).
-    empresasExtra: { sinWhatsapp: 0, saltadas: 0 },
+    empresasExtra: { sinWhatsapp: 0 },
   },
 ];
 
