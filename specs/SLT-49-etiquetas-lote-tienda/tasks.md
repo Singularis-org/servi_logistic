@@ -51,12 +51,12 @@
 
 ## Frontend
 
-- [ ] **T5 [P] — Estados de la acción de la tienda** (R1, R5) · tras leer P1
+- [x] **T5 [P] — Estados de la acción de la tienda** (R1, R5) · tras leer P1
   - Crear `app/(app)/ordenes/estados-etiquetas-tienda.ts`: `ESTADOS_ETIQUETAS_TIENDA` (los 3 de
     recogida) y `MOTIVO_SIN_GUIA = "Sin guía todavía"`.
   - **Hecho:** typecheck verde; lo cubre el test de T6.
 
-- [ ] **T6 — Listado: «Imprimir etiquetas» para la tienda** (R1–R6, R15) · depende de T5
+- [x] **T6 — Listado: «Imprimir etiquetas» para la tienda** (R1–R6, R15) · depende de T5
   - `app/(app)/ordenes/_components/OrdenesListado.tsx`, según `design.md §4.3`: prop
     `puedeImprimirEtiquetasPropias`; `haySeleccion` con la tercera condición;
     `elegibleEtiquetasTienda`; la acción en `accionesPara` (antes de «Eliminar», con `(N)`);
