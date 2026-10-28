@@ -627,9 +627,9 @@ porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen 
 
 | Carpeta | `migration.sql` | `down.sql` |
 |---|---|---|
-| `20261027120000_plan` | Enums `plan_visibilidad` y `plan_rastro_accion`; tablas `plan` (con `tope_api_keys`), `plan_tope_rol`, `plan_modulo` y `plan_rastro`, con sus `CHECK`, FK, índices y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las cuatro; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×4 y `DROP TYPE` ×2 |
-| `20261027120100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE 'plan_asignado'` y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
-| `20261027120200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los cinco triggers: uno sobre `orden`, dos sobre `usuario` y dos sobre `api_key` | `DROP TRIGGER` ×5 y `DROP FUNCTION` ×8 |
+| `20261027130000_plan` | Enums `plan_visibilidad` y `plan_rastro_accion`; tablas `plan` (con `tope_api_keys`), `plan_tope_rol`, `plan_modulo` y `plan_rastro`, con sus `CHECK`, FK, índices y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las cuatro; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×4 y `DROP TYPE` ×2 |
+| `20261027130100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE 'plan_asignado'` y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
+| `20261027130200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los cinco triggers: uno sobre `orden`, dos sobre `usuario` y dos sobre `api_key` | `DROP TRIGGER` ×5 y `DROP FUNCTION` ×8 |
 
 - **Los triggers van en carpeta propia** (precedente SL-40 §4): se pueden quitar sin borrar el
   catálogo.

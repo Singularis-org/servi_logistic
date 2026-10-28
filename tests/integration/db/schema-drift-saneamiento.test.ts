@@ -140,6 +140,11 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       "jobs",
       // SL-17 M1 (`20261022130000_organizacion_y_rol_app`): la empresa nace con `updated_at DEFAULT CURRENT_TIMESTAMP`.
       "organizacion",
+      // SL-24 (2026-10-27) - el catálogo de planes. Su `CREATE TABLE`
+      // (`20261027130000_plan/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Plan` lo declara
+      // con `@default(now()) @updatedAt`.
+      "plan",
       "premio_ranking",
       // FICHA 410 (2026-09-10) - las suscripciones de push web. Su `CREATE TABLE`
       // (`20260912120000_push_suscripcion/migration.sql`) escribe

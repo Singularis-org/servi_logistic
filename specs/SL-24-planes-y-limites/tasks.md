@@ -8,14 +8,14 @@
 
 ## Tanda A — base
 
-- [ ] **T0. Preparación.**
+- [x] **T0. Preparación.**
   - Comprobar que `20261026120200_job_estado_descartado` sigue siendo la última migración de
     `dev`. Si no, renombrar las tres de SL-24 a timestamps posteriores **antes** de aplicarlas en
     ninguna base compartida.
   - Comprobar si `scripts/verificar-rls-despliegue.ts` cuenta tablas de plataforma con RLS. Si
     las cuenta, se ajusta en T1.
   - **Hecho:** nota en `progress/impl_SL-24.md` con la última migración vista y la decisión.
-- [ ] **T1. Migración `20261027120000_plan` + Prisma** (depende de T0).
+- [x] **T1. Migración `20261027130000_plan` + Prisma** (depende de T0).
   - Las tablas, enum, `CHECK`, FK, RLS sin políticas y `REVOKE` de `design.md > §2`.
   - Las columnas de `organizacion` y el índice parcial de `orden`.
   - En Prisma, los modelos `Plan` (con `topeApiKeys`), `PlanTopeRol`, `PlanModulo` y
@@ -30,12 +30,12 @@
       a nivel de base;
     - `tests/integration/db/planes-acceso-servi-app.test.ts` da `42501` en cada escritura y
       lectura con `servi_app` (R8).
-- [ ] **T2. Migración `20261027120100_historial_accion_planes` + tipos** [P con T3] (depende de T1).
+- [x] **T2. Migración `20261027130100_historial_accion_planes` + tipos** [P con T3] (depende de T1).
   - El tipo `plan_asignado`, la entidad `plan`, la categoría `cambia_plan` y
     `etiquetaDeEntidad("plan", …)`.
   - `down.sql` con el patrón de `20261026120100`.
   - **Hecho:** las guardias `historial-accion-*` en verde.
-- [ ] **T3. Migración `20261027120200_plan_topes_triggers` + traducción** [P con T2] (depende de T1).
+- [x] **T3. Migración `20261027130200_plan_topes_triggers` + traducción** [P con T2] (depende de T1).
   - Las funciones y los cinco triggers de `design.md > §4`, sobre `orden`, `usuario` y `api_key`.
   - `lib/db/sqlstate.ts`, extraído de `contexto-empresa.ts` sin cambiar su comportamiento.
   - `lib/planes/tope-error.ts`, `lib/planes/ciclo.ts` y `lib/planes/mensajes.ts`.
@@ -133,12 +133,12 @@ los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticaci
 
 ### Base de datos
 - `db/schema.prisma`
-- `db/migrations/20261027120000_plan/migration.sql`
-- `db/migrations/20261027120000_plan/down.sql`
-- `db/migrations/20261027120100_historial_accion_planes/migration.sql`
-- `db/migrations/20261027120100_historial_accion_planes/down.sql`
-- `db/migrations/20261027120200_plan_topes_triggers/migration.sql`
-- `db/migrations/20261027120200_plan_topes_triggers/down.sql`
+- `db/migrations/20261027130000_plan/migration.sql`
+- `db/migrations/20261027130000_plan/down.sql`
+- `db/migrations/20261027130100_historial_accion_planes/migration.sql`
+- `db/migrations/20261027130100_historial_accion_planes/down.sql`
+- `db/migrations/20261027130200_plan_topes_triggers/migration.sql`
+- `db/migrations/20261027130200_plan_topes_triggers/down.sql`
 
 ### lib
 - `lib/db/sqlstate.ts`

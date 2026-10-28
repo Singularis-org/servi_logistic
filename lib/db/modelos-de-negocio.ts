@@ -2,8 +2,9 @@
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
 //   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (16): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
-//                      valor global del cobro por orden (SL-40) y la marca de entorno (SL-43).
+//   · plataforma (20): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
+//                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43) y el
+//                      catalogo de planes con su rastro (SL-24).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
 //                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
 //   · diferidos   (0): tienen ficha propia que decide su aislamiento.
@@ -145,6 +146,12 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaTarifa", tabla: "cobro_plataforma_tarifa" },
   // Marca de entorno de la base (SL-43): sin acceso para `servi_app`; la lee solo la demo de QA
   { modelo: "EntornoMarca", tabla: "entorno_marca" },
+  // Catalogo de planes y su rastro (SL-24): sin acceso para `servi_app`; los escribe el superadmin y
+  // los leen sus triggers `SECURITY DEFINER`. La asignacion vive en `organizacion`
+  { modelo: "Plan", tabla: "plan" },
+  { modelo: "PlanTopeRol", tabla: "plan_tope_rol" },
+  { modelo: "PlanModulo", tabla: "plan_modulo" },
+  { modelo: "PlanRastro", tabla: "plan_rastro" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

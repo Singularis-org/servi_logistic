@@ -1039,6 +1039,10 @@ model Orden {
   // `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`.
   @@index([organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id])
   @@index([organizacionId])
+  // SL-24 (design §2.6): el conteo del tope de órdenes por ciclo (las vivas de una empresa desde el
+  // inicio del ciclo). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS NULL`— y eso no se puede
+  // escribir aqui: vive en `db/migrations/20261027130000_plan/migration.sql`.
+  @@index([organizacionId, createdAt], map: "orden_organizacion_id_created_at_vivas_idx")
   @@map("orden")
 }
 
@@ -4536,6 +4540,10 @@ enum HistorialAccionTipo {
   /// `organizacion_modulo`; etiqueta: el nombre del módulo; `valor_nuevo`: su clave.
   modulo_activado
   modulo_desactivado
+  /// SL-24 (design §9): el superadmin asigna o cambia el plan de la empresa. Entidad: `plan` (el plan
+  /// nuevo); etiqueta: `Plan «<nombre>»`; `valor_anterior` y `valor_nuevo` NULL (el nombre es texto
+  /// libre y esas columnas son de vocabulario cerrado).
+  plan_asignado
 
   @@map("historial_accion_tipo")
 }
@@ -4584,6 +4592,8 @@ enum HistorialAccionEntidad {
   /// SL-23 (design §4.3): la activación de un módulo, 1:1 con su tabla. `entidad_id` es el id de la
   /// fila creada o borrada; sin FK, sobrevive al apagado.
   organizacion_modulo
+  /// SL-24 (design §9): el plan asignado, 1:1 con su tabla. `entidad_id` sin FK.
+  plan
 
   @@map("historial_accion_entidad")
 }
@@ -5333,6 +5343,15 @@ model Organizacion {
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
 
+  // SL-24 (design §2.4): el plan asignado y el ancla de sus ciclos. NULL = sin plan, sin límites (R14).
+  // Solo los escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // `CHECK ("plan_id" IS NULL OR "plan_ciclo_ancla_at" IS NOT NULL)` vive solo en el SQL de
+  // 20261027130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
+  planId           String?   @map("plan_id")
+  plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
+  planesExclusivos Plan[]    @relation("PlanExclusivo") // SL-24: los custom de esta empresa
+
   @@map("organizacion")
 }
 
@@ -5374,6 +5393,99 @@ model EntornoMarca {
   valor String
 
   @@map("entorno_marca")
+}
+
+// SL-24 (design §2.1) — un plan es público (varias empresas, lo verá el autoservicio) o custom (de UNA
+// empresa). Inmutable tras crear (R2).
+enum PlanVisibilidad {
+  publico
+  custom
+
+  @@map("plan_visibilidad")
+}
+
+// SL-24 (design §2.8) — qué cambio de un plan deja una fila en `plan_rastro`.
+enum PlanRastroAccion {
+  creado
+  editado
+  archivado
+
+  @@map("plan_rastro_accion")
+}
+
+// SL-24 (design §2.1) — el catálogo de planes. De PLATAFORMA: sin `organizacion_id` (la de un custom es
+// `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
+// tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261027130000, porque Prisma no los
+// expresa:
+//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las cinco formas
+//     del precio, R3) y los de rango de topes, montos y porcentaje;
+//   · la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R8).
+// CASCADE con la empresa del custom: un custom no tiene sentido sin ella (design §2.1).
+model Plan {
+  id                      String          @id @default(uuid())
+  nombre                  String          @db.VarChar(80)
+  visibilidad             PlanVisibilidad
+  organizacionExclusivaId String?         @map("organizacion_exclusiva_id")
+  organizacionExclusiva   Organizacion?   @relation("PlanExclusivo", fields: [organizacionExclusivaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  topeOrdenesCiclo        Int?            @map("tope_ordenes_ciclo")
+  topeApiKeys             Int?            @map("tope_api_keys")
+  precioNegociable        Boolean         @default(false) @map("precio_negociable")
+  precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
+  precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
+  descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)
+  archivadoAt             DateTime?       @map("archivado_at")
+  createdAt               DateTime        @default(now()) @map("created_at")
+  updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  topesPorRol PlanTopeRol[]
+  modulos     PlanModulo[]
+  empresas    Organizacion[] @relation("PlanAsignado")
+
+  @@map("plan")
+}
+
+// SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.
+// Viven solo en el SQL de 20261027130000: el CHECK de los roles con tope (`maestro`, `admin`,
+// `mensajero`, `Admin Tienda`, `adminSatelite`; ni `apiKey` ni `superadmin`, R25), `maximo >= 0`, la
+// RLS sin políticas y el `REVOKE ALL … FROM servi_app`.
+model PlanTopeRol {
+  planId String   @map("plan_id")
+  plan   Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  rol    RolValue
+  maximo Int
+
+  @@id([planId, rol])
+  @@map("plan_tope_rol")
+}
+
+// SL-24 (design §2.3) — un módulo incluido en un plan. Reusa el enum de SL-23. De PLATAFORMA; la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de 20261027130000.
+model PlanModulo {
+  planId String         @map("plan_id")
+  plan   Plan           @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  modulo ModuloApagable
+
+  @@id([planId, modulo])
+  @@map("plan_modulo")
+}
+
+// SL-24 (design §2.8) — el rastro de plataforma de crear, editar y archivar un plan (R29). Solo se
+// añade. `planId` y `actorUsuarioId` son opacos y SIN FK, a propósito: el rastro sobrevive al CASCADE
+// que borra un custom con su empresa. `cambios` es `{ campo: { antes, despues } }` con los importes
+// como texto. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261027130000.
+model PlanRastro {
+  id             String           @id @default(uuid())
+  planId         String           @map("plan_id")
+  planNombre     String           @map("plan_nombre") @db.VarChar(80)
+  accion         PlanRastroAccion
+  cambios        Json
+  actorUsuarioId String           @map("actor_usuario_id")
+  actorNombre    String           @map("actor_nombre") @db.VarChar(120)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@index([planId, createdAt])
+  @@map("plan_rastro")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.

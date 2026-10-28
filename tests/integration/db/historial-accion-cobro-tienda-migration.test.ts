@@ -428,6 +428,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
+      // SL-24: `plan_asignado`, de `20261027130100_historial_accion_planes`.
+      "plan_asignado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -440,7 +442,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
         .filter(
           (e) =>
             e !== ENTIDAD_NUEVA &&
-            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo"].includes(e),
+            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo", "plan"].includes(e),
         )
         .sort(),
     );
