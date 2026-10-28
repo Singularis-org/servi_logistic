@@ -2,14 +2,13 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SL-9 | marca-pwa-capturas-iconos | frontend | low | feature/SL-9-marca-pwa-capturas-iconos | Camilo | in_progress |
+| SL-9 | marca-pwa-capturas-iconos | frontend | low | feature/SL-9-marca-pwa-capturas-iconos | Camilo | spec_ready |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 hecho el 2026-10-28: tarjeta asignada (`trello.mjs tomar`), rama publicada y worktree en
-`.worktrees/SL-9-marca-pwa-capturas-iconos/`. Siguiente: F1.2 (spec), con `/afinar-feature` ofrecido
-antes por las preguntas abiertas.
+F1.4 desde el 2026-10-28: spec `specs/SL-9-marca-pwa-capturas-iconos/` (R1–R17, commit `eab96b1`)
+esperando aprobación humana. Tarjeta en «En revisión» (spec_ready) con comentario de la ruta.
 
 ## Evaluación
 - zone `frontend`: solo toca `public/` (capturas, iconos) y su uso en UI; sin DB ni API.
