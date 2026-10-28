@@ -8,6 +8,7 @@ import {
   CREAR_TABLA_DE_CONTROL,
   ErrorDeScript,
   MIGRACIONES,
+  aplicarMigracionesHasta,
   carpetasDeMigracion,
   conectar,
   diferencias,
@@ -120,17 +121,8 @@ describeSiHayBase("SL-20 — pais, organizacion_pais, geografia_por_pais, trigge
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    for (const carpeta of carpetasDeMigracion()) {
-      if (carpeta >= M_PAIS) break;
-      await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
-    }
-    // Mismo motivo que en SL-17, SL-32, SL-40 y SL-45: el autovacuum de la base recién llenada pide
-    // locks que chocan con los ALTER de las migraciones (40P01 medido allí).
-    const { rows: tablas } = await db.query(
-      `SELECT format('%I', c.relname) AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' AND c.relkind = 'r'`,
-    );
-    for (const { t } of tablas) await db.query(`ALTER TABLE ${String(t)} SET (autovacuum_enabled = false)`);
+    // Apaga el autovacuum antes de cada migracion, no al acabar: el 40P01 de SL-17 (ver el helper).
+    await aplicarMigracionesHasta(db, M_PAIS);
     // R5: una empresa que existe ANTES de SL-20.
     organizacionId = randomUUID();
     await db.query(`INSERT INTO "organizacion" ("id", "nombre", "slug") VALUES ($1, 'SL20 ida y vuelta', $2)`, [
