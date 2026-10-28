@@ -46,32 +46,39 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     expect(etiquetas).toContain("Wallet");
   });
 
+  // 2026-10-27: con WhatsApp en el núcleo, ningún subítem real del menú es de un módulo. La poda de
+  // subítems se mide sobre un desplegable armado, con la misma forma que tenía «Configuración».
+  const DESPLEGABLE: MenuItem = {
+    label: "D",
+    href: "/d",
+    iconKey: "settings",
+    roles: ["maestro"],
+    children: [
+      { label: "D1", href: "/d/1" },
+      { label: "D2", href: "/d/2", modulo: "ranking" },
+      { label: "D3", href: "/d/3" },
+    ],
+  };
+
   it("poda los subítems de un módulo apagado y deja el resto del desplegable", () => {
-    const menu = menuDeLaEmpresa(actor("maestro"), todosMenos("whatsapp"));
-    const config = menu.find((i) => i.href === "/configuracion");
-    expect(config?.children?.map((c) => c.href)).toEqual([
-      "/configuracion",
-      "/configuracion/tarifas",
-      "/configuracion/api",
-      "/configuracion/integraciones",
-      "/configuracion/vehiculos",
-      "/configuracion/sinpe",
-    ]);
-    // El maestro conserva «Histórico» por «Acciones» (núcleo, P3), sin «Conversaciones».
-    const historico = menu.find((i) => i.href === "/historico");
-    expect(historico?.children?.map((c) => c.href)).toEqual(["/historico/acciones"]);
+    const [podado] = filtrarPorModulos([DESPLEGABLE], todosMenos("ranking"));
+    expect(podado?.children?.map((c) => c.href)).toEqual(["/d/1", "/d/3"]);
+    // Y los del núcleo reales no se podan: el maestro ve «Configuración» completo con todo apagado.
+    const config = menuDeLaEmpresa(actor("maestro"), NINGUNO).find((i) => i.href === "/configuracion");
+    expect(config?.children?.map((c) => c.href)).toEqual(
+      menuDeLaEmpresa(actor("maestro"), TODOS).find((i) => i.href === "/configuracion")?.children?.map((c) => c.href),
+    );
   });
 
-  it("un desplegable que se queda sin subítems desaparece (Histórico del admin con WhatsApp apagado)", () => {
-    // El `admin` ve «Histórico» solo por «Conversaciones» (WhatsApp); «Acciones» es del `maestro`.
-    const conTodo = menuDeLaEmpresa(actor("admin"), TODOS);
-    expect(conTodo.map((i) => i.href)).toContain("/historico");
-
-    const sinWhatsapp = menuDeLaEmpresa(actor("admin"), todosMenos("whatsapp"));
-    expect(sinWhatsapp.map((i) => i.href)).not.toContain("/historico");
+  it("un desplegable que se queda sin subítems desaparece", () => {
+    const soloDeModulo: MenuItem = { ...DESPLEGABLE, children: [{ label: "D2", href: "/d/2", modulo: "ranking" }] };
+    expect(filtrarPorModulos([soloDeModulo], TODOS)).toHaveLength(1);
+    expect(filtrarPorModulos([soloDeModulo], todosMenos("ranking"))).toEqual([]);
+    // El «Histórico» del `admin` (solo «Conversaciones») sigue con todo apagado: WhatsApp es núcleo.
+    expect(menuDeLaEmpresa(actor("admin"), NINGUNO).map((i) => i.href)).toContain("/historico");
   });
 
-  it("los ítems del núcleo siguen visibles con los 5 módulos apagados", () => {
+  it("los ítems del núcleo siguen visibles con los 4 módulos apagados", () => {
     const etiquetas = (rol: RolValue) => menuDeLaEmpresa(actor(rol), NINGUNO).map((i) => i.label);
     expect(etiquetas("mensajero")).toContain("Cierre del día");
     expect(etiquetas("maestro")).toContain("Cierres del día");
@@ -84,7 +91,7 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     );
   });
 
-  it("con los 5 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
+  it("con los 4 apagados no queda ninguna ruta de un módulo en ningún menú", () => {
     const deModulo = [
       "/analitica",
       "/monitoreo",
@@ -95,9 +102,6 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
       "/wallet/mensajeros",
       "/wallet/satelites",
       "/mi-wallet",
-      "/configuracion/plantillas",
-      "/configuracion/envios-whatsapp",
-      "/historico/conversaciones",
     ];
     const roles: RolValue[] = ["maestro", "admin", "adminTienda", "adminSatelite", "mensajero"];
     for (const rol of roles) {
@@ -106,16 +110,31 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
     }
   });
 
-  it("Recolección, Bodegas satélite y API son núcleo (2026-10-27): siguen en el menú con los 5 apagados", () => {
+  it("Recolección, Bodegas satélite, API y WhatsApp son núcleo (2026-10-27): siguen en el menú con los 4 apagados", () => {
     expect(rutas(menuDeLaEmpresa(actor("mensajero"), NINGUNO))).toContain("/recoleccion");
-    expect(rutas(menuDeLaEmpresa(actor("maestro"), NINGUNO))).toContain("/configuracion/api");
+    expect(rutas(menuDeLaEmpresa(actor("maestro"), NINGUNO))).toEqual(
+      expect.arrayContaining([
+        "/configuracion/api",
+        "/configuracion/plantillas",
+        "/configuracion/envios-whatsapp",
+        "/historico/conversaciones",
+      ]),
+    );
     expect(rutas(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toEqual(
       expect.arrayContaining(["/recepcion-satelite/por-recibir", "/recepcion-satelite/en-bodega", "/mi-bodega"]),
     );
     const marcados = SIDEBAR_ITEMS.flatMap((i) => [i, ...(i.children ?? [])]).filter((i) =>
-      ["/recoleccion", "/recepcion-satelite", "/mi-bodega", "/configuracion/api"].includes(i.href),
+      [
+        "/recoleccion",
+        "/recepcion-satelite",
+        "/mi-bodega",
+        "/configuracion/api",
+        "/configuracion/plantillas",
+        "/configuracion/envios-whatsapp",
+        "/historico/conversaciones",
+      ].includes(i.href),
     );
-    expect(marcados).toHaveLength(4);
+    expect(marcados).toHaveLength(7);
     for (const item of marcados) expect(item.modulo, item.href).toBeUndefined();
   });
 
@@ -133,11 +152,9 @@ describe("SL-23 · filtrarPorModulos (R15)", () => {
   });
 
   it("conserva la identidad de los ítems que no poda, y crea uno nuevo solo para el podado", () => {
-    const base = itemsVisibles(SIDEBAR_ITEMS, actor("maestro"));
-    const filtrado = filtrarPorModulos(base, todosMenos("whatsapp"));
-    const configBase = base.find((i) => i.href === "/configuracion");
-    const configFiltrada = filtrado.find((i) => i.href === "/configuracion");
-    expect(configFiltrada).not.toBe(configBase);
+    const base = [...itemsVisibles(SIDEBAR_ITEMS, actor("maestro")), DESPLEGABLE];
+    const filtrado = filtrarPorModulos(base, todosMenos("ranking"));
+    expect(filtrado.find((i) => i.href === "/d")).not.toBe(DESPLEGABLE);
     expect(filtrado.find((i) => i.href === "/ordenes")).toBe(base.find((i) => i.href === "/ordenes"));
   });
 
@@ -176,7 +193,7 @@ describe("SL-23 · primerDestino sobre el menú filtrado (R15, R32)", () => {
     expect(primerDestino(filtrarPorModulos(menu, todosMenos("wallet")))).toBe("/n");
   });
 
-  it("R32: con los 5 apagados el adminSatelite sigue aterrizando en Recepción satélite (núcleo)", () => {
+  it("R32: con los 4 apagados el adminSatelite sigue aterrizando en Recepción satélite (núcleo)", () => {
     expect(primerDestino(menuDeLaEmpresa(actor("adminSatelite"), NINGUNO))).toBe("/recepcion-satelite/por-recibir");
   });
 
@@ -189,7 +206,7 @@ describe("SL-23 · primerDestino sobre el menú filtrado (R15, R32)", () => {
         href: "/c",
         iconKey: "settings",
         roles: ["adminSatelite"],
-        children: [{ label: "C1", href: "/c/1", modulo: "whatsapp" }],
+        children: [{ label: "C1", href: "/c/1", modulo: "ranking" }],
       },
     ];
     expect(primerDestino(filtrarPorModulos(soloModulos, NINGUNO))).toBeNull();

@@ -20,14 +20,15 @@ import {
 } from "./_fixtures/ida-y-vuelta-32";
 
 /**
- * SL-23 (ajuste sin SDD, decisión del humano del 2026-10-27) — «Recolección», «Bodegas satélite» y
- * «API e integraciones» pasan al núcleo: 20261027120000 recrea `modulo_apagable` sin esas tres claves.
+ * SL-23 (ajuste sin SDD, decisiones del humano del 2026-10-27) — «Recolección», «Bodegas satélite»,
+ * «API e integraciones» y «WhatsApp» pasan al núcleo: 20261027120000 recrea `modulo_apagable` sin
+ * esas cuatro claves.
  *
  * 1. Se aplica sobre una base con todo lo anterior y dos empresas con los 8 módulos encendidos, más
  *    un rastro de historial y un job descartado que nombran claves que se van (texto).
- * 2. La ida: el tipo queda con 5 claves, cada empresa con sus 5 filas, y la tabla conserva RLS,
+ * 2. La ida: el tipo queda con 4 claves, cada empresa con sus 4 filas, y la tabla conserva RLS,
  *    política, grants, trigger, índices y FK. El historial y el job no se tocan.
- * 3. El down: el tipo vuelve a sus 8 claves en el orden original y las tres claves vuelven encendidas
+ * 3. El down: el tipo vuelve a sus 8 claves en el orden original y las cuatro claves vuelven encendidas
  *    para todas las empresas; el esquema queda igual que antes de la ida.
  * 4. Reaplicada, todo vuelve igual que la primera vez.
  *
@@ -53,7 +54,7 @@ const CLAVES_ANTES = [
   "whatsapp",
   "api_integraciones",
 ];
-const CLAVES_DESPUES = ["analitica", "monitoreo", "wallet", "ranking", "whatsapp"];
+const CLAVES_DESPUES = ["analitica", "monitoreo", "wallet", "ranking"];
 
 // Lo que la foto del fixture de SL-32 no mira y esta migración podría mover.
 const CONSULTAS_EXTRA: Record<string, string> = {
@@ -127,7 +128,7 @@ async function historia(): Promise<unknown[]> {
   return [...h, ...j];
 }
 
-describe("SL-23 — la migración de Recolección, Bodegas satélite y API al núcleo, en disco", () => {
+describe("SL-23 — la migración de Recolección, Bodegas satélite, API y WhatsApp al núcleo, en disco", () => {
   it("trae su down.sql y va detrás de las tres de SL-23", () => {
     const carpetas = carpetasDeMigracion();
     const previa = carpetas.indexOf(PREVIA);
@@ -137,7 +138,7 @@ describe("SL-23 — la migración de Recolección, Bodegas satélite y API al n�
   });
 });
 
-describeSiHayBase("SL-23 — modulo_apagable sin recoleccion, bodegas_satelite ni api_integraciones, de ida y vuelta", () => {
+describeSiHayBase("SL-23 — modulo_apagable sin recoleccion, bodegas_satelite, api_integraciones ni whatsapp, de ida y vuelta", () => {
   beforeAll(async () => {
     admin = await conectar(urlDe("postgres"));
     await admin.query(`CREATE DATABASE "${BASE}"`);
@@ -196,7 +197,7 @@ describeSiHayBase("SL-23 — modulo_apagable sin recoleccion, bodegas_satelite n
     }
   }, 60_000);
 
-  it("el tipo queda con las 5 claves apagables, en su orden, y cada empresa con sus 5 filas", async () => {
+  it("el tipo queda con las 4 claves apagables, en su orden, y cada empresa con sus 4 filas", async () => {
     expect(await etiquetas("modulo_apagable")).toEqual(CLAVES_DESPUES);
     expect(await etiquetas("modulo_apagable_viejo")).toEqual([]);
     expect(await modulosDe(empresaA)).toEqual(CLAVES_DESPUES);
@@ -218,16 +219,19 @@ describeSiHayBase("SL-23 — modulo_apagable sin recoleccion, bodegas_satelite n
         empresaA,
       ]),
     ).rejects.toMatchObject({ code: "22P02" });
-    await expect(
-      db.query(`INSERT INTO "organizacion_modulo" ("id", "organizacion_id", "modulo") VALUES ($1, $2, 'api_integraciones')`, [
-        randomUUID(),
-        empresaA,
-      ]),
-    ).rejects.toMatchObject({ code: "22P02" });
+    for (const clave of ["api_integraciones", "whatsapp"]) {
+      await expect(
+        db.query(`INSERT INTO "organizacion_modulo" ("id", "organizacion_id", "modulo") VALUES ($1, $2, $3)`, [
+          randomUUID(),
+          empresaA,
+          clave,
+        ]),
+      ).rejects.toMatchObject({ code: "22P02" });
+    }
     expect(await historia()).toEqual([{ v: "recoleccion" }, { e: "descartado", m: "modulo_inactivo:bodegas_satelite" }]);
   });
 
-  it("el down devuelve las 8 claves en su orden, las tres encendidas para todas, y el esquema como antes", async () => {
+  it("el down devuelve las 8 claves en su orden, las cuatro encendidas para todas, y el esquema como antes", async () => {
     await ejecutar(db, sqlDe(M_NUCLEO, "down.sql"), `${M_NUCLEO}/down.sql`);
     expect(diferencias(await fotoSinFilas(), antes), "tras el down").toEqual([]);
     expect(await etiquetas("modulo_apagable")).toEqual(CLAVES_ANTES);

@@ -94,7 +94,7 @@ const handlers = {
 function renderAcciones(over: Partial<NovedadDTO> = {}) {
   // FICHA 454 (T2.5): la fila lleva el grupo bajo el que se listó; aquí, una devolución.
   return render(
-    <NovedadAcciones whatsappActivo novedad={novedad(over)} grupoListado="devolucion" {...handlers} />,
+    <NovedadAcciones novedad={novedad(over)} grupoListado="devolucion" {...handlers} />,
   );
 }
 

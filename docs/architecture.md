@@ -130,9 +130,9 @@ esta bien hecha, no solo si "funciona".
   antes de llamar a Storage. Nada fuera de `lib/storage/` toca `.storage` salvo `EXCEPCIONES_DE_STORAGE`
   (`storage-solo-por-adaptador.guardia`, R20). Lo guardado antes de SL-19 se mueve con
   `pnpm storage:migrar-a-carpetas [--aplicar | --revertir]` (`scripts/migrar-storage-a-carpetas.ts`).
-- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 5
+- **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 4
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
-  satélite y API e integraciones fueron apagables hasta el 2026-10-27, cuando pasaron al núcleo
+  satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, cuando pasaron al núcleo
   (migración `20261027120000_modulos_nucleo`).
   - **Tabla:** `organizacion_modulo(organizacion_id, modulo)`, una fila por módulo encendido, con RLS
     por empresa. `servi_app` solo la lee; la escribe únicamente el superadmin, como dueño y en
@@ -147,8 +147,7 @@ esta bien hecha, no solo si "funciona".
     `menuDeLaEmpresa`; los crons pasan `modulo` a `paraCadaEmpresa`; el drenador marca `descartado`
     el job de un módulo apagado, salvo los de cálculo continuo (`CALCULO_CONTINUO`); la API por key
     es núcleo salvo `ordenes/api-key/analitica`, que con Analítica apagada responde 403 con
-    `details.codigo = "modulo_inactivo"`; y el webhook entrante de WhatsApp responde
-    200 sin procesar el mensaje. Sin empresa (sin sesión o
+    `details.codigo = "modulo_inactivo"`. Sin empresa (sin sesión o
     superadmin), la puerta no aplica y decide la autorización de siempre.
   - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
     un módulo con su puerta) y `modulos-sin-seed.guardia`.

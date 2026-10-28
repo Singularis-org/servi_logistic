@@ -148,7 +148,7 @@ const novedad = (over: Partial<NovedadDTO> = {}): NovedadDTO => ({
  */
 function montar() {
   render(
-    <NovedadesModule whatsappActivo
+    <NovedadesModule
       grupo="devolucion"
       items={[novedad(), novedad({ id: "o2", numGuia: 777, destinatario: "Beto Cliente" })]}
       total={2}

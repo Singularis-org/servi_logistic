@@ -68,31 +68,31 @@ function cola(jobs: JobDTO[]) {
   return { repo, llamadas };
 }
 
-const descarta = (modulo: "whatsapp" | "ranking"): JobHandler => async () => {
+const descarta = (modulo: "analitica"): JobHandler => async () => {
   throw new JobDescartado(modulo);
 };
 const RECURRENCIA: RecurrenciaSpec = {
-  siguiente: () => ({ runAfter: new Date("2026-10-27T09:30:00.000Z"), dedupeKey: "wa_mant:2026-10-27" }),
+  siguiente: () => ({ runAfter: new Date("2026-10-27T09:30:00.000Z"), dedupeKey: "rollup:2026-10-27" }),
 } as RecurrenciaSpec;
 
 describe("SL-23 · JobQueueService — job de un módulo apagado (R20)", () => {
   it("lo marca descartado con el módulo en el motivo, sin contarlo como ok ni fallido, sin backoff", async () => {
-    const { repo, llamadas } = cola([job("j-1", "whatsapp_envio_evento"), job("j-2", "push_web")]);
+    const { repo, llamadas } = cola([job("j-1", "analitica_rollup_diario"), job("j-2", "push_web")]);
     const handlers = new Map<JobTipo, JobHandler>([
-      ["whatsapp_envio_evento", descarta("whatsapp")],
+      ["analitica_rollup_diario", descarta("analitica")],
       ["push_web", async () => {}],
     ]);
     const r = await new JobQueueService(repo, handlers, new Map(), CONFIG, () => AHORA, { warn: () => {} }).drenar(10);
 
     expect(r).toEqual({ procesados: 2, ok: 1, fallidos: 0, reintentados: 0, muertos: 0, descartados: 1 });
-    expect(llamadas.descartar).toEqual([{ id: "j-1", motivo: "modulo_inactivo:whatsapp" }]);
+    expect(llamadas.descartar).toEqual([{ id: "j-1", motivo: "modulo_inactivo:analitica" }]);
     expect(llamadas.complete).toEqual(["j-2"]);
     expect(llamadas.fail).toEqual([]);
   });
 
   it("en su último intento tampoco va a dead-letter: sigue siendo un descarte", async () => {
-    const { repo, llamadas } = cola([job("j-1", "whatsapp_chat_envio", 5, 5)]);
-    const handlers = new Map<JobTipo, JobHandler>([["whatsapp_chat_envio", descarta("whatsapp")]]);
+    const { repo, llamadas } = cola([job("j-1", "analitica_invalidacion_cache", 5, 5)]);
+    const handlers = new Map<JobTipo, JobHandler>([["analitica_invalidacion_cache", descarta("analitica")]]);
     const r = await new JobQueueService(repo, handlers, new Map(), CONFIG, () => AHORA, { warn: () => {} }).drenar(10);
     expect(r.muertos).toBe(0);
     expect(r.descartados).toBe(1);
@@ -100,12 +100,12 @@ describe("SL-23 · JobQueueService — job de un módulo apagado (R20)", () => {
   });
 
   it("un recurrente descartado agenda igualmente su siguiente ocurrencia", async () => {
-    const { repo, llamadas } = cola([job("j-1", "whatsapp_envio_mantenimiento")]);
-    const handlers = new Map<JobTipo, JobHandler>([["whatsapp_envio_mantenimiento", descarta("whatsapp")]]);
-    const recurrencias = new Map<JobTipo, RecurrenciaSpec>([["whatsapp_envio_mantenimiento", RECURRENCIA]]);
+    const { repo, llamadas } = cola([job("j-1", "analitica_rollup_diario")]);
+    const handlers = new Map<JobTipo, JobHandler>([["analitica_rollup_diario", descarta("analitica")]]);
+    const recurrencias = new Map<JobTipo, RecurrenciaSpec>([["analitica_rollup_diario", RECURRENCIA]]);
     const r = await new JobQueueService(repo, handlers, recurrencias, CONFIG, () => AHORA, { warn: () => {} }).drenar(10);
     expect(r.descartados).toBe(1);
-    expect(llamadas.enqueue).toEqual([{ tipo: "whatsapp_envio_mantenimiento", dedupeKey: "wa_mant:2026-10-27" }]);
+    expect(llamadas.enqueue).toEqual([{ tipo: "analitica_rollup_diario", dedupeKey: "rollup:2026-10-27" }]);
   });
 
   it("un error cualquiera sigue siendo un fallo con backoff: el descarte no se traga errores", async () => {

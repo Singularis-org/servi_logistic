@@ -574,7 +574,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       { label: "Integraciones", href: "/configuracion/integraciones" },
       // Feature 107: CRUD de plantillas de mensaje. Hereda la visibilidad
       // maestro-only del ítem padre (R1/R2).
-      { label: "Plantillas", href: "/configuracion/plantillas", modulo: "whatsapp" },
+      { label: "Plantillas", href: "/configuracion/plantillas" },
       // Ficha 474 (R2): «Envíos automáticos» JUSTO DESPUÉS de «Plantillas», como la maqueta
       // aprobada (`design-whatsapp/Main.dc.html`). Design §7 lo permite si no mueve el primer
       // hijo: `primerDestino` solo mira el PRIMERO («Usuarios»), y este entra el quinto. Hereda la
@@ -582,7 +582,6 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
       {
         label: "Envíos automáticos",
         href: "/configuracion/envios-whatsapp",
-        modulo: "whatsapp",
       },
       // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
       // del ítem padre: quien ve el catálogo es quien lo administra.
@@ -663,7 +662,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     iconKey: "history",
     roles: ROLES_HISTORICO_CONVERSACIONES,
     children: [
-      { label: "Conversaciones", href: "/historico/conversaciones", modulo: "whatsapp" },
+      { label: "Conversaciones", href: "/historico/conversaciones" },
       {
         label: "Acciones",
         href: "/historico/acciones",

@@ -20,14 +20,6 @@ import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 // `/mis-asignaciones/recoger`, y la ruta vieja quedó como REDIRECT. El gate de rol se
 // prueba en LAS DOS páginas: son dos puertas distintas, y una sola cubierta dejaría la
 // otra abierta.
-// SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
-// El caso de SL-23 del final apaga WhatsApp; el resto, todo encendido.
-const { whatsapp } = vi.hoisted(() => ({ whatsapp: { activo: true } }));
-vi.mock("@/lib/modulos/exigir-modulo", async () => ({
-  ...(await import("@/tests/fabricas/modulos")).puertasAbiertas(),
-  moduloActivo: async (m: string) => (m === "whatsapp" ? whatsapp.activo : true),
-}));
-
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: vi.fn(),
 }));
@@ -278,35 +270,6 @@ describe("ficha 440: fallo de lectura vs. 404", () => {
       listarMock.mockResolvedValue({ status: "unauthenticated" });
 
       await expect(Pagina()).rejects.toThrow("NEXT_NOT_FOUND");
-    });
-  }
-});
-
-// SL-23 (T8, design §6.3) — el chat es del módulo WhatsApp; las dos pantallas del mensajero son del
-// núcleo. Con WhatsApp apagado se pintan igual, sin el botón del chat.
-describe("SL-23 — el chat solo con el módulo WhatsApp encendido", () => {
-  afterEach(() => {
-    whatsapp.activo = true;
-  });
-
-  for (const [nombre, Pagina] of [
-    ["Reparto", RepartoPage],
-    ["Recoger", RecogerPage],
-  ] as const) {
-    it(`${nombre}: con WhatsApp apagado no hay chat, y la pantalla sí`, async () => {
-      resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "mensajero" });
-      whatsapp.activo = false;
-      render(await Pagina());
-      expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /^Abrir chat con clientes/ })).toBeNull();
-    });
-
-    it(`${nombre}: con WhatsApp encendido el chat está`, async () => {
-      resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "mensajero" });
-      render(await Pagina());
-      expect(
-        screen.getByRole("button", { name: /^Abrir chat con clientes/ }),
-      ).toBeInTheDocument();
     });
   }
 });

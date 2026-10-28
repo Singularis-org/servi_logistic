@@ -10,7 +10,7 @@ import type { FijarModuloEmpresaResult, ModuloDeEmpresa } from "@/lib/types/modu
 
 export interface ModulosEmpresaProps {
   organizacionId: string;
-  /** Los 5 módulos apagables en el orden de pantalla, con su estado leído en el servidor. */
+  /** Los 4 módulos apagables en el orden de pantalla, con su estado leído en el servidor. */
   modulos: ModuloDeEmpresa[];
   /** `fijarModuloEmpresaAction`, inyectada desde la página para poder probarla. */
   fijarModulo: (input: {

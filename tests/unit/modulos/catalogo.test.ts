@@ -19,13 +19,12 @@ const CLAVES = [
   "monitoreo",
   "wallet",
   "ranking",
-  "whatsapp",
 ];
 
 describe("SL-23 · catálogo de módulos (R1, R2)", () => {
-  it("R1 — exactamente 5 claves, las mismas que el enum `modulo_apagable`", () => {
+  it("R1 — exactamente 4 claves, las mismas que el enum `modulo_apagable`", () => {
     const enCatalogo = Object.keys(MODULOS_APAGABLES).sort();
-    expect(enCatalogo).toHaveLength(5);
+    expect(enCatalogo).toHaveLength(4);
     expect(enCatalogo).toEqual(Object.values(ModuloApagablePrisma).sort());
     expect(enCatalogo).toEqual([...CLAVES].sort());
   });
@@ -49,7 +48,6 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
       "Monitoreo",
       "Wallet",
       "Ranking",
-      "WhatsApp",
     ]);
   });
 
@@ -62,17 +60,18 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
     for (const clave of ORDEN_MODULOS) expect(MODULOS_APAGABLES[clave].descripcion.trim()).not.toBe("");
   });
 
-  it("R1, R2 — `recoleccion`, `bodegas_satelite` y `api_integraciones` no existen: son núcleo desde el 2026-10-27", () => {
-    for (const clave of ["recoleccion", "bodegas_satelite", "api_integraciones"]) {
+  it("R1, R2 — `recoleccion`, `bodegas_satelite`, `api_integraciones` y `whatsapp` no existen: son núcleo desde el 2026-10-27", () => {
+    for (const clave of ["recoleccion", "bodegas_satelite", "api_integraciones", "whatsapp"]) {
       expect(esModuloApagable(clave)).toBe(false);
       expect(Object.values(ModuloApagablePrisma)).not.toContain(clave);
     }
     expect(NUCLEO).toContain("Recolección");
     expect(NUCLEO).toContain("Bodegas satélite");
     expect(NUCLEO).toContain("API e integraciones");
+    expect(NUCLEO).toContain("WhatsApp");
   });
 
-  it("R2 — el núcleo son sus 11 nombres: Cierres, Incidentes y novedades, Recolección, Bodegas satélite y API e integraciones incluidos", () => {
+  it("R2 — el núcleo son sus 12 nombres: Cierres, Incidentes y novedades, Recolección, Bodegas satélite, API e integraciones y WhatsApp incluidos", () => {
     expect([...NUCLEO]).toEqual([
       "Inicio",
       "Órdenes",
@@ -84,6 +83,7 @@ describe("SL-23 · catálogo de módulos (R1, R2)", () => {
       "Usuarios",
       "Tarifas",
       "API e integraciones",
+      "WhatsApp",
       "Ayuda",
     ]);
   });

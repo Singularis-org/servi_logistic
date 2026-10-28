@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarMisAsignaciones } from "@/lib/actions/mis-asignaciones";
-import { moduloActivo } from "@/lib/modulos/exigir-modulo";
 import { estadoBloqueoMensajero } from "@/lib/actions/cierre-dia";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 
@@ -62,10 +61,6 @@ export default async function RepartoPage() {
   const estado = await estadoBloqueoMensajero();
   const bloqueo = estado.status === "ok" ? estado.bloqueo : SIN_BLOQUEO;
 
-  // SL-23 (design §6.3): el chat con el cliente es del módulo WhatsApp. Esta pantalla es del núcleo,
-  // así que con WhatsApp apagado se pinta sin el chat (ni su botón flotante ni «Mensaje»).
-  const whatsappActivo = await moduloActivo("whatsapp");
-
   return (
     <AppPage title="Reparto" description="Órdenes en reparto por gestionar">
       {/* Feature 61: KPIs del portal del mensajero sobre la lista de asignaciones. Viven
@@ -85,7 +80,6 @@ export default async function RepartoPage() {
         ordenEnGestionId={result.ordenEnGestionId}
         ruta={result.ruta}
         bloqueo={bloqueo}
-        whatsappActivo={whatsappActivo}
       />
     </AppPage>
   );

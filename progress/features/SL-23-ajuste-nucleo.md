@@ -1,68 +1,111 @@
-# SL-23 ajuste — Recolección, Bodegas satélite y API e integraciones al núcleo (sin SDD)
+# SL-23 ajuste — Recolección, Bodegas satélite, API e integraciones y WhatsApp al núcleo (sin SDD)
 
-Decisiones del humano del 2026-10-27 (la de API e integraciones llegó como ampliación). Rama
-`feature/SL-23-nucleo-recoleccion-satelite`. Sin commit (lo hace el leader).
-Quedan 5 apagables: analitica, monitoreo, wallet, ranking, whatsapp.
+Decisiones del humano del 2026-10-27, en tres pasos (Recolección + Satélite; luego API; luego
+WhatsApp). Rama `feature/SL-23-nucleo-recoleccion-satelite` (commit d289252, PR #27). La ampliación
+de WhatsApp va sin commit: lo hace el leader.
+Quedan 4 apagables: analitica, monitoreo, wallet, ranking.
 
-## Archivos
-- Migración `db/migrations/20261027120000_modulos_nucleo/{migration.sql,down.sql}`. Se llamaba
-  `…_modulos_nucleo_recoleccion_satelite` y se renombró al ampliarla; nunca se mergeó.
-  - **Ida:** borra las filas de las 3 claves, renombra el tipo, crea `modulo_apagable` con 5 claves, hace el
-    ALTER COLUMN … USING ::text y borra el tipo viejo.
-  - **Lo que no cambia:** la política, los grants, el trigger y la FK no dependen del tipo; el índice único
-    lo reconstruye el ALTER. `historial_accion` (texto en `valor_*`) y `jobs.last_error` no se tocan, y
-    ninguna otra tabla usa el enum.
-  - **Down:** recrea las 8 claves (sin ADD VALUE, 55P04) y vuelve a encender las 3 para todas las
-    empresas (ON CONFLICT DO NOTHING).
-  - **Test nuevo:** `tests/integration/db/migracion-sl23-nucleo-ida-y-vuelta.test.ts`.
-- `db/schema.prisma` (enum), `lib/modulos/catalogo.ts` (fichas, ORDEN_MODULOS; NUCLEO + Recolección,
-  Bodegas satélite, API e integraciones).
-- `lib/modulos/reparto.ts`, todo a `"nucleo"`:
-  - Rutas: `/recoleccion`, `/recepcion-satelite*`, `/mi-bodega`, `/configuracion/api`.
-  - Actions: recoleccion-tienda, recepcion-satelite, envio-devolucion-central, api-keys, webhooks.
-  - Jobs: webhook_estado, webhook_evento.
-  - API: las 8 de `ordenes/api-key/**`. `ordenes/api-key/analitica` pasa a exigir solo `"analitica"`.
-- Puertas quitadas:
-  - Páginas: mi-bodega, recoleccion, recepcion-satelite (+ en-bodega, por-recibir), configuracion/api.
-  - Actions: recoleccion-tienda, recepcion-satelite, envio-devolucion-central (también el caso FORBIDDEN
-    de SL-23), api-keys, webhooks (envoltorio `rechazoDeModulo`).
-  - `lib/api/api-key-request.ts` (`conEmpresaDeLaKey` ya no exige módulo).
-  - La ruta de analítica por key conserva su `exigirModuloActivo("analitica")`.
-- `lib/auth/menu-visibility.ts`: se quitan 4 `modulo:` (recolección, recepción satélite, mi bodega y API).
-- Textos: `docs/architecture.md` (5 apagables; la API por key ya no da 403 salvo `/analitica`).
-  También los comentarios de `dashboard/page.tsx`, `ModulosEmpresa.tsx`, `IModulosEmpresaService.ts` y
-  `e2e/dos-empresas-humo.spec.ts`. La ayuda (`docs/ayuda`) no lista módulos.
-- Tests actualizados:
-  - Catálogo y reparto: catalogo, modulos-empresa-service, ModulosEmpresa, CierresAdminPage
-    (comentarios), fabricas/modulos (comentario), organizacion-modulo.
-  - Menú: menu-modulos (R32 sobre menú armado con wallet; caso nuevo: Recolección, Satélite y API
-    visibles con todo apagado).
-  - Guardia modulos-reparto: 18 páginas y 43 actions; ya no hay pieza compartida de API.
-  - API y jobs: api-key-modulo-inactivo (reescrito: con todo apagado ninguna ruta por key da
-    modulo_inactivo salvo `/analitica`), procesar-jobs-modulos (los webhooks son núcleo y corren),
-    job-queue-service-descartado (usa whatsapp), exigir-modulo (monitoreo en vez de api).
-  - `migracion-sl23-ida-y-vuelta`: deja de exigir «justo detrás de la última de dev». Ese rojo ya existía
-    antes de este ajuste: las migraciones de SL-18 ordenan en medio.
+## Migración
+- `db/migrations/20261027120000_modulos_nucleo/{migration.sql,down.sql}`, una sola migración, ampliada en
+  cada paso; todavía no está en dev.
+- **Ida:** borra las filas de las 4 claves, renombra el tipo, crea `modulo_apagable` con 4 claves, hace
+  el ALTER COLUMN … USING ::text y borra el tipo viejo.
+  - La política, los grants, el trigger y la FK no dependen del tipo; el índice único lo reconstruye el
+    ALTER.
+  - No toca `historial_accion` (texto en `valor_*`) ni `jobs.last_error`.
+- **Down:** recrea las 8 claves en su orden (sin ADD VALUE, por 55P04) y vuelve a encender las 4 para
+  todas las empresas.
+- **Test:** `tests/integration/db/migracion-sl23-nucleo-ida-y-vuelta.test.ts`.
 
-## Verificación (ampliación)
-- **Typecheck:** `tsc --noEmit` excluyendo `.claude`, `.worktrees` y `.serena` (tsconfig temporal, ya
-  borrado, heap 6 GB) termina con **exit 0**.
-- **eslint** en los archivos tocados: **exit 0**.
-- **vitest** con la base real (`DATABASE_URL` del `.env`, cargado por Node). Corrió `tests/guards` y
-  `tests/unit/{guards,modulos,auth,api,cron,services}`, los componentes de recolección, satélite, API,
-  Sidebar y ModulosEmpresa, `tests/integration/api`, organizacion-modulo y las dos migraciones de ida
-  y vuelta.
-  - Resultado: `Test Files 1 failed | 672 passed (673)`, `Tests 4 failed | 10954 passed | 1 skipped`.
-  - El único rojo es `dependencias-declaradas-presentes` (4), que ya está en `tests/baseline-rojos.json`.
-  - Confirmado en modo verbose que las dos de DB corren contra Postgres: 15/15 verdes, incluida la ida y
-    vuelta de `20261027120000_modulos_nucleo`.
-- **`./init.sh`:** ROJO por entorno, no por el cambio.
-  1. Con el `.env` crudo corta en `./.env: line 124: $3: unbound variable`, porque `SUPERADMIN_PASSWORD`
-     lleva un `$3` sin comillas.
-  2. Con el `.env` cargado por Node, el typecheck se queda sin memoria (OOM): `**/*.ts` arrastra las copias
-     de `.claude/worktrees/` y `.worktrees/`.
+## Código
+- `db/schema.prisma` (enum de 4).
+- `lib/modulos/catalogo.ts`: NUCLEO suma Recolección, Bodegas satélite, API e integraciones y WhatsApp.
+- `lib/modulos/reparto.ts`: pasan a `"nucleo"` todas las piezas de los 4 módulos.
+  - Rutas, actions, los 8 jobs `whatsapp_*`, los webhooks, el cron `sync-plantillas-whatsapp` y la API
+    `chat/media` + `webhooks/whatsapp`.
+  - `ordenes/api-key/analitica` queda en `"analitica"`.
+  - `CONSUMOS_ENTRE_MODULOS` pierde las 3 piezas de WhatsApp (ChatFlotante, ChatConversacion,
+    EnviarPlantillaWhatsappButton).
+- **WhatsApp, puertas y flags fuera:** los 27 archivos que SL-23 tocó solo para eso se devolvieron a su
+  versión anterior a SL-23 (`git checkout e50ae78 -- …`). Se comprobó antes que cada diff era solo
+  la puerta o el flag `whatsappActivo`.
+  - Páginas: plantillas, envios-whatsapp (4), historico/conversaciones, mis-asignaciones/{reparto,
+    recoger}, novedades.
+  - Componentes: RepartoModule, GestionarOrdenPanel, NovedadAcciones, NovedadesModule, NovedadesTabs.
+  - Actions: chat-whatsapp, envios-whatsapp, historico-conversaciones, informe-picking,
+    informe-transito, plantillas, plantillas-sync, whatsapp-envio.
+  - `app/api/chat/media`, `app/api/cron/sync-plantillas-whatsapp`, `WebhookWhatsappService`, y los
+    tipos `chat-whatsapp` y `whatsapp-envio`.
+- **API (paso anterior):** sin puertas en configuracion/api, api-keys, webhooks y `conEmpresaDeLaKey`.
+  Recolección y Satélite: sin puertas en sus 5 páginas y 3 actions.
+- `lib/auth/menu-visibility.ts`: solo quedan `modulo:` de analitica, monitoreo, ranking y wallet (×2).
+- **Docs/textos:** `docs/architecture.md` (4 apagables; se quita «el webhook de WhatsApp responde 200
+  sin procesar»), y los comentarios de ModulosEmpresa.tsx, IModulosEmpresaService.ts,
+  e2e/dos-empresas-humo.spec.ts y CierresAdminPage.test.tsx.
+
+## Tests
+- **Devueltos a su versión anterior a SL-23** (solo probaban el flag o la puerta de WhatsApp): 18 tests de
+  componentes de reparto y novedades, más menu-historico, menu-visibility y
+  menu-visibility-envios-whatsapp.
+- **Borrado:** `tests/unit/services/webhook-whatsapp-service-modulo.test.ts`, que probaba la puerta
+  retirada.
+- **Reescritos** con otro módulo (ranking, monitoreo, analitica o wallet):
+  - Catálogo y empresas: catalogo, modulos-empresa-service, ModulosEmpresa,
+    plataforma-empresa-detalle-page (4 switches, NUCLEO de 12), modulos-empresa.composition-root,
+    modulos-empresa-historial, organizacion-modulo.
+  - modulo-apagado-action: el caso del toActionError compartido usa `previsualizarMovimientoAction` (wallet).
+  - Jobs: job-queue-service-descartado usa jobs de analítica. En procesar-jobs-modulos hoy ningún job
+    exige módulo; el descarte se ejerce pasando `ranking` explícito a `conSuEmpresa`.
+  - menu-modulos: la poda de subítems se mide sobre un desplegable armado, y un caso comprueba que
+    los ítems de los 4 módulos ya son núcleo.
+- **Guardia `modulos-reparto`:** 12 páginas y 35 actions de módulo. El no-vacío de (e) pasa a medir el
+  cruce real `analitica/cargar-kpis.ts → lib/actions/wallet`. El recorrido transitivo ya lo cubre el
+  árbol inventado.
+
+## Verificación (ampliación WhatsApp)
+- **Typecheck:** `NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit`, con el tsconfig que ya
+  excluye los worktrees: **exit 0**.
+- **eslint** en los archivos tocados: 0 errores. Quedan 2 warnings `no-unused-vars` que ya existían antes de
+  esta ampliación (GestionarOrdenPanel igual a e50ae78; RepartoModule.test igual a HEAD).
+- **vitest con la base real**: guardias, `tests/unit`, `tests/components`, la integración de módulos y las
+  dos migraciones de ida y vuelta. Resultado: `Test Files 6 failed | 2102 passed (2108)`,
+  `Tests 10 failed | 31004 passed`. Después se arreglaron los rojos propios:
+  - **Propio, arreglado:** `crons-sin-empresas` (3) y `whatsapp-sin-integracion` (1) esperaban `saltadas`,
+    pero el cron de plantillas ya no filtra por módulo. Devueltos a su forma anterior a SL-23: 51/51
+    verdes.
+  - **Baseline:** `dependencias-declaradas-presentes` (4), que ya está en `tests/baseline-rojos.json`.
+  - **Entorno local, no del cambio:**
+    - `whatsapp-webhook-config`: el `.env` local fija `apiVersion` v25.0 y el test espera v21.0. Sin
+      `.env`, verde.
+    - `DescargarDataset`: rojo solo bajo carga; suelto, 19/19 verde.
+    - `modulos-empresa-historial`: «la base ya tiene un superadmin que no es de este test (SL-32
+      R27)». La base local de desarrollo tiene un superadmin sembrado; en CI la base es limpia.
+- **Integración de la migración:** `migracion-sl23-nucleo-ida-y-vuelta` y `organizacion-modulo` verdes
+  contra Postgres, dentro de la corrida de arriba.
+
+## Rojos de CI del PR #27 (run 40603065789, commit d289252)
+- **`tests/integration/plataforma-empresa-detalle-page.test.tsx`: PROPIO, arreglado.** En d289252
+  el test seguía esperando 8 interruptores: «expected [ …(5) ] to have a length of 8 but got 5». Ahora
+  espera 4 interruptores y un NUCLEO de 12, y pasa en local. En un worktree temporal de origin/dev
+  pasa con su versión (8 y 8).
+- **`tests/integration/db/analitica-operativa-indices.test.ts`: DEUDA DE DEV, no del ajuste.**
+  - **Línea decisiva:** «AssertionError: el plan no nombra gestion_orden_organizacion_id_created_at_idx:
+    Index Scan using gestion_orden_organizacion_id_idx on gestion_orden g … Filter: (… created_at >= …)».
+    El planificador eligió el índice simple de SL-17 en vez del compuesto de SL-18; los dos tienen un
+    coste de ≈8.16, así que gana uno u otro según los datos del shard.
+  - **Evidencia:** la rama no toca el test, la migración 20261026090200 ni
+    `AnaliticaOperativaVivaRepository` respecto de origin/dev (diff vacío). El mismo archivo sale rojo
+    en el CI de SL-20 (runs 40598912536 y 40600847590), una rama que contiene origin/dev y no tiene
+    20261027120000. En local pasa igual en origin/dev (worktree temporal, ya borrado) que en esta rama
+    (7/7).
+  - **Ya está diagnosticado:** SL-20 lo arregla en su rama (`DROP INDEX
+    "gestion_orden_organizacion_id_idx"` dentro de la transacción revertida del test, «decision de
+    Camilo, 2026-10-27»). No se añadió al baseline: decide el humano (esperar al merge de SL-20 o
+    baseline).
 
 ## Sin verificar / bloqueos
-- `./init.sh` en verde: falta arreglar el `.env` (comillas) y el OOM del typecheck (`exclude` en
-  tsconfig o limpiar `.claude/worktrees/`). Las dos cosas son del humano o del leader.
-- E2E `dos-empresas-humo`: no se corrió. Solo cambiaron textos; recorre ORDEN_MODULOS, que ahora tiene 5.
+- `./init.sh` completo: no se relanzó en esta ampliación. El `.env` sigue con el `$3` sin comillas en
+  la línea 124 (lo arregla el humano).
+- El rojo de `analitica-operativa-indices` seguirá en el CI de este PR hasta que entre el arreglo de
+  SL-20 o el humano lo pase al baseline.
+- E2E `dos-empresas-humo`: no se corrió (solo cambiaron textos).

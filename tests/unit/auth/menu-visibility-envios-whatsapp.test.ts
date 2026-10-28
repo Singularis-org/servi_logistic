@@ -21,8 +21,7 @@ describe("R2 — «Envíos automáticos» en Configuración", () => {
     const hijos = config?.children ?? [];
     const i = hijos.findIndex((c) => c.href === HREF);
     expect(i).toBeGreaterThan(0);
-    // SL-23 (design §3.6): el subítem es del módulo WhatsApp.
-    expect(hijos[i]).toEqual({ label: "Envíos automáticos", href: HREF, modulo: "whatsapp" });
+    expect(hijos[i]).toEqual({ label: "Envíos automáticos", href: HREF });
     expect(hijos[i - 1].href).toBe("/configuracion/plantillas");
   });
 

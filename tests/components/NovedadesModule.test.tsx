@@ -183,7 +183,7 @@ afterEach(() => {
 // de ser el estado `ayuda_tienda`— y su grupo lo pone la lista que las trajo (`grupoDeFila`).
 describe("NovedadesModule", () => {
   it("R10: lista vacia -> estado vacio, sin filas", () => {
-    render(<NovedadesModule whatsappActivo grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
+    render(<NovedadesModule grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
 
     expect(screen.getByText(/No tenés órdenes en novedad/i)).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Órdenes en novedad" })).toBeNull();
@@ -191,7 +191,7 @@ describe("NovedadesModule", () => {
 
   it("R9: por cada orden muestra guia, destinatario y botones de contacto", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", numGuia: 12345, destinatario: "Ana Cliente" })]}
         total={1}
@@ -218,7 +218,7 @@ describe("NovedadesModule", () => {
 
   it("R9: numGuia null -> placeholder legible, no rompe la fila", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ numGuia: null })]}
         total={1}
@@ -235,7 +235,7 @@ describe("NovedadesModule", () => {
   // y un «—» de peso. Ahora el DTO trae el dato real y estas dos pruebas lo anclan.
   it("pinta el producto de la novedad junto al icono de paquete (no un hueco)", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ producto: "Licuadora Oster", peso: 2.75 })]}
         total={1}
@@ -257,7 +257,7 @@ describe("NovedadesModule", () => {
 
   it("peso null (orden sin peso registrado) -> raya, y el producto SIGUE visible", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ producto: "Caja sellada", peso: null })]}
         total={1}
@@ -281,7 +281,7 @@ describe("NovedadesModule", () => {
 
   it("R11: muestra la etiqueta ES de la causa, nunca el slug crudo del enum", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ causa: "not_found" })]}
         total={1}
@@ -296,7 +296,7 @@ describe("NovedadesModule", () => {
 
   it("R7: causa null -> 'Sin causa registrada'", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ causa: null })]}
         total={1}
@@ -325,7 +325,7 @@ describe("NovedadesModule", () => {
 
   it("296: en el grupo de AYUDA la card dice quién lleva la orden", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[
           novedad({
@@ -356,7 +356,7 @@ describe("NovedadesModule", () => {
 
   it("296: en el grupo de DEVOLUCIÓN también — es quien trae el paquete de vuelta", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[
           novedad({ estatusValue: "novedad", mensajeroNombre: "Marta Mensajera" }),
@@ -374,7 +374,7 @@ describe("NovedadesModule", () => {
 
   it("296: sin mensajero asignado lo dice en palabras, nunca «null» ni un hueco", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[
           novedad({ estatusValue: "en_reparto", causa: null, mensajeroNombre: null }),
@@ -396,7 +396,7 @@ describe("NovedadesModule", () => {
   it("296: el dato viaja también a la vista de DETALLE, no sólo a la mosaico", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[
           novedad({
@@ -446,7 +446,7 @@ describe("NovedadesModule", () => {
 
   it("en el grupo de ayuda el chip dice «Esperando tu respuesta», no «Sin causa registrada»", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ causa: null, estatusValue: "en_reparto" })]}
         total={1}
@@ -463,7 +463,7 @@ describe("NovedadesModule", () => {
 
   it("R26: con una causa ARRASTRADA, sobre una orden en ayuda no aparece ninguna causa", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ causa: "not_found", estatusValue: "en_reparto" })]}
         total={1}
@@ -482,7 +482,7 @@ describe("NovedadesModule", () => {
     // devolución, SÍ se lee. Sin esto, las tres negativas pasarían igual con la card sin montar.
     cleanup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ causa: "not_found", estatusValue: "novedad" })]}
         total={1}
@@ -503,7 +503,7 @@ describe("NovedadesModule", () => {
   it("237: la orden en ayuda ofrece SUS dos desenlaces, que no son los de la devolución", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ causa: null, estatusValue: "en_reparto" })]}
         total={1}
@@ -551,7 +551,7 @@ describe("NovedadesModule", () => {
 
   it("R21: sobre un estatus que no es de ningún grupo sólo quedan los de contacto", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         // ⏳ 2026-09-23 (FICHA 454): era `en_reparto`, que ahora ES el estado de una fila de ayuda
         // (la lista la trae por su ayuda abierta). Un estado que no casa con la lista que lo trajo
@@ -579,7 +579,7 @@ describe("NovedadesModule", () => {
 
   it("sobre una devuelta, las acciones de devolución siguen ofreciéndose", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad()]}
         total={1}
@@ -594,7 +594,7 @@ describe("NovedadesModule", () => {
   // --- Pedido humano 2026-08-18: «+1 intento de contacto» y su contador ---
 
   it("sobre una devolución corriente NO aparece: el contador es para las órdenes atascadas", () => {
-    render(<NovedadesModule whatsappActivo grupo="devolucion" items={[novedad()]} total={1} page={1} pageSize={10} />);
+    render(<NovedadesModule grupo="devolucion" items={[novedad()]} total={1} page={1} pageSize={10} />);
 
     expect(
       screen.queryByRole("button", { name: /^Registrar un intento de contacto/ }),
@@ -603,7 +603,7 @@ describe("NovedadesModule", () => {
 
   it("con ayuda pedida aparece el botón y el contador, con el `0` incluido", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ intentosContacto: 0, estatusValue: "en_reparto" })]}
         total={1}
@@ -623,7 +623,7 @@ describe("NovedadesModule", () => {
 
   it("el contador arranca en el valor del servidor, no en cero", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ intentosContacto: 4, estatusValue: "en_reparto" })]}
         total={1}
@@ -641,7 +641,7 @@ describe("NovedadesModule", () => {
     // personas de la misma tienda pulsando, el número bueno es siempre el de la base.
     intentoContactoMock.mockResolvedValue({ status: "ok", intentosContacto: 9 });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ intentosContacto: 2, estatusValue: "en_reparto" })]}
         total={1}
@@ -666,7 +666,7 @@ describe("NovedadesModule", () => {
     const user = userEvent.setup();
     intentoContactoMock.mockResolvedValue({ status: "forbidden" });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ intentosContacto: 2, estatusValue: "en_reparto" })]}
         total={1}
@@ -688,7 +688,7 @@ describe("NovedadesModule", () => {
 
   it("R22: renderiza la Pagination con el total y la pagina recibidos", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad()]}
         total={25}
@@ -708,7 +708,7 @@ describe("NovedadesModule", () => {
 
   it("R1: cada orden ofrece la acción 'Reprogramar' junto a los botones de contacto", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente" })]}
         total={1}
@@ -726,7 +726,7 @@ describe("NovedadesModule", () => {
     const user = userEvent.setup();
     reprogramarMock.mockResolvedValue({ status: "ok" });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente" })]}
         total={1}
@@ -771,7 +771,7 @@ describe("NovedadesModule", () => {
     const user = userEvent.setup();
     reprogramarMock.mockResolvedValue({ status: "ok" });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente" })]}
         total={1}
@@ -796,7 +796,7 @@ describe("NovedadesModule", () => {
     const user = userEvent.setup();
     reprogramarMock.mockResolvedValue({ status: "conflict", motivo: "estado" });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente" })]}
         total={1}
@@ -829,7 +829,7 @@ describe("NovedadesModule", () => {
     const user = userEvent.setup();
     reprogramarMock.mockResolvedValue({ status: "forbidden" });
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente" })]}
         total={1}
@@ -970,7 +970,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ numGuia: 12345, destinatario: "Ana Cliente" })]}
           total={1}
@@ -998,7 +998,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ destinatario: "Ana Cliente" })]}
           total={1}
@@ -1056,7 +1056,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   // y fallarían por "no encuentro el botón", no por "el botón no se puede nombrar".
   it("las acciones son botones de ICONO: sin texto visible, con su nombre accesible intacto", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1080,7 +1080,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
 
   it("al enfocar una acción, su tooltip revela la etiqueta que antes estaba escrita", async () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1119,7 +1119,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     "al enfocar %s su tooltip revela la ayuda corta, sin tocar el nombre accesible",
     async (nombreAccesible, textoTooltip) => {
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ destinatario: "Ana Cliente" })]}
           total={1}
@@ -1153,7 +1153,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   it("240/R27: 'Rechazar' abre la ventana en vez de avisar que no está disponible", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1200,7 +1200,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ destinatario: "Ana Cliente" })]}
           total={1}
@@ -1241,7 +1241,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   it("vista Detalle: `navegacion: true` enciende la LÍNEA de ubicación entera, no sólo el botón", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1271,7 +1271,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   it("vista Mosaico: `detalle: true` despliega «Ver detalle completo» con los datos reales", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1311,7 +1311,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   it("vista Detalle: la compuerta `detalle` es INERTE ahí: esa card NO tiene desplegable", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1355,7 +1355,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo grupo="devolucion" items={[novedad(NOVEDAD_NULA)]} total={1} page={1} pageSize={10} />,
+        <NovedadesModule grupo="devolucion" items={[novedad(NOVEDAD_NULA)]} total={1} page={1} pageSize={10} />,
       );
       await conmutarA(user, vista);
 
@@ -1381,7 +1381,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
   it("vista Mosaico: en el detalle desplegado los campos nulos se leen como «—», no vacíos", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[novedad(NOVEDAD_NULA)]} total={1} page={1} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[novedad(NOVEDAD_NULA)]} total={1} page={1} pageSize={10} />,
     );
 
     const card = cardDe("Ana Cliente");
@@ -1405,7 +1405,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ destinatario: "Ana Cliente" })]}
           total={1}
@@ -1425,7 +1425,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
 
   it("guía null: el placeholder legible de R9 sigue siendo el identificador de la card", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ numGuia: null, destinatario: "Ana Cliente" })]}
         total={1}
@@ -1447,7 +1447,7 @@ describe("NovedadesModule — las filas son las cards POS, conmutables (2026-08-
 describe("NovedadesModule — conmutador de vista (2026-08-13)", () => {
   function renderUna() {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ destinatario: "Ana Cliente" })]}
         total={1}
@@ -1474,7 +1474,7 @@ describe("NovedadesModule — conmutador de vista (2026-08-13)", () => {
   });
 
   it("sin órdenes no hay conmutador: no hay cards que conmutar", () => {
-    render(<NovedadesModule whatsappActivo grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
+    render(<NovedadesModule grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
 
     expect(
       screen.queryByRole("group", { name: "Vista de las órdenes" }),
@@ -1512,7 +1512,7 @@ describe("NovedadesModule — conmutador de vista (2026-08-13)", () => {
     async (vista) => {
       const user = userEvent.setup();
       render(
-        <NovedadesModule whatsappActivo
+        <NovedadesModule
         grupo="devolucion"
           items={[novedad({ destinatario: "Ana Cliente", intentosEntrega: 2 })]}
           total={1}
@@ -1531,7 +1531,7 @@ describe("NovedadesModule — conmutador de vista (2026-08-13)", () => {
   it("la lista es <ul>/<li> en las DOS vistas (feature 160/R26: no es un carrusel de divs)", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[
           novedad({ id: "o1", destinatario: "Uno" }),
@@ -1556,7 +1556,7 @@ describe("NovedadesModule — conmutador de vista (2026-08-13)", () => {
   it("la paginación convive con el conmutador: cambiar de vista no la toca", async () => {
     const user = userEvent.setup();
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[novedad()]} total={25} page={2} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[novedad()]} total={25} page={2} pageSize={10} />,
     );
 
     await conmutarA(user, "Detalle");
@@ -1585,7 +1585,7 @@ describe("NovedadesModule — modal de Habilitar (nota obligatoria)", () => {
    */
   async function abrirHabilitar(user: ReturnType<typeof userEvent.setup>) {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[novedad({ destinatario: "Ana Cliente", estatusValue: "en_reparto" })]}
         total={1}
@@ -1733,7 +1733,7 @@ describe("NovedadesModule — modal de Habilitar (nota obligatoria)", () => {
 describe("NovedadesModule — intentos de entrega (feature 160)", () => {
   it("R18: cada novedad muestra el dato etiquetado junto a sus otros campos", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", destinatario: "Ana Cliente", intentosEntrega: 2 })]}
         total={1}
@@ -1752,7 +1752,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
 
   it("R19: con 0 intentos el dato SE MUESTRA (no se omite ni se deja vacío)", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", intentosEntrega: 0 })]}
         total={1}
@@ -1767,7 +1767,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
 
   it("R19: sin el campo (DTO viejo) muestra 0", () => {
     render(
-      <NovedadesModule whatsappActivo grupo="devolucion" items={[novedad({ id: "o1" })]} total={1} page={1} pageSize={10} />,
+      <NovedadesModule grupo="devolucion" items={[novedad({ id: "o1" })]} total={1} page={1} pageSize={10} />,
     );
     expect(
       within(screen.getByRole("listitem")).getByText("Intentos: 0"),
@@ -1776,7 +1776,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
 
   it("R26: cada novedad lleva SU número", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[
           novedad({ id: "o1", destinatario: "Uno", intentosEntrega: 3 }),
@@ -1794,7 +1794,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
 
   it("R20/R32: el dato no trae umbral y el estado vacío sigue sin lista", () => {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="devolucion"
         items={[novedad({ id: "o1", intentosEntrega: 2 })]}
         total={1}
@@ -1807,7 +1807,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
     ).toBe("Intentos: 2");
     cleanup();
 
-    render(<NovedadesModule whatsappActivo grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
+    render(<NovedadesModule grupo="devolucion" items={[]} total={0} page={1} pageSize={10} />);
     expect(screen.queryByText(/Intentos/)).toBeNull();
   });
 });
@@ -1823,7 +1823,7 @@ describe("NovedadesModule — intentos de entrega (feature 160)", () => {
 describe("NovedadesModule — 237: resolver desde la pestaña de ayuda", () => {
   function montarAyuda(over: Partial<NovedadDTO> = {}) {
     render(
-      <NovedadesModule whatsappActivo
+      <NovedadesModule
         grupo="ayuda"
         items={[
           novedad({

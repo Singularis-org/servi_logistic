@@ -8,7 +8,6 @@ import {
   listarNovedadesAction,
 } from "@/lib/actions/novedades";
 import { listarRechazosSlaTiendaAction } from "@/lib/actions/rechazos-sla-tienda";
-import { moduloActivo } from "@/lib/modulos/exigir-modulo";
 
 import { GRUPOS_NOVEDAD, type GrupoNovedad } from "@/lib/types/novedad-grupo";
 
@@ -68,13 +67,10 @@ export default async function NovedadesPage(props: {
   const query = (await props.searchParams) ?? {};
   const superficieInicial = superficieSolicitada(query[PARAM_SUPERFICIE]);
 
-  // SL-23 (design §6.3): la acción de plantilla de WhatsApp es del módulo WhatsApp; esta pantalla es
-  // del núcleo. Se lee en la misma espera que los listados.
-  const [ayudaResult, novedadesResult, rechazosSlaResult, whatsappActivo] = await Promise.all([
+  const [ayudaResult, novedadesResult, rechazosSlaResult] = await Promise.all([
     listarAyudaTiendaAction({ page: 1 }),
     listarNovedadesAction({ page: 1 }),
     listarRechazosSlaTiendaAction({ page: 1 }),
-    moduloActivo("whatsapp"),
   ]);
 
   if (novedadesResult.status !== "ok") {
@@ -119,7 +115,6 @@ export default async function NovedadesPage(props: {
         }}
         rechazosSla={rechazosSla}
         superficieInicial={superficieInicial}
-        whatsappActivo={whatsappActivo}
       />
     </AppPage>
   );

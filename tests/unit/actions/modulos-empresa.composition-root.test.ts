@@ -47,7 +47,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("SL-23 — el composition root de modulos-empresa pasa ModulosEmpresaRepository", () => {
   it("fijarModuloEmpresaAction, sin deps.service, enciende por el repositorio real y registra la acción", async () => {
     const r = await fijarModuloEmpresaAction(
-      { organizacionId: EMPRESA, modulo: "whatsapp", activo: true },
+      { organizacionId: EMPRESA, modulo: "monitoreo", activo: true },
       { getActor: async () => SUPERADMIN },
     );
     expect(r).toEqual({ estado: "ok", cambio: true });
@@ -55,15 +55,15 @@ describe("SL-23 — el composition root de modulos-empresa pasa ModulosEmpresaRe
     expect(transaction).toHaveBeenCalledTimes(1);
     const [{ data, skipDuplicates }] = txCreateMany.mock.calls[0] as unknown as [{ data: { organizacionId: string; modulo: string }[]; skipDuplicates: boolean }];
     expect(skipDuplicates).toBe(true);
-    expect(data).toMatchObject([{ organizacionId: EMPRESA, modulo: "whatsapp" }]);
+    expect(data).toMatchObject([{ organizacionId: EMPRESA, modulo: "monitoreo" }]);
     // Anti-vacuidad: la fila del historial solo puede salir del repositorio real.
     const [{ data: filas }] = txHistorialCreateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown>[] }];
     expect(filas).toEqual([
       expect.objectContaining({
         accion: "modulo_activado",
         entidadTipo: "organizacion_modulo",
-        entidadEtiqueta: "WhatsApp",
-        valorNuevo: "whatsapp",
+        entidadEtiqueta: "Monitoreo",
+        valorNuevo: "monitoreo",
         organizacionId: EMPRESA,
         actorUsuarioId: "u-sa",
         actorRol: "superadmin",
