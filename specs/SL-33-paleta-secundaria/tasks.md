@@ -14,7 +14,7 @@
 
 ## Tareas
 
-- [ ] **T0 — Traer `dev` (SL-9).** Merge de `origin/dev` en la rama. Comprobar que llegan
+- [x] **T0 — Traer `dev` (SL-9).** Merge de `origin/dev` en la rama. Comprobar que llegan
   `scripts/capturas-pwa.mjs`, la guardia de capturas de SL-9 y `specs/SL-9-marca-pwa-capturas-iconos/`.
   Anotar en `progress/impl_SL-33.md` dos cosas: el nombre real de la guardia y su umbral actual. Si
   el nombre no es el de «Archivos esperados», corregir la lista aquí.
