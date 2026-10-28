@@ -37,3 +37,14 @@ export function inicioDelCiclo(ancla: Date, ahora: Date): Date {
   if (meses > 0 && sumarMeses(ancla, meses).getTime() > ahora.getTime()) meses -= 1;
   return meses <= 0 ? new Date(ancla.getTime()) : sumarMeses(ancla, meses);
 }
+
+// P8 (cerrada el 2026-10-28): la fecha de un cambio programado rige desde las 00:00 de ese día en la
+// hora de la plataforma, el desfase fijo de los crons (`vercel.json`), hasta que SL-21 traiga zona por
+// empresa. Fijo y no por nombre de zona: sin depender de la base de husos del proceso.
+const DESFASE_PLATAFORMA_HORAS = 6;
+
+/** `AAAA-MM-DD` → el instante de las 00:00 de ese día a −06:00 (design §16.1). */
+export function inicioDelDiaPlataforma(fecha: string): Date {
+  const [anio, mes, dia] = fecha.split("-").map((p) => Number.parseInt(p, 10));
+  return new Date(Date.UTC(anio, mes - 1, dia, DESFASE_PLATAFORMA_HORAS));
+}

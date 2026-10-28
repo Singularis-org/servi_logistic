@@ -5,6 +5,8 @@ import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import type { ResultadoAsignar } from "@/lib/interfaces/repositories/IPlanesRepository";
+import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -23,9 +25,9 @@ import { asignarPlan, crearPlan, sqlstateDe } from "./_fixtures/planes";
 //   · un alta y una bajada de plan, en los dos órdenes: el `FOR SHARE` del trigger y el `FOR UPDATE`
 //     de la asignación se esperan, y el estado final nunca pasa el tope.
 //
-// La asignación todavía no tiene repositorio (`PlanesRepository`, T4): aquí se escribe con los mismos
-// cerrojos y en el mismo orden que fija design §4.4 y §5.2 (empresa FOR UPDATE → plan FOR SHARE →
-// contar → escribir). T4 lo cubre con el repositorio real.
+// La bajada de plan es `PlanesRepository.asignar` REAL (T4), con sus cerrojos de design §4.4 y §5.2
+// (empresa FOR UPDATE → plan FOR SHARE → contar → escribir). Para pausarla entre la escritura y el
+// COMMIT, su cliente envuelve `$transaction`: la pausa va después de todo lo que hace el repositorio.
 //
 // Las altas son INSERT a mano con `servi_app`, en transacciones interactivas: es la única forma de
 // pausar entre el alta y el COMMIT sin tocar un repositorio. El trigger no distingue la vía (R18).
@@ -114,40 +116,40 @@ async function estado(e: Empresa) {
   return { planId: org.planId, ordenes, tope };
 }
 
-type ResultadoAsignacion = { estado: "ok" } | { estado: "tope_excedido"; usados: number };
+/** El superadmin que baja el plan: el rastro lo congela como sistema (no es lo que se mide aquí). */
+const ACTOR = randomUUID();
 
 /**
- * Bajar el plan con los cerrojos y el orden de design §4.4/§5.2. `pausa` se dispara con la escritura
- * hecha y sin confirmar.
+ * Bajar el plan con `PlanesRepository.asignar` real. `pausa` se dispara con todo escrito (plan,
+ * módulos e historial) y sin confirmar.
  */
 function asignar(
   cliente: PrismaClient,
   e: Empresa,
   planId: string,
   pausa?: { dentro: () => void; soltar: Promise<void> },
-): Promise<ResultadoAsignacion> {
-  return cliente.$transaction(
-    async (tx) => {
-      await tx.$queryRawUnsafe(`SELECT "id" FROM "organizacion" WHERE "id" = $1 FOR UPDATE`, e.id);
-      const [plan] = await tx.$queryRawUnsafe<{ maximo: number | null }[]>(
-        `SELECT "tope_ordenes_ciclo" AS maximo FROM "plan" WHERE "id" = $1 FOR SHARE`,
-        planId,
-      );
-      const [uso] = await tx.$queryRawUnsafe<{ usados: number }[]>(
-        `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", now()::timestamp)) AS usados
-           FROM "organizacion" o WHERE o."id" = $1`,
-        e.id,
-      );
-      if (plan.maximo !== null && uso.usados > plan.maximo) return { estado: "tope_excedido", usados: uso.usados };
-      await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "plan_id" = $1 WHERE "id" = $2`, planId, e.id);
-      if (pausa) {
-        pausa.dentro();
-        await pausa.soltar;
+): Promise<ResultadoAsignar> {
+  const conPausa = new Proxy(cliente, {
+    get(objetivo, prop) {
+      if (prop === "$transaction") {
+        return (fn: (tx: TxDeTest) => Promise<unknown>) =>
+          objetivo.$transaction(
+            async (tx) => {
+              const r = await fn(tx);
+              if (pausa) {
+                pausa.dentro();
+                await pausa.soltar;
+              }
+              return r;
+            },
+            { timeout: 60_000, maxWait: 30_000 },
+          );
       }
-      return { estado: "ok" };
+      const valor = Reflect.get(objetivo, prop) as unknown;
+      return typeof valor === "function" ? valor.bind(objetivo) : valor;
     },
-    { timeout: 60_000, maxWait: 30_000 },
-  );
+  });
+  return new PlanesRepository(conPausa).asignar(e.id, planId, ACTOR);
 }
 
 /** Un alta por `cliente`; con `pausa`, se detiene tras el INSERT (trigger pasado) y antes del COMMIT. */
@@ -283,7 +285,10 @@ describeSiHayBase("SL-24 — el tope sin carrera (R24), dos conexiones contra Po
       );
       expect(r.segundaTerminoDuranteLaPausa, "la asignación debe esperar al alta en vuelo").toBe(false);
       expect(r.a).toEqual({ aislamiento: "read committed" });
-      expect(r.b).toEqual({ estado: "tope_excedido", usados: 2 });
+      expect(r.b).toMatchObject({
+        estado: "tope_excedido",
+        excedidos: [{ organizacionId: bajadaTrasAlta.id, tope: "ordenes", usados: 2, maximo: 1 }],
+      });
       const final = await estado(bajadaTrasAlta);
       expect(final).toEqual({ planId: planGrande, ordenes: 2, tope: 10 });
       expect(final.ordenes).toBeLessThanOrEqual(final.tope as number);
@@ -297,7 +302,7 @@ describeSiHayBase("SL-24 — el tope sin carrera (R24), dos conexiones contra Po
         () => alta(cliente1, altaTrasBajada),
       );
       expect(r.segundaTerminoDuranteLaPausa, "el alta debe esperar a la asignación en vuelo").toBe(false);
-      expect(r.a).toEqual({ estado: "ok" });
+      expect(r.a).toEqual({ estado: "ok", cambio: true });
       expect("error" in r.b ? sqlstateDe(r.b.error) : "confirmó").toBe("SL024");
       const final = await estado(altaTrasBajada);
       expect(final).toEqual({ planId: planChico, ordenes: 1, tope: 1 });

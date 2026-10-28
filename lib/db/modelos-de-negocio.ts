@@ -152,6 +152,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "PlanTopeRol", tabla: "plan_tope_rol" },
   { modelo: "PlanModulo", tabla: "plan_modulo" },
   { modelo: "PlanRastro", tabla: "plan_rastro" },
+  // El cambio pendiente de un plan (SL-24, enmienda del 2026-10-28): igual que el catalogo
+  { modelo: "PlanCambioProgramado", tabla: "plan_cambio_programado" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

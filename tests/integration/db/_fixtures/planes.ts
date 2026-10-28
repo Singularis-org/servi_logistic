@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import type { PrismaClient, RolValue } from "@prisma/client";
 
-import { CLAVE_LOCK_ESCRITURA_REAL, type TxDeTest } from "../_postgres-real";
+import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
+import type { CrearPlanInput } from "@/lib/types/planes";
+import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
+
+import { CLAVE_LOCK_ESCRITURA_REAL, RegistroCaido, clienteConSavepoint, type TxDeTest } from "../_postgres-real";
+import { crearUsuarioDePrueba } from "./orden-minima";
+import { idDeRol, liberarHuecoDeSuperadmin } from "./superadmin-32";
 
 // SL-24 — lo que comparten los tests de integración de planes y topes.
 //
@@ -148,6 +154,72 @@ export async function asignarPlan(
     desfase,
     organizacionId,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* T4: el repositorio real dentro de la transacción del caso                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `PlanesRepository` sobre la transacción del caso: cada `$transaction` suya es un SAVEPOINT real
+ * (`clienteConSavepoint`), así que un rechazo o un registro roto deshace solo esa operación.
+ * `romper` sustituye `historialAccion.createMany` o `planRastro.create` por uno que lanza.
+ */
+export function planesEnTx(tx: TxDeTest, romper: "nada" | "historial" | "rastro" = "nada"): PlanesRepository {
+  const cliente = clienteConSavepoint(tx, romper === "historial");
+  if (romper !== "rastro") return new PlanesRepository(cliente);
+  const conRastroRoto: unknown = new Proxy(cliente as object, {
+    get(objetivo, prop) {
+      if (prop === "$transaction") {
+        const abrir = Reflect.get(objetivo, prop) as (fn: (t: unknown) => unknown) => Promise<unknown>;
+        return (fn: (t: unknown) => unknown) => abrir((t) => fn(rastroRoto(t)));
+      }
+      const valor = Reflect.get(objetivo, prop) as unknown;
+      return typeof valor === "function" ? valor.bind(objetivo) : valor;
+    },
+  });
+  return new PlanesRepository(conRastroRoto as PrismaClient);
+}
+
+function rastroRoto(t: unknown): unknown {
+  return new Proxy(t as object, {
+    get(objetivo, prop) {
+      if (prop === "planRastro") {
+        return {
+          create: () => {
+            throw new RegistroCaido();
+          },
+        };
+      }
+      const valor = Reflect.get(objetivo, prop) as unknown;
+      return typeof valor === "function" ? valor.bind(objetivo) : valor;
+    },
+  });
+}
+
+/** Una entrada válida de `crearPlanSchema`, pública y sin topes ni precio salvo lo que se pida. */
+export function entradaDePlan(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
+  return {
+    nombre: `sl24 ${randomUUID().slice(0, 8)}`,
+    visibilidad: "publico",
+    organizacionId: null,
+    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    modulos: [],
+    precio: { tipo: "sin_precio" },
+    ...p,
+  };
+}
+
+/**
+ * El superadmin del caso, dentro de su transacción revertida (SL-32: hay uno solo en toda la base).
+ * El archivo tiene que sostener `tomarLockDeSuperadmin` desde su `beforeAll`. Deja la empresa del
+ * contexto vacía: quien llama la vuelve a fijar si la necesita.
+ */
+export async function superadminEnTx(tx: TxDeTest): Promise<string> {
+  await liberarHuecoDeSuperadmin(tx, await idDeRol(tx, "superadmin"));
+  // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin no tiene empresa.
+  await fijarEmpresa(tx, "");
+  return (await crearUsuarioDePrueba(tx, "superadmin")).id;
 }
 
 /** Control de no vacuidad: el trigger existe sobre esa tabla y está activo. */

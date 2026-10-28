@@ -182,6 +182,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "order-status": "nucleo",
   organizaciones: "nucleo",
   "password-reset": "nucleo",
+  // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
+  planes: "nucleo",
   "postulacion-mensajero": "nucleo",
   "postulacion-recurso": "nucleo",
   push: "nucleo",
@@ -225,6 +227,11 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   // API e integraciones (núcleo desde el 2026-10-27).
   webhook_estado: "nucleo",
   webhook_evento: "nucleo",
+  // Cambio programado de un plan (SL-24, design §16.3 y §16.4): de plataforma, sin módulo.
+  plan_aplicar_cambio: "nucleo",
+  plan_recordatorio_cambio: "nucleo",
+  plan_aviso_correo: "nucleo",
+  plan_cambios_vencidos: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

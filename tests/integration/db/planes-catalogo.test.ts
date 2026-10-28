@@ -132,8 +132,8 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     );
     expect(tablas.map((f) => f.t)).toEqual(["plan", "plan_modulo", "plan_rastro", "plan_tope_rol"]);
     const checks = await base.$queryRawUnsafe<{ c: string }[]>(
-      `SELECT conname AS c FROM pg_constraint
-        WHERE contype = 'c' AND conname IN ('plan_precio_forma', 'plan_custom_con_empresa', 'plan_tope_rol_rol_check', 'organizacion_plan_ciclo_ancla_check')
+      `SELECT c.conname AS c FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE n.nspname = 'public' AND c.contype = 'c' AND c.conname IN ('plan_precio_forma', 'plan_custom_con_empresa', 'plan_tope_rol_rol_check', 'organizacion_plan_ciclo_ancla_check')
         ORDER BY 1`,
     );
     expect(checks.map((f) => f.c)).toEqual([
@@ -143,7 +143,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       "plan_tope_rol_rol_check",
     ]);
     const indice = await base.$queryRawUnsafe<{ d: string }[]>(
-      `SELECT indexdef AS d FROM pg_indexes WHERE indexname = 'orden_organizacion_id_created_at_vivas_idx'`,
+      `SELECT indexdef AS d FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'orden_organizacion_id_created_at_vivas_idx'`,
     );
     expect(indice).toHaveLength(1);
     expect(indice[0].d).toMatch(/\(organizacion_id, created_at\) WHERE \(deleted_at IS NULL\)/);

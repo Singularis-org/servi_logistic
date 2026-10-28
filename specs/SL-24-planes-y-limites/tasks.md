@@ -58,7 +58,7 @@
 
 ## Tanda B — gestión del superadmin
 
-- [ ] **T3b. Migraciones de la enmienda + Prisma** (nueva, 2026-10-28; depende de T3).
+- [x] **T3b. Migraciones de la enmienda + Prisma** (nueva, 2026-10-28; depende de T3).
   - Comprobar otra vez el orden contra `dev` y contra el PR #27.
   - `20261028120000_plan_cambio_programado` y `20261028120100_plan_cambio_enums`, con sus
     `down.sql` (`design.md > §16.1, §16.6`).
@@ -71,7 +71,7 @@
     - `planes-acceso-servi-app` ampliado con la tabla nueva (`42501`);
     - las migraciones de T1–T3 sin cambios en el diff.
 
-- [ ] **T4. `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`** (depende de T2, T3 y T3b).
+- [x] **T4. `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`** (depende de T2, T3 y T3b).
   - Crear, editar, archivar, asignar, asignables y públicos, con los cerrojos de
     `design.md > §4.4` y §5.
   - **Ampliada el 2026-10-28.**
@@ -92,7 +92,7 @@
     - la mutación 4 medida;
     - la carga de 500 filas, medida con plan y sin plan, anotada en `progress/impl_SL-24.md`
       (`design.md > §15`).
-- [ ] **T5. `lib/actions/planes.ts`** (depende de T4).
+- [x] **T5. `lib/actions/planes.ts`** (depende de T4).
   - Las cinco actions y su composition root.
   - **Ampliada el 2026-10-28:** `editarPlanAction` acepta `vigenteDesde`, y se añade la sexta
     action, `cancelarCambioPlanAction`.

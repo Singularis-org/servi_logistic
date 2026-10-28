@@ -3311,6 +3311,14 @@ enum JobTipo {
   whatsapp_envio_ejecucion // ficha 474 (design §4.2): ejecuta UNA ejecucion de origen `evento` ya creada; payload { ejecucionId }
   whatsapp_envio_reintento // ficha 474 (design §4.3): reintenta UNA entrega con fallo transitorio de Meta; payload { entregaId }, max_intentos 5
   whatsapp_envio_mantenimiento // ficha 474 (design §1.6): RECURRENTE diario 03:30 CR; purga PDFs caducados (R44) y re-siembra cadenas rotas (R25). Payload {}
+  /// SL-24 (design §16.3): aplica UN cambio programado de plan al llegar su fecha; payload { cambioId }. Núcleo
+  plan_aplicar_cambio
+  /// SL-24 (design §16.4): recordatorio por correo de UN cambio programado (7 días y 24 h antes). Núcleo
+  plan_recordatorio_cambio
+  /// SL-24 (design §16.4): aviso por correo a los maestros de las empresas del plan. Núcleo
+  plan_aviso_correo
+  /// SL-24 (design §16.3): RECURRENTE, sin empresa; barrido de seguridad de los cambios vencidos. Núcleo
+  plan_cambios_vencidos
 
   @@map("job_tipo")
 }
@@ -5407,6 +5415,11 @@ enum PlanRastroAccion {
   creado
   editado
   archivado
+  /// SL-24 (design §16.2, R43): el rastro de un cambio programado (enmienda del 2026-10-28)
+  cambio_programado
+  cambio_reemplazado
+  cambio_cancelado
+  cambio_aplicado
 
   @@map("plan_rastro_accion")
 }
@@ -5435,9 +5448,10 @@ model Plan {
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
 
-  topesPorRol PlanTopeRol[]
-  modulos     PlanModulo[]
-  empresas    Organizacion[] @relation("PlanAsignado")
+  topesPorRol      PlanTopeRol[]
+  modulos          PlanModulo[]
+  empresas         Organizacion[]        @relation("PlanAsignado")
+  cambioProgramado PlanCambioProgramado?
 
   @@map("plan")
 }
@@ -5484,6 +5498,26 @@ model PlanRastro {
 
   @@index([planId, createdAt])
   @@map("plan_rastro")
+}
+
+// SL-24 (design §16.1, enmienda del 2026-10-28) — el cambio pendiente de un plan, a aplicar en
+// `vigenteDesde` (R37–R40). De PLATAFORMA. `planId` UNIQUE: un solo pendiente por plan (R39); reemplazar
+// es borrar y crear con `id` nuevo, que los trabajos comparan (§16.3). `version` es la edición completa
+// (`EditarPlanInput` sin `planId` ni `vigenteDesde`) y `avisosAlProgramar` los `TopeExcedido[]` del
+// momento de guardar. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261028120000.
+model PlanCambioProgramado {
+  id                String   @id @default(uuid())
+  planId            String   @unique @map("plan_id")
+  plan              Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vigenteDesde      DateTime @map("vigente_desde")
+  version           Json
+  avisosAlProgramar Json     @map("avisos_al_programar")
+  actorUsuarioId    String   @map("actor_usuario_id")
+  actorNombre       String   @map("actor_nombre") @db.VarChar(120)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("plan_cambio_programado")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.

@@ -27,6 +27,9 @@ import {
 // archivo entero falla. Un 42501 sobre una tabla vacía diría lo mismo, pero «B no ve el plan de A»
 // necesita que A tenga uno.
 //
+// T3b (design §16.1): la misma regla para `plan_cambio_programado`, el cambio pendiente de un plan.
+// La siembra le añade una fila, programada sobre el custom de A.
+//
 // Lo que queda para T3: `plan_cupo_ordenes` con la empresa de otro (`42501`) se prueba cuando exista la
 // función (design §4.2).
 
@@ -103,15 +106,19 @@ async function foto(c: PrismaClient | TxDeTest) {
     },
   });
   const rastro = await c.planRastro.count({ where: { planId: { in: [planA, planB] } } });
+  const cambios = await c.planCambioProgramado.findMany({
+    where: { planId: { in: [planA, planB] } },
+    select: { id: true, planId: true, vigenteDesde: true, version: true },
+  });
   const empresas = await c.organizacion.findMany({
     where: { id: { in: [A, B] } },
     orderBy: { id: "asc" },
     select: { id: true, planId: true, planCicloAnclaAt: true },
   });
-  return { planes, rastro, empresas };
+  return { planes, rastro, cambios, empresas };
 }
 
-const TABLAS = ["plan", "plan_tope_rol", "plan_modulo", "plan_rastro"] as const;
+const TABLAS = ["plan", "plan_tope_rol", "plan_modulo", "plan_rastro", "plan_cambio_programado"] as const;
 
 describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de solo lectura y por empresa (R8, R30)", () => {
   let antes: Awaited<ReturnType<typeof foto>>;
@@ -151,6 +158,16 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
           actorNombre: "Superadmin de prueba",
         },
       });
+      await base.planCambioProgramado.create({
+        data: {
+          planId: planA,
+          vigenteDesde: new Date("2099-01-01T06:00:00.000Z"),
+          version: { nombre: "custom A v2", topeOrdenesCiclo: 50 },
+          avisosAlProgramar: [],
+          actorUsuarioId: randomUUID(),
+          actorNombre: "Superadmin de prueba",
+        },
+      });
       const ancla = new Date("2026-10-15T12:00:00.000Z");
       await base.organizacion.update({ where: { id: A }, data: { planId: planA, planCicloAnclaAt: ancla } });
       await base.organizacion.update({ where: { id: B }, data: { planId: planB, planCicloAnclaAt: ancla } });
@@ -158,6 +175,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     antes = await foto(base);
     expect(antes.planes).toHaveLength(2);
     expect(antes.rastro).toBe(1);
+    expect(antes.cambios.map((c) => c.planId)).toEqual([planA]);
     expect(antes.empresas.map((e) => e.planId).sort()).toEqual([planA, planB].sort());
     expect(antes.planes.find((p) => p.id === planA)?.topesPorRol).toEqual([{ rol: "adminTienda", maximo: 3 }]);
     expect(antes.planes.find((p) => p.id === planA)?.modulos).toEqual([{ modulo: "analitica" }]);
@@ -175,7 +193,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     await base.$disconnect();
   }, 120_000);
 
-  it("R8 — control: el dueño sí lee las cuatro tablas (el 42501 de abajo es de privilegios, no de una tabla ausente)", async () => {
+  it("R8 — control: el dueño sí lee las cinco tablas (el 42501 de abajo es de privilegios, no de una tabla ausente)", async () => {
     await revertida(async (tx) => {
       for (const t of TABLAS) {
         expect(await intentar(tx, `SELECT 1 FROM "${t}" LIMIT 1`), t).toBeNull();
@@ -183,13 +201,14 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     });
   });
 
-  it("R8 — SQL a mano con servi_app: SELECT de las cuatro tablas da 42501, aun filtrando por el plan propio", async () => {
+  it("R8 — SQL a mano con servi_app: SELECT de las cinco tablas da 42501, aun filtrando por el plan propio", async () => {
     const r = await revertida(async (tx) => {
       await comoApp(tx, A);
       const salida: Record<string, string | null> = {};
       for (const t of TABLAS) salida[t] = await intentar(tx, `SELECT * FROM "${t}"`);
       salida.planPropio = await intentar(tx, `SELECT * FROM "plan" WHERE "id" = $1`, planA);
       salida.topesPropios = await intentar(tx, `SELECT * FROM "plan_tope_rol" WHERE "plan_id" = $1`, planA);
+      salida.cambioPropio = await intentar(tx, `SELECT * FROM "plan_cambio_programado" WHERE "plan_id" = $1`, planA);
       return salida;
     });
     expect(r).toEqual({
@@ -197,12 +216,14 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
       plan_tope_rol: "42501",
       plan_modulo: "42501",
       plan_rastro: "42501",
+      plan_cambio_programado: "42501",
       planPropio: "42501",
       topesPropios: "42501",
+      cambioPropio: "42501",
     });
   });
 
-  it("R8 — SQL a mano con servi_app: INSERT, UPDATE y DELETE en las cuatro tablas dan 42501 y nada cambia", async () => {
+  it("R8 — SQL a mano con servi_app: INSERT, UPDATE y DELETE en las cinco tablas dan 42501 y nada cambia", async () => {
     const r = await revertida(async (tx) => {
       await comoApp(tx, A);
       return {
@@ -232,6 +253,20 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
         ),
         updateRastro: await intentar(tx, `UPDATE "plan_rastro" SET "plan_nombre" = 'x' WHERE "plan_id" = $1`, planA),
         deleteRastro: await intentar(tx, `DELETE FROM "plan_rastro" WHERE "plan_id" = $1`, planA),
+        insertCambio: await intentar(
+          tx,
+          `INSERT INTO "plan_cambio_programado"
+             ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar", "actor_usuario_id", "actor_nombre")
+           VALUES ($1, $2, '2099-02-01 06:00:00', '{}'::jsonb, '[]'::jsonb, 'x', 'x')`,
+          randomUUID(),
+          planB,
+        ),
+        updateCambio: await intentar(
+          tx,
+          `UPDATE "plan_cambio_programado" SET "vigente_desde" = CURRENT_TIMESTAMP WHERE "plan_id" = $1`,
+          planA,
+        ),
+        deleteCambio: await intentar(tx, `DELETE FROM "plan_cambio_programado" WHERE "plan_id" = $1`, planA),
       };
     });
     for (const [caso, sqlstate] of Object.entries(r)) expect(sqlstate, caso).toBe("42501");
@@ -258,6 +293,10 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     await expect(conEmpresa(A, () => app.planTopeRol.findMany())).rejects.toThrow(rechazo);
     await expect(conEmpresa(A, () => app.planModulo.findMany())).rejects.toThrow(rechazo);
     await expect(conEmpresa(A, () => app.planRastro.findMany())).rejects.toThrow(rechazo);
+    await expect(conEmpresa(A, () => app.planCambioProgramado.findMany())).rejects.toThrow(rechazo);
+    await expect(
+      conEmpresa(A, () => app.planCambioProgramado.deleteMany({ where: { planId: planA } })),
+    ).rejects.toThrow(rechazo);
     await expect(
       conEmpresa(A, () => app.plan.create({ data: { nombre: "Mi plan", visibilidad: "publico" } })),
     ).rejects.toThrow(rechazo);

@@ -217,3 +217,204 @@ Después de restaurar, el diff de `migrate diff` sale vacío.
 
 Veredicto: T3 hecho y verde. Queda abierto el `{cosa}` de los textos del superadmin, y anotado el riesgo de zona horaria
 de la base local.
+
+## T3b (2026-10-28) — migraciones de la enmienda + Prisma
+
+**Orden comprobado.** `git ls-tree origin/dev db/migrations/`: la última de `dev` es
+`20261027120000_modulos_nucleo` (PR #27, ya mergeado). Las de SL-24 siguen: `20261027130000`,
+`…130100`, `…130200`, y ahora `20261028120000_plan_cambio_programado` y `20261028120100_plan_cambio_enums`.
+`git diff --stat HEAD -- db/migrations/` vacío: T1–T3 sin cambios.
+
+**Archivos**
+- Nuevos: `db/migrations/20261028120000_plan_cambio_programado/{migration,down}.sql` (tabla, `UNIQUE(plan_id)`,
+  FK CASCADE, RLS sin políticas, `REVOKE ALL … FROM servi_app`; down `DROP TABLE`).
+- Nuevos: `db/migrations/20261028120100_plan_cambio_enums/{migration,down}.sql` (4 `ADD VALUE` en
+  `plan_rastro_accion` y 4 en `job_tipo`; el down borra las filas de `plan_rastro` y `jobs` con esos valores
+  y recrea los dos tipos con la función dinámica de `20261026120100`, renombrada `_sl24`, que suelta y
+  restaura los índices parciales y DEFAULT que nombran el tipo).
+- `db/schema.prisma`: `model PlanCambioProgramado`, relación `Plan.cambioProgramado`, 4 valores en
+  `PlanRastroAccion` y 4 en `JobTipo` (solo añadidos; sin `prisma format` global para no mover otras líneas).
+- `lib/db/modelos-de-negocio.ts`: `PlanCambioProgramado` en `MODELOS_DE_PLATAFORMA`.
+- `lib/modulos/reparto.ts`: los 4 tipos en `MODULO_POR_JOB` como `"nucleo"`.
+- `tests/integration/db/planes-acceso-servi-app.test.ts`: siembra una fila de `plan_cambio_programado`;
+  SELECT/INSERT/UPDATE/DELETE con `servi_app` → `42501`, y por el cliente de la app → rechazo; la foto
+  del dueño incluye los cambios.
+
+**R<n> → test**
+- R8 (tabla nueva sin acceso para la empresa) → `tests/integration/db/planes-acceso-servi-app.test.ts`.
+- R39 (un pendiente por plan) → a nivel de esquema el `UNIQUE`; su test de comportamiento es
+  `planes-cambio-programado` (T11).
+
+**Salida real**
+- `prisma migrate deploy` → `All migrations have been successfully applied.`
+- drift `migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → `-- This is an empty migration.`
+- `down.sql` probados contra `servi_logistic_sl24` (script de scratchpad con `pg`): tras los dos down,
+  `job_tipo` termina en `…whatsapp_envio_mantenimiento`, `plan_rastro_accion` = `creado,editado,archivado`,
+  la tabla no existe; las filas con valores nuevos borradas y las de control intactas; índices (7) y
+  DEFAULT de `jobs`/`plan_rastro` idénticos; segunda pasada del down de enums ok (idempotente). Después
+  se quitaron las 2 filas de `_prisma_migrations` y se volvió a `migrate deploy` + drift vacío. La base queda arriba.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → sin errores.
+- `eslint` sobre los 3 archivos TS tocados → sin salida (ok).
+- `vitest run` planes-acceso-servi-app (6/6), guardias `organizacion-en-modelos` y `modulos-reparto`,
+  `tests/unit/modulos/catalogo.test.ts`, `tests/unit/cron/procesar-jobs-modulos.test.ts` → verde.
+- **Rojo esperado nuevo:** `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts` («cada valor de
+  `job_tipo` tiene su handler») falla con los 4 tipos nuevos: los handlers llegan en T11
+  (`plan_aplicar_cambio`, `plan_cambios_vencidos`) y T12 (`plan_recordatorio_cambio`, `plan_aviso_correo`).
+  Sigue rojo también `historial-accion-escrituras-cubiertas` hasta T4.
+- Ningún test con lista o conteo fijo de `job_tipo` se rompió (los que hay usan `toContain`/`>=`).
+
+**Veredicto:** T3b hecha; único rojo nuevo, la guardia de handlers por tipo, que cierran T11/T12.
+
+## T4 (2026-10-28) — `PlanesRepository` + `PlanesService` + `lib/types/planes.ts`
+
+**Archivos**
+- Nuevos:
+  - `lib/types/planes.ts`: esquemas zod (`crearPlanSchema`, `editarPlanSchema` con `vigenteDesde`, `precioPlanSchema`,
+    `topesPlanSchema`, los de id) y los tipos de §5.1 (`PlanDTO`, `TopeExcedido`, `PlanResult`, `VersionPlan`…).
+  - `lib/planes/rastro.ts`: `diferenciasDelPlan`, `planCanonico` e `importeCanonico`. Compara en forma canónica:
+    «10» y «10.00» son el mismo precio, y el orden de los módulos o de `porRol` no es un cambio.
+  - `lib/repositories/_shared/modulos-en-tx.ts`: `encenderEnTx`, `apagarEnTx` y `entradaDelCambio`, extraídos de
+    `ModulosEmpresaRepository` con las mismas sentencias.
+  - `lib/interfaces/repositories/IPlanesRepository.ts` y `lib/interfaces/services/IPlanesService.ts`.
+  - `lib/repositories/PlanesRepository.ts`: `empresa`, `plan`, `crear`, `editar` (inmediata), `archivar`, `asignar`,
+    `cancelarCambio`, `asignables` y `publicos`, todo en `comoPlataforma("SL-24", …)`.
+    - Cerrojos de §4.4: `asignar` toma `organizacion` FOR UPDATE y luego `plan` FOR SHARE; `editar`, `archivar` y
+      `cancelarCambio` toman `plan` FOR UPDATE.
+    - `aplicarVersion(tx, antes, version, actor)` es una función del módulo, para que la reutilice T11.
+    - El uso se cuenta con las funciones SQL de T3 (`plan_uso_*`, `plan_inicio_ciclo`).
+    - El ancla nace con `now()` de la base: `COALESCE(plan_ciclo_ancla_at, now()::timestamp)`.
+  - `lib/services/PlanesService.ts`: orden quién → zod → existe → reglas → repositorio, y reloj inyectable (R37).
+  - Tests: `tests/unit/types/planes-schema.test.ts`, `tests/unit/planes/rastro.test.ts`,
+    `tests/unit/services/planes-service.test.ts`, `tests/integration/db/planes-asignacion.test.ts`,
+    `planes-edicion-en-uso.test.ts` y `planes-historial.test.ts`.
+- Modificados:
+  - `lib/repositories/ModulosEmpresaRepository.ts`: usa el ayudante, con las mismas filas, el mismo resultado y el
+    mismo historial.
+  - `lib/planes/ciclo.ts`: añade `inicioDelDiaPlataforma(fecha)`, las 00:00 a −06:00. La lista T11, pero la pide el
+    test de esquema de T4 (§16.7) y la validación de R37.
+  - `lib/db/excepciones-aislamiento.ts`: solo se añade `PlanesRepository` (SL-24).
+  - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`:
+    - productor `PlanesRepository#asignar` para `plan_asignado`, con la mutación `UPDATE "organizacion" SET "plan_id"`;
+    - la cifra pasa de 72 a 73;
+    - las dos entradas de SL-23 exigen ahora `encenderEnTx(tx` / `apagarEnTx(tx`, porque la sentencia se mudó al
+      ayudante y recibe la misma `tx`.
+  - `tests/integration/db/_fixtures/planes.ts`: `planesEnTx(tx, romper)` (repositorio real sobre SAVEPOINT, con
+    `historialAccion` o `planRastro` rotos a voluntad), `entradaDePlan` y `superadminEnTx`.
+  - `tests/integration/db/plan-topes-concurrencia.test.ts`: la bajada de plan ya es `PlanesRepository.asignar` real.
+    Su cliente envuelve `$transaction` para pausar antes del COMMIT, en vez de reproducir a mano los cerrojos.
+  - `tests/integration/db/planes-catalogo.test.ts` (T1): dos consultas a `pg_constraint` y `pg_indexes` acotadas a
+    `public`. La guardia `catalogo-postgres-acota-esquema`, llegada con el merge de `dev`, las marcaba. Sin cambio de
+    comportamiento.
+
+**Decisiones a revisar (no estaban escritas en el spec)**
+1. **Edición programada.** `PlanesService.editar` con `vigenteDesde` futuro valida R37 y la existencia, y después
+   **lanza** `Error("… se implementa en T11")`. Programar o reemplazar es T11 (§16.2). Con fecha pasada o de hoy
+   responde `validation_error` en `vigenteDesde`. El texto «La fecha de vigencia tiene que ser posterior a hoy.» es
+   mío: `mensajes.ts` no tiene uno y no lo toqué.
+2. **`cancelarCambio` en el repositorio.** Lo adelanté de T11 porque `archivar` necesita la misma cancelación (R40) y
+   la sexta action de T5 la usa: plan FOR UPDATE, borrar el pendiente y escribir la fila `cambio_cancelado`.
+   - `cambios` de esa fila = `{ "vigenteDesde": { "antes": <ISO>, "despues": null } }`. El spec no fija ese JSON:
+     T11 debe mantenerlo o cambiarlo en las dos filas a la vez.
+   - Los correos de cancelación (R45) **no** van: son de T12. Hay un comentario en el punto exacto donde se encolan.
+3. **`actor_nombre`.** Es NOT NULL en `plan_rastro`. Si el actor no se resuelve a un usuario, se guarda `''`, sin
+   inventar un nombre. Con un superadmin real sale congelado, como lo prueba `planes-historial`.
+4. **R2, custom de una empresa que no existe** → `not_found` (el estado de `PlanResult` que mejor encaja).
+5. **Correos de editar (R41)** → T12. Comentario en `editar`, en el punto del outbox.
+
+**Conversión de los tests de T3.** `plan-topes-concurrencia` sí se convirtió: la bajada usa el repositorio real y
+pasa (4/4). Los `crearPlan`/`asignarPlan` del fixture que usan `plan-topes-ordenes`, `-usuarios` y `-api-keys` se
+quedan como dueño, porque no encajan sin forzar:
+- `asignarPlan` fija el ancla en `now() − desfase` («1 hour» por la deriva del reloj; «45 days» para el ciclo
+  anterior de R19);
+- la asignación real ancla en `now()` y no puede dar ese pasado;
+- esos tests miden los triggers, no el repositorio.
+
+**R<n> → test (T4)**
+
+| R | Test |
+|---|---|
+| R1 | `planes-service` «R1: el superadmin crea y recibe el id…»; `planes-historial` «R29: un público sin empresas…» (crea por el servicio real) |
+| R2 | `planes-schema` «R2: un custom sin empresa…», «R2: traer visibilidad u organizacionId…»; `planes-service` «R2: un custom de una empresa que no existe…», «R2: cambiar la visibilidad o la empresa…» |
+| R3 | `planes-schema` «R3: las cinco formas…» (7 entran, 12 rechazos) |
+| R4 | `planes-asignacion` «R4: asignar un plan con precio no crea cobros…» |
+| R5 | `planes-service` «R5: …» (7 operaciones × 6 roles de empresa + sin sesión, cero llamadas) |
+| R6 | `planes-service` «R6: editar un archivado…», asignar archivado; `planes-asignacion` «R6: un plan archivado no se asigna»; `planes-edicion-en-uso` «R6: un plan archivado no se edita» |
+| R9 | `planes-asignacion` «R9: la primera asignación fija el ancla…; cambiar de plan la conserva» |
+| R10 | `planes-asignacion` «R10: deja encendidos exactamente los módulos incluidos» |
+| R11 | `planes-asignacion` «R11: la excepción de SL-23 sobrevive a editar los topes y se apaga al cambiar de plan» |
+| R12 | `planes-asignacion` «R12 (Admin Tienda)», «R12 (API keys)», «R12 (órdenes)», «R12: un rol sin tope…»; `planes-service` «R12: el rechazo por tope dice…» |
+| R13 | `planes-asignacion` «R13: …» (3 casos, servicio y repositorio bajo cerrojo); `planes-service` (not_found, custom de otra, el mismo plan) |
+| R15 | `planes-edicion-en-uso` «R15: la siguiente alta de cada empresa del plan se cuenta contra el tope nuevo» |
+| R16 | `planes-edicion-en-uso` «R16: con 3 tiendas activas y un tope nuevo de 2…», «R16: el aviso nombra cada empresa y cada tope»; `planes-service` «R16: …se guarda y devuelve el aviso» |
+| R17 | `planes-edicion-en-uso` «R17: enciende lo añadido y apaga lo quitado…sin tocar sus excepciones», «R17: …no se duplica ni se registra» |
+| R24 | `plan-topes-concurrencia` (con `PlanesRepository.asignar` real) |
+| R29 | `planes-historial` (rastro exacto de crear, editar y archivar sin empresas; `plan_asignado` con el superadmin y lote compartido; historial roto y rastro roto → nada persiste); `rastro` (diff) |
+| R37 (validación) | `planes-schema` «R37: vigenteDesde…», «R37/P8…»; `planes-service` «R37: vigenteDesde de ayer / hoy…», «R37: hoy cuenta desde las 00:00 a −06:00» |
+| R39 (cancelar) | `planes-historial` «R39: cancelar sin pendiente no escribe nada; con pendiente lo borra…» |
+| R40 | `planes-historial` «R40: archivar con un cambio pendiente lo cancela…» |
+| R43 (`cambio_cancelado`) | `planes-historial` R40 y R39. Las otras tres filas son de T11 |
+
+**Mutación 4** (§11, «la asignación no cuenta usuarios»): en `asignar`, `excedidosDe(tx, [empresa], { ...plan.topes,
+porRol: {} })`. `planes-asignacion` + `plan-topes-concurrencia` → **1 rojo de 16**: «R12 (Admin Tienda): con 3 en uso,
+bajar a un tope de 2 se rechaza…». Restaurado; `grep` confirma el original.
+
+**Medición de §15** (carga de 500 filas, `OrdenRepository.createManyOrdenes` con `JobRepository` real, Postgres local
+`servi_logistic_sl24`):
+- un calentamiento descartado de cada y después 5 alternadas;
+- con plan: tope 100 000, así que toma los cerrojos y el consultivo y cuenta;
+- archivo temporal en `tests/integration/db/`, borrado al medir.
+
+| | Corridas (ms) | Mediana |
+|---|---|---|
+| Sin plan | 1818, 1816, 1816, 1602, 1626 | 1816 ms |
+| Con plan | 1793, 1692, 1924, 1584, 1579 | 1692 ms |
+
+El coste del trigger de sentencia queda dentro del ruido. Esto mide el coste por carga, no la contención entre dos
+cargas de la misma empresa: esas se ponen en fila hasta el COMMIT por diseño (§4.4) y la cubre `plan-topes-concurrencia`.
+
+**Salida real**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0.
+- `pnpm exec eslint` sobre los 22 archivos tocados → `No issues found`.
+- `vitest run`, 21 archivos, `--maxWorkers=4`, con `DATABASE_URL` de `servi_logistic_sl24` → **21 passed, 291 tests
+  passed, 0 skipped**. Entran:
+  - los 7 de T4/T5;
+  - SL-23 sin tocar: `modulos-empresa-service`, `organizacion-modulo`, `modulos-empresa-historial` y
+    `modulos-empresa.composition-root`;
+  - T1/T3: `plan-topes-concurrencia`, `-ordenes`, `-usuarios`, `-api-keys`, `plan-ciclo`, `planes-catalogo`,
+    `planes-acceso-servi-app`, `ciclo-plan`, `tope-error` y `sqlstate`.
+- `pnpm run test:guardias` → 316 archivos, 2 failed, **5 tests failed**, 4403 passed, 1 skipped.
+  - `dependencias-declaradas-presentes` (4): está en `tests/baseline-rojos.json`.
+  - `jobs-handler-por-tipo` (1): esperada hasta T11/T12.
+  - `historial-accion-escrituras-cubiertas` ya está **verde**.
+- Grafo: no consultado. El código se exploró con Grep/Read, como en T1–T3.
+
+Veredicto T4: hecho y verde. La edición programada queda como `throw` explícito hasta T11.
+
+## T5 (2026-10-28) — `lib/actions/planes.ts`
+
+**Archivos**
+- Nuevo: `lib/actions/planes.ts` (`"use server"`).
+  - Las seis actions: `crearPlanAction`, `editarPlanAction` (acepta `vigenteDesde`; lo valida el esquema),
+    `archivarPlanAction`, `asignarPlanAction`, `listarPlanesAsignablesAction` y `cancelarCambioPlanAction`.
+  - El actor sale de la sesión (`resolveActorFromSession`), con `deps` para los tests, como en `modulos-empresa`.
+  - El composition root `construirPlanesService()` no se exporta: un `"use server"` solo exporta actions, y así no
+    hace falta un `_shared/planes.ts` que no está en «Archivos esperados».
+  - Cada action lleva `@sin-superficie`: esta ficha es solo backend (decisión «Pantalla») y la pantalla es de SL-26.
+    Sin la anotación, la guardia `superficie-de-uso` se pone en rojo.
+- `lib/modulos/reparto.ts`: `planes: "nucleo"` en `MODULO_POR_ACTION`.
+- Nuevo: `tests/unit/actions/planes.composition-root.test.ts`. Mockea solo `getPrismaClient`, y se comprueba que:
+  - `listarPlanesAsignablesAction` y `crearPlanAction`, sin `deps.service`, pasan por `PlanesRepository` real: el
+    `where` de asignables, el `plan.create` anidado y la fila `creado` de `plan_rastro` con el actor congelado;
+  - las seis existen y dan `forbidden` a un maestro sin tocar el cliente;
+  - `editarPlanAction` con una fecha pasada responde `validation_error` en `vigenteDesde`.
+
+**`cancelarCambioPlanAction` y T11.** Funciona con el `cancelarCambio` adelantado en T4: borra el pendiente y
+escribe su fila de rastro. Le faltan los correos de cancelación (T12).
+
+**R<n> → test (T5)**: R5, en el borde → `planes.composition-root` «las seis actions existen y un maestro recibe
+forbidden…». La guardia `modulos-reparto` está en verde.
+
+**Salida real**: `planes.composition-root` 4/4; `modulos-reparto.guardia` en verde dentro de `test:guardias`; el
+typecheck y eslint, los de T4.
+
+Veredicto T5: hecho y verde.
