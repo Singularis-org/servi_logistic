@@ -1,6 +1,6 @@
 # SL-24 — planes-y-limites · tasks.md
 
-> Requisitos en `requirements.md` (R1–R44) y diseño en `design.md`. P1–P5 están cerradas
+> Requisitos en `requirements.md` (R1–R45) y diseño en `design.md`. P1–P5 están cerradas
 > (2026-10-27).
 >
 > **Enmienda del 2026-10-28** (`design.md > §16`): T0–T3 ya están hechas en `8a37167` y no se
@@ -8,8 +8,8 @@
 > - **tasks nuevas:** T3b, T11 y T12;
 > - **tasks ampliadas:** T4, T5, T8, T9 y T10.
 >
-> P6–P9 siguen abiertas. Las tasks que dependen de ellas no se empiezan hasta que el humano las
-> cierre: T11 depende de P6, P8 y P9; T12, de P7.
+> P6–P9, el correo de cancelación y el texto `{cosa}` se cerraron el 2026-10-28: no queda nada
+> abierto.
 >
 > Reparto: `backend_dev` hace T0–T6, T3b, T7a, T8, T9, T11 y T12; `frontend_dev` hace T7b.
 > `[P]` = puede ir en paralelo con las otras `[P]` de la misma tanda.
@@ -131,7 +131,9 @@
   - **Hecho:** `UsuariosTopePlan`, `PostulacionesTopePlan` y `ApiKeysTopePlan` (componentes) en
     verde.
 - [ ] **T11. Cambio programado: programar, reemplazar, cancelar y aplicar** (nueva, 2026-10-28;
-  depende de T4 y T5; espera a P6, P8 y P9).
+  depende de T4 y T5).
+  - `inicioDelDiaPlataforma(fecha)` en `lib/planes/ciclo.ts`: convierte la fecha en las 00:00 a
+    −06:00 (P8).
   - `programarCambio`, `cancelarCambio`, `aplicarCambioProgramado` y `cambiosVencidos` en
     `PlanesRepository`, con la edición programada del servicio (`design.md > §16.2, §16.3`).
   - Los handlers `plan_aplicar_cambio` y el recurrente `plan_cambios_vencidos` en
@@ -143,9 +145,11 @@
       verde;
     - las mutaciones 8 y 10 medidas.
 - [ ] **T12. Correos del cambio** [P con T11 en la plantilla] (nueva, 2026-10-28; depende de T11
-  para los recordatorios; espera a P7).
-  - La plantilla `cambio-plan.ts` sobre `plantilla-marca.ts`, y los textos de cambio en
-    `lib/planes/mensajes.ts`.
+  para los recordatorios).
+  - La plantilla `cambio-plan.ts` sobre `plantilla-marca.ts`, con los tipos `guardado` (con la
+    línea `reemplazaA`), `recordatorio_7`, `recordatorio_1` y `cancelado` (R45). Los textos de
+    cambio van en `lib/planes/mensajes.ts`.
+  - El encolado de los correos de cancelación al cancelar y al archivar.
   - Los handlers `plan_recordatorio_cambio` y `plan_aviso_correo`, y el encolado de los avisos en
     la transacción de guardar (`design.md > §16.4`).
   - Localizar el formateador de fechas que ya usan los correos.
@@ -174,7 +178,7 @@
   - **Ampliada el 2026-10-28:** el párrafo cubre también el cambio programado y los correos. T8
     amplía `planes-sin-borrado` a `plan_cambio_programado`: solo `PlanesRepository` la escribe. T9
     amplía `migracion-sl24-ida-y-vuelta` con las dos migraciones de T3b.
-  - **Hecho:** `./init.sh` en verde y cada R1–R44 con al menos un test que existe.
+  - **Hecho:** `./init.sh` en verde y cada R1–R45 con al menos un test que existe.
 
 ## No se tocan, a propósito
 

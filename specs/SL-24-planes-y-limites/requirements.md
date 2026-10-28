@@ -80,13 +80,14 @@
 
 | R | Requisito | Test previsto |
 |---|---|---|
-| R37 | CUANDO el superadmin edita un plan con una fecha de vigencia (`vigente_desde`) futura, el sistema DEBE guardar la versión nueva completa (topes, módulos incluidos, precio y nombre, P6) como cambio programado, sin modificar la versión vigente. MIENTRAS no llegue esa fecha, el sistema DEBE contar las altas, mostrar el precio y mantener los módulos con la versión vigente. SI la fecha no es posterior al momento de guardar, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada. | `tests/unit/types/planes-schema.test.ts`; `tests/integration/db/planes-cambio-programado.test.ts` (programado a mañana: hoy el tope viejo sigue rigiendo) |
+| R37 | CUANDO el superadmin edita un plan con una fecha de vigencia (`vigente_desde`) futura, el sistema DEBE guardar la versión nueva completa (topes, módulos incluidos, precio y nombre) como cambio programado. La fecha que elige el superadmin rige desde las 00:00 de ese día en la hora de la plataforma (Costa Rica, UTC−6) hasta que SL-21 traiga zona por empresa, sin modificar la versión vigente. MIENTRAS no llegue esa fecha, el sistema DEBE contar las altas, mostrar el precio y mantener los módulos con la versión vigente. SI la fecha no es posterior al momento de guardar, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada. | `tests/unit/types/planes-schema.test.ts`; `tests/integration/db/planes-cambio-programado.test.ts` (programado a mañana: hoy el tope viejo sigue rigiendo) |
 | R38 | CUANDO llega la fecha de vigencia de un cambio programado, el sistema DEBE aplicarlo entero en una transacción: topes, precio y nombre del plan, y los módulos de cada empresa con R17. El sistema DEBE hacerlo, como tarde, en la siguiente pasada del drenador de trabajos. El cambio NO DEBE reiniciar el ciclo de órdenes de ninguna empresa: desde esa fecha, lo ya usado en el ciclo en curso se cuenta contra el tope nuevo. | `tests/integration/db/planes-cambio-programado.test.ts` (handler con el reloj pasado la fecha; ancla y uso del ciclo intactos); `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` |
 | R39 | El sistema DEBE guardar como mucho un cambio programado por plan: CUANDO el superadmin programa otro, el sistema DEBE reemplazar el pendiente. CUANDO el superadmin cancela el cambio pendiente, el sistema DEBE borrarlo. Un cambio reemplazado o cancelado NO DEBE aplicarse nunca, ni enviar recordatorios. | `tests/integration/db/planes-cambio-programado.test.ts` (los trabajos del cambio viejo corren y no hacen nada) |
-| R40 | SI se archiva un plan con un cambio programado pendiente, ENTONCES el sistema DEBE cancelar ese cambio en la misma transacción (P9). | `tests/integration/db/planes-cambio-programado.test.ts` |
-| R41 | CUANDO el superadmin guarda una edición, inmediata o programada, el sistema DEBE enviar a los maestros activos de cada empresa que tiene el plan (P7) un correo con qué cambia y desde cuándo, y, si la empresa ya pasa algún tope nuevo, cuál, con su uso y el tope. Un fallo del correo NO DEBE deshacer ni impedir la edición. Una edición sin cambios no envía nada. | `tests/integration/db/planes-cambio-correos.test.ts` (emisor de correo doble); `tests/unit/services/email/plantilla-cambio-plan.test.ts` |
+| R40 | SI se archiva un plan con un cambio programado pendiente, ENTONCES el sistema DEBE cancelar ese cambio en la misma transacción. | `tests/integration/db/planes-cambio-programado.test.ts` |
+| R41 | CUANDO el superadmin guarda una edición, inmediata o programada, el sistema DEBE enviar a todos los maestros activos de cada empresa que tiene el plan un correo con qué cambia y desde cuándo, y, si la empresa ya pasa algún tope nuevo, cuál, con su uso y el tope. Un fallo del correo NO DEBE deshacer ni impedir la edición. Una edición sin cambios no envía nada. | `tests/integration/db/planes-cambio-correos.test.ts` (emisor de correo doble); `tests/unit/services/email/plantilla-cambio-plan.test.ts` |
 | R42 | MIENTRAS un cambio programado siga pendiente, el sistema DEBE enviar a esos mismos destinatarios un recordatorio 7 días antes y otro 1 día antes de la fecha de vigencia. Solo se envían los que caen después del momento de programar. Cada recordatorio sale como mucho una vez por empresa, aunque el trabajo se reintente o se ejecute dos veces. Va a las empresas que tienen el plan cuando sale el recordatorio, e indica los topes que ya pasan en ese momento. | `tests/integration/db/planes-cambio-correos.test.ts` (fecha a 10 días: dos recordatorios; a 3 días: solo el de 1 día; doble ejecución: un correo por empresa) |
 | R43 | CUANDO el superadmin programa, reemplaza o cancela un cambio, o el sistema lo aplica, el sistema DEBE dejar una fila en el rastro de plataforma con quién (el sistema, al aplicar), cuándo, qué plan, qué acción y qué cambia, en la misma transacción. | `tests/integration/db/planes-historial.test.ts` |
+| R45 | CUANDO se cancela un cambio programado, a mano o al archivar el plan, el sistema DEBE enviar a todos los maestros activos de cada empresa que tiene el plan un correo con el texto «El cambio del plan <nombre> previsto para <fecha> se canceló; tu plan sigue igual». CUANDO se reemplaza por otro, el sistema NO DEBE enviar un correo de cancelación aparte: el correo del cambio nuevo (R41) DEBE decir que reemplaza al previsto para la fecha anterior. Un fallo del correo NO DEBE deshacer la cancelación. | `tests/integration/db/planes-cambio-correos.test.ts` (cancelar a mano; archivar con un cambio pendiente; reemplazar: un solo correo por maestro, con la frase del reemplazo); `tests/unit/services/email/plantilla-cambio-plan.test.ts` |
 | R44 | Los trabajos que aplican cambios y envían sus correos DEBEN ser parte del núcleo: corren sea cual sea el estado de los módulos de las empresas. | `tests/unit/guards/modulos-reparto.guardia.test.ts` (existente: los tipos nuevos están en `MODULO_POR_JOB` como `nucleo`) |
 
 ### Tope de órdenes
@@ -166,30 +167,16 @@
 | 2026-10-28 — Empresa que ya pasa el tope nuevo | R16 |
 | 2026-10-28 — Correo al guardar y recordatorios | R41, R42, R44 |
 | 2026-10-28 — Rastro del cambio programado | R43 |
+| P6 — El nombre también se programa | R37, R38 |
+| P7 — Destinatarios de los correos | R41, R42, R45 |
+| P8 — Hora en que empieza la fecha | R37, R42 |
+| P9 — Archivar cancela el pendiente | R40, R45 |
+| 2026-10-28 — Correo al cancelar un cambio | R45 |
+| 2026-10-28 — `{cosa}` de los avisos al superadmin | R16 (el aviso nombra el tope); `design.md > §6.4` |
 
 ## Preguntas abiertas
 
-P1–P5 las cerró el humano el 2026-10-27 (filas fechadas abajo). Quedan abiertas cuatro de la
-enmienda del 2026-10-28, que planteó spec_author. Cada una lleva su propuesta, y los requisitos
-están escritos con ella.
-
-6. **¿El nombre del plan también se programa?** La decisión dice «todo el plan: topes, módulos
-   incluidos y precio».
-   **Propuesta (R37):** sí. La versión programada es la edición entera, nombre incluido, para no
-   tener una edición a medias inmediata y a medias programada.
-7. **¿Quién recibe los correos de «el maestro de cada empresa»?** Una empresa puede tener varios
-   maestros.
-   **Propuesta (R41, R42):** todos los usuarios `maestro` activos de la empresa, uno por correo.
-8. **¿A qué hora empieza «la fecha»?**
-   - Sin zona horaria por empresa (eso llega con SL-21), «desde el 1 de diciembre» no dice a qué
-     instante.
-   - **Propuesta (`design.md > §16.1`):** el servicio recibe un instante. SL-26 enviará las 00:00
-     de esa fecha en la hora de la plataforma, la misma que usan los crons: Costa Rica, UTC−6
-     (`app/api/cron/avisos-diarios/route.ts`).
-   - Los recordatorios se cuentan en horas desde ese instante (7×24 y 24).
-9. **¿Archivar un plan cancela su cambio pendiente?**
-   **Propuesta (R40):** sí. Un plan archivado no se edita (R6), así que aplicar después un cambio
-   suyo contradiría esa regla.
+Ninguna. P1–P5 las cerró el humano el 2026-10-27 y P6–P9 el 2026-10-28 (filas fechadas abajo).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -228,3 +215,9 @@ están escritos con ella.
 | 2026-10-28 | Empresa que ya pasa el tope nuevo | Se guarda igual (no se rechaza) y se avisa. Desde la fecha efectiva, esa empresa queda bloqueada para altas nuevas hasta bajar del tope. Aplica también a la edición inmediata y reemplaza la regla del 2026-10-27 de rechazar la edición. La regla de no bajar de plan al ASIGNAR un plan menor no cambia. |
 | 2026-10-28 | Correos del cambio | Al guardar el cambio, programado o inmediato, se envía un correo al maestro de cada empresa con ese plan: qué cambia, desde cuándo y, si ya pasa algún tope, cuál. Los cambios programados tienen recordatorios 7 días antes y 1 día antes. Usa `lib/services/email/*` y `plantilla-marca.ts`, sin dependencias nuevas. |
 | 2026-10-28 | Rastro del cambio programado | Programar, reemplazar, cancelar y aplicar un cambio van a `plan_rastro`. |
+| 2026-10-28 | P6 — ¿El nombre del plan también se programa? | Sí: el nombre se programa con el resto. |
+| 2026-10-28 | P7 — ¿Quién recibe los correos? | Todos los maestros activos de cada empresa. |
+| 2026-10-28 | P8 — ¿A qué hora empieza la fecha? | A las 00:00 de esa fecha en la hora de la plataforma (Costa Rica, UTC−6, como los crons), hasta SL-21. SL-26 pide solo la fecha. |
+| 2026-10-28 | P9 — ¿Archivar un plan cancela su cambio pendiente? | Sí. |
+| 2026-10-28 | Correo al cancelar un cambio | Cancelar un cambio programado, a mano o al archivar el plan, envía correo a los maestros activos de las empresas del plan: «El cambio del plan X previsto para <fecha> se canceló; tu plan sigue igual». Si el cambio se reemplaza, el correo del cambio nuevo lo deja claro y no sale un correo de cancelación aparte (decidido en `design.md > §16.4`). |
+| 2026-10-28 | Texto `{cosa}` de los avisos al superadmin | Aprobado tal como está en `lib/planes/mensajes.ts`: «órdenes en el ciclo en curso», «API keys activas» y «usuarios activos con el rol {rol}». |

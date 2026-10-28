@@ -1,6 +1,7 @@
 # SL-24 — planes-y-limites · design.md
 
-> Requisitos en `requirements.md` (R1–R44). El humano cerró P1–P5 el 2026-10-27 y añadió el tope
+> Requisitos en `requirements.md` (R1–R45). P6–P9, el correo de cancelación y el texto `{cosa}`
+> quedaron cerrados el 2026-10-28. El humano cerró P1–P5 el 2026-10-27 y añadió el tope
 > de API keys y el rastro de plataforma de los planes. Las filas fechadas están en `requirements.md`.
 >
 > **Enmienda del 2026-10-28** (edición programada, avisos por correo, editar ya no se rechaza):
@@ -373,7 +374,7 @@ export type CrearPlanInput = {
 // `.strict()`: traer `visibilidad` u `organizacionId` es validation_error (R2)
 export type EditarPlanInput = {
   planId: string; nombre: string; topes: TopesPlan; modulos: ModuloApagable[]; precio: PrecioPlan;
-  vigenteDesde: string | null; // ISO 8601 con zona; null = de inmediato (R15); futuro = programado (R37)
+  vigenteDesde: string | null; // fecha AAAA-MM-DD; null = de inmediato (R15); rige a las 00:00 CR (§16.1, R37)
 };
 export type CancelarCambioPlanInput = { planId: string };                // R39
 export type ArchivarPlanInput = { planId: string };
@@ -448,7 +449,8 @@ export type PlanDTO = {
 - **Topes.** No hay que propagar nada: los triggers leen los topes del plan en cada alta (R15).
 - **Archivar.** Pone `archivado_at` si no lo tiene y escribe la fila `archivado` de
   `plan_rastro`. Si hay un cambio programado pendiente, lo cancela en la misma transacción, con su
-  fila `cambio_cancelado` (R40, P9). Si ya estaba archivado, responde `ok` con `cambio: false` sin escribir. Las
+  fila `cambio_cancelado`, y encola los correos de cancelación (R40, R45; P9 cerrada el
+  2026-10-28). Si ya estaba archivado, responde `ok` con `cambio: false` sin escribir. Las
   empresas lo conservan y los triggers no miran `archivado_at` (R6).
 
 ## 6. Las vías de alta
@@ -528,7 +530,7 @@ En cada caso, el servicio envuelve la llamada al repositorio con `traducirErrorD
 | Órdenes | «Tu plan permite {maximo} órdenes por ciclo. Llevas {usados} y esta carga trae {pedidas}. Anula órdenes que no vayas a enviar o pide un cambio de plan.» |
 | Rol | «Tu plan permite {maximo} usuarios activos con el rol {rol}. Ya tienes {usados}. Inactiva alguno o pide un cambio de plan.» |
 | API keys | «Tu plan permite {maximo} API keys activas. Ya tienes {usados}. Desactiva o elimina alguna, o pide un cambio de plan.» |
-| Superadmin (`tope_excedido`) | «{empresa} ya tiene {usados} {cosa} y el plan permite {maximo}.», una línea por tope excedido |
+| Superadmin (`tope_excedido` al asignar, `avisos` al editar) | «{empresa} ya tiene {usados} {cosa} y el plan permite {maximo}.», una línea por tope excedido. `{cosa}` es «órdenes en el ciclo en curso», «API keys activas» o «usuarios activos con el rol {rol}» (aprobado el 2026-10-28, tal como está en `lib/planes/mensajes.ts > mensajeTopesPasados`) |
 
 ### 6.5 API keys (R35, R36)
 
@@ -800,7 +802,8 @@ entre personas es solo con SL-43, y queda evitado si se respeta la tabla.
 
 ## 16. Cambio programado de un plan y avisos por correo (enmienda del 2026-10-28)
 
-Cubre R15–R17 revisados y R37–R44. Las propuestas para P6–P9 están marcadas en cada punto.
+Cubre R15–R17 revisados y R37–R45. P6–P9 se cerraron el 2026-10-28 con las propuestas que se
+describen aquí.
 
 ### 16.1 Modelo: `plan_cambio_programado` (plataforma)
 
@@ -822,10 +825,15 @@ Cubre R15–R17 revisados y R37–R44. Las propuestas para P6–P9 están marcad
   pendiente no la lee ningún trigger (§16.3), solo el aplicador y SL-26 para pintarla. Duplicar las
   tablas duplicaría también sus `CHECK`, y una versión inválida se rechaza igual en dos sitios:
   zod al guardar, y los `CHECK` de `plan` al aplicar.
-- **«La fecha» (P8, propuesta):** el servicio recibe un instante (`vigenteDesde`, ISO con zona).
-  - Debe ser estrictamente posterior a `now()`; si no, `validation_error` (R37).
-  - Convertir «el 1 de diciembre» en un instante es de SL-26: las 00:00 en la hora de la
-    plataforma (Costa Rica, UTC−6, como `vercel.json`), hasta que SL-21 traiga zona por empresa.
+- **«La fecha» (P8, cerrada el 2026-10-28).** SL-26 pide solo la fecha.
+  - Rige desde las 00:00 de ese día en la hora de la plataforma (Costa Rica, UTC−6, como
+    `vercel.json`), hasta que SL-21 traiga zona por empresa.
+  - El servicio acepta `vigenteDesde` como fecha `AAAA-MM-DD` y la convierte en el instante con
+    `lib/planes/ciclo.ts > inicioDelDiaPlataforma(fecha)` (pura, con el desfase fijo −06:00, sin
+    zona en el SQL). Guarda el instante.
+  - Si el instante no es estrictamente posterior a `now()`, responde `validation_error` (R37).
+  - Los recordatorios se cuentan desde ese instante: 7×24 h y 24 h antes.
+- **El nombre se programa con el resto** (P6, cerrada): `version` es la edición entera.
 
 ### 16.2 Programar, reemplazar, cancelar (R37, R39, R43)
 
@@ -852,13 +860,20 @@ en una transacción en `comoPlataforma`:
 
 - plan `FOR UPDATE`;
 - sin pendiente → `sin_cambio_programado`;
-- si hay pendiente, lo borra y escribe la fila `cambio_cancelado`.
+- si hay pendiente, lo borra, escribe la fila `cambio_cancelado` y encola los correos de
+  cancelación (R45).
 
 Los trabajos ya encolados del cambio viejo no se borran: al correr no encuentran su `cambioId` y
 terminan sin hacer nada (§16.3). Por eso no hace falta tocar la cola al reemplazar o cancelar.
 
-**La cancelación no se avisa por correo.** La decisión pide correo al guardar y recordatorios; no
-dice nada de cancelar. Queda fuera, y se puede añadir sin cambiar el modelo.
+**La cancelación sí se avisa por correo** (R45, decisión del 2026-10-28).
+
+- **Al cancelar** a mano o al archivar el plan, la transacción encola un `plan_aviso_correo` de
+  tipo `cancelado` por cada empresa del plan.
+- **Al reemplazar no sale un correo de cancelación aparte.** El correo de guardado del cambio
+  nuevo lleva `reemplazaA: <fecha anterior>` y la línea «Este cambio reemplaza al previsto para
+  <fecha anterior>». Así cada maestro recibe un solo correo con la situación final, en vez de
+  «se canceló» seguido de «hay un cambio nuevo».
 
 ### 16.3 Aplicar al llegar la fecha (R38) — trabajo que aplica
 
@@ -909,7 +924,9 @@ Un minuto de retraso no lo pide ninguna decisión.
 
 - **Plantilla nueva** `lib/services/email/plantillas/cambio-plan.ts`, sobre `componerCorreo` de
   `plantilla-marca.ts`, igual que `bienvenida-maestro.ts`.
-  - `plantillaCambioPlan({ to, nombre, empresaNombre, planNombre, cambios, vigenteDesde | null, topesPasados, tipo: "guardado" | "recordatorio_7" | "recordatorio_1", contacto })`.
+  - `plantillaCambioPlan({ to, nombre, empresaNombre, planNombre, cambios, vigenteDesde | null, reemplazaA | null, topesPasados, tipo: "guardado" | "recordatorio_7" | "recordatorio_1" | "cancelado", contacto })`.
+  - El tipo `cancelado` lleva solo el texto «El cambio del plan <nombre> previsto para <fecha> se
+    canceló; tu plan sigue igual.» (R45).
   - Las líneas de `cambios` salen de `diferenciasDelPlan` con textos en `lib/planes/mensajes.ts`.
   - `topesPasados` usa `mensajeTopesPasados`, ya hecho en T3.
   - La fecha se pinta con el formateador de fechas que ya usan los correos (T12 lo localiza; no se
@@ -923,8 +940,9 @@ Un minuto de retraso no lo pide ninguna decisión.
   - **`dedupe_key`:** `plan_aviso:<cambioId|editId>:<tipo>:<organizacionId>`. Para la edición
     inmediata, `editId` es el `id` de su fila de `plan_rastro`.
   - **El handler:**
-    1. lee los maestros activos de la empresa (P7, propuesta: todos);
-    2. si es un recordatorio, comprueba que el cambio sigue pendiente; si no, termina;
+    1. lee todos los maestros activos de la empresa (P7, cerrada el 2026-10-28);
+    2. si es un recordatorio, comprueba que el cambio sigue pendiente; si no, termina. El tipo
+       `cancelado` no hace esa comprobación: el cambio ya no existe;
     3. envía un correo por maestro con el emisor de `lib/services/EmailProvider.ts > crearEmailSender()`
        (que ya compone `EnrutadorEmailSender`).
   - **Al guardar** (inmediato o programado), la transacción encola un `plan_aviso_correo` por cada
@@ -974,11 +992,11 @@ compartida.
 | Archivo | Qué cubre |
 |---|---|
 | `tests/integration/db/planes-cambio-programado.test.ts` | R17 (al aplicar), R37 (hasta la fecha rige la vieja: alta que cabe solo en la vieja entra), R38 (aplicar con el reloj pasado; precio, nombre, topes y módulos; ancla y uso del ciclo intactos; segunda ejecución no hace nada; barrido de vencidos), R39 (reemplazar: el trabajo viejo no aplica nada; cancelar), R40 |
-| `tests/integration/db/planes-cambio-correos.test.ts` | R41 y R42, con un emisor doble que guarda lo enviado: destinatarios (maestros activos de cada empresa del plan), topes pasados, 10 días → dos recordatorios, 3 días → uno, doble ejecución → un correo por empresa, cambio cancelado → ninguno, fallo del emisor → la edición persiste |
+| `tests/integration/db/planes-cambio-correos.test.ts` | R45: cancelar a mano y archivar con un pendiente envían el correo de cancelación; reemplazar envía un solo correo por maestro, con la línea del reemplazo. R41 y R42, con un emisor doble que guarda lo enviado: destinatarios (maestros activos de cada empresa del plan), topes pasados, 10 días → dos recordatorios, 3 días → uno, doble ejecución → un correo por empresa, cambio cancelado → ninguno, fallo del emisor → la edición persiste |
 | `tests/unit/services/email/plantilla-cambio-plan.test.ts` | Asunto, líneas de cambio, fecha y topes pasados; sin marca ni país literal |
 | `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` | Los cuatro tipos tienen handler, el recurrente está en `buildRecurrencias`, y el composition root pasa el emisor real (memoria «el composition root que no inyecta») |
 | `tests/unit/services/planes-service.test.ts` (ampliado) | R5 para `cancelarCambio` y la edición programada; `vigenteDesde` pasado → `validation_error`; editar con empresa por encima → `ok` con `avisos` (R16) |
-| `tests/unit/types/planes-schema.test.ts` (ampliado) | `vigenteDesde`: ISO con zona, nulo o futuro |
+| `tests/unit/types/planes-schema.test.ts` (ampliado) | `vigenteDesde`: fecha `AAAA-MM-DD` o nulo; `inicioDelDiaPlataforma` da las 00:00 a −06:00 |
 | `tests/integration/db/planes-historial.test.ts` (ampliado) | R43: las cuatro filas nuevas de `plan_rastro` |
 | `tests/integration/db/planes-edicion-en-uso.test.ts` (ampliado) | R16 revisado |
 
