@@ -53,6 +53,9 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
       "geocodificacion",
       "liberar_reprogramadas",
       "optimizacion_ruta",
+      // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
+      "plan_aplicar_cambio",
+      "plan_cambios_vencidos",
       // FICHA 410: entrega de un aviso ya creado a las suscripciones push de sus
       // destinatarios. PUNTUAL -lo encola el decorador del repositorio de notificaciones-,
       // asi que tampoco va en `buildRecurrencias`.
@@ -83,7 +86,9 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect(recurrencias.has("analitica_rollup_diario")).toBe(true);
     // Ficha 474: el TERCERO, el mantenimiento diario de los envios por WhatsApp (03:30 CR).
     expect(recurrencias.has("whatsapp_envio_mantenimiento")).toBe(true);
-    expect(recurrencias.size).toBe(3);
+    // SL-24 (design §16.3): el CUARTO, el barrido horario de cambios de plan vencidos.
+    expect(recurrencias.has("plan_cambios_vencidos")).toBe(true);
+    expect(recurrencias.size).toBe(4);
   });
 
   it("al drenar, el handler se ejecuta, el job se completa y NO se re-encola", async () => {

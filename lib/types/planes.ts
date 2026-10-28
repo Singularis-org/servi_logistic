@@ -112,6 +112,13 @@ export const editarPlanSchema = z
   })
   .strict();
 
+/**
+ * La versión de un cambio programado (§16.1): la edición sin `planId` ni `vigenteDesde`. Es lo que
+ * se guarda en `plan_cambio_programado.version`, y al aplicarla se vuelve a validar con este mismo
+ * esquema antes de escribir (T11).
+ */
+export const versionPlanSchema = editarPlanSchema.omit({ planId: true, vigenteDesde: true });
+
 export const planIdSchema = z.object({ planId: z.uuid() }).strict();
 export const archivarPlanSchema = planIdSchema;
 export const cancelarCambioPlanSchema = planIdSchema;

@@ -30,6 +30,27 @@ export type ResultadoCancelarCambio =
   | { estado: "not_found" }
   | { estado: "sin_cambio_programado" };
 
+/**
+ * Programar o reemplazar el cambio pendiente (§16.2). `cambio: false` = la versión es la vigente y no
+ * había pendiente: no se escribió nada. `cambioId` es la programación nueva (null sin cambio).
+ */
+export type ResultadoProgramar =
+  | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[]; cambioId: string | null }
+  | { estado: "not_found" }
+  | { estado: "archivado" };
+
+/**
+ * Aplicar un cambio programado (§16.3). `sin_pendiente`: reemplazado, cancelado o ya aplicado;
+ * `aun_no_rige`: el reloj no llegó a `vigente_desde`. Los dos terminan sin escribir nada.
+ */
+export type ResultadoAplicar = { estado: "aplicado" } | { estado: "sin_pendiente" } | { estado: "aun_no_rige" };
+
+/** Lo que identifica una programación concreta: va en el payload de `plan_aplicar_cambio`. */
+export interface CambioPendiente {
+  planId: string;
+  cambioId: string;
+}
+
 export interface IPlanesRepository {
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null>;
   plan(planId: string): Promise<PlanDTO | null>;
@@ -46,6 +67,24 @@ export interface IPlanesRepository {
   asignar(organizacionId: string, planId: string, actorUsuarioId: string): Promise<ResultadoAsignar>;
   /** Borra el cambio pendiente y deja su fila `cambio_cancelado` (R39, R43). */
   cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio>;
+  /**
+   * Programa la versión para `vigenteDesde` (R37), reemplazando el pendiente si lo hay (R39), con sus
+   * filas de `plan_rastro` (R43) y el trabajo que la aplicará, todo en una transacción (§16.2). No toca
+   * la versión vigente. Devuelve los avisos de R16 contra el uso de hoy, sin rechazar.
+   */
+  programarCambio(
+    planId: string,
+    version: VersionPlan,
+    vigenteDesde: Date,
+    actorUsuarioId: string,
+  ): Promise<ResultadoProgramar>;
+  /**
+   * Aplica ESA programación si sigue pendiente y ya rige en `ahora` (R38, §16.3). Idempotente: si fue
+   * reemplazada, cancelada o ya aplicada, no hace nada (R39).
+   */
+  aplicarCambioProgramado(cambio: CambioPendiente, ahora: Date): Promise<ResultadoAplicar>;
+  /** Las programaciones con `vigente_desde <= ahora` que siguen pendientes (barrido de §16.3). */
+  cambiosVencidos(ahora: Date): Promise<CambioPendiente[]>;
   /** Públicos y custom de esa empresa, no archivados (R7). */
   asignables(organizacionId: string): Promise<PlanDTO[]>;
   /** Solo públicos no archivados (R7; la lectura de SL-25). */

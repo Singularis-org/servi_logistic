@@ -18,7 +18,7 @@ import {
   type PlanResult,
 } from "@/lib/types/planes";
 
-// SL-24 (design §5; R2, R5, R6, R12, R13, R16, R37) — el orden es fijo y es parte del contrato,
+// SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
 // existe, luego las reglas (archivado, custom de otra empresa) y al final el repositorio. Ningún rol de
 // empresa —tampoco el `maestro` de la empresa afectada— llega a la base, ni para un error de validación.
@@ -79,8 +79,12 @@ export class PlanesService implements IPlanesService {
     if (plan.archivado) return { estado: "archivado" };
 
     if (vigenteDesde !== null) {
-      // La edición programada (programar o reemplazar el pendiente, §16.2) llega con T11.
-      throw new Error("PlanesService.editar: la edición programada (vigenteDesde) se implementa en T11 (design §16.2)");
+      // §16.2: programar o reemplazar el pendiente, sin tocar la versión vigente (R37, R39). R16: se
+      // guarda aunque alguna empresa ya pase un tope nuevo, y se avisa.
+      const p = await this.repo.programarCambio(planId, version, inicioDelDiaPlataforma(vigenteDesde), actor.usuarioId);
+      if (p.estado !== "ok") return p;
+      // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
+      return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
     }
     const r = await this.repo.editar(planId, version, actor.usuarioId);
     if (r.estado !== "ok") return r;

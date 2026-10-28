@@ -59,6 +59,14 @@ function doble() {
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true })),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "ok" })),
+    programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
+      estado: "ok",
+      cambio: true,
+      avisos: [],
+      cambioId: "cambio-1",
+    })),
+    aplicarCambioProgramado: vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "aplicado" })),
+    cambiosVencidos: vi.fn<IPlanesRepository["cambiosVencidos"]>(async () => []),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => [plan()]),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => [plan()]),
   };
@@ -193,8 +201,60 @@ describe("SL-24 — editar (R2, R6, R15, R16, R37)", () => {
   it("R37: hoy cuenta desde las 00:00 a −06:00, no desde la medianoche UTC", async () => {
     // 2026-10-28 05:59 UTC = 2026-10-27 23:59 en la plataforma: «mañana» (28) todavía es futuro.
     const s = new PlanesService(repo, () => new Date("2026-10-28T05:59:00.000Z"));
-    await expect(s.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-28" })).rejects.toThrow(/T11/);
+    expect(await s.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-28" })).toMatchObject({
+      estado: "ok",
+      vigenteDesde: "2026-10-28",
+    });
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-10-28T06:00:00.000Z"), "u-sa");
     expect(repo.editar).not.toHaveBeenCalled();
+  });
+
+  it("R37: con fecha futura programa (no edita la vigente) y devuelve la fecha elegida", async () => {
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-11-15" })).toEqual({
+      estado: "ok",
+      planId: PLAN,
+      cambio: true,
+      avisos: [],
+      vigenteDesde: "2026-11-15",
+    });
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, VERSION, new Date("2026-11-15T06:00:00.000Z"), "u-sa");
+    expect(repo.editar).not.toHaveBeenCalled();
+  });
+
+  it("R16: programada con una empresa por encima del tope nuevo, se guarda y devuelve el aviso", async () => {
+    const aviso: TopeExcedido = { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "ordenes", usados: 80, maximo: 50 };
+    repo.programarCambio.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [aviso], cambioId: "c" });
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-11-15" })).toMatchObject({
+      estado: "ok",
+      avisos: [aviso],
+    });
+  });
+
+  it("programada sin nada que programar: ok sin cambio y sin fecha", async () => {
+    repo.programarCambio.mockResolvedValueOnce({ estado: "ok", cambio: false, avisos: [], cambioId: null });
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-11-15" })).toEqual({
+      estado: "ok",
+      planId: PLAN,
+      cambio: false,
+      avisos: [],
+      vigenteDesde: null,
+    });
+  });
+
+  it.each([
+    ["not_found", { estado: "not_found" as const }],
+    ["archivado", { estado: "archivado" as const }],
+  ])("programada: %s bajo cerrojo se devuelve tal cual", async (_caso, r) => {
+    repo.programarCambio.mockResolvedValueOnce(r);
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-11-15" })).toEqual(r);
+  });
+
+  it("R6: programar sobre un archivado se rechaza sin escribir", async () => {
+    repo.plan.mockResolvedValueOnce(plan({ archivado: true }));
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-11-15" })).toEqual({
+      estado: "archivado",
+    });
+    expect(repo.programarCambio).not.toHaveBeenCalled();
   });
 });
 

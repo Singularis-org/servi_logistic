@@ -130,7 +130,7 @@
     muestran `mensaje` con `tope_plan` (`design.md > §8`).
   - **Hecho:** `UsuariosTopePlan`, `PostulacionesTopePlan` y `ApiKeysTopePlan` (componentes) en
     verde.
-- [ ] **T11. Cambio programado: programar, reemplazar, cancelar y aplicar** (nueva, 2026-10-28;
+- [x] **T11. Cambio programado: programar, reemplazar, cancelar y aplicar** (nueva, 2026-10-28;
   depende de T4 y T5).
   - `inicioDelDiaPlataforma(fecha)` en `lib/planes/ciclo.ts`: convierte la fecha en las 00:00 a
     −06:00 (P8).

@@ -567,3 +567,101 @@ Salida real:
 - `git status tests/fabricas`: sin cambios.
 
 Veredicto T6: hecho y en verde. Hay cuatro decisiones de implementación anotadas arriba para el reviewer.
+
+## T11 (2026-10-28) — cambio programado: programar, reemplazar, cancelar y aplicar
+
+### Archivos
+- Nuevos:
+  - `lib/planes/jobs-cambio-plan.ts`: los handlers `plan_aplicar_cambio` y `plan_cambios_vencidos`, la recurrencia horaria, el sembrador del barrido y el composition root `buildPlanesRepositoryDeJobs()`. Tiene una sección vacía marcada para T12.
+  - `tests/integration/db/planes-cambio-programado.test.ts` (10 casos).
+  - `tests/unit/cron/procesar-jobs-plan-cambio.test.ts` (12 casos).
+- Modificados:
+  - `lib/repositories/PlanesRepository.ts`:
+    - `programarCambio`, `aplicarCambioProgramado`, `cambiosVencidos`, `encolarAplicacion` (outbox) y `dedupeAplicarCambio`;
+    - `escribirRastro` acepta las 7 acciones;
+    - `cancelarCambio` y `cancelarPendienteEnTx` no cambian de comportamiento (solo el comentario del punto T12).
+  - `lib/interfaces/repositories/IPlanesRepository.ts`: `ResultadoProgramar`, `ResultadoAplicar`, `CambioPendiente` y los tres métodos.
+  - `lib/services/PlanesService.ts`: `editar` con `vigenteDesde` llama a `programarCambio` (se quita el stub de T4).
+  - `lib/types/planes.ts`: `versionPlanSchema` (`editarPlanSchema` sin `planId` ni `vigenteDesde`).
+  - `app/api/cron/procesar-jobs/route.ts`: los 2 handlers en `buildHandlers`, el barrido en `buildRecurrencias` y `RECURRENTES_DE_PLATAFORMA`.
+  - `scripts/siembra-jobs-recurrentes.ts`: la entrada `plan_cambios_vencidos` en `SIEMBRAS_RECURRENTES`.
+  - Tests con listas cerradas de tipos, ampliadas con los 2 tipos nuevos:
+    - `tests/unit/api/procesar-jobs-registro.test.ts`;
+    - `tests/unit/services/jobs-registro.test.ts`;
+    - `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`;
+    - `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`: la ventana horaria (`MAS_TARDE_POR_TIPO`) y la prueba `contarJobs` del sembrador;
+    - `tests/integration/api/procesar-jobs-geocodificacion.test.ts`;
+    - `tests/integration/api/procesar-jobs-webhook-estado.test.ts`.
+  - `tests/unit/services/planes-service.test.ts`: el doble gana los 3 métodos; el caso que esperaba el `throw /T11/` ahora programa; 6 casos nuevos.
+  - `tests/integration/db/planes-historial.test.ts`: caso R43 con las 4 filas nuevas.
+- Sin tocar: `tests/fabricas/*`, `lib/auth/*`, `lib/services/email/*`, `mensajes.ts`, T6, migraciones y dependencias.
+
+### Decisiones que el spec no fija (para el reviewer)
+1. **Payload de `plan_aplicar_cambio` = `{ planId, cambioId }`**, no solo `{ cambioId }` (§16.3).
+   - Con el plan en el payload, el aplicador cierra el plan ANTES de leer el cambio (orden de §4.4).
+   - Después lee el cambio por `id = cambioId` (y `planId`).
+   - Sin PII. Así la mutación 8 («lee el pendiente del plan, no ESE cambio») se puede expresar y medir.
+2. **`plan_cambios_vencidos` corre UNA vez, en plataforma** (`RECURRENTES_DE_PLATAFORMA`).
+   - `conSuEmpresa` corre los recurrentes sin empresa una vez POR empresa. Aquí eso repetiría el barrido N veces y, con 0 empresas, no correría nunca.
+   - Sigue re-agendándose por `buildRecurrencias`: cada hora en punto UTC, con `dedupe_key = plan_cambios_vencidos:<AAAA-MM-DDTHH>`.
+3. **Siembra del barrido.** La guardia 313 exige una siembra para todo recurrente: sin primera fila, la serie no arranca.
+   - El sembrador vive en `lib/planes/jobs-cambio-plan.ts`, junto a su recurrencia y con la misma clave. No hay un script `scripts/seed-*` nuevo.
+   - Se registra en `SIEMBRAS_RECURRENTES` (`script` apunta a ese archivo).
+   - Su idempotencia se mide contando filas en `planes-cambio-programado`.
+   - **Para el leader:** esto toca `scripts/siembra-jobs-recurrentes.ts`, que §16.5 no lista.
+4. **El reloj de «ya rige» es el de Node.** El handler recibe el `now` del drenador y lo compara con `vigente_desde`, que Prisma escribe desde un `Date` en la misma escala que `run_after`. No se usa `now()` de la base, para no reabrir el riesgo de zona de T3.
+5. **Filas de `plan_rastro`.** El JSON de `cambios` no lo fija el spec:
+   - `cambio_programado` → `diferenciasDelPlan(vigente, version)` más `vigenteDesde: { antes: null, despues: <ISO> }`;
+   - `cambio_reemplazado` → `{ vigenteDesde: { antes: <ISO viejo>, despues: <ISO nuevo> } }`;
+   - `cambio_cancelado` → igual que en T4: `{ vigenteDesde: { antes: <ISO>, despues: null } }`;
+   - `cambio_aplicado` → el diff contra lo que regía AL APLICAR (puede diferir del programado si hubo una edición inmediata entre medias). `actor_usuario_id` es el del programador y `actor_nombre` es «Sistema (programado por <nombre>)», cortado a 120 caracteres. `plan_nombre` es el nombre nuevo.
+   - Las filas de módulos de `historial_accion` al aplicar las firma `ACTOR_SISTEMA` (los tres campos a null).
+6. **Programar la versión vigente CON pendiente** no responde `cambio: false`: §16.2 paso 2 solo corta si no hay pendiente. Reemplaza el pendiente por una programación sin diferencias, que al aplicarse no cambia nada.
+7. **`vigenteDesde` del resultado `ok`** es la fecha elegida (`AAAA-MM-DD`), no el instante; `null` si no se programó nada.
+8. **Versión que ya no valida al aplicar.** `versionPlanSchema.parse` lanza: el trabajo falla sin escribir, se reintenta 5 veces y queda `failed` con el motivo. El barrido lo reintentará cada hora mientras siga pendiente. No pasa con lo que guarda el servicio: lo valida el mismo esquema.
+
+### Puntos de encolado que quedan para T12 (marcados con «T12» en el código)
+1. `PlanesRepository.programarCambio`, paso 6:
+   - `plan_recordatorio_cambio` ×2 (7 y 1 días antes, solo los que caen después de ahora, `dedupe_key = plan_recordatorio:<cambioId>:<dias>`);
+   - un `plan_aviso_correo` `guardado` por empresa, con `reemplazaA = pendiente?.vigenteDesde`.
+   - **No encolé los recordatorios**: sin su handler (T12) se quedarían `pending` para siempre.
+2. `cancelarPendienteEnTx` (cancelar a mano y archivar): un `plan_aviso_correo` `cancelado` por empresa (R45).
+3. `PlanesRepository.editar` (inmediata): un `plan_aviso_correo` `guardado` por empresa (R41). El comentario es de T4.
+4. `lib/planes/jobs-cambio-plan.ts`: la sección vacía para los handlers `plan_recordatorio_cambio` y `plan_aviso_correo`. Su cableado va en `buildHandlers`, junto a los dos de T11.
+
+### R<n> → test (T11)
+| R | Test |
+|---|---|
+| R17 (al aplicar) | `planes-cambio-programado` «R38/R17: llegada la fecha…»: excepción `wallet` intacta y filas de SL-23 por empresa |
+| R37 | `planes-cambio-programado`: «programado a mañana…» (vigente intacta, versión entera guardada, trabajo con `run_after`/`dedupe_key`/`max_intentos 5`/sin empresa, la 2.ª tienda entra con el tope viejo) y «una fecha que no es posterior…»; `planes-service` (programa, no edita; 00:00 a −06:00) |
+| R16 (programada) | `planes-cambio-programado` «R16 (mutación 10)…»; `planes-service` «programada con una empresa por encima…» |
+| R38 | `planes-cambio-programado`: «llegada la fecha…» (topes, precio, nombre y módulos; ancla y uso del ciclo iguales; un minuto antes no aplica; 2.ª ejecución sin efecto; la 3.ª tienda se rechaza con `SL024`) y «el barrido aplica los vencidos…»; `procesar-jobs-plan-cambio` (registro, recurrencia, en plataforma, handlers) |
+| R39 | `planes-cambio-programado`: «R39 (mutación 8)…» (un solo pendiente; el trabajo viejo no aplica ni el nuevo) y «cancelar borra el pendiente…» |
+| R40 | `planes-cambio-programado` «archivar con un cambio programado…» (programado por el servicio; su trabajo no aplica) |
+| R43 | `planes-historial` «R43: programar, reemplazar, cancelar y aplicar…» (las 4 filas, con el JSON exacto y el actor) |
+| R44 | `procesar-jobs-plan-cambio` «R44: los dos son de núcleo»; `modulos-reparto` (guardia existente) |
+
+### Mutaciones (§16.7)
+- **8** (el aplicador lee `where: { planId }` en vez de `{ id: cambioId, planId }`):
+  - rojo: «R39 (mutación 8)…», «Tests 1 failed | 9 passed (10)»;
+  - revertida: verde.
+- **10** (`programarCambio` devuelve `tope_excedido` si hay avisos):
+  - rojo: «R16 (mutación 10)…» y «R38/R17…», «Tests 2 failed | 8 passed (10)».
+- **10, en la inmediata** (lo mismo en `editar`):
+  - rojo: `planes-edicion-en-uso` «R16: con 3 tiendas…» y «R16: el aviso nombra…», «Tests 2 failed | 5 passed (7)».
+- Tras revertir las dos: 0 marcas `MUTACION` en el archivo, y `planes-cambio-programado` + `planes-edicion-en-uso` dan «Tests 17 passed (17)».
+
+### Salida real
+- Una corrida con 23 archivos: «Test Files 2 failed | 21 passed (23) · Tests 2 failed | 331 passed (333)».
+  - Unit: `tests/unit/cron/*`, `planes-service`, `planes-schema`, `planes.composition-root`, `procesar-jobs-registro`, `procesar-jobs-registro-envios`, `jobs-registro` y las guardias `jobs-handler-por-tipo`, `jobs-recurrentes-con-siembra` y `modulos-reparto`.
+  - Integración contra la base SL-24: `procesar-jobs-geocodificacion`, `procesar-jobs-webhook-estado`, `procesar-jobs-route`, `siembra-recurrentes-como-plataforma` y `planes-{cambio-programado,historial,asignacion,edicion-en-uso,acceso-servi-app,catalogo}`.
+  - Los 2 rojos de esa corrida:
+    - la guardia `jobs-handler-por-tipo`, **esperada**: le faltan `plan_recordatorio_cambio` y `plan_aviso_correo`, que son de T12;
+    - un orden inestable en el test nuevo de R39. Los dos trabajos tienen el mismo `created_at` (el de la transacción), así que ahora se distinguen por su `cambioId`.
+- Tras el arreglo, `planes-cambio-programado` + `planes-historial` 3 veces seguidas: «Tests 17 passed (17)» las tres.
+- Guardias `historial-accion-escrituras-cubiertas`, `plataforma-solo-en-lista`, `modulos-reparto`, `jobs-recurrentes-con-siembra` y `jobs-handler-por-tipo`: «Tests 1 failed | 157 passed (158)». El rojo es el de `jobs-handler-por-tipo` por T12 (Expected `[]`, Received `["plan_recordatorio_cambio","plan_aviso_correo"]`).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0, sin salida.
+- `eslint` sobre los 17 archivos tocados o nuevos: sin errores, exit 0.
+- MCP del grafo: no lo usé; exploré con Grep/Read.
+
+Veredicto T11: hecho y en verde, salvo la guardia `jobs-handler-por-tipo`, roja a la espera de los dos handlers de T12. Hay 8 decisiones anotadas para el reviewer; la 3 toca `scripts/siembra-jobs-recurrentes.ts`.

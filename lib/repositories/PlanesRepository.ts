@@ -3,16 +3,20 @@ import type { ModuloApagable, Prisma, PrismaClient, RolValue } from "@prisma/cli
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAccionRepository";
 import type {
+  CambioPendiente,
   EmpresaDePlanes,
   IPlanesRepository,
+  ResultadoAplicar,
   ResultadoArchivar,
   ResultadoAsignar,
   ResultadoCancelarCambio,
   ResultadoEdicion,
+  ResultadoProgramar,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
-import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import { JobRepository } from "@/lib/repositories/JobRepository";
+import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ROLES_CON_TOPE,
@@ -23,6 +27,7 @@ import {
   type TopeExcedido,
   type TopesPlan,
   type VersionPlan,
+  versionPlanSchema,
 } from "@/lib/types/planes";
 
 // SL-24 (design §2, §4.4, §5, §7, §9, §16.3) — el catálogo de planes y su asignación. Lo escribe solo
@@ -32,15 +37,16 @@ import {
 // Cerrojos (§4.4), siempre en este orden para no interbloquear con las altas de los triggers, que piden
 // empresa → plan:
 //   · asignar: `organizacion` FOR UPDATE → plan FOR SHARE → contar → escribir;
-//   · editar, archivar, cancelar: plan FOR UPDATE (nunca piden la empresa después).
+//   · editar, archivar, programar, cancelar y aplicar un cambio programado: plan FOR UPDATE (nunca
+//     piden la empresa después).
 // El FOR UPDATE espera a las altas en vuelo (que tienen las filas en FOR SHARE) y cuenta con ellas ya
 // confirmadas; las altas siguientes leen lo nuevo.
 //
 // Cada cambio deja su rastro en la misma transacción: `plan_rastro` (plataforma, P5) al crear, editar,
-// archivar o cancelar un cambio; `historial_accion` de la empresa al asignar y por cada módulo que se
+// archivar, y al programar, reemplazar, cancelar o aplicar un cambio (R43); `historial_accion` de la empresa al asignar y por cada módulo que se
 // enciende o apaga (R29). Si el rastro falla, nada persiste.
 
-export type PlanesPrismaClient = Pick<PrismaClient, "plan" | "organizacion" | "$transaction">;
+export type PlanesPrismaClient = Pick<PrismaClient, "plan" | "organizacion" | "planCambioProgramado" | "$transaction">;
 type Tx = Prisma.TransactionClient;
 
 const INCLUIR = {
@@ -222,10 +228,19 @@ function nombreDelActor(actor: ActorCongelado): string {
   return actor.actorNombre ?? "";
 }
 
+type AccionDelRastro =
+  | "creado"
+  | "editado"
+  | "archivado"
+  | "cambio_programado"
+  | "cambio_reemplazado"
+  | "cambio_cancelado"
+  | "cambio_aplicado";
+
 async function escribirRastro(
   tx: Tx,
   plan: { id: string; nombre: string },
-  accion: "creado" | "editado" | "archivado" | "cambio_cancelado",
+  accion: AccionDelRastro,
   cambios: CambiosDelPlan | Record<string, { antes: unknown; despues: unknown }>,
   actorUsuarioId: string,
   actor: ActorCongelado,
@@ -297,7 +312,9 @@ async function cancelarPendienteEnTx(
   });
   if (pendiente === null) return false;
   await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
-  // El correo de cancelación (R45) lo encola T12 aquí mismo, en esta transacción.
+  // T12 (R45, §16.2): el correo de cancelación se encola AQUÍ, en esta transacción: un
+  // `plan_aviso_correo` de tipo `cancelado` por cada empresa del plan. Sirve a cancelar a mano y a
+  // archivar (R40); reemplazar NO pasa por aquí (no lleva correo de cancelación aparte).
   await escribirRastro(
     tx,
     plan,
@@ -307,6 +324,38 @@ async function cancelarPendienteEnTx(
     actor,
   );
   return true;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cambio programado (§16)                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** El trabajo que aplica, como mucho 5 intentos (§16.3). */
+const MAX_INTENTOS_APLICAR = 5;
+
+/** `dedupe_key` del trabajo que aplica ESA programación (§16.2, paso 6). */
+export function dedupeAplicarCambio(cambioId: string): string {
+  return `plan_cambio:${cambioId}`;
+}
+
+/**
+ * Outbox (§16.2, paso 6): el trabajo nace en la misma transacción que la programación, sin empresa
+ * (`organizacion_id` NULL por el DEFAULT: aquí corre en plataforma). El payload lleva el plan para
+ * poder cerrar el plan ANTES de leer el cambio (orden de cerrojos de §4.4) y el id de ESTA
+ * programación: un trabajo de una programación reemplazada o cancelada no la encuentra (R39).
+ */
+async function encolarAplicacion(tx: Tx, cambio: CambioPendiente, vigenteDesde: Date): Promise<void> {
+  await new JobRepository(tx).enqueue(
+    "plan_aplicar_cambio",
+    { planId: cambio.planId, cambioId: cambio.cambioId },
+    { runAfter: vigenteDesde, dedupeKey: dedupeAplicarCambio(cambio.cambioId), maxIntentos: MAX_INTENTOS_APLICAR },
+    tx,
+  );
+}
+
+/** «Sistema (programado por <nombre>)», cortado a los 120 de `actor_nombre` (§16.3, paso 4). */
+function actorDelAplicador(programadoPor: string): string {
+  return `Sistema (programado por ${programadoPor})`.slice(0, 120);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -461,6 +510,134 @@ export class PlanesRepository implements IPlanesRepository {
         return cancelado ? { estado: "ok" } : { estado: "sin_cambio_programado" };
       }),
     );
+  }
+
+  programarCambio(
+    planId: string,
+    version: VersionPlan,
+    vigenteDesde: Date,
+    actorUsuarioId: string,
+  ): Promise<ResultadoProgramar> {
+    return comoPlataforma("SL-24", "programar un cambio de un plan del catálogo (superadmin)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoProgramar> => {
+        // 1. Cerrojo del plan (§4.4): espera a las altas en vuelo, a otra edición y al aplicador.
+        if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
+        const vigente = (await leerPlan(tx, planId)) as PlanDTO;
+        if (vigente.archivado) return { estado: "archivado" };
+        const pendiente = await tx.planCambioProgramado.findUnique({
+          where: { planId },
+          select: { id: true, vigenteDesde: true },
+        });
+        // 2. La versión vigente sin pendiente: nada que programar ni que registrar.
+        const cambios = diferenciasDelPlan(vigente, { ...vigente, ...version });
+        if (!hayCambios(cambios) && pendiente === null) return { estado: "ok", cambio: false, avisos: [], cambioId: null };
+
+        // 3. R16 (revisado): con el uso de HOY contra los topes nuevos; se avisa, no se rechaza.
+        const empresas = await tx.organizacion.findMany({
+          where: { planId },
+          orderBy: { id: "asc" },
+          select: { id: true, nombre: true },
+        });
+        const avisos = await excedidosDe(tx, empresas, version.topes);
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        const despues = vigenteDesde.toISOString();
+
+        // 4. R39: un solo pendiente por plan. Reemplazar = borrar y crear otro con id nuevo; los
+        // trabajos del viejo no se tocan: al correr no encuentran su `cambioId` (§16.3).
+        if (pendiente !== null) {
+          await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
+          await escribirRastro(
+            tx,
+            vigente,
+            "cambio_reemplazado",
+            { vigenteDesde: { antes: pendiente.vigenteDesde.toISOString(), despues } },
+            actorUsuarioId,
+            actor,
+          );
+        }
+
+        // 5. La programación y su fila (R43): qué cambia respecto de la vigente, y desde cuándo.
+        const { id: cambioId } = await tx.planCambioProgramado.create({
+          data: {
+            planId,
+            vigenteDesde,
+            version: version as Prisma.InputJsonValue,
+            avisosAlProgramar: avisos as unknown as Prisma.InputJsonValue,
+            actorUsuarioId,
+            actorNombre: nombreDelActor(actor),
+          },
+          select: { id: true },
+        });
+        await escribirRastro(
+          tx,
+          vigente,
+          "cambio_programado",
+          { ...cambios, vigenteDesde: { antes: null, despues } },
+          actorUsuarioId,
+          actor,
+        );
+
+        // 6. Outbox, en esta misma transacción.
+        await encolarAplicacion(tx, { planId, cambioId }, vigenteDesde);
+        // T12 (R41, R42, R45; §16.2 paso 6 y §16.4) encola AQUÍ, en esta transacción:
+        //   · `plan_recordatorio_cambio` con `{ cambioId, dias: 7 }` y `{ cambioId, dias: 1 }`, con
+        //     `run_after = vigenteDesde − 7×24 h` y `− 24 h`, solo los que caen después de ahora, y
+        //     `dedupe_key = plan_recordatorio:<cambioId>:<dias>`;
+        //   · un `plan_aviso_correo` de tipo `guardado` por cada empresa de `empresas`, con
+        //     `reemplazaA = pendiente?.vigenteDesde` (null si no reemplaza) y sus topes pasados.
+        return { estado: "ok", cambio: true, avisos, cambioId };
+      }),
+    );
+  }
+
+  aplicarCambioProgramado(cambio: CambioPendiente, ahora: Date): Promise<ResultadoAplicar> {
+    return comoPlataforma("SL-24", "aplicar el cambio programado de un plan (trabajo de la cola)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoAplicar> => {
+        // 1. El plan primero (§4.4): las altas en vuelo terminan contra la versión vieja y las
+        // siguientes cuentan contra la nueva (R24).
+        if (!(await bloquearPlanParaEscribir(tx, cambio.planId))) return { estado: "sin_pendiente" };
+        // 2. ESTA programación, por su id (R39): reemplazada, cancelada o ya aplicada no está.
+        const pendiente = await tx.planCambioProgramado.findFirst({
+          where: { id: cambio.cambioId, planId: cambio.planId },
+          select: { id: true, vigenteDesde: true, version: true, actorUsuarioId: true, actorNombre: true },
+        });
+        if (pendiente === null) return { estado: "sin_pendiente" };
+        // Reloj adelantado del trabajo: no se adelanta el cambio; lo recoge el barrido.
+        if (pendiente.vigenteDesde.getTime() > ahora.getTime()) return { estado: "aun_no_rige" };
+
+        // La misma validación que al guardar (§16.1). Una versión que ya no pasa falla el trabajo
+        // (se reintenta y queda en `failed` con el motivo) sin escribir nada.
+        const version: VersionPlan = versionPlanSchema.parse(pendiente.version);
+        const antes = (await leerPlan(tx, cambio.planId)) as PlanDTO;
+        const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
+        // 3. La misma función que la edición inmediata (R17 en las empresas que lo tienen AHORA).
+        // El historial de SL-23 de cada empresa lo firma el sistema; el ciclo no se toca (R38).
+        if (hayCambios(cambios)) await aplicarVersion(tx, antes, version, ACTOR_SISTEMA);
+        // 4. R43: la fila del sistema, con quien lo programó.
+        await escribirRastro(
+          tx,
+          { id: cambio.planId, nombre: version.nombre },
+          "cambio_aplicado",
+          cambios,
+          pendiente.actorUsuarioId,
+          { actorUsuarioId: pendiente.actorUsuarioId, actorNombre: actorDelAplicador(pendiente.actorNombre), actorRol: null },
+        );
+        // 5. Ya no está pendiente: una segunda ejecución no lo encuentra.
+        await tx.planCambioProgramado.deleteMany({ where: { id: pendiente.id } });
+        return { estado: "aplicado" };
+      }),
+    );
+  }
+
+  cambiosVencidos(ahora: Date): Promise<CambioPendiente[]> {
+    return comoPlataforma("SL-24", "barrer los cambios programados vencidos (trabajo de la cola)", async () => {
+      const filas = await this.prisma.planCambioProgramado.findMany({
+        where: { vigenteDesde: { lte: ahora } },
+        orderBy: [{ vigenteDesde: "asc" }, { id: "asc" }],
+        select: { id: true, planId: true },
+      });
+      return filas.map((f) => ({ planId: f.planId, cambioId: f.id }));
+    });
   }
 
   asignables(organizacionId: string): Promise<PlanDTO[]> {
