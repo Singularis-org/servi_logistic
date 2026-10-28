@@ -790,3 +790,112 @@ Veredicto T11: hecho y en verde, salvo la guardia `jobs-handler-por-tipo`, roja 
 - MCP del grafo: no lo usé; exploré con Grep/Read.
 
 Veredicto T12: hecho y en verde, con la guardia `jobs-handler-por-tipo` ya verde. Quedan pendientes de aprobación humana los textos propuestos y el formateador de fecha.
+
+## T8 — Guardias `planes-sin-seed` y `planes-sin-borrado` (con la ampliación de T10)
+
+Archivos nuevos (solo tests; no se tocó código de producción):
+- `tests/unit/guards/planes-sin-seed.guardia.test.ts`: lee el archivo de `db:seed` desde `package.json` y sus imports locales; ninguno nombra `plan`, `planId`, `planTopeRol`, `planModulo`, `planRastro`, `planCambioProgramado` ni sus nombres SQL (`plan_id`, `plan_tope_rol`, …). Contraprueba sintética en las dos direcciones (rojo con escritura por modelo, por SQL y por asignación; verde con comentario, `plantillaMensaje`).
+- `tests/unit/guards/planes-sin-borrado.guardia.test.ts`: barrido de `lib/` y `app/` sin comentarios.
+  - Prohibido en todo archivo: `plan.delete(Many)`, `planRastro.update/updateMany/upsert/delete/deleteMany`, `DELETE FROM`/`TRUNCATE` sobre `"plan"` o `"plan_rastro"` y `UPDATE "plan_rastro"`.
+  - Ampliación T10: escrituras sobre `plan_cambio_programado` (delegado `create*`/`update*`/`upsert`/`delete*`, o SQL `INSERT`/`UPDATE`/`DELETE`/`TRUNCATE`) solo en `lib/repositories/PlanesRepository.ts`.
+  - Contraprueba sintética de los dos detectores (cuerpo sano sin hallazgos; mutaciones detectadas; `planCambioProgramado.deleteMany` no se confunde con `plan.deleteMany`; leer no cuenta) y control positivo sobre el árbol real (el detector sí encuentra `create` y `deleteMany` en `PlanesRepository`).
+
+El código actual no tiene ningún incumplimiento: las dos guardias están en verde sin cambios en producción.
+
+Mapa R → test:
+- R32 → `tests/unit/guards/planes-sin-seed.guardia.test.ts`
+- R6 (no hay forma de borrar un plan) → `tests/unit/guards/planes-sin-borrado.guardia.test.ts` («ningún archivo … borra un plan …»)
+- R29 (`plan_rastro` solo se añade) → `tests/unit/guards/planes-sin-borrado.guardia.test.ts` (mismo caso)
+- T10 (solo `PlanesRepository` escribe `plan_cambio_programado`) → `tests/unit/guards/planes-sin-borrado.guardia.test.ts` («solo `PlanesRepository` escribe …»)
+
+Salida real (sin typecheck completo ni suite, por memoria):
+- `pnpm exec vitest run tests/unit/guards/planes-sin-seed.guardia.test.ts tests/unit/guards/planes-sin-borrado.guardia.test.ts tests/guards/guard-tests-de-arbol-en-el-gate.test.ts`: «Test Files 3 passed (3) · Tests 18 passed (18)».
+- `pnpm exec eslint` sobre los dos archivos: «No issues found», exit 0.
+- No existe una guardia que valide el formato de las guardias; corrí `guard-tests-de-arbol-en-el-gate` (la que asegura que el gate rápido corre todo lo que casa con `guard`). Las dos nuevas casan con `guard` por el nombre.
+- MCP del grafo: no lo usé; exploré con Grep/Read.
+
+Veredicto T8: hecho; las dos guardias en verde sobre el código actual y en rojo con su contraprueba.
+
+## T9 (2026-10-28) — migración de ida y vuelta + E2E (con la ampliación de T10) — BLOQUEADA en el E2E
+
+**Archivos**
+- Nuevo `tests/integration/db/migracion-sl24-ida-y-vuelta.test.ts`: base propia `sl24_iv_<rand>`, las cinco migraciones (T1–T3 y las dos de T3b) de ida, los cinco `down.sql` en orden inverso y reaplicadas. El control de posición pide «detrás de `20261027120000_modulos_nucleo` y en orden», no «seguidas» (el defecto de `migracion-sl23-ida-y-vuelta`).
+- Nuevo `e2e/_planes-fixture.ts`: `asignarPlanConTope` (plan custom, tope de órdenes `n`, los 4 módulos, `PlanesRepository` real sobre el cliente dueño, actor = superadmin de prueba), `crearOrdenesDirectas`, `ordenesDelCiclo`, `enlazarDistritoDeLaPlantilla` (el distrito del ejemplo de la plantilla a la zona de la empresa), `filaDeCarga` y `csvDeUnaFila` (el `.csv` se genera en memoria: no hace falta ninguna dependencia).
+- `e2e/dos-empresas-humo.spec.ts`: punto 8 en la cabecera y un caso nuevo AL FINAL; los casos de SL-17 y SL-23 sin tocar. La tienda de cada empresa la crea `crearUsuarioE2E` y entra con `sesionDe` (`tests/fabricas/e2e.ts`, sin modificarla). A: vista previa con «Tu plan permite 2 órdenes por ciclo», botón deshabilitado, carga real por `page.request.post("/api/ordenes/carga-masiva/chunk")` con la fila en error y el mensaje exacto, y la base sin la remisión. B: confirma, ve la remisión en el resumen y la base la tiene en B.
+
+**R → test**
+- R14 → `migracion-sl24-ida-y-vuelta` «R14 — ninguna empresa previa queda con plan ni con ancla».
+- R31 → `migracion-sl24-ida-y-vuelta` los dos casos «R31 — …» (tablas, columnas, tipos y valores, funciones, triggers e índices, escritos a mano).
+- R8 (refuerzo) → `migracion-sl24-ida-y-vuelta` «R8 — … sin ningún permiso para servi_app; solo el cupo es ejecutable».
+- R33 → `e2e/dos-empresas-humo.spec.ts` «SL-24: la tienda de A, al tope de su plan, …» — escrito, NO corrido en verde (ver bloqueo).
+
+**Salida real**
+- `pnpm exec vitest run tests/integration/db/migracion-sl24-ida-y-vuelta.test.ts` (DATABASE_URL = `servi_logistic_sl24`): `Test Files 1 passed (1)`, `Tests 8 passed (8)`. Después, `prisma migrate status` sobre `servi_logistic_sl24`: «Database schema is up to date!».
+- `pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: `Tests 30 passed (30)`.
+- `pnpm exec eslint` sobre los tres archivos: sin salida, exit 0. `tsc --noEmit`: ningún error en los tres archivos.
+- Base desechable `servi_logistic_sl24_e2e`: creada, `prisma migrate deploy` («All migrations have been successfully applied.») y `pnpm run db:seed` («Seed de catalogos completado …»). `next build` con `NODE_OPTIONS=--max-old-space-size=8192`: exit 0.
+- Corrida 1 del E2E (`E2E_PUERTO=3044 pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --reporter=list`): **no carga ningún test**:
+
+```
+SyntaxError: ...\lib\planes\tope-error.ts: TypeScript 'declare' fields must first be transformed by @babel/plugin-transform-typescript.
+  20 | export class TopeDelPlanAlcanzado extends ConflictError {
+> 21 |   declare readonly details: DetalleTopePlan;
+   at ..\lib\services\UsuarioService.ts:37
+    at Object.<anonymous> (...\tests\fabricas\empresa-y-usuarios.ts:13:1)
+    at Object.<anonymous> (...\tests\fabricas\e2e.ts:12:1)
+    at Object.<anonymous> (...\e2e\dos-empresas-humo.spec.ts:9:1)
+Error: No tests found.
+```
+
+- No es solo del humo: `playwright test --list e2e/wallet.spec.ts` da el mismo `SyntaxError` y `Total: 0 tests in 0 files`. El transform de Playwright (babel) no acepta el campo `declare` de `lib/planes/tope-error.ts` (T6/T7a), y cualquier spec que importe `UsuarioService`, `ApiKeyService`, `AprobacionPostulacionService` o `BulkOrdenService` —por `tests/fabricas/e2e.ts`— deja de cargar. Sin arreglarlo, el check `e2e` de CI sale en rojo en los tres grupos.
+
+**Bloqueo**: hace falta cambiar código de producción (`lib/planes/tope-error.ts`, línea 21), fuera de mi encargo. PARO y lo devuelvo. La segunda corrida no se intentó. La base `servi_logistic_sl24_e2e` y el `.next` siguen listos para repetir las dos corridas cuando esté arreglado.
+
+Veredicto T9 (primera pasada): migración de ida y vuelta en verde; E2E escrito pero BLOQUEADO por un `declare` de `lib/planes/tope-error.ts` que impide a Playwright cargar los specs.
+
+### T9 — desbloqueo (2026-10-28, backend_dev)
+
+**Arreglo del `declare`**
+- `lib/planes/tope-error.ts`: fuera `declare readonly details: DetalleTopePlan`. En su lugar, un getter `get detalle(): DetalleTopePlan` (vive en el prototipo y devuelve `this.details` con el tipo estrecho). No es `details!:` ni un campo normal: con Babel se inicializaría a `undefined` tras `super()` y pisaría `details`. `details` y `toShape()` no cambian. Ningún consumidor de producción leía `.details` tipado (los servicios y el route solo hacen `instanceof`/`toShape`); los tests siguen leyendo `.details` (`Record<string, unknown>`) sin cambios.
+- `tests/unit/planes/tope-error.test.ts`: caso nuevo «`detalle` es el mismo objeto que `details` y no es propio de la instancia (sin campo `declare`, apto para Babel)».
+- Barrido del diff de SL-24 (92 `.ts/.tsx` de `git diff origin/dev...HEAD` + árbol de trabajo) buscando `declare`, `const enum`, `namespace` y campos `x!:`: el único era este. Quedan *parameter properties* (`constructor(private readonly prisma …)` en `CupoPlanRepository`, `ModulosEmpresaRepository`, `PlanesRepository`, `ApiKeyService`), que el plugin de TypeScript de Babel sí transforma, y lo demuestra la corrida (el humo carga `ApiKeyService` vía `tests/fabricas/e2e.ts`).
+
+**Salida real (verificación del arreglo)**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `pnpm exec eslint lib/planes/tope-error.ts tests/unit/planes/tope-error.test.ts`: sin salida, exit 0.
+- `pnpm exec vitest run tests/unit/planes/tope-error.test.ts tests/unit/api/api-key-carga-tope-plan.test.ts tests/unit/services/{api-key-service,aprobacion-postulacion,usuario-service}-tope-plan.test.ts tests/unit/services/bulk-orden-service.tope-plan.test.ts tests/integration/db/plan-topes-*.test.ts tests/integration/db/planes-edicion-en-uso.test.ts` (DATABASE_URL = `servi_logistic_sl24`): `Test Files 11 passed (11)`, `Tests 90 passed (90)`.
+
+**E2E**
+- `prisma migrate status` sobre `servi_logistic_sl24_e2e`: «263 migrations found … Database schema is up to date!».
+- `next build` (con `NODE_OPTIONS=--max-old-space-size=8192`): exit 0. **Ojo**: hay que construir con `NEXT_PUBLIC_APP_URL` (como hace `gate.yml`; Next la incrusta al compilar). Sin ella, `superadmin-empresas` caso 2 cae: el log del servidor dice `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL` y el aviso no trae «El correo no está configurado en este entorno.». Reconstruido con `NEXT_PUBLIC_APP_URL=http://localhost:3044`.
+- Primera corrida con el build bueno: 17 passed, 1 failed — el caso SL-24 cae en el `beforeAll` propio (`crearOrdenesDirectas`) con `DriverAdapterError: tope_plan {"tope": "ordenes", "maximo": 2, "usados": 2, "pedidas": 1}` al crear la PRIMERA de las dos órdenes directas. Causa medida: la base local tiene `TimeZone = America/Bogota`. `plan_ciclo_ancla_at` se escribe con `now()::timestamp` (hora local de la sesión, UTC−5) y `orden.created_at` lo pone el cliente Prisma en UTC, así que las órdenes de los casos previos del humo (creadas minutos antes) quedan «5 h después» del ancla y cuentan en el ciclo. Consulta sobre la base E2E: `{"tz":"America/Bogota","n":"2026-10-28T23:25:38","maxc":"2026-10-29T04:17:48","futuras":"2"}` (órdenes con `created_at > now()::timestamp`). Con la sesión en UTC: `futuras: 0`.
+- **No lo arreglé en producción** (no es inequívoco: toca la migración `20261027130200` —`plan_tope_ordenes`, `plan_cupo_ordenes`— y `PlanesRepository.asignar`/el cálculo de uso, y es una decisión de diseño sobre la escala de tiempo; ver «Hallazgo» abajo). Las dos corridas que cuentan van con la sesión de Postgres en UTC, como el `postgres:17` de CI: `DATABASE_URL=<url de servi_logistic_sl24_e2e>&options=-c%20TimeZone%3DUTC`.
+- No se recreó la base antes de la primera corrida contada: `prisma migrate reset --force` lo bloquea Prisma pidiendo consentimiento humano explícito y no lo forcé. La base sigue migrada hasta la última y con catálogos; las corridas previas solo dejaron datos de empresas aleatorias.
+
+Corrida 1 (`E2E_PUERTO=3044 pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --reporter=list`):
+```
+Running 18 tests using 1 worker
+  ✓  16 [aislamiento] › e2e\dos-empresas-humo.spec.ts:336:5 › SL-23: el superadmin dejó A con los 4 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí …
+[humo planes A] vista previa: "Confirmar y cargar 0 nuevas", mensaje del tope visible
+[humo planes A] carga real: {"creadas":0,"conError":1,"filas":[{"fila":1,"numRemision":"SL24-A-6caa0e3631","resultado":"error","errores":{"plan":["Tu plan permite 2 órdenes por ciclo. Llevas 2 y esta carga trae 1. Anula órdenes que no vayas a enviar o pide un cambio de plan."]}}]}
+[humo planes B] la carga creó SL24-B-b6c743ebc8
+  ✓  18 [aislamiento] › e2e\dos-empresas-humo.spec.ts:473:5 › SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, sin plan, sí (R33) (7.2s)
+
+  18 passed (3.8m)
+```
+Corrida 2 (inmediatamente después, misma base):
+```
+Running 18 tests using 1 worker
+  ✓  16 [aislamiento] › e2e\dos-empresas-humo.spec.ts:336:5 › SL-23: el superadmin dejó A con los 4 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí …
+[humo planes A] vista previa: "Confirmar y cargar 0 nuevas", mensaje del tope visible
+[humo planes A] carga real: {"creadas":0,"conError":1,"filas":[{"fila":1,"numRemision":"SL24-A-e987f83ab2","resultado":"error","errores":{"plan":["Tu plan permite 2 órdenes por ciclo. Llevas 2 y esta carga trae 1. Anula órdenes que no vayas a enviar o pide un cambio de plan."]}}]}
+[humo planes B] la carga creó SL24-B-202dc955a8
+  ✓  18 [aislamiento] › e2e\dos-empresas-humo.spec.ts:473:5 › SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, sin plan, sí (R33) (14.5s)
+
+  18 passed (3.6m)
+```
+Las dos: 0 failed, 0 skipped, 0 flaky (18 = 10 de `plataforma-vacia` por `dependencies` + 8 del humo, SL-17 y SL-23 incluidos).
+
+**Hallazgo (para el leader/reviewer, sin arreglar)**: el ancla del ciclo (`now()::timestamp`) y `orden.created_at` (UTC desde Prisma) solo están en la misma escala si la sesión de Postgres está en UTC. En una base con otra `TimeZone` (la local de desarrollo: `America/Bogota`), las órdenes de las últimas 5 h antes de asignar el plan cuentan en el primer ciclo y el tope se dispara antes. CI (`postgres:17`) y Supabase van en UTC, por eso no se ve allí. Arreglo probable: `now() AT TIME ZONE 'UTC'` en lugar de `now()::timestamp` en `20261027130200` (y en `PlanesRepository`), o fijar `TimeZone=UTC` en la conexión; requiere decisión de diseño y migración.
+
+Veredicto T9: `declare` arreglado y E2E en verde dos veces seguidas (con la sesión en UTC); queda abierto el hallazgo de zona horaria del ancla.

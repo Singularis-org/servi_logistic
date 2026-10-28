@@ -44,6 +44,14 @@ describe("SL-24 — traducirErrorDeTope", () => {
     expect(tope.cause).toBe(original);
   });
 
+  it("`detalle` es el mismo objeto que `details` y no es propio de la instancia (sin campo `declare`, apto para Babel)", () => {
+    const t = new TopeDelPlanAlcanzado({ tope: "ordenes", maximo: 5, usados: 5, pedidas: 1 });
+    expect(t.detalle).toBe(t.details);
+    expect(t.detalle).toEqual({ codigo: "tope_plan", tope: "ordenes", maximo: 5, usados: 5, pedidas: 1 });
+    expect(Object.prototype.hasOwnProperty.call(t, "detalle")).toBe(false);
+    expect(t.toShape().details).toEqual(t.detalle);
+  });
+
   it("rol, desde P2010 (SQL a mano); el rol sale con su etiqueta de pantalla", () => {
     const t = traducirErrorDeTope(p2010(ROL)) as TopeDelPlanAlcanzado;
     expect(t.details).toEqual({ codigo: "tope_plan", tope: "rol", rol: "adminTienda", maximo: 3, usados: 3, pedidas: 1 });

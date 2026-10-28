@@ -163,7 +163,7 @@
 - [x] **T8. Guardias** [P con T9] (depende de T1).
   - `planes-sin-seed` y `planes-sin-borrado`, con contraprueba sintética.
   - **Hecho:** las dos en verde y en rojo con su contraprueba.
-- [ ] **T9. Migración de ida y vuelta + E2E** [P con T8] (depende de T5 y T6).
+- [x] **T9. Migración de ida y vuelta + E2E** [P con T8] (depende de T5 y T6).
   - `migracion-sl24-ida-y-vuelta`.
   - `e2e/_planes-fixture.ts` y el caso nuevo de `e2e/dos-empresas-humo.spec.ts`
     (`design.md > §11.1`).

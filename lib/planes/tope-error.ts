@@ -17,8 +17,14 @@ export const SQLSTATE_TOPE_PLAN = "SL024";
 
 export type DetalleTopePlan = { codigo: "tope_plan" } & TopeDelPlan;
 
+// Sin campo `declare details`: Playwright transpila con Babel, que no lo acepta, y un campo normal
+// (`details!:`) se inicializaría a `undefined` tras `super()` y pisaría el valor. El tipo estrecho
+// se expone con un getter, que vive en el prototipo y no toca la instancia.
 export class TopeDelPlanAlcanzado extends ConflictError {
-  declare readonly details: DetalleTopePlan;
+  /** `details` con su tipo concreto; es el mismo objeto que `details`. */
+  get detalle(): DetalleTopePlan {
+    return this.details as DetalleTopePlan;
+  }
 
   constructor(tope: TopeDelPlan, opciones?: { cause?: unknown }) {
     super(mensajeDelTope(tope), { codigo: "tope_plan", ...tope });

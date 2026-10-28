@@ -4,6 +4,9 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
+import { mensajeDelTope } from "../lib/planes/mensajes";
+import type { BulkSummary } from "../lib/types/carga-masiva";
+import { crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import {
   clienteDueno,
@@ -15,6 +18,15 @@ import {
   type Empresa,
   type Letra,
 } from "./_dos-empresas-fixture";
+import {
+  asignarPlanConTope,
+  crearOrdenesDirectas,
+  csvDeUnaFila,
+  enlazarDistritoDeLaPlantilla,
+  filaDeCarga,
+  ordenesDelCiclo,
+  type EmpresaConZona,
+} from "./_planes-fixture";
 import {
   altaDeEmpresaPorPantalla,
   asegurarSuperadmin,
@@ -59,6 +71,12 @@ import {
  *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
  *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
  *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
+ * 8. Planes (SL-24, design §11.1; R33): va el último, para no cambiar lo que recorren los casos de
+ *    arriba. A recibe un plan custom con tope de 2 órdenes por ciclo (con los 4 módulos: no apaga
+ *    ninguno) y 2 órdenes. Su tienda sube por la carga masiva de `/ordenes` un `.csv` de una fila y
+ *    ve en la vista previa la fila con «Tu plan permite 2 órdenes por ciclo…»; la carga real por el
+ *    mismo endpoint da la fila en error y la base no tiene esa remisión. La tienda de B, sin plan,
+ *    sube la suya, confirma y la ve creada.
  *
  * CÓMO SE CORRE: `pnpm exec playwright test --project=aislamiento`. Playwright levanta el servidor
  * con `AUTH_OTP_DEBUG_LOG=1`, sin SMTP y con su log en `E2E_LOG_SERVIDOR`; la base es local,
@@ -415,4 +433,111 @@ test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geograf
   expect.soft(await db.provincia.count(), "geografía: cambió el catálogo").toBe(provinciasAntes);
 
   expect(errores5xx, "vehículos/geografía: respuestas 5xx").toEqual([]);
+});
+
+/** SL-24 (R33): el tope de órdenes del plan de A en el caso de planes. */
+const TOPE_DE_A = 2;
+
+/** La empresa del humo como la pide `tests/fabricas/e2e.ts`: su maestro da de alta a la tienda. */
+function comoEmpresaE2E(e: Empresa): EmpresaE2E {
+  return {
+    organizacionId: e.organizacionId,
+    maestro: { id: e.maestroId, email: e.email, password: e.password, nombre: `Maestro ${e.letra}` },
+    slug: e.slug,
+  };
+}
+
+function conZona(letra: Letra): EmpresaConZona {
+  const d = datosDe(letra);
+  return { organizacionId: empresa(letra).organizacionId, tiendaId: d.tiendaId, zonaId: d.zonaId };
+}
+
+/** Abre la carga masiva de `/ordenes`, sube el `.csv` de una fila y espera la vista previa. */
+async function subirUnaFila(page: Page, numRemision: string): Promise<Locator> {
+  const { estado, texto } = await visitar(page, "/ordenes");
+  expect(estado, "/ordenes: estado HTTP").toBeLessThan(400);
+  expect(texto.includes(PANTALLA_DE_ERROR), "/ordenes: pantalla de error").toBe(false);
+  await page.getByRole("button", { name: "Carga masiva", exact: true }).click({ timeout: 60_000 });
+  const dialogo = page.getByRole("dialog");
+  await dialogo.locator('input[type="file"]').setInputFiles({
+    name: `carga-${numRemision}.csv`,
+    mimeType: "text/csv",
+    buffer: csvDeUnaFila(numRemision),
+  });
+  await expect(dialogo.getByRole("button", { name: /^Confirmar y cargar/ }), "la vista previa no llegó").toBeVisible({
+    timeout: 120_000,
+  });
+  return dialogo;
+}
+
+test("SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, sin plan, sí (R33)", async ({ browser }) => {
+  test.setTimeout(10 * 60_000);
+  const db = dueno;
+  if (!db) throw new Error("sin cliente de base: falló el beforeAll");
+  const remisiones: Record<Letra, string> = {
+    A: `SL24-A-${randomBytes(5).toString("hex")}`,
+    B: `SL24-B-${randomBytes(5).toString("hex")}`,
+  };
+
+  // 1. A con su plan (tope 2) y dos órdenes en el ciclo; B sigue sin plan.
+  await asignarPlanConTope(db, empresa("A").organizacionId, TOPE_DE_A);
+  await crearOrdenesDirectas(db, conZona("A"), TOPE_DE_A);
+  expect(await ordenesDelCiclo(db, empresa("A").organizacionId), "A: órdenes del ciclo antes de la carga").toBe(TOPE_DE_A);
+  const sinPlan = await db.organizacion.findUniqueOrThrow({ where: { id: empresa("B").organizacionId }, select: { planId: true } });
+  expect(sinPlan.planId, "B no debe tener plan").toBeNull();
+
+  for (const letra of ["A", "B"] as const) {
+    // La fila del archivo resuelve su zona por el distrito de la plantilla.
+    await enlazarDistritoDeLaPlantilla(db, conZona(letra));
+    const tienda = await crearUsuarioE2E(comoEmpresaE2E(empresa(letra)), "adminTienda");
+    const ctx = await browser.newContext();
+    await ctx.addCookies(await sesionDe(browser, tienda));
+    const page = await ctx.newPage();
+    const errores5xx: number[] = [];
+    page.on("response", (r) => {
+      if (r.status() >= 500) errores5xx.push(r.status());
+    });
+    const rem = remisiones[letra];
+
+    // 2 y 3. La tienda sube su archivo de una fila y ve la vista previa.
+    const dialogo = await subirUnaFila(page, rem);
+    const confirmar = dialogo.getByRole("button", { name: /^Confirmar y cargar/ });
+
+    if (letra === "A") {
+      await expect(dialogo.getByText(`Tu plan permite ${TOPE_DE_A} órdenes por ciclo`).first(), "A: el mensaje del tope en la vista previa").toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(confirmar, "A: no queda ninguna fila que cargar").toBeDisabled();
+      console.log(`[humo planes A] vista previa: ${JSON.stringify(await confirmar.innerText())}, mensaje del tope visible`);
+
+      // La carga real por el mismo endpoint que usa el botón: la fila sale en error con el tope.
+      const r = await page.request.post("/api/ordenes/carga-masiva/chunk", { data: { rows: [filaDeCarga(rem)], dryRun: false } });
+      expect(r.status(), "A: la carga real respondió otro estado").toBe(200);
+      const resumen = (await r.json()) as BulkSummary;
+      console.log(`[humo planes A] carga real: ${JSON.stringify({ creadas: resumen.creadas, conError: resumen.conError, filas: resumen.filas })}`);
+      expect(resumen.creadas, "A: la carga real creó órdenes").toBe(0);
+      expect(resumen.filas).toEqual([
+        {
+          fila: 1,
+          numRemision: rem,
+          resultado: "error",
+          errores: { plan: [mensajeDelTope({ tope: "ordenes", maximo: TOPE_DE_A, usados: TOPE_DE_A, pedidas: 1 })] },
+        },
+      ]);
+    } else {
+      await expect(confirmar, "B: la fila no quedó para cargar").toHaveText("Confirmar y cargar 1 nueva");
+      await confirmar.click();
+      await expect(dialogo.getByText(rem).first(), "B: el resumen no muestra la remisión creada").toBeVisible({ timeout: 120_000 });
+      console.log(`[humo planes B] la carga creó ${rem}`);
+    }
+
+    // 4 y 5. Por detrás: A no tiene la remisión; B sí, y en su empresa.
+    const enLaBase = await db.orden.findMany({ where: { numRemision: rem }, select: { organizacionId: true } });
+    expect(enLaBase.map((o) => o.organizacionId), `${letra}: órdenes con la remisión ${rem}`).toEqual(
+      letra === "A" ? [] : [empresa("B").organizacionId],
+    );
+    expect(errores5xx, `${letra}: respuestas 5xx en la carga`).toEqual([]);
+    await ctx.close();
+  }
+  expect(await ordenesDelCiclo(db, empresa("A").organizacionId), "A: el tope dejó entrar una orden").toBe(TOPE_DE_A);
 });
