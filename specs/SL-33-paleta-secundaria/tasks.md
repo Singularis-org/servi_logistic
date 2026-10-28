@@ -21,7 +21,7 @@
   **Hecho:** merge sin conflictos, o con conflictos resueltos, y los tres artefactos presentes en el
   árbol.
 
-- [ ] **T1 — Guardia nueva, en rojo** (R1–R13, R16–R20; D9). Depende de T0. Crear
+- [x] **T1 — Guardia nueva, en rojo** (R1–R13, R16–R20; D9). Depende de T0. Crear
   `tests/unit/guards/paleta-secundaria.guardia.test.ts` con los literales de D2, D4, D5 y D13–D15:
   - la tabla aprobada;
   - los pares grises con su «antes», y la excepción de `asfalto-2` a cifra exacta;
