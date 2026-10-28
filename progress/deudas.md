@@ -145,3 +145,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SL-23 (m2, 2026-10-27). `docs/perfil-agentes.md > frontend_dev` pide pasar toda pantalla nueva por `/design`.
 - **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
 - **Dueño:** Camilo.
+
+### D24 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
+- **Origen:** gate de SL-24 (2026-10-27), en Windows 11 con Node v22.13.1 y 24 GB de RAM. `tsc --noEmit` cayó con `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory` (exit 134), y `./init.sh` salió en rojo sin que el cambio tocara código. Con `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` salió `init OK`.
+- **Qué falta:** fijar el heap en el script `typecheck` de `package.json` (por ejemplo `node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit`) o en `init.sh`, y comprobar que el job estático de CI no lo necesita también.
+- **Dueño:** Camilo (decidir si va a ficha).
