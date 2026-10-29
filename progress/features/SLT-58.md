@@ -37,6 +37,7 @@ F1.0 hecho (2026-10-29): tarjeta tomada, worktree creado. Siguiente: F1.2 (spec)
 - Ruta y lugar en el menú de «Mi plan»: lo propone spec_author (ver requirements.md).
 
 ## Tandas
+- 2026-10-29 · A (T1–T4) · 8f46b5e + merge dev f47c928 · init.sh: typecheck/lint/guardias OK; test:rapido 4699 verdes, 1 rojo nuevo `demo-qa.test.ts` por entorno (base local `logistic_slt58` sin `db:seed`: «faltan catálogos vehiculo»), no por el diff; lo confirma CI.
 
 ## Modelos (overrides)
 
