@@ -72,7 +72,7 @@
       entrega no cambia (`updated_at`, `estado`).
   - **Hecho:** el archivo pasa en local con base de test o en CI (`gate-completo`).
 
-- [ ] **T6 — Cierre** (depende de T1–T5)
+- [x] **T6 — Cierre** (depende de T1–T5)
   - Actualizar el comentario de `ChatConversacionRepository.resolverOrdenActivaPorNumero` y el de
     `ChatWhatsappService.ingerirEventos` para nombrar la vía por cita.
   - Mapa `R<n> → test` en `progress/impl_SLT-40.md` (R1–R18, sin huecos).

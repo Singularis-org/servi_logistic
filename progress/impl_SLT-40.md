@@ -47,6 +47,19 @@ aqui.
   no tiene ese handler. Se resuelve con la sincronizacion F2.3 (merge de `dev`), que pide el leader.
 - Todas las suites de SLT-40 en verde dentro de esa corrida. T6 queda abierta hasta el gate verde.
 
+## Cierre T6 · tras F2.3 (merge `578e2d3` de `origin/dev`) · 2026-10-29 · leader
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: **verde** (exit 0). `test:rapido`:
+  `Test Files 318 passed | 2 skipped (320)` · `Tests 4468 passed | 20 skipped (4488)`; 246 rojos
+  heredados del baseline fuera de la seleccion (los compara CI). Los 2 rojos de arriba desaparecen.
+- E2E `e2e/dos-empresas-humo.spec.ts --project=aislamiento` (review B1): **no corre en local**.
+  - En el puerto 3000 hay un `next dev` del checkout principal; Playwright lo reutiliza y no crea
+    `E2E_LOG_SERVIDOR`.
+  - Con `E2E_SERVIDOR=dev E2E_PUERTO=3100` y la `DATABASE_URL` local, cae antes de cualquier
+    flujo: `arranque:superadmin` falla con `P2028` (base local a medio sembrar, ya anotado en
+    sesiones previas).
+  - La evidencia de B1 es el job `e2e (aislamiento)` de CI en el PR, que corre ese mismo spec.
+    Su resultado se anota aqui antes del merge.
+
 ## Tandas T1-T3 · 2026-10-29 · backend_dev
 - T1 (`12f0fee`): `lib/types/whatsapp-webhook.ts` + U-parser. vitest related:
   `Test Files 5 passed | 1 skipped (6)` · `Tests 86 passed | 5 skipped (91)`.
