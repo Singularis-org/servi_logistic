@@ -280,8 +280,8 @@ describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)
  *     falla al pasar el ratón sigue siendo un fallo, y es exactamente cómo se le escapó a la 208.
  *  2. **Mide sobre VARIAS superficies.** El `Button` es una primitiva: no sabe dónde lo montan. Un
  *     fondo con alfa (`bg-danger/15`) vale lo que valga lo que tenga debajo — medido, el mismo
- *     `danger/20` da 4.99 sobre la tarjeta y 4.44 sobre `secondary`. Medir sólo sobre `card` es
- *     suponer el resto.
+ *     `danger/20` daba 4.99 sobre la tarjeta y 4.44 sobre `secondary` (hoy, tras SL-33, 4.62:
+ *     ver el caso de la alternativa descartada). Medir sólo sobre `card` es suponer el resto.
  *  3. **Lee las clases REALES del componente** y resuelve cada utilidad contra los tokens de
  *     `app/globals.css`. No hay una copia de las clases aquí: si alguien cambia el alfa o vuelve a
  *     `--destructive`, esta guardia mide lo nuevo y se pone roja sola.
@@ -430,6 +430,13 @@ const SUELO_BOTON: Record<string, number> = {
   "oscuro:hover": 6.17, // antes 5.89
 };
 
+/**
+ * Tope del margen sobre AA de la alternativa descartada (`hover:bg-danger/20`) en su peor
+ * superficie de cada tema. Máximo medido el 2026-10-28 (SL-33): 0.117 en claro, redondeado hacia
+ * arriba. Ver el caso «la alternativa descartada…».
+ */
+const TOPE_MARGEN_ALTERNATIVA = 0.12;
+
 describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover (guardia)", () => {
   /**
    * Autocomprobación del censo. Sin esto, una ruta mal resuelta o una variante renombrada dejaría
@@ -556,25 +563,66 @@ describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover
    * 4.44. El argumento sigue en pie con UNA superficie en vez de tres: basta una para que una
    * primitiva no pueda fiarse del alfa.
    *
-   * Si algún día la paleta cambia y esa alternativa pasa a cumplir en todas partes, este caso se
-   * pone rojo: el motivo por el que el hover es opaco habría dejado de ser cierto y la decisión
-   * hay que releerla, no heredarla.
+   * SL-33, re-medido el 2026-10-28 con `tests/fixtures/contraste.ts`: `--secondary` pasa a
+   * `stone-100` y la alternativa ya CUMPLE AA en las doce superficies. Peor por tema:
+   *
+   *   claro  · `danger/20` sobre secondary y muted              4.62  (margen sobre AA 0.12)
+   *            sobre background 4.66, muted/50 4.80, card/popover 4.99
+   *   oscuro · `danger/20` sobre secondary y muted              4.54  (margen sobre AA 0.04)
+   *            sobre muted/50 4.74, card/popover 4.94, background 5.54
+   *   hover opaco real, en las seis de cada tema                claro 6.47 (margen 1.97)
+   *                                                             oscuro 6.17 (margen 1.67)
+   *
+   * Decisión humana del 2026-10-28: el hover SIGUE OPACO y la decisión de la feature 222 no se
+   * reabre. El argumento ya no es «no cumple», sino:
+   *  - `danger/20` cumple, pero por márgenes mínimos: doce y cuatro centésimas en su peor superficie;
+   *  - una primitiva no sabe dónde la montan y no puede fiarse del alfa: el próximo fondo un poco más
+   *    oscuro (o claro) que `muted` la tumba, y nada en el componente lo avisaría.
+   * El opaco, en cambio, le saca a AA más de diez veces lo que le saca la alternativa, y no depende
+   * de la superficie.
+   *
+   * Lo que este caso vigila, para que el argumento no caduque en silencio:
+   *  1. que el margen de la alternativa sobre AA, en su peor superficie de cada tema, no pase de
+   *     `TOPE_MARGEN_ALTERNATIVA` (0.12: el máximo medido, 0.117, redondeado hacia arriba). Si la
+   *     paleta cambia y la capa pasa a cumplir con holgura, se pone rojo y hay que releer la decisión;
+   *  2. que el margen del hover opaco real sea más de diez veces el de la alternativa en cada tema
+   *     (hoy 1.97 frente a 0.12 en claro y 1.67 frente a 0.04 en oscuro). Si el opaco se degrada
+   *     hasta parecerse a la capa, pintarlo opaco dejó de comprar nada.
    */
-  it("la alternativa descartada (hover con capa `danger/20`) sigue sin cumplir: por eso es opaco", () => {
-    const caidas = (["claro", "oscuro"] as const).flatMap((tema) =>
-      superficiesDe(tema)
-        .map((superficie) => ({
-          donde: `${tema}/${superficie.nombre}`,
-          medido: contraste(token(tema, "danger-strong"), componer(paleta("danger"), superficie.hex, 0.2)),
-        }))
-        .filter((m) => m.medido < AA_TEXTO),
-    );
+  it("la alternativa descartada (hover con capa `danger/20`) cumple AA por márgenes mínimos y el hover opaco le saca un orden de magnitud: por eso sigue opaco", () => {
+    const clases = CLASES_DESTRUCTIVE.split(/\s+/);
+    const margenes = (["claro", "oscuro"] as const).map((tema) => {
+      const superficies = superficiesDe(tema);
+      const alternativa = Math.min(
+        ...superficies.map((s) =>
+          contraste(token(tema, "danger-strong"), componer(paleta("danger"), s.hex, 0.2)),
+        ),
+      );
+      const opaco = Math.min(
+        ...superficies.map((s) =>
+          contraste(
+            hexDeUtilidad(utilidadQueGana(clases, "text", tema, "hover"), tema, s.hex),
+            hexDeUtilidad(utilidadQueGana(clases, "bg", tema, "hover"), tema, s.hex),
+          ),
+        ),
+      );
+      return { tema, alternativa: alternativa - AA_TEXTO, opaco: opaco - AA_TEXTO };
+    });
 
-    expect(
-      caidas.map((c) => c.donde),
-      "ninguna superficie hace caer ya a `danger/20`: el argumento por el que el hover se pintó " +
-        "opaco caducó y hay que releer la decisión con los números nuevos.",
-    ).toEqual(["claro/secondary"]);
+    for (const { tema, alternativa, opaco } of margenes) {
+      expect(
+        alternativa,
+        `${tema}: \`danger/20\` ya le saca ${alternativa.toFixed(2)} a AA en su peor superficie, más ` +
+          `que el tope ${TOPE_MARGEN_ALTERNATIVA}. El argumento «cumple por márgenes mínimos» caducó: ` +
+          "relee la decisión del hover opaco con los números nuevos, no la heredes.",
+      ).toBeLessThanOrEqual(TOPE_MARGEN_ALTERNATIVA);
+      expect(
+        opaco,
+        `${tema}: el hover opaco le saca ${opaco.toFixed(2)} a AA y la alternativa ` +
+          `${alternativa.toFixed(2)}. Si el opaco ya no le saca un orden de magnitud, pintarlo ` +
+          "opaco dejó de comprar margen y la decisión hay que releerla.",
+      ).toBeGreaterThan(10 * alternativa);
+    }
   });
 });
 

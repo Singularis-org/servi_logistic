@@ -67,7 +67,7 @@
 
   **Hecho:** los casos R7–R11 de la guardia nueva en verde.
 
-- [ ] **T5 — Cifras en guardias y comentarios** (R12, R14; D6, D8). Depende de T2, T3 y T4.
+- [x] **T5 — Cifras en guardias y comentarios** (R12, R14; D6, D8). Depende de T2, T3 y T4.
   - Actualizar cada cifra de la tabla de D8 y los comentarios de D6 a la medida del fixture.
   - Si algún test relacionado sale rojo por una cifra que D8 no lista, se trata igual y se añade a
     D8 y a «Archivos esperados».
