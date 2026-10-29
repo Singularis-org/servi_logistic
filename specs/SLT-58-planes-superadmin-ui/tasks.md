@@ -40,7 +40,7 @@
   `tests/integration/db/planes-lecturas-plataforma.test.ts` (R13: archivados incluidos, nº de empresas,
   fecha del pendiente; R16: rastro del más reciente al más antiguo; R21: solo las asignaciones de esa
   empresa) en verde. La suite de SL-24 sigue verde sin tocar sus tests (R25).
-- [ ] **T5 — Rutas en el reparto y fin de `@sin-superficie`** (backend_dev, pero **se ejecuta después
+- [x] **T5 — Rutas en el reparto y fin de `@sin-superficie`** (backend_dev, pero **se ejecuta después
   de T7, T8 y T9**, antes de T10: la marca solo se quita cuando hay pantalla; las rutas del reparto
   pueden adelantarse junto con T7/T8 si la guardia `modulos-reparto` lo pide al crear las páginas). `"/mi-plan"`, `"/plataforma/planes"` y `"/plataforma/planes/[planId]"`
   como `"nucleo"` en `lib/modulos/reparto.ts`; quitar las seis líneas `@sin-superficie` de

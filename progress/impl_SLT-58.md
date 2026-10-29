@@ -122,3 +122,71 @@
 
 ## Guardias (corridas por los subagentes)
 - `pnpm run test:guardias`: en rojo solo `tests/guards/migraciones-destructivas.guard.test.ts` (señala `20261028120000_modulo_wallet_nucleo`, de SL-23, que es de dev y ajena) y `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`. La segunda está en `tests/baseline-rojos.json`. La primera la retiró `dev` (c67d89a) y se arregla al sincronizar con `dev`; no se toca.
+
+## Tanda B (frontend_dev) — T6, T7, T8, T9
+
+### T6 — Menú (commit bec1e65)
+- Archivos con choque aceptado (solo se añaden líneas):
+  - `lib/auth/menu-visibility.ts`: +24 / −1. Lo único que se quita es el `;` final de la unión `IconKey`.
+  - `app/(app)/_components/Sidebar.tsx`: +7 / −0.
+  - `tests/unit/auth/menu-visibility.test.ts`: +7 / −2. Se ajustaron los literales de maestro y admin (R10), superadmin `[Empresas, Planes, Geografía]` y `slice(-5)` (R23).
+- Nuevo: `tests/unit/auth/menu-mi-plan.test.ts`.
+- Ajustados porque sus literales cambian con los ítems nuevos (cada uno cita SLT-58 R10/R23):
+  - `menu-historial-acciones.test.ts`
+  - `superadmin-fuera-de-empresa.guardia.test.ts`, que añade `/plataforma/planes` a su lista cerrada
+  - `pwa-manifiesto-atajos.guardia.test.ts`, con los recuentos 23→24, 14→15 y 2→3
+  - `Sidebar.test.tsx`, que añade los iconos `gaugeCircle` y `layers`
+- R → test:
+  - R10: `menu-mi-plan.test.ts` (siete roles, identidad de `ROLES_MI_PLAN`, posición tras «Histórico», `primerDestino` de cada rol escrito a mano) y las listas de `menu-visibility.test.ts`.
+  - R12: `menu-mi-plan.test.ts` (con todos los módulos apagados, el ítem sigue) y la guardia `modulos-reparto` tras T5.
+  - R23: `menu-visibility.test.ts` (superadmin), `superadmin-fuera-de-empresa` y `destino-post-login.test.ts`.
+- Salida: 8 archivos de menú corridos, 185 tests en verde y 1 rojo. El rojo es `modulos-reparto` por `/mi-plan`, esperado hasta T5. Typecheck y eslint en verde.
+
+### T7 — `ConsumoDelPlan` y «Mi plan» (commit a116f33)
+- Nuevos: `components/shared/ConsumoDelPlan.tsx` (solo props: `plan`, `textoSinPlan`, `nivelDeTitulo?`), `app/(app)/mi-plan/page.tsx` (`notFound()` si el resultado no es `ok`), `app/(app)/mi-plan/_components/MiPlanModule.tsx`, `tests/components/MiPlanModule.test.tsx`, `tests/integration/mi-plan-page.test.tsx`.
+- Texto que no fija el design: «Ninguno» cuando el plan no incluye módulos (está en `TEXTOS` del componente).
+- R → test:
+  - R1, R6, R7, R11: `MiPlanModule.test.tsx`; R11 sin botones, formularios, enlaces ni campos.
+  - R8: `mi-plan-page.test.tsx`. Cinco roles y sin sesión → «no encontrado» sin leer la base; maestro y admin ven la pantalla. La cadena página → `verMiPlan` → `MiPlanService` es real.
+- Salida: 2 archivos, 16 tests en verde; eslint en verde.
+
+### T8 — «Planes» del superadmin (commit 092ad99)
+- Nuevos: `app/(app)/plataforma/planes/page.tsx`, `_components/PlanesModule.tsx`, `_components/PlanForm.tsx`, `_components/plan-vista.ts` (ayudantes puros; no estaba en la lista de archivos), `[planId]/page.tsx`, `[planId]/_components/PlanDetalle.tsx`, y 4 archivos de test.
+- Decisiones a confirmar:
+  - El catálogo resume en una línea los roles sin tope; el detalle lista todos los topes.
+  - Los mensajes de éxito y de rechazo van en línea, no como toast.
+- R → test:
+  - R13: `PlanesModule.test.tsx`.
+  - R14: `PlanForm.test.tsx` (solo «Público»/«Custom»; lo enviado exacto).
+  - R15: `PlanForm.test.tsx` (inmediato / fecha) y `PlanDetalle.test.tsx` (avisos).
+  - R16: `PlanDetalle.test.tsx`.
+  - R17: `PlanDetalle.test.tsx` (confirmaciones; un plan archivado no muestra controles).
+  - R18: `PlanForm.test.tsx` y `PlanDetalle.test.tsx`.
+  - R22: `plataforma-planes-page.test.tsx` (seis roles y sin sesión → «no encontrado» en las dos páginas sin lecturas; uuid inválido o plan inexistente → «no encontrado»).
+- Salida: 4 archivos, 51 tests en verde; typecheck y eslint en verde.
+
+### T9 — Plan en el detalle de la empresa (commit 4fcfff2)
+- Nuevo: `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` y `tests/components/PlanEmpresa.test.tsx`.
+- Modificados:
+  - `[organizacionId]/page.tsx`: lee módulos, plan y asignables en paralelo; cada lectura aísla su fallo.
+  - `tests/integration/plataforma-empresa-detalle-page.test.tsx`: 6 casos nuevos; los existentes, intactos.
+- Decisiones a confirmar:
+  - El selector oculta el plan actual.
+  - Tras `ok` hace `router.refresh()` y muestra «Plan asignado.».
+  - Las fechas del historial van en hora de la plataforma.
+- R → test:
+  - R18: `PlanEmpresa.test.tsx` (rechazos, `validation_error` junto al selector, la action lanza).
+  - R19: `PlanEmpresa.test.tsx` y `plataforma-empresa-detalle-page.test.tsx`. Incluye «si la lectura del plan o de los asignables falla, los módulos se pintan igual».
+  - R20: `PlanEmpresa.test.tsx` (solo asignables, rechazo por tope con su mensaje).
+  - R21: `PlanEmpresa.test.tsx` (del más reciente al más antiguo; sin asignaciones).
+- Salida: 2 archivos, 33 tests en verde; eslint en verde.
+
+### T5 — Rutas en el reparto y fin de `@sin-superficie` (backend_dev, después de T7–T9)
+- `lib/modulos/reparto.ts` (choque aceptado): +4 / −0. Se añaden `/plataforma/planes`, `/plataforma/planes/[planId]` y `/mi-plan` como `"nucleo"`, después de `/plataforma/empresas/[organizacionId]`.
+- `lib/actions/planes.ts`: se quitan las seis `@sin-superficie` y la cabecera se actualiza. Cada action tiene al menos un llamador en `app/`.
+- R12 y R24: guardias `modulos-reparto` y `superficie-de-uso` en verde.
+- Salida:
+  - `pnpm run test:guardias`: 318 archivos pasan, 2 se saltan y 1 falla. El que falla es `dependencias-declaradas-presentes` (4 tests), que está en el baseline.
+  - Las dos guardias y los tests que importan `reparto.ts` (`procesar-jobs-modulos`, `procesar-jobs-plan-cambio`, `catalogo`): 6 archivos, 122 tests en verde.
+  - Typecheck y eslint en verde.
+- Nota: el `menu-modulos.test.ts` que cita T6 no existe en el repo; R12 lo cubren `menu-mi-plan.test.ts` y la guardia `modulos-reparto`.
