@@ -3991,11 +3991,15 @@ export class OrdenRepository implements IOrdenRepository {
    * `deletedAt: null` (R3: borrada/inexistente -> ausente, el service la reporta
    * como `no_encontrada`). NO filtra por `num_guia`: devuelve filas con `numGuia`
    * posible null y el service decide `sin_guia` (R2). Solo query.
+   *
+   * SLT-49/R10: con `tiendaId` no nulo, la frontera de tienda va EN el `where`: la fila de otra
+   * tienda no se lee de la base. `null` -> sin frontera de tienda (decidido por el service).
    */
-  async findEtiquetasByIds(ids: string[]): Promise<EtiquetaRow[]> {
+  async findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.orden.findMany({
-      where: { id: { in: ids }, deletedAt: null }, // R3
+      // R3 + SLT-49/R10 (dueño en el `where`, no en un `if` posterior)
+      where: { id: { in: ids }, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
     return rows.map(toEtiquetaRow);
@@ -4006,9 +4010,14 @@ export class OrdenRepository implements IOrdenRepository {
    * Mismo filtro `deletedAt: null` que `findEtiquetasByIds` (R3: borrada/inexistente
    * -> `null`, el service la reporta como no encontrada). Solo query.
    */
-  async findEtiquetaByNumGuia(numGuia: number): Promise<EtiquetaRow | null> {
+  async findEtiquetaByNumGuia(
+    numGuia: number,
+    tiendaId: string | null,
+  ): Promise<EtiquetaRow | null> {
+    // `findFirst`: añadir `tiendaId` al `where` no choca con el UNIQUE de `num_guia`.
     const row = await this.prisma.orden.findFirst({
-      where: { numGuia, deletedAt: null }, // R3
+      // R3 + SLT-49/R9/R10: la guia de otra tienda devuelve `null`, igual que una inexistente.
+      where: { numGuia, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
     return row ? toEtiquetaRow(row) : null;

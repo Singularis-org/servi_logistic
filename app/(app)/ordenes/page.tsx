@@ -6,6 +6,8 @@ import { esAccesoTotal } from "@/lib/auth/acceso-total";
 // FICHA 424 (R20): la MISMA función que autoriza el borrado en el servidor decide si la pantalla
 // lo ofrece. Es pura (sin Prisma, sin `next/`, sin entorno), como `esAccesoTotal`.
 import { resolverAlcanceBorradoOrden } from "@/lib/services/alcance-borrado-orden";
+// SLT-49 (R14): la misma regla con la que el servidor limita las etiquetas por dueño.
+import { resolverAlcanceEtiquetasOrden } from "@/lib/services/alcance-etiquetas-orden";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
 import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -163,6 +165,16 @@ export default async function OrdenesPage() {
     : false;
   const puedeVerEliminadas = rol === RolValue.maestro;
 
+  // SLT-49 (R14): «Imprimir etiquetas» por lote limitado a lo suyo. Mismo argumento que
+  // `puedeEliminar`, arriba: NO hay lista de roles aquí. Se DERIVA de `resolverAlcanceEtiquetasOrden`,
+  // la misma regla con la que `EtiquetaGuiaService` pone la tienda en el `where`; si esa regla
+  // cambia el alcance de un rol, cambian a la vez lo que esta pantalla ofrece y lo que el servidor
+  // lee. De los roles que llegan aquí (maestro, admin, adminTienda) solo la tienda es `propias`;
+  // maestro/admin imprimen por `accionesLote`, sin frontera de tienda.
+  const puedeImprimirEtiquetasPropias = actor
+    ? resolverAlcanceEtiquetasOrden(actor).alcance === "propias"
+    : false;
+
   // Feature 144/TB2.5 (R47, R64): el catálogo de los filtros (zonas, cuentas tienda,
   // mensajeros y geografía) se resuelve AQUÍ, en el servidor, tras las guardias de rol; sus
   // lecturas corren en paralelo dentro del service y el resultado baja por props, de
@@ -233,6 +245,7 @@ export default async function OrdenesPage() {
           puedeVerComprobanteEntrega={puedeVerComprobanteEntrega}
           puedeEliminar={puedeEliminar}
           puedeVerEliminadas={puedeVerEliminadas}
+          puedeImprimirEtiquetasPropias={puedeImprimirEtiquetasPropias}
           fechasDiaReparto={fechasDiaReparto}
         />
       ) : (

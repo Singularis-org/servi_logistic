@@ -48,10 +48,13 @@ function toEtiquetaActionError(
 
 /**
  * Feature 32/R1-R8/R14-R15: genera las etiquetas de guia (QR + barcode + datos)
- * de la seleccion. READ derivado, sin efectos. Disponible para CUALQUIER rol
- * autenticado: el service NO restringe por rol (decision del usuario, ver
- * EtiquetaGuiaService.generarEtiquetas); quien lo dispara desde el flujo de
- * guia/asignacion por lote es maestro/admin, ya gateados aguas arriba. Sin sesion
+ * de la seleccion. READ derivado, sin efectos. Disponible para cualquier rol
+ * autenticado, sin `forbidden` por rol; pero el service acota el DUEÑO segun
+ * `resolverAlcanceEtiquetasOrden` (SLT-49): un `adminTienda` (y una `apiKey`, 136)
+ * solo recibe las etiquetas de su tienda y cada orden ajena sale en `omitidas` como
+ * `no_encontrada`, sin abortar el lote. La autorizacion vive en el service; esta
+ * action no la repite. Lo disparan maestro/admin desde el flujo de guia/asignacion
+ * por lote, la tienda desde su «Imprimir etiquetas» y cualquiera por fila. Sin sesion
  * -> `unauthenticated` antes de tocar el service (R14); entrada invalida (lista
  * vacia / id malformado) -> `validation_error` (R15).
  */
@@ -72,7 +75,9 @@ export async function generarEtiquetas(
 /**
  * Feature 32/R1-R8/R14/R15 (QR por guia): resuelve la etiqueta de UNA orden por su
  * `num_guia` (lo que codifica el QR y la URL `/paquete/<numGuia>`). READ derivado, sin
- * efectos, para cualquier rol autenticado (misma autorizacion que `generarEtiquetas`).
+ * efectos, para cualquier rol autenticado, con el mismo alcance por dueño que
+ * `generarEtiquetas` (SLT-49/R9: la guia de otra tienda, para un `adminTienda`, sale
+ * `no_encontrada`, igual que una inexistente).
  * Sin sesion -> `unauthenticated` antes de tocar el service (R14); `numGuia` no entero
  * positivo -> `validation_error` (R15); sin orden viva con esa guia -> `no_encontrada`.
  */
