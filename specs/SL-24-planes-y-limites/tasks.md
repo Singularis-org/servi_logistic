@@ -171,7 +171,7 @@
     - `pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` en verde, con los casos previos
       de SL-17 y SL-23 intactos;
     - el test de ida y vuelta en verde.
-- [ ] **T10. Documentación y gate.**
+- [x] **T10. Documentación y gate.**
   - `docs/architecture.md > Multi-empresa` gana un párrafo «Planes y límites (SL-24)»: tablas,
     triggers, cerrojos y quién escribe.
   - Mapa `R<n> → test` completo en `progress/impl_SL-24.md`.

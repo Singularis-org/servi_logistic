@@ -972,3 +972,152 @@ re-desplegadas → ROJO: `Error: el alta falló: SL024 tope_plan {"tope": "orden
 
 Veredicto: ciclo y ancla en UTC explícito en la base, test nuevo verde y rojo bajo mutación; queda el
 residuo del DEFAULT local de `orden.created_at` para SQL a mano.
+
+## T10 (2026-10-28) — documentación y mapa final
+
+`./init.sh` lo corre el leader. Esta tanda no toca código de producción ni tests.
+
+### Archivos tocados
+
+Consolidado de la feature: `git diff --name-status origin/dev...HEAD` más el árbol de trabajo de
+T10 (`docs/architecture.md` y esta bitácora). A = nuevo, M = modificado.
+
+- **Base de datos:** `db/schema.prisma` (M); `db/migrations/20261027130000_plan/`,
+  `20261027130100_historial_accion_planes/`, `20261027130200_plan_topes_triggers/`,
+  `20261028120000_plan_cambio_programado/` y `20261028120100_plan_cambio_enums/`, cada una con
+  `migration.sql` y `down.sql` (A).
+- **lib (A):** `lib/actions/planes.ts`, `lib/db/sqlstate.ts`,
+  `lib/interfaces/repositories/ICupoPlanRepository.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`,
+  `lib/interfaces/services/IPlanesService.ts`, `lib/planes/ciclo.ts`, `lib/planes/jobs-cambio-plan.ts`,
+  `lib/planes/mensajes.ts`, `lib/planes/rastro.ts`, `lib/planes/tope-error.ts`,
+  `lib/repositories/_shared/modulos-en-tx.ts`, `lib/repositories/CupoPlanRepository.ts`,
+  `lib/repositories/PlanesRepository.ts`, `lib/services/PlanesService.ts`,
+  `lib/services/email/plantillas/cambio-plan.ts`, `lib/types/planes.ts`.
+- **lib (M):** `lib/db/contexto-empresa.ts`, `lib/db/excepciones-aislamiento.ts`,
+  `lib/db/modelos-de-negocio.ts`, `lib/interfaces/services/IAprobacionPostulacionService.ts`,
+  `lib/interfaces/services/IUsuarioService.ts`, `lib/modulos/reparto.ts`,
+  `lib/repositories/ModulosEmpresaRepository.ts`, `lib/services/ApiKeyService.ts`,
+  `lib/services/AprobacionPostulacionService.ts`, `lib/services/BulkOrdenService.ts`,
+  `lib/services/UsuarioService.ts`, `lib/types/api-key.ts`, `lib/types/aprobacion-postulacion.ts`,
+  `lib/types/historial-accion.ts`, `lib/types/historial-accion-etiquetas.ts`, `lib/types/usuario.ts`.
+- **app (M):** `app/(app)/_components/PostulacionesPendientesPanel.tsx`,
+  `app/(app)/configuracion/_components/UsuariosModule.tsx`,
+  `app/(app)/configuracion/api/_components/ApiKeyAccionCell.tsx`,
+  `app/(app)/configuracion/api/_components/ApiKeysModule.tsx`, `app/api/cron/procesar-jobs/route.ts`,
+  `app/api/ordenes/api-key/carga/route.ts`, `app/api/ordenes/carga-masiva/chunk/route.ts`.
+- **scripts (M):** `scripts/siembra-jobs-recurrentes.ts`.
+- **e2e:** `e2e/_planes-fixture.ts` (A), `e2e/dos-empresas-humo.spec.ts` (M).
+- **Tests nuevos (A):** `tests/components/ApiKeysTopePlan.test.tsx`,
+  `tests/components/PostulacionesTopePlan.test.tsx`, `tests/components/UsuariosTopePlan.test.tsx`,
+  `tests/integration/db/_fixtures/planes.ts`, `tests/integration/db/migracion-sl24-ida-y-vuelta.test.ts`,
+  `tests/integration/db/plan-ciclo.test.ts`, `tests/integration/db/planes-acceso-servi-app.test.ts`,
+  `tests/integration/db/planes-asignacion.test.ts`, `tests/integration/db/planes-cambio-correos.test.ts`,
+  `tests/integration/db/planes-cambio-programado.test.ts`, `tests/integration/db/planes-catalogo.test.ts`,
+  `tests/integration/db/planes-edicion-en-uso.test.ts`, `tests/integration/db/planes-historial.test.ts`,
+  `tests/integration/db/plan-topes-api-keys.test.ts`, `tests/integration/db/plan-topes-concurrencia.test.ts`,
+  `tests/integration/db/plan-topes-ordenes.test.ts`, `tests/integration/db/plan-topes-usuarios.test.ts`,
+  `tests/unit/actions/planes.composition-root.test.ts`, `tests/unit/api/api-key-carga-tope-plan.test.ts`,
+  `tests/unit/api/carga-composition-root-cupo.test.ts`, `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`,
+  `tests/unit/db/sqlstate.test.ts`, `tests/unit/guards/planes-sin-borrado.guardia.test.ts`,
+  `tests/unit/guards/planes-sin-seed.guardia.test.ts`, `tests/unit/planes/rastro.test.ts`,
+  `tests/unit/planes/tope-error.test.ts`, `tests/unit/services/api-key-service-tope-plan.test.ts`,
+  `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts`,
+  `tests/unit/services/bulk-orden-service.tope-plan.test.ts`,
+  `tests/unit/services/email/plantilla-cambio-plan.test.ts`, `tests/unit/services/planes-service.test.ts`,
+  `tests/unit/services/usuario-service-tope-plan.test.ts`, `tests/unit/types/planes-schema.test.ts`,
+  `tests/unit/utils/ciclo-plan.test.ts`.
+- **Tests modificados (M):** `tests/integration/api/procesar-jobs-geocodificacion.test.ts`,
+  `tests/integration/api/procesar-jobs-webhook-estado.test.ts`,
+  `tests/integration/db/caja-459-migration.test.ts`,
+  `tests/integration/db/correccion-resultado-gestion-migration.test.ts`,
+  `tests/integration/db/historial-accion-cobro-tienda-migration.test.ts`,
+  `tests/integration/db/historial-accion-conciliacion-bodega-migration.test.ts`,
+  `tests/integration/db/historial-accion-orden-zona-reconciliada-migration.test.ts`,
+  `tests/integration/db/historial-accion-zona-pago-mensajero-migration.test.ts`,
+  `tests/integration/db/historial-accion-zona-sinpe-migration.test.ts`,
+  `tests/integration/db/schema-drift-saneamiento.test.ts`, `tests/unit/api/procesar-jobs-registro.test.ts`,
+  `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`,
+  `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts`,
+  `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`,
+  `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`, `tests/unit/services/jobs-registro.test.ts`.
+- **Docs y estado:** `docs/architecture.md` (M, T10: viñeta «Planes y límites (SL-24)» en
+  Multi-empresa, solo añadida), `progress/deudas.md` (M), `progress/features/SL-24.md` (A),
+  `progress/impl_SL-24.md` (A), `specs/SL-24-planes-y-limites/{requirements,design,tasks}.md` (A).
+
+### Mapa R<n> -> test (R1–R45)
+
+Cada archivo existe y cada caso citado está en él (comprobado con Grep el 2026-10-28). Abreviaturas:
+`int/` es `tests/integration/db/` y `unit/` es `tests/unit/`.
+
+| R | Test |
+|---|---|
+| R1 | `unit/services/planes-service.test.ts` «R1: el superadmin crea y recibe el id…»; `int/planes-catalogo.test.ts` «R1 — un plan se guarda con nombre, visibilidad, topes, módulos y precio, y nace sin archivar», «R1 — sin topes ni precio…», «R1 — los módulos incluidos son del enum de SL-23…» |
+| R2 | `unit/types/planes-schema.test.ts` «R2: un custom sin empresa, o un público con empresa…», «R2: traer visibilidad u organizacionId en una edición…»; `unit/services/planes-service.test.ts` «R2: un custom de una empresa que no existe…», «R2: cambiar la visibilidad o la empresa en una edición…»; `int/planes-catalogo.test.ts` «R1, R2 — nombre en blanco, topes negativos y visibilidad sin su empresa…» |
+| R3 | `unit/types/planes-schema.test.ts` describe «R3: las cinco formas del precio y nada más»; `int/planes-catalogo.test.ts` «R3 — las cinco formas del precio entran», «R3 — las combinaciones prohibidas… dan 23514», «R3 — un monto que no cabe en DECIMAL(12,2)…» |
+| R4 | `int/planes-asignacion.test.ts` «R4: asignar un plan con precio no crea cobros, movimientos de caja ni cargos» |
+| R5 | `unit/services/planes-service.test.ts` describe «R5: solo el superadmin, sin leer ni escribir nada» |
+| R6 | `unit/services/planes-service.test.ts` «R6: editar un archivado…», «R6: programar sobre un archivado…», describe «archivar (R6)»; `int/planes-catalogo.test.ts` «R6 — archivar conserva el plan…»; `int/plan-topes-ordenes.test.ts` «R6: un plan archivado sigue topando a la empresa que ya lo tiene»; `int/planes-asignacion.test.ts` «R6: un plan archivado no se asigna»; `int/planes-edicion-en-uso.test.ts` «R6: un plan archivado no se edita»; `unit/guards/planes-sin-borrado.guardia.test.ts` |
+| R7 | `int/planes-catalogo.test.ts` «R7 — públicos: solo los públicos no archivados; asignables de A…»; `unit/services/planes-service.test.ts` describe «cancelar un cambio programado y listar (R7, R39)» |
+| R8 | `int/planes-acceso-servi-app.test.ts` «R8 — SQL a mano con servi_app: SELECT… 42501», «R8 — … INSERT, UPDATE y DELETE…», «R8 — servi_app no escribe su propia asignación…», «R8 — por el cliente de la app…»; `int/plan-topes-ordenes.test.ts` «R8: plan_cupo_ordenes da a servi_app el cupo de SU empresa; el de otra es 42501…» |
+| R9 | `int/planes-asignacion.test.ts` «R9: la primera asignación fija el ancla con el reloj de la base; cambiar de plan la conserva»; `int/planes-catalogo.test.ts` «R9 (base)…» |
+| R10 | `int/planes-asignacion.test.ts` «R10: deja encendidos exactamente los módulos incluidos…» |
+| R11 | `int/planes-asignacion.test.ts` «R11: la excepción de SL-23 sobrevive a editar los topes y se apaga al cambiar de plan» |
+| R12 | `unit/services/planes-service.test.ts` «R12: el rechazo por tope dice qué tope se pasa…»; `int/planes-asignacion.test.ts` «R12 (órdenes): se comparan las del ciclo en curso; igual al tope no impide», «R12: un rol sin tope en el plan nuevo no limita…» |
+| R13 | `unit/services/planes-service.test.ts` «R13: el custom de la propia empresa sí se asigna», «R13: el plan que ya tiene responde ok…»; `int/planes-asignacion.test.ts` «R13: empresa o plan que no existen…», «R13: el repositorio, bajo cerrojo…», «R13: asignar el plan que ya tiene…» |
+| R14 | `int/plan-topes-ordenes.test.ts` «R14: una empresa sin plan crea por encima…»; `int/plan-topes-usuarios.test.ts` «R14: una empresa sin plan crea usuarios activos sin límite»; `int/plan-topes-api-keys.test.ts` «sin tope de API keys (NULL) no hay límite; sin plan tampoco (R14)»; `int/planes-catalogo.test.ts` «R14 — una empresa recién creada nace sin plan ni ancla»; `int/migracion-sl24-ida-y-vuelta.test.ts` (describe «… (R14, R31)»); `unit/services/bulk-orden-service.tope-plan.test.ts` «sin plan o sin tope de órdenes (cupo null) no hay límite (R14)» |
+| R15 | `int/planes-edicion-en-uso.test.ts` «R15: la siguiente alta de cada empresa del plan se cuenta contra el tope nuevo»; `unit/services/planes-service.test.ts` «R15: un estado del repositorio bajo cerrojo…» |
+| R16 | `unit/services/planes-service.test.ts` «R16: con una empresa por encima del tope nuevo la edición se guarda y devuelve el aviso», «R16: programada…»; `int/planes-edicion-en-uso.test.ts` «R16: con 3 tiendas activas y un tope nuevo de 2…», «R16: el aviso nombra cada empresa…»; `int/planes-cambio-programado.test.ts` «R16 (mutación 10)…» |
+| R17 | `int/planes-edicion-en-uso.test.ts` «R17: enciende lo añadido y apaga lo quitado…», «R17: si una empresa ya tenía encendido por excepción…»; `int/planes-cambio-programado.test.ts` «R38/R17: llegada la fecha…» |
+| R18 | `int/plan-topes-ordenes.test.ts` «R18: un INSERT a mano con servi_app, sin pasar por ningún servicio, también se rechaza» |
+| R19 | `int/plan-topes-ordenes.test.ts` «R19: anular por pantalla y por API libera cupo al momento», «R19: una orden del ciclo anterior no cuenta…», «R19: recuperar al tope no se bloquea…», «R19/R20 (zona horaria, decisión 2026-10-28)…» |
+| R20 | `int/plan-ciclo.test.ts` (describe «plan_inicio_ciclo en Postgres (R20)», `it.each(CASOS_CICLO)`); `unit/utils/ciclo-plan.test.ts` «calcula siempre desde el ancla…»; `int/plan-topes-ordenes.test.ts` «R19/R20 (zona horaria…)» |
+| R21 | `unit/services/bulk-orden-service.tope-plan.test.ts` describes «cargarMasiva: comprobación previa del tope (R21, R22)» y «cargarViaApi (R21, R23)», con «dejar el uso justo en el tope se acepta…» y «también por la ruta sin guía (fulfillment)»; `int/plan-topes-ordenes.test.ts` «R21: el conteo es por sentencia…» |
+| R22 | `unit/services/bulk-orden-service.tope-plan.test.ts` «vista previa / carga real: pasa el tope -> cada fila que se iba a crear es error…» (`it` parametrizado por `dryRun`) |
+| R23 | `unit/api/api-key-carga-tope-plan.test.ts` «la comprobación previa: 409 con la forma del cuerpo…», «el trigger rechaza y no entró ninguna: el mismo 409…» |
+| R24 | `int/plan-topes-concurrencia.test.ts` «R24: dos altas a la vez con cupo 1…», «R24: un alta en vuelo y una bajada de plan…», «R24: una bajada de plan en vuelo y un alta…» |
+| R25 | `unit/types/planes-schema.test.ts` describe «R25: los topes»; `int/planes-catalogo.test.ts` «R25 — el tope por rol admite los cinco roles…»; `int/plan-topes-usuarios.test.ts` «R25: crear una API key… no mueve ningún uso de rol» |
+| R26 | `int/plan-topes-usuarios.test.ts` «R26: pendiente, inactivo y bloqueado no cuentan ni se rechazan al crearlos» |
+| R27 | `int/plan-topes-usuarios.test.ts` «R27 crear…», «R27 activar desde inactivo…», «R27 activar desde bloqueado…», «R27 aprobar una postulación…», «R27 cambiar el rol…», «R27 por SQL a mano con servi_app…»; `unit/services/usuario-service-tope-plan.test.ts` (describes R27); `unit/services/aprobacion-postulacion-tope-plan.test.ts` (describe R27) |
+| R28 | `tests/components/UsuariosTopePlan.test.tsx` «R28: activar…», «R28: editar…», «R28: crear…»; `tests/components/PostulacionesTopePlan.test.tsx` «R28: aprobar con tope_plan…»; describes R28 de `usuario-service-tope-plan` y `aprobacion-postulacion-tope-plan` |
+| R29 | `int/planes-historial.test.ts` «R29: un público sin empresas deja su rastro…», «R29: asignar deja plan_asignado…», «R29: si el historial falla al asignar…», «R29: si plan_rastro falla…»; `unit/guards/planes-sin-borrado.guardia.test.ts` |
+| R30 | `int/plan-topes-ordenes.test.ts` «R30: A al tope y B con el MISMO plan sigue creando…»; `int/planes-acceso-servi-app.test.ts` «R30 — cada empresa ve solo su asignación…» |
+| R31 | `int/migracion-sl24-ida-y-vuelta.test.ts` (describe «… (R14, R31)»; punto 3 del encabezado: tablas, columnas, tipos, funciones y triggers) |
+| R32 | `unit/guards/planes-sin-seed.guardia.test.ts` (describe «R32 — la semilla no crea planes ni asignaciones») |
+| R33 | `e2e/dos-empresas-humo.spec.ts` «SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, sin plan, sí (R33)» |
+| R34 | `tests/guards/guard-dependencias-aprobadas.test.ts` (existente); `git diff --quiet origin/dev...HEAD -- package.json` → sin cambios (2026-10-28) |
+| R35 | `int/plan-topes-api-keys.test.ts` (describe «… (R35)»: crear al tope, activar una inactiva al tope, SQL a mano con servi_app); `unit/services/api-key-service-tope-plan.test.ts` (describes R35 de `generar` y `activar`) |
+| R36 | `tests/components/ApiKeysTopePlan.test.tsx` «R36: crear con tope_plan…», «R36: activar con tope_plan…»; `unit/services/api-key-service-tope-plan.test.ts` describe R36 |
+| R37 | `unit/types/planes-schema.test.ts` «R37: vigenteDesde es una fecha AAAA-MM-DD…», «R37/P8: la fecha rige a las 00:00 de la plataforma (−06:00)…»; `unit/services/planes-service.test.ts` «R37: hoy cuenta desde las 00:00 a −06:00…», «R37: con fecha futura programa…»; `int/planes-cambio-programado.test.ts` «R37: programado a mañana…», «R37: una fecha que no es posterior a ahora…» |
+| R38 | `int/planes-cambio-programado.test.ts` «R38/R17: llegada la fecha, el trabajo aplica…; el ciclo no se reinicia…», «R38: el barrido aplica los vencidos…»; `unit/cron/procesar-jobs-plan-cambio.test.ts` (describe «registro de los trabajos del cambio programado (R38, R44)») |
+| R39 | `int/planes-cambio-programado.test.ts` «R39 (mutación 8)…», «R39: cancelar borra el pendiente…»; `int/planes-cambio-correos.test.ts` «R39 (mutación 9): un recordatorio de un cambio cancelado o reemplazado no reparte ni envía nada»; `int/planes-historial.test.ts` «R39: cancelar sin pendiente no escribe nada…» |
+| R40 | `int/planes-cambio-programado.test.ts` «R40: archivar con un cambio programado lo cancela…»; `int/planes-historial.test.ts` «R40: archivar con un cambio pendiente lo cancela en la misma operación…» |
+| R41 | `int/planes-cambio-correos.test.ts` «R41: la edición inmediata avisa a los maestros activos…», «R41: una edición sin cambios no encola ningún correo», «R41/R45: un fallo del emisor falla el trabajo, pero la edición y la cancelación persisten»; `unit/services/email/plantilla-cambio-plan.test.ts` (describe «plantillaCambioPlan (R41)») |
+| R42 | `int/planes-cambio-correos.test.ts` «R41/R42: programar a 10 días… a 3 días, solo el de 1 día», «R42: el recordatorio va a las empresas que tienen el plan AL SALIR… una vez por empresa aunque corra dos veces»; `unit/services/email/plantilla-cambio-plan.test.ts` (describe «recordatorios (R42)») |
+| R43 | `int/planes-historial.test.ts` «R43: programar, reemplazar, cancelar y aplicar dejan cada uno su fila…» |
+| R44 | `unit/cron/procesar-jobs-plan-cambio.test.ts` «R44: los dos son de núcleo», «R44: los dos de correo son de núcleo» (sobre `MODULO_POR_JOB`). El spec citaba `tests/unit/guards/modulos-reparto.guardia.test.ts`, que existe pero no tiene ningún caso de los tipos de job de SL-24 |
+| R45 | `int/planes-cambio-correos.test.ts` «R45: cancelar a mano…», «R45: archivar con un cambio pendiente…», «R45: reemplazar no envía correo de cancelación…»; `unit/services/email/plantilla-cambio-plan.test.ts` «R45: el reemplazo lleva la línea…», describe «cancelado (R45)» |
+
+**Huecos:** ninguno. Todos los R1–R45 tienen al menos un test que existe.
+
+### Pendiente para el leader
+
+- `specs/SL-24-planes-y-limites/design.md:258` (§4.3, paso 4 de `plan_tope_ordenes`) sigue
+  diciendo `plan_inicio_ciclo(ancla, now()::timestamp)`. El código usa `now() AT TIME ZONE 'UTC'`
+  (decisión 2026-10-28). Lo corrige el spec_author: el backend_dev no edita el spec.
+- `requirements.md` R44 cita `tests/unit/guards/modulos-reparto.guardia.test.ts` («existente»). La
+  prueba real está en `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`. Hay que corregir la
+  columna de tests del spec o aceptar el test que hay.
+- `requirements.md` R14 cita `tests/integration/db/organizacion-modulo.test.ts` (existente, sin
+  cambios). Existe, pero no tiene ningún caso de SL-24. R14 ya queda cubierto por los demás.
+
+### Salida real
+
+- Sin typecheck, lint ni tests: T10 solo toca `docs/architecture.md` y esta bitácora, ninguno es
+  TS. La guardia que lee `docs/architecture.md` (`unicos-por-empresa`, la lista de globales) no
+  cambia: la viñeta nueva se añade al final de Multi-empresa y no toca el párrafo de únicos.
+  `pnpm exec vitest run tests/unit/guards/unicos-por-empresa.guardia.test.ts` → `Test Files 1
+  passed (1)`, `Tests 15 passed (15)`. `./init.sh` lo corre el leader.
+- MCP del grafo: no lo usé. Bastó con Grep y Read sobre docs, specs, tests y migraciones.
+
+Veredicto T10: hecho a falta del `./init.sh` del leader. Párrafo de planes en `architecture.md` y
+mapa R1–R45 completo, sin huecos.
