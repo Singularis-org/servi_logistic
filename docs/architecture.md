@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-21 por=Carlos Restrepo -->
+<!-- perfil: revisado=2026-10-28 por=Camilo -->
 > **Este repo es servi_logistic, NO Ordenex.** Es un SaaS multi-empresa de última milla derivado del
 > código de Ordenex (copiado el 2026-10-21). Lo que en el código, los tests o `specs/` diga «Ordenex»
 > es herencia pendiente de limpiar (`docs/limpieza-ordenex.md`). El plan manda: `docs/plan-saas.md`.
