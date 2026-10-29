@@ -56,21 +56,22 @@ const COLORES_MARCA_NUEVA: readonly Rgb[] = [
 ];
 const DISTANCIA_MAXIMA = 24;
 
-// Umbrales (decision del humano, 2026-10-28; `design.md > D2 > Umbral fijado`). Medidas, con la
-// marca anterior sumando naranja y navy:
+// Umbrales (decision del humano, 2026-10-28; SL-9 `design.md > D2 > Umbral fijado`, y SL-33
+// `design.md > D11`). Medidas, con la marca anterior sumando naranja y navy:
 //
-//   captura          anterior/viejas  anterior/nuevas      nueva/viejas  nueva/nuevas
-//   inicio-narrow    78.323 %         1.289 % (todo navy)  0 %           18.509 %
-//   ingreso-narrow    2.283 %         0.015 %              0 %            4.197 %
-//   inicio-wide      81.199 %         0.836 % (todo navy)  0 %           23.020 %
+//   captura          anterior/viejas  anterior/SL-9        anterior/SL-33  nueva/viejas  nueva/SL-33
+//   inicio-narrow    78.323 %         1.289 % (todo navy)  0.039 %         0 %           19.748 %
+//   ingreso-narrow    2.283 %         0.015 %              0.015 %         0 %            4.197 %
+//   inicio-wide      81.199 %         0.836 % (todo navy)  0.020 %         0 %           23.829 %
 //
-// El navy que queda en las capturas nuevas viene del titulo de servicios de la landing:
-// `TituloSeccion` (`app/_landing/primitivas.tsx`) usa `text-asfalto-9`, y `--color-asfalto-9`
-// vale `#0d2444`, a distancia <= 24 del navy `#0b2545`. Los tokens `asfalto-*` son de SL-33, que
-// los cambiara; al cerrar SL-33 las capturas se regeneran con el script y este hueco se agranda.
-// Por eso el umbral de la marca anterior es < 1.8 %: entre el maximo de las nuevas (1.289 %) y
-// el minimo de las viejas (2.283 %).
-const UMBRAL_MARCA_ANTERIOR = 0.018;
+// En SL-9 quedaba navy en la landing: `TituloSeccion` usaba `text-asfalto-9`, que valia
+// `#0d2444`, a distancia <= 24 del navy `#0b2545`, y el umbral se fijo en < 1.8 %. SL-33 paso
+// `asfalto-9` a `stone-900` y regenero las capturas con `scripts/capturas-pwa.mjs`: lo que queda
+// (0.039 % como maximo, todo navy) son pixeles sueltos de suavizado de bordes, no una superficie.
+// El umbral baja al maximo medido redondeado hacia arriba a la decima: < 0.1 %. Deja 2.5 veces
+// el maximo de las nuevas y queda muy por debajo del minimo de las viejas (2.283 %); ademas ya
+// pone rojas las capturas de SL-9 con el titulo navy (1.289 % y 0.836 %).
+const UMBRAL_MARCA_ANTERIOR = 0.001;
 const UMBRAL_MARCA_NUEVA = 0.01;
 
 /** Fraccion de pixeles a distancia euclidea RGB <= 24 de alguno de los colores dados. */

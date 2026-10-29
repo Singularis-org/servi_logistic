@@ -103,7 +103,7 @@
   `docs-marca-heredada.guardia`, `notifications-bell-tokens.guardia` y `sin-nombre-heredado.guardia`
   en verde.
 
-- [ ] **T7 — Verificación en el navegador.** Depende de T2 a T6c.
+- [x] **T7 — Verificación en el navegador.** Depende de T2 a T6c.
   - Montaje: `pnpm dev -p 3044` con solo la `DATABASE_URL` local, en claro y en oscuro.
   - Pantallas: `/analitica`, `/monitoreo`, `/ranking`, `/`, los dos mapas de `/mis-asignaciones`,
     `/offline.html` y `global-error` (forzado en local, D14).
@@ -120,7 +120,7 @@
   **Hecho:** capturas y notas en `progress/impl_SL-33.md`. Si algo se ve mal, se para y se avisa al
   leader antes de seguir.
 
-- [ ] **T8 — Capturas de la PWA** (R15; D11). Depende de T7, con la paleta cerrada.
+- [x] **T8 — Capturas de la PWA** (R15; D11). Depende de T7, con la paleta cerrada.
   - `node scripts/capturas-pwa.mjs` con el montaje de T7.
   - Medir y bajar el umbral de «marca anterior» de la guardia de SL-9 al valor medido, redondeado
     hacia arriba a la décima.
@@ -129,7 +129,7 @@
   **Hecho:** `public/screenshots/*.png` regeneradas, la guardia de SL-9 en verde con el umbral nuevo
   y la medida pegada en `progress/impl_SL-33.md`.
 
-- [ ] **T9 — Cierre.** Depende de todas.
+- [x] **T9 — Cierre.** Depende de todas.
   - Grep de «Ordenex» en los archivos de «Archivos esperados»: salida vacía.
   - Typecheck, `test:guardias` y `vitest related` sobre todo el diff.
   - El mapa `R<n> → test` en `progress/impl_SL-33.md`.

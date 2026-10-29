@@ -184,20 +184,57 @@ El tope 0.12 es el máximo medido (0.117) redondeado hacia arriba. `button.tsx` 
 | R12 | `paleta-secundaria.guardia` (R12), `tests/unit/guards/tema-encendido.guardia.test.ts` | verde |
 | R13 | `paleta-secundaria.guardia` (R13, tablas de `docs/marca.md` con cifras del fixture) | verde |
 | R14 | Guardias de D8 con literales nuevos: `contraste-tokens`, `factura-contraste`, `impresion-tokens`, `impresion-sin-dark`, `marca-texto-amarillo`; el diff de umbrales está en «T5» arriba | verde |
-| R15 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (umbral nuevo de T8) | PENDIENTE: T8 bloqueada |
+| R15 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (`UMBRAL_MARCA_ANTERIOR` 0.018 → 0.001, capturas regeneradas en T8) | verde |
 | R16 | `paleta-secundaria.guardia` (R16) | verde |
 | R17 | `paleta-secundaria.guardia` (R17), `marca-estaticos.guardia` | verde |
 | R18 | `paleta-secundaria.guardia` (R18), `tests/components/RedDeErrores.test.tsx` | verde |
-| R19 | `paleta-secundaria.guardia` (R19); la captura del mapa de T7 queda pendiente | verde (captura pendiente) |
+| R19 | `paleta-secundaria.guardia` (R19: pin y tramo `#111111`, contraste contra `TIERRA_OSM` y contra la ruta) | verde; la captura del mapa sobre OSM es verificación manual del humano, pendiente |
 | R20 | `paleta-secundaria.guardia` (R20, barrido sin exclusiones añadidas) | verde |
 
-## Pendiente: T7 y T8 bloqueadas por variables de entorno
+## T7 — Verificación en el navegador (alcance reducido, decisión humana 2026-10-28)
 
-Para entrar en las pantallas autenticadas de T7 (`/analitica`, `/monitoreo`, `/ranking`, mapas de
-`/mis-asignaciones`) y en `/` de T8 hace falta una sesión. Tal como la monta
-`playwright.config.ts > webServer.env`, la sesión necesita más variables que `DATABASE_URL`:
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `NEXT_PUBLIC_SUPABASE_*` (con el doble
-`e2e/_storage-falso`), `AUTH_OTP_DEBUG_LOG` y `SMTP_USER`/`SMTP_PASSWORD`. Además, la `DATABASE_URL`
-local no está en el entorno de esta sesión, y el implementer no puede leer el `.env` principal
-(lo bloquea el entorno). Se para según la regla del humano: «si hace falta otra variable, PARA».
-T9 queda cerrada salvo R15 y la captura de R19.
+Montaje: `pnpm dev -p 3044` con un entorno vacío más la `DATABASE_URL` local (host `localhost`,
+autorizada por el humano; no se escribe en ningún archivo). Sin Supabase ni dobles de sesión.
+Servidor apagado al terminar (el árbol de procesos entero); el 3044 queda libre y el 3000 no se tocó.
+
+Capturas en `_trabajo/SL-33/` (fuera de git), en claro y en oscuro:
+- `/`: bien. Los títulos de servicios, «Cómo funciona» y «Trabajá con nosotros» salen en `#1c1917`
+  (`stone-900`): **ya no son navy**.
+- `/login`: bien; botón principal `#111111` con texto blanco.
+- `/offline.html`: bien; fondo `#F7F7F5`, título `#111111`, texto `stone-700`, icono `stone-500`.
+- `global-error` (forzado con un `throw` temporal en `app/layout.tsx`, ya revertido; `app/` sin
+  cambios): fondo `#111111`, texto blanco, botón `#FFD000` con tinta negra.
+- `design-whatsapp/Main.dc.html`: legible; barra `#1C1C1A`, texto `#C0C0BE`, ítem activo `#2E2E2C`.
+- `design-notificaciones/Push.dc.html`: legible. El cuadrado de icono `#111111` sobre la tarjeta
+  (`#343433`) no lleva borde y su contorno queda en ≈1.5:1: se distingue, pero es más tenue que con el
+  naranja de antes. El glifo blanco mide 18.9:1. Se anota y no se trata como fallo.
+- Claro y oscuro dan la misma imagen en estas pantallas: la landing y `/login` fijan `tema-claro`,
+  `offline.html` y las maquetas no tienen variante oscura y `global-error` usa estilos en línea.
+- **D5, punto 1:** no aplica en lo público. Ni `/` ni `/login` muestran un botón `secondary`, y esa
+  variante solo se usa en el área privada.
+
+**Verificación manual del humano, pendiente:** `/analitica` (series distinguibles), `/monitoreo`
+(barra y tarjetas concuerdan), `/ranking` (podio), los dos mapas de `/mis-asignaciones` (pin y tramo
+sobre el mapa) y el color real de la tierra de OSM. `TIERRA_OSM` queda como está (`#f2efe9`).
+
+## T8 — Capturas de la PWA
+
+`CAPTURAS_URL=http://localhost:3044 node scripts/capturas-pwa.mjs`: exit 0 y las 3 capturas
+regeneradas. No pidió sesión. Medida con el método de la guardia (`sharp`, distancia RGB ≤ 24 al
+naranja y al navy de SL-8 D5); el naranja da 0 % en todas.
+
+| Captura | Marca anterior, antes (SL-9) | Ahora | Marca nueva, antes | Ahora |
+|---|---|---|---|---|
+| inicio-narrow | 1.289 % | 0.039 % | 18.509 % | 19.748 % |
+| ingreso-narrow | 0.015 % | 0.015 % | 4.197 % | 4.197 % |
+| inicio-wide | 0.836 % | 0.020 % | 23.020 % | 23.829 % |
+
+Umbral: `UMBRAL_MARCA_ANTERIOR` 0.018 → **0.001** (< 0.1 %), con el criterio de SL-9 D2. El máximo
+medido (0.039 %), redondeado hacia arriba a la décima, da 0.1 %. Las capturas de la marca anterior
+miden como mínimo 2.283 %: el hueco es claro, unas 23 veces el umbral, y además el umbral nuevo
+pondría en rojo las capturas de SL-9 con el título navy. El navy que queda son píxeles sueltos de
+suavizado. La guardia solo guarda las huellas prohibidas de la marca anterior y no hay huellas de
+las capturas actuales que actualizar.
+
+Salida (implementer): `vitest run marca-pwa-capturas-iconos.guardia + capturas-pwa + paleta-secundaria.guardia`:
+`Test Files 3 passed (3) · Tests 95 passed (95)`.
