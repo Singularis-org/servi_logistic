@@ -136,7 +136,68 @@ Pendiente menor fuera de alcance: `components/ui/button.tsx:27` comenta «16.70 
   `ControlDescargaTransversal` y `BajoRiesgoPaginacion`; en esos .tsx solo cambiaron comentarios.
 - `tsc --noEmit`: exit 0. `eslint` sobre los archivos tocados: exit 0.
 
-## Pendiente
+## T5 — cierre del caso `danger/20` (decisión humana 2026-10-28)
 
-T5 (caso `danger/20`), T7, T8 y T9 sin hacer: se para por el bloqueo. Además, T7/T8 necesitan
-`pnpm dev` en el worktree, que no tiene `node_modules`.
+El hover destructivo sigue opaco; no se reabre la 222. En `contraste-tokens.guardia.test.ts` el caso
+pasa a «la alternativa descartada (hover con capa `danger/20`) cumple AA por márgenes mínimos y el
+hover opaco le saca un orden de magnitud: por eso sigue opaco». Argumento: una primitiva no sabe
+dónde la montan y no puede fiarse del alfa. Aserciones, por tema y en la peor superficie:
+`margenAlternativa <= TOPE_MARGEN_ALTERNATIVA` (0.12) y `margenOpaco > 10 * margenAlternativa`.
+
+| Tema | `danger/20` peor (secondary/muted) | Hover opaco |
+|---|---|---|
+| Claro | 4.6171, margen 0.117 | 6.47, margen 1.97 |
+| Oscuro | 4.5408, margen 0.041 | 6.1702, margen 1.67 |
+
+El tope 0.12 es el máximo medido (0.117) redondeado hacia arriba. `button.tsx` no se toca. D8 lo anota.
+
+## Entorno del worktree
+
+- `pnpm install --frozen-lockfile` (aprobado por el humano el 2026-10-28) sin dependencias nuevas.
+- `prisma generate` con una `DATABASE_URL` ficticia de localhost: solo lee el esquema y no se conecta.
+
+## Salidas finales (implementer, binarios del worktree)
+
+- `pnpm exec vitest run` de los 11 tests de la feature (paleta-secundaria, contraste-tokens,
+  impresion-tokens, impresion-sin-dark, factura-contraste, marca-texto-amarillo, tema-encendido,
+  color-contador, TableroDiaComposicion, analytics-paleta, marca-pwa-capturas-iconos):
+  `Test Files 11 passed (11) · Tests 320 passed (320)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 316 passed | 2 skipped (319) · Tests 4 failed |
+  4457 passed | 20 skipped (4481)`. El único archivo rojo es `dependencias-declaradas-presentes`,
+  listado en `tests/baseline-rojos.json` e idéntico a `origin/dev` (`init.sh`, el verificador y el test):
+  no es de esta feature.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` sobre los `.ts`/`.tsx` del diff: exit 0.
+- Grep de «Ordenex» (T9): vacío en los archivos de código, docs, maquetas y tests del diff. Solo
+  aparece en `specs/SL-33-*/` y en esta bitácora, como nombre de la regla (R16, «Decisiones
+  cerradas», la tarea T9 y el nombre de la guardia `sin-integrador-de-ordenex`), no como recurso.
+
+## Mapa R → test
+
+| R | Test | Estado |
+|---|---|---|
+| R1, R2, R3 | `tests/unit/guards/paleta-secundaria.guardia.test.ts` (bloques R1–R3), `tests/unit/components/analytics-paleta.test.ts` | verde |
+| R4 | `paleta-secundaria.guardia` (R4), `tests/unit/guards/contraste-tokens.guardia.test.ts` (`PARES_CHART`, `SUELO`) | verde |
+| R5 | `paleta-secundaria.guardia` (R5), `tests/unit/tablero-dia/color-contador.guardia.test.tsx` | verde |
+| R6 | `paleta-secundaria.guardia` (R6), `tests/components/TableroDiaComposicion.test.tsx` | verde |
+| R7, R8, R9, R10, R11 | `paleta-secundaria.guardia` (R7–R11; R8 con la excepción de `asfalto-2` a cifra exacta) | verde |
+| R12 | `paleta-secundaria.guardia` (R12), `tests/unit/guards/tema-encendido.guardia.test.ts` | verde |
+| R13 | `paleta-secundaria.guardia` (R13, tablas de `docs/marca.md` con cifras del fixture) | verde |
+| R14 | Guardias de D8 con literales nuevos: `contraste-tokens`, `factura-contraste`, `impresion-tokens`, `impresion-sin-dark`, `marca-texto-amarillo`; el diff de umbrales está en «T5» arriba | verde |
+| R15 | `tests/unit/guards/marca-pwa-capturas-iconos.guardia.test.ts` (umbral nuevo de T8) | PENDIENTE: T8 bloqueada |
+| R16 | `paleta-secundaria.guardia` (R16) | verde |
+| R17 | `paleta-secundaria.guardia` (R17), `marca-estaticos.guardia` | verde |
+| R18 | `paleta-secundaria.guardia` (R18), `tests/components/RedDeErrores.test.tsx` | verde |
+| R19 | `paleta-secundaria.guardia` (R19); la captura del mapa de T7 queda pendiente | verde (captura pendiente) |
+| R20 | `paleta-secundaria.guardia` (R20, barrido sin exclusiones añadidas) | verde |
+
+## Pendiente: T7 y T8 bloqueadas por variables de entorno
+
+Para entrar en las pantallas autenticadas de T7 (`/analitica`, `/monitoreo`, `/ranking`, mapas de
+`/mis-asignaciones`) y en `/` de T8 hace falta una sesión. Tal como la monta
+`playwright.config.ts > webServer.env`, la sesión necesita más variables que `DATABASE_URL`:
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `NEXT_PUBLIC_SUPABASE_*` (con el doble
+`e2e/_storage-falso`), `AUTH_OTP_DEBUG_LOG` y `SMTP_USER`/`SMTP_PASSWORD`. Además, la `DATABASE_URL`
+local no está en el entorno de esta sesión, y el implementer no puede leer el `.env` principal
+(lo bloquea el entorno). Se para según la regla del humano: «si hace falta otra variable, PARA».
+T9 queda cerrada salvo R15 y la captura de R19.
