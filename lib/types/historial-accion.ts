@@ -417,6 +417,9 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   "organizacion_modulo",
   // ⭑ SL-24 — el plan asignado a una empresa, 1:1 con su tabla. `entidad_id` es el id del plan.
   "plan",
+  // ⭑ SLT-43 — el nodo del modelo geografico jerarquico. Nadie lo escribe hasta SLT-46; el filtro de
+  // `/historico/acciones` lo excluye hasta entonces (`historial-acciones-filtros-def.ts`).
+  "nodo_geografico",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
@@ -668,6 +671,7 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   integracion: "Integración",
   organizacion_modulo: "Módulo",
   plan: "Plan",
+  nodo_geografico: "Nodo geográfico",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */

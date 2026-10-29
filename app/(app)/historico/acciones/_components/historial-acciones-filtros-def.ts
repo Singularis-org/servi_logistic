@@ -7,6 +7,7 @@ import {
   HISTORIAL_ACCION_ENTIDADES,
   HISTORIAL_ACCION_TIPOS,
   type ActorHistorialDTO,
+  type HistorialAccionEntidad,
 } from "@/lib/types/historial-accion";
 import { BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
 import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -49,6 +50,13 @@ export const CLAVE_ACTOR = "actor_id";
 
 /** Clave del filtro por TIPO DE ENTIDAD (R29). Lista de las 17 entidades. */
 export const CLAVE_ENTIDAD = "entidad_tipo";
+
+/**
+ * SLT-43 (R23) — entidades que existen en el enum pero que nada escribe todavia. Ofrecerlas en el
+ * filtro cambiaria lo que muestra la pantalla sin que pueda aparecer ni una fila con ellas.
+ * `nodo_geografico` sale de aqui cuando SLT-46 empiece a escribirla.
+ */
+export const ENTIDADES_SIN_ESCRITOR: readonly HistorialAccionEntidad[] = ["nodo_geografico"];
 
 /** Clave del filtro de FECHA (R29). Posicional `[atajo, desde, hasta]`, como en `/ordenes`. */
 export const CLAVE_FECHA = "fecha";
@@ -145,10 +153,12 @@ export function construirFiltrosHistorialAcciones(
       label: "Tipo",
       kind: "multi",
       searchPlaceholder: "Buscar tipo…",
-      options: HISTORIAL_ACCION_ENTIDADES.map((e) => ({
-        value: e,
-        label: ENTIDAD_LABELS[e],
-      })),
+      options: HISTORIAL_ACCION_ENTIDADES.filter((e) => !ENTIDADES_SIN_ESCRITOR.includes(e)).map(
+        (e) => ({
+          value: e,
+          label: ENTIDAD_LABELS[e],
+        }),
+      ),
     },
     {
       // UN solo control de tiempo, con los atajos dentro del propio calendario.

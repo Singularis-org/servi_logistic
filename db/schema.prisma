@@ -4625,6 +4625,9 @@ enum HistorialAccionEntidad {
   organizacion_modulo
   /// SL-24 (design §9): el plan asignado, 1:1 con su tabla. `entidad_id` sin FK.
   plan
+  /// SLT-43 (design §2.5): el nodo del modelo geográfico jerárquico. Nadie lo escribe hasta SLT-46;
+  /// las filas viejas de provincia/cantón/distrito no se reescriben.
+  nodo_geografico
 
   @@map("historial_accion_entidad")
 }
@@ -5418,8 +5421,35 @@ model Pais {
   provincias          Provincia[]
   organizaciones      Organizacion[]
   historialPlataforma HistorialPlataforma[]
+  /// SLT-43 (R2, R3): los tres tipos de nivel; los crea y actualiza el trigger `pais_tipos_de_nivel`.
+  tiposDeNivel        TipoNivelGeografico[]
 
   @@map("pais")
+}
+
+// SLT-43 (design §2.1; R1–R3) — tipos de nivel geográfico de un país. De PLATAFORMA, como `pais`: la
+// empresa lee solo los de su país y no escribe ninguno (RLS `tipo_nivel_geografico_del_pais` y
+// REVOKE, solo en el SQL de 20261029120100). En SLT-43 ningún código de la app lo escribe (R37): lo
+// llena la migración desde `pais.nivel_N_*` y lo mantiene el trigger `pais_tipos_de_nivel`.
+// `clave` lleva un CHECK `^[a-z0-9_]{1,40}$` que Prisma no expresa; la sincronía usa `nivel_1..3`.
+model TipoNivelGeografico {
+  id                  String   @id @default(uuid())
+  paisId              String   @map("pais_id")
+  clave               String
+  nombreSingular      String   @map("nombre_singular")
+  nombrePlural        String   @map("nombre_plural")
+  digitosCodigo       Int?     @map("digitos_codigo")
+  /// La regla R17 de SL-20 como dato: con dígitos, el código del hijo empieza por el del padre.
+  codigoHeredaPrefijo Boolean  @default(false) @map("codigo_hereda_prefijo")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  pais Pais @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([paisId, clave])
+  /// Destino de la FK compuesta `(tipo_id, pais_id)` de `nodo_geografico` (R6).
+  @@unique([id, paisId])
+  @@index([paisId])
+  @@map("tipo_nivel_geografico")
 }
 
 // SL-20 (design §2.6) — qué hizo el superadmin sobre países y geografía (D15). De PLATAFORMA: sin
@@ -5445,6 +5475,8 @@ enum HistorialPlataformaEntidad {
   provincia
   canton
   distrito
+  /// SLT-43 (design §2.5): sin escritor hasta SLT-46.
+  nodo_geografico
 
   @@map("historial_plataforma_entidad")
 }

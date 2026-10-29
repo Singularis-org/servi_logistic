@@ -12,17 +12,17 @@
 
 ## T0 — Precondiciones
 
-- [ ] **T0.1** Comprobar que el PR #29 (guardia de migraciones destructivas) está mergeado en `dev` o
+- [x] **T0.1** Comprobar que el PR #29 (guardia de migraciones destructivas) está mergeado en `dev` o
   descartado por el humano. *Hecho:* así consta; si no, se para y se avisa al leader.
-- [ ] **T0.2** Comprobar que esta rama sale de `dev` y está al día con `origin/dev`. *Hecho:* `git merge-base`
+- [x] **T0.2** Comprobar que esta rama sale de `dev` y está al día con `origin/dev`. *Hecho:* `git merge-base`
   coincide con `origin/dev` o la rama está rebasada/mergeada sobre ella.
 
 ## T1 — Enums y tipos de nivel (depende de T0)
 
-- [ ] **T1.1** Migración `20261029120000_geo_enums_nodo_geografico` + `down.sql` que no hace nada y
+- [x] **T1.1** Migración `20261029120000_geo_enums_nodo_geografico` + `down.sql` que no hace nada y
   lo explica (design §2.5, §3). Añadir `nodo_geografico` a los dos enums de `schema.prisma`. Revisar
   cómo trata los `down.sql` la guardia del PR #29. *Hecho:* `prisma migrate diff` vacío.
-- [ ] **T1.2** TypeScript del enum (design §2.5): `HISTORIAL_ACCION_ENTIDADES`, `ENTIDAD_LABELS`,
+- [x] **T1.2** TypeScript del enum (design §2.5): `HISTORIAL_ACCION_ENTIDADES`, `ENTIDAD_LABELS`,
   `FuentesEtiqueta` y su constructor, y excluir `nodo_geografico` del filtro de `/historico/acciones`.
   Ajustar cualquier otro mapa exhaustivo que el typecheck señale sobre `HistorialPlataformaEntidad`.
   *Hecho:* `pnpm run typecheck` verde y `tests/unit/types/historial-accion-entidades.test.ts` (R23)
@@ -34,7 +34,7 @@
 
 ## T2 — Nodo geográfico (depende de T1.3)
 
-- [ ] **T2.1** Función `geo_normalizar_nombre` y su test `geo-normalizar-nombre.test.ts` (R10)
+- [x] **T2.1** Función `geo_normalizar_nombre` y su test `geo-normalizar-nombre.test.ts` (R10)
   **primero**, antes que la tabla. *Hecho:* idéntico a `normalizeName` en todos los nombres de la base
   de test y en la lista de casos; si no lo es, se para y se avisa (afecta a R9 y R14).
 - [ ] **T2.2** Migración `20261029120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
