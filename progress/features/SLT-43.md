@@ -8,7 +8,7 @@
 
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
-Siguiente: `/afinar-feature SLT-43`, después F1.2 (spec_author).
+Afinada con `/afinar-feature` (2026-10-29). Siguiente: F1.2 (spec_author).
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de
@@ -26,6 +26,8 @@ Siguiente: `/afinar-feature SLT-43`, después F1.2 (spec_author).
   - los previews de Vercel no apuntan a la base de producción;
   - Supabase de producción tiene el backup activo.
 - Pendiente antes de la primera migración: mergear el PR #29 (guardia de migraciones destructivas).
+- 2026-10-29 · `/afinar-feature`: alcance y decisiones cerradas en
+  `specs/SLT-43-geo-jerarquica-modelo/requirements.md`.
 
 ## Modelos (overrides)
 
