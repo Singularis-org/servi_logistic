@@ -14,9 +14,11 @@ import { idDeRol, liberarHuecoDeSuperadmin } from "./superadmin-32";
 //
 // No va en `tests/fabricas/` (SL-43 está en vuelo sobre ese directorio, design §14). Hasta que exista
 // `PlanesRepository` (T4), los planes y las asignaciones se escriben como dueño con el cliente del
-// test, que es como escribe el superadmin (`comoPlataforma`). El ancla se fija con `now()` de la base:
-// los triggers comparan con `now()::timestamp`, en la zona de la sesión, igual que el DEFAULT de
-// `orden.created_at`; un `Date` de Node la desplazaría por la zona de la base.
+// test, que es como escribe el superadmin (`comoPlataforma`). El ancla se fija con `now()` de la base
+// en UTC explícito (`now() AT TIME ZONE 'UTC'`), igual que los triggers y que Prisma al escribir
+// `orden.created_at` (decisión 2026-10-28): no depende de la zona de la sesión. Una orden insertada
+// por SQL a mano lleva su `created_at` en UTC explícito, no el DEFAULT `CURRENT_TIMESTAMP`, que es
+// la hora local de la sesión.
 
 /* -------------------------------------------------------------------------- */
 /* La tabla de fechas del ciclo (R20): la usan la gemela TS y la función SQL   */
@@ -149,7 +151,7 @@ export async function asignarPlan(
   desfase = "1 hour",
 ): Promise<void> {
   await c.$executeRawUnsafe(
-    `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = now()::timestamp - $2::interval WHERE "id" = $3`,
+    `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC') - $2::interval WHERE "id" = $3`,
     planId,
     desfase,
     organizacionId,

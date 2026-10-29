@@ -12,7 +12,7 @@ import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organ
 
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type FksDeOrden, type TxDeTest } from "./_postgres-real";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
-import { asignarPlan, capturar, crearPlan, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
+import { asignarPlan, capturar, crearPlan, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
 
 // SL-24 / T3 (design §4.3) — el tope de órdenes por ciclo, contado por la base dentro de la
 // transacción del alta. R14, R18, R19, R21, R30, más R6 (un plan archivado sigue topando) y R8 (el
@@ -199,13 +199,13 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
       // antes de ese inicio, dentro del ciclo anterior (escrita como dueño).
       await asignarPlan(tx, a.id, plan, "45 days");
       await tx.$executeRawUnsafe(
-        `UPDATE "orden" o SET "created_at" = plan_inicio_ciclo(g."plan_ciclo_ancla_at", now()::timestamp) - interval '1 day'
+        `UPDATE "orden" o SET "created_at" = plan_inicio_ciclo(g."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC')) - interval '1 day'
            FROM "organizacion" g WHERE g."id" = o."organizacion_id" AND o."id" = $1`,
         vieja,
       );
       await controles(tx, a.id, plan);
       const enAnterior = await tx.$queryRawUnsafe<{ fuera: boolean }[]>(
-        `SELECT o."created_at" < plan_inicio_ciclo(g."plan_ciclo_ancla_at", now()::timestamp)
+        `SELECT o."created_at" < plan_inicio_ciclo(g."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))
                 AND o."created_at" >= g."plan_ciclo_ancla_at" AS fuera
            FROM "orden" o JOIN "organizacion" g ON g."id" = o."organizacion_id" WHERE o."id" = $1`,
         vieja,
@@ -308,8 +308,8 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
       const insertar = () =>
         tx.$executeRawUnsafe(
           `INSERT INTO "orden" ("id", "num_remision", "estatus_id", "destinatario", "telefono_dest", "tienda_id", "zona_id",
-                                "provincia_id", "canton_id", "producto", "updated_at")
-           VALUES ($1, $2, $3, 'Destinatario SL-24', '88880000', $4, $5, $6, $7, 'Caja', now())`,
+                                "provincia_id", "canton_id", "producto", "updated_at", "created_at")
+           VALUES ($1, $2, $3, 'Destinatario SL-24', '88880000', $4, $5, $6, $7, 'Caja', now(), now() AT TIME ZONE 'UTC')`,
           randomUUID(),
           `SL24-${randomUUID().slice(0, 12)}`,
           a.fks.estatusId,
@@ -341,8 +341,8 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
       const aMano = await capturar(tx, () =>
         tx.$executeRawUnsafe(
           `INSERT INTO "orden" ("id", "num_remision", "estatus_id", "destinatario", "telefono_dest", "tienda_id", "zona_id",
-                                "provincia_id", "canton_id", "producto", "updated_at")
-           VALUES ($1, $2, $3, 'x', '88880000', $4, $5, $6, $7, 'Caja', now())`,
+                                "provincia_id", "canton_id", "producto", "updated_at", "created_at")
+           VALUES ($1, $2, $3, 'x', '88880000', $4, $5, $6, $7, 'Caja', now(), now() AT TIME ZONE 'UTC')`,
           randomUUID(),
           `SL24-${randomUUID().slice(0, 12)}`,
           a.fks.estatusId,
@@ -384,7 +384,7 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
       const propio = await tx.$queryRawUnsafe<{ maximo: number; usados: number }[]>(`SELECT * FROM plan_cupo_ordenes($1)`, a.id);
       const deOtra = sqlstateDe(await capturar(tx, () => tx.$queryRawUnsafe(`SELECT * FROM plan_cupo_ordenes($1)`, b.id)));
       const conteoDirecto = sqlstateDe(
-        await capturar(tx, () => tx.$queryRawUnsafe(`SELECT plan_uso_ordenes($1, now()::timestamp - interval '1 year')`, a.id)),
+        await capturar(tx, () => tx.$queryRawUnsafe(`SELECT plan_uso_ordenes($1, (now() AT TIME ZONE 'UTC') - interval '1 year')`, a.id)),
       );
       await comoApp(tx, sinPlan.id);
       const vacio = await tx.$queryRawUnsafe<unknown[]>(`SELECT * FROM plan_cupo_ordenes($1)`, sinPlan.id);
@@ -421,5 +421,60 @@ describeSiHayBase("SL-24 — tope de órdenes por ciclo en la base (R14, R18, R1
     expect(r.deA).toEqual({ maximo: 5, usados: 2 });
     expect(r.deB).toEqual({ maximo: 5, usados: 1 });
     expect(r.vacio).toBeNull();
+  });
+
+  it("R19/R20 (zona horaria, decisión 2026-10-28): con la sesión en America/Bogota, una orden de 3 h antes del inicio del ciclo no cuenta y una de después sí", async () => {
+    // Las columnas son `TIMESTAMP` sin zona y Prisma escribe `created_at` en UTC. El ancla la escribe
+    // el `asignar` REAL y el ciclo lo corta el trigger REAL; si alguno usara `now()::timestamp` (la
+    // hora local de la sesión, UTC−5 aquí), el ciclo empezaría 5 h antes y la orden vieja contaría.
+    const r = await revertida(base, async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL TimeZone = 'America/Bogota'`);
+      const [{ zona, desfase }] = await tx.$queryRawUnsafe<{ zona: string; desfase: number }[]>(
+        `SELECT current_setting('TimeZone') AS zona,
+                EXTRACT(EPOCH FROM (now() AT TIME ZONE 'UTC') - now()::timestamp)::int / 3600 AS desfase`,
+      );
+      const a = await empresa(tx);
+      // La vieja: una orden de verdad, creada sin plan y llevada a 3 h antes de ahora (en UTC, como
+      // la escribiría Prisma hace 3 h).
+      const [vieja] = ids(await alta(tx, a, 1));
+      await tx.$executeRawUnsafe(
+        `UPDATE "orden" SET "created_at" = (now() AT TIME ZONE 'UTC') - interval '3 hours' WHERE "id" = $1`,
+        vieja,
+      );
+      const plan = await crearPlan(tx, { ordenes: 1 });
+      const asignado = await planesEnTx(tx).asignar(a.id, plan, randomUUID());
+      await controles(tx, a.id, plan);
+      const [{ anclaEnUtc, viejaAntes }] = await tx.$queryRawUnsafe<{ anclaEnUtc: boolean; viejaAntes: boolean }[]>(
+        `SELECT g."plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC')::timestamp(3) AS "anclaEnUtc",
+                o."created_at" < g."plan_ciclo_ancla_at" AS "viejaAntes"
+           FROM "organizacion" g JOIN "orden" o ON o."organizacion_id" = g."id"
+          WHERE g."id" = $1 AND o."id" = $2`,
+        a.id,
+        vieja,
+      );
+
+      const despues = await alta(tx, a, 1);
+      const nueva = ids(despues);
+      const [{ nuevaDentro }] = await tx.$queryRawUnsafe<{ nuevaDentro: boolean }[]>(
+        `SELECT o."created_at" >= g."plan_ciclo_ancla_at" AS "nuevaDentro"
+           FROM "orden" o JOIN "organizacion" g ON g."id" = o."organizacion_id" WHERE o."id" = $1`,
+        nueva[0],
+      );
+      const alTope = tope(await alta(tx, a, 1)).details;
+      await comoApp(tx, a.id);
+      const cupo = await new CupoPlanRepository(tx).cupoOrdenes();
+      return { zona, desfase, asignado, anclaEnUtc, viejaAntes, nueva: nueva.length, nuevaDentro, alTope, cupo };
+    });
+    // Control de no vacuidad: la sesión SÍ está 5 h detrás de UTC; si no, el caso no distinguiría nada.
+    expect(r.zona).toBe("America/Bogota");
+    expect(r.desfase).toBe(5);
+    expect(r.asignado).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.anclaEnUtc).toBe(true);
+    expect(r.viejaAntes).toBe(true);
+    // La de después cuenta y llena el cupo de 1; la vieja no ocupa nada.
+    expect(r.nueva).toBe(1);
+    expect(r.nuevaDentro).toBe(true);
+    expect(r.alTope).toMatchObject({ maximo: 1, usados: 1, pedidas: 1 });
+    expect(r.cupo).toEqual({ maximo: 1, usados: 1 });
   });
 });

@@ -153,8 +153,8 @@ async function crearOrden(): Promise<void> {
   const id = randomUUID();
   await db.query(
     `INSERT INTO "orden" ("id", "num_remision", "estatus_id", "destinatario", "telefono_dest", "tienda_id", "zona_id",
-       "provincia_id", "canton_id", "producto", "updated_at", "organizacion_id")
-     VALUES ($1, $2, $3, 'SL24', '88887777', $4, $5, $6, $7, 'Caja', now(), $8)`,
+       "provincia_id", "canton_id", "producto", "updated_at", "organizacion_id", "created_at")
+     VALUES ($1, $2, $3, 'SL24', '88887777', $4, $5, $6, $7, 'Caja', now(), $8, now() AT TIME ZONE 'UTC')`,
     [id, `SL24-IV-${id.slice(0, 8)}`, fks.estatusId, fks.tiendaId, fks.zonaId, fks.provinciaId, fks.cantonId, empresaA],
   );
 }
@@ -170,7 +170,7 @@ async function asignarPlanConTope(maximo: number): Promise<string> {
     [planId, `SL24 iv ${planId.slice(0, 8)}`, maximo],
   );
   await db.query(
-    `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = now()::timestamp - interval '1 hour' WHERE "id" = $2`,
+    `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE "id" = $2`,
     [planId, empresaA],
   );
   return planId;
@@ -426,7 +426,7 @@ describeSiHayBase("SL-24 — planes, topes y cambio programado de ida y vuelta (
     await db.query(
       `INSERT INTO "plan_cambio_programado" ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar",
          "actor_usuario_id", "actor_nombre")
-       VALUES ($1, $2, now()::timestamp + interval '10 days', '{}'::jsonb, '[]'::jsonb, $3, 'Superadmin SL24')`,
+       VALUES ($1, $2, (now() AT TIME ZONE 'UTC') + interval '10 days', '{}'::jsonb, '[]'::jsonb, $3, 'Superadmin SL24')`,
       [randomUUID(), planId, randomUUID()],
     );
 

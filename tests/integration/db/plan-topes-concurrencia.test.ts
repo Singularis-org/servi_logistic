@@ -89,13 +89,16 @@ async function sembrarEmpresa(): Promise<Empresa> {
   return e;
 }
 
-/** Un alta de una orden por SQL a mano con `servi_app`, dentro de `tx`. */
+/**
+ * Un alta de una orden por SQL a mano con `servi_app`, dentro de `tx`. `created_at` en UTC explícito,
+ * como lo escribe Prisma: el DEFAULT `CURRENT_TIMESTAMP` es la hora local de la sesión.
+ */
 async function insertar(tx: TxDeTest, e: Empresa): Promise<void> {
   await comoApp(tx, e.id);
   await tx.$executeRawUnsafe(
     `INSERT INTO "orden" ("id", "num_remision", "estatus_id", "destinatario", "telefono_dest", "tienda_id", "zona_id",
-                          "provincia_id", "canton_id", "producto", "updated_at")
-     VALUES ($1, $2, $3, 'Destinatario SL-24', '88880000', $4, $5, $6, $7, 'Caja', now())`,
+                          "provincia_id", "canton_id", "producto", "updated_at", "created_at")
+     VALUES ($1, $2, $3, 'Destinatario SL-24', '88880000', $4, $5, $6, $7, 'Caja', now(), now() AT TIME ZONE 'UTC')`,
     randomUUID(),
     `SL24C-${RUN}-${randomUUID().slice(0, 8)}`,
     geo.estatusId,

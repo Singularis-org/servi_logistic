@@ -255,7 +255,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const ciclo = async () =>
         tx.$queryRaw<{ id: string; ancla: Date; uso: number }[]>`
           SELECT o."id", o."plan_ciclo_ancla_at" AS "ancla",
-                 plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", now()::timestamp)) AS "uso"
+                 plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))) AS "uso"
             FROM "organizacion" o WHERE o."plan_id" = ${p.planId} ORDER BY o."id"`;
       const cicloAntes = await ciclo();
       await p.programar("2026-11-15", {

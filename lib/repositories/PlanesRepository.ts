@@ -156,7 +156,7 @@ const COLUMNA_DEL_ROL: Record<RolConTope, keyof FilaUso> = {
  */
 async function usoDe(tx: Tx, organizacionId: string): Promise<FilaUso> {
   const [fila] = await tx.$queryRaw<FilaUso[]>`
-    SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo(COALESCE(o."plan_ciclo_ancla_at", now()::timestamp), now()::timestamp)) AS "ordenes",
+    SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo(COALESCE(o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC'), now() AT TIME ZONE 'UTC')) AS "ordenes",
            plan_uso_api_keys(o."id") AS "api_keys",
            plan_uso_rol(o."id", 'maestro'::rol_value) AS "maestro",
            plan_uso_rol(o."id", 'admin'::rol_value) AS "admin",
@@ -570,8 +570,9 @@ export class PlanesRepository implements IPlanesRepository {
         if (excedidos.length > 0) return { estado: "tope_excedido", excedidos };
 
         // P2a: el ancla del primer plan se conserva; sin plan, nace ahora, en la escala de
-        // `orden.created_at` y de los triggers (`now()` de la base, no el reloj de Node).
-        await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now()::timestamp) WHERE "id" = ${organizacionId}`;
+        // `orden.created_at` y de los triggers (`now()` de la base, no el reloj de Node), en UTC
+        // explícito: `now()::timestamp` sería la hora local de la sesión (decisión 2026-10-28).
+        await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC') WHERE "id" = ${organizacionId}`;
         const modulos = await sincronizarModulos(tx, organizacionId, plan.modulos);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).

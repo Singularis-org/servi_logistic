@@ -28,6 +28,11 @@
 -- encadenando ciclos: la suma de `interval` recorta al último día del mes sin arrastrar el recorte
 -- (alta el 31: 28/29 de febrero, 31 de marzo, 30 de abril). Sin zona horaria: la frontera es la hora
 -- del alta. Su gemela en TS es `lib/planes/ciclo.ts > inicioDelCiclo`.
+--
+-- El «ahora» de quien la llama es SIEMPRE `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`
+-- (decisión 2026-10-28): las columnas son `TIMESTAMP` sin zona y Prisma escribe `orden.created_at`
+-- y el ancla en UTC; `now()::timestamp` daría la hora local de la sesión, y con
+-- `TimeZone = America/Bogota` contaría las órdenes de las 5 h anteriores al inicio del ciclo.
 CREATE FUNCTION plan_inicio_ciclo(p_ancla timestamp, p_ahora timestamp) RETURNS timestamp
   LANGUAGE plpgsql IMMUTABLE SET search_path = public, pg_temp AS $$
 DECLARE
@@ -93,7 +98,7 @@ BEGIN
   END IF;
   RETURN QUERY
     SELECT p."tope_ordenes_ciclo",
-           plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", now()::timestamp))
+           plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC')))
       FROM "organizacion" o
       JOIN "plan" p ON p."id" = o."plan_id"
      WHERE o."id" = p_organizacion_id
@@ -121,7 +126,7 @@ BEGIN
     SELECT p."tope_ordenes_ciclo" INTO v_maximo FROM "plan" p WHERE p."id" = v_plan FOR SHARE;
     CONTINUE WHEN v_maximo IS NULL;
     PERFORM pg_advisory_xact_lock(24, hashtext(v_org));
-    v_total := plan_uso_ordenes(v_org, plan_inicio_ciclo(v_ancla, now()::timestamp));
+    v_total := plan_uso_ordenes(v_org, plan_inicio_ciclo(v_ancla, now() AT TIME ZONE 'UTC'));
     SELECT count(*)::integer INTO v_pedidas FROM "nuevas" n
      WHERE n."organizacion_id" = v_org AND n."deleted_at" IS NULL;
     IF v_total > v_maximo THEN

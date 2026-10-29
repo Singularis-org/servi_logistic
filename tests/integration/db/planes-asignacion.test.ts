@@ -157,7 +157,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       // `now()` es el instante de la transacción del caso: el ancla es exactamente ese, en la escala
       // de los triggers (y no el reloj de Node).
       const [{ igual }] = await tx.$queryRawUnsafe<{ igual: boolean }[]>(
-        `SELECT "plan_ciclo_ancla_at" = now()::timestamp(3) AS igual FROM "organizacion" WHERE "id" = $1`,
+        `SELECT "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC')::timestamp(3) AS igual FROM "organizacion" WHERE "id" = $1`,
         org,
       );
       const segunda = await c.asignar(org, dos);

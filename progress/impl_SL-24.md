@@ -899,3 +899,76 @@ Las dos: 0 failed, 0 skipped, 0 flaky (18 = 10 de `plataforma-vacia` por `depend
 **Hallazgo (para el leader/reviewer, sin arreglar)**: el ancla del ciclo (`now()::timestamp`) y `orden.created_at` (UTC desde Prisma) solo están en la misma escala si la sesión de Postgres está en UTC. En una base con otra `TimeZone` (la local de desarrollo: `America/Bogota`), las órdenes de las últimas 5 h antes de asignar el plan cuentan en el primer ciclo y el tope se dispara antes. CI (`postgres:17`) y Supabase van en UTC, por eso no se ve allí. Arreglo probable: `now() AT TIME ZONE 'UTC'` en lugar de `now()::timestamp` en `20261027130200` (y en `PlanesRepository`), o fijar `TimeZone=UTC` en la conexión; requiere decisión de diseño y migración.
 
 Veredicto T9: `declare` arreglado y E2E en verde dos veces seguidas (con la sesión en UTC); queda abierto el hallazgo de zona horaria del ancla.
+
+## Zona horaria (decisión 2026-10-28)
+
+Decisión de Camilo (`progress/features/SL-24.md > Decisiones`): el ciclo se corta en UTC explícito
+en la base, sin fijar la conexión. Cierra el hallazgo de T9.
+
+**Tipos comprobados.** `organizacion.plan_ciclo_ancla_at`, `orden.created_at` y
+`plan_cambio_programado.vigente_desde` son `TIMESTAMP(3)` sin zona (`20261027130000`,
+`20260709130100`, `20261028120000`). Prisma los escribe en UTC; `now()::timestamp` da la hora local
+de la sesión. El reemplazo correcto para `timestamp` sin zona es `now() AT TIME ZONE 'UTC'`.
+
+**Qué cambió.**
+- `db/migrations/20261027130200_plan_topes_triggers/migration.sql`: `plan_cupo_ordenes` y
+  `plan_tope_ordenes` llaman a `plan_inicio_ciclo(ancla, now() AT TIME ZONE 'UTC')` (antes
+  `now()::timestamp`); comentario de la regla junto a `plan_inicio_ciclo`. Firmas iguales: el
+  `down.sql` no cambia. `plan_inicio_ciclo`, `plan_uso_*` y los triggers de usuarios/API keys no
+  usan el reloj.
+- `lib/repositories/PlanesRepository.ts`: `usoDe` (el COALESCE y el «ahora») y el ancla de
+  `asignar` (`COALESCE(ancla, now() AT TIME ZONE 'UTC')`).
+- Sin cambios (revisados): `20261027130000_plan` y `20261028120000_plan_cambio_programado` solo
+  tienen `DEFAULT CURRENT_TIMESTAMP` en `created_at`/`updated_at`, que ningún corte de ciclo lee;
+  `CupoPlanRepository` llama a `plan_cupo_ordenes` (arreglada en la función); `lib/planes/ciclo.ts`
+  ya trabaja en componentes UTC; `jobs-cambio-plan.ts` compara `Date` de Node con
+  `vigente_desde` por Prisma (UTC en los dos lados).
+- Tests de SL-24 que escribían o comparaban con `now()::timestamp` pasan a UTC explícito:
+  `_fixtures/planes.ts > asignarPlan`, `plan-topes-ordenes` (R19 ciclo anterior, R8),
+  `planes-asignacion` (ancla = `(now() AT TIME ZONE 'UTC')::timestamp(3)`),
+  `planes-cambio-programado`, `migracion-sl24-ida-y-vuelta`.
+- Los INSERT de órdenes por SQL a mano de los tests (`plan-topes-concurrencia > insertar`,
+  `plan-topes-ordenes` R18 y §4.1, `migracion-sl24-ida-y-vuelta > crearOrden`) llevan
+  `created_at = now() AT TIME ZONE 'UTC'`. Sin eso fallaban 5 casos: el DEFAULT
+  `CURRENT_TIMESTAMP` de `orden.created_at` es la hora LOCAL de la sesión (5 h antes en Bogotá) y
+  quedaba antes del ancla de una hora del fixture.
+- `lib/db/excepciones-aislamiento.ts`: solo el motivo de `PlanesRepository` (lee también los
+  maestros activos destinatarios de los correos del cambio, R41/R45).
+
+**Residuo (para el leader, sin arreglar):** una orden insertada por SQL a mano SIN `created_at`
+en una sesión que no está en UTC toma la hora local por el DEFAULT y, durante las 5 primeras horas
+del ciclo, no cuenta. Las rutas de la app escriben por Prisma (UTC) y CI/Supabase van en UTC.
+Arreglarlo es cambiar el DEFAULT de `orden.created_at` (tabla y `schema.prisma` fuera de SL-24).
+Además `specs/SL-24-planes-y-limites/design.md:258` sigue diciendo `now()::timestamp`: lo
+actualiza el spec_author.
+
+**Base `servi_logistic_sl24`.** Down de `20261028120100`, `20261028120000`, `20261027130200` (en
+ese orden), sus filas borradas de `_prisma_migrations`, `prisma migrate deploy` → «All migrations
+have been successfully applied.»; `prisma migrate diff --from-config-datasource --to-schema
+db/schema.prisma --script` → `-- This is an empty migration.` (drift vacío). `SHOW TimeZone` de la
+base: `America/Bogota`.
+
+**Test nuevo** (`tests/integration/db/plan-topes-ordenes.test.ts`, «R19/R20 (zona horaria, decisión
+2026-10-28)…»): `SET LOCAL TimeZone = 'America/Bogota'` (control: zona y desfase de 5 h); una orden
+real llevada a `UTC − 3 h`, plan de tope 1 asignado por el `PlanesRepository.asignar` REAL; el ancla
+es `now() AT TIME ZONE 'UTC'`, la vieja queda antes; el alta de después entra y cuenta
+(`created_at >= ancla`), la siguiente se rechaza con `usados: 1`, y `CupoPlanRepository` da
+`{ maximo: 1, usados: 1 }`.
+
+**Mutación.** Restaurado `now()::timestamp` en la migración y en `PlanesRepository`, migraciones
+re-desplegadas → ROJO: `Error: el alta falló: SL024 tope_plan {"tope": "ordenes", "maximo": 1,
+"usados": 1, "pedidas": 1}` (la orden de 3 h antes contaba). Revertido, re-desplegado, drift vacío.
+
+**Salida real.**
+- Tests (`vitest run` de plan-ciclo, plan-topes-ordenes, plan-topes-usuarios, plan-topes-api-keys,
+  plan-topes-concurrencia, planes-asignacion, planes-cambio-programado, planes-cambio-correos,
+  migracion-sl24-ida-y-vuelta, unit ciclo-plan, carga-composition-root-cupo,
+  bulk-orden-service.tope-plan, guardias planes-sin-seed y planes-sin-borrado): `Test Files 14
+  passed (14)`, `Tests 136 passed (136)`, 0 skipped.
+- Guardias que leen `excepciones-aislamiento.ts` (plataforma-solo-en-lista, sql-a-mano-por-empresa,
+  storage-solo-por-adaptador, integracion-enrutado): `Test Files 4 passed (4)`, `Tests 37 passed (37)`.
+- `eslint` sobre los 8 archivos TS tocados: sin salida (0 problemas).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+
+Veredicto: ciclo y ancla en UTC explícito en la base, test nuevo verde y rojo bajo mutación; queda el
+residuo del DEFAULT local de `orden.created_at` para SQL a mano.
