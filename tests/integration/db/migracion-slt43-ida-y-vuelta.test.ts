@@ -163,7 +163,8 @@ async function uno(consulta: string, valores: unknown[] = []): Promise<unknown> 
 
 async function etiquetasDe(enumerado: string): Promise<string[]> {
   const { rows } = await db.query(
-    `SELECT e.enumlabel AS l FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = $1
+    `SELECT e.enumlabel AS l FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+      JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = $1 AND n.nspname = 'public'
       ORDER BY e.enumsortorder`,
     [enumerado],
   );
@@ -314,7 +315,7 @@ describeSiHayBase("SLT-43 — geografía jerárquica de ida y vuelta, con el scr
     const validado = await correrScript({ modo: "validar", base: BASE });
     expect(validado.codigo, validado.salida).toBe(0);
     expect(
-      await uno(`SELECT count(*)::int FROM pg_constraint WHERE conname LIKE '%nodo_geografico_id_fkey' AND convalidated`),
+      await uno(`SELECT count(*)::int FROM pg_constraint WHERE conname LIKE '%nodo_geografico_id_fkey' AND convalidated AND connamespace = 'public'::regnamespace`),
     ).toBe(3);
 
     expect(diferencias(await datos(), datosAntes), "el script movió datos viejos").toEqual([]);

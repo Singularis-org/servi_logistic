@@ -308,7 +308,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         expect(barrio?.cantonId).toBe(primero);
       });
       const [trigger] = await prisma.$queryRawUnsafe<{ tgenabled: string }[]>(
-        `SELECT "tgenabled"::text AS "tgenabled" FROM "pg_trigger" WHERE "tgname" = 'canton_sincroniza_nodo_geografico'`,
+        `SELECT t."tgenabled"::text AS "tgenabled" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" n ON n."oid" = c."relnamespace" WHERE t."tgname" = 'canton_sincroniza_nodo_geografico' AND n."nspname" = 'public'`,
       );
       expect(trigger?.tgenabled).toBe("O");
     });

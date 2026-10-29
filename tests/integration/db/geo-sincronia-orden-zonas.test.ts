@@ -134,7 +134,7 @@ describeSiHayBase("SLT-43 — nodo de la orden y de las zonas (R20, R21)", () =>
         e.ordenSinDistritoId,
       );
       const [col] = await tx.$queryRawUnsafe<{ is_nullable: string }[]>(
-        `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'orden' AND column_name = 'canton_id'`,
+        `SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orden' AND column_name = 'canton_id'`,
       );
       return { estado, nullable: col?.is_nullable };
     });
@@ -247,6 +247,7 @@ describeSiHayBase("SLT-43 — nodo de la orden y de las zonas (R20, R21)", () =>
         `SELECT conname, convalidated FROM pg_constraint
           WHERE conname IN ('orden_nodo_geografico_id_fkey', 'zona_distrito_nodo_geografico_id_fkey',
                             'distrito_zona_especial_nodo_geografico_id_fkey')
+            AND connamespace = 'public'::regnamespace
           ORDER BY conname`,
       );
       return { detalles, triggers, fks };
@@ -262,7 +263,9 @@ describeSiHayBase("SLT-43 — nodo de la orden y de las zonas (R20, R21)", () =>
 
   it("los triggers que los casos apagan siguen activos tras revertir", async () => {
     const filas = await base.$queryRawUnsafe<{ tgname: string; tgenabled: string }[]>(
-      `SELECT tgname, tgenabled::text AS tgenabled FROM pg_trigger WHERE tgname = ANY($1::text[]) ORDER BY tgname`,
+      `SELECT t.tgname, t.tgenabled::text AS tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE t.tgname = ANY($1::text[]) AND n.nspname = 'public' ORDER BY t.tgname`,
       TRIGGERS_SLT43,
     );
     expect(filas).toEqual([...TRIGGERS_SLT43].sort().map((tgname) => ({ tgname, tgenabled: "O" })));

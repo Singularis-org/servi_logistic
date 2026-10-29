@@ -50,7 +50,7 @@ async function nombreDeLaBase(tx: TxDeTest): Promise<string> {
 
 async function fksValidadas(tx: TxDeTest): Promise<Record<string, boolean>> {
   const filas = await tx.$queryRawUnsafe<{ conname: string; convalidated: boolean }[]>(
-    `SELECT conname, convalidated FROM pg_constraint WHERE conname = ANY($1::text[])`,
+    `SELECT conname, convalidated FROM pg_constraint WHERE conname = ANY($1::text[]) AND connamespace = 'public'::regnamespace`,
     FKS_SIN_VALIDAR.map((f) => f.restriccion),
   );
   return Object.fromEntries(filas.map((f) => [f.conname, f.convalidated]));

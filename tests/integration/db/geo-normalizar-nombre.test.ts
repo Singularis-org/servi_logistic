@@ -50,7 +50,7 @@ describeSiHayBase("SLT-43 R10 — geo_normalizar_nombre = normalizeName", () => 
 
   it("es IMMUTABLE: puede respaldar el único de hermanos", async () => {
     const [f] = await base.$queryRawUnsafe<{ volatilidad: string }[]>(
-      `SELECT provolatile::text AS volatilidad FROM pg_proc WHERE proname = 'geo_normalizar_nombre'`,
+      `SELECT provolatile::text AS volatilidad FROM pg_proc WHERE proname = 'geo_normalizar_nombre' AND pronamespace = 'public'::regnamespace`,
     );
     expect(f?.volatilidad).toBe("i");
   });

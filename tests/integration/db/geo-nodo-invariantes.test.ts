@@ -266,7 +266,7 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
   it("R11: hay un índice GIN sobre `ruta` y la consulta de los nodos bajo un ancestro lo usa", async () => {
     const r = await revertida(base, async (tx) => {
       const indices = await tx.$queryRawUnsafe<{ indexdef: string }[]>(
-        `SELECT indexdef FROM pg_indexes WHERE tablename = 'nodo_geografico' AND indexname = 'nodo_geografico_ruta_idx'`,
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'nodo_geografico' AND indexname = 'nodo_geografico_ruta_idx'`,
       );
       const t = await paisConTipos(tx, "XA");
       const a = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A ${sufijo()}` });
