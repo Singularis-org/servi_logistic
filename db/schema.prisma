@@ -5423,6 +5423,8 @@ model Pais {
   historialPlataforma HistorialPlataforma[]
   /// SLT-43 (R2, R3): los tres tipos de nivel; los crea y actualiza el trigger `pais_tipos_de_nivel`.
   tiposDeNivel        TipoNivelGeografico[]
+  /// SLT-43 (R4): los nodos de la geografía jerárquica del país.
+  nodosGeograficos    NodoGeografico[]
 
   @@map("pais")
 }
@@ -5443,13 +5445,61 @@ model TipoNivelGeografico {
   codigoHeredaPrefijo Boolean  @default(false) @map("codigo_hereda_prefijo")
   createdAt           DateTime @default(now()) @map("created_at")
 
-  pais Pais @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  /// Cascade (enmienda 2026-10-29): el tipo no vive sin su país. Un país con nodos sigue sin poder
+  /// borrarse: los nodos lo impiden con RESTRICT.
+  pais  Pais             @relation(fields: [paisId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  nodos NodoGeografico[]
 
   @@unique([paisId, clave])
   /// Destino de la FK compuesta `(tipo_id, pais_id)` de `nodo_geografico` (R6).
   @@unique([id, paisId])
   @@index([paisId])
   @@map("tipo_nivel_geografico")
+}
+
+// SLT-43 (design §2.2; R4–R12) — la geografía jerárquica, de PLATAFORMA como `provincia`. En SLT-43 la
+// app no la escribe ni la lee: la llena la migración y la mantiene la sincronía desde
+// `provincia`/`canton`/`distrito`, con los mismos ids.
+//
+// Viven solo en el SQL (Prisma no los expresa) y por eso no los ve el diff:
+//   · el único parcial de raíces `(pais_id, nombre_normalizado) WHERE padre_id IS NULL` (R9);
+//   · el trigger `nodo_geografico_invariantes`, que pone `nombre_normalizado` y `ruta` y comprueba la
+//     profundidad (R7, R8), y `nodo_geografico_ruta_descendientes` (R8);
+//   · la RLS de lectura por país y el REVOKE de escritura a `servi_app` (R12).
+model NodoGeografico {
+  id                String   @id @default(uuid())
+  paisId            String   @map("pais_id")
+  tipoId            String   @map("tipo_id")
+  padreId           String?  @map("padre_id")
+  profundidad       Int
+  nombre            String
+  /// Lo pone el trigger con `geo_normalizar_nombre(nombre)`; lo que se mande se pisa (R10).
+  nombreNormalizado String   @map("nombre_normalizado")
+  codigoOficial     String?  @map("codigo_oficial")
+  activo            Boolean  @default(true)
+  /// Ids de la raíz al propio nodo. La pone el trigger (R8). `text[]` porque los ids son TEXT.
+  ruta              String[]
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  pais  Pais                @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  /// FK compuesta: el tipo es del mismo país que el nodo (R6).
+  tipo  TipoNivelGeografico @relation(fields: [tipoId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
+  /// FK compuesta: el padre es del mismo país que el nodo (R5). Con `padre_id` NULL no se comprueba.
+  padre NodoGeografico?     @relation("NodoGeograficoPadre", fields: [padreId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
+  hijos NodoGeografico[]    @relation("NodoGeograficoPadre")
+
+  /// Destino de las FK compuestas de los hijos.
+  @@unique([id, paisId])
+  /// R9: sin hermanos con el mismo nombre normalizado. Las raíces las cubre el único parcial del SQL.
+  @@unique([padreId, nombreNormalizado])
+  /// R9: el código es único por país y tipo (decisión 2026-10-29), no por país.
+  @@unique([paisId, tipoId, codigoOficial])
+  /// R11: `ruta @> ARRAY[$1]` y `$1 = ANY(ruta)`.
+  @@index([ruta], type: Gin)
+  @@index([padreId])
+  @@index([tipoId])
+  @@index([paisId])
+  @@map("nodo_geografico")
 }
 
 // SL-20 (design §2.6) — qué hizo el superadmin sobre países y geografía (D15). De PLATAFORMA: sin

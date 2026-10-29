@@ -27,7 +27,7 @@
   Ajustar cualquier otro mapa exhaustivo que el typecheck señale sobre `HistorialPlataformaEntidad`.
   *Hecho:* `pnpm run typecheck` verde y `tests/unit/types/historial-accion-entidades.test.ts` (R23)
   verde.
-- [ ] **T1.3** Migración `20261029120100_tipo_nivel_geografico` + `down.sql` (design §2.1): tabla,
+- [x] **T1.3** Migración `20261029120100_tipo_nivel_geografico` + `down.sql` (design §2.1): tabla,
   únicos, FK, RLS, política, `REVOKE`, llenado de todos los países y trigger `pais_tipos_de_nivel`.
   Modelo `TipoNivelGeografico` en `schema.prisma` y en `MODELOS_DE_PLATAFORMA`. *Hecho:* diff vacío,
   guardia `organizacion-en-modelos` verde y `geo-tipo-nivel.test.ts` (R1–R3) verde.
@@ -37,7 +37,7 @@
 - [x] **T2.1** Función `geo_normalizar_nombre` y su test `geo-normalizar-nombre.test.ts` (R10)
   **primero**, antes que la tabla. *Hecho:* idéntico a `normalizeName` en todos los nombres de la base
   de test y en la lista de casos; si no lo es, se para y se avisa (afecta a R9 y R14).
-- [ ] **T2.2** Migración `20261029120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
+- [x] **T2.2** Migración `20261029120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
   comprobaciones previas que abortan (R14), la tabla con `ruta text[]`, los únicos (incluido el
   parcial de raíces y el del código por `(pais_id, tipo_id, codigo_oficial)`), los
   índices (GIN incluido), las FK compuestas, los triggers de invariantes y de descendientes, la RLS y
@@ -47,6 +47,8 @@
   `geo-nodo-rls.test.ts` (R12) verdes.
 - [ ] **T2.3** [P] Fixture `tests/integration/db/_fixtures/geo-43.ts` (país `XA` con códigos libres,
   órdenes con y sin distrito, zonas, filas de `cierre_detail`). *Hecho:* lo usan T3–T6 sin duplicarlo.
+  _(2026-10-29: creado y en uso por `geo-nodo-rls.test.ts`, `geo-nodo-invariantes.test.ts` y
+  `geo-tipo-nivel.test.ts`; se marca cuando T3–T6 lo usen.)_
 
 ## T3 — Sincronía desde la geografía vieja (depende de T2.2)
 

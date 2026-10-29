@@ -1,9 +1,12 @@
 -- SLT-43 (design §2.2, §3; R4–R14) — el nodo geográfico.
 --
--- T2.1 (esta parte, primero): `geo_normalizar_nombre`, la traducción a SQL de `normalizeName`
--- (`lib/utils/normalize.ts`). T2.2 añade aquí, en este orden: las comprobaciones previas de R14, la
--- tabla, sus únicos e índices, las FK compuestas, los triggers de invariantes y de descendientes, la
--- RLS y la copia de la geografía.
+-- En este orden: `geo_normalizar_nombre` (T2.1), las comprobaciones previas de R14, la tabla, sus
+-- únicos e índices, las FK compuestas, los triggers de invariantes y de descendientes, la RLS y la
+-- copia de la geografía. Todo en una transacción: si R14 aborta, no queda nada, tampoco la función.
+--
+-- De PLATAFORMA, como `provincia`: sin `organizacion_id`; la empresa lee solo los nodos de su país y
+-- no escribe ninguno. En SLT-43 la app tampoco escribe aquí como dueño: la llena esta migración y la
+-- mantiene la sincronía desde la geografía vieja (20261029120300).
 --
 -- Solo aditiva (R19). A mano: `db:migrate:create` falla con P3006 en este repo (ver 20261022130000).
 
@@ -29,5 +32,179 @@ CREATE FUNCTION geo_normalizar_nombre(p_nombre text) RETURNS text
              'g'),
            ' ')
 $$;
+
+-- ─── R14: comprobaciones previas ─────────────────────────────────────────────────────────────
+-- Los únicos viejos comparan el nombre tal cual («San José» y «San Jose» conviven); los nuevos, el
+-- normalizado. Si hoy hay choques, la copia fallaría a medias con un 23505 sin decir cuántos: se
+-- cuentan antes y se aborta con las cifras, para que una persona los resuelva en la geografía vieja.
+-- El código no se comprueba: el único viejo por país y nivel es el mismo que el nuevo por país y tipo.
+DO $$
+DECLARE
+  v_provincias int;
+  v_cantones int;
+  v_distritos int;
+BEGIN
+  SELECT count(*) INTO v_provincias FROM (
+    SELECT 1 FROM provincia GROUP BY pais_id, geo_normalizar_nombre(nombre) HAVING count(*) > 1) x;
+  SELECT count(*) INTO v_cantones FROM (
+    SELECT 1 FROM canton GROUP BY provincia_id, geo_normalizar_nombre(nombre) HAVING count(*) > 1) x;
+  SELECT count(*) INTO v_distritos FROM (
+    SELECT 1 FROM distrito GROUP BY canton_id, geo_normalizar_nombre(nombre) HAVING count(*) > 1) x;
+  IF v_provincias + v_cantones + v_distritos > 0 THEN
+    RAISE EXCEPTION 'SLT-43: nombres que chocan al normalizar: % grupos de provincias del mismo pais, % de cantones de la misma provincia, % de distritos del mismo canton',
+      v_provincias, v_cantones, v_distritos
+      USING ERRCODE = 'SLT43';
+  END IF;
+END $$;
+
+-- ─── tabla ───────────────────────────────────────────────────────────────────────────────────
+-- `nombre_normalizado` y `ruta` no tienen DEFAULT: los pone siempre el trigger de invariantes, y el
+-- NOT NULL se comprueba después de él.
+CREATE TABLE "nodo_geografico" (
+    "id" TEXT NOT NULL,
+    "pais_id" TEXT NOT NULL,
+    "tipo_id" TEXT NOT NULL,
+    "padre_id" TEXT,
+    "profundidad" INTEGER NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "nombre_normalizado" TEXT NOT NULL,
+    "codigo_oficial" TEXT,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "ruta" TEXT[] NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "nodo_geografico_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "nodo_geografico_profundidad_check" CHECK ("profundidad" >= 1)
+);
+
+-- Destino de la FK compuesta de los hijos (R5).
+CREATE UNIQUE INDEX "nodo_geografico_id_pais_id_key" ON "nodo_geografico"("id", "pais_id");
+-- R9: sin hermanos con el mismo nombre normalizado.
+CREATE UNIQUE INDEX "nodo_geografico_padre_id_nombre_normalizado_key" ON "nodo_geografico"("padre_id", "nombre_normalizado");
+-- R9: las raíces no tienen padre y el único de arriba no las compara (NULL no compite); este parcial
+-- sí. Prisma no lo expresa: vive solo aquí, como el único parcial de `orden` (294).
+CREATE UNIQUE INDEX "nodo_geografico_raiz_pais_id_nombre_normalizado_key" ON "nodo_geografico"("pais_id", "nombre_normalizado")
+  WHERE "padre_id" IS NULL;
+-- R9: el código es único por país y tipo (decisión 2026-10-29), como el único por país y nivel de
+-- SL-20: una provincia «1» y un cantón «1» de un país con código libre siguen conviviendo.
+CREATE UNIQUE INDEX "nodo_geografico_pais_id_tipo_id_codigo_oficial_key" ON "nodo_geografico"("pais_id", "tipo_id", "codigo_oficial");
+-- R11: `ruta @> ARRAY[$1]` (los nodos bajo un ancestro) lo resuelve el GIN.
+CREATE INDEX "nodo_geografico_ruta_idx" ON "nodo_geografico" USING GIN ("ruta");
+CREATE INDEX "nodo_geografico_padre_id_idx" ON "nodo_geografico"("padre_id");
+CREATE INDEX "nodo_geografico_tipo_id_idx" ON "nodo_geografico"("tipo_id");
+-- Lo usa la política RLS.
+CREATE INDEX "nodo_geografico_pais_id_idx" ON "nodo_geografico"("pais_id");
+
+-- R5 y R6: el país del padre y el del tipo los garantizan FK compuestas, no el trigger: son
+-- declarativas y no tienen carrera entre transacciones (design §8.3). Con `padre_id` NULL la del padre
+-- no se comprueba (MATCH SIMPLE). Todo RESTRICT: un país, un tipo o un padre con nodos no se borran.
+ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_pais_id_fkey"
+  FOREIGN KEY ("pais_id") REFERENCES "pais"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_tipo_id_pais_id_fkey"
+  FOREIGN KEY ("tipo_id", "pais_id") REFERENCES "tipo_nivel_geografico"("id", "pais_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_padre_id_pais_id_fkey"
+  FOREIGN KEY ("padre_id", "pais_id") REFERENCES "nodo_geografico"("id", "pais_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- ─── R7, R8, R10: invariantes de cada fila ───────────────────────────────────────────────────
+-- Pisa `nombre_normalizado` y `ruta` con lo que traiga la fila: los dos se derivan, no se eligen.
+-- Con profundidad estricta no hace falta buscar ciclos: colgar un nodo de un descendiente suyo rompe
+-- la profundidad. Con un padre inexistente no se lanza aquí: la FK compuesta lo rechaza con su nombre
+-- (23503), el mismo error que un tipo de otro país.
+CREATE FUNCTION nodo_geografico_invariantes() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_profundidad int;
+  v_ruta text[];
+BEGIN
+  NEW.nombre_normalizado := geo_normalizar_nombre(NEW.nombre);
+
+  IF NEW.padre_id IS NULL THEN
+    IF NEW.profundidad <> 1 THEN
+      RAISE EXCEPTION 'nodo_geografico %: una raiz tiene profundidad 1, no %', NEW.id, NEW.profundidad
+        USING ERRCODE = 'SLT43';
+    END IF;
+    NEW.ruta := ARRAY[NEW.id];
+    RETURN NEW;
+  END IF;
+
+  SELECT n.profundidad, n.ruta INTO v_profundidad, v_ruta
+    FROM nodo_geografico n WHERE n.id = NEW.padre_id;
+  IF NOT FOUND THEN
+    NEW.ruta := ARRAY[NEW.id];
+    RETURN NEW;
+  END IF;
+  IF NEW.profundidad <> v_profundidad + 1 THEN
+    RAISE EXCEPTION 'nodo_geografico %: con un padre de profundidad % le toca %, no %',
+      NEW.id, v_profundidad, v_profundidad + 1, NEW.profundidad
+      USING ERRCODE = 'SLT43';
+  END IF;
+  NEW.ruta := v_ruta || NEW.id;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER "nodo_geografico_invariantes"
+  BEFORE INSERT OR UPDATE OF "padre_id", "profundidad", "nombre", "ruta", "pais_id" ON "nodo_geografico"
+  FOR EACH ROW EXECUTE FUNCTION nodo_geografico_invariantes();
+
+-- ─── R8: la ruta de los descendientes ────────────────────────────────────────────────────────
+-- Al cambiar de padre, la ruta de todo el subárbol cambia de prefijo. Se rehace un nivel por
+-- sentencia, de arriba abajo, y no todo el subárbol en una: el trigger de invariantes de cada fila
+-- lee la ruta de su padre, y dentro de una misma sentencia el orden de las filas no está garantizado
+-- (un nieto podría leer la ruta vieja de su padre). La profundidad estricta hace que cada nivel sea
+-- una sola profundidad. `ruta @> ARRAY[id]` usa el GIN. El UPDATE solo nombra `ruta`: no vuelve a
+-- disparar este trigger, que es de `padre_id`.
+-- Hoy ninguna vía de la app mueve un nodo de padre; existe para el SQL a mano y para SLT-46.
+CREATE FUNCTION nodo_geografico_ruta_descendientes() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_profundidad int := NEW.profundidad;
+  v_filas int;
+BEGIN
+  LOOP
+    v_profundidad := v_profundidad + 1;
+    UPDATE nodo_geografico h
+       SET ruta = p.ruta || h.id
+      FROM nodo_geografico p
+     WHERE h.padre_id = p.id
+       AND h.profundidad = v_profundidad
+       AND h.ruta @> ARRAY[NEW.id];
+    GET DIAGNOSTICS v_filas = ROW_COUNT;
+    EXIT WHEN v_filas = 0;
+  END LOOP;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER "nodo_geografico_ruta_descendientes"
+  AFTER UPDATE OF "padre_id" ON "nodo_geografico"
+  FOR EACH ROW WHEN (OLD."ruta" IS DISTINCT FROM NEW."ruta")
+  EXECUTE FUNCTION nodo_geografico_ruta_descendientes();
+
+-- ─── R12: RLS ────────────────────────────────────────────────────────────────────────────────
+-- La empresa lee solo los nodos de su país y no escribe ninguno. Mismo patrón que
+-- `provincia_del_pais` (20261026130200). La tabla nace con CRUD para `servi_app` (ALTER DEFAULT
+-- PRIVILEGES de 20261022130000_organizacion_y_rol_app): de ahí el REVOKE.
+ALTER TABLE "nodo_geografico" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "nodo_geografico_del_pais" ON "nodo_geografico" FOR SELECT TO servi_app
+  USING ("pais_id" = (SELECT o."pais_id" FROM "organizacion" o
+                      WHERE o."id" = NULLIF(current_setting('app.organizacion_id', true), '')));
+REVOKE INSERT, UPDATE, DELETE ON "nodo_geografico" FROM servi_app;
+
+-- ─── R13: la copia de la geografía ───────────────────────────────────────────────────────────
+-- Mismos ids, de arriba abajo para que cada padre exista antes que sus hijos. Pasa por el trigger de
+-- invariantes, que pone el nombre normalizado y la ruta. El tipo es el `nivel_N` del país de la fila
+-- (los creó 20261029120100 para todos los países). Las tablas viejas no tienen fecha: `created_at` es
+-- la de esta migración.
+INSERT INTO "nodo_geografico" ("id", "pais_id", "tipo_id", "padre_id", "profundidad", "nombre", "codigo_oficial", "activo")
+SELECT p."id", p."pais_id", t."id", NULL, 1, p."nombre", p."codigo_dta", p."activo"
+  FROM "provincia" p
+  JOIN "tipo_nivel_geografico" t ON t."pais_id" = p."pais_id" AND t."clave" = 'nivel_1';
+
+INSERT INTO "nodo_geografico" ("id", "pais_id", "tipo_id", "padre_id", "profundidad", "nombre", "codigo_oficial", "activo")
+SELECT c."id", c."pais_id", t."id", c."provincia_id", 2, c."nombre", c."codigo_dta", c."activo"
+  FROM "canton" c
+  JOIN "tipo_nivel_geografico" t ON t."pais_id" = c."pais_id" AND t."clave" = 'nivel_2';
+
+INSERT INTO "nodo_geografico" ("id", "pais_id", "tipo_id", "padre_id", "profundidad", "nombre", "codigo_oficial", "activo")
+SELECT d."id", d."pais_id", t."id", d."canton_id", 3, d."nombre", d."codigo_dta", d."activo"
+  FROM "distrito" d
+  JOIN "tipo_nivel_geografico" t ON t."pais_id" = d."pais_id" AND t."clave" = 'nivel_3';
 
 COMMIT;

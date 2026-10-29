@@ -61,7 +61,7 @@ como el resto del esquema.
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | `TEXT` PK | |
-| `pais_id` | `TEXT NOT NULL` FK `pais(id)` `RESTRICT/RESTRICT` | Índice. |
+| `pais_id` | `TEXT NOT NULL` FK `pais(id)` `ON DELETE CASCADE ON UPDATE RESTRICT` (enmienda 2026-10-29) | Índice. |
 | `clave` | `TEXT NOT NULL` | `CHECK (clave ~ '^[a-z0-9_]{1,40}$')`. La migración y la sincronía usan `nivel_1`, `nivel_2`, `nivel_3`. |
 | `nombre_singular`, `nombre_plural` | `TEXT NOT NULL` | Copia de `pais.nivel_N_singular/plural`. |
 | `digitos_codigo` | `INT NULL` | Copia de `pais.digitos_codigo_nivel_N`. |
@@ -69,6 +69,7 @@ como el resto del esquema.
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT now()` | |
 
 - Únicos: `(pais_id, clave)` (R1) y `(id, pais_id)`, destino de la FK compuesta de §2.2 (R6).
+- **Enmienda 2026-10-29 (humano):** ON DELETE CASCADE hacia pais; motivo: el tipo es parte del país y no vive sin él; servi_app no tiene DELETE sobre pais. Solo esta FK: los nodos siguen con RESTRICT, así que un país con geografía sigue sin poder borrarse.
 - El tipo no lleva profundidad: decisión 2 de la épica (una región es un nodo más; el tipo no ata el
   nivel). La sincronía elige el tipo por clave según la tabla vieja de la que viene.
 - **Llenado (R2):** `INSERT … SELECT` desde `pais` con un `CROSS JOIN (VALUES (1),(2),(3))`, para

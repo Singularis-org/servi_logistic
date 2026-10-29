@@ -38,8 +38,11 @@ CREATE UNIQUE INDEX "tipo_nivel_geografico_pais_id_clave_key" ON "tipo_nivel_geo
 CREATE UNIQUE INDEX "tipo_nivel_geografico_id_pais_id_key" ON "tipo_nivel_geografico"("id", "pais_id");
 CREATE INDEX "tipo_nivel_geografico_pais_id_idx" ON "tipo_nivel_geografico"("pais_id");
 
+-- CASCADE (enmienda del humano, 2026-10-29): el tipo es parte del país y no vive sin él, y `servi_app`
+-- no tiene DELETE sobre `pais`. No abre un borrado de país con geografía: los nodos apuntan a `pais` y
+-- a estos tipos con RESTRICT, así que un país con nodos sigue sin poder borrarse.
 ALTER TABLE "tipo_nivel_geografico" ADD CONSTRAINT "tipo_nivel_geografico_pais_id_fkey"
-  FOREIGN KEY ("pais_id") REFERENCES "pais"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+  FOREIGN KEY ("pais_id") REFERENCES "pais"("id") ON DELETE CASCADE ON UPDATE RESTRICT;
 
 -- R12: la empresa lee solo los tipos del país de su empresa y no escribe ninguno. Mismo patrón que
 -- `provincia_del_pais` (20261026130200).

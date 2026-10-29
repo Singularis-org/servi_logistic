@@ -26,6 +26,12 @@ F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), re
 - Pendiente antes de la primera migración: mergear el PR #29 (guardia de migraciones destructivas).
 - 2026-10-29 · `/afinar-feature`: alcance y decisiones cerradas en
   `specs/SLT-43-geo-jerarquica-modelo/requirements.md`.
+- 2026-10-29 · T1.3 (Camilo, opción (a)): `tipo_nivel_geografico.pais_id → pais` con `ON DELETE CASCADE`.
+  Motivo: el tipo es parte del país y no vive sin él; servi_app no tiene DELETE sobre pais. Los nodos
+  siguen con RESTRICT. Origen: la limpieza `DELETE FROM pais` de `geografia-superadmin-sin-empresa` (SL-20)
+  fallaba con 23503; el test de SL-20 no se toca. Enmienda en design §2.1.
+- 2026-10-29 · Guardia `migraciones-destructivas` roja en `dev` por `20261028120000_modulo_wallet_nucleo`
+  (ajena): no se arregla en esta rama; el leader la resuelve con un PR aparte.
 
 ## Modelos (overrides)
 

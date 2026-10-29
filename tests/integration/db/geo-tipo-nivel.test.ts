@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearOrganizacionEnPais, crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { insertarNodo, tiposDeNivel } from "./_fixtures/geo-43";
 import { comoDueno, intentar, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
@@ -12,6 +13,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //   · R3: el alta de un país crea sus tres tipos y un cambio de nombres o dígitos los alcanza, en la
 //     misma transacción (trigger `pais_tipos_de_nivel`).
 //   · R12 (lado de los tipos): una empresa lee solo los de su país y no escribe ninguno (42501).
+//   · FK a `pais` en CASCADE (enmienda del humano, 2026-10-29): un país sin nodos se borra con sus
+//     tipos; con nodos, los nodos lo impiden (RESTRICT).
 //
 // Cada caso corre en una transacción del dueño que se revierte. El de R12 baja a `servi_app` con
 // `comoApp`: con la conexión del dueño ni la RLS ni el REVOKE actúan.
@@ -124,6 +127,27 @@ describeSiHayBase("SLT-43 — tipo_nivel_geografico", () => {
       vacia: "23514",
       paisInexistente: "23503",
     });
+  });
+
+  it("FK a pais en CASCADE (enmienda 2026-10-29): sin nodos, borrar el país borra sus tipos; con nodos, falla (23503)", async () => {
+    const r = await revertida(base, async (tx) => {
+      await crearPaisDePrueba(tx, "XB");
+      const borraSinNodos = await intentar(tx, `DELETE FROM pais WHERE id = 'XB'`);
+      const tiposTrasBorrar = await tiposDe(tx, "XB");
+
+      await crearPaisDePrueba(tx, "XB");
+      await insertarNodo(tx, {
+        paisId: "XB",
+        tipoId: (await tiposDeNivel(tx, "XB")).nivel1,
+        padreId: null,
+        profundidad: 1,
+        nombre: "Región con nodo",
+      });
+      const borraConNodos = await intentar(tx, `DELETE FROM pais WHERE id = 'XB'`);
+      const tiposTrasFallo = await tiposDe(tx, "XB");
+      return { borraSinNodos, tiposTrasBorrar: tiposTrasBorrar.length, borraConNodos, tiposTrasFallo: tiposTrasFallo.length };
+    });
+    expect(r).toEqual({ borraSinNodos: null, tiposTrasBorrar: 0, borraConNodos: "23503", tiposTrasFallo: 3 });
   });
 
   it("R12: una empresa lee solo los tipos de su país y no puede crear, cambiar ni borrar ninguno (42501)", async () => {

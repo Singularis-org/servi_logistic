@@ -19,7 +19,7 @@ Creada el 2026-10-29 con `pg` (no hay `psql`): `CREATE DATABASE logistic_slt43` 
 `…/logistic_slt43?schema=public` y `DIRECT_URL=` vacía, `pnpm exec prisma migrate deploy` y
 `pnpm run db:seed`. El `.env` no se copia al worktree: la URL se exporta en cada comando.
 
-**Ojo para la tanda siguiente:** `20261029120200_nodo_geografico` está aplicada en `logistic_slt43`
+**(Resuelto en la tanda 2.)** `20261029120200_nodo_geografico` estaba aplicada en `logistic_slt43`
 solo con la función de T2.1. Al completarla en T2.2 cambia su checksum: antes de `migrate deploy`,
 `DROP FUNCTION geo_normalizar_nombre(text)` y borrar su fila de `_prisma_migrations` (o recrear la base).
 
@@ -91,3 +91,78 @@ que un país con geografía sigue sin poder borrarse); (b) añadir `tipo_nivel_g
 del test; (c) otra que decida el humano.
 
 **Veredicto:** T1.1, T1.2 y T2.1 hechas; T1.3 implementada según design pero bloqueada por la pregunta.
+
+### Tanda 2 — regresión, T1.3 (enmienda), T2.2, T2.3 (2026-10-29)
+
+**Comprobación de regresión (antes de nada).** `geografia-historico-intacto` y
+`geografia-ordenes-sin-entregar` fallan igual en `origin/dev` (`cbd538b`) sin SLT-43: base aparte
+`logistic_slt43_dev` (migrate deploy + db:seed desde un worktree temporal de `origin/dev`) → 2 suites
+rotas, 16 saltados, «hay DATABASE_URL pero `orden` esta vacia». En `logistic_slt43` con esta rama: lo
+mismo, 2 rotas, 16 saltados, mismo mensaje. **Veredicto: entorno (base sin órdenes), no regresión.**
+El worktree temporal se creó en `%TEMP%\wd43` y no en el scratchpad: allí la ruta a
+`.prisma/client/package.json` pasa de 260 caracteres y Node no lee su `imports` (`ERR_PACKAGE_IMPORT_NOT_DEFINED`).
+Worktree eliminado y base `logistic_slt43_dev` borrada al terminar.
+
+**Archivos creados**
+- `tests/integration/db/_fixtures/geo-43.ts` (T2.3): `tiposDeNivel`, `insertarNodo`/`SQL_INSERTAR_NODO`/
+  `argumentosDeNodo` y `crearEscenarioGeo43` (país `XA`, empresa, provincia «1» y cantón «1», dos
+  distritos, orden con y sin distrito, `zona_distrito`, `distrito_zona_especial`, cierre con dos filas
+  de `cierre_detail`, una con `distrito_nombre` y otra sin él).
+- `tests/integration/db/geo-nodo-invariantes.test.ts` (R4–R9, R11).
+- `tests/integration/db/geo-nodo-rls.test.ts` (R12, lado nodos).
+
+**Archivos modificados**
+- `db/migrations/20261029120100_tipo_nivel_geografico/migration.sql`: FK a `pais` `ON DELETE CASCADE ON
+  UPDATE RESTRICT` (enmienda de Camilo, opción (a)). `down.sql` sin cambios (la FK cae con la tabla).
+- `db/migrations/20261029120200_nodo_geografico/{migration,down}.sql`: completa (design §2.2, §3). La
+  función de T2.1 conserva sus bytes exactos (md5 comparado con el commit `3e871f5`).
+- `db/schema.prisma`: `TipoNivelGeografico.pais` `onDelete: Cascade` y back-relation `nodos`; modelo
+  `NodoGeografico`; `Pais.nodosGeograficos`.
+- `lib/db/modelos-de-negocio.ts`: `NodoGeografico` en `MODELOS_DE_PLATAFORMA` (cabecera 24 → 25).
+- `tests/integration/db/geo-tipo-nivel.test.ts`: caso CASCADE (sin nodos borra los tipos; con nodos 23503).
+- `specs/SLT-43-geo-jerarquica-modelo/tasks.md`: T1.3 y T2.2 `[x]`; T2.3 creado, sin marcar (su criterio
+  es que lo usen T3–T6).
+
+**Decisiones de implementación**
+- Plan A de design §2.2 funciona: la auto-relación `[padreId, paisId]` con `padreId` opcional y `paisId`
+  obligatorio deja `prisma migrate diff` vacío, sin `dbgenerated()`. No hizo falta el plan B.
+- `ruta TEXT[] NOT NULL`: Prisma genera `TEXT[]` sin NOT NULL para `String[]`, pero el diff sale vacío
+  con el NOT NULL del SQL. `nombre_normalizado` y `ruta` sin DEFAULT: los pone siempre el trigger.
+- R14: las comprobaciones van después de crear `geo_normalizar_nombre` (la necesitan) y antes de la
+  tabla; todo en una transacción, así que si abortan no queda nada. SQLSTATE `SLT43` con las tres cifras.
+- R7: SQLSTATE `SLT43`. Con padre inexistente el trigger no lanza: deja que la FK compuesta dé 23503.
+- R8 (descendientes): un `UPDATE` por nivel de profundidad, de arriba abajo, y no uno para todo el
+  subárbol como decía design §2.2. Motivo: el trigger de invariantes de cada fila recalcula la ruta
+  leyendo la de su padre, y dentro de una sentencia el orden de filas no está garantizado (un nieto
+  podría leer la ruta vieja de su padre). Sigue usando el GIN (`ruta @> ARRAY[id]`). El test mueve un
+  nodo con dos niveles por debajo.
+- Copia (R13): 7 provincias, 84 cantones, 494 distritos de CR → 585 nodos, `cardinality(ruta) =
+  profundidad` en los 585.
+
+**Base `logistic_slt43`:** 120100 y 120200 reaplicadas (DROP de la función, el trigger y la tabla de
+tipos + borrado de sus dos filas de `_prisma_migrations`, luego `migrate deploy`).
+
+**Mapa R → test (esta tanda)**
+| R | Test |
+|---|---|
+| R4, R5, R6, R7, R8, R9, R11 | `tests/integration/db/geo-nodo-invariantes.test.ts` |
+| R12 (lado nodos) | `tests/integration/db/geo-nodo-rls.test.ts` |
+| Enmienda FK CASCADE (design §2.1) | `tests/integration/db/geo-tipo-nivel.test.ts` |
+
+**Verificación (salida real, `DATABASE_URL` → `logistic_slt43`)**
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script`: `-- This is an
+  empty migration.`
+- `pnpm run typecheck`: exit 0. `eslint` sobre los 5 TS tocados: «No issues found».
+- `geo-nodo-invariantes` 8/8 · `geo-nodo-rls` 2/2 · `geo-tipo-nivel` 7/7 · `geo-normalizar-nombre` 4/4
+  (21/21).
+- Guardias: `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `plataforma-solo-en-lista`
+  verdes; `migraciones-destructivas` roja solo por `20261028120000_modulo_wallet_nucleo` (ajena; ninguna
+  `202610291*`). 62/63.
+- SL-20 (`geografia-*`, `pais-*`, `carga-division`, `migracion-sl20-ida-y-vuelta`): 19/21 archivos, 217
+  pasados, 16 saltados. Verdes incluidos `geografia-superadmin-sin-empresa` (sin tocarlo) y
+  `carga-division`. Rojos: `geografia-historico-intacto` y `geografia-ordenes-sin-entregar` (entorno, ver
+  arriba).
+- `vitest related` sobre `db/schema.prisma`/`lib/db/modelos-de-negocio.ts` no se corrió: arrastra casi
+  toda la suite de base (visto en la tanda 1).
+
+**Veredicto:** regresión descartada; T1.3 y T2.2 hechas; T2.3 creado y en uso, a marcar cuando lo usen T3–T6.

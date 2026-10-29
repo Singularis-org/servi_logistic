@@ -2,10 +2,10 @@
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
 //   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (24): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
+//   · plataforma (25): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20), el catalogo de planes con su
-//                      rastro (SL-24) y los tipos de nivel geografico (SLT-43).
+//                      rastro (SL-24) y la geografia jerarquica: tipos de nivel y nodos (SLT-43).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
 //                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
 //   · diferidos   (0): tienen ficha propia que decide su aislamiento.
@@ -162,6 +162,7 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // Geografia jerarquica (SLT-43): solo lectura del pais de la empresa; la llenan la migracion y los
   // triggers de sincronia, nunca la app (R37)
   { modelo: "TipoNivelGeografico", tabla: "tipo_nivel_geografico" },
+  { modelo: "NodoGeografico", tabla: "nodo_geografico" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica
