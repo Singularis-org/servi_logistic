@@ -53,6 +53,7 @@ function repoDoble(objetivo: UsuarioPublico | null = SUPERADMIN): IUserRepositor
     findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(objetivo),
     findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn().mockResolvedValue(usuario()),
     restablecerContrasena: vi.fn(),
     updatePasswordHash: vi.fn(),

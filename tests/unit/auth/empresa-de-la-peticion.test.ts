@@ -238,6 +238,20 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     expect(await resolveActorFromSession()).toMatchObject({ rol: "superadmin", organizacionId: null });
   });
 
+  // SLT-32 (decision humana 2026-10-23): sin empresa solo pasa la cuenta de plataforma
+  // (`puedeIniciarSesion`, SL-18 design §9). Una cuenta de empresa que perdio la suya no tiene actor.
+  it("SLT-32: un usuario de rol de empresa sin empresa no obtiene actor", async () => {
+    conCookies({ session: sesionDe({ ...usuarioDe(null), rol: { value: "admin" } }) });
+
+    expect(await resolveActorFromSession()).toBeNull();
+  });
+
+  it("SLT-32: un usuario inactivo no obtiene actor aunque tenga empresa", async () => {
+    conCookies({ session: sesionDe({ ...usuarioDe(EMPRESA_A), estado: "inactivo" }) });
+
+    expect(await resolveActorFromSession()).toBeNull();
+  });
+
   it("isSessionActive valida en plataforma y sigue exigiendo usuario activo", async () => {
     const activa = sesionDe(usuarioDe(EMPRESA_A));
     const bloqueada = sesionDe({ ...usuarioDe(EMPRESA_A), estado: "bloqueado" });
@@ -247,6 +261,31 @@ describe("validacion de sesion en plataforma (R15, design §7)", () => {
     expect(await isSessionActive("sess-inexistente")).toBe(false);
     expect(lecturas.length).toBeGreaterThan(0);
     for (const l of lecturas) expect(l.ctx).toEqual(VALIDAR);
+  });
+
+  // SLT-32 (decision humana 2026-10-23, m1 de la review): una sesion abierta de un usuario de
+  // empresa sin empresa se trata como caducada. La de plataforma (superadmin, SL-32) sigue viva.
+  it("SLT-32: isSessionActive rechaza la sesion de un usuario de empresa sin empresa (null o vacia)", async () => {
+    const sinEmpresa = sesionDe({ ...usuarioDe(null), rol: { value: "admin" } });
+    const empresaVacia = sesionDe({ ...usuarioDe(EMPRESA_A), organizacionId: "" });
+    const conEmpresa = sesionDe(usuarioDe(EMPRESA_A));
+    const plataforma = sesionDe(usuarioDe(null));
+
+    expect(await isSessionActive(sinEmpresa)).toBe(false);
+    expect(await isSessionActive(empresaVacia)).toBe(false);
+    expect(await isSessionActive(conEmpresa)).toBe(true);
+    expect(await isSessionActive(plataforma)).toBe(true);
+
+    // Empresa y rol salen de la MISMA lectura que el estado: una consulta de usuario por validacion.
+    expect(usuarioFindUnique).toHaveBeenCalledTimes(4);
+    for (const [args] of usuarioFindUnique.mock.calls) {
+      expect(args).toMatchObject({
+        select: { estado: true, organizacionId: true, rol: { select: { value: true } } },
+      });
+    }
+    expect(lecturas.map((l) => l.modelo)).toEqual([
+      "Session", "Usuario", "Session", "Usuario", "Session", "Usuario", "Session", "Usuario",
+    ]);
   });
 });
 

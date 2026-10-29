@@ -123,6 +123,11 @@ export class UserRepository implements IUserRepository {
     return this.prisma.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
   }
 
+  async findCuentaPorId(id: string): Promise<CuentaPublica | null> {
+    const fila = await this.prisma.usuario.findUnique({ where: { id }, select: CUENTA_SELECT });
+    return fila ? aCuentaPublica(fila) : null;
+  }
+
   async findCuentasPorEmail(email: string): Promise<CuentaPublica[]> {
     const filas = await this.prisma.usuario.findMany({ where: { email }, select: CUENTA_SELECT });
     return ordenarCuentas(filas.map(aCuentaPublica));

@@ -32,6 +32,7 @@ describe("R23: login de cuenta pendiente", () => {
       findCuentasPorEmailConHash: vi.fn().mockResolvedValue([usuario]),
       findById: vi.fn(),
       findCuentasPorEmail: vi.fn(),
+      findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
       create: vi.fn(),
       listMensajeros: vi.fn().mockResolvedValue([]),
       listMensajerosParaFiltro: vi.fn().mockResolvedValue([]),

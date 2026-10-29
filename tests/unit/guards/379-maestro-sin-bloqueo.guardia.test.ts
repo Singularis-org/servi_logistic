@@ -185,6 +185,7 @@ function elPeorEscenario() {
     findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
     findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn(),
     updatePasswordHash: vi.fn(),
     restablecerContrasena: vi.fn(),
