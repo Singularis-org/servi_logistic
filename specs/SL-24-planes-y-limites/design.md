@@ -196,18 +196,24 @@ CHECK (
 
 ## 3. El ciclo (R20)
 
-- **Ancla.** `plan_ciclo_ancla_at` guarda el instante de la asignación (`CURRENT_TIMESTAMP`, en
-  la misma escala que `orden.created_at`).
+- **Ancla.** `plan_ciclo_ancla_at` guarda el instante de la asignación en UTC
+  (`now() AT TIME ZONE 'UTC'`), en la misma escala que `orden.created_at`.
+- **«Ahora» en UTC (decidido el 2026-10-28).** El ciclo y el ancla se calculan en UTC en la base:
+  `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp` ni `CURRENT_TIMESTAMP` a secas, para no
+  depender de la zona de la sesión. Vale en `plan_cupo_ordenes`, en el trigger `plan_tope_ordenes`
+  y en `PlanesRepository` (`usoDe` y el ancla de `asignar`).
 - **Inicio del ciclo en curso.** Es `ancla + n meses`, con el mayor `n ≥ 0` que no pase de ahora.
   - Se calcula siempre **desde el ancla**, nunca encadenando ciclos: así, un alta el 31 da 28 o 29
     de febrero, 31 de marzo y 30 de abril.
   - La suma de `interval '1 month'` de Postgres ya recorta al último día del mes.
 - **Fin del ciclo.** Es el inicio del siguiente, sin incluirlo. Un alta el día 15 da un ciclo del
   15 al 14.
-- **Sin zona horaria.** La frontera es la misma hora del alta, no la medianoche local. Eso evita
-  depender de una zona horaria que SL-21 todavía no configura por país, y respeta la regla del repo
-  de no meter `AT TIME ZONE` en el SQL (`lib/repositories/FinanzasDiarioRepository.ts:17`). Si el
-  humano prefiere la medianoche local, eso espera a SL-21 (§12, alternativa 4).
+- **Sin zona horaria local.** La frontera es la misma hora del alta, no la medianoche local. Eso
+  evita depender de una zona horaria que SL-21 todavía no configura por país. La regla del repo de
+  no meter `AT TIME ZONE` en el SQL (`lib/repositories/FinanzasDiarioRepository.ts:17`) va contra
+  convertir a una zona local; el `AT TIME ZONE 'UTC'` de arriba solo fija la escala UTC de las
+  columnas `timestamp` (mismo uso que `lib/repositories/HistoricoConversacionesRepository.ts:74`).
+  Si el humano prefiere la medianoche local, eso espera a SL-21 (§12, alternativa 4).
 - **Siempre mensual (P1, cerrada el 2026-10-27).** El anual es solo una forma de precio
   (informativa, R4). No se guarda ninguna periodicidad de suscripción.
 - **Al cambiar de plan, el ancla se conserva (P2a, cerrada)** (§5.2). Así el ciclo es continuo, y
@@ -244,7 +250,7 @@ CHECK (
 | `plan_uso_ordenes(p_organizacion_id text, p_desde timestamp) RETURNS integer` | `count(*)` de `orden` con `organizacion_id = p_organizacion_id AND created_at >= p_desde AND deleted_at IS NULL` (R19). Usa el índice de §2.6 |
 | `plan_uso_rol(p_organizacion_id text, p_rol rol_value) RETURNS integer` | `count(*)` de `usuario` de esa empresa con ese rol y `estado = 'activo'` (R26) |
 | `plan_uso_api_keys(p_organizacion_id text) RETURNS integer` | `count(*)` de `api_key` de esa empresa con `estado = 'activa'` (R35). Las eliminadas no existen: `eliminar` borra la fila |
-| `plan_cupo_ordenes(p_organizacion_id text) RETURNS TABLE (maximo integer, usados integer)` | Lectura previa de §6.1, **sin cerrojos**. Lanza `42501` si el argumento no es `app.organizacion_id`. Sin plan o sin tope de órdenes no devuelve filas. `GRANT EXECUTE … TO servi_app` |
+| `plan_cupo_ordenes(p_organizacion_id text) RETURNS TABLE (maximo integer, usados integer)` | Lectura previa de §6.1, **sin cerrojos**. Lanza `42501` si el argumento no es `app.organizacion_id`. Sin plan o sin tope de órdenes no devuelve filas. El ciclo se calcula con `now() AT TIME ZONE 'UTC'` (§3). `GRANT EXECUTE … TO servi_app` |
 
 ### 4.3 Los triggers
 
@@ -255,7 +261,7 @@ CHECK (
       pasa a la siguiente empresa sin más cerrojos.
    2. `SELECT tope_ordenes_ciclo FROM plan WHERE id = … FOR SHARE`. Sin tope, pasa a la siguiente.
    3. `PERFORM pg_advisory_xact_lock(24, hashtext(<organizacion_id>))`.
-   4. `usados_total := plan_uso_ordenes(org, plan_inicio_ciclo(ancla, now()::timestamp))`.
+   4. `usados_total := plan_uso_ordenes(org, plan_inicio_ciclo(ancla, now() AT TIME ZONE 'UTC'))` (UTC, §3).
    5. `pedidas := count(*)` de `nuevas` de esa empresa con `deleted_at IS NULL`.
    6. Si `usados_total > maximo`, lanza `SL024` con `usados = usados_total − pedidas`.
 2. **Una sentencia, un conteo.** Un `createMany` de 500 filas hace un conteo, no 500. Por eso el
@@ -415,10 +421,10 @@ export type PlanDTO = {
    - el plan está archivado → `archivado`;
    - el plan es custom de otra empresa → `custom_de_otra_empresa`;
    - el plan es el mismo que ya tiene → `ok` con `cambio: false`, sin escribir (R13).
-3. Calcula el ancla: la que tiene la empresa o, si no tiene plan, `CURRENT_TIMESTAMP`.
-   **Al cambiar de plan se conserva** (P2a, cerrada).
+3. Calcula el ancla: la que tiene la empresa o, si no tiene plan, `now() AT TIME ZONE 'UTC'`
+   (§3). **Al cambiar de plan se conserva** (P2a, cerrada).
 4. Cuenta el uso:
-   - órdenes: `plan_uso_ordenes(org, plan_inicio_ciclo(ancla, now()))`;
+   - órdenes: `plan_uso_ordenes(org, plan_inicio_ciclo(ancla, now() AT TIME ZONE 'UTC'))`;
    - cada rol con tope en el plan nuevo: `plan_uso_rol`;
    - API keys, si el plan nuevo las topa: `plan_uso_api_keys`.
 
