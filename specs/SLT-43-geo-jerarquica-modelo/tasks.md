@@ -70,25 +70,25 @@
   exige trigger para una FK de negocio → plataforma. *Hecho:* diff vacío y
   `geo-sincronia-orden-zonas.test.ts` (R20, R21) verde.
 - [x] **T4.2** Migración `20261029120500_indices_nodo_geografico` + `down.sql`. *Hecho:* diff vacío.
-- [ ] **T4.3** [P] `geo-trigger-orden-rendimiento.test.ts` (R22) en base propia. *Hecho:* mediana
+- [x] **T4.3** [P] `geo-trigger-orden-rendimiento.test.ts` (R22) en base propia. *Hecho:* mediana
   ≤ 1 ms por fila; la cifra va a `progress/impl_SLT-43.md`. Si se pasa, el PR no entra: se para y se
   avisa.
 - [x] **T4.4** [P] `slt43-migraciones-aditivas.test.ts` (R19) con contraprueba. *Hecho:* verde sobre
   las seis carpetas y rojo sobre un texto inventado con `DROP COLUMN`.
-- [ ] **T4.5** Correr las suites de órdenes, zonas, cobertura y cierres que tocan las tablas con
+- [x] **T4.5** Correr las suites de órdenes, zonas, cobertura y cierres que tocan las tablas con
   columna nueva (`vitest related` sobre `db/schema.prisma` y los repositorios de esas tablas).
   *Hecho:* verdes sin cambiar aserciones (R36).
 
 ## T5 — Script de datos (depende de T4.1)
 
-- [ ] **T5.1** Ampliar `FichaJira` a `SLT-<n>` (`lib/db/contexto-empresa.ts`) y añadir el script a
+- [x] **T5.1** Ampliar `FichaJira` a `SLT-<n>` (`lib/db/contexto-empresa.ts`) y añadir el script a
   `EXCEPCIONES_DE_PLATAFORMA` con ficha `SLT-43` y motivo. *Hecho:* typecheck y guardia
   `plataforma-solo-en-lista` verdes.
-- [ ] **T5.2** `scripts/geo-backfill-nodo.ts` con los cuatro modos de design §4, exportando
+- [x] **T5.2** `scripts/geo-backfill-nodo.ts` con los cuatro modos de design §4, exportando
   `comprobar`, `aplicarLote`, `validar` y `equivalencia`, y la entrada `geo:backfill` en
   `package.json`. *Hecho:* `geo-backfill.test.ts` (R24–R31, R33, R40) verde. El snapshot lleva el `id` de cada nivel
   desde las FK de la orden (design §2.6), y no se crea ningún trigger en `cierre_detail`.
-- [ ] **T5.3** `geo-equivalencia.test.ts` (R32). *Hecho:* verde con el caso igual y los dos casos
+- [x] **T5.3** `geo-equivalencia.test.ts` (R32). *Hecho:* verde con el caso igual y los dos casos
   desviados.
 
 ## T6 — Vuelta atrás y guardias (depende de T4.2 y T5.2)

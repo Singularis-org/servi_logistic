@@ -311,3 +311,49 @@ sincronía; T4.1/T4.2 no empezadas (dependen de la respuesta según la regla de 
   454/477 tras el cambio: rojos por «tabla `orden` vacia» (entorno, baseline).
 
 **Veredicto:** T3.2, T4.1, T4.2 y T4.4 hechas; T4.3 y T4.5 quedan para la siguiente tanda.
+
+## Tanda 5 (2026-10-29) — T4.3 y T4.5 (backend_dev A), T5.1–T5.3 (backend_dev B), en paralelo
+
+### T4.3 — R22, medición del trigger `orden_nodo_geografico`
+`tests/integration/db/geo-trigger-orden-rendimiento.test.ts`, base propia `slt43_r22_<uuid>` (todas las migraciones,
+`DROP DATABASE … WITH (FORCE)` al final). Cada medida: un `INSERT … SELECT` de 5 000 órdenes repartidas por los 494
+distritos de CR, en `BEGIN`/`ROLLBACK`; variante «sin» con `DISABLE TRIGGER orden_nodo_geografico`. 1 ronda de
+calentamiento descartada + 3 medidas, alternando el orden. Contraprueba por ronda: 5 000 filas con nodo con trigger, 0 sin.
+
+PostgreSQL 16.1 (Visual C++ build 1937, 64-bit), 5 000 filas × 3 rondas:
+
+| Ronda | Con trigger | Sin trigger | (con − sin) / fila |
+|---|---|---|---|
+| 1 | 4412.0 ms | 4251.4 ms | 0.03212 ms |
+| 2 | 4785.5 ms | 4846.6 ms | -0.01221 ms |
+| 3 | 4740.1 ms | 4721.9 ms | 0.00362 ms |
+
+**Mediana: 0.00362 ms por fila (tope 1 ms). Verde.** El INSERT base ya cuesta ~0.9 ms/fila por triggers previos; lo
+que añade SLT-43 queda en el ruido. Test: 1/1, ~44 s.
+
+### T4.5 — suites de órdenes, zonas, cobertura y cierres (R36)
+141 archivos de `tests/integration/db` que escriben `orden` o nombran `zona_distrito`, `distrito_zona_especial` o
+`cierre_detail`: 1 375 tests, 670 pasados, 279 fallados, 426 saltados; 56 archivos verdes, 85 rojos.
+Los 85 rojos están en `tests/baseline-rojos.json` (comprobado por el implementer: 0 fuera del baseline) y ningún error
+nombra `nodo_geografico`, `tipo_nivel_geografico`, `ubicacion_snapshot` ni los triggers nuevos. Causas: base local sin
+órdenes (47), fixtures con FK de otra empresa (~32), catálogo/semilla incompletos, `orden-traspaso-migration`
+(censo 33 vs 81, previo) y `premio-ranking-idempotencia`.
+
+### T5.1–T5.3 — script de datos
+- T5.1: `FichaJira` admite `SLT-<n>` (`lib/db/contexto-empresa.ts`; `comoPlataforma` valida `^SLT?-\d+$`). Script en
+  `EXCEPCIONES_DE_PLATAFORMA` (SLT-43). **Fuera de la lista de archivos:** `problemasDeExcepcion` en
+  `tests/unit/guards/_aislamiento-por-empresa.ts` alineado con `FichaJira` (`^SLT?-\d+$`); sin ello la ficha SLT-43
+  ponía roja `plataforma-solo-en-lista`. Para el reviewer.
+- T5.2: `scripts/geo-backfill-nodo.ts` (modos de design §4) + `"geo:backfill": "tsx scripts/geo-backfill-nodo.ts"`
+  (sin dependencias). Exporta `comprobar`/`aplicarLote`/`validar`/`equivalencia`, más `aplicar`, `leerArgumentos` y
+  `ejecutar` (código de salida testeable, desviación menor). Cada lote es una sentencia (CTE de escritura) con keyset por
+  id y filtro `IS NULL`; el cursor avanza por los ids leídos. Snapshot en un `UPDATE … FROM`: nombres de las columnas
+  congeladas, ids de las FK de la orden. Sin trigger en `cierre_detail`. R33: `--aplicar`/`--validar` exigen
+  `--base = current_database()`; los modos de solo lectura corren sin confirmación (design §4/§6).
+- Caso límite sin regla escrita: `distrito_nombre` con valor y orden sin `distrito_id` → nivel 3 con `"id": null`.
+- Fixture `geo-43.ts` ampliado: `crearOrdenGeo43`, `TRIGGERS_DE_COLUMNAS_NUEVAS`, `vaciarColumnasNuevas`.
+- T5.3: `geo-equivalencia.test.ts`: igual → 0; zona desviada, orden con nodo NULL y distrito sin nodo → ≠ 0.
+- **El script nunca se ejecutó a mano**: solo lo corren los tests, contra `logistic_slt43`, en transacciones revertidas.
+- Resultados: `geo-backfill` 10/10, `geo-equivalencia` 4/4, `geo-sincronia-orden-zonas` 10/10 (0 saltados);
+  typecheck y eslint verdes; guardias `plataforma-solo-en-lista`, `organizacion-en-modelos`, `rls-por-empresa`,
+  `sql-a-mano-por-empresa`, `backfills-retirados`, `guard-dependencias-aprobadas` verdes.

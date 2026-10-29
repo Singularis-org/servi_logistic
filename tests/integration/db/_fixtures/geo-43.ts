@@ -203,3 +203,62 @@ export async function crearEscenarioGeo43(tx: TxDeTest): Promise<EscenarioGeo43>
     cierreDetailSinDistritoId,
   };
 }
+
+/**
+ * Una orden más del escenario (misma tienda, zona y estatus que las del escenario), con su provincia,
+ * cantón y distrito explícitos: así se arma también una orden con la jerarquía rota (R26).
+ */
+export async function crearOrdenGeo43(
+  tx: TxDeTest,
+  e: EscenarioGeo43,
+  geo: { provinciaId?: string; cantonId?: string; distritoId: string | null },
+): Promise<string> {
+  const id = randomUUID();
+  await tx.$executeRawUnsafe(
+    `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, tienda_id, zona_id,
+         provincia_id, canton_id, distrito_id, producto, created_at, updated_at)
+       SELECT $1, $2, estatus_id, destinatario, telefono_dest, tienda_id, zona_id, $3, $4, $5, producto,
+              created_at, updated_at
+         FROM orden WHERE id = $6`,
+    id,
+    `SLT43-${id.slice(0, 8)}`,
+    geo.provinciaId ?? e.geo.provinciaId,
+    geo.cantonId ?? e.geo.cantonId,
+    geo.distritoId,
+    e.ordenConDistritoId,
+  );
+  return id;
+}
+
+/** Los triggers `BEFORE` de SLT-43 que llenan las columnas nuevas al escribir (design §2.4). */
+export const TRIGGERS_DE_COLUMNAS_NUEVAS = [
+  { tabla: "orden", trigger: "orden_nodo_geografico" },
+  { tabla: "zona_distrito", trigger: "zona_distrito_nodo_geografico" },
+  { tabla: "distrito_zona_especial", trigger: "distrito_zona_especial_nodo_geografico" },
+] as const;
+
+/**
+ * Deja las filas dadas como estaban antes de migrar: columnas nuevas en NULL. Apaga los triggers que
+ * las llenan solo mientras las vacía y los vuelve a encender, dentro de la transacción del test (que
+ * se revierte): el script corre después con los triggers activos, como en producción.
+ */
+export async function vaciarColumnasNuevas(
+  tx: TxDeTest,
+  filas: { orden?: string[]; zonaDistrito?: string[]; distritoZonaEspecial?: string[]; cierreDetail?: string[] },
+): Promise<void> {
+  for (const { tabla, trigger } of TRIGGERS_DE_COLUMNAS_NUEVAS) {
+    await tx.$executeRawUnsafe(`ALTER TABLE ${tabla} DISABLE TRIGGER ${trigger}`);
+  }
+  const vaciar = async (tabla: string, columna: string, ids: string[] | undefined) => {
+    if (ids && ids.length > 0) {
+      await tx.$executeRawUnsafe(`UPDATE ${tabla} SET ${columna} = NULL WHERE id = ANY($1::text[])`, ids);
+    }
+  };
+  await vaciar("orden", "nodo_geografico_id", filas.orden);
+  await vaciar("zona_distrito", "nodo_geografico_id", filas.zonaDistrito);
+  await vaciar("distrito_zona_especial", "nodo_geografico_id", filas.distritoZonaEspecial);
+  await vaciar("cierre_detail", "ubicacion_snapshot", filas.cierreDetail);
+  for (const { tabla, trigger } of TRIGGERS_DE_COLUMNAS_NUEVAS) {
+    await tx.$executeRawUnsafe(`ALTER TABLE ${tabla} ENABLE TRIGGER ${trigger}`);
+  }
+}

@@ -212,6 +212,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45)",
   },
+  {
+    archivo: "scripts/geo-backfill-nodo.ts",
+    ficha: "SLT-43",
+    motivo:
+      "comando de consola por lotes: llena el nodo geográfico de las órdenes y zonas y el snapshot de los cierres de todas las empresas (R27)",
+  },
 ];
 
 /**
