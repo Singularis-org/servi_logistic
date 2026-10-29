@@ -70,6 +70,11 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
     // R25/D4: orden viva, asignada (mensajero not null), del numero, la MAS RECIENTE por
     // `asignado_at`. Empate/NULL de asignado_at -> desempata por created_at desc.
     //
+    // SLT-40: esta ya NO es la unica via. Si el entrante cita un saliente («Responder») que
+    // `findHiloDeSalienteCitado` encuentra y `decidirEnrutadoPorCita` acepta, el service lo lleva
+    // a ese hilo SIN llamar aqui: con varias ordenes vivas del mismo numero, «la mas reciente»
+    // puede no ser la de la conversacion. Esta regla queda para todo entrante sin cita util.
+    //
     // El match del telefono se hace NORMALIZADO EN AMBOS LADOS, y "normalizado" significa
     // exactamente lo que hace `normalizarTelefonoCR`, no un simple quitar-separadores:
     //
