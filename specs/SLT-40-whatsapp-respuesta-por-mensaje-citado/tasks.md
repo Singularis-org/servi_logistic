@@ -61,7 +61,7 @@
     **sin** cambiar ninguna aserción de enrutamiento (R18).
   - **Hecho:** suites nuevas y existentes del chat y del webhook en verde.
 
-- [ ] **T5 — Integración contra Postgres** (R5, R7, R12, R13; depende de T4)
+- [x] **T5 — Integración contra Postgres** (R5, R7, R12, R13; depende de T4)
   - Nuevo `tests/integration/db/chat-respuesta-citada.test.ts`, dentro de `conEmpresa`:
     - R5: empresa A, un cliente con dos órdenes vivas asignadas, saliente en el hilo de la antigua;
       entrante que lo cita queda en ese hilo.

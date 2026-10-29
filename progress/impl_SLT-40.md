@@ -1,5 +1,50 @@
 # SLT-40 — bitacora de implementacion
 
+## Mapa consolidado R<n> -> test (T6)
+
+Archivos: `U-parser` = `tests/unit/types/whatsapp-webhook.test.ts` · `U-dec` =
+`tests/unit/services/enrutado-por-cita.test.ts` · `U-repo` =
+`tests/unit/repositories/chat-conversacion-repository.test.ts` · `U-svc` =
+`tests/unit/services/chat-whatsapp-respuesta-citada.test.ts` · `I-db` =
+`tests/integration/db/chat-respuesta-citada.test.ts`.
+
+| R | tests |
+|---|---|
+| R1 | U-parser: `R1:` texto, imagen y `button` (tipo `otro`) con `context.id` conservan el id citado; id recortado de espacios |
+| R2 | U-parser: `R2:` sin `context` no lleva la clave; `it.each` de 7 formas raras (id numerico, string, null, array, sin id, vacio, espacios); un `context` raro no tumba el lote; `citadoDe` |
+| R3 | U-parser: `R3: de context solo sobrevive el id` (`from`, `forwarded`, ... desaparecen) |
+| R4 | U-dec `R4`; U-repo `R4` (mapeo a `HiloCitado`, orden eliminada / sin mensajero); U-svc `R4` (`it.each` por tipo) |
+| R5 | U-svc `R5` (no llama a `resolverOrdenActivaPorNumero`); I-db `R5` |
+| R6 | U-dec `R6`; U-svc `R6` (reasignada A -> B) |
+| R7 | U-dec `R7`; U-repo `R7` (`where` con `direccion: "saliente"`), `R7/R13` (sin fila -> null); U-svc `R7` x2; I-db `R7` |
+| R8 | U-dec `R8` x2; U-svc `R8` |
+| R9 | U-dec `R9`; U-svc `R9`; I-db `R9` (orden `entregado` no eliminada) |
+| R10 | U-dec `R10`; U-svc `R10` |
+| R11 | U-dec `R11` x2 (distinto; con/sin `+` y separadores); U-svc `R11` |
+| R12 | U-dec `R12`; U-svc `R12`; I-db `R12` (la entrega no cambia) |
+| R13 | U-repo `R7/R13`; I-db `R13` (saliente en B, nada escrito en B; mutacion sin RLS lo pone rojo) |
+| R14 | U-svc `R14` |
+| R15 | U-svc `R15` |
+| R16 | U-svc `R16` |
+| R17 | U-svc `R17` (logger espia en las cinco ramas) |
+| R18 | U-svc `R18`; suites existentes del webhook/chat en verde con solo `enrutadosPorCita: 0` añadido |
+
+Notas: R9 se añadio a la integracion aunque `tasks.md` T5 no lo listaba (`HiloCitado` no trae el
+estado; solo contra la base se prueba un estado terminal). El aislamiento de R13 lo prueba la RLS
+(design §3 no filtra `organizacion_id` a mano); la capa de la extension del cliente no se prueba
+aqui.
+
+## Tandas T1-T3 · 2026-10-29 · backend_dev
+- T1 (`12f0fee`): `lib/types/whatsapp-webhook.ts` + U-parser. vitest related:
+  `Test Files 5 passed | 1 skipped (6)` · `Tests 86 passed | 5 skipped (91)`.
+- T2 (`9b1cfec`): `lib/services/whatsapp/enrutado-por-cita.ts`, `HiloCitado` en
+  `lib/interfaces/repositories/IChatConversacionRepository.ts` + U-dec: `Tests 10 passed (10)`.
+- T3 (`6dc7f26`): `findHiloDeSalienteCitado` en interfaz y `lib/repositories/ChatConversacionRepository.ts`,
+  fakes en `tests/unit/services/chat-whatsapp-service.test.ts` y
+  `tests/unit/actions/chat-whatsapp-actions.test.ts` + U-repo. vitest related:
+  `Test Files 37 passed | 4 skipped (41)` · `Tests 541 passed | 32 skipped (573)`.
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192`) y eslint en verde en cada una.
+
 ## Tanda T4 (+ comentarios de T6) · 2026-10-29 · backend_dev
 
 ### Archivos
@@ -48,3 +93,34 @@ R5/R7/R12/R13 contra Postgres quedan para T5.
 
 ### Veredicto
 T4 lista: paso por cita cableado, contador agregado, R4-R6 y R14-R18 con test; typecheck y lint verdes.
+
+## Tanda T5 — integracion contra Postgres
+
+### Archivos
+- Nuevo `tests/integration/db/chat-respuesta-citada.test.ts`. Sin cambios de produccion.
+
+### Como mide
+Transaccion revertida (`enTransaccionRevertida`, envuelve en `conEmpresa(A)`); siembra como dueno
+por empresa (`fijarEmpresa` + `crearFksDeOrden`); ingesta con `ChatWhatsappService` y repositorios
+reales sobre el `tx` como `servi_app` de A (`comoApp`, RLS activa); medicion como dueno (`RESET ROLE`).
+Escenario: en A, mismo numero con dos ordenes vivas asignadas (antigua con hilo + saliente +
+entrante previo; nueva gana la regla actual).
+
+### R -> test
+| R | `it` |
+|---|---|
+| R5 | `R5: con dos ordenes vivas asignadas, el entrante que cita el saliente de la ANTIGUA queda en su hilo` |
+| R9 | `R9: la orden citada en estado terminal (entregado) y no eliminada se enruta por cita igual` |
+| R7 | `R7: un id citado que es de un ENTRANTE no cuenta como cita y cae en la regla actual` |
+| R12 | `R12: un id citado igual al wa_message_id de una entrega automatica cae en la regla actual y la entrega no cambia` |
+| R13 | `R13: un saliente de la empresa B con el wamid citado no enruta: nada se escribe en B y A sigue la regla actual` |
+
+### Salida real
+- `DATABASE_URL=<postgres local, localhost:5432/logistic> pnpm exec vitest run tests/integration/db/chat-respuesta-citada.test.ts`
+  -> `Test Files 1 passed (1)` · `Tests 5 passed (5)`.
+- Mutacion (solo en el test, revertida): `comoApp` -> `fijarEmpresa` (sin RLS) -> R13 rojo, los otros 4 verdes.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` -> `tsc --noEmit` sin errores.
+- `pnpm exec eslint tests/integration/db/chat-respuesta-citada.test.ts` -> sin incidencias.
+
+### Veredicto
+T5 lista: R5, R7, R9, R12 y R13 verdes contra Postgres local; R13 depende de la RLS y lo demuestra la mutacion.
