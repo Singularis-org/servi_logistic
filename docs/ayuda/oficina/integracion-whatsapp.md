@@ -9,6 +9,7 @@ fuentes:
   - app/api/webhooks/whatsapp/route.ts
   - lib/services/WebhookWhatsappService.ts
   - lib/services/ChatWhatsappService.ts
+  - lib/repositories/ChatConversacionRepository.ts
   - app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx
   - specs/SL-36-integraciones-por-empresa/design.md
   - https://developers.facebook.com/docs/whatsapp/cloud-api/get-started
@@ -73,8 +74,9 @@ token de un **usuario del sistema**.
 1. En la configuración de tu cuenta comercial de Meta, abre **Usuarios del sistema**. Crea uno o usa
    uno que ya tengas **(verificar en la consola)**.
 2. En **Asignar activos**, dale **control total** sobre **las dos cosas**: tu **app** de Meta y tu
-   **cuenta de WhatsApp Business**. Si falta cualquiera de las dos, la prueba de conexión falla con
-   «El token no tiene permiso».
+   **cuenta de WhatsApp Business**. Si falta cualquiera de las dos, la prueba de conexión falla:
+   según lo que responda Meta, con «El token no tiene permiso…» o con «Meta no encuentra ese Phone
+   Number ID…».
 3. Pulsa **Generar token**. Elige **tu app**, caducidad **Nunca**, y marca los permisos
    `whatsapp_business_messaging` y `whatsapp_business_management`. Con esos dos basta: si Meta
    ofrece otros, no hacen falta.
@@ -158,9 +160,10 @@ En Windows, usa `curl.exe` en lugar de `curl` dentro de PowerShell.
    de ahora. Eso confirma que Meta llama a la aplicación y que el App Secret es el correcto.
 
 > **Ese mensaje de prueba no aparece en ningún chat, y es lo esperado.** La aplicación solo guarda
-> los mensajes que llegan de un **destinatario de una orden activa y asignada a un mensajero**: así
-> cada mensaje cae en el chat de su orden. Los mensajes de cualquier otro número se reciben y se
-> descartan.
+> los mensajes que llegan del **teléfono de destino de una orden que tenga un mensajero asignado**
+> (y que no se haya borrado). Si ese número tiene varias órdenes asignadas, el mensaje va a la
+> asignada más recientemente, salvo que el cliente use **Responder** sobre un mensaje de otra orden.
+> Los mensajes de cualquier otro número se reciben y se descartan.
 >
 > Para verlo en el chat, crea una orden con tu número como teléfono de destino, asígnala a un
 > mensajero y escribe desde ese número: el mensaje aparece en el chat de esa orden.
@@ -171,7 +174,7 @@ En Windows, usa `curl.exe` en lugar de `curl` dentro de PowerShell.
 | --- | --- |
 | WhatsApp rechazó la credencial | El token está mal copiado, caducó o fue revocado. Genera otro (paso 2) |
 | El token no tiene permiso | Al usuario del sistema le falta la app, la cuenta o los permisos de WhatsApp (paso 2) |
-| Meta no encuentra ese Phone Number ID | Copiaste el número de teléfono en vez de su identificador, o el número es de otra cuenta (paso 1) |
+| Meta no encuentra ese Phone Number ID | Copiaste el número de teléfono en vez de su identificador, el número es de otra cuenta (paso 1), o al usuario del sistema le falta la cuenta de WhatsApp Business (paso 2) |
 | Meta no encuentra ese WABA ID | El identificador de la cuenta está mal copiado (paso 1) |
 | El número ya está conectado en otra empresa | Ese número lo usa otra empresa de la aplicación. Se libera cuando esa empresa lo desconecta |
 
@@ -181,10 +184,10 @@ En Windows, usa `curl.exe` en lugar de `curl` dentro de PowerShell.
 | --- | --- |
 | La hora del último contacto del webhook **nunca** se mueve | Que la app esté publicada (paso 6) y suscrita a tu cuenta de WhatsApp (paso 7). Que la URL del webhook y **messages** estén en Meta (paso 5) |
 | La hora se movió una vez (al verificar) y después no más | La app no está publicada (paso 6) o no está suscrita a tu cuenta (paso 7) |
-| Los mensajes que envías se quedan con un solo ✓ | Meta no está avisando de las entregas: es el mismo caso de las dos filas anteriores |
+| Los mensajes que envías se quedan con un solo ✓ | Si les pasa a todos: Meta no está avisando de las entregas, que es el mismo caso de las dos filas anteriores. Si es uno suelto, puede estar todavía en reintento |
 | La hora no se mueve y cambiaste de app de Meta | El App Secret y el token guardados son los de la app anterior. Edita la integración y pega los de la nueva (pasos 2 y 3) |
 | Otro sistema de tu empresa dejó de recibir mensajes | Los dos usan la misma app de Meta. Una app tiene un solo webhook: separa las apps |
-| Un cliente escribe y no aparece en el chat | Ese número no es el destinatario de una orden activa y asignada (paso 8) |
+| Un cliente escribe y no aparece en el chat | Ese número no es el teléfono de destino de ninguna orden con mensajero asignado (paso 8) |
 
 - **Si perdiste el token de verificación:** **regenéralo** en la tarjeta y pégalo de nuevo en Meta:
   el anterior deja de valer al instante.
@@ -197,7 +200,7 @@ En el chat de cada orden, los mensajes que salen muestran su estado:
 
 | Se ve | Qué significa |
 | --- | --- |
-| ✓ gris | Meta lo recibió y lo está enviando |
+| ✓ gris | Salió hacia Meta, o la aplicación lo está reintentando porque Meta no respondió. Aún no hay confirmación de entrega |
 | ✓✓ gris | Llegó al celular del cliente |
 | ✓✓ azul | El cliente lo leyó |
 | **Falló** | Meta no pudo entregarlo |
@@ -236,7 +239,8 @@ seguro: sin ella, recuperar el número se complica.
 - **No configura el webhook por ti.** La URL y el token se pegan en Meta a mano.
 - **No publica tu app ni la suscribe a tu cuenta de WhatsApp.** Eso se hace en Meta (pasos 6 y 7).
 - **No cambia el nombre ni la foto de tu perfil de WhatsApp.** Eso se hace en WhatsApp Manager.
-- **No muestra en el chat los mensajes de números sin una orden activa y asignada.**
+- **No muestra en el chat los mensajes de números que no son el destino de una orden con mensajero
+  asignado.**
 - **No paga a Meta.** Lo que cobra Meta por los mensajes se le paga a Meta, con tu cuenta comercial.
 - **No aprueba plantillas.** Las plantillas se crean desde **Configuración · Plantillas** y las aprueba
   Meta.
