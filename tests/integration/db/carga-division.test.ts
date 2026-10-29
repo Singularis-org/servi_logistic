@@ -297,8 +297,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const b = await tx.canton.create({ data: { nombre: "San José", provinciaId: p.id }, select: { id: true } });
         await tx.$executeRawUnsafe(`ALTER TABLE "canton" ENABLE TRIGGER "canton_sincroniza_nodo_geografico"`);
         const primero = [a.id, b.id].sort()[0];
-        // El distrito de la carga necesita el nodo de su cantón (FK compuesta): solo el ganador lo recibe,
-        // por el upsert de la sincronía; un UPDATE sin cambios basta para dispararla.
+        // Misma excepción a R36 (aprobada por Camilo, 2026-10-29): el distrito de la carga necesita el nodo
+        // de su cantón (FK compuesta); solo el ganador lo recibe, con un UPDATE sin cambios que dispara la sincronía.
         await tx.$executeRawUnsafe(`UPDATE "canton" SET "nombre" = "nombre" WHERE "id" = $1`, primero);
 
         const r = await service.cargar("XA", archivo("Región,,SAN JOSE,,Barrio,"), actor);

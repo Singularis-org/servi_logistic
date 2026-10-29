@@ -36,6 +36,10 @@ F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), re
   «decision 4: dos homónimos normalizados bajo el mismo padre» desactiva el trigger de sincronía al armar sus
   datos, dentro de su transacción revertida; aserciones sin cambios. Motivo: estado imposible en el modelo
   nuevo (R9/R14) y ninguna vía de la app lo crea. Ningún otro test de SL-20 se toca. Enmienda en design (R36).
+- 2026-10-29 · Aprobado por Camilo (excepciones R36): (1) `UPDATE canton SET nombre = nombre` en la preparación del
+  caso «decision 4» de `carga-division.test.ts`, dentro de la misma excepción; (2) `ubicacionSnapshot: undefined` en
+  `454/correccion-ramas-sql-real.test.ts` y `477-resolicitud-rechazado-sql-real.test.ts`, por el typecheck, sin
+  cambiar aserciones. Registradas en design (R36).
 
 ## Modelos (overrides)
 

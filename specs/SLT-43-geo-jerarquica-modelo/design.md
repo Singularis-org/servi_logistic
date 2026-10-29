@@ -384,6 +384,8 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R40 | `tests/integration/db/geo-backfill.test.ts` (tras `--aplicar`, una fila nueva de `cierre_detail` nace con `ubicacion_snapshot` NULL; no hay trigger sobre `cierre_detail` en `pg_trigger` con nombre de SLT-43; relanzar `--aplicar` la llena y no toca las ya llenas) |
 
 > **Enmienda 2026-10-29 (humano, Camilo) — excepción explícita a R36:** en `carga-division.test.ts`, solo el caso «decision 4: dos homónimos normalizados bajo el mismo padre» desactiva el trigger de sincronía mientras arma sus datos, dentro de su transacción revertida; sus aserciones no cambian. Motivo: ese estado es imposible en el modelo nuevo (R9/R14) y ninguna vía de la app lo crea. Ningún otro test de SL-20 se toca.
+> - 2026-10-29, aprobado por Camilo: dentro de esa misma excepción, la preparación del caso añade `UPDATE canton SET nombre = nombre` sobre el cantón ganador, para que tenga nodo (sin él, el distrito de la carga falla con 23503 por la FK compuesta). El comentario del test lo cubre.
+> - 2026-10-29, aprobado por Camilo: `ubicacionSnapshot: undefined` en `tests/integration/db/454/correccion-ramas-sql-real.test.ts` y `tests/integration/db/477-resolicitud-rechazado-sql-real.test.ts` (copian un `cierreDetail` leído; Prisma no acepta `null` en un campo Json y el typecheck fallaba con TS2322). Sin cambios en las aserciones.
 
 ## 8. Alternativas descartadas
 
