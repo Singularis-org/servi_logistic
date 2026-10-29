@@ -178,7 +178,7 @@ type VarianteContador = NonNullable<ComponentProps<typeof Badge>["variant"]>;
  * PLANOS y una variante de `Badge` necesita un PAR (`-soft` de fondo + `-strong` de texto). La
  * 292 los crea en `app/globals.css` con sus ocho contrastes medidos en los dos temas.
  *
- * ⚠️ EL NOMBRE DE LA VARIANTE ES EL DEL TOKEN DE SU SEGMENTO (`bg-chart-6` -> `chart6`). No es
+ * ⚠️ EL NOMBRE DE LA VARIANTE ES EL DEL TOKEN DE SU SEGMENTO (`bg-chart-7` -> `chart7`). No es
  * cosmetica: es lo que deja comprobar la concordancia sin una tercera tabla que se desincronice
  * como se desincronizaron estas dos. Lo ata `tests/unit/tablero-dia/color-contador.guardia.test.ts`,
  * que compara los colores REALES que salen de las dos tablas, contador a contador.
@@ -189,11 +189,11 @@ type VarianteContador = NonNullable<ComponentProps<typeof Badge>["variant"]>;
 export const VARIANTE_CONTADOR = {
   entregadas: "success",
   reprogramadas: "warning",
-  devueltas: "chart6",
+  devueltas: "chart7",
   rechazadas: "danger",
-  incidentes: "chart11",
-  sinRecoger: "chart12",
-  enReparto: "chart13",
+  incidentes: "chart12",
+  sinRecoger: "chart11",
+  enReparto: "chart5",
   otros: "outline",
 } as const satisfies Record<ClaveContador, VarianteContador>;
 
@@ -207,8 +207,10 @@ export const VARIANTE_CONTADOR = {
  *   chip y el `-strong` es texto; ninguno pinta un segmento.
  * - Los tres contadores SIN semantico propio van a `--chart-*`, que GIRAN con el tema
  *   (se declaran en `:root` y se redefinen en `.dark`/`.tema-sistema`). Son los mismos tres
- *   colores de la maqueta, ya tokenizados: `chart-6` el morado, `chart-11` el marron y
- *   `chart-12` el gris. No se inventa ninguna paleta.
+ *   colores de la maqueta, ya tokenizados: `chart-7` el violeta, `chart-12` el marron (ocre
+ *   profundo) y `chart-11` el gris (piedra). No se inventa ninguna paleta. SL-33 movio los
+ *   indices al cambiar la paleta de graficas: con los de la 292 (`chart-6/11/12`) `devueltas`
+ *   saldria verde junto a `entregadas` y `sinRecoger` ocre junto a `reprogramadas`.
  * - `otros` va sin acento: es el cajon de sastre, y `DESIGN.md` reserva la saturacion para
  *   accion y estado.
  *
@@ -216,9 +218,9 @@ export const VARIANTE_CONTADOR = {
  * dejo escrita y F7.3 mandaba comprobar. `--color-info` (`#1a56db`) es un hex FIJO y oscuro y
  * la pista `bg-muted` gira: medido con `tests/fixtures/contraste.ts` sobre los tokens reales
  * de `app/globals.css`, ese par da **2.34:1 en tema oscuro**, por debajo del 3:1 que WCAG
- * 1.4.11 pide a un objeto grafico. `chart-13` gira (`#1e3a8a` claro / `#93c5fd` oscuro) y da
- * **9.41 / 8.03**. Lo fija un test: `TableroDiaComposicion.test.tsx` › «se separa de la pista
- * en los DOS temas». **Nunca un hex nuevo.**
+ * 1.4.11 pide a un objeto grafico. `chart-5` gira (`#1d4ed8` claro / `#60a5fa` oscuro) y da
+ * **6.14 / 6.18** (con la paleta anterior, `chart-13` daba 9.41 / 8.03). Lo fija un test:
+ * `TableroDiaComposicion.test.tsx` › «se separa de la pista en los DOS temas». **Nunca un hex nuevo.**
  *
  * ⛔ Ni un hex, ni una utilidad de paleta cruda de Tailwind (R46).
  *
@@ -231,10 +233,10 @@ export const VARIANTE_CONTADOR = {
 export const COLOR_SEGMENTO = {
   entregadas: "bg-success",
   reprogramadas: "bg-warning",
-  devueltas: "bg-chart-6",
+  devueltas: "bg-chart-7",
   rechazadas: "bg-danger",
-  incidentes: "bg-chart-11",
-  sinRecoger: "bg-chart-12",
-  enReparto: "bg-chart-13",
+  incidentes: "bg-chart-12",
+  sinRecoger: "bg-chart-11",
+  enReparto: "bg-chart-5",
   otros: "bg-muted-foreground/40",
 } as const satisfies Record<ClaveContador, string>;

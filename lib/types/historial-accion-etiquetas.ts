@@ -159,6 +159,11 @@ export interface FuentesEtiqueta {
    * que es vocabulario del catalogo: ni texto libre ni dato de cliente.
    */
   organizacion_modulo: { moduloNombre: string };
+  /**
+   * SL-24 (design §9) — el plan asignado se etiqueta `Plan «<nombre>»`, recortado a
+   * `ETIQUETA_MAX_CHARS`. El nombre lo escribe el superadmin: es de plataforma, no dato de cliente.
+   */
+  plan: { nombre: string };
 }
 
 /**
@@ -241,6 +246,10 @@ const CONSTRUCTORES: {
   distrito: (f) => unir(f?.nombre, f?.cantonNombre, f?.provinciaNombre),
   integracion: (f) => limpiar(f?.servicioNombre),
   organizacion_modulo: (f) => limpiar(f?.moduloNombre),
+  plan: (f) => {
+    const nombre = (f?.nombre ?? "").trim();
+    return nombre === "" ? limpiar(null) : limpiar(`Plan «${nombre}»`);
+  },
 };
 
 /**

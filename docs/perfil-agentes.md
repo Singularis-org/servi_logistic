@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-21 por=Carlos Restrepo -->
+<!-- perfil: revisado=2026-10-28 por=Camilo -->
 # docs/perfil-agentes.md — Reglas del proyecto para cada agente
 
 > Perfil del proyecto. Los agentes de `.claude/agents/` son genéricos (vienen de la plantilla y los
@@ -40,6 +40,9 @@ Reparte por capa: `backend_dev` para `lib/`, `db/` y `app/api/`; `frontend_dev` 
   (`lib/repositories/`), con interfaces en `lib/interfaces/`.
 - Toda query de negocio filtra por `organizacion_id`; la empresa se resuelve desde la sesión.
 - Migraciones: `pnpm run db:migrate:create`, `down.sql` a mano, nunca editar una ya aplicada.
+- Una migración que pierde datos (`DROP TABLE/COLUMN`, `DELETE`, `TRUNCATE`, `RENAME`,
+  `ALTER COLUMN … TYPE`): **para y pregunta** antes de escribirla, diciendo qué se elimina y por
+  qué. Si aprueba, añade `DESTRUCTIVA.md` (`docs/architecture.md > Migraciones up/down`).
 - Tests: unit en `tests/unit/` con dobles; el SQL se prueba en `tests/integration/db/` contra
   Postgres real (`HAY_BASE_DE_DATOS`). Un `WHERE` de dinero o de empresa sin test de integración
   no está probado.
@@ -56,7 +59,8 @@ Reparte por capa: `backend_dev` para `lib/`, `db/` y `app/api/`; `frontend_dev` 
 
 ## reviewer
 - Bloqueante: tabla o query de negocio sin `organizacion_id`, tabla sin RLS, migración sin
-  `down.sql`, literal de país o moneda (Costa Rica, colones, SINPE) en código nuevo, cualquier
+  `down.sql`, migración que pierde datos sin `DESTRUCTIVA.md` completo o mezclada con migraciones
+  aditivas, `UPDATE` que sobrescribe una columna existente sin `DESTRUCTIVA.md`, literal de país o moneda (Costa Rica, colones, SINPE) en código nuevo, cualquier
   referencia a recursos de Ordenex.
 - Dependencia nueva sin fila en `docs/dependencias.md`.
 - Comentarios: explican el porqué, no el qué (`docs/conventions.md`).

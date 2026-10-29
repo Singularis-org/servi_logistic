@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-21 por=Carlos Restrepo -->
+<!-- perfil: revisado=2026-10-28 por=Camilo -->
 > **Este repo es servi_logistic, NO Ordenex.** Es un SaaS multi-empresa de última milla derivado del
 > código de Ordenex (copiado el 2026-10-21). Lo que en el código, los tests o `specs/` diga «Ordenex»
 > es herencia pendiente de limpiar (`docs/limpieza-ordenex.md`). El plan manda: `docs/plan-saas.md`.
@@ -175,6 +175,43 @@ esta bien hecha, no solo si "funciona".
     superadmin), la puerta no aplica y decide la autorización de siempre.
   - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
     un módulo con su puerta) y `modulos-sin-seed.guardia`.
+- **Planes y límites (SL-24, 2026-10-28).** El superadmin crea planes (públicos o custom de una
+  empresa) y asigna uno a cada empresa. La base cuenta los topes dentro de la transacción del alta.
+  Una empresa sin plan no tiene límites.
+  - **Tablas de plataforma:** `plan`, `plan_tope_rol`, `plan_modulo`, `plan_rastro` (migración
+    `20261028130000_plan`) y `plan_cambio_programado` (`20261028130300_plan_cambio_programado`), en
+    `MODELOS_DE_PLATAFORMA`. Tienen RLS sin ninguna política y `REVOKE ALL … FROM servi_app`: una
+    empresa no las lee ni las escribe, tampoco con SQL a mano (`42501`). La asignación vive en
+    `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, el ancla del ciclo, que se fija en
+    la primera asignación y no cambia al cambiar de plan. `servi_app` las lee y no las escribe.
+  - **Triggers de topes** (`20261028130200_plan_topes_triggers`): `plan_tope_ordenes` (de sentencia,
+    en `orden`), `plan_tope_usuario_alta` y `plan_tope_usuario_cambio` (en `usuario`), y
+    `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
+    SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`
+    (`lib/planes/tope-error.ts`) lo traduce a `TopeDelPlanAlcanzado`, con `details.codigo = "tope_plan"`.
+    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. La única que `servi_app`
+    llama es `plan_cupo_ordenes`, y solo con su propia empresa (la lee `CupoPlanRepository`).
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
+    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
+    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+    `lib/planes/ciclo.ts`.
+  - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
+    consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en
+    `FOR SHARE`, y editar toma `plan` en `FOR UPDATE`. Así dos altas no pasan juntas el tope y un
+    alta no se cruza con un cambio de plan. Ninguna operación pide la empresa después del plan en
+    exclusiva, por lo que no hay interbloqueo.
+  - **Quién escribe:** solo `lib/repositories/PlanesRepository.ts`, en `comoPlataforma`, con su
+    entrada en `EXCEPCIONES_DE_PLATAFORMA`. Un plan no se borra, se archiva. `plan_rastro` solo
+    recibe filas nuevas, y `plan_cambio_programado` se escribe solo desde ese repositorio
+    (`planes-sin-borrado.guardia`). La semilla no crea planes (`planes-sin-seed.guardia`).
+  - **Cambio programado:** una edición con fecha futura se guarda en `plan_cambio_programado`, con
+    uno como mucho por plan. Lo aplica el job `plan_aplicar_cambio`, encolado con
+    `run_after = vigente_desde`, y como red el recurrente `plan_cambios_vencidos`. Los dos llaman a
+    `PlanesRepository.aplicarCambioProgramado`, que es idempotente.
+  - **Correos:** guardar, cancelar o archivar con un cambio pendiente encolan `plan_aviso_correo`,
+    uno por empresa con el plan, en la misma transacción. `plan_recordatorio_cambio` reparte los
+    avisos 7 días y 1 día antes. El correo va por la cola: si falla, la edición se mantiene.
+    Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
@@ -285,6 +322,42 @@ Proceso:
 
 Toda migración del repo trae su `down.sql`: las tres heredadas que no lo tenían lo recibieron en
 SL-10 (2026-10-21) y `./init.sh` corta si falta alguno.
+
+### Migraciones que pierden datos
+
+Antes de escribir una migración con `DROP TABLE`, `DROP COLUMN`, `DELETE`, `TRUNCATE`, `RENAME`
+(de tabla, columna o tipo) o `ALTER COLUMN … TYPE`, **para y pregunta al humano**: di qué se
+elimina y por qué. Si aprueba:
+
+1. Pon junto a `migration.sql` un `DESTRUCTIVA.md` con estas cinco líneas, todas con contenido:
+   ```
+   Feature: <key>
+   Qué se elimina: <tablas, columnas o filas, y cuántas en producción si se sabe>
+   Por qué: <motivo; por qué no basta una migración aditiva>
+   Backup: <cómo y cuándo se verificó que se puede restaurar>
+   Aprobó: <nombre del humano>, <AAAA-MM-DD>
+   ```
+2. La migración va en un PR propio. No se mezcla con migraciones aditivas.
+
+`DROP INDEX/TRIGGER/FUNCTION/CONSTRAINT/VIEW/POLICY` y `UPDATE` no lo exigen: no pierden datos o
+llenan columnas nuevas. Un `UPDATE` que sobrescribe una columna existente sí lo exige. Ese caso no
+lo detecta la guardia; lo detecta el `reviewer`.
+
+La guardia `tests/guards/migraciones-destructivas.guard.test.ts` corta el gate si falta el
+archivo o si tiene una línea vacía. Solo mira las migraciones posteriores a `20261027120000`
+(la última de `dev` al crear la regla): las anteriores ya están aplicadas y no se reescriben. Los
+`down.sql` no cuentan, porque revertir siempre es destructivo.
+
+Coste: una migración que pierde datos lleva una pregunta al humano y un archivo más. Las
+aditivas no cambian.
+
+#### Por qué
+
+2026-10-28. En la épica de geografía jerárquica (SLT-43 a SLT-48), producción ya tiene órdenes,
+tarifas y zonas, y el humano pidió no correr el riesgo de dañar o borrar datos. Las cinco
+primeras tarjetas son aditivas; SLT-48 es la única que borra, y tiene que llegar declarada,
+no por descuido. El build de `prod` aplica las migraciones solo (`scripts/migrate-deploy.ts`):
+lo que se mergea a `prod` se ejecuta sin que nadie lo vuelva a mirar.
 
 ## Dependencias de terceros
 
