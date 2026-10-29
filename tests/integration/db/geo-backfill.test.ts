@@ -9,14 +9,16 @@ import {
   aplicar,
   aplicarLote,
   comprobar,
+  destinoDeUrl,
   ejecutar,
   leerArgumentos,
   validar,
   type Argumentos,
 } from "@/scripts/geo-backfill-nodo";
 import { crearEscenarioGeo43, crearOrdenGeo43, vaciarColumnasNuevas, type EscenarioGeo43 } from "./_fixtures/geo-43";
+import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, type TxDeTest } from "./_postgres-real";
 
 // SLT-43 (T5.2; design §4) — `scripts/geo-backfill-nodo.ts` contra Postgres real.
 //   · R24: las tres FK nacen sin validar; `--validar` no valida con filas pendientes y sí tras `--aplicar`.
@@ -24,23 +26,40 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //   · R27, R28: lotes de 2 sobre 7 órdenes, corte tras el primer lote y relanzar; con todo lleno, 0.
 //   · R29, R30: el resto de columnas de `orden` (con `updated_at`) y los cargos de plataforma, iguales.
 //   · R31: forma del snapshot, nombres congelados e ids de las FK de la orden.
-//   · R33: `--aplicar`/`--validar` sin `--base` o con otro nombre no escriben.
+//   · R33: `--aplicar`/`--validar` sin `--base` o con otro nombre, o sin `--destino` o con otro proyecto
+//     o host, no escriben; con los dos correctos, sí. De qué URL sale el destino, sin base.
 //   · R40: sin trigger en `cierre_detail`; un cierre nuevo nace NULL y relanzar lo llena.
 //
-// Cada caso corre en una transacción del dueño que siempre se revierte (`revertida`): el script corre
-// sobre la conexión del test, así que lo que escribe (y el `VALIDATE`) se deshace al terminar. Las filas
+// BASE PROPIA (`slt43_bf_…`, design §7): `vaciarColumnasNuevas` apaga triggers de `orden` y de las
+// zonas, y `aplicar` recorre todas las órdenes de la base; en la compartida eso bloquearía a otros
+// archivos. Además cada caso corre en una transacción del dueño que siempre se revierte (`revertida`):
+// el script corre sobre la conexión del test, así que lo que escribe (y el `VALIDATE`) se deshace al
+// terminar y los casos no se pisan. Las filas
 // «previas a la migración» se simulan vaciando las columnas nuevas del escenario `XA`
 // (`vaciarColumnasNuevas`). El script es global (no filtra por empresa), por eso las cifras se miden
 // como diferencias y las filas se comprueban por id.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+let propia: BasePropia43;
 let base: PrismaClient;
 
 function args(argv: string[]): Argumentos {
   const a = leerArgumentos(argv);
   if (a === null) throw new Error(`argumentos inválidos: ${argv.join(" ")}`);
   return a;
+}
+
+/** El script sobre la conexión del test, que es la de la base propia. */
+function correr(tx: TxDeTest, argv: string[]) {
+  return ejecutar(tx, args(argv), propia.url);
+}
+
+/** El `--destino` correcto para la base propia (su host). */
+function destino(): string {
+  const d = destinoDeUrl(propia.url);
+  if (d === null) throw new Error("la URL de la base propia no da destino");
+  return d;
 }
 
 async function nombreDeLaBase(tx: TxDeTest): Promise<string> {
@@ -137,12 +156,13 @@ async function cierreDetailNuevo(tx: TxDeTest, e: EscenarioGeo43): Promise<strin
 }
 
 describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)", () => {
-  beforeAll(() => {
-    base = crearPrismaDeTest();
-  });
+  beforeAll(async () => {
+    propia = await crearBasePropia43("bf");
+    base = propia.prisma;
+  }, 600_000);
   afterAll(async () => {
-    await base?.$disconnect();
-  });
+    await propia?.cerrar();
+  }, 60_000);
 
   it("R24: tras migrar, las tres FK nuevas existen sin validar", async () => {
     const r = await revertida(base, (tx) => fksValidadas(tx));
@@ -157,11 +177,11 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
     const r = await revertida(base, async (tx) => {
       await escenarioPrevio(tx);
       const nombre = await nombreDeLaBase(tx);
-      const conPendientes = await ejecutar(tx, args(["--validar", "--base", nombre]));
+      const conPendientes = await correr(tx, ["--validar", "--base", nombre, "--destino", destino()]);
       const directo = await validar(tx);
       const fksConPendientes = await fksValidadas(tx);
-      const aplicado = await ejecutar(tx, args(["--aplicar", "--base", nombre]));
-      const trasAplicar = await ejecutar(tx, args(["--validar", "--base", nombre]));
+      const aplicado = await correr(tx, ["--aplicar", "--base", nombre, "--destino", destino()]);
+      const trasAplicar = await correr(tx, ["--validar", "--base", nombre, "--destino", destino()]);
       return { conPendientes, directo, fksConPendientes, aplicado, trasAplicar, fksFinal: await fksValidadas(tx) };
     });
     expect(r.conPendientes.codigoDeSalida).toBe(1);
@@ -178,7 +198,7 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
       const antes = await comprobar(tx);
       const e = await escenarioPrevio(tx);
       const despues = await comprobar(tx);
-      const salida = await ejecutar(tx, args([]));
+      const salida = await correr(tx, []);
       const trasEjecutar = await comprobar(tx);
       return { e, antes, despues, salida, trasEjecutar };
     });
@@ -221,7 +241,7 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
 
       const distritoMal = await crearOrdenGeo43(tx, e, { distritoId: distrito2.id });
       const tras1 = await comprobar(tx);
-      const conDistritoMal = await ejecutar(tx, args(["--aplicar", "--base", nombre]));
+      const conDistritoMal = await correr(tx, ["--aplicar", "--base", nombre, "--destino", destino()]);
       const pendientes1 = await comprobar(tx);
 
       await tx.$executeRawUnsafe(`UPDATE orden SET distrito_id = NULL, canton_id = $2 WHERE id = $1`, distritoMal, e.geo.cantonId);
@@ -389,10 +409,10 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
       const nombre = await nombreDeLaBase(tx);
       const antes = await comprobar(tx);
       const salidas = [
-        await ejecutar(tx, args(["--aplicar"])),
-        await ejecutar(tx, args(["--aplicar", "--base", `${nombre}_otra`])),
-        await ejecutar(tx, args(["--validar"])),
-        await ejecutar(tx, args(["--validar", "--base", "postgres"])),
+        await correr(tx, ["--aplicar", "--destino", destino()]),
+        await correr(tx, ["--aplicar", "--base", `${nombre}_otra`, "--destino", destino()]),
+        await correr(tx, ["--validar", "--destino", destino()]),
+        await correr(tx, ["--validar", "--base", "postgres", "--destino", destino()]),
       ];
       return {
         e,
@@ -408,6 +428,60 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
     expect(r.despues).toEqual(r.antes);
     expect(Object.values(r.fks)).toEqual([false, false, false]);
     expect(r.orden[r.e.ordenConDistritoId]).toBeNull();
+  }, 60_000);
+
+  it("R33: --aplicar y --validar sin --destino, o con otro proyecto u host, salen con 1 y no escriben aunque --base coincida", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await escenarioPrevio(tx);
+      const nombre = await nombreDeLaBase(tx);
+      const antes = await comprobar(tx);
+      const salidas = [
+        await correr(tx, ["--aplicar", "--base", nombre]),
+        await correr(tx, ["--aplicar", "--base", nombre, "--destino", "otro-host.example.com"]),
+        await correr(tx, ["--aplicar", "--base", nombre, "--destino", "abcdefghijklmnopqrst"]),
+        await correr(tx, ["--validar", "--base", nombre]),
+        await correr(tx, ["--validar", "--base", nombre, "--destino", "otro-host.example.com"]),
+        // Sin URL de la que sacar el destino tampoco: no hay contra qué confirmar.
+        await ejecutar(tx, args(["--aplicar", "--base", nombre, "--destino", destino()]), undefined),
+      ];
+      return {
+        e,
+        salidas,
+        antes,
+        despues: await comprobar(tx),
+        fks: await fksValidadas(tx),
+        orden: await nodos(tx, "orden", [e.ordenConDistritoId]),
+      };
+    });
+    expect(r.salidas.map((s) => s.codigoDeSalida)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(r.salidas.every((s) => s.lineas.some((l) => l.startsWith("Rechazado: --destino")))).toBe(true);
+    // 0 escrituras: ninguna columna nueva llena y ninguna FK validada.
+    expect(r.despues).toEqual(r.antes);
+    expect(Object.values(r.fks)).toEqual([false, false, false]);
+    expect(r.orden[r.e.ordenConDistritoId]).toBeNull();
+  }, 60_000);
+
+  it("R33: con --destino (sin distinguir mayúsculas) y --base correctos, --aplicar escribe y --validar valida", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await escenarioPrevio(tx);
+      const nombre = await nombreDeLaBase(tx);
+      const aplicado = await correr(tx, ["--aplicar", "--base", nombre, "--destino", destino().toUpperCase()]);
+      const validado = await correr(tx, ["--validar", "--base", nombre, "--destino", destino()]);
+      return {
+        e,
+        aplicado,
+        validado,
+        fks: await fksValidadas(tx),
+        orden: await nodos(tx, "orden", [e.ordenConDistritoId, e.ordenSinDistritoId]),
+      };
+    });
+    expect(r.aplicado.codigoDeSalida).toBe(0);
+    expect(r.orden).toEqual({
+      [r.e.ordenConDistritoId]: r.e.geo.distritoId,
+      [r.e.ordenSinDistritoId]: r.e.geo.cantonId,
+    });
+    expect(r.validado.codigoDeSalida).toBe(0);
+    expect(Object.values(r.fks)).toEqual([true, true, true]);
   }, 60_000);
 
   it("R40: no hay trigger sobre cierre_detail que llene el snapshot; un cierre nuevo nace NULL y relanzar lo llena sin tocar los demás", async () => {
@@ -445,4 +519,37 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
     ]);
     expect(r.ctidViejasDespues).toEqual(r.ctidViejas);
   }, 60_000);
+});
+
+// R33 — de qué URL sale el destino que `--destino` tiene que repetir. Sin base de datos.
+describe("SLT-43 R33 — destino de la conexión (destinoDeUrl)", () => {
+  const DIRECTA = "postgresql://postgres:x@db.abcdefghijklmnopqrst.supabase.co:5432/postgres";
+
+  it("Supabase directa: el project-ref del host db.<ref>.supabase.co", () => {
+    expect(destinoDeUrl(DIRECTA)).toBe("abcdefghijklmnopqrst");
+  });
+
+  it("Supabase pooler: el project-ref del usuario postgres.<ref>, no el host (común a la región)", () => {
+    const sesion = "postgresql://postgres.abcdefghijklmnopqrst:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres";
+    const transaccion =
+      "postgresql://postgres.abcdefghijklmnopqrst:x@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true";
+    const otroProyecto = "postgresql://postgres.zyxwvutsrqponmlkjihg:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres";
+    expect(destinoDeUrl(sesion)).toBe("abcdefghijklmnopqrst");
+    expect(destinoDeUrl(transaccion)).toBe("abcdefghijklmnopqrst");
+    expect(destinoDeUrl(otroProyecto)).toBe("zyxwvutsrqponmlkjihg");
+    // La directa y el pooler del mismo proyecto se confirman con lo mismo.
+    expect(destinoDeUrl(sesion)).toBe(destinoDeUrl(DIRECTA));
+  });
+
+  it("pooler sin ref en el usuario, URL vacía o ilegible: sin destino (los modos que escriben se niegan)", () => {
+    expect(destinoDeUrl("postgresql://postgres:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres")).toBeNull();
+    expect(destinoDeUrl(undefined)).toBeNull();
+    expect(destinoDeUrl("")).toBeNull();
+    expect(destinoDeUrl("no es una url")).toBeNull();
+  });
+
+  it("fuera de Supabase: el host, en minúsculas", () => {
+    expect(destinoDeUrl("postgresql://u:x@LocalHost:5432/logistic?schema=public")).toBe("localhost");
+    expect(destinoDeUrl("postgresql://u:x@copia.interna.example:5432/postgres")).toBe("copia.interna.example");
+  });
 });

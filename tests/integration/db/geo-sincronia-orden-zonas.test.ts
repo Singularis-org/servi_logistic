@@ -4,8 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { crearEscenarioGeo43, type EscenarioGeo43 } from "./_fixtures/geo-43";
+import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { comoDueno, intentar, revertida } from "./_fixtures/pais-20";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, type TxDeTest } from "./_postgres-real";
 
 // SLT-43 (T4.1; design §2.4) — `nodo_geografico_id` de `orden`, `zona_distrito` y
 // `distrito_zona_especial`, contra Postgres real.
@@ -20,10 +21,12 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //
 // Todo dentro de una transacción del dueño que siempre se revierte, sobre el escenario `XA` de
 // `geo-43.ts`. Los triggers que se apagan se apagan dentro de esa transacción; el último caso
-// comprueba que quedan activos.
+// comprueba que quedan activos. BASE PROPIA (`slt43_oz_…`, design §7): el `DISABLE TRIGGER` toma
+// AccessExclusiveLock sobre `orden` y `distrito`, y en la base compartida bloquearía a otros archivos.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+let propia: BasePropia43;
 let base: PrismaClient;
 
 async function nodoDe(tx: TxDeTest, tabla: "orden" | "zona_distrito" | "distrito_zona_especial", id: string) {
@@ -59,12 +62,13 @@ const TRIGGERS_SLT43 = [
 ];
 
 describeSiHayBase("SLT-43 — nodo de la orden y de las zonas (R20, R21)", () => {
-  beforeAll(() => {
-    base = crearPrismaDeTest();
-  });
+  beforeAll(async () => {
+    propia = await crearBasePropia43("oz");
+    base = propia.prisma;
+  }, 600_000);
   afterAll(async () => {
-    await base?.$disconnect();
-  });
+    await propia?.cerrar();
+  }, 60_000);
 
   it("R20: al crear, la orden con distrito apunta al distrito y la que no tiene, al cantón", async () => {
     const r = await conEscenario(async (tx, e) => ({

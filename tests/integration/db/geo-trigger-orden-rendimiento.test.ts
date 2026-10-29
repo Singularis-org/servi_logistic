@@ -25,7 +25,8 @@ import {
 //
 // Antes de las rondas medidas hay una de calentamiento que se descarta (caché de planes y de páginas),
 // y dentro de cada ronda se alterna qué variante va primero para no regalarle la caché a una sola.
-// Las cifras quedan en el log para `progress/impl_SLT-43.md`.
+// Las cifras salen por stdout (líneas `[SLT-43 R22]`) en la salida por defecto de vitest, para
+// `progress/impl_SLT-43.md` y para el ensayo (design §6).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -156,7 +157,11 @@ describeSiHayBase("SLT-43 R22 — coste por fila del trigger orden_nodo_geografi
 
     const porFila = mediana(rondas.map((r) => r.porFila));
     const { version } = await unaFila<{ version: string }>(`SELECT version()`);
-    console.log(
+    // `process.stdout.write` y no `console.log`: con la configuración del repo vitest se traga el
+    // `console.log` de un test que pasa, y la cifra tiene que verse en la salida por defecto de
+    // `pnpm exec vitest run <este archivo>` (review m8). Comprobado con vitest 4.1.10; la anotación
+    // de vitest (`annotate`) tampoco sale en el reporter por defecto.
+    process.stdout.write(
       `[SLT-43 R22] ${version}\n` +
         `[SLT-43 R22] ${FILAS} filas × ${RONDAS} rondas (INSERT … SELECT, 1 calentamiento descartado)\n` +
         rondas
@@ -166,7 +171,7 @@ describeSiHayBase("SLT-43 R22 — coste por fila del trigger orden_nodo_geografi
               `(con − sin) / filas = ${r.porFila.toFixed(5)} ms`,
           )
           .join("\n") +
-        `\n[SLT-43 R22] mediana por fila = ${porFila.toFixed(5)} ms (tope ${TOPE_MS_POR_FILA} ms)`,
+        `\n[SLT-43 R22] mediana por fila = ${porFila.toFixed(5)} ms (tope ${TOPE_MS_POR_FILA} ms)\n`,
     );
     expect(porFila).toBeLessThanOrEqual(TOPE_MS_POR_FILA);
   }, 600_000);

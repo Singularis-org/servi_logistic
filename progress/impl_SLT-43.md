@@ -434,3 +434,25 @@ nombra `nodo_geografico`, `tipo_nivel_geografico`, `ubicacion_snapshot` ni los t
 
 T7.1 queda **abierta**: su «Hecho» pide `./init.sh` verde, que no se pudo completar en local (memoria) y que además
 sale rojo por la guardia de wallet hasta que entre el PR del leader. T7.2 es puerta humana.
+
+## F2.3 — menores de la review (pedido de Camilo, 2026-10-29)
+
+- m2: R33 añade `--destino <proyecto-o-host>`, obligatorio en `--aplicar`/`--validar` junto a `--base`. Destino =
+  project-ref de Supabase (host `db.<ref>.supabase.co` en la conexión directa; usuario `postgres.<ref>` en el pooler)
+  o, fuera de Supabase, el host; `destinoDeUrl(DATABASE_URL)`. Si falta, no coincide o la URL no da destino: código 1 y
+  nada escrito. `ejecutar(db, args, urlDeConexion)`. Sin dependencias. `docs/architecture.md` (País por empresa) al día.
+- m1: `geo-backfill`, `geo-equivalencia` y `geo-sincronia-orden-zonas` en base propia `slt43_*`
+  (`_fixtures/base-propia-43.ts`; `DROP … WITH (FORCE)` al cerrar). Aserciones sin cambios.
+- m3/m7: design §6 con el runbook (`--destino`), «sin ediciones de geografía entre 120200 y 120300» y la medida de
+  bloqueos de 120400/120500 en el ensayo (`lock_timeout` lo decide el humano).
+- m6: design §2.6, nivel 3 con `"id": null` cuando la orden perdió `distrito_id`.
+- m8: R22 escribe la cifra por `process.stdout` (en vitest 4.1.10 `console.log` y `annotate` no salen por defecto):
+  `[SLT-43 R22] mediana por fila = 0.08630 ms (tope 1 ms)` (rondas 0.11399 / 0.06153 / 0.08630 ms, PG 16.1).
+- Tests (`vitest run --no-file-parallelism`, `logistic_slt43` + bases propias): geo-backfill 16/16, geo-equivalencia
+  4/4, geo-sincronia-orden-zonas 10/10, geo-trigger-orden-rendimiento 1/1, migracion-slt43-ida-y-vuelta 8/8 → 39/39,
+  0 saltados, dos corridas iguales. Sin bases `slt43_*` huérfanas. tsc y eslint verdes. Guardias
+  plataforma-solo-en-lista, catalogo-postgres-acota-esquema, nodo-geografico-sin-escritor verdes;
+  migraciones-destructivas solo con el rojo de wallet (ajeno).
+- T7.1 marcada con nota (gate local sustituido; gate completo en CI). T7.2 abierta: puerta humana antes de `prod`.
+- Pendiente de merge (review): `gate-completo` y job `e2e` (órdenes y aislamiento) verdes en el PR (m4); guardia de
+  wallet resuelta por el PR #43.

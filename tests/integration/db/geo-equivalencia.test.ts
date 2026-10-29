@@ -5,8 +5,9 @@ import type { PrismaClient } from "@prisma/client";
 
 import { aplicar, ejecutar, equivalencia, leerArgumentos } from "@/scripts/geo-backfill-nodo";
 import { crearEscenarioGeo43, vaciarColumnasNuevas, type EscenarioGeo43 } from "./_fixtures/geo-43";
+import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, type TxDeTest } from "./_postgres-real";
 
 // SLT-43 (T5.3; design §4) — modo `--equivalencia` de `scripts/geo-backfill-nodo.ts` (R32), contra
 // Postgres real: por país, conteos de cada nivel viejo frente a los nodos de esa profundidad; por zona,
@@ -14,10 +15,12 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //
 // Cada caso parte del escenario `XA` con el script ya aplicado (todo igual) y desvía UNA cosa a mano,
 // dentro de una transacción del dueño que se revierte. Los triggers que hay que apagar para desviar se
-// apagan y se encienden dentro de esa transacción.
+// apagan y se encienden dentro de esa transacción, en una BASE PROPIA (`slt43_eq_…`, design §7): el
+// `DISABLE TRIGGER` toma AccessExclusiveLock y en la base compartida bloquearía a otros archivos.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+let propia: BasePropia43;
 let base: PrismaClient;
 
 const EQUIVALENCIA = leerArgumentos(["--equivalencia"]);
@@ -33,16 +36,17 @@ async function escenarioAplicado(tx: TxDeTest): Promise<EscenarioGeo43> {
 
 async function correr(tx: TxDeTest) {
   if (EQUIVALENCIA === null) throw new Error("--equivalencia no se reconoce");
-  return { resumen: await equivalencia(tx), salida: await ejecutar(tx, EQUIVALENCIA) };
+  return { resumen: await equivalencia(tx), salida: await ejecutar(tx, EQUIVALENCIA, propia.url) };
 }
 
 describeSiHayBase("SLT-43 — equivalencia entre la geografía vieja y la nueva (R32)", () => {
-  beforeAll(() => {
-    base = crearPrismaDeTest();
-  });
+  beforeAll(async () => {
+    propia = await crearBasePropia43("eq");
+    base = propia.prisma;
+  }, 600_000);
   afterAll(async () => {
-    await base?.$disconnect();
-  });
+    await propia?.cerrar();
+  }, 60_000);
 
   it("R32: tras el script, todo coincide y sale con código 0", async () => {
     const r = await revertida(base, async (tx) => {

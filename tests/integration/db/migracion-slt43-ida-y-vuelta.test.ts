@@ -6,7 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { comprobar, ejecutar as ejecutarScript, type Argumentos } from "@/scripts/geo-backfill-nodo";
+import { comprobar, destinoDeUrl, ejecutar as ejecutarScript, type Argumentos } from "@/scripts/geo-backfill-nodo";
 import { HAY_BASE_DE_DATOS } from "./_postgres-real";
 import {
   CREAR_TABLA_DE_CONTROL,
@@ -175,8 +175,10 @@ async function ida(sufijo = ""): Promise<void> {
   for (const carpeta of DE_SLT43) await ejecutar(db, sqlDe(carpeta, "migration.sql"), `${carpeta}${sufijo}`);
 }
 
-async function correrScript(a: Omit<Argumentos, "lote" | "pausaMs">): Promise<{ codigo: number; salida: string }> {
-  const r = await ejecutarScript(prisma, { lote: 2, pausaMs: 0, ...a });
+/** El script sobre la base propia; los modos que escriben llevan `--base` y `--destino` correctos (R33). */
+async function correrScript(a: Omit<Argumentos, "lote" | "pausaMs" | "destino">): Promise<{ codigo: number; salida: string }> {
+  const url = urlDe(BASE);
+  const r = await ejecutarScript(prisma, { lote: 2, pausaMs: 0, destino: destinoDeUrl(url) ?? undefined, ...a }, url);
   return { codigo: r.codigoDeSalida, salida: r.lineas.join("\n") };
 }
 

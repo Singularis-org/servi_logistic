@@ -8,7 +8,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 // que ya existían al migrar:
 //
 //   pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000]
-//                     [--pausa-ms 0] [--base <nombre>]
+//                     [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]
 //
 // Las migraciones solo añaden las columnas y los triggers que las llenan al escribir; un `UPDATE` de
 // toda `orden` dentro del deploy la bloquearía mientras dura y no se podría pausar (design §8, alt. 2).
@@ -331,10 +331,11 @@ export interface Argumentos {
   lote: number;
   pausaMs: number;
   base?: string;
+  destino?: string;
 }
 
 const USO =
-  "Uso: pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000] [--pausa-ms 0] [--base <nombre>]";
+  "Uso: pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000] [--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]";
 
 const MODOS: Record<string, Modo> = { "--aplicar": "aplicar", "--validar": "validar", "--equivalencia": "equivalencia" };
 
@@ -365,11 +366,49 @@ export function leerArgumentos(argv: readonly string[]): Argumentos | null {
     } else if (arg === "--base" && valor !== undefined && !valor.startsWith("--")) {
       a.base = valor;
       i++;
+    } else if (arg === "--destino" && valor !== undefined && !valor.startsWith("--")) {
+      a.destino = valor;
+      i++;
     } else {
       return null;
     }
   }
   return a;
+}
+
+// R33, segunda confirmación (review m2, 2026-10-29). `--base` sola no distingue producción de su
+// copia: en Supabase `current_database()` es `postgres` en todos los proyectos. Lo que sí los distingue
+// es el project-ref, y está en la URL de las dos formas de conectarse:
+//   · directa: host `db.<ref>.supabase.co`, usuario `postgres`;
+//   · pooler (Supavisor): host `<región>.pooler.supabase.com`, usuario `postgres.<ref>`.
+// El host solo no sirve con el pooler (es el mismo para todos los proyectos de la región) y el usuario
+// solo no sirve con la directa: por eso el destino es el ref sacado de donde lo lleve cada forma. Fuera
+// de Supabase (la base local, una copia en otro servidor) el destino es el host.
+const HOST_DIRECTO_SUPABASE = /^db\.([a-z0-9]+)\.supabase\.co$/;
+const HOST_POOLER_SUPABASE = /\.pooler\.supabase\.com$/;
+const USUARIO_POOLER_SUPABASE = /^[^.]+\.([a-z0-9]+)$/;
+
+/**
+ * El destino de una URL de conexión: el project-ref en Supabase y, fuera de él, el host (en
+ * minúsculas). `null` si la URL falta, no se entiende o es del pooler sin ref en el usuario.
+ */
+export function destinoDeUrl(url: string | undefined): string | null {
+  if (url === undefined || url.trim() === "") return null;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  if (host === "") return null;
+  const directo = HOST_DIRECTO_SUPABASE.exec(host);
+  if (directo) return directo[1];
+  if (HOST_POOLER_SUPABASE.test(host)) {
+    const usuario = USUARIO_POOLER_SUPABASE.exec(decodeURIComponent(u.username).toLowerCase());
+    return usuario ? usuario[1] : null;
+  }
+  return host;
 }
 
 export interface Ejecucion {
@@ -378,12 +417,23 @@ export interface Ejecucion {
 }
 
 /**
- * Corre el modo pedido sobre `db`. R33: los modos que escriben (`--aplicar`, `--validar`) exigen
- * `--base` igual a `current_database()`; si falta o no coincide, se niegan antes de escribir nada.
+ * Corre el modo pedido sobre `db`, que es la conexión abierta con `urlDeConexion`. R33: los modos que
+ * escriben (`--aplicar`, `--validar`) exigen `--destino` igual a `destinoDeUrl(urlDeConexion)` y
+ * `--base` igual a `current_database()`; si falta alguna o no coincide, se niegan antes de escribir.
  */
-export async function ejecutar(db: ConexionSql, a: Argumentos): Promise<Ejecucion> {
+export async function ejecutar(
+  db: ConexionSql,
+  a: Argumentos,
+  urlDeConexion: string | undefined,
+): Promise<Ejecucion> {
   const lineas: string[] = [];
   if (a.modo === "aplicar" || a.modo === "validar") {
+    const destino = destinoDeUrl(urlDeConexion);
+    if (destino === null || a.destino === undefined || a.destino.toLowerCase() !== destino) {
+      // Tampoco se imprime el destino real, por lo mismo que con la base.
+      lineas.push("Rechazado: --destino no coincide con el proyecto o el host de la conexión. No se escribió nada.");
+      return { codigoDeSalida: 1, lineas };
+    }
     const [{ base }] = await db.$queryRawUnsafe<{ base: string }[]>(`SELECT current_database() AS base`);
     if (a.base === undefined || a.base !== base) {
       // No se imprime el nombre real: quien lo lanza tiene que saber contra qué base está.
@@ -460,7 +510,8 @@ async function main(): Promise<void> {
     const r = await comoPlataforma(
       "SLT-43",
       "llenar el nodo geográfico y el snapshot de ubicación de las filas previas a la migración",
-      () => ejecutar(prisma, argumentos),
+      // La misma variable con la que `getPrismaClient` abrió la conexión.
+      () => ejecutar(prisma, argumentos, process.env.DATABASE_URL),
     );
     for (const linea of r.lineas) console.log(linea);
     process.exitCode = r.codigoDeSalida;

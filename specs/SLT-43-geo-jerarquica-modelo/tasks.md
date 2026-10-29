@@ -103,8 +103,11 @@
 
 ## T7 — Cierre (depende de todo lo anterior)
 
-- [ ] **T7.1** `./init.sh` verde en el worktree; mapa `R<n> → test` y cifras de R22 en
+- [x] **T7.1** `./init.sh` verde en el worktree; mapa `R<n> → test` y cifras de R22 en
   `progress/impl_SLT-43.md`. *Hecho:* las 40 filas con test que pasa.
+  *Nota 2026-10-29:* `./init.sh` no termina en local por memoria; el gate local se sustituyó por typecheck + lint +
+  todas las guardias + tests de SLT-43 (bitácora, tanda 7; verificado también por el reviewer). Gate completo en CI
+  (`gate-completo` del PR).
 - [ ] **T7.2** **Puerta humana, fuera del agente** (design §6): comprobaciones de solo lectura en
   producción, ensayo completo sobre una copia de producción (migraciones, script, equivalencia,
   `VALIDATE`, `down.sql` y otra ida) con tiempos, y backup restaurado. *Hecho:* el humano anota el

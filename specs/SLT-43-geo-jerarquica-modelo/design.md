@@ -249,6 +249,12 @@ Efecto en TypeScript (los mapas son exhaustivos por tipo y el typecheck lo exige
   corrigió de ubicación después del cierre, el id es el de la ubicación actual de la orden y puede no
   coincidir con el nombre congelado: lo que se cobró lo dice `nombre`. Quien lea el snapshot (SLT-47)
   no debe resolver el nombre a partir del `id`.
+- **Nivel 3 con `"id": null` (review m6, 2026-10-29).** Si la fila tiene `distrito_nombre` pero la
+  orden ya no tiene `distrito_id` (se le quitó el distrito o se borró el distrito después del cierre),
+  el snapshot lleva igualmente los tres niveles y el tercero sale `{ "profundidad": 3, "tipo": …,
+  "nombre": "<distrito_nombre>", "id": null }`. Es la misma regla: el nombre congelado manda y el id
+  solo enlaza, así que un enlace que ya no existe se queda en `null` sin quitar el nivel. SLT-47 debe
+  esperar `id: null` en cualquier nivel con nombre y pintar el nombre igual (sin enlace).
 - **`v`** permite cambiar la forma sin adivinar cuál tiene cada fila.
 - **Filas nuevas (R40):** no hay trigger en `cierre_detail` en SLT-43. Las filas creadas después del
   script quedan NULL hasta SLT-47, y relanzar el script las llena (filtra por `ubicacion_snapshot IS
@@ -295,7 +301,7 @@ Ningún `UPDATE` de tablas existentes.
 ## 4. Script de datos: `scripts/geo-backfill-nodo.ts` (R24–R33)
 
 `pnpm geo:backfill [--aplicar | --validar | --equivalencia] [--tabla <t>] [--lote 1000]
-[--pausa-ms 0] [--base <nombre>]`
+[--pausa-ms 0] [--base <nombre>] [--destino <proyecto-o-host>]`
 
 | Modo | Hace | Escribe |
 |---|---|---|
@@ -313,9 +319,23 @@ Ningún `UPDATE` de tablas existentes.
 - **Sin efectos laterales (R29, R30):** el `UPDATE` solo nombra la columna nueva. En `orden` dispara
   únicamente `orden_nodo_geografico` (que vuelve a poner el mismo valor). `updated_at` no cambia porque
   no lo pone la base.
-- **Confirmación de base (R33):** `--aplicar` y `--validar` exigen `--base <nombre>` igual a
-  `current_database()`; si no, salen sin escribir. Es la barrera contra correrlo en la base
-  equivocada; la regla «ningún agente toca producción» la cumple el proceso (§6).
+- **Confirmación de base y de destino (R33):** `--aplicar` y `--validar` exigen las dos; si falta
+  alguna o no coincide, salen con código 1 sin escribir nada (ni columnas ni `VALIDATE`). Los modos
+  de solo lectura no piden ninguna.
+  - `--base <nombre>` igual a `current_database()`.
+  - `--destino <proyecto-o-host>` igual al destino de la `DATABASE_URL` con la que se conecta
+    (`destinoDeUrl`, sin distinguir mayúsculas). **Añadida tras la review (m2, 2026-10-29):** en
+    Supabase `current_database()` es `postgres` en todos los proyectos, así que `--base` sola no
+    distingue producción de su copia. El destino es el **project-ref** de Supabase, sacado de donde
+    lo lleve la URL: host `db.<ref>.supabase.co` en la conexión directa, usuario `postgres.<ref>` en
+    el pooler (`*.pooler.supabase.com`, cuyo host es común a toda la región y no sirve). Fuera de
+    Supabase es el host (p. ej. `localhost`). Un pooler sin ref en el usuario, o una URL ausente o
+    ilegible, no da destino y el script se niega.
+  - Ninguno de los dos mensajes de rechazo imprime el valor real: quien lo lanza tiene que saber
+    contra qué base y qué proyecto está.
+
+  Es la barrera contra correrlo en la base equivocada; la regla «ningún agente toca producción» la
+  cumple el proceso (§6).
 - **Contexto:** corre como dueño con `comoPlataforma("SLT-43", motivo, fn)` y entra en
   `EXCEPCIONES_DE_PLATAFORMA`. `FichaJira` (`lib/db/contexto-empresa.ts`) hoy solo admite `SL-<n>`; se
   amplía a `` `SL-${number}` | `SLT-${number}` ``.
@@ -343,16 +363,53 @@ No hay action, ruta ni pantalla nueva. No aplica ningún módulo apagable.
 1. Antes de migrar producción, una persona corre el script sin opciones contra producción (solo
    lectura). Si R25 da > 0 en jerarquía, para y decide el humano.
 2. Ensayo completo sobre una **copia** de producción: migraciones, `--aplicar`, `--equivalencia`,
-   `--validar`, los `down.sql` y otra vez la ida. Se anotan las cifras, los tiempos (en especial el de
-   `20261029120500` sobre `orden`) y el coste del trigger en `progress/impl_SLT-43.md`.
-3. Backup restaurado y comprobado antes de la release (regla 4 de la épica).
-4. Ningún agente corre nada de esto contra producción ni contra la copia.
+   `--validar`, los `down.sql` y otra vez la ida. Se anotan las cifras, los tiempos y el coste del
+   trigger en `progress/impl_SLT-43.md`. Los modos que escriben se lanzan con las dos confirmaciones
+   de R33 (§4), con los valores de la copia:
+
+   ```
+   pnpm geo:backfill                                                   # solo lectura (R25)
+   pnpm geo:backfill --aplicar --base postgres --destino <ref-de-la-copia> [--lote 1000] [--pausa-ms 0]
+   pnpm geo:backfill --equivalencia                                    # solo lectura (R32)
+   pnpm geo:backfill --validar --base postgres --destino <ref-de-la-copia>
+   ```
+
+   `<ref-de-la-copia>` es el project-ref de Supabase de la copia (el de `db.<ref>.supabase.co` o el
+   del usuario `postgres.<ref>` del pooler); fuera de Supabase, el host de su `DATABASE_URL`. En
+   producción, el mismo comando con el ref de producción: escribirlo a mano es la confirmación.
+
+   **Bloqueos que mide el ensayo (review m7, 2026-10-29)**, para `20261029120400` y `20261029120500`
+   sobre `orden`:
+   - `120400` hace `ALTER TABLE orden ADD COLUMN` (y los triggers) y toma `AccessExclusiveLock` sobre
+     `orden` hasta el `COMMIT` de la migración: se anota cuánto tiempo lo tiene (con la copia en
+     reposo).
+   - Se repite con una consulta larga sobre `orden` abierta en otra sesión (p. ej. un `SELECT
+     pg_sleep(30)` dentro de una transacción que ya leyó `orden`): el `ALTER` espera a que termine y
+     encola detrás a todos los lectores y escritores de `orden`. Se anota cuánto espera y cuánto
+     tiempo quedan bloqueadas las demás consultas.
+   - Con esas cifras decide el humano si el deploy fija `SET lock_timeout` (p. ej. `'5s'`) antes de
+     `120400`, para que la migración falle y se reintente en lugar de dejar la tabla bloqueada. Hoy no
+     lo fija.
+   - `120500` (los índices sobre `orden`): tiempo de creación y bloqueo que toma, igual que arriba.
+3. **Sin ediciones de geografía durante el deploy (review m3, 2026-10-29).** Entre que se aplica
+   `20261029120200` (la copia de provincias, cantones y distritos a `nodo_geografico`) y
+   `20261029120300` (los triggers de sincronía) nadie crea, renombra, mueve ni borra provincias,
+   cantones o distritos. Motivo: cada migración hace su propio `COMMIT`, y una fila de geografía
+   escrita en esa ventana no tiene nodo ni lo tendrá (aún no hay sincronía que la copie). Las órdenes y
+   zonas que la usen tras `120400` fallarían con `23503` (la FK `NOT VALID` sí comprueba las filas
+   nuevas). La ventana es de segundos y `--equivalencia` lo detectaría, pero se evita avisando antes
+   del deploy a quien edita geografía (superadmin) y no haciéndolo hasta que termine.
+4. Backup restaurado y comprobado antes de la release (regla 4 de la épica).
+5. Ningún agente corre nada de esto contra producción ni contra la copia.
 
 ## 7. Pruebas y trazabilidad
 
 Unit e integración contra Postgres real (`HAY_BASE_DE_DATOS`), sin E2E nuevo (decisión «E2E»). Las
 pruebas que bajan migraciones o desactivan triggers usan **base propia** (prefijo `slt43_`), como
-`migracion-sl20-ida-y-vuelta`. Fixture común: `tests/integration/db/_fixtures/geo-43.ts` (un país de
+`migracion-sl20-ida-y-vuelta`: `migracion-slt43-ida-y-vuelta`, `geo-trigger-orden-rendimiento` y,
+desde la review (m1, 2026-10-29), `geo-backfill`, `geo-equivalencia` y `geo-sincronia-orden-zonas`
+(`_fixtures/base-propia-43.ts`: crea la base, aplica todas las migraciones y la suelta con
+`DROP DATABASE … WITH (FORCE)`). Fixture común: `tests/integration/db/_fixtures/geo-43.ts` (un país de
 prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distritos y filas de
 `cierre_detail`).
 
@@ -367,7 +424,7 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R15, R16, R17, R18 | `tests/integration/db/geo-sincronia-geografia.test.ts` (alta a mano y `importarDivision` de SL-20 crean nodos; renombre, código, retiro/reactivación y cambio de padre se reflejan; borrado físico borra el nodo; `canton.pais_id` sigue saliendo del padre; ninguna fila nueva de historial) |
 | R19 | `tests/unit/db/slt43-migraciones-aditivas.test.ts` (lee los `migration.sql` de las seis carpetas y falla con `DROP`, `DELETE`, `RENAME`, `TRUNCATE`, `UPDATE` de tablas existentes o `ALTER TYPE` sin `ADD VALUE IF NOT EXISTS`; contraprueba con texto inventado), más la ida y vuelta (columnas nullable y sin default) |
 | R20, R21 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` (alta de orden con y sin distrito; corrección de distrito; intento de poner otro nodo a mano → lo pisa; alta y cambio en `zona_distrito` y `distrito_zona_especial`) |
-| R22 | `tests/integration/db/geo-trigger-orden-rendimiento.test.ts` (base propia; 5 000 órdenes con el trigger y 5 000 con el trigger desactivado, tres rondas, mediana de la diferencia / 5 000 ≤ 1 ms; deja la cifra en el log para `progress/impl_SLT-43.md`) |
+| R22 | `tests/integration/db/geo-trigger-orden-rendimiento.test.ts` (base propia; 5 000 órdenes con el trigger y 5 000 con el trigger desactivado, tres rondas, mediana de la diferencia / 5 000 ≤ 1 ms; escribe la cifra por stdout, líneas `[SLT-43 R22]`, visibles en la salida por defecto de `pnpm exec vitest run <archivo>`, para `progress/impl_SLT-43.md`) |
 | R23 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (los dos enums con el valor; filas de historial idénticas antes y después) y `tests/unit/types/historial-accion-entidades.test.ts` (el filtro de `/historico/acciones` no ofrece `nodo_geografico`) |
 | R24 | `tests/integration/db/geo-backfill.test.ts` (tras migrar, `pg_constraint.convalidated = false` en las tres FK; `--validar` con pendientes sale con error; tras `--aplicar`, `--validar` las deja validadas) |
 | R25, R26 | `tests/integration/db/geo-backfill.test.ts` (cifras de una base con datos conocidos; con una orden cuyo distrito es de otro cantón, `--aplicar` sale con error y no escribe) |
@@ -375,7 +432,7 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R29, R30 | `tests/integration/db/geo-backfill.test.ts` (`updated_at` y el resto de columnas de `orden` iguales fila a fila; `cobro_plataforma_movimiento` igual en número y contenido) |
 | R31 | `tests/integration/db/geo-backfill.test.ts` (snapshot de una fila con distrito y otra sin él: profundidad, tipo, nombre e `id` en cada nivel; los `id` son los de las FK de la orden; con el distrito renombrado después del cierre, `nombre` es el congelado y `id` sigue siendo el del nodo; las tres columnas sin cambio) |
 | R32 | `tests/integration/db/geo-equivalencia.test.ts` (iguales tras el script → código 0; con una fila de `zona_distrito` cuyo nodo se desvió a mano o una orden con nodo NULL → código ≠ 0) |
-| R33 | `tests/integration/db/geo-backfill.test.ts` (`--aplicar` sin `--base` o con otro nombre no escribe) |
+| R33 | `tests/integration/db/geo-backfill.test.ts` (`--aplicar`/`--validar` sin `--base` o con otro nombre no escriben; sin `--destino` o con otro proyecto u host, código 1 y 0 escrituras aunque `--base` coincida; con los dos correctos, escriben; `destinoDeUrl` con la URL directa y la del pooler de Supabase y fuera de Supabase) |
 | R34, R35 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ida, script, vuelta en orden inverso: esquema igual que antes salvo los dos valores de enum; datos viejos iguales; tras la vuelta se crean una provincia, un cantón, un distrito, una orden y una fila de zona; reaplicar deja lo mismo) |
 | R36 | Suites existentes sin cambiar aserciones: `tests/integration/db/geografia-*.test.ts`, `zona-*`, `cobertura-*`, `carga-division.test.ts`, `migracion-sl20-ida-y-vuelta.test.ts` y el E2E existente de órdenes en el gate completo de CI |
 | R37 | `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` (ningún archivo de `lib/`, `app/` o `components/` escribe `nodoGeografico`/`tipoNivelGeografico` ni hace `INSERT`/`UPDATE`/`DELETE` sobre esas tablas; contraprueba) |

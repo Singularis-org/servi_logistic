@@ -163,7 +163,7 @@ esta bien hecha, no solo si "funciona".
     código de la app escribe las dos tablas (`nodo-geografico-sin-escritor.guardia`, R37). Las filas
     anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
-    `--base`); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
+    `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
     (design §6 de SLT-43). La app todavía no lee nada del modelo nuevo: las lecturas llegan con SLT-44.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
