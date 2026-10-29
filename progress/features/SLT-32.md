@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-32 | login-exige-empresa | backend | low | feature/SLT-32-login-exige-empresa | Camilo | in_progress |
+| SLT-32 | login-exige-empresa | backend | low | feature/SLT-32-login-exige-empresa | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -69,3 +69,9 @@ empresa.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-10-29 — Mergeado en `dev` por el humano: PR #35 (`9e6ed97`), `gate-completo` verde, reviewer
+  aprobado en vuelta 2. Tarjeta movida a done y comentada con la URL del PR.
+- Resumen: `puedeIniciarSesion` único (`activo && (empresa || esPlataforma(rol))`) en login, OTP,
+  `resolveActorFromSession` e `isSessionActive`.
+- Deudas: ninguna nueva. El bloqueo de usuario sin empresa queda probado solo en unit (el CHECK de
+  SL-32 impide sembrarlo para E2E).
