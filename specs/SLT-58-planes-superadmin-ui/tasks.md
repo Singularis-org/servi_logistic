@@ -71,7 +71,7 @@
   lo enviado y solo dos visibilidades; R15: inmediato o fecha; R18: `fieldErrors` junto al campo),
   `tests/components/PlanDetalle.test.tsx` (R15 avisos, R16, R17 confirmaciones y archivado sin
   controles, R18) y `tests/integration/plataforma-planes-page.test.tsx` (R22) en verde.
-- [ ] **T9 [P] — Plan en el detalle de la empresa** (design §6.3). Depende de T4 y T7.
+- [x] **T9 [P] — Plan en el detalle de la empresa** (design §6.3). Depende de T4 y T7.
   `[organizacionId]/_components/PlanEmpresa.tsx` y la lectura en `[organizacionId]/page.tsx`.
   *Hecho:* `tests/components/PlanEmpresa.test.tsx` (R18; R19; R20: solo asignables, mensaje del tope;
   R21) y los casos nuevos de `tests/integration/plataforma-empresa-detalle-page.test.tsx` (R19, y que

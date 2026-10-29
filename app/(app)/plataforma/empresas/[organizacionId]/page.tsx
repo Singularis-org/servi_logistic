@@ -3,12 +3,17 @@ import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
+import { verPlanDeEmpresa } from "@/lib/actions/_shared/planes-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
+import { asignarPlanAction, listarPlanesAsignablesAction } from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
+import type { PlanDeEmpresaVista, PlanDTO } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
+import { PlanEmpresa } from "./_components/PlanEmpresa";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
@@ -17,12 +22,40 @@ const TEXTOS = {
 } as const;
 
 /**
+ * SLT-58 (design §6.3) — la lectura del plan, AISLADA: un rechazo o un throw devuelve `null` y la
+ * sección dice «No se pudo cargar el plan», pero los módulos de la empresa se pintan igual.
+ */
+async function leerPlan(actor: Actor, organizacionId: string): Promise<PlanDeEmpresaVista | null> {
+  try {
+    const r = await verPlanDeEmpresa(actor, { organizacionId });
+    return r.estado === "ok" ? r.vista : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verPlanDeEmpresa lanzó", error);
+    return null;
+  }
+}
+
+/** R20: los planes asignables a la empresa, aislados igual que el plan; `null` = no se pudieron leer. */
+async function leerAsignables(organizacionId: string): Promise<PlanDTO[] | null> {
+  try {
+    const r = await listarPlanesAsignablesAction({ organizacionId });
+    return r.estado === "ok" ? r.planes : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] listarPlanesAsignablesAction lanzó", error);
+    return null;
+  }
+}
+
+/**
  * SL-23 (design §7; R8, R14) — el detalle de una empresa para el superadmin: qué módulos tiene
  * encendidos. Server Component.
  *
  * Cualquier rol de empresa (o sin sesión) recibe `notFound()` ANTES de leer nada (R14), igual que el
  * listado (SL-32, R35): ni siquiera sabe que la pantalla existe. Una empresa inexistente y un segmento
  * que no es un uuid responden lo mismo.
+ *
+ * SLT-58 (design §6.3; R19–R21): el plan de la empresa se lee en paralelo con los módulos y su
+ * sección va antes de ellos. Su fallo no tumba la página.
  */
 export default async function EmpresaDetallePage({
   params,
@@ -33,7 +66,11 @@ export default async function EmpresaDetallePage({
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { organizacionId } = await params;
-  const r = await verModulosEmpresa(actor, { organizacionId });
+  const [r, plan, asignables] = await Promise.all([
+    verModulosEmpresa(actor, { organizacionId }),
+    leerPlan(actor, organizacionId),
+    leerAsignables(organizacionId),
+  ]);
   if (r.estado !== "ok") notFound();
 
   const { empresa } = r;
@@ -46,6 +83,13 @@ export default async function EmpresaDetallePage({
         >
           {TEXTOS.volver}
         </Link>
+
+        <PlanEmpresa
+          organizacionId={empresa.organizacionId}
+          vista={plan}
+          asignables={asignables}
+          asignarPlan={asignarPlanAction}
+        />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">
           <h2 id="nucleo-titulo" className="text-base font-semibold">

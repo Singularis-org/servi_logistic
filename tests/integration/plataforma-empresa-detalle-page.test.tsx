@@ -10,7 +10,9 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import type { RolValue } from "@prisma/client";
 
 import { MODULOS_APAGABLES, NUCLEO, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { planConConsumo } from "@/lib/planes/consumo";
 import type { VerModulosEmpresaResult } from "@/lib/types/modulos-empresa";
+import type { PlanDeEmpresaResult } from "@/lib/types/planes";
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -27,6 +29,20 @@ vi.mock("@/lib/actions/_shared/modulos-empresa", () => ({
 }));
 vi.mock("@/lib/actions/modulos-empresa", () => ({
   fijarModuloEmpresaAction: (...a: unknown[]) => fijarMock(...a),
+}));
+
+// SLT-58 (design §6.3; R19): la lectura del plan de la empresa y las actions de planes, como dobles.
+const { verPlanMock, asignablesMock, asignarMock } = vi.hoisted(() => ({
+  verPlanMock: vi.fn(),
+  asignablesMock: vi.fn(),
+  asignarMock: vi.fn(),
+}));
+vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
+  verPlanDeEmpresa: (...a: unknown[]) => verPlanMock(...a),
+}));
+vi.mock("@/lib/actions/planes", () => ({
+  listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
+  asignarPlanAction: (...a: unknown[]) => asignarMock(...a),
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -63,6 +79,11 @@ const actorMock = vi.mocked(resolveActorFromSession);
 beforeEach(() => {
   vi.clearAllMocks();
   verMock.mockResolvedValue(OK);
+  verPlanMock.mockResolvedValue({
+    estado: "ok",
+    vista: { organizacionId: ORG, plan: null, asignaciones: [] },
+  } satisfies PlanDeEmpresaResult);
+  asignablesMock.mockResolvedValue({ estado: "ok", planes: [] });
 });
 
 afterEach(() => cleanup());
@@ -126,4 +147,86 @@ describe("SL-23 (R8) — con el superadmin, la página pinta los módulos", () =
       await expect(EmpresaDetallePage({ params: params("no-existe") })).rejects.toThrow("NEXT_NOT_FOUND");
     },
   );
+});
+
+describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
+  const superadmin = { usuarioId: "sa-1", rol: "superadmin" as const };
+
+  const CON_PLAN: PlanDeEmpresaResult = {
+    estado: "ok",
+    vista: {
+      organizacionId: ORG,
+      plan: {
+        ...planConConsumo(
+          {
+            vigente: {
+              nombre: "Plan Crecer",
+              topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: null },
+              modulos: ["analitica"],
+              precio: { tipo: "negociable" },
+            },
+            ancla: new Date("2026-01-15T06:00:00.000Z"),
+            uso: { ordenes: 1000, apiKeys: 0, porRol: { maestro: 1, admin: 0, mensajero: 9, adminTienda: 0, adminSatelite: 0 } },
+            cambio: null,
+          },
+          new Date("2026-03-01T06:00:00.000Z"),
+        ),
+        planId: "11111111-1111-4111-8111-111111111111",
+        archivado: false,
+      },
+      asignaciones: [],
+    },
+  };
+
+  it("R19: lee el plan con su actor y la empresa de la URL, y pinta plan y consumo antes de los módulos", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPlanMock.mockResolvedValue(CON_PLAN);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(verPlanMock).toHaveBeenCalledWith(superadmin, { organizacionId: ORG });
+    expect(asignablesMock).toHaveBeenCalledWith({ organizacionId: ORG });
+
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(within(plan).getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
+    expect(within(plan).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
+    expect(within(plan).getByText("Cerca del tope")).toBeInTheDocument(); // 9 de 10 mensajeros
+
+    const modulos = screen.getByRole("region", { name: "Módulos" });
+    // La sección del plan va antes que la de los módulos.
+    expect(plan.compareDocumentPosition(modulos) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("R19: sin plan → «Sin plan: sin límites»", async () => {
+    actorMock.mockResolvedValue(superadmin);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(within(screen.getByRole("region", { name: "Plan" })).getByText("Sin plan: sin límites")).toBeInTheDocument();
+  });
+
+  it.each<[string, () => void]>([
+    ["la lectura responde not_found", () => verPlanMock.mockResolvedValue({ estado: "not_found" })],
+    ["la lectura lanza", () => verPlanMock.mockRejectedValue(new Error("db caída"))],
+    ["los asignables lanzan", () => asignablesMock.mockRejectedValue(new Error("db caída"))],
+  ])("R19: si %s, los módulos se pintan igual", async (_caso, preparar) => {
+    actorMock.mockResolvedValue(superadmin);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    preparar();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Envíos Norte" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Módulos" })).getAllByRole("switch")).toHaveLength(3);
+    expect(screen.getByRole("region", { name: "Núcleo (siempre activo)" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Plan" })).getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("R19: un rol de empresa no lee el plan (notFound antes de leer)", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+
+    await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(verPlanMock).not.toHaveBeenCalled();
+    expect(asignablesMock).not.toHaveBeenCalled();
+  });
 });
