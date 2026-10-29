@@ -8,7 +8,7 @@
 
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
-F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), registrado en la tarjeta. Siguiente: F2, implementer — bloqueado hasta resolver el PR #29.
+F2.2 hecho (2026-10-29): review APROBADO (0 mayores, 8 menores; `progress/review_SLT-43.md`). F2.3: menores m1, m2, m3, m6, m7, m8 corregidos (`d42726b`). Rama al día con `dev` (incluye #43). Siguiente: F2.4, PR a `dev` (lo abre el humano).
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de
