@@ -8,7 +8,7 @@
 
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
-F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), registrado en la tarjeta. Siguiente: F2, implementer — bloqueado hasta resolver el PR #29 y el trigger `epic/**` en `gate.yml`.
+F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), registrado en la tarjeta. Siguiente: F2, implementer — bloqueado hasta resolver el PR #29.
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de
@@ -17,11 +17,9 @@ F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), re
 - Cupo backend de Camilo: 2/3 con esta (SL-24 en vuelo).
 
 ## Decisiones
-- 2026-10-29 · Rama épica (Camilo). Las tarjetas de la épica GEO (SLT-43 a SLT-48) se integran en
-  `epic/GEO-geografia-jerarquica`, que nace de `dev` (`9e6ed97`). Cada tarjeta abre su PR hacia la
-  épica, no hacia `dev`; al final va un PR de la épica a `dev`. `gate.yml` debe correr también en PRs
-  hacia `epic/**`: ese cambio de arnés entra por `/afinar-regla` antes del primer PR de esta tarjeta.
-  Sustituye a la regla 1 de protección de datos de la tarjeta («un PR por tarjeta a `dev`»).
+- 2026-10-29 · Integración en `dev` (Camilo: «dale normal con merge a dev»). Se probó una rama épica
+  `epic/GEO-geografia-jerarquica` y se descartó el mismo día: un PR por tarjeta a `dev`, como manda el
+  arnés. R38 queda retirado; no hace falta tocar `gate.yml`.
 - 2026-10-29 · Verificaciones previas que pide la tarjeta, confirmadas por Camilo:
   - los previews de Vercel no apuntan a la base de producción;
   - Supabase de producción tiene el backup activo.

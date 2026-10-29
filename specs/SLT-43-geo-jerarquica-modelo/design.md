@@ -378,7 +378,7 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R34, R35 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ida, script, vuelta en orden inverso: esquema igual que antes salvo los dos valores de enum; datos viejos iguales; tras la vuelta se crean una provincia, un cantón, un distrito, una orden y una fila de zona; reaplicar deja lo mismo) |
 | R36 | Suites existentes sin cambiar aserciones: `tests/integration/db/geografia-*.test.ts`, `zona-*`, `cobertura-*`, `carga-division.test.ts`, `migracion-sl20-ida-y-vuelta.test.ts` y el E2E existente de órdenes en el gate completo de CI |
 | R37 | `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` (ningún archivo de `lib/`, `app/` o `components/` escribe `nodoGeografico`/`tipoNivelGeografico` ni hace `INSERT`/`UPDATE`/`DELETE` sobre esas tablas; contraprueba) |
-| R38 | `tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts` (lo amplía `/afinar-regla`; precondición, no lo escribe esta feature) |
+| R38 | Retirado (2026-10-29): sin rama épica. Sin test. |
 | R39 | `tests/unit/scripts/migrate-deploy-guardas.test.ts` (existente; sin cambios) |
 | R40 | `tests/integration/db/geo-backfill.test.ts` (tras `--aplicar`, una fila nueva de `cierre_detail` nace con `ubicacion_snapshot` NULL; no hay trigger sobre `cierre_detail` en `pg_trigger` con nombre de SLT-43; relanzar `--aplicar` la llena y no toca las ya llenas) |
 

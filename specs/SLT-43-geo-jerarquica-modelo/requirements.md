@@ -1,7 +1,7 @@
 # SLT-43 — geo-jerarquica-modelo · requirements.md
 
 > Zona: backend · Complejidad: high · depends_on: SL-20 · Rama: feature/SLT-43-geo-jerarquica-modelo
-> (PR hacia `epic/GEO-geografia-jerarquica`)
+> (PR hacia `dev`)
 >
 > **Alcance.** Fase *expand* de la épica GEO: crea `tipo_nivel_geografico` y `nodo_geografico`
 > (con ruta, trigger de profundidad/país e índice GIN) y añade columnas nuevas, que admiten NULL, en
@@ -158,9 +158,8 @@
 
 ### Integración y entorno
 
-- **R38** (por evento) CUANDO se abre o actualiza un PR hacia una rama `epic/**`, el gate de CI
-  (`gate-completo`) DEBE correr igual que en un PR hacia `dev`. (Precondición: la pone
-  `/afinar-regla`, no esta feature.)
+- **R38** — Retirado el 2026-10-29: sin rama épica, los PRs van a `dev` y el gate ya corre ahí
+  (decisión del humano). Se conserva el número para no renumerar.
 - **R39** (de estado) MIENTRAS el entorno es un preview sin `MIGRATE_ON_PREVIEW=true`, el build NO
   DEBE aplicar migraciones.
 
@@ -181,7 +180,7 @@ del código oficial y tipo de `ruta`) las respondió Camilo el 2026-10-29: ahora
 
 | Fecha | Pregunta | Decisión |
 |---|---|---|
-| 2026-10-29 | ¿Dónde se integra? | En la rama épica `epic/GEO-geografia-jerarquica`, que nace de `dev`; un PR por tarjeta hacia ella y uno final de la épica a `dev`. El gate de CI debe correr también en PRs a `epic/**` (`/afinar-regla`). |
+| 2026-10-29 | ¿Dónde se integra? | En `dev`, como manda el arnés: un PR por tarjeta. La rama épica se probó y se descartó el mismo día (decisión del humano: «dale normal con merge a dev»). |
 | 2026-10-29 | ¿Se permite `ALTER TYPE`? | Solo `ADD VALUE IF NOT EXISTS`. Quitar o renombrar valores sigue prohibido hasta SLT-48. |
 | 2026-10-29 | ¿Qué pasa con el historial viejo por provincia/cantón/distrito? | Convive: lo viejo no se reescribe y `nodo_geografico` es un valor más del enum, para lo que se escriba desde SLT-46. |
 | 2026-10-29 | ¿Qué países llenan `tipo_nivel_geografico`? | Todos los que existan al migrar, no solo Costa Rica. |

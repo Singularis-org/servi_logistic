@@ -12,11 +12,10 @@
 
 ## T0 — Precondiciones
 
-- [ ] **T0.1** Comprobar que `gate.yml` corre en PRs hacia `epic/**` (R38). Lo hace `/afinar-regla`,
-  no esta feature. *Hecho:* el cambio está en `dev` o en la rama épica; si no, se para y se avisa al
-  leader.
-- [ ] **T0.2** Comprobar que la rama épica `epic/GEO-geografia-jerarquica` existe y que esta rama
-  sale de ella. *Hecho:* `git merge-base` coincide con la punta de la épica.
+- [ ] **T0.1** Comprobar que el PR #29 (guardia de migraciones destructivas) está mergeado en `dev` o
+  descartado por el humano. *Hecho:* así consta; si no, se para y se avisa al leader.
+- [ ] **T0.2** Comprobar que esta rama sale de `dev` y está al día con `origin/dev`. *Hecho:* `git merge-base`
+  coincide con `origin/dev` o la rama está rebasada/mergeada sobre ella.
 
 ## T1 — Enums y tipos de nivel (depende de T0)
 
