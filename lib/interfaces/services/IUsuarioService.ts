@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types/usuario";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 
 // Feature 25. Se reutiliza el `Actor` de IOrdenService (`{ usuarioId, rol }`),
 // resuelto desde la sesion (R1). Ningun result expone `passwordHash` (R12/R24).
@@ -46,10 +47,13 @@ export type ActualizarUsuarioServiceResult =
   | { status: "forbidden" }
   | { status: "not_found" }; // R17
 
+// SL-24 (R27): activar desde `inactivo` o `bloqueado` es un alta; con el tope del rol lleno,
+// `tope_plan`. Crear y actualizar no lo necesitan: lo devuelven como `fieldErrors.rolId`.
 export type CambiarEstadoUsuarioServiceResult =
   | { status: "ok"; usuario: UsuarioPublico }
   | { status: "forbidden" }
-  | { status: "not_found" }; // R22
+  | { status: "not_found" } // R22
+  | ResultadoTopePlan;
 
 export type ListarTiposIdentificacionServiceResult =
   | { status: "ok"; tipos: { id: string; value: string }[] }

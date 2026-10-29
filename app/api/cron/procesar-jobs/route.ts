@@ -59,6 +59,15 @@ import {
   crearWhatsappEnvioMantenimientoHandler,
   recurrenciaWhatsappEnvioMantenimiento,
 } from "@/lib/services/jobs/whatsapp-envio-mantenimiento-handler";
+import {
+  buildDepsAvisoCorreo,
+  buildPlanesRepositoryDeJobs,
+  crearPlanAplicarCambioHandler,
+  crearPlanAvisoCorreoHandler,
+  crearPlanCambiosVencidosHandler,
+  crearPlanRecordatorioCambioHandler,
+  recurrenciaPlanCambiosVencidos,
+} from "@/lib/planes/jobs-cambio-plan";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -239,13 +248,38 @@ export function buildHandlers(
   handlers.set("whatsapp_envio_ejecucion", crearWhatsappEnvioEjecucionHandler());
   handlers.set("whatsapp_envio_reintento", crearWhatsappEnvioReintentoHandler());
   handlers.set("whatsapp_envio_mantenimiento", crearWhatsappEnvioMantenimientoHandler());
+  // SL-24 (design §16.3, R38): el cambio programado de un plan. `plan_aplicar_cambio` es PUNTUAL:
+  // lo encola la programación, en su transacción, para `vigente_desde`. `plan_cambios_vencidos` es
+  // el barrido RECURRENTE (cada hora) de lo que siga pendiente y ya rija. Un solo repositorio para
+  // los cuatro; `getPrismaClient()` es perezoso. Los dos de correo (T12, §16.4) son PUNTUALES:
+  // `plan_recordatorio_cambio` (sin empresa) reparte un `plan_aviso_correo` por empresa, y este corre
+  // en la empresa destino. El emisor real se construye perezosamente, al enviar: un SMTP mal
+  // configurado falla ESE trabajo, no el drenado de los demás tipos.
+  const planes = buildPlanesRepositoryDeJobs();
+  handlers.set("plan_aplicar_cambio", crearPlanAplicarCambioHandler(planes, now));
+  handlers.set("plan_cambios_vencidos", crearPlanCambiosVencidosHandler(planes, now));
+  handlers.set("plan_recordatorio_cambio", crearPlanRecordatorioCambioHandler(planes));
+  handlers.set("plan_aviso_correo", crearPlanAvisoCorreoHandler(planes, buildDepsAvisoCorreo));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,
-      conSuEmpresa(h, recurrentes.has(tipo), opciones, moduloDeEjecucion(tipo)),
+      conSuEmpresa(
+        h,
+        recurrentes.has(tipo) && !RECURRENTES_DE_PLATAFORMA.has(tipo),
+        opciones,
+        moduloDeEjecucion(tipo),
+      ),
     ]),
   );
 }
+
+/**
+ * SL-24 (design §16.3) — recurrentes SIN empresa que corren UNA vez, en plataforma, y no una vez por
+ * empresa como los demás (`conSuEmpresa`): su trabajo es del catálogo de planes, no de una empresa.
+ * Barrer los cambios vencidos una vez por empresa repetiría el mismo barrido N veces, y con cero
+ * empresas no correría nunca. Siguen re-agendándose por `buildRecurrencias`.
+ */
+export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>(["plan_cambios_vencidos"]);
 
 /**
  * Registro de recurrencia por tipo. Recurrentes son los tipos que dispara el RELOJ:
@@ -266,6 +300,9 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   // el RELOJ; su primera fila la siembra la migracion `20261005120200`. Los otros cuatro tipos de la
   // 474 NO van aqui: re-agendarlos con payload `{}` no significaria nada.
   recurrencias.set("whatsapp_envio_mantenimiento", recurrenciaWhatsappEnvioMantenimiento);
+  // SL-24 (design §16.3): el barrido de cambios de plan vencidos, cada hora en punto. Corre una vez
+  // en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("plan_cambios_vencidos", recurrenciaPlanCambiosVencidos);
   return recurrencias;
 }
 

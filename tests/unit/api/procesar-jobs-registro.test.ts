@@ -45,6 +45,14 @@ describe("R21 — registro en el drenador", () => {
       "geocodificacion",
       "liberar_reprogramadas",
       "optimizacion_ruta",
+      // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
+      // vencidos (RECURRENTE).
+      "plan_aplicar_cambio",
+      // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
+      // el recordatorio que los reparte.
+      "plan_aviso_correo",
+      "plan_cambios_vencidos",
+      "plan_recordatorio_cambio",
       // FICHA 410: entrega de UNA notificacion ya creada a las suscripciones push de sus
       // destinatarios. PUNTUAL —lo encola el decorador del repositorio de notificaciones—, asi que
       // tampoco va en `buildRecurrencias`. Este censo es LITERAL a proposito y se pone rojo cuando
@@ -82,6 +90,7 @@ describe("R21 — registro en el drenador", () => {
     expect([...recurrencias.keys()].sort()).toEqual([
       "analitica_rollup_diario",
       "liberar_reprogramadas",
+      "plan_cambios_vencidos", // SL-24: barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
     ]);
   });

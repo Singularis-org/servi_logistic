@@ -14,6 +14,7 @@ import {
   olvidarDispositivos,
   SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
+import { abrirCon } from "./_escenarios/pulsar";
 import { CAJA_A, CAJA_B, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
 // SL-45 (T10, design §12.4) — el pago a la plataforma desde la wallet, en el navegador.
@@ -342,17 +343,6 @@ async function abrirPago(page: Page): Promise<Locator> {
   const dialog = page.getByRole("dialog");
   await abrirCon(regionDeuda(page).getByRole("button", { name: TEXTO.boton, exact: true }), dialog);
   return dialog;
-}
-
-/**
- * Pulsa hasta que se abra lo esperado. Recién cargada, la página de `pnpm dev` puede no estar hidratada
- * todavía, y el primer clic cae en el HTML del servidor sin manejador. Abrir es idempotente.
- */
-async function abrirCon(control: Locator, abierto: Locator): Promise<void> {
-  await expect(async () => {
-    await control.click({ timeout: 2_000 });
-    await expect(abierto).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
 }
 
 async function llenarPago(dialog: Locator, monto: string, referencia: string): Promise<void> {

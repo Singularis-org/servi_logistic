@@ -206,6 +206,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-23",
     motivo: "encender y apagar módulos de una empresa: lo hace el superadmin, que no tiene empresa (R10)",
   },
+  {
+    archivo: "lib/repositories/PlanesRepository.ts",
+    ficha: "SL-24",
+    motivo:
+      "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45)",
+  },
 ];
 
 /**

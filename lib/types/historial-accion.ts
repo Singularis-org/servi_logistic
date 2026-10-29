@@ -50,8 +50,8 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 72 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
- * permisos) mas las integraciones de SL-36 y los modulos de SL-23, y es el que consume el selector de filtros: no se
+ * Los 73 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
@@ -357,12 +357,20 @@ export const HISTORIAL_ACCION_TIPOS = [
   // `valor_nuevo` su clave, ambos del catalogo.
   "modulo_activado",
   "modulo_desactivado",
+
+  // --- A.6 · cambia el plan de una empresa (1) ---
+  // SL-24 (design §9): el superadmin asigna o cambia el plan de una empresa. Categoria propia: no
+  // mueve dinero (el precio es informativo, R4), no borra nada y no cambia quien puede hacer que,
+  // sino CUANTO puede hacer la empresa. `entidad_id` es el plan nuevo; `valor_anterior` y
+  // `valor_nuevo` van a NULL porque el nombre de un plan es texto libre. Crear, editar y archivar un
+  // plan no estan aqui: son de plataforma y van a `plan_rastro`.
+  "plan_asignado",
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
 
 /**
- * Los 26 tipos de entidad que una accion del catalogo puede afectar.
+ * Los 27 tipos de entidad que una accion del catalogo puede afectar.
  *
  * ⭑ FICHA 374 — `provincia`, `canton` y `distrito` son la PRIMERA ampliacion de este enum: nacio
  * con 17 valores en `20260902120000_historial_accion` y ninguna migracion posterior lo habia
@@ -407,6 +415,8 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   // ⭑ SL-23 — el modulo encendido de una empresa, 1:1 con su tabla. `entidad_id` es el id de la
   // fila creada o borrada: opaco y sin FK, sobrevive al borrado de la fila al apagar.
   "organizacion_modulo",
+  // ⭑ SL-24 — el plan asignado a una empresa, 1:1 con su tabla. `entidad_id` es el id del plan.
+  "plan",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
@@ -427,6 +437,8 @@ export const CATEGORIAS_ACCION = [
   "cambia_integraciones",
   // SL-23 (design §4.3): la quinta, para los modulos encendidos de una empresa.
   "cambia_modulos",
+  // SL-24 (design §9): la sexta, para el plan asignado a una empresa.
+  "cambia_plan",
 ] as const;
 
 export type CategoriaAccion = (typeof CATEGORIAS_ACCION)[number];
@@ -530,6 +542,7 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   integracion_desconectada: "cambia_integraciones",
   modulo_activado: "cambia_modulos",
   modulo_desactivado: "cambia_modulos",
+  plan_asignado: "cambia_plan",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -611,6 +624,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   integracion_desconectada: "Desconectó una integración",
   modulo_activado: "Activó un módulo de una empresa",
   modulo_desactivado: "Desactivó un módulo de una empresa",
+  plan_asignado: "Asignó un plan a una empresa",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */
@@ -620,6 +634,7 @@ export const CATEGORIA_LABELS: Record<CategoriaAccion, string> = {
   cambia_permisos: "Cambia permisos",
   cambia_integraciones: "Cambia integraciones",
   cambia_modulos: "Cambia módulos",
+  cambia_plan: "Cambia el plan",
 };
 
 /** Etiqueta legible de cada tipo de entidad. */
@@ -652,6 +667,7 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
   integracion: "Integración",
   organizacion_modulo: "Módulo",
+  plan: "Plan",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */
