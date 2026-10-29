@@ -73,7 +73,11 @@ export type IconKey =
   | "building"
   // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin. Icono propio por el
   // mismo criterio.
-  | "map";
+  | "map"
+  // SLT-58 (R10): «Mi plan», el consumo del plan de la empresa. Icono propio por el mismo criterio.
+  | "gaugeCircle"
+  // SLT-58 (R23): «Planes», el catálogo de planes del superadmin. Icono propio por el mismo criterio.
+  | "layers";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -680,6 +684,16 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     ],
   },
   {
+    // SLT-58 (design §4.1; R10, R12) — «Mi plan»: el consumo del plan de la empresa, para el
+    // `maestro` y el `admin`. Va justo después de «Histórico»: para los dos el primer visible sigue
+    // siendo «Inicio», así que no mueve ningún aterrizaje y no lleva `destinoInicial: false`. Sin
+    // `modulo`: es del núcleo. `roles` es la constante que leen también la página y el servicio.
+    label: "Mi plan",
+    href: "/mi-plan",
+    iconKey: "gaugeCircle",
+    roles: ROLES_MI_PLAN,
+  },
+  {
     // SL-32 (R6, R36) — «Empresas»: el primero de los dos ítems del superadmin (el otro es
     // «Geografía», SL-20), que no ve nada de empresa.
     //
@@ -695,6 +709,15 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     label: "Empresas",
     href: "/plataforma/empresas",
     iconKey: "building",
+    roles: ROLES_PLATAFORMA,
+  },
+  {
+    // SLT-58 (design §4.2; R23) — «Planes»: el catálogo de planes, solo para el superadmin. Va
+    // entre «Empresas» y «Geografía»: su aterrizaje sigue en «Empresas», que va antes. `roles` ES
+    // `ROLES_PLATAFORMA` por identidad (guardia `superadmin-fuera-de-empresa`).
+    label: "Planes",
+    href: "/plataforma/planes",
+    iconKey: "layers",
     roles: ROLES_PLATAFORMA,
   },
   {

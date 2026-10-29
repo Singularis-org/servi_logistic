@@ -303,13 +303,15 @@ describe("pwa · los atajos del manifiesto", () => {
     // ⭑ SL-20 (R21, design §8) — `superadmin` 1 -> 2 y NADIE más: entra «Geografía»
     // (`/plataforma/geografia`), pantalla de PLATAFORMA (no de empresa), solo para `superadmin`.
     // Si se moviera otro rol, se habría abierto de más. La intersección sigue vacía: CERO atajos.
+    // ⭑ SLT-58 (R10, R23) — `maestro` 23 -> 24 y `admin` 14 -> 15 por «Mi plan» (`ROLES_MI_PLAN`),
+    // y `superadmin` 2 -> 3 por «Planes» (`ROLES_PLATAFORMA`). Nadie más se mueve. CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
-      maestro: 23,
-      admin: 14,
+      maestro: 24,
+      admin: 15,
       adminSatelite: 8,
       mensajero: 7,
       adminTienda: 5,
-      superadmin: 2,
+      superadmin: 3,
     });
 
     const interseccion = [...porRol.values()].reduce((acc, destinos) =>

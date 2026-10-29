@@ -50,7 +50,7 @@
 
 ## Tanda B — frontend (frontend_dev)
 
-- [ ] **T6 — Menú** (design §4). Depende de T3 (constante). Grep primero de los `toEqual` literales de
+- [x] **T6 — Menú** (design §4). Depende de T3 (constante). Grep primero de los `toEqual` literales de
   los menús de `maestro`, `admin` y `superadmin` en `tests/`. Ítems «Mi plan» (`ROLES_MI_PLAN`, tras
   «Histórico») y «Planes» (`ROLES_PLATAFORMA`, entre «Empresas» y «Geografía»); `IconKey`
   `gaugeCircle` y `layers` y su mapa en `Sidebar.tsx`. Actualizar los casos literales de
