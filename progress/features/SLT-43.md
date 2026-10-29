@@ -32,6 +32,10 @@ F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), re
   fallaba con 23503; el test de SL-20 no se toca. Enmienda en design §2.1.
 - 2026-10-29 · Guardia `migraciones-destructivas` roja en `dev` por `20261028120000_modulo_wallet_nucleo`
   (ajena): no se arregla en esta rama; el leader la resuelve con un PR aparte.
+- 2026-10-29 · T3.2 (Camilo, opción (a)), excepción explícita a R36: en `carga-division.test.ts`, solo el caso
+  «decision 4: dos homónimos normalizados bajo el mismo padre» desactiva el trigger de sincronía al armar sus
+  datos, dentro de su transacción revertida; aserciones sin cambios. Motivo: estado imposible en el modelo
+  nuevo (R9/R14) y ninguna vía de la app lo crea. Ningún otro test de SL-20 se toca. Enmienda en design (R36).
 
 ## Modelos (overrides)
 

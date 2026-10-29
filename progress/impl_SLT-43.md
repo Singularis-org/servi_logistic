@@ -233,3 +233,81 @@ Recomendación: (a).
 
 **Veredicto:** T3.1 hecha y verde; T3.2 bloqueada por un caso de `carga-division` que choca con R9 vía la
 sincronía; T4.1/T4.2 no empezadas (dependen de la respuesta según la regla de parar).
+
+### Tanda 4 — T3.2 (excepción autorizada), T4.1, T4.2, T4.4 (2026-10-29)
+
+**Archivos creados**
+- `db/migrations/20261029120400_columnas_nodo_geografico/{migration,down}.sql` (design §2.4): cuatro `ADD COLUMN`
+  nullable sin DEFAULT, tres FK `NOT VALID` (`orden` RESTRICT/RESTRICT; zonas CASCADE/CASCADE como su
+  `distrito_id`), funciones `orden_nodo_geografico()` y `zona_nodo_geografico_del_distrito()`, tres triggers
+  `BEFORE INSERT OR UPDATE OF …`. Sin trigger en `cierre_detail`.
+- `db/migrations/20261029120500_indices_nodo_geografico/{migration,down}.sql`: los tres índices con nombre por
+  defecto de Prisma.
+- `tests/integration/db/geo-sincronia-orden-zonas.test.ts` (R20, R21; 10 casos), sobre `crearEscenarioGeo43`
+  (el fixture no necesitó cambios).
+- `tests/unit/db/slt43-migraciones-aditivas.test.ts` (R19; 9 casos, 6 de contraprueba).
+
+**Archivos modificados**
+- `tests/integration/db/carga-division.test.ts`: SOLO el caso «decision 4: dos homónimos» (decisión de Camilo,
+  opción (a)): `DISABLE`/`ENABLE TRIGGER canton_sincroniza_nodo_geografico` alrededor de la siembra, dentro de su
+  `revertida`; comentario del motivo; tras la transacción, `pg_trigger.tgenabled = 'O'`. Aserciones sin cambios.
+- `db/schema.prisma`: `Orden.nodoGeograficoId/nodoGeografico` (+ `@@index`), `ZonaDistrito` y
+  `DistritoZonaEspecial` igual (+ `@@index`), `CierreDetail.ubicacionSnapshot Json?`, back-relations
+  `ordenes`/`zonasDistrito`/`zonasEspeciales` en `NodoGeografico`.
+- `tests/integration/db/454/correccion-ramas-sql-real.test.ts` y `477-resolicitud-rechazado-sql-real.test.ts`:
+  `ubicacionSnapshot: undefined` al copiar un `cierreDetail` leído (typecheck: `JsonValue | null` no es entrada
+  de Prisma). Ni datos ni aserciones cambian; ver desviaciones.
+- `specs/.../tasks.md`: T3.2, T4.1, T4.2, T4.4 `[x]`; nota de bloqueo de T3.2 sustituida por la de la excepción.
+
+**Decisiones / desviaciones**
+- carga-division: además de apagar el trigger, un `UPDATE canton SET nombre = nombre` sobre el ganador (`primero`,
+  por id) para que tenga nodo: el distrito que crea la carga cuelga de él y su nodo necesita el del padre (FK
+  compuesta). Es preparación del caso, no aserción; sin esa línea el caso cae con 23503.
+- Una sola función de trigger para `zona_distrito` y `distrito_zona_especial` (las dos `NEW.nodo_geografico_id :=
+  NEW.distrito_id`); el design no fija nombres de funciones.
+- ON UPDATE de las FK de zona: CASCADE (default de Prisma y lo que tiene su `distrito_id`); el design solo fijaba
+  ON DELETE (los ids de nodo no cambian: ON UPDATE no se dispara en la práctica).
+- 454/477: el design (R36) pide no cambiar aserciones; esto no las cambia, pero toca dos tests ajenos. Sin el
+  cambio el typecheck queda rojo y no hay forma de que una columna `Json?` acepte `null` en Prisma. Ambos están
+  en `tests/baseline-rojos.json` y en local fallan por base sin órdenes: las líneas tocadas solo las ejerce CI.
+- `fk-misma-empresa.guardia` confirmada: verde con las tres FK a `nodo_geografico` (modelo de plataforma), sin
+  trigger de misma empresa.
+- Comportamiento de los triggers que puede tumbar escrituras (dejado en test): orden sin cantón → 23502 como
+  antes (`canton_id` NOT NULL; no existe orden sin geografía); orden previa con nodo NULL se sigue actualizando
+  y solo gana nodo si cambia su geografía; borrar un distrito con orden no falla (la orden pasa al cantón); la FK
+  nueva solo rechaza (23503) un distrito sin nodo, que solo existe con la sincronía apagada a mano.
+- R19 (T4.4): quita comentarios y la comparación `TG_OP = 'DELETE'`; `DELETE`/`UPDATE`/`INSERT` solo sobre
+  tablas creadas por las seis; eventos de trigger, acciones de FK, `DO UPDATE` y `GRANT/REVOKE` no cuentan;
+  `ALTER TYPE` solo `ADD VALUE IF NOT EXISTS`; `ADD COLUMN` en tabla existente sin NOT NULL/DEFAULT.
+
+**Mapa R → test (esta tanda)**
+| R | Test |
+|---|---|
+| R19 | `tests/unit/db/slt43-migraciones-aditivas.test.ts` |
+| R20 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` (alta con/sin distrito; corrección de distrito/cantón; a mano se pisa; orden previa NULL; borrado de distrito; FK 23503) |
+| R21 | ídem («`zona_distrito` y `distrito_zona_especial` apuntan a su distrito…») |
+| R24, R40 (adelanto) | ídem (FK `convalidated = false`; `cierre_detail` sin trigger y snapshot NULL). Su test oficial sigue siendo `geo-backfill.test.ts` (T5.2) |
+| R36 (excepción) | `tests/integration/db/carga-division.test.ts` (16/16, con `tgenabled = 'O'`) |
+
+**Verificación (salida real, `DATABASE_URL` → `logistic_slt43`)**
+- `prisma migrate deploy`: 120400 y 120500 aplicadas. `prisma migrate diff --from-config-datasource --to-schema
+  db/schema.prisma --script`: `-- This is an empty migration.` tras cada una.
+- `pnpm run typecheck`: 0 errores (antes del arreglo de 454/477: 2 errores TS2322 por `ubicacionSnapshot`).
+  `eslint` sobre los 5 archivos de test tocados: sin salida.
+- `geo-sincronia-orden-zonas` 10/10 · `slt43-migraciones-aditivas` 9/9 · `carga-division` 16/16.
+- Guardias: `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `plataforma-solo-en-lista`,
+  `cobro-plataforma-solo-por-trigger` verdes; `migraciones-destructivas` roja solo por
+  `20261028120000_modulo_wallet_nucleo` (no nombra ninguna `202610291*`). 82/83.
+- T3.2 + geo (`geo-`, `geografia-`, `carga-division`, `migracion-sl20-ida-y-vuelta`; 41 archivos): 584 pasados,
+  16 saltados; rojos solo `geografia-historico-intacto` y `geografia-ordenes-sin-entregar` (base sin órdenes).
+  `geografia-registro-accion` + `geografia-renombrado` solos: 42/42.
+- Adelanto de T4.5 (no marcada): `zona-*`, `cobertura-*`, `distrito-zona-especial-por-empresa`,
+  `aislamiento-cierres`, `aislamiento-ordenes`, `cierre-detail-migration`, `orden-*`,
+  `cierre-aprobacion-libera-solo-lo-suyo`, `cierre-segundo-vincula-solo-lo-suyo`, `deshacer-asignacion-zona-satelite`
+  (42 archivos): 33 verdes, 449 pasados, 7 fallados, 48 saltados. Los 9 archivos rojos están en
+  `tests/baseline-rojos.json` y sus errores son de entorno («`orden` esta vacia», «sin catálogos sembrados», «zona
+  sin central», «referencia a otra empresa» de fixtures) o el censo viejo de `orden-traspaso-migration` (espera
+  33 migraciones posteriores y hay 81: ya roto antes de SLT-43). Ninguno nombra un objeto de SLT-43.
+  454/477 tras el cambio: rojos por «tabla `orden` vacia» (entorno, baseline).
+
+**Veredicto:** T3.2, T4.1, T4.2 y T4.4 hechas; T4.3 y T4.5 quedan para la siguiente tanda.

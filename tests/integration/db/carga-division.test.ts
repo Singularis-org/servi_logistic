@@ -290,9 +290,16 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
           select: { id: true },
         });
         // El UNIQUE de la base compara el nombre LITERAL: los dos caben (datos heredados).
+        // SLT-43 (excepción a R36 autorizada por Camilo, 2026-10-29): este estado es imposible en el modelo
+        // nuevo (R9/R14) y ninguna vía de la app lo crea; se siembra con la sincronía apagada en esta tx revertida.
+        await tx.$executeRawUnsafe(`ALTER TABLE "canton" DISABLE TRIGGER "canton_sincroniza_nodo_geografico"`);
         const a = await tx.canton.create({ data: { nombre: "San Jose", provinciaId: p.id }, select: { id: true } });
         const b = await tx.canton.create({ data: { nombre: "San José", provinciaId: p.id }, select: { id: true } });
+        await tx.$executeRawUnsafe(`ALTER TABLE "canton" ENABLE TRIGGER "canton_sincroniza_nodo_geografico"`);
         const primero = [a.id, b.id].sort()[0];
+        // El distrito de la carga necesita el nodo de su cantón (FK compuesta): solo el ganador lo recibe,
+        // por el upsert de la sincronía; un UPDATE sin cambios basta para dispararla.
+        await tx.$executeRawUnsafe(`UPDATE "canton" SET "nombre" = "nombre" WHERE "id" = $1`, primero);
 
         const r = await service.cargar("XA", archivo("Región,,SAN JOSE,,Barrio,"), actor);
         expect(r).toMatchObject({ status: "ok", creados: { provincia: 0, canton: 0, distrito: 1 } });
@@ -300,6 +307,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const barrio = await tx.distrito.findFirst({ where: { nombre: "Barrio", paisId: "XA" }, select: { cantonId: true } });
         expect(barrio?.cantonId).toBe(primero);
       });
+      const [trigger] = await prisma.$queryRawUnsafe<{ tgenabled: string }[]>(
+        `SELECT "tgenabled"::text AS "tgenabled" FROM "pg_trigger" WHERE "tgname" = 'canton_sincroniza_nodo_geografico'`,
+      );
+      expect(trigger?.tgenabled).toBe("O");
     });
   });
 

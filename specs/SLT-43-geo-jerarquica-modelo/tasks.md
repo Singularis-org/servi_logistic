@@ -55,26 +55,25 @@
 - [x] **T3.1** Migración `20261029120300_nodo_geografico_sincronia` + `down.sql` (design §2.3).
   *Hecho:* `geo-sincronia-geografia.test.ts` (R15–R18) verde, recorriendo `GeoRepository.crear`,
   `renombrar`, `cambiarActivacion` e `importarDivision` de SL-20.
-- [ ] **T3.2** Correr las suites de geografía de SL-20 y de 374 sin tocarlas: `geografia-*.test.ts`,
+- [x] **T3.2** Correr las suites de geografía de SL-20 y de 374 sin tocarlas: `geografia-*.test.ts`,
   `carga-division.test.ts`, `migracion-sl20-ida-y-vuelta.test.ts`. *Hecho:* verdes sin cambiar
   aserciones (R36). Si un test que limpia con `DELETE` choca con la sincronía, se arregla la
   sincronía, no el test.
-  _(2026-10-29: bloqueada. `carga-division.test.ts` › «decision 4: con dos homonimos normalizados bajo el
-  mismo padre» siembra «San Jose» y «San José» bajo la misma provincia por SQL directo; el único de
-  R9 lo rechaza vía la sincronía (23505). Pregunta al humano en `progress/impl_SLT-43.md > Tanda 3`.)_
+  _(Excepción autorizada por Camilo el 2026-10-29, design R36: el caso «decision 4: dos homónimos» de
+  `carga-division.test.ts` siembra con la sincronía apagada; aserciones sin cambios.)_
 
 ## T4 — Columnas nuevas y triggers de negocio (depende de T3.1)
 
-- [ ] **T4.1** Migración `20261029120400_columnas_nodo_geografico` + `down.sql` (design §2.4): cuatro
+- [x] **T4.1** Migración `20261029120400_columnas_nodo_geografico` + `down.sql` (design §2.4): cuatro
   columnas, tres FK `NOT VALID`, tres triggers. Relaciones en `schema.prisma` (`Orden`,
   `ZonaDistrito`, `DistritoZonaEspecial`, `CierreDetail`). Confirmar que `fk-misma-empresa.guardia` no
   exige trigger para una FK de negocio → plataforma. *Hecho:* diff vacío y
   `geo-sincronia-orden-zonas.test.ts` (R20, R21) verde.
-- [ ] **T4.2** Migración `20261029120500_indices_nodo_geografico` + `down.sql`. *Hecho:* diff vacío.
+- [x] **T4.2** Migración `20261029120500_indices_nodo_geografico` + `down.sql`. *Hecho:* diff vacío.
 - [ ] **T4.3** [P] `geo-trigger-orden-rendimiento.test.ts` (R22) en base propia. *Hecho:* mediana
   ≤ 1 ms por fila; la cifra va a `progress/impl_SLT-43.md`. Si se pasa, el PR no entra: se para y se
   avisa.
-- [ ] **T4.4** [P] `slt43-migraciones-aditivas.test.ts` (R19) con contraprueba. *Hecho:* verde sobre
+- [x] **T4.4** [P] `slt43-migraciones-aditivas.test.ts` (R19) con contraprueba. *Hecho:* verde sobre
   las seis carpetas y rojo sobre un texto inventado con `DROP COLUMN`.
 - [ ] **T4.5** Correr las suites de órdenes, zonas, cobertura y cierres que tocan las tablas con
   columna nueva (`vitest related` sobre `db/schema.prisma` y los repositorios de esas tablas).

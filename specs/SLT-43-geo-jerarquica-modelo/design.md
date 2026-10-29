@@ -383,6 +383,8 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R39 | `tests/unit/scripts/migrate-deploy-guardas.test.ts` (existente; sin cambios) |
 | R40 | `tests/integration/db/geo-backfill.test.ts` (tras `--aplicar`, una fila nueva de `cierre_detail` nace con `ubicacion_snapshot` NULL; no hay trigger sobre `cierre_detail` en `pg_trigger` con nombre de SLT-43; relanzar `--aplicar` la llena y no toca las ya llenas) |
 
+> **Enmienda 2026-10-29 (humano, Camilo) — excepción explícita a R36:** en `carga-division.test.ts`, solo el caso «decision 4: dos homónimos normalizados bajo el mismo padre» desactiva el trigger de sincronía mientras arma sus datos, dentro de su transacción revertida; sus aserciones no cambian. Motivo: ese estado es imposible en el modelo nuevo (R9/R14) y ninguna vía de la app lo crea. Ningún otro test de SL-20 se toca.
+
 ## 8. Alternativas descartadas
 
 1. **Convertir `provincia`/`canton`/`distrito` en vistas sobre `nodo_geografico` ya en SLT-43.**

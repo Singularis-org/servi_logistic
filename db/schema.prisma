@@ -744,12 +744,17 @@ model ZonaDistrito {
   zona     Zona     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
   distrito Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
 
+  /// SLT-43 (R21): = `distrito_id`, lo pone el trigger `zona_distrito_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId String?         @map("nodo_geografico_id")
+  nodoGeografico   NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@unique([zonaId, distritoId])
   @@index([zonaId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261029120500)
   @@index([organizacionId])
   @@map("zona_distrito")
 }
@@ -761,12 +766,17 @@ model DistritoZonaEspecial {
   distritoId String   @map("distrito_id")
   distrito   Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
 
+  /// SLT-43 (R21): = `distrito_id`, lo pone el trigger `distrito_zona_especial_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId String?         @map("nodo_geografico_id")
+  nodoGeografico   NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([organizacionId, distritoId], map: "distrito_zona_especial_organizacion_id_distrito_id_key")
   @@index([organizacionId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261029120500)
   @@map("distrito_zona_especial")
 }
 
@@ -814,6 +824,8 @@ model Orden {
   provinciaId            String    @map("provincia_id") // R12: NOT NULL
   cantonId               String    @map("canton_id") // R12: NOT NULL
   distritoId             String?   @map("distrito_id") // R12: nullable (unico FK nullable)
+  /// SLT-43 (R20): `COALESCE(distrito_id, canton_id)`, lo pone el trigger `orden_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId       String?   @map("nodo_geografico_id")
   producto               String
   peso                   Decimal?  @db.Decimal(10, 3) // feature 15/R4: nullable (carga masiva sin peso)
   notas                  String? // R14a: texto nullable
@@ -927,6 +939,7 @@ model Orden {
   provincia         Provincia   @relation(fields: [provinciaId], references: [id])
   canton            Canton      @relation(fields: [cantonId], references: [id])
   distrito          Distrito?   @relation(fields: [distritoId], references: [id])
+  nodoGeografico    NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Restrict, onUpdate: Restrict) // SLT-43 (R20)
   mensajeroAsignado Usuario?    @relation("OrdenMensajeroAsignado", fields: [mensajeroAsignadoId], references: [id], onDelete: SetNull) // feature 17/R7
   carga             Carga?      @relation("OrdenCarga", fields: [cargaId], references: [id], onDelete: Restrict) // feature 141/R4: un lote con ordenes no se puede borrar
 
@@ -1031,6 +1044,7 @@ model Orden {
   @@index([provinciaId])
   @@index([cantonId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261029120500): el bloqueo largo de SLT-43, aislado en su migración
   @@index([cargaId]) // feature 141/R4: "ordenes de este lote"
   // Feature 169: indice GIN de trigramas del buscador. `map:` reproduce el nombre exacto
   // que la migracion escribio a mano (si no, Prisma propondria un RENAME INDEX, misma
@@ -3082,6 +3096,9 @@ model CierreDetail {
   provinciaNombre String  @map("provincia_nombre")
   cantonNombre    String  @map("canton_nombre")
   distritoNombre  String? @map("distrito_nombre") // el distrito es el unico FK nullable de la orden
+  // SLT-43 (design §2.6; R31, R40): `{ v, niveles: [{ profundidad, tipo, nombre, id }] }`, congelado. La llena
+  // solo `scripts/geo-backfill-nodo.ts`: sin trigger, las filas nuevas nacen NULL hasta SLT-47.
+  ubicacionSnapshot Json? @map("ubicacion_snapshot")
 
   createdAt DateTime @default(now()) @map("created_at")
   // SIN updated_at / deleted_at: fila INMUTABLE (R10).
@@ -5487,6 +5504,11 @@ model NodoGeografico {
   /// FK compuesta: el padre es del mismo país que el nodo (R5). Con `padre_id` NULL no se comprueba.
   padre NodoGeografico?     @relation("NodoGeograficoPadre", fields: [padreId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
   hijos NodoGeografico[]    @relation("NodoGeograficoPadre")
+
+  // SLT-43 (design §2.4): las tablas de negocio que apuntan al nodo; FK NOT VALID hasta `--validar` (R24).
+  ordenes         Orden[]
+  zonasDistrito   ZonaDistrito[]
+  zonasEspeciales DistritoZonaEspecial[]
 
   /// Destino de las FK compuestas de los hijos.
   @@unique([id, paisId])
