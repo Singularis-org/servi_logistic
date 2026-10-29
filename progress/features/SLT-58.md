@@ -26,6 +26,13 @@ F1.0 hecho (2026-10-29): tarjeta tomada, worktree creado. Siguiente: F1.2 (spec)
 - 2026-10-29: alcance acotado con `/afinar-feature` → `specs/SLT-58-planes-superadmin-ui/requirements.md`
   (tabla «Decisiones cerradas»).
 
+- 2026-10-29: spec aprobado por escrito («aprobado»), con las 5 propuestas de spec_author
+  (/mi-plan en menú propio, historial por plan + asignaciones por empresa, sin plan = «sin
+  límites», lectura propia por `plan_de_la_empresa`, empresa A del fixture en el E2E).
+- 2026-10-29: choque aceptado por el humano con SLT-51 (menu-visibility.ts, reparto.ts,
+  menu-visibility.test.ts) y SLT-56 (reparto.ts), de Carlos Restrepo. SLT-58 solo añade líneas.
+  Mismo dueño que SL-24/SLT-43 en `excepciones-aislamiento.ts` y `docs/architecture.md`: SLT-58 va primero.
+
 ## Preguntas abiertas
 - Ruta y lugar en el menú de «Mi plan»: lo propone spec_author (ver requirements.md).
 
