@@ -6,8 +6,11 @@ import type {
   AvisoCorreoPlan,
   CambioPendiente,
   DestinatariosDelAviso,
+  DetallePlanLeido,
   EmpresaDePlanes,
   IPlanesRepository,
+  PlanDeEmpresaLeida,
+  PlanDelCatalogoLeido,
   ResultadoAplicar,
   ResultadoArchivar,
   ResultadoAsignar,
@@ -16,6 +19,7 @@ import type {
   ResultadoProgramar,
   ResultadoRecordatorio,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
+import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
@@ -48,10 +52,13 @@ import {
 // Cada cambio deja su rastro en la misma transacción: `plan_rastro` (plataforma, P5) al crear, editar,
 // archivar, y al programar, reemplazar, cancelar o aplicar un cambio (R43); `historial_accion` de la empresa al asignar y por cada módulo que se
 // enciende o apaga (R29). Si el rastro falla, nada persiste.
+//
+// SLT-58 (design §3.2) suma tres lecturas para las pantallas del superadmin (catálogo, detalle de un
+// plan, plan de una empresa), también en `comoPlataforma` y sin escribir nada.
 
 export type PlanesPrismaClient = Pick<
   PrismaClient,
-  "plan" | "organizacion" | "planCambioProgramado" | "usuario" | "$transaction"
+  "plan" | "organizacion" | "planCambioProgramado" | "usuario" | "historialAccion" | "planRastro" | "$transaction"
 >;
 type Tx = Prisma.TransactionClient;
 
@@ -435,6 +442,22 @@ function empresasDelPlan(tx: Tx, planId: string): Promise<{ id: string; nombre: 
 /** «Sistema (programado por <nombre>)», cortado a los 120 de `actor_nombre` (§16.3, paso 4). */
 function actorDelAplicador(programadoPor: string): string {
   return `Sistema (programado por ${programadoPor})`.slice(0, 120);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Lecturas del superadmin (SLT-58, design §3.2)                               */
+/* -------------------------------------------------------------------------- */
+
+/** El rastro del detalle de un plan (R16) y el historial de asignaciones de una empresa (R21). */
+const LIMITE_RASTRO = 100;
+const LIMITE_ASIGNACIONES = 50;
+
+/**
+ * El pendiente con su versión validada por el mismo esquema que el aplicador (§16.1): una versión que
+ * ya no pasa es un dato roto y se rechaza aquí, no se pinta a medias.
+ */
+function pendienteDe(c: { vigenteDesde: Date; version: Prisma.JsonValue } | null): CambioDelPlanLeido | null {
+  return c === null ? null : { vigenteDesde: c.vigenteDesde, version: versionPlanSchema.parse(c.version) };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -831,6 +854,122 @@ export class PlanesRepository implements IPlanesRepository {
       });
       return filas.map(aDTO);
     });
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* SLT-58 (design §3.2): las lecturas del superadmin. No escriben (R25).     */
+  /* ------------------------------------------------------------------------ */
+
+  catalogo(): Promise<PlanDelCatalogoLeido[]> {
+    return comoPlataforma("SL-24", "leer el catálogo de planes con sus empresas (superadmin, SLT-58)", async () => {
+      const filas = await this.prisma.plan.findMany({
+        include: {
+          ...INCLUIR,
+          organizacionExclusiva: { select: { nombre: true } },
+          cambioProgramado: { select: { vigenteDesde: true } },
+          _count: { select: { empresas: true } },
+        },
+        orderBy: [{ nombre: "asc" }, { id: "asc" }],
+      });
+      return filas.map((f) => ({
+        plan: aDTO(f),
+        empresaNombre: f.organizacionExclusiva?.nombre ?? null,
+        empresas: f._count.empresas,
+        vigenteDesdePendiente: f.cambioProgramado?.vigenteDesde ?? null,
+      }));
+    });
+  }
+
+  detalle(planId: string): Promise<DetallePlanLeido | null> {
+    return comoPlataforma("SL-24", "leer el detalle de un plan con su rastro (superadmin, SLT-58)", async () => {
+      const fila = await this.prisma.plan.findUnique({
+        where: { id: planId },
+        include: {
+          ...INCLUIR,
+          organizacionExclusiva: { select: { nombre: true } },
+          cambioProgramado: { select: { vigenteDesde: true, version: true } },
+          empresas: { select: { id: true, nombre: true }, orderBy: [{ nombre: "asc" }, { id: "asc" }] },
+        },
+      });
+      if (fila === null) return null;
+      // Usa el índice `(plan_id, created_at)`. El `id` solo desempata: las filas de una misma
+      // operación (reemplazar y programar) comparten `created_at`.
+      const rastro = await this.prisma.planRastro.findMany({
+        where: { planId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: LIMITE_RASTRO,
+        select: { id: true, accion: true, cambios: true, actorNombre: true, createdAt: true },
+      });
+      return {
+        plan: aDTO(fila),
+        empresaNombre: fila.organizacionExclusiva?.nombre ?? null,
+        pendiente: pendienteDe(fila.cambioProgramado),
+        empresas: fila.empresas,
+        rastro: rastro.map((r) => ({
+          id: r.id,
+          accion: r.accion,
+          // Lo escribió `escribirRastro` con `diferenciasDelPlan`: `{ campo: { antes, despues } }`.
+          cambios: r.cambios as CambiosDelPlan,
+          actorNombre: r.actorNombre,
+          creadoAt: r.createdAt,
+        })),
+      };
+    });
+  }
+
+  planDeEmpresa(organizacionId: string): Promise<PlanDeEmpresaLeida | null> {
+    return comoPlataforma("SL-24", "leer el plan, el uso y las asignaciones de una empresa (superadmin, SLT-58)", () =>
+      this.prisma.$transaction(async (tx): Promise<PlanDeEmpresaLeida | null> => {
+        const empresa = await tx.organizacion.findUnique({
+          where: { id: organizacionId },
+          select: {
+            planCicloAnclaAt: true,
+            plan: {
+              include: { ...INCLUIR, cambioProgramado: { select: { vigenteDesde: true, version: true } } },
+            },
+          },
+        });
+        if (empresa === null) return null;
+        // Plataforma no filtra por empresa: el `organizacionId` va explícito (R21).
+        const asignaciones = await tx.historialAccion.findMany({
+          where: { organizacionId, accion: "plan_asignado" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: LIMITE_ASIGNACIONES,
+          select: { createdAt: true, actorNombre: true, entidadEtiqueta: true },
+        });
+        const lista = asignaciones.map((a) => ({
+          creadoAt: a.createdAt,
+          actorNombre: a.actorNombre,
+          planNombre: a.entidadEtiqueta,
+        }));
+        const { plan } = empresa;
+        if (plan === null) return { organizacionId, plan: null, asignaciones: lista };
+
+        // El CHECK de 20261028130000 impide un plan sin ancla.
+        const ancla = empresa.planCicloAnclaAt;
+        if (ancla === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no ancla`);
+        const dto = aDTO(plan);
+        const uso = await usoDe(tx, organizacionId);
+        return {
+          organizacionId,
+          plan: {
+            dto,
+            vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio },
+            ancla,
+            uso: {
+              ordenes: uso.ordenes,
+              apiKeys: uso.api_keys,
+              porRol: Object.fromEntries(ROLES_CON_TOPE.map((rol) => [rol, uso[COLUMNA_DEL_ROL[rol]]])) as Record<
+                RolConTope,
+                number
+              >,
+            },
+            cambio: pendienteDe(plan.cambioProgramado),
+          },
+          asignaciones: lista,
+        };
+      }),
+    );
   }
 
   publicos(): Promise<PlanDTO[]> {

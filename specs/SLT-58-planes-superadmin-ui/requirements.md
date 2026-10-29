@@ -133,3 +133,4 @@
 | 2026-10-29 | ¿Pedir cambio de plan desde la empresa? | No. Solo información. Va a SL-25. |
 | 2026-10-29 | ¿E2E? | Sí: el superadmin crea un custom y lo asigna a la empresa demo; el maestro ve sus topes y su consumo en «Mi plan». Cubre el permiso y el aislamiento. |
 | 2026-10-29 | Heredado de SL-24 | Solo el superadmin gestiona planes (validado en el service); archivar en vez de borrar; precio sin moneda (D26); ciclo en UTC desde el alta; identificadores en español; sin dependencias nuevas. |
+| 2026-10-29 | ¿Se puede tocar `tests/unit/services/planes-service.test.ts` (R25)? | Solo de forma mecánica: se añaden tres `vi.fn` (`catalogo`, `detalle`, `planDeEmpresa`) a su `doble()` para que compile con la interfaz ampliada, sin cambiar ninguna aserción. Es una excepción a R25 decidida por el humano durante la implementación (T4). |

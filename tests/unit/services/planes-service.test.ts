@@ -71,6 +71,10 @@ function doble() {
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => [plan()]),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => [plan()]),
+    // SLT-58: excepción mecánica a R25 decidida por el humano.
+    catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
+    detalle: vi.fn<IPlanesRepository["detalle"]>(),
+    planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
   };
 }
 

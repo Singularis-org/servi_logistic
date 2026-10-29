@@ -88,12 +88,37 @@
 ### Salida
 `vitest run` de mi-plan-service, mi-plan-repository y plan-de-la-empresa contra `logistic_slt58`: 3 archivos y 24 tests en verde, sin saltos. Typecheck y eslint de los archivos en verde.
 
-## T4 — Lecturas del superadmin (backend_dev) — SIN COMMIT, bloqueada
+## T4 — Lecturas del superadmin (backend_dev)
 
-- Código y tests hechos: `planes-service-lecturas.test.ts` 30/30 y `planes-lecturas-plataforma.test.ts` 3/3 (contra la base, sin saltos). El lote de SL-24 sigue en verde en vitest (26 archivos, 370 tests).
-- **Bloqueo:** el typecheck sale rojo en `tests/unit/services/planes-service.test.ts` (88,32) y (205,33), porque al `doble()` de `IPlanesRepository` le faltan `catalogo`, `detalle` y `planDeEmpresa`. R25 dice «sin tocar sus tests», así que está pendiente de la decisión del leader.
-- Pendiente de revisar: `comoPlataforma` usa la ficha `"SL-24"` porque `FichaJira` = `SL-${number}` no admite `SLT-58`; el motivo cita SLT-58.
-- Duplicado: `planConConsumo` y `cambioPendienteDelPlan` están exportadas en `lib/planes/consumo.ts`, y `MiPlanService` tiene copias privadas iguales.
+### Archivos
+- Modificados: `lib/types/planes.ts`, `lib/planes/consumo.ts` (exporta `planConConsumo`, `cambioPendienteDelPlan`, `comoPlanDTO`),
+  `lib/interfaces/repositories/IPlanesRepository.ts`, `lib/repositories/PlanesRepository.ts` (`historialAccion` y `planRastro` en el `Pick`),
+  `lib/interfaces/services/IPlanesService.ts`, `lib/services/PlanesService.ts`, `lib/db/excepciones-aislamiento.ts` (solo el motivo),
+  `lib/services/MiPlanService.ts` (sin copias privadas: usa `planConConsumo` de `lib/planes/consumo.ts`).
+- Nuevos: `lib/actions/_shared/planes-plataforma.ts`, `tests/unit/services/planes-service-lecturas.test.ts`,
+  `tests/integration/db/planes-lecturas-plataforma.test.ts`.
+- `tests/unit/services/planes-service.test.ts` (SL-24): solo tres `vi.fn` (`catalogo`, `detalle`, `planDeEmpresa`) en `doble()`,
+  sin cambiar ninguna aserción. Es una excepción mecánica a R25 que decidió el humano el 2026-10-29; está en requirements.md > Decisiones cerradas.
+
+### Decisiones
+- `comoPlataforma` usa la ficha `"SL-24"` (`FichaJira` no admite `SLT`); el motivo cita SLT-58. El humano decidió dejarlo así: deuda D29 en `progress/deudas.md`.
+- El relleno de `PlanDTO` (id, visibilidad, empresa, archivado) se acepta tal cual; el comentario en `comoPlanDTO` explica por qué nunca sale como cambio.
+
+### R → test
+| R | Test |
+|---|---|
+| R13 | `planes-service-lecturas.test.ts` > «R13: todos los planes, archivados incluidos…»; `planes-lecturas-plataforma.test.ts` > «R13: el catálogo trae los archivados, el nº de empresas…» |
+| R16 | `planes-service-lecturas.test.ts` > «R16: versión vigente, pendiente con su fecha…», «R16: sin pendiente, pendiente es null»; `planes-lecturas-plataforma.test.ts` > «R16: … su rastro del más reciente al más antiguo» |
+| R19 | `planes-service-lecturas.test.ts` > «R19: nombre, precio sin moneda, módulos…», «R19: sin plan, plan es null» |
+| R21 | `planes-lecturas-plataforma.test.ts` > «R21: el plan de una empresa trae solo SUS asignaciones…»; unit «R21: las asignaciones llegan en el orden del repositorio…» |
+| R22 | `planes-service-lecturas.test.ts` > «R22 {catalogo\|detallePlan\|planDeEmpresa}: el rol %s de empresa recibe forbidden con cero llamadas…», «R22 detallePlan: un planId que no es uuid es validation_error…», «… no existe es not_found», «R22 planDeEmpresa: …» |
+| R25 | lote de SL-24 en verde (unit `planes-service` 80 casos, `procesar-jobs-plan-cambio`, `planes.composition-root`, integración `plan*.test.ts`/`planes-*.test.ts`: 26 archivos, 370 tests) |
+
+### Salida (tras los ajustes)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` de los archivos tocados: exit 0.
+- `vitest run` de planes-service, planes-service-lecturas, mi-plan-service, mi-plan-repository, planes-lecturas-plataforma,
+  plan-de-la-empresa y consumo contra `logistic_slt58`: 7 archivos y 167 tests en verde, 0 saltados, 0 fallidos.
 
 ## Guardias (corridas por los subagentes)
-- `pnpm run test:guardias`: en rojo solo `tests/guards/migraciones-destructivas.guard.test.ts` (señala `20261028120000_modulo_wallet_nucleo`, de SL-23, que es de dev y ajena) y `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`. La segunda está en `tests/baseline-rojos.json`; la primera NO lo está.
+- `pnpm run test:guardias`: en rojo solo `tests/guards/migraciones-destructivas.guard.test.ts` (señala `20261028120000_modulo_wallet_nucleo`, de SL-23, que es de dev y ajena) y `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`. La segunda está en `tests/baseline-rojos.json`. La primera la retiró `dev` (c67d89a) y se arregla al sincronizar con `dev`; no se toca.

@@ -1,3 +1,6 @@
+import type { PlanRastroAccion } from "@prisma/client";
+
+import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import type { CrearPlanInput, PlanDTO, TopeExcedido, VersionPlan } from "@/lib/types/planes";
@@ -80,7 +83,62 @@ export interface DestinatariosDelAviso {
 /** El recordatorio repartido (§16.4), o nada porque la programación ya no está pendiente (R39). */
 export type ResultadoRecordatorio = { estado: "repartido"; empresas: number } | { estado: "sin_pendiente" };
 
+/* -------------------------------------------------------------------------- */
+/* SLT-58 (design §3.2) — las lecturas del superadmin                          */
+/* -------------------------------------------------------------------------- */
+
+/** R13: una fila del catálogo, archivados incluidos. */
+export interface PlanDelCatalogoLeido {
+  plan: PlanDTO;
+  empresaNombre: string | null;
+  empresas: number;
+  /** El instante en que rige el pendiente, o `null`. */
+  vigenteDesdePendiente: Date | null;
+}
+
+/** R16: una fila de `plan_rastro`, tal cual (los `cambios` son los que escribió `escribirRastro`). */
+export interface FilaRastroLeida {
+  id: string;
+  accion: PlanRastroAccion;
+  cambios: CambiosDelPlan;
+  actorNombre: string;
+  creadoAt: Date;
+}
+
+/** R16: el plan, su pendiente (con la versión ya validada), sus empresas y su rastro. */
+export interface DetallePlanLeido {
+  plan: PlanDTO;
+  empresaNombre: string | null;
+  pendiente: CambioDelPlanLeido | null;
+  empresas: { id: string; nombre: string }[];
+  /** Del más reciente al más antiguo, como mucho 100. */
+  rastro: FilaRastroLeida[];
+}
+
+/** R21: una fila `plan_asignado` del historial de la empresa. */
+export interface AsignacionLeida {
+  creadoAt: Date;
+  /** `null` si el actor no resolvió al congelarlo. */
+  actorNombre: string | null;
+  /** La `entidad_etiqueta` congelada. */
+  planNombre: string;
+}
+
+/** R19, R21: el plan de una empresa con su uso, o `plan: null` si no tiene. */
+export interface PlanDeEmpresaLeida {
+  organizacionId: string;
+  plan: (PlanConUsoLeido & { dto: PlanDTO }) | null;
+  /** Del más reciente al más antiguo, como mucho 50. */
+  asignaciones: AsignacionLeida[];
+}
+
 export interface IPlanesRepository {
+  /** SLT-58 R13: todos los planes, también los archivados. */
+  catalogo(): Promise<PlanDelCatalogoLeido[]>;
+  /** SLT-58 R16: `null` si el plan no existe. */
+  detalle(planId: string): Promise<DetallePlanLeido | null>;
+  /** SLT-58 R19, R21: `null` si la empresa no existe. */
+  planDeEmpresa(organizacionId: string): Promise<PlanDeEmpresaLeida | null>;
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null>;
   plan(planId: string): Promise<PlanDTO | null>;
   /** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29). */

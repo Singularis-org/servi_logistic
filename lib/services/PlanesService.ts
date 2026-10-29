@@ -5,6 +5,7 @@ import type { IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRep
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
 import { mensajeTopesPasados } from "@/lib/planes/mensajes";
 import {
   archivarPlanSchema,
@@ -13,10 +14,16 @@ import {
   cancelarCambioPlanSchema,
   crearPlanSchema,
   editarPlanSchema,
+  planIdSchema,
+  type CatalogoResult,
+  type DetallePlanResult,
   type ListarPlanesAsignablesResult,
+  type PlanDelCatalogo,
+  type PlanDeEmpresaResult,
   type PlanDTO,
   type PlanResult,
 } from "@/lib/types/planes";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
@@ -148,5 +155,71 @@ export class PlanesService implements IPlanesService {
   /** R7: la lectura de servidor que expondrá SL-25. Sin actor y fuera de toda action. */
   planesPublicos(): Promise<PlanDTO[]> {
     return this.repo.publicos();
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* SLT-58 (design §3.2) — las lecturas del superadmin, con el mismo orden    */
+  /* (R22): quién → zod → existe. Ningún rol de empresa llega al repositorio.  */
+  /* ------------------------------------------------------------------------ */
+
+  async catalogo(actor: Actor | null): Promise<CatalogoResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const filas = await this.repo.catalogo();
+    return {
+      estado: "ok",
+      planes: filas.map(
+        (f): PlanDelCatalogo => ({
+          ...f.plan,
+          empresaNombre: f.empresaNombre,
+          empresas: f.empresas,
+          vigenteDesdePendiente: f.vigenteDesdePendiente === null ? null : fechaCalendarioCR(f.vigenteDesdePendiente),
+        }),
+      ),
+    };
+  }
+
+  async detallePlan(actor: Actor | null, input: unknown): Promise<DetallePlanResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = planIdSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
+    const leido = await this.repo.detalle(parsed.data.planId);
+    if (leido === null) return { estado: "not_found" };
+    const { plan } = leido;
+    return {
+      estado: "ok",
+      detalle: {
+        plan,
+        empresaNombre: leido.empresaNombre,
+        pendiente: leido.pendiente === null ? null : cambioPendienteDelPlan(plan, leido.pendiente),
+        empresas: leido.empresas,
+        rastro: leido.rastro.map((r) => ({ ...r, creadoAt: r.creadoAt.toISOString() })),
+      },
+    };
+  }
+
+  async planDeEmpresa(actor: Actor | null, input: unknown): Promise<PlanDeEmpresaResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = asignablesSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
+    const leida = await this.repo.planDeEmpresa(parsed.data.organizacionId);
+    if (leida === null) return { estado: "not_found" };
+    const { plan } = leida;
+    return {
+      estado: "ok",
+      vista: {
+        organizacionId: leida.organizacionId,
+        // R19: las mismas filas, marcas y reinicio que «Mi plan».
+        plan:
+          plan === null
+            ? null
+            : { ...planConConsumo(plan, this.ahora()), planId: plan.dto.id, archivado: plan.dto.archivado },
+        asignaciones: leida.asignaciones.map((a) => ({
+          creadoAt: a.creadoAt.toISOString(),
+          // Un actor que no resolvió al congelarlo queda en '', como en `plan_rastro`.
+          actorNombre: a.actorNombre ?? "",
+          planNombre: a.planNombre,
+        })),
+      },
+    };
   }
 }

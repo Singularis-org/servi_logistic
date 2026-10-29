@@ -29,7 +29,7 @@
   `lineasDeCambioDelPlan` para el pendiente) y el composition root `lib/actions/_shared/mi-plan.ts`.
   *Hecho:* `tests/unit/services/mi-plan-service.test.ts` en verde: R8 con los siete roles y sin sesión
   (cero llamadas al repositorio), R7 (líneas del pendiente), plan `null` → `{ estado: "ok", plan: null }`.
-- [ ] **T4 — Lecturas del superadmin** (design §3.2). Depende de T2.
+- [x] **T4 — Lecturas del superadmin** (design §3.2). Depende de T2.
   `catalogo`, `detalle`, `planDeEmpresa` en `IPlanesRepository`/`PlanesRepository` (sumar
   `historialAccion` y `planRastro` al `Pick`) y `catalogo`, `detallePlan`, `planDeEmpresa` en
   `IPlanesService`/`PlanesService`; tipos de §5 en `lib/types/planes.ts`; composition root

@@ -1,8 +1,10 @@
-import type { ModuloApagable } from "@prisma/client";
+import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { z } from "zod";
 
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
+import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-plan";
 
 // SL-24 (design §5.1; R1–R3, R25, R37) — el borde de la gestión de planes por el superadmin. Todo
 // llega sin tipar desde la action y se valida aquí antes de tocar la base. Los importes viajan como
@@ -182,6 +184,69 @@ export type ResultadoTopePlan = { status: "tope_plan"; mensaje: string };
 
 export type ListarPlanesAsignablesResult =
   | { estado: "ok"; planes: PlanDTO[] }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" };
+
+/* -------------------------------------------------------------------------- */
+/* SLT-58 (design §5) — las lecturas del superadmin                            */
+/* -------------------------------------------------------------------------- */
+// Serializables: cruzan de Server Component a cliente. Las fechas de calendario (`AAAA-MM-DD`) van en
+// la hora de la plataforma; los instantes (`creadoAt`), en ISO.
+
+/** R13: una fila del catálogo, también archivada. `vigenteDesdePendiente` es `AAAA-MM-DD`. */
+export type PlanDelCatalogo = PlanDTO & {
+  /** El nombre de la empresa de un custom; `null` en un público. */
+  empresaNombre: string | null;
+  /** Cuántas empresas lo tienen asignado ahora. */
+  empresas: number;
+  vigenteDesdePendiente: string | null;
+};
+
+/** R16: una fila de `plan_rastro`. */
+export type FilaRastro = {
+  id: string;
+  accion: PlanRastroAccion;
+  cambios: CambiosDelPlan;
+  actorNombre: string;
+  creadoAt: string;
+};
+
+export type DetallePlan = {
+  plan: PlanDTO;
+  empresaNombre: string | null;
+  pendiente: CambioPendienteVista | null;
+  empresas: { id: string; nombre: string }[];
+  /** Del más reciente al más antiguo. */
+  rastro: FilaRastro[];
+};
+
+/** R21: una fila `plan_asignado` del historial de la empresa. */
+export type AsignacionDePlan = {
+  creadoAt: string;
+  actorNombre: string;
+  /** La `entidad_etiqueta` congelada al asignar (`Plan «<nombre>»`). */
+  planNombre: string;
+};
+
+export type PlanDeEmpresaVista = {
+  organizacionId: string;
+  /** `null` = sin plan: sin límites (R19). */
+  plan: (PlanConConsumo & { planId: string; archivado: boolean }) | null;
+  /** Del más reciente al más antiguo. */
+  asignaciones: AsignacionDePlan[];
+};
+
+export type CatalogoResult = { estado: "ok"; planes: PlanDelCatalogo[] } | { estado: "forbidden" };
+
+export type DetallePlanResult =
+  | { estado: "ok"; detalle: DetallePlan }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" };
+
+export type PlanDeEmpresaResult =
+  | { estado: "ok"; vista: PlanDeEmpresaVista }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };

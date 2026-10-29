@@ -1,8 +1,17 @@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
-import { SIN_LIMITE } from "@/lib/planes/mensajes";
-import type { EstadoFila, FilaConsumo, ReinicioDelCiclo, UsoDelPlan } from "@/lib/types/consumo-plan";
-import { ROLES_CON_TOPE, type TopesPlan } from "@/lib/types/planes";
+import { lineasDeCambioDelPlan, SIN_LIMITE, textoDelPrecio, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
+import { diferenciasDelPlan } from "@/lib/planes/rastro";
+import type {
+  CambioPendienteVista,
+  EstadoFila,
+  FilaConsumo,
+  PlanConConsumo,
+  ReinicioDelCiclo,
+  UsoDelPlan,
+} from "@/lib/types/consumo-plan";
+import { ROLES_CON_TOPE, type PlanDTO, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-58 (design §6.1) — el consumo del plan tal como se pinta, sin React ni base: lo comparten «Mi
@@ -46,6 +55,56 @@ export function filasDeConsumo(topes: TopesPlan, uso: UsoDelPlan): FilaConsumo[]
     ...ROLES_CON_TOPE.map((rol) => fila(rol, ROL_LABELS[rol], uso.porRol[rol], topes.porRol[rol] ?? null)),
     fila("api_keys", "API keys", uso.apiKeys, topes.apiKeys),
   ];
+}
+
+/** Un cambio programado leído de la base: el instante en que rige y la versión ya validada. */
+export interface CambioDelPlanLeido {
+  vigenteDesde: Date;
+  version: VersionPlan;
+}
+
+/** Lo que hace falta para pintar un plan con su consumo (R1–R7, R19). */
+export interface PlanConUsoLeido {
+  vigente: VersionPlan;
+  /** El ancla del ciclo de órdenes. */
+  ancla: Date;
+  uso: UsoDelPlan;
+  cambio: CambioDelPlanLeido | null;
+}
+
+/**
+ * `diferenciasDelPlan` compara `PlanDTO` enteros y `plan_de_la_empresa` no devuelve id, visibilidad,
+ * empresa ni archivado: las dos versiones llevan este mismo relleno fijo, así que nunca salen como cambio.
+ */
+function comoPlanDTO(version: VersionPlan): PlanDTO {
+  return { id: "", visibilidad: "publico", organizacionId: null, archivado: false, ...version };
+}
+
+/** R7, R16, R19: la fecha (hora de la plataforma) y las mismas líneas de «qué cambia» que el correo de SL-24. */
+export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPlanLeido): CambioPendienteVista {
+  const antes = comoPlanDTO(vigente);
+  const diferencias = diferenciasDelPlan(antes, { ...antes, ...cambio.version });
+  return {
+    vigenteDesde: fechaCalendarioCR(cambio.vigenteDesde),
+    // Mismo molde que el job del correo: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.
+    lineas: lineasDeCambioDelPlan(diferencias as CambioDelPlanParaCorreo),
+  };
+}
+
+/** R1–R7, R19: el plan como se pinta, el mismo en «Mi plan» y en el detalle de empresa del superadmin. */
+export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConConsumo {
+  const { vigente } = leido;
+  return {
+    nombre: vigente.nombre,
+    precioTexto: textoDelPrecio(vigente.precio),
+    modulos: ORDEN_MODULOS.filter((m) => vigente.modulos.includes(m)).map((clave) => ({
+      clave,
+      nombre: nombreDelModulo(clave),
+    })),
+    filas: filasDeConsumo(vigente.topes, leido.uso),
+    reinicio: reinicioDelCiclo(leido.ancla, ahora),
+    cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
+  };
 }
 
 /**

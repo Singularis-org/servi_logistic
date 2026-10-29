@@ -173,3 +173,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-24 T12 (2026-10-28). El plan no guarda moneda y la plataforma sirve a varios países, así que los importes van tal cual («100 al mes»). Decidido por Camilo.
 - **Qué falta:** cuando se ponga símbolo de moneda por país, tomarlo de la configuración de la empresa destinataria, no fijarlo en la plantilla (`lib/planes/mensajes.ts`, sección «Correos del cambio de plan»).
 - **Dueño:** Camilo.
+
+### D29 — `FichaJira` no admite el prefijo `SLT`
+- **Origen:** SLT-58 T4 (2026-10-29). `FichaJira` (`lib/db/contexto-empresa.ts`) es `` `SL-${number}` ``, así que las lecturas de plataforma de SLT-58 en `PlanesRepository` llaman a `comoPlataforma` con la ficha `"SL-24"` y citan SLT-58 en el motivo. Decidido por el humano: se deja así.
+- **Qué falta:** ampliar `FichaJira` (y su validación en `comoPlataforma` y `excepciones-aislamiento.ts`) para aceptar `SLT-<n>`, y pasar esas llamadas a `"SLT-58"`.
+- **Dueño:** Camilo (decidir si va a ficha).
