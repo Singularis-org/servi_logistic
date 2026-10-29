@@ -24,7 +24,7 @@
     "AGENTS.md": "53612a44b66a8ea92a0dfc4ef265012da64668ecd31f7cf1e4f4b24f71f961f4",
     "CHECKPOINTS.md": "30bd33917e0559332c27778ca7e4f450f2f755a6f3c64ec145cd3f62fc5d0b9d",
     "CLAUDE.md": "556f76f0e94ef5db7c3ef0170e4f0da26eafd78ff19ffd4f9204f3e768e882cb",
-    "arnes.manifest": "61c8d0095b7e8edb983547164d051ece1276535dc5e953243031a8212decb4c0",
+    "arnes.manifest": "88c5e2612a0db7ae3b61b198e53f61a050dcf29b35fccc8ffd2c52996b8ba4e0",
     "docs/equipo.md": "4a568e7f6a5fadd897ecb5499d2664308b64486af02a28ee661e24e2d966253d",
     "docs/gate.md": "eaf9ff884e88d13142902b9f4a99f92a2d3b0f9afb1afc574ee45d5a5f54d48d",
     "docs/grafo-de-codigo.md": "9279062f42d0b6c80c9be190841ef432454faa7b465cb789ff198b529cfa83dc",
@@ -34,7 +34,7 @@
     "docs/specs.md": "1c5c5219c60c874c26eb2b43d4e8be6dc7f7fa0649f7163ecc64bd30304c2b63",
     "docs/trello.md": "95dd1758cab1c7c5a99167d90f4293997cb216ae8d8846062aab888461c9e17d",
     "docs/worktrees.md": "4e5ce6678275a6136a74357ab6b9ba6b2f2fc7f1d06c3400cf3f5edb2b3cc7b2",
-    "init.sh": "72043cd4bf257457f16db7744b8385964874f3ebc8cec09a5862f11fda2a8110",
+    "init.sh": "2217d3feaa3aef427f7fe19e6142971823a251a057bf38d212dae2f7bc53fbc8",
     "progress/README.md": "c072d602a087642db725af1b25ced07ee7a4e798d9d525e5f869b61195562667",
     "progress/features/_plantilla.md": "08885552016da00c72618db712bfb0816d0e4a625436a05ac7f97cf1db6c6eb6",
     "progress/sesion.local.example.md": "4fcd2375c8005b2427240950756fe330a73bfb772d763cd7f3959c2349ccaf25",
@@ -53,7 +53,7 @@
     "tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts": "0df3143c40a699681ec55edcf2868825862fa8ce52b8253fe2bc5c6a1e98c511",
     "tests/guards/guard-dependencias-aprobadas.test.ts": "22568afc7962c5c5eb647372c8e5d1f4e4c8118dce937c4281ce38ec50731210",
     "tests/guards/guard-hooks-anclados.test.ts": "42bcffeb24b022d3da47d30c16eb512d468d436db7a293bb2506cebc755f31f3",
-    "tests/guards/guard-init-node-modules-enlazado.test.ts": "554012950d51bb52f5d83aa22ae6a750596abc09abd73b74288f6f3cbe88e511",
+    "tests/guards/guard-init-node-modules-enlazado.test.ts": "2467749b6e2471fcc41b040db0860a43c7c82fed7221872cac160fbe6786d984",
     "tests/guards/guard-modelos-de-agentes.test.ts": "f992813344b14abf8a7c4b7905a20f370f07c95a3cf85e1cb37fe250c9e21bb9",
     "tests/guards/guard-test-rapido-rojos-heredados.test.ts": "9b7bc186db608192ac5d9d03eb8690f2b89dbe7f638759e68b1a576b2ba3fbb6",
     "tests/guards/guard-tests-de-arbol-en-el-gate.test.ts": "ff947d5ac6ca9cf4642ed0cd0d375a1fcc7dd211e70b76f7648f0ef53cdf209e",
@@ -65,7 +65,8 @@
     "tests/guards/guard-validador-titulo.test.ts": "d3e450da91789982f33b899d4207bc792d2d9e656f1f2fcee8d2da3aa215b71e",
     "tests/guards/guard-validador-tracker.test.ts": "47fe631332403148cef42380b34fbb04ef9f50c96b6b5caba24e9154b67e5ef0",
     "tests/guards/guard-validador-ve-ramas-remotas.test.ts": "d48c6890f97cf227b2d71f83ec165a44d3577e050a05f5b11cc3ecf25ecb6f90",
-    "tests/guards/guard-validador-ve-worktrees-hermanos.test.ts": "94073a3c997456073b4421902021e7fd9683060a5552a0c3da8c126a174b4abd"
+    "tests/guards/guard-validador-ve-worktrees-hermanos.test.ts": "94073a3c997456073b4421902021e7fd9683060a5552a0c3da8c126a174b4abd",
+    "scripts/verificar-dependencias.mjs": "0a351a636b3ef8ae69e56fbc56e3b5e21e56d36e5a6637cbfa29b174a56ad799"
   },
   "subidos": [
     {
@@ -87,6 +88,16 @@
         "tests/guards/guard-validador-titulo.test.ts"
       ],
       "fecha": "2026-10-22"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/20",
+      "archivos": [
+        "arnes.manifest",
+        "init.sh",
+        "scripts/verificar-dependencias.mjs",
+        "tests/guards/guard-init-node-modules-enlazado.test.ts"
+      ],
+      "fecha": "2026-10-29"
     }
   ]
 }
