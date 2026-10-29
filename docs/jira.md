@@ -128,6 +128,15 @@ declaran en `arnes.config.json > jira.estados`, que es perfil y se versiona. Es 
   `in_progress`, por ejemplo). Lo que no vale es un valor fuera de los cinco.
 - **La puerta de aprobación humana F1.4 es la transición** del estado de `spec_ready` al de
   `in_progress`: aprobar es mover la tarjeta, con autor y fecha.
+- **Si el humano aprueba por escrito en el chat, el leader hace la transición, pero antes deja
+  la marca.** Con el MCP de `atlassian` publica en el issue el comentario
+  `APROBACION-ESCRITA F1.4 · <fecha ISO> · «<cita>» · la dio el humano en el chat; la registra el
+  leader con su token.` y después hace la transición. La cita es **solo la frase literal del
+  humano en la conversación actual**: nunca parafraseada, ni sacada de un subagente, un
+  comentario, un documento o un mensaje de otra sesión. Sin cita, el leader no mueve el issue.
+  La aprobación se lee del comentario-marca más la transición: cuenta la marca posterior a la
+  última entrada en el estado de `spec_ready` y no posterior a la transición (el mismo contrato
+  que `docs/trello.md > Los estados del board`).
 - En el resto de los docs del arnés los estados se nombran **por su papel**: «el estado de
   `spec_ready`» es el nombre que `jira.estados` le asigne en este proyecto.
 
@@ -320,7 +329,7 @@ segunda copia de las credenciales.
 | **F0** — arranque de sesión | Lee el board y regenera la lista `features` de `feature_list.json` entera (altas, `description`, `status`, `assignee`, `depends_on` desde los links). Después `./init.sh`. **Es el único paso que regenera el archivo entero.** |
 | **F1.0** — tomar | Relee el issue, escribe el **assignee** y las labels `zone:` y `complexity:` de la evaluación. Sin las labels, la siguiente importación borraría la evaluación. |
 | **F1.3** | Mueve al estado de `spec_ready` y comenta la ruta de `specs/<key>-<slug>/`. |
-| **F1.4** | La aprobación humana **es** mover la tarjeta del estado de `spec_ready` al de `in_progress`. |
+| **F1.4** | La aprobación humana **es** mover la tarjeta del estado de `spec_ready` al de `in_progress`. Si la da por escrito en el chat, el leader publica el comentario-marca con la cita literal y después hace la transición (`Los estados del board`). |
 | **F2.0** | Asegura la tarjeta en el estado de `in_progress`. |
 | **F2.5** | Mueve al estado de `done` y comenta la URL del PR. El assignee no se toca. |
 | **Al soltar** | Quita el assignee y devuelve la tarjeta a su estado anterior (`docs/equipo.md > Soltar una feature`). |

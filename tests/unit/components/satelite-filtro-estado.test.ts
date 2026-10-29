@@ -23,6 +23,7 @@ import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import { catalogoOrderStatus } from "@/tests/fixtures/order-status-catalogo";
 import type { FilterDef } from "@/components/shared/FilterComponent";
 import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FICHA 355 — EL FILTRO DE ESTADO DE LA BODEGA SATÉLITE ES EL DE LA CENTRAL.
 //
@@ -55,7 +56,7 @@ import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRep
 
 /** La declaración del filtro de estado dentro de la barra de la bodega. */
 function declaracionEstado(estatus: readonly OrderStatusLiteRow[] | null): FilterDef {
-  const filtros = construirFiltrosSatelite(CATALOGO_FILTROS_VACIO, { estatus });
+  const filtros = construirFiltrosSatelite(CATALOGO_FILTROS_VACIO, { etiquetas: ETIQUETAS_CR, estatus });
   const estado = filtros.find((f) => f.key === CLAVE_ESTADO);
   if (estado === undefined) throw new Error("la barra no declara el filtro de estado");
   return estado;
@@ -161,6 +162,7 @@ describe("bodega satélite · el filtro de estado sale del catálogo compartido"
 
   it("el estado sigue yendo PRIMERO en la barra, como en `/ordenes`", () => {
     const filtros = construirFiltrosSatelite(CATALOGO_FILTROS_VACIO, {
+      etiquetas: ETIQUETAS_CR,
       estatus: catalogoOrderStatus(),
     });
     expect(filtros[0]?.key).toBe(CLAVE_ESTADO);

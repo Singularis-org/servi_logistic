@@ -43,14 +43,14 @@ function diferido<T>() {
 afterEach(() => cleanup());
 
 describe("SL-23 (R8) — una fila por módulo con su interruptor", () => {
-  it("pinta los 4 módulos en el orden del catálogo, con su descripción y su estado", () => {
-    montar(vi.fn(), ["wallet"]);
+  it("pinta los 3 módulos en el orden del catálogo, con su descripción y su estado", () => {
+    montar(vi.fn(), ["analitica"]);
 
     const switches = screen.getAllByRole("switch");
     expect(switches.map((s) => s.getAttribute("aria-label"))).toEqual(
       ORDEN_MODULOS.map((c) => MODULOS_APAGABLES[c].nombre),
     );
-    expect(screen.getByRole("switch", { name: "Wallet" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: "Ranking" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("switch", { name: "Monitoreo" })).toHaveAccessibleDescription(
       MODULOS_APAGABLES.monitoreo.descripcion,
@@ -133,5 +133,93 @@ describe("SL-23 (R8) — si falla, vuelve atrás y avisa", () => {
     expect((await screen.findAllByText("No se pudo cambiar «Analítica». Inténtalo de nuevo.")).length).toBeGreaterThan(0);
     expect(screen.getByRole("switch", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
     error.mockRestore();
+  });
+});
+
+describe("SL-23 — «Encender todos / Apagar todos»", () => {
+  it("la etiqueta dice «Encender todos» si falta alguno y «Apagar todos» si están todos", () => {
+    montar(vi.fn(), ["analitica"]);
+    expect(screen.getByRole("button", { name: "Encender todos" })).toBeInTheDocument();
+    cleanup();
+
+    montar(vi.fn(), [...ORDEN_MODULOS]);
+    expect(screen.getByRole("button", { name: "Apagar todos" })).toBeInTheDocument();
+  });
+
+  it("encender todos llama a la action solo por los apagados, en orden, y avisa del éxito", async () => {
+    const fijar = vi.fn().mockResolvedValue({ estado: "ok", cambio: true });
+    montar(fijar, ["analitica"]);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Encender todos" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apagar todos" })).toBeEnabled());
+    const apagados = ORDEN_MODULOS.filter((c) => c !== "analitica");
+    expect(fijar.mock.calls.map(([input]) => input)).toEqual(
+      apagados.map((modulo) => ({ organizacionId: ORG, modulo, activo: true })),
+    );
+    for (const s of screen.getAllByRole("switch")) expect(s).toHaveAttribute("aria-checked", "true");
+    expect((await screen.findAllByText("Todos los módulos quedaron encendidos.")).length).toBeGreaterThan(0);
+  });
+
+  it("apagar todos, con todos encendidos, llama `activo: false` por cada uno", async () => {
+    const fijar = vi.fn().mockResolvedValue({ estado: "ok", cambio: true });
+    montar(fijar, [...ORDEN_MODULOS]);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Apagar todos" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Encender todos" })).toBeEnabled());
+    expect(fijar).toHaveBeenCalledTimes(ORDEN_MODULOS.length);
+    for (const modulo of ORDEN_MODULOS) {
+      expect(fijar).toHaveBeenCalledWith({ organizacionId: ORG, modulo, activo: false });
+    }
+    for (const s of screen.getAllByRole("switch")) expect(s).toHaveAttribute("aria-checked", "false");
+    expect((await screen.findAllByText("Todos los módulos quedaron apagados.")).length).toBeGreaterThan(0);
+  });
+
+  it("si falla uno, solo ese vuelve atrás y el aviso lo nombra", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fijar = vi.fn(async (input: unknown) => {
+      const { modulo } = input as { modulo: string };
+      if (modulo === "monitoreo") return { estado: "forbidden" } as FijarModuloEmpresaResult;
+      if (modulo === "ranking") throw new Error("red caída");
+      return { estado: "ok", cambio: true } as FijarModuloEmpresaResult;
+    });
+    montar(fijar);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Encender todos" }));
+
+    expect(
+      (await screen.findAllByText("No se pudo cambiar «Monitoreo», «Ranking». Inténtalo de nuevo.")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByRole("switch", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "Monitoreo" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Ranking" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: "Encender todos" })).toBeEnabled();
+    error.mockRestore();
+  });
+
+  it("mientras corre, el botón y los switches quedan deshabilitados y no hay dobles envíos", async () => {
+    const { promesa, resolver } = diferido<FijarModuloEmpresaResult>();
+    const fijar = vi.fn().mockReturnValueOnce(promesa).mockResolvedValue({ estado: "ok", cambio: true });
+    montar(fijar);
+    const user = userEvent.setup();
+
+    const boton = screen.getByRole("button", { name: "Encender todos" });
+    await user.click(boton);
+
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("aria-busy", "true");
+    for (const s of screen.getAllByRole("switch")) expect(s).toHaveAttribute("aria-disabled", "true");
+    await user.click(boton);
+    await user.click(screen.getByRole("switch", { name: "Ranking" }));
+    expect(fijar).toHaveBeenCalledTimes(1);
+
+    resolver({ estado: "ok", cambio: true });
+    await waitFor(() => expect(boton).toBeEnabled());
+    expect(fijar).toHaveBeenCalledTimes(ORDEN_MODULOS.length);
+    for (const s of screen.getAllByRole("switch")) expect(s).not.toHaveAttribute("aria-disabled", "true");
   });
 });

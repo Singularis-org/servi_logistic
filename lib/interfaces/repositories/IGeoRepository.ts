@@ -3,7 +3,39 @@ import type {
   OpcionGeografica,
   OpcionGeograficaConPadre,
 } from "@/lib/types/filtros-ordenes";
-import type { NivelGeografico, ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type {
+  NivelGeografico,
+  ProvinciaArbolDTO,
+  ProvinciaPlataformaDTO,
+} from "@/lib/types/geografia-nodo";
+import type { ArbolExistente, PlanDivision, ResumenCarga } from "@/lib/types/division-csv";
+import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
+
+/**
+ * SL-20 — lo que el alta necesita saber de DONDE cuelga el nodo, leido de una vez: el pais, su
+ * regla de codigo (R17), el codigo del padre (el prefijo que exige esa regla) y los hermanos con su
+ * nombre CRUDO (R15).
+ */
+export interface ContextoDeAlta {
+  paisId: string;
+  regla: ReglaDeCodigoDePais;
+  /** `null` en la provincia (no tiene padre) o si el padre no tiene codigo. */
+  codigoPadre: string | null;
+  hermanos: { id: string; nombre: string }[];
+}
+
+/** SL-20 — la geografia de un pais tal como la necesita `planificarDivision`, con su regla. */
+export interface DivisionDePais {
+  regla: ReglaDeCodigoDePais;
+  arbol: ArbolExistente;
+}
+
+/** SL-20 — el resto del alta: el pais del nodo (para el historial) y su codigo opcional. */
+export interface OpcionesDeAlta {
+  /** El pais del contenedor: el de la provincia en su alta, el del padre en los demas niveles. */
+  paisId: string;
+  codigo: string | null;
+}
 
 // El catalogo geografico global.
 //
@@ -73,32 +105,64 @@ export interface IGeoRepository {
   listArbol(): Promise<ProvinciaArbolDTO[]>;
 
   /**
-   * Los hermanos del nivel bajo `padreId` —TODOS, activos e inactivos—, o `null` si el padre NO
-   * EXISTE. Una sola consulta resuelve las DOS preguntas del alta: si el padre existe (R14) y si
-   * el nombre ya esta cogido (R17).
-   *
-   * `padreId` es `null` solo para `provincia`, que no tiene padre; en ese caso nunca devuelve
-   * `null`.
-   *
-   * Devuelve el nombre CRUDO: la comparacion por `normalizeName` es del service, no del `WHERE`.
-   * Un `findFirst({ where: { nombre } })` compararia LITERALES y dejaria entrar «San Jose» junto a
-   * «San José», que para `resolveGeo` son una sola cosa AMBIGUA (design §9, A8).
+   * SL-20 — el arbol de UN pais para el superadmin (R20, R29, R30): activos e inactivos, con el
+   * codigo, SIN zonas. Filtra por `paisId` de forma explicita porque corre como dueño, sin RLS.
    */
-  findHermanos(
+  listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]>;
+
+  /**
+   * El contexto del alta (`ContextoDeAlta`), o `null` si el contenedor NO EXISTE. Una sola consulta
+   * resuelve las preguntas del alta: si el contenedor existe (R14), si el nombre ya esta cogido
+   * (R15) y con que regla se valida el codigo (R17).
+   *
+   * `contenedorId` es el PADRE en cantón y distrito, y el PAIS en la provincia (SL-20): las
+   * hermanas de una provincia son las de su pais, no todas las de la tabla.
+   *
+   * Los hermanos van TODOS, activos e inactivos, y con el nombre CRUDO: la comparacion por
+   * `normalizeName` es del service, no del `WHERE`. Un `findFirst({ where: { nombre } })`
+   * compararia LITERALES y dejaria entrar «San Jose» junto a «San José», que para `resolveGeo` son
+   * una sola cosa AMBIGUA (design §9, A8).
+   */
+  findHermanos(nivel: NivelGeografico, contenedorId: string): Promise<ContextoDeAlta | null>;
+
+  /**
+   * Crea el nodo ACTIVO (R13, R29) y escribe `nodo_geografico_creado` en el historial de
+   * plataforma en la MISMA transaccion (R33). Devuelve el id.
+   *
+   * DEJA ESCAPAR la violacion de UNIQUE a proposito: la traduce el borde a `conflict`. La base es
+   * la ultima palabra ante una carrera; la regla de normalizacion y la del codigo son del service.
+   */
+  crear(
     nivel: NivelGeografico,
+    nombre: string,
     padreId: string | null,
-  ): Promise<{ id: string; nombre: string }[] | null>;
+    opciones: OpcionesDeAlta,
+    actorUsuarioId: string | null,
+  ): Promise<string>;
 
   /**
-   * Crea el nodo y devuelve su id. Nace ACTIVO (R13) por el default de la columna.
-   *
-   * DEJA ESCAPAR la violacion de UNIQUE a proposito: la traduce el borde a `conflict` (R18). La
-   * base es la ultima palabra ante una carrera; la regla de normalizacion es del service.
+   * SL-20 — la geografia de un pais en listas planas por nivel, con la regla de codigo del pais, o
+   * `null` si el pais no existe. Es la entrada de `planificarDivision`.
    */
-  crear(nivel: NivelGeografico, nombre: string, padreId: string | null): Promise<string>;
+  leerDivisionDePais(paisId: string): Promise<DivisionDePais | null>;
 
   /**
-   * Cambia el flag `activo` de UNA fila Y registra la accion en la MISMA transaccion.
+   * SL-20 (R24, R26, R33) — escribe un plan ya validado en UNA transaccion: las altas por nivel, de
+   * arriba abajo, con ids generados aqui; el codigo de los existentes SOLO donde aun no tenian
+   * (`WHERE codigo_dta IS NULL`); y una fila `division_cargada` si escribio algo.
+   *
+   * Solo CREA: no renombra ni reactiva (alternativa 6 del design). Cualquier fallo de la base deja
+   * la transaccion entera sin efecto y se propaga.
+   */
+  importarDivision(
+    paisId: string,
+    plan: PlanDivision,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCarga>;
+
+  /**
+   * Cambia el flag `activo` de UNA fila Y registra la accion en la MISMA transaccion. Desde SL-20 la
+   * registra en el historial de PLATAFORMA, no en `historial_accion` (R33, R35).
    *
    * TRES desenlaces, y son tres a proposito: «no existe» != «ya estaba asi» != «cambio», porque
    * SOLO EL TERCERO audita. Pedir desactivar lo ya inactivo no escribe ni el `update` ni la fila
@@ -118,7 +182,7 @@ export interface IGeoRepository {
 
   /**
    * Los hermanos del nodo `id` —TODOS, activos e inactivos, INCLUIDO EL PROPIO NODO—, o `null` si
-   * el nodo NO EXISTE.
+   * el nodo NO EXISTE. Las hermanas de una provincia son las de SU pais (SL-20, R15).
    *
    * ES DISTINTO DE `findHermanos`, y por eso son dos metodos y no uno: aquel parte del PADRE (lo
    * que sabe un alta) y este del PROPIO NODO (lo que sabe un renombrado, que no recibe el padre).
@@ -135,7 +199,8 @@ export interface IGeoRepository {
   ): Promise<{ id: string; nombre: string }[] | null>;
 
   /**
-   * Cambia el `nombre` de UNA fila Y registra la accion en la MISMA transaccion.
+   * Cambia el `nombre` de UNA fila Y registra la accion en la MISMA transaccion, en el historial de
+   * PLATAFORMA desde SL-20 (R33, R35).
    *
    * ⚠️ NO TOCA `codigo_dta`: es la clave estable y renombrar es justo la operacion que existe
    * PORQUE el nombre no lo es. Si esta escritura tocara el codigo, la siguiente corrida del seed

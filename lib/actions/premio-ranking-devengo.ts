@@ -120,7 +120,7 @@ export async function listarPremiosDelDiaAction(
   deps: PremioRankingDeps = {},
 ): Promise<ListarPremiosDelDiaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet", "ranking");
+    await exigirModuloActivo("ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes de tocar el service
     const data = listarPremiosDelDiaSchema.parse(input); // R8: ZodError -> VALIDATION_ERROR
@@ -143,7 +143,7 @@ export async function registrarPremioAction(
   deps: PremioRankingDeps = {},
 ): Promise<RegistrarPremioActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet", "ranking");
+    await exigirModuloActivo("ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = registrarPremioSchema.parse(input);
@@ -159,7 +159,7 @@ export async function anularPremioAction(
   deps: PremioRankingDeps = {},
 ): Promise<AnularPremioActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet", "ranking");
+    await exigirModuloActivo("ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = anularPremioSchema.parse(input); // R30: motivo obligatorio, ya recortado

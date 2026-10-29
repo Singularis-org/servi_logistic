@@ -35,6 +35,8 @@ const NORTE: EmpresaListada = {
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
   pagadoPlataforma: "0.00",
+  // SL-20 (R9): toda empresa tiene país; no es de este test.
+  pais: { id: "CR", nombre: "Costa Rica" },
 };
 const SUR: EmpresaListada = {
   id: "org-1",
@@ -46,6 +48,8 @@ const SUR: EmpresaListada = {
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
   pagadoPlataforma: "0.00",
+  // SL-20 (R9): toda empresa tiene país; no es de este test.
+  pais: { id: "CR", nombre: "Costa Rica" },
 };
 
 const SIN_CONFIGURAR = "Sin configurar (0,00)";
@@ -67,6 +71,8 @@ function montar(opts: {
   const props = {
     empresas: opts.empresas ?? [NORTE, SUR],
     tiposDocumento: [{ id: "t-1", value: "cedula" }],
+    // SL-20 (R9): el `Select` de país no es de este test.
+    paises: [{ id: "CR", nombre: "Costa Rica" }],
     altaEmpresa: vi.fn(),
     cobroGlobal: opts.cobroGlobal === undefined ? { monto: "500.00" } : opts.cobroGlobal,
     fijarCobroGlobal,
@@ -350,6 +356,7 @@ const A_FAVOR: EmpresaListada = {
   cobroPorOrden: null,
   deudaPlataforma: { deuda: "-250.00", estado: "a_favor", importe: "250.00" },
   pagadoPlataforma: "750.00",
+  pais: { id: "CR", nombre: "Costa Rica" },
 };
 
 /** La celda «Plataforma» de una fila, buscada por el nombre de la empresa. */

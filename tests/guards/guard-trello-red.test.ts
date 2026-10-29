@@ -15,7 +15,16 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { crearCliente, ejecutar, esperaTras429, INTENTOS, SalidaError } from '../../scripts/trello.mjs'
+import {
+  crearCliente,
+  ejecutar,
+  esperaTras429,
+  INTENTOS,
+  leerAprobacionEscrita,
+  MARCA_APROBACION_ESCRITA,
+  SalidaError,
+  textoAprobacionEscrita,
+} from '../../scripts/trello.mjs'
 
 const ENV = { TRELLO_KEY: 'clave-secreta', TRELLO_TOKEN: 'token-secreto' }
 
@@ -148,6 +157,7 @@ function boardFalso(
       return respuesta(200, {})
     }
     if (/^GET \/cards\/[^/]+\/actions$/.test(k)) return respuesta(200, opciones.acciones ?? [])
+    if (/^POST \/cards\/[^/]+\/actions\/comments$/.test(k)) return respuesta(200, { id: 'com1' })
     if (/^POST \/cards\/[^/]+\/checklists$/.test(k)) return respuesta(200, { id: 'cl1' })
     if (k === 'POST /checklists/cl1/checkItems') return respuesta(200, { id: 'ci' })
     return respuesta(404, `ruta no simulada: ${k}`)
@@ -318,10 +328,47 @@ describe('guardia: cliente de Trello contra fetch simulado — subcomandos', () 
     const { c } = cliente(board)
     await expect(c.mover('AB-7', 'in_progress')).rejects.toMatchObject({
       codigo: 4,
-      message: expect.stringContaining('la aprobacion F1.4 la hace el humano moviendo la tarjeta en Trello'),
+      message: expect.stringMatching(/la aprobacion F1\.4 la hace el humano moviendo la tarjeta en Trello.*--aprobado-por-escrito/),
     })
     expect(board.llamadas.some((l) => l.metodo !== 'GET')).toBe(false)
     expect(board.cards[0].idList).toBe('l2')
+  })
+
+  it('mover --aprobado-por-escrito: publica la marca con la cita literal ANTES de mover', async () => {
+    const board = boardFalso([tarjeta({ idList: 'l2' })])
+    const { c, salida } = cliente(board)
+    const cita = 'dale vos, comenzá la implementación'
+    await ejecutar(['mover', 'AB-7', 'in_progress', '--aprobado-por-escrito', cita], c)
+    const escrituras = board.llamadas.filter((l) => l.metodo !== 'GET').map((l) => `${l.metodo} ${l.ruta}`)
+    expect(escrituras).toEqual(['POST /cards/c1/actions/comments', 'PUT /cards/c1'])
+    const texto = (board.llamadas.find((l) => l.metodo === 'POST')!.cuerpo as { text: string }).text
+    expect(texto.startsWith(`${MARCA_APROBACION_ESCRITA} · `)).toBe(true)
+    expect(texto).toContain(`«${cita}»`)
+    expect(leerAprobacionEscrita(texto)).toMatchObject({ cita })
+    expect(Number.isNaN(Date.parse(leerAprobacionEscrita(texto)!.fecha))).toBe(false)
+    expect(board.cards[0].idList).toBe('l3')
+    expect(salida[0]).toContain('aprobacion escrita registrada')
+  })
+
+  it.each([['vacia', ''], ['solo espacios', '   '], ['flag sin valor', undefined]])(
+    'mover --aprobado-por-escrito con cita %s sale con 4 y no escribe nada',
+    async (_caso, cita) => {
+      const board = boardFalso([tarjeta({ idList: 'l2' })])
+      const { c } = cliente(board)
+      const args: [string, ...string[]] = ['mover', 'AB-7', 'in_progress', '--aprobado-por-escrito', ...(cita === undefined ? [] : [cita])]
+      await expect(ejecutar(args, c)).rejects.toMatchObject({ codigo: 4 })
+      expect(board.llamadas.some((l) => l.metodo !== 'GET')).toBe(false)
+      expect(board.cards[0].idList).toBe('l2')
+    },
+  )
+
+  it('mover --aprobado-por-escrito fuera de spec_ready -> in_progress sale con 2 y no deja marca falsa', async () => {
+    const board = boardFalso([tarjeta({ idList: 'l1' })])
+    const { c } = cliente(board)
+    await expect(ejecutar(['mover', 'AB-7', 'in_progress', '--aprobado-por-escrito', 'ok'], c)).rejects.toMatchObject({ codigo: 2 })
+    await expect(ejecutar(['mover', 'AB-7', 'done', '--aprobado-por-escrito', 'ok'], c)).rejects.toMatchObject({ codigo: 2 })
+    expect(board.llamadas.some((l) => l.metodo !== 'GET')).toBe(false)
+    expect(board.cards[0].idList).toBe('l1')
   })
 
   it('mover a in_progress desde pending si mueve (features sin sdd)', async () => {
@@ -398,6 +445,50 @@ describe('guardia: cliente de Trello contra fetch simulado — subcomandos', () 
     const { c, salida } = cliente(board)
     await c.aprobacion('AB-7')
     expect(salida[0]).toBe('AB-7: aprobada por M3 (m3) el 2026-10-14T00:00:00Z')
+  })
+
+  const movimiento = (date: string, antes: string, despues: string, quien: string) => ({
+    type: 'updateCard',
+    date,
+    idMemberCreator: quien,
+    memberCreator: { fullName: quien.toUpperCase() },
+    data: { listBefore: { name: antes }, listAfter: { name: despues } },
+  })
+  const comentario = (date: string, texto: string, quien = 'm1') => ({
+    type: 'commentCard',
+    date,
+    idMemberCreator: quien,
+    memberCreator: { fullName: 'Leader' },
+    data: { text: texto },
+  })
+
+  it('aprobacion pide movimientos y comentarios y reporta la aprobacion escrita', async () => {
+    const marca = textoAprobacionEscrita('dale vos, comenzá la implementación', '2026-10-28T10:00:00.000Z')
+    const acciones = [
+      movimiento('2026-10-27T00:00:00Z', 'Pendiente', 'Spec', 'm1'),
+      comentario('2026-10-28T10:00:00Z', marca),
+      movimiento('2026-10-28T10:00:01Z', 'Spec', 'En curso', 'm1'),
+    ]
+    const board = boardFalso([tarjeta()], { acciones })
+    const { c, salida } = cliente(board)
+    await c.aprobacion('AB-7')
+    expect(board.llamadas.find((l) => l.ruta.endsWith('/actions'))!.query.filter).toBe('updateCard:idList,commentCard')
+    expect(salida[0]).toBe('AB-7: aprobada por escrito: «dale vos, comenzá la implementación» (registrada por Leader el 2026-10-28T10:00:00Z)')
+  })
+
+  it('aprobacion: una marca anterior a la ultima entrada en spec_ready no cuenta', async () => {
+    const vieja = textoAprobacionEscrita('aprobado', '2026-10-20T00:00:00.000Z')
+    const acciones = [
+      movimiento('2026-10-19T00:00:00Z', 'Pendiente', 'Spec', 'm1'),
+      comentario('2026-10-20T00:00:00Z', vieja),
+      movimiento('2026-10-20T00:00:01Z', 'Spec', 'En curso', 'm1'),
+      movimiento('2026-10-21T00:00:00Z', 'En curso', 'Spec', 'm1'),
+      movimiento('2026-10-25T00:00:00Z', 'Spec', 'En curso', 'm2'),
+    ]
+    const board = boardFalso([tarjeta()], { acciones })
+    const { c, salida } = cliente(board)
+    await c.aprobacion('AB-7')
+    expect(salida[0]).toBe('AB-7: aprobada por M2 (m2) el 2026-10-25T00:00:00Z')
   })
 
   it('aprobacion sin movimiento sale con codigo 1', async () => {

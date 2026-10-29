@@ -166,9 +166,12 @@ describe("R17 (mitad positiva) — el armazón pinta el índice YA ACOTADO y el 
     // (`oficina/configuracion-integraciones.md` y las cuatro `oficina/integracion-*.md`, todas
     // `roles: [maestro]`): el admin las LEE por la regla de lectura total de la 435, aunque la
     // pantalla sea solo del maestro. Los otros tres no se mueven. 33→38.
+    //
+    // ⭑ SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
+    // Los otros tres no la declaraban y no se mueven.
     const esperado: Record<string, number> = {
-      maestro: 38,
-      admin: 38,
+      maestro: 37,
+      admin: 37,
       adminSatelite: 10,
       mensajero: 8,
       adminTienda: 7,

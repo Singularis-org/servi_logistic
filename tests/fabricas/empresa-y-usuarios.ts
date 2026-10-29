@@ -54,6 +54,8 @@ export interface DatosEmpresa {
   nombreMaestro?: string;
   /** Único global (`usuario.cedula`). Por defecto, el slug. */
   documentoMaestro?: string;
+  /** SL-20: el país del alta. Por defecto Costa Rica, como toda empresa de test (R10). */
+  paisId?: string;
   /**
    * Escribe también `usuario.contrasena_definida_at` (D5.3): la empresa deja de salir con la
    * bienvenida pendiente en la pantalla del superadmin. Por defecto no, como hacía el E2E.
@@ -85,6 +87,7 @@ export async function crearEmpresa(
     servicio.altaEmpresa({
       nombre: datos.nombre,
       slug: datos.slug,
+      paisId: datos.paisId ?? "CR",
       maestro: {
         nombre: nombreMaestro,
         email: datos.correoMaestro,

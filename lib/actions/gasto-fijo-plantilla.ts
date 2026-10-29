@@ -28,7 +28,6 @@ import {
 } from "@/lib/types/gasto-fijo-plantilla";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
-import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
 // Feature 45 (T19) — Server Actions del CRUD de PLANTILLAS de gasto fijo (patron
 // lib/actions/wallet.ts). Resuelve el actor por sesion, valida en el borde con zod y delega
@@ -78,8 +77,7 @@ function toPlantillaActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" } {
+  | { status: "unauthenticated" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -88,9 +86,6 @@ function toPlantillaActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
-    case "FORBIDDEN":
-      // SL-23 (design §5.3): un módulo apagado para la empresa (`ModuloInactivoError`).
-      return { status: "forbidden" };
     default:
       throw new Error(`gasto-fijo-plantilla: AppErrorCode inesperado ${shape.code}`);
   }
@@ -131,7 +126,6 @@ export async function crearPlantillaAction(
   deps: PlantillaDeps = {},
 ): Promise<CrearPlantillaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = crearGastoFijoPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R24)
@@ -147,7 +141,6 @@ export async function actualizarPlantillaAction(
   deps: PlantillaDeps = {},
 ): Promise<ActualizarPlantillaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = actualizarGastoFijoPlantillaSchema.parse(input);
@@ -163,7 +156,6 @@ export async function setActivaPlantillaAction(
   deps: PlantillaDeps = {},
 ): Promise<SetActivaPlantillaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = setActivaPlantillaSchema.parse(input);
@@ -190,7 +182,6 @@ export async function eliminarPlantillaAction(
   deps: PlantillaDeps = {},
 ): Promise<EliminarPlantillaActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R5: antes de tocar el service
     const data = eliminarPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R6)
@@ -222,7 +213,6 @@ export async function listarPlantillasAction(
   deps: PlantillaDeps = {},
 ): Promise<ListarPlantillasActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const service = deps.service ?? buildService();
@@ -242,7 +232,6 @@ export async function listarPlantillasPaginadoAction(
   deps: PlantillaDeps = {},
 ): Promise<ListarPlantillasPaginadoActionResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = listarPlantillasGastoFijoPaginadoSchema.parse(input); // -> VALIDATION_ERROR
@@ -271,7 +260,6 @@ export async function listarPlantillasCompletoAction(
   deps: PlantillaDeps = {},
 ): Promise<ListarPlantillasCompletoResult> {
   const r = await withErrorHandler(async () => {
-    await exigirModuloActivo("wallet");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
     listarPlantillasGastoFijoCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR

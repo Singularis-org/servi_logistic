@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { construirFiltrosEntregas } from "@/app/(app)/_components/entregas-filtros-def";
 import { construirFiltrosOrdenes } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FICHA 355: aquí se importaban `CLAVE_ESTADO`, `ESTADOS_SATELITE`, `construirFiltrosSatelite`,
 // `seleccionAFiltroSatelite` y `ESTADOS_BODEGA_SATELITE` y NO se usaba ninguno: los casos de la
@@ -38,7 +39,7 @@ const CATALOGO: CatalogoFiltrosOrdenesDTO = {
 };
 
 function claves(facetas?: readonly ("zona" | "tienda" | "mensajero")[]): string[] {
-  return construirFiltrosEntregas(CATALOGO, { facetas }).map((f) => f.key);
+  return construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR, facetas }).map((f) => f.key);
 }
 
 describe("barra de entregas — facetas acotadas por el alcance", () => {
@@ -82,6 +83,7 @@ describe("barra de entregas — facetas acotadas por el alcance", () => {
     // El selector de «Filtros» se construye SOBRE las declaraciones (`filtros.map`), así que
     // esta es la misma lista. Se afirma para que nadie lo reintroduzca por otra vía.
     const declaraciones = construirFiltrosEntregas(CATALOGO, {
+      etiquetas: ETIQUETAS_CR,
       facetas: ["zona"],
     });
     expect(declaraciones.some((f) => f.label === "Tienda")).toBe(false);
@@ -97,7 +99,7 @@ describe("barra de órdenes — el rol acotado no elige la coordenada que ya tie
     incluirMensajero?: boolean;
     incluirSalioAReparto?: boolean;
   }): string[] {
-    return construirFiltrosOrdenes(CATALOGO, opts).map((f) => f.key);
+    return construirFiltrosOrdenes(CATALOGO, { ...opts, etiquetas: ETIQUETAS_CR }).map((f) => f.key);
   }
 
   it("maestro/admin: la barra entera, con zona y con tienda", () => {

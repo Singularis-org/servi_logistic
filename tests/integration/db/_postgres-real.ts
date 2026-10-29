@@ -170,10 +170,17 @@ export function clienteConTransaccionAnidada(tx: TxDeTest): PrismaClient {
  * El `bind` es necesario: las funciones del cliente Prisma necesitan su `this`, y devolverlas
  * desatadas del proxy las rompe en silencio.
  */
-export function clienteConSavepoint(tx: TxDeTest, romperRegistro = false): PrismaClient {
+export function clienteConSavepoint(
+  tx: TxDeTest,
+  romperRegistro: boolean | "plataforma" = false,
+): PrismaClient {
+  // SL-20: `"plataforma"` rompe el historial de plataforma (`historialPlataforma`), el registro de
+  // las escrituras del superadmin; `true` sigue rompiendo `historialAccion`.
+  const registroRoto =
+    romperRegistro === "plataforma" ? "historialPlataforma" : romperRegistro ? "historialAccion" : null;
   const proxy: unknown = new Proxy(tx as object, {
     get(objetivo, prop) {
-      if (romperRegistro && prop === "historialAccion") {
+      if (prop === registroRoto) {
         return {
           createMany: () => {
             throw new RegistroCaido();

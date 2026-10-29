@@ -18,6 +18,7 @@ import {
 } from "@/app/(app)/novedades/_components/novedades-filtros";
 import type { FilterSelection } from "@/components/shared/FilterComponent";
 import type { NovedadDTO } from "@/lib/types/novedad";
+import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
 // FICHA 325 — la mitad PURA de la barra de `/novedades`: que se ofrece en cada pestaña y como
 // acota lo elegido. Los casos estan escritos para MORDER: cada uno compara contra un literal
@@ -232,7 +233,7 @@ describe("qué ofrece cada pestaña", () => {
     }),
   ];
   const claves = (grupo: "ayuda" | "devolucion") =>
-    construirFiltrosNovedades(grupo, items).map((f) => f.key);
+    construirFiltrosNovedades(grupo, items, ETIQUETAS_CR).map((f) => f.key);
 
   it("las cuatro compartidas están en LAS DOS pestañas", () => {
     for (const grupo of ["ayuda", "devolucion"] as const) {
@@ -255,25 +256,25 @@ describe("qué ofrece cada pestaña", () => {
   it("no se declara ningún filtro de FECHA: el DTO no trae ni una", () => {
     for (const grupo of ["ayuda", "devolucion"] as const) {
       expect(
-        construirFiltrosNovedades(grupo, items).some((f) => f.kind === "dateRange"),
+        construirFiltrosNovedades(grupo, items, ETIQUETAS_CR).some((f) => f.kind === "dateRange"),
       ).toBe(false);
     }
   });
 
   it("las opciones salen del CONJUNTO, ordenadas por su etiqueta en español", () => {
-    const mensajero = construirFiltrosNovedades("devolucion", items).find(
+    const mensajero = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
       (f) => f.key === CLAVE_MENSAJERO,
     );
     expect(mensajero?.options?.map((o) => o.label)).toEqual(["Aurelio", "Zoraida"]);
   });
 
   it("una opción que no está en el conjunto NO se ofrece: ninguna lleva a una lista vacía", () => {
-    const zona = construirFiltrosNovedades("devolucion", items).find((f) => f.key === CLAVE_ZONA);
+    const zona = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find((f) => f.key === CLAVE_ZONA);
     expect(zona?.options?.map((o) => o.value)).toEqual(["GAM Este", "GAM Oeste"]);
   });
 
   it("«sin mensajero» solo se ofrece si alguna orden lo está", () => {
-    const conTodos = construirFiltrosNovedades("devolucion", items).find(
+    const conTodos = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
       (f) => f.key === CLAVE_MENSAJERO,
     );
     expect(conTodos?.options?.map((o) => o.label)).not.toContain(ETIQUETA_SIN_MENSAJERO);
@@ -281,12 +282,12 @@ describe("qué ofrece cada pestaña", () => {
     const conHuerfana = construirFiltrosNovedades("devolucion", [
       ...items,
       novedad({ id: "c", mensajeroNombre: null }),
-    ]).find((f) => f.key === CLAVE_MENSAJERO);
+    ], ETIQUETAS_CR).find((f) => f.key === CLAVE_MENSAJERO);
     expect(conHuerfana?.options?.map((o) => o.label)).toContain(ETIQUETA_SIN_MENSAJERO);
   });
 
   it("la causa se ofrece con su etiqueta ES y su slug como valor, más «sin causa»", () => {
-    const causa = construirFiltrosNovedades("devolucion", items).find(
+    const causa = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
       (f) => f.key === CLAVE_CAUSA,
     );
     expect(causa?.options).toEqual([
@@ -296,7 +297,7 @@ describe("qué ofrece cada pestaña", () => {
   });
 
   it("el cantón cuelga de su provincia: la cadena se declara, no se programa", () => {
-    const canton = construirFiltrosNovedades("devolucion", items).find(
+    const canton = construirFiltrosNovedades("devolucion", items, ETIQUETAS_CR).find(
       (f) => f.key === CLAVE_CANTON,
     );
     expect(canton?.dependsOn).toBe(CLAVE_PROVINCIA);
@@ -307,7 +308,7 @@ describe("qué ofrece cada pestaña", () => {
   });
 
   it("sin conjunto cargado se ofrecen LOS MISMOS filtros, deshabilitados y sin opciones", () => {
-    const sinConjunto = construirFiltrosNovedades("devolucion", null);
+    const sinConjunto = construirFiltrosNovedades("devolucion", null, ETIQUETAS_CR);
     expect(sinConjunto.map((f) => f.key)).toEqual(claves("devolucion"));
     expect(sinConjunto.every((f) => f.disabled === true)).toBe(true);
     expect(sinConjunto.every((f) => (f.options ?? []).length === 0)).toBe(true);
@@ -344,7 +345,7 @@ describe("qué ofrece cada pestaña", () => {
     ];
 
     for (const grupo of ["ayuda", "devolucion"] as const) {
-      for (const filtro of construirFiltrosNovedades(grupo, conjunto)) {
+      for (const filtro of construirFiltrosNovedades(grupo, conjunto, ETIQUETAS_CR)) {
         // Un `boolean` no tiene opciones: su único valor es el de marcado.
         const valor = filtro.kind === "boolean" ? "true" : filtro.options?.[0]?.value;
         expect(valor, `el filtro ${filtro.key} no ofrece ningún valor con el que ejercerse`)

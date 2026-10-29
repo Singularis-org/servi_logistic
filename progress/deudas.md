@@ -62,7 +62,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SL-17, D12 y R40. `vehiculos`, provincia, cantón y distrito son de plataforma: escribir desde una empresa falla cerrado. Las actions de `lib/actions/vehiculos.ts` y `crear/renombrarNodoGeografico` devuelven un estado engañoso (`conflict`/`in_use`, por un `catch {}` genérico); `cambiarActivacionGeografica` y `actualizarDistritosEspeciales` (`lib/actions/geografia.ts`) dan 500 sin manejar. `actualizarDistritosEspeciales` escribe `distrito.zona_especial`, una marca del flujo de Tarifas, que el maestro ya no puede cambiar.
 - **Qué falta:** pasar la edición al superadmin (SL-26) y dejar las pantallas del maestro en solo lectura con su mensaje.
 - **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
-- **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26.
+- **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26. **2026-10-26:** la parte de geografía pasa a SL-20 (`specs/SL-20-pais-geografia-configurable/requirements.md`); la de vehículos sigue aquí (SL-42).
+- **Parte de geografía cerrada en SL-20 (2026-10-27):** el alta, el renombre, el retiro y la reactivación de nodos salen de `lib/actions/geografia.ts` (el maestro solo conserva la lectura para Tarifas) y pasan al superadmin en `lib/actions/geografia-plataforma.ts`, con errores tipados (`conflict` solo por único; otra causa es `error`, R36, R51, R52). Queda abierta la parte de vehículos (SL-42).
 
 ### D13 — Coste medido de la envoltura y de los triggers
 - **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.
@@ -83,7 +84,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D15 — La geografía del superadmin choca con el aislamiento por empresa (P7 de SL-32)
 - **Origen:** SL-32 (2026-10-22), P7. Con SL-17, `renombrar` y `cambiarActivacion` de `GeografiaService` escriben `historial_accion`, y `contarOrdenesSinEntregar` lee `orden`. Las dos son tablas de negocio, y el superadmin no tiene empresa: esas operaciones fallan con `EmpresaNoResuelta`.
 - **Qué falta:** decidir qué empresa lleva el registro de una acción de plataforma, o dónde se registra, y si el conteo cubre todas las empresas. Carlos aceptó diferirlo: nadie gestiona la geografía desde la interfaz hasta SL-26, que trae la pantalla de geografía de plataforma. Hasta entonces SL-32 prueba la rama del superadmin solo con dobles. Efectos medidos el 2026-10-23 (review de SL-32, m5): con el superadmin, `renombrar` responde un «ya existe» falso (el `catch` genérico de D12 se traga el `EmpresaNoResuelta`), y el superadmin llega por URL a `/configuracion/geografia` (la puerta es `esPlataforma`, sin ítem de menú), donde retirar, reactivar y el conteo dan 500.
-- **Dueño:** quien tome SL-26 (decide Carlos Restrepo).
+- **Dueño:** pasa a SL-20 (2026-10-26, `/afinar-feature SL-20`): historial propio de plataforma y conteo de todas las empresas del país; Carlos Restrepo la confirma en F1.4 de SL-20.
+- **Resolución (SL-20, 2026-10-27):** las acciones de geografía del superadmin se registran en `historial_plataforma` (`appendAccionPlataforma`, sin empresa, R33–R35) y el conteo de órdenes sin entregar cubre todas las empresas del país (R31, R32), por `lib/actions/geografia-plataforma.ts` con `comoPlataforma`. La pantalla es `/plataforma/geografia`; `/configuracion/geografia` ya no existe (R22). Lo prueba `tests/integration/db/geografia-superadmin-sin-empresa.test.ts`. Pendiente solo la confirmación escrita de Carlos (F1.4 de SL-20).
 
 ### D16 — El humo de dos empresas da de alta por fixture, no por la pantalla (D19 de SL-17) — RESUELTA (2026-10-24)
 - **Origen:** SL-17 D19 y SL-32 (2026-10-23), review B2. `e2e/dos-empresas-humo.spec.ts` crea las dos empresas por el servicio de SL-17. SL-32 trae la pantalla «Empresas», y D19 pedía que quien mergeara segundo cambiara el alta a la pantalla.
@@ -146,12 +148,17 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
 - **Dueño:** Camilo.
 
-### D24 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
+### D24 — El soporte de Trello y la aprobación F1.4 escrita no están en la plantilla
+- **Origen:** `chore/arnes-aprobacion-escrita` (2026-10-28). El soporte de Trello (PR #19 del proyecto) y la regla `mover <key> in_progress --aprobado-por-escrito "<cita>"` viven solo aquí.
+- **Qué falta:** subirlos a `singularis-co/harness_config` con `./scripts/arnes-sync.sh --subir`. Antes, `./scripts/arnes-sync.sh --aplicar` de los 19 cambios pendientes, resolviendo 6 conflictos (`docs/trello.md`, `scripts/trello.mjs`, `scripts/validate-features.mjs`, `tests/guards/guard-trello-cliente.test.ts`, `guard-trello-red.test.ts`, `guard-validador-tracker.test.ts`), y decidir qué hacer con `.claude/commands/tracker-connect.md` y `scripts/tracker.mjs`, que la plantilla no trae.
+- **Dueño:** leader (con Carlos Restrepo para aprobar el PR en la plantilla).
+
+### D25 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
 - **Origen:** gate de SL-24 (2026-10-27), en Windows 11 con Node v22.13.1 y 24 GB de RAM. `tsc --noEmit` cayó con `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory` (exit 134), y `./init.sh` salió en rojo sin que el cambio tocara código. Con `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` salió `init OK`.
 - **Qué falta:** fijar el heap en el script `typecheck` de `package.json` (por ejemplo `node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit`) o en `init.sh`, y comprobar que el job estático de CI no lo necesita también.
 - **Dueño:** Camilo (decidir si va a ficha).
 
-### D25 — Los correos de cambio de plan muestran el precio sin símbolo de moneda
+### D26 — Los correos de cambio de plan muestran el precio sin símbolo de moneda
 - **Origen:** SL-24 T12 (2026-10-28). El plan no guarda moneda y la plataforma sirve a varios países, así que los importes van tal cual («100 al mes»). Decidido por Camilo.
 - **Qué falta:** cuando se ponga símbolo de moneda por país, tomarlo de la configuración de la empresa destinataria, no fijarlo en la plantilla (`lib/planes/mensajes.ts`, sección «Correos del cambio de plan»).
 - **Dueño:** Camilo.

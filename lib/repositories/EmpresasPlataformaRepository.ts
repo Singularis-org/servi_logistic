@@ -39,6 +39,8 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
           slug: true,
           createdAt: true,
           cobroPlataformaPorOrden: true,
+          // SL-20 (R9): el país, solo código y nombre.
+          pais: { select: { id: true, nombre: true } },
           // Solo nombre y email: ni `password_hash`, ni telefono, ni documento salen de la base.
           usuarios: {
             where: { rol: { value: "maestro" } },
@@ -58,6 +60,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
+        pais: f.pais,
       }));
     });
   }

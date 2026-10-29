@@ -961,9 +961,11 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
     "superadmin",
   ];
 
-  it("R36: el superadmin ve exactamente [Empresas], que navega a /plataforma/empresas", () => {
+  // SL-20 (R21) suma «Geografía» detrás de «Empresas»: el aterrizaje sigue siendo «Empresas».
+  it("R36: el superadmin ve exactamente [Empresas, Geografía] y aterriza en /plataforma/empresas", () => {
     const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
-    expect(labels(visibles)).toEqual(["Empresas"]);
+    expect(labels(visibles)).toEqual(["Empresas", "Geografía"]);
+    expect(primerDestino(visibles)).toBe("/plataforma/empresas");
     expect(visibles[0].href).toBe("/plataforma/empresas");
     expect(visibles[0].iconKey).toBe("building");
     expect(visibles[0].children).toBeUndefined();
@@ -982,6 +984,45 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
   // justo delante. Literal a mano.
   it("R36: va justo antes de «Mi bodega» y «Ayuda», y es el único con /plataforma/empresas", () => {
     expect(SIDEBAR_ITEMS.filter((i) => i.href === "/plataforma/empresas")).toHaveLength(1);
-    expect(SIDEBAR_ITEMS.slice(-3).map((i) => i.label)).toEqual(["Empresas", "Mi bodega", "Ayuda"]);
+    expect(SIDEBAR_ITEMS.slice(-4).map((i) => i.label)).toEqual(["Empresas", "Geografía", "Mi bodega", "Ayuda"]);
+  });
+});
+
+// SL-20 (R21): «Geografía», el árbol geográfico por país, es del superadmin y de nadie más.
+// El barrido cubre los siete `RolValue` con el esperado escrito a mano.
+describe("SL-20 — ítem «Geografía» del superadmin", () => {
+  const SIETE: RolValue[] = [
+    "maestro",
+    "admin",
+    "adminTienda",
+    "adminSatelite",
+    "mensajero",
+    "apiKey",
+    "superadmin",
+  ];
+  const HREF = "/plataforma/geografia";
+
+  it("R21: hay un solo ítem que navega a /plataforma/geografia, con su icono y sin subítems", () => {
+    const items = SIDEBAR_ITEMS.filter((i) => i.href === HREF);
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toBe("Geografía");
+    expect(items[0].iconKey).toBe("map");
+    expect(items[0].children).toBeUndefined();
+  });
+
+  it("R21: solo el superadmin lo ve; ningún rol de empresa, y sin sesión tampoco", () => {
+    const item = SIDEBAR_ITEMS.find((i) => i.href === HREF)!;
+    expect(SIETE.filter((rol) => puedeVer(item, actor(rol)))).toEqual(["superadmin"]);
+    for (const rol of SIETE.filter((r) => r !== "superadmin")) {
+      const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol));
+      expect(labels(visibles)).not.toContain("Geografía");
+      expect(visibles.map((i) => i.href)).not.toContain(HREF);
+    }
+    expect(puedeVer(item, null)).toBe(false);
+  });
+
+  it("R22: ningún ítem ni subítem apunta a /configuracion/geografia", () => {
+    const hrefs = SIDEBAR_ITEMS.flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+    expect(hrefs).not.toContain("/configuracion/geografia");
   });
 });

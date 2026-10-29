@@ -119,6 +119,20 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("R25 · la consulta intradia de gestiones us
       return await prisma
         .$transaction(async (tx) => {
           const empresa = (await crearOrganizacion(tx)).id;
+          // EMPATE DE COSTE ENTRE DOS INDICES (SL-20, decision de Camilo, 2026-10-27). Para este
+          // predicado sirven dos: `gestion_orden_organizacion_id_idx` (la empresa sola, de SL-17)
+          // y el compuesto `(organizacion_id, created_at)` de SL-18. Con `rows=1` sus costes casi
+          // coinciden (≈8.16), y cual gana depende de las filas y del tamano de los indices que
+          // hayan dejado los demas archivos del shard en la base compartida: en CI (run
+          // 40600847590) gano el simple, con el rango como `Filter`; en local, con 150 filas
+          // sembradas, tambien. El rojo dependia de los datos del shard, no de R25.
+          // R25 no pregunta cual de los dos elige el planificador: pregunta si EXISTE un indice
+          // que lleve la ventana al `Index Cond`. Asi que se saca del juego el simple, DENTRO de
+          // esta transaccion que siempre se revierte (el `DROP INDEX` es transaccional en
+          // Postgres y vuelve con el ROLLBACK). Quedan el compuesto o el seq scan, y las dos
+          // aserciones de abajo distinguen esos dos casos. Va antes de `comoApp`: `servi_app` no
+          // es dueno de la tabla y no podria borrarlo.
+          await tx.$executeRawUnsafe(`DROP INDEX "gestion_orden_organizacion_id_idx"`);
           await comoApp(tx, empresa);
           await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
           const desde = new Date("2026-08-03T06:00:00.000Z");

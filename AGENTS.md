@@ -172,6 +172,10 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
    - La forma canónica de aprobar es mover la tarjeta del estado de `spec_ready` al de
      `in_progress` (según `tracker.estados` o `jira.estados`). Un "aprobado" escrito también vale.
      En Trello, `node scripts/trello.mjs aprobacion <key>` dice quién la movió y cuándo.
+   - Con aprobación escrita, el leader mueve él la tarjeta con la cita literal del humano
+     (Trello: `mover <key> in_progress --aprobado-por-escrito "<cita>"`; Jira: comentario-marca
+     y después la transición) → `docs/trello.md > Los estados del board` y
+     `docs/jira.md > Los estados del board`.
    - Si el humano pide cambios, vuelve a F1.2.
    - Si el `design.md` propone una librería nueva, la aprobación del spec la incluye: el leader
      añade su fila a `docs/dependencias.md`.

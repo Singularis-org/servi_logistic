@@ -58,6 +58,7 @@ import { DataTable } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { Pagination } from "@/components/shared/Pagination";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { leerDetalleMensajeroDia } from "@/lib/actions/tablero-dia";
 import type { AlcanceTableroDia, OrdenDetalleDia } from "@/lib/types/tablero-dia";
 
@@ -127,6 +128,8 @@ export function DetalleMensajeroPanel({
   mensajeroNombre,
   onCerrar,
 }: DetalleMensajeroPanelProps) {
+  // SL-20 (R19): los encabezados de nivel geográfico con los nombres del país de la empresa.
+  const etiquetas = useEtiquetasGeograficas();
   // Cambiar de mensajero vuelve a la primera pagina: heredar la pagina 3 del anterior dejaria
   // el panel en blanco sobre un mensajero con dos ordenes, y eso se lee como un vacio.
   //
@@ -208,7 +211,7 @@ export function DetalleMensajeroPanel({
               es una vista de lectura (R21/R30).
             */}
             <DataTable
-              columns={columnasDetalle(detalle?.alcance ?? ALCANCE_MIENTRAS_CARGA)}
+              columns={columnasDetalle(detalle?.alcance ?? ALCANCE_MIENTRAS_CARGA, etiquetas)}
               data={[...ordenes]}
               rowKey="id"
               isLoading={cargando}

@@ -2,9 +2,10 @@
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
 //   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
-//   · plataforma (20): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
-//                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43) y el
-//                      catalogo de planes con su rastro (SL-24).
+//   · plataforma (23): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
+//                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
+//                      paises y el historial de plataforma (SL-20) y el catalogo de planes con su
+//                      rastro (SL-24).
 //   · empresa opcional (1): `organizacion_id` nulable y politica por empresa, sin filtro de la
 //                      extension ni trigger de misma empresa (SL-19: la cola `jobs`).
 //   · diferidos   (0): tienen ficha propia que decide su aislamiento.
@@ -154,6 +155,10 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "PlanRastro", tabla: "plan_rastro" },
   // El cambio pendiente de un plan (SL-24, enmienda del 2026-10-28): igual que el catalogo
   { modelo: "PlanCambioProgramado", tabla: "plan_cambio_programado" },
+  // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
+  { modelo: "Pais", tabla: "pais" },
+  // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)
+  { modelo: "HistorialPlataforma", tabla: "historial_plataforma" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

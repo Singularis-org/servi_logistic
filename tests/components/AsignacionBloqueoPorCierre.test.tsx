@@ -10,6 +10,7 @@ import { construirFiltrosEntregas } from "@/app/(app)/_components/entregas-filtr
 import type { MensajeroLiteDTO } from "@/lib/types/orden-guia";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
+import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
 
 /**
  * =================================================================================================
@@ -307,7 +308,7 @@ describe("271/R33 · el filtro de mensajero del listado NO aplica el bloqueo por
   };
 
   it("ofrece a TODOS los mensajeros del catálogo, y ninguno deshabilitado", () => {
-    const defs = construirFiltrosEntregas(CATALOGO);
+    const defs = construirFiltrosEntregas(CATALOGO, { etiquetas: ETIQUETAS_CR });
     const mensajero = defs.find((f) => f.label === "Mensajero");
 
     // El bloqueado por cierre sigue en la lista, con su nombre limpio: ni motivo entre

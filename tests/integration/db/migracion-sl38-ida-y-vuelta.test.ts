@@ -5,6 +5,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { HAY_BASE_DE_DATOS, urlDeBaseDeDatos } from "./_postgres-real";
+import { aplicarMigracionesHasta } from "./_fixtures/ida-y-vuelta-32";
 
 /**
  * SL-38 / T7 (R5, R7, R8) — M1 y M2 de ida y vuelta, contra Postgres.
@@ -193,18 +194,6 @@ async function ejecutar(texto: string, etiqueta: string): Promise<void> {
   await db.query("COMMIT");
 }
 
-/** Lo previo a M1 se aplica en autocommit, sentencia a sentencia (algunas traen su BEGIN/COMMIT). */
-async function ejecutarSuelto(texto: string, etiqueta: string): Promise<void> {
-  for (const sentencia of sentenciasDe(texto)) {
-    try {
-      await db.query(sentencia);
-    } catch (error) {
-      await db.query("ROLLBACK").catch(() => undefined);
-      throw new Error(`${etiqueta}: ${(error as Error).message}`, { cause: error });
-    }
-  }
-}
-
 interface Ciclo {
   antes: Foto;
   con: Foto;
@@ -249,19 +238,9 @@ describeSiHayBase("SL-38 — M1 y M2 de ida y vuelta (R5, R7, R8)", () => {
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    for (const carpeta of carpetasDeMigracion()) {
-      if (carpeta >= M1) break;
-      await ejecutarSuelto(sqlDe(carpeta, "migration.sql"), carpeta);
-    }
-    // Mismo motivo que en SL-17: el autovacuum de una base recien llenada choca con los locks de
-    // las migraciones (40P01). La base solo la usa este test, y las reloptions no entran en la foto.
-    const { rows: tablas } = await db.query(
-      `SELECT format('%I', c.relname) AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' AND c.relkind = 'r'`,
-    );
-    for (const { t } of tablas) {
-      await db.query(`ALTER TABLE ${String(t)} SET (autovacuum_enabled = false)`);
-    }
+    // Apaga el autovacuum antes de cada migracion, no al acabar: el 40P01 de SL-17 (ver el helper).
+    // Lo previo a M1 va en autocommit, sentencia a sentencia (algunas traen su BEGIN/COMMIT).
+    await aplicarMigracionesHasta(db, M1);
   }, 300_000);
 
   afterAll(async () => {
