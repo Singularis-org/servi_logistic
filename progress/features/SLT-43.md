@@ -2,13 +2,13 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-43 | geo-jerarquica-modelo | backend | high | feature/SLT-43-geo-jerarquica-modelo | Camilo | spec_ready |
+| SLT-43 | geo-jerarquica-modelo | backend | high | feature/SLT-43-geo-jerarquica-modelo | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
-F1.3 hecho (2026-10-29): spec escrito (R1–R40, sin preguntas abiertas), tarjeta en «En revisión». Siguiente: F1.4, aprobación humana moviendo la tarjeta a «En curso».
+F1.4 hecho (2026-10-29): spec aprobado por Camilo por escrito («aprobado»), registrado en la tarjeta. Siguiente: F2, implementer — bloqueado hasta resolver el PR #29 y el trigger `epic/**` en `gate.yml`.
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de
