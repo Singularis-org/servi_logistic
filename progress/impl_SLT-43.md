@@ -166,3 +166,70 @@ tipos + borrado de sus dos filas de `_prisma_migrations`, luego `migrate deploy`
   toda la suite de base (visto en la tanda 1).
 
 **Veredicto:** regresión descartada; T1.3 y T2.2 hechas; T2.3 creado y en uso, a marcar cuando lo usen T3–T6.
+
+### Tanda 3 — T3.1 hecha; T3.2 bloqueada (pregunta); T4 sin empezar (2026-10-29)
+
+**Archivos creados**
+- `db/migrations/20261029120300_nodo_geografico_sincronia/{migration,down}.sql` (design §2.3): tres funciones
+  `SECURITY DEFINER` con `search_path = public` (`geo_sincronizar_provincia|canton|distrito`) y tres triggers
+  `AFTER INSERT OR UPDATE OR DELETE … FOR EACH ROW` (`<tabla>_sincroniza_nodo_geografico`).
+- `tests/integration/db/geo-sincronia-geografia.test.ts` (R15–R18), 8 casos; usa `crearEscenarioGeo43` y
+  `tiposDeNivel` del fixture `geo-43.ts` (sin cambios en el fixture).
+
+**Archivos modificados**
+- `specs/SLT-43-geo-jerarquica-modelo/tasks.md`: T3.1 `[x]`; nota de bloqueo en T3.2.
+
+**Decisiones de implementación (desviaciones menores del design)**
+- El upsert lleva `WHERE (…) IS DISTINCT FROM (EXCLUDED…)` en el `DO UPDATE`: un UPDATE de la fila vieja que
+  no cambia nada del nodo (p. ej. `provincia.zona_id`) no reescribe el nodo. El test lo comprueba por `xmin`,
+  con contraprueba.
+- El tipo se busca con una subconsulta escalar dentro de `VALUES`: si faltara el `nivel_N` del país, el NOT
+  NULL de `tipo_id` falla en vez de dejar la fila vieja sin nodo en silencio.
+- Borrado en cascada: las acciones de las FK viejas (`RI_ConstraintTrigger_*`) se disparan antes que los
+  triggers de sincronía por orden de nombre; la orden queda con `distrito_id` NULL (FK vieja `SET NULL`) y
+  las filas de zona caen antes de borrar el nodo. Cubierto en el test de R17.
+
+**Mapa R → test (esta tanda)**
+| R | Test |
+|---|---|
+| R15 | `geo-sincronia-geografia.test.ts` («el alta de SL-20 crea el nodo…», «la carga CSV (`importarDivision`)…») |
+| R16 | ídem («`renombrar` y `cambiarActivacion`…», «cambio de padre … código y país», «UPDATE que no cambia nada», y los códigos completados por la carga) |
+| R17 | ídem («el borrado físico borra el nodo…») |
+| R18 | ídem («`canton.pais_id` sigue saliendo del padre y la sincronía no escribe historial») |
+| Riesgo design §9 | ídem («un homónimo normalizado … falla entero con 23505»: `GeoRepository.crear` → P2002, SQL → 23505, sin fila vieja ni historial) |
+
+**Verificación (salida real, `DATABASE_URL` → `logistic_slt43`)**
+- `prisma migrate deploy`: 120300 aplicada. `prisma migrate diff --from-config-datasource --to-schema
+  db/schema.prisma --script`: `-- This is an empty migration.`
+- `pnpm run typecheck`: 0 errores. `eslint tests/integration/db/geo-sincronia-geografia.test.ts`: limpio.
+- `geo-sincronia-geografia.test.ts`: 8/8.
+- Guardias: `fk-misma-empresa`, `organizacion-en-modelos`, `plataforma-solo-en-lista`, `rls-por-empresa`
+  verdes; `migraciones-destructivas` roja solo por `20261028120000_modulo_wallet_nucleo` (ajena; no nombra
+  ninguna `202610291*`). 62/63.
+- T3.2 — `geo-*`, `geografia-*`, `pais-*`, `carga-division`, `migracion-sl20-ida-y-vuelta` (26 archivos):
+  22 verdes, 243 pasados, 3 fallados, 16 saltados.
+  - `geografia-historico-intacto`, `geografia-ordenes-sin-entregar`: base sin órdenes (entorno, igual en `dev`).
+  - `geografia-registro-accion` (2 casos) y `geografia-renombrado` (1 caso, en otra corrida): el actor es
+    `usuario.findFirst()` del `beforeAll`, que en paralelo puede ser el superadmin temporal de otro archivo,
+    borrado al acabar → `actor_usuario_id` NULL. Solos pasan 31/31 (dos corridas). Los dos archivos están en
+    `tests/baseline-rojos.json`. No es de SLT-43.
+  - **`carga-division.test.ts` › «decision 4: con dos homonimos normalizados bajo el mismo padre, gana el
+    primero (por id)»: ROJO POR SLT-43.** `migracion-sl20-ida-y-vuelta` verde.
+
+**Pregunta abierta (bloquea T3.2 y, por la regla de parar, T4):** el test siembra por Prisma directo, bajo
+la misma provincia, los cantones «San Jose» y «San José» («datos heredados»: el único viejo compara el
+nombre literal). Con la sincronía, el segundo `canton.create` falla con 23505 en
+`nodo_geografico_padre_id_nombre_normalizado_key` (R9). No es un `DELETE` de limpieza: es el estado que R14
+declara imposible en el modelo nuevo, y R9 + R15 obligan a rechazarlo. Ninguna vía de la app lo crea (el
+service compara por forma normalizada, 374/375; `planificarDivision` deduplica). Opciones:
+- (a) Cambiar solo la preparación de ese caso (no sus aserciones): sembrar los dos homónimos con la
+  sincronía apagada para ese `tx` (`ALTER TABLE canton DISABLE TRIGGER canton_sincroniza_nodo_geografico`
+  dentro de la transacción revertida), o reescribir la siembra para que no dependa de datos que R14 prohíbe.
+  Requiere permiso explícito porque R36 pide la suite sin tocar.
+- (b) Que la sincronía no cree nodo cuando choca el nombre normalizado (capturar 23505 y seguir): deja una
+  fila vieja sin nodo, rompe R15 y lo detectaría la equivalencia (R32). No recomendada.
+- (c) Quitar el único `(padre_id, nombre_normalizado)` del nodo hasta SLT-48: rompe R9. No recomendada.
+Recomendación: (a).
+
+**Veredicto:** T3.1 hecha y verde; T3.2 bloqueada por un caso de `carga-division` que choca con R9 vía la
+sincronía; T4.1/T4.2 no empezadas (dependen de la respuesta según la regla de parar).

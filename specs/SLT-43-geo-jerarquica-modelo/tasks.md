@@ -52,13 +52,16 @@
 
 ## T3 — Sincronía desde la geografía vieja (depende de T2.2)
 
-- [ ] **T3.1** Migración `20261029120300_nodo_geografico_sincronia` + `down.sql` (design §2.3).
+- [x] **T3.1** Migración `20261029120300_nodo_geografico_sincronia` + `down.sql` (design §2.3).
   *Hecho:* `geo-sincronia-geografia.test.ts` (R15–R18) verde, recorriendo `GeoRepository.crear`,
   `renombrar`, `cambiarActivacion` e `importarDivision` de SL-20.
 - [ ] **T3.2** Correr las suites de geografía de SL-20 y de 374 sin tocarlas: `geografia-*.test.ts`,
   `carga-division.test.ts`, `migracion-sl20-ida-y-vuelta.test.ts`. *Hecho:* verdes sin cambiar
   aserciones (R36). Si un test que limpia con `DELETE` choca con la sincronía, se arregla la
   sincronía, no el test.
+  _(2026-10-29: bloqueada. `carga-division.test.ts` › «decision 4: con dos homonimos normalizados bajo el
+  mismo padre» siembra «San Jose» y «San José» bajo la misma provincia por SQL directo; el único de
+  R9 lo rechaza vía la sincronía (23505). Pregunta al humano en `progress/impl_SLT-43.md > Tanda 3`.)_
 
 ## T4 — Columnas nuevas y triggers de negocio (depende de T3.1)
 
