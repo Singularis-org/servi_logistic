@@ -125,7 +125,7 @@ function montar(sobrescribir: Partial<WebhookWhatsappDeps> = {}) {
     ingesta: {
       ingerirEventos: vi.fn(async (eventos: WebhookEventos): Promise<IngestaResumen> => {
         ingestas.push({ empresa: empresaDelContexto(), waIds: eventos.mensajes.map((m) => m.waMessageId) });
-        return { mensajesRegistrados: eventos.mensajes.length, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0 };
+        return { mensajesRegistrados: eventos.mensajes.length, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 };
       }),
     },
     entregaEstado: () => ({ aplicar: vi.fn(async () => 0) }),
@@ -193,7 +193,7 @@ describe("SL-36 T5.3 — WebhookWhatsappService · POST (R20, R21)", () => {
 
     expect(r).toEqual({
       status: "ok",
-      resumen: { mensajesRegistrados: 1, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0 },
+      resumen: { mensajesRegistrados: 1, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 },
     });
     expect(m.enrutado.porNumeros).toHaveBeenCalledWith([A.numero]);
     expect(m.lecturasDeSecreto).toEqual([{ empresa: A.organizacionId, integracionId: A.integracionId }]);

@@ -274,6 +274,7 @@ describe("listarHiloChat (R16/R22)", () => {
       contarNoLeidosPorMensajero: vi.fn(async () => []),
       marcarLeidoHastaUltimoEntrante: vi.fn(async () => {}),
       migrarTelefono: vi.fn(async () => 0),
+      findHiloDeSalienteCitado: vi.fn(async () => null),
     };
   }
 
@@ -477,6 +478,7 @@ function convNoLeidos(
     contarNoLeidosPorMensajero: vi.fn(async () => []),
     marcarLeidoHastaUltimoEntrante: vi.fn(async () => {}),
     migrarTelefono: vi.fn(async () => 0),
+    findHiloDeSalienteCitado: vi.fn(async () => null),
     ...over,
   };
 }
@@ -610,6 +612,7 @@ describe("Feature 311 · listarHiloChat expone los tipos nuevos (R19/R21)", () =
       contarNoLeidosPorMensajero: vi.fn(async () => []),
       marcarLeidoHastaUltimoEntrante: vi.fn(async () => {}),
       migrarTelefono: vi.fn(async () => 0),
+      findHiloDeSalienteCitado: vi.fn(async () => null),
     };
   }
 

@@ -80,10 +80,10 @@ describe("SL-36 — el route traduce el resultado del service", () => {
     const no = doble({ status: "unauthorized" });
     expect((await route.handlePost(post("{}", null), { service: no.service })).status).toBe(401);
 
-    const si = doble({ status: "ok", resumen: { mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 } });
+    const si = doble({ status: "ok", resumen: { mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 } });
     const res = await route.handlePost(post("{}", "sha256=x"), { service: si.service });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 });
+    expect(await res.json()).toEqual({ ok: true, mensajesRegistrados: 2, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 });
   });
 
   it("GET: ok -> 200 text/plain con el challenge; forbidden -> 403 sin challenge", async () => {
@@ -122,7 +122,7 @@ describe("SL-36/R20 — con el service real, cada empresa ingiere lo suyo en su 
       ingesta: {
         ingerirEventos: vi.fn(async (e: WebhookEventos) => {
           vistos.push({ contexto: contextoActual(), ids: e.mensajes.map((m) => m.waMessageId) });
-          return { mensajesRegistrados: e.mensajes.length, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0 };
+          return { mensajesRegistrados: e.mensajes.length, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 };
         }),
       },
       entregaEstado: () => ({ aplicar: async () => 0 }),
