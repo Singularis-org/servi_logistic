@@ -148,7 +148,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       const { actor, nombre } = await conSuperadmin(tx);
       const servicio = new PlanesService(planesEnTx(tx));
       const org = (await crearOrganizacion(tx)).id;
-      await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "wallet" } });
+      await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "ranking" } });
       const creado = await servicio.crear(actor, entradaDePlan({ nombre: "Pro con analítica", modulos: ["analitica"] }));
       if (creado.estado !== "ok") throw new Error(creado.estado);
       await servicio.asignar(actor, { organizacionId: org, planId: creado.planId });
@@ -181,7 +181,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
     });
     expect(r.filas.filter((f) => f.accion !== "plan_asignado").map((f) => [f.accion, f.valorNuevo]).sort()).toEqual([
       ["modulo_activado", "analitica"],
-      ["modulo_desactivado", "wallet"],
+      ["modulo_desactivado", "ranking"],
     ]);
     expect(r.filas).toHaveLength(3);
     expect(new Set(r.filas.map((f) => f.loteId)).size).toBe(1);

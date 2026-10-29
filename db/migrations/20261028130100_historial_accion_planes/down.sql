@@ -1,28 +1,20 @@
--- DOWN de SL-24 (design §16.6) — quita los valores que añadió `migration.sql`: las cuatro acciones del
--- rastro de un cambio programado en `plan_rastro_accion` y los cuatro trabajos en `job_tipo`.
+-- DOWN de SL-24 (design §10) — quita `plan_asignado` y la entidad `plan` que añadió `migration.sql`.
 --
--- BORRA LAS FILAS QUE LOS USAN:
---   · `plan_rastro`: el rastro de programaciones que, sin la enmienda, ya no existen (el down de
---     20261028120000 suelta su tabla justo después). Las filas `creado`, `editado` y `archivado` no se
---     tocan.
---   · `jobs`: aplicar, recordar, avisar y barrer cambios programados. Sin la tabla no hay nada que
---     aplicar ni que recordar, y un job de un tipo sin handler se quedaría `pending` para siempre.
+-- BORRA LAS FILAS QUE LOS USAN, como el down de SL-23 (20261026120100). Ese rastro solo describe
+-- asignaciones de una columna (`organizacion.plan_id`) que el down de 20261028130000 va a soltar justo
+-- después: sin la feature no queda nada a lo que apunte. Las filas de cualquier otra acción no se tocan.
 --
 -- Postgres no tiene `ALTER TYPE ... DROP VALUE`: hay que recrear el tipo. La función es la de
--- `20261026120100_historial_accion_modulos/down.sql` TAL CUAL, renombrada `_sl24` (la misma que usa
--- 20261027130100): lee la lista VIGENTE de `pg_enum` y quita SOLO estos valores. Suelta y restaura
--- con su definición exacta lo que nombra el tipo por texto —el índice parcial de `jobs` sobre `tipo`,
--- si lo hay, como en el down de 20261026120200— y los DEFAULT.
+-- `20261026120100_historial_accion_modulos/down.sql` TAL CUAL, renombrada `_sl24`: lee la lista
+-- VIGENTE de `pg_enum` y quita SOLO estos valores, así que no borra los que otra rama añada después.
 --
--- ORDEN: es el primer down de la enmienda; después van el de 20261028120000 y los de T1–T3.
+-- ORDEN: va DESPUÉS del down de 20261028130200 y ANTES del de 20261028130000.
 
 BEGIN;
 
-DELETE FROM "plan_rastro"
- WHERE "accion"::text IN ('cambio_programado', 'cambio_reemplazado', 'cambio_cancelado', 'cambio_aplicado');
-
-DELETE FROM "jobs"
- WHERE "tipo"::text IN ('plan_aplicar_cambio', 'plan_recordatorio_cambio', 'plan_aviso_correo', 'plan_cambios_vencidos');
+DELETE FROM "historial_accion"
+ WHERE "accion"::text = 'plan_asignado'
+    OR "entidad_tipo"::text = 'plan';
 
 -- ─── LA FUNCION DE REVERSION, DINAMICA (copiada de SL-36, que la copió de la ficha 458-B) ─────────
 --   1. PRECONDICION RUIDOSA: si alguna fila de cualquier columna de ese tipo usa un valor a quitar,
@@ -145,9 +137,7 @@ BEGIN
 END
 $fn$;
 
-SELECT pg_temp.quitar_valores_de_enum_sl24('public', 'plan_rastro_accion',
-  ARRAY['cambio_programado', 'cambio_reemplazado', 'cambio_cancelado', 'cambio_aplicado']);
-SELECT pg_temp.quitar_valores_de_enum_sl24('public', 'job_tipo',
-  ARRAY['plan_aplicar_cambio', 'plan_recordatorio_cambio', 'plan_aviso_correo', 'plan_cambios_vencidos']);
+SELECT pg_temp.quitar_valores_de_enum_sl24('public', 'historial_accion_tipo', ARRAY['plan_asignado']);
+SELECT pg_temp.quitar_valores_de_enum_sl24('public', 'historial_accion_entidad', ARRAY['plan']);
 
 COMMIT;

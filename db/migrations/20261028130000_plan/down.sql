@@ -1,5 +1,5 @@
--- SL-24 — revierte 20261027130000_plan. Va después de los down de 20261027130200 (los triggers y
--- funciones que leen estas tablas) y de 20261027130100 (el historial que nombra `plan`), en orden
+-- SL-24 — revierte 20261028130000_plan. Va después de los down de 20261028130200 (los triggers y
+-- funciones que leen estas tablas) y de 20261028130100 (el historial que nombra `plan`), en orden
 -- inverso.
 -- Los planes, su rastro y las asignaciones se pierden: sin la feature, ninguna empresa tiene plan, que
 -- es el comportamiento de antes (R14). Las FK, los CHECK, los índices y la RLS se van con sus tablas.

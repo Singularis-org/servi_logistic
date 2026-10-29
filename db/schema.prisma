@@ -1064,7 +1064,7 @@ model Orden {
   @@index([organizacionId])
   // SL-24 (design §2.6): el conteo del tope de órdenes por ciclo (las vivas de una empresa desde el
   // inicio del ciclo). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS NULL`— y eso no se puede
-  // escribir aqui: vive en `db/migrations/20261027130000_plan/migration.sql`.
+  // escribir aqui: vive en `db/migrations/20261028130000_plan/migration.sql`.
   @@index([organizacionId, createdAt], map: "orden_organizacion_id_created_at_vivas_idx")
   @@map("orden")
 }
@@ -5377,7 +5377,7 @@ model Organizacion {
   // SL-24 (design §2.4): el plan asignado y el ancla de sus ciclos. NULL = sin plan, sin límites (R14).
   // Solo los escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
   // `CHECK ("plan_id" IS NULL OR "plan_ciclo_ancla_at" IS NOT NULL)` vive solo en el SQL de
-  // 20261027130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
+  // 20261028130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
   planId           String?   @map("plan_id")
   plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
   planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
@@ -5542,7 +5542,7 @@ enum PlanRastroAccion {
 
 // SL-24 (design §2.1) — el catálogo de planes. De PLATAFORMA: sin `organizacion_id` (la de un custom es
 // `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
-// tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261027130000, porque Prisma no los
+// tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261028130000, porque Prisma no los
 // expresa:
 //   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las cinco formas
 //     del precio, R3) y los de rango de topes, montos y porcentaje;
@@ -5573,7 +5573,7 @@ model Plan {
 }
 
 // SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.
-// Viven solo en el SQL de 20261027130000: el CHECK de los roles con tope (`maestro`, `admin`,
+// Viven solo en el SQL de 20261028130000: el CHECK de los roles con tope (`maestro`, `admin`,
 // `mensajero`, `Admin Tienda`, `adminSatelite`; ni `apiKey` ni `superadmin`, R25), `maximo >= 0`, la
 // RLS sin políticas y el `REVOKE ALL … FROM servi_app`.
 model PlanTopeRol {
@@ -5587,7 +5587,7 @@ model PlanTopeRol {
 }
 
 // SL-24 (design §2.3) — un módulo incluido en un plan. Reusa el enum de SL-23. De PLATAFORMA; la RLS
-// sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de 20261027130000.
+// sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de 20261028130000.
 model PlanModulo {
   planId String         @map("plan_id")
   plan   Plan           @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -5601,7 +5601,7 @@ model PlanModulo {
 // añade. `planId` y `actorUsuarioId` son opacos y SIN FK, a propósito: el rastro sobrevive al CASCADE
 // que borra un custom con su empresa. `cambios` es `{ campo: { antes, despues } }` con los importes
 // como texto. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
-// 20261027130000.
+// 20261028130000.
 model PlanRastro {
   id             String           @id @default(uuid())
   planId         String           @map("plan_id")
@@ -5621,7 +5621,7 @@ model PlanRastro {
 // es borrar y crear con `id` nuevo, que los trabajos comparan (§16.3). `version` es la edición completa
 // (`EditarPlanInput` sin `planId` ni `vigenteDesde`) y `avisosAlProgramar` los `TopeExcedido[]` del
 // momento de guardar. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
-// 20261028120000.
+// 20261028130300.
 model PlanCambioProgramado {
   id                String   @id @default(uuid())
   planId            String   @unique @map("plan_id")

@@ -165,7 +165,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
               { rol: "mensajero", maximo: 10 },
             ],
           },
-          modulos: { create: [{ modulo: "analitica" }, { modulo: "wallet" }] },
+          modulos: { create: [{ modulo: "analitica" }, { modulo: "monitoreo" }] },
         },
         select: { id: true },
       });
@@ -189,7 +189,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       ["mensajero", 10],
       ["adminTienda", 3],
     ]);
-    expect(leido.modulos.map((m) => m.modulo)).toEqual(["analitica", "wallet"]);
+    expect(leido.modulos.map((m) => m.modulo)).toEqual(["analitica", "monitoreo"]);
   });
 
   it("R1 — sin topes ni precio también es un plan válido (cada tope es opcional)", async () => {

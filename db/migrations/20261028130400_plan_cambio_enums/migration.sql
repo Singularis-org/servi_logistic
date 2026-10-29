@@ -5,7 +5,7 @@
 -- barrido recurrente de los vencidos. Los cuatro son del núcleo (`MODULO_POR_JOB`).
 --
 -- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04).
--- Nada aquí escribe filas ni toca las funciones o los triggers de 20261027130200; el primer uso ocurre
+-- Nada aquí escribe filas ni toca las funciones o los triggers de 20261028130200; el primer uso ocurre
 -- en runtime.
 
 ALTER TYPE "plan_rastro_accion" ADD VALUE IF NOT EXISTS 'cambio_programado';

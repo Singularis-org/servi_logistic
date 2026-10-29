@@ -179,12 +179,12 @@ esta bien hecha, no solo si "funciona".
   empresa) y asigna uno a cada empresa. La base cuenta los topes dentro de la transacción del alta.
   Una empresa sin plan no tiene límites.
   - **Tablas de plataforma:** `plan`, `plan_tope_rol`, `plan_modulo`, `plan_rastro` (migración
-    `20261027130000_plan`) y `plan_cambio_programado` (`20261028120000_plan_cambio_programado`), en
+    `20261028130000_plan`) y `plan_cambio_programado` (`20261028130300_plan_cambio_programado`), en
     `MODELOS_DE_PLATAFORMA`. Tienen RLS sin ninguna política y `REVOKE ALL … FROM servi_app`: una
     empresa no las lee ni las escribe, tampoco con SQL a mano (`42501`). La asignación vive en
     `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, el ancla del ciclo, que se fija en
     la primera asignación y no cambia al cambiar de plan. `servi_app` las lee y no las escribe.
-  - **Triggers de topes** (`20261027130200_plan_topes_triggers`): `plan_tope_ordenes` (de sentencia,
+  - **Triggers de topes** (`20261028130200_plan_topes_triggers`): `plan_tope_ordenes` (de sentencia,
     en `orden`), `plan_tope_usuario_alta` y `plan_tope_usuario_cambio` (en `usuario`), y
     `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
     SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`

@@ -53,7 +53,7 @@ describe("SL-24 — diferenciasDelPlan", () => {
         despues: { ordenesPorCiclo: 50, porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
       },
     ],
-    ["modulos", { modulos: ["wallet"] }, { antes: ["analitica", "ranking"], despues: ["wallet"] }],
+    ["modulos", { modulos: ["monitoreo"] }, { antes: ["analitica", "ranking"], despues: ["monitoreo"] }],
     [
       "precio",
       { precio: { tipo: "negociable" } },

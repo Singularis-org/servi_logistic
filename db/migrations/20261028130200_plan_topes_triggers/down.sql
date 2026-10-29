@@ -1,5 +1,5 @@
--- SL-24 — revierte 20261027130200_plan_topes_triggers. Apaga los topes: desde aquí ninguna alta se
--- rechaza por el plan. El catálogo y las asignaciones se quedan, porque viven en 20261027130000.
+-- SL-24 — revierte 20261028130200_plan_topes_triggers. Apaga los topes: desde aquí ninguna alta se
+-- rechaza por el plan. El catálogo y las asignaciones se quedan, porque viven en 20261028130000.
 
 DROP TRIGGER "plan_tope_api_key_cambio" ON "api_key";
 DROP TRIGGER "plan_tope_api_key_alta" ON "api_key";

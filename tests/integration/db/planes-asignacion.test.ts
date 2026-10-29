@@ -193,7 +193,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const otro = await c.plan({ modulos: ["analitica"] });
       await c.asignar(org, plan);
       const interruptor = new ModulosEmpresaService(new ModulosEmpresaRepository(clienteConSavepoint(tx)));
-      const excepcion = await interruptor.fijar(SUPERADMIN, { organizacionId: org, modulo: "wallet", activo: true });
+      const excepcion = await interruptor.fijar(SUPERADMIN, { organizacionId: org, modulo: "monitoreo", activo: true });
       const conExcepcion = await modulos(tx, org);
       const edicion = await c.servicio.editar(SUPERADMIN, {
         planId: plan,
@@ -208,9 +208,9 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       return { excepcion, conExcepcion, edicion, trasEditar, trasCambiar: await modulos(tx, org) };
     });
     expect(r.excepcion).toEqual({ estado: "ok", cambio: true });
-    expect(r.conExcepcion).toEqual(["analitica", "wallet"]);
+    expect(r.conExcepcion).toEqual(["analitica", "monitoreo"]);
     expect(r.edicion).toMatchObject({ estado: "ok", cambio: true });
-    expect(r.trasEditar).toEqual(["analitica", "wallet"]);
+    expect(r.trasEditar).toEqual(["analitica", "monitoreo"]);
     expect(r.trasCambiar).toEqual(["analitica"]);
   });
 
@@ -332,7 +332,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const plan = await c.plan({ modulos: ["analitica"] });
       await c.asignar(org, plan);
       // Una excepción encendida: si la asignación repetida sincronizara, la apagaría.
-      await encendidos(tx, org, ["wallet"]);
+      await encendidos(tx, org, ["monitoreo"]);
       const antes = { ...(await asignacion(tx, org)), historial: await historial(tx, org), modulos: await modulos(tx, org) };
       const repetida = await c.asignar(org, plan);
       const despues = { ...(await asignacion(tx, org)), historial: await historial(tx, org), modulos: await modulos(tx, org) };
@@ -340,7 +340,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
     });
     expect(r.repetida).toMatchObject({ estado: "ok", cambio: false });
     expect(r.despues).toEqual(r.antes);
-    expect(r.antes.modulos).toEqual(["analitica", "wallet"]);
+    expect(r.antes.modulos).toEqual(["analitica", "monitoreo"]);
   });
 
   it("R6: un plan archivado no se asigna", async () => {

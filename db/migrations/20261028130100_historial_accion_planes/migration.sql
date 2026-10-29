@@ -2,7 +2,7 @@
 --
 -- Un tipo, `plan_asignado`, y la entidad `plan`. `entidad_id` es el id del plan nuevo: opaco y sin
 -- FK, como el resto. La fila es de la empresa y el actor es el superadmin. Crear, editar y archivar un
--- plan NO van aquí: son de plataforma y van a `plan_rastro` (20261027130000).
+-- plan NO van aquí: son de plataforma y van a `plan_rastro` (20261028130000).
 --
 -- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04).
 -- Nada aquí escribe filas; el primer uso ocurre en runtime.

@@ -7,7 +7,7 @@ import { llevaSqlstate, mensajesDeLaCadena } from "@/lib/db/sqlstate";
 import { mensajeDelTope, type TopeDelPlan } from "./mensajes";
 
 // SL-24 (design §4.1, §4.5) — el rechazo de un alta por el tope del plan, tal como lo lanzan los
-// triggers de 20261027130200: SQLSTATE `SL024` y `MESSAGE = 'tope_plan {json}'`.
+// triggers de 20261028130200: SQLSTATE `SL024` y `MESSAGE = 'tope_plan {json}'`.
 //
 // Es un `CONFLICT` con `details.codigo = "tope_plan"` y no un `AppErrorCode` nuevo: `code` es el
 // conjunto cerrado de la feature 10, y ampliarlo cambia el `switch` exhaustivo de `toActionError` en

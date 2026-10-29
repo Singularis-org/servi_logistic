@@ -139,7 +139,7 @@ BEGIN
 END $$;
 
 -- Usuarios: el tope es la fila de `plan_tope_rol` del rol de NEW; sin fila no hay límite, y `apiKey`
--- nunca la tiene (CHECK de 20261027130000, R25). Qué es «alta» lo dice el WHEN de cada trigger.
+-- nunca la tiene (CHECK de 20261028130000, R25). Qué es «alta» lo dice el WHEN de cada trigger.
 -- El rol viaja con el nombre del enum de Prisma (`adminTienda`), no con el de Postgres.
 CREATE FUNCTION plan_tope_usuario() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$

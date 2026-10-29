@@ -649,11 +649,15 @@ Van después de la última de `dev` (`20261026120200_job_estado_descartado`). Se
 porque `db:migrate:create` falla con P3006 (SL-40 §4). T0 comprueba que siguen siendo las
 últimas antes de aplicarlas en una base compartida. Una migración ya aplicada no se renumera.
 
+F2.3 (merge con `dev`, 2026-10-28): las cinco se renombraron a `20261028130000`–`130400`, detrás de
+`20261028120000_modulo_wallet_nucleo`. Esa migración recrea `modulo_apagable` y borra el tipo viejo,
+que fallaría si `plan_modulo.modulo` ya lo usara. Ninguna había llegado a `dev`.
+
 | Carpeta | `migration.sql` | `down.sql` |
 |---|---|---|
-| `20261027130000_plan` | Enums `plan_visibilidad` y `plan_rastro_accion`; tablas `plan` (con `tope_api_keys`), `plan_tope_rol`, `plan_modulo` y `plan_rastro`, con sus `CHECK`, FK, índices y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las cuatro; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×4 y `DROP TYPE` ×2 |
-| `20261027130100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE 'plan_asignado'` y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
-| `20261027130200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los cinco triggers: uno sobre `orden`, dos sobre `usuario` y dos sobre `api_key` | `DROP TRIGGER` ×5 y `DROP FUNCTION` ×8 |
+| `20261028130000_plan` | Enums `plan_visibilidad` y `plan_rastro_accion`; tablas `plan` (con `tope_api_keys`), `plan_tope_rol`, `plan_modulo` y `plan_rastro`, con sus `CHECK`, FK, índices y RLS sin políticas; `REVOKE ALL … FROM servi_app` en las cuatro; columnas `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, con FK y `CHECK`; índice parcial de §2.6 | `DROP INDEX`, `DROP COLUMN` ×2, `DROP TABLE` ×4 y `DROP TYPE` ×2 |
+| `20261028130100_historial_accion_planes` | `ALTER TYPE historial_accion_tipo ADD VALUE 'plan_asignado'` y `ALTER TYPE historial_accion_entidad ADD VALUE 'plan'` | Borra las filas con esos valores y recrea los dos tipos sin ellos, con el patrón de `20261026120100_historial_accion_modulos/down.sql` |
+| `20261028130200_plan_topes_triggers` | Las funciones de §4.2 y §4.3 (`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`; `GRANT EXECUTE ON FUNCTION plan_cupo_ordenes TO servi_app`) y los cinco triggers: uno sobre `orden`, dos sobre `usuario` y dos sobre `api_key` | `DROP TRIGGER` ×5 y `DROP FUNCTION` ×8 |
 
 - **Los triggers van en carpeta propia** (precedente SL-40 §4): se pueden quitar sin borrar el
   catálogo.
@@ -886,11 +890,12 @@ terminan sin hacer nada (§16.3). Por eso no hace falta tocar la cola al reempla
 **Elegido: un trabajo de la cola que aplica.**
 
 - **Tipo de trabajo** `plan_aplicar_cambio`. Es puntual, sin empresa (`organizacion_id` NULL),
-  con payload `{ cambioId }` y `max_intentos` 5.
+  con payload `{ planId, cambioId }` y `max_intentos` 5. El `planId` permite cerrar el plan
+  (`FOR UPDATE`) antes de leer el cambio, en el orden de §4.4.
 - **Quién lo ejecuta.** Lo reclama el drenador `procesar-jobs`, que corre cada minuto
   (`vercel.json`). El cambio rige, como tarde, en el minuto siguiente a `vigente_desde`.
 - **El handler** usa `PlanesRepository.aplicarCambioProgramado(cambioId)`, en `comoPlataforma`:
-  1. `plan` `FOR UPDATE`, por el `plan_id` del cambio;
+  1. `plan` `FOR UPDATE`, por el `planId` del payload;
   2. lee `plan_cambio_programado` por `id = cambioId`. Si no existe (reemplazado, cancelado o ya
      aplicado) → termina sin hacer nada. Si `vigente_desde > now()` (reloj adelantado) →
      termina sin hacer nada; el barrido de abajo lo recoge;
@@ -976,21 +981,22 @@ Un minuto de retraso no lo pide ninguna decisión.
 | `lib/planes/jobs-cambio-plan.ts` | Los cuatro handlers (`plan_aplicar_cambio`, `plan_recordatorio_cambio`, `plan_aviso_correo` y el recurrente `plan_cambios_vencidos`) con su composition root |
 | `app/api/cron/procesar-jobs/route.ts` | `buildHandlers` y `buildRecurrencias` ganan los tipos nuevos |
 | `lib/modulos/reparto.ts` | Los cuatro tipos en `MODULO_POR_JOB` como `"nucleo"` |
+| `scripts/siembra-jobs-recurrentes.ts` | `plan_cambios_vencidos` en `SIEMBRAS_RECURRENTES` (lo exige la guardia de la 313) |
 | `lib/services/email/plantillas/cambio-plan.ts` | La plantilla (§16.4) |
 | `lib/db/modelos-de-negocio.ts` | `PlanCambioProgramado` en `MODELOS_DE_PLATAFORMA` |
 
-### 16.6 Migraciones nuevas (después de `20261027130200_plan_topes_triggers`)
+### 16.6 Migraciones nuevas (después de `20261028130200_plan_topes_triggers`)
 
 T0 vuelve a comprobar el orden contra `dev` y contra el PR #27 antes de aplicarlas en ninguna base
 compartida.
 
 | Carpeta | `migration.sql` | `down.sql` |
 |---|---|---|
-| `20261028120000_plan_cambio_programado` | Tabla `plan_cambio_programado` con FK, `UNIQUE`, RLS sin políticas y `REVOKE ALL … FROM servi_app` | `DROP TABLE` |
-| `20261028120100_plan_cambio_enums` | `ALTER TYPE plan_rastro_accion ADD VALUE` ×4 (`cambio_programado`, `cambio_reemplazado`, `cambio_cancelado`, `cambio_aplicado`) y `ALTER TYPE job_tipo ADD VALUE` ×4 (`plan_aplicar_cambio`, `plan_recordatorio_cambio`, `plan_aviso_correo`, `plan_cambios_vencidos`) | Borra las filas de `plan_rastro` y de `jobs` con esos valores y recrea los dos tipos sin ellos. Es el patrón de `20261026120200_job_estado_descartado/down.sql`, que borra y recrea los índices parciales de `jobs` que nombran el tipo |
+| `20261028130300_plan_cambio_programado` | Tabla `plan_cambio_programado` con FK, `UNIQUE`, RLS sin políticas y `REVOKE ALL … FROM servi_app` | `DROP TABLE` |
+| `20261028130400_plan_cambio_enums` | `ALTER TYPE plan_rastro_accion ADD VALUE` ×4 (`cambio_programado`, `cambio_reemplazado`, `cambio_cancelado`, `cambio_aplicado`) y `ALTER TYPE job_tipo ADD VALUE` ×4 (`plan_aplicar_cambio`, `plan_recordatorio_cambio`, `plan_aviso_correo`, `plan_cambios_vencidos`) | Borra las filas de `plan_rastro` y de `jobs` con esos valores y recrea los dos tipos sin ellos. Es el patrón de `20261026120200_job_estado_descartado/down.sql`, que borra y recrea los índices parciales de `jobs` que nombran el tipo |
 
 - **Los enums van aparte:** un `ADD VALUE` no se puede usar en la misma transacción que lo crea.
-  Ninguna de las dos migraciones toca las funciones ni los triggers de `20261027130200`.
+  Ninguna de las dos migraciones toca las funciones ni los triggers de `20261028130200`.
 - **`migracion-sl24-ida-y-vuelta`** gana el paso de estas dos.
 
 ### 16.7 Tests nuevos

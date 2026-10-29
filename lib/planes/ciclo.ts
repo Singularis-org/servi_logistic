@@ -6,6 +6,8 @@
 // Por eso todo se hace con los componentes UTC: así se replica la aritmética de Postgres sin que la
 // zona del proceso mueva la frontera.
 
+import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+
 /** `fecha + meses`, como `timestamp + interval 'n months'`: si el día no existe, el último del mes. */
 function sumarMeses(fecha: Date, meses: number): Date {
   const total = fecha.getUTCFullYear() * 12 + fecha.getUTCMonth() + meses;
@@ -40,11 +42,10 @@ export function inicioDelCiclo(ancla: Date, ahora: Date): Date {
 
 // P8 (cerrada el 2026-10-28): la fecha de un cambio programado rige desde las 00:00 de ese día en la
 // hora de la plataforma, el desfase fijo de los crons (`vercel.json`), hasta que SL-21 traiga zona por
-// empresa. Fijo y no por nombre de zona: sin depender de la base de husos del proceso.
-const DESFASE_PLATAFORMA_HORAS = 6;
+// empresa. Fijo y no por nombre de zona: sin depender de la base de husos del proceso. El desfase vive
+// en `inicioDelDiaCREnUtc` (review m2: una sola fuente del −06:00).
 
-/** `AAAA-MM-DD` → el instante de las 00:00 de ese día a −06:00 (design §16.1). */
+/** `AAAA-MM-DD` (ya validada por `fechaSchema`) → el instante de las 00:00 de ese día a −06:00 (design §16.1). */
 export function inicioDelDiaPlataforma(fecha: string): Date {
-  const [anio, mes, dia] = fecha.split("-").map((p) => Number.parseInt(p, 10));
-  return new Date(Date.UTC(anio, mes - 1, dia, DESFASE_PLATAFORMA_HORAS));
+  return inicioDelDiaCREnUtc(fecha);
 }

@@ -241,8 +241,8 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
         ),
         updateTope: await intentar(tx, `UPDATE "plan_tope_rol" SET "maximo" = 99 WHERE "plan_id" = $1`, planA),
         deleteTope: await intentar(tx, `DELETE FROM "plan_tope_rol" WHERE "plan_id" = $1`, planA),
-        insertModulo: await intentar(tx, `INSERT INTO "plan_modulo" ("plan_id", "modulo") VALUES ($1, 'wallet')`, planA),
-        updateModulo: await intentar(tx, `UPDATE "plan_modulo" SET "modulo" = 'wallet' WHERE "plan_id" = $1`, planA),
+        insertModulo: await intentar(tx, `INSERT INTO "plan_modulo" ("plan_id", "modulo") VALUES ($1, 'monitoreo')`, planA),
+        updateModulo: await intentar(tx, `UPDATE "plan_modulo" SET "modulo" = 'monitoreo' WHERE "plan_id" = $1`, planA),
         deleteModulo: await intentar(tx, `DELETE FROM "plan_modulo" WHERE "plan_id" = $1`, planA),
         insertRastro: await intentar(
           tx,

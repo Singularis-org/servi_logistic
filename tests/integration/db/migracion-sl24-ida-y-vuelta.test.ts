@@ -41,13 +41,16 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `dev` antes de SL-24 (T0). */
-const PREVIA = "20261027120000_modulos_nucleo";
-const M_PLAN = "20261027130000_plan";
-const M_HISTORIAL = "20261027130100_historial_accion_planes";
-const M_TRIGGERS = "20261027130200_plan_topes_triggers";
-const M_CAMBIO = "20261028120000_plan_cambio_programado";
-const M_ENUMS = "20261028120100_plan_cambio_enums";
+/**
+ * La última de `dev` antes de SL-24 (F2.3: `modulo_wallet_nucleo` recrea `modulo_apagable` y borra el
+ * tipo viejo, así que tiene que correr antes de que `plan_modulo` use el tipo).
+ */
+const PREVIA = "20261028120000_modulo_wallet_nucleo";
+const M_PLAN = "20261028130000_plan";
+const M_HISTORIAL = "20261028130100_historial_accion_planes";
+const M_TRIGGERS = "20261028130200_plan_topes_triggers";
+const M_CAMBIO = "20261028130300_plan_cambio_programado";
+const M_ENUMS = "20261028130400_plan_cambio_enums";
 const DE_SL24 = [M_PLAN, M_HISTORIAL, M_TRIGGERS, M_CAMBIO, M_ENUMS];
 
 const BASE = `sl24_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

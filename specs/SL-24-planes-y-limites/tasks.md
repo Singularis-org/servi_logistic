@@ -23,7 +23,7 @@
   - Comprobar si `scripts/verificar-rls-despliegue.ts` cuenta tablas de plataforma con RLS. Si
     las cuenta, se ajusta en T1.
   - **Hecho:** nota en `progress/impl_SL-24.md` con la última migración vista y la decisión.
-- [x] **T1. Migración `20261027130000_plan` + Prisma** (depende de T0).
+- [x] **T1. Migración `20261028130000_plan` + Prisma** (depende de T0).
   - Las tablas, enum, `CHECK`, FK, RLS sin políticas y `REVOKE` de `design.md > §2`.
   - Las columnas de `organizacion` y el índice parcial de `orden`.
   - En Prisma, los modelos `Plan` (con `topeApiKeys`), `PlanTopeRol`, `PlanModulo` y
@@ -38,12 +38,12 @@
       a nivel de base;
     - `tests/integration/db/planes-acceso-servi-app.test.ts` da `42501` en cada escritura y
       lectura con `servi_app` (R8).
-- [x] **T2. Migración `20261027130100_historial_accion_planes` + tipos** [P con T3] (depende de T1).
+- [x] **T2. Migración `20261028130100_historial_accion_planes` + tipos** [P con T3] (depende de T1).
   - El tipo `plan_asignado`, la entidad `plan`, la categoría `cambia_plan` y
     `etiquetaDeEntidad("plan", …)`.
   - `down.sql` con el patrón de `20261026120100`.
   - **Hecho:** las guardias `historial-accion-*` en verde.
-- [x] **T3. Migración `20261027130200_plan_topes_triggers` + traducción** [P con T2] (depende de T1).
+- [x] **T3. Migración `20261028130200_plan_topes_triggers` + traducción** [P con T2] (depende de T1).
   - Las funciones y los cinco triggers de `design.md > §4`, sobre `orden`, `usuario` y `api_key`.
   - `lib/db/sqlstate.ts`, extraído de `contexto-empresa.ts` sin cambiar su comportamiento.
   - `lib/planes/tope-error.ts`, `lib/planes/ciclo.ts` y `lib/planes/mensajes.ts`.
@@ -60,7 +60,7 @@
 
 - [x] **T3b. Migraciones de la enmienda + Prisma** (nueva, 2026-10-28; depende de T3).
   - Comprobar otra vez el orden contra `dev` y contra el PR #27.
-  - `20261028120000_plan_cambio_programado` y `20261028120100_plan_cambio_enums`, con sus
+  - `20261028130300_plan_cambio_programado` y `20261028130400_plan_cambio_enums`, con sus
     `down.sql` (`design.md > §16.1, §16.6`).
   - En Prisma, `model PlanCambioProgramado` y los valores nuevos de `PlanRastroAccion` y `JobTipo`.
   - `PlanCambioProgramado` en `MODELOS_DE_PLATAFORMA`.
@@ -191,23 +191,24 @@ los scripts de la demo de QA, de SL-43, y en SLT-32 el directorio de autenticaci
 
 ### Base de datos
 - `db/schema.prisma`
-- `db/migrations/20261028120000_plan_cambio_programado/migration.sql`
-- `db/migrations/20261028120000_plan_cambio_programado/down.sql`
-- `db/migrations/20261028120100_plan_cambio_enums/migration.sql`
-- `db/migrations/20261028120100_plan_cambio_enums/down.sql`
+- `db/migrations/20261028130300_plan_cambio_programado/migration.sql`
+- `db/migrations/20261028130300_plan_cambio_programado/down.sql`
+- `db/migrations/20261028130400_plan_cambio_enums/migration.sql`
+- `db/migrations/20261028130400_plan_cambio_enums/down.sql`
 - `lib/planes/jobs-cambio-plan.ts`
 - `lib/services/email/plantillas/cambio-plan.ts`
 - `app/api/cron/procesar-jobs/route.ts`
+- `scripts/siembra-jobs-recurrentes.ts`
 - `tests/integration/db/planes-cambio-programado.test.ts`
 - `tests/integration/db/planes-cambio-correos.test.ts`
 - `tests/unit/services/email/plantilla-cambio-plan.test.ts`
 - `tests/unit/cron/procesar-jobs-plan-cambio.test.ts`
-- `db/migrations/20261027130000_plan/migration.sql`
-- `db/migrations/20261027130000_plan/down.sql`
-- `db/migrations/20261027130100_historial_accion_planes/migration.sql`
-- `db/migrations/20261027130100_historial_accion_planes/down.sql`
-- `db/migrations/20261027130200_plan_topes_triggers/migration.sql`
-- `db/migrations/20261027130200_plan_topes_triggers/down.sql`
+- `db/migrations/20261028130000_plan/migration.sql`
+- `db/migrations/20261028130000_plan/down.sql`
+- `db/migrations/20261028130100_historial_accion_planes/migration.sql`
+- `db/migrations/20261028130100_historial_accion_planes/down.sql`
+- `db/migrations/20261028130200_plan_topes_triggers/migration.sql`
+- `db/migrations/20261028130200_plan_topes_triggers/down.sql`
 
 ### lib
 - `lib/db/sqlstate.ts`

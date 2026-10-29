@@ -46,12 +46,12 @@ No corrí la suite completa, el E2E ni `./init.sh`: el leader dio `init OK` y E2
 - [x] Queries por empresa con test de dos empresas:
   - `PlanesRepository` está en `EXCEPCIONES_DE_PLATAFORMA` con su motivo, y `destinatariosDelAviso` filtra a mano por `organizacionId`.
   - `plan_cupo_ordenes` lanza `42501` con otra empresa (`plan-topes-ordenes` R8). R30 tiene A al tope y B con el mismo plan.
-- [x] Las 5 migraciones traen `down.sql`. La ida y vuelta se prueba en `migracion-sl24-ida-y-vuelta`. Ver el menor m4 sobre la edición de `20261027130200`.
+- [x] Las 5 migraciones traen `down.sql`. La ida y vuelta se prueba en `migracion-sl24-ida-y-vuelta`. Ver el menor m4 sobre la edición de `20261028130200`.
 - [x] Nada de Ordenex en el diff.
 - [x] Sin `console.log` de PII. El handler del aviso no mete emails en `last_error`.
 - [x] Capas: action → `PlanesService` → `PlanesRepository`, y zod en el borde: `lib/types/planes.ts` y los payloads de los jobs.
 - [x] País y moneda:
-  - el precio va sin moneda (decisión, deuda D25);
+  - el precio va sin moneda (decisión, deuda D26);
   - no hay «colones», «₡» ni «SINPE» en el código nuevo;
   - «Costa Rica» y el −06:00 solo aparecen como la decisión P8.
 - [x] Autorización en el servidor: `PlanesService` corta con `forbidden` antes de zod y del repositorio. R5 lo prueba con cero llamadas al repositorio.
@@ -129,9 +129,9 @@ Ningún R queda sin test, y ningún test citado está vacío ni saltado.
 - Los textos de los correos de T12 están en `mensajes.ts` (`lineaReemplazo`, `SIN_LINEAS_DE_CAMBIO`, `mensajeCambioCancelado`, etc.).
   - El tipo `cancelado` lleva solo el texto de R45.
 - La fecha se pinta con `fechaCortaCR`.
-- El precio va sin símbolo de moneda: deuda D25 en `progress/deudas.md`.
+- El precio va sin símbolo de moneda: deuda D26 en `progress/deudas.md`.
 - El ciclo y el ancla se calculan en UTC en la base:
-  - `now() AT TIME ZONE 'UTC'` en `plan_cupo_ordenes` y en el trigger `plan_tope_ordenes` (`20261027130200`, líneas 101 y 129);
+  - `now() AT TIME ZONE 'UTC'` en `plan_cupo_ordenes` y en el trigger `plan_tope_ordenes` (`20261028130200`, líneas 101 y 129);
   - `PlanesRepository.usoDe` (línea 159) y el ancla de `asignar` (línea 575) también lo usan;
   - ya no queda ningún `now()::timestamp`. `design.md §3/§4.3` está al día.
 
@@ -157,7 +157,7 @@ Ninguno.
   - `§16.5` no lista `scripts/siembra-jobs-recurrentes.ts`, que el diff sí toca.
 
   Lo corrige el spec_author.
-- **m4 (menor, informativo) — Se editó una migración que ya existía en la rama.** `577eb90` cambia la migración `20261027130200_plan_topes_triggers` después de aplicarla en las bases locales `servi_logistic_sl24` y `_sl24_e2e`.
+- **m4 (menor, informativo) — Se editó una migración que ya existía en la rama.** `577eb90` cambia la migración `20261028130200_plan_topes_triggers` después de aplicarla en las bases locales `servi_logistic_sl24` y `_sl24_e2e`.
   - La migración nunca llegó a `dev`, así que no se rompe la regla «no editar una migración ya aplicada» en una base compartida.
   - Quien la tenga aplicada en local tendrá un desajuste de checksum y debe resetear.
   - Conviene anotarlo en el PR.

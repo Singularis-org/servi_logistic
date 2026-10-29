@@ -421,7 +421,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("380/T3 (b) — el down recrea la lista PREV
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
-      // SL-24: `plan_asignado`, de `20261027130100_historial_accion_planes`.
+      // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
       "plan_asignado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(

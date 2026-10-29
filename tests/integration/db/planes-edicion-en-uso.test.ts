@@ -135,12 +135,12 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R17: enciende lo añadido y apaga lo quitado en cada empresa del plan, sin tocar sus excepciones", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { modulos: ["analitica", "ranking"] }, 2);
+      const p = await preparar(tx, { modulos: ["ranking"] }, 2);
       const [conExcepcion, sinExcepcion] = p.orgs;
       // La excepción de SL-23 en una de las dos.
-      await tx.organizacionModulo.create({ data: { organizacionId: conExcepcion, modulo: "wallet" } });
+      await tx.organizacionModulo.create({ data: { organizacionId: conExcepcion, modulo: "analitica" } });
       const historialAntes = await tx.historialAccion.count({ where: { organizacionId: { in: p.orgs } } });
-      const edicion = await p.editar({ modulos: ["analitica", "monitoreo"] });
+      const edicion = await p.editar({ modulos: ["monitoreo"] });
       const filas = await tx.historialAccion.findMany({
         where: { organizacionId: { in: p.orgs } },
         orderBy: { createdAt: "asc" },
@@ -157,9 +157,9 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       };
     });
     expect(r.edicion).toMatchObject({ estado: "ok", cambio: true });
-    expect(r.incluidos).toEqual(["analitica", "monitoreo"]);
-    expect(r.conExcepcion).toEqual(["analitica", "monitoreo", "wallet"]);
-    expect(r.sinExcepcion).toEqual(["analitica", "monitoreo"]);
+    expect(r.incluidos).toEqual(["monitoreo"]);
+    expect(r.conExcepcion).toEqual(["analitica", "monitoreo"]);
+    expect(r.sinExcepcion).toEqual(["monitoreo"]);
     // Las filas de SL-23 en cada empresa, con un lote por empresa.
     for (const org of r.orgs) {
       const suyas = r.filas.filter((f) => f.organizacionId === org);
@@ -175,12 +175,12 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, { modulos: ["analitica"] });
       const [org] = p.orgs;
-      await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "wallet" } });
+      await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "monitoreo" } });
       const antes = await tx.historialAccion.count({ where: { organizacionId: org } });
-      await p.editar({ modulos: ["analitica", "wallet"] });
+      await p.editar({ modulos: ["analitica", "monitoreo"] });
       return { modulos: await modulos(tx, org), nuevas: (await tx.historialAccion.count({ where: { organizacionId: org } })) - antes };
     });
-    expect(r.modulos).toEqual(["analitica", "wallet"]);
+    expect(r.modulos).toEqual(["analitica", "monitoreo"]);
     expect(r.nuevas).toBe(0);
   });
 

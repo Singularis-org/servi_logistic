@@ -2,7 +2,7 @@
 --
 -- Cuatro tablas de PLATAFORMA, sin `organizacion_id`: `plan`, `plan_tope_rol`, `plan_modulo` y
 -- `plan_rastro`. Las escribe solo el superadmin, como dueño (`comoPlataforma`); las leen él y los
--- triggers `SECURITY DEFINER` de 20261027130200. Una empresa no las lee ni las escribe (R8):
+-- triggers `SECURITY DEFINER` de 20261028130200. Una empresa no las lee ni las escribe (R8):
 --   · nacen con CRUD para `servi_app` (ALTER DEFAULT PRIVILEGES de 20261022130000), así que hace
 --     falta el REVOKE ALL. La RLS sin ninguna política es la segunda red. Precedente:
 --     `cobro_plataforma_tarifa` (SL-40, 20261023130000).

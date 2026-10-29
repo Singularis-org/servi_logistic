@@ -463,7 +463,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
-      // SL-24: `plan_asignado`, de `20261027130100_historial_accion_planes`.
+      // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
       "plan_asignado",
     ];
     expect([...origenAntes].sort()).toEqual(

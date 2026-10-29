@@ -243,13 +243,13 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         tx,
         {
           topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 5 }, apiKeys: null },
-          modulos: ["analitica", "ranking"],
+          modulos: ["ranking"],
           precio: { tipo: "sin_precio" },
         },
         2,
       );
       const [conExcepcion, sinExcepcion] = p.orgs;
-      await tx.organizacionModulo.create({ data: { organizacionId: conExcepcion, modulo: "wallet" } });
+      await tx.organizacionModulo.create({ data: { organizacionId: conExcepcion, modulo: "analitica" } });
       await fijarEmpresa(tx, sinExcepcion);
       for (let i = 0; i < 2; i++) await crearUsuarioDePrueba(tx, "adminTienda");
       const ciclo = async () =>
@@ -261,7 +261,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       await p.programar("2026-11-15", {
         nombre: "Pro 2027",
         topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 1 }, apiKeys: null },
-        modulos: ["analitica", "monitoreo"],
+        modulos: ["monitoreo"],
         precio: { tipo: "monto", mensual: "30000", anual: null },
       });
       const [trabajo] = await trabajosDeAplicar(tx, p.planId);
@@ -309,12 +309,12 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       negociable: false,
       mensual: "30000.00",
       porRol: [["adminTienda", 1]],
-      modulos: ["analitica", "monitoreo"],
+      modulos: ["monitoreo"],
     });
     expect(r.pendientes).toBe(0);
     expect(r.rastroFinal).toBe(r.rastroTrasAplicar);
-    expect(r.conExcepcion).toEqual(["analitica", "monitoreo", "wallet"]);
-    expect(r.sinExcepcion).toEqual(["analitica", "monitoreo"]);
+    expect(r.conExcepcion).toEqual(["analitica", "monitoreo"]);
+    expect(r.sinExcepcion).toEqual(["monitoreo"]);
     expect(r.cicloDespues).toEqual(r.cicloAntes);
     for (const org of r.orgs) {
       expect(r.filasDeModulos.filter((f) => f.organizacionId === org).map((f) => [f.accion, f.valorNuevo]).sort()).toEqual([

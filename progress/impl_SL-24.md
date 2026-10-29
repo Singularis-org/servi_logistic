@@ -5,8 +5,8 @@
 - Última migración de `origin/dev`: `20261026120200_job_estado_descartado` (la que da el spec).
 - **Pero** la rama `feature/SL-23-nucleo-recoleccion-satelite` (PR #27, abierto) trae
   `20261027120000_modulos_nucleo`, con el mismo timestamp que la `20261027120000_plan` del spec.
-  Decisión (la que prevé T0): las tres de SL-24 pasan a `20261027130000_plan`,
-  `20261027130100_historial_accion_planes` y `20261027130200_plan_topes_triggers`, antes de
+  Decisión (la que prevé T0): las tres de SL-24 pasan a `20261028130000_plan`,
+  `20261028130100_historial_accion_planes` y `20261028130200_plan_topes_triggers`, antes de
   aplicarlas en ninguna base compartida. `design.md` y `tasks.md` actualizados.
 - Riesgo de orden con el PR #27: `modulos_nucleo` recrea el enum `modulo_apagable` (RENAME del
   viejo, ALTER COLUMN solo de `organizacion_modulo`, `DROP TYPE` del viejo). Si `plan_modulo.modulo`
@@ -25,8 +25,8 @@
 
 ### Archivos tocados
 
-- Nuevos: `db/migrations/20261027130000_plan/{migration,down}.sql`,
-  `db/migrations/20261027130100_historial_accion_planes/{migration,down}.sql` (down con la función de
+- Nuevos: `db/migrations/20261028130000_plan/{migration,down}.sql`,
+  `db/migrations/20261028130100_historial_accion_planes/{migration,down}.sql` (down con la función de
   `20261026120100` tal cual, renombrada `_sl24`), `tests/integration/db/planes-catalogo.test.ts`,
   `tests/integration/db/planes-acceso-servi-app.test.ts`.
 - `db/schema.prisma` (solo añadidos): modelos `Plan`, `PlanTopeRol`, `PlanModulo`, `PlanRastro`; enums
@@ -102,7 +102,7 @@ Veredicto: T1 hecho y verde; T2 hecho salvo `historial-accion-escrituras-cubiert
 ### Archivos
 
 - Nuevos:
-  - `db/migrations/20261027130200_plan_topes_triggers/{migration,down}.sql`. Las ocho funciones:
+  - `db/migrations/20261028130200_plan_topes_triggers/{migration,down}.sql`. Las ocho funciones:
     - `plan_inicio_ciclo`, IMMUTABLE y sin `SECURITY DEFINER`;
     - `plan_uso_ordenes`, `plan_uso_rol` y `plan_uso_api_keys`;
     - `plan_cupo_ordenes`;
@@ -192,7 +192,7 @@ Después de restaurar, el diff de `migrate diff` sale vacío.
 ### Salida
 
 - **Migración.**
-  - `prisma migrate deploy` → `20261027130200_plan_topes_triggers` aplicada.
+  - `prisma migrate deploy` → `20261028130200_plan_topes_triggers` aplicada.
   - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → `-- This is an empty migration.`
 - **Ida y vuelta.**
   - `prisma db execute --file down.sql`, más borrar la fila de `_prisma_migrations` → 0 funciones `plan_*` y 0
@@ -221,14 +221,14 @@ de la base local.
 ## T3b (2026-10-28) — migraciones de la enmienda + Prisma
 
 **Orden comprobado.** `git ls-tree origin/dev db/migrations/`: la última de `dev` es
-`20261027120000_modulos_nucleo` (PR #27, ya mergeado). Las de SL-24 siguen: `20261027130000`,
-`…130100`, `…130200`, y ahora `20261028120000_plan_cambio_programado` y `20261028120100_plan_cambio_enums`.
+`20261027120000_modulos_nucleo` (PR #27, ya mergeado). Las de SL-24 siguen: `20261028130000`,
+`…130100`, `…130200`, y ahora `20261028130300_plan_cambio_programado` y `20261028130400_plan_cambio_enums`.
 `git diff --stat HEAD -- db/migrations/` vacío: T1–T3 sin cambios.
 
 **Archivos**
-- Nuevos: `db/migrations/20261028120000_plan_cambio_programado/{migration,down}.sql` (tabla, `UNIQUE(plan_id)`,
+- Nuevos: `db/migrations/20261028130300_plan_cambio_programado/{migration,down}.sql` (tabla, `UNIQUE(plan_id)`,
   FK CASCADE, RLS sin políticas, `REVOKE ALL … FROM servi_app`; down `DROP TABLE`).
-- Nuevos: `db/migrations/20261028120100_plan_cambio_enums/{migration,down}.sql` (4 `ADD VALUE` en
+- Nuevos: `db/migrations/20261028130400_plan_cambio_enums/{migration,down}.sql` (4 `ADD VALUE` en
   `plan_rastro_accion` y 4 en `job_tipo`; el down borra las filas de `plan_rastro` y `jobs` con esos valores
   y recrea los dos tipos con la función dinámica de `20261026120100`, renombrada `_sl24`, que suelta y
   restaura los índices parciales y DEFAULT que nombran el tipo).
@@ -869,7 +869,7 @@ Veredicto T9 (primera pasada): migración de ida y vuelta en verde; E2E escrito 
 - `prisma migrate status` sobre `servi_logistic_sl24_e2e`: «263 migrations found … Database schema is up to date!».
 - `next build` (con `NODE_OPTIONS=--max-old-space-size=8192`): exit 0. **Ojo**: hay que construir con `NEXT_PUBLIC_APP_URL` (como hace `gate.yml`; Next la incrusta al compilar). Sin ella, `superadmin-empresas` caso 2 cae: el log del servidor dice `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL` y el aviso no trae «El correo no está configurado en este entorno.». Reconstruido con `NEXT_PUBLIC_APP_URL=http://localhost:3044`.
 - Primera corrida con el build bueno: 17 passed, 1 failed — el caso SL-24 cae en el `beforeAll` propio (`crearOrdenesDirectas`) con `DriverAdapterError: tope_plan {"tope": "ordenes", "maximo": 2, "usados": 2, "pedidas": 1}` al crear la PRIMERA de las dos órdenes directas. Causa medida: la base local tiene `TimeZone = America/Bogota`. `plan_ciclo_ancla_at` se escribe con `now()::timestamp` (hora local de la sesión, UTC−5) y `orden.created_at` lo pone el cliente Prisma en UTC, así que las órdenes de los casos previos del humo (creadas minutos antes) quedan «5 h después» del ancla y cuentan en el ciclo. Consulta sobre la base E2E: `{"tz":"America/Bogota","n":"2026-10-28T23:25:38","maxc":"2026-10-29T04:17:48","futuras":"2"}` (órdenes con `created_at > now()::timestamp`). Con la sesión en UTC: `futuras: 0`.
-- **No lo arreglé en producción** (no es inequívoco: toca la migración `20261027130200` —`plan_tope_ordenes`, `plan_cupo_ordenes`— y `PlanesRepository.asignar`/el cálculo de uso, y es una decisión de diseño sobre la escala de tiempo; ver «Hallazgo» abajo). Las dos corridas que cuentan van con la sesión de Postgres en UTC, como el `postgres:17` de CI: `DATABASE_URL=<url de servi_logistic_sl24_e2e>&options=-c%20TimeZone%3DUTC`.
+- **No lo arreglé en producción** (no es inequívoco: toca la migración `20261028130200` —`plan_tope_ordenes`, `plan_cupo_ordenes`— y `PlanesRepository.asignar`/el cálculo de uso, y es una decisión de diseño sobre la escala de tiempo; ver «Hallazgo» abajo). Las dos corridas que cuentan van con la sesión de Postgres en UTC, como el `postgres:17` de CI: `DATABASE_URL=<url de servi_logistic_sl24_e2e>&options=-c%20TimeZone%3DUTC`.
 - No se recreó la base antes de la primera corrida contada: `prisma migrate reset --force` lo bloquea Prisma pidiendo consentimiento humano explícito y no lo forcé. La base sigue migrada hasta la última y con catálogos; las corridas previas solo dejaron datos de empresas aleatorias.
 
 Corrida 1 (`E2E_PUERTO=3044 pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --reporter=list`):
@@ -896,7 +896,7 @@ Running 18 tests using 1 worker
 ```
 Las dos: 0 failed, 0 skipped, 0 flaky (18 = 10 de `plataforma-vacia` por `dependencies` + 8 del humo, SL-17 y SL-23 incluidos).
 
-**Hallazgo (para el leader/reviewer, sin arreglar)**: el ancla del ciclo (`now()::timestamp`) y `orden.created_at` (UTC desde Prisma) solo están en la misma escala si la sesión de Postgres está en UTC. En una base con otra `TimeZone` (la local de desarrollo: `America/Bogota`), las órdenes de las últimas 5 h antes de asignar el plan cuentan en el primer ciclo y el tope se dispara antes. CI (`postgres:17`) y Supabase van en UTC, por eso no se ve allí. Arreglo probable: `now() AT TIME ZONE 'UTC'` en lugar de `now()::timestamp` en `20261027130200` (y en `PlanesRepository`), o fijar `TimeZone=UTC` en la conexión; requiere decisión de diseño y migración.
+**Hallazgo (para el leader/reviewer, sin arreglar)**: el ancla del ciclo (`now()::timestamp`) y `orden.created_at` (UTC desde Prisma) solo están en la misma escala si la sesión de Postgres está en UTC. En una base con otra `TimeZone` (la local de desarrollo: `America/Bogota`), las órdenes de las últimas 5 h antes de asignar el plan cuentan en el primer ciclo y el tope se dispara antes. CI (`postgres:17`) y Supabase van en UTC, por eso no se ve allí. Arreglo probable: `now() AT TIME ZONE 'UTC'` en lugar de `now()::timestamp` en `20261028130200` (y en `PlanesRepository`), o fijar `TimeZone=UTC` en la conexión; requiere decisión de diseño y migración.
 
 Veredicto T9: `declare` arreglado y E2E en verde dos veces seguidas (con la sesión en UTC); queda abierto el hallazgo de zona horaria del ancla.
 
@@ -906,19 +906,19 @@ Decisión de Camilo (`progress/features/SL-24.md > Decisiones`): el ciclo se cor
 en la base, sin fijar la conexión. Cierra el hallazgo de T9.
 
 **Tipos comprobados.** `organizacion.plan_ciclo_ancla_at`, `orden.created_at` y
-`plan_cambio_programado.vigente_desde` son `TIMESTAMP(3)` sin zona (`20261027130000`,
-`20260709130100`, `20261028120000`). Prisma los escribe en UTC; `now()::timestamp` da la hora local
+`plan_cambio_programado.vigente_desde` son `TIMESTAMP(3)` sin zona (`20261028130000`,
+`20260709130100`, `20261028130300`). Prisma los escribe en UTC; `now()::timestamp` da la hora local
 de la sesión. El reemplazo correcto para `timestamp` sin zona es `now() AT TIME ZONE 'UTC'`.
 
 **Qué cambió.**
-- `db/migrations/20261027130200_plan_topes_triggers/migration.sql`: `plan_cupo_ordenes` y
+- `db/migrations/20261028130200_plan_topes_triggers/migration.sql`: `plan_cupo_ordenes` y
   `plan_tope_ordenes` llaman a `plan_inicio_ciclo(ancla, now() AT TIME ZONE 'UTC')` (antes
   `now()::timestamp`); comentario de la regla junto a `plan_inicio_ciclo`. Firmas iguales: el
   `down.sql` no cambia. `plan_inicio_ciclo`, `plan_uso_*` y los triggers de usuarios/API keys no
   usan el reloj.
 - `lib/repositories/PlanesRepository.ts`: `usoDe` (el COALESCE y el «ahora») y el ancla de
   `asignar` (`COALESCE(ancla, now() AT TIME ZONE 'UTC')`).
-- Sin cambios (revisados): `20261027130000_plan` y `20261028120000_plan_cambio_programado` solo
+- Sin cambios (revisados): `20261028130000_plan` y `20261028130300_plan_cambio_programado` solo
   tienen `DEFAULT CURRENT_TIMESTAMP` en `created_at`/`updated_at`, que ningún corte de ciclo lee;
   `CupoPlanRepository` llama a `plan_cupo_ordenes` (arreglada en la función); `lib/planes/ciclo.ts`
   ya trabaja en componentes UTC; `jobs-cambio-plan.ts` compara `Date` de Node con
@@ -942,7 +942,7 @@ Arreglarlo es cambiar el DEFAULT de `orden.created_at` (tabla y `schema.prisma` 
 Además `specs/SL-24-planes-y-limites/design.md:258` sigue diciendo `now()::timestamp`: lo
 actualiza el spec_author.
 
-**Base `servi_logistic_sl24`.** Down de `20261028120100`, `20261028120000`, `20261027130200` (en
+**Base `servi_logistic_sl24`.** Down de `20261028130400`, `20261028130300`, `20261028130200` (en
 ese orden), sus filas borradas de `_prisma_migrations`, `prisma migrate deploy` → «All migrations
 have been successfully applied.»; `prisma migrate diff --from-config-datasource --to-schema
 db/schema.prisma --script` → `-- This is an empty migration.` (drift vacío). `SHOW TimeZone` de la
@@ -982,9 +982,9 @@ residuo del DEFAULT local de `orden.created_at` para SQL a mano.
 Consolidado de la feature: `git diff --name-status origin/dev...HEAD` más el árbol de trabajo de
 T10 (`docs/architecture.md` y esta bitácora). A = nuevo, M = modificado.
 
-- **Base de datos:** `db/schema.prisma` (M); `db/migrations/20261027130000_plan/`,
-  `20261027130100_historial_accion_planes/`, `20261027130200_plan_topes_triggers/`,
-  `20261028120000_plan_cambio_programado/` y `20261028120100_plan_cambio_enums/`, cada una con
+- **Base de datos:** `db/schema.prisma` (M); `db/migrations/20261028130000_plan/`,
+  `20261028130100_historial_accion_planes/`, `20261028130200_plan_topes_triggers/`,
+  `20261028130300_plan_cambio_programado/` y `20261028130400_plan_cambio_enums/`, cada una con
   `migration.sql` y `down.sql` (A).
 - **lib (A):** `lib/actions/planes.ts`, `lib/db/sqlstate.ts`,
   `lib/interfaces/repositories/ICupoPlanRepository.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`,
@@ -1121,3 +1121,88 @@ Cada archivo existe y cada caso citado está en él (comprobado con Grep el 2026
 
 Veredicto T10: hecho a falta del `./init.sh` del leader. Párrafo de planes en `architecture.md` y
 mapa R1–R45 completo, sin huecos.
+
+## F2.3 (merge con dev)
+
+**Merges.** `d439730` (con `origin/dev` = `3bc855f`) y `3f9c436` (dev avanzó durante la
+sincronización con SLT-49, `3b13589`; sin conflictos). Los ajustes van en el commit
+`chore(SL-24)` siguiente.
+
+**Conflictos y resolución (las dos ramas).**
+- `db/schema.prisma` (`Organizacion`): el bloque de plan de SL-24 y el de `paisId`/`pais` de SL-20.
+- `lib/db/modelos-de-negocio.ts`: `Pais`, `HistorialPlataforma` (SL-20) y los cinco de planes en
+  `MODELOS_DE_PLATAFORMA`. El comentario de cabecera decía 20 en SL-24 y 18 en dev; contadas las
+  entradas reales: 23 (16 previas + 2 + 5).
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: 73 tipos. SL-20 no
+  añade tipos (los `nodo_geografico_*` se quedan sin escritor) y SL-24 añade `plan_asignado`;
+  contado en `HISTORIAL_ACCION_TIPOS` tras el merge: 73.
+- `progress/deudas.md`: la D24 de dev se queda. Las de SL-24 pasan a **D25** (typecheck sin heap)
+  y **D26** (precio sin símbolo de moneda). Referencias actualizadas en `progress/features/SL-24.md`
+  y `progress/review_SL-24.md`; `lib/planes/mensajes.ts`, los specs y este archivo no citaban el
+  número.
+
+**Migraciones: renombradas las CINCO, no solo las dos de T3b.** `20261028120000_modulo_wallet_nucleo`
+(dev) recrea `modulo_apagable`: renombra el tipo viejo, crea el nuevo sin `wallet`, cambia solo
+`organizacion_modulo.modulo` y hace `DROP TYPE "modulo_apagable_viejo"`. Con los nombres de SL-24
+(`20261027130000_plan` ordena ANTES que `20261028120000`), en una base nueva `plan_modulo.modulo` ya
+usaría el tipo viejo y el `DROP TYPE` fallaría. Ninguna había llegado a `dev`, así que se
+renombraron detrás de la de wallet, en su orden:
+
+| Antes | Ahora |
+|---|---|
+| `20261027130000_plan` | `20261028130000_plan` |
+| `20261027130100_historial_accion_planes` | `20261028130100_historial_accion_planes` |
+| `20261027130200_plan_topes_triggers` | `20261028130200_plan_topes_triggers` |
+| `20261028120000_plan_cambio_programado` | `20261028130300_plan_cambio_programado` |
+| `20261028120100_plan_cambio_enums` | `20261028130400_plan_cambio_enums` |
+
+Referencias actualizadas (95) en los SQL, `db/schema.prisma`, `docs/architecture.md`,
+`lib/planes/tope-error.ts`, `specs/SL-24-planes-y-limites/{design,tasks}.md` (con una nota en
+§10), este archivo, `progress/review_SL-24.md`, `migracion-sl24-ida-y-vuelta.test.ts`
+(`PREVIA = 20261028120000_modulo_wallet_nucleo`), `schema-drift-saneamiento.test.ts` y los seis
+`*-migration.test.ts` que citan `historial_accion_planes`. Las referencias antiguas de este archivo
+(T0–T10) quedan con los nombres nuevos. Quien tenga las cinco aplicadas en local con los nombres
+viejos tiene que bajarlas y redesplegar, como se hizo aquí.
+
+`historial_plataforma` (SL-20) es una tabla aparte, sin enums de `historial_accion`: no choca con
+`historial_accion_planes` (dos `ADD VALUE IF NOT EXISTS`).
+
+**`wallet` sale de los apagables.** Fixtures de SL-24 que usaban `wallet` como módulo, cambiados por
+claves vigentes (`analitica`, `monitoreo`, `ranking`) conservando lo que prueba cada caso:
+`planes-acceso-servi-app`, `planes-asignacion`, `planes-cambio-programado`, `planes-catalogo`,
+`planes-edicion-en-uso`, `planes-historial` y `tests/unit/planes/rastro.test.ts`. En los dos de
+R17 con excepción, el plan pasa a `["ranking"] → ["monitoreo"]` y la excepción es `analitica`.
+
+**Base `servi_logistic_sl24`.** Los cinco `down.sql` en orden inverso (todos OK), borradas sus filas
+de `_prisma_migrations` (con los nombres viejos), `prisma migrate deploy` → aplicó las seis de
+SL-20, `20261028120000_modulo_wallet_nucleo` y después las cinco de SL-24: «All migrations have been
+successfully applied.». `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma
+--script` → `-- This is an empty migration.`
+
+**Menores del reviewer.**
+- m3: `design.md §16.3` dice payload `{ planId, cambioId }` (y que el paso 1 cierra el plan por el
+  `planId` del payload); `§16.5` y `tasks.md > Archivos esperados` listan
+  `scripts/siembra-jobs-recurrentes.ts`.
+- m2 (parcial, trivial): `inicioDelDiaPlataforma` delega en `inicioDelDiaCREnUtc`
+  (`${fecha}T06:00:00.000Z`); se quita `DESFASE_PLATAFORMA_HORAS`. Mismo resultado para toda fecha
+  que pasa `fechaSchema` (`AAAA-MM-DD` real). `fechaCortaCR` se queda.
+- m1 y m4: no.
+
+**Verificación (salida real).**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0 (tras borrar `.next/types`,
+  que citaba una página que dev quitó). Repetido tras el segundo merge: exit 0.
+- Suites de SL-24 (las 33 de `tasks.md > Archivos esperados`) + las dos de SLT-49 que tocan
+  `OrdenRepository`, contra `servi_logistic_sl24`: `Test Files 35 passed (35)`,
+  `Tests 423 passed (423)`, sin saltados.
+- `pnpm run test:guardias`: `Test Files 1 failed | 319 passed (320)`, `Tests 4 failed | 4444 passed
+  | 1 skipped`. El rojo es `dependencias-declaradas-presentes.guardia.test.ts` (marcador del paso 2
+  de `init.sh`): está en `tests/baseline-rojos.json`.
+- Historial: `tests/integration/db/historial-accion-*`, `correccion-resultado-gestion-migration`,
+  `schema-drift-saneamiento` y `migracion-sl23-wallet-ida-y-vuelta`: `Test Files 4 failed | 12
+  passed (16)`, `Tests 18 failed | 234 passed | 29 skipped`. Los cuatro rojos
+  (`historial-accion-{atomicidad,lectura,migration,q1-ubicacion}`) están en la baseline (base sin
+  órdenes ni usuarios sembrados). No hay `tests/unit/historial-accion/`.
+- `eslint` de los archivos tocados: sin salida.
+
+Veredicto F2.3: sincronizada con dev, migraciones de SL-24 detrás de la de wallet, drift vacío,
+suites de SL-24 en verde; rojos solo de baseline.
