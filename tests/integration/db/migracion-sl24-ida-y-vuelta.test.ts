@@ -70,7 +70,7 @@ const CONSULTAS_EXTRA: Record<string, string> = {
   privilegios: `SELECT table_name || ' ' || privilege_type AS l FROM information_schema.role_table_grants
     WHERE grantee = 'servi_app' AND table_schema = 'public'`,
   ejecucion: `SELECT routine_name || ' ' || privilege_type AS l FROM information_schema.role_routine_grants
-    WHERE grantee = 'servi_app' AND routine_schema = 'public'`,
+    WHERE grantee = 'servi_app' AND specific_schema = 'public'`,
 };
 
 let db: Conexion;
@@ -226,7 +226,8 @@ describeSiHayBase("SL-24 — planes, topes y cambio programado de ida y vuelta (
     // Sin esto el ciclo sería verde con migraciones vacías o mal leídas.
     expect(
       await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-        WHERE c.relname = 'orden' AND t.tgname = 'plan_tope_ordenes'`),
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = 'orden' AND t.tgname = 'plan_tope_ordenes'`),
       "la 3.ª no creó el trigger de órdenes",
     ).toBe(true);
     expect(diferencias(con, antes).length, "las cinco migraciones no cambiaron nada").toBeGreaterThan(0);
@@ -376,7 +377,7 @@ describeSiHayBase("SL-24 — planes, topes y cambio programado de ida y vuelta (
     ).toEqual([]);
     expect(
       await lista(`SELECT routine_name AS l FROM information_schema.role_routine_grants
-        WHERE grantee = 'servi_app' AND routine_schema = 'public' AND routine_name LIKE 'plan\\_%'`),
+        WHERE grantee = 'servi_app' AND specific_schema = 'public' AND routine_name LIKE 'plan\\_%'`),
     ).toEqual(["plan_cupo_ordenes"]);
   });
 
@@ -466,7 +467,9 @@ describeSiHayBase("SL-24 — planes, topes y cambio programado de ida y vuelta (
       WHERE n.nspname = 'public' AND (c.relname = 'plan' OR c.relname LIKE 'plan\\_%')`)).toBe(false);
     expect(await existe(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.proname LIKE 'plan\\_%'`)).toBe(false);
-    expect(await existe(`SELECT 1 FROM pg_trigger t WHERE t.tgname LIKE 'plan_tope%'`)).toBe(false);
+    expect(await existe(`SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND t.tgname LIKE 'plan_tope%'`)).toBe(false);
     expect(await etiquetas("plan_visibilidad")).toEqual([]);
     expect(await etiquetas("plan_rastro_accion")).toEqual([]);
     expect(await etiquetas("historial_accion_tipo")).not.toContain("plan_asignado");
