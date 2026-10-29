@@ -56,7 +56,9 @@
   de todos sus descendientes.
 - **R9** (condicional) SI se intenta guardar un nodo con el mismo nombre normalizado que un hermano,
   una raíz con el mismo nombre normalizado que otra raíz del mismo país, o un código oficial ya usado
-  en el mismo país, ENTONCES el sistema DEBE rechazar la escritura sin guardar nada.
+  por otro nodo del mismo país **y del mismo tipo**, ENTONCES el sistema DEBE rechazar la escritura
+  sin guardar nada. Dos nodos de tipos distintos del mismo país sí pueden compartir código (decisión
+  del 2026-10-29: difiere de la tarjeta).
 - **R10** (ubicuo) El nombre normalizado de un nodo DEBE ser igual al que produce la normalización
   de nombres de la app (sin acentos, en minúsculas, sin espacios de sobra) para todo nombre de la
   geografía existente.
@@ -72,9 +74,9 @@
   distrito existente a un nodo con **el mismo id**, el mismo país, el mismo padre, el mismo nombre, el
   mismo código, el mismo estado activo, profundidad 1, 2 o 3 y el tipo de ese nivel de su país.
 - **R14** (condicional) SI la geografía existente tiene dos hijos de un mismo padre con el mismo
-  nombre normalizado, dos provincias de un país con el mismo nombre normalizado o un mismo código en
-  dos niveles de un país, ENTONCES la migración DEBE abortar antes de cambiar nada e informar
-  cuántos casos encontró.
+  nombre normalizado o dos provincias de un país con el mismo nombre normalizado, ENTONCES la
+  migración DEBE abortar antes de cambiar nada e informar cuántos casos encontró. (El código no
+  necesita comprobación: el único viejo por país y nivel ya es el mismo que el nuevo de R9.)
 
 ### Sincronía mientras conviven los dos modelos
 
@@ -102,8 +104,8 @@
   `distrito_zona_especial`, el sistema DEBE dejar su nodo en ese distrito.
 - **R22** (ubicuo) El trigger de R20 DEBE costar como máximo 1 ms por fila, medido como la diferencia
   entre insertar al menos 5 000 órdenes con el trigger y sin él, dividida por el número de filas.
-- **R23** (por evento) CUANDO se aplica la migración, los enums de entidad de `historial_accion` y de
-  `historial_plataforma` DEBEN tener el valor `nodo_geografico`, sin que cambie ninguna fila de
+- **R23** (por evento) CUANDO se aplica la migración, los enums `historial_accion_entidad` y
+  `historial_plataforma_entidad` DEBEN tener el valor `nodo_geografico`, sin que cambie ninguna fila de
   historial existente ni lo que muestra la pantalla de historial.
 - **R24** (ubicuo) Las claves foráneas nuevas de `orden`, `zona_distrito` y `distrito_zona_especial`
   hacia `nodo_geografico` DEBEN crearse sin validar las filas existentes, y su validación DEBE
@@ -128,9 +130,11 @@
   `cobro_plataforma_al_cambiar_borrado`: los cargos de plataforma DEBEN quedar iguales.
 - **R31** (por evento) CUANDO el script llena el `ubicacion_snapshot` de una fila de `cierre_detail`,
   el sistema DEBE guardar los niveles de la raíz a la hoja, cada uno con su profundidad, el nombre
-  singular de su tipo y su nombre, tomando los nombres de `provincia_nombre`, `canton_nombre` y
-  `distrito_nombre` de la misma fila (sin el tercer nivel si `distrito_nombre` es NULL) y sin tocar
-  esas tres columnas. **Forma propuesta en `design.md > 2.6`, pendiente de aprobación humana.**
+  singular de su tipo, su nombre y el id de su nodo. Los nombres salen de `provincia_nombre`,
+  `canton_nombre` y `distrito_nombre` de la misma fila (sin el tercer nivel si `distrito_nombre` es
+  NULL), y esas tres columnas no se tocan. Los ids salen de `provincia_id`, `canton_id` y
+  `distrito_id` de la orden de la fila. El nombre es la foto y el id solo enlaza: si el nodo se
+  renombró después, el snapshot conserva el nombre congelado (decisión del 2026-10-29).
 - **R32** (por evento) CUANDO se ejecuta el modo de equivalencia, el script DEBE comparar, por país,
   los conteos de cada nivel en la geografía vieja y en el modelo nuevo, la cobertura de cada zona
   (distritos de `zona_distrito` frente a sus nodos) y las órdenes con nodo vacío, y DEBE terminar con
@@ -160,27 +164,18 @@
 - **R39** (de estado) MIENTRAS el entorno es un preview sin `MIGRATE_ON_PREVIEW=true`, el build NO
   DEBE aplicar migraciones.
 
+### Cierres creados después del script
+
+- **R40** (por evento) CUANDO se crea una fila de `cierre_detail` después de la migración, el
+  sistema NO DEBE llenar su `ubicacion_snapshot` (queda NULL, sin trigger en `cierre_detail`); y
+  CUANDO se vuelve a lanzar el script, DEBE llenarla según R31 (decisión del 2026-10-29; la columna la
+  empieza a escribir SLT-47).
+
 ## Preguntas abiertas
 
-- Forma de `cierre_detail.ubicacion_snapshot` (qué niveles, con tipo y nombre, y con qué claves). La
-  decide `design.md`; las tres columnas de nombre actuales no se tocan.
-  - **Propuesta (spec_author, 2026-10-29), pendiente de aprobación:** `design.md > 2.6`.
-    `{"v":1,"niveles":[{"profundidad":1,"tipo":"Provincia","nombre":"San José"}, …]}`, sin ids de
-    nodo y con los nombres tomados de las tres columnas congeladas (R31).
-  - **Derivada:** ¿quién llena el snapshot de los cierres que se creen **después** del script? La
-    tarjeta no pone trigger en `cierre_detail`. La propuesta es no ponerlo en SLT-43 (es el flujo de
-    dinero y un trigger que falle tumba el cierre): esas filas quedan NULL, el script se puede
-    relanzar y el escritor de cierres lo llena en la tarjeta que lea la columna (SLT-47). Alternativa:
-    un trigger `BEFORE INSERT` en `cierre_detail` que nunca lance error. Decide el humano.
-- **Unicidad del código oficial.** La tarjeta fija `(pais_id, codigo_oficial)`, sin el nivel. En la
-  geografía vieja el código es único por país **y nivel** (SL-20 R16). En Costa Rica no choca (1, 3 y
-  5 dígitos), pero en un país con código libre una provincia «1» y un cantón «1» conviven hoy, y con
-  este único la sincronía rechazaría el alta del cantón: la pantalla y el CSV de SL-20 dejarían de
-  funcionar igual. `design.md` sigue la tarjeta y la migración aborta si hoy ya hay un choque (R14).
-  ¿Se mantiene `(pais_id, codigo_oficial)` o pasa a `(pais_id, tipo_id, codigo_oficial)`?
-- **Tipo de `ruta`.** La tarjeta dice `ruta uuid[]`, pero todos los ids de la geografía son `TEXT`
-  (`String @default(uuid())`). `design.md` propone `ruta text[]` para no convertir en cada consulta ni
-  depender de que todo id sea un UUID válido. ¿Se acepta?
+_Ninguna._ Las cuatro que dejó el spec (forma del snapshot, snapshot de los cierres nuevos, único
+del código oficial y tipo de `ruta`) las respondió Camilo el 2026-10-29: ahora son filas de
+«Decisiones cerradas».
 
 ## Decisiones cerradas (no reabrir)
 
@@ -194,3 +189,8 @@
 | 2026-10-29 | ¿E2E? | No hay E2E nuevo: integración contra Postgres real para cada trigger y el E2E existente de órdenes como red. Se hereda de SL-20. |
 | 2026-10-29 | Verificaciones previas | Los previews de Vercel no apuntan a producción, y Supabase de producción tiene backup activo (Camilo). |
 | 2026-10-29 | Precedentes | Se heredan SL-20 (tabla `pais`, `historial_plataforma`, identificadores en español), la ficha 374 (retiro por `activo`, unicidad por padre) y SL-17 (geografía de plataforma, solo lectura para la empresa). La épica reabre «siempre 3 niveles» y «nombres internos» de SL-20, por decisión del humano del 2026-10-27. |
+| 2026-10-29 | ¿Forma de `cierre_detail.ubicacion_snapshot`? | `{"v":1,"niveles":[{profundidad,tipo,nombre,id}…]}`, de la raíz a la hoja, **con** el id del nodo en cada nivel. Los nombres salen de las tres columnas congeladas; los ids, de las FK de la orden. El nombre es la foto y el id solo enlaza: puede apuntar a un nodo renombrado después (Camilo). |
+| 2026-10-29 | ¿Quién llena el snapshot de los cierres creados después del script? | Nadie en SLT-43, y no hay trigger en `cierre_detail`. Quedan NULL hasta SLT-47, y el script se puede relanzar para llenarlos (Camilo). |
+| 2026-10-29 | ¿Único del código oficial? | `(pais_id, tipo_id, codigo_oficial)`, no `(pais_id, codigo_oficial)`. **Difiere de la tarjeta por decisión del humano**: así se conserva el único por país y nivel de SL-20 (R16) y la sincronía no rechaza un código que hoy se acepta (Camilo). |
+| 2026-10-29 | ¿Tipo de `ruta`? | `text[]`, no `uuid[]`: todos los ids de la geografía son `TEXT` (Camilo). |
+| 2026-10-29 | ¿Qué enum es «`historial_accion`» en la tarjeta? | `historial_accion_entidad`, el de entidades de esa tabla (aceptado por Camilo). |

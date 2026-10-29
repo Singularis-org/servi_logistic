@@ -1,13 +1,14 @@
 # SLT-43 — geo-jerarquica-modelo · tasks.md
 
-> Requisitos: `requirements.md` (R1–R39). Diseño: `design.md`. Todo es de `backend_dev` (`db/`,
+> Requisitos: `requirements.md` (R1–R40). Diseño: `design.md`. Todo es de `backend_dev` (`db/`,
 > `lib/`, `scripts/`, `tests/`). `[P]` = puede ir en paralelo con las otras `[P]` de su bloque. Una
 > task está hecha cuando su criterio se cumple **y** `pnpm exec vitest related --run <archivos>` pasa
 > con `DATABASE_URL` exportada (un verde con los tests de base saltados no cuenta).
 >
-> **No empieza nada sin:** el spec aprobado, las tres preguntas abiertas respondidas (snapshot,
-> único del código oficial, tipo de `ruta`) y el PR #29 (guardia de migraciones destructivas)
-> mergeado o descartado por el humano.
+> **No empieza nada sin:** el spec aprobado y el PR #29 (guardia de migraciones destructivas)
+> mergeado o descartado por el humano. Las preguntas abiertas quedaron respondidas el 2026-10-29
+> (`requirements.md > Decisiones cerradas`): snapshot con `id`, sin trigger en `cierre_detail`,
+> código único por `(pais_id, tipo_id, codigo_oficial)` y `ruta text[]`.
 
 ## T0 — Precondiciones
 
@@ -38,7 +39,8 @@
   **primero**, antes que la tabla. *Hecho:* idéntico a `normalizeName` en todos los nombres de la base
   de test y en la lista de casos; si no lo es, se para y se avisa (afecta a R9 y R14).
 - [ ] **T2.2** Migración `20261029120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
-  comprobaciones previas que abortan (R14), la tabla, los únicos (incluido el parcial de raíces), los
+  comprobaciones previas que abortan (R14), la tabla con `ruta text[]`, los únicos (incluido el
+  parcial de raíces y el del código por `(pais_id, tipo_id, codigo_oficial)`), los
   índices (GIN incluido), las FK compuestas, los triggers de invariantes y de descendientes, la RLS y
   la copia de la geografía. Modelo `NodoGeografico` en `schema.prisma` y en `MODELOS_DE_PLATAFORMA`.
   Comprobar primero que la relación compuesta con `padreId` opcional deja el diff vacío (plan B en
@@ -81,7 +83,8 @@
   `plataforma-solo-en-lista` verdes.
 - [ ] **T5.2** `scripts/geo-backfill-nodo.ts` con los cuatro modos de design §4, exportando
   `comprobar`, `aplicarLote`, `validar` y `equivalencia`, y la entrada `geo:backfill` en
-  `package.json`. *Hecho:* `geo-backfill.test.ts` (R24–R31, R33) verde.
+  `package.json`. *Hecho:* `geo-backfill.test.ts` (R24–R31, R33, R40) verde. El snapshot lleva el `id` de cada nivel
+  desde las FK de la orden (design §2.6), y no se crea ningún trigger en `cierre_detail`.
 - [ ] **T5.3** `geo-equivalencia.test.ts` (R32). *Hecho:* verde con el caso igual y los dos casos
   desviados.
 
@@ -98,7 +101,7 @@
 ## T7 — Cierre (depende de todo lo anterior)
 
 - [ ] **T7.1** `./init.sh` verde en el worktree; mapa `R<n> → test` y cifras de R22 en
-  `progress/impl_SLT-43.md`. *Hecho:* las 39 filas con test que pasa.
+  `progress/impl_SLT-43.md`. *Hecho:* las 40 filas con test que pasa.
 - [ ] **T7.2** **Puerta humana, fuera del agente** (design §6): comprobaciones de solo lectura en
   producción, ensayo completo sobre una copia de producción (migraciones, script, equivalencia,
   `VALIDATE`, `down.sql` y otra ida) con tiempos, y backup restaurado. *Hecho:* el humano anota el

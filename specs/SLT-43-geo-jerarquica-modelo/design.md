@@ -1,8 +1,9 @@
 # SLT-43 — geo-jerarquica-modelo · design.md
 
-> Requisitos: `requirements.md` (R1–R39). El alcance y la tabla «Decisiones cerradas» de
-> `requirements.md` no se reabren aquí. Lo marcado **(pendiente de aprobación)** depende de una
-> pregunta abierta de `requirements.md`.
+> Requisitos: `requirements.md` (R1–R40). El alcance y la tabla «Decisiones cerradas» de
+> `requirements.md` no se reabren aquí. Las cuatro preguntas abiertas del primer borrador las
+> respondió Camilo el 2026-10-29 (snapshot con id, sin trigger en `cierre_detail`, código único por
+> país y tipo, `ruta text[]`). Lo que cambiaron lleva la marca **(decisión 2026-10-29)**.
 
 ## Lo que ya existe
 
@@ -92,7 +93,7 @@ como el resto del esquema.
 | `nombre_normalizado` | `TEXT NOT NULL` | Lo pone el trigger con `geo_normalizar_nombre(nombre)`; lo que venga se pisa (R10). |
 | `codigo_oficial` | `TEXT NULL` | Copia de `codigo_dta`. |
 | `activo` | `BOOLEAN NOT NULL DEFAULT true` | Copia de `activo`. La cascada sigue evaluándose al leer (374). |
-| `ruta` | `TEXT[] NOT NULL` | Ids de la raíz al propio nodo. **(pendiente de aprobación: la tarjeta dice `uuid[]`, ver `requirements.md > Preguntas abiertas`)**. |
+| `ruta` | `TEXT[] NOT NULL` | Ids de la raíz al propio nodo. **(decisión 2026-10-29)** `text[]` y no el `uuid[]` de la tarjeta: los ids son `TEXT`, así no hay conversión en cada consulta ni se depende de que todo id sea un UUID válido. |
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT now()` | Las tablas viejas no tienen fecha: los nodos copiados llevan la de la migración. |
 
 Índices y únicos:
@@ -100,8 +101,10 @@ como el resto del esquema.
 - `(padre_id, nombre_normalizado)` único (R9).
 - `(pais_id, nombre_normalizado) WHERE padre_id IS NULL` único **parcial** (R9, raíces). Prisma no lo
   expresa: vive solo en el SQL, con un comentario en el modelo, como el único parcial de `orden` (294).
-- `(pais_id, codigo_oficial)` único; los NULL no compiten (R9). **(pendiente de aprobación: ¿con
-  `tipo_id`? ver `requirements.md > Preguntas abiertas`)**.
+- `(pais_id, tipo_id, codigo_oficial)` único; los NULL no compiten (R9). **(decisión 2026-10-29:
+  difiere de la tarjeta, que decía `(pais_id, codigo_oficial)`)**. Repite el único por país y nivel
+  de SL-20 (R16): en un país con código libre, una provincia «1» y un cantón «1» siguen conviviendo, y
+  la sincronía no rechaza un alta que hoy se acepta.
 - `GIN (ruta)` (R11): sirve a `ruta @> ARRAY[$1]` y `$1 = ANY(ruta)` de SLT-44. Prisma:
   `@@index([ruta], type: Gin)`.
 - Índices en `padre_id`, `tipo_id` y `pais_id` (FK y política RLS).
@@ -162,8 +165,8 @@ Una función `SECURITY DEFINER` con `search_path` fijo por tabla (`geo_sincroniz
   cantones, los nodos de sus provincias ya existen.
 - Si la sincronía lanza (p. ej. un único de §2.2), la escritura vieja falla entera con el mismo
   error: `23505` llega a la action de SL-20 como `P2002` → `conflict`, igual que hoy con los únicos
-  viejos. Por eso los únicos nuevos no pueden ser más estrictos que lo que la app ya comprueba (ver
-  la pregunta del código oficial).
+  viejos. Por eso los únicos nuevos no pueden ser más estrictos que lo que la app ya comprueba: de
+  ahí el código único por país y tipo (decisión 2026-10-29) y las comprobaciones de nombre de R14.
 - No escribe historial (R18): el historial de geografía lo sigue escribiendo `GeoRepository` en
   `historial_plataforma`.
 - El `DELETE` en cascada: borrar un distrito borra antes sus filas de `zona_distrito` y
@@ -177,7 +180,7 @@ Una función `SECURITY DEFINER` con `search_path` fijo por tabla (`geo_sincroniz
 | `orden` | `nodo_geografico_id TEXT NULL` | → `nodo_geografico(id)` `ON DELETE RESTRICT ON UPDATE RESTRICT` **`NOT VALID`** | `orden_nodo_geografico` `BEFORE INSERT OR UPDATE OF provincia_id, canton_id, distrito_id, nodo_geografico_id`: `NEW.nodo_geografico_id := COALESCE(NEW.distrito_id, NEW.canton_id)` (R20). |
 | `zona_distrito` | `nodo_geografico_id TEXT NULL` | → `nodo_geografico(id)` `ON DELETE CASCADE` **`NOT VALID`** (como su `distrito_id`) | `zona_distrito_nodo_geografico` `BEFORE INSERT OR UPDATE OF distrito_id, nodo_geografico_id`: `NEW.nodo_geografico_id := NEW.distrito_id` (R21). |
 | `distrito_zona_especial` | `nodo_geografico_id TEXT NULL` | igual que `zona_distrito` | `distrito_zona_especial_nodo_geografico`, igual (R21). |
-| `cierre_detail` | `ubicacion_snapshot JSONB NULL` | — | **Ninguno** (pendiente de aprobación, §2.6). |
+| `cierre_detail` | `ubicacion_snapshot JSONB NULL` | — | **Ninguno (decisión 2026-10-29, R40)**: §2.6. |
 
 - `ADD COLUMN` sin `DEFAULT` y nullable no reescribe la tabla: solo toca el catálogo.
 - Los triggers `BEFORE` no consultan nada: asignan desde la propia fila. El coste que queda es la
@@ -205,7 +208,7 @@ Una función `SECURITY DEFINER` con `search_path` fijo por tabla (`geo_sincroniz
 `ALTER TYPE "historial_accion_entidad" ADD VALUE IF NOT EXISTS 'nodo_geografico'` y lo mismo en
 `historial_plataforma_entidad`. La tarjeta dice «`historial_accion`»: el enum de entidades de esa
 tabla es `historial_accion_entidad` (el de tipos, `historial_accion_tipo`, ya tiene los
-`nodo_geografico_*`). Van en su propia migración, porque un valor añadido no se puede usar en la
+`nodo_geografico_*`). Camilo aceptó esta lectura el 2026-10-29. Van en su propia migración, porque un valor añadido no se puede usar en la
 misma transacción.
 
 Efecto en TypeScript (los mapas son exhaustivos por tipo y el typecheck lo exige):
@@ -219,15 +222,15 @@ Efecto en TypeScript (los mapas son exhaustivos por tipo y el typecheck lo exige
 - Nada escribe ese valor en SLT-43; las filas viejas de `provincia`/`canton`/`distrito` no se tocan
   (decisión «historial viejo convive»).
 
-### 2.6 `cierre_detail.ubicacion_snapshot` (R31) — **propuesta, pendiente de aprobación**
+### 2.6 `cierre_detail.ubicacion_snapshot` (R31, R40) — **decisión 2026-10-29**
 
 ```json
 {
   "v": 1,
   "niveles": [
-    { "profundidad": 1, "tipo": "Provincia", "nombre": "San José" },
-    { "profundidad": 2, "tipo": "Cantón",    "nombre": "Escazú" },
-    { "profundidad": 3, "tipo": "Distrito",  "nombre": "San Antonio" }
+    { "profundidad": 1, "tipo": "Provincia", "nombre": "San José",    "id": "<provincia_id de la orden>" },
+    { "profundidad": 2, "tipo": "Cantón",    "nombre": "Escazú",      "id": "<canton_id de la orden>" },
+    { "profundidad": 3, "tipo": "Distrito",  "nombre": "San Antonio", "id": "<distrito_id de la orden>" }
   ]
 }
 ```
@@ -238,12 +241,17 @@ Efecto en TypeScript (los mapas son exhaustivos por tipo y el typecheck lo exige
 - **`tipo`** es el `nombre_singular` del tipo `nivel_N` del país de la empresa de la fila
   (`organizacion.pais_id`), congelado al escribir. Lo necesita SLT-47 para pintar «Provincia: San
   José» cuando SLT-46 permita editar los tipos.
-- **Sin ids de nodo.** El snapshot describe lo que se cobró, como las columnas de nombre (R7 de la
-  ficha 69). Un id tomado de la orden actual podría no corresponder al nombre congelado si la orden se
-  corrigió después del cierre.
+- **`id`, con el id del nodo de cada nivel.** Sale de `provincia_id`, `canton_id` y `distrito_id` de
+  la orden de la fila (`cierre_detail.orden_id`), que son los ids de los nodos porque se conservan.
+  **El nombre es la foto y el id solo enlaza.** Si el nodo se renombró después del cierre, el
+  snapshot conserva el nombre congelado y el id apunta al nodo con su nombre nuevo. Si la orden se
+  corrigió de ubicación después del cierre, el id es el de la ubicación actual de la orden y puede no
+  coincidir con el nombre congelado: lo que se cobró lo dice `nombre`. Quien lea el snapshot (SLT-47)
+  no debe resolver el nombre a partir del `id`.
 - **`v`** permite cambiar la forma sin adivinar cuál tiene cada fila.
-- **Filas nuevas:** no hay trigger en `cierre_detail` en SLT-43 (ver la pregunta derivada en
-  `requirements.md`). Las filas creadas después del script quedan NULL; nadie lee la columna todavía.
+- **Filas nuevas (R40):** no hay trigger en `cierre_detail` en SLT-43. Las filas creadas después del
+  script quedan NULL hasta SLT-47, y relanzar el script las llena (filtra por `ubicacion_snapshot IS
+  NULL`). Nadie lee la columna todavía.
 
 ### 2.7 Qué depende del país (`docs/perfil-agentes.md > spec_author`)
 
@@ -269,7 +277,7 @@ Ningún `UPDATE` de tablas existentes.
 |---|---|---|
 | `20261029120000_geo_enums_nodo_geografico` | Los dos `ADD VALUE IF NOT EXISTS` (§2.5). | **No hace nada** y lo explica: Postgres no quita un valor de enum sin recrear el tipo (prohibido en la épica), y el valor sin usar es inocuo. Reaplicar la ida no falla por el `IF NOT EXISTS`. |
 | `20261029120100_tipo_nivel_geografico` | Tabla, únicos, FK, RLS, política, `REVOKE`, llenado de todos los países (R2), función y trigger `pais_tipos_de_nivel` (R3). | Borra el trigger, la función y la tabla. |
-| `20261029120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado, raíces repetidas por país y códigos repetidos entre niveles de un país; si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (GIN incluido), FKs, triggers de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
+| `20261029120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado y raíces repetidas por país (el código no hace falta: el único viejo por país y nivel equivale al nuevo por país y tipo); si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (GIN incluido), FKs, triggers de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
 | `20261029120300_nodo_geografico_sincronia` | Las tres funciones y los tres triggers de §2.3. | Los borra. |
 | `20261029120400_columnas_nodo_geografico` | Las cuatro `ADD COLUMN`, las tres FK `NOT VALID` y los tres triggers de §2.4. | Borra triggers, funciones, FKs y columnas. |
 | `20261029120500_indices_nodo_geografico` | Los tres índices de §2.4. | Los borra. |
@@ -296,8 +304,9 @@ Ningún `UPDATE` de tablas existentes.
 | `--equivalencia` | R32: por país, conteos de provincia/cantón/distrito frente a nodos por profundidad; por zona, el conjunto de `distrito_id` frente al de `nodo_geografico_id`; órdenes con nodo NULL. Sale con código ≠ 0 si algo difiere. | No |
 
 - **Valores (R27):** `orden.nodo_geografico_id = COALESCE(distrito_id, canton_id)`; zonas
-  `= distrito_id`; `ubicacion_snapshot` según §2.6, en un único `UPDATE … FROM` con `organizacion` y
-  `tipo_nivel_geografico`.
+  `= distrito_id`; `ubicacion_snapshot` según §2.6, en un único `UPDATE … FROM` con `orden` (los
+  ids), `organizacion` y `tipo_nivel_geografico` (el tipo). Relanzado más tarde, llena también los
+  cierres creados después de la primera ejecución (R40).
 - **Reanudable (R28):** el filtro `col IS NULL` hace que relanzar siga donde quedó y que con todo lleno
   no escriba nada. El cursor solo evita releer lo ya visto dentro de una ejecución.
 - **Sin efectos laterales (R29, R30):** el `UPDATE` solo nombra la columna nueva. En `orden` dispara
@@ -349,11 +358,11 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R | Test |
 |---|---|
 | R1, R2, R3 | `tests/integration/db/geo-tipo-nivel.test.ts` (tras migrar, CR y `XA` con 3 tipos y los datos de `pais`; alta de `XB` crea sus 3; cambiar un nombre de nivel actualiza el tipo; `(pais_id, clave)` repetido → `23505`) |
-| R4, R5, R6, R7, R8, R9 | `tests/integration/db/geo-nodo-invariantes.test.ts` (padre de otro país → `23503`; tipo de otro país → `23503`; profundidad mala → `SLT43`; ruta de un nodo nuevo y de los descendientes al cambiar de padre; los tres únicos → `23505`) |
+| R4, R5, R6, R7, R8, R9 | `tests/integration/db/geo-nodo-invariantes.test.ts` (padre de otro país → `23503`; tipo de otro país → `23503`; profundidad mala → `SLT43`; ruta de un nodo nuevo y de los descendientes al cambiar de padre; los tres únicos → `23505`; el mismo código en dos tipos distintos del mismo país sí entra) |
 | R10 | `tests/integration/db/geo-normalizar-nombre.test.ts` (`geo_normalizar_nombre` = `normalizeName` en todos los nombres de la geografía de la base y en una lista con tildes, ñ, ü, mayúsculas y espacios) |
 | R11 | `tests/integration/db/geo-nodo-invariantes.test.ts` (existe el índice GIN sobre `ruta` y `EXPLAIN` de `ruta @> ARRAY[$1]` con `enable_seqscan = off` lo usa) |
 | R12 | `tests/integration/db/geo-nodo-rls.test.ts` (dos empresas en CR y `XA`: cada una lee solo su país; `INSERT`/`UPDATE`/`DELETE` como `servi_app` → `42501`) |
-| R13, R14 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ids, padres, nombres, códigos y `activo` iguales; con dos hermanos «San José»/«San Jose», con dos provincias homónimas normalizadas o con un código repetido entre niveles, la migración aborta y no deja nada) |
+| R13, R14 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ids, padres, nombres, códigos y `activo` iguales; con dos hermanos «San José»/«San Jose», o con dos provincias homónimas normalizadas, la migración aborta y no deja nada; con una provincia y un cantón de `XA` con el mismo código, la migración pasa) |
 | R15, R16, R17, R18 | `tests/integration/db/geo-sincronia-geografia.test.ts` (alta a mano y `importarDivision` de SL-20 crean nodos; renombre, código, retiro/reactivación y cambio de padre se reflejan; borrado físico borra el nodo; `canton.pais_id` sigue saliendo del padre; ninguna fila nueva de historial) |
 | R19 | `tests/unit/db/slt43-migraciones-aditivas.test.ts` (lee los `migration.sql` de las seis carpetas y falla con `DROP`, `DELETE`, `RENAME`, `TRUNCATE`, `UPDATE` de tablas existentes o `ALTER TYPE` sin `ADD VALUE IF NOT EXISTS`; contraprueba con texto inventado), más la ida y vuelta (columnas nullable y sin default) |
 | R20, R21 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` (alta de orden con y sin distrito; corrección de distrito; intento de poner otro nodo a mano → lo pisa; alta y cambio en `zona_distrito` y `distrito_zona_especial`) |
@@ -363,7 +372,7 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R25, R26 | `tests/integration/db/geo-backfill.test.ts` (cifras de una base con datos conocidos; con una orden cuyo distrito es de otro cantón, `--aplicar` sale con error y no escribe) |
 | R27, R28 | `tests/integration/db/geo-backfill.test.ts` (lotes de 2 sobre 7 filas; corte simulado tras el primer lote y relanzar; segunda ejecución completa escribe 0) |
 | R29, R30 | `tests/integration/db/geo-backfill.test.ts` (`updated_at` y el resto de columnas de `orden` iguales fila a fila; `cobro_plataforma_movimiento` igual en número y contenido) |
-| R31 | `tests/integration/db/geo-backfill.test.ts` (snapshot de una fila con distrito y otra sin él, con los nombres congelados aunque la geografía viva se haya renombrado; las tres columnas sin cambio) |
+| R31 | `tests/integration/db/geo-backfill.test.ts` (snapshot de una fila con distrito y otra sin él: profundidad, tipo, nombre e `id` en cada nivel; los `id` son los de las FK de la orden; con el distrito renombrado después del cierre, `nombre` es el congelado y `id` sigue siendo el del nodo; las tres columnas sin cambio) |
 | R32 | `tests/integration/db/geo-equivalencia.test.ts` (iguales tras el script → código 0; con una fila de `zona_distrito` cuyo nodo se desvió a mano o una orden con nodo NULL → código ≠ 0) |
 | R33 | `tests/integration/db/geo-backfill.test.ts` (`--aplicar` sin `--base` o con otro nombre no escribe) |
 | R34, R35 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ida, script, vuelta en orden inverso: esquema igual que antes salvo los dos valores de enum; datos viejos iguales; tras la vuelta se crean una provincia, un cantón, un distrito, una orden y una fila de zona; reaplicar deja lo mismo) |
@@ -371,6 +380,7 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R37 | `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` (ningún archivo de `lib/`, `app/` o `components/` escribe `nodoGeografico`/`tipoNivelGeografico` ni hace `INSERT`/`UPDATE`/`DELETE` sobre esas tablas; contraprueba) |
 | R38 | `tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts` (lo amplía `/afinar-regla`; precondición, no lo escribe esta feature) |
 | R39 | `tests/unit/scripts/migrate-deploy-guardas.test.ts` (existente; sin cambios) |
+| R40 | `tests/integration/db/geo-backfill.test.ts` (tras `--aplicar`, una fila nueva de `cierre_detail` nace con `ubicacion_snapshot` NULL; no hay trigger sobre `cierre_detail` en `pg_trigger` con nombre de SLT-43; relanzar `--aplicar` la llena y no toca las ya llenas) |
 
 ## 8. Alternativas descartadas
 
@@ -396,9 +406,9 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 ## 9. Riesgos
 
 - **La sincronía es el punto que puede tumbar un flujo** (regla 6 de la épica). Si un único nuevo es
-  más estricto que la app, el alta de geografía de SL-20 falla. Mitigación: R14 aborta la migración si
-  hoy ya hay choques, el test de sincronía recorre la pantalla y el CSV de SL-20, y la pregunta del
-  código oficial queda abierta.
+  más estricto que la app, el alta de geografía de SL-20 falla. Mitigación: el código es único por
+  país y tipo, igual que hoy (decisión 2026-10-29); R14 aborta la migración si hoy ya hay choques de
+  nombre normalizado; y el test de sincronía recorre la pantalla y el CSV de SL-20.
 - **`normalize()` y `lower()` dependen del motor y de la collation.** R10 lo compara con
   `normalizeName` sobre datos reales; en el ensayo se repite sobre la copia de producción.
 - **Prisma y las relaciones compuestas con un campo opcional** (§2.2). T2.2 lo comprueba antes de
