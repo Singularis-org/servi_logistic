@@ -207,6 +207,11 @@ export interface IUserRepository {
    */
   findCuentasPorEmailConHash(email: string): Promise<CuentaConHash[]>;
   findById(id: string): Promise<UsuarioPublico | null>;
+  /**
+   * SLT-32: la cuenta del desafio OTP, con lo que decide `puedeIniciarSesion` (estado, empresa y
+   * rol). Lee entre empresas: se llama dentro de `comoPlataforma("SL-17", "login")`.
+   */
+  findCuentaPorId(id: string): Promise<CuentaPublica | null>;
   /** SL-18 (design §3.1): la misma consulta sin el hash, para la recuperacion de contrasena. */
   findCuentasPorEmail(email: string): Promise<CuentaPublica[]>;
   /** FICHA 362 (R3/R9): `actorUsuarioId` congela QUIEN dio de alta la cuenta. */

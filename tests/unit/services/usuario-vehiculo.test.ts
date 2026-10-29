@@ -52,6 +52,7 @@ function buildRepo(over: Partial<IUserRepository> = {}): IUserRepository {
     findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
     findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn().mockResolvedValue(usuario()),
     updatePasswordHash: vi.fn(),
     listMensajeros: vi.fn(),
