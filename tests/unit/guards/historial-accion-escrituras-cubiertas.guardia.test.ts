@@ -622,14 +622,27 @@ const CENSO: EntradaCenso[] = [
     archivo: "lib/repositories/ModulosEmpresaRepository.ts",
     metodo: "encender",
     forma: "abre_tx",
-    mutacion: /tx\.organizacionModulo\.createMany\(/,
+    // SL-24 (design §7.1): la sentencia vive en `_shared/modulos-en-tx.ts`, que recibe ESTA `tx`.
+    mutacion: /encenderEnTx\(\s*tx\b/,
   },
   {
     tipos: ["modulo_desactivado"],
     archivo: "lib/repositories/ModulosEmpresaRepository.ts",
     metodo: "apagar",
     forma: "abre_tx",
-    mutacion: /tx\.organizacionModulo\.deleteMany\(/,
+    mutacion: /apagarEnTx\(\s*tx\b/,
+  },
+  // --- SL-24 (design §5.2, §9; R29) · cambia el plan ---
+  //
+  // La asignación corre en `comoPlataforma` y abre su `$transaction`; el `plan_asignado` y las filas
+  // de módulos de la sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
+  // `tests/integration/db/planes-historial.test.ts`.
+  {
+    tipos: ["plan_asignado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "asignar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
   },
 ];
 
@@ -1072,7 +1085,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 72 desde SL-23 (`modulo_activado` y `modulo_desactivado`, un metodo de
     // `ModulosEmpresaRepository` por tipo).
     // SL-20 no cambia el numero: los tres `nodo_geografico_*` se quedan en el enum, sin escritor.
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(72);
+    // 73 desde SL-24 (`plan_asignado`, de `PlanesRepository.asignar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(73);
   });
 });
 
