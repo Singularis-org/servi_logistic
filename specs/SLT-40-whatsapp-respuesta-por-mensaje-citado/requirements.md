@@ -105,8 +105,8 @@ Vocabulario de este archivo:
 
 ## Preguntas abiertas
 
-Decisiones del humano. Cada una lista sus opciones y una recomendación; **ninguna está tomada**.
-Hasta que se respondan, los `R<n>` marcados `[pendiente Dn]` reflejan la opción recomendada.
+**Respondidas (2026-10-29):** Camilo aprueba el spec por escrito («aprobado») tal como está, con
+D1–D4 en la opción recomendada. Los `[pendiente Dn]` quedan cerrados con esa opción.
 
 ### D1. Orden citada cerrada o eliminada (de la tarjeta)
 

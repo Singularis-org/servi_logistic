@@ -2,14 +2,14 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-40 | whatsapp-respuesta-por-mensaje-citado | backend | medium | feature/SLT-40-whatsapp-respuesta-por-mensaje-citado | Camilo | spec_ready |
+| SLT-40 | whatsapp-respuesta-por-mensaje-citado | backend | medium | feature/SLT-40-whatsapp-respuesta-por-mensaje-citado | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.3: spec escrito en `specs/SLT-40-whatsapp-respuesta-por-mensaje-citado/` (R1–R18, 6 tareas).
-Espera aprobación humana (F1.4) y respuesta a las decisiones abiertas D1–D4 de
-`requirements.md > Preguntas abiertas`. T2 en adelante bloqueadas hasta entonces.
+F2.1 desde el 2026-10-29. Spec `specs/SLT-40-whatsapp-respuesta-por-mensaje-citado/` (R1–R18,
+commit `5643872`) aprobado por escrito por Camilo («aprobado», 2026-10-29), con D1–D4 en la
+opción recomendada. Tarjeta movida a «En curso» con la aprobación registrada.
 
 ## Evaluación
 - **zone: backend.** Parser del webhook (`lib/types/whatsapp-webhook.ts`), ingesta y
