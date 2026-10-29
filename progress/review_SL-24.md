@@ -51,7 +51,7 @@ No corrí la suite completa, el E2E ni `./init.sh`: el leader dio `init OK` y E2
 - [x] Sin `console.log` de PII. El handler del aviso no mete emails en `last_error`.
 - [x] Capas: action → `PlanesService` → `PlanesRepository`, y zod en el borde: `lib/types/planes.ts` y los payloads de los jobs.
 - [x] País y moneda:
-  - el precio va sin moneda (decisión, deuda D26);
+  - el precio va sin moneda (decisión, deuda D28);
   - no hay «colones», «₡» ni «SINPE» en el código nuevo;
   - «Costa Rica» y el −06:00 solo aparecen como la decisión P8.
 - [x] Autorización en el servidor: `PlanesService` corta con `forbidden` antes de zod y del repositorio. R5 lo prueba con cero llamadas al repositorio.
@@ -129,7 +129,7 @@ Ningún R queda sin test, y ningún test citado está vacío ni saltado.
 - Los textos de los correos de T12 están en `mensajes.ts` (`lineaReemplazo`, `SIN_LINEAS_DE_CAMBIO`, `mensajeCambioCancelado`, etc.).
   - El tipo `cancelado` lleva solo el texto de R45.
 - La fecha se pinta con `fechaCortaCR`.
-- El precio va sin símbolo de moneda: deuda D26 en `progress/deudas.md`.
+- El precio va sin símbolo de moneda: deuda D28 en `progress/deudas.md`.
 - El ciclo y el ancla se calculan en UTC en la base:
   - `now() AT TIME ZONE 'UTC'` en `plan_cupo_ordenes` y en el trigger `plan_tope_ordenes` (`20261028130200`, líneas 101 y 129);
   - `PlanesRepository.usoDe` (línea 159) y el ancla de `asignar` (línea 575) también lo usan;

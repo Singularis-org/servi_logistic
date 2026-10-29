@@ -202,14 +202,16 @@ describe("Feature 258 · R68 — el color NO es el único portador del dato", ()
    `design.md` §11.6 avisaba: los cuatro semánticos base son hexes FIJOS y la pista `bg-muted`
    GIRA con el tema; `--color-info` (#1a56db) es el único oscuro y podía fundirse con la pista
    en tema oscuro. F7.3 mandaba comprobarlo A OJO en el navegador y, si pasaba, cambiarlo por
-   `bg-chart-13` (que gira). Se comprobó con la aritmética del repo —`tests/fixtures/contraste`,
+   un `bg-chart-*` (que gira). Se comprobó con la aritmética del repo —`tests/fixtures/contraste`,
    validada contra tres razones publicadas por WCAG— en vez de a ojo, porque un ojo no deja
    constancia y no vuelve a mirar en seis meses.
 
    MEDIDO (contraste del segmento contra la pista `--muted`):
      bg-info      →  5.61 claro · **2.34 oscuro**  ← por debajo del 3:1 de WCAG 1.4.11
-     bg-chart-13  →  9.41 claro ·   8.03 oscuro
-   Por eso `enReparto` va en `bg-chart-13`. Este test es lo que impide volver atrás en silencio.
+     bg-chart-5   →  6.14 claro ·   6.18 oscuro
+   Por eso `enReparto` va en `bg-chart-5`: el azul de la paleta de gráficas de SL-33 (con la
+   paleta anterior era `bg-chart-13`, 9.41 · 8.03). Este test es lo que impide volver atrás en
+   silencio.
    ══════════════════════════════════════════════════════════════════════════════════════════ */
 describe("Feature 258 · R47/R48 — «En reparto» se separa de la pista en los DOS temas", () => {
   /** Umbral de WCAG 2.1 §1.4.11 para un objeto gráfico no textual. */

@@ -154,12 +154,22 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Cerrada (2026-10-28):** subido por el PR #17 de la plantilla (tracker configurable, ya rebasado sobre `main` por merge y con la regla añadida), mergeado como arnés 2.8.0 (7779020). `arnes-sync` contra `main`: 61 iguales, 0 a bajar; `arnes.lock.json` al día. `tracker-connect.md` y `tracker.mjs` vienen en la plantilla.
 - **Dueño:** cerrada.
 
-### D25 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
+### D25 — El `.env` del worktree principal apunta al Supabase de la app de origen
+- **Origen:** SL-9 (2026-10-28). La guardia `recursos-origen-fuera` (SL-34) reconoció como recurso de origen el proyecto Supabase de `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` del `.env` local. SL-9 no lo usó (capturas con `pnpm dev` y solo la `DATABASE_URL` local).
+- **Qué falta:** sustituir esas variables por un proyecto Supabase de servi_logistic, o quitarlas del `.env` local si nada las necesita.
+- **Dueño:** Camilo.
+
+### D26 — Un id de recurso de origen quedó en el historial de `dev`
+- **Origen:** SL-9, PR #31 (merge normal, no squash). El commit `0bfcc01` lo retiró del árbol, pero los commits anteriores de la rama siguen en el historial.
+- **Qué falta:** decidir si basta con que no esté en el árbol (lo que vigila SL-34) o si hay que reescribir historial. No es un secreto, pero el repo es público.
+- **Dueño:** Camilo.
+
+### D27 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
 - **Origen:** gate de SL-24 (2026-10-27), en Windows 11 con Node v22.13.1 y 24 GB de RAM. `tsc --noEmit` cayó con `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory` (exit 134), y `./init.sh` salió en rojo sin que el cambio tocara código. Con `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` salió `init OK`.
 - **Qué falta:** fijar el heap en el script `typecheck` de `package.json` (por ejemplo `node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit`) o en `init.sh`, y comprobar que el job estático de CI no lo necesita también.
 - **Dueño:** Camilo (decidir si va a ficha).
 
-### D26 — Los correos de cambio de plan muestran el precio sin símbolo de moneda
+### D28 — Los correos de cambio de plan muestran el precio sin símbolo de moneda
 - **Origen:** SL-24 T12 (2026-10-28). El plan no guarda moneda y la plataforma sirve a varios países, así que los importes van tal cual («100 al mes»). Decidido por Camilo.
 - **Qué falta:** cuando se ponga símbolo de moneda por país, tomarlo de la configuración de la empresa destinataria, no fijarlo en la plantilla (`lib/planes/mensajes.ts`, sección «Correos del cambio de plan»).
 - **Dueño:** Camilo.

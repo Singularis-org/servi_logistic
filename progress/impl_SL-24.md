@@ -1140,6 +1140,8 @@ sincronización con SLT-49, `3b13589`; sin conflictos). Los ajustes van en el co
   y **D26** (precio sin símbolo de moneda). Referencias actualizadas en `progress/features/SL-24.md`
   y `progress/review_SL-24.md`; `lib/planes/mensajes.ts`, los specs y este archivo no citaban el
   número.
+- 2026-10-29, merge de `dev` (fe601a2, SL-9 trae sus propias D25/D26): las de SL-24 pasan a
+  **D27** (typecheck sin heap) y **D28** (precio sin moneda); referencias actualizadas igual.
 
 **Migraciones: renombradas las CINCO, no solo las dos de T3b.** `20261028120000_modulo_wallet_nucleo`
 (dev) recrea `modulo_apagable`: renombra el tipo viejo, crea el nuevo sin `wallet`, cambia solo

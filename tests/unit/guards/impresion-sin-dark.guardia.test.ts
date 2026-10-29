@@ -371,10 +371,13 @@ describe("feature 221 — en papel, la tinta de PALETA FIJA mejora (y el CSS lo 
    * a 18.88 (el lector ciego daría 1.07). El «después» no se mueve: `asfalto-7` es paleta fija y
    * SL-8 no la toca. La fila pierde más que antes (7.49 puntos), y las dos siguen sobre AAA.
    *
+   * SL-33, re-medido el 2026-10-28: `asfalto-7` pasa de `#1f3a63` a `stone-800` (`#292524`) y el
+   * «después» sube de 11.39 a 15.17. La fila sigue perdiendo, ahora 3.71 puntos.
+   *
    * ── QUÉ SE AFIRMA AHORA, dicho sin adornos
    * Con la 224 dentro, la 221 **empeora** esta fila en papel: si el variant `dark:` siguiera
    * disparando, imprimiría `--foreground` ya CLARO (`#111111` desde SL-8, 18.88); como no
-   * dispara, imprime `asfalto-7` (`#1f3a63`, 11.39). **No es un defecto de legibilidad**: las dos están muy por
+   * dispara, imprime `asfalto-7` (`#292524`, 15.17). **No es un defecto de legibilidad**: las dos están muy por
    * encima de AA y por encima de AAA (7.0), y el texto se lee igual de bien. Lo que deja de ser
    * cierto es la FRASE «esta regla mejora el papel», para esta fila y sólo para ésta. Se dice, se
    * mide, y se congela en las dos direcciones: si alguien vuelve a medir el «antes» con el lector
@@ -382,10 +385,10 @@ describe("feature 221 — en papel, la tinta de PALETA FIJA mejora (y el CSS lo 
    *
    * Y por qué NO se «arregla» dándole la vuelta a la 221 aquí: apagar el variant al imprimir es
    * una decisión de toda la app, medida en cuatro familias, y esta fila es la única que pierde —
-   * 7.49 puntos de contraste sobre un suelo de 11.39 desde SL-8—. Revertirla por ella sería cambiar el papel
+   * 3.71 puntos de contraste sobre un suelo de 15.17 desde SL-33—. Revertirla por ella sería cambiar el papel
    * de las quince rutas para ganar nada legible.
    */
-  it("F4 la fila MIXTA: con la 224 dentro, esta regla NO mejora el papel — lo BAJA (18.88 → 11.39)", () => {
+  it("F4 la fila MIXTA: con la 224 dentro, esta regla NO mejora el papel — lo BAJA (18.88 → 15.17)", () => {
     const conVariant = medir(tokenAlImprimir("foreground"), PAPEL);
     const sinVariant = medir(paleta("asfalto-7"), PAPEL);
 
@@ -395,7 +398,7 @@ describe("feature 221 — en papel, la tinta de PALETA FIJA mejora (y el CSS lo 
         "vuelve a medirse con `token(\"oscuro\", …)` da 1.07 y esta guardia estaría opinando sobre " +
         "el papel con el lector que no lo ve.",
     ).toBe(18.88); // antes 15.70: `--foreground` claro era `#12233f`
-    expect(sinVariant, "el «después» de F4 se movió: `--color-asfalto-7` cambió").toBe(11.39);
+    expect(sinVariant, "el «después» de F4 se movió: `--color-asfalto-7` cambió").toBe(15.17); // antes 11.39: `asfalto-7` era `#1f3a63`
 
     expect(
       sinVariant,
@@ -409,10 +412,10 @@ describe("feature 221 — en papel, la tinta de PALETA FIJA mejora (y el CSS lo 
 
     expect(
       crudo,
-      "el comentario de la regla ya no anota «18.88 → 11.39» para F4, o sigue listándola entre lo " +
+      "el comentario de la regla ya no anota «18.88 → 15.17» para F4, o sigue listándola entre lo " +
         "que la regla compra. Es la única fila que la 221 baja, y una prosa que dice lo contrario " +
         "manda a quien la lea a decidir sobre un dato falso.",
-    ).toContain("18.88 → 11.39");
+    ).toContain("18.88 → 15.17");
   });
 
   /**
@@ -517,6 +520,10 @@ describe("feature 221 — en papel, la tinta de PALETA FIJA mejora (y el CSS lo 
  * porque su fondo es la página, `#F7F7F5`, y la de «antes» la tarjeta blanca con `--input` al
  * 30 %. Es la bajada que R18 explica por el fondo de la marca, y las dos pasan AAA.
  *
+ * SL-33, re-medido el 2026-10-28: `--input` pasa a `stone-200` (`#e7e5e4`) y el «antes» de P23
+ * baja de 17.78 a 17.66. Es un literal medido del par que se imprimía antes de la 221, no un suelo:
+ * el «después», que es el que manda en papel, no se mueve.
+ *
  * P22 y P26 dan hoy el MISMO número, y no es una errata: desde la feature 222 el `Button` y el
  * `Badge` destructivos pintan el mismo par de `danger`. Dos filas para dos componentes que ahora
  * comparten par; el día que uno de los dos cambie, sólo se moverá su fila.
@@ -542,7 +549,7 @@ const EN_LA_FACTURA = [
     tinta: () => token("claro", "card-foreground"),
     fondoAntes: () => componer(token("claro", "input"), token("claro", "card"), 0.3),
     fondoDespues: () => token("claro", "background"),
-    antes: 17.78, // antes 14.78
+    antes: 17.66, // antes 17.78 (SL-33: `--input` pasa a `stone-200`) y 14.78 (SL-8)
     despues: 17.6, // antes 14.79
   },
   {
