@@ -54,5 +54,5 @@ Ninguna.
 - **Worktree y grafo:** `wt.sh done` no pudo desmontar el worktree (archivo en uso en Windows). Se borró a mano, con `git worktree prune` y la rama local borrada. El proyecto se borró del grafo.
 - **Deudas que deja:**
   - Volver a correr las capturas y bajar el umbral tras SL-33 (en curso: SL-33, T8).
-  - D24: el `.env` local apunta al Supabase de origen.
-  - D25: un id de recurso de origen quedó en el historial de `dev`.
+  - D25: el `.env` local apunta al Supabase de origen.
+  - D26: un id de recurso de origen quedó en el historial de `dev`.

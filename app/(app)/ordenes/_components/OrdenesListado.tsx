@@ -49,6 +49,7 @@ import { AsignarRecoleccionModal } from "./AsignarRecoleccionModal";
 import { QuitarRecoleccionModal } from "./QuitarRecoleccionModal";
 import { RutearSateliteModal } from "./RutearSateliteModal";
 import { EtiquetasGuiaModal } from "./EtiquetasGuiaModal";
+import { ESTADOS_ETIQUETAS_TIENDA, MOTIVO_SIN_GUIA } from "../estados-etiquetas-tienda";
 import { DevolverATiendaModal } from "./DevolverATiendaModal";
 // FICHA 419: la bodega central confirma que la tienda recibio el lote, con comprobante.
 import {
@@ -269,6 +270,7 @@ export function OrdenesListado({
   puedeVerComprobanteEntrega = false,
   puedeEliminar = false,
   puedeVerEliminadas = false,
+  puedeImprimirEtiquetasPropias = false,
   fechasDiaReparto = SIN_FECHAS_DIA_REPARTO,
 }: Readonly<{
   exclude?: string[];
@@ -401,6 +403,17 @@ export function OrdenesListado({
    * 358 es lo que permite que diverjan sin tocar el componente.
    */
   puedeVerEliminadas?: boolean;
+  /**
+   * SLT-49 (R1–R6): ofrece «Imprimir etiquetas» por lote a un rol SIN `accionesLote` (hoy, el
+   * `adminTienda`), limitado a las órdenes en un estado de recogida (`ESTADOS_ETIQUETAS_TIENDA`)
+   * que ya tienen guía. Mismo patrón que `puedeEliminar` (FICHA 358): una prop aparte que suma
+   * casillas sin abrir las acciones de flujo —`accionesDe` sigue devolviendo vacío—.
+   *
+   * La página la deriva de `resolverAlcanceEtiquetasOrden` (alcance `propias`), la misma regla con
+   * la que el servidor pone la tienda en el `where`. Esta prop decide qué se OFRECE; qué etiquetas
+   * se leen lo decide el servidor.
+   */
+  puedeImprimirEtiquetasPropias?: boolean;
   /**
    * Feature 246 (T4.2, R29): fechas calendario de «hoy» y «mañana» que la PÁGINA resolvió en el
    * servidor con el día de Costa Rica. Sólo se transportan: hasta `AsignarBodegaModal` (elegir
@@ -1189,7 +1202,25 @@ export function OrdenesListado({
    * acción que no cuelga de ningún estado. Qué se ofrece luego sobre lo marcado lo deciden
    * `accionesPara` y `bloqueoSeleccion`, fila a fila.
    */
-  const haySeleccion = accionesLote || puedeEliminar;
+  //
+  // SLT-49: tercera condición, del mismo tipo que `puedeEliminar` —UNA acción, sin flujo—.
+  const haySeleccion =
+    accionesLote || puedeEliminar || puedeImprimirEtiquetasPropias;
+
+  /**
+   * SLT-49 (R1, R2): ¿entra esta fila en «Imprimir etiquetas» de la tienda? Estado de recogida Y
+   * con guía (sin guía no hay etiqueta). `!accionesLote` evita ofrecer la acción dos veces a un
+   * rol que tuviera las dos props: con `accionesLote` ya sale de `accionesDe` por estado.
+   */
+  function elegibleEtiquetasTienda(row: OrdenListItemDTO): boolean {
+    return (
+      puedeImprimirEtiquetasPropias &&
+      !accionesLote &&
+      row.estatusValue !== undefined &&
+      ESTADOS_ETIQUETAS_TIENDA.has(row.estatusValue) &&
+      row.numGuia !== null
+    );
+  }
 
   /**
    * ¿Se monta la columna de checkbox? Solo si alguna orden de la página lleva a algún botón.
@@ -1205,6 +1236,8 @@ export function OrdenesListado({
     // Si no se cumple ninguna, la columna no se monta: casillas que no llevan a ningún botón.
     if (verEliminadas) return items.length > 0;
     if (items.some((row) => accionesDe(row).length > 0)) return true;
+    // SLT-49: «Imprimir etiquetas» de la tienda también alcanza la fila.
+    if (items.some(elegibleEtiquetasTienda)) return true;
     return puedeEliminar && items.some((row) => row.eliminable === true);
   }
 
@@ -1226,13 +1259,25 @@ export function OrdenesListado({
     // bloqueo de `devuelta` no-central dejaría irrecuperables justo esas órdenes.
     if (verEliminadas) return null;
     const value = row.estatusValue;
+    // SLT-49 (R5): una orden de recogida SIN guía no tiene etiqueta que imprimir, y se dice. Va
+    // ANTES de la regla de «Eliminar» a propósito: P1 del spec se resolvió «R5 tal cual», así que
+    // se bloquea aunque la orden sea eliminable (caso raro: estas órdenes nacen con guía).
+    if (
+      puedeImprimirEtiquetasPropias &&
+      value !== undefined &&
+      ESTADOS_ETIQUETAS_TIENDA.has(value) &&
+      row.numGuia === null
+    ) {
+      return MOTIVO_SIN_GUIA;
+    }
     // Fila que no lleva a NINGÚN botón: ni su estado ofrece acción por lote, ni se puede
-    // eliminar. Marcarla dejaría la barra vacía. Las dos condiciones se preguntan juntas
-    // —y no solo la primera, como antes del 2026-08-26— porque hoy "Eliminar" es una acción
-    // más que puede ser la única de la fila.
+    // eliminar, ni entra en «Imprimir etiquetas» de la tienda (SLT-49). Marcarla dejaría la
+    // barra vacía. Las condiciones se preguntan juntas —y no solo la primera, como antes del
+    // 2026-08-26— porque hoy "Eliminar" es una acción más que puede ser la única de la fila.
     if (
       accionesDe(row).length === 0 &&
-      !(puedeEliminar && row.eliminable === true)
+      !(puedeEliminar && row.eliminable === true) &&
+      !elegibleEtiquetasTienda(row)
     ) {
       // FICHA 454: si lo que la deja sin acciones es la gestión pendiente, se dice.
       return accionesLote && value === "en_reparto" && row.gestionPendiente != null
@@ -1306,15 +1351,34 @@ export function OrdenesListado({
     // gestionado desde que se creó". Se retiró porque generar la guía ya contaba como gestión y
     // dejaba la ventana VACÍA (0 eliminables de 429 vivas en producción). Aquí no se decide
     // nada: la regla vive en `lib/types/order-status-eliminables.ts` y esta pantalla solo la lee.
+    // SLT-49 (R2, R6): «Imprimir etiquetas» de la tienda, tras las de estado y ANTES de
+    // «Eliminar». Solo sobre las marcadas elegibles, con «(N)» si no son toda la selección; si
+    // ninguna lo es, el botón no aparece.
+    const elegiblesEtiquetas = seleccionadas.filter(elegibleEtiquetasTienda);
+    const conEtiquetas: AccionLote[] =
+      elegiblesEtiquetas.length === 0
+        ? porEstado
+        : [
+            ...porEstado,
+            {
+              key: "etiquetas",
+              label:
+                elegiblesEtiquetas.length < seleccionadas.length
+                  ? `Imprimir etiquetas (${elegiblesEtiquetas.length})`
+                  : "Imprimir etiquetas",
+              onRun: () => abrirEtiquetas(elegiblesEtiquetas),
+            },
+          ];
+
     const elegiblesEliminar = puedeEliminar
       ? seleccionadas.filter((o) => o.eliminable === true)
       : [];
-    if (elegiblesEliminar.length === 0) return porEstado;
+    if (elegiblesEliminar.length === 0) return conEtiquetas;
     // Con conteo cuando no alcanza a toda la selección, igual que las acciones por estado: sin
     // él, marcar 10 y pulsar "Eliminar" borraría 3 sin decir cuáles.
     const parcial = elegiblesEliminar.length < seleccionadas.length;
     return [
-      ...porEstado,
+      ...conEtiquetas,
       {
         ...accionEliminar,
         label: parcial
@@ -1555,11 +1619,7 @@ export function OrdenesListado({
             onOpenChange={cerrarModal}
             onSuccess={handleSuccess}
           />
-          <EtiquetasGuiaModal
-            open={modalAbierto === "etiquetas"}
-            ordenes={ordenesSeleccionadas}
-            onOpenChange={cerrarEtiquetas}
-          />
+          {/* SLT-49: `EtiquetasGuiaModal` ya no vive aquí; se monta abajo, con `haySeleccion`. */}
           <DevolverATiendaModal
             open={modalAbierto === "devolver-tienda"}
             ordenes={ordenesSeleccionadas}
@@ -1661,6 +1721,19 @@ export function OrdenesListado({
           ordenes={ordenesSeleccionadas}
           onOpenChange={cerrarModal}
           onSuccess={handleSuccess}
+        />
+      ) : null}
+
+      {/* SLT-49 — SALE del bloque de `accionesLote` por la misma razón que `EliminarOrdenModal`
+          (FICHA 358): dentro, la tienda vería «Imprimir etiquetas» y al pulsarlo no se abriría
+          nada. Montado UNA sola vez: para maestro/admin `haySeleccion` es `true`, así que
+          `abrirEtiquetas` y el encadenado tras «Generar guía» / «Asignar mensajero»
+          (`encadenarEtiquetas`) siguen abriendo este mismo modal (R15). */}
+      {haySeleccion ? (
+        <EtiquetasGuiaModal
+          open={modalAbierto === "etiquetas"}
+          ordenes={ordenesSeleccionadas}
+          onOpenChange={cerrarEtiquetas}
         />
       ) : null}
     </div>

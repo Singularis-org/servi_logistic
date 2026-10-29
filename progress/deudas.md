@@ -148,12 +148,17 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** pasar la pantalla por `/design`, o anotar por qué basta con `AppPage`, el `Switch` de shadcn y los tokens existentes.
 - **Dueño:** Camilo.
 
-### D24 — El `.env` del worktree principal apunta al Supabase de la app de origen
+### D24 — El soporte de Trello y la aprobación F1.4 escrita no están en la plantilla
+- **Origen:** `chore/arnes-aprobacion-escrita` (2026-10-28). El soporte de Trello (PR #19 del proyecto) y la regla `mover <key> in_progress --aprobado-por-escrito "<cita>"` viven solo aquí.
+- **Qué falta:** subirlos a `singularis-co/harness_config` con `./scripts/arnes-sync.sh --subir`. Antes, `./scripts/arnes-sync.sh --aplicar` de los 19 cambios pendientes, resolviendo 6 conflictos (`docs/trello.md`, `scripts/trello.mjs`, `scripts/validate-features.mjs`, `tests/guards/guard-trello-cliente.test.ts`, `guard-trello-red.test.ts`, `guard-validador-tracker.test.ts`), y decidir qué hacer con `.claude/commands/tracker-connect.md` y `scripts/tracker.mjs`, que la plantilla no trae.
+- **Dueño:** leader (con Carlos Restrepo para aprobar el PR en la plantilla).
+
+### D25 — El `.env` del worktree principal apunta al Supabase de la app de origen
 - **Origen:** SL-9 (2026-10-28). La guardia `recursos-origen-fuera` (SL-34) reconoció como recurso de origen el proyecto Supabase de `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` del `.env` local. SL-9 no lo usó (capturas con `pnpm dev` y solo la `DATABASE_URL` local).
 - **Qué falta:** sustituir esas variables por un proyecto Supabase de servi_logistic, o quitarlas del `.env` local si nada las necesita.
 - **Dueño:** Camilo.
 
-### D25 — Un id de recurso de origen quedó en el historial de `dev`
+### D26 — Un id de recurso de origen quedó en el historial de `dev`
 - **Origen:** SL-9, PR #31 (merge normal, no squash). El commit `0bfcc01` lo retiró del árbol, pero los commits anteriores de la rama siguen en el historial.
 - **Qué falta:** decidir si basta con que no esté en el árbol (lo que vigila SL-34) o si hay que reescribir historial. No es un secreto, pero el repo es público.
 - **Dueño:** Camilo.

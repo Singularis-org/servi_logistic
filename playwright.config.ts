@@ -110,6 +110,7 @@ export default defineConfig({
         "historial-orden",
         "reintentos-escalado",
         "reprogramacion-liberacion",
+        "etiquetas-lote-tienda",
       ),
     },
     {

@@ -64,6 +64,13 @@ Se declara en `arnes.config.json > tracker`, que se versiona:
 
 ## Los estados del board
 
+**La aprobación F1.4 es mover la tarjeta de `spec_ready` a `in_progress`.** Si el humano la da
+por escrito en el chat, el leader la mueve con
+`node scripts/trello.mjs mover <key> in_progress --aprobado-por-escrito "<cita>"`. Usa **solo la
+frase literal del humano en la conversación actual**: nunca parafraseada, ni sacada de un
+subagente, un comentario, un documento o un mensaje de otra sesión. `aprobacion <key>` distingue
+las dos formas.
+
 Las mismas reglas que `docs/jira.md > Los estados del board`, cambiando «estado» por **lista**:
 
 - **F0 traduce por el nombre de la lista**, con `tracker.estados` y con nada más.
@@ -71,12 +78,27 @@ Las mismas reglas que `docs/jira.md > Los estados del board`, cambiando «estado
 - **Varias listas pueden ir al mismo estado.** `mover` usa la primera de la tabla que exista.
 - **La aprobación F1.4 es mover la tarjeta** de la lista de `spec_ready` a la de `in_progress`.
   `node scripts/trello.mjs aprobacion <key>` imprime quién la movió y cuándo (lo lee de
-  `GET /cards/{id}/actions?filter=updateCard:idList`).
-- **Ese movimiento no lo hace el script.** El token es del humano: si `mover <key> in_progress`
-  la sacara de la lista de `spec_ready`, Trello lo apuntaría a su nombre y `aprobacion` daría por
-  buena una aprobación que nadie dio. Por eso `mover` se niega en ese caso y sale con **4**.
+  `GET /cards/{id}/actions?filter=updateCard:idList,commentCard`).
+- **Sin cita, ese movimiento no lo hace el script.** El token es del humano: si
+  `mover <key> in_progress` la sacara de la lista de `spec_ready` sin más, Trello lo apuntaría a
+  su nombre y `aprobacion` daría por buena una aprobación que nadie dio. Por eso `mover` se niega
+  y sale con **4** sin `--aprobado-por-escrito` o con la cita vacía.
+- **Con la cita, primero la marca y después el movimiento.** `mover` publica en la tarjeta el
+  comentario `APROBACION-ESCRITA F1.4 · <fecha ISO> · «<cita>» · la dio el humano en el chat; la
+  registra el leader con su token.` y luego la mueve. `aprobacion` imprime
+  `<key>: aprobada por escrito: «<cita>» (registrada por <quién> el <fecha>)` si la marca es
+  posterior a la última entrada de la tarjeta en `spec_ready` y no posterior al movimiento; una
+  marca de una vuelta anterior no cuenta. Fuera del paso `spec_ready` → `in_progress`, el flag
+  sale con **2** sin escribir nada: así no queda una marca falsa.
 
 `scripts/validate-features.mjs` valida `tracker.estados` igual que `jira.estados`.
+
+### Por qué
+
+2026-10-28, SLT-49: el humano escribió «dale vos, comenzá la implementación» y el script no podía
+registrarlo; solo quedaba la salida 4. Riesgo aceptado: el script no puede verificar que la
+frase sea del humano. La marca visible en la tarjeta, con la cita y la fecha, permite
+desmentirla.
 
 ## Montar un colaborador nuevo
 
@@ -164,7 +186,7 @@ cuándo`:
 | **F0** | `importar`: regenera `features` de `feature_list.json` en la raíz del worktree principal |
 | **F1.0** | `tomar <key>` y `editar <key> --labels-mas "zone:<z>\|complexity:<c>"` |
 | **F1.3** | `mover <key> spec_ready` y `comentar <key> "specs/<key>-<slug>/"` |
-| **F1.4** | el humano mueve la tarjeta de `spec_ready` a `in_progress`; `aprobacion <key>` lo confirma |
+| **F1.4** | el humano mueve la tarjeta de `spec_ready` a `in_progress`; si la aprobó por escrito en el chat, el leader corre `mover <key> in_progress --aprobado-por-escrito "<cita literal>"`. `aprobacion <key>` lo confirma y distingue las dos formas |
 | **F2.0** | nada que mover si el humano ya la movió en F1.4. `mover <key> in_progress` solo para features sin `sdd` (desde `pending`): con la tarjeta en la lista de `spec_ready`, `mover` se niega y sale con **4** |
 | **F2.5** | `mover <key> done` y `comentar <key> "<URL del PR>"`. El member se queda |
 | **Al soltar** | `soltar <key>` y `mover <key> <estado anterior>` |

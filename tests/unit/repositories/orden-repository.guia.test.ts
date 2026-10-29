@@ -189,7 +189,7 @@ describe("OrdenRepository.findEtiquetaByNumGuia (feature 32/R1/R3)", () => {
     });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const row = await repo.findEtiquetaByNumGuia(501);
+    const row = await repo.findEtiquetaByNumGuia(501, null);
 
     expect(row?.id).toBe("o1");
     expect(row?.numGuia).toBe(501);
@@ -205,7 +205,7 @@ describe("OrdenRepository.findEtiquetaByNumGuia (feature 32/R1/R3)", () => {
     orden.findFirst.mockResolvedValue(null);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findEtiquetaByNumGuia(501)).toBeNull();
+    expect(await repo.findEtiquetaByNumGuia(501, null)).toBeNull();
   });
 });
 
@@ -255,8 +255,8 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     orden.findMany.mockResolvedValue([fila]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    await repo.findEtiquetaByNumGuia(501);
-    await repo.findEtiquetasByIds(["o1"]);
+    await repo.findEtiquetaByNumGuia(501, null);
+    await repo.findEtiquetasByIds(["o1"], null);
 
     // Sin esta columna en la proyeccion el dato NO EXISTE en el camino al PDF: es
     // el estado exacto que la ficha 295 vino a arreglar.
@@ -277,7 +277,7 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     );
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const row = await repo.findEtiquetaByNumGuia(501);
+    const row = await repo.findEtiquetaByNumGuia(501, null);
 
     expect(row?.fechaCreacion).toBe("2026-08-25");
     expect(row?.fechaCreacion).not.toBe(
@@ -295,7 +295,7 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const rows = await repo.findEtiquetasByIds(["o1"]);
+    const rows = await repo.findEtiquetasByIds(["o1"], null);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].fechaCreacion).toBe("2026-08-25");

@@ -11,6 +11,7 @@ import OrdenesPage from "@/app/(app)/ordenes/page";
 import { ToastProvider } from "@/providers/ToastProvider";
 import { listarOrdenes } from "@/lib/actions/ordenes";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { resolverAlcanceEtiquetasOrden } from "@/lib/services/alcance-etiquetas-orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
 import type {
   ListarOrdenesResult,
@@ -81,8 +82,19 @@ vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));
 
+// SLT-49 (R14): la regla REAL por defecto; un caso la cambia una vez para probar que la página
+// DERIVA `puedeImprimirEtiquetasPropias` de ella y no repite una lista de roles.
+vi.mock("@/lib/services/alcance-etiquetas-orden", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/services/alcance-etiquetas-orden")>();
+  return {
+    ...real,
+    resolverAlcanceEtiquetasOrden: vi.fn(real.resolverAlcanceEtiquetasOrden),
+  };
+});
+
 const listarOrdenesMock = vi.mocked(listarOrdenes);
 const resolveActorMock = vi.mocked(resolveActorFromSession);
+const resolverAlcanceEtiquetasMock = vi.mocked(resolverAlcanceEtiquetasOrden);
 
 /** Construye un `OrdenListItemDTO` completo con overrides legibles por test. */
 function makeOrden(
@@ -652,5 +664,96 @@ describe("OrdenesPage", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
 
     fetchSpy.mockRestore();
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// SLT-49 (R14) — la página DERIVA `puedeImprimirEtiquetasPropias` de `resolverAlcanceEtiquetasOrden`.
+//
+// La prop no se ve directamente: se ve por lo que hace en el listado.
+//   · `true` (tienda): una fila de recogida con guía y NO eliminable se marca y ofrece
+//     «Imprimir etiquetas» —sin la prop, esa fila no llevaría a ningún botón—.
+//   · `false` (maestro/admin): una fila de recogida SIN guía conserva su casilla por sus acciones
+//     de flujo; con la prop encendida mostraría «Sin guía todavía» en su lugar.
+// -------------------------------------------------------------------------------------------
+describe("OrdenesPage — SLT-49: «Imprimir etiquetas» de la tienda sale de la regla de alcance", () => {
+  function servir(orden: OrdenListItemDTO) {
+    listarOrdenesMock.mockResolvedValue({
+      status: "ok",
+      items: [orden],
+      page: 1,
+      pageSize: 25,
+      total: 1,
+    });
+  }
+
+  it("R14 — adminTienda: la prop llega en `true` (marca su orden de recogida con guía e imprime)", async () => {
+    servir(
+      makeOrden({
+        id: "a",
+        numGuia: 5001,
+        numRemision: "REM-5001",
+        estatusValue: "por_recolectar_en_tienda",
+        eliminable: false,
+      }),
+    );
+    resolveActorMock.mockResolvedValueOnce({ usuarioId: "tienda-1", rol: RolValue.adminTienda });
+
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Seleccionar orden REM-5001" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Imprimir etiquetas" }),
+    ).toBeInTheDocument();
+  });
+
+  it("R14 — maestro y admin: la prop llega en `false` (la fila de recogida sin guía no dice «Sin guía todavía»)", async () => {
+    for (const rol of [RolValue.maestro, RolValue.admin]) {
+      servir(
+        makeOrden({
+          id: "s",
+          numGuia: null,
+          numRemision: "REM-SIN",
+          estatusValue: "por_recolectar_en_tienda",
+          eliminable: false,
+        }),
+      );
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol });
+
+      await renderPage();
+      expect(
+        await screen.findByRole("checkbox", { name: "Seleccionar orden REM-SIN" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: /Sin guía todavía/ })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("R14 — si la regla dijera `todas` para la tienda, la prop llega en `false` (la página no repite la lista)", async () => {
+    resolverAlcanceEtiquetasMock.mockReturnValueOnce({ alcance: "todas" });
+    servir(
+      makeOrden({
+        id: "a",
+        numGuia: 5002,
+        numRemision: "REM-5002",
+        estatusValue: "por_recolectar_en_tienda",
+        eliminable: false,
+      }),
+    );
+    resolveActorMock.mockResolvedValueOnce({ usuarioId: "tienda-1", rol: RolValue.adminTienda });
+
+    await renderPage();
+    await screen.findByText("5002");
+    expect(resolverAlcanceEtiquetasMock).toHaveBeenCalledWith({
+      usuarioId: "tienda-1",
+      rol: RolValue.adminTienda,
+    });
+    // Sin la prop, la fila no lleva a ningún botón: ni casilla ni «Imprimir etiquetas».
+    expect(
+      screen.queryByRole("checkbox", { name: "Seleccionar orden REM-5002" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /Imprimir etiquetas/ })).toBeNull();
   });
 });
