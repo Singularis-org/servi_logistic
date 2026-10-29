@@ -59,7 +59,7 @@
   `primerDestino` de cada rol igual que antes; R12: con todos los módulos apagados sigue) y
   `menu-visibility.test.ts`, `destino-post-login.test.ts`, `menu-modulos.test.ts` y la guardia
   `superadmin-fuera-de-empresa` en verde (R23).
-- [ ] **T7 [P] — `ConsumoDelPlan` y «Mi plan»** (design §6.2, §6.4). Depende de T3.
+- [x] **T7 [P] — `ConsumoDelPlan` y «Mi plan»** (design §6.2, §6.4). Depende de T3.
   `components/shared/ConsumoDelPlan.tsx`, `app/(app)/mi-plan/page.tsx` (`notFound()` si `forbidden`) y
   `_components/MiPlanModule.tsx`.
   *Hecho:* `tests/components/MiPlanModule.test.tsx` (R1, R6, R7, R11: sin botones ni formularios) y
