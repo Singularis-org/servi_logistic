@@ -151,4 +151,5 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D24 — El soporte de Trello y la aprobación F1.4 escrita no están en la plantilla
 - **Origen:** `chore/arnes-aprobacion-escrita` (2026-10-28). El soporte de Trello (PR #19 del proyecto) y la regla `mover <key> in_progress --aprobado-por-escrito "<cita>"` viven solo aquí.
 - **Qué falta:** subirlos a `singularis-co/harness_config` con `./scripts/arnes-sync.sh --subir`. Antes, `./scripts/arnes-sync.sh --aplicar` de los 19 cambios pendientes, resolviendo 6 conflictos (`docs/trello.md`, `scripts/trello.mjs`, `scripts/validate-features.mjs`, `tests/guards/guard-trello-cliente.test.ts`, `guard-trello-red.test.ts`, `guard-validador-tracker.test.ts`), y decidir qué hacer con `.claude/commands/tracker-connect.md` y `scripts/tracker.mjs`, que la plantilla no trae.
-- **Dueño:** leader (con Carlos Restrepo para aprobar el PR en la plantilla).
+- **Cerrada (2026-10-28):** subido por el PR #17 de la plantilla (tracker configurable, ya rebasado sobre `main` por merge y con la regla añadida), mergeado como arnés 2.8.0 (7779020). `arnes-sync` contra `main`: 61 iguales, 0 a bajar; `arnes.lock.json` al día. `tracker-connect.md` y `tracker.mjs` vienen en la plantilla.
+- **Dueño:** cerrada.
