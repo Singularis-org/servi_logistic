@@ -93,6 +93,9 @@ function correr(preparar: string): Resultado {
   writeFileSync(join(bin, 'pnpm'), `#!/usr/bin/env bash\necho "$*" >> "${aBash(log)}"\nexit 0\n`)
   writeFileSync(join(caso, 'package.json'), '{}\n')
   writeFileSync(join(caso, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
+  // El paso 2 ejecuta el verificador de dependencias por ruta relativa: va con el caso.
+  mkdirSync(join(caso, 'scripts'), { recursive: true })
+  writeFileSync(join(caso, 'scripts', 'verificar-dependencias.mjs'), readFileSync(join(RAIZ, 'scripts', 'verificar-dependencias.mjs'), 'utf8'))
 
   const prep = bash(`set -e\n${ENLAZAR}\n${preparar}`, caso)
   if (prep.status !== 0) throw new Error(`no se pudo preparar el caso: ${prep.stderr}`)

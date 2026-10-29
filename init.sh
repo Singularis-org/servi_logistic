@@ -185,7 +185,10 @@ if [ -f package.json ]; then
     echo "Instalando dependencias..."
     pnpm install --frozen-lockfile || fail "pnpm install --frozen-lockfile fallo"
   fi
-  ok "dependencias presentes"
+  # Mide lo declarado contra el arbol, no solo que exista la carpeta (ficha 420, 2026-09-11:
+  # `web-push` sin instalar y el gate en verde hasta el TS2307). Tambien con el enlace compartido.
+  DEPS=$(node scripts/verificar-dependencias.mjs) || fail "faltan dependencias declaradas (el detalle esta justo arriba)"
+  ok "dependencias: $DEPS"
 else
   warn "no hay package.json todavia (repo recien inicializado)"
 fi

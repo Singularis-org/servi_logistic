@@ -253,7 +253,7 @@ describe("guardia 420 — el verificador de dependencias", () => {
 // LIMITE DECLARADO: esto mide el paso 2 EN AISLAMIENTO. No prueba que el corte detenga al init.sh
 // completo -de eso responden `set -e` y el `exit 1` de `fail`-, ni cubre los demas pasos del gate.
 
-const MARCA_FIN = ">>> FIN PASO 2: DEPENDENCIAS (ficha 420) <<<";
+const MARCA_FIN = ">>> FIN PASO 2: DEPENDENCIAS <<<";
 
 /**
  * El paso 2 tal y como esta escrito hoy, precedido de todo lo que init.sh define antes de el.

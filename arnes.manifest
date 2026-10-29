@@ -23,6 +23,7 @@ docs/guia-de-uso.md
 docs/equipo.md
 docs/grafo-de-codigo.md
 scripts/validate-features.mjs
+scripts/verificar-dependencias.mjs
 scripts/tracker.mjs
 scripts/trello.mjs
 scripts/wt.sh

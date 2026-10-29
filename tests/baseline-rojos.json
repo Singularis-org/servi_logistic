@@ -48,10 +48,6 @@
     "repositorio se queda porque lo siguen usando `actualizar`/`borrar`."
   ],
   "archivos": {
-    "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
-      "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
-      "desde": "2026-10-21"
-    },
     "tests/integration/actions/analitica-financiera-action.test.ts": {
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"
