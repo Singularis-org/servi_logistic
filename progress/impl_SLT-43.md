@@ -380,3 +380,57 @@ nombra `nodo_geografico`, `tipo_nivel_geografico`, `ubicacion_snapshot` ni los t
   `dependencias-declaradas-presentes` (en el baseline; `init.sh` sin cambios en la rama) y
   `catalogo-postgres-acota-esquema` (**de SLT-43**: 7 consultas a catálogos sin esquema en los tests nuevos; se corrige
   en la tanda 7).
+
+## Tanda 7 — cierre (2026-10-29)
+
+- `catalogo-postgres-acota-esquema`: 9 consultas a catálogos de Postgres en 6 tests de SLT-43 acotadas a `public`
+  (commit `3b0dbfa`); aserciones sin cambios. Guardia 7/7.
+
+### Gate local (T7.1)
+- `./init.sh` (rápido, `NODE_OPTIONS=--max-old-space-size=8192`, `DATABASE_URL` → `logistic_slt43`): **no terminó**.
+  Llegó a typecheck (verde) y Claude Code lo mató por falta de memoria del sistema. No se relanzó.
+  Sustituto, como indica el leader: typecheck + lint + todas las guardias + tests nuevos de integración.
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0 (0 errores, 230 warnings preexistentes).
+- `pnpm run test:guardias`: 4 de 323 archivos rojos, ninguno de SLT-43:
+  - `tests/guards/migraciones-destructivas.guard.test.ts`: solo `20261028120000_modulo_wallet_nucleo` (ajena; la arregla
+    el leader en un PR aparte). No nombra ninguna `202610291*`.
+  - `dependencias-declaradas-presentes.guardia.test.ts`: en `tests/baseline-rojos.json`; `init.sh` sin cambios en la rama.
+  - `filtros-url-r25.test.ts` y `otp-debug-solo-en-pruebas.guardia.test.ts`: timeout (hook 60 s / test 20 s) por carga en
+    la corrida paralela; solos pasan 2/2 archivos. SLT-43 no toca nada de lo que miran.
+- Unit de SLT-43 + R39 (`migrate-deploy-guardas`, `slt43-migraciones-aditivas`, `historial-accion-entidades`,
+  `nodo-geografico-sin-escritor`): 4 archivos, 57/57.
+- Integración de SLT-43 contra `logistic_slt43`, `--no-file-parallelism` (los 9 `geo-*.test.ts`,
+  `migracion-slt43-ida-y-vuelta`, `carga-division`):
+
+  ```
+   Test Files  11 passed (11)
+        Tests  78 passed (78)
+     Duration  246.81s
+  ```
+
+### Mapa R<n> → test
+
+| R | Test |
+|---|---|
+| R1, R2, R3 | `tests/integration/db/geo-tipo-nivel.test.ts` (+ CASCADE de la enmienda T1.3) |
+| R4–R9 | `tests/integration/db/geo-nodo-invariantes.test.ts` |
+| R10 | `tests/integration/db/geo-normalizar-nombre.test.ts` |
+| R11 | `tests/integration/db/geo-nodo-invariantes.test.ts` |
+| R12 | `tests/integration/db/geo-nodo-rls.test.ts` (+ lado de tipos en `geo-tipo-nivel.test.ts`) |
+| R13, R14 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` |
+| R15–R18 | `tests/integration/db/geo-sincronia-geografia.test.ts` |
+| R19 | `tests/unit/db/slt43-migraciones-aditivas.test.ts` |
+| R20, R21 | `tests/integration/db/geo-sincronia-orden-zonas.test.ts` |
+| R22 | `tests/integration/db/geo-trigger-orden-rendimiento.test.ts` — mediana 0.00362 ms/fila (tope 1 ms) |
+| R23 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` y `tests/unit/types/historial-accion-entidades.test.ts` |
+| R24–R31, R33, R40 | `tests/integration/db/geo-backfill.test.ts` |
+| R32 | `tests/integration/db/geo-equivalencia.test.ts` |
+| R34, R35 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` |
+| R36 | Suites existentes: `geografia-*`, `pais-*`, `carga-division` (excepción aprobada), `migracion-sl20-ida-y-vuelta`, y las 141 de órdenes/zonas/cobertura/cierres de T4.5 (rojos: todos en baseline) |
+| R37 | `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` |
+| R38 | Retirado (2026-10-29). Sin test. |
+| R39 | `tests/unit/scripts/migrate-deploy-guardas.test.ts` (existente, sin cambios; verde) |
+
+T7.1 queda **abierta**: su «Hecho» pide `./init.sh` verde, que no se pudo completar en local (memoria) y que además
+sale rojo por la guardia de wallet hasta que entre el PR del leader. T7.2 es puerta humana.
