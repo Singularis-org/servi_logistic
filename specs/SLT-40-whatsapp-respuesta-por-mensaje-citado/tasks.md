@@ -40,7 +40,7 @@
     lleva `direccion: "saliente"`.
   - **Hecho:** typecheck verde con los fakes actualizados; tests del repositorio en verde.
 
-- [ ] **T4 — Service: paso nuevo en `ingerirEventos` y contador** (R4, R5, R6, R14–R18; depende de T1, T2, T3)
+- [x] **T4 — Service: paso nuevo en `ingerirEventos` y contador** (R4, R5, R6, R14–R18; depende de T1, T2, T3)
   - `lib/services/ChatWhatsappService.ts`: paso de design §4.2; `enrutadosPorCita` en
     `IngestaResumen`.
   - `lib/services/WebhookWhatsappService.ts`: `resumenVacio` y `sumar` con `enrutadosPorCita`.
