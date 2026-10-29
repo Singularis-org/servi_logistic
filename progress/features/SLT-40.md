@@ -23,6 +23,9 @@ opción recomendada. Tarjeta movida a «En curso» con la aprobación registrada
 
 ## Tandas
 - 2026-10-29 · F1.0 tomada (`2b79c69`) · F1.2 spec por `spec_author`.
+- 2026-10-29 · F2.1 tanda 1: T1 parser `context.id` (`12f0fee`) y T2 función de decisión
+  (`9b1cfec`) en paralelo; vitest related verde, typecheck verde con heap de 8 GB. El worktree no
+  traía `node_modules` (solo caché `.vite`): se enlazó por junction al del checkout principal.
 
 ## Modelos (overrides)
 

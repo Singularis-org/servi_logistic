@@ -29,7 +29,7 @@
     resultante = el asignado actual de la orden (R6).
   - **Hecho:** cada `R6–R12` tiene al menos un `it` con su número en el nombre.
 
-- [ ] **T3 — Repositorio: `findHiloDeSalienteCitado`** (R4, R7, R13; depende de T2 por `HiloCitado`)
+- [x] **T3 — Repositorio: `findHiloDeSalienteCitado`** (R4, R7, R13; depende de T2 por `HiloCitado`)
   - `lib/interfaces/repositories/IChatConversacionRepository.ts`: método nuevo.
   - `lib/repositories/ChatConversacionRepository.ts`: implementación con una consulta Prisma
     (design §3); `Pick` ampliado con `"chatMensaje"`.
