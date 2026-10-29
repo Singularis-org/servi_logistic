@@ -335,42 +335,6 @@ Proceso:
 Toda migración del repo trae su `down.sql`: las tres heredadas que no lo tenían lo recibieron en
 SL-10 (2026-10-21) y `./init.sh` corta si falta alguno.
 
-### Migraciones que pierden datos
-
-Antes de escribir una migración con `DROP TABLE`, `DROP COLUMN`, `DELETE`, `TRUNCATE`, `RENAME`
-(de tabla, columna o tipo) o `ALTER COLUMN … TYPE`, **para y pregunta al humano**: di qué se
-elimina y por qué. Si aprueba:
-
-1. Pon junto a `migration.sql` un `DESTRUCTIVA.md` con estas cinco líneas, todas con contenido:
-   ```
-   Feature: <key>
-   Qué se elimina: <tablas, columnas o filas, y cuántas en producción si se sabe>
-   Por qué: <motivo; por qué no basta una migración aditiva>
-   Backup: <cómo y cuándo se verificó que se puede restaurar>
-   Aprobó: <nombre del humano>, <AAAA-MM-DD>
-   ```
-2. La migración va en un PR propio. No se mezcla con migraciones aditivas.
-
-`DROP INDEX/TRIGGER/FUNCTION/CONSTRAINT/VIEW/POLICY` y `UPDATE` no lo exigen: no pierden datos o
-llenan columnas nuevas. Un `UPDATE` que sobrescribe una columna existente sí lo exige. Ese caso no
-lo detecta la guardia; lo detecta el `reviewer`.
-
-La guardia `tests/guards/migraciones-destructivas.guard.test.ts` corta el gate si falta el
-archivo o si tiene una línea vacía. Solo mira las migraciones posteriores a `20261027120000`
-(la última de `dev` al crear la regla): las anteriores ya están aplicadas y no se reescriben. Los
-`down.sql` no cuentan, porque revertir siempre es destructivo.
-
-Coste: una migración que pierde datos lleva una pregunta al humano y un archivo más. Las
-aditivas no cambian.
-
-#### Por qué
-
-2026-10-28. En la épica de geografía jerárquica (SLT-43 a SLT-48), producción ya tiene órdenes,
-tarifas y zonas, y el humano pidió no correr el riesgo de dañar o borrar datos. Las cinco
-primeras tarjetas son aditivas; SLT-48 es la única que borra, y tiene que llegar declarada,
-no por descuido. El build de `prod` aplica las migraciones solo (`scripts/migrate-deploy.ts`):
-lo que se mergea a `prod` se ejecuta sin que nadie lo vuelva a mirar.
-
 ## Dependencias de terceros
 
 **La regla.** Antes de escribir una utilidad (fechas, validación, parsing, decimales, colas,
