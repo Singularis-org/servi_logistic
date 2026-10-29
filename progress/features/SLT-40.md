@@ -26,6 +26,11 @@ opción recomendada. Tarjeta movida a «En curso» con la aprobación registrada
 - 2026-10-29 · F2.1 tanda 1: T1 parser `context.id` (`12f0fee`) y T2 función de decisión
   (`9b1cfec`) en paralelo; vitest related verde, typecheck verde con heap de 8 GB. El worktree no
   traía `node_modules` (solo caché `.vite`): se enlazó por junction al del checkout principal.
+- 2026-10-29 · tanda 2: T3 repositorio (`6dc7f26`), T4 service y contador + comentarios de T6
+  (`2ca2d5d`), T5 integración contra Postgres local, 5/5 verdes (`b986170`). Mapa R1–R18 en
+  `progress/impl_SLT-40.md`. `./init.sh` rápido: 2 rojos fuera del baseline ajenos al diff
+  (guardia `jobs-handler-por-tipo` y `procesar-jobs-modulos`, por el cliente de Prisma de `dev` en
+  el `node_modules` compartido; la rama está detrás de `origin/dev` desde `4d52232`). Pendiente F2.3.
 
 ## Modelos (overrides)
 

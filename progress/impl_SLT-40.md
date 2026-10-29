@@ -34,6 +34,19 @@ estado; solo contra la base se prueba un estado terminal). El aislamiento de R13
 (design §3 no filtra `organizacion_id` a mano); la capa de la extension del cliente no se prueba
 aqui.
 
+## Cierre T6 · `./init.sh` (rapido) · 2026-10-29
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: typecheck, lint (0 errores), Prisma,
+  validador y perfil en verde. `test:rapido`: `Test Files 2 failed | 40 passed | 3 skipped (45)` ·
+  `Tests 2 failed | 646 passed | 22 skipped (670)`; `✗ 'pnpm run test:rapido' fallo`.
+- Los 2 rojos, fuera del baseline, no son de este diff:
+  `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts` (`job_tipo` trae
+  `plan_cambios_vencidos` sin handler) y `tests/unit/cron/procesar-jobs-modulos.test.ts`.
+  Causa: el `node_modules` del worktree es un junction al del checkout principal (en `dev`), cuyo
+  cliente de Prisma se genero con el schema de `dev`, que ya trae la migracion
+  `20261028130400_plan_cambio_enums` (`4d52232`, SL-24). Esta rama esta detras de `origin/dev` y
+  no tiene ese handler. Se resuelve con la sincronizacion F2.3 (merge de `dev`), que pide el leader.
+- Todas las suites de SLT-40 en verde dentro de esa corrida. T6 queda abierta hasta el gate verde.
+
 ## Tandas T1-T3 · 2026-10-29 · backend_dev
 - T1 (`12f0fee`): `lib/types/whatsapp-webhook.ts` + U-parser. vitest related:
   `Test Files 5 passed | 1 skipped (6)` · `Tests 86 passed | 5 skipped (91)`.
