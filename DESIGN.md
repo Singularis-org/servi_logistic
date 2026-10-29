@@ -11,7 +11,7 @@ App UI que **sirve a la tarea** (no marketing). Objetivo: familiaridad ganada (L
 
 ## Color
 Única fuente: los tokens de `app/globals.css` (shadcn + marca). **NUNCA** hex sueltos ni utilidades ad-hoc (`emerald-600`, `text-[#065f46]`, `red-*`).
-- Marca: `--primary` (#f26419 naranja) para acción primaria/selección/estado; `--sidebar` (navy) para el chrome de navegación.
+- Marca (`docs/marca.md`): `--primary` (#111111 en claro, #FFD000 en oscuro) para acción primaria/selección/estado; `--sidebar` (#1C1C1A) para el chrome de navegación.
 - Semánticos: `--color-success`, `--color-danger`, `--color-warning`, `--color-info`. Todo indicador de estado (entregada/positivo, error, alerta, info) sale de acá.
 - **Tres roles por semántico** (no son intercambiables):
   - `-soft` (`--color-success-soft`, …) = **fondo** de chip/pill/alert. En dark el soft es demasiado claro: usar la técnica soft-badge `bg-{sem}/15`.

@@ -636,8 +636,8 @@ function NombreProducto({ children }: { readonly children: string }) {
  * sigue en proceso. Dos vocabularios de color en la misma pantalla —naranja significando una
  * cosa arriba y otra abajo— es exactamente lo que la ficha 292 arreglo en el monitoreo.
  *
- * ⚠ NI UN HEXADECIMAL: los tres tokens giran con el modo oscuro. Un `#0d2444` fijo, que es lo
- * que propone el mockup, desapareceria sobre fondo oscuro.
+ * ⚠ NI UN HEXADECIMAL: los tres tokens giran con el modo oscuro. Un HEX fijo, el azul de la marca
+ * anterior que proponia el mockup, desapareceria sobre fondo oscuro.
  *
  * Un tramo en CERO no pinta segmento (misma regla que la 258): un `<span>` de ancho 0 % es un
  * nodo invisible que ensucia el DOM sin decir nada.
