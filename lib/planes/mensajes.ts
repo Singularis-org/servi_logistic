@@ -129,13 +129,14 @@ type TopesDelPlanParaCorreo = {
   apiKeys: number | null;
 };
 
-const SIN_LIMITE = "sin límite";
+export const SIN_LIMITE = "sin límite";
 
 function limite(n: number | null | undefined): string {
   return n === null || n === undefined ? SIN_LIMITE : String(n);
 }
 
-function textoDelPrecio(p: PrecioPlan): string {
+/** El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58 R1, R13). */
+export function textoDelPrecio(p: PrecioPlan): string {
   if (p.tipo === "sin_precio") return "sin precio";
   if (p.tipo === "negociable") return "negociable";
   const mensual = `${p.mensual} al mes`;

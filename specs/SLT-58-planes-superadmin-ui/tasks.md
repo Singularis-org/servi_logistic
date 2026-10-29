@@ -7,7 +7,7 @@
 
 ## Tanda A — backend (backend_dev)
 
-- [ ] **T1 — Migración `plan_de_la_empresa`** (design §2). `migration.sql` a mano y `down.sql`.
+- [x] **T1 — Migración `plan_de_la_empresa`** (design §2). `migration.sql` a mano y `down.sql`.
   Antes, confirmar que `tests/integration/db/migracion-sl24-ida-y-vuelta.test.ts` no aplica migraciones
   posteriores a SL-24 (si las aplica, PARAR y preguntar antes de tocar ese test).
   *Hecho:* `pnpm run db:migrate` aplica; `tests/integration/db/plan-de-la-empresa.test.ts` en verde con
@@ -15,7 +15,7 @@
   `SELECT` a `plan` con `servi_app` `42501`; sin `avisos_al_programar` ni actor en la respuesta), R25
   (`provolatile = 's'`) y R26 (nombre en `pg_proc`; el `down.sql` dentro de una transacción la quita y
   el `ROLLBACK` la deja).
-- [ ] **T2 [P] — Lógica pura** (design §6.1). `inicioDelSiguienteCiclo` en `lib/planes/ciclo.ts`;
+- [x] **T2 [P] — Lógica pura** (design §6.1). `inicioDelSiguienteCiclo` en `lib/planes/ciclo.ts`;
   `lib/planes/consumo.ts` (`estadoDeLaFila`, `formatearConteo`, `filasDeConsumo`, `reinicioDelCiclo`);
   exportar `textoDelPrecio` y `SIN_LIMITE` de `lib/planes/mensajes.ts` sin cambiar su texto; tipos en
   `lib/types/consumo-plan.ts`.

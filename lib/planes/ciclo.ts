@@ -34,10 +34,24 @@ function sumarMeses(fecha: Date, meses: number): Date {
  * abril). Un `ahora` anterior al ancla da el ancla.
  */
 export function inicioDelCiclo(ancla: Date, ahora: Date): Date {
+  const meses = ciclosCumplidos(ancla, ahora);
+  return meses === 0 ? new Date(ancla.getTime()) : sumarMeses(ancla, meses);
+}
+
+/** El mayor `n ≥ 0` con `ancla + n meses ≤ ahora` (0 si `ahora` es anterior al ancla). */
+function ciclosCumplidos(ancla: Date, ahora: Date): number {
   let meses =
     (ahora.getUTCFullYear() - ancla.getUTCFullYear()) * 12 + (ahora.getUTCMonth() - ancla.getUTCMonth());
   if (meses > 0 && sumarMeses(ancla, meses).getTime() > ahora.getTime()) meses -= 1;
-  return meses <= 0 ? new Date(ancla.getTime()) : sumarMeses(ancla, meses);
+  return Math.max(meses, 0);
+}
+
+/**
+ * SLT-58 (design §6.1, R5) — inicio del ciclo siguiente: `ancla + (n+1) meses`. Se suma desde el ancla
+ * y no a partir de `inicioDelCiclo`: encadenar arrastraría el 28 de febrero a los meses siguientes.
+ */
+export function inicioDelSiguienteCiclo(ancla: Date, ahora: Date): Date {
+  return sumarMeses(ancla, ciclosCumplidos(ancla, ahora) + 1);
 }
 
 // P8 (cerrada el 2026-10-28): la fecha de un cambio programado rige desde las 00:00 de ese día en la
