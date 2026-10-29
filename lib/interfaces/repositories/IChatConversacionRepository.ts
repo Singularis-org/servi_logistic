@@ -27,6 +27,21 @@ export interface ResolucionOrdenEntrante {
   telefonoE164: string;
 }
 
+/**
+ * SLT-40: hilo al que pertenece el SALIENTE citado por un entrante, sin decidir nada. Lleva lo
+ * justo para que `decidirEnrutadoPorCita` aplique D1/D3/D4 sin volver a la base.
+ */
+export interface HiloCitado {
+  conversacionId: string;
+  ordenId: string;
+  /** Numero guardado en el hilo (`chat_conversacion.telefono_e164`). */
+  telefonoE164: string;
+  /** `orden.deleted_at IS NOT NULL`. */
+  ordenEliminada: boolean;
+  /** Mensajero asignado ACTUAL de la orden, no el guardado en el hilo (D4). */
+  ordenMensajeroAsignadoId: string | null;
+}
+
 /** Datos para el upsert del hilo (get-or-create por orden+numero, R13). */
 export interface UpsertHiloInput {
   ordenId: string;
