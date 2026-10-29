@@ -64,7 +64,7 @@
   `_components/MiPlanModule.tsx`.
   *Hecho:* `tests/components/MiPlanModule.test.tsx` (R1, R6, R7, R11: sin botones ni formularios) y
   `tests/integration/mi-plan-page.test.tsx` (R8: roles sin acceso y sin sesión → «no encontrado»).
-- [ ] **T8 [P] — «Planes» del superadmin** (design §6.3). Depende de T4.
+- [x] **T8 [P] — «Planes» del superadmin** (design §6.3). Depende de T4.
   `app/(app)/plataforma/planes/page.tsx`, `_components/PlanesModule.tsx`, `_components/PlanForm.tsx`,
   `[planId]/page.tsx`, `[planId]/_components/PlanDetalle.tsx`.
   *Hecho:* `tests/components/PlanesModule.test.tsx` (R13), `tests/components/PlanForm.test.tsx` (R14:
