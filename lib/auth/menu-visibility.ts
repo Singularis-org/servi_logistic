@@ -323,6 +323,14 @@ export const ROLES_HISTORIAL_ACCIONES = ["maestro"] as const satisfies readonly 
 export const ROLES_MI_BODEGA = ["adminSatelite"] as const satisfies readonly RolValue[];
 
 /**
+ * SLT-58 (design §3.1, R8, R10) — quién ve «Mi plan»: el `maestro` y el `admin` de una empresa. La
+ * leen el ítem del menú, el `notFound()` de `app/(app)/mi-plan/page.tsx` y `MiPlanService`, para que
+ * menú, página y servicio no diverjan (precedente `ROLES_HISTORIAL_ACCIONES`). El superadmin no está:
+ * no tiene empresa, y su vista del plan de una empresa es la del detalle de empresa.
+ */
+export const ROLES_MI_PLAN = ["maestro", "admin"] as const satisfies readonly RolValue[];
+
+/**
  * Fuente de verdad del menu. Vive en este modulo server-safe (NO en el
  * "use client" del Sidebar): un Server Component que importa un export de un
  * modulo cliente recibe una referencia-proxy, no el valor real, y `.filter`

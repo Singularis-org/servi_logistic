@@ -22,7 +22,7 @@
   *Hecho:* `tests/unit/planes/consumo.test.ts` (R1 precio, R2, R3, R4 con 79/99, 80/100, 99/100,
   100/100, 101/100, 0/0 y sin tope; R5) y los casos nuevos de `tests/unit/utils/ciclo-plan.test.ts`
   (ancla el 15 y el 31 de enero, a mitad de ciclo y a un minuto del cambio) en verde.
-- [ ] **T3 — «Mi plan»: repositorio y servicio** (design §3.1). Depende de T1 y T2.
+- [x] **T3 — «Mi plan»: repositorio y servicio** (design §3.1). Depende de T1 y T2.
   `ROLES_MI_PLAN` en `lib/auth/menu-visibility.ts` (solo la constante en esta task),
   `IMiPlanRepository`, `MiPlanRepository` (`$queryRaw` + zod, mapeo de `'Admin Tienda'`),
   `IMiPlanService`, `MiPlanService` (autorización primero; `diferenciasDelPlan` →
