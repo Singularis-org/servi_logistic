@@ -4,6 +4,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
   ChatConversacionDTO,
+  HiloCitado,
   IChatConversacionRepository,
   NoLeidosPorOrden,
   ResolucionOrdenEntrante,
@@ -12,11 +13,12 @@ import type {
 import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
 import { sqlNormalizarTelefonoCr } from "@/lib/utils/telefono-cr-sql";
 
-// Cliente Prisma minimo consumido: la tabla del hilo, la de orden (resolucion D4) y el
-// escape hatch de SQL crudo (`$queryRaw`) para normalizar el telefono en el matcheo.
+// Cliente Prisma minimo consumido: la tabla del hilo, la de orden (resolucion D4), la de
+// mensajes (SLT-40: hilo del saliente citado) y el escape hatch de SQL crudo (`$queryRaw`)
+// para normalizar el telefono en el matcheo.
 type ChatConversacionPrismaClient = Pick<
   PrismaClient,
-  "chatConversacion" | "orden" | "$queryRaw" | "$executeRaw"
+  "chatConversacion" | "chatMensaje" | "orden" | "$queryRaw" | "$executeRaw"
 >;
 
 // Fila cruda del matcheo por telefono normalizado (columnas snake_case de la tabla `orden`).
@@ -245,6 +247,35 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
             AND otro.telefono_e164 = ${despues}
         )
     `);
+  }
+
+  async findHiloDeSalienteCitado(waMessageId: string): Promise<HiloCitado | null> {
+    // SLT-40 (design §3). `direccion: "saliente"` deja fuera un id de ENTRANTE (R7). El filtro
+    // de empresa no va a mano: lo inyecta la extension del cliente y la RLS lo respalda, asi que
+    // un saliente de otra empresa con el mismo wamid devuelve null (R13). No mira
+    // `whatsapp_envio_entrega` (D2): un wamid de entrega automatica no esta aqui y da null.
+    const row = await this.prisma.chatMensaje.findFirst({
+      where: { waMessageId, direccion: "saliente" },
+      select: {
+        conversacion: {
+          select: {
+            id: true,
+            ordenId: true,
+            telefonoE164: true,
+            orden: { select: { deletedAt: true, mensajeroAsignadoId: true } },
+          },
+        },
+      },
+    });
+    if (row === null) return null;
+    const { conversacion } = row;
+    return {
+      conversacionId: conversacion.id,
+      ordenId: conversacion.ordenId,
+      telefonoE164: conversacion.telefonoE164,
+      ordenEliminada: conversacion.orden.deletedAt !== null,
+      ordenMensajeroAsignadoId: conversacion.orden.mensajeroAsignadoId,
+    };
   }
 
   async findById(id: string): Promise<ChatConversacionDTO | null> {

@@ -109,4 +109,13 @@ export interface IChatConversacionRepository {
    * `chat_conversacion`.
    */
   migrarTelefono(anterior: string, nuevo: string): Promise<number>;
+
+  /**
+   * SLT-40 (design §3, R4/R7/R13): el hilo del SALIENTE cuyo `wa_message_id` es `waMessageId`,
+   * o `null`. Solo lee: la decision la toma `decidirEnrutadoPorCita`.
+   *
+   * `null` cuando el id no esta en `chat_mensaje`, es de un ENTRANTE (R7) o es de otra empresa
+   * (R13: la extension del cliente pone `organizacion_id` y la RLS lo respalda).
+   */
+  findHiloDeSalienteCitado(waMessageId: string): Promise<HiloCitado | null>;
 }

@@ -41,6 +41,7 @@ function fakeConversacionRepo(
     contarNoLeidosPorMensajero: vi.fn(async () => []),
     marcarLeidoHastaUltimoEntrante: vi.fn(async () => {}),
     migrarTelefono: vi.fn(async () => 1),
+    findHiloDeSalienteCitado: vi.fn(async () => null),
     ...over,
   };
 }
