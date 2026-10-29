@@ -3,7 +3,7 @@ import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "l
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SIN_LINEAS_DE_CAMBIO, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
+import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
 import type { EstadoFila, FilaConsumo, PlanConConsumo, ReinicioDelCiclo } from "@/lib/types/consumo-plan";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,7 @@ const TEXTOS = {
   lleno: "Lleno",
   reinicio: ({ dias, fecha }: ReinicioDelCiclo) =>
     `Se reinicia en ${dias} ${dias === 1 ? "día" : "días"} (${fecha})`,
-  cambioPendiente: (fecha: string) => `Cambio programado desde ${fecha}`,
+  cambioPendiente: textoCambioProgramado,
 } as const;
 
 export interface ConsumoDelPlanProps {

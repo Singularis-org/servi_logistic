@@ -110,6 +110,14 @@ export function mensajeCambioCancelado(planNombre: string, fecha: string): strin
   return `El cambio del plan ${planNombre} previsto para ${fecha} se canceló; tu plan sigue igual.`;
 }
 
+/**
+ * Decisiones cerradas («Texto del cambio programado») y design §6.5: el mismo texto para el cambio
+ * pendiente en todas las pantallas (la empresa, el detalle de la empresa y el detalle del plan).
+ */
+export function textoCambioProgramado(fecha: string): string {
+  return `Cambio programado desde ${fecha}`;
+}
+
 export const TITULO_LINEAS_DE_CAMBIO = "Esto es lo que cambia:";
 /** Un reemplazo por la versión vigente: hay correo (reemplaza al previsto), pero nada que listar. */
 export const SIN_LINEAS_DE_CAMBIO = "El plan queda igual que el actual.";

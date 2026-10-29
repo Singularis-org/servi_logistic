@@ -20,9 +20,11 @@ import {
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
+import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import type { PlanDeEmpresaVista, PlanDTO, PlanResult } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
+import { lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
 
 /** Textos de la sección, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
@@ -43,7 +45,16 @@ const TEXTOS = {
   confirmarTitulo: "¿Cambiar el plan de esta empresa?",
   confirmarTexto: (actual: string, nuevo: string) =>
     `La empresa pasa de «${actual}» a «${nuevo}». Sus topes y módulos cambian en cuanto confirmes.`,
-  sinComparacion: "No se pudo leer el plan actual para comparar: no se puede mostrar qué cambia.",
+  /** Decisión del 2026-10-29: sin el plan actual no hay resumen, y sin resumen no se confirma. */
+  actualNoSeCargo: "No se pudo cargar el plan actual",
+  reintentar: "Reintentar",
+  /** Primera asignación (decisión del 2026-10-29): el mismo modal, con lo que tendrá la empresa. */
+  primeraTitulo: "¿Asignar este plan a la empresa?",
+  primeraTexto: (plan: string, empresa: string) => `Asignar ${plan} a ${empresa}: desde ahora tendrá:`,
+  primeraLista: "Lo que tendrá la empresa",
+  modulosIncluidos: (modulos: string) => `Módulos incluidos: ${modulos}`,
+  sinModulos: "Ninguno",
+  cicloEmpiezaHoy: "El ciclo de órdenes empieza hoy.",
   volver: "Volver",
   historial: "Historial de asignaciones",
   sinHistorial: "Esta empresa todavía no tiene asignaciones de plan.",
@@ -65,6 +76,8 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
 
 export interface PlanEmpresaProps {
   organizacionId: string;
+  /** El nombre de la empresa, para la confirmación de la primera asignación. */
+  empresaNombre: string;
   /** La lectura del plan de la empresa; `null` = la lectura falló (la sección lo dice y no tumba la página). */
   vista: PlanDeEmpresaVista | null;
   /** Lo que devolvió `listarPlanesAsignablesAction`; `null` = no se pudo leer. */
@@ -72,7 +85,7 @@ export interface PlanEmpresaProps {
   /**
    * La versión vigente del plan actual como `PlanDTO`, para resumir qué cambia antes de confirmar
    * (decisión cerrada del 2026-10-29). Si no llega, se busca entre los asignables; `null` = no se pudo
-   * leer, y la confirmación lo dice sin inventar el resumen.
+   * leer, y la confirmación lo dice y no deja confirmar: solo «Reintentar» (relee) y «Volver».
    */
   planActual?: PlanDTO | null;
   /** `asignarPlanAction`, inyectada desde la página para poder probarla. */
@@ -92,7 +105,14 @@ function fechaHoraPlataforma(iso: string): string {
  * asignaciones. Tras un `ok` relee la página (`router.refresh()`); ante un rechazo lo explica y no da
  * el cambio por hecho: la empresa sigue con su plan.
  */
-export function PlanEmpresa({ organizacionId, vista, asignables, planActual, asignarPlan }: PlanEmpresaProps) {
+export function PlanEmpresa({
+  organizacionId,
+  empresaNombre,
+  vista,
+  asignables,
+  planActual,
+  asignarPlan,
+}: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
   const campoId = useId();
@@ -138,22 +158,29 @@ export function PlanEmpresa({ organizacionId, vista, asignables, planActual, asi
     return lineasDeCambioDelPlan(diferenciasDelPlan(actual, elegido) as CambioDelPlanParaCorreo);
   }, [actual, elegido]);
 
+  // Primera asignación (decisión del 2026-10-29): lo que tendrá la empresa con el plan elegido. Los
+  // topes con `lineasDeTopes` (los mismos textos que el catálogo; lo que no tiene tope, «sin límite»).
+  const lineasDePrimera = useMemo(() => {
+    if (elegido === null) return null;
+    const modulos = elegido.modulos.length === 0 ? TEXTOS.sinModulos : elegido.modulos.map(nombreDelModulo).join(", ");
+    return [...lineasDeTopes(elegido.topes), TEXTOS.modulosIncluidos(modulos)];
+  }, [elegido]);
+
   /**
-   * Con plan, «Cambiar plan» pide confirmación con el resumen. Sin plan no: la decisión cubre el
-   * cambio de un plan a otro, y sin un plan anterior no hay `PlanDTO` contra el que comparar.
+   * «Cambiar plan» y «Asignar plan» piden confirmación (decisiones del 2026-10-29): la primera con qué
+   * cambia, la segunda con lo que tendrá la empresa. La action solo se llama desde el modal.
    */
   function pulsar() {
     if (planId === "" || enVuelo) return;
-    if (vista?.plan) {
-      setRechazo(null);
-      setConfirmando(true);
-      return;
-    }
-    void asignar();
+    setRechazo(null);
+    setConfirmando(true);
   }
 
+  /** Con el plan actual ilegible no hay resumen: se ofrece releer la página, nunca confirmar. */
+  const sinResumen = Boolean(vista?.plan) && lineasDeCambio === null;
+
   async function asignar() {
-    if (planId === "" || enVuelo) return;
+    if (planId === "" || enVuelo || sinResumen) return;
     setEnVuelo(true);
     setRechazo(null);
     setErrorDeCampo(undefined);
@@ -266,30 +293,67 @@ export function PlanEmpresa({ organizacionId, vista, asignables, planActual, asi
       )}
 
       {vista?.plan && elegido !== null ? (
+        sinResumen ? (
+          // Decisión del 2026-10-29: sin el resumen no se confirma. «Reintentar» relee la página y el
+          // modal sigue abierto: si la lectura vuelve, el resumen aparece en su sitio.
+          <Modal
+            open={confirmando}
+            onOpenChange={setConfirmando}
+            title={TEXTOS.confirmarTitulo}
+            confirmLabel={TEXTOS.reintentar}
+            cancelLabel={TEXTOS.volver}
+            closeOnConfirm={false}
+            size="md"
+            onConfirm={() => router.refresh()}
+          >
+            <AvisoDeError>{TEXTOS.actualNoSeCargo}</AvisoDeError>
+          </Modal>
+        ) : (
+          <Modal
+            open={confirmando}
+            onOpenChange={setConfirmando}
+            title={TEXTOS.confirmarTitulo}
+            description={TEXTOS.confirmarTexto(vista.plan.nombre, elegido.nombre)}
+            confirmLabel={TEXTOS.cambiar}
+            cancelLabel={TEXTOS.volver}
+            size="md"
+            onConfirm={() => asignar()}
+          >
+            {lineasDeCambio === null || lineasDeCambio.length === 0 ? (
+              <p className="text-sm">{SIN_LINEAS_DE_CAMBIO}</p>
+            ) : (
+              <div className="flex flex-col gap-2 text-sm">
+                <p>{TITULO_LINEAS_DE_CAMBIO}</p>
+                <ul aria-label={TITULO_LINEAS_DE_CAMBIO} className="flex list-disc flex-col gap-1 pl-5">
+                  {lineasDeCambio.map((linea) => (
+                    <li key={linea}>{linea}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Modal>
+        )
+      ) : null}
+
+      {vista && vista.plan === null && elegido !== null && lineasDePrimera !== null ? (
         <Modal
           open={confirmando}
           onOpenChange={setConfirmando}
-          title={TEXTOS.confirmarTitulo}
-          description={TEXTOS.confirmarTexto(vista.plan.nombre, elegido.nombre)}
-          confirmLabel={TEXTOS.cambiar}
+          title={TEXTOS.primeraTitulo}
+          description={TEXTOS.primeraTexto(elegido.nombre, empresaNombre)}
+          confirmLabel={TEXTOS.asignar}
           cancelLabel={TEXTOS.volver}
           size="md"
           onConfirm={() => asignar()}
         >
-          {lineasDeCambio === null ? (
-            <p className="text-sm">{TEXTOS.sinComparacion}</p>
-          ) : lineasDeCambio.length === 0 ? (
-            <p className="text-sm">{SIN_LINEAS_DE_CAMBIO}</p>
-          ) : (
-            <div className="flex flex-col gap-2 text-sm">
-              <p>{TITULO_LINEAS_DE_CAMBIO}</p>
-              <ul aria-label={TITULO_LINEAS_DE_CAMBIO} className="flex list-disc flex-col gap-1 pl-5">
-                {lineasDeCambio.map((linea) => (
-                  <li key={linea}>{linea}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className="flex flex-col gap-2 text-sm">
+            <ul aria-label={TEXTOS.primeraLista} className="flex list-disc flex-col gap-1 pl-5">
+              {lineasDePrimera.map((linea) => (
+                <li key={linea}>{linea}</li>
+              ))}
+            </ul>
+            <p>{TEXTOS.cicloEmpiezaHoy}</p>
+          </div>
         </Modal>
       ) : null}
     </section>

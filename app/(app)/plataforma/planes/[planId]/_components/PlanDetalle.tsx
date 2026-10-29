@@ -18,6 +18,7 @@ import {
   lineasDeCambioDelPlan,
   mensajeTopesPasados,
   SIN_LINEAS_DE_CAMBIO,
+  textoCambioProgramado,
   textoDelPrecio,
   TITULO_LINEAS_DE_CAMBIO,
 } from "@/lib/planes/mensajes";
@@ -74,12 +75,15 @@ const TEXTOS = {
   confirmarCancelarBoton: "Cancelar cambio",
   volverAtras: "Volver",
   guardadoInmediato: "Cambios guardados.",
-  guardadoProgramado: (fecha: string) => `Cambio programado desde ${fecha}.`,
+  guardadoProgramado: (fecha: string) => `${textoCambioProgramado(fecha)}.`,
   sinCambios: "No había nada que cambiar.",
   archivado: "Plan archivado.",
   cancelado: "Cambio programado cancelado.",
   avisosTitulo: "Estas empresas ya pasan un tope del plan guardado:",
   creadoCon: "Alta del plan",
+  /** Texto único del cambio pendiente (Decisiones cerradas, design §6.5). */
+  cambioProgramado: textoCambioProgramado,
+  /** Solo el rastro: una fila que fija la vigencia de un cambio, no la sección del pendiente. */
   rigeDesde: (fecha: string) => `Rige desde ${fecha}`,
   reemplaza: (antes: string, despues: string) => `Reemplaza al previsto para ${antes}; rige desde ${despues}`,
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
@@ -254,7 +258,7 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
           <p className="text-sm text-muted-foreground">{TEXTOS.sinPendiente}</p>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="font-medium">{TEXTOS.rigeDesde(pendiente.vigenteDesde)}</p>
+            <p className="font-medium">{TEXTOS.cambioProgramado(pendiente.vigenteDesde)}</p>
             {pendiente.lineas.length === 0 ? (
               <p>{SIN_LINEAS_DE_CAMBIO}</p>
             ) : (

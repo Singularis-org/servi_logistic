@@ -325,8 +325,11 @@ En un `TEXTOS` por pantalla (patrón de `EmpresaDetallePage`), salvo los que ya 
 | `cerca` / `lleno` | «Cerca del tope» / «Lleno» |
 | `sinLimite` | «sin límite» (el `SIN_LIMITE` de `mensajes.ts`, exportado) |
 | `reinicio` | «Se reinicia en {n} días ({fecha})», «en 1 día» en singular |
-| `cambioPendiente` | «Cambio programado desde {fecha}» + `TITULO_LINEAS_DE_CAMBIO` |
+| `cambioPendiente` (el mismo texto en todas las pantallas, también en el detalle del plan; decisión del humano del 2026-10-29) | «Cambio programado desde {fecha}» + `TITULO_LINEAS_DE_CAMBIO` (el mismo texto en todas las pantallas, también en el detalle del plan; decisión del humano del 2026-10-29) |
 | rechazos | `forbidden` «No tienes permiso para esto.»; `not_found` «El plan o la empresa ya no existe.»; `archivado` «El plan está archivado.»; `custom_de_otra_empresa` «Ese plan es de otra empresa.»; `sin_cambio_programado` «El plan ya no tiene un cambio pendiente.»; `tope_excedido` → su `mensaje` |
+| `precioConMonto` | «Con monto» (opción del precio en el formulario; aprobado por el humano el 2026-10-29) |
+| `programar` | «Programar cambio» (botón de guardar del formulario cuando se elige «A partir de»; aprobado el 2026-10-29) |
+| `reintentar` | «Reintentar» (al fallar el catálogo de planes y al fallar la lectura del plan actual en el modal de «Cambiar plan»; aprobado el 2026-10-29) |
 
 ## 7. Datos que dependen del país
 

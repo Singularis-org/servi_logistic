@@ -203,3 +203,23 @@ El humano decidió corregir los 28 hallazgos y que «Cambiar plan» pida confirm
   - Cuando no se puede leer el plan actual, el modal lo avisa y deja confirmar igualmente.
   - «Asignar plan» sin plan previo se aplica sin modal, porque no hay nada con qué compararlo.
 - Salida final: `vitest run` de los 9 archivos de test de las pantallas (ConsumoDelPlan, MiPlanModule, mi-plan-page, PlanesModule, PlanForm, plataforma-planes-page, PlanDetalle, PlanEmpresa, plataforma-empresa-detalle-page) da 9 archivos y 138 tests en verde. `tsc --noEmit` y eslint en verde.
+
+## Decisiones del humano tras la tanda de diseño (2026-10-29)
+Las cuatro filas están en `requirements.md > Decisiones cerradas` y los textos aprobados en la tabla de `design.md §6.5`.
+1. **Un solo texto: «Cambio programado desde <fecha>».**
+   - Sale de `textoCambioProgramado` (en `lib/planes/mensajes.ts`), que usan `ConsumoDelPlan` y `PlanDetalle`.
+   - El rastro conserva «Rige desde» porque ahí describe otra cosa: el cambio de fecha dentro del historial.
+   - Test: `PlanDetalle.test.tsx`, caso R16.
+2. **Si no se puede leer el plan actual, no se deja confirmar.**
+   - El modal muestra «No se pudo cargar el plan actual» y solo ofrece «Volver» y «Reintentar».
+   - Tests en `PlanEmpresa.test.tsx`: sin botón de confirmar ni llamada a la action; «Reintentar» relee la página; «Volver» cierra.
+3. **La primera asignación también se confirma en un modal.**
+   - Texto: «Asignar <plan> a <empresa>: desde ahora tendrá:». Debajo van los topes, que salen de `lineasDeTopes` (con «sin límite» cuando no hay tope), los módulos incluidos y el aviso «El ciclo de órdenes empieza hoy.».
+   - `page.tsx` pasa el nombre de la empresa en `empresaNombre`.
+   - Tests: en `PlanEmpresa.test.tsx`, las líneas exactas, el caso sin módulos, «Volver» y confirmar. En `plataforma-empresa-detalle-page.test.tsx`, un caso nuevo.
+   - Pendiente de que el humano apruebe dos textos: el título del modal («¿Asignar este plan a la empresa?») y la frase del aviso del ciclo.
+4. **Textos aprobados:** «Con monto», «Programar cambio» y «Reintentar».
+- **Salida:**
+  - `PlanDetalle`, `plataforma-planes-page`, `MiPlanModule` y `ConsumoDelPlan`: 4 archivos y 53 tests en verde.
+  - `PlanEmpresa`, `plataforma-empresa-detalle-page` y `ConsumoDelPlan`: 3 archivos y 59 tests en verde.
+  - Typecheck y eslint en verde.

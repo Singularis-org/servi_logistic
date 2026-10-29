@@ -7,6 +7,7 @@
 // con sus 8 nombres y sin control.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RolValue } from "@prisma/client";
 
 import { MODULOS_APAGABLES, NUCLEO, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
@@ -268,6 +269,21 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
 
     expect(within(screen.getByRole("region", { name: "Plan" })).getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
+  });
+
+  it("R20: la primera asignación confirma con el nombre de la empresa que la página ya leyó", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    asignablesMock.mockResolvedValue({ estado: "ok", planes: [{ ...ACTUAL_DTO, nombre: "Básico" }] });
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Asignar Básico a Envíos Norte: desde ahora tendrá:");
+    expect(asignarMock).not.toHaveBeenCalled();
   });
 
   it("R19: un rol de empresa no lee el plan (notFound antes de leer)", async () => {

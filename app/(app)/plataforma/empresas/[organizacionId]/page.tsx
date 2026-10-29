@@ -111,6 +111,7 @@ export default async function EmpresaDetallePage({
 
         <PlanEmpresa
           organizacionId={empresa.organizacionId}
+          empresaNombre={empresa.nombre}
           vista={plan}
           asignables={asignables}
           planActual={planActual}

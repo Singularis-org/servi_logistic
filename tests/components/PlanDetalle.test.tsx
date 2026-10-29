@@ -109,9 +109,9 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
   it("R16: el cambio pendiente con su fecha y una línea por cosa que cambia", () => {
     montar();
     const pendiente = seccion("Cambio programado");
-    // Bajo el encabezado «Cambio programado», el párrafo no lo repite: dice desde cuándo rige.
-    expect(within(pendiente).getByText("Rige desde 2030-01-15")).toBeInTheDocument();
-    expect(within(pendiente).queryByText(/Cambio programado desde/)).toBeNull();
+    // Texto único del cambio programado en todas las pantallas (Decisiones cerradas, design §6.5).
+    expect(within(pendiente).getByText("Cambio programado desde 2030-01-15")).toBeInTheDocument();
+    expect(within(pendiente).queryByText(/Rige desde/)).toBeNull();
     expect(within(pendiente).getByText("Esto es lo que cambia:")).toBeInTheDocument();
     expect(within(pendiente).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Órdenes por ciclo: 3000 → 5000",

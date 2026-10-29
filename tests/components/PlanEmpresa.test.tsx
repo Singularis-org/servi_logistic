@@ -105,6 +105,7 @@ function montar({
     <ToastProvider>
       <PlanEmpresa
         organizacionId={ORG}
+        empresaNombre="Envíos Norte"
         vista={v}
         asignables={asignables}
         planActual={planActual}
@@ -385,27 +386,48 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     );
   });
 
-  it("R20: si no se pudo leer el plan actual, el modal lo dice en lugar de inventar el resumen", async () => {
+  it("R20: si no se pudo leer el plan actual, el modal lo dice y no deja confirmar: solo «Reintentar» y «Volver»", async () => {
     const user = userEvent.setup();
-    montar({ asignables: [PUBLICO], planActual: null });
+    const asignar = montar({ asignables: [PUBLICO], planActual: null });
 
     await elegir(user, "Básico (Público)");
     await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
 
     const modal = await screen.findByRole("dialog");
-    expect(modal).toHaveTextContent("No se pudo leer el plan actual para comparar: no se puede mostrar qué cambia.");
+    const aviso = within(modal).getByRole("alert");
+    expect(aviso).toHaveTextContent("No se pudo cargar el plan actual");
+    esAlertDestructivo(aviso);
     expect(within(modal).queryByRole("list")).toBeNull();
+    expect(within(modal).getAllByRole("button").map((b) => b.textContent)).toEqual(["Volver", "Reintentar"]);
+    expect(within(modal).queryByRole("button", { name: "Cambiar plan" })).toBeNull();
+    expect(asignar).not.toHaveBeenCalled();
   });
 
-  it("R20: sin plan, «Asignar plan» asigna sin modal (no hay plan anterior contra el que comparar)", async () => {
+  it("R20: con el plan actual ilegible, «Reintentar» relee la página y no llama a asignarPlanAction", async () => {
     const user = userEvent.setup();
-    const asignar = montar({ v: vista({ plan: null }) });
+    const asignar = montar({ asignables: [PUBLICO], planActual: null });
 
     await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Reintentar" }));
 
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(asignar).not.toHaveBeenCalled();
+    // Sigue abierto: si la lectura vuelve, el resumen aparece en su sitio.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("R20: con el plan actual ilegible, «Volver» cierra sin llamar a asignarPlanAction", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ asignables: [PUBLICO], planActual: null });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(asignar).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("R20: mientras la action corre, el botón muestra el estado de carga (`loading`)", async () => {
@@ -418,8 +440,11 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
 
     await elegir(user, "Básico (Público)");
     await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Asignar plan" }));
 
-    const boton = screen.getByRole("button", { name: /Asignar plan/ });
+    // Con el modal abierto el resto de la página queda `aria-hidden`: el botón de la sección se busca igual.
+    const seccion = screen.getByRole("region", { name: "Plan", hidden: true });
+    const boton = within(seccion).getByRole("button", { name: /Asignar plan/, hidden: true });
     expect(boton).toHaveAttribute("aria-busy", "true");
     expect(boton).toBeDisabled();
     resolver(OK);
@@ -432,5 +457,70 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     expect(screen.getByText("No hay otros planes que asignar a esta empresa.")).toHaveClass("text-muted-foreground");
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: "Cambiar plan" })).toBeNull();
+  });
+});
+
+describe("SLT-58 R20 — la primera asignación también pide confirmación (decisión cerrada del 2026-10-29)", () => {
+  const SIN_PLAN = () => vista({ plan: null });
+
+  it("R20: el modal dice «Asignar <plan> a <empresa>», cada tope (con «sin límite»), los módulos y que el ciclo empieza hoy", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: SIN_PLAN() });
+
+    await elegir(user, "Enterprise Norte (Custom)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+    const modal = await screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+    expect(modal).toHaveTextContent("Asignar Enterprise Norte a Envíos Norte: desde ahora tendrá:");
+    const lineas = within(modal).getByRole("list", { name: "Lo que tendrá la empresa" });
+    expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Órdenes por ciclo: 5.000",
+      "Usuarios activos con el rol Maestro: sin límite",
+      "Usuarios activos con el rol Administrador: sin límite",
+      "Usuarios activos con el rol Mensajero: 10",
+      "Usuarios activos con el rol Admin de tienda: sin límite",
+      "Usuarios activos con el rol Admin satélite: sin límite",
+      "API keys activas: 2",
+      "Módulos incluidos: Analítica, Monitoreo",
+    ]);
+    expect(modal).toHaveTextContent("El ciclo de órdenes empieza hoy.");
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it("R20: un plan sin módulos lo dice («Ninguno»)", async () => {
+    const user = userEvent.setup();
+    montar({ v: SIN_PLAN() });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+    const lineas = within(await screen.findByRole("dialog")).getByRole("list", { name: "Lo que tendrá la empresa" });
+    expect(lineas).toHaveTextContent("Órdenes por ciclo: sin límite");
+    expect(lineas).toHaveTextContent("Módulos incluidos: Ninguno");
+  });
+
+  it("R20: «Volver» cierra el modal sin llamar a asignarPlanAction", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: SIN_PLAN() });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it("R20: confirmar sí llama a asignarPlanAction con la elección y relee la página", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: SIN_PLAN() });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Asignar plan" }));
+
+    expect(asignar).toHaveBeenCalledTimes(1);
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
