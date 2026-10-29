@@ -59,6 +59,9 @@ aqui.
     sesiones previas).
   - La evidencia de B1 es el job `e2e (aislamiento)` de CI en el PR, que corre ese mismo spec.
     Su resultado se anota aqui antes del merge.
+  - **Resultado (2026-10-29):** `e2e (aislamiento)` en verde en el PR #41 (run `40943574265`, tras
+    sincronizar con `dev` en `c64d992`), junto con `gate-completo`, los tres shards de vitest y los
+    demás proyectos E2E. B1 cerrado.
 
 ## Tandas T1-T3 · 2026-10-29 · backend_dev
 - T1 (`12f0fee`): `lib/types/whatsapp-webhook.ts` + U-parser. vitest related:

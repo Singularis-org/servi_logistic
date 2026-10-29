@@ -31,6 +31,10 @@ opción recomendada. Tarjeta movida a «En curso» con la aprobación registrada
   `progress/impl_SLT-40.md`. `./init.sh` rápido: 2 rojos fuera del baseline ajenos al diff
   (guardia `jobs-handler-por-tipo` y `procesar-jobs-modulos`, por el cliente de Prisma de `dev` en
   el `node_modules` compartido; la rama está detrás de `origin/dev` desde `4d52232`). Pendiente F2.3.
+- 2026-10-29 · F2.3 merge `origin/dev` (`578e2d3`), review (B1, B2 bloqueantes), T6 cerrada con
+  `./init.sh` verde. PR #41. `gate-completo` rojo por la guardia de migraciones destructivas de
+  `dev` (ajena al diff); el humano la retira (PR #43). Sync con `dev` (`c64d992`): CI completo
+  verde, `e2e (aislamiento)` incluido (B1 cerrado). Listo para merge humano.
 
 ## Modelos (overrides)
 
