@@ -22,18 +22,32 @@ function rutaCaptura(nombre: string): string {
 /* 1 · R3 — ninguna captura es la de la marca anterior, byte a byte           */
 /* -------------------------------------------------------------------------- */
 
-/** SHA-256 de las tres capturas tal como estaban en `dev` antes de SL-9 (medidas en T1). */
-const HUELLAS_MARCA_ANTERIOR: Record<(typeof CAPTURAS)[number], string> = {
-  "inicio-narrow.png": "aa0f6826301706c9059611da3f80358ee0d100f7c858a5b4994a20c40c81f2bb",
-  "ingreso-narrow.png": "79cba346f3ac7fd8f93846af85d5460c76e66957f3910e4e8bc6719419d0a0e9",
-  "inicio-wide.png": "4ca3d4adfd3ac62d51b76a79a6ea7dd6b1ca2cb6a89be7e74acbfd7c3b7cfc0a",
+/**
+ * SHA-256 de las capturas que ya no valen, por archivo:
+ *  1. las de `dev` antes de SL-9 (marca anterior, medidas en SL-9 T1);
+ *  2. las que generó SL-9 (`progress/impl_SL-9.md > T4 — Corrida`), con la paleta de gráficas y
+ *     los grises de antes de SL-33 (SL-33, R15 y D11). Verificadas contra el padre de `b8d4848`.
+ */
+const HUELLAS_PROHIBIDAS: Record<(typeof CAPTURAS)[number], readonly string[]> = {
+  "inicio-narrow.png": [
+    "aa0f6826301706c9059611da3f80358ee0d100f7c858a5b4994a20c40c81f2bb",
+    "2452d0280ed0e74157e37432c0fcffd36f23d65e7bf0b5abaa2a767a623f42cb",
+  ],
+  "ingreso-narrow.png": [
+    "79cba346f3ac7fd8f93846af85d5460c76e66957f3910e4e8bc6719419d0a0e9",
+    "e357545c3fa624e10e558f80e0375abb3369fe9f8a5bfe24bd7b02b6fa3c0dad",
+  ],
+  "inicio-wide.png": [
+    "4ca3d4adfd3ac62d51b76a79a6ea7dd6b1ca2cb6a89be7e74acbfd7c3b7cfc0a",
+    "01c048093a2a554f07e1bd419af86c6797d9fe637e8cc6dd6cf50dc6bda1e3cf",
+  ],
 };
 
-describe("marca · capturas de la PWA · huellas (R3)", () => {
-  it.each(CAPTURAS)("%s no es la captura de la marca anterior", (nombre) => {
+describe("marca · capturas de la PWA · huellas (R3; SL-33 R15)", () => {
+  it.each(CAPTURAS)("%s no es una captura anterior (marca vieja ni la de SL-9)", (nombre) => {
     const sha = crypto.createHash("sha256").update(fs.readFileSync(rutaCaptura(nombre))).digest("hex");
-    expect(sha, `${nombre} sigue siendo la captura de la marca anterior`).not.toBe(
-      HUELLAS_MARCA_ANTERIOR[nombre],
+    expect(HUELLAS_PROHIBIDAS[nombre], `${nombre} sigue siendo una captura anterior`).not.toContain(
+      sha,
     );
   });
 });

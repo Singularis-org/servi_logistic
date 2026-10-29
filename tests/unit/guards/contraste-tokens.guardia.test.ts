@@ -668,7 +668,7 @@ describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover
  * seis superficies, en los dos temas (SL-8, R19). Re-medido el 2026-10-22: 16.70 en claro (sobre
  * `--secondary`; 17.31 sobre `stone-100` desde SL-33) y 10.68 en oscuro (sobre
  * `--muted`/`--secondary`). Dato, no contrato: con la
- * paleta nueva `ring-ring/50` llegaría a 3.44 / 3.74; los anillos siguen opacos porque un alfa
+ * paleta nueva `ring-ring/50` llegaría a 3.48 / 3.74 (3.44 en claro antes de los grises de SL-33); los anillos siguen opacos porque un alfa
  * depende de la superficie de debajo (`components/ui/button.tsx`).
  *
  * ── QUÉ MIDE Y QUÉ NO

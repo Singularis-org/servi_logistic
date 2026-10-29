@@ -238,3 +238,21 @@ las capturas actuales que actualizar.
 
 Salida (implementer): `vitest run marca-pwa-capturas-iconos.guardia + capturas-pwa + paleta-secundaria.guardia`:
 `Test Files 3 passed (3) · Tests 95 passed (95)`.
+
+## Vuelta 1 de review — m1 y m2 (frontend_dev, 2026-10-28)
+
+- **m1** `components/ui/button.tsx`, solo comentarios. Re-medido con `tests/fixtures/contraste.ts`
+  (peor de las seis superficies): `ring-ring` 17.31 / 10.68, `ring-destructive` 3.45 / 5.68,
+  `ring-ring/50` 3.48 / 3.74. El motivo del hover opaco usa las cifras del caso `danger/20` de
+  `contraste-tokens.guardia`: 4.62 / 4.54 la alternativa y 6.47 / 6.17 el opaco (antes ponía 5.89).
+- **m2** La guardia ya tenía huellas prohibidas. Se añaden las tres de SL-9 (`impl_SL-9.md > T4 —
+  Corrida`), verificadas con `sha256sum` sobre `git show 0c7a41b:public/screenshots/*` (el padre de
+  `b8d4848`): coinciden las tres. `HUELLAS_MARCA_ANTERIOR` pasa a `HUELLAS_PROHIBIDAS` (lista por
+  archivo). D11 no se toca.
+- Mapa: R14 → `contraste-tokens.guardia` (sin cambios); R15 → `marca-pwa-capturas-iconos.guardia`.
+- Salida: `vitest run` de marca-pwa-capturas-iconos, contraste-tokens, buttonvariants-pasa-por-cn y
+  push-alta-punto-unico (las guardias que nombran `button.tsx`): `Test Files 4 passed (4) · Tests
+  103 passed (103)`. `eslint` en los dos archivos: sin problemas.
+- Veredicto: m1 y m2 corregidos, en verde.
+
+- Además (implementer): `contraste-tokens.guardia.test.ts` l. 671, comentario `ring-ring/50` 3.44 → 3.48 en claro. Salida final: `vitest run` de `marca-pwa-capturas-iconos`, `contraste-tokens`, `buttonvariants-pasa-por-cn`, `push-alta-punto-unico` y `paleta-secundaria`: `Test Files 5 passed (5) · Tests 157 passed (157)`. Typecheck: exit 0.
