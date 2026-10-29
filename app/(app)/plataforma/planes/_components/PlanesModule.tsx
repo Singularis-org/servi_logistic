@@ -31,7 +31,7 @@ const TEXTOS = {
   columnaTopes: "Topes",
   columnaEmpresas: "Empresas",
   columnaCambio: "Cambio programado",
-  sinCambio: "—",
+  sinCambio: "Ninguno",
   cambioDesde: (fecha: string) => `Desde ${fecha}`,
   verPlan: (nombre: string) => `Ver el plan ${nombre}`,
   creado: (nombre: string) => `Plan «${nombre}» creado.`,
@@ -39,13 +39,23 @@ const TEXTOS = {
   vacioAyuda: "Crea el primero con «Nuevo plan».",
   vacioArchivados: "Todos los planes están archivados.",
   vacioArchivadosAyuda: "Marca «Mostrar archivados» para verlos.",
+  sinCatalogo: "No se pudo cargar el catálogo de planes.",
+  reintentar: "Reintentar",
 } as const;
 
+/** Columnas secundarias: por debajo de `md` se ocultan para que el nombre no quede lejos de sus datos. */
+const SOLO_DESDE_MD = "hidden md:table-cell";
+
 export interface PlanesModuleProps {
+  /**
+   * El catálogo no se pudo leer. Se pinta solo el aviso con «Reintentar»: ni la tabla ni el estado
+   * vacío, que invitaría a crear planes que quizá ya existen.
+   */
+  errorDeCarga?: boolean;
   /** El catálogo entero, también los archivados, en el orden del servidor. */
   planes: PlanDelCatalogo[];
   /** Las empresas para un plan custom (`listarEmpresasPlataforma`). */
-  empresas: { id: string; nombre: string }[];
+  empresas: { id: string; nombre: string }[] | null;
   /** `crearPlanAction`, inyectada desde la página para poder probarla. */
   crearPlan: (input: CrearPlanInput) => Promise<PlanResult>;
 }
@@ -56,7 +66,7 @@ export interface PlanesModuleProps {
  * programado. Los archivados se esconden por defecto y, al mostrarlos, llevan la marca «Archivado».
  * «Nuevo plan» abre el formulario en un panel lateral; tras crear, se relee la página.
  */
-export function PlanesModule({ planes, empresas, crearPlan }: PlanesModuleProps) {
+export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan }: PlanesModuleProps) {
   const router = useRouter();
   const idArchivados = useId();
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
@@ -71,6 +81,19 @@ export function PlanesModule({ planes, empresas, crearPlan }: PlanesModuleProps)
     router.refresh();
   }
 
+  if (errorDeCarga) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{TEXTOS.sinCatalogo}</AlertDescription>
+        <div className="mt-2">
+          <Button type="button" variant="outline" onClick={() => router.refresh()}>
+            {TEXTOS.reintentar}
+          </Button>
+        </div>
+      </Alert>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -79,7 +102,6 @@ export function PlanesModule({ planes, empresas, crearPlan }: PlanesModuleProps)
             id={idArchivados}
             checked={mostrarArchivados}
             onCheckedChange={(v) => setMostrarArchivados(v === true)}
-            aria-label={TEXTOS.mostrarArchivados}
           />
           <label htmlFor={idArchivados} className="cursor-pointer">
             {TEXTOS.mostrarArchivados}
@@ -143,11 +165,11 @@ function Catalogo({ planes, hayArchivadosOcultos }: { planes: PlanDelCatalogo[];
       <TableHeader>
         <TableRow>
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
-          <TableHead>{TEXTOS.columnaVisibilidad}</TableHead>
+          <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaVisibilidad}</TableHead>
           <TableHead>{TEXTOS.columnaPrecio}</TableHead>
           <TableHead>{TEXTOS.columnaTopes}</TableHead>
           <TableHead className="text-right">{TEXTOS.columnaEmpresas}</TableHead>
-          <TableHead>{TEXTOS.columnaCambio}</TableHead>
+          <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaCambio}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -162,10 +184,10 @@ function Catalogo({ planes, hayArchivadosOcultos }: { planes: PlanDelCatalogo[];
                 >
                   {plan.nombre}
                 </Link>
-                {plan.archivado ? <Badge variant="warning">{TEXTOS_PLAN.archivado}</Badge> : null}
+                {plan.archivado ? <Badge variant="secondary">{TEXTOS_PLAN.archivado}</Badge> : null}
               </div>
             </TableCell>
-            <TableCell>{textoDeVisibilidad(plan.visibilidad, plan.empresaNombre)}</TableCell>
+            <TableCell className={SOLO_DESDE_MD}>{textoDeVisibilidad(plan.visibilidad, plan.empresaNombre)}</TableCell>
             <TableCell>{textoDelPrecio(plan.precio)}</TableCell>
             <TableCell>
               <ul className="flex flex-col gap-0.5">
@@ -175,7 +197,7 @@ function Catalogo({ planes, hayArchivadosOcultos }: { planes: PlanDelCatalogo[];
               </ul>
             </TableCell>
             <TableCell className="text-right tabular-nums">{formatearConteo(plan.empresas)}</TableCell>
-            <TableCell>
+            <TableCell className={SOLO_DESDE_MD}>
               {plan.vigenteDesdePendiente === null ? TEXTOS.sinCambio : TEXTOS.cambioDesde(plan.vigenteDesdePendiente)}
             </TableCell>
           </TableRow>

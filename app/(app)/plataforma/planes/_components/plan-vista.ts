@@ -14,7 +14,8 @@ export const TEXTOS_PLAN = {
   archivado: "Archivado",
   ordenes: "Órdenes por ciclo",
   apiKeys: "API keys activas",
-  rol: (etiqueta: string) => `Usuarios con el rol ${etiqueta}`,
+  /** El mismo nombre del tope en el catálogo, el detalle y el formulario (y en `lib/planes/mensajes.ts`). */
+  rol: (etiqueta: string) => `Usuarios activos con el rol ${etiqueta}`,
   sinTopesDeRol: "Usuarios: sin límite por rol",
 } as const;
 

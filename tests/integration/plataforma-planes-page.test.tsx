@@ -7,7 +7,8 @@
 // no es uuid o que no existe responde «no encontrado». Con el superadmin se monta el módulo REAL con
 // lo que baja por props.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RolValue } from "@prisma/client";
 
 import type { CatalogoResult, DetallePlanResult } from "@/lib/types/planes";
@@ -131,13 +132,31 @@ describe("SLT-58 R13, R16 — con el superadmin, las páginas pintan", () => {
     expect(screen.getByRole("link", { name: "Ver el plan Básico" })).toBeInTheDocument();
   });
 
-  it("si el catálogo no se pudo leer, lo dice", async () => {
+  it("si el catálogo no se pudo leer, lo dice y NO pinta a la vez el estado vacío ni la tabla", async () => {
     actorMock.mockResolvedValue(superadmin);
     catalogoMock.mockResolvedValue({ estado: "forbidden" } satisfies CatalogoResult);
 
     render(<ToastProvider>{await PlanesPage()}</ToastProvider>);
 
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el catálogo de planes.");
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    expect(screen.queryByText("Aún no hay planes.")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("si las empresas no se pudieron leer, el formulario lo dice junto al campo «Empresa»", async () => {
+    const user = userEvent.setup();
+    actorMock.mockResolvedValue(superadmin);
+    empresasMock.mockResolvedValue({ status: "forbidden" });
+
+    render(<ToastProvider>{await PlanesPage()}</ToastProvider>);
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("radio", { name: "Custom" }));
+
+    expect(within(panel).getByRole("combobox", { name: "Empresa" })).toHaveAccessibleDescription(
+      "No se pudieron cargar las empresas.",
+    );
   });
 
   it("el detalle lee con su actor y el plan de la URL, y titula con el nombre", async () => {

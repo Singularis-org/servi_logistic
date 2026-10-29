@@ -74,6 +74,9 @@ const CUSTOM_SUYO = planDTO({
   nombre: "Enterprise Norte",
   visibilidad: "custom",
   organizacionId: ORG,
+  topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 10 }, apiKeys: 2 },
+  modulos: ["analitica", "monitoreo"],
+  precio: { tipo: "monto", mensual: "45000", anual: null },
 });
 const CUSTOM_AJENO = planDTO({
   id: "44444444-4444-4444-8444-444444444444",
@@ -82,7 +85,8 @@ const CUSTOM_AJENO = planDTO({
   organizacionId: OTRA,
 });
 const ARCHIVADO = planDTO({ id: "55555555-5555-4555-8555-555555555555", nombre: "Viejo", archivado: true });
-const ACTUAL = planDTO({ id: PLAN_ACTUAL, nombre: "Plan Crecer" });
+// La misma versión vigente que `LEIDO`: es contra la que se calcula «qué cambia».
+const ACTUAL = planDTO({ id: PLAN_ACTUAL, ...LEIDO.vigente });
 
 const OK: PlanResult = { estado: "ok", planId: PUBLICO.id, cambio: true, avisos: [], vigenteDesde: null };
 
@@ -90,14 +94,22 @@ function montar({
   v = vista(),
   asignables = [PUBLICO, CUSTOM_SUYO, CUSTOM_AJENO, ARCHIVADO, ACTUAL] as PlanDTO[] | null,
   asignar = vi.fn<(i: { organizacionId: string; planId: string }) => Promise<PlanResult>>().mockResolvedValue(OK),
+  planActual,
 }: {
   v?: PlanDeEmpresaVista | null;
   asignables?: PlanDTO[] | null;
   asignar?: (i: { organizacionId: string; planId: string }) => Promise<PlanResult>;
+  planActual?: PlanDTO | null;
 } = {}) {
   render(
     <ToastProvider>
-      <PlanEmpresa organizacionId={ORG} vista={v} asignables={asignables} asignarPlan={asignar} />
+      <PlanEmpresa
+        organizacionId={ORG}
+        vista={v}
+        asignables={asignables}
+        planActual={planActual}
+        asignarPlan={asignar}
+      />
     </ToastProvider>,
   );
   return asignar;
@@ -107,6 +119,19 @@ async function elegir(user: ReturnType<typeof userEvent.setup>, nombre: string) 
   await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
   const listbox = await screen.findByRole("listbox");
   await user.click(within(listbox).getByRole("option", { name: nombre }));
+}
+
+/** «Cambiar plan» abre la confirmación (decisión cerrada del 2026-10-29); se confirma desde el modal. */
+async function cambiarYConfirmar(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+  const modal = await screen.findByRole("dialog");
+  await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
+}
+
+/** El aviso es un `Alert` destructivo (no un `<p>` suelto) con el texto en `danger-strong`. */
+function esAlertDestructivo(el: HTMLElement) {
+  expect(el).toHaveAttribute("data-slot", "alert");
+  expect(el).toHaveClass("text-danger-strong");
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -147,7 +172,9 @@ describe("SLT-58 R19 — el plan de la empresa con su consumo", () => {
   it("R19: si la lectura del plan falló, la sección lo dice y no ofrece asignar", () => {
     montar({ v: null });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el plan.");
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent("No se pudo cargar el plan.");
+    esAlertDestructivo(aviso);
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 });
@@ -170,10 +197,11 @@ describe("SLT-58 R20 — asignar o cambiar el plan", () => {
     const asignar = montar();
 
     await elegir(user, "Enterprise Norte (Custom)");
-    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await cambiarYConfirmar(user);
 
     expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: CUSTOM_SUYO.id });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("R20: un rechazo por tope muestra qué tope se pasa, con uso y tope, y no relee", async () => {
@@ -188,9 +216,12 @@ describe("SLT-58 R20 — asignar o cambiar el plan", () => {
     });
 
     await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await cambiarYConfirmar(user);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent(mensaje);
+    esAlertDestructivo(aviso);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(refreshMock).not.toHaveBeenCalled();
     // La empresa sigue con su plan.
     expect(screen.getByRole("heading", { level: 3, name: "Plan Crecer" })).toBeInTheDocument();
@@ -198,7 +229,9 @@ describe("SLT-58 R20 — asignar o cambiar el plan", () => {
 
   it("R20: si no se pudieron leer los asignables, lo dice y no ofrece selector", () => {
     montar({ asignables: null });
-    expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar los planes que se pueden asignar.");
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent("No se pudieron cargar los planes que se pueden asignar.");
+    esAlertDestructivo(aviso);
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 });
@@ -215,9 +248,11 @@ describe("SLT-58 R18 — un rechazo se explica y no se da por hecho", () => {
     montar({ asignar: vi.fn().mockResolvedValue(respuesta) });
 
     await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await cambiarYConfirmar(user);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(texto);
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent(texto);
+    esAlertDestructivo(aviso);
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
@@ -228,7 +263,7 @@ describe("SLT-58 R18 — un rechazo se explica y no se da por hecho", () => {
     });
 
     await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await cambiarYConfirmar(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Plan inválido.");
     expect(screen.getByRole("combobox", { name: "Plan a asignar" })).toHaveAttribute("aria-invalid", "true");
@@ -241,9 +276,11 @@ describe("SLT-58 R18 — un rechazo se explica y no se da por hecho", () => {
     montar({ asignar: vi.fn().mockRejectedValue(new Error("red")) });
 
     await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await cambiarYConfirmar(user);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo asignar el plan. Inténtalo de nuevo.");
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("No se pudo asignar el plan. Inténtalo de nuevo.");
+    esAlertDestructivo(aviso);
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
@@ -260,9 +297,140 @@ describe("SLT-58 R21 — el historial de asignaciones", () => {
     ]);
   });
 
-  it("R21: sin asignaciones lo dice", () => {
+  it("R21: sin asignaciones lo dice con el mismo EmptyState con borde que el rastro del plan", () => {
     montar({ v: vista({ asignaciones: [] }) });
-    expect(screen.getByText("Esta empresa todavía no tiene asignaciones de plan.")).toBeInTheDocument();
+    const texto = screen.getByText("Esta empresa todavía no tiene asignaciones de plan.");
+    expect(texto.closest(".rounded-md.border")).not.toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
+  });
+});
+
+describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (decisión cerrada del 2026-10-29)", () => {
+  it("R20: el modal se abre al pulsar «Cambiar plan», resume qué cambia y no llama a la action todavía", async () => {
+    const user = userEvent.setup();
+    const asignar = montar();
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+
+    const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
+    expect(modal).toHaveTextContent("La empresa pasa de «Plan Crecer» a «Básico».");
+    const lineas = within(modal).getByRole("list", { name: "Esto es lo que cambia:" });
+    expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Nombre del plan: Plan Crecer → Básico",
+      "Órdenes por ciclo: 3000 → sin límite",
+      "Usuarios activos con el rol Mensajero: 10 → sin límite",
+      "API keys activas: 2 → sin límite",
+      "Deja de incluirse el módulo Analítica.",
+      // `diferenciasDelPlan` compara en forma canónica (dos decimales), igual que en el correo.
+      "Precio: 45000.00 al mes → sin precio",
+    ]);
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it("R20: solo salen los topes que cambian y los módulos que entran", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await elegir(user, "Enterprise Norte (Custom)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+
+    const modal = await screen.findByRole("dialog");
+    const lineas = within(modal).getByRole("list", { name: "Esto es lo que cambia:" });
+    expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Nombre del plan: Plan Crecer → Enterprise Norte",
+      "Órdenes por ciclo: 3000 → 5000",
+      "Se incluye el módulo Monitoreo.",
+    ]);
+  });
+
+  it("R20: «Volver» cierra el modal sin llamar a asignarPlanAction", async () => {
+    const user = userEvent.setup();
+    const asignar = montar();
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(asignar).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R20: confirmar sí llama a asignarPlanAction con la elección", async () => {
+    const user = userEvent.setup();
+    const asignar = montar();
+
+    await elegir(user, "Básico (Público)");
+    await cambiarYConfirmar(user);
+
+    expect(asignar).toHaveBeenCalledTimes(1);
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+  });
+
+  it("R20: con el plan actual archivado (fuera de los asignables) compara contra el `planActual` de la página", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: vista({ plan: { ...planConConsumo(LEIDO, AHORA), planId: PLAN_ACTUAL, archivado: true } }),
+      asignables: [PUBLICO],
+      planActual: { ...ACTUAL, archivado: true },
+    });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByRole("list", { name: "Esto es lo que cambia:" })).toHaveTextContent(
+      "Órdenes por ciclo: 3000 → sin límite",
+    );
+  });
+
+  it("R20: si no se pudo leer el plan actual, el modal lo dice en lugar de inventar el resumen", async () => {
+    const user = userEvent.setup();
+    montar({ asignables: [PUBLICO], planActual: null });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+
+    const modal = await screen.findByRole("dialog");
+    expect(modal).toHaveTextContent("No se pudo leer el plan actual para comparar: no se puede mostrar qué cambia.");
+    expect(within(modal).queryByRole("list")).toBeNull();
+  });
+
+  it("R20: sin plan, «Asignar plan» asigna sin modal (no hay plan anterior contra el que comparar)", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: vista({ plan: null }) });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+  });
+
+  it("R20: mientras la action corre, el botón muestra el estado de carga (`loading`)", async () => {
+    const user = userEvent.setup();
+    let resolver: (r: PlanResult) => void = () => {};
+    montar({
+      v: vista({ plan: null }),
+      asignar: vi.fn(() => new Promise<PlanResult>((r) => (resolver = r))),
+    });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+    const boton = screen.getByRole("button", { name: /Asignar plan/ });
+    expect(boton).toHaveAttribute("aria-busy", "true");
+    expect(boton).toBeDisabled();
+    resolver(OK);
+    await waitFor(() => expect(boton).not.toHaveAttribute("aria-busy"));
+  });
+
+  it("R20: sin planes que ofrecer, lo dice en texto y no pinta selector ni botón", () => {
+    montar({ asignables: [ACTUAL, CUSTOM_AJENO, ARCHIVADO] });
+
+    expect(screen.getByText("No hay otros planes que asignar a esta empresa.")).toHaveClass("text-muted-foreground");
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cambiar plan" })).toBeNull();
   });
 });

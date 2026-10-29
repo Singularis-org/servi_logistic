@@ -178,3 +178,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-58 T4 (2026-10-29). `FichaJira` (`lib/db/contexto-empresa.ts`) es `` `SL-${number}` ``, así que las lecturas de plataforma de SLT-58 en `PlanesRepository` llaman a `comoPlataforma` con la ficha `"SL-24"` y citan SLT-58 en el motivo. Decidido por el humano: se deja así.
 - **Qué falta:** ampliar `FichaJira` (y su validación en `comoPlataforma` y `excepciones-aislamiento.ts`) para aceptar `SLT-<n>`, y pasar esas llamadas a `"SLT-58"`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D30 — Tablas de `plataforma/` con `Table` cruda en vez de `DataTable`
+- **Origen:** revisión de diseño de SLT-58 (2026-10-29, `progress/design_SLT-58.md`). `PlanesModule` (catálogo de planes) y `EmpresasModule` pintan sus listas con la `Table` cruda, aunque DESIGN.md pide `DataTable`. Por ahora, en móvil se ocultan las columnas secundarias.
+- **Qué falta:** pasar las dos a `DataTable` en un mismo cambio.
+- **Dueño:** Camilo (decidir si va a ficha).

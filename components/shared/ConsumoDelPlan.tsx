@@ -1,3 +1,6 @@
+import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "lucide-react";
+
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SIN_LINEAS_DE_CAMBIO, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
@@ -29,11 +32,23 @@ export interface ConsumoDelPlanProps {
   readonly nivelDeTitulo?: 2 | 3;
 }
 
-/** La marca va en texto además de en color (WCAG 1.4.1): `sin_limite` y `normal` no llevan marca. */
-const MARCA: Partial<Record<EstadoFila, { texto: string; variante: "warning" | "danger"; barra: string }>> = {
-  cerca: { texto: TEXTOS.cerca, variante: "warning", barra: "bg-warning" },
-  lleno: { texto: TEXTOS.lleno, variante: "danger", barra: "bg-danger" },
+/**
+ * La marca va en texto y con icono además de en color (WCAG 1.4.1): `sin_limite` y `normal` no llevan
+ * marca. Las barras usan los tonos `-strong` (>= 3:1 sobre la pista `bg-muted` en los dos temas,
+ * WCAG 1.4.11), así que la alerta es lo que más pesa a la vista.
+ */
+const MARCA: Partial<
+  Record<EstadoFila, { texto: string; variante: "warning" | "danger"; barra: string; icono: LucideIcon }>
+> = {
+  cerca: { texto: TEXTOS.cerca, variante: "warning", barra: "bg-warning-strong", icono: TriangleAlert },
+  lleno: { texto: TEXTOS.lleno, variante: "danger", barra: "bg-danger-strong", icono: Ban },
 };
+
+/**
+ * Barra de una fila sana: tono neutro en los dos temas. Nunca el amarillo de marca (`primary`), que
+ * DESIGN.md reserva para acción y selección y que en oscuro se confundía con «cerca del tope».
+ */
+const BARRA_NORMAL = "bg-muted-foreground";
 
 /**
  * SLT-58 (design §6.2; R1–R7, R19) — el plan de una empresa y su consumo, solo lectura. Presentacional
@@ -41,15 +56,15 @@ const MARCA: Partial<Record<EstadoFila, { texto: string; variante: "warning" | "
  * «Mi plan» y el detalle de empresa del superadmin.
  */
 export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: ConsumoDelPlanProps) {
-  // R6: sin plan no hay precio, módulos, filas ni ciclo que mostrar; solo el aviso.
+  // R6: sin plan no hay precio, módulos, filas ni ciclo que mostrar; solo el aviso, como estado vacío.
   if (plan === null) {
-    return <p className="text-sm text-muted-foreground">{textoSinPlan}</p>;
+    return <EmptyState icon={InfinityIcon} title={textoSinPlan} />;
   }
 
   const titulo = { role: "heading", "aria-level": nivelDeTitulo } as const;
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle {...titulo} className="text-lg font-semibold">
@@ -78,19 +93,23 @@ export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: Consum
       <Card>
         <CardHeader>
           <CardTitle {...titulo}>{TEXTOS.consumo}</CardTitle>
-          <CardDescription>{TEXTOS.reinicio(plan.reinicio)}</CardDescription>
         </CardHeader>
         <CardContent>
           <ul aria-label={TEXTOS.consumo} className="flex flex-col gap-4">
+            {/* El reinicio va bajo la fila de órdenes: es lo único que se reinicia con el ciclo. */}
             {plan.filas.map((f) => (
-              <FilaDelConsumo key={f.clave} fila={f} />
+              <FilaDelConsumo
+                key={f.clave}
+                fila={f}
+                nota={f.clave === "ordenes" ? TEXTOS.reinicio(plan.reinicio) : undefined}
+              />
             ))}
           </ul>
         </CardContent>
       </Card>
 
       {plan.cambioPendiente && (
-        <Card className="md:col-span-2">
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle {...titulo}>{TEXTOS.cambioPendiente(plan.cambioPendiente.vigenteDesde)}</CardTitle>
           </CardHeader>
@@ -114,15 +133,22 @@ export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: Consum
   );
 }
 
-function FilaDelConsumo({ fila }: { fila: FilaConsumo }) {
+function FilaDelConsumo({ fila, nota }: { fila: FilaConsumo; nota?: string }) {
   const marca = MARCA[fila.estado];
+  const Icono = marca?.icono;
   return (
     <li className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm">{fila.texto}</span>
-        {marca && <Badge variant={marca.variante}>{marca.texto}</Badge>}
+        {marca && Icono && (
+          <Badge variant={marca.variante}>
+            <Icono aria-hidden="true" data-icon="inline-start" />
+            {marca.texto}
+          </Badge>
+        )}
       </div>
       {fila.maximo !== null && <BarraDelTope fila={fila} maximo={fila.maximo} claseBarra={marca?.barra} />}
+      {nota && <p className="text-sm text-muted-foreground">{nota}</p>}
     </li>
   );
 }
@@ -145,7 +171,7 @@ function BarraDelTope({ fila, maximo, claseBarra }: { fila: FilaConsumo; maximo:
       aria-valuetext={fila.texto}
       className="h-2 w-full overflow-hidden rounded-full bg-muted"
     >
-      <div className={cn("h-full rounded-full", claseBarra ?? "bg-primary")} style={{ width: `${porcentaje}%` }} />
+      <div className={cn("h-full rounded-full", claseBarra ?? BARRA_NORMAL)} style={{ width: `${porcentaje}%` }} />
     </div>
   );
 }

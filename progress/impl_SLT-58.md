@@ -190,3 +190,16 @@
   - Las dos guardias y los tests que importan `reparto.ts` (`procesar-jobs-modulos`, `procesar-jobs-plan-cambio`, `catalogo`): 6 archivos, 122 tests en verde.
   - Typecheck y eslint en verde.
 - Nota: el `menu-modulos.test.ts` que cita T6 no existe en el repo; R12 lo cubren `menu-mi-plan.test.ts` y la guardia `modulos-reparto`.
+
+## Tanda de diseño (antes de la tanda C) — 28 hallazgos de `progress/design_SLT-58.md`
+El humano decidió corregir los 28 hallazgos y que «Cambiar plan» pida confirmación con resumen (`requirements.md > Decisiones cerradas`). Cuatro frontend_dev trabajaron en paralelo, cada uno sobre sus propios archivos. Cada hallazgo está marcado RESUELTO en `design_SLT-58.md`, junto a su test.
+- **A** (consumo y «Mi plan»): `components/shared/ConsumoDelPlan.tsx`, `app/(app)/mi-plan/loading.tsx` (nuevo), `MiPlanModule.tsx`, `tests/components/ConsumoDelPlan.test.tsx` (nuevo) y `MiPlanModule.test.tsx`.
+- **B** (catálogo y formulario): `plataforma/planes/page.tsx`, `loading.tsx` y `[planId]/loading.tsx` (nuevos), `PlanesModule.tsx`, `PlanForm.tsx`, `plan-vista.ts` y sus tests (`PlanesModule`, `PlanForm`, `plataforma-planes-page`).
+- **C** (detalle del plan): `PlanDetalle.tsx` y `PlanDetalle.test.tsx`; este último se ajustó además a los textos nuevos de B.
+- **D** (plan de la empresa): `PlanEmpresa.tsx`, `[organizacionId]/page.tsx` (`leerPlanActual`: toma el plan de los asignables o, si está archivado, lo lee con `verDetalleDePlan`, sin romper la página si falla), `PlanEmpresa.test.tsx` y `plataforma-empresa-detalle-page.test.tsx`.
+- Deuda nueva: D30 (pasar las tablas a `DataTable`).
+- Pendiente de confirmar por el humano:
+  - Textos nuevos que no están en §6.5: «Con monto», «Programar cambio», «Reintentar» y «Rige desde <fecha>» en el detalle del plan.
+  - Cuando no se puede leer el plan actual, el modal lo avisa y deja confirmar igualmente.
+  - «Asignar plan» sin plan previo se aplica sin modal, porque no hay nada con qué compararlo.
+- Salida final: `vitest run` de los 9 archivos de test de las pantallas (ConsumoDelPlan, MiPlanModule, mi-plan-page, PlanesModule, PlanForm, plataforma-planes-page, PlanDetalle, PlanEmpresa, plataforma-empresa-detalle-page) da 9 archivos y 138 tests en verde. `tsc --noEmit` y eslint en verde.

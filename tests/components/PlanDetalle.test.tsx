@@ -76,10 +76,13 @@ function montar(
   const editarPlan = acciones.editarPlan ?? accion(OK);
   const archivarPlan = acciones.archivarPlan ?? accion(OK);
   const cancelarCambio = acciones.cancelarCambio ?? accion(OK);
-  render(
-    <PlanDetalle detalle={detalle} editarPlan={editarPlan} archivarPlan={archivarPlan} cancelarCambio={cancelarCambio} />,
+  const pintar = (d: DetallePlan) => (
+    <PlanDetalle detalle={d} editarPlan={editarPlan} archivarPlan={archivarPlan} cancelarCambio={cancelarCambio} />
   );
-  return { editarPlan, archivarPlan, cancelarCambio };
+  const { rerender } = render(pintar(detalle));
+  /** Lo que hace `router.refresh()` en la app: la página baja el `DetallePlan` releído. */
+  const releer = (d: DetallePlan) => rerender(pintar(d));
+  return { editarPlan, archivarPlan, cancelarCambio, releer };
 }
 
 const seccion = (nombre: string) => screen.getByRole("region", { name: nombre });
@@ -94,15 +97,21 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
     expect(within(vigente).getByText("Público")).toBeInTheDocument();
     expect(within(vigente).getByText("10.00 al mes")).toBeInTheDocument();
     expect(within(vigente).getByText("Órdenes por ciclo: 3.000")).toBeInTheDocument();
-    expect(within(vigente).getByText("Usuarios con el rol Mensajero: 5")).toBeInTheDocument();
+    expect(within(vigente).getByText("Usuarios activos con el rol Mensajero: 5")).toBeInTheDocument();
     expect(within(vigente).getByText("API keys activas: sin límite")).toBeInTheDocument();
-    expect(within(vigente).getByText("Analítica, Ranking")).toBeInTheDocument();
+    // Los módulos van como chips, igual que en `ConsumoDelPlan`.
+    const modulos = within(vigente).getByRole("list", { name: "Módulos incluidos" });
+    const chips = within(modulos).getAllByRole("listitem");
+    expect(chips.map((li) => li.textContent)).toEqual(["Analítica", "Ranking"]);
+    for (const chip of chips) expect(chip).toHaveClass("rounded-md", "border", "bg-muted", "px-2.5", "py-1");
   });
 
   it("R16: el cambio pendiente con su fecha y una línea por cosa que cambia", () => {
     montar();
     const pendiente = seccion("Cambio programado");
-    expect(within(pendiente).getByText("Cambio programado desde 2030-01-15")).toBeInTheDocument();
+    // Bajo el encabezado «Cambio programado», el párrafo no lo repite: dice desde cuándo rige.
+    expect(within(pendiente).getByText("Rige desde 2030-01-15")).toBeInTheDocument();
+    expect(within(pendiente).queryByText(/Cambio programado desde/)).toBeNull();
     expect(within(pendiente).getByText("Esto es lo que cambia:")).toBeInTheDocument();
     expect(within(pendiente).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Órdenes por ciclo: 3000 → 5000",
@@ -131,6 +140,25 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
       ["2026-10-01 09:00", "Sofía Admin", "Creado", "Nombre del plan: BásicoPrecio: 10.00 al mes"],
     ]);
   });
+
+  it("R16: una fila del rastro sin cambios lo dice en texto, no con una raya", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        {
+          id: "r-3",
+          accion: "archivado",
+          cambios: {},
+          actorNombre: "Sofía Admin",
+          creadoAt: "2026-10-29T15:00:00.000Z",
+        },
+      ],
+    });
+    const fila = within(seccion("Historial del plan")).getAllByRole("row")[1];
+    const celdas = within(fila).getAllByRole("cell");
+    expect(celdas[3]).toHaveTextContent("Sin cambios");
+    expect(celdas[3]).not.toHaveTextContent("—");
+  });
 });
 
 describe("SLT-58 R17 — confirmaciones y archivado", () => {
@@ -148,6 +176,41 @@ describe("SLT-58 R17 — confirmaciones y archivado", () => {
     await waitFor(() => expect(archivarPlan).toHaveBeenCalledWith({ planId: PLAN_ID }));
     expect(await screen.findByRole("status")).toHaveTextContent("Plan archivado.");
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R17: tras archivar, el foco pasa al aviso cuando la página releída ya no tiene el botón «Archivar»", async () => {
+    const user = userEvent.setup();
+    const { releer } = montar();
+
+    await user.click(screen.getByRole("button", { name: "Archivar" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Archivar plan" }));
+    const aviso = await screen.findByRole("status");
+
+    releer({ ...DETALLE, plan: { ...DETALLE.plan, archivado: true }, pendiente: null });
+
+    expect(screen.queryByRole("button", { name: "Archivar" })).toBeNull();
+    const contenedor = aviso.parentElement as HTMLElement;
+    expect(contenedor).toHaveAttribute("tabindex", "-1");
+    await waitFor(() => expect(contenedor).toHaveFocus());
+    expect(contenedor).toHaveTextContent("Plan archivado.");
+  });
+
+  it("R17: tras cancelar el cambio, el foco pasa al aviso cuando el botón «Cancelar cambio» desaparece", async () => {
+    const user = userEvent.setup();
+    const { releer } = montar();
+
+    await user.click(within(seccion("Cambio programado")).getByRole("button", { name: "Cancelar cambio" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar cambio" }));
+    const aviso = await screen.findByRole("status");
+
+    releer({ ...DETALLE, pendiente: null });
+
+    expect(screen.queryByRole("button", { name: "Cancelar cambio" })).toBeNull();
+    const contenedor = aviso.parentElement as HTMLElement;
+    await waitFor(() => expect(contenedor).toHaveFocus());
+    expect(contenedor).toHaveTextContent("Cambio programado cancelado.");
   });
 
   it("R17: «Volver» en la confirmación de archivar no llama a la action", async () => {
@@ -183,6 +246,10 @@ describe("SLT-58 R17 — confirmaciones y archivado", () => {
     expect(screen.queryByRole("button", { name: "Archivar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancelar cambio" })).toBeNull();
     expect(screen.getByRole("note")).toHaveTextContent("Archivado");
+    // Archivado es un estado inactivo, no una alerta: badge `secondary`, como en el catálogo y en la empresa.
+    const marca = within(screen.getByRole("note")).getByText("Archivado");
+    expect(marca).toHaveClass("bg-secondary", "text-secondary-foreground");
+    expect(marca).not.toHaveClass("bg-warning-soft");
   });
 });
 
@@ -223,7 +290,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     const panel = await screen.findByRole("dialog", { name: "Editar plan" });
     await user.click(within(panel).getByRole("radio", { name: "A partir de" }));
     await user.type(within(panel).getByLabelText("Fecha"), "2030-02-01");
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
   });

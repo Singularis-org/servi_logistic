@@ -65,7 +65,7 @@ describe("SLT-58 R14 — crear un plan", () => {
     await user.type(screen.getByLabelText("Órdenes por ciclo"), "3000");
     await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
     await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
-    await user.click(screen.getByRole("radio", { name: "Mensual" }));
+    await user.click(screen.getByRole("radio", { name: "Con monto" }));
     await user.type(screen.getByLabelText("Monto mensual"), "25.50");
     await user.click(screen.getByRole("radio", { name: "Descuento sobre el anual" }));
     await user.type(screen.getByLabelText("Porcentaje de descuento"), "10");
@@ -168,7 +168,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
 
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: "2030-01-15" });
@@ -189,7 +189,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
 
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     const fecha = await screen.findByLabelText("Fecha");
     await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
@@ -198,7 +198,8 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
 
     const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
     expect(mensajero).toHaveAttribute("aria-invalid", "true");
-    const errorMensajero = document.getElementById(mensajero.getAttribute("aria-describedby")!);
+    // El tope enlaza su error y la ayuda «Vacío = sin límite»; el error va primero.
+    const errorMensajero = document.getElementById(mensajero.getAttribute("aria-describedby")!.split(" ")[0]);
     expect(errorMensajero).toHaveTextContent("Tope inválido.");
     expect(onGuardado).not.toHaveBeenCalled();
   });
@@ -228,5 +229,126 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo guardar. Inténtalo de nuevo.");
     expect(onGuardado).not.toHaveBeenCalled();
     consola.mockRestore();
+  });
+});
+
+describe("SLT-58 — revisión de diseño del formulario", () => {
+  it("tras errores de la action, el foco va al PRIMER campo con error en el orden del formulario (con scroll)", async () => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    const enviar = vi.fn().mockResolvedValue({
+      estado: "validation_error",
+      // La fecha llega antes en el objeto, pero en pantalla el tope de mensajero va antes.
+      fieldErrors: { vigenteDesde: ["Fecha inválida."], "topes.porRol.mensajero": ["Tope inválido."] },
+    } satisfies PlanResult);
+    montarEditar(enviar);
+
+    await user.click(screen.getByRole("radio", { name: "A partir de" }));
+    await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
+
+    const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
+    await waitFor(() => expect(mensajero).toHaveFocus());
+    expect(scroll).toHaveBeenCalled();
+    expect(scroll.mock.contexts.at(-1)).toBe(mensajero);
+  });
+
+  it("una validación del cliente lleva el foco al primer campo con error (el nombre, arriba del todo)", async () => {
+    const user = userEvent.setup();
+    const { enviar } = montarCrear();
+
+    await user.click(screen.getByRole("radio", { name: "Custom" }));
+    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+
+    expect(enviar).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveFocus());
+  });
+
+  it("si solo hay errores sin campo visible, el foco va al aviso general", async () => {
+    const user = userEvent.setup();
+    const enviar = vi.fn().mockResolvedValue({
+      estado: "validation_error",
+      fieldErrors: { planId: ["El plan no es válido."] },
+    } satisfies PlanResult);
+    montarEditar(enviar);
+
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("El plan no es válido.");
+    await waitFor(() => expect(aviso).toHaveFocus());
+  });
+
+  it("un rechazo de la action también lleva el foco al aviso general", async () => {
+    const user = userEvent.setup();
+    montarEditar(vi.fn().mockResolvedValue({ estado: "forbidden" } satisfies PlanResult));
+
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    const aviso = await screen.findByRole("alert");
+    await waitFor(() => expect(aviso).toHaveFocus());
+  });
+
+  it("si las empresas no se pudieron leer, lo dice junto al campo «Empresa»", async () => {
+    const user = userEvent.setup();
+    render(<PlanForm modo="crear" empresas={null} enviar={vi.fn()} onGuardado={vi.fn()} />);
+
+    expect(screen.queryByText("No se pudieron cargar las empresas.")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Custom" }));
+
+    expect(screen.getByText("No se pudieron cargar las empresas.")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveAccessibleDescription(
+      "No se pudieron cargar las empresas.",
+    );
+  });
+
+  it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", () => {
+    montarCrear();
+    for (const nombre of ["Órdenes por ciclo", "Usuarios activos con el rol Mensajero", "API keys activas"]) {
+      const campo = screen.getByLabelText(nombre);
+      expect(campo).toHaveAttribute("placeholder", "Sin límite");
+      expect(campo).toHaveAccessibleDescription("Vacío = sin límite.");
+      expect(campo.closest(".sm\:grid-cols-2")).toBeNull();
+    }
+  });
+
+  it("las casillas de módulos toman su nombre del <label> visible, sin aria-label duplicado", () => {
+    montarCrear();
+    expect(screen.getByRole("checkbox", { name: "Monitoreo" })).not.toHaveAttribute("aria-label");
+  });
+
+  it("el precio ofrece «Con monto» (no «Mensual») y el pago anual lleva un título visible", async () => {
+    const user = userEvent.setup();
+    montarCrear();
+
+    const precio = screen.getByRole("radiogroup", { name: "Precio informativo" });
+    expect(within(precio).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
+      "Sin precio",
+      "Negociable",
+      "Con monto",
+    ]);
+    await user.click(screen.getByRole("radio", { name: "Con monto" }));
+
+    const anual = screen.getByRole("group", { name: "Pago anual" });
+    expect(within(anual).getByText("Pago anual")).toBeVisible();
+    expect(within(anual).getByRole("radiogroup", { name: "Pago anual" })).toBeInTheDocument();
+  });
+
+  it("al editar, el botón dice «Programar cambio» con «A partir de» y vuelve a «Guardar» con «De inmediato»", async () => {
+    const user = userEvent.setup();
+    montarEditar();
+
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "A partir de" }));
+    expect(screen.getByRole("button", { name: "Programar cambio" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "De inmediato" }));
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
+  });
+
+  it("el pie con el botón de enviar queda fijo al fondo del panel", () => {
+    montarCrear();
+    expect(screen.getByRole("button", { name: "Crear plan" }).parentElement).toHaveClass("sticky", "bottom-0");
   });
 });

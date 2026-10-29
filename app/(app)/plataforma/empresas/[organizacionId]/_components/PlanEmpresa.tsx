@@ -4,12 +4,22 @@ import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
+import { Modal } from "@/components/shared/Modal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/useToast";
+import {
+  lineasDeCambioDelPlan,
+  SIN_LINEAS_DE_CAMBIO,
+  TITULO_LINEAS_DE_CAMBIO,
+  type CambioDelPlanParaCorreo,
+} from "@/lib/planes/mensajes";
+import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import type { PlanDeEmpresaVista, PlanDTO, PlanResult } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
@@ -30,6 +40,11 @@ const TEXTOS = {
   asignado: "Plan asignado.",
   validacion: "Revisa el plan elegido.",
   fallo: "No se pudo asignar el plan. Inténtalo de nuevo.",
+  confirmarTitulo: "¿Cambiar el plan de esta empresa?",
+  confirmarTexto: (actual: string, nuevo: string) =>
+    `La empresa pasa de «${actual}» a «${nuevo}». Sus topes y módulos cambian en cuanto confirmes.`,
+  sinComparacion: "No se pudo leer el plan actual para comparar: no se puede mostrar qué cambia.",
+  volver: "Volver",
   historial: "Historial de asignaciones",
   sinHistorial: "Esta empresa todavía no tiene asignaciones de plan.",
   fecha: "Fecha",
@@ -54,6 +69,12 @@ export interface PlanEmpresaProps {
   vista: PlanDeEmpresaVista | null;
   /** Lo que devolvió `listarPlanesAsignablesAction`; `null` = no se pudo leer. */
   asignables: PlanDTO[] | null;
+  /**
+   * La versión vigente del plan actual como `PlanDTO`, para resumir qué cambia antes de confirmar
+   * (decisión cerrada del 2026-10-29). Si no llega, se busca entre los asignables; `null` = no se pudo
+   * leer, y la confirmación lo dice sin inventar el resumen.
+   */
+  planActual?: PlanDTO | null;
   /** `asignarPlanAction`, inyectada desde la página para poder probarla. */
   asignarPlan: (input: { organizacionId: string; planId: string }) => Promise<PlanResult>;
 }
@@ -71,7 +92,7 @@ function fechaHoraPlataforma(iso: string): string {
  * asignaciones. Tras un `ok` relee la página (`router.refresh()`); ante un rechazo lo explica y no da
  * el cambio por hecho: la empresa sigue con su plan.
  */
-export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: PlanEmpresaProps) {
+export function PlanEmpresa({ organizacionId, vista, asignables, planActual, asignarPlan }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
   const campoId = useId();
@@ -81,6 +102,7 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
   const [enVuelo, setEnVuelo] = useState(false);
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
+  const [confirmando, setConfirmando] = useState(false);
 
   const planActualId = vista?.plan?.planId ?? null;
 
@@ -102,6 +124,33 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
         })),
     [asignables, organizacionId, planActualId],
   );
+
+  // Decisión cerrada del 2026-10-29: el resumen de «qué cambia» sale de `diferenciasDelPlan` y
+  // `lineasDeCambioDelPlan` (las mismas líneas que el correo de SL-24), no se calcula aparte.
+  const elegido = useMemo(() => (asignables ?? []).find((p) => p.id === planId) ?? null, [asignables, planId]);
+  const actual = useMemo(
+    () => planActual ?? (asignables ?? []).find((p) => p.id === planActualId) ?? null,
+    [planActual, asignables, planActualId],
+  );
+  const lineasDeCambio = useMemo(() => {
+    if (actual === null || elegido === null) return null;
+    // Mismo molde que `cambioPendienteDelPlan`: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.
+    return lineasDeCambioDelPlan(diferenciasDelPlan(actual, elegido) as CambioDelPlanParaCorreo);
+  }, [actual, elegido]);
+
+  /**
+   * Con plan, «Cambiar plan» pide confirmación con el resumen. Sin plan no: la decisión cubre el
+   * cambio de un plan a otro, y sin un plan anterior no hay `PlanDTO` contra el que comparar.
+   */
+  function pulsar() {
+    if (planId === "" || enVuelo) return;
+    if (vista?.plan) {
+      setRechazo(null);
+      setConfirmando(true);
+      return;
+    }
+    void asignar();
+  }
 
   async function asignar() {
     if (planId === "" || enVuelo) return;
@@ -129,6 +178,8 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
       setRechazo(TEXTOS.fallo);
     } finally {
       setEnVuelo(false);
+      // Con `ok` el modal se desmonta (ya no hay plan elegido) antes de poder cerrarse solo.
+      setConfirmando(false);
     }
   }
 
@@ -142,18 +193,16 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
       </div>
 
       {vista === null ? (
-        <p role="alert" className="text-sm text-destructive">
-          {TEXTOS.noSeCargo}
-        </p>
+        <AvisoDeError>{TEXTOS.noSeCargo}</AvisoDeError>
       ) : (
         <>
           <ConsumoDelPlan plan={vista.plan} textoSinPlan={TEXTOS.sinPlan} nivelDeTitulo={3} />
           {vista.plan?.archivado && <p className="text-sm text-muted-foreground">{TEXTOS.planArchivado}</p>}
 
           {asignables === null ? (
-            <p role="alert" className="text-sm text-destructive">
-              {TEXTOS.asignablesNoCargaron}
-            </p>
+            <AvisoDeError>{TEXTOS.asignablesNoCargaron}</AvisoDeError>
+          ) : opciones.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{TEXTOS.sinAsignables}</p>
           ) : (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <FormField id={campoId} label={TEXTOS.elegirPlan} error={errorDeCampo} className="sm:w-80">
@@ -168,34 +217,27 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
                       setErrorDeCampo(undefined);
                     }}
                     options={opciones}
-                    placeholder={opciones.length === 0 ? TEXTOS.sinAsignables : TEXTOS.placeholder}
-                    disabled={opciones.length === 0 || enVuelo}
+                    placeholder={TEXTOS.placeholder}
+                    disabled={enVuelo}
                   />
                 )}
               </FormField>
-              <Button
-                type="button"
-                disabled={planId === "" || enVuelo}
-                aria-busy={enVuelo || undefined}
-                onClick={() => void asignar()}
-              >
+              <Button type="button" loading={enVuelo} disabled={planId === ""} onClick={pulsar}>
                 {vista.plan === null ? TEXTOS.asignar : TEXTOS.cambiar}
               </Button>
             </div>
           )}
 
-          {rechazo !== null && (
-            <p role="alert" className="text-sm whitespace-pre-line text-destructive">
-              {rechazo}
-            </p>
-          )}
+          {rechazo !== null && <AvisoDeError>{rechazo}</AvisoDeError>}
 
           <div className="flex flex-col gap-2">
             <h3 id={historialId} className="text-sm font-semibold">
               {TEXTOS.historial}
             </h3>
             {vista.asignaciones.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{TEXTOS.sinHistorial}</p>
+              <div className="rounded-md border border-border">
+                <EmptyState title={TEXTOS.sinHistorial} />
+              </div>
             ) : (
               <Table aria-labelledby={historialId}>
                 <TableHeader>
@@ -222,6 +264,46 @@ export function PlanEmpresa({ organizacionId, vista, asignables, asignarPlan }: 
           </div>
         </>
       )}
+
+      {vista?.plan && elegido !== null ? (
+        <Modal
+          open={confirmando}
+          onOpenChange={setConfirmando}
+          title={TEXTOS.confirmarTitulo}
+          description={TEXTOS.confirmarTexto(vista.plan.nombre, elegido.nombre)}
+          confirmLabel={TEXTOS.cambiar}
+          cancelLabel={TEXTOS.volver}
+          size="md"
+          onConfirm={() => asignar()}
+        >
+          {lineasDeCambio === null ? (
+            <p className="text-sm">{TEXTOS.sinComparacion}</p>
+          ) : lineasDeCambio.length === 0 ? (
+            <p className="text-sm">{SIN_LINEAS_DE_CAMBIO}</p>
+          ) : (
+            <div className="flex flex-col gap-2 text-sm">
+              <p>{TITULO_LINEAS_DE_CAMBIO}</p>
+              <ul aria-label={TITULO_LINEAS_DE_CAMBIO} className="flex list-disc flex-col gap-1 pl-5">
+                {lineasDeCambio.map((linea) => (
+                  <li key={linea}>{linea}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Modal>
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * Un fallo de lectura o un rechazo (R18, R20). `Alert` destructivo como `PlanForm`/`PlanDetalle`, con el
+ * texto en `danger-strong` (6,47:1 sobre la tarjeta): el `destructive` del variant se queda en 3,76:1.
+ */
+function AvisoDeError({ children }: { children: string }) {
+  return (
+    <Alert variant="destructive" className="text-danger-strong *:data-[slot=alert-description]:text-danger-strong">
+      <AlertDescription className="whitespace-pre-line">{children}</AlertDescription>
+    </Alert>
   );
 }

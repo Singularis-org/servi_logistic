@@ -5,6 +5,8 @@ import type { PlanConConsumo } from "@/lib/types/consumo-plan";
 export const MI_PLAN_TEXTOS = {
   titulo: "Mi plan",
   sinPlan: "Tu empresa no tiene plan asignado: sin límites",
+  /** Lo que anuncia el `role="status"` de `loading.tsx` mientras llega el plan. */
+  cargando: "Cargando",
 } as const;
 
 /**

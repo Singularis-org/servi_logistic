@@ -96,9 +96,11 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
 
 describe("SLT-58 R6 — sin plan", () => {
   it("dice «Tu empresa no tiene plan asignado: sin límites» y no muestra precio, módulos, consumo ni ciclo", () => {
-    render(<MiPlanModule plan={null} />);
+    const { container } = render(<MiPlanModule plan={null} />);
 
-    expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toBeInTheDocument();
+    // Es el título de un `EmptyState` (texto pleno + icono decorativo), no un párrafo gris suelto.
+    expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toHaveClass("text-foreground");
+    expect(container.querySelector("span[aria-hidden='true'] svg")).not.toBeNull();
     expect(screen.queryByText(/Precio informativo/)).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.queryByRole("meter")).toBeNull();

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
-import { verPlanDeEmpresa } from "@/lib/actions/_shared/planes-plataforma";
+import { verDetalleDePlan, verPlanDeEmpresa } from "@/lib/actions/_shared/planes-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import { asignarPlanAction, listarPlanesAsignablesAction } from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
@@ -47,6 +47,30 @@ async function leerAsignables(organizacionId: string): Promise<PlanDTO[] | null>
 }
 
 /**
+ * SLT-58 (decisión cerrada del 2026-10-29) — la versión vigente del plan actual como `PlanDTO`, para
+ * que la confirmación de «Cambiar plan» resuma qué cambia con `diferenciasDelPlan`. Casi siempre ya
+ * viene entre los asignables; solo si no está (un plan archivado no es asignable) se lee su detalle.
+ * Aislada como las demás: `null` = no se pudo leer, y la confirmación lo dice.
+ */
+async function leerPlanActual(
+  actor: Actor,
+  vista: PlanDeEmpresaVista | null,
+  asignables: PlanDTO[] | null,
+): Promise<PlanDTO | null> {
+  const planId = vista?.plan?.planId;
+  if (planId === undefined) return null;
+  const entreAsignables = asignables?.find((p) => p.id === planId);
+  if (entreAsignables !== undefined) return entreAsignables;
+  try {
+    const r = await verDetalleDePlan(actor, { planId });
+    return r.estado === "ok" ? r.detalle.plan : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verDetalleDePlan lanzó", error);
+    return null;
+  }
+}
+
+/**
  * SL-23 (design §7; R8, R14) — el detalle de una empresa para el superadmin: qué módulos tiene
  * encendidos. Server Component.
  *
@@ -72,6 +96,7 @@ export default async function EmpresaDetallePage({
     leerAsignables(organizacionId),
   ]);
   if (r.estado !== "ok") notFound();
+  const planActual = await leerPlanActual(actor, plan, asignables);
 
   const { empresa } = r;
   return (
@@ -88,6 +113,7 @@ export default async function EmpresaDetallePage({
           organizacionId={empresa.organizacionId}
           vista={plan}
           asignables={asignables}
+          planActual={planActual}
           asignarPlan={asignarPlanAction}
         />
 

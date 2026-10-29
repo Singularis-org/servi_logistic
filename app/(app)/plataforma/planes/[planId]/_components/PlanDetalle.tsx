@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
@@ -51,13 +51,13 @@ const TEXTOS = {
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
   pendiente: "Cambio programado",
-  pendienteDesde: (fecha: string) => `Cambio programado desde ${fecha}`,
   sinPendiente: "No hay ningún cambio programado.",
   cancelarCambio: "Cancelar cambio",
   empresas: "Empresas con este plan",
   sinEmpresas: "Ninguna empresa tiene este plan.",
   rastro: "Historial del plan",
   sinRastro: "Este plan aún no tiene movimientos.",
+  sinCambiosFila: "Sin cambios",
   columnaFecha: "Fecha",
   columnaActor: "Quién",
   columnaAccion: "Acción",
@@ -125,9 +125,26 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
   const [editando, setEditando] = useState(false);
   const [confirmar, setConfirmar] = useState<"archivar" | "cancelar" | null>(null);
   const [desenlace, setDesenlace] = useState<Desenlace | null>(null);
+  /** El aviso de desenlace, que recibe el foco cuando el botón que abrió la confirmación desaparece. */
+  const avisoRef = useRef<HTMLDivElement>(null);
+  /**
+   * Qué confirmación acabó en `ok` y espera a que la relectura quite su botón. El `Modal` devuelve el
+   * foco al botón que lo abrió; al archivar (o cancelar el cambio) ese botón deja de existir y el foco
+   * caería al `body`. Cuando la página releída ya no lo pinta, el foco pasa al aviso.
+   */
+  const focoTrasOk = useRef<"archivar" | "cancelar" | null>(null);
+
+  useEffect(() => {
+    const espera = focoTrasOk.current;
+    if (espera === null) return;
+    const botonFuera = espera === "archivar" ? plan.archivado : plan.archivado || pendiente === null;
+    if (!botonFuera) return;
+    focoTrasOk.current = null;
+    avisoRef.current?.focus();
+  }, [plan.archivado, pendiente, desenlace]);
 
   /** Llama a una action de confirmación; un throw cuenta como rechazo genérico. */
-  async function ejecutar(llamada: () => Promise<PlanResult>, exito: string) {
+  async function ejecutar(cual: "archivar" | "cancelar", llamada: () => Promise<PlanResult>, exito: string) {
     let r: PlanResult | null;
     try {
       r = await llamada();
@@ -138,6 +155,7 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
     if (r === null) {
       setDesenlace({ tipo: "rechazo", mensaje: RECHAZO_GENERICO });
     } else if (r.estado === "ok") {
+      focoTrasOk.current = cual;
       setDesenlace({ tipo: "ok", mensaje: exito, avisos: [] });
       router.refresh();
     } else {
@@ -195,13 +213,13 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
         // Un estado fijo de la pantalla, no un aviso que llega: `note` y no el `alert` de la primitiva.
         <Alert role="note">
           <AlertDescription className="flex flex-wrap items-center gap-2">
-            <Badge variant="warning">{TEXTOS_PLAN.archivado}</Badge>
+            <Badge variant="secondary">{TEXTOS_PLAN.archivado}</Badge>
             <span>{TEXTOS.archivadoAviso}</span>
           </AlertDescription>
         </Alert>
       ) : null}
 
-      {desenlace !== null ? <AvisoDesenlace desenlace={desenlace} /> : null}
+      {desenlace !== null ? <AvisoDesenlace desenlace={desenlace} focoRef={avisoRef} /> : null}
 
       <Seccion titulo={TEXTOS.vigente}>
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
@@ -215,7 +233,18 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
             </ul>
           </Dato>
           <Dato termino={TEXTOS.modulos}>
-            {plan.modulos.length === 0 ? TEXTOS.sinModulos : plan.modulos.map(nombreDelModulo).join(", ")}
+            {plan.modulos.length === 0 ? (
+              TEXTOS.sinModulos
+            ) : (
+              // Chips, como en `ConsumoDelPlan`: la misma forma de mostrar los módulos en `plataforma/`.
+              <ul aria-label={TEXTOS.modulos} className="flex flex-wrap gap-2">
+                {plan.modulos.map((m) => (
+                  <li key={m} className="rounded-md border border-border bg-muted px-2.5 py-1 text-sm">
+                    {nombreDelModulo(m)}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Dato>
         </dl>
       </Seccion>
@@ -225,7 +254,7 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
           <p className="text-sm text-muted-foreground">{TEXTOS.sinPendiente}</p>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="font-medium">{TEXTOS.pendienteDesde(pendiente.vigenteDesde)}</p>
+            <p className="font-medium">{TEXTOS.rigeDesde(pendiente.vigenteDesde)}</p>
             {pendiente.lineas.length === 0 ? (
               <p>{SIN_LINEAS_DE_CAMBIO}</p>
             ) : (
@@ -302,7 +331,7 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
             cancelLabel={TEXTOS.volverAtras}
             confirmVariant="destructive"
             size="md"
-            onConfirm={() => ejecutar(() => archivarPlan({ planId: plan.id }), TEXTOS.archivado)}
+            onConfirm={() => ejecutar("archivar", () => archivarPlan({ planId: plan.id }), TEXTOS.archivado)}
           >
             {pendiente !== null ? (
               <p className="text-sm">{TEXTOS.confirmarArchivoPendiente(pendiente.vigenteDesde)}</p>
@@ -319,7 +348,7 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
               cancelLabel={TEXTOS.volverAtras}
               confirmVariant="destructive"
               size="md"
-              onConfirm={() => ejecutar(() => cancelarCambio({ planId: plan.id }), TEXTOS.cancelado)}
+              onConfirm={() => ejecutar("cancelar", () => cancelarCambio({ planId: plan.id }), TEXTOS.cancelado)}
             />
           ) : null}
         </>
@@ -353,7 +382,7 @@ function Dato({ termino, children }: { termino: string; children: ReactNode }) {
  * El aviso de lo último que pasó. Los topes pasados de una edición (R15) van como advertencia, una
  * línea por empresa y tope: quién, cuánto usa y cuánto permite el plan nuevo.
  */
-function AvisoDesenlace({ desenlace }: { desenlace: Desenlace }) {
+function AvisoDesenlace({ desenlace, focoRef }: { desenlace: Desenlace; focoRef: RefObject<HTMLDivElement | null> }) {
   if (desenlace.tipo === "rechazo") {
     return (
       <Alert variant="destructive">
@@ -362,7 +391,8 @@ function AvisoDesenlace({ desenlace }: { desenlace: Desenlace }) {
     );
   }
   return (
-    <div className="flex flex-col gap-3">
+    // `tabIndex={-1}`: recibe el foco por programa (no por tabulador) cuando el botón usado desaparece.
+    <div ref={focoRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
       <Alert role="status">
         <AlertDescription>{desenlace.mensaje}</AlertDescription>
       </Alert>
@@ -482,7 +512,7 @@ function Rastro({ filas }: { filas: FilaRastro[] }) {
               <TableCell>{ACCIONES[fila.accion]}</TableCell>
               <TableCell>
                 {lineas.length === 0 ? (
-                  "—"
+                  <span className="text-muted-foreground">{TEXTOS.sinCambiosFila}</span>
                 ) : (
                   <ul className="flex flex-col gap-0.5">
                     {lineas.map((linea, i) => (

@@ -12,7 +12,6 @@ import { PlanesModule } from "./_components/PlanesModule";
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
   titulo: "Planes",
-  sinCatalogo: "No se pudo cargar el catálogo de planes.",
 } as const;
 
 /**
@@ -26,17 +25,15 @@ export default async function PlanesPage() {
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const [catalogo, listado] = await Promise.all([verCatalogoDePlanes(actor), listarEmpresasPlataforma(actor)]);
+  // `null` (no una lista vacía) si no se pudieron leer: el formulario lo dice junto al campo «Empresa»
+  // en vez de ofrecer un selector vacío sin explicación.
   const empresas =
-    listado.status === "ok" ? listado.empresas.map((e) => ({ id: e.id, nombre: e.nombre })) : [];
+    listado.status === "ok" ? listado.empresas.map((e) => ({ id: e.id, nombre: e.nombre })) : null;
 
   return (
     <AppPage title={TEXTOS.titulo}>
-      {catalogo.estado !== "ok" ? (
-        <p role="alert" className="text-sm text-muted-foreground">
-          {TEXTOS.sinCatalogo}
-        </p>
-      ) : null}
       <PlanesModule
+        errorDeCarga={catalogo.estado !== "ok"}
         planes={catalogo.estado === "ok" ? catalogo.planes : []}
         empresas={empresas}
         crearPlan={crearPlanAction}

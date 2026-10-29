@@ -82,7 +82,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Básico",
       "Público",
       "10.00 al mes, 100.00 al año",
-      "Órdenes por ciclo: 3.000Usuarios con el rol Mensajero: 5API keys activas: 2",
+      "Órdenes por ciclo: 3.000Usuarios activos con el rol Mensajero: 5API keys activas: 2",
       "1.200",
       "Desde 2030-01-15",
     ]);
@@ -92,7 +92,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "negociable",
       "Órdenes por ciclo: sin límiteUsuarios: sin límite por rolAPI keys activas: sin límite",
       "1",
-      "—",
+      "Ninguno",
     ]);
     expect(filaDe("Básico").querySelector("a")).toHaveAttribute("href", `/plataforma/planes/${PUBLICO.id}`);
   });
@@ -111,6 +111,9 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(celdas(fila)[2]).toBe("sin precio");
     // Solo el archivado lleva la marca.
     expect(screen.getAllByText("Archivado")).toHaveLength(1);
+    // Archivar es un estado inactivo, no una alerta: badge neutro, no `warning`.
+    expect(within(fila).getByText("Archivado")).toHaveClass("bg-secondary");
+    expect(within(fila).getByText("Archivado")).not.toHaveClass("bg-warning-soft");
   });
 
   it("R13: el precio no lleva símbolo ni código de moneda", () => {
@@ -132,5 +135,44 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Libre» creado.");
     expect(refreshMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
+
+describe("SLT-58 — revisión de diseño del catálogo", () => {
+  it("sin cambio programado la celda dice «Ninguno» (no una raya muda)", () => {
+    montar();
+    expect(within(filaDe("Norte a medida")).getByText("Ninguno")).toBeInTheDocument();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
+  it("por debajo de md se ocultan «Visibilidad» y «Cambio programado» (cabecera y celdas)", () => {
+    montar();
+    for (const nombre of ["Visibilidad", "Cambio programado"]) {
+      expect(screen.getByRole("columnheader", { name: nombre })).toHaveClass("hidden", "md:table-cell");
+    }
+    const [, visibilidad, precio, , , cambio] = within(filaDe("Básico")).getAllByRole("cell");
+    expect(visibilidad).toHaveClass("hidden", "md:table-cell");
+    expect(cambio).toHaveClass("hidden", "md:table-cell");
+    expect(precio).not.toHaveClass("hidden");
+  });
+
+  it("«Mostrar archivados» toma su nombre del <label> visible, sin aria-label duplicado", () => {
+    montar();
+    const casilla = screen.getByRole("checkbox", { name: "Mostrar archivados" });
+    expect(casilla).not.toHaveAttribute("aria-label");
+  });
+
+  it("si el catálogo no se pudo leer: solo el aviso de error con «Reintentar», sin tabla ni estado vacío", async () => {
+    const user = userEvent.setup();
+    render(<PlanesModule errorDeCarga planes={[]} empresas={[]} crearPlan={vi.fn()} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el catálogo de planes.");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText("Aún no hay planes.")).toBeNull();
+    expect(screen.queryByText(/Crea el primero/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Nuevo plan" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 });
