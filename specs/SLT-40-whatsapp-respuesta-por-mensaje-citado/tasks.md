@@ -9,7 +9,7 @@
 
 ## Tareas
 
-- [ ] **T1 [P] — Parser: conservar `context.id`** (R1, R2, R3)
+- [x] **T1 [P] — Parser: conservar `context.id`** (R1, R2, R3)
   - `lib/types/whatsapp-webhook.ts`: campo blando `context` en `metaMessageSchema`, helper puro
     `citadoDe`, `citadoWaMessageId?` en `WebhookMensajeEntrante`, propagación en
     `parseWebhookEventos` para todo `type`.
@@ -19,7 +19,7 @@
     el id (`from`/`forwarded` no aparecen en el normalizado).
   - **Hecho:** los casos nuevos pasan y los existentes del archivo siguen en verde.
 
-- [ ] **T2 [P] — Función pura de decisión** (R6–R12; depende de D1–D4)
+- [x] **T2 [P] — Función pura de decisión** (R6–R12; depende de D1–D4)
   - Nuevo `lib/services/whatsapp/enrutado-por-cita.ts`: `decidirEnrutadoPorCita`, `DecisionCita`,
     `MotivoSinCita` (design §4.1). El tipo `HiloCitado` se declara en
     `lib/interfaces/repositories/IChatConversacionRepository.ts` (lo comparte T3).
