@@ -357,3 +357,26 @@ nombra `nodo_geografico`, `tipo_nivel_geografico`, `ubicacion_snapshot` ni los t
 - Resultados: `geo-backfill` 10/10, `geo-equivalencia` 4/4, `geo-sincronia-orden-zonas` 10/10 (0 saltados);
   typecheck y eslint verdes; guardias `plataforma-solo-en-lista`, `organizacion-en-modelos`, `rls-por-empresa`,
   `sql-a-mano-por-empresa`, `backfills-retirados`, `guard-dependencias-aprobadas` verdes.
+
+## Tanda 6 (2026-10-29) — T6.1 (backend_dev A), T6.2 y T6.3 (backend_dev B), en paralelo
+
+- T6.1 — `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (R13, R14, R23, R34, R35): base propia
+  `slt43_iv_*`, molde `ida-y-vuelta-32`. Siembra previa a SLT-43 con el fixture geo-43. R14: hermanos «San José»/«San
+  Jose» y provincias homónimas normalizadas → 120200 aborta con SQLSTATE `SLT43` y foto intacta. Ida: nodos = geografía
+  vieja (id, país, padre, nombre, código, activo, profundidad, nivel_N); enums con `nodo_geografico`; historial igual.
+  Script entre la ida y la vuelta sobre la base desechable (aplicar lote 2, equivalencia 0, validar: 3 FK validadas).
+  Vuelta (seis `down.sql` en orden inverso): foto de esquema, filas, funciones, triggers, políticas, RLS y privilegios
+  igual salvo los 2 enums (por diseño). R35: alta y edición de geografía, órdenes, zonas y cierres tras la vuelta.
+  Reaplicar = primera ida. **8/8, 0 saltados, 12,8 s.** Ningún `down.sql` tocado.
+- Fixture geo-43: `sembrarEscenarioGeo43` / `EscenarioGeo43SinTipos` (no lee tipos); `crearEscenarioGeo43` la reutiliza.
+  T2.3 cumplido (fixture usado por T2–T6); los 5 tests que lo usaban siguen 31/31.
+- T6.2 — `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` (R37): mira `lib/`, `app/`, `components/`
+  (design §7); Prisma `create*/update*/upsert/delete*` y SQL `INSERT/UPDATE/DELETE` sobre las dos tablas. Sin
+  excepciones. Contraprueba: 19 positivos, 7 negativos y un archivo inventado con `prisma.nodoGeografico.create` → rojo.
+  29/29.
+- T6.3 — `docs/architecture.md > Multi-empresa > País por empresa`: subviñeta «Geografía jerárquica (SLT-43, fase
+  expand)». `check-perfil` 6/6.
+- `test:guardias`: 3 rojos. `migraciones-destructivas` (wallet, ajeno; arreglo en PR aparte del leader),
+  `dependencias-declaradas-presentes` (en el baseline; `init.sh` sin cambios en la rama) y
+  `catalogo-postgres-acota-esquema` (**de SLT-43**: 7 consultas a catálogos sin esquema en los tests nuevos; se corrige
+  en la tanda 7).

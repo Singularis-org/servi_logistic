@@ -45,7 +45,7 @@
   Comprobar primero que la relación compuesta con `padreId` opcional deja el diff vacío (plan B en
   design §2.2). *Hecho:* diff vacío; `geo-nodo-invariantes.test.ts` (R4–R9, R11) y
   `geo-nodo-rls.test.ts` (R12) verdes.
-- [ ] **T2.3** [P] Fixture `tests/integration/db/_fixtures/geo-43.ts` (país `XA` con códigos libres,
+- [x] **T2.3** [P] Fixture `tests/integration/db/_fixtures/geo-43.ts` (país `XA` con códigos libres,
   órdenes con y sin distrito, zonas, filas de `cierre_detail`). *Hecho:* lo usan T3–T6 sin duplicarlo.
   _(2026-10-29: creado y en uso por `geo-nodo-rls.test.ts`, `geo-nodo-invariantes.test.ts` y
   `geo-tipo-nivel.test.ts`; se marca cuando T3–T6 lo usen.)_
@@ -93,12 +93,12 @@
 
 ## T6 — Vuelta atrás y guardias (depende de T4.2 y T5.2)
 
-- [ ] **T6.1** `migracion-slt43-ida-y-vuelta.test.ts` (R13, R14, R23, R34, R35) en base propia,
+- [x] **T6.1** `migracion-slt43-ida-y-vuelta.test.ts` (R13, R14, R23, R34, R35) en base propia,
   con el molde de `ida-y-vuelta-32.ts`. *Hecho:* verde; incluye script entre la ida y la vuelta y la
   escritura de geografía, orden y zona después de la vuelta.
-- [ ] **T6.2** [P] `nodo-geografico-sin-escritor.guardia.test.ts` (R37) con contraprueba. *Hecho:*
+- [x] **T6.2** [P] `nodo-geografico-sin-escritor.guardia.test.ts` (R37) con contraprueba. *Hecho:*
   verde y rojo sobre un archivo inventado que hace `prisma.nodoGeografico.create`.
-- [ ] **T6.3** [P] `docs/architecture.md > Multi-empresa > País por empresa`: un párrafo sobre el
+- [x] **T6.3** [P] `docs/architecture.md > Multi-empresa > País por empresa`: un párrafo sobre el
   modelo nuevo, la sincronía, el script y que la app aún no lo lee. *Hecho:* `check-perfil` verde.
 
 ## T7 — Cierre (depende de todo lo anterior)

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
-import { crearOrganizacionEnPais, crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { crearOrganizacionEnPais, crearPaisDePrueba, type CodigoPaisDePrueba } from "@/tests/fabricas/paises";
 import type { TxDeTest } from "../_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./orden-minima";
 import { comoDueno } from "./pais-20";
@@ -66,10 +66,10 @@ export async function insertarNodo(tx: TxDeTest, n: NodoNuevo): Promise<string> 
   return id;
 }
 
-export interface EscenarioGeo43 {
-  paisId: "XA";
+/** El escenario sin lo que solo existe tras migrar (los tipos de nivel), en cualquier país de prueba. */
+export interface EscenarioGeo43SinTipos {
+  paisId: CodigoPaisDePrueba;
   empresaId: string;
-  tipos: TiposDeNivel;
   /** Provincia «1», cantón «1» (mismo código, otro tipo) y dos distritos del cantón. */
   geo: { provinciaId: string; cantonId: string; distritoId: string; otroDistritoId: string };
   zonaId: string;
@@ -86,6 +86,11 @@ export interface EscenarioGeo43 {
   cierreDetailSinDistritoId: string;
 }
 
+export interface EscenarioGeo43 extends Omit<EscenarioGeo43SinTipos, "paisId"> {
+  paisId: "XA";
+  tipos: TiposDeNivel;
+}
+
 const INSERTAR_ORDEN = `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, tienda_id, zona_id,
     provincia_id, canton_id, distrito_id, producto, created_at, updated_at)
   VALUES ($1, $2, $3, 'Destinatario SLT-43', '88880000', $4, $5, $6, $7, $8, 'caja', now(), now())`;
@@ -95,11 +100,22 @@ const INSERTAR_ORDEN = `INSERT INTO orden (id, num_remision, estatus_id, destina
  * provincia y en el cantón, y «1-1»/«1-2» en los distritos.
  */
 export async function crearEscenarioGeo43(tx: TxDeTest): Promise<EscenarioGeo43> {
+  const e = await sembrarEscenarioGeo43(tx, "XA");
+  return { ...e, paisId: "XA", tipos: await tiposDeNivel(tx, e.paisId) };
+}
+
+/**
+ * Lo mismo que `crearEscenarioGeo43`, en `codigo` y sin leer `tipo_nivel_geografico`: siembra también
+ * en una base sin las migraciones de SLT-43 (la ida y vuelta, T6.1) o tras sus `down.sql` (R35).
+ */
+export async function sembrarEscenarioGeo43(
+  tx: TxDeTest,
+  codigo: CodigoPaisDePrueba,
+): Promise<EscenarioGeo43SinTipos> {
   await comoDueno(tx);
   const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
-  const { id: paisId } = await crearPaisDePrueba(tx, "XA");
+  const { id: paisId } = await crearPaisDePrueba(tx, codigo);
   const { id: empresaId } = await crearOrganizacionEnPais(tx, paisId);
-  const tipos = await tiposDeNivel(tx, paisId);
 
   const provincia = await tx.provincia.create({
     data: { nombre: `Región ${sufijo}`, paisId, codigoDta: "1" },
@@ -183,9 +199,8 @@ export async function crearEscenarioGeo43(tx: TxDeTest): Promise<EscenarioGeo43>
   const cierreDetailSinDistritoId = await detalle(ordenSinDistritoId, null);
 
   return {
-    paisId: "XA",
+    paisId: codigo,
     empresaId,
-    tipos,
     geo: {
       provinciaId: provincia.id,
       cantonId: canton.id,
@@ -210,7 +225,7 @@ export async function crearEscenarioGeo43(tx: TxDeTest): Promise<EscenarioGeo43>
  */
 export async function crearOrdenGeo43(
   tx: TxDeTest,
-  e: EscenarioGeo43,
+  e: EscenarioGeo43SinTipos,
   geo: { provinciaId?: string; cantonId?: string; distritoId: string | null },
 ): Promise<string> {
   const id = randomUUID();
