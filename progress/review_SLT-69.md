@@ -89,3 +89,16 @@ Reviewer, 2026-10-30. HOTFIX: diff revisado `origin/prod...HEAD` (b31b6503..9c1c
 
 El código y los tests no tienen ningún bloqueante. Con T1-T5 marcadas `[x]`, la vuelta 2 puede
 acotarse a ese diff y sale **APROBADO CON MENORES** (m1-m3).
+
+## Vuelta 2 (acotada a 9c1c7e87..c6ce7454)
+
+- [x] B1 cerrado: en `specs/SLT-69-escaner-lista-recoger-vieja/tasks.md`, T1-T5 están en `[x]`.
+      El diff solo cambia las casillas.
+- [x] m3 cerrado: la columna estado de `progress/features/SLT-69.md` dice `in_progress`.
+- [x] Sin regresiones: el commit no toca `app/`, `hooks/`, `lib/`, `db/` ni `tests/`. Solo
+      cambian `tasks.md` y `progress/features/SLT-69.md`, y se añade este review (idéntico a la
+      versión de la vuelta 1).
+- m1 y m2 quedan como menores aceptados por el leader. La condición de m2 sigue en pie: el
+  check `e2e` del PR a `prod` tiene que salir en verde.
+
+**Veredicto vuelta 2: OK — APROBADO CON MENORES (m1, m2).**
