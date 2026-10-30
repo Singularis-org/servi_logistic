@@ -8,6 +8,9 @@
 
 ## Estado
 F1.0 hecho (2026-10-28). Spec R1-R21 @52e8eec1. F1.4 aprobada por escrito 2026-10-29 («dale aprobadas»), tarjeta en En curso. F2: implementer lanzado 2026-10-29.
+F2 implementada 2026-10-29: T1–T10 [x], merge de origin/dev (5b0cc9b3) sin conflictos ni cambio de design. Código @a1facb29 (+ commit de bitácora). Gate `./init.sh` rápido: INIT_EXIT=0. E2E nuevo 2×2 passed (grupo `dinero`). Pendiente: reviewer.
+Migraciones nuevas: `20261029120000_gestion_pago_mensajero_ajuste`, `20261029120100_historial_accion_pago_mensajero_ajustado` (solo en bases locales desechables `servi_slt56`/`servi_slt56_e2e`). Si SLT-43 entra antes con timestamp mayor, renumerar antes de aplicar en un entorno compartido.
+Bitácora: `progress/impl_SLT-56.md` (mapa R→test, salidas, mutaciones, desvíos del design).
 
 ## Evaluación
 zone fullstack / complexity medium (épica EP-8). Toca `cierres-admin` (revisión del cierre),

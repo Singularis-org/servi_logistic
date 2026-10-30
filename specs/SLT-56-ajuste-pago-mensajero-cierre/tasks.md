@@ -97,7 +97,7 @@ Depende de T6, T7.
 
 ## T9. E2E (R1, R2, R11, R13, R14, R19, R20)
 Depende de T8.
-- [ ] `e2e/ajuste-pago-mensajero-cierre.spec.ts`, con los helpers de `e2e/cierres-admin.spec.ts` y
+- [x] `e2e/ajuste-pago-mensajero-cierre.spec.ts`, con los helpers de `e2e/cierres-admin.spec.ts` y
       `e2e/cierre-bodega-satelite.spec.ts`:
   1. Central: un maestro abre un cierre `solicitado`, ajusta un rechazo de 0 a un valor con motivo,
      ve «Ajustado», el total de pago y «para la central» cambian sin recargar; aprueba; el estado de
@@ -109,7 +109,7 @@ Depende de T8.
   `e2e/cierres-admin.spec.ts`, `e2e/cierre-bodega-satelite.spec.ts` y `e2e/dos-empresas-humo.spec.ts`.
 
 ## T10. Cierre
-- [ ] `./init.sh` verde. Mapa `R<n> → test` en `progress/impl_SLT-56.md`. Fila de la tabla en
+- [x] `./init.sh` verde. Mapa `R<n> → test` en `progress/impl_SLT-56.md`. Fila de la tabla en
       `docs/architecture.md > Multi-empresa` solo si alguna guardia pide nombrar la tabla nueva.
 
 ## Archivos esperados
