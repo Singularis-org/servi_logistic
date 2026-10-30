@@ -162,22 +162,7 @@
 
 ## Preguntas abiertas
 
-- ~~Dónde vive la caché del catálogo del país y cuándo se invalida: por petición, por proceso con
-  TTL, o al escribir geografía. Lo decide el `design.md`.~~ **Propuesta en `design.md` §4:** por
-  petición y por empresa, sin TTL ni invalidación (R11). Se cierra al aprobar el spec; si el humano
-  la acepta, pasa a «Decisiones cerradas».
-- **¿SLT-46 debe depender también de SLT-65?** Hay lecturas de zona y de marca especial que quedan
-  en la frontera y van a SLT-65 (`design.md` §7):
-  - la marca de una orden ya creada en `OrdenRepository` (listado de API, corrección y devolución);
-  - la marca de una orden en `CierreDiaRepository`;
-  - la re-derivación de zona al guardar una zona (`ZonaRepository.update`).
-
-  Mientras las asignaciones sean solo a distritos, dan lo mismo que la herencia. Pero si SLT-46
-  permite asignar una zona o una marca a un cantón antes de que SLT-65 las migre, divergen y
-  cobran distinto. **Recomendación:** que SLT-46 dependa de SLT-65.
-- **Los totales de cierres de la equivalencia de dinero** (los pide la tarjeta en «Mitigaciones»)
-  no se miden en el script de esta feature: SLT-44 no toca ninguna lectura de cierres. Se proponen
-  para el script de SLT-65, que sí las reescribe (`design.md` §6). ¿De acuerdo?
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -191,3 +176,6 @@
 | 2026-10-30 | ¿`geografia-dominio` o `GeografiaService`? | Un módulo nuevo y puro, como dice la tarjeta. `GeografiaService` sigue con las escrituras de administración. |
 | 2026-10-30 | ¿E2E? | No hay E2E nuevo. Hacen de red los E2E existentes de dinero y reparto, más la integración contra Postgres real. Se hereda de SL-20 y SLT-43. |
 | 2026-10-30 | Precedentes | SL-20 (identificadores en español), ficha 374 (retiro por `activo`, colapso de zona), SL-17 (geografía de plataforma, solo lectura para la empresa), SLT-43 (migraciones solo aditivas, un PR por tarjeta a `dev`). |
+| 2026-10-30 | ¿Dónde vive la caché del catálogo y cuándo se invalida? | Por petición y por empresa, dentro del repositorio, sin TTL ni invalidación (`design.md` §4, R11). Aprobado con el spec (Camilo). |
+| 2026-10-30 | ¿SLT-46 depende también de SLT-65? | Sí: no se asigna zona ni marca a un cantón o provincia hasta que todas las lecturas hereden. Dependencia añadida en Trello (Camilo). |
+| 2026-10-30 | ¿Dónde se miden los totales de cierres de la equivalencia? | En el script de SLT-65, que reescribe las lecturas de cierres. Anotado en su tarjeta (Camilo). |
