@@ -96,7 +96,7 @@
 > de P14 y T15 no fija los textos de P15 hasta que se aprueben. Si cambia alguna, se ajusta el punto de
 > design §11 que la cita antes de tocar código.
 
-- [ ] **T12 — Migración `plan_ciclo_inicio_elegido`** (backend_dev; design §11.2). Columna
+- [x] **T12 — Migración `plan_ciclo_inicio_elegido`** (backend_dev; design §11.2). Columna
   `plan_ciclo_corto_desde_at` + `CHECK`, función `plan_inicio_ciclo_en_curso`, `CREATE OR REPLACE` de
   `plan_tope_ordenes`, `plan_cupo_ordenes` y `plan_de_la_empresa`; `down.sql` con los cuerpos de origen
   copiados literalmente; campo en `db/schema.prisma` y comentario de `plan_asignado`. Antes: confirmar que

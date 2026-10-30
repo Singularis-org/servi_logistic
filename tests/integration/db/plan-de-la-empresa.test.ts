@@ -15,8 +15,9 @@ import { asignarPlan, capturar, crearPlan, revertida, sqlstateDe } from "./_fixt
 // puede hacer. Lo que se mide aquí es el SQL REAL de la migración contra Postgres, como `servi_app`
 // (`comoApp`), que es como llama la app:
 //
-// - R2: el uso que devuelve es exactamente el de `plan_uso_*` y `plan_inicio_ciclo` (los de los
-//   triggers), comparado en la MISMA transacción y además con números concretos sembrados.
+// - R2: el uso que devuelve es exactamente el de `plan_uso_*` y `plan_inicio_ciclo_en_curso` (los de
+//   los triggers desde SLT-58 §11.2), comparado en la MISMA transacción y además con números
+//   concretos sembrados.
 // - R6: una empresa sin plan recibe `NULL`.
 // - R9: la propia se lee; la de otra y sin contexto dan 42501; las tablas `plan*` siguen cerradas;
 //   del cambio programado no salen `avisos_al_programar` ni el actor.
@@ -110,23 +111,28 @@ async function leerPlan(tx: TxDeTest, organizacionId: string): Promise<Record<st
   return (typeof v === "string" ? JSON.parse(v) : v) as Record<string, unknown> | null;
 }
 
-/** Lo que dicen las funciones de SL-24 de A, como dueño y con el mismo `now()` de la transacción. */
-async function usoSegunSl24(tx: TxDeTest, A: string) {
+/**
+ * Lo que dicen las funciones de los triggers de A, como dueño y con el mismo `now()` de la
+ * transacción. Desde SLT-58 §11.2 (R33, R34, R41) el ciclo en curso es `plan_inicio_ciclo_en_curso`,
+ * la envoltura que usan el trigger y el cupo; sin ciclo corto da lo mismo que `plan_inicio_ciclo`.
+ */
+async function usoSegunLosTriggers(tx: TxDeTest, A: string) {
   const filas = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) AS ordenes,
+    `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) AS ordenes,
             plan_uso_api_keys(o."id") AS api_keys,
             plan_uso_rol(o."id", 'maestro'::rol_value) AS maestro,
             plan_uso_rol(o."id", 'admin'::rol_value) AS admin,
             plan_uso_rol(o."id", 'mensajero'::rol_value) AS mensajero,
             plan_uso_rol(o."id", 'Admin Tienda'::rol_value) AS admin_tienda,
             plan_uso_rol(o."id", 'adminSatelite'::rol_value) AS admin_satelite,
-            to_jsonb(plan_inicio_ciclo(o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) #>> '{}' AS ciclo_inicio,
-            to_jsonb(o."plan_ciclo_ancla_at") #>> '{}' AS ciclo_ancla
+            to_jsonb(plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) #>> '{}' AS ciclo_inicio,
+            to_jsonb(o."plan_ciclo_ancla_at") #>> '{}' AS ciclo_ancla,
+            to_jsonb(o."plan_ciclo_corto_desde_at") #>> '{}' AS ciclo_corto_desde
        FROM "organizacion" o WHERE o."id" = $1`,
     A,
   );
-  const { ciclo_inicio, ciclo_ancla, ...uso } = filas[0];
-  return { uso, ciclo_inicio, ciclo_ancla };
+  const { ciclo_inicio, ciclo_ancla, ciclo_corto_desde, ...uso } = filas[0];
+  return { uso, ciclo_inicio, ciclo_ancla, ciclo_corto_desde };
 }
 
 async function funcionesConElNombre(c: Pick<TxDeTest, "$queryRawUnsafe">): Promise<number> {
@@ -137,7 +143,7 @@ async function funcionesConElNombre(c: Pick<TxDeTest, "$queryRawUnsafe">): Promi
   return filas[0].n;
 }
 
-describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su consumo (R2, R6, R9, R25, R26)", () => {
+describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su consumo (R2, R6, R9, R25, R26, R40, R41)", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
   });
@@ -149,7 +155,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
   it("R2, R9 — servi_app lee el plan de SU empresa y el uso es exactamente el de plan_uso_* (el que frena el alta)", async () => {
     const r = await revertida(base, async (tx) => {
       const e = await escenario(tx);
-      const esperado = await usoSegunSl24(tx, e.A);
+      const esperado = await usoSegunLosTriggers(tx, e.A);
       await comoApp(tx, e.A);
       const rol = await tx.$queryRawUnsafe<{ r: string }[]>(`SELECT current_user::text AS r`);
       return { e, esperado, plan: await leerPlan(tx, e.A), rol: rol[0].r };
@@ -158,10 +164,13 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(r.plan).not.toBeNull();
     const plan = r.plan as Record<string, unknown>;
 
-    // R2: una sola definición de «uso» — la de los triggers de SL-24.
+    // R2: una sola definición de «uso» — la de los triggers (SL-24, con la envoltura de SLT-58 §11.2).
     expect(plan.uso).toEqual(r.esperado.uso);
     expect(plan.ciclo_inicio).toBe(r.esperado.ciclo_inicio);
     expect(plan.ciclo_ancla).toBe(r.esperado.ciclo_ancla);
+    // R41: una empresa sin ciclo corto lo lee NULL (y su ciclo es el de `plan_inicio_ciclo`).
+    expect(r.esperado.ciclo_corto_desde ?? null).toBeNull();
+    expect(plan.ciclo_corto_desde).toBeNull();
     // Y no es una igualdad vacía: lo sembrado se cuenta (la borrada y el admin pendiente no).
     expect(plan.uso).toEqual({
       ordenes: 3,
@@ -214,6 +223,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
         "modulos",
         "ciclo_inicio",
         "ciclo_ancla",
+        "ciclo_corto_desde", // SLT-58 §11.2 (R40)
         "uso",
         "cambio",
       ].sort(),
