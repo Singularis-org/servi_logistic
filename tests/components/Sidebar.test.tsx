@@ -150,9 +150,18 @@ describe("Sidebar", () => {
     await user.click(screen.getByRole("button", { name: /configuración/i }));
 
     const usuarios = screen.getByRole("link", { name: "Usuarios" });
+    const zonas = screen.getByRole("link", { name: "Zonas" });
     const tarifas = screen.getByRole("link", { name: "Tarifas" });
     const api = screen.getByRole("link", { name: "API" });
     expect(usuarios).toHaveAttribute("href", "/configuracion");
+    // SLT-51 (R1): «Zonas» entre Usuarios y Tarifas.
+    expect(zonas).toHaveAttribute("href", "/configuracion/zonas");
+    expect(
+      usuarios.compareDocumentPosition(zonas) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      zonas.compareDocumentPosition(tarifas) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(tarifas).toHaveAttribute("href", "/configuracion/tarifas");
     expect(api).toHaveAttribute("href", "/configuracion/api");
   });

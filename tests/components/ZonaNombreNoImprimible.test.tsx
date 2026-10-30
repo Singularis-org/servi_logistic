@@ -61,8 +61,8 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const { CrearZonaForm, cobroVacio } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+const { CrearZonaForm } = await import(
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 /** El genérico que esta ficha aparta cuando el motivo es del nombre. */
@@ -119,13 +119,11 @@ function renderForm(opts: { mode: "crear" | "editar"; zonaId?: string }) {
     <CrearZonaForm
       mode={opts.mode}
       provincias={arbol()}
-      vehiculos={[]}
       zonas={[]}
       initial={{
         zonaId: opts.zonaId,
         nombre: "Zona Feliz",
         distritoIds: ["d1"],
-        cobro: cobroVacio(),
       }}
       onSaved={vi.fn()}
       onCancel={vi.fn()}

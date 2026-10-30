@@ -38,7 +38,7 @@ vi.mock("@/lib/actions/cobertura", () => ({
   listarCoberturaDistritos: (...a: unknown[]) => listarMock(...a),
 }));
 
-import { DescargarCoberturaButton } from "@/app/(app)/configuracion/tarifas/_components/DescargarCoberturaButton";
+import { DescargarCoberturaButton } from "@/app/(app)/configuracion/zonas/_components/DescargarCoberturaButton";
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).

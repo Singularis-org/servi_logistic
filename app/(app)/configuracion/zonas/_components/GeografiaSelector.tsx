@@ -38,6 +38,7 @@ export function GeografiaSelector({
   onSelectedChange,
   onEspecialesChange,
   initialSelected,
+  permitirEspecial = false,
 }: Readonly<{
   provincias: ProvinciaArbolDTO[];
   /** Reporta al padre los distritos (hojas) seleccionados en cada cambio. */
@@ -51,6 +52,12 @@ export function GeografiaSelector({
   onEspecialesChange?: (distritoIds: string[]) => void;
   /** Distritos pre-seleccionados (edición de zona). Se lee al montar. */
   initialSelected?: string[];
+  /**
+   * SLT-51 (R4): la marca de distrito especial es un costo, y Zonas ya no edita costos. Con
+   * `false` no se pinta «Especial» ni el conteo y no se reporta nada. Queda la prop para que
+   * Tarifas (SLT-54) pueda reutilizar el selector si lo decide.
+   */
+  permitirEspecial?: boolean;
 }>) {
   const [query, setQuery] = useState("");
   // SL-20 (design §7; R19): los niveles se nombran con los nombres del país de la empresa.
@@ -161,6 +168,7 @@ export function GeografiaSelector({
   // Reporta la marca de especial al formulario contenedor (que calcula el delta
   // contra el árbol al guardar).
   useEffect(() => {
+    if (!permitirEspecial) return;
     onEspecialesChange?.([...especiales]);
     // onEspecialesChange se toma fresco en cada corrida; dep solo en especiales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,7 +243,7 @@ export function GeografiaSelector({
                               {/* El conteo de especiales sólo aparece si hay alguno:
                                   un "Zonas especiales: 0" colgado de cada cantón sería
                                   ruido en un árbol de cientos de filas. */}
-                              {especialesEn(c.distritos) > 0
+                              {permitirEspecial && especialesEn(c.distritos) > 0
                                 ? `, Zonas especiales: ${especialesEn(c.distritos)}`
                                 : ""}
                               )
@@ -289,24 +297,26 @@ export function GeografiaSelector({
                                   })}
                                 />
 
-                                <Button
-                                  type="button"
-                                  size="xs"
-                                  variant={esEspecial ? "default" : "outline"}
-                                  aria-pressed={esEspecial}
-                                  aria-label={
-                                    esEspecial
-                                      ? `Quitar la marca de zona especial a ${d.nombre}`
-                                      : `Marcar ${d.nombre} como zona especial`
-                                  }
-                                  onClick={() => toggleEspecial(d.id)}
-                                >
-                                  <Star
-                                    aria-hidden="true"
-                                    className={cn(esEspecial && "fill-current")}
-                                  />
-                                  Especial
-                                </Button>
+                                {permitirEspecial ? (
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant={esEspecial ? "default" : "outline"}
+                                    aria-pressed={esEspecial}
+                                    aria-label={
+                                      esEspecial
+                                        ? `Quitar la marca de zona especial a ${d.nombre}`
+                                        : `Marcar ${d.nombre} como zona especial`
+                                    }
+                                    onClick={() => toggleEspecial(d.id)}
+                                  >
+                                    <Star
+                                      aria-hidden="true"
+                                      className={cn(esEspecial && "fill-current")}
+                                    />
+                                    Especial
+                                  </Button>
+                                ) : null}
                               </div>
                             );
                           })}

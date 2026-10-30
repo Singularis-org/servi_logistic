@@ -88,6 +88,7 @@ export default defineConfig({
       testMatch: specs(
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
+        "zonas-crear-sin-costos",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",

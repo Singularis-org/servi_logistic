@@ -171,6 +171,77 @@ describe("376/R1-R3 — la marca de zona central: crear pone default, actualizar
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-51 (R5/R7/R8/R9) — EL FORMULARIO DE ZONA DEJA DE MANDAR COSTOS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Igual que con `esCentral` (376), lo que distingue «no lo mandé» de «lo mandé vacío» no es el
+// exito del parse sino el VALOR que sale: un `[]` por default en `tarifas` haria que el
+// repositorio borrara los pagos de la zona en cada guardado de distritos.
+
+const sinCostosCrear = {
+  nombre: "Zona Sur",
+  distritoIds: ["d1"],
+  sinpeNumero: "80000000",
+  sinpeNombre: "Titular de Prueba",
+};
+const sinCostosActualizar = { nombre: "Zona Sur", distritoIds: ["d1"] };
+
+describe("SLT-51 — cobroVehiculo y tarifas opcionales", () => {
+  it("R5: crear SIN los dos sale con cobroVehiculo=false y tarifas=[]", () => {
+    const r = crearZonaSchema.parse(sinCostosCrear);
+    expect(r.cobroVehiculo).toBe(false);
+    expect(r.tarifas).toEqual([]);
+  });
+
+  it("R7: actualizar SIN los dos es valido y los dos salen `undefined`", () => {
+    const r = actualizarZonaSchema.parse(sinCostosActualizar);
+    expect(r.cobroVehiculo).toBeUndefined();
+    expect(r.tarifas).toBeUndefined();
+  });
+
+  it("R8: actualizar con SOLO tarifas → issue en cobroVehiculo", () => {
+    const r = actualizarZonaSchema.safeParse({
+      ...sinCostosActualizar,
+      tarifas: [{ cobroEntregado: 10, cobroRechazado: 5 }],
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues.map((i) => i.path.join("."))).toEqual(["cobroVehiculo"]);
+    }
+  });
+
+  it("R8: actualizar con SOLO cobroVehiculo → issue en tarifas", () => {
+    for (const cobroVehiculo of [true, false]) {
+      const r = actualizarZonaSchema.safeParse({ ...sinCostosActualizar, cobroVehiculo });
+      expect(r.success, String(cobroVehiculo)).toBe(false);
+      if (!r.success) {
+        expect(r.error.issues.map((i) => i.path.join(".")), String(cobroVehiculo)).toEqual([
+          "tarifas",
+        ]);
+      }
+    }
+  });
+
+  it("R9: con los dos presentes se aplica la regla de siempre", () => {
+    expect(
+      actualizarZonaSchema.safeParse({ ...sinCostosActualizar, cobroVehiculo: true, tarifas: [] })
+        .success,
+    ).toBe(false);
+    const ok = actualizarZonaSchema.parse({
+      ...sinCostosActualizar,
+      cobroVehiculo: true,
+      tarifas: [{ cobroEntregado: 10, cobroRechazado: 5, vehiculoId: "v1" }],
+    });
+    expect(ok.cobroVehiculo).toBe(true);
+    expect(ok.tarifas).toHaveLength(1);
+  });
+
+  it("los dos ausentes no relajan `.strict()`", () => {
+    expect(actualizarZonaSchema.safeParse({ ...sinCostosActualizar, hack: 1 }).success).toBe(false);
+  });
+});
+
 describe("listarZonasSchema — clamp de pageSize (R24)", () => {
   it("aplica defaults", () => {
     const r = listarZonasSchema.parse({});
