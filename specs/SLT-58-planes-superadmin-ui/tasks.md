@@ -89,6 +89,67 @@
   mapa `R<n> → test` en `progress/impl_SLT-58.md`.
   *Hecho:* `./init.sh` en verde; R27: `package.json` sin dependencias nuevas.
 
+## Tanda D — enmienda del 2026-10-29: inicio del ciclo elegido (design §11; R29–R41 y R8)
+
+> No empieza hasta que el humano apruebe la enmienda y responda (o acepte las propuestas de) P6–P13.
+> Si cambia alguna propuesta, se ajusta el punto de design §11 que la cita antes de tocar código.
+
+- [ ] **T12 — Migración `plan_ciclo_inicio_elegido`** (backend_dev; design §11.2). Columna
+  `plan_ciclo_corto_desde_at` + `CHECK`, función `plan_inicio_ciclo_en_curso`, `CREATE OR REPLACE` de
+  `plan_tope_ordenes`, `plan_cupo_ordenes` y `plan_de_la_empresa`; `down.sql` con los cuerpos de origen
+  copiados literalmente; campo en `db/schema.prisma` y comentario de `plan_asignado`. Antes: confirmar que
+  `migracion-sl24-ida-y-vuelta.test.ts` no aplica migraciones posteriores (si las aplica, PARAR). Después:
+  Grep de `plan_inicio_ciclo(` en `lib/` y `db/migrations/` posteriores: ningún caller de producción con
+  el ancla de una empresa fuera de la envoltura.
+  *Hecho:* `pnpm run db:migrate` aplica; `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts`
+  en verde (R41: `pg_get_functiondef` de las tres funciones igual al de origen tras el `down`; empresa
+  con plan previo, mismo uso antes y después; `UPDATE` de `servi_app` a la columna → `42501`);
+  `tests/integration/db/plan-de-la-empresa.test.ts` en verde comparando con `plan_inicio_ciclo_en_curso`;
+  suite de SL-24 en verde sin tocar sus tests.
+- [ ] **T13 — Gemela TS del ciclo** (backend_dev; design §11.3). Depende de T12 (por la parte SQL).
+  `inicioDelCicloEnCurso`, corrección de `inicioDelSiguienteCiclo` (antes del ancla → el ancla),
+  `rangoDelInicioDelCiclo` y `anclaDeLaFechaElegida` en `lib/planes/ciclo.ts`; tabla
+  `tests/integration/db/_fixtures/ciclo-corto.ts`.
+  *Hecho:* casos nuevos de `tests/unit/utils/ciclo-plan.test.ts` (R30 rango con el 31 de marzo; R35 con
+  la tabla) y `tests/integration/db/plan-ciclo-corto.test.ts` (R34, R35: mismo «en curso»; la base cambia
+  de ciclo justo en el «siguiente» de TS) en verde; los casos de SLT-58 T2 siguen verdes.
+- [ ] **T14 — Asignar con fecha y vista previa** (backend_dev; design §11.4). Depende de T12 y T13.
+  `asignarPlanSchema` con `inicioCiclo` opcional, `previsualizarAsignacionSchema` y
+  `VistaPreviaAsignacionResult` en `lib/types/planes.ts`; `PlanesService.asignar` (R30, R31 antes del
+  repositorio) y `previsualizarAsignacion`; `PlanesRepository.asignar` (carrera R31, `usoDe` con ciclo
+  candidato, órdenes a `avisos` solo en la primera asignación con fecha, `plan_ciclo_corto_desde_at`,
+  `valorNuevo` = fecha) y `vistaPreviaAsignacion`; interfaces; `previsualizarAsignacionPlanAction` en
+  `lib/actions/planes.ts`; `ciclo_corto_desde` en `MiPlanRepository` y `planCicloCortoDesdeAt` en
+  `planDeEmpresa`; texto `ordenesYaPasadas` en `lib/planes/mensajes.ts`; `motivo` ampliado en
+  `lib/db/excepciones-aislamiento.ts`. Si `tests/unit/services/planes-service.test.ts` necesita
+  `vistaPreviaAsignacion` en su `doble()` para compilar, solo ese `vi.fn` (precedente de la decisión de
+  T4); cualquier otro cambio a un test de SL-24, PARAR y preguntar.
+  *Hecho:* `tests/unit/services/planes-service-inicio-ciclo.test.ts` (R29, R30 bordes con reloj fijo y
+  cero llamadas, R31, R36 avisos en el `ok`, R37 `forbidden` por rol con cero llamadas) y
+  `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (R31 carrera, R32, R33, R34, R36 bloqueo
+  y desbloqueo, R37 vista previa = uso tras asignar, R39) en verde; suite de SL-24 en verde.
+- [ ] **T15 — Modal de primera asignación** (frontend_dev; design §11.5, §6.5). Depende de T14.
+  Campo de fecha con hoy por defecto y `min`/`max` del servidor, vista previa al abrir y al cambiar la
+  fecha, aviso, `cicloEmpiezaEl`, error de campo, P11; la página pasa `rangoInicioCiclo` y la action.
+  «Cambiar plan» sin campo.
+  *Hecho:* casos nuevos de `tests/components/PlanEmpresa.test.tsx` (R29 hoy por defecto y fecha enviada;
+  R37 aviso con «3.200 de 3.000» y fecha, sin aviso si no pasa, relee al cambiar; R38 título y frase;
+  «Cambiar plan» no envía `inicioCiclo`; botón deshabilitado con la vista previa en vuelo o fallida) en
+  verde.
+- [ ] **T16 [P] — «Se reinicia» durante el ciclo corto** (frontend_dev; design §11.3, R40). Depende de
+  T13. Puede ir en paralelo con T15.
+  *Hecho:* casos nuevos de `tests/unit/planes/consumo.test.ts` (29 de octubre con ancla el 5 de
+  noviembre: «en 7 días (2026-11-05)») y de `tests/components/MiPlanModule.test.tsx` en verde.
+- [ ] **T17 [P] — R8: 404 HTTP real en `/mi-plan`** (frontend_dev; design §11.6). Independiente de
+  T12–T16. El arreglo lo elige el implementer, sin mover la autorización fuera del servicio.
+  *Hecho:* `e2e/planes-superadmin.spec.ts` exige `status() === 404` para el `mensajero` de A y pasa en
+  local; `tests/integration/mi-plan-page.test.tsx` y el humo de dos empresas siguen verdes.
+- [ ] **T18 — Documentación y gate de la enmienda**. Depende de T12–T17.
+  En `docs/architecture.md > Multi-empresa > Planes y límites`, una línea sobre el inicio del ciclo
+  elegido y `plan_inicio_ciclo_en_curso` como única definición del ciclo en curso; mapa `R29–R41 → test`
+  y el test nuevo de R8 en `progress/impl_SLT-58.md`.
+  *Hecho:* `./init.sh` en verde; `package.json` sin dependencias nuevas (R27).
+
 ## Archivos esperados
 
 - `db/migrations/20261029120000_plan_de_la_empresa/migration.sql`
@@ -143,3 +204,24 @@
 - `e2e/_planes-fixture.ts`
 - `docs/architecture.md`
 - `progress/impl_SLT-58.md`
+
+Añadidos por la enmienda del 2026-10-29 (tanda D). Ya listados arriba y tocados de nuevo:
+`lib/planes/ciclo.ts`, `lib/planes/mensajes.ts`, `lib/types/planes.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`,
+`lib/interfaces/services/IPlanesService.ts`, `lib/repositories/PlanesRepository.ts`, `lib/repositories/MiPlanRepository.ts`,
+`lib/services/PlanesService.ts`, `lib/actions/planes.ts`, `lib/db/excepciones-aislamiento.ts`,
+`app/(app)/plataforma/empresas/[organizacionId]/page.tsx`, `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`,
+`app/(app)/mi-plan/page.tsx`, `tests/unit/utils/ciclo-plan.test.ts`, `tests/unit/planes/consumo.test.ts`,
+`tests/integration/db/plan-de-la-empresa.test.ts`, `tests/components/PlanEmpresa.test.tsx`,
+`tests/components/MiPlanModule.test.tsx`, `e2e/planes-superadmin.spec.ts`. No listados antes (nuevos o
+existentes que ahora se tocan; `planes-service.test.ts` solo si hace falta el `vi.fn` de T14):
+
+- `db/migrations/20261029150000_plan_ciclo_inicio_elegido/migration.sql`
+- `db/migrations/20261029150000_plan_ciclo_inicio_elegido/down.sql`
+- `db/schema.prisma`
+- `app/(app)/mi-plan/loading.tsx`
+- `tests/unit/services/planes-service-inicio-ciclo.test.ts`
+- `tests/unit/services/planes-service.test.ts`
+- `tests/integration/db/_fixtures/ciclo-corto.ts`
+- `tests/integration/db/plan-ciclo-corto.test.ts`
+- `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`
+- `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts`

@@ -1,6 +1,7 @@
 # SLT-58 — planes-superadmin-ui · design.md
 
-> Requisitos: `requirements.md` (R1–R28). Se heredan las decisiones y el diseño de
+> Requisitos: `requirements.md` (R1–R28; R29–R41 de la enmienda del 2026-10-29, diseñados en §11).
+> Se heredan las decisiones y el diseño de
 > `specs/SL-24-planes-y-limites/` (sus §N se citan como «SL-24 §N»).
 
 ## Lo que ya existe
@@ -330,6 +331,13 @@ En un `TEXTOS` por pantalla (patrón de `EmpresaDetallePage`), salvo los que ya 
 | `precioConMonto` | «Con monto» (opción del precio en el formulario; aprobado por el humano el 2026-10-29) |
 | `programar` | «Programar cambio» (botón de guardar del formulario cuando se elige «A partir de»; aprobado el 2026-10-29) |
 | `reintentar` | «Reintentar» (al fallar el catálogo de planes y al fallar la lectura del plan actual en el modal de «Cambiar plan»; aprobado el 2026-10-29) |
+| `primeraTitulo` | «¿Asignar este plan a la empresa?» (título del modal de primera asignación; aprobado el 2026-10-29, enmienda §11) |
+| `cicloEmpiezaEl` | «El ciclo de órdenes empieza el {fecha}.» (sustituye a `cicloEmpiezaHoy` «El ciclo de órdenes empieza hoy.»; `{fecha}` = la elegida, `AAAA-MM-DD`; aprobado el 2026-10-29, R38) |
+| `ordenesYaPasadas` | «La empresa ya lleva {usados} de {maximo} órdenes en este ciclo: no podrá crear más hasta {fecha}.» (aviso de R36/R37; texto de la decisión del 2026-10-29; `{fecha}` según P10) |
+| `inicioCiclo` (etiqueta del campo) | **Pendiente de aprobación:** «Inicio del ciclo de órdenes» |
+| `rangoInicioCiclo` (error del campo) | **Pendiente de aprobación:** «Elige una fecha entre el {min} y el {max}.» |
+| `soloPrimeraAsignacion` (error del campo) | **Pendiente de aprobación:** «La fecha de inicio solo se elige en la primera asignación.» |
+| `vistaPreviaNoCargo` | **Pendiente de aprobación (P11):** «No se pudo comprobar el consumo de la empresa» |
 
 ## 7. Datos que dependen del país
 
@@ -398,3 +406,253 @@ Ninguna nueva (R27). `Sheet`, `Select`, `Checkbox`, `RadioGroup`, `Dialog` y `Ta
 `components/ui/`. No se añade ningún componente de shadcn (no hay `progress`; la barra es un `div`).
 Si el implementer necesitara otro, para y pregunta: puede arrastrar un paquete de Radix, y entonces
 aplica `docs/architecture.md > Dependencias de terceros`.
+
+## 11. Enmienda del 2026-10-29 — inicio del ciclo elegido en la primera asignación
+
+> Requisitos R29–R41 y el test de R8 ampliado. Decisiones del humano del 2026-10-29 (filas «Inicio del
+> ciclo en la primera asignación», «Fecha pasada», «Fecha futura», «Tope ya pasado con fecha pasada»,
+> «Textos del modal de primera asignación» y «R8: 404 HTTP real»). Lo no decidido sigue las propuestas
+> P6–P12 de `requirements.md`; si el humano cambia alguna, cambia el punto de esta sección que la cita.
+
+### 11.1 Lo que ya existe (para esta enmienda)
+
+| Qué | Dónde | Qué se hace |
+|---|---|---|
+| El ancla nace al asignar el primer plan | `PlanesRepository.asignar` (`COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')`) | Se amplía: con fecha elegida, el ancla es la de R32. Sin fecha, la misma línea de hoy (R29). |
+| `plan_inicio_ciclo(ancla, ahora)` (SQL, `IMMUTABLE`) y su gemela `inicioDelCiclo` | `20261028130200_plan_topes_triggers`, `lib/planes/ciclo.ts` | **No se tocan.** Con un `ahora` anterior al ancla devuelven el ancla: no saben del ciclo corto. Se envuelven (§11.2). |
+| Quien calcula el ciclo en curso | trigger `plan_tope_ordenes`, `plan_cupo_ordenes`, `plan_de_la_empresa`, `usoDe` de `PlanesRepository` | Los tres SQL se reemplazan en la migración nueva para usar la envoltura; `usoDe` cambia su SQL (TS). |
+| `inicioDelSiguienteCiclo` (SLT-58) | `lib/planes/ciclo.ts` | **Se corrige:** con `ahora` anterior al ancla devuelve `ancla + 1 mes`; durante el ciclo corto debe devolver el ancla (R40). |
+| Avisos de tope pasado | `excedidosDe`, `TopeExcedido`, `PlanResult.ok.avisos`, `mensajeTopesPasados` | Se reutilizan para R36: el `ok` de `asignar` ya tiene `avisos` (hoy siempre `[]`). |
+| Casos compartidos TS/SQL del ciclo | `tests/integration/db/_fixtures/planes.ts > CASOS_CICLO` + `plan-ciclo.test.ts` | Es el patrón de R35. La tabla nueva va en un fixture propio para no tocar el de SL-24. |
+| `fechaSchema` (`AAAA-MM-DD` de un día que existe) | `lib/types/planes.ts` (privado) | Se reutiliza para `inicioCiclo`. |
+| `inicioDelDiaPlataforma(fecha)` | `lib/planes/ciclo.ts` (P8 de SL-24) | Da las 00:00 de la plataforma en UTC: es el ancla de R32 para una fecha distinta de hoy. |
+| `fechaCalendarioCR(instante)` | `lib/utils/fecha-cr.ts` | Da «hoy» en la hora de la plataforma (R30) y las fechas visibles. |
+
+Buscado en el board y en `specs/` («inicio del ciclo», «fecha de inicio», «ciclo corto»): nada lo
+construye ni lo especifica.
+
+### 11.2 Modelo de datos y migración
+
+**Una columna nueva** en `organizacion` y una migración nueva. Nada de 20261028130200 ni de
+20261029120000 se edita: esta reemplaza sus funciones con `CREATE OR REPLACE` y su `down.sql` devuelve
+los cuerpos anteriores copiados literalmente.
+
+`db/migrations/20261029150000_plan_ciclo_inicio_elegido/migration.sql` (a mano, como las de SL-24):
+
+```sql
+-- Dónde empieza el ciclo corto (R34): el instante de la asignación cuando el ancla elegida es futura.
+-- NULL en todo lo demás, incluidas todas las empresas que ya tienen plan (R41: cuentan igual).
+ALTER TABLE "organizacion" ADD COLUMN "plan_ciclo_corto_desde_at" TIMESTAMP(3);
+ALTER TABLE "organizacion" ADD CONSTRAINT "organizacion_plan_ciclo_corto_check"
+  CHECK ("plan_ciclo_corto_desde_at" IS NULL
+         OR ("plan_ciclo_ancla_at" IS NOT NULL AND "plan_ciclo_corto_desde_at" < "plan_ciclo_ancla_at"));
+
+-- El inicio del ciclo en curso, con el ciclo corto (R33, R34). Antes del ancla, el ciclo corto; sin
+-- ciclo corto guardado, el ancla (= plan_inicio_ciclo, R41). Desde el ancla, la regla de SL-24 R20.
+-- Gemela TS: lib/planes/ciclo.ts > inicioDelCicloEnCurso (R35).
+CREATE FUNCTION plan_inicio_ciclo_en_curso(p_corto_desde timestamp, p_ancla timestamp, p_ahora timestamp)
+  RETURNS timestamp LANGUAGE plpgsql IMMUTABLE SET search_path = public, pg_temp AS $$
+BEGIN
+  IF p_ahora < p_ancla THEN
+    RETURN COALESCE(p_corto_desde, p_ancla);
+  END IF;
+  RETURN plan_inicio_ciclo(p_ancla, p_ahora);
+END $$;
+REVOKE EXECUTE ON FUNCTION plan_inicio_ciclo_en_curso(timestamp, timestamp, timestamp) FROM PUBLIC;
+
+-- CREATE OR REPLACE conserva dueño y privilegios (los GRANT de servi_app siguen).
+CREATE OR REPLACE FUNCTION plan_tope_ordenes() …      -- lee también "plan_ciclo_corto_desde_at" y
+                                                      -- usa plan_inicio_ciclo_en_curso(v_corto, v_ancla, now() AT TIME ZONE 'UTC')
+CREATE OR REPLACE FUNCTION plan_cupo_ordenes(text) … -- ídem
+CREATE OR REPLACE FUNCTION plan_de_la_empresa(text) … -- ídem para 'ciclo_inicio' y 'uso.ordenes';
+                                                      -- añade 'ciclo_corto_desde' (o."plan_ciclo_corto_desde_at")
+```
+
+El resto de cada cuerpo (cerrojos, `SL024`, comprobación del contexto `42501`, `search_path`) se copia
+sin cambios. El implementer escribe los cuerpos completos; el reviewer los compara con los de origen
+línea a línea.
+
+`down.sql`: `CREATE OR REPLACE` de las tres funciones con su cuerpo de 20261028130200 y 20261029120000
+copiado literalmente; `DROP FUNCTION plan_inicio_ciclo_en_curso(timestamp, timestamp, timestamp)`;
+`DROP CONSTRAINT "organizacion_plan_ciclo_corto_check"`; `DROP COLUMN "plan_ciclo_corto_desde_at"`.
+Bajar pierde el inicio de los ciclos cortos en curso: esas empresas pasan a contar desde el ancla
+futura (uso 0) hasta su fecha. Es la reversión de una columna que esta misma migración añade, no una
+migración destructiva del `up` (precedente: los `down.sql` de SL-24 que quitan `plan_ciclo_ancla_at`).
+
+`db/schema.prisma`: `planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)`
+en `Organizacion`, y el comentario de `plan_asignado` de `HistorialAccionTipo` pasa a decir que
+`valor_nuevo` lleva la fecha elegida en la primera asignación con fecha (R39).
+
+- **Multi-empresa:** no hay tabla nueva. La columna es de `organizacion`, que ya es de solo lectura
+  para `servi_app` y en la que cada empresa ve solo su fila (comentario de 20261028130000; SL-24 R8,
+  `planes-acceso-servi-app.test.ts > moverAncla`). La columna nueva hereda esa protección; T12 lo
+  comprueba con un `UPDATE` de `servi_app` sobre ella → `42501`. Es dato de la propia empresa (su
+  ciclo): leerlo desde su fila no expone nada de otra.
+- **Una sola definición del ciclo:** los triggers, el cupo, «Mi plan», el detalle y la vista previa
+  llaman a `plan_inicio_ciclo_en_curso`; no queda ningún caller de producción de `plan_inicio_ciclo`
+  con el ancla de una empresa (Grep en T12).
+- **`IMMUTABLE`:** la envoltura solo compara y llama a otra `IMMUTABLE`.
+- **`migracion-sl24-ida-y-vuelta.test.ts`:** como en T1, se confirma que no aplica migraciones
+  posteriores a SL-24; si las aplicara, PARAR y preguntar.
+
+### 11.3 Ciclo en TS (gemela, R35, R40)
+
+En `lib/planes/ciclo.ts`, sin tocar `inicioDelCiclo`:
+
+- `inicioDelCicloEnCurso(ancla, cortoDesde, ahora)`: `ahora < ancla` → `cortoDesde ?? ancla`; si no,
+  `inicioDelCiclo(ancla, ahora)`.
+- `inicioDelSiguienteCiclo(ancla, ahora)`: `ahora < ancla` → `ancla` (fin del ciclo corto); si no, lo
+  de hoy.
+- `rangoDelInicioDelCiclo(ahora)` → `{ hoy, min, max }` en `AAAA-MM-DD` de la plataforma: `hoy =
+  fechaCalendarioCR(ahora)`, `min`/`max` = `hoy ∓ 1 mes` con el recorte al último día del mes
+  (`sumarMeses` sobre la fecha). Una sola fuente para el servicio (R30) y para el `min`/`max` del campo.
+  `max` sigue P6.
+- `anclaDeLaFechaElegida(fecha, ahora)` → `"ahora"` si `fecha === hoy` (P9) o
+  `inicioDelDiaPlataforma(fecha)`.
+
+`lib/planes/consumo.ts`: `reinicioDelCiclo` ya llama a `inicioDelSiguienteCiclo`; con la corrección,
+durante el ciclo corto da los días hasta la fecha elegida (R40). El tipo leído (`ancla`) suma
+`cortoDesde: Date | null`, que hoy solo usa la vista previa; `PlanConConsumo` no cambia (P8: sin texto
+nuevo).
+
+**Tabla compartida (R35):** `tests/integration/db/_fixtures/ciclo-corto.ts` exporta `CASOS_CICLO_CORTO`
+(`{ caso, ancla, cortoDesde, ahora, enCurso, siguiente }`). La leen `tests/unit/utils/ciclo-plan.test.ts`
+(TS) y `tests/integration/db/plan-ciclo-corto.test.ts` (SQL), que además comprueba, por caso, que
+`plan_inicio_ciclo_en_curso(corto, ancla, siguiente)` = `siguiente` y que, un milisegundo antes, da
+`enCurso`: así el «Se reinicia» de la pantalla es el instante en que la base cambia de ciclo.
+
+### 11.4 Capas
+
+**Entrada (`lib/types/planes.ts`):**
+
+```ts
+export const asignarPlanSchema = z.object({
+  organizacionId: z.uuid(), planId: z.uuid(),
+  inicioCiclo: fechaSchema.optional(),          // R29: ausente = SL-24 tal cual
+}).strict();
+export const previsualizarAsignacionSchema = z.object({
+  organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema,
+}).strict();
+export type VistaPreviaAsignacionResult =
+  | { estado: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string /* AAAA-MM-DD, P10 */ }
+  | { estado: "forbidden" } | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" } | { estado: "archivado" } | { estado: "custom_de_otra_empresa" };
+```
+
+**`PlanesService.asignar` (R29–R31, R36).** Mismo orden de SL-24: quién → zod → existe → reglas →
+repositorio. Si trae `inicioCiclo`: fuera de `rangoDelInicioDelCiclo(this.ahora())` →
+`validation_error { inicioCiclo }` (R30); `empresa.planId !== null` → `validation_error { inicioCiclo }`
+(R31). Las dos, antes del repositorio. Pasa al repositorio `inicio: { fecha, ancla: Date | "ahora" }`
+(`anclaDeLaFechaElegida`). El `ok` devuelve los `avisos` del repositorio.
+
+**`PlanesService.previsualizarAsignacion(actor, input)` (R37).** Superadmin o `forbidden` sin tocar el
+repositorio; mismas validaciones que `asignar` (R30, R31, existe, archivado, custom de otra empresa);
+llama a `repo.vistaPreviaAsignacion` y devuelve sus avisos de órdenes y `siguienteCiclo`
+(`fechaCalendarioCR(inicioDelSiguienteCiclo(...))`).
+
+**`PlanesRepository.asignar(organizacionId, planId, actorUsuarioId, inicio?)`.** Dentro de la misma
+transacción y cerrojos de hoy:
+
+1. Si `inicio` y la empresa ya tiene plan bajo el `FOR UPDATE` → `{ estado: "validation_error",
+   fieldErrors: { inicioCiclo: [...] } }` sin escribir (R31, carrera). `ResultadoAsignar` suma ese caso.
+2. Uso con el ciclo candidato: `usoDe` gana un parámetro opcional `{ ancla, cortoDesde }` y calcula las
+   órdenes con `plan_inicio_ciclo_en_curso(cortoDesde, ancla, now() AT TIME ZONE 'UTC')`, donde
+   `ancla = now()` UTC si es `"ahora"` y `cortoDesde = now()` UTC solo si `ancla > now()` UTC. Sin
+   candidato, las columnas de la empresa (con `COALESCE(ancla, now)`, como hoy).
+3. `excedidosDe` igual que hoy. **Solo en la primera asignación con `inicio`:** los excedidos de
+   `ordenes` pasan a `avisos` y no rechazan (R36); los de roles y API keys siguen rechazando con
+   `tope_excedido` (SL-24 R12; P7). Sin `inicio` o en un cambio de plan: exactamente como hoy.
+4. `UPDATE "organizacion" SET "plan_id", "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", <ancla>),
+   "plan_ciclo_corto_desde_at" = <cortoDesde o NULL>` en una sola sentencia; el `now()` es el de la base
+   (escala de `orden.created_at`, decisión de SL-24 del 2026-10-28).
+5. `plan_asignado` con `valorNuevo: inicio.fecha` (R39; cabe en `VarChar(60)` y es de formato cerrado);
+   sin `inicio`, `null` como hoy.
+
+**`PlanesRepository.vistaPreviaAsignacion(organizacionId, planId, inicio)`.** En `comoPlataforma`, sin
+cerrojos ni escrituras: el mismo paso 2 y la parte de órdenes del 3 sobre el tope del plan, más el
+siguiente inicio de ciclo calculado con `inicioDelSiguienteCiclo` sobre el ancla candidata y el `now()`
+de la base. Es lectura: la autoridad sigue siendo el trigger. El `motivo` de `PlanesRepository` en
+`EXCEPCIONES_DE_PLATAFORMA` suma «y la vista previa de la primera asignación (SLT-58 §11)».
+
+**Action (`lib/actions/planes.ts`).** `asignarPlanAction` no cambia de firma (`input: unknown`).
+Nueva `previsualizarAsignacionPlanAction(input: unknown)`, con el mismo `conServicio`. Aquí sí hace
+falta una action de lectura (cf. §9 alternativa 5): la fecha la elige el superadmin en el modal, después
+de que la página se pintó. Tiene pantalla desde el primer commit (guardia `superficie-de-uso`).
+
+**«Mi plan» y detalle (R40).** `plan_de_la_empresa` devuelve `ciclo_corto_desde`; `MiPlanRepository`
+lo valida con zod (`instanteUtcSchema.nullable()`). `PlanesRepository.planDeEmpresa` lee
+`planCicloCortoDesdeAt`. El uso de órdenes ya llega calculado por la base con la envoltura; la pantalla
+solo cambia por la corrección de `inicioDelSiguienteCiclo`.
+
+### 11.5 Pantalla: modal de primera asignación (`PlanEmpresa.tsx`)
+
+- La página pasa `rangoInicioCiclo = rangoDelInicioDelCiclo(new Date())` (calculado en el servidor, sin
+  depender del reloj del navegador) y `previsualizarAsignacion` (la action) por props.
+- En el modal: título `primeraTitulo`, la lista de topes y módulos de hoy, un campo de fecha
+  (`<Input type="date">` dentro de `FormField`, como «A partir de» de `PlanForm`) con `hoy` por defecto y
+  `min`/`max` del rango, y la frase `cicloEmpiezaEl` con la fecha elegida (R38).
+- Al abrir y en cada cambio de fecha, llama a `previsualizarAsignacion`. Mientras está en vuelo,
+  «Asignar plan» está deshabilitado. Con avisos, pinta `ordenesYaPasadas` por cada uno, con
+  `formatearConteo` (R37). Si falla, P11: `vistaPreviaNoCargo` con «Reintentar» y «Volver», sin
+  confirmar.
+- Confirmar envía `{ organizacionId, planId, inicioCiclo }`. `validation_error` de `inicioCiclo` se pinta
+  junto al campo (R18). Un `ok` con avisos muestra los avisos en el toast de éxito o bajo la sección, con
+  el mismo texto.
+- «Cambiar plan» (empresa con plan) no muestra el campo ni envía `inicioCiclo` (R31).
+
+### 11.6 R8: 404 HTTP real en `/mi-plan`
+
+El test previsto se amplía en el E2E (`e2e/planes-superadmin.spec.ts`): la respuesta de `page.goto`
+para el `mensajero` de A tiene `status() === 404`, además del texto. Hoy da 200 porque el `loading.tsx`
+del segmento empieza el streaming antes del `notFound()`. El arreglo lo elige el implementer (decisión
+del humano: no se diseña de más); la restricción es que la comprobación siga en el servicio (R8) y que
+`tests/integration/mi-plan-page.test.tsx` siga en verde.
+
+### 11.7 Tests nuevos o ampliados
+
+| Archivo | Tipo | Cubre |
+|---|---|---|
+| `tests/unit/services/planes-service-inicio-ciclo.test.ts` | unit (reloj fijo, doble del repo) | R29, R30, R31, R36, R37 |
+| `tests/unit/utils/ciclo-plan.test.ts` (casos nuevos) | unit | R30 (`rangoDelInicioDelCiclo`), R35 |
+| `tests/unit/planes/consumo.test.ts` (casos nuevos) | unit | R40 |
+| `tests/integration/db/_fixtures/ciclo-corto.ts` | tabla compartida | R35 |
+| `tests/integration/db/plan-ciclo-corto.test.ts` | integración | R34, R35 |
+| `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` | integración | R31, R32, R33, R34, R36, R37, R39 |
+| `tests/integration/db/plan-de-la-empresa.test.ts` (casos nuevos) | integración | R40 (y los casos actuales pasan a comparar con `plan_inicio_ciclo_en_curso`) |
+| `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts` | integración | R41 |
+| `tests/components/PlanEmpresa.test.tsx` (casos nuevos) | componente | R29, R37, R38 |
+| `tests/components/MiPlanModule.test.tsx` (caso nuevo) | componente | R40 |
+| `e2e/planes-superadmin.spec.ts` (aserción nueva) | E2E | R8 (404) |
+
+La suite de SL-24 no se toca (R41, R25 salvo la excepción decidida).
+
+### 11.8 Alternativas descartadas
+
+1. **Sin columna nueva: durante el ciclo corto, contar desde `ancla − 1 mes`.** Elegida el 5 de
+   noviembre el 29 de octubre, el ciclo «en curso» sería del 5 de octubre al 5 de noviembre y contaría
+   24 días de órdenes de antes de tener plan. La decisión dice que el primer ciclo va «de hoy hasta esa
+   fecha». Descartada.
+2. **Sin columna nueva: leer el inicio del ciclo corto de la fila `plan_asignado` de `historial_accion`.**
+   El trigger de órdenes tendría que leer el historial en cada alta (otra tabla, otro índice, otro
+   cerrojo) y el historial es auditoría, no estado: un fallo al escribirlo cambiaría el tope. Descartada.
+3. **Guardar como ancla la fecha de la asignación y una segunda columna con «el día elegido».** Obliga a
+   reescribir `plan_inicio_ciclo` (la regla de SL-24 R20 y sus tests) para ciclos con dos anclas.
+   Descartada: con la envoltura, la regla de R20 queda intacta y el ciclo corto es un caso previo.
+4. **Cambiar la firma de `plan_inicio_ciclo` en lugar de envolverla.** Rompe los tests de SL-24 que la
+   llaman con dos argumentos (`plan-ciclo.test.ts`, `plan-topes-ordenes.test.ts`,
+   `planes-cambio-programado.test.ts`). Descartada (R41).
+5. **Vista previa como modo «simular» de `asignarPlanAction` (`confirmar: false`).** Mezcla una lectura
+   con una escritura en la misma action y en el mismo camino del repositorio con cerrojos `FOR UPDATE`;
+   un error de bandera escribiría al previsualizar. Descartada: action y método de solo lectura propios.
+6. **Validar el rango solo con `min`/`max` del campo de fecha.** El servidor no puede fiarse de la
+   pantalla (decisión: validación en el service, con test). Descartada como única barrera; el campo los
+   lleva solo por comodidad.
+
+### 11.9 Zona y dependencias
+
+- **Zona:** sigue `fullstack`: hay migración, repositorio y servicio (`backend_dev`) y modal y páginas
+  (`frontend_dev`).
+- **Dependencias:** ninguna nueva (R27). El campo de fecha es un `<input type="date">` con `Input` de
+  `components/ui/`.
+- **País:** la fecha visible y el «hoy» siguen en la hora de la plataforma (P8 de SL-24) hasta SL-21; el
+  ancla se guarda en UTC.

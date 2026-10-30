@@ -39,7 +39,7 @@
 | R5 | CUANDO se muestra el plan de una empresa, el sistema DEBE decir cuántos días faltan para que empiece el siguiente ciclo de órdenes, con la regla de ciclos de SL-24 (R20: mismo día y hora que el ancla, último día del mes si ese día no existe): «Se reinicia en N días», con N = días completos o fracción hasta el inicio del siguiente ciclo, redondeado hacia arriba (mínimo 1), y la fecha de ese día en la hora de la plataforma. | `tests/unit/utils/ciclo-plan.test.ts` (ancla el 15 y el 31 de enero, a mitad de ciclo y a un minuto del cambio); `tests/unit/planes/consumo.test.ts` |
 | R6 | MIENTRAS una empresa no tenga plan, el sistema DEBE mostrar en «Mi plan» el texto «Tu empresa no tiene plan asignado: sin límites» y NO DEBE mostrar precio, módulos, filas de consumo ni ciclo. | `tests/components/MiPlanModule.test.tsx`; `tests/integration/db/plan-de-la-empresa.test.ts` (sin plan, la lectura devuelve nada) |
 | R7 | MIENTRAS el plan de la empresa tenga un cambio programado pendiente, el sistema DEBE mostrar en «Mi plan» la fecha desde la que rige (la fecha que eligió el superadmin, en la hora de la plataforma) y una línea por cada cosa que cambia (nombre, cada tope, módulos que se incluyen o dejan de incluirse, precio), con los mismos textos que el correo de SL-24 (`lineasDeCambioDelPlan`). Sin cambio pendiente, esa sección no se muestra. | `tests/components/MiPlanModule.test.tsx`; `tests/unit/services/mi-plan-service.test.ts` (las líneas salen de comparar la versión vigente con la pendiente) |
-| R8 | SI quien pide «Mi plan» no es un `maestro` ni un `admin` de una empresa (cualquier otro rol, el superadmin o sin sesión), ENTONCES el sistema DEBE responder `forbidden` sin leer la base, y la página DEBE responder «no encontrado». La comprobación vive en el servicio. | `tests/unit/services/mi-plan-service.test.ts` (los siete roles; cero llamadas al repositorio); `tests/integration/mi-plan-page.test.tsx` |
+| R8 | SI quien pide «Mi plan» no es un `maestro` ni un `admin` de una empresa (cualquier otro rol, el superadmin o sin sesión), ENTONCES el sistema DEBE responder `forbidden` sin leer la base, y la página DEBE responder «no encontrado». La comprobación vive en el servicio. | `tests/unit/services/mi-plan-service.test.ts` (los siete roles; cero llamadas al repositorio); `tests/integration/mi-plan-page.test.tsx`; `e2e/planes-superadmin.spec.ts` (**enmienda del 2026-10-29:** la respuesta HTTP de `/mi-plan` para el `mensajero` de A tiene status 404, no 200 con el texto «No encontramos esta página») |
 | R9 | El sistema DEBE dar a una empresa solo el plan y el consumo propios: la lectura de «Mi plan» toma la empresa de la sesión, nunca de la petición. SI se pide el plan o el consumo de otra empresa, o se lee sin empresa en el contexto, por cualquier vía (incluido el SQL a mano con el rol de la app), ENTONCES el sistema DEBE rechazarlo (`42501`). La lectura NO DEBE incluir datos de otras empresas: ni los avisos guardados con el cambio programado ni quién lo programó. Las tablas de planes siguen sin poder leerse directamente con el rol de la app. | `tests/integration/db/plan-de-la-empresa.test.ts` (propia: bien; de otra: `42501`; sin contexto: `42501`; `SELECT` a `plan` con `servi_app`: `42501`; la respuesta no tiene `avisos_al_programar` ni actor) |
 | R10 | El sistema DEBE ofrecer «Mi plan» en el menú solo al `maestro` y al `admin`, con una única lista de roles que leen el menú, la página y el servicio, y NO DEBE cambiar el aterrizaje después de entrar de ningún rol. | `tests/unit/auth/menu-mi-plan.test.ts` (los siete roles; identidad de la constante; `primerDestino` de cada rol igual que antes) |
 | R11 | «Mi plan» NO DEBE ofrecer pedir, elegir ni cambiar de plan: es solo información. | `tests/components/MiPlanModule.test.tsx` (sin botones ni formularios); `tests/unit/guards/superficie-de-uso.guardia.test.ts` (existente: «Mi plan» no monta ninguna action de escritura) |
@@ -76,6 +76,42 @@
 | R27 | La feature NO DEBE añadir ninguna dependencia de terceros. | `tests/guards/guard-dependencias-aprobadas.test.ts` (existente) y diff de `package.json` sin dependencias nuevas |
 | R28 | El E2E DEBE cubrir el flujo: el superadmin crea por pantalla un plan custom para la empresa A y se lo asigna desde el detalle de la empresa; el maestro de A ve en «Mi plan» el nombre, sus topes y su consumo; el maestro de B, sin plan, ve «sin límites» y nada del plan de A; un rol sin acceso (`mensajero` de A) recibe «no encontrado» en «Mi plan». | `e2e/planes-superadmin.spec.ts` |
 
+### Enmienda del 2026-10-29 — inicio del ciclo elegido en la primera asignación
+
+> Revisión por F1.2 sobre el spec aprobado (decisiones del humano del 2026-10-29, filas «Inicio del
+> ciclo en la primera asignación» y siguientes de `## Decisiones cerradas`). Diseño en
+> `design.md > §11`; tasks T12–T18.
+>
+> **Excepción a R25 decidida por el humano.** Estas filas cambian dos reglas de SL-24, y solo en la
+> primera asignación con fecha elegida: el ancla deja de ser siempre el instante de la asignación
+> (SL-24 R9) y un tope de órdenes ya pasado no rechaza la asignación (SL-24 R12; para órdenes, en la
+> primera asignación, rige la regla de SL-24 R16: se asigna y se avisa). Una asignación sin fecha y
+> todo cambio de plan siguen exactamente como en SL-24 (P2a incluida).
+>
+> Vocabulario nuevo:
+> - **Fecha de inicio del ciclo**: la fecha `AAAA-MM-DD` que elige el superadmin en la primera
+>   asignación, en la hora de la plataforma. «Hoy» es la fecha de la plataforma en ese momento.
+> - **Rango permitido**: desde «hoy menos un mes» hasta «hoy más un mes» (mismo día del mes, o el
+>   último día del mes si ese día no existe). El límite futuro es una propuesta pendiente (P6).
+> - **Ciclo corto**: con una fecha futura, el primer ciclo, que va del instante de la asignación hasta
+>   las 00:00 de la fecha elegida en la hora de la plataforma.
+
+| R | Requisito | Test previsto |
+|---|---|---|
+| R29 | CUANDO el superadmin asigna un plan a una empresa sin plan, el sistema DEBE aceptar una fecha de inicio del ciclo de órdenes. CUANDO la petición no trae fecha, el sistema DEBE comportarse como SL-24 R9 (el ancla es el instante de la asignación). El modal de primera asignación DEBE ofrecer la fecha con «hoy» preseleccionado y enviarla con la asignación. | `tests/unit/services/planes-service-inicio-ciclo.test.ts` (sin fecha, el repositorio recibe «sin fecha»); `tests/components/PlanEmpresa.test.tsx` (hoy por defecto; la fecha elegida viaja en la llamada); suite de SL-24 sin tocar (`planes-asignacion.test.ts`: el ancla sin fecha sigue siendo `now()` en UTC) |
+| R30 | SI la fecha de inicio no es una fecha `AAAA-MM-DD` válida, o es anterior a «hoy menos un mes», o es posterior a «hoy más un mes», ENTONCES el servicio DEBE responder `validation_error` en el campo `inicioCiclo` sin llamar al repositorio, sea cual sea lo que haya dejado elegir la pantalla. «Hoy» lo da el reloj del servicio en la hora de la plataforma. | `tests/unit/services/planes-service-inicio-ciclo.test.ts` (reloj fijo: hoy−1 mes entra y el día anterior no; hoy+1 mes entra y el día siguiente no; hoy 31 de marzo → el límite pasado es el 28 o 29 de febrero; `2026-02-30` y `"ayer"` → `validation_error`; cero llamadas al repositorio); `tests/unit/utils/ciclo-plan.test.ts` (`rangoDelInicioDelCiclo`) |
+| R31 | SI la petición trae fecha de inicio y la empresa ya tiene plan (también si lo recibió entre la lectura del servicio y el cerrojo del repositorio), ENTONCES el sistema DEBE responder `validation_error` en `inicioCiclo` sin escribir nada. CUANDO se cambia el plan de una empresa que ya tenía uno, el sistema DEBE conservar su ancla y su ciclo como hasta ahora (SL-24 P2a). | `tests/unit/services/planes-service-inicio-ciclo.test.ts`; `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (empresa con plan + fecha → rechazo, ancla, plan e historial intactos) |
+| R32 | CUANDO la fecha elegida es «hoy», el sistema DEBE anclar el ciclo en el instante de la asignación (como SL-24 R9). CUANDO es otra fecha, el sistema DEBE anclarlo a las 00:00 de ese día en la hora de la plataforma, guardado en UTC como el resto del ciclo (decisión de SL-24 del 2026-10-28). | `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (hoy → ancla = `now()` UTC; fecha pasada y futura → 06:00 UTC de ese día) |
+| R33 | CUANDO la fecha elegida es pasada, el ciclo en curso DEBE ser el que resulta de esa ancla con la regla de SL-24 R20, y el uso de órdenes DEBE contar las órdenes vivas de la empresa creadas desde el inicio de ese ciclo, aunque se crearan antes de la asignación. El trigger de tope, el cupo de la carga (`plan_cupo_ordenes`), «Mi plan» y el detalle de la empresa DEBEN contar lo mismo. | `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (órdenes de hace 10 días con fecha de hace 15: cuentan; una anulada no; una de hace 20 días no; `plan_cupo_ordenes`, `plan_de_la_empresa` y el trigger dan el mismo uso) |
+| R34 | CUANDO la fecha elegida es futura, el sistema DEBE contar como primer ciclo el ciclo corto (desde el instante de la asignación hasta las 00:00 de la fecha elegida), con las órdenes vivas creadas desde la asignación, y DEBE empezar en la fecha elegida el ciclo siguiente y, desde ahí, un ciclo mensual anclado en esa fecha con la regla de SL-24 R20 (elegida el 5: del 5 al 4). Las órdenes creadas antes de la asignación NO DEBEN contar. | `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (asignada hoy con fecha a 7 días: una orden previa no cuenta, una posterior sí; con el reloj de la base movido pasada la fecha, el uso vuelve a 0 y el ciclo empieza el día elegido); `tests/integration/db/plan-ciclo-corto.test.ts` |
+| R35 | El inicio del ciclo en curso (con o sin ciclo corto) DEBE calcularse igual en la base y en `lib/planes/ciclo.ts`, y el inicio del ciclo siguiente que calcula `lib/planes/ciclo.ts` DEBE ser el instante en que la base cambia de ciclo, para una misma tabla de casos. | `tests/unit/utils/ciclo-plan.test.ts` y `tests/integration/db/plan-ciclo-corto.test.ts`, los dos con la tabla `tests/integration/db/_fixtures/ciclo-corto.ts` (ancla pasada, de hoy y futura; un minuto antes del ancla, en el ancla y un minuto después; ancla el 31; sin ciclo corto guardado). La integración comprueba además que la base, en el «siguiente» de TS, da ese mismo instante, y un milisegundo antes, el ciclo en curso de TS |
+| R36 | SI con la fecha elegida la empresa ya usa más órdenes que el tope de órdenes del plan, ENTONCES el sistema DEBE asignar el plan igual, devolver en la respuesta un aviso con el uso, el tope y la fecha en que empieza el siguiente ciclo, y, desde ese momento, rechazar las altas de órdenes de la empresa que pasen el tope hasta que su uso baje o empiece el siguiente ciclo (la regla de SL-24 R16). Un uso igual al tope no avisa (SL-24 R12). | `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (3 órdenes del ciclo y tope 2: asignada, aviso con 3 y 2; crear una se rechaza con `SL024`; anular dos y crear una entra); `tests/unit/services/planes-service-inicio-ciclo.test.ts` (el aviso viaja en `avisos` del `ok`) |
+| R37 | CUANDO el superadmin abre el modal de primera asignación o cambia en él la fecha, el sistema DEBE leer del servidor, con la misma definición de uso que la asignación, si la empresa pasaría el tope de órdenes con esa fecha y, antes de confirmar, DEBE mostrar «La empresa ya lleva {usados} de {maximo} órdenes en este ciclo: no podrá crear más hasta {fecha}.». Sin tope pasado, no muestra aviso. Esa lectura DEBE responder `forbidden` sin leer la base a quien no sea el superadmin, y DEBE validar la fecha con R30 y R31. | `tests/unit/services/planes-service-inicio-ciclo.test.ts` (`previsualizarAsignacion`: cada rol de empresa `forbidden` con cero llamadas; fecha fuera de rango `validation_error`); `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (el uso de la vista previa es el que queda tras asignar); `tests/components/PlanEmpresa.test.tsx` (aviso con «3.200 de 3.000» y la fecha; sin aviso cuando no pasa; cambiar la fecha relee) |
+| R38 | El modal de primera asignación DEBE titularse «¿Asignar este plan a la empresa?» y DEBE decir «El ciclo de órdenes empieza el {fecha}.» con la fecha elegida, en lugar de «El ciclo de órdenes empieza hoy.». | `tests/components/PlanEmpresa.test.tsx` |
+| R39 | CUANDO se asigna el primer plan con una fecha de inicio, el sistema DEBE guardar esa fecha (`AAAA-MM-DD`) en la fila `plan_asignado` del historial de la empresa, en la misma transacción que la asignación. Una asignación sin fecha y un cambio de plan DEBEN seguir guardando la fila como en SL-24. | `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (`valor_nuevo` = la fecha; cambio de plan → `NULL`); `tests/integration/db/planes-historial.test.ts` (existente, sin tocar: sin fecha → `NULL`) |
+| R40 | MIENTRAS la empresa esté en su ciclo corto, «Mi plan» y la sección de plan del detalle de la empresa DEBEN mostrar el uso de órdenes del ciclo corto y «Se reinicia en N días ({fecha})» con N contado hasta las 00:00 de la fecha elegida y esa fecha (no un mes después). | `tests/unit/planes/consumo.test.ts` (asignada el 29 de octubre con fecha 5 de noviembre: «en 7 días (2026-11-05)»); `tests/integration/db/plan-de-la-empresa.test.ts` (la función devuelve el inicio del ciclo corto y el ancla futura); `tests/components/MiPlanModule.test.tsx` |
+| R41 | Los cambios de base de esta enmienda DEBEN ir en una migración nueva, sin editar ninguna anterior, con identificadores en español y un `down.sql` que deje las funciones de SL-24 y `plan_de_la_empresa` exactamente como estaban. Las empresas que ya tienen plan DEBEN seguir contando su ciclo igual que antes de la migración. | `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts` (definiciones de `pg_get_functiondef` antes, tras el `up` y tras el `down`; empresa con plan anterior: mismo uso antes y después); suite de SL-24 en verde sin tocar |
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión (fila) | Requisitos |
@@ -96,6 +132,12 @@
 | Heredado de SL-24: sin dependencias nuevas | R27 |
 | Alcance: «sin cambiar reglas de SL-24» | R25 |
 | Alcance: historial (`plan_rastro`) | R16 (rastro del plan), R21 (asignaciones de la empresa); ver P2 |
+| Inicio del ciclo en la primera asignación (2026-10-29) | R29, R31, R32, R39, R41 |
+| Fecha pasada (2026-10-29) | R30, R33 |
+| Fecha futura (2026-10-29) | R30, R34, R35, R40; límite futuro en P6 |
+| Tope ya pasado con fecha pasada (2026-10-29) | R36, R37 |
+| Textos del modal de primera asignación (2026-10-29) | R37, R38 |
+| R8: 404 HTTP real en `/mi-plan` (2026-10-29) | R8 (test previsto ampliado al E2E) |
 
 ## Preguntas abiertas
 
@@ -120,6 +162,39 @@
   usa la demo de QA (`scripts/demo-qa.ts`) sino las empresas A y B que crea su fixture.
   **Propuesta:** la empresa A del fixture hace de «empresa demo» (R28).
 
+Abiertas por la enmienda del 2026-10-29 (inicio del ciclo elegido). Cada una trae una propuesta; el
+diseño (`design.md > §11`) la sigue hasta que el humano diga otra cosa.
+
+- **P6 — Límite de la fecha futura.** La decisión no lo fija. **Propuesta:** como mucho «hoy más un
+  mes» (mismo día del mes siguiente, o su último día), simétrico al límite pasado. Así el ciclo corto
+  nunca pasa de un mes. ¿Vale, o se quiere otro límite?
+- **P7 — Topes de usuarios y de API keys en la primera asignación.** La fecha solo mueve el conteo de
+  órdenes. **Propuesta:** si en la primera asignación la empresa ya pasa un tope de un rol o de API
+  keys, se sigue rechazando como en SL-24 R12; solo el tope de órdenes se asigna y se avisa (R36). ¿O
+  la decisión «se asigna igual y se avisa» vale para cualquier tope en la primera asignación?
+- **P8 — Textos del ciclo corto.** No hay texto aprobado para avisar de que el primer ciclo es más
+  corto. **Propuesta:** sin texto nuevo: «Mi plan» y el detalle muestran el «Se reinicia en N días
+  ({fecha})» de siempre, contado hasta la fecha elegida (R40), y el modal, la frase aprobada «El ciclo
+  de órdenes empieza el {fecha}.». Si se quiere, añadir «El primer ciclo es más corto: va de hoy al
+  {fecha}.» en el modal y «Primer ciclo, más corto: del {inicio} al {fecha}.» en «Mi plan».
+- **P9 — «Hoy» es el instante o las 00:00.** **Propuesta:** con «hoy», el ancla es el instante de la
+  asignación (R32), como hasta ahora: anclar a las 00:00 contaría las órdenes de esa mañana, creadas
+  antes de que la empresa tuviera plan. Consecuencia: con «hoy» la frontera del ciclo es la hora de la
+  asignación; con otra fecha, las 00:00 de la plataforma.
+- **P10 — «{fecha}» del aviso de tope.** El texto aprobado dice «no podrá crear más hasta <fin del
+  ciclo>». **Propuesta:** la fecha en que empieza el siguiente ciclo (el primer día en que puede volver
+  a crear), la misma del «Se reinicia en N días ({fecha})».
+- **P11 — Falla la lectura previa del aviso en el modal.** **Propuesta:** como la decisión del plan
+  actual en «Cambiar plan»: el modal dice «No se pudo comprobar el consumo de la empresa» y solo ofrece
+  «Reintentar» y «Volver»; sin la comprobación no se confirma. El texto es nuevo y necesita aprobación.
+- **P12 — ¿Se ve la fecha elegida en el historial de asignaciones (R21)?** R39 la guarda. **Propuesta:**
+  no cambiar la tabla del historial en esta ficha; el dato queda en `historial_accion` para la
+  auditoría. Si se quiere ver, una columna «Inicio del ciclo» (texto nuevo).
+- **P13 — Textos nuevos sin aprobar.** `design.md > §6.5` marca como «pendiente de aprobación» la
+  etiqueta del campo («Inicio del ciclo de órdenes»), los dos errores del campo («Elige una fecha entre
+  el {min} y el {max}.», «La fecha de inicio solo se elige en la primera asignación.») y el de P11.
+  ¿Se aprueban así?
+
 ## Decisiones cerradas (no reabrir)
 
 | Fecha | Pregunta | Decisión |
@@ -139,3 +214,9 @@
 | 2026-10-29 | ¿Qué pasa si no se puede leer el plan actual en la confirmación de «Cambiar plan»? | No se deja confirmar. El modal dice «No se pudo cargar el plan actual» y solo ofrece «Reintentar» y «Volver»: sin el resumen no se confirma. |
 | 2026-10-29 | ¿La primera asignación (empresa sin plan) pide confirmación? | Sí, con el mismo modal que «Cambiar plan»: «Asignar <plan> a <empresa>: desde ahora tendrá …», con los topes del plan (órdenes por ciclo, cada rol con tope, API keys; lo que no tiene tope sale como «sin límite»), los módulos incluidos y el aviso de que el ciclo de órdenes empieza hoy (SL-24 R9: la primera asignación fija el ancla). |
 | 2026-10-29 | Textos nuevos de la revisión de diseño | Aprobados: «Con monto», «Programar cambio» y «Reintentar» (tabla de textos de `design.md §6.5`). |
+| 2026-10-29 | Inicio del ciclo en la primera asignación | En la primera asignación (empresa sin plan), el superadmin puede elegir a mano la fecha de inicio del ciclo de órdenes. Por defecto es hoy. Solo se elige en la primera asignación: al cambiar de plan el ciclo sigue como está (P2a de SL-24 no cambia). |
+| 2026-10-29 | Fecha pasada | Como mucho 1 mes atrás. Las órdenes vivas creadas desde esa fecha cuentan para el ciclo en curso. |
+| 2026-10-29 | Fecha futura | El primer ciclo va de hoy hasta esa fecha (un ciclo corto) y desde ahí sigue con el día de la fecha elegida (elegida el 5 de noviembre: del 5 al 4). El límite de la fecha futura lo propone el design y lo decide el humano (P6). |
+| 2026-10-29 | Tope ya pasado con fecha pasada | Se asigna igual y se avisa. El modal muestra el aviso antes de confirmar («La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta <fin del ciclo>») y la empresa queda bloqueada para órdenes nuevas hasta bajar del tope o hasta el siguiente ciclo. Es la misma regla que SL-24 usa al editar un plan. |
+| 2026-10-29 | Textos del modal de primera asignación | Aprobados: el título «¿Asignar este plan a la empresa?» y la frase «El ciclo de órdenes empieza el <fecha>.», que sustituye a «El ciclo de órdenes empieza hoy.» (tabla de textos de `design.md §6.5`). |
+| 2026-10-29 | R8: «no encontrado» en `/mi-plan` | `/mi-plan` debe responder un 404 HTTP real a los roles sin acceso (hoy responde 200 con «No encontramos esta página» porque `loading.tsx` hace streaming antes del `notFound()`). El test previsto de R8 exige el status 404 en el E2E. El arreglo lo hace el implementer. |
