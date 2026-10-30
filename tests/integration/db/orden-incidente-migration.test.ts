@@ -223,6 +223,8 @@ describe("DOWN — deja la base como estaba (R40)", () => {
       "cobro_tienda_completado",
       // 457: el documento del pago de una tienda a la empresa (`abono-tienda-457-migration.test.ts`)
       "abono_tienda",
+      // SLT-68: el incentivo manual a un mensajero
+      "incentivo_mensajero",
     ];
     expect(valores).toEqual(
       WALLET_ORIGEN_TIPO_SEED.filter(

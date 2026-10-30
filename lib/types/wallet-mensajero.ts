@@ -49,6 +49,10 @@ export const PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED = [
   // PARTE de la cuenta por pagar es premio (decision (d)), y eso no se responde mezclandolo con
   // los contraasientos de la anulacion de liquidaciones.
   "premio_ranking",
+  // SLT-68 (design §2.1, D6): el INCENTIVO manual (devengo, cuelga del cierre aprobado mas reciente) y
+  // su contraasiento (pago, cuelga del incentivo). Categorias PROPIAS: ni premio ni ajuste.
+  "incentivo",
+  "reverso_incentivo",
 ] as const satisfies readonly PrismaPagoMensajeroMovimientoCategoria[];
 
 export type PagoMensajeroMovimientoCategoria =

@@ -268,6 +268,11 @@ export class ConciliacionCierresAnaliticaRepository
           OR: [
             { categoria: "premio_ranking" as const },
             { categoria: "ajuste_pago" as const, premioDia: { not: null } },
+            // SLT-68 (design §5, R17): el incentivo cuelga del cierre pero tampoco esta en su snapshot;
+            // su reverso cuelga del incentivo y nunca entra en el where por cierre, pero se nombra
+            // para que la exclusion no dependa de su origen.
+            { categoria: "incentivo" as const },
+            { categoria: "reverso_incentivo" as const },
           ],
         },
       },
