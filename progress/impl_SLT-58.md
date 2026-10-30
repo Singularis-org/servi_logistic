@@ -223,3 +223,60 @@ Las cuatro filas están en `requirements.md > Decisiones cerradas` y los textos 
   - `PlanDetalle`, `plataforma-planes-page`, `MiPlanModule` y `ConsumoDelPlan`: 4 archivos y 53 tests en verde.
   - `PlanEmpresa`, `plataforma-empresa-detalle-page` y `ConsumoDelPlan`: 3 archivos y 59 tests en verde.
   - Typecheck y eslint en verde.
+
+## Tanda C — T10 E2E (backend_dev) y T11 docs (backend_dev)
+
+### T10 — E2E
+- Nuevo: `e2e/planes-superadmin.spec.ts`, en serie y dentro del proyecto `aislamiento`. La empresa A del fixture hace de empresa demo. El flujo:
+  1. el superadmin crea por pantalla un plan custom de A (50 órdenes y 3 mensajeros);
+  2. se lo asigna a A desde el detalle de la empresa, pasando por el modal: «Volver» no asigna y confirmar sí;
+  3. el maestro de A ve en `/mi-plan` el nombre del plan, «0 de 50 órdenes del ciclo», «1 de 3 Mensajero» y «1 Maestro · sin límite»;
+  4. el maestro de B ve «sin límites» y en su HTML no aparece nada del plan de A;
+  5. el mensajero de A recibe «No encontramos esta página».
+- `playwright.config.ts`: solo se añade `"planes-superadmin"` en `aislamiento`.
+- `e2e/superadmin-arranque.spec.ts` (es la dependencia `plataforma-vacia`): el menú esperado pasa de `["Empresas","Geografía"]` a `["Empresas","Planes","Geografía"]`, citando R23. Sin este cambio la dependencia fallaba.
+- `e2e/dos-empresas-humo.spec.ts`: sin cambios. Saca las rutas del menú real y ya recorre `/mi-plan`, con estado 200 en A y en B.
+- Salida, sobre la base desechable `logistic_slt58_e2e` (migrate deploy + db:seed) con `E2E_SERVIDOR=dev`:
+  - `planes-superadmin.spec.ts`, corrida 1: 15 passed (1.0m), contando la dependencia. 0 failed, 0 skipped, 0 flaky.
+  - Corrida 2 sobre la misma base: 15 passed (55.0s).
+  - `dos-empresas-humo.spec.ts`: 18 passed (4.2m).
+  - Guardia `e2e-sin-saltos`: 30/30. Typecheck y eslint en verde.
+- **Queda abierto:** `/mi-plan` devuelve HTTP 200 (no 404) al mensajero, aunque pinta «No encontramos esta página». Lo más probable es que sea el `loading.tsx`, que hace que el streaming envíe la cabecera antes del `notFound()`. Se midió con `next dev`.
+- Nota para `/afinar-regla`: la guardia `e2e-sin-saltos` lee las listas de `specs(...)` como texto, y un comentario con paréntesis o backticks dentro de la lista la rompe.
+
+### T11 — Documentación
+- `docs/architecture.md > Multi-empresa > Planes y límites`: nuevo párrafo «Pantallas de planes (SLT-58)». Solo se añadieron líneas. Cubre la función `plan_de_la_empresa`, que es la segunda y última que puede llamar `servi_app`; las rutas; y que las pantallas solo llaman a las actions de SL-24.
+- R27: `git diff --stat $(git merge-base HEAD origin/dev) -- package.json pnpm-lock.yaml` no muestra nada.
+- `pnpm run test:guardias`: 318 archivos pasan, 2 se saltan y 1 falla. El que falla es `dependencias-declaradas-presentes`, que está en el baseline.
+
+## Mapa R<n> → test (consolidado)
+| R | Test |
+|---|---|
+| R1 | `tests/unit/planes/consumo.test.ts` (precio); `tests/components/MiPlanModule.test.tsx`; `tests/unit/services/mi-plan-service.test.ts`; `tests/integration/db/mi-plan-repository.test.ts` |
+| R2 | `tests/integration/db/plan-de-la-empresa.test.ts` (uso = `plan_uso_*`); `consumo.test.ts` (formatearConteo, filasDeConsumo) |
+| R3 | `consumo.test.ts` (sin tope, filas) |
+| R4 | `consumo.test.ts` (estadoDeLaFila: 79/99, 80/100, 99/100, 100/100, 101/100, 0/0, sin tope); `tests/components/ConsumoDelPlan.test.tsx` (estado sin depender del color) |
+| R5 | `tests/unit/utils/ciclo-plan.test.ts` (inicioDelSiguienteCiclo); `consumo.test.ts` (reinicioDelCiclo); `ConsumoDelPlan.test.tsx` (bajo la fila de órdenes) |
+| R6 | `plan-de-la-empresa.test.ts`; `mi-plan-service.test.ts`; `MiPlanModule.test.tsx`; `ConsumoDelPlan.test.tsx` (EmptyState) |
+| R7 | `mi-plan-service.test.ts`; `mi-plan-repository.test.ts`; `MiPlanModule.test.tsx` |
+| R8 | `mi-plan-service.test.ts` (siete roles y sin sesión, sin llamadas al repo); `tests/integration/mi-plan-page.test.tsx`; E2E (mensajero de A) |
+| R9 | `plan-de-la-empresa.test.ts` (42501, sin avisos ni actor, permisos); `mi-plan-repository.test.ts`; E2E (B no ve nada de A) |
+| R10 | `tests/unit/auth/menu-mi-plan.test.ts`; `tests/unit/auth/menu-visibility.test.ts` |
+| R11 | `MiPlanModule.test.tsx` (sin botones, formularios ni enlaces) |
+| R12 | `menu-mi-plan.test.ts` (módulos apagados); guardia `modulos-reparto` |
+| R13 | `tests/unit/services/planes-service-lecturas.test.ts`; `tests/integration/db/planes-lecturas-plataforma.test.ts`; `tests/components/PlanesModule.test.tsx`; E2E (fila del catálogo) |
+| R14 | `tests/components/PlanForm.test.tsx`; E2E (alta por pantalla) |
+| R15 | `PlanForm.test.tsx`; `tests/components/PlanDetalle.test.tsx` |
+| R16 | `planes-service-lecturas.test.ts`; `planes-lecturas-plataforma.test.ts`; `PlanDetalle.test.tsx` |
+| R17 | `PlanDetalle.test.tsx` (confirmaciones, archivado sin controles, foco) |
+| R18 | `PlanForm.test.tsx`; `PlanDetalle.test.tsx`; `tests/components/PlanEmpresa.test.tsx` |
+| R19 | `planes-service-lecturas.test.ts`; `PlanEmpresa.test.tsx`; `tests/integration/plataforma-empresa-detalle-page.test.tsx`; E2E (bloque Plan) |
+| R20 | `PlanEmpresa.test.tsx` (solo asignables, rechazo por tope, modales de confirmación); E2E (asignación con modal) |
+| R21 | `planes-lecturas-plataforma.test.ts`; `PlanEmpresa.test.tsx` |
+| R22 | `planes-service-lecturas.test.ts`; `tests/integration/plataforma-planes-page.test.tsx` |
+| R23 | `menu-visibility.test.ts`; guardia `superadmin-fuera-de-empresa`; `destino-post-login.test.ts`; `e2e/superadmin-arranque.spec.ts` |
+| R24 | guardia `superficie-de-uso` (ninguna `@sin-superficie` sobrevive a su motivo) |
+| R25 | suite de SL-24 en verde (26 archivos, 370 tests), con la excepción mecánica que aprobó el humano en `planes-service.test.ts`; `plan-de-la-empresa.test.ts` (STABLE) |
+| R26 | `plan-de-la-empresa.test.ts` (nombre en `pg_proc`; `down.sql` con ROLLBACK) |
+| R27 | `git diff` de `package.json`/`pnpm-lock.yaml` contra el merge-base vacío (arriba) |
+| R28 | `e2e/planes-superadmin.spec.ts` |

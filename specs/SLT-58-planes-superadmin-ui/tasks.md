@@ -79,11 +79,11 @@
 
 ## Tanda C — cierre
 
-- [ ] **T10 — E2E** (design §8, R28). Depende de T5–T9.
+- [x] **T10 — E2E** (design §8, R28). Depende de T5–T9.
   `e2e/planes-superadmin.spec.ts` (y, si hace falta, ayudantes en `e2e/_planes-fixture.ts`).
   *Hecho:* `pnpm exec playwright test e2e/planes-superadmin.spec.ts` en verde en local, y el humo de dos
   empresas (`e2e/dos-empresas-humo.spec.ts`) sigue verde con `/mi-plan` en las rutas del maestro.
-- [ ] **T11 — Documentación y gate**. Depende de todo.
+- [x] **T11 — Documentación y gate**. Depende de todo.
   Párrafo «Pantallas de planes (SLT-58)» en `docs/architecture.md > Multi-empresa > Planes y límites`
   (la función `plan_de_la_empresa` como segunda y última función que `servi_app` puede llamar; rutas);
   mapa `R<n> → test` en `progress/impl_SLT-58.md`.

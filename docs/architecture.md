@@ -212,6 +212,20 @@ esta bien hecha, no solo si "funciona".
     uno por empresa con el plan, en la misma transacción. `plan_recordatorio_cambio` reparte los
     avisos 7 días y 1 día antes. El correo va por la cola: si falla, la edición se mantiene.
     Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
+  - **Pantallas de planes (SLT-58, 2026-10-29).** La empresa lee su plan y su consumo con
+    `plan_de_la_empresa(organizacion_id)` (migración `20261029120000_plan_de_la_empresa`), que la
+    llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
+    es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
+    revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo` que los triggers. Del
+    cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
+    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+      `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
+      `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
+      sin puerta de módulo.
+    - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
+      Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
+      escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
