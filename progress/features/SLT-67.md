@@ -17,6 +17,12 @@ F2.0 (2026-10-30): tomada, worktree creado, sin SDD. Implementación delegada.
 - 2026-10-30: sin SDD (decisión del humano).
 - 2026-10-30: entero sin decimales (500 → 500); con decimales, siempre dos (500,5 → 500,50).
 - 2026-10-30: se hace reutilizable: util de formato compartida + campo de monto compartido (shared) para futuros formularios.
+- 2026-10-30: primer uso = todos los campos de monto de `PlanForm.tsx` (crear y editar plan). La util
+  vive en `lib/config/moneda.ts` junto a `formatMontoString`/`montoExacto`. Ningún otro formulario se
+  migra; los diálogos con monto quedan como candidatos en `progress/impl_SLT-67.md`. No se adelanta
+  nada de SLT-66 (también toca `PlanForm`).
+- 2026-10-30: la util solo opera sobre strings (sin float) y NO redondea: con más de 2 decimales
+  significativos los conserva; solo quita ceros sobrantes, con mínimo 2 decimales si no es entero.
 
 ## Preguntas abiertas
 - 2026-10-30 (implementer, BLOQUEO antes de tocar código): **no existe un formulario de crear/editar
@@ -36,6 +42,8 @@ F2.0 (2026-10-30): tomada, worktree creado, sin SDD. Implementación delegada.
   - Pregunta al humano: ¿en qué pantalla vio «500.00»? (¿otra app, p. ej. Ordenex, o uno de los
     diálogos de arriba?) ¿Cuál es el «primer uso» de la util + campo compartido? No se implementa
     nada hasta saberlo (regla 6, «No inventes»).
+  - **RESPONDIDA 2026-10-30 (humano, vía leader):** era el **formulario del plan**
+    (`/plataforma/planes`, crear y editar: `PlanForm.tsx`), no órdenes. Tarjeta corregida en Trello.
 
 ## Tandas
 
