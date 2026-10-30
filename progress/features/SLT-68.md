@@ -16,6 +16,7 @@ zone fullstack / complexity medium. Hoy no hay forma de registrar un incentivo l
 - `ajuste_devengo` existe en el enum pero solo lo emiten las anulaciones.
 
 ## Decisiones
+- 2026-10-30 (Carlos): «la 1, relanza el CI» — se acepta a sabiendas relanzar el gate del PR #53 pese a D18 («un reintento no vale»): los dos 40P01 (demo-qa, liquidacion-reparto-migration) caen en el shard 2 y no los causa SLT-68 (su test corre en el shard 3). Deuda nueva, hermana de D18, a registrar en dev: liquidacion-reparto-migration hace DROP TABLE con FK a usuario sin el lock de la 227.
 - 2026-10-30 (Carlos): «dale aprobado» — Q1 último cierre aprobado; Q2 sí se anula aunque esté pagado; Q3 sin historial_accion en el hotfix.
 - 2026-10-30 (Carlos): prioritaria y urgente, antes que EP-8 («lo necesitan urgente», salida a producción).
 - 2026-10-30 (Carlos, por el borrador aprobado): maestro y admin; monto y motivo obligatorios, fecha; suma a la cuenta por pagar del mensajero y baja la ganancia; categoría propia «Incentivo»; anulable con contraasiento.
