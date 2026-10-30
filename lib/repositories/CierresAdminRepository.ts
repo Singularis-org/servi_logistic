@@ -36,6 +36,7 @@ import { CajaCodFeedService } from "@/lib/services/CajaCodFeedService";
 import type { CierreEstado } from "@/lib/types/cierre";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import type {
+  AjustePagoGestionDTO,
   CierreRechazoDeTienda,
   IngresoEmpresaDTO,
   TarifaSnapshotDTO,
@@ -309,6 +310,21 @@ export const GESTION_ADMIN_SELECT = {
     take: FAMILIAS_DERIVADAS_DEL_HISTORIAL.length,
     select: { origenTipo: true },
   },
+  // SLT-56 (R19/R20): los ajustes del pago al mensajero, del mas viejo al mas nuevo. Prisma lo
+  // resuelve con UNA consulta por nivel (no una por gestion), y como esta proyeccion alimenta los
+  // dos detalles de admin (cierre del dia y cierre de bodega), la marca llega a los dos sin otra
+  // lectura. La marca «Ajustado» se DERIVA de que la lista no este vacia: no hay columna booleana.
+  ajustesPagoMensajero: {
+    select: {
+      createdAt: true,
+      pagoAnterior: true,
+      pagoNuevo: true,
+      motivo: true,
+      actorRol: true,
+      actor: { select: NOMBRE_USUARIO_SELECT },
+    },
+    orderBy: { createdAt: "asc" },
+  },
 } as const;
 
 type DetalleAdminRow = Prisma.CierreDetailGetPayload<{ select: typeof DETALLE_ADMIN_SELECT }>;
@@ -317,6 +333,22 @@ type GestionAdminRow = Prisma.GestionOrdenGetPayload<{ select: typeof GESTION_AD
 // Money-safe: Decimal -> string escala 2 fija (nunca number/parseFloat).
 function decimalToString(d: Prisma.Decimal | null): string | null {
   return d === null ? null : d.toFixed(2);
+}
+
+/**
+ * SLT-56 (R19) — los ajustes de una gestion, tal como los pinta el detalle. Nombre y rol del actor
+ * como estaban al ajustar (el rol esta congelado en la fila); importes STRING escala 2 (R16). El
+ * orden ya lo trae la consulta.
+ */
+function toAjustesPago(rows: GestionAdminRow["ajustesPagoMensajero"]): AjustePagoGestionDTO[] {
+  return rows.map((a) => ({
+    creadoAt: a.createdAt.toISOString(),
+    actorNombre: nombreCompletoUsuario(a.actor),
+    actorRol: a.actorRol,
+    pagoAnterior: a.pagoAnterior.toFixed(2),
+    pagoNuevo: a.pagoNuevo.toFixed(2),
+    motivo: a.motivo,
+  }));
 }
 
 /**
@@ -482,6 +514,7 @@ export function toPendienteRowDesdeSnapshot(
     // es quien lo captura y quien tiene que poder auditarlo despues.
     indemnizacion: decimalToString(g.indemnizacion),
     ingresoEmpresa: toIngresoEmpresa(g, d),
+    ajustesPago: toAjustesPago(g.ajustesPagoMensajero), // SLT-56 (R19/R20)
   };
 }
 
