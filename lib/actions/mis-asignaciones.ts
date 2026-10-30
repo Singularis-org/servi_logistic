@@ -9,6 +9,7 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { RutaOptimizadaRepository } from "@/lib/repositories/RutaOptimizadaRepository";
 import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
+import { buildOptimizacionRutaService } from "@/lib/services/jobs/optimizacion-ruta-handler";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
@@ -140,6 +141,33 @@ function buildService(): IMisAsignacionesService {
 export interface MisAsignacionesDeps {
   service?: IMisAsignacionesService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-59 (R27): reduccion de la ruta tras una gestion `ok`; inyectable en tests. */
+  reducirRuta?: (mensajeroId: string) => Promise<void>;
+}
+
+/**
+ * SLT-59 (R27, design §3.2): la entrega en orden se refleja en la MISMA peticion para que
+ * `router.refresh()` ya muestre la secuencia reducida, sin esperar al job con debounce. Se reusa la
+ * fabrica del handler para que la decision sea la del job (mismas guardas, misma config).
+ */
+async function reducirRutaReal(mensajeroId: string): Promise<void> {
+  await buildOptimizacionRutaService().reducirSinLlamadas(mensajeroId);
+}
+
+/**
+ * R28: best-effort. Si falla, la gestion ya quedo registrada y el job encolado en su transaccion
+ * (§3.1) hara la misma reduccion o la reoptimizacion; la respuesta no debe cambiar por esto.
+ */
+async function reducirRutaSinFallar(
+  reducir: (mensajeroId: string) => Promise<void>,
+  mensajeroId: string,
+): Promise<void> {
+  try {
+    await reducir(mensajeroId);
+  } catch {
+    // Silencioso a proposito, como `registrarUbicacion`: no hay nada accionable que decirle al
+    // mensajero y la red de seguridad (el job) ya esta encolada.
+  }
 }
 
 /** File-like: lo que necesitamos para leer el binario de la evidencia. */
@@ -216,7 +244,12 @@ export async function gestionar(
     const data = gestionarSchema.parse(raw); // ZodError -> VALIDATION_ERROR
     const input = await toGestionarInput(data);
     const service = deps.service ?? buildService();
-    return service.gestionar(input, actor);
+    const resultado = await service.gestionar(input, actor);
+    // Solo tras `ok`: con `conflict`/`forbidden` la gestion no se registro y las paradas no cambiaron.
+    if (resultado.status === "ok") {
+      await reducirRutaSinFallar(deps.reducirRuta ?? reducirRutaReal, actor.usuarioId);
+    }
+    return resultado;
   });
   return isAppErrorShape(r) ? toMisAsignacionesActionError(r) : r;
 }

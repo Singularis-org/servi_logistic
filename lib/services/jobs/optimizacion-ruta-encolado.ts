@@ -22,6 +22,12 @@
 // una optimizacion posterior al evento ya cubrio el trabajo. Coste evitado sin
 // infraestructura nueva.
 //
+// ⏳ 2026-10-29 (SLT-59, D2/D12; R21-R23, design §3.1): la gestion YA NO es inmediata. Va con
+// debounce y comparte la clave `:debounce:` con la recogida y el traspaso, asi que un job en vuelo
+// la TRAGA — y ahora eso es lo buscado: ese job corre despues y lee el conjunto al ejecutarse. El
+// namespace `:inmediato:` y su helper se retiraron. La entrega en orden no espera a la cola: se
+// reduce en la propia peticion (R27). Lo de arriba queda como historia de por que existio.
+//
 // ══════════════════════════════════════════════════════════════════════════════════════
 // §4.2 — LA VENTANA TEMPORAL DE LA CLAVE DE DEBOUNCE ES OBLIGATORIA (R18).
 // ══════════════════════════════════════════════════════════════════════════════════════
@@ -31,17 +37,10 @@
 // para siempre— se descartarian en silencio. Es la trampa exacta que documento el gate
 // F1.4-Q4 de la feature 91.
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 
 /** Prefijo del `dedupe_key` (patron `DEDUPE_PREFIX` de liberar-reprogramadas / 91). */
 export const DEDUPE_PREFIX = "optimizacion_ruta";
-
-/**
- * Limite de intentos de este tipo de job. Se queda en el default de la cola (5), a
- * diferencia de la geocodificacion (8): fallar aqui NO pierde datos —la ruta anterior se
- * conserva (R27)— y el proximo evento del mensajero encolara otro job de todas formas.
- * Insistir mas solo gastaria llamadas facturadas.
- */
-export const OPTIMIZACION_MAX_INTENTOS = 5;
 
 /** Duracion de la ventana de agrupacion, en ms. Fija: define el ESPACIO de claves. */
 const VENTANA_MS = 60_000;
@@ -59,15 +58,6 @@ const VENTANA_MS = 60_000;
 export function dedupeKeyDebounce(mensajeroId: string, runAfter: Date): string {
   const ventana = Math.floor(runAfter.getTime() / VENTANA_MS);
   return `${DEDUPE_PREFIX}:${mensajeroId}:debounce:${ventana}`;
-}
-
-/**
- * R19 — clave del disparo INMEDIATO. Namespace distinto del debounce (§4.1) MAS un
- * componente unico por evento: nunca colisiona con nada, asi que la gestion del mensajero
- * SIEMPRE inserta su fila y SIEMPRE corre sin delay.
- */
-export function dedupeKeyInmediato(mensajeroId: string, eventoId: string): string {
-  return `${DEDUPE_PREFIX}:${mensajeroId}:inmediato:${eventoId}`;
 }
 
 /**
@@ -90,29 +80,8 @@ export async function encolarOptimizacionDebounce(
     {
       runAfter,
       dedupeKey: dedupeKeyDebounce(mensajeroId, runAfter),
-      maxIntentos: OPTIMIZACION_MAX_INTENTOS,
-    },
-    tx,
-  );
-}
-
-/**
- * R19: encola la reoptimizacion SIN delay, dentro de la transaccion del writer. El
- * `eventoId` es el id de la `gestion_orden` recien creada en esa misma transaccion: unico
- * por evento y disponible sin generar nada nuevo.
- */
-export async function encolarOptimizacionInmediata(
-  repo: IJobRepository,
-  tx: JobTxClient | undefined,
-  mensajeroId: string,
-  eventoId: string,
-): Promise<void> {
-  await repo.enqueue(
-    "optimizacion_ruta",
-    { mensajeroId },
-    {
-      dedupeKey: dedupeKeyInmediato(mensajeroId, eventoId),
-      maxIntentos: OPTIMIZACION_MAX_INTENTOS,
+      // SLT-59 (R32, D9): antes una constante de 5. Las filas ya encoladas conservan el suyo.
+      maxIntentos: loadRouteOptimizationConfig().RUTA_OPT_MAX_INTENTOS,
     },
     tx,
   );

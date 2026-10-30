@@ -54,14 +54,14 @@
 
 ## Fase 3 — La gestión (depende de T1.2; [P] con F2 salvo T3.3)
 
-- [ ] **T3.1** `registrarGestionPendiente`: coordenadas en la re-lectura y encolado con debounce solo
+- [x] **T3.1** `registrarGestionPendiente`: coordenadas en la re-lectura y encolado con debounce solo
   si las tiene (design §3.1). *Hecho:* `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts`
   cubre R21, R22, R23 (recogida + gestión y dos gestiones en la misma ventana → 1 job), R25 y R26.
-- [ ] **T3.2** Retirar `encolarOptimizacionInmediata` y `dedupeKeyInmediato`; usar
+- [x] **T3.2** Retirar `encolarOptimizacionInmediata` y `dedupeKeyInmediato`; usar
   `RUTA_OPT_MAX_INTENTOS`; nota fechada en el comentario §4.1. *Hecho:*
   `tests/unit/services/optimizacion-ruta-encolado.test.ts` sin los casos del inmediato y con R23, R24
   y R32; `grep encolarOptimizacionInmediata lib/` = 0.
-- [ ] **T3.3** `deps.reducirRuta` en la Server Action `gestionar` (design §3.2). Depende de T2.4.
+- [x] **T3.3** `deps.reducirRuta` en la Server Action `gestionar` (design §3.2). Depende de T2.4.
   *Hecho:* `tests/unit/actions/mis-asignaciones-action.test.ts`: se llama tras un `ok` con el
   `usuarioId` del actor, no se llama tras `conflict`/`forbidden`/error (R27), y si lanza la action
   devuelve el mismo resultado (R28).

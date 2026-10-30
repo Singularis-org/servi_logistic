@@ -3,10 +3,7 @@ import type { JobTipo } from "@prisma/client";
 import { OptimizacionRutaService } from "@/lib/services/OptimizacionRutaService";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 import { crearOptimizacionRutaHandler } from "@/lib/services/jobs/optimizacion-ruta-handler";
-import {
-  encolarOptimizacionDebounce,
-  encolarOptimizacionInmediata,
-} from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import { encolarOptimizacionDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { JobsConfig } from "@/lib/config/jobs";
@@ -53,6 +50,9 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 // medicion quedo anotada en `progress/impl_SLT-59.md`. T5.1 anade la variante «Nuevo» con los
 // conteos de la tabla como aserciones exactas y BORRA la de «Hoy» —que usa
 // `encolarOptimizacionInmediata`, retirado en T3.2—.
+// ⏳ 2026-10-29 (SLT-59, T3.2): la variante «Hoy» se borro al retirar ese helper (adelantado a T3.2
+// en vez de T5.1). Su medicion sigue en `progress/impl_SLT-59.md`, Tanda 1. El arnes de la jornada
+// queda montado para la variante «Nuevo» de T5.1.
 
 const T0 = new Date("2026-10-29T13:00:00.000Z"); // en minuto exacto: las ventanas del debounce
 const MIN = 60_000;
@@ -589,50 +589,6 @@ async function medirJobCon401(): Promise<{ llamadas: number; job: JobDTO }> {
   return { llamadas: j.optimizar.mock.calls.length, job: j.jobs.filas[0] };
 }
 
-// ── «Hoy»: el codigo anterior a SLT-59 ────────────────────────────────────────────────────
-
-/**
- * Gestion tal como la hace HOY `GestionOrdenRepository.registrarGestionPendiente` (paso 7):
- * marca la gestion pendiente y encola SIEMPRE un job inmediato —tenga coordenadas o no la
- * orden—; despues `MisAsignacionesService.gestionar` guarda la ubicacion.
- * BORRAR en T5.1 junto con el test de «Hoy» (T3.2 retira `encolarOptimizacionInmediata`).
- */
-const gestionHoy: GestionVariante = async (j, ordenId, gps) => {
-  j.paradas.gestionar(ordenId);
-  await encolarOptimizacionInmediata(j.jobs, undefined, M, `gestion-${ordenId}`);
-  await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
-};
-
 describe("SLT-59/R37 — jornada de referencia (design §8)", () => {
-  it("T0.1 — mide la columna «Hoy» con el codigo anterior a SLT-59 (se reporta, no se afirma)", async () => {
-    const { j, filas } = await medirJornada(gestionHoy);
-    const total = totales(filas);
-    const fila11 = await medirJobCon401();
-
-    console.info(
-      [
-        "[SLT-59 T0.1] jornada de referencia — columna «Hoy» MEDIDA (opt / routes / jobs):",
-        ...filas.map((f) => {
-          const ev = JORNADA.find((e) => e.n === f.n);
-          return `  ${f.n}. t=${ev?.tMin} min — ${ev?.descripcion}: ${f.opt} / ${f.routes} / ${f.jobs}`;
-        }),
-        `  Total: ${total.opt} / ${total.routes} / ${total.jobs}`,
-        `  11. Un job recibe 401: ${fila11.llamadas} llamadas (job ${fila11.job.estado}, ` +
-          `intentos ${fila11.job.intentos}/${fila11.job.maxIntentos})`,
-      ].join("\n"),
-    );
-
-    // Lo que se afirma es que el ARNES recorrio la jornada entera, no cuanto costo: eso cambia
-    // con SLT-59 y se compara contra la tabla en el informe.
-    expect(filas.map((f) => f.n)).toEqual(JORNADA.map((e) => e.n));
-    expect(j.rutas.fila?.paradas).toEqual([]); // entrego todo: la secuencia quedo vacia
-    expect(j.jobs.pendientes()).toEqual([]);
-    for (const [input] of j.optimizar.mock.calls) {
-      // Nunca se manda al proveedor la orden sin coordenadas ni una ya gestionada.
-      expect(input.paradas.map((p) => p.ordenId)).not.toContain(SIN_COORDENADAS);
-    }
-    expect(fila11.job.estado).toBe("failed");
-  });
-
   it.todo("T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37)");
 });

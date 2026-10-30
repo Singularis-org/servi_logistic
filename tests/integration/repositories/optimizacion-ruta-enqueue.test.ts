@@ -8,10 +8,7 @@ import type {
   JobTxClient,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
-import {
-  dedupeKeyDebounce,
-  dedupeKeyInmediato,
-} from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import { dedupeKeyDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 
 // Feature 92 (R16/R17/R19) — encolado TRANSACTIONAL OUTBOX desde los DOS writers del
@@ -90,11 +87,22 @@ function prismaRecoger(idsGanadores: { id: string }[], falla = false) {
 // ⏳ 2026-09-23 (FICHA 454, T1.4): `crearGestionYTransicionar` se sustituye por
 // `registrarGestionPendiente` (registra sin transicionar). La reoptimizacion inmediata sigue en la
 // MISMA transaccion. El doble gana el candado + re-lectura (`$queryRaw`) y el evento de registro.
-function prismaGestion(opts: { gestionId?: string; falla?: boolean } = {}) {
+// ⏳ 2026-10-29 (SLT-59, T3.1): la re-lectura de gestionable trae ademas `tiene_coordenadas` (R21,
+// R22); `coordenadas` lo fija y `gestionable: false` simula que la re-lectura no devuelve fila (R25).
+function prismaGestion(
+  opts: { gestionId?: string; falla?: boolean; coordenadas?: boolean; gestionable?: boolean } = {},
+) {
   const tx = {
     $queryRaw: vi.fn(async (q: unknown) => {
       const partes = Array.isArray(q) ? q : ((q as { strings?: string[] }).strings ?? []);
-      return partes.join(" ").includes("webhook_suscripcion") ? [] : [{ id: "o1" }];
+      const sql = partes.join(" ");
+      if (sql.includes("webhook_suscripcion")) return [];
+      if (sql.includes("tiene_coordenadas")) {
+        return opts.gestionable === false
+          ? []
+          : [{ id: "o1", tiene_coordenadas: opts.coordenadas ?? true }];
+      }
+      return [{ id: "o1" }];
     }),
     ordenEvento: { create: vi.fn(async () => ({ id: "ev-1" })) },
     gestionOrden: {
@@ -218,22 +226,62 @@ describe("R17 — dos recogidas en la MISMA ventana producen UNA fila", () => {
   });
 });
 
-describe("R19 — gestionar encola una reoptimizacion INMEDIATA", () => {
-  it("la gestion deja una fila SIN runAfter, con la clave del namespace `inmediato`", async () => {
+// ⏳ 2026-10-29 (SLT-59, D2/D12): este bloque probaba 92/R19 (gestion INMEDIATA, namespace propio).
+// La gestion pasa a debounce y comparte la clave de la recogida; los casos de abajo lo sustituyen.
+describe("SLT-59 R21 — una gestion sobre una orden CON coordenadas encola con debounce", () => {
+  it("deja UNA fila con runAfter = ahora + RUTA_DEBOUNCE_S y la clave `:debounce:`", async () => {
     const { prisma } = prismaGestion({ gestionId: "gestion-77" });
     const cola = new ColaEnMemoria();
 
     await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
 
     expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter).toBeUndefined();
-    // El `eventoId` es el id de la gestion recien creada EN ESA MISMA transaccion.
-    expect(cola.ruta[0].opts.dedupeKey).toBe(dedupeKeyInmediato(MENSAJERO, "gestion-77"));
+    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO });
+    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
+    expect(cola.ruta[0].opts.dedupeKey).toBe(
+      dedupeKeyDebounce(MENSAJERO, new Date(T0.getTime() + 60_000)),
+    );
   });
 
-  it("CON UN DEBOUNCE EN VUELO, la gestion inserta su fila igual (no la traga el ON CONFLICT)", async () => {
-    // Este es el punto duro del design §4.1: con un solo espacio de claves, esta fila
-    // desapareceria EN SILENCIO y la ruta no se recalcularia tras la entrega.
+  it("el encolado va DENTRO de la transaccion de la gestion", async () => {
+    const { prisma, tx } = prismaGestion();
+    const cola = new ColaEnMemoria();
+    await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+    expect(cola.ruta[0].tx).toBe(tx);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("las coordenadas salen de la MISMA re-lectura de gestionable: ninguna consulta nueva", async () => {
+    const { prisma, tx } = prismaGestion();
+    const cola = new ColaEnMemoria();
+    await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+
+    const sentencias = tx.$queryRaw.mock.calls.map((c) => {
+      const q = c[0] as unknown;
+      return (Array.isArray(q) ? q : ((q as { strings?: string[] }).strings ?? [])).join(" ");
+    });
+    // Una sola sentencia lleva las coordenadas, y es la re-lectura de gestionable (la que filtra
+    // por el mensajero asignado), no una consulta aparte.
+    const conCoordenadas = sentencias.filter((q) => q.includes("tiene_coordenadas"));
+    expect(conCoordenadas).toHaveLength(1);
+    expect(conCoordenadas[0]).toContain("mensajero_asignado_id");
+  });
+});
+
+describe("SLT-59 R22 — una gestion sobre una orden SIN coordenadas no encola", () => {
+  it("no deja ninguna fila de optimizacion_ruta, pero la gestion se registra", async () => {
+    const { prisma } = prismaGestion({ coordenadas: false, gestionId: "gestion-9" });
+    const cola = new ColaEnMemoria();
+
+    const res = await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+
+    expect(res?.gestionId).toBe("gestion-9");
+    expect(cola.ruta).toHaveLength(0);
+  });
+});
+
+describe("SLT-59 R23 — con un debounce en vuelo, la gestion NO crea otro job ni lo adelanta", () => {
+  it("recogida y luego gestion en la misma ventana -> UNA fila con el runAfter de la recogida", async () => {
     const cola = new ColaEnMemoria();
 
     const recogida = prismaRecoger([{ id: "o1" }]);
@@ -244,25 +292,64 @@ describe("R19 — gestionar encola una reoptimizacion INMEDIATA", () => {
       idEstado("en_reparto"),
       DIA_CR,
     );
-    expect(cola.ruta).toHaveLength(1);
+    const runAfterRecogida = cola.ruta[0].opts.runAfter;
 
     const gestion = prismaGestion({ gestionId: "gestion-77" });
-    await repoRecoger(gestion.prisma, cola, T0).registrarGestionPendiente(GESTION_INPUT);
+    await repoRecoger(gestion.prisma, cola, new Date(T0.getTime() + 20_000)).registrarGestionPendiente(
+      GESTION_INPUT,
+    );
 
-    expect(cola.ruta).toHaveLength(2);
-    expect(cola.ruta[1].opts.dedupeKey).toContain(":inmediato:");
-    expect(cola.ruta[0].opts.dedupeKey).toContain(":debounce:");
+    expect(cola.ruta).toHaveLength(1);
+    expect(cola.ruta[0].opts.runAfter).toBe(runAfterRecogida);
   });
 
-  it("el encolado va DENTRO de la transaccion de la gestion", async () => {
-    const { prisma, tx } = prismaGestion();
+  it("dos gestiones en la misma ventana -> UNA fila", async () => {
     const cola = new ColaEnMemoria();
-    await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+
+    const primera = prismaGestion({ gestionId: "gestion-1" });
+    await repoRecoger(primera.prisma, cola, T0).registrarGestionPendiente(GESTION_INPUT);
+    const runAfterPrimera = cola.ruta[0].opts.runAfter;
+    const segunda = prismaGestion({ gestionId: "gestion-2" });
+    await repoRecoger(segunda.prisma, cola, new Date(T0.getTime() + 20_000)).registrarGestionPendiente({
+      ...GESTION_INPUT,
+      ordenId: "o2",
+    });
+
+    expect(cola.ruta).toHaveLength(1);
+    expect(cola.ruta[0].opts.runAfter).toBe(runAfterPrimera);
+  });
+});
+
+describe("SLT-59 R25 — una gestion no gestionable no deja job", () => {
+  it("si la re-lectura no devuelve fila, responde null y no encola", async () => {
+    const { prisma } = prismaGestion({ gestionable: false });
+    const cola = new ColaEnMemoria();
+
+    const res = await repoRecoger(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+
+    expect(res).toBeNull();
+    expect(cola.ruta).toHaveLength(0);
+  });
+});
+
+describe("SLT-59 R26 — el encolado de la recogida no cambia", () => {
+  it("la recogida sigue dejando su fila con debounce, la misma clave y el payload de siempre", async () => {
+    const { prisma, tx } = prismaRecoger([{ id: "o1" }]);
+    const cola = new ColaEnMemoria();
+
+    await repoRecoger(prisma, cola).recogerLote(["o1"], MENSAJERO, idEstado("mensajero_recogiendo_en_bodega"), idEstado("en_reparto"), DIA_CR);
+
+    expect(cola.ruta).toHaveLength(1);
+    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO });
+    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
+    expect(cola.ruta[0].opts.dedupeKey).toBe(
+      dedupeKeyDebounce(MENSAJERO, new Date(T0.getTime() + 60_000)),
+    );
     expect(cola.ruta[0].tx).toBe(tx);
   });
 });
 
-describe("R16/R19 — una transaccion REVERTIDA no deja jobs huerfanos", () => {
+describe("R16 y SLT-59 R25 — una transaccion REVERTIDA no deja jobs huerfanos", () => {
   it("si el append del historial revienta en recogerLote, no queda job", async () => {
     const { prisma } = prismaRecoger([{ id: "o1" }], true);
     const cola = new ColaEnMemoria();

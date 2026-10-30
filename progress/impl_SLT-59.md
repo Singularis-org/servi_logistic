@@ -276,3 +276,94 @@ cuenta como desviado y se reoptimiza (R3). No he añadido una rama propia, porqu
   implementación provisional (R13, 0 llamadas) no afecta a la jornada R37. No bloquea las fases 3-5.
 - PA-2: se sigue R4 literal (la polilínea existe → +Infinity → desviado → reoptimiza). Pendiente de
   confirmación humana, no bloquea.
+
+## Tanda 3 — Fase 3 — backend_dev: T3.1, T3.2, T3.3 (2026-10-29)
+
+MCP del grafo no usado (el worktree no está indexado, como en tandas previas): Grep/Read.
+
+### Archivos
+
+- `lib/repositories/GestionOrdenRepository.ts` — T3.1: la re-lectura de gestionable añade
+  `("o"."latitud" IS NOT NULL AND "o"."longitud" IS NOT NULL) AS "tiene_coordenadas"` (misma sentencia,
+  bajo el candado); el paso (7) llama a `encolarOptimizacionDebounce` con `RUTA_DEBOUNCE_S` solo si
+  `tiene_coordenadas`. Notas fechadas en el JSDoc (paso 7) y en el cuerpo; el texto original se conserva.
+- `lib/services/jobs/optimizacion-ruta-encolado.ts` — T3.2: retirados `encolarOptimizacionInmediata`,
+  `dedupeKeyInmediato` y `OPTIMIZACION_MAX_INTENTOS`; `maxIntentos` = `loadRouteOptimizationConfig().RUTA_OPT_MAX_INTENTOS`;
+  nota fechada anexada al comentario §4.1 (original intacto).
+- `lib/actions/mis-asignaciones.ts` — T3.3: `MisAsignacionesDeps.reducirRuta?`; `reducirRutaReal`
+  (`buildOptimizacionRutaService().reducirSinLlamadas`) y `reducirRutaSinFallar` (try/catch silencioso,
+  R28). `gestionar` la llama solo con `status === "ok"`, con `actor.usuarioId`.
+- `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts` — doble de `prismaGestion` con
+  `coordenadas`/`gestionable`; bloque 92/R19 (inmediato) sustituido por R21, R22, R23, R25, R26.
+- `tests/unit/services/optimizacion-ruta-encolado.test.ts` — fuera los casos del inmediato; + R23, R24, R32.
+- `tests/unit/actions/mis-asignaciones-action.test.ts` — + describe «SLT-59 R27/R28».
+- `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` — borrada la variante «Hoy»
+  (`gestionHoy` + su `it`); se conserva el `it.todo` de «Nuevo» (T5.1). Nota fechada en la cabecera.
+- `tests/unit/repositories/notificacion-orden-rechazada.test.ts` — el doble de la re-lectura devuelve
+  `tiene_coordenadas: true` (ver Desviaciones).
+
+`grep -r encolarOptimizacionInmediata lib/` → 0. `dedupeKeyInmediato|OPTIMIZACION_MAX_INTENTOS` en `lib/ tests/` → 0.
+Sin cambios en `db/` (R40). Sin dependencias nuevas.
+
+### Mapa R<n> → test (esta tanda)
+
+| R | Test |
+| --- | --- |
+| R21 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R21» (fila con debounce y clave `:debounce:`; dentro de la tx; coordenadas en la MISMA re-lectura) |
+| R22 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R22» (sin coordenadas → 0 filas, gestión registrada) |
+| R23 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R23» (recogida + gestión; dos gestiones → 1 fila, runAfter de la primera); `optimizacion-ruta-encolado.test.ts` › «R23» |
+| R24 | `optimizacion-ruta-encolado.test.ts` › «R24» (ventana siguiente inserta su fila con otra clave) + «R18» existente |
+| R25 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R25» (no gestionable → null, 0 filas) y «R16 y SLT-59 R25 — transacción REVERTIDA» |
+| R26 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R26» (recogida: payload, runAfter, clave y tx iguales) + bloques R16/R17 existentes. Traspaso (`OrdenRepository.ts:4987`) no tocado. |
+| R27 | `mis-asignaciones-action.test.ts` › «SLT-59 R27/R28» (ok → 1 llamada con `usuarioId`, después de `gestionar`; conflict/forbidden/throw/validation_error → 0 llamadas) |
+| R28 | `mis-asignaciones-action.test.ts` › «R28: si la reduccion lanza, la action devuelve EXACTAMENTE el mismo resultado» |
+| R32 | `optimizacion-ruta-encolado.test.ts` › «R32» (default 3; override `RUTA_OPT_MAX_INTENTOS=2` → 2) |
+
+### Verificación (salida real, NODE_OPTIONS=--max-old-space-size=8192, un comando a la vez)
+
+- `pnpm exec vitest run tests/integration/repositories/optimizacion-ruta-enqueue.test.ts tests/unit/services/optimizacion-ruta-encolado.test.ts`
+  → `Test Files 2 passed (2) · Tests 28 passed (28)`. El de integración usa Prisma doblado (patrón del
+  archivo): no necesita `DATABASE_URL`, corrió (no skipped). No se tocó ninguna base.
+- `pnpm exec vitest run tests/unit/actions/mis-asignaciones-action.test.ts` → `1 passed · 38 passed`
+  (antes de quitar el caso `error` imposible del `it.each`; ver Desviaciones).
+- `pnpm exec vitest run` de los 4 hermanos `mis-asignaciones-{causa-devolucion,evidencias,pagos,ubicacion}` → `4 passed · 40 passed`.
+- `pnpm run typecheck` → exit 0 (primera corrida: 1 error de tipo en mi test, `{status:"error"}` no es
+  `GestionarServiceResult`; corregido y re-corrido limpio).
+- `pnpm run lint` → `✖ 234 problems (0 errors, 234 warnings)`, exit 0.
+- `pnpm exec vitest related --run <7 archivos tocados>` → `Test Files 2 failed | 455 passed | 202 skipped (659) · Tests 2 failed | 6420 passed | 1536 skipped | 1 todo`.
+  - `notificacion-orden-rechazada.test.ts` › R20: causado por T3.1 (el doble no devolvía
+    `tiene_coordenadas` → no se encolaba → el `enqueue` que revierte la tx no corría). Arreglado en el doble.
+  - `tests/components/SaldosTiendasBuscador463.test.tsx` › R45 (4581 ms): UI de wallet, sin relación con el diff; timeout bajo carga.
+  - Re-corrida de esos dos archivos: `Test Files 2 passed (2) · Tests 18 passed (18)`.
+  - No se re-corrió `related` completo tras el arreglo (memoria); el gate de CI lo cubre.
+
+### Desviaciones y avisos
+
+- **Doble de otro archivo ajustado** (`notificacion-orden-rechazada.test.ts`): no está en «Archivos
+  esperados», pero el SELECT cambió por R21/R22 y su doble lo emulaba. Solo se añade la columna; la
+  aserción no cambia.
+- **Variante «Hoy» borrada en T3.2** (no en T5.1), por instrucción del leader: el helper que usaba ya no
+  existe. La medición sigue en Tanda 1. Quedan sin uso `medirJornada`, `totales`, `medirJobCon401` y el
+  import `expect` en el archivo de la jornada (4 warnings de lint, 0 errores): son el arnés que T5.1 usará.
+- **`it.each` sin `error`**: `GestionarServiceResult` no tiene `{status:"error"}` (lo produce el borde
+  cuando el service lanza); ese caso se cubre con el test «si el service LANZA».
+- Otros dobles de `registrarGestionPendiente` que no afirman el encolado dejan de encolar en silencio (su
+  re-lectura no trae `tiene_coordenadas`); siguen verdes y no afirman nada sobre el job.
+
+### Pregunta abierta
+
+Ninguna nueva en esta tanda (PA-1 y PA-2 de la tanda 2 siguen abiertas).
+
+**Veredicto:** T3.1-T3.3 hechos; typecheck 0 errores, lint 0 errores, tests tocados en verde (1 fallo de related ajeno al diff, verde al aislarlo).
+
+### Tanda 3 — verificación del implementer (2026-10-30)
+
+Con `NODE_OPTIONS=--max-old-space-size=8192`, un comando cada vez:
+- `pnpm run typecheck` → exit 0. `pnpm run lint` → 0 errores.
+- `pnpm exec vitest run` de los 4 tests de Fase 3 → `Test Files 3 passed | 1 skipped (4)`,
+  `Tests 65 passed | 1 todo (66)`.
+- `pnpm exec vitest related --run lib/services/jobs/optimizacion-ruta-encolado.ts
+  lib/repositories/GestionOrdenRepository.ts lib/actions/mis-asignaciones.ts` →
+  `Test Files 1 failed | 456 passed | 202 skipped (659)`. El rojo era
+  `notificacion-orden-rechazada.test.ts › R20`, de antes de que backend_dev arreglara su doble
+  (`tiene_coordenadas`); re-corrido tras el arreglo → `Tests 14 passed (14)`.

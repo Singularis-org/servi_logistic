@@ -16,10 +16,7 @@ import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 import { resolverSinpeBodega } from "@/lib/utils/sinpe-bodega";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
-import {
-  encolarOptimizacionDebounce,
-  encolarOptimizacionInmediata,
-} from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import { encolarOptimizacionDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 // FICHA 454 (T1.4): los predicados UNICOS de «gestion pendiente» y «ayuda abierta», el encolado del
 // webhook del hecho y el aviso N1 (que desde la 454 sale al REGISTRAR, no al aprobar).
@@ -763,6 +760,8 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
    *   6. Webhook `orden.gestion_registrada` (outbox, R33) y, si es `rechazada`, el aviso N1 AHORA,
    *      una sola vez (R35, design DD): la aprobacion ya no lo emite.
    *   7. Reoptimizacion inmediata de la ruta (R5, como hoy): la orden deja de ser parada (R6).
+   *      ⏳ 2026-10-29 (SLT-59, R21-R23): ya no es inmediata; va con debounce y solo si la orden tiene
+   *      coordenadas. Ver el paso (7) en el cuerpo.
    *
    * NO hay `orden.update` ni `appendCambioEstado`: `orden_historial_estado` no gana ninguna fila (R1).
    */
@@ -777,8 +776,11 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       // `gestion_orden` no competiria con nadie (design §5).
       await tx.$queryRaw`SELECT "id" FROM "orden" WHERE "id" = ${ordenId} FOR UPDATE`;
       // (2) Re-lectura en una sentencia POSTERIOR al candado.
-      const gestionable = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "o"."id"
+      // SLT-59 (R21, R22): las coordenadas viajan en ESTA misma sentencia, ya bajo el candado, para
+      // decidir el paso (7) sin una consulta mas.
+      const gestionable = await tx.$queryRaw<{ id: string; tiene_coordenadas: boolean }[]>`
+        SELECT "o"."id",
+               ("o"."latitud" IS NOT NULL AND "o"."longitud" IS NOT NULL) AS "tiene_coordenadas"
           FROM "orden" "o"
           JOIN "order_status" "s" ON "s"."id" = "o"."estatus_id"
          WHERE "o"."id" = ${ordenId}
@@ -826,13 +828,17 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
           numRemision: orden.numRemision,
         });
       }
-      // (7) Namespace `:inmediato:` disjunto del `:debounce:` (ver `encolarOptimizacionInmediata`).
-      await encolarOptimizacionInmediata(
-        this.jobRepo,
-        tx as unknown as JobTxClient,
-        mensajeroId,
-        gestionId,
-      );
+      // (7) ⏳ 2026-10-29 (SLT-59, D2/D12; R21-R23): antes era una reoptimizacion INMEDIATA en su
+      // propio namespace. Ahora va con debounce, en la MISMA clave que la recogida y el traspaso: si
+      // ya hay un job en la ventana, esta gestion se colapsa en el (ese job lee el conjunto al
+      // correr). Una orden sin coordenadas nunca fue parada de la ruta: su gestion no la cambia.
+      // La entrega en orden ya se refleja en la propia peticion (R27, Server Action `gestionar`).
+      if (gestionable[0].tiene_coordenadas) {
+        await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
+          ahora: this.now(),
+          debounceS: loadRouteOptimizationConfig().RUTA_DEBOUNCE_S,
+        });
+      }
       return { gestionId, ordenEventoId: evento.id };
     });
   }
