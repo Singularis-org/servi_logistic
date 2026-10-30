@@ -10,6 +10,7 @@ import {
   CLAVE_CATEGORIA,
   CLAVE_ENTIDAD,
   CLAVE_FECHA,
+  ENTIDADES_SIN_ESCRITOR,
   PLACEHOLDER_BUSQUEDA,
   construirFiltrosHistorialAcciones,
 } from "@/app/(app)/historico/acciones/_components/historial-acciones-filtros-def";
@@ -161,7 +162,10 @@ describe("las opciones salen del CONTRATO, no de una copia local", () => {
     const ent = construirFiltrosHistorialAcciones([], { ahora: AHORA }).find(
       (f) => f.key === CLAVE_ENTIDAD,
     );
-    expect(ent?.options).toHaveLength(HISTORIAL_ACCION_ENTIDADES.length);
+    // SLT-43 (R23): las entidades que nada escribe todavía no se ofrecen.
+    expect(ent?.options).toHaveLength(
+      HISTORIAL_ACCION_ENTIDADES.length - ENTIDADES_SIN_ESCRITOR.length,
+    );
     for (const o of ent?.options ?? []) {
       expect(o.label).toBe(ENTIDAD_LABELS[o.value as keyof typeof ENTIDAD_LABELS]);
     }

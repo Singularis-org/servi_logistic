@@ -142,7 +142,8 @@ export function problemasDeExcepcion(
   raiz: string = RAIZ,
 ): string[] {
   const problemas: string[] = [];
-  if (!/^SL-\d+$/.test(e.ficha)) problemas.push(`${e.archivo}: ficha «${e.ficha}» no es SL-<n>`);
+  // Misma forma que `FichaJira` (`lib/db/contexto-empresa.ts`): `SL-<n>` o, desde SLT-43, `SLT-<n>`.
+  if (!/^SLT?-\d+$/.test(e.ficha)) problemas.push(`${e.archivo}: ficha «${e.ficha}» no es SL-<n> ni SLT-<n>`);
   if (e.motivo.trim().length === 0) problemas.push(`${e.archivo}: motivo vacío`);
   if (e.archivo.trim().length === 0 || !existsSync(path.join(raiz, e.archivo))) {
     problemas.push(`${e.archivo}: el archivo no existe`);

@@ -104,6 +104,8 @@ describeSiHayBase("477/T4.4 — re-solicitar un cierre rechazado (Postgres real)
           ...detalleAntes[0],
           id: undefined,
           createdAt: undefined,
+          // SLT-43: un Json leído (`null`) no es una entrada válida de Prisma; la columna nace NULL igual.
+          ubicacionSnapshot: undefined,
           cierreId: y,
           ordenId: o4.ordenId,
         },

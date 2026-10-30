@@ -153,6 +153,20 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+  - **Geografía jerárquica (SLT-43, fase *expand*).** Dos tablas de plataforma nuevas conviven con
+    las viejas: `tipo_nivel_geografico` (un tipo `nivel_1..3` por país, copiado de `pais.nivel_N_*`) y
+    `nodo_geografico` (árbol solo con `padre_id` y `profundidad`, con los mismos ids que la provincia,
+    el cantón o el distrito de origen; los descendientes se leen con una CTE recursiva sobre
+    `padre_id` o con el catálogo del país en memoria; un nodo con hijos no cambia de profundidad, y así
+    no hay ciclos), con RLS de lectura por país y `REVOKE`
+    de escritura para `servi_app`. La fuente sigue siendo la geografía vieja: triggers `AFTER` en
+    `pais`, `provincia`, `canton` y `distrito` copian cada alta, cambio y borrado, y triggers `BEFORE`
+    rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y `distrito_zona_especial`. Ningún
+    código de la app escribe las dos tablas (`nodo-geografico-sin-escritor.guardia`, R37). Las filas
+    anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
+    (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
+    `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
+    (design §6 de SLT-43). La app todavía no lee nada del modelo nuevo: las lecturas llegan con SLT-44.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el

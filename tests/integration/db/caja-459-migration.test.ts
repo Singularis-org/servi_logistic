@@ -121,11 +121,14 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
+    // SLT-56 (20261029120100) suma UN tipo al final; SLT-43 (20261030120000, posterior) suma UNA
+    // entidad (`nodo_geografico`) y NINGUN tipo: los tramos de tipos y de entidades se leen uno mas atras.
     expect(tipos.slice(-4, -2)).toEqual(["modulo_activado", "modulo_desactivado"]);
     expect(tipos.slice(-2, -1)).toEqual(["plan_asignado"]);
     expect(tipos.slice(-1)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
-    expect(entidades.slice(-6, -4)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-4)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidades.slice(-7, -5)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidades.slice(-5, -1)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidades.slice(-1)).toEqual(["nodo_geografico"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

@@ -745,12 +745,17 @@ model ZonaDistrito {
   zona     Zona     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
   distrito Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
 
+  /// SLT-43 (R21): = `distrito_id`, lo pone el trigger `zona_distrito_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId String?         @map("nodo_geografico_id")
+  nodoGeografico   NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@unique([zonaId, distritoId])
   @@index([zonaId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261030120500)
   @@index([organizacionId])
   @@map("zona_distrito")
 }
@@ -762,12 +767,17 @@ model DistritoZonaEspecial {
   distritoId String   @map("distrito_id")
   distrito   Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
 
+  /// SLT-43 (R21): = `distrito_id`, lo pone el trigger `distrito_zona_especial_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId String?         @map("nodo_geografico_id")
+  nodoGeografico   NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Cascade)
+
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([organizacionId, distritoId], map: "distrito_zona_especial_organizacion_id_distrito_id_key")
   @@index([organizacionId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261030120500)
   @@map("distrito_zona_especial")
 }
 
@@ -815,6 +825,8 @@ model Orden {
   provinciaId            String    @map("provincia_id") // R12: NOT NULL
   cantonId               String    @map("canton_id") // R12: NOT NULL
   distritoId             String?   @map("distrito_id") // R12: nullable (unico FK nullable)
+  /// SLT-43 (R20): `COALESCE(distrito_id, canton_id)`, lo pone el trigger `orden_nodo_geografico`. FK NOT VALID en el SQL.
+  nodoGeograficoId       String?   @map("nodo_geografico_id")
   producto               String
   peso                   Decimal?  @db.Decimal(10, 3) // feature 15/R4: nullable (carga masiva sin peso)
   notas                  String? // R14a: texto nullable
@@ -928,6 +940,7 @@ model Orden {
   provincia         Provincia   @relation(fields: [provinciaId], references: [id])
   canton            Canton      @relation(fields: [cantonId], references: [id])
   distrito          Distrito?   @relation(fields: [distritoId], references: [id])
+  nodoGeografico    NodoGeografico? @relation(fields: [nodoGeograficoId], references: [id], onDelete: Restrict, onUpdate: Restrict) // SLT-43 (R20)
   mensajeroAsignado Usuario?    @relation("OrdenMensajeroAsignado", fields: [mensajeroAsignadoId], references: [id], onDelete: SetNull) // feature 17/R7
   carga             Carga?      @relation("OrdenCarga", fields: [cargaId], references: [id], onDelete: Restrict) // feature 141/R4: un lote con ordenes no se puede borrar
 
@@ -1032,6 +1045,7 @@ model Orden {
   @@index([provinciaId])
   @@index([cantonId])
   @@index([distritoId])
+  @@index([nodoGeograficoId]) // SLT-43 (20261030120500): el bloqueo largo de SLT-43, aislado en su migración
   @@index([cargaId]) // feature 141/R4: "ordenes de este lote"
   // Feature 169: indice GIN de trigramas del buscador. `map:` reproduce el nombre exacto
   // que la migracion escribio a mano (si no, Prisma propondria un RENAME INDEX, misma
@@ -3086,6 +3100,9 @@ model CierreDetail {
   provinciaNombre String  @map("provincia_nombre")
   cantonNombre    String  @map("canton_nombre")
   distritoNombre  String? @map("distrito_nombre") // el distrito es el unico FK nullable de la orden
+  // SLT-43 (design §2.6; R31, R40): `{ v, niveles: [{ profundidad, tipo, nombre, id }] }`, congelado. La llena
+  // solo `scripts/geo-backfill-nodo.ts`: sin trigger, las filas nuevas nacen NULL hasta SLT-47.
+  ubicacionSnapshot Json? @map("ubicacion_snapshot")
 
   createdAt DateTime @default(now()) @map("created_at")
   // SIN updated_at / deleted_at: fila INMUTABLE (R10).
@@ -4683,6 +4700,9 @@ enum HistorialAccionEntidad {
   organizacion_modulo
   /// SL-24 (design §9): el plan asignado, 1:1 con su tabla. `entidad_id` sin FK.
   plan
+  /// SLT-43 (design §2.5): el nodo del modelo geográfico jerárquico. Nadie lo escribe hasta SLT-46;
+  /// las filas viejas de provincia/cantón/distrito no se reescriben.
+  nodo_geografico
 
   @@map("historial_accion_entidad")
 }
@@ -5483,8 +5503,87 @@ model Pais {
   provincias          Provincia[]
   organizaciones      Organizacion[]
   historialPlataforma HistorialPlataforma[]
+  /// SLT-43 (R2, R3): los tres tipos de nivel; los crea y actualiza el trigger `pais_tipos_de_nivel`.
+  tiposDeNivel        TipoNivelGeografico[]
+  /// SLT-43 (R4): los nodos de la geografía jerárquica del país.
+  nodosGeograficos    NodoGeografico[]
 
   @@map("pais")
+}
+
+// SLT-43 (design §2.1; R1–R3) — tipos de nivel geográfico de un país. De PLATAFORMA, como `pais`: la
+// empresa lee solo los de su país y no escribe ninguno (RLS `tipo_nivel_geografico_del_pais` y
+// REVOKE, solo en el SQL de 20261030120100). En SLT-43 ningún código de la app lo escribe (R37): lo
+// llena la migración desde `pais.nivel_N_*` y lo mantiene el trigger `pais_tipos_de_nivel`.
+// `clave` lleva un CHECK `^[a-z0-9_]{1,40}$` que Prisma no expresa; la sincronía usa `nivel_1..3`.
+model TipoNivelGeografico {
+  id                  String   @id @default(uuid())
+  paisId              String   @map("pais_id")
+  clave               String
+  nombreSingular      String   @map("nombre_singular")
+  nombrePlural        String   @map("nombre_plural")
+  digitosCodigo       Int?     @map("digitos_codigo")
+  /// La regla R17 de SL-20 como dato: con dígitos, el código del hijo empieza por el del padre.
+  codigoHeredaPrefijo Boolean  @default(false) @map("codigo_hereda_prefijo")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  /// Cascade (enmienda 2026-10-29): el tipo no vive sin su país. Un país con nodos sigue sin poder
+  /// borrarse: los nodos lo impiden con RESTRICT.
+  pais  Pais             @relation(fields: [paisId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  nodos NodoGeografico[]
+
+  @@unique([paisId, clave])
+  /// Destino de la FK compuesta `(tipo_id, pais_id)` de `nodo_geografico` (R6).
+  @@unique([id, paisId])
+  @@index([paisId])
+  @@map("tipo_nivel_geografico")
+}
+
+// SLT-43 (design §2.2; R4–R12) — la geografía jerárquica, de PLATAFORMA como `provincia`. En SLT-43 la
+// app no la escribe ni la lee: la llena la migración y la mantiene la sincronía desde
+// `provincia`/`canton`/`distrito`, con los mismos ids. El árbol es solo `padreId` y `profundidad`: los
+// descendientes se leen con una CTE recursiva sobre `padre_id` o con el catálogo en memoria.
+//
+// Viven solo en el SQL (Prisma no los expresa) y por eso no los ve el diff:
+//   · el único parcial de raíces `(pais_id, nombre_normalizado) WHERE padre_id IS NULL` (R9);
+//   · el trigger `nodo_geografico_invariantes`, que pone `nombre_normalizado` (R10), comprueba la
+//     profundidad respecto del padre e impide cambiar la de un nodo con hijos (R7: así no hay ciclos);
+//   · la RLS de lectura por país y el REVOKE de escritura a `servi_app` (R12).
+model NodoGeografico {
+  id                String   @id @default(uuid())
+  paisId            String   @map("pais_id")
+  tipoId            String   @map("tipo_id")
+  padreId           String?  @map("padre_id")
+  profundidad       Int
+  nombre            String
+  /// Lo pone el trigger con `geo_normalizar_nombre(nombre)`; lo que se mande se pisa (R10).
+  nombreNormalizado String   @map("nombre_normalizado")
+  codigoOficial     String?  @map("codigo_oficial")
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  pais  Pais                @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  /// FK compuesta: el tipo es del mismo país que el nodo (R6).
+  tipo  TipoNivelGeografico @relation(fields: [tipoId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
+  /// FK compuesta: el padre es del mismo país que el nodo (R5). Con `padre_id` NULL no se comprueba.
+  padre NodoGeografico?     @relation("NodoGeograficoPadre", fields: [padreId, paisId], references: [id, paisId], onDelete: Restrict, onUpdate: Restrict)
+  hijos NodoGeografico[]    @relation("NodoGeograficoPadre")
+
+  // SLT-43 (design §2.4): las tablas de negocio que apuntan al nodo; FK NOT VALID hasta `--validar` (R24).
+  ordenes         Orden[]
+  zonasDistrito   ZonaDistrito[]
+  zonasEspeciales DistritoZonaEspecial[]
+
+  /// Destino de las FK compuestas de los hijos.
+  @@unique([id, paisId])
+  /// R9: sin hermanos con el mismo nombre normalizado. Las raíces las cubre el único parcial del SQL.
+  @@unique([padreId, nombreNormalizado])
+  /// R9: el código es único por país y tipo (decisión 2026-10-29), no por país.
+  @@unique([paisId, tipoId, codigoOficial])
+  @@index([padreId])
+  @@index([tipoId])
+  @@index([paisId])
+  @@map("nodo_geografico")
 }
 
 // SL-20 (design §2.6) — qué hizo el superadmin sobre países y geografía (D15). De PLATAFORMA: sin
@@ -5510,6 +5609,8 @@ enum HistorialPlataformaEntidad {
   provincia
   canton
   distrito
+  /// SLT-43 (design §2.5): sin escritor hasta SLT-46.
+  nodo_geografico
 
   @@map("historial_plataforma_entidad")
 }
