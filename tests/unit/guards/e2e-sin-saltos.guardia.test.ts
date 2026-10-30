@@ -10,7 +10,8 @@ import { RAIZ_DEL_REPO } from "../../fixtures/raices-de-codigo";
 // 1. **Sin saltos (R13).** Ningun archivo de `e2e/` contiene `test.skip`, `test.fixme`, `.only` ni
 //    sus formas en `describe`, `serial`/`parallel` o `test.info()`/`testInfo`. Tampoco condicional:
 //    `test.skip(cond, "…")` es la misma llamada. Ni con alias (`t.skip(…)`, `const { skip } = test`)
-//    ni partida en dos lineas (`test\n  .skip(…)`): review m1.
+//    ni partida en dos lineas (`test\n  .skip(…)`): review m1. Unica salida: `EXCEPCIONES`, que
+//    permite solo `fixme` en un archivo nombrado y hasta una fecha (SLT-51; ver «1b»).
 // 2. **Sin datos heredados (R9).** Ni `correct-password`, ni un correo literal `@example.com`, ni
 //    lecturas de `E2E_RASTREO_*`, `SL17_HUMO_*`, `SL39_UI` o `SL40_UI`. Los correos de la fabrica son
 //    `@example.test` con sufijo aleatorio (R10). Se busca en todo el texto, comentarios incluidos:
@@ -40,7 +41,10 @@ export type Motivo =
   | "proyecto-ilegible"
   | "proyecto-cita-spec-inexistente"
   | "flujo-critico-sin-archivo"
-  | "flujos-criticos-ilegible";
+  | "flujos-criticos-ilegible"
+  | "excepcion-vencida"
+  | "excepcion-sin-archivo"
+  | "excepcion-sin-fixme";
 
 export interface Hallazgo {
   ruta: string;
@@ -108,6 +112,68 @@ export function hallazgosDeContenido(archivos: readonly Archivo[]): Hallazgo[] {
     });
   }
   return hallazgos;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1b: excepciones con fecha                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Un `fixme` permitido en UN archivo hasta una fecha (decision de Carlos, 2026-10-29). Existe
+ * porque una feature puede retirar la superficie que un E2E prueba antes de que otra lo reescriba;
+ * borrar el spec perderia el guion. Solo cubre `fixme`: `skip` y `only` siguen prohibidos ahi
+ * (un `skip` esconde un rojo, un `only` apaga el resto). La fecha obliga a volver: vencida, rojo.
+ */
+export interface Excepcion {
+  ruta: string;
+  motivo: string;
+  /** ISO `YYYY-MM-DD`. Vigente mientras hoy <= vence. */
+  vence: string;
+}
+
+export const EXCEPCIONES: readonly Excepcion[] = [
+  {
+    ruta: "e2e/zona-especial-dos-empresas.spec.ts",
+    motivo: "SLT-51 retiró Editar zona → Especial; SLT-54 lo reescribe contra su pantalla nueva",
+    vence: "2026-11-30",
+  },
+];
+
+const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Hoy en ISO (UTC). La guardia la recibe inyectada para poder probar el vencimiento. */
+export const hoyIso = (): string => new Date().toISOString().slice(0, 10);
+
+/**
+ * Aplica las excepciones a los hallazgos de contenido. Una vigente quita los `fixme` de su archivo
+ * y nada mas. Rojo si vencio (o la fecha no se sabe leer: falla cerrado), si su archivo ya no
+ * existe o si ya no tiene ningun `fixme`: asi la lista se limpia sola cuando el spec se reescribe.
+ */
+export function aplicarExcepciones(
+  hallazgos: readonly Hallazgo[],
+  archivos: readonly Archivo[],
+  excepciones: readonly Excepcion[],
+  hoy: string,
+): Hallazgo[] {
+  const exceptuadas = new Set<string>();
+  const problemas: Hallazgo[] = [];
+  for (const ex of excepciones) {
+    if (!FECHA_ISO.test(ex.vence) || hoy > ex.vence) {
+      problemas.push({ ruta: ex.ruta, linea: null, motivo: "excepcion-vencida", detalle: `vence ${ex.vence}, hoy ${hoy}` });
+      continue;
+    }
+    const archivo = archivos.find((a) => a.ruta === ex.ruta);
+    if (!archivo) {
+      problemas.push({ ruta: ex.ruta, linea: null, motivo: "excepcion-sin-archivo" });
+      continue;
+    }
+    if (!saltosDe(ex.ruta, archivo.texto).some((h) => h.motivo === "fixme")) {
+      problemas.push({ ruta: ex.ruta, linea: null, motivo: "excepcion-sin-fixme" });
+      continue;
+    }
+    exceptuadas.add(ex.ruta);
+  }
+  return [...hallazgos.filter((h) => !(h.motivo === "fixme" && exceptuadas.has(h.ruta))), ...problemas];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -223,10 +289,16 @@ export function hallazgosDeFlujosCriticos(rutasDeSpecs: readonly string[], doc: 
 /* La guardia                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export function hallazgosE2e(e2e: readonly Archivo[], config: string, checkpoints: string): Hallazgo[] {
+export function hallazgosE2e(
+  e2e: readonly Archivo[],
+  config: string,
+  checkpoints: string,
+  excepciones: readonly Excepcion[] = [],
+  hoy: string = hoyIso(),
+): Hallazgo[] {
   const specs = e2e.map((a) => a.ruta).filter((r) => r.endsWith(".spec.ts"));
   return [
-    ...hallazgosDeContenido(e2e),
+    ...aplicarExcepciones(hallazgosDeContenido(e2e), e2e, excepciones, hoy),
     ...hallazgosDeProyectos(specs, config),
     ...hallazgosDeFlujosCriticos(specs, checkpoints),
   ];
@@ -413,6 +485,68 @@ describe("SL-44 R9, R13, R19, D3 — el E2E sale verde de verdad", () => {
       }
     });
 
+    describe("excepciones con fecha (SLT-51)", () => {
+      const ruta = "e2e/auth.spec.ts";
+      const CON_FIXME = `${SPEC_LIMPIO}\ntest.fixme("pendiente", async () => {});`;
+      const EX: Excepcion[] = [{ ruta, motivo: "superficie retirada", vence: "2026-11-30" }];
+
+      it("verde: vigente y con fixme en ese archivo (el ultimo dia aun vale)", () => {
+        expect(hallazgosE2e(conArchivo(ruta, CON_FIXME), CONFIG_OK, CHECKPOINTS_OK, EX, "2026-10-29")).toEqual([]);
+        expect(hallazgosE2e(conArchivo(ruta, CON_FIXME), CONFIG_OK, CHECKPOINTS_OK, EX, "2026-11-30")).toEqual([]);
+      });
+
+      it("rojo: vencida (y el fixme deja de estar permitido)", () => {
+        expect(hallazgosE2e(conArchivo(ruta, CON_FIXME), CONFIG_OK, CHECKPOINTS_OK, EX, "2026-12-01")).toEqual([
+          { ruta, linea: 5, motivo: "fixme" },
+          { ruta, linea: null, motivo: "excepcion-vencida", detalle: "vence 2026-11-30, hoy 2026-12-01" },
+        ]);
+      });
+
+      it("rojo: una fecha que no se sabe leer cuenta como vencida", () => {
+        const mal: Excepcion[] = [{ ...EX[0], vence: "30/11/2026" }];
+        const h = hallazgosE2e(conArchivo(ruta, CON_FIXME), CONFIG_OK, CHECKPOINTS_OK, mal, "2026-10-29");
+        expect(h.map((x) => x.motivo)).toEqual(["fixme", "excepcion-vencida"]);
+      });
+
+      it("rojo: el archivo exceptuado ya no tiene ningun fixme", () => {
+        expect(hallazgosE2e(E2E_OK, CONFIG_OK, CHECKPOINTS_OK, EX, "2026-10-29")).toEqual([
+          { ruta, linea: null, motivo: "excepcion-sin-fixme" },
+        ]);
+      });
+
+      it("rojo: el archivo exceptuado ya no existe", () => {
+        const ex: Excepcion[] = [{ ...EX[0], ruta: "e2e/borrado.spec.ts" }];
+        expect(hallazgosE2e(E2E_OK, CONFIG_OK, CHECKPOINTS_OK, ex, "2026-10-29")).toEqual([
+          { ruta: "e2e/borrado.spec.ts", linea: null, motivo: "excepcion-sin-archivo" },
+        ]);
+      });
+
+      it("rojo: skip y only siguen prohibidos en el archivo exceptuado", () => {
+        const texto = `${CON_FIXME}\ntest.skip("x", async () => {});\ntest.only("y", async () => {});`;
+        expect(hallazgosE2e(conArchivo(ruta, texto), CONFIG_OK, CHECKPOINTS_OK, EX, "2026-10-29")).toEqual([
+          { ruta, linea: 6, motivo: "skip" },
+          { ruta, linea: 7, motivo: "only" },
+        ]);
+      });
+
+      it("rojo: la excepcion no cubre un fixme de otro archivo", () => {
+        const otro = "e2e/wallet.spec.ts";
+        const e2e = conArchivo(ruta, CON_FIXME).map((a) => (a.ruta === otro ? { ruta: otro, texto: CON_FIXME } : a));
+        expect(hallazgosE2e(e2e, CONFIG_OK, CHECKPOINTS_OK, EX, "2026-10-29")).toEqual([
+          { ruta: otro, linea: 5, motivo: "fixme" },
+        ]);
+      });
+
+      it("la lista real: cada entrada con ruta en e2e/, motivo y fecha ISO", () => {
+        expect(EXCEPCIONES.length).toBeGreaterThan(0);
+        for (const ex of EXCEPCIONES) {
+          expect(ex.ruta).toMatch(/^e2e\/.+\.spec\.ts$/);
+          expect(ex.motivo.length).toBeGreaterThan(0);
+          expect(ex.vence).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        }
+      });
+    });
+
     it("el mensaje nombra ruta:linea, motivo y detalle", () => {
       const m = mensaje(hallazgosE2e(conArchivo("e2e/auth.spec.ts", "test.fixme();"), CONFIG_OK, CHECKPOINTS_OK));
       expect(m).toContain("e2e/auth.spec.ts:1 · fixme");
@@ -429,7 +563,7 @@ describe("SL-44 R9, R13, R19, D3 — el E2E sale verde de verdad", () => {
     expect(proyectosDelConfig(config).map((p) => p.nombre)).toEqual(["plataforma-vacia", "aislamiento", "reparto", "dinero"]);
     expect(citasDeFlujosCriticos(checkpoints).length).toBeGreaterThanOrEqual(10);
 
-    const h = hallazgosE2e(e2e, config, checkpoints);
+    const h = hallazgosE2e(e2e, config, checkpoints, EXCEPCIONES, hoyIso());
     expect(h, mensaje(h)).toEqual([]);
   });
 });
