@@ -63,7 +63,7 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const { CrearZonaForm, cobroVacio } = await import(
+const { CrearZonaForm } = await import(
   "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
@@ -119,13 +119,11 @@ function renderForm(opts: {
     <CrearZonaForm
       mode={opts.mode}
       provincias={arbol()}
-      vehiculos={[]}
       zonas={opts.zonas ?? []}
       initial={{
         zonaId: opts.zonaId,
         nombre: opts.nombre ?? "GAM",
         distritoIds: ["d1"],
-        cobro: cobroVacio(),
         esCentral: opts.esCentral,
       }}
       onSaved={vi.fn()}

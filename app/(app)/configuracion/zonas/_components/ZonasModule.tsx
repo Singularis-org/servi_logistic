@@ -8,36 +8,13 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { useToast } from "@/hooks/useToast";
 import { listarZonas, obtenerZona, borrarZona } from "@/lib/actions/zonas";
-import { listarTarifas } from "@/lib/actions/tarifas";
 import { listarArbolGeografico } from "@/lib/actions/geografia";
-import type { TarifaDTO } from "@/lib/types/tarifa";
 import type { ZonaDTO } from "@/lib/types/zona";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
-import type { VehiculoDTO } from "@/lib/types/vehiculos";
 
-import {
-  CrearZonaForm,
-  cobroVacio,
-  type ZonaFormInitial,
-} from "./CrearZonaForm";
-import type { CobroVehiculoValue } from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
-import {
-  TARIFA_CAMPOS,
-  tarifaValoresVacios,
-  type TarifaValores,
-} from "@/app/(app)/configuracion/tarifas/_components/TarifaCampos";
+import { CrearZonaForm, type ZonaFormInitial } from "./CrearZonaForm";
 
 const PAGE_SIZE = 100;
-
-/** Valores del formulario (strings) a partir de una fila de `tarifas`. */
-function tarifaValoresDesde(row: TarifaDTO): TarifaValores {
-  const valores = tarifaValoresVacios();
-  for (const campo of TARIFA_CAMPOS) {
-    const v = row[campo.key];
-    valores[campo.key] = v == null ? "" : String(v);
-  }
-  return valores;
-}
 
 /**
  * Módulo cliente de "Costos por zona": texto introductorio + botón Crear zona,
@@ -48,11 +25,9 @@ function tarifaValoresDesde(row: TarifaDTO): TarifaValores {
 export function ZonasModule({
   initialZonas,
   provincias: initialProvincias,
-  vehiculos,
 }: {
   initialZonas: ZonaDTO[];
   provincias: ProvinciaArbolDTO[];
-  vehiculos: VehiculoDTO[];
 }) {
   const toast = useToast();
   const [zonas, setZonas] = useState<ZonaDTO[]>(initialZonas);
@@ -84,23 +59,12 @@ export function ZonasModule({
   }
 
   async function abrirEditar(zona: ZonaDTO) {
-    // Zona completa (incluye tarifas) + distritos derivados del árbol geográfico
-    // + la tarifa de cobro acotada a la zona (la de `tienda_id` NULL), que es la
-    // que edita la sección "Tarifas de zona" del formulario.
-    const [res, tarifasRes] = await Promise.all([
-      obtenerZona(zona.id),
-      listarTarifas({ page: 1, pageSize: PAGE_SIZE }),
-    ]);
+    // Zona completa + distritos derivados del árbol geográfico.
+    const res = await obtenerZona(zona.id);
     if (res.status !== "ok") {
       toast.error("No se pudo cargar la zona.");
       return;
     }
-    const tarifaZona =
-      tarifasRes.status === "ok"
-        ? tarifasRes.items.find(
-            (t) => t.zonaId === zona.id && t.tiendaId == null,
-          )
-        : undefined;
     const full = res.zona;
     const distritoIds: string[] = [];
     for (const p of provincias)
@@ -108,31 +72,12 @@ export function ZonasModule({
         for (const d of c.distritos)
           if (d.zonaId === full.id) distritoIds.push(d.id);
 
-    const cobro: CobroVehiculoValue = {
-      cobroVehiculo: full.cobroVehiculo,
-      tarifas: (full.tarifas ?? []).map((t) => ({
-        cobroEntregado: t.cobroEntregado,
-        cobroRechazado: t.cobroRechazado,
-        ...(t.vehiculoId ? { vehiculoId: t.vehiculoId } : {}),
-      })),
-    };
-    if (!full.cobroVehiculo && cobro.tarifas.length === 0) {
-      cobro.tarifas = cobroVacio().tarifas;
-    }
-
     setFormMode("editar");
     setFormInitial({
       zonaId: full.id,
       nombre: full.nombre,
       distritoIds,
-      cobro,
       esCentral: full.esCentral,
-      ...(tarifaZona
-        ? {
-            tarifaZonaId: tarifaZona.id,
-            tarifaValores: tarifaValoresDesde(tarifaZona),
-          }
-        : {}),
     });
     setFormKey((k) => k + 1);
     setView("form");
@@ -165,7 +110,6 @@ export function ZonasModule({
           key={formKey}
           mode={formMode}
           provincias={provincias}
-          vehiculos={vehiculos}
           zonas={zonas}
           initial={formInitial}
           onSaved={onSaved}

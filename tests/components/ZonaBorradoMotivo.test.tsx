@@ -97,7 +97,6 @@ function renderModulo() {
         },
       ]}
       provincias={provincias()}
-      vehiculos={[]}
     />,
   );
 }

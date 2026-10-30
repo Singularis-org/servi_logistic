@@ -63,7 +63,6 @@ export default async function TarifasPage() {
       <ZonasModule
         initialZonas={zonas}
         provincias={provincias}
-        vehiculos={vehiculos}
       />
     </AppPage>
   );

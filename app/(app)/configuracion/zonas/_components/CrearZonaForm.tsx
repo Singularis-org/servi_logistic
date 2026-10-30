@@ -21,29 +21,9 @@ import {
   actualizarZona,
   impactoZonaCentral,
 } from "@/lib/actions/zonas";
-import { crearTarifa, actualizarTarifa } from "@/lib/actions/tarifas";
-import {
-  actualizarDistritosEspeciales,
-  type ProvinciaArbolDTO,
-} from "@/lib/actions/geografia";
-import type { VehiculoDTO } from "@/lib/types/vehiculos";
+import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 
 import { GeografiaSelector } from "./GeografiaSelector";
-import { PAGO_ZONA_TEXTO } from "@/app/(app)/configuracion/tarifas/_components/tarifas-labels";
-import {
-  CobroVehiculoTarifas,
-  type CobroVehiculoValue,
-} from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
-import {
-  TARIFA_CAMPOS_ZONA,
-  TarifaCamposGrid,
-  hayAlgunValor,
-  tarifaValoresVacios,
-  validarTarifaCampos,
-  type TarifaCampoKey,
-  type TarifaFieldErrors,
-  type TarifaValores,
-} from "@/app/(app)/configuracion/tarifas/_components/TarifaCampos";
 
 type FieldErrors = Record<string, string[]>;
 
@@ -80,35 +60,24 @@ export interface ZonaFormInitial {
   zonaId?: string;
   nombre: string;
   distritoIds: string[];
-  cobro: CobroVehiculoValue;
-  /** Marca de zona central (a lo sumo una en true). */
+  /** Marca de zona de bodega principal (a lo sumo una en true). */
   esCentral?: boolean;
-  /**
-   * Tarifa de cobro acotada a esta zona y a NINGUNA tienda (`tienda_id` NULL):
-   * la fila de `tarifas` que edita la sección "Tarifas de zona". Presente sólo
-   * si ya existe.
-   */
-  tarifaZonaId?: string;
-  /** Valores de esa tarifa (strings); vacíos si la zona aún no tiene. */
-  tarifaValores?: TarifaValores;
 }
-
-export const cobroVacio = (): CobroVehiculoValue => ({
-  cobroVehiculo: false,
-  tarifas: [{ cobroEntregado: 0, cobroRechazado: 0 }],
-});
 
 /**
  * Formulario de crear/editar zona. Compone nombre + selección de distritos
- * (GeografiaSelector) + cobro por vehículo (CobroVehiculoTarifas). Al guardar
- * arma el payload, lo valida contra `crearZonaSchema` (mismo schema que la
- * action) y llama a `crearZona` o `actualizarZona` según el modo. Notifica con
- * toast el éxito/error y avisa al padre con `onSaved` para refrescar la lista.
+ * (GeografiaSelector) + marca de bodega principal (+ SINPE al crear). Al guardar
+ * arma el payload, lo valida contra el schema de la action y llama a `crearZona`
+ * o `actualizarZona` según el modo. Notifica con toast el éxito/error y avisa al
+ * padre con `onSaved` para refrescar la lista.
+ *
+ * SLT-51: sin costos. El payload no lleva `cobroVehiculo` ni `tarifas`, y en el
+ * backend «ausente» significa «no se toca» (design §5): un guardado de geografía
+ * no puede pisar los pagos que se configuran desde Tarifas.
  */
 export function CrearZonaForm({
   mode,
   provincias,
-  vehiculos,
   zonas,
   initial,
   onSaved,
@@ -116,7 +85,6 @@ export function CrearZonaForm({
 }: {
   mode: "crear" | "editar";
   provincias: ProvinciaArbolDTO[];
-  vehiculos: VehiculoDTO[];
   /** Zonas existentes, para verificar si ya hay una marcada como central. */
   zonas: ZonaDTO[];
   initial?: ZonaFormInitial;
@@ -127,25 +95,9 @@ export function CrearZonaForm({
   const toast = useToast();
   const esEditar = mode === "editar";
 
-  // Marca de especial que traía el árbol al montar. El guardado envía el DELTA
-  // contra esto: sólo los distritos que el usuario tocó, ni uno más.
-  const [especialesIniciales] = useState<Set<string>>(() => {
-    const ids = new Set<string>();
-    for (const p of provincias)
-      for (const c of p.cantones)
-        for (const d of c.distritos) if (d.zonaEspecial) ids.add(d.id);
-    return ids;
-  });
-
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [distritoIds, setDistritoIds] = useState<string[]>(
     initial?.distritoIds ?? [],
-  );
-  // Marca de zona especial tal como la reporta el selector. Arranca en `null`
-  // (el selector aún no habló) para no confundirlo con "ninguno es especial".
-  const [especiales, setEspeciales] = useState<string[] | null>(null);
-  const [cobro, setCobro] = useState<CobroVehiculoValue>(
-    initial?.cobro ?? cobroVacio(),
   );
   const [esCentral, setEsCentral] = useState<boolean>(initial?.esCentral ?? false);
   /**
@@ -159,23 +111,12 @@ export function CrearZonaForm({
    */
   const [sinpeNumero, setSinpeNumero] = useState("");
   const [sinpeNombre, setSinpeNombre] = useState("");
-  // Sección "Tarifas de zona": mismos campos que el formulario de tienda.
-  const [tarifaValores, setTarifaValores] = useState<TarifaValores>(
-    initial?.tarifaValores ?? tarifaValoresVacios(),
-  );
-  const [tarifaErrors, setTarifaErrors] = useState<TarifaFieldErrors>({});
-
   const [errors, setErrors] = useState<FieldErrors>({});
   const [guardando, setGuardando] = useState(false);
-  // Id de la zona ya persistida en ESTA sesión del formulario. Existe para que
-  // un fallo al guardar la tarifa de zona no deje reintentar creando una zona
-  // duplicada: a partir del primer éxito el guardado pasa a ser actualización.
+  // Id de la zona ya persistida en ESTA sesión del formulario: a partir del
+  // primer éxito, un reintento es actualización y no crea una zona duplicada.
   const [zonaIdGuardada, setZonaIdGuardada] = useState<string | undefined>(
     initial?.zonaId,
-  );
-  // Igual para la tarifa: tras crearla, el reintento la actualiza.
-  const [tarifaZonaId, setTarifaZonaId] = useState<string | undefined>(
-    initial?.tarifaZonaId,
   );
   // FICHA 376 (R20/R21): confirmación pendiente de mover la marca de zona central. Si !== null,
   // el modal está abierto y NADA se ha enviado todavía (R22: cancelar cierra y no envía).
@@ -184,10 +125,6 @@ export function CrearZonaForm({
   );
   // FICHA 376 (Q4): cuántas órdenes re-tarifaría ese movimiento. Se pide al abrir el modal.
   const [impacto, setImpacto] = useState<ImpactoCentral>({ fase: "cargando" });
-
-  function setCampoTarifa(key: TarifaCampoKey, value: string) {
-    setTarifaValores((prev) => ({ ...prev, [key]: value }));
-  }
 
   /**
    * Arma el candidato y lo valida contra el MISMO schema que la acción que se va a llamar.
@@ -209,87 +146,20 @@ export function CrearZonaForm({
    * divergirían sin que nada se pusiera rojo.
    */
   function validar() {
-    const candidate = {
-      nombre,
-      cobroVehiculo: cobro.cobroVehiculo,
-      esCentral,
-      distritoIds,
-      tarifas: cobro.tarifas,
-    };
+    const candidate = payload();
     if (zonaIdGuardada) return actualizarZonaSchema.safeParse(candidate);
-    return crearZonaSchema.safeParse({ ...candidate, sinpeNumero, sinpeNombre });
+    return crearZonaSchema.safeParse(candidate);
   }
 
   /**
-   * Valida la sección "Tarifas de zona". Dejarla ENTERA en blanco es válido y
-   * significa "esta zona no lleva tarifa propia" (no borra la que hubiera); en
-   * cuanto se escribe un campo, rigen las mismas reglas que en el formulario de
-   * tienda: todos obligatorios salvo la tarifa especial.
+   * SLT-51 (R5) — lo que viaja es ESTO y no `parsed.data`. `crearZonaSchema` materializa
+   * `cobroVehiculo: false` y `tarifas: []` por default, y reenviar la salida del parse haría que
+   * el formulario mandase costos que nunca pidió: si un default cambiara, Zonas escribiría pagos
+   * sin que nadie lo viera. La acción vuelve a validar con el mismo esquema en el servidor.
    */
-  function validarTarifa():
-    | { ok: true; numericos: Record<string, number | null> | null }
-    | { ok: false } {
-    if (!hayAlgunValor(tarifaValores, TARIFA_CAMPOS_ZONA)) {
-      setTarifaErrors({});
-      return { ok: true, numericos: null };
-    }
-    const campos = validarTarifaCampos(tarifaValores, TARIFA_CAMPOS_ZONA);
-    if (!campos.ok) {
-      setTarifaErrors(campos.errors);
-      return { ok: false };
-    }
-    setTarifaErrors({});
-    return { ok: true, numericos: campos.numericos };
-  }
-
-  /**
-   * Guarda la tarifa acotada a la zona (`zona_id` = la zona, `tienda_id` NULL:
-   * aplica a cualquier tienda que no tenga la suya). Devuelve `true` si no había
-   * nada que guardar o si se guardó bien.
-   */
-  async function guardarTarifaZona(
-    zonaId: string,
-    numericos: Record<string, number | null> | null,
-  ): Promise<boolean> {
-    if (!numericos) return true;
-    const payload = { ...numericos, zonaId, isDefault: false };
-    const res = tarifaZonaId
-      ? await actualizarTarifa(tarifaZonaId, payload)
-      : await crearTarifa(payload);
-
-    if (res.status === "ok") {
-      setTarifaZonaId(res.tarifa.id);
-      return true;
-    }
-    if (res.status === "validation_error") setTarifaErrors(res.fieldErrors);
-    toast.error(
-      "La zona se guardó, pero no se pudo guardar la tarifa de zona.",
-    );
-    return false;
-  }
-
-  /**
-   * Persiste la marca de zona especial de los distritos que cambiaron.
-   * La marca es de la EMPRESA (`distrito_zona_especial`), no del distrito ni de
-   * la zona: otra empresa no la ve, y dentro de esta queda resaltada en TODAS
-   * sus zonas que contengan ese distrito.
-   *
-   * Devuelve `true` si no había nada que guardar o si se guardó bien. Un fallo
-   * aquí NO tumba el guardado de la zona: avisa y sigue.
-   */
-  async function guardarEspeciales(): Promise<boolean> {
-    if (especiales === null) return true; // el selector no reportó nada aún
-    const actuales = new Set(especiales);
-    const marcar = [...actuales].filter((id) => !especialesIniciales.has(id));
-    const desmarcar = [...especialesIniciales].filter(
-      (id) => !actuales.has(id),
-    );
-    if (marcar.length === 0 && desmarcar.length === 0) return true;
-
-    const res = await actualizarDistritosEspeciales({ marcar, desmarcar });
-    if (res.status === "ok") return true;
-    toast.error("No se pudo guardar la marca de zona especial.");
-    return false;
+  function payload() {
+    const base = { nombre, esCentral, distritoIds };
+    return zonaIdGuardada ? base : { ...base, sinpeNumero, sinpeNombre };
   }
 
   /** Envía el payload (crear/actualizar) y maneja resultado/errores. */
@@ -299,11 +169,6 @@ export function CrearZonaForm({
       setErrors(parsed.error.flatten().fieldErrors as FieldErrors);
       return;
     }
-    // Las dos secciones se validan ANTES de tocar el servidor: nada de guardar
-    // la zona y descubrir después que la tarifa no pasaba.
-    const tarifa = validarTarifa();
-    if (!tarifa.ok) return;
-
     setErrors({});
     setGuardando(true);
     try {
@@ -323,21 +188,17 @@ export function CrearZonaForm({
       let ordenesRetenidas = 0;
       let res;
       if (zonaIdGuardada) {
-        res = await actualizarZona(zonaIdGuardada, parsed.data);
+        res = await actualizarZona(zonaIdGuardada, payload());
         if (res.status === "ok") {
           ordenesReconciliadas = res.ordenesReconciliadas;
           ordenesRetenidas = res.ordenesRetenidasEnBodegaSatelite;
         }
       } else {
-        res = await crearZona(parsed.data);
+        res = await crearZona(payload());
       }
 
       if (res.status === "ok") {
         setZonaIdGuardada(res.zona.id);
-        if (!(await guardarTarifaZona(res.zona.id, tarifa.numericos))) return;
-        // La marca de especial se guarda con la zona ya persistida: si falla,
-        // la zona sigue guardada y sólo se avisa de lo que no entró.
-        await guardarEspeciales();
         toast.success(
           mensajeGuardado(esEditar, ordenesReconciliadas, ordenesRetenidas),
         );
@@ -517,68 +378,9 @@ export function CrearZonaForm({
         provincias={provincias}
         initialSelected={initial?.distritoIds}
         onSelectedChange={setDistritoIds}
-        onEspecialesChange={setEspeciales}
       />
       {/* Error del GRUPO de distritos (selector geográfico): FieldError suelto. */}
       <FieldError messages={errors.distritoIds} />
-
-      {/* Las dos secciones van lado a lado (6-6 del grid de 12) desde `lg`; por
-          debajo se apilan, que es lo único legible en un móvil. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Sección 1: lo que la empresa PAGA por cada gestión de la zona —al mensajero la entrega,
-            a la bodega el rechazo del cliente—.
-            La celda es `relative` y la sección se posiciona ABSOLUTA dentro (sólo
-            desde `lg`): así no aporta altura, la fila la fija "Tarifas de zona" y
-            esta columna nunca queda más alta que la otra —si su contenido no cabe
-            (cobro por vehículo con varias filas), scrollea dentro. Por debajo de
-            `lg` vuelve al flujo normal y se apila sin recortes. */}
-        <div className="relative lg:col-span-6">
-          <section className="flex flex-col gap-4 rounded-md border border-border p-4 lg:absolute lg:inset-0 lg:overflow-y-auto">
-            {/* Feature 303 — decía «Pago a mensajeros» y «por entrega y por no entrega», y las
-                dos cosas estaban mal por el mismo motivo: de los dos montos, sólo el de entrega
-                se le paga al mensajero (el del rechazo es ingreso de la BODEGA, `ingreso-bodega
-                .ts`), y «no entrega» abarcaba `devuelta` y `reprogramada`, que no pagan nada. */}
-            <div className="flex flex-col gap-1">
-              <h4 className="text-sm font-semibold">{PAGO_ZONA_TEXTO.seccion}</h4>
-              <p className="max-w-prose text-xs text-muted-foreground">
-                {PAGO_ZONA_TEXTO.seccionAyuda}
-              </p>
-            </div>
-
-            <CobroVehiculoTarifas
-              vehiculos={vehiculos}
-              initial={initial?.cobro}
-              onChange={setCobro}
-            />
-            {/* Error del GRUPO de tarifas: FieldError suelto. */}
-            <FieldError messages={errors.tarifas} />
-          </section>
-        </div>
-
-        {/* Sección 2: el mismo formulario de tarifa de tienda, sin el select de
-            tienda: aquí la tarifa se acota a la ZONA y no a un dueño. */}
-        <section className="flex flex-col gap-4 rounded-md border border-border p-4 lg:col-span-6">
-          <div className="flex flex-col gap-1">
-            <h4 className="text-sm font-semibold">Tarifas de zona</h4>
-            <p className="max-w-prose text-xs text-muted-foreground">
-              Lo que se cobra por repartir en esta zona, para cualquier tienda que
-              no tenga una tarifa propia. Déjalo todo en blanco si esta zona no
-              lleva tarifa propia.
-            </p>
-          </div>
-
-          {/* Sin `fulfillment` (2026-08-26): el servicio de bodega es un acuerdo con una
-              TIENDA, no una propiedad de la zona. El campo omitido viaja como `null` y la
-              columna lo admite desde `tarifa_fulfillment_opcional`. */}
-          <TarifaCamposGrid
-            idPrefix="zona-tarifa"
-            campos={TARIFA_CAMPOS_ZONA}
-            valores={tarifaValores}
-            errors={tarifaErrors}
-            onChange={setCampoTarifa}
-          />
-        </section>
-      </div>
 
       <div className="flex items-center gap-2">
         <Button type="button" onClick={guardar} loading={guardando}>
