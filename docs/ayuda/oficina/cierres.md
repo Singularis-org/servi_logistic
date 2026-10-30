@@ -3,11 +3,14 @@ titulo: Cierres
 modulo: cierres-admin
 pantalla: /cierres-admin
 roles: [maestro, admin, adminSatelite]
-actualizado: 2026-10-22
+actualizado: 2026-10-29
 fuentes:
   - app/(app)/cierres-admin/_components/CierresAdminModule.tsx
   - app/(app)/cierres-admin/_components/CorregirResultadoDialog.tsx
   - app/(app)/cierres-admin/_components/CorregirPagosDialog.tsx
+  - app/(app)/cierres-admin/_components/AjustarPagoMensajeroDialog.tsx
+  - app/(app)/cierres-admin/_components/MarcaAjustado.tsx
+  - app/(app)/cierres-admin/_components/cierre-factura.tsx
   - app/(app)/cierres-admin/page.tsx
   - lib/services/CierresAdminService.ts
   - lib/repositories/gestion-pendiente.ts
@@ -79,6 +82,35 @@ Con el cierre todavía abierto, el **maestro** y el **admin** tienen dos correcc
 
 La corrección queda en la línea de tiempo de la orden como **Gestión corregida**.
 
+## Ajustar lo que gana el mensajero
+
+> **Ajustar el pago mueve dinero.** Cambia lo que el mensajero cobra por esa orden y, con ello, el total
+> de pago al mensajero del cierre. Lo que se le acredita al aprobar sale de ese total ajustado.
+
+Con el cierre **Solicitado** o **Vencido**, cada orden del detalle tiene el botón **Ajustar pago**
+(se ve al desplegar la orden). Sirve para cualquier resultado, también para un rechazo o una devolución
+que hoy le pagan 0.
+
+- **Quién puede:** el **maestro** y el **admin**, en los cierres que llegan a la bodega central; el
+  **admin de una bodega satélite**, en los cierres de su bodega, sin que la central lo apruebe.
+- **Qué se pide:** el pago vigente se muestra arriba; escribís el **valor nuevo** (puede ser 0, con
+  punto para los decimales, hasta 2) y el **motivo**, que es obligatorio. Si el valor nuevo es igual al
+  vigente, no se guarda.
+- **Qué cambia:** solo el pago de esa orden y el total de pago al mensajero del cierre. **No cambia la
+  tarifa** ni el pago de las demás órdenes. Se ve al instante, sin recargar.
+- **Si alguien lo cambió mientras tanto** (otro ajuste, una corrección, o el cierre ya se aprobó), no se
+  guarda nada y la pantalla te pide recargar el detalle para ver el valor vigente.
+
+**La marca «Ajustado».** Una orden con al menos un ajuste lleva la marca **Ajustado** junto a su pago.
+Tocándola se ven todos sus ajustes en orden: cuándo, quién y con qué rol, el valor anterior → el nuevo,
+y el motivo. El historial no se edita ni se borra.
+
+**En el cierre de bodega.** En el detalle de un cierre de bodega, cada cierre del día con órdenes
+ajustadas lleva la marca **Con ajustes**, y esas órdenes llevan su marca **Ajustado** con el mismo
+historial. Ahí no se ajusta: es de solo lectura.
+
+**El mensajero** ve en su cierre el valor nuevo, sin la marca ni el motivo.
+
 ## Cierres vencidos
 
 Un cierre **vencido** es uno que se pasó de su día sin resolverse. Frena al mensajero: mientras lo
@@ -102,6 +134,9 @@ escribiendo — se llega a él por su fecha y su mensajero, así que el campo de
 ## Lo que esta pantalla NO hace
 
 - **No se paga desde acá.** Aprobar acredita; pagar es **Wallet · Tiendas** y **Wallet · Mensajeros**.
+- **No se ajusta el pago de un cierre ya aprobado** (ni de uno rechazado). Aprobado, el pago queda
+  fijo: cualquier diferencia posterior se maneja desde **Wallet · Mensajeros**.
 - **No se deshace la gestión de un mensajero.** Si una orden entró mal y el mensajero todavía no pidió
   el cierre, la devuelve a gestión él mismo desde su **Cierre del día**. Desde acá solo se corrige una
-  entrega a **Devolución a origen por rechazo**, o los métodos de pago.
+  entrega a **Devolución a origen por rechazo**, los métodos de pago, o se ajusta lo que gana el
+  mensajero por una orden.

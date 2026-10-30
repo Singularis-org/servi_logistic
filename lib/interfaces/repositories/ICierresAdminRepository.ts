@@ -1,6 +1,7 @@
 import type { GestionResultado, MetodoPagoValue } from "@prisma/client";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
 import type {
+  AjustePagoGestionDTO,
   CierreRechazoDeTienda,
   CierreResultado,
   CierreTotales,
@@ -194,6 +195,11 @@ export interface GestionEditableDelCierre {
   resultado: CierreResultado;
   /** `null` cuando la gestión no cobró nada (entrega sin cobro) o no es `entregada`. */
   montoRecibido: string | null;
+  /**
+   * SLT-56 (R9): el pago al mensajero VIGENTE de la gestión, el congelado al solicitar o el último
+   * ajuste. STRING escala 2; `null` en una gestión pre-migración sin snapshot (39/R22).
+   */
+  pagoMensajero: string | null;
   /** Las líneas VIGENTES, para que la pantalla abra el editor con lo que hay hoy. */
   pagos: { metodo: MetodoPagoValue; monto: string }[];
 }
@@ -255,6 +261,39 @@ export interface CorregirResultadoGestionInput {
  */
 export type CorregirResultadoGestionResult =
   | { status: "updated"; totales: CierreTotales }
+  | { status: "conflict" }
+  | { status: "fuera_de_alcance" };
+
+/**
+ * SLT-56 (design §4.4) — entrada del AJUSTE del pago al mensajero de una gestión de un cierre ABIERTO.
+ *
+ * `pagoAnterior` es el pago que la pantalla mostraba: va al `WHERE` del sello (R9), así que si la base
+ * ya tiene otro valor no se escribe nada. Importes STRING; se convierten a `Prisma.Decimal` al escribir.
+ */
+export interface AjustarPagoMensajeroInput {
+  gestionId: string;
+  alcance: Alcance;
+  pagoAnterior: string;
+  pagoNuevo: string;
+  /** Ya validado y recortado. Va SOLO al rastro propio, jamás a `historial_accion` (362/R5). */
+  motivo: string;
+  /** Quien ajusta: actor del rastro (con su rol congelado) y del historial de acciones. */
+  ajustadoPor: string;
+}
+
+/**
+ * `updated` con el pago nuevo, el total de pago al mensajero del cierre recalculado y el ajuste escrito
+ * (nombre y rol del actor congelados al escribir); `conflict` si la gestión existe pero el cierre no
+ * está abierto o el pago vigente no es `pagoAnterior`; `fuera_de_alcance` si no existe o no es del
+ * alcance —indistinguibles a propósito, como en `corregirResultadoGestionEnCierre`—.
+ */
+export type AjustarPagoMensajeroResult =
+  | {
+      status: "updated";
+      pagoMensajero: string;
+      totalPagoMensajero: string;
+      ajuste: AjustePagoGestionDTO;
+    }
   | { status: "conflict" }
   | { status: "fuera_de_alcance" };
 
@@ -559,6 +598,21 @@ export interface ICierresAdminRepository {
   corregirResultadoGestionEnCierre(
     input: CorregirResultadoGestionInput,
   ): Promise<CorregirResultadoGestionResult>;
+  /**
+   * SLT-56 (design §4.4) — AJUSTA el pago al mensajero de UNA gestión de un cierre ABIERTO y rehace
+   * SOLO el total de pago al mensajero del cierre. Todo en UNA transacción.
+   *
+   * MÉTODO PROPIO y no una rama de otro: la guardia del censo del historial mide POR MÉTODO.
+   *
+   *  1. **El sello** (la guardia que decide, anti-TOCTOU): `updateMany` de la gestión guardado por
+   *     `anulada_at IS NULL`, `pago_mensajero = pagoAnterior` y cierre abierto + alcance.
+   *     `count !== 1` -> `conflict` o `fuera_de_alcance`, sin escribir nada más.
+   *  2. **El rastro** en `gestion_pago_mensajero_ajuste`, con el rol congelado.
+   *  3. **El total** = suma de los pagos congelados del cierre, guardado otra vez por estado + alcance.
+   *     Recaudo e ingreso de bodega no se tocan (R10/R12).
+   *  4. **El historial de acciones** (`cierre_dia_pago_mensajero_ajustado`, `monto` = pago nuevo).
+   */
+  ajustarPagoMensajeroEnCierre(input: AjustarPagoMensajeroInput): Promise<AjustarPagoMensajeroResult>;
   resolverCierre(input: ResolverCierreInput): Promise<ResolverCierreResult>;
   /**
    * Feature 111/R16 — VALVULA DE ESCAPE: destraba un `vencido` ABANDONADO transicionandolo

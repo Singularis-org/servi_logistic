@@ -116,6 +116,10 @@ import {
 import { RegistrarPagoMensajeroDialog } from "./RegistrarPagoMensajeroDialog";
 import { CorregirPagosDialog } from "./CorregirPagosDialog";
 import { CorregirResultadoDialog } from "./CorregirResultadoDialog";
+import {
+  AjustarPagoMensajeroDialog,
+  type AjustePagoAplicado,
+} from "./AjustarPagoMensajeroDialog";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 
 // Feature 38 (T13, R3-R11): módulo cliente de "Cierres del día" del admin. Recibe
@@ -191,6 +195,14 @@ export interface CierresAdminModuleProps {
    * no se lo ofrece a nadie.
    */
   puedeCorregirResultado?: boolean;
+  /**
+   * SLT-56 (design §5; R1/R2/R21) — permiso de AJUSTAR el pago al mensajero de una gestión de un
+   * cierre abierto. Lo calcula el Server Component padre como
+   * `esAccesoTotal(rol) || rol === "adminSatelite"`: a diferencia de sus vecinas, el adminSatelite
+   * SÍ ajusta (los cierres de su bodega; el alcance lo impone el servidor). Por eso es otra prop y
+   * no `puedeCorregirPagos`. Opcional con default `false` — FALLA CERRADO.
+   */
+  puedeAjustarPagoMensajero?: boolean;
   /**
    * Pedido humano del 2026-08-16 — opciones de los filtros (bodegas destino y mensajeros), ya
    * acotadas al alcance del actor y resueltas por el Server Component: es una lectura de solo
@@ -441,6 +453,7 @@ export function CierresAdminModule({
   puedeRegistrarPago = false,
   puedeCorregirPagos = false,
   puedeCorregirResultado = false,
+  puedeAjustarPagoMensajero = false,
   catalogoFiltros = CATALOGO_FILTROS_CIERRES_VACIO,
   audiencia = "satelite",
 }: Readonly<CierresAdminModuleProps>) {
@@ -465,6 +478,8 @@ export function CierresAdminModule({
   // puede abrir el otro.
   const [corrigiendoResultado, setCorrigiendoResultado] =
     useState<CierreDetalleGestion | null>(null);
+  // SLT-56 (R21): la gestión cuyo pago al mensajero se está ajustando; `null` = diálogo cerrado.
+  const [ajustandoPago, setAjustandoPago] = useState<CierreDetalleGestion | null>(null);
   // Sub-modal de rechazo (R11): true = abierto.
   const [rechazando, setRechazando] = useState(false);
   // Motivo del rechazo (obligatorio, R11) + su error de validación.
@@ -1056,6 +1071,44 @@ export function CierresAdminModule({
   const ofrecerCorreccionResultado =
     puedeCorregirResultado &&
     (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
+  /**
+   * SLT-56 (R21): el pago al mensajero se ajusta mientras el cierre está ABIERTO —el mismo par
+   * que exige el servidor—. Aprobado, queda fijo (se usa premio o descuento en la wallet).
+   */
+  const ofrecerAjustePago =
+    puedeAjustarPagoMensajero &&
+    (cierreAbierto?.estado === "solicitado" || cierreAbierto?.estado === "vencido");
+
+  /**
+   * SLT-56 (R11) — aplica en la pantalla, SIN recargar, lo que devolvió el servidor: el pago nuevo
+   * de la gestión, su ajuste al final del historial y el total de pago al mensajero del cierre.
+   * Ni una suma aquí: las tres cifras llegan hechas. Lo que DERIVA del total (lo que le queda a la
+   * empresa, la ganancia) también es del servidor, y por eso después se relee el detalle.
+   */
+  function aplicarAjusteLocal(r: AjustePagoAplicado) {
+    setDetalle((prev) => {
+      if (!prev) return prev;
+      const grupos = Object.fromEntries(
+        Object.entries(prev.grupos).map(([resultado, lista]) => [
+          resultado,
+          lista.map((g) =>
+            g.gestionId === r.gestionId
+              ? {
+                  ...g,
+                  pagoMensajero: r.pagoMensajero,
+                  ajustesPago: [...(g.ajustesPago ?? []), r.ajuste],
+                }
+              : g,
+          ),
+        ]),
+      ) as CierreGrupos;
+      return {
+        ...prev,
+        cierre: { ...prev.cierre, totalPagoMensajero: r.totalPagoMensajero },
+        grupos,
+      };
+    });
+  }
 
   return (
     // `gap-4` y no `gap-8` (pedido humano del 2026-08-16): entre la barra de filtros y las
@@ -1299,6 +1352,8 @@ export function CierresAdminModule({
               onCorregirResultado={
                 ofrecerCorreccionResultado ? setCorrigiendoResultado : undefined
               }
+              // SLT-56 (R21): ausente en un cierre no abierto o para el rol que no ajusta.
+              onAjustarPago={ofrecerAjustePago ? setAjustandoPago : undefined}
             />
 
             {/* Pedido humano (2026-08-19): el editor del desglose, el MISMO que usa el
@@ -1328,6 +1383,24 @@ export function CierresAdminModule({
               }}
               onCorregido={async () => {
                 if (cierreAbierto) await abrirDetalle(cierreAbierto.cierreId);
+                refrescarListas();
+              }}
+            />
+
+            {/* SLT-56 (R11/R21): el ajuste del pago al mensajero. Al volver `ok` se pinta YA lo
+                que devolvió el servidor (pago de la gestión, su marca y el total del cierre) y
+                después se relee el detalle —lo que deriva del total lo recalcula él— y se
+                refrescan las listas, donde el total del cierre también se ve. */}
+            <AjustarPagoMensajeroDialog
+              gestion={ajustandoPago}
+              onOpenChange={(open) => {
+                if (!open) setAjustandoPago(null);
+              }}
+              onAjustado={(r) => {
+                aplicarAjusteLocal(r);
+                // Sin `await`: lo que el usuario necesita ver ya está pintado; la relectura
+                // llega detrás y no deja el botón del diálogo esperando.
+                if (cierreAbierto) void abrirDetalle(cierreAbierto.cierreId);
                 refrescarListas();
               }}
             />

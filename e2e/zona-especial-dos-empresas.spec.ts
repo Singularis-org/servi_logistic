@@ -118,7 +118,10 @@ async function guardarSinErrorDeMarca(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Editar zona" })).toHaveCount(0);
 }
 
-test("(1) el maestro de A marca un distrito como zona especial y guarda sin toast de error", async ({ browser }) => {
+// SLT-51 retiró Editar zona → Especial; SLT-54 lo reescribe contra su pantalla nueva. Hasta
+// entonces los cuatro casos quedan en fixme (el cuerpo se conserva como guía para SLT-54) y la
+// guardia `e2e-sin-saltos` los permite solo por la excepción con fecha que los nombra.
+test.fixme("(1) el maestro de A marca un distrito como zona especial y guarda sin toast de error", async ({ browser }) => {
   test.setTimeout(240_000);
   const page = await comoMaestro(browser, "A");
   await abrirZona(page, "A");
@@ -137,7 +140,7 @@ test("(1) el maestro de A marca un distrito como zona especial y guarda sin toas
   await page.context().close();
 });
 
-test("(2) al reabrir, el maestro de A ve el distrito marcado", async ({ browser }) => {
+test.fixme("(2) al reabrir, el maestro de A ve el distrito marcado", async ({ browser }) => {
   test.setTimeout(240_000);
   const page = await comoMaestro(browser, "A");
   await abrirZona(page, "A");
@@ -149,7 +152,7 @@ test("(2) al reabrir, el maestro de A ve el distrito marcado", async ({ browser 
   await page.context().close();
 });
 
-test("(3) el maestro de B no ve marcado el distrito que marcó A", async ({ browser }) => {
+test.fixme("(3) el maestro de B no ve marcado el distrito que marcó A", async ({ browser }) => {
   test.setTimeout(240_000);
   const page = await comoMaestro(browser, "B");
   await abrirZona(page, "B");
@@ -161,7 +164,7 @@ test("(3) el maestro de B no ve marcado el distrito que marcó A", async ({ brow
   await page.context().close();
 });
 
-test("(4) B marca otro distrito: B lo ve al reabrir y A no, y A conserva el suyo", async ({ browser }) => {
+test.fixme("(4) B marca otro distrito: B lo ve al reabrir y A no, y A conserva el suyo", async ({ browser }) => {
   test.setTimeout(300_000);
   const pageB = await comoMaestro(browser, "B");
   await abrirZona(pageB, "B");

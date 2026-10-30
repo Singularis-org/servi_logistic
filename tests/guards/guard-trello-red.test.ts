@@ -153,7 +153,9 @@ function boardFalso(
       return respuesta(200, {})
     }
     if ((m = /^PUT \/cards\/([^/]+)$/.exec(k))) {
-      Object.assign(porId(m[1])!, cuerpo)
+      // Una tarjeta recien creada por `crear` no esta en `cards`: el PUT solo se registra.
+      const c = porId(m[1])
+      if (c) Object.assign(c, cuerpo)
       return respuesta(200, {})
     }
     if (/^GET \/cards\/[^/]+\/actions$/.test(k)) return respuesta(200, opciones.acciones ?? [])
@@ -279,7 +281,7 @@ describe('guardia: cliente de Trello contra fetch simulado — subcomandos', () 
     const { features } = JSON.parse(readFileSync(join(raiz, 'feature_list.json'), 'utf8'))
     expect(features.map((f: { key: string }) => f.key)).toEqual(['AB-3', 'AB-7'])
     expect(features[1]).toMatchObject({ status: 'in_progress', zone: 'backend', assignee: { accountId: 'm1', displayName: 'Ana' } })
-    expect(salida[0]).toContain('2 fichas importadas')
+    expect(salida.some((s) => s.includes('2 fichas importadas'))).toBe(true)
     expect(salida.some((s) => s.startsWith('AVISO: AB-7 sigue in_progress'))).toBe(true)
   })
 
@@ -427,6 +429,61 @@ describe('guardia: cliente de Trello contra fetch simulado — subcomandos', () 
     expect(card.cuerpo).toMatchObject({ idList: 'l1', name: 'Prompts' })
     expect(board.llamadas.filter((l) => /\/checkItems$/.test(l.ruta)).map((l) => (l.cuerpo as { name: string }).name)).toEqual(['XY-1', 'XY-2'])
     expect(salida[0]).toBe('XY-131 creada en Pendiente')
+  })
+
+  // docs/trello.md > La key en el titulo
+  const putsDeNombre = (board: ReturnType<typeof boardFalso>) =>
+    board.llamadas
+      .filter((l) => l.metodo === 'PUT' && (l.cuerpo as { name?: string })?.name !== undefined)
+      .map((l) => `${l.ruta} ${(l.cuerpo as { name: string }).name}`)
+
+  it('importar rotula con su key solo las tarjetas mal nombradas y title va sin prefijo', async () => {
+    const board = boardFalso([
+      tarjeta({ id: 'c1', idShort: 7, name: 'Alta de clientes' }),
+      tarjeta({ id: 'c2', idShort: 3, name: 'AB-3 · Bien nombrada', labels: [{ id: 'x', name: 'slug:otra' }] }),
+      tarjeta({ id: 'c3', idShort: 4, name: 'AB-40 · Key equivocada', labels: [{ id: 'y', name: 'slug:tres' }] }),
+    ])
+    const { c, raiz, salida } = cliente(board)
+    await c.importar()
+    expect(putsDeNombre(board)).toEqual(['/cards/c1 AB-7 · Alta de clientes', '/cards/c3 AB-4 · Key equivocada'])
+    expect(salida).toContain('2 tarjeta(s) rotuladas con su key en el titulo')
+    const { features } = JSON.parse(readFileSync(join(raiz, 'feature_list.json'), 'utf8'))
+    expect(features.map((f: { title: string }) => f.title)).toEqual(['Bien nombrada', 'Key equivocada', 'Alta de clientes'])
+  })
+
+  it('importar no hace ningun PUT si todas las tarjetas ya llevan su key', async () => {
+    const board = boardFalso([
+      tarjeta({ id: 'c1', idShort: 7, name: 'AB-7 · Alta de clientes' }),
+      tarjeta({ id: 'c2', idShort: 3, name: 'AB-3 · Otra', labels: [{ id: 'x', name: 'slug:otra' }] }),
+    ])
+    const { c, salida } = cliente(board)
+    await c.importar()
+    expect(board.llamadas.filter((l) => l.metodo === 'PUT')).toHaveLength(0)
+    expect(salida.some((s) => s.includes('rotuladas'))).toBe(false)
+  })
+
+  it('importar rotula una tarjeta migrada con la key de su label key:, no con el idShort', async () => {
+    const board = boardFalso([tarjeta({ id: 'c1', idShort: 7, name: 'Migrada', labels: [{ id: 'k', name: 'key:XY-131' }] })])
+    const { c } = cliente(board)
+    await c.importar()
+    expect(putsDeNombre(board)).toEqual(['/cards/c1 XY-131 · Migrada'])
+  })
+
+  it('crear termina con un PUT que pone la key en el nombre (con y sin --key)', async () => {
+    const board = boardFalso([])
+    const { c } = cliente(board)
+    await c.crear({ '--nombre': 'Prompts', '--key': 'XY-131' })
+    await c.crear({ '--nombre': 'Zonas' })
+    expect(putsDeNombre(board)).toEqual(['/cards/nueva-1 XY-131 · Prompts', '/cards/nueva-2 AB-102 · Zonas'])
+    expect(board.llamadas.at(-1)).toMatchObject({ metodo: 'PUT', ruta: '/cards/nueva-2' })
+  })
+
+  it('editar --nombre envia el nombre con el prefijo de la key de la tarjeta', async () => {
+    const board = boardFalso([tarjeta({ name: 'AB-7 · Viejo' })])
+    const { c } = cliente(board)
+    await c.editar('AB-7', { '--nombre': 'Nuevo titulo' })
+    expect(putsDeNombre(board)).toEqual(['/cards/c1 AB-7 · Nuevo titulo'])
+    expect(board.cards[0].name).toBe('AB-7 · Nuevo titulo')
   })
 
   it('aprobacion elige el ultimo movimiento de spec_ready a in_progress', async () => {

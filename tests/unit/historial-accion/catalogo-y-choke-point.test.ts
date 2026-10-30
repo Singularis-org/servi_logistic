@@ -99,8 +99,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 72 desde SL-23: `modulo_activado` y `modulo_desactivado`, la entidad `organizacion_modulo`
     // (26) y la quinta categoria, `cambia_modulos`.
     // 73 desde SL-24: `plan_asignado`, la entidad `plan` (27) y la sexta categoria, `cambia_plan`.
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(73);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(73);
+    // 74 desde SLT-56: `cierre_dia_pago_mensajero_ajustado` (entidad `gestion_orden`, sin entidad nueva).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(74);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(74);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(27); // 27 desde SL-24 (`plan`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(27);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -456,7 +457,10 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // ganancia. 39 con `wallet_movimiento_manual_anulado` (auditoria D3): el contra-asiento de una
     // correccion de caja deshace su efecto en la ganancia.
     // 43 desde la ficha 458-B: anular un cobro por devolución a origen y anular un egreso de caja mueven dinero.
-    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(43);
+    // 44 desde SLT-56: `cierre_dia_pago_mensajero_ajustado` cambia lo que el mensajero cobra por una
+    // gestion y el total de pago del cierre, que es su devengo al aprobar.
+    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(44);
+    expect(CATEGORIA_POR_ACCION.cierre_dia_pago_mensajero_ajustado).toBe("mueve_dinero");
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(10);
     expect(accionesDeCategoria("cambia_permisos")).toHaveLength(12);
     // 5 desde SL-36: la categoria nueva, solo con los cinco `integracion_*`.

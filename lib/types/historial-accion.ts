@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 73 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 74 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
@@ -252,6 +252,13 @@ export const HISTORIAL_ACCION_TIPOS = [
   // sobrevive cuanto se habia dado por recibido. La NOTA no entra (R5 de la 362: texto libre).
   "cierre_bodega_conciliado", // CierresBodegaAdminRepository.marcarConciliado
   "cierre_bodega_conciliacion_revertida", // CierresBodegaAdminRepository.revertirConciliacion
+  // ⭑ SLT-56 — alguien AJUSTO lo que el mensajero gana por una gestion al revisar su cierre ABIERTO.
+  // Dinero en el sentido mas literal: cambia el `pago_mensajero` congelado y con el el total de pago
+  // del cierre, que es el devengo del mensajero al aprobar. TIPO PROPIO y metodo propio (la guardia
+  // del censo mide POR METODO): `cierre_dia_pagos_editados` es el reparto del cobro entre metodos y
+  // lo escribe otro metodo. `monto` = el pago nuevo; `valor_anterior`/`valor_nuevo` van NULL y el
+  // MOTIVO NO ENTRA (R5 de la 362): el antes/despues y el motivo viven en `gestion_pago_mensajero_ajuste`.
+  "cierre_dia_pago_mensajero_ajustado", // CierresAdminRepository.ajustarPagoMensajeroEnCierre
 
   // --- A.2 · hace desaparecer algo (10) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
@@ -511,6 +518,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   // una categoria, y ninguna de las otras dos describe esto.
   cierre_bodega_conciliado: "mueve_dinero",
   cierre_bodega_conciliacion_revertida: "mueve_dinero",
+  // SLT-56: el ajuste cambia lo que el mensajero cobra por una gestion y el total de pago del cierre.
+  cierre_dia_pago_mensajero_ajustado: "mueve_dinero",
   gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
   orden_eliminada: "hace_desaparecer",
   orden_recuperada: "hace_desaparecer",
@@ -595,6 +604,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   cierre_dia_gestion_corregida: "Corrigió el resultado de una gestión",
   cierre_bodega_conciliado: "Marcó recibida una consolidación de bodega",
   cierre_bodega_conciliacion_revertida: "Revirtió la conciliación de una consolidación de bodega",
+  cierre_dia_pago_mensajero_ajustado: "Ajustó el pago al mensajero de una gestión",
   gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
   orden_eliminada: "Eliminó una orden",
   orden_recuperada: "Recuperó una orden",

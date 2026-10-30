@@ -181,6 +181,15 @@ const ESCRITURAS_FUERA_DE_LA_APROBACION = [
       "`gestion_corregida`, en la transaccion propia de la correccion, no en la de la resolucion.",
     cubiertaPor: ["tests/integration/db/454/correccion-ramas-sql-real.test.ts"],
   },
+  {
+    // SLT-56 (design §4.4): el rastro append-only del ajuste del pago al mensajero.
+    escritura: "tx.gestionPagoMensajeroAjuste.create",
+    que:
+      "ajuste del pago al mensajero (`ajustarPagoMensajeroEnCierre`): la fila del rastro con actor, " +
+      "rol, anterior, nuevo y motivo, en la transaccion propia del ajuste sobre un cierre ABIERTO, " +
+      "no en la de la resolucion.",
+    cubiertaPor: ["tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts"],
+  },
 ] as const;
 
 /**

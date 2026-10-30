@@ -148,6 +148,8 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "modulo_desactivado",
       // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
       "plan_asignado",
+      // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de `20261029120100_historial_accion_pago_mensajero_ajustado`.
+      "cierre_dia_pago_mensajero_ajustado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

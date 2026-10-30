@@ -53,6 +53,7 @@ function detalleCierreDbRow(overrides: Record<string, unknown> = {}) {
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R20: snapshot del cierre_dia
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R19: snapshot del cierre_dia
     mensajero: { nombre: "Ana Mensajera" },
+    _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
     ...overrides,
   };
 }
@@ -79,6 +80,7 @@ function gestionDbRow(overrides: Record<string, unknown> = {}) {
     // Feature 212/R21/R23: el TERCER camino de lectura tambien trae el desglose.
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("10.00") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
+    ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
     ...overrides,
   };
 }

@@ -3,7 +3,7 @@ titulo: Configuración · Integraciones
 modulo: configuracion
 pantalla: /configuracion/integraciones
 roles: [maestro]
-actualizado: 2026-10-25
+actualizado: 2026-10-29
 fuentes:
   - app/(app)/configuracion/integraciones/page.tsx
   - lib/types/integraciones.ts
@@ -31,7 +31,10 @@ Una por servicio. Cada tarjeta dice:
   configurar: la aplicación sigue funcionando, con menos.
 - **La hora de la última prueba.**
 - En WhatsApp, además, **la hora del último contacto del webhook**: la última vez que Meta llamó a la
-  aplicación con tu token de verificación o con un mensaje firmado con tu App Secret.
+  aplicación con tu token de verificación o con un mensaje firmado con tu App Secret. **Es la forma de
+  saber si WhatsApp está bien conectado:** «Conectada» solo dice que el token y los identificadores
+  sirven para enviar. Si la hora del último contacto no se mueve cuando alguien escribe a tu número,
+  no estás recibiendo mensajes ni confirmaciones de entrega (la guía de WhatsApp explica qué revisar).
 
 Los tres estados:
 
