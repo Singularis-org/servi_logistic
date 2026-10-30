@@ -108,7 +108,7 @@
   con plan previo, mismo uso antes y después; `UPDATE` de `servi_app` a la columna → `42501`);
   `tests/integration/db/plan-de-la-empresa.test.ts` en verde comparando con `plan_inicio_ciclo_en_curso`;
   suite de SL-24 en verde sin tocar sus tests.
-- [ ] **T13 — Gemela TS del ciclo** (backend_dev; design §11.3). Depende de T12 (por la parte SQL).
+- [x] **T13 — Gemela TS del ciclo** (backend_dev; design §11.3). Depende de T12 (por la parte SQL).
   `inicioDelCicloEnCurso`, corrección de `inicioDelSiguienteCiclo` (antes del ancla → el ancla),
   `rangoDelInicioDelCiclo` y `anclaDeLaFechaElegida` en `lib/planes/ciclo.ts`; tabla
   `tests/integration/db/_fixtures/ciclo-corto.ts`.
