@@ -95,13 +95,14 @@ describe("R7 — el rol sale de la SESIÓN", () => {
     expect(proveedor.textoEnviado).not.toContain("Wallet · Caja");
   });
 
-  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 37", async () => {
+  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 38", async () => {
     // Las dos mitades del mismo hecho: lo único que cambia entre esta llamada y la de arriba es
     // quién devuelve `getActor`. Si el rol saliera del cuerpo, las dos darían lo mismo.
     const { proveedor } = await llamar(MAESTRO, CUERPO_VALIDO);
     // SL-36: 33→38 por las cinco guías de integraciones.
     // SL-20 (decisión 9): 38→37, se retira configuracion-geografia.
-    expect(proveedor.llamadas[0].documentos).toHaveLength(37);
+    // SLT-51: 37→38, entra configuracion-zonas.
+    expect(proveedor.llamadas[0].documentos).toHaveLength(38);
     expect(proveedor.textoEnviado).toContain("oficina/wallet-caja");
   });
 
