@@ -126,6 +126,7 @@ export default defineConfig({
         "wallet",
         "mi-wallet",
         "wallet-mensajeros",
+        "ajuste-pago-mensajero-cierre",
       ),
     },
   ],
