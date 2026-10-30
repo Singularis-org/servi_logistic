@@ -88,13 +88,13 @@ Reglas de toda la ficha:
 
 ## Tanda B — pantalla, catálogo y E2E
 
-- [ ] **T10 [P] — Rótulos de los libros.**
+- [x] **T10 [P] — Rótulos de los libros.**
   - `CATEGORIA_PAGO_LABEL` («Incentivo», «Anulación de incentivo»);
   - rótulo del chip en `components/shared/estado-cuenta/estado-cuenta-labels.ts`;
   - `tests/unit/components/incentivo-rotulos-slt68.test.ts` (R18).
 
   *Hecho:* verde.
-- [ ] **T11 — Catálogo y «Así queda».**
+- [x] **T11 — Catálogo y «Así queda».**
   - Concepto `incentivo_a_mensajero` en `wallet-conceptos-manuales.ts`, con la clase, `LibroDestino`
     `caja_y_mensajero`, frase, cabecera y `CONCEPTO_REGISTRO_DE`;
   - `lib/types/efecto-movimiento.ts` y `lib/utils/efecto-movimiento.ts` (`enCuenta: "devengo"`);
@@ -102,12 +102,12 @@ Reglas de toda la ficha:
     `efecto-movimiento-predice.test.ts`).
 
   *Hecho:* verdes.
-- [ ] **T12 — Diálogo.** `RegistrarMovimientoDialog.tsx`, rama `incentivo_mensajero`: `FormData`,
+- [x] **T12 — Diálogo.** `RegistrarMovimientoDialog.tsx`, rama `incentivo_mensajero`: `FormData`,
   llamada a la action y respuestas, incluido `sin_cierre_aprobado` en el campo del mensajero. Depende
   de T11.
 
   *Hecho:* typecheck y lint verdes; se prueba a mano en el dev server (un solo dev server).
-- [ ] **T13 — E2E** `e2e/incentivo-mensajero-slt68.spec.ts` (R22): registrar, ver «Incentivo» y la
+- [x] **T13 — E2E** `e2e/incentivo-mensajero-slt68.spec.ts` (R22): registrar, ver «Incentivo» y la
   cuenta +M, anular, la cuenta vuelve. Depende de T12.
 
   *Hecho:* `pnpm exec playwright test e2e/incentivo-mensajero-slt68.spec.ts` verde.
