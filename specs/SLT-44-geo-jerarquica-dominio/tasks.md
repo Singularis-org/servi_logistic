@@ -12,18 +12,18 @@
 
 ## T0 — Precondiciones
 
-- [ ] **T0.1** Comprobar que la rama lleva SLT-43 (PR #44) tal como está en su rama, sin `ruta`.
+- [x] **T0.1** Comprobar que la rama lleva SLT-43 (PR #44) tal como está en su rama, sin `ruta`.
   *Hecho:* existen los modelos `NodoGeografico` y `TipoNivelGeografico` en `db/schema.prisma`, y
   no hay columna `ruta`. Si el PR #44 cambió desde el merge de `0dc0847`, se vuelve a mergear y se
   avisa al leader.
-- [ ] **T0.2** Comprobar que ningún `OrdenRepository`, `GeoRepository` ni `CoberturaRepository` se
+- [x] **T0.2** Comprobar que ningún `OrdenRepository`, `GeoRepository` ni `CoberturaRepository` se
   crea a nivel de módulo en `lib/` ni en `app/` (design §4). *Hecho:* el Grep sale vacío y se
   anota en `progress/impl_SLT-44.md`. Si aparece uno, se para: la caché por instancia dejaría de
   ser por petición.
 
 ## T1 — El «antes», congelado (depende de T0)
 
-- [ ] **T1.1** `scripts/geo-equivalencia/lecturas-de-hoy.ts` (design §6.1). Copia literal, sacada
+- [x] **T1.1** `scripts/geo-equivalencia/lecturas-de-hoy.ts` (design §6.1). Copia literal, sacada
   de `dev` **antes de tocar ningún repositorio**, de:
   - `OrdenRepository`: `findAllProvincias`, `findCantonesByProvinciaIds`,
     `findDistritosByCantonIds` y `findDistritoParaCorreccion`;
