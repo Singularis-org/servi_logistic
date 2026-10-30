@@ -77,7 +77,11 @@ export type EjecutarOptimizacionResult =
     }
   | {
       status: "omitida";
-      razon: "obsoleta" | "intervalo_minimo" | "sin_paradas" | "sin_cambios";
+      /**
+       * SLT-59 (design §2.2): `reducida` = una gestion solo QUITO paradas y se persistio la
+       * secuencia previa sin ellas, sin `optimizeTours`. No hubo ordenacion, por eso `omitida`.
+       */
+      razon: "obsoleta" | "intervalo_minimo" | "sin_paradas" | "sin_cambios" | "reducida";
       /**
        * R35 con UNA parada: no hubo nada que ORDENAR —por eso `omitida`— pero si hay algo
        * que DIBUJAR, la linea del origen a esa unica parada. Las demas razones nunca lo
@@ -122,4 +126,11 @@ export interface IOptimizacionRutaService {
     mensajeroId: string,
     input: { ubicacion: { lat: number; lng: number }; ordenId: string },
   ): Promise<TrazarTramoVivoResult>;
+
+  /**
+   * SLT-59 (R27, design §3.2) — aplica la reduccion de la secuencia SOLO si no cuesta ninguna
+   * llamada facturada (R13 o R15). En cualquier otro caso no hace nada: el job encolado por la
+   * gestion se encarga. Puede lanzar si falla la base; quien llama lo trata como best-effort (R28).
+   */
+  reducirSinLlamadas(mensajeroId: string): Promise<void>;
 }

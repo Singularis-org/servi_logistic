@@ -131,6 +131,17 @@ function nuestroError(name: string, message: string): Error {
   e.name = name;
   return e;
 }
+/** SLT-59: secuencias guardadas para los casos en que la guarda debe reconocer el conjunto. */
+const SEC_O1_O2 = new Map([
+  ["o1", 1],
+  ["o2", 2],
+]);
+const SEC_O1_O2_O3 = new Map([
+  ["o1", 1],
+  ["o2", 2],
+  ["o3", 3],
+]);
+
 function metaDe(rutas: { reemplazarSecuencia: { mock: { calls: unknown[][] } } }): MetaPersistida {
   return rutas.reemplazarSecuencia.mock.calls[0][2] as MetaPersistida;
 }
@@ -239,9 +250,11 @@ describe("R35 — 0 o 1 parada con coordenadas", () => {
     await primera.service.ejecutar(MENSAJERO, { motivo: "manual" });
     const huella = metaDe(primera.rutas).huellaSet as string;
 
+    // [2026-10-29, SLT-59 R2] «sin cambios» ya no es la huella sino el CONJUNTO guardado: la
+    // ruta tiene que llevar su secuencia para que la guarda la reconozca.
     const segunda = build({
       paradas: [parada("o1")],
-      ruta: ruta({ huellaSet: huella, estado: "vigente" }),
+      ruta: ruta({ huellaSet: huella, estado: "vigente", secuenciaPorOrden: new Map([["o1", 1]]) }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "inmediato" });
 
@@ -279,7 +292,11 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
     const huella = metaDe(primera.rutas).huellaSet as string;
 
     // Segunda pasada: la ruta ya lleva esa huella y sigue vigente.
-    const segunda = build({ paradas, ruta: ruta({ huellaSet: huella, estado: "vigente" }) });
+    // [2026-10-29, SLT-59 R1] Y su secuencia: el criterio es el conjunto guardado, no la huella.
+    const segunda = build({
+      paradas,
+      ruta: ruta({ huellaSet: huella, estado: "vigente", secuenciaPorOrden: SEC_O1_O2_O3 }),
+    });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
     expect(r).toEqual({ status: "omitida", razon: "sin_cambios" });
@@ -303,7 +320,8 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
 
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: cacheado }),
+      // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
+      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: cacheado, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -324,7 +342,8 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
 
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: null }),
+      // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
+      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: null, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -434,7 +453,9 @@ describe("R27 — ante fallo del proveedor se CONSERVA el ultimo orden valido", 
     "%s -> NO se tocan las paradas, se marca desactualizada y se LANZA",
     async (status) => {
       const { service, rutas } = build({
-        paradas: [parada("o1"), parada("o2")],
+        // [2026-10-29, SLT-59 R1/R20] con el mismo conjunto la guarda nueva ya no llama; `o3`
+        // es una parada NUEVA para que este caso siga llegando al proveedor.
+        paradas: [parada("o1"), parada("o2"), parada("o3")],
         ruta: ruta({
           calculadaAt: new Date(T0.getTime() - 100_000),
           secuenciaPorOrden: new Map([
@@ -556,7 +577,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
     ["de libreria (mensaje NO fiable)", new TypeError("fetch failed: Bearer ya29.token url=https://x")],
   ])("excepcion %s -> orden previo intacto + desactualizada + RutaIntentoFallidoError", async (_c, error) => {
     const { service, rutas } = build({
-      paradas: [parada("o1"), parada("o2")],
+      // [2026-10-29, SLT-59 R1/R20] `o3` es NUEVA: con el mismo conjunto ya no se llamaria.
+      paradas: [parada("o1"), parada("o2"), parada("o3")],
       ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       lanza: error,
     });
@@ -606,7 +628,9 @@ describe("265/R10, §5.3 — `sin_solucion` SIN compuesto: nunca una secuencia p
     // «no se recalculo», nunca «se persistio media ruta».
     const { service, rutas } = build({
       paradas: [parada("o1"), parada("o2"), parada("o3")],
-      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2], ["o3", 3]]) }),
+      // [2026-10-29, SLT-59 R1/R20] la ruta guardada no tiene `o3`: con el mismo conjunto la
+      // guarda nueva ya no llamaria al proveedor y este caso no llegaria a probarse.
+      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       outcome: {
         status: "sin_solucion",
         detalle: "optimizar ruta: paradas saltadas por el proveedor (servidas 1 de 3)",
@@ -671,7 +695,15 @@ describe("265/R35, R36, R37 — la procedencia llega a `reemplazarSecuencia`", (
     // Segundo disparo con el mismo conjunto y el mismo origen, y la ruta ya `vigente`.
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: meta.huellaSet, estado: "vigente" }),
+      // [2026-10-29, SLT-59 R1] con la secuencia degradada guardada: la guarda mira el conjunto.
+      ruta: ruta({
+        huellaSet: meta.huellaSet,
+        estado: "vigente",
+        secuenciaPorOrden: new Map([
+          ["o2", 1],
+          ["o1", 2],
+        ]),
+      }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "inmediato" });
 
@@ -784,7 +816,14 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
     // Segunda corrida: MISMA parada, MISMO origen y la huella ya guardada + ruta vigente. Las
     // dos guardas cortarian.
     const { service, client, rutas } = build({
-      ruta: ruta({ ...origenPersistido, huellaSet: huellaReal, estado: "vigente" }),
+      // [2026-10-29, SLT-59 R2/R8] la guarda nueva reconoce «sin cambios» por el CONJUNTO
+      // guardado, asi que la ruta lleva su secuencia de una parada.
+      ruta: ruta({
+        ...origenPersistido,
+        huellaSet: huellaReal,
+        estado: "vigente",
+        secuenciaPorOrden: new Map([["o1", 1]]),
+      }),
       paradas: [parada("o1")],
       now: T0,
     });
@@ -795,10 +834,15 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
     // secuencia trivial NO se reescribiria: una ruta que se quedo con UNA parada dejaria de
     // reafirmar `secuenciaFuente: null`, y la marca vieja («la ordeno el proveedor») se
     // quedaria pegada a una ruta que ya nadie ordeno.
+    //
+    // [2026-10-29, SLT-59 R2/R6/R12, D1] Por decision del humano la rama de UNA parada aplica
+    // ahora su propia guarda ANTES de escribir: con el mismo conjunto y sin desvio NO reescribe
+    // nada (R6), y la procedencia se conserva a proposito (R12: una reduccion hereda la de su
+    // secuencia). Lo que este caso sigue fijando es el ORDEN: gana la rama R35 (`sin_paradas`),
+    // no la guarda de 2+ paradas (`sin_cambios`).
     expect(r).toMatchObject({ status: "omitida", razon: "sin_paradas" });
     expect(client.optimizar).not.toHaveBeenCalled();
-    expect(rutas.reemplazarSecuencia).toHaveBeenCalledTimes(1);
-    expect(metaDe(rutas).secuenciaFuente).toBeNull();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
   });
 
   it("el recorte R38 va ANTES de la guarda del origen (265/R16): el centroide es el de las paradas que SE ENVIAN", async () => {

@@ -23,6 +23,17 @@
 //        REALMENTE se envia; si no, la guarda de «sin cambios» cortaria por lo que no fue.
 //   R36  mismo conjunto de paradas y mismo origen que la ultima vez      -> 0 llamadas
 //
+// [2026-10-29, SLT-59, D1/D6/D8] R36 cambia de criterio por decision del humano (SLT-59
+// design §10): «sin cambios» = mismo CONJUNTO de paradas y el mensajero a no mas de
+// `RUTA_REOPT_DISTANCIA_M` de la ruta dada, sin criterio de tiempo. Justo detras va la
+// reduccion (SLT-59 R11): si la gestion solo QUITO paradas se reutiliza el orden previo sin
+// `optimizeTours`. Ambas viven en `decidirGuardaRuta`. El orden de las guardas no cambia (R8).
+//
+// [2026-10-29, SLT-59, D8] Limite declarado 2 de la 265 («la huella congela el orden local
+// hasta que cambie el conjunto o el origen; la posicion cambia constantemente, asi que se cura
+// sola»): ya no se cura con el movimiento normal, solo con un cambio de conjunto o un desvio
+// de mas de `RUTA_REOPT_DISTANCIA_M`.
+//
 // ⚠️ ESTE ORDEN YA NO VIVE SOLO EN ESTE COMENTARIO. 265/R33 exige que las guardas corten
 // «exactamente igual Y EN EL MISMO ORDEN», y hasta el cierre de menores de la 265 lo unico
 // que lo sostenia era este parrafo — un comentario no se pone rojo. Lo fija ahora
@@ -44,6 +55,7 @@ import type {
   IRutaOptimizadaRepository,
   OrigenFuente,
   RutaOptimizadaDTO,
+  TramoPersistido,
 } from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
@@ -55,7 +67,13 @@ import type {
   TrazadoTramo,
   TrazarTramoVivoResult,
 } from "@/lib/interfaces/services/IOptimizacionRutaService";
-import { codificarPolilinea, distanciaHaversineKm, distanciaTotalM } from "@/lib/geo/polilinea";
+import {
+  codificarPolilinea,
+  decodificarPolilinea,
+  distanciaHaversineKm,
+  distanciaMinimaAPolilineaM,
+  distanciaTotalM,
+} from "@/lib/geo/polilinea";
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 
@@ -129,6 +147,10 @@ export function motivoDeExcepcion(error: unknown): string {
  * Redondeo del origen para la huella de R36. 4 decimales ≈ 11 m: mas fino haria que el
  * jitter del GPS parado en un semaforo invalidara la huella y disparara una llamada
  * facturada por cada lectura. Mas grueso perderia cambios de calle reales.
+ *
+ * [2026-10-29, SLT-59, D8] Este redondeo ya no decide si se paga: la guarda de «sin cambios»
+ * mira el conjunto y el desvio (`decidirGuardaRuta`). Sigue entrando en la huella, que ahora
+ * solo condiciona las escrituras (`guardarTrazado`, `reducirSecuencia`).
  */
 const ORIGEN_DECIMALES = 4;
 
@@ -144,6 +166,161 @@ function centroide(paradas: { latitud: number; longitud: number }[]): { lat: num
   return {
     lat: paradas.reduce((s, p) => s + p.latitud, 0) / paradas.length,
     lng: paradas.reduce((s, p) => s + p.longitud, 0) / paradas.length,
+  };
+}
+
+/** Parada con coordenadas, tal como llega a las guardas (ya filtrada por R37 de la 92). */
+type ParadaConCoordenadas = { ordenId: string; latitud: number; longitud: number };
+
+/**
+ * SLT-59 (R1-R20, design §2) — que hacer con un conjunto de paradas frente a la ruta guardada.
+ * `reducir.restantes` es la secuencia previa filtrada al conjunto actual, en su orden.
+ */
+export type DecisionGuardaRuta =
+  | {
+      tipo: "reoptimizar";
+      motivo: "sin_ruta" | "desactualizada" | "paradas_nuevas" | "desviado";
+    }
+  | { tipo: "omitir" }
+  | { tipo: "reducir"; previa: string[]; restantes: string[] };
+
+/**
+ * SLT-59 (R3, R5, design §2.1) — la posicion del mensajero es el origen final SOLO si sale de
+ * el: el centroide es un punto calculado, no donde esta nadie, y medir el desvio contra el
+ * dispararia reoptimizaciones por una geometria que nadie recorre.
+ */
+export function posicionDelMensajero(
+  origen: { lat: number; lng: number; fuente: OrigenFuente } | null,
+): { lat: number; lng: number } | null {
+  if (origen === null || origen.fuente === "centroide") return null;
+  return { lat: origen.lat, lng: origen.lng };
+}
+
+/** Ids de la secuencia persistida en orden de visita (el `Map` no tiene orden util). */
+function secuenciaPrevia(ruta: RutaOptimizadaDTO): string[] {
+  return [...ruta.secuenciaPorOrden.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+}
+
+/**
+ * SLT-59 (R4) — la ruta dada contra la que se mide el desvio. Solo una polilinea `routes` es
+ * «la ruta por calles»: una `local` heredada son rectas que nadie recorre. Sin ella, la recta
+ * por las paradas en el orden guardado; las que ya no estan en `paradas` se saltan porque sus
+ * coordenadas no estan cargadas y leerlas costaria una consulta (R9).
+ */
+function lineaReferencia(
+  ruta: RutaOptimizadaDTO,
+  previa: string[],
+  paradas: ParadaConCoordenadas[],
+): { lat: number; lng: number }[] {
+  if (ruta.trazado !== null && ruta.trazado.fuente === "routes") {
+    return decodificarPolilinea(ruta.trazado.encodedPolyline);
+  }
+  const porId = new Map(paradas.map((p) => [p.ordenId, p]));
+  return previa
+    .map((id) => porId.get(id))
+    .filter((p): p is ParadaConCoordenadas => p !== undefined)
+    .map((p) => ({ lat: p.latitud, lng: p.longitud }));
+}
+
+/**
+ * SLT-59 (design §2) — sustituye a la guarda 92/R36 («misma huella»). La huella mezcla el
+ * origen y cualquier GPS nuevo la cambiaba: el criterio pasa a ser el CONJUNTO de paradas mas
+ * el desvio respecto a la ruta. Pura sobre lo ya cargado: cero lecturas, cero llamadas (R9).
+ *
+ * El desvio se mide DESPUES de descartar paradas nuevas a proposito: a partir de ahi toda
+ * parada actual esta en la secuencia previa y tiene coordenadas, asi que la recta de R4 nunca
+ * queda vacia (la 92/R35 ya corto con 0 paradas). Ademas ahorra decodificar la polilinea
+ * cuando la respuesta ya es «reoptimizar».
+ *
+ * Sin criterio de tiempo (R10, D8): `calculada_at` no entra aqui.
+ */
+export function decidirGuardaRuta(input: {
+  ruta: RutaOptimizadaDTO | null;
+  paradas: ParadaConCoordenadas[];
+  posicion: { lat: number; lng: number } | null;
+  umbralM: number;
+}): DecisionGuardaRuta {
+  const { ruta, paradas, posicion, umbralM } = input;
+  if (ruta === null) return { tipo: "reoptimizar", motivo: "sin_ruta" };
+  if (ruta.estado !== "vigente") return { tipo: "reoptimizar", motivo: "desactualizada" }; // R7
+
+  const previa = secuenciaPrevia(ruta);
+  const actual = new Set(paradas.map((p) => p.ordenId));
+  if ([...actual].some((id) => !ruta.secuenciaPorOrden.has(id))) {
+    return { tipo: "reoptimizar", motivo: "paradas_nuevas" }; // R20
+  }
+
+  // R3: estricto; a `umbralM` justos no esta desviado.
+  const desviado =
+    posicion !== null &&
+    distanciaMinimaAPolilineaM(posicion, lineaReferencia(ruta, previa, paradas)) > umbralM;
+  if (desviado) return { tipo: "reoptimizar", motivo: "desviado" }; // R19
+
+  if (actual.size === previa.length) return { tipo: "omitir" }; // R1, R2
+  return { tipo: "reducir", previa, restantes: previa.filter((id) => actual.has(id)) }; // R11
+}
+
+/**
+ * SLT-59 (design §2.2) — como rehacer el trazado de una reduccion, y si cuesta una llamada.
+ *   `concatenar`  R13: cada parada restante conserva el tramo que llega a ella. 0 llamadas.
+ *   `puente`      R14: falta el tramo de cada hueco; UNA llamada a Routes desde `desde`.
+ *   `sin_trazado` R15: no hay tramos por calles completos. 0 llamadas.
+ */
+type PlanReduccion =
+  | { tipo: "concatenar" }
+  | { tipo: "puente"; desde: string; hasta: string[] }
+  | { tipo: "sin_trazado" };
+
+function planificarReduccion(
+  ruta: RutaOptimizadaDTO,
+  previa: string[],
+  restantes: string[],
+): PlanReduccion {
+  const tramosCompletos =
+    ruta.trazado !== null &&
+    ruta.trazado.fuente === "routes" &&
+    restantes.every((id) => ruta.tramoPorOrden.has(id));
+  if (!tramosCompletos) return { tipo: "sin_trazado" };
+
+  // Un hueco = paradas quitadas ENTRE dos restantes. Lo quitado delante de la primera es el
+  // prefijo de la entrega en orden; lo quitado detras de la ultima no rompe ningun tramo,
+  // porque cada tramo es el que LLEGA a su parada.
+  const posiciones = restantes.map((id) => previa.indexOf(id));
+  const huecos: number[] = [];
+  for (let i = 1; i < posiciones.length; i++) {
+    if (posiciones[i] - posiciones[i - 1] > 1) huecos.push(i);
+  }
+  if (huecos.length === 0) return { tipo: "concatenar" };
+  if (huecos.length === 1) {
+    const i = huecos[0];
+    return { tipo: "puente", desde: restantes[i - 1], hasta: [restantes[i]] };
+  }
+  // D14: con mas de un hueco, UNA sola llamada desde la primera restante en vez de una por hueco.
+  return { tipo: "puente", desde: restantes[0], hasta: restantes.slice(1) };
+}
+
+/**
+ * Cabecera de un trazado rehecho con tramos. Las uniones repiten el punto final de un tramo
+ * como inicial del siguiente; se quita para no dibujar un vertice doble. Una suma con algun
+ * sumando desconocido es desconocida, no una cifra menor que pareceria real.
+ */
+function trazadoConcatenado(tramos: TramoPersistido[]): TrazadoRuta {
+  const puntos: { lat: number; lng: number }[] = [];
+  for (const tramo of tramos) {
+    const pts = decodificarPolilinea(tramo.encodedPolyline);
+    const ultimo = puntos[puntos.length - 1];
+    const repetido =
+      ultimo !== undefined && pts.length > 0 && pts[0].lat === ultimo.lat && pts[0].lng === ultimo.lng;
+    puntos.push(...(repetido ? pts.slice(1) : pts));
+  }
+  const suma = (k: "distanciaM" | "duracionS"): number | null =>
+    tramos.some((t) => t[k] === null) ? null : tramos.reduce((s, t) => s + (t[k] as number), 0);
+  return {
+    encodedPolyline: codificarPolilinea(puntos),
+    distanciaM: suma("distanciaM"),
+    duracionS: suma("duracionS"),
+    fuente: "routes",
+    tramos: tramos.map((t) => ({ ...t })),
   };
 }
 
@@ -253,6 +430,22 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
           : this.origenSoloDeUltimaConocida(ruta);
       const secuencia = unica !== undefined ? [unica.ordenId] : [];
       const huellaSet = this.huella(secuencia, origen);
+
+      // SLT-59 (R2, R6, R11; design §2.2 ultimo parrafo): la guarda va ANTES de la escritura.
+      // Antes se reescribia la secuencia y luego se miraba la huella; eso movia `calculada_at`
+      // y el origen aunque no hubiera nada que hacer, que es justo lo que R6 prohibe. Con
+      // cero paradas no hay conjunto que comparar: sigue limpiando como hoy.
+      if (unica !== undefined) {
+        const desenlace = await this.guardaSinRecalculo(
+          mensajeroId,
+          ruta,
+          [unica],
+          origen,
+          "sin_paradas",
+        );
+        if (desenlace !== null) return desenlace;
+      }
+
       await this.rutas.reemplazarSecuencia(mensajeroId, secuencia, {
         calculadaAt: ahora,
         origen,
@@ -270,23 +463,19 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       // OJO al orden: `cacheado` se lee de `ruta`, la cabecera de ANTES de la escritura de
       // arriba. Releer despues no serviria — `reemplazarSecuencia` acaba de limpiar las
       // columnas del trazado.
-      const sinCambios = ruta?.huellaSet === huellaSet && ruta.estado === "vigente";
-      if (unica === undefined || origen === null || sinCambios) {
-        const cacheado = sinCambios && ruta !== null ? this.trazadoDesdeCache(ruta) : null;
+      //
+      // [2026-10-29, SLT-59, D1/D8] El criterio de «sin cambios» de este parrafo ya no es la
+      // huella: lo decide `guardaSinRecalculo` ARRIBA, antes de escribir nada (R2, R6). Si se
+      // llega aqui con una parada es porque hay que recalcular (R7, R19, R20), y entonces el
+      // trazado se pide siempre. El parrafo de arriba se conserva como historia de la 92; la
+      // reposicion del dibujo cacheado que describia ya no hace falta, porque omitir ya no
+      // escribe y no hay nada que reponer.
+      if (unica === undefined || origen === null) {
         optlog("service — R35: no se redibuja", {
           conCoordenadas: conCoordenadas.length,
           sinOrigen: origen === null,
-          sinCambios,
-          trazadoEnCache: cacheado !== null,
         });
-        // Se repone lo que la escritura de arriba borro: la secuencia es la MISMA (una sola
-        // parada, la misma huella), asi que el dibujo guardado sigue siendo el suyo.
-        if (cacheado !== null) await this.persistirTrazado(mensajeroId, huellaSet, cacheado);
-        return {
-          status: "omitida",
-          razon: "sin_paradas",
-          ...(cacheado !== null ? { trazado: cacheado } : {}),
-        };
+        return { status: "omitida", razon: "sin_paradas" };
       }
       const trazado = await this.trazar([unica.ordenId], [unica], origen);
       await this.persistirTrazado(mensajeroId, huellaSet, trazado);
@@ -329,21 +518,18 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       estadoRuta: ruta?.estado ?? null,
     });
 
-    if (ruta?.huellaSet === huellaSet && ruta.estado === "vigente") {
-      // Nada que RECALCULAR, pero el mapa sigue necesitando su linea. El trazado persistido
-      // corresponde a esta misma huella —la DB solo lo conserva mientras la secuencia no
-      // cambie— asi que se devuelve tal cual, sin llamar ni pagar nada.
-      const cacheado = this.trazadoDesdeCache(ruta);
-      optlog("service — guarda R36: mismo conjunto y origen, 0 llamadas facturadas", {
-        trazadoEnCache: cacheado !== null,
-        tramosEnCache: cacheado?.tramos.length ?? 0,
-      });
-      return {
-        status: "omitida",
-        razon: "sin_cambios",
-        ...(cacheado !== null ? { trazado: cacheado } : {}),
-      };
-    }
+    // [2026-10-29, SLT-59, D1/D8, R8] La guarda de este sitio ya no compara huellas: decide
+    // por CONJUNTO de paradas + desvio de mas de `RUTA_REOPT_DISTANCIA_M` respecto a la ruta
+    // (`decidirGuardaRuta`), y la reduccion de R11 va justo detras. La huella de arriba se sigue
+    // calculando igual porque condiciona las escrituras (`guardarTrazado`, `reducirSecuencia`).
+    const desenlace = await this.guardaSinRecalculo(
+      mensajeroId,
+      ruta,
+      paradas,
+      origen,
+      "sin_cambios",
+    );
+    if (desenlace !== null) return desenlace;
 
     // ── Llamada FACTURADA al proveedor ────────────────────────────────────────────
     optlog("service — ninguna guarda corto: se LLAMA al proveedor (esto se factura)", {
@@ -425,6 +611,194 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
   }
 
   /**
+   * SLT-59 (R27, design §3.2) — la reduccion que la peticion de la gestion puede permitirse:
+   * solo R13 o R15, que no llaman a nadie. Todo lo demas (hueco que pide un tramo puente,
+   * desvio, paradas nuevas, ruta desactualizada) se deja al job ya encolado, para no colgar
+   * hasta `ROUTE_OPT_TIMEOUT_MS` el registro de una entrega (alternativa A8).
+   *
+   * Recorre las mismas piezas que `ejecutar` (recorte 92/R38, origen 265/R16) para que la
+   * decision sea la misma que tomaria el job; sin las guardas de job y de boton, que no
+   * aplican a una gestion.
+   */
+  async reducirSinLlamadas(mensajeroId: string): Promise<void> {
+    const ahora = this.now();
+    const ruta = await this.rutas.findByMensajero(mensajeroId);
+    // Sin ruta vigente no hay secuencia que reducir (R7): ahorra la lectura de paradas.
+    if (ruta === null || ruta.estado !== "vigente") return;
+
+    const conCoordenadas = (await this.paradasRepo.findParadasEnReparto(mensajeroId)).filter(
+      (p): p is ParadaRutaRow & ParadaConCoordenadas => p.latitud !== null && p.longitud !== null,
+    );
+    // Con cero paradas la limpieza es de la 92/R35, y la hace el job.
+    if (conCoordenadas.length === 0) return;
+
+    const paradas = conCoordenadas.slice(0, this.config.RUTA_MAX_PARADAS);
+    const origen =
+      paradas.length === 1
+        ? this.resolverOrigen(ruta, paradas, ahora)
+        : this.origenCoherente(this.resolverOrigen(ruta, paradas, ahora), paradas);
+
+    const decision = decidirGuardaRuta({
+      ruta,
+      paradas,
+      posicion: posicionDelMensajero(origen),
+      umbralM: this.config.RUTA_REOPT_DISTANCIA_M,
+    });
+    optlog("service — reduccion en la peticion: decision", { decision: decision.tipo });
+    if (decision.tipo !== "reducir") return;
+    await this.aplicarReduccion(mensajeroId, ruta, decision, paradas, origen, false);
+  }
+
+  /**
+   * SLT-59 — la guarda que ocupa el sitio de la 92/R36 (R8): `omitir` o `reducir` devuelven el
+   * desenlace; `null` = hay que recalcular y `ejecutar` sigue como hoy.
+   * `razonOmitir` conserva la razon que cada rama devolvia antes, para no cambiar lo que ve
+   * la accion manual.
+   */
+  private async guardaSinRecalculo(
+    mensajeroId: string,
+    ruta: RutaOptimizadaDTO | null,
+    paradas: ParadaConCoordenadas[],
+    origen: { lat: number; lng: number; fuente: OrigenFuente } | null,
+    razonOmitir: "sin_cambios" | "sin_paradas",
+  ): Promise<EjecutarOptimizacionResult | null> {
+    const decision = decidirGuardaRuta({
+      ruta,
+      paradas,
+      posicion: posicionDelMensajero(origen),
+      umbralM: this.config.RUTA_REOPT_DISTANCIA_M,
+    });
+    optlog("service — guarda SLT-59: conjunto + desvio", {
+      decision: decision.tipo,
+      motivo: decision.tipo === "reoptimizar" ? decision.motivo : null,
+    });
+    if (ruta === null || decision.tipo === "reoptimizar") return null;
+
+    if (decision.tipo === "omitir") {
+      // Nada que RECALCULAR, pero el mapa sigue necesitando su linea. El trazado persistido
+      // corresponde a esta misma secuencia —la DB solo lo conserva mientras la secuencia no
+      // cambie— asi que se devuelve tal cual, sin llamar, pagar ni escribir nada (R6).
+      const cacheado = this.trazadoDesdeCache(ruta);
+      optlog("service — guarda R36 (SLT-59): mismo conjunto y sin desvio, 0 llamadas facturadas", {
+        trazadoEnCache: cacheado !== null,
+        tramosEnCache: cacheado?.tramos.length ?? 0,
+      });
+      return {
+        status: "omitida",
+        razon: razonOmitir,
+        ...(cacheado !== null ? { trazado: cacheado } : {}),
+      };
+    }
+
+    const trazado = await this.aplicarReduccion(mensajeroId, ruta, decision, paradas, origen, true);
+    return {
+      status: "omitida",
+      razon: "reducida",
+      ...(trazado !== null ? { trazado } : {}),
+    };
+  }
+
+  /**
+   * SLT-59 (R11-R18, design §2.2) — persiste la secuencia previa sin las paradas que faltan y
+   * devuelve el trazado rehecho (o `null` si no hay, no se pudo, o no se escribio).
+   *
+   * NUNCA LANZA POR EL TRAMO PUENTE (R16): el orden reducido ya es correcto sin dibujo, y
+   * propagar el fallo haria reintentar el job para arreglar lo accesorio.
+   * Con `permitirLlamada = false` y un plan que necesita Routes, no escribe nada.
+   */
+  private async aplicarReduccion(
+    mensajeroId: string,
+    ruta: RutaOptimizadaDTO,
+    decision: { previa: string[]; restantes: string[] },
+    paradas: ParadaConCoordenadas[],
+    origen: { lat: number; lng: number } | null,
+    permitirLlamada: boolean,
+  ): Promise<TrazadoRuta | null> {
+    const { previa, restantes } = decision;
+    const plan = planificarReduccion(ruta, previa, restantes);
+    if (plan.tipo === "puente" && !permitirLlamada) {
+      optlog("service — reduccion: necesita tramo puente, se deja al job", {
+        tramosPedidos: plan.hasta.length,
+      });
+      return null;
+    }
+
+    let tramos: TramoPersistido[] | null = null;
+    if (plan.tipo === "concatenar") {
+      tramos = restantes.map((id) => ruta.tramoPorOrden.get(id) as TramoPersistido);
+    } else if (plan.tipo === "puente") {
+      const nuevos = await this.tramosPuente(plan.desde, plan.hasta, paradas);
+      tramos =
+        nuevos === null
+          ? null
+          : restantes.map((id) => nuevos.get(id) ?? (ruta.tramoPorOrden.get(id) as TramoPersistido));
+    }
+    const trazado = tramos !== null ? trazadoConcatenado(tramos) : null;
+
+    // R18: sin huella previa no hay con que condicionar la escritura, y escribir sin condicion
+    // podria pisar una optimizacion que entro mientras tanto. Se trata como huella cambiada.
+    const aplicada =
+      ruta.huellaSet !== null &&
+      (await this.rutas.reducirSecuencia(mensajeroId, ruta.huellaSet, {
+        huellaSet: this.huella(restantes, origen),
+        paradas: restantes.map((ordenId, i) => ({ ordenId, tramo: tramos?.[i] ?? null })),
+        trazado:
+          trazado === null
+            ? null
+            : {
+                encodedPolyline: trazado.encodedPolyline,
+                distanciaM: trazado.distanciaM,
+                duracionS: trazado.duracionS,
+                fuente: "routes",
+              },
+      }));
+    optlog("service — reduccion", {
+      plan: plan.tipo,
+      quitadas: previa.length - restantes.length,
+      restantes: restantes.length,
+      conTrazado: trazado !== null,
+      aplicada,
+    });
+    return aplicada ? trazado : null;
+  }
+
+  /**
+   * SLT-59 (R14, D14) — UNA llamada a Routes para los tramos que la reduccion no tiene. Nunca
+   * una recta en su lugar (alternativa A2): un trazado `routes` se pinta como calles.
+   * `null` si no hay cliente, si lanza, si no da `ok` o si no trae un tramo por parada (R16).
+   */
+  private async tramosPuente(
+    desde: string,
+    hasta: string[],
+    paradas: ParadaConCoordenadas[],
+  ): Promise<Map<string, TramoPersistido> | null> {
+    if (this.routes === null) return null;
+    const porId = new Map(paradas.map((p) => [p.ordenId, p]));
+    const punto = (id: string) => {
+      const p = porId.get(id) as ParadaConCoordenadas;
+      return { ordenId: id, lat: p.latitud, lng: p.longitud };
+    };
+    const inicio = punto(desde);
+    let outcome;
+    try {
+      outcome = await this.routes.trazar({
+        origen: { lat: inicio.lat, lng: inicio.lng },
+        paradasEnOrden: hasta.map(punto),
+      });
+    } catch (error) {
+      opterror("service — reduccion: el tramo puente lanzo; se persiste sin trazado (R16)", error);
+      return null;
+    }
+    if (outcome.status !== "ok" || outcome.tramos.length !== hasta.length) {
+      optlog("service — reduccion: el tramo puente no salio; se persiste sin trazado (R16)", {
+        status: outcome.status,
+      });
+      return null;
+    }
+    return new Map(hasta.map((id, i) => [id, { ...outcome.tramos[i] }]));
+  }
+
+  /**
    * Guarda el trazado para que la proxima lectura —y la proxima guarda R36— tengan linea que
    * pintar sin volver a llamar a Routes.
    *
@@ -434,6 +808,10 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
    * cortaria antes de reintentar. Dejando la columna vacia, el proximo disparo vuelve a
    * pedirle el dibujo a Routes y el mapa se cura solo en cuanto el proveedor vuelva.
    * El precio es alguna llamada de mas mientras Routes este caido; es el lado barato del error.
+   *
+   * [2026-10-29, SLT-59, D8] Con la guarda R36 nueva (conjunto + desvio) el movimiento normal
+   * del mensajero ya no cambia nada: una ruta sin dibujo cacheado se queda sin el hasta que
+   * cambie el conjunto o el mensajero se desvie (SLT-59 design §10, limite 2 de la 265).
    *
    * NUNCA LANZA: se llega aqui con la secuencia YA persistida. Fallar por no haber podido
    * guardar el DIBUJO provocaria un reintento que volveria a pagar la OPTIMIZACION —la cara—
@@ -747,6 +1125,9 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
    * la huella identifica el CONJUNTO, no el orden de lectura (si dependiera del orden,
    * cualquier reordenacion de la consulta dispararia una llamada facturada de mas).
    * El origen se redondea (ver `ORIGEN_DECIMALES`) para absorber el jitter del GPS.
+   *
+   * [2026-10-29, SLT-59, D8] Ya no es el criterio de «sin cambios» (ver `decidirGuardaRuta`);
+   * se conserva igual porque condiciona `guardarTrazado` y `reducirSecuencia` (R18).
    */
   private huella(
     ordenIds: string[],

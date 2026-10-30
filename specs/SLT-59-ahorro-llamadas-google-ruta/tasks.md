@@ -31,24 +31,24 @@
 
 ## Fase 2 — La guarda (depende de T1.1, T1.2)
 
-- [ ] **T2.1** `decidirGuardaRuta` exportada y pura (design §2). *Hecho:* tabla de casos en
+- [x] **T2.1** `decidirGuardaRuta` exportada y pura (design §2). *Hecho:* tabla de casos en
   `tests/unit/services/optimizacion-ruta-desvio.test.ts` para R3, R4 (con y sin polilínea), R5, R7, R10
   (mismo conjunto, posición sobre la ruta y `calculada_at` de hace 8 h → omitir), R19 y R20; borde de
   1000 m justos → no desviado.
-- [ ] **T2.2** Sustituir la guarda 92/R36 en la rama de 2+ paradas y en la de una parada (design §2,
+- [x] **T2.2** Sustituir la guarda 92/R36 en la rama de 2+ paradas y en la de una parada (design §2,
   §2.2 último párrafo). *Hecho:* tests de R1, R2, R6 y R9 (espías: 0 llamadas, 0 escrituras, ninguna
   lectura extra) en `optimizacion-ruta-desvio.test.ts`; el describe «265/R33» sigue verde, ajustando
   solo los casos cuyo «sin cambios» dependía de la huella con origen (R8).
-- [ ] **T2.3** Reducción dentro de `ejecutar` (design §2.2). *Hecho:*
+- [x] **T2.3** Reducción dentro de `ejecutar` (design §2.2). *Hecho:*
   `tests/unit/services/optimizacion-ruta-reduccion.test.ts`: prefijo con tramos → 0 llamadas y
   trazado concatenado con sumas (R11, R13); 1 hueco → 1 `computeRoutes` de 2 puntos (R14); 2 huecos →
   1 `computeRoutes` desde la primera restante (R14); sin tramos → 0 llamadas y sin trazado (R15);
   `computeRoutes` falla → reducción persistida, sin lanzar (R16); procedencia conservada (R12);
   `calculada_at` intacta (R17); huella cambiada → nada escrito (R18).
-- [ ] **T2.4** `reducirSinLlamadas(mensajeroId)` (design §3.2). *Hecho:* en
+- [x] **T2.4** `reducirSinLlamadas(mensajeroId)` (design §3.2). *Hecho:* en
   `optimizacion-ruta-reduccion.test.ts`: aplica solo R13/R15; con hueco o desvío no hace nada y no llama
   a nadie.
-- [ ] **T2.5** Notas fechadas en `OptimizacionRutaService.ts` junto a «R36» y `ORIGEN_DECIMALES`, y
+- [x] **T2.5** Notas fechadas en `OptimizacionRutaService.ts` junto a «R36» y `ORIGEN_DECIMALES`, y
   junto al límite 2 de la 265 si aparece en el código (design §10). *Hecho:* el texto original sigue
   intacto (revisar diff).
 

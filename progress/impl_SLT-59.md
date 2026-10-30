@@ -131,3 +131,148 @@ Modificados:
   que el literal del design §1.
 
 **Veredicto:** T0.1, T0.2, T1.1, T1.2 y T1.3 hechos y en verde; «Hoy» medido = tabla del design (8/10/8, 401 → 5).
+
+---
+
+## Tanda 2 — Fase 2 — backend_dev: T2.1, T2.2, T2.3, T2.4, T2.5 (2026-10-29)
+
+MCP del grafo no consultado en esta tanda: el design ya declara que este worktree no está indexado;
+todo con Grep/Read.
+
+### Archivos
+
+Creados:
+- `tests/unit/services/optimizacion-ruta-desvio.test.ts` (T2.1, T2.2) — 29 tests
+- `tests/unit/services/optimizacion-ruta-reduccion.test.ts` (T2.3, T2.4) — 26 tests
+
+Modificados:
+- `lib/services/OptimizacionRutaService.ts`
+  - T2.1: `decidirGuardaRuta` (exportada, pura), `posicionDelMensajero` (exportada) y las privadas
+    `secuenciaPrevia`, `lineaReferencia`, `planificarReduccion`, `trazadoConcatenado`.
+  - T2.2: la guarda 92/R36 se sustituye en su sitio por `guardaSinRecalculo` en la rama de 2+
+    paradas. En la rama de UNA parada, la misma guarda va ANTES de `reemplazarSecuencia`: antes se
+    escribía y luego se miraba la huella, lo que movía `calculada_at` y el origen (R6). La huella se
+    sigue calculando igual, porque condiciona `guardarTrazado` y `reducirSecuencia`.
+  - T2.3: `aplicarReduccion` + `tramosPuente` (R11-R18). Resultado `{ omitida, razon: "reducida", trazado? }`.
+  - T2.4: método público `reducirSinLlamadas(mensajeroId)`. Solo aplica R13/R15; con puente, desvío,
+    paradas nuevas, ruta desactualizada o 0 paradas no hace nada.
+  - T2.5: notas fechadas `[2026-10-29, SLT-59, …]` junto al «R36» de la cabecera, `ORIGEN_DECIMALES`,
+    `huella()`, el comentario de `persistirTrazado` que cita R36 y el sitio de la guarda. El límite
+    2 de la 265 no aparece literal en el código: su nota va en la cabecera, junto a R36.
+- `lib/interfaces/services/IOptimizacionRutaService.ts` — `razon: "reducida"` y `reducirSinLlamadas`.
+  La acción manual (`lib/actions/ruta-mensajero.ts`) no necesita cambio: toda `omitida` que no sea
+  `intervalo_minimo` ya sale como `ok` + `omitida: true`, que la UI trata como «sin cambios»
+  (design §2.2, paso 6).
+- `tests/unit/services/optimizacion-ruta-service.test.ts` — ajustes con nota fechada (ver «Desviaciones»).
+
+### Mapa R<n> → test (lo cubierto en esta tanda)
+
+| Req | Test |
+| --- | --- |
+| R1 | `optimizacion-ruta-desvio.test.ts` › T2.1 «R1: mismo conjunto…» y T2.2 «R1/R6/R9: 2+ paradas…» |
+| R2 | ídem › T2.2 «R2/R6/R9: UNA parada…» y «R2: UNA parada sin trazado guardado…» |
+| R3 | ídem › «R3 — desviado SI Y SOLO SI…»: borde exacto `d` → no desviado, `d - 1e-6` → desviado; 990/1010 m; lejos del origen pero sobre la ruta |
+| R4 | ídem › «R4 — linea de referencia»: con polilínea `routes`; sin ella, la recta; una `local` heredada cuenta como recta; con una sola parada, el punto |
+| R5 | ídem › T2.1 «R5: sin posicion…», «R5: con origen `centroide`…» y T2.2 «R5: origen `centroide`…» |
+| R6 | ídem › T2.2 R1/R2: `escrituras() === 0` (upsertOrigen, reemplazarSecuencia, guardarTrazado, reducirSecuencia, marcarDesactualizada, marcarTramoVivo) |
+| R7 | ídem › los dos casos `desactualizada` de T2.1 y «R7…» de T2.2; `optimizacion-ruta-reduccion.test.ts` › «R7: ruta desactualizada con un subconjunto…» |
+| R8 | `optimizacion-ruta-service.test.ts` › «265/R33 — las guardas cortan EN ESTE ORDEN» (4/4 en verde; «R35 antes que R36» ajustado) |
+| R9 | `optimizacion-ruta-desvio.test.ts` › T2.2 R1/R2: `findByMensajero` ×1 y `findParadasEnReparto` ×1 |
+| R10 | ídem › T2.1 «R10: … calculada hace 8 h -> omitir» y T2.2 «R10…» |
+| R11 | ídem › T2.1 «R11: subconjunto estricto…»; `optimizacion-ruta-reduccion.test.ts` › R11/R13 |
+| R12, R17 | `optimizacion-ruta-reduccion.test.ts` › «R12/R17: la reduccion no reescribe la secuencia completa…» (+ repo, tanda 1) |
+| R13 | ídem › «R11/R13: entrega EN ORDEN…», «R13: si un tramo no trae distancia…», «R13: queda UNA parada…» |
+| R14 | ídem › «R14: … UN hueco…», «R14: DOS huecos…», «R14: prefijo + un hueco…», «R14: sin cliente de Routes NUNCA… una recta» |
+| R15 | ídem › «R15: trazado guardado que no es por calles…», «R15: falta el tramo…» |
+| R16 | ídem › «R16: el tramo puente lanza / no da ok…» |
+| R18 | ídem › «R18: con la huella cambiada…», «R18: sin huella previa…» (+ repo, tanda 1) |
+| R19 | `optimizacion-ruta-desvio.test.ts` › los dos casos `desviado` de T2.1 y los dos «R19…» de T2.2; reducción › «R19: subconjunto con el mensajero desviado…» |
+| R20 | `optimizacion-ruta-desvio.test.ts` › los dos casos `paradas_nuevas` de T2.1 y «R20…» de T2.2; reducción › «R20: quita una y anade otra…» |
+| R27 (parte del servicio) | `optimizacion-ruta-reduccion.test.ts` › «SLT-59 T2.4 — reducirSinLlamadas» (8 casos). La parte de la action es T3.3. |
+
+### Verificación (salida real)
+
+- `pnpm run typecheck` → `tsc --noEmit`, exit 0, 0 errores.
+- `pnpm run lint` → `✖ 230 problems (0 errors, 230 warnings)`: las mismas 230 de antes. `eslint`
+  sobre los 5 archivos tocados: `No issues found`.
+- `pnpm exec vitest run tests/unit/services/optimizacion-ruta-desvio.test.ts` → 29 passed (29).
+- `pnpm exec vitest run tests/unit/services/optimizacion-ruta-reduccion.test.ts` → 26 passed (26).
+- `pnpm exec vitest run tests/unit/services/optimizacion-ruta- tests/unit/actions/sincronizar-ruta.test.ts`
+  → `Test Files 9 passed (9)`, `Tests 151 passed | 1 todo (152)`. Corrida hecha antes de crear los 2
+  archivos nuevos. La primera corrida tras el cambio dio 10 fallos en
+  `optimizacion-ruta-service.test.ts` (ver «Desviaciones»).
+- `pnpm exec vitest related --run lib/services/OptimizacionRutaService.ts lib/interfaces/services/IOptimizacionRutaService.ts tests/unit/services/optimizacion-ruta-desvio.test.ts tests/unit/services/optimizacion-ruta-reduccion.test.ts tests/unit/services/optimizacion-ruta-service.test.ts`
+  ```
+   Test Files  30 passed | 1 skipped (31)
+        Tests  516 passed | 12 skipped | 1 todo (529)
+  ```
+  El archivo saltado es de integración y no tiene `DATABASE_URL`. 0 fallos.
+
+### Desviaciones y avisos
+
+- **10 tests de `optimizacion-ruta-service.test.ts` codificaban la guarda vieja** (huella con origen).
+  Se ajustaron con nota fechada `[2026-10-29, SLT-59 …]`, sin borrar sus comentarios:
+  - 4 tests («R35», «R36» y «§5.4») montaban la ruta «sin cambios» solo con la huella. Ahora llevan
+    también `secuenciaPorOrden`, porque el criterio es el conjunto. Las aserciones no cambian.
+  - 5 tests («R27», «265/R24» y «265/R10») usaban como escenario de fallo del proveedor una ruta
+    vigente con el MISMO conjunto, y con la guarda nueva ya no llegaban al proveedor. Para que sigan
+    probando lo suyo, se añade una parada nueva (`o3`) o se quita `o3` de la secuencia guardada (R20).
+  - «265/R33 › R35 antes que R36» es el caso que tasks.md T2.2 manda ajustar. Pasaba en vacío: con la
+    secuencia guardada vacía, la guarda lo leía como paradas nuevas. Ahora la ruta lleva `{o1}` y el
+    test sigue fijando que gana `sin_paradas`. La aserción `reemplazarSecuencia ×1 + secuenciaFuente
+    null` pasa a «`reemplazarSecuencia` NO se llama» (R2/R6). Consecuencia: una ruta reducida a 1
+    parada conserva su `secuencia_fuente` (R12) en vez de reafirmar `null`. Lo dicta el spec; lo dejo
+    a la vista del reviewer.
+- **Rama de una parada:** se quitó el bloque que reponía el trazado cacheado después de reescribir,
+  con su comentario de 2 líneas. Con la guarda antes de la escritura ya no hay nada que reponer. El
+  resto de comentarios de la 92/265 sigue intacto: `git diff -U0 | grep ^-` solo muestra ese código,
+  la guarda de 2+ sustituida y el import.
+- **R6 y 92/R23:** `upsertOrigen` de la ubicación recibida sigue ANTES de toda guarda (92/R23, R8).
+  Leo R6 como «la guarda no escribe», así que los tests de R6 no pasan `ubicacion`.
+- **R18 con `huellaSet` null en la ruta guardada:** no hay con qué condicionar la escritura. Se trata
+  como huella cambiada: no escribe y no lanza. En la práctica no se alcanza, porque
+  `reemplazarSecuencia` escribe la huella en toda secuencia no vacía, pero el tipo lo permite.
+- **R14 con `ok` sin tramos:** si Routes da `ok` pero no trae un tramo por cada parada pedida, se
+  trata como R16 (sin trazado). Nunca se inventa un tramo.
+- **Jornada T0.1:** `optimizacion-ruta-ahorro-jornada.test.ts` sigue en verde, pero su variante «Hoy»
+  corre ahora contra el servicio NUEVO, así que lo que imprime ya no es «Hoy». La medición válida es
+  la de la tanda 1 (arriba). T5.1 la convierte en aserciones «Nuevo».
+
+### Pregunta abierta
+
+**PA-1 — Paradas quitadas DETRÁS de la última restante (ni prefijo ni hueco).** Ejemplo: secuencia
+s1,s2,s3 y el mensajero entrega s3 primero, así que quedan s1,s2. Ningún requisito cubre el caso:
+R13 exige «prefijo», R14 habla de uno o más huecos y R15 exige tramos incompletos.
+
+Implementado provisionalmente como **R13 (concatenar, 0 llamadas)**: cada tramo es el que LLEGA a
+su parada, así que ninguno se rompe. El design §2.2 razona por huecos, y D7 pide «la opción más
+barata correcta». La decisión está en un solo sitio (`planificarReduccion`, `huecos.length === 0`).
+Alternativas: tratarlo como R14 (1 llamada, aunque no hay puente que pedir) o como R15 (sin trazado).
+No tiene test dedicado hasta que decida el humano.
+
+**Borde de la línea vacía (tanda 1): resuelto por el orden de la guarda, salvo un subcaso.** En
+`decidirGuardaRuta` el desvío se mide DESPUÉS de R20, que es el orden del design §2. Para entonces:
+- toda parada actual está en la secuencia previa y tiene coordenadas;
+- hay al menos una, porque 92/R35 corta con 0.
+
+Así que la recta de R4 nunca queda vacía.
+
+Queda **PA-2**: una polilínea `routes` persistida que decodifica a 0 puntos (cadena vacía o
+corrupta). Por R4 literal la polilínea «existe» y se usa; como `+Infinity > umbral`, el mensajero
+cuenta como desviado y se reoptimiza (R3). No he añadido una rama propia, porque sería inventar.
+¿Se acepta así, o debe caer a la recta?
+
+**Veredicto:** T2.1-T2.5 hechos y en verde (typecheck 0 errores, lint 0 errores, related 516 passed / 0 fallos); dos preguntas abiertas: PA-1 (provisional como R13) y PA-2 (R3 literal).
+
+### Tanda 2 — nota del implementer (2026-10-29)
+
+- Re-verificación del implementer (typecheck + lint + related) **detenida por el sistema por falta de
+  memoria** (no es un fallo del comando); no se relanzó. La evidencia de la tanda 2 es la corrida del
+  backend_dev arriba (typecheck exit 0; lint 0 errores; related 30 passed | 1 skipped, 0 fallos). El
+  gate completo corre en CI.
+- PA-1 (paradas quitadas detrás de la última restante) queda para el humano. Lectura del
+  implementer: la definición literal de «Prefijo» (requirements, glosario) lo clasifica como «no
+  prefijo» → R14, pero R14 exige una llamada «para el tramo puente» y no hay hueco que puentear. La
+  implementación provisional (R13, 0 llamadas) no afecta a la jornada R37. No bloquea las fases 3-5.
+- PA-2: se sigue R4 literal (la polilínea existe → +Infinity → desviado → reoptimiza). Pendiente de
+  confirmación humana, no bloquea.
