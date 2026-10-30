@@ -1946,6 +1946,11 @@ enum WalletOrigenTipo {
   // filas de los dos libros (credito y debito de anulacion en la tienda; ingreso y reverso en la
   // caja) llevan este origen con `origen_id` = id del documento.
   abono_tienda
+  // SLT-68 (design §2.1): el INCENTIVO MANUAL A UN MENSAJERO. Origen del egreso de caja y de su
+  // reverso, y del `reverso_incentivo` del libro del mensajero; `origen_id` = id del devengo
+  // `incentivo`. El CHECK de origen y el unico parcial viven solo en la migracion
+  // `20261030120100_incentivo_mensajero_checks`.
+  incentivo_mensajero
 
   @@map("wallet_origen_tipo")
 }
@@ -2148,6 +2153,13 @@ enum PagoMensajeroMovimientoCategoria {
   // parte de esta cuenta es premio» (decision (d) del humano). Vive en la rama `devengo` del
   // CHECK tipo<->categoria: el premio SUBE la cuenta por pagar.
   premio_ranking
+  // SLT-68 (design §2.1, D6): el INCENTIVO que la oficina le reconoce al mensajero (rama `devengo`;
+  // cuelga del cierre aprobado mas reciente para ser pagable) y su contraasiento `reverso_incentivo`
+  // (rama `pago`; cuelga del incentivo). Categorias PROPIAS: ni premio ni ajuste. El CHECK
+  // tipo<->categoria, el CHECK de origen y el `origen_uq` con `incentivo` fuera viven solo en la
+  // migracion `20261030120100_incentivo_mensajero_checks`.
+  incentivo
+  reverso_incentivo
 
   @@map("pago_mensajero_movimiento_categoria")
 }

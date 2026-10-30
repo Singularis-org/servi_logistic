@@ -9,6 +9,7 @@ import type {
   ListarPorMensajeroFiltros,
   ListarPorMensajeroPage,
   PagoMensajeroTxClient,
+  IncentivoRow,
   PremioRegistradoRow,
 } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import type { PagoMensajeroMovimientoDTO } from "@/lib/types/wallet-mensajero";
@@ -137,6 +138,9 @@ export class PagoMensajeroMovimientoRepository implements IPagoMensajeroMovimien
   ): Promise<number> {
     if (movs.length === 0) return 0;
     const data = movs.map((m) => ({
+      // SLT-68 (design §6): el id SOLO viaja si el llamador lo fija (el incentivo); el resto cae en el
+      // `@default(uuid())` de la columna como hasta hoy.
+      ...(m.id !== undefined ? { id: m.id } : {}),
       mensajeroId: m.mensajeroId,
       tipo: m.tipo,
       categoria: m.categoria,
@@ -350,6 +354,10 @@ export class PagoMensajeroMovimientoRepository implements IPagoMensajeroMovimien
    *  - el `OR` de las dos categorias, con `premioDia: { not: null }` SOLO en la rama del
    *    `ajuste_pago`: esa categoria existe desde la 44 para ajustes manuales que no tienen nada
    *    que ver con el premio, y contarlos aqui restaria de lo pagable un dinero ajeno.
+   *
+   * SLT-68 (design §4): devengos posteriores al cierre — premios E INCENTIVOS vivos. La rama
+   * `incentivo` entra en el mismo `OR`; sus anulaciones (`reverso_incentivo`) cuelgan del incentivo y
+   * se restan en `incentivosAnuladosPorCierre`.
    */
   async sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>> {
     const total: Record<string, string> = {};
@@ -364,24 +372,78 @@ export class PagoMensajeroMovimientoRepository implements IPagoMensajeroMovimien
         OR: [
           { categoria: "premio_ranking" },
           { categoria: "ajuste_pago", premioDia: { not: null } },
+          // SLT-68 (design §4): el incentivo vivo se suma a lo pagable de SU cierre.
+          { categoria: "incentivo" },
         ],
       },
       _sum: { monto: true },
     });
 
     const acumulado = new Map<string, Prisma.Decimal>();
+    const sumar = (cierreId: string, delta: Prisma.Decimal) =>
+      acumulado.set(cierreId, (acumulado.get(cierreId) ?? new Prisma.Decimal(0)).add(delta));
     for (const g of grupos) {
       if (g.origenId === null) continue; // imposible por el `in`; el tipo lo admite
       const suma = new Prisma.Decimal(g._sum.monto ?? 0);
-      const previo = acumulado.get(g.origenId) ?? new Prisma.Decimal(0);
-      // `premio_ranking` SUMA (devengo) y su compensacion RESTA (pago del mismo importe).
-      acumulado.set(
-        g.origenId,
-        g.categoria === "premio_ranking" ? previo.add(suma) : previo.sub(suma),
-      );
+      // `premio_ranking` e `incentivo` SUMAN (devengos) y la compensacion del premio RESTA.
+      sumar(g.origenId, g.categoria === "ajuste_pago" ? suma.neg() : suma);
+    }
+    if (grupos.some((g) => g.categoria === "incentivo")) {
+      for (const [cierreId, anulado] of await this.incentivosAnuladosPorCierre(cierreIds)) {
+        sumar(cierreId, anulado.neg());
+      }
     }
     for (const [cierreId, valor] of acumulado) total[cierreId] = valor.toFixed(2);
     return total;
+  }
+
+  /**
+   * SLT-68 (design §4) — Σ de los `reverso_incentivo` de los incentivos de cada cierre. El reverso
+   * cuelga del INCENTIVO (`origen_id` = id del devengo), asi que primero se leen los ids de los
+   * incentivos de esos cierres y despues sus reversos: dos consultas para toda la pagina, y solo
+   * cuando la primera suma ya encontro algun incentivo.
+   */
+  private async incentivosAnuladosPorCierre(cierreIds: string[]): Promise<Map<string, Prisma.Decimal>> {
+    const incentivos = await this.prisma.pagoMensajeroMovimiento.findMany({
+      where: { categoria: "incentivo", origenTipo: "cierre_dia", origenId: { in: cierreIds } },
+      select: { id: true, origenId: true },
+    });
+    const cierreDe = new Map(incentivos.flatMap((i) => (i.origenId === null ? [] : [[i.id, i.origenId] as const])));
+    const porCierre = new Map<string, Prisma.Decimal>();
+    if (cierreDe.size === 0) return porCierre;
+    const reversos = await this.prisma.pagoMensajeroMovimiento.groupBy({
+      by: ["origenId"],
+      where: { categoria: "reverso_incentivo", origenTipo: "incentivo_mensajero", origenId: { in: [...cierreDe.keys()] } },
+      _sum: { monto: true },
+    });
+    for (const r of reversos) {
+      const cierreId = r.origenId === null ? undefined : cierreDe.get(r.origenId);
+      if (cierreId === undefined) continue; // imposible por el `in`; el tipo lo admite
+      const previo = porCierre.get(cierreId) ?? new Prisma.Decimal(0);
+      porCierre.set(cierreId, previo.add(new Prisma.Decimal(r._sum.monto ?? 0)));
+    }
+    return porCierre;
+  }
+
+  /** SLT-68 (design §6) — un incentivo por su id, con su estado de anulacion. */
+  async obtenerIncentivo(id: string, tx?: PagoMensajeroTxClient): Promise<IncentivoRow | null> {
+    const cliente = tx ?? this.prisma;
+    const fila = await cliente.pagoMensajeroMovimiento.findFirst({
+      where: { id, categoria: "incentivo" },
+      select: { id: true, mensajeroId: true, monto: true, origenTipo: true, origenId: true },
+    });
+    // El CHECK de origen garantiza (cierre_dia, no nulo); si no, no hay incentivo que anular.
+    if (fila === null || fila.origenTipo !== "cierre_dia" || fila.origenId === null) return null;
+    const reversos = await cliente.pagoMensajeroMovimiento.count({
+      where: { categoria: "reverso_incentivo", origenTipo: "incentivo_mensajero", origenId: id },
+    });
+    return {
+      id: fila.id,
+      mensajeroId: fila.mensajeroId,
+      monto: fila.monto.toFixed(2),
+      cierreId: fila.origenId,
+      anulado: reversos > 0,
+    };
   }
 
   /**

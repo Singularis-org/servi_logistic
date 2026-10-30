@@ -124,6 +124,11 @@ export function tipoDeDocumentoOriginal(
   if (m.categoria === "egreso_pago_mensajero" && m.origenTipo === "ranking_snapshot_fila") {
     return "premio_del_ranking";
   }
+  // SLT-68 (design §5, R16): el egreso del incentivo, mismas condiciones que `rutaDeCaja`; su reverso
+  // (`ingreso_ajuste`) queda en `null`.
+  if (m.categoria === "egreso_pago_mensajero" && m.origenTipo === "incentivo_mensajero") {
+    return "incentivo_mensajero";
+  }
   return null;
 }
 
@@ -240,8 +245,9 @@ export class WalletService implements IWalletService {
     const idsRechazos = [...new Set(idsDe("rechazo_tienda_cobro"))];
     const idsPagosATienda = idsDe("pago_tienda");
     const idsPremios = idsDe("premio_del_ranking");
+    const idsIncentivos = idsDe("incentivo_mensajero");
 
-    const [pagos, aportes, cobros, ajustes, abonos, egresos, indemnizaciones, rechazos, pagosATienda, premios] = await Promise.all([
+    const [pagos, aportes, cobros, ajustes, abonos, egresos, indemnizaciones, rechazos, pagosATienda, premios, incentivos] = await Promise.all([
       idsPagos.length > 0 ? this.documentos.pagosPorCuenta.estadoDeDocumentos(idsPagos) : [],
       idsAportes.length > 0 ? this.documentos.aportes.estadoDeDocumentos(idsAportes) : [],
       idsCobros.length > 0 ? this.documentos.cobros.estadoDeDocumentos(idsCobros) : [],
@@ -254,6 +260,7 @@ export class WalletService implements IWalletService {
       idsRechazos.length > 0 ? this.documentos.rechazos.estadoDeDocumentos(idsRechazos) : [],
       idsPagosATienda.length > 0 ? this.documentos.pagosATienda.estadoDeDocumentos(idsPagosATienda) : [],
       idsPremios.length > 0 ? this.documentos.premios.estadoDeDocumentos(idsPremios) : [],
+      idsIncentivos.length > 0 ? this.documentos.incentivos.estadoDeDocumentos(idsIncentivos) : [],
     ]);
     const estado = {
       pago_por_cuenta_tienda: new Map(pagos.map((e) => [e.id, e])),
@@ -266,6 +273,7 @@ export class WalletService implements IWalletService {
       rechazo_tienda_cobro: new Map(rechazos.map((e) => [e.id, e])),
       pago_tienda: new Map(pagosATienda.map((e) => [e.id, e])),
       premio_del_ranking: new Map(premios.map((e) => [e.id, e])),
+      incentivo_mensajero: new Map(incentivos.map((e) => [e.id, e])),
     };
 
     return movimientos.map((m) => {

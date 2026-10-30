@@ -93,6 +93,8 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
   cobro_tienda_completado: "Cobro de la empresa a una tienda (línea de caja completada al corregir)",
   // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
   abono_tienda: "Pago de una tienda a la empresa",
+  // SLT-68 (design §5): el egreso de caja del incentivo y su reverso.
+  incentivo_mensajero: "Incentivo a un mensajero",
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
@@ -158,10 +160,10 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
 });
 
 describe("461 — ORIGEN_LABEL: cada origen de la caja, desde la empresa (R42, design §7.3)", () => {
-  it("dice exactamente los 14 textos aprobados (13 de la 461 + 1 de la 457), y el seed es exactamente esas 14 claves", () => {
+  it("dice exactamente los 15 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68), y el seed es exactamente esas 15 claves", () => {
     expect(ORIGEN_LABEL).toEqual(ORIGENES_ESPERADOS);
     expect([...WALLET_ORIGEN_TIPO_SEED].sort()).toEqual(Object.keys(ORIGENES_ESPERADOS).sort());
-    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(14);
+    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(15);
   });
 
   it("las dos lineas del cobro se distinguen: la completada dice que se completo al corregir (R37)", () => {

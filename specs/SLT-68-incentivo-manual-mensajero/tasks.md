@@ -16,7 +16,7 @@ Reglas de toda la ficha:
 
 ## Tanda A — datos y servidor
 
-- [ ] **T0 — Medir antes de escribir.**
+- [x] **T0 — Medir antes de escribir.**
   - Última migración en `origin/prod` y en `origin/dev` (`git ls-tree -r --name-only origin/dev --
     db/migrations`). Fijar los dos timestamps por encima de ambas.
   - Inventario, en una base con prod aplicado (`pg_depend`/`pg_constraint`/`pg_indexes`), de todo
@@ -25,21 +25,21 @@ Reglas de toda la ficha:
     `pago_mensajero_movimiento_origen_uq`.
 
   *Hecho:* timestamps y lista anotados en `progress/impl_SLT-68.md`.
-- [ ] **T1 — Migración de enums** (`20261030120000_incentivo_mensajero_enums`, `migration.sql` +
+- [x] **T1 — Migración de enums** (`20261030120000_incentivo_mensajero_enums`, `migration.sql` +
   `down.sql`), según `design.md §3.1`. El `down` recrea los tipos y suelta/recrea **en su forma
   vigente** todo lo del inventario de T0. Depende de T0.
 
   *Hecho:* `prisma migrate deploy` limpio en local; el `down` aplicado devuelve el esquema previo.
-- [ ] **T2 — Migración de checks** (`20261030120100_incentivo_mensajero_checks`, `migration.sql` +
+- [x] **T2 — Migración de checks** (`20261030120100_incentivo_mensajero_checks`, `migration.sql` +
   `down.sql`), según `design.md §3.2`: CHECK tipo↔categoría, CHECK de origen y `origen_uq` con
   `'incentivo'` fuera. Depende de T1.
 
   *Hecho:* igual que T1.
-- [ ] **T3 — `db/schema.prisma`.** Los tres valores nuevos con su comentario (el CHECK y el índice
+- [x] **T3 — `db/schema.prisma`.** Los tres valores nuevos con su comentario (el CHECK y el índice
   viven solo en la migración). Después, `prisma generate`. Depende de T1.
 
   *Hecho:* typecheck rojo **solo** en los `Record`/tuplas que §5 enumera.
-- [ ] **T4 [P] — Exhaustividad de tipos y rótulos de servidor.** Depende de T3.
+- [x] **T4 [P] — Exhaustividad de tipos y rótulos de servidor.** Depende de T3.
   - `lib/types/wallet-mensajero.ts` y `lib/types/wallet.ts` (tuplas);
   - `lib/constants/wallet-rotulos.ts` (tres `Record` de origen);
   - `lib/utils/aporte-por-orden.ts` (`FUENTE_MENSAJERO`);
@@ -51,18 +51,18 @@ Reglas de toda la ficha:
     (lo que `tsc` señale).
 
   *Hecho:* typecheck verde salvo la UI.
-- [ ] **T5 [P] — Repositorio del libro.** Depende de T3.
+- [x] **T5 [P] — Repositorio del libro.** Depende de T3.
   - `crearMovimientos` acepta `id?`;
   - `obtenerIncentivo(id, tx?)`;
   - `sumarPremiosVivosPorCierre` ampliado según `design.md §4`, con su TSDoc;
   - interfaz `IPagoMensajeroMovimientoRepository`.
 
   *Hecho:* compila; los tests PG de T9 lo cubren.
-- [ ] **T6 [P] — Conciliación.** `ConciliacionCierresAnaliticaRepository` excluye `incentivo` y
+- [x] **T6 [P] — Conciliación.** `ConciliacionCierresAnaliticaRepository` excluye `incentivo` y
   `reverso_incentivo`. Depende de T3.
 
   *Hecho:* compila; R17 en T9.
-- [ ] **T7 — Puerto de caja + servicio + action.** Depende de T4 y T5.
+- [x] **T7 — Puerto de caja + servicio + action.** Depende de T4 y T5.
   - `ICajaIncentivoMensajeroFeedService` y `CajaIncentivoMensajeroFeedService` (literales de tipo,
     categoría y origen);
   - `IIncentivoMensajeroService` e `IncentivoMensajeroService`, según `design.md §6.1/§6.2`;
@@ -70,7 +70,7 @@ Reglas de toda la ficha:
   - `lib/actions/incentivo-mensajero.ts` (registrar y anular, composition root que **inyecta** todo).
 
   *Hecho:* tests unitarios de R1, R2, R3 y R11 verdes, cada uno con su mutación.
-- [ ] **T8 — Anulación uniforme.** Depende de T7.
+- [x] **T8 — Anulación uniforme.** Depende de T7.
   - `CaminoAnulacion` + `ACCION_DEL_CAMINO` (`lib/types/wallet-anulacion.ts`,
     `lib/actions/wallet-anulacion.ts`);
   - enrutado en `WalletAnulacionService`, con la rama del incentivo antes de `nace_de_un_cierre`;
@@ -79,7 +79,7 @@ Reglas de toda la ficha:
 
   *Hecho:* R16 verde en `tests/unit/services/wallet-anulacion-service.test.ts`, con la mutación del
   orden.
-- [ ] **T9 — Tests PG de la tanda.** Depende de T2, T6 y T8.
+- [x] **T9 — Tests PG de la tanda.** Depende de T2, T6 y T8.
   - `tests/integration/db/incentivo-mensajero-slt68.test.ts`: R4–R10, R12–R15 y R17, con dos empresas
     para R4 y concurrencia para R10 y R15;
   - `tests/integration/db/migracion-slt68-ida-y-vuelta.test.ts`: R21.

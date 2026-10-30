@@ -108,7 +108,7 @@ function buildWalletDeps() {
     // 293/T2.2-T3.3: los dos metodos NUEVOS del contrato (lectura). No-op aqui: este
     // doble no ejercita el premio.
     sumarPremiosVivosPorCierre: vi.fn(async () => ({})),
-    listarPremiosPorDias: vi.fn(async () => []),
+    listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null),
   };
   const walletMensajeroFeedService: IWalletMensajeroFeedService = {
     construirMovimientosDePago: vi.fn().mockResolvedValue({ libro: [], egresoCaja: [] }),

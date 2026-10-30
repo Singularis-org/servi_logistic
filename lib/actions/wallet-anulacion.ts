@@ -24,6 +24,7 @@ import { anularAbonoTiendaAction } from "@/lib/actions/abono-tienda";
 import { anularAporteCapitalAction } from "@/lib/actions/aporte-capital";
 import { anularPagoAction } from "@/lib/actions/liquidacion";
 import { anularPagoPorCuentaTiendaAction } from "@/lib/actions/pago-por-cuenta-tienda";
+import { anularIncentivoMensajeroAction } from "@/lib/actions/incentivo-mensajero";
 import { anularPremioAction } from "@/lib/actions/premio-ranking-devengo";
 import { anularCobroRechazoTiendaAction } from "@/lib/actions/rechazo-tienda-cobro";
 import { anularAjusteCajaAction } from "@/lib/actions/wallet";
@@ -128,6 +129,9 @@ const ACCION_DEL_CAMINO: Record<
     anularCobroRechazoTiendaAction({ cobroId, motivo }, { getActor: async () => actor }),
   premio_del_ranking: (filaId, motivo, actor) =>
     anularPremioAction({ filaId, motivo }, { getActor: async () => actor }),
+  // SLT-68 (design §6.3, R16): el id es el del devengo `incentivo`.
+  incentivo_mensajero: (incentivoId, motivo, actor) =>
+    anularIncentivoMensajeroAction({ incentivoId, motivo }, { getActor: async () => actor }),
 };
 
 const MOTIVOS: readonly MotivoNoAnulable[] = [

@@ -30,7 +30,7 @@ describe("469 — WalletService (caja)", () => {
   const vacio = { estadoDeDocumentos: async () => [] };
   const SIN_DOCUMENTOS = {
     pagosPorCuenta: vacio, aportes: vacio, cobros: vacio, ajustes: vacio, abonos: vacio, egresos: vacio,
-    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio,
+    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio, incentivos: vacio,
   };
   function montar(busqueda: ReturnType<typeof busquedaQueDa>) {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total: 0 }));

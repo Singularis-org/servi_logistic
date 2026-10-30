@@ -163,6 +163,10 @@ export const FUENTE_MENSAJERO: Record<PagoMensajeroMovimientoCategoria, FuenteDe
   ajuste_devengo: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   ajuste_pago: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   premio_ranking: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-68 (R20): el incentivo lo decide una persona; se imputa a un cierre para ser pagable, pero no
+  // nace de sus guias.
+  incentivo: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  reverso_incentivo: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**
