@@ -22,6 +22,9 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //   · R7: profundidad que no es la del padre + 1 (o 1 sin padre), o cambiar la profundidad de un nodo
 //     con hijos → SQLSTATE propio `SLT43`; así no hay ciclos (colgar un nodo de su nieto con la
 //     profundidad «correcta» se rechaza). Mover un nodo con hijos a otro padre del mismo nivel entra.
+//     Colgarse de sí mismo: el CHECK `nodo_geografico_padre_id_check` (23514) en un UPDATE; en un INSERT
+//     llega antes el trigger (SLT43), que rechaza todo padre aún no encontrado, también en un INSERT de
+//     varias filas desordenado o cruzado (la FK, que se comprueba al final de la sentencia, no basta).
 //   · R9: hermanos y raíces con el mismo nombre normalizado, y código repetido en el mismo país y
 //     tipo → 23505; el mismo código en dos tipos del mismo país sí entra.
 //   · R8 y R11 retirados (enmienda 2026-10-29): se comprueba que no quedan su columna, su índice ni su
@@ -213,6 +216,81 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
     expect(r.filas.a).toMatchObject({ padre_id: null, profundidad: 1 });
     expect(r.filas.b).toMatchObject({ padre_id: r.ids.a, profundidad: 2 });
     expect(r.filas.nieto).toMatchObject({ padre_id: r.ids.b, profundidad: 3 });
+  });
+
+  it("R7: crear un nodo colgado de sí mismo → SLT43 (su padre aún no existe) y no guarda nada; el CHECK existe", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const id = randomUUID();
+      const errores = {
+        profundidad1: await intentarNodo(tx, { id, paisId: "XA", tipoId: t.nivel1, padreId: id, profundidad: 1, nombre: `Yo ${sufijo()}` }),
+        profundidad2: await intentarNodo(tx, { id, paisId: "XA", tipoId: t.nivel2, padreId: id, profundidad: 2, nombre: `Yo ${sufijo()}` }),
+      };
+      const check = await tx.$queryRawUnsafe<{ def: string }[]>(
+        `SELECT pg_get_constraintdef(c."oid") AS "def" FROM "pg_constraint" c
+           JOIN "pg_class" t ON t."oid" = c."conrelid" JOIN "pg_namespace" n ON n."oid" = t."relnamespace"
+          WHERE c."conname" = 'nodo_geografico_padre_id_check' AND n."nspname" = 'public'`,
+      );
+      return { errores, guardado: (await nodo(tx, id)) !== undefined, check: check.map((c) => c.def) };
+    });
+    expect(r.errores).toEqual({ profundidad1: "SLT43", profundidad2: "SLT43" });
+    expect(r.guardado).toBe(false);
+    expect(r.check).toEqual(["CHECK ((padre_id IS DISTINCT FROM id))"]);
+  });
+
+  it("R7: colgar de sí misma una raíz sin hijos con la profundidad «correcta» → 23514 (CHECK) y sin cambios", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const raiz = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `R ${sufijo()}` });
+      // El trigger lee la versión vieja de la fila como padre (profundidad 1) y 2 = 1 + 1 cuadra.
+      const error = await intentar(tx, `UPDATE nodo_geografico SET padre_id = id, profundidad = 2 WHERE id = $1`, raiz);
+      return { error, fila: await nodo(tx, raiz) };
+    });
+    expect(r.error).toBe("23514");
+    expect(r.fila).toMatchObject({ padre_id: null, profundidad: 1 });
+  });
+
+  it("R7: un INSERT de dos filas colgadas una de otra (ciclo) → SLT43 y no queda ninguna", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const a = randomUUID();
+      const b = randomUUID();
+      // La FK autorreferente se comprueba al final de la sentencia y la cumplirían las dos filas: sin
+      // rechazar al padre «aún no encontrado», A (prof 1, padre B) y B (prof 2, padre A) quedarían en ciclo.
+      const error = await intentar(
+        tx,
+        `INSERT INTO nodo_geografico (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado)
+           VALUES ($1, 'XA', $3, $2, 1, $4, ''), ($2, 'XA', $3, $1, 2, $5, '')`,
+        a,
+        b,
+        t.nivel1,
+        `A ${sufijo()}`,
+        `B ${sufijo()}`,
+      );
+      return { error, quedan: [await nodo(tx, a), await nodo(tx, b)].filter(Boolean).length };
+    });
+    expect(r).toEqual({ error: "SLT43", quedan: 0 });
+  });
+
+  it("R7: un INSERT de varias filas con el hijo antes que su padre → SLT43; en orden, entra", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const ids = { padre: randomUUID(), hijo: randomUUID(), padre2: randomUUID(), hijo2: randomUUID() };
+      const sql = `INSERT INTO nodo_geografico (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado)
+           VALUES ($1, 'XA', $2, $3, $4, $5, ''), ($6, 'XA', $7, $8, $9, $10, '')`;
+      // Sin el rechazo, el hijo entraría con profundidad 7 bajo una raíz.
+      const desordenado = await intentar(tx, sql, ids.hijo, t.nivel2, ids.padre, 7, `H ${sufijo()}`, ids.padre, t.nivel1, null, 1, `P ${sufijo()}`);
+      const ordenado = await intentar(tx, sql, ids.padre2, t.nivel1, null, 1, `P2 ${sufijo()}`, ids.hijo2, t.nivel2, ids.padre2, 2, `H2 ${sufijo()}`);
+      return {
+        desordenado,
+        ordenado,
+        quedanDesordenado: [await nodo(tx, ids.padre), await nodo(tx, ids.hijo)].filter(Boolean).length,
+        hijo2: await nodo(tx, ids.hijo2),
+        padre2: ids.padre2,
+      };
+    });
+    expect(r).toMatchObject({ desordenado: "SLT43", ordenado: null, quedanDesordenado: 0 });
+    expect(r.hijo2).toMatchObject({ padre_id: r.padre2, profundidad: 2 });
   });
 
   it("R7: mover un nodo con hijos a otro padre del mismo nivel entra y sus hijos quedan igual", async () => {

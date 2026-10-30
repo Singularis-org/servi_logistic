@@ -122,8 +122,11 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     ]);
     expect(tipos.slice(-3, -1)).toEqual(["modulo_activado", "modulo_desactivado"]);
     expect(tipos.slice(-1)).toEqual(["plan_asignado"]);
-    expect(entidades.slice(-6, -4)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-4)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    // SLT-43: UNA entidad y NINGUN tipo detras de los de SL-24 (`nodo_geografico`, de
+    // `20261029120000_geo_enums_nodo_geografico`); los tramos de entidades se leen uno mas atras.
+    expect(entidades.slice(-7, -5)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidades.slice(-5, -1)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidades.slice(-1)).toEqual(["nodo_geografico"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

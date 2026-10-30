@@ -3,7 +3,7 @@
 -- 20261029120100_tipo_nivel_geografico (la FK compuesta hacia los tipos impediría su DROP).
 --
 -- Los nodos son una copia de la geografía vieja, que no se toca: reaplicar la ida los vuelve a crear
--- con los mismos ids. Los índices, las FK, la RLS y la política caen con la tabla; la función de
+-- con los mismos ids. Los índices, las FK, los CHECK, la RLS y la política caen con la tabla; la función de
 -- normalización va al final porque la usa el trigger de invariantes.
 
 BEGIN;

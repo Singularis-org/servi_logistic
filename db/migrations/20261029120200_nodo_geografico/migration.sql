@@ -74,7 +74,11 @@ CREATE TABLE "nodo_geografico" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "nodo_geografico_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "nodo_geografico_profundidad_check" CHECK ("profundidad" >= 1)
+    CONSTRAINT "nodo_geografico_profundidad_check" CHECK ("profundidad" >= 1),
+    -- R7: ningún nodo cuelga de sí mismo. El trigger de invariantes no lo ve: en un UPDATE lee la
+    -- versión vieja de la propia fila como padre, y en un INSERT la FK autorreferente se cumple con
+    -- la propia fila. Prisma no expresa CHECK: vive solo aquí.
+    CONSTRAINT "nodo_geografico_padre_id_check" CHECK ("padre_id" IS DISTINCT FROM "id")
 );
 
 -- Destino de la FK compuesta de los hijos (R5).
@@ -104,11 +108,16 @@ ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_padre_id_pais_id_f
   FOREIGN KEY ("padre_id", "pais_id") REFERENCES "nodo_geografico"("id", "pais_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- ─── R7, R10: invariantes de cada fila ───────────────────────────────────────────────────────
--- Pisa `nombre_normalizado` con lo que traiga la fila: se deriva, no se elige. Con un padre
--- inexistente no se lanza aquí: la FK compuesta lo rechaza con su nombre (23503), el mismo error que un
--- tipo de otro país.
+-- Pisa `nombre_normalizado` con lo que traiga la fila: se deriva, no se elige.
 -- Sin ciclos (R7): el invariante es «todo nodo tiene la profundidad de su padre más 1». El paso 2 lo
--- comprueba en la fila que se escribe; el paso 3, en sus hijos: un nodo con hijos no cambia de
+-- comprueba en la fila que se escribe, y para eso el padre tiene que existir YA: un padre que no se
+-- encuentra se rechaza aquí (SLT43) y no se deja a la FK. La FK se comprueba al final de la sentencia,
+-- así que un INSERT de varias filas con el hijo antes que su padre (o dos filas que se cuelgan una de
+-- otra) la pasaría sin que nadie comparara profundidades. Ningún camino de la app escribe así: la copia
+-- de abajo va por niveles y la sincronía, fila a fila tras una escritura vieja cuyo padre ya tiene nodo.
+-- Colgarse de sí mismo lo para el CHECK `nodo_geografico_padre_id_check` (en un INSERT llega antes
+-- este paso: el padre, que es la propia fila, aún no existe).
+-- El paso 3 lo comprueba en sus hijos: un nodo con hijos no cambia de
 -- profundidad, así que ningún hijo se queda con una que ya no es la de su padre más 1. Con el
 -- invariante en todas las filas la profundidad crece estrictamente al bajar por `padre_id`, y un ciclo
 -- exigiría un nodo más profundo que sí mismo. Sin el paso 3, `SET padre_id = <un nieto>, profundidad =
@@ -117,7 +126,12 @@ ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_padre_id_pais_id_f
 -- El `FOR SHARE` del paso 2 cierra la carrera entre «crear un hijo» y «cambiar la profundidad de su
 -- padre» en dos transacciones: la segunda espera a la primera y su EXISTS (snapshot nuevo en READ
 -- COMMITTED) ya ve al hijo.
-CREATE FUNCTION nodo_geografico_invariantes() RETURNS trigger LANGUAGE plpgsql AS $$
+-- SECURITY DEFINER con `search_path` fijo (precedente `verificar_misma_empresa`, 20261022130300): el
+-- paso 2 y el paso 3 leen la tabla entera, no lo que la RLS deje ver a quien escribe. Así un padre
+-- que existe nunca pasa por «no encontrado» (ni un hijo por inexistente) aunque mañana escriba aquí un
+-- rol sujeto a la RLS del país; hoy escriben el dueño y la sincronía, que ya la saltan.
+CREATE FUNCTION nodo_geografico_invariantes() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_profundidad int;
 BEGIN
@@ -134,7 +148,11 @@ BEGIN
     SELECT n.profundidad INTO v_profundidad
       FROM nodo_geografico n WHERE n.id = NEW.padre_id
        FOR SHARE;
-    IF FOUND AND NEW.profundidad <> v_profundidad + 1 THEN
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'nodo_geografico %: su padre % no existe (todavia)', NEW.id, NEW.padre_id
+        USING ERRCODE = 'SLT43';
+    END IF;
+    IF NEW.profundidad <> v_profundidad + 1 THEN
       RAISE EXCEPTION 'nodo_geografico %: con un padre de profundidad % le toca %, no %',
         NEW.id, v_profundidad, v_profundidad + 1, NEW.profundidad
         USING ERRCODE = 'SLT43';

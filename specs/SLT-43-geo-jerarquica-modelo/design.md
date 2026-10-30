@@ -128,11 +128,24 @@ idéntico a `normalizeName` sobre todos los nombres de la geografía de la base 
 profundidad, nombre, pais_id ON nodo_geografico`; enmienda 2026-10-29: sin `ruta` en la lista):
 1. pone `nombre_normalizado` (R10);
 2. lee el padre (si hay) con `FOR SHARE`: si `NEW.profundidad <> padre.profundidad + 1`, o si no hay
-   padre y `NEW.profundidad <> 1`, lanza `SQLSTATE 'SLT43'` (R7);
+   padre y `NEW.profundidad <> 1`, lanza `SQLSTATE 'SLT43'` (R7). Si `padre_id` no es nulo y el padre
+   **no se encuentra**, también lanza `SLT43` en vez de dejarlo a la FK (review T8, B2): un `INSERT`
+   de varias filas `(A, padre B), (B, padre A)` pasaba el trigger fila a fila y dejaba un ciclo que la
+   FK, comprobada al final de la sentencia, aceptaba. Ningún camino legítimo inserta un hijo antes que
+   su padre (sincronía AFTER ROW con FK viejas no diferibles, copia de 120200 por niveles, `createMany`
+   de `GeoRepository` por niveles; el script de §4 no escribe `nodo_geografico`). La función es
+   `SECURITY DEFINER SET search_path = public` (como la sincronía y `verificar_misma_empresa`): así ni
+   este paso ni el 3 toman por inexistente un padre o un hijo que solo es invisible por la RLS del
+   rol que escribe;
 3. en un `UPDATE` con `NEW.profundidad IS DISTINCT FROM OLD.profundidad`, si existe algún nodo con
    `padre_id = NEW.id`, lanza `SQLSTATE 'SLT43'` (R7, enmienda 2026-10-29).
 
 Ya no calcula `ruta` (R8 retirado).
+
+**Autopadre (R7, «ni de sí mismo»; review T8, B1).** `CONSTRAINT "nodo_geografico_padre_id_check"
+CHECK ("padre_id" IS DISTINCT FROM "id")`. Un `UPDATE … SET padre_id = id` lo rechaza el CHECK
+(`23514`); un `INSERT` con `padre_id = id` lo rechaza antes el paso 2 (`SLT43`: el padre, la propia
+fila, aún no existe), porque los triggers `BEFORE` corren antes que los CHECK.
 
 El país del padre y el del tipo los garantizan las FK compuestas (R5, R6), no el trigger: son
 declarativas y no tienen carrera.
@@ -151,6 +164,11 @@ descendiente>, profundidad = <la de ese descendiente + 1>` pasaba el paso 2 y de
 - El `FOR SHARE` del paso 2 cierra la carrera entre «crear un hijo» y «cambiar la profundidad de su
   padre» en dos transacciones: la segunda espera a la primera y su `EXISTS` (snapshot nuevo en `READ
   COMMITTED`) ya ve al hijo. No bloquea nada más: la FK ya toma `FOR KEY SHARE` sobre el padre.
+  Esa protección vale **solo en `READ COMMITTED`** (el nivel por defecto, el que usan la app, la
+  sincronía y el script). En `REPEATABLE READ` o `SERIALIZABLE` el `EXISTS` del paso 3 usa el snapshot
+  del inicio de la transacción y no ve al hijo recién confirmado, así que la carrera hijo/padre puede
+  reabrirse. Nadie escribe `nodo_geografico` con esos niveles;
+  si algún día alguien lo hace, tendrá que volver a mirar esto (review T8, m1).
 - Alternativa descartada: subir por `padre_id` desde el nuevo padre buscando `NEW.id` (§8, alternativa 8).
 
 **RLS (R12)**, con el patrón de `provincia_del_pais`:

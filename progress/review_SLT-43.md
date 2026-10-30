@@ -240,3 +240,112 @@ Condiciones de merge, que no son hallazgos de código:
 - El job `e2e` (órdenes y aislamiento) en verde (m4).
 - La guardia de wallet resuelta por el PR #43.
 - T7.2 queda como puerta humana antes de la release a `prod`.
+
+## T8 (acotada a 8a625d7..a5c22f9: enmienda «sin `ruta`»)
+
+### Verificación que corrí yo
+- `vitest run` de `slt43-migraciones-aditivas`, `nodo-geografico-sin-escritor.guardia`, `recursos-origen-fuera.guardia`,
+  `catalogo-postgres-acota-esquema.guardia` y la parte sin base de `geo-backfill` (R33): verdes.
+- `pnpm run typecheck` exit 0; `eslint` sobre los 6 TS tocados: sin problemas.
+- **No** corrí los de integración contra Postgres: en mi entorno no hay `DATABASE_URL` y el acceso al `.env` me lo
+  denegó el permiso. Lo que sigue sobre el trigger es análisis de la semántica de Postgres (visibilidad en triggers
+  `BEFORE ROW`, FK autorreferente, bloqueos de fila), no una corrida. Los dos casos de B1 y B2 son de una sola
+  sentencia y el implementer puede reproducirlos en `logistic_slt43` en un minuto.
+
+### Checklist
+- [x] Tasks T8.1–T8.10 `[x]`. T8.11 `[ ]`, a la espera del `gate-completo` del PR #44 (condición de merge, no hallazgo).
+- [x] `design.md > ## Lo que ya existe` presente; el diff no re-crea nada de esa lista.
+- [x] `down.sql` de 120200: inverso exacto. Borra el trigger, la función de invariantes, la tabla (con ella caen
+  índices, FK, RLS, política y permisos) y `geo_normalizar_nombre`, en ese orden. Ya no nombra el trigger ni la
+  función de descendientes, que la ida ya no crea. El `down.sql` de 120300 no cambia y no hace falta.
+- [x] `schema.prisma` en sincronía: el modelo ya no tiene `ruta` ni `@@index(..., type: Gin)`, y el comentario
+  nombra el paso 3. La bitácora registra un `migrate diff` vacío; no lo repetí porque no tengo base.
+- [x] Sincronía (120300): los tres upserts ya no llevan `ruta`. Solo mueven nodos dentro de su nivel (1/2/3), así
+  que el paso 3 nunca los frena.
+- [x] Grep: `ruta` como columna de `nodo_geografico` solo queda en los literales del test que comprueba que no existe.
+- [x] Reglas del proyecto (perfil reviewer): la tabla es de plataforma, con RLS y `REVOKE`; hay `down.sql`; sin
+  literales de país; sin dependencias nuevas. Los comentarios explican el porqué.
+- [ ] **R7, «sin ciclos»: no se cumple en dos casos** (B1, B2).
+- [x] Trazabilidad R4, R8, R11 (ver abajo). R7 tiene test de los casos que cubre, pero no de B1/B2.
+
+### Trazabilidad
+| R | Test | Estado |
+|---|---|---|
+| R4 | `geo-nodo-invariantes` «R4: guarda cada campo…», «R4: la tabla no tiene columna `ruta`» | ok |
+| R7 | `geo-nodo-invariantes` «R7: profundidad mala…», «…nodo con hijos → SLT43…», «colgar un nodo de su nieto…», «mover un nodo con hijos… entra» | ok para lo que prueban; falta el caso «colgado de sí mismo», que R7 nombra (B1) |
+| R8 | Retirado; «R8/R11 retirados» (`pg_trigger`, acotado a `public`) | ok |
+| R11 | Retirado; ese mismo test (`pg_indexes`) | ok |
+
+La contraprueba del paso 3 está en la bitácora: sin el paso 3, fallan los dos casos nuevos. Es creíble y coherente
+con el código.
+
+### Concurrencia (lo que pidió el leader)
+- **Crear un hijo frente a cambiar la profundidad del padre (READ COMMITTED): cerrada.**
+  - Si el hijo va primero, mantiene `FOR SHARE` sobre el padre. El `UPDATE` del padre pide `FOR NO KEY UPDATE`,
+    que choca con `FOR SHARE` (no con el `FOR KEY SHARE` de la FK; por eso hace falta), así que espera. Al
+    seguir, su `EXISTS` corre con snapshot nuevo, ve al hijo y lanza `SLT43`.
+  - Si el padre va primero, el `FOR SHARE` del hijo espera, relee la versión nueva del padre y el paso 2 rechaza
+    la profundidad vieja.
+- **Dos reparentados cruzados (A bajo B y B bajo A a la vez): cerrada.** Cada `UPDATE` bloquea su fila y pide
+  `FOR SHARE` de la otra.
+  - Si se intercalan, Postgres detecta un deadlock y aborta una de las dos.
+  - Si van en serie, la segunda ve a la primera ya hecha. Su paso 2 le exige una profundidad que cambia la suya,
+    y como ahora tiene un hijo, el paso 3 la rechaza.
+- En una sola sentencia con varias filas (`UPDATE … CASE`), las filas que se procesan después ven a las de
+  antes, y el paso 3 cierra el caso.
+
+### Hallazgos
+- **B1 (BLOQUEANTE): un nodo se puede colgar de sí mismo.** R7 (texto nuevo de T8) dice que «ningún nodo puede
+  quedar colgado de sí mismo», y el trigger no lo impide.
+  - Con una hoja raíz `R` (profundidad 1): `UPDATE nodo_geografico SET padre_id = id, profundidad = 2 WHERE id = R`.
+  - Paso 2: el `SELECT … FOR SHARE` del padre lee la versión vieja de la propia fila (profundidad 1), y 2 = 1 + 1
+    pasa.
+  - Paso 3: el `EXISTS` no ve hijos, porque la versión vieja de `R` tiene `padre_id` NULL.
+  - La FK compuesta autorreferente se cumple con la propia fila. Queda `R.padre_id = R`.
+  - Por `INSERT` pasa lo mismo: `INSERT … (id, padre_id) = ('x','x')` con cualquier profundidad. El padre aún no
+    existe, la rama `IF FOUND` no compara nada y la FK se cumple al final de la sentencia.
+  - Ya pasaba con la `ruta`, pero T8 añadió a R7 la garantía y su justificación (comentario de la migración,
+    design §2.2, `architecture.md`), y esa justificación supone que el padre es otra fila.
+  - Falta: impedirlo, por ejemplo con `CHECK ("padre_id" IS DISTINCT FROM "id")` (lo expresa el SQL, no Prisma),
+    o en el trigger. Y un caso en `geo-nodo-invariantes` (UPDATE e INSERT → rechazo, sin cambios).
+- **B2 (BLOQUEANTE): «padre aún no encontrado → que decida la FK» deja pasar ciclos y profundidades malas en una
+  misma sentencia.**
+  - La FK se comprueba al final de la sentencia. Un `INSERT` de varias filas con el hijo antes que el padre pasa
+    el paso 2 sin comparar.
+  - Ejemplo: `INSERT … VALUES (A, padre B, prof 1), (B, padre A, prof 2)`. Para A, B no existe y no se compara.
+    Para B, ve a A (fila ya procesada), y 2 = 1 + 1 pasa. Las dos FK se cumplen al final: queda el ciclo A↔B, y
+    A tiene padre con profundidad 1.
+  - Lo mismo con `INSERT … SELECT` desordenado o con CTE de escritura. Sin ciclo, `(C, padre P, prof 7), (P, raíz,
+    prof 1)` deja a C con una profundidad mala, y eso viola la primera condición de R7.
+  - La premisa del argumento «el invariante vale en todas las filas» no se cumple.
+  - Hoy ninguna vía de la app escribe así (copia ordenada por niveles, sincronía fila a fila, `REVOKE` a
+    `servi_app`). Pero R7 es una garantía de la base frente al SQL a mano y frente a SLT-46, que es justo para lo
+    que se mantiene el trigger.
+  - Falta: que el paso 2 rechace cuando `padre_id` no es NULL y el padre no se encuentra (`SLT43` o el `23503` a
+    mano; el R5 actual sigue igual, porque ahí el padre existe en otro país). O que la FK pase a `DEFERRABLE
+    INITIALLY IMMEDIATE`, con una comprobación de profundidad que vea al padre. Si se elige lanzar en el trigger,
+    la frase del comentario «con un padre inexistente no se lanza aquí» cambia. Y un test con el `INSERT` de dos
+    filas cruzadas.
+- **m1 (menor):** el cierre de la carrera vale en READ COMMITTED, como dice el comentario. En REPEATABLE READ o
+  SERIALIZABLE, el `EXISTS` usa el snapshot de la transacción y no ve a un hijo que otra transacción acaba de
+  confirmar.
+  - En SERIALIZABLE, SSI probablemente lo aborte; en REPEATABLE READ, no.
+  - La sincronía y el SQL a mano corren en READ COMMITTED, así que basta con dejarlo escrito en design §2.2 (o
+    lanzar el error si `current_setting('transaction_isolation') <> 'read committed'` y hay padre).
+- **m2 (menor):** ningún test ejercita la carrera: si se quita el `FOR SHARE`, no se pone rojo nada. Un test con
+  dos conexiones (crear un hijo mientras otra cambia la profundidad del padre) lo fijaría. No lo pedía T8.6.
+- **Las dos excepciones aprobadas por el humano:**
+  - **`slt43-migraciones-aditivas.test.ts:119`.** El control sigue probando que las migraciones reales escriben, y
+    el `DO UPDATE` lo trata una regla que sí existe en el detector. Ya no queda en el SQL real ningún
+    `UPDATE <tabla nueva>` directo que pase por la rama de «tabla nueva aceptada». Eso refleja el SQL actual y
+    las contrapruebas inventadas siguen cubriendo el rojo. No lo debilita.
+  - **`geo-backfill.test.ts` R33.** Son las mismas cadenas, por interpolación, con las mismas expectativas, y está
+    en verde. No lo debilita.
+
+### Veredicto T8
+**RECHAZADO**: 2 bloqueantes (B1, B2) y 2 menores. Los dos bloqueantes son de la garantía «sin ciclos» que T8
+escribió en R7. Lo demás de la enmienda (columna, GIN, trigger de descendientes, `down.sql`, Prisma, sincronía,
+tests de R4/R8/R11, las dos excepciones) está bien. Vuelve al implementer:
+- impedir el autopadre (B1);
+- impedir que un padre «aún no encontrado» se salte el paso 2 (B2);
+- añadir un caso de test por cada uno en `geo-nodo-invariantes.test.ts`.
