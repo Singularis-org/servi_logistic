@@ -24,6 +24,7 @@ zone frontend / complexity low. Causa medida en prod el 2026-10-30:
 ## Preguntas abiertas
 
 ## Tandas
+- 2026-10-30 · T1-T5 (frontend_dev) · 09a0c989 · gate local verde (INIT_EXIT=0); T1 rojo contra prod antes del cambio (`progress/impl_SLT-69.md`)
 
 ## Modelos (overrides)
 Subagentes en Opus.
