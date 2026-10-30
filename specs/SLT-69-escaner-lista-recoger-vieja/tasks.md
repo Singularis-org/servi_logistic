@@ -6,7 +6,7 @@
 
 ## Tanda 1
 
-- [ ] **T1. Test rojo que reproduce el bug** (primero, antes de tocar el hook).
+- [x] **T1. Test rojo que reproduce el bug** (primero, antes de tocar el hook).
   Crear `tests/components/useRecogerPorGuia.test.tsx` (`// @vitest-environment jsdom`, `renderHook`),
   mockeando `@/lib/actions/mis-asignaciones` (`listarMisAsignaciones`, `recogerAsignaciones`) y
   `@/hooks/useToast`, con DTOs literales. Caso R1/R2 de `design.md > Tests`.
@@ -14,26 +14,26 @@
   "La guía 34991060 no está…"» / `recogerAsignaciones` no llamado. Pegar la salida roja en
   `progress/impl_SLT-69.md`.
 
-- [ ] **T2. Relectura y reintento en `useRecogerPorGuia`** (depende de T1).
+- [x] **T2. Relectura y reintento en `useRecogerPorGuia`** (depende de T1).
   Implementar el flujo de `design.md > Contratos > useRecogerPorGuia` (relectura única con
   `listarMisAsignaciones`, `procesando` antes de releer, un solo `try/finally`, toasts existentes).
   Firma pública sin cambios. Actualizar el comentario de cabecera (la restricción «asignada a mí»
   ahora consulta al servidor ante un fallo local).
   *Hecho:* el test de T1 pasa; añadidos y verdes los casos R3, R4, R5 (tres variantes), R9 y R10.
 
-- [ ] **T3. [P] Hook `useRefrescarAlVolver`** (independiente de T1/T2).
+- [x] **T3. [P] Hook `useRefrescarAlVolver`** (independiente de T1/T2).
   Crear `hooks/useRefrescarAlVolver.ts` según `design.md` y `tests/components/useRefrescarAlVolver.test.tsx`
   (fake timers, `Object.defineProperty(document, "visibilityState", …)`).
   *Hecho:* verdes R7 y R8 (incluido el cleanup al desmontar).
 
-- [ ] **T4. Conectar en `RecogerModule`** (depende de T3).
+- [x] **T4. Conectar en `RecogerModule`** (depende de T3).
   `useRefrescarAlVolver(() => router.refresh())` en `RecogerModule`, montado siempre (también con
   bloqueo o lista vacía). Tests en `tests/components/RecogerModuleRefrescoAlVolver.test.tsx`
   (mock de `next/navigation` y, si hace falta, de `EscanerModal`) y
   `tests/components/RecogerPaqueteCard.test.tsx` (R2 de punta a punta en la tarjeta).
   *Hecho:* verdes R6, R11 y R2 (tarjeta).
 
-- [ ] **T5. Cierre** (depende de T2 y T4).
+- [x] **T5. Cierre** (depende de T2 y T4).
   `pnpm run typecheck`, `pnpm run lint`, `pnpm exec vitest related --run <archivos>` y `./init.sh`
   en verde. Mapa `R<n> -> test` completo (R1-R11) en `progress/impl_SLT-69.md`, con la salida roja
   de T1 y la verde final. Commits `fix(SLT-69): …` / `test(SLT-69): …` por task. El PR lo abre el

@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-69 | escaner-lista-recoger-vieja | frontend | low | feature/SLT-69-escaner-lista-recoger-vieja | Carlos Restrepo | pending |
+| SLT-69 | escaner-lista-recoger-vieja | frontend | low | feature/SLT-69-escaner-lista-recoger-vieja | Carlos Restrepo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
