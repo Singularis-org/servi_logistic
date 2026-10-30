@@ -350,10 +350,10 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
       await antiguas(tx, ids(await ordenes(tx, otra, 3)), "2 days");
       const res = await c.asignar(org, plan, dia(-5));
       const asignada = await organizacion(tx, org);
-      const rechazada = await ordenes(tx, org, 1);
+      const noEntra = await ordenes(tx, org, 1);
       await anular(tx, delCiclo.slice(0, 2));
       const entra = await ordenes(tx, org, 1);
-      return { org, plan, res, asignada, rechazada, entra, igual: await c.asignar(otra, justo, dia(-5)) };
+      return { org, plan, res, asignada, noEntra, entra, igual: await c.asignar(otra, justo, dia(-5)) };
     });
     expect(r.res).toEqual({
       estado: "ok",
@@ -363,7 +363,7 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
       vigenteDesde: null,
     });
     expect(r.asignada.planId).toBe(r.plan);
-    expect(topeDe(r.rechazada)).toBe(true);
+    expect(topeDe(r.noEntra)).toBe(true);
     expect(Array.isArray(r.entra) && r.entra.length).toBe(1);
     expect(r.igual).toMatchObject({ estado: "ok", avisos: [] });
   });
