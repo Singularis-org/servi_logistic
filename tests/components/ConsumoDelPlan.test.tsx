@@ -1,23 +1,15 @@
 // @vitest-environment jsdom
-// SLT-58 (design §6.2; R3, R4, R5, R6) — ARREGLOS DE DISEÑO DE `ConsumoDelPlan` Y EL SKELETON DE «MI PLAN».
+// SLT-58 (design §6.2; R3, R4, R5, R6) — ARREGLOS DE DISEÑO DE `ConsumoDelPlan`.
 //
 // El estado de cada barra se lee sin depender del color: la marca lleva texto E icono, y cada estado
 // tiene su clase de token (normal = neutro, nunca el amarillo de marca; cerca = `warning-strong`;
 // lleno = `danger-strong`). El reinicio cuelga de la fila de órdenes, sin plan se pinta un
-// `EmptyState`, y `/mi-plan` tiene un `loading.tsx` con dos tarjetas de skeleton.
-import { describe, it, expect, afterEach, vi } from "vitest";
+// `EmptyState`. (`/mi-plan` ya no tiene `loading.tsx`: lo quitó R8 para que `notFound()` dé 404 real.)
+import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
-import MiPlanLoading from "@/app/(app)/mi-plan/loading";
-import { ToastProvider } from "@/providers/ToastProvider";
 import type { FilaConsumo, PlanConConsumo } from "@/lib/types/consumo-plan";
-
-// `AppPage` monta la cabecera con el botón de salir, que usa el router y los toasts de la app.
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
-  usePathname: () => "/mi-plan",
-}));
 
 function fila(clave: FilaConsumo["clave"], etiqueta: string, usados: number, maximo: number | null, estado: FilaConsumo["estado"]): FilaConsumo {
   return { clave, etiqueta, usados, maximo, estado, texto: `${usados} de ${maximo ?? "sin límite"} ${etiqueta}` };
@@ -115,21 +107,5 @@ describe("SLT-58 R6 — sin plan, un EmptyState con icono", () => {
     expect(icono).not.toBeNull();
     expect(icono?.getAttribute("class")).toMatch(/lucide-infinity/);
     expect(screen.queryByRole("meter")).toBeNull();
-  });
-});
-
-describe("SLT-58 — `/mi-plan` mientras carga", () => {
-  it("muestra dos tarjetas de skeleton y anuncia la carga con un único status", () => {
-    render(
-      <ToastProvider>
-        <MiPlanLoading />
-      </ToastProvider>,
-    );
-    expect(screen.getByRole("heading", { name: "Mi plan" })).toBeInTheDocument();
-    expect(screen.getAllByRole("status")).toHaveLength(1);
-    const skeleton = screen.getByTestId("mi-plan-skeleton");
-    expect(skeleton).toHaveAttribute("aria-hidden", "true");
-    expect(skeleton.querySelectorAll(":scope > [data-slot='card']")).toHaveLength(2);
-    expect(skeleton.querySelectorAll("[data-slot='skeleton']").length).toBeGreaterThan(0);
   });
 });

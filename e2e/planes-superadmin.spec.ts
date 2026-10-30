@@ -270,10 +270,10 @@ test("el mensajero de A recibe «no encontrado» en «Mi plan» (R28, R8)", asyn
   test.setTimeout(240_000);
   const { ctx, texto, html, estado } = await abrirCon(browser, sesiones.mensajeroA, "/mi-plan");
   try {
-    // Se afirma lo que ve el usuario, no el código HTTP: `/mi-plan` tiene `loading.tsx`, así que Next
-    // ya mandó la cabecera 200 cuando la página llama a `notFound()` (el 404 llega en el cuerpo).
+    // R8: 404 HTTP real, no solo el texto. `/mi-plan` no tiene `loading.tsx` para que `notFound()`
+    // ocurra antes de mandar la cabecera.
     console.log(`[planes] /mi-plan del mensajero: estado HTTP ${estado}`);
-    expect(estado, "el mensajero recibe un error del servidor").toBeLessThan(500);
+    expect(estado, "el mensajero no recibe un 404 HTTP").toBe(404);
     expect(texto.includes(NO_ENCONTRADO), "el mensajero no ve «no encontrado»").toBe(true);
     expect(html.includes(nombreDelPlan), "el mensajero ve el nombre del plan").toBe(false);
   } finally {

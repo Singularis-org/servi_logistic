@@ -147,7 +147,7 @@
   T13. Puede ir en paralelo con T15.
   *Hecho:* casos nuevos de `tests/unit/planes/consumo.test.ts` (29 de octubre con ancla el 5 de
   noviembre: «en 7 días (2026-11-05)») y de `tests/components/MiPlanModule.test.tsx` en verde.
-- [ ] **T17 [P] — R8: 404 HTTP real en `/mi-plan`** (frontend_dev; design §11.6). Independiente de
+- [x] **T17 [P] — R8: 404 HTTP real en `/mi-plan`** (frontend_dev; design §11.6). Independiente de
   T12–T16. El arreglo lo elige el implementer, sin mover la autorización fuera del servicio.
   *Hecho:* `e2e/planes-superadmin.spec.ts` exige `status() === 404` para el `mensajero` de A y pasa en
   local; `tests/integration/mi-plan-page.test.tsx` y el humo de dos empresas siguen verdes.
