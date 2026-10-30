@@ -4,6 +4,7 @@ import { test, expect, type Browser, type BrowserContext, type Cookie, type Page
 import type { PrismaClient } from "@prisma/client";
 
 import { ORDEN_MODULOS, nombreDelModulo } from "../lib/modulos/catalogo";
+import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
 import { abrirBaseE2E, crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import { crearZonaE2E } from "./_aislamiento-datos";
@@ -27,7 +28,8 @@ import {
  *    órdenes y de mensajeros (los demás topes vacíos = sin límite) y todos los módulos (asignarlo no
  *    apaga ninguno).
  * 3. En el detalle de A elige el plan y pulsa «Asignar plan»: es la PRIMERA asignación, así que se abre
- *    el modal de confirmación (decisión del 2026-10-29) con lo que tendrá la empresa; se confirma. El
+ *    el modal de confirmación (decisión del 2026-10-29) con lo que tendrá la empresa y el «Inicio del
+ *    ciclo de órdenes» en hoy (T15); se espera a la vista previa y se confirma. El
  *    bloque «Plan» pasa a pintar el plan y su consumo, y el historial la asignación.
  * 4. El maestro de A abre `/mi-plan`: el nombre, «de <tope> órdenes del ciclo», «de <tope> Mensajero» y
  *    «sin límite» en un rol sin tope (Maestro).
@@ -216,7 +218,18 @@ test("el superadmin lo asigna desde el detalle de A, pasando el modal de la prim
 
   await bloque.getByRole("button", { name: "Asignar plan", exact: true }).click();
   await expect(modal).toBeVisible({ timeout: 30_000 });
-  await modal.getByRole("button", { name: "Asignar plan", exact: true }).click();
+
+  // SLT-58 T15 (R29, R37, R38): el campo de inicio del ciclo abre con «hoy» (hora de la plataforma) y
+  // la frase lo repite; «Asignar plan» del modal no se habilita hasta que llega la vista previa (P11).
+  const hoy = fechaCalendarioCR(new Date());
+  await expect(modal.getByLabel("Inicio del ciclo de órdenes")).toHaveValue(hoy);
+  await expect(modal).toContainText(`El ciclo de órdenes empieza el ${hoy}.`);
+  const confirmar = modal.getByRole("button", { name: "Asignar plan", exact: true });
+  await expect(confirmar).toBeEnabled({ timeout: 60_000 });
+  // Empresa nueva: no pasa ningún tope, así que la vista previa no avisa de nada ni falla.
+  await expect(modal).not.toContainText("No se pudo comprobar el consumo de la empresa");
+  await expect(modal).not.toContainText("no podrá");
+  await confirmar.click();
 
   // Tras el `refresh`, el bloque pinta el plan y su consumo; el historial, la asignación.
   await expect(bloque.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
@@ -225,8 +238,14 @@ test("el superadmin lo asigna desde el detalle de A, pasando el modal de la prim
   await expect(consumo).toContainText(`1 de ${TOPE_MENSAJEROS} Mensajero`);
   await expect(bloque.getByRole("table", { name: "Historial de asignaciones" })).toContainText(nombreDelPlan);
 
-  const asignada = await db().organizacion.findUniqueOrThrow({ where: { id: a().organizacionId }, select: { planId: true } });
+  const asignada = await db().organizacion.findUniqueOrThrow({
+    where: { id: a().organizacionId },
+    select: { planId: true, planCicloAnclaAt: true, planCicloCortoDesdeAt: true },
+  });
   expect(asignada.planId).toBe(planId);
+  // «Hoy» ancla en el instante de la asignación (P9): sin ciclo corto (R34 solo con fecha futura).
+  expect(asignada.planCicloAnclaAt, "la primera asignación no fijó el ancla").not.toBeNull();
+  expect(asignada.planCicloCortoDesdeAt, "«hoy» no abre ciclo corto").toBeNull();
 });
 
 test("el maestro de A ve en «Mi plan» el nombre, sus topes y su consumo (R28)", async ({ browser }) => {

@@ -217,8 +217,9 @@ esta bien hecha, no solo si "funciona".
     llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
     es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
     revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
-    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo` que los triggers. Del
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo_en_curso` que los triggers. Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
+    - **Inicio del ciclo elegido:** en la primera asignación el superadmin elige el inicio del ciclo de órdenes (hoy ±1 mes, `rangoDelInicioDelCiclo`); si es futura, el tramo hasta el ancla es un ciclo corto que empieza en `organizacion.plan_ciclo_corto_desde_at`, y si la empresa ya pasa topes se asigna igual y se avisa (`avisos`). La única definición del ciclo en curso es `plan_inicio_ciclo_en_curso` (migración `20261029150000_plan_ciclo_inicio_elegido`), que llaman los triggers, `plan_cupo_ordenes` y `plan_de_la_empresa`; su gemela TS es `inicioDelCicloEnCurso` (`lib/planes/ciclo.ts`), probada con la misma tabla de casos (`tests/integration/db/_fixtures/ciclo-corto.ts`).
     - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,

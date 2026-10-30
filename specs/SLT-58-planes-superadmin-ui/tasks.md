@@ -151,7 +151,7 @@
   T12–T16. El arreglo lo elige el implementer, sin mover la autorización fuera del servicio.
   *Hecho:* `e2e/planes-superadmin.spec.ts` exige `status() === 404` para el `mensajero` de A y pasa en
   local; `tests/integration/mi-plan-page.test.tsx` y el humo de dos empresas siguen verdes.
-- [ ] **T18 — Documentación y gate de la enmienda**. Depende de T12–T17.
+- [x] **T18 — Documentación y gate de la enmienda**. Depende de T12–T17.
   En `docs/architecture.md > Multi-empresa > Planes y límites`, una línea sobre el inicio del ciclo
   elegido y `plan_inicio_ciclo_en_curso` como única definición del ciclo en curso; mapa `R29–R42 → test`
   y el test nuevo de R8 en `progress/impl_SLT-58.md`.

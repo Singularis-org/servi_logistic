@@ -280,3 +280,102 @@ Las cuatro filas están en `requirements.md > Decisiones cerradas` y los textos 
 | R26 | `plan-de-la-empresa.test.ts` (nombre en `pg_proc`; `down.sql` con ROLLBACK) |
 | R27 | `git diff` de `package.json`/`pnpm-lock.yaml` contra el merge-base vacío (arriba) |
 | R28 | `e2e/planes-superadmin.spec.ts` |
+
+## Tanda D — enmienda del 2026-10-29 (T12–T18; R29–R42 y el 404 de R8)
+Las preguntas P6–P15 están cerradas en `requirements.md > Decisiones cerradas`. tasks.md y design §11 todavía dicen en dos sitios que P14 y P15 están abiertas: es texto antiguo y se siguió la tabla.
+
+### T12 — Migración `20261029150000_plan_ciclo_inicio_elegido` (backend_dev, dab08e3)
+- El `up` solo añade:
+  - la columna `organizacion.plan_ciclo_corto_desde_at` con su CHECK;
+  - la función `plan_inicio_ciclo_en_curso(corto_desde, ancla, ahora)`, IMMUTABLE y con EXECUTE revocado;
+  - un `CREATE OR REPLACE` de `plan_tope_ordenes`, `plan_cupo_ordenes` y `plan_de_la_empresa`. Esta última devuelve ahora `ciclo_corto_desde`.
+- El `down.sql` restaura los cuerpos de origen copiados literalmente y después borra la envoltura, el CHECK y la columna.
+- También cambia `db/schema.prisma`: el campo `planCicloCortoDesdeAt` y el comentario de `plan_asignado`.
+- `migrate deploy` aplica la migración. `migrate dev` falla por el P3006 de la shadow DB, que ya está documentado en el repo; no se reseteó nada.
+- Grep de `plan_inicio_ciclo(`: el único caller directo que quedaba era `PlanesRepository.usoDe`, y T14 lo pasó a la envoltura.
+- Tests:
+  - `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts` (R41): `pg_get_functiondef` coincide con el de origen tras el down, el uso es el mismo antes, durante y después, el CHECK se cumple y el UPDATE de `servi_app` da 42501.
+  - `plan-de-la-empresa.test.ts` (de SLT-58) compara ahora con la envoltura.
+- Salida: los 2 archivos dan 16/16. La suite de planes de SL-24 y SLT-58 da 24 archivos y 308 tests en verde, sin haber tocado los tests de SL-24.
+
+### T13 — Gemela TS del ciclo (backend_dev, 29e1b2d)
+- En `lib/planes/ciclo.ts`:
+  - funciones nuevas `inicioDelCicloEnCurso(ancla, cortoDesde, ahora)`, `rangoDelInicioDelCiclo(ahora)` y `anclaDeLaFechaElegida(fecha, ahora)`;
+  - corrección de `inicioDelSiguienteCiclo`: si `ahora` es anterior al ancla, devuelve el ancla. El caso de T2 que fijaba «ancla + 1 mes» se cambió a propósito, citando R40.
+- La tabla compartida está en `tests/integration/db/_fixtures/ciclo-corto.ts` (16 filas).
+- Tests: `ciclo-plan.test.ts` (R30 rango, R32 ancla, R35 tabla) y `tests/integration/db/plan-ciclo-corto.test.ts` (R34, y R35 con TS y la base dando el mismo «en curso» y el mismo «siguiente»).
+- Salida: 7 archivos y 244 tests en verde; los consumidores dan 4 archivos y 67 tests en verde.
+
+### T14 — Asignar con fecha y vista previa (backend_dev, 575739a)
+- Cambios en `lib/`:
+  - `lib/types/planes.ts`: `asignarPlanSchema` con `inicioCiclo`, más `previsualizarAsignacionSchema` y `VistaPreviaAsignacionResult`.
+  - `PlanesService`: `asignar` comprueba R30 antes de leer y R31 antes del repositorio; nuevo `previsualizarAsignacion`.
+  - `PlanesRepository`:
+    - `usoDe` pasa por la envoltura y acepta un ciclo candidato.
+    - En `asignar`, la carrera de R31 se resuelve bajo cerrojo. Con fecha, los topes ya pasados se avisan en vez de rechazar. Guarda `plan_ciclo_corto_desde_at`, y `valorNuevo` lleva la fecha.
+    - Nuevo `vistaPreviaAsignacion`.
+  - `MiPlanRepository`: lee `ciclo_corto_desde`.
+  - `mensajes.ts`: textos de §6.5 (`ordenesYaPasadas`, `rolYaPasado` y `apiKeysYaPasadas`, aprobados en P15).
+  - Acción nueva `previsualizarAsignacionPlanAction`, y el `motivo` de `excepciones-aislamiento.ts` ampliado.
+- R25, excepción escrita: en `tests/unit/services/planes-service.test.ts` solo se añadió el `vi.fn` de `vistaPreviaAsignacion` (+1 línea). `planes-asignacion.test.ts` de SL-24 sigue verde sin tocarlo: sin fecha, R12 todavía rechaza (P14).
+- Tests: `tests/unit/services/planes-service-inicio-ciclo.test.ts` (28 casos) y `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (11 casos).
+- Salida: la suite de planes da 30 archivos y 470 tests en verde. Las guardias `superficie-de-uso` y `sql-a-mano-por-empresa` están en verde.
+
+### T15 — Modal de primera asignación (frontend_dev, 6aa778f)
+- El modal añade el campo «Inicio del ciclo de órdenes», con hoy por defecto y el `min`/`max` que calcula el servidor.
+- La vista previa se lee al abrir y al cambiar la fecha, y se descartan las respuestas viejas. Hay un aviso por cada tope ya pasado.
+- La frase pasa a ser «El ciclo de órdenes empieza el {fecha}.».
+- El botón de confirmar está deshabilitado mientras la vista previa está en vuelo. Si la lectura falla (P11), solo quedan «Reintentar» y «Volver».
+- Si el servidor rechaza la fecha, el error sale junto al campo. «Cambiar plan» no lleva campo ni envía `inicioCiclo`.
+- En `lib/actions/planes.ts` se quitó el `@sin-superficie` de la acción de vista previa.
+- Decisiones de implementación que conviene revisar:
+  - un rechazo de la vista previa (`forbidden`, `not_found`, `archivado` o `custom`) se trata como lectura fallida y añade el texto del rechazo;
+  - con el campo vacío no se pide la vista previa: se muestra el texto del rango.
+- Salida: `PlanEmpresa` y `plataforma-empresa-detalle-page` dan 67/67, y la guardia `superficie-de-uso` 18/18.
+
+### T16 — «Se reinicia» durante el ciclo corto (frontend_dev, b8c8fbf)
+- No hubo que tocar código: `reinicioDelCiclo` ya usaba `inicioDelSiguienteCiclo`, que corrigió T13. Solo se añadieron tests:
+  - `consumo.test.ts`: con ancla el 5 de noviembre, a partir del 29 de octubre sale «7 días (2026-11-05)»; también los casos de 1 ms antes, el ancla exacta y el día siguiente.
+  - `MiPlanModule.test.tsx`: «Se reinicia en 7 días (2026-11-05)».
+- Salida: 5 archivos y 123 tests en verde.
+
+### T17 — R8: 404 HTTP real en `/mi-plan` (frontend_dev, 1be2d05)
+- Se borró `app/(app)/mi-plan/loading.tsx`, y con él su test y el texto `cargando`. Era el que hacía que el streaming enviara un 200 antes del `notFound()`. La autorización sigue en el servicio.
+- El hallazgo de diseño «loading de /mi-plan» queda revertido a propósito por R8; el skeleton de «Planes» se mantiene.
+- El E2E ahora exige `status() === 404` para el mensajero de A. Con `next dev` y con `next start` midió 404.
+- Salida:
+  - `planes-superadmin` con dev: 15 passed.
+  - `planes-superadmin` con start: 15 passed.
+  - Humo: 18 passed.
+  - vitest: 5 archivos y 71 tests en verde.
+
+### T18 — Documentación y E2E de la enmienda (backend_dev)
+- `docs/architecture.md`: el párrafo de SLT-58 ahora dice `plan_inicio_ciclo_en_curso` en lugar de `plan_inicio_ciclo`, y lleva un sub-bullet nuevo, «Inicio del ciclo elegido». Explica el rango ±1 mes, el ciclo corto con `plan_ciclo_corto_desde_at`, que la asignación sigue adelante y avisa cuando hay topes pasados, y que `plan_inicio_ciclo_en_curso` es la única definición del ciclo en curso, con `inicioDelCicloEnCurso` como gemela en TS.
+- `e2e/planes-superadmin.spec.ts` (+25/−4). En la primera asignación ahora comprueba que la fecha por defecto es hoy, que sale «El ciclo de órdenes empieza el {hoy}.», que el botón espera a la vista previa, que no aparecen avisos de tope y, en la base, que hay ancla y `plan_ciclo_corto_desde_at` queda NULL. Sigue exigiendo un 404 para el mensajero.
+- Salida sobre `logistic_slt58_e2e` recreada (`E2E_SERVIDOR=dev`):
+  - `planes-superadmin`, corrida 1: 15 passed.
+  - Corrida 2: 1 failed, 11 passed, 3 sin correr. El superadmin recibió un 404 en el primer GET a `/plataforma/empresas/<A>`, antes de llegar al modal, y el log no trae ningún error. No se pudo explicar.
+  - Corridas 3, 4 y 5, seguidas: 15 passed cada una.
+  - Ninguna corrida tuvo tests flaky ni saltados.
+  - Humo: 1 failed, 6 sin correr, 11 passed. Falló `/wallet` con un 500 por `Transaction API error: Unable to start a transaction in the given time` mientras la máquina estaba cargada (las corridas tardaban entre 3 y 4 veces lo normal). SLT-58 no toca esa pantalla. Con T17 (1be2d05) el humo había dado 18 passed.
+- Guardia `e2e-sin-saltos` 30/30. ESLint del spec sin problemas. Typecheck (`tsc --noEmit`) con exit 0, corrido por el implementer.
+- R27: `git diff --stat $(git merge-base HEAD origin/dev) -- package.json pnpm-lock.yaml` sale vacío.
+
+## Mapa R29–R42 y R8 → test (enmienda)
+| R | Test |
+|---|---|
+| R8 (404) | `e2e/planes-superadmin.spec.ts`: el mensajero de A recibe `status() === 404`. `tests/integration/mi-plan-page.test.tsx` |
+| R29 | `tests/unit/services/planes-service-inicio-ciclo.test.ts` (sin fecha, con hoy, otra fecha); `tests/components/PlanEmpresa.test.tsx` (hoy por defecto, la fecha se envía); `plataforma-empresa-detalle-page.test.tsx` (rango y action); E2E |
+| R30 | `planes-service-inicio-ciclo.test.ts` (bordes ±1 mes con reloj fijo y sin llamadas); `tests/unit/utils/ciclo-plan.test.ts` (rangoDelInicioDelCiclo, 31 de marzo y año bisiesto); `PlanEmpresa.test.tsx` (error junto al campo) |
+| R31 | `planes-service-inicio-ciclo.test.ts`; `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (carrera bajo cerrojo); `PlanEmpresa.test.tsx` («Cambiar plan» sin fecha) |
+| R32 | `planes-asignacion-inicio-ciclo.test.ts` (ancla hoy, pasada y futura); `ciclo-plan.test.ts` (anclaDeLaFechaElegida) |
+| R33 | `planes-asignacion-inicio-ciclo.test.ts` (cupo, «Mi plan», detalle y trigger cuentan lo mismo) |
+| R34 | `planes-asignacion-inicio-ciclo.test.ts`; `tests/integration/db/plan-ciclo-corto.test.ts`; CHECK en `migracion-ciclo-elegido-ida-y-vuelta.test.ts` |
+| R35 | `plan-ciclo-corto.test.ts` y `ciclo-plan.test.ts` sobre la tabla compartida `_fixtures/ciclo-corto.ts` (TS = base) |
+| R36 | `planes-asignacion-inicio-ciclo.test.ts` (aviso, bloqueo y desbloqueo de órdenes); `planes-service-inicio-ciclo.test.ts`; `PlanEmpresa.test.tsx` (avisos tras el ok) |
+| R37 | `planes-service-inicio-ciclo.test.ts` (forbidden por rol sin llamadas, vista previa); `planes-asignacion-inicio-ciclo.test.ts` (vista previa = asignación, no escribe); `PlanEmpresa.test.tsx` (avisos, releer, lectura fallida) |
+| R38 | `PlanEmpresa.test.tsx` (título y frase con la fecha); E2E |
+| R39 | `planes-asignacion-inicio-ciclo.test.ts` (`valor_nuevo` = fecha; NULL en un cambio posterior) |
+| R40 | `tests/unit/planes/consumo.test.ts` («7 días (2026-11-05)»); `tests/components/MiPlanModule.test.tsx`; `plan-de-la-empresa.test.ts` (`ciclo_corto_desde`) |
+| R41 | `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts` |
+| R42 | `planes-asignacion-inicio-ciclo.test.ts` (adminTienda y API keys: bloqueo y desbloqueo; sin fecha y con cambio a uno menor sigue rechazando); `planes-service-inicio-ciclo.test.ts` |
