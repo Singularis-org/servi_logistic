@@ -152,29 +152,7 @@
 
 ## Preguntas abiertas
 
-- Ruta y lugar en el menú de «Mi plan» (¿dentro de Configuración o propia?): lo propone spec_author y lo aprueba el humano con el spec.
-  **Propuesta (`design.md > §4.1`):** ruta propia `/mi-plan`, ítem de primer nivel «Mi plan» justo
-  después de «Histórico» y antes de «Empresas». No puede ir dentro de «Configuración»: ese ítem es
-  solo del `maestro`, y un subítem no puede ser más ancho que su padre (`puedeVer`), así que el
-  `admin` no lo vería.
-- **P2 — Historial en el detalle de la empresa.** El Alcance dice «con el historial (`plan_rastro`)»,
-  pero `plan_rastro` es por plan: no guarda la empresa. Las asignaciones de una empresa están en su
-  `historial_accion` (`plan_asignado`). **Propuesta:** el detalle del plan muestra su `plan_rastro`
-  (R16) y el detalle de la empresa, su historial de asignaciones (R21). ¿Vale así, o el detalle de la
-  empresa debe mostrar también el `plan_rastro` de su plan actual?
-- **P3 — Empresa sin plan.** **Propuesta:** «Mi plan» y el detalle de la empresa muestran solo
-  «sin límites», sin filas de consumo (R6, R19): sin ancla no hay ciclo de órdenes que contar.
-  ¿Vale, o se quiere ver al menos usuarios por rol y API keys aunque no haya plan?
-- **P4 — Alcance de R8 de SL-24.** SL-24 R8 dice que una empresa no lee planes «por cualquier vía».
-  Esta ficha deja que cada empresa lea SU plan por una sola función acotada a la empresa del contexto
-  (R9; las tablas siguen cerradas a `servi_app`). Lo entiendo como decidido por la fila «¿Qué muestra
-  "Mi plan"?»; se pide confirmarlo al aprobar el spec.
-- **P5 — «Empresa demo» del E2E.** La fila del E2E habla de «la empresa demo». El E2E de este repo no
-  usa la demo de QA (`scripts/demo-qa.ts`) sino las empresas A y B que crea su fixture.
-  **Propuesta:** la empresa A del fixture hace de «empresa demo» (R28).
-
-P6–P15 (enmienda del 2026-10-29) las respondió el humano el 2026-10-29: están en `## Decisiones
-cerradas`.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -209,5 +187,10 @@ cerradas`.
 | 2026-10-29 | P11 — Falla la vista previa del modal | No se puede confirmar: solo «Reintentar» y «Volver», con «No se pudo comprobar el consumo de la empresa». Aprobada. |
 | 2026-10-29 | P12 — Fecha elegida en el historial de asignaciones | No se muestra en la tabla del historial; se guarda en `valor_nuevo` de `plan_asignado`. Aprobada. |
 | 2026-10-29 | P13 — Textos nuevos del campo de fecha | Aprobados tal como están en `design.md §6.5`: «Inicio del ciclo de órdenes», «Elige una fecha entre el {min} y el {max}.», «La fecha de inicio solo se elige en la primera asignación.» y «No se pudo comprobar el consumo de la empresa». |
+| 2026-10-29 | P1 — Ruta y lugar de «Mi plan» en el menú | Ruta propia `/mi-plan`, ítem de primer nivel «Mi plan» después de «Histórico» y antes de «Empresas» (no dentro de «Configuración», que es solo del `maestro`). Aprobada la propuesta (`design.md §4.1`). |
+| 2026-10-29 | P2 — Historial en el detalle de la empresa | El detalle del plan muestra su `plan_rastro` (R16); el detalle de la empresa, su historial de asignaciones de `historial_accion` (R21). Aprobada la propuesta. |
+| 2026-10-29 | P3 — Empresa sin plan | «Mi plan» y el detalle de la empresa muestran solo «sin límites», sin filas de consumo (R6, R19). Aprobada la propuesta. |
+| 2026-10-29 | P4 — Alcance de SL-24 R8 | Cada empresa lee SU plan por la función `plan_de_la_empresa`, acotada a la empresa del contexto (R9); las tablas de planes siguen cerradas a `servi_app`. Es una excepción a SL-24 R8. Aprobada. |
+| 2026-10-29 | P5 — «Empresa demo» del E2E | La empresa A del fixture de dos empresas hace de empresa demo (R28). Aprobada la propuesta. |
 | 2026-10-29 | P14 — Primera asignación sin fecha | La excepción a SL-24 R12 solo vale para la primera asignación con fecha elegida. Sin fecha, SL-24 R12 sigue rechazando con `tope_excedido`. Aprobada la propuesta. |
 | 2026-10-29 | P15 — Textos de los avisos de rol y de API keys | Aprobados tal cual: `rolYaPasado` «La empresa ya tiene {usados} de {maximo} {rol}: no podrá activar ni crear más hasta bajar del tope.» y `apiKeysYaPasadas` «La empresa ya tiene {usados} de {maximo} API keys activas: no podrá crear ni activar más hasta bajar del tope.» (tabla de textos de `design.md §6.5`). |
