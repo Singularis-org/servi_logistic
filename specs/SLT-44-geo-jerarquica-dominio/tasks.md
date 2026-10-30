@@ -34,7 +34,7 @@
   Cada una es una función que recibe el cliente y devuelve los mismos tipos de fila. *Hecho:*
   typecheck verde; el cuerpo de cada función es idéntico al de `dev` salvo `this.prisma` →
   `cliente`, y se anota el commit de `dev` del que salió.
-- [ ] **T1.2** [P] Fixture `tests/integration/db/_fixtures/geo-44.ts` (design §10): dos empresas,
+- [x] **T1.2** [P] Fixture `tests/integration/db/_fixtures/geo-44.ts` (design §10): dos empresas,
   una de CR y otra de `XA`; zonas, una central; un distrito en dos zonas y otro sin zona; un cantón
   retirado con un distrito activo; un distrito retirado; marcas de una sola empresa; una tienda con
   tarifa; órdenes con y sin distrito. Se monta sobre `geo-43.ts` y sobre las fábricas de
@@ -42,24 +42,24 @@
 
 ## T2 — El dominio (depende de T0)
 
-- [ ] **T2.1** `_shared/geografia-activa.ts`: añadir `activoEnCascada(flags)` y hacer que
+- [x] **T2.1** `_shared/geografia-activa.ts`: añadir `activoEnCascada(flags)` y hacer que
   `estaDisponible` delegue en ella (design §2.3). *Hecho:* `tests/unit/repositories/geografia-activa.test.ts`
   y `geografia-predicado-unico.guardia.test.ts` verdes sin tocarlos.
-- [ ] **T2.2** `lib/services/geografia-dominio.ts` con los tipos y las funciones de design §2.1–§2.2,
+- [x] **T2.2** `lib/services/geografia-dominio.ts` con los tipos y las funciones de design §2.1–§2.2,
   y `tests/unit/services/geografia-dominio.test.ts` (R2–R8, filas de design §10). *Hecho:* verde
   sin `DATABASE_URL`. El caso «dos zonas en el nodo más cercano y una en el abuelo» da `null`. La
   tabla de 8 + 4 combinaciones coincide con `estaDisponible`.
-- [ ] **T2.3** [P] `tests/unit/guards/geografia-dominio-puro.guardia.test.ts` (R1) con contraprueba.
+- [x] **T2.3** [P] `tests/unit/guards/geografia-dominio-puro.guardia.test.ts` (R1) con contraprueba.
   *Hecho:* verde sobre el módulo real; rojo sobre un texto que importa `@prisma/client`.
-- [ ] **T2.4** [P] `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts` (R13) con
+- [x] **T2.4** [P] `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts` (R13) con
   contraprueba. *Hecho:* verde sobre `lib/` y `scripts/`; rojo sobre un texto con `with recursive`.
 
 ## T3 — Carga del catálogo (depende de T2.2)
 
-- [ ] **T3.1** `_shared/zona-especial.ts`: `leerNodosConMarcaDeLaEmpresa(tx)` y el tipo
+- [x] **T3.1** `_shared/zona-especial.ts`: `leerNodosConMarcaDeLaEmpresa(tx)` y el tipo
   `ClienteDeMarcas` (design §3). *Hecho:* `zona-especial-punto-unico.guardia.test.ts` verde sin
   tocarla, y ningún archivo nuevo nombra el modelo de marcas.
-- [ ] **T3.2** `lib/interfaces/repositories/ICatalogoGeograficoRepository.ts` y
+- [x] **T3.2** `lib/interfaces/repositories/ICatalogoGeograficoRepository.ts` y
   `lib/repositories/CatalogoGeograficoRepository.ts` con `deLaEmpresa()` y `dePais(paisId)`, el corte
   en plataforma, la transacción única y la memoria de la promesa por empresa (design §3 y §4).
   Test: `tests/integration/db/geo-catalogo-repository.test.ts` (R9, R10, R11). *Hecho:* verde.
