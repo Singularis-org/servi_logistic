@@ -1,37 +1,43 @@
 // @vitest-environment jsdom
-// Ficha 465 (T9) — montaje del bloque «Cobertura» en la página Tarifas. Cubre R1: el maestro ve
-// «Descargar cobertura»; cualquier otro rol (o sin sesión) solo ve el aviso de permiso.
-// El `page.tsx` (Server Component real) se ejercita sin mockear; se doblan el resolver de sesión,
-// las lecturas de pre-carga y el módulo de zonas (fuera de alcance de esta ficha).
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+// SLT-51 (T6) — la página Tarifas sin zonas. Sustituye a `TarifasPage.cobertura.test.tsx` (ficha
+// 465): el bloque «Cobertura» se mudó a `/configuracion/zonas` y su montaje lo prueba
+// `tests/unit/app/zonas/ZonasPage.test.tsx`.
+//
+// R12: Tarifas no muestra «Cobertura». R13: ni «Costos por zona» ni «Crear zona», y sigue
+// montando las tarifas por tienda con las zonas pre-cargadas. El `page.tsx` (Server Component
+// real) se ejercita sin mockear; se doblan la sesión, la pre-carga y `TiendasModule`.
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
 import type { RolValue } from "@prisma/client";
+
+import type { ZonaDTO } from "@/lib/types/zona";
 
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));
 
-const { resolveActorMock, listarCoberturaMock } = vi.hoisted(() => ({
-  resolveActorMock: vi.fn(),
-  listarCoberturaMock: vi.fn(),
-}));
+const { resolveActorMock, listarZonasMock, listarArbolMock, tiendasModuleMock } = vi.hoisted(
+  () => ({
+    resolveActorMock: vi.fn(),
+    listarZonasMock: vi.fn(),
+    listarArbolMock: vi.fn(),
+    tiendasModuleMock: vi.fn(),
+  }),
+);
 vi.mock("@/lib/auth/resolve-actor", () => ({
   resolveActorFromSession: () => resolveActorMock(),
 }));
-vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: vi.fn(async () => ({ status: "ok", provincias: [] })),
-}));
-vi.mock("@/lib/actions/vehiculos", () => ({
-  listarVehiculos: vi.fn(async () => ({ status: "ok", items: [] })),
-}));
 vi.mock("@/lib/actions/zonas", () => ({
-  listarZonas: vi.fn(async () => ({ status: "ok", items: [], total: 0 })),
+  listarZonas: (...a: unknown[]) => listarZonasMock(...a),
 }));
-vi.mock("@/lib/actions/cobertura", () => ({
-  listarCoberturaDistritos: (...a: unknown[]) => listarCoberturaMock(...a),
+vi.mock("@/lib/actions/geografia", () => ({
+  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
 }));
-vi.mock("@/app/(app)/configuracion/zonas/_components/ZonasModule", () => ({
-  ZonasModule: () => <div data-testid="zonas-tarifas-stub" />,
+vi.mock("@/app/(app)/configuracion/tarifas/_components/TiendasModule", () => ({
+  TiendasModule: (props: { zonas?: ZonaDTO[] }) => {
+    tiendasModuleMock(props);
+    return <div data-testid="tiendas-module-stub" />;
+  },
 }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
@@ -44,60 +50,77 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
+const ZONAS: ZonaDTO[] = [
+  { id: "z1", nombre: "Norte", cobroVehiculo: false, distritosCount: 2, esCentral: true },
+  { id: "z2", nombre: "Sur", cobroVehiculo: true, distritosCount: 1, esCentral: false },
+];
+
 async function importPage() {
   const mod = await import("@/app/(app)/configuracion/tarifas/page");
   return mod.default;
 }
 
+// La primera importación del árbol de la página tarda más que el timeout de un caso en frío.
+beforeAll(async () => {
+  await importPage();
+}, 120_000);
+
 beforeEach(() => {
   vi.clearAllMocks();
+  listarZonasMock.mockResolvedValue({ status: "ok", items: ZONAS, total: 2 });
 });
 
 afterEach(() => {
   cleanup();
 });
 
-describe("465/R1 — bloque «Cobertura» en Tarifas", () => {
-  it("el maestro ve «Descargar cobertura» con su línea de ayuda, antes de Costos por zona", async () => {
+describe("SLT-51 — Tarifas solo con las tarifas por tienda", () => {
+  it("R12/R13: sin «Cobertura», sin «Costos por zona» y sin «Crear zona»", async () => {
     resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
     const TarifasPage = await importPage();
     render(await TarifasPage());
 
-    const bloque = screen.getByRole("region", { name: "Cobertura" });
-    expect(
-      within(bloque).getByRole("button", { name: "Descargar cobertura Cobertura por distrito" }),
-    ).toHaveTextContent("Descargar cobertura");
-    expect(
-      within(bloque).getByText(
-        "Descarga un Excel con cada distrito, si llegamos a él y con qué zona.",
-      ),
-    ).toBeInTheDocument();
-
-    const zonas = screen.getByTestId("zonas-tarifas-stub");
-    expect(
-      bloque.compareDocumentPosition(zonas) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    // Montar la página no lee la cobertura: se lee al pulsar (R4).
-    expect(listarCoberturaMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Tarifas" })).toBeInTheDocument();
+    expect(screen.queryByText("Cobertura")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Descargar cobertura/ })).toBeNull();
+    expect(screen.queryByText(/Costos por zona/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Crear zona" })).toBeNull();
+    // Ya no carga el catálogo geográfico: solo lo usaba el formulario de zona.
+    expect(listarArbolMock).not.toHaveBeenCalled();
   });
 
-  it("otro rol no ve el control: solo el aviso de permiso", async () => {
-    const otros: RolValue[] = ["admin", "adminTienda", "adminSatelite", "mensajero"];
-    for (const rol of otros) {
-      resolveActorMock.mockResolvedValue({ usuarioId: "x", rol });
-      const TarifasPage = await importPage();
-      render(await TarifasPage());
-      expect(screen.queryByRole("button", { name: /Descargar cobertura/ })).toBeNull();
-      expect(screen.getByText(/No tienes permiso/i)).toBeInTheDocument();
-      cleanup();
-    }
-  });
-
-  it("sin sesión tampoco ve el control", async () => {
-    resolveActorMock.mockResolvedValue(null);
+  it("R13: monta TiendasModule con las zonas pre-cargadas", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
     const TarifasPage = await importPage();
     render(await TarifasPage());
-    expect(screen.queryByRole("button", { name: /Descargar cobertura/ })).toBeNull();
-    expect(screen.getByText(/No tienes permiso/i)).toBeInTheDocument();
+
+    expect(screen.getByTestId("tiendas-module-stub")).toBeInTheDocument();
+    expect(listarZonasMock).toHaveBeenCalledWith({ page: 1, pageSize: 100 });
+    expect(tiendasModuleMock).toHaveBeenCalledTimes(1);
+    expect(tiendasModuleMock.mock.calls[0][0]).toEqual({ zonas: ZONAS });
+  });
+
+  it("si las zonas no cargan, TiendasModule recibe una lista vacía", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
+    listarZonasMock.mockResolvedValue({ status: "forbidden" });
+    const TarifasPage = await importPage();
+    render(await TarifasPage());
+
+    expect(tiendasModuleMock.mock.calls[0][0]).toEqual({ zonas: [] });
+  });
+
+  it("otro rol o sin sesión: solo el aviso de permiso", async () => {
+    const otros: (RolValue | null)[] = ["admin", "adminTienda", "adminSatelite", "mensajero", null];
+    for (const rol of otros) {
+      resolveActorMock.mockResolvedValue(rol ? { usuarioId: "x", rol } : null);
+      const TarifasPage = await importPage();
+      render(await TarifasPage());
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No tienes permiso para acceder a esta sección.",
+      );
+      expect(screen.queryByTestId("tiendas-module-stub")).toBeNull();
+      cleanup();
+    }
+    expect(listarZonasMock).not.toHaveBeenCalled();
   });
 });
