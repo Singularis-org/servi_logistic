@@ -7,12 +7,12 @@ paralelo con las otras `[P]` de su bloque. Cada task cierra con
 
 ## Backend
 
-- [ ] **T1 — Esquemas opcionales** (R7, R8, R9). `lib/types/zona.ts`: `crearZonaSchema.cobroVehiculo`
+- [x] **T1 — Esquemas opcionales** (R7, R8, R9). `lib/types/zona.ts`: `crearZonaSchema.cobroVehiculo`
   con `.default(false)`; en `actualizarZonaSchema`, `cobroVehiculo` y `tarifas` `.optional()` sin
   default, con el `superRefine` de design §5 (los dos ausentes válidos; solo uno → issue en el que
   falta; los dos → `applyTarifaRules`). Casos nuevos en `tests/unit/types/zona-schema.test.ts`.
   *Hecho:* los casos de R8 en rojo antes del cambio y en verde después; los existentes, verdes.
-- [ ] **T2 — Servicio y repositorio no tocan lo ausente** (R6, R7, R9). Depende de T1.
+- [x] **T2 — Servicio y repositorio no tocan lo ausente** (R6, R7, R9). Depende de T1.
   `IZonaRepository.UpdateZonaData` con `cobroVehiculo?`/`tarifas?`; `ZonaService.prepararDatos`
   valida vehículos solo si hay `tarifas`; `ZonaRepository.update` salta `pagosPrevios`, el
   `deleteMany`/`createMany` de `tarifa_zona_mensajero` y la fila `zona_pago_mensajero_cambiado`
@@ -20,7 +20,7 @@ paralelo con las otras `[P]` de su bloque. Cada task cierra con
   `MSG_SIN_ZONA_CENTRAL` con el texto nuevo (R10). Ajustar `tests/unit/services/zona-service.test.ts`.
   *Hecho:* `zona-pago-mensajero-rastro.test.ts` y `zonas-action.test.ts` verdes sin cambiar sus
   aserciones de 380.
-- [ ] **T3 — Integración contra Postgres** (R5, R6, R7, R8). Depende de T2.
+- [x] **T3 — Integración contra Postgres** (R5, R6, R7, R8). Depende de T2.
   `tests/integration/db/zona-guardado-conserva-costos.test.ts`: (a) crear sin costos → 0 filas de
   pago, `cobro_vehiculo=false`, 0 filas `tarifas` de la zona, especiales iguales; (b) zona con pagos
   por vehículo + tarifa de zona + 2 distritos especiales, `actualizarZona` con
@@ -32,39 +32,39 @@ paralelo con las otras `[P]` de su bloque. Cada task cierra con
 
 ## Frontend
 
-- [ ] **T4 — Mudar archivos** (sin cambiar comportamiento). `git mv` de `ZonasTarifasModule.tsx`
+- [x] **T4 — Mudar archivos** (sin cambiar comportamiento). `git mv` de `ZonasTarifasModule.tsx`
   (→ `ZonasModule.tsx`), `CrearZonaForm.tsx`, `GeografiaSelector.tsx`,
   `DescargarCoberturaButton.tsx` y `cobertura-descarga-columnas.ts` a
   `app/(app)/configuracion/zonas/_components/`; arreglar imports en código y tests (lista en
   design §8). `ZonasModule` deja de montar `TiendasModule`.
   *Hecho:* typecheck y lint verdes; los tests movidos verdes con la ruta nueva.
-- [ ] **T5 — Página `/configuracion/zonas`** (R1, R2, R12, R16). Depende de T4.
+- [x] **T5 — Página `/configuracion/zonas`** (R1, R2, R12, R16). Depende de T4.
   `app/(app)/configuracion/zonas/page.tsx` (gate `maestro`, Cobertura + `ZonasModule`, pre-carga de
   árbol y zonas). `menu-visibility.ts` con el subítem «Zonas» entre Usuarios y Tarifas;
   `reparto.ts` con la ruta. Tests: `tests/unit/app/zonas/ZonasPage.test.tsx`,
   `menu-visibility.test.ts`, `Sidebar.test.tsx`.
   *Hecho:* tests verdes; `modulos-reparto.guardia` verde.
-- [ ] **T6 — Página Tarifas sin zonas** (R12, R13). Depende de T4. [P] con T5.
+- [x] **T6 — Página Tarifas sin zonas** (R12, R13). Depende de T4. [P] con T5.
   `tarifas/page.tsx` monta solo `TiendasModule` con las zonas; sin Cobertura ni árbol ni vehículos.
   `TarifasPage.cobertura.test.tsx` se sustituye por `tests/unit/app/tarifas/TarifasPage.test.tsx`.
   *Hecho:* test verde: sin «Cobertura», sin «Costos por zona», sin «Crear zona», `TiendasModule`
   recibe las zonas.
-- [ ] **T7 — Formulario sin costos** (R4, R5, R6). Depende de T1 y T4.
+- [x] **T7 — Formulario sin costos** (R4, R5, R6). Depende de T1 y T4.
   `CrearZonaForm` según design §4; `GeografiaSelector` con `permitirEspecial` (default `false`).
   Test nuevo `tests/components/ZonaFormSinCostos.test.tsx`; `ZonaDistritoEspecial.test.tsx`
   reescrito (sin botón «Especial» en Zonas; nunca llama a `actualizarDistritosEspeciales`);
   `TarifasClaridadMontos.test.tsx` sin los casos del formulario de zona.
   *Hecho:* tests verdes; el payload espiado no lleva `cobroVehiculo` ni `tarifas`.
-- [ ] **T8 — Rótulos «Zona de bodega principal» y listado** (R3, R10, R11, R14). Depende de T7.
+- [x] **T8 — Rótulos «Zona de bodega principal» y listado** (R3, R10, R11, R14). Depende de T7.
   Textos de design §4 en casilla, modal, borrado, vacío y listado (etiqueta, sin «cobro por
   vehículo»). Actualizar `ZonaCentralConfirmacion.test.tsx` y `ZonaBorradoMotivo.test.tsx`; nuevo
   `tests/components/ZonasModuleListado.test.tsx` (incluye: ningún texto visible contiene
   «central»).
   *Hecho:* tests verdes.
-- [ ] **T9 — Sin superficie anotada**. Depende de T7. `@sin-superficie` en
+- [x] **T9 — Sin superficie anotada**. Depende de T7. `@sin-superficie` en
   `actualizarDistritosEspeciales` y `CobroVehiculoTarifas` (design §5).
   *Hecho:* `pnpm run test:guardias` verde.
-- [ ] **T10 — Ayuda** [P]. `docs/ayuda/oficina/configuracion-zonas.md` nuevo y
+- [x] **T10 — Ayuda** [P]. `docs/ayuda/oficina/configuracion-zonas.md` nuevo y
   `configuracion-tarifas.md` corregido (design §7).
   *Hecho:* `ayuda-pantalla-ruta-existe.guardia` verde.
 

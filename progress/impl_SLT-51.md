@@ -171,3 +171,39 @@ Commits: `7a892526` (T4), `e8126ee7` (T7), `37362c43` (T5), `cc605a8f` (T6), `5e
 
 **Veredicto:** T4-T10 y T11 (parte nueva) hechos; tests propios verdes, rojos solo de baseline o
 del Prisma client compartido; E2E verde dos veces con `--no-deps`.
+
+## Cierre (implementer) — 2026-10-29
+
+- Merge de `origin/dev` (102 commits) sin conflictos antes de empezar; nada de lo que entró toca zonas,
+  tarifas, menú ni geografía. Base de la feature `servi_slt51` (local) recreada, migrada y sembrada.
+- R15: `tests/integration/asimetria-sin-tarifa.test.ts` contra `servi_slt51`: 1 file, 8 passed, 0 skipped.
+- Gate local: `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` → `== init OK ==`, **INIT_EXIT=0**
+  (typecheck pasó: el cliente Prisma compartido ya volvía a cuadrar con este schema al correrlo).
+- Aviso de entorno: `node_modules` es un junction compartido y otra feature (SLT-56) regeneró en un momento
+  el cliente Prisma con un enum que esta rama no tiene; eso dio 3 errores de typecheck ajenos durante el
+  trabajo y bloqueó `next build`. No se corrió `prisma generate` desde aquí.
+
+### Mapa R → test consolidado
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/auth/menu-visibility.test.ts`, `tests/components/Sidebar.test.tsx`, guardia `modulos-reparto` |
+| R2 | `tests/unit/app/zonas/ZonasPage.test.tsx` + `tests/integration/actions/zonas-action.test.ts` › «SLT-51/R2» |
+| R3 | `tests/components/ZonasModuleListado.test.tsx` + `e2e/zonas-crear-sin-costos.spec.ts` |
+| R4 | `tests/components/ZonaFormSinCostos.test.tsx`, `tests/components/ZonaDistritoEspecial.test.tsx` |
+| R5 | `ZonaFormSinCostos.test.tsx` + `tests/integration/db/zona-guardado-conserva-costos.test.ts` + E2E |
+| R6 / R7 | `tests/integration/db/zona-guardado-conserva-costos.test.ts` (3 mutaciones → rojo) |
+| R8 | `tests/unit/types/zona-schema.test.ts`, `zonas-action.test.ts`, `zona-guardado-conserva-costos.test.ts` |
+| R9 | `tests/integration/db/zona-pago-mensajero-rastro.test.ts` (aserciones 380 sin cambios), `zona-schema.test.ts` |
+| R10 | `ZonaCentralConfirmacion.test.tsx`, `ZonaBorradoMotivo.test.tsx`, `ZonasModuleListado.test.tsx` (sin «central») |
+| R11 | `tests/components/ZonaCentralConfirmacion.test.tsx` |
+| R12 | `ZonasPage.test.tsx` + `tests/unit/app/tarifas/TarifasPage.test.tsx` |
+| R13 | `tests/unit/app/tarifas/TarifasPage.test.tsx` |
+| R14 | `tests/components/ZonaBorradoMotivo.test.tsx` |
+| R15 | `tests/integration/asimetria-sin-tarifa.test.ts` (sin cambios, 8 passed) |
+| R16 | `ZonasPage.test.tsx` + `tests/unit/components/geografia-selector-inactivos.test.tsx` |
+
+### Pendiente
+- T11: `e2e/zona-especial-dos-empresas.spec.ts` sin tocar (P2 en `progress/features/SLT-51.md`).
+- T12: las capturas de `/configuracion/zonas` y `/configuracion/tarifas` NO se tomaron (`next build` caía
+  por el cliente Prisma compartido). Quedan para el reviewer o el leader.
