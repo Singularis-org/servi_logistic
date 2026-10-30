@@ -4,7 +4,8 @@
  * `arnes.config.json > tracker.tipo` es `trello`; con Jira, el leader trabaja con el MCP de
  * `atlassian` (`docs/jira.md`).
  *
- *   node scripts/trello.mjs importar                 F0: regenera `features` de feature_list.json
+ *   node scripts/trello.mjs importar                 F0: regenera `features` de feature_list.json y
+ *                                                    rotula `<KEY> · <titulo>` las tarjetas sin su key
  *   node scripts/trello.mjs tomar <key>              F1.0: relee, se asigna si esta libre, relee
  *   node scripts/trello.mjs soltar <key>             quita tu member de la tarjeta
  *   node scripts/trello.mjs mover <key> <estado>     mueve a la lista de ese estado del arnes
@@ -14,7 +15,7 @@
  *   node scripts/trello.mjs aprobacion <key>         quien movio la tarjeta a in_progress y cuando,
  *                                                    y la cita si la aprobacion fue escrita
  *   node scripts/trello.mjs editar <key> [--labels-mas "a|b"] [--labels-menos "a|b"]
- *                                 [--nombre <titulo>] [--desc <texto>]
+ *                                 [--nombre <titulo>] [--desc <texto>]   (el nombre lleva `<KEY> · `)
  *   node scripts/trello.mjs crear --nombre <titulo> --labels "a|b" [--key QC-n] [--depende QC-1,QC-2]
  *                                 [--estado pending] [--desc <texto>]
  *   node scripts/trello.mjs buscar <termino>         tarjetas abiertas y archivadas por nombre/desc
@@ -101,6 +102,20 @@ export function keyDeTarjeta(card, prefijo) {
   return `${prefijo}-${card.idShort}`;
 }
 
+/** Prefijo de key al inicio del nombre (`SLT-51 · `): el que puso el arnes o uno viejo/ajeno. */
+const PREFIJO_TITULO = /^\s*[A-Z][A-Z0-9]*-\d+\s*·\s*/;
+export const SEPARADOR_TITULO = ' · ';
+
+/** El nombre sin el prefijo de key: lo que va a `title`. */
+export function tituloSinClave(nombre) {
+  return String(nombre ?? '').replace(PREFIJO_TITULO, '').trim();
+}
+
+/** El nombre que debe tener la tarjeta en el board: `<KEY> · <titulo>` (`docs/trello.md > La key en el titulo`). */
+export function nombreConClave(key, nombre) {
+  return `${key}${SEPARADOR_TITULO}${tituloSinClave(nombre)}`;
+}
+
 /**
  * Indice key -> tarjetas. Una tarjeta con la key mal formada va a `malas` y no tumba las demas:
  * `tomar QT-7` no tiene por que fallar porque otra tarjeta tenga un `key:` roto. `duplicadas`
@@ -168,8 +183,8 @@ export function tarjetaAFicha(card, { prefijo, estados, listas }) {
   return {
     key,
     id: Number(key.split('-').pop()),
-    // El nombre de la tarjeta: lo que el humano reconoce (`docs/jira.md > Como se nombra una ficha`).
-    title: String(card.name ?? '').trim(),
+    // El nombre de la tarjeta sin el prefijo `<KEY> · ` (`docs/jira.md > Como se nombra una ficha`).
+    title: tituloSinClave(card.name),
     epic: epicMatch ? epicMatch[1] : null,
     epic_name: epicMatch ? epicMatch[2].trim() : null,
     name: slug,
@@ -459,6 +474,15 @@ export function crearCliente({
     if (duplicadas.length > 0) {
       throw new Error(`keys repetidas en el board: ${duplicadas.map((d) => `${d.key} (${d.cards.length} tarjetas)`).join(', ')}. Archiva las sobrantes.`);
     }
+    // Rotula `<KEY> · <titulo>` las que no lo lleven (docs/trello.md > La key en el titulo).
+    let rotuladas = 0;
+    for (const c of cards) {
+      const deseado = nombreConClave(keyDeTarjeta(c, t.prefijo), c.name);
+      if (c.name === deseado) continue;
+      await pedir('PUT', `/cards/${c.id}`, { cuerpo: { name: deseado } });
+      rotuladas++;
+    }
+    if (rotuladas > 0) log(`${rotuladas} tarjeta(s) rotuladas con su key en el titulo`);
     const nuevas = cards.map((c) => tarjetaAFicha(c, { prefijo: t.prefijo, estados: t.estados, listas: nombres }));
     const destino = path.join(raiz, 'feature_list.json');
     const anterior = existsSync(destino) ? JSON.parse(readFileSync(destino, 'utf8')) : {};
@@ -591,6 +615,7 @@ export function crearCliente({
     }
     const t = leerConfig();
     const card = await tarjetaPorKey(t, key);
+    if (campos.name !== undefined) campos.name = nombreConClave(keyDeTarjeta(card, t.prefijo), campos.name);
     const { quitar, poner } = planDeLabels(nombresDeLabels(card), mas, menos);
     for (const n of quitar) {
       const l = card.labels.find((x) => String(x?.name ?? '').trim() === n);
@@ -633,7 +658,9 @@ export function crearCliente({
       exigir(typeof cl?.id === 'string', 'el checklist no se creo');
       for (const d of deps) await pedir('POST', `/checklists/${cl.id}/checkItems`, { cuerpo: { name: d } });
     }
+    // El nombre con la key va despues del POST: el idShort no existe antes de crear la tarjeta.
     const key = pedida ?? `${t.prefijo}-${card.idShort}`;
+    await pedir('PUT', `/cards/${card.id}`, { cuerpo: { name: nombreConClave(key, nombre) } });
     log(`${key} creada en ${lista.name}`);
   }
 
