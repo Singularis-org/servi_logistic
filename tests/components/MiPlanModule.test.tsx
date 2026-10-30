@@ -94,6 +94,19 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
   });
 });
 
+// SLT-58 (design §11.3, R40): durante el ciclo corto la pantalla cuenta hasta la fecha elegida, no un
+// mes después. Sin texto nuevo del ciclo corto (P8): es la misma línea «Se reinicia».
+describe("SLT-58 R40 — «Se reinicia» durante el ciclo corto", () => {
+  it("asignada el 29 de octubre con ancla el 5 de noviembre: «Se reinicia en 7 días (2026-11-05)»", () => {
+    const anclaElegida = new Date("2026-11-05T06:00:00.000Z"); // 00:00 del 5 de noviembre (−06:00)
+    const asignadaEl29 = new Date("2026-10-29T18:00:00.000Z"); // mediodía del 29 de octubre (−06:00)
+    const p = planConConsumo(leido({ ancla: anclaElegida, cortoDesde: asignadaEl29 }), asignadaEl29);
+    render(<MiPlanModule plan={p} />);
+
+    expect(screen.getByText("Se reinicia en 7 días (2026-11-05)")).toBeInTheDocument();
+  });
+});
+
 describe("SLT-58 R6 — sin plan", () => {
   it("dice «Tu empresa no tiene plan asignado: sin límites» y no muestra precio, módulos, consumo ni ciclo", () => {
     const { container } = render(<MiPlanModule plan={null} />);

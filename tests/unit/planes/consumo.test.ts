@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { estadoDeLaFila, filasDeConsumo, formatearConteo, reinicioDelCiclo } from "@/lib/planes/consumo";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { SIN_LIMITE, textoDelPrecio } from "@/lib/planes/mensajes";
 import type { UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { TopesPlan } from "@/lib/types/planes";
@@ -158,6 +159,40 @@ describe("SLT-58 — reinicioDelCiclo (R5)", () => {
     expect(reinicioDelCiclo(anclaFinDeMes, new Date("2027-02-27T08:00:00.000Z"))).toEqual({
       dias: 1,
       fecha: "2027-02-28",
+    });
+  });
+});
+
+// SLT-58 (design §11.3, R40): asignada el 29 de octubre con el inicio del ciclo elegido el 5 de
+// noviembre, la empresa está en su ciclo corto hasta las 00:00 del 5 (hora de la plataforma). El
+// reinicio cuenta hasta esa fecha, no un mes después; desde el ancla vuelve al ciclo normal.
+describe("SLT-58 — reinicioDelCiclo durante el ciclo corto (R40, R5)", () => {
+  // 00:00 del 5 de noviembre en la hora de la plataforma (−06:00), como lo guarda la asignación.
+  const ancla = inicioDelDiaPlataforma("2026-11-05");
+  // Mediodía del 29 de octubre en la hora de la plataforma.
+  const asignadaEl29 = new Date("2026-10-29T18:00:00.000Z");
+
+  it("R40: el ancla es las 00:00 del 5 de noviembre en la hora de la plataforma", () => {
+    expect(ancla.toISOString()).toBe("2026-11-05T06:00:00.000Z");
+  });
+
+  it("R40: asignada el 29 de octubre con ancla el 5 de noviembre: «Se reinicia en 7 días (2026-11-05)»", () => {
+    expect(reinicioDelCiclo(ancla, asignadaEl29)).toEqual({ dias: 7, fecha: "2026-11-05" });
+  });
+
+  it("R40: un milisegundo antes del ancla todavía falta 1 día hasta el 5 de noviembre", () => {
+    expect(reinicioDelCiclo(ancla, new Date(ancla.getTime() - 1))).toEqual({ dias: 1, fecha: "2026-11-05" });
+  });
+
+  it("R40, R5: en el ancla exacta ya empezó el ciclo normal y cuenta hasta el 5 de diciembre", () => {
+    expect(reinicioDelCiclo(ancla, ancla)).toEqual({ dias: 30, fecha: "2026-12-05" });
+  });
+
+  it("R40, R5: el día siguiente al ancla vuelve al ciclo normal (reinicio el 5 de diciembre)", () => {
+    // Del 6 de noviembre 12:00 al 5 de diciembre 00:00 (hora de la plataforma): 28 días y 12 horas.
+    expect(reinicioDelCiclo(ancla, new Date("2026-11-06T18:00:00.000Z"))).toEqual({
+      dias: 29,
+      fecha: "2026-12-05",
     });
   });
 });

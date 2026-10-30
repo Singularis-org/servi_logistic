@@ -143,7 +143,7 @@
   pasa, relee al cambiar, lectura fallida → solo «Reintentar» y «Volver»; R38 título y frase;
   «Cambiar plan» no envía `inicioCiclo`; botón deshabilitado con la vista previa en vuelo o fallida) en
   verde.
-- [ ] **T16 [P] — «Se reinicia» durante el ciclo corto** (frontend_dev; design §11.3, R40). Depende de
+- [x] **T16 [P] — «Se reinicia» durante el ciclo corto** (frontend_dev; design §11.3, R40). Depende de
   T13. Puede ir en paralelo con T15.
   *Hecho:* casos nuevos de `tests/unit/planes/consumo.test.ts` (29 de octubre con ancla el 5 de
   noviembre: «en 7 días (2026-11-05)») y de `tests/components/MiPlanModule.test.tsx` en verde.
