@@ -16,6 +16,11 @@ import { LibroCajaAutoriaRepository } from "@/lib/repositories/LibroCajaAutoriaR
 import { condicionAQuienSql } from "@/lib/repositories/libro-caja-a-quien-sql";
 import { LibroCajaAutoriaService } from "@/lib/services/LibroCajaAutoriaService";
 import { ConciliacionCierresAnaliticaRepository } from "@/lib/repositories/ConciliacionCierresAnaliticaRepository";
+import { EstadoCuentaRepository } from "@/lib/repositories/EstadoCuentaRepository";
+import { OrigenLegibleRepository } from "@/lib/repositories/OrigenLegibleRepository";
+import { RechazoTiendaCobroAnulacionRepository } from "@/lib/repositories/RechazoTiendaCobroAnulacionRepository";
+import { EstadoCuentaService } from "@/lib/services/EstadoCuentaService";
+import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { LiquidacionRepartoRepository } from "@/lib/repositories/LiquidacionRepartoRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
@@ -36,6 +41,7 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-68 (design §3, §4, §5, §10) — el INCENTIVO MANUAL A UN MENSAJERO contra Postgres de verdad.
@@ -584,6 +590,66 @@ describeSiHayBase("SLT-68 — el incentivo manual a un mensajero, contra Postgre
       if (despues.status !== "ok") throw new Error("imposible");
       expect(despues.filas[0]!.anulacion?.motivo).toBe("Anulación del incentivo · Monto equivocado");
       expect(await documentos.estadoDeDocumentos([id])).toEqual([{ id, anulado: true, tieneComprobante: false }]);
+    });
+  }, 120_000);
+
+  // ── R16 — la fila del incentivo en el LIBRO DEL MENSAJERO ───────────────────────────────────
+
+  it("R16: en el libro del mensajero el incentivo es anulable (no «nace de un cierre») y, tras su `reverso_incentivo`, dice Anulado con el motivo y deja de ser anulable", async () => {
+    await conEscenario(async (e) => {
+      const id = await registrarOk(e);
+      // El MISMO servicio que arma `buildService()` de `lib/actions/estado-cuenta.ts`, sobre la base real.
+      const servicio = new EstadoCuentaService(
+        new EstadoCuentaRepository(app),
+        new RechazoTiendaCobroAnulacionRepository(app),
+        new OrigenLegibleService(new OrigenLegibleRepository(app)),
+        busquedaPorGuiaDe(app),
+      );
+      const leer = async () => {
+        const r = await servicio.leer(
+          { cuenta: { tipo: "mensajero", id: e.p.mensajero.usuarioId }, page: 1, pageSize: 50, sortBy: "fecha", sortDir: "asc" },
+          e.p.maestro,
+        );
+        expect(r.status, JSON.stringify(r)).toBe("ok");
+        if (r.status !== "ok") throw new Error("imposible");
+        // Por categoria: el orden por fecha del devengo frente al reverso no es lo que se mide aqui.
+        const filas = [...r.estado.filas].sort((a, b) => a.categoria.localeCompare(b.categoria));
+        return filas.map((f) => ({
+          movimientoId: f.ref !== null && "movimientoId" in f.ref ? f.ref.movimientoId : null,
+          categoria: f.categoria,
+          anulable: f.anulable,
+          naceDeUnCierre: f.naceDeUnCierre,
+          esContraAsiento: f.esContraAsiento,
+          motivo: f.anulacion?.motivo ?? null,
+        }));
+      };
+
+      expect(await leer()).toEqual([
+        { movimientoId: id, categoria: "incentivo", anulable: true, naceDeUnCierre: false, esContraAsiento: false, motivo: null },
+      ]);
+
+      expect(await anular(e, id)).toEqual({ status: "ok" });
+      const despues = await leer();
+      const reverso = despues.find((f) => f.categoria === "reverso_incentivo");
+      expect(reverso, "la anulacion no dejo `reverso_incentivo` en el libro").toBeDefined();
+      expect(despues).toEqual([
+        {
+          movimientoId: id,
+          categoria: "incentivo",
+          anulable: false,
+          naceDeUnCierre: false,
+          esContraAsiento: false,
+          motivo: "Anulación del incentivo · Monto equivocado",
+        },
+        {
+          movimientoId: reverso!.movimientoId,
+          categoria: "reverso_incentivo",
+          anulable: false,
+          naceDeUnCierre: false,
+          esContraAsiento: true,
+          motivo: null,
+        },
+      ]);
     });
   }, 120_000);
 });

@@ -235,3 +235,45 @@ servidor; el E2E la usa). Arreglarlo toca `lib/services/EstadoCuentaService.ts` 
 documento: decisión del leader (backend).
 
 Veredicto Tanda B: T10–T14 hechos; R18/R19/R22 con test y mutación; E2E 4/4 verde; gate local rojo solo por entorno/preexistentes clasificados.
+
+## Hueco R16 — anular el incentivo desde el libro del mensajero (2026-10-30, backend_dev)
+
+Hallazgo de la Tanda B cerrado siguiendo el molde del premio (293) en `EstadoCuentaService`.
+
+Archivos:
+- `lib/services/EstadoCuentaService.ts` — `DocumentoDeFila` gana `{ tipo: "incentivo"; id }`;
+  `documentoDeMensajero` reconoce `categoria = incentivo` (documento = la propia fila); `estadosDeDocumentos`
+  lee su estado por `repo.reversosDeIncentivo` (como `reversosDePremio`); `naceDeUnCierre` excluye el
+  incentivo en el libro del mensajero (cuelga de un cierre para ser pagable, pero no lo produjo la aprobación).
+- `lib/interfaces/repositories/IEstadoCuentaRepository.ts` + `lib/repositories/EstadoCuentaRepository.ts` —
+  `reversosDeIncentivo(mensajeroId, ids)`: `reverso_incentivo` con `origen_tipo = incentivo_mensajero`,
+  `origen_id IN ids` y `mensajero_id` en el `WHERE`.
+- Pantalla: sin cambios. `EstadoCuenta.tsx` ya pinta «Anular…» por `fila.anulable` y «Anulado» por
+  `fila.anulacion`; el clic llega a `WalletAnulacionService`, que ya enruta `incentivo` → `incentivo_mensajero`.
+- Tests: `tests/unit/services/estado-cuenta-incentivo-slt68.test.ts` (nuevo, 2 casos, dobles) y un caso PG
+  nuevo en `tests/integration/db/incentivo-mensajero-slt68.test.ts` › «R16: en el libro del mensajero…».
+
+Mapa: R16 (libro del mensajero) → unit `estado-cuenta-incentivo-slt68` (2 casos) + PG «R16: en el libro del
+mensajero el incentivo es anulable…».
+
+Evidencia:
+- Unit: `Tests 2 passed (2)`.
+- Mutación M-R16a (quitar `if (c === "incentivo") return { tipo: "incentivo", id: f.id }`): `2 failed (2)`;
+  restaurado, `git hash-object` igual (b1a3e090…), `2 passed`.
+- Mutación M-R16b (quitar `|| f.categoria === "incentivo"` de `naceDeUnCierre`): `2 failed (2)`; restaurado, hash OK.
+- **PG NO EJECUTADO (entorno).** El cliente Prisma compartido (`node_modules/.pnpm/@prisma+client…/.prisma/client`)
+  se regeneró a las 13:33 desde otro worktree y no tiene `incentivo`/`reverso_incentivo`/`incentivo_mensajero`:
+  TODO el archivo `incentivo-mensajero-slt68.test.ts` cae (14/15, también los casos previos) con
+  `PrismaClientValidationError` → `AppErrorCode inesperado INTERNAL`. Prohibido `prisma generate` en esta
+  tanda, y el clasificador denegó un generate aislado. Pendiente: regenerar el cliente con el schema de esta
+  rama y correr el caso PG + su mutación (M-R16a, mismo sed) antes del review.
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit`): `TSC_EXIT=2`, 31 errores, TODOS de enum
+  desconocido en el cliente rancio (12 archivos de la rama; 3 en mi `reversosDeIncentivo`, del mismo tipo:
+  `"reverso_incentivo"`/`"incentivo_mensajero"` no asignable). Ninguno en `EstadoCuentaService.ts` ni en el test unit.
+- Lint de los tocados: «No issues found».
+- `vitest related` de los 3 archivos de `lib/`: 212/229 archivos verdes, 2840/2975 tests; los 17 rojos son
+  integración: cliente rancio (`PrismaClientValidationError`) y «referencia a otra empresa» (entorno de
+  `servi_slt68`, ya clasificado arriba). Todos los unit/componentes verdes.
+
+Veredicto: arreglo hecho y probado en el servicio (unit + 2 mutaciones rojas); el caso PG está escrito pero sin
+ejecutar hasta que se regenere el cliente Prisma compartido.
