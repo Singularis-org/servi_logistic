@@ -1,0 +1,11 @@
+-- SLT-56 (design §1.2) — ajustar el pago al mensajero de una gestion al revisar su cierre queda en el
+-- historial de acciones, categoria «mueve dinero» (R18).
+--
+-- Tipo PROPIO y no `cierre_dia_pagos_editados`: aquel es el reparto del cobro entre metodos y su
+-- productor censado es otro metodo (la guardia del censo mide POR METODO). Entidad `gestion_orden`,
+-- que ya existe. `monto` = el pago nuevo; el antes/despues y el motivo viven en
+-- `gestion_pago_mensajero_ajuste` (20261029120000), porque esta tabla no admite texto libre (362/R5).
+--
+-- VA SOLA: Postgres prohibe USAR un valor de enum en la misma transaccion que lo añade (55P04).
+-- Nada aqui escribe filas; el primer uso ocurre en runtime.
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'cierre_dia_pago_mensajero_ajustado';
