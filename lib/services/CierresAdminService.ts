@@ -31,11 +31,13 @@ import type {
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
   ActualizarPagosGestionInput,
+  AjustarPagoMensajeroGestionInput,
   CorregirResultadoGestionInput,
 } from "@/lib/types/cierres-admin";
 import type { CierreEstado } from "@/lib/types/cierre";
 import type {
   ActualizarPagosGestionServiceResult,
+  AjustarPagoMensajeroGestionServiceResult,
   AprobarCierreServiceResult,
   CorregirResultadoGestionServiceResult,
   CierreAdminResumen,
@@ -59,6 +61,7 @@ import { esColaCierreDia } from "@/lib/utils/colas-cierre";
 import { startOfDayCR } from "@/lib/utils/fecha-cr";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 import { excesoIndemnizacion } from "@/lib/utils/tope-indemnizacion";
+import { validarAjustePago } from "@/lib/utils/ajuste-pago-mensajero";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
 import {
@@ -146,6 +149,11 @@ const MSG_CORRECCION_SOLO_ENTREGA =
   `Solo una entrega se puede corregir a ${NOMBRE_ESTADO.devolucion_a_origen_por_rechazo}: ` +
   "los demás resultados no cobran nada.";
 const MSG_MOTIVO_CORRECCION = "El motivo de la corrección es obligatorio.";
+
+// SLT-56 — mensajes del AJUSTE del pago al mensajero. Mismo criterio que los de la 398: dicen QUE
+// esta mal, sin nombrar al mensajero ni el importe.
+const MSG_MOTIVO_AJUSTE = "El motivo del ajuste es obligatorio.";
+const MSG_AJUSTE_SIN_CAMBIO = "El valor nuevo es igual al pago actual de la gestión.";
 
 // Feature 158 (R19/R20/R21) — mensajes accionables de la captura de indemnizaciones. Texto
 // fijo i18n-ready y SIN PII: nombran la gestion por su id (que el admin ya tiene en pantalla),
@@ -1591,6 +1599,74 @@ export class CierresAdminService implements ICierresAdminService {
       return { status: "ok", gestionId: input.gestionId, totales: res.totales };
     }
     if (res.status === "conflict") return { status: "conflict" }; // R12
+    return { status: "no_encontrada" };
+  }
+
+  /**
+   * SLT-56 (design §4.3) — AJUSTE del pago al mensajero de UNA gestión de un cierre ABIERTO.
+   *
+   * Guardias en este orden y TODAS antes de escribir:
+   *
+   *  1. **Alcance** (R1-R4). `resolveAlcance` y nada más. A diferencia de la 398 y de la corrección
+   *     del desglose NO hay guardia `esAccesoTotal`: el `adminSatelite` SÍ ajusta los cierres de su
+   *     bodega, sin pasar por la central (decisión cerrada 2026-10-29). Su límite es su zona.
+   *     `sinZona` es «aquí no hay nada tuyo», no «no puedes»: `no_encontrada` (R3).
+   *  2. **Gestión del alcance** (R3). El repositorio la busca con el alcance en el WHERE; ajena e
+   *     inexistente son el mismo desenlace para no revelar cierres de otra bodega.
+   *  3. **Estado** (R5). Cierre abierto. Se repite DENTRO de la transacción (el sello): aquí solo da
+   *     un `conflict` legible sin abrirla.
+   *  4. **Motivo** (R7). El borde ya lo validó; se re-exige recortado, como en la 398.
+   *  5. **Importes** (R8/R9). En `Prisma.Decimal` contra el pago que está EN LA BASE. El `pagoAnterior`
+   *     del cliente solo sirve para detectar que la pantalla estaba desfasada; el WHERE del sello lo
+   *     vuelve a exigir para cerrar la carrera entre esta lectura y la escritura.
+   *
+   * No hay restricción por resultado (R6): un rechazo o una devolución que hoy pagan 0 se ajustan
+   * igual que una entrega.
+   */
+  async ajustarPagoMensajeroGestion(
+    input: AjustarPagoMensajeroGestionInput,
+    actor: Actor,
+  ): Promise<AjustarPagoMensajeroGestionServiceResult> {
+    const scope = await this.resolveAlcance(actor);
+    if (scope.status === "forbidden") return { status: "forbidden" }; // guardia 1 (R4)
+    if (scope.status === "sinZona") return { status: "no_encontrada" }; // guardia 1 (R3)
+
+    const gestion = await this.repo.findGestionEditableEnCierre(input.gestionId, scope.alcance);
+    if (gestion === null) return { status: "no_encontrada" }; // guardia 2 (R3)
+
+    if (!ESTADOS_CIERRE_ABIERTO.includes(gestion.cierreEstado)) {
+      return { status: "conflict" }; // guardia 3 (R5)
+    }
+
+    const motivoLimpio = input.motivo.trim();
+    if (motivoLimpio.length === 0) {
+      return { status: "validation_error", fieldErrors: { motivo: [MSG_MOTIVO_AJUSTE] } }; // R7
+    }
+
+    const validacion = validarAjustePago(gestion.pagoMensajero, input.pagoAnterior, input.pagoNuevo);
+    if (validacion === "sin_cambio") {
+      return { status: "validation_error", fieldErrors: { pagoNuevo: [MSG_AJUSTE_SIN_CAMBIO] } }; // R8
+    }
+    if (validacion === "desfasado") return { status: "conflict" }; // R9
+
+    const res = await this.repo.ajustarPagoMensajeroEnCierre({
+      gestionId: input.gestionId,
+      alcance: scope.alcance,
+      pagoAnterior: input.pagoAnterior,
+      pagoNuevo: input.pagoNuevo,
+      motivo: motivoLimpio,
+      ajustadoPor: actor.usuarioId,
+    });
+    if (res.status === "updated") {
+      return {
+        status: "ok",
+        gestionId: input.gestionId,
+        pagoMensajero: res.pagoMensajero,
+        totalPagoMensajero: res.totalPagoMensajero,
+        ajuste: res.ajuste,
+      };
+    }
+    if (res.status === "conflict") return { status: "conflict" }; // R5/R9 entre lectura y escritura
     return { status: "no_encontrada" };
   }
 

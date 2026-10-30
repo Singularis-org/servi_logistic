@@ -20,6 +20,7 @@ import type {
   RechazarCierreServiceResult,
   ForzarSolicitudVencidoServiceResult,
   ActualizarPagosGestionServiceResult,
+  AjustarPagoMensajeroGestionServiceResult,
   CorregirResultadoGestionServiceResult,
 } from "@/lib/interfaces/services/ICierresAdminService";
 
@@ -408,6 +409,15 @@ export type ActualizarPagosGestionResult =
  */
 export type CorregirResultadoGestionResult =
   | CorregirResultadoGestionServiceResult
+  | { status: "unauthenticated" };
+
+/**
+ * SLT-56 (design §4.2): resultado de la Server Action del ajuste del pago al mensajero. El
+ * `validation_error` de zod cabe en el del dominio: un `Record<string, string[]>` se lee con las
+ * mismas claves `pagoNuevo`/`motivo` que pinta el diálogo.
+ */
+export type AjustarPagoMensajeroGestionResult =
+  | AjustarPagoMensajeroGestionServiceResult
   | { status: "unauthenticated" };
 
 // Feature 111/R16: resultado de la Server Action de la valvula de escape (dominio del service

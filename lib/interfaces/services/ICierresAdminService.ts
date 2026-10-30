@@ -8,6 +8,7 @@ import type {
 import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
 import type {
   ActualizarPagosGestionInput,
+  AjustarPagoMensajeroGestionInput,
   CorregirResultadoGestionInput,
 } from "@/lib/types/cierres-admin";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
@@ -798,6 +799,15 @@ export interface ICierresAdminService {
     input: CorregirResultadoGestionInput,
     actor: Actor,
   ): Promise<CorregirResultadoGestionServiceResult>;
+  /**
+   * SLT-56 — ajusta el pago al mensajero de UNA gestión de un cierre ABIERTO del alcance del actor
+   * (maestro/admin: central; adminSatelite: su satélite, sin aprobación de la central). Motivo
+   * obligatorio; el rastro y el total del cierre se escriben en la misma transacción.
+   */
+  ajustarPagoMensajeroGestion(
+    input: AjustarPagoMensajeroGestionInput,
+    actor: Actor,
+  ): Promise<AjustarPagoMensajeroGestionServiceResult>;
   aprobarCierre(
     cierreId: string,
     actor: Actor,
