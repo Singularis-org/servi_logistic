@@ -56,6 +56,35 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* SLT-58 (design §6.5, §11.4) — primera asignación con fecha de inicio        */
+/* -------------------------------------------------------------------------- */
+// Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de
+// `lib/planes/consumo.ts`, «3.200»): este módulo no formatea números (importar `consumo.ts`, que ya lo importa a él, haría un ciclo).
+
+/** Aviso de R36/R37: `fecha` es el día en que empieza el siguiente ciclo (P10), `AAAA-MM-DD`. */
+export function ordenesYaPasadas(usados: string, maximo: string, fecha: string): string {
+  return `La empresa ya lleva ${usados} de ${maximo} órdenes en este ciclo: no podrá crear más hasta ${fecha}.`;
+}
+
+/** Aviso de R37/R42 para un rol con tope; `{rol}` es su etiqueta de `ROL_LABELS`. */
+export function rolYaPasado(usados: string, maximo: string, rol: RolConTope): string {
+  return `La empresa ya tiene ${usados} de ${maximo} ${ROL_LABELS[rol]}: no podrá activar ni crear más hasta bajar del tope.`;
+}
+
+/** Aviso de R37/R42 para las API keys. */
+export function apiKeysYaPasadas(usados: string, maximo: string): string {
+  return `La empresa ya tiene ${usados} de ${maximo} API keys activas: no podrá crear ni activar más hasta bajar del tope.`;
+}
+
+/** Error del campo `inicioCiclo` fuera del rango permitido (R30). `min`/`max` en `AAAA-MM-DD`. */
+export function rangoInicioCiclo(min: string, max: string): string {
+  return `Elige una fecha entre el ${min} y el ${max}.`;
+}
+
+/** Error del campo `inicioCiclo` cuando la empresa ya tiene plan (R31). */
+export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la primera asignación.";
+
+/* -------------------------------------------------------------------------- */
 /* Correos del cambio de plan (T12; design §16.4; R41, R42, R45)               */
 /* -------------------------------------------------------------------------- */
 // Los usa `lib/services/email/plantillas/cambio-plan.ts`. Las fechas llegan YA pintadas: este módulo

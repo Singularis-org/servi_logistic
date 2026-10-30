@@ -75,6 +75,7 @@ function doble() {
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
+    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
 

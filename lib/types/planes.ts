@@ -124,7 +124,16 @@ export const versionPlanSchema = editarPlanSchema.omit({ planId: true, vigenteDe
 export const planIdSchema = z.object({ planId: z.uuid() }).strict();
 export const archivarPlanSchema = planIdSchema;
 export const cancelarCambioPlanSchema = planIdSchema;
-export const asignarPlanSchema = z.object({ organizacionId: z.uuid(), planId: z.uuid() }).strict();
+// SLT-58 (design §11.4; R29): `inicioCiclo` es la fecha de inicio del ciclo de órdenes que elige el
+// superadmin en la primera asignación. Ausente = SL-24 tal cual (el ancla es el instante de asignar).
+// El rango (R30) y «solo en la primera asignación» (R31) los mira el servicio, que tiene el reloj.
+export const asignarPlanSchema = z
+  .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema.optional() })
+  .strict();
+/** SLT-58 (R37): la vista previa del modal de primera asignación; la fecha es obligatoria. */
+export const previsualizarAsignacionSchema = z
+  .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema })
+  .strict();
 export const asignablesSchema = z.object({ organizacionId: z.uuid() }).strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
@@ -132,6 +141,7 @@ export type EditarPlanInput = z.infer<typeof editarPlanSchema>;
 export type ArchivarPlanInput = z.infer<typeof archivarPlanSchema>;
 export type CancelarCambioPlanInput = z.infer<typeof cancelarCambioPlanSchema>;
 export type AsignarPlanInput = z.infer<typeof asignarPlanSchema>;
+export type PrevisualizarAsignacionInput = z.infer<typeof previsualizarAsignacionSchema>;
 export type AsignablesInput = z.infer<typeof asignablesSchema>;
 
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
@@ -162,7 +172,8 @@ export type PlanResult =
       estado: "ok";
       planId: string;
       cambio: boolean;
-      // R16: empresas que ya pasan algún tope de la versión guardada; [] fuera de editar.
+      // R16: empresas que ya pasan algún tope de la versión guardada. SLT-58 (R36, R42): también los
+      // topes que la empresa ya pasa en la primera asignación con fecha. [] en todo lo demás.
       avisos: TopeExcedido[];
       vigenteDesde: string | null;
     }
@@ -250,3 +261,18 @@ export type PlanDeEmpresaResult =
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };
+
+/**
+ * SLT-58 (design §11.4; R37, R42) — qué topes del plan pasaría la empresa si se le asigna con esa
+ * fecha: órdenes del ciclo que resulta de la fecha, usuarios de cada rol con tope y API keys. La misma
+ * definición de uso que la asignación, así que estos avisos son los que devolverá `asignar`. Sin tope
+ * pasado, `avisos: []`. `siguienteCiclo` (`AAAA-MM-DD`, hora de la plataforma) es el día en que
+ * empieza el siguiente ciclo: el `{fecha}` del aviso de órdenes (P10).
+ */
+export type VistaPreviaAsignacionResult =
+  | { estado: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" }
+  | { estado: "archivado" }
+  | { estado: "custom_de_otra_empresa" };

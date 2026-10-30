@@ -16,6 +16,8 @@ export interface PlanDeLaEmpresaLeido {
   vigente: VersionPlan;
   /** El ancla del ciclo de órdenes; con plan nunca es nula (CHECK de SL-24). */
   ancla: Date;
+  /** SLT-58 (§11.4, R34): el inicio del ciclo corto, `null` fuera de él. Opcional como en `PlanConUsoLeido`. */
+  cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioProgramadoLeido | null;
 }

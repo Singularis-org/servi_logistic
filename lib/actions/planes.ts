@@ -6,7 +6,7 @@ import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { ListarPlanesAsignablesResult, PlanResult } from "@/lib/types/planes";
+import type { ListarPlanesAsignablesResult, PlanResult, VistaPreviaAsignacionResult } from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el borde de la gestión de planes del superadmin. El actor sale de la
 // sesión y la autorización la decide el servicio (R5), antes de tocar la base. Es de plataforma, así
@@ -52,10 +52,25 @@ export async function archivarPlanAction(input: unknown, deps: PlanesDeps = {}):
 }
 
 /**
- * Asigna o cambia el plan de una empresa (R9–R13).
+ * Asigna o cambia el plan de una empresa (R9–R13). SLT-58: `inicioCiclo` (`AAAA-MM-DD`) opcional, solo
+ * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42).
  */
 export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.asignar(actor, input));
+}
+
+/**
+ * SLT-58 (design §11.4; R37): la vista previa del modal de primera asignación. Es una action de lectura
+ * porque la fecha la elige el superadmin después de que la página se pintó (§9, alternativa 5).
+ *
+ * @sin-superficie la usa T15 de SLT-58 (modal de primera asignación de `PlanEmpresa`, misma feature y
+ * misma rama): el backend (T14) va antes que la pantalla. T15 quita esta anotación al conectarla.
+ */
+export async function previsualizarAsignacionPlanAction(
+  input: unknown,
+  deps: PlanesDeps = {},
+): Promise<VistaPreviaAsignacionResult> {
+  return conServicio(deps, (s, actor) => s.previsualizarAsignacion(actor, input));
 }
 
 /**

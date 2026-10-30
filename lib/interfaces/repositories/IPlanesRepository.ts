@@ -23,12 +23,35 @@ export type ResultadoEdicion =
 
 export type ResultadoArchivar = { estado: "ok"; cambio: boolean } | { estado: "not_found" };
 
+/**
+ * SLT-58 (design §11.4; R29, R32, R39) — la fecha de inicio del ciclo elegida en la primera
+ * asignación: `fecha` (`AAAA-MM-DD`) va al historial y `ancla` es la de R32 (`"ahora"` = el instante
+ * de la asignación con el reloj de la base; si no, las 00:00 de la plataforma de esa fecha).
+ */
+export interface InicioDelCicloElegido {
+  fecha: string;
+  ancla: Date | "ahora";
+}
+
 export type ResultadoAsignar =
-  | { estado: "ok"; cambio: boolean }
+  /**
+   * `avisos`: solo en la primera asignación con fecha (R36, R42), los topes que la empresa ya pasa y
+   * que no rechazaron. Sin fecha o en un cambio de plan no viene (SL-24 tal cual).
+   */
+  | { estado: "ok"; cambio: boolean; avisos?: TopeExcedido[] }
   | { estado: "not_found" }
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
-  | { estado: "tope_excedido"; excedidos: TopeExcedido[] };
+  | { estado: "tope_excedido"; excedidos: TopeExcedido[] }
+  /** R31 (carrera): con fecha, la empresa ya tenía plan bajo el cerrojo. Nada se escribió. */
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> };
+
+/** SLT-58 (R37): lo que la asignación con esa fecha avisaría, sin escribir nada. */
+export interface VistaPreviaLeida {
+  avisos: TopeExcedido[];
+  /** El instante en que empieza el siguiente ciclo con el ancla candidata (P10). */
+  siguienteCiclo: Date;
+}
 
 export type ResultadoCancelarCambio =
   | { estado: "ok" }
@@ -150,8 +173,27 @@ export interface IPlanesRepository {
   editar(planId: string, version: VersionPlan, actorUsuarioId: string): Promise<ResultadoEdicion>;
   /** Archiva y cancela el cambio pendiente en la misma transacción (R6, R40). Repetido no escribe. */
   archivar(planId: string, actorUsuarioId: string): Promise<ResultadoArchivar>;
-  /** Asigna o cambia el plan de una empresa y sincroniza sus módulos (§5.2; R9–R13). */
-  asignar(organizacionId: string, planId: string, actorUsuarioId: string): Promise<ResultadoAsignar>;
+  /**
+   * Asigna o cambia el plan de una empresa y sincroniza sus módulos (§5.2; R9–R13). SLT-58 (§11.4):
+   * con `inicio`, solo vale para una empresa sin plan (R31, bajo el cerrojo); el ancla es la elegida
+   * (R32–R34), los topes ya pasados se avisan en vez de rechazar (R36, R42) y la fecha queda en el
+   * historial (R39). Sin `inicio`, exactamente SL-24.
+   */
+  asignar(
+    organizacionId: string,
+    planId: string,
+    actorUsuarioId: string,
+    inicio?: InicioDelCicloElegido,
+  ): Promise<ResultadoAsignar>;
+  /**
+   * SLT-58 (§11.4; R37): los topes del plan que la empresa pasaría con esa fecha, con el mismo uso que
+   * `asignar`, y el siguiente inicio de ciclo. Solo lee. `null` si la empresa o el plan no existen.
+   */
+  vistaPreviaAsignacion(
+    organizacionId: string,
+    planId: string,
+    inicio: InicioDelCicloElegido,
+  ): Promise<VistaPreviaLeida | null>;
   /** Borra el cambio pendiente y deja su fila `cambio_cancelado` (R39, R43). */
   cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio>;
   /**

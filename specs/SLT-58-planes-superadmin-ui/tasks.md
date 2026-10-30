@@ -115,7 +115,7 @@
   *Hecho:* casos nuevos de `tests/unit/utils/ciclo-plan.test.ts` (R30 rango con el 31 de marzo; R35 con
   la tabla) y `tests/integration/db/plan-ciclo-corto.test.ts` (R34, R35: mismo «en curso»; la base cambia
   de ciclo justo en el «siguiente» de TS) en verde; los casos de SLT-58 T2 siguen verdes.
-- [ ] **T14 — Asignar con fecha y vista previa** (backend_dev; design §11.4). Depende de T12 y T13.
+- [x] **T14 — Asignar con fecha y vista previa** (backend_dev; design §11.4). Depende de T12 y T13.
   `asignarPlanSchema` con `inicioCiclo` opcional, `previsualizarAsignacionSchema` y
   `VistaPreviaAsignacionResult` en `lib/types/planes.ts`; `PlanesService.asignar` (R30, R31 antes del
   repositorio) y `previsualizarAsignacion`; `PlanesRepository.asignar` (carrera R31, `usoDe` con ciclo

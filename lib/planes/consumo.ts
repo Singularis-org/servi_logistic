@@ -68,6 +68,12 @@ export interface PlanConUsoLeido {
   vigente: VersionPlan;
   /** El ancla del ciclo de órdenes. */
   ancla: Date;
+  /**
+   * SLT-58 (§11.3, R34): el inicio del ciclo corto (`plan_ciclo_corto_desde_at`), `null` fuera de él.
+   * Opcional: el reinicio ya sale bien del ancla sola (`inicioDelSiguienteCiclo`), así que el armado de
+   * la pantalla no lo usa; lo llevan las lecturas para no perder el dato.
+   */
+  cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioDelPlanLeido | null;
 }

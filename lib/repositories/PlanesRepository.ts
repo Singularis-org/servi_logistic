@@ -1,4 +1,4 @@
-import type { ModuloApagable, Prisma, PrismaClient, RolValue } from "@prisma/client";
+import { Prisma, type ModuloApagable, type PrismaClient, type RolValue } from "@prisma/client";
 
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAccionRepository";
@@ -8,6 +8,7 @@ import type {
   DestinatariosDelAviso,
   DetallePlanLeido,
   EmpresaDePlanes,
+  InicioDelCicloElegido,
   IPlanesRepository,
   PlanDeEmpresaLeida,
   PlanDelCatalogoLeido,
@@ -18,8 +19,11 @@ import type {
   ResultadoEdicion,
   ResultadoProgramar,
   ResultadoRecordatorio,
+  VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
+import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
+import { SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
@@ -54,7 +58,8 @@ import {
 // enciende o apaga (R29). Si el rastro falla, nada persiste.
 //
 // SLT-58 (design §3.2) suma tres lecturas para las pantallas del superadmin (catálogo, detalle de un
-// plan, plan de una empresa), también en `comoPlataforma` y sin escribir nada.
+// plan, plan de una empresa), también en `comoPlataforma` y sin escribir nada. Su enmienda (§11) suma
+// la fecha de inicio del ciclo en la primera asignación y su vista previa, de solo lectura.
 
 export type PlanesPrismaClient = Pick<
   PrismaClient,
@@ -157,13 +162,46 @@ const COLUMNA_DEL_ROL: Record<RolConTope, keyof FilaUso> = {
 };
 
 /**
+ * SLT-58 (§11.4, paso 2): el ciclo que tendría la empresa con la fecha elegida, para contar sus
+ * órdenes antes de escribirlo. `ancla: null` = `now()` de la base (la fecha es «hoy», P9).
+ */
+interface CicloCandidato {
+  /** `TIMESTAMP` sin zona como texto (`AAAA-MM-DD HH:MM:SS.mmm`, números UTC), o `null` = ahora. */
+  ancla: string | null;
+}
+
+/** Un `Date` UTC como literal de `TIMESTAMP` sin zona: la zona de la sesión no lo mueve. */
+function comoTimestamp(instante: Date): string {
+  return instante.toISOString().replace("T", " ").replace("Z", "");
+}
+
+function cicloCandidato(inicio: InicioDelCicloElegido): CicloCandidato {
+  return { ancla: inicio.ancla === "ahora" ? null : comoTimestamp(inicio.ancla) };
+}
+
+/**
  * El uso de una empresa, con las mismas funciones que cuentan los triggers (una sola definición de
  * «uso», §4.2). Sin ancla (empresa sin plan) el ciclo empieza ahora: asignar el primer plan no
  * cuenta órdenes previas (§5.2, paso 3). `'Admin Tienda'` es la etiqueta de Postgres de `adminTienda`.
+ *
+ * SLT-58 (§11.2, §11.4): el ciclo sale de `plan_inicio_ciclo_en_curso`, la misma envoltura que los
+ * triggers, el cupo y «Mi plan». Con un `candidato` (primera asignación con fecha) se cuenta con el
+ * ciclo que dejaría la asignación: ancla futura → ciclo corto desde ahora (R34); ancla pasada → el
+ * ciclo de SL-24 R20 desde ella (R33).
  */
-async function usoDe(tx: Tx, organizacionId: string): Promise<FilaUso> {
+async function usoDe(tx: Tx, organizacionId: string, candidato?: CicloCandidato): Promise<FilaUso> {
+  const ahora = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+  let inicio: Prisma.Sql;
+  if (candidato === undefined) {
+    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", COALESCE(o."plan_ciclo_ancla_at", ${ahora}), ${ahora})`;
+  } else if (candidato.ancla === null) {
+    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(NULL, ${ahora}, ${ahora})`;
+  } else {
+    const ancla = Prisma.sql`${candidato.ancla}::timestamp`;
+    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(CASE WHEN ${ancla} > ${ahora} THEN ${ahora} END, ${ancla}, ${ahora})`;
+  }
   const [fila] = await tx.$queryRaw<FilaUso[]>`
-    SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo(COALESCE(o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC'), now() AT TIME ZONE 'UTC')) AS "ordenes",
+    SELECT plan_uso_ordenes(o."id", ${inicio}) AS "ordenes",
            plan_uso_api_keys(o."id") AS "api_keys",
            plan_uso_rol(o."id", 'maestro'::rol_value) AS "maestro",
            plan_uso_rol(o."id", 'admin'::rol_value) AS "admin",
@@ -180,10 +218,11 @@ async function excedidosDe(
   tx: Tx,
   empresas: readonly { id: string; nombre: string }[],
   topes: TopesPlan,
+  candidato?: CicloCandidato,
 ): Promise<TopeExcedido[]> {
   const excedidos: TopeExcedido[] = [];
   for (const empresa of empresas) {
-    const uso = await usoDe(tx, empresa.id);
+    const uso = await usoDe(tx, empresa.id, candidato);
     const pasa = (tope: TopeExcedido["tope"], usados: number, maximo: number | null | undefined) => {
       if (maximo !== null && maximo !== undefined && usados > maximo) {
         excedidos.push({ organizacionId: empresa.id, empresa: empresa.nombre, tope, usados, maximo });
@@ -573,7 +612,12 @@ export class PlanesRepository implements IPlanesRepository {
     );
   }
 
-  async asignar(organizacionId: string, planId: string, actorUsuarioId: string): Promise<ResultadoAsignar> {
+  async asignar(
+    organizacionId: string,
+    planId: string,
+    actorUsuarioId: string,
+    inicio?: InicioDelCicloElegido,
+  ): Promise<ResultadoAsignar> {
     return comoPlataforma("SL-24", "asignar un plan a una empresa (superadmin)", () =>
       this.prisma.$transaction(async (tx): Promise<ResultadoAsignar> => {
         const [empresa] = await tx.$queryRaw<{ id: string; nombre: string; plan_id: string | null }[]>`
@@ -585,17 +629,39 @@ export class PlanesRepository implements IPlanesRepository {
         if (plan.visibilidad === "custom" && plan.organizacionId !== organizacionId) {
           return { estado: "custom_de_otra_empresa" };
         }
+        // SLT-58 R31 (carrera): la fecha solo vale en la primera asignación. El servicio ya lo miró,
+        // pero otra petición pudo asignar un plan entre su lectura y este cerrojo.
+        if (inicio !== undefined && empresa.plan_id !== null) {
+          return { estado: "validation_error", fieldErrors: { inicioCiclo: [SOLO_PRIMERA_ASIGNACION] } };
+        }
         // R13: el mismo plan no cambia nada ni registra nada.
         if (empresa.plan_id === planId) return { estado: "ok", cambio: false };
 
-        // R12: bajar a un plan que la empresa ya pasa se rechaza sin escribir nada.
-        const excedidos = await excedidosDe(tx, [empresa], plan.topes);
-        if (excedidos.length > 0) return { estado: "tope_excedido", excedidos };
+        // R12: bajar a un plan que la empresa ya pasa se rechaza sin escribir nada. SLT-58 (R36, R42;
+        // P7 y P14 cerradas): en la primera asignación CON fecha, el uso se cuenta con el ciclo que
+        // resulta de la fecha y ningún tope pasado rechaza: se asigna y se avisa. Los triggers ya
+        // bloquean desde aquí las altas que pasen el tope (SL-24 R16).
+        const excedidos = await excedidosDe(
+          tx,
+          [empresa],
+          plan.topes,
+          inicio === undefined ? undefined : cicloCandidato(inicio),
+        );
+        if (inicio === undefined && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
 
         // P2a: el ancla del primer plan se conserva; sin plan, nace ahora, en la escala de
         // `orden.created_at` y de los triggers (`now()` de la base, no el reloj de Node), en UTC
         // explícito: `now()::timestamp` sería la hora local de la sesión (decisión 2026-10-28).
-        await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC') WHERE "id" = ${organizacionId}`;
+        if (inicio === undefined) {
+          await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC') WHERE "id" = ${organizacionId}`;
+        } else {
+          // SLT-58 (R32, R34): el ancla elegida («hoy» = ahora, P9) y, si es futura, el ciclo corto
+          // desde ahora, en una sola sentencia y con el mismo `now()` (el CHECK pide corto < ancla).
+          const ahora = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+          const elegida = inicio.ancla === "ahora" ? ahora : Prisma.sql`${comoTimestamp(inicio.ancla)}::timestamp`;
+          const ancla = Prisma.sql`COALESCE("plan_ciclo_ancla_at", ${elegida})`;
+          await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = ${ancla}, "plan_ciclo_corto_desde_at" = CASE WHEN ${ancla} > ${ahora} THEN ${ahora} END WHERE "id" = ${organizacionId}`;
+        }
         const modulos = await sincronizarModulos(tx, organizacionId, plan.modulos);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
         // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
@@ -606,13 +672,39 @@ export class PlanesRepository implements IPlanesRepository {
             entidadId: planId,
             entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
             valorAnterior: null,
-            valorNuevo: null,
+            // SLT-58 R39 (P12): la fecha elegida, `AAAA-MM-DD`; sin fecha, como SL-24.
+            valorNuevo: inicio?.fecha ?? null,
             organizacionId,
             ...actor,
           },
           ...modulos.map((e): EntradaAccion => ({ ...e, ...actor })),
         ]);
-        return { estado: "ok", cambio: true };
+        // Sin fecha, la forma de SL-24 sin `avisos` (sus tests comparan el resultado entero).
+        return inicio === undefined ? { estado: "ok", cambio: true } : { estado: "ok", cambio: true, avisos: excedidos };
+      }),
+    );
+  }
+
+  vistaPreviaAsignacion(
+    organizacionId: string,
+    planId: string,
+    inicio: InicioDelCicloElegido,
+  ): Promise<VistaPreviaLeida | null> {
+    // SLT-58 (§11.4; R37): lectura, sin cerrojos ni escrituras. El mismo uso (`excedidosDe` con el
+    // ciclo candidato) que `asignar`, así que avisa lo mismo; la autoridad sigue siendo el trigger.
+    return comoPlataforma("SL-24", "vista previa de la primera asignación de un plan (superadmin, SLT-58)", () =>
+      this.prisma.$transaction(async (tx): Promise<VistaPreviaLeida | null> => {
+        const empresa = await tx.organizacion.findUnique({
+          where: { id: organizacionId },
+          select: { id: true, nombre: true },
+        });
+        const plan = await leerPlan(tx, planId);
+        if (empresa === null || plan === null) return null;
+        const avisos = await excedidosDe(tx, [empresa], plan.topes, cicloCandidato(inicio));
+        // El «ahora» de la base, en la escala del ancla (P10: el aviso nombra el día del cambio de ciclo).
+        const [{ ahora }] = await tx.$queryRaw<{ ahora: Date }[]>`SELECT (now() AT TIME ZONE 'UTC') AS "ahora"`;
+        const ancla = inicio.ancla === "ahora" ? ahora : inicio.ancla;
+        return { avisos, siguienteCiclo: inicioDelSiguienteCiclo(ancla, ahora) };
       }),
     );
   }
@@ -924,6 +1016,7 @@ export class PlanesRepository implements IPlanesRepository {
           where: { id: organizacionId },
           select: {
             planCicloAnclaAt: true,
+            planCicloCortoDesdeAt: true,
             plan: {
               include: { ...INCLUIR, cambioProgramado: { select: { vigenteDesde: true, version: true } } },
             },
@@ -956,6 +1049,7 @@ export class PlanesRepository implements IPlanesRepository {
             dto,
             vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio },
             ancla,
+            cortoDesde: empresa.planCicloCortoDesdeAt,
             uso: {
               ordenes: uso.ordenes,
               apiKeys: uso.api_keys,

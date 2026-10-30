@@ -125,6 +125,7 @@ function doble() {
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
+    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => null),
   } satisfies IPlanesRepository;
 }
 

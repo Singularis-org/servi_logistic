@@ -45,6 +45,8 @@ export const planDeLaEmpresaFilaSchema = z.object({
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
   modulos: z.array(z.enum(ORDEN_MODULOS)),
   ciclo_ancla: instanteUtcSchema,
+  // SLT-58 (§11.4, R40): NULL fuera del ciclo corto.
+  ciclo_corto_desde: instanteUtcSchema.nullable(),
   uso: z.object({
     ordenes: conteo,
     api_keys: conteo,
@@ -92,6 +94,7 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
   return {
     vigente: { nombre: f.nombre, topes: topesDe(f), modulos: f.modulos, precio: precioDe(f) },
     ancla: f.ciclo_ancla,
+    cortoDesde: f.ciclo_corto_desde,
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
     cambio: f.cambio === null ? null : { vigenteDesde: f.cambio.vigente_desde, version: f.cambio.version },
   };
