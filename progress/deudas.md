@@ -183,3 +183,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** revisión de diseño de SLT-58 (2026-10-29, `progress/design_SLT-58.md`). `PlanesModule` (catálogo de planes) y `EmpresasModule` pintan sus listas con la `Table` cruda, aunque DESIGN.md pide `DataTable`. Por ahora, en móvil se ocultan las columnas secundarias.
 - **Qué falta:** pasar las dos a `DataTable` en un mismo cambio.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D31 — Dos relojes en la primera asignación con fecha
+- **Origen:** review de SLT-58 (2026-10-30, `progress/review_SLT-58.md`, menor 2). El servicio decide «hoy», el rango y el ancla de las fechas elegidas; la base (`now()`) decide el ancla «ahora» y si hay ciclo corto. Con los relojes desfasados cerca de medianoche UTC, una fecha de mañana podría guardarse sin ciclo corto. Sin test; impacto esperado mínimo.
+- **Qué falta:** que una sola fuente de tiempo decida las dos cosas (pasar el instante del servicio a la base o al revés) y un test del borde.
+- **Dueño:** Camilo (decidir si va ficha).
