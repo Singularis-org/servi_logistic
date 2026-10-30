@@ -1,6 +1,6 @@
 # SLT-58 — planes-superadmin-ui · design.md
 
-> Requisitos: `requirements.md` (R1–R28; R29–R41 de la enmienda del 2026-10-29, diseñados en §11).
+> Requisitos: `requirements.md` (R1–R28; R29–R42 de la enmienda del 2026-10-29, diseñados en §11).
 > Se heredan las decisiones y el diseño de
 > `specs/SL-24-planes-y-limites/` (sus §N se citan como «SL-24 §N»).
 
@@ -333,11 +333,13 @@ En un `TEXTOS` por pantalla (patrón de `EmpresaDetallePage`), salvo los que ya 
 | `reintentar` | «Reintentar» (al fallar el catálogo de planes y al fallar la lectura del plan actual en el modal de «Cambiar plan»; aprobado el 2026-10-29) |
 | `primeraTitulo` | «¿Asignar este plan a la empresa?» (título del modal de primera asignación; aprobado el 2026-10-29, enmienda §11) |
 | `cicloEmpiezaEl` | «El ciclo de órdenes empieza el {fecha}.» (sustituye a `cicloEmpiezaHoy` «El ciclo de órdenes empieza hoy.»; `{fecha}` = la elegida, `AAAA-MM-DD`; aprobado el 2026-10-29, R38) |
-| `ordenesYaPasadas` | «La empresa ya lleva {usados} de {maximo} órdenes en este ciclo: no podrá crear más hasta {fecha}.» (aviso de R36/R37; texto de la decisión del 2026-10-29; `{fecha}` según P10) |
-| `inicioCiclo` (etiqueta del campo) | **Pendiente de aprobación:** «Inicio del ciclo de órdenes» |
-| `rangoInicioCiclo` (error del campo) | **Pendiente de aprobación:** «Elige una fecha entre el {min} y el {max}.» |
-| `soloPrimeraAsignacion` (error del campo) | **Pendiente de aprobación:** «La fecha de inicio solo se elige en la primera asignación.» |
-| `vistaPreviaNoCargo` | **Pendiente de aprobación (P11):** «No se pudo comprobar el consumo de la empresa» |
+| `ordenesYaPasadas` | «La empresa ya lleva {usados} de {maximo} órdenes en este ciclo: no podrá crear más hasta {fecha}.» (aviso de R36/R37; texto de la decisión del 2026-10-29; `{fecha}` = día en que empieza el siguiente ciclo, P10 cerrada) |
+| `rolYaPasado` | (aprobado el 2026-10-29, P15) «La empresa ya tiene {usados} de {maximo} {rol}: no podrá activar ni crear más hasta bajar del tope.» (`{rol}` de `ROL_LABELS`; R37, R42) |
+| `apiKeysYaPasadas` | (aprobado el 2026-10-29, P15) «La empresa ya tiene {usados} de {maximo} API keys activas: no podrá crear ni activar más hasta bajar del tope.» (R37, R42) |
+| `inicioCiclo` (etiqueta del campo) | «Inicio del ciclo de órdenes» (aprobado el 2026-10-29, P13) |
+| `rangoInicioCiclo` (error del campo) | «Elige una fecha entre el {min} y el {max}.» (aprobado el 2026-10-29, P13) |
+| `soloPrimeraAsignacion` (error del campo) | «La fecha de inicio solo se elige en la primera asignación.» (aprobado el 2026-10-29, P13) |
+| `vistaPreviaNoCargo` | «No se pudo comprobar el consumo de la empresa» (aprobado el 2026-10-29, P11 y P13) |
 
 ## 7. Datos que dependen del país
 
@@ -409,10 +411,13 @@ aplica `docs/architecture.md > Dependencias de terceros`.
 
 ## 11. Enmienda del 2026-10-29 — inicio del ciclo elegido en la primera asignación
 
-> Requisitos R29–R41 y el test de R8 ampliado. Decisiones del humano del 2026-10-29 (filas «Inicio del
+> Requisitos R29–R42 y el test de R8 ampliado. Decisiones del humano del 2026-10-29 (filas «Inicio del
 > ciclo en la primera asignación», «Fecha pasada», «Fecha futura», «Tope ya pasado con fecha pasada»,
-> «Textos del modal de primera asignación» y «R8: 404 HTTP real»). Lo no decidido sigue las propuestas
-> P6–P12 de `requirements.md`; si el humano cambia alguna, cambia el punto de esta sección que la cita.
+> «Textos del modal de primera asignación», «R8: 404 HTTP real» y P6–P13, ya cerradas). **P7 no aprobó
+> la propuesta:** en la primera asignación con fecha, ningún tope ya pasado (órdenes, roles, API keys)
+> rechaza; todos se asignan y se avisan (excepción ampliada a SL-24 R12 y a R25). Siguen abiertas P14
+> (primera asignación sin fecha) y P15 (textos de los avisos de rol y de keys); el diseño sigue sus
+> propuestas.
 
 ### 11.1 Lo que ya existe (para esta enmienda)
 
@@ -422,7 +427,8 @@ aplica `docs/architecture.md > Dependencias de terceros`.
 | `plan_inicio_ciclo(ancla, ahora)` (SQL, `IMMUTABLE`) y su gemela `inicioDelCiclo` | `20261028130200_plan_topes_triggers`, `lib/planes/ciclo.ts` | **No se tocan.** Con un `ahora` anterior al ancla devuelven el ancla: no saben del ciclo corto. Se envuelven (§11.2). |
 | Quien calcula el ciclo en curso | trigger `plan_tope_ordenes`, `plan_cupo_ordenes`, `plan_de_la_empresa`, `usoDe` de `PlanesRepository` | Los tres SQL se reemplazan en la migración nueva para usar la envoltura; `usoDe` cambia su SQL (TS). |
 | `inicioDelSiguienteCiclo` (SLT-58) | `lib/planes/ciclo.ts` | **Se corrige:** con `ahora` anterior al ancla devuelve `ancla + 1 mes`; durante el ciclo corto debe devolver el ancla (R40). |
-| Avisos de tope pasado | `excedidosDe`, `TopeExcedido`, `PlanResult.ok.avisos`, `mensajeTopesPasados` | Se reutilizan para R36: el `ok` de `asignar` ya tiene `avisos` (hoy siempre `[]`). |
+| Avisos de tope pasado | `excedidosDe`, `TopeExcedido`, `PlanResult.ok.avisos`, `mensajeTopesPasados` | Se reutilizan para R36 y R42: el `ok` de `asignar` ya tiene `avisos` (hoy siempre `[]`) y `excedidosDe` ya mira órdenes, cada rol y API keys. |
+| Bloqueo de altas de usuarios y keys sobre un tope ya pasado | triggers `plan_tope_usuario` y `plan_tope_api_key` (20261028130200) | **No se tocan.** Rechazan si el uso tras el alta pasa el tope (`v_total > v_maximo`): con el uso ya por encima, toda alta del rol o de keys se rechaza hasta que baje. Es el comportamiento de SL-24 R16 que pide R42. |
 | Casos compartidos TS/SQL del ciclo | `tests/integration/db/_fixtures/planes.ts > CASOS_CICLO` + `plan-ciclo.test.ts` | Es el patrón de R35. La tabla nueva va en un fixture propio para no tocar el de SL-24. |
 | `fechaSchema` (`AAAA-MM-DD` de un día que existe) | `lib/types/planes.ts` (privado) | Se reutiliza para `inicioCiclo`. |
 | `inicioDelDiaPlataforma(fecha)` | `lib/planes/ciclo.ts` (P8 de SL-24) | Da las 00:00 de la plataforma en UTC: es el ancla de R32 para una fecha distinta de hoy. |
@@ -506,14 +512,14 @@ En `lib/planes/ciclo.ts`, sin tocar `inicioDelCiclo`:
 - `rangoDelInicioDelCiclo(ahora)` → `{ hoy, min, max }` en `AAAA-MM-DD` de la plataforma: `hoy =
   fechaCalendarioCR(ahora)`, `min`/`max` = `hoy ∓ 1 mes` con el recorte al último día del mes
   (`sumarMeses` sobre la fecha). Una sola fuente para el servicio (R30) y para el `min`/`max` del campo.
-  `max` sigue P6.
-- `anclaDeLaFechaElegida(fecha, ahora)` → `"ahora"` si `fecha === hoy` (P9) o
+  `max` = hoy + 1 mes (P6, cerrada).
+- `anclaDeLaFechaElegida(fecha, ahora)` → `"ahora"` si `fecha === hoy` (P9, cerrada) o
   `inicioDelDiaPlataforma(fecha)`.
 
 `lib/planes/consumo.ts`: `reinicioDelCiclo` ya llama a `inicioDelSiguienteCiclo`; con la corrección,
 durante el ciclo corto da los días hasta la fecha elegida (R40). El tipo leído (`ancla`) suma
-`cortoDesde: Date | null`, que hoy solo usa la vista previa; `PlanConConsumo` no cambia (P8: sin texto
-nuevo).
+`cortoDesde: Date | null`, que hoy solo usa la vista previa; `PlanConConsumo` no cambia (P8, cerrada: sin
+texto nuevo).
 
 **Tabla compartida (R35):** `tests/integration/db/_fixtures/ciclo-corto.ts` exporta `CASOS_CICLO_CORTO`
 (`{ caso, ancla, cortoDesde, ahora, enCurso, siguiente }`). La leen `tests/unit/utils/ciclo-plan.test.ts`
@@ -547,7 +553,7 @@ repositorio. Si trae `inicioCiclo`: fuera de `rangoDelInicioDelCiclo(this.ahora(
 
 **`PlanesService.previsualizarAsignacion(actor, input)` (R37).** Superadmin o `forbidden` sin tocar el
 repositorio; mismas validaciones que `asignar` (R30, R31, existe, archivado, custom de otra empresa);
-llama a `repo.vistaPreviaAsignacion` y devuelve sus avisos de órdenes y `siguienteCiclo`
+llama a `repo.vistaPreviaAsignacion` y devuelve todos sus avisos (órdenes, roles, API keys) y `siguienteCiclo`
 (`fechaCalendarioCR(inicioDelSiguienteCiclo(...))`).
 
 **`PlanesRepository.asignar(organizacionId, planId, actorUsuarioId, inicio?)`.** Dentro de la misma
@@ -559,9 +565,11 @@ transacción y cerrojos de hoy:
    órdenes con `plan_inicio_ciclo_en_curso(cortoDesde, ancla, now() AT TIME ZONE 'UTC')`, donde
    `ancla = now()` UTC si es `"ahora"` y `cortoDesde = now()` UTC solo si `ancla > now()` UTC. Sin
    candidato, las columnas de la empresa (con `COALESCE(ancla, now)`, como hoy).
-3. `excedidosDe` igual que hoy. **Solo en la primera asignación con `inicio`:** los excedidos de
-   `ordenes` pasan a `avisos` y no rechazan (R36); los de roles y API keys siguen rechazando con
-   `tope_excedido` (SL-24 R12; P7). Sin `inicio` o en un cambio de plan: exactamente como hoy.
+3. `excedidosDe` igual que hoy. **Solo en la primera asignación con `inicio`:** todos los excedidos
+   (órdenes, cada rol con tope y API keys) pasan a `avisos` y no rechazan (R36, R42; P7 cerrada,
+   excepción ampliada a SL-24 R12). Sin `inicio` (P14, abierta) o en un cambio de plan: exactamente como
+   hoy, `tope_excedido`. No hace falta tocar triggers: los de usuarios y keys ya bloquean las altas
+   mientras el uso pase el tope (§11.1).
 4. `UPDATE "organizacion" SET "plan_id", "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", <ancla>),
    "plan_ciclo_corto_desde_at" = <cortoDesde o NULL>` en una sola sentencia; el `now()` es el de la base
    (escala de `orden.created_at`, decisión de SL-24 del 2026-10-28).
@@ -569,8 +577,8 @@ transacción y cerrojos de hoy:
    sin `inicio`, `null` como hoy.
 
 **`PlanesRepository.vistaPreviaAsignacion(organizacionId, planId, inicio)`.** En `comoPlataforma`, sin
-cerrojos ni escrituras: el mismo paso 2 y la parte de órdenes del 3 sobre el tope del plan, más el
-siguiente inicio de ciclo calculado con `inicioDelSiguienteCiclo` sobre el ancla candidata y el `now()`
+cerrojos ni escrituras: el mismo paso 2 y el mismo `excedidosDe` del 3 sobre los topes del plan (órdenes,
+roles y API keys, R37), más el siguiente inicio de ciclo calculado con `inicioDelSiguienteCiclo` sobre el ancla candidata y el `now()`
 de la base. Es lectura: la autoridad sigue siendo el trigger. El `motivo` de `PlanesRepository` en
 `EXCEPCIONES_DE_PLATAFORMA` suma «y la vista previa de la primera asignación (SLT-58 §11)».
 
@@ -592,9 +600,9 @@ solo cambia por la corrección de `inicioDelSiguienteCiclo`.
   (`<Input type="date">` dentro de `FormField`, como «A partir de» de `PlanForm`) con `hoy` por defecto y
   `min`/`max` del rango, y la frase `cicloEmpiezaEl` con la fecha elegida (R38).
 - Al abrir y en cada cambio de fecha, llama a `previsualizarAsignacion`. Mientras está en vuelo,
-  «Asignar plan» está deshabilitado. Con avisos, pinta `ordenesYaPasadas` por cada uno, con
-  `formatearConteo` (R37). Si falla, P11: `vistaPreviaNoCargo` con «Reintentar» y «Volver», sin
-  confirmar.
+  «Asignar plan» está deshabilitado. Con avisos, pinta uno por tope pasado con `formatearConteo`:
+  `ordenesYaPasadas` (órdenes), `rolYaPasado` (cada rol, etiqueta de `ROL_LABELS`) y `apiKeysYaPasadas`
+  (R37, R42). Si falla, P11 (cerrada): `vistaPreviaNoCargo` con «Reintentar» y «Volver», sin confirmar.
 - Confirmar envía `{ organizacionId, planId, inicioCiclo }`. `validation_error` de `inicioCiclo` se pinta
   junto al campo (R18). Un `ok` con avisos muestra los avisos en el toast de éxito o bajo la sección, con
   el mismo texto.
@@ -612,12 +620,12 @@ del humano: no se diseña de más); la restricción es que la comprobación siga
 
 | Archivo | Tipo | Cubre |
 |---|---|---|
-| `tests/unit/services/planes-service-inicio-ciclo.test.ts` | unit (reloj fijo, doble del repo) | R29, R30, R31, R36, R37 |
+| `tests/unit/services/planes-service-inicio-ciclo.test.ts` | unit (reloj fijo, doble del repo) | R29, R30, R31, R36, R37, R42 |
 | `tests/unit/utils/ciclo-plan.test.ts` (casos nuevos) | unit | R30 (`rangoDelInicioDelCiclo`), R35 |
 | `tests/unit/planes/consumo.test.ts` (casos nuevos) | unit | R40 |
 | `tests/integration/db/_fixtures/ciclo-corto.ts` | tabla compartida | R35 |
 | `tests/integration/db/plan-ciclo-corto.test.ts` | integración | R34, R35 |
-| `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` | integración | R31, R32, R33, R34, R36, R37, R39 |
+| `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` | integración | R31, R32, R33, R34, R36, R37, R39, R42 |
 | `tests/integration/db/plan-de-la-empresa.test.ts` (casos nuevos) | integración | R40 (y los casos actuales pasan a comparar con `plan_inicio_ciclo_en_curso`) |
 | `tests/integration/db/migracion-ciclo-elegido-ida-y-vuelta.test.ts` | integración | R41 |
 | `tests/components/PlanEmpresa.test.tsx` (casos nuevos) | componente | R29, R37, R38 |

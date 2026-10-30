@@ -89,10 +89,12 @@
   mapa `R<n> → test` en `progress/impl_SLT-58.md`.
   *Hecho:* `./init.sh` en verde; R27: `package.json` sin dependencias nuevas.
 
-## Tanda D — enmienda del 2026-10-29: inicio del ciclo elegido (design §11; R29–R41 y R8)
+## Tanda D — enmienda del 2026-10-29: inicio del ciclo elegido (design §11; R29–R42 y R8)
 
-> No empieza hasta que el humano apruebe la enmienda y responda (o acepte las propuestas de) P6–P13.
-> Si cambia alguna propuesta, se ajusta el punto de design §11 que la cita antes de tocar código.
+> P6–P13 cerradas por el humano el 2026-10-29 (P7 con la regla ampliada: R42). Siguen abiertas P14
+> (primera asignación sin fecha) y P15 (textos de los avisos de rol y de keys): T14 sigue la propuesta
+> de P14 y T15 no fija los textos de P15 hasta que se aprueben. Si cambia alguna, se ajusta el punto de
+> design §11 que la cita antes de tocar código.
 
 - [ ] **T12 — Migración `plan_ciclo_inicio_elegido`** (backend_dev; design §11.2). Columna
   `plan_ciclo_corto_desde_at` + `CHECK`, función `plan_inicio_ciclo_en_curso`, `CREATE OR REPLACE` de
@@ -117,23 +119,28 @@
   `asignarPlanSchema` con `inicioCiclo` opcional, `previsualizarAsignacionSchema` y
   `VistaPreviaAsignacionResult` en `lib/types/planes.ts`; `PlanesService.asignar` (R30, R31 antes del
   repositorio) y `previsualizarAsignacion`; `PlanesRepository.asignar` (carrera R31, `usoDe` con ciclo
-  candidato, órdenes a `avisos` solo en la primera asignación con fecha, `plan_ciclo_corto_desde_at`,
-  `valorNuevo` = fecha) y `vistaPreviaAsignacion`; interfaces; `previsualizarAsignacionPlanAction` en
+  candidato; en la primera asignación con fecha, TODOS los excedidos —órdenes, roles, API keys— a
+  `avisos` en vez de `tope_excedido` (R36, R42); `plan_ciclo_corto_desde_at`, `valorNuevo` = fecha) y
+  `vistaPreviaAsignacion` (con los tres tipos de tope); interfaces; `previsualizarAsignacionPlanAction` en
   `lib/actions/planes.ts`; `ciclo_corto_desde` en `MiPlanRepository` y `planCicloCortoDesdeAt` en
-  `planDeEmpresa`; texto `ordenesYaPasadas` en `lib/planes/mensajes.ts`; `motivo` ampliado en
+  `planDeEmpresa`; textos `ordenesYaPasadas`, `rolYaPasado` y `apiKeysYaPasadas` en
+  `lib/planes/mensajes.ts` (los dos últimos, con P15 aprobada); `motivo` ampliado en
   `lib/db/excepciones-aislamiento.ts`. Si `tests/unit/services/planes-service.test.ts` necesita
   `vistaPreviaAsignacion` en su `doble()` para compilar, solo ese `vi.fn` (precedente de la decisión de
   T4); cualquier otro cambio a un test de SL-24, PARAR y preguntar.
   *Hecho:* `tests/unit/services/planes-service-inicio-ciclo.test.ts` (R29, R30 bordes con reloj fijo y
-  cero llamadas, R31, R36 avisos en el `ok`, R37 `forbidden` por rol con cero llamadas) y
+  cero llamadas, R31, R36 y R42 avisos en el `ok`, R37 `forbidden` por rol con cero llamadas) y
   `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (R31 carrera, R32, R33, R34, R36 bloqueo
-  y desbloqueo, R37 vista previa = uso tras asignar, R39) en verde; suite de SL-24 en verde.
+  y desbloqueo de órdenes, R42 bloqueo y desbloqueo de `adminTienda` y de API keys, y cambio de plan a
+  uno menor sigue en `tope_excedido`; R37 avisos de la vista previa = avisos de la asignación, R39) en
+  verde; suite de SL-24 en verde sin tocar (`planes-asignacion.test.ts`: R12 sin fecha sigue rechazando).
 - [ ] **T15 — Modal de primera asignación** (frontend_dev; design §11.5, §6.5). Depende de T14.
   Campo de fecha con hoy por defecto y `min`/`max` del servidor, vista previa al abrir y al cambiar la
   fecha, aviso, `cicloEmpiezaEl`, error de campo, P11; la página pasa `rangoInicioCiclo` y la action.
   «Cambiar plan» sin campo.
   *Hecho:* casos nuevos de `tests/components/PlanEmpresa.test.tsx` (R29 hoy por defecto y fecha enviada;
-  R37 aviso con «3.200 de 3.000» y fecha, sin aviso si no pasa, relee al cambiar; R38 título y frase;
+  R37 aviso de órdenes con «3.200 de 3.000» y fecha, aviso de un rol y de API keys, sin aviso si no
+  pasa, relee al cambiar, lectura fallida → solo «Reintentar» y «Volver»; R38 título y frase;
   «Cambiar plan» no envía `inicioCiclo`; botón deshabilitado con la vista previa en vuelo o fallida) en
   verde.
 - [ ] **T16 [P] — «Se reinicia» durante el ciclo corto** (frontend_dev; design §11.3, R40). Depende de
@@ -146,7 +153,7 @@
   local; `tests/integration/mi-plan-page.test.tsx` y el humo de dos empresas siguen verdes.
 - [ ] **T18 — Documentación y gate de la enmienda**. Depende de T12–T17.
   En `docs/architecture.md > Multi-empresa > Planes y límites`, una línea sobre el inicio del ciclo
-  elegido y `plan_inicio_ciclo_en_curso` como única definición del ciclo en curso; mapa `R29–R41 → test`
+  elegido y `plan_inicio_ciclo_en_curso` como única definición del ciclo en curso; mapa `R29–R42 → test`
   y el test nuevo de R8 en `progress/impl_SLT-58.md`.
   *Hecho:* `./init.sh` en verde; `package.json` sin dependencias nuevas (R27).
 
