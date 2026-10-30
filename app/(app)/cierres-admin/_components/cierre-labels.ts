@@ -720,3 +720,68 @@ export function notaRetieneReprogramadas(n: number): string {
     ? "1 paquete reprogramado para hoy no se puede asignar hasta que se apruebe este cierre."
     : `${n} paquetes reprogramados para hoy no se pueden asignar hasta que se apruebe este cierre.`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-56 (design §5; R11, R19, R20, R21) — EL AJUSTE DEL PAGO AL MENSAJERO AL REVISAR EL CIERRE.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Los textos del botón, del diálogo, de la marca «Ajustado» y de su historial, y de la marca
+// «Con ajustes» del cierre de bodega. Los importes NO se componen aquí: este módulo es puro y el
+// formateador de moneda lo aplica quien pinta.
+
+/** Botón de la fila de la gestión (R21). */
+export const FILA_AJUSTAR_PAGO = "Ajustar pago";
+
+/** Nombre accesible del botón: lleva la orden, como sus vecinos de la fila. */
+export function ajustarPagoAriaLabel(numRemision: string, destinatario: string): string {
+  return `${FILA_AJUSTAR_PAGO} al mensajero de la orden ${numRemision} · ${destinatario}`;
+}
+
+/** La marca de la gestión con al menos un ajuste (R19). */
+export const AJUSTADO_BADGE_LABEL = "Ajustado";
+
+/** Nombre accesible de la marca, que además abre el historial. */
+export function ajustadoBadgeAriaLabel(n: number): string {
+  return n === 1
+    ? "Pago ajustado: ver el ajuste"
+    : `Pago ajustado: ver los ${n} ajustes`;
+}
+
+/** Título del historial de ajustes de una gestión (R19). */
+export const AJUSTES_PAGO_TITULO = "Ajustes del pago al mensajero";
+export const AJUSTE_MOTIVO_LABEL = "Motivo";
+
+/** La marca del cierre del día dentro del detalle del cierre de bodega (R20). */
+export const CON_AJUSTES_BADGE_LABEL = "Con ajustes";
+
+/** Nota de la marca «Con ajustes»: cuántas gestiones. La cifra llega del servidor. */
+export function conAjustesNota(n: number): string {
+  return n === 1
+    ? "1 gestión de este cierre tiene el pago al mensajero ajustado."
+    : `${n} gestiones de este cierre tienen el pago al mensajero ajustado.`;
+}
+
+/** Textos del diálogo «Ajustar pago» (R21). */
+export const AJUSTE_PAGO_TEXTO = {
+  titulo: "Ajustar el pago al mensajero",
+  aviso:
+    "Cambia solo lo que el mensajero gana por esta orden: no cambia la tarifa ni el pago de las demás. Queda registrado quién lo ajustó, cuándo y con qué motivo.",
+  pagoVigente: "Pago vigente",
+  pagoNuevo: "Valor nuevo",
+  pagoNuevoAyuda:
+    "Puede ser 0. Solo números, con punto para los decimales (hasta 2), por ejemplo 1500 o 1500.50.",
+  motivo: "Motivo del ajuste",
+  motivoAyuda: "Obligatorio. Queda en el historial del ajuste.",
+  confirmar: "Guardar ajuste",
+  cerrar: "Cerrar",
+  ok: "Pago al mensajero ajustado.",
+  hechoNota: "Listo. Así quedó el pago, según el servidor:",
+  hechoPagoGestion: "Pago de esta orden",
+  hechoTotalCierre: "Total de pago al mensajero del cierre",
+  errorGenerico: "No se pudo ajustar el pago. Inténtalo de nuevo.",
+  conflicto:
+    "El cierre dejó de estar abierto o el pago de esta orden cambió mientras ajustabas: recarga el detalle para ver el valor vigente.",
+  noEncontrada: "Esta gestión ya no está disponible para ajustar.",
+  sinPermiso: "No tienes permiso para ajustar el pago al mensajero.",
+  sinSesion: "Tu sesión expiró. Inicia sesión de nuevo.",
+} as const;

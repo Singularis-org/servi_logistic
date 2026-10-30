@@ -21,11 +21,12 @@ const docs = await leerCatalogoAyuda();
 const contexto = contextoPara(docs, "maestro");
 
 describe("R1 — la única fuente son los documentos del catálogo", () => {
-  it("CONTROL DE NO-VACUIDAD: el catálogo trae los 37 documentos y el contexto del maestro también", () => {
+  it("CONTROL DE NO-VACUIDAD: el catálogo trae los 38 documentos y el contexto del maestro también", () => {
     // SL-36: 33→38 por las cinco guías de integraciones.
     // SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
-    expect(docs.length).toBe(37);
-    expect(contexto.length).toBe(37);
+    // SLT-51: 37→38 al sumar `oficina/configuracion-zonas.md` (`roles: [maestro]`).
+    expect(docs.length).toBe(38);
+    expect(contexto.length).toBe(38);
   });
 
   it("⭑ cada cuerpo enviado es IDÉNTICO al del archivo en disco, sin su frontmatter", () => {

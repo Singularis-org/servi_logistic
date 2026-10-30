@@ -71,6 +71,7 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GestionOrdenEvidencia", tabla: "gestion_orden_evidencia" },
   { modelo: "GestionOrdenPago", tabla: "gestion_orden_pago" },
   { modelo: "GestionFechaReprogramacionCambio", tabla: "gestion_fecha_reprogramacion_cambio" },
+  { modelo: "GestionPagoMensajeroAjuste", tabla: "gestion_pago_mensajero_ajuste" }, // SLT-56
   { modelo: "RutaOptimizada", tabla: "ruta_optimizada" },
   { modelo: "RutaOptimizadaParada", tabla: "ruta_optimizada_parada" },
   // Cierres

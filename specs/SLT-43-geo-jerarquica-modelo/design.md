@@ -320,12 +320,12 @@ Ningún `UPDATE` de tablas existentes.
 
 | Carpeta | Hace | `down.sql` |
 |---|---|---|
-| `20261029120000_geo_enums_nodo_geografico` | Los dos `ADD VALUE IF NOT EXISTS` (§2.5). | **No hace nada** y lo explica: Postgres no quita un valor de enum sin recrear el tipo (prohibido en la épica), y el valor sin usar es inocuo. Reaplicar la ida no falla por el `IF NOT EXISTS`. |
-| `20261029120100_tipo_nivel_geografico` | Tabla, únicos, FK, RLS, política, `REVOKE`, llenado de todos los países (R2), función y trigger `pais_tipos_de_nivel` (R3). | Borra el trigger, la función y la tabla. |
-| `20261029120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado y raíces repetidas por país (el código no hace falta: el único viejo por país y nivel equivale al nuevo por país y tipo); si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (sin GIN desde la enmienda 2026-10-29), FKs, el trigger de invariantes de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
-| `20261029120300_nodo_geografico_sincronia` | Las tres funciones y los tres triggers de §2.3. | Los borra. |
-| `20261029120400_columnas_nodo_geografico` | Las cuatro `ADD COLUMN`, las tres FK `NOT VALID` y los tres triggers de §2.4. | Borra triggers, funciones, FKs y columnas. |
-| `20261029120500_indices_nodo_geografico` | Los tres índices de §2.4. | Los borra. |
+| `20261030120000_geo_enums_nodo_geografico` | Los dos `ADD VALUE IF NOT EXISTS` (§2.5). | **No hace nada** y lo explica: Postgres no quita un valor de enum sin recrear el tipo (prohibido en la épica), y el valor sin usar es inocuo. Reaplicar la ida no falla por el `IF NOT EXISTS`. |
+| `20261030120100_tipo_nivel_geografico` | Tabla, únicos, FK, RLS, política, `REVOKE`, llenado de todos los países (R2), función y trigger `pais_tipos_de_nivel` (R3). | Borra el trigger, la función y la tabla. |
+| `20261030120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado y raíces repetidas por país (el código no hace falta: el único viejo por país y nivel equivale al nuevo por país y tipo); si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (sin GIN desde la enmienda 2026-10-29), FKs, el trigger de invariantes de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
+| `20261030120300_nodo_geografico_sincronia` | Las tres funciones y los tres triggers de §2.3. | Los borra. |
+| `20261030120400_columnas_nodo_geografico` | Las cuatro `ADD COLUMN`, las tres FK `NOT VALID` y los tres triggers de §2.4. | Borra triggers, funciones, FKs y columnas. |
+| `20261030120500_indices_nodo_geografico` | Los tres índices de §2.4. | Los borra. |
 
 - La copia de R13 son unas 585 filas en CR: va en la migración, no en el script (tarjeta).
 - Los `down.sql` solo deshacen lo que su migración creó; borrar las columnas nuevas pierde lo que
@@ -416,7 +416,7 @@ No hay action, ruta ni pantalla nueva. No aplica ningún módulo apagable.
    del usuario `postgres.<ref>` del pooler); fuera de Supabase, el host de su `DATABASE_URL`. En
    producción, el mismo comando con el ref de producción: escribirlo a mano es la confirmación.
 
-   **Bloqueos que mide el ensayo (review m7, 2026-10-29)**, para `20261029120400` y `20261029120500`
+   **Bloqueos que mide el ensayo (review m7, 2026-10-29)**, para `20261030120400` y `20261030120500`
    sobre `orden`:
    - `120400` hace `ALTER TABLE orden ADD COLUMN` (y los triggers) y toma `AccessExclusiveLock` sobre
      `orden` hasta el `COMMIT` de la migración: se anota cuánto tiempo lo tiene (con la copia en
@@ -430,8 +430,8 @@ No hay action, ruta ni pantalla nueva. No aplica ningún módulo apagable.
      lo fija.
    - `120500` (los índices sobre `orden`): tiempo de creación y bloqueo que toma, igual que arriba.
 3. **Sin ediciones de geografía durante el deploy (review m3, 2026-10-29).** Entre que se aplica
-   `20261029120200` (la copia de provincias, cantones y distritos a `nodo_geografico`) y
-   `20261029120300` (los triggers de sincronía) nadie crea, renombra, mueve ni borra provincias,
+   `20261030120200` (la copia de provincias, cantones y distritos a `nodo_geografico`) y
+   `20261030120300` (los triggers de sincronía) nadie crea, renombra, mueve ni borra provincias,
    cantones o distritos. Motivo: cada migración hace su propio `COMMIT`, y una fila de geografía
    escrita en esa ventana no tiene nodo ni lo tendrá (aún no hay sincronía que la copie). Las órdenes y
    zonas que la usen tras `120400` fallarían con `23503` (la FK `NOT VALID` sí comprueba las filas

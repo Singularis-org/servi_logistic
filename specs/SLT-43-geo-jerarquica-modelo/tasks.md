@@ -22,7 +22,7 @@
 
 ## T1 — Enums y tipos de nivel (depende de T0)
 
-- [x] **T1.1** Migración `20261029120000_geo_enums_nodo_geografico` + `down.sql` que no hace nada y
+- [x] **T1.1** Migración `20261030120000_geo_enums_nodo_geografico` + `down.sql` que no hace nada y
   lo explica (design §2.5, §3). Añadir `nodo_geografico` a los dos enums de `schema.prisma`. Revisar
   cómo trata los `down.sql` la guardia del PR #29. *Hecho:* `prisma migrate diff` vacío.
 - [x] **T1.2** TypeScript del enum (design §2.5): `HISTORIAL_ACCION_ENTIDADES`, `ENTIDAD_LABELS`,
@@ -30,7 +30,7 @@
   Ajustar cualquier otro mapa exhaustivo que el typecheck señale sobre `HistorialPlataformaEntidad`.
   *Hecho:* `pnpm run typecheck` verde y `tests/unit/types/historial-accion-entidades.test.ts` (R23)
   verde.
-- [x] **T1.3** Migración `20261029120100_tipo_nivel_geografico` + `down.sql` (design §2.1): tabla,
+- [x] **T1.3** Migración `20261030120100_tipo_nivel_geografico` + `down.sql` (design §2.1): tabla,
   únicos, FK, RLS, política, `REVOKE`, llenado de todos los países y trigger `pais_tipos_de_nivel`.
   Modelo `TipoNivelGeografico` en `schema.prisma` y en `MODELOS_DE_PLATAFORMA`. *Hecho:* diff vacío,
   guardia `organizacion-en-modelos` verde y `geo-tipo-nivel.test.ts` (R1–R3) verde.
@@ -40,7 +40,7 @@
 - [x] **T2.1** Función `geo_normalizar_nombre` y su test `geo-normalizar-nombre.test.ts` (R10)
   **primero**, antes que la tabla. *Hecho:* idéntico a `normalizeName` en todos los nombres de la base
   de test y en la lista de casos; si no lo es, se para y se avisa (afecta a R9 y R14).
-- [x] **T2.2** Migración `20261029120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
+- [x] **T2.2** Migración `20261030120200_nodo_geografico` + `down.sql` (design §2.2, §3): las
   comprobaciones previas que abortan (R14), la tabla con `ruta text[]`, los únicos (incluido el
   parcial de raíces y el del código por `(pais_id, tipo_id, codigo_oficial)`), los
   índices (GIN incluido), las FK compuestas, los triggers de invariantes y de descendientes, la RLS y
@@ -55,7 +55,7 @@
 
 ## T3 — Sincronía desde la geografía vieja (depende de T2.2)
 
-- [x] **T3.1** Migración `20261029120300_nodo_geografico_sincronia` + `down.sql` (design §2.3).
+- [x] **T3.1** Migración `20261030120300_nodo_geografico_sincronia` + `down.sql` (design §2.3).
   *Hecho:* `geo-sincronia-geografia.test.ts` (R15–R18) verde, recorriendo `GeoRepository.crear`,
   `renombrar`, `cambiarActivacion` e `importarDivision` de SL-20.
 - [x] **T3.2** Correr las suites de geografía de SL-20 y de 374 sin tocarlas: `geografia-*.test.ts`,
@@ -67,12 +67,12 @@
 
 ## T4 — Columnas nuevas y triggers de negocio (depende de T3.1)
 
-- [x] **T4.1** Migración `20261029120400_columnas_nodo_geografico` + `down.sql` (design §2.4): cuatro
+- [x] **T4.1** Migración `20261030120400_columnas_nodo_geografico` + `down.sql` (design §2.4): cuatro
   columnas, tres FK `NOT VALID`, tres triggers. Relaciones en `schema.prisma` (`Orden`,
   `ZonaDistrito`, `DistritoZonaEspecial`, `CierreDetail`). Confirmar que `fk-misma-empresa.guardia` no
   exige trigger para una FK de negocio → plataforma. *Hecho:* diff vacío y
   `geo-sincronia-orden-zonas.test.ts` (R20, R21) verde.
-- [x] **T4.2** Migración `20261029120500_indices_nodo_geografico` + `down.sql`. *Hecho:* diff vacío.
+- [x] **T4.2** Migración `20261030120500_indices_nodo_geografico` + `down.sql`. *Hecho:* diff vacío.
 - [x] **T4.3** [P] `geo-trigger-orden-rendimiento.test.ts` (R22) en base propia. *Hecho:* mediana
   ≤ 1 ms por fila; la cifra va a `progress/impl_SLT-43.md`. Si se pasa, el PR no entra: se para y se
   avisa.
@@ -119,12 +119,12 @@
 ## T8 — Enmienda «sin `ruta`» (decisión 2026-10-29; depende de que el humano apruebe esta enmienda)
 
 Las migraciones de SLT-43 no están mergeadas (PR #44 abierto): se **editan en su sitio**, no se
-crea una migración nueva. `scripts/geo-backfill-nodo.ts` y `20261029120500_indices_nodo_geografico`
+crea una migración nueva. `scripts/geo-backfill-nodo.ts` y `20261030120500_indices_nodo_geografico`
 no usan `ruta`: no se tocan. Grep de comprobación al final: `ruta` (como columna de
 `nodo_geografico`), `GIN`/`Gin` sobre ella y `ruta_descendientes` no aparecen en `db/`, `tests/` ni
 `docs/architecture.md`.
 
-- [x] **T8.1** `db/migrations/20261029120200_nodo_geografico/migration.sql`:
+- [x] **T8.1** `db/migrations/20261030120200_nodo_geografico/migration.sql`:
   - quitar `"ruta" TEXT[] NOT NULL` de la tabla y el `CREATE INDEX "nodo_geografico_ruta_idx" … USING
     GIN ("ruta")` con su comentario de R11;
   - en `nodo_geografico_invariantes`: quitar `v_ruta`, las asignaciones a `NEW.ruta` y `n.ruta` del
@@ -135,10 +135,10 @@ no usan `ruta`: no se tocan. Grep de comprobación al final: `ruta` (como column
   - ajustar los comentarios que nombran la ruta o los descendientes (cabecera, tabla, invariantes,
     copia de R13) y el de ciclos, que pasa a explicar el paso 3.
   *Hecho:* `Grep` de `ruta` en el archivo sin resultados.
-- [x] **T8.2** `db/migrations/20261029120200_nodo_geografico/down.sql`: quitar el `DROP TRIGGER
+- [x] **T8.2** `db/migrations/20261030120200_nodo_geografico/down.sql`: quitar el `DROP TRIGGER
   "nodo_geografico_ruta_descendientes"` y el `DROP FUNCTION nodo_geografico_ruta_descendientes()`.
   *Hecho:* el `down.sql` solo borra lo que crea la migración de T8.1.
-- [x] **T8.3** [P] `db/migrations/20261029120300_nodo_geografico_sincronia/migration.sql`: quitar `ruta`
+- [x] **T8.3** [P] `db/migrations/20261030120300_nodo_geografico_sincronia/migration.sql`: quitar `ruta`
   de la lista de columnas y su valor (`ARRAY[…]`) en los tres upserts (`geo_sincronizar_provincia`,
   `…_canton`, `…_distrito`) y del comentario de cabecera. El `down.sql` no cambia. *Hecho:* `Grep` de
   `ruta` en la carpeta sin resultados.
@@ -194,18 +194,18 @@ no usan `ruta`: no se tocan. Grep de comprobación al final: `ruta` (como column
 ## Archivos esperados
 
 - `db/schema.prisma`
-- `db/migrations/20261029120000_geo_enums_nodo_geografico/migration.sql`
-- `db/migrations/20261029120000_geo_enums_nodo_geografico/down.sql`
-- `db/migrations/20261029120100_tipo_nivel_geografico/migration.sql`
-- `db/migrations/20261029120100_tipo_nivel_geografico/down.sql`
-- `db/migrations/20261029120200_nodo_geografico/migration.sql`
-- `db/migrations/20261029120200_nodo_geografico/down.sql`
-- `db/migrations/20261029120300_nodo_geografico_sincronia/migration.sql`
-- `db/migrations/20261029120300_nodo_geografico_sincronia/down.sql`
-- `db/migrations/20261029120400_columnas_nodo_geografico/migration.sql`
-- `db/migrations/20261029120400_columnas_nodo_geografico/down.sql`
-- `db/migrations/20261029120500_indices_nodo_geografico/migration.sql`
-- `db/migrations/20261029120500_indices_nodo_geografico/down.sql`
+- `db/migrations/20261030120000_geo_enums_nodo_geografico/migration.sql`
+- `db/migrations/20261030120000_geo_enums_nodo_geografico/down.sql`
+- `db/migrations/20261030120100_tipo_nivel_geografico/migration.sql`
+- `db/migrations/20261030120100_tipo_nivel_geografico/down.sql`
+- `db/migrations/20261030120200_nodo_geografico/migration.sql`
+- `db/migrations/20261030120200_nodo_geografico/down.sql`
+- `db/migrations/20261030120300_nodo_geografico_sincronia/migration.sql`
+- `db/migrations/20261030120300_nodo_geografico_sincronia/down.sql`
+- `db/migrations/20261030120400_columnas_nodo_geografico/migration.sql`
+- `db/migrations/20261030120400_columnas_nodo_geografico/down.sql`
+- `db/migrations/20261030120500_indices_nodo_geografico/migration.sql`
+- `db/migrations/20261030120500_indices_nodo_geografico/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/contexto-empresa.ts`
 - `lib/db/excepciones-aislamiento.ts`

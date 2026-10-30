@@ -223,6 +223,7 @@ function gestionRow(overrides: Record<string, unknown> = {}) {
     // Feature 212/R21: el desglose que lee GESTION_ADMIN_SELECT (Decimal, ya ordenado).
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("12.50") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
+    ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
     ...overrides,
   };
 }

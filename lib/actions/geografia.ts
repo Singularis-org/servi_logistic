@@ -71,10 +71,10 @@ export type ArbolGeograficoResult =
 
 /**
  * Devuelve el arbol geografico COMPLETO —activos e inactivos— ordenado alfabeticamente en cada
- * nivel. Lo leen la plataforma y el `maestro`, que lo usa en Tarifas (R25 de SL-32).
+ * nivel. Lo leen la plataforma y el `maestro`, que lo usa en Zonas (R25 de SL-32; SLT-51 la sacó de Tarifas).
  *
- * CONSERVA SU FIRMA: lo llaman `app/(app)/configuracion/tarifas/page.tsx` y
- * `ZonasTarifasModule.tsx` sin argumentos, y siguen compilando. `deps` es opcional y solo sirve
+ * CONSERVA SU FIRMA: lo llaman `app/(app)/configuracion/zonas/page.tsx` y
+ * `ZonasModule.tsx` sin argumentos, y siguen compilando. `deps` es opcional y solo sirve
  * para probarlo sin base.
  */
 export async function listarArbolGeografico(
@@ -119,6 +119,7 @@ export type ActualizarDistritosEspecialesResult =
  * La marca es del distrito PARA LA EMPRESA: queda visible desde cualquier zona de la empresa que lo
  * contenga, y el llamador refresca el arbol para verlo. Solo `maestro` (lo decide el servicio).
  */
+/** @sin-superficie editor de costos de zona retirado en SLT-51; vuelve en SLT-54 */
 export async function actualizarDistritosEspeciales(
   input: unknown,
   deps: DistritosEspecialesActionDeps = {},

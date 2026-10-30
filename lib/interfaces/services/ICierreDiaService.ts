@@ -1,4 +1,4 @@
-import type { GestionResultado, MetodoPagoValue } from "@prisma/client";
+import type { GestionResultado, MetodoPagoValue, RolValue } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
@@ -137,6 +137,32 @@ export interface CierreDetalleGestion {
    * snapshot todavia). `null` en cierres pre-snapshot.
    */
   ingresoEmpresa?: IngresoEmpresaDTO | null;
+  /**
+   * SLT-56 (R19/R20) — los ajustes del pago al mensajero de esta gestion, en orden cronologico. Que
+   * haya al menos uno es la marca «Ajustado». OPCIONAL porque este tipo lo comparte la vista del
+   * mensajero, y alli no se rellena nunca (Q2: el mensajero ve el valor nuevo, sin marca ni motivo).
+   * Solo lo rellena el mapper de los detalles de admin.
+   */
+  ajustesPago?: AjustePagoGestionDTO[];
+}
+
+/**
+ * SLT-56 (design §4.2) — un ajuste del pago al mensajero de una gestion, tal como lo pinta el
+ * detalle del cierre: quien (con su rol de ese momento), cuando, de cuanto a cuanto y por que.
+ * Importes STRING escala 2 (R16).
+ *
+ * VIVE AQUI Y NO EN EL CONTRATO DEL ADMIN por el mismo motivo que `CierreOrdenSinGestion`: lo
+ * nombra `CierreDetalleGestion`, y que este archivo importara `ICierresAdminService.ts` meteria
+ * `Prisma` como valor en el grafo del panel del mensajero. Desde alli se re-exporta.
+ */
+export interface AjustePagoGestionDTO {
+  /** ISO. */
+  creadoAt: string;
+  actorNombre: string;
+  actorRol: RolValue;
+  pagoAnterior: string;
+  pagoNuevo: string;
+  motivo: string;
 }
 
 /**

@@ -82,6 +82,11 @@ const DETALLE_CIERRE_SELECT = {
   totalPagoMensajero: true, // feature 39/R20: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia
   mensajero: { select: NOMBRE_USUARIO_SELECT },
+  // SLT-56 (R20): cuantas gestiones de ESTE cierre tienen al menos un ajuste del pago, para marcar
+  // el cierre en la lista del cierre de bodega. Se cuentan GESTIONES (`some`) y no filas de ajuste:
+  // una gestion ajustada dos veces es una gestion ajustada. Mismo conjunto de gestiones que el
+  // detalle de abajo (`cierreId` = este cierre), asi que la marca y las gestiones marcadas cuadran.
+  _count: { select: { gestiones: { where: { ajustesPagoMensajero: { some: {} } } } } },
 } as const;
 
 type DetalleCierreRow = Prisma.CierreDiaGetPayload<{ select: typeof DETALLE_CIERRE_SELECT }>;
@@ -99,6 +104,7 @@ function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
     },
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R20: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R19: snapshot money-safe STRING
+    gestionesAjustadas: r._count.gestiones, // SLT-56 (R20)
   };
 }
 

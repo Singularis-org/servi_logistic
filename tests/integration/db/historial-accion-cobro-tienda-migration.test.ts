@@ -430,6 +430,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "modulo_desactivado",
       // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
       "plan_asignado",
+      // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
+      // `20261029120100_historial_accion_pago_mensajero_ajustado`.
+      "cierre_dia_pago_mensajero_ajustado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -439,7 +442,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
     expect([...entidadesAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_ENTIDADES]
         // ficha 459: las dos entidades de sus documentos, apendidas despues; 457, SL-36 y SL-23, una cada una.
-        // SLT-43: `nodo_geografico`, de `20261029120000_geo_enums_nodo_geografico` (ningun tipo).
+        // SLT-43: `nodo_geografico`, de `20261030120000_geo_enums_nodo_geografico` (ningun tipo).
         .filter(
           (e) =>
             e !== ENTIDAD_NUEVA &&

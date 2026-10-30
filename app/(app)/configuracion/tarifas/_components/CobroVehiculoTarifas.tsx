@@ -128,11 +128,6 @@ function MontoBlock({
 }
 
 /**
- * Configuración de cobro de la zona. Por defecto `cobroVehiculo=false`: un único
- * bloque de "Monto". Al activar el toggle (sólo posible si hay vehículos en la
- * DB), la etiqueta cambia y se lista un bloque de monto por cada vehículo.
- */
-/**
  * Valor normalizado (números) con la forma de `tarifas` que consume el esquema
  * de crear zona: cobroVehiculo + filas de tarifa_zona_mensajero.
  */
@@ -145,6 +140,12 @@ export interface CobroVehiculoValue {
   }[];
 }
 
+/**
+ * Configuración de cobro de la zona. Por defecto `cobroVehiculo=false`: un único
+ * bloque de "Monto". Al activar el toggle (sólo posible si hay vehículos en la
+ * DB), la etiqueta cambia y se lista un bloque de monto por cada vehículo.
+ */
+/** @sin-superficie editor de costos de zona retirado en SLT-51; vuelve en SLT-54 */
 export function CobroVehiculoTarifas({
   vehiculos,
   onChange,

@@ -9,7 +9,7 @@
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
 F2.2 hecho (2026-10-29): review APROBADO (0 mayores, 8 menores; `progress/review_SLT-43.md`). F2.3: menores m1, m2, m3, m6, m7, m8 corregidos (`d42726b`). Rama al día con `dev` (incluye #43). Siguiente: F2.4, PR a `dev` (lo abre el humano).
-T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hechas. Review T8 rechazada (B1, B2, m1) y corregida; rojos del `gate-completo` (caja-459, 381/B.7) corregidos ajustando la expectativa del catálogo; merge de `origin/dev` (df5fe8f). Detalle en `progress/impl_SLT-43.md > T8`. Local verde salvo el rojo de baseline `dependencias-declaradas-presentes`. Siguiente: push, `gate-completo` del PR #44 y nueva review de T8.
+T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hechas. Review T8 rechazada (B1, B2, m1) y corregida; rojos del `gate-completo` (caja-459, 381/B.7) corregidos ajustando la expectativa del catálogo; merge de `origin/dev` (df5fe8f). Detalle en `progress/impl_SLT-43.md > T8`. Local verde salvo el rojo de baseline `dependencias-declaradas-presentes`. 2026-10-30: merge de `origin/dev` (9573ab0, SLT-56 y SLT-51) con las seis migraciones de SLT-43 renombradas de 20261029* a 20261030* por choque de timestamps con SLT-56. Siguiente: push, `gate-completo` del PR #44 y nueva review de T8.
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de

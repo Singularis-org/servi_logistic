@@ -1041,6 +1041,9 @@ export function toDetalleDTO(
     // Passthrough: solo viene poblado desde los repos de admin (38/40), que lo derivan del
     // snapshot. En la vista en vivo del mensajero es `undefined` y la UI no muestra nada.
     ingresoEmpresa: g.ingresoEmpresa,
+    // SLT-56 (R19/R20, Q2): la clave solo existe si el repo la leyo. Asi la vista del mensajero,
+    // cuyo repo no la selecciona, no lleva ni siquiera un `ajustesPago: undefined` en su DTO.
+    ...(g.ajustesPago !== undefined ? { ajustesPago: g.ajustesPago } : {}),
   };
 }
 

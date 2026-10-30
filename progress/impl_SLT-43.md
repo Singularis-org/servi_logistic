@@ -19,7 +19,7 @@ Creada el 2026-10-29 con `pg` (no hay `psql`): `CREATE DATABASE logistic_slt43` 
 `…/logistic_slt43?schema=public` y `DIRECT_URL=` vacía, `pnpm exec prisma migrate deploy` y
 `pnpm run db:seed`. El `.env` no se copia al worktree: la URL se exporta en cada comando.
 
-**(Resuelto en la tanda 2.)** `20261029120200_nodo_geografico` estaba aplicada en `logistic_slt43`
+**(Resuelto en la tanda 2.)** `20261030120200_nodo_geografico` estaba aplicada en `logistic_slt43`
 solo con la función de T2.1. Al completarla en T2.2 cambia su checksum: antes de `migrate deploy`,
 `DROP FUNCTION geo_normalizar_nombre(text)` y borrar su fila de `_prisma_migrations` (o recrear la base).
 
@@ -28,9 +28,9 @@ solo con la función de T2.1. Al completarla en T2.2 cambia su checksum: antes d
 ### Tanda 1 — T1.1, T1.2, T1.3, T2.1 (2026-10-29)
 
 **Archivos creados**
-- `db/migrations/20261029120000_geo_enums_nodo_geografico/{migration,down}.sql`
-- `db/migrations/20261029120100_tipo_nivel_geografico/{migration,down}.sql`
-- `db/migrations/20261029120200_nodo_geografico/{migration,down}.sql` (solo `geo_normalizar_nombre`; T2.2 completa)
+- `db/migrations/20261030120000_geo_enums_nodo_geografico/{migration,down}.sql`
+- `db/migrations/20261030120100_tipo_nivel_geografico/{migration,down}.sql`
+- `db/migrations/20261030120200_nodo_geografico/{migration,down}.sql` (solo `geo_normalizar_nombre`; T2.2 completa)
 - `tests/unit/types/historial-accion-entidades.test.ts`
 - `tests/integration/db/geo-tipo-nivel.test.ts`
 - `tests/integration/db/geo-normalizar-nombre.test.ts`
@@ -112,9 +112,9 @@ Worktree eliminado y base `logistic_slt43_dev` borrada al terminar.
 - `tests/integration/db/geo-nodo-rls.test.ts` (R12, lado nodos).
 
 **Archivos modificados**
-- `db/migrations/20261029120100_tipo_nivel_geografico/migration.sql`: FK a `pais` `ON DELETE CASCADE ON
+- `db/migrations/20261030120100_tipo_nivel_geografico/migration.sql`: FK a `pais` `ON DELETE CASCADE ON
   UPDATE RESTRICT` (enmienda de Camilo, opción (a)). `down.sql` sin cambios (la FK cae con la tabla).
-- `db/migrations/20261029120200_nodo_geografico/{migration,down}.sql`: completa (design §2.2, §3). La
+- `db/migrations/20261030120200_nodo_geografico/{migration,down}.sql`: completa (design §2.2, §3). La
   función de T2.1 conserva sus bytes exactos (md5 comparado con el commit `3e871f5`).
 - `db/schema.prisma`: `TipoNivelGeografico.pais` `onDelete: Cascade` y back-relation `nodos`; modelo
   `NodoGeografico`; `Pais.nodosGeograficos`.
@@ -157,7 +157,7 @@ tipos + borrado de sus dos filas de `_prisma_migrations`, luego `migrate deploy`
   (21/21).
 - Guardias: `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `plataforma-solo-en-lista`
   verdes; `migraciones-destructivas` roja solo por `20261028120000_modulo_wallet_nucleo` (ajena; ninguna
-  `202610291*`). 62/63.
+  `202610301*`). 62/63.
 - SL-20 (`geografia-*`, `pais-*`, `carga-division`, `migracion-sl20-ida-y-vuelta`): 19/21 archivos, 217
   pasados, 16 saltados. Verdes incluidos `geografia-superadmin-sin-empresa` (sin tocarlo) y
   `carga-division`. Rojos: `geografia-historico-intacto` y `geografia-ordenes-sin-entregar` (entorno, ver
@@ -170,7 +170,7 @@ tipos + borrado de sus dos filas de `_prisma_migrations`, luego `migrate deploy`
 ### Tanda 3 — T3.1 hecha; T3.2 bloqueada (pregunta); T4 sin empezar (2026-10-29)
 
 **Archivos creados**
-- `db/migrations/20261029120300_nodo_geografico_sincronia/{migration,down}.sql` (design §2.3): tres funciones
+- `db/migrations/20261030120300_nodo_geografico_sincronia/{migration,down}.sql` (design §2.3): tres funciones
   `SECURITY DEFINER` con `search_path = public` (`geo_sincronizar_provincia|canton|distrito`) y tres triggers
   `AFTER INSERT OR UPDATE OR DELETE … FOR EACH ROW` (`<tabla>_sincroniza_nodo_geografico`).
 - `tests/integration/db/geo-sincronia-geografia.test.ts` (R15–R18), 8 casos; usa `crearEscenarioGeo43` y
@@ -205,7 +205,7 @@ tipos + borrado de sus dos filas de `_prisma_migrations`, luego `migrate deploy`
 - `geo-sincronia-geografia.test.ts`: 8/8.
 - Guardias: `fk-misma-empresa`, `organizacion-en-modelos`, `plataforma-solo-en-lista`, `rls-por-empresa`
   verdes; `migraciones-destructivas` roja solo por `20261028120000_modulo_wallet_nucleo` (ajena; no nombra
-  ninguna `202610291*`). 62/63.
+  ninguna `202610301*`). 62/63.
 - T3.2 — `geo-*`, `geografia-*`, `pais-*`, `carga-division`, `migracion-sl20-ida-y-vuelta` (26 archivos):
   22 verdes, 243 pasados, 3 fallados, 16 saltados.
   - `geografia-historico-intacto`, `geografia-ordenes-sin-entregar`: base sin órdenes (entorno, igual en `dev`).
@@ -237,11 +237,11 @@ sincronía; T4.1/T4.2 no empezadas (dependen de la respuesta según la regla de 
 ### Tanda 4 — T3.2 (excepción autorizada), T4.1, T4.2, T4.4 (2026-10-29)
 
 **Archivos creados**
-- `db/migrations/20261029120400_columnas_nodo_geografico/{migration,down}.sql` (design §2.4): cuatro `ADD COLUMN`
+- `db/migrations/20261030120400_columnas_nodo_geografico/{migration,down}.sql` (design §2.4): cuatro `ADD COLUMN`
   nullable sin DEFAULT, tres FK `NOT VALID` (`orden` RESTRICT/RESTRICT; zonas CASCADE/CASCADE como su
   `distrito_id`), funciones `orden_nodo_geografico()` y `zona_nodo_geografico_del_distrito()`, tres triggers
   `BEFORE INSERT OR UPDATE OF …`. Sin trigger en `cierre_detail`.
-- `db/migrations/20261029120500_indices_nodo_geografico/{migration,down}.sql`: los tres índices con nombre por
+- `db/migrations/20261030120500_indices_nodo_geografico/{migration,down}.sql`: los tres índices con nombre por
   defecto de Prisma.
 - `tests/integration/db/geo-sincronia-orden-zonas.test.ts` (R20, R21; 10 casos), sobre `crearEscenarioGeo43`
   (el fixture no necesitó cambios).
@@ -297,7 +297,7 @@ sincronía; T4.1/T4.2 no empezadas (dependen de la respuesta según la regla de 
 - `geo-sincronia-orden-zonas` 10/10 · `slt43-migraciones-aditivas` 9/9 · `carga-division` 16/16.
 - Guardias: `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `plataforma-solo-en-lista`,
   `cobro-plataforma-solo-por-trigger` verdes; `migraciones-destructivas` roja solo por
-  `20261028120000_modulo_wallet_nucleo` (no nombra ninguna `202610291*`). 82/83.
+  `20261028120000_modulo_wallet_nucleo` (no nombra ninguna `202610301*`). 82/83.
 - T3.2 + geo (`geo-`, `geografia-`, `carga-division`, `migracion-sl20-ida-y-vuelta`; 41 archivos): 584 pasados,
   16 saltados; rojos solo `geografia-historico-intacto` y `geografia-ordenes-sin-entregar` (base sin órdenes).
   `geografia-registro-accion` + `geografia-renombrado` solos: 42/42.
@@ -394,7 +394,7 @@ nombra `nodo_geografico`, `tipo_nivel_geografico`, `ubicacion_snapshot` ni los t
 - `pnpm run lint`: exit 0 (0 errores, 230 warnings preexistentes).
 - `pnpm run test:guardias`: 4 de 323 archivos rojos, ninguno de SLT-43:
   - `tests/guards/migraciones-destructivas.guard.test.ts`: solo `20261028120000_modulo_wallet_nucleo` (ajena; la arregla
-    el leader en un PR aparte). No nombra ninguna `202610291*`.
+    el leader en un PR aparte). No nombra ninguna `202610301*`.
   - `dependencias-declaradas-presentes.guardia.test.ts`: en `tests/baseline-rojos.json`; `init.sh` sin cambios en la rama.
   - `filtros-url-r25.test.ts` y `otp-debug-solo-en-pruebas.guardia.test.ts`: timeout (hook 60 s / test 20 s) por carga en
     la corrida paralela; solos pasan 2/2 archivos. SLT-43 no toca nada de lo que miran.
@@ -460,10 +460,10 @@ sale rojo por la guardia de wallet hasta que entre el PR del leader. T7.2 es pue
 ## T8 — enmienda «sin `ruta`» (decisión 2026-10-29, aprobada por Camilo)
 
 **Archivos modificados**
-- `db/migrations/20261029120200_nodo_geografico/migration.sql` (editada en su sitio; sin columna, sin GIN, sin
+- `db/migrations/20261030120200_nodo_geografico/migration.sql` (editada en su sitio; sin columna, sin GIN, sin
   trigger de descendientes; invariantes con `FOR SHARE` y paso 3) y su `down.sql` (sin los DROP del trigger/función
   de descendientes).
-- `db/migrations/20261029120300_nodo_geografico_sincronia/migration.sql` (sin la columna en los tres upserts).
+- `db/migrations/20261030120300_nodo_geografico_sincronia/migration.sql` (sin la columna en los tres upserts).
 - `db/schema.prisma` (modelo `NodoGeografico`).
 - `tests/integration/db/_fixtures/geo-43.ts`, `tests/integration/db/geo-nodo-invariantes.test.ts`,
   `tests/integration/db/geo-sincronia-geografia.test.ts`, `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts`.
@@ -545,7 +545,7 @@ Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:g
 - **m1**: design §2.2, el `FOR SHARE` protege en `READ COMMITTED`; en `REPEATABLE READ`/`SERIALIZABLE` la carrera
   puede reabrirse. Nadie escribe `nodo_geografico` con esos niveles (los `RepeatableRead` del repo son lecturas de
   analítica). m2 fuera por decisión del leader.
-- **Rojos del `gate-completo` sobre `a5c22f9`**: misma causa. `20261029120000_geo_enums_nodo_geografico` añade
+- **Rojos del `gate-completo` sobre `a5c22f9`**: misma causa. `20261030120000_geo_enums_nodo_geografico` añade
   `nodo_geografico` al final de `historial_accion_entidad`, y dos tests de otras fichas fijan el catálogo «de hoy»:
   - `historial-accion-cobro-tienda-migration.test.ts` (381/B.7 b): se añade `nodo_geografico` a la lista de entidades
     posteriores excluidas.
@@ -565,3 +565,7 @@ Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:g
   - `pnpm run test:guardias`: `Test Files 1 failed | 321 passed (322)`, `Tests 4 failed | 4535 passed | 1 skipped`;
     el único rojo es `dependencias-declaradas-presentes` (baseline).
 - Mapa R7 → `geo-nodo-invariantes.test.ts`: los 4 casos de T8 más los 4 de B1/B2 (15 tests en el archivo).
+
+## 2026-10-30 — renombre de migraciones por choque con SLT-56
+
+- El 2026-10-30, al mergear `origin/dev` (SLT-56, PR #48; SLT-51, PR #49), las seis migraciones de SLT-43 se renombraron de `20261029*` a `20261030*` (mismo orden y sufijo) porque SLT-56 trae `20261029120000_gestion_pago_mensajero_ajuste` y `20261029120100_historial_accion_pago_mensajero_ajustado`. Las referencias de esta bitácora, del spec, del schema, de los SQL y de los tests se actualizaron en su sitio. Con SLT-56 antes, `cierre_dia_pago_mensajero_ajustado` es el último valor de `historial_accion_tipo` y `nodo_geografico` el último de `historial_accion_entidad`; `PREVIA` en `migracion-slt43-ida-y-vuelta` pasa a ser `20261029120100_historial_accion_pago_mensajero_ajustado`.
