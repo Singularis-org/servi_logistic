@@ -349,3 +349,97 @@ tests de R4/R8/R11, las dos excepciones) está bien. Vuelve al implementer:
 - impedir el autopadre (B1);
 - impedir que un padre «aún no encontrado» se salte el paso 2 (B2);
 - añadir un caso de test por cada uno en `geo-nodo-invariantes.test.ts`.
+
+## T8, vuelta 2 (acotada a a5c22f9..f9e9426)
+
+Commits: `34ae97e` (arreglos), `5291380` (merge de `origin/dev`; contra el primer padre no toca `db/`) y `f9e9426`
+(bitácora).
+
+### Verificación que corrí yo
+- `eslint` sobre los 3 tests tocados: sin problemas. `slt43-migraciones-aditivas`: 9/9, y el `CHECK` nuevo no
+  dispara el detector de R19.
+- Tampoco esta vez tengo base: lo de Postgres sale de leer el SQL y los tests. La bitácora registra 123/123 en los 14
+  archivos de integración afectados, un `migrate diff` vacío y la contraprueba: sin el CHECK y con el `IF FOUND` de
+  antes, fallan justo los 4 tests nuevos.
+
+### Hallazgos de la vuelta 1
+- **B1: resuelto.**
+  - `CONSTRAINT "nodo_geografico_padre_id_check" CHECK ("padre_id" IS DISTINCT FROM "id")` en la tabla. Cae con el
+    `DROP TABLE` del `down.sql`, cuyo comentario ya lo nombra. Prisma no expresa CHECK, así que el diff sigue vacío.
+  - Un `INSERT` con autopadre da `SLT43`: el trigger `BEFORE` corre antes que el CHECK y la propia fila aún no existe
+    como padre. Un `UPDATE` da `23514`.
+  - Tests: «crear un nodo colgado de sí mismo» (profundidad 1 y 2, y la definición del CHECK leída de `pg_constraint`,
+    acotada a `public`) y «colgar de sí misma una raíz… → 23514 y sin cambios». Comprueban de verdad las dos vías.
+- **B2: resuelto.**
+  - El paso 2 lanza `SLT43` con `IF NOT FOUND`. R5 no cambia: un padre de otro país sí existe, así que la
+    profundidad cuadra y la FK compuesta da `23503`. Su test sigue en pie.
+  - Ningún test esperaba `23503` por un padre inexistente.
+  - Tests: el INSERT de dos filas en ciclo (`SLT43`, no queda ninguna) y el INSERT con el hijo antes que el padre
+    (`SLT43`; el mismo SQL en orden entra, lo que demuestra que el rechazo depende del orden y no del SQL).
+  - Revisé los caminos que escriben en la tabla: copia por niveles, sincronía `AFTER ROW` cuyo padre ya tiene nodo
+    por su FK vieja, y la vuelta 1 ya vio que el script no escribe `nodo_geografico`. Ninguno inserta un hijo antes
+    que su padre, así que el rechazo nuevo no rompe nada legítimo.
+- **m1: resuelto.** La nota de design §2.2 deja claro que la protección vale solo en `READ COMMITTED` y que en
+  `REPEATABLE READ`/`SERIALIZABLE` la carrera puede reabrirse. Es correcta.
+- **m2:** fuera por decisión del leader. Queda anotado.
+
+### `SECURITY DEFINER SET search_path = public` en `nodo_geografico_invariantes` (revisado con lupa)
+- **Escalada o escritura de `servi_app`: no abre nada.**
+  - Una función de trigger no se puede llamar directamente («trigger functions can only be called as triggers»).
+    Solo corre dentro de una escritura que ya pasó el control de permisos de la tabla.
+  - `servi_app` tiene revocados `INSERT`/`UPDATE`/`DELETE`, así que nunca la dispara por su cuenta. Por la sincronía
+    ya corría como dueño, porque esas funciones son `SECURITY DEFINER`.
+  - La función no escribe nada: solo lee, bloquea con `FOR SHARE` y pisa `NEW.nombre_normalizado`.
+  - El dueño salta la RLS porque la tabla no tiene `FORCE ROW LEVEL SECURITY`. Ese es justo el efecto buscado: un
+    padre o un hijo invisible por la RLS no cuenta como inexistente.
+  - El `FOR SHARE` como dueño no da a nadie un bloqueo que no pudiera tomar ya: quien escribe en la tabla ya tiene
+    sus permisos.
+- **`search_path`: el mismo patrón que el repo, con un matiz conocido (m3).**
+  - Es idéntico a `verificar_misma_empresa` (20261022130300) y a las tres funciones de la sincronía (120300).
+  - Las funciones (`geo_normalizar_nombre`) nunca se buscan en `pg_temp`: no hay secuestro de funciones.
+  - Las relaciones sí: con `search_path = public`, Postgres mira `pg_temp` antes que `public`. La documentación de
+    `SECURITY DEFINER` recomienda poner `pg_temp` al final de forma explícita.
+- **m3 (menor):** una sesión con `TEMP` (por defecto `PUBLIC` lo tiene) y SQL arbitrario podría crear una tabla
+  temporal `nodo_geografico`.
+  - Entonces, en una escritura de la sincronía disparada desde esa sesión, el `SELECT` del trigger leería la tabla
+    falsa.
+  - No da privilegios, solo saltarse la comprobación de profundidad. Ya existía, y peor, en el `INSERT` de la
+    sincronía, que en ese caso escribiría en la temporal.
+  - Exige además poder ejecutar SQL arbitrario como `servi_app`.
+  - Propuesta: `SET search_path = public, pg_temp` en todas las funciones `SECURITY DEFINER` del repo, en una ficha
+    aparte. No bloquea T8, porque sigue el precedente aprobado.
+
+### Tests de 381 y 459 ajustados al enum ampliado
+- **`caja-459-migration.test.ts`:** sigue el patrón del propio archivo. Su comentario apila «Ficha 461… 457… 458-B…
+  SL-36… SL-23… SL-24: N tipos y M entidades detrás de…», y cada ficha corre los `slice`.
+  - SLT-43 añade su línea («UNA entidad y NINGÚN tipo detrás de los de SL-24»), corre en uno los dos tramos de
+    entidades y fija `entidades.slice(-1) = ["nodo_geografico"]`.
+  - Los tramos de tipos no cambian, y está bien, porque SLT-43 no añade tipos.
+  - Las dos comprobaciones exactas de arriba (`tipos`/`entidades` ordenados igual a las constantes TS) siguen
+    intactas. No tapa nada: además fija la posición de la entidad nueva.
+- **`historial-accion-cobro-tienda-migration.test.ts` (381/B.7 b):** añade `nodo_geografico` a la lista de entidades
+  posteriores que se excluyen al comparar el estado tras el `down`. Es la misma lista y el mismo comentario que
+  usaron 459, 457, SL-36, SL-23 y SL-24.
+  - Lo que el test verifica (que el down de 381 deja exactamente lo de antes de 381) no cambia.
+  - Los conteos «51 tipos y 21 entidades tras el up» son del estado intermedio de la 381, no del enum final, y no se
+    tocaron.
+
+### Trazabilidad (actualizada)
+| R | Test | Estado |
+|---|---|---|
+| R4 | `geo-nodo-invariantes` «R4: guarda cada campo…», «R4: la tabla no tiene columna `ruta`» | ok |
+| R7 | `geo-nodo-invariantes`: los 4 casos de T8, los 2 de autopadre (B1) y los 2 de INSERT multi-fila (B2) | ok |
+| R8, R11 | Retirados; «R8/R11 retirados» (`pg_indexes`, `pg_trigger`) | ok |
+
+### Checklist de la vuelta
+- [x] B1, B2 y m1 resueltos, con test de cada bloqueante.
+- [x] `down.sql` sigue siendo el inverso exacto (el CHECK cae con la tabla); `schema.prisma` en sincronía.
+- [x] `SECURITY DEFINER`: sin escalada ni vía de escritura para `servi_app` (solo m3).
+- [x] Los ajustes de 381 y 459 siguen el patrón de esos archivos y no relajan lo que comprueban.
+- [x] Sin regresiones en el resto de T8. El merge de `origin/dev` no trae migraciones.
+- [ ] T8.11: a la espera del `gate-completo` del PR #44. Es condición de merge, no hallazgo.
+
+### Veredicto T8 (vuelta 2)
+**OK**: 0 bloqueantes. Menores abiertos: m2 (fuera por decisión del leader) y m3 (`pg_temp` en el `search_path` de
+las funciones `SECURITY DEFINER`, deuda de todo el repo, para una ficha aparte). Condición de merge: `gate-completo`
+del PR #44 en verde.
