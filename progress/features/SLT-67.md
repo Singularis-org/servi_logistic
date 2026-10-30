@@ -46,6 +46,7 @@ F2.0 (2026-10-30): tomada, worktree creado, sin SDD. Implementación delegada.
     (`/plataforma/planes`, crear y editar: `PlanForm.tsx`), no órdenes. Tarjeta corregida en Trello.
 
 ## Tandas
+- 2026-10-30 T1: util `montoParaCampo` (6d642a0, 3a671a4) + `MontoInput` y uso en PlanForm (6a627a2, 926b047). Bitácora `progress/impl_SLT-67.md`.
 
 ## Modelos (overrides)
 
