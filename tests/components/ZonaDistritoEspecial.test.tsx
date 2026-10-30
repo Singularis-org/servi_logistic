@@ -35,7 +35,7 @@ vi.mock("@/lib/actions/tarifas", () => ({
 }));
 
 const { CrearZonaForm } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 function arbol(): ProvinciaArbolDTO[] {

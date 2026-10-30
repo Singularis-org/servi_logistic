@@ -30,8 +30,8 @@ vi.mock("@/lib/actions/zonas", () => ({
 vi.mock("@/lib/actions/cobertura", () => ({
   listarCoberturaDistritos: (...a: unknown[]) => listarCoberturaMock(...a),
 }));
-vi.mock("@/app/(app)/configuracion/tarifas/_components/ZonasTarifasModule", () => ({
-  ZonasTarifasModule: () => <div data-testid="zonas-tarifas-stub" />,
+vi.mock("@/app/(app)/configuracion/zonas/_components/ZonasModule", () => ({
+  ZonasModule: () => <div data-testid="zonas-tarifas-stub" />,
 }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({

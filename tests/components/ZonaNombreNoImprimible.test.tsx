@@ -62,7 +62,7 @@ vi.mock("@/hooks/useToast", () => ({
 }));
 
 const { CrearZonaForm, cobroVacio } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 /** El genérico que esta ficha aparta cuando el motivo es del nombre. */

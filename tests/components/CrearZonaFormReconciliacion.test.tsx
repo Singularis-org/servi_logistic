@@ -48,7 +48,7 @@ vi.mock("@/hooks/useToast", () => ({
 }));
 
 const { CrearZonaForm, cobroVacio } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 function zonaDTO(id: string, nombre: string) {

@@ -20,7 +20,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { GeografiaSelector } from "@/app/(app)/configuracion/tarifas/_components/GeografiaSelector";
+import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
 import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
 
 function distrito(

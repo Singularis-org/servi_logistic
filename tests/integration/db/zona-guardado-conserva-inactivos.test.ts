@@ -4,7 +4,7 @@ import { render, cleanup } from "@testing-library/react";
 import { createElement } from "react";
 import type { PrismaClient } from "@prisma/client";
 
-import { GeografiaSelector } from "@/app/(app)/configuracion/tarifas/_components/GeografiaSelector";
+import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
 import type { UpdateZonaData } from "@/lib/interfaces/repositories/IZonaRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";

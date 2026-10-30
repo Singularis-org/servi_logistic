@@ -29,11 +29,11 @@ import {
 import type { VehiculoDTO } from "@/lib/types/vehiculos";
 
 import { GeografiaSelector } from "./GeografiaSelector";
-import { PAGO_ZONA_TEXTO } from "./tarifas-labels";
+import { PAGO_ZONA_TEXTO } from "@/app/(app)/configuracion/tarifas/_components/tarifas-labels";
 import {
   CobroVehiculoTarifas,
   type CobroVehiculoValue,
-} from "./CobroVehiculoTarifas";
+} from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
 import {
   TARIFA_CAMPOS_ZONA,
   TarifaCamposGrid,
@@ -43,7 +43,7 @@ import {
   type TarifaCampoKey,
   type TarifaFieldErrors,
   type TarifaValores,
-} from "./TarifaCampos";
+} from "@/app/(app)/configuracion/tarifas/_components/TarifaCampos";
 
 type FieldErrors = Record<string, string[]>;
 

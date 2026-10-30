@@ -7,7 +7,7 @@ import {
   CobroVehiculoTarifas,
   type CobroVehiculoValue,
 } from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
-import { CrearZonaForm } from "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm";
+import { CrearZonaForm } from "@/app/(app)/configuracion/zonas/_components/CrearZonaForm";
 import {
   TarifaCamposGrid,
   tarifaValoresVacios,

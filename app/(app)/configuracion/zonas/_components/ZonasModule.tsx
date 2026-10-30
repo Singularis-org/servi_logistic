@@ -20,13 +20,12 @@ import {
   cobroVacio,
   type ZonaFormInitial,
 } from "./CrearZonaForm";
-import { TiendasModule } from "./TiendasModule";
-import type { CobroVehiculoValue } from "./CobroVehiculoTarifas";
+import type { CobroVehiculoValue } from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
 import {
   TARIFA_CAMPOS,
   tarifaValoresVacios,
   type TarifaValores,
-} from "./TarifaCampos";
+} from "@/app/(app)/configuracion/tarifas/_components/TarifaCampos";
 
 const PAGE_SIZE = 100;
 
@@ -46,7 +45,7 @@ function tarifaValoresDesde(row: TarifaDTO): TarifaValores {
  * en edición) y modal de confirmación de borrado (no se cierra por click fuera:
  * `dismissible={false}`). Notifica creación/edición/eliminación/error con toast.
  */
-export function ZonasTarifasModule({
+export function ZonasModule({
   initialZonas,
   provincias: initialProvincias,
   vehiculos,
@@ -146,8 +145,6 @@ export function ZonasTarifasModule({
 
   return (
     <section className="flex flex-col gap-4 border-t border-border pt-6">
-      <TiendasModule zonas={zonas} />
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold">Costos por zona</h2>

@@ -4,8 +4,9 @@ import { listarArbolGeografico } from "@/lib/actions/geografia";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import { listarZonas } from "@/lib/actions/zonas";
 
-import { DescargarCoberturaButton } from "./_components/DescargarCoberturaButton";
-import { ZonasTarifasModule } from "./_components/ZonasTarifasModule";
+import { DescargarCoberturaButton } from "../zonas/_components/DescargarCoberturaButton";
+import { ZonasModule } from "../zonas/_components/ZonasModule";
+import { TiendasModule } from "./_components/TiendasModule";
 
 /**
  * Página de Tarifas (Server Component). Autoriza server-side igual que
@@ -57,7 +58,9 @@ export default async function TarifasPage() {
         <DescargarCoberturaButton />
       </section>
 
-      <ZonasTarifasModule
+      <TiendasModule zonas={zonas} />
+
+      <ZonasModule
         initialZonas={zonas}
         provincias={provincias}
         vehiculos={vehiculos}

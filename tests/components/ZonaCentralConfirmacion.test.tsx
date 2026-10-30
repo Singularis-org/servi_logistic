@@ -64,7 +64,7 @@ vi.mock("@/hooks/useToast", () => ({
 }));
 
 const { CrearZonaForm, cobroVacio } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 /** Texto EXACTO con el que el servicio rechaza quitar la última marca (376/R6). */
