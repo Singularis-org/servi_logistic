@@ -77,7 +77,7 @@ const { ZonasModule } = await import(
 );
 
 const TEXTO_CENTRAL =
-  "No se puede eliminar la zona central. Marca otra zona como central antes de eliminarla.";
+  "No se puede eliminar la zona de bodega principal. Marca otra zona como bodega principal antes de eliminarla.";
 const TEXTO_EN_USO = "No se puede eliminar: la zona está en uso.";
 
 function provincias(): ProvinciaArbolDTO[] {

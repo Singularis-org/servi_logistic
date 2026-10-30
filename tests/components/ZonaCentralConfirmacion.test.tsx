@@ -69,7 +69,7 @@ const { CrearZonaForm } = await import(
 
 /** Texto EXACTO con el que el servicio rechaza quitar la última marca (376/R6). */
 const MOTIVO_DEL_SERVIDOR =
-  "Tiene que haber una zona central. Para quitarle la marca a ésta, márcala en otra zona.";
+  "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.";
 
 function zonaDTO(id: string, nombre: string, esCentral = false) {
   return { id, nombre, cobroVehiculo: false, distritosCount: 1, esCentral };
@@ -132,7 +132,7 @@ function renderForm(opts: {
   );
 }
 
-const casilla = () => screen.getByRole("checkbox", { name: "Zona Central" });
+const casilla = () => screen.getByRole("checkbox", { name: "Zona de bodega principal" });
 const botonGuardar = () => screen.getByRole("button", { name: "Guardar" });
 const botonContinuar = () => screen.getByRole("button", { name: "Continuar" });
 
@@ -152,11 +152,11 @@ describe("R20 — desmarcar la zona central pregunta antes de enviar nada", () =
     await user.click(botonGuardar());
 
     expect(
-      await screen.findByText("Quitar la marca de zona central"),
+      await screen.findByText("Quitar la marca de zona de bodega principal"),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "La zona GAM es hoy la zona Central. Siempre tiene que haber una zona Central: si le quitas la marca sin marcar otra zona, el guardado se rechaza. ¿Desea continuar?",
+        "La zona GAM es hoy la zona de bodega principal. Siempre tiene que haber una zona de bodega principal: si le quitas la marca sin marcar otra zona, el guardado se rechaza. ¿Desea continuar?",
       ),
     ).toBeInTheDocument();
     expect(actualizarZonaMock).not.toHaveBeenCalled();
@@ -203,7 +203,7 @@ describe("R20 — desmarcar la zona central pregunta antes de enviar nada", () =
 
     await waitFor(() => expect(actualizarZonaMock).toHaveBeenCalledTimes(1));
     expect(
-      screen.queryByText("Quitar la marca de zona central"),
+      screen.queryByText("Quitar la marca de zona de bodega principal"),
     ).not.toBeInTheDocument();
     expect(impactoZonaCentralMock).not.toHaveBeenCalled();
   });
@@ -225,7 +225,7 @@ describe("R21 — marcar con otra zona central abierta pregunta y la nombra", ()
 
     expect(
       await screen.findByText(
-        "La zona GAM ya está marcada como Central. Esta acción reestablecerá la zona Central. ¿Desea continuar?",
+        "La zona GAM ya está marcada como zona de bodega principal. Esta acción reestablecerá la zona de bodega principal. ¿Desea continuar?",
       ),
     ).toBeInTheDocument();
     expect(actualizarZonaMock).not.toHaveBeenCalled();
@@ -267,12 +267,12 @@ describe("R22 — cancelar la confirmación no envía nada", () => {
 
     await user.click(casilla());
     await user.click(botonGuardar());
-    await screen.findByText("Quitar la marca de zona central");
+    await screen.findByText("Quitar la marca de zona de bodega principal");
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     await waitFor(() =>
       expect(
-        screen.queryByText("Quitar la marca de zona central"),
+        screen.queryByText("Quitar la marca de zona de bodega principal"),
       ).not.toBeInTheDocument(),
     );
     expect(actualizarZonaMock).not.toHaveBeenCalled();
@@ -292,12 +292,12 @@ describe("R22 — cancelar la confirmación no envía nada", () => {
     await tecleaSinpeDeLaZona(user);
     await user.click(casilla());
     await user.click(botonGuardar());
-    await screen.findByText("Zona central ya asignada");
+    await screen.findByText("Zona de bodega principal ya asignada");
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     await waitFor(() =>
       expect(
-        screen.queryByText("Zona central ya asignada"),
+        screen.queryByText("Zona de bodega principal ya asignada"),
       ).not.toBeInTheDocument(),
     );
     expect(crearZonaMock).not.toHaveBeenCalled();

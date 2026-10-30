@@ -368,7 +368,7 @@ export function CrearZonaForm({
             onCheckedChange={(checked) => setEsCentral(checked === true)}
           />
           <Label htmlFor="es-central-zona" className="cursor-pointer">
-            Zona Central
+            Zona de bodega principal
           </Label>
         </div>
         <FieldError id="es-central-zona-error" messages={errors.esCentral} />
@@ -404,8 +404,8 @@ export function CrearZonaForm({
         }}
         title={
           confirmacion?.tipo === "desmarcar"
-            ? "Quitar la marca de zona central"
-            : "Zona central ya asignada"
+            ? "Quitar la marca de zona de bodega principal"
+            : "Zona de bodega principal ya asignada"
         }
         description={confirmacion ? descripcionConfirmacion(confirmacion) : ""}
         confirmLabel="Continuar"
@@ -440,9 +440,9 @@ export function CrearZonaForm({
  */
 function descripcionConfirmacion(confirmacion: ConfirmacionCentral): string {
   if (confirmacion.tipo === "marcar") {
-    return `La zona ${confirmacion.pierde.nombre} ya está marcada como Central. Esta acción reestablecerá la zona Central. ¿Desea continuar?`;
+    return `La zona ${confirmacion.pierde.nombre} ya está marcada como zona de bodega principal. Esta acción reestablecerá la zona de bodega principal. ¿Desea continuar?`;
   }
-  return `La zona ${confirmacion.nombreZona} es hoy la zona Central. Siempre tiene que haber una zona Central: si le quitas la marca sin marcar otra zona, el guardado se rechaza. ¿Desea continuar?`;
+  return `La zona ${confirmacion.nombreZona} es hoy la zona de bodega principal. Siempre tiene que haber una zona de bodega principal: si le quitas la marca sin marcar otra zona, el guardado se rechaza. ¿Desea continuar?`;
 }
 
 /**
