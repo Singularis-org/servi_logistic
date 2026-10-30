@@ -96,6 +96,23 @@ export interface RouteOptimizationConfig {
    * cuesta dinero por llamada, asi que es una decision explicita, nunca implicita.
    */
   ROUTES_ROUTING_PREFERENCE: RoutingPreference;
+  /**
+   * SLT-59 (R3, R19, design §2.1) — distancia, en METROS, entre la posicion del mensajero y la
+   * linea de su ruta a partir de la cual se considera que se desvio. Con el conjunto de paradas
+   * sin cambios, solo un desvio mayor que esto justifica pagar una reoptimizacion: el mensajero
+   * que sigue su ruta esta a ~0 de ella por mucho que avance.
+   *
+   * Decidido por el humano 2026-10-29 (SLT-59, D8); no calibrado con datos de produccion.
+   */
+  RUTA_REOPT_DISTANCIA_M: number;
+  /**
+   * SLT-59 (R32, design §4.5) — `max_intentos` de los jobs de reoptimizacion. Fallar aqui no
+   * pierde datos (se conserva el ultimo orden valido, 92/R27) y cada intento extra es una
+   * llamada facturada, asi que se insiste menos que el default de la cola.
+   *
+   * Decidido por el humano 2026-10-29 (SLT-59, D9).
+   */
+  RUTA_OPT_MAX_INTENTOS: number;
 }
 
 export function loadRouteOptimizationConfig(): RouteOptimizationConfig {
@@ -108,5 +125,8 @@ export function loadRouteOptimizationConfig(): RouteOptimizationConfig {
     // 🧭 200 km: ver la declaracion completa —y por que NO esta calibrado— en el contrato.
     RUTA_ORIGEN_MAX_KM: readPositiveInt("RUTA_ORIGEN_MAX_KM", 200),
     ROUTES_ROUTING_PREFERENCE: readRoutingPreference("ROUTES_ROUTING_PREFERENCE"),
+    // SLT-59 D8 y D9: ver la nota de cada campo en el contrato.
+    RUTA_REOPT_DISTANCIA_M: readPositiveInt("RUTA_REOPT_DISTANCIA_M", 1000),
+    RUTA_OPT_MAX_INTENTOS: readPositiveInt("RUTA_OPT_MAX_INTENTOS", 3),
   };
 }

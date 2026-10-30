@@ -60,6 +60,8 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_MAX_PARADAS: 100,
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
 };
 
 /** Tres paradas reales de San Jose, todas dentro del umbral del origen. */
@@ -91,6 +93,7 @@ function armarCadena(body: unknown, paradas: ParadaRutaRow[] = PARADAS) {
     ),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
     marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
   const findParadasEnReparto = vi.fn(async () => paradas);

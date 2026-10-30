@@ -90,6 +90,8 @@ export function buildOptimizacionRutaService(
     origenTtlMin: config.RUTA_ORIGEN_TTL_MIN,
     syncMinIntervaloS: config.RUTA_SYNC_MIN_INTERVALO_S,
     routingPreference: config.ROUTES_ROUTING_PREFERENCE,
+    reoptDistanciaM: config.RUTA_REOPT_DISTANCIA_M,
+    optMaxIntentos: config.RUTA_OPT_MAX_INTENTOS,
   });
 
   // UNA instancia para los dos clientes: optimizacion y trazado usan el MISMO token de la empresa.

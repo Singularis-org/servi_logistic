@@ -32,6 +32,8 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
 };
 
 function parada(id: string, over: Partial<ParadaRutaRow> = {}): ParadaRutaRow {
@@ -76,6 +78,7 @@ function build(opts: {
     reemplazarSecuencia: vi.fn<(m: string, s: string[], meta: unknown) => Promise<void>>(async () => {}),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
     marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
 
@@ -509,6 +512,7 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
       reemplazarSecuencia: vi.fn(async () => {}),
       guardarTrazado: vi.fn(async () => {}),
       marcarTramoVivo: vi.fn(async () => {}),
+      reducirSecuencia: vi.fn(async () => true),
       marcarDesactualizada: vi.fn(async () => {}),
     };
     const client: IRouteOptimizationClient = {

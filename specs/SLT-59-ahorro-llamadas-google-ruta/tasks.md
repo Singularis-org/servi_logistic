@@ -6,25 +6,25 @@
 
 ## Fase 0 — Medir antes de tocar
 
-- [ ] **T0.1** Escribir `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` con el escenario
+- [x] **T0.1** Escribir `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` con el escenario
   de `design.md` §8 y ejecutarlo contra el código **actual** (sin tocar producción; las filas que
   dependen de `reducirSinLlamadas` se simulan sin esa llamada).
   *Hecho:* los conteos «Hoy» medidos están en `progress/impl_SLT-59.md` con el comando; si difieren de
   la tabla, la tabla se corrige con la nota «medido T0.1».
-- [ ] **T0.2** [P] Comprobar que el describe «265/R33 — las guardas cortan EN ESTE ORDEN» de
+- [x] **T0.2** [P] Comprobar que el describe «265/R33 — las guardas cortan EN ESTE ORDEN» de
   `tests/unit/services/optimizacion-ruta-service.test.ts` está verde en `dev`.
   *Hecho:* resultado anotado en `progress/impl_SLT-59.md`.
 
 ## Fase 1 — Piezas puras y configuración (depende de F0)
 
-- [ ] **T1.1** [P] `distanciaMinimaAPolilineaM` en `lib/geo/polilinea.ts` (design §2.1).
+- [x] **T1.1** [P] `distanciaMinimaAPolilineaM` en `lib/geo/polilinea.ts` (design §2.1).
   *Hecho:* casos nuevos en `tests/unit/geo/polilinea.test.ts`: punto sobre un segmento (≈0), punto
   lateral a distancia conocida, punto más allá del extremo, un solo punto, polilínea decodificada de
   ida y vuelta.
-- [ ] **T1.2** [P] Dos campos nuevos en `RouteOptimizationConfig` con su nota (design §5).
+- [x] **T1.2** [P] Dos campos nuevos en `RouteOptimizationConfig` con su nota (design §5).
   *Hecho:* `tests/unit/config/route-optimization-config.test.ts` cubre default, override, vacío e
   inválido de los dos (R36), y que `RUTA_SYNC_MIN_INTERVALO_S` sigue en 10 (R38).
-- [ ] **T1.3** `reducirSecuencia` en el contrato y en `RutaOptimizadaRepository` (design §1).
+- [x] **T1.3** `reducirSecuencia` en el contrato y en `RutaOptimizadaRepository` (design §1).
   *Hecho:* casos nuevos en `tests/integration/repositories/ruta-optimizada-repo.test.ts`: secuencia
   1..n con tramos conservados, `calculada_at`, origen, `secuencia_fuente` y `ultimo_error` intactos
   (R12, R17); con huella distinta no escribe nada y devuelve `false` (R18).

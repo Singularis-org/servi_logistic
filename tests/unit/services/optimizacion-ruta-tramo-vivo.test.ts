@@ -28,6 +28,8 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
 };
 
 const UBICACION = { lat: 9.93, lng: -84.09 };
@@ -84,6 +86,7 @@ function montar(opts: {
     reemplazarSecuencia: async () => {},
     guardarTrazado: async () => {},
     marcarTramoVivo,
+    reducirSecuencia: async () => true,
     marcarDesactualizada: async () => {},
   };
   const paradasRepo = { findParadasEnReparto: async () => opts.paradas ?? [] };

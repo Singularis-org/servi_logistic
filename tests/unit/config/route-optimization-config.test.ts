@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
+import { GEOCODIFICACION_MAX_INTENTOS } from "@/lib/services/jobs/geocodificacion-encolado";
 
 // Feature 92 (R10) — la carga de configuracion del proveedor de optimizacion NUNCA lanza.
 // No es un detalle estetico: el drenador de la cola comparte proceso con
@@ -26,6 +27,9 @@ const VARS = [
   // Feature 265 (R21): umbral de coherencia del origen, en km.
   "RUTA_ORIGEN_MAX_KM",
   "ROUTES_ROUTING_PREFERENCE",
+  // SLT-59 (R36): umbral de desvio y tope de intentos de la reoptimizacion.
+  "RUTA_REOPT_DISTANCIA_M",
+  "RUTA_OPT_MAX_INTENTOS",
 ] as const;
 
 const original = new Map(VARS.map((v) => [v, process.env[v]]));
@@ -66,8 +70,10 @@ describe("SL-36/R23 — la config no lleva credencial ni modo de autenticacion",
       "ROUTE_OPT_TIMEOUT_MS",
       "RUTA_DEBOUNCE_S",
       "RUTA_MAX_PARADAS",
+      "RUTA_OPT_MAX_INTENTOS",
       "RUTA_ORIGEN_MAX_KM",
       "RUTA_ORIGEN_TTL_MIN",
+      "RUTA_REOPT_DISTANCIA_M",
       "RUTA_SYNC_MIN_INTERVALO_S",
     ]);
   });
@@ -167,6 +173,55 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
       process.env.RUTA_ORIGEN_MAX_KM = "50";
       expect(loadRouteOptimizationConfig().RUTA_ORIGEN_MAX_KM).toBe(50);
     });
+  });
+
+  describe.each([
+    ["RUTA_REOPT_DISTANCIA_M", 1000, "750"],
+    ["RUTA_OPT_MAX_INTENTOS", 3, "2"],
+  ] as const)("SLT-59/R36 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
+    it(`ausente -> ${porDefecto}, el valor decidido por el humano`, () => {
+      limpiar();
+      expect(loadRouteOptimizationConfig()[nombre]).toBe(porDefecto);
+    });
+
+    it("un valor valido se respeta (es configurable de verdad)", () => {
+      limpiar();
+      process.env[nombre] = override;
+      expect(loadRouteOptimizationConfig()[nombre]).toBe(Number(override));
+    });
+
+    it.each([
+      ["vacia", ""],
+      ["no numerica", "abc"],
+      ["cero", "0"],
+      ["negativa", "-5"],
+      ["NaN", "NaN"],
+    ])("%s -> cae al default SIN lanzar", (_caso, valor) => {
+      // Un umbral en 0 haria «desviado» a todo mensajero y pagaria una reoptimizacion por
+      // disparo; un tope de 0 intentos dejaria la ruta sin recalcular. Por eso un valor que no
+      // es un entero positivo vuelve al default en vez de colarse.
+      limpiar();
+      process.env[nombre] = valor;
+      expect(() => loadRouteOptimizationConfig()).not.toThrow();
+      expect(loadRouteOptimizationConfig()[nombre]).toBe(porDefecto);
+    });
+  });
+
+  it("SLT-59/R38 — RUTA_SYNC_MIN_INTERVALO_S sigue en 10 aunque los campos nuevos cambien", () => {
+    // La ficha cuenta llamadas, pero el intervalo de los botones manuales quedo fuera de
+    // alcance (D4): ningun ajuste de los campos nuevos puede arrastrarlo.
+    limpiar();
+    process.env.RUTA_REOPT_DISTANCIA_M = "5000";
+    process.env.RUTA_OPT_MAX_INTENTOS = "9";
+    expect(loadRouteOptimizationConfig().RUTA_SYNC_MIN_INTERVALO_S).toBe(10);
+  });
+
+  it("SLT-59/R38 — el tope de intentos de la geocodificacion no se mueve con el de la ruta", () => {
+    // `RUTA_OPT_MAX_INTENTOS` es solo de la reoptimizacion; la geocodificacion (91) conserva su 8.
+    limpiar();
+    process.env.RUTA_OPT_MAX_INTENTOS = "1";
+    loadRouteOptimizationConfig();
+    expect(GEOCODIFICACION_MAX_INTENTOS).toBe(8);
   });
 
   it("NINGUNA combinacion de entorno hace lanzar a loadRouteOptimizationConfig", () => {
