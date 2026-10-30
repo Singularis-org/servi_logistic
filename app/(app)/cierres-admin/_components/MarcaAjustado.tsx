@@ -21,7 +21,11 @@ import {
   ajustadoBadgeAriaLabel,
 } from "./cierre-labels";
 
-/** «AAAA-MM-DD HH:mm» de Costa Rica de un instante ISO; el ISO tal cual si no es una fecha. */
+/**
+ * «AAAA-MM-DD HH:mm» de un instante ISO en la zona horaria de operación; el ISO tal cual si no es
+ * una fecha. Usa los mismos helpers de fecha/hora que el resto de cierres: no hay zona horaria por
+ * empresa todavía, y una propia aquí divergiría del resto de la pantalla.
+ */
 function cuandoAjuste(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;

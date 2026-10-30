@@ -5,10 +5,10 @@
 > Q1/Q2 de `requirements.md` no bloquean: el diseño sigue la propuesta escrita.
 
 ## T1. Migración de la tabla de ajustes (R17)
-- [ ] `db/migrations/20261029120000_gestion_pago_mensajero_ajuste/migration.sql` + `down.sql`
+- [x] `db/migrations/20261029120000_gestion_pago_mensajero_ajuste/migration.sql` + `down.sql`
       según `design.md §1.1/§1.3` (tabla, 3 CHECK, índices, FK, RLS + política, REVOKE UPDATE/DELETE,
       triggers misma-empresa con `scripts/generar-misma-empresa.ts --faltantes`).
-- [ ] Modelo `GestionPagoMensajeroAjuste` y relaciones en `db/schema.prisma`; clasificado en
+- [x] Modelo `GestionPagoMensajeroAjuste` y relaciones en `db/schema.prisma`; clasificado en
       `lib/db/modelos-de-negocio.ts`.
 - **Hecho:** `pnpm run db:migrate` y `pnpm run db:rollback` limpios; test de integración
   `tests/integration/db/gestion-pago-mensajero-ajuste-migration.test.ts` verde: rechaza
@@ -17,26 +17,26 @@
   `organizacion-en-modelos`, `fk-misma-empresa`, `rls-por-empresa` en verde.
 
 ## T2. Tipo de historial (R18)
-- [ ] `db/migrations/20261029120100_historial_accion_pago_mensajero_ajustado/` (`ADD VALUE` solo) +
+- [x] `db/migrations/20261029120100_historial_accion_pago_mensajero_ajustado/` (`ADD VALUE` solo) +
       `down.sql` que recrea el enum sin el valor.
-- [ ] `lib/types/historial-accion.ts`: el tipo en «mueve dinero», etiqueta y comentario de su
+- [x] `lib/types/historial-accion.ts`: el tipo en «mueve dinero», etiqueta y comentario de su
       porqué; recuento de tipos actualizado.
 - **Hecho:** `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` verde con el tipo nuevo;
   `tests/integration/db/historial-accion-pago-mensajero-ajustado-migration.test.ts` verifica up/down.
 
 ## T3. [P] Módulo puro de validación (R8, R9, R16)
-- [ ] `lib/utils/ajuste-pago-mensajero.ts`: `validarAjustePago(vigente, anterior, nuevo)` en
+- [x] `lib/utils/ajuste-pago-mensajero.ts`: `validarAjustePago(vigente, anterior, nuevo)` en
       `Prisma.Decimal`; devuelve `ok` | `sin_cambio` | `desfasado`.
-- [ ] Guardia `tests/unit/guards/ajuste-pago-mensajero-money-safe.guardia.test.ts` (patrón de
+- [x] Guardia `tests/unit/guards/ajuste-pago-mensajero-money-safe.guardia.test.ts` (patrón de
       `pago-mensajero-money-safe.guardia.test.ts`, con contraprueba) sobre ese módulo y sobre el
       método del repositorio de T5: ni `Number(`, ni `parseFloat(`, ni `.toNumber(`.
 - **Hecho:** `tests/unit/utils/ajuste-pago-mensajero.test.ts` cubre `1500.00` vs `1500`, `0.01` de
   diferencia, vigente NULL → `desfasado`.
 
 ## T4. [P] Borde: schema y tipos (R7, R8)
-- [ ] `ajustarPagoMensajeroGestionSchema` en `lib/types/cierres-admin.ts` (reusar un schema de monto
+- [x] `ajustarPagoMensajeroGestionSchema` en `lib/types/cierres-admin.ts` (reusar un schema de monto
       ≥ 0 existente si cuadra; `design.md §4.1`).
-- [ ] Tipos de resultado y `AjustePagoGestionDTO` en `lib/interfaces/services/ICierresAdminService.ts`;
+- [x] Tipos de resultado y `AjustePagoGestionDTO` en `lib/interfaces/services/ICierresAdminService.ts`;
       input/resultado del repo en `lib/interfaces/repositories/ICierresAdminRepository.ts`;
       `pagoMensajero` en `GestionEditableDelCierre`; `ajustesPago?` en `CierreDetalleGestion`
       (`lib/interfaces/services/ICierreDiaService.ts`).
@@ -45,8 +45,8 @@
 
 ## T5. Repositorio (R5, R9, R10, R12, R15, R17, R18)
 Depende de T1–T4.
-- [ ] `findGestionEditableEnCierre` devuelve `pagoMensajero` (STRING).
-- [ ] `CierresAdminRepository.ajustarPagoMensajeroEnCierre` según `design.md §4.4`.
+- [x] `findGestionEditableEnCierre` devuelve `pagoMensajero` (STRING).
+- [x] `CierresAdminRepository.ajustarPagoMensajeroEnCierre` según `design.md §4.4`.
 - **Hecho (integración con base real; los dobles no ven el WHERE):**
   `tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts`:
   - ajusta y deja `total_pago_mensajero` = suma; recaudo, `total_ingreso_bodega_rechazos` y el pago
@@ -60,14 +60,14 @@ Depende de T1–T4.
   - rechazar el cierre y re-solicitarlo conserva el pago ajustado (R15).
   Cada caso del sello se mata con una mutación del WHERE (quitar estado, alcance o `pagoAnterior`)
   antes de darlo por bueno.
-- [ ] La guardia del censo `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
+- [x] La guardia del censo `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
       registra el método nuevo.
 
 ## T6. Service y action (R1–R9)
 Depende de T5.
-- [ ] `CierresAdminService.ajustarPagoMensajeroGestion` (`design.md §4.3`) y la action
+- [x] `CierresAdminService.ajustarPagoMensajeroGestion` (`design.md §4.3`) y la action
       `ajustarPagoMensajeroGestion` en `lib/actions/cierres-admin.ts`.
-- [ ] Registrar la action en `lib/modulos/reparto.ts` si la guardia `modulos-reparto` lo exige.
+- [x] Registrar la action en `lib/modulos/reparto.ts` si la guardia `modulos-reparto` lo exige.
 - **Hecho:** `tests/unit/services/cierres-admin-ajustar-pago.test.ts`: maestro y admin con destino
   central → ok (R1); adminSatelite en su zona → ok sin paso intermedio (R2); adminSatelite ajeno o
   sin zona → `no_encontrada` (R3); mensajero, tienda → `forbidden`, sin llamar al repo (R4); cierre
@@ -78,7 +78,7 @@ Depende de T5.
 
 ## T7. Lectura con la marca (R19, R20)
 Depende de T1, T4.
-- [ ] `GESTION_ADMIN_SELECT` + mapper con `ajustesPago`; `DETALLE_CIERRE_SELECT` de
+- [x] `GESTION_ADMIN_SELECT` + mapper con `ajustesPago`; `DETALLE_CIERRE_SELECT` de
       `CierresBodegaAdminRepository` con `gestionesAjustadas`.
 - **Hecho:** `tests/integration/db/ajuste-pago-mensajero-lectura.int.test.ts`: el detalle de admin
   trae los ajustes en orden cronológico con nombre, rol, importes y motivo; el detalle del cierre de
@@ -87,7 +87,7 @@ Depende de T1, T4.
 
 ## T8. Pantalla (R11, R19, R20, R21)
 Depende de T6, T7.
-- [ ] `AjustarPagoMensajeroDialog.tsx`; prop `puedeAjustarPagoMensajero` en `CierresAdminModule.tsx`
+- [x] `AjustarPagoMensajeroDialog.tsx`; prop `puedeAjustarPagoMensajero` en `CierresAdminModule.tsx`
       calculada en `page.tsx`; badge «Ajustado» + lista en `cierre-detalle-shared.tsx`; badge «Con
       ajustes» en el detalle de bodega.
 - **Hecho:** `tests/components/AjustarPagoMensajeroDialog.test.tsx` (envía `pagoAnterior`, bloquea
