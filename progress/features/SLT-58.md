@@ -40,6 +40,8 @@ F1.0 hecho (2026-10-29): tarjeta tomada, worktree creado. Siguiente: F1.2 (spec)
 - 2026-10-29 · A (T1–T4) · 8f46b5e + merge dev f47c928 · init.sh: typecheck/lint/guardias OK; test:rapido 4699 verdes, 1 rojo nuevo `demo-qa.test.ts` por entorno (base local `logistic_slt58` sin `db:seed`: «faltan catálogos vehiculo»), no por el diff; lo confirma CI.
 - 2026-10-29 · B (T5–T9) · e55265e · `db:seed` en `logistic_slt58` + init.sh: **init OK** (related 4878 verdes, guardias 4487 verdes). Revisión de diseño en curso (`progress/design_SLT-58.md`), sustituto de `/design`, que no existe.
 - 2026-10-29 · Diseño (28 hallazgos + confirmación «Cambiar plan») · d764f01 · init.sh: 4866 verdes, 1 rojo `WalletMensajerosTabs.test.tsx` por timeout de 20 s bajo carga; solo pasa 4/4. El diff no toca wallet.
+- 2026-10-29 · C (T10 E2E, T11 docs) + 4 decisiones de UI · 39d1892, 827fa46 · E2E `planes-superadmin` 15/15 dos veces, humo 18/18; init.sh del leader: **init OK** (4922 + 4487 verdes).
+- 2026-10-29 · Enmienda en curso (spec_author): fecha de inicio de ciclo manual en la 1ª asignación (pasada ≤ 1 mes, futura = ciclo corto desde hoy, asigna y avisa si pasa tope) y 404 real de `/mi-plan` (R8).
 
 ## Modelos (overrides)
 
