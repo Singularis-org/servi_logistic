@@ -102,6 +102,18 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.gestionOrden\.updateMany\(/,
   },
   {
+    // ⭑ SLT-56 — el AJUSTE del pago al mensajero de una gestion de un cierre abierto. Metodo propio
+    // por la misma razon que la 398: dentro de otro que ya llama a `appendAccion`, borrar este
+    // dejaria la guardia verde. La mutacion exigida es el SELLO (`pago_mensajero` de la gestion),
+    // que es lo que la fila documenta. Que la fila se escribe de verdad, con su `monto`, lo mide
+    // `tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts` contra Postgres real.
+    tipos: ["cierre_dia_pago_mensajero_ajustado"],
+    archivo: "lib/repositories/CierresAdminRepository.ts",
+    metodo: "ajustarPagoMensajeroEnCierre",
+    forma: "abre_tx",
+    mutacion: /tx\.gestionOrden\.updateMany\(/,
+  },
+  {
     tipos: ["cierre_bodega_aprobado", "cierre_bodega_rechazado"],
     archivo: "lib/repositories/CierresBodegaAdminRepository.ts",
     metodo: "resolverCierreBodega",
@@ -1086,7 +1098,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `ModulosEmpresaRepository` por tipo).
     // SL-20 no cambia el numero: los tres `nodo_geografico_*` se quedan en el enum, sin escritor.
     // 73 desde SL-24 (`plan_asignado`, de `PlanesRepository.asignar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(73);
+    // 74 desde SLT-56 (`cierre_dia_pago_mensajero_ajustado`, de
+    // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(74);
   });
 });
 

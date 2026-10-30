@@ -105,6 +105,9 @@ export interface CierreBodegaDetalleCierre {
   totales: CierreTotales; // snapshot del cierre_dia (money-safe)
   totalPagoMensajero: string; // feature 39/R20: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
+  // SLT-56 (R20): gestiones de este cierre_dia con al menos un ajuste del pago. Opcional porque el
+  // tipo lo comparte la consolidacion; solo lo rellena el detalle de admin del cierre de bodega.
+  gestionesAjustadas?: number;
   grupos: CierreGrupos; // por resultado (reuso CierreDetalleGestion de la 37, R11)
   // Totales por concepto del ingreso de la empresa de ESTE cierre_dia (derivados del snapshot).
   totalesIngreso: TotalesIngresoEmpresa;

@@ -8,12 +8,14 @@ import type {
 import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
 import type {
   ActualizarPagosGestionInput,
+  AjustarPagoMensajeroGestionInput,
   CorregirResultadoGestionInput,
 } from "@/lib/types/cierres-admin";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type {
+  AjustePagoGestionDTO,
   CierreGrupos,
   CierreOrdenSinGestion,
   CierreRechazoDeTienda,
@@ -609,6 +611,38 @@ export type CorregirResultadoGestionServiceResult =
   | { status: "conflict" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 
+// SLT-56: declarado junto a `CierreDetalleGestion`, que lo nombra (ver el TSDoc alli).
+export type { AjustePagoGestionDTO } from "@/lib/interfaces/services/ICierreDiaService";
+
+/**
+ * SLT-56 (design §4.2/§4.3) — desenlaces del AJUSTE del pago al mensajero de una gestion desde el
+ * detalle de un cierre abierto. Mismos cinco que la 398, para que la pantalla los trate igual.
+ *
+ *  - `ok`: el pago nuevo de la gestion, el total de pago al mensajero del cierre ya recalculado y el
+ *    ajuste recien escrito (R11, R19). Importes STRING escala 2.
+ *  - `forbidden` (R4): el rol no ajusta (solo maestro, admin y adminSatelite).
+ *  - `no_encontrada` (R3): la gestion no existe, esta anulada, no esta en un cierre o su cierre no es
+ *    del alcance (incluido el adminSatelite sin zona). Indistinguibles a proposito.
+ *  - `conflict` (R5/R9): el cierre no esta abierto, o el pago vigente ya no es el que la pantalla
+ *    mostraba. Nada se escribe.
+ *  - `validation_error` (R7/R8): motivo en blanco, o importe invalido o igual al vigente.
+ */
+export type AjustarPagoMensajeroGestionServiceResult =
+  | {
+      status: "ok";
+      gestionId: string;
+      pagoMensajero: string;
+      totalPagoMensajero: string;
+      ajuste: AjustePagoGestionDTO;
+    }
+  | { status: "forbidden" }
+  | { status: "no_encontrada" }
+  | { status: "conflict" }
+  | {
+      status: "validation_error";
+      fieldErrors: { pagoNuevo?: string[]; motivo?: string[] };
+    };
+
 export interface ICierresAdminService {
   /**
    * R2-R5/R8/R9: lista los cierres del alcance del actor (rol+zona), partidos en
@@ -765,6 +799,15 @@ export interface ICierresAdminService {
     input: CorregirResultadoGestionInput,
     actor: Actor,
   ): Promise<CorregirResultadoGestionServiceResult>;
+  /**
+   * SLT-56 — ajusta el pago al mensajero de UNA gestión de un cierre ABIERTO del alcance del actor
+   * (maestro/admin: central; adminSatelite: su satélite, sin aprobación de la central). Motivo
+   * obligatorio; el rastro y el total del cierre se escriben en la misma transacción.
+   */
+  ajustarPagoMensajeroGestion(
+    input: AjustarPagoMensajeroGestionInput,
+    actor: Actor,
+  ): Promise<AjustarPagoMensajeroGestionServiceResult>;
   aprobarCierre(
     cierreId: string,
     actor: Actor,

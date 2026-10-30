@@ -430,6 +430,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "modulo_desactivado",
       // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
       "plan_asignado",
+      // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
+      // `20261029120100_historial_accion_pago_mensajero_ajustado`.
+      "cierre_dia_pago_mensajero_ajustado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
