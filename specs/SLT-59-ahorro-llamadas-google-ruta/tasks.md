@@ -68,11 +68,11 @@
 
 ## Fase 4 — Reintentos (independiente; [P] con F2 y F3)
 
-- [ ] **T4.1** [P] `JobFallidoPermanente` y su rama en `JobQueueService.drenar` (design §4, pasos 3-4).
+- [x] **T4.1** [P] `JobFallidoPermanente` y su rama en `JobQueueService.drenar` (design §4, pasos 3-4).
   *Hecho:* `tests/unit/services/job-queue-service-permanente.test.ts`: dead-letter en el intento 1 de 3
   (R29), un error normal sigue con backoff (R33), otro tipo de job se comporta igual (R34);
   `job-queue-service.test.ts` y `job-queue-service-descartado.test.ts` siguen verdes.
-- [ ] **T4.2** `RutaCredencialRechazadaError` en el servicio y su traducción en el handler (design §4,
+- [x] **T4.2** `RutaCredencialRechazadaError` en el servicio y su traducción en el handler (design §4,
   pasos 1-2). *Hecho:* `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts`: 401 y 403
   → `JobFallidoPermanente`, ruta `desactualizada` con el orden previo intacto (R30), motivo sin token,
   URL ni coordenadas (R35); `tests/unit/actions/sincronizar-ruta.test.ts` cubre R31.

@@ -215,6 +215,38 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(r).toMatchObject({ status: "omitida", razon: "reducida" });
   });
 
+  // PA-1 (decision del leader 2026-10-30): quitar paradas DETRAS de la ultima restante no deja
+  // ningun hueco que puentear, porque cada tramo es el que LLEGA a su parada; se trata como R13.
+  it("PA-1/R13: paradas quitadas DETRAS de la ultima restante -> 0 llamadas, trazado concatenado con sumas", async () => {
+    const { service, client, trazar, reduccion, rutas } = build({
+      ruta: rutaConTramos(IDS.slice(0, 3)),
+      paradas: [parada("s1"), parada("s2")], // s3 entregada primero
+    });
+
+    const r = await service.ejecutar(MENSAJERO, JOB);
+
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
+    const red = reduccion()[2];
+    expect(red.paradas).toEqual([
+      { ordenId: "s1", tramo: tramo("o", "s1") },
+      { ordenId: "s2", tramo: tramo("s1", "s2") },
+    ]);
+    const esperado = {
+      encodedPolyline: codificarPolilinea([PUNTOS.o, PUNTOS.s1, PUNTOS.s2]),
+      distanciaM: 1000 + 2000,
+      duracionS: 100 + 200,
+      fuente: "routes",
+    };
+    expect(red.trazado).toEqual(esperado);
+    expect(r).toEqual({
+      status: "omitida",
+      razon: "reducida",
+      trazado: { ...esperado, tramos: red.paradas.map((p) => p.tramo) },
+    });
+  });
+
   it("R14: entrega fuera de orden, UN hueco -> 1 `computeRoutes` de 2 puntos (anterior -> siguiente)", async () => {
     const { service, client, trazar, reduccion } = build({
       ruta: rutaConTramos(IDS.slice(0, 4)),

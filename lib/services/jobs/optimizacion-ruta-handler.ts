@@ -9,7 +9,11 @@ import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
-import { OptimizacionRutaService } from "@/lib/services/OptimizacionRutaService";
+import {
+  OptimizacionRutaService,
+  RutaCredencialRechazadaError,
+} from "@/lib/services/OptimizacionRutaService";
+import { JobFallidoPermanente } from "@/lib/services/jobs/job-fallido-permanente";
 import { GoogleRouteOptimizationClient } from "@/lib/clients/google-route-optimization";
 import { GoogleRoutesClient } from "@/lib/clients/google-routes";
 import { HaversineRouteOptimizationClient } from "@/lib/clients/haversine-route-optimization";
@@ -47,6 +51,12 @@ export function crearOptimizacionRutaHandler(service: OptimizacionRutaService): 
       });
       optlog("job — completado", { jobId: job.id });
     } catch (error) {
+      if (error instanceof RutaCredencialRechazadaError) {
+        // SLT-59 (R29): reintentar una credencial rechazada solo repite la llamada pagada; la
+        // cola lo manda a dead-letter en este intento. El mensaje ya va saneado (R35).
+        opterror("job — credencial rechazada; fallo terminal sin reintento", error, { jobId: job.id });
+        throw new JobFallidoPermanente(error.message);
+      }
       // Se traza y se RE-LANZA: la cola necesita el fallo para su backoff y su dead-letter.
       opterror("job — fallo; la cola aplicara backoff", error, { jobId: job.id });
       throw error;

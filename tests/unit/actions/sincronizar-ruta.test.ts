@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { sincronizarRuta } from "@/lib/actions/ruta-mensajero";
-import { RutaIntentoFallidoError } from "@/lib/services/OptimizacionRutaService";
+import {
+  RutaCredencialRechazadaError,
+  RutaIntentoFallidoError,
+} from "@/lib/services/OptimizacionRutaService";
 import type {
   EjecutarOptimizacionOpts,
   EjecutarOptimizacionResult,
@@ -224,6 +227,30 @@ describe("265/R39 — la action devuelve QUIEN ordeno la secuencia", () => {
       const { service } = build({ status: "omitida", razon });
       const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
       expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
+    },
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R31) — la credencial rechazada tiene tipo propio para la cola, pero la pantalla no
+// debe notar la diferencia: es una subclase del fallo de proveedor que este borde ya traduce.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-59 R31 — 401/403 en la sincronizacion manual: el mismo resultado que cualquier fallo del proveedor", () => {
+  it.each([401, 403])(
+    "HTTP %i -> `conflict` identico al de un fallo transitorio, sin lanzar ni filtrar el detalle",
+    async (http) => {
+      const transitorio = build(new RutaIntentoFallidoError("optimizar ruta: HTTP 503"));
+      const rechazada = build(
+        new RutaCredencialRechazadaError(`optimizar ruta: credencial rechazada (HTTP ${http})`),
+      );
+
+      const esperado = await sincronizarRuta({}, { service: transitorio.service, getActor: actorDe(MENSAJERO) });
+      const r = await sincronizarRuta({}, { service: rechazada.service, getActor: actorDe(MENSAJERO) });
+
+      expect(r).toEqual(esperado);
+      expect(r.status).toBe("conflict");
+      expect(JSON.stringify(r)).not.toMatch(/credencial|HTTP/);
     },
   );
 });

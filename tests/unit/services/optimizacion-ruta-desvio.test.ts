@@ -251,6 +251,25 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       ).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
 
+    // PA-2 (decision del leader 2026-10-30): una polilinea `routes` que decodifica a 0 puntos
+    // sigue "existiendo" para R4; sin linea contra la que medir, la distancia es +Infinity y se
+    // reoptimiza, que es el default seguro (no se cae a la recta).
+    it("PA-2: polilinea `routes` que decodifica a 0 puntos -> distancia +Infinity -> desviado -> reoptimizar", () => {
+      expect(distanciaMinimaAPolilineaM({ lat: 9.92, lng: LNG }, [])).toBe(Number.POSITIVE_INFINITY);
+      const vacia = ruta({
+        trazado: { encodedPolyline: "", distanciaM: 0, duracionS: 0, fuente: "routes" },
+      });
+      // Sobre la recta entre paradas: con la recta seria "omitir"; con la polilinea vacia, no.
+      expect(
+        decidirGuardaRuta({
+          ruta: vacia,
+          paradas: todas,
+          posicion: { lat: 9.925, lng: LNG },
+          umbralM: UMBRAL_M,
+        }),
+      ).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
+    });
+
     it("SIN polilinea y con UNA parada restante, la linea es ese punto", () => {
       const r = ruta({ secuenciaPorOrden: new Map([["s1", 1]]) });
       const decidir = (metros: number) =>

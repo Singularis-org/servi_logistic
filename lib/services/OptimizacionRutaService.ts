@@ -115,6 +115,19 @@ export class RutaIntentoFallidoError extends Error {
 }
 
 /**
+ * SLT-59 (design §4; R29-R31, R35) — el proveedor rechazo la credencial (401/403). Es SUBCLASE a
+ * proposito: todo borde que hoy atrapa `RutaIntentoFallidoError` (la sincronizacion manual) la
+ * sigue tratando igual (R31), y solo el handler del job la distingue para no reintentarla (R29).
+ * El mensaje es el `detalle` ya saneado del cliente: operacion y estado HTTP, nada mas (R35).
+ */
+export class RutaCredencialRechazadaError extends RutaIntentoFallidoError {
+  constructor(detalle: string) {
+    super(detalle);
+    this.name = "RutaCredencialRechazadaError";
+  }
+}
+
+/**
  * Feature 265 (R24, R32, design §7) — errores NUESTROS cuyos mensajes ya estan saneados POR
  * CONTRATO: citan la operacion y el estado, nunca el token, la URL ni una coordenada.
  *
@@ -607,6 +620,11 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       detalle: outcome.detalle,
     });
     await this.rutas.marcarDesactualizada(mensajeroId, outcome.detalle);
+    if (outcome.status === "config_invalida") {
+      // SLT-59 (R29): con la credencial rechazada cada reintento es otra llamada que vuelve a
+      // fallar igual; el tipo propio deja al handler cortar los reintentos.
+      throw new RutaCredencialRechazadaError(outcome.detalle);
+    }
     throw new RutaIntentoFallidoError(outcome.detalle);
   }
 

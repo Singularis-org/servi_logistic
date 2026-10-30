@@ -382,3 +382,105 @@ Con `NODE_OPTIONS=--max-old-space-size=8192`, un comando cada vez:
   restante: no queda hueco que puentear. Lleva test propio.
 - **PA-2:** se mantiene polilínea `routes` que decodifica a 0 puntos ⇒ distancia `+Infinity` ⇒
   desviado ⇒ reoptimizar (default seguro). Lleva test propio.
+
+## Tanda 4 — PA-1/PA-2 + Fase 4 (backend_dev, 2026-10-30)
+
+### Archivos
+
+Creados:
+- `lib/services/jobs/job-fallido-permanente.ts`: clase `JobFallidoPermanente`, gemela de `job-descartado.ts`.
+- `tests/unit/services/job-queue-service-permanente.test.ts` (T4.1)
+- `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts` (T4.2)
+
+Modificados:
+- `lib/services/JobQueueService.ts`: rama `JobFallidoPermanente` en `drenar`, junto a la de
+  `JobDescartado`. Hace `fail(id, msg, null)`, suma a `fallidos` y a `muertos` y llama a
+  `reagendarRecurrente`. Sin backoff.
+- `lib/services/OptimizacionRutaService.ts`: nueva `RutaCredencialRechazadaError extends
+  RutaIntentoFallidoError`. Con `config_invalida` se lanza esa subclase, siempre DESPUÉS de
+  `marcarDesactualizada`.
+- `lib/services/jobs/optimizacion-ruta-handler.ts`: en el `catch`, `RutaCredencialRechazadaError` →
+  `throw new JobFallidoPermanente(error.message)`. El resto de errores se re-lanza igual.
+- `tests/unit/actions/sincronizar-ruta.test.ts`: describe de R31.
+- `tests/unit/services/optimizacion-ruta-reduccion.test.ts`: test de PA-1.
+- `tests/unit/services/optimizacion-ruta-desvio.test.ts`: test de PA-2.
+- `specs/SLT-59-ahorro-llamadas-google-ruta/tasks.md`: T4.1 y T4.2 marcadas.
+
+`lib/actions/ruta-mensajero.ts` NO cambia: su `instanceof RutaIntentoFallidoError` ya atrapa la
+subclase, y el test de R31 lo demuestra. Ningún archivo bajo `db/` cambia: `git diff --stat
+dev...HEAD -- db/` y `git diff --stat HEAD -- db/` salen vacíos.
+
+### PA-1 / PA-2: el código ya hacía lo decidido
+
+- **PA-1:** previa s1,s2,s3 y actual s1,s2, con tramos por calles. Resultado: 0 `optimizar`,
+  0 `trazar` y 1 `reducirSecuencia` con los tramos o→s1 y s1→s2. La cabecera es
+  `codificar([o,s1,s2])`, con 3000 m y 300 s. Devuelve `omitida/reducida` con el trazado.
+- **PA-2:** con `trazado.fuente="routes"` y `encodedPolyline=""`, `distanciaMinimaAPolilineaM(p, [])`
+  da `+Infinity`. `decidirGuardaRuta` devuelve `{reoptimizar, desviado}`, aunque la posición esté
+  sobre la recta (con la recta saldría `omitir`).
+
+Ninguno de los dos pidió cambiar código de producción.
+
+### Mapa R<n> → test (esta tanda)
+
+| R | Test |
+| --- | --- |
+| PA-1 (R13) | `optimizacion-ruta-reduccion.test.ts` › «PA-1/R13: paradas quitadas DETRAS de la ultima restante…» |
+| PA-2 (R3/R4) | `optimizacion-ruta-desvio.test.ts` › «PA-2: polilinea `routes` que decodifica a 0 puntos…» |
+| R29 | `job-queue-service-permanente.test.ts` › «dead-letter en el intento 1 de 3…»; `optimizacion-ruta-credencial-rechazada.test.ts` › «R29: el handler la traduce…» y «R29/R35: la cola lo deja en dead-letter en el intento 1 de 3…» (401 y 403) |
+| R30 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R30: el servicio conserva el orden previo, marca la ruta desactualizada…» (401 y 403) |
+| R31 | `sincronizar-ruta.test.ts` › «SLT-59 R31 — 401/403 en la sincronizacion manual…» (401 y 403) |
+| R33 | `job-queue-service-permanente.test.ts` › «un error normal sigue con backoff (R33)» (2 casos); `optimizacion-ruta-credencial-rechazada.test.ts` › «HTTP 503 -> el handler re-lanza…» |
+| R34 | `job-queue-service-permanente.test.ts` › «los demas tipos de job no cambian (R34)» (geocodificacion, push_web, webhook_evento) |
+| R35 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R29/R35…». Cadena real: `GoogleRouteOptimizationClient` + `fetch` doble con 401/403 → servicio → handler → `JobQueueService`. El motivo en `fail` es exactamente `optimizar ruta: credencial rechazada (HTTP <n>)`, sin token, proyecto, `http(s)://`, `googleapis` ni coordenadas. |
+
+### Salida real
+
+Con `NODE_OPTIONS=--max-old-space-size=8192`:
+
+- `pnpm exec vitest run tests/unit/services/optimizacion-ruta-reduccion.test.ts tests/unit/services/optimizacion-ruta-desvio.test.ts`
+  → `Test Files 2 passed (2)`, `Tests 57 passed (57)`
+- `pnpm exec vitest run tests/unit/services/job-queue-service-permanente.test.ts tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts tests/unit/actions/sincronizar-ruta.test.ts tests/unit/services/job-queue-service.test.ts tests/unit/services/job-queue-service-descartado.test.ts`
+  → `Test Files 5 passed (5)`, `Tests 67 passed (67)`
+- `vitest run optimizacion-ruta-{ahorro-jornada,degradacion,desvio,encolado,origen}` (desde `tests/unit/services`)
+  → `Test Files 4 passed | 1 skipped (5)`, `Tests 73 passed | 1 todo (74)`. El skipped es el `it.todo` de T5.1.
+- `vitest run optimizacion-ruta-{reduccion,service,token-por-empresa,tramo-vivo,trazado} integraciones-consumidores-composition-root`
+  → `Test Files 6 passed (6)`, `Tests 121 passed (121)`. Incluye el R27 `config_invalida` de
+  `optimizacion-ruta-service.test.ts`, que espera `RutaIntentoFallidoError` y sigue verde con la subclase.
+- `pnpm run lint` → `✖ 234 problems (0 errors, 234 warnings)`. Lo corrí sobre los 9 archivos
+  tocados → 0 problemas.
+- `pnpm run typecheck` → **1 error, ajeno al diff**:
+  `lib/types/historial-accion.ts(696,7): error TS2322 … "cierre_dia_pago_mensajero_ajustado"`.
+  - Causa: el `node_modules` compartido (junction al repo principal) tiene un cliente Prisma
+    generado desde `dev`, que ya trae SLT-56.
+  - Ese valor no existe en el `db/schema.prisma` de esta rama (`grep` = 0) y sí en `dev`.
+  - Desaparece al rebasar sobre `dev` o al regenerar el cliente desde el schema de la rama.
+  - No es de esta tanda. Ninguno de los archivos tocados sale en la salida.
+
+### Desviaciones y avisos
+
+- La rama va por detrás de `dev`, que ya mergeó SLT-56. Eso explica el rojo del typecheck y que
+  `git diff --stat dev -- db/` (sin `...`) muestre 5 archivos. Con la base común (`dev...HEAD`)
+  sale vacío: R40 se cumple. Antes de T5.2 conviene rebasar sobre `dev`.
+- **Incidencia de proceso:** typecheck y lint quedaron corriendo a la vez. El harness pasó el
+  typecheck a background a los 180 s y lancé lint antes de que terminara. Los dos acabaron sin
+  que el sistema los matara.
+- No corrí `vitest related` sobre `OptimizacionRutaService.ts` ni `JobQueueService.ts`, por
+  instrucción (memoria). Queda para el gate de CI.
+
+### Pregunta abierta
+
+Ninguna.
+
+**Veredicto:** PA-1/PA-2 con test y T4.1/T4.2 hechos. Los tests tocados están verdes. Lint con
+0 errores. Typecheck con 1 error ajeno (cliente Prisma de `dev` en el `node_modules` compartido).
+
+### Tanda 4 — nota del implementer (2026-10-30)
+
+`tsc --noEmit` da 3 errores, todos fuera del diff de SLT-59 (`git diff --name-only dev...HEAD` no
+toca `historial*`): `lib/types/historial-accion.ts(696)` y `lib/repositories/HistorialAccionRepository.ts(149,159)`.
+Causa: el `node_modules` enlazado (junction al checkout principal) tiene un cliente Prisma generado
+desde `dev`, que ya trae el valor `cierre_dia_pago_mensajero_ajustado` (SLT-56) ausente del
+`db/schema.prisma` de esta rama. Se resuelve con la sincronización F2.3 (merge de `dev`), que pide el
+leader. No se regenera el cliente desde aquí: pisaría el `node_modules` compartido con el checkout
+principal.
