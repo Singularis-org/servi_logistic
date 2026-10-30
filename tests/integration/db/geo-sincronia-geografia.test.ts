@@ -38,12 +38,11 @@ interface FilaNodo {
   nombre_normalizado: string;
   codigo_oficial: string | null;
   activo: boolean;
-  ruta: string[];
 }
 
 async function nodo(tx: TxDeTest, id: string): Promise<FilaNodo | undefined> {
   const filas = await tx.$queryRawUnsafe<FilaNodo[]>(
-    `SELECT id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo, ruta
+    `SELECT id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo
        FROM nodo_geografico WHERE id = $1`,
     id,
   );
@@ -75,7 +74,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     await base?.$disconnect();
   });
 
-  it("R15: el alta de SL-20 crea el nodo de cada nivel con el mismo id, país, tipo, padre, código y ruta", async () => {
+  it("R15: el alta de SL-20 crea el nodo de cada nivel con el mismo id, país, tipo, padre, profundidad y código", async () => {
     const r = await conGeo(async ({ tx, geo }) => {
       const s = sufijo();
       const t = await tiposDeNivel(tx, "XA");
@@ -87,11 +86,10 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     expect(r.np).toEqual({
       id: r.p, pais_id: "XA", tipo_id: r.t.nivel1, padre_id: null, profundidad: 1,
       nombre: `Región Ñuble ${r.s}`, nombre_normalizado: `region nuble ${r.s}`, codigo_oficial: "7", activo: true,
-      ruta: [r.p],
     });
     // Provincia y cantón con el mismo código «7»: conviven, como en SL-20 (único por país y tipo).
-    expect(r.nc).toMatchObject({ id: r.c, pais_id: "XA", tipo_id: r.t.nivel2, padre_id: r.p, profundidad: 2, codigo_oficial: "7", ruta: [r.p, r.c] });
-    expect(r.nd).toMatchObject({ id: r.d, pais_id: "XA", tipo_id: r.t.nivel3, padre_id: r.c, profundidad: 3, codigo_oficial: null, activo: true, ruta: [r.p, r.c, r.d] });
+    expect(r.nc).toMatchObject({ id: r.c, pais_id: "XA", tipo_id: r.t.nivel2, padre_id: r.p, profundidad: 2, codigo_oficial: "7" });
+    expect(r.nd).toMatchObject({ id: r.d, pais_id: "XA", tipo_id: r.t.nivel3, padre_id: r.c, profundidad: 3, codigo_oficial: null, activo: true });
   });
 
   it("R15, R16: la carga CSV (`importarDivision`) crea los nodos de sus altas y les pasa los códigos que completa", async () => {
@@ -159,7 +157,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     expect(r.hijoTrasRetirar).toBe(true);
   });
 
-  it("R16: cambio de padre (con la ruta de los descendientes), de código y de país se reflejan en el nodo", async () => {
+  it("R16: cambio de padre (el distrito del cantón movido no cambia), de código y de país se reflejan en el nodo", async () => {
     const r = await conGeo(async ({ tx }) => {
       await crearPaisDePrueba(tx, "XB");
       const xb = await tiposDeNivel(tx, "XB");
@@ -181,10 +179,10 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
       const cambiada = await nodo(tx, p1);
       return { p1, p2, c, d, xb, cantonMovido, distritoDelMovido, codigo, cambiada };
     });
-    expect(r.cantonMovido).toMatchObject({ padre_id: r.p2, ruta: [r.p2, r.c] });
-    expect(r.distritoDelMovido?.ruta).toEqual([r.p2, r.c, r.d]);
+    expect(r.cantonMovido).toMatchObject({ padre_id: r.p2, profundidad: 2 });
+    expect(r.distritoDelMovido).toMatchObject({ padre_id: r.c, profundidad: 3 });
     expect(r.codigo).toBe("B-9");
-    expect(r.cambiada).toMatchObject({ pais_id: "XB", tipo_id: r.xb.nivel1, ruta: [r.p1] });
+    expect(r.cambiada).toMatchObject({ pais_id: "XB", tipo_id: r.xb.nivel1, padre_id: null, profundidad: 1 });
   });
 
   it("R16: un UPDATE que no cambia nada del nodo no lo reescribe", async () => {

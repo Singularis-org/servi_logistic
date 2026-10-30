@@ -9,6 +9,9 @@
 > mergeado o descartado por el humano. Las preguntas abiertas quedaron respondidas el 2026-10-29
 > (`requirements.md > Decisiones cerradas`): snapshot con `id`, sin trigger en `cierre_detail`,
 > código único por `(pais_id, tipo_id, codigo_oficial)` y `ruta text[]`.
+>
+> **Enmienda 2026-10-29 (Camilo):** sin columna `ruta`. Lo que T2.2 y T3.1 hicieron con ella lo
+> deshace la tanda **T8**, al final. R8 y R11 quedan retirados y R7 cambia (design §2.2).
 
 ## T0 — Precondiciones
 
@@ -112,6 +115,77 @@
   producción, ensayo completo sobre una copia de producción (migraciones, script, equivalencia,
   `VALIDATE`, `down.sql` y otra ida) con tiempos, y backup restaurado. *Hecho:* el humano anota el
   resultado en `progress/features/SLT-43.md`. Ningún agente lo ejecuta.
+
+## T8 — Enmienda «sin `ruta`» (decisión 2026-10-29; depende de que el humano apruebe esta enmienda)
+
+Las migraciones de SLT-43 no están mergeadas (PR #44 abierto): se **editan en su sitio**, no se
+crea una migración nueva. `scripts/geo-backfill-nodo.ts` y `20261029120500_indices_nodo_geografico`
+no usan `ruta`: no se tocan. Grep de comprobación al final: `ruta` (como columna de
+`nodo_geografico`), `GIN`/`Gin` sobre ella y `ruta_descendientes` no aparecen en `db/`, `tests/` ni
+`docs/architecture.md`.
+
+- [x] **T8.1** `db/migrations/20261029120200_nodo_geografico/migration.sql`:
+  - quitar `"ruta" TEXT[] NOT NULL` de la tabla y el `CREATE INDEX "nodo_geografico_ruta_idx" … USING
+    GIN ("ruta")` con su comentario de R11;
+  - en `nodo_geografico_invariantes`: quitar `v_ruta`, las asignaciones a `NEW.ruta` y `n.ruta` del
+    `SELECT`; leer el padre con `FOR SHARE`; añadir el paso 3 de design §2.2 (en `UPDATE`, si
+    `NEW.profundidad IS DISTINCT FROM OLD.profundidad` y existe un nodo con `padre_id = NEW.id`,
+    `RAISE … USING ERRCODE = 'SLT43'`); quitar `"ruta"` de la lista `UPDATE OF` del trigger;
+  - borrar la función y el trigger `nodo_geografico_ruta_descendientes` con su bloque de comentario;
+  - ajustar los comentarios que nombran la ruta o los descendientes (cabecera, tabla, invariantes,
+    copia de R13) y el de ciclos, que pasa a explicar el paso 3.
+  *Hecho:* `Grep` de `ruta` en el archivo sin resultados.
+- [x] **T8.2** `db/migrations/20261029120200_nodo_geografico/down.sql`: quitar el `DROP TRIGGER
+  "nodo_geografico_ruta_descendientes"` y el `DROP FUNCTION nodo_geografico_ruta_descendientes()`.
+  *Hecho:* el `down.sql` solo borra lo que crea la migración de T8.1.
+- [x] **T8.3** [P] `db/migrations/20261029120300_nodo_geografico_sincronia/migration.sql`: quitar `ruta`
+  de la lista de columnas y su valor (`ARRAY[…]`) en los tres upserts (`geo_sincronizar_provincia`,
+  `…_canton`, `…_distrito`) y del comentario de cabecera. El `down.sql` no cambia. *Hecho:* `Grep` de
+  `ruta` en la carpeta sin resultados.
+- [x] **T8.4** [P] `db/schema.prisma`, modelo `NodoGeografico`: quitar el campo `ruta String[]` con
+  su comentario, el `@@index([ruta], type: Gin)` con su comentario de R11, y en el comentario de
+  cabecera la mención a la ruta (R8) y a `nodo_geografico_ruta_descendientes`; nombrar la regla
+  nueva de R7 (nodo con hijos no cambia de profundidad). *Hecho:* `prisma migrate diff
+  --from-config-datasource --to-schema db/schema.prisma` vacío tras aplicar las migraciones de T8.1–T8.3
+  en una base limpia, y `pnpm run typecheck` verde.
+- [x] **T8.5** `tests/integration/db/_fixtures/geo-43.ts`: quitar `ruta` de `SQL_INSERTAR_NODO`
+  (columna y `ARRAY['lo pisa el trigger']`) y del comentario de `NodoNuevo`. *Hecho:* los tests que
+  usan el fixture compilan y pasan (T8.6, T8.7).
+- [x] **T8.6** `tests/integration/db/geo-nodo-invariantes.test.ts` (design §7, filas R4–R11):
+  - cabecera: quitar R8 y R11 de la lista, ajustar R4 y R7;
+  - quitar `ruta` del tipo de fila y el helper `rutas()`;
+  - R4: quitar `ruta` de las expectativas y comprobar que la columna `ruta` no existe
+    (`information_schema.columns`);
+  - R4/R10: el caso «nombre normalizado o ruta mandados a mano se pisan» queda solo con el nombre
+    normalizado;
+  - R7: añadir «cambiar la profundidad de un nodo con hijos → `SLT43`», «`SET padre_id = <nieto>,
+    profundidad = <la del nieto + 1>` → `SLT43` y sin cambios» y «mover un nodo con hijos a otro padre
+    del mismo nivel entra y sus hijos siguen con el mismo padre y profundidad»;
+  - borrar el caso R8 (ruta del subárbol al cambiar de padre);
+  - sustituir el caso R11 por uno que compruebe que no existen `nodo_geografico_ruta_idx`
+    (`pg_indexes`) ni `nodo_geografico_ruta_descendientes` (`pg_trigger`).
+  *Hecho:* verde con `DATABASE_URL` exportada; el caso nuevo del nieto **falla** si se quita el paso 3
+  del trigger (comprobado a mano y anotado en `progress/impl_SLT-43.md`).
+- [x] **T8.7** [P] `tests/integration/db/geo-sincronia-geografia.test.ts`: quitar `ruta` del `SELECT`
+  y del tipo de fila; en R15 y R16 sustituir las expectativas sobre `ruta` por `padre_id` y
+  `profundidad` (el cantón movido cuelga de la provincia nueva; su distrito sigue colgando del cantón
+  con profundidad 3; el nodo con país cambiado sigue con profundidad 1 y sin padre). Renombrar el caso
+  R16 («con la ruta de los descendientes» → «el distrito del cantón movido no cambia»). Sin cambiar
+  qué comprueba cada caso más allá de la ruta. *Hecho:* verde.
+- [x] **T8.8** [P] `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts`: el ejemplo de
+  lectura `'SELECT * FROM "nodo_geografico" WHERE ruta @> ARRAY[$1]'` pasa a uno sobre `padre_id`
+  (p. ej. `WHERE padre_id = $1`). *Hecho:* la guardia y su contraprueba verdes.
+- [x] **T8.9** [P] `docs/architecture.md` (línea del modelo nuevo, hoy «`ruta text[]` con índice
+  GIN»): describir el árbol solo con `padre_id` y `profundidad`, y que los descendientes se leen con
+  CTE recursiva o el catálogo en memoria. *Hecho:* `check-perfil` verde.
+- [ ] **T8.10** Correr `migracion-slt43-ida-y-vuelta.test.ts`, `slt43-migraciones-aditivas.test.ts`,
+  `geo-nodo-rls.test.ts`, `geo-sincronia-orden-zonas.test.ts`, `geo-backfill.test.ts`,
+  `geo-equivalencia.test.ts` y `carga-division.test.ts` sin tocarlos. *Hecho:* verdes (R13, R14, R19,
+  R34, R35, R36 siguen cumpliéndose sin la ruta).
+- [ ] **T8.11** Cierre de la tanda: typecheck, lint, todas las guardias y los tests de SLT-43 (como en
+  T7.1); en `progress/impl_SLT-43.md`, una entrada de la enmienda con el mapa `R<n> → test`
+  actualizado (R8 y R11 retirados, R7 con los casos nuevos). *Hecho:* todo verde y el `gate-completo`
+  del PR #44 en verde.
 
 ## Archivos esperados
 

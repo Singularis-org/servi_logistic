@@ -39,7 +39,7 @@ export async function tiposDeNivel(tx: TxDeTest, paisId: string): Promise<TiposD
   return { nivel1: id("nivel_1"), nivel2: id("nivel_2"), nivel3: id("nivel_3") };
 }
 
-/** Un nodo para insertar a mano. Sin `id`, uno nuevo. `nombre_normalizado` y `ruta` los pone el trigger. */
+/** Un nodo para insertar a mano. Sin `id`, uno nuevo. `nombre_normalizado` lo pone el trigger. */
 export interface NodoNuevo {
   id?: string;
   paisId: string;
@@ -51,8 +51,8 @@ export interface NodoNuevo {
 }
 
 export const SQL_INSERTAR_NODO = `INSERT INTO nodo_geografico
-    (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, ruta)
-  VALUES ($1, $2, $3, $4, $5, $6, 'lo pisa el trigger', $7, ARRAY['lo pisa el trigger'])`;
+    (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial)
+  VALUES ($1, $2, $3, $4, $5, $6, 'lo pisa el trigger', $7)`;
 
 /** Los argumentos de `SQL_INSERTAR_NODO`, para pasarlos también a `intentar` (SAVEPOINT). */
 export function argumentosDeNodo(n: NodoNuevo & { id: string }): unknown[] {

@@ -20,8 +20,8 @@
 -- Una función por tabla (design §2.3): cada una sabe su profundidad, su padre y su tipo sin ramas.
 -- El tipo se busca con una subconsulta escalar: si un país no tuviera su `nivel_N` (lo crea siempre
 -- `pais_tipos_de_nivel`), el NOT NULL de `tipo_id` lo grita en vez de dejar la geografía sin nodo.
--- `nombre_normalizado` y `ruta` van con un valor cualquiera: los pisa el trigger de invariantes del
--- nodo, que es el único que los calcula.
+-- `nombre_normalizado` va con un valor cualquiera: lo pisa el trigger de invariantes del
+-- nodo, que es el único que lo calcula.
 --
 -- Solo aditiva (R19). A mano: `db:migrate:create` falla con P3006 en este repo (ver 20261022130000).
 
@@ -36,10 +36,10 @@ BEGIN
   END IF;
 
   INSERT INTO nodo_geografico AS n
-      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo, ruta)
+      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo)
   VALUES (NEW.id, NEW.pais_id,
           (SELECT t.id FROM tipo_nivel_geografico t WHERE t.pais_id = NEW.pais_id AND t.clave = 'nivel_1'),
-          NULL, 1, NEW.nombre, '', NEW.codigo_dta, NEW.activo, ARRAY[NEW.id])
+          NULL, 1, NEW.nombre, '', NEW.codigo_dta, NEW.activo)
   ON CONFLICT (id) DO UPDATE
     SET pais_id = EXCLUDED.pais_id, tipo_id = EXCLUDED.tipo_id, padre_id = EXCLUDED.padre_id,
         profundidad = EXCLUDED.profundidad, nombre = EXCLUDED.nombre,
@@ -60,10 +60,10 @@ BEGIN
   END IF;
 
   INSERT INTO nodo_geografico AS n
-      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo, ruta)
+      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo)
   VALUES (NEW.id, NEW.pais_id,
           (SELECT t.id FROM tipo_nivel_geografico t WHERE t.pais_id = NEW.pais_id AND t.clave = 'nivel_2'),
-          NEW.provincia_id, 2, NEW.nombre, '', NEW.codigo_dta, NEW.activo, ARRAY[NEW.id])
+          NEW.provincia_id, 2, NEW.nombre, '', NEW.codigo_dta, NEW.activo)
   ON CONFLICT (id) DO UPDATE
     SET pais_id = EXCLUDED.pais_id, tipo_id = EXCLUDED.tipo_id, padre_id = EXCLUDED.padre_id,
         profundidad = EXCLUDED.profundidad, nombre = EXCLUDED.nombre,
@@ -84,10 +84,10 @@ BEGIN
   END IF;
 
   INSERT INTO nodo_geografico AS n
-      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo, ruta)
+      (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo)
   VALUES (NEW.id, NEW.pais_id,
           (SELECT t.id FROM tipo_nivel_geografico t WHERE t.pais_id = NEW.pais_id AND t.clave = 'nivel_3'),
-          NEW.canton_id, 3, NEW.nombre, '', NEW.codigo_dta, NEW.activo, ARRAY[NEW.id])
+          NEW.canton_id, 3, NEW.nombre, '', NEW.codigo_dta, NEW.activo)
   ON CONFLICT (id) DO UPDATE
     SET pais_id = EXCLUDED.pais_id, tipo_id = EXCLUDED.tipo_id, padre_id = EXCLUDED.padre_id,
         profundidad = EXCLUDED.profundidad, nombre = EXCLUDED.nombre,

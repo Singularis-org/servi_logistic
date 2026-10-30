@@ -4,7 +4,8 @@
 > (PR hacia `dev`)
 >
 > **Alcance.** Fase *expand* de la épica GEO: crea `tipo_nivel_geografico` y `nodo_geografico`
-> (con ruta, trigger de profundidad/país e índice GIN) y añade columnas nuevas, que admiten NULL, en
+> (con trigger de profundidad/país; sin `ruta` ni índice GIN desde la decisión del humano del
+> 2026-10-29, ver «Decisiones cerradas») y añade columnas nuevas, que admiten NULL, en
 > `orden`, `zona_distrito`, `distrito_zona_especial` y `cierre_detail`. Triggers de sincronía
 > mantienen el nodo al día desde `provincia`/`canton`/`distrito`, `orden` y las zonas. Copia en la
 > migración los nodos (conservando ids) y los tipos de **todos** los países existentes desde
@@ -43,17 +44,22 @@
 
 - **R4** (ubicuo) El sistema DEBE guardar cada nodo geográfico con su país, su tipo, su padre (que
   puede faltar), su profundidad, su nombre, su nombre normalizado, su código oficial (que puede
-  faltar), si está activo, su ruta de ancestros y su fecha de alta.
+  faltar), si está activo y su fecha de alta. (Enmienda 2026-10-29: sin ruta de ancestros; los
+  ancestros y descendientes de un nodo se obtienen siguiendo su padre.)
 - **R5** (condicional) SI se intenta guardar un nodo cuyo padre es de otro país, ENTONCES el sistema
   DEBE rechazar la escritura sin guardar nada.
 - **R6** (condicional) SI se intenta guardar un nodo cuyo tipo es de otro país, ENTONCES el sistema
   DEBE rechazar la escritura sin guardar nada.
 - **R7** (condicional) SI se intenta guardar un nodo cuya profundidad no es la de su padre más 1, o
-  distinta de 1 cuando no tiene padre, ENTONCES el sistema DEBE rechazar la escritura con un código de
-  error propio y sin guardar nada.
-- **R8** (por evento) CUANDO se crea un nodo o cambia su padre, el sistema DEBE dejar en su ruta la
-  lista de ids de sus ancestros, de la raíz a él mismo, y recalcular en la misma transacción la ruta
-  de todos sus descendientes.
+  distinta de 1 cuando no tiene padre, o SI se intenta cambiar la profundidad de un nodo que tiene
+  hijos, ENTONCES el sistema DEBE rechazar la escritura con un código de error propio y sin guardar
+  nada. Con esta regla todo nodo tiene siempre la profundidad de su padre más 1, así que ningún nodo
+  puede quedar colgado de sí mismo ni de un descendiente suyo (sin ciclos). (Enmienda 2026-10-29: la
+  segunda condición sustituye la comprobación de los descendientes que antes hacía el recálculo de la
+  ruta.)
+- **R8** — Retirado (decisión 2026-10-29): sin columna `ruta`, no hay ruta que calcular ni que
+  recalcular en los descendientes. La profundidad la sigue cubriendo R7. Se conserva el número para
+  no renumerar.
 - **R9** (condicional) SI se intenta guardar un nodo con el mismo nombre normalizado que un hermano,
   una raíz con el mismo nombre normalizado que otra raíz del mismo país, o un código oficial ya usado
   por otro nodo del mismo país **y del mismo tipo**, ENTONCES el sistema DEBE rechazar la escritura
@@ -62,8 +68,9 @@
 - **R10** (ubicuo) El nombre normalizado de un nodo DEBE ser igual al que produce la normalización
   de nombres de la app (sin acentos, en minúsculas, sin espacios de sobra) para todo nombre de la
   geografía existente.
-- **R11** (ubicuo) El sistema DEBE poder consultar los nodos que están bajo un ancestro dado
-  mediante un índice sobre la ruta.
+- **R11** — Retirado (decisión 2026-10-29): sin `ruta` no hay índice sobre ella. Los nodos bajo un
+  ancestro se consultan siguiendo `padre_id` (consulta recursiva o el catálogo en memoria), que es
+  una lectura y entra en SLT-44. Se conserva el número para no renumerar.
 - **R12** (de estado) MIENTRAS una petición corre en el contexto de una empresa, el sistema DEBE
   dejarle leer solo los tipos y los nodos del país de esa empresa, y DEBE rechazarle cualquier
   escritura en ellos.
@@ -191,5 +198,6 @@ del código oficial y tipo de `ruta`) las respondió Camilo el 2026-10-29: ahora
 | 2026-10-29 | ¿Forma de `cierre_detail.ubicacion_snapshot`? | `{"v":1,"niveles":[{profundidad,tipo,nombre,id}…]}`, de la raíz a la hoja, **con** el id del nodo en cada nivel. Los nombres salen de las tres columnas congeladas; los ids, de las FK de la orden. El nombre es la foto y el id solo enlaza: puede apuntar a un nodo renombrado después (Camilo). |
 | 2026-10-29 | ¿Quién llena el snapshot de los cierres creados después del script? | Nadie en SLT-43, y no hay trigger en `cierre_detail`. Quedan NULL hasta SLT-47, y el script se puede relanzar para llenarlos (Camilo). |
 | 2026-10-29 | ¿Único del código oficial? | `(pais_id, tipo_id, codigo_oficial)`, no `(pais_id, codigo_oficial)`. **Difiere de la tarjeta por decisión del humano**: así se conserva el único por país y nivel de SL-20 (R16) y la sincronía no rechaza un código que hoy se acepta (Camilo). |
-| 2026-10-29 | ¿Tipo de `ruta`? | `text[]`, no `uuid[]`: todos los ids de la geografía son `TEXT` (Camilo). |
+| 2026-10-29 | ¿Tipo de `ruta`? | `text[]`, no `uuid[]`: todos los ids de la geografía son `TEXT` (Camilo). **Superada** por la fila «¿Se queda la columna `ruta`?». |
+| 2026-10-29 | ¿Se queda la columna `ruta`? | **No** (Camilo, enmienda con el PR #44 abierto). Se quitan la columna `ruta`, el índice `GIN (ruta)`, su cálculo en `nodo_geografico_invariantes` (que sigue validando la profundidad y poniendo `nombre_normalizado`), el trigger `nodo_geografico_ruta_descendientes` y `ruta` en el upsert de la sincronía. Motivo: el catálogo es pequeño (unos 500 nodos por país); los descendientes se resuelven con `padre_id` (CTE recursiva) o con el catálogo en memoria, en el mismo tiempo, y quitarla deja menos piezas (dos triggers, un índice y un dato duplicado). Se busca la simplicidad. R8 y R11 quedan retirados; R7 gana «no se cambia la profundidad de un nodo con hijos», que es lo que impide los ciclos sin la ruta. |
 | 2026-10-29 | ¿Qué enum es «`historial_accion`» en la tarjeta? | `historial_accion_entidad`, el de entidades de esa tabla (aceptado por Camilo). |

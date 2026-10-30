@@ -4,6 +4,13 @@
 > `requirements.md` no se reabren aquí. Las cuatro preguntas abiertas del primer borrador las
 > respondió Camilo el 2026-10-29 (snapshot con id, sin trigger en `cierre_detail`, código único por
 > país y tipo, `ruta text[]`). Lo que cambiaron lleva la marca **(decisión 2026-10-29)**.
+>
+> **Enmienda «sin `ruta`» (Camilo, 2026-10-29, con el PR #44 abierto).** Se quitan la columna `ruta`,
+> el índice `GIN (ruta)`, su cálculo en el trigger de invariantes, el trigger
+> `nodo_geografico_ruta_descendientes` y `ruta` en el upsert de la sincronía. R8 y R11 quedan
+> retirados; R7 añade «no se cambia la profundidad de un nodo con hijos» (§2.2). Motivo y fila en
+> `requirements.md > Decisiones cerradas`. Las migraciones no están mergeadas: se editan en su sitio,
+> sin migración nueva. Tareas en `tasks.md > T8`.
 
 ## Lo que ya existe
 
@@ -81,7 +88,7 @@ como el resto del esquema.
 - Prisma: `model TipoNivelGeografico` `@@map("tipo_nivel_geografico")`, back-relation `tiposDeNivel`
   en `Pais`.
 
-### 2.2 `nodo_geografico` (R4–R12)
+### 2.2 `nodo_geografico` (R4–R7, R9, R10, R12)
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -94,7 +101,6 @@ como el resto del esquema.
 | `nombre_normalizado` | `TEXT NOT NULL` | Lo pone el trigger con `geo_normalizar_nombre(nombre)`; lo que venga se pisa (R10). |
 | `codigo_oficial` | `TEXT NULL` | Copia de `codigo_dta`. |
 | `activo` | `BOOLEAN NOT NULL DEFAULT true` | Copia de `activo`. La cascada sigue evaluándose al leer (374). |
-| `ruta` | `TEXT[] NOT NULL` | Ids de la raíz al propio nodo. **(decisión 2026-10-29)** `text[]` y no el `uuid[]` de la tarjeta: los ids son `TEXT`, así no hay conversión en cada consulta ni se depende de que todo id sea un UUID válido. |
 | `created_at` | `TIMESTAMP(3) NOT NULL DEFAULT now()` | Las tablas viejas no tienen fecha: los nodos copiados llevan la de la migración. |
 
 Índices y únicos:
@@ -106,9 +112,10 @@ como el resto del esquema.
   difiere de la tarjeta, que decía `(pais_id, codigo_oficial)`)**. Repite el único por país y nivel
   de SL-20 (R16): en un país con código libre, una provincia «1» y un cantón «1» siguen conviviendo, y
   la sincronía no rechaza un alta que hoy se acepta.
-- `GIN (ruta)` (R11): sirve a `ruta @> ARRAY[$1]` y `$1 = ANY(ruta)` de SLT-44. Prisma:
-  `@@index([ruta], type: Gin)`.
-- Índices en `padre_id`, `tipo_id` y `pais_id` (FK y política RLS).
+- Índices en `padre_id`, `tipo_id` y `pais_id` (FK y política RLS). El de `padre_id` es también el
+  que usa SLT-44 para bajar por el árbol: los hijos de un nodo son `WHERE padre_id = $1`, y los nodos
+  bajo un ancestro, una CTE recursiva sobre `padre_id` (como mucho tantas vueltas como niveles) o el
+  catálogo del país cargado en memoria (unos 500 nodos). **(Enmienda 2026-10-29: sin `GIN (ruta)`.)**
 
 **Normalización (R10).** Función SQL `geo_normalizar_nombre(text) RETURNS text IMMUTABLE`:
 `normalize(x, NFD)` → quitar las marcas combinantes `[̀-ͯ]` → `lower` → recortar y colapsar
@@ -118,20 +125,33 @@ la versión de Postgres de CI (17) y de Supabase (requiere 13+ y base UTF-8), y 
 idéntico a `normalizeName` sobre todos los nombres de la geografía de la base de test (test de R10).
 
 **Trigger de invariantes `nodo_geografico_invariantes`** (`BEFORE INSERT OR UPDATE OF padre_id,
-profundidad, nombre, ruta, pais_id ON nodo_geografico`):
-1. pone `nombre_normalizado`;
-2. lee el padre (si hay): si `NEW.profundidad <> padre.profundidad + 1`, o si no hay padre y
-   `NEW.profundidad <> 1`, lanza `SQLSTATE 'SLT43'` (R7);
-3. pone `ruta = padre.ruta || NEW.id` (o `ARRAY[NEW.id]`) (R8).
+profundidad, nombre, pais_id ON nodo_geografico`; enmienda 2026-10-29: sin `ruta` en la lista):
+1. pone `nombre_normalizado` (R10);
+2. lee el padre (si hay) con `FOR SHARE`: si `NEW.profundidad <> padre.profundidad + 1`, o si no hay
+   padre y `NEW.profundidad <> 1`, lanza `SQLSTATE 'SLT43'` (R7);
+3. en un `UPDATE` con `NEW.profundidad IS DISTINCT FROM OLD.profundidad`, si existe algún nodo con
+   `padre_id = NEW.id`, lanza `SQLSTATE 'SLT43'` (R7, enmienda 2026-10-29).
+
+Ya no calcula `ruta` (R8 retirado).
 
 El país del padre y el del tipo los garantizan las FK compuestas (R5, R6), no el trigger: son
-declarativas y no tienen carrera. Con profundidad estricta no hace falta detectar ciclos: mover un
-nodo bajo un descendiente suyo rompe R7.
+declarativas y no tienen carrera.
 
-**Descendientes (R8):** trigger `nodo_geografico_ruta_descendientes` `AFTER UPDATE OF padre_id` que,
-si la ruta cambió, actualiza en una sentencia a los nodos con `NEW.id = ANY(ruta)` (usa el GIN)
-reemplazando el prefijo. Hoy no hay ninguna vía de la app que mueva un nodo de padre; lo cubre el
-test por si el SQL a mano lo hace.
+**Por qué no hay ciclos sin la ruta (R7).** El invariante es «todo nodo tiene la profundidad de su
+padre más 1». El paso 2 lo comprueba en la fila que se escribe; el paso 3, en sus hijos: un nodo con
+hijos no puede cambiar de profundidad, así que ningún hijo se queda con una profundidad que ya no es
+la de su padre más 1. Con el invariante en todas las filas, la profundidad crece estrictamente al
+bajar por `padre_id`, y un ciclo exigiría que un nodo tuviera más profundidad que sí mismo. Antes,
+el recálculo de la ruta de los descendientes volvía a pasar a cada hijo por el paso 2 y así cubría
+este caso; sin él, hace falta el paso 3. El caso que cubre: `UPDATE … SET padre_id = <un
+descendiente>, profundidad = <la de ese descendiente + 1>` pasaba el paso 2 y dejaba un ciclo.
+- Mover un nodo **sin cambiar su profundidad** (a otro padre del mismo nivel) sigue permitido aunque
+  tenga hijos: sus descendientes siguen cumpliendo el invariante. Es lo único que hace la sincronía
+  (un cantón que cambia de provincia sigue en profundidad 2), así que el paso 3 nunca la frena.
+- El `FOR SHARE` del paso 2 cierra la carrera entre «crear un hijo» y «cambiar la profundidad de su
+  padre» en dos transacciones: la segunda espera a la primera y su `EXISTS` (snapshot nuevo en `READ
+  COMMITTED`) ya ve al hijo. No bloquea nada más: la FK ya toma `FOR KEY SHARE` sobre el padre.
+- Alternativa descartada: subir por `padre_id` desde el nuevo padre buscando `NEW.id` (§8, alternativa 8).
 
 **RLS (R12)**, con el patrón de `provincia_del_pais`:
 
@@ -156,7 +176,7 @@ Una función `SECURITY DEFINER` con `search_path` fijo por tabla (`geo_sincroniz
 
 | Evento | Qué hace en `nodo_geografico` |
 |---|---|
-| `INSERT`, `UPDATE` | `INSERT … ON CONFLICT (id) DO UPDATE` con `pais_id`, `tipo_id` (el `nivel_N` del país de la fila), `padre_id` (`NULL`, `provincia_id` o `canton_id`), `profundidad` (1, 2 o 3), `nombre`, `codigo_oficial = codigo_dta` y `activo`. |
+| `INSERT`, `UPDATE` | `INSERT … ON CONFLICT (id) DO UPDATE` con `pais_id`, `tipo_id` (el `nivel_N` del país de la fila), `padre_id` (`NULL`, `provincia_id` o `canton_id`), `profundidad` (1, 2 o 3), `nombre`, `codigo_oficial = codigo_dta` y `activo`. `nombre_normalizado` va con un valor cualquiera que pisa el trigger de invariantes. **(Enmienda 2026-10-29: ya no lleva `ruta`.)** |
 | `DELETE` | `DELETE FROM nodo_geografico WHERE id = OLD.id`. |
 
 - Es `AFTER` para ver el `pais_id` que ya puso el trigger `BEFORE` de SL-20 (`canton_pais_del_padre`,
@@ -284,7 +304,7 @@ Ningún `UPDATE` de tablas existentes.
 |---|---|---|
 | `20261029120000_geo_enums_nodo_geografico` | Los dos `ADD VALUE IF NOT EXISTS` (§2.5). | **No hace nada** y lo explica: Postgres no quita un valor de enum sin recrear el tipo (prohibido en la épica), y el valor sin usar es inocuo. Reaplicar la ida no falla por el `IF NOT EXISTS`. |
 | `20261029120100_tipo_nivel_geografico` | Tabla, únicos, FK, RLS, política, `REVOKE`, llenado de todos los países (R2), función y trigger `pais_tipos_de_nivel` (R3). | Borra el trigger, la función y la tabla. |
-| `20261029120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado y raíces repetidas por país (el código no hace falta: el único viejo por país y nivel equivale al nuevo por país y tipo); si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (GIN incluido), FKs, triggers de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
+| `20261029120200_nodo_geografico` | **Comprobaciones previas (R14):** cuenta hermanos con el mismo nombre normalizado y raíces repetidas por país (el código no hace falta: el único viejo por país y nivel equivale al nuevo por país y tipo); si alguna da > 0, `RAISE EXCEPTION` con las cifras antes de crear nada. Después: `geo_normalizar_nombre`, tabla, únicos, índices (sin GIN desde la enmienda 2026-10-29), FKs, el trigger de invariantes de §2.2, RLS, política, `REVOKE` y la copia (R13): `INSERT … SELECT` de provincias, luego cantones, luego distritos, pasando por el trigger de invariantes. | Borra triggers, funciones y la tabla. |
 | `20261029120300_nodo_geografico_sincronia` | Las tres funciones y los tres triggers de §2.3. | Los borra. |
 | `20261029120400_columnas_nodo_geografico` | Las cuatro `ADD COLUMN`, las tres FK `NOT VALID` y los tres triggers de §2.4. | Borra triggers, funciones, FKs y columnas. |
 | `20261029120500_indices_nodo_geografico` | Los tres índices de §2.4. | Los borra. |
@@ -416,9 +436,10 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
 | R | Test |
 |---|---|
 | R1, R2, R3 | `tests/integration/db/geo-tipo-nivel.test.ts` (tras migrar, CR y `XA` con 3 tipos y los datos de `pais`; alta de `XB` crea sus 3; cambiar un nombre de nivel actualiza el tipo; `(pais_id, clave)` repetido → `23505`) |
-| R4, R5, R6, R7, R8, R9 | `tests/integration/db/geo-nodo-invariantes.test.ts` (padre de otro país → `23503`; tipo de otro país → `23503`; profundidad mala → `SLT43`; ruta de un nodo nuevo y de los descendientes al cambiar de padre; los tres únicos → `23505`; el mismo código en dos tipos distintos del mismo país sí entra) |
+| R4, R5, R6, R7, R9 | `tests/integration/db/geo-nodo-invariantes.test.ts` (R4: cada campo guardado y **no existe la columna `ruta`** (`information_schema.columns`); padre de otro país → `23503`; tipo de otro país → `23503`; R7: profundidad mala al crear o al mover → `SLT43`; **cambiar la profundidad de un nodo con hijos → `SLT43`**; **colgar un nodo de su descendiente cambiando a la vez su profundidad (`SET padre_id = <nieto>, profundidad = <la del nieto + 1>`) → `SLT43`, sin ciclo**; mover un nodo con hijos a otro padre del mismo nivel sí entra y sus hijos no cambian; los tres únicos → `23505`; el mismo código en dos tipos distintos del mismo país sí entra) |
+| R8 | Retirado (decisión 2026-10-29): sin `ruta`. Sin test. |
 | R10 | `tests/integration/db/geo-normalizar-nombre.test.ts` (`geo_normalizar_nombre` = `normalizeName` en todos los nombres de la geografía de la base y en una lista con tildes, ñ, ü, mayúsculas y espacios) |
-| R11 | `tests/integration/db/geo-nodo-invariantes.test.ts` (existe el índice GIN sobre `ruta` y `EXPLAIN` de `ruta @> ARRAY[$1]` con `enable_seqscan = off` lo usa) |
+| R11 | Retirado (decisión 2026-10-29): sin `ruta` ni su índice. Sin test; `geo-nodo-invariantes.test.ts` comprueba además que no queda ningún índice `nodo_geografico_ruta_idx` ni trigger `nodo_geografico_ruta_descendientes` (`pg_indexes`, `pg_trigger`). |
 | R12 | `tests/integration/db/geo-nodo-rls.test.ts` (dos empresas en CR y `XA`: cada una lee solo su país; `INSERT`/`UPDATE`/`DELETE` como `servi_app` → `42501`) |
 | R13, R14 | `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts` (ids, padres, nombres, códigos y `activo` iguales; con dos hermanos «San José»/«San Jose», o con dos provincias homónimas normalizadas, la migración aborta y no deja nada; con una provincia y un cantón de `XA` con el mismo código, la migración pasa) |
 | R15, R16, R17, R18 | `tests/integration/db/geo-sincronia-geografia.test.ts` (alta a mano y `importarDivision` de SL-20 crean nodos; renombre, código, retiro/reactivación y cambio de padre se reflejan; borrado físico borra el nodo; `canton.pais_id` sigue saliendo del padre; ninguna fila nueva de historial) |
@@ -458,12 +479,24 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
    es declarativa, sin carrera y es el patrón de SL-20 §2.3.
 4. **Columna generada para `nombre_normalizado`.** `GENERATED ALWAYS AS (…) STORED` exige una
    expresión inmutable; la versión con `unaccent` no lo es, y la de `normalize()` sí, pero entonces el
-   trigger de invariantes igual tiene que existir (profundidad y ruta). Un solo sitio que calcula es
-   más fácil de leer.
+   trigger de invariantes igual tiene que existir (profundidad). Un solo sitio que calcula es más
+   fácil de leer.
 5. **Trigger de `orden` que busca el nodo por consulta** (p. ej. validando que el distrito sea hijo
    del cantón). Como los ids se conservan, el nodo es el propio `distrito_id` o `canton_id`: la
    asignación directa no consulta nada y deja el coste en la FK, muy por debajo del tope de 1 ms.
 6. **`VALIDATE CONSTRAINT` en una migración posterior.** Descartado en §4.
+7. **Mantener `ruta text[]` con su `GIN` y el trigger de descendientes** (diseño original, retirado
+   por la enmienda 2026-10-29). Resuelve «nodos bajo un ancestro» con un `@>` indexado, pero en un
+   catálogo de unos 500 nodos por país la CTE recursiva sobre `padre_id` o el catálogo en memoria
+   tardan lo mismo, y la ruta cuesta dos triggers, un índice y un dato duplicado que hay que mantener
+   al mover nodos. Se elige la simplicidad (decisión de Camilo).
+8. **Impedir ciclos subiendo por `padre_id`** (bucle en el trigger desde el nuevo padre hasta la raíz
+   buscando `NEW.id`). Detecta el ciclo, pero no impide que un hijo quede con una profundidad que ya
+   no es la de su padre más 1 si el padre cambia de profundidad: haría falta igual el paso 3 de §2.2.
+   El paso 3 solo ya basta para ambos casos y es una consulta indexada (`padre_id`), no un bucle.
+9. **Confiar solo en la profundidad estricta del propio nodo** (sin el paso 3). Era el argumento del
+   diseño original, pero solo valía porque el recálculo de la ruta volvía a pasar a cada descendiente
+   por el trigger: sin él, `SET padre_id = <nieto>, profundidad = <nieto + 1>` deja un ciclo.
 
 ## 9. Riesgos
 

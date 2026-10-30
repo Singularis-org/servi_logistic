@@ -155,8 +155,10 @@ esta bien hecha, no solo si "funciona".
     (`etiquetas-geograficas-sin-literal.guardia`).
   - **Geografía jerárquica (SLT-43, fase *expand*).** Dos tablas de plataforma nuevas conviven con
     las viejas: `tipo_nivel_geografico` (un tipo `nivel_1..3` por país, copiado de `pais.nivel_N_*`) y
-    `nodo_geografico` (árbol con `padre_id`, `profundidad`, `ruta text[]` con índice GIN y los mismos
-    ids que la provincia, el cantón o el distrito de origen), con RLS de lectura por país y `REVOKE`
+    `nodo_geografico` (árbol solo con `padre_id` y `profundidad`, con los mismos ids que la provincia,
+    el cantón o el distrito de origen; los descendientes se leen con una CTE recursiva sobre
+    `padre_id` o con el catálogo del país en memoria; un nodo con hijos no cambia de profundidad, y así
+    no hay ciclos), con RLS de lectura por país y `REVOKE`
     de escritura para `servi_app`. La fuente sigue siendo la geografía vieja: triggers `AFTER` en
     `pais`, `provincia`, `canton` y `distrito` copian cada alta, cambio y borrado, y triggers `BEFORE`
     rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y `distrito_zona_especial`. Ningún

@@ -8,9 +8,7 @@
 
 BEGIN;
 
-DROP TRIGGER "nodo_geografico_ruta_descendientes" ON "nodo_geografico";
 DROP TRIGGER "nodo_geografico_invariantes" ON "nodo_geografico";
-DROP FUNCTION nodo_geografico_ruta_descendientes();
 DROP FUNCTION nodo_geografico_invariantes();
 DROP TABLE "nodo_geografico";
 DROP FUNCTION geo_normalizar_nombre(text);

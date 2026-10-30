@@ -98,7 +98,7 @@ describe("SLT-43 R37 — contraprueba del detector", () => {
     "prisma.nodoGeografico.findMany({ where })",
     "prisma.tipoNivelGeografico.findUnique({ where })",
     "nodoGeograficoSchema.safeParse(input)",
-    'SELECT * FROM "nodo_geografico" WHERE ruta @> ARRAY[$1]',
+    'SELECT * FROM "nodo_geografico" WHERE padre_id = $1',
     'accion: "nodo_geografico_creado",',
     'UPDATE "orden" SET "nodo_geografico_id" = COALESCE(distrito_id, canton_id)',
     'INSERT INTO "provincia" ("id", "nombre") VALUES ($1, $2)',

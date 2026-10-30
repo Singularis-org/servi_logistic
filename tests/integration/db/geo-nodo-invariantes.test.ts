@@ -16,15 +16,16 @@ import { intentar, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-43 (T2.2; design §2.2) — las invariantes de `nodo_geografico` contra Postgres real.
-//   · R4: guarda país, tipo, padre, profundidad, nombre, nombre normalizado, código, activo, ruta y
-//     fecha de alta.
+//   · R4: guarda país, tipo, padre, profundidad, nombre, nombre normalizado, código, activo y fecha de
+//     alta; sin columna de ancestros (enmienda 2026-10-29): el árbol es `padre_id` y `profundidad`.
 //   · R5 y R6: padre o tipo de otro país → 23503 (FK compuestas), sin guardar nada.
-//   · R7: profundidad que no es la del padre + 1 (o 1 sin padre) → SQLSTATE propio `SLT43`, también
-//     al mover un nodo bajo un descendiente suyo.
-//   · R8: la ruta de un nodo nuevo, y la de todos sus descendientes al cambiar de padre.
+//   · R7: profundidad que no es la del padre + 1 (o 1 sin padre), o cambiar la profundidad de un nodo
+//     con hijos → SQLSTATE propio `SLT43`; así no hay ciclos (colgar un nodo de su nieto con la
+//     profundidad «correcta» se rechaza). Mover un nodo con hijos a otro padre del mismo nivel entra.
 //   · R9: hermanos y raíces con el mismo nombre normalizado, y código repetido en el mismo país y
 //     tipo → 23505; el mismo código en dos tipos del mismo país sí entra.
-//   · R11: el índice GIN sobre `ruta` existe y la consulta «bajo este ancestro» lo usa.
+//   · R8 y R11 retirados (enmienda 2026-10-29): se comprueba que no quedan su columna, su índice ni su
+//     trigger.
 //
 // Los nodos se insertan a mano como dueño, en países de prueba `XA`/`XB`, dentro de una transacción
 // que se revierte. Los nombres llevan un sufijo para no chocar con la geografía que traiga la base.
@@ -43,21 +44,12 @@ interface FilaNodo {
   nombre_normalizado: string;
   codigo_oficial: string | null;
   activo: boolean;
-  ruta: string[];
   created_at: Date;
 }
 
 async function nodo(tx: TxDeTest, id: string): Promise<FilaNodo | undefined> {
   const filas = await tx.$queryRawUnsafe<FilaNodo[]>(`SELECT * FROM nodo_geografico WHERE id = $1`, id);
   return filas[0];
-}
-
-async function rutas(tx: TxDeTest, ids: string[]): Promise<Record<string, string[]>> {
-  const filas = await tx.$queryRawUnsafe<{ id: string; ruta: string[] }[]>(
-    `SELECT id, ruta FROM nodo_geografico WHERE id = ANY($1::text[])`,
-    ids,
-  );
-  return Object.fromEntries(filas.map((f) => [f.id, f.ruta]));
 }
 
 /** El SQLSTATE de insertar `n` en un SAVEPOINT, o `null` si entró. */
@@ -80,7 +72,7 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
     await base?.$disconnect();
   });
 
-  it("R4: guarda cada campo; el nombre normalizado y la ruta los pone la base, activo nace en true", async () => {
+  it("R4: guarda cada campo; el nombre normalizado lo pone la base, activo nace en true", async () => {
     const r = await revertida(base, async (tx) => {
       const t = await paisConTipos(tx, "XA");
       const s = sufijo();
@@ -104,7 +96,6 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
       nombre_normalizado: `region nandu ${r.s}`,
       codigo_oficial: null,
       activo: true,
-      ruta: [r.raiz],
     });
     expect(r.filaRaiz?.created_at).toBeInstanceOf(Date);
     expect(r.filaHijo).toMatchObject({
@@ -113,23 +104,30 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
       profundidad: 2,
       nombre_normalizado: `comuna angel ${r.s}`,
       codigo_oficial: "07",
-      ruta: [r.raiz, r.hijo],
     });
   });
 
-  it("R4/R10: un nombre normalizado o una ruta mandados a mano se pisan al cambiar el nombre", async () => {
+  it("R4: la tabla no tiene columna `ruta` (enmienda 2026-10-29)", async () => {
+    const columnas = await base.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'nodo_geografico' AND column_name = 'ruta'`,
+    );
+    expect(columnas).toEqual([]);
+  });
+
+  it("R4/R10: un nombre normalizado mandado a mano se pisa al cambiar el nombre", async () => {
     const r = await revertida(base, async (tx) => {
       const t = await paisConTipos(tx, "XA");
       const s = sufijo();
       const raiz = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `Uno ${s}` });
       await tx.$executeRawUnsafe(
-        `UPDATE nodo_geografico SET nombre = $2, nombre_normalizado = 'otra cosa', ruta = ARRAY['x'] WHERE id = $1`,
+        `UPDATE nodo_geografico SET nombre = $2, nombre_normalizado = 'otra cosa' WHERE id = $1`,
         raiz,
         `Dós ${s}`,
       );
       return { s, raiz, fila: await nodo(tx, raiz) };
     });
-    expect(r.fila).toMatchObject({ nombre_normalizado: `dos ${r.s}`, ruta: [r.raiz] });
+    expect(r.fila).toMatchObject({ nombre_normalizado: `dos ${r.s}` });
   });
 
   it("R5: un padre de otro país se rechaza con 23503 y no guarda nada", async () => {
@@ -185,50 +183,53 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
     expect(r.c).toMatchObject({ padre_id: r.ids.b, profundidad: 3 });
   });
 
-  it("R8: al cambiar de padre se rehace la ruta del nodo y la de todo su subárbol, en la misma transacción", async () => {
+  it("R7: cambiar la profundidad de un nodo con hijos → SLT43, aunque la nueva cuadre con su padre nuevo", async () => {
     const r = await revertida(base, async (tx) => {
       const t = await paisConTipos(tx, "XA");
-      const nuevo = (padreId: string | null, profundidad: number, nombre: string) =>
-        insertarNodo(tx, {
-          paisId: "XA",
-          tipoId: [t.nivel1, t.nivel2, t.nivel3, t.nivel3][profundidad - 1],
-          padreId,
-          profundidad,
-          nombre: `${nombre} ${sufijo()}`,
-        });
-      // A → B → C → D (cuatro niveles: el tipo no ata la profundidad) y una segunda raíz A2 → B2.
-      const a = await nuevo(null, 1, "A");
-      const b = await nuevo(a, 2, "B");
-      const c = await nuevo(b, 3, "C");
-      const d = await nuevo(c, 4, "D");
-      const hermanoDeC = await nuevo(b, 3, "C bis");
-      const a2 = await nuevo(null, 1, "A2");
-      const b2 = await nuevo(a2, 2, "B2");
-      const antes = await rutas(tx, [a, b, c, d, hermanoDeC]);
-      // Mover B (profundidad 2) arrastra dos niveles por debajo.
-      await tx.$executeRawUnsafe(`UPDATE nodo_geografico SET padre_id = $2 WHERE id = $1`, b, a2);
-      const trasMoverB = await rutas(tx, [a, b, c, d, hermanoDeC, b2]);
-      // Mover C (profundidad 3) bajo B2 arrastra solo a D.
-      await tx.$executeRawUnsafe(`UPDATE nodo_geografico SET padre_id = $2 WHERE id = $1`, c, b2);
-      const trasMoverC = await rutas(tx, [b, c, d, hermanoDeC]);
-      return { ids: { a, b, c, d, hermanoDeC, a2, b2 }, antes, trasMoverB, trasMoverC };
+      const a = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A ${sufijo()}` });
+      const b = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: a, profundidad: 2, nombre: `B ${sufijo()}` });
+      await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel3, padreId: b, profundidad: 3, nombre: `C ${sufijo()}` });
+      const a2 = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A2 ${sufijo()}` });
+      const b2 = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: a2, profundidad: 2, nombre: `B2 ${sufijo()}` });
+      // B (con un hijo) bajo B2 con profundidad 3: cuadra con B2, pero dejaría a su hijo en 3.
+      const error = await intentar(tx, `UPDATE nodo_geografico SET padre_id = $2, profundidad = 3 WHERE id = $1`, b, b2);
+      return { error, a, b: await nodo(tx, b) };
     });
-    const { a, b, c, d, hermanoDeC, a2, b2 } = r.ids;
-    expect(r.antes).toEqual({ [a]: [a], [b]: [a, b], [c]: [a, b, c], [d]: [a, b, c, d], [hermanoDeC]: [a, b, hermanoDeC] });
-    expect(r.trasMoverB).toEqual({
-      [a]: [a],
-      [b]: [a2, b],
-      [c]: [a2, b, c],
-      [d]: [a2, b, c, d],
-      [hermanoDeC]: [a2, b, hermanoDeC],
-      [b2]: [a2, b2],
+    expect(r.error).toBe("SLT43");
+    expect(r.b).toMatchObject({ padre_id: r.a, profundidad: 2 });
+  });
+
+  it("R7: colgar un nodo de su nieto con la profundidad del nieto + 1 → SLT43 y sin cambios (sin ciclos)", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const a = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A ${sufijo()}` });
+      const b = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: a, profundidad: 2, nombre: `B ${sufijo()}` });
+      const nieto = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel3, padreId: b, profundidad: 3, nombre: `C ${sufijo()}` });
+      // Cuadra con el padre nuevo (3 + 1 = 4); sin la regla de los hijos quedaría A → B → C → A.
+      const error = await intentar(tx, `UPDATE nodo_geografico SET padre_id = $2, profundidad = 4 WHERE id = $1`, a, nieto);
+      return { error, ids: { a, b }, filas: { a: await nodo(tx, a), b: await nodo(tx, b), nieto: await nodo(tx, nieto) } };
     });
-    expect(r.trasMoverC).toEqual({
-      [b]: [a2, b],
-      [c]: [a2, b2, c],
-      [d]: [a2, b2, c, d],
-      [hermanoDeC]: [a2, b, hermanoDeC],
+    expect(r.error).toBe("SLT43");
+    expect(r.filas.a).toMatchObject({ padre_id: null, profundidad: 1 });
+    expect(r.filas.b).toMatchObject({ padre_id: r.ids.a, profundidad: 2 });
+    expect(r.filas.nieto).toMatchObject({ padre_id: r.ids.b, profundidad: 3 });
+  });
+
+  it("R7: mover un nodo con hijos a otro padre del mismo nivel entra y sus hijos quedan igual", async () => {
+    const r = await revertida(base, async (tx) => {
+      const t = await paisConTipos(tx, "XA");
+      const a = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A ${sufijo()}` });
+      const b = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: a, profundidad: 2, nombre: `B ${sufijo()}` });
+      const c = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel3, padreId: b, profundidad: 3, nombre: `C ${sufijo()}` });
+      const cBis = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel3, padreId: b, profundidad: 3, nombre: `C bis ${sufijo()}` });
+      const a2 = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A2 ${sufijo()}` });
+      const error = await intentar(tx, `UPDATE nodo_geografico SET padre_id = $2 WHERE id = $1`, b, a2);
+      return { error, ids: { b, a2 }, filas: { b: await nodo(tx, b), c: await nodo(tx, c), cBis: await nodo(tx, cBis) } };
     });
+    expect(r.error).toBeNull();
+    expect(r.filas.b).toMatchObject({ padre_id: r.ids.a2, profundidad: 2 });
+    expect(r.filas.c).toMatchObject({ padre_id: r.ids.b, profundidad: 3 });
+    expect(r.filas.cBis).toMatchObject({ padre_id: r.ids.b, profundidad: 3 });
   });
 
   it("R9: hermanos o raíces con el mismo nombre normalizado y código repetido por país y tipo → 23505", async () => {
@@ -263,27 +264,14 @@ describeSiHayBase("SLT-43 — nodo_geografico: invariantes", () => {
     });
   });
 
-  it("R11: hay un índice GIN sobre `ruta` y la consulta de los nodos bajo un ancestro lo usa", async () => {
-    const r = await revertida(base, async (tx) => {
-      const indices = await tx.$queryRawUnsafe<{ indexdef: string }[]>(
-        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'nodo_geografico' AND indexname = 'nodo_geografico_ruta_idx'`,
-      );
-      const t = await paisConTipos(tx, "XA");
-      const a = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `A ${sufijo()}` });
-      const b = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: a, profundidad: 2, nombre: `B ${sufijo()}` });
-      await tx.$executeRawUnsafe(`SET LOCAL enable_seqscan = off`);
-      const plan = await tx.$queryRawUnsafe<{ "QUERY PLAN": string }[]>(
-        `EXPLAIN SELECT id FROM nodo_geografico WHERE ruta @> ARRAY['${a}']::text[]`,
-      );
-      const bajoA = await tx.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT id FROM nodo_geografico WHERE ruta @> ARRAY[$1]::text[] ORDER BY profundidad`,
-        a,
-      );
-      return { indices: indices.map((i) => i.indexdef), plan: plan.map((p) => p["QUERY PLAN"]).join("\n"), bajoA: bajoA.map((f) => f.id), a, b };
-    });
-    expect(r.indices).toHaveLength(1);
-    expect(r.indices[0]).toMatch(/USING gin \(ruta\)/);
-    expect(r.plan).toContain("nodo_geografico_ruta_idx");
-    expect(r.bajoA).toEqual([r.a, r.b]);
+  it("R8/R11 retirados: no quedan el índice ni el trigger de la columna de ancestros", async () => {
+    const indices = await base.$queryRawUnsafe<{ indexname: string }[]>(
+      `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'nodo_geografico_ruta_idx'`,
+    );
+    const triggers = await base.$queryRawUnsafe<{ tgname: string }[]>(
+      `SELECT t."tgname" AS "tgname" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" n ON n."oid" = c."relnamespace" WHERE t."tgname" = 'nodo_geografico_ruta_descendientes' AND n."nspname" = 'public'`,
+    );
+    expect(indices).toEqual([]);
+    expect(triggers).toEqual([]);
   });
 });

@@ -1,8 +1,7 @@
 -- SLT-43 (design §2.2, §3; R4–R14) — el nodo geográfico.
 --
 -- En este orden: `geo_normalizar_nombre` (T2.1), las comprobaciones previas de R14, la tabla, sus
--- únicos e índices, las FK compuestas, los triggers de invariantes y de descendientes, la RLS y la
--- copia de la geografía. Todo en una transacción: si R14 aborta, no queda nada, tampoco la función.
+-- únicos e índices, las FK compuestas, el trigger de invariantes, la RLS y la copia de la geografía. Todo en una transacción: si R14 aborta, no queda nada, tampoco la función.
 --
 -- De PLATAFORMA, como `provincia`: sin `organizacion_id`; la empresa lee solo los nodos de su país y
 -- no escribe ninguno. En SLT-43 la app tampoco escribe aquí como dueño: la llena esta migración y la
@@ -58,8 +57,10 @@ BEGIN
 END $$;
 
 -- ─── tabla ───────────────────────────────────────────────────────────────────────────────────
--- `nombre_normalizado` y `ruta` no tienen DEFAULT: los pone siempre el trigger de invariantes, y el
--- NOT NULL se comprueba después de él.
+-- El árbol es solo `padre_id` y `profundidad`: los descendientes de un nodo se leen con una CTE
+-- recursiva sobre `padre_id` o con el catálogo del país en memoria (decisión 2026-10-29).
+-- `nombre_normalizado` no tiene DEFAULT: lo pone siempre el trigger de invariantes, y el NOT NULL se
+-- comprueba después de él.
 CREATE TABLE "nodo_geografico" (
     "id" TEXT NOT NULL,
     "pais_id" TEXT NOT NULL,
@@ -70,7 +71,6 @@ CREATE TABLE "nodo_geografico" (
     "nombre_normalizado" TEXT NOT NULL,
     "codigo_oficial" TEXT,
     "activo" BOOLEAN NOT NULL DEFAULT true,
-    "ruta" TEXT[] NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "nodo_geografico_pkey" PRIMARY KEY ("id"),
@@ -88,8 +88,6 @@ CREATE UNIQUE INDEX "nodo_geografico_raiz_pais_id_nombre_normalizado_key" ON "no
 -- R9: el código es único por país y tipo (decisión 2026-10-29), como el único por país y nivel de
 -- SL-20: una provincia «1» y un cantón «1» de un país con código libre siguen conviviendo.
 CREATE UNIQUE INDEX "nodo_geografico_pais_id_tipo_id_codigo_oficial_key" ON "nodo_geografico"("pais_id", "tipo_id", "codigo_oficial");
--- R11: `ruta @> ARRAY[$1]` (los nodos bajo un ancestro) lo resuelve el GIN.
-CREATE INDEX "nodo_geografico_ruta_idx" ON "nodo_geografico" USING GIN ("ruta");
 CREATE INDEX "nodo_geografico_padre_id_idx" ON "nodo_geografico"("padre_id");
 CREATE INDEX "nodo_geografico_tipo_id_idx" ON "nodo_geografico"("tipo_id");
 -- Lo usa la política RLS.
@@ -105,77 +103,58 @@ ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_tipo_id_pais_id_fk
 ALTER TABLE "nodo_geografico" ADD CONSTRAINT "nodo_geografico_padre_id_pais_id_fkey"
   FOREIGN KEY ("padre_id", "pais_id") REFERENCES "nodo_geografico"("id", "pais_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
--- ─── R7, R8, R10: invariantes de cada fila ───────────────────────────────────────────────────
--- Pisa `nombre_normalizado` y `ruta` con lo que traiga la fila: los dos se derivan, no se eligen.
--- Con profundidad estricta no hace falta buscar ciclos: colgar un nodo de un descendiente suyo rompe
--- la profundidad. Con un padre inexistente no se lanza aquí: la FK compuesta lo rechaza con su nombre
--- (23503), el mismo error que un tipo de otro país.
+-- ─── R7, R10: invariantes de cada fila ───────────────────────────────────────────────────────
+-- Pisa `nombre_normalizado` con lo que traiga la fila: se deriva, no se elige. Con un padre
+-- inexistente no se lanza aquí: la FK compuesta lo rechaza con su nombre (23503), el mismo error que un
+-- tipo de otro país.
+-- Sin ciclos (R7): el invariante es «todo nodo tiene la profundidad de su padre más 1». El paso 2 lo
+-- comprueba en la fila que se escribe; el paso 3, en sus hijos: un nodo con hijos no cambia de
+-- profundidad, así que ningún hijo se queda con una que ya no es la de su padre más 1. Con el
+-- invariante en todas las filas la profundidad crece estrictamente al bajar por `padre_id`, y un ciclo
+-- exigiría un nodo más profundo que sí mismo. Sin el paso 3, `SET padre_id = <un nieto>, profundidad =
+-- <la del nieto + 1>` pasaría el paso 2 y dejaría un ciclo. Mover un nodo con hijos a otro padre del
+-- mismo nivel sí entra (es lo único que hace la sincronía).
+-- El `FOR SHARE` del paso 2 cierra la carrera entre «crear un hijo» y «cambiar la profundidad de su
+-- padre» en dos transacciones: la segunda espera a la primera y su EXISTS (snapshot nuevo en READ
+-- COMMITTED) ya ve al hijo.
 CREATE FUNCTION nodo_geografico_invariantes() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   v_profundidad int;
-  v_ruta text[];
 BEGIN
+  -- 1. R10.
   NEW.nombre_normalizado := geo_normalizar_nombre(NEW.nombre);
 
+  -- 2. La profundidad de la fila respecto de su padre.
   IF NEW.padre_id IS NULL THEN
     IF NEW.profundidad <> 1 THEN
       RAISE EXCEPTION 'nodo_geografico %: una raiz tiene profundidad 1, no %', NEW.id, NEW.profundidad
         USING ERRCODE = 'SLT43';
     END IF;
-    NEW.ruta := ARRAY[NEW.id];
-    RETURN NEW;
+  ELSE
+    SELECT n.profundidad INTO v_profundidad
+      FROM nodo_geografico n WHERE n.id = NEW.padre_id
+       FOR SHARE;
+    IF FOUND AND NEW.profundidad <> v_profundidad + 1 THEN
+      RAISE EXCEPTION 'nodo_geografico %: con un padre de profundidad % le toca %, no %',
+        NEW.id, v_profundidad, v_profundidad + 1, NEW.profundidad
+        USING ERRCODE = 'SLT43';
+    END IF;
   END IF;
 
-  SELECT n.profundidad, n.ruta INTO v_profundidad, v_ruta
-    FROM nodo_geografico n WHERE n.id = NEW.padre_id;
-  IF NOT FOUND THEN
-    NEW.ruta := ARRAY[NEW.id];
-    RETURN NEW;
-  END IF;
-  IF NEW.profundidad <> v_profundidad + 1 THEN
-    RAISE EXCEPTION 'nodo_geografico %: con un padre de profundidad % le toca %, no %',
-      NEW.id, v_profundidad, v_profundidad + 1, NEW.profundidad
+  -- 3. Un nodo con hijos no cambia de profundidad.
+  IF TG_OP = 'UPDATE' AND NEW.profundidad IS DISTINCT FROM OLD.profundidad
+     AND EXISTS (SELECT 1 FROM nodo_geografico h WHERE h.padre_id = NEW.id) THEN
+    RAISE EXCEPTION 'nodo_geografico %: tiene hijos y no puede pasar de profundidad % a %',
+      NEW.id, OLD.profundidad, NEW.profundidad
       USING ERRCODE = 'SLT43';
   END IF;
-  NEW.ruta := v_ruta || NEW.id;
+
   RETURN NEW;
 END $$;
 
 CREATE TRIGGER "nodo_geografico_invariantes"
-  BEFORE INSERT OR UPDATE OF "padre_id", "profundidad", "nombre", "ruta", "pais_id" ON "nodo_geografico"
+  BEFORE INSERT OR UPDATE OF "padre_id", "profundidad", "nombre", "pais_id" ON "nodo_geografico"
   FOR EACH ROW EXECUTE FUNCTION nodo_geografico_invariantes();
-
--- ─── R8: la ruta de los descendientes ────────────────────────────────────────────────────────
--- Al cambiar de padre, la ruta de todo el subárbol cambia de prefijo. Se rehace un nivel por
--- sentencia, de arriba abajo, y no todo el subárbol en una: el trigger de invariantes de cada fila
--- lee la ruta de su padre, y dentro de una misma sentencia el orden de las filas no está garantizado
--- (un nieto podría leer la ruta vieja de su padre). La profundidad estricta hace que cada nivel sea
--- una sola profundidad. `ruta @> ARRAY[id]` usa el GIN. El UPDATE solo nombra `ruta`: no vuelve a
--- disparar este trigger, que es de `padre_id`.
--- Hoy ninguna vía de la app mueve un nodo de padre; existe para el SQL a mano y para SLT-46.
-CREATE FUNCTION nodo_geografico_ruta_descendientes() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE
-  v_profundidad int := NEW.profundidad;
-  v_filas int;
-BEGIN
-  LOOP
-    v_profundidad := v_profundidad + 1;
-    UPDATE nodo_geografico h
-       SET ruta = p.ruta || h.id
-      FROM nodo_geografico p
-     WHERE h.padre_id = p.id
-       AND h.profundidad = v_profundidad
-       AND h.ruta @> ARRAY[NEW.id];
-    GET DIAGNOSTICS v_filas = ROW_COUNT;
-    EXIT WHEN v_filas = 0;
-  END LOOP;
-  RETURN NULL;
-END $$;
-
-CREATE TRIGGER "nodo_geografico_ruta_descendientes"
-  AFTER UPDATE OF "padre_id" ON "nodo_geografico"
-  FOR EACH ROW WHEN (OLD."ruta" IS DISTINCT FROM NEW."ruta")
-  EXECUTE FUNCTION nodo_geografico_ruta_descendientes();
 
 -- ─── R12: RLS ────────────────────────────────────────────────────────────────────────────────
 -- La empresa lee solo los nodos de su país y no escribe ninguno. Mismo patrón que
@@ -189,7 +168,7 @@ REVOKE INSERT, UPDATE, DELETE ON "nodo_geografico" FROM servi_app;
 
 -- ─── R13: la copia de la geografía ───────────────────────────────────────────────────────────
 -- Mismos ids, de arriba abajo para que cada padre exista antes que sus hijos. Pasa por el trigger de
--- invariantes, que pone el nombre normalizado y la ruta. El tipo es el `nivel_N` del país de la fila
+-- invariantes, que pone el nombre normalizado. El tipo es el `nivel_N` del país de la fila
 -- (los creó 20261029120100 para todos los países). Las tablas viejas no tienen fecha: `created_at` es
 -- la de esta migración.
 INSERT INTO "nodo_geografico" ("id", "pais_id", "tipo_id", "padre_id", "profundidad", "nombre", "codigo_oficial", "activo")

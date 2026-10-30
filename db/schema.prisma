@@ -5476,12 +5476,13 @@ model TipoNivelGeografico {
 
 // SLT-43 (design §2.2; R4–R12) — la geografía jerárquica, de PLATAFORMA como `provincia`. En SLT-43 la
 // app no la escribe ni la lee: la llena la migración y la mantiene la sincronía desde
-// `provincia`/`canton`/`distrito`, con los mismos ids.
+// `provincia`/`canton`/`distrito`, con los mismos ids. El árbol es solo `padreId` y `profundidad`: los
+// descendientes se leen con una CTE recursiva sobre `padre_id` o con el catálogo en memoria.
 //
 // Viven solo en el SQL (Prisma no los expresa) y por eso no los ve el diff:
 //   · el único parcial de raíces `(pais_id, nombre_normalizado) WHERE padre_id IS NULL` (R9);
-//   · el trigger `nodo_geografico_invariantes`, que pone `nombre_normalizado` y `ruta` y comprueba la
-//     profundidad (R7, R8), y `nodo_geografico_ruta_descendientes` (R8);
+//   · el trigger `nodo_geografico_invariantes`, que pone `nombre_normalizado` (R10), comprueba la
+//     profundidad respecto del padre e impide cambiar la de un nodo con hijos (R7: así no hay ciclos);
 //   · la RLS de lectura por país y el REVOKE de escritura a `servi_app` (R12).
 model NodoGeografico {
   id                String   @id @default(uuid())
@@ -5494,8 +5495,6 @@ model NodoGeografico {
   nombreNormalizado String   @map("nombre_normalizado")
   codigoOficial     String?  @map("codigo_oficial")
   activo            Boolean  @default(true)
-  /// Ids de la raíz al propio nodo. La pone el trigger (R8). `text[]` porque los ids son TEXT.
-  ruta              String[]
   createdAt         DateTime @default(now()) @map("created_at")
 
   pais  Pais                @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -5516,8 +5515,6 @@ model NodoGeografico {
   @@unique([padreId, nombreNormalizado])
   /// R9: el código es único por país y tipo (decisión 2026-10-29), no por país.
   @@unique([paisId, tipoId, codigoOficial])
-  /// R11: `ruta @> ARRAY[$1]` y `$1 = ANY(ruta)`.
-  @@index([ruta], type: Gin)
   @@index([padreId])
   @@index([tipoId])
   @@index([paisId])

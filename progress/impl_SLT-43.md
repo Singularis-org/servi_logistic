@@ -456,3 +456,60 @@ sale rojo por la guardia de wallet hasta que entre el PR del leader. T7.2 es pue
 - T7.1 marcada con nota (gate local sustituido; gate completo en CI). T7.2 abierta: puerta humana antes de `prod`.
 - Pendiente de merge (review): `gate-completo` y job `e2e` (órdenes y aislamiento) verdes en el PR (m4); guardia de
   wallet resuelta por el PR #43.
+
+## T8 — enmienda «sin `ruta`» (decisión 2026-10-29, aprobada por Camilo)
+
+**Archivos modificados**
+- `db/migrations/20261029120200_nodo_geografico/migration.sql` (editada en su sitio; sin columna, sin GIN, sin
+  trigger de descendientes; invariantes con `FOR SHARE` y paso 3) y su `down.sql` (sin los DROP del trigger/función
+  de descendientes).
+- `db/migrations/20261029120300_nodo_geografico_sincronia/migration.sql` (sin la columna en los tres upserts).
+- `db/schema.prisma` (modelo `NodoGeografico`).
+- `tests/integration/db/_fixtures/geo-43.ts`, `tests/integration/db/geo-nodo-invariantes.test.ts`,
+  `tests/integration/db/geo-sincronia-geografia.test.ts`, `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts`.
+- `docs/architecture.md` (línea del modelo nuevo).
+
+**Base:** `logistic_slt43` recreada (DROP/CREATE, `prisma migrate deploy`, `db:seed`): cambian los checksums de
+120200 y 120300. `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` →
+`-- This is an empty migration.`
+
+**Mapa R → test (enmienda)**
+| R | Test |
+|---|---|
+| R4 | `geo-nodo-invariantes` «R4: guarda cada campo…», «R4: la tabla no tiene columna `ruta`», «R4/R10: un nombre normalizado mandado a mano se pisa…» |
+| R7 | `geo-nodo-invariantes` «R7: profundidad mala al crear o al mover…», «R7: cambiar la profundidad de un nodo con hijos → SLT43…», «R7: colgar un nodo de su nieto con la profundidad del nieto + 1 → SLT43 y sin cambios», «R7: mover un nodo con hijos a otro padre del mismo nivel entra…» |
+| R8, R11 | Retirados. `geo-nodo-invariantes` «R8/R11 retirados: no quedan el índice ni el trigger…» (pg_indexes, pg_trigger) |
+| R10 | `geo-nodo-invariantes` «R4/R10…» y `geo-normalizar-nombre` (sin cambios) |
+| R15, R16 | `geo-sincronia-geografia` (expectativas sobre `padre_id`/`profundidad`) |
+
+**Contraprueba del paso 3 (T8.6).** Con la función `nodo_geografico_invariantes` reemplazada en la base por la de la
+migración sin el bloque «3. Un nodo con hijos…» (y restaurada después desde el archivo), `geo-nodo-invariantes`:
+```
+× R7: cambiar la profundidad de un nodo con hijos → SLT43, aunque la nueva cuadre con su padre nuevo
+× R7: colgar un nodo de su nieto con la profundidad del nieto + 1 → SLT43 y sin cambios (sin ciclos)
+AssertionError: expected null to be 'SLT43' // Object.is equality
+Test Files  1 failed (1)   Tests  2 failed | 9 passed (11)
+```
+Restaurada: `pg_proc.prosrc` vuelve a contener el paso 3.
+
+**Verificación (`DATABASE_URL` → `logistic_slt43`, `NODE_OPTIONS=--max-old-space-size=8192`)**
+- `geo-nodo-invariantes` 11/11 · `geo-sincronia-geografia` 9/9 · `nodo-geografico-sin-escritor.guardia` 28/28 → 48/48.
+- T8.10 (`--no-file-parallelism`): 64/65. `carga-division`, `geo-backfill`, `geo-equivalencia`, `geo-nodo-rls`,
+  `geo-sincronia-orden-zonas`, `migracion-slt43-ida-y-vuelta` verdes; **rojo** `slt43-migraciones-aditivas` «control: las
+  reales sí escriben…»: `expected '…' to match /UPDATE nodo_geografico/`. Ese `UPDATE` solo existía en el trigger de
+  descendientes retirado; T8.10 pide no tocar el archivo → abierto para el leader/humano.
+- `pnpm run typecheck` exit 0; `eslint` sobre los 4 TS tocados exit 0; `check-perfil` 6/6.
+- Grep final: en `db/`, `tests/` y `docs/architecture.md` solo quedan los literales `ruta`, `nodo_geografico_ruta_idx`
+  y `nodo_geografico_ruta_descendientes` que el propio test de R4/R8/R11 busca para comprobar que no existen.
+
+**Cierre del implementer (T8.11 parcial).** `./init.sh` no se corrió (muere por memoria en local; gate completo en CI).
+Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:guardias` (`NODE_OPTIONS=--max-old-space-size=8192`):
+`Test Files 3 failed | 317 passed | 2 skipped (322)`, `Tests 6 failed | 4506 passed | 20 skipped`:
+- `catalogo-postgres-acota-esquema`: el `pg_trigger` nuevo de `geo-nodo-invariantes.test.ts:272` no acotaba el esquema →
+  corregido (JOIN `pg_class`/`pg_namespace`, `n.nspname = 'public'`); guardia 7/7 y `geo-nodo-invariantes` 11/11.
+- `dependencias-declaradas-presentes` (4): en `tests/baseline-rojos.json`.
+- `recursos-origen-fuera` R1-R9/R23: `tests/integration/db/geo-backfill.test.ts:526,533,535,536` (`supabase-host`,
+  `supabase-pooler`). **No es de T8**: entró con F2.3/m2 (`d42726b`, ejemplos de `--destino`). No está en el baseline;
+  pondrá rojo el `gate-completo`. Fuera del alcance de T8: abierto para el leader.
+
+**Veredicto:** T8.1–T8.9 hechas y verdes; T8.10 con un rojo en un test que el spec manda no tocar (pendiente de decisión).
