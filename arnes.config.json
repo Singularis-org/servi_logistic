@@ -1,6 +1,6 @@
 {
   "$comment": "Perfil del arnes de servi_logistic. Montado con /arnes-init el 2026-10-21. docs/equipo.md explica cada campo.",
-  "arnes_version": "2.8.0",
+  "arnes_version": "2.9.0",
   "plantilla": {
     "url": "https://github.com/singularis-co/harness_config.git",
     "ref": "main"
