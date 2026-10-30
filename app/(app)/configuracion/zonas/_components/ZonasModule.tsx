@@ -3,57 +3,33 @@
 import { useState } from "react";
 import { MapPin, Pencil, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { useToast } from "@/hooks/useToast";
 import { listarZonas, obtenerZona, borrarZona } from "@/lib/actions/zonas";
-import { listarTarifas } from "@/lib/actions/tarifas";
 import { listarArbolGeografico } from "@/lib/actions/geografia";
-import type { TarifaDTO } from "@/lib/types/tarifa";
 import type { ZonaDTO } from "@/lib/types/zona";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
-import type { VehiculoDTO } from "@/lib/types/vehiculos";
 
-import {
-  CrearZonaForm,
-  cobroVacio,
-  type ZonaFormInitial,
-} from "./CrearZonaForm";
-import { TiendasModule } from "./TiendasModule";
-import type { CobroVehiculoValue } from "./CobroVehiculoTarifas";
-import {
-  TARIFA_CAMPOS,
-  tarifaValoresVacios,
-  type TarifaValores,
-} from "./TarifaCampos";
+import { CrearZonaForm, type ZonaFormInitial } from "./CrearZonaForm";
 
 const PAGE_SIZE = 100;
 
-/** Valores del formulario (strings) a partir de una fila de `tarifas`. */
-function tarifaValoresDesde(row: TarifaDTO): TarifaValores {
-  const valores = tarifaValoresVacios();
-  for (const campo of TARIFA_CAMPOS) {
-    const v = row[campo.key];
-    valores[campo.key] = v == null ? "" : String(v);
-  }
-  return valores;
-}
-
 /**
- * Módulo cliente de "Costos por zona": texto introductorio + botón Crear zona,
+ * Módulo cliente de Zonas (SLT-51; antes «Costos por zona» dentro de Tarifas, ahora sin costos):
+ * texto introductorio + botón Crear zona,
  * listado de zonas con Editar/Eliminar, formulario de crear/editar (precargado
  * en edición) y modal de confirmación de borrado (no se cierra por click fuera:
  * `dismissible={false}`). Notifica creación/edición/eliminación/error con toast.
  */
-export function ZonasTarifasModule({
+export function ZonasModule({
   initialZonas,
   provincias: initialProvincias,
-  vehiculos,
 }: {
   initialZonas: ZonaDTO[];
   provincias: ProvinciaArbolDTO[];
-  vehiculos: VehiculoDTO[];
 }) {
   const toast = useToast();
   const [zonas, setZonas] = useState<ZonaDTO[]>(initialZonas);
@@ -85,23 +61,12 @@ export function ZonasTarifasModule({
   }
 
   async function abrirEditar(zona: ZonaDTO) {
-    // Zona completa (incluye tarifas) + distritos derivados del árbol geográfico
-    // + la tarifa de cobro acotada a la zona (la de `tienda_id` NULL), que es la
-    // que edita la sección "Tarifas de zona" del formulario.
-    const [res, tarifasRes] = await Promise.all([
-      obtenerZona(zona.id),
-      listarTarifas({ page: 1, pageSize: PAGE_SIZE }),
-    ]);
+    // Zona completa + distritos derivados del árbol geográfico.
+    const res = await obtenerZona(zona.id);
     if (res.status !== "ok") {
       toast.error("No se pudo cargar la zona.");
       return;
     }
-    const tarifaZona =
-      tarifasRes.status === "ok"
-        ? tarifasRes.items.find(
-            (t) => t.zonaId === zona.id && t.tiendaId == null,
-          )
-        : undefined;
     const full = res.zona;
     const distritoIds: string[] = [];
     for (const p of provincias)
@@ -109,31 +74,12 @@ export function ZonasTarifasModule({
         for (const d of c.distritos)
           if (d.zonaId === full.id) distritoIds.push(d.id);
 
-    const cobro: CobroVehiculoValue = {
-      cobroVehiculo: full.cobroVehiculo,
-      tarifas: (full.tarifas ?? []).map((t) => ({
-        cobroEntregado: t.cobroEntregado,
-        cobroRechazado: t.cobroRechazado,
-        ...(t.vehiculoId ? { vehiculoId: t.vehiculoId } : {}),
-      })),
-    };
-    if (!full.cobroVehiculo && cobro.tarifas.length === 0) {
-      cobro.tarifas = cobroVacio().tarifas;
-    }
-
     setFormMode("editar");
     setFormInitial({
       zonaId: full.id,
       nombre: full.nombre,
       distritoIds,
-      cobro,
       esCentral: full.esCentral,
-      ...(tarifaZona
-        ? {
-            tarifaZonaId: tarifaZona.id,
-            tarifaValores: tarifaValoresDesde(tarifaZona),
-          }
-        : {}),
     });
     setFormKey((k) => k + 1);
     setView("form");
@@ -146,14 +92,11 @@ export function ZonasTarifasModule({
 
   return (
     <section className="flex flex-col gap-4 border-t border-border pt-6">
-      <TiendasModule zonas={zonas} />
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Costos por zona</h2>
+          <h2 className="text-base font-semibold">Zonas de reparto</h2>
           <p className="max-w-prose text-sm text-muted-foreground">
-            Costos que dependen de la zona donde se reparte. Se capturan al
-            crear o editar la zona.
+            Cada zona agrupa los distritos donde se reparte.
           </p>
         </div>
         {view === "list" ? (
@@ -168,7 +111,6 @@ export function ZonasTarifasModule({
           key={formKey}
           mode={formMode}
           provincias={provincias}
-          vehiculos={vehiculos}
           zonas={zonas}
           initial={formInitial}
           onSaved={onSaved}
@@ -217,7 +159,7 @@ export function ZonasTarifasModule({
  * ⭑ FICHA 376 (R24) — POR QUÉ EL `conflict` DE BORRAR YA NO TIENE UN SOLO TEXTO.
  *
  * Hasta hoy cualquier `conflict` decía «la zona está en uso», y con la guarda de R10 esa frase
- * pasó a ser MENTIRA en un caso: la zona central se rechaza aunque no tenga ni una orden ni un
+ * pasó a ser MENTIRA en un caso: la zona central (hoy «zona de bodega principal», SLT-51) se rechaza aunque no tenga ni una orden ni un
  * usuario apuntando. Los dos rechazos piden salidas OPUESTAS —vaciar la zona frente a marcar otra
  * como central—, así que quien lo lee tiene que poder distinguirlos sin inferirlo.
  *
@@ -228,7 +170,7 @@ function mensajeBorradoFallido(error: unknown): string {
   const res = error as { status?: string; motivo?: string } | null;
   if (res?.status !== "conflict") return "No se pudo eliminar la zona.";
   return res.motivo === "es_central"
-    ? "No se puede eliminar la zona central. Marca otra zona como central antes de eliminarla."
+    ? "No se puede eliminar la zona de bodega principal. Marca otra zona como bodega principal antes de eliminarla."
     : "No se puede eliminar: la zona está en uso.";
 }
 
@@ -245,14 +187,14 @@ function ZonasList({
   onEliminar: (zona: ZonaDTO) => void;
 }) {
   if (zonas.length === 0) {
-    // Mismo tono/estructura que el vacío de ZonasModule (configuración/zonas): icono +
-    // título + descripción que enseña + CTA "Crear zona".
+    // Icono + título + descripción que enseña + CTA "Crear zona". SLT-51: la zona ya no lleva
+    // costos, así que el vacío no promete definirlos aquí.
     return (
       <div className="rounded-md border border-border">
         <EmptyState
           icon={MapPin}
           title="No hay zonas"
-          description="Crea la primera zona para definir sus costos."
+          description="Crea la primera zona."
           action={
             <Button type="button" onClick={onCrear}>
               Crear zona
@@ -271,10 +213,17 @@ function ZonasList({
           className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
         >
           <div className="flex flex-col">
-            <span className="text-sm font-medium">{z.nombre}</span>
+            <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              {z.nombre}
+              {/* SLT-51 (R3/R10): la marca se nombra por lo que decide —a qué bodega va el
+                  cierre—, no por la variante de flete GAM que retira SLT-52. */}
+              {z.esCentral ? (
+                <Badge variant="secondary">Zona de bodega principal</Badge>
+              ) : null}
+            </span>
+            {/* Sin «· cobro por vehículo»: Zonas no muestra costos (R3). */}
             <span className="text-xs text-muted-foreground">
               {z.distritosCount} distrito{z.distritosCount === 1 ? "" : "s"}
-              {z.cobroVehiculo ? " · cobro por vehículo" : ""}
             </span>
           </div>
           <div className="flex items-center gap-2">

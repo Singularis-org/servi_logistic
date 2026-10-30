@@ -23,13 +23,11 @@ export type TarifaZonaMensajeroInput = z.infer<typeof tarifaZonaMensajeroInputSc
 // entre las dos operaciones (ficha 376/R1-R3, ver abajo).
 const zonaFieldsComunes = {
   nombre: nombreSchema,
-  cobroVehiculo: z.boolean(),
   // distritoIds: conjunto de distritos que componen la zona (N:M). Al menos uno.
   distritoIds: z.array(idSchema).min(1),
-  // tarifas: filas de tarifa_zona_mensajero. Su cardinalidad/forma depende de
-  // cobroVehiculo (regla en applyTarifaRules). Default [] para poder omitirlo.
-  tarifas: z.array(tarifaZonaMensajeroInputSchema).default([]),
 };
+
+const tarifasArraySchema = z.array(tarifaZonaMensajeroInputSchema);
 
 // Regla condicional cobroVehiculo <-> tarifas:
 // - cobroVehiculo=true: >= 1 tarifa, TODAS con vehiculoId, sin vehiculos repetidos.
@@ -105,11 +103,17 @@ function applyTarifaRules(
  * se puede» tiene que sobrevivir hasta el servidor.
  *
  * Los dos siguen `.strict()` (un campo desconocido es `validation_error`, no un descarte mudo) y
- * los dos aplican `applyTarifaRules`, que solo lee `cobroVehiculo` y `tarifas` y no se toca.
+ * los dos aplican `applyTarifaRules`, que solo lee `cobroVehiculo` y `tarifas` y no se toca
+ * (actualizar, desde SLT-51, solo cuando llegan los dos).
  */
 export const crearZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    // SLT-51 (R5): el formulario de zona ya no manda costos. Al CREAR, ausente es «zona sin pagos»,
+    // asi que el default materializa exactamente eso; `applyTarifaRules` pasa con `false` + `[]`.
+    cobroVehiculo: z.boolean().default(false),
+    // Filas de tarifa_zona_mensajero; su forma depende de cobroVehiculo (applyTarifaRules).
+    tarifas: tarifasArraySchema.default([]),
     // feature 54: flag de zona central (renombrado del viejo esGam). 376/R2: el default se queda.
     esCentral: z.boolean().default(false),
     /**
@@ -134,18 +138,38 @@ export const crearZonaSchema = z
   .superRefine(applyTarifaRules);
 export type CrearZonaInput = z.infer<typeof crearZonaSchema>;
 
-// Actualizar: reemplazo completo de datos + N:M + tarifas, con UNA excepcion — la marca de zona
-// central, que es `optional()` y NO tiene default (376/R1). El `id` viaja aparte en la Server
-// Action.
+// Actualizar: reemplazo completo de datos + N:M, con excepciones que son `optional()` y NO tienen
+// default: la marca de zona central (376/R1) y el par cobroVehiculo/tarifas (SLT-51/R7). El `id`
+// viaja aparte en la Server Action.
 export const actualizarZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    // SLT-51 (R7): mismo criterio que `esCentral`. SIN default a proposito: un `[]` materializado
+    // aqui haria que el repositorio borrara los pagos de la zona en cada guardado de distritos.
+    cobroVehiculo: z.boolean().optional(),
+    tarifas: tarifasArraySchema.optional(),
     // 376/R1: ausente = «no lo mandé» = no se toca. `null` NO sirve y se rechaza: Prisma
     // intentaria escribir NULL en una columna NOT NULL.
     esCentral: z.boolean().optional(),
   })
   .strict()
-  .superRefine(applyTarifaRules);
+  .superRefine((data, ctx) => {
+    const { cobroVehiculo, tarifas } = data;
+    // R7: ninguno de los dos = «no toques el pago al mensajero».
+    if (cobroVehiculo === undefined && tarifas === undefined) return;
+    // R8: viajan juntos porque la regla de tarifas depende de la bandera; uno solo no permite
+    // decidir si el reemplazo es valido, y aceptarlo dejaria pagos y bandera incoherentes.
+    if (cobroVehiculo === undefined || tarifas === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [cobroVehiculo === undefined ? "cobroVehiculo" : "tarifas"],
+        message: "cobroVehiculo y tarifas viajan juntos",
+      });
+      return;
+    }
+    // R9: con los dos, las reglas de siempre.
+    applyTarifaRules({ cobroVehiculo, tarifas }, ctx);
+  });
 export type ActualizarZonaInput = z.infer<typeof actualizarZonaSchema>;
 
 // Listado: paginacion + include opcional acotado a ["tarifas"].

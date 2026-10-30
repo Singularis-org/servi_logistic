@@ -33,6 +33,7 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/novedades": "nucleo",
   "/configuracion": "nucleo",
   "/configuracion/tarifas": "nucleo",
+  "/configuracion/zonas": "nucleo",
   "/ayuda": "nucleo",
   "/ayuda/[...slug]": "nucleo",
   "/historico/acciones": "nucleo",

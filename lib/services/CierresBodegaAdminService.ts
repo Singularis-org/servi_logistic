@@ -308,6 +308,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         totales: cd.resumen.totales,
         totalPagoMensajero: cd.resumen.totalPagoMensajero, // R20: snapshot por cierre_dia, sin recomputar
         totalIngresoBodegaRechazos: cd.resumen.totalIngresoBodegaRechazos, // feature 56/R19: snapshot por cierre_dia, sin recomputar
+        gestionesAjustadas: cd.resumen.gestionesAjustadas, // SLT-56 (R20): marca «Con ajustes»
         grupos,
         // Totales por concepto de ESTE cierre_dia, sumados desde el desglose por orden.
         totalesIngreso,

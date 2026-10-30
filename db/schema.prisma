@@ -168,6 +168,7 @@ model Usuario {
   postulacionesRecursoAtendidas       PostulacionRecurso[]               @relation("PostulacionRecursoAtendidaPor") // feature 253: postulaciones de vehiculo/bodega que ESTE admin marco atendidas; la FK es RESTRICT (quien atendio es evidencia)
   diaRepartoCambiosRealizados         OrdenDiaRepartoCambio[]            @relation("OrdenDiaRepartoCambioActor") // feature 262/R20: correcciones del dia de reparto que ESTE usuario hizo; la FK es RESTRICT (quien corrigio es evidencia y no se pierde al dar de baja al usuario)
   fechaReprogramacionCambiosHechos    GestionFechaReprogramacionCambio[] @relation("GestionFechaReprogramacionCambioActor") // ficha 371: correcciones de la fecha de una reprogramacion que ESTE usuario hizo; FK RESTRICT por el mismo motivo que la linea de arriba
+  ajustesPagoMensajeroHechos          GestionPagoMensajeroAjuste[]       @relation("GestionPagoMensajeroAjusteActor") // SLT-56: ajustes del pago al mensajero que ESTE usuario hizo; FK RESTRICT (quien ajusto es evidencia)
   traspasosCedidos                    OrdenTraspasoMensajero[]           @relation("OrdenTraspasoAnterior") // ficha 427/R25: ordenes que dejaron de ser de ESTE mensajero por un traspaso. FK RESTRICT: quien llevaba un paquete es evidencia y no se pierde al dar de baja al usuario
   traspasosRecibidos                  OrdenTraspasoMensajero[]           @relation("OrdenTraspasoNuevo") // ficha 427/R25: ordenes que ESTE mensajero recibio por un traspaso. FK RESTRICT por el mismo motivo
   traspasosEjecutados                 OrdenTraspasoMensajero[]           @relation("OrdenTraspasoActor") // ficha 427/R25/R26: traspasos que ESTE usuario ejecuto. `actor_rol` va CONGELADO en la fila, asi que esta relacion NO es la que pinta la linea de tiempo
@@ -1407,6 +1408,8 @@ model GestionOrden {
   // Ficha 371: rastro append-only de las correcciones de `fecha_reprogramacion` de ESTA gestion.
   // La FK es RESTRICT: el rastro sobrevive a cualquier intento de borrar la gestion corregida.
   fechaReprogramacionCambios GestionFechaReprogramacionCambio[] @relation("GestionFechaReprogramacionCambioGestion")
+  // SLT-56: ajustes del pago al mensajero de ESTA gestion. Existir al menos uno = «Ajustado».
+  ajustesPagoMensajero       GestionPagoMensajeroAjuste[]       @relation("GestionPagoMensajeroAjusteGestion")
   // Ficha 454 (design §1.1/§3): hechos de orden sobre ESTA gestion. El evento `gestion_registrada`
   // es el que la hace «gestion de calle con el modelo nuevo» (pendiente hasta aprobar su cierre).
   eventos                    OrdenEvento[]                      @relation("OrdenEventoGestion")
@@ -1628,6 +1631,7 @@ model CierreDia {
   sinGestion         CierreSinGestion[] // feature 264/R1: las ordenes que el corte barrio a `sin_gestionar` al crear este cierre
   rechazosTienda     CierreRechazoTienda[] // ficha 425/R1-R2: los rechazos de TIENDA que este cierre puso delante de quien lo aprueba. Vinculo de REVISION, no de dinero: esas gestiones conservan `cierre_id` NULL
   liquidacionPagos   LiquidacionPago[] // feature 172/R21/R22: pagos al mensajero registrados CONTRA este cierre
+  ajustesPagoMensajero GestionPagoMensajeroAjuste[] @relation("GestionPagoMensajeroAjusteCierre") // SLT-56: ajustes de pago hechos al revisar ESTE cierre
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -4183,6 +4187,55 @@ model GestionFechaReprogramacionCambio {
   @@map("gestion_fecha_reprogramacion_cambio")
 }
 
+/// SLT-56 (design §1.1, migracion `20261029120000_gestion_pago_mensajero_ajuste`) — RASTRO de cada
+/// AJUSTE del pago al mensajero de una gestion, hecho al revisar su cierre ABIERTO. Append-only:
+/// sin `updated_at` ni `deleted_at`, y `servi_app` no tiene UPDATE ni DELETE (R17). Un ajuste
+/// posterior sobre la misma gestion AÑADE otra fila; por eso no hay unico.
+///
+/// Tabla propia y no `historial_accion`: el motivo es obligatorio y aquella prohibe texto libre
+/// (362/R5). La marca «Ajustado» se deriva de que existan filas: no hay booleano en `gestion_orden`.
+model GestionPagoMensajeroAjuste {
+  id String @id @default(uuid())
+
+  gestionId String @map("gestion_id")
+
+  /// El cierre EN EL QUE se ajusto. Se guarda aparte porque una gestion puede salir de un cierre
+  /// rechazado (477) y la pregunta «que se ajusto en este cierre» no puede depender de donde este hoy.
+  cierreId String @map("cierre_id")
+
+  /// Importes escala 2, como `gestion_orden.pago_mensajero`, que es la columna que el ajuste pisa.
+  pagoAnterior Decimal @map("pago_anterior") @db.Decimal(12, 2)
+  pagoNuevo    Decimal @map("pago_nuevo") @db.Decimal(12, 2)
+
+  /// Siempre hay una persona: ningun cron ajusta pagos.
+  actorUsuarioId String @map("actor_usuario_id")
+
+  /// CONGELADO (precedente `historial_accion.actor_rol`): un admin que mañana cambia de rol no
+  /// re-etiqueta lo que hizo hoy.
+  actorRol RolValue @map("actor_rol")
+
+  /// Obligatorio (R7). Texto libre: por eso vive aqui y no en `historial_accion`.
+  motivo String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gestion GestionOrden @relation("GestionPagoMensajeroAjusteGestion", fields: [gestionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cierre  CierreDia    @relation("GestionPagoMensajeroAjusteCierre", fields: [cierreId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  actor   Usuario      @relation("GestionPagoMensajeroAjusteActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  /// Los CHECK `..._pago_nuevo_no_negativo`, `..._pago_distinto` y `..._motivo_no_vacio` VIVEN SOLO
+  /// EN LA MIGRACION: Prisma no expresa CHECK (mismo caso que la 371).
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([gestionId, createdAt]) // la lectura del detalle: los ajustes de esta gestion, en orden; cubre la FK por prefijo
+  @@index([cierreId]) // la FK RESTRICT al cierre, indexada
+  @@index([actorUsuarioId]) // la FK RESTRICT del actor, indexada (patron 371)
+  @@index([organizacionId])
+  @@map("gestion_pago_mensajero_ajuste")
+}
+
 /// FICHA 427 (design §4.1, migracion `20260917120000_orden_traspaso_mensajero`) — RASTRO de los
 /// TRASPASOS de una orden entre mensajeros: quien la paso, desde quien, hacia quien, por que y
 /// cuando. Fila INMUTABLE, append-only: sin `updated_at`, sin `deleted_at`. Un traspaso posterior
@@ -4461,6 +4514,9 @@ enum HistorialAccionTipo {
   /// sitio donde sobrevive. La NOTA no entra (R5 de la 362: texto libre tecleado por una persona).
   cierre_bodega_conciliado
   cierre_bodega_conciliacion_revertida
+  /// SLT-56: alguien ajusto el pago al mensajero de una gestion al revisar su cierre abierto.
+  /// `monto` = el pago nuevo; el antes/despues y el motivo viven en `gestion_pago_mensajero_ajuste`.
+  cierre_dia_pago_mensajero_ajustado
 
   // --- hace desaparecer algo (10) ---
   /// FICHA 371: corregir la fecha de una reprogramacion ya registrada. ENTRA POR «hace desaparecer
@@ -5317,6 +5373,7 @@ model Organizacion {
   gestionOrdenEvidencias GestionOrdenEvidencia[]
   gestionOrdenPagos GestionOrdenPago[]
   gestionFechaReprogramacionCambios GestionFechaReprogramacionCambio[]
+  gestionPagoMensajeroAjustes GestionPagoMensajeroAjuste[]
   rutaOptimizadas RutaOptimizada[]
   rutaOptimizadaParadas RutaOptimizadaParada[]
   cierreDias CierreDia[]

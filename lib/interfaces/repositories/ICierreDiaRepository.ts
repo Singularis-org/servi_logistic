@@ -3,6 +3,7 @@ import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
 import type { OrderStatusRetirado, OrderStatusValue } from "@/lib/types/order-status";
 import type {
+  AjustePagoGestionDTO,
   CierrePasadoDTO,
   CierreRechazoDeTienda,
   CierreTotales,
@@ -184,6 +185,11 @@ export interface CierreGestionPendienteRow {
   // Desglose del ingreso de la empresa + tarifa congelada, DERIVADO del snapshot. Solo lo
   // pueblan los repos de ADMIN (38/40): la vista en vivo del mensajero (37) no lo expone.
   ingresoEmpresa?: IngresoEmpresaDTO | null;
+  // SLT-56 (R19/R20): los ajustes del pago al mensajero de la gestion, en orden cronologico. Solo
+  // lo pueblan los repos de ADMIN (via `GESTION_ADMIN_SELECT`); la vista del mensajero no lo
+  // selecciona (Q2: el mensajero ve el valor nuevo, sin marca ni motivo). Ausente != lista vacia:
+  // ausente es «esta vista no lo lee», `[]` es «no hay ajustes».
+  ajustesPago?: AjustePagoGestionDTO[];
 }
 
 // Feature 109 (T1.2, R6/R8): input OPCIONAL del corte diario. Cuando esta presente,

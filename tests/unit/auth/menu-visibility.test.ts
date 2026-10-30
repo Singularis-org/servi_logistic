@@ -334,11 +334,35 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
     expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, null))).toBeNull();
   });
 
+  it("SLT-51/R1: el subítem «Zonas» no cambia el primer destino de ningún rol", () => {
+    const sinZonas = SIDEBAR_ITEMS.map((i) =>
+      i.children
+        ? { ...i, children: i.children.filter((c) => c.href !== "/configuracion/zonas") }
+        : i,
+    );
+    expect(sinZonas).not.toEqual(SIDEBAR_ITEMS);
+    for (const rol of [
+      "maestro",
+      "admin",
+      "adminTienda",
+      "adminSatelite",
+      "mensajero",
+      "apiKey",
+    ] as RolValue[]) {
+      expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor(rol)))).toBe(
+        primerDestino(itemsVisibles(sinZonas, actor(rol))),
+      );
+    }
+    expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor("maestro")))).toBe("/dashboard");
+  });
+
   it("conserva los children del ítem padre visible (Configuración → Usuarios/Tarifas/API/Plantillas)", () => {
     const [visibleConfig] = itemsVisibles(SIDEBAR_ITEMS, actor("maestro"))
       .filter((i) => i.label === "Configuración");
     expect(visibleConfig.children?.map((c) => c.href)).toEqual([
       "/configuracion",
+      // SLT-51 (R1): «Zonas» entre Usuarios y Tarifas; no es el primer hijo.
+      "/configuracion/zonas",
       "/configuracion/tarifas",
       "/configuracion/api",
       // SL-36 (design §14): «Integraciones» junto a «API»; no es el primer hijo.

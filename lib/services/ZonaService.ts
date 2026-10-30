@@ -1,6 +1,7 @@
 import type {
-  CreateZonaData,
   IZonaRepository,
+  TarifaZonaMensajeroData,
+  UpdateZonaData,
 } from "@/lib/interfaces/repositories/IZonaRepository";
 import type {
   Actor,
@@ -12,7 +13,12 @@ import type {
   ListarZonasServiceResult,
   ObtenerZonaServiceResult,
 } from "@/lib/interfaces/services/IZonaService";
-import type { ActualizarZonaInput, CrearZonaInput, ListarZonasInput } from "@/lib/types/zona";
+import type {
+  ActualizarZonaInput,
+  CrearZonaInput,
+  ListarZonasInput,
+  TarifaZonaMensajeroInput,
+} from "@/lib/types/zona";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 
 /**
@@ -21,8 +27,10 @@ import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiquet
  * Va colgado del campo `esCentral` para que la pantalla lo pinte JUNTO A LA CASILLA (R23), y no
  * como un toast generico. Dice ademas QUE HACER: la salida no es reintentar, es marcar otra zona.
  */
+// SLT-51 (R10): la pantalla pinta este texto junto a la casilla, y la marca se rotula ahora
+// «zona de bodega principal».
 const MSG_SIN_ZONA_CENTRAL =
-  "Tiene que haber una zona central. Para quitarle la marca a ésta, márcala en otra zona.";
+  "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.";
 
 // Feature 24: el CRUD de zonas es EXCLUSIVO del rol maestro.
 function esMaestro(actor: Actor): boolean {
@@ -44,7 +52,19 @@ function distinct(values: string[]): string[] {
  * el mismo motivo estructural: `prepararDatos` lo comparten CREAR y ACTUALIZAR, y el SINPE solo
  * existe al crear (R11). Si viajara por aqui, `actualizar` tendria que inventarse un valor.
  */
-type DatosSinMarca = Omit<CreateZonaData, "esCentral" | "sinpeNumero" | "sinpeNombre">;
+/**
+ * SLT-51: la forma es la de ACTUALIZAR (`cobroVehiculo`/`tarifas` opcionales) porque es la mas
+ * debil de las dos; `crear` sobreescribe esos dos campos con los suyos, que el zod ya completo.
+ */
+type DatosSinMarca = Omit<UpdateZonaData, "esCentral">;
+
+function aFilasDeTarifa(tarifas: TarifaZonaMensajeroInput[]): TarifaZonaMensajeroData[] {
+  return tarifas.map((t) => ({
+    cobroEntregado: t.cobroEntregado,
+    cobroRechazado: t.cobroRechazado,
+    vehiculoId: t.vehiculoId ?? null,
+  }));
+}
 
 type PrepararResult =
   | { ok: true; data: DatosSinMarca }
@@ -79,8 +99,9 @@ export class ZonaService implements IZonaService {
       fieldErrors.distritoIds = ["uno o mas distritoIds no existen"];
     }
 
+    // SLT-51 (R7): sin `tarifas` no hay vehiculos que comprobar; el guardado no toca los pagos.
     const vehiculoIds = distinct(
-      input.tarifas
+      (input.tarifas ?? [])
         .map((t) => t.vehiculoId)
         .filter((v): v is string => v !== undefined),
     );
@@ -97,13 +118,11 @@ export class ZonaService implements IZonaService {
       ok: true,
       data: {
         nombre: input.nombre,
+        // SLT-51 (R6/R7): `undefined` se propaga tal cual hasta el repositorio, que lo lee como
+        // «no toques el pago al mensajero». Un `?? []` aqui borraria los pagos de la zona.
         cobroVehiculo: input.cobroVehiculo,
         distritoIds,
-        tarifas: input.tarifas.map((t) => ({
-          cobroEntregado: t.cobroEntregado,
-          cobroRechazado: t.cobroRechazado,
-          vehiculoId: t.vehiculoId ?? null,
-        })),
+        tarifas: input.tarifas === undefined ? undefined : aFilasDeTarifa(input.tarifas),
       },
     };
   }
@@ -120,6 +139,9 @@ export class ZonaService implements IZonaService {
     const zona = await this.repo.create(
       {
         ...prep.data,
+        // SLT-51 (R5): al crear los dos son siempre valores (el zod les puso `false` y `[]`).
+        cobroVehiculo: input.cobroVehiculo,
+        tarifas: aFilasDeTarifa(input.tarifas),
         esCentral: input.esCentral,
         sinpeNumero: input.sinpeNumero,
         sinpeNombre: input.sinpeNombre,

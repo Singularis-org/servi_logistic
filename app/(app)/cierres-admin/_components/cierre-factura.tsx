@@ -139,6 +139,8 @@ import {
 // que `COLUMNA_CAUSA_INCIDENTE`; y el rótulo de fulfillment, del módulo puro donde vive.
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import { FULFILLMENT_COL } from "./cierre-labels";
+// SLT-56 (R21) — el botón «Ajustar pago» de la fila.
+import { FILA_AJUSTAR_PAGO, ajustarPagoAriaLabel } from "./cierre-labels";
 // Feature 213 (T6/T7): el desglose de pago se formatea en UN solo sitio (R25).
 import { desglosePantalla } from "./desglose-pago";
 import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
@@ -1334,6 +1336,11 @@ export interface CierreFacturaDetalleProps {
    */
   onCorregirResultado?: (g: CierreDetalleGestion) => void;
   /**
+   * SLT-56 (R21): abre el ajuste del pago al mensajero de una gestión. Ausente = no se ofrece:
+   * cierre no abierto, rol que no ajusta, vista del mensajero y detalle de bodega.
+   */
+  onAjustarPago?: (g: CierreDetalleGestion) => void;
+  /**
    * Feature 264 (R13) — las órdenes que el corte del día barrió a `sin_gestionar` al crear ESTE
    * cierre. Ni una lleva monto: no tienen gestión, así que no hay nada que sumar (R10).
    */
@@ -1670,6 +1677,7 @@ function FilaGestion({
   onVerEvidencia,
   onCorregirPagos,
   onCorregirResultado,
+  onAjustarPago,
 }: Readonly<{
   g: CierreDetalleGestion;
   /** Vista del mensajero: las dos cifras de la fila son lo RECIBIDO y SU pago. */
@@ -1686,6 +1694,8 @@ function FilaGestion({
    * de arriba — el permiso y el estado del cierre no se deciden aquí, se reciben.
    */
   onCorregirResultado?: (g: CierreDetalleGestion) => void;
+  /** SLT-56 (R21): abre el ajuste del pago al mensajero de ESTA gestión. Mismo trato. */
+  onAjustarPago?: (g: CierreDetalleGestion) => void;
   /**
    * FICHA 481 — el fulfillment de la tarifa congelada es dato de la CENTRAL: ni el mensajero ni
    * el `adminSatelite` lo ven. Default `false`: FALLA CERRADO, quien no lo pase no lo enseña.
@@ -1962,6 +1972,21 @@ function FilaGestion({
                 {FILA_CORREGIR_RESULTADO}
               </Button>
             ) : null}
+            {/* SLT-56 (R6/R21) — en CUALQUIER resultado, también los que hoy pagan 0: lo único
+                que hace falta es un pago congelado que ajustar. Que el cierre esté abierto y el
+                rol pueda lo decide el padre: aquí llega como la presencia del callback. */}
+            {onAjustarPago && g.pagoMensajero !== null ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-fit"
+                aria-label={ajustarPagoAriaLabel(g.numRemision, g.destinatario)}
+                onClick={() => onAjustarPago(g)}
+              >
+                {FILA_AJUSTAR_PAGO}
+              </Button>
+            ) : null}
           </div>
 
           {/* Desglose auditable de la orden: de qué tarifa CONGELADA salió cada monto y
@@ -1993,6 +2018,8 @@ export interface GestionesPorResultadoProps {
   onCorregirPagos?: (g: CierreDetalleGestion) => void;
   /** Ausente = no se ofrece (478/R14). */
   onCorregirResultado?: (g: CierreDetalleGestion) => void;
+  /** SLT-56 (R21). Ausente = no se ofrece. */
+  onAjustarPago?: (g: CierreDetalleGestion) => void;
   /**
    * De quién son estas gestiones. Ausente = el nombre accesible de siempre
    * (`FACTURA_ORDENES_TITULO`), el del comprobante de mensajero (478/R18). Presente =
@@ -2015,6 +2042,7 @@ export function GestionesPorResultado({
   onVerEvidencia,
   onCorregirPagos,
   onCorregirResultado,
+  onAjustarPago,
   contexto,
 }: Readonly<GestionesPorResultadoProps>) {
   // Arranca en la primera sección CON órdenes: abrir en una pestaña vacía no dice nada.
@@ -2082,6 +2110,7 @@ export function GestionesPorResultado({
               onVerEvidencia={onVerEvidencia}
               onCorregirPagos={onCorregirPagos}
               onCorregirResultado={onCorregirResultado}
+              onAjustarPago={onAjustarPago}
             />
           ))
         )}
@@ -2491,6 +2520,7 @@ export function CierreFacturaDetalle({
   onVerEvidencia,
   onCorregirPagos,
   onCorregirResultado,
+  onAjustarPago,
   ordenesSinGestion = [],
   // Feature 264 (R28): el default es `true` —«registrado»— porque es lo que vale para todo
   // cierre nacido después de la migración, y porque el estado que MIENTE es el otro: presentar
@@ -2735,6 +2765,7 @@ export function CierreFacturaDetalle({
         onVerEvidencia={onVerEvidencia}
         onCorregirPagos={onCorregirPagos}
         onCorregirResultado={onCorregirResultado}
+        onAjustarPago={onAjustarPago}
       />
 
       {/* Feature 264 (R13) — las órdenes que el corte cerró SIN gestión: sección HERMANA de la

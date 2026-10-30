@@ -31,7 +31,7 @@ function buildCoberturaService(): ICoberturaService {
  * llamada. Sin sesion -> `unauthenticated` sin construir el servicio (R3); rol distinto de
  * maestro -> `forbidden` (R2).
  *
- * Superficie: `DescargarCoberturaButton` en `/configuracion/tarifas` (ficha 465, T8-T9).
+ * Superficie: `DescargarCoberturaButton` en `/configuracion/zonas` (ficha 465, T8-T9; SLT-51 lo mudó desde Tarifas).
  */
 export async function listarCoberturaDistritos(
   deps: CoberturaActionDeps = {},
