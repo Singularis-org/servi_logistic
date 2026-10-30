@@ -1,5 +1,19 @@
 # SLT-59 — Reducir llamadas pagadas a Google en la optimización de ruta · design
 
+> **Revisión 4 (2026-10-30)** con D21-D25. Cambia:
+> - §2 queda sustituida por §12.1 (decisión con disparo manual o automático, primera ruta y enfriamiento);
+> - §12 es nueva: primera ruta del día, recogida, gestión, traspaso, salida y botón;
+> - §5 y §6 suman dos campos de config y los contratos nuevos;
+> - §8 se rehace (jornadas A y B);
+> - §9 suma A12-A15 y §10 suma 92/R16-R17.
+>
+> Donde la revisión 4 contradiga a las anteriores, manda la revisión 4.
+
+> **Revisión 3 (2026-10-30)** con D16-D20. Cambia: §2 (la decisión distingue prefijo de fuera de
+> orden), §2.2 (sin tramo puente), §2.4 nueva (sincronización manual y origen), §1 y §6 (`estado` en
+> la escritura, razón `reduccion_descartada`), §8 (jornada: la fila 7 pasa a 1/1/1, total 3/3/6),
+> §9 (A9-A11) y §10 (92/R23). Lo demás es la revisión 2, ya implementada.
+>
 > **Revisión 2 (2026-10-29)** con las respuestas del humano (D6-D13 de `requirements.md`).
 > Fuentes leídas: `lib/services/OptimizacionRutaService.ts`, `lib/services/jobs/optimizacion-ruta-encolado.ts`,
 > `lib/services/jobs/optimizacion-ruta-handler.ts`, `lib/services/jobs/job-descartado.ts`,
@@ -31,7 +45,9 @@ misma feature: crearon las guardas que esta ficha afina. Se reutiliza, no se re-
 | Disparo inmediato | `encolarOptimizacionInmediata`, `dedupeKeyInmediato` | **Se retira** (sin consumidores). |
 | `max_intentos` por fila | `JobRepository.enqueue` + `JobQueueService.manejarFallo` | Se le pasa 3 (R32). |
 | Error de job que no es fallo | `JobDescartado` + su rama en `JobQueueService.drenar` | **Patrón** de `JobFallidoPermanente` (§4); la clase no se reutiliza (A5). |
-| Trazado de un tramo suelto | `IRoutesClient.trazar({ origen, paradasEnOrden: [una] })` (ya lo usa `trazarTramoVivo`) | El tramo puente de R14. |
+| Trazado de un tramo suelto | `IRoutesClient.trazar({ origen, paradasEnOrden: [una] })` (ya lo usa `trazarTramoVivo`) | ~~El tramo puente de R14.~~ Revisión 3: ya no se usa en esta ficha (D16 retira R14). |
+| Resultado de la acción manual | `SincronizarRutaResult` (`lib/types/ruta-mensajero.ts`) con `omitida`, `secuenciaFuente`, `trazado?`; `SincronizarRutaButton` muestra «La ruta ya estaba al día.» con `omitida: true` | Revisión 3 (R45): se reutiliza tal cual, sin campos nuevos. |
+| Postgres real en tests | `tests/integration/db/_postgres-real.ts` (`HAY_BASE_DE_DATOS`, `crearPrismaDeTest`) y `_jobs-dos-empresas.ts` | Revisión 3 (R48, R50): el test SQL real de `reducirSecuencia` usa estas utilidades; se salta sin `DATABASE_URL`. Revisión 4: solo con `DATABASE_URL` del entorno y host local, nunca `.env`; las utilidades se importan dinámicamente (T6.7). |
 
 ---
 
@@ -62,6 +78,12 @@ reducirSecuencia(
   },
 ): Promise<boolean>; // true = aplicada
 ```
+
+**Revisión 3 (R48, m6):** la barrera pasa a ser `updateMany({ where: { mensajeroId, huellaSet:
+huellaPrevia, estado: "vigente" } })`. `marcarDesactualizada` no cambia la huella, así que sin el
+estado una reducción leída como `vigente` podía aplicarse sobre una ruta recién marcada
+`desactualizada`. El contrato no cambia de firma; el JSDoc añade la condición. `false` sigue
+significando «no se escribió nada» por cualquiera de las dos causas.
 
 Se borra y reinserta en vez de renumerar con `UPDATE` por el índice único `(ruta_id, secuencia)`:
 renumerar «hacia abajo» choca a mitad de camino. Es el mismo motivo que ya escribe `reemplazarSecuencia`.
@@ -95,6 +117,32 @@ si actual ⊂ previa (estricto) -> reducir (R11-R16)
 La función de decisión se exporta (`decidirGuardaRuta`) y devuelve `{ tipo: "reoptimizar" | "omitir"
 | "reducir", ... }`. Se prueba sola, con tabla de casos.
 
+**Revisión 3 (D16, D18).** La decisión queda así:
+
+```
+si ruta === null               -> reoptimizar (sin_ruta)
+si ruta.estado !== "vigente"   -> reoptimizar (R7)
+si actual ⊄ previa             -> reoptimizar (R20, paradas_nuevas)
+restantes = previa filtrada a actual
+si restantes != previa.slice(previa.length - restantes.length)   -> reoptimizar (R42, R43, motivo "fuera_de_orden")
+si desviado                    -> reoptimizar (R19; con polilínea vacía, R47)
+si actual == previa            -> omitir (R1, R2)
+si no                          -> reducir (R41: prefijo)
+```
+
+- **«Prefijo» en código.** `restantes` es exactamente la cola de `previa`. Equivale a «las quitadas son
+  las `k` primeras». Por eso «quitar la última» (PA-1, R43) ya no cuenta como prefijo: `restantes =
+  [s1, s2]` no es la cola de `[s1, s2, s3]`.
+- **Fuera de orden va antes del desvío.** No necesita decodificar la polilínea. El resultado no cambia,
+  porque las dos ramas dicen «reoptimizar». `motivo` gana el valor `"fuera_de_orden"`, que solo usa el
+  `optlog`.
+- **R47 (D18).** `lineaReferencia` sigue usando la polilínea `routes` cuando existe, aunque decodifique
+  a 0 puntos. `distanciaMinimaAPolilineaM(p, [])` da `+Infinity`, y eso cuenta como desviado. Es lo que
+  hace hoy el código. La revisión 3 solo lo fija en el spec y renombra el test PA-2 a R47.
+- **Recalcular fuera de orden no es una rama nueva.** `guardaSinRecalculo` devuelve `null` y `ejecutar`
+  sigue por el camino de siempre (`optimizar` + `trazar`, o la rama 92/R35 con 1 parada). Así salen las
+  cuentas de R42 sin código propio.
+
 ### 2.1 Qué es «desviarse de la ruta dada» (D8)
 
 Tres medidas posibles; se elige la **distancia mínima de la posición del mensajero a la línea de la
@@ -124,6 +172,24 @@ Coste: lineal en los puntos de la polilínea, en memoria.
 Sin criterio de tiempo (R10).
 
 ### 2.2 La reducción (R11-R16)
+
+> **Revisión 3 (D16).** De lo que sigue solo quedan en vigor los casos «Prefijo + tramos» (R13) y
+> «Sin tramos» (R15), y solo para el prefijo (R41). El caso «No prefijo + tramos» (R14), el punto 4
+> (R16) y el hueco «al principio» desaparecen: fuera de orden ya no llega aquí (§2). En código:
+> - `planificarReduccion` pierde la rama `puente` y queda `concatenar | sin_trazado`;
+> - `tramosPuente` y el parámetro `permitirLlamada` de `aplicarReduccion` se borran: una reducción
+>   ya nunca llama;
+> - `reducirSinLlamadas` llama a `aplicarReduccion` sin más.
+>
+> El punto 6 gana una razón (R49):
+> - `reducirSecuencia` devuelve `true` → `{ status: "omitida", razon: "reducida", trazado? }`;
+> - devuelve `false`, o no hay huella previa → `{ status: "omitida", razon: "reduccion_descartada" }`,
+>   sin trazado.
+>
+> El job termina `done` en los dos casos (no lanza). La acción manual los trata igual que
+> `sin_cambios`: `omitida: true`. Con `reduccion_descartada` no sube trazado y el mapa conserva el
+> suyo. El texto de abajo se conserva como historia de la revisión 2; donde contradiga esta nota,
+> manda esta nota.
 
 Siendo `restantes` la secuencia previa filtrada a `actual` (orden conservado):
 
@@ -156,6 +222,45 @@ Siendo `restantes` la secuencia previa filtrada a `actual` (orden conservado):
 Con **una** parada restante la reducción vale igual (R13 con un tramo). Con **cero** no hay reducción:
 la rama R35 de la 92 limpia la secuencia, como hoy.
 
+### 2.4 Sincronización manual y origen (revisión 3: D17, m1; R45, R46)
+
+**Qué ya hace el código.** El botón pasa por las mismas guardas que la cola: `sincronizarRuta` →
+`ejecutar(id, { motivo: "manual", ubicacion })`. Con la ruta `vigente`, el conjunto igual y sin
+desvío, hoy ya devuelve `omitida/sin_cambios` (o `sin_paradas` con una parada) con el trazado
+guardado, y hace 0 llamadas. Es la fila 2 de §8. La acción lo traduce a `{ status: "ok", omitida:
+true, secuenciaFuente: null, trazado? }`, y `SincronizarRutaButton` muestra «La ruta ya estaba al
+día.» y pinta el trazado si viene. **R45 fija ese contrato. No se cambia ni la acción ni el botón.**
+
+**Lo que cambia (m1).** `ejecutar` hace hoy `upsertOrigen` con la ubicación recibida **antes** de
+cualquier guarda (92/R23). Esa escritura pisa `origen_lat/lng/at/fuente` aunque luego se omita, se
+reduzca o corte el intervalo mínimo. Nuevo flujo:
+
+1. Si llega `opts.ubicacion`, se guarda **en memoria** como `ubicacionGps = { lat, lng, capturadaAt:
+   ahora, fuente: "gps" }`. Todavía no se escribe nada.
+2. `findByMensajero` como hoy. Si hay ubicación, se usa una vista en memoria de la ruta con las cuatro
+   columnas de origen sustituidas por `ubicacionGps`:
+   `rutaVista = ruta && { ...ruta, origenLat, origenLng, origenAt: ahora, origenFuente: "gps" }`.
+   `resolverOrigen`, `origenCoherente`, la huella y `decidirGuardaRuta` reciben `rutaVista`, así que
+   el desvío se mide con la posición recién recibida (R46) y la huella sale igual que hoy.
+   Las guardas 92/R20 y 92/R34 siguen leyendo `calculadaAt` de `ruta`, que es el mismo valor.
+3. Si la ejecución **va a recalcular** (`guardaSinRecalculo` devuelve `null`, o la rama 92/R35 llega a
+   `reemplazarSecuencia`), justo antes de esa escritura o de la llamada al proveedor se hace
+   `upsertOrigen(ubicacionGps)`. Es la misma escritura de hoy en otro sitio. Se mantiene porque
+   `reemplazarSecuencia` no escribe `origen_at` (🔎 `RutaOptimizadaRepository.ts:158-164`): sin
+   `upsertOrigen`, la siguiente ejecución vería un `gps` recién capturado con el `origen_at` viejo y lo
+   bajaría a `ultima_conocida`. Si el proveedor falla después, el GPS queda guardado como hoy. Ya se
+   había decidido recalcular, que es lo que R46 permite.
+4. Si **no** recalcula (omitir, reducir, `reduccion_descartada`, intervalo mínimo), `upsertOrigen` no
+   se llama.
+
+Con `ruta === null` no hay vista. La decisión es «reoptimizar», así que se cae en el punto 3: se
+escribe primero, como hoy, y `upsertOrigen` crea la fila. La cola (`motivo: "debounce"`) nunca trae
+`ubicacion`, así que nada de esto la toca. `reducirSinLlamadas` tampoco recibe ubicación: la de la
+gestión ya la guardó `MisAsignacionesService.registrarUbicacion` (fuera del alcance de R46, ver la
+lectura de R6).
+
+**Coste:** cero lecturas nuevas (R9); se cambia de sitio una escritura.
+
 ### 2.3 Lo que no cambia
 
 92/R20 y 92/R34 siguen delante. `huella_set` se calcula igual. 265/R16 sigue sustituyendo el origen
@@ -182,6 +287,11 @@ su `COMMIT`, la gestión no queda cubierta por ese job. En una entrega en orden 
 resto, el siguiente evento.
 
 ### 3.2 Después de la transacción (R27, R28)
+
+> **Revisión 3 (R44).** Sin cambio de cableado. `reducirSinLlamadas` aplica la decisión de §2: solo
+> actúa con `reducir`, que desde D16 es solo el prefijo, y entonces siempre sin llamadas. Fuera de
+> orden devuelve `reoptimizar` y no hace nada en la petición. El job de §3.1, ~`RUTA_DEBOUNCE_S`
+> después, recalcula entero (R42). Las referencias a R13/R15/R14 de abajo se leen con esa nota.
 
 La reducción sin llamadas se aplica **en la propia petición**, para que `router.refresh()` muestre ya
 el orden nuevo. Dónde: en la Server Action `gestionar` (`lib/actions/mis-asignaciones.ts:208`), después
@@ -249,6 +359,11 @@ dos valores.
 | `lib/geo/polilinea.ts` | + `distanciaMinimaAPolilineaM` |
 | `lib/services/jobs/` | + `JobFallidoPermanente` |
 | `MisAsignacionesDeps` (`lib/actions/mis-asignaciones.ts`) | + `reducirRuta?` (inyectable en tests) |
+| **Rev. 3** `EjecutarOptimizacionResult` (`IOptimizacionRutaService`) | + `razon: "reduccion_descartada"` (R49) |
+| **Rev. 3** `IRutaOptimizadaRepository.reducirSecuencia` | Misma firma; el `where` exige además `estado = 'vigente'` (R48) |
+| **Rev. 3** `DecisionGuardaRuta` (`OptimizacionRutaService.ts`) | `motivo` + `"fuera_de_orden"` (R42, R43) |
+| **Rev. 3** `OptimizacionRutaService.ts` (privado) | − `tramosPuente`, − rama `puente` de `planificarReduccion`, − `permitirLlamada`; `upsertOrigen` sale del principio de `ejecutar` (§2.4) |
+| **Rev. 3** `SincronizarRutaResult`, `sincronizarRuta`, `SincronizarRutaButton` | **Sin cambio** (R45 reutiliza la forma). `razon: "reduccion_descartada"` cae en la rama `omitida: true` que ya existe: la acción solo distingue `intervalo_minimo` |
 
 Sin rutas ni endpoints nuevos. Sin cambios de UI: la pantalla ya ordena por la secuencia persistida.
 
@@ -265,6 +380,75 @@ Sin rutas ni endpoints nuevos. Sin cambios de UI: la pantalla ya ordena por la s
 ---
 
 ## 8. Jornada de referencia (R37): cómo se verifica el ahorro
+
+### 8.0 Revisión 4 — tablas vigentes (R37 afirma estas)
+
+Mismo arnés de test que abajo (dobles en memoria, espías sobre `optimizar` y `trazar`, reloj
+inyectado), con tres cambios:
+- el doble de paradas cuenta también las asignadas del día (`contarAsignadasDelDia`);
+- la ruta lleva `actualizadaAt`;
+- la recogida se simula con el helper de R57/R58: encola solo en el último paquete.
+
+Los disparos de salida (R62) llaman al servicio con `motivo: "salida"`. Umbral: 1000 m. Enfriamiento:
+5 min. Mínimo para el botón: 80 %.
+
+**Jornada A.** Un mensajero con 7 asignadas del día: s1…s6 con coordenadas y x sin coordenadas. Bodega
+en B; tras la carga, la ruta empieza en A ≈ B.
+
+| # | t (min) | Evento | Hoy: opt / routes / jobs | Nuevo: opt / routes / jobs |
+| --- | --- | --- | --- | --- |
+| 0 | −10…−7 | Recoge s1, s2, s3 y x de una en una, 1 por minuto (GPS en B) | hasta 4 / 4 / 4 | 0 / 0 / 0 (R57) |
+| 1 | −6 | Pulsa «Sincronizar» con 4 de 7 recogidas (57 %) | 1 / 1 / 0 | 0 / 0 / 0 (R64: `conflict`) |
+| 1b | −5 | «Recoger todas» con las 3 restantes (s4, s5, s6) | 1 / 1 / 1 | 1 / 1 / 1 (R58 → job → R59) |
+| 2 | 5 | Sincroniza a mano, GPS a 50 m de A | 1 / 1 / 0 | 0 / 0 / 0 (R1, R46) |
+| 3 | 10 | Gestiona x (sin coordenadas), GPS a 300 m | 1 / 1 / 1 | 0 / 0 / 0 (R22: la primera ruta ya existe) |
+| 4 | 20 | Entrega s1 y s2 con 20 s de diferencia | 2 / 2 / 2 | 0 / 0 / 1 (R41, R44) |
+| 5 | 40 | Entrega s3 **a 1,5 km de la ruta** | 1 / 1 / 1 | 0 / 0 / 1 (R51: el desvío no cuenta en automático) |
+| 6 | 50 | Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6) | 1 / 1 / 0 | 1 / 1 / 0 (R52) |
+| 7 | 60 | Entrega s5 antes que s4 (fuera de orden) | 1 / 1 / 1 | 1 / 1 / 1 (R42, en el job) |
+| 8 | 80 | Entrega s4 (queda s6) | 0 / 1 / 1 | 0 / 0 / 1 (R41) |
+| 9 | 85 | Sincroniza a mano a 200 m de la ruta, 1 parada | 0 / 1 / 0 | 0 / 0 / 0 (R2) |
+| 10 | 100 | Entrega s6 (quedan 0) | 0 / 0 / 1 | 0 / 0 / 1 (92/R35) |
+| | | **Total** | **hasta 13 / 15 / 12** | **3 / 3 / 6** |
+
+Fuera del total: la credencial rechazada y la recuperación a mano (D21).
+
+| # | Evento | Hoy | Nuevo |
+| --- | --- | --- | --- |
+| 11 | Un job recibe 401 | 5 llamadas | 1 llamada (R29) |
+| 12 | Pulsa «Sincronizar» 2 min después del fallo, sin cambios ni desvío | 1 / 1 / 0 | 0 / 0 / 0 (R53: `omitida`) |
+| 13 | Pulsa a los 6 min, sin otra escritura en la fila | 1 / 1 / 0 | 1 / 1 / 0 (R53) |
+
+**Jornada B (respaldo de D25).** 7 asignadas; una nunca se recoge.
+
+| # | Evento | Hoy | Nuevo |
+| --- | --- | --- | --- |
+| B1 | Recoge 6 de 7 de una en una, 1 por minuto (GPS en B) | hasta 6 / 6 / 6 | 0 / 0 / 0 (R57; no es la última) |
+| B2 | Pantalla abierta, la posición en vivo llega a 400 m de B | 0 / 0 / 0 | 0 / 0 / 0 |
+| B3 | La posición en vivo pasa de 1000 m de B | 0 / 0 / 0 | 1 / 1 / 0 (R62, `salida`) |
+| B4 | Otra lectura a 1,5 km, o se recarga la página | 0 / 0 / 0 | 0 / 0 / 0 (R63, R66) |
+| | **Total** | **hasta 6 / 6 / 6** | **1 / 1 / 0** |
+
+Variantes de B que cubre el test (sin fila propia):
+- primera gestión antes de alejarse → 1 / 1 / 1 (R59);
+- botón con 6 de 7 recogidas (86 %) → 1 / 1 / 0 (R64);
+- botón con 5 de 7 recogidas (71 %) → `conflict` con «llevas 5 de 7».
+
+Notas:
+- **«Hasta» en «Hoy».** Con recogidas espaciadas, cada una cae en una ventana de debounce distinta.
+  Pero la guarda 92/R20 descarta el job creado antes del último `calculada_at`, así que cuántas se
+  pagan depende de cuándo pase el cron. Es una cota superior leída del código, no medida. El test
+  afirma solo «Nuevo».
+- **Por qué importa el número de envíos.** Route Optimization factura **por envío** (D23): cada
+  llamada de la fila 0 de «Hoy» cobra todas las paradas recogidas hasta ese momento (1+2+3+4). La
+  tabla cuenta llamadas (D10). El ahorro en dinero de la carga en bodega crece con el cuadrado de
+  los paquetes, no linealmente.
+- **Fila 5.** Se le añadió el desvío a propósito, para que la tabla afirme D24. Con las reglas de la
+  revisión 3, el job de esa entrega reoptimizaba por desvío y costaba 1 / 1 / 1.
+- **Filas 0, 1 y 1b.** La primera ruta del día. Con D23/D25, las 7 recogidas cuestan una sola
+  optimización (la de 1b), en vez de una por ventana de debounce.
+
+### 8.1 Revisión 3 (historia; ya no la afirma ningún test)
 
 Test `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts`. Dobles en memoria de
 `IRutaOptimizadaRepository` (con tramos y `reducirSecuencia`), `ParadasRepo` e `IJobRepository` (con
@@ -285,16 +469,25 @@ Un mensajero, paradas s1…s6 con coordenadas + 1 sin coordenadas. Umbral 1000 m
 | 4 | 20 | Entrega s1 y s2 con 20 s de diferencia (misma ventana) | 2 / 2 / 2 | 0 / 0 / 1 |
 | 5 | 40 | Entrega s3 | 1 / 1 / 1 | 0 / 0 / 1 |
 | 6 | 50 | Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6) | 1 / 1 / 0 | 1 / 1 / 0 |
-| 7 | 60 | Entrega s5 antes que s4 (fuera de orden, 1 hueco) | 1 / 1 / 1 | 0 / 1 / 1 |
+| 7 | 60 | Entrega s5 antes que s4 (fuera de orden) | 1 / 1 / 1 | **1 / 1 / 1** (rev. 3; era 0 / 1 / 1) |
 | 8 | 80 | Entrega s4 (queda s6) | 0 / 1 / 1 | 0 / 0 / 1 |
 | 9 | 85 | Sincroniza a mano a 200 m de la ruta, 1 parada | 0 / 1 / 0 | 0 / 0 / 0 |
 | 10 | 100 | Entrega s6 (quedan 0) | 0 / 0 / 1 | 0 / 0 / 1 |
-| | | **Total** | **8 / 10 / 8** | **2 / 3 / 6** |
+| | | **Total** | **8 / 10 / 8** | **3 / 3 / 6** (rev. 3; era 2 / 3 / 6) |
 | 11 | — | Un job recibe 401 | 5 llamadas | 1 llamada |
 
-Cómo sale «Nuevo» fila a fila: 2, 3 y 9 → R1/R2 (no desviado). 4, 5 y 8 → reducción en orden en la
-petición (R13, R27); sus jobs corren después y no llaman a nadie. 6 → desviado (R19). 7 → hueco s4→s6
-(R14), en el job. 8 → el tramo que llega a s6 es el puente de la fila 7, guardado. 10 → R35 de la 92.
+Cómo sale «Nuevo» fila a fila (revisión 3):
+- **Filas 2, 3 y 9:** R1/R2 (no desviado). Las filas 2 y 9 son manuales: además no escriben el origen (R46).
+- **Filas 4, 5 y 8:** reducción en orden en la petición (R41, R13, R44). Sus jobs corren después y no
+  llaman a nadie.
+- **Fila 6:** desviado (R19).
+- **Fila 7:** fuera de orden (R42). En la petición, `reducirSinLlamadas` no hace nada. El job
+  recalcula s4, s6 desde la posición del mensajero: 1 `optimizeTours` + 1 `computeRoutes`.
+- **Fila 8:** la secuencia de la fila 7 es s4, s6 y s4 es la siguiente, así que es prefijo. El tramo
+  que llega a s6 es el que guardó la re-sincronización de la fila 7.
+- **Fila 10:** R35 de la 92.
+
+Ahorro frente a «Hoy»: 5 `optimizeTours`, 7 `computeRoutes` y 2 jobs menos.
 
 ⚠️ **La columna «Hoy» está calculada leyendo el código, no medida.** La task **T0.1** ejecuta el
 escenario contra `dev` antes de tocar nada y pega el resultado en `progress/impl_SLT-59.md`; si
@@ -324,7 +517,31 @@ difiere, se corrige la tabla con la medición al lado. El test que queda en el r
   repo evita las dependencias opcionales ahí (comentario de `historial`, `:178-181`). La Server Action
   ya es el punto que orquesta servicios y ya tiene `deps` inyectables. Se elige la action.
 - **A8 — Hacer el tramo puente de R14 dentro de la petición del mensajero.** Añade hasta 20 s
-  (`ROUTE_OPT_TIMEOUT_MS`) a registrar una entrega. Va al job.
+  (`ROUTE_OPT_TIMEOUT_MS`) a registrar una entrega. Va al job. (Revisión 3: el mismo argumento
+  manda la re-sincronización de R42 al job y no a la petición.)
+- **A9 — Conservar el tramo puente (D14) para la entrega fuera de orden.** Cuesta 1 `computeRoutes` en
+  vez de 1 + 1. Pero conserva el orden previo y el tramo que sale del origen viejo. Tras entregar
+  primero la s3, el mapa seguiría trazando origen → s1 → s2, cuando desde la s3 quizá conviene la s2
+  primero. Descartada por el humano (D16).
+- **A10 — Guardar siempre la ubicación del botón, pero en columnas de «última posición» separadas del
+  origen del cálculo.** Conserva 92/R23 entero y cumple R6. Exige migración, y R40 la prohíbe.
+  Descartada. La ubicación descartada al omitir no se pierde del todo: la próxima gestión o recogida
+  la vuelve a guardar (`registrarUbicacion`).
+- **A11 — Ante `reduccion_descartada`, reintentar la decisión o reoptimizar en el acto (m3).** Quien
+  cambió la huella fue otra escritura (una reoptimización o la reducción de la petición), y esa ya
+  dejó la ruta al día para su conjunto. Repetir pagaría o competiría con ella. Basta con informar con
+  otra razón (R49). Si el estado quedó desfasado, lo cubre el siguiente evento, como ya declara §3.1.
+- **A12 — Detectar la salida en el servidor con las escrituras de GPS que ya existen.** Entre la última
+  recogida y la primera gestión, el servidor no recibe ninguna posición (§12.6). Ese disparo solo
+  coincidiría con la gestión y el botón, que ya disparan por su cuenta. Descartada: no detecta nada.
+- **A13 — Que el navegador envíe la posición periódicamente al servidor.** Necesita un endpoint, una
+  escritura cada N segundos por mensajero y una política de retención de PII. Para una sola decisión
+  al día basta el efecto de una vez del §12.6.
+- **A14 — Columna `fallo_at` para el enfriamiento (D21).** Es exacta, pero R40 la prohíbe. Se usa
+  `updated_at` como cota superior (R54, P12).
+- **A15 — Marcar «primera ruta hecha» en una columna o en `huella_set`.** `calculada_at` contra el
+  inicio del día ya lo dice sin migración. Una reducción no la mueve (R17), así que no puede fingir
+  una primera ruta.
 
 ---
 
@@ -337,11 +554,214 @@ difiere, se corrige la tabla con la medición al lado. El test que queda en el r
 | 92/R36 (huella del conjunto + origen redondeado) | El criterio de «sin cambios» pasa a conjunto + desviación; la huella se conserva para las escrituras condicionadas | D1, D8 |
 | 92/R15 y 265/R26 (`config_invalida` se propaga para que la cola aplique backoff) | Se propaga como fallo terminal sin backoff | D3 |
 | 265, límite declarado 2 («la huella congela el orden local hasta que cambie el conjunto o el origen; la posición cambia constantemente, así que se cura sola») | Ya no se cura con el movimiento normal: solo con un cambio de conjunto o un desvío de más de 1 km | D8 |
+| 92/R23 («la ubicación del navegador se persiste ANTES de cualquier guarda»), en `ejecutar` | En la sincronización manual se persiste solo si la ejecución va a recalcular; si no, se usa solo en memoria (§2.4). `registrarUbicacion` de `MisAsignacionesService` no cambia | D17 (m1) |
+| Revisión 2 de esta ficha: R11, R14, R16, R27 y D14 | Retirados; los sustituyen R41-R44 | D16 |
+| 92/R16-R17 (la recogida encola una reoptimización con debounce) | Solo encola el último paquete del día con la primera ruta pendiente (R57, R58) | D23, D25 |
+| Traspaso de la 92/R32 de su ficha («la ruta de los dos») | Encola solo para el mensajero cuya primera ruta del día ya existe (R60) | D23 |
+| Revisión 2 de esta ficha: R19, R26 | Retirados; los sustituyen R51/R52 y R57/R58/R60 | D24, D23 |
 
 En el código se **anexan** notas fechadas junto a los comentarios que citan esos requisitos; no se
 reescriben.
 
 ---
+
+## 12. Revisión 4 — primera ruta del día, desvío solo a mano, recuperación (D21-D25)
+
+### 12.1 La decisión, completa
+
+`decidirGuardaRuta` recibe dos entradas nuevas, ya cargadas o baratas:
+- `disparo: "manual" | "automatico" | "salida"`. Se deriva de `opts.motivo`: `manual` → manual;
+  `salida` → salida; el resto → automático.
+- `ahora` y `config` (umbral, enfriamiento).
+
+Lo de la primera ruta y el porcentaje lo deciden guardas propias, **antes** que ella (§12.3, §12.5).
+
+```
+si ruta === null o primeraPendiente                     -> reoptimizar (sin_ruta | primera_del_dia)   R59
+si ruta.estado !== "vigente":
+    si disparo === "automatico"                          -> reoptimizar (R7, sin cambio)
+    si hay paradas nuevas / fuera de orden / desviado    -> reoptimizar (sin enfriamiento)
+    si ahora - ruta.actualizadaAt >= ENFRIAMIENTO        -> reoptimizar (recuperacion)            R53
+    si no                                                -> omitir (enfriamiento)                 R53
+si actual ⊄ previa                                       -> reoptimizar (R20)
+si no es prefijo                                         -> reoptimizar (R42, R43)
+si disparo === "manual" y desviado                       -> reoptimizar (R52; R47 polilínea vacía)
+si actual == previa                                      -> omitir (R1, R2)
+si no                                                    -> reducir (R41; en manual, R56)
+```
+
+- **El desvío solo se calcula con `disparo === "manual"`** (R51). En automático ni se decodifica la
+  polilínea, que además ahorra CPU. `reducirSinLlamadas` es automático.
+- **`omitir (enfriamiento)`** devuelve `{ status: "omitida", razon: "enfriamiento", trazado? }` con el
+  trazado en caché. No escribe nada, ni siquiera el origen (R46). La acción ya lo traduce a
+  `ok/omitida` (R45). No hace falta mensaje nuevo: el aviso persistente «El orden mostrado no está
+  actualizado» ya está en pantalla, porque la ruta está `desactualizada`.
+- **`primeraPendiente`** (glosario): `ruta.calculadaAt === null || ruta.calculadaAt <
+  inicioDelDia(ahora)`. Es puro sobre `ruta`, sin lecturas (R67). El instante de inicio del día se
+  calcula con el helper de timestamps del repo (🔎 `lib/utils/fecha-cr.ts`: `inicioDelDiaCREnUtc`
+  para timestamps, NO `startOfDayCR`, que es para columnas `date`. Lo vigilan guardias de la ficha
+  166). No se escribe ningún literal de país nuevo: se reutiliza el helper.
+- **`ruta.actualizadaAt`**: `RutaOptimizadaDTO` gana `actualizadaAt: Date` (de `updated_at`, que ya se
+  lee en la fila; solo hay que mapearlo). Es la cota de R54 (P12).
+
+### 12.2 Recogida (R57, R58)
+
+En `GestionOrdenRepository.recogerLote` (🔎 `:720-737`), la llamada incondicional a
+`encolarOptimizacionDebounce` pasa a estar condicionada, con **una** consulta dentro de la misma
+transacción, después del `UPDATE … RETURNING`:
+
+```sql
+SELECT
+  EXISTS (SELECT 1 FROM orden
+          WHERE mensajero_asignado_id = $m AND estatus_id = $porRecoger AND deleted_at IS NULL
+            AND (fecha_reparto IS NULL OR fecha_reparto <= $dia::date)) AS quedan_por_recoger,
+  (SELECT calculada_at FROM ruta_optimizada WHERE mensajero_id = $m)  AS calculada_at
+```
+
+- El predicado de día es **el mismo literal** que el `UPDATE` de arriba (glosario, «Día en curso»).
+- Se encola solo si `NOT quedan_por_recoger` y la primera ruta está pendiente (`calculada_at` nula o
+  anterior al inicio del día).
+- «Recoger todas» es una sola transacción, así que hay un solo job. Dos lotes seguidos que vacían
+  `por_recoger` comparten la ventana de debounce (92/R17).
+- Corre dentro de la transacción con la empresa fijada (RLS + extensión), igual que el `UPDATE`.
+
+### 12.3 Gestión (R59)
+
+En `registrarGestionPendiente`, el paso (7) encola si la orden tiene coordenadas **o** si la primera
+ruta del día está pendiente. Para saberlo, la re-lectura de gestionable (§3.1, que ya trae
+`tiene_coordenadas`) añade una subconsulta escalar con `ruta_optimizada.calculada_at` del mensajero.
+Es la misma sentencia: cero viajes nuevos.
+
+El job resultante llega a `ejecutar` con `motivo: "debounce"`. `primeraPendiente` → reoptimizar
+(R59). Con 0 o 1 paradas, la rama 92/R35 se encarga como hoy. Así se cubre «la primera gestión del
+día» sin ningún código nuevo de disparo.
+
+`reducirSinLlamadas` con la primera pendiente: la decisión devuelve `reoptimizar`, así que no hace
+nada. Bien: no hay secuencia de hoy que reducir.
+
+### 12.4 Traspaso y nueva asignación (R60, R61)
+
+- **Traspaso** (🔎 `OrdenRepository.ts:4986-4993`). El bucle por `[origen, destino]` encola solo si la
+  primera ruta de ese mensajero ya existe. La lectura es una `SELECT calculada_at FROM
+  ruta_optimizada WHERE mensajero_id = ANY($1)` dentro de la misma transacción, para los dos a la vez.
+  Motivo:
+  - el destino que aún está en bodega recibe paquetes `en_reparto`, y su primera ruta saldrá por su
+    gestión, su salida o su botón;
+  - el origen que aún no salió no tiene secuencia de hoy que corregir.
+
+  ⚠️ El traspaso mueve órdenes ya `en_reparto`: no cambia el conteo `por_recoger` del destino, así que
+  no puede disparar R58. Es lo correcto: el mensajero no recogió nada.
+- **Nueva asignación.** 🔎 No encola hoy. La orden nace `por_recoger`, que no es parada. R61 solo
+  añade un test que lo fija.
+
+  Consecuencia que conviene saber: una asignación nueva **durante** la carga hace que «el último
+  paquete» llegue más tarde (R58 se evalúa en cada recogida). Una asignación **después** de la primera
+  ruta no dispara nada hasta que la recoja. La recogida, con la primera ruta ya calculada, no encola
+  (R57), y la parada nueva entra por el siguiente job de gestión (R20) o por el botón.
+
+### 12.5 Botón con la primera ruta pendiente (R64)
+
+Guarda nueva en `ejecutar`, solo con `motivo === "manual"`. Va **después** de 92/R20 y 92/R34 (que
+no aplican: `calculada_at` es de ayer o nula) y **antes** de leer paradas:
+
+1. Si `primeraPendiente(ruta)`, se lee `paradasRepo.contarAsignadasDelDia(mensajeroId, dia)` →
+   `{ asignadas, recogidas }`. Es un método nuevo en `ParadasRepo` y en `OrdenRepository`: una
+   consulta de conteo con el predicado del glosario (R67: una lectura, solo en este caso).
+2. Si `recogidas * 100 < asignadas * RUTA_PRIMERA_MIN_RECOGIDO_PCT`, devuelve `{ status: "omitida",
+   razon: "recogida_insuficiente", recogidas, asignadas }`, sin escribir (tampoco el origen, R46).
+   La comparación es entera, sin redondeos. Con `asignadas = 0` no corta (no hay nada que esperar).
+3. Si no, sigue. La decisión de §12.1 devuelve `primera_del_dia` → recalcula con lo recogido.
+
+**Acción** (`sincronizarRuta`): `razon === "recogida_insuficiente"` → `{ status: "conflict", motivo:
+"Todavía no se calcula la ruta: recoge al menos el ${pct} % de tus paquetes (llevas ${recogidas} de
+${asignadas})." }`.
+- Reutiliza la forma `conflict` que ya existe. El botón ya hace `toast.warning(result.motivo)`, así
+  que **la UI no cambia**.
+- Es un texto nuevo, pero viaja en el resultado. El componente no se toca.
+- El porcentaje sale de la config (R55), no de un literal.
+
+### 12.6 Disparo de salida (R62, R63) — el único toque de frontend
+
+🔎 **Qué hay hoy:**
+- el servidor solo recibe la posición del mensajero en la recogida, en la gestión y en el botón
+  (`registrarUbicacion`, `ejecutar`);
+- la posición en vivo (`useSeguimientoUbicacion`, `watchPosition`) vive solo en el navegador y no se
+  envía a ningún sitio.
+
+Así que no existe ninguna escritura de GPS que avise de «ya salió» antes de la primera gestión. El
+disparo más barato y correcto es el navegador, que ya tiene la posición en vivo sin coste.
+
+**Datos nuevos para la pantalla.** `RutaResumenDTO` (`IMisAsignacionesService`, el objeto `ruta` que ya
+llega a `RepartoModule`) gana dos campos, calculados en `MisAsignacionesService` desde la `ruta` que
+ya lee (cero lecturas nuevas):
+- `primeraRutaPendiente: boolean`;
+- `puntoRecogida: { lat, lng } | null`, con la regla del glosario: `origenFuente === "gps"` y
+  `origenAt` dentro del día. Es la posición del propio mensajero, que ya se le muestra como origen.
+
+**Cliente** (`RepartoModule`). Un `useEffect` sobre `ubicacionVivo` dispara una sola vez por montaje
+(con un `useRef` de «ya disparado»):
+1. si `ruta.primeraRutaPendiente && ruta.puntoRecogida && hayParadasConCoordenadas`, y
+2. `distanciaHaversineKm(ubicacionVivo, puntoRecogida) * 1000 > umbral`,
+3. llama a una Server Action nueva, `calcularRutaAlSalir({ ubicacion })`, en `lib/actions/ruta-mensajero.ts`.
+
+Después: si la respuesta es `ok`, hace `router.refresh()` y `onTrazado`; si es otra cosa, nada, sin
+toast. El umbral llega como prop desde el Server Component (🔎 `app/(app)/mis-asignaciones/reparto/page.tsx`,
+que lee la config); no hay segundo literal.
+
+- No pide permiso nuevo. Si no hay seguimiento en vivo (permiso no concedido), no hay salida
+  automática, y quedan la gestión y el botón (R62: «sin pedir ninguna acción ni permiso nuevo»).
+- **R65:** mientras esté pendiente, la pantalla es la de hoy sin ruta: marcadores sin número,
+  «Pendiente de optimizar» y el aviso de R30. No se cambia nada.
+
+**Servidor** (`calcularRutaAlSalir`):
+- mismo patrón que `sincronizarRuta`: actor, rol `mensajero`, zod con el mismo esquema de ubicación;
+- llama a `service.ejecutar(id, { motivo: "salida", ubicacion })`.
+
+En `ejecutar`, con `motivo === "salida"` y antes de leer paradas, se comprueba (R63):
+- `primeraPendiente(ruta)`;
+- que hay punto de recogida en `ruta` (antes de aplicar la vista de §2.4);
+- que la distancia de `ubicacion` a ese punto supera `RUTA_REOPT_DISTANCIA_M`;
+- con la ruta `desactualizada`, el enfriamiento de R53.
+
+Si algo falla → `{ status: "omitida", razon: "salida_no_aplica" }`, 0 llamadas, sin escribir. Si
+todo pasa, sigue como un recálculo: la vista de §2.4 con la ubicación recibida y `upsertOrigen` justo
+antes de llamar. La acción traduce:
+- `ok` → `{ status: "ok", … }`;
+- cualquier `omitida` → `{ status: "ok", omitida: true }`;
+- `RutaIntentoFallidoError` → `conflict`.
+
+Reutiliza `SincronizarRutaResult`. Sin `intervalo_minimo`: lo acota R63, que solo pasa con la
+primera pendiente.
+
+**Por qué no hay bucle de pagos (R66).**
+- El cliente dispara una vez por montaje.
+- El servidor exige `primeraPendiente`, que deja de cumplirse en cuanto `reemplazarSecuencia` escribe
+  `calculada_at` de hoy.
+- Si el proveedor falla, la ruta queda `desactualizada` y `calculada_at` no se mueve. Un nuevo montaje
+  podría volver a disparar, pero R63 le aplica el enfriamiento de 5 min.
+- Peor caso: una llamada cada 5 min mientras la credencial falle. Y con 401/403 la cola ya corta
+  (R29); este disparo no viene de la cola.
+
+  ⚠️ Ese último punto deja un hueco: si el fallo es 401/403 permanente, el disparo de salida lo
+  reintenta cada 5 min por montaje. Se acepta: es el mismo peor caso que el botón con D21.
+
+### 12.7 Config y contratos (revisión 4)
+
+| Qué | Cambio |
+| --- | --- |
+| `RouteOptimizationConfig` | + `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` (5, «D21, humano 2026-10-30; no calibrado»), + `RUTA_PRIMERA_MIN_RECOGIDO_PCT` (80, «D25»; 1-100, fuera de rango → default) |
+| `MotivoOptimizacion` | + `"salida"` |
+| `EjecutarOptimizacionResult.omitida.razon` | + `"enfriamiento"`, `"recogida_insuficiente"` (con `recogidas`, `asignadas`), `"salida_no_aplica"` |
+| `DecisionGuardaRuta` | entrada + `disparo`, `ahora`, `enfriamientoMin`; `motivo` + `"primera_del_dia"`, `"recuperacion"`; `tipo` + omitir por enfriamiento |
+| `RutaOptimizadaDTO` | + `actualizadaAt` |
+| `ParadasRepo` / `OrdenRepository` | + `contarAsignadasDelDia(mensajeroId, dia)` |
+| `RutaResumenDTO` (`IMisAsignacionesService`) | + `primeraRutaPendiente`, `puntoRecogida` |
+| `lib/actions/ruta-mensajero.ts` | + `calcularRutaAlSalir`; `sincronizarRuta` traduce `recogida_insuficiente` a `conflict` |
+| `RepartoModule.tsx` | + efecto de salida (§12.6). **Toque de frontend**, sin texto nuevo |
+| `GestionOrdenRepository` | recogida condicionada (§12.2); gestión con primera pendiente (§12.3) |
+| `OrdenRepository` (traspaso) | encolado condicionado (§12.4) |
+
+Sin migración (R40). Sin dependencia nueva.
 
 ## 11. Dependencias de terceros
 
