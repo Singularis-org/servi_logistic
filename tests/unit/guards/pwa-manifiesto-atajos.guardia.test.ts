@@ -303,8 +303,11 @@ describe("pwa · los atajos del manifiesto", () => {
     // ⭑ SL-20 (R21, design §8) — `superadmin` 1 -> 2 y NADIE más: entra «Geografía»
     // (`/plataforma/geografia`), pantalla de PLATAFORMA (no de empresa), solo para `superadmin`.
     // Si se moviera otro rol, se habría abierto de más. La intersección sigue vacía: CERO atajos.
+    // ⭑ SLT-51 (R1) — `maestro` 23 -> 24 y NADIE más: entra el subítem «Zonas»
+    // (`/configuracion/zonas`), que hereda el `maestro`-only de «Configuración», igual que la
+    // página (R2). Si se moviera otro rol, el menú y la página discreparían. CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
-      maestro: 23,
+      maestro: 24,
       admin: 14,
       adminSatelite: 8,
       mensajero: 7,
