@@ -9,7 +9,7 @@
 ## Estado
 F1.0 hecho (2026-10-29): tomada en Trello (member + En curso), worktree creado.
 F2.2 hecho (2026-10-29): review APROBADO (0 mayores, 8 menores; `progress/review_SLT-43.md`). F2.3: menores m1, m2, m3, m6, m7, m8 corregidos (`d42726b`). Rama al día con `dev` (incluye #43). Siguiente: F2.4, PR a `dev` (lo abre el humano).
-T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.9 hechas (`progress/impl_SLT-43.md > T8`). T8.10 **bloqueada**: `tests/unit/db/slt43-migraciones-aditivas.test.ts:119` (control `toMatch(/UPDATE nodo_geografico/)`) sale rojo porque el único `UPDATE nodo_geografico` estaba en el trigger de descendientes que la enmienda borra, y T8.10 dice correrlo sin tocarlo. Decisión pendiente del humano: ajustar esa línea del control (p. ej. a `ON CONFLICT (id) DO UPDATE`) o quitarla. T8.11 pendiente de eso y del `gate-completo` del PR #44. Además, la guardia `recursos-origen-fuera` sale roja por `tests/integration/db/geo-backfill.test.ts:526-536` (ejemplos de host/pooler de Supabase de F2.3/m2, no de T8; no está en el baseline).
+T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hechas (`progress/impl_SLT-43.md > T8`). Excepción autorizada en `slt43-migraciones-aditivas.test.ts:119` y guardia `recursos-origen-fuera` arreglada en `geo-backfill.test.ts` (R33). Guardias: solo el rojo de baseline `dependencias-declaradas-presentes`. T8.11 a la espera del `gate-completo` del PR #44.
 
 ## Evaluación
 - zone `backend` y complexity `high`, de los labels de la tarjeta: migraciones, triggers de

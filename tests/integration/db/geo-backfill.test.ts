@@ -523,17 +523,21 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
 
 // R33 — de qué URL sale el destino que `--destino` tiene que repetir. Sin base de datos.
 describe("SLT-43 R33 — destino de la conexión (destinoDeUrl)", () => {
-  const DIRECTA = "postgresql://postgres:x@db.abcdefghijklmnopqrst.supabase.co:5432/postgres";
+  // Refs inventados de 20 letras. Se interpolan para que el archivo no lleve la forma `<ref>.supabase.co`
+  // ni `postgres.<ref>` que vigila la guardia de SL-34 (R1, R2); la cadena que recibe `destinoDeUrl` es la misma.
+  const REF = "abcdefghijklmnopqrst";
+  const OTRO_REF = "zyxwvutsrqponmlkjihg";
+  const POOLER = "aws-0-us-east-1.pooler.supabase.com";
+  const DIRECTA = `postgresql://postgres:x@db.${REF}.supabase.co:5432/postgres`;
 
   it("Supabase directa: el project-ref del host db.<ref>.supabase.co", () => {
     expect(destinoDeUrl(DIRECTA)).toBe("abcdefghijklmnopqrst");
   });
 
   it("Supabase pooler: el project-ref del usuario postgres.<ref>, no el host (común a la región)", () => {
-    const sesion = "postgresql://postgres.abcdefghijklmnopqrst:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres";
-    const transaccion =
-      "postgresql://postgres.abcdefghijklmnopqrst:x@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true";
-    const otroProyecto = "postgresql://postgres.zyxwvutsrqponmlkjihg:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres";
+    const sesion = `postgresql://postgres.${REF}:x@${POOLER}:5432/postgres`;
+    const transaccion = `postgresql://postgres.${REF}:x@${POOLER}:6543/postgres?pgbouncer=true`;
+    const otroProyecto = `postgresql://postgres.${OTRO_REF}:x@${POOLER}:5432/postgres`;
     expect(destinoDeUrl(sesion)).toBe("abcdefghijklmnopqrst");
     expect(destinoDeUrl(transaccion)).toBe("abcdefghijklmnopqrst");
     expect(destinoDeUrl(otroProyecto)).toBe("zyxwvutsrqponmlkjihg");

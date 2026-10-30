@@ -116,7 +116,7 @@ describe("SLT-43 · R19 — migraciones solo aditivas", () => {
   it("control: las reales sí escriben, pero solo en tablas nuevas, y añaden columnas a tablas existentes", () => {
     const sql = CARPETAS_SLT43.map((c) => sinComentarios(leer(c).sql)).join("\n");
     expect(sql).toMatch(/DELETE FROM nodo_geografico/);
-    expect(sql).toMatch(/UPDATE nodo_geografico/);
+    expect(sql).toMatch(/ON CONFLICT \(id\) DO UPDATE/);
     expect(sql).toMatch(/ALTER TABLE "orden" ADD COLUMN "nodo_geografico_id" TEXT;/);
   });
 });

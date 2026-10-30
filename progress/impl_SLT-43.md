@@ -513,3 +513,17 @@ Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:g
   pondrá rojo el `gate-completo`. Fuera del alcance de T8: abierto para el leader.
 
 **Veredicto:** T8.1–T8.9 hechas y verdes; T8.10 con un rojo en un test que el spec manda no tocar (pendiente de decisión).
+
+### T8, cierre tras las decisiones de Camilo (2026-10-29)
+- Excepción autorizada a «sin tocar» de T8.10: `tests/unit/db/slt43-migraciones-aditivas.test.ts:119`
+  `/UPDATE nodo_geografico/` → `/ON CONFLICT \(id\) DO UPDATE/` (casa con los tres upserts de 120300).
+- `recursos-origen-fuera`: en `tests/integration/db/geo-backfill.test.ts` (R33) los refs de ejemplo van en constantes
+  (`REF`, `OTRO_REF`, `POOLER`) interpoladas; `destinoDeUrl` recibe las mismas cadenas y las expectativas no cambian.
+  Guardia y baseline sin tocar.
+- `slt43-migraciones-aditivas` + `recursos-origen-fuera`: `Test Files 2 passed (2)`, `Tests 44 passed | 1 skipped (45)`
+  (el saltado es R18 de la guardia, que exige `RECURSOS_ORIGEN_REF`).
+- `geo-backfill` contra `logistic_slt43`: `Test Files 1 passed (1)`, `Tests 16 passed (16)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 319 passed | 2 skipped (322)`, `Tests 4 failed | 4508 passed | 20 skipped`;
+  los 4 son de `dependencias-declaradas-presentes`, que está en `tests/baseline-rojos.json`.
+- `pnpm run typecheck` exit 0; `pnpm run lint` exit 0.
+- T8.10 marcada. T8.11 abierta solo a la espera del `gate-completo` del PR #44 (CI); el resto de su «Hecho» se cumple.

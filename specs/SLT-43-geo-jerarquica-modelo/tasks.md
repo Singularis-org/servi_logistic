@@ -178,10 +178,14 @@ no usan `ruta`: no se tocan. Grep de comprobación al final: `ruta` (como column
 - [x] **T8.9** [P] `docs/architecture.md` (línea del modelo nuevo, hoy «`ruta text[]` con índice
   GIN»): describir el árbol solo con `padre_id` y `profundidad`, y que los descendientes se leen con
   CTE recursiva o el catálogo en memoria. *Hecho:* `check-perfil` verde.
-- [ ] **T8.10** Correr `migracion-slt43-ida-y-vuelta.test.ts`, `slt43-migraciones-aditivas.test.ts`,
+- [x] **T8.10** Correr `migracion-slt43-ida-y-vuelta.test.ts`, `slt43-migraciones-aditivas.test.ts`,
   `geo-nodo-rls.test.ts`, `geo-sincronia-orden-zonas.test.ts`, `geo-backfill.test.ts`,
   `geo-equivalencia.test.ts` y `carga-division.test.ts` sin tocarlos. *Hecho:* verdes (R13, R14, R19,
   R34, R35, R36 siguen cumpliéndose sin la ruta).
+  _(Excepción autorizada por Camilo el 2026-10-29: en `slt43-migraciones-aditivas.test.ts:119` el control
+  `/UPDATE nodo_geografico/` pasa a `/ON CONFLICT \(id\) DO UPDATE/`, porque el único `UPDATE` vivía en el trigger
+  de descendientes retirado. Además, en `geo-backfill.test.ts` (R33) los hosts de ejemplo de Supabase se arman con
+  constantes interpoladas para la guardia `recursos-origen-fuera`; mismas cadenas y expectativas.)_
 - [ ] **T8.11** Cierre de la tanda: typecheck, lint, todas las guardias y los tests de SLT-43 (como en
   T7.1); en `progress/impl_SLT-43.md`, una entrada de la enmienda con el mapa `R<n> → test`
   actualizado (R8 y R11 retirados, R7 con los casos nuevos). *Hecho:* todo verde y el `gate-completo`
