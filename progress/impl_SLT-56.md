@@ -82,6 +82,7 @@ cierres-admin).
 | R20 | LEC «R20 — el detalle del cierre de bodega trae `gestionesAjustadas`…», «R20 — un cierre del dia SIN ajustes cuenta 0»; CMP «SLT-56 R20 — …»; E2E satélite |
 | R21 | CMP «SLT-56 R21 — se ofrece sólo con permiso y en un cierre abierto»; DLG «SLT-56 R21 — …» |
 | Q2 | LEC «la vista del mensajero … NO trae `ajustesPago`» |
+| Q1 | LEC «Q1 — una entregada ajustada que se corrige a rechazada (398) repaga 0.00, conserva su ajuste, sigue «Ajustado» y se puede volver a ajustar» (mutaciones: 398 borra ajustes → rojo; 398 conserva el pago ajustado → rojo) |
 
 ## Salida real
 
@@ -126,3 +127,13 @@ passed | 20 skipped`, typecheck y lint (0 errores) en verde, `INIT_EXIT=0`.
   horaria por empresa; deuda heredada, no nueva.
 - El worktree tiene `node_modules` propio (`pnpm install --frozen-lockfile`) en vez del junction:
   el cliente Prisma compartido lo regeneraba otro worktree con otro schema.
+
+## CI del PR #48 (run 40996311225) — 2026-10-29
+
+`gate-completo` rojo en 6 tests de migración de `historial_accion` (`caja-459`, `correccion-resultado-gestion`,
+`historial-accion-{cobro-tienda,conciliacion-bodega,zona-pago-mensajero,zona-sinpe}-migration`). Causa
+nuestra: reconstruyen el enum previo como «catálogo de hoy menos su valor y los posteriores», con los
+posteriores listados a mano, y faltaba `cierre_dia_pago_mensajero_ajustado` (SL-24 hizo lo mismo con
+`plan_asignado`). Arreglo en 87644f4c: el tipo entra al final de esas listas; en `caja-459` los
+`slice` desde el final se corren una posición. Contra `servi_slt56`: 6 files, 92 passed, 0 skipped.
+Test de Q1 añadido (61208ac3): LEC 6 passed, 0 skipped.
