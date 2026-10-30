@@ -119,6 +119,7 @@ export type ActualizarDistritosEspecialesResult =
  * La marca es del distrito PARA LA EMPRESA: queda visible desde cualquier zona de la empresa que lo
  * contenga, y el llamador refresca el arbol para verlo. Solo `maestro` (lo decide el servicio).
  */
+/** @sin-superficie editor de costos de zona retirado en SLT-51; vuelve en SLT-54 */
 export async function actualizarDistritosEspeciales(
   input: unknown,
   deps: DistritosEspecialesActionDeps = {},
