@@ -106,6 +106,22 @@ describe("458-B/TB.12 — un caso por concepto (R44, R45 «no cambia»)", () => 
     expect(l.capital).toEqual(NO("500.00"));
   });
 
+  it("SLT-68 (R19): el incentivo a un mensajero SUBE lo que se le debe y baja la cifra y la ganancia en M", () => {
+    // Cifras escritas a mano: devengado 500 − pagado 200 = 300; un incentivo de 100 ⇒ 400.
+    const l = efecto("incentivo_a_mensajero", "100", MENSAJERO).lineas;
+    expect(l.cuenta).toEqual({ tipo: "mensajero", ...SI("300.00", "400.00") });
+    expect(l.cifraPrincipal).toMatchObject(SI("7500.00", "7400.00"));
+    expect(l.ganancia).toEqual(SI("1000.00", "900.00"));
+    expect(l.deTiendas).toEqual(NO("6000.00"));
+    expect(l.capital).toEqual(NO("500.00"));
+    // Su fila de la tabla, literal: el egreso propio en la caja y el DEVENGO en el mensajero.
+    expect(EFECTO_POR_TIPO.incentivo_a_mensajero).toEqual({
+      cuenta: "mensajero",
+      caja: [{ tipo: "egreso", categoria: "egreso_pago_mensajero" }],
+      enCuenta: "devengo",
+    });
+  });
+
   it("una tienda le paga a la empresa: sube la cifra y «De las tiendas», y la deuda de la tienda baja", () => {
     const l = efecto("tienda_paga_a_empresa", "100", TIENDA_EN_CONTRA).lineas;
     expect(l.cuenta).toEqual({ tipo: "tienda", ...SI("-300.00", "-200.00") });

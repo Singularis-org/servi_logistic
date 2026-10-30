@@ -74,6 +74,8 @@ export const CUENTA_TEXTO = {
   },
   mensajero: {
     etiqueta: "Mensajero al que se le paga",
+    /** SLT-68 — la misma cuenta, cuando el concepto es el incentivo (no se le paga: se le reconoce). */
+    etiquetaIncentivo: "Mensajero que recibe el incentivo",
     elegir: "Elegí el mensajero",
     buscar: "Buscar el mensajero",
     buscarMarcador: "Nombre del mensajero",
@@ -96,6 +98,8 @@ export const PISTA_CUENTA = {
   abono_tienda: "Solo se admite si la tienda tiene saldo en contra, y hasta lo que debe.",
   pago_tienda: `Solo se admite hasta lo que ${EMPRESA.enFrase} le debe a la tienda.`,
   pago_mensajero: "El importe se reparte entre sus cierres pendientes.",
+  // SLT-68 (design §6.4, Q1): a qué cierre se imputa.
+  incentivo_mensajero: "Se suma a su último cierre aprobado y se paga con el pago a mensajeros.",
 } as const;
 
 /** FICHA 459 — el pago de un gasto de una tienda: beneficiario, método y referencia. */
@@ -162,6 +166,12 @@ export const RESPUESTA_TEXTO = {
   sinSaldoMensajero: "Este mensajero no tiene cierres pendientes de pago: no hay nada que pagar.",
   excedeSaldoMensajero: (disponible: string) =>
     `Se le pueden pagar hasta ${money(disponible)} por sus cierres pendientes: el pago no puede superar ese importe.`,
+  /** SLT-68 — el incentivo: lo que la empresa le debe al mensajero tras registrarlo, del SERVIDOR. */
+  incentivoMensajero: (mensajero: string, monto: string, cuentaPorPagar: string) =>
+    `Incentivo de ${money(monto)} a ${mensajero} registrado. ${EMPRESA.alInicio} le debe ahora ${money(cuentaPorPagar)}.`,
+  incentivoYaRegistrado: "Este incentivo ya estaba registrado.",
+  /** SLT-68 (design §6.4): literal. */
+  sinCierreAprobado: "Este mensajero no tiene ningún cierre aprobado; el incentivo no se puede imputar todavía.",
   noEncontrado: "No se encontró esa cuenta. Cerrá y volvé a abrir para elegirla de nuevo.",
 } as const;
 

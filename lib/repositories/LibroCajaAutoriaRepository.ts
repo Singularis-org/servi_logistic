@@ -23,6 +23,7 @@ type Cliente = Pick<
   | "walletTiendaMovimiento"
   | "abonoTienda"
   | "walletAnotacion"
+  | "pagoMensajeroMovimiento" // SLT-68: el devengo del incentivo
   // Ficha 458-C (M1, R58): las constancias de anulacion.
   | "liquidacionAnulacion"
   | "pagoPorCuentaTiendaAnulacion"
@@ -100,6 +101,15 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
     if (ids.length === 0) return new Map<string, CuentaNombrada>();
     const fs = await this.prisma.rankingSnapshotFila.findMany({
       where: { id: { in: [...ids] } },
+      select: { id: true, mensajero: PERSONA },
+    });
+    return new Map(fs.map((f) => [f.id, cuenta("mensajero", f.mensajero)]));
+  }
+
+  async incentivos(ids: readonly string[]) {
+    if (ids.length === 0) return new Map<string, CuentaNombrada>();
+    const fs = await this.prisma.pagoMensajeroMovimiento.findMany({
+      where: { id: { in: [...ids] }, categoria: "incentivo" },
       select: { id: true, mensajero: PERSONA },
     });
     return new Map(fs.map((f) => [f.id, cuenta("mensajero", f.mensajero)]));
@@ -243,6 +253,15 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
             select: { origenId: true, descripcion: true, createdAt: true, registrador: { select: NOMBRE_USUARIO_SELECT } },
           });
 
+    // SLT-68: el incentivo tampoco tiene constancia; su reverso de caja ES la anulacion.
+    const incentivos =
+      ids.incentivos.length === 0
+        ? []
+        : await this.prisma.walletMovimiento.findMany({
+            where: { categoria: "ingreso_ajuste", origenTipo: "incentivo_mensajero", origenId: lista(ids.incentivos) },
+            select: { origenId: true, descripcion: true, createdAt: true, registrador: { select: NOMBRE_USUARIO_SELECT } },
+          });
+
     return {
       pagos: new Map(pagos.map((f) => [f.pagoId, leer(f)])),
       pagosPorCuenta: new Map(pagosPorCuenta.map((f) => [f.pagoId, leer(f)])),
@@ -253,6 +272,13 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
       movimientos: new Map(movimientos.map((f) => [f.movimientoId, leer(f)])),
       premios: new Map(
         premios.flatMap((f) =>
+          f.origenId === null
+            ? []
+            : [[f.origenId, { motivo: f.descripcion, por: nombreONulo(f.registrador), fecha: f.createdAt }] as const],
+        ),
+      ),
+      incentivos: new Map(
+        incentivos.flatMap((f) =>
           f.origenId === null
             ? []
             : [[f.origenId, { motivo: f.descripcion, por: nombreONulo(f.registrador), fecha: f.createdAt }] as const],
