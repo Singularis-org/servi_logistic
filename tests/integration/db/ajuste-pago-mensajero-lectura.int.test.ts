@@ -13,6 +13,7 @@ import { sembrarCierre56, type Corpus56 } from "./_fixtures/cierre-ajuste-56";
 import { crearUsuarioDePrueba, type UsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
+  clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
@@ -291,5 +292,116 @@ describeSiHayBase("SLT-56 — el detalle de admin lee los ajustes del pago al me
       const rechazo = r!.gestiones.find((g) => g.gestionId === ctx.c.gestionRechazo)!;
       expect(rechazo.pagoMensajero).toBe("1200.50");
     });
+  });
+
+  it("Q1 — una entregada ajustada que se corrige a rechazada (398) repaga 0.00, conserva su ajuste, sigue «Ajustado» y se puede volver a ajustar", async () => {
+    await conCorpus(async (ctx) => {
+      const { tx, c, alcance } = ctx;
+      // Escrituras por un cliente con SAVEPOINT real: el `$transaction` del repositorio lo exige.
+      const repo = new CierresAdminRepository(
+        clienteConSavepoint(tx),
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+      const estatus = async (value: string) =>
+        (await tx.orderStatus.findUniqueOrThrow({ where: { value }, select: { id: true } })).id;
+      const entregadaId = await estatus("entregado");
+      const rechazadaId = await estatus("devolucion_a_origen_por_rechazo");
+      // Gestion LEGADA (sin evento de registro): su orden ya esta `entregado`, como la 398 espera.
+      const { ordenId } = await tx.gestionOrden.findUniqueOrThrow({
+        where: { id: c.gestionA },
+        select: { ordenId: true },
+      });
+      await tx.orden.update({ where: { id: ordenId }, data: { estatusId: entregadaId }, select: { id: true } });
+
+      // (1) Punto de partida: 1500.00 congelado, sin ajustes.
+      const pagoDe = async () =>
+        (
+          await tx.gestionOrden.findUniqueOrThrow({ where: { id: c.gestionA }, select: { pagoMensajero: true } })
+        ).pagoMensajero?.toFixed(2);
+      expect(await pagoDe()).toBe("1500.00");
+
+      // (2) Ajuste 1500.00 -> 1800.00.
+      const aj1 = await repo.ajustarPagoMensajeroEnCierre({
+        gestionId: c.gestionA,
+        alcance,
+        pagoAnterior: "1500.00",
+        pagoNuevo: "1800.00",
+        motivo: "entrega con escalera",
+        ajustadoPor: c.admin.id,
+      });
+      expect(aj1.status).toBe("updated");
+      expect(await pagoDe()).toBe("1800.00");
+
+      // (3) Correccion 398: entregada -> rechazada.
+      const corr = await repo.corregirResultadoGestionEnCierre({
+        gestionId: c.gestionA,
+        alcance,
+        motivo: "el cliente no la recibio",
+        corregidoPor: c.admin.id,
+        estatusEntregadaId: entregadaId,
+        estatusRechazadaId: rechazadaId,
+      });
+      expect(corr.status).toBe("updated");
+
+      // (4) La correccion repaga por la regla del rechazo: `pagoPorResultado(rechazada, …)` = 0.00.
+      const g = await tx.gestionOrden.findUniqueOrThrow({
+        where: { id: c.gestionA },
+        select: { resultado: true, pagoMensajero: true },
+      });
+      expect(g.resultado).toBe("devolucion_a_origen_por_rechazo");
+      expect(g.pagoMensajero?.toFixed(2)).toBe("0.00");
+      // Total = A 0.00 + B 900.00 + rechazo 0.00.
+      const cierre = await tx.cierreDia.findUniqueOrThrow({
+        where: { id: c.cierreId },
+        select: { totalPagoMensajero: true },
+      });
+      expect(cierre.totalPagoMensajero.toFixed(2)).toBe("900.00");
+
+      // El ajuste sigue en el historial: 1 fila, 1500.00 -> 1800.00.
+      const filas = async () =>
+        (
+          await tx.gestionPagoMensajeroAjuste.findMany({
+            where: { gestionId: c.gestionA },
+            orderBy: { createdAt: "asc" },
+            select: { pagoAnterior: true, pagoNuevo: true },
+          })
+        ).map((f) => `${f.pagoAnterior.toFixed(2)}->${f.pagoNuevo.toFixed(2)}`);
+      expect(await filas()).toEqual(["1500.00->1800.00"]);
+
+      // Y el detalle de admin la sigue marcando «Ajustado»: trae su ajuste.
+      const detalle = await ctx.admin.findCierreByIdEnAlcance(c.cierreId, alcance);
+      expect(detalle).not.toBeNull();
+      const enDetalle = detalle!.gestiones.find((x) => x.gestionId === c.gestionA);
+      expect(enDetalle).toBeDefined();
+      expect(enDetalle!.pagoMensajero).toBe("0.00");
+      expect(enDetalle!.ajustesPago).toHaveLength(1);
+      expect(enDetalle!.ajustesPago![0]).toMatchObject({
+        pagoAnterior: "1500.00",
+        pagoNuevo: "1800.00",
+        motivo: "entrega con escalera",
+      });
+
+      // (5) Reajustable desde el pago vigente (0.00): entra y deja 2 filas.
+      const aj2 = await repo.ajustarPagoMensajeroEnCierre({
+        gestionId: c.gestionA,
+        alcance,
+        pagoAnterior: "0.00",
+        pagoNuevo: "500.00",
+        motivo: "se reconoce el viaje del rechazo",
+        ajustadoPor: c.admin.id,
+      });
+      expect(aj2.status).toBe("updated");
+      expect(await pagoDe()).toBe("500.00");
+      const filasFinal = await filas();
+      expect(filasFinal).toHaveLength(2);
+      expect(filasFinal).toContain("1500.00->1800.00");
+      expect(filasFinal).toContain("0.00->500.00");
+    }, false);
   });
 });
