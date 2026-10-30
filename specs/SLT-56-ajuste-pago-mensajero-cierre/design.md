@@ -1,6 +1,6 @@
 # SLT-56 — ajuste-pago-mensajero-cierre · design.md
 
-> Requisitos: `requirements.md` (R1–R21, Q1–Q2 abiertas). Patrón de referencia: la corrección de
+> Requisitos: `requirements.md` (R1–R21; Q1–Q2 cerradas 2026-10-29). Patrón de referencia: la corrección de
 > resultado de la ficha 398 (`CierresAdminService.corregirResultadoGestion` →
 > `CierresAdminRepository.corregirResultadoGestionEnCierre`) y el rastro propio de la ficha 371
 > (`gestion_fecha_reprogramacion_cambio`).
@@ -239,8 +239,8 @@ Devuelve `{ status: "updated", pagoMensajero, totalPagoMensajero, ajuste }`.
 
 - **Corrección del desglose de pagos** (2026-08-19): toca el recaudo, no el pago. Independientes.
 - **Corrección de resultado (398):** sigue reescribiendo el pago por la regla del rechazo
-  (`pagoPorResultado`). Un ajuste previo queda en el rastro y la marca sigue. Pendiente de **Q1**;
-  este spec no modifica la 398.
+  (`pagoPorResultado`). Un ajuste previo queda en el rastro y la marca sigue. Cerrada en **Q1** (2026-10-29):
+  así se queda; este spec no modifica la 398.
 - **Ajustes sucesivos** sobre la misma gestión: cada uno es una fila; el sello por `pagoAnterior`
   ordena las carreras.
 

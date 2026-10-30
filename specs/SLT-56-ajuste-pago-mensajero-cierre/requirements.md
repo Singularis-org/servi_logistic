@@ -114,15 +114,7 @@ Vocabulario:
 
 ## Preguntas abiertas
 
-- **Q1.** Si una gestión `entregada` ya ajustada se corrige después a `rechazada` (la corrección de
-  resultado de la ficha 398), hoy esa corrección reescribe el pago por la regla del rechazo. ¿Debe
-  seguir así (el ajuste se pierde y queda solo en el historial) o conservar el valor ajustado?
-  Propuesta del spec: seguir así —la corrección cambia el hecho que el ajuste valoraba— y que la
-  gestión siga marcada «Ajustado» con su historial, para que se pueda volver a ajustar. Mientras no
-  se responda, `design.md` no toca la 398.
-- **Q2.** ¿El mensajero ve en su propio cierre la marca «Ajustado» y el motivo? Hoy ya vería el
-  valor nuevo (sale del mismo pago congelado). Propuesta del spec: ve el valor nuevo, sin marca ni
-  motivo en esta feature; si se quiere, va en otra ficha.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -136,3 +128,5 @@ Vocabulario:
 | heredado | Congelado | El pago se congela al solicitar el cierre (39); el ajuste cambia esa copia, no la tarifa. |
 | heredado | Libro de pagos | `PagoMensajeroMovimiento` es de solo-agregar; el devengo refleja el valor ajustado. |
 | heredado | E2E | Obligatorio: toca importes (`docs/checkpoints-proyecto.md > Flujos criticos`). |
+| 2026-10-29 | Q1: ¿una entregada ya ajustada que se corrige a rechazada conserva el ajuste? | No: la corrección repaga por la regla del rechazo, como hoy. El ajuste queda en el historial y la gestión sigue marcada «Ajustado», reajustable. |
+| 2026-10-29 | Q2: ¿el mensajero ve la marca y el motivo en su cierre? | No: ve solo el valor nuevo, sin marca ni motivo. |
