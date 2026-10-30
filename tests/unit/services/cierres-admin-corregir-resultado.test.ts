@@ -43,6 +43,7 @@ function editable(overrides: Partial<GestionEditableDelCierre> = {}): GestionEdi
     cierreEstado: "solicitado",
     resultado: "entregado",
     montoRecibido: "10000.00",
+    pagoMensajero: "1500.00",
     pagos: [{ metodo: "efectivo", monto: "10000.00" }],
     ...overrides,
   };
@@ -65,6 +66,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     findGestionEditableEnCierre: vi.fn(async () => editable()),
     // La correccion del DESGLOSE: doble mudo, esta suite no la ejercita.
     actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
+    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     corregirResultadoGestionEnCierre: vi.fn(async () => ({
       status: "updated" as const,
       totales: {

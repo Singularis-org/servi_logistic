@@ -37,6 +37,7 @@ function editable(
     cierreEstado: "solicitado",
     resultado: "entregado",
     montoRecibido: "10000.00",
+    pagoMensajero: "1500.00",
     pagos: [{ metodo: "efectivo", monto: "10000.00" }],
     ...overrides,
   };
@@ -72,6 +73,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     // correccion del DESGLOSE—: son dos escrituras distintas y mezclarlas escondería cuál se
     // llamó. La suya vive en `cierres-admin-corregir-resultado.test.ts`.
     corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
+    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     ...overrides,
   };
 }

@@ -7,6 +7,8 @@ import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-as
 import type {
   ActualizarPagosGestionInput,
   ActualizarPagosGestionResult,
+  AjustarPagoMensajeroInput,
+  AjustarPagoMensajeroResult,
   Alcance,
   CierreAdminResumenRow,
   CorregirResultadoGestionInput,
@@ -1441,6 +1443,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         cierreId: true,
         resultado: true,
         montoRecibido: true,
+        pagoMensajero: true,
         cierre: { select: { estado: true } },
         pagos: { select: { metodo: true, monto: true } },
       },
@@ -1453,6 +1456,8 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       resultado: fila.resultado,
       // Money-safe: STRING escala 2, nunca `Number`.
       montoRecibido: fila.montoRecibido === null ? null : fila.montoRecibido.toFixed(2),
+      // SLT-56 (R9): el vigente contra el que el servicio compara lo que la pantalla mostro.
+      pagoMensajero: fila.pagoMensajero === null ? null : fila.pagoMensajero.toFixed(2),
       pagos: toLineasPago(fila.pagos),
     };
   }
@@ -1799,6 +1804,125 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       ]);
 
       return { status: "updated" as const, totales };
+    });
+  }
+
+  /**
+   * 💰 SLT-56 (design §4.4) — AJUSTA el pago al mensajero de una gestion de un cierre ABIERTO.
+   *
+   * METODO PROPIO y no una rama de `actualizarPagosGestion` ni de la 398: la guardia del censo del
+   * historial mide POR METODO, y dentro de otro metodo que ya llama a `appendAccion`, borrar el de
+   * este tipo dejaria la guardia verde.
+   *
+   * Solo cambia DOS columnas de dinero: el `pago_mensajero` de ESTA gestion y el
+   * `total_pago_mensajero` de su cierre. El recaudo, el ingreso de bodega, el pago de las otras
+   * gestiones y la tarifa no se tocan (R10/R12): reescribirlos seria mover dinero que no cambio.
+   */
+  async ajustarPagoMensajeroEnCierre(
+    input: AjustarPagoMensajeroInput,
+  ): Promise<AjustarPagoMensajeroResult> {
+    const { gestionId, alcance, pagoAnterior, pagoNuevo, motivo, ajustadoPor } = input;
+    const alcanceGuard = alcanceWhere(alcance);
+
+    return this.prisma.$transaction(async (tx) => {
+      // (1) EL SELLO — LA UNICA GUARDIA QUE DECIDE, y va PRIMERO (anti-TOCTOU). Gestion vigente, con
+      // EL PAGO QUE LA PANTALLA MOSTRO (R9) y en un cierre ABIERTO del alcance (R3/R5). Entre la
+      // lectura de la pantalla y esta escritura cabe una aprobacion o un ajuste de otra persona:
+      // decide esto.
+      //
+      // No hay lectura previa que filtre nada: si la hubiera con el alcance, el alcance de este
+      // `WHERE` quedaria de adorno y una mutacion que lo quitara sobreviviria (medido en la 398). Lo
+      // que el rastro necesita (cierre y guia) se lee DESPUES, cuando el sello ya dijo que es del
+      // alcance; asi tampoco se lee nada de un cierre ajeno.
+      const sello = await tx.gestionOrden.updateMany({
+        where: {
+          id: gestionId,
+          anuladaAt: null,
+          pagoMensajero: new Prisma.Decimal(pagoAnterior),
+          cierre: { is: { estado: { in: ESTADOS_ABIERTOS }, ...alcanceGuard } },
+        },
+        data: { pagoMensajero: new Prisma.Decimal(pagoNuevo) },
+      });
+      if (sello.count !== 1) {
+        // Solo pone NOMBRE al rechazo, ya decidido: fuera del alcance (o inexistente) es
+        // `fuera_de_alcance`, sin distinguir (R3); del alcance pero cerrado o desfasado, `conflict`.
+        const delAlcance = await tx.gestionOrden.count({
+          where: { id: gestionId, cierre: { is: alcanceGuard } },
+        });
+        return { status: delAlcance > 0 ? ("conflict" as const) : ("fuera_de_alcance" as const) };
+      }
+
+      const sellada = await tx.gestionOrden.findUnique({
+        where: { id: gestionId },
+        select: { cierreId: true, orden: { select: { numGuia: true, numRemision: true } } },
+      });
+      const cierreId = sellada?.cierreId ?? null;
+      if (sellada === null || cierreId === null) throw new Error("gestion sin cierre tras el sello");
+
+      // (2) EL RASTRO, con el rol CONGELADO (R17). Sin rol no hay persona que registrar: se lanza y
+      // la transaccion entera revierte, en vez de inventar uno.
+      const actor = await resolverActorCongelado(tx, ajustadoPor);
+      if (actor.actorRol === null || actor.actorNombre === null) {
+        throw new Error("ajuste de pago sin actor resoluble");
+      }
+      const ajuste = await tx.gestionPagoMensajeroAjuste.create({
+        data: {
+          gestionId,
+          cierreId,
+          pagoAnterior: new Prisma.Decimal(pagoAnterior),
+          pagoNuevo: new Prisma.Decimal(pagoNuevo),
+          actorUsuarioId: ajustadoPor,
+          actorRol: actor.actorRol as RolValue,
+          motivo,
+        },
+        select: { createdAt: true, pagoAnterior: true, pagoNuevo: true, actorRol: true, motivo: true },
+      });
+
+      // (3) EL TOTAL = SUMA DE LOS PAGOS CONGELADOS del cierre, leidos DESPUES del sello. Sumar y no
+      // restar un delta: asi el total no puede divergir de sus gestiones. Y sumar, jamas re-derivar
+      // con la tarifa: eso reescribiria el pago congelado de las otras gestiones (R12).
+      const gestiones = await tx.gestionOrden.findMany({
+        where: { cierreId, anuladaAt: null },
+        select: { pagoMensajero: true },
+      });
+      const totalPagoMensajero = sumarSnapshotsCongelados(gestiones.map((g) => g.pagoMensajero));
+      // Guardado otra vez por estado + alcance: si el cierre se cerro entre el sello y aqui, se lanza
+      // y no queda nada (R5/R17). SOLO esta columna (R10).
+      const actualizados = await tx.cierreDia.updateMany({
+        where: { id: cierreId, estado: { in: ESTADOS_ABIERTOS }, ...alcanceGuard },
+        data: { totalPagoMensajero: new Prisma.Decimal(totalPagoMensajero) },
+      });
+      if (actualizados.count !== 1) throw new Error("cierre no actualizado por el ajuste de pago");
+
+      // (4) EL HISTORIAL DE ACCIONES (R18), al final y en la misma tx: si algo de arriba fallo, esto
+      // no se alcanza. `monto` = el pago nuevo. El motivo NO entra (362/R5): vive en el rastro.
+      await appendAccion(tx, [
+        {
+          accion: "cierre_dia_pago_mensajero_ajustado",
+          entidadTipo: "gestion_orden",
+          entidadId: gestionId,
+          entidadEtiqueta: etiquetaDeEntidad("gestion_orden", {
+            numGuia: sellada.orden.numGuia,
+            numRemision: sellada.orden.numRemision,
+          }),
+          monto: new Prisma.Decimal(pagoNuevo),
+          ...actor,
+        },
+      ]);
+
+      return {
+        status: "updated" as const,
+        pagoMensajero: ajuste.pagoNuevo.toFixed(2),
+        totalPagoMensajero,
+        ajuste: {
+          creadoAt: ajuste.createdAt.toISOString(),
+          actorNombre: actor.actorNombre,
+          actorRol: ajuste.actorRol,
+          pagoAnterior: ajuste.pagoAnterior.toFixed(2),
+          pagoNuevo: ajuste.pagoNuevo.toFixed(2),
+          motivo: ajuste.motivo,
+        },
+      };
     });
   }
 

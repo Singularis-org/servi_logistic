@@ -5,6 +5,7 @@ import { METODO_PAGO_SEED } from "@/lib/types/metodo-pago";
 // FICHA 398: el MISMO `motivo` que exige una gestion `rechazada` real (feature 36). Se IMPORTA y
 // no se reescribe: dos declaraciones del mismo requisito divergen a la primera correccion.
 import { motivoSchema } from "@/lib/types/gestion-orden";
+import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import { cierreConfig } from "@/lib/config/cierre";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
@@ -199,6 +200,33 @@ export const corregirResultadoGestionSchema = z
   .strict();
 
 export type CorregirResultadoGestionInput = z.infer<typeof corregirResultadoGestionSchema>;
+
+/**
+ * SLT-56 (design §4.1) — AJUSTE del pago al mensajero de una gestion de un cierre ABIERTO.
+ *
+ * **`pagoAnterior` viaja, y es la guardia de R9.** Es el pago vigente que la pantalla pinto: el
+ * repositorio solo escribe si la base sigue teniendo ese valor, asi que un ajuste hecho sobre un dato
+ * viejo (otro ajuste o una correccion entre medias) sale `conflict` en vez de pisar lo que nadie vio.
+ *
+ * **Los importes son STRING** y se validan como texto, sin pasar por `number` (R16).
+ * `montoCobroSchema` es exactamente lo que pide R8 —mayor o igual que 0, dos decimales como maximo,
+ * diez cifras enteras, lo que cabe en `Decimal(12,2)`— y se reutiliza en vez de escribir otra regex.
+ * Que el nuevo sea distinto del vigente no se puede decidir aqui (el vigente vive en la base): lo
+ * decide el servicio.
+ *
+ * **El `motivo` es el MISMO `motivoSchema` de la 398** (R7). `.strict()`: una clave ajena —un
+ * `cierreId`, un `actorId`— es `validation_error`, no se descarta en silencio.
+ */
+export const ajustarPagoMensajeroGestionSchema = z
+  .object({
+    gestionId: z.string().uuid(),
+    pagoAnterior: montoCobroSchema,
+    pagoNuevo: montoCobroSchema,
+    motivo: motivoSchema,
+  })
+  .strict();
+
+export type AjustarPagoMensajeroGestionInput = z.infer<typeof ajustarPagoMensajeroGestionSchema>;
 
 export type CierreIdInput = z.infer<typeof cierreIdSchema>;
 export type RechazarCierreInput = z.infer<typeof rechazarCierreSchema>;
