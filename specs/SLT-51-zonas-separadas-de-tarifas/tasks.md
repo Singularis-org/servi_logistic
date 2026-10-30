@@ -70,7 +70,7 @@ paralelo con las otras `[P]` de su bloque. Cada task cierra con
 
 ## Cierre
 
-- [ ] **T11 — E2E** (R5, R3). Depende de T5-T8. `e2e/zonas-crear-sin-costos.spec.ts` (design §8);
+- [x] **T11 — E2E** (R5, R3). Depende de T5-T8. `e2e/zonas-crear-sin-costos.spec.ts` (design §8);
   `e2e/zona-especial-dos-empresas.spec.ts` a `test.fixme` citando SLT-54 (P1, si el humano lo
   confirma). *Hecho:* `pnpm exec playwright test e2e/zonas-crear-sin-costos.spec.ts` verde en
   local, con su salida en `progress/impl_SLT-51.md`.

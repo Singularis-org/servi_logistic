@@ -104,7 +104,7 @@ zona» son los tres datos que salen del formulario: pago al mensajero (filas de
 
 ## Preguntas abiertas
 
-- **P1 (no bloquea).** `e2e/zona-especial-dos-empresas.spec.ts` (SL-38 R14) entra a «Editar zona»
+- **P1 (resuelta 2026-10-29, ver Decisiones cerradas).** `e2e/zona-especial-dos-empresas.spec.ts` (SL-38 R14) entra a «Editar zona»
   en `/configuracion/tarifas` y pulsa «Especial»: con esta ficha esa superficie deja de existir y el
   E2E (que corre en el PR a `prod`) quedaría rojo. Propuesta del spec: SLT-51 lo marca
   `test.fixme` citando SLT-54, y SLT-54 lo reescribe contra su pantalla nueva. ¿Lo confirmas y lo
@@ -119,6 +119,7 @@ zona» son los tres datos que salen del formulario: pago al mensajero (filas de
 | 2026-10-29 | ¿Editor provisional de costos hasta SLT-54? | No. La épica sale completa a producción; entre fichas, `dev` puede quedar sin editor de costos de zona. |
 | 2026-10-29 | ¿Dónde va «Cobertura»? | En Zonas. |
 | 2026-10-29 | ¿E2E? | Sí, uno corto: el maestro crea una zona sin costos y la ve en el listado. |
+| 2026-10-29 | ¿Qué pasa con `zona-especial-dos-empresas.spec.ts` (P1/P2)? | Carlos: `test.fixme` citando SLT-54, con una excepción con fecha (`vence: 2026-11-30`) en `e2e-sin-saltos.guardia`; SLT-54 lo reescribe. |
 | heredado | ¿Quién escribe zonas? | Solo `maestro` (spec 24, `ZonaService`). |
 | heredado | Geografía | Catálogo global del país, gestionado por el superadmin (SL-20). |
 | heredado | Zona sin tarifa | El cierre registra 0 sin bloquear y la API por key responde 409 (274 R39). |

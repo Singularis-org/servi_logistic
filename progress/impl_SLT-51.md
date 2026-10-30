@@ -204,6 +204,6 @@ del Prisma client compartido; E2E verde dos veces con `--no-deps`.
 | R16 | `ZonasPage.test.tsx` + `tests/unit/components/geografia-selector-inactivos.test.tsx` |
 
 ### Pendiente
-- T11: `e2e/zona-especial-dos-empresas.spec.ts` sin tocar (P2 en `progress/features/SLT-51.md`).
+- T11: P2 resuelta por Carlos. `zona-especial-dos-empresas.spec.ts` queda en `test.fixme` (cita SLT-54) y `e2e-sin-saltos.guardia` gana una excepción con fecha (vence 2026-11-30). Guardia 38/38; las mutaciones (sin vencimiento / sin «ya no tiene fixme» / lista vacía) dan rojo. Gate posterior: INIT_EXIT=0.
 - T12: las capturas de `/configuracion/zonas` y `/configuracion/tarifas` NO se tomaron (`next build` caía
   por el cliente Prisma compartido). Quedan para el reviewer o el leader.
