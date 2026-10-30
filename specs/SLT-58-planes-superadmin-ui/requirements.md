@@ -140,7 +140,7 @@
 | Fecha futura (2026-10-29) | R30, R34, R35, R40 |
 | Tope ya pasado con fecha pasada (2026-10-29) | R36, R37 |
 | P6 — límite futuro hoy + 1 mes | R30 |
-| P7 — usuarios y API keys: se asigna y se avisa | R37, R42; P14 y P15 abiertas |
+| P7 — usuarios y API keys: se asigna y se avisa | R37, R42; P14 y P15 cerradas el 2026-10-29 |
 | P8 — sin texto del ciclo corto | R38, R40 |
 | P9 — «hoy» es el instante | R32 |
 | P10 — fecha del aviso = inicio del siguiente ciclo | R36, R37 |

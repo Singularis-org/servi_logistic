@@ -91,10 +91,11 @@
 
 ## Tanda D — enmienda del 2026-10-29: inicio del ciclo elegido (design §11; R29–R42 y R8)
 
-> P6–P13 cerradas por el humano el 2026-10-29 (P7 con la regla ampliada: R42). Siguen abiertas P14
-> (primera asignación sin fecha) y P15 (textos de los avisos de rol y de keys): T14 sigue la propuesta
-> de P14 y T15 no fija los textos de P15 hasta que se aprueben. Si cambia alguna, se ajusta el punto de
-> design §11 que la cita antes de tocar código.
+> P6–P15 cerradas por el humano el 2026-10-29 (P7 con la regla ampliada: R42). P14 (primera
+> asignación sin fecha): la excepción a SL-24 R12 solo vale para la primera asignación con fecha
+> elegida; sin fecha, SL-24 R12 sigue rechazando con `tope_excedido` (aprobada la propuesta; T14 la
+> sigue). P15 (textos de los avisos de rol y de keys): `rolYaPasado` y `apiKeysYaPasadas` aprobados
+> tal cual, con los textos de la tabla de `design.md §6.5` (T15 los usa).
 
 - [x] **T12 — Migración `plan_ciclo_inicio_elegido`** (backend_dev; design §11.2). Columna
   `plan_ciclo_corto_desde_at` + `CHECK`, función `plan_inicio_ciclo_en_curso`, `CREATE OR REPLACE` de

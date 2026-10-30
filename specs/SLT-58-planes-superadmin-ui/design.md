@@ -415,9 +415,10 @@ aplica `docs/architecture.md > Dependencias de terceros`.
 > ciclo en la primera asignación», «Fecha pasada», «Fecha futura», «Tope ya pasado con fecha pasada»,
 > «Textos del modal de primera asignación», «R8: 404 HTTP real» y P6–P13, ya cerradas). **P7 no aprobó
 > la propuesta:** en la primera asignación con fecha, ningún tope ya pasado (órdenes, roles, API keys)
-> rechaza; todos se asignan y se avisan (excepción ampliada a SL-24 R12 y a R25). Siguen abiertas P14
-> (primera asignación sin fecha) y P15 (textos de los avisos de rol y de keys); el diseño sigue sus
-> propuestas.
+> rechaza; todos se asignan y se avisan (excepción ampliada a SL-24 R12 y a R25). P14 y P15 cerradas
+> el 2026-10-29: P14 (primera asignación sin fecha) aprobó la propuesta, la excepción a SL-24 R12 solo
+> vale con fecha elegida y sin fecha SL-24 R12 sigue rechazando con `tope_excedido`; P15 aprobó tal
+> cual los textos `rolYaPasado` y `apiKeysYaPasadas` de la tabla de §6.5.
 
 ### 11.1 Lo que ya existe (para esta enmienda)
 
@@ -567,7 +568,7 @@ transacción y cerrojos de hoy:
    candidato, las columnas de la empresa (con `COALESCE(ancla, now)`, como hoy).
 3. `excedidosDe` igual que hoy. **Solo en la primera asignación con `inicio`:** todos los excedidos
    (órdenes, cada rol con tope y API keys) pasan a `avisos` y no rechazan (R36, R42; P7 cerrada,
-   excepción ampliada a SL-24 R12). Sin `inicio` (P14, abierta) o en un cambio de plan: exactamente como
+   excepción ampliada a SL-24 R12). Sin `inicio` (P14, cerrada el 2026-10-29) o en un cambio de plan: exactamente como
    hoy, `tope_excedido`. No hace falta tocar triggers: los de usuarios y keys ya bloquean las altas
    mientras el uso pase el tope (§11.1).
 4. `UPDATE "organizacion" SET "plan_id", "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", <ancla>),
