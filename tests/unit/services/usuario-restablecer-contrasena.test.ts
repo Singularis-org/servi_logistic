@@ -59,6 +59,7 @@ function repoUsuarios(overrides: Partial<IUserRepository> = {}): IUserRepository
     findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn().mockResolvedValue(usuario()),
     findCuentasPorEmail: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: exigido por IUserRepository; no ejercitado aqui
     create: vi.fn(),
     // FICHA 362: el reset POR UN ADMINISTRADOR pasa por `restablecerContrasena`, que escribe la
     // fila del registro en la misma transaccion. `updatePasswordHash` sigue existiendo y es el

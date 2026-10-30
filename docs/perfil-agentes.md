@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-21 por=Carlos Restrepo -->
+<!-- perfil: revisado=2026-10-28 por=Camilo -->
 # docs/perfil-agentes.md — Reglas del proyecto para cada agente
 
 > Perfil del proyecto. Los agentes de `.claude/agents/` son genéricos (vienen de la plantilla y los

@@ -10,26 +10,26 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <style>
     body { margin: 0; font-family: Poppins, system-ui, sans-serif; }
-    a { color: #d4530d; }
+    a { color: #111111; }
     * { box-sizing: border-box; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid transparent; font-family: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; }
-    .btn.primary { background: #f26419; color: #fff; }
-    .btn.outline { border-color: #e3e8f2; background: #f7f8fc; color: #12233f; }
-    .lbl { font-size: 14px; font-weight: 500; color: #12233f; display: block; margin-bottom: 6px; }
-    .inp { height: 44px; width: 100%; border-radius: 10px; border: 1px solid #e3e8f2; background: #fff; padding: 0 12px; font-family: inherit; font-size: 14px; color: #12233f; display: flex; align-items: center; gap: 8px; }
+    .btn.primary { background: #111111; color: #fff; }
+    .btn.outline { border-color: #e3e8f2; background: #f7f8fc; color: #111111; }
+    .lbl { font-size: 14px; font-weight: 500; color: #111111; display: block; margin-bottom: 6px; }
+    .inp { height: 44px; width: 100%; border-radius: 10px; border: 1px solid #e3e8f2; background: #fff; padding: 0 12px; font-family: inherit; font-size: 14px; color: #111111; display: flex; align-items: center; gap: 8px; }
     .sel::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid #4a5368; border-bottom: 1.5px solid #4a5368; transform: rotate(45deg) translate(-2px,-2px); }
     .hint { font-size: 12px; color: #4a5368; margin-top: 6px; line-height: 1.5; }
     .bdg { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 26px; font-size: 12px; font-weight: 500; white-space: nowrap; }
     .bdg.ok { background: #d1fae5; color: #047857; }
     .sw { display: inline-flex; align-items: center; width: 36px; height: 20px; padding: 0 2px; border-radius: 999px; background: #e3e8f2; flex: 0 0 auto; }
     .sw::after { content: ""; width: 16px; height: 16px; border-radius: 50%; background: #f7f8fc; box-shadow: 0 1px 2px rgba(18,35,63,.2); }
-    .sw.on { background: #f26419; justify-content: flex-end; }
+    .sw.on { background: #111111; justify-content: flex-end; }
     .cb { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #e3e8f2; background: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-    .cb.on { background: #f26419; border-color: #f26419; }
+    .cb.on { background: #111111; border-color: #111111; }
     .cb.on::after { content: ""; width: 8px; height: 4px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) translate(1px,-1px); }
     .rd { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #e3e8f2; background: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-    .rd.on { border-color: #f26419; }
-    .rd.on::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #f26419; }
+    .rd.on { border-color: #111111; }
+    .rd.on::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #111111; }
     .chk { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 44px; }
     .chk .n { margin-left: auto; font-size: 12px; color: #4a5368; }
     .card { background: #fff; border: 1px solid #e3e8f2; border-radius: 10px; padding: 16px; }
@@ -37,18 +37,18 @@
     .seg { display: flex; border: 1px solid #e3e8f2; border-radius: 10px; overflow: hidden; }
     .seg span { flex: 1; text-align: center; height: 44px; line-height: 44px; font-size: 14px; color: #4a5368; border-right: 1px solid #e3e8f2; background: #fff; }
     .seg span:last-child { border-right: 0; }
-    .seg span.on { background: #fff0e8; color: #d4530d; font-weight: 500; }
+    .seg span.on { background: #FFF8D9; color: #111111; font-weight: 500; }
     .day { flex: 1; height: 44px; border-radius: 10px; border: 1px solid #e3e8f2; background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #4a5368; }
-    .day.on { background: #f26419; border-color: #f26419; color: #fff; font-weight: 500; }
-    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px 0 10px; border-radius: 26px; background: #eef1f8; color: #17233b; font-size: 13px; }
+    .day.on { background: #111111; border-color: #111111; color: #fff; font-weight: 500; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px 0 10px; border-radius: 26px; background: #eef1f8; color: #111111; font-size: 13px; }
     .chip i { font-style: normal; color: #4a5368; width: 24px; text-align: center; }
     .num { width: 64px; height: 44px; border-radius: 10px; border: 1px solid #e3e8f2; background: #fff; display: inline-flex; align-items: center; justify-content: flex-end; padding: 0 12px; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
     .mono { font-family: 'JetBrains Mono', monospace; }
   </style>
 </helmet>
 
-<div style="width: 390px; background: #f7f8fc; color: #12233f;">
-  <header style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 12px; background: #0d2444;">
+<div style="width: 390px; background: #f7f8fc; color: #111111;">
+  <header style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 12px; background: #1C1C1A;">
     <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #fff;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
     </div>

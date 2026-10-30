@@ -56,8 +56,8 @@ function TabsTrigger({
         // por peso y sombra en vez de un relleno sólido.
         //
         // Feature 208: iban con `navy` fijo (borde, tinta y relleno). En claro
-        // `--foreground` (#12233f) es prácticamente el mismo azul que `navy`
-        // (#0b2545), así que el aspecto no cambia; en oscuro la tab pasa de 1.06:1
+        // `--foreground` era prácticamente el mismo azul que `navy` (el azul de la marca
+        // anterior), así que el aspecto no cambiaba; en oscuro la tab pasa de 1.06:1
         // —invisible— a leerse, porque ahora la tinta gira con el tema.
         "border border-foreground bg-transparent text-foreground hover:bg-foreground/10",
         "aria-selected:bg-foreground/10 aria-selected:font-semibold aria-selected:shadow-sm aria-selected:hover:bg-foreground/10",

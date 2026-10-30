@@ -1,4 +1,5 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 import type {
   ListarPostulacionesInput,
   PostulacionPendienteDTO,
@@ -23,7 +24,9 @@ export type DecisionServiceResult =
   | { status: "ok"; usuarioId: string; estado: "activo" | "inactivo" }
   | { status: "forbidden" }
   | { status: "not_found" }
-  | { status: "conflict" };
+  | { status: "conflict" }
+  // SL-24 (R27): aprobar con el tope de `mensajero` lleno. Rechazar no lo devuelve nunca.
+  | ResultadoTopePlan;
 
 export interface IAprobacionPostulacionService {
   /** R2/R3/R5/R6-R11: lista postulaciones pendientes paginadas con URLs firmadas. */

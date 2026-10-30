@@ -133,6 +133,13 @@ const metaMessageSchema = z.object({
     })
     .optional()
     .catch(undefined),
+  // SLT-40 (design §2, R1-R3): mensaje que el cliente cita con «Responder». Solo se declara
+  // `id`: el strip de zod DESCARTA `from`, `forwarded`, `referred_product`, etc. (R3). Blando en
+  // el objeto y en `id`: una forma rara degrada a "sin cita" sin tumbar el lote (R2).
+  context: z
+    .object({ id: z.string().optional().catch(undefined) })
+    .optional()
+    .catch(undefined),
 });
 
 /**
@@ -215,6 +222,8 @@ export interface WebhookMensajeEntrante {
   contactos?: ChatContactoNormalizado[];
   /** Feature 311 (R9): numeros del cambio de numero del cliente. `telefonoNuevo` siempre presente. */
   sistema?: { telefonoAnterior: string | null; telefonoNuevo: string };
+  /** SLT-40 (R1): wamid del mensaje que el cliente cita con «Responder». Ausente si no hay. */
+  citadoWaMessageId?: string;
   ocurridoAt: Date;
 }
 
@@ -497,6 +506,16 @@ export function normalizarSistema(m: MetaMessage): WebhookMensajeEntrante["siste
 }
 
 /**
+ * SLT-40 (design §2, R1/R2) — helper PURO: wamid citado con «Responder». `null` si `context`
+ * falta, vino con forma rara (el esquema ya lo degrado a `undefined`) o su `id` queda vacio tras
+ * `trim`. No lanza: una cita inutil es "sin cita", nunca un fallo del lote.
+ */
+export function citadoDe(m: MetaMessage): string | null {
+  const id = m.context?.id?.trim();
+  return id === undefined || id === "" ? null : id;
+}
+
+/**
  * Valida el payload crudo (strip, R5) y lo NORMALIZA a `WebhookEventos`. Recorre
  * `entry[].changes[].value` aplanando mensajes entrantes y statuses. Los statuses con un
  * valor que no reconocemos (p. ej. futuros de Meta) se DESCARTAN silenciosamente: no son
@@ -563,6 +582,10 @@ export function parseWebhookEventos(raw: unknown): WebhookEventos {
           else sistema = normalizado;
         }
 
+        // SLT-40 (R1): la cita se conserva para TODO `type`, tambien `otro` (un boton de
+        // plantilla trae `context.id` y se degrada a `otro`). No se loguea (R17).
+        const citado = citadoDe(m);
+
         mensajes.push({
           waMessageId: m.id,
           telefonoE164: m.from,
@@ -573,6 +596,7 @@ export function parseWebhookEventos(raw: unknown): WebhookEventos {
           ...(reaccion !== undefined ? { reaccion } : {}),
           ...(contactos !== undefined ? { contactos } : {}),
           ...(sistema !== undefined ? { sistema } : {}),
+          ...(citado !== null ? { citadoWaMessageId: citado } : {}),
           ocurridoAt: timestampAMeta(m.timestamp),
         });
       }

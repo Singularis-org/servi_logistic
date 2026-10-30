@@ -70,15 +70,17 @@ const SUELO: Record<string, number> = {
   "oscuro:warning": 7.7, // antes 7.59
   "oscuro:danger": 5.27, // antes 5.20
   "oscuro:info": 7.39, // antes 6.97
-  // Feature 292 — los cuatro pares de `--chart-*`, medidos al crearlos.
-  "claro:chart-6": 5.98,
-  "claro:chart-11": 6.38,
-  "claro:chart-12": 9.45,
-  "claro:chart-13": 8.49,
-  "oscuro:chart-6": 7.24, // antes 6.91
-  "oscuro:chart-11": 7.21, // antes 7.02
-  "oscuro:chart-12": 8.92, // antes 8.45
-  "oscuro:chart-13": 6.89, // antes 6.48
+  // Feature 292 — los cuatro pares de `--chart-*`. SL-33 los reasigna a `chart-5/7/11/12` con la
+  // paleta de gráficas aprobada (`specs/SL-33-paleta-secundaria/design.md > D3, D4`): son pares
+  // NUEVOS, no los de la 292 con otro valor, y su suelo es lo medido con el fixture.
+  "claro:chart-5": 5.28,
+  "claro:chart-7": 5.44,
+  "claro:chart-11": 6.06,
+  "claro:chart-12": 5.46,
+  "oscuro:chart-5": 5.2,
+  "oscuro:chart-7": 5.04,
+  "oscuro:chart-11": 7.98,
+  "oscuro:chart-12": 7.88,
 };
 
 /** Tolerancia del suelo: absorbe el redondeo a dos decimales, nada más. */
@@ -191,17 +193,18 @@ describe("Feature 210 — contraste de los tokens semánticos (guardia)", () => 
  * ── POR QUÉ NO ENTRAN EN EL `it.each` DE ARRIBA, aunque midan lo mismo
  * En tema oscuro, el fondo del `Badge` es `<base>/15` compuesto sobre la tarjeta, y ahí está la
  * diferencia: la base de los semánticos (`--color-success`) es un hex FIJO —vive en `@theme
- * inline` y no gira—, mientras que un `--chart-N` SÍ gira con el tema (`#8b5cf6` claro,
- * `#a78bfa` oscuro). Medir estos cuatro con `paleta()` sería medir el violeta claro sobre el
+ * inline` y no gira—, mientras que un `--chart-N` SÍ gira con el tema (`#7e22ce` claro,
+ * `#c084fc` oscuro, el `chart-7`). Medir estos cuatro con `paleta()` sería medir el violeta claro sobre el
  * fondo oscuro: números plausibles del par equivocado. Se leen con `token(tema, …)`, que es lo
  * que respeta esa vuelta.
  *
- * El par es AA por decisión, no por suerte: donde el propio color del segmento no llegaba sobre
- * su `-soft` —`chart-6` daba 3.57 y `chart-12` 4.34— la tinta baja dos escalones de LA MISMA
- * rampa en vez de estrenar un tono nuevo.
+ * El par es AA por decisión, no por suerte. Con la paleta de la 292, donde el propio color del
+ * segmento no llegaba sobre su `-soft` la tinta bajaba dos escalones de LA MISMA rampa. Con la
+ * paleta aprobada de SL-33 el `-strong` es el propio color del segmento en los ocho casos, porque
+ * los ocho pasan AA con margen: el más justo es `chart-7` en oscuro, 5.04.
  */
 describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)", () => {
-  const PARES_CHART = ["chart-6", "chart-11", "chart-12", "chart-13"] as const;
+  const PARES_CHART = ["chart-5", "chart-7", "chart-11", "chart-12"] as const;
   const ALPHA_SOFT_BADGE_OSCURO = 0.15;
 
   it.each(PARES_CHART)(
@@ -236,7 +239,7 @@ describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)
     const badge = quitarComentarios(
       readFileSync(path.join(RAIZ, "components", "ui", "badge.tsx"), "utf8"),
     );
-    const variante = familia.replace("-", ""); // `chart-6` -> `chart6`
+    const variante = familia.replace("-", ""); // `chart-7` -> `chart7`
     const linea = badge.match(new RegExp(`\\b${variante}:\\s*"([^"]*)"`));
     expect(linea, `la variante \`${variante}\` no existe en el Badge`).not.toBeNull();
 
@@ -277,8 +280,8 @@ describe("Feature 292 — contraste de los cuatro pares de `--chart-*` (guardia)
  *     falla al pasar el ratón sigue siendo un fallo, y es exactamente cómo se le escapó a la 208.
  *  2. **Mide sobre VARIAS superficies.** El `Button` es una primitiva: no sabe dónde lo montan. Un
  *     fondo con alfa (`bg-danger/15`) vale lo que valga lo que tenga debajo — medido, el mismo
- *     `danger/20` da 4.99 sobre la tarjeta y 4.44 sobre `secondary`. Medir sólo sobre `card` es
- *     suponer el resto.
+ *     `danger/20` daba 4.99 sobre la tarjeta y 4.44 sobre `secondary` (hoy, tras SL-33, 4.62:
+ *     ver el caso de la alternativa descartada). Medir sólo sobre `card` es suponer el resto.
  *  3. **Lee las clases REALES del componente** y resuelve cada utilidad contra los tokens de
  *     `app/globals.css`. No hay una copia de las clases aquí: si alguien cambia el alfa o vuelve a
  *     `--destructive`, esta guardia mide lo nuevo y se pone roja sola.
@@ -427,6 +430,13 @@ const SUELO_BOTON: Record<string, number> = {
   "oscuro:hover": 6.17, // antes 5.89
 };
 
+/**
+ * Tope del margen sobre AA de la alternativa descartada (`hover:bg-danger/20`) en su peor
+ * superficie de cada tema. Máximo medido el 2026-10-28 (SL-33): 0.117 en claro, redondeado hacia
+ * arriba. Ver el caso «la alternativa descartada…».
+ */
+const TOPE_MARGEN_ALTERNATIVA = 0.12;
+
 describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover (guardia)", () => {
   /**
    * Autocomprobación del censo. Sin esto, una ruta mal resuelta o una variante renombrada dejaría
@@ -553,25 +563,66 @@ describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover
    * 4.44. El argumento sigue en pie con UNA superficie en vez de tres: basta una para que una
    * primitiva no pueda fiarse del alfa.
    *
-   * Si algún día la paleta cambia y esa alternativa pasa a cumplir en todas partes, este caso se
-   * pone rojo: el motivo por el que el hover es opaco habría dejado de ser cierto y la decisión
-   * hay que releerla, no heredarla.
+   * SL-33, re-medido el 2026-10-28 con `tests/fixtures/contraste.ts`: `--secondary` pasa a
+   * `stone-100` y la alternativa ya CUMPLE AA en las doce superficies. Peor por tema:
+   *
+   *   claro  · `danger/20` sobre secondary y muted              4.62  (margen sobre AA 0.12)
+   *            sobre background 4.66, muted/50 4.80, card/popover 4.99
+   *   oscuro · `danger/20` sobre secondary y muted              4.54  (margen sobre AA 0.04)
+   *            sobre muted/50 4.74, card/popover 4.94, background 5.54
+   *   hover opaco real, en las seis de cada tema                claro 6.47 (margen 1.97)
+   *                                                             oscuro 6.17 (margen 1.67)
+   *
+   * Decisión humana del 2026-10-28: el hover SIGUE OPACO y la decisión de la feature 222 no se
+   * reabre. El argumento ya no es «no cumple», sino:
+   *  - `danger/20` cumple, pero por márgenes mínimos: doce y cuatro centésimas en su peor superficie;
+   *  - una primitiva no sabe dónde la montan y no puede fiarse del alfa: el próximo fondo un poco más
+   *    oscuro (o claro) que `muted` la tumba, y nada en el componente lo avisaría.
+   * El opaco, en cambio, le saca a AA más de diez veces lo que le saca la alternativa, y no depende
+   * de la superficie.
+   *
+   * Lo que este caso vigila, para que el argumento no caduque en silencio:
+   *  1. que el margen de la alternativa sobre AA, en su peor superficie de cada tema, no pase de
+   *     `TOPE_MARGEN_ALTERNATIVA` (0.12: el máximo medido, 0.117, redondeado hacia arriba). Si la
+   *     paleta cambia y la capa pasa a cumplir con holgura, se pone rojo y hay que releer la decisión;
+   *  2. que el margen del hover opaco real sea más de diez veces el de la alternativa en cada tema
+   *     (hoy 1.97 frente a 0.12 en claro y 1.67 frente a 0.04 en oscuro). Si el opaco se degrada
+   *     hasta parecerse a la capa, pintarlo opaco dejó de comprar nada.
    */
-  it("la alternativa descartada (hover con capa `danger/20`) sigue sin cumplir: por eso es opaco", () => {
-    const caidas = (["claro", "oscuro"] as const).flatMap((tema) =>
-      superficiesDe(tema)
-        .map((superficie) => ({
-          donde: `${tema}/${superficie.nombre}`,
-          medido: contraste(token(tema, "danger-strong"), componer(paleta("danger"), superficie.hex, 0.2)),
-        }))
-        .filter((m) => m.medido < AA_TEXTO),
-    );
+  it("la alternativa descartada (hover con capa `danger/20`) cumple AA por márgenes mínimos y el hover opaco le saca un orden de magnitud: por eso sigue opaco", () => {
+    const clases = CLASES_DESTRUCTIVE.split(/\s+/);
+    const margenes = (["claro", "oscuro"] as const).map((tema) => {
+      const superficies = superficiesDe(tema);
+      const alternativa = Math.min(
+        ...superficies.map((s) =>
+          contraste(token(tema, "danger-strong"), componer(paleta("danger"), s.hex, 0.2)),
+        ),
+      );
+      const opaco = Math.min(
+        ...superficies.map((s) =>
+          contraste(
+            hexDeUtilidad(utilidadQueGana(clases, "text", tema, "hover"), tema, s.hex),
+            hexDeUtilidad(utilidadQueGana(clases, "bg", tema, "hover"), tema, s.hex),
+          ),
+        ),
+      );
+      return { tema, alternativa: alternativa - AA_TEXTO, opaco: opaco - AA_TEXTO };
+    });
 
-    expect(
-      caidas.map((c) => c.donde),
-      "ninguna superficie hace caer ya a `danger/20`: el argumento por el que el hover se pintó " +
-        "opaco caducó y hay que releer la decisión con los números nuevos.",
-    ).toEqual(["claro/secondary"]);
+    for (const { tema, alternativa, opaco } of margenes) {
+      expect(
+        alternativa,
+        `${tema}: \`danger/20\` ya le saca ${alternativa.toFixed(2)} a AA en su peor superficie, más ` +
+          `que el tope ${TOPE_MARGEN_ALTERNATIVA}. El argumento «cumple por márgenes mínimos» caducó: ` +
+          "relee la decisión del hover opaco con los números nuevos, no la heredes.",
+      ).toBeLessThanOrEqual(TOPE_MARGEN_ALTERNATIVA);
+      expect(
+        opaco,
+        `${tema}: el hover opaco le saca ${opaco.toFixed(2)} a AA y la alternativa ` +
+          `${alternativa.toFixed(2)}. Si el opaco ya no le saca un orden de magnitud, pintarlo ` +
+          "opaco dejó de comprar margen y la decisión hay que releerla.",
+      ).toBeGreaterThan(10 * alternativa);
+    }
   });
 });
 
@@ -615,8 +666,9 @@ describe("Feature 222 — el botón `destructive` cumple AA en reposo y en hover
  * arreglo» y «`--ring` en claro ya no es el de marca») se escribieron para caer si la paleta
  * cambiaba, cayeron, y se reescriben al contrato que queda: `--ring` mide 3:1 o más contra las
  * seis superficies, en los dos temas (SL-8, R19). Re-medido el 2026-10-22: 16.70 en claro (sobre
- * `--secondary`) y 10.68 en oscuro (sobre `--muted`/`--secondary`). Dato, no contrato: con la
- * paleta nueva `ring-ring/50` llegaría a 3.44 / 3.74; los anillos siguen opacos porque un alfa
+ * `--secondary`; 17.31 sobre `stone-100` desde SL-33) y 10.68 en oscuro (sobre
+ * `--muted`/`--secondary`). Dato, no contrato: con la
+ * paleta nueva `ring-ring/50` llegaría a 3.48 / 3.74 (3.44 en claro antes de los grises de SL-33); los anillos siguen opacos porque un alfa
  * depende de la superficie de debajo (`components/ui/button.tsx`).
  *
  * ── QUÉ MIDE Y QUÉ NO
@@ -659,7 +711,8 @@ function temasDe(utilidad: string): ("claro" | "oscuro")[] {
  * suelo falla y se sube A MANO.
  */
 const SUELO_ANILLO: Record<string, number> = {
-  claro: 3.33, // `focus-visible:ring-destructive` sobre `--secondary` (#eef1f8); SL-8 no lo mueve
+  // SL-33, re-medido el 2026-10-28: `--muted`/`--secondary` claro pasa a `stone-100`. Antes 3.33.
+  claro: 3.45, // `focus-visible:ring-destructive` sobre `--muted`/`--secondary` (#f5f5f4)
   // SL-8, re-medido el 2026-10-22: `--muted`/`--secondary` oscuro pasa de `#16294a` a `#232323`.
   oscuro: 5.68, // `focus-visible:ring-destructive` sobre `--muted`/`--secondary`; antes 5.24
 };
@@ -736,7 +789,7 @@ describe("Feature 226 — el anillo de foco del Button cumple 1.4.11 en los dos 
    * dos sale del CSS que se está midiendo.
    */
   const SUELO_RING: Record<"claro" | "oscuro", number> = {
-    claro: 16.7, // `#111111` sobre `--secondary` (#eef1f8)
+    claro: 17.31, // `#111111` sobre `--muted`/`--secondary` (#f5f5f4); antes 16.70 (#eef1f8), SL-33
     oscuro: 10.68, // `#FFD000` sobre `--muted`/`--secondary` (#232323)
   };
 
@@ -779,14 +832,18 @@ describe("Feature 226 — el anillo de foco del Button cumple 1.4.11 en los dos 
  * `asfalto-5` no cambian). El icono oscuro sube con `--muted-foreground` `#B2B2B1`, y los tres
  * anillos suben porque `--ring` pasa a `#111111` en claro y `#FFD000` en oscuro. El número de
  * antes, a la derecha.
+ *
+ * SL-33, re-medido el 2026-10-28: `--muted-foreground` y `asfalto-5` pasan a `stone-700`
+ * (`#44403c`) y `--muted`/`--secondary`/`kraft-inset` a `stone-100` (`#f5f5f4`). Suben los cuatro
+ * suelos claros y de la landing; los oscuros no se mueven (R12).
  */
 const SUELO_456: Record<string, number> = {
-  "claro:icono": 6.8,
+  "claro:icono": 9.42, // antes 6.80
   "oscuro:icono": 7.41, // antes 6.40
-  "claro:anillo": 16.7, // antes 3.68
+  "claro:anillo": 17.31, // antes 16.70 (SL-8) y 3.68
   "oscuro:anillo": 10.68, // antes 5.57
-  "landing:icono": 6.99,
-  "landing:anillo": 17.15, // antes 3.78
+  "landing:icono": 9.42, // antes 6.99
+  "landing:anillo": 17.31, // antes 17.15 (SL-8) y 3.78
 };
 
 describe("Ficha 456 — el botón de información cumple 1.4.11 (guardia)", () => {

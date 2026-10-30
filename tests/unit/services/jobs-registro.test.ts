@@ -59,6 +59,7 @@ describe("R14 · y NO es recurrente", () => {
     expect([...recurrencias.keys()].sort()).toEqual([
       "analitica_rollup_diario",
       "liberar_reprogramadas",
+      "plan_cambios_vencidos", // SL-24 (design §16.3): barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
     ]);
   });
