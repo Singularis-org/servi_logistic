@@ -367,3 +367,18 @@ Con `NODE_OPTIONS=--max-old-space-size=8192`, un comando cada vez:
   `Test Files 1 failed | 456 passed | 202 skipped (659)`. El rojo era
   `notificacion-orden-rechazada.test.ts › R20`, de antes de que backend_dev arreglara su doble
   (`tiene_coordenadas`); re-corrido tras el arreglo → `Tests 14 passed (14)`.
+
+### Re-verificación de Fase 2 (implementer, 2026-10-30)
+
+- `pnpm exec vitest run tests/unit/services/optimizacion-ruta-{desvio,reduccion,service}.test.ts` →
+  `Test Files 3 passed (3)`, `Tests 95 passed (95)`.
+- `vitest related --run lib/services/OptimizacionRutaService.ts lib/interfaces/services/IOptimizacionRutaService.ts`
+  **detenido por el sistema por falta de memoria** (no es un fallo del comando); no se relanza por
+  instrucción del sistema. Queda para el gate de CI.
+
+### Decisiones del leader sobre PA-1 y PA-2 (2026-10-30, pendientes de objeción humana)
+
+- **PA-1:** se mantiene R13 (0 llamadas) cuando las paradas quitadas van detrás de la última
+  restante: no queda hueco que puentear. Lleva test propio.
+- **PA-2:** se mantiene polilínea `routes` que decodifica a 0 puntos ⇒ distancia `+Infinity` ⇒
+  desviado ⇒ reoptimizar (default seguro). Lleva test propio.
