@@ -42,7 +42,7 @@ describe("374 — la lectura delega en el service", () => {
   });
 
   it("listarArbolGeografico CONSERVA su firma: se puede llamar sin argumentos", () => {
-    // Lo llaman `configuracion/tarifas/page.tsx` y `ZonasTarifasModule.tsx` sin argumentos.
+    // Lo llaman `configuracion/zonas/page.tsx` y `ZonasModule.tsx` sin argumentos.
     expect(listarArbolGeografico.length).toBe(0);
   });
 });

@@ -223,7 +223,8 @@ describe("376 — el desenlace `sin_zona_central` del repositorio", () => {
       // persona que esta guardando. Comparar contra su propia fuente dejaria pasar cualquier
       // reescritura del mensaje, incluida una que no diga que hacer.
       expect(r.fieldErrors.esCentral).toEqual([
-        "Tiene que haber una zona central. Para quitarle la marca a ésta, márcala en otra zona.",
+        // SLT-51 (R10): la marca se rotula «zona de bodega principal» en la pantalla.
+        "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.",
       ]);
       // Y es DISTINGUIBLE de los otros errores de validacion de la zona (R6): ninguno de los dos
       // que ya existian cuelga de este campo.
@@ -378,6 +379,44 @@ describe("actualizar", () => {
     const llamada = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(llamada[0]).toBe("z1");
     expect(llamada[2]).toBe(MAESTRO.usuarioId);
+  });
+});
+
+/**
+ * SLT-51 (R6/R7/R9) — el servicio TRANSPORTA la ausencia de costos; que el repositorio no toque
+ * las filas se mide contra Postgres en `tests/integration/db/zona-guardado-conserva-costos.test.ts`.
+ */
+describe("SLT-51 — actualizar sin cobroVehiculo ni tarifas", () => {
+  it("R7: llegan al repo como `undefined` (no como `false`/`[]`) y no se consultan vehiculos", async () => {
+    await service.actualizar("z1", { nombre: "GAM", distritoIds: ["d1"] }, MAESTRO);
+    const data = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(data.cobroVehiculo).toBeUndefined();
+    expect(data.tarifas).toBeUndefined();
+    expect(repo.countExistingVehiculos).not.toHaveBeenCalled();
+  });
+
+  it("R9: con los dos presentes, valida vehiculos y los pasa mapeados como hoy", async () => {
+    await service.actualizar(
+      "z1",
+      {
+        nombre: "GAM",
+        distritoIds: ["d1"],
+        cobroVehiculo: true,
+        tarifas: [{ cobroEntregado: 10, cobroRechazado: 5, vehiculoId: "v1" }],
+      },
+      MAESTRO,
+    );
+    expect(repo.countExistingVehiculos).toHaveBeenCalledWith(["v1"]);
+    const data = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(data.cobroVehiculo).toBe(true);
+    expect(data.tarifas).toEqual([{ cobroEntregado: 10, cobroRechazado: 5, vehiculoId: "v1" }]);
+  });
+
+  it("R5: crear sigue pasando valores (false y []) al repo", async () => {
+    await service.crear(crearInput(), MAESTRO);
+    const data = (repo.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(data.cobroVehiculo).toBe(false);
+    expect(data.tarifas).toEqual([]);
   });
 });
 

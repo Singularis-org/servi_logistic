@@ -223,7 +223,7 @@ describe("el tamano de pagina no se inventa en la pantalla (T H.1)", () => {
     //
     // Deuda PREEXISTENTE y declarada, fuera del Anexo III (no se toca aqui):
     // `DesglosePagosMensajero.tsx` y `DesgloseMovimientosTienda.tsx` tienen
-    // `const DESGLOSE_PAGE_SIZE = 20`, y `TiendasModule`/`ZonasTarifasModule` tienen
+    // `const DESGLOSE_PAGE_SIZE = 20`, y `TiendasModule`/`ZonasModule` tienen
     // `const PAGE_SIZE = 100`. Ver progress/impl_170-fase2-tanda-h.md.
     const infractoras: string[] = [];
 

@@ -566,6 +566,7 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     roles: ["maestro"],
     children: [
       { label: "Usuarios", href: "/configuracion" },
+      { label: "Zonas", href: "/configuracion/zonas" },
       { label: "Tarifas", href: "/configuracion/tarifas" },
       { label: "API", href: "/configuracion/api" },
       // SL-36 (design §14): las cuentas de los servicios externos de la empresa, junto a «API»

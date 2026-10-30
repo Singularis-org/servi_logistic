@@ -392,7 +392,8 @@ export class ZonaRepository implements IZonaRepository {
           // ⚠️ 376/R1 — `esCentral: undefined` NO ESCRIBE LA COLUMNA. Es una propiedad de Prisma
           // («campo no provisto»), no una casualidad, y es lo que hace que un payload sin la marca
           // deje la marca como estaba. Un doble de Prisma NO distingue esto de escribir `false`:
-          // por eso R1 se mide contra Postgres real.
+          // por eso R1 se mide contra Postgres real. SLT-51 (R7): `cobroVehiculo` usa el mismo
+          // mecanismo — ausente en el payload, la bandera queda como estaba.
           data: { nombre: data.nombre, cobroVehiculo: data.cobroVehiculo, esCentral: data.esCentral },
         });
 
@@ -413,10 +414,17 @@ export class ZonaRepository implements IZonaRepository {
         // ⚠️ EL `select` NO PIDE `id`, y no es una omision: el guardado lo REGENERA en cada
         // reemplazo, asi que compararlo daria «cambio» siempre. No se puede mirar lo que no se
         // leyo (R3).
-        const pagosPrevios = await tx.tarifaZonaMensajero.findMany({
-          where: { zonaId: id },
-          select: { vehiculoId: true, cobroEntregado: true, cobroRechazado: true },
-        });
+        //
+        // ⭑ SLT-51 (R6/R7): sin `tarifas` en el payload no hay reemplazo, asi que no hay «antes»
+        // que fotografiar. El formulario de zona ya no manda costos; si este bloque corriera igual,
+        // cada guardado de distritos borraria el pago al mensajero de la zona.
+        const tocaPagos = data.tarifas !== undefined;
+        const pagosPrevios = tocaPagos
+          ? await tx.tarifaZonaMensajero.findMany({
+              where: { zonaId: id },
+              select: { vehiculoId: true, cobroEntregado: true, cobroRechazado: true },
+            })
+          : [];
 
         // Reemplazo completo del N:M y de las tarifas.
         await tx.zonaDistrito.deleteMany({ where: { zonaId: id } });
@@ -425,9 +433,11 @@ export class ZonaRepository implements IZonaRepository {
             data: data.distritoIds.map((distritoId) => ({ zonaId: id, distritoId })),
           });
         }
-        await tx.tarifaZonaMensajero.deleteMany({ where: { zonaId: id } });
-        if (data.tarifas.length > 0) {
-          await tx.tarifaZonaMensajero.createMany({ data: tarifaCreateRows(id, data.tarifas) });
+        if (data.tarifas !== undefined) {
+          await tx.tarifaZonaMensajero.deleteMany({ where: { zonaId: id } });
+          if (data.tarifas.length > 0) {
+            await tx.tarifaZonaMensajero.createMany({ data: tarifaCreateRows(id, data.tarifas) });
+          }
         }
 
         // 380/design §1: la lectura del «despues». ES LA MISMA CONSULTA que ya existia al final del
@@ -612,7 +622,9 @@ export class ZonaRepository implements IZonaRepository {
         // mucho tres lecturas por clave primaria dentro de la misma transaccion, y solo cuando hay
         // algo que escribir. Izarlo lo ejecutaria en TODOS los guardados, incluidos los que no
         // registran nada.
-        if (cambioElPagoAlMensajero(pagosPrevios, tarifas)) {
+        // SLT-51 (R6): sin reemplazo no hay cambio que registrar; `pagosPrevios` vacio contra las
+        // filas intactas daria un «cambio» falso.
+        if (tocaPagos && cambioElPagoAlMensajero(pagosPrevios, tarifas)) {
           const actorDelPago = await resolverActorCongelado(tx, actorUsuarioId);
           await appendAccion(
             tx,
