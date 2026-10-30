@@ -33,11 +33,12 @@ vi.mock("@/lib/actions/modulos-empresa", () => ({
 }));
 
 // SLT-58 (design §6.3; R19): la lectura del plan de la empresa y las actions de planes, como dobles.
-const { verPlanMock, verDetalleMock, asignablesMock, asignarMock } = vi.hoisted(() => ({
+const { verPlanMock, verDetalleMock, asignablesMock, asignarMock, previsualizarMock } = vi.hoisted(() => ({
   verPlanMock: vi.fn(),
   verDetalleMock: vi.fn(),
   asignablesMock: vi.fn(),
   asignarMock: vi.fn(),
+  previsualizarMock: vi.fn(),
 }));
 vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
   verPlanDeEmpresa: (...a: unknown[]) => verPlanMock(...a),
@@ -46,6 +47,7 @@ vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
 vi.mock("@/lib/actions/planes", () => ({
   listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
   asignarPlanAction: (...a: unknown[]) => asignarMock(...a),
+  previsualizarAsignacionPlanAction: (...a: unknown[]) => previsualizarMock(...a),
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -88,6 +90,7 @@ beforeEach(() => {
   } satisfies PlanDeEmpresaResult);
   asignablesMock.mockResolvedValue({ estado: "ok", planes: [] });
   verDetalleMock.mockResolvedValue({ estado: "not_found" });
+  previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" });
 });
 
 afterEach(() => cleanup());
@@ -284,6 +287,35 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
 
     expect(await screen.findByRole("dialog")).toHaveTextContent("Asignar Básico a Envíos Norte: desde ahora tendrá:");
     expect(asignarMock).not.toHaveBeenCalled();
+  });
+
+  it("§11.5 (R29, R37): el modal de primera asignación trae el rango del reloj del servidor y lee la vista previa con la action", async () => {
+    // Solo `Date` es falso: 2026-10-29 12:00 en la hora de la plataforma (UTC−6).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+    try {
+      actorMock.mockResolvedValue(superadmin);
+      asignablesMock.mockResolvedValue({ estado: "ok", planes: [{ ...ACTUAL_DTO, nombre: "Básico" }] });
+      const user = userEvent.setup();
+
+      render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+      await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
+      await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
+      await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+
+      const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del ciclo de órdenes");
+      expect(campo).toHaveValue("2026-10-29");
+      expect(campo).toHaveAttribute("min", "2026-09-29");
+      expect(campo).toHaveAttribute("max", "2026-11-29");
+      expect(previsualizarMock).toHaveBeenCalledWith({
+        organizacionId: ORG,
+        planId: ACTUAL_DTO.id,
+        inicioCiclo: "2026-10-29",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("R19: un rol de empresa no lee el plan (notFound antes de leer)", async () => {

@@ -134,7 +134,7 @@
   y desbloqueo de órdenes, R42 bloqueo y desbloqueo de `adminTienda` y de API keys, y cambio de plan a
   uno menor sigue en `tope_excedido`; R37 avisos de la vista previa = avisos de la asignación, R39) en
   verde; suite de SL-24 en verde sin tocar (`planes-asignacion.test.ts`: R12 sin fecha sigue rechazando).
-- [ ] **T15 — Modal de primera asignación** (frontend_dev; design §11.5, §6.5). Depende de T14.
+- [x] **T15 — Modal de primera asignación** (frontend_dev; design §11.5, §6.5). Depende de T14.
   Campo de fecha con hoy por defecto y `min`/`max` del servidor, vista previa al abrir y al cambiar la
   fecha, aviso, `cicloEmpiezaEl`, error de campo, P11; la página pasa `rangoInicioCiclo` y la action.
   «Cambiar plan» sin campo.

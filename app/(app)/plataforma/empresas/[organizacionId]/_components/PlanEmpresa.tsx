@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
@@ -10,18 +10,31 @@ import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/useToast";
+import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import { formatearConteo } from "@/lib/planes/consumo";
 import {
+  apiKeysYaPasadas,
   lineasDeCambioDelPlan,
+  ordenesYaPasadas,
+  rangoInicioCiclo as textoRangoInicioCiclo,
+  rolYaPasado,
   SIN_LINEAS_DE_CAMBIO,
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import type { PlanDeEmpresaVista, PlanDTO, PlanResult } from "@/lib/types/planes";
+import type {
+  PlanDeEmpresaVista,
+  PlanDTO,
+  PlanResult,
+  TopeExcedido,
+  VistaPreviaAsignacionResult,
+} from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
@@ -54,7 +67,12 @@ const TEXTOS = {
   primeraLista: "Lo que tendrá la empresa",
   modulosIncluidos: (modulos: string) => `Módulos incluidos: ${modulos}`,
   sinModulos: "Ninguno",
-  cicloEmpiezaHoy: "El ciclo de órdenes empieza hoy.",
+  /** R38 (aprobado el 2026-10-29): sustituye a «El ciclo de órdenes empieza hoy.». */
+  cicloEmpiezaEl: (fecha: string) => `El ciclo de órdenes empieza el ${fecha}.`,
+  /** P13 (aprobado el 2026-10-29). */
+  inicioCiclo: "Inicio del ciclo de órdenes",
+  /** P11 (aprobada el 2026-10-29): sin la vista previa no se confirma. */
+  vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
   volver: "Volver",
   historial: "Historial de asignaciones",
   sinHistorial: "Esta empresa todavía no tiene asignaciones de plan.",
@@ -88,8 +106,41 @@ export interface PlanEmpresaProps {
    * leer, y la confirmación lo dice y no deja confirmar: solo «Reintentar» (relee) y «Volver».
    */
   planActual?: PlanDTO | null;
-  /** `asignarPlanAction`, inyectada desde la página para poder probarla. */
-  asignarPlan: (input: { organizacionId: string; planId: string }) => Promise<PlanResult>;
+  /**
+   * `asignarPlanAction`, inyectada desde la página para poder probarla. `inicioCiclo` solo viaja en la
+   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31).
+   */
+  asignarPlan: (input: { organizacionId: string; planId: string; inicioCiclo?: string }) => Promise<PlanResult>;
+  /**
+   * SLT-58 §11.5 (R30): el rango de la fecha de inicio del ciclo, calculado en el servidor para no
+   * depender del reloj del navegador. `hoy` es el valor por defecto del campo.
+   */
+  rangoInicioCiclo: RangoDelInicioDelCiclo;
+  /** `previsualizarAsignacionPlanAction` (R37), inyectada desde la página para poder probarla. */
+  previsualizarAsignacion: (input: {
+    organizacionId: string;
+    planId: string;
+    inicioCiclo: string;
+  }) => Promise<VistaPreviaAsignacionResult>;
+}
+
+/**
+ * La vista previa de la primera asignación (R37). `invalida` = la fecha no vale (su error va junto al
+ * campo); `fallo` = no se pudo leer (P11), con el rechazo del servicio si lo hubo.
+ */
+type VistaPrevia =
+  | { fase: "cargando" }
+  | { fase: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { fase: "invalida" }
+  | { fase: "fallo"; motivo: string | null };
+
+/** R37/R42: el texto de un tope que la empresa ya pasa; `siguienteCiclo` es la fecha de P10. */
+function textoDelAviso(aviso: TopeExcedido, siguienteCiclo: string): string {
+  const usados = formatearConteo(aviso.usados);
+  const maximo = formatearConteo(aviso.maximo);
+  if (aviso.tope === "ordenes") return ordenesYaPasadas(usados, maximo, siguienteCiclo);
+  if (aviso.tope === "api_keys") return apiKeysYaPasadas(usados, maximo);
+  return rolYaPasado(usados, maximo, aviso.tope);
 }
 
 /** Un instante ISO como «AAAA-MM-DD HH:mm» en la hora de la plataforma. */
@@ -112,10 +163,13 @@ export function PlanEmpresa({
   asignables,
   planActual,
   asignarPlan,
+  rangoInicioCiclo,
+  previsualizarAsignacion,
 }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
   const campoId = useId();
+  const fechaId = useId();
   const router = useRouter();
   const toast = useToast();
   const [planId, setPlanId] = useState("");
@@ -123,6 +177,14 @@ export function PlanEmpresa({
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
   const [confirmando, setConfirmando] = useState(false);
+  const [inicioCiclo, setInicioCiclo] = useState(rangoInicioCiclo.hoy);
+  const [vistaPrevia, setVistaPrevia] = useState<VistaPrevia>({ fase: "cargando" });
+  const [errorDeFecha, setErrorDeFecha] = useState<string[] | undefined>(undefined);
+  /** Los avisos del `ok` de la primera asignación (§11.5), bajo la sección y con el texto del modal. */
+  const [avisosAsignados, setAvisosAsignados] = useState<string[]>([]);
+  // Cada lectura de la vista previa lleva su número: si el superadmin cambia la fecha antes de que
+  // vuelva la anterior, la respuesta vieja se descarta y no pisa los avisos de la fecha nueva.
+  const lecturaRef = useRef(0);
 
   const planActualId = vista?.plan?.planId ?? null;
 
@@ -173,23 +235,75 @@ export function PlanEmpresa({
   function pulsar() {
     if (planId === "" || enVuelo) return;
     setRechazo(null);
+    setAvisosAsignados([]);
+    if (vista?.plan === null) {
+      // R29: cada apertura empieza en «hoy»; R37: y lee la vista previa de esa fecha.
+      setInicioCiclo(rangoInicioCiclo.hoy);
+      void leerVistaPrevia(rangoInicioCiclo.hoy);
+    }
     setConfirmando(true);
+  }
+
+  /** R37: qué topes pasaría la empresa con esa fecha. Mientras no vuelve con `ok`, no se confirma. */
+  async function leerVistaPrevia(fecha: string) {
+    const lectura = ++lecturaRef.current;
+    setErrorDeFecha(undefined);
+    if (fecha === "") {
+      // Un campo vaciado no se manda: el servicio lo rechazaría con este mismo texto (R30).
+      setVistaPrevia({ fase: "invalida" });
+      setErrorDeFecha([textoRangoInicioCiclo(rangoInicioCiclo.min, rangoInicioCiclo.max)]);
+      return;
+    }
+    setVistaPrevia({ fase: "cargando" });
+    try {
+      const r = await previsualizarAsignacion({ organizacionId, planId, inicioCiclo: fecha });
+      if (lectura !== lecturaRef.current) return;
+      if (r.estado === "ok") {
+        setVistaPrevia({ fase: "ok", avisos: r.avisos, siguienteCiclo: r.siguienteCiclo });
+      } else if (r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {
+        setVistaPrevia({ fase: "invalida" });
+        setErrorDeFecha(r.fieldErrors.inicioCiclo);
+      } else {
+        setVistaPrevia({ fase: "fallo", motivo: r.estado === "validation_error" ? null : RECHAZOS[r.estado] });
+      }
+    } catch (error) {
+      if (lectura !== lecturaRef.current) return;
+      console.error("[PlanEmpresa] previsualizarAsignacion lanzó", error);
+      setVistaPrevia({ fase: "fallo", motivo: null });
+    }
+  }
+
+  function cambiarFecha(fecha: string) {
+    setInicioCiclo(fecha);
+    void leerVistaPrevia(fecha);
   }
 
   /** Con el plan actual ilegible no hay resumen: se ofrece releer la página, nunca confirmar. */
   const sinResumen = Boolean(vista?.plan) && lineasDeCambio === null;
 
   async function asignar() {
+    const primera = vista?.plan === null;
     if (planId === "" || enVuelo || sinResumen) return;
+    // P11: la primera asignación solo se confirma con la vista previa leída.
+    if (primera && vistaPrevia.fase !== "ok") return;
     setEnVuelo(true);
     setRechazo(null);
     setErrorDeCampo(undefined);
+    let seguirAbierto = false;
     try {
-      const r = await asignarPlan({ organizacionId, planId });
+      const r = await asignarPlan(primera ? { organizacionId, planId, inicioCiclo } : { organizacionId, planId });
       if (r.estado === "ok") {
         setPlanId("");
+        if (primera && vistaPrevia.fase === "ok") {
+          setAvisosAsignados(r.avisos.map((a) => textoDelAviso(a, vistaPrevia.siguienteCiclo)));
+        }
         toast.success(TEXTOS.asignado);
         router.refresh();
+      } else if (primera && r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {
+        // §11.5: el error de la fecha junto a su campo, con el modal abierto para elegir otra.
+        seguirAbierto = true;
+        setVistaPrevia({ fase: "invalida" });
+        setErrorDeFecha(r.fieldErrors.inicioCiclo);
       } else if (r.estado === "tope_excedido") {
         // R20: qué tope se pasa, con el uso y el tope; el texto ya viene redactado del servicio.
         setRechazo(r.mensaje);
@@ -206,7 +320,7 @@ export function PlanEmpresa({
     } finally {
       setEnVuelo(false);
       // Con `ok` el modal se desmonta (ya no hay plan elegido) antes de poder cerrarse solo.
-      setConfirmando(false);
+      if (!seguirAbierto) setConfirmando(false);
     }
   }
 
@@ -241,6 +355,7 @@ export function PlanEmpresa({
                     onValueChange={(v) => {
                       setPlanId(v);
                       setRechazo(null);
+                      setAvisosAsignados([]);
                       setErrorDeCampo(undefined);
                     }}
                     options={opciones}
@@ -256,6 +371,7 @@ export function PlanEmpresa({
           )}
 
           {rechazo !== null && <AvisoDeError>{rechazo}</AvisoDeError>}
+          {avisosAsignados.length > 0 && <AvisosDeTopes avisos={avisosAsignados} />}
 
           <div className="flex flex-col gap-2">
             <h3 id={historialId} className="text-sm font-semibold">
@@ -336,27 +452,71 @@ export function PlanEmpresa({
       ) : null}
 
       {vista && vista.plan === null && elegido !== null && lineasDePrimera !== null ? (
+        // §11.5: sin vista previa no se confirma (P11). Si la lectura falla, el botón de confirmar pasa
+        // a ser «Reintentar» (relee con la misma fecha) y «Asignar plan» no se ofrece.
         <Modal
           open={confirmando}
           onOpenChange={setConfirmando}
           title={TEXTOS.primeraTitulo}
           description={TEXTOS.primeraTexto(elegido.nombre, empresaNombre)}
-          confirmLabel={TEXTOS.asignar}
+          confirmLabel={vistaPrevia.fase === "fallo" ? TEXTOS.reintentar : TEXTOS.asignar}
+          confirmDisabled={vistaPrevia.fase === "cargando" || vistaPrevia.fase === "invalida"}
           cancelLabel={TEXTOS.volver}
+          closeOnConfirm={false}
           size="md"
-          onConfirm={() => asignar()}
+          onConfirm={() => (vistaPrevia.fase === "fallo" ? leerVistaPrevia(inicioCiclo) : asignar())}
         >
-          <div className="flex flex-col gap-2 text-sm">
+          <div className="flex flex-col gap-3 text-sm">
             <ul aria-label={TEXTOS.primeraLista} className="flex list-disc flex-col gap-1 pl-5">
               {lineasDePrimera.map((linea) => (
                 <li key={linea}>{linea}</li>
               ))}
             </ul>
-            <p>{TEXTOS.cicloEmpiezaHoy}</p>
+            <FormField id={fechaId} label={TEXTOS.inicioCiclo} error={errorDeFecha}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  value={inicioCiclo}
+                  min={rangoInicioCiclo.min}
+                  max={rangoInicioCiclo.max}
+                  disabled={enVuelo}
+                  onChange={(ev) => cambiarFecha(ev.target.value)}
+                />
+              )}
+            </FormField>
+            {inicioCiclo !== "" && <p>{TEXTOS.cicloEmpiezaEl(inicioCiclo)}</p>}
+            {vistaPrevia.fase === "fallo" ? (
+              <AvisoDeError>
+                {vistaPrevia.motivo === null
+                  ? TEXTOS.vistaPreviaNoCargo
+                  : `${TEXTOS.vistaPreviaNoCargo}\n${vistaPrevia.motivo}`}
+              </AvisoDeError>
+            ) : vistaPrevia.fase === "ok" && vistaPrevia.avisos.length > 0 ? (
+              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAviso(a, vistaPrevia.siguienteCiclo))} />
+            ) : null}
           </div>
         </Modal>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * R37/R42: los topes que la empresa ya pasa con el plan. No es un error (el plan se asigna igual), así
+ * que va en el `Alert` normal; uno por tope, con el mismo texto antes y después de confirmar.
+ */
+function AvisosDeTopes({ avisos }: { avisos: string[] }) {
+  return (
+    <Alert>
+      <AlertDescription>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          {avisos.map((aviso) => (
+            <li key={aviso}>{aviso}</li>
+          ))}
+        </ul>
+      </AlertDescription>
+    </Alert>
   );
 }
 

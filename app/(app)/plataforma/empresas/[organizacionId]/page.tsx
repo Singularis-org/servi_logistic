@@ -5,11 +5,16 @@ import { AppPage } from "@/components/shared/AppPage";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
 import { verDetalleDePlan, verPlanDeEmpresa } from "@/lib/actions/_shared/planes-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
-import { asignarPlanAction, listarPlanesAsignablesAction } from "@/lib/actions/planes";
+import {
+  asignarPlanAction,
+  listarPlanesAsignablesAction,
+  previsualizarAsignacionPlanAction,
+} from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
+import { rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import type { PlanDeEmpresaVista, PlanDTO } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
@@ -116,6 +121,9 @@ export default async function EmpresaDetallePage({
           asignables={asignables}
           planActual={planActual}
           asignarPlan={asignarPlanAction}
+          // SLT-58 §11.5: el rango sale del reloj del servidor, el mismo que valida el servicio (R30).
+          rangoInicioCiclo={rangoDelInicioDelCiclo(new Date())}
+          previsualizarAsignacion={previsualizarAsignacionPlanAction}
         />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">

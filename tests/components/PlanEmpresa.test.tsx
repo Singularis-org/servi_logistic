@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-// SLT-58 (design §6.3; R18, R19, R20, R21) — EL PLAN DE UNA EMPRESA EN SU DETALLE DEL SUPERADMIN.
+// SLT-58 (design §6.3, §11.5; R18, R19, R20, R21, R29, R37, R38) — EL PLAN DE UNA EMPRESA EN SU
+// DETALLE DEL SUPERADMIN.
 //
-// Se monta el componente REAL con el `ToastProvider` real; `asignarPlanAction` llega por props como un
-// doble y `router.refresh` se espía. El plan se arma con `planConConsumo` real, así que las filas, las
+// Se monta el componente REAL con el `ToastProvider` real; `asignarPlanAction` y
+// `previsualizarAsignacionPlanAction` llegan por props como dobles y `router.refresh` se espía. El plan se arma con `planConConsumo` real, así que las filas, las
 // marcas y el reinicio son los mismos que ve la empresa en «Mi plan».
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
@@ -13,8 +14,18 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock, pu
 
 import { ToastProvider } from "@/providers/ToastProvider";
 import { PlanEmpresa } from "@/app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa";
+import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { planConConsumo, type PlanConUsoLeido } from "@/lib/planes/consumo";
-import type { AsignacionDePlan, PlanDeEmpresaVista, PlanDTO, PlanResult } from "@/lib/types/planes";
+import type {
+  AsignacionDePlan,
+  PlanDeEmpresaVista,
+  PlanDTO,
+  PlanResult,
+  VistaPreviaAsignacionResult,
+} from "@/lib/types/planes";
+
+type EntradaAsignar = { organizacionId: string; planId: string; inicioCiclo?: string };
+type EntradaVistaPrevia = { organizacionId: string; planId: string; inicioCiclo: string };
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const OTRA = "0a0b0c0d-1111-4222-8333-444455556666";
@@ -90,15 +101,23 @@ const ACTUAL = planDTO({ id: PLAN_ACTUAL, ...LEIDO.vigente });
 
 const OK: PlanResult = { estado: "ok", planId: PUBLICO.id, cambio: true, avisos: [], vigenteDesde: null };
 
+// El rango que la página calcula en el servidor (§11.5); aquí, fijo.
+const RANGO: RangoDelInicioDelCiclo = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
+const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
+
 function montar({
   v = vista(),
   asignables = [PUBLICO, CUSTOM_SUYO, CUSTOM_AJENO, ARCHIVADO, ACTUAL] as PlanDTO[] | null,
-  asignar = vi.fn<(i: { organizacionId: string; planId: string }) => Promise<PlanResult>>().mockResolvedValue(OK),
+  asignar = vi.fn<(i: EntradaAsignar) => Promise<PlanResult>>().mockResolvedValue(OK),
+  previsualizar = vi
+    .fn<(i: EntradaVistaPrevia) => Promise<VistaPreviaAsignacionResult>>()
+    .mockResolvedValue(VISTA_PREVIA_OK),
   planActual,
 }: {
   v?: PlanDeEmpresaVista | null;
   asignables?: PlanDTO[] | null;
-  asignar?: (i: { organizacionId: string; planId: string }) => Promise<PlanResult>;
+  asignar?: (i: EntradaAsignar) => Promise<PlanResult>;
+  previsualizar?: (i: EntradaVistaPrevia) => Promise<VistaPreviaAsignacionResult>;
   planActual?: PlanDTO | null;
 } = {}) {
   render(
@@ -110,10 +129,28 @@ function montar({
         asignables={asignables}
         planActual={planActual}
         asignarPlan={asignar}
+        rangoInicioCiclo={RANGO}
+        previsualizarAsignacion={previsualizar}
       />
     </ToastProvider>,
   );
   return asignar;
+}
+
+/**
+ * Primera asignación: elige el plan, abre el modal y espera a que la vista previa vuelva (con un doble
+ * resuelto, «Asignar plan» se habilita). Devuelve el modal.
+ */
+async function abrirPrimera(user: ReturnType<typeof userEvent.setup>, nombre = "Básico (Público)") {
+  await elegir(user, nombre);
+  await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+  return screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+}
+
+async function confirmarPrimera(user: ReturnType<typeof userEvent.setup>, modal: HTMLElement) {
+  const boton = within(modal).getByRole("button", { name: "Asignar plan" });
+  await waitFor(() => expect(boton).toBeEnabled());
+  await user.click(boton);
 }
 
 async function elegir(user: ReturnType<typeof userEvent.setup>, nombre: string) {
@@ -438,9 +475,7 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
       asignar: vi.fn(() => new Promise<PlanResult>((r) => (resolver = r))),
     });
 
-    await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Asignar plan" }));
+    await confirmarPrimera(user, await abrirPrimera(user));
 
     // Con el modal abierto el resto de la página queda `aria-hidden`: el botón de la sección se busca igual.
     const seccion = screen.getByRole("region", { name: "Plan", hidden: true });
@@ -463,14 +498,11 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
 describe("SLT-58 R20 — la primera asignación también pide confirmación (decisión cerrada del 2026-10-29)", () => {
   const SIN_PLAN = () => vista({ plan: null });
 
-  it("R20: el modal dice «Asignar <plan> a <empresa>», cada tope (con «sin límite»), los módulos y que el ciclo empieza hoy", async () => {
+  it("R20, R38: el modal dice «Asignar <plan> a <empresa>», cada tope (con «sin límite»), los módulos y el día en que empieza el ciclo", async () => {
     const user = userEvent.setup();
     const asignar = montar({ v: SIN_PLAN() });
 
-    await elegir(user, "Enterprise Norte (Custom)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
-
-    const modal = await screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+    const modal = await abrirPrimera(user, "Enterprise Norte (Custom)");
     expect(modal).toHaveTextContent("Asignar Enterprise Norte a Envíos Norte: desde ahora tendrá:");
     const lineas = within(modal).getByRole("list", { name: "Lo que tendrá la empresa" });
     expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
@@ -483,7 +515,9 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
       "API keys activas: 2",
       "Módulos incluidos: Analítica, Monitoreo",
     ]);
-    expect(modal).toHaveTextContent("El ciclo de órdenes empieza hoy.");
+    // R38: la frase con la fecha elegida sustituye a «empieza hoy».
+    expect(modal).toHaveTextContent("El ciclo de órdenes empieza el 2026-10-29.");
+    expect(modal).not.toHaveTextContent("El ciclo de órdenes empieza hoy.");
     expect(asignar).not.toHaveBeenCalled();
   });
 
@@ -491,10 +525,7 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     const user = userEvent.setup();
     montar({ v: SIN_PLAN() });
 
-    await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
-
-    const lineas = within(await screen.findByRole("dialog")).getByRole("list", { name: "Lo que tendrá la empresa" });
+    const lineas = within(await abrirPrimera(user)).getByRole("list", { name: "Lo que tendrá la empresa" });
     expect(lineas).toHaveTextContent("Órdenes por ciclo: sin límite");
     expect(lineas).toHaveTextContent("Módulos incluidos: Ninguno");
   });
@@ -503,24 +534,261 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     const user = userEvent.setup();
     const asignar = montar({ v: SIN_PLAN() });
 
-    await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver" }));
+    await user.click(within(await abrirPrimera(user)).getByRole("button", { name: "Volver" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(asignar).not.toHaveBeenCalled();
   });
 
-  it("R20: confirmar sí llama a asignarPlanAction con la elección y relee la página", async () => {
+  it("R20, R29: confirmar sí llama a asignarPlanAction con la elección y la fecha, y relee la página", async () => {
     const user = userEvent.setup();
     const asignar = montar({ v: SIN_PLAN() });
 
-    await elegir(user, "Básico (Público)");
-    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Asignar plan" }));
+    await confirmarPrimera(user, await abrirPrimera(user));
 
     expect(asignar).toHaveBeenCalledTimes(1);
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: RANGO.hoy });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignación", () => {
+  const SIN_PLAN = () => vista({ plan: null });
+  const campoFecha = (modal: HTMLElement) =>
+    within(modal).getByLabelText("Inicio del ciclo de órdenes") as HTMLInputElement;
+  const vistaPreviaCon = (avisos: Extract<VistaPreviaAsignacionResult, { estado: "ok" }>["avisos"]) =>
+    ({ estado: "ok", avisos, siguienteCiclo: "2026-11-05" }) satisfies VistaPreviaAsignacionResult;
+
+  it("R29: el campo trae «hoy» por defecto, con el min/max del servidor, y la vista previa lee esa fecha", async () => {
+    const user = userEvent.setup();
+    const previsualizar = vi.fn().mockResolvedValue(VISTA_PREVIA_OK);
+    montar({ v: SIN_PLAN(), previsualizar });
+
+    const campo = campoFecha(await abrirPrimera(user));
+    expect(campo).toHaveAttribute("type", "date");
+    expect(campo).toHaveValue("2026-10-29");
+    expect(campo).toHaveAttribute("min", "2026-09-29");
+    expect(campo).toHaveAttribute("max", "2026-11-29");
+    expect(previsualizar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+  });
+
+  it("R29, R38: la fecha elegida viaja en la asignación y la frase la repite", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: SIN_PLAN() });
+
+    const modal = await abrirPrimera(user);
+    fireEvent.change(campoFecha(modal), { target: { value: "2026-10-05" } });
+    expect(modal).toHaveTextContent("El ciclo de órdenes empieza el 2026-10-05.");
+    await confirmarPrimera(user, modal);
+
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-05" });
+  });
+
+  it("R37: aviso de órdenes con «3.200 de 3.000» y el día del siguiente ciclo, de un rol y de las API keys", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: SIN_PLAN(),
+      previsualizar: vi.fn().mockResolvedValue(
+        vistaPreviaCon([
+          { organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 },
+          { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 12, maximo: 10 },
+          { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
+        ]),
+      ),
+    });
+
+    const modal = await abrirPrimera(user);
+    const aviso = await within(modal).findByRole("alert");
+    expect(within(aviso).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
+      "La empresa ya tiene 12 de 10 Mensajero: no podrá activar ni crear más hasta bajar del tope.",
+      "La empresa ya tiene 3 de 2 API keys activas: no podrá crear ni activar más hasta bajar del tope.",
+    ]);
+    // Es un aviso, no un error: el plan se puede asignar igual (R36, R42).
+    expect(aviso).not.toHaveClass("text-danger-strong");
+    await waitFor(() => expect(within(modal).getByRole("button", { name: "Asignar plan" })).toBeEnabled());
+  });
+
+  it("R37: sin tope pasado no hay aviso", async () => {
+    const user = userEvent.setup();
+    montar({ v: SIN_PLAN() });
+
+    const modal = await abrirPrimera(user);
+    await waitFor(() => expect(within(modal).getByRole("button", { name: "Asignar plan" })).toBeEnabled());
+    expect(within(modal).queryByRole("alert")).toBeNull();
+  });
+
+  it("R37: cambiar la fecha relee la vista previa con la fecha nueva y pinta sus avisos", async () => {
+    const user = userEvent.setup();
+    const previsualizar = vi
+      .fn()
+      .mockResolvedValueOnce(VISTA_PREVIA_OK)
+      .mockResolvedValueOnce(
+        vistaPreviaCon([{ organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 }]),
+      );
+    montar({ v: SIN_PLAN(), previsualizar });
+
+    const modal = await abrirPrimera(user);
+    await waitFor(() => expect(previsualizar).toHaveBeenCalledTimes(1));
+    expect(within(modal).queryByRole("alert")).toBeNull();
+
+    fireEvent.change(campoFecha(modal), { target: { value: "2026-10-05" } });
+
+    expect(previsualizar).toHaveBeenCalledTimes(2);
+    expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-05" });
+    expect(await within(modal).findByRole("alert")).toHaveTextContent(
+      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
+    );
+  });
+
+  it("R37: una respuesta vieja no pisa la de la fecha nueva", async () => {
+    const user = userEvent.setup();
+    let resolverVieja: (r: VistaPreviaAsignacionResult) => void = () => {};
+    const previsualizar = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<VistaPreviaAsignacionResult>((r) => (resolverVieja = r)))
+      .mockResolvedValueOnce(VISTA_PREVIA_OK);
+    montar({ v: SIN_PLAN(), previsualizar });
+
+    const modal = await abrirPrimera(user);
+    fireEvent.change(campoFecha(modal), { target: { value: "2026-10-05" } });
+    await waitFor(() => expect(within(modal).getByRole("button", { name: "Asignar plan" })).toBeEnabled());
+
+    resolverVieja(
+      vistaPreviaCon([{ organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 }]),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(within(modal).queryByRole("alert")).toBeNull();
+  });
+
+  it("P11: con la vista previa en vuelo, «Asignar plan» está deshabilitado", async () => {
+    const user = userEvent.setup();
+    let resolver: (r: VistaPreviaAsignacionResult) => void = () => {};
+    const asignar = montar({
+      v: SIN_PLAN(),
+      previsualizar: vi.fn(() => new Promise<VistaPreviaAsignacionResult>((r) => (resolver = r))),
+    });
+
+    const modal = await abrirPrimera(user);
+    const boton = within(modal).getByRole("button", { name: "Asignar plan" });
+    expect(boton).toBeDisabled();
+    await user.click(boton);
+    expect(asignar).not.toHaveBeenCalled();
+
+    resolver(VISTA_PREVIA_OK);
+    await waitFor(() => expect(boton).toBeEnabled());
+  });
+
+  it.each<[string, () => Promise<VistaPreviaAsignacionResult>]>([
+    ["lanza", () => Promise.reject(new Error("red"))],
+    ["responde not_found", () => Promise.resolve({ estado: "not_found" })],
+  ])("R37 (P11): si la lectura %s, solo «Reintentar» y «Volver», sin «Asignar plan»", async (_caso, falla) => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const asignar = montar({ v: SIN_PLAN(), previsualizar: vi.fn(falla) });
+
+    const modal = await abrirPrimera(user);
+    const aviso = await within(modal).findByRole("alert");
+    expect(aviso).toHaveTextContent("No se pudo comprobar el consumo de la empresa");
+    esAlertDestructivo(aviso);
+    expect(within(modal).getAllByRole("button").map((b) => b.textContent)).toEqual(["Volver", "Reintentar"]);
+    expect(within(modal).queryByRole("button", { name: "Asignar plan" })).toBeNull();
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it("R37 (P11): «Reintentar» relee la vista previa y, si vuelve, deja confirmar", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const previsualizar = vi.fn().mockRejectedValueOnce(new Error("red")).mockResolvedValueOnce(VISTA_PREVIA_OK);
+    const asignar = montar({ v: SIN_PLAN(), previsualizar });
+
+    const modal = await abrirPrimera(user);
+    await user.click(await within(modal).findByRole("button", { name: "Reintentar" }));
+
+    expect(previsualizar).toHaveBeenCalledTimes(2);
+    expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+    await confirmarPrimera(user, modal);
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+  });
+
+  it("R37 (P11): «Volver» con la lectura fallida cierra sin asignar", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const asignar = montar({ v: SIN_PLAN(), previsualizar: vi.fn().mockRejectedValue(new Error("red")) });
+
+    const modal = await abrirPrimera(user);
+    await within(modal).findByRole("button", { name: "Reintentar" });
+    await user.click(within(modal).getByRole("button", { name: "Volver" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it("R30: un `validation_error` de la fecha en la vista previa va junto al campo y no deja confirmar", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: SIN_PLAN(),
+      previsualizar: vi.fn().mockResolvedValue({
+        estado: "validation_error",
+        fieldErrors: { inicioCiclo: ["Elige una fecha entre el 2026-09-29 y el 2026-11-29."] },
+      } satisfies VistaPreviaAsignacionResult),
+    });
+
+    const modal = await abrirPrimera(user);
+    expect(await within(modal).findByText("Elige una fecha entre el 2026-09-29 y el 2026-11-29.")).toBeInTheDocument();
+    expect(campoFecha(modal)).toHaveAttribute("aria-invalid", "true");
+    expect(within(modal).getByRole("button", { name: "Asignar plan" })).toBeDisabled();
+  });
+
+  it("R31: un `validation_error` de la fecha al confirmar deja el modal abierto con el error junto al campo", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: SIN_PLAN(),
+      asignar: vi.fn().mockResolvedValue({
+        estado: "validation_error",
+        fieldErrors: { inicioCiclo: ["La fecha de inicio solo se elige en la primera asignación."] },
+      } satisfies PlanResult),
+    });
+
+    const modal = await abrirPrimera(user);
+    await confirmarPrimera(user, modal);
+
+    expect(await within(modal).findByText("La fecha de inicio solo se elige en la primera asignación.")).toBeInTheDocument();
+    expect(campoFecha(modal)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R36, R42: un `ok` con avisos los deja bajo la sección, con el mismo texto que el modal", async () => {
+    const user = userEvent.setup();
+    const aviso = { organizacionId: ORG, empresa: "Envíos Norte", tope: "ordenes" as const, usados: 3200, maximo: 3000 };
+    montar({
+      v: SIN_PLAN(),
+      previsualizar: vi.fn().mockResolvedValue(vistaPreviaCon([aviso])),
+      asignar: vi.fn().mockResolvedValue({ ...OK, avisos: [aviso] } satisfies PlanResult),
+    });
+
+    await confirmarPrimera(user, await abrirPrimera(user));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(within(screen.getByRole("region", { name: "Plan" })).getByRole("alert")).toHaveTextContent(
+      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-05.",
+    );
+  });
+
+  it("R31: «Cambiar plan» no tiene campo de fecha, no lee la vista previa y no envía `inicioCiclo`", async () => {
+    const user = userEvent.setup();
+    const previsualizar = vi.fn().mockResolvedValue(VISTA_PREVIA_OK);
+    const asignar = montar({ previsualizar });
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
+    expect(within(modal).queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+    await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
+
+    expect(asignar).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(asignar).mock.calls[0]![0]).not.toHaveProperty("inicioCiclo");
+    expect(previsualizar).not.toHaveBeenCalled();
   });
 });

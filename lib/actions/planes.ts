@@ -61,10 +61,8 @@ export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): 
 
 /**
  * SLT-58 (design §11.4; R37): la vista previa del modal de primera asignación. Es una action de lectura
- * porque la fecha la elige el superadmin después de que la página se pintó (§9, alternativa 5).
- *
- * @sin-superficie la usa T15 de SLT-58 (modal de primera asignación de `PlanEmpresa`, misma feature y
- * misma rama): el backend (T14) va antes que la pantalla. T15 quita esta anotación al conectarla.
+ * porque la fecha la elige el superadmin después de que la página se pintó (§9, alternativa 5). La
+ * usa el modal de primera asignación de `PlanEmpresa` (§11.5).
  */
 export async function previsualizarAsignacionPlanAction(
   input: unknown,
