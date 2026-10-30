@@ -98,6 +98,8 @@ export default defineConfig({
         "cobro-plataforma-sl40",
         "pago-plataforma-sl45",
         "integraciones-por-empresa",
+        // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
+        "planes-superadmin",
       ),
     },
     {

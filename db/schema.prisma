@@ -4629,7 +4629,9 @@ enum HistorialAccionTipo {
   modulo_desactivado
   /// SL-24 (design §9): el superadmin asigna o cambia el plan de la empresa. Entidad: `plan` (el plan
   /// nuevo); etiqueta: `Plan «<nombre>»`; `valor_anterior` y `valor_nuevo` NULL (el nombre es texto
-  /// libre y esas columnas son de vocabulario cerrado).
+  /// libre y esas columnas son de vocabulario cerrado). SLT-58 (design §11.4, R39): en la primera
+  /// asignación con fecha de inicio elegida, `valor_nuevo` lleva esa fecha (`AAAA-MM-DD`); sin fecha y
+  /// en un cambio de plan sigue NULL.
   plan_asignado
 
   @@map("historial_accion_tipo")
@@ -5439,6 +5441,12 @@ model Organizacion {
   plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
   planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
   planesExclusivos Plan[]    @relation("PlanExclusivo") // SL-24: los custom de esta empresa
+
+  // SLT-58 (design §11.2, R34): dónde empieza el ciclo corto, el instante de la primera asignación
+  // cuando la fecha elegida es futura. NULL en todo lo demás (R41). El
+  // `CHECK (… IS NULL OR (ancla IS NOT NULL AND … < ancla))` vive solo en el SQL de 20261029150000.
+  // Lo lee `plan_inicio_ciclo_en_curso`; solo lo escribe el superadmin, como el ancla.
+  planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)
 
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los

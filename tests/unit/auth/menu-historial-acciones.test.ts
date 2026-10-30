@@ -173,7 +173,9 @@ describe("R20 — el aterrizaje post-login no cambia para NADIE", () => {
     for (const rol of ROLES_HISTORICO_CONVERSACIONES) {
       const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol));
       expect(visibles.at(-1)?.label).toBe("Ayuda");
-      expect(visibles.at(-2)?.label).toBe(LABEL_PADRE);
+      // SLT-58 R10: «Mi plan» entra entre «Histórico» y «Ayuda»; «Histórico» sigue al final del bloque.
+      expect(visibles.at(-2)?.label).toBe("Mi plan");
+      expect(visibles.at(-3)?.label).toBe(LABEL_PADRE);
       expect(visibles[0]?.label).not.toBe(LABEL_PADRE);
     }
   });

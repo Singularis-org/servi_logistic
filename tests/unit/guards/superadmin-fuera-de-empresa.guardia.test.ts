@@ -93,7 +93,8 @@ const HREF_ITEM_PLATAFORMA = "/plataforma/empresas";
  * Los ÚNICOS ítems de plataforma del menú: «Empresas» (SL-32, R36) y «Geografía» (SL-20, R21).
  * Los dos leen `ROLES_PLATAFORMA` por identidad y no llevan subítems.
  */
-const HREFS_ITEMS_PLATAFORMA = new Set<string>([HREF_ITEM_PLATAFORMA, "/plataforma/geografia"]);
+// SLT-58 R23: «Planes» entra como tercer ítem de plataforma, con la misma regla (identidad, sin subítems).
+const HREFS_ITEMS_PLATAFORMA = new Set<string>([HREF_ITEM_PLATAFORMA, "/plataforma/geografia", "/plataforma/planes"]);
 
 /**
  * Los archivos de `lib/` y `app/` donde el literal `superadmin` es legítimo: la fuente única y las

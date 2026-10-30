@@ -414,6 +414,10 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "building",
     // SL-20 (R21): «Geografía», el árbol geográfico por país del superadmin.
     "map",
+    // SLT-58 (R10): «Mi plan», el consumo del plan de la empresa.
+    "gaugeCircle",
+    // SLT-58 (R23): «Planes», el catálogo de planes del superadmin.
+    "layers",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de
