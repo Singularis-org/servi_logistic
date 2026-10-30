@@ -68,3 +68,106 @@ Pendiente para frontend: `tests/components/ZonaCentralConfirmacion.test.tsx` lle
 literal del motivo viejo (es un doble, sigue verde); T8 lo actualiza.
 
 **Veredicto:** T1-T3 hechos; R6/R7 probados contra Postgres y la mutación los pone rojos.
+
+## Frontend (frontend_dev, T4-T10 + T11 nuevo) — 2026-10-29
+
+Commits: `7a892526` (T4), `e8126ee7` (T7), `37362c43` (T5), `cc605a8f` (T6), `5e2fca0e` (T8),
+`4881b8fc` (recuento del menú en `pwa-manifiesto-atajos`), `40f0453a` (T9), `18423db4` (T10),
+`99002ee0` (T11). T7 va antes que T5/T6 porque las páginas montan el módulo ya sin `vehiculos`.
+`7a892526` deja `TarifasPage.cobertura.test.tsx` rojo (TiendasModule sin doblar); lo sustituye `cc605a8f`.
+
+### Archivos
+
+- Mudados con `git mv` a `app/(app)/configuracion/zonas/_components/`: `ZonasModule.tsx` (antes
+  `ZonasTarifasModule.tsx`; sin `TiendasModule`, sin `listarTarifas`, sin `vehiculos`),
+  `CrearZonaForm.tsx`, `GeografiaSelector.tsx`, `DescargarCoberturaButton.tsx`,
+  `cobertura-descarga-columnas.ts`.
+- `app/(app)/configuracion/zonas/page.tsx` (nuevo); `app/(app)/configuracion/tarifas/page.tsx`
+  (solo `TiendasModule zonas`).
+- `CrearZonaForm`: sin pago, sin tarifa de zona, sin especiales; envía `payload()` (nombre,
+  esCentral, distritoIds + SINPE al crear) y NO `parsed.data`, porque `crearZonaSchema` materializa
+  `cobroVehiculo:false`/`tarifas:[]` por default. Rótulos «zona de bodega principal».
+- `GeografiaSelector`: prop `permitirEspecial` (default `false`).
+- `ZonasModule`: listado con `Badge` «Zona de bodega principal», sin «· cobro por vehículo»,
+  vacío «Crea la primera zona.», motivo de borrado nuevo. Encabezado «Costos por zona» →
+  «Zonas de reparto» / «Cada zona agrupa los distritos donde se reparte.» (decisión mía: el
+  design no fija ese texto y el viejo hablaba de costos).
+- `lib/auth/menu-visibility.ts` (+1 línea), `lib/modulos/reparto.ts` (+1 línea).
+- `@sin-superficie` en `lib/actions/geografia.ts › actualizarDistritosEspeciales` y en
+  `tarifas/_components/CobroVehiculoTarifas.tsx` (su doc se movió pegado al export).
+- Comentarios con la ruta vieja: `lib/actions/geografia.ts`, `lib/actions/cobertura.ts`.
+- Ayuda: `docs/ayuda/oficina/configuracion-zonas.md` (nuevo), `configuracion-tarifas.md`.
+- Tests nuevos: `tests/components/ZonaFormSinCostos.test.tsx`, `tests/components/ZonasModuleListado.test.tsx`,
+  `tests/unit/app/zonas/ZonasPage.test.tsx`, `e2e/zonas-crear-sin-costos.spec.ts` (+ `playwright.config.ts`,
+  proyecto `aislamiento`).
+- Tests movidos/reescritos: `tests/unit/app/tarifas/TarifasPage.test.tsx` (sustituye a
+  `TarifasPage.cobertura.test.tsx`), `tests/unit/app/zonas/DescargarCoberturaButton.test.tsx` (git mv),
+  `ZonaDistritoEspecial.test.tsx` (reescrito).
+- Tests ajustados: `CrearZonaFormReconciliacion`, `ZonaCentralConfirmacion`, `ZonaBorradoMotivo`,
+  `ZonaNombreNoImprimible`, `TarifasClaridadMontos` (sin los casos del formulario de zona),
+  `geografia-selector-inactivos`, `zona-guardado-conserva-inactivos`, `cobertura-descarga-columnas`,
+  `censo-tablas.ts` (comentarios), `geografia-action`, `paginacion-dominios` (comentario),
+  `menu-visibility`, `Sidebar`, `pwa-manifiesto-atajos.guardia` (maestro 23→24).
+- Recuentos del catálogo de ayuda 37→38 (oficina 22→23) por el `.md` nuevo:
+  `tests/unit/ayuda/acotamiento-por-rol`, `tests/unit/asistente/acotamiento-por-rol`,
+  `tests/unit/asistente/contexto-documental`, `tests/components/AyudaLayout`,
+  `tests/unit/guards/asistente-sin-frontmatter.guardia`, `tests/integration/asistente-route`.
+
+### Mapa R → test (parte frontend)
+
+| R | Test |
+|---|---|
+| R1 | `menu-visibility.test.ts` › hijos con `/configuracion/zonas` entre `/configuracion` y `/configuracion/tarifas` + «SLT-51/R1: el subítem «Zonas» no cambia el primer destino de ningún rol»; `Sidebar.test.tsx` › «expande el submenú…» (Zonas entre Usuarios y Tarifas); `modulos-reparto.guardia`; `pwa-manifiesto-atajos.guardia` (maestro 24, nadie más) |
+| R2 (página) | `ZonasPage.test.tsx` › admin / adminTienda / adminSatelite / mensajero / sin sesión: solo el aviso, sin listado, sin Cobertura, sin pre-carga |
+| R3 | `ZonasModuleListado.test.tsx` › nombre + N distritos; etiqueta solo en la marcada; sin «cobro por vehículo» aunque `cobroVehiculo=true`; E2E (fila sembrada con etiqueta, fila nueva con «1 distrito») |
+| R4 | `ZonaFormSinCostos.test.tsx` › crear (nombre, distritos, casilla, SINPE; 0 spinbuttons, sin «Especial») y editar (sin SINPE); `ZonaDistritoEspecial.test.tsx` › sin botón ni conteo |
+| R5 (componente) | `ZonaFormSinCostos.test.tsx` › crear: payload literal sin `cobroVehiculo`/`tarifas`, sin `crearTarifa`/`actualizarTarifa`/`actualizarDistritosEspeciales`; editar: idem. Mutación: enviar `parsed.data` → 1 failed |
+| R5 (E2E) | `e2e/zonas-crear-sin-costos.spec.ts` › «Zona creada», fila en el listado; por detrás `cobro_vehiculo=false`, 1 `zona_distrito`, 0 `tarifa_zona_mensajero`, 0 `tarifas` (el formulario viejo mandaba una fila 0/0 y lo pondría rojo) |
+| R10 | `ZonaCentralConfirmacion.test.tsx` (casilla, títulos, descripciones, motivo del servidor con el texto nuevo); `ZonaBorradoMotivo.test.tsx` (motivo `es_central`); `ZonasModuleListado.test.tsx` › ningún texto visible con /central/i en listado, vacío, formulario + confirmación y borrado. Mutación: «marcada como Central» en la descripción → 1 failed |
+| R11 | `ZonaCentralConfirmacion.test.tsx` (ruta nueva, 15 casos) |
+| R12 | `ZonasPage.test.tsx` › «Cobertura» antes del listado; `TarifasPage.test.tsx` › sin «Cobertura» |
+| R13 | `TarifasPage.test.tsx` › sin «Costos por zona» ni «Crear zona»; `TiendasModule` recibe `{ zonas }` |
+| R14 | `ZonaBorradoMotivo.test.tsx` (ruta nueva: `es_central`, en uso) |
+| R16 | `ZonasPage.test.tsx` › el árbol de `listarArbolGeografico` llega tal cual al módulo; `geografia-selector-inactivos.test.tsx` (ruta nueva) |
+
+### Salidas
+
+- Archivos de test tocados (vitest run, uno a uno, todos 0 failed / 0 skipped):
+  `ZonaFormSinCostos` 5 ✓, `ZonasModuleListado` 8 ✓, `ZonaDistritoEspecial` 5 ✓,
+  `ZonaCentralConfirmacion` 15 ✓, `ZonaBorradoMotivo` 4 ✓, `CrearZonaFormReconciliacion` 11 ✓,
+  `ZonaNombreNoImprimible` 4 ✓, `TarifasClaridadMontos` 19 ✓, `Sidebar` 26 ✓, `ZonasPage` 8 ✓,
+  `zonas/DescargarCoberturaButton` 15 ✓, `TarifasPage` 4 ✓, `menu-visibility` 59 ✓,
+  `geografia-selector-inactivos` 6 ✓, `cobertura-descarga-columnas` 20 ✓; guardias
+  `superficie-de-uso` 18 ✓, `modulos-reparto` 41 ✓, `pwa-manifiesto-atajos` 11 ✓,
+  `e2e-sin-saltos` 30 ✓, `ayuda-pantalla-ruta-existe` 11 ✓. Ayuda/asistente (con base):
+  19 archivos, 293 ✓ (incluye `asistente-route`).
+- `vitest related --run` sobre los 11 archivos de `app/` y `lib/` tocados (con la base de la
+  feature): 251 archivos, 248 verdes; 3 rojos (`historial-accion-lectura`, `455/snapshot-lectura`,
+  `455/caracterizacion/snapshot-correccion`), los tres en `tests/baseline-rojos.json`. 16 failed /
+  3424 passed / 24 skipped.
+- `pnpm run test:guardias`: 322 archivos, 318 verdes, 3 skipped; 1 rojo
+  (`dependencias-declaradas-presentes.guardia`, en el baseline). 4 failed / 4479 passed.
+- `pnpm run typecheck`: EXIT 2 con los 3 errores ajenos conocidos (`HistorialAccionRepository.ts` ×2,
+  `historial-accion.ts:696`, Prisma client compartido regenerado por SLT-56). Ningún otro.
+- `pnpm run lint`: 0 errores, 230 warnings (los mismos que antes).
+- MCP del grafo (`codebase-memory-mcp`) no conectó; exploración con Grep/Read.
+
+### E2E (`e2e/zonas-crear-sin-costos.spec.ts`, base `servi_slt51`, `E2E_PUERTO=3051`)
+
+- `next build` falla en el paso de TypeScript por los mismos 3 errores ajenos del Prisma client
+  compartido. Para poder correr el E2E se compiló con `typescript.ignoreBuildErrors` puesto a mano
+  en `next.config.ts` y RESTAURADO justo después (copia byte a byte; `git status` limpio). No se
+  commiteó. Build: EXIT 0, la ruta `/configuracion/zonas` aparece en la tabla de rutas.
+- Con el comando tal cual (sin `--no-deps`) Playwright corre antes el proyecto dependiente
+  `plataforma-vacia`, y `superadmin-empresas.spec.ts:214` falla por entorno (espera «El correo no
+  está configurado en este entorno.» y el aviso trae otro texto): 4 passed, 1 failed, 6 did not
+  run; el spec de SLT-51 no llegó a correr. No es de esta ficha. Las dos corridas se hicieron con
+  `--no-deps` (el superadmin ya existe en la base):
+  - Corrida 1: `ok 1 [aislamiento] › e2e\zonas-crear-sin-costos.spec.ts:88:5 › el maestro crea una zona sin costos y la ve en el listado (2.7s)` — 1 passed (8.0s); 0 failed, 0 skipped, 0 flaky.
+  - Corrida 2 (misma base): idéntica — 1 passed (8.0s); 0 failed, 0 skipped, 0 flaky.
+  - Puertos 3051 y 54351 libres al terminar.
+- `e2e/zona-especial-dos-empresas.spec.ts` NO se tocó (pendiente del humano, P1): con esta ficha
+  pierde su superficie («Editar zona» en Tarifas y el botón «Especial») y quedará rojo cuando corra.
+
+**Veredicto:** T4-T10 y T11 (parte nueva) hechos; tests propios verdes, rojos solo de baseline o
+del Prisma client compartido; E2E verde dos veces con `--no-deps`.
