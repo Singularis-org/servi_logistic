@@ -14,6 +14,7 @@ import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import type { WebhookEventos, WebhookStatus } from "@/lib/types/whatsapp-webhook";
 import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
 import { esErrorTransitorio } from "@/lib/services/whatsapp/errores-meta";
+import { decidirEnrutadoPorCita, type DecisionCita } from "@/lib/services/whatsapp/enrutado-por-cita";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
 import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 
@@ -39,6 +40,11 @@ export interface IngestaResumen {
    * cliente. Conteo AGREGADO, sin PII: nunca el numero anterior ni el nuevo.
    */
   hilosMigrados: number;
+  /**
+   * SLT-40 (R16): entrantes NUEVOS registrados en el hilo del saliente que el cliente cito con
+   * «Responder». Un reenvio deduplicado no cuenta. Conteo AGREGADO, sin numeros ni ids.
+   */
+  enrutadosPorCita: number;
 }
 
 /** Desenlace de un envio saliente de texto desde el chat (lo devuelve la server action). */
@@ -191,7 +197,13 @@ export class ChatWhatsappService {
 
   /**
    * R6/R7/R8/R25: ingiere el lote ya normalizado del webhook. Por cada entrante resuelve la
-   * orden destino (D4); si no resuelve, NO rompe el lote (cuenta `sinResolver` y sigue, R9).
+   * orden destino por una de dos vias:
+   *  - SLT-40: si el cliente uso «Responder» y el id citado es un SALIENTE de esta empresa cuya
+   *    orden sigue viva, asignada y con el mismo numero, va al hilo de ese saliente. Es la unica
+   *    senal que distingue entre varias ordenes vivas del mismo numero; la decision (D1-D4) vive
+   *    en `decidirEnrutadoPorCita`.
+   *  - Si no, la regla por numero de siempre (D4 de la 109, `resolverOrdenActivaPorNumero`).
+   * Si no resuelve, NO rompe el lote (cuenta `sinResolver` y sigue, R9).
    * El insert es idempotente (dedupe por `wa_message_id`); solo un insert NUEVO sella
    * `ultimo_entrante_at`. Los statuses actualizan el saliente por su `wa_message_id`.
    */
@@ -200,6 +212,7 @@ export class ChatWhatsappService {
     let statusesAplicados = 0;
     let sinResolver = 0;
     let hilosMigrados = 0;
+    let enrutadosPorCita = 0;
 
     for (const mensaje of eventos.mensajes) {
       // Feature 311 (design §3, R16/R17/R18): el CAMBIO DE NUMERO se aplica ANTES de resolver
@@ -229,9 +242,27 @@ export class ChatWhatsappService {
       // La resolucion usa el `from` del evento, que en un cambio de numero es el ANTERIOR. Y
       // TIENE que ser asi: la orden se busca por `orden.telefono_dest`, que R17 prohibe tocar,
       // asi que el unico numero que casa con la orden sigue siendo el anterior.
-      const resolucion = await this.deps.conversacionRepo.resolverOrdenActivaPorNumero(
-        normalizarTelefonoWa(mensaje.telefonoE164),
-      );
+      const from = normalizarTelefonoWa(mensaje.telefonoE164);
+
+      // SLT-40 (design §4.2): la cita va ANTES que la regla por numero porque es la senal mas
+      // precisa. Sin id citado no se consulta nada extra (R18). Esta rama no loguea nada: ni el
+      // numero, ni el cuerpo, ni el id citado (R17).
+      const decision: DecisionCita =
+        mensaje.citadoWaMessageId !== undefined
+          ? decidirEnrutadoPorCita(
+              from,
+              await this.deps.conversacionRepo.findHiloDeSalienteCitado(mensaje.citadoWaMessageId),
+            )
+          : { via: "regla_actual", motivo: "sin_cita" };
+      const resolucion =
+        decision.via === "cita"
+          ? {
+              ordenId: decision.ordenId,
+              // R6/D4: el mensajero ACTUAL de la orden; el upsert le pasa el hilo si cambio.
+              mensajeroId: decision.mensajeroId,
+              telefonoE164: decision.telefonoE164,
+            }
+          : await this.deps.conversacionRepo.resolverOrdenActivaPorNumero(from);
       if (resolucion === null) {
         // R25/D4: el numero no mapea a ninguna orden viva y asignada. No se pierde el 200:
         // se cuenta y se sigue (sin loguear el numero, R11).
@@ -279,6 +310,7 @@ export class ChatWhatsappService {
         // R13: solo un entrante NUEVO mueve la ventana de 24 h (el dedupe no la re-sella).
         await this.deps.conversacionRepo.marcarUltimoEntrante(hilo.id, mensaje.ocurridoAt);
         mensajesRegistrados += 1;
+        if (decision.via === "cita") enrutadosPorCita += 1;
       }
     }
 
@@ -298,7 +330,7 @@ export class ChatWhatsappService {
       }
     }
 
-    return { mensajesRegistrados, statusesAplicados, sinResolver, hilosMigrados };
+    return { mensajesRegistrados, statusesAplicados, sinResolver, hilosMigrados, enrutadosPorCita };
   }
 
   /**

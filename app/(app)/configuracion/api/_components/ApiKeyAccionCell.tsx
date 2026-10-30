@@ -90,7 +90,10 @@ export function ApiKeyAccionCell({
       toast.success(activa ? "API key desactivada" : "API key activada");
     } else {
       setConfirmEstado(false);
-      toast.error(mensajeError(res.status));
+      // SL-24 (R36): activar con el tope lleno trae el texto del servidor; se muestra tal cual.
+      toast.error(
+        res.status === "tope_plan" ? res.mensaje : mensajeError(res.status),
+      );
     }
   }
 

@@ -15,6 +15,7 @@ import type {
   PostulacionPendienteDTO,
 } from "@/lib/types/aprobacion-postulacion";
 import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
+import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 
 // R2: solo `maestro` y `admin` aprueban/rechazan/listan.
 const ROLES_APROBADORES = new Set<RolValue>(["maestro", "admin"]);
@@ -73,11 +74,16 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
     if (!ROLES_APROBADORES.has(actor.rol)) return { status: "forbidden" };
 
     // FICHA 362 (R3/R9): QUIEN decidio, congelado en la misma transaccion que la decision.
-    const count = await this.repo.actualizarEstadoSiPendiente(
-      usuarioId,
-      estadoDestino,
-      actor.usuarioId,
-    );
+    let count: number;
+    try {
+      count = await this.repo.actualizarEstadoSiPendiente(usuarioId, estadoDestino, actor.usuarioId);
+    } catch (error) {
+      // SL-24 (R27): aprobar es un alta de `mensajero`. Con su tope lleno el trigger de `usuario`
+      // la rechaza, la transaccion se deshace y la postulacion sigue `pendiente`.
+      const tope = traducirErrorDeTope(error);
+      if (tope instanceof TopeDelPlanAlcanzado) return { status: "tope_plan", mensaje: tope.message };
+      throw error;
+    }
     if (count > 0) {
       // R15/R19: solo cambio `estado`; el repo no toca otros campos ni documentos.
       return { status: "ok", usuarioId, estado: estadoDestino };

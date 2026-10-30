@@ -146,6 +146,8 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
+      // SL-24: `plan_asignado`, de `20261028130100_historial_accion_planes`.
+      "plan_asignado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),
