@@ -95,7 +95,7 @@ tablas totales de `wallet-labels`, `mi-wallet-labels`, `wallet-origen-legible`; 
 | R17 | integración › R17 |
 | R20 | `tests/unit/utils/incentivo-analitica-slt68.test.ts` |
 | R21 | `tests/integration/db/migracion-slt68-ida-y-vuelta.test.ts` (5) |
-| R18, R19, R22 | Tanda B |
+| R18, R19, R22 | Tanda B (abajo) |
 
 ## Salida real
 
@@ -156,3 +156,82 @@ idénticos a antes («DB IGUAL») y ningún marcador de mutación en `git diff`.
   real con dos empresas; no hay un `WHERE organizacion_id` propio de esta ficha que mutar.
 
 Veredicto: Tanda A (T0–T9) hecha; lib/ y tests en verde en esta base; 16 de 17 mutaciones en rojo (M17 explicado); typecheck rojo solo en los 3 archivos de UI de Tanda B.
+
+---
+
+# Tanda B (T10–T14) — pantalla, catálogo y E2E · 2026-10-30
+
+## Archivos
+
+Creados:
+- `e2e/incentivo-mensajero-slt68.spec.ts` (R22), `tests/unit/components/incentivo-rotulos-slt68.test.ts` (R18)
+
+Modificados:
+- `app/(app)/wallet/_components/wallet-conceptos-manuales.ts` (concepto `incentivo_a_mensajero`, clase
+  `incentivo_mensajero`, `LibroDestino` `caja_y_mensajero`, frase, cabecera, `CONCEPTO_REGISTRO_DE`,
+  `nombreEnElLibroDelMensajero`)
+- `app/(app)/wallet/_components/wallet-labels.ts` (`DOCUMENTO_CAJA_NOMBRE.incentivo_mensajero`)
+- `app/(app)/wallet/mensajeros/_components/wallet-mensajeros-labels.ts` (`CATEGORIA_PAGO_LABEL`)
+- `components/shared/estado-cuenta/estado-cuenta-labels.ts` (chip «Incentivos»)
+- `components/shared/wallet/RegistrarMovimientoDialog.tsx` (rama `incentivo_mensajero`: FormData
+  mensajeroId/monto/motivo/fecha?/clave, sin comprobante ni método; `sin_cierre_aprobado` bajo el mensajero)
+- `components/shared/wallet/registrar-movimiento-labels.ts` (etiqueta de la cuenta, pista, avisos)
+- `lib/types/efecto-movimiento.ts`, `lib/utils/efecto-movimiento.ts` (`enCuenta: "devengo"`)
+- `lib/modulos/reparto.ts` (`incentivo-mensajero` → núcleo: lo exigía la guardia `modulos-reparto`;
+  rojo causado por la action de la tanda A)
+- `playwright.config.ts` (spec en el proyecto `dinero`), `docs/ayuda/oficina/wallet-caja.md`
+- Tests ajustados (contrato que cambia, literales a mano): `wallet-conceptos-manuales`, `efecto-movimiento`,
+  `efecto-movimiento-predice` (paso PG del incentivo por su servicio real), `wallet-labels`,
+  `wallet-registrar-movimiento-dialog` (+2 casos del incentivo), `EstadoCuenta`, `EstadoCuentaBarra467`.
+
+## Mapa R → test (Tanda B)
+
+| R | Test |
+|---|---|
+| R18 | `tests/unit/components/incentivo-rotulos-slt68.test.ts` (rótulos, chip, emparejamiento) + `tests/components/EstadoCuenta.test.tsx` / `EstadoCuentaBarra467.test.tsx` (chips del mensajero) |
+| R19 | `tests/unit/components/wallet-conceptos-manuales.test.ts` › SLT-68 + `tests/unit/utils/efecto-movimiento.test.ts` › SLT-68 + `tests/integration/db/efecto-movimiento-predice.test.ts` (paso `incentivo_a_mensajero`) + `tests/unit/components/wallet-registrar-movimiento-dialog.test.tsx` › SLT-68 R19 |
+| R22 | `e2e/incentivo-mensajero-slt68.spec.ts` (registrar → «Incentivo» y cuenta 2.000→2.700 → anular desde «Ver» de la caja → 2.000; ganancia 1.000→300→1.000) |
+
+## Mutaciones (aplicadas y revertidas con hash)
+
+| # | Mutación | Test | Mutado | Revertido |
+|---|---|---|---|---|
+| MB1 | `efectoDeMovimiento`: rama `devengo` nunca entra | `efecto-movimiento.test.ts` | ROJO 1 | 16/16 |
+| MB2 | `CATEGORIA_PAGO_LABEL.incentivo` = «Ajuste (devengo)» | `incentivo-rotulos-slt68` | ROJO 2 | 6/6 |
+| MB3 | `reverso_incentivo` → chip `premios` | `incentivo-rotulos-slt68` | ROJO 1 | 6/6 |
+| MB4 | `libroDelConcepto` sin rama `caja_y_mensajero` | `wallet-conceptos-manuales` | ROJO 3 | 40/40 |
+| MB5 | `CHIP_LABEL.incentivos` = «Premios» | `EstadoCuenta.test.tsx` | ROJO 1 | 21/21 |
+| MB6 | diálogo: no reconoce `sin_cierre_aprobado` | `wallet-registrar-movimiento-dialog` | ROJO 1 | 64/64 |
+
+## Salida real
+
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): verde. Lint de los tocados: «No issues found».
+- E2E `E2E_SERVIDOR=dev E2E_PUERTO=3068 pnpm exec playwright test e2e/incentivo-mensajero-slt68.spec.ts`:
+  `4 passed (1.7m)`, `E2E_EXIT=0`.
+- `pnpm run test:guardias`: 317/318 archivos; el rojo es `dependencias-declaradas-presentes.guardia`
+  (marcador «FIN PASO 2» ausente en `init.sh`): `init.sh`, `scripts/` y la guardia no difieren de
+  `origin/prod` → preexistente; el propio gate la excluye.
+- `./init.sh` (2.ª corrida, tras corregir): `INIT_EXIT=1`, solo por `test:rapido`: 4 archivos rojos de 644
+  (9066 tests verdes). Clasificados, ninguno causado por esta rama:
+  - `tests/integration/db/caja-backfill.test.ts` (5): «referencia a otra empresa: cierre_dia.destino_zona_id
+    -> zona» — la base `servi_slt68` solo tiene `db:seed`; ni el test ni sus fuentes difieren de `origin/prod`. Entorno.
+  - `tests/integration/db/indices-rutas-calientes.test.ts` (1): el planificador no elige
+    `analytics_daily_organizacion_id_fecha_idx` en esta base; ni el test ni `AnaliticaOperativaRollupRepository`
+    difieren de `origin/prod`. Entorno.
+  - `metrics-caja-naturaleza.guardia` y `analitica-financiera-conciliacion` (suites): «Cannot find module
+    '.prisma/client/default'» a mitad de corrida (node_modules compartido: `prisma generate` de otro
+    worktree); vueltos a correr solos: 42/42 verdes. Entorno.
+  - La 1.ª corrida tenía además `wallet-registrar-movimiento-dialog` (causado por esta rama: 12 conceptos y
+    sin comprobante en el incentivo) → corregido; y en `test:guardias`, `e2e-sin-saltos` (paréntesis en un
+    comentario de `playwright.config.ts` cortaba el lector), `primitivas.guardia` (`mensajeroNombre` en el
+    diálogo) y `modulos-reparto` (action sin entrada) → corregidos.
+
+## Hallazgo para el leader (fuera del alcance de pantalla)
+
+En `/wallet/mensajeros/[id]` la fila «Incentivo» NO ofrece «Anular…» ni se marca «Anulado»:
+`EstadoCuentaService.documentoDeMensajero` no reconoce el incentivo (documento `null`) y la fila cuenta como
+`naceDeUnCierre` (origen `cierre_dia`). La anulación funciona desde «Ver» de la fila de la caja (R16 en el
+servidor; el E2E la usa). Arreglarlo toca `lib/services/EstadoCuentaService.ts` + la lectura de estados por
+documento: decisión del leader (backend).
+
+Veredicto Tanda B: T10–T14 hechos; R18/R19/R22 con test y mutación; E2E 4/4 verde; gate local rojo solo por entorno/preexistentes clasificados.

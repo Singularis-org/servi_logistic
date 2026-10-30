@@ -212,9 +212,9 @@ describe("R24 — los chips por tipo de cuenta (D10)", () => {
     expect(textoDelControl(document.body, "Tipo de movimiento")).toBe("Tipo de movimiento: Todo");
   });
 
-  it("mensajero: Cierres · Pagos · Premios · Correcciones", async () => {
+  it("mensajero: Cierres · Pagos · Premios · Incentivos · Correcciones (SLT-68 R18)", async () => {
     envolver(<EstadoCuenta descargaDeLaSuperficie={{ ambitoColumnas: "prueba-estado-cuenta" }} inicial={estado({ tipo: "mensajero", nombre: "Mario" })} rotulos={ROTULOS_MENSAJERO} />);
-    expect(await chips()).toEqual(["Cierres", "Pagos", "Premios", "Correcciones"]);
+    expect(await chips()).toEqual(["Cierres", "Pagos", "Premios", "Incentivos", "Correcciones"]);
   });
 
   it("bodega: Declarado · Recibido", async () => {

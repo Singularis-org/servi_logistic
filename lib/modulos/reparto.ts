@@ -97,7 +97,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "finanzas-diario": "analitica",
   // monitoreo
   "tablero-dia": "monitoreo",
-  // Wallet (núcleo desde el 2026-10-28; 18)
+  // Wallet (núcleo desde el 2026-10-28; 19 con el incentivo de SLT-68)
   "abono-tienda": "nucleo",
   "aporte-capital": "nucleo",
   "como-quedo": "nucleo",
@@ -106,6 +106,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "estado-cuenta": "nucleo",
   "gasto-fijo-cobro": "nucleo",
   "gasto-fijo-plantilla": "nucleo",
+  "incentivo-mensajero": "nucleo",
   "libro-caja-autoria": "nucleo",
   "pago-por-cuenta-tienda": "nucleo",
   "rechazo-tienda-cobro": "nucleo",

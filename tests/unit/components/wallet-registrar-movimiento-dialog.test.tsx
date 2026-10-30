@@ -43,6 +43,7 @@ const registrarAporteMock = vi.fn();
 const registrarAbonoMock = vi.fn();
 const registrarPagoTiendaMock = vi.fn();
 const registrarRepartoMock = vi.fn();
+const registrarIncentivoMock = vi.fn();
 const listarTiendasMock = vi.fn();
 const listarPorRolMock = vi.fn();
 const previsualizarMock = vi.fn();
@@ -68,6 +69,9 @@ vi.mock("@/lib/actions/abono-tienda", () => ({
 vi.mock("@/lib/actions/liquidacion", () => ({
   registrarPagoTiendaAction: (...a: unknown[]) => registrarPagoTiendaMock(...a),
   registrarRepartoMensajeroAction: (...a: unknown[]) => registrarRepartoMock(...a),
+}));
+vi.mock("@/lib/actions/incentivo-mensajero", () => ({
+  registrarIncentivoMensajeroAction: (...a: unknown[]) => registrarIncentivoMock(...a),
 }));
 vi.mock("@/lib/actions/usuarios-por-rol", () => ({
   listarAdminTiendas: (...a: unknown[]) => listarTiendasMock(...a),
@@ -236,6 +240,8 @@ describe("458-C R37/R38 / SL-45 R6 — el catálogo: once conceptos en tres grup
       "Corrección de caja (resta)",
       "La empresa le paga a una tienda",
       "La empresa le paga a un mensajero",
+      // SLT-68 (R19): justo después del pago a un mensajero.
+      "La empresa le da un incentivo a un mensajero",
       "Pago a la plataforma",
     ]);
     expect(nombres("Llega dinero a la caja")).toEqual([
@@ -244,7 +250,7 @@ describe("458-C R37/R38 / SL-45 R6 — el catálogo: once conceptos en tres grup
       "Corrección de caja (suma)",
     ]);
     expect(nombres("Se descuenta del saldo de una tienda")).toEqual(["La empresa le cobra a una tienda"]);
-    expect(within(dialog).getAllByRole("radio")).toHaveLength(11);
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(12); // SLT-68: + el incentivo a un mensajero
   });
 
   it("R38: no se ofrece «Gasto fijo»; el enlace lleva a las plantillas", async () => {
@@ -505,8 +511,12 @@ describe("458-C R39/R42/R43/R51 — cada concepto pide sus campos y manda SOLO s
       expect(within(dialog).getByLabelText(/^Monto/)).toBeTruthy();
       expect(within(dialog).getByLabelText(/^Fecha/)).toBeTruthy();
       expect(dialog.querySelector("#movimiento-descripcion")).not.toBeNull();
-      // R74: el comprobante, opcional, en TODOS.
-      expect(within(dialog).getByLabelText(/^Comprobante \(opcional\)/)).toBeTruthy();
+      // R74: el comprobante, opcional, en TODOS salvo el incentivo (SLT-68: su borde `.strict()` no lo admite).
+      if (r.closest("label")?.textContent === "La empresa le da un incentivo a un mensajero") {
+        expect(within(dialog).queryByLabelText(/^Comprobante \(opcional\)/)).toBeNull();
+      } else {
+        expect(within(dialog).getByLabelText(/^Comprobante \(opcional\)/)).toBeTruthy();
+      }
     }
     escribir(dialog, /^Monto/, "0");
     await confirmar(user, dialog);
@@ -1230,5 +1240,54 @@ describe("SL-45 R6/R9 — «Pago a la plataforma» en el diálogo", () => {
       "Registrar pago a la plataforma",
     );
     expect(within(dialog).getByRole("radio", { name: "Pago a la plataforma" })).toBeChecked();
+  });
+});
+
+// ─── SLT-68 (T12, R19) — el incentivo a un mensajero ─────────────────────────────────────────────
+
+describe("SLT-68 R19 — «La empresa le da un incentivo a un mensajero» en el diálogo", () => {
+  it("pide mensajero, monto, motivo y fecha; manda SOLO sus claves y avisa con lo que devolvió el servidor", async () => {
+    registrarIncentivoMock.mockResolvedValue({
+      status: "ok",
+      incentivo: { id: "i1", monto: "5000.00", cierreId: "c1", mensajeroNombre: "Juan Pérez Mora" },
+      cuentaPorPagar: "7000.00",
+    });
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "La empresa le da un incentivo a un mensajero");
+    // Sin método ni «a quién»: no es un pago.
+    expect(within(dialog).queryByRole("combobox", { name: "Método de pago" })).toBeNull();
+    await elegirCuenta(dialog, "Mensajero que recibe el incentivo", "Juan Pérez Mora");
+    escribir(dialog, /^Monto/, "5000");
+    escribir(dialog, /^Motivo del incentivo/, "Buena semana");
+    await confirmar(user, dialog);
+    await waitFor(() => expect(registrarIncentivoMock).toHaveBeenCalledTimes(1));
+    const fd = entradas(registrarIncentivoMock.mock.calls[0][0]);
+    // Literal, y ES el contrato del borde `.strict()` (la fecha de hoy no viaja).
+    expect(Object.keys(fd).sort()).toEqual(["claveIdempotencia", "mensajeroId", "monto", "motivo"].sort());
+    expect(fd).toMatchObject({ mensajeroId: JUAN, monto: "5000", motivo: "Buena semana" });
+    expect(fd.claveIdempotencia).toMatch(UUID);
+    expect(successMock).toHaveBeenCalledWith(
+      "Incentivo de ₡5.000 a Juan Pérez Mora registrado. La empresa le debe ahora ₡7.000.",
+    );
+    // Ninguna otra action.
+    expect(registrarRepartoMock).not.toHaveBeenCalled();
+    expect(registrarEgresoMock).not.toHaveBeenCalled();
+  });
+
+  it("sin cierre aprobado, el aviso va bajo el mensajero y el diálogo sigue abierto con lo escrito", async () => {
+    registrarIncentivoMock.mockResolvedValue({ status: "sin_cierre_aprobado" });
+    const { user, dialog } = await abrir();
+    await elegirConcepto(user, dialog, "La empresa le da un incentivo a un mensajero");
+    await elegirCuenta(dialog, "Mensajero que recibe el incentivo", "Juan Pérez Mora");
+    escribir(dialog, /^Monto/, "5000");
+    escribir(dialog, /^Motivo del incentivo/, "Buena semana");
+    await confirmar(user, dialog);
+    expect(
+      await within(dialog).findByText(
+        "Este mensajero no tiene ningún cierre aprobado; el incentivo no se puede imputar todavía.",
+      ),
+    ).toBeTruthy();
+    expect(successMock).not.toHaveBeenCalled();
+    expect((within(dialog).getByLabelText(/^Monto/) as HTMLInputElement).value).toBe("5000");
   });
 });

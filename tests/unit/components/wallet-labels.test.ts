@@ -199,7 +199,7 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
     expect(TIPO_EGRESO_MANUAL_LABEL.gasto_variable).toBe(CATEGORIA_LABEL.egreso_gasto_variable);
   });
 
-  it("los diez documentos anulables se nombran desde la empresa dentro de «Anular …»", () => {
+  it("los once documentos anulables se nombran desde la empresa dentro de «Anular …» (SLT-68: el incentivo)", () => {
     expect(DOCUMENTO_CAJA_NOMBRE).toEqual({
       pago_por_cuenta_tienda: "el pago de un gasto de una tienda",
       aporte_capital: "el aporte de dinero a la caja",
@@ -213,6 +213,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // Ficha 458-C (revision B3): los dos egresos que la caja ya anulaba y no traian documento.
       pago_tienda: "el pago de la empresa a una tienda",
       premio_del_ranking: "el premio del ranking",
+      // SLT-68 (design §5): el egreso de caja de un incentivo a un mensajero.
+      incentivo_mensajero: "el incentivo a un mensajero",
     });
   });
 
