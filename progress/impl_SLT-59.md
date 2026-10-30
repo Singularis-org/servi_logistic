@@ -484,3 +484,143 @@ desde `dev`, que ya trae el valor `cierre_dia_pago_mensajero_ajustado` (SLT-56) 
 `db/schema.prisma` de esta rama. Se resuelve con la sincronización F2.3 (merge de `dev`), que pide el
 leader. No se regenera el cliente desde aquí: pisaría el `node_modules` compartido con el checkout
 principal.
+
+## Tanda 5 — Fase 5 — backend_dev: T5.1 + verificación de T5.2 (2026-10-30)
+
+MCP del grafo no usado (worktree sin indexar, como en tandas previas): Grep/Read.
+
+### Archivos
+
+- `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` — T5.1: el `it.todo` pasa a
+  `it` con la columna «Nuevo» como aserciones exactas (`toEqual` fila a fila sobre la tabla
+  `NUEVO`, total `{2, 3, 6}`, fila 11 → 1 llamada, job `failed`, intentos 1). Variante
+  `gestionNuevo`: saca la orden del reparto, encola con `encolarOptimizacionDebounce` SOLO si tiene
+  coordenadas (R21/R22, como el paso 7 de `registrarGestionPendiente`), guarda el GPS como origen
+  (92/R23, como `MisAsignacionesService.registrarUbicacion`) y llama a `reducirSinLlamadas` (R27,
+  como la Server Action `gestionar`). Mismo arnés: servicio, handler, `JobQueueService` y helpers
+  reales; dobles solo para la base, los dos clientes de Google y el reloj. Nota fechada en la cabecera.
+- `specs/SLT-59-ahorro-llamadas-google-ruta/tasks.md` — T5.1 marcada. T5.2 queda sin marcar: falta
+  `./init.sh` (no se corre por instrucción) y la guardia 420 está en rojo (ver abajo).
+
+Sin cambios en código de producción. Sin dependencias nuevas.
+
+### T5.1 — «Nuevo» MEDIDO = tabla de design §8 (coincide fila a fila)
+
+```
+NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts --reporter=verbose --silent=false
+
+[SLT-59 T5.1] jornada de referencia — columna «Nuevo» MEDIDA (opt / routes / jobs):
+  1. t=0 min — Recoge las 7 (GPS en A): 1 / 1 / 1
+  2. t=5 min — Sincroniza a mano, GPS a 50 m de A: 0 / 0 / 0
+  3. t=10 min — Gestiona la orden sin coordenadas, GPS a 300 m, sobre la ruta: 0 / 0 / 0
+  4. t=20 min — Entrega s1 y s2 con 20 s de diferencia (misma ventana): 0 / 0 / 1
+  5. t=40 min — Entrega s3: 0 / 0 / 1
+  6. t=50 min — Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6): 1 / 1 / 0
+  7. t=60 min — Entrega s5 antes que s4 (fuera de orden, 1 hueco): 0 / 1 / 1
+  8. t=80 min — Entrega s4 (queda s6): 0 / 0 / 1
+  9. t=85 min — Sincroniza a mano a 200 m de la ruta, 1 parada: 0 / 0 / 0
+  10. t=100 min — Entrega s6 (quedan 0): 0 / 0 / 1
+  Total: 2 / 3 / 6
+  11. Un job recibe 401: 1 llamadas (job failed, intentos 1/3)
+
+ ✓ … > T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37) 23ms
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+```
+
+Contra «Hoy» (Tanda 1, medido): 8 / 10 / 8 → 2 / 3 / 6; 401: 5 llamadas → 1.
+
+### T5.2 — verificación (salida real, un comando a la vez, NODE_OPTIONS=--max-old-space-size=8192)
+
+- `pnpm run test:guardias` →
+  ```
+   Test Files  1 failed | 318 passed | 2 skipped (321)
+        Tests  4 failed | 4487 passed | 20 skipped (4511)
+  ```
+  Los 4 rojos son todos de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`
+  (guardia 420): «R2/R6 — con una dependencia ausente el paso CORTA…», «R4 — con el arbol completo…»,
+  «R6 — init.sh invoca scripts/verificar-dependencias.mjs», «R2 — el visto bueno de dependencias ya no
+  cuelga solo de que exista la carpeta». **Ajeno a SLT-59:** la guardia exige que `init.sh` llame a
+  `scripts/verificar-dependencias.mjs`, y ni el `init.sh` de esta rama ni el de `dev` lo hacen
+  (`grep -c verificar-dependencias` = 0 en los dos). `git diff --name-only dev...HEAD` no toca
+  `init.sh`, `scripts/` ni `tests/unit/guards/`. Rojo preexistente en `dev`; es del arnés, no de esta feature.
+- R39 — `pnpm exec vitest run tests/guards/guard-dependencias-aprobadas.test.ts` →
+  `Test Files 1 passed (1) · Tests 2 passed (2)` (también verde dentro de la corrida de guardias).
+  `git diff --stat dev...HEAD -- package.json pnpm-lock.yaml` → vacío.
+- R40 — `git diff --stat dev...HEAD -- db/` → vacío. `git diff --stat HEAD -- db/` → vacío.
+- `pnpm run lint` → `✖ 230 problems (0 errors, 230 warnings)` (antes 234: desaparecen los 4 warnings
+  de arnés sin usar de la jornada). `eslint` sobre el archivo tocado → sin salida.
+- `pnpm exec tsc --noEmit` → exactamente los 3 errores de entorno conocidos (Tanda 4), ninguno más:
+  ```
+  lib/repositories/HistorialAccionRepository.ts(149,14): error TS2322 …
+  lib/repositories/HistorialAccionRepository.ts(159,5): error TS2322 …
+  lib/types/historial-accion.ts(696,7): error TS2322 … "cierre_dia_pago_mensajero_ajustado"
+  ```
+- No se corrió `./init.sh` ni la suite completa (instrucción del leader; memoria).
+
+### Mapa final R<n> → test
+
+| R | Test |
+| --- | --- |
+| R1 | `tests/unit/services/optimizacion-ruta-desvio.test.ts` › T2.1 «R1: mismo conjunto…»; T2.2 «R1/R6/R9: 2+ paradas…» |
+| R2 | ídem › T2.2 «R2/R6/R9: UNA parada…», «R2: UNA parada sin trazado guardado…» |
+| R3 | ídem › «R3 — desviado SI Y SOLO SI…» (borde exacto, 990/1010 m); «PA-2: polilinea `routes` que decodifica a 0 puntos…»; `tests/unit/geo/polilinea.test.ts` › «SLT-59 — distanciaMinimaAPolilineaM» |
+| R4 | `optimizacion-ruta-desvio.test.ts` › «R4 — linea de referencia»; `polilinea.test.ts` › «SLT-59 — distanciaMinimaAPolilineaM» |
+| R5 | `optimizacion-ruta-desvio.test.ts` › T2.1 «R5: sin posicion…», «R5: con origen `centroide`…»; T2.2 «R5: origen `centroide`…» |
+| R6 | ídem › T2.2 R1/R2 (`escrituras() === 0`) |
+| R7 | ídem › casos `desactualizada` de T2.1 y «R7…» de T2.2; `optimizacion-ruta-reduccion.test.ts` › «R7: ruta desactualizada con un subconjunto…» |
+| R8 | `tests/unit/services/optimizacion-ruta-service.test.ts` › «265/R33 — las guardas cortan EN ESTE ORDEN» |
+| R9 | `optimizacion-ruta-desvio.test.ts` › T2.2 R1/R2 (`findByMensajero` ×1, `findParadasEnReparto` ×1) |
+| R10 | ídem › T2.1 «R10: … calculada hace 8 h -> omitir» y T2.2 «R10…» |
+| R11 | ídem › T2.1 «R11: subconjunto estricto…»; `optimizacion-ruta-reduccion.test.ts` › «R11/R13: entrega EN ORDEN…»; `tests/integration/repositories/ruta-optimizada-repo.test.ts` (casos T1.3) |
+| R12 | `optimizacion-ruta-reduccion.test.ts` › «R12/R17: la reduccion no reescribe la secuencia completa…»; `ruta-optimizada-repo.test.ts` › «R12/R17: calculada_at, origen, secuencia_fuente, ultimo_error y estado quedan intactos» |
+| R13 | `optimizacion-ruta-reduccion.test.ts` › «R11/R13: entrega EN ORDEN…», «R13: si un tramo no trae distancia…», «R13: queda UNA parada…», «PA-1/R13: paradas quitadas DETRAS de la ultima restante…» |
+| R14 | ídem › «R14: … UN hueco…», «R14: DOS huecos…», «R14: prefijo + un hueco…», «R14: sin cliente de Routes NUNCA… una recta» |
+| R15 | ídem › «R15: trazado guardado que no es por calles…», «R15: falta el tramo…»; `ruta-optimizada-repo.test.ts` › «sin trazado limpia las 4 columnas» |
+| R16 | `optimizacion-ruta-reduccion.test.ts` › «R16: el tramo puente lanza / no da ok…» |
+| R17 | ídem › «R12/R17…»; `ruta-optimizada-repo.test.ts` › «R12/R17…» |
+| R18 | `optimizacion-ruta-reduccion.test.ts` › «R18: con la huella cambiada…», «R18: sin huella previa…»; `ruta-optimizada-repo.test.ts` › «R18: con la huella cambiada no escribe NADA y devuelve false, sin lanzar» |
+| R19 | `optimizacion-ruta-desvio.test.ts` › casos `desviado` de T2.1 y «R19…» de T2.2; `optimizacion-ruta-reduccion.test.ts` › «R19: subconjunto con el mensajero desviado…» |
+| R20 | `optimizacion-ruta-desvio.test.ts` › casos `paradas_nuevas` de T2.1 y «R20…» de T2.2; `optimizacion-ruta-reduccion.test.ts` › «R20: quita una y anade otra…» |
+| R21 | `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts` › «SLT-59 R21» |
+| R22 | ídem › «SLT-59 R22» |
+| R23 | ídem › «SLT-59 R23»; `tests/unit/services/optimizacion-ruta-encolado.test.ts` › «R23» |
+| R24 | `optimizacion-ruta-encolado.test.ts` › «R24» (+ «R18» existente) |
+| R25 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R25», «R16 y SLT-59 R25 — transacción REVERTIDA» |
+| R26 | ídem › «SLT-59 R26» (+ bloques R16/R17 existentes) |
+| R27 | `tests/unit/actions/mis-asignaciones-action.test.ts` › «SLT-59 R27/R28»; `optimizacion-ruta-reduccion.test.ts` › «SLT-59 T2.4 — reducirSinLlamadas» |
+| R28 | `mis-asignaciones-action.test.ts` › «R28: si la reduccion lanza, la action devuelve EXACTAMENTE el mismo resultado» |
+| R29 | `tests/unit/services/job-queue-service-permanente.test.ts` › «dead-letter en el intento 1 de 3…»; `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts` › «R29: el handler la traduce…», «R29/R35: la cola lo deja en dead-letter en el intento 1 de 3…»; jornada › fila 11 |
+| R30 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R30: el servicio conserva el orden previo, marca la ruta desactualizada…» |
+| R31 | `tests/unit/actions/sincronizar-ruta.test.ts` › «SLT-59 R31 — 401/403 en la sincronizacion manual…» |
+| R32 | `optimizacion-ruta-encolado.test.ts` › «R32» |
+| R33 | `job-queue-service-permanente.test.ts` › «un error normal sigue con backoff (R33)»; `optimizacion-ruta-credencial-rechazada.test.ts` › «HTTP 503 -> el handler re-lanza…» |
+| R34 | `job-queue-service-permanente.test.ts` › «los demas tipos de job no cambian (R34)» |
+| R35 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R29/R35…» |
+| R36 | `tests/unit/config/route-optimization-config.test.ts` › «SLT-59/R36 — …» |
+| R37 | `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` › «SLT-59/R37 — jornada de referencia (design §8)» › «T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37)» |
+| R38 | `route-optimization-config.test.ts` › «SLT-59/R38 — RUTA_SYNC_MIN_INTERVALO_S sigue en 10…», «…tope de intentos de la geocodificacion…» |
+| R39 | `tests/guards/guard-dependencias-aprobadas.test.ts` (existente, sin cambios; verde) |
+| R40 | `git diff --stat dev...HEAD -- db/` vacío (comprobación del diff, esta tanda) |
+
+**R sin test: ninguno.**
+
+### Pregunta abierta
+
+Ninguna. «Nuevo» medido = tabla del design.
+
+### Aviso para el leader
+
+- La guardia 420 (`dependencias-declaradas-presentes.guardia.test.ts`, 4 tests) está roja en esta rama
+  y en `dev` por el `init.sh` del arnés. No es de SLT-59, pero `./init.sh` y el gate la verán roja.
+- El typecheck sigue con los 3 errores de entorno de la Tanda 4 hasta sincronizar con `dev` (F2.3).
+
+**Veredicto:** T5.1 hecho y en verde (Nuevo = 2 / 3 / 6, 401 → 1 llamada, igual que el design). R1-R40 mapeados. R39 y R40 verdes. Lint con 0 errores. Typecheck solo con los 3 errores de entorno conocidos. test:guardias tiene 4 rojos ajenos a la feature (guardia 420).
+
+### Tanda 5 — nota del implementer (2026-10-30)
+
+- Los 4 rojos de `test:guardias` están en `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`,
+  que **figura en `tests/baseline-rojos.json`**: rojo heredado, no hallazgo de SLT-59.
+- T5.2 queda **sin marcar**: falta `./init.sh` (no se corre aquí por memoria) y typecheck limpio, que
+  depende de la sincronización F2.3 con `dev` (cliente Prisma compartido, ver Tanda 4). Ambos los
+  cierra el leader (merge de `dev` + gate local o CI).

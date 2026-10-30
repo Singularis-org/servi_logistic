@@ -53,6 +53,8 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 // ⏳ 2026-10-29 (SLT-59, T3.2): la variante «Hoy» se borro al retirar ese helper (adelantado a T3.2
 // en vez de T5.1). Su medicion sigue en `progress/impl_SLT-59.md`, Tanda 1. El arnes de la jornada
 // queda montado para la variante «Nuevo» de T5.1.
+// ⏳ 2026-10-30 (SLT-59, T5.1): la variante «Nuevo» afirma la tabla del design §8 fila a fila; la
+// gestion va por el camino nuevo (debounce condicionado a coordenadas + `reducirSinLlamadas`).
 
 const T0 = new Date("2026-10-29T13:00:00.000Z"); // en minuto exacto: las ventanas del debounce
 const MIN = 60_000;
@@ -589,6 +591,70 @@ async function medirJobCon401(): Promise<{ llamadas: number; job: JobDTO }> {
   return { llamadas: j.optimizar.mock.calls.length, job: j.jobs.filas[0] };
 }
 
+/**
+ * La gestion como la hace hoy la app: `registrarGestionPendiente` saca la orden del reparto y, en
+ * la misma transaccion, encola con debounce SOLO si la orden tiene coordenadas (R21/R22); despues
+ * `MisAsignacionesService` guarda el GPS como origen (92/R23) y la Server Action llama a
+ * `reducirSinLlamadas` (R27).
+ */
+const gestionNuevo: GestionVariante = async (j, ordenId, gps) => {
+  j.paradas.gestionar(ordenId);
+  if (ordenId !== SIN_COORDENADAS) {
+    await encolarOptimizacionDebounce(j.jobs, undefined, M, {
+      ahora: j.ahora,
+      debounceS: CONFIG.RUTA_DEBOUNCE_S,
+    });
+  }
+  await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
+  await j.service.reducirSinLlamadas(M);
+};
+
+/** design §8, columna «Nuevo»: opt / routes / jobs por fila. */
+const NUEVO: (Conteo & { n: number })[] = [
+  { n: 1, opt: 1, routes: 1, jobs: 1 },
+  { n: 2, opt: 0, routes: 0, jobs: 0 },
+  { n: 3, opt: 0, routes: 0, jobs: 0 },
+  { n: 4, opt: 0, routes: 0, jobs: 1 },
+  { n: 5, opt: 0, routes: 0, jobs: 1 },
+  { n: 6, opt: 1, routes: 1, jobs: 0 },
+  { n: 7, opt: 0, routes: 1, jobs: 1 },
+  { n: 8, opt: 0, routes: 0, jobs: 1 },
+  { n: 9, opt: 0, routes: 0, jobs: 0 },
+  { n: 10, opt: 0, routes: 0, jobs: 1 },
+];
+
 describe("SLT-59/R37 — jornada de referencia (design §8)", () => {
-  it.todo("T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37)");
+  it("T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37)", async () => {
+    const { j, filas } = await medirJornada(gestionNuevo);
+    const total = totales(filas);
+    const fila11 = await medirJobCon401();
+    console.info(
+      [
+        "[SLT-59 T5.1] jornada de referencia — columna «Nuevo» MEDIDA (opt / routes / jobs):",
+        ...filas.map((f) => {
+          const ev = JORNADA.find((e) => e.n === f.n);
+          return `  ${f.n}. t=${ev?.tMin} min — ${ev?.descripcion}: ${f.opt} / ${f.routes} / ${f.jobs}`;
+        }),
+        `  Total: ${total.opt} / ${total.routes} / ${total.jobs}`,
+        `  11. Un job recibe 401: ${fila11.llamadas} llamadas (job ${fila11.job.estado}, ` +
+          `intentos ${fila11.job.intentos}/${fila11.job.maxIntentos})`,
+      ].join("\n"),
+    );
+
+    expect(filas).toEqual(NUEVO);
+    expect(total).toEqual({ opt: 2, routes: 3, jobs: 6 });
+
+    // El arnes recorrio la jornada entera: sin paradas, cola vacia, y la orden sin coordenadas
+    // nunca llega al proveedor.
+    expect(j.rutas.fila?.paradas).toEqual([]);
+    expect(j.jobs.pendientes()).toEqual([]);
+    for (const [input] of j.optimizar.mock.calls) {
+      expect(input.paradas.map((p) => p.ordenId)).not.toContain(SIN_COORDENADAS);
+    }
+
+    // Fila 11 (R29): el 401 deja el job en dead-letter tras UNA llamada, no tras 5.
+    expect(fila11.llamadas).toBe(1);
+    expect(fila11.job.estado).toBe("failed");
+    expect(fila11.job.intentos).toBe(1);
+  });
 });

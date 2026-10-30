@@ -79,7 +79,7 @@
 
 ## Fase 5 — Cierre (depende de todo lo anterior)
 
-- [ ] **T5.1** Completar la jornada de referencia (R37) con la columna «Nuevo» como aserciones exactas.
+- [x] **T5.1** Completar la jornada de referencia (R37) con la columna «Nuevo» como aserciones exactas.
   *Hecho:* test verde; la columna «Hoy» queda solo en el informe.
 - [ ] **T5.2** `pnpm run typecheck`, `pnpm run lint`, `pnpm run test:guardias` (incluye R39) y
   `./init.sh` en verde; `git diff --stat dev -- db/` vacío (R40). *Hecho:* salida en
