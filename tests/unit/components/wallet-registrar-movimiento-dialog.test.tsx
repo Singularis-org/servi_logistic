@@ -226,7 +226,7 @@ afterEach(() => cleanup());
 
 // ─── R37 / R38 — el catálogo ─────────────────────────────────────────────────────────────────────
 
-describe("458-C R37/R38 / SL-45 R6 — el catálogo: once conceptos en tres grupos y el enlace a las plantillas", () => {
+describe("458-C R37/R38 / SL-45 R6 — el catálogo: doce conceptos en tres grupos (SLT-68) y el enlace a las plantillas", () => {
   it("cada grupo es un grupo de opciones con su nombre, y dentro están sus conceptos en orden", async () => {
     const { dialog } = await abrir();
     const nombres = (grupo: string) =>

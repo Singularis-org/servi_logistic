@@ -234,7 +234,7 @@ cierre se apruebe.
 
 ## Lo que sí se registra a mano
 
-**Registrar un movimiento** abre un diálogo con **once conceptos en tres grupos**, a la izquierda; a la
+**Registrar un movimiento** abre un diálogo con **doce conceptos en tres grupos**, a la izquierda; a la
 derecha, los campos del concepto que elegiste. Al elegir uno, el diálogo dice con una frase qué le pasa
 al dinero de la empresa, al saldo de la cuenta (si la toca) y a la ganancia, y con qué nombre va a salir en
 cada libro.
