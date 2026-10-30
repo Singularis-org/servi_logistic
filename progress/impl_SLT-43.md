@@ -527,3 +527,41 @@ Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:g
   los 4 son de `dependencias-declaradas-presentes`, que está en `tests/baseline-rojos.json`.
 - `pnpm run typecheck` exit 0; `pnpm run lint` exit 0.
 - T8.10 marcada. T8.11 abierta solo a la espera del `gate-completo` del PR #44 (CI); el resto de su «Hecho» se cumple.
+
+### T8, correcciones de la review (B1, B2, m1) y rojos del `gate-completo` (2026-10-29)
+- **B1** (`34ae97e`): `CONSTRAINT "nodo_geografico_padre_id_check" CHECK ("padre_id" IS DISTINCT FROM "id")` en 120200
+  (cae con el `DROP TABLE` del `down.sql`). `UPDATE … SET padre_id = id` → `23514`; `INSERT` con `padre_id = id` → `SLT43`
+  (el trigger BEFORE corre antes que el CHECK y el padre aún no existe).
+- **B2**: `nodo_geografico_invariantes` lanza `SLT43` si `padre_id` no es nulo y el padre no existe, en vez de dejarlo
+  a la FK. Caminos revisados, ninguno inserta un hijo antes que su padre: sincronía de 120300 (AFTER ROW, FK viejas no
+  diferibles), copia de 120200 por niveles, `GeoRepository` (`createMany` por niveles), `geo-backfill-nodo.ts` (no
+  escribe `nodo_geografico`), `db:seed`, fixtures y tests que apagan la sincronía. La función pasa a
+  `SECURITY DEFINER SET search_path = public` (como la sincronía y `verificar_misma_empresa`) para que un padre o un hijo
+  invisible por RLS no cuente como inexistente.
+- Tests nuevos en `geo-nodo-invariantes.test.ts` (R7): autopadre por INSERT (`SLT43` + CHECK en `pg_constraint`),
+  autopadre por UPDATE (`23514`), INSERT multi-fila en ciclo (`SLT43`, no queda ninguna), INSERT multi-fila con el hijo
+  antes que el padre (`SLT43`; en orden entra). Contraprueba sin CHECK y con el `IF FOUND AND …` de antes:
+  `Tests 4 failed | 11 passed (15)`, los 4 nuevos.
+- **m1**: design §2.2, el `FOR SHARE` protege en `READ COMMITTED`; en `REPEATABLE READ`/`SERIALIZABLE` la carrera
+  puede reabrirse. Nadie escribe `nodo_geografico` con esos niveles (los `RepeatableRead` del repo son lecturas de
+  analítica). m2 fuera por decisión del leader.
+- **Rojos del `gate-completo` sobre `a5c22f9`**: misma causa. `20261029120000_geo_enums_nodo_geografico` añade
+  `nodo_geografico` al final de `historial_accion_entidad`, y dos tests de otras fichas fijan el catálogo «de hoy»:
+  - `historial-accion-cobro-tienda-migration.test.ts` (381/B.7 b): se añade `nodo_geografico` a la lista de entidades
+    posteriores excluidas.
+  - `caja-459-migration.test.ts` (a): los `slice` de entidades se corren uno y se añade `["nodo_geografico"]` al final.
+  Se ajusta la expectativa y no la migración porque los dos tests piden expresamente que cada ficha que amplíe el enum
+  después se sume a su lista (así lo hicieron 457, SL-36, SL-23 y SL-24). Con la versión de HEAD fallan igual que en
+  CI; con el ajuste, 23/23. Los otros 13 tests que fijan esos enums no se rompen por `nodo_geografico` (3 rojos ya en
+  el baseline, por otras causas).
+- Merge de `origin/dev` (`df5fe8f`) → `5291380`, sin conflictos y sin migraciones nuevas.
+- **Verificación** (tras el merge; `DATABASE_URL` → `logistic_slt43`, recreada limpia por backend_dev con el nuevo
+  checksum de 120200, `NODE_OPTIONS=--max-old-space-size=8192`):
+  - `pnpm run typecheck` exit 0; `pnpm run lint` exit 0.
+  - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` → `-- This is an empty migration.`
+  - `--no-file-parallelism`, todos los `geo-*.test.ts`, `migracion-slt43-ida-y-vuelta`, `carga-division`,
+    `slt43-migraciones-aditivas`, `caja-459-migration` y `historial-accion-cobro-tienda-migration`:
+    `Test Files 14 passed (14)`, `Tests 123 passed (123)`, 0 saltados.
+  - `pnpm run test:guardias`: `Test Files 1 failed | 321 passed (322)`, `Tests 4 failed | 4535 passed | 1 skipped`;
+    el único rojo es `dependencias-declaradas-presentes` (baseline).
+- Mapa R7 → `geo-nodo-invariantes.test.ts`: los 4 casos de T8 más los 4 de B1/B2 (15 tests en el archivo).
