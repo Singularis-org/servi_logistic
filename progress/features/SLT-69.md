@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.2: spec en curso. HOTFIX: rama base `origin/prod` (b31b6503), PR directo a `prod`.
+F2: aprobado 2026-10-30 («aprobado»), implementación en curso. HOTFIX: rama base `origin/prod` (b31b6503), PR directo a `prod`.
 
 ## Evaluación
 zone frontend / complexity low. Causa medida en prod el 2026-10-30:
@@ -17,6 +17,7 @@ zone frontend / complexity low. Causa medida en prod el 2026-10-30:
 - Mismo patrón en Recolección: `app/(app)/recoleccion/_components/useRecolectarPorGuia.ts`.
 
 ## Decisiones
+- 2026-10-30 (Carlos): «aprobado» — P1 no (Recolección fuera), P2 30 s.
 - 2026-10-30 (Carlos): hotfix urgente a producción, solo esta ficha («esta ficha también debe ser hotfix es urgente»).
 - 2026-10-30 (Carlos, por la propuesta aceptada): ante una guía que no está en la lista, refrescar la lista desde el servidor y reintentar antes del error; refrescar la lista al volver a la app.
 
