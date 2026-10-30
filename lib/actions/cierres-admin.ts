@@ -420,9 +420,7 @@ export async function corregirResultadoGestion(
  * campos faltan), zod en el borde y el resto de desenlaces los decide el servicio. Sin guardia de
  * rol aquí: quién ajusta lo decide `resolveAlcance` (el adminSatelite sí puede).
  *
- * @sin-superficie SLT-56 T6 (deuda de UNA tanda): el diálogo que la dispara,
- * `AjustarPagoMensajeroDialog.tsx`, es la T8 de esta misma ficha (frontend_dev). Esta anotación se
- * borra en el commit que monta el diálogo.
+ * La dispara `AjustarPagoMensajeroDialog.tsx` (T8), desde el detalle del cierre.
  */
 export async function ajustarPagoMensajeroGestion(
   input: unknown,
