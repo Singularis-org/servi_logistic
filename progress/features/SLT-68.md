@@ -23,6 +23,8 @@ zone fullstack / complexity medium. Hoy no hay forma de registrar un incentivo l
 ## Preguntas abiertas
 
 ## Tandas
+- 2026-10-30 · A (T0–T9, datos y servidor) · 3a2d5567 · typecheck rojo solo en 3 rótulos de UI (tanda B); tests de la tanda 205/205; `vitest related` con rojos de entorno clasificados en `progress/impl_SLT-68.md`.
+- 2026-10-30 · B (T10–T14, pantalla, catálogo y E2E) · 83e5ba1e · `./init.sh` INIT_EXIT=1 solo por entorno/preexistentes (caja-backfill, indices-rutas-calientes, `.prisma/client` transitorio; guardia 420 igual que en prod); typecheck y lint verdes; E2E R22 4/4.
 
 ## Modelos (overrides)
 Subagentes en Opus.
