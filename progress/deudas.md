@@ -188,3 +188,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-58 (2026-10-30, `progress/review_SLT-58.md`, menor 2). El servicio decide «hoy», el rango y el ancla de las fechas elegidas; la base (`now()`) decide el ancla «ahora» y si hay ciclo corto. Con los relojes desfasados cerca de medianoche UTC, una fecha de mañana podría guardarse sin ciclo corto. Sin test; impacto esperado mínimo.
 - **Qué falta:** que una sola fuente de tiempo decida las dos cosas (pasar el instante del servicio a la base o al revés) y un test del borde.
 - **Dueño:** Camilo (decidir si va ficha).
+
+### D32 — `MontoInput` con un solo uso: migrar los demás formularios de monto
+- **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
+- **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
+- **Dueño:** Camilo (decidir si va a ficha).

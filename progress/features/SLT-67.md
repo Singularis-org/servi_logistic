@@ -47,6 +47,7 @@ F2.0 (2026-10-30): tomada, worktree creado, sin SDD. Implementación delegada.
 
 ## Tandas
 - 2026-10-30 T1: util `montoParaCampo` (6d642a0, 3a671a4) + `MontoInput` y uso en PlanForm (6a627a2, 926b047). Bitácora `progress/impl_SLT-67.md`.
+- 2026-10-30 · gate local: `./init.sh` matado dos veces por falta de memoria (la 1ª sin `node_modules` en el worktree); el humano acepta que CI lo confirme. Review OK (9f73b86), 3 menores; el 1 va a deuda D32.
 
 ## Modelos (overrides)
 
