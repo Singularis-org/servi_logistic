@@ -409,6 +409,45 @@ describeSiHayBase("SLT-68 — el incentivo manual a un mensajero, contra Postgre
     });
   }, 180_000);
 
+  it("R13 (review H2): anular con el id de un `pago_devengado` o de un `premio_ranking` del cierre es `no_encontrado` y no escribe contraasientos en ningun libro", async () => {
+    await conEscenario(
+      async (e) => {
+        const cierreId = e.cierres[0]!;
+        // Dos devengos del mismo cierre que NO son incentivos: misma forma de origen (cierre_dia, no
+        // nulo) que un incentivo, asi que solo el filtro por categoria los separa.
+        const devengado = await prisma.pagoMensajeroMovimiento.create({
+          data: {
+            mensajeroId: e.p.mensajero.usuarioId, tipo: "devengo", categoria: "pago_devengado", monto: new Prisma.Decimal("1000.00"),
+            origenTipo: "cierre_dia", origenId: cierreId, organizacionId: e.p.organizacionId,
+          },
+          select: { id: true },
+        });
+        const premio = await prisma.pagoMensajeroMovimiento.create({
+          data: {
+            mensajeroId: e.p.mensajero.usuarioId, tipo: "devengo", categoria: "premio_ranking", monto: new Prisma.Decimal("700.00"),
+            origenTipo: "cierre_dia", origenId: cierreId, premioDia: new Date("2026-10-27T00:00:00.000Z"), organizacionId: e.p.organizacionId,
+          },
+          select: { id: true },
+        });
+        expect((await libro(e)).map((f) => [f.categoria, f.monto.toFixed(2)])).toEqual([
+          ["pago_devengado", "1000.00"],
+          ["premio_ranking", "700.00"],
+        ]);
+        expect(await caja(e)).toHaveLength(0);
+
+        expect(await anular(e, devengado.id)).toEqual({ status: "no_encontrado" });
+        expect(await anular(e, premio.id)).toEqual({ status: "no_encontrado" });
+
+        expect((await libro(e)).map((f) => [f.categoria, f.monto.toFixed(2)])).toEqual([
+          ["pago_devengado", "1000.00"],
+          ["premio_ranking", "700.00"],
+        ]);
+        expect(await caja(e)).toHaveLength(0);
+      },
+      { cierres: [{ estado: "aprobado", dia: "2026-10-27", p: "1000.00" }] },
+    );
+  }, 120_000);
+
   it("R5: sin ningun cierre `aprobado` (solo uno solicitado) responde `sin_cierre_aprobado` y no escribe", async () => {
     await conEscenario(
       async (e) => {

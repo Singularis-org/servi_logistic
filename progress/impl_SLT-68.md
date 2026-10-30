@@ -277,3 +277,5 @@ Evidencia:
 
 Veredicto: arreglo hecho y probado en el servicio (unit + 2 mutaciones rojas); el caso PG está escrito pero sin
 ejecutar hasta que se regenere el cliente Prisma compartido.
+
+- Review H2 (test): caso PG «anular con el id de un `pago_devengado`/`premio_ranking` → `no_encontrado`, cero filas» en `tests/integration/db/incentivo-mensajero-slt68.test.ts`; 16/16 verdes; mutación sin `categoria: "incentivo"` en `obtenerIncentivo` → rojo (recibe `ok`), restaurado (hash 7551a8e2… igual); lint limpio.
