@@ -38,6 +38,8 @@ import { montarServicios } from "./454/_escenario";
  *      `sin_gestionar` quedo marcada (R26), y la lista barrida es la misma antes y despues (R6).
  *  (c) `repo`: el repositorio recibe una barrida que NO es de este cierre -> lanza y el SAVEPOINT real
  *      revierte la aprobacion entera, liberacion incluida (R21).
+ *  (d) `alcance`: `findBarridasDelCierre` con un alcance que NO incluye el cierre -> `[]`; con el
+ *      alcance correcto, las dos barridas (control positivo) (R8, el alcance en el WHERE).
  *
  * Sin `if (!x) return;`: la siembra exige sus catalogos y la anti-vacuidad exige las dos barridas.
  */
@@ -50,6 +52,7 @@ type Tx = TxDeTest;
 
 interface Corpus {
   cierreId: string;
+  zonaId: string;
   maestro: Actor;
   maestroId: string;
   oLib: string;
@@ -223,6 +226,7 @@ async function sembrar(tx: Tx): Promise<Corpus> {
 
   return {
     cierreId: cierre.id,
+    zonaId: zona,
     maestroId,
     maestro: { usuarioId: maestroId, rol: "maestro" } as Actor,
     oLib: oLib.id,
@@ -263,6 +267,7 @@ describeSiHayBase("451/T4.5 — aprobar exige y marca las barridas del cierre (P
   let incompleta: Awaited<ReturnType<typeof correrIncompleta>>;
   let completa: Awaited<ReturnType<typeof correrCompleta>>;
   let repo: Awaited<ReturnType<typeof correrRepo>>;
+  let alcance: Awaited<ReturnType<typeof correrAlcance>>;
 
   function correrIncompleta() {
     return enTransaccionRevertida(prisma, async (tx) => {
@@ -373,11 +378,29 @@ describeSiHayBase("451/T4.5 — aprobar exige y marca las barridas del cierre (P
     });
   }
 
+  function correrAlcance() {
+    return enTransaccionRevertida(prisma, async (tx) => {
+      const c = await sembrar(tx);
+      const adminRepo = montarServicios(tx as unknown as PrismaClient).adminRepo;
+      // El cierre es de `bodega_central` con `destinoZonaId` = la zona sembrada. El alcance AJENO
+      // comparte esa MISMA zona y solo cambia el tipo: lo unico que lo excluye es el `destinoTipo`
+      // de la relacion al cierre, y eso solo lo ve el WHERE (R8).
+      const ajeno = { destinoTipo: "bodega_satelite" as const, destinoZonaId: c.zonaId };
+      const ordenar = (xs: { ordenId: string }[]) => xs.map((x) => x.ordenId).sort();
+      return {
+        c,
+        propio: ordenar(await adminRepo.findBarridasDelCierre(c.cierreId, ALCANCE_CENTRAL)),
+        ajeno: ordenar(await adminRepo.findBarridasDelCierre(c.cierreId, ajeno)),
+      };
+    });
+  }
+
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     incompleta = await correrIncompleta();
     completa = await correrCompleta();
     repo = await correrRepo();
+    alcance = await correrAlcance();
   }, 240_000);
 
   afterAll(async () => {
@@ -440,5 +463,11 @@ describeSiHayBase("451/T4.5 — aprobar exige y marca las barridas del cierre (P
     expect(repo.estados).toEqual({ oLib: "novedad_interna", oTope: "novedad_interna" });
     expect(repo.filas).toHaveLength(2);
     expect(repo.filas.filter((f) => f.confirmadaFisicaAt !== null)).toEqual([]);
+  });
+
+  it("R8: las barridas de un cierre fuera del alcance NO se leen (alcance en el WHERE), y dentro si", () => {
+    // Control positivo: con el alcance del cierre salen sus DOS barridas, asi el `[]` de abajo no es vacio.
+    expect(alcance.propio).toEqual([alcance.c.oLib, alcance.c.oTope].sort());
+    expect(alcance.ajeno).toEqual([]);
   });
 });

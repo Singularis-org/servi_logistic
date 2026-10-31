@@ -363,3 +363,27 @@ Los 4 rojos explicados. Dos eran dobles o fixtures desfasados frente a R10/R15, 
 - **Rótulo de la sección (desviación 1 de Frontend).** R29 dice «nombrarla como **sin gestionar**»,
   pero la ficha 455 retiró ese nombre y la guardia `nombres-estado-retirados` lo prohíbe. Se usó
   «Novedad interna». Pide confirmación humana del texto; no cambia ningún comportamiento.
+
+## Vuelta 2 — m1 (alcance de findBarridasDelCierre contra SQL real)
+
+- Hallazgo m1 / M3 del reviewer: quitar `cierre: alcanceWhere(alcance)` del WHERE de
+  `findBarridasDelCierre` dejaba verde el SQL real; solo lo mataban dobles.
+- Test nuevo en `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`, corrida (d)
+  `correrAlcance` con el mismo `sembrar` (transaccion revertida):
+  «R8: las barridas de un cierre fuera del alcance NO se leen (alcance en el WHERE), y dentro si».
+  - Cierre `bodega_central` con `destinoZonaId` = zona sembrada. Alcance ajeno =
+    `{ destinoTipo: "bodega_satelite", destinoZonaId: <misma zona> }`: solo lo excluye el tipo.
+  - Control positivo en el mismo test: con `ALCANCE_CENTRAL` devuelve `[oLib, oTope]`; con el ajeno, `[]`.
+  - Sin `if (!x) return`, sin skip propio (el `describe.skip` sin base es el del archivo).
+- Verificacion (solo este archivo, base local `servi_slt72`):
+  - Antes de mutar: `Tests 7 passed (7)`.
+  - Mutacion `where: { cierreId }` (sin alcance): `Tests 1 failed | 6 passed (7)`; cae el test R8 nuevo.
+  - Revertida con `cp` de la copia previa; `cmp` sin diferencias (CMP_IDENTICO). Otra vez `Tests 7 passed (7)`.
+- `eslint` del archivo: exit 0. `typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`): exit 0.
+- Fila R8 actualizada:
+
+| R | Test |
+|---|------|
+| R8 | REPO · «R8: fuera de alcance -> `[]`…»; SVC · «R8: las barridas se leen con el ALCANCE del satelite»; SQL · «R8: las barridas de un cierre fuera del alcance NO se leen (alcance en el WHERE), y dentro si» |
+
+Veredicto: m1 cerrado; el alcance del WHERE de `findBarridasDelCierre` ya lo mata un test contra Postgres real.
