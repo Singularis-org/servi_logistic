@@ -188,3 +188,19 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-58 (2026-10-30, `progress/review_SLT-58.md`, menor 2). El servicio decide «hoy», el rango y el ancla de las fechas elegidas; la base (`now()`) decide el ancla «ahora» y si hay ciclo corto. Con los relojes desfasados cerca de medianoche UTC, una fecha de mañana podría guardarse sin ciclo corto. Sin test; impacto esperado mínimo.
 - **Qué falta:** que una sola fuente de tiempo decida las dos cosas (pasar el instante del servicio a la base o al revés) y un test del borde.
 - **Dueño:** Camilo (decidir si va ficha).
+
+### D32 — Deadlock 40P01 de `liquidacion-reparto-migration` con las escrituras reales del shard (hermana de D18)
+- **Origen:** CI del PR #53 (SLT-68, hotfix a `prod`), 2026-10-30. Dos intentos seguidos cayeron en el shard 2 con 40P01, en archivos distintos: `demo-qa` (borrado de `orden`) y `liquidacion-reparto-migration` («205 / bloque B — las restricciones RECHAZAN de verdad»). No lo causa SLT-68: su test corre en el shard 3. En el PR #52 (SLT-69) el mismo par compartió shard y pasó.
+- **Causa (DETAIL del log de Postgres del shard):** `aplicarDdl` (línea ~558) hace `DROP TABLE IF EXISTS "liquidacion_reparto"` en el esquema desechable; la tabla tiene FK a `public.usuario`, así que el DOWN pide `AccessExclusiveLock` sobre `usuario` mientras otro test del shard la escribe (`UPDATE usuario SET orden_en_gestion_id …`, o la cascada `SET NULL` desde `orden`). El test usa `enTransaccionRevertida` sin `serializarEscriturasReales`, y no toma el lock de la 227 (`demo-qa` sí lo toma).
+- **No se reproduce en local** con el trío solo (0/8 con y sin SLT-68): hace falta el resto del shard escribiendo en `usuario`/`orden`.
+- **Qué falta (una de):**
+  - que `medir` llame a `serializarEscriturasReales(tx)` como primera sentencia (cierra el choque con `demo-qa`, no con un `UPDATE usuario` sin lock);
+  - `LOCK TABLE public.usuario IN ACCESS EXCLUSIVE MODE` antes del UP/DOWN;
+  - que la FK del reparto apunte a un `usuario` clonado en el esquema desechable.
+  Un reintento no vale (mismo criterio que D18). Para el hotfix SLT-68 el humano aceptó relanzar el gate a sabiendas (2026-10-30, «la 1, relanza el CI»).
+- **Dueño:** Carlos Restrepo (decidir si va ficha), o quien tome la siguiente ficha de la caja/reparto.
+
+### D33 — `MontoInput` con un solo uso: migrar los demás formularios de monto
+- **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
+- **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
+- **Dueño:** Camilo (decidir si va a ficha).

@@ -33,7 +33,7 @@ export async function tiposDeNivel(tx: TxDeTest, paisId: string): Promise<TiposD
   );
   const id = (clave: string) => {
     const fila = filas.find((f) => f.clave === clave);
-    if (fila === undefined) throw new Error(`el pais ${paisId} no tiene el tipo ${clave}: ¿falta 20261030120100?`);
+    if (fila === undefined) throw new Error(`el pais ${paisId} no tiene el tipo ${clave}: ¿falta 20261031120100?`);
     return fila.id;
   };
   return { nivel1: id("nivel_1"), nivel2: id("nivel_2"), nivel3: id("nivel_3") };

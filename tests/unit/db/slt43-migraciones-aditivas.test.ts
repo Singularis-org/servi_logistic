@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  *
  * La guardia general (`tests/guards/migraciones-destructivas.guard.test.ts`) deja pasar una migración
  * destructiva si trae su `DESTRUCTIVA.md`; la épica GEO no admite ninguna, con o sin papel. Esto lee el
- * `migration.sql` de cada carpeta `202610301*` (los `down.sql` deshacen a propósito y no cuentan) y
+ * `migration.sql` de cada carpeta `202610311*` (los `down.sql` deshacen a propósito y no cuentan) y
  * reprocha:
  *   · `DROP`, `TRUNCATE`, `RENAME` y `ALTER COLUMN` en cualquier sitio;
  *   · `DELETE`, `UPDATE` o `INSERT` sobre una tabla que no crearon estas migraciones (los eventos de
@@ -20,12 +20,12 @@ import { describe, expect, it } from "vitest";
 
 const DIR_MIGRACIONES = resolve(__dirname, "../../../db/migrations");
 const CARPETAS_SLT43 = [
-  "20261030120000_geo_enums_nodo_geografico",
-  "20261030120100_tipo_nivel_geografico",
-  "20261030120200_nodo_geografico",
-  "20261030120300_nodo_geografico_sincronia",
-  "20261030120400_columnas_nodo_geografico",
-  "20261030120500_indices_nodo_geografico",
+  "20261031120000_geo_enums_nodo_geografico",
+  "20261031120100_tipo_nivel_geografico",
+  "20261031120200_nodo_geografico",
+  "20261031120300_nodo_geografico_sincronia",
+  "20261031120400_columnas_nodo_geografico",
+  "20261031120500_indices_nodo_geografico",
 ];
 
 /**
@@ -102,7 +102,7 @@ function leer(nombre: string): { nombre: string; sql: string } {
 
 describe("SLT-43 · R19 — migraciones solo aditivas", () => {
   it("las carpetas de SLT-43 son exactamente las seis del spec y cada una trae su down.sql", () => {
-    const enDisco = readdirSync(DIR_MIGRACIONES).filter((n) => n.startsWith("202610301")).sort();
+    const enDisco = readdirSync(DIR_MIGRACIONES).filter((n) => n.startsWith("202610311")).sort();
     expect(enDisco).toEqual(CARPETAS_SLT43);
     for (const c of CARPETAS_SLT43) {
       expect(readFileSync(resolve(DIR_MIGRACIONES, c, "down.sql"), "utf8").trim().length).toBeGreaterThan(0);
@@ -122,7 +122,7 @@ describe("SLT-43 · R19 — migraciones solo aditivas", () => {
 });
 
 describe("SLT-43 · R19 — contraprueba con texto inventado", () => {
-  const base = leer("20261030120400_columnas_nodo_geografico");
+  const base = leer("20261031120400_columnas_nodo_geografico");
   const con = (extra: string) => faltasR19([base, { nombre: "inventada", sql: extra }]);
 
   it("rojo con DROP COLUMN", () => {

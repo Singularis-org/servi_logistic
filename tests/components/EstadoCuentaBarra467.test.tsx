@@ -255,7 +255,8 @@ describe("467 R2/R4/R9/R23 — la fila", () => {
 describe("467 R21 — las opciones del Tipo de movimiento: los chips de ese tipo de cuenta, sin «Todo»", () => {
   it.each([
     ["tienda", 0, ["Cierres", "Pagos", "Cobros", "Correcciones"]],
-    ["mensajero", 1, ["Cierres", "Pagos", "Premios", "Correcciones"]],
+    // SLT-68 (R18): el incentivo y su anulación, en su propio filtro.
+    ["mensajero", 1, ["Cierres", "Pagos", "Premios", "Incentivos", "Correcciones"]],
     ["bodega", 2, ["Declarado", "Recibido"]],
   ] as const)("%s", async (_t, i, esperadas) => {
     SUPERFICIES[i].montar();

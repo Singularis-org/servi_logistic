@@ -89,9 +89,11 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     expect(tienda.slice(-5, -4)).toEqual(["cobro_tienda_anulado"]);
     expect(tienda.slice(-4, -2)).toEqual(["abono_tienda", "abono_tienda_anulado"]);
     expect(tienda.slice(-2)).toEqual(["flete_devolucion_anulado", "iva_flete_devolucion_anulado"]);
-    expect(origen.slice(-6, -3)).toEqual(["pago_por_cuenta_tienda", "aporte_capital", "cobro_manual_reclasificado"]);
-    expect(origen.slice(-3, -1)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
-    expect(origen.slice(-1)).toEqual(["abono_tienda"]);
+    // SLT-68 anadio `incentivo_mensajero` al final de los origenes: los previos se leen un tramo atras.
+    expect(origen.slice(-7, -4)).toEqual(["pago_por_cuenta_tienda", "aporte_capital", "cobro_manual_reclasificado"]);
+    expect(origen.slice(-4, -2)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
+    expect(origen.slice(-2, -1)).toEqual(["abono_tienda"]);
+    expect(origen.slice(-1)).toEqual(["incentivo_mensajero"]);
 
     const tipos = await etiquetasDeEnum(prisma, "historial_accion_tipo");
     const entidades = await etiquetasDeEnum(prisma, "historial_accion_entidad");
@@ -121,7 +123,7 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
-    // SLT-56 (20261029120100) suma UN tipo al final; SLT-43 (20261030120000, posterior) suma UNA
+    // SLT-56 (20261029120100) suma UN tipo al final; SLT-43 (20261031120000, posterior) suma UNA
     // entidad (`nodo_geografico`) y NINGUN tipo: los tramos de tipos y de entidades se leen uno mas atras.
     expect(tipos.slice(-4, -2)).toEqual(["modulo_activado", "modulo_desactivado"]);
     expect(tipos.slice(-2, -1)).toEqual(["plan_asignado"]);

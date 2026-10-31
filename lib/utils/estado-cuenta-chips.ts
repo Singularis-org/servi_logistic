@@ -16,7 +16,8 @@ import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda"
 // (cada par posible cae en UN chip) y tiene su contraprueba.
 
 export const CHIPS_TIENDA = ["cierres", "pagos", "cobros", "correcciones"] as const;
-export const CHIPS_MENSAJERO = ["cierres", "pagos", "premios", "correcciones"] as const;
+// SLT-68 (D6): «Incentivos» es chip propio; meterlos en «Premios» los mezclaria con el podio.
+export const CHIPS_MENSAJERO = ["cierres", "pagos", "premios", "incentivos", "correcciones"] as const;
 export const CHIPS_BODEGA = ["declarado", "recibido"] as const;
 
 export type ChipTienda = (typeof CHIPS_TIENDA)[number];
@@ -70,6 +71,8 @@ export const CHIP_POR_CATEGORIA_MENSAJERO: Record<
   pago_efectivo: () => "cierres",
   liquidacion: () => "pagos",
   premio_ranking: () => "premios",
+  incentivo: () => "incentivos",
+  reverso_incentivo: () => "incentivos",
   ajuste_devengo: (origen, esPremio) => (esPremio ? "premios" : origen === "pago_mensajero" ? "pagos" : "correcciones"),
   ajuste_pago: (origen, esPremio) => (esPremio ? "premios" : origen === "pago_mensajero" ? "pagos" : "correcciones"),
 };

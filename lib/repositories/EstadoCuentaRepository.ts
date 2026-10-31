@@ -540,6 +540,25 @@ export class EstadoCuentaRepository implements IEstadoCuentaRepository, IMovimie
     }));
   }
 
+  async reversosDeIncentivo(mensajeroId: string, incentivoIds: readonly string[]): Promise<AnulacionLeida[]> {
+    if (incentivoIds.length === 0) return [];
+    const filas = await this.prisma.pagoMensajeroMovimiento.findMany({
+      where: {
+        mensajeroId,
+        categoria: "reverso_incentivo",
+        origenTipo: "incentivo_mensajero",
+        origenId: { in: [...incentivoIds] },
+      },
+      select: { origenId: true, descripcion: true, fechaMovimiento: true, registrador: { select: NOMBRE_USUARIO_SELECT } },
+    });
+    return filas.map((f) => ({
+      documentoId: f.origenId as string,
+      motivo: f.descripcion,
+      anuladoPorNombre: nombreONulo(f.registrador),
+      fecha: f.fechaMovimiento,
+    }));
+  }
+
   async quienAproboLosCierres(cierreIds: readonly string[]): Promise<Map<string, string | null>> {
     if (cierreIds.length === 0) return new Map();
     const cierres = await this.prisma.cierreDia.findMany({

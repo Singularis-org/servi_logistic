@@ -861,6 +861,9 @@ const CATALOGO = [
         "ajuste_devengo",
         "ajuste_pago",
         "premio_ranking",
+        // SLT-68 (R20): el incentivo (devengo) y su contraasiento (pago). El calculo no cambia.
+        "incentivo",
+        "reverso_incentivo",
       ],
     },
   },

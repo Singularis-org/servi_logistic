@@ -16,7 +16,7 @@ catálogo a la base local `logistic_slt43`.
 | Unit: `slt43-migraciones-aditivas`, `nodo-geografico-sin-escritor.guardia`, `historial-accion-entidades`, `catalogo-y-choke-point`, `historial-acciones-filtros-def`, `migrate-deploy-guardas` (R39) | 6 archivos, 123/123 |
 | Integración: los 8 `geo-*` (sin rendimiento) + `carga-division` | 9 archivos, 69/69 (`--no-file-parallelism`) |
 | Integración: `migracion-slt43-ida-y-vuelta` + `geo-trigger-orden-rendimiento` (R22) | 2 archivos, 9/9 (bases propias `slt43_*`, borradas al terminar) |
-| Guardias relacionadas (11): `plataforma-solo-en-lista`, `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `catalogo-postgres-acota-esquema`, `cobro-plataforma-solo-por-trigger`, `sql-a-mano-por-empresa`, `geografia-sin-borrado-fisico`, `backfills-retirados`, `guard-dependencias-aprobadas`, `migraciones-destructivas` | 10/11 verdes; `migraciones-destructivas` roja **solo** por `20261028120000_modulo_wallet_nucleo` (ajena, PR #43). Ninguna `202610301*` aparece. |
+| Guardias relacionadas (11): `plataforma-solo-en-lista`, `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`, `catalogo-postgres-acota-esquema`, `cobro-plataforma-solo-por-trigger`, `sql-a-mano-por-empresa`, `geografia-sin-borrado-fisico`, `backfills-retirados`, `guard-dependencias-aprobadas`, `migraciones-destructivas` | 10/11 verdes; `migraciones-destructivas` roja **solo** por `20261028120000_modulo_wallet_nucleo` (ajena, PR #43). Ninguna `202610311*` aparece. |
 | Catálogo de la base (`pg_trigger`, `pg_constraint`, `pg_class`, `pg_proc`, grants) | ver «Foco del humano» |
 
 No corrí `./init.sh` (muere por memoria en este equipo; ver memoria del leader) ni la suite completa ni E2E:

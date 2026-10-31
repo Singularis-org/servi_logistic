@@ -35,7 +35,7 @@ function fakeRepo(overrides: Partial<IPagoMensajeroMovimientoRepository> = {}): 
     // llama —la cuenta por pagar se agrega por `tipo` y el premio entra solo, como un devengo
     // mas (design §6/20)—, y que sigan sin llamarse es parte de lo que este archivo afirma.
     sumarPremiosVivosPorCierre: vi.fn(async () => ({})),
-    listarPremiosPorDias: vi.fn(async () => []),
+    listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null),
     ...overrides,
   };
 }

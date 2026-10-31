@@ -71,7 +71,8 @@ import { horaCostaRica } from "@/lib/utils/hora-cr";
 type DocumentoDeFila =
   | { tipo: TipoDeDocumentoDeLibro; id: string }
   | { tipo: "rechazo_tienda_cobro"; gestionId: string }
-  | { tipo: "premio"; dia: Date };
+  | { tipo: "premio"; dia: Date }
+  | { tipo: "incentivo"; id: string };
 
 /** R71 — el documento de una fila ORIGINAL del libro de la tienda (los contra-asientos llevan `null`). */
 function documentoDeTienda(f: FilaDeLibroRow): DocumentoDeFila | null {
@@ -97,6 +98,8 @@ function documentoDeMensajero(f: FilaDeLibroRow): DocumentoDeFila | null {
   }
   // El premio (293) se reconoce por `premio_dia`, que solo llevan el premio (devengo) y su reverso (pago).
   if (f.premioDia !== null && f.tipo === "devengo") return { tipo: "premio", dia: f.premioDia };
+  // SLT-68 (R16): el incentivo es su propio documento (la fila); su `reverso_incentivo` lo nombra por `origen_id`.
+  if (c === "incentivo") return { tipo: "incentivo", id: f.id };
   return null;
 }
 
@@ -513,6 +516,19 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         });
       }
     }
+    // SLT-68 (R16): el incentivo, como el premio, se da por anulado por su contraasiento en el libro.
+    const incentivos = documentos.flatMap((d) => (d !== null && d.tipo === "incentivo" ? [d.id] : []));
+    if (mensajeroId !== null && incentivos.length > 0) {
+      const reversos = new Map((await repo.reversosDeIncentivo(mensajeroId, incentivos)).map((r) => [r.documentoId, r]));
+      for (const id of incentivos) {
+        const r = reversos.get(id);
+        estados.set(`incentivo:${id}`, {
+          anulacion: r === undefined ? null : aAnulacion(r),
+          tieneComprobante: false,
+          pago: null,
+        });
+      }
+    }
     return estados;
   }
 
@@ -528,7 +544,11 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       aprobadores: Map<string, string | null>;
     },
   ): FilaEstadoCuentaDTO {
-    const naceDeUnCierre = f.origenTipo === "cierre_dia" && !(c.libro === "mensajero" && f.premioDia !== null);
+    // El premio (293) y el incentivo (SLT-68) cuelgan de un cierre para ser pagables, pero no los produjo
+    // la aprobacion: se anulan por su propio camino.
+    const naceDeUnCierre =
+      f.origenTipo === "cierre_dia" &&
+      !(c.libro === "mensajero" && (f.premioDia !== null || f.categoria === "incentivo"));
     const estado = c.documento === null ? undefined : c.estados.get(claveDeDocumento(c.documento));
     const anulacion = estado?.anulacion ?? null;
     return {
