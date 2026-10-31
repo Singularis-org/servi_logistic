@@ -34,6 +34,31 @@ const ORDEN_REPOSITORY = "lib/repositories/OrdenRepository.ts";
 const DESDE = "async findAllProvincias(";
 const HASTA = "async findDistritoParaCorreccion(";
 
+/**
+ * SLT-65 (T7.2; R19; design §14) — las lecturas de SLT-65 (design §2.1, filas 1–7) viven en estos
+ * archivos, y se barren ENTEROS: `OrdenRepository` deja de mirarse solo en el bloque de SLT-44.
+ * `_shared/sin-transaccion-anidada.ts` no entra: no lee ninguna tabla (envuelve el cliente).
+ */
+const ARCHIVOS_SLT65 = [
+  ORDEN_REPOSITORY,
+  "lib/repositories/CierreDiaRepository.ts",
+  "lib/repositories/ZonaRepository.ts",
+  "lib/repositories/_shared/lugar-orden.ts",
+];
+
+/** Una marca por archivo de SLT-65 que prueba que el barrido lee la lectura de verdad. */
+const LECTURAS_SLT65: Record<string, string[]> = {
+  [ORDEN_REPOSITORY]: [
+    "marcasDeOrdenes(",
+    "async findBaseCobroDevolucion(",
+    "async findParaCorreccion(",
+    "async contarSinEntregarPorNodoGeografico(",
+  ],
+  "lib/repositories/CierreDiaRepository.ts": ["export async function leerDescriptivosDeOrdenes(", "deLaEmpresa()"],
+  "lib/repositories/ZonaRepository.ts": ["export async function planificarReconciliacion(", "deLaEmpresa()"],
+  "lib/repositories/_shared/lugar-orden.ts": ["export function lugarDeLaOrden(", "export function whereLugarEn("],
+};
+
 /** Cada mencion de la columna nueva en el texto, tal como esta escrita. */
 export function mencionesDelNodoEn(codigo: string): string[] {
   return [...codigo.matchAll(/\bnodo_?geografico_?id\b/gi)].map((m) => m[0]);
@@ -115,6 +140,52 @@ describe("SLT-44 R12 — las lecturas de la feature no leen la columna nueva", (
       hallazgos,
       "el nodo de una asignacion o de una marca se lee de su `distrito_id`: asi la lectura no depende " +
         "del backfill de SLT-43 (R12)",
+    ).toEqual([]);
+  });
+});
+
+describe("SLT-65 R19 — el barrido ampliado se prueba a si mismo", () => {
+  it("CONTRAPRUEBA: una mencion FUERA del bloque de SLT-44 la ve el barrido del archivo entero, y no el del bloque", () => {
+    const texto = [
+      "  async findAllProvincias() {",
+      "    return 1;",
+      "  }",
+      "  async findDistritoParaCorreccion(id) {",
+      "    return 2;",
+      "  }",
+      "  async contarSinEntregarPorNodoGeografico(nivel, id) {",
+      "    return tx.orden.count({ where: { nodoGeograficoId: id } });",
+      "  }",
+      "",
+    ].join("\n");
+    expect(mencionesDelNodoEn(bloqueDeLecturas(texto, DESDE, HASTA))).toEqual([]);
+    expect(mencionesDelNodoEn(texto)).toEqual(["nodoGeograficoId"]);
+  });
+
+  it("CONTRAPRUEBA sobre un archivo real: `lugar-orden.ts` nombra la columna en su comentario, y el barrido no lo cuenta", () => {
+    const rel = "lib/repositories/_shared/lugar-orden.ts";
+    const crudo = readFileSync(path.join(RAIZ, rel), "utf8");
+    // Si el comentario dejara de nombrarla, este caso dejaria de probar la exclusion: que lo diga.
+    expect(mencionesDelNodoEn(crudo).length, `${rel} ya no nombra la columna en un comentario`).toBeGreaterThan(0);
+    expect(mencionesDelNodoEn(leer(rel))).toEqual([]);
+  });
+});
+
+describe("SLT-65 R19 — las lecturas de SLT-65 no leen la columna nueva (archivos enteros)", () => {
+  it("el barrido lee de verdad (anti-vacuidad)", () => {
+    for (const rel of ARCHIVOS_SLT65) {
+      const codigo = leer(rel);
+      expect(codigo.length, rel).toBeGreaterThan(300);
+      for (const marca of LECTURAS_SLT65[rel]) expect(codigo, `${rel}: ${marca}`).toContain(marca);
+    }
+  });
+
+  it("ni `OrdenRepository`, ni `CierreDiaRepository`, ni `ZonaRepository`, ni `lugar-orden` nombran la columna", () => {
+    const hallazgos = ARCHIVOS_SLT65.flatMap((rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`));
+    expect(
+      hallazgos,
+      "el lugar de una orden sale de `distrito_id`/`canton_id` y el nodo de una asignacion o de una " +
+        "marca de su `distrito_id`: asi la lectura no depende del backfill de SLT-43 (R19)",
     ).toEqual([]);
   });
 });

@@ -103,10 +103,10 @@
 
 ## T7 — Guardias [T2, T3, T4]
 
-- [ ] **T7.1** [P] `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts`
+- [x] **T7.1** [P] `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts`
   (design §12, R21). **Hecho:** verde sobre el repo, y la contraprueba con los tres casos
   prohibidos y los cuatro permitidos pasa.
-- [ ] **T7.2** [P] Ampliar `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
+- [x] **T7.2** [P] Ampliar `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
   (todo `OrdenRepository.ts`, `CierreDiaRepository.ts`, `ZonaRepository.ts` y
   `_shared/lugar-orden.ts`) y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (lecturas
   1–7) (R19). **Hecho:** las dos pasan, con la contraprueba de la guardia.
