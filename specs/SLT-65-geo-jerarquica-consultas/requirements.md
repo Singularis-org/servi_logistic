@@ -184,29 +184,7 @@
 
 ## Preguntas abiertas
 
-1. **¿Sobre qué se mide el 20 %?** La decisión dice «una consulta caliente tarda más de 20 %». Con
-   esta feature, una lectura no se vuelve más lenta en una sola consulta: deja de leer una relación
-   y suma la carga del catálogo, que son cinco consultas pequeñas en una transacción.
-   **Propuesta (`design.md` §10):**
-   - el umbral se aplica a la suma de los `Execution Time` de todas las consultas de la lectura,
-     antes y después, mediana de 5;
-   - el tiempo de pared del método se imprime y se pega en el PR, pero no bloquea;
-   - el 20 % bloquea en las lecturas calientes (listado de `/ordenes`, listado de la API y cierre);
-   - el Seq Scan nuevo sobre `orden` bloquea en las cinco lecturas medidas.
-2. **Nombres de lugar del listado de `/ordenes`.** Esa lectura ya cargará el catálogo para la
-   marca. Sus nombres de provincia, cantón y distrito podrían salir de él y ahorrar tres consultas.
-   La propuesta es dejarlos en las tablas viejas, porque la presentación es de SLT-47 (R28). Pasarlos
-   al catálogo sería la primera mitigación si R25 marca regresión en el listado, antes que un índice.
-   ¿De acuerdo?
-3. **Cadena incoherente en el conteo del superadmin.** Si una orden tiene un distrito que no cuelga
-   de su cantón, el conteo nuevo la cuenta bajo su lugar y el de hoy bajo sus columnas. No es dinero,
-   pero el script lo verá como diferencia (R11, R23).
-   **Propuesta:** el script cuenta esas órdenes aparte y las nombra por id. Si son la única causa de
-   diferencia en el conteo, no bloquean el merge y se dejan anotadas en el PR. ¿De acuerdo, o bloquea?
-4. **`lib/db/extension-empresa.ts` no tiene ninguna lectura geográfica.** Solo trata la geografía
-   como modelo de plataforma, y su comentario de cabecera cita `distrito.zonas`. Esta feature no
-   cambia su código: R17 y R18 fijan su comportamiento con tests. ¿Se esperaba algo más de ese
-   archivo?
+Ninguna. Las cuatro del spec se cerraron el 2026-10-31 (ver la tabla).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -220,3 +198,7 @@
 | 2026-10-30 | Lugar de una orden | Se lee de las FK viejas (`COALESCE(distrito_id, canton_id)`, mismo id que el nodo); el deploy no depende del backfill de SLT-43. Heredado de la tarjeta y de SLT-43. |
 | 2026-10-30 | Árbol | Sin `ruta` y sin CTE recursiva; la guardia de SLT-44 (R13) sigue valiendo. Heredado de SLT-43 y SLT-44. |
 | — | Migraciones | Solo aditivas (regla de la épica, SLT-43). Ningún agente toca producción ni su copia. |
+| 2026-10-31 | ¿Sobre qué se mide el 20 %? | Sobre la suma de los `Execution Time` de todas las consultas de la lectura, catálogo incluido, mediana de 5. El tiempo de pared se informa y no bloquea. El 20 % bloquea en listado de `/ordenes`, listado de la API y cierre; el Seq Scan nuevo sobre `orden`, en las cinco lecturas medidas (Camilo). |
+| 2026-10-31 | ¿Nombres de lugar del listado de `/ordenes` al catálogo? | No: se quedan en las tablas viejas para SLT-47. Si R25 marca regresión en el listado, moverlos al catálogo es la primera mitigación, antes que un índice (Camilo). |
+| 2026-10-31 | ¿Órdenes con cadena incoherente en el conteo? | El script las cuenta aparte y las nombra por id; si son la única causa de diferencia, no bloquean el merge y se anotan en el PR (Camilo). |
+| 2026-10-31 | ¿Algo más de `extension-empresa.ts`? | No. Su código no cambia; R17 y R18 fijan su comportamiento con tests (Camilo). |
