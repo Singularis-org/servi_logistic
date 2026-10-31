@@ -654,3 +654,16 @@ Cada spec se corrió por separado con `E2E_PUERTO=3044`, sobre `logistic_slt66_e
 | 11 | M4 deja los planes de base «monto» | `migracion-slt66-desasignar`: 3 fallados |
 
 **Pendiente del leader:** `./init.sh`, que corre el leader o CI.
+
+## F2.3: sync con dev, segundo renombre de migraciones (2026-10-31)
+- El leader mergeó `origin/dev` en `c27b41b`. Dev trajo `20261031130000_cierre_sin_gestion_confirmacion_fisica`, con el mismo timestamp que nuestra M1.
+- Las cuatro migraciones de la ficha pasan a `20261031140000`, `…140100`, `…140200` y `…140300`. Se actualizan las referencias:
+  - los SQL de la ficha, solo en comentarios y en el texto de un `RAISE`;
+  - `db/schema.prisma` y `lib/types/planes.ts`, en comentarios;
+  - los dos tests `migracion-slt66-*`, cuyo `M_ANTERIOR` pasa a ser la de cierre;
+  - el spec y `tasks.md`.
+- Ninguna base compartida tenía aplicadas nuestras migraciones. Donde esta bitácora cita nombres `…1200xx` o `…1300xx`, son los anteriores.
+- `logistic_slt66` se recreó con `migrate deploy`, `seed` y `generate`. El drift sale vacío.
+- `migracion-slt66-ida-y-vuelta`, `migracion-slt66-desasignar`, `cobro-plataforma-plan` y `cobro-plataforma-cargos`: 4 archivos y 54 tests, todos en verde.
+- Typecheck total: `tsc --noEmit` sale con exit 0.
+- `logistic_slt66_e2e` sigue con los nombres viejos. Hay que recrearla antes de volver a correr el E2E.

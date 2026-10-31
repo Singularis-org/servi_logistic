@@ -5,10 +5,10 @@
 --   · `cobro_plataforma_movimiento` con `fuente = 'plan'`. Los movimientos son el libro de la deuda
 --     (SL-40): borrarlos bajaría la deuda de la empresa y pasarlos a `global` falsearía su origen. Por
 --     eso, a diferencia del down de SL-24, aquí no se borra nada;
---   · `plan_rastro` con `accion = 'desasignado'`. Las quita el down de 20261031130300, que va antes.
+--   · `plan_rastro` con `accion = 'desasignado'`. Las quita el down de 20261031140300, que va antes.
 --
--- ORDEN: va después de los down de 20261031130300 y 20261031130200 (el cuerpo de este último nombra
--- `'plan'::cobro_plataforma_fuente`) y antes del de 20261031130000.
+-- ORDEN: va después de los down de 20261031140300 y 20261031140200 (el cuerpo de este último nombra
+-- `'plan'::cobro_plataforma_fuente`) y antes del de 20261031140000.
 --
 -- Postgres no tiene `ALTER TYPE ... DROP VALUE`: hay que recrear el tipo. La función es la de
 -- `20261026120200_job_estado_descartado/down.sql` TAL CUAL, renombrada `_slt66`: lee la lista VIGENTE
@@ -23,7 +23,7 @@ BEGIN
     RAISE EXCEPTION 'SLT-66 down: hay cargos o reversos de fuente plan; bajar los borraría o los falsearía';
   END IF;
   IF EXISTS (SELECT 1 FROM "plan_rastro" WHERE "accion"::text = 'desasignado') THEN
-    RAISE EXCEPTION 'SLT-66 down: quedan filas desasignado en plan_rastro; baja antes 20261031130300';
+    RAISE EXCEPTION 'SLT-66 down: quedan filas desasignado en plan_rastro; baja antes 20261031140300';
   END IF;
 END $$;
 

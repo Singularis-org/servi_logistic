@@ -13,7 +13,7 @@ import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-p
 
 /**
  * Los roles que admiten tope (R25). `apiKey` y `superadmin` quedan fuera: las keys tienen el suyo. SLT-66
- * (R1): `maestro` tampoco; el `CHECK` de `plan_tope_rol` lo rechaza igual (20261031130000).
+ * (R1): `maestro` tampoco; el `CHECK` de `plan_tope_rol` lo rechaza igual (20261031140000).
  */
 export const ROLES_CON_TOPE = ["admin", "mensajero", "adminTienda", "adminSatelite"] as const;
 export type RolConTope = (typeof ROLES_CON_TOPE)[number];

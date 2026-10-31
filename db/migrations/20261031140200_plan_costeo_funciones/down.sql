@@ -7,7 +7,7 @@
 --
 -- Tras bajar, una orden nueva se carga con la regla de SL-40, sin el escalón del plan (R25).
 --
--- ORDEN: va después del down de 20261031130300 y antes del de 20261031130100, que quita el valor
+-- ORDEN: va después del down de 20261031140300 y antes del de 20261031140100, que quita el valor
 -- `'plan'` que nombra el cuerpo de la función que se suelta aquí.
 
 -- Origen: 20261024120000_cobro_plataforma_blindaje_orden (SL-40, review B2).

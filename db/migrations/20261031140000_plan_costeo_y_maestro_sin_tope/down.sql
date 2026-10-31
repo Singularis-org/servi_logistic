@@ -1,5 +1,5 @@
--- SLT-66 — revierte 20261031130000_plan_costeo_y_maestro_sin_tope. Va después de los down de
--- 20261031130200 y 20261031130100 (orden inverso, design §2.3 bis).
+-- SLT-66 — revierte 20261031140000_plan_costeo_y_maestro_sin_tope. Va después de los down de
+-- 20261031140200 y 20261031140100 (orden inverso, design §2.3 bis).
 --
 -- Los topes de maestro que borró la subida NO vuelven (cabecera de migration.sql): solo se repone el
 -- CHECK que los admitía. Las versiones pendientes pierden la clave `costoPorOrden`, que el código de
