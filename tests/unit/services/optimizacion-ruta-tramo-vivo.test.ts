@@ -28,6 +28,11 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 const UBICACION = { lat: 9.93, lng: -84.09 };
@@ -53,6 +58,7 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     secuenciaFuente: null,
     trazado: null,
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
@@ -84,9 +90,10 @@ function montar(opts: {
     reemplazarSecuencia: async () => {},
     guardarTrazado: async () => {},
     marcarTramoVivo,
+    reducirSecuencia: async () => true,
     marcarDesactualizada: async () => {},
   };
-  const paradasRepo = { findParadasEnReparto: async () => opts.paradas ?? [] };
+  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => opts.paradas ?? [] };
   // Feature 265: `fuente` es REQUERIDA en el desenlace `ok`. Este doble no se ejercita aqui.
   const client = {
     optimizar: async () => ({ status: "ok" as const, secuencia: [], fuente: "proveedor" as const }),

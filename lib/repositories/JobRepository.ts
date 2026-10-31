@@ -4,8 +4,9 @@ import type { JobEstado, JobTipo } from "@prisma/client";
 import {
   empresaDelJob,
   type ClaimOpts,
+  type EncolarOMoverOpts,
   type EnqueueOpts,
-  type IJobRepository,
+  type IJobRepositoryMovible,
   type JobConEmpresa,
   type JobDTO,
   type JobTxClient,
@@ -64,7 +65,7 @@ function toDTO(row: JobRow): JobConEmpresa {
  * decision terminal (dead-letter) y la recurrencia viven en `JobQueueService`. El claim es
  * una unica sentencia atomica con `FOR UPDATE SKIP LOCKED` (§3.1). Devuelve DTOs planos.
  */
-export class JobRepository implements IJobRepository {
+export class JobRepository implements IJobRepositoryMovible {
   constructor(private readonly prisma: JobPrismaClient) {}
 
   async enqueue(
@@ -101,6 +102,40 @@ export class JobRepository implements IJobRepository {
         ${runAfter}, ${dedupeKey}, ${lastError}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
       ON CONFLICT ("dedupe_key") WHERE "dedupe_key" IS NOT NULL DO NOTHING
+      RETURNING *`;
+    return rows.length > 0 ? toDTO(rows[0]) : null;
+  }
+
+  async encolarOMoverPendiente(
+    tipo: JobTipo,
+    payload: Record<string, unknown>,
+    opts: EncolarOMoverOpts,
+    tx?: JobTxClient,
+  ): Promise<JobDTO | null> {
+    const client: JobTxClient = tx ?? (this.prisma as unknown as JobTxClient);
+    const id = randomUUID();
+    const maxIntentos = opts.maxIntentos ?? loadJobsConfig().JOBS_MAX_ATTEMPTS;
+    const payloadJson = JSON.stringify(payload ?? {});
+
+    // SLT-59 (R76, R77): el mismo INSERT de `enqueue`, sobre el MISMO indice unico parcial, pero el
+    // conflicto ACTUALIZA en vez de ignorar. El `WHERE "jobs"."estado" = 'pending'` es R77: el indice
+    // no esta acotado por estado, asi que una fila ya reclamada, hecha o muerta bloquea crear otra y
+    // tampoco se toca. Sin fila en `RETURNING` -> `null`. `max_intentos` y `organizacion_id` se quedan
+    // los de la fila original.
+    const rows = await client.$queryRaw<JobRow[]>`
+      INSERT INTO "jobs" (
+        "id", "tipo", "payload", "estado", "intentos", "max_intentos",
+        "run_after", "dedupe_key", "last_error", "created_at", "updated_at"
+      )
+      VALUES (
+        ${id}, ${tipo}::"job_tipo", ${payloadJson}::jsonb, 'pending', 0, ${maxIntentos},
+        ${opts.runAfter}, ${opts.dedupeKey}, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT ("dedupe_key") WHERE "dedupe_key" IS NOT NULL DO UPDATE
+        SET "run_after" = EXCLUDED."run_after",
+            "payload" = EXCLUDED."payload",
+            "updated_at" = CURRENT_TIMESTAMP
+        WHERE "jobs"."estado" = 'pending'
       RETURNING *`;
     return rows.length > 0 ? toDTO(rows[0]) : null;
   }

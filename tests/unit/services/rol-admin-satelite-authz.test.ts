@@ -178,6 +178,7 @@ function buildOrdenRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenReposi
     // tests no ejercitan el gate de coordenadas ni la ruta: devuelven vacio.
     findParaAsignabilidad: vi.fn(async () => []),
     findParadasEnReparto: vi.fn(async () => []),
+    contarAsignadasDelDia: vi.fn(async () => ({ asignadas: 0, recogidas: 0 })),
     findCausasDevueltaVigentes: vi.fn().mockResolvedValue(new Map()),
     // Feature 106: canal integrador (API por key), no ejercitado aqui.
     listByOwner: vi.fn().mockResolvedValue({ items: [], total: 0 }),

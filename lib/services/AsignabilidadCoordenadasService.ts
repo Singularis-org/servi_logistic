@@ -196,10 +196,12 @@ export class AsignabilidadCoordenadasService implements IAsignabilidadCoordenada
       // job DEBE sobrevivir al abort. Por eso se pasa el propio repo como `tx`: la
       // insercion abre su propia transaccion, no se engancha a ninguna ajena.
       try {
-        await encolarGeocodificacion(this.jobs, undefined, {
-          id: orden.id,
-          direccion: orden.direccion,
-        });
+        await encolarGeocodificacion(
+          this.jobs,
+          undefined,
+          { id: orden.id, direccion: orden.direccion },
+          "asignacion_sin_coordenadas", // SLT-59 (§13.2)
+        );
         resultado.set(orden.id, "geocodificacion_encolada");
       } catch {
         // R7: el encolado lanzo (DB caida, por ejemplo). NO se propaga: el gate debe

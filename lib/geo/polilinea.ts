@@ -36,6 +36,58 @@ export function distanciaHaversineKm(
   return 2 * RADIO_TIERRA_KM * Math.asin(Math.sqrt(h));
 }
 
+/** Metros por grado de arco sobre un circulo maximo, con el mismo radio que Haversine. */
+const METROS_POR_GRADO = (RADIO_TIERRA_KM * 1000 * Math.PI) / 180;
+
+/**
+ * SLT-59 (R3, design §2.1) — distancia minima, en METROS, de un punto a una linea quebrada.
+ * Mide cuanto se ha salido el mensajero de la ruta que se le dio: ~0 mientras la recorre, por
+ * mucho que avance, y crece solo cuando se aparta de ella.
+ *
+ * Proyeccion equirectangular local CENTRADA EN EL PUNTO: a la escala del umbral (~1 km) el
+ * error frente a la geodesica es despreciable, y evita trigonometria por cada vertice de una
+ * polilinea de Routes, que trae cientos. Con un solo vertice no hay segmento: Haversine exacto.
+ *
+ * Sin vertices devuelve `+Infinity` (el minimo de un conjunto vacio): no hay linea respecto a la
+ * que estar cerca, y que significa eso para la guarda lo decide quien llama, no la geometria.
+ */
+export function distanciaMinimaAPolilineaM(
+  punto: { lat: number; lng: number },
+  puntos: { lat: number; lng: number }[],
+): number {
+  if (puntos.length === 0) return Number.POSITIVE_INFINITY;
+  if (puntos.length === 1) return distanciaHaversineKm(punto, puntos[0]) * 1000;
+
+  const escalaLng = Math.cos(gradosARadianes(punto.lat));
+  // Coordenadas planas en metros con el punto en el origen: la distancia buscada es la norma
+  // del punto mas cercano de cada segmento.
+  const plano = puntos.map((p) => ({
+    x: (p.lng - punto.lng) * escalaLng * METROS_POR_GRADO,
+    y: (p.lat - punto.lat) * METROS_POR_GRADO,
+  }));
+
+  let minima = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < plano.length; i++) {
+    minima = Math.min(minima, distanciaOrigenASegmento(plano[i - 1], plano[i]));
+  }
+  return minima;
+}
+
+/** Distancia del origen (0,0) al segmento AB, en las mismas unidades que A y B. */
+function distanciaOrigenASegmento(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const largo2 = dx * dx + dy * dy;
+  // Dos vertices repetidos (Routes los emite en las uniones de tramos): el segmento es un punto.
+  if (largo2 === 0) return Math.hypot(a.x, a.y);
+  // Parametro de la proyeccion del origen sobre la recta AB, acotado al segmento.
+  const t = Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / largo2));
+  return Math.hypot(a.x + t * dx, a.y + t * dy);
+}
+
 /** Precision del formato: 5 decimales (~1 m). Es la que asumen los decodificadores. */
 const FACTOR = 1e5;
 

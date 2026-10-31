@@ -301,6 +301,7 @@ function armarReposDeRutas() {
     reemplazarSecuencia: vi.fn(async () => {}),
     guardarTrazado: vi.fn(async () => {}),
     marcarTramoVivo: vi.fn(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
   };
   DOBLE.rutas = rutas;

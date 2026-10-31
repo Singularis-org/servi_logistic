@@ -7,7 +7,7 @@ import type {
 import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
-import { distanciaHaversineKm } from "@/lib/geo/polilinea";
+import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
 
 // Feature 92 (R24/R25) — resolucion del ORIGEN de la ruta, en TRES escalones:
 //
@@ -33,6 +33,11 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 function parada(id: string, lat: number, lng: number): ParadaRutaRow {
@@ -56,6 +61,7 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     secuenciaFuente: null,
     trazado: null,
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
@@ -76,9 +82,10 @@ function build(
     reemplazarSecuencia: vi.fn<(m: string, s: string[], meta: unknown) => Promise<void>>(async () => {}),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
     marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
-  const paradasRepo: ParadasRepo = { findParadasEnReparto: vi.fn(async () => paradas) };
+  const paradasRepo: ParadasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => paradas) };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
       status: "ok" as const,
@@ -129,12 +136,15 @@ describe("R24 escalon 1 — gps RECIENTE", () => {
   });
 
   it("la ubicacion que llega en la llamada se persiste ANTES de optimizar y manda como origen", async () => {
-    // R23: `upsertOrigen` corre antes de leer la ruta, de modo que la posicion recien
-    // capturada es la que se usa en esta misma optimizacion.
-    const { service, rutas } = build(null, PARADAS);
+    // R23: la posicion recien capturada es la que se usa en esta misma optimizacion.
+    // [2026-10-31, SLT-59, R46, design §2.4] Ya no se escribe antes de leer la ruta: se usa en
+    // memoria y se persiste justo antes de la llamada facturada, cuando ya se sabe que se
+    // recalcula. Sin ruta previa (este caso) `upsertOrigen` crea la fila.
+    const { service, rutas, client } = build(null, PARADAS);
 
     await service.ejecutar(MENSAJERO, { motivo: "manual", ubicacion: { lat: 9.9, lng: -84.1 } });
 
+    expect(rutas.upsertOrigen).toHaveBeenCalledTimes(1);
     expect(rutas.upsertOrigen).toHaveBeenCalledWith(MENSAJERO, {
       lat: 9.9,
       lng: -84.1,
@@ -142,8 +152,14 @@ describe("R24 escalon 1 — gps RECIENTE", () => {
       fuente: "gps",
     });
     expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeLessThan(
+      client.optimizar.mock.invocationCallOrder[0],
+    );
+    expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeGreaterThan(
       rutas.findByMensajero.mock.invocationCallOrder[0],
     );
+    // La ubicacion recibida manda como origen aunque la fila no existiera al leer.
+    expect(origenEnviado(client)).toEqual({ lat: 9.9, lng: -84.1 });
+    expect(origenPersistido(rutas).fuente).toBe("gps");
   });
 });
 
@@ -428,5 +444,136 @@ describe("R25 bis — los escenarios de origen siguen sin lanzar con la guarda p
         status: "ok",
       });
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R46, design §2.4) — la sincronizacion manual que NO recalcula no pisa el origen
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// La ubicacion recibida se usa en memoria para medir el desvio y como origen; solo se escribe
+// (`upsertOrigen`) cuando la ejecucion ya decidio recalcular.
+
+/** Origen guardado: GPS reciente SOBRE la linea o1 -> o2 (su punto medio). */
+const ORIGEN_GUARDADO = { origenLat: 10.1, origenLng: -84.1, origenAt: T0, origenFuente: "gps" as const };
+/** Ubicacion recibida tambien sobre la linea: no desviado. */
+const U_EN_RUTA = { lat: 10.05, lng: -84.05 };
+/** Ubicacion recibida a ~7,8 km de la linea: desviado (umbral 1 km). */
+const U_DESVIADA = { lat: 10.05, lng: -83.95 };
+
+/** Ruta vigente calculada hace 30 min sobre `ids`, con la linea por calles o1 -> o2. */
+function rutaVigente(ids: string[], over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
+  return ruta({
+    ...ORIGEN_GUARDADO,
+    calculadaAt: new Date(T0.getTime() - 30 * 60_000),
+    huellaSet: "huella-previa",
+    trazado: {
+      encodedPolyline: codificarPolilinea([
+        { lat: 10.0, lng: -84.0 },
+        { lat: 10.2, lng: -84.2 },
+      ]),
+      distanciaM: 30_000,
+      duracionS: 1_800,
+      fuente: "routes",
+    },
+    secuenciaPorOrden: new Map(ids.map((id, i) => [id, i + 1])),
+    ...over,
+  });
+}
+
+const MANUAL_EN_RUTA = { motivo: "manual" as const, ubicacion: U_EN_RUTA };
+
+describe("SLT-59 R46 — manual con ubicacion que no recalcula: `upsertOrigen` no se llama", () => {
+  it("R1: mismo conjunto y sin desvio -> omitida/sin_cambios, sin escribir el origen", async () => {
+    const { service, rutas, client } = build(rutaVigente(["o1", "o2"]), PARADAS);
+    const r = await service.ejecutar(MENSAJERO, MANUAL_EN_RUTA);
+    expect(r).toMatchObject({ status: "omitida", razon: "sin_cambios" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+  });
+
+  it("R2: una parada y la misma -> omitida/sin_paradas, sin escribir el origen", async () => {
+    const { service, rutas } = build(rutaVigente(["o1"]), [PARADAS[0]]);
+    const r = await service.ejecutar(MENSAJERO, MANUAL_EN_RUTA);
+    expect(r).toMatchObject({ status: "omitida", razon: "sin_paradas" });
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+  });
+
+  it("R41: entrega en orden (prefijo) -> reducida, sin escribir el origen", async () => {
+    const { service, rutas, client } = build(rutaVigente(["o0", "o1", "o2"]), PARADAS);
+    const r = await service.ejecutar(MENSAJERO, MANUAL_EN_RUTA);
+    expect(r).toMatchObject({ status: "omitida", razon: "reducida" });
+    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+  });
+
+  it("R49: reduccion no aplicada -> reduccion_descartada, sin escribir el origen", async () => {
+    const { service, rutas } = build(rutaVigente(["o0", "o1", "o2"]), PARADAS);
+    rutas.reducirSecuencia.mockResolvedValueOnce(false);
+    const r = await service.ejecutar(MENSAJERO, MANUAL_EN_RUTA);
+    expect(r).toEqual({ status: "omitida", razon: "reduccion_descartada" });
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+  });
+
+  it("92/R34: intervalo minimo -> omitida/intervalo_minimo, sin escribir el origen", async () => {
+    const { service, rutas, paradasRepo } = build(
+      rutaVigente(["o1", "o2"], { calculadaAt: new Date(T0.getTime() - 5_000) }),
+      PARADAS,
+    );
+    // Desviada a proposito: aunque tocara recalcular, el intervalo corta antes.
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual", ubicacion: U_DESVIADA });
+    expect(r).toEqual({ status: "omitida", razon: "intervalo_minimo" });
+    expect(paradasRepo.findParadasEnReparto).not.toHaveBeenCalled();
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-59 R46 — el desvio se mide con la ubicacion RECIBIDA, no con el origen guardado", () => {
+  it("guardado sobre la ruta, recibida a ~7,8 km -> recalcula desde la recibida y la persiste una vez", async () => {
+    const { service, rutas, client } = build(rutaVigente(["o1", "o2"]), PARADAS);
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual", ubicacion: U_DESVIADA });
+
+    expect(r.status).toBe("ok");
+    expect(client.optimizar).toHaveBeenCalledTimes(1);
+    expect(origenEnviado(client)).toEqual(U_DESVIADA);
+    expect(rutas.upsertOrigen).toHaveBeenCalledTimes(1);
+    expect(rutas.upsertOrigen).toHaveBeenCalledWith(MENSAJERO, {
+      ...U_DESVIADA,
+      capturadaAt: T0,
+      fuente: "gps",
+    });
+    // 92/R23: se escribe ANTES de la llamada facturada.
+    expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeLessThan(
+      client.optimizar.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("control: la misma ruta sin ubicacion (el origen guardado esta sobre la linea) -> omitida", async () => {
+    const { service, client } = build(rutaVigente(["o1", "o2"]), PARADAS);
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toMatchObject({ status: "omitida", razon: "sin_cambios" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+  });
+
+  it("sin ruta previa -> `upsertOrigen` se llama (crea la fila) antes de optimizar", async () => {
+    const { service, rutas, client } = build(null, PARADAS);
+    await service.ejecutar(MENSAJERO, { motivo: "manual", ubicacion: U_EN_RUTA });
+    expect(rutas.upsertOrigen).toHaveBeenCalledTimes(1);
+    expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeLessThan(
+      client.optimizar.mock.invocationCallOrder[0],
+    );
+    expect(origenEnviado(client)).toEqual(U_EN_RUTA);
+  });
+
+  it("92/R35 con cero paradas y ubicacion -> limpia la secuencia y persiste la ubicacion antes", async () => {
+    const { service, rutas } = build(rutaVigente(["o1"]), []);
+    await service.ejecutar(MENSAJERO, MANUAL_EN_RUTA);
+    expect(rutas.upsertOrigen).toHaveBeenCalledTimes(1);
+    expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeLessThan(
+      rutas.reemplazarSecuencia.mock.invocationCallOrder[0],
+    );
   });
 });

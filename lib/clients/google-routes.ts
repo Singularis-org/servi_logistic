@@ -25,6 +25,14 @@ import type {
   TramoTrazado,
 } from "@/lib/interfaces/external/IRoutesClient";
 import { optlog, opterror, describirToken, cronometro } from "@/lib/logging/optimizer-log";
+import {
+  registrarLlamadaGoogle,
+  resolverRegistro,
+  resultadoDeFalloDeRed,
+  resultadoDeRespuesta,
+  type ContextoLlamadaRuta,
+  type OpcionesRegistroLlamada,
+} from "@/lib/clients/registro-llamada-google";
 
 const ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
 
@@ -82,7 +90,7 @@ const respuestaSchema = z.object({
   routes: z.array(rutaSchema).optional(),
 });
 
-export interface GoogleRoutesClientOpts {
+interface GoogleRoutesClientOptsBase {
   /** Proveedor del `access_token` OAuth2. El mismo que usa la optimizacion. */
   getToken: () => Promise<string>;
   /** Timeout de la llamada en ms. */
@@ -97,6 +105,9 @@ export interface GoogleRoutesClientOpts {
    */
   routingPreference?: RoutingPreference;
 }
+
+/** SLT-59 (R69): el canal y la empresa de la línea `[google-api]`, inyectables en tests. */
+export type GoogleRoutesClientOpts = GoogleRoutesClientOptsBase & OpcionesRegistroLlamada;
 
 /** Convierte `"1234s"` a segundos. Cualquier otra forma -> `null`, nunca `NaN`. */
 function parsearDuracion(duration: string | undefined): number | null {
@@ -145,15 +156,28 @@ export class GoogleRoutesClient implements IRoutesClient {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly routingPreference: RoutingPreference;
+  private readonly registro: ReturnType<typeof resolverRegistro>;
 
   constructor(opts: GoogleRoutesClientOpts) {
     this.getToken = opts.getToken;
     this.timeoutMs = opts.timeoutMs ?? 20_000;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.routingPreference = opts.routingPreference ?? "TRAFFIC_UNAWARE";
+    this.registro = resolverRegistro(opts);
   }
 
-  async trazar(input: TrazarRutaInput): Promise<TrazarRutaOutcome> {
+  /** SLT-59 (R69): una línea por petición `computeRoutes`; `paradas` = las pedidas. */
+  private registrar(contexto: ContextoLlamadaRuta, paradas: number, resultado: string): void {
+    registrarLlamadaGoogle(this.registro.registro, {
+      api: "routes",
+      contexto,
+      empresaId: this.registro.empresaId(),
+      paradas,
+      resultado,
+    });
+  }
+
+  async trazar(input: TrazarRutaInput, contexto: ContextoLlamadaRuta): Promise<TrazarRutaOutcome> {
     const { origen, paradasEnOrden } = input;
 
     optlog("client/routes — ENTRADA", {
@@ -228,10 +252,12 @@ export class GoogleRoutesClient implements IRoutesClient {
       });
     } catch (error) {
       opterror("client/routes — fallo de red o timeout", error, { ms: medir() });
+      this.registrar(contexto, paradasEnOrden.length, resultadoDeFalloDeRed(error));
       return { status: "transitorio", detalle: `${OPERACION}: fallo de red o timeout` };
     }
 
     optlog("client/routes — respuesta HTTP", { status: respuesta.status, ms: medir() });
+    this.registrar(contexto, paradasEnOrden.length, resultadoDeRespuesta(respuesta.status));
 
     if (respuesta.status === 401 || respuesta.status === 403) {
       optlog("client/routes — SALIDA: config_invalida", {

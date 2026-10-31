@@ -8,6 +8,7 @@ import { z } from "zod";
 // SL-36 (R42/R43): la empresa sale DEL JOB (no del contexto ambiental) para filtrar la salud de
 // la geocodificacion por empresa.
 import { empresaDelJob, type JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import { MOTIVOS_LLAMADA_GEOCODE } from "@/lib/clients/registro-llamada-google";
 import type { IGeocodeCacheRepository } from "@/lib/interfaces/repositories/IGeocodeCacheRepository";
 import type { IOrdenGeocodeRepository } from "@/lib/interfaces/repositories/IOrdenGeocodeRepository";
 import type { IGeocodeClient } from "@/lib/interfaces/external/IGeocodeClient";
@@ -103,8 +104,16 @@ export class GeocodeConfigInvalidaError extends Error {
  */
 export type FabricaClienteGeocode = (claveApi: string) => IGeocodeClient;
 
-/** R14: el payload solo lleva el id de la orden. Cualquier otra forma es un error. */
-const payloadSchema = z.object({ ordenId: z.string().min(1) });
+/**
+ * R14: el payload solo lleva el id de la orden. Cualquier otra forma es un error.
+ *
+ * SLT-59 (D27; design §13.2): y el `motivo` de la llamada, que no es PII. Sin el es valido: un
+ * job encolado antes del despliegue registra `job_sin_motivo`.
+ */
+const payloadSchema = z.object({
+  ordenId: z.string().min(1),
+  motivo: z.enum(MOTIVOS_LLAMADA_GEOCODE).optional(),
+});
 
 export class GeocodificacionService {
   constructor(
@@ -136,7 +145,7 @@ export class GeocodificacionService {
     if (!parsed.success) {
       throw new Error("geocodificacion: payload invalido (se esperaba { ordenId })");
     }
-    const { ordenId } = parsed.data;
+    const { ordenId, motivo } = parsed.data;
 
     // R30: orden inexistente o borrada -> job COMPLETADO sin error. Una orden borrada no
     // es un fallo del sistema; reintentarla no la va a resucitar.
@@ -193,7 +202,13 @@ export class GeocodificacionService {
       throw new GeocodeNoConfiguradoError();
     }
 
-    const outcome = await this.crearCliente(lectura.credencial.clave_api).geocodificar(query);
+    // SLT-59 (R69, R70): una linea por peticion, con el intento de ESTE job (ya incrementado).
+    const outcome = await this.crearCliente(lectura.credencial.clave_api).geocodificar(query, {
+      motivo: motivo ?? "job_sin_motivo",
+      ordenId,
+      intento: job.intentos,
+      maxIntentos: job.maxIntentos,
+    });
 
     switch (outcome.status) {
       case "ok": {

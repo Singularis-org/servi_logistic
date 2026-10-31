@@ -22,6 +22,12 @@
 // una optimizacion posterior al evento ya cubrio el trabajo. Coste evitado sin
 // infraestructura nueva.
 //
+// ⏳ 2026-10-29 (SLT-59, D2/D12; R21-R23, design §3.1): la gestion YA NO es inmediata. Va con
+// debounce y comparte la clave `:debounce:` con la recogida y el traspaso, asi que un job en vuelo
+// la TRAGA — y ahora eso es lo buscado: ese job corre despues y lee el conjunto al ejecutarse. El
+// namespace `:inmediato:` y su helper se retiraron. La entrega en orden no espera a la cola: se
+// reduce en la propia peticion (R27). Lo de arriba queda como historia de por que existio.
+//
 // ══════════════════════════════════════════════════════════════════════════════════════
 // §4.2 — LA VENTANA TEMPORAL DE LA CLAVE DE DEBOUNCE ES OBLIGATORIA (R18).
 // ══════════════════════════════════════════════════════════════════════════════════════
@@ -30,18 +36,24 @@
 // filas completadas no se purgan. La segunda recogida del mensajero —y todas las demas,
 // para siempre— se descartarian en silencio. Es la trampa exacta que documento el gate
 // F1.4-Q4 de la feature 91.
-import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import type {
+  IJobRepository,
+  IJobRepositoryMovible,
+  JobTxClient,
+} from "@/lib/interfaces/repositories/IJobRepository";
+import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
+import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+
+/**
+ * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Lo escriben la recogida de
+ * la primera ruta del dia (R58, R76), la gestion y el traspaso; el servicio lo lee para el motivo de
+ * la llamada (`motivoLlamadaRuta`).
+ */
+export const ORIGENES_JOB_RUTA = ["recogida", "recogida_parcial", "gestion", "traspaso"] as const;
+export type OrigenJobRuta = (typeof ORIGENES_JOB_RUTA)[number];
 
 /** Prefijo del `dedupe_key` (patron `DEDUPE_PREFIX` de liberar-reprogramadas / 91). */
 export const DEDUPE_PREFIX = "optimizacion_ruta";
-
-/**
- * Limite de intentos de este tipo de job. Se queda en el default de la cola (5), a
- * diferencia de la geocodificacion (8): fallar aqui NO pierde datos —la ruta anterior se
- * conserva (R27)— y el proximo evento del mensajero encolara otro job de todas formas.
- * Insistir mas solo gastaria llamadas facturadas.
- */
-export const OPTIMIZACION_MAX_INTENTOS = 5;
 
 /** Duracion de la ventana de agrupacion, en ms. Fija: define el ESPACIO de claves. */
 const VENTANA_MS = 60_000;
@@ -62,57 +74,81 @@ export function dedupeKeyDebounce(mensajeroId: string, runAfter: Date): string {
 }
 
 /**
- * R19 — clave del disparo INMEDIATO. Namespace distinto del debounce (§4.1) MAS un
- * componente unico por evento: nunca colisiona con nada, asi que la gestion del mensajero
- * SIEMPRE inserta su fila y SIEMPRE corre sin delay.
- */
-export function dedupeKeyInmediato(mensajeroId: string, eventoId: string): string {
-  return `${DEDUPE_PREFIX}:${mensajeroId}:inmediato:${eventoId}`;
-}
-
-/**
  * R16: encola la reoptimizacion DIFERIDA `debounceS` segundos, dentro de la transaccion
  * del writer. Recoger 8 paquetes seguidos produce UN job, no ocho.
  *
  * El payload lleva SOLO el `mensajeroId` — ni coordenadas ni direcciones (regla de PII
  * heredada de la 91). El handler releera todo lo que necesite.
+ *
+ * SLT-59 (D28): y el `origen` del evento. Con `ON CONFLICT DO NOTHING`, si la ventana ya tiene job
+ * se conserva el del PRIMER evento que lo encolo.
  */
 export async function encolarOptimizacionDebounce(
   repo: IJobRepository,
   tx: JobTxClient | undefined,
   mensajeroId: string,
-  opts: { ahora: Date; debounceS: number },
+  opts: { ahora: Date; debounceS: number; origen: Extract<OrigenJobRuta, "gestion" | "traspaso"> },
 ): Promise<void> {
   const runAfter = new Date(opts.ahora.getTime() + opts.debounceS * 1000);
   await repo.enqueue(
     "optimizacion_ruta",
-    { mensajeroId },
+    { mensajeroId, origen: opts.origen },
     {
       runAfter,
       dedupeKey: dedupeKeyDebounce(mensajeroId, runAfter),
-      maxIntentos: OPTIMIZACION_MAX_INTENTOS,
+      // SLT-59 (R32, D9): antes una constante de 5. Las filas ya encoladas conservan el suyo.
+      maxIntentos: loadRouteOptimizationConfig().RUTA_OPT_MAX_INTENTOS,
     },
     tx,
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R57, R58, R76, R77; design §12.2 y su nota D29) — LA PRIMERA RUTA DEL DIA, POR RECOGIDA.
+// ══════════════════════════════════════════════════════════════════════════════════════
+// Mientras el mensajero carga en bodega, cada recogida NO paga una optimizacion (Route Optimization
+// factura POR ENVIO). Deja UN job por mensajero y dia, con una clave propia que NO es por ventana:
+//   - quedan paquetes por recoger -> `ahora + RUTA_PRIMERA_DEBOUNCE_MIN` (debounce deslizante, R76);
+//   - era el ultimo               -> `ahora + RUTA_DEBOUNCE_S` (R58).
+// Cada recogida MUEVE el mismo job (`encolarOMoverPendiente`); si ya corrio, ni se crea ni se toca
+// (R77). La clave vive en otro espacio que `:debounce:`, asi que no traga ni es tragada por los
+// jobs de gestion y traspaso.
+
+/** Clave del job de la primera ruta: una por mensajero y dia de Costa Rica (`YYYY-MM-DD`). */
+export function dedupeKeyPrimeraRecogida(mensajeroId: string, diaCR: string): string {
+  return `ruta-opt:primera-recogida:${mensajeroId}:${diaCR}`;
+}
+
 /**
- * R19: encola la reoptimizacion SIN delay, dentro de la transaccion del writer. El
- * `eventoId` es el id de la `gestion_orden` recien creada en esa misma transaccion: unico
- * por evento y disponible sin generar nada nuevo.
+ * Glosario «primera ruta pendiente»: la ruta nunca se calculo o se calculo antes de que empezara
+ * el dia `diaCR` en Costa Rica. Puro: no lee nada (R67).
  */
-export async function encolarOptimizacionInmediata(
-  repo: IJobRepository,
+export function primeraRutaPendiente(calculadaAt: Date | null, diaCR: string): boolean {
+  return calculadaAt === null || calculadaAt.getTime() < inicioDelDiaCREnUtc(diaCR).getTime();
+}
+
+/**
+ * R58/R76: deja o mueve el job de la primera ruta del dia. Quien llama ya comprobo que la primera
+ * ruta esta pendiente; aqui solo se decide CUANDO corre y con que `origen`.
+ */
+export async function encolarPrimeraRutaPorRecogida(
+  repo: IJobRepositoryMovible,
   tx: JobTxClient | undefined,
   mensajeroId: string,
-  eventoId: string,
+  opts: { ahora: Date; diaCR: string; quedanPorRecoger: boolean },
 ): Promise<void> {
-  await repo.enqueue(
+  const config = loadRouteOptimizationConfig();
+  const esperaMs = opts.quedanPorRecoger
+    ? config.RUTA_PRIMERA_DEBOUNCE_MIN * 60_000
+    : config.RUTA_DEBOUNCE_S * 1000;
+  const origen: OrigenJobRuta = opts.quedanPorRecoger ? "recogida_parcial" : "recogida";
+  await repo.encolarOMoverPendiente(
     "optimizacion_ruta",
-    { mensajeroId },
+    { mensajeroId, origen },
     {
-      dedupeKey: dedupeKeyInmediato(mensajeroId, eventoId),
-      maxIntentos: OPTIMIZACION_MAX_INTENTOS,
+      runAfter: new Date(opts.ahora.getTime() + esperaMs),
+      dedupeKey: dedupeKeyPrimeraRecogida(mensajeroId, opts.diaCR),
+      maxIntentos: config.RUTA_OPT_MAX_INTENTOS,
     },
     tx,
   );

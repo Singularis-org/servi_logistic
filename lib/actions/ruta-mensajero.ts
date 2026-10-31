@@ -22,6 +22,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOptimizacionRutaService } from "@/lib/interfaces/services/IOptimizacionRutaService";
 import {
+  calcularRutaAlSalirSchema,
   sincronizarRutaSchema,
   trazarTramoVivoSchema,
   type SincronizarRutaResult,
@@ -29,6 +30,10 @@ import {
 } from "@/lib/types/ruta-mensajero";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import {
+  loadRouteOptimizationConfig,
+  type RouteOptimizationConfig,
+} from "@/lib/config/route-optimization";
 
 /** Unico rol autorizado (R33). */
 const ROL_AUTORIZADO = "mensajero";
@@ -36,6 +41,8 @@ const ROL_AUTORIZADO = "mensajero";
 export interface RutaMensajeroDeps {
   service?: IOptimizacionRutaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-59 (R64): de aqui sale el porcentaje del mensaje; los tests lo inyectan. */
+  config?: Pick<RouteOptimizationConfig, "RUTA_PRIMERA_MIN_RECOGIDO_PCT">;
 }
 
 /**
@@ -114,6 +121,17 @@ export async function sincronizarRuta(
         motivo: "la ruta se sincronizo hace muy poco; intenta de nuevo en unos segundos",
       };
     }
+    // SLT-59 (R64, design §12.5): la forma `conflict` ya existe y el boton ya hace
+    // `toast.warning(motivo)`, asi que la UI no cambia. El porcentaje es el de la config (R55).
+    if (resultado.status === "omitida" && resultado.razon === "recogida_insuficiente") {
+      const pct = (deps.config ?? loadRouteOptimizationConfig()).RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+      return {
+        status: "conflict" as const,
+        motivo:
+          `Todavía no se calcula la ruta: recoge al menos el ${pct} % de tus paquetes ` +
+          `(llevas ${resultado.recogidas} de ${resultado.asignadas}).`,
+      };
+    }
     // El trazado (polilinea + distancia) sube al cliente para que el mapa lo pinte al
     // instante. No va atado a `status`: con UNA sola parada la optimizacion se OMITE (R35)
     // y aun asi hay linea que dibujar. Se reenvia siempre que el service lo produzca.
@@ -123,6 +141,56 @@ export async function sincronizarRuta(
       // Feature 265 (R39): la procedencia del orden RECIEN calculado. Con `omitida` va `null`
       // —no se recalculo nada, asi que no hay nada nuevo que contar—; el aviso persistente de
       // la pantalla ya cubre ese caso y no depende de esta respuesta.
+      secuenciaFuente: resultado.status === "ok" ? resultado.secuenciaFuente : null,
+      ...(resultado.trazado !== undefined ? { trazado: resultado.trazado } : {}),
+    };
+  });
+  return isAppErrorShape(r) ? toRutaActionError(r) : r;
+}
+
+/**
+ * SLT-59 (R62, R63, design §12.6) — disparo de salida: la pantalla de reparto vio al mensajero
+ * alejarse del punto de recogida con la primera ruta del dia pendiente. Mismo borde que
+ * `sincronizarRuta` (actor, rol antes de parsear, zod), y las guardas viven en el service: el
+ * cliente pide, pero quien decide si se paga es `ejecutar` con `motivo: "salida"` (R63, R66).
+ *
+ * Cualquier `omitida` se devuelve como `ok` con `omitida: true`: la pantalla no avisa de nada
+ * (sin toast), solo refresca si hubo calculo. Sin `intervalo_minimo`: lo acota R63.
+ */
+export async function calcularRutaAlSalir(
+  input: unknown,
+  deps: RutaMensajeroDeps = {},
+): Promise<SincronizarRutaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    // R33, igual que en `sincronizarRuta`: el rol va ANTES de parsear y de construir el service.
+    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" as const };
+
+    const data = calcularRutaAlSalirSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+
+    let resultado;
+    try {
+      resultado = await service.ejecutar(actor.usuarioId, {
+        motivo: "salida",
+        ubicacion: data.ubicacion,
+      });
+    } catch (error) {
+      // Mismo trato que el boton (R27, R31): la ruta ya quedo `desactualizada` con el ultimo
+      // orden valido intacto, y el texto es fijo.
+      if (error instanceof RutaIntentoFallidoError) {
+        return {
+          status: "conflict" as const,
+          motivo: "no se pudo recalcular la ruta ahora; se conserva el ultimo orden",
+        };
+      }
+      throw error;
+    }
+
+    return {
+      status: "ok" as const,
+      omitida: resultado.status === "omitida",
       secuenciaFuente: resultado.status === "ok" ? resultado.secuenciaFuente : null,
       ...(resultado.trazado !== undefined ? { trazado: resultado.trazado } : {}),
     };

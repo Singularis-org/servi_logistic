@@ -120,7 +120,10 @@ import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registr
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
-import { encolarGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
+import {
+  encolarGeocodificacion,
+  motivoGeocodeDeCarga,
+} from "@/lib/services/jobs/geocodificacion-encolado";
 import {
   CorreccionDiaConflictoError,
   DeshacerAsignacionConflictoError,
@@ -182,7 +185,10 @@ import { traspasarConversaciones } from "@/lib/repositories/traspasar-conversaci
 // FICHA 427 (R32): el encolado de reoptimizacion de la 92, REUSADO TAL CUAL. Es la primera vez
 // que lo llama un escritor que no es la gestion, y tiene que serlo: hasta hoy ningun camino
 // cambiaba el conjunto de paradas de un mensajero YA EN REPARTO.
-import { encolarOptimizacionDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import {
+  encolarOptimizacionDebounce,
+  primeraRutaPendiente,
+} from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
@@ -2285,7 +2291,12 @@ export class OrdenRepository implements IOrdenRepository {
     direccionPrevia: string | null,
   ): Promise<void> {
     if (direccionNueva === undefined || direccionNueva === direccionPrevia) return;
-    await encolarGeocodificacion(this.jobRepo, tx, { id, direccion: direccionNueva });
+    await encolarGeocodificacion(
+      this.jobRepo,
+      tx,
+      { id, direccion: direccionNueva },
+      "direccion_cambiada", // SLT-59 (§13.2)
+    );
   }
 
   /**
@@ -3000,10 +3011,12 @@ export class OrdenRepository implements IOrdenRepository {
         // el proveedor es IDENTICO (no hay endpoint batch) y el reintento granular evita
         // que una direccion irresoluble haga reintentar 199 geocodificaciones ya pagadas.
         for (const nueva of nuevas) {
-          await encolarGeocodificacion(this.jobRepo, tx as unknown as JobTxClient, {
-            id: nueva.id,
-            direccion: nueva.direccion,
-          });
+          await encolarGeocodificacion(
+            this.jobRepo,
+            tx as unknown as JobTxClient,
+            { id: nueva.id, direccion: nueva.direccion },
+            motivoGeocodeDeCarga(historial.origenTipo), // SLT-59 (§13.2)
+          );
         }
         // Feature 294: lo que `skipDuplicates` descarto, con nombre y apellido. Se deriva de
         // `nuevas` (el diff before/after) y no de `result.count`, que solo dice CUANTAS.
@@ -3152,10 +3165,12 @@ export class OrdenRepository implements IOrdenRepository {
         // duplicadas saltadas por `skipDuplicates` no estan en `nuevas`), dentro de la MISMA
         // tx del chunk, y no-op si la direccion no es geocodificable.
         for (const nueva of nuevas) {
-          await encolarGeocodificacion(this.jobRepo, tx as unknown as JobTxClient, {
-            id: nueva.id,
-            direccion: nueva.direccion,
-          });
+          await encolarGeocodificacion(
+            this.jobRepo,
+            tx as unknown as JobTxClient,
+            { id: nueva.id, direccion: nueva.direccion },
+            motivoGeocodeDeCarga(historial.origenTipo), // SLT-59 (§13.2)
+          );
         }
         // Feature 294: las que `skipDuplicates` descarto. `resultado` lleva ya el
         // `numRemision` de cada creada, asi que el conjunto omitido sale del mismo diff.
@@ -3346,6 +3361,38 @@ export class OrdenRepository implements IOrdenRepository {
       longitud: r.longitud !== null ? r.longitud.toNumber() : null,
       createdAt: r.createdAt,
     }));
+  }
+
+  /**
+   * SLT-59 (R64, R67, design §12.5) — asignadas y recogidas del dia en curso, en UNA lectura. El
+   * predicado del dia es el de la recogida (`recogerLote`) y el del corte: `fecha_reparto` nula o
+   * `<= dia`. Solo se aplica a `por_recoger`: una orden ya `en_reparto` esta recogida, sea del
+   * dia que sea. Se leen solo los estatus y se cuentan aqui, para no hacer dos viajes.
+   */
+  async contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }> {
+    // El estado «por recoger» del glosario; su codigo vigente desde la 135 (`order-status.ts`).
+    const ESTATUS_POR_RECOGER = "mensajero_recogiendo_en_bodega";
+    const filas = await this.prisma.orden.findMany({
+      where: {
+        mensajeroAsignadoId: mensajeroId,
+        deletedAt: null,
+        OR: [
+          { estatus: { value: ESTATUS_EN_REPARTO } },
+          {
+            estatus: { value: ESTATUS_POR_RECOGER },
+            OR: [{ fechaReparto: null }, { fechaReparto: { lte: dia } }],
+          },
+        ],
+      },
+      select: { estatus: { select: { value: true } } },
+    });
+    return {
+      asignadas: filas.length,
+      recogidas: filas.filter((f) => f.estatus.value === ESTATUS_EN_REPARTO).length,
+    };
   }
 
   /**
@@ -4983,12 +5030,27 @@ export class OrdenRepository implements IOrdenRepository {
       //    LOS DOS Y NO SOLO EL DESTINO: al origen le acaban de QUITAR paradas, y su ruta optimizada
       //    se queda con huecos hasta que su job corra. Encolar solo uno es un fallo mudo — la ruta
       //    del otro sigue pintando un recorrido que ya no existe.
+      //
+      //    SLT-59 (R60, design §12.4): solo encola a quien YA tiene su primera ruta del dia. Mientras
+      //    esta pendiente, la parada nueva entra cuando esa primera ruta se calcule (R58, R59, R62,
+      //    R64). Se evalua por separado para origen y destino, con UNA lectura para los dos (R67).
       const ahora = this.now();
       const debounceS = loadRouteOptimizationConfig().RUTA_DEBOUNCE_S;
+      const diaCR = fechaCalendarioCR(ahora);
+      //    Review m7: la lectura filtra por la empresa de las ordenes del lote, ya bloqueadas en el
+      //    paso 1 (la RLS solo deja ver las de la sesion). Segunda barrera que no depende del
+      //    contexto: la ruta de otra empresa con el mismo `mensajero_id` no decide aqui.
+      const rutas = await tx.$queryRaw<{ mensajero_id: string; calculada_at: Date | null }[]>`
+        SELECT "mensajero_id", "calculada_at" FROM "ruta_optimizada"
+         WHERE "mensajero_id" IN (${Prisma.join([mensajeroOrigenId, mensajeroDestinoId])})
+           AND "organizacion_id" = (SELECT "organizacion_id" FROM "orden" WHERE "id" = ${ids[0]})`;
+      const calculadaPorMensajero = new Map(rutas.map((r) => [r.mensajero_id, r.calculada_at]));
       for (const mensajeroId of [mensajeroOrigenId, mensajeroDestinoId]) {
+        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, diaCR)) continue;
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora,
           debounceS,
+          origen: "traspaso", // SLT-59 (D28, §13.1)
         });
       }
 

@@ -184,6 +184,7 @@ describe("R18 — respuesta satisfactoria", () => {
     await d.service.ejecutar(job());
     expect(d.geocodificar).toHaveBeenCalledWith(
       "Av. Central 100, Carmen, San José, San José, Costa Rica",
+      expect.objectContaining({ ordenId: expect.any(String) }), // SLT-59: el contexto (R68)
     );
   });
 });

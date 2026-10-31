@@ -180,7 +180,11 @@ describe("155/R11 — un encolado de geocodificacion por orden EFECTIVAMENTE ins
     );
 
     expect(enqueue).toHaveBeenCalledTimes(2);
-    expect(enqueue.mock.calls.map((c) => c[1])).toEqual([{ ordenId: "o1" }, { ordenId: "o2" }]);
+    // SLT-59 (§13.2): `carga_api` es alta suelta -> `motivo: "orden_creada"` (no `carga_masiva`).
+    expect(enqueue.mock.calls.map((c) => c[1])).toEqual([
+      { ordenId: "o1", motivo: "orden_creada" },
+      { ordenId: "o2", motivo: "orden_creada" },
+    ]);
   });
 
   it("createManyOrdenesConGuia: CERO encolados por las duplicadas que saltó skipDuplicates", async () => {
@@ -220,7 +224,7 @@ describe("155/R11 — un encolado de geocodificacion por orden EFECTIVAMENTE ins
 
     expect(creadas.map((c) => c.ordenId)).toEqual(["o-nueva"]);
     expect(enqueue).toHaveBeenCalledTimes(1);
-    expect(enqueue.mock.calls[0][1]).toEqual({ ordenId: "o-nueva" });
+    expect(enqueue.mock.calls[0][1]).toEqual({ ordenId: "o-nueva", motivo: "orden_creada" }); // SLT-59 §13.2
     // La duplicada tampoco consume guia (una sola sentencia de numeracion).
     expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
   });

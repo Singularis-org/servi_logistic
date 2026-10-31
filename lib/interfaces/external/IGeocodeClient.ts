@@ -7,6 +7,8 @@
 // `GeocodificacionService` (design §5). Asi la tabla de decision de R21-R25 es testeable
 // sin red y sin credencial.
 
+import type { ContextoLlamadaGeocode } from "@/lib/clients/registro-llamada-google";
+
 export type GeocodeOutcome =
   /** Resultado satisfactorio. `crudo` es la respuesta del proveedor tal cual (cache). */
   | { status: "ok"; latitud: number; longitud: number; precision: string; crudo: unknown }
@@ -25,5 +27,5 @@ export interface IGeocodeClient {
    * desenlaces se devuelven como `GeocodeOutcome`. Solo lanza si la respuesta no cumple el
    * contrato esperado (R19), y ese error NO contiene la credencial, la URL ni la direccion.
    */
-  geocodificar(query: string): Promise<GeocodeOutcome>;
+  geocodificar(query: string, contexto: ContextoLlamadaGeocode): Promise<GeocodeOutcome>;
 }
