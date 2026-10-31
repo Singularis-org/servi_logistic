@@ -96,10 +96,26 @@ export const indemnizacionSchema = z.object({
  * sea exactamente el conjunto que vuelve— la valida el SERVICE contra las gestiones reales del
  * cierre: el borde no sabe que gestiones tiene ese cierre (design §10-F, misma razon que la 158).
  */
-export const confirmacionFisicaSchema = z.object({
-  gestionId: z.string().uuid(),
-  numGuia: z.number().int().positive(),
-});
+//
+// Ficha 451 / SLT-72 (T3.1, design §5.1, R17) — UNION DISCRIMINADA por `origen`: la entrada es
+// una GESTION que vuelve (238, por `gestionId`) o una orden BARRIDA sin gestionar por este cierre
+// (451, por `ordenId`, que dentro del cierre identifica la fila de `cierre_sin_gestion`). El
+// discriminante es OBLIGATORIO: una entrada sin `origen` es un error de forma, no una `gestion`
+// implicita — un default aqui seria exactamente la clase de silencio que esta ficha cierra.
+// `z.object` (no `.strict()`) descarta claves ajenas, asi que una rama no puede colar el id de la
+// otra hasta el servicio.
+export const confirmacionFisicaSchema = z.discriminatedUnion("origen", [
+  z.object({
+    origen: z.literal("gestion"),
+    gestionId: z.string().uuid(),
+    numGuia: z.number().int().positive(),
+  }),
+  z.object({
+    origen: z.literal("barrida"),
+    ordenId: z.string().uuid(),
+    numGuia: z.number().int().positive(),
+  }),
+]);
 
 // Feature 158 (R19/R36): `aprobarCierre` gana la lista de indemnizaciones. `.default([])` la
 // hace RETROCOMPATIBLE con el contrato de la 38: un cierre sin incidentes se aprueba

@@ -514,10 +514,15 @@ export interface IndemnizacionCapturadaInput {
  * contrasta con la guia REAL de la orden de esa gestion. Sin ese contraste, un fallo de mapeo del
  * cliente confirmaria el paquete equivocado y nadie se enteraria: el conteo cuadraria igual.
  */
-export interface ConfirmacionFisicaInput {
-  gestionId: string;
-  numGuia: number;
-}
+//
+// Ficha 451 / SLT-72 (T3.1, design §5.2) — pasa a UNION DISCRIMINADA por `origen`, espejo del borde:
+// una gestion que vuelve (238) o una orden que ESTE cierre barrio sin gestionar (451, por
+// `ordenId`, contrastada contra la guia CONGELADA de `cierre_sin_gestion`). Es el MISMO conjunto con
+// otro origen, por eso viaja en la MISMA lista y no en un quinto parametro (design §9-F): una
+// sola cobertura, un solo `fieldErrors`, un solo «faltan N».
+export type ConfirmacionFisicaInput =
+  | { origen: "gestion"; gestionId: string; numGuia: number }
+  | { origen: "barrida"; ordenId: string; numGuia: number };
 
 // R10/R12-R14: aprobar un cierre `solicitado` del alcance.
 // Feature 158 (R19/R20/R21): + `validation_error` cuando los montos de indemnizacion no cubren

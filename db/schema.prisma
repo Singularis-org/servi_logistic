@@ -3158,6 +3158,18 @@ model CierreSinGestion {
   createdAt DateTime @default(now()) @map("created_at")
   // SIN updated_at / deleted_at: fila INMUTABLE, como `cierre_detail` (69/R10).
 
+  // FICHA 451 / SLT-72 (R20/R23/R24) — el instante en que bodega declaro tener ESTE paquete delante
+  // al aprobar el cierre. MISMO nombre que `gestion_orden.confirmada_fisica_at` (238) a proposito:
+  // es el MISMO hecho sobre el otro origen, y reusar el nombre hace que la guardia
+  // `confirmacion-sin-lectores.guardia.test.ts` lo cubra sin tocar su registro.
+  //
+  // NO CONTRADICE la inmutabilidad declarada arriba: lo inmutable son los DESCRIPTIVOS CONGELADOS
+  // —la foto de la orden al barrerla—, y esos no se tocan (R22). Esto es un hecho NUEVO sobre la
+  // fila, escrito UNA vez, dentro de la transaccion que aprueba. Sigue sin haber `updated_at` ni
+  // `deleted_at`: la fila no se edita ni se borra. NULL = aprobado antes de esta ficha o sin
+  // confirmar (R23). No es un reloj (R24).
+  confirmadaFisicaAt DateTime? @map("confirmada_fisica_at")
+
   cierre        CierreDia    @relation(fields: [cierreId], references: [id])
   orden         Orden        @relation(fields: [ordenId], references: [id])
   // `onDelete: Restrict` NO es el default de Prisma para una relacion OPCIONAL (seria SetNull):

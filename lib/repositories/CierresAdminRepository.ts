@@ -14,6 +14,9 @@ import type {
   GestionEditableDelCierre,
   GestionIncidenteDelCierre,
   GestionRetornableDelCierre,
+  BarridaDelCierre,
+  ConfirmacionFisicaBarrida,
+  ConfirmacionFisicaGestion,
   ICierresAdminRepository,
   ResolverCierreInput,
   ResolverCierreResult,
@@ -1025,6 +1028,23 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       numGuia: r.orden.numGuia,
       resultado: r.resultado,
     }));
+  }
+
+  /**
+   * Ficha 451 / SLT-72 (T2.1, design §5.3, R5/R6/R8/R9) — las ordenes que ESTE cierre barrio sin
+   * gestionar. Molde literal de la lectura de gestiones retornables de arriba, sin `resultado`
+   * (una barrida no lo tiene: vuelve SIEMPRE, `RETORNO_POR_ORIGEN.barrida`) y sin `anuladaAt` (la
+   * tabla no tiene bajas: fila inmutable, 264).
+   *
+   * `cierreId` es el ancla (R9: nunca la barrida de otro cierre) y el ALCANCE va en el WHERE por la
+   * relacion al cierre (R8), nunca en memoria. `numGuia` es la copia CONGELADA (Q2 de la 451).
+   */
+  async findBarridasDelCierre(cierreId: string, alcance: Alcance): Promise<BarridaDelCierre[]> {
+    const rows = await this.prisma.cierreSinGestion.findMany({
+      where: { cierreId, cierre: alcanceWhere(alcance) },
+      select: { ordenId: true, numGuia: true },
+    });
+    return rows.map((r) => ({ ordenId: r.ordenId, numGuia: r.numGuia }));
   }
 
   /** R2/R4/R5/R8/R9: cierres del alcance, mas reciente primero, totales -> string. */
@@ -2389,8 +2409,15 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // UNA consulta, no N. A diferencia del bucle de indemnizaciones —que escribe un valor
         // distinto por fila— aqui el valor es el MISMO para todas, asi que un solo `updateMany`
         // hace el trabajo. El techo real medido es de 14 gestiones por cierre.
-        if (confirmacionFisica.length > 0) {
-          const ids = confirmacionFisica.map((c) => c.gestionId);
+        // Ficha 451 / SLT-72: la lista trae los DOS origenes; aqui se parten porque son dos tablas.
+        const confirmacionGestiones = confirmacionFisica.filter(
+          (c): c is ConfirmacionFisicaGestion => !("ordenId" in c),
+        );
+        const confirmacionBarridas = confirmacionFisica.filter(
+          (c): c is ConfirmacionFisicaBarrida => "ordenId" in c,
+        );
+        if (confirmacionGestiones.length > 0) {
+          const ids = confirmacionGestiones.map((c) => c.gestionId);
           const aplicado = await tx.gestionOrden.updateMany({
             where: {
               id: { in: ids },
@@ -2409,6 +2436,27 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           // R18 — FALLO CERRADO. Si alguna no caso la guardia, se lanza y la `$transaction`
           // revierte TODO. Es el equivalente del `count !== 1` del bucle de indemnizaciones.
           if (aplicado.count !== ids.length) {
+            throw new ConfirmacionFisicaNoAplicableError(cierreId);
+          }
+        }
+        // Ficha 451 / SLT-72 (T4.2, design §5.4, R20/R21/R22) — LA MISMA MARCA SOBRE EL OTRO
+        // ORIGEN: las ordenes que ESTE cierre barrio sin gestionar. Pegada a la de arriba y en el
+        // mismo bloque a proposito: es money-neutral, va despues de todos los feeds de dinero, y asi
+        // no mueve ninguna asercion de orden de `cierres-admin-caja-cod.test.ts` (R39). La
+        // liberacion de esas ordenes (109/276) ya corrio mas arriba en esta MISMA tx, acotada a las
+        // barridas de este cierre (271); como la cobertura exacta se verifico antes de abrirla
+        // (R16), toda orden liberada queda marcada aqui (R26).
+        if (confirmacionBarridas.length > 0) {
+          const ordenIds = confirmacionBarridas.map((c) => c.ordenId);
+          const aplicado = await tx.cierreSinGestion.updateMany({
+            // `cierreId` es GUARDIA, no filtro (R9): sin el, aprobar un cierre podria marcar la
+            // barrida de la misma orden en OTRO cierre que tambien la barrio.
+            where: { cierreId, ordenId: { in: ordenIds } },
+            // R22 — una sola clave: ni montos, ni descriptivos congelados, ni movimientos.
+            data: { confirmadaFisicaAt: new Date() },
+          });
+          // R21 — FALLO CERRADO: si alguna no caso, la `$transaction` revierte la aprobacion entera.
+          if (aplicado.count !== ordenIds.length) {
             throw new ConfirmacionFisicaNoAplicableError(cierreId);
           }
         }

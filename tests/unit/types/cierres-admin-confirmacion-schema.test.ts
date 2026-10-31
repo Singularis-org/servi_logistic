@@ -4,6 +4,10 @@ import { aprobarCierreSchema, confirmacionFisicaSchema } from "@/lib/types/cierr
 
 // Feature 238 (T2.1, R7/R12/R15/R16) — el BORDE de la confirmacion fisica.
 //
+// Ficha 451 / SLT-72 (T3.2): desde la 451 cada entrada lleva su `origen` (union discriminada). Los
+// casos de la 238 se escriben CON `origen: "gestion"` para que cada rechazo de abajo falle por SU
+// motivo (uuid, guia...) y no, en verde por casualidad, porque falta el discriminante.
+//
 // Aqui vive la validacion de FORMA (uuid, entero positivo) y NADA MAS. La COBERTURA —que lo
 // confirmado sea exactamente el conjunto de gestiones que vuelven a bodega— la valida el SERVICE,
 // que es el unico que sabe que gestiones tiene ese cierre y dentro de que alcance. Mismo reparto
@@ -45,11 +49,11 @@ describe("238/R7/R12 — una confirmacion valida", () => {
   it("acepta gestionId uuid + numGuia entero positivo, y los conserva", () => {
     const r = aprobarCierreSchema.safeParse({
       cierreId: CIERRE,
-      confirmacionFisica: [{ gestionId: GESTION, numGuia: 9001 }],
+      confirmacionFisica: [{ origen: "gestion", gestionId: GESTION, numGuia: 9001 }],
     });
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.confirmacionFisica).toEqual([{ gestionId: GESTION, numGuia: 9001 }]);
+      expect(r.data.confirmacionFisica).toEqual([{ origen: "gestion", gestionId: GESTION, numGuia: 9001 }]);
       // La guia viaja como NUMBER: es `orden.num_guia`, un `Int`, no dinero.
       expect(typeof r.data.confirmacionFisica[0].numGuia).toBe("number");
     }
@@ -59,8 +63,8 @@ describe("238/R7/R12 — una confirmacion valida", () => {
     const r = aprobarCierreSchema.safeParse({
       cierreId: CIERRE,
       confirmacionFisica: [
-        { gestionId: GESTION, numGuia: 1 },
-        { gestionId: OTRA, numGuia: 2 },
+        { origen: "gestion", gestionId: GESTION, numGuia: 1 },
+        { origen: "gestion", gestionId: OTRA, numGuia: 2 },
       ],
     });
     expect(r.success).toBe(true);
@@ -69,6 +73,7 @@ describe("238/R7/R12 — una confirmacion valida", () => {
 
   it("una lista de 14 entradas pasa el borde (el techo real de un cierre)", () => {
     const catorce = Array.from({ length: 14 }, (_, i) => ({
+      origen: "gestion" as const,
       gestionId: `4444444${i.toString(16)}-4444-4444-8444-444444444444`,
       numGuia: 1000 + i,
     }));
@@ -81,22 +86,22 @@ describe("238 — lo que el borde RECHAZA por su forma", () => {
   it("un `gestionId` que no es uuid", () => {
     const r = aprobarCierreSchema.safeParse({
       cierreId: CIERRE,
-      confirmacionFisica: [{ gestionId: "no-es-uuid", numGuia: 9001 }],
+      confirmacionFisica: [{ origen: "gestion", gestionId: "no-es-uuid", numGuia: 9001 }],
     });
     expect(r.success).toBe(false);
   });
 
   it("una guia con decimales (un escaner no lee `12.5`)", () => {
-    expect(confirmacionFisicaSchema.safeParse({ gestionId: GESTION, numGuia: 12.5 }).success).toBe(
+    expect(confirmacionFisicaSchema.safeParse({ origen: "gestion", gestionId: GESTION, numGuia: 12.5 }).success).toBe(
       false,
     );
   });
 
   it("una guia cero o negativa", () => {
-    expect(confirmacionFisicaSchema.safeParse({ gestionId: GESTION, numGuia: 0 }).success).toBe(
+    expect(confirmacionFisicaSchema.safeParse({ origen: "gestion", gestionId: GESTION, numGuia: 0 }).success).toBe(
       false,
     );
-    expect(confirmacionFisicaSchema.safeParse({ gestionId: GESTION, numGuia: -7 }).success).toBe(
+    expect(confirmacionFisicaSchema.safeParse({ origen: "gestion", gestionId: GESTION, numGuia: -7 }).success).toBe(
       false,
     );
   });
@@ -105,12 +110,12 @@ describe("238 — lo que el borde RECHAZA por su forma", () => {
     // Si el borde coaccionara, `"9001"` pasaria y la comparacion del servicio con `orden.num_guia`
     // (un `Int`) se haria entre tipos distintos. El borde es el sitio donde eso se para.
     expect(
-      confirmacionFisicaSchema.safeParse({ gestionId: GESTION, numGuia: "9001" }).success,
+      confirmacionFisicaSchema.safeParse({ origen: "gestion", gestionId: GESTION, numGuia: "9001" }).success,
     ).toBe(false);
   });
 
   it("una entrada sin `numGuia`: R12 no se puede verificar sin ella", () => {
-    expect(confirmacionFisicaSchema.safeParse({ gestionId: GESTION }).success).toBe(false);
+    expect(confirmacionFisicaSchema.safeParse({ origen: "gestion", gestionId: GESTION }).success).toBe(false);
   });
 
   it("`confirmacionFisica` que no es una lista", () => {
@@ -118,5 +123,59 @@ describe("238 — lo que el borde RECHAZA por su forma", () => {
       aprobarCierreSchema.safeParse({ cierreId: CIERRE, confirmacionFisica: { gestionId: GESTION } })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("451/R17 (forma) — la union discriminada por `origen`", () => {
+  const ORDEN = "55555555-5555-4555-8555-555555555555";
+
+  it("acepta la rama `barrida` (ordenId uuid + guia) y la conserva tal cual", () => {
+    const r = aprobarCierreSchema.safeParse({
+      cierreId: CIERRE,
+      confirmacionFisica: [
+        { origen: "gestion", gestionId: GESTION, numGuia: 9001 },
+        { origen: "barrida", ordenId: ORDEN, numGuia: 7001 },
+      ],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.confirmacionFisica).toEqual([
+        { origen: "gestion", gestionId: GESTION, numGuia: 9001 },
+        { origen: "barrida", ordenId: ORDEN, numGuia: 7001 },
+      ]);
+    }
+  });
+
+  it("rechaza una entrada SIN `origen` (no hay `gestion` implicita)", () => {
+    expect(confirmacionFisicaSchema.safeParse({ gestionId: GESTION, numGuia: 9001 }).success).toBe(false);
+    expect(confirmacionFisicaSchema.safeParse({ ordenId: ORDEN, numGuia: 9001 }).success).toBe(false);
+  });
+
+  it("rechaza un `origen` desconocido", () => {
+    expect(
+      confirmacionFisicaSchema.safeParse({ origen: "rechazo_tienda", gestionId: GESTION, numGuia: 1 }).success,
+    ).toBe(false);
+  });
+
+  it("rechaza los campos CRUZADOS: `ordenId` en la rama `gestion` y `gestionId` en la `barrida`", () => {
+    expect(confirmacionFisicaSchema.safeParse({ origen: "gestion", ordenId: ORDEN, numGuia: 1 }).success).toBe(false);
+    expect(confirmacionFisicaSchema.safeParse({ origen: "barrida", gestionId: GESTION, numGuia: 1 }).success).toBe(
+      false,
+    );
+  });
+
+  it("una rama no cuela el id de la otra hasta el servicio (la clave ajena se descarta)", () => {
+    const r = confirmacionFisicaSchema.safeParse({ origen: "barrida", ordenId: ORDEN, gestionId: GESTION, numGuia: 1 });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toEqual({ origen: "barrida", ordenId: ORDEN, numGuia: 1 });
+  });
+
+  it("la rama `barrida` exige la misma forma: uuid y guia entera positiva", () => {
+    expect(confirmacionFisicaSchema.safeParse({ origen: "barrida", ordenId: "no-uuid", numGuia: 1 }).success).toBe(false);
+    expect(confirmacionFisicaSchema.safeParse({ origen: "barrida", ordenId: ORDEN, numGuia: 0 }).success).toBe(false);
+    expect(confirmacionFisicaSchema.safeParse({ origen: "barrida", ordenId: ORDEN, numGuia: "7001" }).success).toBe(
+      false,
+    );
+    expect(confirmacionFisicaSchema.safeParse({ origen: "barrida", ordenId: ORDEN }).success).toBe(false);
   });
 });
