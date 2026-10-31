@@ -87,6 +87,19 @@ const MIGRACIONES_QUE_TOCAN_LA_COLUMNA = [
   // pasara a escribir la columna, cae ese caso — no este.
   "20260820180000_orden_fecha_reparto/down.sql",
   "20260820180000_orden_fecha_reparto/migration.sql",
+  // ── SLT-63 (2026-10-31) — LA QUINTA ENTRADA, MIRADA A MANO ───────────────────────────────────
+  //
+  // QUE HACE: un `UPDATE` de DATOS que pone a NULL el trio de la asignacion (`mensajero_asignado_id`,
+  // `asignado_at`, `fecha_reparto`) de las recolecciones ya recibidas en la central (SLT-63/R11,
+  // decision D2 de Carlos). Solo escribe NULL y solo en ordenes vivas en `en_bodega_central` cuya
+  // ultima fila es la recepcion central desde `en_ruta_bodega_central`.
+  //
+  // POR QUE NO MUEVE EL DENOMINADOR DEL PAGO. La recoleccion nunca estampa `asignado_at` (157/R38):
+  // en el caso evidenciado la columna ya es NULL y el `SET` no cambia nada. Se escribe igual porque
+  // el trio se limpia junto (guardia `fecha-reparto-acompana-asignado-at`, regla de la 246), que es
+  // lo mismo que hace desde SLT-63 la recepcion en `OrdenRepository.recibirEnBodegaCentral`.
+  // El `down.sql` solo la NOMBRA en prosa y no entra en el censo.
+  "20261031120000_liberar_recolecciones_recibidas/migration.sql",
 ];
 
 /** Las entradas de la lista blanca que SOLO pueden indexar la columna, nunca escribirla. */

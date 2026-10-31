@@ -36,10 +36,14 @@ const HIST_RECEPCION = {
   origenTipo: "recepcion_bodega_central",
 } as const;
 
+// SLT-63: el service decide; el caso 138 libera la asignacion y el 139 la conserva.
+const LIBERA = { liberaAsignacion: true } as const;
+const CONSERVA = { liberaAsignacion: false } as const;
+
 describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 138+139)", () => {
   // --- Caso 138: en_ruta_bodega_central -> en_bodega_central ---
 
-  it("R2/R11/R18 (138): UPDATE guardado por id+deletedAt+origen (SIN zona/tienda); true si afecto 1 fila", async () => {
+  it("R2/R11 (138) + SLT-63/R1: el data del updateMany limpia la asignacion; UPDATE guardado por id+deletedAt+origen (SIN zona/tienda); true si afecto 1 fila", async () => {
     const prisma = buildPrisma();
     prisma.orden.findFirst.mockResolvedValue({ estatusId: idEstado("en_ruta_bodega_central") });
     prisma.orden.updateMany.mockResolvedValue({ count: 1 });
@@ -50,6 +54,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
       "en_ruta_bodega_central",
       idEstado("en_bodega_central"),
       HIST_RECEPCION,
+      LIBERA,
     );
 
     expect(ok).toBe(true);
@@ -62,9 +67,13 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
     });
     expect(arg.where).not.toHaveProperty("zonaId");
     expect(arg.where).not.toHaveProperty("tiendaId");
-    // R18: solo fija estatusId; NO toca mensajeroAsignadoId ni numGuia.
-    expect(arg.data).toEqual({ estatusId: idEstado("en_bodega_central") });
-    expect(arg.data).not.toHaveProperty("mensajeroAsignadoId");
+    // SLT-63/R1 (acota 138/R18): el MISMO updateMany deja la orden sin asignacion; numGuia intacto.
+    expect(arg.data).toEqual({
+      estatusId: idEstado("en_bodega_central"),
+      mensajeroAsignadoId: null,
+      asignadoAt: null,
+      fechaReparto: null,
+    });
     expect(arg.data).not.toHaveProperty("numGuia");
   });
 
@@ -79,6 +88,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
       "en_ruta_bodega_central",
       idEstado("en_bodega_central"),
       HIST_RECEPCION,
+      LIBERA,
     );
 
     const arg = prisma.orden.findFirst.mock.calls[0][0];
@@ -102,6 +112,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
       "en_ruta_bodega_central",
       idEstado("en_bodega_central"),
       HIST_RECEPCION,
+      LIBERA,
     );
 
     expect(prisma.ordenHistorialEstado.createMany).toHaveBeenCalledTimes(1);
@@ -121,7 +132,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
 
   // --- Caso 139: devolviendo_a_bodega_central -> por_devolver_a_tienda ---
 
-  it("R17 (139): guarda por el origen `devolviendo_a_bodega_central` y persiste `por_devolver_a_tienda`", async () => {
+  it("R17 (139) + SLT-63/R3: guarda por el origen `devolviendo_a_bodega_central`, persiste `por_devolver_a_tienda` y no toca la asignacion", async () => {
     const prisma = buildPrisma();
     prisma.orden.findFirst.mockResolvedValue({ estatusId: idEstado("devolviendo_a_bodega_central") });
     prisma.orden.updateMany.mockResolvedValue({ count: 1 });
@@ -132,6 +143,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
       "devolviendo_a_bodega_central",
       idEstado("por_devolver_a_tienda"),
       HIST_RECEPCION,
+      CONSERVA,
     );
 
     expect(ok).toBe(true);
@@ -172,6 +184,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
         "en_ruta_bodega_central",
         idEstado("en_bodega_central"),
         HIST_RECEPCION,
+        LIBERA,
       ),
     ).toBe(false);
     expect(prisma.ordenHistorialEstado.createMany).not.toHaveBeenCalled();
@@ -188,6 +201,7 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
       "en_ruta_bodega_central",
       idEstado("en_bodega_central"),
       HIST_RECEPCION,
+      LIBERA,
     );
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);

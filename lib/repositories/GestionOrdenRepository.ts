@@ -519,8 +519,14 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
    * `en_ruta_bodega_central` o mas adelante (la bodega central ya la recibio), asi que no hay
    * lista de estados que la acote sin arrastrar ordenes que no son de esa lista.
    *
-   * Conserva las dos guardias del hermano —propiedad (`mensajero_asignado_id`) y `deleted_at IS
-   * NULL`— en el WHERE, nunca en el cliente: un id de historial no autoriza a leer la orden.
+   * Conserva las dos guardias del hermano —propiedad y `deleted_at IS NULL`— en el WHERE, nunca
+   * en el cliente: un id de historial no autoriza a leer la orden.
+   *
+   * SLT-63: la propiedad admite una segunda forma. Desde que la recepcion en la central libera la
+   * asignacion, la orden recibida queda sin mensajero; para que siga en «Recolectadas hoy»
+   * (167/R26) vale tambien «sin mensajero y con una `recoleccion_tienda` mia en el historial».
+   * Exigir `mensajeroAsignadoId: null` en esa rama es lo que hace que la lista no muestre mas que
+   * antes: en cuanto la central se la asigna a otro, se cae (SLT-63/R9).
    */
   async findMisAsignacionesByIds(
     mensajeroId: string,
@@ -530,8 +536,16 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
     const rows = await this.prisma.orden.findMany({
       where: {
         id: { in: ids },
-        mensajeroAsignadoId: mensajeroId,
         deletedAt: null,
+        OR: [
+          { mensajeroAsignadoId: mensajeroId },
+          {
+            mensajeroAsignadoId: null,
+            historialEstados: {
+              some: { origenTipo: "recoleccion_tienda", actorUsuarioId: mensajeroId },
+            },
+          },
+        ],
       },
       ...WITH_ASIGNACION,
     });
