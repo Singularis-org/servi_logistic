@@ -389,8 +389,8 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
 
 // ═══ SLT-59 T7.5 — R64: el boton con poco recogido ════════════════════════════════════════
 
-describe("SLT-59 R64 — `recogida_insuficiente` se traduce a `conflict` con X, Y y el % de la config", () => {
-  it("el motivo lleva lo recogido, lo asignado y el porcentaje de la config, no un literal", async () => {
+describe("SLT-59 R64 / SLT-74 — `recogida_insuficiente` se traduce a `conflict` con el minimo en paquetes", () => {
+  it("el motivo lleva lo recogido, lo asignado y el minimo derivado del % de la config, no un literal", async () => {
     const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas: 3, asignadas: 4 });
     const r = await sincronizarRuta(
       {},
@@ -398,7 +398,24 @@ describe("SLT-59 R64 — `recogida_insuficiente` se traduce a `conflict` con X, 
     );
     expect(r).toEqual({
       status: "conflict",
-      motivo: "Todavía no se calcula la ruta: recoge al menos el 70 % de tus paquetes (llevas 3 de 4).",
+      motivo: "Todavía no se calcula la ruta: recoge al menos 3 de tus 4 paquetes (llevas 3).",
+    });
+  });
+
+  // SLT-74: minimo = ceil(asignadas * pct / 100), el mismo umbral que la guarda del service.
+  it.each([
+    { asignadas: 15, recogidas: 10, minimo: 12 },
+    { asignadas: 7, recogidas: 5, minimo: 6 }, // 5,6 redondea hacia arriba
+    { asignadas: 10, recogidas: 7, minimo: 8 },
+  ])("SLT-74: $asignadas asignadas al 80 % piden $minimo", async ({ asignadas, recogidas, minimo }) => {
+    const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas, asignadas });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80 } },
+    );
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: `Todavía no se calcula la ruta: recoge al menos ${minimo} de tus ${asignadas} paquetes (llevas ${recogidas}).`,
     });
   });
 
@@ -410,7 +427,7 @@ describe("SLT-59 R64 — `recogida_insuficiente` se traduce a `conflict` con X, 
       const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
       expect(r).toEqual({
         status: "conflict",
-        motivo: "Todavía no se calcula la ruta: recoge al menos el 80 % de tus paquetes (llevas 1 de 5).",
+        motivo: "Todavía no se calcula la ruta: recoge al menos 4 de tus 5 paquetes (llevas 1).",
       });
     } finally {
       if (previo !== undefined) process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT = previo;

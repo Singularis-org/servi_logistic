@@ -123,13 +123,18 @@ export async function sincronizarRuta(
     }
     // SLT-59 (R64, design §12.5): la forma `conflict` ya existe y el boton ya hace
     // `toast.warning(motivo)`, asi que la UI no cambia. El porcentaje es el de la config (R55).
+    // SLT-74: el minimo se muestra en paquetes, no en %. Es el menor entero que pasa la guarda
+    // del service (`recogidas * 100 < asignadas * pct`), o sea ceil(asignadas * pct / 100).
     if (resultado.status === "omitida" && resultado.razon === "recogida_insuficiente") {
       const pct = (deps.config ?? loadRouteOptimizationConfig()).RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+      const { asignadas, recogidas } = resultado;
+      // Aritmetica entera: evita que un producto como 7 * 80 / 100 arrastre error de coma flotante.
+      const minimo = Math.floor((asignadas * pct + 99) / 100);
       return {
         status: "conflict" as const,
         motivo:
-          `Todavía no se calcula la ruta: recoge al menos el ${pct} % de tus paquetes ` +
-          `(llevas ${resultado.recogidas} de ${resultado.asignadas}).`,
+          `Todavía no se calcula la ruta: recoge al menos ${minimo} de tus ${asignadas} paquetes ` +
+          `(llevas ${recogidas}).`,
       };
     }
     // El trazado (polilinea + distancia) sube al cliente para que el mapa lo pinte al
