@@ -260,7 +260,7 @@
   En `sincronizar-ruta.test.ts`, para `calcularRutaAlSalir`: rol distinto de `mensajero` →
   `forbidden` sin construir el servicio; ubicación inválida → `validation_error`; fallo del proveedor
   → `conflict`.
-- [ ] **T7.7** Disparo de salida: cliente y DTO (design §12.6, R62, R65). Es el **toque de frontend**
+- [x] **T7.7** Disparo de salida: cliente y DTO (design §12.6, R62, R65). Es el **toque de frontend**
   de la ficha.
   - `RutaResumenDTO` gana `primeraRutaPendiente` y `puntoRecogida`, que calcula
     `MisAsignacionesService` sin lecturas nuevas.

@@ -156,8 +156,6 @@ export async function sincronizarRuta(
  *
  * Cualquier `omitida` se devuelve como `ok` con `omitida: true`: la pantalla no avisa de nada
  * (sin toast), solo refresca si hubo calculo. Sin `intervalo_minimo`: lo acota R63.
- *
- * @sin-superficie SLT-59 T7.7 (2026-10-31): la llama el efecto de salida de `RepartoModule`, que hace frontend_dev en la siguiente tanda de la misma ficha; esta anotacion se BORRA en esa tanda, al cablearla.
  */
 export async function calcularRutaAlSalir(
   input: unknown,

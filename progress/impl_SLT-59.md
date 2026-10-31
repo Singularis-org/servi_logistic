@@ -974,3 +974,32 @@ pnpm run test:guardias -> 6 rojos, de los que ninguno queda mio:
 - **Tests de componentes.** Solo se añadieron los dos campos nuevos a sus fixtures, sin cambiar ningún comportamiento.
 
 Veredicto: T7.2, T7.5, T7.6, T7.7 (servidor) y el caso R59 de T7.4 hechos. Typecheck y lint sin errores, y todos los tests tocados y vecinos en verde. Los rojos de guardias que quedan son ajenos: uno del otro agente y cuatro preexistentes de init.sh.
+
+## Tanda 7c — frontend_dev: T7.7 (UI) (2026-10-31)
+
+Base: HEAD del worktree con la Tanda 7a (servidor de T7.7 hecho). Sin dependencias, sin base de datos. Grafo no consultado (cambio acotado a 4 archivos ya conocidos; Grep/Read).
+
+### Archivos
+- `app/(app)/mis-asignaciones/_components/RepartoModule.tsx`: prop nueva `umbralSalidaM?: number` y efecto de una vez (design §12.6). Con `ruta.primeraRutaPendiente`, `ruta.puntoRecogida`, al menos una parada con coordenadas en `porGestionar` (sin filtrar) y una lectura de `useSeguimientoUbicacion` (watchPosition) a MÁS de `umbralSalidaM` metros (`distanciaHaversineKm` de `lib/geo/polilinea`), llama UNA vez a `calcularRutaAlSalir({ ubicacion })`; un `useRef` impide repetir en el montaje. `ok` y `omitida: false` → eleva `trazado` (si viene) y `router.refresh()`; `omitida: true`, `conflict`, `forbidden`, error o excepción → nada, sin toast. Sin texto nuevo.
+- `app/(app)/mis-asignaciones/reparto/page.tsx`: pasa `umbralSalidaM={loadRouteOptimizationConfig().RUTA_REOPT_DISTANCIA_M}` (la constante que nombra el design; existe en `lib/config/route-optimization.ts`, default 1000).
+- `lib/actions/ruta-mensajero.ts`: borrada la línea `@sin-superficie` de `calcularRutaAlSalir` (única edición fuera de la UI).
+- `tests/components/RepartoModule.test.tsx`: el mock de `@/lib/actions/ruta-mensajero` gana `calcularRutaAlSalir`; describe nuevo «disparo de salida de la primera ruta (SLT-59, R62/R65)» con `watchPosition` y `navigator.permissions` (granted) simulados.
+- `specs/SLT-59-ahorro-llamadas-google-ruta/tasks.md`: [x] T7.7.
+
+### Mapa R → test (`tests/components/RepartoModule.test.tsx`, describe «disparo de salida…»)
+- R62: «a 900 m del punto de recogida no llama»; «a exactamente el umbral no llama (hace falta superarlo)»; «a 1100 m llama una vez con esa posición y refresca la pantalla»; «R62/R66: más lecturas lejos del punto no vuelven a llamar en el mismo montaje»; «sin la primera ruta pendiente nunca llama»; «sin punto de recogida nunca llama»; «sin ninguna parada con coordenadas nunca llama»; «si el servidor la omite, no refresca ni avisa»; «un conflicto del servidor no refresca ni muestra toast».
+- R65: «con la primera ruta pendiente se ve lo de sin ruta: aviso, «Pendiente de optimizar» y marcadores sin número» (aviso «El orden mostrado no está actualizado», badge, paradas del mapa con `secuencia: null`). Los 107 casos previos del archivo siguen verdes.
+
+### Salida real (NODE_OPTIONS=--max-old-space-size=8192, de uno en uno)
+- `npx vitest run tests/components/RepartoModule.test.tsx` → Test Files 1 passed (1), Tests 117 passed (117), 87.70s.
+- `npx vitest run tests/components/SincronizarRutaButton.test.tsx` → Test Files 1 passed (1), Tests 10 passed (10).
+- `npx vitest run tests/unit/guards/superficie-de-uso.guardia.test.ts` → Test Files 1 passed (1), Tests 18 passed (18).
+- `pnpm run typecheck` → `tsc --noEmit` sin errores.
+- `npx eslint` sobre los 4 archivos tocados → 0 errors, 1 warning preexistente (`ordenCardsEnReparto` sin usar, línea 166 del test, no es de esta tanda).
+- `pnpm run lint` (repo entero) → exit 0, «✖ 230 problems (0 errors, 230 warnings)».
+
+### Desviaciones
+- `umbralSalidaM` es OPCIONAL, no requerida: hay 9 montajes del módulo en 7 archivos de test y solo se podían correr dos. Sin la prop, el efecto no dispara nunca (0 llamadas facturadas), que es el desenlace seguro; la única pantalla real (`reparto/page.tsx`) la pasa siempre. Si el reviewer la quiere requerida, son 9 líneas mecánicas en esos tests.
+- Se añadieron dos condiciones que pide el design y el encargo no listaba: hacen falta paradas con coordenadas (`hayParadasConCoordenadas`, §12.6 paso 1) y el caso del borde exacto del umbral, más dos casos de desenlace (`omitida` y `conflict`, sin refresh ni toast).
+
+**Veredicto:** T7.7 (UI) hecha; R62 y R65 con test, typecheck y lint en verde (0 errors).

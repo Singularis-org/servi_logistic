@@ -5,6 +5,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarMisAsignaciones } from "@/lib/actions/mis-asignaciones";
 import { estadoBloqueoMensajero } from "@/lib/actions/cierre-dia";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 
 import { KpisMensajero } from "../_components/KpisMensajero";
 import { RepartoModule } from "../_components/RepartoModule";
@@ -80,6 +81,9 @@ export default async function RepartoPage() {
         ordenEnGestionId={result.ordenEnGestionId}
         ruta={result.ruta}
         bloqueo={bloqueo}
+        // SLT-59 (R62, design §12.6): el umbral del disparo de salida sale de la config del
+        // servidor; el cliente no repite el literal.
+        umbralSalidaM={loadRouteOptimizationConfig().RUTA_REOPT_DISTANCIA_M}
       />
     </AppPage>
   );
