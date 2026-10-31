@@ -78,6 +78,7 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
     corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     ajustarPagoMensajeroEnCierre: vi.fn(async () => UPDATED),
+    findBarridasDelCierre: vi.fn(async () => []),
     ...overrides,
   };
 }
