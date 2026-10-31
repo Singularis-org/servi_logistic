@@ -149,6 +149,9 @@ export interface MisAsignacionesDeps {
  * SLT-59 (R27, design §3.2): la entrega en orden se refleja en la MISMA peticion para que
  * `router.refresh()` ya muestre la secuencia reducida, sin esperar al job con debounce. Se reusa la
  * fabrica del handler para que la decision sea la del job (mismas guardas, misma config).
+ *
+ * [2026-10-30, SLT-59, D16] R27 se lee R44: solo la entrega EN ORDEN (prefijo) se reduce aqui;
+ * fuera de orden la recalcula el job (R42). El cableado no cambia.
  */
 async function reducirRutaReal(mensajeroId: string): Promise<void> {
   await buildOptimizacionRutaService().reducirSinLlamadas(mensajeroId);

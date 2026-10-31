@@ -20,6 +20,11 @@ import { codificarPolilinea } from "@/lib/geo/polilinea";
 // previo sin `optimizeTours` (D6), y el trazado se rehace con los tramos guardados (D7). La
 // unica llamada admitida es UN `computeRoutes` para el tramo puente de una entrega fuera de
 // orden (D14), y solo en el job, nunca en la peticion de la gestion (R27).
+//
+// [2026-10-30, SLT-59, D16] Retirados R11, R14, R16 y R27. Solo se reduce un PREFIJO (R41,
+// entrega en orden), siempre sin llamadas (R13, R15). Cualquier entrega fuera de orden
+// —hueco o «quitar la ultima»— recalcula el conjunto completo desde la posicion del mensajero
+// (R42, R43): 1 `optimizar` + 1 `trazar`, como el boton. En la peticion, R44.
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-10-29T12:00:00.000Z");
@@ -35,6 +40,8 @@ const CONFIG: RouteOptimizationConfig = {
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
   RUTA_REOPT_DISTANCIA_M: 1000,
   RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
 };
 
 /** Origen y cinco paradas en fila hacia el norte, ~1,1 km entre una y otra. */
@@ -158,7 +165,7 @@ const JOB = { motivo: "debounce" as const, jobCreatedAt: T0 };
 // ═══ T2.3 — la reduccion dentro de `ejecutar` ═══════════════════════════════════════════════
 
 describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
-  it("R11/R13: entrega EN ORDEN (prefijo) con tramos -> 0 llamadas, trazado concatenado con sumas", async () => {
+  it("R41/R13: entrega EN ORDEN (prefijo) con tramos -> 0 llamadas, trazado concatenado con sumas", async () => {
     const ruta = rutaConTramos(IDS.slice(0, 4));
     const { service, client, trazar, reduccion } = build({
       ruta,
@@ -215,113 +222,116 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(r).toMatchObject({ status: "omitida", razon: "reducida" });
   });
 
-  // PA-1 (decision del leader 2026-10-30): quitar paradas DETRAS de la ultima restante no deja
-  // ningun hueco que puentear, porque cada tramo es el que LLEGA a su parada; se trata como R13.
-  it("PA-1/R13: paradas quitadas DETRAS de la ultima restante -> 0 llamadas, trazado concatenado con sumas", async () => {
-    const { service, client, trazar, reduccion, rutas } = build({
+  // [2026-10-30, SLT-59, D16] Los casos R14 (tramo puente) y PA-1/R13 pasan a R42/R43: fuera de
+  // orden ya no se reduce, se recalcula el conjunto completo desde el origen resuelto (aqui, el
+  // GPS fresco sobre s1), igual que el boton.
+  function esperaRecalculo(
+    h: ReturnType<typeof build>,
+    restantes: string[],
+    conTrazar = true,
+  ) {
+    expect(h.client.optimizar).toHaveBeenCalledTimes(1);
+    const pedidas = (h.client.optimizar.mock.calls[0][0] as { paradas: { ordenId: string }[] }).paradas;
+    expect(pedidas.map((p) => p.ordenId).sort()).toEqual([...restantes].sort());
+    expect(h.rutas.reducirSecuencia).not.toHaveBeenCalled();
+    if (!conTrazar) {
+      expect(h.trazar).not.toHaveBeenCalled();
+      return;
+    }
+    expect(h.trazar).toHaveBeenCalledTimes(1);
+    const pedido = h.trazar.mock.calls[0][0] as TrazarRutaInput;
+    expect({ lat: pedido.origen.lat, lng: pedido.origen.lng }).toEqual(PUNTOS.s1);
+    expect(pedido.paradasEnOrden.map((p) => p.ordenId).sort()).toEqual([...restantes].sort());
+  }
+
+  it("R43: quitar la ULTIMA (s3 entregada primero) es fuera de orden -> 1 `optimizar` + 1 `trazar`, 0 reducciones", async () => {
+    const h = build({
       ruta: rutaConTramos(IDS.slice(0, 3)),
       paradas: [parada("s1"), parada("s2")], // s3 entregada primero
     });
-
-    const r = await service.ejecutar(MENSAJERO, JOB);
-
-    expect(client.optimizar).not.toHaveBeenCalled();
-    expect(trazar).not.toHaveBeenCalled();
-    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
-    const red = reduccion()[2];
-    expect(red.paradas).toEqual([
-      { ordenId: "s1", tramo: tramo("o", "s1") },
-      { ordenId: "s2", tramo: tramo("s1", "s2") },
-    ]);
-    const esperado = {
-      encodedPolyline: codificarPolilinea([PUNTOS.o, PUNTOS.s1, PUNTOS.s2]),
-      distanciaM: 1000 + 2000,
-      duracionS: 100 + 200,
-      fuente: "routes",
-    };
-    expect(red.trazado).toEqual(esperado);
-    expect(r).toEqual({
-      status: "omitida",
-      razon: "reducida",
-      trazado: { ...esperado, tramos: red.paradas.map((p) => p.tramo) },
-    });
+    const r = await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s1", "s2"]);
+    expect(r).toMatchObject({ status: "ok" });
   });
 
-  it("R14: entrega fuera de orden, UN hueco -> 1 `computeRoutes` de 2 puntos (anterior -> siguiente)", async () => {
-    const { service, client, trazar, reduccion } = build({
+  it("R42: entrega fuera de orden, UN hueco -> 1 `optimizar` + 1 `trazar` con todas las restantes, 0 reducciones", async () => {
+    const h = build({
       ruta: rutaConTramos(IDS.slice(0, 4)),
       paradas: [parada("s1"), parada("s3"), parada("s4")], // s2 entregada antes de tiempo
     });
-
-    const r = await service.ejecutar(MENSAJERO, JOB);
-
-    expect(client.optimizar).not.toHaveBeenCalled();
-    expect(trazar).toHaveBeenCalledTimes(1);
-    const pedido = trazar.mock.calls[0][0] as TrazarRutaInput;
-    expect(pedido.origen).toEqual(PUNTOS.s1);
-    expect(pedido.paradasEnOrden.map((p) => p.ordenId)).toEqual(["s3"]);
-    const red = reduccion()[2];
-    expect(red.paradas.map((p) => p.ordenId)).toEqual(["s1", "s3", "s4"]);
-    // s1 y s4 conservan su tramo; s3 recibe el puente s1 -> s3.
-    expect(red.paradas[0].tramo).toEqual(tramo("o", "s1"));
-    expect(red.paradas[1].tramo).toEqual({
-      encodedPolyline: codificarPolilinea([PUNTOS.s1, PUNTOS.s3]),
-      distanciaM: 7,
-      duracionS: 3,
-    });
-    expect(red.paradas[2].tramo).toEqual(tramo("s3", "s4"));
-    expect(red.trazado).toMatchObject({ fuente: "routes", distanciaM: 1000 + 7 + 4000 });
-    expect(r).toMatchObject({ status: "omitida", razon: "reducida" });
+    const r = await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s1", "s3", "s4"]);
+    expect(r).toMatchObject({ status: "ok" });
   });
 
-  it("R14: DOS huecos -> 1 `computeRoutes` desde la primera restante con todas las demas", async () => {
-    const { service, client, trazar, reduccion } = build({
+  it("R42: DOS huecos -> 1 `optimizar` + 1 `trazar` con todas las restantes, 0 reducciones", async () => {
+    const h = build({
       ruta: rutaConTramos(IDS),
       paradas: [parada("s1"), parada("s3"), parada("s5")],
     });
-
-    await service.ejecutar(MENSAJERO, JOB);
-
-    expect(client.optimizar).not.toHaveBeenCalled();
-    expect(trazar).toHaveBeenCalledTimes(1);
-    const pedido = trazar.mock.calls[0][0] as TrazarRutaInput;
-    expect(pedido.origen).toEqual(PUNTOS.s1);
-    expect(pedido.paradasEnOrden.map((p) => p.ordenId)).toEqual(["s3", "s5"]);
-    const red = reduccion()[2];
-    expect(red.paradas[0].tramo).toEqual(tramo("o", "s1"));
-    expect(red.paradas[1].tramo?.encodedPolyline).toBe(codificarPolilinea([PUNTOS.s1, PUNTOS.s3]));
-    expect(red.paradas[2].tramo?.encodedPolyline).toBe(codificarPolilinea([PUNTOS.s3, PUNTOS.s5]));
+    await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s1", "s3", "s5"]);
   });
 
-  it("R14: prefijo + un hueco posterior cuenta como un hueco -> 1 llamada desde la anterior al hueco", async () => {
-    const { service, trazar } = build({
+  it("R42: prefijo + un hueco posterior ya no es prefijo -> 1 `optimizar` + 1 `trazar`, 0 reducciones", async () => {
+    const h = build({
       ruta: rutaConTramos(IDS.slice(0, 4)),
       paradas: [parada("s2"), parada("s4")],
     });
-    await service.ejecutar(MENSAJERO, JOB);
-    expect(trazar).toHaveBeenCalledTimes(1);
-    const pedido = trazar.mock.calls[0][0] as TrazarRutaInput;
-    expect(pedido.origen).toEqual(PUNTOS.s2);
-    expect(pedido.paradasEnOrden.map((p) => p.ordenId)).toEqual(["s4"]);
+    await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s2", "s4"]);
   });
 
-  it("R14: sin cliente de Routes NUNCA se rellena el hueco con una recta: se persiste sin trazado", async () => {
-    const { service, reduccion } = build({
+  it("R42: fuera de orden sin cliente de Routes -> 1 `optimizar`, 0 `trazar` y NUNCA una reduccion con rectas", async () => {
+    const h = build({
       ruta: rutaConTramos(IDS.slice(0, 4)),
       paradas: [parada("s1"), parada("s3"), parada("s4")],
       sinRoutes: true,
     });
-    const r = await service.ejecutar(MENSAJERO, JOB);
-    expect(reduccion()[2].trazado).toBeNull();
-    expect(reduccion()[2].paradas.every((p) => p.tramo === null)).toBe(true);
-    expect(r).toEqual({ status: "omitida", razon: "reducida" });
+    await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s1", "s3", "s4"], false);
+  });
+
+  it("R42 (rama 92/R35): fuera de orden con UNA restante -> 0 `optimizar` y 1 `trazar`, 0 reducciones", async () => {
+    const h = build({
+      ruta: rutaConTramos(["s1", "s2"]),
+      paradas: [parada("s1")], // s2 entregada antes que s1
+    });
+    const r = await h.service.ejecutar(MENSAJERO, JOB);
+    expect(h.client.optimizar).not.toHaveBeenCalled();
+    expect(h.rutas.reducirSecuencia).not.toHaveBeenCalled();
+    expect(h.trazar).toHaveBeenCalledTimes(1);
+    const pedido = h.trazar.mock.calls[0][0] as TrazarRutaInput;
+    expect(pedido.paradasEnOrden.map((p) => p.ordenId)).toEqual(["s1"]);
+    expect(h.rutas.reemplazarSecuencia).toHaveBeenCalledTimes(1);
+    const [, secuencia] = h.rutas.reemplazarSecuencia.mock.calls[0] as unknown as [string, string[]];
+    expect(secuencia).toEqual(["s1"]);
+    expect(r).toMatchObject({ status: "omitida", razon: "sin_paradas" });
+  });
+
+  it("R42: fuera de orden SIN tramos (trazado `local`) -> recalcula, no reduce", async () => {
+    const local = {
+      encodedPolyline: codificarPolilinea([PUNTOS.o, PUNTOS.s1, PUNTOS.s2, PUNTOS.s3, PUNTOS.s4]),
+      distanciaM: null,
+      duracionS: null,
+      fuente: "local" as const,
+    };
+    const h = build({
+      ruta: rutaConTramos(IDS.slice(0, 4), { trazado: local, tramoPorOrden: new Map() }),
+      paradas: [parada("s1"), parada("s3"), parada("s4")],
+    });
+    await h.service.ejecutar(MENSAJERO, JOB);
+    esperaRecalculo(h, ["s1", "s3", "s4"]);
   });
 
   it("R15: trazado guardado que no es por calles -> 0 llamadas y reduccion sin trazado", async () => {
-    const ruta = rutaConTramos(IDS.slice(0, 4), { trazado: null });
+    // Sin polilinea la linea de R4 es la recta por las paradas que siguen (s2..s4): el GPS va
+    // sobre s2 para no quedar desviado (s1 ya no esta en `paradas`).
+    const ruta = rutaConTramos(IDS.slice(0, 4), { trazado: null, origenLat: PUNTOS.s2.lat });
     const { service, client, trazar, reduccion } = build({
       ruta,
-      paradas: [parada("s1"), parada("s3"), parada("s4")], // incluso con hueco
+      // [2026-10-30, SLT-59, D16] Antes «incluso con hueco» (s1, s3, s4); un hueco ya es R42.
+      paradas: [parada("s2"), parada("s3"), parada("s4")],
     });
     const r = await service.ejecutar(MENSAJERO, JOB);
     expect(client.optimizar).not.toHaveBeenCalled();
@@ -329,7 +339,7 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(reduccion()[2]).toMatchObject({
       trazado: null,
       paradas: [
-        { ordenId: "s1", tramo: null },
+        { ordenId: "s2", tramo: null },
         { ordenId: "s3", tramo: null },
         { ordenId: "s4", tramo: null },
       ],
@@ -349,25 +359,8 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(reduccion()[2].trazado).toBeNull();
   });
 
-  it.each([
-    ["lanza", vi.fn(async () => Promise.reject(new Error("routes caido")))],
-    [
-      "no da ok",
-      vi.fn(async (): Promise<TrazarRutaOutcome> => ({ status: "transitorio", detalle: "HTTP 503" })),
-    ],
-  ])("R16: el tramo puente %s -> reduccion persistida sin trazado, sin lanzar y sin reintento", async (_c, trazar) => {
-    const { service, client, reduccion } = build({
-      ruta: rutaConTramos(IDS.slice(0, 4)),
-      paradas: [parada("s1"), parada("s3"), parada("s4")],
-      trazar,
-    });
-    const r = await service.ejecutar(MENSAJERO, JOB);
-    expect(r).toEqual({ status: "omitida", razon: "reducida" });
-    expect(trazar).toHaveBeenCalledTimes(1);
-    expect(client.optimizar).not.toHaveBeenCalled();
-    expect(reduccion()[2].trazado).toBeNull();
-    expect(reduccion()[2].paradas.map((p) => p.ordenId)).toEqual(["s1", "s3", "s4"]);
-  });
+  // [2026-10-30, SLT-59, D16] Los casos R16 (fallo del tramo puente) se borran: R16 esta retirado
+  // y la reduccion ya no hace ninguna llamada que pueda fallar.
 
   it("R12/R17: la reduccion no reescribe la secuencia completa ni lleva `calculada_at`, origen ni procedencia", async () => {
     // `reducirSecuencia` es la escritura que conserva `calculada_at`, el origen y
@@ -438,8 +431,8 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
 
 // ═══ T2.4 — `reducirSinLlamadas`, la que corre en la peticion de la gestion ════════════════
 
-describe("SLT-59 T2.4 — reducirSinLlamadas (R27: solo R13/R15, nunca una llamada)", () => {
-  it("R13: entrega en orden con tramos -> persiste la reduccion con el trazado concatenado, 0 llamadas", async () => {
+describe("SLT-59 T2.4/T6.3 — reducirSinLlamadas (R44: solo el prefijo por R13/R15, nunca una llamada)", () => {
+  it("R44/R13: entrega en orden (prefijo) con tramos -> persiste la reduccion con el trazado concatenado, 0 llamadas", async () => {
     const { service, client, trazar, reduccion } = build({
       ruta: rutaConTramos(IDS.slice(0, 4)),
       paradas: [parada("s2"), parada("s3"), parada("s4")],
@@ -451,25 +444,33 @@ describe("SLT-59 T2.4 — reducirSinLlamadas (R27: solo R13/R15, nunca una llama
     expect(reduccion()[2].trazado).toMatchObject({ fuente: "routes", distanciaM: 9000 });
   });
 
-  it("R15: sin trazado por calles -> persiste la reduccion sin trazado, 0 llamadas", async () => {
+  it("R44/R15: prefijo sin trazado por calles -> persiste la reduccion sin trazado, 0 llamadas", async () => {
     const { service, trazar, reduccion } = build({
-      ruta: rutaConTramos(IDS.slice(0, 4), { trazado: null }),
-      paradas: [parada("s1"), parada("s3"), parada("s4")],
+      ruta: rutaConTramos(IDS.slice(0, 4), { trazado: null, origenLat: PUNTOS.s2.lat }),
+      // [2026-10-30, SLT-59, D16] Antes con hueco (s1, s3, s4); un hueco ya no se reduce (R44).
+      paradas: [parada("s2"), parada("s3"), parada("s4")],
     });
     await service.reducirSinLlamadas(MENSAJERO);
     expect(trazar).not.toHaveBeenCalled();
     expect(reduccion()[2].trazado).toBeNull();
   });
 
-  it("con un hueco que pide tramo puente -> no hace nada y no llama a nadie (lo hace el job)", async () => {
+  it.each([
+    ["un hueco (s2 entregada antes que s1)", IDS.slice(0, 4), ["s1", "s3", "s4"]],
+    ["«quitar la ultima» (s3 entregada primero, R43)", IDS.slice(0, 3), ["s1", "s2"]],
+  ])("R44: fuera de orden con %s -> 0 llamadas y 0 escrituras (lo recalcula el job, R42)", async (_c, previa, ids) => {
     const { service, client, trazar, rutas } = build({
-      ruta: rutaConTramos(IDS.slice(0, 4)),
-      paradas: [parada("s1"), parada("s3"), parada("s4")],
+      ruta: rutaConTramos(previa),
+      paradas: ids.map(parada),
     });
     await service.reducirSinLlamadas(MENSAJERO);
     expect(trazar).not.toHaveBeenCalled();
     expect(client.optimizar).not.toHaveBeenCalled();
     expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+    expect(rutas.guardarTrazado).not.toHaveBeenCalled();
+    expect(rutas.marcarDesactualizada).not.toHaveBeenCalled();
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
   });
 
   it("con el mensajero desviado -> no hace nada y no llama a nadie", async () => {

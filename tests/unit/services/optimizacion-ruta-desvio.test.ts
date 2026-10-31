@@ -13,7 +13,18 @@ import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteO
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
-import { codificarPolilinea, distanciaMinimaAPolilineaM } from "@/lib/geo/polilinea";
+import {
+  codificarPolilinea,
+  decodificarPolilinea,
+  distanciaMinimaAPolilineaM,
+} from "@/lib/geo/polilinea";
+
+// SLT-59 T6.1 (R42): `decodificarPolilinea` se envuelve en un espia que CONSERVA su
+// comportamiento, para poder afirmar que la rama «fuera de orden» no decodifica la polilinea.
+vi.mock("@/lib/geo/polilinea", async (original) => {
+  const real = await original<typeof import("@/lib/geo/polilinea")>();
+  return { ...real, decodificarPolilinea: vi.fn(real.decodificarPolilinea) };
+});
 
 // SLT-59 (R1-R10, R19, R20; design §2, §2.1) — la guarda que sustituye a la 92/R36. Lo que
 // se vigila aqui es el DINERO: con el mismo conjunto y el mensajero sobre su ruta, cero
@@ -142,15 +153,76 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       posicion: sobreLaRuta,
       esperado: { tipo: "reoptimizar", motivo: "paradas_nuevas" },
     },
+    // [2026-10-30, SLT-59, D16] El caso «R11: subconjunto estricto -> reducir» con [s1, s3] es
+    // ahora un hueco: R11 esta retirado y ese conjunto es fuera de orden (R42). La reduccion
+    // queda solo para el prefijo (R41).
     {
-      caso: "R11: subconjunto estricto, sobre la ruta -> reducir con el orden previo",
+      caso: "R42: hueco en medio (s2 entregada antes que s1) -> reoptimizar por fuera de orden",
       ruta: ruta(),
       paradas: [conCoords("s3"), conCoords("s1")],
       posicion: sobreLaRuta,
-      esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s1", "s3"] },
+      esperado: { tipo: "reoptimizar", motivo: "fuera_de_orden" },
+    },
+    {
+      caso: "R43: quitar la ULTIMA (s3 entregada primero) -> reoptimizar por fuera de orden, sin hueco",
+      ruta: ruta(),
+      paradas: [conCoords("s1"), conCoords("s2")],
+      posicion: sobreLaRuta,
+      esperado: { tipo: "reoptimizar", motivo: "fuera_de_orden" },
+    },
+    {
+      caso: "R42: fuera de orden Y desviado -> gana fuera de orden (va antes que el desvio)",
+      ruta: ruta(),
+      paradas: [conCoords("s1"), conCoords("s3")],
+      posicion: lejos,
+      esperado: { tipo: "reoptimizar", motivo: "fuera_de_orden" },
+    },
+    {
+      caso: "R41: prefijo (s1 entregada en orden), sobre la ruta -> reducir con el orden previo",
+      ruta: ruta(),
+      paradas: [conCoords("s3"), conCoords("s2")],
+      posicion: sobreLaRuta,
+      esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s2", "s3"] },
+    },
+    {
+      caso: "R41: prefijo de dos (s1 y s2 entregadas en orden) -> reducir",
+      ruta: ruta(),
+      paradas: [conCoords("s3")],
+      // Sin polilinea la recta de R4 es solo s3: la posicion va sobre ella.
+      posicion: P.s3,
+      esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s3"] },
     },
   ])("$caso", ({ ruta: r, paradas, posicion, esperado }) => {
     expect(decidirGuardaRuta({ ruta: r, paradas, posicion, umbralM: UMBRAL_M })).toEqual(esperado);
+  });
+
+  it("R42: fuera de orden con el mensajero SOBRE la ruta -> reoptimizar SIN decodificar la polilinea", () => {
+    const conPolilinea = ruta({
+      trazado: {
+        encodedPolyline: codificarPolilinea([{ lat: 9.9, lng: LNG }, P.s1, P.s2, P.s3]),
+        distanciaM: 3300,
+        duracionS: 600,
+        fuente: "routes",
+      },
+    });
+    vi.mocked(decodificarPolilinea).mockClear();
+    expect(
+      decidirGuardaRuta({
+        ruta: conPolilinea,
+        paradas: [conCoords("s1"), conCoords("s3")],
+        posicion: sobreLaRuta,
+        umbralM: UMBRAL_M,
+      }),
+    ).toEqual({ tipo: "reoptimizar", motivo: "fuera_de_orden" });
+    expect(decodificarPolilinea).not.toHaveBeenCalled();
+    // Control: con un prefijo la misma ruta SI decodifica para medir el desvio.
+    decidirGuardaRuta({
+      ruta: conPolilinea,
+      paradas: [conCoords("s2"), conCoords("s3")],
+      posicion: sobreLaRuta,
+      umbralM: UMBRAL_M,
+    });
+    expect(decodificarPolilinea).toHaveBeenCalledTimes(1);
   });
 
   it("R10: el mismo conjunto, sobre la ruta y calculada hace 8 h -> omitir (sin criterio de tiempo)", () => {
@@ -284,14 +356,16 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
     });
 
     it("SIN polilinea, las paradas que ya no estan se saltan (sus coordenadas no estan cargadas)", () => {
-      // Quedan s1 y s3; s2 se gestiono. La recta va de s1 a s3 directamente.
+      // [2026-10-30, SLT-59, D16] Antes quedaban s1 y s3 (un hueco), que ahora es fuera de orden
+      // (R42) y ya no mide desvio. Con un prefijo: quedan s2 y s3, s1 se gestiono. La recta va
+      // de s2 a s3; parado EN s1 estaria sobre la recta si s1 contara, y sin ella queda a ~1,1 km.
       const decision = decidirGuardaRuta({
         ruta: ruta(),
-        paradas: [conCoords("s1"), conCoords("s3")],
-        posicion: { lat: 9.92, lng: LNG },
+        paradas: [conCoords("s2"), conCoords("s3")],
+        posicion: P.s1,
         umbralM: UMBRAL_M,
       });
-      expect(decision.tipo).toBe("reducir");
+      expect(decision).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
   });
 
@@ -318,6 +392,8 @@ const CONFIG: RouteOptimizationConfig = {
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
   RUTA_REOPT_DISTANCIA_M: UMBRAL_M,
   RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
 };
 
 function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] }) {

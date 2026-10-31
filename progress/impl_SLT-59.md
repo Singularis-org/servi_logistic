@@ -624,3 +624,121 @@ Ninguna. «Nuevo» medido = tabla del design.
 - T5.2 queda **sin marcar**: falta `./init.sh` (no se corre aquí por memoria) y typecheck limpio, que
   depende de la sincronización F2.3 con `dev` (cliente Prisma compartido, ver Tanda 4). Ambos los
   cierra el leader (merge de `dev` + gate local o CI).
+
+## Tanda 6b — backend_dev: T6.4, T6.7 (archivo SQL real), T7.1 (2026-10-30)
+
+### Archivos
+
+- `lib/repositories/RutaOptimizadaRepository.ts`: `reducirSecuencia` filtra por
+  `{ mensajeroId, huellaSet: huellaPrevia, estado: "vigente" }` (R48). JSDoc con el motivo.
+- `lib/interfaces/repositories/IRutaOptimizadaRepository.ts`: el JSDoc del contrato añade la condición
+  del estado (la firma no cambia).
+- `lib/config/route-optimization.ts`: `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` (5, nota D21) y
+  `RUTA_PRIMERA_MIN_RECOGIDO_PCT` (80, nota D25, 1-100 con `readIntEnRango`; fuera de rango → default).
+- `tests/integration/repositories/ruta-optimizada-repo.test.ts`: el `where` se afirma con huella y estado;
+  `buildPrismaReduccion` acepta el estado de la fila; caso nuevo `desactualizada` con la huella igual.
+- `tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts` (nuevo, T6.7): lee
+  `process.env.DATABASE_URL` tal como llega al proceso y exige host `localhost`/`127.0.0.1`;
+  `_postgres-real`, `_jobs-dos-empresas` y `fabricas/organizaciones` se cargan con `await import` en
+  `beforeAll` (solo `import type` estático de esos módulos). Siembra como dueño en `conDosEmpresas`; la
+  reducción corre como `servi_app` con la empresa A (`comoApp`) y `clienteConSavepoint`; la medición
+  lee como dueño, fila entera.
+- `tests/unit/config/route-optimization-config.test.ts`: los dos campos en `VARS`, en la lista
+  de claves y en el `describe.each` de R36 (default, override, vacío, no numérico, 0, negativo, NaN).
+  Bloque R55 aparte: 101 y 250 → 80; 1 y 100 se aceptan; el enfriamiento admite 101.
+- Fixtures `CONFIG` con los dos campos nuevos (sin otro cambio): `optimizacion-ruta-{ahorro-jornada,
+  credencial-rechazada,degradacion,origen,service,tramo-vivo,trazado}.test.ts`.
+- `specs/SLT-59-ahorro-llamadas-google-ruta/tasks.md`: T6.4 y T7.1 en `[x]`. T6.7 sigue abierta
+  (falta el renombrado PA-2 → D18/R47 y la corrida en CI).
+
+### Mapa R → test
+
+| R | Test |
+| --- | --- |
+| R48 | `tests/integration/repositories/ruta-optimizada-repo.test.ts`: «todo va en UNA transaccion…» (`where` con estado) y «R48: con la ruta `desactualizada` y la huella IGUAL…». `tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts`: «R48: huella igual y `vigente`…», «R48: huella DISTINTA…», «R48: `desactualizada` con la huella IGUAL…» |
+| R50 | `tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts`: «R50: una reduccion en el contexto de A no toca la cabecera ni las paradas de B, con la misma huella» (la de A se aplica; la de B pedida desde A devuelve `false`; B queda igual fila a fila) |
+| R55 | `tests/unit/config/route-optimization-config.test.ts`: `describe.each` «SLT-59/R36, R55 — %s…» con los dos campos, y «SLT-59/R55 — RUTA_PRIMERA_MIN_RECOGIDO_PCT es un porcentaje: 1-100» |
+
+### Salida real (resumida)
+
+- `vitest run tests/integration/repositories/ruta-optimizada-repo.test.ts` → 27 passed.
+- `vitest run tests/unit/config/route-optimization-config.test.ts` → 52 passed.
+- Fixtures: 5 archivos / 99 passed (repo + config + ahorro-jornada, credencial-rechazada, degradacion);
+  4 archivos / 81 passed (origen, service, tramo-vivo, trazado).
+- Archivo SQL real, verificación de salto (T6.7 *Hecho*):
+  - (a) `env -u DATABASE_URL pnpm exec vitest run <archivo>` con un `.env` **temporal** en el
+    worktree (`DATABASE_URL=postgresql://nadie:nadie@localhost:5999/no_existe`, local a propósito: si
+    se leyera, el test correría y fallaría) → `1 skipped / 4 skipped`. El `.env` se borró después.
+  - (b) `DATABASE_URL=postgres://u:p@db.example.com:5432/x` → `1 skipped / 4 skipped`.
+  - (c) Contra la Postgres **local** (`localhost:5432`, URL del `.env` del repo principal, host
+    comprobado antes de correr) → **4 passed**. Nada remoto.
+  - Mutación: con el `estado` quitado del `where`, fallan el caso `desactualizada` del SQL real y los
+    dos del repo con doble (3 rojos); restaurado → verde.
+- `pnpm run typecheck` → 3 errores, todos en archivos que esta tanda no podía tocar (el otro backend_dev
+  los tiene en curso):
+  - `optimizacion-ruta-desvio.test.ts(385,7)` y `optimizacion-ruta-reduccion.test.ts(33,7)`: TS2739, al
+    `CONFIG` le faltan los dos campos nuevos de T7.1. Se arregla con dos líneas por archivo:
+    `RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5, RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80`.
+  - `optimizacion-ruta-reduccion.test.ts(305,54)`: TS2493 (tupla `[]`). No lo causa esta tanda.
+  - Los 3 errores de entorno de la Tanda 4 ya no salen.
+- `pnpm exec eslint` sobre los 13 archivos tocados → 0 problemas. `pnpm run lint` completo → 0 errores, 230 warnings heredados (exit 0).
+
+### Desviaciones
+
+- T7.1 vuelve obligatorios dos campos de `RouteOptimizationConfig` (design §12.7). Eso obliga a tocar los
+  9 fixtures `CONFIG`; 7 se ajustaron aquí y 2 son del otro agente (ver el typecheck).
+- R50 se prueba de dos maneras porque `ruta_optimizada.mensajero_id` es UNIQUE global, así que un
+  mensajero no puede tener ruta en las dos empresas: (1) A y B con la misma huella, A reduce la suya;
+  (2) desde A se pide la reducción con el mensajero de B. El aislamiento lo da la RLS (`servi_app` +
+  `app.organizacion_id`), igual que en producción. El filtro de la extensión no entra: el repositorio
+  recibe el cliente de la transacción.
+- Catálogos del SQL real: rol `mensajero`/`adminTienda`, un `tipo_identificacion`, `order_status`
+  `en_reparto` y un distrito. Si falta alguno, falla con un error explícito.
+
+**Veredicto:** T6.4 y T7.1 hechas y en verde. T6.7: el archivo SQL real existe, se salta sin URL o con un host remoto, y pasa contra la base local; faltan el renombrado y la corrida en CI. El typecheck solo falla en 2 archivos del otro agente.
+
+## Tanda 6a — Fase 6 — backend_dev: T6.1, T6.2, T6.3 (2026-10-30/31)
+
+> El backend_dev de esta tanda dejó el código y los tests hechos y las tasks marcadas, pero se colgó
+> (stream watchdog) antes de escribir esta sección. La consolida el implementer con su propia
+> verificación.
+
+### Archivos
+- `lib/services/OptimizacionRutaService.ts`: rama «fuera de orden» en `decidirGuardaRuta`, antes del
+  desvío (`restantes` ≠ cola de `previa` → `reoptimizar/fuera_de_orden`, sin decodificar polilínea);
+  se retiran la rama `puente` de `planificarReduccion`, `tramosPuente` y `permitirLlamada`;
+  `reducirSinLlamadas` ya no reduce con fuera de orden (R44). Notas «[2026-10-30, SLT-59, D16]» junto
+  a las de D14/R14, sin borrar el texto previo.
+- `lib/actions/mis-asignaciones.ts`: nota fechada D16 (R27→R44).
+- Tests: `optimizacion-ruta-desvio.test.ts`, `optimizacion-ruta-reduccion.test.ts`,
+  `mis-asignaciones-action.test.ts` (títulos R27→R44, sin cambiar aserciones),
+  `optimizacion-ruta-ahorro-jornada.test.ts` (ajuste mínimo, ver abajo). Los otros tests de servicio
+  (`-service`, `-origen`, `-credencial-rechazada`, `-degradacion`, `-tramo-vivo`, `-trazado`) solo ganan
+  los dos campos nuevos del `CONFIG` de T7.1 (+2 líneas cada uno).
+
+### Mapa R<n> → test (esta tanda)
+| R | test |
+|---|---|
+| R42 | `optimizacion-ruta-desvio.test.ts` «R42: fuera de orden con el mensajero SOBRE la ruta -> reoptimizar SIN decodificar la polilinea» + hueco en medio; `optimizacion-ruta-reduccion.test.ts` casos UN hueco / DOS huecos / prefijo+hueco / sin cliente de Routes (1 `optimizar`, 1 `trazar`, 0 `reducirSecuencia`), fuera de orden con 1 restante (rama 92/R35: 0 `optimizar`, 1 `trazar`), fuera de orden sin tramos → recalcula |
+| R43 | `optimizacion-ruta-desvio.test.ts` «quitar la última → reoptimizar»; `optimizacion-ruta-reduccion.test.ts` «R43: quitar la ULTIMA …» (antes PA-1/R13) |
+| R44 | `optimizacion-ruta-reduccion.test.ts` `reducirSinLlamadas`: hueco y «quitar la última» → 0 llamadas, 0 escrituras; prefijo → reduce. `mis-asignaciones-action.test.ts` títulos R44 |
+| R11, R14, R16 | RETIRADOS (D16): `grep -n "tramosPuente\|permitirLlamada" lib/` = 0; casos R16 borrados; los de R14 reconvertidos a R42 |
+| R27 | RETIRADO → R44 (renombrado) |
+| R13, R15 | siguen verdes en `optimizacion-ruta-reduccion.test.ts` |
+
+### Verificación (implementer, NODE_OPTIONS=--max-old-space-size=8192, `pnpm exec vitest run` por grupos)
+```
+desvio + reduccion                                   Test Files 2 passed (2)  Tests 63 passed (63)
+mis-asignaciones-action + optimizacion-ruta-service  Test Files 2 passed (2)  Tests 77 passed (77)
+ahorro-jornada + origen + credencial-rechazada        Test Files 3 passed (3)  Tests 27 passed (27)
+degradacion + tramo-vivo + trazado                   Test Files 3 passed (3)  Tests 34 passed (34)
+ruta-optimizada-repo + route-optimization-config      Test Files 2 passed (2)  Tests 79 passed (79)
+pnpm run typecheck   -> tsc --noEmit, 0 errores (los 3 TS2739/TS2493 que vio la Tanda 6b ya no están)
+pnpm run lint        -> 0 errors, 230 warnings (preexistentes)
+grep -n "tramosPuente\|permitirLlamada" lib/   -> 0
+```
+
+### Desviaciones
+- Jornada (`optimizacion-ruta-ahorro-jornada.test.ts`): ajuste mínimo con nota D16. La fila 7 (fuera de
+  orden, 1 hueco) pasa de 0/1 a 1/1, porque ahora R42 re-sincroniza en vez de pagar un tramo puente. El
+  total pasa de `{2,3,6}` a `{3,3,6}`. Las tablas de §8.0 se reescriben en T7.8.

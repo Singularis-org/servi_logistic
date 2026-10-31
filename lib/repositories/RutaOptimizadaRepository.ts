@@ -258,6 +258,10 @@ export class RutaOptimizadaRepository implements IRutaOptimizadaRepository {
    * la lectura y esta escritura, no encaja ninguna fila y no se toca nada mas — ni la cabecera
    * ni las paradas, que ya describen otra secuencia.
    *
+   * R48: el `where` exige ademas `estado = 'vigente'`. `marcarDesactualizada` no cambia la
+   * huella, asi que sin el estado una reduccion leida como `vigente` se aplicaria sobre una ruta
+   * recien marcada `desactualizada`. `false` cubre las dos causas: no se escribio nada.
+   *
    * Solo se escriben la huella y el trazado: `calculada_at`, el origen, `secuencia_fuente`,
    * `ultimo_error` y el estado describen el ultimo CALCULO, y una reduccion no lo es (R12, R17).
    */
@@ -269,7 +273,7 @@ export class RutaOptimizadaRepository implements IRutaOptimizadaRepository {
     const { trazado } = reduccion;
     return this.prisma.$transaction(async (tx) => {
       const actualizadas = await tx.rutaOptimizada.updateMany({
-        where: { mensajeroId, huellaSet: huellaPrevia },
+        where: { mensajeroId, huellaSet: huellaPrevia, estado: "vigente" },
         data: {
           huellaSet: reduccion.huellaSet,
           // Las cuatro columnas siempre juntas: un trazado a medias no lo puede pintar nadie.

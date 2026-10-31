@@ -93,7 +93,7 @@
 
 ## Fase 6 — Revisión 3: D16-D19 (depende de F5 salvo T5.2)
 
-- [ ] **T6.1** Fuera de orden en `decidirGuardaRuta` (design §2, revisión 3). Rama nueva antes del
+- [x] **T6.1** Fuera de orden en `decidirGuardaRuta` (design §2, revisión 3). Rama nueva antes del
   desvío: `restantes` distinta de la cola de `previa` → `{ reoptimizar, motivo: "fuera_de_orden" }`.
   *Hecho:*
   - En `tests/unit/services/optimizacion-ruta-desvio.test.ts`, la tabla de casos gana:
@@ -107,7 +107,7 @@
     - el caso «PA-1/R13» pasa a R43, con el mismo resultado;
     - caso nuevo: fuera de orden con 1 restante → 0 `optimizar` y 1 `trazar` (R42, rama 92/R35);
     - caso nuevo: fuera de orden sin tramos (`fuente` local) → recalcula, no reduce.
-- [ ] **T6.2** Retirar el tramo puente (design §2.2, nota de la revisión 3). Depende de T6.1. Se borran
+- [x] **T6.2** Retirar el tramo puente (design §2.2, nota de la revisión 3). Depende de T6.1. Se borran
   la rama `puente` de `planificarReduccion`, `tramosPuente` y el parámetro `permitirLlamada`. Las notas
   y los comentarios que citan D14 y R14 ganan una nota fechada «[2026-10-30, SLT-59, D16]», sin borrar
   el texto previo.
@@ -115,14 +115,14 @@
   - `grep -n "tramosPuente\|permitirLlamada" lib/` = 0;
   - los casos R16 de `optimizacion-ruta-reduccion.test.ts` se borran;
   - los de R13 y R15 siguen verdes.
-- [ ] **T6.3** `reducirSinLlamadas` con fuera de orden (R44). Depende de T6.1. *Hecho:* en
+- [x] **T6.3** `reducirSinLlamadas` con fuera de orden (R44). Depende de T6.1. *Hecho:* en
   `optimizacion-ruta-reduccion.test.ts`:
   - fuera de orden (hueco y «quitar la última») → 0 llamadas y 0 escrituras;
   - prefijo → reduce.
 
   En `tests/unit/actions/mis-asignaciones-action.test.ts`, los títulos «R27» pasan a «R44» y las
   aserciones no cambian.
-- [ ] **T6.4** [P] `estado = 'vigente'` en el `where` de `reducirSecuencia` (R48, design §1). *Hecho:*
+- [x] **T6.4** [P] `estado = 'vigente'` en el `where` de `reducirSecuencia` (R48, design §1). *Hecho:*
   `tests/integration/repositories/ruta-optimizada-repo.test.ts` afirma el `where` con huella y estado.
   Un caso nuevo, con la ruta `desactualizada` y la huella igual, comprueba que no escribe, devuelve
   `false` y no toca las paradas.
@@ -189,7 +189,7 @@
 
 ## Fase 7 — Revisión 4: D21-D25 (depende de T6.1-T6.6; T6.8 cierra todo)
 
-- [ ] **T7.1** [P] Config: `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` (5) y `RUTA_PRIMERA_MIN_RECOGIDO_PCT`
+- [x] **T7.1** [P] Config: `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` (5) y `RUTA_PRIMERA_MIN_RECOGIDO_PCT`
   (80, 1-100), con su nota (design §12.7). *Hecho:* `route-optimization-config.test.ts` cubre por cada
   uno el default, un override, el valor vacío y el inválido; para el porcentaje, también 101 (R55).
 - [ ] **T7.2** Decisión completa (design §12.1).

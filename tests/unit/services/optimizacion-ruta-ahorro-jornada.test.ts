@@ -70,6 +70,8 @@ const CONFIG: RouteOptimizationConfig = {
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
   RUTA_REOPT_DISTANCIA_M: 1000,
   RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
 };
 
 const JOBS_CONFIG: JobsConfig = {
@@ -609,7 +611,13 @@ const gestionNuevo: GestionVariante = async (j, ordenId, gps) => {
   await j.service.reducirSinLlamadas(M);
 };
 
-/** design §8, columna «Nuevo»: opt / routes / jobs por fila. */
+/**
+ * design §8, columna «Nuevo»: opt / routes / jobs por fila.
+ *
+ * [2026-10-30, SLT-59, D16] Ajuste minimo de T6.1 (la reescritura a §8.0 es T7.8): la fila 7
+ * (fuera de orden, 1 hueco) ya no paga un tramo puente sino la re-sincronizacion completa de
+ * R42: 1 `optimizeTours` + 1 `computeRoutes` (antes 0 / 1). Total 2 / 3 / 6 -> 3 / 3 / 6.
+ */
 const NUEVO: (Conteo & { n: number })[] = [
   { n: 1, opt: 1, routes: 1, jobs: 1 },
   { n: 2, opt: 0, routes: 0, jobs: 0 },
@@ -617,7 +625,7 @@ const NUEVO: (Conteo & { n: number })[] = [
   { n: 4, opt: 0, routes: 0, jobs: 1 },
   { n: 5, opt: 0, routes: 0, jobs: 1 },
   { n: 6, opt: 1, routes: 1, jobs: 0 },
-  { n: 7, opt: 0, routes: 1, jobs: 1 },
+  { n: 7, opt: 1, routes: 1, jobs: 1 },
   { n: 8, opt: 0, routes: 0, jobs: 1 },
   { n: 9, opt: 0, routes: 0, jobs: 0 },
   { n: 10, opt: 0, routes: 0, jobs: 1 },
@@ -642,7 +650,7 @@ describe("SLT-59/R37 — jornada de referencia (design §8)", () => {
     );
 
     expect(filas).toEqual(NUEVO);
-    expect(total).toEqual({ opt: 2, routes: 3, jobs: 6 });
+    expect(total).toEqual({ opt: 3, routes: 3, jobs: 6 });
 
     // El arnes recorrio la jornada entera: sin paradas, cola vacia, y la orden sin coordenadas
     // nunca llega al proveedor.

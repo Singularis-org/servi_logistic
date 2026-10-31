@@ -30,6 +30,9 @@ const VARS = [
   // SLT-59 (R36): umbral de desvio y tope de intentos de la reoptimizacion.
   "RUTA_REOPT_DISTANCIA_M",
   "RUTA_OPT_MAX_INTENTOS",
+  // SLT-59 (R55): enfriamiento de la recuperacion (D21) y umbral de la primera ruta (D25).
+  "RUTA_RECUPERACION_ENFRIAMIENTO_MIN",
+  "RUTA_PRIMERA_MIN_RECOGIDO_PCT",
 ] as const;
 
 const original = new Map(VARS.map((v) => [v, process.env[v]]));
@@ -73,6 +76,8 @@ describe("SL-36/R23 — la config no lleva credencial ni modo de autenticacion",
       "RUTA_OPT_MAX_INTENTOS",
       "RUTA_ORIGEN_MAX_KM",
       "RUTA_ORIGEN_TTL_MIN",
+      "RUTA_PRIMERA_MIN_RECOGIDO_PCT",
+      "RUTA_RECUPERACION_ENFRIAMIENTO_MIN",
       "RUTA_REOPT_DISTANCIA_M",
       "RUTA_SYNC_MIN_INTERVALO_S",
     ]);
@@ -178,7 +183,9 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
   describe.each([
     ["RUTA_REOPT_DISTANCIA_M", 1000, "750"],
     ["RUTA_OPT_MAX_INTENTOS", 3, "2"],
-  ] as const)("SLT-59/R36 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
+    ["RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5, "15"],
+    ["RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, "60"],
+  ] as const)("SLT-59/R36, R55 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
     it(`ausente -> ${porDefecto}, el valor decidido por el humano`, () => {
       limpiar();
       expect(loadRouteOptimizationConfig()[nombre]).toBe(porDefecto);
@@ -204,6 +211,36 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
       process.env[nombre] = valor;
       expect(() => loadRouteOptimizationConfig()).not.toThrow();
       expect(loadRouteOptimizationConfig()[nombre]).toBe(porDefecto);
+    });
+  });
+
+  describe("SLT-59/R55 — RUTA_PRIMERA_MIN_RECOGIDO_PCT es un porcentaje: 1-100", () => {
+    it.each([
+      ["101", "101"],
+      ["muy por encima", "250"],
+    ])("%s -> cae al default 80 SIN lanzar", (_caso, valor) => {
+      // Un umbral por encima de 100 nunca se cumple: el boton de la primera ruta quedaria
+      // bloqueado para siempre. Se trata como cualquier otro valor invalido.
+      limpiar();
+      process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT = valor;
+      expect(() => loadRouteOptimizationConfig()).not.toThrow();
+      expect(loadRouteOptimizationConfig().RUTA_PRIMERA_MIN_RECOGIDO_PCT).toBe(80);
+    });
+
+    it.each([
+      ["el minimo", "1", 1],
+      ["el maximo", "100", 100],
+    ])("%s del rango se respeta", (_caso, valor, esperado) => {
+      limpiar();
+      process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT = valor;
+      expect(loadRouteOptimizationConfig().RUTA_PRIMERA_MIN_RECOGIDO_PCT).toBe(esperado);
+    });
+
+    it("el enfriamiento NO tiene tope: 101 minutos es un valor valido", () => {
+      // El rango 1-100 es propio del porcentaje; el enfriamiento sigue la regla de R36.
+      limpiar();
+      process.env.RUTA_RECUPERACION_ENFRIAMIENTO_MIN = "101";
+      expect(loadRouteOptimizationConfig().RUTA_RECUPERACION_ENFRIAMIENTO_MIN).toBe(101);
     });
   });
 

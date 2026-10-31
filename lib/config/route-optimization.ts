@@ -22,6 +22,15 @@ function readPositiveInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/**
+ * Entero en `[min, max]`; fuera de rango -> `fallback`, igual que ausente/vacio/invalido.
+ * NUNCA lanza (R10, SLT-59/R55).
+ */
+function readIntEnRango(name: string, fallback: number, min: number, max: number): number {
+  const valor = readPositiveInt(name, fallback);
+  return valor >= min && valor <= max ? valor : fallback;
+}
+
 /** Texto: ausente o cadena vacia -> `null`. NUNCA lanza (R10). */
 function readTexto(name: string): string | null {
   const raw = process.env[name];
@@ -113,6 +122,23 @@ export interface RouteOptimizationConfig {
    * Decidido por el humano 2026-10-29 (SLT-59, D9).
    */
   RUTA_OPT_MAX_INTENTOS: number;
+  /**
+   * SLT-59 (R53-R55, design §12.7) — minutos que deben pasar desde que la ruta quedo
+   * `desactualizada` para que «Sincronizar ruta» la recalcule sin desvio ni cambio de paradas.
+   * Antes devuelve la ruta actual con 0 llamadas: pulsar el boton en bucle tras un fallo no
+   * factura un recalculo por pulsacion.
+   *
+   * Decidido por el humano 2026-10-30 (SLT-59, D21); no calibrado con datos de produccion.
+   */
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: number;
+  /**
+   * SLT-59 (R55, R64, design §12.7) — porcentaje minimo, 1-100, de los paquetes asignados del
+   * dia que el mensajero ya recogio para que el boton calcule la PRIMERA ruta del dia. Por
+   * debajo, 0 llamadas y un mensaje claro. Fuera de 1-100 cae al default.
+   *
+   * Decidido por el humano 2026-10-30 (SLT-59, D25); no calibrado con datos de produccion.
+   */
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: number;
 }
 
 export function loadRouteOptimizationConfig(): RouteOptimizationConfig {
@@ -128,5 +154,8 @@ export function loadRouteOptimizationConfig(): RouteOptimizationConfig {
     // SLT-59 D8 y D9: ver la nota de cada campo en el contrato.
     RUTA_REOPT_DISTANCIA_M: readPositiveInt("RUTA_REOPT_DISTANCIA_M", 1000),
     RUTA_OPT_MAX_INTENTOS: readPositiveInt("RUTA_OPT_MAX_INTENTOS", 3),
+    // SLT-59 D21 y D25: ver la nota de cada campo en el contrato.
+    RUTA_RECUPERACION_ENFRIAMIENTO_MIN: readPositiveInt("RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5),
+    RUTA_PRIMERA_MIN_RECOGIDO_PCT: readIntEnRango("RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, 1, 100),
   };
 }

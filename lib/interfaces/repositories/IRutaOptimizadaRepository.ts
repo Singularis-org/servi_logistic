@@ -179,7 +179,8 @@ export interface IRutaOptimizadaRepository {
    * reduccion la moviera, un job de recogida en vuelo se daria por cubierto sin que nadie hubiera
    * optimizado las paradas nuevas.
    *
-   * Devuelve `true` si la reduccion se aplico y `false` si la huella ya no encajaba.
+   * R48: exige tambien `estado = 'vigente'` al escribir. Devuelve `true` si la reduccion se aplico
+   * y `false` si la huella ya no encajaba o la ruta ya no estaba `vigente` (no se escribio nada).
    */
   reducirSecuencia(
     mensajeroId: string,

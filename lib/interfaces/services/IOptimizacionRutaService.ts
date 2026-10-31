@@ -131,6 +131,9 @@ export interface IOptimizacionRutaService {
    * SLT-59 (R27, design §3.2) — aplica la reduccion de la secuencia SOLO si no cuesta ninguna
    * llamada facturada (R13 o R15). En cualquier otro caso no hace nada: el job encolado por la
    * gestion se encarga. Puede lanzar si falla la base; quien llama lo trata como best-effort (R28).
+   *
+   * [2026-10-30, SLT-59, D16] R27 se lee R44: solo reduce un prefijo (entrega en orden). Fuera
+   * de orden no hace nada y el job recalcula el conjunto completo (R42).
    */
   reducirSinLlamadas(mensajeroId: string): Promise<void>;
 }

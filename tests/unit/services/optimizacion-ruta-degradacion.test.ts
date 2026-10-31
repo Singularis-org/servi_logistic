@@ -62,6 +62,8 @@ const CONFIG: RouteOptimizationConfig = {
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
   RUTA_REOPT_DISTANCIA_M: 1000,
   RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
 };
 
 /** Tres paradas reales de San Jose, todas dentro del umbral del origen. */

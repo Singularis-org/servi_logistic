@@ -360,11 +360,14 @@ describe("265/R45 — al LEER, la columna se estrecha y `null` significa «no co
  * el `where` encaja, y devuelve cuantas filas toco. Asi se comprueba el ESTADO que queda, no
  * solo los argumentos que se pasaron.
  */
-function buildPrismaReduccion(huellaEnLaFila: string) {
+function buildPrismaReduccion(
+  huellaEnLaFila: string,
+  estadoEnLaFila: "vigente" | "desactualizada" = "vigente",
+) {
   const cabecera: Record<string, unknown> = {
     id: "ruta-1",
     mensajeroId: MENSAJERO,
-    estado: "vigente",
+    estado: estadoEnLaFila,
     calculadaAt: T0,
     origenLat: new Prisma.Decimal("9.9281000"),
     origenLng: new Prisma.Decimal("-84.0907000"),
@@ -527,9 +530,12 @@ describe("SLT-59 — reducirSecuencia persiste la secuencia previa sin las parad
     });
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    // R48: la barrera es huella Y estado; sin el estado, una ruta recien marcada
+    // `desactualizada` (que conserva la huella) aceptaria la reduccion.
     expect(tx.rutaOptimizada.updateMany.mock.calls[0][0].where).toEqual({
       mensajeroId: MENSAJERO,
       huellaSet: "h-previa",
+      estado: "vigente",
     });
     expect(tx.rutaOptimizada.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
       tx.rutaOptimizadaParada.deleteMany.mock.invocationCallOrder[0],
@@ -550,6 +556,26 @@ describe("SLT-59 — reducirSecuencia persiste la secuencia previa sin las parad
       huellaSet: "h-nueva",
       paradas: [{ ordenId: "o3", tramo: TRAMO_O3 }],
       trazado: null,
+    });
+
+    expect(aplicada).toBe(false);
+    expect(cabecera).toEqual(cabeceraAntes);
+    expect(paradas()).toEqual(paradasAntes);
+    expect(tx.rutaOptimizadaParada.deleteMany).not.toHaveBeenCalled();
+    expect(tx.rutaOptimizadaParada.createMany).not.toHaveBeenCalled();
+  });
+  it("R48: con la ruta `desactualizada` y la huella IGUAL no escribe NADA y devuelve false, sin lanzar", async () => {
+    // `marcarDesactualizada` no cambia la huella: entre la lectura (vigente) y la escritura un
+    // fallo de recalculo pudo marcarla. Escribir encima ocultaria ese estado con una secuencia
+    // que nadie recalculo.
+    const { prisma, tx, cabecera, paradas } = buildPrismaReduccion("h-previa", "desactualizada");
+    const cabeceraAntes = { ...cabecera };
+    const paradasAntes = paradas().map((p) => ({ ...p }));
+
+    const aplicada = await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: TRAMO_O3 }],
+      trazado: { encodedPolyline: "t3", distanciaM: 800, duracionS: null, fuente: "routes" },
     });
 
     expect(aplicada).toBe(false);

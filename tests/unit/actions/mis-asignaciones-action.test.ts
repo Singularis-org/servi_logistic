@@ -475,9 +475,10 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
   });
 });
 
-// --- SLT-59 (R27, R28): reduccion de la ruta en la propia peticion ---
+// --- SLT-59 (R44, R28): reduccion de la ruta en la propia peticion ---
+// [2026-10-30, SLT-59, D16] R27 retirado: sus titulos pasan a R44; las aserciones no cambian.
 
-describe("SLT-59 R27/R28 — gestionar reduce la ruta del actor tras un `ok`, best-effort", () => {
+describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, best-effort", () => {
   function fdEntregaValida(): FormData {
     const fd = new FormData();
     fd.set("ordenId", "o1");
@@ -490,7 +491,7 @@ describe("SLT-59 R27/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     return fd;
   }
 
-  it("R27: tras un `ok` llama a la reduccion UNA vez con el usuarioId del actor, despues de la gestion", async () => {
+  it("R44: tras un `ok` llama a la reduccion UNA vez con el usuarioId del actor, despues de la gestion", async () => {
     const orden: string[] = [];
     const service = buildService({
       gestionar: vi.fn(async () => {
@@ -514,7 +515,7 @@ describe("SLT-59 R27/R28 — gestionar reduce la ruta del actor tras un `ok`, be
   it.each([
     ["conflict", { status: "conflict" as const, motivo: "ya no gestionable" }],
     ["forbidden", { status: "forbidden" as const }],
-  ])("R27: tras `%s` NO llama a la reduccion", async (_nombre, resultado) => {
+  ])("R44: tras `%s` NO llama a la reduccion", async (_nombre, resultado) => {
     const service = buildService({ gestionar: vi.fn(async () => resultado) });
     const reducirRuta = vi.fn(async () => {});
 
@@ -524,7 +525,7 @@ describe("SLT-59 R27/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     expect(reducirRuta).not.toHaveBeenCalled();
   });
 
-  it("R27: si el service LANZA, no llama a la reduccion", async () => {
+  it("R44: si el service LANZA, no llama a la reduccion", async () => {
     const service = buildService({
       gestionar: vi.fn(async () => {
         throw new Error("boom");
@@ -538,7 +539,7 @@ describe("SLT-59 R27/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     expect(reducirRuta).not.toHaveBeenCalled();
   });
 
-  it("R27: con validation_error no se toca ni el service ni la reduccion", async () => {
+  it("R44: con validation_error no se toca ni el service ni la reduccion", async () => {
     const service = buildService();
     const reducirRuta = vi.fn(async () => {});
     const fd = fdEntregaValida();
