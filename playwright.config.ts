@@ -98,6 +98,8 @@ export default defineConfig({
         "cobro-plataforma-sl40",
         "pago-plataforma-sl45",
         "integraciones-por-empresa",
+        // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
+        "planes-superadmin",
       ),
     },
     {
@@ -128,6 +130,8 @@ export default defineConfig({
         "mi-wallet",
         "wallet-mensajeros",
         "ajuste-pago-mensajero-cierre",
+        // SLT-68 · R22: el incentivo manual a un mensajero.
+        "incentivo-mensajero-slt68",
       ),
     },
   ],

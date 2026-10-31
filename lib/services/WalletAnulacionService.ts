@@ -25,9 +25,11 @@ type Clasificacion = Exclude<RutaAnulacion, { status: "forbidden" }>;
  *          `egreso_pago_tienda`                                                    → liquidacion_pago
  *          los dos ingresos del cobro por rechazo (`gestion_orden`)                → rechazo_tienda_cobro
  *          `egreso_pago_mensajero` con origen `ranking_snapshot_fila`              → premio_del_ranking
+ *          `egreso_pago_mensajero` con origen `incentivo_mensajero` (SLT-68)       → incentivo_mensajero
  *   tienda `cobro_manual` → cobro_tienda (la propia fila); `pago_tienda`, `pago_por_cuenta`, `abono_tienda`
  *          → su documento; los dos debitos del cobro por rechazo → rechazo_tienda_cobro
  *   mensajero `liquidacion` → liquidacion_pago; `premio_ranking` → premio_del_ranking (por su dia)
+ *          `incentivo` → incentivo_mensajero (la propia fila; SLT-68)
  *
  * Todo lo demas NO se anula desde aqui (R65), con el motivo dicho: lo que produce un cierre, las
  * salidas reclasificadas de la 459 y los contra-asientos.
@@ -115,6 +117,10 @@ export class WalletAnulacionService implements IWalletAnulacionService {
     if (f.categoria === "egreso_pago_mensajero" && f.origenTipo === "ranking_snapshot_fila") {
       return ruta("premio_del_ranking", doc);
     }
+    // SLT-68 (design §6.3, R16): el egreso del incentivo; su `ingreso_ajuste` cae en el contra-asiento.
+    if (f.categoria === "egreso_pago_mensajero" && f.origenTipo === "incentivo_mensajero") {
+      return ruta("incentivo_mensajero", doc);
+    }
     // Lo que queda con `origen_id` es un contra-asiento: el reverso de un egreso, de un cobro, de un
     // pago, de un aporte, del cobro por rechazo o de un premio (R65).
     return noAnulable("contra_asiento");
@@ -152,6 +158,11 @@ export class WalletAnulacionService implements IWalletAnulacionService {
       return filaId === null ? { status: "no_encontrado" } : ruta("premio_del_ranking", filaId);
     }
     if (f.categoria === "ajuste_devengo" || f.categoria === "ajuste_pago") return noAnulable("contra_asiento");
+    // SLT-68 (design §6.3, R16): ANTES de `nace_de_un_cierre`. El incentivo cuelga de un cierre
+    // (`origen_tipo = cierre_dia`) para ser pagable, pero no lo produjo la aprobacion: lo registro una
+    // persona y se anula por su propio camino.
+    if (f.categoria === "incentivo") return ruta("incentivo_mensajero", f.id);
+    if (f.categoria === "reverso_incentivo") return noAnulable("contra_asiento");
     if (f.origenTipo === "cierre_dia") return noAnulable("nace_de_un_cierre");
     return noAnulable("no_es_anulable");
   }

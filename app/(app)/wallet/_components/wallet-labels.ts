@@ -427,6 +427,8 @@ export const DOCUMENTO_CAJA_NOMBRE: Record<
   // Ficha 458-C (revision B3): el pago de la empresa a una tienda (172) y el premio del ranking (293).
   pago_tienda: `el pago de ${EMPRESA.enFrase} a una tienda`,
   premio_del_ranking: "el premio del ranking",
+  // SLT-68 (design §5): el egreso de caja de un incentivo a un mensajero.
+  incentivo_mensajero: "el incentivo a un mensajero",
 };
 
 /**

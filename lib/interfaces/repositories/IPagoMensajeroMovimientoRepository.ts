@@ -17,6 +17,12 @@ export type PagoMensajeroTxClient = Pick<PrismaClient, "pagoMensajeroMovimiento"
 
 // Fila a insertar en el libro. `monto` STRING (money-safe); origenId NULL solo en manual.
 export interface CrearPagoMensajeroInput {
+  /**
+   * SLT-68 (design §6) — el id de la fila, OPCIONAL. Solo lo fija el incentivo: su id ES la identidad
+   * del incentivo (el `origen_id` de su egreso de caja y de su contraasiento), y tiene que conocerse
+   * antes de escribir la caja. Quien no lo manda cae en el `@default(uuid())` como hasta hoy.
+   */
+  id?: string;
   mensajeroId: string;
   tipo: PagoMensajeroMovimientoTipo;
   categoria: PagoMensajeroMovimientoCategoria;
@@ -186,8 +192,24 @@ export interface IPagoMensajeroMovimientoRepository {
    * Devuelve una entrada por CADA id pedido (`"0.00"` los que no tienen premio), igual que
    * `sumarVigentesPorCierre`, para que el caller no tenga que distinguir «no hay» de «no lo
    * pedi». Con la lista vacia no consulta.
+   *
+   * SLT-68 (design §4) — son los DEVENGOS POSTERIORES AL CIERRE: premios e incentivos vivos. El
+   * nombre y la firma se conservan para no tocar sus cinco consumidores en un hotfix:
+   *
+   *     vivo(cierre) = premiosVivos(cierre)
+   *                  + Σ `incentivo` con origen (cierre_dia, cierre)
+   *                  − Σ `reverso_incentivo` cuyo `origen_id` es uno de esos incentivos
+   *
+   * El reverso cuelga del INCENTIVO (origen `incentivo_mensajero`), no del cierre: se resta por los
+   * ids de los incentivos del cierre. Las consultas no crecen con el numero de cierres.
    */
   sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+  /**
+   * SLT-68 (design §6) — un INCENTIVO por su id (el de su devengo), o `null` si no existe en la
+   * empresa o la fila no es un `incentivo`. `anulado` = existe su `reverso_incentivo`
+   * (origen `incentivo_mensajero`, `origen_id` = id). Con `tx`, la lectura va por esa transaccion.
+   */
+  obtenerIncentivo(id: string, tx?: PagoMensajeroTxClient): Promise<IncentivoRow | null>;
   /**
    * Feature 293 (T3.3, R9/R18/R31/R32) — el ESTADO del premio de un mensajero en unos dias
    * concretos: las filas `premio_ranking` y las de su compensacion (`ajuste_pago` con
@@ -209,6 +231,16 @@ export interface IPagoMensajeroMovimientoRepository {
     dias: Date[],
     tx?: PagoMensajeroTxClient,
   ): Promise<PremioRegistradoRow[]>;
+}
+
+/** SLT-68 — un incentivo leido del libro. `monto` STRING (money-safe). */
+export interface IncentivoRow {
+  id: string;
+  mensajeroId: string;
+  monto: string;
+  /** El cierre al que se imputo (`origen_tipo = cierre_dia`; lo garantiza el CHECK de origen). */
+  cierreId: string;
+  anulado: boolean;
 }
 
 /**

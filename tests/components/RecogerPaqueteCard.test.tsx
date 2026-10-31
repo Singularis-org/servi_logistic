@@ -4,7 +4,10 @@ import { render, screen, cleanup, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RecogerPaqueteCard } from "@/app/(app)/mis-asignaciones/_components/RecogerPaqueteCard";
-import { recogerAsignaciones } from "@/lib/actions/mis-asignaciones";
+import {
+  listarMisAsignaciones,
+  recogerAsignaciones,
+} from "@/lib/actions/mis-asignaciones";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 // Recoger paquete: la tarjeta con los DOS caminos (cámara y número tecleado), que antes
@@ -16,6 +19,8 @@ import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignaciones
 // doble captura el callback de decodificación que `start` recibe.
 vi.mock("@/lib/actions/mis-asignaciones", () => ({
   recogerAsignaciones: vi.fn(),
+  // SLT-69: ante una guía que no está en la lista cargada, el hook relee la lista vigente.
+  listarMisAsignaciones: vi.fn(),
 }));
 
 const { successMock, errorMock, startMock, decodeCallback } = vi.hoisted(() => ({
@@ -45,6 +50,20 @@ vi.mock("html5-qrcode", () => ({
 }));
 
 const recogerMock = vi.mocked(recogerAsignaciones);
+const listarMock = vi.mocked(listarMisAsignaciones);
+
+/** Respuesta `ok` de la relectura con la lista vigente dada (el resto no lo lee el hook). */
+function listaVigente(
+  lista: MiAsignacionDTO[],
+): Awaited<ReturnType<typeof listarMisAsignaciones>> {
+  return {
+    status: "ok",
+    porRecoger: lista,
+    porGestionar: [],
+    conAyuda: [],
+    ordenEnGestionId: null,
+  } as unknown as Awaited<ReturnType<typeof listarMisAsignaciones>>;
+}
 
 function makeAsignacion(
   over: Partial<MiAsignacionDTO> & { id: string; numGuia: number },
@@ -95,6 +114,8 @@ async function escanear(
 beforeEach(() => {
   vi.clearAllMocks();
   decodeCallback.current = null;
+  // SLT-69: por defecto el servidor tiene la MISMA lista que la tarjeta (sin guías nuevas).
+  listarMock.mockResolvedValue(listaVigente(porRecoger));
   startMock.mockImplementation(
     async (
       _config: unknown,
@@ -404,5 +425,34 @@ describe("RecogerPaqueteCard — el desplegable (cámara apagada por defecto)", 
     expect(
       screen.getByRole("button", { name: "Recoger paquete" }),
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// SLT-69 (hotfix 2026-10-30, R2): una guía asignada DESPUÉS de abrir la pantalla no está en la
+// lista de la tarjeta; el hook relee la lista vigente y la recoge como cualquier otra.
+// ---------------------------------------------------------------------------------------
+describe("RecogerPaqueteCard — guía asignada después de abrir la pantalla (SLT-69)", () => {
+  it("R2: enviada por teclado, se recoge, dispara onRecogida y deja la confirmación a la vista", async () => {
+    const user = userEvent.setup();
+    const onRecogida = vi.fn();
+    listarMock.mockResolvedValue(
+      listaVigente([
+        ...porRecoger,
+        makeAsignacion({ id: "ord-nueva", numGuia: 34991060 }),
+      ]),
+    );
+    recogerMock.mockResolvedValue({ status: "ok", recogidas: ["ord-nueva"] });
+    await renderAbierta(user, onRecogida);
+
+    await tecleaYConfirma(user, "34991060");
+
+    await vi.waitFor(() => expect(onRecogida).toHaveBeenCalledTimes(1));
+    expect(listarMock).toHaveBeenCalledTimes(1);
+    expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["ord-nueva"] });
+    expect(errorMock).not.toHaveBeenCalled();
+    expect(successMock).toHaveBeenCalledWith("Guía 34991060 recogida.");
+    const confirmacion = screen.getByText(/recogida correctamente/);
+    expect(confirmacion).toHaveTextContent("Guía 34991060 recogida correctamente.");
   });
 });
