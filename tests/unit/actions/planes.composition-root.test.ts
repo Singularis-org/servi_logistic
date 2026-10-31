@@ -25,6 +25,7 @@ const filaPlan = {
   precioMensual: null,
   precioAnual: null,
   descuentoAnualPct: null,
+  costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
   archivadoAt: null,
   topesPorRol: [{ rol: "adminTienda", maximo: 3 }],
   modulos: [{ modulo: "ranking" }],
@@ -70,6 +71,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "negociable" },
+        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
         archivado: false,
       },
     ]);
@@ -92,6 +94,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "negociable" },
+        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
       },
       { getActor: async () => SUPERADMIN },
     );
@@ -138,6 +141,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
         modulos: [],
         precio: { tipo: "sin_precio" },
+        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
         vigenteDesde: "2020-01-01",
       },
       { getActor: async () => SUPERADMIN },

@@ -85,6 +85,7 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
       topes: { ordenesPorCiclo: 1000, porRol: { admin: 2, adminTienda: 5 }, apiKeys: 4 }, // SLT-66 R1
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "49.90", anual: { tipo: "fijo", monto: "499.00" } },
+      costoPorOrden: null, // SLT-66 R8: el plan lleva costo por orden; aquí, vacío.
     });
     expect(leido.ancla.toISOString()).toBe(ANCLA);
     expect(leido.uso).toEqual({

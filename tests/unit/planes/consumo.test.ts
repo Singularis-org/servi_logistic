@@ -70,10 +70,10 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
     porRol: { admin: 0, mensajero: 12, adminTienda: 2, adminSatelite: 0 },
   };
 
-  it("R2: una fila por tope, en orden: órdenes, los cinco roles y API keys", () => {
+  // SLT-66 R1: el maestro ya no tiene tope, así que no tiene fila; quedan cuatro roles.
+  it("R2: una fila por tope, en orden: órdenes, los cuatro roles y API keys", () => {
     expect(filasDeConsumo(topes, uso).map((f) => f.clave)).toEqual([
       "ordenes",
-      "maestro",
       "admin",
       "mensajero",
       "adminTienda",
