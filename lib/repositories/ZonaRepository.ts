@@ -2,10 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 import { ConflictError } from "@/lib/errors";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { cambioElPagoAlMensajero } from "@/lib/repositories/_shared/pago-mensajero-cambio";
 import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
-import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
+import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
+import { nodosBajo, zonaQueCubre } from "@/lib/services/geografia-dominio";
 import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
 import { normalizeName } from "@/lib/utils/normalize";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
@@ -57,7 +63,23 @@ type ZonaPrismaClient = Pick<
   // fila por la API de modelo, y sin el dos guardados simultaneos sobre la misma bodega leerian el
   // mismo valor «anterior» y escribirian dos filas que cuentan la misma transicion dos veces.
   | "$queryRaw"
->;
+> &
+  // SLT-65 (design §6.3): la reconciliacion carga el catalogo de SLT-44 dentro de la transaccion.
+  // Los modelos van por el tipo del catalogo: el de las marcas solo lo nombra su punto unico.
+  CatalogoPrismaClient;
+
+/**
+ * SLT-65 (design §6.3) — lo que el plan de la reconciliacion lee del cliente de la transaccion: las
+ * ordenes y los modelos del catalogo (`CatalogoPrismaClient`).
+ */
+export type TxDeReconciliacion = Pick<Prisma.TransactionClient, "orden"> & CatalogoPrismaClient;
+
+/** SLT-65 (design §6.1): lo que movera un guardado, calculado sin escribir. */
+export interface PlanDeReconciliacion {
+  /** Por zona destino: las ordenes que se mueven (id, guia, remision). Sin zonas vacias. */
+  porZona: Map<string, { id: string; numGuia: number | null; numRemision: string | null }[]>;
+  retenidasEnBodegaSatelite: number;
+}
 
 /** Una zona nombrada, tal como la necesita una fila del historial (376/R12/R13). */
 interface ZonaConNombre {
@@ -183,10 +205,13 @@ function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
  *
  * El estado NO entra aqui: cada consumidor le añade su clausula COMPLEMENTARIA, y esa
  * complementariedad es lo que hace que los dos conjuntos sean disjuntos por construccion.
+ *
+ * SLT-65 (design §6.1, paso 4): la orden entra por su LUGAR (`whereLugarEn`), no por `distrito_id`.
+ * Con lugares que son solo distritos, la rama del canton no casa con nada y el corte es el de hoy.
  */
-function whereBaseElegible(distritoIds: string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
+function whereBaseElegible(lugares: readonly string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
   return {
-    distritoId: { in: distritoIds },
+    ...whereLugarEn(lugares),
     zonaId: { not: zonaResueltaId },
     deletedAt: null,
     cierreDetalles: { none: {} },
@@ -197,6 +222,62 @@ function whereBaseElegible(distritoIds: string[], zonaResueltaId: string): Prism
       },
     },
   };
+}
+
+/**
+ * ⭑ SLT-65 (design §6.1; R13–R15, R17) — QUE MOVERIA UN GUARDADO, SIN ESCRIBIR NADA.
+ *
+ * Se extrae de `update` para que el script de equivalencia (design §9) pueda preguntarlo sobre una
+ * conexion de solo lectura. `update` lo llama y aplica el plan con las mismas escrituras de siempre.
+ *
+ * 1. El catalogo y las asignaciones salen de `deLaEmpresa()` SOBRE `tx`: no abre otra transaccion,
+ *    lee en serie en la del guardado y ve el `zona_distrito` que este acaba de reescribir (R17).
+ * 2. Los lugares son los nodos afectados y todo lo que cuelga de ellos (R13).
+ * 3. La zona de cada lugar es `zonaQueCubre`: la asignacion mas especifica, con el colapso 1/0/>1 de
+ *    la 366. `null` (0 o >1 zonas) no mueve nada, como hoy.
+ * 4. Por zona, las dos consultas de la 377 sobre el MISMO `whereBaseElegible`: el conteo de las del
+ *    estante y las elegibles. Una zona sin elegibles no entra en `porZona`.
+ */
+export async function planificarReconciliacion(
+  tx: TxDeReconciliacion,
+  nodosAfectados: readonly string[],
+): Promise<PlanDeReconciliacion> {
+  const porZona: PlanDeReconciliacion["porZona"] = new Map();
+  let retenidasEnBodegaSatelite = 0;
+  if (nodosAfectados.length === 0) return { porZona, retenidasEnBodegaSatelite };
+
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+
+  // En el orden de los nodos afectados, cada uno seguido de lo que cuelga de el, sin repetidos.
+  const lugares = new Set<string>();
+  for (const n of nodosAfectados) {
+    lugares.add(n);
+    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
+  }
+
+  const lugaresPorZona = new Map<string, string[]>();
+  for (const lugar of lugares) {
+    const zonaId = zonaQueCubre(catalogo, asignaciones, lugar)?.id;
+    if (zonaId === undefined) continue;
+    const bucket = lugaresPorZona.get(zonaId);
+    if (bucket) bucket.push(lugar);
+    else lugaresPorZona.set(zonaId, [lugar]);
+  }
+
+  for (const [zonaResueltaId, lugaresDeLaZona] of lugaresPorZona) {
+    const base = whereBaseElegible(lugaresDeLaZona, zonaResueltaId);
+    // FICHA 377 (R2/R8): en transito si, en el estante no. El porque, en `update`. El conteo va
+    // SIEMPRE y en SQL, tambien cuando no hay nada que mover.
+    retenidasEnBodegaSatelite += await tx.orden.count({
+      where: { ...base, estatus: { value: { in: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
+    });
+    const elegibles = await tx.orden.findMany({
+      where: { ...base, estatus: { value: { notIn: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
+      select: { id: true, numGuia: true, numRemision: true },
+    });
+    if (elegibles.length > 0) porZona.set(zonaResueltaId, elegibles);
+  }
+  return { porZona, retenidasEnBodegaSatelite };
 }
 
 export class ZonaRepository implements IZonaRepository {
@@ -449,116 +530,77 @@ export class ZonaRepository implements IZonaRepository {
         // y el veredicto describe la base y no el payload.
         const tarifas = await tx.tarifaZonaMensajero.findMany({ where: { zonaId: id } });
 
-        // 366/R5 (design §2): LA UNION de los distritos de ANTES y los de DESPUES.
+        // 366/R5 (design §2): LA UNION de los distritos de ANTES y los de DESPUES. SLT-65 (R13): son
+        // los nodos afectados; el plan añade lo que cuelga de ellos.
         const distritosAfectados = [
           ...new Set([...distritosPrevios.map((d) => d.distritoId), ...data.distritoIds]),
         ];
 
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        // ⭑ FICHA 377 (R2/R8) — LO QUE SE QUEDA, Y POR QUE SE CUENTA (el corte vive en el plan)
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        //
+        // EN TRANSITO SI, EN EL ESTANTE NO. `orden.zona_id` hace dos trabajos a la vez
+        // (377/design §1): dice a que zona GEOGRAFICA pertenece la direccion —de ahi la tarifa— y
+        // dice QUE BODEGA tiene el paquete —de ahi el permiso: el listado
+        // (`OrdenRepository.condicionesSatelite`), la asignacion (`AsignacionSateliteService`,
+        // motivo `zona_ajena`) y el deshacer—. El estado dice cual de los dos manda:
+        //
+        //   · `en_ruta_bodega_satelite` — el paquete lo tiene la CENTRAL, que aun decide adonde lo
+        //     manda. Reconciliar es CORRECTO y ademas DESBLOQUEA la recepcion, porque
+        //     `recibirEnSatelite` acota su guarda por `zonaId` (366/design §8: 41 de 42 ordenes
+        //     represadas el 2026-09-03). NO SE TOCA.
+        //   · `en_bodega_satelite` — el paquete esta en el estante de una bodega concreta, que lo
+        //     recibio con su propia transicion. Moverle la zona le quita el permiso a quien LO TIENE
+        //     sin darselo a nadie que pueda usarlo, y desde ese estado NO HAY transicion de salida
+        //     hacia otra bodega. Por eso se queda como esta.
+        //
+        // El conteo se hace SIEMPRE, tambien cuando no haya nada que mover (R8), y en SQL: un corte
+        // que decide quien se mueve tiene que poder matarse con una mutacion y que un test contra
+        // Postgres lo note (design §3.2). Lo hace `planificarReconciliacion`, arriba.
+        // El `tx` va SIN `$transaction` (`sinTransaccionAnidada`, ahi el porque): con el, la carga del
+        // catalogo abriria una transaccion anidada y dejaria rota la siguiente que se abra fuera de
+        // esta. Sin el, lee en serie en la del guardado. El script de equivalencia no pasa por aqui.
+        const plan = await planificarReconciliacion(sinTransaccionAnidada(tx), distritosAfectados);
         let ordenesReconciliadas = 0;
         // 377/R8: las que HABRIAN cambiado de zona y no lo hacen porque su paquete ya esta en el
         // estante de una satelite. Se devuelve en la misma respuesta del guardado (R8/R10).
-        let ordenesRetenidasEnBodegaSatelite = 0;
-        if (distritosAfectados.length > 0) {
-          // El estado YA reemplazado de la N:M: es el que decide cual es la zona correcta.
-          const filas = await tx.zonaDistrito.findMany({
-            where: { distritoId: { in: distritosAfectados } },
-            select: { distritoId: true, zonaId: true },
-          });
+        const ordenesRetenidasEnBodegaSatelite = plan.retenidasEnBodegaSatelite;
 
-          const zonasPorDistrito = new Map<string, string[]>();
-          for (const fila of filas) {
-            const bucket = zonasPorDistrito.get(fila.distritoId);
-            if (bucket) bucket.push(fila.zonaId);
-            else zonasPorDistrito.set(fila.distritoId, [fila.zonaId]);
-          }
+        if (plan.porZona.size > 0) {
+          // 366/R11: UN lote por GUARDADO, aunque toque varias zonas resueltas. Y UN solo
+          // `resolverActorCongelado` para todas sus filas (362/design §2.4).
+          const loteId = randomUUID();
+          const actor = await resolverActorCongelado(tx, actorUsuarioId);
 
-          // 366/R2/R3: el colapso 1/0/>1 es EL MISMO que usan la carga masiva y la correccion
-          // manual (`_shared/zona-colapso`). Un distrito con 0 o con >1 zonas resuelve `null` y NO
-          // mueve ninguna orden: no se inventa una zona eligiendo la primera.
-          const distritosPorZonaResuelta = new Map<string, string[]>();
-          for (const distritoId of distritosAfectados) {
-            const zonaResuelta = zonaUnicaDeDistrito(zonasPorDistrito.get(distritoId) ?? []);
-            if (zonaResuelta === null) continue;
-            const bucket = distritosPorZonaResuelta.get(zonaResuelta);
-            if (bucket) bucket.push(distritoId);
-            else distritosPorZonaResuelta.set(zonaResuelta, [distritoId]);
-          }
+          for (const [zonaResueltaId, elegibles] of plan.porZona) {
+            // 366/R9: SOLO `zonaId`. Ni el estado, ni el mensajero, ni el monto, ni la ubicacion:
+            // esta ficha corrige la zona y nada mas.
+            await tx.orden.updateMany({
+              where: { id: { in: elegibles.map((o) => o.id) } },
+              data: { zonaId: zonaResueltaId },
+            });
 
-          if (distritosPorZonaResuelta.size > 0) {
-            // 366/R11: UN lote por GUARDADO, aunque toque varias zonas resueltas. Y UN solo
-            // `resolverActorCongelado` para todas sus filas (362/design §2.4).
-            const loteId = randomUUID();
-            const actor = await resolverActorCongelado(tx, actorUsuarioId);
+            // 362/R9 + 366/R10: una fila POR ORDEN ALCANZADA (no por orden candidata) y en la MISMA
+            // transaccion. La etiqueta es la guia —o la remision si no hay guia—, que es un
+            // identificador de envio de la empresa; `valorAnterior`/`valorNuevo`/`monto` van NULL a
+            // proposito: ahi irian la zona vieja y la nueva, que R10 deja fuera.
+            await appendAccion(
+              tx,
+              elegibles.map((o) => ({
+                accion: "orden_zona_reconciliada" as const,
+                entidadTipo: "orden" as const,
+                entidadId: o.id,
+                entidadEtiqueta: etiquetaDeEntidad("orden", {
+                  numGuia: o.numGuia,
+                  numRemision: o.numRemision,
+                }),
+                ...actor,
+              })),
+              loteId,
+            );
 
-            for (const [zonaResueltaId, distritoIds] of distritosPorZonaResuelta) {
-              // El corte de elegibilidad de la 366 (los cuatro cortes que NO miran el estado) vive
-              // en `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque.
-              const base = whereBaseElegible(distritoIds, zonaResueltaId);
-
-              // ══════════════════════════════════════════════════════════════════════════════
-              // ⭑ FICHA 377 (R2/R8) — LO QUE SE QUEDA, Y POR QUE SE CUENTA
-              // ══════════════════════════════════════════════════════════════════════════════
-              //
-              // EN TRANSITO SI, EN EL ESTANTE NO. `orden.zona_id` hace dos trabajos a la vez
-              // (377/design §1): dice a que zona GEOGRAFICA pertenece la direccion —de ahi la
-              // tarifa— y dice QUE BODEGA tiene el paquete —de ahi el permiso: el listado
-              // (`OrdenRepository.condicionesSatelite`), la asignacion
-              // (`AsignacionSateliteService`, motivo `zona_ajena`) y el deshacer—. El estado dice
-              // cual de los dos manda:
-              //
-              //   · `en_ruta_bodega_satelite` — el paquete lo tiene la CENTRAL, que aun decide
-              //     adonde lo manda. Reconciliar es CORRECTO y ademas DESBLOQUEA la recepcion,
-              //     porque `recibirEnSatelite` acota su guarda por `zonaId` (366/design §8: 41 de
-              //     42 ordenes represadas el 2026-09-03). NO SE TOCA.
-              //   · `en_bodega_satelite` — el paquete esta en el estante de una bodega concreta,
-              //     que lo recibio con su propia transicion. Moverle la zona le quita el permiso a
-              //     quien LO TIENE sin darselo a nadie que pueda usarlo: desaparece del listado de
-              //     su bodega, esa bodega ya no puede asignarlo (`zona_ajena`), la otra lo ve pero
-              //     no tiene el paquete, y desde ese estado NO HAY transicion de salida hacia otra
-              //     bodega. Por eso se queda como esta.
-              //
-              // El conteo se hace SIEMPRE, tambien cuando no haya nada que mover: R8 no depende de
-              // que este guardado reconcilie algo. Y se hace en SQL —no filtrando en JS lo que ya
-              // se trajo— porque un corte que decide quien se mueve tiene que poder matarse con
-              // una mutacion y que un test contra Postgres lo note (design §3.2).
-              ordenesRetenidasEnBodegaSatelite += await tx.orden.count({
-                where: { ...base, estatus: { value: { in: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
-              });
-
-              const elegibles = await tx.orden.findMany({
-                where: { ...base, estatus: { value: { notIn: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
-                select: { id: true, numGuia: true, numRemision: true },
-              });
-              if (elegibles.length === 0) continue;
-
-              // 366/R9: SOLO `zonaId`. Ni el estado, ni el mensajero, ni el monto, ni la
-              // ubicacion: esta ficha corrige la zona y nada mas.
-              await tx.orden.updateMany({
-                where: { id: { in: elegibles.map((o) => o.id) } },
-                data: { zonaId: zonaResueltaId },
-              });
-
-              // 362/R9 + 366/R10: una fila POR ORDEN ALCANZADA (no por orden candidata) y en la
-              // MISMA transaccion. La etiqueta es la guia —o la remision si no hay guia—, que es
-              // un identificador de envio de la empresa; `valorAnterior`/`valorNuevo`/`monto` van
-              // NULL a proposito: ahi irian la zona vieja y la nueva, que R10 deja fuera.
-              await appendAccion(
-                tx,
-                elegibles.map((o) => ({
-                  accion: "orden_zona_reconciliada" as const,
-                  entidadTipo: "orden" as const,
-                  entidadId: o.id,
-                  entidadEtiqueta: etiquetaDeEntidad("orden", {
-                    numGuia: o.numGuia,
-                    numRemision: o.numRemision,
-                  }),
-                  ...actor,
-                })),
-                loteId,
-              );
-
-              ordenesReconciliadas += elegibles.length;
-            }
+            ordenesReconciliadas += elegibles.length;
           }
         }
 

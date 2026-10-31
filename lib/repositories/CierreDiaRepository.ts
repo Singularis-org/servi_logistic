@@ -31,6 +31,7 @@ import {
   CatalogoGeograficoRepository,
   type CatalogoPrismaClient,
 } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
 import { esZonaEspecial, nodo } from "@/lib/services/geografia-dominio";
 import {
   SELECT_REGISTRO_DE_CALLE,
@@ -350,15 +351,10 @@ export async function leerDescriptivosDeOrdenes(
   // cliente de la transaccion `enUnaFoto` no abre otra: lee en ESTA, en serie y con la empresa que
   // ya fijo la extension, asi que ve lo que la propia transaccion escribio.
   //
-  // Se le pasa el cliente SIN `$transaction`: el `tx` de una transaccion interactiva del cliente
-  // EXTENDIDO (`extension-empresa`) si lo expone, y con el `enUnaFoto` intentaria abrir otra sobre
-  // una ya cerrada («Transaction already closed», medido en `zona-especial-dos-empresas.test.ts`).
-  // Sin el, la carga lee en esta transaccion.
-  const enEstaTransaccion = new Proxy(tx, {
-    get: (objetivo, prop) => (prop === "$transaction" ? undefined : Reflect.get(objetivo, prop)),
-  });
+  // Se le pasa el cliente SIN `$transaction` (`sinTransaccionAnidada`, ahi el porque): con el, la
+  // carga abriria una transaccion anidada y dejaria rota la siguiente que se abra fuera de esta.
   const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(
-    enEstaTransaccion,
+    sinTransaccionAnidada(tx),
   ).deLaEmpresa();
 
   // Solo los ids de las filas, como cuando se leian por `in`: un id ausente del catalogo no entra en

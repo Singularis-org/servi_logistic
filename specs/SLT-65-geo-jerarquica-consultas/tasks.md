@@ -63,7 +63,7 @@
 
 ## T4 — Zonas y contexto [T1, T2.1]
 
-- [ ] **T4.1** `ZonaRepository`: extraer `planificarReconciliacion`. Usa el catálogo en la
+- [x] **T4.1** `ZonaRepository`: extraer `planificarReconciliacion`. Usa el catálogo en la
   transacción, `zonaQueCubre` y `whereLugarEn` dentro de `whereBaseElegible`. `update` aplica el
   plan (design §6). `ZonaPrismaClient` gana los modelos del catálogo. **Hecho:** typecheck en
   verde.
@@ -71,7 +71,7 @@
   `zona-reconciliacion-ordenes.test.ts`, `zona-central-guarda-y-rastro.test.ts`,
   `zona-pago-mensajero-rastro.test.ts`, `zonas-action.test.ts` y `zona-repository.test.ts` (este,
   con dobles de entrada si hace falta) pasan sin cambiar aserciones (R16).
-- [ ] **T4.3** `extension-empresa` (R18). No hay código que tocar. **Hecho:**
+- [x] **T4.3** `extension-empresa` (R18). No hay código que tocar. **Hecho:**
   `git diff --name-only origin/dev...HEAD -- lib/db/` sale vacío, o solo con
   `lib/db/excepciones-aislamiento.ts` si T5.1 lo exige. La salida va a `progress/impl_SLT-65.md`.
   `geo-nodo-rls.test.ts` y `geografia-dos-paises.test.ts` pasan sin cambios.

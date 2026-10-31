@@ -10,11 +10,13 @@ import {
   SNAPSHOT_SELECT,
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecialService";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
@@ -492,6 +494,40 @@ describeSiHayBase("SL-38 T8 — dos empresas de punta a punta: cada una solo ve 
         const remarcar = await conEmpresa(s.A, () => accionComoMaestro(s.maestroA, { marcar: [s.D], desmarcar: [] }));
         expect(remarcar).toEqual({ status: "ok", actualizados: 1 });
       }
+    }
+  });
+
+  it("SLT-65 R17: ZonaRepository.update con el cliente extendido no deja rota la siguiente carga del catalogo", async () => {
+    // El `tx` interactivo de Prisma 7 (tambien el del cliente extendido, `conAislamientoPorEmpresa`)
+    // SI expone `$transaction`. Si el guardado le pasa ese `tx` a la carga del catalogo, `enUnaFoto`
+    // abre una transaccion ANIDADA, y Prisma escribe el id de la del guardado (`newTxId`) en el objeto
+    // de opciones que recibe, que es una constante del modulo. El guardado sale bien, pero la
+    // SIGUIENTE carga fuera de una transaccion reusa ese id y cae con «Transaction already closed: A
+    // start cannot be executed on a committed transaction» (lo mismo que vio R20/R21 en el cierre).
+    // `geo-consultas-zona.test.ts` no lo ve: alli `clienteConSavepoint` cambia ese `$transaction`.
+    //
+    // La zona de A gana D3, que no tiene ordenes (el plan carga el catalogo y no mueve nada); el
+    // segundo guardado se la quita y deja la zona como estaba.
+    const zonaRepo = new ZonaRepository(app);
+    const { nombre } = await base.zona.findUniqueOrThrow({ where: { id: s.fksA.zonaId }, select: { nombre: true } });
+    const asignadas = () =>
+      base.zonaDistrito.findMany({ where: { zonaId: s.fksA.zonaId }, select: { distritoId: true } });
+    try {
+      const gana = await conEmpresa(s.A, () => zonaRepo.update(s.fksA.zonaId, { nombre, distritoIds: [s.D3] }, null));
+      expect(gana).toMatchObject({ estado: "ok", ordenesReconciliadas: 0, ordenesRetenidasEnBodegaSatelite: 0 });
+      expect(await asignadas()).toEqual([{ distritoId: s.D3 }]);
+
+      // La carga siguiente, fuera de una transaccion: abre la suya y ve la asignacion ya confirmada.
+      const { asignaciones } = await conEmpresa(s.A, () => new CatalogoGeograficoRepository(app).deLaEmpresa());
+      expect(asignaciones.zonasPorNodo.get(s.D3)?.map((z) => z.id)).toEqual([s.fksA.zonaId]);
+
+      const pierde = await conEmpresa(s.A, () => zonaRepo.update(s.fksA.zonaId, { nombre, distritoIds: [] }, null));
+      expect(pierde).toMatchObject({ estado: "ok", ordenesReconciliadas: 0, ordenesRetenidasEnBodegaSatelite: 0 });
+      expect(await asignadas()).toEqual([]);
+    } finally {
+      await bajoLockDeEscrituraReal(() =>
+        base.$executeRawUnsafe(`DELETE FROM zona_distrito WHERE zona_id = $1`, s.fksA.zonaId),
+      );
     }
   });
 });

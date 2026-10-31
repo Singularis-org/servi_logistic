@@ -2,10 +2,23 @@ import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+
+// SLT-65 (design §14.1): los distritos que usan los casos, como nodos del catalogo del doble. Es la
+// ENTRADA de la reconciliacion, que desde SLT-65 resuelve la zona con el catalogo de SLT-44.
+const NODOS_DEL_DOBLE = ["d1", "d2", "dViejo", "dQueSigue", "dNuevo"];
+
+/** La fila de `zona_distrito` tal como la lee la carga del catalogo (`deLaEmpresa`). */
+function filaDeZona(f: { distritoId: string; zonaId: string }) {
+  return { distritoId: f.distritoId, zona: { id: f.zonaId, nombre: f.zonaId, esCentral: false } };
+}
 
 // tx mock que reciben las operaciones dentro de $transaction.
 function buildTx() {
   return {
+    // SLT-65: los delegados del catalogo. Su `zonaDistrito` lo pisa el de abajo, que ya simula
+    // este doble (la carga del catalogo lee la segunda llamada a `findMany`).
+    ...delegadosDelCatalogo({ nodos: NODOS_DEL_DOBLE }),
     zona: {
       create: vi.fn(),
       update: vi.fn(),
@@ -500,7 +513,7 @@ function txConNM(
   const tx = buildTx();
   tx.zonaDistrito.findMany
     .mockResolvedValueOnce(previos.map((distritoId) => ({ distritoId })))
-    .mockResolvedValueOnce(finales);
+    .mockResolvedValueOnce(finales.map(filaDeZona));
   tx.zona.findUnique.mockResolvedValue({ id: "zA", esCentral: false });
   tx.zona.update.mockResolvedValue({
     id: "zA",
@@ -1030,7 +1043,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
     tx.zonaDistrito.findMany
       .mockReset()
       .mockResolvedValueOnce([{ distritoId: "d1" }])
-      .mockResolvedValueOnce([{ distritoId: "d1", zonaId: "zB" }]);
+      .mockResolvedValueOnce([filaDeZona({ distritoId: "d1", zonaId: "zB" })]);
     tx.orden.findMany.mockResolvedValue([{ id: "o1", numGuia: 7, numRemision: "R-7" }]);
 
     await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
