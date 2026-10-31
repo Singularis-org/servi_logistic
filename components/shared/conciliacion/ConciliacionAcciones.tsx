@@ -10,7 +10,10 @@ import {
   marcarConsolidacionRecibidaAction,
   revertirConciliacionAction,
 } from "@/lib/actions/conciliacion-satelites";
-import type { MarcaConciliacionActionResult } from "@/lib/actions/conciliacion-satelites";
+import type {
+  MarcaConciliacionActionResult,
+  RevertirConciliacionActionResult,
+} from "@/lib/actions/conciliacion-satelites";
 import { money } from "@/lib/config/moneda";
 import {
   estadoConciliacionDe,
@@ -130,7 +133,7 @@ export function ConciliacionAcciones({
 
   /** R12 — deshacer. No lleva monto: el que había se BORRA (y sobrevive en el historial). */
   async function confirmarDesmarcar() {
-    let resultado: MarcaConciliacionActionResult;
+    let resultado: RevertirConciliacionActionResult; // SLT-73: `con_asientos` lo pinta T7 (frontend)
     try {
       resultado = await revertirConciliacionAction({ cierreBodegaId });
     } catch {

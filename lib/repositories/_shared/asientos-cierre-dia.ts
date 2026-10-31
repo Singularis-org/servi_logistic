@@ -120,18 +120,35 @@ export const ASIENTOS_POR_DEFECTO: AsientosCierreDiaDeps = {
   cajaCodFeed: new CajaCodFeedService(),
 };
 
+/**
+ * SLT-73 (R22) — la FECHA de los asientos. La aprobacion de la central NO la pasa: sus filas caen en
+ * el `DEFAULT CURRENT_TIMESTAMP` de cada libro, exactamente como antes de la ficha (R3). La marca de
+ * conciliacion de una satelite SI la pasa —el instante de la marca—, porque el dinero entra a los
+ * libros cuando se concilia y no cuando se aprobo el cierre del dia. Con el default, ademas, la fila
+ * quedaria con el inicio de la transaccion y no con el instante que la marca escribe en
+ * `cierre_bodega.conciliado_at`.
+ */
+function fechar<T extends { fechaMovimiento?: Date }>(movs: T[], fechaMovimiento: Date | undefined): T[] {
+  if (fechaMovimiento === undefined) return movs;
+  return movs.map((m) => ({ ...m, fechaMovimiento }));
+}
+
 export async function asentarCierreDia(
   tx: AsientosCierreDiaTx,
   cierreId: string,
   deps: AsientosCierreDiaDeps = ASIENTOS_POR_DEFECTO,
+  fechaMovimiento?: Date,
 ): Promise<void> {
-  const movs = await deps.walletFeedService.construirMovimientosDeIngreso(cierreId, tx);
+  const movs = fechar(
+    await deps.walletFeedService.construirMovimientosDeIngreso(cierreId, tx),
+    fechaMovimiento,
+  );
   await deps.walletMovimientoRepo.crearMovimientos(tx, movs); // R6/R13: idempotente
   // Feature 43/T10 (R5/R7/R12/R13): TRAS alimentar la 42, alimenta el LEDGER por tienda
   // en la MISMA tx (todo-o-nada: si falla, rollback de la aprobacion Y de la 42).
-  const movsTienda = await deps.walletTiendaFeedService.construirMovimientosPorTienda(
-    cierreId,
-    tx,
+  const movsTienda = fechar(
+    await deps.walletTiendaFeedService.construirMovimientosPorTienda(cierreId, tx),
+    fechaMovimiento,
   );
   await deps.walletTiendaMovimientoRepo.crearMovimientos(tx, movsTienda); // R6/R13: idempotente
 
@@ -153,7 +170,10 @@ export async function asentarCierreDia(
     (m) => m.tipo === "credito" && m.categoria === "cod_recaudado",
   );
   if (acreditoCod) {
-    const ingresoCod = await deps.cajaCodFeed.construirIngresoCod(cierreId, tx);
+    const ingresoCod = fechar(
+      await deps.cajaCodFeed.construirIngresoCod(cierreId, tx),
+      fechaMovimiento,
+    );
     if (ingresoCod.length > 0) {
       // R14/R48: idempotente por el indice unico parcial (origen_tipo, origen_id,
       // categoria) de la 42. Re-aprobar NO emite un segundo ingreso, y la barrera es la
@@ -169,12 +189,18 @@ export async function asentarCierreDia(
     cierreId,
     tx,
   );
-  await deps.pagoMensajeroMovimientoRepo.crearMovimientos(tx, movsMensajero.libro); // R6/R12: idempotente
+  await deps.pagoMensajeroMovimientoRepo.crearMovimientos(
+    tx,
+    fechar(movsMensajero.libro, fechaMovimiento),
+  ); // R6/R12: idempotente
   // Qa (R17): el egreso del costo total P se inserta con el repo de la 42, idempotente por
   // el constraint existente (origen_tipo, origen_id, categoria) -> un egreso por cierre. Se
   // toca la caja 42 SOLO si hay egreso (P>0); si P=0 el feed no lo emite y no se re-inserta.
   if (movsMensajero.egresoCaja.length > 0) {
-    await deps.walletMovimientoRepo.crearMovimientos(tx, movsMensajero.egresoCaja);
+    await deps.walletMovimientoRepo.crearMovimientos(
+      tx,
+      fechar(movsMensajero.egresoCaja, fechaMovimiento),
+    );
   }
 
   // Feature 158 (T1.14, R26/R27/R28): TRAS 42/43/44, el EGRESO de indemnizacion, en la
@@ -183,8 +209,10 @@ export async function asentarCierreDia(
   // y devuelve 0 o 1 movimiento. Cierre sin incidentes -> lista vacia -> ni una fila en
   // 0.00 (R27). Se inserta con el repo de la 42, idempotente por el indice unico parcial
   // `(origen_tipo, origen_id, categoria)`: reintentar la aprobacion NO duplica (R28).
-  const egresoIndemnizacion =
-    await deps.walletIndemnizacionFeedService.construirEgresoIndemnizacion(cierreId, tx);
+  const egresoIndemnizacion = fechar(
+    await deps.walletIndemnizacionFeedService.construirEgresoIndemnizacion(cierreId, tx),
+    fechaMovimiento,
+  );
   if (egresoIndemnizacion.length > 0) {
     await deps.walletMovimientoRepo.crearMovimientos(tx, egresoIndemnizacion);
   }

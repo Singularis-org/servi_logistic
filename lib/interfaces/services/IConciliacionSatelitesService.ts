@@ -67,6 +67,15 @@ export type MarcaConciliacionServiceResult =
   | { status: "no_encontrada" }
   | { status: "forbidden" };
 
+/**
+ * SLT-73 (R14, D11) — «Revertir» tiene un desenlace mas que marcar y corregir: `con_asientos`, la
+ * marca ya escribio el dinero en los libros y la reversion se rechaza sin cambiar nada. Tipo aparte
+ * para que marcar y corregir no lo arrastren (nunca lo devuelven).
+ */
+export type RevertirConciliacionServiceResult =
+  | MarcaConciliacionServiceResult
+  | { status: "con_asientos" };
+
 export interface IConciliacionSatelitesService {
   listarSaldosSatelites(
     input: ListarSaldosSatelitesInput,
@@ -96,7 +105,7 @@ export interface IConciliacionSatelitesService {
   revertirConciliacion(
     input: RevertirConciliacionInputBorde,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult>;
+  ): Promise<RevertirConciliacionServiceResult>;
   /**
    * ⭑ FICHA 473 (R1-R9) — CORRIGE el monto recibido de una consolidacion YA conciliada, sin pasar
    * por «Pendiente de conciliar». Mismo input que marcar (los campos son identicos) y mismo

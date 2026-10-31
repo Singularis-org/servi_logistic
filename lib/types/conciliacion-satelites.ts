@@ -269,3 +269,11 @@ export const revertirConciliacionSchema = z
   .strict();
 
 export type RevertirConciliacionInputBorde = z.infer<typeof revertirConciliacionSchema>;
+
+/**
+ * SLT-73 (R14, D11) — el texto del desenlace `con_asientos` de «Revertir»: la marca ya asento el
+ * dinero de la consolidacion en los libros y la reversion se rechaza sin tocar nada. Vive aqui, en el
+ * modulo puro, para que la accion lo devuelva y la pantalla lo pinte desde el MISMO sitio.
+ */
+export const MENSAJE_REVERTIR_CON_ASIENTOS =
+  "Ya entró a la caja: corrige el monto en vez de revertir";
