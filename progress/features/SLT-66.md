@@ -25,6 +25,7 @@ F1.2 hecho (2026-10-31): spec 62bcdfd aprobado; enmienda con las respuestas en c
 Ninguna.
 
 ## Tandas
+- 2026-10-31 · A (T0–T4) · 6a8ea4d…aa02a4c · 108/108 en los 10 archivos de planes contra logistic_slt66; eslint limpio; typecheck rojo solo en tests/components y plataforma-*-page (tanda D, esperado). init.sh no se corre en tandas intermedias por memoria y por ese rojo esperado; cierra la tanda D + CI.
 
 ## Modelos (overrides)
 
