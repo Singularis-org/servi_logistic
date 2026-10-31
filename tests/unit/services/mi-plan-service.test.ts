@@ -45,6 +45,8 @@ function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLe
       porRol: { admin: 0, mensajero: 8, adminTienda: 5, adminSatelite: 0 },
     },
     cambio,
+    // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
+    costoVigente: { monto: "500.00", fuente: "global" },
   };
 }
 

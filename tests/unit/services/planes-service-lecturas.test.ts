@@ -102,6 +102,8 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       // SLT-66 R5: el uso ya no trae al maestro.
       uso: { ordenes: 85, apiKeys: 2, porRol: { admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
+      // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
+      costoVigente: { monto: "500.00", fuente: "global" },
     },
     asignaciones: [
       { creadoAt: new Date("2026-10-02T09:00:00.000Z"), actorNombre: "Ana Pérez", planNombre: "Plan «Básico»" },
