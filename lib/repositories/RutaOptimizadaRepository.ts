@@ -105,6 +105,7 @@ export class RutaOptimizadaRepository implements IRutaOptimizadaRepository {
       secuenciaFuente: toSecuenciaFuente(row.secuenciaFuente),
       trazado: toTrazado(row),
       tramoVivoAt: row.tramoVivoAt,
+      actualizadaAt: row.updatedAt,
       secuenciaPorOrden: new Map(row.paradas.map((p) => [p.ordenId, p.secuencia])),
       // Solo las paradas que YA tienen tramo entran al mapa: una entrada con la polilinea
       // vacia obligaria a cada consumidor a distinguir «no hay tramo» de «hay uno invisible».

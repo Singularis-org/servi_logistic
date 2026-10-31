@@ -21,6 +21,9 @@ import { construirTokenProvider, RutaNoConfiguradoError } from "@/lib/auth/googl
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-07-20T12:00:00.000Z");
+// SLT-59 (R59): la ruta de la segunda corrida ya se calculo HOY; con `null` la primera ruta del dia
+// estaria pendiente y se recalcularia siempre.
+const CALCULADA_HOY = new Date(T0.getTime() - 60 * 60_000);
 
 const CONFIG: RouteOptimizationConfig = {
   ROUTE_OPT_TIMEOUT_MS: 20_000,
@@ -36,6 +39,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 function parada(id: string, over: Partial<ParadaRutaRow> = {}): ParadaRutaRow {
@@ -59,6 +63,7 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     secuenciaFuente: null,
     trazado: null,
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
@@ -85,7 +90,7 @@ function build(opts: {
   };
 
   const paradasRepo: ParadasRepo = {
-    findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
   };
 
   const client = {
@@ -256,7 +261,7 @@ describe("R35 — 0 o 1 parada con coordenadas", () => {
     // ruta tiene que llevar su secuencia para que la guarda la reconozca.
     const segunda = build({
       paradas: [parada("o1")],
-      ruta: ruta({ huellaSet: huella, estado: "vigente", secuenciaPorOrden: new Map([["o1", 1]]) }),
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", secuenciaPorOrden: new Map([["o1", 1]]) }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "inmediato" });
 
@@ -297,7 +302,7 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
     // [2026-10-29, SLT-59 R1] Y su secuencia: el criterio es el conjunto guardado, no la huella.
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: huella, estado: "vigente", secuenciaPorOrden: SEC_O1_O2_O3 }),
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", secuenciaPorOrden: SEC_O1_O2_O3 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -323,7 +328,7 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
     const segunda = build({
       paradas,
       // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: cacheado, secuenciaPorOrden: SEC_O1_O2 }),
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", trazado: cacheado, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -345,7 +350,7 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
     const segunda = build({
       paradas,
       // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: null, secuenciaPorOrden: SEC_O1_O2 }),
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", trazado: null, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -545,7 +550,7 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
     };
     const service = new OptimizacionRutaService(
       rutas as unknown as IRutaOptimizadaRepository,
-      { findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
+      { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
       client,
       CONFIG,
       () => T0,
@@ -700,6 +705,7 @@ describe("265/R35, R36, R37 — la procedencia llega a `reemplazarSecuencia`", (
       // [2026-10-29, SLT-59 R1] con la secuencia degradada guardada: la guarda mira el conjunto.
       ruta: ruta({
         huellaSet: meta.huellaSet,
+        calculadaAt: CALCULADA_HOY,
         estado: "vigente",
         secuenciaPorOrden: new Map([
           ["o2", 1],
@@ -823,6 +829,7 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
       ruta: ruta({
         ...origenPersistido,
         huellaSet: huellaReal,
+        calculadaAt: CALCULADA_HOY,
         estado: "vigente",
         secuenciaPorOrden: new Map([["o1", 1]]),
       }),

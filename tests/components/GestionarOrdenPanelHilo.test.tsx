@@ -109,6 +109,8 @@ const RUTA: RutaResumenDTO = {
   // igual que su hermano `MarcarLuegoToggle.test.tsx`: este test no va del mapa.
   trazado: null,
   tramoSiguiente: null,
+  primeraRutaPendiente: false,
+  puntoRecogida: null,
 };
 
 /**

@@ -3,8 +3,16 @@ import {
   DEDUPE_PREFIX,
   dedupeKeyDebounce,
   encolarOptimizacionDebounce,
+  dedupeKeyPrimeraRecogida,
+  encolarPrimeraRutaPorRecogida,
+  primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
-import type { EnqueueOpts, IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
+import type {
+  EncolarOMoverOpts,
+  EnqueueOpts,
+  IJobRepository,
+  IJobRepositoryMovible,
+} from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
 
 // Feature 92 (R17/R18) y SLT-59 (R23, R24, R32) — las claves de idempotencia del job de
@@ -163,5 +171,128 @@ describe("R32 — max_intentos de la reoptimizacion sale de RUTA_OPT_MAX_INTENTO
     const { repo, filas } = colaEnMemoria();
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
     expect(filas[0].opts.maxIntentos).toBe(2);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R57, R58, R76, R77; design §12.2 nota D29) — la primera ruta del dia por recogida.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-59 R76 — la clave de la primera ruta es por mensajero y DIA, sin ventana", () => {
+  it("tiene la forma `ruta-opt:primera-recogida:<mensajeroId>:<diaCR>`", () => {
+    expect(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20")).toBe(
+      "ruta-opt:primera-recogida:m-1:2026-07-20",
+    );
+  });
+
+  it("el dia siguiente es otra clave: la fila de ayer no bloquea la primera ruta de hoy", () => {
+    expect(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-21")).not.toBe(
+      dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20"),
+    );
+  });
+
+  it("no comparte espacio con la clave de ventana `:debounce:` (no traga ni es tragada)", () => {
+    const ventana = dedupeKeyDebounce(MENSAJERO, T0);
+    expect(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20")).not.toContain(":debounce:");
+    expect(ventana.startsWith("ruta-opt:primera-recogida:")).toBe(false);
+  });
+});
+
+describe("SLT-59 glosario — primera ruta pendiente (puro, R67)", () => {
+  // El dia CR del 20 empieza a las 06:00Z (`inicioDelDiaCREnUtc`), no a medianoche UTC.
+  it.each([
+    ["nunca calculada", null, true],
+    ["calculada ayer por la noche en CR (05:59Z del 20)", new Date("2026-07-20T05:59:59.999Z"), true],
+    ["calculada justo al empezar el dia CR (06:00Z)", new Date("2026-07-20T06:00:00.000Z"), false],
+    ["calculada hoy a mediodia", new Date("2026-07-20T18:00:00.000Z"), false],
+  ])("%s -> %s", (_caso, calculadaAt, esperado) => {
+    expect(primeraRutaPendiente(calculadaAt, "2026-07-20")).toBe(esperado);
+  });
+});
+
+/** Cola que registra lo que se pide a `encolarOMoverPendiente` (la semantica la miden los repos). */
+function colaMovible() {
+  const llamadas: { tipo: JobTipo; payload: Record<string, unknown>; opts: EncolarOMoverOpts }[] = [];
+  const repo = {
+    ...colaEnMemoria().repo,
+    encolarOMoverPendiente: vi.fn(
+      async (tipo: JobTipo, payload: Record<string, unknown>, opts: EncolarOMoverOpts) => {
+        llamadas.push({ tipo, payload, opts });
+        return null;
+      },
+    ),
+  } as unknown as IJobRepositoryMovible;
+  return { repo, llamadas };
+}
+
+describe("SLT-59 R58/R76 — encolarPrimeraRutaPorRecogida decide cuando corre y con que origen", () => {
+  const VARS = ["RUTA_DEBOUNCE_S", "RUTA_PRIMERA_DEBOUNCE_MIN", "RUTA_OPT_MAX_INTENTOS"] as const;
+  const previos = new Map(VARS.map((v) => [v, process.env[v]]));
+  afterEach(() => {
+    for (const [k, v] of previos) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  function limpiar() {
+    for (const v of VARS) delete process.env[v];
+  }
+
+  it("R76: quedan por recoger -> ahora + 10 min, origen recogida_parcial, clave del dia", async () => {
+    limpiar();
+    const { repo, llamadas } = colaMovible();
+    await encolarPrimeraRutaPorRecogida(repo, undefined, MENSAJERO, {
+      ahora: T0,
+      diaCR: "2026-07-20",
+      quedanPorRecoger: true,
+    });
+    expect(llamadas).toHaveLength(1);
+    expect(llamadas[0].tipo).toBe("optimizacion_ruta");
+    expect(llamadas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
+    expect(llamadas[0].opts.runAfter.getTime()).toBe(T0.getTime() + 10 * 60_000);
+    expect(llamadas[0].opts.dedupeKey).toBe(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20"));
+    expect(llamadas[0].opts.maxIntentos).toBe(3);
+  });
+
+  it("R58: no quedan -> ahora + RUTA_DEBOUNCE_S, origen recogida, MISMA clave", async () => {
+    limpiar();
+    const { repo, llamadas } = colaMovible();
+    await encolarPrimeraRutaPorRecogida(repo, undefined, MENSAJERO, {
+      ahora: T0,
+      diaCR: "2026-07-20",
+      quedanPorRecoger: false,
+    });
+    expect(llamadas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida" });
+    expect(llamadas[0].opts.runAfter.getTime()).toBe(T0.getTime() + 60_000);
+    expect(llamadas[0].opts.dedupeKey).toBe(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20"));
+  });
+
+  it("las dos esperas salen de la config (RUTA_PRIMERA_DEBOUNCE_MIN=4, RUTA_DEBOUNCE_S=30)", async () => {
+    limpiar();
+    process.env.RUTA_PRIMERA_DEBOUNCE_MIN = "4";
+    process.env.RUTA_DEBOUNCE_S = "30";
+    const { repo, llamadas } = colaMovible();
+    for (const quedanPorRecoger of [true, false]) {
+      await encolarPrimeraRutaPorRecogida(repo, undefined, MENSAJERO, {
+        ahora: T0,
+        diaCR: "2026-07-20",
+        quedanPorRecoger,
+      });
+    }
+    expect(llamadas.map((l) => l.opts.runAfter.getTime() - T0.getTime())).toEqual([
+      4 * 60_000,
+      30_000,
+    ]);
+  });
+
+  it("nunca usa `enqueue` (DO NOTHING): siempre `encolarOMoverPendiente`", async () => {
+    limpiar();
+    const { repo } = colaMovible();
+    await encolarPrimeraRutaPorRecogida(repo, undefined, MENSAJERO, {
+      ahora: T0,
+      diaCR: "2026-07-20",
+      quedanPorRecoger: true,
+    });
+    expect(repo.enqueue).not.toHaveBeenCalled();
   });
 });

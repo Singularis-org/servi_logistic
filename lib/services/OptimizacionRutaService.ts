@@ -34,6 +34,11 @@
 // quitar la ultima— recalcula el conjunto completo como el boton (R42, R43). Ya no hay tramo
 // puente (R14 retirado): una reduccion nunca llama a nadie.
 //
+// [2026-10-31, SLT-59, D21-D25] Detras de R34 van dos guardas nuevas, antes de leer paradas:
+// la de la salida (R63) y la del boton con la primera ruta pendiente (R64). La decision de
+// `decidirGuardaRuta` gana la primera ruta del dia (R59), el desvio solo a mano (R51, R52) y el
+// enfriamiento de la recuperacion manual (R53).
+//
 // [2026-10-29, SLT-59, D8] Limite declarado 2 de la 265 («la huella congela el orden local
 // hasta que cambie el conjunto o el origen; la posicion cambia constantemente, asi que se cura
 // sola»): ya no se cura con el movimiento normal, solo con un cambio de conjunto o un desvio
@@ -81,10 +86,21 @@ import {
 } from "@/lib/geo/polilinea";
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
+import type { MotivoOptimizacion } from "@/lib/interfaces/services/IOptimizacionRutaService";
+import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
 export interface ParadasRepo {
   findParadasEnReparto(mensajeroId: string): Promise<ParadaRutaRow[]>;
+  /**
+   * SLT-59 (R64, R67, design §12.5) — asignadas y recogidas del dia en curso. `dia` va en la
+   * convencion `@db.Date` (`startOfDayCR`), la de `fecha_reparto`. Solo la lee el boton con la
+   * primera ruta pendiente: una lectura, y solo en ese caso.
+   */
+  contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }>;
 }
 
 /** Logger inyectable, patron `GeocodeLogger` de la 91. NUNCA recibe PII ni secretos. */
@@ -208,10 +224,67 @@ type OrigenGuardado = Pick<
 export type DecisionGuardaRuta =
   | {
       tipo: "reoptimizar";
-      motivo: "sin_ruta" | "desactualizada" | "paradas_nuevas" | "fuera_de_orden" | "desviado";
+      motivo:
+        | "sin_ruta"
+        | "primera_del_dia"
+        | "desactualizada"
+        | "recuperacion"
+        | "paradas_nuevas"
+        | "fuera_de_orden"
+        | "desviado";
     }
   | { tipo: "omitir" }
+  // SLT-59 (R53): manual sobre una ruta `desactualizada` antes del enfriamiento.
+  | { tipo: "omitir"; motivo: "enfriamiento" }
   | { tipo: "reducir"; previa: string[]; restantes: string[] };
+
+/**
+ * SLT-59 (design §12.1) — quien dispara la ejecucion. Solo el boton (`manual`) mide el desvio
+ * (R51, R52); `salida` no lo mide y tiene su propia guarda en `ejecutar` (R63).
+ */
+export type DisparoRuta = "manual" | "automatico" | "salida";
+
+export function disparoDe(motivo: MotivoOptimizacion): DisparoRuta {
+  if (motivo === "manual") return "manual";
+  if (motivo === "salida") return "salida";
+  return "automatico";
+}
+
+/**
+ * Instante en que empieza el dia en curso, para compararlo con columnas `timestamp`
+ * (`calculada_at`, `origen_at`). Es `inicioDelDiaCREnUtc` y NO `startOfDayCR`, que es para
+ * columnas `date` (ficha 166).
+ */
+function inicioDelDiaEnCurso(ahora: Date): Date {
+  return inicioDelDiaCREnUtc(fechaCalendarioCR(ahora));
+}
+
+/**
+ * SLT-59 (glosario «Primera ruta pendiente», R59, R67) — la ruta no existe, o su `calculada_at`
+ * es nula o anterior al inicio del dia en curso. Pura sobre `ruta`: cero lecturas. Una reduccion
+ * no la cumple porque R17 no mueve `calculada_at`.
+ */
+export function primeraRutaPendiente(
+  ruta: Pick<RutaOptimizadaDTO, "calculadaAt"> | null,
+  ahora: Date,
+): boolean {
+  return ruta === null || ruta.calculadaAt === null || ruta.calculadaAt < inicioDelDiaEnCurso(ahora);
+}
+
+/**
+ * SLT-59 (glosario «Punto de recogida», R62, R63) — el origen guardado cuando es `gps` y se
+ * capturo dentro del dia en curso: lo escribio la ultima recogida con GPS (92/R23). Un origen
+ * `ultima_conocida`, `centroide` o de ayer no dice donde recogio hoy.
+ */
+export function puntoDeRecogida(
+  ruta: Pick<RutaOptimizadaDTO, "origenLat" | "origenLng" | "origenAt" | "origenFuente"> | null,
+  ahora: Date,
+): { lat: number; lng: number } | null {
+  if (ruta === null || ruta.origenFuente !== "gps") return null;
+  if (ruta.origenLat === null || ruta.origenLng === null || ruta.origenAt === null) return null;
+  if (ruta.origenAt < inicioDelDiaEnCurso(ahora)) return null;
+  return { lat: ruta.origenLat, lng: ruta.origenLng };
+}
 
 /**
  * SLT-59 (R3, R5, design §2.1) — la posicion del mensajero es el origen final SOLO si sale de
@@ -273,10 +346,20 @@ export function decidirGuardaRuta(input: {
   paradas: ParadaConCoordenadas[];
   posicion: { lat: number; lng: number } | null;
   umbralM: number;
+  disparo: DisparoRuta;
+  ahora: Date;
+  enfriamientoMin: number;
 }): DecisionGuardaRuta {
-  const { ruta, paradas, posicion, umbralM } = input;
+  const { ruta, paradas, posicion, umbralM, disparo, ahora, enfriamientoMin } = input;
   if (ruta === null) return { tipo: "reoptimizar", motivo: "sin_ruta" };
-  if (ruta.estado !== "vigente") return { tipo: "reoptimizar", motivo: "desactualizada" }; // R7
+  // [2026-10-31, SLT-59, D23/D25, R59] Va antes que todo: con la primera ruta pendiente no hay
+  // secuencia de hoy que conservar ni reducir.
+  if (primeraRutaPendiente(ruta, ahora)) return { tipo: "reoptimizar", motivo: "primera_del_dia" };
+  // [2026-10-31, SLT-59, D21] Solo los automaticos siguen R7 tal cual. El boton pasa por el
+  // enfriamiento de R53 cuando no hay nada nuevo que justifique pagar.
+  if (ruta.estado !== "vigente" && disparo !== "manual") {
+    return { tipo: "reoptimizar", motivo: "desactualizada" }; // R7
+  }
 
   const previa = secuenciaPrevia(ruta);
   const actual = new Set(paradas.map((p) => p.ordenId));
@@ -293,13 +376,25 @@ export function decidirGuardaRuta(input: {
   }
 
   // R3: estricto; a `umbralM` justos no esta desviado.
+  // [2026-10-31, SLT-59, D24, R51] Solo el boton mide el desvio: en automatico ni se decodifica
+  // la polilinea, y R47 (polilinea vacia = desviado) queda acotado al camino manual (R52).
   const desviado =
+    disparo === "manual" &&
     posicion !== null &&
     distanciaMinimaAPolilineaM(posicion, lineaReferencia(ruta, previa, paradas)) > umbralM;
-  if (desviado) return { tipo: "reoptimizar", motivo: "desviado" }; // R19
+  if (desviado) return { tipo: "reoptimizar", motivo: "desviado" }; // R52 (antes R19)
+
+  if (ruta.estado !== "vigente") {
+    // R53/R54: `actualizadaAt` es una cota superior del instante del fallo.
+    const transcurridoMs = ahora.getTime() - ruta.actualizadaAt.getTime();
+    return transcurridoMs >= enfriamientoMin * 60_000
+      ? { tipo: "reoptimizar", motivo: "recuperacion" }
+      : { tipo: "omitir", motivo: "enfriamiento" };
+  }
 
   if (actual.size === previa.length) return { tipo: "omitir" }; // R1, R2
-  return { tipo: "reducir", previa, restantes }; // R11 — [2026-10-30, SLT-59, D16] se lee R41
+  // R11 — [2026-10-30, SLT-59, D16] se lee R41; en manual, R56.
+  return { tipo: "reducir", previa, restantes };
 }
 
 /**
@@ -436,6 +531,31 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       }
     }
 
+    // ── SLT-59 R63: disparo de salida ─────────────────────────────────────────────
+    // Antes de leer paradas: si no aplica, 0 lecturas mas, 0 llamadas y nada escrito.
+    if (opts.motivo === "salida" && !this.salidaAplica(ruta, opts.ubicacion, ahora)) {
+      optlog("service — guarda R63: la salida no aplica, 0 llamadas facturadas");
+      return { status: "omitida", razon: "salida_no_aplica" };
+    }
+
+    // ── SLT-59 R64: boton con la primera ruta pendiente ───────────────────────────
+    // Despues de 92/R20 y 92/R34 (no aplican: `calculada_at` es de ayer o nula) y antes de leer
+    // paradas. La lectura de conteo solo ocurre aqui, con la primera pendiente (R67).
+    if (opts.motivo === "manual" && primeraRutaPendiente(ruta, ahora)) {
+      const { asignadas, recogidas } = await this.paradasRepo.contarAsignadasDelDia(
+        mensajeroId,
+        startOfDayCR(ahora),
+      );
+      // Entera y sin redondeos; con `asignadas = 0` no hay nada que esperar y no corta.
+      if (recogidas * 100 < asignadas * this.config.RUTA_PRIMERA_MIN_RECOGIDO_PCT) {
+        optlog("service — guarda R64: recogida insuficiente, 0 llamadas facturadas", {
+          recogidas,
+          asignadas,
+        });
+        return { status: "omitida", razon: "recogida_insuficiente", recogidas, asignadas };
+      }
+    }
+
     const todas = await this.paradasRepo.findParadasEnReparto(mensajeroId);
     // R37: las ordenes SIN coordenadas se EXCLUYEN de la optimizacion, no la abortan.
     // Quedan como paradas sin posicion (R28) y la lectura las muestra al final.
@@ -482,6 +602,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
           [unica],
           origen,
           "sin_paradas",
+          { disparo: disparoDe(opts.motivo), ahora },
         );
         if (desenlace !== null) return desenlace;
       }
@@ -572,6 +693,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       paradas,
       origen,
       "sin_cambios",
+      { disparo: disparoDe(opts.motivo), ahora },
     );
     if (desenlace !== null) return desenlace;
 
@@ -700,10 +822,39 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       paradas,
       posicion: posicionDelMensajero(origen),
       umbralM: this.config.RUTA_REOPT_DISTANCIA_M,
+      // La peticion de la gestion es automatica (design §12.1): sin desvio (R51), y con la
+      // primera ruta pendiente la decision es recalcular, asi que aqui no se hace nada.
+      disparo: "automatico",
+      ahora,
+      enfriamientoMin: this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN,
     });
     optlog("service — reduccion en la peticion: decision", { decision: decision.tipo });
     if (decision.tipo !== "reducir") return;
     await this.aplicarReduccion(mensajeroId, ruta, decision, origen);
+  }
+
+  /**
+   * SLT-59 (R63, R66, design §12.6) — el servidor no se fia del cliente: vuelve a comprobar con
+   * la posicion recibida que la primera ruta sigue pendiente, que hay punto de recogida (en la
+   * ruta LEIDA, antes de la vista de §2.4, que lo pisaria con la propia posicion) y que el
+   * mensajero ya se alejo mas de `RUTA_REOPT_DISTANCIA_M`. Con la ruta `desactualizada`, ademas,
+   * el enfriamiento de R53: es lo que acota a una llamada cada 5 min si el proveedor falla.
+   */
+  private salidaAplica(
+    ruta: RutaOptimizadaDTO | null,
+    ubicacion: { lat: number; lng: number } | undefined,
+    ahora: Date,
+  ): boolean {
+    if (ubicacion === undefined || !primeraRutaPendiente(ruta, ahora)) return false;
+    const punto = puntoDeRecogida(ruta, ahora);
+    if (ruta === null || punto === null) return false;
+    // R3/R62: estricto; a `RUTA_REOPT_DISTANCIA_M` justos todavia no salio.
+    if (distanciaHaversineKm(ubicacion, punto) * 1000 <= this.config.RUTA_REOPT_DISTANCIA_M) {
+      return false;
+    }
+    if (ruta.estado === "vigente") return true;
+    const transcurridoMs = ahora.getTime() - ruta.actualizadaAt.getTime();
+    return transcurridoMs >= this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN * 60_000;
   }
 
   /**
@@ -718,16 +869,21 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     paradas: ParadaConCoordenadas[],
     origen: { lat: number; lng: number; fuente: OrigenFuente } | null,
     razonOmitir: "sin_cambios" | "sin_paradas",
+    contexto: { disparo: DisparoRuta; ahora: Date },
   ): Promise<EjecutarOptimizacionResult | null> {
     const decision = decidirGuardaRuta({
       ruta,
       paradas,
       posicion: posicionDelMensajero(origen),
       umbralM: this.config.RUTA_REOPT_DISTANCIA_M,
+      disparo: contexto.disparo,
+      ahora: contexto.ahora,
+      enfriamientoMin: this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN,
     });
+    const enfriamiento = "motivo" in decision && decision.motivo === "enfriamiento";
     optlog("service — guarda SLT-59: conjunto + desvio", {
       decision: decision.tipo,
-      motivo: decision.tipo === "reoptimizar" ? decision.motivo : null,
+      motivo: "motivo" in decision ? decision.motivo : null,
     });
     if (ruta === null || decision.tipo === "reoptimizar") return null;
 
@@ -735,14 +891,16 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       // Nada que RECALCULAR, pero el mapa sigue necesitando su linea. El trazado persistido
       // corresponde a esta misma secuencia —la DB solo lo conserva mientras la secuencia no
       // cambie— asi que se devuelve tal cual, sin llamar, pagar ni escribir nada (R6).
+      // [2026-10-31, SLT-59, D21, R53] Lo mismo con el enfriamiento: ni siquiera el origen (R46).
       const cacheado = this.trazadoDesdeCache(ruta);
-      optlog("service — guarda R36 (SLT-59): mismo conjunto y sin desvio, 0 llamadas facturadas", {
+      optlog("service — guarda R36 (SLT-59): sin recalculo, 0 llamadas facturadas", {
+        enfriamiento,
         trazadoEnCache: cacheado !== null,
         tramosEnCache: cacheado?.tramos.length ?? 0,
       });
       return {
         status: "omitida",
-        razon: razonOmitir,
+        razon: enfriamiento ? "enfriamiento" : razonOmitir,
         ...(cacheado !== null ? { trazado: cacheado } : {}),
       };
     }

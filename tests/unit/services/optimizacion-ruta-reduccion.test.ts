@@ -42,6 +42,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 /** Origen y cinco paradas en fila hacia el norte, ~1,1 km entre una y otra. */
@@ -95,6 +96,7 @@ function rutaConTramos(ids: string[], over: Partial<RutaOptimizadaDTO> = {}): Ru
       fuente: "routes",
     },
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map(ids.map((id, i) => [id, i + 1])),
     tramoPorOrden: new Map(ids.map((id, i) => [id, tramo(anteriores[i], id)])),
     ...over,
@@ -138,7 +140,7 @@ function build(opts: {
     marcarDesactualizada: vi.fn(async () => {}),
     marcarTramoVivo: vi.fn(async () => {}),
   };
-  const paradasRepo = { findParadasEnReparto: vi.fn(async () => opts.paradas) };
+  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas) };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
       status: "ok" as const,
@@ -416,14 +418,41 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
   });
 
-  it("R19: subconjunto con el mensajero desviado -> reoptimiza el conjunto completo, no reduce", async () => {
+  // [2026-10-31, SLT-59, D24] R19 retirado: el caso se parte en R52 (manual) y R51 (job).
+  it("R52 (antes R19): manual, prefijo con el mensajero desviado -> reoptimiza el conjunto completo, no reduce", async () => {
     const { service, client, rutas } = build({
       ruta: rutaConTramos(IDS.slice(0, 3), { origenLat: PUNTOS.s2.lat, origenLng: LNG + 0.03 }),
       paradas: [parada("s2"), parada("s3")],
     });
-    await service.ejecutar(MENSAJERO, JOB);
+    await service.ejecutar(MENSAJERO, { motivo: "manual" });
     expect(client.optimizar).toHaveBeenCalledTimes(1);
     expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
+  });
+
+  it("R51 (antes R19): job, prefijo con el mensajero desviado -> reduce sin llamar (el desvio no cuenta)", async () => {
+    const { service, client, trazar, rutas } = build({
+      ruta: rutaConTramos(IDS.slice(0, 3), { origenLat: PUNTOS.s2.lat, origenLng: LNG + 0.03 }),
+      paradas: [parada("s2"), parada("s3")],
+    });
+    const r = await service.ejecutar(MENSAJERO, JOB);
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ status: "omitida", razon: "reducida" });
+  });
+
+  it("R56: manual, ruta vigente, prefijo reducido y sin desvio -> reduccion con 0 llamadas y el trazado reducido", async () => {
+    const { service, client, trazar, rutas, reduccion } = build({
+      ruta: rutaConTramos(IDS.slice(0, 4)),
+      paradas: [parada("s2"), parada("s3"), parada("s4")],
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+    expect(reduccion()[2].paradas.map((p) => p.ordenId)).toEqual(["s2", "s3", "s4"]);
+    expect(r).toMatchObject({ status: "omitida", razon: "reducida", trazado: { fuente: "routes" } });
   });
 
   it("R20: quita una y anade otra -> reoptimiza el conjunto completo, no reduce", async () => {
@@ -491,9 +520,22 @@ describe("SLT-59 T2.4/T6.3 — reducirSinLlamadas (R44: solo el prefijo por R13/
     expect(rutas.upsertOrigen).not.toHaveBeenCalled();
   });
 
-  it("con el mensajero desviado -> no hace nada y no llama a nadie", async () => {
+  // [2026-10-31, SLT-59, D24] Antes «con el mensajero desviado -> no hace nada»: la peticion de la
+  // gestion es automatica y ya no mide el desvio (R51), asi que un prefijo se reduce igual.
+  it("R51: con el mensajero desviado y un prefijo -> reduce igual, sin llamar a nadie", async () => {
     const { service, client, trazar, rutas } = build({
       ruta: rutaConTramos(IDS.slice(0, 3), { origenLat: PUNTOS.s2.lat, origenLng: LNG + 0.03 }),
+      paradas: [parada("s2"), parada("s3")],
+    });
+    await service.reducirSinLlamadas(MENSAJERO);
+    expect(trazar).not.toHaveBeenCalled();
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
+  });
+
+  it("R59: con la primera ruta del dia pendiente (calculada ayer) -> no reduce y no llama a nadie", async () => {
+    const { service, client, trazar, rutas } = build({
+      ruta: rutaConTramos(IDS.slice(0, 3), { calculadaAt: new Date(T0.getTime() - 24 * 3600_000) }),
       paradas: [parada("s2"), parada("s3")],
     });
     await service.reducirSinLlamadas(MENSAJERO);

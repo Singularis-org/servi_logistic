@@ -193,7 +193,7 @@
 - [x] **T7.1** [P] Config: `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` (5) y `RUTA_PRIMERA_MIN_RECOGIDO_PCT`
   (80, 1-100), con su nota (design §12.7). *Hecho:* `route-optimization-config.test.ts` cubre por cada
   uno el default, un override, el valor vacío y el inválido; para el porcentaje, también 101 (R55).
-- [ ] **T7.2** Decisión completa (design §12.1).
+- [x] **T7.2** Decisión completa (design §12.1).
   - `decidirGuardaRuta` recibe `disparo`, `ahora` y `enfriamientoMin`, y sus motivos nuevos.
   - `RutaOptimizadaDTO.actualizadaAt` se mapea desde `updated_at`.
   - `primeraPendiente` usa `inicioDelDiaCREnUtc`.
@@ -213,7 +213,7 @@
 
   En `optimizacion-ruta-reduccion.test.ts`: manual con un prefijo reducido y sin desvío → reducción, 0
   llamadas (R56). Los casos «R19» se renombran a R51/R52.
-- [ ] **T7.3** Recogida condicionada (design §12.2, R57, R58). *Hecho:* en
+- [x] **T7.3** Recogida condicionada (design §12.2, R57, R58). *Hecho:* en
   `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts`:
   - recoger con más `por_recoger` del día pendientes → 0 jobs;
   - recoger el último → 1 job, con `runAfter = ahora + RUTA_DEBOUNCE_S`;
@@ -223,7 +223,7 @@
   - si la transacción revierte, no hay job.
 
   Los casos de R26 se reescriben a R57/R58.
-- [ ] **T7.4** Gestión y traspaso con la primera ruta pendiente (design §12.3, §12.4, R59-R61).
+- [x] **T7.4** Gestión y traspaso con la primera ruta pendiente (design §12.3, §12.4, R59-R61).
   *Hecho:* en `optimizacion-ruta-enqueue.test.ts`:
   - gestión de una orden sin coordenadas con la primera pendiente → 1 job; con la primera hecha → 0
     (R22 acotado);
@@ -233,7 +233,7 @@
 
   En `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts` (nuevo): job `debounce` con la
   primera pendiente, mismo conjunto y sin desvío → recalcula (R59).
-- [ ] **T7.5** Botón con la primera pendiente (design §12.5, R64, R67).
+- [x] **T7.5** Botón con la primera pendiente (design §12.5, R64, R67).
   - `contarAsignadasDelDia` en `ParadasRepo` y `OrdenRepository`.
   - Guarda en `ejecutar`.
   - `sincronizarRuta` traduce `recogida_insuficiente` a `conflict` con el texto del design.
@@ -246,7 +246,7 @@
 
   En `sincronizar-ruta.test.ts`: el motivo lleva X, Y y el porcentaje de la config.
   `SincronizarRutaButton.test.tsx` sigue verde sin cambios.
-- [ ] **T7.6** Disparo de salida: servidor (design §12.6, R63, R66). `motivo: "salida"`,
+- [x] **T7.6** Disparo de salida: servidor (design §12.6, R63, R66). `motivo: "salida"`,
   `calcularRutaAlSalir` en `lib/actions/ruta-mensajero.ts` y la guarda en `ejecutar`.
   *Hecho:* en `optimizacion-ruta-primera-del-dia.test.ts`:
   - a 1001 m del punto de recogida con la primera pendiente → recalcula (1 `optimizar` + 1 `trazar`
@@ -279,7 +279,7 @@
   T7.1-T7.6. *Hecho:* jornada A `{3, 3, 6}` fila a fila (filas 12 y 13 aparte); jornada B `{1, 1, 0}`
   y sus tres variantes.
 
-- [ ] **T7.9** D29: debounce deslizante de la primera ruta durante la recogida (R76, R77, design §12.2
+- [x] **T7.9** D29: debounce deslizante de la primera ruta durante la recogida (R76, R77, design §12.2
   nota D29). Depende de T7.3. Se integra en T7.3: R58 pasa a usar la misma clave por día.
   - Config `RUTA_PRIMERA_DEBOUNCE_MIN` (10, entero ≥ 1; fuera de rango → default).
   - `JobRepository.encolarOMoverPendiente` (`ON CONFLICT … DO UPDATE … WHERE estado = 'pending'`).

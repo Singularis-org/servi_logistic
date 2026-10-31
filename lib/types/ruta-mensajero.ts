@@ -109,3 +109,14 @@ export type TrazarTramoVivoResultUI =
   | { status: "forbidden" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "unauthenticated" };
+
+/**
+ * SLT-59 (R62, R63, design §12.6) — entrada del disparo de salida. La ubicacion es OBLIGATORIA:
+ * es justo lo que el servidor compara con el punto de recogida. Sin ella no hay salida que
+ * detectar, y la pantalla no llama.
+ */
+export const calcularRutaAlSalirSchema = z.object({
+  ubicacion: ubicacionSchema,
+});
+
+export type CalcularRutaAlSalirActionInput = z.infer<typeof calcularRutaAlSalirSchema>;

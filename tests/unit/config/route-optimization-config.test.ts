@@ -33,6 +33,8 @@ const VARS = [
   // SLT-59 (R55): enfriamiento de la recuperacion (D21) y umbral de la primera ruta (D25).
   "RUTA_RECUPERACION_ENFRIAMIENTO_MIN",
   "RUTA_PRIMERA_MIN_RECOGIDO_PCT",
+  // SLT-59 (R76): debounce deslizante de la primera ruta durante la recogida (D29).
+  "RUTA_PRIMERA_DEBOUNCE_MIN",
 ] as const;
 
 const original = new Map(VARS.map((v) => [v, process.env[v]]));
@@ -76,6 +78,7 @@ describe("SL-36/R23 — la config no lleva credencial ni modo de autenticacion",
       "RUTA_OPT_MAX_INTENTOS",
       "RUTA_ORIGEN_MAX_KM",
       "RUTA_ORIGEN_TTL_MIN",
+      "RUTA_PRIMERA_DEBOUNCE_MIN",
       "RUTA_PRIMERA_MIN_RECOGIDO_PCT",
       "RUTA_RECUPERACION_ENFRIAMIENTO_MIN",
       "RUTA_REOPT_DISTANCIA_M",
@@ -185,7 +188,9 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
     ["RUTA_OPT_MAX_INTENTOS", 3, "2"],
     ["RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5, "15"],
     ["RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, "60"],
-  ] as const)("SLT-59/R36, R55 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
+    // SLT-59 (R76, D29): 10 min sin recoger antes de calcular la primera ruta.
+    ["RUTA_PRIMERA_DEBOUNCE_MIN", 10, "3"],
+  ] as const)("SLT-59/R36, R55, R76 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
     it(`ausente -> ${porDefecto}, el valor decidido por el humano`, () => {
       limpiar();
       expect(loadRouteOptimizationConfig()[nombre]).toBe(porDefecto);

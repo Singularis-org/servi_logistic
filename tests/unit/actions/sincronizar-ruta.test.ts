@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { sincronizarRuta } from "@/lib/actions/ruta-mensajero";
+import { calcularRutaAlSalir, sincronizarRuta } from "@/lib/actions/ruta-mensajero";
 import {
   OptimizacionRutaService,
   RutaCredencialRechazadaError,
@@ -300,6 +300,7 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
     RUTA_OPT_MAX_INTENTOS: 3,
     RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
     RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+    RUTA_PRIMERA_DEBOUNCE_MIN: 10,
   };
   const tramoS1 = { encodedPolyline: codificarPolilinea([P.o, P.s1]), distanciaM: 1000, duracionS: 100 };
   const tramoS2 = { encodedPolyline: codificarPolilinea([P.s1, P.s2]), distanciaM: 1100, duracionS: 110 };
@@ -322,6 +323,7 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
       fuente: "routes",
     },
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map([
       ["s1", 1],
       ["s2", 2],
@@ -343,7 +345,7 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
       marcarTramoVivo: vi.fn(async () => {}),
     };
     const paradasRepo: ParadasRepo = {
-      findParadasEnReparto: vi.fn(async () =>
+      contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () =>
         (["s1", "s2"] as const).map((id) => ({
           ordenId: id,
           latitud: P[id].lat,
@@ -382,5 +384,127 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
     expect(rutas.upsertOrigen).not.toHaveBeenCalled();
     expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
     expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
+  });
+});
+
+// ═══ SLT-59 T7.5 — R64: el boton con poco recogido ════════════════════════════════════════
+
+describe("SLT-59 R64 — `recogida_insuficiente` se traduce a `conflict` con X, Y y el % de la config", () => {
+  it("el motivo lleva lo recogido, lo asignado y el porcentaje de la config, no un literal", async () => {
+    const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas: 3, asignadas: 4 });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 70 } },
+    );
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Todavía no se calcula la ruta: recoge al menos el 70 % de tus paquetes (llevas 3 de 4).",
+    });
+  });
+
+  it("sin config inyectada usa la del entorno (default 80)", async () => {
+    const previo = process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+    delete process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+    try {
+      const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas: 1, asignadas: 5 });
+      const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+      expect(r).toEqual({
+        status: "conflict",
+        motivo: "Todavía no se calcula la ruta: recoge al menos el 80 % de tus paquetes (llevas 1 de 5).",
+      });
+    } finally {
+      if (previo !== undefined) process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT = previo;
+    }
+  });
+
+  it("`enfriamiento` (R53) llega como `ok/omitida` con el trazado en cache, igual que R45", async () => {
+    const trazado = {
+      encodedPolyline: "abc",
+      distanciaM: 10,
+      duracionS: 5,
+      fuente: "routes" as const,
+      tramos: [],
+    };
+    const { service } = build({ status: "omitida", razon: "enfriamiento", trazado });
+    const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null, trazado });
+  });
+});
+
+// ═══ SLT-59 T7.6 — R62/R63: `calcularRutaAlSalir` ═══════════════════════════════════════════
+
+describe("SLT-59 R62/R63 — `calcularRutaAlSalir`, el disparo de salida", () => {
+  const UBICACION = { lat: 9.93, lng: -84.08 };
+
+  it.each(["maestro", "admin", "adminTienda", "adminSatelite"] as const)(
+    "rol %s -> forbidden sin construir el service ni llamarlo",
+    async (rol) => {
+      const { service, ejecutar } = build();
+      const r = await calcularRutaAlSalir(
+        { ubicacion: UBICACION },
+        { service, getActor: actorDe({ usuarioId: "u", rol }) },
+      );
+      expect(r).toEqual({ status: "forbidden" });
+      expect(ejecutar).not.toHaveBeenCalled();
+    },
+  );
+
+  it("el rol se comprueba ANTES de parsear: un payload invalido de un rol ajeno da forbidden", async () => {
+    const { service } = build();
+    const r = await calcularRutaAlSalir(
+      { ubicacion: { lat: 999, lng: 0 } },
+      { service, getActor: actorDe({ usuarioId: "u", rol: "maestro" }) },
+    );
+    expect(r).toEqual({ status: "forbidden" });
+  });
+
+  it("sin sesion -> unauthenticated", async () => {
+    const { service, ejecutar } = build();
+    const r = await calcularRutaAlSalir({ ubicacion: UBICACION }, { service, getActor: actorDe(null) });
+    expect(r).toEqual({ status: "unauthenticated" });
+    expect(ejecutar).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sin ubicacion", {}],
+    ["latitud fuera de rango", { ubicacion: { lat: 91, lng: 0 } }],
+    ["longitud no numerica", { ubicacion: { lat: 9.9, lng: "x" } }],
+  ])("ubicacion invalida (%s) -> validation_error, sin llamar al service", async (_c, input) => {
+    const { service, ejecutar } = build();
+    const r = await calcularRutaAlSalir(input, { service, getActor: actorDe(MENSAJERO) });
+    expect(r.status).toBe("validation_error");
+    expect(ejecutar).not.toHaveBeenCalled();
+  });
+
+  it("llama al service con `motivo: \"salida\"` y la ubicacion recibida", async () => {
+    const { service, ejecutar } = build();
+    const r = await calcularRutaAlSalir({ ubicacion: UBICACION }, { service, getActor: actorDe(MENSAJERO) });
+    expect(ejecutar).toHaveBeenCalledWith("m-1", { motivo: "salida", ubicacion: UBICACION });
+    expect(r).toEqual({ status: "ok", omitida: false, secuenciaFuente: "proveedor" });
+  });
+
+  it.each(["salida_no_aplica", "sin_cambios", "obsoleta"] as const)(
+    "cualquier `omitida` (%s) -> `ok` con `omitida: true`",
+    async (razon) => {
+      const { service } = build({ status: "omitida", razon });
+      const r = await calcularRutaAlSalir({ ubicacion: UBICACION }, { service, getActor: actorDe(MENSAJERO) });
+      expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
+    },
+  );
+
+  it("fallo del proveedor -> conflict con el texto fijo, sin filtrar el detalle", async () => {
+    const { service } = build(new RutaIntentoFallidoError("optimizar ruta: HTTP 500 en https://x?token=1"));
+    const r = await calcularRutaAlSalir({ ubicacion: UBICACION }, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "no se pudo recalcular la ruta ahora; se conserva el ultimo orden",
+    });
+  });
+
+  it("un error desconocido no se disfraza de conflict", async () => {
+    const { service } = build(new Error("bug"));
+    await expect(
+      calcularRutaAlSalir({ ubicacion: UBICACION }, { service, getActor: actorDe(MENSAJERO) }),
+    ).rejects.toThrow();
   });
 });

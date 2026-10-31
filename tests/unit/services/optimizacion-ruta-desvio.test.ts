@@ -3,6 +3,7 @@ import {
   OptimizacionRutaService,
   decidirGuardaRuta,
   posicionDelMensajero,
+  type DisparoRuta,
   type ParadasRepo,
 } from "@/lib/services/OptimizacionRutaService";
 import type {
@@ -31,7 +32,9 @@ vi.mock("@/lib/geo/polilinea", async (original) => {
 // llamadas a `optimizeTours` y a `computeRoutes`, cero escrituras y ninguna lectura de mas.
 
 const MENSAJERO = "m-1";
-const T0 = new Date("2026-10-29T12:00:00.000Z");
+// [2026-10-31, SLT-59, T7.2] 16:00 de CR: «hace 8 h» (R10) sigue siendo hoy, y la primera ruta del
+// dia (R59) no se cruza con los casos que no van de ella.
+const T0 = new Date("2026-10-29T22:00:00.000Z");
 const UMBRAL_M = 1000;
 const LNG = -84.09;
 
@@ -67,6 +70,7 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     secuenciaFuente: "proveedor",
     trazado: null,
     tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map([
       ["s1", 1],
       ["s2", 2],
@@ -75,6 +79,20 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     tramoPorOrden: new Map(),
     ...over,
   };
+}
+
+/**
+ * [2026-10-31, SLT-59, T7.2] La tabla mide el desvio, y desde D24 solo lo mide el boton (R52):
+ * por defecto `manual`. Los casos automaticos (R7, R51) lo pasan explicito.
+ */
+function decidir(input: {
+  ruta: RutaOptimizadaDTO | null;
+  paradas: { ordenId: string; latitud: number; longitud: number }[];
+  posicion: { lat: number; lng: number } | null;
+  umbralM: number;
+  disparo?: DisparoRuta;
+}) {
+  return decidirGuardaRuta({ ...input, disparo: input.disparo ?? "manual", ahora: T0, enfriamientoMin: 5 });
 }
 
 /** Un punto desplazado hacia el ESTE de `base` los metros pedidos (a lo largo del paralelo). */
@@ -105,17 +123,19 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       esperado: { tipo: "omitir" },
     },
     {
-      caso: "R7: ruta desactualizada con el mismo conjunto -> reoptimizar",
+      caso: "R7: automatico, ruta desactualizada con el mismo conjunto -> reoptimizar",
       ruta: ruta({ estado: "desactualizada" }),
       paradas: todas,
       posicion: sobreLaRuta,
+      disparo: "automatico" as const,
       esperado: { tipo: "reoptimizar", motivo: "desactualizada" },
     },
     {
-      caso: "R7: ruta desactualizada con un subconjunto -> reoptimizar, nunca reducir",
+      caso: "R7: automatico, ruta desactualizada con un subconjunto -> reoptimizar, nunca reducir",
       ruta: ruta({ estado: "desactualizada" }),
       paradas: [conCoords("s2"), conCoords("s3")],
       posicion: sobreLaRuta,
+      disparo: "automatico" as const,
       esperado: { tipo: "reoptimizar", motivo: "desactualizada" },
     },
     {
@@ -125,19 +145,44 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       posicion: sobreLaRuta,
       esperado: { tipo: "reoptimizar", motivo: "sin_ruta" },
     },
+    // [2026-10-31, SLT-59, D24] R19 retirado: sus casos pasan a R52 (manual) y R51 (automatico).
     {
-      caso: "R19: mismo conjunto pero desviado -> reoptimizar",
+      caso: "R52: manual, mismo conjunto pero desviado -> reoptimizar",
       ruta: ruta(),
       paradas: todas,
       posicion: lejos,
       esperado: { tipo: "reoptimizar", motivo: "desviado" },
     },
     {
-      caso: "R19: subconjunto pero desviado -> reoptimizar, no reducir",
+      caso: "R52: manual, prefijo reducido pero desviado -> reoptimizar, no reducir",
       ruta: ruta(),
       paradas: [conCoords("s2"), conCoords("s3")],
       posicion: lejos,
       esperado: { tipo: "reoptimizar", motivo: "desviado" },
+    },
+    {
+      caso: "R51: automatico, mismo conjunto y desviado -> omitir",
+      ruta: ruta(),
+      paradas: todas,
+      posicion: lejos,
+      disparo: "automatico" as const,
+      esperado: { tipo: "omitir" },
+    },
+    {
+      caso: "R51: automatico, prefijo reducido y desviado -> reducir",
+      ruta: ruta(),
+      paradas: [conCoords("s2"), conCoords("s3")],
+      posicion: lejos,
+      disparo: "automatico" as const,
+      esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s2", "s3"] },
+    },
+    {
+      caso: "R51: salida, mismo conjunto y desviado -> no mide el desvio, omitir",
+      ruta: ruta(),
+      paradas: todas,
+      posicion: lejos,
+      disparo: "salida" as const,
+      esperado: { tipo: "omitir" },
     },
     {
       caso: "R20: una parada que no esta en la secuencia -> reoptimizar",
@@ -192,8 +237,57 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       posicion: P.s3,
       esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s3"] },
     },
-  ])("$caso", ({ ruta: r, paradas, posicion, esperado }) => {
-    expect(decidirGuardaRuta({ ruta: r, paradas, posicion, umbralM: UMBRAL_M })).toEqual(esperado);
+  ])("$caso", ({ ruta: r, paradas, posicion, esperado, ...resto }) => {
+    const disparo = "disparo" in resto ? resto.disparo : undefined;
+    expect(decidir({ ruta: r, paradas, posicion, umbralM: UMBRAL_M, disparo })).toEqual(esperado);
+  });
+
+  it("R51: automatico NO decodifica la polilinea (ni CPU para el desvio)", () => {
+    const conPolilinea = ruta({
+      trazado: {
+        encodedPolyline: codificarPolilinea([{ lat: 9.9, lng: LNG }, P.s1, P.s2, P.s3]),
+        distanciaM: 3300,
+        duracionS: 600,
+        fuente: "routes",
+      },
+    });
+    vi.mocked(decodificarPolilinea).mockClear();
+    expect(
+      decidir({ ruta: conPolilinea, paradas: todas, posicion: lejos, umbralM: UMBRAL_M, disparo: "automatico" }),
+    ).toEqual({ tipo: "omitir" });
+    expect(decodificarPolilinea).not.toHaveBeenCalled();
+  });
+
+  it("R47 acotado: polilinea `routes` vacia -> manual reoptimiza, automatico omite", () => {
+    const vacia = ruta({
+      trazado: { encodedPolyline: "", distanciaM: 0, duracionS: 0, fuente: "routes" },
+    });
+    const sobreLaRecta = { lat: 9.925, lng: LNG };
+    expect(
+      decidir({ ruta: vacia, paradas: todas, posicion: sobreLaRecta, umbralM: UMBRAL_M, disparo: "manual" }),
+    ).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
+    expect(
+      decidir({ ruta: vacia, paradas: todas, posicion: sobreLaRecta, umbralM: UMBRAL_M, disparo: "automatico" }),
+    ).toEqual({ tipo: "omitir" });
+  });
+
+  it("R59: primera ruta pendiente (calculada ayer) con el mismo conjunto y sin desvio -> reoptimizar", () => {
+    const deAyer = ruta({ calculadaAt: new Date(T0.getTime() - 24 * 3600_000) });
+    for (const disparo of ["manual", "automatico", "salida"] as const) {
+      expect(
+        decidir({ ruta: deAyer, paradas: todas, posicion: sobreLaRuta, umbralM: UMBRAL_M, disparo }),
+      ).toEqual({ tipo: "reoptimizar", motivo: "primera_del_dia" });
+    }
+    // Ni con un prefijo reduce: no hay secuencia de hoy que conservar.
+    expect(
+      decidir({
+        ruta: deAyer,
+        paradas: [conCoords("s2"), conCoords("s3")],
+        posicion: sobreLaRuta,
+        umbralM: UMBRAL_M,
+        disparo: "automatico",
+      }),
+    ).toEqual({ tipo: "reoptimizar", motivo: "primera_del_dia" });
   });
 
   it("R42: fuera de orden con el mensajero SOBRE la ruta -> reoptimizar SIN decodificar la polilinea", () => {
@@ -207,7 +301,7 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
     });
     vi.mocked(decodificarPolilinea).mockClear();
     expect(
-      decidirGuardaRuta({
+      decidir({
         ruta: conPolilinea,
         paradas: [conCoords("s1"), conCoords("s3")],
         posicion: sobreLaRuta,
@@ -216,7 +310,7 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
     ).toEqual({ tipo: "reoptimizar", motivo: "fuera_de_orden" });
     expect(decodificarPolilinea).not.toHaveBeenCalled();
     // Control: con un prefijo la misma ruta SI decodifica para medir el desvio.
-    decidirGuardaRuta({
+    decidir({
       ruta: conPolilinea,
       paradas: [conCoords("s2"), conCoords("s3")],
       posicion: sobreLaRuta,
@@ -228,7 +322,7 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
   it("R10: el mismo conjunto, sobre la ruta y calculada hace 8 h -> omitir (sin criterio de tiempo)", () => {
     const vieja = ruta({ calculadaAt: new Date(T0.getTime() - 8 * 3600_000) });
     expect(
-      decidirGuardaRuta({ ruta: vieja, paradas: todas, posicion: sobreLaRuta, umbralM: UMBRAL_M }),
+      decidir({ ruta: vieja, paradas: todas, posicion: sobreLaRuta, umbralM: UMBRAL_M }),
     ).toEqual({ tipo: "omitir" });
   });
 
@@ -240,28 +334,28 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       const d = distanciaMinimaAPolilineaM(posicion, linea);
       expect(d).toBeGreaterThan(990);
       expect(d).toBeLessThan(1010);
-      const decidir = (umbralM: number) =>
-        decidirGuardaRuta({ ruta: ruta(), paradas: todas, posicion, umbralM });
-      expect(decidir(d)).toEqual({ tipo: "omitir" });
-      expect(decidir(d - 1e-6)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
+      const decidirA = (umbralM: number) =>
+        decidir({ ruta: ruta(), paradas: todas, posicion, umbralM });
+      expect(decidirA(d)).toEqual({ tipo: "omitir" });
+      expect(decidirA(d - 1e-6)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
 
     it("a 990 m de la ruta no esta desviado; a 1010 m si", () => {
-      const decidir = (metros: number) =>
-        decidirGuardaRuta({
+      const decidirA = (metros: number) =>
+        decidir({
           ruta: ruta(),
           paradas: todas,
           posicion: alEste(P.s2, metros),
           umbralM: UMBRAL_M,
         });
-      expect(decidir(990)).toEqual({ tipo: "omitir" });
-      expect(decidir(1010)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
+      expect(decidirA(990)).toEqual({ tipo: "omitir" });
+      expect(decidirA(1010)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
 
     it("lejos del ORIGEN pero sobre la ruta no cuenta como desvio (la medida es la linea, no el origen)", () => {
       // El mensajero ya recorrio ~2 km de su ruta: esta lejos de donde empezo, no de la ruta.
       expect(
-        decidirGuardaRuta({ ruta: ruta(), paradas: todas, posicion: P.s3, umbralM: UMBRAL_M }),
+        decidir({ ruta: ruta(), paradas: todas, posicion: P.s3, umbralM: UMBRAL_M }),
       ).toEqual({ tipo: "omitir" });
     });
   });
@@ -282,11 +376,11 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       });
       // Sobre el rodeo: a ~2 km de la recta, a 0 de la polilinea -> no desviado.
       expect(
-        decidirGuardaRuta({ ruta: conTrazado, paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
+        decidir({ ruta: conTrazado, paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
       ).toEqual({ tipo: "omitir" });
       // Sobre la recta (lejos del rodeo) -> desviado respecto a la ruta DADA.
       expect(
-        decidirGuardaRuta({
+        decidir({
           ruta: conTrazado,
           paradas: todas,
           posicion: { lat: 9.92, lng: LNG },
@@ -297,10 +391,10 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
 
     it("SIN polilinea se usa la recta por las paradas de la secuencia, en su orden", () => {
       expect(
-        decidirGuardaRuta({ ruta: ruta(), paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
+        decidir({ ruta: ruta(), paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
       ).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
       expect(
-        decidirGuardaRuta({
+        decidir({
           ruta: ruta(),
           paradas: todas,
           posicion: { lat: 9.925, lng: LNG },
@@ -319,7 +413,7 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
         },
       });
       expect(
-        decidirGuardaRuta({ ruta: conLocal, paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
+        decidir({ ruta: conLocal, paradas: todas, posicion: sobreElRodeo, umbralM: UMBRAL_M }),
       ).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
 
@@ -334,7 +428,7 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       });
       // Sobre la recta entre paradas: con la recta seria "omitir"; con la polilinea vacia, no.
       expect(
-        decidirGuardaRuta({
+        decidir({
           ruta: vacia,
           paradas: todas,
           posicion: { lat: 9.925, lng: LNG },
@@ -345,22 +439,22 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
 
     it("SIN polilinea y con UNA parada restante, la linea es ese punto", () => {
       const r = ruta({ secuenciaPorOrden: new Map([["s1", 1]]) });
-      const decidir = (metros: number) =>
-        decidirGuardaRuta({
+      const decidirA = (metros: number) =>
+        decidir({
           ruta: r,
           paradas: [conCoords("s1")],
           posicion: alEste(P.s1, metros),
           umbralM: UMBRAL_M,
         });
-      expect(decidir(500)).toEqual({ tipo: "omitir" });
-      expect(decidir(1500)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
+      expect(decidirA(500)).toEqual({ tipo: "omitir" });
+      expect(decidirA(1500)).toEqual({ tipo: "reoptimizar", motivo: "desviado" });
     });
 
     it("SIN polilinea, las paradas que ya no estan se saltan (sus coordenadas no estan cargadas)", () => {
       // [2026-10-30, SLT-59, D16] Antes quedaban s1 y s3 (un hueco), que ahora es fuera de orden
       // (R42) y ya no mide desvio. Con un prefijo: quedan s2 y s3, s1 se gestiono. La recta va
       // de s2 a s3; parado EN s1 estaria sobre la recta si s1 contara, y sin ella queda a ~1,1 km.
-      const decision = decidirGuardaRuta({
+      const decision = decidir({
         ruta: ruta(),
         paradas: [conCoords("s2"), conCoords("s3")],
         posicion: P.s1,
@@ -395,6 +489,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] }) {
@@ -407,7 +502,7 @@ function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] 
     marcarDesactualizada: vi.fn(async () => {}),
     marcarTramoVivo: vi.fn(async () => {}),
   };
-  const paradasRepo = { findParadasEnReparto: vi.fn(async () => opts.paradas) };
+  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas) };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
       status: "ok" as const,
@@ -541,7 +636,7 @@ describe("SLT-59 T2.2 — la guarda dentro de `ejecutar`", () => {
     expect(routes.trazar).not.toHaveBeenCalled();
   });
 
-  it("R19: mismo conjunto con el mensajero a 2 km de la ruta -> se reoptimiza como hoy", async () => {
+  it("R52 (antes R19): manual, mismo conjunto con el mensajero a 2 km de la ruta -> se reoptimiza", async () => {
     const lejos = alEste({ lat: 9.92, lng: LNG }, 2000);
     const { service, client, rutas } = build({
       ruta: ruta({ origenLat: lejos.lat, origenLng: lejos.lng, origenAt: T0, origenFuente: "gps" }),
@@ -553,7 +648,20 @@ describe("SLT-59 T2.2 — la guarda dentro de `ejecutar`", () => {
     expect(rutas.reemplazarSecuencia).toHaveBeenCalledTimes(1);
   });
 
-  it("R19: UNA parada, la misma, con el mensajero desviado -> si se pide el trazado", async () => {
+  it("R51: job de la cola, mismo conjunto con el mensajero a 2 km de la ruta -> 0 llamadas y 0 escrituras", async () => {
+    const lejos = alEste({ lat: 9.92, lng: LNG }, 2000);
+    const { service, client, routes, escrituras } = build({
+      ruta: ruta({ origenLat: lejos.lat, origenLng: lejos.lng, origenAt: T0, origenFuente: "gps" }),
+      paradas: [parada("s1"), parada("s2"), parada("s3")],
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "debounce" });
+    expect(r).toMatchObject({ status: "omitida", razon: "sin_cambios" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(routes.trazar).not.toHaveBeenCalled();
+    expect(escrituras()).toBe(0);
+  });
+
+  it("R52 (antes R19): manual, UNA parada, la misma, con el mensajero desviado -> si se pide el trazado", async () => {
     const lejos = alEste(P.s1, 3000);
     const { service, routes, client } = build({
       ruta: ruta({

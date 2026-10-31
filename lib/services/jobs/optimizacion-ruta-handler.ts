@@ -14,6 +14,7 @@ import {
   RutaCredencialRechazadaError,
 } from "@/lib/services/OptimizacionRutaService";
 import { JobFallidoPermanente } from "@/lib/services/jobs/job-fallido-permanente";
+import { ORIGENES_JOB_RUTA } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { GoogleRouteOptimizationClient } from "@/lib/clients/google-route-optimization";
 import { GoogleRoutesClient } from "@/lib/clients/google-routes";
 import { HaversineRouteOptimizationClient } from "@/lib/clients/haversine-route-optimization";
@@ -26,8 +27,15 @@ import { credencialesIntegracionReales } from "@/lib/services/integraciones/cred
 import { RutasPorEmpresa } from "@/lib/services/integraciones/rutas-de-la-empresa";
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 
-/** R21/PII: el payload lleva SOLO el id del mensajero. Cualquier otra forma es un error. */
-const payloadSchema = z.object({ mensajeroId: z.string().min(1) });
+/**
+ * R21/PII: el payload lleva el id del mensajero y, desde SLT-59 (D28/D29), opcionalmente el
+ * `origen` del evento que lo encolo (no es PII). Un `origen` fuera de la lista es un error.
+ * Sin `origen` es valido: los jobs de gestion y traspaso y los encolados antes del despliegue.
+ */
+const payloadSchema = z.object({
+  mensajeroId: z.string().min(1),
+  origen: z.enum(ORIGENES_JOB_RUTA).optional(),
+});
 
 /**
  * Adapta `OptimizacionRutaService.ejecutar` a la firma `JobHandler`.

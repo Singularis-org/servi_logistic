@@ -182,7 +182,10 @@ import { traspasarConversaciones } from "@/lib/repositories/traspasar-conversaci
 // FICHA 427 (R32): el encolado de reoptimizacion de la 92, REUSADO TAL CUAL. Es la primera vez
 // que lo llama un escritor que no es la gestion, y tiene que serlo: hasta hoy ningun camino
 // cambiaba el conjunto de paradas de un mensajero YA EN REPARTO.
-import { encolarOptimizacionDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import {
+  encolarOptimizacionDebounce,
+  primeraRutaPendiente,
+} from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
@@ -3349,6 +3352,38 @@ export class OrdenRepository implements IOrdenRepository {
   }
 
   /**
+   * SLT-59 (R64, R67, design §12.5) — asignadas y recogidas del dia en curso, en UNA lectura. El
+   * predicado del dia es el de la recogida (`recogerLote`) y el del corte: `fecha_reparto` nula o
+   * `<= dia`. Solo se aplica a `por_recoger`: una orden ya `en_reparto` esta recogida, sea del
+   * dia que sea. Se leen solo los estatus y se cuentan aqui, para no hacer dos viajes.
+   */
+  async contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }> {
+    // El estado «por recoger» del glosario; su codigo vigente desde la 135 (`order-status.ts`).
+    const ESTATUS_POR_RECOGER = "mensajero_recogiendo_en_bodega";
+    const filas = await this.prisma.orden.findMany({
+      where: {
+        mensajeroAsignadoId: mensajeroId,
+        deletedAt: null,
+        OR: [
+          { estatus: { value: ESTATUS_EN_REPARTO } },
+          {
+            estatus: { value: ESTATUS_POR_RECOGER },
+            OR: [{ fechaReparto: null }, { fechaReparto: { lte: dia } }],
+          },
+        ],
+      },
+      select: { estatus: { select: { value: true } } },
+    });
+    return {
+      asignadas: filas.length,
+      recogidas: filas.filter((f) => f.estatus.value === ESTATUS_EN_REPARTO).length,
+    };
+  }
+
+  /**
    * Feature 33 (QR por guia): fila de transicion por `num_guia` (UNIQUE). INCLUYE
    * borradas (el service distingue "no existe" de "borrada"); `null` si no hay orden
    * con ese `num_guia`.
@@ -4983,9 +5018,19 @@ export class OrdenRepository implements IOrdenRepository {
       //    LOS DOS Y NO SOLO EL DESTINO: al origen le acaban de QUITAR paradas, y su ruta optimizada
       //    se queda con huecos hasta que su job corra. Encolar solo uno es un fallo mudo — la ruta
       //    del otro sigue pintando un recorrido que ya no existe.
+      //
+      //    SLT-59 (R60, design §12.4): solo encola a quien YA tiene su primera ruta del dia. Mientras
+      //    esta pendiente, la parada nueva entra cuando esa primera ruta se calcule (R58, R59, R62,
+      //    R64). Se evalua por separado para origen y destino, con UNA lectura para los dos (R67).
       const ahora = this.now();
       const debounceS = loadRouteOptimizationConfig().RUTA_DEBOUNCE_S;
+      const diaCR = fechaCalendarioCR(ahora);
+      const rutas = await tx.$queryRaw<{ mensajero_id: string; calculada_at: Date | null }[]>`
+        SELECT "mensajero_id", "calculada_at" FROM "ruta_optimizada"
+         WHERE "mensajero_id" IN (${Prisma.join([mensajeroOrigenId, mensajeroDestinoId])})`;
+      const calculadaPorMensajero = new Map(rutas.map((r) => [r.mensajero_id, r.calculada_at]));
       for (const mensajeroId of [mensajeroOrigenId, mensajeroDestinoId]) {
+        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, diaCR)) continue;
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora,
           debounceS,

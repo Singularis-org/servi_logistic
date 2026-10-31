@@ -1,8 +1,14 @@
 // Feature 92 (design §5) — contrato del servicio de optimizacion de ruta.
 import type { SecuenciaFuente } from "@/lib/interfaces/external/IRouteOptimizationClient";
 
-/** Motivo del disparo. Solo `manual` esta sujeto al intervalo minimo de R34. */
-export type MotivoOptimizacion = "debounce" | "inmediato" | "manual";
+/**
+ * Motivo del disparo. Solo `manual` esta sujeto al intervalo minimo de R34.
+ *
+ * SLT-59 (R62, R63, design §12.6): `salida` = la pantalla de reparto vio al mensajero alejarse
+ * del punto de recogida con la primera ruta del dia pendiente. Es automatico para el desvio
+ * (R51), pero lleva su propia guarda en `ejecutar` (R63).
+ */
+export type MotivoOptimizacion = "debounce" | "inmediato" | "manual" | "salida";
 
 export interface EjecutarOptimizacionOpts {
   motivo: MotivoOptimizacion;
@@ -86,19 +92,39 @@ export type EjecutarOptimizacionResult =
        * distinto de `reducida` para que nadie informe de una reduccion que no se escribio; no
        * trae trazado y no lanza, porque otra ejecucion ya dejo la ruta en un estado mas nuevo.
        */
+      /**
+       * SLT-59 revision 4 (design §12.7):
+       *   `enfriamiento`     R53: manual sobre una ruta `desactualizada` antes de
+       *                      `RUTA_RECUPERACION_ENFRIAMIENTO_MIN`; trae el trazado en cache.
+       *   `salida_no_aplica` R63: el disparo de salida no cumple alguna condicion.
+       */
       razon:
         | "obsoleta"
         | "intervalo_minimo"
         | "sin_paradas"
         | "sin_cambios"
         | "reducida"
-        | "reduccion_descartada";
+        | "reduccion_descartada"
+        | "enfriamiento"
+        | "salida_no_aplica";
       /**
        * R35 con UNA parada: no hubo nada que ORDENAR —por eso `omitida`— pero si hay algo
        * que DIBUJAR, la linea del origen a esa unica parada. Las demas razones nunca lo
        * traen: o no se recalculo nada nuevo, o no hay parada alguna.
        */
       trazado?: TrazadoRuta;
+    }
+  | {
+      status: "omitida";
+      /**
+       * SLT-59 (R64, design §12.5): el boton con la primera ruta del dia pendiente y menos del
+       * `RUTA_PRIMERA_MIN_RECOGIDO_PCT` % recogido. Lleva los conteos para que la accion pueda
+       * decirle al mensajero cuanto lleva.
+       */
+      razon: "recogida_insuficiente";
+      recogidas: number;
+      asignadas: number;
+      trazado?: undefined;
     };
 
 /**

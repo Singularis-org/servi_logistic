@@ -48,6 +48,12 @@ export interface RutaOptimizadaDTO {
    * posicion actual no se puede cachear, asi que cada peticion es una llamada facturada.
    */
   tramoVivoAt: Date | null;
+  /**
+   * SLT-59 (R54, design §12.1) — `updated_at` de la fila. Es la cota del enfriamiento de R53:
+   * no hay columna con el instante del fallo, y cualquier escritura posterior la mueve, asi que
+   * solo puede hacer esperar MAS, nunca menos (P12).
+   */
+  actualizadaAt: Date;
   /** Posicion por `ordenId`. Una orden en reparto AUSENTE de este mapa esta sin optimizar. */
   secuenciaPorOrden: Map<string, number>;
   /**

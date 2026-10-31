@@ -64,6 +64,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 /** Tres paradas reales de San Jose, todas dentro del umbral del origen. */
@@ -99,7 +100,7 @@ function armarCadena(body: unknown, paradas: ParadaRutaRow[] = PARADAS) {
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
   const findParadasEnReparto = vi.fn(async () => paradas);
-  const paradasRepo: ParadasRepo = { findParadasEnReparto };
+  const paradasRepo: ParadasRepo = { findParadasEnReparto, contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }) };
   const fetchImpl = vi.fn(async () => respuestaHttp(body));
   const warn = vi.fn();
 
@@ -358,7 +359,7 @@ describe("SL-36/R26 — la empresa sin optimizacion de rutas: se ordena en local
     // empresa del job doblada a «sin configurar». Solo la base y la red son dobles.
     const { rutas, findParadasEnReparto } = armarCadena({});
     REPOS.rutas = rutas;
-    REPOS.paradas = { findParadasEnReparto };
+    REPOS.paradas = { findParadasEnReparto, contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }) };
     const leer = vi.fn(async () => ({ estado: "sin_configurar" as const }));
     const credenciales = { leer, marcarRechazo: vi.fn(async () => {}) } as unknown as ICredencialesIntegracion;
     const red = vi.fn();

@@ -72,6 +72,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 const JOBS_CONFIG: JobsConfig = {
@@ -171,6 +172,8 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       secuenciaFuente: f.secuenciaFuente,
       trazado: f.trazado === null ? null : { ...f.trazado },
       tramoVivoAt: f.tramoVivoAt,
+      // SLT-59 (R54): la jornada no simula el reloj de `updated_at`; T7.8 decide si hace falta.
+      actualizadaAt: new Date(0),
       secuenciaPorOrden: new Map(f.paradas.map((p) => [p.ordenId, p.secuencia])),
       tramoPorOrden: new Map(
         f.paradas
@@ -271,6 +274,11 @@ class ParadasEnMemoria {
 
   async findParadasEnReparto(): Promise<ParadaRutaRow[]> {
     return this.filas.filter((f) => !this.gestionadas.has(f.ordenId));
+  }
+
+  // SLT-59 (R64): la jornada no pulsa el boton con la primera ruta pendiente; T7.8 decide si hace falta.
+  async contarAsignadasDelDia(): Promise<{ asignadas: number; recogidas: number }> {
+    return { asignadas: 0, recogidas: 0 };
   }
 }
 

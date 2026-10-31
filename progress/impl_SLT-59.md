@@ -781,3 +781,196 @@ pnpm run lint       -> 0 errors, 230 warnings (preexistentes; ninguno en los arc
 - Durante la tanda aparecieron cambios ajenos sin commitear en `specs/SLT-59-…/{requirements,design,tasks}.md` (revisión 5, D27). No los toqué salvo marcar T6.5-T6.7 en `tasks.md`.
 
 Veredicto: T6.5, T6.6 y T6.7 (renombrado) hechas; typecheck y lint verdes, 199 tests de los archivos tocados y vecinos en verde.
+
+## Tanda 7b — backend_dev: T7.3, T7.4, T7.9 (2026-10-31)
+
+T7.3 y T7.9 van en un solo diseño: la recogida usa SIEMPRE la clave por día
+`ruta-opt:primera-recogida:<mensajeroId>:<díaCR>` y `encolarOMoverPendiente`. Con la recogida parcial el job va a `+RUTA_PRIMERA_DEBOUNCE_MIN` y lleva `origen = recogida_parcial`. Con la última recogida (R58), el mismo job va a `+RUTA_DEBOUNCE_S` y lleva `origen = recogida`.
+
+### Archivos
+- `lib/config/route-optimization.ts`: añade `RUTA_PRIMERA_DEBOUNCE_MIN` (10; entero ≥ 1, fuera de rango → default; nota «D29, humano 2026-10-31; no calibrado»).
+- `lib/interfaces/repositories/IJobRepository.ts`: añade `EncolarOMoverOpts` y la interfaz **`IJobRepositoryMovible extends IJobRepository`**, con `encolarOMoverPendiente`.
+- `lib/repositories/JobRepository.ts`: implementa `IJobRepositoryMovible`. `encolarOMoverPendiente` hace el mismo `INSERT` de la cola con `ON CONFLICT ("dedupe_key") WHERE "dedupe_key" IS NOT NULL DO UPDATE SET run_after, payload, updated_at WHERE "jobs"."estado" = 'pending' RETURNING *`. Devuelve `null` si la fila ya no está `pending` (R77). Sin migración.
+- `lib/services/jobs/optimizacion-ruta-encolado.ts`: añade
+  - `ORIGENES_JOB_RUTA` y `OrigenJobRuta`: `recogida | recogida_parcial | gestion | traspaso`. Hoy solo la recogida escribe `origen`;
+  - `dedupeKeyPrimeraRecogida`;
+  - `primeraRutaPendiente(calculadaAt, diaCR)`: pura; usa `inicioDelDiaCREnUtc`;
+  - `encolarPrimeraRutaPorRecogida`.
+- `lib/services/jobs/optimizacion-ruta-handler.ts`: el zod del payload acepta `origen` opcional de `ORIGENES_JOB_RUTA`. Un valor fuera de la lista da «payload invalido».
+- `lib/repositories/GestionOrdenRepository.ts`:
+  - `recogerLote` (R57, R58, R76, R77): tras el `UPDATE`, hace UNA consulta, `EXISTS por_recoger` con el predicado de día copiado del `UPDATE` más `calculada_at`. Solo encola si la primera ruta está pendiente, siempre por `encolarPrimeraRutaPorRecogida`.
+  - `registrarGestionPendiente` (R59, acota R22): la re-lectura de gestionable trae además `calculada_at` por subconsulta escalar, en la misma sentencia. Encola si hay coordenadas **o** si la primera ruta está pendiente (día: `fechaCalendarioCR(now)`).
+  - `jobRepo` pasa a tipo `IJobRepositoryMovible`.
+- `lib/repositories/OrdenRepository.ts`: solo el paso 6 de `traspasarMensajeroLote` (R60). Hace UNA lectura `ruta_optimizada … IN (origen, destino)` y encola solo a quien ya tiene la primera ruta de hoy. La nueva asignación (R61) no cambia: ya no encolaba; solo se fija con un test. No toqué `contarAsignadasDelDia`.
+- Tests:
+  - `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts` (reescrito: la cola en memoria honra `DO UPDATE … WHERE pending` y el `$transaction` fake revierte la cola);
+  - `tests/integration/repositories/job-repo-posponer.test.ts` (nuevo);
+  - `tests/unit/services/optimizacion-ruta-encolado.test.ts` (+ casos);
+  - `tests/unit/config/route-optimization-config.test.ts` (+ variable);
+  - `tests/unit/services/optimizacion-ruta-handler-payload.test.ts` (nuevo).
+- Dobles ajenos que rompía mi cambio (Edit de 1-6 líneas cada uno):
+  - `tests/unit/repositories/gestion-orden-repository.test.ts` y `tests/integration/db/recoger-lote-dia-reserva.int.test.ts`: `encolarOMoverPendiente` en su `colaFake`;
+  - `tests/integration/db/traspaso-mensajero.int.test.ts`: `conEscenario` siembra `ruta_optimizada` de hoy para origen y destino, para que T9.9 (92/R32, 2 jobs) siga midiendo lo mismo con R60.
+
+### Mapa R → test
+| R | Test |
+| --- | --- |
+| R57 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R57 — con la primera ruta del dia ya calculada, recoger NO encola» (x4) |
+| R58 | ídem › «SLT-59 R58 — …» (último paquete a +60 s, «recoger todas» → 1 job, R67: una consulta con el mismo predicado de día) + `optimizacion-ruta-encolado.test.ts` › «SLT-59 R58/R76 …» |
+| R60 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R60 — …» (solo origen, solo destino, los dos pendientes → 0, los dos con ruta → 2, una sola lectura) |
+| R61 | ídem › «SLT-59 R61 — una nueva asignacion NO encola…» (`asignarBodegaLote`) |
+| R76 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R57/R76 — …» (1 job a +10 min; 2.ª parcial a los 4 min lo mueve; la última lo pasa a +60 s con `origen = recogida`; override de config; clave por mensajero) + `job-repo-posponer.test.ts` › «SLT-59 R76 — …» + `route-optimization-config.test.ts` (`RUTA_PRIMERA_DEBOUNCE_MIN`: default, override, vacía, inválida) + `optimizacion-ruta-handler-payload.test.ts` |
+| R77 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R77 — …» (`processing`/`done`/`failed`) + `job-repo-posponer.test.ts` › «SLT-59 D29 — el SQL…» y «SLT-59 R77 — …» (`processing`/`done`/`failed`/`descartado`) |
+| R22 (acotado), R59 (encolado) | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R22 (acotado por R59) — …» (sin coordenadas: primera hecha → 0; nunca calculada → 1; calculada ayer → 1) y «R59/R67: coordenadas y `calculada_at` salen de la MISMA re-lectura» |
+| R59 (recalcula) | del otro agente: `optimizacion-ruta-primera-del-dia.test.ts` › «SLT-59 T7.4 — R59…» (existe y pasa: 2 passed con `-t R59`) |
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192, por grupos)
+```
+optimizacion-ruta-enqueue + gestion-orden-repository        Test Files 2 passed  Tests 69 passed
+job-repo-posponer + optimizacion-ruta-encolado + config     Test Files 3 passed  Tests 91 passed
+optimizacion-ruta-enqueue + handler-payload                 Test Files 2 passed  Tests 38 passed
+handler-payload + orden-historial-atomicidad + orden-repository.guia   3 passed  Tests 45 passed
+notificacion-orden-rechazada + orden-historial-cobertura + gestion-orden-evidencia  3 passed  32 passed
+optimizacion-ruta-primera-del-dia -t R59 (del otro agente)  2 passed | 18 skipped
+traspaso-mensajero.int + recoger-lote-dia-reserva.int       2 skipped (sin DATABASE_URL; corren en CI)
+guardias relacionadas (75 archivos que citan repos/config/fecha-cr)  75 passed  1032 passed
+pnpm run typecheck  -> exit 0
+pnpm run lint       -> 0 errors, 230 warnings (preexistentes; ninguno en archivos míos)
+```
+
+### Desviaciones
+- **`IJobRepositoryMovible` en vez de añadir el método a `IJobRepository`.** Con el método obligatorio en `IJobRepository`, el typecheck daba 34 errores en 18 archivos: dobles de otras fichas, `scripts/drenar-jobs.ts` y tests del otro agente. El contrato aparte solo lo exige `GestionOrdenRepository`. `encolarOptimizacionDebounce` y el traspaso siguen con `IJobRepository`.
+- **No existía ninguna unión de `origen`.** El `origen` en el payload es de la Fase 8 (D28) y no estaba hecho. La creé en el módulo de encolado (`ORIGENES_JOB_RUTA`), que es mío. No toqué `OptimizacionRutaService`. Gestión y traspaso siguen sin escribir `origen`: eso es la Fase 8.
+- La clave usa el prefijo `ruta-opt:` del design y no `DEDUPE_PREFIX` (`optimizacion_ruta`): son espacios disjuntos a propósito.
+- **«Si la transacción revierte, no hay job».** Con dobles se mide de dos formas:
+  - el append falla antes del encolado;
+  - el `$transaction` falla al confirmar después de mover el job, y la cola vuelve a como estaba.
+
+  La garantía real es que el job va por el `tx` de la recogida, y el test lo afirma.
+- **«Una por_recoger de mañana no cuenta».** Con dobles solo se fija la forma: el mismo predicado de día que el `UPDATE`, con el día como texto. La semántica contra Postgres no tiene un test nuevo en `tests/integration/db/`, porque aquí no hay base local.
+- T7.9 «motivo `primera_ruta_debounce_recogida`» en `optimizacion-ruta-motivo.test.ts` es de la Fase 8 (así lo marca la propia task). Marqué T7.9 con eso pendiente para T8.x.
+- Toqué tres archivos de test fuera de mi lista (los de «Dobles ajenos» de arriba), con cambios mínimos, porque mi cambio los rompía.
+
+Veredicto: T7.3, T7.4 (la parte de servidor; el R59 unitario es del otro agente y ya existe) y T7.9 hechas. Typecheck y lint verdes, 75 guardias relacionadas en verde, y los tests tocados y los vecinos en verde.
+
+## Tanda 7a — backend_dev: T7.2, T7.5, T7.6, T7.7 (servidor), R59 (2026-10-31)
+
+Base: HEAD 9ae0fb6, en paralelo con la Tanda 7b (otro backend_dev). Sin dependencias ni migraciones, y sin tocar las firmas de los clientes de Google (Fase 8). Grafo no consultado: Grep/Read bastaron.
+
+### Archivos
+**Producción**
+- `lib/services/OptimizacionRutaService.ts`:
+  - `decidirGuardaRuta` recibe `disparo`, `ahora` y `enfriamientoMin`. Los motivos nuevos son `primera_del_dia` y `recuperacion`, y hay un `omitir` con `motivo: "enfriamiento"`. El desvío solo se mide con `disparo === "manual"`.
+  - Funciones puras exportadas: `disparoDe`, `primeraRutaPendiente` y `puntoDeRecogida`. Las dos últimas usan `inicioDelDiaCREnUtc(fechaCalendarioCR(ahora))`.
+  - `ParadasRepo` gana `contarAsignadasDelDia`.
+  - En `ejecutar`, después de R34 y antes de leer paradas, van dos guardas: la de salida (R63, `salidaAplica`) y la del botón con la primera ruta pendiente (R64).
+  - `guardaSinRecalculo` devuelve `razon: "enfriamiento"`.
+  - `reducirSinLlamadas` pasa `disparo: "automatico"`.
+- `lib/interfaces/services/IOptimizacionRutaService.ts`: `MotivoOptimizacion` incluye `"salida"`. `omitida.razon` incluye `enfriamiento` y `salida_no_aplica`, y hay una variante nueva `recogida_insuficiente` con `recogidas` y `asignadas`.
+- `lib/interfaces/repositories/IRutaOptimizadaRepository.ts` y `lib/repositories/RutaOptimizadaRepository.ts`: `actualizadaAt` se lee de `row.updatedAt`.
+- `lib/interfaces/repositories/IOrdenRepository.ts` y `lib/repositories/OrdenRepository.ts` (solo con Edit): `contarAsignadasDelDia(mensajeroId, dia)` hace un único `findMany` que selecciona el estatus y cuenta en memoria.
+- `lib/actions/ruta-mensajero.ts`:
+  - `sincronizarRuta` traduce `recogida_insuficiente` a `conflict`.
+  - La acción nueva `calcularRutaAlSalir` lleva la anotación `@sin-superficie`, que se borra al cablearla.
+  - `RutaMensajeroDeps` gana `config?`.
+- `lib/types/ruta-mensajero.ts`: añade `calcularRutaAlSalirSchema`.
+- `lib/interfaces/services/IMisAsignacionesService.ts` y `lib/services/MisAsignacionesService.ts`: `RutaResumenDTO` gana `primeraRutaPendiente` y `puntoRecogida`. Ambos se calculan sobre la `ruta` ya leída y el `now` del listado.
+
+**Tests nuevos**
+- `tests/unit/services/optimizacion-ruta-recuperacion.test.ts`
+- `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts`
+- `tests/integration/repositories/orden-contar-asignadas-del-dia.test.ts`
+
+**Tests modificados**
+- `optimizacion-ruta-desvio.test.ts`:
+  - wrapper `decidir` (por defecto `manual`) y `T0` movido a las 22:00Z para que «hace 8 h» (R10) siga siendo hoy;
+  - filas R7 marcadas como automáticas;
+  - R19 pasa a R52, y se añaden filas R51 (automático y salida);
+  - casos nuevos: «automático no decodifica», «R47 acotado» y R59 puro;
+  - en `ejecutar`: R52 (renombrado) y R51 (job).
+- `optimizacion-ruta-reduccion.test.ts`:
+  - R19 se parte en R52 (manual, recalcula) y R51 (job, reduce);
+  - R56 nuevo;
+  - el `reducirSinLlamadas` desviado pasa a R51 (reduce);
+  - R59 nuevo: con la primera pendiente no reduce.
+- `optimizacion-ruta-service.test.ts`: la segunda corrida de seis casos lleva `calculadaAt: CALCULADA_HOY`. Con `null`, la primera ruta estaría pendiente.
+- `sincronizar-ruta.test.ts`: describes R64 y `calcularRutaAlSalir`.
+- `mis-asignaciones-orden-ruta.test.ts`: `listar` recibe `ahora`, el `toEqual` literal crece con los dos campos y hay un describe R62 nuevo.
+
+**Ajustes mecánicos de fixtures** (mi cambio rompía su compilación):
+- `actualizadaAt` en el DTO: credencial-rechazada, origen, tramo-vivo, ahorro-jornada (`new Date(0)`; T7.8 decide).
+- `contarAsignadasDelDia` (devuelve `{0, 0}`) en los dobles de `ParadasRepo`: degradación, trazado, jornada, etc. También en los dobles completos de `IOrdenRepository`: `bulk-orden-service(.carga-api)`, `orden-service`, `rol-admin-satelite-authz`.
+- `RUTA_PRIMERA_DEBOUNCE_MIN: 10` en los literales `CONFIG` de los tests de ruta.
+- `primeraRutaPendiente: false, puntoRecogida: null` en los fixtures de `RutaResumenDTO`. Están en 8 tests de `tests/components/` y en 3 de `tests/unit/actions/mis-asignaciones-*`.
+
+### Firmas para frontend_dev (T7.7, RepartoModule)
+```ts
+// lib/actions/ruta-mensajero.ts ("use server")
+export async function calcularRutaAlSalir(
+  input: unknown,               // { ubicacion: { lat: number; lng: number } } (obligatoria, zod)
+  deps?: RutaMensajeroDeps,
+): Promise<SincronizarRutaResult>;
+// ok -> { status: "ok", omitida: false, secuenciaFuente, trazado? }  => router.refresh() + onTrazado
+// cualquier omitida -> { status: "ok", omitida: true, secuenciaFuente: null, trazado? }
+// conflict | forbidden | unauthenticated | validation_error -> nada, sin toast (design §12.6)
+
+// lib/interfaces/services/IMisAsignacionesService.ts, RutaResumenDTO
+primeraRutaPendiente: boolean;
+puntoRecogida: { lat: number; lng: number } | null;
+```
+Al cablearla en `RepartoModule`, hay que **borrar la anotación `@sin-superficie`** de `calcularRutaAlSalir`. Si no, la guardia la dejará pasar por anotada y no por usada.
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R51 | `optimizacion-ruta-desvio.test.ts`: filas «R51: automatico…» y «R51: salida…», «R51: automatico NO decodifica la polilinea», «R51: job de la cola… 0 llamadas»; `optimizacion-ruta-reduccion.test.ts`: «R51 (antes R19): job, prefijo…», «R51: con el mensajero desviado y un prefijo -> reduce igual» |
+| R52 | `optimizacion-ruta-desvio.test.ts`: filas «R52: manual…», «R52 (antes R19)…» ×2; `optimizacion-ruta-reduccion.test.ts`: «R52 (antes R19): manual, prefijo…» |
+| R47 (acotado) | `optimizacion-ruta-desvio.test.ts`: «R47 acotado: polilinea `routes` vacia -> manual reoptimiza, automatico omite» |
+| R53 | `optimizacion-ruta-recuperacion.test.ts`: 4 min 59 s → `enfriamiento` sin escrituras ni `upsertOrigen`; a 5 min justos recalcula; con paradas nuevas o desviado a 1 min recalcula; un job sobre la ruta `desactualizada` recalcula (R7); `sincronizar-ruta.test.ts`: «`enfriamiento` (R53) llega como `ok/omitida`» |
+| R54 | `optimizacion-ruta-recuperacion.test.ts`: «R54: la cota es `updated_at`…» (y los bordes de R53 miden contra `actualizadaAt`) |
+| R56 | `optimizacion-ruta-reduccion.test.ts`: «R56: manual, ruta vigente, prefijo reducido y sin desvio…» |
+| R59 | `optimizacion-ruta-primera-del-dia.test.ts`: «R59: job `debounce` con la primera pendiente…»; `optimizacion-ruta-desvio.test.ts`: «R59: primera ruta pendiente… -> reoptimizar»; `optimizacion-ruta-reduccion.test.ts`: «R59: … no reduce» |
+| R62 (servidor) | `mis-asignaciones-orden-ruta.test.ts`: describe «SLT-59 R62 — `primeraRutaPendiente` y `puntoRecogida`»; `sincronizar-ruta.test.ts`: describe «R62/R63 — `calcularRutaAlSalir`» (la parte de cliente es de frontend_dev) |
+| R63 | `optimizacion-ruta-primera-del-dia.test.ts`: describe «T7.6 — R63/R66» (1001 m recalcula con `upsertOrigen` antes de `optimizar`; 1000 m, primera hecha, sin punto ×3, sin ruta, `desactualizada` en el enfriamiento y sin ubicación → `salida_no_aplica`, 0 llamadas y 0 escrituras) |
+| R64 | `optimizacion-ruta-primera-del-dia.test.ts`: describe «T7.5 — R64/R67» (3 de 4, 4 de 5, `asignadas = 0`, sin ruta, el día que se pasa al conteo); `sincronizar-ruta.test.ts`: «R64 — `recogida_insuficiente`…» ×2; `orden-contar-asignadas-del-dia.test.ts` (×3) |
+| R66 | `optimizacion-ruta-primera-del-dia.test.ts`: «R66: dos disparos de salida seguidos -> la segunda vez, 0 llamadas» |
+| R67 | `optimizacion-ruta-primera-del-dia.test.ts`: «R67: con la primera ya hecha, `contarAsignadasDelDia` no se llama», «R67: un job con la primera pendiente no lee el conteo»; `mis-asignaciones-orden-ruta.test.ts`: «R67: no anade lecturas» |
+
+### Salida real (NODE_OPTIONS=--max-old-space-size=8192, por grupos de 2-4)
+```
+desvio + reduccion + origen                         3 files, 99 passed (antes de R56/R59; luego verdes)
+primera-del-dia + recuperacion + reduccion          3 passed, 58 passed (tras 1 ajuste de test)
+primera-del-dia + service + credencial              3 passed (tras CALCULADA_HOY)
+service + tramo-vivo + trazado                      3 passed, 62 passed
+degradacion + ahorro-jornada + desvio               3 passed, 55 passed
+sincronizar-ruta + recuperacion + origen            3 passed, 84 passed
+contar-asignadas + mis-asignaciones-orden-ruta      2 passed, 20 passed
+mis-asignaciones-{action,causa-devolucion,evidencias} 3 passed, 54 passed
+mis-asignaciones-service + reserva-bloquea + orden-service 3 passed, 133 passed
+SincronizarRutaButton + MisAsignacionesPage         2 passed, 26 passed
+RepartoModule + RepartoModule477 + RepartoAyuda     3 passed, 133 passed
+RepartoAyudaResuelta + MarcarLuego + ChatContacto + GestionarOrdenPanelHilo 4 passed, 31 passed
+sincronizar-ruta + primera-del-dia + recuperacion (final) 3 passed, 76 passed
+bulk-orden-service(.carga-api) + rol-admin-satelite-authz 3 passed, 118 passed
+pnpm run typecheck   -> exit 0
+pnpm run lint        -> 0 errors, 231 warnings (en mis archivos, 0 tras quitar un `_args`)
+pnpm run test:guardias -> 6 rojos, de los que ninguno queda mio:
+  - superficie-de-uso: `calcularRutaAlSalir` sin superficie -> anotada `@sin-superficie` (verde)
+  - censo-order-status-rename: yo usaba `"por_recoger"`, codigo anterior a la 135 -> corregido a
+    `"mensajero_recogiendo_en_bodega"` (verde para mis archivos). Queda
+    `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts:327 por_recoger`, del otro agente.
+  - dependencias-declaradas-presentes (4): init.sh no tiene el marcador del paso 2 / no invoca
+    scripts/verificar-dependencias.mjs. init.sh y scripts/ sin cambios respecto a HEAD: preexistente.
+```
+
+### Desviaciones
+- **Las funciones puras viven en `OptimizacionRutaService.ts`** (`primeraRutaPendiente`, `puntoDeRecogida`) y `MisAsignacionesService` las importa. Así se evita un archivo fuera de «Archivos esperados», y la pantalla y el servidor usan una sola regla.
+- **`contarAsignadasDelDia` hace un `findMany` del estatus** en vez de `COUNT ... FILTER`. Es una lectura y pasa por la extensión de empresa sin SQL a mano. `dia` va en la convención `@db.Date` (`startOfDayCR`), la que ya usan `recogerLote` y el corte.
+- **El código del estado.** Para «por recoger» se usa el código vigente `mensajero_recogiendo_en_bodega`. El design escribe `por_recoger` como nombre del glosario.
+- **R7 con `salida`.** Una salida que llegara a la decisión con la ruta `desactualizada` sigue R7 como un automático. En la práctica no se alcanza: R63 exige la primera pendiente, y entonces la decisión es `primera_del_dia`.
+- **R64 con `ruta === null`.** También aplica el mínimo. El glosario dice que la primera ruta está pendiente cuando la ruta no existe.
+- **El `%` del mensaje de R64** sale de `deps.config ?? loadRouteOptimizationConfig()` en la acción. El resultado del servicio no lleva el porcentaje: tiene la forma del design.
+- **`@sin-superficie` en `calcularRutaAlSalir`.** Es temporal, hasta que la cablee frontend_dev (T7.7).
+- **Tests de componentes.** Solo se añadieron los dos campos nuevos a sus fixtures, sin cambiar ningún comportamiento.
+
+Veredicto: T7.2, T7.5, T7.6, T7.7 (servidor) y el caso R59 de T7.4 hechos. Typecheck y lint sin errores, y todos los tests tocados y vecinos en verde. Los rojos de guardias que quedan son ajenos: uno del otro agente y cuatro preexistentes de init.sh.
