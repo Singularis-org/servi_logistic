@@ -33,8 +33,9 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     organizacionId: null,
     topes: { ordenesPorCiclo: 2, porRol: { adminTienda: 2 }, apiKeys: 1 },
     modulos: ["analitica"],
-    precio: { tipo: "sin_precio" },
-    costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+    // SLT-66 R28: el plan que se asigna tiene costo concreto (design §9.3); lo que se afirma no cambia.
+    precio: { tipo: "monto", mensual: "1000.00", anual: null },
+    costoPorOrden: "100.00",
     archivado: false,
     ...extra,
   };
