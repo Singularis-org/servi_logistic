@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -49,6 +51,19 @@ const TEXTOS = {
   elegirPlan: "Plan a asignar",
   placeholder: "Elige un plan",
   sinAsignables: "No hay otros planes que asignar a esta empresa.",
+  /**
+   * SLT-66 (design §6.5, R29): el servicio ya no trae ningún plan con costo concreto. Va en piezas para
+   * enlazar «Planes»: «No hay planes con costo concreto para esta empresa. Crea un custom con sus precios
+   * en «Planes».».
+   */
+  sinPlanesConCosto: {
+    antes: "No hay planes con costo concreto para esta empresa. Crea un custom con sus precios en «",
+    enlace: "Planes",
+    despues: "».",
+  },
+  /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
+  planSinCosto:
+    "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
   asignablesNoCargaron: "No se pudieron cargar los planes que se pueden asignar.",
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
@@ -327,7 +342,8 @@ export function PlanEmpresa({
   }
 
   return (
-    <section aria-labelledby={tituloId} className="flex flex-col gap-4">
+    // SLT-66 (design §6.4, R32): `id="plan"` es el ancla del listado de «Empresas» («Asignar plan»).
+    <section id="plan" aria-labelledby={tituloId} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 id={tituloId} className="text-base font-semibold">
           {TEXTOS.titulo}
@@ -341,9 +357,27 @@ export function PlanEmpresa({
         <>
           <ConsumoDelPlan plan={vista.plan} textoSinPlan={TEXTOS.sinPlan} nivelDeTitulo={3} />
           {vista.plan?.archivado && <p className="text-sm text-muted-foreground">{TEXTOS.planArchivado}</p>}
+          {vista.plan?.costeo.sinCostoConcreto && (
+            // Un estado fijo del plan, no un aviso que llega: `note` y no el `alert` de la primitiva.
+            <Alert role="note" className="border-warning/40 text-warning-strong">
+              <TriangleAlert aria-hidden="true" />
+              <AlertDescription className="text-warning-strong">{TEXTOS.planSinCosto}</AlertDescription>
+            </Alert>
+          )}
 
           {asignables === null ? (
             <AvisoDeError>{TEXTOS.asignablesNoCargaron}</AvisoDeError>
+          ) : asignables.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {TEXTOS.sinPlanesConCosto.antes}
+              <Link
+                href="/plataforma/planes"
+                className="rounded-sm text-primary-strong underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {TEXTOS.sinPlanesConCosto.enlace}
+              </Link>
+              {TEXTOS.sinPlanesConCosto.despues}
+            </p>
           ) : opciones.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinAsignables}</p>
           ) : (
