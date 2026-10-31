@@ -52,7 +52,7 @@
   - Mutación 4 de design §9.4, medida.
 
   *Hecho:* el test está en verde y la mutación lo pone en rojo.
-- [ ] **T4 — Tests existentes obligados por R1–R5 y R9** (design §9.3, solo las filas de backend y
+- [x] **T4 — Tests existentes obligados por R1–R5 y R9** (design §9.3, solo las filas de backend y
   unitarias). Depende de T2.
   - Archivos: `planes-catalogo`, `plan-topes-usuarios`, `planes-schema`, `consumo`, `mi-plan-service`,
     `planes-service-lecturas`, `plantilla-cambio-plan`, `mi-plan-repository`, `plan-de-la-empresa` (lo

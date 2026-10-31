@@ -176,3 +176,34 @@ Filas añadidas a design §9.3 con fecha y la marca «autorizado por el humano»
 - `planes-historial:87-94` y la edición que sigue; el caso R43 (`:329`) sale probablemente por lo mismo.
 
 Arreglo mecánico propuesto: `costoPorOrden: entrada.costoPorOrden` en los ayudantes y `costoPorOrden: null` en los literales. No entra en la autorización: pendiente del humano. T4 sigue sin marcar.
+
+### T4 — cierre (autorización del humano del 2026-10-31, «Sí»): commits 711de3b y d919805
+En los cinco tests de integración de SL-24:
+- `costoPorOrden: entrada.costoPorOrden` en los ayudantes y `null` en los literales:
+  - `planes-edicion-en-uso:45`
+  - `planes-cambio-correos:132`
+  - `planes-cambio-programado:64, :146, :157, :185` (`:185` es el `pendiente.version` esperado)
+  - `planes-asignacion:204`
+  - `planes-historial:94, :104, :313`
+- `planes-historial:125`: el diff esperado de alta de R29 suma `costoPorOrden: {antes: null, despues: null}`. Es el mismo trato que `rastro.test.ts:31`, bajo la autorización general («cae solo por costoPorOrden»). El test sigue comprobando el diff exacto.
+
+Filas añadidas a design §9.3.
+
+| Archivo (contra `logistic_slt66`) | Pasados / fallados |
+|---|---|
+| consumo | 35 / 0 |
+| rastro | 9 / 0 |
+| planes.composition-root | 4 / 0 |
+| mi-plan-repository | 4 / 0 |
+| planes-asignacion-inicio-ciclo | 11 / 0 |
+| planes-edicion-en-uso | 7 / 0 |
+| planes-cambio-correos | 9 / 0 |
+| planes-cambio-programado | 10 / 0 |
+| planes-asignacion | 12 / 0 |
+| planes-historial | 7 / 0 |
+
+- eslint: limpio en los archivos tocados.
+- typecheck: sin errores fuera de `tests/components/` y `tests/integration/plataforma-*-page.test.tsx`, que son de la tanda D.
+
+## Veredicto de la tanda A
+T0–T4 hechas, con los tests de la tanda en verde contra `logistic_slt66`. Pendiente de otras tandas: los tests de componentes y de páginas (D) y `MiPlanRepository` provisional hasta T9.
