@@ -130,6 +130,8 @@ export default defineConfig({
         "mi-wallet",
         "wallet-mensajeros",
         "ajuste-pago-mensajero-cierre",
+        // SLT-68 · R22: el incentivo manual a un mensajero.
+        "incentivo-mensajero-slt68",
       ),
     },
   ],

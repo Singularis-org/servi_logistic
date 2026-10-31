@@ -75,7 +75,8 @@ describeSiHayBase("461/T B.10 — las migraciones del cobro a una tienda contra 
     // Ficha 458-B (2026-09-26): dos valores mas en la caja y dos en la tienda, detras de los de la 457.
     expect(caja.slice(-6, -4)).toEqual(["ingreso_cobro_tienda", "egreso_reverso_cobro_tienda"]);
     expect(tienda.slice(-5, -4)).toEqual(["cobro_tienda_anulado"]);
-    expect(origen.slice(-3, -1)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
+    // SLT-68 anadio `incentivo_mensajero` detras de `abono_tienda` (457).
+    expect(origen.slice(-4, -2)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
     // El `up` de la 1 es aditivo y solo eso: seis `ADD VALUE IF NOT EXISTS`, ni un CHECK ni una tabla.
     expect(soloEjecutable(UP_1).match(/ADD VALUE IF NOT EXISTS/g)).toHaveLength(6);
     expect(soloEjecutable(UP_1)).not.toMatch(/CHECK|CREATE TABLE|UPDATE|DELETE/);

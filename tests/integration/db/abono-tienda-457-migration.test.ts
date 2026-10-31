@@ -101,7 +101,7 @@ describeSiHayBase("457/T1.5 — las migraciones del pago de una tienda a la empr
     // caja, dos en la tienda, dos en el historial): los de esta ficha se leen un tramo mas atras.
     expect(caja.slice(-4, -2)).toEqual([...VALORES_457.wallet_movimiento_categoria]);
     expect(tienda.slice(-4, -2)).toEqual([...VALORES_457.wallet_tienda_movimiento_categoria]);
-    expect(origen.slice(-1)).toEqual([...VALORES_457.wallet_origen_tipo]);
+    expect(origen.slice(-2, -1)).toEqual([...VALORES_457.wallet_origen_tipo]); // SLT-68 va detras
     expect(tipos.slice(-4, -2)).toEqual([...VALORES_457.historial_accion_tipo]);
     expect(entidades.slice(-1)).toEqual([...VALORES_457.historial_accion_entidad]);
     // Los conteos de design §14 «despues»: 25 / 16 / 14 / 63 / 24; con la 458-B detras: 27 / 18 / 14 / 65 / 24.

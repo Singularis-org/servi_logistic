@@ -97,6 +97,8 @@ export const ORIGEN_LABEL: Record<WalletOrigenTipo, string> = {
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
   // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+  // SLT-68 (design §5): el egreso de caja del incentivo, su reverso y el `reverso_incentivo`.
+  incentivo_mensajero: "Incentivo a un mensajero",
 };
 
 /**
@@ -130,6 +132,7 @@ export const ORIGEN_TIENDA_LABEL: Record<WalletOrigenTipo, string> = {
   aporte_capital: "Aporte de dinero a la caja",
   cobro_manual_reclasificado: "Cobro reclasificado como pago de un gasto de la tienda",
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
+  incentivo_mensajero: "Incentivo a un mensajero",
 };
 
 /**
@@ -157,6 +160,8 @@ export const ORIGEN_PAGO_LABEL: Record<WalletOrigenTipo, string> = {
   cobro_tienda: `Cobro de ${EMPRESA.enFrase} a una tienda`,
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+  // SLT-68 (design §5): el egreso de caja del incentivo, su reverso y el `reverso_incentivo`.
+  incentivo_mensajero: "Incentivo a un mensajero",
 };
 
 /**

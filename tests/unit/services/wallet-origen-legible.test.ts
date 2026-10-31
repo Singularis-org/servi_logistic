@@ -84,6 +84,8 @@ const CASOS_CAJA: Record<WalletOrigenTipo, { fila: FilaConOrigenTecnico; texto: 
     fila: fila("abono_tienda"),
     texto: "Pago de una tienda a la empresa · Tania Tienda · 2026-09-11 · Transferencia",
   },
+  // SLT-68: se nombra por su rotulo; el motivo lo trae la descripcion de la fila.
+  incentivo_mensajero: { fila: fila("incentivo_mensajero"), texto: "Incentivo a un mensajero" },
 };
 
 describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta", () => {

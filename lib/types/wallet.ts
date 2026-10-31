@@ -135,6 +135,9 @@ export const WALLET_ORIGEN_TIPO_SEED = [
   // Ficha 457 (design §0): el documento del PAGO DE UNA TIENDA A LA EMPRESA. Las cuatro filas de los dos
   // libros llevan este origen con `origen_id` = id del documento.
   "abono_tienda",
+  // SLT-68 (design §2.1): el INCENTIVO MANUAL A UN MENSAJERO. Egreso de caja, su reverso y el
+  // `reverso_incentivo` del libro del mensajero; `origen_id` = id del devengo `incentivo`.
+  "incentivo_mensajero",
 ] as const satisfies readonly PrismaWalletOrigenTipo[];
 
 export type WalletOrigenTipo = (typeof WALLET_ORIGEN_TIPO_SEED)[number];
@@ -404,7 +407,12 @@ export type DocumentoCajaDTO = {
      * sin documento, la fila decia «Vigente» aunque estuviera anulada. Sus reversos llevan `null`.
      */
     | "pago_tienda"
-    | "premio_del_ranking";
+    | "premio_del_ranking"
+    /**
+     * SLT-68 (design §5, R16): el egreso del INCENTIVO a un mensajero (`egreso_pago_mensajero` con origen
+     * `incentivo_mensajero`, documento = el devengo `incentivo`). Su reverso lleva `null`.
+     */
+    | "incentivo_mensajero";
   anulado: boolean;
   tieneComprobante: boolean;
   /** Ficha 458-B (R72): anulado por un reverso anterior a la 458, sin constancia: «motivo no registrado». */
