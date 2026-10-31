@@ -207,3 +207,58 @@ Filas añadidas a design §9.3.
 
 ## Veredicto de la tanda A
 T0–T4 hechas, con los tests de la tanda en verde contra `logistic_slt66`. Pendiente de otras tandas: los tests de componentes y de páginas (D) y `MiPlanRepository` provisional hasta T9.
+
+## Tanda B — T5, T6, T7 (backend_dev, 2026-10-31)
+
+### Commits
+- `27a7dd5` T5: M2 `20261031120100_cobro_plataforma_fuente_plan`.
+  - Añade `plan` a `CobroPlataformaFuente` y `desasignado` a `PlanRastroAccion`, en la migración y en Prisma (design §2.2).
+  - El `down.sql` se niega a bajar si quedan movimientos de fuente `plan` o filas `desasignado`.
+- `5e7cdeb` T6: M3 `20261031120200_plan_costeo_funciones`.
+  - Funciones: `cobro_plataforma_tarifa_de`, el trigger de SL-40 y `plan_de_la_empresa`.
+  - Los cuerpos se diffearon contra los de origen: solo cambia lo que dice el design.
+  - El `down.sql` lleva los cuerpos de origen literales. El test de ida y vuelta compara el md5 de `pg_get_functiondef`.
+- `93bab1f` T7: `deuda-plataforma-plan.test.ts`. Un caso en ROJO: el de R21, que depende de T9 (abajo).
+
+Drift: vacío después de M2 y después de M3.
+
+### Tests (`logistic_slt66`)
+| Archivo | Pasados / fallados |
+|---|---|
+| cobro-plataforma-plan (nuevo) | 16 / 0 |
+| migracion-slt66-ida-y-vuelta (7 de R4 y 4 de R25) | 11 / 0 |
+| cobro-plataforma-cargos (SL-40, sin tocar) | 20 / 0 |
+| migracion-sl40-ida-y-vuelta (SL-40, sin tocar) | 4 / 0 |
+| deuda-plataforma-plan | 3 / **1** (R21) |
+
+`cobro-plataforma-plan` lleva un caso añadido: «D sin plan y con excepción de 70». Sin él, la mutación 3 no caía en este archivo.
+
+### Mutaciones de §9.4
+1. Mirar el plan antes que la excepción: `cobro-plataforma-plan` da 13 fallados / 3 pasados; el primero es «B crea p1 → 80.00 empresa».
+2. Ignorar el plan: `cobro-plataforma-plan` da 14 / 2; el primero es «A crea o1 → 100.00 plan».
+3. `JOIN` en vez de `LEFT JOIN`:
+   - `cobro-plataforma-plan`: cae 1, el de D con excepción;
+   - `cobro-plataforma-cargos`: caen 4.
+
+Las tres restauradas, y todo vuelve a verde.
+
+### Carga de 500 filas (design §13)
+- **SQL puro, `INSERT` de 500 órdenes:** mediana 856 ms antes de M3 y 928 ms después. Unos +8 %, ≈ 0,14 ms por orden.
+- **`OrdenRepository` real, rondas intercaladas:**
+  - con guía: ≈ 3933 → 3460 ms;
+  - sin guía: ≈ 1149 → 1099 ms;
+  - el ruido es mayor que la diferencia.
+- **Aviso:** la carga de 500 con guía ya tarda entre 3 y 4,9 s ANTES de M3, rozando el timeout de 5 s de las transacciones interactivas de Prisma. En una serie sin intercalar hubo llamadas que pasaron los 5 s.
+
+### Tests de T9 que M3 rompe (sin editar, son de la tanda C)
+- `plan-de-la-empresa.test.ts`: 2 fallados.
+  - El `uso` sin `maestro`.
+  - Las claves: ahora son 14, con `costo_por_orden` y `costo_vigente`.
+- `mi-plan-repository.test.ts`: 1 fallado. El zod pide `uso.maestro` y `plan_de_la_empresa` ya no lo devuelve.
+- **Fuera de §9.3:** `planes-asignacion-inicio-ciclo.test.ts` (SLT-58) tiene 2 fallados, R33 y R34, por la misma causa de zod en `MiPlanRepository`.
+
+### Bloqueos
+1. **R21 de T7 y los tres archivos de arriba** necesitan que `MiPlanRepository` deje de exigir `uso.maestro`, que es T9.
+   - Probado con un cambio temporal, revertido y sin commit: con `maestro: conteo.optional()`, T7 da 4/0 y `planes-asignacion-inicio-ciclo` 11/0.
+   - T7 queda sin marcar.
+2. **`app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx:96` no compila** (TS2741): falta `desasignado` en `Record<PlanRastroAccion, string>`. Es la traducción de T22 (frontend), y el typecheck de la rama está en rojo hasta entonces.

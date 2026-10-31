@@ -68,13 +68,13 @@
 
 ## Tanda B — cobro con el costo del plan (backend_dev)
 
-- [ ] **T5 — M2 `20261031120100_cobro_plataforma_fuente_plan`** (design §2.2). Depende de T1.
+- [x] **T5 — M2 `20261031120100_cobro_plataforma_fuente_plan`** (design §2.2). Depende de T1.
   - `ALTER TYPE … ADD VALUE 'plan'` y `plan_rastro_accion` `ADD VALUE 'desasignado'`.
   - Un `down.sql` que se niega a bajar si hay cargos o reversos de fuente `plan`.
   - El enum de Prisma, con `plan`.
 
   *Hecho:* aplica, y el drift sale vacío.
-- [ ] **T6 — M3 `20261031120200_plan_costeo_funciones`** (design §2.3, §3). Depende de T5.
+- [x] **T6 — M3 `20261031120200_plan_costeo_funciones`** (design §2.3, §3). Depende de T5.
   - `cobro_plataforma_tarifa_de`.
   - El cuerpo nuevo de `cobro_plataforma_al_crear_orden`, copia literal salvo el bloque de la tarifa.
   - El cuerpo nuevo de `plan_de_la_empresa`, copia literal más sus tres cambios.
