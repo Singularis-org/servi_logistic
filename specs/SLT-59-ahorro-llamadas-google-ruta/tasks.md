@@ -275,7 +275,7 @@
     optimizar» y los marcadores sin número (R65; los casos de hoy siguen verdes).
 
   El test de `MisAsignacionesService` que arma `ruta` cubre los dos campos.
-- [ ] **T7.8** Jornadas de design §8.0 en `optimizacion-ruta-ahorro-jornada.test.ts` (R37). Depende de
+- [x] **T7.8** Jornadas de design §8.0 en `optimizacion-ruta-ahorro-jornada.test.ts` (R37). Depende de
   T7.1-T7.6. *Hecho:* jornada A `{3, 3, 6}` fila a fila (filas 12 y 13 aparte); jornada B `{1, 1, 0}`
   y sus tres variantes.
 
@@ -337,10 +337,10 @@
     `job_sin_motivo`;
   - `optimizacion-ruta-enqueue.test.ts` afirma el `origen` del payload;
   - el test de salud afirma `revivido_por_salud`.
-- [ ] **T8.4** Secuencia de la jornada (R75). Depende de T8.3 y T7.8. *Hecho:*
+- [x] **T8.4** Secuencia de la jornada (R75). Depende de T8.3 y T7.8. *Hecho:*
   `optimizacion-ruta-ahorro-jornada.test.ts` captura las líneas `[google-api]` y afirma la secuencia
   de design §13.3, en orden.
-- [ ] **T8.5** Cierre. Los mapas `R<n> -> test` cubren R68-R75; typecheck (R68), lint y
+- [x] **T8.5** Cierre. Los mapas `R<n> -> test` cubren R68-R75; typecheck (R68), lint y
   `test:guardias` en local. `db/` sin cambios (R74).
 
 ## Archivos esperados

@@ -1306,3 +1306,210 @@ motivos §13.3 (T8.4) y el mapa final y el cierre (T8.5). T5.2 y T6.8 los cierra
   que no emite `prueba_integracion`.
 - Revivir un geocode reescribe `payload.motivo`, lo que choca con el «no toca payload» de la ficha 401.
   Así lo pide §13.2.
+
+## Tanda 10 — backend_dev: T7.8, T8.4, T8.5 (2026-10-31)
+
+Base: HEAD d006bf3 (§8.0 ya enmendada por D30). Sin base de datos, sin dependencias, sin migración y
+sin cambios en el código de producción. No usé el grafo: el archivo de la jornada y los módulos que
+llama ya los conocía de las tandas previas (Grep/Read).
+
+### Archivos
+- `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts`:
+  - T7.8: los valores esperados de §8.0 enmendada (D30):
+    - `NUEVO_A`: fila 0 `0/0/1` y fila 1b `1/1/0`; el total `{3, 3, 6}` no cambia;
+    - `NUEVO_B`: B1 `0/0/1`, total `{1, 1, 1}`;
+    - variantes: primera gestión `1/1/2` y botón al 86 % `1/1/1`. En el botón al 71 % se afirma
+      ahora el conteo desde la primera recogida, `{0, 0, 1}` (aserción de jobs nueva), y que ese job
+      es el de R76 (`pending`, `origen = recogida_parcial`);
+    - jornada A afirma además que hay un solo job de recogida en todo el día (R58/R76).
+  - T8.4: los dobles de Google emiten la línea `[google-api]` como los clientes reales: llaman a
+    `registrarLlamadaGoogle` con el `contexto` que les pasa el servicio, y un logger que la captura
+    (`lineasGoogleApi`). `medir` guarda las líneas de cada fila (`lineasPorFila`). Casos:
+    - caso nuevo «T8.4/R75 — jornada A: las lineas [google-api] siguen la secuencia de motivos de §13.3»;
+    - en el caso de las filas 11-13: fila 11, 1 línea `route_optimization`, motivo
+      `primera_ruta_recogida_completa`, `resultado: "401"`, intento 1 de 3; fila 12 sin líneas;
+      fila 13 `recuperacion_ruta_caida` ×2;
+    - jornada B: B3 `primera_ruta_salida` ×2;
+    - variantes: `primera_ruta_primera_gestion` ×2, `primera_ruta_boton` ×2 y 71 % sin líneas.
+- `specs/SLT-59-ahorro-llamadas-google-ruta/tasks.md`: [x] en T7.8, T8.4 y T8.5. T5.2 y T6.8 quedan
+  sin marcar.
+
+### T8.4: §13.3 frente a lo que registra el código
+**Sin discrepancia.** La fila 1b registra `primera_ruta_recogida_completa`, como dice §13.3.
+- El job nace en la fila 0 con `origen = recogida_parcial`. En la fila 1b, «recoger todas» lo mueve y
+  le reescribe el payload: `lib/services/jobs/optimizacion-ruta-encolado.ts:144`
+  (`const origen = opts.quedanPorRecoger ? "recogida_parcial" : "recogida"`) y `:145-148`
+  (`encolarOMoverPendiente(…, { mensajeroId, origen }, …)`). En la base, `JobRepository.encolarOMoverPendiente`
+  hace `DO UPDATE SET … payload = EXCLUDED.payload`; el doble hace lo mismo.
+- El motivo lo decide `motivoLlamadaRuta` en `lib/services/OptimizacionRutaService.ts:450-451`
+  (`case "recogida": return "primera_ruta_recogida_completa"`).
+- Secuencia medida de la jornada A, en orden: `1b` → `route_optimization` y `routes`,
+  `primera_ruta_recogida_completa`; `6` → los dos, `sincronizacion_manual_desvio`; `7` → los dos,
+  `entrega_fuera_de_orden`. Son 6 líneas en total.
+
+Límite de la prueba: las líneas las emiten los dobles con la función real de registro. El código real
+decide el motivo, el intento y el máximo de intentos. Que cada cliente real emita una línea por
+petición ya lo prueba `google-registro-llamada.test.ts` (T8.2).
+
+### Salida real (NODE_OPTIONS=--max-old-space-size=8192)
+```
+pnpm exec vitest run --reporter=verbose tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts
+  [SLT-59 T7.8] jornada A — MEDIDO (opt / routes / jobs):
+    0. t=-10 min — Recoge s1, s2, s3 y x de una en una, 1 por minuto (GPS en B): 0 / 0 / 1
+    1. t=-6 min — Pulsa «Sincronizar» con 4 de 7 recogidas (57 %): 0 / 0 / 0
+    1b. t=-5 min — «Recoger todas» con las 3 restantes (s4, s5, s6): 1 / 1 / 0
+    2. t=5 min — Sincroniza a mano, GPS a 50 m de A: 0 / 0 / 0
+    3. t=10 min — Gestiona x (sin coordenadas), GPS a 300 m: 0 / 0 / 0
+    4. t=20 min — Entrega s1 y s2 con 20 s de diferencia: 0 / 0 / 1
+    5. t=40 min — Entrega s3 a 1,5 km de la ruta: 0 / 0 / 1
+    6. t=50 min — Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6): 1 / 1 / 0
+    7. t=60 min — Entrega s5 antes que s4 (fuera de orden): 1 / 1 / 1
+    8. t=80 min — Entrega s4 (queda s6): 0 / 0 / 1
+    9. t=85 min — Sincroniza a mano a 200 m de la ruta, 1 parada: 0 / 0 / 0
+    10. t=100 min — Entrega s6 (quedan 0): 0 / 0 / 1
+    Total: 3 / 3 / 6
+  [SLT-59 T7.8] jornada B — MEDIDO: B1 0/0/1 · B2 0/0/0 · B3 1/1/0 · B4 0/0/0 · Total: 1 / 1 / 1
+  [SLT-59 T7.8] variante B, primera gestion — MEDIDO: B1 0/0/1 · B-gestion 1/1/1 · Total: 1 / 1 / 2
+  [SLT-59 T7.8] variante B, boton 86 % — MEDIDO: B1 0/0/1 · B-boton 1/1/0 · Total: 1 / 1 / 1
+  ✓ jornada A: la columna «Nuevo» fila a fila y en total {3, 3, 6}
+  ✓ T8.4/R75 — jornada A: las lineas [google-api] siguen la secuencia de motivos de §13.3
+  ✓ filas 11-13: el 401 cuesta 1 llamada; el boton respeta el enfriamiento y luego recupera
+  ✓ jornada B: la salida a mas de 1000 m paga la primera ruta y nada mas, {1, 1, 1}
+  ✓ variante B: la primera gestion antes de alejarse -> 1 / 1 / 2 (R59)
+  ✓ variante B: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 1 (R64)
+  ✓ variante B: el boton con 5 de 7 recogidas (71 %) no paga, dice «5 de 7» y deja 0 / 0 / 1 (R64, R76)
+  Test Files  1 passed (1)
+       Tests  7 passed (7)
+
+pnpm run typecheck   -> tsc --noEmit, exit 0 (0 errores)
+pnpm exec eslint tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts -> sin salida, exit 0
+pnpm run lint        -> ✖ 230 problems (0 errors, 230 warnings)   (preexistentes)
+pnpm run test:guardias
+  Test Files  1 failed | 319 passed | 3 skipped (323)
+       Tests  4 failed | 4504 passed | 24 skipped (4532)
+  los 4 FAIL, todos en tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts
+  (guardia 420: R2, R6, R2/R6, R4), que está en tests/baseline-rojos.json
+```
+
+### R40/R74: `db/` sin cambios
+```
+$ git diff --stat dev -- db/
+ .../20261029120000_plan_de_la_empresa/down.sql     |   4 -
+ .../migration.sql                                  |  62 --------
+ .../down.sql                                       | 104 -------------
+ .../migration.sql                                  | 132 ----------------
+ .../down.sql                                       | 167 ---------------------
+ .../migration.sql                                  |  18 ---
+ .../down.sql                                       |  26 ----
+ .../migration.sql                                  |  36 -----
+ db/schema.prisma                                   |  22 +--
+ 9 files changed, 1 insertion(+), 570 deletions(-)
+
+$ git diff --stat dev...HEAD -- db/
+(vacío)
+$ git diff --stat HEAD -- db/
+(vacío)
+```
+**El comando pedido no sale vacío, pero no por esta rama.** `dev` (62e3d89) avanzó después de la base de
+la rama (merge-base 9573ab0) con migraciones de otras fichas: `git log HEAD..dev -- db/` da SLT-58
+(`plan_de_la_empresa`, `plan_ciclo_inicio_elegido`) y SLT-68. La comparación de dos puntos muestra
+esas filas como «borradas» en la rama. Contra la base (`dev...HEAD`) y contra el árbol de trabajo,
+el diff de `db/` está vacío: SLT-59 no toca `db/`. Al sincronizar con `dev` (F2.3), esas migraciones
+entran tal cual.
+
+### Mapa R<n> → test final (R1-R77)
+Comprobado con `[ -f ]` que existen los 26 archivos citados, y con `grep -F` que existe un fragmento
+del título de cada R.
+
+| R | Test (archivo › título) |
+| --- | --- |
+| R1 | `tests/unit/services/optimizacion-ruta-desvio.test.ts` › «R1: mismo conjunto…», «R1/R6/R9: 2+ paradas…» |
+| R2 | `optimizacion-ruta-desvio.test.ts` › «R2/R6/R9: UNA parada…» |
+| R3 | `optimizacion-ruta-desvio.test.ts` › «R3 — desviado SI Y SOLO SI…»; `tests/unit/geo/polilinea.test.ts` › «SLT-59 — distanciaMinimaAPolilineaM» |
+| R4 | `optimizacion-ruta-desvio.test.ts` › «R4 — linea de referencia»; `polilinea.test.ts` › «SLT-59 — distanciaMinimaAPolilineaM» |
+| R5 | `optimizacion-ruta-desvio.test.ts` › «R5: sin posicion…», «R5: con origen `centroide`…» |
+| R6 | `optimizacion-ruta-desvio.test.ts` › «R1/R6/R9…», «R2/R6/R9…» (`escrituras() === 0`) |
+| R7 | `optimizacion-ruta-desvio.test.ts` › casos `desactualizada` «R7…»; `tests/unit/services/optimizacion-ruta-reduccion.test.ts` › «R7: ruta desactualizada con un subconjunto…» |
+| R8 | `tests/unit/services/optimizacion-ruta-service.test.ts` › «265/R33 — las guardas cortan EN ESTE ORDEN» |
+| R9 | `optimizacion-ruta-desvio.test.ts` › «R1/R6/R9…», «R2/R6/R9…» (una lectura de cada) |
+| R10 | `optimizacion-ruta-desvio.test.ts` › «R10: … calculada hace 8 h -> omitir» |
+| R11 | RETIRADO (D16) → R41 |
+| R12 | `optimizacion-ruta-reduccion.test.ts` › «R12/R17: la reduccion no reescribe la secuencia completa…»; `tests/integration/repositories/ruta-optimizada-repo.test.ts` › «R12/R17: calculada_at, origen…» |
+| R13 | `optimizacion-ruta-reduccion.test.ts` › «R41/R13: entrega EN ORDEN…», «R13: queda UNA parada…» |
+| R14 | RETIRADO (D16) → R42 |
+| R15 | `optimizacion-ruta-reduccion.test.ts` › «R15: trazado guardado que no es por calles…»; `ruta-optimizada-repo.test.ts` › «sin trazado limpia las 4 columnas» |
+| R16 | RETIRADO (D16) |
+| R17 | `optimizacion-ruta-reduccion.test.ts` › «R12/R17…»; `ruta-optimizada-repo.test.ts` › «R12/R17…» |
+| R18 | `optimizacion-ruta-reduccion.test.ts` › «R18/R49…» ×2; `ruta-optimizada-repo.test.ts` › «R18: con la huella cambiada no escribe NADA…» |
+| R19 | RETIRADO (D24) → R51, R52 |
+| R20 | `optimizacion-ruta-desvio.test.ts` › casos `paradas_nuevas` «R20…»; `optimizacion-ruta-reduccion.test.ts` › «R20: quita una y anade otra…» |
+| R21 | `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts` › «SLT-59 R21» |
+| R22 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R22 (acotado por R59) — …»; jornada › fila 3 |
+| R23 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R23»; `tests/unit/services/optimizacion-ruta-encolado.test.ts` › «R23» |
+| R24 | `optimizacion-ruta-encolado.test.ts` › «R24» |
+| R25 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R25», «R16 y SLT-59 R25 — transacción REVERTIDA» |
+| R26 | RETIRADO (D23) → R57, R58, R60 |
+| R27 | RETIRADO (D16) → R44 |
+| R28 | `tests/unit/actions/mis-asignaciones-action.test.ts` › «R28: si la reduccion lanza, la action devuelve EXACTAMENTE el mismo resultado» |
+| R29 | `tests/unit/services/job-queue-service-permanente.test.ts` › «dead-letter en el intento 1 de 3…»; `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts` › «R29/R35…»; jornada › «filas 11-13…» |
+| R30 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R30: el servicio conserva el orden previo…» |
+| R31 | `tests/unit/actions/sincronizar-ruta.test.ts` › «SLT-59 R31 — 401/403 en la sincronizacion manual…» |
+| R32 | `optimizacion-ruta-encolado.test.ts` › «R32» |
+| R33 | `job-queue-service-permanente.test.ts` › «un error normal sigue con backoff (R33)» |
+| R34 | `job-queue-service-permanente.test.ts` › «los demas tipos de job no cambian (R34)» |
+| R35 | `optimizacion-ruta-credencial-rechazada.test.ts` › «R29/R35…» |
+| R36 | `tests/unit/config/route-optimization-config.test.ts` › «SLT-59/R36, R55 — %s…» |
+| R37 | `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` › «jornada A: la columna «Nuevo» fila a fila y en total {3, 3, 6}», «filas 11-13…», «jornada B: … {1, 1, 1}» y las tres «variante B: …» |
+| R38 | `route-optimization-config.test.ts` › «SLT-59/R38 — RUTA_SYNC_MIN_INTERVALO_S sigue en 10…» |
+| R39 | `tests/guards/guard-dependencias-aprobadas.test.ts` (verde en `test:guardias`) |
+| R40 | Revisión del diff: `git diff --stat dev...HEAD -- db/` vacío (ver arriba) |
+| R41 | `optimizacion-ruta-reduccion.test.ts` › «R41/R13: entrega EN ORDEN (prefijo) con tramos -> 0 llamadas…» |
+| R42 | `optimizacion-ruta-desvio.test.ts` › «R42: fuera de orden con el mensajero SOBRE la ruta…»; jornada › fila 7 |
+| R43 | `optimizacion-ruta-reduccion.test.ts` › «R43: quitar la ULTIMA…» |
+| R44 | `optimizacion-ruta-reduccion.test.ts` › «SLT-59 T2.4/T6.3 — reducirSinLlamadas (R44…)»; `mis-asignaciones-action.test.ts` › «SLT-59 R44/R28 — …» |
+| R45 | `sincronizar-ruta.test.ts` › «SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio…» |
+| R46 | `tests/unit/services/optimizacion-ruta-origen.test.ts` › «SLT-59 R46 — manual con ubicacion que no recalcula…», «SLT-59 R46 — el desvio se mide con la ubicacion RECIBIDA…» |
+| R47 | `optimizacion-ruta-desvio.test.ts` › «D18/R47: polilinea `routes` que decodifica a 0 puntos…», «R47 acotado…» |
+| R48 | `ruta-optimizada-repo.test.ts` › «R48: con la ruta `desactualizada` y la huella IGUAL…»; `tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts` › «R48: …» ×3 |
+| R49 | `optimizacion-ruta-reduccion.test.ts` › «R18/R49…», «R49: la rama de UNA parada…»; `sincronizar-ruta.test.ts` › «SLT-59 R49…» |
+| R50 | `ruta-optimizada-reduccion-sql-real.test.ts` › «R50: una reduccion en el contexto de A no toca … B…» |
+| R51 | `optimizacion-ruta-desvio.test.ts` › «R51: automatico NO decodifica la polilinea», «R51: job de la cola… 0 llamadas»; jornada › fila 5 |
+| R52 | `optimizacion-ruta-desvio.test.ts` › «R52: manual…»; `optimizacion-ruta-reduccion.test.ts` › «R52 (antes R19): manual, prefijo…»; jornada › fila 6 |
+| R53 | `tests/unit/services/optimizacion-ruta-recuperacion.test.ts` (enfriamiento 4 min 59 s / 5 min); jornada › «filas 11-13…» |
+| R54 | `optimizacion-ruta-recuperacion.test.ts` › «R54: la cota es `updated_at`…» |
+| R55 | `route-optimization-config.test.ts` › «SLT-59/R55 — RUTA_PRIMERA_MIN_RECOGIDO_PCT es un porcentaje: 1-100» |
+| R56 | `optimizacion-ruta-reduccion.test.ts` › «R56: manual, ruta vigente, prefijo reducido y sin desvio…» |
+| R57 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R57 — con la primera ruta del dia ya calculada, recoger NO encola» |
+| R58 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R58 — …»; jornada › fila 1b |
+| R59 | `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts` › «R59: job `debounce` con la primera pendiente…»; `optimizacion-ruta-desvio.test.ts` › «R59: primera ruta pendiente… -> reoptimizar»; jornada › «variante B: la primera gestion…» |
+| R60 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R60 — …» |
+| R61 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R61 — una nueva asignacion NO encola…» |
+| R62 | `tests/unit/services/mis-asignaciones-orden-ruta.test.ts` › «SLT-59 R62 — `primeraRutaPendiente` y `puntoRecogida`»; `sincronizar-ruta.test.ts` › «R62/R63 — `calcularRutaAlSalir`»; `tests/components/RepartoModule.test.tsx` › «disparo de salida de la primera ruta (SLT-59, R62/R65)» |
+| R63 | `optimizacion-ruta-primera-del-dia.test.ts` › «T7.6 — R63/R66»; jornada › «jornada B…» (B2, B4) |
+| R64 | `optimizacion-ruta-primera-del-dia.test.ts` › «T7.5 — R64/R67»; `sincronizar-ruta.test.ts` › «R64 — `recogida_insuficiente`…»; `tests/integration/repositories/orden-contar-asignadas-del-dia.test.ts`; jornada › fila 1 y «variante B: el boton…» ×2 |
+| R65 | `RepartoModule.test.tsx` › «con la primera ruta pendiente se ve lo de sin ruta: aviso, «Pendiente de optimizar» y marcadores sin número» |
+| R66 | `optimizacion-ruta-primera-del-dia.test.ts` › «R66: dos disparos de salida seguidos -> la segunda vez, 0 llamadas» |
+| R67 | `optimizacion-ruta-primera-del-dia.test.ts` › «R67: con la primera ya hecha, `contarAsignadasDelDia` no se llama»; `mis-asignaciones-orden-ruta.test.ts` › «R67: no anade lecturas» |
+| R68 | `pnpm run typecheck` (exit 0: los tres clientes exigen el contexto); `tests/unit/clients/google-registro-llamada.test.ts` › «T8.1» |
+| R69 | `google-registro-llamada.test.ts` › «T8.1» y «T8.2 — route_optimization / routes / geocoding / los tres clientes» |
+| R70 | `tests/unit/services/optimizacion-ruta-motivo.test.ts` › «intento 1 de 3 recibe un 500 y el 2 de 3 paga»; `tests/unit/services/geocodificacion-motivo.test.ts` › «R70: un reintento tras un 500»; jornada › fila 11 (intento 1 de 3) |
+| R71 | `google-registro-llamada.test.ts` › `sinPii` en cada cliente, «un campo de más … NO llega» |
+| R72 | `google-registro-llamada.test.ts` › token OAuth, Haversine, guarda sin paradas; `optimizacion-ruta-motivo.test.ts` › la guarda que omite y la recta de respaldo; `geocodificacion-motivo.test.ts` › acierto de caché |
+| R73 | `optimizacion-ruta-motivo.test.ts` › un caso por motivo de §13.1; `geocodificacion-motivo.test.ts` › un caso por motivo de §13.2 |
+| R74 | Revisión del diff: ninguna escritura, `db/` sin cambios (`git diff --stat dev...HEAD -- db/` vacío); canal `console.info` en `lib/logging/google-api-log.ts` |
+| R75 | jornada › «T8.4/R75 — jornada A: las lineas [google-api] siguen la secuencia de motivos de §13.3», más las aserciones de líneas de «filas 11-13…», «jornada B…» y las tres variantes |
+| R76 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R57/R76 — recogida parcial con la primera ruta pendiente: un job del dia a +10 min»; `tests/integration/repositories/job-repo-posponer.test.ts` › «SLT-59 R76 — crea la fila y luego la MUEVE mientras siga pending»; `optimizacion-ruta-motivo.test.ts` › «T7.9 — primera_ruta_debounce_recogida»; jornada › filas 0 y B1, y el botón al 71 % |
+| R77 | `optimizacion-ruta-enqueue.test.ts` › «SLT-59 R77 — …»; `job-repo-posponer.test.ts` › «SLT-59 D29 — el SQL…», «SLT-59 R77 — …» |
+
+Retirados (6): R11, R14, R16, R19, R26 y R27. Cubiertos por revisión del diff: R40 y R74.
+**R vigente sin test: ninguno.**
+
+### Notas
+- El *Hecho* de T7.8 en `tasks.md` aún dice «jornada B `{1, 1, 0}`». Ese valor lo cambió D30 en
+  §8.0, que es la fuente del test, y la jornada afirma `{1, 1, 1}`. No toqué el texto de la task:
+  lo corrige spec_author si hace falta.
+- `git diff --stat dev -- db/` no sale vacío por el avance de `dev`, no por esta rama (ver arriba).
+
+**Veredicto:** T7.8, T8.4 y T8.5 hechas. La jornada da 7/7 en verde contra §8.0 (D30) y §13.3, sin
+discrepancia en los motivos. Typecheck 0 errores, lint 0 errores, guardias solo con los rojos de la
+baseline, y SLT-59 no cambia `db/`.

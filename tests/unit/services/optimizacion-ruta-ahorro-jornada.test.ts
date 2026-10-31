@@ -42,6 +42,12 @@ import type {
 } from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { EjecutarOptimizacionResult } from "@/lib/interfaces/services/IOptimizacionRutaService";
+import {
+  GOOGLE_API_LOG_PREFIJO,
+  registrarLlamadaGoogle,
+  type ContextoLlamadaRuta,
+} from "@/lib/clients/registro-llamada-google";
+import type { RegistroLlamadaLogger } from "@/lib/logging/google-api-log";
 
 // SLT-59 (R37, design §8.0) — JORNADA DE REFERENCIA: cuantas llamadas facturadas paga un mensajero
 // en un dia tipico. Cuenta llamadas, no dinero (D10).
@@ -416,25 +422,46 @@ class JobsEnMemoria implements IJobRepositoryMovible {
   }
 }
 
+// T8.4 (R75, design §13.3): los dobles de Google emiten la linea `[google-api]` igual que los
+// clientes reales (`google-route-optimization.ts`, `google-routes.ts`): una por peticion, justo
+// despues de la respuesta, con la funcion real `registrarLlamadaGoogle` y el `contexto` que les
+// pasa el servicio. El motivo lo decide el codigo real (`motivoLlamadaRuta`), no el doble.
+const EMPRESA = "emp-1";
+
 /**
  * Optimizador: el orden s1…s6 de las paradas que le lleguen. `rechazar` lo pasa a responder 401
  * (la credencial rechazada de las filas 11-13).
  */
-function optimizadorQueOrdena() {
+function optimizadorQueOrdena(registro: RegistroLlamadaLogger) {
   const estado = { rechazar: false };
   const cliente: IRouteOptimizationClient = {
-    optimizar: async (input: OptimizarInput): Promise<OptimizarOutcome> =>
-      estado.rechazar
+    optimizar: async (input: OptimizarInput, contexto: ContextoLlamadaRuta): Promise<OptimizarOutcome> => {
+      registrarLlamadaGoogle(registro, {
+        api: "route_optimization",
+        contexto,
+        empresaId: EMPRESA,
+        paradas: input.paradas.length,
+        resultado: estado.rechazar ? "401" : "ok",
+      });
+      return estado.rechazar
         ? { status: "config_invalida", detalle: "optimizar ruta: HTTP 401" }
-        : { status: "ok", secuencia: input.paradas.map((p) => p.ordenId).sort(), fuente: "proveedor" },
+        : { status: "ok", secuencia: input.paradas.map((p) => p.ordenId).sort(), fuente: "proveedor" };
+    },
   };
   return { cliente, estado };
 }
 
 /** Routes: tramos RECTOS entre los puntos pedidos; bastan para medir la desviacion. */
-function routesRecto(): IRoutesClient {
+function routesRecto(registro: RegistroLlamadaLogger): IRoutesClient {
   return {
-    trazar: async (input: TrazarRutaInput): Promise<TrazarRutaOutcome> => {
+    trazar: async (input: TrazarRutaInput, contexto: ContextoLlamadaRuta): Promise<TrazarRutaOutcome> => {
+      registrarLlamadaGoogle(registro, {
+        api: "routes",
+        contexto,
+        empresaId: EMPRESA,
+        paradas: input.paradasEnOrden.length,
+        resultado: "ok",
+      });
       const puntos = [input.origen, ...input.paradasEnOrden.map((p) => ({ lat: p.lat, lng: p.lng }))];
       const tramos = puntos.slice(1).map((destino, i) => {
         const metros = Math.round(distanciaHaversineKm(puntos[i], destino) * 1000);
@@ -465,9 +492,11 @@ function montarJornada() {
   const rutas = new RutasEnMemoria(reloj);
   const paradas = new ParadasEnMemoria();
   const jobs = new JobsEnMemoria(reloj);
-  const proveedor = optimizadorQueOrdena();
+  const lineasGoogleApi: string[] = [];
+  const registro: RegistroLlamadaLogger = { info: (linea) => lineasGoogleApi.push(linea) };
+  const proveedor = optimizadorQueOrdena(registro);
   const optimizar = vi.fn(proveedor.cliente.optimizar);
-  const routes = routesRecto();
+  const routes = routesRecto(registro);
   const trazar = vi.fn(routes.trazar);
   const service = new OptimizacionRutaService(
     rutas,
@@ -495,6 +524,8 @@ function montarJornada() {
     optimizar,
     trazar,
     service,
+    /** Las lineas `[google-api]` emitidas, en orden (T8.4). */
+    lineasGoogleApi,
     get ahora() {
       return ahora;
     },
@@ -600,10 +631,17 @@ interface Evento {
 async function medir(
   eventos: Evento[],
   j: Jornada = montarJornada(),
-): Promise<{ j: Jornada; filas: (Conteo & { n: string })[]; desenlaces: unknown[] }> {
+): Promise<{
+  j: Jornada;
+  filas: (Conteo & { n: string })[];
+  desenlaces: unknown[];
+  lineasPorFila: Record<string, string[]>;
+}> {
   const filas: (Conteo & { n: string })[] = [];
   const desenlaces: unknown[] = [];
+  const lineasPorFila: Record<string, string[]> = {};
   let inicio: Conteo | null = null;
+  let inicioLineas = 0;
   const cerrarFila = (n: string) => {
     if (inicio === null) return;
     const fin = j.conteo();
@@ -613,18 +651,40 @@ async function medir(
       routes: fin.routes - inicio.routes,
       jobs: fin.jobs - inicio.jobs,
     });
+    lineasPorFila[n] = j.lineasGoogleApi.slice(inicioLineas);
   };
 
   for (const [i, evento] of eventos.entries()) {
     await j.avanzarHasta(en(evento.tMin));
     if (i > 0) cerrarFila(eventos[i - 1].n);
     inicio = j.conteo();
+    inicioLineas = j.lineasGoogleApi.length;
     desenlaces.push(await evento.correr(j));
   }
   const ultima = eventos[eventos.length - 1];
   await j.avanzarHasta(en(ultima.tMin + 120));
   cerrarFila(ultima.n);
-  return { j, filas, desenlaces };
+  return { j, filas, desenlaces, lineasPorFila };
+}
+
+/** Una linea `[google-api]` reducida a lo que afirma §13.3: `api:motivo`. */
+function apiMotivo(linea: string): string {
+  expect(linea.startsWith(`${GOOGLE_API_LOG_PREFIJO} `)).toBe(true);
+  const campos = JSON.parse(linea.slice(GOOGLE_API_LOG_PREFIJO.length + 1)) as {
+    api: string;
+    motivo: string;
+  };
+  return `${campos.api}:${campos.motivo}`;
+}
+
+/** Un recalculo: `route_optimization` y luego `routes`, con el mismo motivo (§13.3). */
+const recalculo = (motivo: string) => [`route_optimization:${motivo}`, `routes:${motivo}`];
+
+/** Las filas con lineas, en orden, como `fila → [api:motivo…]`. */
+function secuencia(lineasPorFila: Record<string, string[]>, orden: string[]): [string, string[]][] {
+  return orden
+    .filter((n) => (lineasPorFila[n] ?? []).length > 0)
+    .map((n) => [n, lineasPorFila[n].map(apiMotivo)]);
 }
 
 function totales(filas: Conteo[]): Conteo {
@@ -717,11 +777,14 @@ const JORNADA_A: Evento[] = [
   { n: "10", tMin: 100, descripcion: "Entrega s6 (quedan 0)", correr: (j) => gestionar(j, "s6", PARADAS.s6) },
 ];
 
-/** design §8.0, jornada A, columna «Nuevo». */
+/**
+ * design §8.0, jornada A, columna «Nuevo» (enmienda D30): el job del dia nace en la fila 0, con la
+ * primera recogida parcial (R76), y la fila 1b solo lo adelanta (R58).
+ */
 const NUEVO_A: (Conteo & { n: string })[] = [
-  { n: "0", opt: 0, routes: 0, jobs: 0 },
+  { n: "0", opt: 0, routes: 0, jobs: 1 },
   { n: "1", opt: 0, routes: 0, jobs: 0 },
-  { n: "1b", opt: 1, routes: 1, jobs: 1 },
+  { n: "1b", opt: 1, routes: 1, jobs: 0 },
   { n: "2", opt: 0, routes: 0, jobs: 0 },
   { n: "3", opt: 0, routes: 0, jobs: 0 },
   { n: "4", opt: 0, routes: 0, jobs: 1 },
@@ -767,8 +830,9 @@ const JORNADA_B: Evento[] = [
   },
 ];
 
+/** design §8.0, jornada B (enmienda D30): B1 deja el job de R76, que luego sale `obsoleta`. */
 const NUEVO_B: (Conteo & { n: string })[] = [
-  { n: "B1", opt: 0, routes: 0, jobs: 0 },
+  { n: "B1", opt: 0, routes: 0, jobs: 1 },
   { n: "B2", opt: 0, routes: 0, jobs: 0 },
   { n: "B3", opt: 1, routes: 1, jobs: 0 },
   { n: "B4", opt: 0, routes: 0, jobs: 0 },
@@ -789,6 +853,8 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
       recogidas: 4,
       asignadas: 7,
     });
+    // Fila 0 (R76): un solo job de recogida en todo el dia; la fila 1b lo movio (R58).
+    expect(j.jobs.filas.filter((f) => f.dedupeKey?.startsWith("ruta-opt:primera-recogida:"))).toHaveLength(1);
     // El arnes recorrio la jornada entera: sin paradas, cola vacia, y la orden sin coordenadas
     // nunca llega al proveedor.
     expect(j.rutas.fila?.paradas).toEqual([]);
@@ -796,6 +862,18 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     for (const [input] of j.optimizar.mock.calls) {
       expect(input.paradas.map((p) => p.ordenId)).not.toContain(SIN_COORDENADAS);
     }
+  });
+
+  it("T8.4/R75 — jornada A: las lineas [google-api] siguen la secuencia de motivos de §13.3", async () => {
+    const { j, lineasPorFila } = await medir(JORNADA_A);
+
+    expect(secuencia(lineasPorFila, JORNADA_A.map((e) => e.n))).toEqual([
+      ["1b", recalculo("primera_ruta_recogida_completa")],
+      ["6", recalculo("sincronizacion_manual_desvio")],
+      ["7", recalculo("entrega_fuera_de_orden")],
+    ]);
+    // 6 lineas, que cuadran con el {3, 3} facturado: una por peticion, nada mas (R69).
+    expect(j.lineasGoogleApi).toHaveLength(6);
   });
 
   it("filas 11-13: el 401 cuesta 1 llamada; el boton respeta el enfriamiento y luego recupera", async () => {
@@ -808,6 +886,15 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     expect(j11.optimizar).toHaveBeenCalledTimes(1);
     expect(j11.jobs.filas).toHaveLength(1);
     expect(j11.jobs.filas[0]).toMatchObject({ estado: "failed", intentos: 1 });
+    // T8.4 (§13.3): 1 linea, con el motivo del job y el 401.
+    expect(j11.lineasGoogleApi).toHaveLength(1);
+    expect(JSON.parse(j11.lineasGoogleApi[0].slice(GOOGLE_API_LOG_PREFIJO.length + 1))).toMatchObject({
+      api: "route_optimization",
+      motivo: "primera_ruta_recogida_completa",
+      resultado: "401",
+      intento: 1,
+      maxIntentos: CONFIG.RUTA_OPT_MAX_INTENTOS,
+    });
 
     // Filas 12 y 13 (R53): con la ruta del dia hecha, una sincronizacion a mano falla con 401
     // (fuera de las filas). Despues, el boton sin cambios ni desvio espera el enfriamiento.
@@ -820,7 +907,7 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     expect(j.rutas.fila?.estado).toBe("desactualizada");
     j.proveedor.estado.rechazar = false;
 
-    const { filas, desenlaces } = await medir(
+    const { filas, desenlaces, lineasPorFila } = await medir(
       [
         { n: "12", tMin: 32, descripcion: "Pulsa 2 min despues del fallo", correr: (jj) => sincronizar(jj, alNorte(A, 50)) },
         { n: "13", tMin: 36, descripcion: "Pulsa a los 6 min", correr: (jj) => sincronizar(jj, alNorte(A, 50)) },
@@ -833,16 +920,23 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     ]);
     expect(desenlaces[0]).toMatchObject({ status: "omitida", razon: "enfriamiento" });
     expect(desenlaces[1]).toMatchObject({ status: "ok" });
+    // T8.4 (§13.3): fila 12 ninguna linea; fila 13 `recuperacion_ruta_caida` x2.
+    expect(lineasPorFila["12"]).toEqual([]);
+    expect(lineasPorFila["13"].map(apiMotivo)).toEqual(recalculo("recuperacion_ruta_caida"));
   });
 
-  it("jornada B: la salida a mas de 1000 m paga la primera ruta y nada mas, {1, 1, 0}", async () => {
-    const { filas } = await medir(JORNADA_B);
+  it("jornada B: la salida a mas de 1000 m paga la primera ruta y nada mas, {1, 1, 1}", async () => {
+    const { filas, lineasPorFila } = await medir(JORNADA_B);
     console.info(informe("jornada B", JORNADA_B, filas));
     expect(filas).toEqual(NUEVO_B);
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
+    // T8.4 (§13.3): B3 -> `primera_ruta_salida` x2; el job de R76 sale `obsoleta` sin linea.
+    expect(secuencia(lineasPorFila, JORNADA_B.map((e) => e.n))).toEqual([
+      ["B3", recalculo("primera_ruta_salida")],
+    ]);
   });
 
-  it("variante B: la primera gestion antes de alejarse -> 1 / 1 / 1 (R59)", async () => {
+  it("variante B: la primera gestion antes de alejarse -> 1 / 1 / 2 (R59)", async () => {
     const eventos: Evento[] = [
       recogeB1,
       {
@@ -852,27 +946,31 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
         correr: (j) => gestionar(j, "s1", alOeste(B, 100)),
       },
     ];
-    const { filas } = await medir(eventos);
+    const { j, filas } = await medir(eventos);
     console.info(informe("variante B, primera gestion", eventos, filas));
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 2 });
+    // T8.4 (§13.3): `primera_ruta_primera_gestion` x2.
+    expect(j.lineasGoogleApi.map(apiMotivo)).toEqual(recalculo("primera_ruta_primera_gestion"));
   });
 
-  it("variante B: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 0 (R64)", async () => {
+  it("variante B: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 1 (R64)", async () => {
     const eventos: Evento[] = [
       recogeB1,
       { n: "B-boton", tMin: -4, descripcion: "Pulsa con el 86 %", correr: (j) => sincronizar(j, B) },
     ];
-    const { filas, desenlaces } = await medir(eventos);
+    const { j, filas, desenlaces } = await medir(eventos);
     console.info(informe("variante B, boton 86 %", eventos, filas));
     expect(desenlaces[1]).toMatchObject({ status: "ok" });
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
+    // T8.4 (§13.3): `primera_ruta_boton` x2.
+    expect(j.lineasGoogleApi.map(apiMotivo)).toEqual(recalculo("primera_ruta_boton"));
   });
 
-  it("variante B: el boton con 5 de 7 recogidas (71 %) no paga y dice «5 de 7» (R64)", async () => {
+  it("variante B: el boton con 5 de 7 recogidas (71 %) no paga, dice «5 de 7» y deja 0 / 0 / 1 (R64, R76)", async () => {
     const j = montarJornada();
     await j.avanzarHasta(en(-10));
-    await recogerDeUnaEnUna(j, ["s1", "s2", "s3", "s4", "s5"], B);
     const antes = j.conteo();
+    await recogerDeUnaEnUna(j, ["s1", "s2", "s3", "s4", "s5"], B);
     const desenlace = await sincronizar(j, B);
     expect(desenlace).toEqual({
       status: "omitida",
@@ -880,10 +978,16 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
       recogidas: 5,
       asignadas: 7,
     });
+    // La accion lo traduce a `conflict` «llevas 5 de 7» (`sincronizar-ruta.test.ts`). El job es
+    // el de las recogidas parciales (R76): uno solo, aun pendiente.
     const despues = j.conteo();
-    expect({ opt: despues.opt - antes.opt, routes: despues.routes - antes.routes }).toEqual({
-      opt: 0,
-      routes: 0,
-    });
+    expect({
+      opt: despues.opt - antes.opt,
+      routes: despues.routes - antes.routes,
+      jobs: despues.jobs - antes.jobs,
+    }).toEqual({ opt: 0, routes: 0, jobs: 1 });
+    expect(j.jobs.filas[0]).toMatchObject({ estado: "pending", payload: { origen: "recogida_parcial" } });
+    // T8.4 (§13.3): ninguna linea.
+    expect(j.lineasGoogleApi).toEqual([]);
   });
 });
