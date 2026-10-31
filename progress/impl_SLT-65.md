@@ -425,3 +425,321 @@ con `conAislamientoPorEmpresa`, como `zona-especial-dos-empresas.test.ts`.
 Veredicto: T3.1–T3.4 hechas y en verde fuera de la baseline. Queda abierta la decisión sobre los dos
 literales de `emisor-relaciones-anidadas` (`:253`, `:254`), y hay un aviso del `$transaction` del `tx`
 extendido para T4.
+
+## T6 — Script de rendimiento (backend_dev, 2026-10-31)
+
+### Archivos
+
+- `scripts/geo-equivalencia/captura-consultas.ts` (nuevo, T6.1): captura en el adaptador, repetición
+  como `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` y lectura del plan (`Execution Time`, Seq Scan sobre
+  `orden`).
+- `scripts/geo-explain-consultas.ts` (nuevo, T6.2): las cinco lecturas, la mediana de 5,
+  `hayRegresion` exportada, el informe y `main`.
+- `tests/integration/db/geo-explain-consultas.test.ts` (nuevo, T6.3).
+- `package.json`: solo la entrada `geo:explain-consultas`.
+- No se tocan `db/`, `lib/db/` ni los repositorios. No hay dependencias nuevas.
+
+### Dónde expone Prisma 7 el SQL y los parámetros (T6.1, design §10 paso 1)
+
+Verificado en `node_modules/.pnpm/@prisma+adapter-pg@7.8.0/.../dist/index.mjs` y en
+`@prisma/client@7.8.0/runtime/client.js`:
+
+- Toda consulta pasa por `PgQueryable.queryRaw(query)` o `executeRaw(query)`. De `PgQueryable` heredan
+  `PrismaPgAdapter`, que trabaja fuera de transacción, y `PgTransaction`, que trabaja dentro. `query` es
+  `SqlQuery = { sql, args, argTypes }`: el SQL con `$n` y los parámetros con su tipo, antes de que
+  `performIO` los pase por `mapArg` para `pg`.
+- `startTransaction` del adaptador manda `BEGIN` (y `SET TRANSACTION ISOLATION LEVEL`) por
+  `executeRaw`. El gestor de transacciones del cliente manda `{ sql: "COMMIT" }` y
+  `{ sql: "ROLLBACK" }` por `executeRaw`, y después llama a `commit()`/`rollback()`, que solo sueltan
+  la conexión.
+- Por eso la captura envuelve `connect` del `PrismaPg` y `startTransaction` del adaptador, igual que
+  `conConsultasEnSeriePorTransaccion`, y queda debajo de ella. No usa el evento `query`: ese evento
+  trae los parámetros en JSON y sin tipo.
+- El contexto de la RLS (`set_config(...)` de la extensión y `SET LOCAL ROLE` de los tests) se guarda
+  por transacción. Cada consulta lleva el suyo, y el script lo repite en una transacción nueva del
+  adaptador, que termina en `ROLLBACK`. El test, en cambio, repite la consulta en su propia
+  transacción (modo `su-transaccion`), porque el fixture solo existe en la transacción revertida.
+
+### Desviaciones y decisiones
+
+1. **BLOQUEO de guardia: `plataforma-solo-en-lista` en rojo.** El script llama a `comoPlataforma`
+   para dos cosas, y las dos vienen del design §10: elegir la empresa con más órdenes vivas cuando no
+   se pasa `--empresa`, y medir el conteo en plataforma. Para que la guardia pase hay que añadir una
+   entrada en `lib/db/excepciones-aislamiento.ts`, y ese archivo no me toca (`lib/db/` está fuera de
+   esta tanda). Entrada propuesta:
+   `{ archivo: "scripts/geo-explain-consultas.ts", ficha: "SLT-65", motivo: "comando de consola de solo lectura: elige la empresa con más órdenes vivas y mide el conteo sin entregar del superadmin, que corre sin empresa (design §10, R25)" }`.
+   Es la misma pregunta que T5.1 hace para el script de equivalencia. Afecta a R18: `lib/db/` dejaría
+   de tener solo la excepción de T5.1.
+2. **Antes se completa con las consultas que la copia no trae, solo en los dos listados.**
+   `paginaListadoDeHoy` y `paginaApiDeHoy` son solo la lectura geográfica. Según §8, el `count`, las
+   tarifas y las señales no entran. `list()` y `listByOwner` sí los ejecutan, así que, comparados tal
+   cual, «después» siempre sumaría consultas que «antes» no tiene. Para que la suma de antes también
+   sea la de la lectura entera (decisión del 2026-10-31), se le añaden las consultas de después que
+   antes no tiene (se cuentan por sentencia, con repeticiones) y que no nombran ninguna tabla de la
+   geografía, de las asignaciones ni del catálogo: `provincia`, `canton`, `distrito`, `zona`,
+   `zona_distrito`, `distrito_zona_especial`, `nodo_geografico`, `tipo_nivel_geografico` y
+   `organizacion`. Lo medí en la base local: en `list()` entran el `count`, las tarifas y la SQL cruda
+   de las señales. La consulta de `zona` que el catálogo lanza con cada `zona_distrito` queda fuera.
+   Si una consulta común leyera `zona`, antes se quedaría sin ella: el error empuja a marcar regresión,
+   nunca a esconderla. El informe dice cuántas consultas se añadieron («N comunes»).
+3. **Solo localhost.** El script se niega a correr si `DATABASE_URL` no es `localhost`, `127.0.0.1` o
+   `::1` (sale con 2), y no hay `--forzar`. Para T8.3, la persona tiene que restaurar la copia de
+   producción en local. Si la copia vive en otro host, hay que decidir si se añade un `--forzar` como el
+   de `bench-busqueda-ordenes.ts`.
+4. **Página de la API: 50.** Design §10 fija 50 para `/ordenes`, pero no da un tamaño para la API. Usé
+   el mismo; el valor por defecto de la API es 25 (`API_KEYS_DEFAULT_PAGE_SIZE`).
+5. **Lecturas sin muestra.** Si no hay cierre en los últimos 30 días, ni tienda con órdenes, ni zona con
+   distritos, la lectura sale como «sin muestra», no bloquea y cuenta en el total.
+6. **Reconciliación.** La lectura de después se llama como en `ZonaRepository.update`:
+   `planificarReconciliacion(sinTransaccionAnidada(tx), distritos)`. El helper de `_shared/` lo está
+   escribiendo el otro backend_dev. Mientras ese archivo cambiaba, una corrida falló una vez con
+   `planificarReconciliacion is not a function`; la siguiente pasó.
+7. Lo que se imprime: el id de la empresa, el de la provincia (nodo) y el de la zona, el número de
+   filas del cierre y números. No sale el id de la tienda (es un usuario) ni el del cierre.
+
+### Mapa R → test (T6)
+
+| R | Test |
+|---|---|
+| R24 | `geo-explain-consultas.test.ts`: «R24: con el cliente del script, un INSERT falla con 25006»; «R25, R24: … no escribe y no imprime SQL ni datos personales» (`orden`, `zona_distrito`, `distrito_zona_especial` y `cierre_detail` no cambian; la salida no contiene `DATOS_PERSONALES_GEO65`, el id de la tienda, `SELECT`, `FROM`, `INSERT`, `"public"` ni `$1`); «R24: la captura solo explica lecturas» |
+| R25 | `geo-explain-consultas.test.ts`: «R25, R24: mide las cinco lecturas con 5 corridas por lado» (Postgres real, fixture `geo-65`); «+19 % no es regresion; +21 % si»; «un Seq Scan sobre `orden` solo en despues es regresion; en los dos lados, no»; «el 20 % solo bloquea en las lecturas calientes»; «la mediana de 5 corridas, y el codigo de salida» |
+| T6.1 | «T6.1: el adaptador expone el SQL y los parametros tipados de `listByOwner`, y la consulta se puede explicar» |
+
+### Corridas (Postgres local en localhost:5432, `.env` de la raíz por comando, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+- `pnpm run typecheck`: sale 0, sin errores.
+- `pnpm run lint`: 0 errores y 232 avisos. Ningún aviso es de los tres archivos nuevos (`eslint` sobre
+  ellos sale limpio).
+- `npx vitest run tests/integration/db/geo-explain-consultas.test.ts`: 1 file, 11 passed (3 contra
+  Postgres real y 8 sin base).
+- Las guardias que miran `scripts/` (las de `tests/unit/guards` que nombran `scripts/`, más
+  `clave-remision-solo-lectura`, `geografia-predicado-unico`, `zona-especial-punto-unico` y
+  `dependencias-aprobadas`) son 39 files: 37 pasan y 2 fallan, con 570 tests en verde y 5 en rojo.
+  - `plataforma-solo-en-lista` falla por este script: es la desviación 1.
+  - `dependencias-declaradas-presentes` (4 tests) falla porque a `init.sh` le falta el marcador del
+    paso 2. Está en `tests/baseline-rojos.json` y no viene de este cambio.
+- `pnpm geo:explain-consultas` contra la base local (sale 1):
+
+```
+empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9: tienda=la de mas ordenes provincia=0371caa2-0857-4c6b-aac2-e668e67ad70c zona=da04c85d-7b0c-4b3e-ba8f-9bebb108fef8 (15 distritos) cierre=ninguno
+lectura listado-ordenes: consultas antes=13 (3 comunes) despues=18 | mediana de 5 antes=0.747 ms despues=2.441 ms (+226.8 %) | seq-scan orden antes=3 despues=3 | pared media antes=25.424 ms despues=73.794 ms | bloquea-20%=si regresion=SI
+lectura listado-api: consultas antes=9 (2 comunes) despues=12 | mediana de 5 antes=0.359 ms despues=1.838 ms (+412.0 %) | seq-scan orden antes=3 despues=2 | pared media antes=10.372 ms despues=24.073 ms | bloquea-20%=si regresion=SI
+lectura cierre-descriptivos: sin muestra (sin cierres en 30 dias)
+lectura reconciliacion: consultas antes=3 despues=8 | mediana de 5 antes=0.260 ms despues=3.038 ms (+1068.5 %) | seq-scan orden antes=2 despues=2 | pared media antes=7.174 ms despues=32.754 ms | bloquea-20%=no regresion=no
+lectura conteo-sin-entregar: consultas antes=1 despues=4 | mediana de 5 antes=0.073 ms despues=1.782 ms (+2341.1 %) | seq-scan orden antes=1 despues=1 | pared media antes=3.177 ms despues=19.530 ms | bloquea-20%=no regresion=no
+total: lecturas=5 con-regresion=2 fallidas=0 sin-muestra=1 salida=1
+```
+
+- Con una `DATABASE_URL` remota inventada sale 2 y dice «ABORTA: DATABASE_URL no apunta a
+  localhost…», sin tocar la base.
+- Lectura de la base local, que NO es la de T8.3: tiene pocas filas, y en ella la carga del catálogo
+  (tipos, nodos del país, asignaciones y marcas) cuesta más que lo que ahorra. Por eso los dos
+  listados salen en +200–400 %. Lo que decide es T8.3 sobre la copia de producción. Si allí se repite,
+  la primera mitigación es la de la pregunta cerrada 2 (los nombres del listado al catálogo) y después
+  T9.
+
+Veredicto: T6.1–T6.3 hechas y en verde. Queda un bloqueo: `plataforma-solo-en-lista` necesita la
+entrada del script en `lib/db/excepciones-aislamiento.ts`, que está fuera de mi alcance.
+
+## T7 — Guardias (backend_dev, 2026-10-31)
+
+### Archivos
+- Nuevo: `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` (T7.1, R21, design §12).
+- Ampliado: `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` (T7.2, R19). Los casos de
+  SLT-44 quedan igual (ningún `expect` cambia); se añaden dos `describe` de SLT-65.
+- Ampliado: `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (T7.2, R19). El caso de SLT-44
+  queda igual; se añade un `describe` anidado que comparte la base propia (`slt43_nb_…`).
+- Sin cambios en `lib/`, `scripts/`, `db/`, `lib/db/` ni dependencias.
+
+### Decisiones
+- **Clases vigiladas (R21), calculadas:** `CatalogoGeograficoRepository` y las clases exportadas de
+  los archivos de `lib/repositories/**` con un `import` de VALOR de `CatalogoGeograficoRepository` (un
+  `import type` o un comentario no cuentan). Hoy: `GeoRepository`, `OrdenRepository`,
+  `CoberturaRepository`, `ZonaRepository` y `CierreDiaRepository`, y el antivacío exige las seis.
+  También sigue los alias de import (`import { OrdenRepository as Repo }`).
+- **`_shared/sin-transaccion-anidada.ts`:** no entra en ninguna de las dos guardias como archivo
+  vigilado. En R21 no es una clase y solo nombra el repositorio en un comentario; aun así lo barre el
+  recorrido de `lib/`, así que una `new` de módulo en él saldría. En R19 no lee ninguna tabla: envuelve
+  el cliente (design §14 lista los cuatro archivos y no lo incluye).
+- **Integración, lecturas 6 y 7:** se mide la lectura (`leerDescriptivosDeOrdenes`,
+  `planificarReconciliacion`) y además la escritura entera (`crearCierre`, `ZonaRepository.update`)
+  dentro de un SAVEPOINT que siempre se deshace, para que las tres fases partan del mismo estado.
+- **Integración, tres fases:** llena → en NULL en `orden`, `zona_distrito` y `distrito_zona_especial`
+  con los triggers de SLT-43 apagados → desviada (órdenes al cantón retirado; asignaciones y marcas
+  al distrito «sin zona»). Se exige `enNull = llena` y `desviada = llena`.
+- **Orden de empate:** las órdenes del fixture comparten `created_at` (un `now()` en la misma
+  transacción), así que entre ellas la página sale en el orden físico de las filas, y el UPDATE de la
+  fase desviada lo cambia. Lo vio la primera corrida (`listByOwner` con dos filas cambiadas de
+  sitio, misma marca por fila). Las páginas se comparan ordenadas por clave (`numRemision` en la API,
+  `id` en el listado). No es de R19: el orden por `created_at` sin desempate es el de siempre.
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R19 | `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` («SLT-65 R19 …», archivos enteros: `OrdenRepository.ts`, `CierreDiaRepository.ts`, `ZonaRepository.ts`, `_shared/lugar-orden.ts`) y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` («SLT-65 R19 — las lecturas 1–7 …») |
+| R21 | `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` |
+
+### Contrapruebas
+- R21: los tres casos prohibidos de design §12 (constante de módulo, `new Servicio(new GeoRepository())`
+  de módulo y `static repo = new ZonaRepository()`) salen con `fuente.ts:<línea> <Clase>`. Los cuatro
+  permitidos (flecha, `function`, método y propiedad de instancia) no salen, y el detector sí los ve
+  (las cuatro `new` con `deModulo: false`). Un comentario, una cadena y una clase no vigilada no
+  cuentan; un alias de import sí. Árbol: más de 500 fuentes, más de 10 `new` reales de vigiladas
+  (todas por llamada o por instancia), cero instancias de módulo.
+- R19 (guardia): una mención en `contarSinEntregarPorNodoGeografico` la ve el barrido del archivo
+  entero y no el del bloque de SLT-44, que es lo que justifica ampliar el alcance. Sobre un archivo
+  real: `lugar-orden.ts` nombra `orden.nodo_geografico_id` en su comentario (el crudo da 1 mención) y
+  sin comentarios da 0. Antivacío por archivo: longitud y las lecturas que contiene.
+- R19 (integración): antivacío de cada lectura en la fase llena (5 marcas de 11 en la API y en el
+  cobro, 3 correcciones sin distrito, conteo de la provincia > 0, distrito central marcado en los
+  descriptivos y en el congelado, plan no vacío, guardado de zona con 1 reconciliada), y columnas:
+  ≥ 22 órdenes llenas antes, 0 llenas después en las tres tablas.
+
+### Salida real
+- `pnpm run typecheck` → `tsc --noEmit` sin errores.
+- `pnpm run lint` → `0 errors, 232 warnings` (todas preexistentes); los tres archivos tocados, con
+  `eslint` directo: 0 problemas.
+- `vitest run tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` →
+  `Tests 7 passed (7)`.
+- `vitest run tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` → `Tests 10 passed (10)`.
+- `vitest run tests/integration/db/geo-lecturas-sin-backfill.test.ts` (base local) → primera corrida
+  `1 failed | 1 passed` (el orden de empate, arriba); tras comparar por clave, `Tests 2 passed (2)`.
+  Sale un `DeprecationWarning` de `pg` (`client.query()` concurrente); no investigué de dónde viene.
+- `pnpm run test:guardias` no se corrió: es T7.3.
+
+Veredicto: T7.1 y T7.2 hechas y en verde; ninguna guardia nueva sale roja sobre `lib/` ni `scripts/`.
+
+## T5 — Script de equivalencia (backend_dev, 2026-10-31)
+
+### Archivos
+- `scripts/geo-equivalencia-consultas.ts` (nuevo): los bloques de design §9. Exporta
+  `compararEmpresaConsultas(cliente, organizacionId, opciones)`, `compararConteosDelPais(cliente,
+  paisId, opciones)`, `compararConteosDeLaEmpresa`, `lineasDeInforme`, `lineasDeInformeDePais`,
+  `codigoDeSalida`, `esBaseLocal`. Reutiliza `crearClienteDeSoloLectura` y `leerArgumentos` de
+  `geo-equivalencia-dinero.ts`, y `paraCadaEmpresa`. Se niega a correr si `DATABASE_URL` no es
+  localhost/127.0.0.1/::1 (salida 2).
+- `lib/repositories/CierreDiaRepository.ts`: se extrae `congeladoDeLaFila(f, descriptivos)` (exportada)
+  de las expresiones de marca y nombres del `createMany` de `crearCierre`, que ahora la esparce. Mismas
+  expresiones y mismo orden de evaluación (la zona, luego la marca: el primer `descriptivoDe` que lanza
+  es el mismo). Así el bloque `cierres` compara el código real de `crearCierre` sin escribir el cierre.
+- `tests/integration/db/geo-equivalencia-consultas.test.ts` (nuevo, 8 casos).
+- `package.json`: solo la línea `geo:equivalencia-consultas`.
+- `lib/db/excepciones-aislamiento.ts` (segunda tanda): las dos entradas de SLT-65 en
+  `EXCEPCIONES_DE_PLATAFORMA` (ver T5.1).
+
+### T5.1 (primera parte) — `comoPlataforma` en `scripts/` y `plataforma-solo-en-lista`
+**No pasa.** La guardia barre `lib/`, `app/`, `scripts/` y `tests/fabricas/` (`CARPETAS_PLATAFORMA`).
+Todo archivo que llame a `comoPlataforma(` tiene que estar en `EXCEPCIONES_DE_PLATAFORMA`
+(`lib/db/excepciones-aislamiento.ts`). Precedente: `scripts/geo-backfill-nodo.ts` (SLT-43). Hoy la
+guardia sale roja por `scripts/geo-explain-consultas.ts` (T6), que ya llama a `comoPlataforma` sin
+estar en la lista.
+
+**Resuelto (segunda tanda, 2026-10-31): se añadieron dos excepciones.** Las autoriza tasks.md T5.1 y
+T4.3, y las pidió el leader. Van al final de `EXCEPCIONES_DE_PLATAFORMA` en
+`lib/db/excepciones-aislamiento.ts`, con el formato de la de `scripts/geo-backfill-nodo.ts` (SLT-43):
+
+| archivo | ficha | motivo |
+|---|---|---|
+| `scripts/geo-explain-consultas.ts` | SLT-65 | «comando de consola de solo lectura, solo contra localhost: elige la empresa con más órdenes vivas y mide el conteo sin entregar del superadmin, que no tiene empresa (design §10, R25)» |
+| `scripts/geo-equivalencia-consultas.ts` | SLT-65 | «comando de consola de solo lectura, solo contra localhost: compara el conteo sin entregar por país en plataforma, como lo lee el superadmin, que no tiene empresa (design §9, R22)» |
+
+**AVISO PARA EL REVIEWER:** la lista de plataforma crece en dos entradas (las dos de SLT-65). Las dos
+son scripts de consola que no entran al build de la app. Los dos se niegan a correr si
+`DATABASE_URL` no es localhost, y su conexión nace con `default_transaction_read_only = on`.
+
+Cambio en el script (design §9, «una vez por país, en `comoPlataforma`»):
+- `compararConteosDelPaisEnPlataforma(cliente, paisId, clienteNuevo?)` (nueva, exportada) envuelve
+  `compararConteosDelPais` en `comoPlataforma("SLT-65", …)` con `ambito: "plataforma"`.
+- `paisesAComparar` lista, en plataforma, los `paisId` distintos de `organizacion`: el de `--empresa`,
+  o el de todas. `main` corre el conteo de cada país antes del bucle por empresa. Si un país falla,
+  se imprime `pais <id>: fallo al leer (<nombre>)` y la salida es 2.
+- **El bloque por empresa se mantiene** (`compararConteosDeLaEmpresa`, ámbito `empresa <id>`). Aporta
+  dos cosas: comprueba el conteo nuevo también bajo la RLS de una empresa, y su test es el que prueba
+  que una empresa no ve la orden incoherente de otra.
+- La línea `total:` suma `paises=<n>`: los países comparados en plataforma, contando los fallidos.
+  `fallidas` incluye los países que fallaron.
+- Test nuevo: «R22 — el conteo del pais, una vez por pais en plataforma». Corre CR y XA como el dueño,
+  sin `servi_app`, y comprueba: 0 diferencias, `ambito = plataforma`, antivacío (≥ 7 nodos en CR) y que
+  la orden incoherente de CR la ve CR y no XA. La orden incoherente se siembra **después** del conteo
+  que exige 0 diferencias. El motivo: con las FK viejas cuenta en otro cantón que con el lugar, y en
+  plataforma eso sale como `hoy=9 nuevo=8` en dos nodos. Es la diferencia que §5 propone tratar como
+  informativa, no la que mide este caso. Ningún `expect` de los casos que ya había cambia.
+
+### Otras decisiones
+- `cierres`: el conjunto (a) son las gestiones con `cierreId: null, anuladaAt: null`. Es un
+  superconjunto de lo que se llevaría un cierre, y basta porque el congelado es por orden. El conjunto
+  (b) son los `--muestra` detalles más recientes con las gestiones vigentes de su cierre. Se comparan
+  `estado` (ok/error: falta un descriptivo), la marca y los tres nombres geográficos (estos solo
+  «distinto»).
+- El ingreso de `cierres`: `derivarIngresoOrden` por cada gestión de (b), con `tarifaDe(detalle)`,
+  `resultado`, y `esCentral`, `montoCobrar` y `cobraComision` del detalle; la marca de hoy frente a la
+  nueva. Una orden con un descriptivo ausente no suma, porque ya sale distinta por orden.
+- `listados`: `OrdenListItemDTO` no lleva `esZonaEspecial`. La marca de `findListItemsByIds` se lee de
+  `fleteOrigen`: `especial`/`especial_sin_pacto` → true; `normal` con flete ≠ 0.00 → false. Sin tarifa
+  (`normal` y 0.00) no se puede saber: se cuenta en `sin-tarifa` y esa pata no se compara. La API se
+  compara siempre: `costeo.esZonaEspecial` de `listByOwner` de la tienda dueña, filtrada por la
+  remisión o la guía.
+- `reconciliacion`: `planificarReconciliacion` recibe el cliente del script, no un `tx`. La carga del
+  catálogo abre su propia transacción y no hace falta `sinTransaccionAnidada`.
+- `correccion`: estos campos solo se imprimen como «distinto»: `destinatario`, `telefonoDest`,
+  `producto`, `notas`, `direccion`, `distritoNombre` y `zonaNombre`.
+
+### Mapa R → test (`tests/integration/db/geo-equivalencia-consultas.test.ts`)
+| R | Caso |
+|---|---|
+| R22 | «0 diferencias en los seis bloques de las dos empresas y en el conteo de sus nodos» (antivacío por bloque) |
+| R22 (contraprueba) | «las ordenes del canton sin marca propia salen distintas en cierres, cobro, correccion y listados» (marca inyectada en el cantón, en la lectura nueva) |
+| R23 | «la muestra respeta --muestra…», «la orden con cadena incoherente se cuenta y se nombra…», «codigoDeSalida: 0 si coincide…» |
+| R24 | «con el cliente del script, un INSERT falla con 25006», «esBaseLocal: solo localhost…», «las filas quedan iguales y la salida, tambien la de la contraprueba, no lleva datos personales» |
+
+### Corridas (Postgres local en localhost; `.env` de la raíz por comando)
+- `pnpm run typecheck` → sin errores.
+- `pnpm run lint` → `✖ 232 problems (0 errors, 232 warnings)`. `eslint` sobre los tres archivos tocados → sin salida.
+- `vitest run tests/integration/db/geo-equivalencia-consultas.test.ts` → `Test Files 1 passed (1)`, `Tests 8 passed (8)`.
+- `vitest run` de `plataforma-solo-en-lista`, `geo-equivalencia-dinero` y `geo-consultas-cierre` →
+  `Tests 1 failed | 19 passed (20)`. El rojo es `plataforma-solo-en-lista`:
+  `expected [ 'scripts/geo-explain-consultas.ts' ] to deeply equal []`. Ese archivo es de T6; este
+  script no aparece. `geo-equivalencia-dinero` y `geo-consultas-cierre` salen en verde.
+- Las 13 suites que ejercitan `crearCierre` y `cierre_detail` → `Tests 269 passed | 33 skipped`.
+  `costo-y-zona-api-415` y `dinero-productos.int` fallan en la preparación (faltan zonas sembradas;
+  `referencia a otra empresa`). Las dos están en `tests/baseline-rojos.json`.
+- `pnpm geo:equivalencia-consultas` contra la base local (`localhost`, base `logistic`), salida 0:
+  ```
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cierres: comparados=0 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cierres-ingreso: comparados=0 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cobro-devolucion: comparados=15 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 correccion: comparados=15 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 listados: comparados=15 distintos=0 sin-tarifa=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 reconciliacion: comparados=1 distintos=0
+  pais CR (empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9) conteo-sin-entregar: comparados=27 distintos=0
+  pais CR (empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9) cadena-incoherente: ordenes=0
+  total: empresas=1 con-diferencias=0 conteos-con-diferencias=0 cadena-incoherente=0 fallidas=0 salida=0
+  ```
+  La base local no tiene cierres; el bloque `cierres` contra el fixture lo cubre el test. El fixture de
+  `geo-65.ts` vive en la transacción revertida del test, no en la base: «sale 0 con el fixture» es el
+  primer caso del test.
+- Con `DATABASE_URL` fuera de localhost → `ABORTA: DATABASE_URL no apunta a localhost…`, salida 2. Con
+  un argumento desconocido → el uso, salida 2.
+
+### Corridas de la segunda tanda (excepciones + país en plataforma; `.env` de la raíz por comando, `NODE_OPTIONS=--max-old-space-size=8192`)
+- `pnpm run typecheck` (y `tsc --noEmit` tras el último retoque) → sin errores, salida 0.
+- `pnpm run lint` → `✖ 232 problems (0 errors, 232 warnings)`, las mismas de antes. `eslint` sobre los
+  tres archivos tocados → sin salida.
+- `vitest run tests/unit/guards/plataforma-solo-en-lista tests/integration/db/geo-equivalencia-consultas.test.ts tests/integration/db/geo-explain-consultas.test.ts`
+  → `Test Files 3 passed (3)`, `Tests 27 passed (27)`. **`plataforma-solo-en-lista` en verde.**
+- `pnpm geo:equivalencia-consultas` contra la base local (localhost), salida 0:
+  ```
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cierres: comparados=0 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cierres-ingreso: comparados=0 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 cobro-devolucion: comparados=15 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 correccion: comparados=15 distintos=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 listados: comparados=15 distintos=0 sin-tarifa=0
+  empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9 reconciliacion: comparados=1 distintos=0
+  pais CR (plataforma) conteo-sin-entregar: comparados=27 distintos=0
+  pais CR (plataforma) cadena-incoherente: ordenes=0
+  pais CR (empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9) conteo-sin-entregar: comparados=27 distintos=0
+  pais CR (empresa 27b391d7-b405-406c-a0ff-e3d3ce3933f9) cadena-incoherente: ordenes=0
+  total: empresas=1 con-diferencias=0 conteos-con-diferencias=0 cadena-incoherente=0 paises=1 fallidas=0 salida=0
+  ```
+
+Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataforma nuevas (SLT-65), avisadas al reviewer, y el conteo del país corre en plataforma, como pide design §9.

@@ -394,6 +394,45 @@ function descriptivoDe<T>(mapa: Map<string, T>, id: string, tabla: string): T {
   return fila;
 }
 
+/** La marca y los nombres que `crearCierre` congela en `cierre_detail` para una fila. */
+export interface CongeladoDeLaFila {
+  esCentral: boolean;
+  esZonaEspecial: boolean;
+  tiendaNombre: string;
+  zonaNombre: string;
+  provinciaNombre: string;
+  cantonNombre: string;
+  distritoNombre: string | null;
+}
+
+/**
+ * SLT-65 (design §9) — lo que `crearCierre` congela de la zona, la tienda y la geografia de una
+ * fila. Sale de `crearCierre` para que el script de equivalencia lo calcule sin escribir el cierre.
+ * Un descriptivo ausente lanza (`descriptivoDe`), igual que dentro de la transaccion.
+ */
+export function congeladoDeLaFila(f: SnapshotRow, descriptivos: DescriptivosDeOrden): CongeladoDeLaFila {
+  return {
+    esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
+    // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
+    // no mueve esta fila. SLT-65 (R5): es la marca del LUGAR de la orden, su distrito o,
+    // sin distrito (el unico FK nullable de `orden`), su canton. Con marcas solo en
+    // distritos la del canton es `false`, lo mismo que se congelaba antes.
+    esZonaEspecial:
+      f.orden.distritoId === null
+        ? descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").zonaEspecial
+        : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").zonaEspecial,
+    // descriptivos (R7).
+    tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
+    zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
+    provinciaNombre: descriptivoDe(descriptivos.provincias, f.orden.provinciaId, "provincia").nombre,
+    cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
+    distritoNombre:
+      f.orden.distritoId === null
+        ? null
+        : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
+  };
+}
+
 // Money-safe: STRING escala 2 -> Decimal (nunca number/parseFloat), R11. `null` = la tienda
 // no tenia tarifa vigente al solicitar (gap R9): las 9 columnas quedan NULL, todas o ninguna.
 // `tarifaFulfillment` (2026-08-19) entra por la MISMA puerta aunque no alimente la formula:
@@ -1345,16 +1384,8 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               cobraComision: f.orden.cobraComision,
               zonaId: f.orden.zonaId,
               tiendaId: f.orden.tiendaId,
-              esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
-              // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
-              // no mueve esta fila. SLT-65 (R5): es la marca del LUGAR de la orden, su distrito o,
-              // sin distrito (el unico FK nullable de `orden`), su canton. Con marcas solo en
-              // distritos la del canton es `false`, lo mismo que se congelaba antes.
-              esZonaEspecial:
-                f.orden.distritoId === null
-                  ? descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").zonaEspecial
-                  : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
-                      .zonaEspecial,
+              // La marca y los nombres congelados (R5–R7): `congeladoDeLaFila`, arriba.
+              ...congeladoDeLaFila(f, descriptivos),
               ...tarifaColumnas(
                 tarifas.get(
                   clavePar({ tiendaId: f.orden.tiendaId, zonaId: f.orden.zonaId }),
@@ -1366,18 +1397,6 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               destinatario: f.orden.destinatario,
               direccion: f.orden.direccion,
               producto: f.orden.producto,
-              tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
-              zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
-              provinciaNombre: descriptivoDe(
-                descriptivos.provincias,
-                f.orden.provinciaId,
-                "provincia",
-              ).nombre,
-              cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
-              distritoNombre:
-                f.orden.distritoId === null
-                  ? null
-                  : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
             })),
           });
         }

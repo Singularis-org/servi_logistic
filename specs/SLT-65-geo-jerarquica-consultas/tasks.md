@@ -78,16 +78,16 @@
 
 ## T5 — Script de equivalencia [T2, T3, T4]
 
-- [ ] **T5.1** Verificar las dos cosas de design §9:
+- [x] **T5.1** Verificar las dos cosas de design §9:
   - si `comoPlataforma` en `scripts/` pasa `plataforma-solo-en-lista`;
   - qué consume `RechazoTiendaService` de la fila.
 
   **Hecho:** las respuestas están en `progress/impl_SLT-65.md`. Si hace falta una excepción nueva,
   se añade con su motivo y se avisa al reviewer.
-- [ ] **T5.2** `scripts/geo-equivalencia-consultas.ts` con los bloques de design §9, y
+- [x] **T5.2** `scripts/geo-equivalencia-consultas.ts` con los bloques de design §9, y
   `pnpm geo:equivalencia-consultas` en `package.json`. **Hecho:** corre contra la base de tests
   local y sale 0 con el fixture.
-- [ ] **T5.3** `tests/integration/db/geo-equivalencia-consultas.test.ts` (R22–R24). **Hecho:**
+- [x] **T5.3** `tests/integration/db/geo-equivalencia-consultas.test.ts` (R22–R24). **Hecho:**
   pasa, con la contraprueba de la marca en un cantón.
 
 ## T6 — Script de rendimiento [T2, T3, T4]
