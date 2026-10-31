@@ -149,3 +149,55 @@ petición y empresa, las 11 lecturas que pasan, lo que sigue en tablas viejas ha
 SLT-46), R12 (el lugar se lee de `distrito_id`), y `pnpm geo:equivalencia-dinero` (0/1/2, lo corre una persona
 sobre una copia de producción con SLT-43, ningún agente).
 - `node scripts/check-perfil.mjs`: «6/6 docs revisados en los ultimos 60 dias», exit 0.
+
+## Tanda 6 — T7.1 (gate local)
+
+`./init.sh` (con `DATABASE_URL` → `logistic_slt44`, `NODE_OPTIONS=--max-old-space-size=8192`): Claude Code lo mató
+por memoria del sistema durante el `lint`, después de un typecheck verde y sin rojos en los pasos previos (perfil
+6/6, cliente de Prisma y tipos de ruta al día). Como en SLT-43 T7.1, se corrió por separado:
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0, 0 errores, 230 warnings (ninguno nuevo en archivos de SLT-44, ver tandas 3–4).
+- `pnpm run test:guardias`: 323 passed, 1 failed, 3 skipped (archivos); 4552 passed, 4 failed, 24 skipped (tests).
+  Los 4 rojos, `dependencias-declaradas-presentes.guardia.test.ts`, en `tests/baseline-rojos.json`.
+- `vitest run --maxWorkers=2` de los 15 archivos de T2–T5 (`geografia-dominio`, las 3 guardias de geografía nuevas,
+  `geo-catalogo-repository`, `geo-lecturas-catalogo`, `geo-lecturas-sin-backfill`, `geo-equivalencia-dinero`,
+  `catalogo-filtros-ordenes`, `orden-repository.bulk`, `geografia-activa`, los 4 composition-root):
+  **15 files / 124 tests passed, 0 failed, 0 skipped.**
+- `gate-completo` de CI: pendiente del PR (lo abre el leader). T7.1 queda sin marcar hasta entonces.
+
+R25: `git diff --name-only origin/dev...HEAD -- db/` **no sale vacío**: trae las 6 migraciones `20261030120*` de
+SLT-43 y `db/schema.prisma`, porque la rama se apila sobre el PR #44, que todavía no está en `dev`
+(`merge-base --is-ancestor origin/feature/SLT-43-geo-jerarquica-modelo origin/dev` → no). Comprobación equivalente:
+ningún commit propio de SLT-44 (`9b0cba7`…`f2aa71c`) toca `db/` (0 archivos por commit); solo el merge base
+`0dc0847` de SLT-43. Cuando el PR #44 entre en `dev` y se mergee `origin/dev` aquí, el comando literal debe salir vacío.
+
+### Mapa R<n> → test
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/guards/geografia-dominio-puro.guardia.test.ts` (con contraprueba) |
+| R2 | `tests/unit/services/geografia-dominio.test.ts` |
+| R3 | `tests/unit/services/geografia-dominio.test.ts` |
+| R4 | `tests/unit/services/geografia-dominio.test.ts` |
+| R5 | `tests/unit/services/geografia-dominio.test.ts` (8 + 4 combinaciones) + `tests/unit/repositories/geografia-activa.test.ts` |
+| R6 | `tests/unit/services/geografia-dominio.test.ts` |
+| R7 | `tests/unit/services/geografia-dominio.test.ts` |
+| R8 | `tests/unit/services/geografia-dominio.test.ts` + `tests/integration/db/geo-equivalencia-dinero.test.ts` |
+| R9 | `tests/integration/db/geo-catalogo-repository.test.ts` |
+| R10 | `tests/integration/db/geo-catalogo-repository.test.ts` (ver abierto de la tanda 2) |
+| R11 | `tests/integration/db/geo-catalogo-repository.test.ts` |
+| R12 | `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` + `tests/integration/db/geo-lecturas-sin-backfill.test.ts` |
+| R13 | `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts` (con contraprueba) |
+| R14 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `filtros-ordenes-service`, `catalogo-filtros-ordenes` |
+| R15 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `zona-especial-dos-empresas` |
+| R16 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `geografia-service`, `geografia-catalogo-activo` |
+| R17 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `geografia-dos-paises`, `geografia-superadmin-sin-empresa` |
+| R18 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `cotizacion-api-key`, `ordenes-carga-masiva-chunk.route`, `carga-masiva-errores-roundtrip`, `geo-resolucion-retirados`, `orden-repository.bulk` |
+| R19 | `tests/integration/db/geo-lecturas-catalogo.test.ts` (`corregir-datos-cliente.repo` no ejecuta en local: baseline) |
+| R20 | `tests/integration/db/geo-lecturas-catalogo.test.ts` + `cobertura-vs-resolve-geo` (`cobertura-repository` no ejecuta en local: baseline) |
+| R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts` |
+| R22 | `tests/integration/db/geo-equivalencia-dinero.test.ts` |
+| R23 | `tests/integration/db/geo-equivalencia-dinero.test.ts` |
+| R24 | `nodo-geografico-sin-escritor.guardia`, `geo-repository.escrituras`, `geografia-alta`, `distrito-zona-especial-por-empresa`, `zona-repository` (`geografia-historico-intacto`, `geografia-renombrado` no ejecutan en local: baseline) |
+| R25 | Comprobación de diff (arriba): ningún commit de SLT-44 toca `db/`; el literal espera al merge del PR #44 |
+| R26 | `gate-completo` de CI en el PR (pendiente) |

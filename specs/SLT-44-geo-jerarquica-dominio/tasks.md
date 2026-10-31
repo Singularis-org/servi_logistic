@@ -136,6 +136,8 @@
   - la salida de `git diff --name-only origin/dev...HEAD -- db/`, que debe salir vacía (R25).
 
   *Hecho:* todo verde y el `gate-completo` del PR en verde.
+  *Estado (2026-10-31):* parte local hecha y verde (`progress/impl_SLT-44.md > Tanda 6`); queda sin
+  marcar hasta el `gate-completo` del PR, que abre el leader.
 - [ ] **T7.2** **Puerta humana, fuera del agente** (design §6.2). Una persona corre `pnpm
   geo:equivalencia-dinero` sobre una **copia** de producción con SLT-43 aplicada y pega la salida
   en el PR. *Hecho:* salida 0 pegada en el PR. Con 1 o 2, el PR no entra. Ningún agente lo ejecuta.
