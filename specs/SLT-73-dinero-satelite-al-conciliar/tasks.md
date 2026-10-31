@@ -7,29 +7,29 @@
 
 ## Tareas
 
-- [ ] **T1 — Migraciones A y B (enums, tabla de ajuste y CHECKs).** `backend_dev`.
+- [x] **T1 — Migraciones A y B (enums, tabla de ajuste y CHECKs).** `backend_dev`.
   Entrega `20261031140000_slt73_diferencia_satelite_enums` y
   `20261031140100_slt73_ajuste_conciliacion`, cada una con su `down.sql`. El modelo va en
   `db/schema.prisma` y la clasificación en `lib/db/modelos-de-negocio.ts`. Se verifica si hay CHECK
   de origen por categoría y se actualiza. Se actualiza `NATURALEZA_POR_CATEGORIA`.
   *Hecho:* `pnpm prisma migrate deploy` y `pnpm run db:rollback`×2 funcionan sobre la base de test;
   la guardia `organizacion-en-modelos` está verde; el int de RLS de la tabla está verde.
-- [ ] **T2 — Extraer `asentarCierreDia`** (`lib/repositories/_shared/asientos-cierre-dia.ts`). Se
+- [x] **T2 — Extraer `asentarCierreDia`** (`lib/repositories/_shared/asientos-cierre-dia.ts`). Se
   mueve el bloque de `CierresAdminRepository.ts:1891-1953` sin cambiar su lógica. Depende de: —.
   *Hecho:* la suite de aprobación existente (`cierres-admin-caja-cod.test.ts`,
   `wallet-idempotencia.test.ts`, `cierres-admin-indemnizacion.test.ts`) está verde sin tocarla.
-- [ ] **T3 — Aprobación de satélite sin asientos (R1–R3).** Lleva el `if (destinoTipo ===
+- [x] **T3 — Aprobación de satélite sin asientos (R1–R3).** Lleva el `if (destinoTipo ===
   "bodega_central")` dentro de la tx. Se censan con grep los tests que aprueban un satélite y
   esperan filas en los libros, y se ajustan. Depende de T2.
   *Hecho:* `slt73-aprobar-satelite-sin-asientos` y `slt73-aprobar-central-igual` están verdes, y
   las mutaciones de la tabla mueren.
-- [ ] **T4 — Marca y corrección asientan (R10–R13, R15, R22).** Toca `marcarConciliado`,
+- [x] **T4 — Marca y corrección asientan (R10–R13, R15, R22).** Toca `marcarConciliado`,
   `corregirConciliacion`, el constructor con default y `paraLaCentral` como esperado. Depende de
   T1 y T2.
   *Hecho:* `slt73-marcar-asienta` y `slt73-corregir-diferencia` están verdes y sus mutaciones
   mueren. Se ajustan `marca-conciliacion.int.test.ts`, `corregir-conciliacion.int.test.ts` y
   `cierres-bodega-admin-marca.test.ts`.
-- [ ] **T5 — Reversión bloqueada con asientos (R14, sujeta a Q2).** Toca el repo, el servicio, el
+- [x] **T5 — Reversión bloqueada con asientos (R14, sujeta a Q2).** Toca el repo, el servicio, el
   tipo de resultado y la acción `lib/actions/conciliacion-satelites.ts`. Depende de T4.
   *Hecho:* el caso nuevo de `marca-conciliacion.int.test.ts` y los unit de servicio y de acción
   están verdes.
@@ -50,7 +50,7 @@
   `ON CONFLICT DO NOTHING`. Depende de T1.
   *Hecho:* `slt73-migracion-retira-asientos.int.test.ts` está verde. `prisma migrate diff` no
   reporta drift por el esquema `respaldo`. El up, el down y el up otra vez dejan el blob igual.
-- [ ] **T9 — Medición en prod antes del deploy (Q5).** La hace el **leader**, solo lectura: cuántas
+- [x] **T9 — Medición en prod antes del deploy (Q5).** La hace el **leader**, solo lectura: cuántas
   filas de tienda y de mensajero tiene el conjunto `S`, si hay `liquidacion_pago` contra él y si la
   tienda afectada ya cobró. No va al repo ningún dato de prod. Depende de T8.
   *Hecho:* el resultado está anotado en `progress/features/SLT-73.md` y se ha decidido si se
