@@ -33,7 +33,7 @@
   tipo de resultado y la acción `lib/actions/conciliacion-satelites.ts`. Depende de T4.
   *Hecho:* el caso nuevo de `marca-conciliacion.int.test.ts` y los unit de servicio y de acción
   están verdes.
-- [ ] **T6 [P] — Deuda en `SaldosSatelitesRepository` y `CierreBodegaRepository` (R4–R8).** Toca
+- [x] **T6 [P] — Deuda en `SaldosSatelitesRepository` y `CierreBodegaRepository` (R4–R8).** Toca
   `saldoDe` (firma y docstring), los DTO y `findResumen`. Depende de T2 solo para el árbol; puede
   ir en paralelo a T3–T5.
   *Hecho:* `slt73-deuda-satelite.int.test.ts` y el `saldo-satelites.int.test.ts` actualizado están
