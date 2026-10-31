@@ -36,3 +36,9 @@ Subagentes en Opus (memoria: Fable agotado).
 - Spec: Q1 cerrada = (a) (D2); añadidos R11/R12 (migración y su down). Timestamp de la migración
   movido a `20261031120000` (el `20261030120000` ya lo usa `incentivo_mensajero_enums` de SLT-68).
 - Tarjeta movida a En curso con la cita como aprobación escrita.
+
+## 2026-10-31 — implementación (hotfix)
+- T1–T6 commiteadas en `hotfix/SLT-63-…`. Bitácora: `progress/impl_SLT-63.md`.
+- 138/R18 acotado (solo devolución), 259/R10 acotado (cuenta hasta la recepción central).
+- Gate local INIT_EXIT=1 por entorno: a la base del .env le falta la migración de SLT-68. Los 3 rojos pasan contra `servi_slt63`. Detalle en la bitácora.
+- Pendiente de decidir: entrada nueva en la lista blanca de `asignado-at-solo-lectura.guardia` para la migración de SLT-63 (escribe solo NULL).

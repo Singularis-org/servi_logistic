@@ -84,8 +84,8 @@ Desbloqueada: Q1 = (a) (D2, 2026-10-30 y reconfirmada por Carlos el 2026-10-31: 
 
 ## T7. Cierre
 - [ ] `./init.sh` en verde.
-- [ ] Mapa `R<n> → test` completo en `progress/impl_SLT-63.md`.
-- [ ] Nota en la sección de la ficha de `progress/features/SLT-63.md`: «138/R18 acotado, 259/R10
+- [x] Mapa `R<n> → test` completo en `progress/impl_SLT-63.md`.
+- [x] Nota en la sección de la ficha de `progress/features/SLT-63.md`: «138/R18 acotado, 259/R10
       acotado».
 
 ## Archivos esperados

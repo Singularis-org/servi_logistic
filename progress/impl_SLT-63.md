@@ -132,3 +132,12 @@ Cada una aplicada con un script de reemplazo exacto (aborta si no casa 1 vez), a
 ## Veredicto
 
 T1–T6 hechas y commiteadas; R1–R12 con test que se vio rojo por mutacion (salvo M8, equivalente); pendiente el gate del leader y decidir la entrada de la lista blanca de `asignado_at`.
+
+## Gate local (implementer, 2026-10-31)
+
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre 19178cb4: **INIT_EXIT=1**.
+- typecheck, lint y guardias: en verde.
+- `test:rapido`: 3 archivos rojos nuevos (fuera del baseline), 14 tests. Son `aislamiento-cierres`, `demo-qa` y `nucleo-sin-modulos`, y ninguno está en el diff de SLT-63.
+- Causa: la base del `.env` (compartida) no tiene aplicada la migración `20261030120000_incentivo_mensajero_enums` de SLT-68, que ya está en prod. Por eso aprobar un cierre falla con P2007 «enum pago_mensajero_movimiento_categoria: incentivo». Es un problema de entorno; el código no tiene que ver.
+- Contraprueba: esos 3 archivos contra `servi_slt63`, con todas las migraciones aplicadas, salen **3/3 archivos, 21/21 tests passed**.
+- No migré la base compartida porque la usan otros worktrees. Lo decide el leader: migrarla y relanzar el gate, o fiarse del `gate-completo` de CI.
