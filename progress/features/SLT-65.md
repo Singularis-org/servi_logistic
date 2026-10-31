@@ -9,7 +9,10 @@
 ## Estado
 F1.0 hecho (2026-10-31): tomada en Trello y worktree creado. La rama nace de `dev` y lleva mergeado
 `feature/SLT-44-geo-jerarquica-dominio` (PR #55, que a su vez lleva SLT-43, PR #44; ninguno
-mergeado) como base. F1.1 (`/afinar-feature`) hecho. Siguiente: F1.2, spec_author.
+mergeado) como base. F1.1 (`/afinar-feature`) hecho. F1.2 hecho (2026-10-31, spec_author):
+`requirements.md` (R1–R28, 4 preguntas abiertas con propuesta), `design.md` y `tasks.md` en
+`specs/SLT-65-geo-jerarquica-consultas/`. Siguiente: F1.3, puerta humana (`spec_ready`) y cerrar las
+preguntas abiertas 1–4.
 
 ## Evaluación
 - zone `backend`; complexity `high` fijada por el leader: toca lecturas de dinero (cierres,
