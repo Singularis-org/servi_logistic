@@ -92,13 +92,13 @@
 
 ## T6 — Script de rendimiento [T2, T3, T4]
 
-- [ ] **T6.1** `scripts/geo-equivalencia/captura-consultas.ts`. Primero se verifica dónde expone el
+- [x] **T6.1** `scripts/geo-equivalencia/captura-consultas.ts`. Primero se verifica dónde expone el
   adaptador de Prisma 7 el SQL y los parámetros (design §10, paso 1). **Hecho:** un test de
   `geo-explain-consultas.test.ts` captura las consultas de `listByOwner` contra la base local.
-- [ ] **T6.2** `scripts/geo-explain-consultas.ts` con las cinco lecturas de design §10, la mediana
+- [x] **T6.2** `scripts/geo-explain-consultas.ts` con las cinco lecturas de design §10, la mediana
   de 5, `hayRegresion` exportada y `pnpm geo:explain-consultas` en `package.json`. **Hecho:** corre
   contra la base local y su salida no tiene SQL ni datos personales.
-- [ ] **T6.3** `tests/integration/db/geo-explain-consultas.test.ts` (R24, R25). **Hecho:** pasa con
+- [x] **T6.3** `tests/integration/db/geo-explain-consultas.test.ts` (R24, R25). **Hecho:** pasa con
   los casos de +19 %, +21 % y Seq Scan en los dos lados o solo en «después».
 
 ## T7 — Guardias [T2, T3, T4]
