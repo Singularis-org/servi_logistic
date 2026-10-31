@@ -56,15 +56,18 @@
   *Hecho:* el resultado está anotado en `progress/features/SLT-73.md` y se ha decidido si se
   despliega.
 - [ ] **T11 — Enmienda D12: dueño «por cobrar a satélites» y sexta cifra de la caja (R24–R27,
-  R30).** `backend_dev`. **Pendiente de OK de Carlos** (requirements §F, Q6). Sin migración: la
-  naturaleza es solo de TypeScript (design §2.9).
+  R30).** `backend_dev`. Aprobada por Carlos 2026-10-31 (D12–D14). Sin migración: la naturaleza es
+  solo de TypeScript (design §2.9).
   Toca:
   - `NaturalezaMovimiento`;
   - `NATURALEZA_POR_CATEGORIA` de las dos diferencias;
   - `acumular`, con ramas explícitas y un `never`;
-  - `derivarCaja`: sexta `derivarBalance(egresos, ingresos)`, la identidad y el reparto con
-    `deEmpresa − porCobrar`;
-  - `CajaResumenDTO`, con `porCobrarSatelites` y `signoPorCobrarSatelites`.
+  - `derivarCaja`: sexta `derivarBalance(egresos, ingresos)` y la identidad;
+  - `derivarReparto`: tres tramos (design §2.9.6). Con P ≤ 0, lógica de hoy intacta; con P > 0,
+    modo `tres_tramos` sobre `E + T`, con `min(…, 100 − tiendas)` y la empresa como resto;
+  - `MODO_COMPOSICION_CAJA_SEED` + `tres_tramos`;
+  - `CajaResumenDTO`, con `porCobrarSatelites`, `signoPorCobrarSatelites`,
+    `porcentajePorCobrarSatelites` y `deEmpresaEnCaja`.
 
   Ajusta las guardias `caja-clasificacion-459` (caso nuevo y su contraprueba),
   `caja-derivaciones` (de 5 a 6) y `metrics-caja-naturaleza` (fuera del literal de `terceros`), más
@@ -73,17 +76,22 @@
   Depende de T1. Puede ir en paralelo a T4–T6, pero **R26 se cierra después de T4**.
   *Hecho:* `pnpm run test:guardias` sin `caja-clasificacion-459` en rojo. Los casos R24–R27 y R30 de
   `design.md > Trazabilidad` están verdes y sus mutaciones mueren, con autocomprobación.
-- [ ] **T12 — Enmienda D12: bloque y dueño en la pantalla de caja (R28, R29).** `frontend_dev`.
-  **Pendiente de OK de Carlos** (Q7 y rótulos provisionales).
+- [ ] **T12 — Enmienda D12: bloque, tercer tramo de la barra y dueño en la pantalla de caja (R28,
+  R29, R30 en pantalla).** `frontend_dev`. Aprobada por Carlos 2026-10-31 (D13: tercer tramo; D14:
+  el bloque siempre, también con ₡0). Las pistas y «Satélite» siguen provisionales.
   Toca:
   - `CajaResumenCard.tsx`: tercer bloque hermano `data-bolsillo="satelites"`, fuera del de la
-    empresa;
-  - `wallet-labels.ts`: rótulo, pistas positiva y negativa, y `DUENO_LABEL.por_cobrar_satelite`;
+    empresa, que se pinta siempre. También `BOLSILLO_EMPRESA.tres_tramos`;
+  - `BarraComposicionCaja.tsx`: `SEGMENTOS_POR_MODO.tres_tramos` (tiendas, `por_cobrar`, empresa
+    como resto), con color por token;
+  - `wallet-labels.ts`: rótulo, pistas positiva y negativa, `DUENO_LABEL.por_cobrar_satelite`,
+    `CAJA_COMPOSICION_MENSAJE.tres_tramos` y `composicionCajaNombreAccesible` con los tres tramos;
   - `WalletLedger.tsx`: `DUENO_PUNTO`.
 
   Depende de T11.
   *Hecho:*
-  - `CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo), `wallet-ledger-dueno.test.tsx` y
+  - `CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo, incluye el caso ₡0),
+    `CajaComposicionBarra.test.tsx` (ampliado, tres segmentos), `wallet-ledger-dueno.test.tsx` y
     `wallet-labels.test.ts` están verdes;
   - `DineroIdentidadesEnPantalla.test.tsx` y `wallet-page.test.tsx` siguen verdes;
   - verificado en el navegador: tras conciliar con faltante, el bloque muestra el faltante y «De
@@ -139,6 +147,8 @@
 - `tests/components/SaldosSatelitesTable.test.tsx`
 - `lib/types/wallet.ts`
 - `app/(app)/wallet/_components/CajaResumenCard.tsx`
+- `app/(app)/wallet/_components/BarraComposicionCaja.tsx`
+- `tests/components/CajaComposicionBarra.test.tsx`
 - `app/(app)/wallet/_components/wallet-labels.ts`
 - `app/(app)/wallet/_components/WalletLedger.tsx`
 - `tests/unit/guards/caja-clasificacion-459.guardia.test.ts`

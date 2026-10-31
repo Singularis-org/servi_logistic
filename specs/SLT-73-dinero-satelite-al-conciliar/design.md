@@ -186,7 +186,7 @@ filas, no el import.
 - `saldos-satelites-descarga-columnas.ts`: añade las columnas nuevas.
 - Toda resta viene hecha del servidor.
 
-### 2.9 Enmienda D12: el bolsillo «Por cobrar a satélites» (R24–R30, pendiente de OK de Carlos)
+### 2.9 Enmienda D12: el bolsillo «Por cobrar a satélites» (R24–R30). Aprobada por Carlos 2026-10-31 (con D13 y D14)
 
 **Lo que ya existe (leído con Grep/Read).**
 - `NaturalezaMovimiento = "propio" | "terceros" | "capital"` (`lib/types/wallet.ts:350`). Es un
@@ -234,13 +234,32 @@ filas, no el import.
    `porCobrar = derivarBalance(acc.egresosPorCobrarSatelite, acc.ingresosPorCobrarSatelite)` (R25).
    La identidad pasa a ser `Entró − Salió = G + I + T + C − P` (R27). Se actualiza el comentario de
    la identidad.
-5. **DTO** (`CajaResumenDTO`): + `porCobrarSatelites: string` y `signoPorCobrarSatelites`. Montos
-   STRING, como exige el barrido de `tests/integration/wallet-page.test.tsx`. `deEmpresa` **no**
-   cambia de valor.
-6. **Barra (Q6, por defecto)**: `derivarReparto(enCaja, deEmpresa − porCobrar, deTerceros)`. Así
-   vuelve a valer `enCaja = G' + T` y las cuatro ramas conservan su garantía: no hay división por
-   cero ni proporciones fuera de 0–100 (R30). Es una suma con signo sobre `Prisma.Decimal`, no una
-   resta con signo nueva: no cuenta para la guardia de `derivarBalance`.
+5. **DTO** (`CajaResumenDTO`): + `porCobrarSatelites: string`, `signoPorCobrarSatelites`,
+   `porcentajePorCobrarSatelites: string` y `deEmpresaEnCaja: string` (ver 6). Montos STRING, como
+   exige el barrido de `tests/integration/wallet-page.test.tsx`. `deEmpresa` **no** cambia de valor.
+6. **Barra con tres tramos (D13, R30).** `MODO_COMPOSICION_CAJA_SEED` gana `"tres_tramos"`.
+   `derivarReparto` recibe además `porCobrar` (P), con E = `deEmpresa` y T = `deTerceros`:
+   - **P ≤ 0** → se llama a la lógica de hoy, `derivarReparto(enCaja, E, T)`, **sin cambios**. Sigue
+     siendo segura: en la rama `dos_bolsillos` `enCaja = E + T + |P| > 0`. Con P < 0, lo entregado de
+     más cae en el resto (la empresa). Es una decisión técnica: la pista del bloque (R28) ya dice que
+     la central le debe a la satélite. `porcentajePorCobrarSatelites = "0.00"`.
+   - **P > 0** → modo `tres_tramos`. La barra representa `enCaja + P = E + T`: lo que habría en la
+     caja si la satélite hubiera entregado todo. Los tramos son:
+     - tiendas `t = max(T, 0)`;
+     - por cobrar `p = P`;
+     - empresa en caja `e = max(E − P, 0)`. Su importe viaja como `deEmpresaEnCaja` para el nombre
+       accesible; el navegador no resta nada.
+
+     Con `S = t + p + e`, que es > 0 porque `p > 0`:
+     - `porcentajeTiendas = round2(t / S × 100)`;
+     - `porcentajePorCobrarSatelites = min(round2(p / S × 100), 100 − porcentajeTiendas)`;
+     - la empresa es el **resto** (`flex-1`), como hoy.
+
+     Cada tramo queda en 0–100, la suma es 100 por construcción y solo se divide por `S > 0`.
+     Redondeo `ROUND_HALF_UP` a 2, como hoy.
+   - `E − P` y los `max` son sumas y comparaciones sobre `Prisma.Decimal`, no restas con signo de
+     balance: no cuentan para la guardia de `derivarBalance`. Con P = 0 la salida es idéntica,
+     campo a campo, a la de antes de la ficha.
 7. **Guardias**:
    - `caja-clasificacion-459`: un caso nuevo «⭑ SLT-73 (D12)». Afirma que las dos diferencias son
      `por_cobrar_satelite` y `efectivo`, que su efecto en «De las tiendas» es 0 y que no son
@@ -255,11 +274,24 @@ filas, no el import.
    `<section data-bolsillo="satelites" aria-label="Por cobrar a satélites">` con importe, insignia de
    signo y pista. Va fuera del bloque de la empresa: Carlos dijo que no es de la empresa. No se mete
    como región de `REGIONES_BOLSILLO_EMPRESA`. El rótulo es el de Carlos; la pista positiva y la
-   negativa son provisionales (Q7), por ejemplo «Lo que las satélites entregaron de menos al
-   conciliar y aún no han pagado» y «La central les debe a las satélites». La elige el signo del
-   servidor, sin aritmética en el navegador (R28). `DUENO_LABEL.por_cobrar_satelite = "Satélite"`
-   (provisional) y su punto en `DUENO_PUNTO` (R29).
-9. **Cuándo se pinta (Q7, por defecto):** siempre, como «Saldo inicial y aportes».
+   negativa son provisionales, por ejemplo «Lo que las satélites entregaron de menos al conciliar y
+   aún no han pagado» y «La central les debe a las satélites». La elige el signo del servidor, sin
+   aritmética en el navegador (R28). `DUENO_LABEL.por_cobrar_satelite = "Satélite"` (provisional) y
+   su punto en `DUENO_PUNTO` (R29).
+   - **Barra** (`BarraComposicionCaja.tsx`): `SEGMENTOS_POR_MODO.tres_tramos` =
+     - tiendas, con `porcentajeTiendas`;
+     - por cobrar, con `porcentajePorCobrarSatelites`, segmento nuevo `clave: "por_cobrar"` y color
+       por token, sin hex;
+     - empresa, con el resto.
+
+     Los anchos son el STRING del DTO tal cual. Los `Record` totales por modo
+     (`CAJA_COMPOSICION_MENSAJE`, `BOLSILLO_EMPRESA` de la tarjeta) ganan su entrada:
+     `tres_tramos` va con la superficie neutra y un mensaje provisional.
+     `composicionCajaNombreAccesible` enuncia los tres tramos con su importe del servidor (T,
+     `porCobrarSatelites`, `deEmpresaEnCaja`). La barra sigue saliendo solo en estado «saldo»
+     (R22 de la 459).
+9. **Cuándo se pinta el bloque (D14):** siempre, también con ₡0, igual que «Saldo inicial y
+   aportes».
 10. **Fixtures**: todo test que construye un `CajaResumenDTO` literal gana los dos campos. El
     typecheck los censa.
 
@@ -295,6 +327,10 @@ filas, no el import.
    satélite. Además obligaría a elegir a qué tienda se le carga.
 8. **(D12) Meter el bolsillo como región del bloque de la empresa** (`REGIONES_BOLSILLO_EMPRESA`).
    Descartada: en pantalla lo leería como dinero de la empresa, que es justo lo que D12 niega.
+9. **(D13) Restar lo por cobrar del tramo de la empresa sin tramo propio.** Era el valor por
+   defecto de Q6; Carlos eligió el tercer tramo.
+10. **(D13) Tres tramos sobre la base `E + T + P`.** Descartada: cuenta P dos veces, porque P es
+    parte del derecho de la empresa que no está en la caja. La base correcta es `E + T = enCaja + P`.
 
 ## 5. Dependencias de terceros
 
@@ -332,9 +368,9 @@ WHERE donde vive»). Cada test debe crear sus propios datos y fallar si no los e
 | R25 | `tests/unit/utils/caja-tesoreria.test.ts` (ampliado): egreso de diferencia 15 → `porCobrarSatelites` "15.00"; ingreso 5 → "10.00"; ganancia, IVA, capital y `deTerceros` sin cambio | invertir el orden de `derivarBalance`; quitar la rama explícita de `acumular` (cae en capital) |
 | R26 | guardia 459 (estática) + `tests/integration/db/slt73-marcar-asienta.int.test.ts` y `slt73-corregir-diferencia.int.test.ts`: tras marcar con faltante y tras corregir, `derivarCaja` sobre las filas reales da `deTerceros` = Σ saldos de las tiendas del libro | clasificar como `terceros` |
 | R27 | `tests/unit/guards/caja-derivaciones.guardia.test.ts` (6 llamadas) + caso de identidad en `caja-tesoreria.test.ts` sobre conjuntos con y sin diferencias | omitir `P` de la identidad; sumar `P` a `deEmpresa` |
-| R28 | `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo): lee el bloque por su `aria-label`, el importe tal cual del DTO, la pista positiva y la negativa; el bloque no está dentro de `data-bolsillo="empresa"` | pintarlo como región de la empresa; elegir la pista en el cliente comparando importes |
+| R28 | `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo): lee el bloque por su `aria-label`, el importe tal cual del DTO, la pista positiva y la negativa; el bloque no está dentro de `data-bolsillo="empresa"`; **con `porCobrarSatelites: "0.00"` el bloque está y muestra ₡0** (D14), en estado «flujo» y en «saldo» | pintarlo como región de la empresa; elegir la pista en el cliente comparando importes; ocultarlo con importe cero |
 | R29 | `tests/unit/components/wallet-ledger-dueno.test.tsx` y `tests/unit/components/wallet-labels.test.ts` (ampliados): fila de diferencia → dueño «Satélite» en la tabla y en la descarga | reutilizar el rótulo de `terceros` |
-| R30 | `tests/unit/utils/caja-tesoreria.test.ts`: caso G = 100, T = 50, P = 150 (`enCaja` = 0) → sin división por cero y proporción en 0–100; caso P > 0 en `dos_bolsillos` → segmentos suman `enCaja` | pasar `deEmpresa` sin restar `P` |
+| R30 | `tests/unit/utils/caja-tesoreria.test.ts` (unit de `derivarCaja`):<br>• E = 100, T = 50, P = 150 (`enCaja` = 0) → `tres_tramos`, sin excepción, cada porcentaje en 0–100 y tiendas + por cobrar ≤ 100;<br>• E = 300, T = 100, P = 100 → tiendas "25.00", por cobrar "25.00", `deEmpresaEnCaja` "200.00";<br>• tres tercios (E = 2, T = 1, P = 1) → la suma no pasa de 100 con el redondeo;<br>• P = 0 y P < 0 → la salida es igual, campo a campo, a la de hoy (los casos existentes de los cuatro modos, intactos).<br>Más `tests/components/CajaComposicionBarra.test.tsx` (ampliado): en `tres_tramos` hay 3 segmentos, los anchos son los STRING del DTO y el nombre accesible lleva los tres importes | quitar el `min(…, 100 − tiendas)`; base `E + T + P` en vez de `E − P`; dividir con `S` sin la guarda; tomar `tres_tramos` con P ≤ 0 |
 
 Los tests existentes que afirman que aprobar un **satélite** escribe en la caja se ajustan; los de
 central no se tocan. El implementer los censa en T3.

@@ -46,7 +46,9 @@ satélite al día, por dos causas: su pendiente es Σ(`total_efectivo` − `mont
 | D9 | Se reabre la decisión de la ficha 431 «consolidar/conciliar no mueve dinero» (su R14): conciliar **sí** escribe en los libros. | Carlos, 2026-10-31 | R10, R12 |
 | D10 | Q1 = A: al conciliar con menos de lo esperado, los asientos del cierre entran completos y la caja lleva UNA fila «diferencia de la satélite» por esperado − recibido, que queda como deuda abierta. | Carlos, 2026-10-31 | ver Q1 |
 | D11 | Q2: una conciliación que ya asentó dinero NO se puede revertir; el monto se arregla con «Corregir» (ajusta la fila de diferencia). | Carlos, 2026-10-31 | ver Q2 |
-| D12 | La diferencia de la satélite (D10) NO es ganancia de la empresa ni dinero «De las tiendas»: va a un **bolsillo nuevo de la caja, «Por cobrar a satélites»**. Cuando la satélite paga la diferencia (ingreso), el bolsillo baja. Motivo: clasificada como `terceros` rompe la invariante R8 de la 459 («De las tiendas» = Σ saldos de las tiendas), porque con D10 las tiendas conservan su crédito completo. | Carlos, 2026-10-31 | R24–R30 (enmienda, pendiente de OK) |
+| D12 | La diferencia de la satélite (D10) NO es ganancia de la empresa ni dinero «De las tiendas»: va a un **bolsillo nuevo de la caja, «Por cobrar a satélites»**. Cuando la satélite paga la diferencia (ingreso), el bolsillo baja. Motivo: clasificada como `terceros` rompe la invariante R8 de la 459 («De las tiendas» = Σ saldos de las tiendas), porque con D10 las tiendas conservan su crédito completo. | Carlos, 2026-10-31 | R24–R30 (enmienda aprobada por Carlos 2026-10-31) |
+| D13 | Q6: la barra de composición gana un **tercer tramo, «Por cobrar a satélites»**. No se resta de la empresa. | Carlos, 2026-10-31 | R30 |
+| D14 | Q7: el bloque «Por cobrar a satélites» se muestra **siempre**, también con ₡0. | Carlos, 2026-10-31 | R28 |
 
 **Nota sobre D7: el dato que ya existe.**
 - `db/schema.prisma:1598`: `CierreDia.totalIngresoBodegaRechazos`, «snapshot total del ingreso de
@@ -166,9 +168,8 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 
 ### F. El bolsillo «Por cobrar a satélites» (enmienda D12)
 
-> **Enmienda del 2026-10-31 al spec aprobado — PENDIENTE DE OK DE CARLOS.** La decisión de fondo
-> (D12) es de Carlos; la redacción de R24–R30 y los valores por defecto de Q6 y Q7 no los ha
-> aprobado todavía. No se implementa hasta su OK.
+> **Enmienda del 2026-10-31 al spec aprobado. Aprobada por Carlos 2026-10-31**: D12, R24–R30, y
+> Q6 y Q7 cerradas como D13 y D14.
 >
 > Vocabulario. La caja de la central (ficha 459, SL-39) se parte hoy en cuatro cifras cuya suma es
 > la cifra principal (Entró − Salió): la ganancia, el IVA cobrado, «Saldo inicial y aportes»
@@ -193,14 +194,15 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
   bolsillo «Por cobrar a satélites» como bloque propio, separado del de la empresa y del de las
   tiendas, con ese rótulo, su importe y su signo derivados por el servidor y una pista que diga qué
   es. Si el importe es negativo, la pista DEBE decir que es la central la que le debe a las
-  satélites. *(Cuándo se pinta: Q7.)*
+  satélites. El bloque DEBE mostrarse siempre, también con importe cero (D14).
 - **R29.** MIENTRAS se muestra una fila de diferencia de la satélite en el libro de la caja o en su
   descarga, el sistema DEBE mostrar como dueño el rótulo del bolsillo nuevo, no «Tienda» ni la
   empresa.
 - **R30.** MIENTRAS la caja está en estado «saldo» y el bolsillo «Por cobrar a satélites» es
-  distinto de cero, la barra de composición NO DEBE mostrar una proporción de las tiendas fuera de
-  0–100 % ni dividir por cero, y sus dos segmentos DEBEN sumar la cifra principal. *(Cómo se
-  reparte: Q6.)*
+  mayor que cero, la barra de composición DEBE mostrar tres tramos: «De las tiendas», «De la
+  empresa» y «Por cobrar a satélites» (D13). Cada tramo DEBE quedar entre 0 % y 100 %, los tres
+  DEBEN sumar 100 % y el cálculo NO DEBE dividir por cero. Con el bolsillo en cero o negativo, la
+  barra DEBE comportarse exactamente como antes de esta ficha.
 
 ## Preguntas abiertas
 
@@ -237,15 +239,8 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
   libro por tienda no enlaza cada pago a un cierre, así que la migración no puede detectarlo. Si a
   la tienda de ese cierre ya se le pagó, quitar su crédito la deja en negativo hasta la
   conciliación. El leader debe medirlo en prod (solo lectura) antes de desplegar.
-- **Q6 (enmienda D12, pendiente de OK) ¿Cómo reparte la barra cuando hay algo por cobrar?** Hoy la
-  barra parte la cifra principal en «De la empresa» (ganancia + IVA + capital) y «De las tiendas»,
-  que sumaban exactamente esa cifra. Con el bolsillo nuevo ya no suman: la cifra principal es lo
-  recibido, y lo por cobrar no está en la caja. Si no se toca, la proporción de las tiendas puede
-  pasar de 100 % o dividir por cero (R30). **Por defecto:** en la barra, el segmento de la empresa
-  es «De la empresa» − «Por cobrar a satélites»: mientras la satélite no paga, el hueco lo cubre la
-  empresa, no las tiendas (que conservan su crédito, D10). La cifra «De la empresa» de la tarjeta
-  no cambia de valor. Alternativa: un tercer segmento en la barra (más trabajo de UI).
-- **Q7 (enmienda D12, pendiente de OK) ¿El bloque se pinta siempre o solo con importe ≠ 0?** La
-  mayoría de empresas no tiene satélites. **Por defecto:** se pinta siempre, igual que «Saldo
-  inicial y aportes», que también se pinta en cero. Los rótulos del bloque, de la pista y del dueño
-  de la fila («Satélite») son provisionales: Carlos solo fijó «Por cobrar a satélites».
+- **Q6 — CERRADA (D13): tercer tramo en la barra.** Restar lo por cobrar del tramo de la empresa
+  queda descartado. Cómo se calcula: `design.md §2.9`.
+- **Q7 — CERRADA (D14): el bloque se muestra siempre**, también con ₡0.
+- **(No bloquea) Rótulos provisionales.** Carlos fijó «Por cobrar a satélites». Siguen siendo
+  provisionales las pistas del bloque y el dueño de la fila en el libro («Satélite»).
