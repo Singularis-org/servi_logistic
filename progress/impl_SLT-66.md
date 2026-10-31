@@ -564,3 +564,93 @@ Typecheck: `app/`, `lib/` y `components/` sin errores. Los 24 errores que quedan
 7. Rastro: «Desasignado» va en «Acción» y la frase completa en «Qué cambió».
 8. El filtro de `?plan=` contra los asignables, a nivel de página, no tiene test de integración. Sí lo cubre el test de componente.
 9. «Cobro por orden» se pinta con `money()`. El E2E de T14 tiene que afirmar con ese formato.
+
+## Tanda E: T14, T16 y T17 (2026-10-31)
+
+### Commits
+- `735cf8a` T14: `e2e/planes-costeo.spec.ts` (R26, R31, R32) y `playwright.config.ts`. El spec va en el proyecto `aislamiento`, como `cobro-plataforma-sl40` y según design §9.2. Hace falta porque la guardia `e2e-sin-saltos` exige que cada spec esté en exactamente un proyecto.
+- `649c0ac` T14: `planes-superadmin.spec.ts`.
+  - `:169-173`: el plan pasa a «Con monto», con base 1000 y costo por orden 100 (R28).
+  - `:266-267`: «Maestro» no aparece (R5).
+  - `:34-35`: la cabecera, por R5.
+- `018f2cc` T14: `e2e/_planes-fixture.ts:51-53` suma `costoPorOrden: null` (R8). Por eso fallaba `dos-empresas-humo.spec.ts:474`. Fila añadida en §9.3.
+- `10e6ad2` T16: la ayuda `wallet-caja.md` explica que el monto sale de la excepción, luego del plan, luego del valor general y, si no hay ninguno, 0. La guardia de ayuda pasa: 8 archivos, 89 tests.
+
+### E2E
+Cada spec se corrió por separado con `E2E_PUERTO=3044`, sobre `logistic_slt66_e2e`. La base se recreó una sola vez y `next build` terminó con exit 0. Los recuentos incluyen `plataforma-vacia`, que entra por `dependencies`.
+
+| Spec | Resultado | Duración |
+|---|---|---|
+| planes-costeo, 1.ª corrida | 14 passed | 31.1s |
+| planes-costeo, 2.ª corrida, misma base | 14 passed | 31.5s |
+| planes-superadmin | 15 passed | 32.4s |
+| auth | 22 passed | 31.3s |
+| dos-empresas-humo, 1.ª corrida | 1 failed (`:474`, ZodError `costoPorOrden`), 17 passed | 1.5m |
+| dos-empresas-humo, tras `018f2cc` | 18 passed | 1.5m |
+| integraciones-por-empresa | 14 passed | 31.5s |
+| pago-plataforma-sl45 | 16 passed | 33.3s |
+| superadmin-arranque | 3 passed | 9.8s |
+| superadmin-empresas | 7 passed | 16.7s |
+| cobro-plataforma-sl40 (SL-40, sin tocar) | 12 passed | 29.4s |
+
+- Ninguna corrida tuvo skipped ni flaky.
+- Tras las corridas, `cobro_plataforma_tarifa` vuelve a estar vacía: el global queda como estaba.
+- Capturas en `C:\Users\Cristian\AppData\Local\Temp\claude\C--Users-Cristian-Documents-trabajo-arc-servi-logistic\1fed402c-ec3f-428b-b34c-70f170239f63\scratchpad\capturas\`: `slt66-empresas.png`, `slt66-wallet.png` y `slt66-mi-plan.png`.
+- Guardia `e2e-sin-saltos`: 38/38. Typecheck: limpio en todo el repo. Eslint: limpio.
+- **Incidente:** dos agentes de E2E coincidieron unos minutos, el primero aún vivo cuando se lanzó el segundo. El segundo recreó la base y el `.next`, y por eso cayeron los specs de regresión de la primera serie. La tabla de arriba es la serie completa del segundo agente, sola y con el entorno aislado.
+
+## T17: mapa R1–R34 → test
+
+| R | Tests |
+|---|---|
+| R1 | `plan-maestro-sin-tope` (R1, `23514`); `planes-schema-costeo` («El maestro no admite tope»); `planes-service-costeo`; `migracion-slt66-ida-y-vuelta` (CHECK); `planes-catalogo` (R25 del tope por rol) |
+| R2 | `plan-maestro-sin-tope` (R2, `it.each` con los cuatro roles); `plan-topes-usuarios:255` |
+| R3 | `plan-maestro-sin-tope` (R3: crear, activar, aprobar y cambiar a maestro con todos los topes llenos) |
+| R4 | `migracion-slt66-ida-y-vuelta` (siembra, borrado, versión pendiente, rastro y asignación intactos, `down`) |
+| R5 | `consumo:69`; `mi-plan-service`; `planes-service-lecturas`; `plan-de-la-empresa` (`:123`, `:178`); `PlanFormCosteo`; `ConsumoDelPlanCosteo`; `ConsumoDelPlan:26`; `MiPlanModule`; E2E `planes-superadmin:266` |
+| R6 | `plan-maestro-sin-tope` (R6: el tope de órdenes y el de keys siguen rechazando) |
+| R7 | `planes-schema-costeo` (tres formas de base, con y sin costo) |
+| R8 | `planes-schema-costeo`; `planes-service-costeo`; `migracion-slt66-ida-y-vuelta` (CHECK de la columna) |
+| R9 | `rastro-costeo` («Costo base:»); `PlanFormCosteo`; `plantilla-cambio-plan:58`; `PlanDetalle:141`; `PlanEmpresa:370` |
+| R10 | `costeo` (descuento sin efecto en el total); `PlanVistaCosteo`; `ConsumoDelPlanCosteo` |
+| R11 | `rastro-costeo`; `planes-service-costeo`; `planes-costeo-escritura` |
+| R12 | `cobro-plataforma-plan` (§3.4, fila a fila, por `createManyOrdenes` y `createManyOrdenesConGuia`) |
+| R13 | `cobro-plataforma-plan` (plan archivado) |
+| R14 | `cobro-plataforma-plan` (descuento y base negociable: el cargo es exactamente el costo por orden) |
+| R15 | `cobro-plataforma-plan` (`aplicarCambioProgramado`) |
+| R16 | `cobro-plataforma-plan` (anulación → reverso de fuente `plan`) |
+| R17 | `deuda-plataforma-plan` (Δdeuda `"100.00"`, caja igual campo a campo) |
+| R18 | `plan-de-la-empresa-costeo`; `ConsumoDelPlanCosteo`; `mi-plan-repository` |
+| R19 | `costeo` (monto → total; decimales; importes grandes); `ConsumoDelPlanCosteo` |
+| R20 | `costeo` («por definir» sin total; plan sin costo → aviso, también con excepción; decisión del humano del 2026-10-31); `ConsumoDelPlanCosteo`; `PlanEmpresaSinCosto` |
+| R21 | `deuda-plataforma-plan` (leer «Mi plan» no crea movimientos); `ConsumoDelPlanCosteo` |
+| R22 | `plan-de-la-empresa-costeo` (`42501` cruzando empresas; sin `GRANT` sobre la tarifa ni sobre las tablas) |
+| R23 | `PlanFormCosteo` |
+| R24 | `PlanVistaCosteo`; `PlanEmpresa:517-523`; `PlanesModule:86-114` |
+| R25 | `migracion-slt66-ida-y-vuelta` (R25: cargo `plan`; el `down` de M2 se niega; bajar M3–M1 → global); `migracion-slt66-desasignar` (`down` de M4) |
+| R26 | E2E `planes-costeo` (dos corridas en verde) |
+| R27 | Las suites de SL-24, SL-40 y SLT-58 en verde; los tests tocados coinciden con la lista de design §9.3, que suma las filas añadidas con fecha y autorización. `cobro-plataforma-cargos`, `migracion-sl40-ida-y-vuelta` y `cobro-plataforma-sl40` no se tocaron |
+| R28 | `planes-service-asignar-costo`; `costeo` (`tieneCostoConcreto`, base `"0.00"`); `PlanEmpresaSinCosto`; E2E `planes-superadmin:169` |
+| R29 | `planes-service-asignar-costo` (`asignables` filtra); `PlanEmpresaSinCosto` |
+| R30 | `planes-service-asignar-costo` (editar y programar no se frenan) |
+| R31 | `empresas-plataforma-plan`; `EmpresasModulePlan`; `EmpresasModuleCobro`; E2E `planes-costeo` |
+| R32 | `empresas-plataforma-plan`; `EmpresasModulePlan`; `empresas-page:211-221`; E2E `planes-costeo` |
+| R33 | `PlanDetalleAsignar`; `PlanEmpresaSinCosto` (plan preseleccionado) |
+| R34 | `migracion-slt66-desasignar`; `PlanDetalleDesasignado` |
+
+### Mutaciones de design §9.4: las 11 medidas, todas tumban algún test
+| # | Mutación | Resultado |
+|---|---|---|
+| 1 | La tarifa mira el plan antes que la excepción | `cobro-plataforma-plan`: 13 fallados |
+| 2 | Se ignora el plan | `cobro-plataforma-plan`: 14 fallados |
+| 3 | `JOIN` en vez de `LEFT JOIN` | `cobro-plataforma-plan`: 1; `cobro-plataforma-cargos`: 4 |
+| 4 | El CHECK vuelve a admitir `maestro` | `plan-maestro-sin-tope`: cae R1 |
+| 5 | El descuento entra en el total | `costeo`: cae R10 |
+| 6 | `plan_de_la_empresa` usa una regla propia | `plan-de-la-empresa-costeo`: cae «fuente empresa» |
+| 7 | `asignar` no comprueba / solo sin fecha | 13 / 8 fallados |
+| 8 | `asignables` no filtra | 2 fallados |
+| 9 | `"0.00"` tratado como vacío | 4 fallados (más 2 con el mensual) |
+| 10 | Total con «por definir» / sin aviso con plan sin costo | 2 / 3 fallados |
+| 11 | M4 deja los planes de base «monto» | `migracion-slt66-desasignar`: 3 fallados |
+
+**Pendiente del leader:** `./init.sh`, que corre el leader o CI.

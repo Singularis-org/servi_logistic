@@ -201,7 +201,7 @@
 
   *Hecho:* en verde `tests/components/PlanDetalleAsignar.test.tsx`,
   `tests/components/PlanDetalleDesasignado.test.tsx` y el caso R33 de `PlanEmpresaSinCosto.test.tsx`.
-- [ ] **T14 — E2E** (design §9.2). Depende de T11, T13 y T20.
+- [x] **T14 — E2E** (design §9.2). Depende de T11, T13 y T20.
   - `e2e/planes-costeo.spec.ts`, con la asignación desde el listado de «Empresas».
   - En `e2e/planes-superadmin.spec.ts`:
     - `:262-263` pasa a «no aparece Maestro» (R5);
@@ -217,7 +217,7 @@
   explicar que el monto sale de la excepción, del plan o del valor general. Se actualiza `actualizado:`.
 
   *Hecho:* la guardia de ayuda está en verde.
-- [ ] **T17 — Cierre.**
+- [x] **T17 — Cierre.**
   - `./init.sh` en verde.
   - El mapa `R<n> → test` (R1–R34) en `progress/impl_SLT-66.md`, con las once mutaciones medidas.
   - R27: la lista exacta de tests de SL-24, SL-40 y SLT-58 tocados coincide con design §9.3.
