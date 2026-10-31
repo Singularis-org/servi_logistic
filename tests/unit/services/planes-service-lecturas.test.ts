@@ -38,6 +38,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     topes: { ordenesPorCiclo: 100, porRol: { mensajero: 5 }, apiKeys: null },
     modulos: ["ranking", "analitica"],
     precio: { tipo: "monto", mensual: "25000.00", anual: null },
+    costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
     archivado: false,
     ...extra,
   };
@@ -48,6 +49,7 @@ const PENDIENTE: VersionPlan = {
   topes: { ordenesPorCiclo: 200, porRol: { mensajero: 5 }, apiKeys: null },
   modulos: ["ranking", "analitica"],
   precio: { tipo: "monto", mensual: "25000.00", anual: null },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 function catalogoLeido(): PlanDelCatalogoLeido[] {
@@ -93,10 +95,12 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
     organizacionId: EMPRESA,
     plan: {
       dto,
-      vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio },
+      // SLT-66 R7: la versión vigente lleva el costo por orden del plan.
+      vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio, costoPorOrden: dto.costoPorOrden },
       // Ancla el 15 a las 12:00 UTC: el ciclo siguiente empieza el 2026-11-15 12:00 UTC.
       ancla: new Date("2026-09-15T12:00:00.000Z"),
-      uso: { ordenes: 85, apiKeys: 2, porRol: { maestro: 1, admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
+      // SLT-66 R5: el uso ya no trae al maestro.
+      uso: { ordenes: 85, apiKeys: 2, porRol: { admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
     },
     asignaciones: [
@@ -243,7 +247,8 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     expect(porClave.ordenes).toMatchObject({ usados: 85, maximo: 100, estado: "cerca", texto: "85 de 100 órdenes del ciclo" });
     expect(porClave.mensajero).toMatchObject({ usados: 5, maximo: 5, estado: "lleno" });
     expect(porClave.api_keys).toMatchObject({ usados: 2, maximo: null, estado: "sin_limite" });
-    expect(p.filas.map((f) => f.clave)).toEqual(["ordenes", "maestro", "admin", "mensajero", "adminTienda", "adminSatelite", "api_keys"]);
+    // SLT-66 R5: ninguna fila de maestro.
+    expect(p.filas.map((f) => f.clave)).toEqual(["ordenes", "admin", "mensajero", "adminTienda", "adminSatelite", "api_keys"]);
     // Del 2026-10-28 12:00 al 2026-11-15 12:00 UTC: 18 días; la fecha, en la hora de la plataforma.
     expect(p.reinicio).toEqual({ dias: 18, fecha: "2026-11-15" });
     expect(p.cambioPendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Órdenes por ciclo: 100 → 200"] });

@@ -66,7 +66,8 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
   const uso: UsoDelPlan = {
     ordenes: 1000,
     apiKeys: 4,
-    porRol: { maestro: 1, admin: 0, mensajero: 12, adminTienda: 2, adminSatelite: 0 },
+    // SLT-66 R5: el uso ya no trae al maestro.
+    porRol: { admin: 0, mensajero: 12, adminTienda: 2, adminSatelite: 0 },
   };
 
   it("R2: una fila por tope, en orden: órdenes, los cinco roles y API keys", () => {

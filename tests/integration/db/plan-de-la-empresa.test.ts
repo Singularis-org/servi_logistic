@@ -57,7 +57,7 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     custom: A,
     ordenes: 1000,
     apiKeys: 4,
-    porRol: { maestro: 2, adminTienda: 5 },
+    porRol: { admin: 2, adminTienda: 5 }, // SLT-66 R1: el maestro ya no admite tope
   });
   await tx.plan.update({
     where: { id: planA },
@@ -191,7 +191,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(plan.tope_api_keys).toBe(4);
     expect(plan.topes_rol).toEqual(
       expect.arrayContaining([
-        { rol: "maestro", maximo: 2 },
+        { rol: "admin", maximo: 2 }, // SLT-66 R1
         { rol: "Admin Tienda", maximo: 5 },
       ]),
     );

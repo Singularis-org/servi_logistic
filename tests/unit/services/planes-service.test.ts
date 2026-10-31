@@ -29,6 +29,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 2 }, apiKeys: null },
     modulos: ["analitica"],
     precio: { tipo: "sin_precio" },
+    costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
     archivado: false,
     ...extra,
   };
@@ -39,6 +40,7 @@ const VERSION = {
   topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 2 }, apiKeys: null },
   modulos: ["analitica"],
   precio: { tipo: "negociable" },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 const CREAR = {
@@ -48,6 +50,7 @@ const CREAR = {
   topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 function doble() {

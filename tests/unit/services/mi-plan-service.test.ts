@@ -31,6 +31,7 @@ const VIGENTE: VersionPlan = {
   topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
   modulos: ["monitoreo"],
   precio: { tipo: "monto", mensual: "49.90", anual: null },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLeido {
@@ -40,7 +41,8 @@ function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLe
     uso: {
       ordenes: 1000,
       apiKeys: 2,
-      porRol: { maestro: 1, admin: 0, mensajero: 8, adminTienda: 5, adminSatelite: 0 },
+      // SLT-66 R5: el uso ya no trae al maestro.
+      porRol: { admin: 0, mensajero: 8, adminTienda: 5, adminSatelite: 0 },
     },
     cambio,
   };
@@ -95,7 +97,8 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
     expect(r.plan.modulos).toEqual([{ clave: "monitoreo", nombre: "Monitoreo" }]);
     expect(r.plan.filas[0]).toMatchObject({ clave: "ordenes", texto: "1.000 de 3.000 órdenes del ciclo", estado: "normal" });
     expect(r.plan.filas.find((f) => f.clave === "adminTienda")?.estado).toBe("lleno");
-    expect(r.plan.filas.find((f) => f.clave === "maestro")?.estado).toBe("sin_limite");
+    // SLT-66 R5: el maestro no tiene fila (antes salía «sin límite»).
+    expect(r.plan.filas.map((f) => f.clave)).not.toContain("maestro");
     // Ancla el 15 a las 09:30 UTC: el siguiente ciclo empieza el 15 de noviembre a las 09:30 UTC.
     expect(r.plan.reinicio).toEqual({ dias: 17, fecha: "2026-11-15" });
     expect(r.plan.cambioPendiente).toBeNull();
@@ -107,6 +110,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["monitoreo", "analitica"],
       precio: { tipo: "negociable" },
+      costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
     };
     // Las 00:00 del 1 de diciembre en la hora de la plataforma.
     const cambio = { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: pendiente };
@@ -126,7 +130,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       "Órdenes por ciclo: 3000 → 5000",
       "Usuarios activos con el rol Admin de tienda: 5 → sin límite",
       "Se incluye el módulo Analítica.",
-      "Precio: 49.90 al mes → negociable",
+      "Costo base: 49.90 al mes → negociable", // SLT-66 R9
     ]);
   });
 
