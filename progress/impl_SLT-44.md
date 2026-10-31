@@ -165,7 +165,7 @@ por memoria del sistema durante el `lint`, después de un typecheck verde y sin 
   **15 files / 124 tests passed, 0 failed, 0 skipped.**
 - `gate-completo` de CI: pendiente del PR (lo abre el leader). T7.1 queda sin marcar hasta entonces.
 
-R25: `git diff --name-only origin/dev...HEAD -- db/` **no sale vacío**: trae las 6 migraciones `20261030120*` de
+R25: `git diff --name-only origin/dev...HEAD -- db/` **no sale vacío**: trae las 6 migraciones `20261031120*` de
 SLT-43 y `db/schema.prisma`, porque la rama se apila sobre el PR #44, que todavía no está en `dev`
 (`merge-base --is-ancestor origin/feature/SLT-43-geo-jerarquica-modelo origin/dev` → no). Comprobación equivalente:
 ningún commit propio de SLT-44 (`9b0cba7`…`f2aa71c`) toca `db/` (0 archivos por commit); solo el merge base
