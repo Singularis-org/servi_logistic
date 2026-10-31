@@ -28,6 +28,7 @@ import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/plane
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ROLES_CON_TOPE,
@@ -1045,6 +1046,12 @@ export class PlanesRepository implements IPlanesRepository {
         if (ancla === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no ancla`);
         const dto = aDTO(plan);
         const uso = await usoDe(tx, organizacionId);
+        // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
+        // cobrará la próxima orden. El enum va como texto: el driver no conoce el tipo de Postgres.
+        const [costoVigente] = await tx.$queryRaw<{ monto: string; fuente: FuenteDelCosto }[]>`
+          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente"
+          FROM cobro_plataforma_tarifa_de(${organizacionId})`;
+        if (costoVigente === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
         return {
           organizacionId,
           plan: {
@@ -1067,6 +1074,7 @@ export class PlanesRepository implements IPlanesRepository {
               >,
             },
             cambio: pendienteDe(plan.cambioProgramado),
+            costoVigente,
           },
           asignaciones: lista,
         };

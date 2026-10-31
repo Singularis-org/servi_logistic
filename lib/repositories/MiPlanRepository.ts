@@ -42,9 +42,12 @@ export const planDeLaEmpresaFilaSchema = z.object({
   precio_mensual: importe,
   precio_anual: importe,
   descuento_anual_pct: importe,
-  // SLT-66: opcional hasta que M3 (20261031120200, T9) haga que `plan_de_la_empresa` lo devuelva; ahí
-  // pasa a obligatorio. Ausente se lee como «el plan no lo fija».
-  costo_por_orden: importe.optional(),
+  // SLT-66 (M3, R18): el del plan, `null` si no lo fija; y el vigente de `cobro_plataforma_tarifa_de`.
+  costo_por_orden: importe,
+  costo_vigente: z.object({
+    monto: z.string(),
+    fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
+  }),
   tope_ordenes_ciclo: conteo.nullable(),
   tope_api_keys: conteo.nullable(),
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
@@ -55,8 +58,6 @@ export const planDeLaEmpresaFilaSchema = z.object({
   uso: z.object({
     ordenes: conteo,
     api_keys: conteo,
-    // SLT-66: `plan_de_la_empresa` lo devuelve hasta M3 (T9 lo quita); ya no se usa (R1, R3).
-    maestro: conteo,
     admin: conteo,
     mensajero: conteo,
     admin_tienda: conteo,
@@ -102,12 +103,13 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
       topes: topesDe(f),
       modulos: f.modulos,
       precio: precioDe(f),
-      costoPorOrden: f.costo_por_orden ?? null,
+      costoPorOrden: f.costo_por_orden,
     },
     ancla: f.ciclo_ancla,
     cortoDesde: f.ciclo_corto_desde,
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
     cambio: f.cambio === null ? null : { vigenteDesde: f.cambio.vigente_desde, version: f.cambio.version },
+    costoVigente: f.costo_vigente,
   };
 }
 
