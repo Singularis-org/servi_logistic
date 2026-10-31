@@ -4,60 +4,67 @@ import type {
   DistritoCoberturaRow,
   ICoberturaRepository,
 } from "@/lib/interfaces/repositories/ICoberturaRepository";
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
-  SELECT_FLAG_PROPIO,
-  disponibleDesdeCadena,
-} from "@/lib/repositories/_shared/geografia-activa";
-import {
-  esZonaEspecialDeLaEmpresa,
-  SELECT_MARCA_ZONA_ESPECIAL,
-} from "@/lib/repositories/_shared/zona-especial";
+  ancestros,
+  esZonaEspecial,
+  estaActivo,
+  nodosDeProfundidad,
+  zonasCandidatas,
+} from "@/lib/services/geografia-dominio";
 
-// Ficha 465 (design §3.2) — las dos lecturas del Excel de cobertura. Solo queries Prisma; la
-// regla (cobertura, motivo, colapso de zonas) vive en `lib/utils/cobertura-distrito.ts`.
+// Ficha 465 (design §3.2) — las dos lecturas del Excel de cobertura. Solo lectura; la regla
+// (cobertura, motivo, colapso de zonas) vive en `lib/utils/cobertura-distrito.ts`.
 //
 // Repositorio DEDICADO y no un metodo mas de `GeoRepository`: mezclaria tarifas en el repositorio
 // del catalogo y creceria una interfaz con un composition root ya sensible (design §6.2).
+//
+// SLT-44 (design §5, R20): los distritos salen del catalogo de la empresa. El cliente gana los
+// modelos del nodo, de las asignaciones y de la empresa; las marcas, por el tipo del punto unico.
 
-type CoberturaPrismaClient = Pick<PrismaClient, "distrito" | "tarifa">;
+type CoberturaPrismaClient = Pick<
+  PrismaClient,
+  "tarifa" | "nodoGeografico" | "tipoNivelGeografico" | "zonaDistrito" | "organizacion"
+> &
+  ClienteDeMarcas;
 
 export class CoberturaRepository implements ICoberturaRepository {
   constructor(private readonly prisma: CoberturaPrismaClient) {}
 
-  async listDistritos(): Promise<DistritoCoberturaRow[]> {
-    // SIN `where`: activos e inactivos (R4). La disponibilidad se PROYECTA, no se recorta.
-    const rows = await this.prisma.distrito.findMany({
-      // Los flags se proyectan con `SELECT_FLAG_PROPIO` (guardia 374/R11: el literal del flag
-      // solo vive en `_shared/geografia-activa.ts`).
-      select: {
-        nombre: true,
-        ...SELECT_FLAG_PROPIO,
-        // SL-38: la marca de la EMPRESA del actor (R15), por el punto unico.
-        ...SELECT_MARCA_ZONA_ESPECIAL,
-        canton: {
-          select: {
-            nombre: true,
-            ...SELECT_FLAG_PROPIO,
-            provincia: { select: { nombre: true, ...SELECT_FLAG_PROPIO } },
-          },
-        },
-        zonas: { select: { zona: { select: { id: true, nombre: true, esCentral: true } } } },
-      },
-    });
+  // Uno por instancia, creado al primer uso: la vida de la carga es la de la peticion (design §4).
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
 
-    return rows.map(
-      (d): DistritoCoberturaRow => ({
-        provincia: { nombre: d.canton.provincia.nombre, activo: d.canton.provincia.activo },
-        canton: { nombre: d.canton.nombre, activo: d.canton.activo },
+  private catalogo(): CatalogoGeograficoRepository {
+    this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
+    return this.catalogoRepo;
+  }
+
+  async listDistritos(): Promise<DistritoCoberturaRow[]> {
+    // TODOS los distritos del pais, activos e inactivos (R4 de la 465): la disponibilidad se
+    // PROYECTA, no se recorta. El distrito es la profundidad 3 (design §2.4).
+    const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
+    return nodosDeProfundidad(catalogo, 3).map((d): DistritoCoberturaRow => {
+      const [canton, provincia] = ancestros(catalogo, d.id);
+      return {
+        provincia: { nombre: provincia.nombre, activo: provincia.activo },
+        canton: { nombre: canton.nombre, activo: canton.activo },
         distrito: {
           nombre: d.nombre,
           activo: d.activo,
-          zonaEspecial: esZonaEspecialDeLaEmpresa(d),
+          // SL-38: la marca de la EMPRESA del actor (R15 de la 465), propia o de un ancestro (R7).
+          zonaEspecial: esZonaEspecial(catalogo, asignaciones, d.id),
         },
-        disponible: disponibleDesdeCadena(d),
-        zonas: d.zonas.map((zd) => zd.zona),
-      }),
-    );
+        disponible: estaActivo(catalogo, d.id) === true,
+        // Las zonas del nodo mas cercano con asignacion (R6), SIN colapsar: la regla pura
+        // distingue «sin zona» de «varias zonas».
+        zonas: (zonasCandidatas(catalogo, asignaciones, d.id)?.zonas ?? []).map((z) => ({
+          id: z.id,
+          nombre: z.nombre,
+          esCentral: z.esCentral,
+        })),
+      };
+    });
   }
 
   async listZonaIdsConTarifaGeneral(): Promise<string[]> {

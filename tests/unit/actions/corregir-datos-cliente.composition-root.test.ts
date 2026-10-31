@@ -43,18 +43,31 @@ const filaOrden = {
   cierreDetalles: [] as { id: string }[],
 };
 
-const filaDistrito = {
-  id: "d-2",
-  nombre: "Distrito Dos",
-  cantonId: "c-1",
-  zonasEspeciales: [] as { id: string }[],
-  // FICHA 374: la lectura proyecta la CADENA de flags (`SELECT_CADENA_DISTRITO`). Los tres van en
-  // `true` porque este caso mide el composition root, no la retirada de un nodo; con alguno en
-  // `false` el servicio rechazaria por «distrito retirado» y este test mediria otra cosa.
+// SLT-44 (design §10, «cambian de entrada, no de salida»): el distrito propuesto sale del catalogo
+// (`nodo_geografico`) y de las asignaciones de la empresa, no de `distrito.findFirst`. El doble da la
+// cadena provincia -> canton -> distrito como nodos y la zona como fila de `zona_distrito`.
+// FICHA 374: los tres nodos van activos porque este caso mide el composition root, no la retirada
+// de un nodo; con alguno inactivo el servicio rechazaria por «distrito retirado».
+const nodoDelDoble = (id: string, nombre: string, profundidad: number, padreId: string | null) => ({
+  id,
+  nombre,
+  nombreNormalizado: nombre.toLowerCase(),
+  profundidad,
+  padreId,
+  tipoId: `t${profundidad}`,
+  codigoOficial: null,
   activo: true,
-  canton: { provinciaId: "p-1", activo: true, provincia: { activo: true } },
-  zonas: [{ zonaId: "z-2", zona: { nombre: "Zona Dos", esCentral: false } }],
-};
+});
+const nodosDelPais = [
+  nodoDelDoble("p-1", "Provincia Uno", 1, null),
+  nodoDelDoble("c-1", "Canton Uno", 2, "p-1"),
+  nodoDelDoble("d-1", "Distrito Uno", 3, "c-1"),
+  nodoDelDoble("d-2", "Distrito Dos", 3, "c-1"),
+];
+const filasZonaDistrito = [
+  { distritoId: "d-1", zona: { id: "z-1", nombre: "Zona Uno", esCentral: false } },
+  { distritoId: "d-2", zona: { id: "z-2", nombre: "Zona Dos", esCentral: false } },
+];
 
 const filaTarifa = {
   id: "tar-1",
@@ -77,7 +90,11 @@ const tarifaFindMany = vi.fn(async () => [filaTarifa]);
 vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: () => ({
     orden: { findFirst: vi.fn(async () => filaOrden) },
-    distrito: { findFirst: vi.fn(async () => filaDistrito) },
+    organizacion: { findFirst: vi.fn(async () => ({ paisId: "CR" })) },
+    tipoNivelGeografico: { findMany: vi.fn(async () => []) },
+    nodoGeografico: { findMany: vi.fn(async () => nodosDelPais) },
+    zonaDistrito: { findMany: vi.fn(async () => filasZonaDistrito) },
+    distritoZonaEspecial: { findMany: vi.fn(async () => []) },
     tarifa: { findMany: tarifaFindMany },
     // FICHA 454 (R64): `findParaCorreccion` deriva tambien la ayuda ABIERTA (`ayuda-abierta.ts`,
     // SQL crudo). Aqui la orden no tiene ninguna: la consulta devuelve cero filas.
