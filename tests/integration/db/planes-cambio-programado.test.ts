@@ -61,6 +61,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       topes: entrada.topes,
       modulos: entrada.modulos,
       precio: entrada.precio,
+      costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde,
       ...cambio,
     });
@@ -142,6 +143,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["analitica"],
         precio: { tipo: "monto", mensual: "25000", anual: null },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const [org] = p.orgs;
       await fijarEmpresa(tx, org);
@@ -152,6 +154,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "negociable" },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId } });
       const trabajos = await trabajosDeAplicar(tx, p.planId);
@@ -179,6 +182,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
       modulos: ["ranking"],
       precio: { tipo: "negociable" },
+      costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
     });
     expect(r.trabajos).toHaveLength(1);
     expect(r.trabajos[0]).toMatchObject({

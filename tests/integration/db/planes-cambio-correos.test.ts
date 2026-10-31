@@ -129,6 +129,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput> = {}, empres
       topes: entrada.topes,
       modulos: entrada.modulos,
       precio: entrada.precio,
+      costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde,
       ...cambio,
     });

@@ -91,6 +91,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000", anual: null },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const planId = creado.planId;
@@ -100,6 +101,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         topes: { ordenesPorCiclo: 150, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000.00", anual: { tipo: "fijo", monto: "250000" } },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       await servicio.archivar(actor, { planId });
@@ -308,6 +310,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         topes: { ordenesPorCiclo: ordenes, porRol: {}, apiKeys: null },
         modulos: [],
         precio: { tipo: "sin_precio" },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde,
       });
       // `created_at` lo pone Prisma en el cliente: una pausa entre operaciones evita que dos de ellas
