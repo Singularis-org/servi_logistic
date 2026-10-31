@@ -32,7 +32,7 @@ import {
  *    ciclo de órdenes» en hoy (T15); se espera a la vista previa y se confirma. El
  *    bloque «Plan» pasa a pintar el plan y su consumo, y el historial la asignación.
  * 4. El maestro de A abre `/mi-plan`: el nombre, «de <tope> órdenes del ciclo», «de <tope> Mensajero» y
- *    «sin límite» en un rol sin tope (Maestro).
+ *    ninguna fila de Maestro (SLT-66 R5: el maestro no tiene tope).
  * 5. El maestro de B, sin plan, ve «sin límites» y ni el nombre del plan de A ni su id en el HTML.
  * 6. El `mensajero` de A recibe «No encontramos esta página» en `/mi-plan` (R8).
  * 7. Por detrás (`clienteDueno`): el plan existe, es custom de A y es el plan de A; B sigue sin plan.
@@ -166,7 +166,11 @@ test("el superadmin crea por pantalla un plan custom de A con tope de órdenes y
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
-  await form.getByRole("radio", { name: "Sin precio", exact: true }).click();
+  // SLT-66 R28: solo se asigna un plan con costo concreto, así que se crea «Con monto» y con costo por
+  // orden (antes, «Sin precio»). El resto del recorrido no cambia.
+  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
+  await form.getByLabel("Costo base mensual", { exact: true }).fill("1000");
+  await form.getByLabel("Costo por orden", { exact: true }).fill("100");
   await form.getByRole("button", { name: "Crear plan" }).click();
 
   await expect(page.getByRole("status").filter({ hasText: `Plan «${nombreDelPlan}» creado.` })).toBeVisible({
@@ -259,8 +263,8 @@ test("el maestro de A ve en «Mi plan» el nombre, sus topes y su consumo (R28)"
     const consumo = page.getByRole("list", { name: "Consumo" });
     await expect(consumo).toContainText(`0 de ${TOPE_ORDENES} órdenes del ciclo`);
     await expect(consumo).toContainText(`1 de ${TOPE_MENSAJEROS} Mensajero`);
-    // Un rol sin tope: el maestro mismo cuenta, sin límite.
-    await expect(consumo).toContainText("1 Maestro · sin límite");
+    // SLT-66 R5: el maestro no tiene tope ni fila de consumo; antes, «1 Maestro · sin límite».
+    await expect(consumo).not.toContainText("Maestro");
     expect(texto.includes(SIN_PLAN_EMPRESA), "A ve el aviso de sin plan").toBe(false);
     expect(errores5xx).toEqual([]);
   } finally {
