@@ -743,3 +743,58 @@ Cambio en el script (design §9, «una vez por país, en `comoPlataforma`»):
   ```
 
 Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataforma nuevas (SLT-65), avisadas al reviewer, y el conteo del país corre en plataforma, como pide design §9.
+
+## T7.3, T8.1, T8.2 — Cierre de la implementación (implementer, 2026-10-31)
+
+### Commits (sin push)
+`69a385e` T1.2 · `56c2626` T0–T2 · `c10045e` T3 · `cb1a1dd` T4 · `2b42d81` T6 · `ecbb6e1` T7.1–T7.2 · `df5a7e3` T5.
+
+### Mapa R → test (R1–R28)
+| R | Test |
+|---|---|
+| R1 | `geo-consultas-ordenes` (API, /ordenes, herencia en cantón); `lugar-orden.test.ts` |
+| R2 | `geo-consultas-ordenes` (marcas solo a distritos = hoy); `geo-equivalencia-consultas` |
+| R3 | `geo-consultas-ordenes`; las suites de API/listado existentes, sin cambiar la respuesta (los literales del `select` se tocaron por decisión humana) |
+| R4 | `geo-consultas-ordenes` («en plataforma…», «sin contexto, con la extensión real…») |
+| R5 | `geo-consultas-cierre` (R5 ×2) |
+| R6 | `geo-consultas-cierre` (R6) |
+| R7 | `geo-consultas-cierre` (R7, una consulta en vuelo); `emisor-relaciones-anidadas` ABIERTO (ver T3) |
+| R8 | `git diff origin/dev...HEAD -- lib/repositories/CierresAdminRepository.ts` vacío; `cierres-admin-service`, `cierre-iva-aparte-sl39`; `cierre-detail-congelado` |
+| R9 | `geo-consultas-conteo` («R9, R11»); `lugar-orden.test.ts` |
+| R10 | `geo-consultas-conteo` («R10») |
+| R11 | `geo-consultas-conteo` («R9, R11» y su contraprueba) |
+| R12 | `geo-consultas-conteo` («R12», en `comoPlataforma`) |
+| R13 | `geo-consultas-zona` («R13, R15», «R13: una asignación en un cantón»); `lugar-orden.test.ts` |
+| R14 | `geo-consultas-zona` («R14»); `zona-reconciliacion-ordenes`, `zona-central-guarda-y-rastro`, `zona-pago-mensajero-rastro` |
+| R15 | `geo-consultas-zona` («R13, R15»: plan nuevo = `planDeHoy`) |
+| R16 | `zonas-action` y `zona-repository.test.ts` (2 `expect` ABIERTOS); guardia `zona-reconciliacion-no-retarifa` (ABIERTA) |
+| R17 | `geo-consultas-zona` («R17»), `geo-consultas-cierre` («R17»), `zona-especial-dos-empresas` («SLT-65 R17: … cliente extendido») |
+| R18 | `geo-nodo-rls`, `geografia-dos-paises`, `geo-consultas-ordenes` (R4); en `lib/db/` solo la excepción de T5.1 |
+| R19 | guardia `geografia-lecturas-sin-nodo-fk` (ampliada) y `geo-lecturas-sin-backfill` (lecturas 1–7) |
+| R20 | guardia `geografia-sin-cte-recursiva` (verde en `test:guardias`) |
+| R21 | guardia `catalogo-geografico-sin-instancia-de-modulo` (7/7, con contraprueba) |
+| R22 | `geo-equivalencia-consultas` (incluye «R22 — el conteo del país, una vez por país en plataforma») |
+| R23 | `geo-equivalencia-consultas` (salida ≠ 0 con diferencias; contraprueba de la marca en un cantón) |
+| R24 | `geo-equivalencia-consultas` y `geo-explain-consultas` (INSERT → 25006, sin SQL ni datos personales) |
+| R25 | `geo-explain-consultas` (cinco lecturas, mediana, +19 %/+21 %, Seq Scan) |
+| R26 | sin migración: `git diff --name-only 69a385e~1 HEAD -- db/` vacío (T9 no aplica sin T8.3) |
+| R27 | suites existentes de órdenes, cierres, zonas y geografía en verde sin cambiar aserciones (salvo los literales autorizados y los ABIERTOS); E2E en CI |
+| R28 | ver la comprobación de diff de abajo |
+
+### Comprobaciones de diff
+- **`db/` (R26):** `git diff --name-only 69a385e~1 HEAD -- db/` → vacío. Contra `origin/dev...HEAD` salen las 6 migraciones `20261031120000`–`120500` y `schema.prisma`, que vienen de SLT-43 por la base de SLT-44, no de esta feature.
+- **`lib/db/` (R18):** `git diff --name-only 69a385e~1 HEAD -- lib/db/` → solo `lib/db/excepciones-aislamiento.ts` (las dos entradas de T5.1). **Aviso al reviewer:** la lista de plataforma gana `scripts/geo-explain-consultas.ts` y `scripts/geo-equivalencia-consultas.ts`.
+- **§2.2 (R28):** archivos de código que toca SLT-65: `lib/repositories/{OrdenRepository,CierreDiaRepository,ZonaRepository}.ts`, `lib/repositories/_shared/{lugar-orden,sin-transaccion-anidada}.ts`, `lib/db/excepciones-aislamiento.ts`, `scripts/geo-*` y `package.json`. No cambian ni `CierresAdminRepository`, ni las actions, ni los servicios de escritura de geografía, zonas o marcas, ni `components/`/`app/`. En `OrdenRepository` no cambia ninguna línea de `where` con `provinciaId|cantonId|distritoId` (grep del diff vacío). Los filtros de `list`, `condicionesSatelite`, `WITH_ETIQUETA` y los nombres de `toBodegaSateliteRow` siguen sin tocar (ver T2).
+
+### T7.3 — `pnpm run test:guardias` (sin marcar)
+`Test Files 2 failed | 326 passed (328)`, `Tests 5 failed | 4585 passed | 1 skipped (4591)`.
+- `dependencias-declaradas-presentes` (4): está en `tests/baseline-rojos.json`.
+- `zona-reconciliacion-no-retarifa` (1): ABIERTA. Su antivacío busca `orden.findMany(` en `update`, y la lectura está ahora en `planificarReconciliacion`.
+- `zona-especial-punto-unico`, `geografia-sin-cte-recursiva`, `consultas-concurrentes-en-transaccion`, `plataforma-solo-en-lista`, `geografia-lecturas-sin-nodo-fk` y `catalogo-geografico-sin-instancia-de-modulo`: en verde.
+
+### T8.2 — `./init.sh` (sin marcar)
+Corta en el paso 3: `✗ feature_list.json invalido: zona backend: SLT-43, SLT-44, SLT-59, SLT-65 (4 in_progress, max 3)`. Es la excepción de cupo que aceptó el humano (`progress/features/SLT-65.md`), pero el validador no la conoce; le toca al leader. Lo que sí se corre en local:
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `232 problems (0 errors, 232 warnings)`, los que ya había.
+- guardias: arriba.
+No se corre `vitest related`, porque arrastra unos 650 archivos (la suite entera). Las tandas acotadas de cada bloque están en sus secciones.
