@@ -19,6 +19,7 @@ import {
   mensajeTopesPasados,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
+  textoDelCostoPorOrden,
   textoDelPrecio,
   TITULO_LINEAS_DE_CAMBIO,
 } from "@/lib/planes/mensajes";
@@ -47,7 +48,9 @@ const TEXTOS = {
   archivadoAviso: "Plan archivado: no se puede editar ni asignar. Las empresas que ya lo tienen lo conservan.",
   vigente: "Versión vigente",
   visibilidad: "Visibilidad",
-  precio: "Precio informativo",
+  // SLT-66 (R9, R24): el precio informativo de SL-24 es el «costo base»; el costo por orden va aparte.
+  precio: "Costo base",
+  costoPorOrden: "Costo por orden",
   topes: "Topes",
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
@@ -88,7 +91,6 @@ const TEXTOS = {
   reemplaza: (antes: string, despues: string) => `Reemplaza al previsto para ${antes}; rige desde ${despues}`,
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
-  precioDelPlan: (precio: string) => `Precio: ${precio}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
 } as const;
 
@@ -230,6 +232,13 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
           <Dato termino={TEXTOS.visibilidad}>{textoDeVisibilidad(plan.visibilidad, detalle.empresaNombre)}</Dato>
           <Dato termino={TEXTOS.precio}>{textoDelPrecio(plan.precio)}</Dato>
+          <Dato termino={TEXTOS.costoPorOrden}>
+            {textoDelCostoPorOrden(plan.costoPorOrden)}
+            {/* R10: el anual (fijo o con descuento) no toca el costo por orden. */}
+            {plan.precio.tipo === "monto" && plan.precio.anual !== null ? (
+              <p className="text-xs text-muted-foreground">{TEXTOS_PLAN.anualNoAplica}</p>
+            ) : null}
+          </Dato>
           <Dato termino={TEXTOS.topes}>
             <ul className="flex flex-col gap-0.5">
               {lineasDeTopes(plan.topes).map((linea) => (
@@ -456,7 +465,13 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   const topesAlta = deAlta(c.topes);
   const modulosAlta = deAlta(c.modulos);
   if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
-  if (precioAlta) lineas.push(TEXTOS.precioDelPlan(textoDelPrecio(precioAlta.despues as PrecioPlan)));
+  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas.
+  if (precioAlta) lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precioAlta.despues as PrecioPlan)));
+  // SLT-66 (R11): el costo por orden nace a menudo vacío, así que `antes: null` no distingue un alta de
+  // una edición desde vacío: lo decide la acción de la fila.
+  const costo = c.costoPorOrden;
+  const esAlta = fila.accion === "creado";
+  if (costo && esAlta) lineas.push(TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrden(costo.despues as string | null)));
   if (topesAlta) lineas.push(...lineasDeTopes(topesAlta.despues as TopesPlan));
   if (modulosAlta) {
     const modulos = modulosAlta.despues as ModuloApagable[];
@@ -475,6 +490,10 @@ function lineasDelRastro(fila: FilaRastro): string[] {
         ? { antes: modulos.antes as ModuloApagable[], despues: modulos.despues as ModuloApagable[] }
         : undefined,
       precio: precio ? { antes: precio.antes as PrecioPlan, despues: precio.despues as PrecioPlan } : undefined,
+      costoPorOrden:
+        costo && !esAlta
+          ? { antes: costo.antes as string | null, despues: costo.despues as string | null }
+          : undefined,
     }),
   );
 

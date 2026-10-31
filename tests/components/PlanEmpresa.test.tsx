@@ -37,9 +37,11 @@ const LEIDO: PlanConUsoLeido = {
     topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
     modulos: ["analitica"],
     precio: { tipo: "monto", mensual: "45000", anual: null },
+    costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
   },
   ancla: new Date("2026-01-15T06:00:00.000Z"),
-  uso: { ordenes: 1000, apiKeys: 2, porRol: { maestro: 1, admin: 0, mensajero: 8, adminTienda: 0, adminSatelite: 0 } },
+  // SLT-66 R5: el uso ya no lleva `maestro`.
+  uso: { ordenes: 1000, apiKeys: 2, porRol: { admin: 0, mensajero: 8, adminTienda: 0, adminSatelite: 0 } },
   cambio: {
     vigenteDesde: new Date("2026-04-01T06:00:00.000Z"),
     version: {
@@ -47,8 +49,10 @@ const LEIDO: PlanConUsoLeido = {
       topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "45000", anual: null },
+      costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
     },
   },
+  costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
 };
 
 const AHORA = new Date("2026-03-01T06:00:00.000Z");
@@ -74,6 +78,7 @@ function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): Plan
     topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
+    costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
     archivado: false,
     ...extra,
   };
@@ -181,11 +186,12 @@ describe("SLT-58 R19 — el plan de la empresa con su consumo", () => {
 
     const seccion = screen.getByRole("region", { name: "Plan" });
     expect(within(seccion).getByRole("heading", { level: 3, name: "Plan Crecer" })).toBeInTheDocument();
-    expect(within(seccion).getByText("45000 al mes")).toBeInTheDocument();
+    // SLT-66 R9: el precio informativo se pinta como «Costo base: …», con el importe del costeo (dos decimales).
+    expect(within(seccion).getByText("Costo base: 45000.00 al mes")).toBeInTheDocument();
     expect(within(seccion).getByRole("list", { name: "Módulos incluidos" })).toHaveTextContent("Analítica");
 
     const consumo = within(seccion).getByRole("list", { name: "Consumo" });
-    expect(within(consumo).getAllByRole("listitem")).toHaveLength(7);
+    expect(within(consumo).getAllByRole("listitem")).toHaveLength(6); // SLT-66 R5: sin la fila del rol Maestro
     expect(within(consumo).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
     expect(within(consumo).getByText("Cerca del tope")).toBeInTheDocument(); // 8 de 10 mensajeros
     expect(within(consumo).getByText("Lleno")).toBeInTheDocument(); // 2 de 2 API keys
@@ -361,7 +367,8 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
       "API keys activas: 2 → sin límite",
       "Deja de incluirse el módulo Analítica.",
       // `diferenciasDelPlan` compara en forma canónica (dos decimales), igual que en el correo.
-      "Precio: 45000.00 al mes → sin precio",
+      // SLT-66 R9: la línea «Precio:» pasa a «Costo base:».
+      "Costo base: 45000.00 al mes → sin precio",
     ]);
     expect(asignar).not.toHaveBeenCalled();
   });
@@ -507,12 +514,15 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     const lineas = within(modal).getByRole("list", { name: "Lo que tendrá la empresa" });
     expect(within(lineas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Órdenes por ciclo: 5.000",
-      "Usuarios activos con el rol Maestro: sin límite",
+      // SLT-66 R5: sin la línea del rol Maestro.
       "Usuarios activos con el rol Administrador: sin límite",
       "Usuarios activos con el rol Mensajero: 10",
       "Usuarios activos con el rol Admin de tienda: sin límite",
       "Usuarios activos con el rol Admin satélite: sin límite",
       "API keys activas: 2",
+      // SLT-66 R24: el costo base y el costo por orden del plan, antes de los módulos.
+      "Costo base: 45000 al mes",
+      "Costo por orden: se aplica el valor global",
       "Módulos incluidos: Analítica, Monitoreo",
     ]);
     // R38: la frase con la fecha elegida sustituye a «empieza hoy».

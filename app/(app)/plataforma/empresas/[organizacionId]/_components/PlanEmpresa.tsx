@@ -37,7 +37,7 @@ import type {
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
-import { lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
+import { lineasDeCosto, lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
 
 /** Textos de la sección, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
@@ -226,7 +226,8 @@ export function PlanEmpresa({
   const lineasDePrimera = useMemo(() => {
     if (elegido === null) return null;
     const modulos = elegido.modulos.length === 0 ? TEXTOS.sinModulos : elegido.modulos.map(nombreDelModulo).join(", ");
-    return [...lineasDeTopes(elegido.topes), TEXTOS.modulosIncluidos(modulos)];
+    // SLT-66 (design §6.2, R24): también el costo base y el costo por orden del plan.
+    return [...lineasDeTopes(elegido.topes), ...lineasDeCosto(elegido), TEXTOS.modulosIncluidos(modulos)];
   }, [elegido]);
 
   /**
@@ -448,6 +449,12 @@ export function PlanEmpresa({
                 </ul>
               </div>
             )}
+            {/* SLT-66 (R24): el costo del plan nuevo se ve aunque no cambie respecto del actual. */}
+            <ul className="mt-2 flex flex-col gap-1 text-sm">
+              {lineasDeCosto(elegido).map((linea) => (
+                <li key={linea}>{linea}</li>
+              ))}
+            </ul>
           </Modal>
         )
       ) : null}
