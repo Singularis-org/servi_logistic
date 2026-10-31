@@ -96,14 +96,14 @@
   *Hecho:*
   - `tests/integration/db/migracion-slt66-desasignar.test.ts` (R34) en verde;
   - mutación 11 medida.
-- [ ] **T7 [P] — Deuda en la wallet con cargos del plan** (design §8). Depende de T6.
+- [x] **T7 [P] — Deuda en la wallet con cargos del plan** (design §8). Depende de T6.
   `tests/integration/db/deuda-plataforma-plan.test.ts` (R17, R21).
 
   *Hecho:* en verde sin tocar `WalletService`, `DeudaPlataformaService` ni `derivarDeudaPlataforma`.
 
 ## Tanda C — lecturas y total estimado (backend_dev)
 
-- [ ] **T8 [P] — `lib/planes/costeo.ts` y tipos** (design §4.3). Depende de T2.
+- [x] **T8 [P] — `lib/planes/costeo.ts` y tipos** (design §4.3). Depende de T2.
   - `costeoDelCiclo`.
   - `FuenteDelCosto` y `CosteoDelCiclo`, y `PlanConConsumo.costeo`, en `lib/types/consumo-plan.ts`.
 

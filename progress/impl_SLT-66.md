@@ -262,3 +262,65 @@ Las tres restauradas, y todo vuelve a verde.
    - Probado con un cambio temporal, revertido y sin commit: con `maestro: conteo.optional()`, T7 da 4/0 y `planes-asignacion-inicio-ciclo` 11/0.
    - T7 queda sin marcar.
 2. **`app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx:96` no compila** (TS2741): falta `desasignado` en `Record<PlanRastroAccion, string>`. Es la traducción de T22 (frontend), y el typecheck de la rama está en rojo hasta entonces.
+
+## Tanda B (2) — T9 adelantada por el leader, más T8 (que T9 necesita) y la traducción `desasignado` de T22
+
+### Commits
+- `0b12f0f` (frontend_dev): `PlanDetalle.tsx` suma `desasignado: "Desasignado"` en `ACCIONES`.
+  - La etiqueta sale de la frase de design §2.3 bis: «Desasignado de {empresa} por la migración…».
+  - Queda para T22: la frase completa con la empresa y `PlanDetalleDesasignado.test.tsx`.
+- `8d35fb3` T8: `lib/planes/costeo.ts` (`costeoDelCiclo`) y los tipos `FuenteDelCosto`, `CosteoDelCiclo` y `PlanConConsumo.costeo`.
+- `3bb1fa0` T9: lecturas con costeo.
+  - `MiPlanRepository`: el zod deja de leer `uso.maestro` y pide `costo_por_orden` y `costo_vigente`. Cierra la decisión provisional de T2.
+  - `PlanesRepository.planDeEmpresa` usa `cobro_plataforma_tarifa_de`.
+  - En `consumo.ts`, `costeo`.
+  - `MiPlanService` y `PlanesService` sin cambios: la autorización queda igual.
+- `3c222c2` T9: `plan-de-la-empresa-costeo.test.ts` (R18, R22, y la lectura igual al cargo). Además:
+  - en `plan-de-la-empresa.test.ts`, `:123` y `:178` (§9.3);
+  - las 14 claves de `:213-230`, que §9.3 NO lista (ver bloqueos).
+
+### Tests (`logistic_slt66`)
+| Archivo | Pasados / fallados |
+|---|---|
+| plan-de-la-empresa-costeo (nuevo) | 7 / 0 |
+| plan-de-la-empresa | 7 / 0 |
+| mi-plan-repository | 4 / 0 |
+| deuda-plataforma-plan (T7; R21 ya en verde) | 4 / 0 |
+| planes-asignacion-inicio-ciclo (sin tocar) | 11 / 0 |
+| cobro-plataforma-plan | 16 / 0 |
+| migracion-slt66-ida-y-vuelta | 11 / 0 |
+| cobro-plataforma-cargos (SL-40) | 20 / 0 |
+| migracion-sl40-ida-y-vuelta (SL-40) | 4 / 0 |
+| unit costeo (nuevo) | 13 / 0 |
+| unit consumo | en verde |
+| unit mi-plan-service | **8 / 5** |
+| unit planes-service-lecturas | **28 / 2** |
+
+### Mutaciones
+- **5** (descuento en el total): cae R10.
+- **6** (`plan_de_la_empresa` con regla propia): cae «fuente empresa». Medida en la base y luego restaurada: 7/0.
+- **10a** (total con base «por definir»): caen 2.
+- **10b** (sin total con plan sin costo y global): cae 1.
+
+Ni `Number(` ni `parseFloat` en `costeo.ts`.
+
+### Typecheck
+- `lib/` y `app/` limpios.
+- Fuera de la tanda D quedan:
+  - `tests/unit/services/mi-plan-service.test.ts:38`
+  - `tests/unit/services/planes-service-lecturas.test.ts:96`
+- Los dos son dobles sin `costoVigente`.
+
+### Bloqueos (pendientes del leader o del humano)
+1. **Dobles sin `costoVigente`.** `mi-plan-service.test.ts` (`leido()`) y `planes-service-lecturas.test.ts` (`planDeEmpresaLeida()`) no lo traen, y `costeoDelCiclo` lanza `undefined.monto`.
+   - Arreglo mecánico: añadir `costoVigente: { monto, fuente }` a esos dobles, sin cambiar ninguna aserción.
+   - Los dos archivos están en §9.3, pero esas líneas no. Tampoco es `costoPorOrden`, así que no lo cubre la autorización general. T9 sigue sin marcar.
+2. **Las 14 claves de `plan-de-la-empresa.test.ts:213-230`.** El cambio entró porque el encargo del implementer lo pidió, pero §9.3 no lo lista. Hay que confirmarlo y añadir la fila, o revertirlo.
+3. **Ambigüedad de `sinCostoConcreto`.** La firma del design, `costeoDelCiclo(precio, costoVigente, ordenes)`, no recibe el `costoPorOrden` del plan. Por eso, con una excepción de la empresa y un plan sin costo por orden, sale `sinCostoConcreto: false`.
+   - Cumple R20 al pie de la letra, pero no la noción de «costo concreto» de R28.
+   - Si el aviso tiene que salir también ahí, la firma cambia.
+4. **Riesgo de bundle.** `consumo.ts` importa ahora `costeo.ts`, que importa `Prisma` de `@prisma/client`, y `consumo.ts` lo importan componentes de cliente (`PlanesModule`, `PlanEmpresa`, `plan-vista`). No se verificó con un build.
+5. En `costeo.test.ts` no están los casos de `tieneCostoConcreto`: son de T18.
+
+### Aviso de rendimiento (anterior a la ficha; el leader lo pasa a deudas)
+La carga de 500 órdenes con guía (`OrdenRepository.createManyOrdenesConGuia`) tarda entre 3 y 4,9 s en local ANTES de M3, al borde del timeout de 5 s de las transacciones interactivas de Prisma. En una serie sin intercalar, varias llamadas pasaron los 5 s, así que hay riesgo de flakiness. M3 no lo cambia de forma medible.
