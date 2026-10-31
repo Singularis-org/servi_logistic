@@ -124,7 +124,7 @@
     verde;
   - los dos archivos existentes en verde, con el diff solo en el doble;
   - mutaciones 7–9 medidas.
-- [ ] **T9 — Lecturas con costeo** (design §4.3). Depende de T6 y T8.
+- [x] **T9 — Lecturas con costeo** (design §4.3). Depende de T6 y T8.
   - `MiPlanRepository`: zod sin `uso.maestro`, con `costo_por_orden` y `costo_vigente`.
   - `PlanesRepository.planDeEmpresa`: `cobro_plataforma_tarifa_de`.
   - `consumo.ts > planConConsumo`: `costeo`.

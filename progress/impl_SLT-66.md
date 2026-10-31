@@ -324,3 +324,54 @@ Ni `Number(` ni `parseFloat` en `costeo.ts`.
 
 ### Aviso de rendimiento (anterior a la ficha; el leader lo pasa a deudas)
 La carga de 500 órdenes con guía (`OrdenRepository.createManyOrdenesConGuia`) tarda entre 3 y 4,9 s en local ANTES de M3, al borde del timeout de 5 s de las transacciones interactivas de Prisma. En una serie sin intercalar, varias llamadas pasaron los 5 s, así que hay riesgo de flakiness. M3 no lo cambia de forma medible.
+
+## Tanda B (3): cierre de T9 con las decisiones del humano del 2026-10-31
+
+### Commits
+- `bffacfa`: el costeo ya no usa Prisma y el aviso sale de `tieneCostoConcreto` (T9 y T18 parcial).
+  - `lib/planes/costo-concreto.ts` (nuevo): `tieneCostoConcreto(plan)` y el tipo `PlanParaCosto`, que solo importa tipos. El resto de T18 (`asignar`, `asignables`, `previsualizar`) sigue pendiente.
+  - `lib/planes/costeo.ts` (reescrito): céntimos en `bigint`, con el patrón de `lib/utils/pagos-recaudo.ts`. Sin `@prisma/client`, sin `Number(` ni `parseFloat`. Un importe mal formado lanza en vez de redondearse.
+  - Firma nueva: `costeoDelCiclo(plan: PlanParaCosto, costoVigente: { monto; fuente }, ordenes)`.
+    - `sinCostoConcreto = !tieneCostoConcreto(plan)`;
+    - el total sale de lo que paga la empresa (`costoVigente`).
+- `5a01f40`: tests.
+  - `costeo.test.ts`: los casos nuevos de §9.1 y el de «excepción en la empresa y plan sin costo por orden: aviso sí, total con lo que paga».
+  - Los dobles de `mi-plan-service:48-49` y `planes-service-lecturas:105-106` llevan `costoVigente`. Entra por la autorización general; las filas están en §9.3.
+- design.md §4.3: anotada la decisión del humano (el aviso mira el plan; costeo sin Prisma). En §9.3, las filas de las 14 claves y de los dobles.
+
+### Tests
+| Archivo | Pasados / fallados |
+|---|---|
+| unit costeo | 27 / 0 |
+| unit consumo | 35 / 0 |
+| unit mi-plan-service | 13 / 0 |
+| unit planes-service-lecturas | 30 / 0 |
+| plan-de-la-empresa-costeo | 7 / 0 |
+| plan-de-la-empresa | 7 / 0 |
+| mi-plan-repository | 4 / 0 |
+| deuda-plataforma-plan | 4 / 0 |
+| planes-asignacion-inicio-ciclo (sin tocar) | 11 / 0 |
+| cobro-plataforma-plan | 16 / 0 |
+| cobro-plataforma-cargos (SL-40) | 20 / 0 |
+
+Los de integración corrieron contra `logistic_slt66`.
+
+### Mutaciones
+- 5: cae 1.
+- 9 (`costoPorOrden "0.00"` como vacío): caen 4.
+- 9 extra (mensual `"0.00"` como vacío): caen 2.
+- 10a: caen 2.
+- 10b: caen 3.
+
+### Bundle de cliente
+Un script recorre los imports en runtime de los 362 archivos `'use client'`.
+- Los cuatro que alcanzan `consumo.ts`/`costeo.ts` son `PlanEmpresa`, `PlanesModule`, `PlanDetalle` (vía `plan-vista`) y `PlanForm` (vía `plan-vista`). Ninguno alcanza `@prisma/client`.
+- El script se validó contra el `costeo.ts` anterior: ahí sí marcaba los cuatro.
+- `ConsumoDelPlan.tsx` no llega a `costeo.ts`.
+
+### Typecheck y tests pendientes
+- Typecheck: `lib/`, `app/`, `tests/unit` y `tests/integration/db` limpios. Los 17 errores que quedan están en `tests/components` y `tests/integration/plataforma-*`, que son de la tanda D.
+- `vitest related` cae solo en esos mismos archivos:
+  - 6 fallos por dobles sin `costoVigente`;
+  - 42 por dobles sin `costoPorOrden`;
+  - el resto, por la UI de `PlanForm` sin el campo, que es T11.

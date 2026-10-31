@@ -408,6 +408,16 @@ export type PlanConConsumo = { /* lo de SLT-58 */ costeo: CosteoDelCiclo };
 - **`ordenes` sale del mismo `uso.ordenes`** que la fila de consumo: misma cuenta que el tope (glosario,
   D3, D6).
 - **El descuento no entra** en `total` (R19). Solo enciende `anualNoAplicaAlCosto` (R10).
+- **Decisión del humano, 2026-10-31.**
+  - **Qué mira el aviso.** `sinCostoConcreto` mira el **plan**, no lo que se cobra. Es
+    `!tieneCostoConcreto(plan)`: base con forma `monto` y `costoPorOrden` del plan no nulo, y `"0.00"`
+    cuenta como concreto (R28).
+  - **Excepción en la empresa.** Si la empresa tiene una excepción y el plan no tiene costo por orden, el
+    aviso **sí** sale. La empresa no ve nada distinto, y su `total` usa lo que paga (`costoVigente`).
+  - **Firma.** `costeoDelCiclo` recibe lo necesario para calcularlo. La firma de la tabla de arriba cambia
+    en consecuencia: ver el código y `progress/impl_SLT-66.md`.
+  - **Bundle.** La aritmética del costeo no importa `@prisma/client`, porque `consumo.ts` llega a
+    componentes de cliente. Esto sustituye el «con `Prisma.Decimal` dentro» de la fila de `costeo.ts`.
 - **`MiPlanService.ver`** no cambia de autorización: `ROLES_MI_PLAN` antes del repositorio (SLT-58 R8).
 
 ### 4.4 Textos (`lib/planes/mensajes.ts`)
@@ -671,6 +681,8 @@ SL-24, SL-40 ni SLT-58 se toca (R27). Si al implementar aparece otro, se para y 
 | `tests/integration/db/_fixtures/planes.ts:211` (`entradaDePlan`) | fixture compartido de SL-24 | R8: `costoPorOrden: null`. **Añadida el 2026-10-31, autorizado por el humano** |
 | Fixtures `costoPorOrden: null`: `mi-plan-service:34, :113`; `planes-service-lecturas:41, :52, :98`; `mi-plan-repository:30`; `planes-lecturas-plataforma:32`; `planes-schema:24, :37`; `planes-service:43, :53` | fixtures de entrada o `PlanDTO` | R8, por typecheck o por `validation_error`. **Añadida el 2026-10-31, autorizado por el humano** |
 | `tests/integration/db/planes-edicion-en-uso.test.ts:45`, `planes-cambio-correos.test.ts:132`, `planes-cambio-programado.test.ts:64, :146, :157, :185`, `planes-asignacion.test.ts:204`, `planes-historial.test.ts:94, :104, :125, :313` | ayudantes y literales de crear/editar/programar; el diff esperado de alta de R29 | R8: `costoPorOrden: entrada.costoPorOrden` en los ayudantes, `null` en los literales; el alta registra el campo como los demás (igual que `rastro.test.ts:31`). **Añadida el 2026-10-31, autorizado por el humano** (también autorizó de forma general el mismo trato para cualquier test que caiga solo por `costoPorOrden`) |
+| `tests/integration/db/plan-de-la-empresa.test.ts:213-230` | «R9 — sin avisos_al_programar ni actor: las claves…» | R18: 14 claves, con `costo_por_orden` y `costo_vigente`. **Añadida el 2026-10-31, autorizado por el humano** |
+| `tests/unit/services/mi-plan-service.test.ts:48-49`, `tests/unit/services/planes-service-lecturas.test.ts:105-106` | dobles `leido()` / `planDeEmpresaLeida()` | R18: `costoVigente: { monto: "500.00", fuente: "global" }`. Ninguna aserción cambia. **Añadida el 2026-10-31, autorizado por el humano** (autorización general: un test que cae solo por campos nuevos o quitados de SLT-66 —`costoPorOrden`, `costoVigente`, `maestro`, número de claves— se ajusta sin cambiar lo que comprueba) |
 
 **SL-40.** `cobro-plataforma-cargos.test.ts` y `migracion-sl40-ida-y-vuelta.test.ts` no cambian. Sus
 empresas no tienen plan, así que la regla es la de antes (R12, pasos 1, 3 y 4). El segundo usa una base
