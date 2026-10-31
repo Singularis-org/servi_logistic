@@ -18,8 +18,9 @@
   2. Buscar con Grep en `dev` `CREATE OR REPLACE FUNCTION (cobro_plataforma_al_crear_orden|plan_de_la_empresa)`.
      Las últimas versiones tienen que ser las de `20261024120000` y `20261029150000` (design §13).
   3. Ver si el PR #51 (SLT-67) ya entró en `dev`.
-  4. Contar en QA, y en producción si hay acceso de lectura, las empresas con un plan asignado sin costo
-     base de forma «monto». Esto da el dato para cerrar P4.
+  4. Contar en QA, y en producción si hay acceso de lectura, las empresas con plan asignado
+     (todas las desasigna M4, P6). El leader pasa el número al humano antes de aplicar M4 en
+     una base compartida.
 
   *Hecho:* las cuatro respuestas quedan anotadas en `progress/impl_SLT-66.md`, y el número del punto 4 se
   le pasa al leader.
@@ -68,7 +69,7 @@
 ## Tanda B — cobro con el costo del plan (backend_dev)
 
 - [ ] **T5 — M2 `20261031120100_cobro_plataforma_fuente_plan`** (design §2.2). Depende de T1.
-  - `ALTER TYPE … ADD VALUE 'plan'`.
+  - `ALTER TYPE … ADD VALUE 'plan'` y `plan_rastro_accion` `ADD VALUE 'desasignado'`.
   - Un `down.sql` que se niega a bajar si hay cargos o reversos de fuente `plan`.
   - El enum de Prisma, con `plan`.
 
@@ -86,6 +87,15 @@
 
   Además, se miden las mutaciones 1–3 y la carga de 500 filas antes y después (design §13), con los
   números en `progress/impl_SLT-66.md`.
+- [ ] **T21 — M4 `20261031120300_plan_desasignar_sin_costo_base`** (design §2.3 bis; R34). Depende de T5.
+  Desasigna a **toda** empresa con plan (P6). Antes de aplicarla en una base compartida, el humano tiene
+  que tener el número de T0.
+  - `migration.sql` con la cabecera, y su `down.sql`, que repone desde `plan_rastro`.
+  - El enum de Prisma, `PlanRastroAccion`, con `desasignado`.
+
+  *Hecho:*
+  - `tests/integration/db/migracion-slt66-desasignar.test.ts` (R34) en verde;
+  - mutación 11 medida.
 - [ ] **T7 [P] — Deuda en la wallet con cargos del plan** (design §8). Depende de T6.
   `tests/integration/db/deuda-plataforma-plan.test.ts` (R17, R21).
 
@@ -98,20 +108,22 @@
   - `FuenteDelCosto` y `CosteoDelCiclo`, y `PlanConConsumo.costeo`, en `lib/types/consumo-plan.ts`.
 
   *Hecho:*
-  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde, también con la rama `por_definir`;
-  - mutación 5 medida;
+  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde, también con base y costo por orden «por
+    definir»;
+  - mutaciones 5 y 10 medidas;
   - Grep sin `Number(` ni `parseFloat` sobre importes en el archivo.
 - [ ] **T18 [P] — Solo se asignan planes con costo concreto** (design §4.2.1, §7). Depende de T2.
   - `lib/planes/costo-concreto.ts` (`tieneCostoConcreto`).
   - La variante `plan_sin_costo` en `PlanResult` y en `VistaPreviaAsignacionResult`.
-  - En `PlanesService`: la regla en `asignar` (después de «mismo plan») y en `previsualizarAsignacion`,
-    y el filtro en `asignables`.
+  - En `PlanesService`: la regla en `asignar` (después de «mismo plan», también con el pendiente) y en
+    `previsualizarAsignacion`, y el filtro en `asignables`. `editar` no cambia (R30).
   - Los dobles de `planes-service.test.ts` y `planes-service-inicio-ciclo.test.ts` (design §9.3).
 
   *Hecho:*
-  - `tests/unit/services/planes-service-asignar-costo.test.ts` (R28, R29, R30) en verde;
+  - `tests/unit/services/planes-service-asignar-costo.test.ts` (R28, R29, R30, con la base `0.00`) en
+    verde;
   - los dos archivos existentes en verde, con el diff solo en el doble;
-  - mutaciones 7 y 8 medidas.
+  - mutaciones 7–9 medidas.
 - [ ] **T9 — Lecturas con costeo** (design §4.3). Depende de T6 y T8.
   - `MiPlanRepository`: zod sin `uso.maestro`, con `costo_por_orden` y `costo_vigente`.
   - `PlanesRepository.planDeEmpresa`: `cobro_plataforma_tarifa_de`.
@@ -182,14 +194,13 @@
 
   *Hecho:* `tests/components/EmpresasModulePlan.test.tsx` en verde, y los tres archivos existentes en
   verde con el diff limitado a §9.3.
-- [ ] **T22 [P] — Opcional (R33): «Asignar a una empresa» desde el detalle del plan** (design §6.6).
-  Depende de T19.
-  - `[planId]/page.tsx` (empresas candidatas) y `PlanDetalle.tsx`.
+- [ ] **T22 [P] — «Asignar a una empresa» desde el detalle del plan** (design §6.6; R33, R34).
+  Depende de T19 y T21.
+  - `[planId]/page.tsx` (empresas candidatas) y `PlanDetalle.tsx`, con la traducción de `desasignado`.
   - `planPreseleccionado` en `PlanEmpresa` y la `page.tsx` del detalle de empresa (`searchParams.plan`).
 
-  *Hecho:* en verde `tests/components/PlanDetalleAsignar.test.tsx` y el caso R33 de
-  `PlanEmpresaSinCosto.test.tsx`. Si el humano la descarta, se marca «no aplica» y nada más depende de
-  ella.
+  *Hecho:* en verde `tests/components/PlanDetalleAsignar.test.tsx`,
+  `tests/components/PlanDetalleDesasignado.test.tsx` y el caso R33 de `PlanEmpresaSinCosto.test.tsx`.
 - [ ] **T14 — E2E** (design §9.2). Depende de T11, T13 y T20.
   - `e2e/planes-costeo.spec.ts`, con la asignación desde el listado de «Empresas».
   - En `e2e/planes-superadmin.spec.ts`:
@@ -208,9 +219,7 @@
   *Hecho:* la guardia de ayuda está en verde.
 - [ ] **T17 — Cierre.**
   - `./init.sh` en verde.
-  - El mapa `R<n> → test` (R1–R33) en `progress/impl_SLT-66.md`, con las ocho mutaciones medidas. Si T22
-    se descartó, R33 sale como «no aplica».
-  - P4 anotada como cerrada o abierta, con lo que decidió el humano.
+  - El mapa `R<n> → test` (R1–R34) en `progress/impl_SLT-66.md`, con las once mutaciones medidas.
   - R27: la lista exacta de tests de SL-24, SL-40 y SLT-58 tocados coincide con design §9.3.
 
   *Hecho:* el reviewer puede leer el mapa sin abrir el código.
@@ -290,3 +299,7 @@
 - `tests/components/EmpresasModulePlan.test.tsx`
 - `tests/components/PlanEmpresaSinCosto.test.tsx`
 - `tests/components/PlanDetalleAsignar.test.tsx`
+- `tests/components/PlanDetalleDesasignado.test.tsx`
+- `tests/integration/db/migracion-slt66-desasignar.test.ts`
+- `db/migrations/20261031120300_plan_desasignar_sin_costo_base/migration.sql`
+- `db/migrations/20261031120300_plan_desasignar_sin_costo_base/down.sql`

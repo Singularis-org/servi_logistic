@@ -1,10 +1,19 @@
 # SLT-66 — planes-sin-tope-maestro-y-costeo · design.md
 
-> Requisitos: `requirements.md` (R1–R33).
+> Requisitos: `requirements.md` (R1–R34).
 >
 > **Enmienda del 2026-10-31.** El humano cerró P1–P3 y pidió que asignar un plan se encuentre desde el
-> listado. Cambian R18, R20, R24, R26 y R27, y entran R28–R33. Queda abierta P4 (planes sin costo concreto
-> que ya están asignados), con su propuesta. Lo nuevo está en §6.3–§6.6, §7 y §9.
+> listado. Cambian R18, R20, R24, R26 y R27, y entran R28–R33. Lo nuevo está en §6.3–§6.6, §7 y §9.
+>
+> **Segunda enmienda del 2026-10-31.** P4 cerrada: la migración desasigna los planes sin costo base
+> concreto (R34, §2.3 bis). Una base 0 es concreta. R33 entra. R20 y R30 se reescriben.
+>
+> **Tercera enmienda del 2026-10-31.** Se cierran P5 y P6:
+> - P6: M4 desasigna a **todas** las empresas con plan;
+> - P5: editar un plan asignado puede dejarlo sin costo concreto. Se guarda, y las pantallas lo muestran
+>   como «por definir» con aviso.
+>
+> No queda ninguna pregunta abierta.
 >
 > Hereda el diseño de
 > `specs/SL-24-planes-y-limites/` («SL-24 §N»), `specs/SL-40-cobro-plataforma-por-orden/` («SL-40 §N») y
@@ -54,7 +63,9 @@ En el board no hay otra ficha de costeo del plan ni de quitar el tope del maestr
 | E2E | R26 |
 | Quién edita y dónde se autoriza | R11, R22 |
 | P1: el costo que se cobra, con la nota de la excepción | R18 |
-| P2: solo se asignan planes con costo concreto | R28–R30, R20 (P4) |
+| P2: solo se asignan planes con costo concreto | R28–R30, R20 |
+| P4: la migración desasigna los planes sin costo concreto | R34 |
+| Una base 0 es concreta | R20, R28 (definición) |
 | P3: el listado de «Empresas» muestra el cobro vigente y su fuente | R31 |
 | Asignar un plan se encuentra desde el listado | R32, R33, R26 |
 
@@ -123,7 +134,16 @@ La cabecera lo dice: los topes de maestro borrados no vuelven.
 
 ```sql
 ALTER TYPE "cobro_plataforma_fuente" ADD VALUE 'plan';
+ALTER TYPE "plan_rastro_accion" ADD VALUE 'desasignado';   -- R34, lo usa M4
 ```
+
+- **`desasignado` es un valor nuevo de un enum que ya existe, no una columna nueva.** Ninguna de las
+  acciones que hay (`creado`, `editado`, `archivado`, `cambio_*`) describe quitar un plan a una empresa,
+  y usar `editado` falsearía el rastro. Prisma: `PlanRastroAccion` gana `desasignado`. Las pantallas que
+  traducen la acción (`PlanDetalle`) lo añaden a su tabla, y el typecheck las señala.
+- **El `down.sql` de este valor** se niega a bajar si quedan filas `desasignado` en `plan_rastro`. Las
+  quita el `down.sql` de M4, que va antes. Si no quedan filas, recrea el tipo sin el valor con el mismo
+  patrón.
 
 - **Va en su propia carpeta.** Un valor de enum añadido no se puede usar en la misma transacción
   (precedente SL-24 §16.6).
@@ -186,7 +206,63 @@ ALTER TYPE "cobro_plataforma_fuente" ADD VALUE 'plan';
 
 El reviewer compara los cuerpos línea a línea con los de origen (precedente SLT-58 §11.2).
 
-**Orden de bajada:** M3 → M2 → M1, el inverso de la subida. M3 baja primero porque su cuerpo nombra
+### 2.3 bis M4 — `20261031120300_plan_desasignar_sin_costo_base` (R34, P4 cerrada)
+
+Va después de M1 y de M2, que crea el valor `desasignado`. Criterio (P6, cerrada): **toda** empresa
+con plan. `costo_por_orden` nace vacío en todos los planes, así que ninguna asignación previa tiene costo
+concreto.
+
+```sql
+-- SLT-66 R34. Desasigna el plan a TODA empresa que tenga uno (P6). Quedan sin plan (sin límites), sin
+-- ciclo y con sus módulos como estaban, hasta que el superadmin les asigne un plan con costo concreto.
+-- CABECERA: el down.sql repone plan, ancla y ciclo corto desde plan_rastro SOLO a las empresas que sigan
+-- sin plan. A una que ya recibió otro plan no la toca.
+CREATE TEMP TABLE "slt66_desasignadas" ON COMMIT DROP AS
+  SELECT o."id", o."nombre", o."plan_id", p."nombre" AS "plan_nombre",
+         o."plan_ciclo_ancla_at" AS "ancla", o."plan_ciclo_corto_desde_at" AS "corto"
+    FROM "organizacion" o JOIN "plan" p ON p."id" = o."plan_id";
+
+INSERT INTO "plan_rastro" ("id", "plan_id", "plan_nombre", "accion", "cambios", "actor_usuario_id", "actor_nombre")
+SELECT gen_random_uuid()::text, d."plan_id", d."plan_nombre", 'desasignado',
+       jsonb_build_object('empresa', jsonb_build_object(
+         'antes', jsonb_build_object('id', d."id", 'nombre', d."nombre", 'ancla', d."ancla", 'cortoDesde', d."corto"),
+         'despues', NULL)),
+       'sistema:SLT-66', 'Sistema (migración SLT-66)'
+  FROM "slt66_desasignadas" d;
+
+UPDATE "organizacion" o
+   SET "plan_id" = NULL, "plan_ciclo_ancla_at" = NULL, "plan_ciclo_corto_desde_at" = NULL
+  FROM "slt66_desasignadas" d WHERE o."id" = d."id";
+```
+
+- **Las columnas de `plan_rastro` ya existen** (SL-24 §2.8):
+  - `plan_id` y `actor_usuario_id` son opacos y sin FK, así que `'sistema:SLT-66'` cabe sin un usuario
+    real. Es el mismo trato que da el aplicador de cambios al «Sistema» (SL-24 §16.3);
+  - `cambios` es `JSONB` libre. La clave `empresa` es nueva, pero no rompe nada: `lineasDeCambioDelPlan`
+    solo lee las claves que conoce.
+
+  `PlanDetalle` traduce la fila así: «Desasignado de {empresa} por la migración: el plan no tenía costo
+  base concreto».
+- **Por qué se ponen a `NULL` el ancla y el ciclo corto.** Una empresa sin plan y con ancla tendría,
+  al reasignarla, el ciclo viejo (`COALESCE` de `PlanesRepository.asignar`), y no podría elegir fecha.
+  El `CHECK organizacion_plan_ciclo_corto_check` obliga a poner las dos a `NULL`. Sin ancla, la próxima
+  asignación es una «primera asignación» (SLT-58 R29–R31).
+- **Los módulos no cambian.** Es SL-24 R14: el plan no toca los módulos de una empresa sin plan. La
+  empresa conserva los que tenía encendidos.
+- **Sin fila en `historial_accion` de la empresa.** Exige actor y se escribe con `appendAccion` desde TS;
+  una migración no tiene actor. El rastro queda solo en `plan_rastro`, que es lo que pidió el humano. Su
+  consecuencia: el «Historial de asignaciones» del detalle de empresa no muestra la desasignación.
+- **`down.sql`.** Para cada fila `desasignado` con `actor_usuario_id = 'sistema:SLT-66'`, y solo si la
+  empresa sigue con `plan_id IS NULL` y el plan sigue existiendo, repone:
+  - `plan_id` (el `plan_id` de la fila);
+  - `plan_ciclo_ancla_at` (`cambios->'empresa'->'antes'->>'ancla'`);
+  - `plan_ciclo_corto_desde_at` (`cambios->'empresa'->'antes'->>'cortoDesde'`).
+
+  Después borra esas filas. Lo que no puede reponer, lo dice la cabecera.
+- **Multi-empresa.** La migración corre como dueño. `organizacion` y `plan_rastro` siguen igual de
+  cerradas para `servi_app`.
+
+**Orden de bajada:** M4 → M3 → M2 → M1, el inverso de la subida. M3 baja primero porque su cuerpo nombra
 `'plan'::cobro_plataforma_fuente`.
 
 ### 2.4 Prisma (`db/schema.prisma`)
@@ -281,25 +357,27 @@ export type PlanDTO = { /* … */ costoPorOrden: string | null };
 
 - **Predicado.** `tieneCostoConcreto(plan: PlanDTO | VersionPlan)` en `lib/planes/costo-concreto.ts`
   (nuevo, puro, sin base ni `Prisma`, para que lo importen los componentes cliente; `costeo.ts` sí usa
-  `Prisma.Decimal`). Es `precio.tipo === "monto" && costoPorOrden !== null`. Lo leen el servicio, la pantalla (para
-  el aviso de R20) y los tests.
+  `Prisma.Decimal`). Es `precio.tipo === "monto" && costoPorOrden !== null`. El mensual `"0.00"` y el costo
+  `"0.00"` son concretos: el predicado no mira el importe, solo la forma. Lo leen el servicio, la pantalla
+  (para el aviso de R20) y los tests.
+- **Pendiente.** `asignar` y la vista previa también rechazan si `repo.detalle(planId).pendiente` tiene
+  una versión sin costo concreto (R28). Así no hace falta mirar nada al aplicar un cambio programado.
 - **`asignar`.** Después de `reglasDeAsignar` y de la comprobación «mismo plan → `ok` sin cambio»
   (SL-24 R13, que sigue primero): si `!tieneCostoConcreto(plan)` → `{ estado: "plan_sin_costo" }`, sin
   llamar a `repo.asignar`. Para eso, `reglasDeAsignar` devuelve también el `plan` que ya lee.
 - **`previsualizarAsignacion`.** La misma regla, después de `reglasDeAsignar`. La pantalla no deja
   confirmar lo que `asignar` rechazaría (SLT-58 §11.4).
 - **`asignables`.** Filtra en el servicio el resultado de `repo.asignables` con el predicado (R29).
-- **Por qué en el servicio y no en `PlanesRepository.asignar` ni en la base:**
-  - es una regla de producto sobre la asignación, no un invariante del dato. R30 permite que un plan
-    asignado quede sin costo concreto por edición, así que un `CHECK` o un trigger sobre `organizacion`
-    contradiría R30;
+- **`editar`, `programarCambio` y `archivar` no cambian** (R30, P5 cerrada). Un plan asignado puede
+  quedar sin costo concreto. Las pantallas lo pintan como dice R20.
+- **Por qué en el servicio y no en `PlanesRepository` ni en la base:**
+  - es una regla de la asignación, no un invariante del dato. R30 permite que un plan asignado quede sin
+    costo concreto, así que un `CHECK` o un trigger lo contradirían;
   - los ayudantes de test de SL-24 y el E2E (`tests/integration/db/_fixtures/planes.ts`,
     `e2e/_planes-fixture.ts`) asignan planes sin precio con el repositorio real. Con la regla en el
     servicio siguen sirviendo sin tocarlos (R27).
-- **Carrera aceptada.** Una edición que deja el plan sin costo concreto puede colarse entre la
-  comprobación del servicio y el `FOR UPDATE` del repositorio. El resultado es el mismo que editar justo
-  después de asignar, que R30 permite. No se añade cerrojo.
-- **`editar`, `programarCambio` y `archivar`** no cambian (R30).
+- **Carrera aceptada.** Entre la comprobación del servicio y el cerrojo del repositorio puede colarse una
+  edición. El resultado es el mismo que editar justo después de asignar, que R30 permite.
 
 ### 4.3 Lecturas
 
@@ -315,12 +393,14 @@ export type PlanDTO = { /* … */ costoPorOrden: string | null };
 // lib/types/consumo-plan.ts
 export type FuenteDelCosto = "empresa" | "plan" | "global" | "sin_configurar";
 export type CosteoDelCiclo = {
-  base: { tipo: "monto"; mensual: string } | { tipo: "por_definir" }; // por_definir = sin precio o negociable (R20, P4)
-  costoPorOrden: string;          // el vigente (R12, P1)
-  fuente: FuenteDelCosto;
+  base: { tipo: "monto"; mensual: string } | { tipo: "por_definir" }; // "0.00" es monto (R20)
+  // El vigente (R12, P1). null = «por definir»: el plan no tiene costo por orden ni hay excepción (R20, P5).
+  costoPorOrden: string | null;
+  fuente: FuenteDelCosto | null;
   ordenes: number;                // órdenes del ciclo (= uso.ordenes)
-  subtotalOrdenes: string;        // ordenes × costoPorOrden
-  total: string | null;           // base + subtotal; null solo si la base es por_definir (R19, R20)
+  subtotalOrdenes: string | null; // ordenes × costoPorOrden; null si el costo está por definir
+  total: string | null;           // base + subtotal; null si falta alguno de los dos (R19, R20)
+  sinCostoConcreto: boolean;      // dispara el aviso del superadmin (R20)
   anualNoAplicaAlCosto: boolean;  // R10: el plan tiene anual fijo o descuento
 };
 export type PlanConConsumo = { /* lo de SLT-58 */ costeo: CosteoDelCiclo };
@@ -388,15 +468,16 @@ la fuente y de la base:
 | Situación | Líneas |
 |---|---|
 | Base con monto (el caso normal: R28 lo garantiza en toda asignación nueva) | «Costo base: 50000.00 al mes» · «Costo por orden: 100.00» + nota de fuente (P1) · «Órdenes del ciclo: 3 × 100.00 = 300.00» · **«Total estimado del ciclo: 50300.00»** |
-| Base por definir: plan sin precio o negociable ya asignado, o editado después (R20, P4 abierta) | «Costo base: por definir» · igual · «El total queda pendiente hasta concretar el costo base.» (sin total). En el detalle del superadmin, además el aviso «Plan sin costo base concreto» |
+| Base 0 | «Costo base: 0.00 al mes» · igual · **«Total estimado del ciclo: 300.00»** |
+| Plan asignado que se editó hasta quedar sin costo concreto (R20, R30) | Lo que falte se muestra como «Costo base: por definir» o «Costo por orden: por definir» (en ese caso tampoco hay línea de órdenes con subtotal), sin total. En el detalle del superadmin, además el aviso «Plan sin costo concreto» |
 | Anual fijo o descuento | Más «El pago anual no cambia el costo por orden.» |
 
 - **Nota de fuente** (P1, cerrada):
   - `empresa` → «precio acordado para tu empresa» (en el detalle del superadmin, «excepción de la
     empresa»);
   - `plan` → ninguna;
-  - `global` y `sin_configurar` → «valor general de la plataforma». Solo se ve en un plan antiguo o
-    editado sin costo por orden, porque R28 lo exige al asignar.
+  - `global` y `sin_configurar` → no se muestran como costo. Un plan sin costo por orden y sin excepción
+    se pinta «Costo por orden: por definir» (R20, P5).
 - **Debajo**, en `text-xs text-muted-foreground`: «Estimado: el costo base no se cobra todavía; cada
   orden se cobra al crearla y se descuenta si se anula.» (R21).
 - **Los importes** se pintan como `textoDelPrecio` (texto de la base, sin símbolo ni `Number`). Su
@@ -456,10 +537,10 @@ o «Cambiar plan», modal, fecha en la primera asignación y avisos.
 - **El `Select`** ya solo trae los asignables (R29), así que el rechazo llega en la práctica solo si se
   pierde una carrera. Si la lista está vacía, pinta «No hay planes con costo concreto para esta
   empresa. Crea un custom con sus precios en «Planes».», con enlace a `/plataforma/planes`.
-- **Aviso R20 (P4).** Si el plan actual de la empresa no tiene costo concreto, el bloque muestra
-  «Plan sin costo base concreto: asígnale un plan con costo base y costo por orden.».
+- **Aviso R20.** Si el plan actual de la empresa no tiene costo concreto, el bloque muestra «Plan sin costo
+  concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.».
 
-### 6.6 «Asignar a una empresa» desde el detalle del plan (R33, propuesta opcional)
+### 6.6 «Asignar a una empresa» desde el detalle del plan (R33, aprobado)
 
 - **Datos.** La página `[planId]/page.tsx` ya lee `detallePlan`. Le suma
   `listarEmpresasPlataforma` (ya existe, SLT-58 §6.3), filtrada así:
@@ -472,8 +553,8 @@ o «Cambiar plan», modal, fecha en la primera asignación y avisos.
 - **`PlanEmpresa.tsx`.** Lee la prop `planPreseleccionado`, que la página saca de `searchParams.plan` y
   valida contra la lista de asignables; si no está en la lista, se ignora. Con ella, el `Select` arranca
   con ese plan. Confirmar es el flujo de siempre: nada se asigna sin el clic y el modal.
-- **Es opcional.** El humano la pidió solo como propuesta, así que va en T22, independiente: si se
-  descarta, nada más depende de ella.
+- **Va en T22**, obligatoria desde la aprobación del 2026-10-31.
+- **`PlanDetalle`** también traduce la acción `desasignado` del rastro (§2.3 bis).
 
 ## 7. Contratos de entrada y salida
 
@@ -511,7 +592,9 @@ o «Cambiar plan», modal, fecha en la primera asignación y avisos.
 | `tests/integration/db/plan-de-la-empresa-costeo.test.ts` | integración | R18, R22: `costo_vigente` por fuente, comparado con el cargo de una orden creada justo después (§3.2); `uso` sin `maestro`; con el contexto de B pedir A → `42501`; `servi_app` sobre `cobro_plataforma_tarifa_de` → `42501` (sin `GRANT`); `SELECT` de `plan` y `cobro_plataforma_tarifa` → `42501` |
 | `tests/integration/db/deuda-plataforma-plan.test.ts` | integración (molde `caja-459`) | R17, R21: dos órdenes con plan de 100 y una anulada → Δdeuda `"100.00"`; caja igual campo a campo; leer `MiPlanService.ver` no crea filas en `cobro_plataforma_movimiento` ni en `wallet_movimiento` |
 | `tests/unit/planes/costeo.test.ts` | unit | R19, R20: monto → total; sin precio y negociable → `por_definir` sin total, con subtotal; cero órdenes; decimales (`0.10 × 3`); importes grandes (`DECIMAL(12,2)`); con descuento, el total es el mismo que sin él (R10). Ningún `Number(` ni `parseFloat` sobre importes. También `tieneCostoConcreto` con las cinco formas × costo nulo o no |
-| `tests/unit/services/planes-service-asignar-costo.test.ts` | unit (doble del repositorio) | R28: con plan sin precio, negociable, o monto sin costo → `plan_sin_costo` y `repo.asignar` no se llama, también con fecha; mismo plan ya asignado → `ok` sin cambio; `previsualizarAsignacion` → `plan_sin_costo` sin `repo.vistaPreviaAsignacion`. R29: `asignables` filtra. R30: `editar` y `programar` a negociable de un plan asignado → `ok` |
+| `tests/unit/services/planes-service-asignar-costo.test.ts` | unit (doble del repositorio) | R28: con plan sin precio, negociable, o monto sin costo → `plan_sin_costo` y `repo.asignar` no se llama, también con fecha; base `"0.00"` y costo `"0.00"` → `ok`; plan concreto con pendiente negociable → `plan_sin_costo`; mismo plan ya asignado → `ok` sin cambio; `previsualizarAsignacion` → `plan_sin_costo` sin `repo.vistaPreviaAsignacion`. R29: `asignables` filtra. R30: editar y programar a negociable, o vaciar el costo, de un plan con empresas → `ok` y se llama al repositorio |
+| `tests/integration/db/migracion-slt66-desasignar.test.ts` | integración (base propia, `aplicarMigracionesHasta` hasta M3) | R34: siembra empresas con un plan sin precio (con ciclo corto), negociable, de base «monto» y de base `0.00`, y una empresa sin plan. Tras M4: las cuatro con plan quedan sin plan, con ancla y ciclo corto `NULL` y los módulos iguales; una fila `desasignado` por cada una, con `cambios.empresa.antes` exacto y el actor de sistema; la empresa sin plan, intacta. El `down.sql` de M4 repone las dos y borra sus filas; si una ya recibió otro plan, no la toca. El `down.sql` del valor `desasignado` se niega si quedan filas |
+| `tests/components/PlanDetalleDesasignado.test.tsx` | componente | R34: la fila `desasignado` del rastro se traduce con la empresa |
 | `tests/integration/db/empresas-plataforma-plan.test.ts` | integración | R31, R32: el listado trae `plan` (o `null`) y `cobroVigente` con las cuatro fuentes; `cobroVigente` coincide con el cargo de una orden creada después (misma función) |
 | `tests/components/EmpresasModulePlan.test.tsx` | componente | R31: «propio», «del plan» y «global» con su importe. R32: columna «Plan» con nombre o «Sin plan»; «Asignar plan a {empresa}» / «Cambiar el plan de {empresa}» con `href` `…/{id}#plan`; enlace «Plan y módulos de {empresa}» |
 | `tests/components/PlanEmpresaSinCosto.test.tsx` | componente | R28: rechazo `plan_sin_costo` con su texto. R29: lista vacía → texto y enlace a «Planes». R20: aviso «Plan sin costo base concreto». La `section` lleva `id="plan"`. R33: `planPreseleccionado` válido arranca elegido; uno ajeno se ignora |
@@ -602,6 +685,9 @@ conserva.
    de §3.2 lo detecta cuando hay excepción).
 7. `asignar` deja de comprobar `tieneCostoConcreto`, o solo lo comprueba sin fecha.
 8. `asignables` no filtra.
+9. `tieneCostoConcreto` trata `"0.00"` como vacío.
+10. `costeoDelCiclo` da un total con el costo por orden vacío (usa 0 o el global).
+11. M4 deja sin desasignar a las empresas cuyo plan es de base «monto».
 
 ## 10. Choques con ramas en vuelo
 
@@ -642,8 +728,12 @@ conserva.
 9. **R28 como `CHECK` o trigger en la base**, para que ninguna empresa pueda tener un plan sin costo
    concreto. Contradice R30: editar un plan asignado sigue permitido, y las asignaciones viejas se
    conservan. Además rompería los ayudantes de test de SL-24, que asignan planes sin precio.
-10. **Desasignar o migrar los planes sin costo concreto ya asignados.** No lo pidió el humano y cambiaría
-    los topes y los módulos de esas empresas. Queda en P4.
+10. **Dejar asignados los planes sin costo concreto y mostrar «por definir»** (la propuesta inicial de
+    P4). El humano eligió desasignar (R34).
+11. **Registrar la desasignación como `editado` en `plan_rastro`**, para no tocar el enum. Mentiría: el
+    plan no cambió. Se añade el valor `desasignado` al enum que ya existe (§2.2), sin columnas nuevas.
+12. **Conservar el ancla de las empresas desasignadas.** Al reasignarlas, heredarían el ciclo viejo y
+    no podrían elegir fecha (SLT-58 R31). Su valor queda en el rastro, y el `down.sql` lo repone.
 
 ## 12. Dependencias
 
@@ -659,8 +749,11 @@ Ninguna nueva (R27). Se usan Prisma (`Prisma.Decimal`), zod, `plpgsql` y los com
   `cobro_plataforma_al_crear_orden` o `plan_de_la_empresa` antes de mergear, el `down.sql` restauraría
   un cuerpo viejo. T0 busca con Grep `CREATE OR REPLACE FUNCTION (cobro_plataforma_al_crear_orden|plan_de_la_empresa)`
   en `dev` y lo vuelve a buscar antes de F2.3.
-- **P4 abierta.** Si el humano no acepta la propuesta para los planes sin costo concreto ya asignados,
-  cambian la rama `por_definir` de `costeoDelCiclo`, el aviso de §6.5 y, si pide frenar también la
-  edición, `PlanesService.editar`. El resto de la ficha no depende de P4.
-- **Empresas con plan sin costo concreto en QA o producción.** T0 las cuenta y anota el número, para que
-  el humano cierre P4 sabiendo cuántas son.
+- **M4 quita los límites a todas las empresas con plan** (P6). Quedan sin topes hasta que el superadmin
+  les asigne un plan con costo concreto. T0 cuenta en QA, y en producción si hay acceso, cuántas son. El
+  leader avisa al humano con ese número antes de aplicar M4 en una base compartida, para que tenga
+  preparados los planes custom.
+- **«Costo por orden: por definir» y lo que se cobra** (P5). Si un plan asignado se queda sin costo por
+  orden y la empresa no tiene excepción, la orden se sigue cobrando con el global (R12, paso 3), aunque
+  «Mi plan» diga «por definir». Es lo que fijan las dos decisiones juntas. El aviso del superadmin existe
+  para que lo corrija.

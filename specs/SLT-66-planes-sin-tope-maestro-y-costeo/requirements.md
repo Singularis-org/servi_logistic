@@ -123,16 +123,14 @@
 - **R19** — El total estimado del ciclo DEBE ser `costo base mensual + órdenes del ciclo × costo por orden
   vigente`. Se calcula en decimal exacto, con dos decimales y sin coma flotante, y nunca aplica el
   descuento anual.
-- **R20** *(enmienda del 2026-10-31; escrito sobre la propuesta de P4, sin cerrar)* — Desde R28, toda
-  asignación nueva lleva un plan con costo base mensual y costo por orden concretos, así que «Mi plan»
-  muestra siempre `base + órdenes × costo = total`. Hay un caso que R28 no cubre: un plan sin costo base
-  concreto que ya estaba asignado antes de esta ficha, o que se editó después de asignarse (R30). SI se da
-  ese caso, ENTONCES «Mi plan» y el detalle de empresa NO DEBEN inventar un total. DEBEN mostrar:
-  - «Costo base: por definir»;
-  - el subtotal de las órdenes (`órdenes del ciclo × costo por orden vigente`);
-  - la nota de que el total queda pendiente hasta que se concrete el costo base.
-
-  El detalle de empresa del superadmin DEBE marcar además el aviso «Plan sin costo base concreto».
+- **R20** *(enmienda del 2026-10-31, P4 y P5 cerradas)* — Para «Mi plan» y el detalle de empresa:
+  - MIENTRAS el plan asignado tenga costo concreto (definición en «Asignar solo planes con costo
+    concreto»), DEBEN mostrar `base + órdenes × costo = total`. Un costo base de `0.00` es un monto
+    válido: se muestra «Costo base: 0.00 al mes» y suma 0.
+  - SI el plan asignado no tiene costo concreto, porque se editó después de asignarse (R30), ENTONCES NO
+    DEBEN mostrar un total. Muestran «Costo base: por definir» si falta la base, y «Costo por orden: por
+    definir» si falta el costo por orden. El detalle de empresa del superadmin DEBE mostrar además el aviso
+    «Plan sin costo concreto».
 - **R21** — El costo base y el total estimado son solo informativos. Mostrar «Mi plan» o el detalle NO DEBE
   escribir nada en `cobro_plataforma_movimiento` ni en `wallet_movimiento`. La deuda de la wallet solo
   sube por los cargos de R12.
@@ -152,22 +150,35 @@
 
 ### Asignar solo planes con costo concreto (enmienda del 2026-10-31, P2)
 
-> *Plan con costo concreto*: su costo base tiene la forma «monto» (mensual, con o sin anual) y tiene costo
-> por orden. Un plan «sin precio», «negociable» o sin costo por orden no lo tiene.
+> *Plan con costo concreto*: su costo base tiene la forma «monto» (mensual, con o sin anual), **incluido
+> `0.00`**, y tiene costo por orden (también puede ser `0.00`). Un plan «sin precio», «negociable» o sin
+> costo por orden no lo tiene. Para una base 0 se usa la forma «monto» con `0.00`; «sin precio» no
+> equivale a base 0.
 
 - **R28** — SI el superadmin asigna a una empresa, o cambia por, un plan sin costo concreto, ENTONCES
   `asignar` y la vista previa de la primera asignación DEBEN responder `plan_sin_costo` sin escribir nada.
+  Lo mismo SI el plan tiene un cambio programado pendiente cuya versión no tiene costo concreto.
   El texto es «Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios
   para asignarlo.». Hay una excepción: SI la empresa ya tiene ese mismo plan, ENTONCES la respuesta sigue
   siendo `ok` sin cambio (SL-24 R13).
 - **R29** — La lista de planes asignables de una empresa NO DEBE incluir planes sin costo concreto. La usan
   el modal de asignación y la acción de R33.
-- **R30** — Hay cosas que R28 NO DEBE cambiar:
-  - editar, programar o archivar un plan, aunque lo deje sin costo concreto;
-  - las asignaciones que ya existen;
+- **R30** *(P5 cerrada)* — R28 NO DEBE frenar nada de esto:
+  - editar de inmediato, programar o archivar un plan, tenga o no empresas asignadas, aunque la versión
+    nueva lo deje sin costo concreto. Se guarda, y las empresas que lo tienen lo ven como dice R20;
   - el acceso de una empresa sin plan, que sigue entrando y operando como hoy (SL-24 R14).
+- **R34** *(P4 y P6 cerradas)* — CUANDO se aplica la migración de esta ficha, el sistema DEBE desasignar el
+  plan a **toda** empresa que tenga uno asignado. En concreto:
+  - la empresa queda «sin plan»: sin límites, sin ciclo (ancla y ciclo corto a `NULL`) y con sus módulos
+    como estaban;
+  - por cada empresa desasignada, `plan_rastro` del plan gana una fila `desasignado`, con la empresa, el
+    ancla y el ciclo corto que tenía, y el actor «Sistema (migración SLT-66)»;
+  - las empresas sin plan no se tocan;
+  - el `down.sql` vuelve a asignar, desde esas filas, el plan, el ancla y el ciclo corto a cada empresa
+    que siga sin plan, y borra las filas. Una empresa que ya recibió otro plan no se toca, y la cabecera
+    de la migración lo dice.
 
-  La migración no toca ninguna asignación.
+  A partir de ahí, cada empresa recibe un plan nuevo con costo concreto (R28).
 
 ### Empresas: cobro vigente y asignación descubrible (enmienda del 2026-10-31, P3 y pedido del humano)
 
@@ -184,7 +195,7 @@
     empresa, donde vive el flujo de asignación de SLT-58 con su modal.
   - El enlace «Módulos» de cada fila DEBE pasar a «Plan y módulos». Su nombre accesible es «Plan y módulos
     de {empresa}».
-- **R33** *(propuesta del `spec_author`, que el humano pidió como opcional)* — MIENTRAS un plan no esté
+- **R33** *(aprobado el 2026-10-31)* — MIENTRAS un plan no esté
   archivado y tenga costo concreto, su detalle DEBE ofrecer «Asignar a una empresa». Al elegir la empresa,
   el sistema DEBE llevar al bloque «Plan» del detalle de esa empresa con el plan ya elegido. Las empresas
   que se ofrecen son:
@@ -216,19 +227,7 @@
 
 ## Preguntas abiertas
 
-- **P4 (abierta el 2026-10-31 por `spec_author`) — ¿Qué se hace con las empresas que ya tienen asignado un
-  plan negociable o sin precio, o con un plan que se edite después hasta quedar así?** El código no lo
-  resuelve: R28 solo frena las asignaciones nuevas, y la decisión del humano solo cubre esa regla.
-  Desde `spec_author` no se puede saber cuántas hay en QA o en producción; T0 las cuenta.
-
-  **Propuesta, sobre la que está escrito R20:**
-  - no migrar ni desasignar nada;
-  - «Mi plan» muestra «Costo base: por definir», el subtotal de las órdenes y la nota de total pendiente;
-  - el superadmin ve el aviso «Plan sin costo base concreto» en el detalle de la empresa, y lo resuelve
-    asignándole un custom con precios.
-
-  Si el humano prefiere frenar también la edición que deja sin costo concreto a un plan asignado, sería un
-  requisito nuevo sobre `editar`. No se ha escrito.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -249,3 +248,9 @@
 | 2026-10-31 | P3: ¿la columna «Cobro por orden» de «Empresas» muestra el escalón del plan? | Sí, entra: muestra el valor que se cobra y su fuente (excepción, plan o global). |
 | 2026-10-31 | Asignar un plan no se encuentra desde el listado | El listado de «Empresas» gana la columna «Plan» y la acción «Asignar plan» / «Cambiar plan», que lleva al flujo de SLT-58. El enlace «Módulos» cambia a un rótulo que cubre plan y módulos. Desde el detalle del plan, «Asignar a una empresa» queda como propuesta opcional del `spec_author`. Con test de componente y en el E2E. |
 | 2026-10-31 | Choque con SLT-56/SLT-64 en `db/schema.prisma` | Aceptado por el humano al aprobar el spec. |
+| 2026-10-31 | P4: ¿qué pasa con las empresas que ya tienen un plan sin costo concreto? | La migración les desasigna el plan: quedan «sin plan» (sin límites) hasta que el superadmin les asigne uno con precios. Deja rastro en `plan_rastro`. |
+| 2026-10-31 | ¿Un costo base de 0 es concreto? | Sí. 0 es un monto válido: costo concreto = costo base de forma «monto» (incluido 0) + costo por orden definido. |
+| 2026-10-31 | R33 («Asignar a una empresa» desde el detalle del plan) | Entra; deja de ser opcional. |
+| 2026-10-31 | P6: ¿a quién desasigna la migración? | A todas las empresas que tienen plan. Quedan sin plan (sin límites) hasta que el superadmin les asigne uno con costo concreto. |
+| 2026-10-31 | P5: ¿se puede editar un plan asignado hasta dejarlo sin costo concreto? | Sí, con aviso. Se guarda; «Mi plan» muestra lo que falte como «por definir», sin total, y el superadmin ve el aviso «Plan sin costo concreto». Asignar sigue rechazando los planes sin costo concreto. |
+| 2026-10-31 | ¿«Sin precio» equivale a base 0? | No. La base 0 se escribe como monto 0; «sin precio» no es concreto. |
