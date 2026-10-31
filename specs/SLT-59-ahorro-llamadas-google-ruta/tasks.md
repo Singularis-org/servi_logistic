@@ -178,7 +178,7 @@
   - pasa en el job de CI que tiene base.
 - [ ] **T6.8** Cierre de las revisiones 3 y 4. Depende de T6.1-T6.7 y de la Fase 7. *Hecho:*
   - la jornada (`optimizacion-ruta-ahorro-jornada.test.ts`) afirma las tablas de design §8.0, no las
-    de §8.1: la jornada A da `{3, 3, 6}` con las filas 0-13; la jornada B da `{1, 1, 0}` y sus tres
+    de §8.1: la jornada A da `{3, 3, 6}` con las filas 0-13; la jornada B da `{1, 1, 1}` (D30) y sus tres
     variantes (R37);
   - el mapa cubre también R51-R67 y marca como retirados R19 y R26;
   - el mapa `R<n> -> test` de `progress/impl_SLT-59.md` cubre R41-R50 y marca como retirados R11,
@@ -276,7 +276,7 @@
 
   El test de `MisAsignacionesService` que arma `ruta` cubre los dos campos.
 - [x] **T7.8** Jornadas de design §8.0 en `optimizacion-ruta-ahorro-jornada.test.ts` (R37). Depende de
-  T7.1-T7.6. *Hecho:* jornada A `{3, 3, 6}` fila a fila (filas 12 y 13 aparte); jornada B `{1, 1, 0}`
+  T7.1-T7.6. *Hecho:* jornada A `{3, 3, 6}` fila a fila (filas 12 y 13 aparte); jornada B `{1, 1, 1}` (D30)
   y sus tres variantes.
 
 - [x] **T7.9** D29: debounce deslizante de la primera ruta durante la recogida (R76, R77, design §12.2
