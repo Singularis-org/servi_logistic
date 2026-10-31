@@ -72,6 +72,7 @@ const RECHAZOS = {
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
 } as const;
 
