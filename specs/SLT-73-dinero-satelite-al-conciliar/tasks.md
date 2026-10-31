@@ -55,9 +55,42 @@
   tienda afectada ya cobró. No va al repo ningún dato de prod. Depende de T8.
   *Hecho:* el resultado está anotado en `progress/features/SLT-73.md` y se ha decidido si se
   despliega.
+- [ ] **T11 — Enmienda D12: dueño «por cobrar a satélites» y sexta cifra de la caja (R24–R27,
+  R30).** `backend_dev`. **Pendiente de OK de Carlos** (requirements §F, Q6). Sin migración: la
+  naturaleza es solo de TypeScript (design §2.9).
+  Toca:
+  - `NaturalezaMovimiento`;
+  - `NATURALEZA_POR_CATEGORIA` de las dos diferencias;
+  - `acumular`, con ramas explícitas y un `never`;
+  - `derivarCaja`: sexta `derivarBalance(egresos, ingresos)`, la identidad y el reparto con
+    `deEmpresa − porCobrar`;
+  - `CajaResumenDTO`, con `porCobrarSatelites` y `signoPorCobrarSatelites`.
+
+  Ajusta las guardias `caja-clasificacion-459` (caso nuevo y su contraprueba),
+  `caja-derivaciones` (de 5 a 6) y `metrics-caja-naturaleza` (fuera del literal de `terceros`), más
+  los fixtures de `CajaResumenDTO` que el typecheck señale. Amplía `slt73-marcar-asienta` y
+  `slt73-corregir-diferencia` con la comprobación R8 de la 459 sobre las filas reales (R26).
+  Depende de T1. Puede ir en paralelo a T4–T6, pero **R26 se cierra después de T4**.
+  *Hecho:* `pnpm run test:guardias` sin `caja-clasificacion-459` en rojo. Los casos R24–R27 y R30 de
+  `design.md > Trazabilidad` están verdes y sus mutaciones mueren, con autocomprobación.
+- [ ] **T12 — Enmienda D12: bloque y dueño en la pantalla de caja (R28, R29).** `frontend_dev`.
+  **Pendiente de OK de Carlos** (Q7 y rótulos provisionales).
+  Toca:
+  - `CajaResumenCard.tsx`: tercer bloque hermano `data-bolsillo="satelites"`, fuera del de la
+    empresa;
+  - `wallet-labels.ts`: rótulo, pistas positiva y negativa, y `DUENO_LABEL.por_cobrar_satelite`;
+  - `WalletLedger.tsx`: `DUENO_PUNTO`.
+
+  Depende de T11.
+  *Hecho:*
+  - `CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo), `wallet-ledger-dueno.test.tsx` y
+    `wallet-labels.test.ts` están verdes;
+  - `DineroIdentidadesEnPantalla.test.tsx` y `wallet-page.test.tsx` siguen verdes;
+  - verificado en el navegador: tras conciliar con faltante, el bloque muestra el faltante y «De
+    las tiendas» no se mueve.
 - [ ] **T10 — Gate y cierre.** Entrega `./init.sh` verde, el mapa R→test en
   `progress/impl_SLT-73.md` y los supervivientes de mutación a 0, con autocomprobación de que cada
-  mutación se ejecutó. Depende de T3–T8.
+  mutación se ejecutó. Depende de T3–T8, T11 y T12.
 
 ## Archivos esperados
 
@@ -104,5 +137,18 @@
 - `tests/unit/descarga/saldos-satelites-descarga-columnas.test.ts`
 - `tests/components/ConciliacionSateliteCascada.test.tsx`
 - `tests/components/SaldosSatelitesTable.test.tsx`
+- `lib/types/wallet.ts`
+- `app/(app)/wallet/_components/CajaResumenCard.tsx`
+- `app/(app)/wallet/_components/wallet-labels.ts`
+- `app/(app)/wallet/_components/WalletLedger.tsx`
+- `tests/unit/guards/caja-clasificacion-459.guardia.test.ts`
+- `tests/unit/guards/caja-derivaciones.guardia.test.ts`
+- `tests/unit/analytics/metrics-caja-naturaleza.guardia.test.ts`
+- `tests/unit/utils/caja-tesoreria.test.ts`
+- `tests/unit/components/wallet-ledger-dueno.test.tsx`
+- `tests/unit/components/wallet-labels.test.ts`
+- `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx`
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx`
+- `tests/integration/wallet-page.test.tsx`
 - `progress/features/SLT-73.md`
 - `progress/impl_SLT-73.md`

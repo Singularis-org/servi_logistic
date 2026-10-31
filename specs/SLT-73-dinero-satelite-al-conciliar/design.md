@@ -62,8 +62,10 @@ diferencias para la misma consolidación con el mismo origen.
   ingreso ↔ `ingreso_diferencia_satelite`.
 - Se añade al CHECK de origen, si existe para la categoría (verificar en T1), que las dos solo van
   con origen `conciliacion_bodega_ajuste`.
-- `NATURALEZA_POR_CATEGORIA` (`lib/utils/caja-tesoreria.ts`) clasifica las dos como **tesorería**,
-  como `ingreso_cod_recaudado`: es dinero de terceros que no llegó, no ganancia ni gasto.
+- ~~`NATURALEZA_POR_CATEGORIA` clasifica las dos como `terceros`~~ — **sustituido por la enmienda
+  D12 (§2.9)**: su dueño es `por_cobrar_satelite`. Como `terceros` rompía R8 de la 459 (guardia
+  `caja-clasificacion-459` en rojo, `progress/impl_SLT-73.md > BLOQUEO DE DINERO`). La liquidez sigue
+  siendo `efectivo`.
 - `down.sql`: borra las filas de caja con ese origen, y después hace `DROP TABLE` y quita las
   ramas del CHECK.
 
@@ -184,6 +186,83 @@ filas, no el import.
 - `saldos-satelites-descarga-columnas.ts`: añade las columnas nuevas.
 - Toda resta viene hecha del servidor.
 
+### 2.9 Enmienda D12: el bolsillo «Por cobrar a satélites» (R24–R30, pendiente de OK de Carlos)
+
+**Lo que ya existe (leído con Grep/Read).**
+- `NaturalezaMovimiento = "propio" | "terceros" | "capital"` (`lib/types/wallet.ts:350`). Es un
+  tipo **solo de TypeScript**: la naturaleza es de la categoría, no de la fila, y no hay columna ni
+  enum en la base (docstring de `NATURALEZA_POR_CATEGORIA`, `lib/utils/caja-tesoreria.ts:51-64`).
+  Por eso esta enmienda **no lleva migración**.
+- `NATURALEZA_POR_CATEGORIA` y `LIQUIDEZ_POR_CATEGORIA` son `Record` totales
+  (`caja-tesoreria.ts:65,142`). Hoy las dos diferencias son `terceros` + `efectivo`
+  (`caja-tesoreria.ts:115-116,184-185`).
+- `acumular` (`caja-tesoreria.ts:230-274`) reparte por dueño con `if propio / else if terceros /
+  else → capital`. **Trampa:** una naturaleza nueva caería en silencio en el capital.
+- `derivarCaja` (`caja-tesoreria.ts:363-430`) hace cinco restas con `derivarBalance` (caja, propio,
+  terceros, capital, IVA). La guardia `tests/unit/guards/caja-derivaciones.guardia.test.ts:122-132`
+  exige **exactamente cinco** llamadas. La identidad R7 de la 459 está en el comentario de
+  `caja-tesoreria.ts:383-385`.
+- La guardia de la 459 (`tests/unit/guards/caja-clasificacion-459.guardia.test.ts`) deriva el
+  efecto en «De las tiendas» solo de liquidez `cargo_a_tienda` o dueño `terceros`
+  (`efectoEnDeLasTiendas`, líneas 82-86). Cualquier otro dueño da 0, así que con la naturaleza nueva
+  queda verde sin tocar el detector.
+- `derivarReparto(enCaja, deEmpresa, deTerceros)` (`caja-tesoreria.ts:316-338`) divide `T / enCaja`
+  en la rama `dos_bolsillos` y lo da por seguro porque `enCaja = G + T > 0`. Con un bolsillo nuevo
+  eso deja de ser cierto (R30).
+- La tarjeta `app/(app)/wallet/_components/CajaResumenCard.tsx` pinta dos bloques hermanos
+  (`data-bolsillo="tiendas"` y `data-bolsillo="empresa"`); las regiones secundarias de la empresa
+  salen de `REGIONES_BOLSILLO_EMPRESA` (`wallet-labels.ts:342`). El dueño de cada fila del libro se
+  rotula con `DUENO_LABEL` (`wallet-labels.ts:392`) y se colorea con `DUENO_PUNTO`
+  (`WalletLedger.tsx:118`), los dos `Record` totales sobre `NaturalezaMovimiento`. La descarga lo
+  lee de `DUENO_LABEL` (`wallet-ledger-descarga-columnas.ts:75`).
+- `tests/unit/analytics/metrics-caja-naturaleza.guardia.test.ts:101` fija con un literal la lista
+  de categorías `terceros`. Hoy incluye las dos diferencias (lo añadió T1).
+
+**Cambio mínimo.**
+
+1. **Tipo** (`lib/types/wallet.ts`): `NaturalezaMovimiento` gana `"por_cobrar_satelite"`. Los
+   `Record` totales (`DUENO_LABEL`, `DUENO_PUNTO`) dejan de compilar hasta tener su entrada: es lo
+   que se quiere.
+2. **Clasificación** (`lib/utils/caja-tesoreria.ts`): `egreso_diferencia_satelite` e
+   `ingreso_diferencia_satelite` → `por_cobrar_satelite` (R24). La liquidez sigue `efectivo`: la
+   fila sí cambia lo que hay en la caja (Q1-A).
+3. **`acumular`**: dos cubetas nuevas, `ingresosPorCobrarSatelite` y `egresosPorCobrarSatelite`.
+   Las ramas por dueño pasan a ser **explícitas** para los cuatro dueños, y el último `else` cierra
+   con una comprobación `never`: una quinta naturaleza no compila en vez de caer en el capital.
+4. **`derivarCaja`**: sexta resta, con el orden invertido a propósito para que el importe salga en
+   positivo cuando la satélite debe:
+   `porCobrar = derivarBalance(acc.egresosPorCobrarSatelite, acc.ingresosPorCobrarSatelite)` (R25).
+   La identidad pasa a ser `Entró − Salió = G + I + T + C − P` (R27). Se actualiza el comentario de
+   la identidad.
+5. **DTO** (`CajaResumenDTO`): + `porCobrarSatelites: string` y `signoPorCobrarSatelites`. Montos
+   STRING, como exige el barrido de `tests/integration/wallet-page.test.tsx`. `deEmpresa` **no**
+   cambia de valor.
+6. **Barra (Q6, por defecto)**: `derivarReparto(enCaja, deEmpresa − porCobrar, deTerceros)`. Así
+   vuelve a valer `enCaja = G' + T` y las cuatro ramas conservan su garantía: no hay división por
+   cero ni proporciones fuera de 0–100 (R30). Es una suma con signo sobre `Prisma.Decimal`, no una
+   resta con signo nueva: no cuenta para la guardia de `derivarBalance`.
+7. **Guardias**:
+   - `caja-clasificacion-459`: un caso nuevo «⭑ SLT-73 (D12)». Afirma que las dos diferencias son
+     `por_cobrar_satelite` y `efectivo`, que su efecto en «De las tiendas» es 0 y que no son
+     contrapartida de ningún concepto de la tienda. Lleva una **contraprueba**: clasificadas como
+     `terceros`, el detector da `egreso_diferencia_satelite mueve «De las tiendas» y es pareja de 0
+     conceptos`. Esa es la mutación que esta enmienda deshace (R24, R26).
+   - `caja-derivaciones`: el literal pasa de 5 a 6, y un caso afirma que `porCobrarSatelites` es
+     `derivarBalance` sobre (egresos, ingresos) de ese dueño (R27).
+   - `metrics-caja-naturaleza`: se quitan las dos diferencias del literal de `terceros`. Las métricas
+     de ingreso siguen sin verlas, porque no son `propio`.
+8. **Pantalla** (`CajaResumenCard.tsx` + `wallet-labels.ts`): un tercer bloque hermano
+   `<section data-bolsillo="satelites" aria-label="Por cobrar a satélites">` con importe, insignia de
+   signo y pista. Va fuera del bloque de la empresa: Carlos dijo que no es de la empresa. No se mete
+   como región de `REGIONES_BOLSILLO_EMPRESA`. El rótulo es el de Carlos; la pista positiva y la
+   negativa son provisionales (Q7), por ejemplo «Lo que las satélites entregaron de menos al
+   conciliar y aún no han pagado» y «La central les debe a las satélites». La elige el signo del
+   servidor, sin aritmética en el navegador (R28). `DUENO_LABEL.por_cobrar_satelite = "Satélite"`
+   (provisional) y su punto en `DUENO_PUNTO` (R29).
+9. **Cuándo se pinta (Q7, por defecto):** siempre, como «Saldo inicial y aportes».
+10. **Fixtures**: todo test que construye un `CajaResumenDTO` literal gana los dos campos. El
+    typecheck los censa.
+
 ## 3. Autorización, multi-empresa y país
 
 - El guard `esAccesoTotal` va primero, sin cambio (R23).
@@ -207,6 +286,15 @@ filas, no el import.
    cobra menos.
 4. **Escribir los asientos al consolidar** (`crearCierreBodega`). Descartada: consolidar no dice
    que el dinero llegó, y D2 lo ata a la conciliación.
+5. **(D12) Diferencia como `terceros`** (el diseño original). Descartada: baja «De las tiendas»
+   sin que baje ningún saldo de tienda, así que rompe R8 de la 459. Guardia roja medida en T1.
+6. **(D12) Diferencia como `propio`.** Descartada por Carlos: bajaría la ganancia por un dinero que
+   la satélite todavía debe.
+7. **(D12) Un débito espejo en el libro de la tienda** para que `terceros` cuadre. Descartada:
+   contradice D10, según la cual la tienda conserva su crédito completo y quien debe es la
+   satélite. Además obligaría a elegir a qué tienda se le carga.
+8. **(D12) Meter el bolsillo como región del bloque de la empresa** (`REGIONES_BOLSILLO_EMPRESA`).
+   Descartada: en pantalla lo leería como dinero de la empresa, que es justo lo que D12 niega.
 
 ## 5. Dependencias de terceros
 
@@ -240,6 +328,13 @@ WHERE donde vive»). Cada test debe crear sus propios datos y fallar si no los e
 | R21 | guardia `organizacion-en-modelos` + int de RLS de la tabla nueva | |
 | R22 | slt73-marcar-asienta: `fecha_movimiento` ≥ instante de la marca | pasar `fechaMovimiento` de la aprobación |
 | R23 | `tests/unit/services/conciliacion-satelites-service.test.ts` (existente) | |
+| R24 | `tests/unit/guards/caja-clasificacion-459.guardia.test.ts` › «⭑ SLT-73 (D12)» + contraprueba como `terceros` | volver a `terceros`; clasificar una sola de las dos |
+| R25 | `tests/unit/utils/caja-tesoreria.test.ts` (ampliado): egreso de diferencia 15 → `porCobrarSatelites` "15.00"; ingreso 5 → "10.00"; ganancia, IVA, capital y `deTerceros` sin cambio | invertir el orden de `derivarBalance`; quitar la rama explícita de `acumular` (cae en capital) |
+| R26 | guardia 459 (estática) + `tests/integration/db/slt73-marcar-asienta.int.test.ts` y `slt73-corregir-diferencia.int.test.ts`: tras marcar con faltante y tras corregir, `derivarCaja` sobre las filas reales da `deTerceros` = Σ saldos de las tiendas del libro | clasificar como `terceros` |
+| R27 | `tests/unit/guards/caja-derivaciones.guardia.test.ts` (6 llamadas) + caso de identidad en `caja-tesoreria.test.ts` sobre conjuntos con y sin diferencias | omitir `P` de la identidad; sumar `P` a `deEmpresa` |
+| R28 | `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo): lee el bloque por su `aria-label`, el importe tal cual del DTO, la pista positiva y la negativa; el bloque no está dentro de `data-bolsillo="empresa"` | pintarlo como región de la empresa; elegir la pista en el cliente comparando importes |
+| R29 | `tests/unit/components/wallet-ledger-dueno.test.tsx` y `tests/unit/components/wallet-labels.test.ts` (ampliados): fila de diferencia → dueño «Satélite» en la tabla y en la descarga | reutilizar el rótulo de `terceros` |
+| R30 | `tests/unit/utils/caja-tesoreria.test.ts`: caso G = 100, T = 50, P = 150 (`enCaja` = 0) → sin división por cero y proporción en 0–100; caso P > 0 en `dos_bolsillos` → segmentos suman `enCaja` | pasar `deEmpresa` sin restar `P` |
 
 Los tests existentes que afirman que aprobar un **satélite** escribe en la caja se ajustan; los de
 central no se tocan. El implementer los censa en T3.

@@ -41,8 +41,16 @@ conciliación en `ConciliacionSatelitesService`, saldo en `SaldosSatelitesReposi
 - Causas: el pendiente es Σ(`total_efectivo` − `monto_recibido`) de consolidaciones; no cuenta
   cierres aprobados sin consolidar ni el SINPE.
 
+## T9 (prod, solo lectura, 2026-10-31)
+- Conjunto S = 1 cierre. Caja 6 filas (₡94.745). Tienda: 2 créditos (₡76.890, 2 tiendas), 8 débitos
+  (₡11.855). Mensajero 1 fila (₡6.000). `liquidacion_pago` de S = 0 → la migración no aborta.
+- Sin pagos posteriores a esas tiendas; sus saldos siguen positivos tras retirar ~₡65 mil netos.
+
 ## Preguntas abiertas
 Q1 y Q2 cerradas por Carlos el 2026-10-31 (D10 = opción A, D11 = bloquear revertir). Spec APROBADO por Carlos el 2026-10-31.
+- 2026-10-31 (Carlos), D12: la diferencia de la satélite NO resta de la ganancia ni de «De las tiendas»:
+  va a un bolsillo nuevo de la caja «Por cobrar a satélites». Motivo: con `terceros` la guardia
+  `caja-clasificacion-459` (R8: «De las tiendas» = Σ saldos de tiendas) queda roja. Enmienda al spec.
 
 ## Tandas
 
