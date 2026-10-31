@@ -386,11 +386,17 @@ Sin rutas ni endpoints nuevos. Sin cambios de UI: la pantalla ya ordena por la s
 
 ### 8.0 Revisión 4 — tablas vigentes (R37 afirma estas)
 
+> **Enmienda D30 (2026-10-31).** La columna «jobs» de «Nuevo» se ajusta a D29/R76 con los valores
+> medidos (`progress/impl_SLT-59.md > Tanda 8`): filas 0 y 1b de A, B1, total de B y variantes de B.
+> Las llamadas facturadas (opt / routes) no cambian en ninguna fila. El código no se toca.
+
 Mismo arnés de test que abajo (dobles en memoria, espías sobre `optimizar` y `trazar`, reloj
 inyectado), con tres cambios:
 - el doble de paradas cuenta también las asignadas del día (`contarAsignadasDelDia`);
 - la ruta lleva `actualizadaAt`;
-- la recogida se simula con el helper de R57/R58: encola solo en el último paquete.
+- la recogida usa el código real de encolado (R58/R76): la primera recogida parcial crea el job del
+  día a +10 min, cada recogida siguiente lo mueve, y la del último paquete lo mueve a +60 s. Nunca
+  hay más de un job de recogida por día.
 
 Los disparos de salida (R62) llaman al servicio con `motivo: "salida"`. Umbral: 1000 m. Enfriamiento:
 5 min. Mínimo para el botón: 80 %.
@@ -400,9 +406,9 @@ en B; tras la carga, la ruta empieza en A ≈ B.
 
 | # | t (min) | Evento | Hoy: opt / routes / jobs | Nuevo: opt / routes / jobs |
 | --- | --- | --- | --- | --- |
-| 0 | −10…−7 | Recoge s1, s2, s3 y x de una en una, 1 por minuto (GPS en B) | hasta 4 / 4 / 4 | 0 / 0 / 0 (R57) |
+| 0 | −10…−7 | Recoge s1, s2, s3 y x de una en una, 1 por minuto (GPS en B) | hasta 4 / 4 / 4 | 0 / 0 / 1 (R76: la 1.ª recogida parcial crea el job del debounce; las siguientes lo mueven, sin duplicarlo) |
 | 1 | −6 | Pulsa «Sincronizar» con 4 de 7 recogidas (57 %) | 1 / 1 / 0 | 0 / 0 / 0 (R64: `conflict`) |
-| 1b | −5 | «Recoger todas» con las 3 restantes (s4, s5, s6) | 1 / 1 / 1 | 1 / 1 / 1 (R58 → job → R59) |
+| 1b | −5 | «Recoger todas» con las 3 restantes (s4, s5, s6) | 1 / 1 / 1 | 1 / 1 / 0 (R58: adelanta el job que ya existe, no crea otro; paga una vez, R59) |
 | 2 | 5 | Sincroniza a mano, GPS a 50 m de A | 1 / 1 / 0 | 0 / 0 / 0 (R1, R46) |
 | 3 | 10 | Gestiona x (sin coordenadas), GPS a 300 m | 1 / 1 / 1 | 0 / 0 / 0 (R22: la primera ruta ya existe) |
 | 4 | 20 | Entrega s1 y s2 con 20 s de diferencia | 2 / 2 / 2 | 0 / 0 / 1 (R41, R44) |
@@ -426,16 +432,23 @@ Fuera del total: la credencial rechazada y la recuperación a mano (D21).
 
 | # | Evento | Hoy | Nuevo |
 | --- | --- | --- | --- |
-| B1 | Recoge 6 de 7 de una en una, 1 por minuto (GPS en B) | hasta 6 / 6 / 6 | 0 / 0 / 0 (R57; no es la última) |
+| B1 | Recoge 6 de 7 de una en una, 1 por minuto (GPS en B) | hasta 6 / 6 / 6 | 0 / 0 / 1 (R76; no es la última) |
 | B2 | Pantalla abierta, la posición en vivo llega a 400 m de B | 0 / 0 / 0 | 0 / 0 / 0 |
 | B3 | La posición en vivo pasa de 1000 m de B | 0 / 0 / 0 | 1 / 1 / 0 (R62, `salida`) |
 | B4 | Otra lectura a 1,5 km, o se recarga la página | 0 / 0 / 0 | 0 / 0 / 0 (R63, R66) |
-| | **Total** | **hasta 6 / 6 / 6** | **1 / 1 / 0** |
+| | **Total** | **hasta 6 / 6 / 6** | **1 / 1 / 1** |
 
-Variantes de B que cubre el test (sin fila propia):
-- primera gestión antes de alejarse → 1 / 1 / 1 (R59);
-- botón con 6 de 7 recogidas (86 %) → 1 / 1 / 0 (R64);
-- botón con 5 de 7 recogidas (71 %) → `conflict` con «llevas 5 de 7».
+Nota B1 (D30): el job del debounce de B1 vence después de que B3 ya calculó la ruta, así que la
+guarda 92/R20 lo descarta (`obsoleta`) y no paga nada. Si el mensajero se quedara quieto más de
+10 min, pagaría ese job (`primera_ruta_debounce_recogida`) en lugar de B3, y la salida ya no
+aplicaría (R63). En los dos casos es una sola llamada.
+
+Variantes de B que cubre el test (sin fila propia). Cada una suma 1 job (el de R76) y 0 llamadas
+facturadas respecto a la revisión 4 original:
+- primera gestión antes de alejarse → 1 / 1 / 2 (R59 paga; el job de R76 sale `obsoleta`);
+- botón con 6 de 7 recogidas (86 %) → 1 / 1 / 1 (R64 paga; el job de R76 sale `obsoleta`);
+- botón con 5 de 7 recogidas (71 %) → `conflict` con «llevas 5 de 7», 0 / 0 / 1 (el job viene de
+  las recogidas parciales, R76).
 
 Notas:
 - **«Hasta» en «Hoy».** Con recogidas espaciadas, cada una cae en una ventana de debounce distinta.
@@ -449,7 +462,9 @@ Notas:
 - **Fila 5.** Se le añadió el desvío a propósito, para que la tabla afirme D24. Con las reglas de la
   revisión 3, el job de esa entrega reoptimizaba por desvío y costaba 1 / 1 / 1.
 - **Filas 0, 1 y 1b.** La primera ruta del día. Con D23/D25, las 7 recogidas cuestan una sola
-  optimización (la de 1b), en vez de una por ventana de debounce.
+  optimización (la de 1b), en vez de una por ventana de debounce. Con D29/R76 (D30), el único job
+  del día nace en la fila 0, con la primera recogida parcial, y 1b solo lo adelanta: por eso el job
+  cuenta en la fila 0 y no en la 1b. El total de A no cambia.
 
 ### 8.1 Revisión 3 (historia; ya no la afirma ningún test)
 
