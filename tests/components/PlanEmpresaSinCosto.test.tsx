@@ -41,8 +41,14 @@ function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): Plan
 
 const CONCRETO = planDTO({ id: "22222222-2222-4222-8222-222222222222", nombre: "Concreto" });
 
-/** La vista con un plan actual de esa base y ese costo por orden; `null` = sin plan. */
-function vista(actual: { precio: PrecioPlan; costoPorOrden: string | null } | null): PlanDeEmpresaVista {
+/**
+ * La vista con un plan actual de esa base y ese costo por orden; `null` = sin plan. `excepcion` hace que
+ * el costo vigente salga de la excepción de la empresa (fuente `empresa`) con ese importe.
+ */
+function vista(
+  actual: { precio: PrecioPlan; costoPorOrden: string | null } | null,
+  excepcion?: string,
+): PlanDeEmpresaVista {
   if (actual === null) return { organizacionId: ORG, plan: null, asignaciones: [] };
   const consumo = planConConsumo(
     {
@@ -50,7 +56,10 @@ function vista(actual: { precio: PrecioPlan; costoPorOrden: string | null } | nu
       ancla: new Date("2026-10-01T06:00:00.000Z"),
       uso: { ordenes: 3, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
       cambio: null,
-      costoVigente: { monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" },
+      costoVigente:
+        excepcion === undefined
+          ? { monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
+          : { monto: excepcion, fuente: "empresa" },
     },
     new Date("2026-10-10T06:00:00.000Z"),
   );
@@ -183,6 +192,25 @@ describe("SLT-66 R20 — aviso del plan actual sin costo concreto", () => {
   it("R20: sin plan, sin aviso", () => {
     montar({ v: vista(null) });
     expect(screen.queryByText(AVISO_R20)).toBeNull();
+  });
+});
+
+describe("SLT-66 §6.3 (P1) — la nota de la excepción en el detalle del superadmin", () => {
+  it("fuente empresa → «excepción de la empresa», nunca «precio acordado para tu empresa»", () => {
+    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "100.00" }, "80.00") });
+    expect(screen.getByText("excepción de la empresa")).toBeInTheDocument();
+    expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
+  });
+
+  it("fuente plan → sin nota de excepción", () => {
+    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "100.00" }) });
+    expect(screen.queryByText("excepción de la empresa")).toBeNull();
+  });
+
+  it("R20: el aviso del plan sin costo concreto sale una sola vez (ConsumoDelPlan no lo repite)", () => {
+    montar({ v: vista({ precio: { tipo: "negociable" }, costoPorOrden: "100.00" }, "80.00") });
+    expect(screen.getAllByText(AVISO_R20)).toHaveLength(1);
+    expect(screen.getAllByText(/sin costo concreto/i)).toHaveLength(1);
   });
 });
 

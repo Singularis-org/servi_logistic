@@ -475,3 +475,11 @@ Typecheck: `app/`, `lib/` y `components/` sin errores. Los 24 errores que quedan
 - `logistic_slt66` se recreó desde cero (`migrate deploy`, seed y generate). Drift vacío.
 - Tests en verde: 9 archivos, 81 casos. Son `migracion-slt66-ida-y-vuelta` y `-desasignar`, `liberar-recolecciones-recibidas-migration`, `cobro-plataforma-plan`/`-cargos`, `plan-maestro-sin-tope`, `plan-de-la-empresa-costeo`, `empresas-plataforma-plan` y la guardia `asignado-at-solo-lectura`.
 - Typecheck: los únicos errores están en `tests/components` y `tests/integration/*.tsx`.
+
+## T19 (ajuste) — el detalle del superadmin nombra la excepción de la empresa (frontend_dev)
+- Modificados: `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` (pasa `textoExcepcion="excepción de la empresa"`, design §6.3 l.486) y `tests/components/PlanEmpresaSinCosto.test.tsx`.
+- Mapa: P1/§6.3 (fuente `empresa` → «excepción de la empresa», sin «precio acordado para tu empresa») → `PlanEmpresaSinCosto.test.tsx > SLT-66 §6.3 (P1)`; R20 aviso una sola vez → mismo describe, caso «sale una sola vez».
+- Aviso «Plan sin costo concreto» duplicado: no. `ConsumoDelPlan` no lo pinta; solo `PlanEmpresa`.
+- vitest: PlanEmpresa 46/46, PlanEmpresaSinCosto 17/17, ConsumoDelPlan 7/7, ConsumoDelPlanCosteo 17/17, MiPlanModule 9/9.
+- typecheck (`tsc --noEmit`, repo entero): exit 0. eslint en los 2 archivos: sin problemas.
+- Veredicto: hecho, en verde.

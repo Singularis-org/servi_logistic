@@ -64,6 +64,8 @@ const TEXTOS = {
   /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
   planSinCosto:
     "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
+  /** SLT-66 (design §6.3, P1): la nota del costo por orden cuando sale de la excepción de la empresa. */
+  excepcion: "excepción de la empresa",
   asignablesNoCargaron: "No se pudieron cargar los planes que se pueden asignar.",
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
@@ -372,7 +374,12 @@ export function PlanEmpresa({
         <AvisoDeError>{TEXTOS.noSeCargo}</AvisoDeError>
       ) : (
         <>
-          <ConsumoDelPlan plan={vista.plan} textoSinPlan={TEXTOS.sinPlan} nivelDeTitulo={3} />
+          <ConsumoDelPlan
+            plan={vista.plan}
+            textoSinPlan={TEXTOS.sinPlan}
+            nivelDeTitulo={3}
+            textoExcepcion={TEXTOS.excepcion}
+          />
           {vista.plan?.archivado && <p className="text-sm text-muted-foreground">{TEXTOS.planArchivado}</p>}
           {vista.plan?.costeo.sinCostoConcreto && (
             // Un estado fijo del plan, no un aviso que llega: `note` y no el `alert` de la primitiva.
