@@ -165,7 +165,7 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 
 ## Preguntas abiertas
 
-- **Q1 — CERRADA (D10): opción A.** Cuando se recibe menos, ¿cómo se reparte lo recibido entre los movimientos?** D5
+- **Q1 — CERRADA (D10): opción A.** Cuando se recibe menos, ¿cómo se reparte lo recibido entre los movimientos? D5
   dice «entra lo recibido», pero los movimientos son por concepto y por cierre del día, y la
   recepción es por consolidación. Opciones:
   - **(A, recomendada; es la que escriben R10/R11).** Los tres libros reciben completos los
@@ -177,7 +177,7 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
   - **(B) Prorrateo.** Cada concepto se escala por recibido/esperado. Rompe la identidad de la 173
     y el libro por tienda: ¿a qué tienda se le acredita menos?
   - **(C) Nada entra hasta recibirlo completo.** Contradice «entra lo recibido».
-- **Q2 — CERRADA (D11): bloquear revertir, usar Corregir.** Revertir una conciliación que ya escribió asientos.** Los libros son append-only y
+- **Q2 — CERRADA (D11): bloquear revertir, usar Corregir.** Revertir una conciliación que ya escribió asientos. Los libros son append-only y
   el único `(origen_tipo, origen_id, categoria)` impide re-escribir un asiento de `cierre_dia` ya
   usado. Opciones:
   - **(A, recomendada; es la que escribe R14).** La reversión se bloquea cuando ya hay asientos.
