@@ -667,3 +667,23 @@ Cada spec se corrió por separado con `E2E_PUERTO=3044`, sobre `logistic_slt66_e
 - `migracion-slt66-ida-y-vuelta`, `migracion-slt66-desasignar`, `cobro-plataforma-plan` y `cobro-plataforma-cargos`: 4 archivos y 54 tests, todos en verde.
 - Typecheck total: `tsc --noEmit` sale con exit 0.
 - `logistic_slt66_e2e` sigue con los nombres viejos. Hay que recrearla antes de volver a correr el E2E.
+
+## Rojos de `gate-completo` en el PR #62 tras el merge de dev (run 41246217926, 2026-10-31)
+**1. Los planes de prueba de SL-24 no tenían costo concreto.** Caían `planes-asignacion`, `planes-cambio-correos`, `planes-cambio-programado`, `planes-edicion-en-uso` y `planes-historial`: 36 tests con `plan_sin_costo`. El fallo estaba en los fixtures, no en el código. R28 manda responder `plan_sin_costo` al asignar un plan sin costo base «monto» y sin costo por orden, y `entradaDePlan` crea los planes «sin precio» y con costo nulo. Ningún requisito pide aceptarlos en ese camino; R30 solo cubre editar, programar y archivar.
+- `_fixtures/planes.ts`: se añaden `COSTO_CONCRETO` (monto `1000.00`, costo `100.00`, los mismos valores que `planes-asignacion-inicio-ciclo`) y `entradaAsignable(p)`. `entradaDePlan` no cambia.
+- Los ayudantes `caso().plan` y `preparar` de los cuatro archivos usan `entradaAsignable`. En `planes-historial`, el cambio se limita a los dos casos que asignan (`:155`, `:198`).
+- `planes-cambio-programado`: R37 pasa de `costoPorOrden: null` a `"100.00"` al crear. R38 crea el plan con `COSTO_CONCRETO.precio` en vez de «sin precio». Las versiones programadas y todas las aserciones quedan igual.
+- Pendiente para el leader: falta una fila en design §9.3 para estos archivos, con el mismo criterio que la fila de `planes-asignacion-inicio-ciclo`.
+
+**2. Guardia ficha 421.** `migracion-slt66-ida-y-vuelta.test.ts` tenía dos consultas a catálogos que la guardia no da por acotadas:
+- `:291` filtraba por `routine_schema`, una columna que el `ACOTA` de la guardia no reconoce. Pasa a `specific_schema = 'public'`.
+- `:336` consultaba `pg_enum`/`pg_type` sin esquema. Se añade `AND t.typnamespace = 'public'::regnamespace`.
+
+**Verificación** (`logistic_slt66` recreada: `migrate deploy` y `seed`):
+- los 5 archivos más la guardia: 6 archivos y 52 tests en verde;
+- el resto de los tests de integración de planes, cobro y empresas-plataforma: grupos de 38, 18, 59, 34 y 55 tests, todos en verde;
+- `tsc --noEmit` sale con exit 0;
+- lint: 0 errores y 232 avisos;
+- `test:guardias`: 319 archivos en verde y 1 en rojo, `dependencias-declaradas-presentes` (4 tests). Ese archivo está en `tests/baseline-rojos.json` y el cambio no lo toca.
+
+Veredicto: los dos rojos están corregidos en local, sin debilitar ninguna aserción ni tocar código de `lib/`.

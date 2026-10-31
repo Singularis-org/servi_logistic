@@ -289,7 +289,7 @@ const CONSULTAS_EXTRA_R25: Record<string, string> = {
     FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND NOT t.tgisinternal`,
   privilegios: `SELECT routine_name || ' ' || grantee || ' ' || privilege_type AS l FROM information_schema.routine_privileges
-    WHERE routine_schema = 'public'`,
+    WHERE specific_schema = 'public'`,
 };
 
 describeSiHayBase("SLT-66 R25 — M1–M3 de ida y vuelta: el cargo de fuente plan y la vuelta a la regla de SL-40", () => {
@@ -333,7 +333,7 @@ describeSiHayBase("SLT-66 R25 — M1–M3 de ida y vuelta: el cargo de fuente pl
 
   async function valoresDe(tipo: string): Promise<string[]> {
     const { rows } = await r25.query(
-      `SELECT e.enumlabel AS v FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = $1 ORDER BY e.enumsortorder`,
+      `SELECT e.enumlabel AS v FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = $1 AND t.typnamespace = 'public'::regnamespace ORDER BY e.enumsortorder`,
       [tipo],
     );
     return rows.map((r) => String(r.v));

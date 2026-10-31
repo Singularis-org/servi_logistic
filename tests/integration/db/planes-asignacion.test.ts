@@ -15,7 +15,7 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { entradaDePlan, planesEnTx, revertida } from "./_fixtures/planes";
+import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 
 // SL-24 · T4 (design §5.2, §7.1; R4, R6, R9–R13) — asignar un plan a una empresa contra Postgres, con
 // `PlanesService` y `PlanesRepository` REALES. El repositorio abre su transacción como SAVEPOINT de la
@@ -55,7 +55,7 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     tx,
     servicio,
     plan: async (p) => {
-      const r = await servicio.crear(SUPERADMIN, entradaDePlan(p));
+      const r = await servicio.crear(SUPERADMIN, entradaAsignable(p));
       if (r.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(r)}`);
       return r.planId;
     },

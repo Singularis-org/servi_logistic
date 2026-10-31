@@ -11,7 +11,7 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { capturar, entradaDePlan, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
+import { capturar, entradaAsignable, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
 
 // SL-24 · T4 (design §5.3, §7.2; R15, R16 revisado el 2026-10-28, R17) — editar de inmediato un plan
 // en uso, contra Postgres, con `PlanesService` y `PlanesRepository` REALES. Las altas que siguen las
@@ -25,7 +25,7 @@ let base: PrismaClient;
 
 async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 1) {
   const servicio = new PlanesService(planesEnTx(tx));
-  const entrada = entradaDePlan(plan);
+  const entrada = entradaAsignable(plan);
   const creado = await servicio.crear(SUPERADMIN, entrada);
   if (creado.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(creado)}`);
   const orgs: string[] = [];

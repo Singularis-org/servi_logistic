@@ -9,7 +9,7 @@ import { PlanesService } from "@/lib/services/PlanesService";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, RegistroCaido, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
-import { entradaDePlan, planesEnTx, revertida, superadminEnTx } from "./_fixtures/planes";
+import { entradaAsignable, entradaDePlan, planesEnTx, revertida, superadminEnTx } from "./_fixtures/planes";
 import { tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SL-24 · T4 (design §2.8, §9; R29, R40, R43 en lo que toca a T4) — el rastro de los planes contra
@@ -152,7 +152,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       const servicio = new PlanesService(planesEnTx(tx));
       const org = (await crearOrganizacion(tx)).id;
       await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "ranking" } });
-      const creado = await servicio.crear(actor, entradaDePlan({ nombre: "Pro con analítica", modulos: ["analitica"] }));
+      const creado = await servicio.crear(actor, entradaAsignable({ nombre: "Pro con analítica", modulos: ["analitica"] }));
       if (creado.estado !== "ok") throw new Error(creado.estado);
       await servicio.asignar(actor, { organizacionId: org, planId: creado.planId });
       const filas = await tx.historialAccion.findMany({
@@ -195,7 +195,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
     const r = await revertida(base, async (tx) => {
       const { actor } = await conSuperadmin(tx);
       const org = (await crearOrganizacion(tx)).id;
-      const planId = await planesEnTx(tx).crear(entradaDePlan({ modulos: ["analitica"] }), actor.usuarioId);
+      const planId = await planesEnTx(tx).crear(entradaAsignable({ modulos: ["analitica"] }), actor.usuarioId);
       const roto = new PlanesService(planesEnTx(tx, "historial"));
       const error = await roto.asignar(actor, { organizacionId: org, planId }).catch((e: unknown) => e);
       const tras = {

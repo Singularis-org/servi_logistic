@@ -13,7 +13,7 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { entradaDePlan, planesEnTx, revertida } from "./_fixtures/planes";
+import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 
 // SL-24 · T12 (design §16.2, §16.4; R41, R42, R45) — los correos del cambio de un plan contra
 // Postgres: `PlanesService` y `PlanesRepository` reales encolan en su transacción (outbox), y los
@@ -102,7 +102,7 @@ async function maestro(tx: TxDeTest, organizacionId: string, estado: "activo" | 
  */
 async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput> = {}, empresas = 2) {
   const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
-  const entrada = entradaDePlan(plan);
+  const entrada = entradaAsignable(plan);
   const creado = await servicio.crear(SUPERADMIN, entrada);
   if (creado.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(creado)}`);
   const orgs: { id: string; nombre: string; maestros: string[] }[] = [];
