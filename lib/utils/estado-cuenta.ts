@@ -94,9 +94,10 @@ export function claveDeParTienda(m: Pick<MovimientoDelPeriodoRow, "id" | "catego
  * D3 — lo mismo en el libro del MENSAJERO:
  *   pago (172/205)       liquidacion ↔ ajuste_devengo (origen pago_mensajero, el pago)
  *   premio (293)         premio_ranking ↔ ajuste_pago con el MISMO `premio_dia`
+ *   incentivo (SLT-68)   incentivo (la fila) ↔ reverso_incentivo (origen incentivo_mensajero, el incentivo)
  */
 export function claveDeParMensajero(
-  m: Pick<MovimientoDelPeriodoRow, "tipo" | "categoria" | "origenTipo" | "origenId" | "premioDia">,
+  m: Pick<MovimientoDelPeriodoRow, "id" | "tipo" | "categoria" | "origenTipo" | "origenId" | "premioDia">,
 ): { clave: string; esContra: boolean } | null {
   const c = m.categoria as PagoMensajeroMovimientoCategoria;
   // `premio_dia` SOLO lo llevan el premio (devengo) y su reverso (pago): ver `db/schema.prisma`.
@@ -106,6 +107,9 @@ export function claveDeParMensajero(
   if (m.origenTipo === "pago_mensajero" && (c === "liquidacion" || c === "ajuste_devengo")) {
     return { clave: `pago:${m.origenId}`, esContra: c === "ajuste_devengo" };
   }
+  // El incentivo es su propio documento: su contraasiento lo nombra por `origen_id`.
+  if (c === "incentivo") return { clave: `incentivo:${m.id}`, esContra: false };
+  if (c === "reverso_incentivo") return { clave: `incentivo:${m.origenId}`, esContra: true };
   return null;
 }
 

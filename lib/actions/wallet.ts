@@ -5,6 +5,7 @@ import { AbonoTiendaRepository } from "@/lib/repositories/AbonoTiendaRepository"
 import { AjusteCajaAnulacionRepository } from "@/lib/repositories/AjusteCajaAnulacionRepository";
 import {
   EgresoCajaDocumentosRepository,
+  IncentivoCajaDocumentosRepository,
   IndemnizacionDocumentosRepository,
   PagoTiendaCajaDocumentosRepository,
   PremioCajaDocumentosRepository,
@@ -147,6 +148,8 @@ function buildService(): IWalletService {
     // Ficha 458-C (revision B3, R71): el pago de la empresa a una tienda y el premio del ranking.
     pagosATienda: new PagoTiendaCajaDocumentosRepository(prisma),
     premios: new PremioCajaDocumentosRepository(prisma),
+    // SLT-68 (design §5, R16): el incentivo a un mensajero.
+    incentivos: new IncentivoCajaDocumentosRepository(prisma),
   },
   buildComprobantes(prisma), // Ficha 458-B (R74): el comprobante de la correccion
   buildBusquedaPorGuia(prisma), // FICHA 469 (design §3.3): guia o texto en el libro y en su descarga

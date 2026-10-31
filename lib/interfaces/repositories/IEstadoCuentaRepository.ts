@@ -171,6 +171,8 @@ export interface IEstadoCuentaRepository {
   conComprobante(tipo: TipoDeDocumentoDeLibro, ids: readonly string[]): Promise<Set<string>>;
   /** Los reversos de premio (`ajuste_pago` con `premio_dia`) de ese mensajero en esos dias. */
   reversosDePremio(mensajeroId: string, dias: readonly Date[]): Promise<AnulacionLeida[]>;
+  /** SLT-68 (R16) — los `reverso_incentivo` de ese mensajero cuyo `origen_id` es uno de estos incentivos. */
+  reversosDeIncentivo(mensajeroId: string, incentivoIds: readonly string[]): Promise<AnulacionLeida[]>;
   /** FICHA 458-D (servidor) — metodo y referencia de estos documentos de pago, UNA consulta por tipo. */
   pagosDe(tipo: TipoDeDocumentoDePago, ids: readonly string[]): Promise<PagoDeDocumento[]>;
   /**

@@ -93,6 +93,8 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
   cobro_tienda_completado: "Cobro de la empresa a una tienda (línea de caja completada al corregir)",
   // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
   abono_tienda: "Pago de una tienda a la empresa",
+  // SLT-68 (design §5): el egreso de caja del incentivo y su reverso.
+  incentivo_mensajero: "Incentivo a un mensajero",
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
@@ -158,10 +160,10 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
 });
 
 describe("461 — ORIGEN_LABEL: cada origen de la caja, desde la empresa (R42, design §7.3)", () => {
-  it("dice exactamente los 14 textos aprobados (13 de la 461 + 1 de la 457), y el seed es exactamente esas 14 claves", () => {
+  it("dice exactamente los 15 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68), y el seed es exactamente esas 15 claves", () => {
     expect(ORIGEN_LABEL).toEqual(ORIGENES_ESPERADOS);
     expect([...WALLET_ORIGEN_TIPO_SEED].sort()).toEqual(Object.keys(ORIGENES_ESPERADOS).sort());
-    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(14);
+    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(15);
   });
 
   it("las dos lineas del cobro se distinguen: la completada dice que se completo al corregir (R37)", () => {
@@ -197,7 +199,7 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
     expect(TIPO_EGRESO_MANUAL_LABEL.gasto_variable).toBe(CATEGORIA_LABEL.egreso_gasto_variable);
   });
 
-  it("los diez documentos anulables se nombran desde la empresa dentro de «Anular …»", () => {
+  it("los once documentos anulables se nombran desde la empresa dentro de «Anular …» (SLT-68: el incentivo)", () => {
     expect(DOCUMENTO_CAJA_NOMBRE).toEqual({
       pago_por_cuenta_tienda: "el pago de un gasto de una tienda",
       aporte_capital: "el aporte de dinero a la caja",
@@ -211,6 +213,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // Ficha 458-C (revision B3): los dos egresos que la caja ya anulaba y no traian documento.
       pago_tienda: "el pago de la empresa a una tienda",
       premio_del_ranking: "el premio del ranking",
+      // SLT-68 (design §5): el egreso de caja de un incentivo a un mensajero.
+      incentivo_mensajero: "el incentivo a un mensajero",
     });
   });
 
