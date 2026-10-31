@@ -26,6 +26,7 @@ import type {
   EncolarOMoverOpts,
   EnqueueOpts,
   IJobRepositoryMovible,
+  ILectorJobPendiente,
   JobDTO,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type {
@@ -79,7 +80,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 const JOBS_CONFIG: JobsConfig = {
@@ -326,7 +327,7 @@ class ParadasEnMemoria {
  * La cola en memoria: `ON CONFLICT (dedupe_key) DO NOTHING`, el `DO UPDATE … WHERE estado =
  * 'pending'` de `encolarOMoverPendiente` (D29) y el reclamo por `run_after`.
  */
-class JobsEnMemoria implements IJobRepositoryMovible {
+class JobsEnMemoria implements IJobRepositoryMovible, ILectorJobPendiente {
   readonly filas: JobDTO[] = [];
 
   constructor(private readonly reloj: () => Date) {}
@@ -407,6 +408,11 @@ class JobsEnMemoria implements IJobRepositoryMovible {
 
   async findByDedupeKeys(keys: string[]): Promise<JobDTO[]> {
     return this.filas.filter((j) => j.dedupeKey !== null && keys.includes(j.dedupeKey));
+  }
+
+  // SLT-74: la lectura del aviso de `recogida_insuficiente` (una sola empresa en este arnes).
+  async findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null> {
+    return this.filas.find((j) => j.dedupeKey === dedupeKey && j.estado === "pending") ?? null;
   }
 
   pendientes(): JobDTO[] {
@@ -506,6 +512,7 @@ function montarJornada() {
     reloj,
     undefined,
     { trazar },
+    jobs,
   );
   const cola = new JobQueueService(
     jobs,
@@ -846,12 +853,14 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     expect(filas).toEqual(NUEVO_A);
     expect(totales(filas)).toEqual({ opt: 3, routes: 3, jobs: 6 });
 
-    // Fila 1 (R64): el boton con el 57 % no paga y dice cuantas lleva.
+    // Fila 1 (R64): el boton con el 57 % no paga y dice cuantas lleva. SLT-74: y cuanto falta para
+    // el job de la fila 0 (ultima recogida parcial en t = -7, +5 min -> t = -2; se pulsa en t = -6).
     expect(desenlaces[1]).toEqual({
       status: "omitida",
       razon: "recogida_insuficiente",
       recogidas: 4,
       asignadas: 7,
+      esperaMs: 4 * MIN,
     });
     // Fila 0 (R76): un solo job de recogida en todo el dia; la fila 1b lo movio (R58).
     expect(j.jobs.filas.filter((f) => f.dedupeKey?.startsWith("ruta-opt:primera-recogida:"))).toHaveLength(1);
@@ -972,11 +981,13 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     const antes = j.conteo();
     await recogerDeUnaEnUna(j, ["s1", "s2", "s3", "s4", "s5"], B);
     const desenlace = await sincronizar(j, B);
+    // SLT-74: la quinta recogida (t = -6) acaba de mover el job a +5 min.
     expect(desenlace).toEqual({
       status: "omitida",
       razon: "recogida_insuficiente",
       recogidas: 5,
       asignadas: 7,
+      esperaMs: 5 * MIN,
     });
     // La accion lo traduce a `conflict` «llevas 5 de 7» (`sincronizar-ruta.test.ts`). El job es
     // el de las recogidas parciales (R76): uno solo, aun pendiente.

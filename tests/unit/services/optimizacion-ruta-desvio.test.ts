@@ -489,7 +489,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] }) {

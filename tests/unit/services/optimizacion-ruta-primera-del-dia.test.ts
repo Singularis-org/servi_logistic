@@ -18,6 +18,7 @@ import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { distanciaHaversineKm } from "@/lib/geo/polilinea";
 import { primeraRutaPendiente as primeraRutaPendienteDeLosWriters } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
 // SLT-59 revision 4 (D23, D25; design §12.1, §12.5, §12.6) — la primera ruta del dia.
 //   R59  con la primera pendiente se recalcula siempre (ni omitir ni reducir).
@@ -54,7 +55,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 /** Un punto `metros` al OESTE de `base`, a lo largo del paralelo (lejos de la fila de paradas). */
@@ -109,6 +110,8 @@ function build(opts: {
   ruta: RutaOptimizadaDTO | null;
   paradas?: ParadaRutaRow[];
   conteo?: { asignadas: number; recogidas: number };
+  /** SLT-74: el job pendiente de la primera ruta (su `runAfter`), `null` si no hay, o un fallo. */
+  jobPendiente?: { runAfter: Date } | null | "falla";
 }) {
   let ruta = opts.ruta;
   const rutas = {
@@ -152,6 +155,12 @@ function build(opts: {
       tramos: [],
     })),
   };
+  const jobs = {
+    findPendienteByDedupeKey: vi.fn(async (): Promise<JobDTO | null> => {
+      if (opts.jobPendiente === "falla") throw new Error("base caida");
+      return opts.jobPendiente ? ({ runAfter: opts.jobPendiente.runAfter } as JobDTO) : null;
+    }),
+  };
   const service = new OptimizacionRutaService(
     rutas as unknown as IRutaOptimizadaRepository,
     paradasRepo as ParadasRepo,
@@ -160,6 +169,7 @@ function build(opts: {
     () => T0,
     undefined,
     routes as unknown as IRoutesClient,
+    jobs,
   );
   const escrituras = () =>
     rutas.upsertOrigen.mock.calls.length +
@@ -169,7 +179,7 @@ function build(opts: {
     rutas.marcarDesactualizada.mock.calls.length +
     rutas.marcarTramoVivo.mock.calls.length;
   const llamadas = () => client.optimizar.mock.calls.length + routes.trazar.mock.calls.length;
-  return { service, rutas, paradasRepo, client, routes, escrituras, llamadas };
+  return { service, rutas, paradasRepo, client, routes, jobs, escrituras, llamadas };
 }
 
 describe("SLT-59 — glosario: primera ruta pendiente y punto de recogida (puras)", () => {
@@ -388,5 +398,55 @@ describe("SLT-59 T7.6 — R63/R66: el disparo de salida", () => {
     const r = await service.ejecutar(MENSAJERO, { motivo: "salida" });
     expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
     expect(llamadas()).toBe(0);
+  });
+});
+
+describe("SLT-74 — `recogida_insuficiente` dice cuanto falta para el job pendiente de la primera ruta", () => {
+  it("con job pendiente: `esperaMs` = run_after - ahora, leido con la clave del dia de CR", async () => {
+    const { service, jobs, llamadas } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: 15, recogidas: 10 },
+      jobPendiente: { runAfter: new Date(T0.getTime() + 158_000) },
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 10,
+      asignadas: 15,
+      esperaMs: 158_000,
+    });
+    // T0 = 16:00 de CR del 29: la clave del job es la de ese dia (la misma que deja la recogida).
+    expect(jobs.findPendienteByDedupeKey).toHaveBeenCalledTimes(1);
+    expect(jobs.findPendienteByDedupeKey).toHaveBeenCalledWith("ruta-opt:primera-recogida:m-1:2026-10-29");
+    expect(llamadas()).toBe(0);
+  });
+
+  it("con el job ya vencido (espera al cron): `esperaMs` <= 0 tal cual", async () => {
+    const { service } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: 15, recogidas: 10 },
+      jobPendiente: { runAfter: new Date(T0.getTime() - 20_000) },
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toMatchObject({ razon: "recogida_insuficiente", esperaMs: -20_000 });
+  });
+
+  it("sin job pendiente: sin `esperaMs`", async () => {
+    const { service } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 15, recogidas: 0 }, jobPendiente: null });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 0, asignadas: 15 });
+  });
+
+  it("si la lectura del job falla, el aviso sale sin `esperaMs` en vez de tumbar el boton", async () => {
+    const { service } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 15, recogidas: 10 }, jobPendiente: "falla" });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 10, asignadas: 15 });
+  });
+
+  it("con recogida suficiente no se lee el job (solo el aviso lo necesita)", async () => {
+    const { service, jobs } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 5, recogidas: 4 } });
+    await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(jobs.findPendienteByDedupeKey).not.toHaveBeenCalled();
   });
 });

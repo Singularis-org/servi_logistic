@@ -219,7 +219,7 @@ const GESTION_INPUT = {
 
 beforeEach(async () => {
   await sembrarCatalogoEstados(); // feature 140: la guardia del choke point es de fallo CERRADO
-  // Los defaults de la config: 60 s de debounce, 10 min de debounce de la primera ruta (D29).
+  // Los defaults de la config: 60 s de debounce, 5 min de debounce de la primera ruta (D29, SLT-74).
   vi.stubEnv("RUTA_DEBOUNCE_S", "");
   vi.stubEnv("RUTA_PRIMERA_DEBOUNCE_MIN", "");
 });
@@ -232,7 +232,7 @@ afterEach(() => {
 /* La recogida: R57, R58, R76, R77                                                             */
 /* ------------------------------------------------------------------------------------------ */
 
-describe("SLT-59 R57/R76 — recogida parcial con la primera ruta pendiente: un job del dia a +10 min", () => {
+describe("SLT-59 R57/R76 — recogida parcial con la primera ruta pendiente: un job del dia a +5 min", () => {
   it("R76: deja UN job con runAfter = ahora + RUTA_PRIMERA_DEBOUNCE_MIN y origen = recogida_parcial", async () => {
     const cola = new ColaEnMemoria();
     const { promesa, tx } = recoger(cola, T0, ["o1"], { quedan: true });
@@ -243,21 +243,21 @@ describe("SLT-59 R57/R76 — recogida parcial con la primera ruta pendiente: un 
     expect(job.via).toBe("mover");
     expect(job.opts.dedupeKey).toBe(CLAVE_DEL_DIA);
     expect(job.opts.dedupeKey).toBe(`ruta-opt:primera-recogida:${MENSAJERO}:${DIA_TEXTO}`);
-    expect(job.opts.runAfter?.getTime()).toBe(T0.getTime() + 10 * MIN);
+    expect(job.opts.runAfter?.getTime()).toBe(T0.getTime() + 5 * MIN);
     // PII: el mensajero y el origen del evento; nada mas.
     expect(job.payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
     // Outbox: va con el cliente de la transaccion de la recogida.
     expect(job.tx).toBe(tx);
   });
 
-  it("R76: una segunda recogida parcial a los 4 min MUEVE el mismo job a ahora + 10 min", async () => {
+  it("R76: una segunda recogida parcial a los 4 min MUEVE el mismo job a ahora + 5 min", async () => {
     const cola = new ColaEnMemoria();
     await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
     const t4 = new Date(T0.getTime() + 4 * MIN);
     await recoger(cola, t4, ["o2"], { quedan: true }).promesa;
 
     expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(t4.getTime() + 10 * MIN);
+    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(t4.getTime() + 5 * MIN);
     expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
   });
 

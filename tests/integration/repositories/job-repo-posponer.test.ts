@@ -94,7 +94,7 @@ beforeEach(() => {
 describe("SLT-59 D29 — el SQL de encolarOMoverPendiente", () => {
   it("es el INSERT de la cola con ON CONFLICT … DO UPDATE de run_after y payload, solo si sigue pending", async () => {
     const { prisma, $queryRaw } = buildPrisma(tabla);
-    await mover(new JobRepository(prisma), new Date(T0.getTime() + 10 * MIN), "recogida_parcial");
+    await mover(new JobRepository(prisma), new Date(T0.getTime() + 5 * MIN), "recogida_parcial");
 
     const sql = ($queryRaw.mock.calls[0][0] as unknown as string[]).join(" ");
     expect(sql).toMatch(/INSERT INTO "jobs"/);
@@ -138,7 +138,7 @@ describe("SLT-59 D29 — el SQL de encolarOMoverPendiente", () => {
 describe("SLT-59 R76 — crea la fila y luego la MUEVE mientras siga pending", () => {
   it("la primera llamada inserta una fila pending con su runAfter, payload y max_intentos", async () => {
     const { prisma } = buildPrisma(tabla);
-    const runAfter = new Date(T0.getTime() + 10 * MIN);
+    const runAfter = new Date(T0.getTime() + 5 * MIN);
 
     const job = await mover(new JobRepository(prisma), runAfter, "recogida_parcial");
 
@@ -153,7 +153,7 @@ describe("SLT-59 R76 — crea la fila y luego la MUEVE mientras siga pending", (
   it("una segunda llamada con la misma clave mueve run_after y reescribe payload: sigue habiendo UNA fila", async () => {
     const { prisma } = buildPrisma(tabla);
     const repo = new JobRepository(prisma);
-    const primero = await mover(repo, new Date(T0.getTime() + 10 * MIN), "recogida_parcial");
+    const primero = await mover(repo, new Date(T0.getTime() + 5 * MIN), "recogida_parcial");
     const nuevo = new Date(T0.getTime() + 7 * MIN + 60_000);
 
     const movido = await mover(repo, nuevo, "recogida");
@@ -170,7 +170,7 @@ describe("SLT-59 R77 — con la fila del dia fuera de pending no crea ni mueve",
     it(`fila \`${estado}\` -> null, sin fila nueva y con su run_after intacto`, async () => {
       const { prisma } = buildPrisma(tabla);
       const repo = new JobRepository(prisma);
-      const runAfterOriginal = new Date(T0.getTime() + 10 * MIN);
+      const runAfterOriginal = new Date(T0.getTime() + 5 * MIN);
       await mover(repo, runAfterOriginal, "recogida_parcial");
       tabla[0].estado = estado;
 

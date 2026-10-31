@@ -166,4 +166,49 @@ describeSiBaseLocal("SLT-59 R77 — encolarOMoverPendiente contra Postgres real"
       expect(r.despues).toEqual(r.antes);
     },
   );
+
+  // SLT-74 — `findPendienteByDedupeKey`: la lectura del aviso, acotada a la empresa en curso.
+  it("SLT-74: findPendienteByDedupeKey ve el job pendiente de SU empresa y nada mas", async () => {
+    const mensajeroId = randomUUID();
+    const clave = dedupeKeyPrimeraRecogida(mensajeroId, DIA);
+
+    const r = await dos.conDosEmpresas(prisma, async (tx, a, b) => {
+      const sembrado = await dos.sembrarJob(tx, a, {
+        tipo: "optimizacion_ruta",
+        estado: "pending",
+        runAfter: AHORA_2,
+        dedupeKey: clave,
+      });
+      const repo = new JobRepository(tx as unknown as PrismaClient);
+
+      await orgs.comoApp(tx, a);
+      const deA = await repo.findPendienteByDedupeKey(clave);
+      await orgs.comoApp(tx, b);
+      const deB = await repo.findPendienteByDedupeKey(clave);
+      // Dueno (sin RLS) y sin empresa fijada: solo lo frena el filtro explicito del repo.
+      await dos.comoAppSinEmpresa(tx);
+      await dos.comoDueno(tx);
+      const sinEmpresa = await repo.findPendienteByDedupeKey(clave);
+      return { sembrado, deA, deB, sinEmpresa };
+    });
+
+    // Anti-vacuidad: la empresa duena SI lo ve, con su `run_after`.
+    expect(r.deA?.id).toBe(r.sembrado);
+    expect(r.deA?.runAfter.getTime()).toBe(AHORA_2.getTime());
+    expect(r.deB).toBeNull();
+    expect(r.sinEmpresa).toBeNull();
+  });
+
+  it.each(["processing", "done", "failed"] as const)(
+    "SLT-74: findPendienteByDedupeKey no devuelve un job `%s`",
+    async (estado) => {
+      const clave = dedupeKeyPrimeraRecogida(randomUUID(), DIA);
+      const r = await dos.conDosEmpresas(prisma, async (tx, a) => {
+        await dos.sembrarJob(tx, a, { tipo: "optimizacion_ruta", estado, dedupeKey: clave });
+        await orgs.comoApp(tx, a);
+        return new JobRepository(tx as unknown as PrismaClient).findPendienteByDedupeKey(clave);
+      });
+      expect(r).toBeNull();
+    },
+  );
 });

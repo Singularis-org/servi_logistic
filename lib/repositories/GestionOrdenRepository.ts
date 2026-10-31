@@ -739,8 +739,8 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       );
       // Feature 92 (R16) -> SLT-59 (R57, R58, R76, R77; design §12.2 y nota D29): recoger ya NO
       // reoptimiza cada vez. Solo encola mientras la PRIMERA ruta del dia esta pendiente, y siempre
-      // el MISMO job del dia (`encolarPrimeraRutaPorRecogida`): a +10 min si quedan paquetes por
-      // recoger, a +RUTA_DEBOUNCE_S si este era el ultimo. Con la primera ruta ya calculada, nada.
+      // el MISMO job del dia (`encolarPrimeraRutaPorRecogida`): a +RUTA_PRIMERA_DEBOUNCE_MIN si
+      // quedan paquetes por recoger, a +RUTA_DEBOUNCE_S si este era el ultimo. Con la primera ruta ya calculada, nada.
       // Va DENTRO de esta transaccion (outbox): si revierte, el job se va con ella.
       //
       // UNA consulta, con el predicado de dia COPIADO del `UPDATE` de arriba (R67). Solo si alguna

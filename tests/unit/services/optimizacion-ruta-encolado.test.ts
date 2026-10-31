@@ -260,7 +260,7 @@ describe("SLT-59 R58/R76 — encolarPrimeraRutaPorRecogida decide cuando corre y
     for (const v of VARS) delete process.env[v];
   }
 
-  it("R76: quedan por recoger -> ahora + 10 min, origen recogida_parcial, clave del dia", async () => {
+  it("R76: quedan por recoger -> ahora + 5 min, origen recogida_parcial, clave del dia", async () => {
     limpiar();
     const { repo, llamadas } = colaMovible();
     await encolarPrimeraRutaPorRecogida(repo, undefined, MENSAJERO, {
@@ -271,7 +271,7 @@ describe("SLT-59 R58/R76 — encolarPrimeraRutaPorRecogida decide cuando corre y
     expect(llamadas).toHaveLength(1);
     expect(llamadas[0].tipo).toBe("optimizacion_ruta");
     expect(llamadas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
-    expect(llamadas[0].opts.runAfter.getTime()).toBe(T0.getTime() + 10 * 60_000);
+    expect(llamadas[0].opts.runAfter.getTime()).toBe(T0.getTime() + 5 * 60_000);
     expect(llamadas[0].opts.dedupeKey).toBe(dedupeKeyPrimeraRecogida(MENSAJERO, "2026-07-20"));
     expect(llamadas[0].opts.maxIntentos).toBe(3);
   });

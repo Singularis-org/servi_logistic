@@ -34,6 +34,7 @@ import {
   loadRouteOptimizationConfig,
   type RouteOptimizationConfig,
 } from "@/lib/config/route-optimization";
+import { avisoRecogidaInsuficiente } from "@/lib/utils/aviso-recogida-insuficiente";
 
 /** Unico rol autorizado (R33). */
 const ROL_AUTORIZADO = "mensajero";
@@ -123,13 +124,18 @@ export async function sincronizarRuta(
     }
     // SLT-59 (R64, design §12.5): la forma `conflict` ya existe y el boton ya hace
     // `toast.warning(motivo)`, asi que la UI no cambia. El porcentaje es el de la config (R55).
+    // SLT-74: el minimo se muestra en paquetes, no en %, y si el job de la primera ruta ya esta
+    // pendiente se dice cuanto falta para que corra (`esperaMs`, lo mide el service).
     if (resultado.status === "omitida" && resultado.razon === "recogida_insuficiente") {
       const pct = (deps.config ?? loadRouteOptimizationConfig()).RUTA_PRIMERA_MIN_RECOGIDO_PCT;
       return {
         status: "conflict" as const,
-        motivo:
-          `Todavía no se calcula la ruta: recoge al menos el ${pct} % de tus paquetes ` +
-          `(llevas ${resultado.recogidas} de ${resultado.asignadas}).`,
+        motivo: avisoRecogidaInsuficiente({
+          asignadas: resultado.asignadas,
+          recogidas: resultado.recogidas,
+          pct,
+          esperaMs: resultado.esperaMs,
+        }),
       };
     }
     // El trazado (polilinea + distancia) sube al cliente para que el mapa lo pinte al
