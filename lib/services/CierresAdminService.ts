@@ -16,9 +16,9 @@ import type {
   Alcance,
   CierreAdminResumenRow,
   GestionIncidenteDelCierre,
-  GestionRetornableDelCierre,
   ICierresAdminRepository,
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import type { OrigenDelPaquete } from "@/lib/types/gestion-retorno";
 import type { ILiquidacionPagoRepository } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
 import type { IPagoMensajeroMovimientoRepository } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
@@ -1127,7 +1127,13 @@ export class CierresAdminService implements ICierresAdminService {
       // cobertura EXACTA verificada arriba. Solo viajan los ids: la guia ya se contrasto (R12) y
       // el repo no la persiste. OBLIGATORIO en esta rama —puede ser `[]`, pero no puede faltar—
       // para que un olvido de cableado rompa el typecheck en vez de dejar la marca sin escribir.
-      confirmacionFisica: confirmacionFisica.map(({ gestionId }) => ({ gestionId })),
+      //
+      // Ficha 451 / SLT-72 (T4.2, R20/R26): las BARRIDAS viajan en la misma lista, por `ordenId`;
+      // el repo las parte y marca `cierre_sin_gestion` en la misma tx. Se mapea por `origen` para
+      // que un tercer origen no compile sin decidir aqui que viaja.
+      confirmacionFisica: confirmacionFisica.map((c) =>
+        c.origen === "gestion" ? { gestionId: c.gestionId } : { ordenId: c.ordenId },
+      ),
     });
     if (res === "updated") {
       // 💰 FICHA 315 — LA APROBACION ES EL EVENTO QUE LIBERA. Aqui, y no en el reloj.
@@ -1298,15 +1304,36 @@ export class CierresAdminService implements ICierresAdminService {
     alcance: Alcance,
     confirmacionFisica: ReadonlyArray<ConfirmacionFisicaInput>,
   ): Promise<{ status: "validation_error"; fieldErrors: Record<string, string[]> } | null> {
-    const esperadas = await this.repo.findGestionesRetornablesDelCierre(cierreId, alcance);
-    // R16: un cierre SIN nada que devolver se aprueba con el MISMO comportamiento y el MISMO
-    // payload que antes de esta feature — ni una consulta mas aguas abajo. Medido: es 3 de cada
-    // 12 cierres, un camino de igual rango, no un `else` de cortesia.
-    if (esperadas.length === 0 && confirmacionFisica.length === 0) return null;
+    // Ficha 451 / SLT-72 (T3.3, design §5.2, R5/R10/R16) — el conjunto esperado tiene DOS
+    // origenes: las gestiones que vuelven (238) y las ordenes que ESTE cierre barrio sin gestionar
+    // (`cierre_sin_gestion`). Las dos lecturas van con el alcance en el WHERE y en paralelo.
+    //
+    // DESVIACION DECLARADA del design §5.2 («la lectura de barridas es perezosa»): no puede serlo.
+    // Un cierre SIN gestiones que vuelvan y con la lista vacia es justo el caso de R10/R17 si tiene
+    // barridas, y la unica forma de saberlo es leerlas. Es UNA consulta acotada por el indice
+    // `(cierre_id, orden_id)`; la alternativa —no leerlas— es aprobar sin escanear, el defecto.
+    const [esperadas, barridas] = await Promise.all([
+      this.repo.findGestionesRetornablesDelCierre(cierreId, alcance),
+      this.repo.findBarridasDelCierre(cierreId, alcance),
+    ]);
+    // R16 (238) / R18 (451): un cierre SIN nada que devolver —ni gestiones que vuelvan ni
+    // barridas— se aprueba con el MISMO comportamiento y el MISMO payload que antes.
+    if (esperadas.length === 0 && barridas.length === 0 && confirmacionFisica.length === 0) {
+      return null;
+    }
 
-    const porId = new Map<string, GestionRetornableDelCierre>(
-      esperadas.map((g) => [g.gestionId, g]),
-    );
+    // UN solo mapa por clave: `gestionId` para las gestiones, `ordenId` para las barridas (design
+    // §4). Los dos espacios son uuid y los conjuntos son disjuntos por construccion (una orden
+    // barrida no tiene gestion vigente en el cierre que la barrio), asi que las claves no chocan.
+    // El ORIGEN viaja en la fila para que una entrada no pueda cubrir una fila del otro origen.
+    const porClave = new Map<string, { origen: OrigenDelPaquete; numGuia: number | null }>();
+    for (const g of esperadas) {
+      porClave.set(g.gestionId, { origen: "gestion", numGuia: g.numGuia });
+    }
+    for (const b of barridas) {
+      // R15: una barrida SIN guia entra igual al conjunto; se bloquea abajo, nunca se omite.
+      porClave.set(b.ordenId, { origen: "barrida", numGuia: b.numGuia });
+    }
     const fieldErrors: Record<string, string[]> = {};
     const vistos = new Set<string>();
 
@@ -1323,41 +1350,42 @@ export class CierresAdminService implements ICierresAdminService {
       return idsIncidente.has(gestionId);
     };
 
-    for (const { gestionId, numGuia } of confirmacionFisica) {
-      if (vistos.has(gestionId)) {
-        // R10: la misma gestion confirmada dos veces. Sin esto, dos entradas cubririan una sola
-        // gestion y el conteo cuadraria con un paquete menos delante.
-        fieldErrors[gestionId] = [MSG_CONFIRMACION_DUPLICADA];
+    for (const entrada of confirmacionFisica) {
+      const clave = entrada.origen === "gestion" ? entrada.gestionId : entrada.ordenId;
+      if (vistos.has(clave)) {
+        // R10 (238) / R13 (451): la misma fila confirmada dos veces. Sin esto, dos entradas
+        // cubririan una sola fila y el conteo cuadraria con un paquete menos delante.
+        fieldErrors[clave] = [MSG_CONFIRMACION_DUPLICADA];
         continue;
       }
-      vistos.add(gestionId);
-      const esperada = porId.get(gestionId);
-      if (esperada === undefined) {
-        // R11 vs R10: distinguir el INCIDENTE de la gestion ajena. Los incidentes de ESTE cierre
-        // ya se leen para la cobertura de la 158, asi que no cuesta una consulta mas. Y la
-        // distincion importa: «no pertenece» invita a buscar el paquete; el incidente no hay
-        // donde buscarlo.
-        fieldErrors[gestionId] = [
-          (await esIncidenteDeEsteCierre(gestionId))
+      vistos.add(clave);
+      const esperada = porClave.get(clave);
+      if (esperada === undefined || esperada.origen !== entrada.origen) {
+        // R11 vs R10 (238): distinguir el INCIDENTE de la gestion ajena; solo una entrada de
+        // origen `gestion` puede ser un incidente. R13 (451): una barrida que no es de ESTE
+        // cierre —u otra fila disfrazada de otro origen— es ajena.
+        fieldErrors[clave] = [
+          entrada.origen === "gestion" && (await esIncidenteDeEsteCierre(clave))
             ? MSG_CONFIRMACION_INCIDENTE
             : MSG_CONFIRMACION_AJENA,
         ];
         continue;
       }
       if (esperada.numGuia === null) {
-        // R13: la orden no tiene numero de guia. La gestion NO se omite del conjunto esperado
-        // (sale de la lectura como cualquier otra) y aqui se bloquea nombrando el motivo.
-        fieldErrors[gestionId] = [MSG_CONFIRMACION_SIN_GUIA];
-      } else if (esperada.numGuia !== numGuia) {
-        // R12: se leyo una guia que no es la de este paquete. Es la diferencia entre «bodega
-        // tuvo ESTE paquete delante» y «bodega escaneo algo».
-        fieldErrors[gestionId] = [MSG_CONFIRMACION_GUIA_DISTINTA];
+        // R13 (238) / R15 (451): la fila no tiene numero de guia. NO se omite del conjunto
+        // esperado (sale de la lectura como cualquier otra) y aqui se bloquea nombrando el motivo.
+        fieldErrors[clave] = [MSG_CONFIRMACION_SIN_GUIA];
+      } else if (esperada.numGuia !== entrada.numGuia) {
+        // R12 (238) / R14 (451): se leyo una guia que no es la de este paquete. Para la barrida se
+        // contrasta con la guia CONGELADA (Q2 de la 451), la misma que ve la pantalla.
+        fieldErrors[clave] = [MSG_CONFIRMACION_GUIA_DISTINTA];
       }
     }
 
-    // R9: falta la confirmacion de alguna gestion del conjunto esperado -> error en ESA gestion.
-    for (const { gestionId } of esperadas) {
-      if (!vistos.has(gestionId)) fieldErrors[gestionId] = [MSG_CONFIRMACION_FALTANTE];
+    // R9 (238) / R12 (451): falta la confirmacion de alguna fila del conjunto esperado -> error en
+    // ESA fila. Un solo barrido sobre los DOS origenes: no hay un segundo «faltan N».
+    for (const clave of porClave.keys()) {
+      if (!vistos.has(clave)) fieldErrors[clave] = [MSG_CONFIRMACION_FALTANTE];
     }
 
     if (Object.keys(fieldErrors).length === 0) return null;

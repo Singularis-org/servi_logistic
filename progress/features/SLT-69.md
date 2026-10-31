@@ -13,7 +13,7 @@ F2: aprobado 2026-10-30 («aprobado»), implementación en curso. HOTFIX: rama b
 zone frontend / complexity low. Causa medida en prod el 2026-10-30:
 - `RecogerModule.tsx:300` solo refresca la lista tras recoger con éxito (`router.refresh()`); sin refresco al volver a la app ni periódico.
 - `useRecogerPorGuia.ts:50-53` rechaza en el cliente si la guía no está en `porRecoger`, sin llamar al servidor (no deja logs).
-- Caso: Jason Barrios, lote 11:24; 34991060 y 78432594 asignadas 11:33, 65848228 11:37, 93293534 11:38; escaneo de 34991060 a las 11:40 rechazado. A mano funcionó tras refrescarse la lista.
+- Caso: un mensajero, lote 11:24; 4 guías asignadas entre 11:33 y 11:38; el escaneo de la primera a las 11:40 fue rechazado. A mano funcionó tras refrescarse la lista.
 - Mismo patrón en Recolección: `app/(app)/recoleccion/_components/useRecolectarPorGuia.ts`.
 
 ## Decisiones

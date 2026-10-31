@@ -139,9 +139,11 @@ describe("cierres-admin actions — delegacion en el service", () => {
 
   it("238/R14/R15: la confirmacion fisica llega al servicio SIN transformar", async () => {
     const service = fakeService();
+    // Ficha 451 / SLT-72: cada entrada lleva su `origen`, y la barrida viaja en la MISMA lista.
     const confirmacionFisica = [
-      { gestionId: "22222222-2222-4222-8222-222222222222", numGuia: 9001 },
-      { gestionId: "33333333-3333-4333-8333-333333333333", numGuia: 9002 },
+      { origen: "gestion", gestionId: "22222222-2222-4222-8222-222222222222", numGuia: 9001 },
+      { origen: "gestion", gestionId: "33333333-3333-4333-8333-333333333333", numGuia: 9002 },
+      { origen: "barrida", ordenId: "44444444-4444-4444-8444-444444444444", numGuia: 7001 },
     ];
 
     await aprobarCierre(
@@ -161,7 +163,7 @@ describe("cierres-admin actions — delegacion en el service", () => {
       const r = await aprobarCierre(
         {
           cierreId: CIERRE_ID,
-          confirmacionFisica: [{ gestionId: "22222222-2222-4222-8222-222222222222", numGuia }],
+          confirmacionFisica: [{ origen: "gestion", gestionId: "22222222-2222-4222-8222-222222222222", numGuia }],
         },
         { service, getActor: actorMaestro },
       );
