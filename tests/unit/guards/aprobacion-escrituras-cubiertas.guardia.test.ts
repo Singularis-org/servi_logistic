@@ -145,6 +145,20 @@ const ESCRITURAS_DE_LA_APROBACION = [
       "mensajero (rama `aBodega` y rama `enElTope`); incidente BLST-765.",
     cubiertaPor: ["tests/integration/db/484-puntero-aprobacion-sql-real.test.ts"],
   },
+  {
+    // FICHA 451 / SLT-72 (T4.2, R20-R22) — LA MARCA DE CONFIRMACION FISICA sobre el OTRO origen: las
+    // ordenes que ESTE cierre barrio sin gestionar. Escritura NUEVA de la transaccion, pegada a la
+    // marca de la 238: guardada por `(cierreId, ordenId IN ids)`, `data` con una sola clave
+    // (`confirmadaFisicaAt`) y fallo cerrado si `count` no cuadra. Sin dinero ni historial.
+    escritura: "tx.cierreSinGestion.updateMany",
+    que:
+      "la marca `cierre_sin_gestion.confirmada_fisica_at` de las barridas confirmadas por bodega al " +
+      "aprobar (451): guardada por `cierreId` + `ordenId IN ids`, una sola clave, money-neutral.",
+    cubiertaPor: [
+      "tests/unit/repositories/cierres-admin-confirmacion-fisica.test.ts",
+      "tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts",
+    ],
+  },
 ] as const;
 
 /**

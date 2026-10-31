@@ -520,7 +520,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
       // R10: SOLO se confirma el paquete de la rechazada de CALLE. Si el servicio exigiera tambien los
       // rechazos de tienda, esta aprobacion volveria como `validation_error`.
       const aprobacion = await ctx.admin.aprobarCierre(cierreId, p.actorAdmin, [], [
-        { gestionId: gestionCalle, numGuia: rechazadaCalle.numGuia },
+        { origen: "gestion", gestionId: gestionCalle, numGuia: rechazadaCalle.numGuia },
       ]);
 
       return {
