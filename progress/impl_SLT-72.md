@@ -387,3 +387,46 @@ Los 4 rojos explicados. Dos eran dobles o fixtures desfasados frente a R10/R15, 
 | R8 | REPO · «R8: fuera de alcance -> `[]`…»; SVC · «R8: las barridas se leen con el ALCANCE del satelite»; SQL · «R8: las barridas de un cierre fuera del alcance NO se leen (alcance en el WHERE), y dentro si» |
 
 Veredicto: m1 cerrado; el alcance del WHERE de `findBarridasDelCierre` ya lo mata un test contra Postgres real.
+
+## Vuelta 2 — B1 (E2E de flujo crítico, local, contra `servi_slt72`)
+
+**Entorno.** `DATABASE_URL` a la base local `servi_slt72` por el wrapper del leader (host local
+comprobado, URL no impresa). App servida con `next start` sobre un `next build` del HEAD
+`9805285b` (sin cambios de app después: m1 solo toca un test). `E2E_PUERTO=3044`, un solo servidor
+(lo levanta y lo para Playwright; al terminar, 3044 y 54329 quedaron libres). Los dos specs a la vez,
+con `--no-deps` (el humo se monta su propio superadmin con `asegurarSuperadmin`).
+
+**Corrida 1: rojo de ENTORNO, no del diff.**
+- `1 failed | 2 passed (1.4m)`: los 2 de `cierres-admin` en verde; cae el primer test del humo
+  («alta de A y B…»): `el log del servidor no recibió ningún enlace … (¿falta NEXT_PUBLIC_APP_URL en
+  el build?)`.
+- Prueba: el log del servidor dice `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL` (×2) y
+  `[recuperar-contrasena] no se envio: falta NEXT_PUBLIC_APP_URL`. La variable está ausente del
+  `.env` del worktree y del principal. CI la fija en el `.env` antes del build
+  (`.github/workflows/gate.yml:372`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`). Ningún archivo
+  del diff toca esa variable ni el correo.
+- Arreglo de entorno: `NEXT_PUBLIC_APP_URL=http://localhost:3044` exportada al rebuild. Sin cambio
+  de código.
+
+**Corridas 2 y 3, seguidas sobre la misma base, tras el rebuild (`BUILD_EXIT=0`):**
+- Corrida 2: `9 passed (1.2m)`, `E2E_EXIT=0`. Corrida 3: `9 passed (1.1m)`, `E2E_EXIT=0`.
+- En las dos: 0 failed, 0 skipped, 0 flaky.
+- Tests (iguales en las dos):
+  ```
+  ok 1 [aislamiento] › e2e\dos-empresas-humo.spec.ts:199:5 › alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de cada maestro consta en el log (R16, R17)
+  ok 2 [aislamiento] › e2e\dos-empresas-humo.spec.ts:224:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B
+  ok 3 [aislamiento] › e2e\dos-empresas-humo.spec.ts:224:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A
+  ok 4 [aislamiento] › e2e\dos-empresas-humo.spec.ts:269:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa
+  ok 5 [aislamiento] › e2e\dos-empresas-humo.spec.ts:290:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador
+  ok 6 [aislamiento] › e2e\dos-empresas-humo.spec.ts:318:5 › SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no lo ve ni lo abre, A sí (R15, R16, R25, R26)
+  ok 7 [aislamiento] › e2e\dos-empresas-humo.spec.ts:390:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)
+  ok 8 [dinero] › e2e\cierres-admin.spec.ts:75:7 › Cierres del día — el admin aprueba o rechaza › (a) detalle con totales y evidencia → Aprobar con la guía confirmada → «Aprobado»
+  ok 9 [dinero] › e2e\cierres-admin.spec.ts:118:7 › Cierres del día — el admin aprueba o rechaza › (b) Rechazar exige motivo → con motivo pasa a «Rechazado» con el motivo guardado
+  ```
+
+## Vuelta 2 — gate local (ronda 3), sobre `75fc827a`
+- `NODE_OPTIONS=--max-old-space-size=8192` + wrapper a `servi_slt72`, `./init.sh` (rápido), sin
+  dev server ni mutaciones en paralelo. Resultado: `INIT_EXIT=0`.
+- `test:rapido`: `Test Files 264 passed (264)`, `Tests 3832 passed (3832)` (uno más que la ronda 2:
+  el R8 de m1).
+- Guardias: `Test Files 317 passed (317)`, `Tests 4426 passed | 1 skipped` (el skip preexistente).
