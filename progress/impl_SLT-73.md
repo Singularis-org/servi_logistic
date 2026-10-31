@@ -236,3 +236,126 @@ Supervivientes: **0**. M8 solo lo caza el unit: en integración `this.prisma` y 
 
 **Veredicto:** T4 y T5 hechos y probados contra Postgres, 12/12 mutaciones muertas; sigue abierto el bloqueo de la
 naturaleza de caja de la diferencia (guardia 459) y T7 tiene que pintar `con_asientos`.
+
+## Tanda 3 — backend_dev: T6 (R4-R8) (2026-10-31)
+
+Commit de código y tests: `efe25822`. Base local `servi_slt73` por `conbase73.sh`. MCP no usado (worktree sin indexar);
+Grep/Read.
+
+### Archivos
+
+- `lib/utils/conciliacion-satelite.ts`: `saldoDe(esperado, recibido)` (parámetro renombrado; el docstring dice que D3
+  reabrió la Q2 de la 431) y nuevo `esperadoDe(snapshot)` = `paraLaCentral(general, pago, ganancia)` como `Decimal`.
+  No reescribe la fórmula: llama a `lib/utils/ingreso-empresa.ts > paraLaCentral`.
+- `lib/repositories/SaldosSatelitesRepository.ts`: el cliente gana `cierreDia`; `APORTE_WHERE` = `{ estado: "aprobado",
+  destinoTipo: "bodega_satelite" }`; agregaciones (d) aportes y (e) sin consolidar (`cierreBodegaId: null`, `_count`)
+  por `destinoZonaId in zonaIds`; `saldoSinConciliar = saldoDe(aporteDe(Σd), Σ recibido de (a))`;
+  `findResumen` con la misma resta por zona (`pendienteTotal` = Σ deudas, `bodegasConPendiente` = deudas ≠ 0);
+  `toConsolidacionDTO`, la última recibida y la «diferencia» de la cabecera con `esperadoDe`.
+- `lib/repositories/CierreBodegaRepository.ts > toBodegaResumenRow`: `faltaPorRecibir = saldoDe(paraLaCentral, recibido)`.
+- `lib/types/conciliacion-satelites.ts`, `lib/interfaces/repositories/ISaldosSatelitesRepository.ts`,
+  `ICierreBodegaRepository.ts`: DTO y docstrings.
+- Tests: nuevo `tests/integration/db/slt73-deuda-satelite.int.test.ts`; actualizados `saldo-satelites.int.test.ts`,
+  `tests/unit/repositories/cierre-bodega-repository.test.ts`, `cierres-bodega-admin-repository.test.ts`,
+  `tests/unit/utils/cascadas-cierre-bodega.test.ts`; fixtures de DTO con los campos nuevos (solo tipo) en
+  `WalletListados464`, `wallet-satelites`, `saldos-satelites-descarga-columnas`, `wallet-sin-uuid.guardia`,
+  `conciliacion-satelites-service`.
+
+### Cambios de DTO (para frontend_dev, T7)
+
+- `SaldoSateliteDTO`: **`aporteSinConsolidar: string`** y **`cierresSinConsolidar: number`** (nuevos);
+  `saldoSinConciliar` pasa a ser la deuda (R5). `totalEfectivo` sigue, como contexto.
+- `ConsolidacionSateliteDTO`: **`pagoMensajero`**, **`gananciaSatelite`**, **`paraLaCentral`** (string, nivel
+  superior); `faltaPorRecibir` = `paraLaCentral − recibido`.
+- `UltimaRecibidaDTO.declarado` ahora es lo esperado (`paraLaCentral`), no el efectivo; mismo nombre de campo.
+- `CierreBodegaResumenRow.faltaPorRecibir` (`/cierres-admin`) = `paraLaCentral − recibido`.
+- Ningún componente rompió el typecheck: no se tocó UI.
+
+### Decisiones
+
+- `esperadoDe` en `conciliacion-satelite.ts` para que los dos lectores (R8) y la cabecera usen la misma función.
+- Sumar los snapshots y aplicar `paraLaCentral` una vez = sumar los aportes uno a uno (la cascada es lineal); así (d)
+  y (e) son `groupBy` sin SQL a mano.
+- La última recibida también pasa a `paraLaCentral` (R8: es el «falta por recibir» de una consolidación).
+- `saldo-satelites.int.test.ts`: cada consolidación sembrada lleva un `cierre_dia` aprobado con su mismo snapshot
+  (sin él la deuda no tiene minuendo); las rechazadas no (su recibido es siempre nulo por el CHECK). `algunUsuarioId`
+  crea su usuario con `crearUsuarioDePrueba` (la base local no tiene usuarios). Esperados reescritos a mano: el SINPE
+  ahora cuenta (D3).
+- R7 «otra empresa»: el test baja a `servi_app` con `comoApp` (RLS, como la extensión en prod); la empresa A nace vacía
+  en la transacción, así que la cabecera se compara contra un literal (`69274.70`, 6 bodegas con pendiente).
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R4 | `cascadas-cierre-bodega` › «SLT-73 R4 …» (3 casos: fórmula, signo negativo, `saldoDe`); `slt73-deuda-satelite` › zona NEG (−3400.15) |
+| R5 | `slt73-deuda-satelite` › «R5/R6: la deuda por zona…» (sin consolidar, consolidado sin conciliar, parcial, rechazada, SINPE, negativo, cero, solicitado/rechazado/destino central excluidos); `saldo-satelites` › «R17/R18: las CUATRO…» y «SLT-73 D3/R5: el SINPE SI cuenta» |
+| R6 | `slt73-deuda-satelite` › «R5/R6…» (`aporteSinConsolidar`, `cierresSinConsolidar`; SINPE prod-like = 70890.00, no al día) |
+| R7 | `slt73-deuda-satelite` › «R7: Σ filas = cabecera, `bodegasConPendiente` y otra empresa…»; `saldo-satelites` › «R20/R23 — las TRES cifras…» |
+| R8 | `slt73-deuda-satelite` › «R8/R9: el desglose…»; `saldo-satelites` › «R22/R24: el desglose…» y «la ULTIMA recibida…»; `cierre-bodega-repository` › «SLT-73 R8: las OCHO lecturas…»; `cierres-bodega-admin-repository` › «R15: todos…» |
+| R9 (servidor) | `slt73-deuda-satelite` › «R8/R9…» (`pagoMensajero`, `gananciaSatelite`, `paraLaCentral`); la pantalla es T7 |
+
+### Mutaciones (harness con autocomprobación)
+
+Harness `scratchpad/t6/mut.py` (adaptado del de la tanda 2): CONTROL previo verde obligatorio (44/44, 0 skipped),
+aplica la mutación, relee el archivo y exige el texto mutado, corre `slt73-deuda-satelite` + `saldo-satelites` +
+`cierre-bodega-repository` + `cascadas-cierre-bodega`, aborta si un run no trae resumen, revierte con
+`git checkout --` y comprueba `git diff --quiet`. 19/19 aplicadas y revertidas.
+
+| Mutación | Archivo | Rojos |
+|---|---|---|
+| M1 quitar `estado: aprobado` | SaldosSatelitesRepository | 2 |
+| M2 quitar `destinoTipo` | idem | 2 |
+| M3a quitar `destinoZonaId in zonaIds` de (d) y (e) | idem | **0 — equivalente** |
+| M3b quitar `destinoZona` satélite del resumen | idem | 1 (zona central con 777.00) |
+| M4a fila con `totalEfectivo` (fórmula 431) | idem | 5 |
+| M4b aporte sin restar el pago al mensajero | idem | 2 |
+| M5 omitir el recibido en la fila | idem | 5 |
+| M6 incluir rechazadas en (a) | idem | 1 |
+| M7 quitar `cierreBodegaId: null` de (e) | idem | 2 |
+| M8a cabecera suma \|deuda\| | idem | 1 |
+| M8b cabecera solo con consolidados | idem | 1 |
+| M8c `bodegasConPendiente` solo positivas | idem | 1 |
+| M8d cabecera sin restar el recibido | idem | 3 |
+| M9 `toConsolidacionDTO` con `totalEfectivo` | idem | 2 |
+| M10 `toBodegaResumenRow` con `totalEfectivo` | CierreBodegaRepository | 2 |
+| M11 última recibida con el general | SaldosSatelitesRepository | 1 |
+| M12 «diferencia» de la cabecera con el general | idem | 1 |
+| M13 `esperadoDe` sin la ganancia de la satélite | conciliacion-satelite | 5 |
+| MT (control del test) sin `comoApp`: otra empresa se mezcla | slt73-deuda-satelite | 1 |
+
+Supervivientes: **1, equivalente (M3a)**. Los dos `groupBy` agrupan por `destinoZonaId` y la fila busca su zona en
+el `Map`; sin el `in`, los grupos de otras zonas se leen y se descartan. El filtro acota la consulta, no el resultado.
+«Incluir rechazadas en el recibido» es equivalente para la deuda: el CHECK `cierre_bodega_conciliacion_coherente`
+obliga a que una rechazada tenga `monto_recibido` nulo. M6 muere por el contexto (`totalEfectivo`), no por la deuda.
+
+### Verificación (salida real)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0, 0 errores, 232 avisos; ninguno en los archivos de esta tanda.
+- Tests de la tanda (base `servi_slt73`): `slt73-deuda-satelite` 3/3, `saldo-satelites` 17/17, `cierre-bodega-repository`
+  + `cascadas` 24/24, y `cierres-bodega-admin-repository`, `conciliacion-satelites-service`, `wallet-satelites`,
+  `saldos-satelites-descarga-columnas`, `WalletListados464`, `wallet-sin-uuid.guardia` 108/108. Total 10 archivos,
+  **152/152**.
+- `vitest related --run` de los 6 archivos de `lib/`: 228 archivos, 208 verdes, 42 tests rojos en 20 archivos. 18
+  archivos son baseline de base vacía («usuario esta vacia», «faltan la zona central, cedula u orden», «orden vacia»,
+  «referencia a otra empresa» del fixture 172r52). `cierres-bodega-admin-repository` era mío y está arreglado.
+  **`wallet-caracterizacion-458` (R84 y TB.6) es rojo real y queda abierto: ver BLOQUEO.**
+
+### BLOQUEO DE DINERO (para el leader / humano): el estado de cuenta de la bodega
+
+`EstadoCuentaRepository.paginaDeBodega` / `totalesDeBodega` (ficha 458, `/wallet/satelites/[zonaId]`) arma el libro de la
+bodega con `cierre_bodega.total_efectivo` como «declarado», y su «Pendiente de llegar» se pinta en la misma página que la
+conciliación (`ConciliacionSatelite.tsx`). `wallet-caracterizacion-458` › «TB.6 R20–R22» exige que ese pendiente sea igual
+a `saldoSinConciliar`. Con SLT-73 ya no lo es: en su fixture la consolidación `b2` tiene SINPE 1500, así que la deuda da
+7000.00 y el estado de cuenta 5500.00 (y sin `cierre_dia` sembrados, la fila da −4000.00). El spec (R5-R8, design §2.7)
+no dice qué hace el estado de cuenta: si el libro de la bodega pasa a `paraLaCentral` por consolidación, sigue sin ver
+los cierres sin consolidar; si pasa a filas por `cierre_dia` aprobado, es un rediseño del libro (fechas, orígenes,
+descarga). No lo toqué, ni el fixture `wallet-458`: arreglar el fixture taparía la divergencia. Decide el humano.
+
+### Desviaciones
+
+- Ninguna en UI. El árbol tenía cambios de otra sesión en `specs/` (commiteados por ella en `c5f77de6`); no los toqué.
+
+**Veredicto:** T6 hecho y probado contra Postgres; de 19 mutaciones sobrevive 1, equivalente (M3a). Queda abierto el
+bloqueo del estado de cuenta de la bodega (458), con `wallet-caracterizacion-458` en rojo, y la UI (T7).
