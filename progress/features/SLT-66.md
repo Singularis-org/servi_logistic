@@ -18,6 +18,8 @@ F1.2 hecho (2026-10-31): spec 62bcdfd aprobado; enmienda con las respuestas en c
 - 2026-10-31: alcance acotado con `/afinar-feature` → `specs/SLT-66-planes-sin-tope-maestro-y-costeo/requirements.md` (tabla «Decisiones cerradas»).
 - 2026-10-31: spec aprobado por escrito («Aprobado, acepto choque»). P1 = lo que se cobra; P2 = no se asigna un plan sin costo base y costo por orden concretos (sin bloqueo de login); P3 = entra. Nuevo: asignar plan descubrible desde el listado de Empresas. Enmienda en curso (spec_author).
 - 2026-10-31: choque aceptado por el humano con SLT-56 y SLT-64 (Carlos Restrepo) en db/schema.prisma; mismo dueño que SLT-43/SLT-44.
+- 2026-10-31: T0 — empresas con plan: 0 en logistic_slt66 y en logistic (local); el humano confirma 0 en QA y producción. M4 (desasignar) se aplica sin afectar a ninguna empresa real.
+- 2026-10-31: tests fuera de design §9.3 rotos por R1/R4 (maestro fuera, costoPorOrden nuevo): el humano autoriza el ajuste mecánico («Sí, autoriza»).
 
 ## Preguntas abiertas
 Ninguna.
