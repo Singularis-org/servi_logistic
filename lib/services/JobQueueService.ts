@@ -8,6 +8,7 @@ import type {
 import type { JobsConfig } from "@/lib/config/jobs";
 import type { JobTipo } from "@prisma/client";
 import { JobDescartado } from "@/lib/services/jobs/job-descartado";
+import { JobFallidoPermanente } from "@/lib/services/jobs/job-fallido-permanente";
 
 // Log de aviso inyectable (patron `LiberacionLogger`): por defecto console.warn. NUNCA
 // registra PII ni secretos (R18/R19): solo mensajes agregados sin datos de dominio.
@@ -124,6 +125,16 @@ export class JobQueueService implements IJobQueueService {
           // ni dead-letter. Un recurrente agenda igual su siguiente ocurrencia, como tras un éxito.
           await this.repo.descartar(job.id, err.motivo);
           result.descartados += 1;
+          await this.reagendarRecurrente(job, now);
+          continue;
+        }
+        if (err instanceof JobFallidoPermanente) {
+          // SLT-59 (R29): reintentar no puede arreglarlo y cada intento es una llamada pagada, asi
+          // que muere en ESTE intento aunque le queden. Cuenta como fallido y muerto, como un
+          // dead-letter normal, y un recurrente agenda igual su siguiente ocurrencia (R24).
+          result.fallidos += 1;
+          await this.repo.fail(job.id, mensajeError(err), null);
+          result.muertos += 1;
           await this.reagendarRecurrente(job, now);
           continue;
         }

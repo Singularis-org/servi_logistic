@@ -72,11 +72,15 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     secuenciaFuente: null,
     trazado: null,
     tramoVivoAt: null,
+    actualizadaAt: new Date("2026-07-20T11:00:00.000Z"),
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
   };
 }
+
+/** SLT-59 (R67): el doble de la ruta del ultimo `build`, para contar sus lecturas. */
+let ultimoRutaRepo: Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">;
 
 function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
   const repo = {
@@ -96,6 +100,7 @@ function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
     findByMensajero: vi.fn(async () => rutaPrevia),
     upsertOrigen: vi.fn(async () => {}),
   } as unknown as Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">;
+  ultimoRutaRepo = rutaRepo;
 
   // Feature 115 (R17): sin marcas -> `marcarLuego` false; este test mide el orden por ruta.
   const metaRepo = {
@@ -118,8 +123,15 @@ function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
   );
 }
 
-async function listar(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
-  const r = await build(rows, rutaPrevia).listarMisAsignaciones(MENSAJERO);
+/** 12:00 de CR del 20 de julio: la `calculadaAt` de la fixture (06:00 de CR) es de hoy. */
+const AHORA = new Date("2026-07-20T18:00:00.000Z");
+
+async function listar(
+  rows: MiAsignacionRow[],
+  rutaPrevia: RutaOptimizadaDTO | null,
+  ahora: Date = AHORA,
+) {
+  const r = await build(rows, rutaPrevia).listarMisAsignaciones(MENSAJERO, ahora);
   if (r.status !== "ok") throw new Error("se esperaba ok");
   return r;
 }
@@ -254,6 +266,51 @@ describe("bloque `ruta` del resultado y KPIs", () => {
       paradasSinOptimizar: 1,
       trazado: null,
       tramoSiguiente: null,
+      // SLT-59 (R62): calculada hoy -> no pendiente; origen `centroide` -> sin punto de recogida.
+      primeraRutaPendiente: false,
+      puntoRecogida: null,
+    });
+  });
+
+  // SLT-59 T7.7 (R62, R65, R67; design §12.6) — los dos campos salen de la `ruta` ya leida.
+  describe("SLT-59 R62 — `primeraRutaPendiente` y `puntoRecogida`", () => {
+    const AYER = new Date("2026-07-19T20:00:00.000Z");
+    const GPS_HOY = new Date("2026-07-20T15:00:00.000Z");
+
+    it("sin ruta persistida -> primera pendiente y sin punto de recogida", async () => {
+      const r = await listar([row("A", "en_reparto")], null);
+      expect(r.ruta.primeraRutaPendiente).toBe(true);
+      expect(r.ruta.puntoRecogida).toBeNull();
+    });
+
+    it("calculada ayer, con el GPS de la recogida de hoy -> pendiente y punto = ese GPS", async () => {
+      const r = await listar(
+        [row("A", "en_reparto")],
+        ruta({ calculadaAt: AYER, origenLat: 9.9, origenLng: -84.1, origenAt: GPS_HOY, origenFuente: "gps" }),
+      );
+      expect(r.ruta.primeraRutaPendiente).toBe(true);
+      expect(r.ruta.puntoRecogida).toEqual({ lat: 9.9, lng: -84.1 });
+    });
+
+    it("`calculadaAt` nula -> pendiente", async () => {
+      const r = await listar([row("A", "en_reparto")], ruta({ calculadaAt: null }));
+      expect(r.ruta.primeraRutaPendiente).toBe(true);
+    });
+
+    it.each([
+      ["GPS de ayer", { origenAt: AYER, origenFuente: "gps" as const }],
+      ["`ultima_conocida`", { origenAt: GPS_HOY, origenFuente: "ultima_conocida" as const }],
+      ["`centroide`", { origenAt: GPS_HOY, origenFuente: "centroide" as const }],
+    ])("origen %s -> sin punto de recogida", async (_c, over) => {
+      const r = await listar([row("A", "en_reparto")], ruta({ calculadaAt: AYER, ...over }));
+      expect(r.ruta.puntoRecogida).toBeNull();
+    });
+
+    it("R67: no anade lecturas — la ruta se lee una sola vez, como antes", async () => {
+      const svc = build([row("A", "en_reparto")], ruta({ calculadaAt: AYER }));
+      const r = await svc.listarMisAsignaciones(MENSAJERO, AHORA);
+      expect(r.status).toBe("ok");
+      expect(ultimoRutaRepo.findByMensajero).toHaveBeenCalledTimes(1);
     });
   });
 

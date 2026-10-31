@@ -272,6 +272,18 @@ export interface RutaResumenDTO {
     distanciaM: number | null;
     duracionS: number | null;
   } | null;
+  /**
+   * SLT-59 (R62, R65, design §12.6) — la primera ruta del dia todavia no se calculo: no hay
+   * ruta, o su `calculadaAt` es nula o de un dia anterior. Sale de la `ruta` ya leida, sin
+   * lecturas nuevas (R67).
+   */
+  primeraRutaPendiente: boolean;
+  /**
+   * SLT-59 (glosario «Punto de recogida», R62) — el origen guardado si es `gps` y se capturo
+   * hoy; `null` en cualquier otro caso. Es la posicion del propio mensajero, que ya se le
+   * muestra como origen. Sin el, la pantalla no dispara la salida.
+   */
+  puntoRecogida: { lat: number; lng: number } | null;
 }
 
 // Feature 61: KPIs del portal del mensajero, calculados SERVER-SIDE (autoritativos).

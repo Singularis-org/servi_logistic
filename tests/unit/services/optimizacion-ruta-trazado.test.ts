@@ -31,6 +31,11 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
 };
 
 function parada(id: string, lat: number, lng: number): ParadaRutaRow {
@@ -47,10 +52,11 @@ function montar(routes: IRoutesClient | null, secuencia = ["o-2", "o-1"]) {
     reemplazarSecuencia,
     guardarTrazado,
     marcarTramoVivo: vi.fn(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: async () => {},
   };
   const paradasRepo = {
-    findParadasEnReparto: async () => [parada("o-1", 9.94, -84.08), parada("o-2", 9.95, -84.07)],
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => [parada("o-1", 9.94, -84.08), parada("o-2", 9.95, -84.07)],
   };
   // Feature 265: `fuente` es REQUERIDA en el desenlace `ok`. Aqui el doble hace de proveedor.
   const client = {

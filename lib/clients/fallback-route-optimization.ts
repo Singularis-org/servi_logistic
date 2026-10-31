@@ -25,6 +25,7 @@ import type {
   OptimizarOutcome,
 } from "@/lib/interfaces/external/IRouteOptimizationClient";
 import { RutaNoConfiguradoError } from "@/lib/auth/google-token-shared";
+import type { ContextoLlamadaRuta } from "@/lib/clients/registro-llamada-google";
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 
 /** Logger inyectable, mismo contrato que `RutaLogger`. NUNCA recibe PII ni secretos. */
@@ -54,9 +55,9 @@ export class FallbackRouteOptimizationClient implements IRouteOptimizationClient
     private readonly logger: FallbackLogger = defaultLogger,
   ) {}
 
-  async optimizar(input: OptimizarInput): Promise<OptimizarOutcome> {
+  async optimizar(input: OptimizarInput, contexto: ContextoLlamadaRuta): Promise<OptimizarOutcome> {
     try {
-      const outcome = await this.primary.optimizar(input);
+      const outcome = await this.primary.optimizar(input, contexto);
       // ── Feature 265 (R9-R13, design §5.3): SEGUNDA regla de degradacion ────────────
       // El proveedor contesto BIEN y no pudo servirlas todas. No es un fallo suyo, asi que
       // no se propaga como tal: se ordenan TODAS en local. El criterio es la COBERTURA de la
@@ -78,7 +79,7 @@ export class FallbackRouteOptimizationClient implements IRouteOptimizationClient
             "paradas; se usa orden local aproximado (Haversine)",
         );
         // La `fuente` la pone Haversine (`local`), no este compuesto: propaga, no supone.
-        return this.fallback.optimizar(input);
+        return this.fallback.optimizar(input, contexto);
       }
       return outcome;
     } catch (error) {
@@ -94,7 +95,7 @@ export class FallbackRouteOptimizationClient implements IRouteOptimizationClient
         this.logger.warn(
           "[optimizacion_ruta] sin credencial de proveedor; usando orden local aproximado (Haversine)",
         );
-        return this.fallback.optimizar(input);
+        return this.fallback.optimizar(input, contexto);
       }
       // Fallo REAL del proveedor configurado: se propaga para que la cola/UI lo traten.
       opterror("fallback — fallo REAL del proveedor; NO se cae a Haversine", error);

@@ -156,7 +156,8 @@ describe("R6 — encolado en la insercion (via createManyOrdenes)", () => {
     await repo.createManyOrdenes([CREATE_DATA], 100, HISTORIAL, loteCtx());
 
     expect(cola.geo).toHaveLength(1);
-    expect(cola.geo[0].payload).toEqual({ ordenId: "orden-a" });
+    // SLT-59 (§13.2): una orden suelta lleva `orden_creada`.
+    expect(cola.geo[0].payload).toEqual({ ordenId: "orden-a", motivo: "orden_creada" });
     expect(cola.geo[0].maxIntentos).toBe(8); // R34
     expect(cola.geo[0].dedupeKey).toBe(
       dedupeKeyGeocodificacion("orden-a", hashDireccion("Av. Central 100")),
@@ -237,12 +238,13 @@ describe("R8 — carga masiva", () => {
     );
 
     expect(insertadas.inserted).toBe(2);
+    // SLT-59 (§13.2): la carga de archivo lleva `carga_masiva`.
     expect(cola.geo.map((f) => f.payload)).toEqual([
-      { ordenId: "orden-a" },
-      { ordenId: "orden-b" },
+      { ordenId: "orden-a", motivo: "carga_masiva" },
+      { ordenId: "orden-b", motivo: "carga_masiva" },
     ]);
     // La duplicada saltada NO encola.
-    expect(cola.geo.map((f) => f.payload)).not.toContainEqual({ ordenId: "orden-existente" });
+    expect(cola.geo.map((f) => f.payload.ordenId)).not.toContain("orden-existente");
   });
 
   it("R9: en un lote, las filas sin direccion no encolan", async () => {
@@ -265,7 +267,7 @@ describe("R8 — carga masiva", () => {
       loteCtx(),
     );
 
-    expect(cola.geo.map((f) => f.payload)).toEqual([{ ordenId: "orden-a" }]);
+    expect(cola.geo.map((f) => f.payload)).toEqual([{ ordenId: "orden-a", motivo: "carga_masiva" }]);
   });
 });
 

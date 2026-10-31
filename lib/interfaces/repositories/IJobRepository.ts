@@ -55,6 +55,14 @@ export interface EnqueueOpts {
   lastError?: string;
 }
 
+/** SLT-59 (D29): sin `dedupeKey` no hay fila que mover, asi que aqui es obligatoria. */
+export interface EncolarOMoverOpts {
+  runAfter: Date;
+  dedupeKey: string;
+  /** Solo cuenta al CREAR la fila; mover no la cambia. Default `JOBS_MAX_ATTEMPTS`. */
+  maxIntentos?: number;
+}
+
 /** Reloj/umbrales inyectados al claim para tests deterministas (R12/R13). */
 export interface ClaimOpts {
   /** Momento de la corrida. Filtra `pending` vencidos (`run_after <= now`) y sella `locked_at`. */
@@ -128,6 +136,25 @@ export interface IJobRepository {
    * sin tocar un contrato compartido con las features 90 y 91.
    */
   findByDedupeKeys(keys: string[]): Promise<JobDTO[]>;
+}
+
+/**
+ * SLT-59 (R76, R77, design §12.2 nota D29) — la cola con encolado de debounce DESLIZANTE. Va en un
+ * contrato aparte para no obligar a los dobles de `IJobRepository` de las demas fichas a
+ * implementarlo: solo lo exige quien lo usa (`GestionOrdenRepository`). `JobRepository` cumple los dos.
+ */
+export interface IJobRepositoryMovible extends IJobRepository {
+  /**
+   * Igual que `enqueue`, pero si la `dedupeKey` ya existe y esa fila sigue `pending`, le MUEVE
+   * `run_after` y le reescribe `payload` en vez de no hacer nada. Si la fila ya no esta `pending`
+   * (en curso, hecha, muerta o descartada) no crea otra ni la toca: devuelve `null`. Mismo `tx`.
+   */
+  encolarOMoverPendiente(
+    tipo: JobTipo,
+    payload: Record<string, unknown>,
+    opts: EncolarOMoverOpts,
+    tx?: JobTxClient,
+  ): Promise<JobDTO | null>;
 }
 
 /**

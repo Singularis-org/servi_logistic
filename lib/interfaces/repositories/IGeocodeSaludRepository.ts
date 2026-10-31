@@ -63,6 +63,10 @@ export interface IGeocodeSaludRepository {
    * `locked_at = NULL`, y `run_after` ESCALONADO desde `ahora` cada `espaciadoMs`. NO cambia
    * `tipo`, `payload` ni `dedupe_key` (R15).
    *
+   * [2026-10-31, SLT-59, D27, design §13.2] Excepcion acotada: reescribe `payload.motivo` a
+   * `revivido_por_salud` para que la llamada del job revivido diga por que corrio. El `ordenId` y
+   * el resto del payload no cambian.
+   *
    * Devuelve cuantos revivio.
    */
   revivirFallosConfig(opts: RevivirFallosConfigOpts): Promise<number>;

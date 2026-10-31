@@ -231,7 +231,8 @@ describe("R7 — sin job para la direccion VIGENTE se encola una geocodificacion
       { dedupeKey: string },
     ];
     expect(tipo).toBe("geocodificacion");
-    expect(payload).toEqual({ ordenId: "o1" }); // PII: solo el id, nunca la direccion
+    // PII: el id y el motivo (SLT-59, §13.2), nunca la direccion.
+    expect(payload).toEqual({ ordenId: "o1", motivo: "asignacion_sin_coordenadas" });
     expect(opts.dedupeKey).toBe(claveDe("o1"));
   });
 
