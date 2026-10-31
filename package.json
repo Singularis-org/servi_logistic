@@ -26,7 +26,8 @@
     "arranque:superadmin": "tsx scripts/arranque-superadmin.ts",
     "integraciones:recifrar": "tsx scripts/recifrar-integraciones.ts",
     "storage:migrar-a-carpetas": "tsx scripts/migrar-storage-a-carpetas.ts",
-    "geo:backfill": "tsx scripts/geo-backfill-nodo.ts"
+    "geo:backfill": "tsx scripts/geo-backfill-nodo.ts",
+    "geo:equivalencia-dinero": "tsx scripts/geo-equivalencia-dinero.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -99,7 +99,7 @@
 
 ## T5 — Equivalencia de dinero (depende de T4)
 
-- [ ] **T5.1** Verificar tres cosas antes del script (design §6.2 y §9) y anotarlas en
+- [x] **T5.1** Verificar tres cosas antes del script (design §6.2 y §9) y anotarlas en
   `progress/impl_SLT-44.md`:
   - cómo arma `ApiKeyAuthService` el actor `apiKey` de una tienda, para replicarlo sin una key;
   - qué roles acepta `CoberturaService.listar`;
@@ -107,10 +107,10 @@
     `EXCEPCIONES_DE_PLATAFORMA` (guardia `plataforma-solo-en-lista`).
 
   *Hecho:* las tres anotadas. Si alguna obliga a cambiar el diseño, se para y se avisa.
-- [ ] **T5.2** `scripts/geo-equivalencia-dinero.ts` (design §6.2): cliente de solo lectura,
+- [x] **T5.2** `scripts/geo-equivalencia-dinero.ts` (design §6.2): cliente de solo lectura,
   `compararEmpresa` exportada, salidas 0/1/2 y la entrada `geo:equivalencia-dinero` en
   `package.json`. *Hecho:* typecheck y guardias verdes.
-- [ ] **T5.3** `tests/integration/db/geo-equivalencia-dinero.test.ts` (R8, R21, R22, R23). *Hecho:*
+- [x] **T5.3** `tests/integration/db/geo-equivalencia-dinero.test.ts` (R8, R21, R22, R23). *Hecho:*
   verde. Da 0 diferencias en el fixture. La contraprueba con una asignación inyectada en un cantón
   da diferencias nombradas. El `INSERT` falla con `25006`. La salida no contiene PII del fixture.
 

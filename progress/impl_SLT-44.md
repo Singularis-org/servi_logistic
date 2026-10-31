@@ -102,3 +102,41 @@ Desviaciones:
   Ningún `expect` de salida cambió.
 - R19 y R20 se apoyan en local solo en `geo-lecturas-catalogo.test.ts`: sus suites existentes no ejecutan
   en una base sin usuarios ni órdenes (en el baseline, tampoco miden en CI).
+
+## Tanda 4 — T5.1–T5.3
+
+T5.1 (ninguna obliga a cambiar el diseño):
+- (a) `ApiKeyAuthService.autenticar` devuelve `{ usuarioId: resolverOwnerApiKey(usuarioDedicado, tiendaDestinoId), rol: "apiKey" }`
+  tras comprobar key existente y activa, usuario activo, rol `apiKey` y tienda destino `adminTienda` activa. Con
+  tienda destino, `usuarioId` es el id de la tienda; `CotizacionOrdenService.cotizar` solo mira `rol === "apiKey"`.
+  Se replica sin key con `{ usuarioId: tiendaId, rol: "apiKey" }`.
+- (b) `CoberturaService.listar` solo acepta `maestro` y no usa `usuarioId`. El script usa
+  `{ usuarioId: "geo-equivalencia-dinero", rol: "maestro" }` y `maxFilas = Number.MAX_SAFE_INTEGER`.
+- (c) `plataforma-solo-en-lista` barre llamadas directas a `comoPlataforma(` en `lib`, `app`, `scripts`,
+  `tests/fabricas`. `paraCadaEmpresa` la abre dentro de `lib/db/para-cada-empresa.ts`, ya en
+  `EXCEPCIONES_DE_PLATAFORMA` (SL-17). El script no llama a `comoPlataforma`: sin entrada nueva.
+
+Archivos: nuevo `scripts/geo-equivalencia-dinero.ts` (cliente de solo lectura con
+`default_transaction_read_only=on`, `compararEmpresa`, `lineasDeInforme`, `codigoDeSalida` 0/1/2, `leerArgumentos`);
+nuevo `tests/integration/db/geo-equivalencia-dinero.test.ts`; `package.json` solo la entrada
+`geo:equivalencia-dinero` (sin dependencias).
+
+Mapa: R8, R21, R22, R23 → `geo-equivalencia-dinero.test.ts` (0 diferencias CR y XA; contraprueba con asignación
+en un cantón da 1 diferencia por bloque nombrada por ids; `--muestra`; códigos 0/1/2; `INSERT` → `25006`;
+recuentos iguales antes/después; sin PII en la salida).
+
+Salida (`NODE_OPTIONS=--max-old-space-size=8192`, `DATABASE_URL` → `logistic_slt44`):
+- typecheck exit 0; eslint de los 2 archivos: 0 errores, 0 avisos.
+- `vitest run tests/integration/db/geo-equivalencia-dinero.test.ts`: 1 file / 8 tests passed, 0 failed.
+- `test:guardias`: 323 passed, 1 failed, 3 skipped (archivos); 4552 passed, 4 failed, 24 skipped (tests); los 4 rojos,
+  `dependencias-declaradas-presentes` (baseline).
+- `pnpm geo:equivalencia-dinero` no se ejecutó contra ninguna base (T7.2 es humana).
+
+Desviaciones:
+- La contraprueba inyecta por `compararEmpresa(..., { clienteNuevo })`: un proxy del cliente añade a
+  `zonaDistrito.findMany` una fila `{ distritoId: <cantonId>, zona }`, porque los repositorios construyen su
+  catálogo por dentro y no se tocó `lib/`.
+- Cobertura comparada como multiconjunto (el DTO no lleva ids) más un bloque «cobertura-por-zona» por id de zona.
+- La salida no imprime nombres de geografía ni mensajes de error, solo ids y flags.
+- No hay prueba de extremo a extremo de `compararEmpresa` con el cliente de solo lectura sobre datos confirmados;
+  la barrera de solo lectura se prueba aparte.
