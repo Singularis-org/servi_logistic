@@ -286,3 +286,51 @@ T5 completa y verde:
 - un cierre que solo tiene barridas ya no se aprueba de un click.
 
 Quedan T0.1 y T6 (leader y humano), y validar el rótulo «Novedad interna» (desviación 1).
+
+## Rojos del gate (ronda 1)
+
+El primer `./init.sh` salió rojo con 4 archivos fuera del baseline. Solo se tocaron tests; nada de producción.
+
+### Causas y arreglos
+
+1. **`tests/integration/db/devolucion-rechazadas-flow.test.ts` (9/9).**
+   - Causa: el test usa una base EN MEMORIA con los delegados de Prisma que consumen los repos reales. Aprobar ahora lee SIEMPRE las barridas (`findBarridasDelCierre` → `prisma.cierreSinGestion.findMany`, desviación 2 del backend), y el doble no tenía `cierreSinGestion`: `TypeError ... reading 'findMany'`.
+   - No es de producción: en Postgres el delegado existe siempre.
+   - Arreglo: el doble gana `cierreSinGestion.findMany → []`. Ese recorrido no barre ninguna orden, así que la confirmación esperada no cambia y R18 se cumple (mismo payload).
+2. **`tests/integration/db/nucleo-sin-modulos.test.ts` (2 rojos; el segundo, `cierre_no_aprobado`, cae porque el primero no aprobó).**
+   - Causa real, en dos capas:
+     - (a) el corte barre `ordenEnReparto` al cierre vencido y el test aprobaba sin confirmación. Es el comportamiento NUEVO correcto (R10, sin puerta de escape): `fieldErrors.confirmacionFisica`;
+     - (b) al mandar la confirmación seguía en `validation_error`: la orden del fixture no tenía `numGuia`, así que la copia congelada en `cierre_sin_gestion` era `NULL`, y R15 bloquea una barrida sin guía, como pide el spec (límite aceptado en Q2; 0 de 185 en producción).
+   - Una orden `en_reparto` sin guía no existe en el flujo real. El fixture era irreal para la 451; producción está bien.
+   - Arreglo:
+     - las órdenes del fixture nacen con guía de `nextval('orden_num_guia_seq')`, el mismo patrón que `cierre-sin-gestion-confirmacion-sql-real`;
+     - el caso de aprobar lee las barridas del cierre y manda `{origen:"barrida", ordenId, numGuia}` con la guía congelada;
+     - se añadió una precondición: la barrida tiene guía numérica.
+   - Ningún R cambia de comportamiento.
+3. **`cierre-sin-gestion-confirmacion-migration.test.ts` y `cierre-sin-gestion-confirmacion-sql-real.test.ts`.**
+   - Causa: el gate corrió contra la base del `.env`, que no tiene `20261031130000`. No es un defecto. No se aplicó la migración a esa base.
+   - Mecanismo del gate: `init.sh` §6.b. Si `DATABASE_URL` viene del entorno, manda ella y el `.env` no se carga. `_postgres-real.ts` solo lee el `.env` si falta la variable, y `prisma.config.ts` (`loadEnvFile`) no pisa variables existentes. El `.env` no tiene `DIRECT_URL`. No hay `.env.test` ni otra variable del arnés.
+   - Comando para el gate contra `servi_slt72`: `bash <scratchpad>/conbase.sh ./init.sh`.
+     - `conbase.sh` deriva la URL con `dburl.cjs`: lee la del `.env`, sale con 3 si el host no es local y cambia solo el nombre de base a `servi_slt72`.
+     - La exporta sin imprimirla, quita `DIRECT_URL` y hace `cd` al worktree.
+
+### Mutaciones / rojo → verde
+
+- nucleo, sin la confirmación (estado del primer gate) → `validation_error` → rojo; con ella → verde.
+- nucleo, con la confirmación pero sin `numGuia` en el fixture (ronda de depuración) → `validation_error` con `numGuia: null` en la barrida (R15) → rojo; con guía → verde.
+- devolucion, sin el delegado (estado del primer gate) → `TypeError` → rojo; con él → verde.
+
+### Salida real (resumida)
+
+- URL, solo categorías: `local: true db_es_slt72: true supabase: false`.
+- `prisma migrate status` contra `servi_slt72`: «269 migrations found», «Database schema is up to date!».
+- Los 4 archivos con `DATABASE_URL` de `servi_slt72`: `Test Files 4 passed (4)`, `Tests 32 passed (32)`, 0 skipped. Por archivo:
+  - migration 11/11;
+  - sql-real 6/6;
+  - devolucion 9/9;
+  - nucleo 6/6.
+- `pnpm run typecheck` → exit 0. `eslint` de los 2 tests tocados → exit 0.
+
+### Veredicto
+
+Los 4 rojos explicados. Dos eran dobles o fixtures desfasados frente a R10/R15, y dos eran de base equivocada. Producción sin cambios.
