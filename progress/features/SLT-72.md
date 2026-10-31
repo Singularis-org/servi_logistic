@@ -35,3 +35,12 @@ y `OrdenRepository`; esta, la aprobación del cierre. Sin cruce esperado de arch
 - `spec_author` encontró `specs/451-confirmacion-fisica-sin-gestionar/` (aprobado 2026-09-21, R1–R40,
   nunca implementado: 0/25 tasks, sin columna `cierre_sin_gestion.confirmada_fisica_at`).
 - Carlos: «Implementar la 451». SLT-72 implementa ese spec tal cual, con su migración.
+
+### 2026-10-31 — puertas de despliegue
+- Carlos: el rótulo de la sección es «Novedad interna» (desviación 5; «sin gestionar» está retirado).
+- T0.1: consulta de solo lectura en prod (autorizada por Carlos): 0 cierres solicitado/vencido/rechazado;
+  migración `20261031130000_cierre_sin_gestion_confirmacion_fisica` aún no aplicada allí.
+- T6.4: Carlos avisó a las bodegas antes del despliegue.
+- Implementer vuelta 1 → `0422dfe7`; reviewer vuelta 1 RECHAZADO solo por B1 (evidencia E2E);
+  vuelta 2 → `afb854c8` (E2E cierres-admin + dos-empresas-humo 9/9 en verde, m1 cubierto con SQL real,
+  gate local INIT_EXIT=0).
