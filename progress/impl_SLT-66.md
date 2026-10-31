@@ -436,3 +436,31 @@ Un script recorre los imports en runtime de los 362 archivos `'use client'`.
    - Lo que comprueba no cambia: el DTO sale del mapeo real.
 
 T18 queda sin marcar hasta resolver esto y el typecheck de `app/`.
+
+### Tanda C: cierre (desbloqueo del leader dentro de R27, 2026-10-31)
+- `6b6191a` (backend_dev): fixtures con costo concreto. Lo que comprueban no cambia.
+  - `planes-asignacion-inicio-ciclo.test.ts:72-78`: el ayudante `plan` pasa a monto 1000.00 con costo por orden 100.00. `...p` sigue al final, así que cada test puede sobrescribirlo.
+  - `planes.composition-root.test.ts`: `filaPlan` (`:25-30`) pasa a monto 1000 con costo 100, y se ajusta el `toEqual` (`:75-76`). Hizo falta importar `Prisma` en `:3`: el repositorio real llama a `.toFixed` sobre `Prisma.Decimal`, igual que en `cobro-plataforma.composition-root`.
+- `0a91cad` (frontend_dev): `plan_sin_costo` en las tablas `RECHAZOS` de `PlanEmpresa.tsx` y `PlanForm.tsx`. Es una pieza adelantada de T19.
+  - Texto literal de R28 (requirements, líneas 164-165): «Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.»
+  - `PlanDetalle` usa `mensajeDelRechazo` de `PlanForm`.
+- §9.3 suma tres filas: las dos de R27/R28 y la de los campos de `EmpresaListada`.
+
+| Archivo (`logistic_slt66`) | Pasados / fallados |
+|---|---|
+| unit planes-service | 80 / 0 |
+| unit planes-service-inicio-ciclo | 28 / 0 |
+| unit planes-service-asignar-costo | 31 / 0 |
+| unit empresas-plataforma-service | 12 / 0 |
+| unit empresas-plataforma.composition-root | 8 / 0 |
+| unit planes.composition-root | 4 / 0 |
+| empresas-plataforma-plan | 4 / 0 |
+| empresas-plataforma-cobro (sin tocar) | 6 / 0 |
+| empresas-plataforma | 5 / 0 |
+| migracion-slt66-desasignar | 7 / 0 |
+| cobro-plataforma-plan | 16 / 0 |
+| cobro-plataforma-cargos (SL-40) | 20 / 0 |
+| migracion-slt66-ida-y-vuelta | 11 / 0 |
+| planes-asignacion-inicio-ciclo | 11 / 0 |
+
+Typecheck: `app/`, `lib/` y `components/` sin errores. Los 24 errores que quedan están todos en `tests/components/*` y `tests/integration/*.tsx`, que son de la tanda D.

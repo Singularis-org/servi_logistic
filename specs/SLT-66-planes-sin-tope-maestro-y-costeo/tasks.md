@@ -112,7 +112,7 @@
     total) y con plan sin costo por orden (global sin nota, con total);
   - mutaciones 5 y 10 medidas;
   - Grep sin `Number(` ni `parseFloat` sobre importes en el archivo.
-- [ ] **T18 [P] — Solo se asignan planes con costo concreto** (design §4.2.1, §7). Depende de T2.
+- [x] **T18 [P] — Solo se asignan planes con costo concreto** (design §4.2.1, §7). Depende de T2.
   - `lib/planes/costo-concreto.ts` (`tieneCostoConcreto`).
   - La variante `plan_sin_costo` en `PlanResult` y en `VistaPreviaAsignacionResult`.
   - En `PlanesService`: la regla en `asignar` (después de «mismo plan», también con el pendiente) y en
