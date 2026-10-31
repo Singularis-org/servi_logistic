@@ -298,7 +298,8 @@ export async function fijarModulosPorPantalla(
   encendidos: readonly ModuloApagable[],
 ): Promise<void> {
   await page.goto("/plataforma/empresas");
-  await page.getByRole("link", { name: `Módulos de ${nombreEmpresa}`, exact: true }).click();
+  // SLT-66 R32: el enlace del listado se llama «Plan y módulos de {empresa}».
+  await page.getByRole("link", { name: `Plan y módulos de ${nombreEmpresa}`, exact: true }).click();
   await expect(page.getByRole("heading", { name: "Módulos", exact: true })).toBeVisible({ timeout: 60_000 });
 
   for (const clave of ORDEN_MODULOS) {
