@@ -165,9 +165,12 @@ describe("457/T2.2 — R7 por construccion: identidad sobre 500 subconjuntos con
     fila("egreso_reverso_iva_flete_devolucion", "130.00"),
     // SL-45: el pago de la empresa a la plataforma.
     fila("egreso_pago_plataforma", "750.00"),
+    // SLT-73: la diferencia de la satelite al conciliar, en los dos sentidos.
+    fila("egreso_diferencia_satelite", "485.00"),
+    fila("ingreso_diferencia_satelite", "15.00"),
   ];
 
-  it("el POOL cubre las 28 categorias del catalogo (anti-vacuidad)", () => {
+  it("el POOL cubre las 30 categorias del catalogo (anti-vacuidad)", () => {
     const cubiertas = new Set(POOL.map((f) => f.categoria));
     for (const c of WALLET_MOVIMIENTO_CATEGORIA_SEED) expect(cubiertas.has(c), c).toBe(true);
   });

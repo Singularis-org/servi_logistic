@@ -67,12 +67,15 @@ describe("NATURALEZA_POR_CATEGORIA — clasificacion exhaustiva (R2/R3)", () => 
     );
     // Ficha 459 (design §5): + el pago por cuenta de una tienda y su anulacion.
     // Ficha 457 (design §4, DH1): + el pago de una tienda a la empresa y su anulacion.
+    // SLT-73 (design §1.2): + la diferencia de la satelite al conciliar (tesoreria).
     expect([...terceros].sort()).toEqual([
+      "egreso_diferencia_satelite",
       "egreso_pago_por_cuenta_tienda",
       "egreso_pago_tienda",
       "egreso_reverso_abono_tienda",
       "ingreso_abono_tienda",
       "ingreso_cod_recaudado",
+      "ingreso_diferencia_satelite",
       "ingreso_reverso_pago_por_cuenta_tienda",
       "ingreso_reverso_pago_tienda",
     ]);
