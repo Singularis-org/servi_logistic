@@ -267,6 +267,29 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
       (await inexistente.service.revertirConciliacion({ cierreBodegaId: "cb1" }, MAESTRO)).status,
     ).toBe("no_encontrada");
   });
+
+  it("⭑ SLT-73 R14: `con_asientos` del repositorio llega como `{ status: \"con_asientos\" }`", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ revertirConciliacion: vi.fn(async () => "con_asientos" as const) }),
+    );
+    const r = await service.revertirConciliacion({ cierreBodegaId: "cb1" }, MAESTRO);
+    expect(r).toEqual({ status: "con_asientos" });
+    expect(escrituras.revertirConciliacion).toHaveBeenCalledTimes(1);
+  });
+
+  it("SLT-73 R23: sin acceso total, `forbidden` ANTES de mirar si hay asientos", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ revertirConciliacion: vi.fn(async () => "con_asientos" as const) }),
+    );
+    const r = await service.revertirConciliacion(
+      { cierreBodegaId: "cb1" },
+      { usuarioId: "u-sat", rol: "adminSatelite" },
+    );
+    expect(r).toEqual({ status: "forbidden" });
+    expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------------------------

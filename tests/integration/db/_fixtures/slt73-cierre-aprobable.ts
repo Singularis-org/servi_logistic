@@ -4,13 +4,17 @@ import { Prisma, type CierreDestinoTipo } from "@prisma/client";
 
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
+import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
+import type { AsientosCierreDiaDeps } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
@@ -51,6 +55,11 @@ export interface CierreAprobable {
   gestionIncidenteId: string;
   /** Quien aprueba: el maestro (central) o el adminSatelite de la zona (satelite). */
   aprobador: Actor;
+  /** T4: el maestro sembrado, quien marca recibida la consolidacion (acceso total). */
+  maestroId: string;
+  /** T4: el adminSatelite de la zona, quien consolida. */
+  adminSatelite: Actor;
+  zonaId: string;
   admin: CierresAdminService;
   estatus: { enReparto: string; entregado: string };
 }
@@ -232,6 +241,9 @@ export async function sembrarCierreAprobable(
     ordenEntregaId,
     gestionEntregaId: gEntrega.id,
     gestionIncidenteId: gIncidente.id,
+    maestroId: maestro.id,
+    adminSatelite: { usuarioId: adminSat.id, rol: "adminSatelite", organizacionId },
+    zonaId: fks.zonaId,
     aprobador:
       destinoTipo === "bodega_central"
         ? { usuarioId: maestro.id, rol: "maestro", organizacionId }
@@ -306,4 +318,42 @@ export async function efectosNoDinero(tx: TxDeTest, k: CierreAprobable) {
     historialEntrega,
     accion,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// SLT-73 · T4 — EL FLUJO REAL DESPUES DE APROBAR UN CIERRE SATELITE: consolidar y marcar recibido.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * CONSOLIDA la cola de la zona del adminSatelite con el servicio REAL (`solicitarCierreBodega`):
+ * suma los snapshots de los cierres aprobados sin consolidar y los enlaza, como en produccion.
+ * Lanza si no consolida: un test que siga sin consolidacion no probaria nada.
+ */
+export async function consolidar(tx: TxDeTest, adminSatelite: Actor): Promise<string> {
+  const c = clienteConSavepoint(tx);
+  const r = await new CierreBodegaService(
+    new CierreBodegaRepository(c),
+    new OrdenRepository(c),
+  ).solicitarCierreBodega(adminSatelite);
+  if (r.status !== "ok") throw new Error(`no se pudo consolidar: ${JSON.stringify(r)}`);
+  return r.cierreBodegaId;
+}
+
+/**
+ * MARCA RECIBIDA la consolidacion con el repositorio REAL. Sin `asientos`, cae en el default del
+ * constructor (`ASIENTOS_POR_DEFECTO`), exactamente como las dos construcciones de produccion.
+ */
+export async function marcarRecibido(
+  tx: TxDeTest,
+  cierreBodegaId: string,
+  montoRecibido: string,
+  actorUsuarioId: string,
+  asientos?: AsientosCierreDiaDeps,
+): Promise<string> {
+  const c = clienteConSavepoint(tx);
+  const repo =
+    asientos === undefined
+      ? new CierresBodegaAdminRepository(c)
+      : new CierresBodegaAdminRepository(c, asientos);
+  return repo.marcarConciliado({ id: cierreBodegaId, montoRecibido, nota: null, actorUsuarioId });
 }

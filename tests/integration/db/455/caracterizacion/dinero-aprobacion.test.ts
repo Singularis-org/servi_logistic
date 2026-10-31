@@ -98,7 +98,8 @@ describeSiHayBase("455/C08 — dinero de la aprobacion con los cinco resultados 
       // SLT-73 (R1): el cierre es de la SATELITE (lo aprueba el adminSatelite), y aprobarlo ya no
       // escribe dinero. Su dinero entra al CONCILIAR la consolidacion, que llama a `asentarCierreDia`
       // (R10, T4). Aqui se llama directo al MISMO escritor para seguir fijando los cinco feeds al
-      // centimo; cuando exista la marca que asienta (T4), puede sustituirse por ella.
+      // centimo. Se queda la llamada directa y no la marca (T4): esta suite no corre en la base local
+      // (falta `orden` sembrada, baseline) y la marca anade fecha y diferencia propias (bitacora SLT-73).
       const alAprobar = await movimientos();
       await asentarCierreDia(e.tx, cierreId);
       const trasAprobar = await movimientos();

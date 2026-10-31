@@ -606,8 +606,10 @@ export async function sembrarEscenario459(
   // SLT-73 (R1/R10, D2): el mensajero de este escenario es de la SATELITE (aprueba el adminSatelite),
   // y aprobar su cierre ya NO escribe dinero: entra al CONCILIAR la consolidacion, que llama a
   // `asentarCierreDia`. El escenario sigue necesitando esos asientos en el libro, asi que se escriben
-  // aqui con el MISMO escritor y las MISMAS dependencias que el `adminRepo` de arriba (cuando exista la
-  // marca que asienta, T4, puede sustituirse por consolidar + marcar).
+  // aqui con el MISMO escritor y las MISMAS dependencias que el `adminRepo` de arriba. No se sustituye
+  // por consolidar + marcar (T4): las ~35 suites de este escenario no corren en la base local (falta la
+  // zona central, baseline) y la marca cambia la fecha de los asientos y anade una diferencia si lo
+  // recibido no cuadra; un cambio a ciegas aqui no se puede verificar (bitacora SLT-73, tanda 2).
   await asentarCierreDia(tx, cierreId, {
     ...ASIENTOS_POR_DEFECTO,
     walletMovimientoRepo: new WalletMovimientoRepository(s.cliente),
