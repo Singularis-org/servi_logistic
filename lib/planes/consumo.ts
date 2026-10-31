@@ -115,7 +115,7 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
     reinicio: reinicioDelCiclo(leido.ancla, ahora),
     cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
     // SLT-66 (R18, R19): las órdenes del total son las mismas que cuenta la fila del tope.
-    costeo: costeoDelCiclo(vigente.precio, leido.costoVigente, leido.uso.ordenes),
+    costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes),
   };
 }
 
