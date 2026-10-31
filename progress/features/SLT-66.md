@@ -27,6 +27,7 @@ Ninguna.
 ## Tandas
 - 2026-10-31 · A (T0–T4) · 6a8ea4d…aa02a4c · 108/108 en los 10 archivos de planes contra logistic_slt66; eslint limpio; typecheck rojo solo en tests/components y plataforma-*-page (tanda D, esperado). init.sh no se corre en tandas intermedias por memoria y por ese rojo esperado; cierra la tanda D + CI.
 - 2026-10-31 · B (T5–T9; T9 y T8 adelantadas, más «Desasignado» de T22 y tieneCostoConcreto de T18) · 27a7dd5…f201d04 · planes/cobro/SL-40 en verde contra logistic_slt66 (SL-40 sin tocar), mutaciones 1–3, 5, 6, 9, 10 detectadas; typecheck limpio salvo tests de tanda D; ningún 'use client' alcanza @prisma/client. Decisiones del humano: autorización general de tests por campos de SLT-66; el aviso «Plan sin costo concreto» mira el plan.
+- 2026-10-31 · C (T15, T18, T21; + texto plan_sin_costo de T19) · 89172f2…2d7d04c · 14 archivos 243/243 contra logistic_slt66 (SL-40 sin tocar), mutaciones 7a, 7b, 8, 11 detectadas; M4 aplicada solo en logistic_slt66; typecheck limpio en app/lib/components, rojo solo en tests de tanda D.
 
 ## Modelos (overrides)
 
