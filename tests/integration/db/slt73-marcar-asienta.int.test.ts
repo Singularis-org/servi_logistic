@@ -34,7 +34,8 @@ import {
 // rechazos` de 300,00 en el snapshot del cierre, para que el esperado tenga los TRES terminos:
 //
 //   esperado = paraLaCentral(20.000,00 − 1.500,00 − 300,00) = 18.200,00
-//   (`total_efectivo` es 20.000,00: un esperado sobre el efectivo daria otra cifra)
+//   (aqui todo es efectivo, asi que `total_efectivo` = `total_general`: el caso con SINPE, donde un
+//   esperado sobre el efectivo daria otra cifra, vive en `slt73-corregir-diferencia.int.test.ts`)
 //
 // Las filas esperadas van ESCRITAS A MANO y NO se leen de los feeds (memoria «asercion contra su
 // propia fuente»). Son las MISMAS que la aprobacion de la central escribe (R10).
