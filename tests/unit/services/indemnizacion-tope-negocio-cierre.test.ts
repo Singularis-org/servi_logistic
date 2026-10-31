@@ -51,6 +51,8 @@ function fakeRepo(delCierre: GestionIncidenteDelCierre[]): ICierresAdminReposito
     // Feature 238 (T1.3): el conjunto esperado de la confirmacion fisica. Doble VACIO por
     // defecto: sin nada que devolver, la guardia de la 238 deja el camino de esta suite intacto.
     findGestionesRetornablesDelCierre: vi.fn(async () => []),
+    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
+    findBarridasDelCierre: vi.fn(async () => []),
     // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),

@@ -1,0 +1,12 @@
+-- DOWN (ficha 451 / SLT-72, T4.1, R40) — suelta `cierre_sin_gestion.confirmada_fisica_at`.
+--
+-- ⚠️ PERDIDA DE DATO DECLARADA: se pierden las marcas de confirmacion fisica de las ordenes
+-- barridas de los cierres aprobados en la ventana revertida. Los cierres siguen aprobados y el
+-- dinero sigue movido: revertir esto NO desaprueba nada.
+--
+-- POR QUE R40 SE CUMPLE: la columna nace SIN LECTORES (no se proyecta en ningun `select`, no viaja
+-- a ningun DTO, y la guardia `confirmacion-sin-lectores` lo mantiene asi), asi que la base revertida
+-- es exactamente la que el codigo anterior espera.
+--
+-- `IF EXISTS` para que el rollback sea idempotente.
+ALTER TABLE "cierre_sin_gestion" DROP COLUMN IF EXISTS "confirmada_fisica_at";

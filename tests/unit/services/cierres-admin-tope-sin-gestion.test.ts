@@ -53,6 +53,8 @@ function fakeRepo(): ICierresAdminRepository {
     forzarSolicitudVencido: vi.fn(async () => "updated" as const),
     findGestionesIncidenteDelCierre: vi.fn(async () => []),
     findGestionesRetornablesDelCierre: vi.fn(async () => []),
+    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
+    findBarridasDelCierre: vi.fn(async () => []),
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     findGestionEditableEnCierre: vi.fn(async () => null),

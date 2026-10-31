@@ -45,7 +45,8 @@ function ret(
 
 /** Lo que la pantalla mandaria por esa gestion si bodega escaneara su guia correcta. */
 function ok(gestionId: string, numGuia: number = GUIA[gestionId] ?? 9999) {
-  return { gestionId, numGuia };
+  // Ficha 451 / SLT-72: la entrada lleva su ORIGEN (union discriminada del borde y del servicio).
+  return { origen: "gestion" as const, gestionId, numGuia };
 }
 
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
@@ -60,6 +61,8 @@ function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdm
     forzarSolicitudVencido: vi.fn(async () => "updated" as const),
     findGestionesIncidenteDelCierre: vi.fn(async () => []),
     findGestionesRetornablesDelCierre: vi.fn(async () => []),
+    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
+    findBarridasDelCierre: vi.fn(async () => []),
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
     findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
     // Merge 238 <- dev (2026-08-19): la correccion del desglose de pago amplio el contrato del
@@ -170,7 +173,7 @@ describe("238/R10 — sobra una entrada, o viene dos veces", () => {
       "c1",
       MAESTRO,
       [],
-      [ok(G_DEV), { gestionId: "g-de-otro-cierre", numGuia: 7777 }],
+      [ok(G_DEV), { origen: "gestion", gestionId: "g-de-otro-cierre", numGuia: 7777 }],
     );
 
     const errores = erroresDe(r);
@@ -215,7 +218,7 @@ describe("238/R11 — un INCIDENTE enviado tiene su propio mensaje", () => {
       "c1",
       MAESTRO,
       [],
-      [ok(G_DEV), { gestionId: G_INC, numGuia: 9004 }],
+      [ok(G_DEV), { origen: "gestion", gestionId: G_INC, numGuia: 9004 }],
     );
 
     const errores = erroresDe(r);
@@ -264,7 +267,7 @@ describe("238/R12/R13 — la guia leida", () => {
       "c1",
       MAESTRO,
       [],
-      [{ gestionId: G_DEV, numGuia: 8888 }],
+      [{ origen: "gestion", gestionId: G_DEV, numGuia: 8888 }],
     );
 
     expect(erroresDe(r)[G_DEV]).toEqual(["La guía leída no es la de este paquete."]);
@@ -280,7 +283,7 @@ describe("238/R12/R13 — la guia leida", () => {
       "c1",
       MAESTRO,
       [],
-      [{ gestionId: G_DEV, numGuia: 9001 }],
+      [{ origen: "gestion", gestionId: G_DEV, numGuia: 9001 }],
     );
 
     const errores = erroresDe(r);
@@ -432,5 +435,226 @@ describe("238/R14 — la cobertura se comprueba ANTES que la de los montos", () 
     // por la que la pantalla pone el escaneo antes de la captura de dinero (R37).
     expect(Object.keys(erroresDe(r))).toEqual([G_DEV]);
     expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// Ficha 451 / SLT-72 (T3.4, R7/R10-R19/R37) — EL SEGUNDO ORIGEN: las ordenes que ESTE cierre barrio
+// sin gestionar. Mismo criterio que arriba: en TODOS los rojos `repo.resolverCierre` no se llamo
+// (R16: la cobertura se decide antes de abrir la transaccion).
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+const O_B1 = "o-barrida-1";
+const O_B2 = "o-barrida-2";
+const O_AJENA = "o-barrida-de-otro-cierre";
+const GUIA_BARRIDA: Record<string, number> = { [O_B1]: 7001, [O_B2]: 7002, [O_AJENA]: 7003 };
+
+const SATELITE: Actor = { usuarioId: "sat", rol: "adminSatelite" };
+
+/** Una barrida del conjunto esperado, tal como la devuelve el repo (guia CONGELADA). */
+function bar(ordenId: string, numGuia: number | null = GUIA_BARRIDA[ordenId] ?? 7999) {
+  return { ordenId, numGuia };
+}
+
+/** Lo que la pantalla mandaria por esa barrida si bodega escaneara su guia. */
+function okB(ordenId: string, numGuia: number = GUIA_BARRIDA[ordenId] ?? 7999) {
+  return { origen: "barrida" as const, ordenId, numGuia };
+}
+
+const MSG_FALTANTE = "Falta confirmar la recepción de este paquete.";
+const MSG_AJENA = "Esta gestión no pertenece a lo que vuelve en este cierre.";
+
+describe("451/R10/R17 — un cierre CON barridas no se aprueba sin confirmarlas", () => {
+  it("R10: cierre SOLO con barridas y confirmacion vacia -> error en CADA barrida y repo intacto", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1), bar(O_B2)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], []);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: [MSG_FALTANTE], [O_B2]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R17: la peticion SIN el campo de confirmacion es una confirmacion vacia, sin excepcion", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+describe("451/R11-R15 — cobertura exacta de las barridas, error POR FILA", () => {
+  it("R12: falta UNA barrida -> el error va en ESA barrida y solo en ella", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1), bar(O_B2)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B1)]);
+
+    expect(erroresDe(r)).toEqual({ [O_B2]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R13: una barrida que este cierre NO barrio -> error en esa entrada", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B1), okB(O_AJENA)]);
+
+    expect(erroresDe(r)).toEqual({ [O_AJENA]: [MSG_AJENA] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R13: la MISMA barrida dos veces -> error en esa entrada", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B1), okB(O_B1)]);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: ["Este paquete se confirmó dos veces."] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R13: una entrada no puede cubrir la fila del OTRO origen (id de barrida enviado como gestion)", async () => {
+    // Sin comparar el origen, `{ origen: "gestion", gestionId: <ordenId barrida> }` casaria la
+    // fila de la barrida en el mapa por clave y la cubriria con una entrada de otra forma.
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [
+      { origen: "gestion", gestionId: O_B1, numGuia: GUIA_BARRIDA[O_B1] },
+    ]);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: [MSG_AJENA] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R14: la guia leida no es la CONGELADA de esa barrida -> error en esa entrada", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B1, 123456)]);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: ["La guía leída no es la de este paquete."] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R15: barrida SIN guia -> se bloquea nombrando el motivo, y NO se omite del conjunto", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1, null)]) });
+    const service = newService(repo);
+
+    // (a) Enviada con cualquier guia: el motivo es la falta de guia.
+    const conEntrada = await service.aprobarCierre("c1", MAESTRO, [], [okB(O_B1, 1)]);
+    expect(erroresDe(conEntrada)).toEqual({
+      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador."],
+    });
+    // (b) Sin enviarla: sigue en el conjunto esperado (si se omitiera, esto aprobaria).
+    const sinEntrada = await service.aprobarCierre("c1", MAESTRO, [], []);
+    expect(erroresDe(sinEntrada)).toEqual({ [O_B1]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+});
+
+describe("451/R11/R19 — los DOS origenes en un solo conjunto, sin aprobacion parcial", () => {
+  it("R11: gestiones completas y una barrida faltante -> rechaza por la barrida", async () => {
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => [ret(G_DEV), ret(G_REC, "devolucion_a_origen_por_rechazo")]),
+      findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]),
+    });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [ok(G_DEV), ok(G_REC)]);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R11: barridas completas y una gestion faltante -> rechaza por la gestion", async () => {
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => [ret(G_DEV)]),
+      findBarridasDelCierre: vi.fn(async () => [bar(O_B1), bar(O_B2)]),
+    });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B1), okB(O_B2)]);
+
+    expect(erroresDe(r)).toEqual({ [G_DEV]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R19: CUALQUIER lista a la que le falte una fila no aprueba — se prueba quitando cada una", async () => {
+    const completa = [ok(G_DEV), okB(O_B1), okB(O_B2)];
+    for (let i = 0; i < completa.length; i++) {
+      const repo = fakeRepo({
+        findGestionesRetornablesDelCierre: vi.fn(async () => [ret(G_DEV)]),
+        findBarridasDelCierre: vi.fn(async () => [bar(O_B1), bar(O_B2)]),
+      });
+      const parcial = completa.filter((_, j) => j !== i);
+
+      const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], parcial);
+
+      expect(r.status, `faltando la entrada ${i}`).toBe("validation_error");
+      expect(repo.resolverCierre).not.toHaveBeenCalled();
+    }
+  });
+
+  it("R20/R26: con la cobertura EXACTA aprueba y pasa al repo gestiones Y barridas, solo por id", async () => {
+    const repo = fakeRepo({
+      findGestionesRetornablesDelCierre: vi.fn(async () => [ret(G_DEV)]),
+      findBarridasDelCierre: vi.fn(async () => [bar(O_B1), bar(O_B2)]),
+    });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [okB(O_B2), ok(G_DEV), okB(O_B1)]);
+
+    expect(r.status).toBe("ok");
+    // Ninguna barrida se queda fuera de la lista que el repo marca: es lo que hace que toda orden
+    // que la liberacion mueva en esa misma tx quede confirmada (R26).
+    expect(resolverCall(repo).confirmacionFisica).toEqual([
+      { ordenId: O_B2 },
+      { gestionId: G_DEV },
+      { ordenId: O_B1 },
+    ]);
+  });
+});
+
+describe("451/R7/R18 — sin barridas, el camino de siempre", () => {
+  it("R7/R18: sin gestiones que vuelvan NI barridas -> `ok`, lista vacia al repo, UNA lectura de barridas", async () => {
+    const repo = fakeRepo();
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO);
+
+    expect(r.status).toBe("ok");
+    expect(resolverCall(repo).confirmacionFisica).toEqual([]);
+    // La lectura nueva cuesta EXACTAMENTE una consulta, con el alcance resuelto, y ninguna otra.
+    expect(repo.findBarridasDelCierre).toHaveBeenCalledTimes(1);
+    expect(repo.findBarridasDelCierre).toHaveBeenCalledWith("c1", {
+      destinoTipo: "bodega_central",
+      destinoZonaId: null,
+    });
+    expect(repo.findGestionesRetornablesDelCierre).toHaveBeenCalledTimes(1);
+  });
+
+  it("R7: con gestiones que vuelven y SIN barridas, no se exige nada por ese concepto", async () => {
+    const repo = fakeRepo({ findGestionesRetornablesDelCierre: vi.fn(async () => [ret(G_DEV)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", MAESTRO, [], [ok(G_DEV)]);
+
+    expect(r.status).toBe("ok");
+  });
+});
+
+describe("451/R8/R37 — el administrador de bodega satelite, mismo criterio", () => {
+  it("R37: el satelite tampoco aprueba con una barrida sin confirmar", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    const r = await newService(repo).aprobarCierre("c1", SATELITE, [], []);
+
+    expect(erroresDe(r)).toEqual({ [O_B1]: [MSG_FALTANTE] });
+    expect(repo.resolverCierre).not.toHaveBeenCalled();
+  });
+
+  it("R8: las barridas se leen con el ALCANCE del satelite (el WHERE lo aplica el repo)", async () => {
+    const repo = fakeRepo({ findBarridasDelCierre: vi.fn(async () => [bar(O_B1)]) });
+
+    await newService(repo).aprobarCierre("c1", SATELITE, [], [okB(O_B1)]);
+
+    expect(repo.findBarridasDelCierre).toHaveBeenCalledWith("c1", {
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: "z-sat",
+    });
+    expect(repo.resolverCierre).toHaveBeenCalledTimes(1);
   });
 });
