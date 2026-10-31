@@ -300,7 +300,7 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
     RUTA_OPT_MAX_INTENTOS: 3,
     RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
     RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-    RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+    RUTA_PRIMERA_DEBOUNCE_MIN: 5,
   };
   const tramoS1 = { encodedPolyline: codificarPolilinea([P.o, P.s1]), distanciaM: 1000, duracionS: 100 };
   const tramoS2 = { encodedPolyline: codificarPolilinea([P.s1, P.s2]), distanciaM: 1100, duracionS: 110 };

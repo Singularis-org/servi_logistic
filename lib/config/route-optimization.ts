@@ -144,7 +144,8 @@ export interface RouteOptimizationConfig {
    * primera ruta del dia aunque queden paquetes por recoger. Debounce deslizante: cada recogida
    * parcial empuja el job a `ahora + esto`. Entero >= 1; fuera de rango cae al default.
    *
-   * Decidido por el humano 2026-10-31 (SLT-59, D29); no calibrado con datos de produccion.
+   * Decidido por el humano 2026-10-31 (SLT-59, D29); bajado de 10 a 5 el mismo dia (SLT-74).
+   * No calibrado con datos de produccion.
    */
   RUTA_PRIMERA_DEBOUNCE_MIN: number;
 }
@@ -165,7 +166,7 @@ export function loadRouteOptimizationConfig(): RouteOptimizationConfig {
     // SLT-59 D21 y D25: ver la nota de cada campo en el contrato.
     RUTA_RECUPERACION_ENFRIAMIENTO_MIN: readPositiveInt("RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5),
     RUTA_PRIMERA_MIN_RECOGIDO_PCT: readIntEnRango("RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, 1, 100),
-    // SLT-59 D29: ver la nota del campo en el contrato.
-    RUTA_PRIMERA_DEBOUNCE_MIN: readPositiveInt("RUTA_PRIMERA_DEBOUNCE_MIN", 10),
+    // SLT-59 D29 y SLT-74: ver la nota del campo en el contrato.
+    RUTA_PRIMERA_DEBOUNCE_MIN: readPositiveInt("RUTA_PRIMERA_DEBOUNCE_MIN", 5),
   };
 }

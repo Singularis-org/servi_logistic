@@ -188,8 +188,8 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
     ["RUTA_OPT_MAX_INTENTOS", 3, "2"],
     ["RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5, "15"],
     ["RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, "60"],
-    // SLT-59 (R76, D29): 10 min sin recoger antes de calcular la primera ruta.
-    ["RUTA_PRIMERA_DEBOUNCE_MIN", 10, "3"],
+    // SLT-59 (R76, D29) y SLT-74: 5 min sin recoger antes de calcular la primera ruta.
+    ["RUTA_PRIMERA_DEBOUNCE_MIN", 5, "3"],
   ] as const)("SLT-59/R36, R55, R76 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
     it(`ausente -> ${porDefecto}, el valor decidido por el humano`, () => {
       limpiar();

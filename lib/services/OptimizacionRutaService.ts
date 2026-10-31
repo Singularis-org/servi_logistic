@@ -451,7 +451,8 @@ export function motivoLlamadaRuta(
   switch (origen) {
     case null:
       return "job_sin_origen";
-    // R76: el job de la recogida corre por la espera de 10 min o por la ultima recogida (R58).
+    // R76: el job de la recogida corre por la espera de RUTA_PRIMERA_DEBOUNCE_MIN
+    // (5 min desde SLT-74) o por la ultima recogida (R58).
     case "recogida_parcial":
       return "primera_ruta_debounce_recogida";
     case "recogida":

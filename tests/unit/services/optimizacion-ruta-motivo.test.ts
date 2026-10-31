@@ -55,7 +55,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 function alOeste(base: { lat: number; lng: number }, metros: number) {
@@ -213,7 +213,7 @@ describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas"
     expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_recogida_completa"));
   });
 
-  it("T7.9 — primera_ruta_debounce_recogida: el job de la espera de 10 min (origen recogida_parcial, R76)", async () => {
+  it("T7.9 — primera_ruta_debounce_recogida: el job de la espera de RUTA_PRIMERA_DEBOUNCE_MIN (origen recogida_parcial, R76)", async () => {
     const h = build({ ruta: rutaDeAyer() });
     await h.service.ejecutar(MENSAJERO, job("recogida_parcial"));
     expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_debounce_recogida"));

@@ -42,7 +42,7 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_OPT_MAX_INTENTOS: 3,
   RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
   RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
-  RUTA_PRIMERA_DEBOUNCE_MIN: 10,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 /** Origen y cinco paradas en fila hacia el norte, ~1,1 km entre una y otra. */
