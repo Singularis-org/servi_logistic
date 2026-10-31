@@ -5,6 +5,7 @@ import type { ModuloApagable } from "@prisma/client";
 
 import { FormField } from "@/components/shared/FormField";
 import { FieldError } from "@/components/shared/FieldError";
+import { MontoInput } from "@/components/shared/MontoInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { montoParaCampo } from "@/lib/config/moneda";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
@@ -134,9 +136,9 @@ function inicial(plan: PlanDTO | null): Formulario {
     apiKeys: texto(plan?.topes.apiKeys),
     modulos: plan?.modulos ?? [],
     precio: precio.tipo,
-    mensual: precio.tipo === "monto" ? precio.mensual : "",
+    mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
     anual: anual === null ? "ninguno" : anual.tipo,
-    montoAnual: anual?.tipo === "fijo" ? anual.monto : "",
+    montoAnual: anual?.tipo === "fijo" ? montoParaCampo(anual.monto) : "",
     porcentaje: anual?.tipo === "descuento" ? anual.porcentaje : "",
     aplicar: "inmediato",
     vigenteDesde: "",
@@ -484,7 +486,7 @@ export function PlanForm(props: PlanFormProps) {
         {form.precio === "monto" ? (
           <div className="flex flex-col gap-4">
             <FormField id={idDe("precio.mensual")} label={TEXTOS_PLAN_FORM.mensual} error={errorDe("precio.mensual")}>
-              <Input inputMode="decimal" value={form.mensual} onChange={(ev) => cambiar("mensual", ev.target.value)} />
+              <MontoInput value={form.mensual} onChange={(v) => cambiar("mensual", v)} />
             </FormField>
             {/* Título visible: sin él, los tres radios aparecen sin contexto bajo «Monto mensual». */}
             <fieldset id={idDe("precio.anual")} className="flex flex-col gap-2">
@@ -509,11 +511,7 @@ export function PlanForm(props: PlanFormProps) {
                 label={TEXTOS_PLAN_FORM.montoAnual}
                 error={errorDe("precio.anual.monto")}
               >
-                <Input
-                  inputMode="decimal"
-                  value={form.montoAnual}
-                  onChange={(ev) => cambiar("montoAnual", ev.target.value)}
-                />
+                <MontoInput value={form.montoAnual} onChange={(v) => cambiar("montoAnual", v)} />
               </FormField>
             ) : null}
             {form.anual === "descuento" ? (

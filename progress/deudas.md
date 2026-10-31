@@ -200,6 +200,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   Un reintento no vale (mismo criterio que D18). Para el hotfix SLT-68 el humano aceptó relanzar el gate a sabiendas (2026-10-30, «la 1, relanza el CI»).
 - **Dueño:** Carlos Restrepo (decidir si va ficha), o quien tome la siguiente ficha de la caja/reparto.
 
+### D33 — `MontoInput` con un solo uso: migrar los demás formularios de monto
+- **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
+- **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
+- **Dueño:** Camilo (decidir si va a ficha).
+
 ### D34 — Carga de 500 órdenes con guía al borde del timeout de transacción
 - **Origen:** tanda B de SLT-66 (2026-10-31, `progress/impl_SLT-66.md` > Tanda B). Medido antes de M3: la carga de 500 órdenes con guía por `OrdenRepository` tarda 3–4,9 s, al borde del timeout de 5 s de las transacciones interactivas de Prisma; una serie lo superó. Previo a SLT-66 (M3 no lo cambia de forma medible).
 - **Qué falta:** trocear la carga o subir el timeout de esa transacción, con medición.

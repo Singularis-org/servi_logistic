@@ -2069,14 +2069,18 @@ export interface IOrdenRepository {
    * (`estatus.value = origenValue`, pasado por el service) + no borrada (`deletedAt IS NULL`); origen
    * pre-leido bajo la misma guarda y append del historial (`origenTipo` = el pasado en `historial`,
    * `recepcion_bodega_central` en ambos casos) en la MISMA tx, SOLO si transiciono. Devuelve `true`
-   * si afecto 1 fila (recibida), `false` si 0 (ya no estaba en el origen -> race). NO toca
-   * `mensajeroAsignadoId` ni `numGuia` (R18).
+   * si afecto 1 fila (recibida), `false` si 0 (ya no estaba en el origen -> race). Nunca toca
+   * `numGuia`. SLT-63 acota 138/R18: con `opciones.liberaAsignacion` el mismo UPDATE limpia
+   * `mensajeroAsignadoId`, `asignadoAt` y `fechaReparto` (la recoleccion llega con el recolector
+   * puesto); la devolucion (139) pasa `false` y conserva la asignacion. Obligatorio, sin valor por
+   * defecto: quien llama tiene que decidirlo.
    */
   recibirEnBodegaCentral(
     ordenId: string,
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
+    opciones: { liberaAsignacion: boolean },
   ): Promise<boolean>;
 
   // --- Feature 157: recoleccion en tienda por el mensajero (R3-R5, R26-R38) ---
