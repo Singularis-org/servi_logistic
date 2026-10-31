@@ -158,6 +158,15 @@ export interface IJobRepositoryMovible extends IJobRepository {
 }
 
 /**
+ * SLT-74 — lectura del job `pending` de una `dedupeKey`, o `null`. Contrato aparte por la misma
+ * razon que `IJobRepositoryMovible`: solo lo exige quien lo usa (`OptimizacionRutaService`, para
+ * decir cuanto falta para la primera ruta). Acotada a la empresa en curso.
+ */
+export interface ILectorJobPendiente {
+  findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null>;
+}
+
+/**
  * Cliente transaccional aceptado por `enqueue(..., tx)`: el `tx` que Prisma pasa al
  * callback de `$transaction`. Se tipa por lo que el repo usa (`$executeRaw`/`$queryRaw`),
  * evitando acoplar la interfaz a `PrismaClient` completo.

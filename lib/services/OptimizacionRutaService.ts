@@ -93,9 +93,11 @@ import {
   type MotivoLlamadaRuta,
 } from "@/lib/clients/registro-llamada-google";
 import {
+  dedupeKeyPrimeraRecogida,
   primeraRutaPendiente as primeraRutaPendienteDelDia,
   type OrigenJobRuta,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import type { ILectorJobPendiente } from "@/lib/interfaces/repositories/IJobRepository";
 import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
@@ -525,7 +527,30 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
      * tumbar una optimizacion que ya salio bien (ver `trazar`).
      */
     private readonly routes: IRoutesClient | null = null,
+    /**
+     * SLT-74: de aqui sale cuanto falta para el job pendiente de la primera ruta, solo para el
+     * aviso de `recogida_insuficiente`. OPCIONAL: `null` = el aviso solo pide recoger.
+     */
+    private readonly jobsPendientes: ILectorJobPendiente | null = null,
   ) {}
+
+  /**
+   * SLT-74: ms hasta el `run_after` del job pendiente de la primera ruta de HOY (puede ser <= 0),
+   * o `undefined` si no hay. Es solo para el texto del aviso: si la lectura falla, el aviso sale
+   * sin el tiempo en vez de tumbar la respuesta del boton.
+   */
+  private async esperaPrimeraRuta(mensajeroId: string, ahora: Date): Promise<number | undefined> {
+    if (this.jobsPendientes === null) return undefined;
+    try {
+      const job = await this.jobsPendientes.findPendienteByDedupeKey(
+        dedupeKeyPrimeraRecogida(mensajeroId, fechaCalendarioCR(ahora)),
+      );
+      return job === null ? undefined : job.runAfter.getTime() - ahora.getTime();
+    } catch (error) {
+      opterror("service — SLT-74: no se pudo leer el job pendiente de la primera ruta", error);
+      return undefined;
+    }
+  }
 
   async ejecutar(
     mensajeroId: string,
@@ -621,7 +646,14 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
           recogidas,
           asignadas,
         });
-        return { status: "omitida", razon: "recogida_insuficiente", recogidas, asignadas };
+        const esperaMs = await this.esperaPrimeraRuta(mensajeroId, ahora);
+        return {
+          status: "omitida",
+          razon: "recogida_insuficiente",
+          recogidas,
+          asignadas,
+          ...(esperaMs !== undefined ? { esperaMs } : {}),
+        };
       }
     }
 

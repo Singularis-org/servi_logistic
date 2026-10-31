@@ -131,6 +131,12 @@ export type EjecutarOptimizacionResult =
       razon: "recogida_insuficiente";
       recogidas: number;
       asignadas: number;
+      /**
+       * SLT-74: ms que faltan para que corra el job PENDIENTE de la primera ruta del dia (el de
+       * las recogidas parciales, R76). Puede ser <= 0 si ya vencio y espera al cron. Ausente si
+       * no hay job pendiente (nada recogido aun, o ya corrio) o si no se pudo leer.
+       */
+      esperaMs?: number;
       trazado?: undefined;
     };
 

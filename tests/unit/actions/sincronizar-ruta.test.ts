@@ -419,6 +419,35 @@ describe("SLT-59 R64 / SLT-74 — `recogida_insuficiente` se traduce a `conflict
     });
   });
 
+  // SLT-74: con el job de la primera ruta pendiente, el aviso dice cuanto falta (lo mide el service).
+  it.each([
+    [
+      158_000,
+      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10) o espera 2 min 38 s y se calculará con los que llevas.",
+    ],
+    [
+      0,
+      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10) o espera unos segundos: ya se está calculando con los que llevas.",
+    ],
+    [
+      -45_000,
+      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10) o espera unos segundos: ya se está calculando con los que llevas.",
+    ],
+  ])("SLT-74: esperaMs = %i -> «%s»", async (esperaMs, motivo) => {
+    const { service } = build({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 10,
+      asignadas: 15,
+      esperaMs,
+    });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80 } },
+    );
+    expect(r).toEqual({ status: "conflict", motivo });
+  });
+
   it("sin config inyectada usa la del entorno (default 80)", async () => {
     const previo = process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;
     delete process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;

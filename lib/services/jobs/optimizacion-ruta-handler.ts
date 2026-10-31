@@ -21,6 +21,7 @@ import { HaversineRouteOptimizationClient } from "@/lib/clients/haversine-route-
 import { FallbackRouteOptimizationClient } from "@/lib/clients/fallback-route-optimization";
 import { RutaOptimizadaRepository } from "@/lib/repositories/RutaOptimizadaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { credencialesIntegracionReales } from "@/lib/services/integraciones/credencial-de-la-empresa";
@@ -183,5 +184,7 @@ export function buildOptimizacionRutaService(
     now,
     undefined,
     routes,
+    // SLT-74: el aviso de `recogida_insuficiente` dice cuanto falta para la primera ruta.
+    new JobRepository(prisma),
   );
 }

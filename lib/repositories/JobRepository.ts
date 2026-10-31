@@ -7,6 +7,7 @@ import {
   type EncolarOMoverOpts,
   type EnqueueOpts,
   type IJobRepositoryMovible,
+  type ILectorJobPendiente,
   type JobConEmpresa,
   type JobDTO,
   type JobTxClient,
@@ -65,7 +66,7 @@ function toDTO(row: JobRow): JobConEmpresa {
  * decision terminal (dead-letter) y la recurrencia viven en `JobQueueService`. El claim es
  * una unica sentencia atomica con `FOR UPDATE SKIP LOCKED` (§3.1). Devuelve DTOs planos.
  */
-export class JobRepository implements IJobRepositoryMovible {
+export class JobRepository implements IJobRepositoryMovible, ILectorJobPendiente {
   constructor(private readonly prisma: JobPrismaClient) {}
 
   async enqueue(
@@ -225,6 +226,21 @@ export class JobRepository implements IJobRepositoryMovible {
     const rows = await this.prisma.$queryRaw<JobRow[]>`
       SELECT * FROM "jobs" WHERE "dedupe_key" IN (${Prisma.join(keys)})`;
     return rows.map(toDTO);
+  }
+
+  /**
+   * SLT-74 — el job `pending` de la clave, o `null`. Igualdad sobre el indice unico parcial (como
+   * `findByDedupeKeys`). El filtro por `organizacion_id` repite el predicado de la RLS
+   * `jobs_por_empresa`: sin empresa fijada no devuelve nada, ni siquiera corriendo como dueno.
+   */
+  async findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null> {
+    const rows = await this.prisma.$queryRaw<JobRow[]>`
+      SELECT * FROM "jobs"
+      WHERE "dedupe_key" = ${dedupeKey}
+        AND "estado" = 'pending'
+        AND "organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
+      LIMIT 1`;
+    return rows.length > 0 ? toDTO(rows[0]) : null;
   }
 
   async complete(id: string): Promise<void> {
